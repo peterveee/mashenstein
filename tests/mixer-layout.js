@@ -340,9 +340,19 @@ assert(/setLatencyHint\(hint\)/.test(audio)
   && /if \(this\.latencyHint\) opts\.latencyHint = this\.latencyHint;/.test(audio)
   && /if \(this\.sampleRateHint\) opts\.sampleRate = this\.sampleRateHint;/.test(audio)
   && /Object\.keys\(opts\)\.length \? new AC\(opts\) : new AC\(\)/.test(audio)
-  && /Audio\.setLatencyHint\('playback'\)/.test(entry)
+  // The desk's default is still `playback`; it is now a localStorage override rather
+  // than a literal, because whether that buffer costs too much keyboard feel is a
+  // listening test and not a benchmark. See LATENCY_KEY.
+  && /const LATENCY_KEY = 'mash-mixer-latency'/.test(entry)
+  && /if \(!raw\) return 'playback';/.test(entry)
+  && /Audio\.setLatencyHint\(latencyChoice\)/.test(entry)
   && !/setLatencyHint/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
-  'the desk asks for a playback-sized output buffer and the game keeps the default');
+  'the desk asks for a playback-sized output buffer by default, and can be told otherwise to A/B it');
+// Both options are requests a browser may refuse, and a desk with no audio is worse
+// than a desk at the wrong rate.
+assert(/catch \(e\) \{\s*\n\s*console\.warn\('\[audio\] context options refused'/.test(audio)
+  && /this\.ctx = new AC\(\);/.test(audio),
+  'a refused context option falls back to the browser default instead of losing audio');
 // The desk monitors at the rate its bounces render (tools/lib/wav.js SR = 44100), so
 // the mix being heard is the file being kept — and the graph costs ~8% less than at
 // 48k. The game keeps the device default, exactly like the latency hint.
@@ -375,13 +385,147 @@ assert(/prefill\(seconds = 1\)/.test(audio)
   && /takeSchedulerHealth\(\)/.test(audio)
   && /if \(margin < 0\) this\._schedLate\+\+;/.test(audio),
   'the engine can prefill its queue on request and counts the passes that ran late');
-assert((barGrid.match(/Audio\.prefill\(PREFILL_S\)/g) || []).length === 4
-  && /const PREFILL_S = 1\.2/.test(barGrid),
-  'grid open, refresh, redraw and the scope toggle prefill before rebuilding — four sites, no more');
-assert(/Audio\.prefill\(1\.2\)/.test(entry) && /Audio\.prefill\(1\.2\)/.test(editor),
-  'the preset library and the full synth editor prefill before their own big builds');
-assert(/takeSchedulerHealth/.test(entry) && /pass\(es\) after it emptied/.test(entry),
-  'the watchdog reports a starved scheduler in numbers — an unhooked stall is named, not a rumour');
+// One implementation of "protect the audio and record the cost", imported by every
+// surface that has a heavy build — rather than a prefill number copied into three
+// files, which is three places for it to drift.
+const heavyUiSrc = readFileSync(new URL('../tools/lib/heavy-ui.js', import.meta.url), 'utf8');
+assert(/export const HEAVY_UI_PREFILL_S = 1\.2/.test(heavyUiSrc)
+  && /Audio\.prefill\(HEAVY_UI_PREFILL_S\)/.test(heavyUiSrc)
+  && /export function heavyUi\(label, fn\)/.test(heavyUiSrc)
+  && /export function lastHeavyBuild\(/.test(heavyUiSrc),
+  'lib/heavy-ui.js owns the prefill window and the record of what the stall was for');
+assert((barGrid.match(/heavyUi\(/g) || []).length === 4
+  && /heavyUi\(`open \$\{ns\}`, build\)/.test(barGrid)
+  && !/Audio\.prefill/.test(barGrid),
+  'grid open, refresh, redraw and the scope toggle go through heavyUi — four sites, no more');
+assert(/heavyUi\('open preset library'/.test(entry)
+  && /heavyUi\('open full synth editor'/.test(editor),
+  'the preset library and the full synth editor announce their own big builds');
+assert(/takeSchedulerHealth/.test(entry) && /pass\(es\) after it emptied/.test(entry)
+  && /lastHeavyBuild\(\)/.test(entry) && /this surface is unhooked/.test(entry),
+  'the watchdog reports a starved scheduler in numbers, names the build, and says when one was never announced');
+// ---- the load readout says nothing until something is wrong -------------------
+//
+// The clock ratio is a DEADLINE, not a gauge: it reads 1.00 whether the graph is
+// nearly empty or nearly full, and measuring it with a timer wobbles a percent
+// either way. Shown as a status it therefore read "GOOD 1.00×" on an empty song —
+// which looks like a limit — and tripped "NEAR LIMIT" on its own jitter. So it may
+// only ever raise an alarm, on a real shortfall sustained for seconds.
+assert(/const behind = Audio\.bank && \(ratio < 0\.95 \|\| instant < 0\.90\);/.test(entry)
+  && /const STRUGGLE_MS = 500;/.test(entry) && /const OVERLOAD_MS = 2000;/.test(entry)
+  && /if \(!behind && ratio > 0\.98\) health\.behindSince = 0;/.test(entry),
+  'a real shortfall warns at half a second and is called overloaded at two, clearing at 0.98');
+// A severe shortfall needs no averaging: a 250ms tick would have to be 28ms late to
+// read 0.90, and a graph over its budget reads 0.4.
+assert(/const instant = over\(1\);/.test(entry),
+  'and a single sample under 0.90 counts at once, so a bad overload is not waited out');
+// Staged on purpose: by the time a shortfall is certain you have already heard it, so
+// the first stage fires while the queue may still be covering the gap.
+assert(/health\.audioStruggling \? 'AUDIO STRUGGLING'/.test(entry)
+  && /MISSING ITS DEADLINE/.test(entry),
+  'and the early stage says it is at the edge rather than already broken');
+// Sampled four times a second, judged over two samples: fast enough to warn early,
+// averaged enough that one late timer is not a verdict.
+assert(/const HEALTH_TICK_MS = 250;/.test(entry)
+  && /setInterval\(checkAudioHealth, HEALTH_TICK_MS\)/.test(entry)
+  && /const ratio = over\(2\);/.test(entry),
+  'the watchdog samples at 250ms and judges the clock over half a second');
+// The dead-output tiers are written in seconds against that tick — they were literal
+// tick counts once, and a faster tick would have quartered every one of them.
+assert(/const DEAD_TIER_1 = 3 \* 1000 \/ HEALTH_TICK_MS;/.test(entry)
+  && !/health\.deadRuns === 3\b/.test(entry),
+  'and its escalation is expressed in seconds, not in ticks');
+// Code lines only: the comment above the rewrite quotes the old wording to explain
+// what was wrong with it, and a test that could not tell the two apart would be
+// failed by its own explanation.
+const entryCode = entry.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+assert(!/NEAR LIMIT/.test(entryCode) && !/'GOOD/.test(entryCode),
+  'and there is no reassuring verdict to be misread as a limit');
+// Two different faults, two different answers: the mix is the thing to change only
+// when the AUDIO thread is behind. A stalled main thread is the machine, not the song.
+assert(/health\.audioBehind \? 'AUDIO OVERLOADED'/.test(entry)
+  && /health\.uiStalled \? 'MACHINE BUSY'/.test(entry)
+  && /THE AUDIO IS FINE BUT THE BROWSER IS BUSY/.test(entry),
+  'the readout names which of the two causes it is, because they need opposite responses');
+assert(/el\.classList\.toggle\('dirty', !!trouble\)/.test(entry),
+  'and the estimate never lights the lamp — it is a guess about one machine');
+// Silence the desk ASKED for is not a fault. Without this the watchdog would rebuild
+// the graph because the transport is stopped, which is the desk repairing obedience.
+assert(/const quiet = !playing \? 'transport stopped'/.test(entry)
+  && /Audio\.muted \? 'desk muted'/.test(entry)
+  && /Audio\.panicked \? 'panicked'/.test(entry)
+  && /const dead = !quiet &&/.test(entry),
+  'the watchdog only counts dead-output strikes while output is actually expected');
+assert(/!Number\.isFinite\(v\)/.test(entry),
+  'and it treats an Infinity as poison too, not only a NaN');
+// A non-finite sample stops at the first compressor downstream, so WHICH chain it
+// came from is the whole question — answered by walking meters that already exist.
+assert(/const poisoned = \[\]/.test(entry)
+  && /Audio\.mixer\.auxLevel\(a\.id\)/.test(entry)
+  && /recentFilterWrites\?\.\(\)/.test(entry),
+  'a dead output names the poisoned chains and dumps the filter writes that led there');
+const voicesSrc = readFileSync(new URL('../src/engine/voices.js', import.meta.url), 'utf8');
+assert(/recentFilterWrites\(\)/.test(voicesSrc),
+  'the rack keeps that record — the "unstable filter" warning names nothing on its own');
+
+// ---- the note cache ---------------------------------------------------------
+//
+// Rendered notes for the pooled Tone voices, which measurement says is where the
+// dense song's cost actually is: one sixteenth-note pluck layer is 0.14 of a core,
+// and taking it apart says essentially all of that is per-note synthesis rather than
+// the instrument standing idle. Proven bit-identical against the live pool by
+// work/local/verify-note-cache.js.
+assert(/_cacheablePool\(v, mode, preview, hold\)/.test(voicesSrc)
+  && /setNoteCache\(on\)/.test(audio)
+  && /Audio\.setNoteCache\(/.test(entry)
+  && !/setNoteCache/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
+  'the desk can play pooled Tone voices from rendered notes; the game never does');
+// Each exclusion is load-bearing: a mono/legato note retargets the one still
+// sounding, a vibrato pool's LFO free-runs across notes, and a held note has no
+// length until a finger says so — none of those is a pure function of (preset,
+// pitch, length), which is the only thing that can be cached.
+assert(/mode === 'poly'/.test(voicesSrc)
+  && /!\(v\.vibrato && v\.vibrato\.depth > 0\)/.test(voicesSrc)
+  && /!preview && !hold/.test(voicesSrc)
+  && /v\.kind !== 'drum' && v\.kind !== 'noise'/.test(voicesSrc),
+  'and it refuses every voice whose note is not a pure function of (preset, pitch, length)');
+// A bounce must synthesise, not replay: the file IS the reference for what the song
+// sounds like, and a cache miss inside one would put a rendered note beside a live one.
+assert(/if \(typeof ctx\.startRendering === 'function'\) return false;/.test(voicesSrc),
+  'an offline render never replays from the cache');
+// A replayed buffer is a LIVE NODE for its whole length, and a note is rendered for
+// `dur + tailOf`, whose floor is over a second — so an untrimmed pluck held a source
+// alive five times longer than its sound, and the graph carried five times the
+// concurrent nodes the pool would have. Measured at half of every buffer and 18MB;
+// and because it only bites once the cache is warm, it arrived AFTER the first
+// complete loop, in the busiest bars, which is precisely how it was reported.
+assert(/function trimSilence\(buffer\)/.test(voicesSrc)
+  && /entry\.buffer = trimSilence\(await ctx\.startRendering\(\)\)/.test(voicesSrc)
+  && /const CACHE_SILENCE_FLOOR = 1e-5;/.test(voicesSrc),
+  'a rendered note is trimmed to where its sound ends, not to its retirement window');
+assert(/Math\.max\(128, last \+ 1 \+ Math\.ceil\(CACHE_TAIL_GUARD_S \* buffer\.sampleRate\)\)/.test(voicesSrc),
+  'with a guard past the last audible sample, and never a zero-length buffer');
+// The panel edits VOICES[id] in place, so the cache has to be told; `refresh` is the
+// one door every edit comes through.
+assert(/this\._specRev\.set\(voiceId, \(this\._specRev\.get\(voiceId\) \|\| 0\) \+ 1\)/.test(voicesSrc),
+  'editing a preset invalidates its cached notes');
+// Tone's context is global: building the throwaway rack redirects every Tone node
+// built afterwards, including the live pools the sequencer is still filling. Found
+// by playing the desk, not by reading the code.
+assert(/const prevToneCtx = Tone\.getContext\(\)/.test(voicesSrc)
+  && /Tone\.setContext\(prevToneCtx\);\s*\n\s*entry\.buffer = trimSilence\(await ctx\.startRendering\(\)\)/.test(voicesSrc),
+  'the note renderer puts Tone’s global context back before it yields');
+
+// ---- the native multiband compressor ----------------------------------------
+const fx = readFileSync(new URL('../src/engine/effects.js', import.meta.url), 'utf8');
+assert(/id: 'mbCompN'/.test(fx) && /id: 'mbComp'/.test(fx),
+  'the native multiband compressor is a SECOND entry — the Tone one stays, so the two can be A/B’d');
+{
+  const params = (id) => fx.match(new RegExp(`id: '${id}'[\\s\\S]*?params: \\[([\\s\\S]*?)\\]`))?.[1]
+    .replace(/\s+/g, ' ').trim();
+  assert(params('mbComp') === params('mbCompN'),
+    'with identical controls in identical order — the same idea spelled one way');
+}
 assert(/const strip = this\.mixer && this\.mixer\.lane\(key\);/.test(audio)
   && /this\._previewing && !strip/.test(audio)
   && /this\._laneGate\(key, strip \? strip\.dry : this\.musicBus/.test(audio),
@@ -641,6 +785,24 @@ assert(/startH = h\(\$\('arrange'\)\)/.test(arrDrag)
   && /lanesIn\(asked\) < 1[\s\S]*?setArrangeCollapsed\(true\)[\s\S]*?userArrH = null/.test(arrDrag)
   && /notesCollapsed && dy < 0[\s\S]*?setNotesFolded\(false, false\)/.test(arrDrag),
   'the Arrangement/Notes border sizes the Arrangement and reopens Notes when it folds');
+// Taking lanes away must not take away the one being worked on. The scroller keeps its
+// scrollTop as the panel shrinks, so without this the lanes that fall out of sight are
+// the ones nearest the hand — including, as often as not, the selected one. It has to
+// run inside the fit: applyDesk writes the height a frame after the drag asks for it.
+assert(/keepLanePending = true;\s*\n\s*scheduleDeskFit\(\);/.test(arrDrag)
+  && /keepLanePending = true;\s*\n\s*scheduleDeskFit\(true\);/.test(arrDrag)
+  && /function fitStrips\(\)[\s\S]*?applyDesk\(planDesk\(\)\)[\s\S]*?if \(keepLanePending\) \{[\s\S]*?keepLanePending = false;[\s\S]*?keepSelectedLaneVisible\(\);/.test(entry),
+  'resizing the Arrangement scrolls the selected lane back into view after the fit');
+// Index arithmetic, not a rect: .arrrow measures from #arrange, so a rect would carry
+// the header with it. Nothing but rows goes into the scroller, which is what makes the
+// index reliable — see buildArrangement.
+assert(/function keepSelectedLaneVisible\(\)[\s\S]*?classList\.contains\('collapsed'\)\) return;/.test(entry)
+  && /findIndex\(\(el\) => el\.classList\.contains\('sel'\)\)[\s\S]*?if \(index < 0\) return;/.test(entry)
+  && /const top = index \* \(row \+ laneRowGap\(\)\);/.test(entry)
+  && /if \(bottom > grid\.scrollTop \+ view\) grid\.scrollTop = Math\.min\(bottom - view, top\);/.test(entry)
+  && /else if \(top < grid\.scrollTop\) grid\.scrollTop = top;/.test(entry),
+  'the lane is found by index off the same row height and gap the snap uses, and a '
+  + 'window too short for a whole row shows the lane\'s top rather than its feet');
 assert(entry.includes("const FX_KEY = 'mash-mixer-fxh'")
   && /let userFxH =/.test(entry)
   && /effectsNaturalHeight[\s\S]*?userFxH != null/.test(entry)
@@ -1166,8 +1328,11 @@ assert((entry.match(/addInstrument: \(anchor\) => addBlankTrack\(anchor, \{ drum
   && /const blocked = home === 'lead' && pendingAddTrack\.drumsOnly;/.test(entry),
   'both pattern editors can only add drums — the picker holds nothing but the kit and the'
   + ' re-key to a melodic lane is refused, while the arrangement plus stays neutral');
+// And the duplicate names the lane it actually copies. A copy of an added track or of
+// another duplicate is a copy of THAT part, not of the engine lane its key is named
+// after — see duplicateLane, which now records `from: key`.
 assert(/const isIndependentLane = \(key\)[\s\S]*?const layer = isLayer\(laneKey\) && !independent/.test(entry)
-  && /A duplicate of \$\{targetLabel\(baseLane\(laneKey\)\)\}/.test(entry),
+  && /\?\.from\s*\n?\s*\|\| baseLane\(laneKey\);[\s\S]*?A duplicate of \$\{targetLabel\(source\)\}/.test(entry),
   'independent tracks are not presented as duplicates of Tom in the voice picker');
 assert(/function openVoicePicker[\s\S]*?const pending = pendingAddTrack\?\.key === laneKey[\s\S]*?let kind = drumsOnly \? 'drums' : pending \? 'all'[\s\S]*?else if \(pending\)[\s\S]*?Choose a preset for this new track/.test(entry),
   'the plus picker starts on All without presenting the Tom engine default');

@@ -39,6 +39,10 @@ const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 // bass edit cannot accidentally move the lead with it. Timing is measured in 1/32
 // notes: +8 is a quarter-note delay, -1 is one 1/32 note early.
 const BAR_MAPS = ['transpose', 'offset', 'gain'];
+// The other half of a bar's lane-scoped state: which lanes it does not pass on. Both
+// lists hold literal lane keys, so anything that adds, removes or copies a lane has to
+// walk both of them — see removeLanes and copyLaneArrangement.
+const LANE_LISTS = ['off', 'delete'];
 const copyBarMaps = (from, to) => {
   for (const key of BAR_MAPS) {
     if (from?.[key] == null) continue;
@@ -347,6 +351,52 @@ export const setLanesDeleted = (draft, from, to, keys, deleted = true) => {
 };
 
 /**
+ * Give a duplicated lane the arrangement its source is playing.
+ *
+ * The NOTES come across on their own: deskBank materialises a layer as the very array
+ * its source plays, so a note deleted in the editor is already gone from the copy and
+ * stays gone. The per-BAR decisions do not — the mute mask, the absent-lane mask and
+ * the transpose/offset/gain maps are all keyed by the literal lane name, and a new key
+ * appears in none of them. A duplicate of a bass that drops out for the middle eight
+ * therefore played straight through it, which is not a duplicate of anything: the two
+ * strips were audibly different parts from the moment the copy was made.
+ *
+ * Copied, not shared. The copy gets its own row in the grid with its own mute on every
+ * bar of it — that is what a second strip is for, and dropping the source out while the
+ * layer carries the bar is a real arrangement move. What it starts from is what the
+ * source sounds like at the moment it is made.
+ *
+ * A bar-wide number in a BAR_MAP applies to everything in the bar, the new lane
+ * included, so there is nothing to copy there; only the explicit per-lane maps.
+ *
+ * Not `copyLaneBars`, which reads a lane's NOTES out of a bar range for the clipboard.
+ * This one never touches a note.
+ */
+export function copyLaneArrangement(draft, from, to) {
+  if (!draft || !from || !to || from === to) return draft;
+  // Most duplicates are of a lane no bar has anything to say about. Hand the draft
+  // straight back for those, the way removeLanes does: `copy` would otherwise return a
+  // new object that is not a new arrangement, and the desk writes what it is handed —
+  // so duplicating a track on an unarranged song would give it an arrangement entry.
+  const names = (bar) => LANE_LISTS.some((field) => bar[field]?.includes(from))
+    || BAR_MAPS.some((field) => Number.isFinite(bar[field]?.[from]));
+  if (!draft.plan?.some(names)) return draft;
+  const out = copy(draft);
+  for (const bar of out.plan) {
+    for (const field of LANE_LISTS) {
+      if (!bar[field]?.includes(from)) continue;
+      bar[field] = [...new Set([...bar[field], to])].sort();
+    }
+    for (const field of BAR_MAPS) {
+      const map = bar[field];
+      if (map == null || typeof map !== 'object') continue;
+      if (Number.isFinite(map[from])) map[to] = map[from];
+    }
+  }
+  return out;
+}
+
+/**
  * Remove lanes that no longer exist from every part of an arrangement draft.
  *
  * Independent percussion channels own their notes, unlike an ordinary layer that
@@ -368,7 +418,7 @@ export function removeLanes(draft, keys) {
     for (const key of drop) { delete section[key]; delete section[lenKey(key)]; }
   }
   for (const bar of out.plan) {
-    for (const field of ['off', 'delete']) {
+    for (const field of LANE_LISTS) {
       if (!bar[field]) continue;
       bar[field] = bar[field].filter((key) => !drop.has(key));
       if (!bar[field].length) delete bar[field];

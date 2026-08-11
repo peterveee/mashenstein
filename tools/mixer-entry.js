@@ -17,11 +17,14 @@ import {
 // so Bounce and Export MIDI work the same on `npm run mixer` and on the deployed
 // desk at /SongMixer/, which has no server behind it at all.
 import { bounceWav } from './mixer-bounce.js';
+// Heavy UI builds hold the thread the sequencer runs on: `heavyUi` queues audio past
+// the stall and records what it was for, so the watchdog can name it. See lib/heavy-ui.js.
+import { heavyUi, lastHeavyBuild } from './lib/heavy-ui.js';
 import { midiBuffer } from './lib/render-midi-bank.js';
 import {
   draftOf, entryOf, setLanesOff, setLanesDeleted, deleteBars, duplicateBars,
   transposeBars, offsetBars, gainBars, copyBars, pasteBars,
-  insertSilence, copyLaneBars, writeBarNotes, writeBarNotesShared, patternStarts,
+  insertSilence, copyLaneBars, copyLaneArrangement, writeBarNotes, writeBarNotesShared, patternStarts,
   barCount, removeLanes, setTempo, setSwing, setSongLoop, readBarLane, DRUM_LANES,
 } from './lib/arrangement-edit.js';
 // Recording: the fourth caller of the one-note seam the keyboard, the computer keys
@@ -1406,6 +1409,11 @@ const engineBank = () => (playing && Audio.bank) || appliedBank;
  */
 function applyToEngine(mix) {
   if (!Audio.mixer) return;
+  // Every chain on the desk is about to be torn down and rebuilt, and a graph
+  // mid-rebuild is briefly and legitimately silent. Forget the strikes the watchdog
+  // has counted so its repair cannot be triggered by the desk's own surgery — see
+  // checkAudioHealth.
+  health.deadRuns = 0;
   const m = mix || emptyMix();
   // This song's arrangement, before the mix rather than after it: applyMix rebuilds
   // the bank from the song, so it has to know which bars to build. Set every time
@@ -2589,8 +2597,26 @@ function nextLayerKey(from) {
   for (let n = 2; ; n++) if (!taken.has(`${from}${n}`)) return `${from}${n}`;
 }
 
-/** Layers laid over a lane — the rows that go with it if it is deleted. */
-const layersOf = (key) => (mixFor(trackId).layers || []).filter((l) => l.from === key);
+/**
+ * Layers laid over a lane — the rows that go with it if it is deleted.
+ *
+ * Transitive, because a layer can now be laid over a layer: duplicate a track, then
+ * duplicate the copy, and deleting the part underneath both has to take both. A row
+ * whose source is gone is a row playing nothing — `deskBank` drops it — so leaving one
+ * behind deletes a strip by making it disappear rather than by saying so.
+ */
+const layersOf = (key) => {
+  const all = mixFor(trackId).layers || [];
+  const drop = [];
+  const sources = new Set([key]);
+  // One pass, in creation order: a copy is always declared after the thing it copies.
+  for (const l of all) {
+    if (!sources.has(l.from)) continue;
+    sources.add(l.key);
+    drop.push(l);
+  }
+  return drop;
+};
 /** A new editor track uses layer-shaped storage, but it is not a duplicate. */
 const isIndependentLane = (key) => !!(mixFor(trackId).layers || [])
   .find((l) => l.key === key && l.independent)
@@ -2608,16 +2634,24 @@ const isIndependentLane = (key) => !!(mixFor(trackId).layers || [])
  * A layer is played by a preset and nothing else — it has no hand-written body in the
  * engine — so a lane the voice library cannot play cannot be layered either, and a
  * fresh layer opens the library rather than sitting there silently.
+ *
+ * The copy is of THIS LANE, whatever kind of lane it is. Copying `baseLane(key)`
+ * instead — the engine lane the key is named after — meant duplicating a track that
+ * was itself a duplicate, or one of the added tracks every imported song is entirely
+ * made of, gave you a strip playing the engine's own `lead` or `tom`: a different part
+ * in the bars where the song has one at all, and an empty row in the bars where it does
+ * not. The NAME still comes off the base lane, so the copy of `lead3` is `lead2` or
+ * `lead4` and the rack still reads in one family.
  */
 function duplicateLane(key) {
-  const from = baseLane(key);
+  const from = key;
   const seam = seamFor(key);
   if (!seam) {
     toast(`${targetLabel(key)} is a gesture the engine plays, not a part a voice can`
       + ' play — there is nothing to layer');
     return;
   }
-  const newKey = nextLayerKey(from);
+  const newKey = nextLayerKey(baseLane(key));
   const newSeam = seamFor(newKey);
   const cur = mixFor(trackId);
   // Only a preset carries over. An ENGINE voice is a bundle of bank keys the
@@ -2632,6 +2666,13 @@ function duplicateLane(key) {
     m.lanes[newKey] = copy;
     if (keepVoice) m.voice = { ...(m.voice || {}), [newSeam.voiceKey]: keepVoice };
   });
+  // The bars the source does not play in. Only reachable once the mix above has been
+  // written — the new lane has to exist on the desk before the arrangement is allowed
+  // to name it — and folded into the same undo step, because half of a duplicate is
+  // not a thing to be left holding. No render: rebuildForShape below does it once.
+  const arr = arrDraftOf();
+  const withBars = copyLaneArrangement(arr, key, newKey);
+  if (withBars !== arr) applyArrangementEdit(withBars, 'duplicate', { undo: false, render: false });
   rebuildForShape();
   selectLane(newKey);
   if (keepVoice) {
@@ -2824,7 +2865,9 @@ async function deleteLane(key) {
   const layer = isLayer(key);
   const layerDef = (mixFor(trackId).layers || []).find((l) => l.key === key);
   const independent = !!layerDef?.independent;
-  const kids = layer ? [] : layersOf(key);
+  // A layer can carry layers of its own now — a duplicate of a duplicate, a second
+  // voice under an added track — so this is asked of every lane, not only the song's.
+  const kids = layersOf(key);
   const also = kids.length
     ? `\n\nThe ${kids.length} layer${kids.length === 1 ? '' : 's'} on it `
       + `(${kids.map((l) => targetLabel(l.key)).join(', ')}) ${kids.length === 1 ? 'goes' : 'go'} too.`
@@ -3680,22 +3723,23 @@ let oskWasOn = false;
 function openPresetLibrary() {
   closeMenu();
   // The library and its docked editor are one of the desk's big synchronous builds,
-  // and the sequencer runs on the thread it blocks. Queue ahead first — see
-  // Audio.prefill, and the same call in mixer-bar-grid before a roll rebuild.
-  Audio.prefill(1.2);
-  oskWasOn = oskShown();
-  voiceLibrary.show(true);
-  // The editor is part of the library workspace, even before a row has been picked.
-  // A previously folded editor is a remembered desk preference, not a reason for a
-  // fresh library opening to have no editor at all.
-  if (voiceLibrary.isCollapsed('edit')) voiceLibrary.collapse('edit', false);
-  if (!voiceLibrary.isCollapsed('edit')) {
-    if (voiceEditor.isOpen() && voiceEditor.laneKey) dismissVoiceEditor();
-    voiceEditEl.classList.add('vedocked');
-    if (!voiceEditor.isOpen()) voiceEditor.blank();
-    dockIntoLibrary();
-  }
-  if (!oskWasOn) showOsk(true);
+  // and the sequencer runs on the thread it blocks — so it goes through `heavyUi`,
+  // which queues audio past the stall and records what the stall was for.
+  heavyUi('open preset library', () => {
+    oskWasOn = oskShown();
+    voiceLibrary.show(true);
+    // The editor is part of the library workspace, even before a row has been picked.
+    // A previously folded editor is a remembered desk preference, not a reason for a
+    // fresh library opening to have no editor at all.
+    if (voiceLibrary.isCollapsed('edit')) voiceLibrary.collapse('edit', false);
+    if (!voiceLibrary.isCollapsed('edit')) {
+      if (voiceEditor.isOpen() && voiceEditor.laneKey) dismissVoiceEditor();
+      voiceEditEl.classList.add('vedocked');
+      if (!voiceEditor.isOpen()) voiceEditor.blank();
+      dockIntoLibrary();
+    }
+    if (!oskWasOn) showOsk(true);
+  });
 }
 $('voicelibbtn').onclick = openPresetLibrary;
 $('presetbtn').onclick = openPresetLibrary;
@@ -3861,7 +3905,11 @@ function openVoicePicker(x, y, laneKey) {
     // the lane IS instead of offering a choice that silences it.
     const why = document.createElement('span');
     why.className = 'voicewhy';
-    why.textContent = `A duplicate of ${targetLabel(baseLane(laneKey))} — it plays that`
+    // The lane it actually copies, which is not always the engine lane it is named
+    // after: a copy of `lead3` plays lead 3's part, not the song's own lead.
+    const source = (mixFor(trackId).layers || []).find((l) => l.key === laneKey)?.from
+      || baseLane(laneKey);
+    why.textContent = `A duplicate of ${targetLabel(source)} — it plays that`
       + ' part with whatever you choose here';
     head.append(why);
   } else if (pending) {
@@ -4490,6 +4538,43 @@ function arrangementWants() {
 }
 
 /**
+ * Keep the selected lane inside the arrangement's window while the panel is resized.
+ *
+ * The scroller holds its scrollTop as the panel shrinks, so the lanes that drop out of
+ * sight are the ones nearest the border under the hand — and the lane being worked on
+ * is as likely to be one of them as any other. Scroll by the least that puts it back:
+ * down when it has fallen off the bottom, up when it sits above the top. A folded panel
+ * has nothing to keep visible, and neither has a selection with no row of its own,
+ * which is what the master is.
+ *
+ * The offsets come from the lane's INDEX, not its rect: every row is one fixed height
+ * with one fixed gap between, the same two numbers arrangeSnap is written off, and
+ * nothing but rows goes into the scroller. A rect would measure from #arrange — the
+ * nearest positioned ancestor — and so would carry the header along with it.
+ */
+function keepSelectedLaneVisible() {
+  const grid = $('arrgrid');
+  if (!grid || $('arrange').classList.contains('collapsed')) return;
+  const index = [...grid.querySelectorAll('.arrrow')]
+    .findIndex((el) => el.classList.contains('sel'));
+  if (index < 0) return;
+  const row = laneRowHeight();
+  const view = grid.clientHeight;
+  if (!(row > 0) || view <= 0) return;
+  const top = index * (row + laneRowGap());
+  const bottom = top + row;
+  // Below the window: bring its bottom edge in, but never far enough to push its top
+  // out — a window too short for a whole row shows the top of the lane, not its feet.
+  if (bottom > grid.scrollTop + view) grid.scrollTop = Math.min(bottom - view, top);
+  else if (top < grid.scrollTop) grid.scrollTop = top;
+}
+
+// Asked for by a gesture that changes the arrangement's height, spent by the fit that
+// gesture scheduled: the lane can only be scrolled back into view once applyDesk has
+// written the new height, and that lands a frame later.
+let keepLanePending = false;
+
+/**
  * What the strip body needs when nothing is squeezing it. Measured by taking the
  * body out of the flex layout for one frame rather than by adding up rows: the rows
  * carry margins as well as the container's gap and padding, and summing the pieces
@@ -4910,6 +4995,11 @@ function markShedParts(gone) {
 function fitStrips() {
   applyDeskChain();
   applyDesk(planDesk());
+  // After every write in the frame, so the one forced reflow it costs is the last one.
+  if (keepLanePending) {
+    keepLanePending = false;
+    keepSelectedLaneVisible();
+  }
   // Name clipping is a tooltip convenience, not part of the layout decision. Reading
   // scrollWidth/clientWidth immediately after the flex writes above forces the browser
   // to finish the whole desk reflow in the same task that opened a panel. Defer that
@@ -5007,6 +5097,9 @@ function markClipped(root = document) {
       setArrangeCollapsed(false);
       userArrH = arrangeSnap(asked);
     }
+    // Taking lanes away should never take away the one being worked on: the drag is
+    // about how much arrangement to show, not about which part of it.
+    keepLanePending = true;
     scheduleDeskFit();
   });
   const stop = () => {
@@ -5014,6 +5107,8 @@ function markClipped(root = document) {
     dragging = false;
     edge.classList.remove('edge-dragging');
     rememberDeskHeights();
+    // Again for the settling fit — the rack can claw a lane back at the end of a drag.
+    keepLanePending = true;
     scheduleDeskFit(true);
     requestAnimationFrame(() => pianoRoll.setResizeDeferred(false));
   };
@@ -5026,6 +5121,7 @@ function markClipped(root = document) {
         || e.target.closest?.('button')) return;
     userArrH = null;
     rememberDeskHeights();
+    keepLanePending = true;
     scheduleDeskFit(true);
     toast('Arrangement back to fitting itself');
   });
@@ -9310,10 +9406,38 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-// A rough live load estimate: the engine's own measured cost plus every active
-// effect's. Deliberately approximate — a phone is not this machine — but the
-// ratios hold, and it is enough to notice that four Phasers cost more than the
-// entire rest of the song.
+/**
+ * The load readout — and what it may honestly claim.
+ *
+ * There is no way to ask a browser how much of the audio thread a graph is using.
+ * Chrome's `AudioContext.renderCapacity` would answer exactly that and does not
+ * exist (checked on Chrome 151); it is feature-detected below in case it ever
+ * arrives. What CAN be measured is only whether the thread is currently FAILING:
+ * `ctx.currentTime` against the wall clock reads 1.00 whether the graph uses five
+ * percent of the core or ninety-five, and only moves once the audio is already
+ * breaking up.
+ *
+ * That is a deadline, not a gauge, and showing it as one was the mistake this
+ * replaces: a desk playing a two-lane sketch read "GOOD 1.00×", which looks like a
+ * limit, and the ±1% jitter of measuring a clock with a timer tripped "NEAR LIMIT"
+ * on songs that were not near anything.
+ *
+ * So the readout says nothing alarming while the audio is fine, and names the CAUSE
+ * when it is not — which are two different causes needing two different answers:
+ *
+ *   · the AUDIO THREAD is behind — the graph costs more than this machine can
+ *     render in realtime. That is the song, the layers, or the effects, and the
+ *     answers are on the desk: mute or solo while you work, bypass an insert,
+ *     simplify a dense layer's voice, or bounce it.
+ *   · the MAIN THREAD stalled — the audio thread is keeping up but the scheduler
+ *     that feeds it did not get its turn. That is the browser or the machine being
+ *     busy (another app, a heavy panel, a bounce), and no change to the mix fixes it.
+ *
+ * The estimate stays, quietly, as what it always was: a rough sum of measured effect
+ * costs, useful for "what would adding this cost" and honest about not counting
+ * voices. It is never coloured, because an estimate that has never been wrong on
+ * this machine is still not evidence about anyone else's.
+ */
 function updateCpu() {
   const mix = mixFor(trackId);
   let total = ENGINE_BASE_COST;
@@ -9325,6 +9449,11 @@ function updateCpu() {
       if (def) { total += def.cost || 0.1; counts.push(def.name); }
     }
   }
+  for (const e of (mix.masterEffects || [])) {
+    if (e.bypass) continue;
+    const def = EFFECT_BY_ID[e.id];
+    if (def) { total += def.cost || 0.1; counts.push(`${def.name} (master)`); }
+  }
   if ((mix.lanes && Object.values(mix.lanes).some((L) => (L.send?.reverb ?? 0) > 0))) total += 0.73;
   // Voices are NOT in this number. `ENGINE_BASE_COST` is the engine's own measured
   // cost with its own hand-written voices in it, and a Tone voice replacing one costs
@@ -9334,14 +9463,51 @@ function updateCpu() {
     .filter(([, seam]) => VOICES[mix.voice?.[seam.voiceKey]] || mix.voiceParams?.[seam.voiceKey])
     .map(([lane]) => lane);
   const el = $('cpu');
-  el.textContent = `~${total.toFixed(0)}%${voiced.length ? '+' : ''}`;   // the caption beside it says CPU
-  el.title = `${counts.length} active effect${counts.length === 1 ? '' : 's'}`
+  const c = Audio.ctx;
+  // The estimate is the resting state: a number, no verdict attached.
+  const estimate = `~${total.toFixed(0)}%${voiced.length ? '+' : ''}`;
+  // ...and a trouble state only when something has actually gone wrong for long
+  // enough to be real. `audioBehind` and `uiStalled` are set by the watchdog, which
+  // requires several consecutive bad seconds — see checkAudioHealth.
+  const trouble = health.audioBehind ? 'AUDIO OVERLOADED'
+    : health.audioStruggling ? 'AUDIO STRUGGLING'
+      : health.uiStalled ? 'MACHINE BUSY' : '';
+  el.textContent = trouble || estimate;
+
+  const heaviest = counts.length ? counts.slice(0, 4).join(', ') : 'none';
+  el.title = (health.audioBehind || health.audioStruggling
+    ? (health.audioBehind
+      ? 'THE AUDIO THREAD CANNOT RENDER THIS MIX IN REALTIME on this machine'
+      : 'THE AUDIO THREAD IS MISSING ITS DEADLINE — at the edge, and you may not have'
+        + ' heard it yet')
+      + ` (rendering ${health.ratio.toFixed(2)}s per second).\n`
+      + 'The mix is the thing to change: mute or solo lanes while you work (a silenced'
+      + ' lane costs nothing), bypass an insert, give a dense sixteenth-note layer a'
+      + ' simpler voice, or bounce it.\n'
+      + `Heaviest effects here: ${heaviest}.\n\n`
+    : health.uiStalled
+      ? 'THE AUDIO IS FINE BUT THE BROWSER IS BUSY: the scheduler that feeds it ran'
+        + ' out of queued notes, which is another app, a heavy panel or a bounce'
+        + ' taking the machine — not the mix. Nothing to change here; it passes.\n\n'
+      : '')
+    + `Estimate: ~${total.toFixed(0)}% of one core — the engine (${ENGINE_BASE_COST}%) plus`
+    + ` ${counts.length} active effect${counts.length === 1 ? '' : 's'}`
     + (counts.length ? `: ${counts.join(', ')}` : '')
-    + (voiced.length ? `\n${voiced.length} lane${voiced.length === 1 ? '' : 's'} on a synth voice`
-      + ` (${voiced.join(', ')}) — not counted here, hence the +. No voice has been`
-      + ' cost-measured the way the effects have.' : '')
-    + `\nEngine alone is about ${ENGINE_BASE_COST}%. Rough estimate on a desktop; audio runs on its own thread.`;
-  el.classList.toggle('dirty', total > 45);   // a readout, not a label — see the header CSS
+    + '.\nAn ESTIMATE, not a measurement: effect costs were measured on one desktop and'
+    + ' a phone will differ.'
+    + (voiced.length ? ` It also counts no voices — ${voiced.length} lane${voiced.length === 1 ? '' : 's'}`
+      + ` here play a synth preset (${voiced.join(', ')}), hence the +. A dense`
+      + ' sixteenth-note layer on a library preset can cost more than every effect in'
+      + ' the song put together.' : '')
+    + '\n\nThere is no way to ask a browser how loaded the audio thread is, so this desk'
+    + ' says nothing while the audio keeps up and tells you the cause when it does not.'
+    + (health.dropouts ? `\n\n${health.dropouts} dropout${health.dropouts === 1 ? '' : 's'}`
+      + ' since this song was loaded.' : '')
+    + (c ? `\nContext: ${c.sampleRate}Hz, buffer ${Math.round((c.baseLatency || 0) * 1000)}ms`
+      + `, output ${Math.round((c.outputLatency || 0) * 1000)}ms.` : '');
+  // Coloured only for measured trouble. An estimate never lights the lamp: it is a
+  // guess about this machine, and a guess is not a reason to alarm anybody.
+  el.classList.toggle('dirty', !!trouble);
 }
 
 // ---- audio health watchdog --------------------------------------------------
@@ -9367,9 +9533,39 @@ function updateCpu() {
 // One second between checks: cheap enough to run always, fast enough that the
 // three-strike rule below reacts inside a bar or two.
 const health = {
-  text: '', lastWall: 0, lastCt: 0, deadRuns: 0, starving: false,
+  text: '', lastWall: 0, lastCt: 0, deadRuns: 0,
   analyser: null, buf: null, longTask: 0,
+  // Why silence was EXPECTED, last time it was. Logged once per spell rather than
+  // every second, so a paused desk does not narrate itself.
+  quietWhy: '',
+  // What the readout is allowed to say, and the evidence behind it.
+  //
+  // `ratio` is how much audio the thread rendered per second of wall clock. It is a
+  // DEADLINE, not a gauge — 1.00 whether the graph is nearly empty or nearly full —
+  // so it may only ever raise an alarm, never reassure. Measuring a clock with a
+  // timer wobbles by a percent or so either way, which is why `audioBehind` needs a
+  // real shortfall sustained over several seconds rather than one dip.
+  ratio: NaN, marginMin: null,
+  // The last few (wall, clock) pairs, so a shortfall can be judged over half a second
+  // without waiting a whole one to notice it — see checkAudioHealth's ring.
+  samples: [],
+  behindSince: 0, audioBehind: false, audioStruggling: false,
+  uiStalled: false, uiStalledAt: 0,
+  // Passes that began after the scheduler's queue had emptied — the count of times
+  // the music actually had a hole in it. Reset when a song is loaded, so the number
+  // is about the song in front of you.
+  dropouts: 0,
 };
+
+// The dead-output escalation, in TICKS of the watchdog — which runs four times a
+// second, so these are 3, 6, 9 and 12 seconds. Named rather than written as numbers
+// because they were literal tick counts once, and when the tick got four times
+// faster every one of them silently became a quarter of the wait it was written to be.
+const HEALTH_TICK_MS = 250;
+const DEAD_TIER_1 = 3 * 1000 / HEALTH_TICK_MS;    // name the fault, rebuild what it names
+const DEAD_TIER_2 = 6 * 1000 / HEALTH_TICK_MS;    // rebuild every chain the mix holds
+const DEAD_TIER_3 = 9 * 1000 / HEALTH_TICK_MS;    // suspend/resume the context
+const DEAD_TIER_4 = 12 * 1000 / HEALTH_TICK_MS;   // give up and say so
 
 // The longest main-thread task of the last watchdog window. The scheduler runs on
 // that thread with a quarter-second queued in front of it, so this is the number
@@ -9413,17 +9609,39 @@ function checkAudioHealth() {
   const first = !health.lastWall;
   health.lastWall = wall;
   health.lastCt = ct;
-  if (first || ctx.state !== 'running' || dt <= 0) { health.text = ''; return; }
-  const ratio = advance / dt;
+  if (first || ctx.state !== 'running' || dt <= 0) {
+    health.text = ''; health.ratio = NaN; health.samples.length = 0;
+    health.behindSince = 0; health.audioBehind = false; health.audioStruggling = false;
+    return;
+  }
+  // The ratio over the last HALF SECOND, from a ring of quarter-second samples.
+  //
+  // Sampled four times a second so trouble is noticed quickly, but judged over two
+  // samples so it is not judged on one late timer: a quarter-second tick arriving
+  // 15ms late reads as 0.94 all by itself, and reporting that as the audio thread
+  // failing would put the desk back to crying wolf. Summing the pair before dividing
+  // is what averages the jitter out rather than averaging two noisy ratios.
+  health.samples.push({ dt, advance });
+  if (health.samples.length > 4) health.samples.shift();
+  const over = (n) => {
+    const use = health.samples.slice(-n);
+    const w = use.reduce((s, x) => s + x.dt, 0);
+    const a = use.reduce((s, x) => s + x.advance, 0);
+    return w > 0 ? a / w : 1;
+  };
+  const ratio = over(2);
+  health.ratio = ratio;
 
   // What is coming OUT of the whole desk, against what is arriving at the trim.
+  // `!isFinite`, not `isNaN`: an Infinity poisons a compressor exactly as hard and
+  // is what an unstable filter reaches first on its way there.
   let post = 0;
   let nan = false;
   if (health.analyser) {
     health.analyser.getFloatTimeDomainData(health.buf);
     for (let i = 0; i < health.buf.length; i++) {
       const v = health.buf[i];
-      if (Number.isNaN(v)) { nan = true; break; }
+      if (!Number.isFinite(v)) { nan = true; break; }
       const a = Math.abs(v);
       if (a > post) post = a;
     }
@@ -9431,28 +9649,77 @@ function checkAudioHealth() {
   const preLR = Audio.mixer ? Audio.mixer.masterLevels() : [0, 0];
   const pre = Math.max(preLR[0] || 0, preLR[1] || 0);
 
-  // Dead output: NaN anywhere in the final mix, real signal at the trim with nothing
-  // downstream of it, or a clock that has stopped moving while the context claims to
-  // run (the output stream itself has died). Three consecutive seconds before acting,
-  // so a stop, a song change or one late timer cannot trip it.
+  // Is output EXPECTED right now? Silence is the correct answer to a stopped
+  // transport, a muted desk, a level at zero or a panic, and repairing the graph
+  // because it is obeying you would be the watchdog inventing a fault. Only the
+  // states that make silence WRONG accumulate strikes; the rest reset them and say
+  // once, quietly, which one it was.
+  const quiet = !playing ? 'transport stopped'
+    : !Audio.bank ? 'no bank loaded'
+      : Audio.muted ? 'desk muted'
+        : Audio.panicked ? 'panicked'
+          : !(Audio.levels.master > 1e-3) ? 'master level at zero'
+            : !(Audio.levels.music > 1e-3) ? 'music level at zero'
+              : '';
+  if (quiet !== health.quietWhy) {
+    if (quiet) console.log(`[audio-health] silence is expected (${quiet}) — not watching output`);
+    health.quietWhy = quiet;
+  }
+
+  // Dead output: a non-finite sample anywhere in the final mix, real signal at the
+  // trim with nothing downstream of it, or a clock that has stopped moving while the
+  // context claims to run (the output stream itself has died). Three consecutive
+  // seconds before acting, so a song change or one late timer cannot trip it.
   const clockStalled = ratio < 0.05;
-  const dead = nan || clockStalled || (pre > 2e-3 && post < 1e-7);
+  const dead = !quiet && (nan || clockStalled || (pre > 2e-3 && post < 1e-7));
   health.deadRuns = dead ? health.deadRuns + 1 : 0;
   if (!dead && health.text.startsWith('AUDIO OUTPUT')) {
     console.log('[audio-health] output recovered');
     health.text = '';
   }
-  if (health.deadRuns === 3) {
+  if (health.deadRuns === DEAD_TIER_1) {
+    // WHERE is it poisoned? Every strip and every return already owns a meter, and a
+    // meter reading non-finite is that chain saying so — so the answer costs a walk
+    // of numbers that exist rather than a single new node. Whatever it names gets
+    // rebuilt alongside the master, which is the difference between a repair aimed
+    // at the fault and one aimed at the usual suspect.
+    const poisoned = [];
+    if (Audio.mixer) {
+      for (const key of Audio.mixer.lanes) {
+        const v = Audio.mixer.lane(key)?.level();
+        if (!Number.isFinite(Array.isArray(v) ? v[0] : v)) poisoned.push(key);
+      }
+      for (const a of AUXES) {
+        const v = Audio.mixer.auxLevel(a.id);
+        if (!Number.isFinite(Array.isArray(v) ? v[0] : v)) poisoned.push(`__aux:${a.id}`);
+      }
+      if (!Number.isFinite(pre)) poisoned.push('__master(pre-chain)');
+    }
     console.warn('[audio-health] output dead 3s:', JSON.stringify({
       nan, clockStalled, pre: +pre.toFixed(4), post, ratio: +ratio.toFixed(3),
       state: ctx.state, sr: ctx.sampleRate,
+      poisoned: poisoned.length ? poisoned : 'none (fault is after the trim)',
     }));
+    // The filter writes that led here, newest last. An unstable biquad is the
+    // standing suspect for where a non-finite sample comes from, and this is the
+    // only record of what was asked of one — see VoiceRack.recentFilterWrites.
+    const writes = Audio.voices?.recentFilterWrites?.();
+    if (nan && writes?.length) {
+      console.warn('[audio-health] recent filter automation (newest last):', writes);
+    }
     if (!clockStalled && Audio.mixer) {
-      console.warn('[audio-health] rebuilding the master chain from the mix');
-      Audio.mixer.setMasterEffects(effectsOf('__master'), deskTempo());
+      console.warn(`[audio-health] rebuilding the master chain${poisoned.length
+        ? ` and ${poisoned.length} named chain(s)` : ''} from the mix`);
+      const bpm = deskTempo();
+      Audio.mixer.setMasterEffects(effectsOf('__master'), bpm);
+      const m = mixFor(trackId);
+      for (const key of poisoned) {
+        if (key.startsWith('__aux:')) Audio.mixer.setAuxEffects(key.slice(6), effectsOf(key), bpm);
+        else if (m.lanes?.[key]?.effects?.length) Audio.mixer.lane(key)?.setEffects(m.lanes[key].effects, bpm);
+      }
     }
     health.text = 'AUDIO OUTPUT DEAD — repairing';
-  } else if (health.deadRuns === 6) {
+  } else if (health.deadRuns === DEAD_TIER_2) {
     // The master chain was not it (or the NaN is stuck upstream of the trim — a
     // compressor on a LANE holds one exactly as hard). Rebuild every chain the mix
     // names, lanes and returns alike, from the same state the strips already show.
@@ -9465,14 +9732,23 @@ function checkAudioHealth() {
       }
       for (const a of AUXES) Audio.mixer.setAuxEffects(a.id, effectsOf(`__aux:${a.id}`), bpm);
     }
-  } else if (health.deadRuns === 9) {
-    console.warn('[audio-health] still dead — cycling the context for a fresh output stream');
+  } else if (health.deadRuns === DEAD_TIER_3) {
+    // Suspend and resume the EXISTING context — not a new one. In Chrome this
+    // usually makes the browser re-acquire the platform output stream, which is
+    // what recovers a dead device rather than a poisoned node; it cannot fix a
+    // graph the two rebuilds above did not reach, because it is the same graph.
+    // A true restart (new context, rebuilt mixer, restored transport) is the tier
+    // this stops short of, deliberately: it has never yet been needed, and a reload
+    // keeps every draft (they live in localStorage). If these logs ever show tier 12
+    // in real use, that is the evidence for building it.
+    console.warn('[audio-health] still dead — suspend/resume of the existing context'
+      + ' (usually re-opens the output stream)');
     try { ctx.suspend().then(() => ctx.resume()).catch(() => {}); } catch { /* platform owns lifecycle */ }
-  } else if (health.deadRuns === 12) {
+  } else if (health.deadRuns === DEAD_TIER_4) {
     console.error('[audio-health] output did not come back; the desk needs a reload');
     health.text = 'AUDIO OUTPUT DEAD — reload the desk';
   }
-  if (health.deadRuns >= 3) return;
+  if (health.deadRuns >= DEAD_TIER_1) return;
 
   // The OTHER starvation: the audio thread is fine but the MAIN thread stalled long
   // enough that the sequencer's queue ran low — a UI build holding the floor. `late`
@@ -9481,36 +9757,98 @@ function checkAudioHealth() {
   // prefill before they build (see Audio.prefill); this is what catches the ones
   // nobody has hooked yet, by name of cost if not of button.
   const sched = Audio.takeSchedulerHealth ? Audio.takeSchedulerHealth() : null;
+  // Published for the CPU readout — see updateCpu. `Infinity` means no pass ran in
+  // this window (a stopped desk), which is not a low-water mark.
+  health.marginMin = sched && Number.isFinite(sched.marginMin) ? sched.marginMin : null;
+  // MACHINE BUSY: the queue actually emptied, so the music had a hole in it. Only a
+  // real emptying counts — a near miss is logged below but never shown, because the
+  // desk saying "nearly" every time a panel opens is the noise this readout was
+  // rewritten to stop. Held for eight seconds so a message nobody was looking at
+  // when it happened is still there a moment later, then it clears itself.
+  if (sched?.late > 0) {
+    health.dropouts += sched.late;
+    health.uiStalled = true;
+    health.uiStalledAt = wall;
+  } else if (health.uiStalled && wall - health.uiStalledAt > 8000) {
+    health.uiStalled = false;
+  }
   if (sched && Audio.bank && (sched.late > 0 || sched.marginMin < 0.08)) {
+    // Name the build if one just ran. The observer knows a task was long; only the
+    // call site knows it was the preset library — see lib/heavy-ui.js.
+    const heavy = lastHeavyBuild();
     console.warn(`[audio-health] main-thread stall starved the scheduler: queue fell to `
       + `${Math.round(Math.max(0, sched.marginMin) * 1000)}ms`
       + (sched.late ? `, ${sched.late} pass(es) after it emptied — that was audible` : ' (near miss)')
-      + (health.longTask ? `; longest task ${Math.round(health.longTask)}ms` : ''));
-    if (sched.late > 0 && !health.text) health.text = 'PLAYBACK INTERRUPTED — UI stall';
-  } else if (health.text.startsWith('PLAYBACK INTERRUPTED')) {
-    health.text = '';
+      + (health.longTask ? `; longest task ${Math.round(health.longTask)}ms` : '')
+      + (heavy ? `; after ${heavy.label} (${Math.round(heavy.ms)}ms)`
+        : '; no heavy UI build was announced — this surface is unhooked, see heavyUi'));
   }
   health.longTask = 0;
 
-  // Starvation: the audio thread is rendering slower than the wall. Nothing here can
-  // shed load mid-note — the honest move is to SAY it, in the number that proves it.
-  if (ratio < 0.97 && Audio.bank) {
-    if (!health.starving) {
-      console.warn(`[audio-health] audio thread behind realtime: clock ${ratio.toFixed(3)}x`
-        + ' — the graph costs more than one core here');
-    }
-    health.starving = true;
-    health.text = `AUDIO FALLING BEHIND ${ratio.toFixed(2)}x`;
-  } else if (health.starving && ratio > 0.99) {
+  // The audio thread falling behind, said in TWO stages — because by the time a
+  // shortfall has lasted long enough to be certain, you have already heard it.
+  //
+  //   · STRUGGLING, after half a second. A heads-up while it is still recoverable:
+  //     the thread is missing its deadline but the queue in front of it may still be
+  //     covering the gap, so nothing may be audible yet. This is the moment to stop
+  //     adding, and the whole reason the warning is staged.
+  //   · OVERLOADED, after two seconds. Now it is not a blip.
+  //
+  // 0.95 is the line, and it is deliberately well clear of the noise: reading a clock
+  // with a timer wobbles about a percent, while a graph that genuinely cannot keep up
+  // does not hover — the dense song at its worst measured 0.365. Clearing needs 0.98,
+  // so a reading that is merely wobbling around the line cannot flicker the readout.
+  const STRUGGLE_MS = 500;
+  const OVERLOAD_MS = 2000;
+  // Two ways to be behind, because shortfalls come in two sizes and waiting for the
+  // averaged one to notice a severe one is waiting for no reason. A SMALL shortfall
+  // has to be averaged over half a second to be told apart from a late timer; a
+  // SEVERE one cannot be a late timer at all — a quarter-second tick would have to
+  // arrive 28ms late to read 0.90, and the graph that is genuinely over its budget
+  // reads 0.4. So a single bad sample under 0.90 counts immediately.
+  const instant = over(1);
+  const behind = Audio.bank && (ratio < 0.95 || instant < 0.90);
+  if (behind && !health.behindSince) health.behindSince = wall;
+  if (!behind && ratio > 0.98) health.behindSince = 0;
+  const behindFor = health.behindSince ? wall - health.behindSince : 0;
+
+  const wasStruggling = health.audioStruggling;
+  const wasBehind = health.audioBehind;
+  health.audioStruggling = behindFor >= STRUGGLE_MS;
+  health.audioBehind = behindFor >= OVERLOAD_MS;
+  if (health.audioStruggling && !wasStruggling) {
+    console.warn(`[audio-health] audio thread missing its deadline: clock ${ratio.toFixed(3)}x`
+      + ' — stop adding to this mix');
+  }
+  if (health.audioBehind && !wasBehind) {
+    console.warn(`[audio-health] audio thread behind realtime for ${Math.round(behindFor)}ms:`
+      + ` clock ${ratio.toFixed(3)}x — the graph costs more than one core on this machine`);
+  }
+  if ((wasBehind || wasStruggling) && !health.behindSince) {
     console.log('[audio-health] audio thread caught up');
-    health.starving = false;
-    health.text = '';
-  } else if (!health.starving && health.text.startsWith('AUDIO FALLING')) {
-    // Only this block's own banner — the UI-stall one above clears on its own tick.
-    health.text = '';
+  }
+  // The transport line stays for genuine trouble only, and says the same thing the
+  // readout does rather than a second vocabulary for it.
+  health.text = health.audioBehind ? 'AUDIO OVERLOADED — the mix is too heavy to play here'
+    : health.audioStruggling ? 'AUDIO STRUGGLING — this mix is at the edge of what this machine can play'
+      : health.uiStalled ? 'PLAYBACK INTERRUPTED — the browser was busy' : '';
+  // The readout shows what was just measured, so the thing that measures refreshes
+  // it — nothing else calls `updateCpu` while a song merely plays. Only when the
+  // VERDICT changes, though: this runs four times a second now, and rebuilding a
+  // tooltip that nobody is hovering, sixty times a bar, is exactly the sort of idle
+  // main-thread work the rest of this file exists to remove. The once-a-second pass
+  // keeps the numbers inside the tooltip fresh for whoever is reading them.
+  const verdict = `${health.audioBehind}|${health.audioStruggling}|${health.uiStalled}`;
+  if (verdict !== health.lastVerdict || wall - (health.lastCpuAt || 0) > 1000) {
+    health.lastVerdict = verdict;
+    health.lastCpuAt = wall;
+    updateCpu();
   }
 }
-setInterval(checkAudioHealth, 1000);
+// Four times a second. The clock check is two subtractions and the analyser read is
+// 256 floats; what it buys is noticing a shortfall in half a second instead of three,
+// which is the difference between a warning and a post-mortem.
+setInterval(checkAudioHealth, HEALTH_TICK_MS);
 
 /**
  * Where the work stands against the file. Not a badge in the header any more: the
@@ -11876,6 +12214,13 @@ function forgetRecent(id) {
 
 function selectSong(id) {
   peakSeen = 0;
+  // The dropout count is about the song in front of you, like the peak reading beside
+  // it — carrying the last song's holes over would make a clean mix look faulty.
+  health.dropouts = 0;
+  health.uiStalled = false;
+  health.audioBehind = false;
+  health.behindSince = 0;
+  health.audioStruggling = false;
   loadTrack(id);
   $('nowsong').textContent = track.title;
   localStorage.setItem(SONG_KEY, id);
@@ -14025,7 +14370,23 @@ Audio.setCaptureEnabled(false);
 // A larger buffer is the one thing that survives that, and what it costs — a few tens of
 // milliseconds between pressing a key and hearing it — is a price this window can pay
 // and the game cannot. Before ensure(), which is the only moment it can be asked for.
-Audio.setLatencyHint('playback');
+//
+// ...and the desk is ALSO an instrument: the on-screen keyboard, the computer keyboard,
+// a MIDI controller and the preset bench all play notes you expect to hear under your
+// fingers. Whether `playback` costs too much of that is a question no benchmark can
+// settle — it is a listening test — so the choice is a switch rather than a constant.
+// Set `mash-mixer-latency` in localStorage to 'interactive', 'balanced', 'playback' or
+// a number of seconds; delete it to come back here. The boot log below prints what the
+// browser actually gave, which is the number to compare against, since a hint is a
+// request and the device answers it.
+const LATENCY_KEY = 'mash-mixer-latency';
+const latencyChoice = (() => {
+  const raw = localStorage.getItem(LATENCY_KEY);
+  if (!raw) return 'playback';
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : raw;
+})();
+Audio.setLatencyHint(latencyChoice);
 
 // The rate the desk's bounces have always rendered at (tools/lib/wav.js). Monitoring
 // at the same rate means the mix being heard is the file being kept, sample rate and
@@ -14045,12 +14406,55 @@ Audio.setSampleRate(44100);
 // without breaking up outranks keeping silent lanes warm.
 Audio.setSilentLaneSkip(true);
 
+// Rendered notes for the pooled Tone voices. Measured on smw-all-instruments: one
+// sixteenth-note pluck layer costs 0.14 of the one core Web Audio gets — nearly a
+// third of the whole graph — and taken apart, essentially all of that is the
+// SYNTHESIS of each note rather than the instrument standing there. A note from
+// those voices is a pure function of (preset, pitch, length), so it is rendered once
+// and replayed after that; the comparison against the live pool comes back bit for
+// bit identical on every voice in this song (work/local/verify-note-cache.js).
+//
+// Desk-only and deliberately: the game names few pooled voices and none densely, and
+// an offline bounce refuses to replay at all — a rendered file has to be the
+// synthesis, not a recording of it. Set `mash-mixer-note-cache` to '0' in
+// localStorage to A/B it by ear against the pool.
+Audio.setNoteCache(localStorage.getItem('mash-mixer-note-cache') !== '0');
+
 // The engine, reachable from the console. Everything on this desk is a module, so
 // there has never been a way to ask the running graph a question — which turns every
-// "it crackles after a while" into a rebuild-and-guess instead of a look. A read-only
-// handle costs nothing and is the difference between diagnosing this window and
-// theorising about it.
+// "it crackles after a while" into a rebuild-and-guess instead of a look.
+//
+// A DEBUG HANDLE, and it is worth being exact about what that means: this is the live
+// `AudioSys`, not a copy and not a read-only view. Everything on it can be called and
+// every field can be written from the console, which is precisely what makes it
+// useful for diagnosis and what makes it a foot-gun to lean on — `Audio.step = 0`
+// really does move the playhead. It ships to /SongMixer/ as well, deliberately: a
+// tester who can be asked to paste `Audio.ctx.state` is a tester who can be helped.
 globalThis.Audio = Audio;
+
+// What the browser actually gave us, once, after the first real `ensure()`.
+//
+// Every number here is a REQUEST answered by the device: a latency hint is advice, a
+// sample rate can be refused, and the output latency is whatever the driver and the
+// speakers between them decided. The gap between what was asked and what arrived is
+// the first thing worth knowing when the desk feels wrong — and until now nothing
+// said it. Deferred to the first gesture because a context created before one is
+// suspended and reports numbers it will not keep.
+let audioBootLogged = false;
+function logAudioBoot() {
+  if (audioBootLogged || !Audio.ctx) return;
+  audioBootLogged = true;
+  const c = Audio.ctx;
+  console.log('[audio] context:', JSON.stringify({
+    latencyRequested: latencyChoice,
+    sampleRateRequested: 44100,
+    sampleRate: c.sampleRate,
+    baseLatency: c.baseLatency != null ? +c.baseLatency.toFixed(4) : null,
+    outputLatency: c.outputLatency != null ? +c.outputLatency.toFixed(4) : null,
+    state: c.state,
+  }), `— key-to-sound is roughly ${Math.round(((c.baseLatency || 0) + (c.outputLatency || 0)) * 1000)}ms.`
+    + ` Set localStorage['${LATENCY_KEY}'] to 'interactive' | 'balanced' | 'playback' | <seconds> and reload to A/B it.`);
+}
 
 // Capture phase, so the unlock lands before the handler for the same click runs — press
 // PLAY on a cold page and the transport starts on a context that is already resuming.
@@ -14059,6 +14463,7 @@ globalThis.Audio = Audio;
 let unlocked = false;
 function unlockAudio() {
   Audio.ensure();
+  logAudioBoot();
   // Two listeners, one unlock: whichever of pointer and key comes first spends the
   // other's turn too, and setMidi is not something to run twice.
   if (unlocked) return;

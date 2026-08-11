@@ -29,21 +29,17 @@
 // draft is built once, on release.
 import { resolveSection } from '../src/data/arrangements.js';
 import { lenKey } from '../src/engine/lanes.js';
-import { Audio } from '../src/engine/audio.js';
 import { writeBarNotes, writeBarNotesShared, setLanesOff } from './lib/arrangement-edit.js';
-
-// How much audio to queue before a rebuild that is about to hold the main thread.
-//
 // A whole-song roll is tens of thousands of nodes built in one task — measured at
 // ~200ms plus a ~120ms layout follow-up on smw-all-instruments — and the sequencer
 // runs on the thread that build blocks, with only a quarter-second queued in front
 // of it. Sometimes it survived, sometimes the queue ran dry mid-build: "expanding
-// the roll sometimes glitches". So every deliberate rebuild asks the engine to
-// queue this far ahead FIRST (see Audio.prefill — the notes are the ones that were
-// coming anyway, and the window narrows back by itself). Not on the playhead's own
-// page-flip build, which is two bars, runs mid-playback on its own schedule, and
-// must never widen the window an edit is waiting to be heard through.
-const PREFILL_S = 1.2;
+// the roll sometimes glitches". So every deliberate rebuild goes through `heavyUi`,
+// which queues the audio past it and records the cost under a name the watchdog can
+// report. NOT the playhead's own page-flip build, which is two bars, runs
+// mid-playback on its own schedule, and must never widen the window an edit is
+// waiting to be heard through. See lib/heavy-ui.js.
+import { heavyUi } from './lib/heavy-ui.js';
 
 /**
  * The bars a shared edit really reaches.
@@ -959,8 +955,7 @@ export function createBarGrid({
       link.onclick = () => {
         linked = !linked;
         localStorage.setItem(LINK_KEY, linked ? '1' : '0');
-        Audio.prefill(PREFILL_S);
-        build();
+        heavyUi(`scope toggle ${ns}`, build);
       };
       return [link];
     };
@@ -2437,8 +2432,7 @@ export function createBarGrid({
       return;
     }
     autoBar = null;
-    Audio.prefill(PREFILL_S);
-    build();
+    heavyUi(`open ${ns}`, build);
     if (docked) return;
     let pos = null;
     try { pos = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); } catch { pos = null; }
@@ -2484,9 +2478,9 @@ export function createBarGrid({
     close: () => open(false),
     isOpen,
     /** Repaint: the selection moved, or the song changed under us. */
-    refresh: () => { autoBar = null; if (isOpen()) { Audio.prefill(PREFILL_S); build(); } },
+    refresh: () => { autoBar = null; if (isOpen()) heavyUi(`refresh ${ns}`, build); },
     /** Repaint without clearing the auto-page — for a control inside the panel. */
-    redraw: () => { Audio.prefill(PREFILL_S); build(); },
+    redraw: () => heavyUi(`redraw ${ns}`, build),
     setResizeDeferred,
     selectedCount: () => selected().length,
     adjustLengths: ({ scope: scopeKind = 'selection', percent } = {}) =>

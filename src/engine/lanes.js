@@ -170,19 +170,37 @@ const DESK_ORDER = [
  * exactly.
  */
 
-/** The lane definitions a bank's layers stand for — LANES-shaped, so they mix in. */
+/**
+ * The lane definitions a bank's layers stand for — LANES-shaped, so they mix in.
+ *
+ * A layer's source can be another layer — duplicating a duplicate, or duplicating an
+ * added track — so what it is NAMED after is walked back to the engine lane at the
+ * bottom of the chain rather than read off its immediate source. Without that walk a
+ * copy of `bass2` is a lane with no group, called "Bass " with nothing after it.
+ */
 export function layerLanes(bank) {
   const src = new Map(LANES.map((l) => [l.key, l]));
-  return (bank?.__layers || []).map(({ key, from, label, independent }) => {
-    const base = src.get(from);
+  const list = bank?.__layers || [];
+  // Built in list order, which is creation order: a copy is always declared after the
+  // thing it copies, so one pass resolves every chain.
+  const rootOf = new Map();
+  for (const { key, from } of list) {
+    // The key's own name is the fallback, for the one caller that hands over a single
+    // layer with its chain cut off: `soloBank`, previewing one channel on the keyboard.
+    // Junk still has nowhere to land — a key naming no lane at all resolves to nothing.
+    const root = src.get(from) || rootOf.get(from) || src.get(baseLane(key));
+    if (root) rootOf.set(key, root);
+  }
+  return list.map(({ key, from, label, independent }) => {
+    const base = rootOf.get(key);
     return {
       key,
-      label: label || `${base?.label || from} ${key.slice(from.length)}`,
+      label: label || `${base?.label || from} ${key.slice((base?.key || from).length)}`,
       group: base?.group || 'melodic',
       layerOf: from,
       independent: !!independent,
     };
-  }).filter((l) => src.has(l.layerOf));
+  }).filter((l) => rootOf.has(l.key));
 }
 
 /** Every lane this bank can play: the engine's own, plus any layers laid over it. */
@@ -213,9 +231,22 @@ export function deskBank(bank, entry) {
   const off = (entry?.off || []).filter((k) => LANE_KEYS.includes(k));
   // A layer whose source is gone — deleted, or renamed out of the engine — is not a
   // lane, it is a row that plays nothing. Dropped here rather than half-built.
-  const layers = (entry?.layers || [])
-    .filter((l) => l && l.key && LANE_KEYS.includes(l.from) && !off.includes(l.from)
-      && !LANE_KEYS.includes(l.key) && seamFor(l.key));
+  //
+  // The source may be another LAYER: a duplicate of a duplicate, and — the case that
+  // matters — a duplicate of an added track, which is what every part of an imported
+  // song is. Copying `baseLane(key)` instead handed those a copy of the engine's own
+  // `lead` or `tom`, which is a different part where the song has one at all and an
+  // empty row where it does not. The only rule is that the source must already be a
+  // lane by the time the copy is reached, and `layers` is in the order they were made,
+  // so one pass in that order both validates the chain and orders the work below.
+  const known = new Set(LANE_KEYS.filter((k) => !off.includes(k)));
+  const layers = [];
+  for (const l of entry?.layers || []) {
+    if (!l || !l.key || known.has(l.key) || LANE_KEYS.includes(l.key)) continue;
+    if (!known.has(l.from) || !seamFor(l.key)) continue;
+    known.add(l.key);
+    layers.push(l);
+  }
   if (!off.length && !layers.length) return bank;
 
   const shape = (block) => {
@@ -240,7 +271,11 @@ export function deskBank(bank, entry) {
       // toggles hits on/off); pitched lanes start as nulls (the piano roll writes
       // frequencies). Preserve an arrangement delta that already names the layer;
       // otherwise materialise 32 rests so it still gets a row and strip.
-      if (out[key] != null) continue;
+      //
+      // Presence, not truthiness, all the way through this block: a section says what
+      // it plays by NAMING a lane, and `bass: null` is a section saying it does not
+      // play the bass — see below.
+      if (Object.hasOwn(out, key)) continue;
       if (independent) {
         // NOT INTO A DELTA. The bank and a bank section are both complete partial
         // banks, and rests in them are the fallback that gives the lane a row and a
@@ -264,13 +299,19 @@ export function deskBank(bank, entry) {
             .find(Array.isArray)?.length || 32;
         const isDrum = PERCUSSION_LANES.includes(baseLane(from)) || PERCUSSION_LANES.includes(from);
         out[key] = new Array(length).fill(isDrum ? false : null);
-      } else if (out[from]) {
+      } else if (Object.hasOwn(out, from)) {
+        // Including a source of `null`, which is how a section says the part drops out
+        // here — the middle eight the bass sits out. Read as "nothing to copy", the
+        // copy was left unset, fell through to the whole-bank part underneath and
+        // played the very bars its source is silent for: two strips, audibly different
+        // parts, from the moment the copy was made. A duplicate follows its source out
+        // of the song as well as into it.
         out[key] = out[from];
         // A double plays the same notes AT THE SAME LENGTHS. Without this the layer
         // falls back to its own `*Dur` and a duplicated bass plays the part with
         // every hand-drawn length thrown away, which reads as the copy being wrong
         // rather than as a missing key.
-        if (out[lenKey(from)]) out[lenKey(key)] = out[lenKey(from)];
+        if (Object.hasOwn(out, lenKey(from))) out[lenKey(key)] = out[lenKey(from)];
       }
     }
     return out;

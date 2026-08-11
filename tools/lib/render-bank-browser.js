@@ -157,36 +157,62 @@ export async function openRenderer({ headless = true } = {}) {
     // A fresh page per render: Audio is a singleton and ensure() binds one context
     // for its lifetime, so contexts cannot be swapped in place. Re-evaluating the
     // bundle costs milliseconds; relaunching the browser would cost a second.
-    const page = await browser.newPage();
     const errors = [];
-    page.on('pageerror', (e) => errors.push(e.message));
-    await page.setContent(
-      `<!doctype html><meta charset="utf-8">`
-      + `<script>${bundleJs.replace(/<\/script>/gi, '<\\/script>')}<\/script>`,
-      { waitUntil: 'load' },
-    );
-
-    let meta;
-    try {
-      meta = await page.evaluate(
-        (args) => window.__renderBank(args),
-        // `arrangement` only when a caller named one: the key's mere presence is what
-        // the page tests, and `undefined` does not reliably survive the crossing.
-        {
-          bank: forPage, blocks, tail, seed, sampleRate: SR, mix, trackId: id,
-          ...(steps ? { steps } : {}),
-          ...(loop ? { loop } : {}),
-          ...(arrangement !== undefined ? { arrangement } : {}),
-          // Normalised here so the page never has to guess: a warp is always both
-          // numbers, and pitch defaults to unity rather than to tempo — the game's
-          // speed burst moves the clock and leaves the key alone.
-          ...(warp ? { warp: { tempo: warp.tempo ?? 1, pitch: warp.pitch ?? 1 } } : {}),
-        },
+    const openPage = async () => {
+      const p = await browser.newPage();
+      errors.length = 0;
+      p.on('pageerror', (e) => errors.push(e.message));
+      await p.setContent(
+        `<!doctype html><meta charset="utf-8">`
+        + `<script>${bundleJs.replace(/<\/script>/gi, '<\\/script>')}<\/script>`,
+        { waitUntil: 'load' },
       );
-    } catch (err) {
-      await page.close();
-      throw new Error(`offline render failed: ${err.message}`
-        + (errors.length ? `\n  page errors: ${errors.join('; ')}` : ''));
+      return p;
+    };
+    let page = await openPage();
+
+    // `arrangement` only when a caller named one: the key's mere presence is what
+    // the page tests, and `undefined` does not reliably survive the crossing.
+    const args = {
+      bank: forPage, blocks, tail, seed, sampleRate: SR, mix, trackId: id,
+      ...(steps ? { steps } : {}),
+      ...(loop ? { loop } : {}),
+      ...(arrangement !== undefined ? { arrangement } : {}),
+      // Normalised here so the page never has to guess: a warp is always both
+      // numbers, and pitch defaults to unity rather than to tempo — the game's
+      // speed burst moves the clock and leaves the key alone.
+      ...(warp ? { warp: { tempo: warp.tempo ?? 1, pitch: warp.pitch ?? 1 } } : {}),
+    };
+
+    // Two attempts at most: the just-in-time walk, then the whole walk up front.
+    //
+    // See the completeness check in renderBankPage. A browser that exposes
+    // `OfflineAudioContext.suspend` but does not run the scheduled checkpoints
+    // renders silence from the first missed one and reports nothing wrong — silence
+    // being a legitimate thing to render, no downstream check can tell that from a
+    // quiet song. So the walk refuses to return a short render, and this is what
+    // that refusal costs: one more pass, on a FRESH page, because a partial
+    // schedule cannot be finished, only replaced.
+    let meta;
+    let upfront = false;
+    for (;;) {
+      try {
+        meta = await page.evaluate((a) => window.__renderBank(a), { ...args, upfront });
+        break;
+      } catch (err) {
+        const short = /render walk incomplete/.test(err?.message || '');
+        if (short && !upfront) {
+          console.warn(`  just-in-time render walk did not complete — retrying with the`
+            + ` whole walk up front: ${err.message}`);
+          upfront = true;
+          await page.close();
+          page = await openPage();
+          continue;
+        }
+        await page.close();
+        throw new Error(`offline render failed: ${err.message}`
+          + (errors.length ? `\n  page errors: ${errors.join('; ')}` : ''));
+      }
     }
 
     const [download] = await Promise.all([

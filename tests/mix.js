@@ -60,9 +60,15 @@ for (const [id, entry] of Object.entries(MIX)) {
   // minted by this entry's own `layers`, and it is only legal because of that. See
   // tests/layers.js for what makes one.
   const layerKeys = new Set((entry.layers || []).map((l) => l.key));
+  // What it copies may be another layer — a duplicate of a duplicate, or of one of the
+  // added tracks an imported song is made of — but it has to be a lane that already
+  // EXISTS where it is declared: `deskBank` builds the list in order and drops a layer
+  // standing on one it has not reached yet.
+  const built = new Set(laneKeys);
   for (const l of entry.layers || []) {
-    assert(laneKeys.has(l.from), `${id}: layer "${l.key}" copies a real lane`);
+    assert(built.has(l.from), `${id}: layer "${l.key}" copies a lane the song has by then`);
     assert(!laneKeys.has(l.key), `${id}: layer "${l.key}" does not shadow a lane of the song`);
+    built.add(l.key);
   }
   for (const key of entry.off || []) {
     assert(laneKeys.has(key), `${id}: deleted track "${key}" is a real lane`);

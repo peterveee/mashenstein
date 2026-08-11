@@ -70,6 +70,7 @@ function yieldToEventLoop() {
  */
 export async function renderBankPage({
   bank, blocks, steps: stepsIn, loop, tail, seed, sampleRate, mix, trackId, arrangement, warp,
+  upfront = false,
 }, { onProgress } = {}) {
   // The bank arrives carrying the tempo it is PLAYED at — resolved by the caller,
   // where a track id still means something, so a song the desk has retuned renders at
@@ -198,11 +199,22 @@ export async function renderBankPage({
   // `resume` goes in a `finally`: an un-resumed render hangs forever, and neither a
   // percentage nor a horizon is worth that.
   const QUANTUM = 128;
-  const canSuspend = typeof ctx.suspend === 'function';
+  // `upfront` is the caller saying "do not try": it is how a retry after a failed
+  // JIT render asks for the walk that cannot half-happen. Feature detection covers
+  // the browsers that never had `suspend` (Firefox); this covers the ones that have
+  // it and cannot be relied on to honour it.
+  const canSuspend = !upfront && typeof ctx.suspend === 'function';
   // A walk that throws inside a suspension must fail the RENDER, not vanish into a
   // swallowed rejection — without this, a bad bank would come back as a "successful"
   // render that goes silent at the bar the walk died on.
   let walkError = null;
+  // A REJECTED suspension is the same failure wearing a different coat: the
+  // checkpoint never fires, so the steps it would have built are never built, and
+  // the render sails on producing silence from that second onward. Recorded rather
+  // than swallowed — but not thrown from here, because a rejection can arrive
+  // before `startRendering` has even been called and the only place that can judge
+  // the damage is after the render, against `stepAt`.
+  let suspendRejected = null;
   if (!canSuspend) {
     await buildUntil(Infinity);
   } else {
@@ -222,14 +234,46 @@ export async function renderBankPage({
             onProgress?.(frame / N);
           } catch (e) {
             walkError = walkError || e;
-          } finally { ctx.resume(); }
+          } finally {
+            // A resume that fails leaves the render suspended for ever — the await
+            // below never settles and the bounce button spins until the tab is
+            // closed. Recorded so the incompleteness check has something to name,
+            // though in that case the throw it wants can never be reached.
+            try {
+              const r = ctx.resume();
+              if (r && typeof r.catch === 'function') {
+                r.catch((e) => { suspendRejected = suspendRejected || { at: frame / sampleRate, resume: true, error: String(e) }; });
+              }
+            } catch (e) {
+              suspendRejected = suspendRejected || { at: frame / sampleRate, resume: true, error: String(e) };
+            }
+          }
         })
-        .catch(() => {});
+        .catch((e) => {
+          suspendRejected = suspendRejected || { at: frame / sampleRate, error: String(e) };
+        });
     }
   }
 
   const buf = await ctx.startRendering();
   if (walkError) throw walkError;
+  // THE CHECK THAT MAKES JIT SAFE TO SHIP.
+  //
+  // Every way the just-in-time walk can go wrong ends in the same place: steps that
+  // were never scheduled. A rejected suspension, a checkpoint that never fired, a
+  // browser that exposes `suspend` and ignores it — each one leaves the render
+  // producing silence from that second onward, and an offline render reports no
+  // error for playing nothing. Silence is a legitimate thing to render, so nothing
+  // downstream can tell a quiet bounce from a broken one; only this can.
+  //
+  // So the walk states its own completeness, and a short render is refused rather
+  // than returned. `bounceWav` and the Chromium renderer catch this and retry once
+  // with `upfront: true` — slower, and it cannot half-happen.
+  if (stepAt < steps) {
+    throw new Error(`render walk incomplete: ${stepAt}/${steps} steps scheduled`
+      + ' — just-in-time suspensions did not run to the end here'
+      + (suspendRejected ? ` (${JSON.stringify(suspendRejected)})` : ''));
+  }
   const L = buf.getChannelData(0);
   const R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
 

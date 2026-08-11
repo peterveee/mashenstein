@@ -157,14 +157,32 @@ export async function bounceWav(bank, {
       : bars * 16 - loop.start)
     : bars * repeat * 16;
 
-  const out = await renderInFrame(frameUrl, {
+  const args = {
     // `steps` is always given, so `blocks` is only the frame's fallback for a caller
     // that has none. Sent in step with it rather than left to disagree: an odd bar
     // count rounds up to a whole block, which is a bar of silence the walk never takes.
     bank: forFrame, blocks: Math.ceil((bars * repeat) / 2), steps,
     tail, seed, sampleRate: SR, mix, trackId, arrangement,
     ...(loop ? { loop } : {}),
-  }, { onStage });
+  };
+  let out;
+  try {
+    out = await renderInFrame(frameUrl, args, { onStage });
+  } catch (err) {
+    // The just-in-time walk states its own completeness (see renderBankPage), and a
+    // browser whose `OfflineAudioContext.suspend` exists but does not run the
+    // checkpoints fails that check rather than handing back a file that goes silent
+    // halfway through. One retry, with the whole walk built up front — slower, and
+    // it has no checkpoints to miss.
+    //
+    // In a FRESH frame, never the one that just failed: its context is carrying a
+    // partial schedule, and half a render cannot be finished, only replaced. Each
+    // call to `renderInFrame` builds its own frame, so this is that by construction.
+    if (!/render walk incomplete/.test(err?.message || '')) throw err;
+    console.warn('[bounce] just-in-time render walk did not complete —'
+      + ' retrying with the whole walk up front.', err.message);
+    out = await renderInFrame(frameUrl, { ...args, upfront: true }, { onStage });
+  }
 
   onStage?.('measuring', 1);
   const m = loudness([out.outL, out.outR]);

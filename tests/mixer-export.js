@@ -82,10 +82,32 @@ assert(/performance\.now\(\) - sliceAt < SLICE_MS/.test(page),
 // no-suspend fallback (Firefox) still builds everything up front — slower, never wrong.
 assert(/ctx\.suspend\(frame \/ sampleRate\)/.test(page)
   && /await buildUntil\(frame \/ sampleRate \+ HORIZON_S\)/.test(page)
-  && /finally \{ ctx\.resume\(\); \}/.test(page),
+  // `resume` in a finally, and its own failure caught: an un-resumed render never
+  // settles at all, so the bounce would hang rather than fail.
+  && /\} finally \{[\s\S]{0,600}?ctx\.resume\(\)/.test(page),
   'the walk schedules just-in-time under suspend/resume, a horizon ahead of the render head');
 assert(/if \(!canSuspend\) \{\s*\n\s*await buildUntil\(Infinity\);/.test(page),
   'and a browser without OfflineAudioContext.suspend still gets the whole walk up front');
+// THE CHECK THAT MAKES JIT SAFE TO SHIP. Every way the walk can go wrong ends in
+// steps that were never scheduled, and the render is then SILENT from that second on
+// while reporting nothing — silence being a legitimate thing to render, no other
+// check can tell a broken bounce from a quiet song. Sabotage harness:
+// work/local/verify-jit-failure.js (suspend that rejects, rejects midway, or never
+// settles — all three refused; one that resolves at once is correctly kept).
+assert(/if \(stepAt < steps\) \{/.test(page) && /render walk incomplete/.test(page),
+  'a walk that did not schedule every step refuses to return a file');
+assert(/suspendRejected/.test(page) && !/\.catch\(\(\) => \{\}\);/.test(page),
+  'and no suspension rejection is swallowed — each one is recorded for that refusal to name');
+assert(/upfront = false,/.test(page) && /const canSuspend = !upfront &&/.test(page),
+  'the walk takes an `upfront` option, so a retry can ask for the walk that cannot half-happen');
+// Both callers act on that refusal, in a fresh frame/page: a partial schedule cannot
+// be finished, only replaced.
+const bounce = src('tools/mixer-bounce.js');
+assert(/render walk incomplete/.test(bounce) && /\{ \.\.\.args, upfront: true \}/.test(bounce),
+  'the desk bounce retries once with the whole walk up front');
+const cli = src('tools/lib/render-bank-browser.js');
+assert(/render walk incomplete/.test(cli) && /upfront = true;/.test(cli) && /page = await openPage\(\)/.test(cli),
+  'and so does the command-line renderer, on a fresh page');
 // Code lines only, the same way `usesBuffer` reads them: the comment above the helper
 // names the timer it is avoiding, and a test that cannot tell the two apart would be
 // failed by its own explanation.

@@ -455,6 +455,9 @@ class AudioSys {
     // The desk asks for 44100 so what it monitors is rendered at the rate its
     // bounces are — and a twenty-lane graph costs ~8% less than at 48k for free.
     this.sampleRateHint = null;
+    // Play pooled Tone voices from rendered notes where that is safe — see
+    // setNoteCache and the cache itself in voices.js. Desk-only, off by default.
+    this.noteCache = false;
     // Skip building notes for lanes the mix has silenced — muted, or losing a
     // channel solo. OFF by default and never set by the game: a cabinet treatment
     // may ramp a lane the mix keeps muted back up at an audio time, and a skipped
@@ -504,7 +507,23 @@ class AudioSys {
       const opts = {};
       if (this.latencyHint) opts.latencyHint = this.latencyHint;
       if (this.sampleRateHint) opts.sampleRate = this.sampleRateHint;
-      this.ctx = Object.keys(opts).length ? new AC(opts) : new AC();
+      // Both options are REQUESTS, and a browser is entitled to refuse either — a
+      // device that cannot run at 44100 throws on construction rather than choosing
+      // its own rate. A desk with no audio at all is a far worse answer than a desk
+      // at the wrong sample rate, so a refusal falls back to the plain constructor
+      // and says so. What actually happened is logged either way: the rate the graph
+      // runs at is `ctx.sampleRate` and nothing downstream may assume the hint won
+      // (every Nyquist clamp in the engine already reads the context, not the hint).
+      try {
+        this.ctx = Object.keys(opts).length ? new AC(opts) : new AC();
+      } catch (e) {
+        console.warn('[audio] context options refused', opts, '—', e?.message,
+          '; falling back to the browser default');
+        this.ctx = new AC();
+      }
+      if (this.sampleRateHint && this.ctx.sampleRate !== this.sampleRateHint) {
+        console.warn(`[audio] asked for ${this.sampleRateHint}Hz, got ${this.ctx.sampleRate}Hz`);
+      }
     }
     // Some engines create a suspended context even when autoplay is allowed,
     // and require an explicit resume request. Try immediately; browsers with
@@ -995,6 +1014,20 @@ class AudioSys {
    */
   setSilentLaneSkip(on) {
     this.silentLaneSkip = !!on;
+  }
+
+  /**
+   * Play pooled Tone voices from RENDERED NOTES where that is safe — see the note
+   * cache in voices.js for which notes qualify and why the rest cannot.
+   *
+   * Desk-only, like the skip above. The game never sets it (its songs name few
+   * pooled voices and none densely), and an offline render never sets it either: a
+   * bounce is the reference for what a song IS, and it has to synthesise rather than
+   * replay. Set before or after `ensure()` — the rack reads it per note.
+   */
+  setNoteCache(on) {
+    this.noteCache = !!on;
+    if (this.voices) this.voices.noteCache = this.noteCache;
   }
 
   setCaptureEnabled(enabled) {
@@ -3006,6 +3039,8 @@ class AudioSys {
         // The map, by reference — so a rack rebuilt after a context teardown comes back
         // agreeing with the buttons the desk is still showing.
         this.voices.soloLayers = this.soloLayers;
+        // ...and the desk's note cache, which outlives racks the same way.
+        this.voices.noteCache = !!this.noteCache;
       }
       this.voices.play(key, v.id, freq, {
         time: this.nextTime + delay,
@@ -3367,6 +3402,10 @@ class AudioSys {
       // buses and the graph is exactly what it was.
       let dry = this.musicBus, wet = this.echoBus;
       let laneOffset = 0;
+      // Which lane the bodies below are currently building for. Only ever read by
+      // the non-finite guard in `play`, so a warning can name the lane that carries
+      // the bad number rather than only the step it happened on.
+      let lastLane = '';
       const offsetFor = (key) => barValue(bar.offset, key) * spb / 2;
       const scheduleAt = (delta = 0) => this.nextTime + laneOffset + swingOffset + delta;
       // The same instant, as an OFFSET from the step edge rather than an absolute time —
@@ -3391,6 +3430,7 @@ class AudioSys {
             strip ? strip.wet : this.echoBus);
         const baseDry = gate ? gate.dry : (strip ? strip.dry : this.musicBus);
         const baseWet = gate ? gate.wet : (strip ? strip.wet : this.echoBus);
+        lastLane = key;
         laneOffset = offsetFor(key);
         const db = barValue(bar.gain, key);
         const scale = 10 ** (db / 20);
@@ -3447,6 +3487,17 @@ class AudioSys {
 
       const play = (freq, type, dur, gain, attack = 0.01, echo = true, delay = 0) => {
         if (freq == null) return;
+        // An AudioParam REJECTS a non-finite value by throwing, and this is inside
+        // the scheduling pass: one NaN out of a malformed bank would take down the
+        // pass that schedules everything, and every pass after it, which is a
+        // silence with no bottom to it. A note skipped is one note; a scheduler
+        // killed is the song. So the arithmetic is checked once here, where all of
+        // it converges, and a bad note is dropped loudly instead.
+        if (!Number.isFinite(freq) || !Number.isFinite(dur) || !Number.isFinite(gain)) {
+          console.warn('[audio] skipping a note with non-finite numbers',
+            { lane: lastLane, freq, dur, gain, step: this.step });
+          return;
+        }
         const t = scheduleAt(delay);
         const o = this.ctx.createOscillator();
         const g = this.ctx.createGain();

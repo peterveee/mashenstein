@@ -469,6 +469,20 @@ const gateLinUnder = (freq) => (freq > 0
   ? Math.min(GATE_MAX_LIN_ATTACK, Math.max(GATE_LIN_ATTACK, 1 / freq))
   : GATE_LIN_ATTACK);
 function gateAdsr(param, t, end, peak, e = {}, sustaining = false, freq = 0) {
+  // An AudioParam throws on a non-finite value, and this runs inside the scheduling
+  // pass — one bad number from a malformed preset would kill not just this note but
+  // every note after it, for as long as the song is up. Skipping the envelope leaves
+  // the note silent (its gain never leaves zero) and the song playing, which is the
+  // right way round. Off the hot path: four compares per note-on.
+  // Zero, not `t`: the return is an absolute END TIME that callers feed to
+  // `Math.max(lastOff, …)` and then to `stop()`, so handing back the bad number
+  // would carry it straight into the next throw. Zero is the sentinel those callers
+  // already test for (`if (lastOff)`), so a skipped envelope reads as "nothing was
+  // scheduled", which is exactly what happened.
+  if (!Number.isFinite(t) || !Number.isFinite(end) || !Number.isFinite(peak)) {
+    console.warn('[voices] skipping an envelope with non-finite numbers', { t, end, peak });
+    return 0;
+  }
   const level = Math.max(1e-4, peak);
   // Floored, never zero: see gateFloor. An authored 0 still means "as immediate as this
   // note can be" — a quarter of its own cycle — rather than a scheduler-imposed fade-in.
@@ -655,6 +669,67 @@ function releaseNow(param, at, e = {}) {
   }
   param.linearRampToValueAtTime(0, off + 0.005);
   return off + 0.005;
+}
+
+// ---- the filter-automation record -------------------------------------------
+//
+// Every biquad this file builds, kept for the last few dozen writes. It exists for
+// one question, asked after the fact: Chrome logs "BiquadFilterNode: state is bad,
+// probably due to unstable filter caused by fast parameter automation" and names
+// nothing at all — not the node, not the preset, not the numbers — and a filter that
+// has gone unstable can emit a non-finite sample that sticks in the first compressor
+// downstream, which is how this desk loses its output entirely.
+//
+// So the desk's watchdog dumps this the moment it sees a non-finite sample at the
+// output (see checkAudioHealth), and the write that did it is in here, with its
+// corner, its sweep target, its time and its Q.
+//
+// A plain array of small objects, capped: the ceiling is what makes it free to leave
+// on for ever, and 64 covers several seconds of the densest arrangement. Module
+// scope rather than per-rack because a rack is disposed with its context and the
+// evidence has to outlive the thing that produced it.
+const FILTER_WRITE_LOG = 64;
+const filterWrites = [];
+function noteFilterWrite(entry) {
+  filterWrites.push(entry);
+  if (filterWrites.length > FILTER_WRITE_LOG) filterWrites.shift();
+}
+
+/**
+ * Cut the silence off the end of a rendered note — which is most of it, and the
+ * reason a warm cache could be SLOWER than the pool it replaced.
+ *
+ * A note is rendered for `dur + tailOf(spec)`, and `tailOf` has a floor of a second
+ * plus change: it is sizing a RETIREMENT window, where being generous costs nothing.
+ * As a buffer length it costs plenty. A pluck whose sound is over in 200ms comes back
+ * as a 1.2s buffer, and a replayed buffer is a live BufferSource for its whole
+ * length — so in a sixteenth-note passage the graph carried five times the concurrent
+ * nodes the pool would have, all of them dutifully reading silence and summing it in.
+ * Measured across this desk's own song: half of every buffer, 18MB of it, and the
+ * cost only arrives once the cache is warm — which is to say after the first complete
+ * loop, in the busiest bars. Exactly what it was reported as.
+ *
+ * -100 dBFS is the line, with 10ms of guard past it. That is not "bit-identical" and
+ * this comment will not pretend otherwise: samples are being discarded. They are
+ * samples a hundred decibels under the note, at the end of a decay that is already
+ * inaudible, and the alternative is paying for them on every voice in every bar.
+ */
+const CACHE_SILENCE_FLOOR = 1e-5;      // -100 dBFS
+const CACHE_TAIL_GUARD_S = 0.01;
+function trimSilence(buffer) {
+  const data = buffer.getChannelData(0);
+  let last = -1;
+  for (let i = data.length - 1; i >= 0; i--) {
+    if (Math.abs(data[i]) > CACHE_SILENCE_FLOOR) { last = i; break; }
+  }
+  // A note that rendered to nothing at all is kept as one quantum rather than a
+  // zero-length buffer, which Web Audio will not make.
+  const keep = Math.min(data.length,
+    Math.max(128, last + 1 + Math.ceil(CACHE_TAIL_GUARD_S * buffer.sampleRate)));
+  if (keep >= data.length) return buffer;
+  const out = new AudioBuffer({ length: keep, sampleRate: buffer.sampleRate, numberOfChannels: 1 });
+  out.copyToChannel(data.subarray(0, keep), 0);
+  return out;
 }
 
 /**
@@ -916,6 +991,13 @@ export class VoiceRack {
     // able to stand up without one.
     Tone.setContext(ctx);
     this.pools = new Map();
+    // Rendered notes, and the revision counter that lets an edited preset invalidate
+    // them — see the note cache above `_cacheablePool`. Off unless a caller turns it
+    // on (`Audio.setNoteCache`), so the game and every offline render behave exactly
+    // as they did.
+    this.noteCache = false;
+    this._noteCache = new Map();
+    this._specRev = new Map();
     // Presentation-specific groups can make several lanes share one physical channel.
     // Arcade Corner uses this for its single percussion voice; preview groups are kept
     // separate so auditioning a drum cannot cut the song's live drum.
@@ -1086,6 +1168,15 @@ export class VoiceRack {
     const mode = v?.mode || keyMode(v);
     const mono = mode !== 'poly';
     const legato = mode === 'legato';
+    // Rendered once, replayed after that — when this voice is the kind that can be.
+    // See `_cachedNote`: it is the same note, from a buffer, and it is the difference
+    // between a sixteenth-note pluck layer costing a third of the audio thread and
+    // costing nothing. Returns false for anything it cannot safely stand in for, and
+    // then the pool below plays the note exactly as it always did.
+    if (this.noteCache && this._cacheablePool(v, mode, preview, hold)
+      && this._playCached(v, voiceId, notes, { time, dur, gain, detune, dry, wet, echo })) {
+      return true;
+    }
     const pool = this._pool(laneKey, voiceId, dry, wet, echo,
       mono ? 1 : notes.length + 1, preview);
     if (!pool) return false;
@@ -1395,6 +1486,186 @@ export class VoiceRack {
     return true;
   }
 
+  // ---- the note cache ---------------------------------------------------------
+  //
+  // MEASURED, and aimed by the measurement rather than by intuition. On the desk's
+  // dense song one layer — sixteenth-note chords on a Tone pluck — costs 0.14 of the
+  // one core Web Audio gets, nearly a third of the whole graph. Taken apart
+  // (`work/local/bench-tone-pool.js`): 0.139 of that is PER NOTE and 0.026 is the
+  // pool merely existing, and the identical music on a native voice costs 0.15 less.
+  // So it is the synthesis of each note that is expensive, not the instrument
+  // standing there — which is precisely the cost a rendered note does not pay twice.
+  //
+  // A note here is a pure function of (preset, pitch, length): the same call, the
+  // same schedule, the same samples — that is what tests/null-test.js asserts of this
+  // whole engine every run. So it can be rendered once into a buffer and replayed,
+  // and the only question is which notes are honestly that pure.
+  //
+  // WHAT IS EXCLUDED, and why each one has to be:
+  //   · mono and legato — a note RETARGETS the one still sounding; there is no
+  //     independent note to render.
+  //   · vibrato — the pool's LFO free-runs across notes, so where the wobble is when
+  //     a note starts depends on every note before it.
+  //   · previews and held notes — a finger decides the length, and the length is half
+  //     the cache key.
+  //   · anything but the pooled Tone classes. MRDR-3, additive and the game synth
+  //     have their own paths with their own state; drums and noise are one-shots
+  //     whose cost the same measurement says is 4% of the graph, which is not worth
+  //     a cache's failure modes.
+  //
+  // DESK ONLY, and off by default (see `setNoteCache`): the game never sets it, so
+  // every game path is untouched by construction, and an offline render never sets
+  // it either — a bounce must render the synthesis itself, not a replay of it.
+  _cacheablePool(v, mode, preview, hold) {
+    return !!v && v.kind !== 'drum' && v.kind !== 'noise'
+      && !preview && !hold
+      && mode === 'poly'
+      && !!SYNTHS[v.synth]
+      && !(v.vibrato && v.vibrato.depth > 0)
+      && !v.portamento;
+  }
+
+  /**
+   * Ask for a rendered note and play it, or say the cache could not help.
+   *
+   * A miss plays nothing and returns false — the caller then plays the note live, as
+   * it always did, and the render happens in the background for next time. That is
+   * the whole failure mode: the first bar of a new sound costs what it always cost.
+   */
+  _playCached(v, voiceId, notes, { time, dur, gain, detune, dry, wet, echo }) {
+    const ctx = this.ctx;
+    // An offline render must synthesise, not replay: a bounce is the reference for
+    // what the song IS, and a cache miss inside one would put a rendered note beside
+    // a live one and call them the same file.
+    if (typeof ctx.startRendering === 'function') return false;
+    const list = Array.isArray(notes) ? notes : [notes];
+    let anyPlayed = false;
+    let anyMissing = false;
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i];
+      if (f == null || !(f > 0)) continue;
+      const noteDur = Array.isArray(dur) ? (dur[i] ?? dur[0]) : dur;
+      const freq = f * detune * VoiceRack.pitchShift(v);
+      if (!Number.isFinite(freq) || !Number.isFinite(noteDur) || noteDur <= 0) return false;
+      const entry = this._cacheEntry(v, voiceId, freq, noteDur);
+      if (!entry?.buffer) { anyMissing = true; continue; }
+      const src = ctx.createBufferSource();
+      src.buffer = entry.buffer;
+      const g = ctx.createGain();
+      // Rendered at unity, scaled here: one buffer serves every level the song asks
+      // for, which is what keeps the cache small enough to be worth having.
+      g.gain.value = gain;
+      src.connect(g);
+      g.connect(dry);
+      if (echo && wet) g.connect(wet);
+      src.start(time);
+      src.stop(time + entry.buffer.duration + 0.01);
+      anyPlayed = true;
+    }
+    // All or nothing per note-on: half a chord from buffers and half from the pool
+    // would be two instruments playing one chord, and they do not arrive at exactly
+    // the same level (the pool's slot gain ramps; a buffer's does not).
+    if (anyMissing && anyPlayed) return false;
+    return anyPlayed;
+  }
+
+  /** The cache slot for one note, rendering it in the background on a miss. */
+  _cacheEntry(v, voiceId, freq, dur) {
+    this._noteCache ||= new Map();
+    // `specRev` is what makes an editor change land: `refresh` bumps it, so an edited
+    // preset simply has different keys and the old buffers age out. Rounded coarsely
+    // — a hundredth of a hertz and a millisecond are far below what anyone can hear,
+    // and every decimal in the key is a buffer that gets rendered again.
+    const rev = this._specRev?.get(voiceId) || 0;
+    const key = `${voiceId}|${rev}|${freq.toFixed(2)}|${Math.round(dur * 1000)}|${this.ctx.sampleRate}`;
+    const hit = this._noteCache.get(key);
+    if (hit) {
+      // LRU by re-insertion: the note played most recently is the one worth keeping.
+      this._noteCache.delete(key);
+      this._noteCache.set(key, hit);
+      return hit;
+    }
+    const entry = { buffer: null, rendering: true };
+    this._noteCache.set(key, entry);
+    // Bounded, or a song that walks the keyboard would hold every note it ever
+    // played. 256 is several bars of the densest chord layer in the catalogue.
+    while (this._noteCache.size > 256) {
+      this._noteCache.delete(this._noteCache.keys().next().value);
+    }
+    this._renderNote(v, voiceId, freq, dur, entry);
+    return entry;
+  }
+
+  /**
+   * Render one note offline, at unity, into `entry.buffer`.
+   *
+   * No noise buffers are handed to the throwaway rack, and that is a statement about
+   * what may be cached rather than an omission: only the POOLED TONE classes qualify
+   * (see `_cacheablePool`), and not one of them reads `noiseBuf` — the buffer-backed
+   * voices are the drum and noise kinds, which are excluded. If that ever changes,
+   * the buffers have to be COPIED in here rather than regenerated, because live noise
+   * is seeded from `Math.random` once per session and a replay that made its own
+   * would not be the sound the pool would have played.
+   *
+   * QUEUED, at most two at a time. A cold section is a burst of misses — the dense
+   * song's chord layer alone is some thirty distinct (pitch, length) pairs — and each
+   * miss costs a context, a rack and a render setup ON THE MAIN THREAD, which is the
+   * thread the sequencer lives on. Two at a time keeps that burst under the queue the
+   * scheduler is holding, at the price of the cache warming over a couple of bars
+   * instead of one. Missing is free: the pool plays the note meanwhile.
+   */
+  async _renderNote(v, voiceId, freq, dur, entry) {
+    const OAC = typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : null;
+    if (!OAC) { entry.rendering = false; return; }
+    this._renderQueue ||= [];
+    this._rendering ||= 0;
+    const job = async () => {
+      // TONE'S CONTEXT IS GLOBAL, and that is the whole hazard in this function.
+      //
+      // Building a rack on the throwaway context calls `Tone.setContext` (see the
+      // VoiceRack constructor), which redirects EVERY Tone node built afterwards —
+      // including the live pools the sequencer is still filling on the next
+      // sixteenth. Left redirected, the live rack builds its synths on a context
+      // that is not the one playing, and `_addSlot` throws
+      // "cannot connect to an AudioNode belonging to a different audio context" on
+      // every note. It did exactly that, and only playing the desk showed it.
+      //
+      // So the borrow is put back BEFORE the first `await` — everything up to there
+      // is synchronous, so no scheduling pass can run inside the window, and the
+      // render itself needs no context of Tone's once its graph is built.
+      const prevToneCtx = Tone.getContext();
+      try {
+        const sr = this.ctx.sampleRate;
+        const seconds = Math.min(30, dur + VoiceRack.tailOf(VoiceRack.buildSpec(v)));
+        const ctx = new OAC(1, Math.ceil(seconds * sr), sr);
+        const rack = new VoiceRack(ctx);
+        const out = ctx.createGain();
+        out.connect(ctx.destination);
+        // At unity and with the preset's own transpose divided back out: the caller
+        // scales the level, and `freq` already carries the song warp AND
+        // `pitchShift`, which `play` will apply again on the way in.
+        rack.play('bass', voiceId, freq / VoiceRack.pitchShift(v), {
+          time: 0, dur, gain: 1, dry: out, wet: null, echo: false,
+        });
+        Tone.setContext(prevToneCtx);
+        entry.buffer = trimSilence(await ctx.startRendering());
+      } catch (e) {
+        Tone.setContext(prevToneCtx);
+        // A voice that will not render offline simply stays uncached: `_playCached`
+        // sees no buffer and the pool plays it live, for ever, which is the
+        // behaviour without any of this.
+        console.warn('[voices] note cache could not render', voiceId, e?.message);
+        entry.failed = true;
+      } finally {
+        entry.rendering = false;
+        this._rendering--;
+        const next = this._renderQueue.shift();
+        if (next) { this._rendering++; next(); }
+      }
+    };
+    if (this._rendering < 2) { this._rendering++; job(); } else this._renderQueue.push(job);
+  }
+
   /**
    * The pool for one (lane, voice, echo) combination.
    *
@@ -1580,7 +1851,31 @@ export class VoiceRack {
   _filterChain(spec, t, mul = 1, dfltType = 'bandpass', dfltFreq = 2600) {
     const ctx = this.ctx;
     const stages = spec.slope === -48 ? 4 : spec.slope === -24 ? 2 : 1;
-    const freq = Math.max(20, (spec.freq ?? dfltFreq) * mul);
+    const type = spec.type || dfltType;
+    // Every number that will reach an AudioParam, checked once here.
+    //
+    // A biquad handed a non-finite corner THROWS, and this runs inside the scheduling
+    // pass: one bad number would kill not just this note but every note after it. A
+    // resonant filter swept across one is also the standing suspect for the "state is
+    // bad, probably due to unstable filter caused by fast parameter automation"
+    // warning Chrome logs just before a non-finite sample escapes into the mix.
+    //
+    // Substituted rather than skipped, because five of the seven callers wire
+    // `chain.head`/`chain.tail` straight into the graph and a null would only be a
+    // different crash. A filter at its default corner is audibly wrong for one note;
+    // it leaves the song playing and the fault named in the log.
+    const num = (value, fallback, what) => {
+      if (Number.isFinite(value)) return value;
+      console.warn(`[voices] non-finite ${what} in a filter — using ${fallback}`, spec);
+      return fallback;
+    };
+    const freq = Math.max(20, num((spec.freq ?? dfltFreq) * mul, dfltFreq, 'cutoff'));
+    const Q = num(spec.Q ?? 0.7, 0.7, 'resonance');
+    const swept = spec.to != null && spec.to !== (spec.freq ?? dfltFreq);
+    const to = swept ? Math.max(20, num(spec.to * mul, freq, 'sweep target')) : freq;
+    const sweep = num(spec.sweep ?? ((spec.attack ?? 0.001) + (spec.decay ?? 0.12)), 0.12, 'sweep time');
+    const at = num(t, ctx.currentTime, 'start time');
+    noteFilterWrite({ t: at, type, freq, to, sweep, Q, stages });
     let head = null; let tail = null;
     // Kept and returned so a caller can modulate the whole cascade — an LFO into one
     // stage's `.detune` of a -48 chain would wobble a quarter of the slope. The existing
@@ -1588,18 +1883,31 @@ export class VoiceRack {
     const built = [];
     for (let k = 0; k < stages; k++) {
       const f = ctx.createBiquadFilter();
-      f.type = spec.type || dfltType;
-      f.frequency.setValueAtTime(freq, t);
-      if (spec.to != null && spec.to !== (spec.freq ?? dfltFreq)) {
-        const sweep = spec.sweep ?? ((spec.attack ?? 0.001) + (spec.decay ?? 0.12));
-        f.frequency.exponentialRampToValueAtTime(Math.max(20, spec.to * mul), t + sweep);
-      }
-      f.Q.value = k === 0 ? (spec.Q ?? 0.7) : 0.7071;
+      f.type = type;
+      f.frequency.setValueAtTime(freq, at);
+      if (swept) f.frequency.exponentialRampToValueAtTime(to, at + sweep);
+      f.Q.value = k === 0 ? Q : 0.7071;
       if (tail) tail.connect(f); else head = f;
       tail = f;
       built.push(f);
     }
     return { head, tail, stages: built };
+  }
+
+  /**
+   * The last few filter builds, oldest first — the evidence for the next instability.
+   *
+   * Chrome says "BiquadFilterNode: state is bad, probably due to unstable filter
+   * caused by fast parameter automation" and names nothing: not the node, not the
+   * preset, not the numbers. This is the record that fills that gap, dumped by the
+   * desk's watchdog the moment a non-finite sample reaches the output — see
+   * checkAudioHealth. It is a DIAGNOSTIC and deliberately not a clamp: a Q of 40 is
+   * a real preset in this library (`dsKickHard`'s ring), so narrowing the range
+   * would be a sound change nobody has approved, made on a guess about which write
+   * is the guilty one. Name it first.
+   */
+  recentFilterWrites() {
+    return filterWrites.slice();
   }
 
   /**
@@ -3492,6 +3800,13 @@ export class VoiceRack {
    */
   refresh(voiceId) {
     const v = VOICES[voiceId];
+    // The note cache is keyed on this number, so bumping it is the whole of "forget
+    // what this preset used to sound like" — the stale buffers simply stop being
+    // reachable and fall off the end of the LRU. Every edit the panel makes comes
+    // through here, which is why this is the one line that has to exist for a cached
+    // voice to be editable at all. See `_cacheEntry`.
+    this._specRev ||= new Map();
+    this._specRev.set(voiceId, (this._specRev.get(voiceId) || 0) + 1);
     // ---- the native paths ---------------------------------------------------
     //
     // A pooled synth is an OBJECT that stands there between notes, so an edit can be

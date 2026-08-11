@@ -451,6 +451,28 @@ export const EFFECT_PRESETS = {
       },
       "presets": {}
     },
+    "mbCompN": {
+      "default": {
+        "lowFrequency": 250,
+        "highFrequency": 2000,
+        "low.threshold": -30,
+        "low.ratio": 6,
+        "low.attack": 0.03,
+        "low.release": 0.25,
+        "low.knee": 10,
+        "mid.threshold": -24,
+        "mid.ratio": 3,
+        "mid.attack": 0.02,
+        "mid.release": 0.03,
+        "mid.knee": 16,
+        "high.threshold": -24,
+        "high.ratio": 3,
+        "high.attack": 0.02,
+        "high.release": 0.03,
+        "high.knee": 16
+      },
+      "presets": {}
+    },
     "filter": {
       "default": {
         "type": "lowpass",

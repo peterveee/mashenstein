@@ -31,7 +31,7 @@ import { VOICES, VOICE_CATEGORIES } from '../src/data/voices.js';
 // imports, so it bundles into the desk like anything else in tools/lib.
 import { noteLevel } from './lib/loudness.js';
 import { VoiceRack } from '../src/engine/voices.js';
-import { Audio } from '../src/engine/audio.js';
+import { heavyUi } from './lib/heavy-ui.js';
 // The fold mark, shared with the keyboard's, so the two put-away buttons on the
 // library's workspace are provably one control rather than two that look alike.
 import { foldIcon } from './mixer-voice-library.js';
@@ -5847,10 +5847,11 @@ export function createVoiceEditor({
   function openFull(layer = 1) {
     if (!state || !createFull) return;
     // The full-window editor is a big synchronous build on the sequencer's thread —
-    // queue audio ahead before it holds the floor. See Audio.prefill.
-    Audio.prefill(1.2);
-    full ||= createFull({ kit });
-    full.open(layer);
+    // queue audio past it and record what the stall was for. See lib/heavy-ui.js.
+    heavyUi('open full synth editor', () => {
+      full ||= createFull({ kit });
+      full.open(layer);
+    });
   }
 
   return {

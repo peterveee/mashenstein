@@ -23,6 +23,7 @@ import {
   draftOf, entryOf, planToOrder, setLanesOff, setLanesDeleted, transposeBars, offsetBars,
   gainBars, copyBars, pasteBars, insertSilence, copyLaneBars, silenceBars, deleteBars,
   duplicateBars, buildUp, breakdown, forkBar, writeBarNotes, writeBarNotesShared, removeLanes,
+  copyLaneArrangement,
   compactSections, patternStarts, barCount, setTempo, setSwing, readBarLane,
   DRUM_LANES,
 } from '../tools/lib/arrangement-edit.js';
@@ -418,6 +419,28 @@ assert(extraLaneDraft.sections[0].tom2 && extraLaneDraft.plan[0].off.includes('t
 // strip on screen with the mix unchanged — the whole of the delete is downstream.
 assert(json(removeLanes(extraLaneDraft, new Set(['tom2']))) === json(withoutExtraLane),
   'a lane set removes exactly what the same lanes as an array do');
+// Duplicating a track: the notes come across through deskBank, the per-BAR decisions
+// have to be copied, because every one of them is keyed by the literal lane name. A
+// duplicate that ignored them was a second strip playing through the bars the part it
+// copied drops out of — see tests/layers.js for that at the bank.
+const carried = copyLaneArrangement(extraLaneDraft, 'tom2', 'tom3');
+assert(json(carried.plan[0].off) === json(['snare', 'tom2', 'tom3'])
+  && carried.plan[1].delete.includes('tom3')
+  && carried.plan[0].transpose.tom3 === 7 && carried.plan[1].offset.tom3 === -1
+  && carried.plan[1].gain.tom3 === -3,
+  'a duplicated lane inherits the mutes, the deletions and the per-lane bar edits of the one it copies');
+assert(carried.plan[0].transpose.bass === 5 && json(carried.sections) === json(extraLaneDraft.sections)
+  && carried.plan[0].off.includes('tom2') && carried.plan[1].delete.includes('tom2'),
+  'and takes nothing away from the source lane or from any other, notes included');
+assert(json(extraLaneDraft.plan[0].off) === json(['snare', 'tom2'])
+  && json(copyLaneArrangement(carried, 'tom2', 'tom3')) === json(carried)
+  && copyLaneArrangement(extraLaneDraft, 'tom2', 'tom2') === extraLaneDraft,
+  'copying returns a new draft, says the same thing twice running, and refuses to copy a lane onto itself');
+// The same draft back, by identity, and for the reason removeLanes hands one back: the
+// desk writes what this returns, so a new object here would give an unarranged song an
+// arrangement entry the first time a track was duplicated on it.
+assert(copyLaneArrangement(extraLaneDraft, 'kick', 'kick2') === extraLaneDraft,
+  'a lane with no bar decisions of its own copies nothing — a duplicate is not an edit by itself');
 const clip = copyBars(plumber, base, 0, 1);
 const pasted = pasteBars(plumber, base, 2, clip);
 assert(pasted.plan.length === base.plan.length + 2

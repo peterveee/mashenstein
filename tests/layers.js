@@ -20,12 +20,18 @@
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deskBank, deskLanes, activeLanes, laneList, laneUsesEcho, LANE_KEYS } from '../src/engine/lanes.js';
+import { deskBank, deskLanes, activeLanes, laneActivity, laneList, laneUsesEcho, LANE_KEYS } from '../src/engine/lanes.js';
 import { seamFor, baseLane, isLayer, voicesFor, voiceOf, VOICE_LANES } from '../src/data/voices.js';
 // One song's mix as the file holds it. src/data/mix.js is assembled from the song
 // folder now, so a temp copy of it cannot be imported on its own — the module under
 // test is the serialiser, and this builds just enough of one to import.
 import { mixEntrySource } from '../tools/lib/mix-source.js';
+// The desk's own duplicate path: the mix gets the layer, the arrangement gets the bars
+// the source does not play in. Both halves are asserted below, against the same bank.
+import {
+  draftOf, entryOf, setLanesOff, writeBarNotes, copyLaneArrangement,
+} from '../tools/lib/arrangement-edit.js';
+import { applyArrangement, resolveSection } from '../src/data/arrangements.js';
 
 const renderMixFile = (mix) => `export const MIX = {\n${Object.entries(mix)
   .map(([id, e]) => [id, mixEntrySource(e, '  ')]).filter(([, x]) => x)
@@ -57,7 +63,8 @@ const dup = deskBank(bank, { layers: [{ key: 'bass2', from: 'bass' }] });
 assert(dup !== bank, 'duplicating a track gives back a new bank');
 assert(bank.bass2 === undefined, 'and leaves the song it was made from alone');
 assert(dup.bass2 === dup.bass, 'the layer plays the same notes — by reference, not a copy');
-assert(dup.sections.every((s) => (s.bass ? s.bass2 === s.bass : s.bass2 === undefined)),
+assert(dup.sections.every((s) => (Object.hasOwn(s, 'bass')
+  ? s.bass2 === s.bass : !Object.hasOwn(s, 'bass2'))),
   'every section that has the part has the layer, and no section invents one');
 assert(activeLanes(dup, 1).some((l) => l.key === 'bass2'),
   'the layer is an active lane, so it gets a strip and an arrangement row');
@@ -99,6 +106,113 @@ const extraEdited = deskBank({ ...bank, sections: [
 ] }, { layers: [{ key: 'tom2', from: 'tom', independent: true }] });
 assert(extraEdited.sections.at(-1).tom2 === ownPattern,
   'an arrangement pattern on the extra sound is preserved rather than blanked or doubled');
+
+// ---- what a duplicate is, bar for bar --------------------------------------
+// The two masks meet on opposite sides of deskBank, and that is what made a duplicate
+// stop being one. Notes go through the ARRANGEMENT — a deleted note is a forked section,
+// and the layer materialises over the already-edited section, so it follows for free.
+// The mute mask is a list of literal lane keys applied AFTER the layer exists, so a
+// duplicate of a bass that drops out for the middle eight played straight through it:
+// two strips, audibly different parts, from the moment the copy was made. The desk
+// answers that in the draft, at the moment of duplication — see copyLaneArrangement —
+// because a duplicate is a second strip with its own row and its own mute on every bar
+// of it, not a lane that can never be heard where its source is silent.
+{
+  const id = 'plumber';
+  const LANE = 'bass', DUP = 'bass2';
+  const MUTED = 6;
+  let draft = draftOf(bank, null);
+  draft = writeBarNotes(bank, draft, 2, LANE, new Array(16).fill(null));
+  draft = setLanesOff(draft, MUTED, MUTED, [LANE], true);
+
+  const sounding = (d) => {
+    const arranged = applyArrangement(bank, id, { [id]: entryOf(bank, d) });
+    const desk = deskBank(arranged, { layers: [{ key: DUP, from: LANE }] });
+    return d.plan.map((p) => {
+      const block = { ...desk, ...(resolveSection(desk, p.sec) || {}) };
+      const off = [...(p.off || []), ...(p.delete || [])];
+      const notes = (key) => (off.includes(key) ? 0 : (block[key] || [])
+        .slice(p.half * 16, p.half * 16 + 16).filter((v) => v != null && v !== false).length);
+      return [notes(LANE), notes(DUP)];
+    });
+  };
+  const before = sounding(draft);
+  const after = sounding(copyLaneArrangement(draft, LANE, DUP));
+  assert(before[2][0] === 0 && before[2][1] === 0 && before.some(([a]) => a > 0),
+    'a note deleted on the source is already gone from the duplicate — the layer is the edited array');
+  assert(before[MUTED][0] === 0 && before[MUTED][1] > 0,
+    'but the bar mute is keyed by lane name, so the raw duplicate plays where its source is muted');
+  assert(after.every(([a, b]) => a === b),
+    'carrying the source lane’s bar decisions across makes the duplicate the part, bar for bar');
+}
+
+// ---- the section that says "not here" --------------------------------------
+// A section names what it plays, and `bass: null` is a section saying it does NOT play
+// the bass — the middle eight it sits out. Six of the game's songs are written that way.
+// Read as "nothing to copy", the layer was left unset in that section, fell through to
+// the whole-bank part underneath, and played the very bars its source is silent for: the
+// copy was a second part rather than a second strip, and no arrangement edit could put it
+// right because the bars it played in were not bars anybody had asked for. Presence, not
+// truthiness — a duplicate follows its source out of the song as well as into it.
+{
+  const part = new Array(32).fill(220);
+  const song = {
+    bpm: 120,
+    bass: part,
+    sections: [{ bass: part }, { bass: null }],
+    order: [0, 1],
+  };
+  const out = deskBank(song, { layers: [{ key: 'bass2', from: 'bass' }] });
+  assert(out.sections[0].bass2 === part,
+    'the layer takes the part in a section that plays it');
+  assert(Object.hasOwn(out.sections[1], 'bass2') && out.sections[1].bass2 === null,
+    'and drops out with it in a section that does not, rather than falling back to the bank’s own line');
+  const act = laneActivity(out, 1, 1);
+  const src = act.find((l) => l.key === 'bass');
+  const copy = act.find((l) => l.key === 'bass2');
+  assert(src.density.some((d) => d > 0) && src.density.some((d) => d === 0),
+    'the song this is asked of does have a bar the part sits out');
+  assert(JSON.stringify(src.density) === JSON.stringify(copy.density),
+    'so the duplicate sounds in exactly the bars its source does, and in no others');
+}
+
+// ---- a duplicate of a duplicate --------------------------------------------
+// A layer's source can be another layer, and it has to be able to be: every part of an
+// IMPORTED song is an added track, so the engine lane a layer key is named after — the
+// `tom` behind `tom2` — is a lane those songs do not have at all. Copying that instead of
+// the lane the user actually pointed at gave them a strip playing the engine's own tom
+// where the song has one, and an empty row where it does not: "I duplicated this track
+// and it didn't duplicate all the bars".
+{
+  const own = new Array(32).fill(false);
+  own[3] = true; own[19] = true;
+  const imported = { bpm: 120, sections: [{ tom2: own }], order: [0] };
+  const out = deskBank(imported, {
+    layers: [
+      { key: 'tom2', from: 'tom', independent: true, label: 'Cowbell' },
+      { key: 'tom3', from: 'tom2' },
+    ],
+  });
+  assert(out.sections[0].tom3 === own,
+    'a duplicate of an added track plays the added track’s pattern, not the lane it is named after');
+  const act = laneActivity(out, 1, 1);
+  const added = act.find((l) => l.key === 'tom2');
+  const copy = act.find((l) => l.key === 'tom3');
+  assert(copy && JSON.stringify(added.density) === JSON.stringify(copy.density),
+    'bar for bar, which is the whole of what Duplicate track promises');
+  const named = laneList(out).find((l) => l.key === 'tom3');
+  assert(named?.group === 'drums' && named?.label === 'tom 3',
+    'and it is named and grouped off the engine lane at the bottom of the chain, not off tom2');
+  assert(deskLanes(out, 1).map((l) => l.key).join(' ').includes('tom2 tom3'),
+    'the copy sits immediately after the track it copies, as any other layer does');
+  // The chain is walked in declaration order, which is creation order: a copy is always
+  // declared after the thing it copies. One that is not is an entry nothing can build.
+  const backwards = deskBank(imported, {
+    layers: [{ key: 'tom3', from: 'tom2' }, { key: 'tom2', from: 'tom', independent: true }],
+  });
+  assert(!(backwards.__layers || []).some((l) => l.key === 'tom3'),
+    'a layer standing on one that does not exist yet is dropped rather than half-built');
+}
 
 // A layer of a lane the song does not play is a row that would play nothing.
 assert(deskBank(bank, { layers: [{ key: 'crash2', from: 'crash' }] }).crash2 === undefined

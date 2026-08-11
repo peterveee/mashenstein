@@ -2133,6 +2133,106 @@ function makeRingMod(ctx, params = {}) {
   return node;
 }
 
+/**
+ * A three-band compressor built from native nodes — the same shape as Tone's, for a
+ * fraction of what Tone's costs.
+ *
+ * MEASURED, which is the only reason this exists: on the desk's own dense song the
+ * Tone MultibandCompressor on the master is about a sixth of the one core Web Audio
+ * gets — more than the entire drum kit, and against a catalogue estimate of 0.87%,
+ * which is where the CPU readout's credibility went. The DSP is not the expensive
+ * part: three DynamicsCompressorNodes and four biquads are cheap. What costs is the
+ * plumbing around them. Tone gives every parameter a `Signal`, and a Signal is a
+ * ConstantSourceNode wired into the AudioParam — a running source node per control,
+ * about twenty of them for this effect, each rendered every block whether or not
+ * anybody ever moves it.
+ *
+ * So: the same topology, the same defaults, the same controls, written straight onto
+ * the params. Tone's MultibandSplit is `low = lowpass(fLow)`, `mid = highpass(fLow)
+ * → lowpass(fHigh)`, `high = highpass(fHigh)`, each a single 12dB/oct biquad, summed
+ * after three Compressors — this is that, node for node.
+ *
+ * NOT a null-test substitute for `mbComp`, and it does not pretend to be: a
+ * DynamicsCompressorNode is fed by a slightly different graph and the sum of three
+ * bands through three compressors is chaotic enough that "nearly the same" is the
+ * most anyone can promise. It is offered ALONGSIDE the Tone one so the two can be
+ * A/B'd on the master by ear, which is the only test that settles a compressor.
+ */
+function makeMultibandCompN(ctx, params = {}) {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  // Stereo in and out, like every other insert here: fed mono, a compressor would
+  // still work, but the band filters and the sum would silently narrow a lane.
+  for (const n of [input, output]) {
+    n.channelCount = 2; n.channelCountMode = 'explicit'; n.channelInterpretation = 'speakers';
+  }
+  const filter = (type) => {
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    // Butterworth. Tone's Filter defaults to Q 1 on a crossover, which puts a bump at
+    // the corner of every band and then sums three of them; 0.7071 is the flat one.
+    f.Q.value = 0.7071;
+    return f;
+  };
+  const lowLp = filter('lowpass');
+  const midHp = filter('highpass');
+  const midLp = filter('lowpass');
+  const highHp = filter('highpass');
+  const comp = () => ctx.createDynamicsCompressor();
+  const low = comp(); const mid = comp(); const high = comp();
+  input.connect(lowLp); lowLp.connect(low); low.connect(output);
+  input.connect(midHp); midHp.connect(midLp); midLp.connect(mid); mid.connect(output);
+  input.connect(highHp); highHp.connect(high); high.connect(output);
+
+  const state = {
+    lowFrequency: 250, highFrequency: 2000,
+    'low.threshold': -30, 'low.ratio': 6, 'low.attack': 0.03, 'low.release': 0.25, 'low.knee': 10,
+    'mid.threshold': -24, 'mid.ratio': 3, 'mid.attack': 0.02, 'mid.release': 0.03, 'mid.knee': 16,
+    'high.threshold': -24, 'high.ratio': 3, 'high.attack': 0.02, 'high.release': 0.03, 'high.knee': 16,
+    ...params,
+  };
+
+  const apply = () => {
+    const t = ctx.currentTime;
+    const num = (key, fallback) => {
+      const v = Number(state[key]);
+      return Number.isFinite(v) ? v : fallback;
+    };
+    // The crossovers ramp — dragging one is a sweep you hear, and a step in a filter
+    // corner under a compressor is a thump. Everything else is written directly:
+    // a DynamicsCompressor's own parameters are k-rate and its envelope smooths them.
+    const fLow = Math.max(20, Math.min(ctx.sampleRate / 2 - 1, num('lowFrequency', 250)));
+    const fHigh = Math.max(fLow, Math.min(ctx.sampleRate / 2 - 1, num('highFrequency', 2000)));
+    for (const [f, hz] of [[lowLp, fLow], [midHp, fLow], [midLp, fHigh], [highHp, fHigh]]) {
+      f.frequency.setTargetAtTime(hz, t, 0.02);
+    }
+    for (const [band, node] of [['low', low], ['mid', mid], ['high', high]]) {
+      node.threshold.value = Math.max(-100, Math.min(0, num(`${band}.threshold`, -24)));
+      node.ratio.value = Math.max(1, Math.min(20, num(`${band}.ratio`, 3)));
+      node.attack.value = Math.max(0, Math.min(1, num(`${band}.attack`, 0.02)));
+      node.release.value = Math.max(0, Math.min(1, num(`${band}.release`, 0.03)));
+      node.knee.value = Math.max(0, Math.min(40, num(`${band}.knee`, 16)));
+    }
+  };
+  apply();
+
+  return {
+    input, output, _custom: true,
+    applyState: apply,
+    setState: (patch) => { Object.assign(state, patch); apply(); },
+    connect: (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest)),
+    disconnect: () => { try { output.disconnect(); } catch { /* fine */ } },
+    dispose: () => {
+      for (const n of [input, lowLp, midHp, midLp, highHp, low, mid, high, output]) {
+        try { n.disconnect(); } catch { /* fine */ }
+      }
+    },
+    // How hard each band is working, for a meter that does not exist yet. Free to
+    // expose — `reduction` is a read of a number the node already keeps.
+    _reduction: () => ({ low: low.reduction, mid: mid.reduction, high: high.reduction }),
+  };
+}
+
 const TAPE_CURVE_SIZE = 8193;
 function tapeCurve(drive, bias) {
   const c = new Float32Array(TAPE_CURVE_SIZE);
@@ -2382,6 +2482,23 @@ export const EFFECTS = [
       'side.threshold': -30, 'side.ratio': 6, 'side.attack': 0.03, 'side.release': 0.25, 'side.knee': 10,
     } },
   { id: 'mbComp', name: 'Multiband Compressor', short: 'Multi Comp', cost: 0.87, tone: 'MultibandCompressor',
+    params: ['lowFrequency', 'highFrequency',
+      'low.threshold', 'low.ratio', 'low.attack', 'low.release', 'low.knee',
+      'mid.threshold', 'mid.ratio', 'mid.attack', 'mid.release', 'mid.knee',
+      'high.threshold', 'high.ratio', 'high.attack', 'high.release', 'high.knee'],
+    defaults: {
+      lowFrequency: 250, highFrequency: 2000,
+      'low.threshold': -30, 'low.ratio': 6, 'low.attack': 0.03, 'low.release': 0.25, 'low.knee': 10,
+      'mid.threshold': -24, 'mid.ratio': 3, 'mid.attack': 0.02, 'mid.release': 0.03, 'mid.knee': 16,
+      'high.threshold': -24, 'high.ratio': 3, 'high.attack': 0.02, 'high.release': 0.03, 'high.knee': 16,
+    } },
+  // The same compressor, without Tone's parameter plumbing — see makeMultibandCompN
+  // for what that plumbing costs and why this is a second entry rather than a
+  // replacement. Identical controls in identical order, because they are the same
+  // controls: a desk where two inserts spell one idea two ways is the thing this
+  // codebase spends its comments avoiding. A/B them on the master and keep one.
+  { id: 'mbCompN', name: 'Multiband Compressor (Native)', short: 'Multi Comp N',
+    cost: 0.87, custom: makeMultibandCompN,
     params: ['lowFrequency', 'highFrequency',
       'low.threshold', 'low.ratio', 'low.attack', 'low.release', 'low.knee',
       'mid.threshold', 'mid.ratio', 'mid.attack', 'mid.release', 'mid.knee',
@@ -2672,6 +2789,16 @@ export function createEffect(id, params = {}, ctx = null, bpm = 120) {
  */
 export function rampParam(ctx, param, target, when, seconds = 0, { log = false } = {}) {
   if (!param) return when;
+  // Every scheduled move on the desk comes through here — a transition's fader, a
+  // cabinet treatment's filter, a send arriving on a downbeat — and an AudioParam
+  // throws on a non-finite value. Thrown from inside a beat listener that is
+  // scheduling a whole transition, one bad number takes the rest of that transition
+  // with it and leaves the mix half-moved. Refusing the move leaves the param where
+  // it is, which is a state somebody can still hear and fix.
+  if (!Number.isFinite(target) || !Number.isFinite(when) || !Number.isFinite(seconds)) {
+    console.warn('[effects] refusing a non-finite ramp', { target, when, seconds });
+    return when;
+  }
   const at = Math.max(when, ctx.currentTime);
   if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(at);
   else { param.cancelScheduledValues(at); param.setValueAtTime(param.value, at); }
