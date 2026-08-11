@@ -3,6 +3,8 @@
 // host, so the mixer and the standalone page can use the same visual instrument while
 // retaining their own preview routing.
 
+import { deskNoteName } from './mixer-note-names.js';
+
 const WHITE = [0, 2, 4, 5, 7, 9, 11];
 const BLACK = [1, 3, 6, 8, 10];
 const COMPUTER = {
@@ -12,10 +14,55 @@ const COMPUTER = {
   '6': 20, y: 21, '7': 22, u: 23, i: 24, o: 25, '9': 26, p: 27,
 };
 
-const midiName = (midi) => {
-  const names = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
-  return `${names[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
-};
+const midiName = (midi) => deskNoteName(midi, { fancy: true });
+
+/**
+ * Where every key goes, as fractions of the board's width — whites edge to edge, blacks
+ * straddling the seam between the two they belong to.
+ *
+ * Pure, exported and out of `drawKeys` because this is the part that was WRONG and could
+ * not be caught. `preceding` names WHICH WHITE KEY a black sits after, which is an index,
+ * and `WHITE.filter(...).length` is a count — one too many. Every black key drew a white
+ * key to the right of where it belonged.
+ *
+ * That failure is close to invisible. The 2-and-3 grouping survives it intact, so the
+ * board still reads as a piano; it just starts a key late, and the white key under the C
+ * label has quietly become the B below it. Nothing sounded wrong either — the MIDI
+ * numbers were right all along, so the keys played what they said and only sat in the
+ * wrong place. You could only catch it by counting from one end of the board. Hence a
+ * function that returns numbers, and a test that counts for you.
+ */
+export function keyGeometry(octaveCount, base = 0) {
+  const whiteCount = octaveCount * WHITE.length;
+  const white = [];
+  const black = [];
+  for (let octaveIndex = 0; octaveIndex < octaveCount; octaveIndex++) {
+    for (const semi of WHITE) {
+      white.push({
+        midi: base + octaveIndex * 12 + semi,
+        left: white.length / whiteCount,
+        width: 1 / whiteCount,
+      });
+    }
+  }
+  for (let octaveIndex = 0; octaveIndex < octaveCount; octaveIndex++) {
+    for (const semi of BLACK) {
+      // The white key a semitone below this one: `semi - 1` is always white for all five
+      // blacks, which is what makes "sits after" well defined at all.
+      const after = octaveIndex * WHITE.length + WHITE.indexOf(semi - 1);
+      black.push({
+        midi: base + octaveIndex * 12 + semi,
+        after,
+        // 0.68 rather than 0.5 of a white key wide, offset so the black's centre lands on
+        // the seam: two blacks in a group must not touch, and the whites either side keep
+        // a playable front edge.
+        left: (after + 0.68) / whiteCount,
+        width: 0.64 / whiteCount,
+      });
+    }
+  }
+  return { whiteCount, white, black };
+}
 
 /**
  * A small Web MIDI event router. The keyboard component accepts an existing router,
@@ -102,13 +149,10 @@ export function createSynthKeyboard({
   midi = null,
   octaves = 2,
   initialOctave = 4,
-  minOctave = 1,
-  maxOctave = 7,
 }) {
   const root = document.createElement('section');
   root.className = 'sfkeyboard';
   root.setAttribute('aria-label', 'Synth performance keyboard');
-  let octave = Math.max(minOctave, Math.min(maxOctave, initialOctave));
   let capture = false;
   let active = true;
   let sustain = false;
@@ -118,6 +162,17 @@ export function createSynthKeyboard({
   const keys = new Map();
   const octaveCount = Math.max(1, Math.floor(octaves));
   const whiteCount = octaveCount * WHITE.length;
+  // The board does not move — every key it has is on screen, so there is nothing an
+  // octave shift could reach that a click cannot. All the base has to be is legal: the
+  // highest one that keeps the top key inside MIDI 0–127, which is the number the
+  // callers used to have to work out and pass in as `maxOctave`.
+  //
+  // `initialOctave` is a MIDI base, not a label: 2 means the board starts at MIDI 36,
+  // and MIDI 36 PRINTS as C1 because the desk spells middle C as C3 — see
+  // `mixer-note-names.js`. Do not "correct" it to match the number under the first key;
+  // that would transpose the instrument rather than rename it.
+  const highestBase = Math.floor((128 - octaveCount * 12) / 12) - 1;
+  const octave = Math.max(-1, Math.min(highestBase, Math.floor(initialOctave)));
 
   const noteAt = (offset) => (octave + 1) * 12 + offset;
   const keyFor = (midi) => keys.get(midi);
@@ -148,30 +203,16 @@ export function createSynthKeyboard({
     releaseHeld();
     host.onPanic?.();
   };
-  // Losing window focus must release fingers, but it is not an explicit PANIC. Native
+  // Losing window focus must release fingers, but it is not a deliberate stop. Native
   // select menus can briefly blur the page while they are open; stopping the pattern
-  // here makes changing BASE KEY kill auto-play even though the user never pressed PANIC.
+  // here makes changing BASE KEY kill auto-play even though nobody asked it to.
   const loseFocus = () => { releaseHeld(); };
-  const setOctave = (next) => {
-    const value = Math.max(minOctave, Math.min(maxOctave, next));
-    if (value === octave) return;
-    panic();
-    octave = value;
-    drawKeys();
-  };
 
   const header = document.createElement('div');
   header.className = 'sfkhead';
-  const title = document.createElement('span');
-  title.className = 'sfktitle'; title.textContent = 'PLAY';
-  const down = document.createElement('button');
-  down.type = 'button'; down.className = 'sfkoct'; down.textContent = '−';
-  down.title = 'Octave down'; down.onclick = () => setOctave(octave - 1);
-  const octaveReadout = document.createElement('span');
-  octaveReadout.className = 'sfkoctread';
-  const up = document.createElement('button');
-  up.type = 'button'; up.className = 'sfkoct'; up.textContent = '+';
-  up.title = 'Octave up'; up.onclick = () => setOctave(octave + 1);
+  // No title. A keyboard does not need a caption saying it is a keyboard — the row is
+  // eighty-four keys wide and there is nothing else it could be. What the header is for
+  // is the two things you cannot see by looking: which INPUTS are listening.
   const spacer = document.createElement('span'); spacer.className = 'sfkspacer';
   const computer = document.createElement('button');
   computer.type = 'button'; computer.className = 'sfkcomputer'; computer.textContent = 'KEYBOARD';
@@ -185,10 +226,7 @@ export function createSynthKeyboard({
     catch (error) { host.onMessage?.(error.message || 'MIDI unavailable'); }
     refresh();
   };
-  const panicButton = document.createElement('button');
-  panicButton.type = 'button'; panicButton.className = 'sfkpanic'; panicButton.textContent = 'PANIC';
-  panicButton.title = 'Release every held note'; panicButton.onclick = panic;
-  header.append(title, down, octaveReadout, up, spacer, computer, midiButton, panicButton);
+  header.append(spacer, computer, midiButton);
   root.append(header);
 
   const board = document.createElement('div');
@@ -198,64 +236,62 @@ export function createSynthKeyboard({
   function drawKeys() {
     board.textContent = '';
     keys.clear();
-    const base = noteAt(0);
-    let whiteIndex = 0;
-    for (let octaveIndex = 0; octaveIndex < octaveCount; octaveIndex++) {
-      for (const semi of WHITE) {
-        const midiValue = base + octaveIndex * 12 + semi;
-        const key = document.createElement('button');
-        key.type = 'button'; key.className = 'sfkkey sfkwhite';
-        key.dataset.midi = String(midiValue);
-        key.style.left = `${(whiteIndex / whiteCount) * 100}%`;
-        key.style.width = `${(1 / whiteCount) * 100}%`;
-        key.append(Object.assign(document.createElement('span'), {
-          className: 'sfkname', textContent: semi === 0 ? midiName(midiValue) : '',
-        }));
-        board.append(key); keys.set(midiValue, key); whiteIndex++;
-      }
+    const { white, black } = keyGeometry(octaveCount, noteAt(0));
+    for (const spot of white) {
+      const key = document.createElement('button');
+      key.type = 'button'; key.className = 'sfkkey sfkwhite';
+      key.dataset.midi = String(spot.midi);
+      key.style.left = `${spot.left * 100}%`;
+      key.style.width = `${spot.width * 100}%`;
+      key.append(Object.assign(document.createElement('span'), {
+        className: 'sfkname', textContent: spot.midi % 12 === 0 ? midiName(spot.midi) : '',
+      }));
+      board.append(key); keys.set(spot.midi, key);
     }
-    whiteIndex = 0;
-    for (let octaveIndex = 0; octaveIndex < octaveCount; octaveIndex++) {
-      for (const semi of BLACK) {
-        const midiValue = base + octaveIndex * 12 + semi;
-        const key = document.createElement('button');
-        key.type = 'button'; key.className = 'sfkkey sfkblack';
-        key.dataset.midi = String(midiValue);
-        const preceding = octaveIndex * 7 + WHITE.filter((n) => n < semi).length;
-        key.style.left = `${((preceding + 0.68) / whiteCount) * 100}%`;
-        key.style.width = `${(0.64 / whiteCount) * 100}%`;
-        board.append(key); keys.set(midiValue, key);
-      }
-      whiteIndex += 7;
+    // After the whites, so they stack over them without needing a z-index fight.
+    for (const spot of black) {
+      const key = document.createElement('button');
+      key.type = 'button'; key.className = 'sfkkey sfkblack';
+      key.dataset.midi = String(spot.midi);
+      key.style.left = `${spot.left * 100}%`;
+      key.style.width = `${spot.width * 100}%`;
+      board.append(key); keys.set(spot.midi, key);
     }
-    for (const key of keys.values()) wirePointer(key);
     refresh();
   }
 
-  function wirePointer(key) {
-    key.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      try { board.setPointerCapture(event.pointerId); } catch { /* not a real pointer */ }
-      const source = `p:${event.pointerId}`;
-      noteOn(Number(key.dataset.midi), source);
-    });
-    key.addEventListener('pointerenter', (event) => {
-      if (!(event.buttons & 1)) return;
-      const source = `p:${event.pointerId}`;
-      noteOff(source);
-      noteOn(Number(key.dataset.midi), source);
-    });
-    for (const type of ['pointerup', 'pointercancel']) {
-      key.addEventListener(type, (event) => noteOff(`p:${event.pointerId}`));
-    }
-  }
+  // One listener on the board rather than one per key, so a drag across it glides —
+  // which is how you find the note you are after, and what the desk's mini keyboard and
+  // the piano roll's key column already do. Per-key `pointerenter` cannot: the capture
+  // that keeps a glide off the end of the board ending here is also what stops the keys
+  // you pass over from ever seeing the pointer.
+  board.addEventListener('pointerdown', (event) => {
+    const key = event.target.closest?.('.sfkkey');
+    if (!key) return;
+    event.preventDefault();
+    try { board.setPointerCapture(event.pointerId); } catch { /* not a real pointer */ }
+    noteOn(Number(key.dataset.midi), `p:${event.pointerId}`);
+  });
+  board.addEventListener('pointermove', (event) => {
+    if (!(event.buttons & 1)) return;
+    const source = `p:${event.pointerId}`;
+    // Only a gesture that started on a key glides. A drag that arrives from the header
+    // or from the window edge is on its way somewhere, not playing.
+    if (!held.has(source)) return;
+    // Capture does not move hit testing, so the page still knows which key is under the
+    // pointer — `event.target` would name the key we pressed and nothing else.
+    const key = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.sfkkey');
+    const midiValue = key ? Number(key.dataset.midi) : NaN;
+    if (!Number.isFinite(midiValue) || held.get(source) === midiValue) return;
+    // A glide is one gesture looking for one note, not a chord built by dragging, and
+    // `noteOn` releases what this pointer was holding before it sounds the next one.
+    noteOn(midiValue, source);
+  });
   board.addEventListener('pointerup', (event) => noteOff(`p:${event.pointerId}`));
   board.addEventListener('pointercancel', (event) => noteOff(`p:${event.pointerId}`));
 
   const onKeyDown = (event) => {
     if (!active || !capture || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (event.key === '-' || event.key === '_') { event.preventDefault(); setOctave(octave - 1); return; }
-    if (event.key === '=' || event.key === '+') { event.preventDefault(); setOctave(octave + 1); return; }
     const offset = COMPUTER[event.key.toLowerCase()];
     if (offset == null || event.repeat) return;
     event.preventDefault(); noteOn(noteAt(offset), `k:${event.key.toLowerCase()}`);
@@ -298,9 +334,6 @@ export function createSynthKeyboard({
   }
 
   function refresh() {
-    octaveReadout.textContent = `C${octave}`;
-    down.classList.toggle('atend', octave <= minOctave);
-    up.classList.toggle('atend', octave >= maxOctave);
     const state = midi?.state?.() || { on: false, inputs: [] };
     midiButton.classList.toggle('on', !!state.on);
     midiButton.title = state.inputs?.length

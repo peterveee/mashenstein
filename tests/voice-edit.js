@@ -238,7 +238,9 @@ async function main() {
     // ---- 7. changing which voice a lane plays retires it too ---------------------
     {
       const a = install(VOICES.acidSquelch);
-      const b = install(VOICES.subSine);
+      // Any second Tone preset will do — the case is about the LANE changing hands.
+      // (`subSine` was named here once; no preset by that id exists in the library.)
+      const b = install(VOICES.roundMono);
       hit('bass', a);
       const pool = poolOf('bass', a);
       const synth = pool.slots[0].synth;

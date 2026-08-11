@@ -110,8 +110,19 @@ export function loudness(channels, sampleRate = SR) {
   return { lufs, peakDb: peak > 0 ? 20 * Math.log10(peak) : -Infinity, blocks: nBlocks };
 }
 
+/**
+ * -16 LUFS: a sensible target for game music that has to sit under effects and
+ * dialogue without anyone reaching for the volume between cabinets.
+ *
+ * Here rather than in each caller because there are three of them now — the mixer
+ * server's loudness sweep, the desk's own bounce, and the default below — and a
+ * target that meant -16 in one place and -14 in another would be a catalogue nobody
+ * could balance.
+ */
+export const LOUDNESS_TARGET = -16;
+
 /** How many dB to move a track to land on a target loudness. */
-export const gainToTarget = (lufs, target = -16) => (Number.isFinite(lufs) ? target - lufs : 0);
+export const gainToTarget = (lufs, target = LOUDNESS_TARGET) => (Number.isFinite(lufs) ? target - lufs : 0);
 
 /**
  * The K-weighted RMS of a whole render — a LEVEL, not a loudness measurement.

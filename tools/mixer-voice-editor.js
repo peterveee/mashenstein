@@ -31,6 +31,7 @@ import { VOICES, VOICE_CATEGORIES } from '../src/data/voices.js';
 // imports, so it bundles into the desk like anything else in tools/lib.
 import { noteLevel } from './lib/loudness.js';
 import { VoiceRack } from '../src/engine/voices.js';
+import { Audio } from '../src/engine/audio.js';
 // The fold mark, shared with the keyboard's, so the two put-away buttons on the
 // library's workspace are provably one control rather than two that look alike.
 import { foldIcon } from './mixer-voice-library.js';
@@ -147,15 +148,37 @@ const semis = (x) => `${x > 0 ? '+' : ''}${x.toFixed(1)}`;
 const semiSteps = (x) => `${x > 0 ? '+' : ''}${x.toFixed(0)}`;
 const fixed = (d) => (x) => x.toFixed(d);
 const ENV_MAX_SECONDS = 10;
-const ENV_TIME_SCALE = 2;
+// A DECADE PER QUARTER TURN. An envelope time is heard as a ratio — 5ms to 10ms is the
+// same step as 1s to 2s — so the travel is split by ratio and not by fraction of the
+// ceiling: 1ms at the floor, 10ms at a quarter, 100ms at half, 1s at three quarters,
+// ten seconds at the stop. Half the pot is now under a tenth of a second, which is
+// where the sounds this desk makes actually live.
+//
+// A power curve was the previous answer and cannot do this. Steep enough to bring
+// 100ms into reach it collapses everything below into a sliver thinner than the step —
+// dead travel at exactly the end that needs the most — and shallow enough to avoid
+// that it puts the milliseconds back in the first few pixels. So envelope times ask
+// the shared knob for `taper: 'log'` instead of an exponent.
+const ENV_TIME_TAPER = 'log';
+// One millisecond, everywhere: both the smallest step and the floor the taper starts
+// from. Below that is not a length anyone dials, it is a click, and the readout
+// (`secs`) has no digit for it either.
+const ENV_TIME_STEP = 0.001;
+// The short time pots — a kick's drop, a strike — span a fraction of a second rather
+// than ten, and are already dialled in milliseconds across their whole travel, so they
+// keep the quadratic they had. Half a second at curve 2 puts 125ms at twelve o'clock,
+// which is right for a range that never leaves the low hundreds.
+const SHORT_TIME_SCALE = 2;
 
 // Every envelope time uses the same ceiling, including native struck voices. Keeping
-// the ceiling here prevents a new section from quietly growing a special-case range.
-// The shared knob uses the same quadratic response for every envelope time, giving the
-// milliseconds and short decays room without making the 10-second end unreachable.
-const envTime = (path, label, min, step, fmt, def, unit = 's', when = null, opts = {}) =>
-  n(path, label, min, ENV_MAX_SECONDS, step, fmt, def, unit, when,
-    { ...opts, scale: ENV_TIME_SCALE });
+// the ceiling here prevents a new section from quietly growing a special-case range —
+// and the STEP is here for the same reason: one millisecond on every envelope pot on
+// the desk, so a decay can be nudged by a millisecond wherever it lives. The `min` is
+// the only thing a caller still chooses, because it is the only thing that differs:
+// zero where an OFF is meaningful, the 1ms floor where a stage of nothing is silence.
+const envTime = (path, label, min, fmt, def, unit = 's', when = null, opts = {}) =>
+  n(path, label, min, ENV_MAX_SECONDS, ENV_TIME_STEP, fmt, def, unit, when,
+    { ...opts, taper: ENV_TIME_TAPER, floor: ENV_TIME_STEP });
 
 // A pitch pot that has to cover the whole drum range at once — a 40 Hz sub and a 6 kHz
 // zap are the same knob — and that is the envelope times' problem again: spread
@@ -299,6 +322,12 @@ const ringQ = (path, def, when = null, opts = {}) =>
 // everything that sounds like an INSTRUMENT happens under half a semitone. Cubed, that
 // bottom half-semitone owns a third of the sweep — near enough the same exponent, for
 // near enough the same reason. See the row itself for what the numbers work out to.
+//
+// One constant for all three faces of the control: Advanced's VIB DEPTH, DuoSynth's
+// built-in VIBRATO, and the Quick pot. A taper is part of how a control READS, so the
+// same key under the same finger has to move the same way whichever panel is open —
+// Quick was the one that missed it, and a linear 0–12 put the entire library's range
+// of depths (0.05–0.35 semitones) inside the first three percent of the travel.
 const VIB_DEPTH_SCALE = 3;
 
 // Humanising has the same shape of problem again, at the smallest scale on the desk:
@@ -310,10 +339,20 @@ const HUMANISE_SCALE = 3;
 // rather than cubed — these reach further up their range than an attack time does.
 const SLOW_END_SCALE = 2;
 
-// Sample-and-hold rates spend most of their useful musical range below 1 Hz. A cubic
-// response gives those slow settings physical room on the pot without changing the Hz
-// value stored in the preset or the rate used by the engine.
-const SAMPLE_HOLD_RATE_SCALE = 3;
+// The modulators whose useful musical range lives BELOW 1 Hz on a pot that runs to eight
+// or twelve — a sample-and-hold stepping under a bar, and a chorus, whose whole repertoire
+// is the Juno's two speeds at 0.5 and 0.86 Hz. Cubic gives those slow settings physical
+// room without changing the Hz value stored in the preset or the rate used by the engine.
+//
+// One constant rather than one per control, because it is one REASON. Linear, a chorus at
+// its default 0.8 Hz sat at a tenth of the travel and the entire range anyone would set it
+// to lived inside the first fifth — a pot you cannot aim. Cubed, 0.5 Hz is at 38%, 0.8 at
+// 46% and 2 Hz at 63%, so the speeds a chorus actually has occupy the middle of the dial
+// and the fast end is still there above them.
+//
+// Squared (`SLOW_END_SCALE`) is the neighbouring case and deliberately not this one: those
+// rates reach further up their range, where these two never do.
+const SLOW_LFO_RATE_SCALE = 3;
 
 // A filter envelope's depth has to reach right across the cutoff range: from the 40 Hz
 // floor, opening the filter all the way is log2(20000/40) — nearly nine octaves — so the
@@ -441,6 +480,22 @@ const SLOPES = [-12, -24, -48];
 // CRUSH and lets everything else fall through to the same curve, which is also why any
 // preset still carrying the old word renders identically.
 const DRIVE_SHAPES = ['soft', 'fold', 'crush'];
+// Where the shaper sits relative to MRDR-3's Global Filter and Global VCA. `post` first
+// because it is the default and the chain every preset written before this one has: the
+// summed stack filtered and enveloped, and THEN driven. Ordered signal-wise from the
+// stage's point of view rather than alphabetically, and stated as two words with nothing
+// implied — a bare PRE/POST pill with no third option cannot be read as a bypass.
+const DRIVE_PLACES = ['post', 'pre'];
+// What `buildChorus` falls back to for everything MIX does not say.
+//
+// Restated here rather than imported, for the reason the synth allowlist is: the engine
+// module imports Tone and cannot be loaded in Node, so a panel that reached for it could
+// not be tested at all. That makes this a duplicated number, and a duplicated number
+// drifts — a row default out of step with the engine's `??` would open the pot at 0.8
+// over a chorus already running at something else, which is the one lie a panel must
+// never tell. tests/pot-coverage.js reads both and fails if they part company.
+export const CHORUS_DEFAULTS = { rate: 0.8, depth: 0.5, width: 1 };
+const chorused = (v) => (getAt(v, '$chorus.mix') ?? 0) > 0;
 // Attack and release take Tone's whole curve set; decay takes two and asserts on
 // anything else — see `adsr`.
 // Tone can do sine/cosine/bounce/ripple/step on attack and release, and decay types
@@ -475,8 +530,11 @@ const SHORT = {
   // the level IS, and the pill is the one place the word fits.
   filter: 'FILT', level: 'TREM', pitch: 'PITCH',
   free: 'FREE', tempo: 'TEMPO',
-  '1/64': '64TH', '1/32': '32ND', '1/16': '16TH', '1/8': '8TH',
-  '1/4': 'BEAT', '1/2': '2BEAT',
+  // Tempo divisions read as the fractions the preset stores. 64TH/BEAT/2BEAT made the
+  // row ask to be translated twice — once from the word, once back to the note value —
+  // and the fractions are short enough that all six pills fit one line.
+  '1/64': '1/64', '1/32': '1/32', '1/16': '1/16', '1/8': '1/8',
+  '1/4': '1/4', '1/2': '1/2',
   '1bar': 'BAR', '2bar': '2BAR',
   poly: 'POLY', legato: 'LEGATO', mono: 'MONO', samplehold: 'S&H',
   off: 'OFF', '1+2': '1+2', '1+3': '1+3', '1+2+3': 'ALL',
@@ -581,10 +639,10 @@ const adsr = (path, { sustain = true } = {}) => [
   // Without it, an oscillator's own pots (MRDR-3) or a WAVE/VOICING pair
   // (DuoSynth's voices) can leave the grid mid-row, and ADSR ends up split 2+2 with
   // a gap down one side instead of reading as a single block.
-  envTime(`${path}.attack`, 'ATTACK', 0.001, 0.001, secs, 0.01, 's', null, { startRow: true }),
-  envTime(`${path}.decay`, 'DECAY', 0.01, 0.01, secs, 0.2),
+  envTime(`${path}.attack`, 'ATTACK', 0.001, secs, 0.01, 's', null, { startRow: true }),
+  envTime(`${path}.decay`, 'DECAY', 0.001, secs, 0.2),
   ...(sustain ? [sustainPct(`${path}.sustain`)] : []),
-  envTime(`${path}.release`, 'RELEASE', 0.01, 0.01, secs, 0.3),
+  envTime(`${path}.release`, 'RELEASE', 0.001, secs, 0.3),
   // The SHAPE of the ramp, not just its length — the difference between a stage
   // that fades and one that snaps. See the note on `ENV_CURVES` above for why all
   // three stages are linear/exponential only. `trio` puts the three on one row, a
@@ -750,12 +808,12 @@ const pitchEnvRows = (base) => [
         + 'coin, -36 climbs into it like a laser. Zero is no bend at all' }),
   // `startRow` on ATTACK is what keeps that promise: without it the four stages flow in
   // behind AMOUNT and the block splits 3+1 across two rows with a hole down one side.
-  envTime(`$${base}attack`, 'ATTACK', 0, 0.005, secs, 0, 's',
+  envTime(`$${base}attack`, 'ATTACK', 0, secs, 0, 's',
     (v) => (getAt(v, `$${base}semitones`) ?? 0) !== 0, { startRow: true }),
-  envTime(`$${base}decay`, 'DECAY', 0, 0.005, secs, 0.06, 's',
+  envTime(`$${base}decay`, 'DECAY', 0, secs, 0.06, 's',
     (v) => (getAt(v, `$${base}semitones`) ?? 0) !== 0),
   sustainPct(`$${base}sustain`, 0, (v) => (getAt(v, `$${base}semitones`) ?? 0) !== 0),
-  envTime(`$${base}release`, 'RELEASE', 0, 0.005, secs, 0.015, 's',
+  envTime(`$${base}release`, 'RELEASE', 0, secs, 0.015, 's',
     (v) => (getAt(v, `$${base}semitones`) ?? 0) !== 0),
 ];
 
@@ -912,7 +970,7 @@ const layerGroups = () => {
           { scale: SLOW_END_SCALE,
             tip: 'How fast the width moves. Under 1 Hz is the string-machine drift; each '
               + 'layer starts on a slightly different rate so they never line up' }),
-        envTime(`$${p}.pwm.delay`, 'ONSET', 0, 0.01, secs, 0, 's',
+        envTime(`$${p}.pwm.delay`, 'ONSET', 0, secs, 0, 's',
           (v) => (getAt(v, `$${p}.pwm.depth`) ?? 0) > 0),
       ],
     });
@@ -938,8 +996,8 @@ const layerGroups = () => {
         pick(`$${p}.fm.type`, 'WAVE', NATIVE_WAVES, 'sine'),
         n(`$${p}.fm.ratio`, 'RATIO', 0.1, 12, 0.01, fixed(2), 1.4),
         n(`$${p}.fm.index`, 'INDEX', 0, 8, 0.05, fixed(2), 1),
-        envTime(`$${p}.fm.attack`, 'ATTACK', 0.001, 0.001, secs, 0.001),
-        envTime(`$${p}.fm.decay`, 'DECAY', 0, 0.01, secs, 1),
+        envTime(`$${p}.fm.attack`, 'ATTACK', 0.001, secs, 0.001),
+        envTime(`$${p}.fm.decay`, 'DECAY', 0, secs, 1),
       ],
     });
     groups.push({
@@ -974,12 +1032,12 @@ const layerGroups = () => {
       title: `Osc ${i} · Filter Env`,
       when: (v) => (i === 1 || sectionOn(v, p)) && sectionOn(v, `${p}.filter`),
       rows: [
-        envTime(`$${p}.filter.env.attack`, 'ATTACK', 0, 0.001, secs, 0.01),
-        envTime(`$${p}.filter.env.decay`, 'DECAY', 0, 0.01, secs, 1),
+        envTime(`$${p}.filter.env.attack`, 'ATTACK', 0, secs, 0.01),
+        envTime(`$${p}.filter.env.decay`, 'DECAY', 0, secs, 1),
         // Live at every DECAY, as on the amp envelope: the cutoff settles at
         // ENV AMOUNT × SUSTAIN rather than returning all the way to the cutoff.
         sustainPct(`$${p}.filter.env.sustain`, 0),
-        envTime(`$${p}.filter.env.release`, 'RELEASE', 0, 0.01, secs, 0.015),
+        envTime(`$${p}.filter.env.release`, 'RELEASE', 0, secs, 0.015),
       ],
     });
     groups.push({
@@ -1005,15 +1063,15 @@ const layerGroups = () => {
         pick(`$${p}.vca`, 'AMP', ['env', 'through'], 'env', null,
           { tip: 'ENV gives this layer its own amp envelope. THROUGH takes it out and lets '
               + 'the Global Amp shape the whole stack — the classic single-VCA synth' }),
-        envTime(`$${p}.attack`, 'ATTACK', 0, 0.001, secs, 0.01,
+        envTime(`$${p}.attack`, 'ATTACK', 0, secs, 0.01,
           's', (v) => getAt(v, `$${p}.vca`) !== 'through'),
-        envTime(`$${p}.decay`, 'DECAY', 0, 0.01, secs, 1,
+        envTime(`$${p}.decay`, 'DECAY', 0, secs, 1,
           's', (v) => getAt(v, `$${p}.vca`) !== 'through'),
         // Live at every DECAY: sustain is WHERE the fall lands, not something a short
         // decay switches off. Zero reaches silence (struck, the default); 0.7 falls only
         // that far and releases from there.
         sustainPct(`$${p}.sustain`, 0, (v) => getAt(v, `$${p}.vca`) !== 'through'),
-        envTime(`$${p}.release`, 'RELEASE', 0, 0.01, secs, 0.015,
+        envTime(`$${p}.release`, 'RELEASE', 0, secs, 0.015,
           's', (v) => getAt(v, `$${p}.vca`) !== 'through'),
         // The same three pills every Tone envelope card ends on, in the native
         // path's own two words. DEC keeps the `curve` key the engine has
@@ -1059,10 +1117,10 @@ const layerGroups = () => {
     title: 'Global · Filter Env',
     when: (v) => sectionOn(v, 'global.filter'),
     rows: [
-      envTime('$global.filter.env.attack', 'ATTACK', 0, 0.001, secs, 0.01),
-      envTime('$global.filter.env.decay', 'DECAY', 0, 0.01, secs, 1),
+      envTime('$global.filter.env.attack', 'ATTACK', 0, secs, 0.01),
+      envTime('$global.filter.env.decay', 'DECAY', 0, secs, 1),
       sustainPct('$global.filter.env.sustain', 0),
-      envTime('$global.filter.env.release', 'RELEASE', 0, 0.01, secs, 0.015),
+      envTime('$global.filter.env.release', 'RELEASE', 0, secs, 0.015),
     ],
   });
   groups.push({
@@ -1074,10 +1132,10 @@ const layerGroups = () => {
     onTip: 'Take the shared envelope out',
     offTip: 'One amp envelope over the whole stack — the note, not the layers',
     rows: [
-      envTime('$global.vca.attack', 'ATTACK', 0, 0.001, secs, 0.01),
-      envTime('$global.vca.decay', 'DECAY', 0, 0.01, secs, 1),
+      envTime('$global.vca.attack', 'ATTACK', 0, secs, 0.01),
+      envTime('$global.vca.decay', 'DECAY', 0, secs, 1),
       sustainPct('$global.vca.sustain', 1),
-      envTime('$global.vca.release', 'RELEASE', 0, 0.01, secs, 0.015),
+      envTime('$global.vca.release', 'RELEASE', 0, secs, 0.015),
       pick('$global.vca.attackCurve', 'ATK', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
       pick('$global.vca.curve', 'DEC', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
       pick('$global.vca.releaseCurve', 'REL', ['exp', 'lin'], 'exp', null, { trio: 'curve' }),
@@ -1119,8 +1177,8 @@ const layerGroups = () => {
         (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0
           && getAt(v, '$layer.lfo.sync') !== 'tempo',
         { scale: (v) => getAt(v, '$layer.lfo.type') === 'samplehold'
-          ? SAMPLE_HOLD_RATE_SCALE : 1 }),
-      envTime('$layer.lfo.delay', 'ONSET', 0, 0.01, secs, 0, 's',
+          ? SLOW_LFO_RATE_SCALE : 1 }),
+      envTime('$layer.lfo.delay', 'ONSET', 0, secs, 0, 's',
         (v) => (getAt(v, '$layer.lfo.depth') ?? 0) > 0),
     ],
   });
@@ -1132,18 +1190,54 @@ const SYNTH_GROUPS = {
    * Layered: up to three oscillator sections, each a complete voice — the shape every
    * hand-written melodic voice in scheduleStep has, editable. See `_playLayer`.
    *
-   * Drive is the drum panel's card on the same entry keys, so the two panels' DRIVE
-   * pots are provably one control rather than two that look alike.
+   * EFFECTS is the card the drum panel calls Drive, plus the two things a melodic stack
+   * has that a one-shot does not: somewhere to PUT the drive, and a chorus. SHAPE, DRIVE
+   * and TONE keep the drum's exact keys, labels and order, so those three pots are
+   * provably one control across the two panels rather than two that look alike — the card
+   * around them is wider here because there is more in it, not because they differ.
    */
   'MRDR-3': [
     ...layerGroups(),
-    { key: 'drive', title: 'Drive', rows: [
+    { key: 'effects', title: 'Effects', rows: [
       pick('$shape', 'SHAPE', DRIVE_SHAPES, 'soft'),
-      // A fresh row. SHAPE is three words, so it takes three of the card's four columns
-      // and leaves exactly one — into which DRIVE would fall, stranded beside a choice
-      // row with TONE alone underneath it. The two pots belong together.
-      n('$drive', 'DRIVE', 0, 1, 0.01, fixed(2), 0, '', null, { startRow: true }),
+      // WHERE the shaper sits relative to the Global Filter and Global VCA — see
+      // `drivePre` in `_playLayer`. POST is the chain this synth has always built and
+      // stays the default; PRE moves the shaper and TONE together in front of the global
+      // stage. Two options, so it takes two of the card's four columns and DRIVE and TONE
+      // finish the row it starts.
+      //
+      // Greyed with DRIVE at zero for the reason `toneRow` is: with no shaper there is
+      // nothing to place, so the pill would be a routing choice over an absent node.
+      //
+      // It also has nothing to say on a preset with NO global stage — the engine ignores
+      // it there, because there is nothing to be pre or post OF — but the pill stays live
+      // rather than greying on that too. A control that vanishes when the Global Filter
+      // is switched off and comes back holding its old value reads as a bug from either
+      // end, and the honest fix is that PRE on a stack with no global stage is simply
+      // POST, which is exactly what you hear.
+      pick('$drivePlace', 'PLACE', DRIVE_PLACES, 'post', drivenTone, { startRow: true }),
+      n('$drive', 'DRIVE', 0, 1, 0.01, fixed(2), 0),
       toneRow('$tone.freq', 'TONE'),
+      // ---- Chorus 2 ----------------------------------------------------------
+      //
+      // MIX first and on a fresh row, because it is the switch: the engine builds no
+      // chorus at zero, exactly as it builds no LFO at DEPTH zero. The three that shape
+      // it grey out behind it, so the card never shows four live pots for a stage that
+      // is not in the signal.
+      //
+      // RATE, DEPTH and WIDTH carry the engine's own fallbacks as their defaults, so
+      // winding MIX up hands you the chorus the engine already implied rather than
+      // silence to dig out of — the rule the optional sections follow, kept by a row
+      // default here because MIX-is-the-switch means there is no section to seed.
+      n('$chorus.mix', 'CHORUS', 0, 1, 0.01, fixed(2), 0, '', null, { startRow: true }),
+      // Cubed, for the reason written over `SLOW_LFO_RATE_SCALE`: a chorus lives under
+      // 1 Hz, and linear it opened on the tenth of the travel where nothing can be aimed.
+      // The range is the strip's own Chorus 2 insert's, unchanged — same control, same
+      // stops — so only how the travel maps to it moved.
+      n('$chorus.rate', 'RATE', 0.05, 8, 0.01, fixed(2), CHORUS_DEFAULTS.rate, 'Hz', chorused,
+        { scale: SLOW_LFO_RATE_SCALE }),
+      n('$chorus.depth', 'DEPTH', 0, 1, 0.01, fixed(2), CHORUS_DEFAULTS.depth, '', chorused),
+      n('$chorus.width', 'WIDTH', 0, 1, 0.01, fixed(2), CHORUS_DEFAULTS.width, '', chorused),
     ] },
     // No Taps card. A tap is one HIT repeated milliseconds later — a clap, a flam —
     // and no software synth puts that on a melodic voice: the strip's delay insert is
@@ -1172,14 +1266,14 @@ const SYNTH_GROUPS = {
       n('$additive.count', 'PARTIALS', 1, 9, 1, fixed(0), 9),
     ] },
     { title: 'Envelope', rows: [
-      envTime('$additive.attack', 'ATTACK', 0.001, 0.001, secs, 0.01),
+      envTime('$additive.attack', 'ATTACK', 0.001, secs, 0.01),
       // Zero reads as NOTE rather than 0ms: it is the arcade shape — an exponential fall
       // across the whole note — and a magic value you can see on the dial is a detent
       // rather than a secret. SUSTAIN stays live with it: a decay that runs to the end of
       // the note has no plateau to hold, but the fall still lands ON the sustain level.
-      envTime('$additive.decay', 'DECAY', 0, 0.01, secs, 1),
+      envTime('$additive.decay', 'DECAY', 0, secs, 1),
       sustainPct('$additive.sustain', 0),
-      envTime('$additive.release', 'RELEASE', 0, 0.01, secs, 0.015),
+      envTime('$additive.release', 'RELEASE', 0, secs, 0.015),
       // The same three-pill trio MRDR-3 and every Tone envelope end on. `curve`
       // keeps its historical name and its decay meaning — see the note over the
       // engine's own `adsr` — so every stack on file reads back unchanged; the other
@@ -1198,7 +1292,7 @@ const SYNTH_GROUPS = {
         pick('$additive.pitch.curve', 'RATE CURVE', ['exp', 'lin', 'snap'], 'exp'),
         n('$additive.pitch.from', 'FROM', 0.25, 4, 0.0001, fixed(4), 1, '×'),
         n('$additive.pitch.to', 'TO', 0.25, 4, 0.0001, fixed(4), 1, '×'),
-        envTime('$additive.pitch.sweep', 'SWEEP TIME', 0.01, 0.01, secs, 0.1),
+        envTime('$additive.pitch.sweep', 'SWEEP TIME', 0.001, secs, 0.1),
       ] },
     // The percussion register: one louder partial struck on the attack and gone long
     // before the note is. Always dry, so repeated off-beat stabs stay crisp.
@@ -1208,10 +1302,10 @@ const SYNTH_GROUPS = {
       rows: [
         n('$additive.perc.ratio', 'HARMONIC', 1, 8, 1, fixed(0), 3, '×'),
         n('$additive.perc.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 0.72),
-        envTime('$additive.perc.attack', 'ATTACK', 0.001, 0.001, secs, 0.002),
+        envTime('$additive.perc.attack', 'ATTACK', 0.001, secs, 0.002),
         // Seconds, not a fraction of the note: a real percussion register is a circuit
         // constant — fast or slow whatever the player holds.
-        envTime('$additive.perc.decay', 'DECAY', 0.005, 0.005, secs, 0.08),
+        envTime('$additive.perc.decay', 'DECAY', 0.001, secs, 0.08),
       ] },
     HUMANISE_GROUP,
   ],
@@ -1221,8 +1315,8 @@ const SYNTH_GROUPS = {
       // oscillator for the seeded buffer through a bandpass that tracks the note, so
       // every other control on the panel goes on meaning what it meant.
       { kind: 'pick', path: '$waveform', label: 'WAVE', options: ['sine', 'square', 'sawtooth', 'triangle', 'noise'], def: 'square' },
-      envTime('$attack', 'ATTACK', 0.001, 0.001, secs, 0.01),
-      envTime('$release', 'RELEASE', 0, 0.001, secs, 0.015),
+      envTime('$attack', 'ATTACK', 0.001, secs, 0.01),
+      envTime('$release', 'RELEASE', 0, secs, 0.015),
     ] },
     // What turns a waveform into an arcade cabinet: WHERE the note comes in from.
     // Defaults to off, so the presets that ship on this path are untouched.
@@ -1262,7 +1356,7 @@ const SYNTH_GROUPS = {
         // `to` equal to `freq` is what "no sweep" looks like to `_filterChain`, so the
         // pot below it stays greyed until the two differ and the ramp actually exists.
         cutoffHz('$filter.to', 'SWEEP TO', 4000),
-        envTime('$filter.sweep', 'SWEEP TIME', 0.005, 0.005, secs, 0.12, 's',
+        envTime('$filter.sweep', 'SWEEP TIME', 0.001, secs, 0.12, 's',
           (v) => v?.filter?.to != null && v.filter.to !== v.filter.freq),
       ] },
   ],
@@ -1345,7 +1439,7 @@ const SYNTH_GROUPS = {
       n('octaves', 'PITCH DROP', 0.5, 12, 0.1, fixed(1), 10, 'oct', null,
         { scale: SLOW_END_SCALE }),
       n('pitchDecay', 'DROP TIME', 0.001, 0.5, 0.001, secs, 0.05, 's', null,
-        { scale: ENV_TIME_SCALE }),
+        { scale: SHORT_TIME_SCALE }),
     ] },
     // Shape only. A kick is one oscillator swept down by `pitchDecay`; a fat stack of
     // three detuned copies of it is a chord, not a drum.
@@ -1390,8 +1484,12 @@ const NOISE_GROUPS = [
   // channel, which is what an oscillator section is.
   { title: 'Burst', rows: [
     n('$noise.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
-    pick('$noise.type', 'TYPE', FILTER_TYPES, 'bandpass'),
+    // The drum panel's Noise card exactly — same three keys, so the same order: what the
+    // noise IS, then the filter over it, in one pair. COLOUR sat BETWEEN TYPE and SLOPE
+    // here, which split the one question this card asks twice down the middle with an
+    // unrelated one. See the note there.
     pick('$noise.color', 'COLOUR', NOISE_COLORS, 'white'),
+    pick('$noise.type', 'TYPE', FILTER_TYPES, 'bandpass', null, { startRow: true }),
     pick('$noise.slope', 'SLOPE', SLOPES, -12),
     drumFilterCutoff('$noise.freq', 'CUTOFF', 2600),
     // Up to 24, where it once stopped at 8. A bandpass does not RING below about ten —
@@ -1400,7 +1498,7 @@ const NOISE_GROUPS = [
     // `engineCrash` at 15.9, so 24 keeps that headroom without the dead half `resQ` had
     // while it shared the ring resonator's range.
     drumFilterResonance('$noise.Q', '$noise.freq', 0.7),
-    envTime('$noise.decay', 'DECAY', 0.005, 0.005, secs, 0.09),
+    envTime('$noise.decay', 'DECAY', 0.001, secs, 0.09),
   ] },
   // The body is what tells a snare from a hiss, and plenty of presets genuinely have
   // none — a brush and a closed hat are all air. So it is a group you switch on.
@@ -1415,13 +1513,37 @@ const NOISE_GROUPS = [
       // the burst occupies or it is a knock underneath rather than a part of the sound.
       oscHz('$body.from', 'FREQUENCY', 210),
       oscHz('$body.to', 'SWEEP TO', 140),
-      envTime('$body.decay', 'DECAY', 0.005, 0.005, secs, 0.06),
+      envTime('$body.decay', 'DECAY', 0.001, secs, 0.06),
     ] },
   HUMANISE_GROUP,
   { title: 'Taps', taps: true },
 ];
 
 const BODY_DEFAULT = { type: 'triangle', from: 210, to: 140, decay: 0.06, gain: 0.375 };
+
+/**
+ * How deep the drum's FM switch comes on — a colour, not a different instrument.
+ *
+ * INDEX is depth in HERTZ stated as a multiple of the carrier (see `_playDrum`): at 1 the
+ * modulator swings the oscillator by its whole starting frequency either way. That is
+ * not a strong setting, it is total — measured on `dsKick`, `dsSnare` and `dsRim`, an
+ * index of 1 at the default 1.4 ratio changes about half the render's own energy
+ * (−6 dB of difference against the unmodulated hit), and a kick comes back as a clang.
+ * The switch was seeded there, so throwing it did not add FM to the drum, it replaced
+ * the drum. Nobody switches a section on to hear a different preset.
+ *
+ * 0.2 is the same sound with an edge on it — around −15 to −19 dB of difference on those
+ * three, which is a timbre you can hear arrive and still recognise the drum through. From
+ * there the pot goes to 8, and the two presets in the catalogue that actually use drum FM
+ * (`rimClang`, `clapFm`) sit at 2.2 for thirty milliseconds, which is what the top of that
+ * range is FOR.
+ *
+ * Zero was the other candidate and is what the section-default rule below would say on
+ * its own — the engine implies no modulator at all. It is rejected because it makes the
+ * switch inaudible, and a control that does nothing when you throw it is the same bug
+ * reported from the other end.
+ */
+const FM_INDEX_SEED = 0.2;
 
 /**
  * A drum-synth preset: the Microtonic construction. Two sources, each with its own
@@ -1450,12 +1572,18 @@ const DRUM_GROUPS = [
     rows: [
       n('$osc.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       pick('$osc.type', 'WAVE', WAVES, 'sine'),
-      pick('$osc.curve', 'CURVE', ['exp', 'lin'], 'exp'),
+      // `door: 'curve'` — behind the card's curve button in the full window, drawn as the
+      // shapes they are, exactly as MRDR-3's stage curves. A curve is set once and then
+      // never touched, and two of them were costing two full-width rows on the card with
+      // the most in it. On the STRIP they stay ordinary rows: there is no header there to
+      // hang a door on. See `curvePanel`.
+      pick('$osc.curve', 'CURVE', ['exp', 'lin'], 'exp', null, { door: 'curve' }),
       // Named for the RATE knob it shapes rather than called a second CURVE: this one is
       // the pitch drop, the one above it is the level. `snap` is the analogue drum
       // machine's own pitch envelope — hardest at the start, settled before the tail —
       // and it is the difference between a kick that clicks and one that goes boing.
-      pick('$osc.pitchCurve', 'RATE CURVE', ['exp', 'lin', 'snap'], 'exp'),
+      pick('$osc.pitchCurve', 'RATE CURVE', ['exp', 'lin', 'snap'], 'exp', null,
+        { door: 'curve' }),
       // The engine kick's mid punch, as a level and nothing else — a fixed 300→180 Hz
       // triangle, up in 4ms and gone in 50. It is the second oscillator a kick needs
       // and the only one, so it is a pot rather than a section. Zero builds nothing.
@@ -1487,14 +1615,29 @@ const DRUM_GROUPS = [
       // sweep in 4 — under the pot's bottom AND off its grid, so the panel could neither
       // show what they hold nor put it back. `pitchRamp` reads whatever is stored, so the
       // range was the only thing saying 4ms was impossible.
-      envTime('$osc.sweep', 'SWEEP TIME', 0, 0.001, secs, 0.07, 's', null,
+      envTime('$osc.sweep', 'SWEEP TIME', 0, secs, 0.07, 's', null,
         { tip: 'How long the pitch takes to travel the AMOUNT' }),
       // Zero is a real setting here, not an absent one: `env()` reads `sec.attack ?? 0.001`,
       // so a stored 0 is honoured and means no ramp at all — which is what the three VL-1
       // pipe voices are. A 1ms floor made that unreachable and unshowable.
-      envTime('$osc.attack', 'ATTACK', 0, 0.001, secs, 0.001),
-      envTime('$osc.hold', 'HOLD', 0, 0.001, secs, 0),
-      envTime('$osc.decay', 'DECAY', 0.01, 0.005, secs, 0.35),
+      //
+      // `startRow` on every drum ATTACK, for the reason `adsr` has it: the envelope is a
+      // BLOCK — attack, hold, decay, sag — and flowed in behind however many pots the
+      // source happened to leave on the line, it broke across two rows at one card width
+      // and read as one continuous smear at another. On its own row it is the same four
+      // controls in the same place on all five sections, whatever sits above them.
+      //
+      // `foot` is the same claim made one level up, and only the full window can honour
+      // it: the envelope is the LAST block on the card, so it hangs from the floor rather
+      // than from whatever the source rows above it happened to leave. Five sections of
+      // very different lengths then read their envelopes off ONE line across the band —
+      // the alignment `startRow` gives the block inside a card, given to the band. The
+      // strip ignores it and draws one continuous grid, because a scroll has no floor to
+      // hang from. See `foot` in `buildDrumFullLayout`.
+      envTime('$osc.attack', 'ATTACK', 0, secs, 0.001, 's', null,
+        { startRow: true, foot: true }),
+      envTime('$osc.hold', 'HOLD', 0, secs, 0),
+      envTime('$osc.decay', 'DECAY', 0.001, secs, 0.35),
       // The two-stage decay, as one pot: the level the section drops to in the first
       // 20ms before the rest of DECAY carries it down. Zero is one plain decay, which
       // is what every preset written before this had. It is what makes a drum read as
@@ -1510,26 +1653,47 @@ const DRUM_GROUPS = [
     rows: [
       pick('$osc.fm.type', 'WAVE', WAVES, 'sine'),
       n('$osc.fm.ratio', 'RATIO', 0.1, 12, 0.01, fixed(2), 1.4),
-      n('$osc.fm.index', 'INDEX', 0, 8, 0.05, fixed(2), 1),
-      envTime('$osc.fm.attack', 'ATTACK', 0.001, 0.001, secs, 0.001),
-      envTime('$osc.fm.decay', 'DECAY', 0.005, 0.005, secs, 0.35),
+      // Resets to what the switch seeds — see FM_INDEX_SEED. A double-click that landed
+      // somewhere the switch never goes would make "put it back" a third value.
+      n('$osc.fm.index', 'INDEX', 0, 8, 0.05, fixed(2), FM_INDEX_SEED),
+      envTime('$osc.fm.attack', 'ATTACK', 0.001, secs, 0.001, 's', null,
+        { startRow: true, foot: true }),
+      envTime('$osc.fm.decay', 'DECAY', 0.001, secs, 0.35),
     ] },
   { key: 'noise', title: 'Noise', optional: 'noise',
     onTip: 'Take the noise half out — the oscillator on its own',
     offTip: 'Put the seeded noise source back in',
     rows: [
       n('$noise.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
-      pick('$noise.type', 'TYPE', FILTER_TYPES, 'bandpass'),
-      pick('$noise.curve', 'CURVE', ['exp', 'lin'], 'exp'),
+      // COLOUR FIRST, directly under LEVEL — where WAVE sits on the Oscillator and on
+      // Metal, and for the same reason: it is the one pick that says what the source IS,
+      // and the filter under it is what is then DONE to it. It was last on the card, below
+      // the filter, which read as though the noise were being coloured after it had been
+      // shaped — backwards from both the signal path and every other source card here.
+      //
+      // TYPE and SLOPE stay ADJACENT, and TYPE starts a fresh line so that COLOUR cannot
+      // take it as a partner. They are one question asked twice — what shape of filter,
+      // and how steeply — so the full window pairs them onto one line the way it does on
+      // every other filter card on the desk, and it can only pair rows that are
+      // neighbours: without the break, COLOUR would pair with TYPE and leave SLOPE
+      // stranded on a line of its own. COLOUR wants the whole width for its five words
+      // anyway. See `pairChoices` and `startRow`.
       pick('$noise.color', 'COLOUR', NOISE_COLORS, 'white'),
+      pick('$noise.type', 'TYPE', FILTER_TYPES, 'bandpass', null, { startRow: true }),
       pick('$noise.slope', 'SLOPE', SLOPES, -12),
+      pick('$noise.curve', 'CURVE', ['exp', 'lin'], 'exp', null, { door: 'curve' }),
       drumFilterCutoff('$noise.freq', 'CUTOFF', 2600),
       drumFilterCutoff('$noise.to', 'SWEEP TO', 2600),
-      envTime('$noise.sweep', 'SWEEP TIME', 0.005, 0.005, secs, 0.12),
+      envTime('$noise.sweep', 'SWEEP TIME', 0.001, secs, 0.12),
       drumFilterResonance('$noise.Q', '$noise.freq', 0.7),
-      envTime('$noise.attack', 'ATTACK', 0.001, 0.001, secs, 0.001),
-      envTime('$noise.hold', 'HOLD', 0, 0.001, secs, 0),
-      envTime('$noise.decay', 'DECAY', 0.005, 0.005, secs, 0.12),
+      // Floor 0.1ms, not 1ms: the engine takes `attack` raw (`sec.attack ?? 0.001`
+      // is a fallback, not a clamp), and `dsKickHard` ships 0.343ms — a pot that
+      // cannot reach a factory preset's own value rewrites it on first touch, which
+      // is exactly what tests/pot-coverage.js exists to forbid.
+      envTime('$noise.attack', 'ATTACK', 0.0001, secs, 0.001, 's', null,
+        { startRow: true, foot: true }),
+      envTime('$noise.hold', 'HOLD', 0, secs, 0),
+      envTime('$noise.decay', 'DECAY', 0.001, secs, 0.12),
       n('$noise.sag', 'SAG', 0, 1, 0.01, fixed(2), 0),
     ] },
   // A click into a very narrow filter: struck, then ringing. Where the noise section
@@ -1541,18 +1705,19 @@ const DRUM_GROUPS = [
     rows: [
       n('$ring.gain', 'LEVEL', 0, 2, 0.01, fixed(2), 1),
       pick('$ring.type', 'TYPE', FILTER_TYPES, 'bandpass'),
-      pick('$ring.curve', 'CURVE', ['exp', 'lin'], 'exp'),
+      pick('$ring.curve', 'CURVE', ['exp', 'lin'], 'exp', null, { door: 'curve' }),
       drumFilterFrequency('$ring.freq', 'FREQUENCY', 400),
       drumFilterFrequency('$ring.to', 'SWEEP TO', 400),
       // The one that changes what it IS rather than how it sounds: a couple of
       // milliseconds is a stick, twenty is a mallet, past fifty it is a burst again.
       n('$ring.hit', 'STRIKE', 0.0005, 0.05, 0.0005, secs, 0.002, 's', null,
-        { scale: ENV_TIME_SCALE }),
+        { scale: SHORT_TIME_SCALE }),
       // `ringQ`, not `resQ` — this is the one RESONANCE on the desk that runs to 120,
       // because here the Q is the MATERIAL rather than a filter setting. See its note.
       drumRingResonance('$ring.Q', '$ring.freq', 40),
-      envTime('$ring.attack', 'ATTACK', 0.001, 0.001, secs, 0.001),
-      envTime('$ring.decay', 'DECAY', 0.005, 0.005, secs, 0.25),
+      envTime('$ring.attack', 'ATTACK', 0.001, secs, 0.001, 's', null,
+        { startRow: true, foot: true }),
+      envTime('$ring.decay', 'DECAY', 0.001, secs, 0.25),
       n('$ring.sag', 'SAG', 0, 1, 0.01, fixed(2), 0),
     ] },
   // Six squares at inharmonic ratios through a highpass — the 808's cymbal circuit.
@@ -1572,8 +1737,9 @@ const DRUM_GROUPS = [
       n('$metal.count', 'PARTIALS', 1, 6, 1, fixed(0), 6),
       drumFilterCutoff('$metal.hp', 'CUTOFF', 3000),
       drumFilterResonance('$metal.Q', '$metal.hp', 0.7),
-      envTime('$metal.attack', 'ATTACK', 0.001, 0.001, secs, 0.001),
-      envTime('$metal.decay', 'DECAY', 0.005, 0.005, secs, 0.2),
+      envTime('$metal.attack', 'ATTACK', 0.001, secs, 0.001, 's', null,
+        { startRow: true, foot: true }),
+      envTime('$metal.decay', 'DECAY', 0.001, secs, 0.2),
       n('$metal.sag', 'SAG', 0, 1, 0.01, fixed(2), 0),
     ] },
   { key: 'drive', title: 'Drive', rows: [
@@ -1597,8 +1763,11 @@ const SECTION_DEFAULTS = {
   ring: { type: 'bandpass', freq: 400, Q: 40, hit: 0.002, attack: 0.001, decay: 0.25, curve: 'exp', gain: 1 },
   metal: { wave: 'square', freq: 800, spread: 1, count: 6, hp: 3000, Q: 0.7, attack: 0.001, decay: 0.2, gain: 1 },
   // The modulator hangs off the oscillator rather than off the entry, which is the one
-  // section here whose key is a path — see `addSection`.
-  'osc.fm': { type: 'sine', ratio: 1.4, index: 1, decay: 0.35 },
+  // section here whose key is a path — see `addSection`. Its depth is the one value in
+  // this table that cannot come from an engine fallback, because the engine's fallback
+  // for a missing modulator is no modulator — see FM_INDEX_SEED for what it opens on
+  // instead and why.
+  'osc.fm': { type: 'sine', ratio: 1.4, index: FM_INDEX_SEED, decay: 0.35 },
   // No `humanize` here any more, and no `layer.lfo` or `layer.oscN.pwm` below: those
   // three cards lost their switch, because their DEPTH pot at zero already was one. A
   // section with no switch is never added, so a default for adding it would be a value
@@ -1880,18 +2049,23 @@ const withParts = (rows) => rows.map((r) => (
   { ...r, part: VIBRATO_PART.has(r.path) ? 'vibrato' : 'settings' }));
 
 /**
- * The Note card's last two rows, and then its vibrato, in that order.
+ * The Note card's two choice rows, and then its vibrato, in that order.
  *
- * The card now reads in three blocks: level/tuning, then how a sustained note is played
- * (key mode and glide), and then the one thing that is not a property of the note at all
- * but something done TO it — vibrato. Note length moved to the piano roll, where it is
- * edited per note instead of per preset.
+ * The card reads in three blocks: the pots — level, tuning and GLIDE — then the two
+ * choices that say how a sustained note is played, and then the one thing that is not a
+ * property of the note at all but something done TO it, vibrato. Note length moved to
+ * the piano roll, where it is edited per note instead of per preset.
  *
- * Ordered HERE rather than by moving the declarations, because GLIDE and KEY MODE do not
- * share a condition with the vibrato rows that follow them. Re-ordering the built list
- * changes where a row sits and nothing about when it exists.
+ * GLIDE is deliberately NOT named here, and that omission is the whole of what puts it
+ * in the top row of pots: a path in this list goes last, a path that is absent keeps its
+ * declaration order, so `$portamento` lands directly after `$fine` however far down the
+ * file it happens to be written.
+ *
+ * Ordered HERE rather than by moving the declarations, because KEY MODE and OSC SYNC do
+ * not share a condition with the vibrato rows that follow them. Re-ordering the built
+ * list changes where a row sits and nothing about when it exists.
  */
-const NOTE_TAIL = ['$mode', '$portamento', '$sync'];
+const NOTE_TAIL = ['$mode', '$sync'];
 const noteOrder = (rows) => {
   const tail = [...NOTE_TAIL, ...rows.filter((r) => r.part === 'vibrato').map((r) => r.path)];
   const moved = new Set(tail);
@@ -1950,9 +2124,10 @@ const commonRows = (voice = {}) => noteOrder(withParts([
     // the travel and clicking the number types an exact one. And raising a maximum moves
     // no preset — every stored value is what it was, there is simply more travel above
     // it — which is the same trade FIXED LENGTH made when its ceiling went to four.
-    // A fresh row, so the four VIB pots read as the block they are. Flowing in behind
-    // GLIDE, the vibrato began mid-row under a heading it has nothing to do with — and
-    // the whole point of moving it to the bottom was to stop it being interleaved.
+    // A fresh row, so the four VIB pots read as the block they are. A patch with no OSC
+    // SYNC leaves KEY MODE holding half a line by itself, and without this VIB DEPTH
+    // flows into the other half — the vibrato beginning mid-row beside a heading it has
+    // nothing to do with, which is the interleaving that moving it down here undid.
     n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi',
       null, { scale: VIB_DEPTH_SCALE, startRow: true }),
     n('$vibrato.rate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz',
@@ -1962,7 +2137,7 @@ const commonRows = (voice = {}) => noteOrder(withParts([
     // honours it; the Tone path's LFO lives in the pool and free-runs across notes, with
     // no note-on for a delay to be measured from — hence the `when`, which greys it there
     // rather than offering a control that would silently do nothing.
-    envTime('$vibrato.delay', 'VIB DELAY', 0, 0.01, secs, 0, 's',
+    envTime('$vibrato.delay', 'VIB DELAY', 0, secs, 0, 's',
       (v) => vibratoOn(v) && NATIVE_SYNTHS.includes(v?.synth)),
     // The ensemble control. At zero every unison voice wobbles at one rate in one phase,
     // which is one singer through a chorus however many oscillators are running; wound up,
@@ -1996,11 +2171,13 @@ const commonRows = (voice = {}) => noteOrder(withParts([
       read: keyMode,
       write: writeKeyMode,
     }),
-    // A fresh row, which is what leaves KEY MODE alone on its own. KEY MODE is a choice
-    // row and takes three of the card's four columns, so without this GLIDE drops into
-    // the one column left over and the played-how block starts halfway along a line.
-    n('$portamento', 'GLIDE', 0, 0.5, 0.005, secs, 0, '', (v) => keyMode(v) !== 'poly',
-      { scale: ENV_TIME_SCALE, startRow: true }),
+    // Drawn in the TOP row of pots, beside TRIM/TRANSPOSE/FINE, which is where `noteOrder`
+    // puts it — see `NOTE_TAIL`. Four pots is exactly a row, so the card opens with one
+    // full line of knobs and the choice rows below it are choices and nothing else.
+    // It sat under KEY MODE before, on a fresh row of its own: a single pot on a line
+    // that a greyed-out POLY patch left looking like a gap in the card.
+    n('$portamento', 'GLIDE', 0, 0.5, ENV_TIME_STEP, secs, 0, '', (v) => keyMode(v) !== 'poly',
+      { scale: SHORT_TIME_SCALE }),
   ] : []),
   ...(voice?.synth === 'MRDR-3' ? [
     pick('$sync', 'OSC SYNC', OSC_SYNC_MODES, 'off', null, {
@@ -2166,7 +2343,7 @@ const collectiveRow = (path, label, stage, pathsOf, { min = 0, def = 0 } = {}) =
       projected: null,
     };
   };
-  return envTime(path, label, min, min === 0 ? 0.01 : 0.001, secs, def, 's', null, {
+  return envTime(path, label, min, secs, def, 's', null, {
     read: (_raw, voice) => collectiveRead(voice, pathsOf(voice, stage)),
     write: (x, voice) => {
       const paths = pathsOf(voice, stage);
@@ -2200,7 +2377,13 @@ const collectiveRow = (path, label, stage, pathsOf, { min = 0, def = 0 } = {}) =
       const projected = [];
       for (const item of baseline.values) {
         const next = baseline.anchor > 0 ? item.value * ratio : x;
-        const value = Math.min(ENV_MAX_SECONDS, Math.max(0, next));
+        // Scaled proportionally, a short stage under a macro pulled right down lands on
+        // a length no pot on the panel can reach or show — a third of a millisecond,
+        // written by a knob and then invisible to the knob that owns it. So a stage that
+        // is still ON is held at the same 1ms floor its own pot has; a stage the ratio
+        // takes to nothing is still allowed to be nothing.
+        const scaled = Math.min(ENV_MAX_SECONDS, Math.max(0, next));
+        const value = scaled > 0 && scaled < ENV_TIME_STEP ? ENV_TIME_STEP : scaled;
         setAt(voice, item.path, value);
         projected.push({ path: item.path, value });
       }
@@ -2223,74 +2406,74 @@ const collectiveRow = (path, label, stage, pathsOf, { min = 0, def = 0 } = {}) =
 // relationships stay intact. A drum filter's sweep destination travels with its cutoff;
 // filter-envelope amounts, Q, type and slope deliberately do not.
 const TONE_ENGINE_DEFAULT_FREQ = 8000;
-const brightnessTarget = (path, def, { companions = [], section = null } = {}) => ({
+const quickCutoffTarget = (path, def, { companions = [], section = null } = {}) => ({
   path, def, companions, section,
 });
 
-const mrdrBrightnessTargets = (voice) => {
+const mrdrCutoffTargets = (voice) => {
   const targets = [];
   for (let i = 1; i <= 3; i++) {
     const base = `layer.osc${i}`;
     if (!sectionOn(voice, base) || (getAt(voice, `$${base}.gain`) ?? 1) <= 0) continue;
     if (sectionOn(voice, `${base}.filter`)) {
-      targets.push(brightnessTarget(`$${base}.filter.freq`, 1150));
+      targets.push(quickCutoffTarget(`$${base}.filter.freq`, 1150));
     }
   }
   if (sectionOn(voice, 'global.filter')) {
-    targets.push(brightnessTarget('$global.filter.freq', 1150));
+    targets.push(quickCutoffTarget('$global.filter.freq', 1150));
   }
   if (drivenTone(voice) && sectionOn(voice, 'tone')) {
-    targets.push(brightnessTarget('$tone.freq', TONE_ENGINE_DEFAULT_FREQ, { section: 'tone' }));
+    targets.push(quickCutoffTarget('$tone.freq', TONE_ENGINE_DEFAULT_FREQ, { section: 'tone' }));
   }
   // Keep the useful legacy capability for a driven, otherwise unfiltered patch: the first
-  // Brightness move can create the Drive Tone. Once any real
+  // Quick CUTOFF move can create the Drive Tone. Once any real
   // filter is present, creating a new post-drive node behind the user's back would make a
   // collective control unexpectedly change the signal topology.
   if (!targets.length && drivenTone(voice)) {
-    targets.push(brightnessTarget('$tone.freq', CUTOFF_MAX, { section: 'tone' }));
+    targets.push(quickCutoffTarget('$tone.freq', CUTOFF_MAX, { section: 'tone' }));
   }
   return targets;
 };
 
-const drumBrightnessTargets = (voice) => {
+const drumCutoffTargets = (voice) => {
   const targets = [];
   if (sectionOn(voice, 'noise')) {
-    targets.push(brightnessTarget('$noise.freq', 2600, {
+    targets.push(quickCutoffTarget('$noise.freq', 2600, {
       companions: [{ path: '$noise.to', def: 2600 }],
     }));
   }
   if (sectionOn(voice, 'metal')) {
-    targets.push(brightnessTarget('$metal.hp', 3000, {
+    targets.push(quickCutoffTarget('$metal.hp', 3000, {
       companions: [{ path: '$metal.hpTo', def: 3000 }],
     }));
   }
-  // Ring FREQ and Metal FREQ are pitched resonators/oscillator bases, not brightness
-  // controls. Tune owns those values; Brightness owns only their actual filter cutoffs.
+  // Ring FREQ and Metal FREQ are pitched resonators/oscillator bases, not filter
+  // controls. TUNE owns those values; CUTOFF owns only their actual filter cutoffs.
   if (drivenTone(voice) && sectionOn(voice, 'tone')) {
-    targets.push(brightnessTarget('$tone.freq', TONE_ENGINE_DEFAULT_FREQ, { section: 'tone' }));
+    targets.push(quickCutoffTarget('$tone.freq', TONE_ENGINE_DEFAULT_FREQ, { section: 'tone' }));
   }
   if (!targets.length && drivenTone(voice)) {
-    targets.push(brightnessTarget('$tone.freq', CUTOFF_MAX, { section: 'tone' }));
+    targets.push(quickCutoffTarget('$tone.freq', CUTOFF_MAX, { section: 'tone' }));
   }
   return targets;
 };
 
-const brightnessTargets = (voice) => voice?.kind === 'drum'
-  ? drumBrightnessTargets(voice)
-  : voice?.synth === 'MRDR-3' ? mrdrBrightnessTargets(voice) : [];
+const quickCutoffTargets = (voice) => voice?.kind === 'drum'
+  ? drumCutoffTargets(voice)
+  : voice?.synth === 'MRDR-3' ? mrdrCutoffTargets(voice) : [];
 
-const brightnessValue = (voice, target) => {
+const quickCutoffValue = (voice, target) => {
   const raw = getAt(voice, target.path);
   const value = Number(raw ?? target.def);
   return Number.isFinite(value) ? Math.min(CUTOFF_MAX, Math.max(20, value)) : target.def;
 };
 
-const brightnessRead = (voice, targets = brightnessTargets(voice)) => {
+const quickCutoffRead = (voice, targets = quickCutoffTargets(voice)) => {
   if (!targets.length) return CUTOFF_MAX;
-  return Math.min(...targets.map((target) => brightnessValue(voice, target)));
+  return Math.min(...targets.map((target) => quickCutoffValue(voice, target)));
 };
 
-const brightnessItems = (voice, targets) => targets.flatMap((target) => {
+const quickCutoffItems = (voice, targets) => targets.flatMap((target) => {
   const paths = [
     { path: target.path, def: target.def, required: true },
     ...target.companions.map((item) => ({ ...item, required: false })),
@@ -2309,11 +2492,11 @@ const brightnessItems = (voice, targets) => targets.flatMap((target) => {
   });
 });
 
-const brightnessProjection = (voice, targets) => brightnessItems(voice, targets)
+const quickCutoffProjection = (voice, targets) => quickCutoffItems(voice, targets)
   .map(({ path, raw, present }) => ({ path, raw, present }));
 
-const sameBrightnessProjection = (voice, targets, projection) => {
-  const current = brightnessProjection(voice, targets);
+const sameQuickCutoffProjection = (voice, targets, projection) => {
+  const current = quickCutoffProjection(voice, targets);
   return current.length === projection.length && current.every((item, i) => {
     const expected = projection[i];
     return item.path === expected.path && item.present === expected.present
@@ -2321,11 +2504,11 @@ const sameBrightnessProjection = (voice, targets, projection) => {
   });
 };
 
-const brightnessRow = () => {
+const quickCutoffRow = () => {
   const baselines = new WeakMap();
   const capture = (voice, targets) => ({
-    anchor: brightnessRead(voice, targets),
-    values: brightnessItems(voice, targets),
+    anchor: quickCutoffRead(voice, targets),
+    values: quickCutoffItems(voice, targets),
     sections: targets.filter((target) => target.section).map((target) => ({
       key: target.section,
       present: sectionOn(voice, target.section),
@@ -2346,21 +2529,22 @@ const brightnessRow = () => {
     }
   };
 
-  // BRIGHTNESS, not CUTOFF. The naming standard reserves CUTOFF for a knob that moves
-  // ONE filter's frequency, and this moves every active one at once — the layer filters,
-  // the global filter and the Drive Tone, by a shared ratio. Calling it CUTOFF put a
-  // control on Quick that looks like the one in Advanced and does something else, which
-  // is the one thing a shared name must never do. The path has said `brightness` all
-  // along; only the face of it lagged.
-  return cutoffHz('$quick.brightness', 'BRIGHTNESS', CUTOFF_MAX,
-    (voice) => brightnessTargets(voice).length > 0, {
-      read: (_raw, voice) => brightnessRead(voice),
+  // CUTOFF, not BRIGHTNESS. The panel speaks the standard synth vocabulary the rest of
+  // the desk is written in, and a filter frequency knob is a CUTOFF wherever it appears.
+  // What is different here is the SCOPE, not the parameter: Quick is the whole-voice view,
+  // so its CUTOFF moves every active filter — the layer filters, the global filter and
+  // the Drive Tone — by a shared ratio, where the Advanced card's CUTOFF moves the one
+  // filter that card is about. Scope is what Quick and Advanced already differ by on
+  // ATTACK, DECAY and RELEASE, and it needs no second name here either.
+  return cutoffHz('$quick.cutoff', 'CUTOFF', CUTOFF_MAX,
+    (voice) => quickCutoffTargets(voice).length > 0, {
+      read: (_raw, voice) => quickCutoffRead(voice),
       write: (x, voice) => {
-        const targets = brightnessTargets(voice);
+        const targets = quickCutoffTargets(voice);
         if (!targets.length) return SKIP_WRITE;
         let baseline = baselines.get(voice);
         const changedElsewhere = baseline?.projected
-          && !sameBrightnessProjection(voice, targets, baseline.projected);
+          && !sameQuickCutoffProjection(voice, targets, baseline.projected);
         if (!baseline || changedElsewhere) {
           baseline = capture(voice, targets);
           baselines.set(voice, baseline);
@@ -2391,7 +2575,7 @@ const brightnessRow = () => {
           const next = Math.min(CUTOFF_MAX, Math.max(20, item.value * ratio));
           setAt(voice, item.path, next);
         }
-        baseline.projected = brightnessProjection(voice, targets);
+        baseline.projected = quickCutoffProjection(voice, targets);
         return SKIP_WRITE;
       },
     });
@@ -2430,11 +2614,15 @@ const releaseQuickFilterIfSeed = (voice) => {
   releaseHold(voice, QUICK_FILTER_HOLD);
 };
 
-// FILTER SWEEP rather than ENV AMOUNT: the naming standard already calls
-// `filterEnvelope.octaves` a SWEEP wherever else it appears (docs/synth-preset-parameters.md),
-// and the path here has said `filterSweep` all along. One control, one word for it.
-const quickFilterSweep = () => n('$quick.filterSweep', 'FILTER SWEEP', -ENV_OCT_MAX,
-  ENV_OCT_MAX, 0.1, semis, 0, 'oct', null, {
+// ENV AMOUNT, the Roland name the Advanced Global Filter card already uses for this
+// exact key. Quick writes `global.filter.env.octaves` and so does that card, so the two
+// faces of one parameter must read the same — a Quick pot called FILTER SWEEP was a
+// second name for a control the user can see spelled ENV AMOUNT one tab away.
+// No `oct` after the name. Quick's four columns are 79px wide and the unit is what
+// pushed ENV AMOUNT past the end of one; the octaves are still what the pot counts, and
+// the Advanced card it mirrors still spells the unit out on a card wide enough to hold it.
+const quickEnvAmount = () => n('$quick.envAmount', 'ENV AMOUNT', -ENV_OCT_MAX,
+  ENV_OCT_MAX, 0.1, semis, 0, '', null, {
     origin: 0, scale: ENV_OCT_SCALE,
     read: (_raw, voice) => voice.global?.filter?.env?.octaves ?? 0,
     write: (x, voice) => {
@@ -2457,10 +2645,40 @@ const quickResonance = () => resQ('$quick.resonance', 0.7, null, {
   },
 });
 
+/**
+ * Eight, said once.
+ *
+ * The Quick pot and the Taps card's stepper are two ways to the same key, so a ceiling
+ * either one of them did not share would be a control that stops where the other one
+ * carries on — the pot clamped here, the stepper counting past it, and a preset the pot
+ * could no longer show. Past it the repeats are a roll rather than a clap, and that is
+ * what a rate is for.
+ *
+ * SIX, down from eight. The catalogue's longest is `noiseSweep` at exactly six, so no
+ * preset loses a tap it already has, and six is what the card can hold at a glance: the
+ * table splits into two blocks of three, which fits the drawer without scrolling. Seven
+ * and eight were reachable and never reached — and a ceiling nothing uses is a ceiling
+ * that only ever costs the layout.
+ */
+const MAX_TAPS = 6;
 const tapCount = (voice) => Array.isArray(voice.taps) && voice.taps.length ? voice.taps.length : 1;
+
+/**
+ * What the full window's TAPS door is called — the count, when there is one to say.
+ *
+ * `TAPS` at a single tap and `TAPS 3` at three. A door that always read TAPS would hide
+ * the one thing about this card you need without opening it: whether the sound is one tap
+ * or a clap. A door that always carried a number would put `TAPS 1` on ninety percent of
+ * the catalogue, which is a count of nothing dressed as a setting.
+ *
+ * Written once and used twice — the layout names the button, and the popover renames it
+ * in place when the stepper inside changes the count without a re-layout. Two spellings
+ * of the same rule is how the button and the panel behind it come to disagree.
+ */
+const tapsDoorLabel = (voice) => (tapCount(voice) > 1 ? `TAPS ${tapCount(voice)}` : 'TAPS');
 const QUICK_TAPS_HOLD = '$quick.taps';
 const setTapCount = (voice, target) => {
-  const count = Math.max(1, Math.min(8, Math.round(target)));
+  const count = Math.max(1, Math.min(MAX_TAPS, Math.round(target)));
   const before = tapCount(voice);
   if (count < before && !holdOn(voice, QUICK_TAPS_HOLD)) {
     (voice[HELD] ||= {})[QUICK_TAPS_HOLD] = {
@@ -2508,10 +2726,10 @@ export const quickRows = (voice) => {
         { min: 0.001, def: 0.001 }),
       collectiveRow('$quick.decay', 'DECAY', 'decay', drumStagePaths,
         { min: 0, def: 0.12 }),
-      brightnessRow(),
+      quickCutoffRow(),
       ...(getAt(voice, '$osc') ? [n('$knock', 'PUNCH', 0, 1, 0.01, fixed(2), 0)] : []),
       n('$drive', 'DRIVE', 0, 1, 0.01, fixed(2), 0),
-      n('$quick.taps', 'HITS', 1, 8, 1, (x) => String(Math.round(x)), 1, '', null, {
+      n('$quick.taps', 'TAPS', 1, MAX_TAPS, 1, (x) => String(Math.round(x)), 1, '', null, {
         read: (_raw, v) => tapCount(v),
         write: (x, v) => { setTapCount(v, x); return SKIP_WRITE; },
       }),
@@ -2527,10 +2745,17 @@ export const quickRows = (voice) => {
       { min: 0, def: 1 }),
     collectiveRow('$quick.release', 'RELEASE', 'release', mrdrStagePaths,
       { min: 0, def: 0.015 }),
-    brightnessRow(),
-    quickFilterSweep(),
+    quickCutoffRow(),
     quickResonance(),
-    n('$vibrato.depth', 'VIBRATO', 0, 12, 0.01, fixed(2), 0, 'semi'),
+    quickEnvAmount(),
+    // The same key, the same range and the same taper the Advanced VIB DEPTH pot has —
+    // every other Quick pot inherits its curve from the helper it shares with Advanced
+    // (`envTime`, `cutoffHz`, `resQ`), and this one is written out longhand, so it has
+    // to say so. Cubed, 0.1 semitones sits a fifth of the way round instead of at one
+    // percent, which is the difference between aiming a singer's wobble and jumping
+    // clean over it with the smallest move the mouse can make.
+    n('$vibrato.depth', 'VIBRATO', 0, 12, 0.01, fixed(2), 0, 'semi', null,
+      { scale: VIB_DEPTH_SCALE }),
   ];
 };
 
@@ -2626,6 +2851,31 @@ const FULL_TITLES = {
  */
 const MIXER_ROWS = ['ratio', 'detune', 'unison', 'spread', 'stereo', 'len', 'delay'];
 
+/**
+ * THE DRUM SYNTH'S FULL WINDOW: six tall columns, one band, no scroll.
+ *
+ * It was nine cards on three bands, each card a third of the window wide. A third of
+ * 1600px is 525 pixels, which is eight pot columns — so every section drew its four
+ * source pots and its four envelope pots on ONE line, and the four that shape the level
+ * over time sat in the same undifferentiated row as the four that say what is being
+ * shaped. Wide cards did that; nothing else. The same eight pots in a 259px column are
+ * two rows of four, with the envelope on its own (see `startRow` on every drum ATTACK),
+ * and the card is read down the way a signal path is read.
+ *
+ * So the cards halve in width and roughly double in height, and the window holds them
+ * side by side in one band instead of stacking three bands of squat ones. Two joins make
+ * six columns out of nine cards, and both are the same move the MRDR-3 window already
+ * makes — a section that only ever qualifies another section is a sub-section OF it, not
+ * a card of its own:
+ *
+ *   · FM goes under the OSCILLATOR it bends. It is the modulator of that one source and
+ *     nothing else, exactly as PWM and FM hang off an MRDR-3 layer's wave.
+ *   · DRIVE and HUMANISE go under MASTER. Both act on the finished hit rather than on
+ *     any one source, which is what MASTER is: trim, tune, and what happens to the sum.
+ *
+ * TAPS keeps its own card because it is not a set of rows — it builds its own body, one
+ * knob per repeat, and its length is the number of hits.
+ */
 function buildDrumFullLayout(voice, problems) {
   const { common, groups } = panelSpec(voice);
   const byKey = new Map(groups.map((g) => [g.key, g]));
@@ -2642,26 +2892,106 @@ function buildDrumFullLayout(voice, problems) {
     for (const r of g.rows || []) placed.set(r.path, [...(placed.get(r.path) || []), key]);
     return { key, title: key === 'note' ? 'MASTER' : g.title, group: g, rows: g.rows || [] };
   };
+  /**
+   * The same card, taken as a SUB-SECTION of another one: a labelled rule and the rows
+   * under it. `rule` is the name it wears there — upper case, the way every rule on this
+   * window is written — and the GROUP travels with it, so the section keeps its own
+   * switch and its own on/off tips rather than becoming rows nobody can turn off.
+   *
+   * Its rows are the card's own, marked placed by `take` on the way through: a section
+   * moved into another card is still placed exactly once, and the walk below still
+   * catches it if it is ever placed twice or dropped.
+   */
+  const asSub = (key) => {
+    const card = take(key);
+    return { rule: String(card.title).toUpperCase(), group: card.group, rows: card.rows };
+  };
 
-  // Drum is a one-shot, so it does not need MRDR's layer selector or mixer projections.
-  // Three six-column bands keep the signal path readable while allowing the taller source
-  // cards to scroll inside the existing full-window body on smaller screens.
+  /**
+   * TAPS, as a door in the Master card's header rather than a column of its own.
+   *
+   * It is the one card here that is not part of the signal path — every other column is
+   * something the sound goes THROUGH, where this is how many times the whole of it is
+   * played. It is also the card most presets have nothing in: fifteen drums in the
+   * catalogue use taps and every other one is a single hit, so a sixth of the window was
+   * a header and a sentence saying "not this one" on every kick, hat and rim.
+   *
+   * The COUNT rides on the button — `TAPS` at one hit, `TAPS 3` at three — so what the
+   * door hides is the detail and never the fact. That is the job `.sflit`'s dot does for
+   * FM, done with the number itself, because here there is a number to do it with.
+   *
+   * `take` on the way past is what keeps the completeness walk honest: the group is
+   * placed exactly once whether it ends up in a cell or behind a button.
+   */
+  const tapsDoor = () => ({ ...take('taps'), taps: true, label: tapsDoorLabel(voice) });
+
+  /**
+   * The envelope, cut off the end of a card's rows and hung from its floor.
+   *
+   * `foot` marks where the block starts — every drum ATTACK carries it, and the block
+   * runs from there to the end of the section. Split out, it is drawn as a grid of its
+   * own, and the card's spare height opens ABOVE it instead of below: five sections of
+   * very different lengths then read their envelopes off ONE line across the band. It is
+   * the alignment `startRow` already gives the block inside its own card, given to the
+   * band — which was the last thing on this window still landing wherever the rows above
+   * it happened to stop.
+   *
+   * A card with no `foot` row is returned untouched, which is Master and every card on
+   * the MRDR-3 window: an envelope is not a thing every section has.
+   */
+  const splitFoot = (card) => {
+    const at = (card.rows || []).findIndex((r) => r.foot);
+    if (at < 0) return card;
+    return { ...card, rows: card.rows.slice(0, at), foot: card.rows.slice(at) };
+  };
+
+  // One band, six columns, one card each.
+  //
+  // EVERY card reads from the TOP (`top`) and SPREADS what is left over (`spread`), where
+  // the MRDR-3 window hangs everything from the bottom. There, a band is three cards of
+  // roughly the same length, so one baseline serves the lot. Here the band is the whole
+  // instrument: an oscillator runs to twice the height of the Metal card beside it, and
+  // bottom-aligning would push each card's contents down by however much shorter than the
+  // oscillator it happens to be, opening the gap under six different headers.
+  //
+  // So the blocks divide the slack between them instead of banking it. A card is a title,
+  // its source rows, whatever sub-sections it carries and its envelope; each block hangs
+  // off the one above with an equal share of the spare height, and the LAST one lands on
+  // the floor. Which does two things at once: Master's DRIVE and HUMANISE stop huddling
+  // under the header with two hundred pixels of nothing beneath them, and every envelope
+  // in the band comes to rest on the same line. See `.sfspread`.
+  //
+  // `flowSub` stays on, and it is what makes the spread possible rather than a leftover:
+  // it turns OFF the `sffoot` pin, which banks every spare pixel above the FIRST
+  // sub-section — the opposite of dividing it, and the reason Master's two rules sat
+  // where they did.
+  //
+  // `curves: true` on the three cards carrying one: CURVE and RATE CURVE go behind the
+  // header's curve door, drawn as the shapes they are, the way MRDR-3's stage curves do.
+  //
+  // FM HAS A COLUMN OF ITS OWN, directly after the oscillator it bends. It was a
+  // sub-section pinned under OSC — five pots and a rule below eleven of the oscillator's,
+  // on the one card already twice the length of any other — and it was down there because
+  // the band was full. Taps behind a door is what freed the column, and a modulator with
+  // its own wave, ratio, index and envelope reads as a section rather than as an appendix
+  // now that it has one.
+  const top = { top: true, flowSub: true, spread: true };
   const bands = [
-    { name: 'sources', cols: 6, cells: [
-      { kind: 'card', span: 2, card: take('osc') },
-      { kind: 'card', span: 2, card: take('noise') },
-      { kind: 'card', span: 2, card: take('ring') },
-    ] },
-    { name: 'colour', cols: 6, cells: [
-      { kind: 'card', span: 2, card: take('metal') },
-      { kind: 'card', span: 2, card: take('osc.fm') },
-      { kind: 'card', span: 2, card: take('drive') },
-    ] },
-    { name: 'master', cols: 6, cells: [
-      { kind: 'card', span: 2, card: take('note') },
-      { kind: 'card', span: 2, card: take('humanise') },
-      { kind: 'card', span: 2, card: take('taps') },
-    ] },
+    { name: 'chain',
+      cols: 6,
+      cells: [
+        { kind: 'card', span: 1, curves: true, card: splitFoot({ ...take('osc'), ...top }) },
+        { kind: 'card', span: 1, card: splitFoot({ ...take('osc.fm'), ...top }) },
+        { kind: 'card', span: 1, curves: true, card: splitFoot({ ...take('noise'), ...top }) },
+        { kind: 'card', span: 1, curves: true, card: splitFoot({ ...take('ring'), ...top }) },
+        { kind: 'card', span: 1, card: splitFoot({ ...take('metal'), ...top }) },
+        { kind: 'card',
+          span: 1,
+          card: { ...take('note'),
+            ...top,
+            sub: [asSub('drive'), asSub('humanise')],
+            panels: [tapsDoor()] } },
+      ] },
   ];
 
   const label = (path) => [...common.rows, ...groups.flatMap((g) => g.rows || [])]
@@ -2872,10 +3202,12 @@ function buildFullLayout(voice, layer, problems) {
     { kind: 'card', span: 1, graph: 'filter', card: take('global.filter') },
     { kind: 'card', span: 1, graph: 'env', card: take('global.filterenv') },
     { kind: 'card', span: 1, graph: 'env', curves: true, card: take('global.vca') },
-    // Drive last, which is where it happens: it is the only card on this band that is not
-    // part of the voice's own shaping but a stage AFTER it — the whole stack summed, then
-    // pushed. Ending the row on it reads left-to-right as the signal actually runs.
-    { kind: 'card', span: 1, card: take('drive') },
+    // Effects last, which is where it happens: it is the only card on this band that is
+    // not part of the voice's own shaping but the stages AFTER it — the whole stack
+    // summed, then pushed, then widened. Ending the row on it reads left-to-right as the
+    // signal actually runs, and it stays true with PLACE set to PRE: what moves in front
+    // of the global stage is the drive, not the card.
+    { kind: 'card', span: 1, card: take('effects') },
   ];
 
   // ---- the check -------------------------------------------------------------
@@ -3411,7 +3743,7 @@ export function createVoiceEditor({
     const scale = typeof row.scale === 'function' ? row.scale(state.voice) : row.scale;
     const r = knob({
       min: row.min, max: row.max, step: row.step, value, reset: row.def, fmt: row.fmt,
-      scale, origin: row.origin,
+      scale, origin: row.origin, taper: row.taper, floor: row.floor,
       onStart: beginGesture, onEnd: endGesture,
       onInput: (x) => {
         const previous = getAt(state.voice, row.path);
@@ -3542,7 +3874,12 @@ export function createVoiceEditor({
     // they have each other to sit beside and halving them is what makes them read as a
     // pair rather than as two unrelated rows.
     const wave = row.label === 'WAVE';
-    wrap.className = 'row segrow' + (row.wide ? ' segwide' : '') + (wave ? ' segwave' : '');
+    // `startRow` means the same thing on a pick as it does on a pot: begin a fresh line.
+    // A half-width pick flows in beside whatever came before it, and two picks that are
+    // one question in two halves — TYPE and SLOPE — have to be the pair that lands
+    // together rather than whichever two the flow happened to leave adjacent.
+    wrap.className = 'row segrow' + (row.wide ? ' segwide' : '') + (wave ? ' segwave' : '')
+      + (row.startRow ? ' rowstart' : '');
     if (row.tip) wrap.title = row.tip;
     const k = document.createElement('span'); k.className = 'k'; k.textContent = row.label;
     wrap.append(k, buildSeg(row, cur, onChange));
@@ -3591,20 +3928,61 @@ export function createVoiceEditor({
    * array would flatten `[0, 0.011, 0.023, 0.036]` into four equal gaps the moment you
    * opened it. So each tap keeps its own offset, and the stepper adds and removes from
    * the end.
+   *
+   * ---- ONE ROW PER HIT ---------------------------------------------------------
+   *
+   * Everything under the stepper used to flow into the card's pot grid as one stream —
+   * HIT 2, HIT 3, HIT 4, FALLOFF, PITCH, TONE, LEVEL 1…4, DECAY 1…4 — seventeen knobs
+   * wrapping across four columns on a four-hit clap. Hit 2's timing sat above hit 1's
+   * level, LEVEL 4 and DECAY 1 came out neighbours, and every column landed somewhere
+   * new the moment the count changed. But the data is a TABLE: the same three numbers
+   * per hit, however many hits there are. So it is drawn as one — a row per hit, a
+   * column per number, the names said ONCE at the head rather than stamped onto
+   * seventeen rings.
+   *
+   * WHICH columns exist is per PATH, not per card. `_playAdditive` never reads
+   * `tapTone`, `_playNoise` never reads `tapDetune`, and a drum built from oscillators
+   * alone has no noise decay to override — a pot on a path that cannot hear it is worse
+   * than an absent one, because you spend an afternoon believing it. See `TAP_KEYS`: a
+   * pooled Tone clap gets the timing column and nothing else.
+   *
+   * FALLOFF, PITCH and TONE stay OUT of the table, under a rule of their own. They are
+   * not per-hit values but ratios BETWEEN hits — one number shaping the whole run — and
+   * a column of them would be the same figure copied down the page.
+   *
+   * `repaint` is the surface that asked, exactly as it is for every other card — see
+   * `groupCard`. It is the whole card that changes when the count does: the readout, the
+   * rows, the walks and every per-hit pot appear and disappear with it, so the stepper
+   * cannot redraw itself in place. Calling the strip's `build` directly is what it used
+   * to do, and the strip is the surface this is least often reached from — a Drum Synth
+   * strip opens on Quick, and in the full window the card lives behind the Master card's
+   * TAPS door, which redraws its own popover body so the panel does not shut under the
+   * button you just pressed.
    */
-  const tapsGroup = () => {
-    const grid = document.createElement('div'); grid.className = 'devgrid vetaps';
+  const tapsGroup = (repaint = build) => {
+    const wrap = document.createElement('div'); wrap.className = 'vetaps';
     const taps = state.voice.taps || [0];
     const tapKeys = TAP_KEYS(state.voice);
+    const many = taps.length > 1;
 
-    const head = document.createElement('div'); head.className = 'row veinline';
-    const k = document.createElement('span'); k.className = 'k'; k.textContent = 'HITS';
+    // One markup for both surfaces, dressed by each in its own language for a choice —
+    // the strip's boxed pills, the window's line of words over a hairline. That split is
+    // `renderPick`'s, and a count from one to eight is the same kind of question a pick
+    // asks, so it takes the same answer. What it must NOT do is carry `.segrow` or
+    // `.sfchoice` itself: those two are what the surfaces put on their own picks, and
+    // wearing one of them would make TAPS a strip control sitting on the window's card.
+    // See the stepper's block in mixer-shell.html, which is also where the layout this
+    // replaces is written up.
+    const head = document.createElement('div'); head.className = 'row vesteprow';
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = 'TAPS';
+    k.title = `How many times the sound is heard — one to ${MAX_TAPS}`;
     const box = document.createElement('div'); box.className = 'vestep';
     const readout = document.createElement('span'); readout.className = 'v';
     readout.textContent = String(taps.length);
     const step = (d) => {
       const list = (state.voice.taps || [0]).slice();
       if (d > 0) {
+        if (list.length >= MAX_TAPS) return;
         // A new tap lands after the last by the gap the last one uses, so adding to a
         // clap keeps its rhythm instead of restarting it.
         const gap = list.length > 1 ? list[list.length - 1] - list[list.length - 2] : 0.012;
@@ -3620,85 +3998,33 @@ export function createVoiceEditor({
         if (state.voice.tapFalloff == null) state.voice.tapFalloff = 0.78;
       }
       touched();
-      build();
+      repaint();
       undoHistory.end();
     };
+    // Dead at the ends rather than inert: a button that can still be pressed and does
+    // nothing is a control you have to test to learn the range of.
     const btn = (text, d, title) => {
       const b = document.createElement('button');
-      b.className = 'devlink'; b.textContent = text; b.title = title;
+      b.className = 'vestepbtn'; b.textContent = text; b.title = title;
+      b.disabled = taps.length + d < 1 || taps.length + d > MAX_TAPS;
       b.onclick = () => step(d);
       return b;
     };
     box.append(btn('−', -1, 'One fewer repeat'), readout, btn('+', 1, 'One more repeat'));
     head.append(k, box);
-    grid.append(head);
+    wrap.append(head);
 
     // FALLOFF and the per-hit LEVEL pots below read the same thing — a hit's level — so
     // dragging one has to move the other or the card contradicts itself mid-drag. Set by
-    // the LEVEL loop, and a no-op until then.
+    // the LEVEL column, and a no-op until then. `syncTimes` is the same arrangement
+    // between SPREAD and the TIME column.
     let syncLevels = () => {};
-
-    if (taps.length > 1) {
-      taps.slice(1).forEach((t, i) => {
-        const r = knob({
-          min: 0.002, max: 0.2, step: 0.001, value: t, reset: 0.012 * (i + 1),
-          fmt: (x) => `${Math.round(x * 1000)}ms`,
-          onStart: beginGesture, onEnd: endGesture,
-          onInput: (x) => { state.voice.taps[i + 1] = x; touched(); },
-        });
-        r.label.textContent = `HIT ${i + 2}`;
-        grid.append(r.wrap);
-      });
-      const r = knob({
-        min: 0.2, max: 1, step: 0.01, value: state.voice.tapFalloff ?? 0.78, reset: 0.78,
-        fmt: fixed(2),
-        onStart: beginGesture, onEnd: endGesture,
-        onInput: (x) => { state.voice.tapFalloff = x; syncLevels(); touched(); },
-      });
-      r.label.textContent = 'FALLOFF';
-      r.wrap.title = 'How much quieter each repeat is than the one before it';
-      grid.append(r.wrap);
-      // The other two walks, beside the one that was always here. All three are per-TAP
-      // ratios and all three are meaningless with a single hit, so this is where they
-      // belong: a card that only exists once there is something to repeat. A clap made
-      // of one sound four times is a stutter; a real one is four hands, each landing a
-      // shade lower and duller than the last.
-      //
-      // Per PATH, though, not per card: `_playAdditive` never reads `tapTone` and
-      // `_playNoise` never reads `tapDetune`, and a pot on a path that cannot hear it is
-      // worse than no pot at all. See `TAP_KEYS`.
-      for (const walk of [
-        { key: 'tapDetune', label: 'PITCH', min: 0.8, max: 1.25, step: 0.005, fmt: fixed(3),
-          on: tapKeys.detune,
-          tip: 'How far each repeat is pitched from the one before it' },
-        { key: 'tapTone', label: 'TONE', min: 0.6, max: 1.4, step: 0.01, fmt: fixed(2),
-          on: tapKeys.tone,
-          tip: 'How much duller — or brighter — each repeat is than the one before it' },
-      ].filter((w) => w.on)) {
-        const w = knob({
-          min: walk.min, max: walk.max, step: walk.step, reset: 1, fmt: walk.fmt,
-          value: state.voice[walk.key] ?? 1,
-          onStart: beginGesture, onEnd: endGesture,
-          // Exactly 1 is no walk at all, and a preset that does not walk should not
-          // carry a key saying so — same rule `taps` itself follows above.
-          onInput: (x) => {
-            if (x === 1) delete state.voice[walk.key];
-            else state.voice[walk.key] = x;
-            touched();
-          },
-        });
-        w.label.textContent = walk.label;
-        w.wrap.title = walk.tip;
-        grid.append(w.wrap);
-      }
-    } else {
-      const note = document.createElement('div');
-      note.className = 'devnote';
-      note.textContent = 'One hit. Add a repeat or two a few milliseconds apart and it '
-        + 'becomes a clap — which is all a clap is: one sound heard several times in a '
-        + 'small room.';
-      grid.append(note);
-    }
+    let syncTimes = () => {};
+    // The other direction of the same pair: a hit dragged past the end of the run moves
+    // where the run ENDS, which is what SPREAD reads. Without this it keeps the reading it
+    // was built with, and the next spread scales the sound back to a number that stopped
+    // being true several drags ago.
+    let syncSpread = () => {};
 
     /**
      * The two per-HIT overrides, which the falloff and the walks cannot say.
@@ -3724,47 +4050,271 @@ export function createVoiceEditor({
     const decayDflt = state.voice.kind === 'drum'
       ? (state.voice.noise?.decay ?? 0.12)
       : (state.voice.noise?.decay ?? 0.09);
-    for (const ov of [
-      { key: 'tapGains', label: 'LEVEL', on: tapKeys.gains, min: 0, max: 2, step: 0.005,
-        fmt: fixed(3), dflt: (i) => (state.voice.tapFalloff ?? 1) ** i,
-        tip: 'This hit\'s own level, in place of the falloff' },
-      { key: 'tapDecays', label: 'DECAY', on: tapKeys.decays,
-        min: 0.005, max: 0.6, step: 0.001, fmt: secs, dflt: () => decayDflt,
-        tip: 'This hit\'s own length, in place of the section decay' },
-    ]) {
-      const stored = state.voice[ov.key];
-      if (!ov.on || (taps.length < 2 && !Array.isArray(stored))) continue;
-      const near = (a, b) => Math.abs(a - b) < 1e-6;
-      const pots = [];
-      for (let i = 0; i < taps.length; i++) {
-        const w = knob({
-          min: ov.min, max: ov.max, step: ov.step, fmt: ov.fmt, reset: ov.dflt(i),
-          value: state.voice[ov.key]?.[i] ?? ov.dflt(i),
+    const near = (a, b) => Math.abs(a - b) < 1e-6;
+    const overrideCol = (ov) => ({
+      key: ov.key, label: ov.label, tip: ov.tip, dflt: ov.dflt,
+      pot: (i) => knob({
+        min: ov.min, max: ov.max, step: ov.step, fmt: ov.fmt, reset: ov.dflt(i),
+        taper: ov.taper, floor: ov.floor,
+        value: state.voice[ov.key]?.[i] ?? ov.dflt(i),
+        onStart: beginGesture, onEnd: endGesture,
+        onInput: (x) => {
+          const list = Array.from({ length: taps.length },
+            (_, j) => state.voice[ov.key]?.[j] ?? ov.dflt(j));
+          list[i] = x;
+          if (list.every((y, j) => near(y, ov.dflt(j)))) delete state.voice[ov.key];
+          else state.voice[ov.key] = list.map((y) => Number(y.toFixed(4)));
+          touched();
+        },
+      }),
+    });
+    const held = (key) => Array.isArray(state.voice[key]);
+    const columns = [
+      // The first hit is the sound itself, at nothing past nothing — an offset pot on it
+      // would delay the whole preset, which is a different control on a different card.
+      // So the column exists from two hits up and row 1 shows the zero it is fixed at.
+      many && {
+        key: 'taps', label: 'TIME', tip: 'How long after the first tap this one lands',
+        pot: (i) => (i === 0 ? null : knob({
+          min: 0.002, max: 0.2, step: 0.001, value: taps[i], reset: 0.012 * i,
+          fmt: (x) => `${Math.round(x * 1000)}ms`,
           onStart: beginGesture, onEnd: endGesture,
-          onInput: (x) => {
-            const list = Array.from({ length: taps.length },
-              (_, j) => state.voice[ov.key]?.[j] ?? ov.dflt(j));
-            list[i] = x;
-            if (list.every((y, j) => near(y, ov.dflt(j)))) delete state.voice[ov.key];
-            else state.voice[ov.key] = list.map((y) => Number(y.toFixed(4)));
-            touched();
-          },
-        });
-        w.label.textContent = `${ov.label} ${i + 1}`;
-        w.wrap.title = ov.tip;
-        grid.append(w.wrap);
-        pots.push([i, w.set]);
+          onInput: (x) => { state.voice.taps[i] = x; syncSpread(); touched(); },
+        })),
+      },
+      tapKeys.gains && (many || held('tapGains')) && overrideCol({
+        key: 'tapGains', label: 'LEVEL', min: 0, max: 2, step: 0.005, fmt: fixed(3),
+        dflt: (i) => (state.voice.tapFalloff ?? 1) ** i,
+        tip: 'This tap\'s own level, in place of the falloff',
+      }),
+      // A tap's DECAY is an envelope time like any other, so it takes the envelope
+      // taper and the same 1ms floor — a clap's tail is dialled in the tens of
+      // milliseconds, which linear travel across 600ms cannot resolve.
+      tapKeys.decays && (many || held('tapDecays')) && overrideCol({
+        key: 'tapDecays', label: 'DECAY', min: ENV_TIME_STEP, max: 0.6, fmt: secs,
+        step: ENV_TIME_STEP, taper: ENV_TIME_TAPER, floor: ENV_TIME_STEP,
+        dflt: () => decayDflt,
+        tip: 'This tap\'s own length, in place of the section decay',
+      }),
+    ].filter(Boolean);
+
+    // ---- the table -------------------------------------------------------------
+    // One flat grid rather than a row element per hit: a row of pots and the name of the
+    // column above it only line up if they are in the same grid, and a wrapper per row
+    // would put them in one grid each. `--tapcols` is the only thing the layout needs
+    // from here — the widths live in the stylesheet, with the pot size they have to clear.
+    //
+    // ---- and TWO OF THEM, side by side, where the surface is wide enough ---------
+    //
+    // Six hits down one column is six rows of pots plus the ratios under them, which is
+    // taller than the room a popover has under its card — so the foot of the card was
+    // being scrolled to. Split in half it is three rows, and the drawer holds the whole
+    // of Taps at once.
+    //
+    // WHICH SURFACE IT IS is not asked and must not be: this card is on the strip too,
+    // where 366px has no room for two of anything. So the blocks are built either way and
+    // the STYLESHEET decides — `.vetaprows` wraps, and a block's flex-basis is wide enough
+    // that two only fit side by side in the window's wide drawer. One list of hits, two
+    // shapes, no branch on where it is being drawn.
+    //
+    // Balanced rather than filled: 5 hits is 3 + 2, not 3 + 2 with the second column
+    // looking like an afterthought — and at 3 or fewer there is no second block at all,
+    // because a column of one is a column that reads as a mistake.
+    if (columns.length) {
+      const levels = [];
+      const times = [];
+      const levelCol = columns.find((c) => c.key === 'tapGains');
+      const timeCol = columns.find((c) => c.key === 'taps');
+      const perBlock = taps.length > 3 ? Math.ceil(taps.length / 2) : taps.length;
+      const tables = document.createElement('div'); tables.className = 'vetaprows';
+      for (let from = 0; from < taps.length; from += perBlock) {
+        const table = document.createElement('div'); table.className = 'vetaptable';
+        table.style.setProperty('--tapcols', String(columns.length));
+        const corner = document.createElement('span');
+        corner.className = 'vetapn vetaphead'; corner.textContent = '';
+        table.append(corner);
+        // Each block carries the column names again. They are the names of the pots under
+        // THEM — a heading that only appears over the left-hand block is a heading the
+        // right-hand block is not under.
+        for (const col of columns) {
+          const h = document.createElement('span');
+          h.className = 'vetaphead'; h.textContent = col.label; h.title = col.tip;
+          table.append(h);
+        }
+        for (let i = from; i < Math.min(from + perBlock, taps.length); i++) {
+          const n = document.createElement('span');
+          n.className = 'vetapn'; n.textContent = String(i + 1);
+          n.title = i === 0 ? 'The tap itself' : `Repeat ${i}`;
+          table.append(n);
+          for (const col of columns) {
+            const pot = col.pot(i);
+            if (!pot) {
+              const fixedCell = document.createElement('span');
+              fixedCell.className = 'vetapfixed'; fixedCell.textContent = '0ms';
+              fixedCell.title = 'The first tap is the sound itself — it lands on the beat';
+              table.append(fixedCell);
+              continue;
+            }
+            // The name is in the column head, once. Left on the pot it would be the same
+            // three words down every row — seventeen labels to say three things.
+            pot.label.remove();
+            pot.wrap.title = col.tip;
+            table.append(pot.wrap);
+            if (col === levelCol) levels.push([i, pot.set]);
+            if (col === timeCol) times.push([i, pot.set]);
+          }
+        }
+        tables.append(table);
       }
       // Only while the preset is still deriving them from the falloff. Once it lists its
       // own levels, the falloff is not what those hits are playing at any more, and
-      // dragging it must not quietly rewrite them.
-      if (ov.key === 'tapGains') {
+      // dragging it must not quietly rewrite them. Across BOTH blocks — `levels` is one
+      // list of every level pot drawn, whichever column it ended up in.
+      if (levelCol) {
         syncLevels = () => {
-          if (!state.voice.tapGains) pots.forEach(([i, set]) => set(ov.dflt(i)));
+          if (!state.voice.tapGains) levels.forEach(([i, set]) => set(levelCol.dflt(i)));
         };
       }
+      // SPREAD and the TIME column are two grips on one list, so dragging one has to move
+      // the other for the same reason FALLOFF moves LEVEL: a card that contradicts itself
+      // mid-drag is worse than a card with one control fewer. Display only — the values
+      // are already written by the time this runs.
+      if (timeCol) {
+        syncTimes = () => times.forEach(([i, set]) => set(state.voice.taps?.[i] ?? 0));
+      }
+      wrap.append(tables);
     }
-    return grid;
+
+    // ---- across the taps -------------------------------------------------------
+    // All three are per-TAP ratios and all three are meaningless with a single tap, so
+    // this is where they belong: a section that only exists once there is something to
+    // repeat. A clap made of one sound four times is a stutter; a real one is four hands,
+    // each landing a shade lower and duller than the last.
+    if (many) {
+      const rule = document.createElement('div'); rule.className = 'vetaprule';
+      const ruleName = document.createElement('span');
+      ruleName.className = 'k'; ruleName.textContent = 'ACROSS THE TAPS';
+      rule.append(ruleName, document.createElement('i'));
+      wrap.append(rule);
+      const walks = document.createElement('div'); walks.className = 'devgrid vetapwalks';
+
+      /**
+       * SPREAD: the whole run, wider or tighter, in one gesture.
+       *
+       * The other three ratios say what changes from hit to hit — level, pitch, colour —
+       * and the timing was the one dimension you could only edit hit by hit, in a column
+       * of pots, while the thing you are actually listening for is how WIDE the clap is.
+       * It is also the control that wants a drag: a clap tightening into a flam is a
+       * sound you find by ear, not by typing three numbers.
+       *
+       * IT READS THE END OF THE RUN and writes all of them. Not a ratio — a ratio would
+       * have to be stored to have a position, and `taps` already IS the value; a
+       * `tapSpread` key beside it that no engine path reads would be a second source of
+       * truth for the same milliseconds. So the pot reads what it can point at (where the
+       * run ends) and writes the rest proportionally, the way AMOUNT reads semitones off a
+       * pair of frequencies. Same trick, same reason.
+       *
+       * The end of the run is the LATEST hit, not the last-numbered one. They are the same
+       * on every preset in the catalogue, and they come apart the moment someone drags hit
+       * 2 past hit 4 — which the per-hit pots allow, and which is a real if odd sound. Read
+       * from the last INDEX, that case scales the latest hit past the 200ms ceiling every
+       * other tap pot stops at, the clamp flattens it, and the shape does not come back
+       * when you scale down again. Read from the latest, the biggest number in the run is
+       * the one pinned to the pot, everything else is a fraction of it, and nothing can
+       * reach the ceiling before the pot does.
+       *
+       * PROPORTIONALLY is the whole point. The claps in the catalogue are unevenly spaced
+       * on purpose — `clapRoom` is 0, 14, 37, 58, 83ms, which is a hall, not a metronome —
+       * so this scales the gaps it finds rather than evening them out. A control that set
+       * one gap for all of them would destroy an authored rhythm the moment it was touched.
+       *
+       * The baseline is captured at pointer-down and every position is computed from THAT,
+       * not from the last frame: scaling the live values would compound the 1ms rounding
+       * all the way down a drag, so a sweep out and back would not land where it started.
+       */
+      const spreadMin = 0.002;
+      const spreadMax = 0.2;
+      const runEnd = (list) => Math.max(0, ...(list || []).slice(1));
+      let spreadBase = null;
+      const spread = knob({
+        min: spreadMin, max: spreadMax, step: 0.001, reset: 0.012 * (taps.length - 1),
+        value: Math.min(spreadMax, Math.max(spreadMin, runEnd(taps) || spreadMin)),
+        fmt: (x) => `${Math.round(x * 1000)}ms`,
+        onStart: () => { spreadBase = (state.voice.taps || []).slice(); beginGesture(); },
+        onEnd: () => { spreadBase = null; endGesture(); },
+        onInput: (x) => {
+          const base = spreadBase || (state.voice.taps || []).slice();
+          const end = runEnd(base);
+          const list = base.map((t, i) => {
+            if (i === 0) return 0;
+            // The latest hit lands exactly where the pot says, so the pot can read itself
+            // back with no rounding between them. Everything else keeps its share of the
+            // run — or, where the taps are stacked at zero and there is no shape to keep,
+            // spaces out evenly rather than refusing to move.
+            if (end > 0 && t === end) return x;
+            const share = end > 0 ? t / end : i / (base.length - 1);
+            return Number(Math.max(spreadMin, Math.min(spreadMax, share * x)).toFixed(4));
+          });
+          state.voice.taps = list;
+          syncTimes();
+          touched();
+        },
+      });
+      // Display only, and never while this knob is the one being dragged — `spreadBase` is
+      // the flag for that, and writing to a pot mid-gesture would fight the pointer.
+      syncSpread = () => {
+        if (!spreadBase) spread.set(Math.min(spreadMax, Math.max(spreadMin, runEnd(state.voice.taps))));
+      };
+      spread.label.textContent = 'SPREAD';
+      spread.wrap.title = 'How far the whole run reaches — where the last tap lands. '
+        + 'The taps between keep their spacing, so an uneven clap stays uneven';
+      walks.append(spread.wrap);
+
+      const falloff = knob({
+        min: 0.2, max: 1, step: 0.01, value: state.voice.tapFalloff ?? 0.78, reset: 0.78,
+        fmt: fixed(2),
+        onStart: beginGesture, onEnd: endGesture,
+        onInput: (x) => { state.voice.tapFalloff = x; syncLevels(); touched(); },
+      });
+      falloff.label.textContent = 'FALLOFF';
+      falloff.wrap.title = 'How much quieter each repeat is than the one before it';
+      walks.append(falloff.wrap);
+      // Per PATH, like the columns above: `_playAdditive` never reads `tapTone` and
+      // `_playNoise` never reads `tapDetune`. See `TAP_KEYS`.
+      for (const walk of [
+        { key: 'tapDetune', label: 'PITCH', min: 0.8, max: 1.25, step: 0.005, fmt: fixed(3),
+          on: tapKeys.detune,
+          tip: 'How far each repeat is pitched from the one before it' },
+        { key: 'tapTone', label: 'TONE', min: 0.6, max: 1.4, step: 0.01, fmt: fixed(2),
+          on: tapKeys.tone,
+          tip: 'How much duller — or brighter — each repeat is than the one before it' },
+      ].filter((w) => w.on)) {
+        const w = knob({
+          min: walk.min, max: walk.max, step: walk.step, reset: 1, fmt: walk.fmt,
+          value: state.voice[walk.key] ?? 1,
+          onStart: beginGesture, onEnd: endGesture,
+          // Exactly 1 is no walk at all, and a preset that does not walk should not
+          // carry a key saying so — same rule `taps` itself follows above.
+          onInput: (x) => {
+            if (x === 1) delete state.voice[walk.key];
+            else state.voice[walk.key] = x;
+            touched();
+          },
+        });
+        w.label.textContent = walk.label;
+        w.wrap.title = walk.tip;
+        walks.append(w.wrap);
+      }
+      wrap.append(walks);
+    } else {
+      const note = document.createElement('div');
+      note.className = 'devnote';
+      note.textContent = 'One tap. Add a repeat or two a few milliseconds apart and it '
+        + 'becomes a clap — which is all a clap is: one sound heard several times in a '
+        + 'small room.';
+      wrap.append(note);
+    }
+    return wrap;
   };
 
   /**
@@ -3808,6 +4358,26 @@ export function createVoiceEditor({
     const bar = document.createElement('div'); bar.className = 'devbar';
     const h = document.createElement('h4'); h.textContent = group.title;
     bar.append(h);
+
+    // THE HEADER IS THE SWITCH, on a card that has one.
+    //
+    // `.devbar` came with `cursor: grab` because on the DESK a device header is a handle —
+    // that is how the rack is reordered. Nothing in these two windows drags, so the hand
+    // was promising a gesture that does not exist. What the header can honestly offer is
+    // the switch already sitting in it: a 20x11 capsule is a small target for a control
+    // that turns a whole section on, and the title bar above it is a large one.
+    //
+    // Looked up at CLICK time rather than closed over, because the full window empties
+    // this bar and rebuilds it in its own terms — `.sfsw` capsules where the strip has
+    // `.veswitch` — and a listener on the element itself survives that. First switch in
+    // the bar, which is the card's own section rather than any second switch beside it.
+    //
+    // Anything you can press is exempt: the switch (whose own handler runs), the solo
+    // button, the panel doors, the tab strip. A header click is what is left over.
+    bar.onclick = (ev) => {
+      if (ev.target.closest('button, select, input, .sftabs, .sfpanelwrap')) return;
+      bar.querySelector('.veswitch, .sfsw')?.click();
+    };
 
     // S, beside the On/Off — the desk's own solo gesture one level down, and the same
     // contract: monitoring, never written to the preset, gone when the panel closes.
@@ -3882,9 +4452,13 @@ export function createVoiceEditor({
       const select = document.createElement('select');
       select.className = 'velayercopyselect';
       select.title = 'Copy the entire layer from another layer';
+      // Hidden, for the reason the full window's copy menu hides it: COPY names the
+      // control, and a name listed among the choices is a row that does nothing and takes
+      // the native menu's checkmark with it. It still labels the closed control.
       const placeholder = document.createElement('option');
       placeholder.textContent = 'COPY';
       placeholder.value = '';
+      placeholder.hidden = true;
       placeholder.selected = true;
       select.append(placeholder);
       for (const other of [1, 2, 3].filter((n) => n !== group.layerCopy)) {
@@ -3903,7 +4477,7 @@ export function createVoiceEditor({
       bar.append(select);
     }
 
-    if (group.taps) { card.append(tapsGroup()); return card; }
+    if (group.taps) { card.append(tapsGroup(repaint)); return card; }
     // Folding, on the strip only. Every row is DRAWN; the ones that are not `foldKeep`
     // carry a hide-guard, so the card closes and opens as the value crosses zero without
     // anything being rebuilt. `foldKeep` rows come first in the row order deliberately —
@@ -5229,7 +5803,14 @@ export function createVoiceEditor({
     },
 
     // ---- widgets — the SAME builders the strip draws -------------------------
-    knob, numRow, pickRow, trioRow, groupCard, short: SHORT,
+    // `tapsGroup` is handed over whole rather than as rows, because it is the one card
+    // whose CONTENTS depend on a value it also edits: a row list built before the stepper
+    // was pressed describes a different number of hits. It takes the repaint that suits
+    // the surface asking — the strip rebuilds its panel, the window's door redraws only
+    // the popover body, so pressing + does not shut the panel it was pressed in.
+    knob, numRow, pickRow, trioRow, groupCard, tapsGroup, short: SHORT,
+    tapCount: () => tapCount(state?.voice || {}),
+    tapsDoorLabel: () => tapsDoorLabel(state?.voice || {}),
     guards: guardSet,
     sync: syncRows,
     repaint: repaintBoth,
@@ -5265,6 +5846,9 @@ export function createVoiceEditor({
   /** Open the full window on a preset that has one. Built once, on the first ask. */
   function openFull(layer = 1) {
     if (!state || !createFull) return;
+    // The full-window editor is a big synchronous build on the sequencer's thread —
+    // queue audio ahead before it holds the floor. See Audio.prefill.
+    Audio.prefill(1.2);
     full ||= createFull({ kit });
     full.open(layer);
   }

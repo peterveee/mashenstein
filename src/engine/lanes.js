@@ -242,7 +242,26 @@ export function deskBank(bank, entry) {
       // otherwise materialise 32 rests so it still gets a row and strip.
       if (out[key] != null) continue;
       if (independent) {
-        const length = Object.values(out).find((v) => Array.isArray(v))?.length || 32;
+        // NOT INTO A DELTA. The bank and a bank section are both complete partial
+        // banks, and rests in them are the fallback that gives the lane a row and a
+        // strip everywhere. A section carrying `base` is not: it says only what its bar
+        // CHANGES, and the lanes it does not name are the ones it inherits. Rests
+        // written into one stop being a fallback and become a decision — this layer is
+        // silent in this bar — and `resolveSection` merges the delta over its base, so
+        // the rests win. Every added track went quiet in every bar anybody had edited,
+        // and a figure laid across the whole song forks every bar, so one click took
+        // every added track out of the whole song. Imported songs feel it worst: their
+        // extra parts (bass2, chords2, lead3 …) are all layers, with no bank part
+        // underneath to fall back to. See tests/arrangement.js — "a delta keeps
+        // inheriting an added track".
+        if (block.base != null) continue;
+        // As long as a LANE of this block, not as long as whatever array happens to
+        // come first: `sections` and `order` are arrays too, and a song that keeps its
+        // parts entirely in its sections — every imported one does — has nothing else
+        // at the top level, so the new track was arriving twelve steps long.
+        const length = LANE_KEYS.map((k) => out[k]).find(Array.isArray)?.length
+          || (bank.sections || []).flatMap((s) => LANE_KEYS.map((k) => s?.[k]))
+            .find(Array.isArray)?.length || 32;
         const isDrum = PERCUSSION_LANES.includes(baseLane(from)) || PERCUSSION_LANES.includes(from);
         out[key] = new Array(length).fill(isDrum ? false : null);
       } else if (out[from]) {
@@ -260,7 +279,7 @@ export function deskBank(bank, entry) {
   // Sections are partial banks spread over the whole at schedule time, so a lane
   // deleted from the top and left in a section would come back in that section, and a
   // layer would fall back to the top-level part instead of following the section's.
-  if (Array.isArray(bank.sections)) out.sections = bank.sections.map(shape);
+  if (Array.isArray(bank.sections)) out.sections = bank.sections.map((s) => shape(s));
   // Earlier builds created an independent lane with notes but no voice. The layer
   // loop quite correctly skipped it, producing the particularly confusing state of
   // a lit step and a percussion tally with no audio. Give only those independent

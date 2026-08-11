@@ -109,7 +109,7 @@ export const mix = {
   lanes: {
     kick: { gain: -0.4, send: { delay: 0.28, reverb: 0.004 } },
     clap: { gain: 0.4, pan: 0.24, send: { delay: 0.28, reverb: 0.949 }, eq: { high: 3.3 } },
-    bass: { gain: -7.1, effects: [{ id: "chandelay", params: { feedback: 0.3, tone: 1890.389, mix: 0.38 } }] },
+    bass: { gain: -7.1, effects: [{ id: "chandelay", params: { mix: 0.14, feedback: 0.06, tone: 747.989 } }] },
     lead: { gain: -4.2, send: { delay: 0.125, reverb: 0.044 }, eq: { low: -3.5, mid: -4.4, high: -1.4 } },
     leadHarm: { gain: -4.5, send: { delay: 0.104, reverb: 0.127 }, effects: [{ id: "widener" }] },
     chords: { gain: -7, send: { delay: 0.094, reverb: 0.051 }, eq: { high: 3.1 }, effects: [{ id: "doubler", params: { delayMs: 11, depth: 0.11, dryPan: -0.72, wetPan: 0.52, wet: 0.33 } }, { id: "reverb", params: { wet: 0.19 } }] },

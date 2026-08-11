@@ -586,19 +586,73 @@ function expandSectionless(bank, draft) {
   return out;
 }
 
+/**
+ * A layer section as a delta over the BANK, carrying its own overrides with it.
+ *
+ * `base:` may only ever point into the bank, and this is what enforces it. A bank
+ * section is a fixed thing — nothing on the desk can write into one — so a delta over
+ * it means exactly what it says for as long as the song exists. A delta over another
+ * LAYER section is a delta over something still being edited, and it inherits every
+ * later edit to it: fork bar 26 off the loop bar 4 is playing, then edit bar 4, and
+ * bar 26 quietly changes too. That is a note appearing in a bar nobody touched, and on
+ * an imported song — where the lanes live only in sections and there is no bank part
+ * underneath to fall back to — the same chain is how a whole track can vanish.
+ *
+ * So a fork off a layer section copies that section's overrides in as literals and
+ * bases itself on whatever the section ultimately extends. The bar keeps precisely
+ * what it was playing, and from then on it is its own: an edit to the bar it was
+ * forked from stops reaching it, which is what forking a bar means.
+ */
+function detachedFrom(bank, sections, sec) {
+  const base = bank.sections?.length || 0;
+  // Down the chain to the bank section underneath — or to nothing, which is what a
+  // sectionless song's identity section extends.
+  const chain = [];
+  const seen = new Set();
+  let cur = sec;
+  while (cur != null && cur >= base && !seen.has(cur)) {
+    seen.add(cur);
+    const s = sections[cur];
+    if (!s) break;
+    chain.push(s);
+    cur = s.base;
+  }
+  // Base first, so the section reads in the file the way every other one does.
+  const out = cur != null && cur < base ? { base: cur } : {};
+  // Nearest last: a section's own keys win over the ones it inherited.
+  for (let i = chain.length - 1; i >= 0; i--) {
+    for (const [k, v] of Object.entries(chain[i])) if (k !== 'base') out[k] = clone(v);
+  }
+  return out;
+}
+
+/**
+ * Is another section a delta over this one?
+ *
+ * Nothing the seam writes makes one of these any more — see `detachedFrom` — but every
+ * arrangement saved before that rule has them, and a section with a dependent is a
+ * section that cannot be written in place: the write lands in a bar the gesture never
+ * named. So it counts as shared, and the bar forks instead.
+ */
+const hasDependents = (draft, sec) => sec != null
+  && draft.sections.some((s) => s?.base === sec);
+
 export function forkBar(bank, draft, barIndex) {
   const out = expandSectionless(bank, copy(draft));
   const bar = out.plan[barIndex];
   if (!bar) return out;
   const all = sectionsOf(bank, out);
   // Already ours AND nobody else's — nothing to fork.
-  const shared = out.plan.some((b, i) => i !== barIndex && b.sec === bar.sec);
+  const shared = out.plan.some((b, i) => i !== barIndex && b.sec === bar.sec)
+    || hasDependents(out, bar.sec);
   if (!isBankSection(bank, bar.sec) && !shared) return out;
   // A bar of a sectionless song is based on nothing: the sequencer merges a section
   // over the bank, so a layer section with no `base` already inherits every lane the
   // song has. This is the auto-expansion — invisible, and only on the first edit
   // that needs it.
-  out.sections.push(bar.sec == null ? {} : { base: bar.sec });
+  out.sections.push(bar.sec == null ? {}
+    : isBankSection(bank, bar.sec) ? { base: bar.sec }
+      : detachedFrom(bank, all, bar.sec));
   bar.sec = all.length;
   return out;
 }
@@ -692,6 +746,12 @@ export function writeBarNotes(bank, draft, barIndex, lane, steps16, lengths16 = 
  * section that is already ours is written in place, and the bars pointing at it
  * change with it, which is the whole point. Bars that were forked individually have a
  * `sec` of their own and are deliberately left alone.
+ *
+ * Unless one of those forks is an OLD one, based on this section rather than detached
+ * from it — see `hasDependents`. Written in place, this edit would reach through the
+ * base into a bar that is not part of the loop and was deliberately taken out of it. So
+ * that case forks too: the bars playing the loop move to a detached copy and change
+ * together, and the bar that left stays where it was put.
  */
 export function writeBarNotesShared(bank, draft, barIndex, lane, steps16, lengths16 = null) {
   const out = expandSectionless(bank, copy(draft));
@@ -699,13 +759,14 @@ export function writeBarNotesShared(bank, draft, barIndex, lane, steps16, length
   if (!bar) return out;
   const sec = bar.sec;
   const sections = sectionsOf(bank, out);
-  if (!isBankSection(bank, sec)) {
+  const dependents = hasDependents(out, sec);
+  if (!isBankSection(bank, sec) && !dependents) {
     putLane(out.sections[sec - (bank.sections?.length || 0)], bank, sections,
       sec, bar.half, lane, steps16, lengths16);
     return out;
   }
   const idx = sections.length;
-  const section = { base: sec };
+  const section = dependents ? detachedFrom(bank, sections, sec) : { base: sec };
   putLane(section, bank, sections, sec, bar.half, lane, steps16, lengths16);
   out.sections.push(section);
   for (const b of out.plan) if (b.sec === sec) b.sec = idx;
@@ -782,14 +843,50 @@ export function compactSections(bank, draft) {
     if (!s) return undefined;
     return Object.keys(s).length === 1 && s.base != null ? s.base : undefined;
   };
+  /**
+   * Where a section index ends up: past any duplicate it was folded into, and through
+   * any delta that turned out to change nothing.
+   *
+   * Walked to a fixed point rather than resolved once. A passthrough can point at
+   * another passthrough — undo two edits to a bar and it has two of them — and
+   * stopping half way leaves an index that is about to be renumbered out of
+   * existence. The seen-set is for a file someone hand-edited into a loop.
+   */
+  const settled = (sec) => {
+    const seen = new Set();
+    let cur = sec;
+    while (cur != null && cur >= base && !seen.has(cur)) {
+      seen.add(cur);
+      const li = canonical(cur - base);
+      const through = passthrough(li);
+      if (through === undefined) return base + li;
+      cur = through;
+    }
+    return cur;
+  };
   const used = new Set();
   for (const bar of out.plan) {
     if (bar.sec == null || isBankSection(bank, bar.sec)) continue;
-    const li = canonical(bar.sec - base);
-    const through = passthrough(li);
-    if (through !== undefined) { bar.sec = through; continue; }
-    bar.sec = base + li;
-    used.add(li);
+    bar.sec = settled(bar.sec);
+    if (bar.sec != null && bar.sec >= base) used.add(bar.sec - base);
+  }
+  // A section nothing PLAYS can still be one the song needs: a delta carries `base:`,
+  // and what it is based on has to survive with it. Older entries — written before a
+  // fork stopped basing itself on another layer section — can be a chain of them, so
+  // this is a walk to closure rather than one more pass. Without it the base is
+  // renumbered against a section that is no longer in the list, and the bar comes back
+  // inheriting nothing at all: on a song whose lanes live only in its sections, every
+  // other track in that bar goes silent.
+  for (const li of used) {
+    let s = out.sections[li];
+    while (s?.base != null && s.base >= base) {
+      s.base = settled(s.base);
+      if (s.base == null || s.base < base) break;
+      const next = s.base - base;
+      if (used.has(next)) break;
+      used.add(next);
+      s = out.sections[next];
+    }
   }
   // Renumber what is left, oldest first, so the file's sections read in the order
   // they are first played rather than in the order they happened to be created.

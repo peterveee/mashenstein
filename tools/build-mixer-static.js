@@ -5,37 +5,63 @@
 // build/build.js during production builds so the mixer ships alongside the game
 // on GitHub Pages.
 //
-// The mixer is a dev tool — on a static host it has no backend for save/render,
-// and shows a notice to that effect. For the full editing experience, run
-// `npm run mixer` locally.
+// TWO documents, not one. index.html is the desk; render-frame.html is a second,
+// unbound copy of the audio engine that the desk loads in a hidden iframe to bounce
+// a WAV through — see tools/mixer-render-entry.js for why that cannot be the same
+// document. They ship together or not at all: a desk whose Render WAV button 404s is
+// worse than one without the button.
+//
+// On a static host the mixer still has no backend for saving songs to the repo, and
+// says so. What it CAN do here, and could not before, is get your work out: the WAV
+// and the MIDI are made in the browser and downloaded. For the full editing
+// experience, run `npm run mixer` locally.
 import esbuild from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const here = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-const result = await esbuild.build({
-  entryPoints: [join(root, 'tools/mixer-entry.js')],
-  bundle: true,
-  format: 'iife',
-  target: ['es2020'],
-  minify: false,               // dev tool: readable stacks beat bytes
-  outdir: join(root, 'dist'),
-  write: false,
-  logLevel: 'info',
-  define: { __MASH_STATIC_MIXER__: 'true' },
-});
+/** Bundle one entry point and inline it into a shell's `/*__BUNDLE__*\/` slot. */
+async function inlined(root, entry, shell, define) {
+  const result = await esbuild.build({
+    entryPoints: [join(root, entry)],
+    bundle: true,
+    format: 'iife',
+    target: ['es2020'],
+    minify: false,               // dev tool: readable stacks beat bytes
+    outdir: join(root, 'dist'),
+    write: false,
+    logLevel: 'warning',
+    ...(define ? { define } : {}),
+  });
+  // </script> inside the bundle would terminate the tag early.
+  const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+  return readFileSync(join(root, shell), 'utf8').replace('/*__BUNDLE__*/', () => js);
+}
 
-const js = result.outputFiles[0].text;
-const shell = readFileSync(join(root, 'tools/mixer-shell.html'), 'utf8');
-// </script> inside the bundle would terminate the tag early.
-const safe = js.replace(/<\/script/gi, '<\\/script');
-const html = shell
-  .replace('/*__MIXER_DEV_USER__*/', 'false')
-  .replace('/*__BUNDLE__*/', () => safe);
+/**
+ * Write dist/SongMixer/ — the desk and its render frame.
+ *
+ * @returns {Promise<{index: number, frame: number}>} the two sizes, in KB
+ */
+export async function buildSongMixer(root = here) {
+  const html = (await inlined(root, 'tools/mixer-entry.js', 'tools/mixer-shell.html',
+    { __MASH_STATIC_MIXER__: 'true' }))
+    .replace('/*__MIXER_DEV_USER__*/', 'false');
+  const frame = await inlined(root, 'tools/mixer-render-entry.js', 'tools/mixer-render-shell.html');
 
-const outDir = join(root, 'dist', 'SongMixer');
-mkdirSync(outDir, { recursive: true });
-writeFileSync(join(outDir, 'index.html'), html);
-console.log(`dist/SongMixer/index.html written (${(html.length / 1024).toFixed(0)} KB mixer)`);
+  const outDir = join(root, 'dist', 'SongMixer');
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, 'index.html'), html);
+  writeFileSync(join(outDir, 'render-frame.html'), frame);
+  return { index: Math.round(html.length / 1024), frame: Math.round(frame.length / 1024) };
+}
+
+// `node tools/build-mixer-static.js` builds it on its own; build/build.js imports the
+// function instead, so the two cannot emit different things.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const { index, frame } = await buildSongMixer();
+  console.log(`dist/SongMixer/index.html written (${index} KB mixer)`);
+  console.log(`dist/SongMixer/render-frame.html written (${frame} KB engine)`);
+}

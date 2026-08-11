@@ -447,18 +447,44 @@ export const MusicDirector = {
     } catch (err) {
       // A pair of mixes that disagree on the SHAPE of an effect chain — see rampMix,
       // which refuses before it moves anything, so the presentation is left whole rather
-      // than half applied. The desk is where that pair should have been caught.
+      // than half applied.
       //
-      // But the LOOP still has to go. This used to return here, which meant a refused
-      // mix change also skipped the release below — and a cabinet screen looping four
-      // bars then looped them for the whole level, for ever, with no way out and nothing
-      // said. A missing mix change is a disappointment; a song that never moves on is a
-      // bug you cannot play through, so the two are unhooked from each other.
-      console.error('[music] treatment refused, releasing the loop anyway:', err.message);
-      if (!released) this.releaseLoop();
-      this.variantId = p.variantId;
-      this.pending = null;
-      return;
+      // A handover with NO CROSSFADE has no ramp to protect and no bar line to honour,
+      // so the shape can simply be rebuilt: applyMix is setBank's other half, and it
+      // resets the strips and builds every chain from scratch while leaving `step`,
+      // `nextTime` and songTrim alone — the clock stays seamless, which is the whole
+      // reason a presentation avoids setBank. It costs the reverb tails and any solo,
+      // which is what a room change behind a closed shutter should cost anyway.
+      //
+      // Without this the Arcade Corner silently kept the Food Court's mix WHOLE. The
+      // concourse master chain is one effect and the arcade's is three, so the very
+      // first chain checked threw, nothing was applied, and the room played the
+      // concourse's delay sends — with every edit to the arcade mix discarded, which
+      // looks exactly like a delay that will not turn off.
+      let rebuilt = false;
+      if (seconds === 0 && Audio.mixer) {
+        try {
+          Audio.bank = Audio.applyMix(this.bank, p.mix);
+          // reset() has already put the treatment leg back to a wire, so there is no
+          // longer a leg for the fade-out below to take away.
+          this.treated = false;
+          rebuilt = true;
+        } catch (hard) {
+          console.error('[music] mix rebuild failed:', hard.message);
+        }
+      }
+      if (!rebuilt) {
+        // But the LOOP still has to go. This used to return here, which meant a refused
+        // mix change also skipped the release below — and a cabinet screen looping four
+        // bars then looped them for the whole level, for ever, with no way out and nothing
+        // said. A missing mix change is a disappointment; a song that never moves on is a
+        // bug you cannot play through, so the two are unhooked from each other.
+        console.error('[music] treatment refused, releasing the loop anyway:', err.message);
+        if (!released) this.releaseLoop();
+        this.variantId = p.variantId;
+        this.pending = null;
+        return;
+      }
     }
     if (swell) {
       // The bloom decaying into the level, over the same length it took to rise. The

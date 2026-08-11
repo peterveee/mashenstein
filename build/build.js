@@ -507,30 +507,19 @@ if (watch) {
   const result = await esbuild.build(options);
   emit(result);
 
-  // The Song Mixer, as a standalone static page at /SongMixer/.
-  // Only in production builds — watch mode skips it for speed.
+  // The Song Mixer, as a standalone static page at /SongMixer/ — the desk plus the
+  // render frame it bounces WAVs through. Only in production builds; watch mode skips
+  // it for speed.
+  //
+  // Through the tool's own builder rather than a copy of it here. While this was a
+  // second copy, the two could emit different pages, and the moment the mixer grew a
+  // second document that stopped being theoretical: one of them would have shipped a
+  // desk whose Render WAV button pointed at a file that was never written.
   try {
-    const mixerResult = await esbuild.build({
-      entryPoints: [join(root, 'tools/mixer-entry.js')],
-      bundle: true,
-      format: 'iife',
-      target: ['es2020'],
-      minify: false,
-      outdir: join(root, 'dist'),
-      write: false,
-      logLevel: 'warning',
-      define: { __MASH_STATIC_MIXER__: 'true' },
-    });
-    const mixerJs = mixerResult.outputFiles[0].text;
-    const mixerShell = readFileSync(join(root, 'tools/mixer-shell.html'), 'utf8');
-    const mixerSafe = mixerJs.replace(/<\/script/gi, '<\\/script');
-    const mixerHtml = mixerShell
-      .replace('/*__MIXER_DEV_USER__*/', 'false')
-      .replace('/*__BUNDLE__*/', () => mixerSafe);
-    const mixerDir = join(root, 'dist', 'SongMixer');
-    mkdirSync(mixerDir, { recursive: true });
-    writeFileSync(join(mixerDir, 'index.html'), mixerHtml);
-    console.log(`dist/SongMixer/index.html written (${(mixerHtml.length / 1024).toFixed(0)} KB mixer)`);
+    const { buildSongMixer } = await import('../tools/build-mixer-static.js');
+    const mixer = await buildSongMixer(root);
+    console.log(`dist/SongMixer/index.html written (${mixer.index} KB mixer)`);
+    console.log(`dist/SongMixer/render-frame.html written (${mixer.frame} KB engine)`);
   } catch (err) {
     // The mixer is a dev tool; a broken mixer build does not block the game.
     console.error('Song Mixer build failed (the game build is unaffected):');

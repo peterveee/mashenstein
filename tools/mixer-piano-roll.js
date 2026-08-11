@@ -40,7 +40,8 @@ import {
   LANES, validLen, perNoteLengthLane,
 } from '../src/engine/lanes.js';
 import { createBarGrid } from './mixer-bar-grid.js';
-import { SCALE_BY_ID, PITCH_CLASSES, inScale } from './mixer-voice-library.js';
+import { SCALE_BY_ID, inScale } from './mixer-voice-library.js';
+import { deskNoteName } from './mixer-note-names.js';
 
 const LABELS = Object.fromEntries(
   LANES.map((l) => [l.key, l.label.charAt(0).toUpperCase() + l.label.slice(1)]),
@@ -1095,7 +1096,7 @@ export function createPianoRoll({
         height,
         keyFace,
         freq: midiFreq(midi),
-        label: `${PITCH_CLASSES[midi % 12]}${Math.floor(midi / 12) - 1}`,
+        label: deskNoteName(midi),
         colour: laneColour(key),
         // Do not move the note artwork to force exact centre alignment. The grouped
         // rows are the deliberate visual compromise: the note, its hit region, and its

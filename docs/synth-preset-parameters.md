@@ -9,9 +9,17 @@
 > except the drum oscillator's, which is Microtonic's `FREQUENCY` / `AMOUNT` / `RATE`
 > instead: a tuning, a signed depth in semitones, and a time. See its section below.
 >
-> **Envelope ranges:** every exposed envelope time control tops out at 10 seconds.
-> Every envelope time knob uses the same non-linear response, with extra travel at the
-> short-time end; ordinary non-envelope knobs remain linear.
+> **Envelope ranges:** every exposed envelope time control tops out at 10 seconds and
+> steps in **milliseconds** — 1 ms everywhere, which is also the floor the travel starts
+> from. Every envelope time knob uses the same logarithmic response, **a decade per
+> quarter turn**: 1 ms at the floor, 10 ms at a quarter, 100 ms at half, 1 s at three
+> quarters, 10 s at the stop. Half the pot is therefore under a tenth of a second, and a
+> stage whose `min` is 0 still switches off at the left stop. (It was a power curve with
+> exponent `log2(10)`, which put 100 ms a quarter of the way round and crushed
+> everything under it into a sliver thinner than the old 10 ms step.) The sub-second
+> time pots — `DROP TIME`, `STRIKE`, `GLIDE` — are a half-second range already dialled
+> in milliseconds and keep a quadratic instead (125 ms at the midpoint). Ordinary
+> non-envelope knobs remain linear.
 > Sustain is shown and edited as 0–100%, while the engine continues to store 0–1.
 >
 > **Optional sections** (every `On`/`Off` switch in the panel) are a **bypass, not a
@@ -36,10 +44,12 @@ across every synth type and drum section:
 |---|---|---|
 | **`CUTOFF`** | Every filter frequency knob | CUTOFF / FREQUENCY |
 | **`RESONANCE`** | Every filter Q knob | RESONANCE / PEAKING |
+| **`ENV AMOUNT`** | Every filter-envelope depth knob, in octaves, bipolar | ENV AMOUNT / EG INT |
 | **`TYPE`** | Every filter mode selector (LP/HP/BP/NOTCH) + drive shaper | TYPE / MODE |
 | **`SLOPE`** | Filter rolloff (-12/-24/-48 dB/oct) | SLOPE |
 | **`SWEEP TO`** | Every sweep destination frequency | (unified from FALLS TO / SWEEPS TO) |
 | **`TONE`** | Post-drive LPF frequency | TONE (TR-808/909 convention) |
+| **`PLACE`** | Where a drive sits relative to the filter/amp it shares a panel with | (descriptive — hardware spells this PRE/POST) |
 | **`STRIKE`** | Ring resonator excitation duration | (descriptive, no direct Roland equivalent) |
 
 ---
@@ -57,7 +67,7 @@ across every synth type and drum section:
 | `FINE` | `$fine` | -50 | 50 | 0 | ct | Cents |
 | `VIB DEPTH` | `$vibrato.depth` | 0 | 12 | 0 | — | 0–12 (1 unit = 100 cents on GameSynth) |
 | `VIB RATE` | `$vibrato.rate` | 0.1 | 20 | 5 | Hz | |
-| `VIB DELAY` | `$vibrato.delay` | 0.001 | 1 | 0.001 | s | GameSynth only |
+| `VIB DELAY` | `$vibrato.delay` | 0 | 10 | 0 | s | GameSynth only |
 | `KEY MODE` | `$mode` | — | — | POLY | — | POLY / LEGATO / MONO pill; legacy `$mono` opens as MONO |
 | `GLIDE` | `$portamento` | 0 | 0.5 | 0 | s | Portamento time; available in LEGATO and MONO |
 
@@ -87,7 +97,7 @@ The native game oscillator — no Tone.js ADSR, direct Web Audio nodes.
 | `CUTOFF` | `$filter.freq` | 20 | 18000 | 4000 | Hz |
 | `RESONANCE` | `$filter.Q` | 0.1 | 40 | 0.7 | — | ✅ Standard |
 | `SWEEP TO` | `$filter.to` | 20 | 18000 | 4000 | Hz |
-| `SWEEP TIME` | `$filter.sweep` | 0.005 | 2 | 0.12 | s | |
+| `SWEEP TIME` | `$filter.sweep` | 0.001 | 10 | 0.12 | s | |
 
 ---
 
@@ -100,19 +110,19 @@ The native game oscillator — no Tone.js ADSR, direct Web Audio nodes.
 | Oscillator | `STACK` | `oscillator.count` | 1 | 8 | 3 | — | Fat voicing only |
 | Oscillator | `SPREAD` | `oscillator.spread` | 0 | 100 | 20 | cents | Fat voicing only |
 | Amp Env | `ATTACK` | `envelope.attack` | 0.001 | 10 | 0.01 | s | |
-| Amp Env | `DECAY` | `envelope.decay` | 0.01 | 10 | 0.2 | s | |
+| Amp Env | `DECAY` | `envelope.decay` | 0.001 | 10 | 0.2 | s | |
 | Amp Env | `SUSTAIN` | `envelope.sustain` | 0 | 100 | 50 | % | |
-| Amp Env | `RELEASE` | `envelope.release` | 0.01 | 10 | 0.3 | s | |
+| Amp Env | `RELEASE` | `envelope.release` | 0.001 | 10 | 0.3 | s | |
 | Amp Env | `ATK`/`DEC`/`REL` (one row) | `envelope.attackCurve`/`decayCurve`/`releaseCurve` | — | — | linear/exponential/exponential | — | linear or exponential only |
 | **Filter** | `TYPE` | `filter.type` | — | — | lowpass | — |
 | **Filter** | **`SLOPE`** | `filter.rolloff` | — | — | -12 | dB/oct | **⚠️ Should be ROLLOFF** |
 | **Filter** | `CUTOFF` | `filterEnvelope.baseFrequency` | 20 | 8000 | 200 | Hz |
 | **Filter** | `RESONANCE` | `filter.Q` | 0 | 20 | 1 | — | ✅ Standard |
-| **Filter** | `SWEEP` | `filterEnvelope.octaves` | 0 | 8 | 2 | oct | |
+| **Filter** | `ENV AMOUNT` | `filterEnvelope.octaves` | -10 | 10 | 0 | oct | Bipolar — negative closes the filter |
 | Filter Env | `ATTACK` | `filterEnvelope.attack` | 0.001 | 10 | 0.01 | s | |
-| Filter Env | `DECAY` | `filterEnvelope.decay` | 0.01 | 10 | 0.2 | s | |
+| Filter Env | `DECAY` | `filterEnvelope.decay` | 0.001 | 10 | 0.2 | s | |
 | Filter Env | `SUSTAIN` | `filterEnvelope.sustain` | 0 | 100 | 50 | % | |
-| Filter Env | `RELEASE` | `filterEnvelope.release` | 0.01 | 10 | 0.3 | s | |
+| Filter Env | `RELEASE` | `filterEnvelope.release` | 0.001 | 10 | 0.3 | s | |
 | Filter Env | `ATK`/`DEC`/`REL` (one row) | `filterEnvelope.attackCurve`/`decayCurve`/`releaseCurve` | — | — | linear/exponential/exponential | — | linear or exponential only |
 
 ---
@@ -210,7 +220,7 @@ Same layout as FMSynth: `RATIO`, `CARRIER`, `MODULATOR`, two envelopes.
 | `LEVEL` | `$noise.gain` | 0 | 2 | 1 | — | |
 | `CUTOFF` | `$noise.freq` | 100 | 12000 | 2600 | Hz |
 | `RESONANCE` | `$noise.Q` | 0.1 | 40 | 0.7 | — | ✅ Standard |
-| `DECAY` | `$noise.decay` | 0.005 | 10 | 0.09 | s | |
+| `DECAY` | `$noise.decay` | 0.001 | 10 | 0.09 | s | |
 
 #### Body Section (optional)
 | Label | Path | Min | Max | Default | Unit | ⚠️ |
@@ -219,7 +229,7 @@ Same layout as FMSynth: `RATIO`, `CARRIER`, `MODULATOR`, two envelopes.
 | `LEVEL` | `$body.gain` | 0 | 1 | 0.375 | — | |
 | `PITCH` | `$body.from` | 30 | 4000 | 210 | Hz | Start of pitch drop |
 | `SWEEP TO` | `$body.to` | 20 | 4000 | 140 | Hz |
-| `DECAY` | `$body.decay` | 0.005 | 10 | 0.06 | s | |
+| `DECAY` | `$body.decay` | 0.001 | 10 | 0.06 | s | |
 
 ---
 
@@ -235,10 +245,10 @@ Same layout as FMSynth: `RATIO`, `CARRIER`, `MODULATOR`, two envelopes.
 | `KNOCK` | `$knock` | 0 | 1 | 0 | — |
 | `FREQUENCY` | `$osc.from` | 20 | 10000 | 190 | Hz |
 | `AMOUNT` | `$osc.to` | -96 | +96 | 0 | semi |
-| `RATE` | `$osc.sweep` | 0.005 | 10 | 0.07 | s |
+| `RATE` | `$osc.sweep` | 0 | 10 | 0.07 | s |
 | `ATTACK` | `$osc.attack` | 0.001 | 10 | 0.001 | s |
 | `HOLD` | `$osc.hold` | 0 | 10 | 0 | s |
-| `DECAY` | `$osc.decay` | 0.01 | 10 | 0.35 | s |
+| `DECAY` | `$osc.decay` | 0.001 | 10 | 0.35 | s |
 | `SAG` | `$osc.sag` | 0 | 1 | 0 | — |
 
 `AMOUNT` is the one control here that is not stored as it is shown. The catalogue keeps
@@ -249,8 +259,8 @@ entirely. Moving `FREQUENCY` carries `osc.to` with it so the interval is preserv
 the destination is held inside 1 Hz–20 kHz, so ±96 semitones is only fully reachable
 from the lower tunings.
 
-`FREQUENCY` uses the non-linear knob response (a cubic, against the envelope times'
-quadratic): 25% of the travel is ~175 Hz, 50% ~1.3 kHz, 75% ~4.2 kHz.
+`FREQUENCY` uses the non-linear knob response (a cubic, close to the envelope times'
+`log2(10)`): 25% of the travel is ~175 Hz, 50% ~1.3 kHz, 75% ~4.2 kHz.
 
 #### FM Section (optional, nested under oscillator)
 | Label | Path | Min | Max | Default | Unit |
@@ -259,7 +269,7 @@ quadratic): 25% of the travel is ~175 Hz, 50% ~1.3 kHz, 75% ~4.2 kHz.
 | `RATIO` | `$osc.fm.ratio` | 0.1 | 12 | 1.4 | — |
 | `INDEX` | `$osc.fm.index` | 0 | 8 | 1 | — |
 | `ATTACK` | `$osc.fm.attack` | 0.001 | 10 | 0.001 | s |
-| `DECAY` | `$osc.fm.decay` | 0.005 | 10 | 0.35 | s |
+| `DECAY` | `$osc.fm.decay` | 0.001 | 10 | 0.35 | s |
 
 #### Noise Section (optional)
 | Label | Path | Min | Max | Default | Unit | ⚠️ |
@@ -271,11 +281,11 @@ quadratic): 25% of the travel is ~175 Hz, 50% ~1.3 kHz, 75% ~4.2 kHz.
 | `LEVEL` | `$noise.gain` | 0 | 2 | 1 | — |
 | `CUTOFF` | `$noise.freq` | 100 | 12000 | 2600 | Hz |
 | `SWEEP TO` | `$noise.to` | 100 | 12000 | 2600 | Hz |
-| `SWEEP` | `$noise.sweep` | 0.005 | 1.5 | 0.12 | s | |
+| `SWEEP` | `$noise.sweep` | 0.001 | 10 | 0.12 | s | |
 | `RESONANCE` | `$noise.Q` | 0.1 | 40 | 0.7 | — | ✅ |
 | `ATTACK` | `$noise.attack` | 0.001 | 10 | 0.001 | s | |
 | `HOLD` | `$noise.hold` | 0 | 10 | 0 | s | |
-| `DECAY` | `$noise.decay` | 0.005 | 10 | 0.12 | s | |
+| `DECAY` | `$noise.decay` | 0.001 | 10 | 0.12 | s | |
 | `SAG` | `$noise.sag` | 0 | 1 | 0 | — | |
 
 #### Ring Section (optional — resonant filter)
@@ -288,7 +298,7 @@ quadratic): 25% of the travel is ~175 Hz, 50% ~1.3 kHz, 75% ~4.2 kHz.
 | `SWEEP TO` | `$ring.to` | 40 | 8000 | 400 | Hz |
 | `STRIKE` | `$ring.hit` | 0.0005 | 0.05 | 0.002 | s | Excitation duration |
 | `RESONANCE` | `$ring.Q` | 1 | 120 | 40 | — | ✅ Up to 120 for ringing |
-| `DECAY` | `$ring.decay` | 0.005 | 10 | 0.25 | s | |
+| `DECAY` | `$ring.decay` | 0.001 | 10 | 0.25 | s | |
 | `SAG` | `$ring.sag` | 0 | 1 | 0 | — | |
 
 #### Metal Section (optional — inharmonic cluster)
@@ -302,7 +312,7 @@ quadratic): 25% of the travel is ~175 Hz, 50% ~1.3 kHz, 75% ~4.2 kHz.
 | `PARTIALS` | `$metal.count` | 1 | 6 | 6 | — | |
 | `CUTOFF` | `$metal.hp` | 200 | 12000 | 3000 | Hz |
 | `RESONANCE` | `$metal.Q` | 0.1 | 20 | 0.7 | — | ✅ |
-| `DECAY` | `$metal.decay` | 0.005 | 10 | 0.2 | s | |
+| `DECAY` | `$metal.decay` | 0.001 | 10 | 0.2 | s | |
 | `SAG` | `$metal.sag` | 0 | 1 | 0 | — | |
 
 #### Drive Section
@@ -311,6 +321,62 @@ quadratic): 25% of the travel is ~175 Hz, 50% ~1.3 kHz, 75% ~4.2 kHz.
 | `SHAPE` | `$shape` | — | — | soft | — |
 | `DRIVE` | `$drive` | 0 | 1 | 0 | — | Drive amount |
 | `TONE` | `$tone.freq` | 200 | 16000 | 16000 | Hz |
+
+---
+
+### MRDR-3 Effects (native `_playLayer` path)
+
+The card MRDR-3 calls **Effects** is the Drive Section above — the same three keys, the
+same labels, the same order, so those pots are one control across the two panels — plus
+the two things a melodic stack has that a one-shot does not.
+
+#### Drive placement
+
+| Label | Path | Options | Default | ⚠️ |
+|---|---|---|---|---|
+| `PLACE` | `$drivePlace` | post, pre | post | Which side of the global stage the shaper sits on |
+
+`post` is the chain MRDR-3 has always built: the three layers summed, through the Global
+Filter and the Global VCA, and **then** into the shaper. Because `_driveCurve` is
+normalised to full scale (slope ≈ `k/tanh(k)`, up to ~25× at DRIVE 1.0), a shaper sitting
+there is also a hard compressor — it drags a decayed tail back up, and CRUSH will gate a
+release outright once the tail falls under one quantisation step.
+
+`pre` moves the shaper **and its TONE filter** in front of that stage: layers → drive →
+Global Filter → Global VCA. The filter then tames the shaper's fizz instead of TONE doing
+it downstream, a cutoff sweep is heard on a spectrum the drive made rich, and the amp
+envelope survives intact.
+
+Two costs, both real and neither a bug:
+
+- the global stage is built **per note** (KEY FOLLOW has to read each note's own
+  frequency), so anything in front of it is per note too. At `post` a chord's tones sum
+  into **one** shaper and intermodulate — much of what makes a stack read as one
+  instrument; at `pre` each tone distorts alone and the chord is cleaner and thinner.
+- one shaper (and TONE filter) per chord tone rather than one per note-on.
+
+On a preset with **no** global stage there is nothing to be pre or post of, so the engine
+ignores the key entirely and renders bit-identically either way.
+
+#### Chorus 2 (always post)
+
+Two short delay lines in antiphase, one panned left and one right, both walked by a single
+key-synced sine — the Juno's chorus. It sits **after** everything: after the drive, after
+the tremolo, before the note's own level gain, so the echo send hears the chorused
+instrument. It takes no placement pill because there is nowhere else for it to be.
+
+| Label | Path | Min | Max | Default | Unit | ⚠️ |
+|---|---|---|---|---|---|---|
+| `CHORUS` | `$chorus.mix` | 0 | 1 | 0 | — | Dry/wet, equal power. **This is the switch** — at zero the engine builds no chorus at all |
+| `RATE` | `$chorus.rate` | 0.05 | 8 | 0.8 | Hz | Cubic taper (`SLOW_LFO_RATE_SCALE`) — a chorus lives under 1 Hz, and linear the whole of that sat in the first tenth of the travel. Position only; the stored Hz is unchanged |
+| `DEPTH` | `$chorus.depth` | 0 | 1 | 0.5 | — | Modulation swing, to ±4 ms |
+| `WIDTH` | `$chorus.width` | 0 | 1 | 1 | — | Stereo spread of the two lines. At 0 no panner is built at all |
+
+Base delay (5.5 ms) and maximum swing (±4 ms) are engine constants, not preset keys — the
+BBD range the DEPTH pot is denominated in, the same way the LFO's depth is denominated in
+cents. `RATE`, `DEPTH` and `WIDTH` fall back to the values above when the preset does not
+state them, so winding `CHORUS` up on a patch that has never had one gives a chorus rather
+than a pot that moves and does nothing.
 
 ---
 

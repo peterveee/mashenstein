@@ -1095,6 +1095,119 @@ try {
   assert(settledDiff < Math.max(peakOf(fromOctave), peakOf(fromStep)) * 0.2,
     'and settles onto the same pulse the destination note asks for'
     + ` (max diff ${settledDiff.toFixed(5)})`);
+
+  // ---- DRIVE PLACEMENT and CHORUS 2 -------------------------------------------
+  //
+  // Both are new stages on `_playLayer`, and both make the same promise first: a preset
+  // that does not mention them renders exactly what it always did. Everything below is
+  // measured against that.
+  //
+  // The patch is a plucked bass on purpose — one saw with no local amp, through a
+  // resonant global filter and a global VCA that decays hard to a low sustain. That is
+  // the shape the placement argument is ABOUT: with the shaper after the VCA and the
+  // curve normalised to full scale, drive is also a compressor, and the decay it was
+  // handed comes out flattened.
+  const bassPatch = (over = {}) => ({
+    label: 'Placement', category: 'Bass', synth: 'MRDR-3', kind: 'tone', dur: 8,
+    layer: { osc1: { type: 'sawtooth', ratio: 1, gain: 0.6, vca: 'through' } },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 900, Q: 4 },
+      vca: { attack: 0.002, decay: 0.12, sustain: 0.1, release: 0.06 },
+    },
+    drive: 0.85, shape: 'soft', tone: { type: 'lowpass', freq: 6000, Q: 0.7 },
+    level: 0.2, peak: 1, ...over,
+  });
+  const placeTake = async (voice, id = 'placement') => (await renderer.render(
+    { bpm: 120, bass: Array.from({ length: 16 }, (_, i) => (i === 0 ? 110 : null)) },
+    { repeat: 1, mix: { voiceParams: { bassVoice: voice } }, trackId: id },
+  ));
+  const worstDiff = (a, b) => {
+    let d = 0;
+    for (let n = 0; n < Math.min(a.length, b.length); n++) d = Math.max(d, Math.abs(a[n] - b[n]));
+    return d;
+  };
+  const rmsOver = (o, from, secs) => {
+    let s = 0; let c = 0;
+    for (let n = Math.round(SR * from); n < Math.round(SR * (from + secs)) && n < o.length; n++) {
+      s += o[n] * o[n]; c++;
+    }
+    return c ? Math.sqrt(s / c) : 0;
+  };
+
+  // POST is the default, so saying it out loud must change nothing at all. This is the
+  // guarantee every shipped preset rests on: the key can appear in a saved patch without
+  // that patch becoming a different take of itself.
+  const postTake = (await placeTake(bassPatch())).outL;
+  const saidPost = (await placeTake(bassPatch({ drivePlace: 'post' }))).outL;
+  assert(worstDiff(postTake, saidPost) === 0,
+    'PLACE at POST is bit-identical to a preset that never mentions it');
+
+  // And the move is real: the same patch with the shaper in front of the global stage is
+  // a different sound, not a rounding difference.
+  const preTake = (await placeTake(bassPatch({ drivePlace: 'pre' }))).outL;
+  assert(worstDiff(postTake, preTake) > peakOf(postTake) * 0.05,
+    `PLACE at PRE renders a different sound, not a re-spelling (max diff ${worstDiff(postTake, preTake).toFixed(4)})`);
+
+  // The claim the switch is FOR. Tail energy against peak energy: at POST the shaper sees
+  // the enveloped note and its ~25× near-zero slope drags the decay back up, so the tail
+  // sits far closer to the peak than the VCA drew it. At PRE the VCA is last and the
+  // envelope survives, so the same patch decays further.
+  const ratioOf = (o) => rmsOver(o, 0.22, 0.15) / (rmsOver(o, 0.005, 0.03) || 1);
+  const postRatio = ratioOf(postTake);
+  const preRatio = ratioOf(preTake);
+  assert(preRatio < postRatio * 0.8,
+    'PRE lets the global VCA keep its decay where POST compresses it flat'
+    + ` (tail/peak ${preRatio.toFixed(3)} against ${postRatio.toFixed(3)})`);
+
+  // With NO global stage there is nothing to be pre or post OF, and the engine says so by
+  // ignoring the key. Bit-identical, or the pill would quietly be the difference between
+  // two takes of a patch it has no stage to move the drive around.
+  const stageless = (place) => bassPatch({
+    global: undefined,
+    layer: { osc1: { type: 'sawtooth', ratio: 1, gain: 0.6, vca: 'env', attack: 0.002, decay: 0.12, sustain: 0.1, release: 0.06 } },
+    ...(place ? { drivePlace: place } : {}),
+  });
+  const bareTake = (await placeTake(stageless(null), 'stageless')).outL;
+  const barePre = (await placeTake(stageless('pre'), 'stageless')).outL;
+  assert(worstDiff(bareTake, barePre) === 0,
+    'PLACE is ignored on a stack with no global stage, rather than meaning something else there');
+
+  // ---- Chorus 2 ---------------------------------------------------------------
+  //
+  // MIX is the switch, so a chorus block at zero has to build nothing — the same deal the
+  // LFO's DEPTH makes, and the same test it deserves: a preset carrying the section but
+  // not using it is the preset without it.
+  const chorusPatch = (chorus) => bassPatch({ drive: 0, ...(chorus ? { chorus } : {}) });
+  const noCho = (await placeTake(chorusPatch(null), 'chorus')).outL;
+  const zeroCho = (await placeTake(chorusPatch({ mix: 0, rate: 0.8, depth: 0.5, width: 1 }), 'chorus')).outL;
+  assert(worstDiff(noCho, zeroCho) === 0,
+    'CHORUS at zero mix builds nothing — the switch is the pot, as it is on the LFO');
+
+  const wideTake = await placeTake(chorusPatch({ mix: 0.6, rate: 0.8, depth: 0.5, width: 1 }), 'chorus');
+  assert(worstDiff(noCho, wideTake.outL) > peakOf(noCho) * 0.05,
+    'and winding it up is audibly a chorus rather than a pot that moves and does nothing');
+
+  // WIDTH is what makes it the Juno's and not a wobble: the two delay lines run in
+  // ANTIPHASE, so at full width the channels disagree and at zero they are the same
+  // signal twice. Measured as the energy of L−R, which is exactly that disagreement.
+  const sideRms = (o) => {
+    let s = 0; let c = 0;
+    for (let n = 0; n < Math.min(o.outL.length, o.outR.length); n++) {
+      const d = o.outL[n] - o.outR[n]; s += d * d; c++;
+    }
+    return c ? Math.sqrt(s / c) : 0;
+  };
+  const narrowTake = await placeTake(chorusPatch({ mix: 0.6, rate: 0.8, depth: 0.5, width: 0 }), 'chorus');
+  assert(sideRms(wideTake) > sideRms(narrowTake) * 4,
+    `WIDTH opens the two antiphase lines across the field (side energy ${sideRms(wideTake).toFixed(5)}`
+    + ` against ${sideRms(narrowTake).toFixed(5)})`);
+
+  // Key-synced and deterministic, which is the whole reason it is an OscillatorNode
+  // started at the note's own time rather than a free-running one: two renders of the
+  // same bar have to be the same samples or stems stop summing to the mix.
+  const twiceTake = await placeTake(chorusPatch({ mix: 0.6, rate: 0.8, depth: 0.5, width: 1 }), 'chorus');
+  assert(worstDiff(wideTake.outL, twiceTake.outL) === 0,
+    'a chorused note renders identically twice — the modulator is key-synced, not free-running');
 } finally {
   await renderer.close();
 }

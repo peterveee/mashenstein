@@ -36,7 +36,7 @@
 //      (tests/preview.js pins it). A pad is a `true` with no length, and that is the
 //      one note shape this module owns outright.
 
-import { CHORD_LANES, PERCUSSION_LANES, baseLane } from '../../src/data/voices.js';
+import { CHORD_LANES, PERCUSSION_LANES, MONO_LANES, baseLane } from '../../src/data/voices.js';
 import { lenKey, validLen } from '../../src/engine/lanes.js';
 import { noteCell, noteLength, freqMidi } from '../mixer-piano-roll.js';
 
@@ -59,6 +59,79 @@ export const restValue = (laneKey) => (laneKind(laneKey) === 'perc' ? false : nu
 
 /** Sixteen rests of the right kind — what a lane with nothing in it starts from. */
 export const emptyBar = (laneKey) => new Array(16).fill(restValue(laneKey));
+
+/**
+ * A2 — the pitch a note gets when it arrives without one, as a drum hit does.
+ *
+ * The same 110 as `BENCH_NOTE` in tools/mixer-voice-library.js, and for the same
+ * reason: it is where a pitched preset is measured, so it is the desk's existing
+ * answer to "which note, when nothing has said". Restated rather than imported —
+ * that module is the preset library and pulling it in here, into a file the offline
+ * tests load, would drag the whole rack behind it.
+ */
+export const NO_PITCH_NOTE = 110;
+
+/** The tones in a step, whatever shape it arrived in. Empty for a rest. */
+const tonesIn = (value) => (Array.isArray(value)
+  ? value.filter((f) => typeof f === 'number' && f > 0)
+  : (value == null || value === false || value === true ? [] : [value]));
+
+/**
+ * Make one step legal on the lane it is about to be written to.
+ *
+ * The three shapes are not interchangeable and the engine does not defend itself
+ * evenly against getting the wrong one. Most pitched bodies read their step through a
+ * `tonesOf` that takes a number or an array, so an array on `bass` is fine — but
+ * `scheduleStep` calls `b.chords[s].forEach` outright, so a bare number on a chord
+ * lane is a TypeError on the audio thread that repeats every step and takes the page
+ * down with it. That is exactly what a cross-lane paste produces: `copyLaneBars`
+ * reads a lane's values as they are, and pasting a bassline onto `chords` was writing
+ * sixteen bare numbers into a lane whose every reader expects arrays.
+ *
+ * So the write path converts rather than trusting the clip:
+ *
+ *   → percussion   a note of any shape is a hit, a rest is `false`. Rhythm is all a
+ *                  drum lane can hold, and rhythm is what survives.
+ *   → chord        one note becomes a one-note chord; a chord stays as it is.
+ *   → mono pitched gliss, sweeps, vox and the rest hold ONE thing per step — `vox`
+ *                  picks a word by it — so a chord is flattened to its bottom tone
+ *                  rather than handed over as an array that would multiply to NaN.
+ *   → poly pitched a number or an array, both of which `tonesOf` reads.
+ *
+ * A percussion hit has no pitch to give, so one going the other way lands on
+ * `NO_PITCH_NOTE` and can be dragged from there — a kit pattern pasted onto a bass is
+ * a rhythm you wanted, and silence would look like the paste had failed.
+ */
+export function laneShape(laneKey, value, { pitch = NO_PITCH_NOTE } = {}) {
+  const kind = laneKind(laneKey);
+  const rest = value == null || value === false;
+  if (kind === 'perc') return !rest;
+  if (rest) return null;
+  const tones = tonesIn(value);
+  // `true` is a percussion hit on its way to a pitched lane: it has a step but no note.
+  if (!tones.length) return value === true ? (kind === 'chord' ? [pitch] : pitch) : null;
+  if (kind === 'chord') return tones;
+  return MONO_LANES.includes(baseLane(laneKey)) || !Array.isArray(value) ? tones[0] : tones;
+}
+
+/**
+ * The lengths that go with `laneShape`, kept aligned with the notes it produced.
+ *
+ * A percussion lane has no per-note length — a hit is a trigger — so every length is
+ * blanked. Blanked rather than dropped: `putLane` reads a missing array as "leave the
+ * lengths as they are", and the point is to CLEAR them, since the lengths that were
+ * there belonged to the notes being replaced. Sixteen nulls is what deletes the key.
+ *
+ * Everywhere else a scalar is already legal on a chord lane (it covers every tone),
+ * and the only real conversion is the flatten: a chord landing on a mono lane keeps
+ * the length of the tone that survived it.
+ */
+export function laneShapeLengths(laneKey, lengths16) {
+  if (!lengths16) return null;
+  if (laneKind(laneKey) === 'perc') return lengths16.map(() => null);
+  const mono = MONO_LANES.includes(baseLane(laneKey));
+  return lengths16.map((len) => (mono && Array.isArray(len) ? (len[0] ?? null) : len ?? null));
+}
 
 /** Which bar of the song a step falls in, and where in that bar. */
 export const barOfStep = (step) => Math.floor(step / 16);

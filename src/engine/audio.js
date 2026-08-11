@@ -20,6 +20,31 @@ import {
 // without reaching the audible edge; scheduled timestamps do not move, and preview
 // notes use their separate path below.
 const SEQUENCER_LOOKAHEAD = 0.25;
+/**
+ * The same window, for a page the machine has stopped paying attention to.
+ *
+ * A quarter-second is a bargain struck with an INTERACTIVE desk: it is how long a seek
+ * or a loop change waits to be heard, so it is kept short on purpose and every ms of it
+ * is felt. None of that reasoning survives the window going to the back. What is left
+ * there is the other half of the bargain — a main thread the system has stopped
+ * treating as urgent. macOS demotes a background app's threads and Chrome demotes a
+ * background renderer on top of that, so the 25ms interval stops landing at 25ms, and
+ * 250ms of queued audio is not enough to ride that out. Moving the mouse in ANOTHER
+ * APP is enough to do it: none of that work reaches this page, it simply takes the
+ * attention this page needed. The desk keeps playing while you work elsewhere — that is
+ * the point of it — and it used to stutter for as long as you were away.
+ *
+ * So the window follows the attention: wide while the window is in the back, where
+ * latency is a word with no meaning because nobody is there to feel it, and back to a
+ * quarter-second the moment you return to it. 1.5s covers a full second of timer
+ * clamping with room over, which is the worst the browser will do to us.
+ *
+ * Not a fix for a busy song in the FOREGROUND. A twenty-lane section that costs more
+ * than one core to render is a capacity problem and no amount of queueing ahead helps,
+ * because the shortfall is on the audio thread rather than in front of it — measure it
+ * with `ctx.currentTime` against the wall clock and it comes back slower than realtime.
+ */
+const BACKGROUND_LOOKAHEAD = 1.5;
 
 /**
  * How much louder the melodic voices play than they were authored.
@@ -404,6 +429,9 @@ class AudioSys {
     this.step = 0;
     this.nextTime = 0;
     this.timer = null;
+    // Scheduler starvation telemetry — see schedule() and takeSchedulerHealth().
+    this._schedMarginMin = Infinity;
+    this._schedLate = 0;
     this.bank = null;      // current pattern bank
     this.tempo = 1;        // song speed multiplier (slow-mo drags it down)
     this.detune = 1;       // song pitch multiplier
@@ -419,6 +447,21 @@ class AudioSys {
     this._capNode = null;    // ScriptProcessorNode
     this._capGain = null;    // zero-gain sink
     this.captureEnabled = true;
+    // Null means "whatever the browser does by default", which is the smallest buffer
+    // it can manage. Only a caller that knows it would rather have slack than speed
+    // says otherwise — see setLatencyHint.
+    this.latencyHint = null;
+    // Like latencyHint: a construction argument only a caller with a reason sets.
+    // The desk asks for 44100 so what it monitors is rendered at the rate its
+    // bounces are — and a twenty-lane graph costs ~8% less than at 48k for free.
+    this.sampleRateHint = null;
+    // Skip building notes for lanes the mix has silenced — muted, or losing a
+    // channel solo. OFF by default and never set by the game: a cabinet treatment
+    // may ramp a lane the mix keeps muted back up at an audio time, and a skipped
+    // note cannot be un-skipped. The desk opts in (see setSilentLaneSkip): there a
+    // mute is a mix state and a solo is the person listening, both readable per
+    // step, and the notes a muted lane would have built reach no output at all.
+    this.silentLaneSkip = false;
     this._revTimer = null;   // interval for reverse-chunk scheduling
     this._revSources = [];   // active reversed BufferSources
     // A mixer panic is a momentary emergency cut, not a saved mute. The next
@@ -443,7 +486,25 @@ class AudioSys {
     } else {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
-      this.ctx = new AC();
+      // How much audio the browser buffers before it has to be right again.
+      //
+      // The default is `interactive`, which asks for the SMALLEST buffer the device
+      // will give — a few milliseconds — and that is the correct answer for the game,
+      // where a jump sound arriving late is a jump sound that feels wrong. It is the
+      // worst possible answer for a mixing desk. A small buffer means the audio thread
+      // must be serviced every few milliseconds or the output underruns, and a desk
+      // spends its life next to things that stop that happening: a twenty-lane section
+      // costing most of a core, and a window sitting in the background while its owner
+      // works in another app, where the whole process is demoted and the audio thread
+      // is handed a fraction of the machine it needs.
+      //
+      // So the caller says. The game keeps the default and nothing about it changes;
+      // the desk asks for `playback` and trades key-to-sound latency it can afford for
+      // an output that survives a busy moment — see setLatencyHint.
+      const opts = {};
+      if (this.latencyHint) opts.latencyHint = this.latencyHint;
+      if (this.sampleRateHint) opts.sampleRate = this.sampleRateHint;
+      this.ctx = Object.keys(opts).length ? new AC(opts) : new AC();
     }
     // Some engines create a suspended context even when autoplay is allowed,
     // and require an explicit resume request. Try immediately; browsers with
@@ -900,6 +961,42 @@ class AudioSys {
   // Rewind is unavailable on touch screens, so their audio must not pay for
   // the continuously-running master-output recorder. Configure this before
   // ensure(); changing it later also tears down an already-created recorder.
+  /**
+   * Ask for a different output buffer size. Before ensure(), like setCaptureEnabled —
+   * `latencyHint` is a construction argument and a context cannot be talked into a new
+   * one afterwards, so a call made later is a call that does nothing.
+   *
+   * Takes what the AudioContext constructor takes: 'interactive' (smallest, the default
+   * and what the game wants), 'balanced', 'playback' (largest), or a number of seconds
+   * as an explicit request. Null leaves the browser's own default alone.
+   */
+  setLatencyHint(hint) {
+    this.latencyHint = hint || null;
+  }
+
+  /**
+   * Ask for a specific context sample rate. Before ensure(), for the same reason as
+   * setLatencyHint. The desk uses 44100: its bounces have always rendered at 44.1k
+   * (tools/lib/wav.js), so monitoring at the same rate means hearing the file you
+   * are about to keep — and the whole graph costs ~8% less than at 48k.
+   */
+  setSampleRate(rate) {
+    this.sampleRateHint = Number.isFinite(rate) && rate > 0 ? rate : null;
+  }
+
+  /**
+   * Skip synthesizing lanes the mix has silenced — see the flag in the constructor
+   * and the skip itself in scheduleStep. Desk-only, and honest about its one cost:
+   * un-muting or un-soloing reveals notes from the next scheduled step onward, so a
+   * note whose ONSET fell while the lane was silent stays missing until its next
+   * occurrence — up to the lookahead for a short note, the remainder of a pad that
+   * had already started. That is the freeze-style trade a desk makes on purpose:
+   * the playing mix must never break up to keep a silenced lane warm.
+   */
+  setSilentLaneSkip(on) {
+    this.silentLaneSkip = !!on;
+  }
+
   setCaptureEnabled(enabled) {
     enabled = !!enabled;
     if (enabled === this.captureEnabled) return;
@@ -2782,9 +2879,81 @@ class AudioSys {
     this.timer = setInterval(() => this.schedule(), 25);
   }
 
+  /**
+   * How far ahead to queue — see BACKGROUND_LOOKAHEAD.
+   *
+   * Read per call rather than latched on a `visibilitychange` listener, because the
+   * engine is also the offline renderer and the test harness: a listener would need a
+   * document to attach to, an unsubscribe to avoid leaking one per context, and a guard
+   * for every place it is constructed without a DOM. Asking is free and cannot go stale.
+   *
+   * Widening it takes effect immediately and costs one longer pass of `scheduleStep`;
+   * narrowing it takes effect by itself, since the loop below simply stops queueing
+   * until `currentTime` catches up with what is already scheduled. Nothing is unwound,
+   * so coming back to the window is silent — the notes queued while it was hidden are
+   * the notes that play.
+   */
+  lookahead() {
+    if (typeof document === 'undefined') return SEQUENCER_LOOKAHEAD;
+    // Hidden OR merely unfocused. `document.hidden` only goes true for a tab behind
+    // another tab, or a window minimised or fully covered — and none of those is what
+    // working on this machine looks like. Switch to another app and the Chrome window
+    // is usually still sitting there in plain sight, so `hidden` stays false while
+    // macOS has already demoted the whole process: the 25ms interval stops landing at
+    // 25ms and a quarter-second of queued audio runs out mid-bar. Gating on `hidden`
+    // alone fixed the case nobody listens through and missed the one you work in.
+    //
+    // `hasFocus()` is the question actually being asked — is this window the one the
+    // machine is giving its attention to — and it covers `hidden` as a side effect,
+    // since a hidden document cannot hold focus. Both are named anyway: they are
+    // separate states, a browser is free to report them independently, and the cost of
+    // asking twice is nothing next to the cost of guessing wrong.
+    return document.hidden || !document.hasFocus()
+      ? BACKGROUND_LOOKAHEAD : SEQUENCER_LOOKAHEAD;
+  }
+
   schedule() {
     if (!this.ctx || !this.bank) return;
-    while (this.nextTime < this.ctx.currentTime + SEQUENCER_LOOKAHEAD) this.scheduleStep();
+    // How much queued audio was left when this pass began — the number that says
+    // whether the main thread is keeping the sequencer fed. Normally it hovers a
+    // little under the lookahead; after a long task it is the lookahead minus the
+    // stall, and below zero the stall outlasted the queue: notes were scheduled
+    // into the past, which is heard as a hole. Tracked as a floor and a count so
+    // the desk's watchdog can SAY "that click cost the song 40ms" instead of the
+    // glitch staying a rumour. Costs two compares on a path that runs 40× a second.
+    const margin = this.nextTime - this.ctx.currentTime;
+    if (margin < this._schedMarginMin) this._schedMarginMin = margin;
+    if (margin < 0) this._schedLate++;
+    const ahead = this.lookahead();
+    while (this.nextTime < this.ctx.currentTime + ahead) this.scheduleStep();
+  }
+
+  /** The scheduler-starvation counters since last asked, and their reset. */
+  takeSchedulerHealth() {
+    const out = { marginMin: this._schedMarginMin, late: this._schedLate };
+    this._schedMarginMin = Infinity;
+    this._schedLate = 0;
+    return out;
+  }
+
+  /**
+   * Queue further ahead than the lookahead, once, right now — armour for a
+   * main-thread block the desk is about to cause ON PURPOSE.
+   *
+   * Expanding the whole-song piano roll rebuilds tens of thousands of DOM nodes in
+   * one task (measured: ~200ms + a 120ms layout follow-up against a 250ms queue),
+   * and no lookahead the desk can afford to run PERMANENTLY covers that: a wide
+   * window is also how long a seek or a freshly painted note waits to be heard.
+   * So the window stays a quarter-second, and the one place that KNOWS it is about
+   * to stall calls this first. The notes scheduled are the notes that were coming
+   * anyway, at the same times; the window then narrows by itself as the clock
+   * catches up, exactly as lookahead() describes. Live only — an offline render
+   * drives scheduleStep itself — and never during a preview's borrowed transport.
+   */
+  prefill(seconds = 1) {
+    if (!this.ctx || !this.bank || this.offline || this._previewing) return;
+    const upTo = this.ctx.currentTime + Math.min(2, Math.max(0, seconds));
+    while (this.nextTime < upTo) this.scheduleStep();
   }
 
   /**
@@ -2867,6 +3036,10 @@ class AudioSys {
         echo,
         // Its own synths while the song keeps its own — see previewNote.
         preview: !!this._previewing,
+        // ...and whether that note waits for a note-off. Two questions, because the
+        // bench's pattern player wants the first and not the second: it plays previews
+        // whose length it already knows. See `play` in voices.js.
+        hold: !!this._previewing && this._previewHold !== false,
       });
     }
     return true;
@@ -2933,8 +3106,15 @@ class AudioSys {
    * that is a drum pad, where the answer to "what does this kick sound like" is the
    * kick the song plays rather than one tuned to whatever key was under the finger.
    * On a melodic lane it is a rest, and nothing sounds.
+   *
+   * `hold` is the finger. A key press has no length until it is let go, so a previewed
+   * note is held open and `releasePreviewNote` ends it — that is the default, and it is
+   * what a keyboard is. A caller that already KNOWS the length passes `hold: false` and
+   * gets the ordinary gate the sequencer plays, taken from the bank's own `…Dur` key:
+   * the bench's pattern player knows a note lasts one step of its rate before the note
+   * sounds, and a held one would ring to the rack's 30-second safety stop instead.
    */
-  previewNote(laneKey, freq, { bank = null, at = 0.02 } = {}) {
+  previewNote(laneKey, freq, { bank = null, at = 0.02, hold = true } = {}) {
     this.resumeAfterPanic();
     const src = bank || this.bank;
     if (!this.ctx || !src || !laneKey) return false;
@@ -2992,10 +3172,12 @@ class AudioSys {
     // clears them like any other. It is the whole fix: the song's timeline is never
     // written to out of order, because nothing else writes to it.
     this._previewing = true;
+    this._previewHold = hold !== false;
     try {
       this.scheduleStep();
     } finally {
       this._previewing = false;
+      this._previewHold = true;
       this.bank = wasBank;
       this.step = wasStep;
       this.nextTime = wasNext;
@@ -3144,13 +3326,38 @@ class AudioSys {
         // Only _readPercussion drains this, and it only runs while the jukebox
         // visualizer is up — where the sequencer runs for the whole game. Aged
         // out by playhead rather than capped by count, so gameplay stays bounded
-        // at a few seconds of sixteenths while an offline render, whose clock
-        // never advances past zero, keeps the song's entire kit timeline.
-        if (this._percPending.length > 128) {
+        // at a few seconds of sixteenths while an offline render keeps the song's
+        // entire kit timeline. Stated as `!offline` rather than left to the clock:
+        // the render walk used to run entirely at currentTime 0, but it schedules
+        // just-in-time now (see renderBankPage), so an offline clock DOES advance
+        // — and the kit timeline a rendered video follows must not be aged out
+        // underneath it.
+        if (!this.offline && this._percPending.length > 128) {
           const stale = this.ctx ? this.ctx.currentTime - 8 : -Infinity;
           let drop = 0;
           while (drop < this._percPending.length && this._percPending[drop] < stale) drop++;
           if (drop) this._percPending.splice(0, drop);
+        }
+      }
+      // Lanes the MIX has silenced, taken out the same way a bar's mute mask is:
+      // nulled, so every block below skips them on the path it already has for a
+      // lane that does not play. A muted strip's fader is zero and every send taps
+      // downstream of it, so the notes this skips were reaching no output — they
+      // were only costing the audio thread, which on a dense song is the difference
+      // between playing and breaking up (measured: the muted twinkle lane alone was
+      // 5% of a core on smw-all-instruments). AFTER the percussion tally above, so
+      // the visualizers keep following the song as arranged rather than as
+      // monitored — the tally's comment says a muted strip still counts, and it
+      // still does. Guarded by the desk's opt-in flag and off during previews; the
+      // game never sets it, so every game path is byte-identical. See
+      // setSilentLaneSkip for the one honest cost (what un-muting reveals, when).
+      if (this.silentLaneSkip && this.mixer && !this._previewing) {
+        const silent = [];
+        for (const key of LANE_KEYS) if (b[key] && this.mixer.laneSilent(key)) silent.push(key);
+        for (const L of b.__layers || []) if (b[L.key] && this.mixer.laneSilent(L.key)) silent.push(L.key);
+        if (silent.length) {
+          b = { ...b };
+          for (const k of silent) b[k] = null;
         }
       }
       // Where this lane's voices land. `lane()` is called at the top of each lane

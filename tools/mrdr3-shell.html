@@ -44,6 +44,19 @@
                                                    font: inherit; font-size: 10px; }
   #synthfull .sfpnumber { width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
   #synthfull .sfpselect:focus, #synthfull .sfpnumber:focus { outline: none; border-color: var(--accent); }
+  .autogate { display: flex; align-items: center; gap: 4px; flex: none; }
+  .autogate-label { color: var(--dim); font-size: 8px; letter-spacing: .07em; }
+  .autogate-knob { --gate-angle: 87deg; position: relative; display: grid; place-items: center;
+                    width: 34px; height: 34px; border-radius: 50%; color: var(--ink);
+                    background: conic-gradient(from 215deg, var(--accent) var(--gate-angle),
+                      var(--line) 0 290deg, transparent 0); }
+  .autogate-knob::before { content: ''; position: absolute; inset: 4px; border-radius: 50%;
+                           background: var(--input); border: 1px solid var(--line); }
+  .autogate-value { position: relative; z-index: 1; font-size: 8px;
+                    font-variant-numeric: tabular-nums; pointer-events: none; }
+  .autogate-input { position: absolute; z-index: 2; inset: 0; width: 100%; height: 100%;
+                    margin: 0; opacity: 0; cursor: ew-resize; }
+  .autogate-knob:focus-within { box-shadow: 0 0 0 1px var(--accent); }
   #synthfull .sfpauto, #synthfull .sfpfx { height: 25px; padding: 3px 8px; color: var(--dim);
                                             background: var(--input); border: 1px solid var(--line);
                                             border-radius: 3px; font: inherit; font-size: 9px;
@@ -93,7 +106,10 @@
   #ask.show { display: flex; }
   #askbox { width: min(360px, calc(100vw - 32px)); padding: 16px; background: var(--panel);
             border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 16px 40px #0009; }
-  #asktitle { margin: 0 0 8px; color: var(--accent); font: 12px/1.2 inherit; letter-spacing: .08em; }
+  /* `font: 12px/1.2 inherit` is not legal — a CSS-wide keyword cannot be a component of a
+     shorthand — so the whole declaration was dropped and this drew at the UA default. */
+  #asktitle { margin: 0 0 8px; color: var(--accent); font: inherit; font-size: 12px;
+              line-height: 1.2; letter-spacing: .08em; }
   #askbody { margin: 0 0 14px; color: var(--dim); font-size: 11px; line-height: 1.5; }
   #askactions { display: flex; justify-content: flex-end; gap: 6px; }
   #askactions button { font: inherit; font-size: 10px; padding: 5px 9px; color: var(--ink);

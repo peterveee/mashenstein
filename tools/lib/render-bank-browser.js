@@ -21,6 +21,7 @@ import { fileURLToPath } from 'url';
 import { songBlocks, barPlan, LANE_KEYS } from '../../src/engine/lanes.js';
 import { trackIdOf } from '../../src/data/tracks.js';
 import { bpmOf, swingOf, loopOf, loopSteps, SWING_STRAIGHT } from '../../src/data/arrangements.js';
+import { DEFAULT_SEED } from './render-bank-page.js';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -29,7 +30,9 @@ export const SR = 44100;
 
 // Deterministic by default so a lane rendered on its own gets byte-identical noise
 // to the same lane inside the full mix — that is what lets stems sum back to the mix.
-export const DEFAULT_SEED = 0x5eed1;
+// Defined with the render walk it seeds (one number, both renderers), and re-exported
+// here because this is where the command-line tools have always found it.
+export { DEFAULT_SEED };
 
 // Lane gating works by removing the other lanes from the bank — and from every
 // section, or a section would hand them straight back — which is how a single-lane
@@ -46,106 +49,18 @@ function gateLanes(bank, lanes) {
   return gated;
 }
 
-// The page script. Kept as a string rather than a file so the whole driver reads in
-// one place; esbuild resolves its imports against the repo root.
+// The page script. The render itself lives in lib/render-bank-page.js, because the
+// song mixer runs the same walk in an iframe and neither copy may drift from the
+// engine independently of the other. What is left here is the transport: how the
+// samples get from the page back to Node.
 const ENTRY = `
-import { Audio } from ${JSON.stringify(join(ROOT, 'src/engine/audio.js'))};
-import { MIX } from ${JSON.stringify(join(ROOT, 'src/data/mix.js'))};
+import { renderBankPage, interleave } from ${JSON.stringify(join(ROOT, 'tools/lib/render-bank-page.js'))};
 
-window.__renderBank = async ({ bank, blocks, steps: stepsIn, loop, tail, seed, sampleRate, mix, trackId, arrangement, warp }) => {
-  // The bank arrives carrying the tempo it is PLAYED at — resolved in Node, where a
-  // track id still means something, so a song the desk has retuned renders at the
-  // tempo it was retuned to. See the note over \`render\`.
-  //
-  // A warp is NOT a tempo: setWarp scales the step clock while the mix's delay and
-  // pre-delay times stay baked against the bank's own bpm, which is exactly what the
-  // game does to a song under a speed burst or a star. Rendering a warp as a bpm
-  // change would re-time those echoes and hide the drift the render exists to audition.
-  const spb = (60 / bank.bpm) / 4 / (warp ? warp.tempo : 1);   // seconds per 16th step
-  // \`steps\` when the caller asked for the song's own start-and-loop: the way in, once,
-  // plus however many passes of the loop were asked for. Resolved in Node with the rest
-  // of what needs a track id — see \`render\`. Otherwise the whole form, times repeat,
-  // exactly as every render did before this existed.
-  const steps = stepsIn || blocks * 32;
-  // Swing needs nothing here. It delays the odd sixteenth by at most half of one — 188ms
-  // at the slowest tempo a song can be played at, and a few tens of ms at any real one —
-  // and \`tail\` is two seconds of room for the last note's release. The step COUNT does
-  // not change: swing moves notes within the form, never past the end of it.
-  const N = Math.ceil((steps * spb + tail) * sampleRate);
-  const ctx = new OfflineAudioContext(2, N, sampleRate);
-
-  Audio.setCaptureEnabled(false);   // the rewind recorder is realtime-only
-  Audio.setNoiseSeed(seed);
-  Audio.ensure(ctx);
-
-  // The reverb builds its impulse response by rendering noise through its own
-  // offline context. That has to finish before this render starts, or the aux is
-  // silent for the whole track.
-  if (Audio.mixer) await Audio.mixer.ready;
-
-  // The mix is always resolved HERE and passed to setBank explicitly, never left to
-  // the engine's own bank-identity lookup. The bank crossed into this page as JSON,
-  // so it is a different object than the one in the module registry and identity
-  // matching would silently find nothing — which is exactly the bug this replaced.
-  // An undefined mix means "use what is saved for this track"; null means "none".
-  const entry = mix !== undefined ? mix : (trackId ? (MIX[trackId] || null) : null);
-  Audio.setBank(bank, entry);
-
-  // Through the desk's own door, when a caller asks for one. \`setBank\` takes an
-  // arrangement as an argument and builds the bank in one go; \`setArrangement\` patches
-  // a bank that is already playing, which is the path every note and bar edit on the
-  // desk takes and therefore the path worth being able to render. Omitted, nothing is
-  // called and the render is exactly what it always was.
-  if (arrangement !== undefined) Audio.setArrangement(arrangement);
-
-  // After setBank: setBank re-reads the mix, and the warp has to be the last word
-  // on the clock before the first step is scheduled.
-  if (warp) Audio.setWarp(warp.tempo, warp.pitch);
-
-  // setBank opens the song half a second in, with a short fade, because live
-  // playback has to mute whatever was left in the lookahead window. An offline
-  // render starts from silence anyway, so take the song from sample zero at full
-  // trim — otherwise every WAV would carry a 0.5s gap and a fade-in.
-  Audio.nextTime = 0;
-  Audio.songTrim.gain.cancelScheduledValues(0);
-  Audio.songTrim.gain.setValueAtTime(Audio.musicTrim, 0);
-
-  // The song's own way in and repeat, when the caller asked for them. Armed here rather
-  // than left to setBank's own lookup: the bank crossed as JSON, so its identity — and
-  // with it the arrangement the markers live on — did not survive the trip. Steps, not
-  // bars, and already clamped: the same resolver the engine and the desk use ran in
-  // Node against the same bar count this buffer was sized from.
-  if (loop) {
-    Audio.step = loop.start;
-    if (loop.loop) Audio.setLoop(loop.loop.start, loop.loop.end, { jump: false });
-  }
-
-  for (let i = 0; i < steps; i++) Audio.scheduleStep();
-
-  const buf = await ctx.startRendering();
-  const L = buf.getChannelData(0);
-  const R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
-
-  let peak = 0;
-  for (let i = 0; i < L.length; i++) {
-    const a = Math.abs(L[i]), b = Math.abs(R[i]);
-    if (a > peak) peak = a;
-    if (b > peak) peak = b;
-  }
-
-  // Interleave once here so the transfer back to Node is a single buffer.
-  const inter = new Float32Array(L.length * 2);
-  for (let i = 0; i < L.length; i++) { inter[i * 2] = L[i]; inter[i * 2 + 1] = R[i]; }
-  window.__pcm = new Uint8Array(inter.buffer);
-
-  // The kit timeline the sequencer just laid down, in seconds from zero. This is
-  // the engine's own tally — the same one the live jukebox reads — so a rendered
-  // video reacts to the drums dropping out on exactly the bar they do, without
-  // anything downstream having to reimplement the arrangement. Small enough
-  // (a few thousand numbers for a long song) to ride back with the metadata.
-  const percussion = Array.from(Audio._percPending || []);
-
-  return { bytes: window.__pcm.length, frames: L.length, seconds: L.length / sampleRate, peak, percussion };
+window.__renderBank = async (args) => {
+  const r = await renderBankPage(args);
+  // Interleaved once here so the transfer back to Node is a single buffer.
+  window.__pcm = new Uint8Array(interleave(r.outL, r.outR).buffer);
+  return { bytes: window.__pcm.length, frames: r.frames, seconds: r.seconds, peak: r.peak, percussion: r.percussion };
 };
 
 // Handed back as a file download rather than a base64 string over CDP. A two-minute

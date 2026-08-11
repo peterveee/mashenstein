@@ -105,6 +105,12 @@ export function listTracks() {
     // is neither scratch material nor a shipped song: it is a candidate, and the whole
     // point of it is that nothing has been decided yet.
     ['alternate', [...RUNTIME.entries()].filter(([, t]) => t.group === 'alternate').map(([id]) => id)],
+    // A snapshot of some song exactly as the desk had it — Save As, and no claim of any
+    // kind about what it is for. Distinct from an alternate precisely because it makes
+    // no claim: an alternate names a parent and can be promoted over it, a copy names
+    // nothing and can only ever be itself. Its own heading so that a shelf of a dozen
+    // snapshots of one afternoon does not read as a shelf of candidates.
+    ['copy', [...RUNTIME.entries()].filter(([, t]) => t.group === 'copy').map(([id]) => id)],
     // Scratch songs in every mechanical sense — same file shape, same writable desk
     // section — but they answer a question the others do not: what does a STYLE PACK
     // sound like. One per pack, written by tools/style-auditions.js at a fixed seed,

@@ -734,6 +734,22 @@ export function createMixer(ctx, {
       return strips.get(key);
     },
     /**
+     * Is this lane inaudible BY THE MIX — muted, or losing a channel solo?
+     *
+     * The question the scheduler's silent-lane skip asks before building a note's
+     * nodes (see scheduleStep in audio.js). Only states that silence the lane's dry
+     * path AND its sends count: mute zeroes `pres`, which every send taps downstream
+     * of, and a channel solo zeroes `vol` upstream of everything — so a skipped
+     * lane's synthesis was reaching no output at all. An AUX solo is deliberately
+     * not consulted: soloing a return silences only the dry monitors, and the
+     * channels must keep feeding their sends or the bus being soloed goes quiet.
+     */
+    laneSilent(key) {
+      const s = strips.get(key);
+      if (!s) return false;
+      return !!s.state.mute || (soloed.size > 0 && !soloed.has(key));
+    },
+    /**
      * The master level as one number — the louder side, which is what a clip light and
      * a peak readout are asking about. Callers that want the pair use masterLevels().
      */

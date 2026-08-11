@@ -38,10 +38,17 @@ if (!FILE) {
   process.exit(1);
 }
 
+// The filename becomes the track id, so it is slugified rather than kept as typed:
+// importing SONG.MID twice edits one song called `song`, not two called SONG and
+// song. Settled BEFORE the conversion now, because the bank writes its own id into
+// the file the way every other song file does.
+const { resolveTrack } = await import('./lib/tracks.js');
+const id = importId(ROOT, slugFor(basename(FILE)), (x) => !!resolveTrack(x));
+
 let out;
 try {
   out = bankFromMidi(readFileSync(FILE), {
-    name: flags.name, bpm: flags.bpm, map: flags.map, from: basename(FILE),
+    id, name: flags.name, bpm: flags.bpm, map: flags.map, from: basename(FILE),
   });
 } catch (err) {
   console.error(`${FILE}: ${err.message}`);
@@ -51,8 +58,11 @@ try {
 console.log(FILE);
 console.log(`  ${out.bpm} bpm${flags.bpm ? ' (from --bpm)' : out.fromFileTempo ? ' (from the file)' : ' (no tempo in the file — assumed)'}`
   + `, ${out.ppq} ppq, format ${out.format}`);
+const layerKeys = new Set(out.layers.map((l) => l.key));
 for (const a of out.assignments) {
-  console.log(`  ${a.name.padEnd(20)} -> ${a.lane.padEnd(12)} ${a.notes} notes`);
+  const layer = a.lane.split(' ').some((k) => layerKeys.has(k));
+  console.log(`  ${a.name.padEnd(20)} -> ${a.lane.padEnd(14)} ${String(a.notes).padStart(4)} notes`
+    + (layer ? '   (a new strip — give it a voice)' : ''));
 }
 console.log(`  ${out.blocks} blocks -> ${out.sections} unique section${out.sections === 1 ? '' : 's'}`
   + `, order [${out.order.join(', ')}]`);
@@ -61,20 +71,25 @@ if (out.foreignDrums.length) {
   console.log(`  GM percussion outside our kit: ${out.foreignDrums.join(', ')}`);
 }
 if (out.unknownLanes.length) console.log(`  note: ${out.unknownLanes.join(', ')} is not a lane this engine plays`);
+// Said plainly, because it is the one thing about a big import that surprises: the
+// parts past the engine's six pitched lanes are all there, on lanes of their own, and
+// they make no sound until a preset is chosen for each. Silence you can see beats a
+// part quietly overwritten by the next one, which is what used to happen instead.
+if (out.layers.length) {
+  console.log(`  ${out.layers.length} part${out.layers.length === 1 ? '' : 's'} past the engine's own lanes `
+    + `-> ${out.layers.map((l) => l.key).join(', ')}`);
+  console.log('    they play nothing until you pick a voice for each on the desk');
+}
 
-// The filename becomes the track id, so it is slugified rather than kept as typed:
-// importing SONG.MID twice edits one song called `song`, not two called SONG and
-// song. --out still puts the file wherever you say, and a bank outside the imported
-// folder is just source — nothing lists it.
-const { resolveTrack } = await import('./lib/tracks.js');
-const id = importId(ROOT, slugFor(basename(FILE)), (x) => !!resolveTrack(x));
+// --out still puts the file wherever you say, and a bank outside the imported folder
+// is just source — nothing lists it.
 const OUT = flags.out || join(IMPORTED_DIR, `${id}.js`);
 if (flags.dry) {
   console.log(`\n${out.source}`);
 } else {
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, out.source);
-  console.log(`\nwrote ${OUT} — export const ${out.constName}`);
+  console.log(`\nwrote ${OUT} — ${out.title}`);
   if (flags.out) {
     console.log('  outside src/data/imported, so it is not a track — move it there and'
       + ' run --reindex to play it');

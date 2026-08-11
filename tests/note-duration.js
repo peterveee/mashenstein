@@ -339,7 +339,11 @@ const midiBank = {
 };
 const plain = midiBuffer(midiBank, { title: 'plain' });
 const held = midiBuffer({ ...midiBank, bassLen: [8, ...new Array(31).fill(null)] }, { title: 'held' });
-assert(plain.buffer.length !== held.buffer.length || !plain.buffer.equals(held.buffer),
+// `midiBuffer` hands back a Uint8Array now — it is bundled into the deployed desk,
+// where Node's Buffer does not exist — so the comparison wraps it here, on the Node
+// side, where Buffer is fine.
+assert(plain.buffer.length !== held.buffer.length
+  || !Buffer.from(plain.buffer).equals(Buffer.from(held.buffer)),
   'a drawn length changes the exported MIDI — a note-off derived from the lane alone'
   + ' would export every note the same length whatever the roll shows');
 const lastTick = (info, name) => (info.tracks || []).find((w) => w.name === name)?.lastTick;

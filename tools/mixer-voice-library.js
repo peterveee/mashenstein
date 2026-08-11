@@ -17,6 +17,7 @@
 
 import { VOICES, VOICE_CATEGORIES, PERCUSSION_LANES, isKitVoice, seamFor } from '../src/data/voices.js';
 import { isVoiceUsed } from '../src/data/voices-used.js';
+import { deskNoteNameHz } from './mixer-note-names.js';
 
 /**
  * The mark on a button that folds a panel away.
@@ -121,9 +122,17 @@ export function benchRoot(voice) {
  * level the preset will actually play at. That is also what makes two presets
  * comparable here — both arrive scaled to the same lane target, so the one that sounds
  * louder is the one that is louder.
+ *
+ * `gateSteps` is the one thing a caller may say about LENGTH, and only the pattern
+ * player says it: a figure's note lasts one step of its rate, in sixteenths, which is
+ * exactly the unit a lane's `…Dur` key is written in. Absent — a key press, the Hit
+ * button — the preset's own `dur` stands, as it always did.
  */
-export function benchBank(id, bpm) {
-  return { bpm: bpm || 120, [seamFor(benchLane(VOICES[id])).voiceKey]: id };
+export function benchBank(id, bpm, gateSteps = null) {
+  const seam = seamFor(benchLane(VOICES[id]));
+  const bank = { bpm: bpm || 120, [seam.voiceKey]: id };
+  if (gateSteps > 0) bank[seam.durKey] = gateSteps;
+  return bank;
 }
 
 // ---- when a bench note is allowed to sound ----------------------------------
@@ -159,8 +168,24 @@ let benchLastId = null; // ...for which preset, since a different preset is a di
  * can observe the desk without its strips — but a throw inside `scheduleStep` that left
  * `mixer` null would silently take every channel strip out of the song itself, which is
  * the kind of failure you would chase for an hour before suspecting the keyboard.
+ *
+ * ---- a finger, or a machine ------------------------------------------------
+ *
+ * A preview is HELD by default: it sounds until `releasePreviewNote` ends it, which is
+ * what a key press is and what lets a pad be listened to under your finger. A note the
+ * pattern player schedules has no finger, and it already knows the note's length — so
+ * `gateSteps` gives it one, in sixteenths, and the note takes the ordinary sequencer
+ * gate instead. Without it a sustaining patch under a figure never stops: each step
+ * opens another note that rings to the rack's 30-second safety stop, and eight notes a
+ * bar at a slow release is a chord of every note the figure has played.
+ *
+ * `hold: false` on its own — no `gateSteps` — is the third case: one note, of the
+ * preset's OWN length, which is what the Hit button means by "sound it once". Nothing
+ * is coming to release it, and the safety stop is not a note length.
  */
-export function benchPlay(Audio, id, freq, { at = 0.02, bpm = 120 } = {}) {
+export function benchPlay(Audio, id, freq, {
+  at = 0.02, bpm = 120, gateSteps = null, hold = !(gateSteps > 0),
+} = {}) {
   const voice = VOICES[id];
   if (!Audio?.ctx || !voice) return false;
   const lane = benchLane(voice);
@@ -178,7 +203,9 @@ export function benchPlay(Audio, id, freq, { at = 0.02, bpm = 120 } = {}) {
   const was = Audio.mixer;
   Audio.mixer = null;
   try {
-    return Audio.previewNote(lane, freq, { bank: benchBank(id, bpm), at: t - now });
+    return Audio.previewNote(lane, freq, {
+      bank: benchBank(id, bpm, gateSteps), at: t - now, hold,
+    });
   } finally {
     Audio.mixer = was;
   }
@@ -354,6 +381,44 @@ export const PATTERNS = [
 const PATTERN_BY_ID = Object.fromEntries(PATTERNS.map((p) => [p.id, p]));
 const RATE_BY_ID = Object.fromEntries(PATTERN_RATES.map((r) => [r.id, r]));
 
+export const PATTERN_GATE = Object.freeze({ min: 50, max: 150, step: 1, default: 80 });
+
+/** Compact gate pot shared by both keyboard-attached autoplay surfaces. */
+export function createGatePot(value = PATTERN_GATE.default, onInput = () => {}) {
+  const label = document.createElement('label');
+  label.className = 'autogate';
+  const caption = document.createElement('span');
+  caption.className = 'autogate-label'; caption.textContent = 'GATE';
+  const knob = document.createElement('span');
+  knob.className = 'autogate-knob';
+  const readout = document.createElement('span');
+  readout.className = 'autogate-value';
+  const input = document.createElement('input');
+  input.type = 'range'; input.className = 'autogate-input';
+  input.min = String(PATTERN_GATE.min); input.max = String(PATTERN_GATE.max);
+  input.step = String(PATTERN_GATE.step);
+
+  const clampGate = (raw) => Math.max(PATTERN_GATE.min,
+    Math.min(PATTERN_GATE.max, Number(raw) || PATTERN_GATE.default));
+  const paint = (raw, emit = false) => {
+    const next = clampGate(raw);
+    input.value = String(next);
+    readout.textContent = `${Math.round(next)}%`;
+    const turn = (next - PATTERN_GATE.min) / (PATTERN_GATE.max - PATTERN_GATE.min);
+    knob.style.setProperty('--gate-angle', `${turn * 290}deg`);
+    if (emit) onInput(next);
+  };
+  input.addEventListener('input', () => paint(input.value, true));
+  input.addEventListener('dblclick', () => paint(PATTERN_GATE.default, true));
+  input.setAttribute('aria-label', 'Autoplay gate percent');
+  input.title = 'Autoplay note length as a percentage of the selected interval'
+    + ' · double-click to reset to 80%';
+  knob.append(readout, input);
+  label.append(caption, knob);
+  paint(value);
+  return { label, input, set: (next) => paint(next) };
+}
+
 /**
  * The pattern player: a lookahead scheduler over the bench.
  *
@@ -369,7 +434,7 @@ const RATE_BY_ID = Object.fromEntries(PATTERN_RATES.map((r) => [r.id, r]));
  */
 export function createPatternPlayer({
   Audio, bpm, root, sync = () => null, scale = () => null, onStep = () => {},
-  adjustSlowRate = true,
+  adjustSlowRate = true, gate = PATTERN_GATE.default,
 }) {
   // How far ahead notes are queued, and how often the queue is topped up.
   //
@@ -388,6 +453,8 @@ export function createPatternPlayer({
   // than indexed — the rates are ordered slowest-first for the dropdown, and a default
   // that moves whenever a rate is added to the list is a default nobody chose.
   let rate = RATE_BY_ID['8'];
+  let gatePercent = Math.max(PATTERN_GATE.min, Math.min(PATTERN_GATE.max,
+    Number(gate) || PATTERN_GATE.default));
   let next = 0;                 // ctx time of the next cell step
   let ix = 0;                   // which step of the cell
   // A native select can briefly take the page's event loop while its menu is open.
@@ -449,7 +516,12 @@ export function createPatternPlayer({
         const steps = scale()?.steps || null;
         for (const semi of hit) {
           const n = snapToScale(semi, steps);
-          benchPlay(Audio, voiceId, base * 2 ** (n / 12), { at, bpm: bpm() });
+          // Gate is a percentage of the selected interval. At the default 80%, a 1/8
+          // interval (two sixteenths) therefore holds for 1.6 sixteenths; above 100%
+          // deliberately overlaps the following step. See benchPlay.
+          benchPlay(Audio, voiceId, base * 2 ** (n / 12), {
+            at, bpm: bpm(), gateSteps: rate.steps * gatePercent / 100,
+          });
         }
         onStep(ix % pattern.cell.length);
       }
@@ -525,6 +597,7 @@ export function createPatternPlayer({
     get voice() { return voiceId; },
     get pattern() { return pattern; },
     get rate() { return rate; },
+    get gate() { return gatePercent; },
     /**
      * Choose a figure — and, for a progression, give it room.
      *
@@ -543,12 +616,19 @@ export function createPatternPlayer({
       if (adjustSlowRate && pattern.slow && rate.steps < RATE_BY_ID['2'].steps) rate = RATE_BY_ID['1'];
     },
     setRate: (id) => { rate = RATE_BY_ID[id] || rate; },
+    setGate: (percent) => {
+      const next = Number(percent);
+      gatePercent = Number.isFinite(next)
+        ? Math.max(PATTERN_GATE.min, Math.min(PATTERN_GATE.max, next))
+        : gatePercent;
+    },
     /** Audition choices are transient and must not masquerade as song state. */
     reset() {
       stop();
       voiceId = null;
       pattern = PATTERNS[0];
       rate = RATE_BY_ID['8'];
+      gatePercent = PATTERN_GATE.default;
     },
   };
 }
@@ -688,12 +768,7 @@ export function createVoiceLibrary({
 
   // What that root is, as a note. `A2` says more than `+0` does — and on a drum it says
   // the thing worth knowing, which is where the preset is actually being struck.
-  const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  function noteLabel(freq) {
-    if (!(freq > 0)) return '—';
-    const midi = Math.round(12 * Math.log2(freq / 440) + 69);
-    return `${NOTE_NAMES[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
-  }
+  const noteLabel = (freq) => deskNoteNameHz(freq) || '—';
 
   const KINDS = [
     { id: 'all', label: 'All', keep: () => true },
@@ -1100,7 +1175,11 @@ export function createVoiceLibrary({
     once.disabled = !picked;
     once.onclick = () => {
       const id = editing?.() || heard || picked;
-      benchPlay(Audio, id, shiftedRoot(), { bpm: bpm() });
+      // ONCE, so the note has an end: no finger is coming to lift, and a held note on a
+      // sustaining preset would sit at its sustain level until the rack's 30-second
+      // safety stop. `hold: false` with no gate gives it the preset's own length, which
+      // is the note the sequencer would play.
+      benchPlay(Audio, id, shiftedRoot(), { bpm: bpm(), hold: false });
     };
 
     const play = document.createElement('button');
@@ -1154,7 +1233,9 @@ export function createVoiceLibrary({
       + ' while it plays';
     rate.onchange = () => player.setRate(rate.value);
 
-    bar.append(what, oct, once, play, pat, rate);
+    const gate = createGatePot(player.gate, (percent) => player.setGate(percent));
+
+    bar.append(what, oct, once, play, pat, rate, gate.label);
     return bar;
   }
 

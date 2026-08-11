@@ -30,9 +30,14 @@ Eight pots:
 3. **Decay** — all active VCA decay stages.
 4. **Release** — all active VCA release stages.
 5. **Cutoff** — the effective cutoff of the active layer/Global/Drive filters.
-6. **Env Amount** — `global.filter.env.octaves`.
-7. **Resonance** — `global.filter.Q`.
-8. **Vibrato** — shared `vibrato.depth`.
+6. **Resonance** — `global.filter.Q`.
+7. **Env Amount** — `global.filter.env.octaves`. Shown without a unit; the four Quick columns
+   are too narrow to carry `oct` after the name, and the Advanced card still spells it out.
+8. **Vibrato** — shared `vibrato.depth`. Same 0–12 semitone range and same cubic taper as
+   the Advanced `VIB DEPTH` pot: a direct alias is one control on two panels, so it must
+   read the same in both. Linear, every depth in the library (0.05–0.35 semitones) fell
+   inside the first three percent of the travel; cubed, 0.1 semitones sits a fifth of the
+   way round.
 
 Collective VCA rules:
 
@@ -49,11 +54,11 @@ Collective VCA rules:
 
 Filter rules:
 
-- Quick `BRIGHTNESS` reads the lowest active filter cutoff across enabled layer filters, Global Filter and Drive Tone when present. It is greyed out when the voice has no applicable filter. It is deliberately NOT called `CUTOFF`: the naming standard reserves that for a knob that moves one filter's frequency, and this moves every active one at once.
-- Moving `BRIGHTNESS` scales every included cutoff by the same frequency ratio. It also scales Drum filter sweep destinations, so the authored filter relationships remain intact; it does not change filter type, slope, resonance or envelope amount.
-- Advanced cutoff edits immediately change the Quick `BRIGHTNESS` reading. The macro captures that current shape when it is next moved, so returning to the starting value restores the current authored filter values rather than an older Quick baseline.
-- Drive Tone remains the specific Advanced Drive-card control. It is included in Brightness only when it is part of the active signal, and is still built only alongside the shaper.
-- `FILTER SWEEP` and Resonance enable Global Filter when absent, creating a low-pass, −12 dB/octave section with neutral Q, zero envelope amount and a near-open cutoff derived from the current Drive Tone setting, capped at 8 kHz.
+- Quick `CUTOFF` reads the lowest active filter cutoff across enabled layer filters, Global Filter and Drive Tone when present. It is greyed out when the voice has no applicable filter. It wears the standard synth name because it edits the standard parameter; what differs from an Advanced card's `CUTOFF` is scope, not meaning — Quick is the whole-voice view, exactly as its `ATTACK`, `DECAY` and `RELEASE` are.
+- Moving `CUTOFF` scales every included cutoff by the same frequency ratio. It also scales Drum filter sweep destinations, so the authored filter relationships remain intact; it does not change filter type, slope, resonance or envelope amount.
+- Advanced cutoff edits immediately change the Quick `CUTOFF` reading. The macro captures that current shape when it is next moved, so returning to the starting value restores the current authored filter values rather than an older Quick baseline.
+- Drive Tone remains the specific Advanced Drive-card control. It is included in Quick `CUTOFF` only when it is part of the active signal, and is still built only alongside the shaper.
+- `RESONANCE` and `ENV AMOUNT` are the same names the Advanced Global Filter card gives `global.filter.Q` and `global.filter.env.octaves`, because they are the same two keys, and they sit in the same order it puts them in. Either one enables Global Filter when absent, creating a low-pass, −12 dB/octave section with neutral Q, zero envelope amount and a near-open cutoff derived from the current Drive Tone setting, capped at 8 kHz.
 - If a Quick-created Global Filter returns to neutral without any Advanced edits, it is removed again. Once changed in Advanced it remains an ordinary section.
 - The Advanced `LFO` card is named **Mod LFO**. Mod LFO and per-layer PWM remain Advanced-only.
 
@@ -68,7 +73,7 @@ Maximum eight pots:
 5. **Cutoff** — the active source-filter cutoffs and Drive Tone.
 6. **Punch** — oscillator `knock`.
 7. **Drive** — `drive`.
-8. **Hits** — number of taps.
+8. **Taps** — how many times the sound is heard.
 
 Applicability:
 
@@ -86,13 +91,13 @@ Exact behaviour:
   - Do not retune noise-filter cutoffs, Metal high-pass cutoff or the drive's Tone filter.
   - Presets without `tune` render identically to today.
 - **Attack:** include `osc.attack`, `noise.attack`, `ring.attack` and `metal.attack` for active sections. Add Ring and Metal Attack to Advanced because the engine already supports those values. Exclude FM attack and Ring Strike.
-- **Decay:** include `osc.decay`, `noise.decay`, `ring.decay` and `metal.decay` for active sections. Also scale stored `tapDecays`, because those override Noise Decay per hit. Exclude FM decay, Hold, Ring Strike and the fixed Knock duration.
+- **Decay:** include `osc.decay`, `noise.decay`, `ring.decay` and `metal.decay` for active sections. Also scale stored `tapDecays`, because those override Noise Decay per tap. Exclude FM decay, Hold, Ring Strike and the fixed Knock duration.
 - Attack and Decay use the same longest-stage proportional algorithm as MRDR-3 and the existing 0–10-second envelope taper.
 - **Cutoff:** read the lowest active Noise cutoff, Metal high-pass cutoff and Drive Tone. Move those filter frequencies together by one ratio, including Noise/Metal sweep destinations when present. Ring frequency, Metal frequency and all pitch-envelope values remain untouched because Tune owns them.
 - Advanced filter edits update the Cutoff reading, and the next Cutoff move adopts the current filter shape. With Drive at zero, source filters still make Cutoff available; if there are no applicable source or Drive filters, it is greyed out.
 - **Punch:** direct alias of `knock`, 0–1. It does not change Sag; detailed transient shaping remains Advanced.
 - **Drive:** direct 0–1 alias. Drive shape remains Advanced.
-- **Hits:** stepped range of 1–8. Use the existing tap add/remove behavior so uneven authored spacing is preserved. Per-hit timing, level, decay, tone, pitch and falloff remain Advanced.
+- **Taps:** stepped range of 1–8. Use the existing tap add/remove behavior so uneven authored spacing is preserved. Per-tap timing, level, decay, tone, pitch and falloff remain Advanced.
 
 ## UI and Integration
 
@@ -111,7 +116,7 @@ Exact behaviour:
 - Verify Drum Tune at zero is render-identical; +12 semitones doubles all intended pitched frequencies, including Knock, without moving filter cutoffs.
 - Verify Ring/Metal Attack round-trip through source saving and are audible only when non-default.
 - Verify Advanced Drive Tone’s bypass detent restores the node-free signal for both pilot synths, and that Drive at zero does the same — with no shaper the tone filter is not built either. Verify Quick Cutoff moves all applicable filter cutoffs together and stays synchronized with Advanced edits.
-- Verify Hits preserves irregular spacing and per-hit override arrays.
+- Verify Taps preserves irregular spacing and per-tap override arrays.
 - Confirm Revert, Save, Save as New, song-local copies, class changes, deterministic rendering, level/peak estimation and silence rejection.
 - Confirm opening Advanced during playback causes no audio rebuild until a parameter changes. The full-window layout is checked leaf-for-leaf so every Advanced control appears exactly once.
 - Browser/listening acceptance: evaluate representative MRDR pads/basses/leads and Drum kicks/snares/claps/hats/rings/metal. Approve control names, ranges, conditional visibility and sound changes before mapping the remaining synths.

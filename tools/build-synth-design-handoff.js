@@ -1,14 +1,19 @@
-// Bundles a self-contained brief for designing the LAYERED SYNTH's editor in Claude
-// Design — the sibling of tools/build-design-handoff.js, which does the same job for a
-// hero. Same rules: one HTML file, no server, no network, boots from file://, which is
-// also what Design's CSP requires.
+// Bundles self-contained briefs for designing the pilot instruments' Advanced editor in
+// Claude Design — the sibling of tools/build-design-handoff.js, which does the same job
+// for a hero. Same rules: one HTML file per synth, no server, no network, boots from
+// file://, which is also what Design's CSP requires.
+//
+// MRDR-3 and Drum Synth share one full-window Advanced surface in the game
+// (`tools/mixer-synth-full.js`, `FULL_EDITORS`), so they are built as a matched pair here
+// too — same palette read, same table renderer, same rules for what a brief may claim.
+// Only the per-synth prose and control inventory differ.
 //
 // The point of generating it rather than writing it is that the control inventory is
 // read out of the panel's OWN definition (`panelSpec` in tools/mixer-voice-editor.js)
-// and the palette out of the desk's OWN stylesheet. A card added to the panel arrives
-// in the brief on the next build; a brief that has drifted from the desk is not a
-// possible state. The prose is the only hand-written part, and it says nothing a
-// generated table also says.
+// and the palette out of the desk's OWN stylesheet. A card added to a panel arrives in
+// its brief on the next build; a brief that has drifted from the desk is not a possible
+// state. The prose is the only hand-written part, and it says nothing a generated table
+// also says.
 //
 // Usage: node tools/build-synth-design-handoff.js
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -18,7 +23,6 @@ import { panelSpec } from './mixer-voice-editor.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, 'work/local/design-handoff');
-const out = join(outDir, 'layer-synth.html');
 
 const esc = (s) => String(s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -27,7 +31,7 @@ const esc = (s) => String(s)
 //
 // Nine themes, and a layout has to survive all of them — which is most of the reason
 // the desk owns no hard-coded colours. Parsed rather than copied so a token retuned in
-// the stylesheet is retuned here too.
+// the stylesheet is retuned here too. Read once and shared by every synth's brief.
 const shell = readFileSync(join(root, 'tools/mixer-shell.html'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
 const declsOf = (body) => {
@@ -40,14 +44,14 @@ for (const m of shell.matchAll(/:root(?:\[data-mixer-theme="([\w-]+)"\])?\s*\{([
   themeBlocks[m[1] || 'default'] = declsOf(m[2]);
 }
 // The desk's own list, in the desk's own order, with the desk's own names — parsed out
-// of mixer-entry.js so the brief cannot offer a theme the picker does not.
+// of mixer-entry.js so a brief cannot offer a theme the picker does not.
 const entry = readFileSync(join(root, 'tools/mixer-entry.js'), 'utf8');
 const themeList = [...entry.slice(entry.indexOf('const THEMES = ['))
   .slice(0, entry.slice(entry.indexOf('const THEMES = [')).indexOf('];'))
   .matchAll(/\['([\w-]+)',\s*'([^']+)'\]/g)].map((m) => ({ id: m[1], name: m[2] }));
 
 // The tokens worth showing. Every one of them is load-bearing somewhere on the desk;
-// the rest of the `:root` block is geometry, which the brief states in prose instead.
+// the rest of the `:root` block is geometry, which a brief states in prose instead.
 const TOKENS = [
   ['--bg', 'page behind the panels'], ['--panel', 'a panel'], ['--panel2', 'a panel inset'],
   ['--line', 'every border'], ['--ink', 'text'], ['--dim', 'a label'],
@@ -60,25 +64,31 @@ const themes = themeList.map(({ id, name }) => {
   const vars = { ...themeBlocks.default, ...(themeBlocks[id] || {}) };
   return { id, name, vars };
 });
-
-// ---- the panel, read off the panel ------------------------------------------
-const spec = panelSpec({ synth: 'MRDR-3' });
-const SHORT = spec.pillLabels;
+const swatches = themes.map((t) => `
+  <div class="theme" data-theme="${t.id}">
+    <h4>${esc(t.name)}<code>${t.id === 'default' ? 'no attribute' : `data-mixer-theme="${t.id}"`}</code></h4>
+    <div class="sw">${TOKENS.map(([k, why]) => `
+      <div class="s" title="${esc(why)}">
+        <i style="background:${esc(t.vars[k] || 'transparent')}"></i>
+        <em>${esc(k.slice(2))}</em><b>${esc(t.vars[k] || '—')}</b>
+      </div>`).join('')}</div>
+  </div>`).join('');
 
 /**
  * A row's or a card's `when` as something a designer can read.
  *
- * These are real functions, so `String(fn)` is their SOURCE — and the layer cards are
- * built in a `for` loop, so that source still carries the loop's own variables: `${p}`
+ * These are real functions, so `String(fn)` is their SOURCE. MRDR-3's layer cards are
+ * built in a `for` loop, so that source can still carry the loop's own variables: `${p}`
  * for the layer's path, `${base}` for a pitch envelope's, a bare `p` handed to
- * `sectionOn`, and a bare `i` for which of the three layers this is. The caller knows
- * all three, so they are substituted back in rather than printed. `i === 1` is then
- * decided here — layer 1 has no on/off switch, so the clause guarding on it is either
- * always true or reduces to the switch — because "(i === 1 || …)" in a design brief is
- * a leaked implementation detail, not a condition.
+ * `sectionOn`, and a bare `i` for which of the three layers this is — the caller knows
+ * all three, so they are substituted back in rather than printed, and `i === 1` is then
+ * decided here because "(i === 1 || …)" in a design brief is a leaked implementation
+ * detail, not a condition. Drum Synth's groups carry none of that — `p`/`base` stay
+ * empty and `i` stays 0, and the substitutions below are simply no-ops.
  *
- * Everything after that is cosmetic: drop the arrow head, unwrap `getAt` and
- * `sectionOn`, and lose the optional chaining that only ever mattered to the panel.
+ * Everything after that is cosmetic and applies to both synths alike: drop the arrow
+ * head, unwrap `getAt` and `sectionOn`, and lose the optional chaining that only ever
+ * mattered to the panel.
  */
 const condOf = (fn, { p = '', base = '', i = 0 } = {}) => {
   if (typeof fn !== 'function') return '';
@@ -96,10 +106,10 @@ const condOf = (fn, { p = '', base = '', i = 0 } = {}) => {
 };
 
 /** What the pot's travel is, in the unit printed under it. */
-const rangeOf = (row) => {
+const rangeOf = (row, short) => {
   if (row.kind === 'pick') {
     return row.options.map((o) => {
-      const pill = SHORT[o] ?? String(o).toUpperCase();
+      const pill = short[o] ?? String(o).toUpperCase();
       return pill === String(o) ? pill : `${pill}<span class="raw">(${esc(String(o))})</span>`;
     }).join(' ');
   }
@@ -111,7 +121,11 @@ const rangeOf = (row) => {
 const notesOf = (row) => {
   const out = [];
   if (row.origin === 0 && row.min < 0) out.push('bipolar — centre detent');
-  if (row.scale) out.push('non-linear taper');
+  // Two different non-linearities, and a designer drawing the travel needs to know
+  // which: a power curve leans the travel toward one end, the log taper spends it
+  // evenly per decade — a quarter turn per ×10 on every envelope time.
+  if (row.taper === 'log') out.push('log taper — a decade per quarter turn');
+  else if (row.scale) out.push('non-linear taper');
   if (row.read) out.push('display unit ≠ stored unit');
   if (row.trio) out.push(`one third of the ${esc(row.trio)} trio`);
   if (row.startRow) out.push('starts a fresh row');
@@ -119,25 +133,97 @@ const notesOf = (row) => {
   return out;
 };
 
-let controls = 0;
-let conditional = 0;
-const cardHtml = (g, { common = false } = {}) => {
-  const rows = (g.rows || []).flat(Infinity).filter(Boolean);
-  controls += rows.length;
-  // Which of the three layers this card belongs to, taken from its own title — the one
-  // place the loop index survives into the data. `Osc 2 · Filter` is layer 2, and that
-  // is what `${p}` and `i` were when its conditions were written.
-  const i = Number(/^Osc (\d)\b/.exec(g.title)?.[1] || 0);
-  const p = i ? `layer.osc${i}` : '';
-  const gCond = condOf(g.when, { p, i });
-  const bits = [];
-  if (g.optional) bits.push(`<span class="tag opt">switched section · <code>${esc(g.optional)}</code></span>`);
-  if (g.solo) bits.push('<span class="tag">has a SOLO button</span>');
-  if (common) bits.push('<span class="tag">on every preset, not just this synth</span>');
-  if (gCond) bits.push(`<span class="tag when">only when ${esc(gCond)}</span>`);
-  const tips = [g.offTip && `<b>off →</b> ${esc(g.offTip)}`, g.onTip && `<b>on →</b> ${esc(g.onTip)}`]
-    .filter(Boolean).join(' &nbsp;·&nbsp; ');
-  return `<article class="card">
+/**
+ * The Taps card, for the one synth that has one, is not a fixed row count: `tapsGroup()`
+ * (tools/mixer-voice-editor.js) draws a TAPS stepper that adds or removes a repeat, and
+ * every control after it only exists because TAPS is above 1 — up to five per-repeat
+ * timing knobs, a FALLOFF, PITCH and TONE walk, and optional per-tap LEVEL/DECAY override
+ * arrays. A table can't say "1 to 7 rows" honestly, so this card is prose instead, and
+ * its controls are deliberately left out of the totals above rather than force-fit into
+ * a count that would misstate what's actually on screen at any one TAPS setting.
+ *
+ * On screen the per-tap three are drawn as a TABLE — a row per tap, a column per number,
+ * the column named once at its head — so TIME, LEVEL and DECAY below are columns rather
+ * than knobs with names on them. In the full window the whole card lives behind a door in
+ * the Master card's header, labelled with the count: `TAPS`, or `TAPS 3` at three taps.
+ */
+const tapsCardHtml = () => `<article class="card">
+    <h3>Taps<span class="n">dynamic</span></h3>
+    <p class="bits"><span class="tag">not a fixed row count — see note</span>
+      <span class="tag">a row per tap</span></p>
+    <p class="tips"><b>Only synth with this card.</b> One tap needs nothing; the card
+      only exists once there is something to repeat. In the full window it is a door on
+      the Master card, and the door carries the count.</p>
+    <table><thead><tr>
+      <th>Control</th><th>Kind</th><th>Range</th><th>Default</th><th>Key</th>
+    </tr></thead><tbody>
+      <tr><td class="lab">TAPS<div class="tip">Adds or removes one repeat at a time; a new
+        one lands after the last by the gap the last one used, so adding to a clap keeps
+        its rhythm instead of restarting it.</div></td>
+        <td class="kind">stepper</td><td class="rng">1 … 6<span class="raw">step 1</span></td>
+        <td class="def">1</td><td class="key"><code>$taps.length</code></td></tr>
+      <tr><td class="lab">TIME<div class="tip">The table's first column: one knob per
+        repeat beyond the first, appearing as TAPS grows. Each keeps its own offset rather
+        than being generated from a count and a spacing — authored claps are unevenly
+        spaced on purpose. Tap 1 is the sound itself and reads a fixed 0ms.</div>
+        <div class="meta">up to 5 controls, only as many as TAPS − 1</div></td>
+        <td class="kind">pot</td><td class="rng">2 … 200 ms<span class="raw">step 1ms</span></td>
+        <td class="def">12ms × repeat index</td><td class="key"><code>$taps[i]</code></td></tr>
+      <tr><td class="lab">FALLOFF<div class="tip">How much quieter each repeat is than the
+        one before it.</div></td>
+        <td class="kind">pot</td><td class="rng">0.2 … 1<span class="raw">step 0.01</span></td>
+        <td class="def">0.78</td><td class="key"><code>$tapFalloff</code></td></tr>
+      <tr><td class="lab">PITCH<div class="tip">How far each repeat is pitched from the
+        one before it.</div></td>
+        <td class="kind">pot</td><td class="rng">0.8 … 1.25<span class="raw">step 0.005</span></td>
+        <td class="def">1 (no walk)</td><td class="key"><code>$tapDetune</code></td></tr>
+      <tr><td class="lab">TONE<div class="tip">How much duller or brighter each repeat is
+        than the one before it.</div></td>
+        <td class="kind">pot</td><td class="rng">0.6 … 1.4<span class="raw">step 0.01</span></td>
+        <td class="def">1 (no walk)</td><td class="key"><code>$tapTone</code></td></tr>
+      <tr><td class="lab">LEVEL<div class="tip">The table's second column: this tap's own
+        level, in place of FALLOFF's curve.</div>
+        <div class="meta">optional array, one entry per tap — only when stored</div></td>
+        <td class="kind">pot</td><td class="rng">0 … 2<span class="raw">step 0.005</span></td>
+        <td class="def">falloff^i</td><td class="key"><code>$tapGains[i]</code></td></tr>
+      <tr><td class="lab">DECAY<div class="tip">The table's third column: this tap's own
+        length, in place of the section's decay.</div>
+        <div class="meta">optional array, one entry per tap — only when stored</div></td>
+        <td class="kind">pot</td><td class="rng">5 … 600 ms<span class="raw">step 1ms</span></td>
+        <td class="def">noise decay</td><td class="key"><code>$tapDecays[i]</code></td></tr>
+    </tbody></table>
+  </article>`;
+
+/**
+ * One synth's full brief, built from its own `panelSpec()`. Returns the HTML for
+ * `<main>` plus the counts the header stats and commission prose quote, so every number
+ * on the page is the one the table underneath it actually adds up to.
+ */
+function buildBody(synth) {
+  const spec = panelSpec(synth.voice);
+  const short = spec.pillLabels;
+
+  let controls = 0;
+  let conditional = 0;
+  const cardHtml = (g, { common = false } = {}) => {
+    if (g.taps) return tapsCardHtml();
+    const rows = (g.rows || []).flat(Infinity).filter(Boolean);
+    controls += rows.length;
+    // Which of the three layers this card belongs to, taken from its own title — the
+    // one place the loop index survives into the data. `Osc 2 · Filter` is layer 2, and
+    // that is what `${p}` and `i` were when its conditions were written. Groups outside
+    // MRDR-3's layer loop never match this pattern, so `i` is 0 and `p` stays empty.
+    const i = Number(/^Osc (\d)\b/.exec(g.title)?.[1] || 0);
+    const p = i ? `layer.osc${i}` : '';
+    const gCond = condOf(g.when, { p, i });
+    const bits = [];
+    if (g.optional) bits.push(`<span class="tag opt">switched section · <code>${esc(g.optional)}</code></span>`);
+    if (g.solo) bits.push('<span class="tag">has a SOLO button</span>');
+    if (common) bits.push('<span class="tag">on every preset, not just this synth</span>');
+    if (gCond) bits.push(`<span class="tag when">only when ${esc(gCond)}</span>`);
+    const tips = [g.offTip && `<b>off →</b> ${esc(g.offTip)}`, g.onTip && `<b>on →</b> ${esc(g.onTip)}`]
+      .filter(Boolean).join(' &nbsp;·&nbsp; ');
+    return `<article class="card">
     <h3>${esc(g.title)}<span class="n">${rows.length}</span></h3>
     ${bits.length ? `<p class="bits">${bits.join(' ')}</p>` : ''}
     ${tips ? `<p class="tips">${tips}</p>` : ''}
@@ -160,35 +246,28 @@ const cardHtml = (g, { common = false } = {}) => {
           ${r.tip ? `<div class="tip">${esc(r.tip)}</div>` : ''}
           ${notes.length ? `<div class="meta">${notes.map(esc).join(' · ')}</div>` : ''}</td>
         <td class="kind">${r.kind === 'pick' ? 'pills' : 'pot'}</td>
-        <td class="rng">${rangeOf(r)}</td>
+        <td class="rng">${rangeOf(r, short)}</td>
         <td class="def">${esc(String(r.def))}</td>
         <td class="key"><code>${esc(r.path).replaceAll('.', '.<wbr>')}</code></td>
       </tr>`;
     }).join('')}
     </tbody></table>
   </article>`;
+  };
+
+  const cards = [cardHtml(spec.common, { common: true }), ...spec.groups.map((g) => cardHtml(g))].join('\n');
+  const layerCards = spec.groups.filter((g) => /^Osc 1\b/.test(g.title)).length;
+  return { cards, controls, conditional, cardCount: spec.groups.length + 1, layerCards };
 };
 
-const cards = [cardHtml(spec.common, { common: true }), ...spec.groups.map((g) => cardHtml(g))].join('\n');
-const layerCards = spec.groups.filter((g) => /^Osc 1\b/.test(g.title)).length;
-
-const swatches = themes.map((t) => `
-  <div class="theme" data-theme="${t.id}">
-    <h4>${esc(t.name)}<code>${t.id === 'default' ? 'no attribute' : `data-mixer-theme="${t.id}"`}</code></h4>
-    <div class="sw">${TOKENS.map(([k, why]) => `
-      <div class="s" title="${esc(why)}">
-        <i style="background:${esc(t.vars[k] || 'transparent')}"></i>
-        <em>${esc(k.slice(2))}</em><b>${esc(t.vars[k] || '—')}</b>
-      </div>`).join('')}</div>
-  </div>`).join('');
-
-const html = `<!-- @dsCard group="Synth UI" -->
+/** The page shell every synth's brief shares — palette, chrome, stats bar, script. */
+const pageHtml = (synth, body) => `<!-- @dsCard group="Synth UI" -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MASHENSTEIN — Layered Synth editor</title>
+<title>${esc(synth.pageTitle)}</title>
 <style>
   /* The desk's own tokens, so this brief is written in the palette it is a brief for.
      Switching the backdrop switches the page, which is the cheapest possible way to
@@ -285,47 +364,30 @@ ${Object.entries(t.vars).filter(([k]) => TOKENS.some(([n]) => n === k))
 </head>
 <body>
 <header>
-  <h1>Layered Synth — editor<span>MASHENSTEIN · Song Mixer</span></h1>
-  <p class="brief">
-    <b>MRDR-3</b> is the mixer's biggest instrument: three complete oscillator sections,
-    each with its own waveform, pitch envelope, FM operator, filter, filter envelope and
-    amplifier, summed into a shared filter, a shared amplifier, an LFO and a drive stage.
-    Today its editor is drawn into a column <b>366&nbsp;px wide</b> — three channel strips
-    across — because that is the slot it happens to occupy on the desk, and every decision
-    in it is a concession to that width: 42&nbsp;px knobs, 9.5&nbsp;px labels, four columns
-    of grid, and ${controls} controls in one long vertical scroll.
-  </p>
+  <h1>${esc(synth.h1)}<span>MASHENSTEIN · Song Mixer</span></h1>
+  <p class="brief">${synth.briefHtml(body)}</p>
   <div class="box">
     <h2>The commission</h2>
-    <p style="margin:0">
-      Design this as a <b>full-window editor</b> that opens over the desk and closes back to
-      it — a plugin, not a strip. Assume the browser window: roughly <b>1280&nbsp;px to
-      2560&nbsp;px wide</b> and 720&nbsp;px to 1440&nbsp;px tall, at whatever aspect the
-      window happens to be. The 366&nbsp;px cage is gone and none of its compromises need
-      defending. Signal flow, grouping, knob size, how the three layers sit against each
-      other, what is on screen at once and what is a tab or a page — all open.
-    </p>
+    <p style="margin:0">${synth.commissionHtml(body)}</p>
     <ul>
       <li><b>Palette and typeface stay the desk's.</b> Every colour comes from the tokens
         below, and the layout has to survive all ${themes.length} themes, light and dark.
         Nothing hard-coded. Layout and control <em>shapes</em> are yours.</li>
-      <li><b>Every control below has to be reachable.</b> All ${controls} of them. This is
-        enforced in CI — <code>tests/pot-coverage.js</code> fails the build if the engine
-        reads a key with no control on it, or a control exists that no engine path reads.
-        If you want to drop one, say which and why; if you want a new one, name what it
-        would control.</li>
+      <li><b>Every control below has to be reachable.</b> All ${body.controls} of them${synth.hasTaps ? ', plus Taps below — see its own note' : ''}.
+        This is enforced in CI — <code>tests/pot-coverage.js</code> fails the build if the
+        engine reads a key with no control on it, or a control exists that no engine path
+        reads. If you want to drop one, say which and why; if you want a new one, name
+        what it would control.</li>
       <li><b>Same control, same name, everywhere.</b> A control that also appears elsewhere
         on the desk keeps its label, its option order and its units. CUTOFF means one thing
         on all nine cards that have one.</li>
-      <li><b>Readings are absolute.</b> The same number means the same thing on every layer
-        and every card. No hidden multipliers, no per-context scaling.</li>
-      <li><b>The three layers are structurally identical.</b> Whatever Osc&nbsp;1 gets,
-        Osc&nbsp;2 and Osc&nbsp;3 get — ${layerCards} cards each, three times over. Only
-        Osc&nbsp;1 lacks an on/off switch, because it <em>is</em> the voice.</li>
-      <li><b>Things appear and disappear.</b> ${conditional} of the controls are conditional,
-        and the PWM, Pitch&nbsp;Env, FM, Filter and Filter&nbsp;Env cards come and go with the
-        section above them. The layout must not lurch when they do — that is a real
-        constraint on how you place them, not a detail.</li>
+      <li><b>Readings are absolute.</b> The same number means the same thing on every card.
+        No hidden multipliers, no per-context scaling.</li>
+      ${synth.structureLi(body)}
+      <li><b>Things appear and disappear.</b> ${body.conditional} of the controls are
+        conditional, and switched sections come and go with their own switch above them.
+        The layout must not lurch when they do — that is a real constraint on how you
+        place them, not a detail.</li>
       <li><b>Off is a state, not zero.</b> A switched section that is off builds no audio
         nodes at all. Its switch is a real control with its own pair of tooltips (both are
         listed on each card).</li>
@@ -354,10 +416,10 @@ ${Object.entries(t.vars).filter(([k]) => TOKENS.some(([n]) => n === k))
   <section>
     <h2>The size of the problem</h2>
     <div class="stats">
-      <div class="stat"><b>${controls}</b><em>controls</em></div>
-      <div class="stat"><b>${spec.groups.length + 1}</b><em>cards</em></div>
-      <div class="stat"><b>${conditional}</b><em>conditional</em></div>
-      <div class="stat"><b>3</b><em>layers, identical</em></div>
+      <div class="stat"><b>${body.controls}</b><em>controls</em></div>
+      <div class="stat"><b>${body.cardCount}</b><em>cards</em></div>
+      <div class="stat"><b>${body.conditional}</b><em>conditional</em></div>
+      ${synth.extraStats(body)}
       <div class="stat"><b>366px</b><em>today's width</em></div>
       <div class="stat"><b>${themes.length}</b><em>themes to survive</em></div>
     </div>
@@ -377,14 +439,12 @@ ${Object.entries(t.vars).filter(([k]) => TOKENS.some(([n]) => n === k))
     <h2>The control surface</h2>
     <p class="note">
       Generated from the panel's own definition, in the order the panel declares it, which
-      is signal order: what the oscillator does, then what bends it, then what filters it,
-      then what shapes its level — and the shared stage after all three layers. <b>Key</b>
-      is what the control writes onto the preset. A red line under a control's name is the
-      condition under which it exists at all; a red tag on a card is the same for the whole
-      card.
+      is signal order. <b>Key</b> is what the control writes onto the preset. A red line
+      under a control's name is the condition under which it exists at all; a red tag on a
+      card is the same for the whole card.
     </p>
     <div class="cards">
-${cards}
+${body.cards}
     </div>
   </section>
 </main>
@@ -400,7 +460,82 @@ ${cards}
 </html>
 `;
 
+// ---- the two pilot synths ----------------------------------------------------
+const SYNTHS = [
+  {
+    id: 'MRDR-3',
+    voice: { synth: 'MRDR-3' },
+    outFile: 'layer-synth.html',
+    pageTitle: 'MASHENSTEIN — Layered Synth editor',
+    h1: 'Layered Synth — editor',
+    hasTaps: false,
+    briefHtml: (body) => `
+    <b>MRDR-3</b> is the mixer's biggest instrument: three complete oscillator sections,
+    each with its own waveform, pitch envelope, FM operator, filter, filter envelope and
+    amplifier, summed into a shared filter, a shared amplifier, an LFO and an <b>Effects</b>
+    stage — a drive that can sit either side of that shared filter and amplifier, and a
+    stereo chorus after all of it.
+    Today its editor is drawn into a column <b>366&nbsp;px wide</b> — three channel strips
+    across — because that is the slot it happens to occupy on the desk, and every decision
+    in it is a concession to that width: 42&nbsp;px knobs, 9.5&nbsp;px labels, four columns
+    of grid, and ${body.controls} controls in one long vertical scroll.`,
+    commissionHtml: () => `
+      Design this as a <b>full-window editor</b> that opens over the desk and closes back to
+      it — a plugin, not a strip. Assume the browser window: roughly <b>1280&nbsp;px to
+      2560&nbsp;px wide</b> and 720&nbsp;px to 1440&nbsp;px tall, at whatever aspect the
+      window happens to be. The 366&nbsp;px cage is gone and none of its compromises need
+      defending. Signal flow, grouping, knob size, how the three layers sit against each
+      other, what is on screen at once and what is a tab or a page — all open. Drum Synth
+      shares this same full-window surface (see its own brief) — the two should read as a
+      matched pair, not two unrelated plugins.`,
+    structureLi: (body) => `<li><b>The three layers are structurally identical.</b> Whatever
+        Osc&nbsp;1 gets, Osc&nbsp;2 and Osc&nbsp;3 get — ${body.layerCards} cards each, three
+        times over. Only Osc&nbsp;1 lacks an on/off switch, because it <em>is</em> the
+        voice.</li>`,
+    extraStats: () => '<div class="stat"><b>3</b><em>layers, identical</em></div>',
+  },
+  {
+    id: 'drum',
+    voice: { synth: 'Drum Synth', kind: 'drum' },
+    outFile: 'drum-synth.html',
+    pageTitle: 'MASHENSTEIN — Drum Synth editor',
+    h1: 'Drum Synth — editor',
+    hasTaps: true,
+    briefHtml: (body) => `
+    <b>Drum Synth</b> is the mixer's variable multi-source percussion instrument: up to
+    five switchable sound sources — a pitched <b>Oscillator</b> (with its own FM operator),
+    <b>Noise</b>, a struck resonant filter (<b>Ring</b>) and an inharmonic square cluster
+    (<b>Metal</b>) — summed through a shared <b>Drive</b> stage, plus <b>Humanise</b> and a
+    <b>Taps</b> stepper that turns one hit into an authored multi-hit clap or hat. Any
+    combination of sources can be on at once; a kick might use only Oscillator, a hat only
+    Metal, a snare Noise plus Ring. Today its editor is drawn into the same
+    <b>366&nbsp;px column</b> as every other preset on the desk, and every decision in it
+    is a concession to that width: 42&nbsp;px knobs, 9.5&nbsp;px labels, four columns of
+    grid, and ${body.controls} controls in one long vertical scroll.`,
+    commissionHtml: () => `
+      Design this as a <b>full-window editor</b> that opens over the desk and closes back to
+      it — a plugin, not a strip. Assume the browser window: roughly <b>1280&nbsp;px to
+      2560&nbsp;px wide</b> and 720&nbsp;px to 1440&nbsp;px tall, at whatever aspect the
+      window happens to be. The 366&nbsp;px cage is gone and none of its compromises need
+      defending. Signal flow, grouping, knob size, how the sources sit against each other
+      and against Drive, what is on screen at once and what is a tab or a page — all open.
+      MRDR-3 shares this same full-window surface (see its own brief) — the two should read
+      as a matched pair, not two unrelated plugins.`,
+    structureLi: () => `<li><b>The sources are independent, not identical.</b> Unlike
+        MRDR-3's three matched layers, Drum Synth's five switched sections
+        (Oscillator, its FM, Noise, Ring, Metal) are each a different mechanism with a
+        different control set — there is no shared shape to repeat, so each card earns its
+        own layout.</li>`,
+    extraStats: () => '<div class="stat"><b>5</b><em>switchable sections</em></div>',
+  },
+];
+
 mkdirSync(outDir, { recursive: true });
-writeFileSync(out, html);
-console.log(`${out} (${(html.length / 1024).toFixed(0)} KB)`);
-console.log(`${controls} controls across ${spec.groups.length + 1} cards, ${conditional} conditional`);
+for (const synth of SYNTHS) {
+  const body = buildBody(synth);
+  const html = pageHtml(synth, body);
+  const out = join(outDir, synth.outFile);
+  writeFileSync(out, html);
+  console.log(`${out} (${(html.length / 1024).toFixed(0)} KB)`);
+  console.log(`  ${body.controls} controls across ${body.cardCount} cards, ${body.conditional} conditional`);
+}

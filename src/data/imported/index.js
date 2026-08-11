@@ -67,6 +67,7 @@ import * as HAUNTED_SUNDAE from './haunted-sundae.js';
 import * as HUNGRY_CANYON from './hungry-canyon.js';
 import * as HUNGRY_LADDER from './hungry-ladder.js';
 import * as JOLLY_ORBIT from './jolly-orbit.js';
+import * as JOLLY_SIREN from './jolly-siren.js';
 import * as LUCKY_CACTUS from './lucky-cactus.js';
 import * as LUCKY_PYLON from './lucky-pylon.js';
 import * as MARBLE_ROCKET from './marble-rocket.js';
@@ -101,10 +102,16 @@ import * as SALTY_TEMPLE from './salty-temple.js';
 import * as SECRET_BALLOON from './secret-balloon.js';
 import * as SECRET_DIVER from './secret-diver.js';
 import * as SECRET_MONSTER from './secret-monster.js';
+import * as SILENT_BEETLE from './silent-beetle.js';
 import * as SILENT_ROCKET from './silent-rocket.js';
 import * as SILENT_VOLCANO from './silent-volcano.js';
 import * as SILVER_PYLON from './silver-pylon.js';
 import * as SLEEPY_FALCON from './sleepy-falcon.js';
+import * as SMW_ALL_INSTRUMENTS from './smw-all-instruments.js';
+import * as SMW_OVERWORLD_SMWWD1_LU9 from './smw-overworld-smwwd1-lu9.js';
+import * as SMW_OVERWORLD from './smw-overworld.js';
+import * as SMW_TITLE_2 from './smw-title-2.js';
+import * as SMWGOOD from './smwgood.js';
 import * as SUGAR_DIVER from './sugar-diver.js';
 import * as SUGAR_KITTEN from './sugar-kitten.js';
 import * as SUNKEN_PARADE from './sunken-parade.js';
@@ -183,6 +190,7 @@ export const IMPORTED_BY_ID = {
   "hungry-canyon": { bank: HUNGRY_CANYON.bank, title: HUNGRY_CANYON.title, group: "scratch", writable: true },
   "hungry-ladder": { bank: HUNGRY_LADDER.bank, title: HUNGRY_LADDER.title, group: "scratch", writable: true },
   "jolly-orbit": { bank: JOLLY_ORBIT.bank, title: JOLLY_ORBIT.title, group: "scratch", writable: true },
+  "jolly-siren": { bank: JOLLY_SIREN.bank, title: JOLLY_SIREN.title, group: "scratch", writable: true },
   "lucky-cactus": { bank: LUCKY_CACTUS.bank, title: LUCKY_CACTUS.title, group: "scratch", writable: true },
   "lucky-pylon": { bank: LUCKY_PYLON.bank, title: LUCKY_PYLON.title, group: "scratch", writable: true },
   "marble-rocket": { bank: MARBLE_ROCKET.bank, title: MARBLE_ROCKET.title, group: "scratch", writable: true },
@@ -217,10 +225,16 @@ export const IMPORTED_BY_ID = {
   "secret-balloon": { bank: SECRET_BALLOON.bank, title: SECRET_BALLOON.title, group: "scratch", writable: true },
   "secret-diver": { bank: SECRET_DIVER.bank, title: SECRET_DIVER.title, group: "scratch", writable: true },
   "secret-monster": { bank: SECRET_MONSTER.bank, title: SECRET_MONSTER.title, group: "scratch", writable: true },
+  "silent-beetle": { bank: SILENT_BEETLE.bank, title: SILENT_BEETLE.title, group: "scratch", writable: true },
   "silent-rocket": { bank: SILENT_ROCKET.bank, title: SILENT_ROCKET.title, group: "scratch", writable: true },
   "silent-volcano": { bank: SILENT_VOLCANO.bank, title: SILENT_VOLCANO.title, group: "scratch", writable: true },
   "silver-pylon": { bank: SILVER_PYLON.bank, title: SILVER_PYLON.title, group: "scratch", writable: true },
   "sleepy-falcon": { bank: SLEEPY_FALCON.bank, title: SLEEPY_FALCON.title, group: "scratch", writable: true },
+  "smw-all-instruments": { bank: SMW_ALL_INSTRUMENTS.bank, title: SMW_ALL_INSTRUMENTS.title, group: "copy", writable: true },
+  "smw-overworld-smwwd1-lu9": { bank: SMW_OVERWORLD_SMWWD1_LU9.bank, title: SMW_OVERWORLD_SMWWD1_LU9.title, group: "imported", writable: true },
+  "smw-overworld": { bank: SMW_OVERWORLD.bank, title: SMW_OVERWORLD.title, group: "copy", writable: true },
+  "smw-title-2": { bank: SMW_TITLE_2.bank, title: SMW_TITLE_2.title, group: "imported", writable: true },
+  "smwgood": { bank: SMWGOOD.bank, title: SMWGOOD.title, group: "imported", writable: true },
   "sugar-diver": { bank: SUGAR_DIVER.bank, title: SUGAR_DIVER.title, group: "scratch", writable: true },
   "sugar-kitten": { bank: SUGAR_KITTEN.bank, title: SUGAR_KITTEN.title, group: "scratch", writable: true },
   "sunken-parade": { bank: SUNKEN_PARADE.bank, title: SUNKEN_PARADE.title, group: "scratch", writable: true },

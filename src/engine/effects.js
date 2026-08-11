@@ -86,6 +86,10 @@ const PARAM_RANGES = {
   // are what saved mixes hold, so they stay as they are — see PARAM_LABELS.
   pan: { min: -1, max: 1, step: 0.02 },
   balance: { min: -1, max: 1, step: 0.02 },
+  // A switch, so the desk draws a box rather than a pot — see the toggle branch in
+  // buildDevices. Note it is the OPPOSITE sense to the strip's own WIDTH control,
+  // which is transparent at 1: here 0 is off and 1 is collapsed.
+  mono: { min: 0, max: 1, step: 1, toggle: true },
   tone: { min: 400, max: 20000, step: 100, unit: 'Hz', log: true },
   sync: { min: 0, max: 1, step: 1, toggle: true },
   delayMs: { min: 1, max: 1000, step: 1, unit: 'ms' },
@@ -401,6 +405,14 @@ function makeGain(ctx, params) {
   const merge = ctx.createChannelMerger(2);
   const left = ctx.createGain();
   const right = ctx.createGain();
+  // The two crossed paths MONO needs: half of each channel into the other one. Always
+  // wired, and at zero while the switch is off — a gain of exactly 0 contributes
+  // exactly 0.0 to the merge, so an untouched Gain renders the samples it always did
+  // and the null test does not move.
+  const lToR = ctx.createGain();
+  const rToL = ctx.createGain();
+  lToR.gain.value = 0;
+  rToL.gain.value = 0;
   // Two channels whatever arrives, or BALANCE has nothing to move on a mono lane: the
   // up-mix duplicates, so it costs the signal nothing to make the pair.
   for (const n of [level, output]) {
@@ -409,14 +421,30 @@ function makeGain(ctx, params) {
   level.connect(split);
   split.connect(left, 0); left.connect(merge, 0, 0);
   split.connect(right, 1); right.connect(merge, 0, 1);
+  split.connect(lToR, 0); lToR.connect(merge, 0, 1);
+  split.connect(rToL, 1); rToL.connect(merge, 0, 0);
   merge.connect(output);
-  const state = { gain: 0, balance: 0, ...params };
+  const state = { gain: 0, balance: 0, mono: 0, ...params };
   const apply = () => {
     const t = ctx.currentTime;
     level.gain.setTargetAtTime(10 ** (state.gain / 20), t, 0.02);
     const b = Math.max(-1, Math.min(1, state.balance ?? 0));
-    left.gain.setTargetAtTime(b <= 0 ? 1 : 1 - b, t, 0.02);
-    right.gain.setTargetAtTime(b >= 0 ? 1 : 1 + b, t, 0.02);
+    const bl = b <= 0 ? 1 : 1 - b;
+    const br = b >= 0 ? 1 : 1 + b;
+    // MONO is a mid/side collapse, not a sum: at 1 both outputs are (L+R)/2, so a
+    // centred mix comes back at the level it went in and only the SIDES disappear.
+    // Summing straight to L+R is the other version of this, and it arrives 6dB hot —
+    // which is exactly what the Stereo Widener at width 0 does, measured. A switch
+    // that changes the loudness of the mix is not a width control.
+    //
+    // Held as a number rather than a flag because that is what the graph wants, and
+    // the desk writes it as 0 or 1: the halfway states are reachable by the same
+    // arithmetic, and nothing has to special-case the ends.
+    const m = Math.max(0, Math.min(1, state.mono ?? 0)) / 2;
+    left.gain.setTargetAtTime(bl * (1 - m), t, 0.02);
+    right.gain.setTargetAtTime(br * (1 - m), t, 0.02);
+    rToL.gain.setTargetAtTime(bl * m, t, 0.02);
+    lToR.gain.setTargetAtTime(br * m, t, 0.02);
   };
   apply();
   return {
@@ -426,7 +454,7 @@ function makeGain(ctx, params) {
     connect: (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest)),
     disconnect: () => { try { output.disconnect(); } catch { /* fine */ } },
     dispose: () => {
-      for (const n of [level, split, left, right, merge, output]) {
+      for (const n of [level, split, left, right, lToR, rToL, merge, output]) {
         try { n.disconnect(); } catch { /* fine */ }
       }
     },
@@ -2175,8 +2203,12 @@ export const EFFECTS = [
   // 0.03 rather than the 0.02 it cost as a lone GainNode: BALANCE is a splitter, two
   // gains and a merger behind it. Re-measured by the same hand method as the rest of
   // these, on a bench that reads the Parametric EQ at 0.148 against its listed 0.15.
+  // MONO belongs here rather than on the Stereo Widener because it is a routing
+  // decision, not a width setting: the widener's own 0 collapses the image AND brings
+  // the result back 6dB hot, so reaching for it to make something mono costs you a
+  // level you then have to find again on the fader. This one is unity by construction.
   { id: 'gain', name: 'Gain', cost: 0.03, custom: makeGain,
-    params: ['gain', 'balance'], defaults: { gain: 0, balance: 0 } },
+    params: ['gain', 'balance', 'mono'], defaults: { gain: 0, balance: 0, mono: 0 } },
   // `short` is what an insert slot shows: a 118px strip cannot hold "Multiband
   // Compressor", and a name cut off mid-word is worse than an abbreviation someone
   // chose. The full name stays everywhere there is room for it.
@@ -2242,7 +2274,11 @@ export const EFFECTS = [
   { id: 'chorus2', name: 'Chorus 2', short: 'Chorus 2', cost: 0.60, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'chorus'),
     params: ['rateSync', 'rateDivision', 'frequency', 'delayMs', 'depth', 'density', 'width', 'feedback', 'tone', 'wet'],
     defaults: { rateSync: 0, rateDivision: 2, frequency: 0.65, delayMs: 16, depth: 0.55, density: 0.75, width: 1, feedback: 0.12, tone: 9000, wet: 0.5 },
-    ranges: { frequency: { min: 0.05, max: 8, step: 0.01, unit: 'Hz' }, delayMs: { min: 6, max: 30, step: 0.1, unit: 'ms' },
+    // RATE is log-tapered for the same reason MRDR-3's own chorus pot is cubed: the two
+    // speeds a chorus actually has are the Juno's 0.5 and 0.86 Hz, and linear on a dial
+    // that runs to eight they sat inside the first tenth of the travel. Position only —
+    // the stored Hz, and every mix built on it, are untouched.
+    ranges: { frequency: { min: 0.05, max: 8, step: 0.01, unit: 'Hz', log: true }, delayMs: { min: 6, max: 30, step: 0.1, unit: 'ms' },
       feedback: { min: 0, max: 0.6, step: 0.01 }, tone: { min: 800, max: 20000, step: 100, unit: 'Hz', log: true } },
     labels: { delayMs: 'DELAY', tone: 'DAMPING' } },
   { id: 'rhythmgate', name: 'Rhythmic Gate', short: 'Rhythm Gate', cost: 0.02, custom: makeRhythmicGate,

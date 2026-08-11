@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MASHENSTEIN — render frame</title>
+<!--
+  Not a page anybody opens. The song mixer loads this in a hidden iframe to get a
+  second, unbound copy of the audio engine to render a WAV through — see the note at
+  the top of tools/mixer-render-entry.js. It has no UI on purpose: everything it does
+  is driven over postMessage, and the one thing it could usefully draw (a progress
+  bar) is not something an OfflineAudioContext reports.
+-->
+</head>
+<body>
+<script>/*__BUNDLE__*/</script>
+</body>
+</html>

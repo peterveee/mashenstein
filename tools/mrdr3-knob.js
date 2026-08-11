@@ -3,7 +3,8 @@
 // reset, shift-drag and `{ wrap, label, set }` surface without importing mixer state.
 
 export function createKnob({
-  min, max, step, value, fmt, onInput, reset, scale = 1, origin = null, onStart, onEnd,
+  min, max, step, value, fmt, onInput, reset, scale = 1, origin = null,
+  taper = null, floor = 0, onStart, onEnd,
 }) {
   const NS = 'http://www.w3.org/2000/svg';
   const wrap = document.createElement('div'); wrap.className = 'row potrow';
@@ -24,9 +25,14 @@ export function createKnob({
   const clampPos = (x) => Math.max(0, Math.min(1, x));
   const curve = Number.isFinite(scale) && scale > 0 ? scale : 1;
   const bipolar = Number.isFinite(origin) && curve !== 1;
+  // The desk's log taper for time, kept identical here — see `knob` in mixer-entry.js.
+  const logTaper = taper === 'log' && max > 0;
+  const logLo = logTaper ? Math.max(min, floor > 0 ? floor : step, 1e-6) : 0;
+  const logSpan = logTaper ? Math.log(max / logLo) : 0;
   const originFrac = (max - min) ? clampPos((origin - min) / (max - min)) : 0;
   const valueAt = (position) => {
     const pos = clampPos(position);
+    if (logTaper) return pos <= 0 ? min : logLo * Math.exp(logSpan * pos);
     if (!bipolar) return min + (max - min) * Math.pow(pos, curve);
     if (pos >= originFrac) {
       const f = originFrac >= 1 ? 0 : (pos - originFrac) / (1 - originFrac);
@@ -36,6 +42,10 @@ export function createKnob({
     return origin - (origin - min) * Math.pow(f, curve);
   };
   const positionAt = (x) => {
+    if (logTaper) {
+      const t = clamp(x);
+      return t <= logLo ? 0 : clampPos(Math.log(t / logLo) / logSpan);
+    }
     if (!bipolar) {
       const frac = (max - min) ? clampPos((x - min) / (max - min)) : 0;
       return Math.pow(frac, 1 / curve);

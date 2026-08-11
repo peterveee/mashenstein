@@ -28,7 +28,7 @@
  * two exception tables with a reason beside it, which is the outcome we want anyway.
  */
 import { readFileSync } from 'node:fs';
-import { panelKeys, EDITABLE_SYNTHS } from '../tools/mixer-voice-editor.js';
+import { panelKeys, EDITABLE_SYNTHS, CHORUS_DEFAULTS } from '../tools/mixer-voice-editor.js';
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
@@ -304,6 +304,32 @@ for (const [id, v] of Object.entries(VOICES)) {
 }
 if (!unreachable) {
   console.log(`ok: ${valuesChecked} stored values all sit inside the pot that edits them`);
+}
+
+// ---- AND NO POT THAT OPENS ON A VALUE THE ENGINE WOULD NOT USE --------------
+//
+// The fourth direction. A pot that EXISTS, whose key a path reads, whose range holds every
+// stored value — and which still opens on the wrong number, because the sound it is
+// drawing has no stored value at all and the engine's own fallback is what you are hearing.
+//
+// MRDR-3's Chorus 2 is the case. It has no section switch: MIX at zero IS off, the same
+// deal the LFO's DEPTH makes, so there is no `SECTION_DEFAULTS` entry to seed it and the
+// three shaping pots carry `buildChorus`'s `??` fallbacks as their row defaults instead.
+// That is two files stating one number — unavoidably, because the engine imports Tone and
+// cannot be loaded here — so the numbers are compared as TEXT rather than trusted.
+const engineSrc = strip(read('src/engine/voices.js'));
+const drifted = [];
+for (const [key, shown] of Object.entries(CHORUS_DEFAULTS)) {
+  const m = engineSrc.match(new RegExp(`spec\\.${key}\\s*\\?\\?\\s*(-?[\\d.]+)`));
+  if (!m) { drifted.push(`${key}: the panel defaults it, buildChorus has no fallback for it`); continue; }
+  if (Number(m[1]) !== shown) drifted.push(`${key}: pot opens on ${shown}, engine falls back to ${m[1]}`);
+}
+if (drifted.length) {
+  failed += drifted.length;
+  for (const d of drifted) console.log(`FAIL: chorus default drift — ${d}`);
+} else {
+  console.log(`\nok: ${Object.keys(CHORUS_DEFAULTS).length} chorus pots open on the value`
+    + ' the engine would have used anyway');
 }
 
 console.log(failed ? `\nPOT COVERAGE: ${failed} FAILED` : '\nPOT COVERAGE: PASSED');

@@ -285,18 +285,29 @@ export function seamFor(laneKey) {
  * `peak` is still measured and still carried: it is what says a preset will use more
  * headroom than the lane it lands on, and it is the fallback for a saved song copy
  * from before levels existed. See LANE_TARGETS.
- */
-/**
- * What one note of a lane's own hand-written voice reaches — `{ level, peak }`, or null.
  *
- * Read-only, and the same object `voiceGain` divides by. It is exported for the one
- * caller that needs both halves of the ratio rather than the ratio: the MRDR-3
- * playground weighs the energy answer against the peak answer before it auditions a
- * preset. See `auditionLevel` in tools/mrdr3-entry.js.
+ * ---- and why it is not PURELY energy either ----------------------------------
+ *
+ * Everything above is still true, and it is still the thing being matched. What it
+ * misses is that the energy is measured over a FIXED window — one note in a 32-step bar
+ * at 120 BPM, so eight seconds of which the note may occupy a twentieth. How much of
+ * that window a note fills therefore divides straight into the gain. A sharp attack and
+ * decay is mostly a window of silence, measures as near-nothing, and is handed a gain
+ * that makes it arrive far hotter than a sound which sustains through the same window at
+ * the same loudness. Peak-matching had that backwards; pure energy-matching has it
+ * backwards the other way, and neither end of the argument is the answer.
+ *
+ * So the gain is the geometric mean of the two — the midpoint between them in dB,
+ * `PEAK_LEAN` of the way from energy toward peak. Across the 316 levelled presets that
+ * moves the median by +1.4 dB and closes the spread between the peakiest and the densest
+ * by half; a blip comes down, a pad comes up, and what a listener hears is one library
+ * rather than two. It changes no measurement: `level` and `peak` are exactly the numbers
+ * tools/measure-voices.js wrote, and this only changes how they are combined, which is
+ * why moving PEAK_LEAN back to 0 restores the old behaviour without a re-measure.
  */
-export function laneTarget(laneKey) {
-  return LANE_TARGETS[baseLane(laneKey)] || null;
-}
+
+/** How far the derived gain leans from energy-matching toward peak-matching. */
+const PEAK_LEAN = 0.5;
 
 export function voiceGain(voice, laneKey) {
   // A layer aims at the same place its source lane does — it is the same part, and
@@ -308,7 +319,11 @@ export function voiceGain(voice, laneKey) {
   // level. Level it the old way rather than at `target.level / 1`, which is 30-odd dB
   // of wrong and would read as the preset having broken.
   if (!(voice.level > 0)) return capGain(target.peak / (voice.peak > 0 ? voice.peak : 1));
-  return capGain(target.level / voice.level);
+  const energy = target.level / voice.level;
+  // A preset measured before peaks were carried has only the one answer to give.
+  if (!(voice.peak > 0)) return capGain(energy);
+  const peakParity = target.peak / voice.peak;
+  return capGain(energy ** (1 - PEAK_LEAN) * peakParity ** PEAK_LEAN);
 }
 
 /**
@@ -483,12 +498,18 @@ const DRUM = {
     osc: { type: 'sine', from: 165, to: 48, sweep: 0.045, decay: 0.45, curve: 'exp', gain: 1 },
     noise: { type: 'lowpass', freq: 3200, Q: 0.7, decay: 0.015, gain: 0.4 },
     drive: 0.2 },
-  dsKickHard: { label: 'DS Hard Kick', category: 'Kick', dur: 1,
-    note: 'Faster drop, shorter tail, and pushed hard into the shaper — the kick for '
-      + 'a mix where the soft one disappears.',
-    osc: { type: 'sine', from: 230, to: 55, sweep: 0.03, decay: 0.22, curve: 'exp', gain: 1 },
-    noise: { type: 'bandpass', freq: 1100, Q: 1, decay: 0.018, gain: 0.6 },
-    drive: 0.55 },
+  dsKickHard: { label: 'HH Clave', category: 'Hats', dur: 1,
+    note: 'Tinny Hi Hat with a Clave behind it',
+    knock: 0.79,
+    noise: { type: 'bandpass', freq: 3950, Q: 23.45, decay: 0.435, gain: 1.47, attack: 0.000343, to: 4790, color: 'violet', slope: -24, sweep: 1.59 },
+    ring: { type: 'bandpass', freq: 400, Q: 40, hit: 0.0005, attack: 0.001, decay: 1.335, curve: 'exp', gain: 0.43, to: 4746 },
+    metal: { wave: 'square', freq: 2481, spread: 0.68, count: 4, hp: 2615, Q: 6.25, attack: 0.001, decay: 0.07, gain: 0.03, filter: 'bandpass' },
+    drive: 0.64,
+    bypassed: {
+      osc: { type: 'sine', from: 227, to: 42.08, sweep: 0.962, decay: 0.685, curve: 'exp', gain: 1, attack: 0 },
+    },
+    tune: 21,
+    trim: 3.9 },
   dsSnare: { label: 'DS Snare', category: 'Snare', dur: 1,
     note: 'The two-source snare: a triangle knock falling a fourth under a wide band '
       + 'of noise that rings a little longer than the body does.',
@@ -2144,13 +2165,102 @@ const TONE = {
   // ---- MRDR-3 ------------------------------------------------------------
   //
   // Up to three oscillator layers, each a complete voice — see `_playLayer` in
-  // src/engine/voices.js. These are the hand-written melodic voices of scheduleStep
-  // TRANSCRIBED, not approximated: the layer ratios, levels, lengths and attacks are the
-  // engine's own numbers, so a strip can A/B `layerBass80s` against `80s Bass` and hear
-  // whether the recreation holds. The engine voices stay; these are the editable copies.
+  // src/engine/voices.js.
   //
   // No MELODIC_TRIM in any of them — the rack path never applies it and `voiceGain`
   // levels by measurement, so only the RATIOS between layers carry meaning.
+
+  // ---- Initial: somewhere to start ---------------------------------------
+  //
+  // Five patches that are a PLACE rather than a sound. Everything else in this section
+  // is somebody's finished idea — a choir, a Reese, the finale's stab — and opening one
+  // to make your own means first working out which of forty settings are load-bearing.
+  // These carry the fewest that can still make a note: three oscillators at one pitch, a
+  // few cents apart, and an envelope with no attack, a short fall and a short tail.
+  //
+  // What is NOT here is the point. No filter, no LFO, no drive, no vibrato, no unison —
+  // every one of those cards opens at its own default the moment you switch it on, so a
+  // patch built from one of these is built by ADDING rather than by undoing. The one
+  // exception is `initOneFilter`, which is the other way people start: three oscillators
+  // into one filter and one envelope, the classic architecture, with the filter parked
+  // open and no envelope on it — there is nothing to hear until you close it, which is
+  // the invitation.
+  //
+  // All three layers sit at the same LEVEL in each of them. That is deliberate: three
+  // knobs in the same place say "three of the same thing" at a glance, and a starting
+  // point that arrives pre-balanced is a mix decision somebody has to reverse-engineer.
+  initSquare: { label: 'Initial 1 Square', category: 'Keys', synth: 'MRDR-3', dur: 1.5,
+    note: 'Three squares at the same pitch, seven cents either side of centre. No filter, '
+      + 'no sweep, no modulation — the shortest thing this synth can be and still be one.',
+    layer: {
+      osc1: { type: 'square', ratio: 1, detune: 0, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+      osc2: { type: 'square', ratio: 1, detune: -7, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+      osc3: { type: 'square', ratio: 1, detune: 7, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+    } },
+  initSaw: { label: 'Initial 2 Saw', category: 'Keys', synth: 'MRDR-3', dur: 1.5,
+    note: 'Initial 1 with sawtooths — every harmonic instead of every odd one, so it is '
+      + 'brighter and thinner and takes a filter better. The other blank canvas.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, detune: 0, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+      osc2: { type: 'sawtooth', ratio: 1, detune: -7, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+      osc3: { type: 'sawtooth', ratio: 1, detune: 7, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+    } },
+  // `ratio: 0.5` is INTERVAL -12 on the panel — the same octave-down sub the engine's
+  // own 80s bass stacks under itself, here as the one thing separating this from
+  // Initial 1 so the pot that did it is easy to find and easy to put back.
+  initSquareSub: { label: 'Initial 3 Square Sub', category: 'Keys', synth: 'MRDR-3', dur: 1.5,
+    note: 'Two squares seven cents apart with the third an octave below them. The same '
+      + 'starting point with a floor under it — where a bass patch begins.',
+    layer: {
+      osc1: { type: 'square', ratio: 1, detune: 0, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+      osc2: { type: 'square', ratio: 1, detune: 7, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+      osc3: { type: 'square', ratio: 0.5, detune: 0, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+    } },
+  initSawSub: { label: 'Initial 4 Saw Sub', category: 'Keys', synth: 'MRDR-3', dur: 1.5,
+    note: 'The sawtooth pair with an octave below them — brighter on top than Initial 3 '
+      + 'and the same weight underneath.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, detune: 0, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+      osc2: { type: 'sawtooth', ratio: 1, detune: 7, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+      osc3: { type: 'sawtooth', ratio: 0.5, detune: 0, gain: 0.6,
+        attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+    } },
+  // The other way to start. `vca: 'through'` takes the three layer envelopes out — the
+  // layers arrive at their LEVEL and nothing else — so there is ONE envelope and ONE
+  // filter for the whole stack, which is what most people mean by a synthesiser. The
+  // filter carries no `env` block at all: no sweep, nothing moving, just a cutoff parked
+  // where it changes almost nothing until somebody pulls it down.
+  initOneFilter: { label: 'Initial 5 One Filter', category: 'Keys', synth: 'MRDR-3', dur: 1.5,
+    note: 'Three detuned saws into one lowpass and one envelope — three oscillators, a '
+      + 'filter, an amp, the classic layout. The cutoff is parked open with no envelope '
+      + 'on it, so closing it is the first thing you will do.',
+    layer: {
+      osc1: { type: 'sawtooth', ratio: 1, detune: 0, gain: 0.6, vca: 'through' },
+      osc2: { type: 'sawtooth', ratio: 1, detune: -7, gain: 0.6, vca: 'through' },
+      osc3: { type: 'sawtooth', ratio: 1, detune: 7, gain: 0.6, vca: 'through' },
+    },
+    global: {
+      filter: { type: 'lowpass', slope: -24, freq: 8000, Q: 0.7, track: 0 },
+      vca: { attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+    } },
+
+  // ---- the engine's own melodic voices, transcribed -----------------------
+  //
+  // TRANSCRIBED, not approximated: the layer ratios, levels, lengths and attacks are
+  // `scheduleStep`'s own numbers, so a strip can A/B `layerBass80s` against `80s Bass`
+  // and hear whether the recreation holds. The engine voices stay; these are the
+  // editable copies.
   layerBass80s: { label: 'Layer 80s Bass', category: 'Bass', synth: 'MRDR-3', dur: 1.8,
     note: 'The engine’s 80s bass as editable layers: square body, sine sub an octave '
       + 'down, and a short triangle octave above that carries it on phone speakers.',
@@ -2639,21 +2749,23 @@ const TONE = {
     mono: true, portamento: 0.025 },
 
   syncWireClav: { label: 'Sync Wire Clav', category: 'Keys', synth: 'MRDR-3', dur: 0.9,
-    note: 'A short square slave is reset at a lopsided interval for a taut, metallic '
-      + 'clav attack without using an FM operator.',
+    note: 'A short square slave is reset at a lopsided interval for a taut, metallic clav '
+      + 'attack without using an FM operator.',
     sync: '1+2',
     layer: {
-      osc1: { type: 'triangle', ratio: 1, gain: 0.32, attack: 0.001, decay: 0.24,
-        sustain: 0.05, release: 0.06 },
-      osc2: { type: 'square', ratio: 3.91, gain: 0.86, len: 0.76, attack: 0.001,
-        decay: 0.19, sustain: 0.02, release: 0.045 },
+      osc1: { type: 'triangle', ratio: 1, gain: 1, attack: 0.001, decay: 0.24, sustain: 0.05, release: 0.06 },
+      osc2: { type: 'square', ratio: 3.91, gain: 0.86, len: 0.76, attack: 0.001, decay: 0.19, sustain: 0.02, release: 0.045 },
     },
     global: {
-      filter: { type: 'bandpass', slope: -12, freq: 1250, Q: 2.1, track: 0.48,
-        env: { octaves: 2.4, attack: 0.001, decay: 0.16, sustain: 0.04, release: 0.05 } },
-      vca: { attack: 0.001, decay: 0.25, sustain: 0.04, release: 0.07 },
+      filter: { type: 'bandpass', slope: -12, freq: 1250, Q: 2.1, track: 0.48, env: { octaves: 2.4, attack: 0.001, decay: 0.16, sustain: 0.04, release: 0.05 } },
+      vca: { attack: 0.001, decay: 9.77, sustain: 0.09, release: 0.07 },
     },
-    drive: 0.18, shape: 'soft', tone: { freq: 9200 } },
+    drive: 0.4, shape: 'soft',
+    tone: { freq: 9200 },
+    bypassed: {
+      "layer.osc1.filter": { type: 'lowpass', freq: 1150, Q: 1.15 },
+    },
+    trim: 6 },
 
   syncOrbitPad: { label: 'Sync Orbit Pad', category: 'Pad', synth: 'MRDR-3', dur: 8,
     note: 'Two differently reset slaves orbit a quiet triangle master, with a slow '
@@ -3087,6 +3199,13 @@ const USER_NOISE = {
     taps: [0, 0.014, 0.028, 0.048], tapFalloff: 0.82, tapDetune: 0.94, tapTone: 0.97,
     starter: false,
     trim: 3 },
+  gameBoySnare: { label: 'Game Boy Snare', category: 'Snare', dur: 0.5,
+    note: 'Pink-noise crack with a square body dropping 2.3k to 80 — the handheld backbeat, chokeable against the other arcade drums.',
+    noise: { type: 'bandpass', freq: 3710, Q: 2.85, decay: 0.905, gain: 1.98, color: 'pink' },
+    body: { type: 'square', from: 2345, to: 80, decay: 0.37, gain: 1.02 },
+    trim: 1.9,
+    monoGroup: 'arcadeDrums',
+    starter: false },
 };
 const USER_DRUM = {
   vl1Pi2: { label: 'VL-1 Pi 2', category: 'Perc', homeLane: 'rim', dur: 0.5,
@@ -3147,8 +3266,10 @@ const LEVELS = {
   bass80sMono: 0.065969, bass80sFM: 0.021042, bass80sDuo: 0.137751,
   bass80sSynth: 0.072658, bass303Squelch: 0.16325, bass303Rubber: 0.1299,
   bass303DeepGlide: 0.15706, bass303Bite: 0.1863, bass303Pulse: 0.518813,
-  layerBass80s: 0.124362, layerFilteredSaw: 0.089952, layerLeadBright: 0.120211,
-  layerTwinkle: 0.222429, layerTitleBass: 0.221732, layerFinaleBass: 0.109322,
+  initSquare: 0.226105, initSaw: 0.12916, initSquareSub: 0.171281,
+  initSawSub: 0.090011, initOneFilter: 0.129908, layerBass80s: 0.124362,
+  layerFilteredSaw: 0.089952, layerLeadBright: 0.120211, layerTwinkle: 0.222429,
+  layerTitleBass: 0.221732, layerFinaleBass: 0.109322,
   layerFinaleBassGhost: 0.118361, layerWalkingBass: 0.120181,
   layerMegamixBass: 0.08891, layerShopBass: 0.070542, layerLoungeBass: 0.079813,
   layerBright80sBass: 0.062084, layerTitleLead: 0.18674,
@@ -3167,13 +3288,13 @@ const LEVELS = {
   bestSampleHoldCircuit: 0.114368, bestSampleHoldPulse: 0.046824,
   bestSampleHoldOrbit: 0.133491, bestSampleHoldBass: 0.126274,
   bestSampleHoldVox: 0.04268, syncRazorLead: 0.187298, syncVowelLead: 0.029478,
-  syncBassBite: 0.135316, syncWireClav: 0.041101, syncOrbitPad: 0.072776,
+  syncBassBite: 0.135316, syncWireClav: 0.073437, syncOrbitPad: 0.072776,
   snareCrisp: 0.01243, snareFat: 0.018183, snareTight: 0.007868,
   snareBrush: 0.034296, snareRim: 0.008436, clap808: 0.010142,
   clapTight: 0.006178, clapRoom: 0.027296, hatClosed: 0.013707,
   hatOpen: 0.056805, hatPedal: 0.007613, hatFoil: 0.010984,
   hatFoilOpen: 0.04672, shaker: 0.010801, tambourine: 0.034897,
-  noiseSweep: 0.044325, dsKick: 0.054285, dsKickHard: 0.067073,
+  noiseSweep: 0.044325, dsKick: 0.054285, dsKickHard: 0.048683,
   dsSnare: 0.027926, dsSnareCrack: 0.054138, dsClap: 0.011273,
   dsHatClosed: 0.015363, dsHatOpen: 0.054488, hatSnap: 0.031197,
   hatSnapOpen: 0.094985, hatGrit: 0.045446, hatGritOpen: 0.090448,
@@ -3216,7 +3337,8 @@ const LEVELS = {
   stAcidSquelch: 0.06367, stBreathPad: 0.119482, stTpLectric: 0.031326,
   stKickClick: 0.048943, stClap808: 0.010142, stDsHatClosed: 0.015363,
   stZap: 0.019997, stPadTriangle: 0.101497, stFmBell: 0.018029,
-  stAmHollow: 0.01455, squareMono: 0.043368, fatKick: 0.035113
+  stAmHollow: 0.01455, squareMono: 0.043368, fatKick: 0.035113,
+  gameBoySnare: 0.083619
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -3253,30 +3375,32 @@ const PEAKS = {
   squareOrgan: 0.9273, bass80sMono: 1.1324, bass80sFM: 0.2208,
   bass80sDuo: 1.5251, bass80sSynth: 0.6689, bass303Squelch: 2.4717,
   bass303Rubber: 2.0323, bass303DeepGlide: 1.7497, bass303Bite: 2.7534,
-  bass303Pulse: 5.2676, layerBass80s: 0.7932, layerFilteredSaw: 0.9533,
-  layerLeadBright: 0.7089, layerTwinkle: 0.7853, layerTitleBass: 0.7,
-  layerFinaleBass: 0.6982, layerFinaleBassGhost: 0.6949, layerWalkingBass: 0.7,
-  layerMegamixBass: 0.9107, layerShopBass: 0.9456, layerLoungeBass: 0.6983,
-  layerBright80sBass: 0.7137, layerTitleLead: 0.7, layerFinaleLead: 0.6949,
-  layerMegamixLead: 0.6983, layerShopLead: 0.6989, layerCounterLead: 0.6983,
-  layerTitleHarm: 0.6983, layerSineHarm: 0.7, layerTitleChords: 0.6983,
-  layerFinaleStab: 0.6982, layerFinaleSawStab: 0.6948, layerShopComp: 0.6983,
-  layerDreamPad: 0.7643, layerBrassStack: 0.8097, bestChoirAah: 0.1724,
-  bestChoirOoh: 0.2544, bestVoiceBox70s: 0.9265, bestRobotVox: 0.6449,
-  bestVowelPad: 0.2226, bestMegaSawLead: 0.8584, bestHeroLead: 0.8488,
-  bestScreamerLead: 0.997, bestMonsterBass: 0.7424, bestReeseBass: 0.8591,
-  bestPwmStrings: 0.7053, bestPwmBrass: 0.8545, bestPwmPadWide: 0.3632,
-  bestPwmBass: 0.874, bestPwmGrowlBass: 0.9094, bestPwmHollowLead: 0.8933,
-  bestPwmReedLead: 0.6421, bestPwmClav: 0.9613, bestPwmChoir: 0.2558,
-  bestClassicMono: 0.8587, bestPwmDrift: 0.1619, bestSampleHoldCircuit: 0.7297,
+  bass303Pulse: 5.2676, initSquare: 1.2076, initSaw: 1.1435,
+  initSquareSub: 1.206, initSawSub: 0.9314, initOneFilter: 1.6351,
+  layerBass80s: 0.7932, layerFilteredSaw: 0.9533, layerLeadBright: 0.7089,
+  layerTwinkle: 0.7853, layerTitleBass: 0.7, layerFinaleBass: 0.6982,
+  layerFinaleBassGhost: 0.6949, layerWalkingBass: 0.7, layerMegamixBass: 0.9107,
+  layerShopBass: 0.9456, layerLoungeBass: 0.6983, layerBright80sBass: 0.7137,
+  layerTitleLead: 0.7, layerFinaleLead: 0.6949, layerMegamixLead: 0.6983,
+  layerShopLead: 0.6989, layerCounterLead: 0.6983, layerTitleHarm: 0.6983,
+  layerSineHarm: 0.7, layerTitleChords: 0.6983, layerFinaleStab: 0.6982,
+  layerFinaleSawStab: 0.6948, layerShopComp: 0.6983, layerDreamPad: 0.7643,
+  layerBrassStack: 0.8097, bestChoirAah: 0.1724, bestChoirOoh: 0.2544,
+  bestVoiceBox70s: 0.9265, bestRobotVox: 0.6449, bestVowelPad: 0.2226,
+  bestMegaSawLead: 0.8584, bestHeroLead: 0.8488, bestScreamerLead: 0.997,
+  bestMonsterBass: 0.7424, bestReeseBass: 0.8591, bestPwmStrings: 0.7053,
+  bestPwmBrass: 0.8545, bestPwmPadWide: 0.3632, bestPwmBass: 0.874,
+  bestPwmGrowlBass: 0.9094, bestPwmHollowLead: 0.8933, bestPwmReedLead: 0.6421,
+  bestPwmClav: 0.9613, bestPwmChoir: 0.2558, bestClassicMono: 0.8587,
+  bestPwmDrift: 0.1619, bestSampleHoldCircuit: 0.7297,
   bestSampleHoldPulse: 0.4985, bestSampleHoldOrbit: 0.7048,
   bestSampleHoldBass: 0.7557, bestSampleHoldVox: 0.6074, syncRazorLead: 1.1262,
-  syncVowelLead: 0.2355, syncBassBite: 0.9199, syncWireClav: 0.5736,
+  syncVowelLead: 0.2355, syncBassBite: 0.9199, syncWireClav: 0.8142,
   syncOrbitPad: 0.5662, snareCrisp: 0.4818, snareFat: 0.6748,
   snareTight: 0.4079, snareBrush: 0.8667, snareRim: 0.5163, clap808: 0.241,
   clapTight: 0.1875, clapRoom: 0.3999, hatClosed: 0.6646, hatOpen: 0.866,
   hatPedal: 0.2987, hatFoil: 0.6239, hatFoilOpen: 0.8071, shaker: 0.4339,
-  tambourine: 0.8986, noiseSweep: 0.813, dsKick: 0.7, dsKickHard: 0.7,
+  tambourine: 0.8986, noiseSweep: 0.813, dsKick: 0.7, dsKickHard: 0.7636,
   dsSnare: 0.6935, dsSnareCrack: 0.7, dsClap: 0.2885, dsHatClosed: 0.7135,
   dsHatOpen: 0.8873, hatSnap: 0.7, hatSnapOpen: 0.7, hatGrit: 0.6977,
   hatGritOpen: 0.6988, dsShaker: 0.5496, dsTom: 0.7, dsRim: 0.4228,
@@ -3313,7 +3437,7 @@ const PEAKS = {
   stAcidSquelch: 1.6469, stBreathPad: 0.8623, stTpLectric: 0.6403,
   stKickClick: 0.6794, stClap808: 0.241, stDsHatClosed: 0.7135, stZap: 0.6253,
   stPadTriangle: 0.6968, stFmBell: 0.2199, stAmHollow: 0.1073,
-  squareMono: 0.7338, fatKick: 0.9364
+  squareMono: 0.7338, fatKick: 0.9364, gameBoySnare: 1.1218
 };
 
 /**

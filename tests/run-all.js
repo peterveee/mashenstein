@@ -20,6 +20,16 @@ const suites = [
   'tests/megamix.js',
   'tests/mix.js',
   'tests/mixer-layout.js',
+  // The desk's way OUT — the WAV and the MIDI. Beside the layout suite because it is
+  // the same kind of claim about the same tool, and browserless for the same reason:
+  // what it pins is that both exports are built by code that can run without Node,
+  // which is the whole of why the deployed desk can make them at all.
+  'tests/mixer-export.js',
+  // And the desk's way IN, which is the same claim from the other side: a MIDI file
+  // arrives as one lane per part and NOTHING is merged onto anything else. Directly
+  // after the export suite because the two share a round trip — a part that comes home
+  // onto a layer has to be able to leave again on one.
+  'tests/midi-import.js',
   'tests/mixer-loop.js',
   // A song's own way in and repeat — `arrangement.loop`. Beside the locator loop above
   // because they arm the same machinery and only one of them is saved with the song.
@@ -42,6 +52,11 @@ const suites = [
   // the same writer and the same folder — what it adds is the one line that makes an
   // alternate an alternate, and the proof that an ordinary save does not eat it.
   'tests/song-alternates.js',
+  // And the third way, which is the same writer again with every claim taken OUT: a
+  // copy names no parent, so nothing can promote it and the game bundle cannot see it.
+  // Directly after the alternates suite because the two are read together — what makes
+  // a copy safe is exactly the line an alternate carries.
+  'tests/song-copies.js',
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',

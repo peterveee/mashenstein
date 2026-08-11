@@ -23,7 +23,7 @@ import {
   draftOf, entryOf, planToOrder, setLanesOff, setLanesDeleted, transposeBars, offsetBars,
   gainBars, copyBars, pasteBars, insertSilence, copyLaneBars, silenceBars, deleteBars,
   duplicateBars, buildUp, breakdown, forkBar, writeBarNotes, writeBarNotesShared, removeLanes,
-  compactSections, patternStarts, barCount, setTempo, setSwing,
+  compactSections, patternStarts, barCount, setTempo, setSwing, readBarLane,
   DRUM_LANES,
 } from '../tools/lib/arrangement-edit.js';
 import { discardSongDraft, restoreSongDraft } from '../tools/lib/mixer-drafts.js';
@@ -31,9 +31,10 @@ import {
   sharedPatternGroups, sharedPatternDescription, playheadCell, playheadWindow, drumRowOrder,
   KITS,
 } from '../tools/mixer-step-seq.js';
-import { VOICES, isKitVoice } from '../src/data/voices.js';
+import { VOICES, isKitVoice, baseLane } from '../src/data/voices.js';
 import {
-  LANE_KEYS, songBlocks, songBars, barPlan, activeLanes, laneActivity, laneUsesEcho,
+  LANE_KEYS, songBlocks, songBars, barPlan, activeLanes, laneActivity, laneUsesEcho, deskBank,
+  isLenKey,
 } from '../src/engine/lanes.js';
 
 let failed = false;
@@ -568,6 +569,241 @@ assert(forkedThenShared.plan[1].sec !== forkedThenShared.plan[3].sec,
   'a bar forked on its own is left out of a later shared edit');
 const loneFork = forkedThenShared.sections[forkedThenShared.plan[1].sec - plumber.sections.length];
 assert(loneFork.kick.slice(16).every((v) => v === false), 'and keeps the edit it was given');
+
+// ---- a delta may only ever be a delta over the BANK -----------------------------
+//
+// The rule that keeps an edit inside the bars it was made in, and the bug it is here
+// about: a fork off a section the desk can still write into inherits every later edit
+// to that section. Fork bar 4 out of the loop bars 1-4 are playing, then edit the loop,
+// and a note appears in bar 4 — a bar nobody touched, on a lane nobody touched. On an
+// imported song, whose parts live only in its sections with no bank part underneath,
+// the same chain is how a whole track goes silent: compaction drops a section no BAR
+// points at, the base pointing at it is renumbered against a list it is no longer in,
+// and the bar comes back inheriting nothing at all.
+//
+// So a fork off a layer section copies that section's overrides in and bases itself on
+// whatever the section ultimately extends. `base:` points into the bank, always.
+const sharedLoop = writeBarNotesShared(plumber, base, 0, 'kick', new Array(16).fill(true));
+const layerBase = plumber.sections.length;
+const bornOfShared = writeBarNotes(plumber, sharedLoop, 3, 'snare', new Array(16).fill(true));
+const child = bornOfShared.sections[bornOfShared.plan[3].sec - layerBase];
+assert(child.base < layerBase, 'a bar forked off a layer section is a delta over the BANK');
+assert(json(child.kick) === json(sharedLoop.sections[0].kick),
+  'and carries what it was playing at the moment it forked');
+const before3 = readBarLane(plumber, bornOfShared, 3, 'kick');
+// Now write the loop those other bars are still playing, in place — the gesture the
+// leak rode in on.
+const loopAgain = writeBarNotesShared(plumber, bornOfShared, 0, 'kick', new Array(16).fill(false));
+assert(json(readBarLane(plumber, loopAgain, 0, 'kick')) === json(new Array(16).fill(false)),
+  'a shared edit still reaches every bar that plays the loop');
+assert(json(readBarLane(plumber, loopAgain, 3, 'kick')) === json(before3),
+  'and never reaches the bar that was forked out of it');
+
+// The invariant itself, over every song with sections: nothing the seam writes may
+// leave one layer section based on another.
+for (const t of withSections.slice(0, 6)) {
+  const d0 = draftOf(t.bank, null);
+  const at = t.bank.sections.length;
+  let d = writeBarNotesShared(t.bank, d0, 0, 'kick', new Array(16).fill(true));
+  d = writeBarNotes(t.bank, d, Math.min(1, barCount(d) - 1), 'kick', new Array(16).fill(false));
+  d = writeBarNotes(t.bank, d, 0, 'snare', new Array(16).fill(true));
+  const chained = d.sections.filter((s) => s.base != null && s.base >= at);
+  assert(chained.length === 0, `${t.id}: no layer section is based on another`);
+}
+
+// ---- compaction may not drop a section something still points at -----------------
+//
+// `used` is what compaction keeps, and it was built from the BARS alone. A section
+// reached only through another section's `base` — which is every arrangement saved
+// before the rule above existed — was dropped from under it, and `base` was then
+// renumbered against a list without it: `base: NaN`, which JSON writes as `null` and
+// a reopened song reads as "inherits nothing".
+const chainBank = { ...plumber };
+const chainEntry = {
+  order: [{ s: chainBank.sections.length + 1, bars: 2 }, ...orderOf(plumber).slice(1)],
+  sections: [
+    { base: 0, kick: new Array(32).fill(true) },
+    { base: chainBank.sections.length, snare: new Array(32).fill(true) },
+  ],
+};
+const chainDraft = draftOf(chainBank, chainEntry);
+const compactedChain = compactSections(chainBank, chainDraft);
+for (const s of compactedChain.sections) {
+  assert(s.base == null || (Number.isInteger(s.base) && s.base >= 0
+    && s.base < chainBank.sections.length + compactedChain.sections.length),
+  'every base compaction writes points at a section that is really there');
+}
+assert(json(readBarLane(chainBank, compactedChain, 0, 'kick')) === json(new Array(16).fill(true))
+  && json(readBarLane(chainBank, compactedChain, 0, 'snare')) === json(new Array(16).fill(true)),
+'and the bar goes on playing everything it inherited through the chain');
+
+// Five of the arrangements already saved to the file have a chain in them, so the rule
+// cannot be enforced only where new deltas are made: a section with a dependent is not
+// ours to write in place either, however it got that way.
+const legacy = {
+  order: [chainBank.sections.length, { s: chainBank.sections.length + 1, bars: 2 },
+    ...orderOf(plumber).slice(2)],
+  sections: [
+    { base: 0, kick: new Array(32).fill(true) },
+    { base: chainBank.sections.length, snare: new Array(32).fill(true) },
+  ],
+};
+const legacyDraft = draftOf(chainBank, legacy);
+const childBar = legacyDraft.plan.findIndex((b) => b.sec === chainBank.sections.length + 1);
+const parentBar = legacyDraft.plan.findIndex((b) => b.sec === chainBank.sections.length);
+const childKick = readBarLane(chainBank, legacyDraft, childBar, 'kick');
+for (const [write, what] of [[writeBarNotes, 'a single-bar edit'], [writeBarNotesShared, 'a shared edit']]) {
+  const hit = write(chainBank, legacyDraft, parentBar, 'kick', new Array(16).fill(false));
+  assert(json(readBarLane(chainBank, hit, parentBar, 'kick')) === json(new Array(16).fill(false)),
+    `${what} to a section an old delta is based on lands where it was aimed`);
+  assert(json(readBarLane(chainBank, hit, childBar, 'kick')) === json(childKick),
+    `${what} to it does not reach through into the bar based on it`);
+}
+
+// The same rule on a real song rather than a built one — see "a delta keeps inheriting
+// an added track" below for what it is about. An imported .mid is where it bites: every
+// voice past the first on a lane is a layer key, so bass2, chords2 and lead3 are all
+// added tracks, and there is no bank part underneath them to fall back to.
+const imported = tracks.find((t) => (t.bank.sections || [])
+  .some((s) => Object.keys(s).some((k) => Array.isArray(s[k]) && !isLenKey(k) && !LANE_KEYS.includes(k))));
+if (imported) {
+  const parts = [...new Set((imported.bank.sections || [])
+    .flatMap((s) => Object.keys(s).filter((k) => Array.isArray(s[k]) && !isLenKey(k))))];
+  // Every part the song plays that is not one of the engine's own lanes is an added
+  // track, declared in the mix — which is how a .mid with two basses in it arrives. Read
+  // off the song rather than written out, so this is the song's real layer set.
+  const kitPlus = {
+    layers: [
+      ...parts.filter((k) => !LANE_KEYS.includes(k))
+        .map((key) => ({ key, from: baseLane(key), independent: true })),
+      { key: 'tom2', from: 'tom', independent: true },       // and one more from the kit's +
+    ],
+    lanes: { tom2: {} },
+  };
+  const impEdit = deskBank(imported.bank, kitPlus);
+  const impView = (e) => deskBank(applyArrangement(imported.bank, imported.id,
+    { [imported.id]: e || {} }), kitPlus);
+  const heard = (e) => {
+    const vb = impView(e);
+    const d = draftOf(vb, null);
+    return parts.map((l) => d.plan.map((_, i) => json(readBarLane(vb, d, i, l))).join('|'));
+  };
+  const asComposed = heard(null);
+  // "On 2 and 4", the whole song, on the track just added from the kit's `+`.
+  let laid = draftOf(impEdit, null);
+  const backbeat = Array.from({ length: 16 }, (_, i) => i === 4 || i === 12);
+  for (let b = 0; b < barCount(laid); b++) {
+    laid = writeBarNotes(impEdit, laid, b, 'tom2', backbeat.slice(), new Array(16).fill(null));
+  }
+  const lost = parts.filter((_, i) => heard(entryOf(impEdit, laid))[i] !== asComposed[i]);
+  assert(lost.length === 0,
+    `a figure across the whole song leaves every other part of an imported song alone${
+      lost.length ? ` — lost ${lost.join(', ')}` : ''}`);
+}
+
+// ---- the property, over every song in the game ----------------------------------
+//
+// One note edited changes ONE note. Not another bar, not another lane, not another
+// track — the thing the desk is for. Every song, every lane it plays, forty edits
+// deep, because the leaks that got out were all several edits in: the first write
+// looks perfect and the damage arrives when a later one lands next to it.
+const laneNotes = (bank, draft, b, lane) => json(readBarLane(bank, draft, b, lane));
+let collateral = 0;
+let collateralSays = '';
+for (const t of tracks) {
+  const lanes = LANE_KEYS.filter((k) => Array.isArray(t.bank[k])
+    || (t.bank.sections || []).some((s) => Array.isArray(s?.[k])));
+  if (!lanes.length) continue;
+  let seed = 12345;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  for (const linked of [false, true]) {
+    const write = linked ? writeBarNotesShared : writeBarNotes;
+    let draft = draftOf(t.bank, null);
+    const nbars = barCount(draft);
+    const snap = () => {
+      const m = new Map();
+      for (let b = 0; b < nbars; b++) for (const l of lanes) m.set(`${b}|${l}`, laneNotes(t.bank, draft, b, l));
+      return m;
+    };
+    let before = snap();
+    for (let e = 0; e < 40 && !collateral; e++) {
+      const b = Math.floor(rnd() * nbars);
+      const lane = lanes[Math.floor(rnd() * lanes.length)];
+      const step = Math.floor(rnd() * 16);
+      const notes = readBarLane(t.bank, draft, b, lane).slice();
+      notes[step] = notes[step] ? false : true;
+      // Through the file and back, exactly as the desk does on every commit.
+      draft = draftOf(t.bank, entryOf(t.bank, write(t.bank, draft, b, lane, notes, null)));
+      const after = snap();
+      for (const [k, v] of after) {
+        if (before.get(k) === v) continue;
+        const [bb, l] = k.split('|');
+        // The cell that was edited, and — in shared mode only — the same cell in the
+        // other bars playing the same part, which is what shared editing IS.
+        if (l === lane && (linked || Number(bb) === b)) continue;
+        collateral++;
+        collateralSays = `${t.id}${linked ? ' [shared]' : ''}: editing ${lane} step ${step + 1}`
+          + ` of bar ${b + 1} also changed ${l} in bar ${Number(bb) + 1}`;
+        break;
+      }
+      before = after;
+    }
+  }
+  if (collateral) break;
+}
+assert(!collateral, `a single note edit changes a single note, in every song${collateral ? ` — ${collateralSays}` : ''}`);
+
+// ---- a delta keeps inheriting an added track -------------------------------------
+//
+// The bug this pins deleted whole tracks out of a song, and it was not in the seam at
+// all: `deskBank` materialises an added track as 32 rests in every block that has not
+// got it, so the lane exists everywhere and gets a row and a strip. That is right for
+// the bank and for a bank section — both are complete partial banks — and catastrophic
+// for a DELTA, which says only what its bar changes and inherits the rest through
+// `base`. Rests written into a delta are an override, and `resolveSection` merges the
+// delta over its base, so the rests won: every added track fell silent in every bar
+// anybody had edited. A figure laid across the whole song forks every bar, which took
+// every added track out of the whole song at one click.
+//
+// Read the way the engine reads it — through `deskBank(applyArrangement(...))` — because
+// that is the only place it was ever visible. The seam's own read is innocent.
+// A song whose added track really carries a part — which is every song that came in
+// from a .mid, where the extra voices ARE layer keys and every note they play lives in
+// the bank's sections.
+const layerPart = new Array(32).fill(440);
+const layerSong = {
+  ...plumber,
+  sections: (plumber.sections || []).map((s) => ({ ...s, lead2: layerPart.slice() })),
+};
+const withLayer = { layers: [{ key: 'lead2', from: 'lead', independent: true, label: 'Double' }] };
+const layerBank = deskBank(layerSong, withLayer);
+// The song plays that added track, bar by bar, as an arrangement would leave it.
+const playsLayer = (arrEntry) => {
+  const view = deskBank(applyArrangement(layerSong, 'layered', { layered: arrEntry }), withLayer);
+  const d = draftOf(layerBank, arrEntry);
+  return d.plan.map((bar) => {
+    const merged = { ...view, ...(bar.sec != null ? resolveSection(view, bar.sec) || {} : {}) };
+    const arr = merged.lead2;
+    return Array.isArray(arr)
+      ? arr.slice(bar.half * 16, bar.half * 16 + 16).filter((v) => v != null && v !== false).length : 0;
+  });
+};
+const layerBefore = playsLayer(null);
+assert(layerBefore.every((n) => n === 16), 'the added track plays in every bar of the song');
+// One drum note in one bar — the smallest edit there is.
+const oneNote = new Array(16).fill(false);
+oneNote[4] = true;
+const afterOne = entryOf(layerBank, writeBarNotes(layerBank, draftOf(layerBank, null), 3, 'kick', oneNote));
+assert(json(playsLayer(afterOne)) === json(layerBefore),
+  'one drum note leaves the added track playing every note it had');
+// And the gesture that took the whole song out: a figure in every bar, which forks
+// every bar, which used to put a rest-filled override on every one of them.
+let figured = draftOf(layerBank, null);
+for (let b = 0; b < barCount(figured); b++) {
+  figured = writeBarNotes(layerBank, figured, b, 'kick', oneNote, new Array(16).fill(null));
+}
+assert(json(playsLayer(entryOf(layerBank, figured))) === json(layerBefore),
+  'and a figure laid across the whole song leaves it playing too');
 
 // ---- clearing a track ---------------------------------------------------------
 //

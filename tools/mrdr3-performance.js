@@ -6,12 +6,13 @@
 // renderer free of catalogue and mixer state.
 
 import { EFFECT_BY_ID, paramRange, TEMPO_DIVISIONS } from '../src/engine/effects.js';
-import { PATTERNS as BENCH_PATTERNS, PATTERN_RATES as BENCH_RATES } from './mixer-voice-library.js';
+import { PATTERNS as BENCH_PATTERNS, PATTERN_RATES as BENCH_RATES,
+  PATTERN_GATE, createGatePot } from './mixer-voice-library.js';
+import { deskNoteName } from './mixer-note-names.js';
 
-const PITCH_CLASSES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 const NOTE_OPTIONS = Array.from({ length: 49 }, (_, i) => {
   const midi = 36 + i;
-  return { midi, label: `${PITCH_CLASSES[midi % 12]}${Math.floor(midi / 12) - 1}` };
+  return { midi, label: deskNoteName(midi, { fancy: true }) };
 });
 
 // Keep the two effect rows grounded in the desk catalogue. The two custom effects are
@@ -193,11 +194,13 @@ export function createPerformancePanel({
   rootMidi = 48,
   pattern = 'arp',
   rate = '8',
+  gate = PATTERN_GATE.default,
   auto = false,
   onBpm = () => {},
   onRoot = () => {},
   onPattern = () => {},
   onRate = () => {},
+  onGate = () => {},
   onAutoPlay = () => {},
   onEffects = () => {},
   toast = () => {},
@@ -207,6 +210,7 @@ export function createPerformancePanel({
     rootMidi: Number(rootMidi) || 48,
     pattern,
     rate,
+    gate: number(gate, PATTERN_GATE.default, PATTERN_GATE),
     auto: !!auto,
     effects: {
       reverb: { enabled: false, params: clone(EFFECTS.reverb.defaults) },
@@ -241,6 +245,11 @@ export function createPerformancePanel({
     state.rate = value; onRate(value);
   });
   root.append(patternCtl.label, rateCtl.label);
+
+  const gateCtl = createGatePot(state.gate, (next) => {
+    state.gate = next; onGate(next);
+  });
+  root.append(gateCtl.label);
 
   const autoButton = document.createElement('button');
   autoButton.type = 'button'; autoButton.className = `sfpauto${state.auto ? ' on' : ''}`;

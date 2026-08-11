@@ -18,9 +18,10 @@
 //      quietly leave the graph, which is a bug you would blame on anything but the
 //      keyboard.
 import { benchLane, benchBank, benchRoot, benchIsKit, benchPlay, benchReset, createPatternPlayer,
-  BENCH_NOTE, PATTERNS, PATTERN_RATES, SCALES, snapToScale, inScale, PITCH_CLASSES } from '../tools/mixer-voice-library.js';
+  BENCH_NOTE, PATTERNS, PATTERN_RATES, PATTERN_GATE, SCALES, snapToScale, inScale,
+  PITCH_CLASSES } from '../tools/mixer-voice-library.js';
 import { VOICES, VOICE_CATEGORIES, KIT_CATEGORIES, PERCUSSION_LANES, seamFor } from '../src/data/voices.js';
-import { laneUsesEcho } from '../src/engine/lanes.js';
+import { laneUsesEcho, soloBank, effectiveStepLen } from '../src/engine/lanes.js';
 
 let failed = false;
 function assert(cond, msg) {
@@ -78,6 +79,15 @@ assert(Object.keys(bank).length === 2, `the bank holds the tempo and the preset 
 
 const kickBank = benchBank('kickDeep', 120);
 assert(kickBank.kickVoice === 'kickDeep', 'a drum preset is named on its own lane’s voice key');
+
+// ...except for the one thing the PATTERN PLAYER knows and a finger does not: how long
+// the note lasts. A figure's note lasts one step of its rate, and a rate is already
+// written in sixteenths — the same unit a lane's `…Dur` key holds.
+const gated = benchBank('roundMono', 132, 2);
+assert(gated.bassDur === 2, 'a gated bench note carries its length on the lane’s own dur key');
+assert(Object.keys(gated).length === 3, 'and adds nothing else to the bank');
+assert(!('bassDur' in benchBank('roundMono', 132, 0)),
+  'a gate of nothing is no gate at all — the preset’s own dur stands');
 
 // ---- it is dry ---------------------------------------------------------------
 //
@@ -159,6 +169,8 @@ assert(PATTERN_RATES.every((r, i) => i === 0 || r.steps < PATTERN_RATES[i - 1].s
   'the rates run slowest to fastest');
 assert(PATTERN_RATES.some((r) => r.steps === 4), 'a quarter-note rate is offered');
 assert(PATTERN_RATES.some((r) => r.steps === 16), 'and a whole bar, which is what a progression needs');
+assert(PATTERN_GATE.min === 50 && PATTERN_GATE.max === 150 && PATTERN_GATE.default === 80,
+  'autoplay gate runs from 50% to 150% and defaults to 80%');
 
 // ---- the progressions --------------------------------------------------------
 //
@@ -216,9 +228,15 @@ assert(PATTERN_RATES.some((r) => r.steps === 16), 'and a whole bar, which is wha
   kept.setRate('16');
   kept.setPattern('I-IV-V-IV');
   assert(kept.rate.id === '16', 'a standalone-style player can keep the selected rate for a progression');
+  p.setGate(150);
+  assert(p.gate === 150, 'the autoplay player accepts the full 150% overlap gate');
+  p.setGate(999);
+  assert(p.gate === 150, 'gate is clamped at its 150% ceiling');
+  p.setGate(0);
+  assert(p.gate === 50, 'gate is clamped at its 50% floor');
   p.reset();
-  assert(p.pattern.id === 'repeat' && p.rate.id === '8' && !p.running(),
-    'a song change resets the transient audition pattern and stops it');
+  assert(p.pattern.id === 'repeat' && p.rate.id === '8' && p.gate === 80 && !p.running(),
+    'a song change resets the transient audition pattern, 80% gate and playback');
 }
 
 // ---- the pattern player schedules forwards, always ---------------------------
@@ -239,6 +257,14 @@ assert(PATTERN_RATES.some((r) => r.steps === 16), 'and a whole bar, which is wha
     ctx: { get currentTime() { return now; } },
     mixer: {},
     previewNote(lane, freq, { at }) { times.push(Number((now + at).toFixed(6))); return true; },
+  };
+  // Every note the bench sounds, as the engine was asked for it — see the gate block
+  // at the end, which is about the OPTIONS rather than the times.
+  const asked = [];
+  fakeAudio.previewNote = (lane, freq, opts) => {
+    asked.push({ lane, freq, ...opts });
+    times.push(Number((now + opts.at).toFixed(6)));
+    return true;
   };
   let previewCuts = 0;
   fakeAudio.stopPreview = () => { previewCuts++; };
@@ -465,6 +491,94 @@ assert(PATTERN_RATES.some((r) => r.steps === 16), 'and a whole bar, which is wha
   assert(Math.abs(times[times.length - 1] - 900.02) < 1e-6,
     'another preset starts clean — its pool has nothing queued on it');
   player.stop();
+
+  // ---- the note stops when its step does --------------------------------------
+  //
+  // A preview is HELD by default: it sounds until a note-off, which is what a key press
+  // is. A figure has no finger — and the player knows each note's length before it
+  // sounds — so it asks for the ordinary gate instead. Held, a sustaining preset had
+  // every note of the figure still open at its sustain level, ringing on to the rack's
+  // thirty-second safety stop: eight notes a bar, none of them ever ending.
+  // EVERY figure at EVERY rate, because the fault is in the note rather than in the
+  // cell: one held note per step is one held note per step whether the cell is a
+  // repeat, an arpeggio, a chord or a progression.
+  for (const p of PATTERNS) {
+    for (const rate of PATTERN_RATES) {
+      asked.length = 0;
+      times.length = 0;
+      benchReset();
+      now = 1200;
+      player.setRate(rate.id);
+      player.setPattern(p.id);          // a progression may take the rate down with it
+      const steps = player.rate.steps;
+      player.start('roundMono');
+      // The fake clock moves half a STEP per tick, so a slow rate is covered in the same
+      // handful of ticks a fast one is — off-beat at 1/1 rests for a whole bar before it
+      // sounds anything, and a window sized for 1/16 would call that silence.
+      await runFor(200, Math.max(0.02, (0.125 * steps) / 2));
+      player.stop();
+      assert(asked.length > 0, `${p.id} at 1/${rate.id} sounds something`);
+      assert(asked.every((a) => a.hold === false),
+        `${p.id} at 1/${rate.id} holds nothing open — no finger is on it`);
+      assert(asked.every((a) => Math.abs(a.bank.bassDur - steps * 0.8) < 1e-9),
+        `${p.id} at 1/${rate.id} gates every note to 80% of its interval (${steps * 0.8} sixteenths)`);
+    }
+  }
+
+  // The gate is proportional to the chosen interval, including intentional overlap.
+  for (const percent of [50, 80, 100, 150]) {
+    asked.length = 0;
+    times.length = 0;
+    benchReset();
+    now = 1280;
+    player.setPattern('chord');
+    player.setRate('8');
+    player.setGate(percent);
+    player.start('roundMono');
+    await runFor(80);
+    player.stop();
+    assert(asked.length >= 3 && asked.every((a) => Math.abs(a.bank.bassDur - 2 * percent / 100) < 1e-9),
+      `a 1/8 chord at ${percent}% gives every tone a ${2 * percent / 100}-sixteenth gate`);
+  }
+
+  // ...and the gate SURVIVES the trip to the rack, which is the half a bank key cannot
+  // state on its own. Three things downstream have an opinion about a note's length and
+  // any of them would quietly win: `soloBank` strips the per-note lengths (a preview
+  // happens at no step of the song, so there is nothing for one to be the length OF),
+  // `legacyLaneLength` falls back to the preset's own `dur` when the bank names none,
+  // and a preset carrying `fixedLength` overrides every one of them in seconds.
+  //
+  // So the claim is the ratio rather than the number: at 100% a note lasts exactly its
+  // interval, at every rate. That is what "a fraction of the selected interval" means,
+  // and it is the sentence to check against when a figure sounds shorter than it reads.
+  for (const rate of PATTERN_RATES) {
+    const gateSteps = rate.steps;                       // 100%
+    const one = soloBank(benchBank('roundMono', 120, gateSteps), 'bass', 220, 1);
+    const reaching = effectiveStepLen(one, 'bass', 1);
+    assert(Math.abs(reaching - rate.steps) < 1e-9,
+      `a 100% gate at 1/${rate.id} reaches the rack as the whole interval`
+      + ` (${rate.steps} sixteenths), not the preset’s own dur`);
+  }
+  assert(!VOICES.roundMono.fixedLength,
+    'and no bench preset may carry fixedLength, which would override the gate in seconds');
+
+  // The keys are the other half of the same claim: a note played by a finger has no
+  // length until the finger says so, and must still be held.
+  asked.length = 0;
+  benchReset();
+  now = 1300;
+  benchPlay(fakeAudio, 'roundMono', 110);
+  assert(asked[0].hold !== false, 'a key press is still held until it is released');
+  assert(!('bassDur' in asked[0].bank), 'and carries no length — the finger is the length');
+
+  // And the Hit button is the third case: nothing is coming to release it, so it takes
+  // the preset's own length rather than the rack's thirty-second safety stop.
+  asked.length = 0;
+  benchReset();
+  benchPlay(fakeAudio, 'roundMono', 110, { hold: false });
+  assert(asked[0].hold === false, 'sounding a preset ONCE is not a held note');
+  assert(!('bassDur' in asked[0].bank),
+    'and takes no gate either — “once” is the preset’s own dur, not a step of some rate');
 }
 
 // ---- the key ------------------------------------------------------------------

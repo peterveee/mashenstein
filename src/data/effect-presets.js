@@ -5,7 +5,8 @@ export const EFFECT_PRESETS = {
     "gain": {
       "default": {
         "gain": 0,
-        "balance": 0
+        "balance": 0,
+        "mono": 0
       },
       "presets": {}
     },

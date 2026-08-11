@@ -10,7 +10,14 @@ import { LANES, deskLanes as engineDeskLanes, laneActivity, deskBank, songBlocks
 // desk edits it in bars (`arrangement-edit`), the engine reads it back as an order.
 import {
   ARRANGEMENTS, applyArrangement, arrangementIssues, loopSteps, SWING_MAX, SWING_STRAIGHT,
+  bpmOf, swingOf,
 } from '../src/data/arrangements.js';
+// The two exports the desk used to ask a server for. Both run here now — the WAV
+// through the game's engine in a hidden iframe, the MIDI straight out of the bank —
+// so Bounce and Export MIDI work the same on `npm run mixer` and on the deployed
+// desk at /SongMixer/, which has no server behind it at all.
+import { bounceWav } from './mixer-bounce.js';
+import { midiBuffer } from './lib/render-midi-bank.js';
 import {
   draftOf, entryOf, setLanesOff, setLanesDeleted, deleteBars, duplicateBars,
   transposeBars, offsetBars, gainBars, copyBars, pasteBars,
@@ -22,8 +29,9 @@ import {
 // the roll's, which it imports rather than restating. See tools/lib/note-recorder.js.
 import {
   createTake, quantiseStep, heldLength, chordAnchor, laneKind, barOfStep, stepInBar,
+  laneShape, laneShapeLengths,
 } from './lib/note-recorder.js';
-import { noteName } from '../src/engine/notes.js';
+import { deskNoteName, deskNoteNameHz } from './mixer-note-names.js';
 import { listTracks, resolveTrack, registerTrack, unregisterTrack } from '../src/data/tracks.js';
 import { CABINET_BY_ID } from '../src/data/cabinets.js';
 // The picker's own list: the library, less the song quotations nothing in the game
@@ -72,12 +80,18 @@ import {
 } from '../src/engine/effects.js';
 
 const $ = (id) => document.getElementById(id);
-// The deployed desk at /SongMixer/ has no server behind it: nothing can be written,
-// rendered or read back off disk. It ships ONE song — THE FOOD COURT — so a tester
+// The deployed desk at /SongMixer/ has no server behind it: nothing can be written to
+// or read back off the repo's disk. It ships ONE song — THE FOOD COURT — so a tester
 // has something real to mix rather than a blank sketch, and everything that would
 // need a server, or that is not theirs to touch, is taken off the drawer below.
 // It ships THE FOOD COURT, and whatever the tester has made since — both are theirs
 // to mix, save and throw away, and neither one leaves their browser.
+//
+// RENDERING is not on that list, and used to be. A WAV was a POST to a server that
+// launched headless Chromium to be a browser on the desk's behalf — so the one build
+// that is nothing BUT a browser was the one that could not bounce. It renders its own
+// now (mixer-bounce.js), and builds its own MIDI, and both come down as downloads.
+// What a tester makes here can leave here; only the repo is out of reach.
 const STATIC = typeof __MASH_STATIC_MIXER__ !== 'undefined';
 const SHIPPED_SONG_IDS = new Set(['hub']);
 const deskSongIds = new Set();      // made here, restored from localStorage on boot
@@ -123,11 +137,12 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
  * spelled out at each of the three gates, so a third heading is one line here.
  */
 const isDeskSong = (t) => t?.group === 'scratch' || t?.group === 'styleAudition'
-  || t?.group === 'alternate';
+  || t?.group === 'alternate' || t?.group === 'copy';
 
 /** What this song's own file is called, in the drawer's words. */
 const deskSongKind = (t) => (t?.group === 'styleAudition' ? 'style audition'
-  : t?.group === 'alternate' ? 'alternate' : 'scratch song');
+  : t?.group === 'alternate' ? 'alternate'
+    : t?.group === 'copy' ? 'copy' : 'scratch song');
 
 // The engine writes its lane names in lower case, because there they are keys into
 // stem files and mix entries rather than words anyone reads. On the desk they ARE
@@ -2970,9 +2985,9 @@ const voiceEditor = createVoiceEditor({
   createFull: ({ kit }) => createSynthFull({
     kit, el: $('synthfull'), backdrop: $('synthfullback'),
     // Keep the Song Mixer editor's compact keyboard as a real performance range too.
-    // Seven octaves fit the full-width board with the shared narrow-key styling; C2 is
-    // the highest safe base for MIDI 0–127, so the complete board stays playable.
-    keyboard: { octaves: 7, initialOctave: 2, minOctave: 0, maxOctave: 2 },
+    // Seven octaves fit the full-width board with the shared narrow-key styling, and C2
+    // is the highest safe base for MIDI 0–127, so the complete board stays playable.
+    keyboard: { octaves: 7, initialOctave: 2 },
   }),
   // Not `rebank`. A re-bank restarts the sequencer with a deliberate half-second gap,
   // which on a slider drag is half a second of silence per pixel — see
@@ -3664,6 +3679,10 @@ function undockFromLibrary() {
 let oskWasOn = false;
 function openPresetLibrary() {
   closeMenu();
+  // The library and its docked editor are one of the desk's big synchronous builds,
+  // and the sequencer runs on the thread it blocks. Queue ahead first — see
+  // Audio.prefill, and the same call in mixer-bar-grid before a roll rebuild.
+  Audio.prefill(1.2);
   oskWasOn = oskShown();
   voiceLibrary.show(true);
   // The editor is part of the library workspace, even before a row has been picked.
@@ -6261,7 +6280,7 @@ function panKnob({ value, onInput }) {
  * one for the other without knowing which it has.
  */
 function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null,
-  onStart = null, onEnd = null }) {
+  taper = null, floor = 0, onStart = null, onEnd = null }) {
   const NS = 'http://www.w3.org/2000/svg';
   const wrap = document.createElement('div');
   wrap.className = 'row potrow';
@@ -6310,9 +6329,17 @@ function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = 
   // together take this path: without an origin, or at curve 1, the arithmetic below is
   // the linear one it has always been.
   const bipolar = Number.isFinite(origin) && curve !== 1;
+  // A TIME pot is dialled in ratios, not in fractions of its ceiling: 5ms to 10ms is the
+  // same move as 1s to 2s, and no exponent says that. `taper: 'log'` spends the travel
+  // evenly per decade instead — with `floor` as the smallest length it reaches, and the
+  // left stop still landing on `min`, so a stage that may be switched off can be.
+  const logTaper = taper === 'log' && max > 0;
+  const logLo = logTaper ? Math.max(min, floor > 0 ? floor : step, 1e-6) : 0;
+  const logSpan = logTaper ? Math.log(max / logLo) : 0;
   const originFrac = (max - min) ? clamp((origin - min) / (max - min), 0, 1) : 0;
   const valueAt = (position) => {
     const pos = clamp(position, 0, 1);
+    if (logTaper) return pos <= 0 ? min : logLo * Math.exp(logSpan * pos);
     if (!bipolar) return min + (max - min) * Math.pow(pos, curve);
     if (pos >= originFrac) {
       const f = originFrac >= 1 ? 0 : (pos - originFrac) / (1 - originFrac);
@@ -6322,6 +6349,11 @@ function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = 
     return origin - (origin - min) * Math.pow(f, curve);
   };
   const positionAt = (x) => {
+    if (logTaper) {
+      const t = clamp(x, min, max);
+      // Anything at or under the floor — including a true zero — sits at the stop.
+      return t <= logLo ? 0 : clamp(Math.log(t / logLo) / logSpan, 0, 1);
+    }
     if (!bipolar) {
       const frac = (max - min) ? clamp((x - min) / (max - min), 0, 1) : 0;
       return Math.pow(frac, 1 / curve);
@@ -7163,7 +7195,29 @@ let arrCells = [];
 // arrangement row is the current target for lane-specific actions; the range itself
 // remains the same selection in both places.
 let selectedBar = null;
+// Deliberately NOT cleared by `loadTrack`. A note clip is raw pitches and lengths
+// read out at copy time, so it means the same thing in any song — and lifting a
+// bassline out of one song into another is a reason to have a clipboard at all.
 let arrangementClipboard = null;
+
+/**
+ * What the clipboard holds, named the way it was when it was copied.
+ *
+ * `targetLabel` answers for the song ON SCREEN, and a clip outlives the song it came
+ * from. Asked after a song switch it named the DESTINATION's track for that lane key,
+ * so the menu offered to paste "Bass" from a song whose bass had never been copied —
+ * and where the new song had no such lane, it fell back to the bare key. The clip
+ * carries the name it had at copy time, and says which song that was whenever the
+ * answer is not the one you are looking at.
+ */
+const clipLabel = (clip) => {
+  if (!clip) return '';
+  const name = clip.label || targetLabel(clip.lane);
+  return clip.song && clip.song !== trackId ? `${name} — ${clip.songTitle || clip.song}` : name;
+};
+
+/** Who and where a clip came from, stamped at copy time. See `clipLabel`. */
+const clipOrigin = (label) => ({ label, song: trackId, songTitle: track?.title || trackId });
 
 const selFrom = () => (selectedBar ? Math.min(selectedBar.from, selectedBar.to) : 0);
 const selTo = () => (selectedBar ? Math.max(selectedBar.from, selectedBar.to) : 0);
@@ -7913,9 +7967,30 @@ const pasteLane = (draft, from, lane, clip) => {
     // sixteen nulls is the right thing to write for it: the destination's own lengths
     // belonged to the notes being replaced.
     const lengths = clip.lengths?.[i] || new Array(16).fill(null);
-    out = writeBarNotes(editBank(), out, from + i, lane, clip.bars[i], lengths);
+    // Converted to the DESTINATION's shape, never written as copied. A clip is a lane's
+    // values as they were, and the three shapes are not interchangeable — see
+    // `laneShape`, which exists because pasting a bassline onto `chords` wrote bare
+    // numbers into a lane `scheduleStep` calls `.forEach` on.
+    out = writeBarNotes(editBank(), out, from + i, lane,
+      clip.bars[i].map((v) => laneShape(lane, v)), laneShapeLengths(lane, lengths));
   }
   return out;
+};
+
+/**
+ * What the paste actually did, which is not always what was asked for.
+ *
+ * `writeBarNotes` returns the draft untouched for a bar that is not there, so a clip
+ * longer than the room after `from` quietly loses its tail. Within one song that is
+ * hard to do by accident; ACROSS songs it is the normal case — sixteen bars copied out
+ * of `finale` land in an eight-bar shop cue with half of them gone and, until this,
+ * nothing said so. The paste still happens: taking the first eight bars is almost
+ * always what was wanted. It just no longer happens silently.
+ */
+const pasteLaneMessage = (draft, from, laneLabel, clip) => {
+  const dropped = Math.max(0, clip.bars.length - Math.max(0, draft.plan.length - from));
+  const what = `${laneLabel} pasted from ${clipLabel(clip)}`;
+  return dropped ? `${what} — ${dropped} bar${dropped === 1 ? '' : 's'} past the end of the song, not pasted` : what;
 };
 
 /**
@@ -8109,15 +8184,28 @@ function openRegionEditor(x, y, {
     const allMuted = rangeHasEveryFlag(draft, from, to, 'off', allSongLanes);
     actionSection('Song structure', [
       { label: 'Cut', title: `Copy ${span.toLowerCase()}, then remove it from the song`, run: () => {
-        arrangementClipboard = { kind: 'bars', ...copyBars(editBank(), arrDraftOf(), from, to) };
+        arrangementClipboard = { kind: 'bars', ...clipOrigin(span), ...copyBars(editBank(), arrDraftOf(), from, to) };
         applyArrangementEdit(deleteBars(arrDraftOf(), from, to), `${span} cut`);
       }},
       { label: 'Copy', title: `Copy ${span.toLowerCase()} with every track`, run: () => {
-        arrangementClipboard = { kind: 'bars', ...copyBars(editBank(), arrDraftOf(), from, to) };
+        arrangementClipboard = { kind: 'bars', ...clipOrigin(span), ...copyBars(editBank(), arrDraftOf(), from, to) };
         toast(`${span} copied`);
       }},
-      { label: 'Paste', title: `Insert the copied bars at bar ${from + 1}`,
-        disabled: arrangementClipboard?.kind !== 'bars',
+      // Bars, unlike notes, do NOT survive a song switch, and this is the one place on
+      // the desk where the clipboard is deliberately narrower than it looks.
+      //
+      // A bar is a REFERENCE — `{ sec: 3 }` — and what section 3 is depends entirely on
+      // the song it was read from. Pasted into another song those numbers still resolve,
+      // silently, against the new song's sections: plumber's first two bars dropped into
+      // hub kept `sec: 0` and came out as hub's own bar 1, a different bassline in a
+      // different key, with nothing on screen to say the paste had not worked. Wrong
+      // music that looks like a successful edit is worse than a button that is off, so
+      // the button is off, and the tooltip sends you to Copy Notes — which carries
+      // resolved pitches rather than references and therefore does travel.
+      { label: 'Paste', title: arrangementClipboard?.kind === 'bars' && arrangementClipboard.song !== trackId
+          ? `The copied bars belong to ${arrangementClipboard.songTitle} — copy notes instead to bring a part across songs`
+          : `Insert the copied bars at bar ${from + 1}`,
+        disabled: arrangementClipboard?.kind !== 'bars' || arrangementClipboard.song !== trackId,
         run: () => applyArrangementEdit(pasteBars(editBank(), arrDraftOf(), from, arrangementClipboard), `Bars pasted at ${from + 1}`) },
       { label: 'Repeat', title: `Duplicate ${span.toLowerCase()} once, immediately after it`,
         run: () => applyArrangementEdit(duplicateBars(arrDraftOf(), from, to, 1), `${span} repeated`) },
@@ -8143,14 +8231,15 @@ function openRegionEditor(x, y, {
       // scope differs, and the heading is what says the scope. See NOTE-VERBS.
       { label: 'Copy Notes', title: `Copy only ${laneLabel}'s notes from ${span.toLowerCase()}`,
         run: () => {
-          arrangementClipboard = { kind: 'lane', ...copyLaneBars(editBank(), arrDraftOf(), from, to, laneKey) };
-          toast(`${laneLabel} copied from ${span.toLowerCase()} — right-click another track to paste`);
+          arrangementClipboard = { kind: 'lane', ...clipOrigin(laneLabel), ...copyLaneBars(editBank(), arrDraftOf(), from, to, laneKey) };
+          toast(`${laneLabel} copied from ${span.toLowerCase()} — right-click another track, in this song or any other, to paste`);
         }},
       { label: 'Paste Notes', title: arrangementClipboard?.kind === 'lane'
-          ? `Paste ${targetLabel(arrangementClipboard.lane)} onto ${laneLabel} from bar ${from + 1}`
+          ? `Paste ${clipLabel(arrangementClipboard)} onto ${laneLabel} from bar ${from + 1}`
           : 'Copy notes from a track first',
         disabled: arrangementClipboard?.kind !== 'lane',
-        run: () => applyArrangementEdit(pasteLane(arrDraftOf(), from, laneKey, arrangementClipboard), `${laneLabel} pasted from ${targetLabel(arrangementClipboard.lane)}`) },
+        run: () => applyArrangementEdit(pasteLane(arrDraftOf(), from, laneKey, arrangementClipboard),
+          pasteLaneMessage(arrDraftOf(), from, laneLabel, arrangementClipboard)) },
       { label: 'Erase Notes', danger: true,
         title: `Empty ${laneLabel} in ${span.toLowerCase()}, leaving the other tracks and the rest of this one alone (⌘Z restores it)`,
         run: () => clearLaneBars(laneKey, from, to, `${laneLabel} erased in ${span.toLowerCase()}`) },
@@ -8209,14 +8298,15 @@ function openRegionEditor(x, y, {
       // from the desk.
       { label: 'Copy Notes', title: `Copy ${laneLabel}'s notes from every bar`,
         run: () => {
-          arrangementClipboard = { kind: 'lane', ...copyLaneBars(editBank(), arrDraftOf(), from, to, laneKey) };
-          toast(`${laneLabel} copied — right-click another track to paste`);
+          arrangementClipboard = { kind: 'lane', ...clipOrigin(laneLabel), ...copyLaneBars(editBank(), arrDraftOf(), from, to, laneKey) };
+          toast(`${laneLabel} copied — right-click another track, in this song or any other, to paste`);
         }},
       { label: 'Paste Notes', title: arrangementClipboard?.kind === 'lane'
-          ? `Paste ${targetLabel(arrangementClipboard.lane)} onto ${laneLabel} from bar 1`
+          ? `Paste ${clipLabel(arrangementClipboard)} onto ${laneLabel} from bar 1`
           : 'Copy notes from a track first',
         disabled: arrangementClipboard?.kind !== 'lane',
-        run: () => applyArrangementEdit(pasteLane(arrDraftOf(), from, laneKey, arrangementClipboard), `${laneLabel} pasted from ${targetLabel(arrangementClipboard.lane)}`) },
+        run: () => applyArrangementEdit(pasteLane(arrDraftOf(), from, laneKey, arrangementClipboard),
+          pasteLaneMessage(arrDraftOf(), from, laneLabel, arrangementClipboard)) },
       // Shared, because every bar is going anyway — see clearLaneBars.
       { label: 'Erase Notes', title: `Empty every bar of ${laneLabel}, keeping the track and its sound (⌘Z restores the part)`,
         run: () => clearLaneBars(laneKey, from, to, `${laneLabel} erased`, { shared: true }) },
@@ -8366,8 +8456,8 @@ function barMenu(ev, laneKey, bar) {
 function cellSteps(row, cell) {
   return (row.steps?.[cell] || []).map((v) => {
     if (v === true) return '●';
-    if (Array.isArray(v)) return v.map(noteName).filter(Boolean).join('+') || '·';
-    if (typeof v === 'number' && v > 0) return noteName(v) || '·';
+    if (Array.isArray(v)) return v.map((hz) => deskNoteNameHz(hz)).filter(Boolean).join('+') || '·';
+    if (typeof v === 'number' && v > 0) return deskNoteNameHz(v) || '·';
     return '·';
   });
 }
@@ -9115,12 +9205,40 @@ function updateArrangementMeter(readout, lin, now, dt) {
   readout.meter.classList.toggle('clip', value >= 1);
 }
 
+/**
+ * Everything in `tick` below the transport is a PICTURE of the audio, and a picture
+ * nobody is looking at is not worth a millisecond.
+ *
+ * Every frame this walks each meter, reads its level, writes two style properties per
+ * channel, toggles a clip class, then moves the playhead, rewrites two clocks and asks
+ * four grids to follow the step. On a twenty-lane song that is a lot of layout, sixty
+ * times a second — and it is spent on a window whose owner is in another app, where the
+ * process has already been demoted and there is barely enough machine left to render
+ * the audio. Scrolling in some OTHER application was enough to put a hole in the song:
+ * none of that work arrives here, it simply takes the attention the audio needed, and
+ * the desk was busy drawing meters into a window nobody was watching.
+ *
+ * So when the window is not the one being attended to, the drawing stops and the
+ * transport does not. `syncLoopAnchor` and `syncPendingSeek` are above this line because
+ * they are not pictures — they arm loops and land seeks, and a seek that waits for you
+ * to look back at the desk is a broken seek. The loop keeps its frame so it can start
+ * drawing again the moment focus returns; nothing is stale afterwards, because every
+ * value below is recomputed from the engine rather than accumulated.
+ *
+ * Focus rather than `document.hidden`, for the reason the scheduler's lookahead uses it
+ * too (see `lookahead` in src/engine/audio.js): the window this matters for is sitting
+ * in plain sight the whole time, which is exactly why `hidden` never fires.
+ */
 function tick() {
   const now = performance.now();
   const dt = meterAt ? Math.min(0.25, (now - meterAt) / 1000) : 0;
   meterAt = now;
   syncLoopAnchor();
   syncPendingSeek();
+  if (typeof document !== 'undefined' && !document.hasFocus()) {
+    requestAnimationFrame(tick);
+    return;
+  }
   if (Audio.mixer) {
     const laneLevels = new Map();
     for (const mt of meters) {
@@ -9183,8 +9301,12 @@ function tick() {
     pianoRoll.follow(null);
     kitRoll.follow(null);
   }
-  $('peakinfo').textContent = peakSeen > 0
+  const peakText = peakSeen > 0
     ? `Master peak ${(20 * Math.log10(peakSeen)).toFixed(1)} dBFS${peakSeen >= 1 ? '  ** CLIPPING **' : ''}` : '';
+  // The watchdog's verdict outranks the peak readout: a desk that is starving or
+  // silent has one thing to say, and it is not the peak.
+  $('peakinfo').textContent = health.text
+    ? `** ${health.text} **${peakText ? '  —  ' + peakText : ''}` : peakText;
   requestAnimationFrame(tick);
 }
 
@@ -9221,6 +9343,174 @@ function updateCpu() {
     + `\nEngine alone is about ${ENGINE_BASE_COST}%. Rough estimate on a desktop; audio runs on its own thread.`;
   el.classList.toggle('dirty', total > 45);   // a readout, not a label — see the header CSS
 }
+
+// ---- audio health watchdog --------------------------------------------------
+//
+// Two failures this desk has actually had, both invisible until now:
+//
+//  * STARVATION. The graph costs more than the one core the audio thread gets, and
+//    the clock falls behind the wall — `ctx.currentTime` advances 0.36s in a second
+//    at the worst measured. Nothing in the UI said so; it sounded like mystery
+//    glitches and read like a haunting. The watchdog measures the one number that
+//    settles it (the same probe that settled it by hand) and puts it on the
+//    transport while it is true.
+//
+//  * DEAD OUTPUT. Meters moving, mix silent, only a reload helps. The master meter
+//    taps masterTrim BEFORE the master chain (see mixer.js) — so that state is,
+//    precisely, signal alive at the trim and nothing after the chain. A stuck
+//    DynamicsCompressor is the standing suspect (fed one NaN it holds it forever),
+//    but the recovery below does not need the culprit's name: rebuild the master
+//    chain from the mix, and if the output stays dead, cycle the context so the
+//    browser opens a fresh output stream. Each step logs what it saw, so the day it
+//    fires there is finally evidence instead of a symptom.
+//
+// One second between checks: cheap enough to run always, fast enough that the
+// three-strike rule below reacts inside a bar or two.
+const health = {
+  text: '', lastWall: 0, lastCt: 0, deadRuns: 0, starving: false,
+  analyser: null, buf: null, longTask: 0,
+};
+
+// The longest main-thread task of the last watchdog window. The scheduler runs on
+// that thread with a quarter-second queued in front of it, so this is the number
+// that ATTRIBUTES a starved scheduler: "queue fell to 40ms" plus "a 210ms task just
+// ran" is a diagnosis, where either alone is a shrug.
+if (typeof PerformanceObserver !== 'undefined') {
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        if (e.duration > health.longTask) health.longTask = e.duration;
+      }
+    }).observe({ entryTypes: ['longtask'] });
+  } catch { /* longtask unsupported — the margin numbers still tell most of it */ }
+}
+
+// The muted-sink trick every meter in mixer.js uses, on the FINAL mix: a terminal
+// analyser is not guaranteed to be pulled, and a health tap that only sometimes
+// reads is worse than none.
+function healthTap() {
+  if (health.analyser || !Audio.ctx || !Audio.master) return;
+  const ctx = Audio.ctx;
+  const an = ctx.createAnalyser();
+  an.fftSize = 256;
+  const sink = ctx.createGain();
+  sink.gain.value = 0;
+  Audio.master.connect(an);
+  an.connect(sink);
+  sink.connect(ctx.destination);
+  health.analyser = an;
+  health.buf = new Float32Array(an.fftSize);
+}
+
+function checkAudioHealth() {
+  const ctx = Audio.ctx;
+  if (!ctx) return;
+  healthTap();
+  const wall = performance.now();
+  const ct = ctx.currentTime;
+  const dt = (wall - health.lastWall) / 1000;
+  const advance = ct - health.lastCt;
+  const first = !health.lastWall;
+  health.lastWall = wall;
+  health.lastCt = ct;
+  if (first || ctx.state !== 'running' || dt <= 0) { health.text = ''; return; }
+  const ratio = advance / dt;
+
+  // What is coming OUT of the whole desk, against what is arriving at the trim.
+  let post = 0;
+  let nan = false;
+  if (health.analyser) {
+    health.analyser.getFloatTimeDomainData(health.buf);
+    for (let i = 0; i < health.buf.length; i++) {
+      const v = health.buf[i];
+      if (Number.isNaN(v)) { nan = true; break; }
+      const a = Math.abs(v);
+      if (a > post) post = a;
+    }
+  }
+  const preLR = Audio.mixer ? Audio.mixer.masterLevels() : [0, 0];
+  const pre = Math.max(preLR[0] || 0, preLR[1] || 0);
+
+  // Dead output: NaN anywhere in the final mix, real signal at the trim with nothing
+  // downstream of it, or a clock that has stopped moving while the context claims to
+  // run (the output stream itself has died). Three consecutive seconds before acting,
+  // so a stop, a song change or one late timer cannot trip it.
+  const clockStalled = ratio < 0.05;
+  const dead = nan || clockStalled || (pre > 2e-3 && post < 1e-7);
+  health.deadRuns = dead ? health.deadRuns + 1 : 0;
+  if (!dead && health.text.startsWith('AUDIO OUTPUT')) {
+    console.log('[audio-health] output recovered');
+    health.text = '';
+  }
+  if (health.deadRuns === 3) {
+    console.warn('[audio-health] output dead 3s:', JSON.stringify({
+      nan, clockStalled, pre: +pre.toFixed(4), post, ratio: +ratio.toFixed(3),
+      state: ctx.state, sr: ctx.sampleRate,
+    }));
+    if (!clockStalled && Audio.mixer) {
+      console.warn('[audio-health] rebuilding the master chain from the mix');
+      Audio.mixer.setMasterEffects(effectsOf('__master'), deskTempo());
+    }
+    health.text = 'AUDIO OUTPUT DEAD — repairing';
+  } else if (health.deadRuns === 6) {
+    // The master chain was not it (or the NaN is stuck upstream of the trim — a
+    // compressor on a LANE holds one exactly as hard). Rebuild every chain the mix
+    // names, lanes and returns alike, from the same state the strips already show.
+    if (Audio.mixer) {
+      console.warn('[audio-health] still dead — rebuilding every lane and return chain');
+      const bpm = deskTempo();
+      const m = mixFor(trackId);
+      for (const [key, L] of Object.entries(m.lanes || {})) {
+        if (L.effects?.length) Audio.mixer.lane(key)?.setEffects(L.effects, bpm);
+      }
+      for (const a of AUXES) Audio.mixer.setAuxEffects(a.id, effectsOf(`__aux:${a.id}`), bpm);
+    }
+  } else if (health.deadRuns === 9) {
+    console.warn('[audio-health] still dead — cycling the context for a fresh output stream');
+    try { ctx.suspend().then(() => ctx.resume()).catch(() => {}); } catch { /* platform owns lifecycle */ }
+  } else if (health.deadRuns === 12) {
+    console.error('[audio-health] output did not come back; the desk needs a reload');
+    health.text = 'AUDIO OUTPUT DEAD — reload the desk';
+  }
+  if (health.deadRuns >= 3) return;
+
+  // The OTHER starvation: the audio thread is fine but the MAIN thread stalled long
+  // enough that the sequencer's queue ran low — a UI build holding the floor. `late`
+  // means the queue actually emptied and notes were scheduled into the past: an
+  // audible hole, attributed to the stall that caused it. The known-heavy panels
+  // prefill before they build (see Audio.prefill); this is what catches the ones
+  // nobody has hooked yet, by name of cost if not of button.
+  const sched = Audio.takeSchedulerHealth ? Audio.takeSchedulerHealth() : null;
+  if (sched && Audio.bank && (sched.late > 0 || sched.marginMin < 0.08)) {
+    console.warn(`[audio-health] main-thread stall starved the scheduler: queue fell to `
+      + `${Math.round(Math.max(0, sched.marginMin) * 1000)}ms`
+      + (sched.late ? `, ${sched.late} pass(es) after it emptied — that was audible` : ' (near miss)')
+      + (health.longTask ? `; longest task ${Math.round(health.longTask)}ms` : ''));
+    if (sched.late > 0 && !health.text) health.text = 'PLAYBACK INTERRUPTED — UI stall';
+  } else if (health.text.startsWith('PLAYBACK INTERRUPTED')) {
+    health.text = '';
+  }
+  health.longTask = 0;
+
+  // Starvation: the audio thread is rendering slower than the wall. Nothing here can
+  // shed load mid-note — the honest move is to SAY it, in the number that proves it.
+  if (ratio < 0.97 && Audio.bank) {
+    if (!health.starving) {
+      console.warn(`[audio-health] audio thread behind realtime: clock ${ratio.toFixed(3)}x`
+        + ' — the graph costs more than one core here');
+    }
+    health.starving = true;
+    health.text = `AUDIO FALLING BEHIND ${ratio.toFixed(2)}x`;
+  } else if (health.starving && ratio > 0.99) {
+    console.log('[audio-health] audio thread caught up');
+    health.starving = false;
+    health.text = '';
+  } else if (!health.starving && health.text.startsWith('AUDIO FALLING')) {
+    // Only this block's own banner — the UI-stall one above clears on its own tick.
+    health.text = '';
+  }
+}
+setInterval(checkAudioHealth, 1000);
 
 /**
  * Where the work stands against the file. Not a badge in the header any more: the
@@ -9270,6 +9560,20 @@ function updateStatus() {
       + (cabOnDesk[trackId] ? `\n\nWARNING: the desk is showing the "${cabOnDesk[trackId]}" cabinet`
         + ' mix, not the level mix. Capture it back to the cabinet screen first.' : '')
       : `${track.title} already matches its file`;
+  // Save As, and it is offered on everything with a bank — including a read-only MIDI
+  // import, where it is the only way to keep an edit at all, and including a copy of a
+  // copy, which is just the next snapshot. Nothing is written but the new file, so
+  // there is no song this button could put wrong and nothing to guard it against.
+  const copyButton = $('savecopy');
+  if (copyButton) {
+    copyButton.hidden = !track?.bank;
+    copyButton.title = track?.bank
+      ? `Keep ${track.title} exactly as the desk has it now — music, mix, arrangement and`
+        + ` cabinet screen — as a song of its own under a new name.`
+        + (STATIC ? ' Kept in this browser.' : ' Written into src/data/imported, listed under'
+          + ` Saved copies. ${track.title} is not written, and nothing in the game changes.`)
+      : '';
+  }
   // Saving an alternate needs a server to write the file and a bank to copy, so it is
   // offered on the game's own songs and on alternates of them — not on scratch songs,
   // where the saved song already IS yours and Save writes it.
@@ -9375,7 +9679,7 @@ $('navdrawer').addEventListener('click', (ev) => {
   if (!button || button.id === 'navbtn' || button.id === 'newsong') return;
   // Keep font and playhead controls live while the drawer is open; action buttons
   // leave the drawer before opening a modal, render job, or file chooser.
-  if (!['save', 'savealt', 'promotealt',
+  if (!['save', 'savecopy', 'savealt', 'promotealt',
     'revert', 'history', 'resetsong', 'deletesong', 'renderwav', 'auditionwav', 'midi',
     'importmidi', 'exportjson', 'voicelibbtn',
     'applytocab', 'auditioncab', 'clearcab', 'loadcab'].includes(button.id)) return;
@@ -9794,7 +10098,6 @@ const BLACK_H = 81;
 const WHITE_SEMIS = [0, 2, 4, 5, 7, 9, 11];
 /** Black key semitone -> the white key of its octave it sits after. */
 const BLACK_SEMIS = [[1, 0], [3, 1], [6, 3], [8, 4], [10, 5]];
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 // The computer keyboard laid out the way every DAW lays it out: a PAIR of rows per
 // octave, whites on the row you rest on and blacks on the row above, where a piano has
 // them. The bottom pair is the lower octave — Z X C V B N M with S D G H J over it — and
@@ -9930,7 +10233,6 @@ const recOpen = new Map();
 const recording = () => recArmed && playing;
 
 const midiFreq = (m) => 440 * 2 ** ((m - 69) / 12);
-const midiName = (m) => `${NOTE_NAMES[((m % 12) + 12) % 12]}${Math.floor(m / 12) - 1}`;
 const oskShown = () => oskEl.classList.contains('show');
 /** Master and the send returns are not played by anything — they are where things go. */
 const oskPlayable = (key) => !!key && !key.startsWith('__');
@@ -10371,10 +10673,14 @@ function oskPlay(midi, { record = true, src = null } = {}) {
   // sound with no strip on it. There is no lane for a take to be written to.
   if (bench) {
     const freq = midiFreq(midi);
-    // Only Tone-pool synths sustain — GameSynth, noise and drum are one-shots
-    // whose full envelope is scheduled at note-on and cannot be note-off'd.
+    // Every PITCHED preset takes a note-off now — the native paths as well as the
+    // pooled ones: `_playGame` registers its gain for a release, `_playAdditive` gates
+    // its whole drawbar stack, and MRDR-3 holds per note. Only noise and drum are
+    // one-shots whose full envelope is scheduled at note-on with nothing to lift. A
+    // pitched preset left out of this map is a key that never comes up: at best it runs
+    // its length whatever you do, and on a sustaining patch it rings for thirty seconds.
     const bv = VOICES[bench];
-    if (src && bv && bv.kind === 'tone' && bv.synth !== 'GameSynth' && bv.synth !== 'AdditiveSynth') {
+    if (src && bv && bv.kind === 'tone') {
       previewHeld.set(src, { laneKey: benchLane(bv), freq });
     }
     benchPlay(Audio, bench, freq, { bpm: deskTempo() });
@@ -10383,8 +10689,10 @@ function oskPlay(midi, { record = true, src = null } = {}) {
   if (!oskPlayable(selectedLane)) return;
   const freq = midiFreq(midi);
   if (src) {
+    // Same rule as the bench above: pitched presets are held and released, noise and
+    // drum are struck.
     const lv = voiceOf(engineBank(), selectedLane);
-    if (lv && lv.kind === 'tone' && lv.synth !== 'GameSynth' && lv.synth !== 'AdditiveSynth') {
+    if (lv && lv.kind === 'tone') {
       previewHeld.set(src, { laneKey: selectedLane, freq });
     }
   }
@@ -10785,10 +11093,10 @@ function buildOskKeys(ctl) {
   down.classList.toggle('atend', oskOct <= lo);
   up.classList.toggle('atend', oskOct >= hi);
   down.title = oskOct <= lo
-    ? `As low as the keyboard goes — ${midiName(OSK_LOW_MIDI)} is the bottom of the range`
+    ? `As low as the keyboard goes — ${deskNoteName(OSK_LOW_MIDI)} is the bottom of the range`
     : 'An octave down ( the − key, while Keyboard is on )';
   up.title = oskOct >= hi
-    ? `As high as the keyboard goes — ${midiName(OSK_HIGH_MIDI)} is the top of the range`
+    ? `As high as the keyboard goes — ${deskNoteName(OSK_HIGH_MIDI)} is the top of the range`
     : 'An octave up ( the = key, while Keyboard is on )';
   const oct = document.createElement('span');
   oct.className = 'oskoct';
@@ -10879,7 +11187,7 @@ function oskKeyRow() {
     // needed one: you find a note by counting from the nearest C, so the C's are the
     // landmarks and the rest is the noise you count through. The octave is in the
     // number, which is the part that was actually hard to see.
-    name.textContent = (base + semi) % 12 === 0 ? midiName(base + semi) : '';
+    name.textContent = (base + semi) % 12 === 0 ? deskNoteName(base + semi) : '';
     const l = document.createElement('span');
     l.className = 'oskletter';
     l.textContent = (letter || '').toUpperCase();
@@ -10908,7 +11216,7 @@ function oskKeyRow() {
       notes.push(Math.floor(i / sc.steps.length) * 12 + offset + sc.steps[i % sc.steps.length]);
       if (i > 512) break;                // a step list is never empty, but never loop forever
     }
-    label = `${midiName(base + notes[0])} – ${midiName(base + notes[notes.length - 1])}`;
+    label = `${deskNoteName(base + notes[0])} – ${deskNoteName(base + notes[notes.length - 1])}`;
     notes.forEach((semi, i) => {
       const k = addKey('white scalekey', semi, i, 1, SCALE_KEYS[i]);
       // The ROOT is the landmark here, and it is the only one. C is where a piano's
@@ -10916,7 +11224,7 @@ function oskKeyRow() {
       // pentatonic there is no C to count from, and labelling both leaves two competing
       // answers to "where am I" on a keyboard that has no black keys to tell them apart.
       const isTonic = ((base + semi - sc.root) % 12 + 12) % 12 === 0;
-      k.querySelector('.oskname').textContent = isTonic ? midiName(base + semi) : '';
+      k.querySelector('.oskname').textContent = isTonic ? deskNoteName(base + semi) : '';
       k.classList.toggle('tonic', isTonic);
     });
   } else {
@@ -10925,8 +11233,8 @@ function oskKeyRow() {
       const semi = Math.floor(i / 7) * 12 + WHITE_SEMIS[i % 7];
       addKey('white', semi, i, 1, SEMI_QWERTY[semi]);
     }
-    label = `${midiName(base)} – `
-      + `${midiName(base + Math.floor((whites - 1) / 7) * 12 + WHITE_SEMIS[(whites - 1) % 7])}`;
+    label = `${deskNoteName(base)} – `
+      + `${deskNoteName(base + Math.floor((whites - 1) / 7) * 12 + WHITE_SEMIS[(whites - 1) % 7])}`;
     // After the whites, so they draw over them without a z-index to maintain. Only the
     // ones that fall inside the drawn whites: the board can now end part way through an
     // octave, exactly as a real one does, and a black key past the last white would hang
@@ -11493,12 +11801,17 @@ const SONG_GROUPS = [
   ['Alternate Game Songs', 'alternate'],
   ['Shop auditions', 'audition'],
   ['Scratch songs', 'scratch'],
+  // Snapshots — "Save a copy…" on any song. Under the scratch material rather than
+  // beside the songs they were taken from: a copy is a moment somebody kept, not a
+  // version of anything being decided, and a dozen of them stacked next to NEON
+  // BLASTERS would read as twelve candidates for it.
+  ['Saved copies', 'copy'],
   ['MIDI imports', 'imported'],
   // Last, and deliberately: one per style pack, written by tools/style-auditions.js so
   // a pack's opening sounds can be heard and swapped rather than read off a list. They
   // are development scaffolding, so they sort under the material rather than over it.
   ['Style auditions', 'styleAudition'],
-].filter(([, group]) => !STATIC || group === 'theme' || group === 'scratch');
+].filter(([, group]) => !STATIC || group === 'theme' || group === 'scratch' || group === 'copy');
 
 /** Which songs this desk is allowed to show. Everything, unless it is the deployed one. */
 const visibleTrack = (t) => !STATIC || SHIPPED_SONG_IDS.has(t.id) || deskSongIds.has(t.id);
@@ -11517,9 +11830,18 @@ if (STATIC) {
   // level's stage-select sounds like, and every control in it writes song data that
   // this build cannot save anyway.
   document.querySelector('[data-drawer-section="cabinet"]')?.setAttribute('hidden', '');
-  // Render and the file exports both need the server — headless Chromium for the WAV,
-  // a plugin host for the audition, a disk for the rest. The whole section goes.
-  document.querySelector('[data-drawer-section="files"]')?.setAttribute('hidden', '');
+  // Render / Files STAYS. It used to go wholesale, on the grounds that rendering
+  // needed headless Chromium and the exports needed a disk. Neither is true any more:
+  // the WAV is rendered by this browser, through the same engine playing the song
+  // (see mixer-bounce.js), and the MIDI and the JSON backup never needed a server —
+  // they are bytes built here and handed to a download. On a desk whose only copy of
+  // your work is localStorage, a way to get that work OUT is not a luxury.
+  //
+  // The two that genuinely cannot work here still go: Audition drives a plugin host
+  // on the machine running the mixer, and Import MIDI writes a song file to a disk
+  // this build does not have.
+  $('auditionwav')?.setAttribute('hidden', '');
+  $('importmidi')?.setAttribute('hidden', '');
   document.getElementById('opensectionhead')?.replaceChildren('Songs');
   // Save keeps a copy in this browser instead of writing a file, so the way back to the
   // shipped song is its own button — Discard now only reaches your copy. updateStatus
@@ -12192,14 +12514,14 @@ addEventListener('keydown', (e) => {
   }
 });
 
-// The song as a WAV. The server renders it offline through the real engine with the
-// mix currently on the desk — draft included, so you can hear a change before you
-// decide to save it — and writes dist/<slug>-mix.wav at unity.
+// The song as a WAV, offline through the real engine, with the mix currently on the
+// desk — draft included, so you can hear a change before you decide to save it — at
+// unity.
 //
-// It is a wait, not a click: the render is offline and the first one has to start
-// the server's headless Chromium. Hence a toast that stays up until it is done, and
-// a button that will not take a second job while the first is running. Everything
-// else on the desk keeps working meanwhile; the render happens over there.
+// It is a wait, not a click. Hence a toast that stays up until it is done, and a
+// button that will not take a second job while the first is running. That flag is
+// shared with Audition below, which still goes out to the server: the two are the
+// same wait, and starting one on top of the other has never been useful.
 let rendering = false;
 // How many times a render plays the song's looped bars — the intro once, then this many
 // passes, then the tail. Remembered across sessions like the rest of the desk's own
@@ -12216,10 +12538,10 @@ const rememberedPasses = () => clampPasses(Number(localStorage.getItem(RENDER_PA
  * How many passes to render — asked before the WAV is made, because it is the one
  * decision that cannot be undone afterwards.
  *
- * A render is minutes of Chromium, and the pass count is baked into the file: getting it
- * wrong means rendering again, and it is the kind of thing you only notice once the
- * plugin is open. So it is a question at the moment of asking rather than a field
- * somewhere else that was set some other day and forgotten.
+ * A render is a wait, and the pass count is baked into the file: getting it wrong
+ * means rendering again, and it is the kind of thing you only notice once the plugin
+ * is open. So it is a question at the moment of asking rather than a field somewhere
+ * else that was set some other day and forgotten.
  *
  * The sentence says what the number will DO to this particular song, because "3" means
  * two different shapes depending on whether the song has loop markers: with them, the
@@ -12237,7 +12559,7 @@ async function askRenderPasses(what) {
   // Prose first, then the field — the shape #askbody is styled for. The sentence has to
   // come before the number because it is what makes the number mean anything.
   const ok = await ask(what,
-    `${shape} It is one continuous render, so the reverb and delay carry across each`
+    `${shape} It is one continuous bounce, so the reverb and delay carry across each`
     + ` repeat instead of restarting at it.`
     + `<label class="askfield">Passes<input id="askpasses" type="number" min="1" max="16"`
     + ` step="1" value="${rememberedPasses()}"></label>`,
@@ -12248,11 +12570,11 @@ async function askRenderPasses(what) {
   return passes;
 }
 async function renderJob(btn, route, working, describe, passes = rememberedPasses()) {
-  if (rendering) { toast('A render is already running'); return; }
+  if (rendering) { toast('A bounce is already running'); return; }
   rendering = true;
   const label = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'Rendering…';
+  btn.textContent = 'Bouncing…';
   toast(working, 0);
   try {
     let res;
@@ -12278,15 +12600,15 @@ async function renderJob(btn, route, working, describe, passes = rememberedPasse
     } catch { res = null; }
     if (!res || !res.ok) {
       // Same trap the MIDI button meets: a mixer left running from before this
-      // route existed answers 404, and "render failed" is a poor way to say
+      // route existed answers 404, and "bounce failed" is a poor way to say
       // "restart the tool".
       toast(res && res.status === 404
         ? `No ${route} route — this mixer is running older code, restart npm run mixer`
-        : `Render failed${res ? ` (${res.status})` : ' — the mixer server is not answering'}`,
+        : `Bounce failed${res ? ` (${res.status})` : ' — the mixer server is not answering'}`,
       6000);
       // Whatever the server has to say — a missing venv comes back this way, and it
       // comes with the two lines that fix it.
-      if (res && res.status !== 404) await tell('That render did not finish', escapeHtml(await res.text()));
+      if (res && res.status !== 404) await tell('That bounce did not finish', escapeHtml(await res.text()));
       return;
     }
     toast(describe(await res.json()), 8000);
@@ -12303,14 +12625,135 @@ const measured = (info) => `${info.lufs.toFixed(1)} LUFS `
   + `(${info.toTarget >= 0 ? '+' : ''}${info.toTarget.toFixed(1)} dB to target) · `
   + `peak ${info.peakDb.toFixed(1)} dBFS${info.clipping ? ' · ** CLIPPING **' : ''}`;
 
+/** Hand a blob to the browser as a named download. */
+function saveBlob(name, blob) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// Where the second copy of the engine lives — see tools/mixer-render-entry.js. Two
+// documents for one job: the deployed build ships index.html and render-frame.html
+// side by side, the dev server builds the same pair per request.
+const RENDER_FRAME_URL = STATIC ? 'render-frame.html' : '/render-frame';
+
 // Asked BEFORE the render, not read from somewhere else: the pass count is baked into
-// the WAV, a render is minutes of Chromium, and getting it wrong means doing it again.
+// the WAV, a render is minutes, and getting it wrong means doing it again.
+//
+// The render itself happens HERE — the game's engine under an OfflineAudioContext, in
+// this browser, in a frame of its own. It used to be a POST to a server that launched
+// headless Chromium to be a browser on the desk's behalf, which is a strange way for a
+// browser to get a render and left the deployed desk unable to bounce at all.
+//
+// Only the destination still differs between the two builds, and it differs because
+// the two builds genuinely have different places to put a file: a dev desk writes
+// dist/<slug>-mix.wav on the machine running the mixer, which is where every render
+// has always landed and what tools/audition opens; the deployed desk has no server
+// and no disk, so it downloads.
 $('renderwav').onclick = async () => {
-  const passes = await askRenderPasses('Render WAV');
+  const passes = await askRenderPasses('Bounce');
   if (passes == null) return;                     // cancelled — nothing rendered
-  renderJob($('renderwav'), '/render',
-    `Rendering ${track.title} ×${passes} — offline, slower than real time…`,
-    (info) => `${info.file} · ${measured(info)}`, passes);
+  if (rendering) { toast('A bounce is already running'); return; }
+
+  // SNAPSHOT, not a reference — and taken here, the instant the pass count is
+  // answered, so the file is the song as it was when you said go.
+  //
+  // `mixFor` and `arrFor` hand back the desk's LIVE objects: a fader writes straight
+  // into them (see `laneOf`), as does every note you draw. Those objects are not
+  // copied into the render frame until the frame has loaded, which is ~75ms after the
+  // click — small, but a fader still settling under your finger lands inside it, and
+  // the resulting WAV is a mix that never existed on the desk. After the copy is made
+  // nothing can reach the render: the frame holds its own clone and the desk is free.
+  //
+  // structuredClone rather than a JSON round-trip because it is exactly what
+  // postMessage is about to do to these objects anyway — same fidelity, same rules.
+  const id = trackId;
+  const title = track.title;
+  const name = `${track.slug || id}-mix.wav`;
+  const source = resolveTrack(id)?.bank;
+  if (!source) { toast('That song has no bank to render'); return; }
+  const bank = structuredClone(source);
+  const mix = structuredClone(mixFor(id));
+  const arrangement = structuredClone(arrFor(id) ?? null);
+
+  // Bouncing while the song plays costs about three quarters again as long — the
+  // live context and the offline one are competing for the same audio thread, and
+  // measured on THE FOOD COURT it is 37s stopped against 65s playing. The render is
+  // what you asked for, so it gets the machine. Said out loud rather than done
+  // quietly, because the music stopping is otherwise a mystery.
+  const wasPlaying = playing;
+  if (wasPlaying) setPlaying(false);
+
+  const btn = $('renderwav');
+  const label = btn.textContent;
+  rendering = true;
+  btn.disabled = true;
+  btn.textContent = 'Bouncing…';
+  // The wait, with a number on it. A bounce is the longest thing the desk does and it
+  // used to be a spinner-less "Bouncing…" that told you nothing — including nothing
+  // about whether it had died. The percentage is the offline context's REAL position,
+  // not a timer pretending (see the checkpoints in lib/render-bank-page.js), so it is
+  // allowed to be uneven; what it can never do is sit still while work is happening.
+  //
+  // On the button as well as in the toast, because the toast is a strip at the bottom
+  // of the screen and the button is the thing you just pressed. The number never
+  // appears on its own: a bare "30%" in a closed drawer is a percentage of nothing in
+  // particular, so the word that says what is counting stays in front of it.
+  const stopped = wasPlaying ? ' · playback stopped' : '';
+  const report = (pct) => {
+    btn.textContent = pct == null ? 'Bouncing…' : `Bouncing… ${pct}%`;
+    toast(`Bouncing ${title} ×${passes}${pct == null ? '' : ` — ${pct}%`}${stopped}`, 0);
+  };
+  report(null);
+  try {
+    const out = await bounceWav(bank, {
+      trackId: id,
+      // The mix and the arrangement as they were at the click, draft included: a bounce
+      // is "what I am hearing, written down", and half of what you are hearing is the
+      // shape — the tempo you dragged, the groove you dragged, the bars you muted, the
+      // loop you armed. `null` is a real answer and means "no arrangement", so a song
+      // whose arrangement you have just undone renders as composed.
+      mix, arrangement,
+      repeat: passes, frameUrl: RENDER_FRAME_URL,
+      onStage: (stage, fraction) => {
+        if (stage === 'measuring') { btn.textContent = 'Measuring…'; toast(`Measuring ${title}…`, 0); return; }
+        // A browser that cannot suspend an offline context reports 0 for the whole
+        // render; showing "0%" for half a minute is worse than showing nothing, so it
+        // stays on the plain wording until a checkpoint actually moves.
+        if (stage === 'rendering' && fraction > 0) report(Math.min(99, Math.round(fraction * 100)));
+      },
+    });
+
+    let where = name;
+    if (!STATIC) {
+      // Straight to the disk it has always gone to. If that fails — a server running
+      // code older than this page answers 404 — the render is NOT thrown away: it took
+      // minutes to make, so it comes down as a file instead and says so.
+      let res = null;
+      try {
+        res = await fetch(`/write-render?track=${encodeURIComponent(id)}`, {
+          method: 'POST', headers: { 'content-type': 'audio/wav' }, body: out.wav,
+        });
+      } catch { res = null; }
+      if (res?.ok) {
+        where = (await res.json()).file;
+      } else {
+        saveBlob(name, new Blob([out.wav], { type: 'audio/wav' }));
+        where = `${name} (downloaded — the mixer server would not take it${res ? `, ${res.status}` : ''})`;
+      }
+    } else {
+      saveBlob(name, new Blob([out.wav], { type: 'audio/wav' }));
+    }
+    toast(`${where} · ${measured(out)}`, 8000);
+  } catch (err) {
+    toast(`Bounce failed — ${err.message}`, 8000);
+  } finally {
+    rendering = false;
+    btn.disabled = false;
+    btn.textContent = label;
+  }
 };
 
 // The same render, straight into tools/audition: a real AU plugin over this mix,
@@ -12324,36 +12767,41 @@ $('auditionwav').onclick = async () => {
   const passes = await askRenderPasses('Audition');
   if (passes == null) return;
   renderJob($('auditionwav'), '/audition',
-    `Rendering ${track.title} ×${passes} for Audition — the plugin window follows…`,
+    `Bouncing ${track.title} ×${passes} for Audition — the plugin window follows…`,
     (info) => `Audition opening on ${info.file} · ${measured(info)}`, passes);
 };
 
-// The notes, as MIDI. The server builds it from the same bank the desk is playing;
+// The notes, as MIDI, built right here from the bank the desk is playing;
 // tools/import-midi.js reads the format back into a bank if it comes home edited.
 //
-// Fetched rather than pointed at with a download link: a plain link happily saves
-// whatever comes back, so a server running code older than this route turned its
-// 404 into a file called midi.txt. Now it says what actually happened.
-$('midi').onclick = async () => {
-  // With the GM programs: naming each track's patch is most of what makes the file
-  // useful when it lands in a DAW. The channel layout stays as it is — everything on
-  // 1, drums on 10 — because Logic externalizes multi-channel files (silent tracks).
-  // The chord lane's program must be polyphonic (see render-midi-bank.js).
-  const url = `/midi?track=${encodeURIComponent(trackId)}&patches=1`;
-  let res;
-  try { res = await fetch(url); } catch { res = null; }
-  if (!res || !res.ok || !/midi/.test(res.headers.get('content-type') || '')) {
-    toast(res && res.status === 404
-      ? 'No MIDI route — this mixer is running older code, restart npm run mixer'
-      : `MIDI failed${res ? ` (${res.status})` : ''}`);
-    return;
+// It used to be a fetch of the server's `/midi`, which meant the deployed desk could
+// not export at all and a mixer running older code answered a 404 that a plain
+// download link cheerfully saved as a file called midi.txt. The walk is pure data —
+// no audio, no engine, no disk — so there was never a reason for it to be over there.
+$('midi').onclick = () => {
+  const id = trackId;
+  const bank = resolveTrack(id)?.bank;
+  if (!bank) { toast('That song has no bank to export'); return; }
+  const name = `${track.slug || id}.mid`;
+  try {
+    const midi = midiBuffer(bank, {
+      title: track.title,
+      // With the GM programs: naming each track's patch is most of what makes the file
+      // useful when it lands in a DAW. The channel layout stays as it is — everything
+      // on 1, drums on 10 — because Logic externalizes multi-channel files (silent
+      // tracks). The chord lane's program must be polyphonic (see render-midi-bank.js).
+      patches: true,
+      // The tempo AND the feel the song is played at, off the desk's live arrangement.
+      // The old route passed the tempo alone, so a shuffled song exported dead straight;
+      // `node tools/render-midi.js` has always passed both, and now so does this.
+      bpm: bpmOf(bank, id, { [id]: arrFor(id) ?? null }),
+      swing: swingOf(bank, id, { [id]: arrFor(id) ?? null }),
+    });
+    saveBlob(name, new Blob([midi.buffer], { type: 'audio/midi' }));
+    toast(`${track.title} — ${name}, ${midi.trackNames.length} instrument tracks`);
+  } catch (err) {
+    toast(`MIDI failed — ${err.message}`, 6000);
   }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(await res.blob());
-  a.download = `${track.slug || trackId}.mid`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  toast(`${track.title} — ${a.download}`);
 };
 
 /**
@@ -12407,12 +12855,7 @@ $('exportjson').onclick = async () => {
     mix: JSON.parse(JSON.stringify(mixFor(trackId))),
     arrangement: JSON.parse(JSON.stringify(arrFor(trackId) ?? null)),
   };
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([`${JSON.stringify(payload, null, 2)}\n`],
-    { type: 'application/json' }));
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  saveBlob(name, new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' }));
   toast(`${track.title} — ${name}${payload.unsaved ? ' (unsaved edits included)' : ''}`, 5000);
 };
 
@@ -12445,9 +12888,15 @@ $('midifile').onchange = async () => {
   }
   const replaced = !!resolveTrack(out.track.id);
   registerTrack(out.track);
+  // The mix the file holds, before the song is opened. A big import lands most of its
+  // parts on LAYER lanes, and a layer is a lane only because the mix says so — without
+  // this the desk would switch to the song and show five fewer strips than it has, then
+  // find them on the next reload, which reads as the import having lost them.
+  saved[out.track.id] = out.mix ?? null;
   selectSong(out.track.id);
   if (playing) setPlaying(true, 0);     // straight into the new song, from the top
 
+  const layerKeys = new Set((out.layers || []).map((l) => l.key));
   const lanes = out.assignments.map((a) => `${a.name} → ${a.lane}`).join('\n  ');
   const notes = (out.moved ? `${out.moved} notes moved onto the sixteenth grid.\n` : '')
     + (out.foreignDrums.length ? `GM percussion outside our kit: ${out.foreignDrums.join(', ')}\n` : '');
@@ -12455,7 +12904,17 @@ $('midifile').onchange = async () => {
   await tell(`Imported ${escapeHtml(file.name)}`,
     `<b>${out.bpm} bpm</b>, ${out.blocks} blocks → ${out.sections} sections, `
     + `written to <b>${escapeHtml(out.file)}</b>.<br><br>`
+    + `Every part came in on a lane of its own — <b>nothing was merged</b>.<br><br>`
     + escapeHtml(lanes) + '<br><br>'
+    // The one thing about a big import that surprises, said before it is discovered by
+    // listening: the parts past the engine's own six pitched lanes are all here, and
+    // they are silent until each is given a preset.
+    + (layerKeys.size
+      ? `<b>${layerKeys.size} of those (${escapeHtml([...layerKeys].join(', '))}) are new strips</b> — `
+        + 'the notes are there and they play <b>nothing</b> until you choose a voice for '
+        + 'each one. The engine has six pitched lanes; the rest of your parts are layers, '
+        + 'and a layer is a preset and nothing else.<br><br>'
+      : '')
     + (notes ? `${escapeHtml(notes)}<br>` : '')
     + `The desk is on it now, under <b>imported</b> as ${escapeHtml(out.track.id)}`
     + `${replaced ? ' (it replaced the last import of that name)' : ''}.<br><br>`
@@ -12848,6 +13307,112 @@ $('save').onclick = async () => {
 // the dialog — a sweep that wrote several songs at once wrote most of them from memory
 // rather than from listening, and a mix nobody was listening to is a mix nobody
 // checked. The other songs' drafts keep until you are on them; Save says so.
+
+// ---- copies: Save As --------------------------------------------------------------
+//
+// The desk's Save writes over the song you are on, which is the right rule and a bad
+// one to be stuck with at four in the afternoon with a mix you might be about to ruin.
+// This is the way to put a pin in it: the whole song under a second name — the same
+// music, the mix on the faders, the arrangement with every bar edit and painted note in
+// it, the cabinet screen — as a song of its own that opens, plays, renders and saves
+// like any other.
+//
+// It promises NOTHING, and that is the difference from an alternate. An alternate names
+// a parent, which puts it in the game's dev bundle, on the cabinet picker, and one
+// button from overwriting the song it names. A copy names nobody. Nothing in the game
+// moves, no cabinet can reach it, and there is no route from a copy back onto the song
+// it was taken from — deliberately, because "a snapshot I took" and "the version I mean
+// to ship" are different thoughts and the second one has a button of its own.
+async function saveCopy() {
+  closeMenu();
+  const sourceId = trackId;
+  const source = track;
+  if (!source?.bank) return;
+  // A name nothing is using, so the field can just be accepted. COPY rather than ALT,
+  // and numbered, because the whole point is taking several of them in an afternoon.
+  const taken = new Set(listTracks().map((t) => t.title));
+  let suggested = `${source.title} COPY`;
+  for (let i = 2; taken.has(suggested); i++) suggested = `${source.title} COPY ${i}`;
+  const sourceWasDirty = isDirty(sourceId);
+  const answered = ask(`Save a copy of ${escapeHtml(source.title)}`,
+    (cabOnDesk[sourceId]
+      ? `<p class="warn">The desk is showing the <b>${escapeHtml(cabOnDesk[sourceId])}</b> cabinet `
+        + 'mix, not the level mix — so that is what this copy would be saved as.</p>'
+      : '')
+    + `<p>Keeps <b>${escapeHtml(source.title)}</b> exactly as the desk has it right now — its `
+    + 'music, this mix, this arrangement with every bar edit and note in it, and its cabinet '
+    + 'screen — as a song of its own.</p>'
+    + (STATIC
+      ? '<p>Kept in this browser, next to your other songs.</p>'
+      : '<p>Written into <b>src/data/imported</b>, listed under <b>Saved copies</b>.</p>')
+    + `<p><b>Nothing else changes.</b> ${escapeHtml(source.title)} is not written, the game `
+    + 'plays exactly what it played before, and no cabinet or alternate can reach the copy. '
+    + 'It is a snapshot.</p>'
+    + `<label class="askfield">Name<input id="copyname" type="text" spellcheck="false" value="${escapeHtml(suggested)}"></label>`,
+    'Save a copy');
+  const nameField = $('copyname');
+  nameField.focus(); nameField.select();
+  if (!await answered) { toast('Copy not saved'); return; }
+  const title = nameField.value.trim() || suggested;
+  // What the desk HAS, draft over file — which is what you are listening to, and the
+  // only thing a snapshot could honestly be. Frozen so the copy carries the sounds it
+  // was made with rather than a name that points at a library preset somebody edits
+  // next week; that is the same freeze every save does.
+  const mix = JSON.parse(JSON.stringify(mixFor(sourceId) || null));
+  freezeVoices(mix, sourceId);
+  const arrangement = JSON.parse(JSON.stringify(arrFor(sourceId) ?? null));
+  const variants = JSON.parse(JSON.stringify(variantFor(sourceId) ?? null));
+
+  // No server — the deployed desk. The browser IS the file there, exactly as it is for
+  // a song made with New song, so a copy is a registered track plus its saved state in
+  // localStorage. The bank is cloned rather than shared: two ids pointing at one bank
+  // object is how a copy ends up being mixed as the song it came from.
+  let res = null;
+  if (!STATIC) {
+    try {
+      res = await fetch('/save-copy', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sourceId, title, mix, arrangement, variants }, null, 2),
+      });
+    } catch (err) {
+      await tell('Could not save the copy', escapeHtml(String(err?.message || err)));
+      return;
+    }
+  }
+  let copy;
+  if (!res) {
+    let id = slugForClient(title);
+    const usedIds = new Set(listTracks().map((t) => t.id));
+    for (let n = 2; usedIds.has(id); n++) id = `${slugForClient(title)}-${n}`;
+    copy = { id, title, slug: id, group: 'copy', writable: true };
+    registerTrack({ ...copy, bank: JSON.parse(JSON.stringify(source.bank)) });
+    deskSongIds.add(id);
+    saved[id] = mix;
+    savedArr[id] = arrangement;
+    variantSaved[id] = variants;
+    persistLocalSongs();
+    persistLocalSave();
+  } else {
+    const text = await res.text();
+    if (!res.ok) { await tell('Could not save the copy', escapeHtml(text)); return; }
+    const out = JSON.parse(text);
+    registerTrack(out.track);
+    copy = out.track;
+    // What the FILE holds, read back by the server — so the copy arrives saved rather
+    // than arriving dirty against a mix it was never compared to.
+    saved[copy.id] = out.mix;
+    savedArr[copy.id] = out.arrangement;
+    variantSaved[copy.id] = out.variants;
+  }
+  selectSong(copy.id);
+  toast(`Saved ${copy.title} — a complete copy of ${source.title}, which is unchanged.`
+    // The draft that became this copy is still sitting on the song it was taken from.
+    // Said out loud, because it is the one thing about this that surprises: the copy is
+    // written and the song still has a dot on its drawer.
+    + (sourceWasDirty ? ` ${source.title} still has its own unsaved changes.` : ''), 7000);
+}
+
+$('savecopy').onclick = saveCopy;
 
 // ---- alternates ---------------------------------------------------------------------
 //
@@ -13424,6 +13989,68 @@ function mergeCabMix(base, patch) {
 // previous session starts with its saved mix/arrangement rather than the empty defaults
 // in MIX.
 buildMasterToolbar();
+
+/**
+ * The desk does not rewind, so it does not run the recorder that rewinding needs.
+ *
+ * `captureEnabled` defaults to true in the engine and only ever gets turned off by
+ * something that knows it does not need it — src/main.js asks `Input.rewindAvailable()`,
+ * and the offline renderers set it false outright. The desk asked nothing, so it got the
+ * default, and has been running the rewind tap ever since: a ScriptProcessorNode on the
+ * master output, feeding a four-second ring buffer for a gesture this window has no
+ * control for and no code path to reach.
+ *
+ * That node is not free and it is not merely idle work. A ScriptProcessorNode is the
+ * deprecated API precisely because it runs its callback ON THE MAIN THREAD: the audio
+ * thread has to hand it a buffer and wait for the main thread to hand one back, every
+ * 2048 samples — about every 46ms at 44.1k, for as long as the desk is open. When the
+ * main thread is busy the handoff misses its slot, and what comes out is not a quiet
+ * branch (the tap's own output goes to a zero-gain sink and is inaudible either way) but
+ * a stall in the rendering of the WHOLE graph. It is the mechanism behind every "it
+ * crackles when I…" on this desk, and it gets worse exactly when the main thread is
+ * under load: a bounce building its node graph, a busy import, another app in front.
+ *
+ * Before `ensure()`, which is where the tap would be built — see setCaptureEnabled,
+ * whose contract this is. Nothing else on the desk reads the capture buffer; rewind is a
+ * game feature and stays one.
+ */
+Audio.setCaptureEnabled(false);
+
+// Slack over speed. The desk's job is to play the loaded song without breaking up, and
+// the browser's default buffer is a few milliseconds — small enough that the audio
+// thread missing one turn is an audible hole. A busy song already spends most of a core
+// rendering, and this window is often in the BACKGROUND while its owner works elsewhere,
+// where the process is demoted and the audio thread renders slower than realtime
+// (measurable: ctx.currentTime falls behind the wall clock, 0.28s per second at worst).
+// A larger buffer is the one thing that survives that, and what it costs — a few tens of
+// milliseconds between pressing a key and hearing it — is a price this window can pay
+// and the game cannot. Before ensure(), which is the only moment it can be asked for.
+Audio.setLatencyHint('playback');
+
+// The rate the desk's bounces have always rendered at (tools/lib/wav.js). Monitoring
+// at the same rate means the mix being heard is the file being kept, sample rate and
+// all — and the whole graph costs ~8% less than at the 48k this machine defaults to,
+// which on a song already spending most of a core is real headroom. The browser
+// resamples to the device on the way out. Before ensure(), like everything above.
+Audio.setSampleRate(44100);
+
+// A silenced lane costs nothing. A muted strip's synthesis reaches no output — the
+// fader is zero and every send taps below it — yet the engine still built every one
+// of its notes; measured on smw-all-instruments, one muted lane was 5% of a core.
+// With this on, muted lanes and the losers of a channel solo are skipped at the
+// scheduler, which also turns SOLO into a relief valve: soloing one lane while
+// editing sheds nearly the whole rest of the graph. The trade (see the engine): what
+// a lane would have played while silenced is not built, so un-muting reveals the
+// song from the next scheduled note rather than mid-pad. Hearing the mix play
+// without breaking up outranks keeping silent lanes warm.
+Audio.setSilentLaneSkip(true);
+
+// The engine, reachable from the console. Everything on this desk is a module, so
+// there has never been a way to ask the running graph a question — which turns every
+// "it crackles after a while" into a rebuild-and-guess instead of a look. A read-only
+// handle costs nothing and is the difference between diagnosing this window and
+// theorising about it.
+globalThis.Audio = Audio;
 
 // Capture phase, so the unlock lands before the handler for the same click runs — press
 // PLAY on a cold page and the transport starts on a context that is already resuming.

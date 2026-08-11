@@ -8,7 +8,6 @@ import { createWebMidiRouter } from './mixer-synth-keyboard.js';
 import { createKnob } from './mrdr3-knob.js';
 import { createPerformancePanel } from './mrdr3-performance.js';
 import { createMasterMeter } from './mrdr3-master-meter.js';
-import { auditionLevel } from './mrdr3-level.js';
 import { createEffect } from '../src/engine/effects.js';
 import { encodePatch, decodePatch } from './mrdr3-patch.js';
 
@@ -22,6 +21,8 @@ let patternPlayer;
 let previewFx = null;
 let previewFxState = null;
 let loadSerial = 0;
+// Was a figure playing when the current preset change began? See loadPreset.
+let resumeAuto = false;
 // The pending impulse-response rebuild — see setPreviewEffect. Up here with the rest of
 // the module's state because disposePreviewFx clears it, and that runs before anything
 // below it has been reached.
@@ -149,6 +150,19 @@ function applyPreviewEffects(next = {}, { rebuild = false } = {}) {
 
 function ensurePreviewAudio() {
   const hadContext = !!Audio.ctx;
+  // No rewind here either, so no rewind recorder — the same tap the desk turns off in
+  // mixer-entry.js, for the same reason. `captureEnabled` defaults to true and only a
+  // caller that knows it does not need it says otherwise, so a window that stayed quiet
+  // got a ScriptProcessorNode on its master output: a main-thread callback every 2048
+  // samples, feeding a ring buffer nothing in this playground reads. Main-thread work in
+  // the audio path is what turns a busy moment into a crackle, and a synth you are
+  // playing live is the last place to spend it.
+  //
+  // Inside the function rather than at the top of the module because this is the only
+  // door to `ensure()` and the tap is built behind it. Free to repeat: setCaptureEnabled
+  // returns at once when the value is unchanged, and tears an existing tap down when it
+  // is not — so a context built before this line is also covered.
+  Audio.setCaptureEnabled(false);
   Audio.ensure();
   // The standalone playground always has a speaker-safety ceiling. With that limiter
   // in the final output path, rewriting voice.level after every edit only creates the
@@ -212,25 +226,6 @@ async function normalizeSharedMeasurements(sourceId, baseId) {
   }
 }
 
-/**
- * Run `open` with the source preset holding its audition level, then put the catalogue
- * value back.
- *
- * The level has to be in place BEFORE the editor copies the preset into a session
- * draft: the draft's level and the baseline that Revert restores are both taken at
- * open, and a level written after that is one the first Revert would throw away. The
- * draft then carries the leaned level as its own, and the catalogue entry is left
- * exactly as measured — so switching back and forth cannot compound the lean.
- */
-function withAuditionLevel(sourceId, open) {
-  const voice = VOICES[sourceId];
-  const next = voice ? auditionLevel(voice, benchLane(voice)) : null;
-  if (next == null) return open();
-  const was = voice.level;
-  voice.level = next;
-  try { return open(); } finally { voice.level = was; }
-}
-
 let voiceEditor;
 function removeSession() {
   const old = voiceEditor?.editing;
@@ -242,6 +237,15 @@ async function loadPreset(id, patch = null) {
   const serial = ++loadSerial;
   const sourceId = patchSource(patch, id) || eligible(id);
   basePresetId = eligible(id);
+  // A patch swap under a running figure is a hard boundary — the old sound's queued
+  // notes have to go before the new one's arrive — but stopping is not what was ASKED
+  // for: comparing two presets means hearing the second one play. So the figure stops,
+  // the patch changes, and it starts again on the new sound.
+  //
+  // The intent is kept out here rather than in a local, because a shared-link load
+  // awaits a measurement in the middle: a second load starting inside that window would
+  // find an already-stopped player, read "was not playing", and lose the figure for good.
+  resumeAuto = resumeAuto || !!patternPlayer?.running();
   patternPlayer?.stop();
   performancePanel?.setPlaying(false);
   if (patch) {
@@ -256,9 +260,12 @@ async function loadPreset(id, patch = null) {
     }
   }
   removeSession();
-  const opened = withAuditionLevel(sourceId, () => voiceEditor.open(sourceId, { isNew: true }));
+  const opened = voiceEditor.open(sourceId, { isNew: true });
   if (!opened) {
     toast('That MRDR-3 preset could not be opened');
+    // Nothing opened, so there is nothing to play: the figure stays stopped rather than
+    // starting on whatever the editor was left pointing at.
+    resumeAuto = false;
     // The shared link's temporary source is this function's own, so it goes on the
     // failure path too — nothing else will ever collect it, since it carries no
     // `draft` marker for the editor's sweep to find.
@@ -272,6 +279,15 @@ async function loadPreset(id, patch = null) {
   patternPlayer?.setVoice(opened);
   voiceEditor.openFull();
   $('mrdr3status').textContent = patch ? 'SHARED PATCH · SESSION ONLY' : 'SESSION ONLY';
+  if (resumeAuto) {
+    resumeAuto = false;
+    // Audio existed a moment ago — the figure was playing — but a load can be the first
+    // thing that happens in a session, and asking is cheaper than a silent AUTO PLAY.
+    if (ensurePreviewAudio()) {
+      patternPlayer.start(opened);
+      performancePanel.setPlaying(true);
+    }
+  }
 }
 
 performancePanel = createPerformancePanel({
@@ -284,6 +300,7 @@ performancePanel = createPerformancePanel({
     patternPlayer?.setPattern(id);
   },
   onRate: (id) => { patternPlayer?.silence?.(); patternPlayer?.setRate(id); },
+  onGate: (percent) => patternPlayer?.setGate(percent),
   onAutoPlay: (on) => {
     if (!patternPlayer) return;
     if (!on) { patternPlayer.stop(); return; }
@@ -312,6 +329,7 @@ patternPlayer = createPatternPlayer({
 });
 patternPlayer.setPattern(performancePanel.state().pattern);
 patternPlayer.setRate(performancePanel.state().rate);
+patternPlayer.setGate(performancePanel.state().gate);
 
 async function copyShareLink({ voice }) {
   if (!voice) return;
@@ -391,9 +409,9 @@ voiceEditor = createVoiceEditor({
   createFull: ({ kit }) => createSynthFull({
     kit, el: $('synthfull'), backdrop: $('synthfullback'),
     // Seven visible octaves use the full panel width; the narrower percentage keys
-    // still retain the shared pointer/computer/MIDI behavior. Keep the upper base at C2
-    // so the final B stays inside the MIDI 0–127 range.
-    keyboard: { octaves: 7, initialOctave: 2, minOctave: 0, maxOctave: 2 },
+    // still retain the shared pointer/computer/MIDI behavior. The whole board is on
+    // screen, so C2 is where it sits rather than where it starts.
+    keyboard: { octaves: 7, initialOctave: 2 },
     performance: performancePanel,
     headExtra: () => masterMeter.root,
   }),

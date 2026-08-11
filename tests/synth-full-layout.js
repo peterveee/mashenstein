@@ -134,12 +134,44 @@ try {
     + panelSpec(DRUM).groups.reduce((n, g) => n + (g.rows || []).length, 0)) {
     fail(`Drum Synth: layout total ${Ld.total} does not match panel rows`);
   }
+  // One band of six single-column cards: the drum window is read ACROSS the signal path,
+  // and each card is narrow enough that its own rows read DOWN it. A card that grew back
+  // to two columns would be one that had quietly gone wide again.
+  if (Ld.bands.length !== 1) fail(`Drum Synth: expected 1 band, got ${Ld.bands.length}`);
+  const cells = Ld.bands[0]?.cells || [];
+  if (cells.length !== 6) fail(`Drum Synth: expected 6 cards, got ${cells.length}`);
+  if (cells.some((c) => (c.span || 1) !== 1)) fail('Drum Synth: a card is wider than one column');
+  // What Master absorbed: Drive and Humanise as rules under its own rows, Taps as a door
+  // in its header. Those three are what freed the columns the six signal sections need.
+  const cellFor = (key) => cells.find((c) => c.card?.key === key);
+  const subsOf = (key) => (cellFor(key)?.card?.sub || []).map((s) => s.rule);
+  if (!isDeepStrictEqual(subsOf('note'), ['DRIVE', 'HUMANISE'])) {
+    fail(`Drum Synth: Master carries ${JSON.stringify(subsOf('note'))}, not Drive and Humanise`);
+  }
+  const doors = (cellFor('note')?.card?.panels || []);
+  if (!doors.some((p) => p.taps)) fail('Drum Synth: Taps is not a door on the Master card');
+  // A sub-section's and a door's rows are still that section's own — taken from the card
+  // they came from, not copied — so the exactly-once walk above proves nothing was lost.
+  if ((cellFor('note')?.card?.sub || []).some((s) => !s.rows?.length)) {
+    fail('Drum Synth: a Master sub-section came through with no rows');
+  }
+  // The curve door, on every card that has a curve to put behind it. Left in the grid,
+  // CURVE and RATE CURVE cost a full-width row each on the three longest cards.
+  const withCurves = cells.filter((c) => c.curves).map((c) => c.card?.key);
+  if (!isDeepStrictEqual(withCurves, ['osc', 'noise', 'ring'])) {
+    fail(`Drum Synth: the curve door is on ${JSON.stringify(withCurves)}, not osc/noise/ring`);
+  }
+  for (const key of withCurves) {
+    if (!(cellFor(key)?.card?.rows || []).some((r) => r.door === 'curve')) {
+      fail(`Drum Synth: the ${key} card asks for a curve door with no curve row to put in it`);
+    }
+  }
 } catch (err) {
   fail(`Drum Synth: fullLayout threw — ${err.message}`);
 }
-if (!failed) ok('Drum Synth builds three complete Advanced bands');
+if (!failed) ok('Drum Synth builds one complete band of six narrow cards');
 
-// Quick is data too: its collective rows must preserve envelope ratios and its Hits row
+// Quick is data too: its collective rows must preserve envelope ratios and its Taps row
 // must never flatten authored tap spacing just to change the count.
 const byLabel = (rows, label) => rows.find((r) => r.label === label);
 const mrdrQuick = {
@@ -202,22 +234,22 @@ for (const label of ['ATTACK', 'DECAY']) {
   }
 }
 if (!failed) ok('Drum Quick envelope positions are independent of the route taken');
-const hits = byLabel(drumRows, 'HITS');
-const beforeHits = structuredClone(drumQuick);
-hits.write(2, drumQuick);
-hits.write(3, drumQuick);
-if (!isDeepStrictEqual(drumQuick, beforeHits)) {
-  fail('Drum Quick Hits did not restore authored spacing and falloff on a round trip');
-} else ok('Drum Quick Hits restores authored tap data exactly on a round trip');
-const fourHitDrum = {
+const tapCount = byLabel(drumRows, 'TAPS');
+const beforeTaps = structuredClone(drumQuick);
+tapCount.write(2, drumQuick);
+tapCount.write(3, drumQuick);
+if (!isDeepStrictEqual(drumQuick, beforeTaps)) {
+  fail('Drum Quick Taps did not restore authored spacing and falloff on a round trip');
+} else ok('Drum Quick Taps restores authored tap data exactly on a round trip');
+const fourTapDrum = {
   kind: 'drum', noise: { decay: 0.1 }, taps: [0, 0.011, 0.029, 0.052], tapFalloff: 0.61,
 };
-if (!sameAtZ(fourHitDrum, 'HITS', 2, 3)) {
-  fail('Drum Quick Hits changes sound at z depending on the route to z');
-} else ok('Drum Quick Hits positions are independent of the route taken');
+if (!sameAtZ(fourTapDrum, 'TAPS', 2, 3)) {
+  fail('Drum Quick Taps changes sound at z depending on the route to z');
+} else ok('Drum Quick Taps positions are independent of the route taken');
 
 // Advanced Global Filter cutoff may lift, but never lowers, the independent final driven
-// low-pass ceiling. Quick BRIGHTNESS is a collective view of the active filter frequencies,
+// low-pass ceiling. Quick CUTOFF is a collective view of the active filter frequencies,
 // rather than a second alias of the Drive card's specific TONE parameter.
 const mrdrFilterVoice = {
   synth: 'MRDR-3', drive: 0.5, tone: { freq: 700 },
@@ -231,7 +263,7 @@ if (mrdrFilterVoice.tone.freq !== 2400) {
   fail('MRDR Advanced Global Filter changed the independent Drive Tone on a downward move');
 } else ok('MRDR Advanced Global Filter only lifts the independent Drive Tone ceiling');
 
-const mrdrQuickBrightnessVoice = {
+const mrdrQuickCutoffVoice = {
   synth: 'MRDR-3', drive: 0.5,
   layer: {
     osc1: { gain: 1, filter: { type: 'lowpass', freq: 600, Q: 1.2 } },
@@ -240,64 +272,64 @@ const mrdrQuickBrightnessVoice = {
   global: { filter: { freq: 3000, Q: 4 } },
   tone: { type: 'lowpass', freq: 900, Q: 4 },
 };
-const mrdrBrightness = byLabel(quickRows(mrdrQuickBrightnessVoice), 'BRIGHTNESS');
-if (!mrdrBrightness || byLabel(quickRows(mrdrQuickBrightnessVoice), 'TONE')) {
-  fail('MRDR Quick still exposes TONE instead of BRIGHTNESS');
-} else if (mrdrBrightness.read(undefined, mrdrQuickBrightnessVoice) !== 600) {
-  fail('MRDR Quick BRIGHTNESS did not read the darkest active filter cutoff');
+const mrdrQuickCutoff = byLabel(quickRows(mrdrQuickCutoffVoice), 'CUTOFF');
+if (!mrdrQuickCutoff || byLabel(quickRows(mrdrQuickCutoffVoice), 'TONE')) {
+  fail('MRDR Quick still exposes TONE instead of CUTOFF');
+} else if (mrdrQuickCutoff.read(undefined, mrdrQuickCutoffVoice) !== 600) {
+  fail('MRDR Quick CUTOFF did not read the darkest active filter cutoff');
 }
-const beforeBrightness = structuredClone(mrdrQuickBrightnessVoice);
-mrdrBrightness.write(1200, mrdrQuickBrightnessVoice);
-if (mrdrQuickBrightnessVoice.layer.osc1.filter.freq !== 1200
-  || mrdrQuickBrightnessVoice.layer.osc2.filter.freq !== 2400
-  || mrdrQuickBrightnessVoice.global.filter.freq !== 6000
-  || mrdrQuickBrightnessVoice.tone.freq !== 1800
-  || mrdrQuickBrightnessVoice.layer.osc1.filter.Q !== 1.2
-  || mrdrQuickBrightnessVoice.tone.Q !== 4) {
-  fail('MRDR Quick BRIGHTNESS did not scale all active filter cutoffs together');
+const beforeQuickCutoff = structuredClone(mrdrQuickCutoffVoice);
+mrdrQuickCutoff.write(1200, mrdrQuickCutoffVoice);
+if (mrdrQuickCutoffVoice.layer.osc1.filter.freq !== 1200
+  || mrdrQuickCutoffVoice.layer.osc2.filter.freq !== 2400
+  || mrdrQuickCutoffVoice.global.filter.freq !== 6000
+  || mrdrQuickCutoffVoice.tone.freq !== 1800
+  || mrdrQuickCutoffVoice.layer.osc1.filter.Q !== 1.2
+  || mrdrQuickCutoffVoice.tone.Q !== 4) {
+  fail('MRDR Quick CUTOFF did not scale all active filter cutoffs together');
 }
-mrdrBrightness.write(600, mrdrQuickBrightnessVoice);
-if (!isDeepStrictEqual(mrdrQuickBrightnessVoice, beforeBrightness)) {
-  fail('MRDR Quick BRIGHTNESS did not restore the authored filter relationship');
-} else ok('MRDR Quick BRIGHTNESS scales and restores all MRDR filter cutoffs');
-if (!sameAtZ(beforeBrightness, 'BRIGHTNESS', 900, 750)) {
-  fail('MRDR Quick BRIGHTNESS changes sound at z depending on the route to z');
-} else ok('MRDR Quick BRIGHTNESS positions are independent of the route taken');
+mrdrQuickCutoff.write(600, mrdrQuickCutoffVoice);
+if (!isDeepStrictEqual(mrdrQuickCutoffVoice, beforeQuickCutoff)) {
+  fail('MRDR Quick CUTOFF did not restore the authored filter relationship');
+} else ok('MRDR Quick CUTOFF scales and restores all MRDR filter cutoffs');
+if (!sameAtZ(beforeQuickCutoff, 'CUTOFF', 900, 750)) {
+  fail('MRDR Quick CUTOFF changes sound at z depending on the route to z');
+} else ok('MRDR Quick CUTOFF positions are independent of the route taken');
 
 // An Advanced cutoff edit is a new authored baseline for the collective macro. The Quick
 // reading must follow it, and a later round trip must not restore the stale pre-edit shape.
-mrdrQuickBrightnessVoice.layer.osc1.filter.freq = 450;
-if (mrdrBrightness.read(undefined, mrdrQuickBrightnessVoice) !== 450) {
-  fail('MRDR Advanced cutoff did not update the Quick BRIGHTNESS reading');
+mrdrQuickCutoffVoice.layer.osc1.filter.freq = 450;
+if (mrdrQuickCutoff.read(undefined, mrdrQuickCutoffVoice) !== 450) {
+  fail('MRDR Advanced cutoff did not update the Quick CUTOFF reading');
 }
-const afterMrdrAdvancedCutoff = structuredClone(mrdrQuickBrightnessVoice);
-mrdrBrightness.write(900, mrdrQuickBrightnessVoice);
-mrdrBrightness.write(450, mrdrQuickBrightnessVoice);
-if (!isDeepStrictEqual(mrdrQuickBrightnessVoice, afterMrdrAdvancedCutoff)) {
-  fail('MRDR Quick BRIGHTNESS overwrote an Advanced filter edit with a stale baseline');
-} else ok('MRDR Advanced filter edits stay synchronized with Quick BRIGHTNESS');
+const afterMrdrAdvancedCutoff = structuredClone(mrdrQuickCutoffVoice);
+mrdrQuickCutoff.write(900, mrdrQuickCutoffVoice);
+mrdrQuickCutoff.write(450, mrdrQuickCutoffVoice);
+if (!isDeepStrictEqual(mrdrQuickCutoffVoice, afterMrdrAdvancedCutoff)) {
+  fail('MRDR Quick CUTOFF overwrote an Advanced filter edit with a stale baseline');
+} else ok('MRDR Advanced filter edits stay synchronized with Quick CUTOFF');
 
-const mrdrSweepVoice = {
+const mrdrEnvAmountVoice = {
   synth: 'MRDR-3', drive: 0.5, tone: { freq: 700 },
   global: { filter: { freq: 1150, env: { octaves: 0 } } },
 };
-const mrdrSweep = byLabel(quickRows(mrdrSweepVoice), 'FILTER SWEEP');
-const beforeSweep = structuredClone(mrdrSweepVoice);
-mrdrSweep.write(1, mrdrSweepVoice);
-mrdrSweep.write(0, mrdrSweepVoice);
+const mrdrEnvAmount = byLabel(quickRows(mrdrEnvAmountVoice), 'ENV AMOUNT');
+const beforeEnvAmount = structuredClone(mrdrEnvAmountVoice);
+mrdrEnvAmount.write(1, mrdrEnvAmountVoice);
+mrdrEnvAmount.write(0, mrdrEnvAmountVoice);
 const mrdrResVoice = { synth: 'MRDR-3', drive: 0.5, tone: { freq: 700 } };
 const mrdrResonance = byLabel(quickRows(mrdrResVoice), 'RESONANCE');
 const beforeResonance = structuredClone(mrdrResVoice);
 mrdrResonance.write(8, mrdrResVoice);
 mrdrResonance.write(0.7, mrdrResVoice);
-if (!isDeepStrictEqual(mrdrSweepVoice, beforeSweep)
+if (!isDeepStrictEqual(mrdrEnvAmountVoice, beforeEnvAmount)
   || !isDeepStrictEqual(mrdrResVoice, beforeResonance)) {
-  fail('MRDR Quick Sweep/Resonance left a filter or changed Tone after returning home');
-} else ok('MRDR Quick Sweep/Resonance round trips restore the exact authored sound');
-if (!sameAtZ(beforeSweep, 'FILTER SWEEP', 2, 1)
+  fail('MRDR Quick Env Amount/Resonance left a filter or changed Tone after returning home');
+} else ok('MRDR Quick Env Amount/Resonance round trips restore the exact authored sound');
+if (!sameAtZ(beforeEnvAmount, 'ENV AMOUNT', 2, 1)
   || !sameAtZ(beforeResonance, 'RESONANCE', 12, 8)) {
-  fail('MRDR Quick Sweep/Resonance changes sound at z depending on the route to z');
-} else ok('MRDR Quick Sweep/Resonance positions are independent of the route taken');
+  fail('MRDR Quick Env Amount/Resonance changes sound at z depending on the route to z');
+} else ok('MRDR Quick Env Amount/Resonance positions are independent of the route taken');
 
 // ...and with no drive there is no tone filter in the signal path, so nothing may touch
 // the stored cutoff — the panel must not rewrite the parameter it has greyed out.
@@ -329,38 +361,87 @@ if (drumFilterVoice.tone.freq !== 4200 || drumResVoice.tone.freq !== 3000) {
   fail('Drum source filters did not synchronize the Advanced Drive Tone ceiling');
 } else ok('Drum source filters remain audible below the Advanced Drive Tone');
 
-const drumQuickBrightnessVoice = {
+const drumQuickCutoffVoice = {
   kind: 'drum', drive: 0.5,
   noise: { type: 'lowpass', freq: 800, to: 400, Q: 2 },
   ring: { type: 'bandpass', freq: 400, to: 300, Q: 40 },
   metal: { freq: 700, hp: 2400, hpTo: 1200, Q: 0.8 },
   tone: { type: 'lowpass', freq: 6000, Q: 3 },
 };
-const drumBrightness = byLabel(quickRows(drumQuickBrightnessVoice), 'BRIGHTNESS');
-if (!drumBrightness || byLabel(quickRows(drumQuickBrightnessVoice), 'TONE')) {
-  fail('Drum Quick still exposes TONE instead of BRIGHTNESS');
-} else if (drumBrightness.read(undefined, drumQuickBrightnessVoice) !== 800) {
-  fail('Drum Quick BRIGHTNESS did not read the darkest active filter cutoff');
+const drumQuickCutoff = byLabel(quickRows(drumQuickCutoffVoice), 'CUTOFF');
+if (!drumQuickCutoff || byLabel(quickRows(drumQuickCutoffVoice), 'TONE')) {
+  fail('Drum Quick still exposes TONE instead of CUTOFF');
+} else if (drumQuickCutoff.read(undefined, drumQuickCutoffVoice) !== 800) {
+  fail('Drum Quick CUTOFF did not read the darkest active filter cutoff');
 }
-const beforeDrumBrightness = structuredClone(drumQuickBrightnessVoice);
-drumBrightness.write(1600, drumQuickBrightnessVoice);
-if (drumQuickBrightnessVoice.noise.freq !== 1600
-  || drumQuickBrightnessVoice.noise.to !== 800
-  || drumQuickBrightnessVoice.metal.hp !== 4800
-  || drumQuickBrightnessVoice.metal.hpTo !== 2400
-  || drumQuickBrightnessVoice.tone.freq !== 12000
-  || drumQuickBrightnessVoice.ring.freq !== 400
-  || drumQuickBrightnessVoice.metal.freq !== 700) {
-  fail('Drum Quick BRIGHTNESS did not scale filter cutoffs while preserving pitch');
+const beforeDrumQuickCutoff = structuredClone(drumQuickCutoffVoice);
+drumQuickCutoff.write(1600, drumQuickCutoffVoice);
+if (drumQuickCutoffVoice.noise.freq !== 1600
+  || drumQuickCutoffVoice.noise.to !== 800
+  || drumQuickCutoffVoice.metal.hp !== 4800
+  || drumQuickCutoffVoice.metal.hpTo !== 2400
+  || drumQuickCutoffVoice.tone.freq !== 12000
+  || drumQuickCutoffVoice.ring.freq !== 400
+  || drumQuickCutoffVoice.metal.freq !== 700) {
+  fail('Drum Quick CUTOFF did not scale filter cutoffs while preserving pitch');
 }
-drumBrightness.write(800, drumQuickBrightnessVoice);
-if (!isDeepStrictEqual(drumQuickBrightnessVoice, beforeDrumBrightness)) {
-  fail('Drum Quick BRIGHTNESS did not restore authored filter and sweep values');
-} else ok('Drum Quick BRIGHTNESS scales filters, sweep destinations, and restores pitch');
-drumQuickBrightnessVoice.noise.freq = 500;
-if (drumBrightness.read(undefined, drumQuickBrightnessVoice) !== 500) {
-  fail('Drum Advanced cutoff did not update the Quick BRIGHTNESS reading');
-} else ok('Drum Advanced filter edits stay synchronized with Quick BRIGHTNESS');
+drumQuickCutoff.write(800, drumQuickCutoffVoice);
+if (!isDeepStrictEqual(drumQuickCutoffVoice, beforeDrumQuickCutoff)) {
+  fail('Drum Quick CUTOFF did not restore authored filter and sweep values');
+} else ok('Drum Quick CUTOFF scales filters, sweep destinations, and restores pitch');
+drumQuickCutoffVoice.noise.freq = 500;
+if (drumQuickCutoff.read(undefined, drumQuickCutoffVoice) !== 500) {
+  fail('Drum Advanced cutoff did not update the Quick CUTOFF reading');
+} else ok('Drum Advanced filter edits stay synchronized with Quick CUTOFF');
+
+// ---- Quick and Advanced are one control, so they must turn the same way -------
+//
+// A Quick pot that aliases an Advanced parameter is not a second control over the same
+// key — it is the same control on a smaller panel, so it has to carry that parameter's
+// RANGE and its TAPER. Most inherit both from the helper the two panels share
+// (`envTime`, `cutoffHz`, `resQ`); the ones written out longhand can drift silently,
+// which is exactly how Quick's VIBRATO came to be linear over a range Advanced cubes.
+// Linear, a 0–12 semitone pot puts every depth in the library (0.05–0.35) inside the
+// first three percent of the travel — a value you cannot aim at, on the panel meant for
+// aiming quickly.
+const advancedRows = (voice) => {
+  const spec = panelSpec(voice);
+  return [...spec.common.rows, ...spec.groups.flatMap((g) => g.rows || [])];
+};
+// A row's taper may be a function of the voice — see the Mod LFO's rate — so resolve it
+// the way the editor does before comparing. Absent means linear.
+const taperOf = (row, voice) =>
+  (typeof row.scale === 'function' ? row.scale(voice) : row.scale) ?? 1;
+const aliasVoices = [
+  { synth: 'MRDR-3', drive: 0.5, vibrato: { depth: 0.1 }, layer: { osc1: { gain: 1 } } },
+  { kind: 'drum', drive: 0.5, osc: { from: 190, to: 52 }, noise: { decay: 0.1 } },
+];
+let checkedAliases = 0;
+let taperDrift = 0;
+for (const voice of aliasVoices) {
+  const advanced = advancedRows(voice);
+  for (const row of quickRows(voice)) {
+    // A `$quick.*` path is a macro over several Advanced keys and has no single twin.
+    if (row.path.startsWith('$quick.')) continue;
+    const twin = advanced.find((r) => r.path === row.path);
+    if (!twin) continue;                     // Quick-only, or absent on this voice
+    checkedAliases++;
+    const where = `${row.label} / ${twin.label} (${row.path})`;
+    if (row.min !== twin.min || row.max !== twin.max || row.step !== twin.step) {
+      taperDrift++;
+      fail(`Quick and Advanced disagree on the range of ${where}`);
+    }
+    if (taperOf(row, voice) !== taperOf(twin, voice)) {
+      taperDrift++;
+      fail(`Quick and Advanced disagree on the taper of ${where}: `
+        + `${taperOf(row, voice)} vs ${taperOf(twin, voice)}`);
+    }
+  }
+}
+if (!checkedAliases) fail('no Quick pot aliases an Advanced parameter — the check found nothing');
+else if (!taperDrift) {
+  ok(`${checkedAliases} Quick aliases carry their Advanced range and taper exactly`);
+}
 
 // ---- the counts the window prints -------------------------------------------
 // The per-card badges and the title bar's total are the invariant rendered. If they are

@@ -29,7 +29,21 @@
 // draft is built once, on release.
 import { resolveSection } from '../src/data/arrangements.js';
 import { lenKey } from '../src/engine/lanes.js';
+import { Audio } from '../src/engine/audio.js';
 import { writeBarNotes, writeBarNotesShared, setLanesOff } from './lib/arrangement-edit.js';
+
+// How much audio to queue before a rebuild that is about to hold the main thread.
+//
+// A whole-song roll is tens of thousands of nodes built in one task — measured at
+// ~200ms plus a ~120ms layout follow-up on smw-all-instruments — and the sequencer
+// runs on the thread that build blocks, with only a quarter-second queued in front
+// of it. Sometimes it survived, sometimes the queue ran dry mid-build: "expanding
+// the roll sometimes glitches". So every deliberate rebuild asks the engine to
+// queue this far ahead FIRST (see Audio.prefill — the notes are the ones that were
+// coming anyway, and the window narrows back by itself). Not on the playhead's own
+// page-flip build, which is two bars, runs mid-playback on its own schedule, and
+// must never widen the window an edit is waiting to be heard through.
+const PREFILL_S = 1.2;
 
 /**
  * The bars a shared edit really reaches.
@@ -945,6 +959,7 @@ export function createBarGrid({
       link.onclick = () => {
         linked = !linked;
         localStorage.setItem(LINK_KEY, linked ? '1' : '0');
+        Audio.prefill(PREFILL_S);
         build();
       };
       return [link];
@@ -2274,23 +2289,52 @@ export function createBarGrid({
   // The cursor says which of the two a press would begin, so the edge is discoverable
   // rather than something you find by accident. Only written when it changes: this runs
   // on every pointer move over the panel.
+  //
+  // Which makes it the one handler on the desk that does work with no button held, so
+  // what it costs on a move it costs continuously — and it shares a main thread with the
+  // sequencer, whose whole safety margin is a 250ms lookahead. Three things keep it off
+  // that thread's back, in the order they can be decided:
+  //
+  //  - The tool and the modifiers, which need no measurement at all. `gestureFor` can
+  //    only reach `resize` from `auto` with nothing held, so every other mode answers
+  //    "no handle" before the pointer position is even looked at. That is most of the
+  //    time the panel is open and being drawn in.
+  //  - `atEdge`, remembered rather than queried. Only ever one cell carries the class,
+  //    so finding it again with `querySelectorAll` meant walking every cell in the grid
+  //    — thousands of them on a whole-song piano roll — to arrive at a node we had just
+  //    put the class on ourselves.
+  //  - `cellAt`, last, because it is the expensive one: `elementFromPoint` forces a
+  //    layout flush and the pitch arbitration measures every visible lane.
+  //
+  // The early-out below used to be `near === cell?.classList.contains('atedge')`, which
+  // is the same test with one hole in it: over a gap between cells there is no cell, and
+  // `false === undefined` is false, so the pointer being over NOTHING took the slow path
+  // every time. The gaps are not a rare place to be — a beat opens 7px in front of it
+  // and a bar line 15px, all of it outside every cell's box (see `barUnder`).
+  let atEdge = null;
+  const clearEdge = () => {
+    atEdge?.classList.remove('atedge');
+    atEdge = null;
+  };
   el.addEventListener('pointermove', (ev) => {
     if (!movable || drag) return;
+    // Decided without measuring anything: no mode but `auto` offers the handle, and any
+    // modifier means the press is already spoken for.
+    if (tool() !== 'auto' || ev.altKey || ev.metaKey || ev.ctrlKey || ev.shiftKey
+        || isSecondary(ev)) { clearEdge(); return; }
     const cell = cellAt(ev.clientX, ev.clientY);
     const row = cell && rowOf(cell);
-    // The handle is only offered where pressing would actually take it — so it goes
-    // quiet in Paint, Draw and Erase, where the answer does not depend on aim.
     const near = !!row && cell.classList.contains('sizeable')
-      && tool() === 'auto' && gestureAt(cell, row, ev) === 'resize';
-    if (near === cell?.classList.contains('atedge')) return;
-    for (const c of el.querySelectorAll('.ssqcell.atedge')) c.classList.remove('atedge');
-    if (near) cell.classList.add('atedge');
+      && gestureAt(cell, row, ev) === 'resize';
+    if (near ? cell === atEdge : !atEdge) return;
+    clearEdge();
+    if (near) { cell.classList.add('atedge'); atEdge = cell; }
   });
   // Or the pointer leaves entirely, which fires no move: a resize cursor left standing on
   // a panel nobody is pointing at is an offer that is not being made.
   el.addEventListener('pointerleave', () => {
     if (drag) return;
-    for (const c of el.querySelectorAll('.ssqcell.atedge')) c.classList.remove('atedge');
+    clearEdge();
   });
 
   // What a selection is FOR, at the keyboard: ⌫ takes it out, ⎋ lets it go. Bound on
@@ -2393,6 +2437,7 @@ export function createBarGrid({
       return;
     }
     autoBar = null;
+    Audio.prefill(PREFILL_S);
     build();
     if (docked) return;
     let pos = null;
@@ -2439,9 +2484,9 @@ export function createBarGrid({
     close: () => open(false),
     isOpen,
     /** Repaint: the selection moved, or the song changed under us. */
-    refresh: () => { autoBar = null; if (isOpen()) build(); },
+    refresh: () => { autoBar = null; if (isOpen()) { Audio.prefill(PREFILL_S); build(); } },
     /** Repaint without clearing the auto-page — for a control inside the panel. */
-    redraw: build,
+    redraw: () => { Audio.prefill(PREFILL_S); build(); },
     setResizeDeferred,
     selectedCount: () => selected().length,
     adjustLengths: ({ scope: scopeKind = 'selection', percent } = {}) =>

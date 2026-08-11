@@ -104,14 +104,23 @@ lefts are identical).
 ```
 mixer   [ LAYER 1 (2) ] [ LAYER 2 (2) ] [ LAYER 3 (2) ]          168px
 layer   [Osc][Pitch Env][Filter][Filt Env][Amp][Settings]        auto
-shared  [Settings][Vib/Hum/Drive/Mod LFO][ Global Filter (2)
-                                     ][G.Filt Env][G.Amp]        1fr
+shared  [Humanise][LFO][G.Filter][G.Filt Env][G.Amp][Effects]    1fr
 ```
+
+The shared band's last three columns line up with the layer band's — filter, filter
+envelope, amp in both rows — so the shared stage reads as the same three stages again,
+once for the whole stack. **Effects** ends the row because it is the only card there that
+is not part of the voice's shaping but the stages after it: DRIVE (with PLACE, which is
+the one control that can move a stage in front of the Global Filter) and CHORUS.
 
 - **Layer cells** hold live controls, not readings: INTERVAL, DETUNE, GATE, UNISON,
   SPREAD, STEREO, DELAY, and a full-width level fader. The header names the layer *and its
   waveform* — `LAYER 1 · SQUARE` — which is a reading of the picker on the OSC card, not a
-  control; "sub, saw, noise" is how a three-layer stack is read at a glance.
+  control; "sub, saw, noise" is how a three-layer stack is read at a glance. Right of the
+  name sit the layer's two whole-layer controls, **S** and **COPY**: solo, and a menu that
+  replaces this layer entirely — oscillator, filter, all four envelopes, bypassed sections
+  included — with another. COPY was on the OSC card's header, which put a whole-layer
+  action inside the smallest part of the layer and read as "copy the oscillator".
 - **OSC card** (first cell of the layer band, still 1/6 wide) is the wave and whatever
   modulates it: WAVE (glyphs), COLOUR (unlabelled, hidden unless noise), and then **one**
   modulator sub-section, chosen by the wave —
@@ -125,16 +134,61 @@ shared  [Settings][Vib/Hum/Drive/Mod LFO][ Global Filter (2)
 - **Graphs**: five draggable ADSR envelopes, two draggable filter responses. Each handle is
   bound to a ROW — reads through its `read`, writes through it, clamps to its range and
   step. A second grip on existing controls, never a new one.
-- **Header** on every card: 26px, capsule switch, title left, then solo / panel buttons.
-  Solo is on the LAYER only.
+- **Header** on every card: 26px, capsule switch, title left, then panel buttons.
+  Solo and COPY are on the LAYER only.
 
 Counts today: **167 controls, 97 on screen at once, 35 per hidden layer.** (Printed by
 `node tests/synth-full-layout.js`, which derives them — never type them here without
 running it.)
 
-Drum Synth uses the same renderer without MRDR's layer mixer: three six-column bands hold
-the oscillator/noise/ring sources, metal/FM/drive, and master/humanise/taps. Its Advanced
-layout currently contains 60 live controls, including Master Tune and Ring/Metal Attack.
+Drum Synth uses the same renderer without MRDR's layer mixer, and now in **one band of six
+single-column cards** — OSCILLATOR, FM, NOISE, RING, METAL and MASTER (with DRIVE and
+HUMANISE as sub-sections, and TAPS behind a door in its header). It was nine cards on three bands, each
+two columns wide; at 525px a card seats eight pot columns, so every section drew its source
+pots and its envelope on one undifferentiated line. Halved in width and roughly doubled in
+height, the same pots are two rows of four with the envelope on its own — see `startRow` on
+every drum ATTACK. Its Advanced layout currently contains 60 live controls, including Master
+Tune and Ring/Metal Attack.
+
+**Drum cards SPREAD** (`top`, `flowSub`, `spread` → `.sfspread`), where MRDR's hang
+everything from the bottom. Three ways to fill a card, and this is the third: bottom-aligning
+drops the whole stack to the floor and opens the gap under the header, reading from the top
+banks every spare pixel at the foot — which is what left Master's DRIVE and HUMANISE huddled
+under the title with a third of the card empty beneath them. So the slack is *divided*:
+`margin-top: auto` on every block after the first, and several auto margins in one flex
+column take an equal share each, so the blocks step evenly down and the last lands on the
+floor. **That is also what lines the envelopes up.** `foot` on every drum ATTACK cuts the
+envelope off the end of its card's rows (`splitFoot`) and it is drawn as a block of its own;
+being last on all five source cards, and one row of pots on each, the five come to rest on
+one line across the band — the alignment `startRow` gives the block inside a card, given to
+the band. MRDR needs none of this: bottom-aligned already, its ADSR blocks share a baseline
+by construction.
+
+**Taps is a door, not a column** (`tapsDoor`), and the count rides on the button — `TAPS` at
+one hit, `TAPS 3` at three, so what the door hides is the detail and never the fact. It is
+the one section that is not part of the signal path, and the one most presets have nothing
+in: fifteen drums in the catalogue use taps and every other one is a single hit. Freeing
+that column is what let FM out of the oscillator card and onto its own, next to the wave it
+bends. Inside, the taps are a **table — a row per hit, a column per number** (TIME, LEVEL,
+DECAY; which columns exist is per path, see `TAP_KEYS`), with FALLOFF/PITCH/TONE under a
+rule of their own because they are ratios *between* hits rather than values on one. The
+panel **redraws its own body** rather than calling `kit.repaint()`: the stepper inside it
+changes how many controls the panel has, and a window repaint would take the popover down
+with the card it hangs off, on the first press of a button that lives inside it.
+
+**Choice rows pair up.** Two adjacent word choices in the same grid share one line, half the
+card each (`pairChoices`) — TYPE|SLOPE, CURVE|RATE CURVE, COLOUR|SLOPE. Drawn rows (WAVE),
+rows that can vanish (COLOUR on an MRDR layer) and rows marked `startRow` never take a
+partner from the row above them (`.sfownline`). Whether the two actually FIT is measured once
+the window is up: `splitTightPairs` puts back any pair whose options overflow, which is why
+`.sfpair .sfopts` may not wrap.
+
+**Noise leads with COLOUR**, directly under LEVEL — where WAVE sits on the Oscillator and on
+Metal, and for the same reason: it is the one pick that says what the source *is*, and the
+filter under it is what is then done to it. It was last on the card, below the filter, which
+read as colouring the noise after shaping it. TYPE carries `startRow` so that COLOUR cannot
+take it as a partner and strand SLOPE, TYPE's own other half. The `noise`-kind Burst card
+holds the same three keys and now states them in the same order.
 
 ## Open, in rough priority order
 

@@ -59,6 +59,11 @@ const GLYPH = {
   sawtooth: 'M1,12 L7,2.5 L7,12 L13,2.5 L13,12 L19,2.5 L19,12 L23,9',
   triangle: 'M1,12 L6,2.5 L11,12 L16,2.5 L21,12',
   pulse: 'M1,12 L1,2.5 L5,2.5 L5,12 L12,12 L12,2.5 L16,2.5 L16,12 L22,12',
+  // A pulse whose duty is MOVING — three cycles, each wider than the last. Drawn as the
+  // difference from `pulse` above it, because that is the only difference there is: same
+  // two levels, same edges, a width that will not sit still. Without it the drum panels
+  // fell back to words for the whole row, since a row draws only when EVERY option can.
+  pwm: 'M1,12 L1,2.5 L3,2.5 L3,12 L8,12 L8,2.5 L12,2.5 L12,12 L16,12 L16,2.5 L22,2.5 L22,12 L23,12',
   noise: 'M1,7 L3,3 L5,11 L7,4.5 L9,12 L11,3.5 L13,9 L15,2.5 L17,10.5 L19,5 L21,11.5 L23,6.5',
   // The LFO's three destinations, as what they DO: a corner coming down, a swell, and a bend.
   filter: 'M1,4 L10,4 C15,4 16,11 22,11',
@@ -252,14 +257,20 @@ export function createSynthFull({
     const pots = new Map();
     // The curve trio comes OUT of the grid and goes behind a door — three pills that are
     // set once and then never touched were costing a full-width row on every amp card.
-    const curveRows = curves ? spec.rows.filter((r) => r.trio === 'curve') : [];
+    //
+    // Two ways in. `trio: 'curve'` is MRDR-3's, where the three stages are also a trio on
+    // the strip; `door: 'curve'` is for a curve that is an ordinary row on the strip and
+    // only wants the door HERE — the Drum Synth's CURVE and RATE CURVE, which are one and
+    // two per card rather than a trio, and have no business being a trio anywhere.
+    const behindDoor = (r) => r.trio === 'curve' || r.door === 'curve';
+    const curveRows = curves ? spec.rows.filter(behindDoor) : [];
     // AMP is env-or-through: whether this layer has an envelope of its own, or hands its
     // shaping to the Global Amp. That is an ON/OFF, and it belongs in the header with the
     // other on/offs rather than as a pair of words inside the card — it is the control
     // that decides whether the four stages under it do anything at all.
     const ampRow = spec.rows.find((r) => r.label === 'AMP' && r.kind === 'pick');
     const bodyRows = spec.rows.filter((r) => r !== ampRow
-      && !(curves && r.trio === 'curve'));
+      && !(curves && behindDoor(r)));
     const c = kit.groupCard(
       { ...spec.group, title: spec.title, rows: bodyRows },
       {
@@ -274,10 +285,23 @@ export function createSynthFull({
         onChange: redrawGraphs,
       },
     );
+    // The envelope, as a block of its own hanging off the card's floor — see `splitFoot`.
+    // A grid rather than more rows in the one above it, because that is what lets the
+    // spare height open BETWEEN them: five sections of different lengths then read their
+    // attack, hold, decay and sag off one line across the band. Built here, before the
+    // label fit and the pairing pass, so it goes through both with everything else.
+    if (spec.foot?.length) {
+      const grid = div('devgrid sfenv');
+      for (const row of spec.foot) grid.append(rowEl(row));
+      c.append(grid);
+    }
     // A card may ask for a denser grid than the window's default — see `grid` in
     // `fullLayout`. It is a class rather than an inline style so the column floor stays in
     // the stylesheet with the pot size it has to clear.
     if (spec.grid === 4) c.classList.add('sfgrid4');
+    // Blocks divide the slack rather than banking it under the header — see `spread` in
+    // `fullLayout`.
+    if (spec.spread) c.classList.add('sfspread');
     // Hung from the TOP instead of the bottom. Every other card bottom-aligns its grid so
     // the pot rows across a band land on one baseline; a card whose first row is a picker
     // and whose length changes with the value of that picker has nothing to align WITH,
@@ -285,7 +309,7 @@ export function createSynthFull({
     // full of air. See `top` in `fullLayout`.
     if (spec.top) c.classList.add('sftop');
     fitLabels(c);
-    pairTypeSlope(c);
+    pairChoices(c);
     if (graph) addGraph(c, spec, graph, pots);
     // TYPE and SLOPE ride directly under the curve they describe, not down with the pots.
     //
@@ -295,7 +319,12 @@ export function createSynthFull({
     // floating in the gap below the graph's own shape, as far from it as they could get.
     // Lifted OUT of the grid and dropped after the graph, the pair sits against the curve
     // and the pots keep their shared baseline. Nothing else moves.
-    const pair = c.querySelector('.sfpair');
+    //
+    // The pair carrying TYPE, by name — now that any two adjacent choices pair up, "the
+    // first pair on the card" is no longer the same thing as "the one that describes this
+    // filter", and only the filter's own belongs against the filter's own curve.
+    const pair = [...c.querySelectorAll('.sfpair')]
+      .find((p) => p.querySelector('.k')?.textContent === 'TYPE');
     const gbox = c.querySelector('.sfgraph');
     if (pair && gbox) gbox.after(pair);
 
@@ -322,38 +351,20 @@ export function createSynthFull({
         }));
       }
       if (tabs) bar.append(tabs); else bar.append(span('sftitle', spec.title));
-      // No solo here. Solo belongs to the LAYER, and the layer has a cell of its own at
-      // the top of the window with the switch and the level already on it — a second S
-      // on the oscillator card would be the same monitoring state offered twice.
+      // No solo here, and no COPY. Both belong to the LAYER, and the layer has a cell of
+      // its own at the top of the window with the switch and the level already on it — a
+      // second S on the oscillator card would be the same monitoring state offered twice,
+      // and a COPY on a card titled OSC 1 reads as "copy the oscillator" when what it
+      // actually replaces is the whole layer, filters and envelopes and all.
       const right = div('sfbarright');
       for (const p of spec.panels || []) {
-        if (p.rows.length) right.append(sectionPanel(c, p));
+        // Taps is a panel with no ROWS — it is a count and whatever that count implies,
+        // built by the strip's own `tapsGroup` — so it is gated on being taps rather than
+        // on having rows to draw, which is the test every other door passes.
+        if (p.taps) right.append(tapsPanel(c, p));
+        else if (p.rows.length) right.append(sectionPanel(c, p));
       }
       if (curveRows.length) right.append(curvePanel(c, curveRows));
-      if (spec.group?.layerCopy) {
-        const select = document.createElement('select');
-        select.className = 'sfcopyselect';
-        select.title = 'Copy the entire layer from another layer';
-        const placeholder = document.createElement('option');
-        placeholder.textContent = 'COPY';
-        placeholder.value = '';
-        placeholder.selected = true;
-        select.append(placeholder);
-        for (const other of [1, 2, 3].filter((n) => n !== spec.group.layerCopy)) {
-          const option = document.createElement('option');
-          option.value = String(other);
-          option.textContent = `Copy from Layer ${other}`;
-          select.append(option);
-        }
-        select.onchange = (ev) => {
-          ev.stopPropagation();
-          const from = Number(select.value);
-          select.value = '';
-          if (from) kit.copyLayer(from, spec.group.layerCopy);
-        };
-        select.onclick = (ev) => ev.stopPropagation();
-        right.append(select);
-      }
       // No per-card count. It was the completeness invariant rendered, which was a good
       // reason to compute it and a bad reason to show it: eleven numbers down the right
       // of the window that nobody reads and that compete with the readings that matter.
@@ -381,13 +392,19 @@ export function createSynthFull({
     //
     // It is still ABSENT rather than greyed when it does not apply — PWM on anything but a
     // pulse has no width to move — and nothing above it moves when it goes.
+    //
+    // `flowSub` is the other case, and it is the Drum Synth's: a sub-section whose length
+    // never changes, on a card standing in a band of cards half its height. Pinned, the
+    // slack would open INSIDE the card — a rule floating two hundred pixels below the rows
+    // it belongs to — where the honest place for it is under everything, at the foot of a
+    // card that simply has less in it than its neighbour.
     let pinned = false;
     for (const sub of spec.sub || []) {
       if (sub.group?.when && !sub.group.when(kit.voice())) continue;
       // `sffoot` is the one that takes the slack — the first section that actually drew.
       // On the rest it would divide the gap between them rather than bank it above the
       // group, which is the whole point of pinning them.
-      const grid = div(`devgrid sfsubgrid${pinned ? '' : ' sffoot'}`);
+      const grid = div(`devgrid sfsubgrid${pinned || spec.flowSub ? '' : ' sffoot'}`);
       pinned = true;
       c.append(grid);
       const rule = div('sfsub');
@@ -412,6 +429,10 @@ export function createSynthFull({
         if (dim) wrap.classList.add('sfdim');
         grid.append(wrap);
       }
+      // The same half-width rule the card's own rows get. This grid is built after the
+      // pass above ran, so it pairs itself — a sub-section is a card's rows in a rule of
+      // their own, and there is no reason for a choice to read differently inside one.
+      pairGrid(grid);
     }
     return c;
   };
@@ -441,8 +462,14 @@ export function createSynthFull({
     return b;
   };
 
-  /** A popover hung off a card's top-right, and the header button that opens it. */
-  const panelButton = ({ card: host, label, icon, lit, title, build: buildBody }) => {
+  /**
+   * A popover hung off a card's top-right, and the header button that opens it.
+   *
+   * `wide` is two columns instead of one — for Taps, which is a TABLE: up to eight rows of
+   * three pots plus their headings, and at one card's width the columns were cut off.
+   * Nothing else here needs it; a modulator's five controls read fine in a column.
+   */
+  const panelButton = ({ card: host, label, icon, lit, title, wide = false, build: buildBody }) => {
     const btn = document.createElement('button');
     btn.className = `sfpanelbtn${icon ? ' sficon' : ''}`;
     btn.type = 'button';
@@ -459,7 +486,7 @@ export function createSynthFull({
       if (open) { open.remove(); btn.classList.remove('on'); return; }
       for (const p of el.querySelectorAll('.sfpop')) p.remove();
       for (const b of el.querySelectorAll('.sfpanelbtn.on')) b.classList.remove('on');
-      const pop = div('sfpop');
+      const pop = div(`sfpop${wide ? ' sfwide' : ''}`);
       const bar = div('sfpophead');
       bar.append(span('t', label || title));
       const shut = document.createElement('button');
@@ -469,16 +496,72 @@ export function createSynthFull({
       pop.append(bar);
       buildBody(pop);
       host.append(pop);
+      keepInside(pop);
       btn.classList.add('on');
     };
     return wrap;
   };
 
-  /** The three envelope-stage curves, drawn as the shape they are. */
-  const CURVE_D = {
-    ATK: { exp: 'M2,14 C7,4 12,2 32,2', lin: 'M2,14 L32,2' },
-    other: { exp: 'M2,2 C7,12 12,14 32,14', lin: 'M2,2 L32,14' },
+  /**
+   * A popover that would hang off the left of the window, pushed back on.
+   *
+   * The popover is anchored to its card's RIGHT edge and grows inwards, which is safe
+   * while it is no wider than the card — that rule is why `.sfpop` is capped at 100%.
+   * A wide one is not: two columns hung off the first card of a band reach past the body,
+   * and `.sfbody` is the window's one scroll container, so anything outside its padding
+   * box is CLIPPED rather than scrolled to — a control that is there, is live, and cannot
+   * be seen or hit. The same failure the width cap was written to stop.
+   *
+   * So it is measured instead of assumed: whatever the anchor put on screen, if the left
+   * edge is past the body's, the anchor moves right by exactly the overhang. On every
+   * card that has room — which is every card the Taps door is on today — this measures
+   * once and changes nothing.
+   *
+   * DOWNWARDS IS THE SAME PROBLEM and it bites sooner: a popover hangs 24px below its
+   * card's top, and eight hits of a three-column table are taller than what is left of the
+   * body under it — so the ratios at the foot of Taps were cut off by the same padding
+   * box. A stylesheet cannot know that distance (`62vh` was the guess, and it is a guess
+   * about the WINDOW when the question is about the room under one card), so the ceiling
+   * is set here from what the popover's own top leaves, and the body inside it scrolls.
+   */
+  const keepInside = (pop) => {
+    const body = el.querySelector('.sfbody');
+    if (!body) return;
+    const room = body.getBoundingClientRect();
+    const box = pop.getBoundingClientRect();
+    const over = (room.left + 6) - box.left;
+    if (over > 0) pop.style.right = `${-1 - over}px`;
+    // A floor as well as a ceiling: on a very short window this would otherwise measure a
+    // popover down to nothing, and a drawer with no room is still better opened scrolling
+    // than opened empty.
+    pop.style.maxHeight = `${Math.max(140, room.bottom - box.top - 8)}px`;
   };
+
+  /**
+   * The envelope-stage curves, drawn as the shape they are.
+   *
+   * Keyed by the STORED value, in both spellings the panel uses — `exp`/`lin` on the
+   * layer envelopes and Tone's `exponential`/`linear` on the classes that take its own
+   * curve names. `snap` is the drum's pitch envelope: not a gentler exponential but a
+   * drop that is over before the tail starts, which is the difference between a kick that
+   * clicks and one that goes boing, so it is drawn as the near-vertical fall it is.
+   */
+  const CURVE_D = {
+    ATK: {
+      exp: 'M2,14 C7,4 12,2 32,2',
+      lin: 'M2,14 L32,2',
+      snap: 'M2,14 C3,6 4,2 32,2',
+    },
+    other: {
+      exp: 'M2,2 C7,12 12,14 32,14',
+      lin: 'M2,2 L32,14',
+      snap: 'M2,2 C3,10 4,14 32,14',
+    },
+  };
+  CURVE_D.ATK.exponential = CURVE_D.ATK.exp;
+  CURVE_D.ATK.linear = CURVE_D.ATK.lin;
+  CURVE_D.other.exponential = CURVE_D.other.exp;
+  CURVE_D.other.linear = CURVE_D.other.lin;
   const svgPath = (d, vb, w, h, cls) => {
     const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     s.setAttribute('viewBox', vb);
@@ -496,41 +579,89 @@ export function createSynthFull({
    *
    * ATK / DEC / REL choose between an exponential and a linear ramp, and the honest way
    * to show the difference between two ramps is to draw them. Each toggle draws its own
-   * CURRENT shape and says which it is, so the panel reads at a glance and a click swaps
-   * one stage. Only on the two amp envelopes — `adsr()` reads these keys and `centsEnv`,
-   * which runs the pitch and filter envelopes, does not, so a curve panel there would be
-   * three controls that move no sample.
+   * CURRENT shape and says which it is, so the panel reads at a glance and a click moves
+   * one stage on. On MRDR-3 it is the two amp envelopes — `adsr()` reads those keys and
+   * `centsEnv`, which runs the pitch and filter envelopes, does not, so a curve panel
+   * there would be three controls that move no sample.
+   *
+   * The Drum Synth's CURVE and RATE CURVE come here too, which is what generalised it:
+   * they are the same question (what SHAPE does this envelope have) asked with one and
+   * two controls instead of three, and RATE CURVE has a third answer. So a button cycles
+   * its row's options rather than swapping two, and the drawing is looked up by the value
+   * itself. Nothing here is a list of control names.
    */
   const curvePanel = (host, rows) => {
-    const anyLin = rows.some((r) => (kit.get(r.path) ?? r.def) === 'lin');
+    const valueOf = (r) => kit.get(r.path) ?? r.def;
     return panelButton({
       card: host,
       label: 'CURVE',
-      title: 'Envelope curves — exponential or linear per stage',
-      lit: anyLin,
+      // A dot when any of them has been moved off what the preset would do untouched —
+      // the only way a control behind a door can say it has been set.
+      lit: rows.some((r) => valueOf(r) !== r.def),
+      title: 'Envelope curves — the shape of each stage',
       icon: () => svgPath('M1,9 C4,2 7,1 15,1', '0 0 16 10', 19, 12, 'sfcurveicon'),
       build: (pop) => {
         const note = document.createElement('p');
         note.className = 'sfpopnote';
-        note.textContent = 'Exponential or linear for each stage — the shape of the '
-          + 'envelope, not its times. Set once.';
+        note.textContent = 'The shape of the envelope, not its times. Set once.';
         pop.append(note);
         const grid = div('sfcurvegrid');
         for (const row of rows) {
-          const exp = (kit.get(row.path) ?? row.def) === 'exp';
-          const d = (row.label === 'ATK' ? CURVE_D.ATK : CURVE_D.other)[exp ? 'exp' : 'lin'];
+          const cur = String(valueOf(row));
+          const family = row.label === 'ATK' ? CURVE_D.ATK : CURVE_D.other;
+          const d = family[cur] || family.lin;
+          const options = row.options || [];
+          const next = options[(options.indexOf(valueOf(row)) + 1) % (options.length || 1)];
+          const word = kit.short[cur] ?? cur.toUpperCase();
           const b = document.createElement('button');
           b.className = 'sfcurvebtn'; b.type = 'button';
-          b.title = `${row.label} curve — ${exp ? 'EXP (exponential)' : 'LIN (linear)'}.`
-            + ' Click to swap.';
+          b.title = `${row.label} — ${cur}. Click to ${options.length > 2 ? 'cycle' : 'swap'}.`;
           b.append(svgPath(d, '0 0 34 16', '100%', 24, 'sfcurveshape'),
-            span('l', row.label), span('m', exp ? 'EXP' : 'LIN'));
-          b.onclick = () => { kit.pickWrite(row, exp ? 'lin' : 'exp'); kit.repaint(); };
+            span('l', row.label), span('m', word));
+          b.onclick = () => { kit.pickWrite(row, next); kit.repaint(); };
           grid.append(b);
         }
         pop.append(grid);
       },
     });
+  };
+
+  /**
+   * TAPS behind a door on the Master card — the count on the button, the detail inside.
+   *
+   * The one panel here that REDRAWS ITSELF rather than repainting the window. Every other
+   * control behind a door writes a value and leaves the layout alone; the stepper in this
+   * one changes how many controls the panel has, and `kit.repaint()` rebuilds every card
+   * on the window — which would take this popover down with the card it hangs off, on the
+   * first press of a button that lives inside it. So the body is a container this keeps a
+   * handle on and rebuilds in place, and the count is written back onto the button and
+   * the popover's own title, both from `kit.tapsDoorLabel` so the three of them cannot
+   * drift. The rest of the window does not need the redraw: no other card reads a tap.
+   */
+  const tapsPanel = (host, p) => {
+    let name = null;
+    const wrap = panelButton({
+      card: host,
+      label: p.label,
+      title: 'Taps — the repeats that turn one sound into a clap',
+      // Two columns wide: this one is a table, and a table cut off at a column boundary
+      // is a control you cannot see. See `panelButton`.
+      wide: true,
+      build: (pop) => {
+        const body = div('sftapsbody');
+        const draw = () => {
+          body.replaceChildren(kit.tapsGroup(draw));
+          const text = kit.tapsDoorLabel();
+          if (name) name.textContent = text;
+          const head = pop.querySelector('.sfpophead .t');
+          if (head) head.textContent = text;
+        };
+        draw();
+        pop.append(body);
+      },
+    });
+    name = wrap.querySelector('.sfpanelbtn');
+    return wrap;
   };
 
   /** A named section behind a door — FM, today. Its own switch rides in the popover head. */
@@ -573,16 +704,18 @@ export function createSynthFull({
    * where there is room to read a word and no room to draw a box round it.
    */
   const choiceRow = (row) => {
-    // Every choice row takes the whole card. A short list used to take three columns of
-    // four, on the theory that it left room for a pot beside it — but a choice row carries
-    // a rule under it, and a rule that stops three quarters of the way across reads as a
-    // mistake rather than as a boundary. Nothing shares a line with one in practice
-    // anyway: SHAPE, KEY MODE and TARGET are each followed by a pot that starts its own
-    // row, so the leftover column was never anything but a gap.
+    // A choice row is built full width and PAIRS UP afterwards — see `pairChoices`. It is
+    // built wide rather than half because half is a measurement: two of them share a line
+    // only where both actually fit on one, and that is not known until the card is in the
+    // document at the width the window gave it.
     // Every option drawable? Then draw them. That is WAVE on four cards and the LFO's
     // TARGET; everything else stays words.
     const drawn = row.options.every((o) => GLYPH[o]);
-    const wrap = div(`row sfchoice${drawn ? ' sfglyphrow' : ''}`);
+    // `startRow` — the pot flag, meaning the same thing on a choice: begin a fresh line,
+    // so this row can only ever be the LEFT half of a pair. TYPE wears it on the noise
+    // card, where COLOUR now sits above it and would otherwise take TYPE as its partner
+    // and leave SLOPE, TYPE's own other half, stranded on a line by itself.
+    const wrap = div(`row sfchoice${drawn ? ' sfglyphrow' : ''}${row.startRow ? ' sfownline' : ''}`);
     const cur = row.read ? row.read(kit.voice()) : (kit.get(row.path) ?? row.def);
     wrap.append(span('k', row.label));
     const opts = div('sfopts');
@@ -606,32 +739,103 @@ export function createSynthFull({
     // five dead words sitting under the waveforms on every patch that is not noise is
     // clutter where a greyed pot at least says what it would be. Nothing moves when it
     // comes and goes: it is directly under the picker that summons it.
-    if (row.when) guards.push(wrap, row.when, row.label === 'COLOUR');
+    const hides = !!row.when && row.label === 'COLOUR';
+    if (row.when) guards.push(wrap, row.when, hides);
+    // A row that can VANISH may not take a partner: half a line with nothing beside it is
+    // worse than the full line it came from. Greyed rows still pair — they hold their
+    // place, which is the whole reason they are greyed rather than removed.
+    if (hides) wrap.classList.add('sfhides');
     return wrap;
   };
 
   /**
-   * TYPE and SLOPE, on ONE LINE.
+   * CHOICE ROWS PAIR UP, TWO TO A LINE.
    *
-   * They are one question asked twice — what shape of filter, and how steeply — so they
-   * read as a pair rather than as two rows that happen to be adjacent, and as a pair they
-   * cost one line instead of two on the card that can least afford it: the filter is the
-   * only card carrying a response curve AND four pots AND two choices.
+   * A choice is a label and a few short words, and on a 259px card that is half a line
+   * used and half a line thrown away — with a rule under it saying the whole width was
+   * the control. Stacked, four of them on the noise card cost four rows of height that
+   * the pots below want; paired, they cost two and read as what they are: two questions
+   * about the same thing (what shape of filter and how steep, which curve for the level
+   * and which for the pitch).
    *
-   * One line means one line: each keeps its label BESIDE its options, which is the shape
-   * every other choice row on this window has. They were stacked — label above options —
-   * for a while on the theory that half a card would not hold a name and four words. Half
-   * a card is 117px and the words come to 114 at 10px, so it does; the tightening below is
-   * what buys those three pixels, and it is why `.sfopts` may not wrap in here.
+   * TYPE and SLOPE were paired by name here for exactly this reason. The rule is now
+   * general, because there was never anything special about those two — every other pair
+   * on the window was simply being left full width by an oversight the drum panels made
+   * impossible to ignore.
+   *
+   * Two conditions, both of them structural rather than a list of names:
+   *
+   *   · ADJACENT SIBLINGS in the same grid. A pot between two choices means they are not
+   *     two halves of one question, and reordering the panel to make them adjacent is the
+   *     panel's decision, not this function's.
+   *   · WORDS, not waveforms. A drawn row divides the whole line between its glyphs (see
+   *     `.sfglyphrow`), so halving it halves the drawing.
+   *
+   * The third condition is the one this cannot answer here: whether the two of them
+   * actually FIT on one line at the width this card ended up. That is a measurement, and
+   * it happens once the window is up — see `splitTightPairs`, which puts back any pair
+   * that turned out to be too wide.
    */
-  const pairTypeSlope = (c) => {
-    const rows = [...c.querySelectorAll('.sfchoice')];
-    const type = rows.find((r) => r.querySelector('.k')?.textContent === 'TYPE');
-    const slope = rows.find((r) => r.querySelector('.k')?.textContent === 'SLOPE');
-    if (!type || !slope || type.nextElementSibling !== slope) return;
-    const pair = div('row sfpair');
-    type.before(pair);
-    for (const r of [type, slope]) pair.append(r);
+  const pairable = (node) => node.classList?.contains('sfchoice')
+    && !node.classList.contains('sfglyphrow')
+    && !node.classList.contains('sfhides');
+  const pairGrid = (grid) => {
+    let left = null;
+    // Snapshot: the loop moves the very children it is walking.
+    for (const node of [...grid.children]) {
+      if (!pairable(node)) { left = null; continue; }
+      // A row that starts its own line can open a pair but never close one — see
+      // `sfownline` in `choiceRow`. Whatever was waiting for a partner does not get this
+      // one, and goes out full width instead.
+      if (node.classList.contains('sfownline')) { left = node; continue; }
+      if (!left) { left = node; continue; }
+      const pair = div('row sfpair');
+      left.before(pair);
+      pair.append(left, node);
+      left = null;
+    }
+  };
+  const pairChoices = (c) => {
+    for (const grid of c.querySelectorAll('.devgrid')) pairGrid(grid);
+  };
+
+  /**
+   * A pair that did not fit, put back as two rows.
+   *
+   * Inside a pair the options may not wrap — wrapping is how a row that will not fit turns
+   * itself back into two lines silently, and on a narrow card only. So a half that is too
+   * long overflows instead, and the overflow is what is measured here.
+   *
+   * MEASURED AS A COLLISION, not as `scrollWidth`. The options are right-aligned, so when
+   * there is not enough line for them they grow out of the LEFT of their box — and
+   * `scrollWidth` reports overflow at the end edge only, so it reads exactly zero while
+   * the first option is sitting on top of the name. Which is what it looked like:
+   * `COLOUWHT PNK BRN BLU VIO` on the noise card, a pair that never split because nothing
+   * measured it as too wide. The distance between the name's right edge and the first
+   * option's left edge is the same fact and it has a sign.
+   *
+   * 6px is a hair under the 7px `gap` a pair's own halves are laid out with, so a pair
+   * that fits exactly is not split by a rounding error.
+   *
+   * Runs wherever `fitLabels` runs, and for the same reason: a card that is not in the
+   * document has no width, so every measurement on it reads zero and decides nothing.
+   */
+  const splitTightPairs = (root) => {
+    for (const pair of root.querySelectorAll('.sfpair')) {
+      const halves = [...pair.children];
+      const tight = halves.some((h) => {
+        const k = h.querySelector('.k');
+        const first = h.querySelector('.sfopts')?.firstElementChild;
+        if (!k || !first) return false;
+        const name = k.getBoundingClientRect();
+        const option = first.getBoundingClientRect();
+        if (!name.width || !option.width) return false;   // not in the document yet
+        return option.left < name.right + 6;
+      });
+      if (!tight) continue;
+      for (const h of halves) pair.before(h);
+      pair.remove();
+    }
   };
 
   /** One control. Pots are the strip's own; choices wear this window's clothes. */
@@ -820,6 +1024,7 @@ export function createSynthFull({
         bar.append(tag);
       }
     }
+    const right = div('sfbarright');
     if (cell.group?.solo) {
       const lit = kit.soloOn(cell.group.solo);
       const s = document.createElement('button');
@@ -829,10 +1034,53 @@ export function createSynthFull({
       s.title = lit ? 'Stop soloing this layer'
         : 'Hear this layer on its own — monitoring, never saved';
       s.onclick = (ev) => { ev.stopPropagation(); kit.setSolo(cell.group.solo, !lit); };
-      const right = div('sfbarright');
       right.append(s);
-      bar.append(right);
     }
+    // COPY, beside solo, because what it copies is THIS CELL'S SUBJECT — the whole layer,
+    // its oscillator and its filter and its four envelopes, not the one card the control
+    // used to hang off. It was on the OSC card's header, which put a whole-layer action
+    // inside the smallest part of the layer and left it a scroll away from the layer's own
+    // name. Here it sits under LAYER 2, next to the other control that addresses the layer
+    // as one thing, and reads as what it does.
+    if (cell.group?.layerCopy) {
+      const to = cell.group.layerCopy;
+      const select = document.createElement('select');
+      select.className = 'sfcopyselect';
+      select.title = `Replace the whole of Layer ${to} — oscillator, filter, envelopes —`
+        + ' with another layer';
+      // COPY is the control's NAME, not one of its choices. As a visible first option it
+      // was a row you could pick that did nothing, and — because a native menu ticks
+      // whatever is selected — it also put a checkmark beside it, which says "COPY is the
+      // current setting" about a control that has no setting. Hidden, it still labels the
+      // closed control and still gives the menu somewhere to return to after a copy; the
+      // list itself is only the two layers you can actually copy from, and nothing in it
+      // is ticked.
+      const placeholder = document.createElement('option');
+      placeholder.textContent = 'COPY';
+      placeholder.value = '';
+      placeholder.hidden = true;
+      placeholder.selected = true;
+      select.append(placeholder);
+      for (const other of [1, 2, 3].filter((n) => n !== to)) {
+        const option = document.createElement('option');
+        option.value = String(other);
+        option.textContent = `Copy from Layer ${other}`;
+        select.append(option);
+      }
+      select.onchange = (ev) => {
+        ev.stopPropagation();
+        const from = Number(select.value);
+        select.value = '';
+        if (from) kit.copyLayer(from, to);
+      };
+      // The cell IS the layer selector — a click anywhere in it switches which layer the
+      // band below is editing. Opening a menu is not that click, and neither is the
+      // pointerdown that opens it.
+      select.onclick = (ev) => ev.stopPropagation();
+      select.onpointerdown = (ev) => ev.stopPropagation();
+      right.append(select);
+    }
+    if (right.childNodes.length) bar.append(right);
     wrap.append(bar);
 
     const body = div('sfmixbody');
@@ -986,6 +1234,7 @@ export function createSynthFull({
     // this again after `.show` goes on; a re-render of a window already up is measured
     // here and needs no second frame.
     fitLabels(el);
+    splitTightPairs(el);
   }
 
   /**
@@ -999,7 +1248,14 @@ export function createSynthFull({
   addEventListener('resize', () => {
     if (!showing) return;
     cancelAnimationFrame(fitPending);
-    fitPending = requestAnimationFrame(() => { if (showing) fitLabels(el); });
+    fitPending = requestAnimationFrame(() => {
+      if (!showing) return;
+      fitLabels(el);
+      // Splits only — a window dragged narrower gives its pairs back as full rows. It
+      // cannot re-pair, because pairing is a rebuild and a resize is not worth one; the
+      // next repaint (any control, any preset) makes the pairs again at the new width.
+      splitTightPairs(el);
+    });
   });
 
   // ---- open, close -----------------------------------------------------------
@@ -1068,6 +1324,7 @@ export function createSynthFull({
       // First frame with real widths: `render` ran against a `display: none` shell, where
       // every column measures zero and no name can be fitted to one. See `fitLabels`.
       fitLabels(el);
+      splitTightPairs(el);
       for (const draw of graphsToDraw) draw();
     });
     // Nothing is made inert and nothing is dimmed: the desk stays live underneath. This

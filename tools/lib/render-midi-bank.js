@@ -7,6 +7,7 @@ import {
   songBlocks, stepLen, toneLen, perNoteLengthLane, effectiveToneLength,
 } from '../../src/engine/lanes.js';
 import { SWING_STRAIGHT } from '../../src/data/arrangements.js';
+import { baseLane, isLayer } from '../../src/data/voices.js';
 
 const PPQ = 96;          // ticks per quarter note
 const TPS = PPQ / 4;     // ticks per 16th step — the sequencer's grid
@@ -64,10 +65,24 @@ const vlq = (n) => {
   for (n >>= 7; n > 0; n >>= 7) out.unshift((n & 0x7f) | 0x80);
   return out;
 };
-const chunk = (id, bytes) => Buffer.concat([
-  Buffer.from(id, 'ascii'),
-  Buffer.from([(bytes.length >> 24) & 0xff, (bytes.length >> 16) & 0xff, (bytes.length >> 8) & 0xff, bytes.length & 0xff]),
-  Buffer.from(bytes),
+// Uint8Array rather than Buffer, all the way out to `buffer` below: the desk builds
+// its own MIDI in the browser now — deployed build included, where there is no server
+// to ask — and this walk is too much to have a second copy of. Node takes a
+// Uint8Array everywhere it took a Buffer (`writeFileSync`, `res.end`), so the
+// command-line exports are unchanged by it.
+const ascii = (s) => Uint8Array.from(s, (c) => c.charCodeAt(0) & 0x7f);
+const concatBytes = (parts) => {
+  let n = 0;
+  for (const p of parts) n += p.length;
+  const out = new Uint8Array(n);
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+};
+const chunk = (id, bytes) => concatBytes([
+  ascii(id),
+  Uint8Array.of((bytes.length >> 24) & 0xff, (bytes.length >> 16) & 0xff, (bytes.length >> 8) & 0xff, bytes.length & 0xff),
+  Uint8Array.from(bytes),
 ]);
 
 // events: {tick, data:[...]} — sorted, delta-encoded, terminated with EOT.
@@ -79,7 +94,7 @@ function track(events, meta = []) {
   bytes.push(...vlq(0), 0xff, 0x2f, 0x00);
   return chunk('MTrk', bytes);
 }
-const nameMeta = (s) => [0x00, 0xff, 0x03, s.length, ...Buffer.from(s, 'ascii')];
+const nameMeta = (s) => { const b = ascii(s); return [0x00, 0xff, 0x03, b.length, ...b]; };
 // Track name, and the GM program when patches are on. Deliberately NO initial CC7:
 // a channel volume at tick 0 imports into a DAW as a fader/automation point and
 // steps on the mix. It was once a guard against silent tracks, but that mystery
@@ -159,6 +174,43 @@ export function midiBuffer(bank, {
   swing = bank.swing ?? SWING_STRAIGHT,
 } = {}) {
   const blocks = songBlocks(bank, repeat);
+
+  // ---- layers get tracks of their own ---------------------------------------
+  //
+  // A layer is a lane — a part with its own strip and its own notes (a MIDI import
+  // puts every part past the engine's six pitched lanes on one). Writing only the
+  // fixed list below would export a ten-part song as six, which is the merge this
+  // whole path exists to avoid, one step further along.
+  //
+  // Discovered from the BANK rather than from `__layers`, because every caller here
+  // hands over the raw bank and the notes are the honest record either way. The name
+  // is the base track's plus the ordinal — `Lead 2` — which is exactly what
+  // tools/lib/midi-import.js reads back onto `lead2`.
+  const layerKeys = [...new Set(blocks.flatMap((b) => Object.keys(b)))]
+    .filter((k) => isLayer(k) && Array.isArray(blocks.find((b) => b[k])?.[k]))
+    .sort();
+  // Channels 0–8 and 10–13 are spoken for below, 9 is the kit. Two are left, and a
+  // layer past them shares the channel of the lane it copies: with `gmChannels` off —
+  // which is every use but a hardware module — everything is on channel 1 regardless.
+  const spareChannels = [14, 15];
+  const layersOf = (specs) => layerKeys.flatMap((key) => {
+    const base = specs.find((L) => L.lane === baseLane(key));
+    if (!base) return [];
+    return [{
+      ...base,
+      lane: key,
+      name: `${base.name} ${key.slice(baseLane(key).length)}`,
+      ch: spareChannels.shift() ?? base.ch,
+    }];
+  });
+  const laneTracks = [...LANE_TRACKS, ...layersOf(LANE_TRACKS)];
+  const runTracks = [...RUN_TRACKS, ...layersOf(RUN_TRACKS)];
+  // A drum layer stays on channel 10 with the rest of the kit — that is what makes a
+  // GM device play it as percussion at all — and is told apart by its track name.
+  const drumTracks = [
+    ...Object.entries(DRUMS),
+    ...layerKeys.filter((k) => DRUMS[baseLane(k)]).map((k) => [k, DRUMS[baseLane(k)]]),
+  ];
   // Swing, in ticks. A pair of sixteenths lasts 2*TPS, so the second of them lands at
   // 2*TPS*(swing/100) instead of at TPS — a shift of TPS*(swing-50)/50 on odd steps
   // only, exactly as the engine shifts them in seconds. At the triplet shuffle that is
@@ -200,7 +252,7 @@ export function midiBuffer(bank, {
     0x00, 0xff, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08, // 4/4
   ]));
 
-  for (const L of LANE_TRACKS) {
+  for (const L of laneTracks) {
     const notes = [];
     blocks.forEach((b, bi) => {
       const lane = b[L.lane];
@@ -230,7 +282,7 @@ export function midiBuffer(bank, {
     record(L.name, ch(L.ch), notes);
   }
 
-  for (const R of RUN_TRACKS) {
+  for (const R of runTracks) {
     const notes = [];
     blocks.forEach((b, bi) => {
       const lane = b[R.lane];
@@ -256,13 +308,13 @@ export function midiBuffer(bank, {
   // Drums. One MTrk per kit piece rather than a single lump, so each stem WAV
   // has a MIDI track that lines up with it one-for-one. They all still share
   // channel 10 (0-based 9), which is what makes a GM device play them as a kit.
-  for (const [lane, keyNum] of Object.entries(DRUMS)) {
+  for (const [lane, keyNum] of drumTracks) {
     const notes = [];
     blocks.forEach((b, bi) => {
       if (!b[lane]) return;
       for (let s = 0; s < 32; s++) {
         if (!b[lane][s]) continue;
-        note(notes, 9, keyNum, tickAt(bi, s), TPS * 0.5, DRUM_VEL[lane] ?? 90);
+        note(notes, 9, keyNum, tickAt(bi, s), TPS * 0.5, DRUM_VEL[baseLane(lane)] ?? 90);
       }
     });
     if (!notes.length) continue;
@@ -276,7 +328,7 @@ export function midiBuffer(bank, {
 
   const header = chunk('MThd', [0, 1, 0, tracks.length, (PPQ >> 8) & 0xff, PPQ & 0xff]);
   return {
-    buffer: Buffer.concat([header, ...tracks]),
+    buffer: concatBytes([header, ...tracks]),
     trackNames,
     tracks: written,
     ppq: PPQ,

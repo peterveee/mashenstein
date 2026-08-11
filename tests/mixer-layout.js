@@ -10,6 +10,7 @@ const librarySource = readFileSync(new URL('../tools/mixer-voice-library.js', im
 const editor = readFileSync(new URL('../tools/mixer-voice-editor.js', import.meta.url), 'utf8');
 const voiceSource = readFileSync(new URL('../src/data/voices.js', import.meta.url), 'utf8');
 const server = readFileSync(new URL('../tools/mixer.js', import.meta.url), 'utf8');
+const mixerBuilder = readFileSync(new URL('../tools/build-mixer-static.js', import.meta.url), 'utf8');
 const seq = readFileSync(new URL('../tools/mixer-step-seq.js', import.meta.url), 'utf8');
 const piano = readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta.url), 'utf8');
 const barGrid = readFileSync(new URL('../tools/mixer-bar-grid.js', import.meta.url), 'utf8');
@@ -28,16 +29,55 @@ assert(!/schedulePreview|previewNote/.test(touchedBody)
 
 const envelopeTimeRows = editor.match(/envTime\(/g) || [];
 assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
-  && /const ENV_TIME_SCALE = 2;/.test(editor)
-  && /n\(path, label, min, ENV_MAX_SECONDS, step/.test(editor)
-  && /\{ \.\.\.opts, scale: ENV_TIME_SCALE \}/.test(editor)
+  && /const ENV_TIME_TAPER = 'log';/.test(editor)
+  && /const ENV_TIME_STEP = 0\.001;/.test(editor)
+  && /n\(path, label, min, ENV_MAX_SECONDS, ENV_TIME_STEP/.test(editor)
+  && /\{ \.\.\.opts, taper: ENV_TIME_TAPER, floor: ENV_TIME_STEP \}/.test(editor)
   && envelopeTimeRows.length >= 19
   && /SUSTAIN', 0, 100, 1/.test(editor)
   && /write: \(v\) => v \/ 100/.test(editor),
-  'all envelope time controls share a 10-second maximum and sustain is edited as 0–100%');
+  'every envelope time shares the 10-second maximum, the millisecond step and the log '
+  + 'taper, and sustain is edited as 0–100%');
+
+// The step is not a per-call argument any more, so no envelope pot can be built coarser
+// than a millisecond, and none may start above the floor the taper begins at: a decay
+// that could not go under 10ms was the whole complaint this range answers.
+{
+  const mins = [...editor.matchAll(/envTime\([^,]+, [^,]+, ([^,]+), secs,/g)].map((m) => m[1].trim());
+  // 0.0001 is the noise ATTACK's floor alone: dsKickHard ships attack 0.000343 and the
+  // engine takes the value raw, so a 1ms floor was a pot that rewrote a factory preset
+  // on first touch — the exact failure tests/pot-coverage.js exists to catch.
+  assert(mins.length === envelopeTimeRows.length
+    && mins.every((m) => m === '0' || m === '0.001' || m === '0.0001' || m === 'min'),
+    `every envelope time starts at zero or at its taper floor (${new Set(mins).size} distinct)`);
+}
+
+// A decade per quarter turn. The landmarks are the point of the taper — 10ms, 100ms, 1s
+// and 10s evenly spaced — so they are pinned as arithmetic rather than as prose.
+{
+  const lo = 0.001;
+  const span = Math.log(10 / lo);
+  const at = (pos) => lo * Math.exp(span * pos);
+  assert(Math.abs(at(0.25) - 0.01) < 1e-9 && Math.abs(at(0.5) - 0.1) < 1e-9
+    && Math.abs(at(0.75) - 1) < 1e-9 && Math.abs(at(1) - 10) < 1e-9,
+    'the envelope time taper reads 10ms at a quarter turn, 100ms at half, 1s at three '
+    + 'quarters and 10s at the stop');
+}
+
+// The short time pots span a fraction of a second, not ten, and are already in
+// milliseconds across their whole travel, so they keep the quadratic rather than taking
+// a taper shaped for a range twenty times wider.
+assert(/const SHORT_TIME_SCALE = 2;/.test(editor)
+  && !/'DROP TIME'[\s\S]{0,120}taper:/.test(editor)
+  && !/'STRIKE'[\s\S]{0,120}taper:/.test(editor)
+  && /'DROP TIME', 0\.001, 0\.5, 0\.001/.test(editor)
+  && /'GLIDE', 0, 0\.5, ENV_TIME_STEP/.test(editor),
+  'the sub-second time pots (DROP TIME, STRIKE, GLIDE) keep their own shorter taper and '
+  + 'are still dialled to the millisecond');
 
 const entrySource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
-assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null,\s*onStart = null, onEnd = null \}\)/
+const mrdrKnob = readFileSync(new URL('../tools/mrdr3-knob.js', import.meta.url), 'utf8');
+assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null,\s*taper = null, floor = 0, onStart = null, onEnd = null \}\)/
   .test(entrySource)
   && /const pos = clamp\(position, 0, 1\);/.test(entrySource)
   && /return min \+ \(max - min\) \* Math\.pow\(pos, curve\);/.test(entrySource)
@@ -47,7 +87,15 @@ assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1,
   // preset is — so what is pinned here is that whatever it resolves to is handed to the
   // shared knob beside the row's own origin, not the literal shape of the expression.
   && /typeof row\.scale === 'function' \? row\.scale\(state\.voice\) : row\.scale/.test(editor)
-  && /scale, origin: row\.origin/.test(editor),
+  && /scale, origin: row\.origin, taper: row\.taper, floor: row\.floor/.test(editor)
+  // The log branch, in the shared knob and in the standalone copy of it, so the two
+  // surfaces cannot disagree about what a position means.
+  && /return pos <= 0 \? min : logLo \* Math\.exp\(logSpan \* pos\);/.test(entrySource)
+  && /return pos <= 0 \? min : logLo \* Math\.exp\(logSpan \* pos\);/.test(mrdrKnob)
+  && /const logLo = logTaper \? Math\.max\(min, floor > 0 \? floor : step, 1e-6\) : 0;/
+    .test(entrySource)
+  && /const logLo = logTaper \? Math\.max\(min, floor > 0 \? floor : step, 1e-6\) : 0;/
+    .test(mrdrKnob),
   'all envelope controls use the shared non-linear knob response');
 
 // A tapered BIPOLAR pot curves about its origin rather than across its span. Applied to
@@ -100,6 +148,7 @@ const bypass = new Function(`
   ${lift(/function getAt\(preset, path\) \{[\s\S]*?\n\}/, 'getAt')}
   ${lift(/function setAt\(preset, path, value\) \{[\s\S]*?\n\}/, 'setAt')}
   ${lift(/const BODY_DEFAULT = [^\n]*;/, 'BODY_DEFAULT')}
+  ${lift(/const FM_INDEX_SEED = [^\n]*;/, 'FM_INDEX_SEED')}
   ${lift(/const SECTION_DEFAULTS = \{[\s\S]*?\n\};/, 'SECTION_DEFAULTS')}
   ${lift(/const HELD = [^\n]*;/, 'HELD')}
   ${lift(/const holdOn = [^\n]*;/, 'holdOn')}
@@ -168,7 +217,42 @@ const bypass = new Function(`
   assert(bypassed?.noise?.freq === 3000 && JSON.stringify(audible)
     === JSON.stringify({ kind: 'drum', osc: { from: 60, to: 40 } }),
     'a hold is inert — everything the engine reads is what it would be with no hold at all');
+
+  // Switching FM on is a COLOUR, not a different instrument. INDEX is depth in hertz as
+  // a multiple of the carrier, so 1 swings the oscillator by its whole starting
+  // frequency: measured on dsKick, dsSnare and dsRim that changes about half the render's
+  // own energy, and the switch was seeded there. The pot still reaches 8 — `rimClang` and
+  // `clapFm`, the only two presets in the catalogue that use drum FM, sit at 2.2 — but
+  // that is somewhere you go, not where a switch drops you.
+  assert(SECTION_DEFAULTS['osc.fm'].index > 0 && SECTION_DEFAULTS['osc.fm'].index <= 0.5,
+    'the drum FM switch comes on as a colour — audible, and still the same drum');
 }
+
+// ...and the pot's own reset agrees with it, or "put it back" would be a third value that
+// throwing the switch never produces.
+assert(/const FM_INDEX_SEED = [\d.]+;/.test(editor)
+  && /'osc\.fm': \{ type: 'sine', ratio: 1\.4, index: FM_INDEX_SEED, decay: 0\.35 \}/.test(editor)
+  && /'\$osc\.fm\.index', 'INDEX', 0, 8, 0\.05, fixed\(2\), FM_INDEX_SEED/.test(editor),
+  'the FM card opens on the same depth its INDEX pot resets to — one number, named once');
+
+// An FM section at zero depth is no FM section. `_playLayer` has always read it that way;
+// `_playDrum` built the operator regardless, so a modulator swinging the carrier by a
+// ten-thousandth of a hertz was constructed per tap for no audible reason — and "wind
+// INDEX down" meant something different on the two synths.
+const voicesEngine = readFileSync(new URL('../src/engine/voices.js', import.meta.url), 'utf8');
+assert(/if \(o\.fm && \(o\.fm\.index \?\? 1\) > 0\) \{/.test(voicesEngine)
+  && /if \(!hardSynced && spec\.fm && \(spec\.fm\.index \?\? 1\) > 0\) \{/.test(voicesEngine),
+  'INDEX at zero builds no modulator, on the drum path and the layer path alike');
+
+// The taps stepper redraws THE SURFACE IT IS ON. Everything about the card changes with
+// the count — the readout, the TIME offsets, FALLOFF, the walks, the per-tap overrides —
+// so it cannot patch itself in place, and it is reachable from the full window only: a
+// Drum Synth strip opens on Quick and never carries this card. Calling the strip's
+// `build` was therefore a repaint of the one surface the button is not on.
+assert(/const tapsGroup = \(repaint = build\) => \{/.test(editor)
+  && /if \(group\.taps\) \{ card\.append\(tapsGroup\(repaint\)\); return card; \}/.test(editor)
+  && !/\n      touched\(\);\n      build\(\);\n      undoHistory\.end\(\);/.test(editor),
+  'the TAPS stepper repaints the surface that drew it, so the full window shows the count it just set');
 
 assert(/const SOURCES = \[[\s\S]*?label: 'Library'[\s\S]*?label: 'My presets'/.test(
   librarySource)
@@ -214,13 +298,90 @@ assert(/function silenceAll\(\)[\s\S]*?releaseOskSources\('m:'\)/.test(entry)
   && /id="stop"[^>]*data-tipsays="[^"]*release held notes and silence every live sound/.test(shell)
   && !/id="stop"[^>]*data-tipsays="[^"]*turn off MIDI input/.test(shell),
   'Stop silences held notes without changing MIDI and explains its silence-only behavior');
+// The desk does not rewind, so it must not be running the recorder that rewinding
+// needs. `captureEnabled` defaults to true and only a caller that knows better turns it
+// off, so the desk staying silent about it meant a ScriptProcessorNode — a main-thread
+// callback every 2048 samples — sitting on the master output of a window that has no
+// rewind control on it. Before ensure(), which is the only moment the tap is built.
+assert(/Audio\.setCaptureEnabled\(false\)/.test(entry)
+  && entry.indexOf('Audio.setCaptureEnabled(false)') < entry.indexOf('Audio.ensure()'),
+  'the desk turns the rewind capture tap off before it builds its graph — it has no rewind');
+assert(/_startCapture\(\)[\s\S]{0,400}?createScriptProcessor/.test(audio),
+  'and that tap is still the ScriptProcessorNode this is worth avoiding');
 assert(/panic\(\)[\s\S]*?this\._cutLaneGates\(\)[\s\S]*?this\.voices\.dispose\(\)[\s\S]*?this\.bank = null/.test(audio)
   && /resumeAfterPanic\(\)[\s\S]*?this\.levels\.master/.test(audio)
   && /previewNote\([^\n]*\)[\s\S]*?this\.resumeAfterPanic\(\)/.test(audio),
   'the audio engine cuts live buses and held voices, then restores on a deliberate preview');
 assert(/const SEQUENCER_LOOKAHEAD = 0\.25;/.test(audio)
-  && /while \(this\.nextTime < this\.ctx\.currentTime \+ SEQUENCER_LOOKAHEAD\)/.test(audio),
+  && /lookahead\(\) \{/.test(audio)
+  && /const ahead = this\.lookahead\(\);[\s\S]{0,120}?while \(this\.nextTime < this\.ctx\.currentTime \+ ahead\)/.test(audio),
   'the realtime scheduler keeps a quarter-second of audio queued while the desk lays out');
+// The other half of that bargain. A quarter-second is short because a seek has to be
+// heard, and that reasoning only holds for a window somebody is attending to. FOCUS is
+// the test, not visibility: switch to another app on a Mac and the Chrome window is
+// usually still in plain sight, so `document.hidden` stays false while the process has
+// already been demoted — gating on `hidden` alone covers the case nobody listens through
+// and misses the one the desk is actually used in.
+assert(/const BACKGROUND_LOOKAHEAD = 1\.5;/.test(audio)
+  && /document\.hidden \|\| !document\.hasFocus\(\)\s*\n?\s*\?\s*BACKGROUND_LOOKAHEAD\s*:\s*SEQUENCER_LOOKAHEAD/.test(audio),
+  'an unattended desk queues far enough ahead to survive being backgrounded');
+// And the desk stops DRAWING the audio when nobody is watching it. Meters, playhead,
+// clocks and the four following grids are a picture of the sound; sixty of those a
+// second on a twenty-lane song is real layout, and spending it on a window whose owner
+// is in another app was enough that scrolling in that other app put a hole in the song.
+// The two transport syncs stay above the return — arming a loop and landing a seek are
+// not pictures, and a seek that waits for you to look back is a broken seek.
+assert(/syncLoopAnchor\(\);\s*\n\s*syncPendingSeek\(\);\s*\n\s*if \(typeof document !== 'undefined' && !document\.hasFocus\(\)\) \{\s*\n\s*requestAnimationFrame\(tick\);\s*\n\s*return;/.test(entry),
+  'an unattended desk keeps its transport running and stops drawing meters at it');
+// And it asks the browser for room to be late in, which the game must not inherit: a
+// small buffer is right for a jump sound and wrong for a desk that plays through a
+// twenty-lane section with another app in front of it.
+assert(/setLatencyHint\(hint\)/.test(audio)
+  && /if \(this\.latencyHint\) opts\.latencyHint = this\.latencyHint;/.test(audio)
+  && /if \(this\.sampleRateHint\) opts\.sampleRate = this\.sampleRateHint;/.test(audio)
+  && /Object\.keys\(opts\)\.length \? new AC\(opts\) : new AC\(\)/.test(audio)
+  && /Audio\.setLatencyHint\('playback'\)/.test(entry)
+  && !/setLatencyHint/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
+  'the desk asks for a playback-sized output buffer and the game keeps the default');
+// The desk monitors at the rate its bounces render (tools/lib/wav.js SR = 44100), so
+// the mix being heard is the file being kept — and the graph costs ~8% less than at
+// 48k. The game keeps the device default, exactly like the latency hint.
+assert(/Audio\.setSampleRate\(44100\)/.test(entry)
+  && !/setSampleRate/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
+  'the desk monitors at the bounce sample rate and the game keeps the device default');
+// A silenced lane costs nothing: the desk opts in to the scheduler skipping muted
+// lanes and the losers of a channel solo — states whose synthesis reaches no output
+// at all (mute zeroes the fader every send taps below; solo zeroes the gate above
+// everything). The skip nulls lanes AFTER the percussion tally so visualizers keep
+// following the arrangement, and never during a preview. The game never sets the
+// flag, so every game path is untouched.
+assert(/setSilentLaneSkip\(on\)/.test(audio)
+  && /this\.silentLaneSkip && this\.mixer && !this\._previewing/.test(audio)
+  && /Audio\.setSilentLaneSkip\(true\)/.test(entry)
+  && !/setSilentLaneSkip/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
+  'the desk skips synthesis for lanes the mix has silenced; the game never does');
+assert(/laneSilent\(key\)/.test(readFileSync(new URL('../src/engine/mixer.js', import.meta.url), 'utf8'))
+  && /soloed\.size > 0 && !soloed\.has\(key\)/.test(readFileSync(new URL('../src/engine/mixer.js', import.meta.url), 'utf8')),
+  'a lane is silent to the skip when muted or losing a channel solo — never for an aux solo');
+// A deliberate heavy UI build must not drain the sequencer's queue: expanding the
+// whole-song roll blocks the main thread ~320ms against a 250ms lookahead, which is
+// "expanding the roll sometimes glitches". The engine can queue ahead ON REQUEST
+// (prefill — the notes that were coming anyway, earlier), and every known-heavy
+// open asks first. The playhead's own two-bar page flip deliberately does NOT: it
+// runs mid-playback on its own schedule, and widening the window there is how a
+// freshly painted note stops being heard on its own bar.
+assert(/prefill\(seconds = 1\)/.test(audio)
+  && /this\._previewing\) return;/.test(audio)
+  && /takeSchedulerHealth\(\)/.test(audio)
+  && /if \(margin < 0\) this\._schedLate\+\+;/.test(audio),
+  'the engine can prefill its queue on request and counts the passes that ran late');
+assert((barGrid.match(/Audio\.prefill\(PREFILL_S\)/g) || []).length === 4
+  && /const PREFILL_S = 1\.2/.test(barGrid),
+  'grid open, refresh, redraw and the scope toggle prefill before rebuilding — four sites, no more');
+assert(/Audio\.prefill\(1\.2\)/.test(entry) && /Audio\.prefill\(1\.2\)/.test(editor),
+  'the preset library and the full synth editor prefill before their own big builds');
+assert(/takeSchedulerHealth/.test(entry) && /pass\(es\) after it emptied/.test(entry),
+  'the watchdog reports a starved scheduler in numbers — an unhooked stall is named, not a rumour');
 assert(/const strip = this\.mixer && this\.mixer\.lane\(key\);/.test(audio)
   && /this\._previewing && !strip/.test(audio)
   && /this\._laneGate\(key, strip \? strip\.dry : this\.musicBus/.test(audio),
@@ -297,8 +458,12 @@ assert(/const isLibraryPreset = \(voice\) =>/.test(editor)
   && shell.includes('window.__MASH_MIXER_DEV_USER__ = /*__MIXER_DEV_USER__*/;')
   && /const _urlDev = new URLSearchParams\(location\.search\)\.get\('dev'\)/.test(entry)
   && /const DEV_USER = _urlDev === '0' \? false : globalThis\.__MASH_MIXER_DEV_USER__ === true/.test(entry)
-  && /mixerShell\s*\.replace\('\/\*__MIXER_DEV_USER__\*\/', 'false'\)/.test(
-    readFileSync(new URL('../build/build.js', import.meta.url), 'utf8'))
+  // The deployed desk is a USER desk. That substitution used to be written out in
+  // build/build.js as well as in the mixer's own builder; the production build now
+  // calls the builder rather than repeating it, so the guarantee is checked where it
+  // is made — plus the delegation itself, or a copy could quietly come back.
+  && /\.replace\('\/\*__MIXER_DEV_USER__\*\/', 'false'\)/.test(mixerBuilder)
+  && /buildSongMixer/.test(readFileSync(new URL('../build/build.js', import.meta.url), 'utf8'))
   && /if \(!Object\.values\(USER_TABLES\)\.includes\(sourceTable\) && !\(devDelete && libraryTable\)\)/.test(server),
   'library presets use one hidden editor draft, role-specific save/delete rules, and deletes use the desk dialog');
 assert(shell.indexOf('<span id="songrole"') > shell.indexOf('<span id="nowsong"')

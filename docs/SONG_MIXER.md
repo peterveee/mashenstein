@@ -461,6 +461,7 @@ arrangement track's right-click menu, with `⌘Z` restoring a deleted track.
 | Menu item | Does |
 | --- | --- |
 | Save song | writes this song into `src/data/songs/<id>.js`, or a scratch song into `src/data/imported/<id>.js`, after a confirm. Mix, arrangement and editable notes are written together. Scratch files remain outside the game. |
+| Save a copy… | Save As. The whole song under a new name — its music, this mix, this arrangement with every bar edit and note in it, and its cabinet screen — as a song of its own. Nothing else is written and nothing in the game moves. See [Copies](#copies) |
 | Save as alternate… | keeps what is on the desk as a *named* song of its own — this song's music, your mix and arrangement — and leaves this song alone. See [Alternates](#alternates) |
 | Save over *the song*… | only on an alternate, and it names the song it would write. Makes that alternate the game song. See [Alternates](#alternates) |
 | Delete scratch song… | appears for scratch songs only. After confirmation it removes the source module and its desk history, then clears that song's browser draft and recent entry. Built-in songs and legacy MIDI imports cannot be deleted here. |
@@ -1380,6 +1381,7 @@ reach for mid-take is the one with the modifier on it.
 | Duplicated tracks (`layers`) and deleted ones | the same song source file, on the same button |
 | Every version of a writable song this desk has overwritten | `work/mix-history/`, automatically, on every save. Gitignored — see [Going back](#going-back) |
 | A version of a game song you want to keep without shipping it | its own file in `src/data/imported/`, on **Save as alternate…** — tracked, so it survives. See [Alternates](#alternates) |
+| The whole song as it stands right now, kept under a second name | its own file in `src/data/imported/`, on **Save a copy…** — tracked, and reachable by nothing but the desk. See [Copies](#copies) |
 | Presets — user-created sounds and edits | `src/data/voices.js`, in the `USER_*` tables, on the editor's own **Save**. Library-wide, not per song, so it is separate from **Save song** |
 | Unsaved edits, per song | browser localStorage — switching songs and coming back picks up where you left off |
 | Solo | nowhere. Monitoring only. |
@@ -1436,11 +1438,41 @@ source file as it stands on disk. What comes back is re-read, which is what the 
 then believes — so **A/B saved** and the dirty dot on the hamburger tell the truth
 about the file even after another tab, or a hand, has been in it.
 
+### Copies
+
+Save As. **Song Desk → Save a copy…**, a name, and the whole song exists a second time:
+the music copied verbatim, the mix on the faders, the arrangement with every bar edit
+and painted note in it, and the cabinet screen — written into
+`src/data/imported/<id>.js` as `group: "copy"` and listed in the picker under **Saved
+copies**. From then on it is an ordinary song: open it, mix it, render it, save it,
+delete it.
+
+It is a snapshot, and it **promises nothing**. That is the whole difference from an
+alternate below, and it is one line of source: a copy has no `export const alternateOf`,
+so nothing can promote it over another song, no cabinet can select it, and the generated
+`src/data/game-alternates.js` does not import it — the game bundle cannot see a copy at
+all. Nothing is written but the new file. The song it was taken from is untouched, and
+so is everything the game plays.
+
+Offered on every song with a bank, which includes the read-only legacy MIDI imports:
+a copy is a fresh file with the desk's marker in it, so this is the one way an import
+that cannot be saved becomes a song that can.
+
+Two things worth knowing:
+
+- It copies **what the desk has**, draft over file — what you are listening to, not
+  what was last written. Preset sounds are frozen into it the same way a save freezes
+  them, so a copy still sounds like itself after somebody edits the library preset it
+  was using.
+- The draft you copied is still sitting on the song you copied it from, exactly as with
+  an alternate. The toast says so when it applies.
+
 ### Alternates
 
 Save writes over the song. That is right while you are mixing one and wrong at the
 moment you have a version of NEON BLASTERS you like *without* being ready to say it is
-NEON BLASTERS.
+NEON BLASTERS. A [copy](#copies) is the move when you want a snapshot and no claim; an
+alternate is the move when the claim is the point.
 
 **Song Desk → Save as alternate…** is the other move. Name it, and the desk writes a
 whole song file of its own into `src/data/imported/<id>.js`: the parent's music copied

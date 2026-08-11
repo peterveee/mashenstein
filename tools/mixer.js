@@ -17,7 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import { openRenderer } from './lib/render-bank-browser.js';
 import { wavBuffer } from './lib/wav.js';
-import { loudness, gainToTarget } from './lib/loudness.js';
+import { loudness, gainToTarget, LOUDNESS_TARGET } from './lib/loudness.js';
 import { midiBuffer } from './lib/render-midi-bank.js';
 import { bankFromMidi } from './lib/midi-import.js';
 import { writeImportedIndex, importId, slugFor, IMPORTED_DIR } from './lib/imported-index.js';
@@ -94,6 +94,24 @@ async function buildPage() {
   return shell
     .replace('/*__MIXER_DEV_USER__*/', () => String(DEV_USER))
     .replace('/*__BUNDLE__*/', () => js);
+}
+
+// The desk's render frame: a second, unbound copy of the audio engine, loaded in a
+// hidden iframe when you press Render WAV. See tools/mixer-render-entry.js for why
+// it has to be a separate document.
+//
+// Request-built like the desk itself, so a voice change lands in the next bounce
+// without restarting the server — which is the same promise `npm run mixer` has
+// always made, now extended to the thing that writes the WAV.
+async function buildRenderFramePage() {
+  const out = await esbuild.build({
+    entryPoints: [join(ROOT, 'tools/mixer-render-entry.js')],
+    bundle: true, format: 'iife', target: ['es2020'],
+    minify: false, write: false, logLevel: 'warning', outdir: join(ROOT, 'dist'),
+  });
+  const js = out.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+  const shell = readFileSync(join(ROOT, 'tools/mixer-render-shell.html'), 'utf8');
+  return shell.replace('/*__BUNDLE__*/', () => js);
 }
 
 // The standalone MRDR-3 playground shares the editor and keyboard bundle with the
@@ -489,6 +507,22 @@ const readJson = async (req) => {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 };
 
+// A rendered WAV coming back from the desk, which is the one thing posted here that
+// is measured in tens of megabytes rather than kilobytes. Capped so a bad request
+// cannot make this process eat the machine: four minutes of 16-bit stereo is ~42MB,
+// and the desk will not render more than sixteen passes.
+const MAX_RENDER_BYTES = 512 * 1024 * 1024;
+const readBytes = async (req, limit = MAX_RENDER_BYTES) => {
+  const chunks = [];
+  let n = 0;
+  for await (const c of req) {
+    n += c.length;
+    if (n > limit) return null;
+    chunks.push(c);
+  }
+  return Buffer.concat(chunks);
+};
+
 function presetTarget(scope, id) {
   if (scope === 'inserts') {
     const def = EFFECT_BY_ID[id];
@@ -573,10 +607,6 @@ async function renderTrack(trackId, mix, { repeat = 1, write = true, arrangement
     clipping: out.peak > 1,
   };
 }
-
-// -16 LUFS: a sensible target for game music that has to sit under effects and
-// dialogue without anyone reaching for the volume between cabinets.
-const LOUDNESS_TARGET = -16;
 
 function idTaken(id, root, resolver) {
   return existsSync(join(root, IMPORTED_DIR, `${id}.js`))
@@ -668,8 +698,11 @@ const server = createServer(async (req, res) => {
       // that should be removable from the desk that made it. Deleting one cannot reach
       // the song it was an alternate of — that lives in src/data/songs, which the
       // `importedRoot` guard below refuses outright.
+      // And copies, which are the most disposable of the lot: a copy is a snapshot
+      // somebody took, and the whole point of taking them freely is being able to throw
+      // them away just as freely.
       const madeHere = track && (track.group === 'scratch' || track.group === 'styleAudition'
-        || track.group === 'alternate');
+        || track.group === 'alternate' || track.group === 'copy');
       if (!madeHere || track.writable !== true
         || !target || !target.startsWith(importedRoot)) {
         res.writeHead(404, { 'content-type': 'text/plain' });
@@ -688,6 +721,88 @@ const server = createServer(async (req, res) => {
       writeImportedIndex(ROOT);
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, id }));
+      return;
+    }
+
+    // ---- copies: this song, as it stands right now, under a second name -------------
+    //
+    // Save As. A whole song file of its own — the music copied verbatim, the desk's
+    // current mix, arrangement and cabinet treatment on top — and NOTHING claimed about
+    // what it is for. That last part is the difference from an alternate: an alternate
+    // carries `alternateOf`, which puts it in the game's dev bundle, on the cabinet
+    // picker and one button away from overwriting the song it names. A copy carries no
+    // such line, so it is unreachable from the game, from any cabinet, and from
+    // /promote-alternate. It is a snapshot: mix it, render it, save it, delete it, or
+    // never open it again.
+    //
+    // Made from ANY song with a bank, including a read-only MIDI import — the copy is a
+    // new file with the desk's marker, so this is also the way a legacy import becomes
+    // something that can be saved at all.
+    if (req.method === 'POST' && req.url === '/save-copy') {
+      const body = await readJson(req);
+      const sourceId = String(body?.sourceId || '');
+      const source = resolveTrack(sourceId);
+      if (!source?.bank) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end(`no song called "${sourceId}" to copy`);
+        return;
+      }
+      const title = String(body?.title ?? '').trim() || `${source.title} COPY`;
+      const mix = body?.mix ?? null;
+      const arrangement = body?.arrangement ?? null;
+      const variants = body?.variants ?? null;
+      const bad = validateVariants(variants);
+      if (bad.length) {
+        res.writeHead(422, { 'content-type': 'text/plain' });
+        res.end(`cabinet treatments:\n  ${bad.join('\n  ')}`);
+        return;
+      }
+      // Against the music being copied, which is the music this file will hold — so a
+      // copy is never born with a loop pointing past the end of its own song.
+      const arrBad = arrangementIssues(source.bank, arrangement);
+      if (arrBad.length) {
+        res.writeHead(422, { 'content-type': 'text/plain' });
+        res.end(`arrangement:\n  ${arrBad.join('\n  ')}`);
+        return;
+      }
+      const id = newScratchId(title);
+      const copySource = songFile({
+        id,
+        title,
+        slug: id,
+        group: 'copy',
+        bank: source.bank,
+        mix,
+        arrangement,
+        variants,
+        note: `A copy of ${source.title} (${sourceId}), taken from the Song Mixer.\n`
+          + `Everything below is that song as the desk had it at the moment of the copy.\n`
+          + `It is a snapshot and nothing more: the game does not play this file, no\n`
+          + `cabinet can select it, and ${source.title} is untouched by anything done here.`,
+      });
+      const file = join(ROOT, IMPORTED_DIR, `${id}.js`);
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, copySource);
+      writeImportedIndex(ROOT);
+      // Read back off the file rather than echoing the request, so what the desk then
+      // holds as "saved" is what is actually on disk, round-trip and all.
+      const mod = await freshImport(file);
+      const registered = registerTrack({
+        id, bank: mod.bank, title: mod.title, slug: mod.slug,
+        group: 'copy', writable: true,
+      });
+      console.log(`saved copy src/data/imported/${id}.js  (of ${sourceId})`);
+      res.writeHead(201, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        file: `${IMPORTED_DIR}/${id}.js`,
+        track: {
+          id: registered.id, title: registered.title, slug: registered.slug,
+          group: 'copy', writable: true, bank: registered.bank,
+        },
+        mix: mod.mix ?? null,
+        arrangement: mod.arrangement ?? null,
+        variants: mod.variants ?? null,
+      }));
       return;
     }
 
@@ -969,6 +1084,41 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({ file, mix, arrangements }));
       return;
     }
+    // Where the desk's own bounce lands. The render happened in the browser — this
+    // route is the disk, not a renderer.
+    //
+    // It exists because `dist/<slug>-mix.wav` is where every render has gone since
+    // there were renders: it is what tools/audition opens, what a listening session
+    // reaches for, and what the machine running the mixer has, which is not
+    // necessarily the machine the desk is open on. Dropping the file in whichever
+    // browser's Downloads folder happened to press the button would have quietly
+    // broken all of that. The deployed desk, which has no server and no disk to
+    // write to, downloads instead — see renderBounce in mixer-entry.js.
+    if (req.method === 'POST' && req.url.startsWith('/write-render')) {
+      const q = new URL(req.url, `http://${HOST}:${PORT}`).searchParams;
+      const track = resolveTrack(q.get('track'));
+      if (!track) { res.writeHead(404); res.end('unknown track'); return; }
+      const bytes = await readBytes(req);
+      if (!bytes) {
+        res.writeHead(413, { 'content-type': 'text/plain' });
+        res.end(`that render is over ${Math.round(MAX_RENDER_BYTES / 1048576)}MB — render fewer passes`);
+        return;
+      }
+      mkdirSync(join(ROOT, 'dist'), { recursive: true });
+      const file = join('dist', `${track.slug}-mix.wav`);
+      writeFileSync(join(ROOT, file), bytes);
+      console.log(`${file} — ${(bytes.length / 1048576).toFixed(1)} MB, rendered on the desk`);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ file }));
+      return;
+    }
+
+    // Still here, and still the renderer the AUDITION button and the loudness sweep
+    // below go through: those two run on this machine by necessity — one opens a
+    // plugin window, the other renders thirty-four songs to compare them — and
+    // headless Chromium is how a process with no Web Audio gets samples. The desk's
+    // own Render WAV no longer comes through here; it renders in the browser it is
+    // open in, which is why the deployed build can do it too.
     if (req.method === 'POST' && req.url === '/render') {
       const { trackId, mix, repeat, arrangement } = await readJson(req);
       const info = await renderTrack(trackId, mix, { repeat: repeat || 1, arrangement });
@@ -1251,9 +1401,14 @@ const server = createServer(async (req, res) => {
       const q = new URL(req.url, `http://${HOST}:${PORT}`).searchParams;
       const chunks = [];
       for await (const c of req) chunks.push(c);
+      // The filename is the track id, so importing the same file twice edits the same
+      // song rather than growing a second one. Settled before the conversion: the bank
+      // writes its own id into the file, the way every other song file does.
+      const id = importId(ROOT, slugFor(q.get('file') || 'imported'), (x) => !!resolveTrack(x));
       let out;
       try {
         out = bankFromMidi(Buffer.concat(chunks), {
+          id,
           name: q.get('name') || undefined,
           bpm: q.get('bpm') || undefined,
           from: q.get('file') || 'a MIDI file',
@@ -1263,9 +1418,6 @@ const server = createServer(async (req, res) => {
         res.end(String(err.message || err));
         return;
       }
-      // The filename is the track id, so importing the same file twice edits the same
-      // song rather than growing a second one.
-      const id = importId(ROOT, slugFor(q.get('file') || out.constName), (x) => !!resolveTrack(x));
       const dir = join(ROOT, IMPORTED_DIR);
       const existed = existsSync(join(dir, `${id}.js`));
       mkdirSync(dir, { recursive: true });
@@ -1281,9 +1433,16 @@ const server = createServer(async (req, res) => {
       // before the folder's index lists it: every tool imports that index, so one
       // unloadable bank in there is a mixer that will not start.
       let bank;
+      let mix = null;
       try {
-        bank = (await freshImport(join(ROOT, file)))[out.constName];
-        if (!bank) throw new Error(`no export const ${out.constName} in the bank it just wrote`);
+        const mod = await freshImport(join(ROOT, file));
+        bank = mod.bank;
+        // The mix comes back from the FILE rather than from the converter's own copy,
+        // so what the desk switches to is what is on disk — the same rule every other
+        // save here follows, and the reason a layer the file did not keep cannot show
+        // up on a strip.
+        mix = mod.mix ?? null;
+        if (!bank) throw new Error('no export const bank in the bank it just wrote');
       } catch (err) {
         if (!existed) rmSync(join(ROOT, file), { force: true });
         console.error(`import failed to load: ${file}\n${err.stack || err}`);
@@ -1293,14 +1452,15 @@ const server = createServer(async (req, res) => {
         return;
       }
       writeImportedIndex(ROOT);
-      registerTrack({ id, bank, title: out.title, slug: id });
-      console.log(`imported ${file} — export const ${out.constName}`
+      registerTrack({ id, bank, title: out.title, slug: id, writable: true });
+      console.log(`imported ${file} — ${out.title}`
         + ` (${out.bpm}bpm, ${out.blocks} blocks -> ${out.sections} sections)`
+        + (out.layers.length ? `, ${out.layers.length} on layers: ${out.layers.map((l) => l.key).join(', ')}` : '')
         + `  [track: ${id}]`);
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({
-        ...out, source: undefined, file,
-        track: { id, title: out.title, slug: id, bank },
+        ...out, source: undefined, file, mix,
+        track: { id, title: out.title, slug: id, bank, group: 'imported', writable: true },
       }));
       return;
     }
@@ -1359,6 +1519,15 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && (req.url === '/MRDR3/' || req.url.startsWith('/MRDR3/?'))) {
       const html = await buildMrdr3Page();
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(html);
+      return;
+    }
+
+    if (req.method === 'GET' && (req.url === '/render-frame' || req.url.startsWith('/render-frame?'))) {
+      const html = await buildRenderFramePage();
+      // Never cached: the desk asks for a fresh one per render precisely so the
+      // engine in it is the engine on disk right now.
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end(html);
       return;
     }

@@ -19,6 +19,7 @@
 import {
   laneKind, restValue, emptyBar, barOfStep, stepInBar,
   quantiseStep, heldLength, chordAnchor, createTake,
+  laneShape, laneShapeLengths, NO_PITCH_NOTE,
 } from '../tools/lib/note-recorder.js';
 import { midiFreq, freqMidi } from '../tools/mixer-piano-roll.js';
 import { polyLane } from '../src/data/voices.js';
@@ -502,6 +503,63 @@ assert(chordAnchor(null, 0, 7).step === 7 && chordAnchor({ ms: 0, step: 3 }, NaN
     'a lane the song has not got reads as sixteen rests, not a crash');
   assert(readBarLane(bank, d, 99, 'bass').every((v) => v === null),
     'and so does a bar that is not there');
+}
+
+// ---- cross-lane paste, and the shape it has to arrive in -------------------------
+//
+// The bug this pins took the desk down rather than sounding wrong. `copyLaneBars`
+// reads a lane's values as they ARE, so pasting a bassline onto `chords` wrote bare
+// numbers into a lane `scheduleStep` calls `b.chords[s].forEach` on — a TypeError per
+// step, repeating for as long as the transport ran. Cross-SONG paste made it easy to
+// reach, but the same crash was always one right-click away within a song.
+{
+  const json = (v) => JSON.stringify(v);
+  const A2 = 110;
+
+  // The crash itself: nothing but arrays and nulls may reach a chord lane.
+  const bassBar = [A2, null, n('C3'), null, A2, null, n('E3'), null,
+    null, null, null, null, null, null, null, null];
+  const asChords = bassBar.map((v) => laneShape('chords', v));
+  assert(asChords.every((v) => v === null || Array.isArray(v)),
+    'a melodic bar pasted onto a chord lane arrives as arrays and rests — nothing'
+    + ' `b.chords[s].forEach` can throw on');
+  assert(json(asChords[0]) === json([A2]) && asChords[1] === null,
+    'and a single note becomes a one-note chord rather than a bare number');
+  assert(json(laneShape('organChords', A2)) === json([A2]),
+    'organChords is the other lane read with .forEach, and takes the same shape');
+  assert(json(laneShape('chords', [A2, n('E3')])) === json([A2, n('E3')]),
+    'a chord pasted onto a chord lane is left exactly as it was');
+
+  // The other three directions.
+  assert(laneShape('kick', A2) === true && laneShape('kick', null) === false,
+    'a pitched note pasted onto a drum lane is a hit, and a rest is `false` — the'
+    + ' rhythm is all a drum lane can hold, and the rhythm is what survives');
+  assert(laneShape('kick', [A2, n('E3')]) === true,
+    'a whole chord is still one hit');
+  assert(json(laneShape('bass', [A2, n('E3')])) === json([A2, n('E3')]),
+    'bass reads its step through `tonesOf`, so a chord may stay a chord there');
+  assert(laneShape('gliss', [A2, n('E3')]) === A2 && laneShape('vox', [3, 5]) === 3,
+    'a mono lane holds ONE thing per step — `vox` picks a word by it — so a chord is'
+    + ' flattened to its bottom tone rather than handed over as an array');
+
+  // A drum hit has no pitch to give.
+  assert(laneShape('bass', true) === NO_PITCH_NOTE
+    && json(laneShape('chords', true)) === json([NO_PITCH_NOTE]),
+    'a kit pattern pasted onto a pitched lane keeps its rhythm at A2 — silence would'
+    + ' look like the paste had failed');
+  assert(laneShape('bass', false) === null,
+    "and a drum lane's `false` rest becomes the `null` a pitched lane rests with");
+
+  // Lengths travel with the notes, or do not travel at all.
+  assert(json(laneShapeLengths('kick', [2, 3, null])) === json([null, null, null]),
+    'a percussion lane has no per-note length, so every length is blanked — nulls'
+    + ' rather than no array at all, because that is what deletes a stale `kickLen`');
+  assert(laneShapeLengths('bass', null) === null,
+    'and a caller with nothing to say about length still says nothing');
+  assert(json(laneShapeLengths('chords', [2, [3, 4], null])) === json([2, [3, 4], null]),
+    'a chord lane takes both a scalar and a per-tone array unchanged');
+  assert(json(laneShapeLengths('gliss', [2, [3, 4], null])) === json([2, 3, null]),
+    'and a mono lane keeps the length of the tone that survived the flatten');
 }
 
 console.log(failed ? 'NOTE RECORDER: FAILED' : 'NOTE RECORDER: PASSED');
