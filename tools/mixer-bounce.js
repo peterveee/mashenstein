@@ -119,7 +119,7 @@ function renderInFrame(frameUrl, args, { onStage, signal } = {}) {
 export async function bounceWav(bank, {
   trackId, mix, arrangement = null, repeat = 1, frameUrl,
   seed = DEFAULT_SEED, tail = 2.0, onStage, rawLane = false, returnPcm = false,
-  pcmOnly = false, measureOnly = false, signal, range = null,
+  pcmOnly = false, measureOnly = false, signal, range = null, prerollSeconds = 0,
 }) {
   // Everything below this line is resolved HERE, in the desk, for one reason: the
   // bank reaches the frame as a structured clone, so `trackIdOf` on it would find
@@ -175,6 +175,7 @@ export async function bounceWav(bank, {
     // count rounds up to a whole block, which is a bar of silence the walk never takes.
     bank: forFrame, blocks: Math.ceil((bars * repeat) / 2), steps,
     tail, seed, sampleRate: SR, mix, trackId, arrangement, rawLane, measureOnly,
+    prerollSeconds: Math.max(0, Number(prerollSeconds) || 0),
     ...(ranged ? { startStep: rangeStart } : loop ? { loop } : {}),
   };
   let out;
@@ -199,7 +200,10 @@ export async function bounceWav(bank, {
   onStage?.('measuring', 1);
   if (measureOnly) {
     return {
-      seconds: out.seconds, peak: out.peak, loop, steps, sampleRate: SR,
+      // A profile-only scheduling guard is silence before musical time zero, not part
+      // of the passage whose realtime ratio is being reported.
+      seconds: Math.max(0, out.seconds - Math.max(0, Number(prerollSeconds) || 0)),
+      peak: out.peak, loop, steps, sampleRate: SR,
       renderMs: out.renderMs,
       range: ranged ? { startStep: rangeStart, endStep: rangeEnd } : null,
     };

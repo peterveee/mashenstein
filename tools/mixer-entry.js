@@ -1727,6 +1727,7 @@ function loadTrack(id) {
   selectedBar = null;
   trackId = id;
   track = resolveTrack(id);
+  resetSongClockMinimum();
   // Restore the track that owned this song's open piano roll before building either
   // view of the song. Older layout records have no lane and retain the previous/global
   // selection; a stale lane is left for buildRack's normal master fallback.
@@ -11619,6 +11620,7 @@ function updateCpu() {
     .filter(([, seam]) => VOICES[mix.voice?.[seam.voiceKey]] || mix.voiceParams?.[seam.voiceKey])
     .map(([lane]) => lane);
   const el = $('cpu');
+  const clockMin = $('clockmin');
   const c = Audio.ctx;
   // The estimate is the resting state: a number, no verdict attached.
   const estimate = `~${total.toFixed(0)}%${voiced.length ? '+' : ''}`;
@@ -11629,6 +11631,17 @@ function updateCpu() {
     : health.audioStruggling ? 'AUDIO STRUGGLING'
       : health.uiStalled ? 'MACHINE BUSY' : '';
   el.textContent = trouble || estimate;
+  if (clockMin) {
+    clockMin.textContent = Number.isFinite(health.songRatioMin)
+      ? `${health.songRatioMin.toFixed(3)}×` : '—';
+    clockMin.title = Number.isFinite(health.songRatioMin)
+      ? `Lowest measured audio-clock rate since ${track?.title || 'this song'} was loaded: `
+        + `${health.songRatioMin.toFixed(3)} seconds rendered per wall-clock second. `
+        + 'Near 1.000× means the audio met its deadline; a sustained lower value means the mix was too heavy. '
+        + 'A healthy 1.000× cannot distinguish a light song from one close to the limit.'
+      : 'Starts measuring during playback. Near 1.000× means the audio met its deadline; '
+        + 'it cannot distinguish a light song from one close to the limit.';
+  }
 
   const heaviest = counts.length ? counts.slice(0, 4).join(', ') : 'none';
   const requestedLatency = latencyPreference === '0.1'
@@ -11729,7 +11742,7 @@ const health = {
   // so it may only ever raise an alarm, never reassure. Measuring a clock with a
   // timer wobbles by a percent or so either way, which is why `audioBehind` needs a
   // real shortfall sustained over several seconds rather than one dip.
-  ratio: NaN, marginMin: null,
+  ratio: NaN, songRatioMin: Infinity, marginMin: null,
   // The last few (wall, clock) pairs, so a shortfall can be judged over half a second
   // without waiting a whole one to notice it — see checkAudioHealth's ring.
   samples: [],
@@ -11750,6 +11763,16 @@ const health = {
   // is about the song in front of you.
   dropouts: 0,
 };
+
+function resetSongClockMinimum() {
+  health.songRatioMin = Infinity;
+  health.ratio = NaN;
+  health.samples.length = 0;
+  health.lastWall = 0;
+  health.lastCt = 0;
+  const readout = $('clockmin');
+  if (readout) readout.textContent = '—';
+}
 
 // One aggregate window per audible sequencer lap. The engine tells us the exact
 // audio time of a wrap; these fields retain the worst of the existing watchdog's
@@ -11980,7 +12003,10 @@ function checkAudioHealth() {
   };
   const ratio = over(2);
   health.ratio = ratio;
-  if (playing && Number.isFinite(ratio)) loopHealthWindow.ratioMin = Math.min(loopHealthWindow.ratioMin, ratio);
+  if (playing && Number.isFinite(ratio)) {
+    health.songRatioMin = Math.min(health.songRatioMin, ratio);
+    loopHealthWindow.ratioMin = Math.min(loopHealthWindow.ratioMin, ratio);
+  }
 
   // What is coming OUT of the whole desk, against what is arriving at the trim.
   // `!isFinite`, not `isNaN`: an Infinity poisons a compressor exactly as hard and
@@ -15309,18 +15335,28 @@ function setPlaying(on, fromStep = null) {
 const NOTE_CACHE_PREPARE_BUDGET_MS = 1800;
 let preparingFromStart = false;
 let startPreparationToken = 0;
+let preparationControl = 'start';
+let preparationFromStep = 0;
 
 const waitForCacheTick = () => new Promise((resolve) => setTimeout(resolve, 40));
 
-function showStartPreparation(on) {
+function showStartPreparation(on, control = preparationControl) {
   preparingFromStart = on;
-  $('playstart').classList.toggle('preparing', on);
-  $('playstart').setAttribute('aria-busy', String(on));
-  $('playstart').title = on
+  if (on) preparationControl = control;
+  const fromTop = preparationControl === 'start';
+  $('playstart').classList.toggle('preparing', on && fromTop);
+  $('play').classList.toggle('preparing', on && !fromTop);
+  $('playstart').setAttribute('aria-busy', String(on && fromTop));
+  $('play').setAttribute('aria-busy', String(on && !fromTop));
+  $('playstart').title = on && fromTop
     ? 'Preparing note cache — press again to start now'
     : 'Play from the top of the song';
-  $('playstart').dataset.tip = on ? 'Start now' : 'Play from top';
-  $('play').disabled = on;
+  $('play').title = on && !fromTop
+    ? 'Preparing this loop — press again to start now'
+    : 'Play (space)';
+  $('playstart').dataset.tip = on && fromTop ? 'Start now' : 'Play from top';
+  $('playstart').disabled = on && !fromTop;
+  $('play').disabled = on && fromTop;
 }
 
 function cancelStartPreparation() {
@@ -15331,17 +15367,17 @@ function cancelStartPreparation() {
   return true;
 }
 
-function startPreparedTransport(message = '') {
+function startPreparedTransport(message = '', fromStep = preparationFromStep) {
   Audio.setNoteCachePreparationHeld(true);
   showStartPreparation(false);
-  setPlaying(true, 0);
+  setPlaying(true, fromStep);
   // `bank` now keeps preparation paused. Releasing the explicit hold here means the
   // next ordinary Stop/Pause can warm whatever this pass discovers.
   Audio.setNoteCachePreparationHeld(false);
   if (message) toast(message);
 }
 
-async function playFromBeginning() {
+async function prepareAndStart({ fromStep = 0, range = null, control = 'start' } = {}) {
   if (preparingFromStart) {
     startPreparationToken++;
     startPreparedTransport('Starting now');
@@ -15353,19 +15389,21 @@ async function playFromBeginning() {
   // inventoried and before its late-section priorities have been sorted.
   Audio.setNoteCachePreparationHeld(true);
   if (playing) setPlaying(false);
-  jumpTo(0); // park and draw bar 1 while the cache is prepared
-  const initial = Audio.prepareNoteCache?.(engineBank()) || Audio.noteCacheHealth?.();
+  preparationFromStep = fromStep;
+  if (fromStep === 0) jumpTo(0); // park and draw bar 1 while the cache is prepared
+  const initial = Audio.prepareNoteCache?.(engineBank(), range
+    ? { startStep: range.start, endStep: range.end } : {}) || Audio.noteCacheHealth?.();
   if (!initial?.enabled || (!initial.queued && !initial.rendering)) {
     startPreparedTransport(initial?.buffers
-      ? `Playing from beginning · ${initial.buffers} cached note${initial.buffers === 1 ? '' : 's'}`
+      ? `Playing ${range ? 'loop' : 'from beginning'} · ${initial.buffers} cached note${initial.buffers === 1 ? '' : 's'}`
       : '');
     return;
   }
 
   const token = ++startPreparationToken;
-  showStartPreparation(true);
+  showStartPreparation(true, control);
   Audio.setNoteCachePreparationHeld(false);
-  toast(`Preparing audio… ${initial.queued} note${initial.queued === 1 ? '' : 's'} queued · press Start from beginning again to play now`, 3000);
+  toast(`Preparing ${range ? 'loop' : 'audio'}… ${initial.queued} note${initial.queued === 1 ? '' : 's'} queued · press ${control === 'play' ? 'Play' : 'Start from beginning'} again to play now`, 3000);
   const deadline = performance.now() + NOTE_CACHE_PREPARE_BUDGET_MS;
   let held = false;
 
@@ -15385,11 +15423,21 @@ async function playFromBeginning() {
   if (token !== startPreparationToken) return;
   const health = Audio.noteCacheHealth?.();
   startPreparedTransport(health?.buffers
-    ? `Playing from beginning · ${health.buffers} cached note${health.buffers === 1 ? '' : 's'}`
-    : 'Playing from beginning');
+    ? `Playing ${range ? 'loop' : 'from beginning'} · ${health.buffers} cached note${health.buffers === 1 ? '' : 's'}`
+    : `Playing ${range ? 'loop' : 'from beginning'}`);
 }
 
-$('play').onclick = () => { if (!playing && !preparingFromStart) setPlaying(true); };
+async function playFromBeginning() {
+  return prepareAndStart({ fromStep: 0, control: 'start' });
+}
+
+async function playFromParked() {
+  const bounds = loopOn ? currentLoopBounds() : null;
+  if (!bounds) { setPlaying(true); return; }
+  return prepareAndStart({ fromStep: parkedAt, range: bounds, control: 'play' });
+}
+
+$('play').onclick = () => { if (!playing) void playFromParked(); };
 $('pause').onclick = () => { if (playing) setPlaying(false); };
 $('stop').onclick = () => {
   cancelStartPreparation();
@@ -15787,18 +15835,25 @@ function trackProfileRange(bank, maximumBars = 8) {
     for (let bar = from; bar < from + count; bar++) sum += score[bar];
     if (sum > bestScore) { bestScore = sum; best = from; }
   }
-  // Keep one complete bar before the measured window. Tracks can deliberately carry
-  // a negative timing offset so a strum starts early and lands on the written beat.
-  // A cropped render that makes the first measured bar audio time zero turns that
-  // valid anticipation into an illegal negative Web Audio timestamp. The lead-in is
-  // shared by every track/pass, while `from`/`to` continue to name the same densest
-  // eight bars in the UI and diagnostics.
-  const prerollFrom = Math.max(0, best - 1);
   return {
     from: best, to: best + count - 1,
-    startStep: prerollFrom * 16, endStep: (best + count) * 16,
-    prerollFrom,
+    startStep: best * 16, endStep: (best + count) * 16,
   };
+}
+
+/** Silent audio-time guard for intentional early track timing in a cropped profile. */
+function trackProfilePrerollSeconds(bank, range) {
+  const plan = barPlan(bank, 1).slice(range.from, range.to + 1);
+  let earliest = 0;
+  for (const bar of plan) {
+    const offsets = typeof bar?.offset === 'number'
+      ? [bar.offset] : Object.values(bar?.offset || {});
+    for (const value of offsets) if (Number.isFinite(value)) earliest = Math.min(earliest, value);
+  }
+  const spb = (60 / Math.max(1, Number(bank?.bpm) || 120)) / 4;
+  // Bar timing is stored in half-sixteenths. The extra 20ms also keeps the channel's
+  // click-safe pan lead and floating-point rounding on the positive side of time zero.
+  return Math.max(0.05, (-earliest * spb / 2) + 0.02);
 }
 
 /** Solo by mute, because the render frame can then skip every other lane's voices. */
@@ -15835,6 +15890,25 @@ function trackProfileIdentity(lane, index) {
   };
 }
 
+/** Completed rows from the latest interrupted run of this exact song/window. */
+function trackProfileCheckpoint(id, bars) {
+  let start = -1;
+  for (let index = loopLogRecords.length - 1; index >= 0; index--) {
+    const record = loopLogRecords[index];
+    if (record.song === id && record.profileBars === bars
+      && record.status === 'TRACK LOAD PROFILE START') {
+      start = index;
+      break;
+    }
+  }
+  if (start < 0) return [];
+  const run = loopLogRecords.slice(start + 1);
+  if (run.some((record) => record.song === id && record.profileBars === bars
+    && record.status === 'TRACK LOAD PROFILE END')) return [];
+  return run.filter((record) => record.song === id && record.profileBars === bars
+    && record.status === 'TRACK LOAD PROFILE' && Number.isInteger(Number(record.profileTrack)));
+}
+
 /**
  * Controlled engine A/B: the same dense bars, one visible track at a time, then the
  * same track with its normal and bar-scoped inserts removed. Offline render wall time
@@ -15852,18 +15926,25 @@ async function profileTrackLoad() {
   const lanes = engineDeskLanes(view, 1).map((item) => item.key);
   if (!lanes.length) { toast('That song has no audible tracks to profile'); return false; }
   const range = trackProfileRange(view);
-  const preroll = range.prerollFrom < range.from
-    ? ` with bar <b>${range.prerollFrom + 1}</b> as preroll`
-    : '';
+  const profileBars = `${range.from + 1}-${range.to + 1}`;
+  const prerollSeconds = trackProfilePrerollSeconds(view, range);
+  const prerollMs = Math.ceil(prerollSeconds * 1000);
+  const checkpoint = trackProfileCheckpoint(id, profileBars);
+  const completedTracks = new Set(checkpoint.map((record) => Number(record.profileTrack)));
+  const remaining = lanes.filter((lane, index) => !completedTracks.has(trackProfileIdentity(lane, index).number));
   // A modal <dialog> lives in the browser's top layer, above #ask regardless of
   // z-index. Close Diagnostics for this confirmation, then put it straight back so
   // the per-track progress remains visible while the profile runs.
   const returnToLoopLog = !!loopLogDialog?.open;
   if (returnToLoopLog) closeLoopLog();
   const yes = await ask('Profile track load?',
-    `<p>Playback will stop while the engine renders bars <b>${range.from + 1}–${range.to + 1}</b>${preroll} `
+    `<p>Playback will stop while the engine renders bars <b>${range.from + 1}–${range.to + 1}</b> `
       + `twice for each of the song’s <b>${lanes.length} tracks</b>: once through its full signal path, `
       + 'then once without that track’s channel and bar inserts.</p>'
+      + `<p>A ${prerollMs} ms silent scheduling guard preserves intentional early track timing at the cropped start.</p>`
+      + (completedTracks.size
+        ? `<p><b>${completedTracks.size} completed track${completedTracks.size === 1 ? '' : 's'} will be reused</b>; only ${remaining.length} remaining track${remaining.length === 1 ? '' : 's'} will render.</p>`
+        : '')
       + '<p>The results will be added to Loop diagnostics using the visible track number and preset name.</p>',
     'Start profile');
   if (returnToLoopLog) openLoopLog();
@@ -15876,17 +15957,23 @@ async function profileTrackLoad() {
   profileTrackLoadButton.textContent = 'Cancel track profile';
   const started = performance.now();
   appendDiagnosticEvent('TRACK LOAD PROFILE START',
-    `Bars ${range.from + 1}–${range.to + 1}`
-      + (range.prerollFrom < range.from ? ` · preroll bar ${range.prerollFrom + 1}` : '')
-      + ` · ${lanes.length} tracks`, {
-      profileBars: `${range.from + 1}-${range.to + 1}`,
+    `Bars ${range.from + 1}–${range.to + 1} · ${prerollMs} ms scheduling guard · ${remaining.length} remaining of ${lanes.length} tracks`, {
+      profileBars,
     });
-  const results = [];
+  const results = checkpoint.map((record) => ({
+    number: Number(record.profileTrack), presetName: record.profilePreset,
+    label: `Track ${record.profileTrack} — ${record.profilePreset}`,
+    fullMs: Number(record.profileFullMs), dryMs: Number(record.profileDryMs),
+    audioSeconds: Number(record.profileAudioSeconds), loadPct: Number(record.profileLoadPct),
+    fxDeltaMs: Number(record.profileFxDeltaMs),
+  }));
+  let completedThisRun = 0;
   try {
     for (let index = 0; index < lanes.length; index++) {
       if (trackId !== id) throw new Error('the selected song changed during the profile');
       const lane = lanes[index];
       const identity = trackProfileIdentity(lane, index);
+      if (completedTracks.has(identity.number)) continue;
       const show = (pass, fraction = 0) => {
         const pct = fraction > 0 ? ` ${Math.min(99, Math.round(fraction * 100))}%` : '';
         loopLogStatus.textContent = `Profiling ${identity.label} · ${index + 1}/${lanes.length} · ${pass}${pct}`;
@@ -15896,7 +15983,7 @@ async function profileTrackLoad() {
         trackId: id,
         mix: isolatedTrackProfileMix(id, lane),
         arrangement: trackProfileArrangement(id, lane),
-        range, tail: 1, frameUrl: RENDER_FRAME_URL, measureOnly: true,
+        range, tail: 1, frameUrl: RENDER_FRAME_URL, measureOnly: true, prerollSeconds,
         signal: controller.signal,
         onStage: (stage, fraction) => show(stage === 'rendering' ? 'full signal path' : stage, fraction),
       });
@@ -15905,33 +15992,34 @@ async function profileTrackLoad() {
         trackId: id,
         mix: isolatedTrackProfileMix(id, lane, { withoutInserts: true }),
         arrangement: trackProfileArrangement(id, lane, { withoutInserts: true }),
-        range, tail: 1, frameUrl: RENDER_FRAME_URL, measureOnly: true,
+        range, tail: 1, frameUrl: RENDER_FRAME_URL, measureOnly: true, prerollSeconds,
         signal: controller.signal,
         onStage: (stage, fraction) => show(stage === 'rendering' ? 'without inserts' : stage, fraction),
       });
       const fullMs = Math.round(full.renderMs);
       const dryMs = Math.round(dry.renderMs);
-      results.push({ lane, ...identity, fullMs, dryMs, audioSeconds: full.seconds,
+      const result = { lane, ...identity, fullMs, dryMs, audioSeconds: full.seconds,
         loadPct: full.seconds > 0 ? +(full.renderMs / (full.seconds * 10)).toFixed(1) : '',
-        fxDeltaMs: fullMs - dryMs });
-    }
-
-    results.sort((a, b) => b.fullMs - a.fullMs);
-    for (const result of results) {
+        fxDeltaMs: fullMs - dryMs };
+      results.push(result);
+      completedThisRun++;
+      // Persist at the checkpoint, not after the whole 28-track run: a later render
+      // can fail or the tab can close without throwing away minutes of valid work.
       appendDiagnosticEvent('TRACK LOAD PROFILE',
         `${result.label} · full ${result.fullMs} ms · without inserts ${result.dryMs} ms`
           + ` · insert delta ${result.fxDeltaMs >= 0 ? '+' : ''}${result.fxDeltaMs} ms`, {
           profileTrack: result.number, profilePreset: result.presetName,
-          profileBars: `${range.from + 1}-${range.to + 1}`,
+          profileBars,
           profileAudioSeconds: +result.audioSeconds.toFixed(3),
           profileFullMs: result.fullMs, profileDryMs: result.dryMs,
           profileLoadPct: result.loadPct, profileFxDeltaMs: result.fxDeltaMs,
         });
     }
+    results.sort((a, b) => b.fullMs - a.fullMs);
     appendDiagnosticEvent('TRACK LOAD PROFILE END',
       `${results.length} tracks · bars ${range.from + 1}–${range.to + 1}`, {
         operationDurationMs: Math.round(performance.now() - started),
-        operationSegments: results.length, profileBars: `${range.from + 1}-${range.to + 1}`,
+        operationSegments: completedThisRun, profileBars,
       });
     const heaviest = results.slice(0, 3).map((result) => result.label).join(', ');
     toast(`Track-load profile complete · heaviest: ${heaviest}`, 8000);
@@ -15939,7 +16027,7 @@ async function profileTrackLoad() {
   } catch (error) {
     appendDiagnosticEvent(error?.name === 'AbortError' ? 'TRACK LOAD PROFILE CANCELLED' : 'TRACK LOAD PROFILE FAILED',
       String(error?.message || error), { operationDurationMs: Math.round(performance.now() - started),
-        operationSegments: results.length, profileBars: `${range.from + 1}-${range.to + 1}` });
+        operationSegments: completedThisRun, profileBars });
     toast(error?.name === 'AbortError' ? 'Track-load profile cancelled' : `Track-load profile failed — ${error.message}`, 7000);
     return false;
   } finally {
@@ -16626,7 +16714,12 @@ async function freezeLane(lane, {
   if (!source) { toast('That track has no source bank to freeze'); return false; }
   const fingerprint = freezeFingerprint(id, lane);
   const label = freezeLaneLabel(id, lane);
+  const number = id === trackId ? laneNumbers.get(lane) : null;
+  const operationLabel = number ? `Track ${number} — ${label}` : label;
   const normalizedScope = freezeScope(scope?.from, scope?.to);
+  const scopeText = normalizedScope.whole
+    ? 'whole track' : `bars ${normalizedScope.from + 1}–${normalizedScope.to + 1}`;
+  const started = performance.now();
   if (!normalizedScope.whole && freezeLaneState(id, lane) === 'full') {
     toast(`${label} is already frozen across the entire track`); return false;
   }
@@ -16635,6 +16728,7 @@ async function freezeLane(lane, {
   const coverageEndStep = normalizedScope.whole ? formSteps
     : Math.min(formSteps, (normalizedScope.to + 1) * 16);
   const span = freezeSpanFor(id, lane, normalizedScope);
+  appendDiagnosticEvent('FREEZE RENDER START', `${operationLabel} · ${scopeText}`);
   if (!span) {
     const segment = silentFrozenSegment(id, lane, fingerprint, normalizedScope);
     retireOverlappingFrozen(id, lane, coverageStartStep, coverageEndStep);
@@ -16643,6 +16737,10 @@ async function freezeLane(lane, {
     if (id === trackId) {
       closeMenu(); syncFrozenLaneUi(lane);
     }
+    appendDiagnosticEvent('FREEZE RENDER END', `${operationLabel} · ${scopeText} · silent`, {
+      operationDurationMs: Math.round(performance.now() - started),
+      operationBytes: segment.bytes, operationSegments: 1,
+    });
     toast(`${label} frozen instantly — ${normalizedScope.whole ? 'the track' : 'the selected bars'} contain no notes`);
     return true;
   }
@@ -16650,7 +16748,22 @@ async function freezeLane(lane, {
   const onStage = showFreezeProgress(lane, controller, label);
   if (playing && id === trackId) setPlaying(false);
   let succeeded = false;
+  let expectedBytes = 0;
   try {
+    const prior = frozenLane(id, lane);
+    const keptBytes = (prior?.segments || [])
+      .filter((item) => item.coverageStartStep >= coverageEndStep
+        || item.coverageEndStep <= coverageStartStep)
+      .reduce((sum, item) => sum + (item.bytes || 0), 0);
+    const used = [...frozenTracks.values()].reduce((sum, item) => sum + item.bytes, 0)
+      - (prior?.bytes || 0);
+    const playedBpm = Math.max(1, bpmOf(source, id, { [id]: arrFor(id) ?? null }));
+    const predictedFrames = Math.ceil((span.steps * ((60 / playedBpm) / 4)
+      + span.tailSeconds) * 44100);
+    expectedBytes = predictedFrames * 2 * Float32Array.BYTES_PER_ELEMENT * 2;
+    if (used + keptBytes + expectedBytes > FREEZE_MEMORY_CAP) {
+      throw new Error(`the 256 MB freeze memory cap would be exceeded (approximately ${Math.ceil((used + keptBytes + expectedBytes) / 1048576)} MB)`);
+    }
     const bank = structuredClone(source); bank.musicTrim = 1;
     const arrangement = structuredClone(arrFor(id) ?? null);
     const out = await bounceWav(bank, {
@@ -16667,13 +16780,6 @@ async function freezeLane(lane, {
       coverageStartStep, coverageEndStep, scope: normalizedScope,
       formSteps,
     };
-    const prior = frozenLane(id, lane);
-    const keptBytes = (prior?.segments || [])
-      .filter((item) => item.coverageStartStep >= coverageEndStep
-        || item.coverageEndStep <= coverageStartStep)
-      .reduce((sum, item) => sum + (item.bytes || 0), 0);
-    const used = [...frozenTracks.values()].reduce((sum, item) => sum + item.bytes, 0)
-      - (prior?.bytes || 0);
     if (used + keptBytes + bytes > FREEZE_MEMORY_CAP) {
       throw new Error(`the 256 MB freeze memory cap would be exceeded (${Math.ceil((used + keptBytes + bytes) / 1048576)} MB)`);
     }
@@ -16684,11 +16790,21 @@ async function freezeLane(lane, {
     if (id === trackId) syncFrozenLaneUi(lane);
     const renderedBars = Math.ceil(span.steps / 16);
     const formBars = Math.ceil(span.formSteps / 16);
-    const scopeText = normalizedScope.whole ? '' : ` · bars ${normalizedScope.from + 1}–${normalizedScope.to + 1}`;
-    toast(`${label} ${restoring ? 'refrozen' : 'frozen'}${scopeText} · rendered ${renderedBars} of ${formBars} bars · ${Math.ceil(bytes / 1048576)} MB`, 5000);
+    const toastScope = normalizedScope.whole ? '' : ` · bars ${normalizedScope.from + 1}–${normalizedScope.to + 1}`;
+    appendDiagnosticEvent('FREEZE RENDER END',
+      `${operationLabel} · ${scopeText} · rendered ${renderedBars} of ${formBars} bars`, {
+        operationDurationMs: Math.round(performance.now() - started),
+        operationBytes: bytes, operationSegments: 1,
+      });
+    toast(`${label} ${restoring ? 'refrozen' : 'frozen'}${toastScope} · rendered ${renderedBars} of ${formBars} bars · ${Math.ceil(bytes / 1048576)} MB`, 5000);
     succeeded = true;
   } catch (err) {
     closeMenu();
+    appendDiagnosticEvent(err?.name === 'AbortError' ? 'FREEZE RENDER CANCELLED' : 'FREEZE RENDER FAILED',
+      `${operationLabel} · ${scopeText} · ${String(err?.message || err)}`, {
+        operationDurationMs: Math.round(performance.now() - started),
+        operationBytes: expectedBytes || '', operationSegments: 0,
+      });
     toast(err?.name === 'AbortError' ? 'Freeze cancelled' : `Freeze failed — ${err.message}`, 7000);
   } finally {
     freezeJobs.delete(key); rendering = false;

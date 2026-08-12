@@ -608,19 +608,23 @@ assert(/const NOTE_RENDER_JOBS = 1;/.test(voicesSrc)
 assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
   && /const NOTE_CACHE_PREPARE_BUDGET_MS = 1800/.test(entry)
   && /async function playFromBeginning\(\)/.test(entry)
-  && /Audio\.prepareNoteCache\?\.\(engineBank\(\)\)/.test(entry)
+  && /Audio\.prepareNoteCache\?\.\(engineBank\(\), range/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)[\s\S]{0,100}?if \(playing\) setPlaying\(false\)/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)/.test(entry)
   && /if \(held && !health\.rendering\) break;/.test(entry)
   && /\$\('playstart'\)\.onclick = playFromBeginning/.test(entry),
   'Start from beginning prepares queued notes for a bounded time and starts between cache jobs');
-assert(/prepareNoteCache\(bank\)/.test(audio)
-  && /for \(let step = 0; step < plan\.length \* 16; step \+= tick\)/.test(audio)
+assert(/prepareNoteCache\(bank, \{ startStep = 0, endStep = null \} = \{\}\)/.test(audio)
+  && /for \(let step = Math\.floor\(from \/ tick\) \* tick; step < to; step \+= tick\)/.test(audio)
   && /rack\.prepareNoteCache\(voice\.id, freq, duration\(\)/.test(audio)
   && /rack\.prioritisePreparedNotes\(\)/.test(audio)
   && /prepareNoteCache\(voiceId, freq, dur/.test(voicesSrc)
   && /preparePriority/.test(voicesSrc),
   'a cold Start from beginning inventories the resolved arrangement silently and prioritises late notes');
+assert(/async function playFromParked\(\)[\s\S]*?loopOn \? currentLoopBounds\(\) : null[\s\S]*?prepareAndStart\(\{ fromStep: parkedAt, range: bounds, control: 'play' \}\)/.test(entry)
+  && /startStep: range\.start, endStep: range\.end/.test(entry)
+  && /\$\('play'\)\.onclick = \(\) => \{ if \(!playing\) void playFromParked\(\); \}/.test(entry),
+  'Play inventories and warms only the armed locator loop before starting it');
 assert(/createNoteCacheState\(\)/.test(voicesSrc)
   && /new VoiceRack\(this\.ctx, this\.noiseBuf, this\.crashBuf, this\.noteCacheState\)/.test(audio)
   && /setNoteCachePlaybackActive\(noteCacheState, !!bank \|\| this\.noteCachePreparationHeld\)/.test(audio),
@@ -850,6 +854,13 @@ assert(shell.indexOf('<span id="songrole"') > shell.indexOf('<span id="nowsong"'
   && /const role = \$\('songrole'\)/.test(entry)
   && /role\.textContent = DEV_USER \? 'DEV' : 'USER'/.test(entry),
   'the footer identifies the current mixer role after the song name');
+assert(/id="clockmin"/.test(shell)
+  && /songRatioMin: Infinity/.test(entry)
+  && /health\.songRatioMin = Math\.min\(health\.songRatioMin, ratio\)/.test(entry)
+  && /function resetSongClockMinimum\(\)/.test(entry)
+  && /track = resolveTrack\(id\);\s*\n\s*resetSongClockMinimum\(\);/.test(entry)
+  && /clockMin\.textContent = Number\.isFinite\(health\.songRatioMin\)/.test(entry),
+  'the status bar shows the song-load audio-clock minimum and resets it between songs');
 assert(/v\.kind === 'engine' \|\| v\.songLocal \|\| v\.draft/.test(
   readFileSync(new URL('../tools/mixer-voice-library.js', import.meta.url), 'utf8'))
   && /!v\.songLocal && !v\.draft/.test(
@@ -2597,17 +2608,26 @@ assert(/id="exportfreezes"/.test(shell) && /id="importfreezes"/.test(shell)
   'the hamburger exports all current freezes in one size-warned bundle and imports it without per-range save prompts or an automatic cache');
 assert(/id="profiletrackload"/.test(shell)
   && /function trackProfileRange[\s\S]*?laneActivity\(bank, 1, 1\)/.test(entry)
-  && /const prerollFrom = Math\.max\(0, best - 1\)/.test(entry)
-  && /startStep: prerollFrom \* 16/.test(entry)
+  && /function trackProfilePrerollSeconds[\s\S]*?return Math\.max\(0\.05, \(-earliest \* spb \/ 2\) \+ 0\.02\)/.test(entry)
+  && /measureOnly: true, prerollSeconds/.test(entry)
+  && /function trackProfileCheckpoint/.test(entry)
+  && /if \(completedTracks\.has\(identity\.number\)\) continue;/.test(entry)
+  && /Persist at the checkpoint[\s\S]{0,500}?appendDiagnosticEvent\('TRACK LOAD PROFILE'/.test(entry)
   && /function isolatedTrackProfileMix[\s\S]*?mute: item\.key !== lane/.test(entry)
   && /function profileTrackLoad[\s\S]*?measureOnly: true[\s\S]*?withoutInserts: true[\s\S]*?TRACK LOAD PROFILE/.test(entry)
   && /Track \$\{number\} — \$\{visibleName\}/.test(entry)
   && /profileFullMs/.test(entry) && /profileFxDeltaMs/.test(entry),
-  'DEV diagnostics profiles the shared densest window with timing-offset preroll per visible track and separates its insert-chain cost');
+  'DEV diagnostics profiles the shared densest window with timing-offset preroll, persists each track for resume, and separates its insert-chain cost');
 assert(/function freezeSpanFor\(id, lane, scope[\s\S]*?freezeRenderSpan\(bank, lane/.test(entry)
   && /function silentFrozenSegment\(id, lane, fingerprint, scope[\s\S]*?new Float32Array\(1\)/.test(entry)
   && /async function freezeLane\(lane[\s\S]*?const span = freezeSpanFor\(id, lane, normalizedScope\);[\s\S]*?if \(!span\) \{[\s\S]*?silentFrozenSegment\(id, lane, fingerprint, normalizedScope\)[\s\S]*?return true;[\s\S]*?bounceWav/.test(entry),
   'a wholly silent selected range or arranged track installs a tiny silent freeze before the offline renderer is reached');
+assert(/FREEZE RENDER START/.test(entry)
+  && /FREEZE RENDER END/.test(entry)
+  && /FREEZE RENDER FAILED/.test(entry)
+  && /expectedBytes = predictedFrames \* 2 \* Float32Array\.BYTES_PER_ELEMENT \* 2/.test(entry)
+  && /used \+ keptBytes \+ expectedBytes > FREEZE_MEMORY_CAP[\s\S]*?bounceWav/.test(entry),
+  'freeze renders persist outcomes and reject an over-cap allocation before opening the renderer');
 assert(/createNoteFxProcessor/.test(freezeSpanSource)
   && /startStep, endStep, steps: endStep - startStep, tailSeconds/.test(freezeSpanSource)
   && /tail: span\.tailSeconds, range: span/.test(entry)

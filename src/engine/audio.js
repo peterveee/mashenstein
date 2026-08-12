@@ -1359,7 +1359,7 @@ class AudioSys {
    * bounded LRU; the rack then sorts their render jobs latest-first, aimed at the dense
    * ending that motivated preparation in the first place.
    */
-  prepareNoteCache(bank) {
+  prepareNoteCache(bank, { startStep = 0, endStep = null } = {}) {
     if (!this.noteCache || !this.noteCacheState || !this.ctx || !bank) return this.noteCacheHealth();
     if (!this.voices) {
       this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf, this.noteCacheState);
@@ -1371,6 +1371,10 @@ class AudioSys {
     const plan = barPlan(bank);
     const resolution = bank.resolution === 32 ? 32 : 16;
     const tick = resolution === 32 ? 0.5 : 1;
+    const formSteps = plan.length * 16;
+    const from = Math.max(0, Math.min(formSteps, Number(startStep) || 0));
+    const to = Math.max(from, Math.min(formSteps,
+      Number.isFinite(endStep) ? Number(endStep) : formSteps));
     const spb = (60 / (this.bpm * this.tempo)) / 4;
     const barValue = (map, key, fallback = 0) =>
       typeof map === 'number' ? map : (Number.isFinite(map?.[key]) ? map[key] : fallback);
@@ -1378,7 +1382,8 @@ class AudioSys {
       ? value.map((v) => shift(v, semitones))
       : typeof value === 'number' && value > 0 ? value * 2 ** (semitones / 12) : value;
 
-    for (let step = 0; step < plan.length * 16; step += tick) {
+    for (let step = Math.floor(from / tick) * tick; step < to; step += tick) {
+      if (step < from) continue;
       const bar = plan[Math.floor(step / 16) % plan.length];
       const s = resolution === 32
         ? Math.round((step % 16) * 2) + bar.half * 32

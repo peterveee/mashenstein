@@ -70,7 +70,7 @@ function yieldToEventLoop() {
  */
 export async function renderBankPage({
   bank, blocks, steps: stepsIn, loop, tail, seed, sampleRate, mix, trackId, arrangement, warp,
-  upfront = false, rawLane = false, startStep = null,
+  upfront = false, rawLane = false, startStep = null, prerollSeconds = 0,
 }, { onProgress } = {}) {
   // The bank arrives carrying the tempo it is PLAYED at — resolved by the caller,
   // where a track id still means something, so a song the desk has retuned renders at
@@ -90,7 +90,8 @@ export async function renderBankPage({
   // at the slowest tempo a song can be played at, and a few tens of ms at any real one —
   // and `tail` is two seconds of room for the last note's release. The step COUNT does
   // not change: swing moves notes within the form, never past the end of it.
-  const N = Math.ceil((steps * spb + tail) * sampleRate);
+  const schedulePreroll = Math.max(0, Number(prerollSeconds) || 0);
+  const N = Math.ceil((schedulePreroll + steps * spb + tail) * sampleRate);
   const ctx = new OfflineAudioContext(2, N, sampleRate);
 
   Audio.setCaptureEnabled(false);   // the rewind recorder is realtime-only
@@ -126,7 +127,10 @@ export async function renderBankPage({
   // playback has to mute whatever was left in the lookahead window. An offline
   // render starts from silence anyway, so take the song from sample zero at full
   // trim — otherwise every WAV would carry a 0.5s gap and a fade-in.
-  Audio.nextTime = 0;
+  // Cropped diagnostic renders may begin on a deliberately anticipated track event.
+  // Give those negative lane offsets real silent time to land in; ordinary bounces
+  // pass zero and retain their byte-for-byte timing.
+  Audio.nextTime = schedulePreroll;
   Audio.songTrim.gain.cancelScheduledValues(0);
   Audio.songTrim.gain.setValueAtTime(Audio.musicTrim, 0);
 
