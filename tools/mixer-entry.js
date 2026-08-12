@@ -28,6 +28,11 @@ import { createCustomSelect } from './lib/custom-select.js';
 // Heavy UI builds hold the thread the sequencer runs on: `heavyUi` queues audio past
 // the stall and records what it was for, so the watchdog can name it. See lib/heavy-ui.js.
 import { heavyUi, lastHeavyBuild } from './lib/heavy-ui.js';
+// Performance telemetry, and nothing more yet: the relief machine runs in SHADOW —
+// it decides and logs, it does not throttle anything. See lib/performance-relief.js.
+import {
+  newReliefState, reliefTransition, newAuxDuty, accumulateAuxDuty, auxDutySummary,
+} from './lib/performance-relief.js';
 import { midiBuffer } from './lib/render-midi-bank.js';
 import {
   draftOf, entryOf, setLanesOff, setLanesDeleted, deleteBars, duplicateBars,
@@ -1435,9 +1440,14 @@ const closeMenu = () => {
   document.dispatchEvent(new Event('mash-close-custom-select'));
   const pickerWasOpen = $('voicepicker')?.classList.contains('show');
   menu().classList.remove('show');
-  $('regionedit').classList.remove('show');
-  $('regionedit').classList.remove('barfxmodal');
-  $('regionedit').classList.remove('notefxmodal');
+  // A running freeze keeps its panel: it is the render's only progress readout and its
+  // only Cancel, and a stray click on the desk must not leave a minutes-long job with
+  // nothing showing it. hideFreezeProgress() is what takes it down, when the job ends.
+  if (!$('regionedit').classList.contains('freezeprogress')) {
+    $('regionedit').classList.remove('show');
+    $('regionedit').classList.remove('barfxmodal');
+    $('regionedit').classList.remove('notefxmodal');
+  }
   $('fxpicker').classList.remove('show');
   $('voicepicker').classList.remove('show');
   if (pickerWasOpen) pendingAddTrack = null;
@@ -3467,6 +3477,7 @@ function setTrackNoteFx(key, next) {
 }
 
 function openNoteFxEditor(x, y, key, scope = null) {
+  if (regionPanelBusy()) return;
   closeMenu();
   restorablePopup = { kind: 'noteFx', laneKey: key,
     scope: scope ? { from: scope.from, to: scope.to } : null };
@@ -3639,6 +3650,7 @@ function openNoteFxEditor(x, y, key, scope = null) {
 }
 
 function openBarEffectsEditor(x, y, key, { from, to, chain: restoredChain = null }) {
+  if (regionPanelBusy()) return;
   closeMenu();
   const panel = $('regionedit'); panel.textContent = ''; panel.classList.add('barfxmodal');
   let chain = JSON.parse(JSON.stringify(restoredChain
@@ -9433,6 +9445,7 @@ const openNoteLengthAdjust = (scopeKind, x, y) => {
     toast('Select one or more notes first');
     return;
   }
+  if (regionPanelBusy()) return;
   closeMenu();
   restorablePopup = { kind: 'noteLength', scopeKind };
   const el = $('regionedit');
@@ -10097,6 +10110,7 @@ function trackHoverGroups(preset, { frozen = false } = {}) {
 function openRegionEditor(x, y, {
   laneKey = null, from = selFrom(), to = selTo(), wholeTrack = false, focusName = false,
 } = {}) {
+  if (regionPanelBusy()) return;
   closeMenu();
   restorablePopup = { kind: 'region', laneKey, from, to, wholeTrack, focusName };
   const el = $('regionedit');
@@ -11780,6 +11794,15 @@ function resetSongClockMinimum() {
 const loopHealthWindow = {
   ratioMin: Infinity, marginMin: Infinity, longTaskMax: 0,
   struggling: false, overloaded: false, machineBusy: false,
+  // Scheduler WORK, drained per lap rather than per tick. Starvation says the queue
+  // ran dry; this says what each pass cost and how much of it went on ticks between
+  // the sixteenths. An optimisation is accepted or rejected on these, because a wall
+  // time on this laptop drifts by more than the effect being measured.
+  work: null,
+  // Relief SHADOW: what the throttling machine would have done, had it been wired to
+  // anything. Counted per lap so a row says "this lap would have spent 1.5s in relief"
+  // rather than leaving the reader to diff timestamps.
+  reliefMs: 0, reliefEnters: 0, reliefVerdict: '',
 };
 let loopLogRecords = [];
 try {
@@ -11795,6 +11818,10 @@ const LOOP_LOG_COLUMNS = [
   'detail', 'audioState', 'preMasterPeak', 'postMasterPeak', 'deadRuns', 'recoveryTier',
   'stallSource', 'stallSourceMs',
   'clockMin', 'schedulerMarginMinMs', 'longTaskMaxMs', 'dropoutsDelta', 'dropoutsTotal',
+  // Priority 0 telemetry — measurement only, no behaviour behind any of it yet.
+  'schedTicks', 'schedFineTickPct', 'schedLaneReads', 'schedFineLaneReadPct',
+  'schedLaneReadsPerTick', 'schedPreamblePerTick',
+  'reliefMs', 'reliefEnters', 'reliefVerdict', 'auxDuty',
   'bufferMode', 'latencyRequest', 'baseLatencyMs', 'outputLatencyMs', 'readAheadMs',
   'cacheEnabled', 'cacheBuffers', 'cacheMB', 'cacheQueued', 'cacheRendering',
   'cacheHits', 'cacheMisses', 'cacheStale', 'pools', 'poolSlots', 'retiredPools',
@@ -11804,6 +11831,11 @@ const LOOP_LOG_COLUMNS = [
   'profileFullMs', 'profileDryMs', 'profileLoadPct', 'profileFxDeltaMs',
 ];
 
+// Declared above their first use rather than beside their helpers: resetLoopHealthWindow
+// clears the duty accumulator, and a song can be loaded before this file finishes.
+let reliefState = newReliefState();
+const auxDuty = newAuxDuty();
+
 function resetLoopHealthWindow() {
   loopHealthWindow.ratioMin = Infinity;
   loopHealthWindow.marginMin = Infinity;
@@ -11811,7 +11843,111 @@ function resetLoopHealthWindow() {
   loopHealthWindow.struggling = false;
   loopHealthWindow.overloaded = false;
   loopHealthWindow.machineBusy = false;
+  loopHealthWindow.work = null;
+  loopHealthWindow.reliefMs = 0;
+  loopHealthWindow.reliefEnters = 0;
+  loopHealthWindow.reliefVerdict = '';
+  auxDuty.clear();
   lastLoggedDropouts = health.dropouts;
+}
+
+// ---- priority 0: scheduler work, relief shadow, aux duty --------------------
+//
+// All three are measurement. Nothing below changes what is scheduled, what is drawn,
+// or what the graph contains — the plan in work/local/mixer-general-performance-plan.md
+// puts this phase first precisely so that the phases which DO change behaviour have a
+// noise floor to be judged against. The accepted stress baseline is a pair of Clock
+// minima 0.4% apart, and 0.4% is not a result until the spread of an unchanged run is
+// known.
+
+/** Fold this tick's scheduler-work counters into the lap window. */
+function accumulateSchedulerWork() {
+  const w = Audio.takeSchedulerWork ? Audio.takeSchedulerWork() : null;
+  if (!w || !w.ticks) return;
+  const into = loopHealthWindow.work || (loopHealthWindow.work = {
+    ticks: 0, fineTicks: 0, laneReads: 0, fineLaneReads: 0, notePlans: 0,
+    fineNotePlans: 0, preambleMerges: 0, preambleTransposes: 0,
+    preambleSilentSweeps: 0, preambleFrozenWalks: 0,
+  });
+  for (const key of Object.keys(into)) into[key] += w[key] || 0;
+}
+
+/** The scheduler-work columns for one lap row, as rates rather than raw totals. */
+function schedulerWorkFields() {
+  const w = loopHealthWindow.work;
+  if (!w || !w.ticks) return {};
+  const pct = (n) => Math.round(1000 * n / w.ticks) / 10;
+  const preamble = w.preambleMerges + w.preambleTransposes
+    + w.preambleSilentSweeps + w.preambleFrozenWalks;
+  return {
+    schedTicks: w.ticks,
+    schedFineTickPct: pct(w.fineTicks),
+    schedLaneReads: w.laneReads,
+    // The number priority 1b is judged on: of every lane resolution the scheduler did,
+    // how many happened on a tick between the sixteenths. If this is near zero on the
+    // stress song, the lane predicate is not worth its risk.
+    schedFineLaneReadPct: w.laneReads
+      ? Math.round(1000 * w.fineLaneReads / w.laneReads) / 10 : 0,
+    schedLaneReadsPerTick: Math.round(10 * w.laneReads / w.ticks) / 10,
+    // The number priority 1a is judged on, and the one no lane predicate can reach:
+    // work done resolving the BAR, before a single lane is looked at.
+    schedPreamblePerTick: Math.round(10 * preamble / w.ticks) / 10,
+  };
+}
+
+/**
+ * Run the relief machine and record what it decided. It is not wired to any drawing.
+ *
+ * `longTaskMs` is passed in rather than read off `health`, because the watchdog zeroes
+ * that field partway through its own pass and a shadow reading taken after the reset
+ * would report a clean main thread on exactly the ticks that were not.
+ */
+function updateReliefShadow(wall, { dropouts, marginMin, longTaskMs, ratio }) {
+  const { state, event, verdict } = reliefTransition(reliefState, {
+    wall, playing, ratio, dropouts, marginMin, longTaskMs,
+    struggling: health.audioStruggling, behind: health.audioBehind,
+  });
+  if (state.active && reliefState.active) {
+    loopHealthWindow.reliefMs += HEALTH_TICK_MS;
+  }
+  if (verdict) loopHealthWindow.reliefVerdict = verdict;
+  reliefState = state;
+  if (!event) return;
+  if (event.type === 'on') {
+    loopHealthWindow.reliefEnters++;
+    appendDiagnosticEvent('PERFORMANCE RELIEF ON (shadow)',
+      `would throttle drawing: ${event.reason}`, {
+        schedulerMarginMinMs: Number.isFinite(event.marginMin)
+          ? Math.round(event.marginMin * 1000) : '',
+        longTaskMaxMs: Math.round(event.longTaskMs || 0),
+        dropoutsDelta: event.dropouts || 0,
+        reliefVerdict: event.reason,
+      });
+  } else {
+    appendDiagnosticEvent('PERFORMANCE RELIEF OFF (shadow)',
+      `would restore drawing after ${Math.round(event.durationMs)}ms of ${event.reason}`,
+      { reliefMs: Math.round(event.durationMs), reliefVerdict: event.reason });
+  }
+}
+
+/**
+ * Sample every aux return: connected, and is anything arriving at it?
+ *
+ * Both readings are already there — `aux(id).active` is the prune/wake state and the
+ * send meter is on every aux input and already pulled — so this adds a map lookup and
+ * a compare per aux, four times a second. See the go/no-go note in the plan: if these
+ * columns come back near 100% fed on a dense mix, aux sleeping is not worth building.
+ */
+function accumulateAuxActivity(dtMs) {
+  const mixer = Audio.mixer;
+  if (!mixer || !playing) return;
+  for (const def of mixer.auxes || []) {
+    accumulateAuxDuty(auxDuty, def.id, {
+      dtMs,
+      connected: !!mixer.aux(def.id)?.active,
+      level: mixer.auxLevel(def.id) || 0,
+    });
+  }
 }
 
 const csvCell = (value) => {
@@ -11922,6 +12058,9 @@ function appendLoopLog({ start, end }) {
     longTaskMaxMs: Math.round(loopHealthWindow.longTaskMax),
     dropoutsDelta: Math.max(0, health.dropouts - lastLoggedDropouts), dropoutsTotal: health.dropouts,
     ...diagnosticRuntimeFields(),
+    ...schedulerWorkFields(),
+    reliefMs: loopHealthWindow.reliefMs, reliefEnters: loopHealthWindow.reliefEnters,
+    reliefVerdict: loopHealthWindow.reliefVerdict, auxDuty: auxDutySummary(auxDuty),
   };
   persistLoopRecord(record);
   resetLoopHealthWindow();
@@ -12239,7 +12378,15 @@ function checkAudioHealth() {
           : '; no recent control gesture or heavy UI build — unattributed'));
   }
   if (playing) loopHealthWindow.longTaskMax = Math.max(loopHealthWindow.longTaskMax, health.longTask);
+  // Kept before the reset below, for the shadow relief sample at the end of this pass:
+  // read after it, every tick would report a main thread with nothing long on it.
+  const longTaskMs = health.longTask || 0;
   health.longTask = 0;
+  // Priority 0 accumulation. Draining the engine's work counters here rather than per
+  // lap keeps them bounded on a desk that is never looped, and costs one method call
+  // four times a second.
+  accumulateSchedulerWork();
+  accumulateAuxActivity(dt * 1000);
 
   // The audio thread falling behind, said in TWO stages — because by the time a
   // shortfall has lasted long enough to be certain, you have already heard it.
@@ -12298,6 +12445,13 @@ function checkAudioHealth() {
   // tooltip that nobody is hovering, sixty times a bar, is exactly the sort of idle
   // main-thread work the rest of this file exists to remove. The once-a-second pass
   // keeps the numbers inside the tooltip fresh for whoever is reading them.
+  // SHADOW ONLY. This decides whether the desk would reduce its drawing, and logs the
+  // decision; it does not reduce anything. Running it now — before any UI hangs off
+  // it — is what makes the thresholds arguable from real sessions rather than from a
+  // guess, and it is where the flapping risk near 0.95x will show up if it exists.
+  updateReliefShadow(wall, {
+    dropouts: sched?.late || 0, marginMin: health.marginMin, longTaskMs, ratio,
+  });
   const verdict = `${health.audioBehind}|${health.audioStruggling}|${health.uiStalled}`;
   if (verdict !== health.lastVerdict || wall - (health.lastCpuAt || 0) > 1000) {
     health.lastVerdict = verdict;
@@ -16497,9 +16651,32 @@ function rawFreezeMix(id, lane) {
   return out;
 }
 
+/**
+ * True while the region panel is showing a freeze render's progress. The panel is shared,
+ * so everything that would otherwise take it over asks first: losing the readout means
+ * losing the only way to cancel a render that runs for minutes.
+ */
+const freezeProgressOpen = () => $('regionedit').classList.contains('freezeprogress');
+
+/** Refuse to repurpose the panel while a freeze owns it, and say why. */
+function regionPanelBusy() {
+  if (!freezeProgressOpen()) return false;
+  toast('A freeze is rendering — cancel it or wait for it to finish');
+  return true;
+}
+
+function hideFreezeProgress() {
+  const panel = $('regionedit');
+  panel.classList.remove('freezeprogress');
+  panel.classList.remove('show');
+  panel.textContent = '';
+}
+
 function showFreezeProgress(lane, controller, label = targetLabel(lane)) {
   closeMenu();
   const panel = $('regionedit'); panel.textContent = '';
+  panel.classList.remove('barfxmodal'); panel.classList.remove('notefxmodal');
+  panel.classList.add('freezeprogress');
   const head = document.createElement('div'); head.className = 'reghead';
   const title = document.createElement('div'); title.className = 'regtitle';
   title.textContent = `Freeze · ${label}`;
@@ -16808,6 +16985,7 @@ async function freezeLane(lane, {
     toast(err?.name === 'AbortError' ? 'Freeze cancelled' : `Freeze failed — ${err.message}`, 7000);
   } finally {
     freezeJobs.delete(key); rendering = false;
+    hideFreezeProgress();
   }
   return succeeded;
 }

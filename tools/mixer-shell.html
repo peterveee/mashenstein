@@ -1755,6 +1755,12 @@
                 border: 1px solid var(--line); border-radius: 8px;
                 box-shadow: 0 14px 34px color-mix(in srgb, var(--deep) 65%, transparent); }
   #regionedit.show { display: block; }
+  /* The freeze progress readout borrows this panel, and while a render is running it is
+     the one window that may not be lost behind something else: it owns the only Cancel
+     button for a job that takes minutes. 45 clears the drawer (32), the roll's tool menu
+     (39) and the ask modal (40), and stays under the tooltip, the tour and the
+     visualiser, none of which can be open while a freeze renders. */
+  #regionedit.freezeprogress { z-index: 45; }
   .reghead { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px 8px;
              border-bottom: 1px solid var(--line); background: var(--well); }
   .regtitle { flex: 1; min-width: 0; color: #fff; font-size: 12px; font-weight: 700; }

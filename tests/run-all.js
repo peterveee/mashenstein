@@ -20,6 +20,11 @@ const suites = [
   'tests/megamix.js',
   'tests/mix.js',
   'tests/mixer-layout.js',
+  // The desk's watchdog decides whether to reduce its own drawing. Beside the layout
+  // suite because it is the same kind of claim — a contract about the desk, provable
+  // without a browser — and browserless for a sharper reason: a threshold machine
+  // tested through requestAnimationFrame is tested through the thing it throttles.
+  'tests/performance-relief.js',
   // The desk's way OUT — the WAV and the MIDI. Beside the layout suite because it is
   // the same kind of claim about the same tool, and browserless for the same reason:
   // what it pins is that both exports are built by code that can run without Node,
@@ -39,6 +44,11 @@ const suites = [
   // matters — an empty layer hands every song back the bank it always had — which is
   // tests/null-test.js's claim, made at the object rather than at the sample.
   'tests/arrangement.js',
+  // Which half steps the scheduler owes the song. Beside the arrangement suite because
+  // it is the same subject from the clock's side: a 1/32 arpeggiator anywhere promotes
+  // the transport everywhere, and what may be skipped on the promoted ticks is a claim
+  // about lane array lengths that has to hold for every song, not just the one measured.
+  'tests/fine-tick-scheduling.js',
   // The other end of the same control: `arrangement.js` covers the desk's setSwing,
   // which writes a number into a draft, and this covers the engine's, which moves it
   // under a running transport. Cheap and browserless, which is itself the claim — a
@@ -259,10 +269,11 @@ for (const s of browserSuites) {
 // simply "the fast ones".
 const soundSuites = [
   'tests/sound-test-menu.js', 'tests/visualizers.js', 'tests/megamix.js', 'tests/mix.js',
-  'tests/mixer-layout.js', 'tests/mixer-export.js', 'tests/midi-import.js',
+  'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js',
   'tests/song-copies.js', 'tests/song-alternates.js',
-  'tests/arrangement.js', 'tests/swing.js', 'tests/piano-roll.js', 'tests/note-recorder.js',
+  'tests/arrangement.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
+  'tests/piano-roll.js', 'tests/note-recorder.js',
   'tests/song-processing.js',
   'tests/preview.js', 'tests/key-mode.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
   'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js',

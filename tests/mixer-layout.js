@@ -3407,5 +3407,80 @@ assert(bankNamed?.id === 'stRoundMono' && bankNamed.starter === true
   + ' frozen starter itself is left alone');
 delete CATALOGUE[copyId];
 
+// ---- performance relief ships in SHADOW ------------------------------------
+//
+// The relief machine decides whether the desk should draw less while the audio
+// recovers, and right now it must do nothing but decide. That is the whole safety
+// argument for landing it early: the thresholds get calibrated against real sessions
+// at zero risk, because there is no behaviour behind them yet. The moment throttling
+// is wired up, these assertions are the ones to change deliberately — which is the
+// point of writing them down rather than trusting the diff to stay small.
+{
+  const shadow = entry.slice(entry.indexOf('function updateReliefShadow'),
+    entry.indexOf('function accumulateAuxActivity'));
+  assert(shadow.length > 200, 'the relief shadow function is where this test thinks it is');
+  assert(!/requestAnimationFrame|cancelAnimationFrame|\.hidden\s*=|setInterval|clearInterval/.test(shadow),
+    'shadow relief does not touch any drawing loop or timer');
+  assert(!/Audio\.(setBank|setMix|applyMix|stop|play|pause|ensure|freeze|setLatency|setReadAhead)/.test(shadow)
+    && !/\.mixer\.(set|reset|lane\()/.test(shadow),
+    'shadow relief mutates no mix, voice, freeze, transport or AudioContext state');
+  assert(/appendDiagnosticEvent\('PERFORMANCE RELIEF ON \(shadow\)'/.test(shadow)
+    && /appendDiagnosticEvent\('PERFORMANCE RELIEF OFF \(shadow\)'/.test(shadow),
+    'shadow relief says so in the diagnostics rows it writes, both edges');
+  // Edge-triggered by construction: the machine returns at most one event per sample
+  // and this only logs when handed one. A row four times a second would bury the log.
+  assert(/if \(!event\) return;/.test(shadow),
+    'shadow relief writes a diagnostics row only on a transition, never per tick');
+}
+
+// The engine's scheduler-work counters are measurement, so they must not have grown a
+// behaviour: nothing in scheduleStep may branch on them.
+{
+  // `songBeat` as the end marker, not `playVoice`: playVoice is DEFINED ABOVE
+  // scheduleStep in this file, so slicing to it yields an empty string and every
+  // assertion below passes vacuously.
+  const scheduleStep = audio.slice(audio.indexOf('  scheduleStep() {'),
+    audio.indexOf('  songBeat() {'));
+  assert(/work\.ticks\+\+/.test(scheduleStep) && /work\.fineTicks\+\+/.test(scheduleStep),
+    'the scheduler counts its passes and which of them were fractional');
+  assert(!/if \([^)]*work\.[a-zA-Z]+/.test(scheduleStep),
+    'no scheduling decision is taken on a work counter — they are telemetry, not state');
+}
+
+// A freeze render takes minutes and the region panel is the only place it reports
+// progress or offers a Cancel. That panel is shared, so the readout has to survive both
+// ways it could be lost: covered by another window, or quietly taken over.
+{
+  const zOf = (selector) => {
+    const match = shell.match(new RegExp(`${selector}\\s*\\{[^}]*z-index:\\s*(\\d+)`, 's'));
+    return match ? Number(match[1]) : NaN;
+  };
+  const freezeZ = zOf('#regionedit\\.freezeprogress');
+  const over = ['#regionedit', '#ctxmenu', '#navdrawer', '#drawerbackdrop',
+    '\\.rolltool-menu', '#ask'];
+  assert(Number.isFinite(freezeZ) && over.every((selector) => {
+    const z = zOf(selector);
+    return Number.isFinite(z) && freezeZ > z;
+  }), 'the freeze progress panel stacks above every window that could cover it');
+
+  const closeMenuBody = entry.slice(entry.indexOf('const closeMenu = () => {'),
+    entry.indexOf('// Anything that is not the popup itself dismisses it.'));
+  assert(/if \(!\$\('regionedit'\)\.classList\.contains\('freezeprogress'\)\)/.test(closeMenuBody),
+    'a click elsewhere on the desk does not dismiss a running freeze’s progress panel');
+
+  for (const opener of ['openRegionEditor', 'openNoteFxEditor',
+    'openBarEffectsEditor', 'openNoteLengthAdjust']) {
+    const start = entry.indexOf(`${opener} = (`) >= 0
+      ? entry.indexOf(`${opener} = (`) : entry.indexOf(`function ${opener}(`);
+    assert(start >= 0 && /regionPanelBusy\(\)/.test(entry.slice(start, start + 700)),
+      `${opener} refuses to take the region panel while a freeze owns it`);
+  }
+
+  const freezeLane = entry.slice(entry.indexOf('async function freezeLane('),
+    entry.indexOf('// Asked BEFORE the render, not read from somewhere else'));
+  assert(/finally \{[^}]*hideFreezeProgress\(\);/s.test(freezeLane),
+    'the progress panel comes down on every exit from a freeze — done, failed or cancelled');
+}
+
 console.log(failed ? 'MIXER LAYOUT: FAILED' : 'MIXER LAYOUT: OK');
 process.exit(failed ? 1 : 0);

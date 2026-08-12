@@ -71,6 +71,7 @@ function yieldToEventLoop() {
 export async function renderBankPage({
   bank, blocks, steps: stepsIn, loop, tail, seed, sampleRate, mix, trackId, arrangement, warp,
   upfront = false, rawLane = false, startStep = null, prerollSeconds = 0,
+  fineLaneSkip = true,
 }, { onProgress } = {}) {
   // The bank arrives carrying the tempo it is PLAYED at — resolved by the caller,
   // where a track id still means something, so a song the desk has retuned renders at
@@ -94,6 +95,9 @@ export async function renderBankPage({
   const N = Math.ceil((schedulePreroll + steps * spb + tail) * sampleRate);
   const ctx = new OfflineAudioContext(2, N, sampleRate);
 
+  // Off only for the A/B that proves the half-step skips change nothing; every
+  // ordinary render leaves this at its default.
+  Audio.setFineLaneSkip?.(fineLaneSkip);
   Audio.setCaptureEnabled(false);   // the rewind recorder is realtime-only
   Audio.setNoiseSeed(seed);
   Audio.ensure(ctx);
@@ -173,6 +177,11 @@ export async function renderBankPage({
   const SLICE_MS = 8;
   let sliceAt = performance.now();
   let stepAt = 0;
+  // Zero the scheduler-work counters so the profile handed back below covers the WALK
+  // and not the setBank/setArrangement that preceded it. Counting only; see
+  // AudioSys.takeSchedulerWork and work/local/bench-scheduler-work.js, which reads it
+  // to compare two engine revisions without a wall clock in the comparison.
+  Audio.takeSchedulerWork?.();
   const scheduleCalls = steps * (Audio.bank?.resolution === 32 ? 2 : 1);
   const buildUntil = async (limit) => {
     while (stepAt < scheduleCalls && Audio.nextTime < limit) {
@@ -302,7 +311,20 @@ export async function renderBankPage({
   // (a few thousand numbers for a long song) to ride back with the metadata.
   const percussion = Array.from(Audio._percPending || []);
 
-  return { outL: L, outR: R, frames: L.length, seconds: L.length / sampleRate, peak, percussion };
+  return {
+    outL: L, outR: R, frames: L.length, seconds: L.length / sampleRate, peak, percussion,
+    // What the scheduler DID to produce this, as operation counts. Deterministic from
+    // the song, so two engine revisions rendering the same bank can be compared exactly
+    // — which a wall clock on this laptop cannot do at the sizes involved.
+    schedulerWork: Audio.schedulerWork?.() || null,
+    // The precomputed half-tick plan this walk ran under, so a bench can say WHY the
+    // fast path did or did not engage rather than only that the counters did not move.
+    fineBars: Audio._fineBars ? [...Audio._fineBars] : null,
+    fineTickLanes: Audio._fineTickLanes || [],
+    fineBarsReason: Audio._fineBarsReason || '',
+    fineLanes: Audio._fineLanes ? [...Audio._fineLanes] : null,
+    transportResolution: Audio.transportResolution,
+  };
 }
 
 /** Interleave a stereo pair into one Float32Array — L,R,L,R. */

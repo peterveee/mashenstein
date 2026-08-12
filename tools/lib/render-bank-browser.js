@@ -60,7 +60,11 @@ window.__renderBank = async (args) => {
   const r = await renderBankPage(args);
   // Interleaved once here so the transfer back to Node is a single buffer.
   window.__pcm = new Uint8Array(interleave(r.outL, r.outR).buffer);
-  return { bytes: window.__pcm.length, frames: r.frames, seconds: r.seconds, peak: r.peak, percussion: r.percussion };
+  return { bytes: window.__pcm.length, frames: r.frames, seconds: r.seconds, peak: r.peak,
+    percussion: r.percussion, schedulerWork: r.schedulerWork,
+    fineBars: r.fineBars, fineTickLanes: r.fineTickLanes,
+    fineBarsReason: r.fineBarsReason, fineLanes: r.fineLanes,
+    transportResolution: r.transportResolution };
 };
 
 // Handed back as a file download rather than a base64 string over CDP. A two-minute
@@ -98,7 +102,7 @@ export async function openRenderer({ headless = true } = {}) {
 
   async function render(bank, {
     repeat = 1, lanes = null, tail = 2.0, seed = DEFAULT_SEED, mix, trackId, arrangement, warp,
-    songLoop = false,
+    songLoop = false, fineLaneSkip = true,
   } = {}) {
     const gated = gateLanes(bank, lanes);
     // Resolved in Node, where bank identity still holds; the page cannot do this
@@ -182,6 +186,9 @@ export async function openRenderer({ headless = true } = {}) {
       // numbers, and pitch defaults to unity rather than to tempo — the game's
       // speed burst moves the clock and leaves the key alone.
       ...(warp ? { warp: { tempo: warp.tempo ?? 1, pitch: warp.pitch ?? 1 } } : {}),
+      // Only when a caller is deliberately turning it off — the page defaults to on,
+      // and an ordinary render must not start carrying a switch in its arguments.
+      ...(fineLaneSkip === false ? { fineLaneSkip: false } : {}),
     };
 
     // Two attempts at most: the just-in-time walk, then the whole walk up front.
@@ -236,6 +243,11 @@ export async function openRenderer({ headless = true } = {}) {
     return {
       outL, outR, seconds: meta.seconds, blocks, peak: meta.peak,
       percussion: meta.percussion || [],
+      // Operation counts for the walk that produced this — see work/local/bench-scheduler-work.js.
+      schedulerWork: meta.schedulerWork || null,
+      fineBars: meta.fineBars, fineTickLanes: meta.fineTickLanes,
+      fineBarsReason: meta.fineBarsReason, fineLanes: meta.fineLanes,
+      transportResolution: meta.transportResolution,
       // What was actually laid down, so a caller can say so in words rather than
       // reporting "2x form" over a render that is a way in and two passes of a loop.
       loop, steps: steps || blocks * 32,
