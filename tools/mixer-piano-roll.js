@@ -59,6 +59,17 @@ export const NOTE_LENGTH_OPTIONS = [
   { value: 16, label: '1' },
 ];
 
+export const QUANTISE_OPTIONS = [
+  { value: 4, label: '1/4' },
+  { value: 2, label: '1/8' },
+  { value: 1, label: '1/16' },
+  { value: 0.5, label: '1/32' },
+];
+
+// Discrete controls keep a zoom gesture to one layout pass. The old range input could
+// queue a full whole-song rebuild for every pointer movement.
+const TIME_ZOOM_OPTIONS = [0.5, 1, 1.5, 2, 4];
+
 /** MIDI semitone -> Hz, and back. The engine stores Hz; a keyboard thinks in steps. */
 export const midiFreq = (midi) => 440 * (2 ** ((midi - 69) / 12));
 export const freqMidi = (hz) => Math.round(12 * Math.log2(hz / 440) + 69);
@@ -174,11 +185,11 @@ export function keyCenterOffset(midi, rowH = ROW_H) {
 }
 
 /** Whether a drawn note rectangle is sounding at the heard sixteenth. */
-export function noteActiveAt(step, bar, at, span = 1) {
+export function noteActiveAt(step, bar, at, span = 1, slots = 16) {
   if (!Number.isFinite(step)) return false;
-  const heard = Math.floor(step);
-  const start = Number(bar) * 16 + Number(at);
-  const length = Math.max(1, Math.floor(Number(span) || 1));
+  const heard = step * slots / 16;
+  const start = Number(bar) * slots + Number(at);
+  const length = Math.max(1, Number(span) || 1);
   return Number.isFinite(start) && heard >= start && heard < start + length;
 }
 
@@ -405,6 +416,11 @@ export const ROLL_TOOLS = [
     hint: 'Draw — every press makes a note; drag to set how long, right-click to rub out',
   },
   {
+    id: 'chord',
+    label: 'Chord Draw',
+    hint: 'Chord Draw — click a root to write every tone of the selected chord as ordinary notes',
+  },
+  {
     id: 'select',
     label: 'Select',
     hint: 'Select — band notes, then move or stretch them together; arrows nudge,'
@@ -419,6 +435,29 @@ export const ROLL_TOOLS = [
 ];
 export const ROLL_TOOL_IDS = ROLL_TOOLS.map((t) => t.id);
 export const rollTool = (id) => (ROLL_TOOL_IDS.includes(id) ? id : 'auto');
+
+export const CHORD_TYPES = Object.freeze({
+  major: [0, 4, 7], minor: [0, 3, 7], dom7: [0, 4, 7, 10],
+  maj7: [0, 4, 7, 11], min7: [0, 3, 7, 10], dim: [0, 3, 6],
+  dim7: [0, 3, 6, 9], aug: [0, 4, 8], sus2: [0, 2, 7], sus4: [0, 5, 7],
+  power: [0, 7], six: [0, 4, 7, 9], min6: [0, 3, 7, 9],
+  nine: [0, 4, 7, 10, 14], min9: [0, 3, 7, 10, 14],
+  eleven: [0, 4, 7, 10, 14, 17], thirteen: [0, 4, 7, 10, 14, 17, 21],
+});
+
+export function chordFrequencies(rootMidi, type = 'major', {
+  inversion = 0, voicing = 'compact', doubleRoot = false,
+} = {}) {
+  const intervals = [...(CHORD_TYPES[type] || CHORD_TYPES.major)];
+  const turns = Math.max(0, Math.min(intervals.length - 1, Math.round(inversion) || 0));
+  for (let i = 0; i < turns; i++) intervals.push(intervals.shift() + 12);
+  if (voicing === 'open') {
+    for (let i = 1; i < intervals.length; i += 2) intervals[i] += 12;
+  }
+  if (doubleRoot) intervals.push(12);
+  return [...new Set(intervals)].sort((a, b) => a - b)
+    .map((semi) => midiFreq(rootMidi + semi));
+}
 
 /**
  * The pitch rows to draw, highest first.
@@ -547,6 +586,21 @@ export function createPianoRoll({
   // Do not persist this: it is a drawing-session preference, and every new piano roll
   // starts with the useful, least surprising sixteenth-note default.
   let noteAddLength = 1;
+  let quantise = 1;
+  const ZOOM_KEY = 'mash-mixer-roll-time-zoom';
+  let timeZoom = (() => {
+    if (typeof localStorage === 'undefined') return 1;
+    const saved = Number(localStorage.getItem(ZOOM_KEY));
+    if (!Number.isFinite(saved)) return 1;
+    return TIME_ZOOM_OPTIONS.reduce((best, value) =>
+      Math.abs(value - saved) < Math.abs(best - saved) ? value : best, 1);
+  })();
+  let chordType = 'major';
+  let chordInversion = 0;
+  let chordVoicing = 'compact';
+  let chordDoubleRoot = false;
+  let chordInput = false;
+  el.style.setProperty('--roll-time-zoom', String(timeZoom));
 
   /**
    * Mono or Poly, per channel — see VOICE_MODES.
@@ -915,6 +969,233 @@ export function createPianoRoll({
     return field;
   };
 
+  // The remaining roll fields use the same small custom list as TOOL and DRAW LENGTH.
+  // Keeping the popup in the document body avoids clipping inside the keyboard gutter
+  // and, importantly, keeps the open list out of the operating system's native chrome.
+  const customPicker = ({ label, title, idPrefix, options, value, chooseValue }) => {
+    const field = document.createElement('button');
+    field.type = 'button';
+    field.className = 'rolltool rollcustomselect';
+    field.title = title;
+    field.setAttribute('role', 'combobox');
+    field.setAttribute('aria-haspopup', 'listbox');
+    field.setAttribute('aria-expanded', 'false');
+    field.setAttribute('aria-label', label);
+    const valueEl = document.createElement('span');
+    valueEl.className = 'rolltool-value';
+    field.append(valueEl);
+
+    const menu = document.createElement('div');
+    menu.className = 'rolltool-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('aria-label', label);
+    menu.hidden = true;
+    let open = false;
+    let active = 0;
+
+    const optionEls = options.map((option, i) => {
+      const o = document.createElement('div');
+      o.className = 'rolltool-option';
+      o.id = `${idPrefix}-opt-${i}`;
+      o.setAttribute('role', 'option');
+      o.textContent = option.label;
+      o.dataset.value = String(option.value);
+      o.addEventListener('pointerdown', (ev) => {
+        ev.preventDefault(); ev.stopPropagation(); choose(option.value);
+      });
+      o.addEventListener('pointerenter', () => setActive(i));
+      return o;
+    });
+    menu.append(...optionEls);
+
+    const paint = () => {
+      const current = value();
+      const selected = options.find((option) => String(option.value) === String(current))
+        || options[0];
+      valueEl.textContent = selected.label;
+      optionEls.forEach((o) => {
+        const on = o.dataset.value === String(selected.value);
+        o.classList.toggle('on', on);
+        o.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    };
+    const setActive = (i) => {
+      active = (i + optionEls.length) % optionEls.length;
+      optionEls.forEach((o, n) => o.classList.toggle('active', n === active));
+      field.setAttribute('aria-activedescendant', optionEls[active].id);
+    };
+    const closeMenu = ({ focus = false } = {}) => {
+      if (!open) return;
+      open = false; menu.hidden = true; menu.remove();
+      field.setAttribute('aria-expanded', 'false');
+      field.removeAttribute('aria-activedescendant');
+      document.removeEventListener('pointerdown', onDocDown, true);
+      window.removeEventListener('resize', onDismiss, true);
+      window.removeEventListener('scroll', onDismiss, true);
+      if (focus) field.focus();
+    };
+    const onDocDown = (ev) => {
+      if (!menu.contains(ev.target) && !field.contains(ev.target)) closeMenu();
+    };
+    const onDismiss = () => closeMenu();
+    const choose = (next) => {
+      chooseValue(next);
+      paint();
+      closeMenu({ focus: true });
+    };
+    const openMenu = () => {
+      if (open) return;
+      open = true; document.body.append(menu); menu.hidden = false;
+      field.setAttribute('aria-expanded', 'true');
+      const current = String(value());
+      setActive(Math.max(0, options.findIndex((o) => String(o.value) === current)));
+      const r = field.getBoundingClientRect();
+      menu.style.minWidth = `${Math.round(r.width)}px`;
+      menu.style.left = `${Math.round(r.left)}px`;
+      const height = menu.offsetHeight;
+      const below = window.innerHeight - r.bottom;
+      const flip = below < height + 8 && r.top > below;
+      menu.style.top = `${Math.round(flip ? r.top - height - 3 : r.bottom + 3)}px`;
+      field.classList.toggle('flipped', flip);
+      document.addEventListener('pointerdown', onDocDown, true);
+      window.addEventListener('resize', onDismiss, true);
+      window.addEventListener('scroll', onDismiss, true);
+    };
+    field.onclick = (ev) => {
+      ev.stopPropagation();
+      if (open) closeMenu({ focus: true }); else openMenu();
+    };
+    field.onkeydown = (ev) => {
+      if (ev.key === 'Tab') { closeMenu(); return; }
+      if (ev.key === 'Escape') {
+        if (!open) return;
+        ev.preventDefault(); ev.stopPropagation(); closeMenu({ focus: true }); return;
+      }
+      if (!open) {
+        if (!['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(ev.key)) return;
+        ev.preventDefault(); ev.stopPropagation(); openMenu(); return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(ev.key)) return;
+      ev.preventDefault(); ev.stopPropagation();
+      if (ev.key === 'ArrowDown') setActive(active + 1);
+      else if (ev.key === 'ArrowUp') setActive(active - 1);
+      else if (ev.key === 'Home') setActive(0);
+      else if (ev.key === 'End') setActive(optionEls.length - 1);
+      else choose(optionEls[active].dataset.value);
+    };
+    paint();
+    return field;
+  };
+
+  const quantisePicker = () => customPicker({
+    label: 'Piano-roll quantisation',
+    title: 'Snap note starts, moves, resizes and recording to this division',
+    idPrefix: 'rollquantise',
+    options: QUANTISE_OPTIONS,
+    value: () => quantise,
+    chooseValue: (next) => {
+      quantise = Number(next) || 1;
+      const current = draft();
+      if (quantise === 0.5 && current?.resolution !== 32) {
+        apply({ ...current, resolution: 32 }, '32nd-note piano-roll grid');
+      } else {
+        grid.refresh();
+      }
+      toast(`Quantise ${QUANTISE_OPTIONS.find((o) => o.value === quantise)?.label || '1/16'}`);
+    },
+  });
+
+  const timeZoomPicker = () => {
+    const wrap = document.createElement('span');
+    wrap.className = 'rollzoom rolltimezoom';
+    wrap.title = 'Horizontal piano-roll zoom';
+    wrap.setAttribute('role', 'group');
+    wrap.setAttribute('aria-label', 'Horizontal piano-roll zoom');
+    for (const factor of TIME_ZOOM_OPTIONS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'rollzoom-button';
+      button.dataset.zoom = String(factor);
+      button.textContent = `${factor}×`;
+      button.title = `Horizontal zoom ${factor}×`;
+      button.setAttribute('aria-label', `Horizontal zoom ${factor} times`);
+      button.setAttribute('aria-pressed', factor === timeZoom ? 'true' : 'false');
+      if (factor === timeZoom) button.classList.add('on');
+      button.onclick = (ev) => {
+        ev.stopPropagation();
+        if (factor === timeZoom) return;
+        timeZoom = factor;
+        if (typeof localStorage !== 'undefined') localStorage.setItem(ZOOM_KEY, String(timeZoom));
+        el.style.setProperty('--roll-time-zoom', String(timeZoom));
+        // Width is CSS-driven, so reflow the existing virtual rows instead of rebuilding
+        // every note in the whole song. This is the part that makes a click immediate.
+        grid.reflow();
+        for (const sibling of wrap.children) {
+          sibling.classList.toggle('on', sibling === button);
+          sibling.setAttribute('aria-pressed', sibling === button ? 'true' : 'false');
+        }
+      };
+      wrap.append(button);
+    }
+    return wrap;
+  };
+
+  const chordSelect = (kind) => {
+    let options;
+    let label;
+    let value;
+    let chooseValue;
+    if (kind === 'type') {
+      const labels = {
+        major: 'Major', minor: 'Minor', dom7: '7th', maj7: 'Major 7', min7: 'Minor 7',
+        dim: 'Diminished', dim7: 'Dim 7', aug: 'Augmented', sus2: 'Sus 2', sus4: 'Sus 4',
+        power: 'Power', six: '6', min6: 'Minor 6', nine: '9', min9: 'Minor 9',
+        eleven: '11', thirteen: '13',
+      };
+      options = Object.keys(CHORD_TYPES).map((id) => ({ value: id, label: labels[id] || id }));
+      label = 'Chord type'; value = () => chordType;
+      chooseValue = (next) => { chordType = String(next); };
+    } else if (kind === 'voicing') {
+      options = [{ value: 'compact', label: 'Compact' }, { value: 'open', label: 'Open' }];
+      label = 'Chord voicing'; value = () => chordVoicing;
+      chooseValue = (next) => { chordVoicing = String(next); };
+    } else {
+      options = Array.from({ length: 4 }, (_, i) => ({
+        value: String(i), label: i ? `Inversion ${i}` : 'Root position',
+      }));
+      label = 'Chord inversion'; value = () => chordInversion;
+      chooseValue = (next) => { chordInversion = Number(next) || 0; };
+    }
+    return customPicker({
+      label, title: label, idPrefix: `rollchord-${kind}`, options, value, chooseValue,
+    });
+  };
+
+  const doubleRootToggle = () => {
+    const label = document.createElement('label');
+    label.className = 'rollcheck';
+    const input = document.createElement('input');
+    input.type = 'checkbox'; input.checked = chordDoubleRoot;
+    input.onchange = () => { chordDoubleRoot = input.checked; };
+    label.append(input, document.createTextNode('Octave root'));
+    return label;
+  };
+
+  const chordInputToggle = () => {
+    const label = document.createElement('label');
+    label.className = 'rollcheck';
+    const input = document.createElement('input');
+    input.type = 'checkbox'; input.checked = chordInput;
+    input.disabled = !canStack(lane());
+    input.onchange = () => {
+      chordInput = input.checked;
+      toast(chordInput ? 'Chord Input — one key plays and records the selected chord'
+        : 'Chord Input off');
+    };
+    label.append(input, document.createTextNode('Chord Input'));
+    return label;
+  };
+
   /**
    * The CHANNEL switch: Mono or Poly, for the lane the roll is on.
    *
@@ -1002,12 +1283,17 @@ export function createPianoRoll({
   // explicit note-off just like a held keyboard key. Keep every pitch touched by one
   // paint/move gesture and release the set when its pointer goes up.
   const previewNotes = new Map();
-  const previewRollNote = (row) => {
-    const ok = Audio.previewNote(row.lane, row.freq, { bank: engineBank() });
-    if (ok) previewNotes.set(`${row.lane}|${row.freq.toFixed(2)}`, {
-      laneKey: row.lane, freq: row.freq,
-    });
-    return ok;
+  const previewRollNote = (row, value = null) => {
+    const tones = toolId === 'chord' && Array.isArray(value) ? value : [row.freq];
+    let sounded = false;
+    for (const freq of tones) {
+      const ok = Audio.previewNote(row.lane, freq, { bank: engineBank() });
+      if (ok) previewNotes.set(`${row.lane}|${freq.toFixed(2)}`, {
+        laneKey: row.lane, freq,
+      });
+      sounded ||= !!ok;
+    }
+    return sounded;
   };
   const releaseRollNotes = () => {
     for (const { laneKey, freq } of previewNotes.values()) {
@@ -1153,6 +1439,8 @@ export function createPianoRoll({
     // bar you click, always. The step grid keeps the switch for the times the answer is
     // "the hats are wrong in this whole song".
     scopeToggle: false,
+    stepsPerBar: (d) => (d?.resolution === 32 ? 32 : 16),
+    snapSlots: (slots) => Math.max(1, Math.round(quantise / (16 / slots))),
     // Eighty-eight rows, drawn a screenful at a time. The base pitch size is dynamic so
     // a future zoom control can rebuild this same grid without a second geometry path.
     virtual: true,
@@ -1175,9 +1463,9 @@ export function createPianoRoll({
       zoom.title = 'Piano-roll pitch zoom';
       zoom.setAttribute('aria-label', 'Piano-roll pitch zoom');
       // 1.5 exists because the step from 1× to 2× is the one people actually want
-      // halved: 19px rows are tight for aiming at a black key and 38px shows barely two
-      // octaves. Nothing here rounds — the key geometry is all ratios (12/7, 26/39) and
-      // 0.5× has been handing it 9.5px rows since the day it was written.
+      // halved. Nothing here rounds — the
+      // key geometry is all ratios (12/7, 26/39) and 0.5× has been handing it 9.5px
+      // rows since the day it was written.
       for (const factor of [0.5, 1, 1.5, 2]) {
         const button = document.createElement('button');
         button.type = 'button';
@@ -1198,7 +1486,11 @@ export function createPianoRoll({
       // CHANNEL first: it says what a note IS on this lane, and DRAW LENGTH says how long
       // that note is. The two that follow are about the panel rather than the part.
       return [fieldLabel('CHANNEL'), voicePicker(),
-        fieldLabel('DRAW LENGTH'), lengthPicker(), fieldLabel('ZOOM'), zoom,
+        fieldLabel('QUANTISE'), quantisePicker(),
+        fieldLabel('CHORD'), chordSelect('type'), chordSelect('voicing'),
+        chordSelect('inversion'), doubleRootToggle(), chordInputToggle(),
+        fieldLabel('DRAW LENGTH'), lengthPicker(), fieldLabel('PITCH ZOOM'), zoom,
+        fieldLabel('TIME ZOOM'), timeZoomPicker(),
         fieldLabel('TOOL'), toolPicker()];
     },
     // Where the roll's controls WOULD go — the NOTES panel's header rather than a second
@@ -1254,7 +1546,14 @@ export function createPianoRoll({
 
     // ---- the three that make this the roll
     isOn: (row, value) => noteOn(row, value),
-    withCell: (row, value, on) => noteCell({ ...row, chord: isChord(value) }, value, on),
+    withCell: (row, value, on) => {
+      if (toolId === 'chord') {
+        return on ? chordFrequencies(row.midi, chordType, {
+          inversion: chordInversion, voicing: chordVoicing, doubleRoot: chordDoubleRoot,
+        }) : null;
+      }
+      return noteCell({ ...row, chord: isChord(value) }, value, on);
+    },
 
     // ---- and the four that make its notes have length
     //
@@ -1262,8 +1561,16 @@ export function createPianoRoll({
     // at its right edge, and both of those need to know what a length IS on this lane.
     // The step grid answers none of them and gets neither gesture: a drum hit has no
     // length, and there is nothing to move a kick to.
-    withLen: (row, value, len, on, drawn) =>
-      noteLength({ ...row, chord: isChord(value) }, value, len, on, drawn),
+    withLen: (row, value, len, on, drawn) => {
+      if (toolId === 'chord') {
+        if (!on) return null;
+        const count = chordFrequencies(row.midi, chordType, {
+          inversion: chordInversion, voicing: chordVoicing, doubleRoot: chordDoubleRoot,
+        }).length;
+        return validLen(drawn) ? new Array(count).fill(drawn) : null;
+      }
+      return noteLength({ ...row, chord: isChord(value) }, value, len, on, drawn);
+    },
     // Only a genuinely new note takes this value. The shared grid calls it for taps,
     // paint trails and Draw mode, while existing notes keep their own lengths.
     addLength: () => (rollResizable(lane()) ? noteAddLength : null),
@@ -1275,7 +1582,7 @@ export function createPianoRoll({
     // gives its notes a length, so the handle has to appear the moment one is chosen.
     resizable: () => rollResizable(lane()),
     movable: true,
-    tool: () => toolId,
+    tool: () => (toolId === 'chord' ? 'draw' : toolId),
     selectable: true,
     selectionChanged: () => syncSelectedKeys(),
 
@@ -1398,7 +1705,8 @@ export function createPianoRoll({
     const seen = new Set();
     for (const cell of el.querySelectorAll('.ssqcell.on:not(.muted)')) {
       const span = Number(cell.style.getPropertyValue('--len')) || 1;
-      if (!noteActiveAt(step, cell.dataset.bar, cell.dataset.step, span)) continue;
+      if (!noteActiveAt(step, cell.dataset.bar, cell.dataset.step, span,
+        draft()?.resolution === 32 ? 32 : 16)) continue;
       const key = el.querySelector(`.ssqkeys .ssqkey[data-row="${cell.dataset.row}"]`);
       if (!key || seen.has(key)) continue;
       seen.add(key);
@@ -1464,7 +1772,11 @@ export function createPianoRoll({
       grid.close();
     },
     isOpen: grid.isOpen,
+    viewState: grid.viewState,
+    restoreViewState: grid.restoreViewState,
     setPitchSize,
+    setFollow: grid.setFollow,
+    followEnabled: grid.followEnabled,
     refresh() {
       clearPlayingKeys();
       grid.refresh();
@@ -1475,17 +1787,27 @@ export function createPianoRoll({
     },
     follow(step) {
       grid.follow(step);
-      syncSelectedKeys();
+      // Selection and edit changes already call this through the grid's
+      // `selectionChanged` hook. Re-projecting the same keys on every animation frame
+      // was pure DOM work while the song played.
       syncPlayingKeys(step);
     },
     armFollow: grid.armFollow,
     setResizeDeferred: grid.setResizeDeferred,
     supportsLengths: () => rollResizable(lane()),
+    quantise: () => quantise,
+    onsetResolution: () => (draft()?.resolution === 32 ? 32 : 16),
+    inputChord: (rootMidi) => (chordInput && canStack(lane())
+      ? chordFrequencies(rootMidi, chordType, {
+        inversion: chordInversion, voicing: chordVoicing, doubleRoot: chordDoubleRoot,
+      }).map(freqMidi) : null),
     selectedLengthCount: () => grid.selectedCount(),
     adjustLengths: ({ scope = 'selection', percent } = {}) =>
       grid.adjustLengths({ scope, percent }),
     quantiseLengths: ({ scope = 'selection', grid: gridSize = 1 } = {}) =>
       grid.quantiseLengths({ scope, grid: gridSize }),
+    transformNotes: ({ scope = 'selection', kind, value = null } = {}) =>
+      grid.transformNotes({ scope, kind, value }),
     /**
      * Forget which lane the window was fitted to, so the next refresh fits it again.
      *

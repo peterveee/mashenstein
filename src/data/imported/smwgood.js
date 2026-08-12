@@ -260,7 +260,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  layers: [{ key: "lead2", from: "lead", independent: true, label: "e.piano" }, { key: "lead3", from: "lead", independent: true, label: "recorder" }, { key: "lead4", from: "lead", independent: true, label: "p.flute" }, { key: "lead5", from: "lead", independent: true, label: "vibraphone" }],
+  layers: [{ key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }],
 };
 
 export const arrangement = null;

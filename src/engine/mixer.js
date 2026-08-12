@@ -30,7 +30,9 @@
 //     a console EQ actually uses. So the EQ is native BiquadFilters, not EQ3.
 import * as Tone from 'tone';
 import { LANES } from './lanes.js';
-import { createEffect, makeReverb, rampParam, TEMPO_DIVISIONS, MAX_DELAY_SECONDS } from './effects.js';
+import {
+  createEffect, makeReverb, rampParam, TEMPO_DIVISIONS, MAX_DELAY_SECONDS, delaySeconds,
+} from './effects.js';
 import { EFFECT_PRESETS } from '../data/effect-presets.js';
 
 export const dbToGain = (db) => 10 ** (db / 20);
@@ -144,21 +146,114 @@ function makeWidth(ctx) {
  * With no live effects `from` connects straight to `to`: an empty chain is no node
  * at all, not a node doing nothing.
  */
-function makeChainSlot(ctx, from, to) {
+const EFFECT_SLEEP_POLL_MS = 100;
+const EFFECT_SLEEP_FLOOR = 1e-5; // -100dBFS: safely below an audible tail.
+const EFFECT_SLEEP_SETTLE_S = 0.12;
+
+/**
+ * Long feedback does not need a guessed total tail: the branch meter waits for actual
+ * silence. What it must not mistake for a finished tail is the quiet GAP before a delay's
+ * next repeat. Add the longest possible memory in each serial link, then require that much
+ * continuous silence before unhooking the branch from the destination.
+ */
+function effectSilenceGap(list = [], bpm = 120) {
+  let seconds = EFFECT_SLEEP_SETTLE_S;
+  for (const effect of list) {
+    if (!effect || effect.bypass) continue;
+    const p = effect.params || {};
+    if (effect.id === 'delay' || effect.id === 'pingpong' || effect.id === 'chandelay') {
+      seconds += delaySeconds(p, bpm);
+    } else if (effect.id === 'reverb') {
+      seconds += Math.max(0, Number(p.preDelay ?? 0.01) || 0);
+    } else if (effect.id === 'chorus') {
+      seconds += Math.max(0, Number(p.delayTime ?? 3.5) || 0) / 1000;
+    } else if (effect.id === 'chorus2' || effect.id === 'flanger' || effect.id === 'doubler') {
+      seconds += Math.max(0, Number(p.delayMs ?? 20) || 0) / 1000 * 2;
+    } else if (effect.id === 'pitch') {
+      seconds += Math.max(0, Number(p.windowSize ?? 0.1) || 0) * 2;
+    } else if (effect.id === 'tape' || effect.id === 'vibrato' || effect.id === 'shifter') {
+      seconds += 0.25;
+    }
+  }
+  return seconds;
+}
+
+function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
   const inGain = ctx.createGain();
   const outGain = ctx.createGain();
   let chain = [];
+  let sourceList = [];
+  let sourceBpm = 120;
+
+  // OfflineAudioContext is scheduled in one synchronous walk before it renders. Wall-clock
+  // sleeping cannot follow that virtual clock, and an offline graph disappears as soon as
+  // its render finishes anyway, so this optimisation is live-context only.
+  const canSleep = sleepWhenSilent && typeof ctx.startRendering !== 'function';
+  const sleeper = canSleep ? ctx.createAnalyser() : null;
+  const sleepSamples = sleeper ? new Float32Array(256) : null;
+  let awake = true;
+  let pinned = false;
+  let holdUntil = 0;
+  let quietSince = null;
+  let sleepTimer = null;
+  let disposed = false;
+  if (sleeper) {
+    sleeper.fftSize = 256;
+    sleeper.smoothingTimeConstant = 0;
+    outGain.connect(sleeper);
+  }
+
+  const liveLinks = () => chain.filter((l) => !l.bypassed);
+  const clearSleepTimer = () => {
+    if (sleepTimer != null) clearTimeout(sleepTimer);
+    sleepTimer = null;
+  };
+  const connectOutput = () => {
+    if (!sleeper || awake || !liveLinks().length) return;
+    sleeper.connect(to);
+    awake = true;
+  };
+  const disconnectOutput = () => {
+    if (!sleeper || !awake) return;
+    try { sleeper.disconnect(to); } catch { /* already asleep */ }
+    awake = false;
+  };
+  const pollForSilence = () => {
+    sleepTimer = null;
+    if (disposed || !sleeper || pinned || !awake || !liveLinks().length) return;
+    const now = ctx.currentTime;
+    if (ctx.state === 'suspended' || now < holdUntil) {
+      sleepTimer = setTimeout(pollForSilence,
+        Math.max(EFFECT_SLEEP_POLL_MS, Math.ceil((holdUntil - now) * 1000)));
+      return;
+    }
+    sleeper.getFloatTimeDomainData(sleepSamples);
+    let peak = 0;
+    for (let i = 0; i < sleepSamples.length; i++) peak = Math.max(peak, Math.abs(sleepSamples[i]));
+    if (peak > EFFECT_SLEEP_FLOOR) quietSince = null;
+    else if (quietSince == null) quietSince = now;
+    if (quietSince != null && now - quietSince >= effectSilenceGap(sourceList, sourceBpm)) {
+      disconnectOutput();
+      return;
+    }
+    sleepTimer = setTimeout(pollForSilence, EFFECT_SLEEP_POLL_MS);
+  };
+  const watchForSilence = () => {
+    if (!sleeper || pinned || !awake || sleepTimer != null || !liveLinks().length) return;
+    sleepTimer = setTimeout(pollForSilence, EFFECT_SLEEP_POLL_MS);
+  };
 
   const rewire = () => {
     try { from.disconnect(to); } catch { /* not wired */ }
     try { from.disconnect(inGain); } catch { /* not wired */ }
     try { outGain.disconnect(to); } catch { /* not wired */ }
+    try { sleeper?.disconnect(to); } catch { /* not wired */ }
     for (const link of chain) {
       try { (link.node.output || link.node).disconnect(); } catch { /* fine */ }
     }
     // A bypassed effect is skipped in the wiring, not turned down: one with a tail
     // would keep ringing and you would be comparing against its leftovers.
-    const live = chain.filter((l) => !l.bypassed);
+    const live = liveLinks();
     if (!live.length) { from.connect(to); return; }
     from.connect(inGain);
     let prev = inGain;
@@ -167,7 +262,8 @@ function makeChainSlot(ctx, from, to) {
       prev = link.node.output || link.node;
     }
     Tone.connect(prev, outGain);
-    outGain.connect(to);
+    if (!sleeper) outGain.connect(to);
+    else if (awake) sleeper.connect(to);
   };
   rewire();
 
@@ -175,16 +271,58 @@ function makeChainSlot(ctx, from, to) {
     rewire,
     get chain() { return chain; },
     set(list = [], bpm = 120) {
+      clearSleepTimer();
       for (const link of chain) { try { link.node.dispose(); } catch { /* fine */ } }
+      sourceList = list;
+      sourceBpm = bpm;
       chain = list.map((e) => {
         const link = createEffect(e.id, e.params, ctx, bpm);
         if (link) link.bypassed = !!e.bypass;
         return link;
       }).filter(Boolean);
+      awake = true;
+      pinned = false;
+      holdUntil = ctx.currentTime + EFFECT_SLEEP_SETTLE_S;
+      quietSince = null;
       rewire();
+      watchForSilence();
       return chain.length;
     },
-    setBypass(i, on) { if (chain[i]) { chain[i].bypassed = !!on; rewire(); } },
+    setBypass(i, on) {
+      if (!chain[i]) return;
+      chain[i].bypassed = !!on;
+      if (liveLinks().length) connectOutput();
+      rewire();
+      watchForSilence();
+    },
+    /** Pull a dormant graph back into the render tree before scheduled audio reaches it. */
+    wake(until = ctx.currentTime) {
+      if (!sleeper || !liveLinks().length) return;
+      if (until === Infinity) pinned = true;
+      else holdUntil = Math.max(holdUntil, Number.isFinite(until) ? until : ctx.currentTime);
+      quietSince = null;
+      connectOutput();
+      watchForSilence();
+    },
+    /** The input has closed; keep measuring until every delayed/reverberant sample is gone. */
+    release(when = ctx.currentTime) {
+      if (!sleeper || !liveLinks().length) return;
+      pinned = false;
+      holdUntil = Math.max(holdUntil, Number.isFinite(when) ? when : ctx.currentTime);
+      quietSince = null;
+      watchForSilence();
+    },
+    dispose() {
+      disposed = true;
+      clearSleepTimer();
+      for (const link of chain) { try { link.node.dispose(); } catch { /* fine */ } }
+      chain = [];
+      try { from.disconnect(inGain); } catch { /* not wired */ }
+      try { from.disconnect(to); } catch { /* not wired */ }
+      try { outGain.disconnect(); } catch { /* not wired */ }
+      try { sleeper?.disconnect(); } catch { /* not wired */ }
+    },
+    get awake() { return !sleeper || awake; },
   };
 }
 
@@ -449,7 +587,25 @@ export function createMixer(ctx, {
 
     // The channel path: fader, pan, EQ, then the effect chain (spliced in by
     // rewireChain below), then the stereo width stage into the music bus.
-    dry.connect(vol);
+    // Bar-scoped inserts switch their INPUTS, never their outputs. The direct input
+    // and every distinct effect snapshot are built in parallel before the live strip;
+    // at a bar edge only one receives new audio. Turning a branch off therefore stops
+    // later notes entering it while delay/reverb already inside keeps its natural tail.
+    const barDirect = ctx.createGain();
+    barDirect.gain.value = 1;
+    dry.connect(barDirect);
+    barDirect.connect(vol);
+    const barFxBranches = new Map();
+    // The initial graph is already direct. Do not schedule a no-op ramp at bar one:
+    // OfflineAudioContext receives the whole song's automation before rendering and
+    // Chromium can otherwise resolve a later cancel-and-hold through that redundant
+    // first event, attenuating the opening direct bar. This also avoids touching the
+    // graph between adjacent bars that use the same snapshot.
+    let selectedBarFx = '';
+    // Frozen PCM has already passed through its bar-effect snapshots, but nothing on
+    // the live channel. It enters after those branches and before fader/pan/EQ/inserts.
+    const frozen = ctx.createGain();
+    frozen.connect(vol);
     vol.connect(pres);
     pres.connect(panner);
     panner.connect(laneEq.input);
@@ -483,7 +639,9 @@ export function createMixer(ctx, {
       sends.set(def.id, g);
     }
 
-    const slot = makeChainSlot(ctx, laneEq.output, widthNode.input);
+    // A channel insert is pulled only while this lane is producing audio or an actual
+    // tail. `wakeEffects` below is called by the sequencer before notes and frozen PCM.
+    const slot = makeChainSlot(ctx, laneEq.output, widthNode.input, { sleepWhenSilent: true });
 
     // The meter taps post-pan. It also runs into a muted sink that reaches the
     // destination: a terminal analyser is not guaranteed to be pulled by the graph,
@@ -549,6 +707,7 @@ export function createMixer(ctx, {
       key,
       dry,
       wet,
+      frozen,
       get state() { return state; },
       // Both write the fader, and both cancel whatever was scheduled on it: you have
       // just taken manual control of this lane, and a transition's ramp arriving on top
@@ -623,8 +782,61 @@ export function createMixer(ctx, {
        */
       setEffects(list = [], bpm = 120) { state.effects = list; return slot.set(list, bpm); },
       get effects() { return slot.chain; },
+      wakeEffects(until = ctx.currentTime) { slot.wake(until); },
+      get effectsAwake() { return slot.awake; },
       /** Temporarily take one effect out of the chain, without losing its settings. */
       setEffectBypass(index, on) { slot.setBypass(index, on); },
+
+      /** Pre-create every bar-effect route before the scheduler needs to select it. */
+      prepareBarEffects(chains = [], bpm = 120) {
+        for (const list of chains) {
+          if (!Array.isArray(list) || !list.length) continue;
+          const signature = JSON.stringify(list);
+          if (barFxBranches.has(signature)) continue;
+          const input = ctx.createGain(); input.gain.value = 0;
+          dry.connect(input);
+          const fxSlot = makeChainSlot(ctx, input, vol, { sleepWhenSilent: true });
+          fxSlot.set(list, bpm);
+          barFxBranches.set(signature, { input, slot: fxSlot, list });
+        }
+      },
+      /** Select a prepared route at an audio time; deselected routes keep ringing out. */
+      scheduleBarEffects(list = [], when = ctx.currentTime) {
+        const signature = Array.isArray(list) && list.length ? JSON.stringify(list) : '';
+        if (signature && !barFxBranches.has(signature)) this.prepareBarEffects([list]);
+        if (signature === selectedBarFx) return;
+        const previous = selectedBarFx;
+        selectedBarFx = signature;
+        if (signature) barFxBranches.get(signature)?.slot.wake(Infinity);
+        // We know both sides of this switch. Anchor them explicitly instead of using
+        // cancelAndHoldAtTime: an offline render queues later bars before processing
+        // bar one, and Chromium's future hold can leak backwards through that queue.
+        // Four milliseconds is the same click-safe edge rampParam uses for a snap.
+        const at = Math.max(Number.isFinite(when) ? when : 0, ctx.currentTime);
+        const switchGain = (param, from, to) => {
+          param.cancelScheduledValues(at);
+          param.setValueAtTime(from, at);
+          param.linearRampToValueAtTime(to, at + 0.004);
+        };
+        switchGain(barDirect.gain, previous ? 0 : 1, signature ? 0 : 1);
+        for (const [id, branch] of barFxBranches) {
+          switchGain(branch.input.gain, id === previous ? 1 : 0, id === signature ? 1 : 0);
+        }
+        if (previous) barFxBranches.get(previous)?.slot.release(at + 0.004);
+      },
+      get _barFxSlots() { return [...barFxBranches.values()].map((branch) => branch.slot); },
+      /** A new song owns a new set of snapshots; do not accumulate the last song's graphs. */
+      clearBarEffects() {
+        selectedBarFx = '';
+        barDirect.gain.cancelScheduledValues(ctx.currentTime);
+        barDirect.gain.value = 1;
+        for (const branch of barFxBranches.values()) {
+          branch.slot.dispose();
+          try { dry.disconnect(branch.input); } catch { /* already gone */ }
+          try { branch.input.disconnect(); } catch { /* already gone */ }
+        }
+        barFxBranches.clear();
+      },
 
       /**
        * Everything a presentation variant can move on this channel, AT AN AUDIO TIME.
@@ -894,6 +1106,7 @@ export function createMixer(ctx, {
       // Chorus 2, Flanger, or Ring Mod changes rate without rebuilding its chain.
       const slots = [
         ...[...strips.values()].map((s) => s._slot),
+        ...[...strips.values()].flatMap((s) => s._barFxSlots || []),
         ...[...auxes.values()].map((a) => a.slot),
         masterSlot, treatSlot,
       ].filter(Boolean);
@@ -990,6 +1203,7 @@ export function createMixer(ctx, {
     scheduleEffects(step, when, sixteenth, bpm = 120, swing = 50) {
       const slots = [
         ...[...strips.values()].map((s) => s._slot),
+        ...[...strips.values()].flatMap((s) => s._barFxSlots || []),
         ...[...auxes.values()].map((a) => a.slot),
         masterSlot, treatSlot,
       ].filter(Boolean);
@@ -1000,6 +1214,25 @@ export function createMixer(ctx, {
           }
         }
       }
+    },
+
+    /** Build all arrangement-owned effect branches while no bar is switching them. */
+    prepareBarEffects(plan = [], bpm = 120) {
+      const byLane = new Map();
+      for (const bar of plan || []) {
+        for (const [key, chain] of Object.entries(bar.inlineFx || {})) {
+          if (!byLane.has(key)) byLane.set(key, []);
+          byLane.get(key).push(chain);
+        }
+      }
+      for (const [key, chains] of byLane) {
+        const strip = strips.get(key) || makeStrip(key);
+        strip?.prepareBarEffects(chains, bpm);
+      }
+    },
+    scheduleBarEffects(key, list, when) { strips.get(key)?.scheduleBarEffects(list, when); },
+    scheduleBarEffectsForBar(bar = {}, when = ctx.currentTime) {
+      for (const [key, strip] of strips) strip.scheduleBarEffects(bar.inlineFx?.[key] || [], when);
     },
 
     /**
@@ -1062,6 +1295,7 @@ export function createMixer(ctx, {
       soloed.clear();
       soloedAux.clear();
       for (const s of strips.values()) {
+        s.clearBarEffects();
         s.setPanOffset(0, ctx.currentTime, 0);
         s.setGain(0); s.setPan(0); s.setMute(false); s.setWidth(1);
         s.setEQ({ low: 0, mid: 0, high: 0 });

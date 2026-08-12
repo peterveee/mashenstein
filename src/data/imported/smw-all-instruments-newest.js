@@ -1,18 +1,18 @@
-// SMW All Instruments — one song: what it plays, how it is arranged, how it sounds.
+// SMW All Instruments NEWEST — one song: what it plays, how it is arranged, how it sounds.
 //
-// A copy of SMW_OVERWORLD_SMWWD1_LU9 (smw-overworld-smwwd1-lu9), taken from the Song Mixer.
+// A copy of SMW All Instruments (smw-all-instruments), taken from the Song Mixer.
 // Everything below is that song as the desk had it at the moment of the copy.
 // It is a snapshot and nothing more: the game does not play this file, no
-// cabinet can select it, and SMW_OVERWORLD_SMWWD1_LU9 is untouched by anything done here.
+// cabinet can select it, and SMW All Instruments is untouched by anything done here.
 //
 // The music below is the composition. Everything under THE DESK WRITES BELOW HERE
 // is written by `npm run mixer` and will be rewritten on every save — put notes
 // about the song up here, where they survive.
 import { seq, chordSeq } from '../../engine/notes.js';
 
-export const id = "smw-all-instruments";
-export const title = "SMW All Instruments";
-export const slug = "smw-all-instruments";
+export const id = "smw-all-instruments-newest";
+export const title = "SMW All Instruments NEWEST";
+export const slug = "smw-all-instruments-newest";
 export const group = "copy";
 
 export const bank = {
@@ -231,31 +231,45 @@ export const bank = {
   order: [0,1,2,3,2,4,5,6,7,8,9,10,1,2,3,2,4,5,6,7,8,9,11],
 };
 
+// `lead4` and `lead8` used to be live linked layers of `lead`. Keep the notes they
+// currently play in detached bank arrays before the desk declares them independent;
+// otherwise sections that relied on the old link would become silent rests.
+const cloneLeadNotes = (notes) => notes.map((note) => Array.isArray(note) ? [...note] : note);
+for (const section of bank.sections || []) {
+  if (!Array.isArray(section.lead)) continue;
+  section.lead4 = cloneLeadNotes(section.lead);
+  section.lead8 = cloneLeadNotes(section.lead);
+  if (Array.isArray(section.leadLen)) {
+    section.lead4Len = [...section.leadLen];
+    section.lead8Len = [...section.leadLen];
+  }
+}
+
 // ---- THE DESK WRITES BELOW HERE ----------------------------------------------
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
   masterEffects: [{ id: "mbCompN" }, { id: "l7" }],
-  layers: [{ key: "chords2", from: "chords", independent: true }, { key: "chords3", from: "chords", independent: true }, { key: "lead8", from: "lead" }, { key: "lead2", from: "lead", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "chords4", from: "chords", independent: true }, { key: "chords5", from: "chords", independent: true }, { key: "kick2", from: "kick", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "snare3", from: "snare", independent: true }, { key: "hats2", from: "hats", independent: true }, { key: "ohats2", from: "ohats", independent: true }, { key: "clap2", from: "clap", independent: true }, { key: "lead4", from: "lead" }, { key: "organChords2", from: "organChords" }, { key: "organChords3", from: "organChords" }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "clap3", from: "clap", independent: true }, { key: "lead9", from: "lead", independent: true }],
-  off: ["twinkle"],
-  voice: {"bass2Voice":"bestSampleHoldBass","leadVoice":"initSquare","bassVoice":"roundBass","lead2Voice":"initSquare","lead3Voice":"initSawSub","chords2Voice":"harpPluck","chords3Voice":"tpPizz","chords4Voice":"zap","organChordsVoice":"addDrawbarBright","leadHarmVoice":"initSquareSub","chordsVoice":"initOneFilter","kick2Voice":"fatKick","snare2Voice":"gameBoySnare","snare3Voice":"dsCrackSnare2","hats2Voice":"dsKickHard","ohats2Voice":"ds808OpenHat","clap2Voice":"bigRoomClap","lead4Voice":"toneSquare","organChords2Voice":"bestChoirAah","organChords3Voice":"bestPwmStrings","chords5Voice":"layerBrassStack","lead5Voice":"celeste2","lead6Voice":"roundBass","lead7Voice":"tpSuperSaw","lead8Voice":"thickSquareGlide","clap3Voice":"clapRoom","lead9Voice":"bestChoirAah"},
-  voiceParams: {"organChordsVoice":{"label":"Drawbar Organ, Bright","category":"Organ","homeLane":"organChords","synth":"AdditiveSynth","dur":7.2,"note":"The upper drawbars pulled further out. Cuts through where the soft registration sits under everything.","additive":{"bars":[0,0.18,1,0.78,0.48,0.3,0.24,0.26,0.41],"attack":0.018,"decay":0.882,"sustain":0.51,"release":0.071},"starter":false,"trim":3.8,"kind":"tone","level":0.2757891490631617,"peak":1.5767871509814464,"songOrigin":"library","songSourceId":"organChordsVoice"},"leadVoice":{"label":"Initial 1 Square","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"Three squares at the same pitch, seven cents either side of centre. No filter, no sweep, no modulation — the shortest thing this synth can be and still be one.","layer":{"osc1":{"type":"square","ratio":1,"detune":0,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc2":{"type":"square","ratio":1,"detune":-7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc3":{"type":"square","ratio":1,"detune":7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"starter":false,"chorus":{"mix":0.65},"vibrato":{"depth":0.01,"delay":0.025},"kind":"tone","level":0.10515738531095983,"peak":1.3232329761311765,"songOrigin":"library","songSourceId":"leadVoice"},"bassVoice":{"label":"Round Bass","category":"Bass","synth":"MonoSynth","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":1.24,"sustain":0.29,"release":0.8},"filter":{"type":"lowpass","Q":2.9,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":1.22,"sustain":0.13,"release":0.3,"baseFrequency":110,"octaves":3.9}},"starter":false,"id":"roundBass","kind":"tone","user":true,"level":0.075557,"peak":1.183},"lead2Voice":{"label":"Initial 1 Square","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"Three squares at the same pitch, seven cents either side of centre. No filter, no sweep, no modulation — the shortest thing this synth can be and still be one.","layer":{"osc1":{"type":"square","ratio":1,"detune":0,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc2":{"type":"square","ratio":1,"detune":-7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc3":{"type":"square","ratio":1,"detune":7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"id":"initSquare","kind":"tone","factory":true,"level":0.226105,"peak":1.2076},"chords2Voice":{"label":"Harp","category":"Pluck","synth":"Synth","dur":2,"note":"A triangle with no sustain at all — the string is let go the moment it is struck.","options":{"oscillator":{"type":"fattriangle","count":2},"envelope":{"attack":0.001,"decay":0.166,"sustain":0,"release":0.016}},"starter":false,"kind":"tone","level":0.0017821247795906418,"peak":0.015300100099560846,"songOrigin":"library","songSourceId":"chords2Voice"},"chords3Voice":{"label":"Pizz","category":"Pluck","synth":"MonoSynth","dur":0.8,"note":"Highpassed and cut off immediately — pizzicato strings, all attack and no body.","origin":"Tonejs/Presets MonoSynth/Pizz","options":{"oscillator":{"type":"sawtooth"},"filter":{"Q":3,"type":"highpass","rolloff":-12},"envelope":{"attack":0.01,"decay":0.3,"sustain":0,"release":0.9},"filterEnvelope":{"attack":0.01,"decay":0.1,"sustain":0,"release":0.1,"baseFrequency":800,"octaves":-1.2}},"trim":-2.3,"id":"tpPizz","kind":"tone","factory":true,"level":0.017563,"peak":1.0667},"leadHarmVoice":{"label":"Initial 3 Square Sub","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"Two squares seven cents apart with the third an octave below them. The same starting point with a floor under it — where a bass patch begins.","layer":{"osc1":{"type":"square","ratio":1,"detune":0,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc2":{"type":"square","ratio":1,"detune":7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc3":{"type":"square","ratio":0.5,"detune":0,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"starter":false,"mode":"mono","portamento":0,"kind":"tone","level":0.17128100001693228,"peak":1.20600017216475,"songOrigin":"library","songSourceId":"leadHarmVoice"},"chordsVoice":{"label":"Initial 5 One Filter","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"Three detuned saws into one lowpass and one envelope — three oscillators, a filter, an amp, the classic layout. The cutoff is parked open with no envelope on it, so closing it is the first thing you will do.","layer":{"osc1":{"type":"sawtooth","ratio":1,"detune":0,"gain":0.6,"vca":"through"},"osc2":{"type":"sawtooth","ratio":1,"detune":-7,"gain":0.6,"vca":"through"},"osc3":{"type":"sawtooth","ratio":1,"detune":7,"gain":0.6,"vca":"through"}},"global":{"filter":{"type":"lowpass","slope":-24,"freq":8000,"Q":0.7,"track":0},"vca":{"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"id":"initOneFilter","kind":"tone","factory":true,"level":0.129908,"peak":1.6351},"kick2Voice":{"label":"Fat Kick","category":"Kick","homeLane":"kick","dur":1,"note":"The game’s own kick, written down: a sine dropping 165 to 48 Hz with a short highpassed beater click and the 300 Hz knock that lets it read on a phone.","osc":{"type":"triangle","from":165,"to":48,"sweep":0.05,"attack":0.006,"decay":0.42,"curve":"exp","gain":1},"knock":1,"noise":{"type":"highpass","freq":1900,"Q":1,"decay":0.0198,"gain":0.31},"starter":false,"drive":0.06,"kind":"drum","level":0.04010737725346491,"peak":0.6968909299316585,"songOrigin":"user","songSourceId":"kick2Voice"},"snare2Voice":{"label":"Game Boy Snare","category":"Snare","dur":0.5,"note":"","noise":{"type":"bandpass","freq":3710,"Q":2.85,"decay":0.905,"gain":1.98,"color":"pink"},"body":{"type":"square","from":2345,"to":80,"decay":0.37,"gain":1.02},"trim":1.9,"monoGroup":"arcadeDrums","starter":false,"id":"gameBoySnare","kind":"noise","user":true,"level":0.083619,"peak":1.1218},"snare3Voice":{"label":"DS Crack Snare 2","category":"Snare","dur":1,"note":"Tight and driven: a short square knock, highpassed air, everything over in a tenth of a second. The backbeat for fast songs.","osc":{"type":"square","from":255,"to":440,"sweep":0.025,"decay":0.05,"curve":"exp","gain":0.55},"noise":{"type":"highpass","freq":2900,"Q":0.8,"decay":0.3,"gain":1},"drive":0.35,"id":"dsCrackSnare2","kind":"drum","factory":true,"level":0.101559,"peak":0.7},"hats2Voice":{"label":"HH Clave","category":"Hats","dur":1,"note":"Tinny Hi Hat with a Clave behind it","knock":0.79,"noise":{"type":"bandpass","freq":3950,"Q":23.45,"decay":0.435,"gain":1.47,"attack":0.000343,"to":4790,"color":"violet","slope":-24,"sweep":1.59},"ring":{"type":"bandpass","freq":400,"Q":40,"hit":0.0005,"attack":0.001,"decay":1.335,"curve":"exp","gain":0.43,"to":4746},"metal":{"wave":"square","freq":2481,"spread":0.68,"count":4,"hp":2615,"Q":6.25,"attack":0.001,"decay":0.07,"gain":0.03,"filter":"bandpass"},"drive":0.64,"bypassed":{"osc":{"type":"sine","from":227,"to":42.08,"sweep":0.962,"decay":0.685,"curve":"exp","gain":1,"attack":0}},"tune":21,"trim":3.9,"id":"dsKickHard","kind":"drum","factory":true,"level":0.048683,"peak":0.7636},"ohats2Voice":{"label":"=808 Open Hat","category":"Hats","homeLane":"ohats","dur":2,"note":"The open 808-style cymbal partner: the same inharmonic cluster left ringing with a lower filter so its body is audible as it fades.","metal":{"freq":540,"spread":1,"count":6,"hp":6100,"Q":0.9,"slope":-24,"decay":0.42},"humanize":{"gain":0.04},"id":"ds808OpenHat","kind":"drum","factory":true,"level":0.056353,"peak":1.0138},"clap2Voice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"bass2Voice":{"label":"BEST S&H Bass","category":"Bass","synth":"MRDR-3","dur":1.8,"note":"A mono bass with a firm sine floor and a held-random filter latch on the saw. The slow enough steps leave the groove intact, but every note gets a slightly different growl and the sub never disappears.","layer":{"osc1":{"type":"sine","ratio":0.5,"gain":1,"attack":0.003,"decay":0.8,"sustain":0.92,"release":0.14},"osc2":{"type":"sawtooth","ratio":1,"gain":0.78,"attack":0.003,"decay":0.65,"sustain":0.7,"release":0.13,"unison":2,"spread":9,"stereo":0.35},"osc3":{"type":"square","ratio":2,"gain":0.2,"attack":0.002,"decay":0.24,"sustain":0.28,"release":0.08},"lfo":{"type":"samplehold","rate":2.2,"depth":0,"target":"filter","delay":0.035}},"global":{"filter":{"type":"lowpass","slope":-24,"freq":150,"Q":4.7,"track":0.42,"env":{"octaves":4.4,"attack":0.004,"decay":0.38,"sustain":0.24,"release":0.12}},"vca":{"attack":0.004,"decay":0.82,"sustain":0.9,"release":0.16}},"drive":0.27,"shape":"soft","tone":{"freq":5200},"portamento":0,"starter":false,"mode":"poly","transpose":12,"sync":"off","drivePlace":"pre","chorus":{"mix":0.2},"kind":"tone","level":0.12578188589783526,"peak":1.1123089805964852,"songOrigin":"library","songSourceId":"bass2Voice"},"lead3Voice":{"label":"Initial 4 Saw Sub","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"The sawtooth pair with an octave below them — brighter on top than Initial 3 and the same weight underneath.","layer":{"osc1":{"type":"sawtooth","ratio":1,"detune":0,"gain":0.6,"attack":0,"decay":0.01,"sustain":0.75,"release":0.01},"osc2":{"type":"sawtooth","ratio":1,"detune":7,"gain":0.6,"attack":0,"decay":0.01,"sustain":0.75,"release":0.01}},"starter":false,"transpose":12,"bypassed":{"layer.osc3":{"type":"sawtooth","ratio":0.5,"detune":0,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"kind":"tone","level":0.08198665542514148,"peak":0.765950959637243,"songOrigin":"library","songSourceId":"lead3Voice"},"lead4Voice":{"label":"Square Tone","category":"Lead","synth":"GameSynth","dur":1,"note":"A direct single-oscillator square-wave replacement for the engine voice.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0,"sustain":1,"release":0.01,"attackCurve":"exponential"}},"fixedLength":0.144,"waveform":"square","attack":0.001,"release":0.089,"trim":0.8,"vibrato":{"depth":0,"rate":10.9},"mono":false,"portamento":0,"id":"toneSquare","kind":"tone","factory":true,"level":0.028709,"peak":0.5952},"organChords2Voice":{"label":"BEST Choir Aah","category":"Orch","synth":"MRDR-3","dur":8,"note":"Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the pitch moving underneath them. Delayed vibrato and a slow swell do the rest: this is how a voice works, not an impression of one.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":0.9,"attack":0.025899999999999996,"decay":0.041999999999999996,"sustain":0.85,"release":0.29325,"attackCurve":"lin","unison":3,"spread":9,"stereo":0,"filter":{"type":"bandpass","slope":-12,"freq":800,"Q":7,"track":0}},"lfo":{"type":"sine","rate":0.7,"depth":0.14,"target":"level","delay":0.9},"osc2":{"type":"sawtooth","ratio":1,"gain":0.7000000000000001,"detune":6,"attack":0.031079999999999997,"decay":0.048999999999999995,"sustain":0.8,"release":0.29325,"attackCurve":"lin","unison":2,"spread":13,"stereo":0,"filter":{"type":"bandpass","slope":-12,"freq":1495,"Q":15.65,"track":0}},"osc3":{"type":"sawtooth","ratio":1,"gain":0.37,"detune":50,"attack":0.037,"decay":0.055999999999999994,"sustain":0.7,"release":0.32583333333333336,"attackCurve":"lin","unison":2,"spread":16,"stereo":0,"filter":{"type":"bandpass","slope":-12,"freq":2900,"Q":11,"track":0}}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":3800,"Q":2.4,"track":0.3,"env":{"octaves":1.3,"attack":0.6,"decay":1.6,"sustain":0.55,"release":0.9}},"vca":{"attack":0.033299999999999996,"decay":0.055999999999999994,"sustain":0.88,"release":0.391,"attackCurve":"lin"}},"drive":0,"shape":"soft","humanize":{"entry":0},"vibrato":{"depth":0,"rate":4,"delay":0,"spread":0},"starter":false,"chorus":{"mix":0},"kind":"tone","level":0.022415517466047793,"peak":0.19753147775471083,"songOrigin":"library","songSourceId":"organChords2Voice"},"organChords3Voice":{"label":"BEST PWM Strings","category":"Orch","synth":"MRDR-3","dur":8,"note":"The string machine. Two pulses whose widths drift at 0.28 and 0.37 Hz — rates chosen not to line up — over a clean saw sub. The shimmer is the two widths passing through each other, which is why they must never share a rate.","layer":{"osc1":{"type":"pulse","width":0.5,"ratio":1,"gain":0.5,"attack":0.08666666666666667,"decay":2,"sustain":0.85,"release":2.5104,"attackCurve":"lin","unison":2,"spread":9,"stereo":0.85,"pwm":{"type":"sine","rate":0.28,"depth":0.62,"delay":0}},"osc2":{"type":"pulse","width":0.46,"ratio":1,"detune":-7,"gain":0.42,"attack":0.104,"decay":2.2,"sustain":0.82,"release":2.7196000000000002,"attackCurve":"lin","unison":2,"spread":13,"stereo":0.7,"pwm":{"type":"sine","rate":0.37,"depth":0.58,"delay":0}},"osc3":{"type":"sawtooth","ratio":0.5,"gain":0.2,"attack":0.078,"decay":2.4,"sustain":0.9,"release":2.5104,"attackCurve":"lin"}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":1530,"Q":0.8,"track":0.3,"env":{"octaves":1.4,"attack":0.8,"decay":2.4,"sustain":0.6,"release":1}},"vca":{"attack":0.09533333333333334,"decay":2.4,"sustain":0.9,"release":3.138,"attackCurve":"lin"}},"vibrato":{"depth":0.22,"rate":4.2,"delay":1.4},"starter":false,"kind":"tone","level":0.15580969454607346,"peak":0.9326230355278105,"songOrigin":"library","songSourceId":"organChords3Voice"},"chords5Voice":{"label":"Layer Brass Stack","category":"Orch","synth":"MRDR-3","dur":2.4,"note":"Three saws with no filters of their own, arriving at one shared lowpass that opens across the note — the stack reads as one horn section rather than three oscillators. A two-semitone blip gives it its attack.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":0.46,"attack":0.014000000000000002,"decay":0.5,"sustain":0.8,"release":0.12,"unison":2,"spread":11,"pitch":{"semitones":2,"decay":0.04}},"osc2":{"type":"sawtooth","ratio":2,"gain":0.2,"len":0.9,"attack":0.021,"decay":0.5,"sustain":0.7,"release":0.1},"osc3":{"type":"square","ratio":0.5,"gain":0.19,"attack":0.014000000000000002,"decay":0.6,"sustain":0.75,"release":0.12}},"global":{"filter":{"type":"lowpass","slope":-24,"freq":420,"Q":2.6,"track":0.35,"env":{"octaves":4.4,"attack":0.03,"decay":0.45,"sustain":0.3,"release":0.12}},"vca":{"attack":0.014000000000000002,"decay":0.4,"sustain":0.78,"release":0.14}},"tone":{"freq":9500},"starter":false,"transpose":12,"trim":1.1,"kind":"tone","level":0.07749369559334397,"peak":0.7302551007449553,"songOrigin":"library","songSourceId":"chords5Voice"},"chords4Voice":{"label":"Zap","category":"FX","synth":"MembraneSynth","dur":0.6,"note":"A pitch drop so fast it is heard as a click with a direction. Laser, or a very electronic rim.","options":{"pitchDecay":0.008,"octaves":8,"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":0.279,"sustain":0,"release":0.3}},"starter":false,"trim":3.8,"vibrato":{"depth":0.02},"kind":"tone","level":0.029936710634507733,"peak":0.5939361022332239,"songOrigin":"library","songSourceId":"chords4Voice"},"lead6Voice":{"label":"Round Bass","category":"Bass","synth":"MonoSynth","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.005,"decay":1.24,"sustain":0.29,"release":0.244},"filter":{"type":"lowpass","Q":10.15,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":0.461,"sustain":0.13,"release":0.3,"baseFrequency":110,"octaves":6.3}},"starter":false,"transpose":24,"mode":"legato","kind":"tone","level":0.1534928332314528,"peak":1.9964454317296096,"songOrigin":"user","songSourceId":"lead6Voice"},"lead7Voice":{"label":"Super Saw","category":"Lead","synth":"Synth","dur":1.4,"note":"Three sawtooths thirty cents apart — the trance lead, and the widest single sound here.","origin":"Tonejs/Presets Synth/SuperSaw","options":{"oscillator":{"type":"fatsawtooth","count":3,"spread":16},"envelope":{"attack":0.003,"decay":0.1,"sustain":0.91,"release":0.044,"attackCurve":"exponential"}},"starter":false,"mode":"mono","portamento":0.011,"vibrato":{"depth":0},"kind":"tone","level":0.05074025686804017,"peak":0.505393133842729,"songOrigin":"library","songSourceId":"lead7Voice"},"lead5Voice":{"label":"Celeste 2","category":"Bells","synth":"FMSynth","dur":4,"note":"Small, high and pure, with a very long tail. Made for the twinkle lane.","options":{"harmonicity":3.765,"modulationIndex":2.4,"oscillator":{"type":"square"},"modulation":{"type":"sine"},"envelope":{"attack":0.001,"decay":1.6,"sustain":0.01,"release":1.6},"modulationEnvelope":{"attack":0.001,"decay":0.4,"sustain":0,"release":0.4}},"starter":false,"transpose":24,"vibrato":{"depth":0.04},"trim":0,"id":"celeste2","kind":"tone","user":true,"level":0.034436,"peak":0.2067},"lead8Voice":{"label":"Thick Square Glide","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"Three squares at the same pitch, seven cents either side of centre. No filter, no sweep, no modulation — the shortest thing this synth can be and still be one.","layer":{"osc1":{"type":"sawtooth","ratio":1,"detune":0,"gain":0.87,"attack":0,"decay":0.259,"sustain":1,"release":8.563,"pitch":{"decay":3.155,"sustain":0.14,"semitones":0},"unison":2,"spread":31},"osc2":{"type":"sawtooth","ratio":0.5,"detune":-7,"gain":0.74,"attack":0,"decay":0.25,"sustain":0.75,"release":3.658},"osc3":{"type":"square","ratio":0.25,"detune":7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"global":{"filter":{"type":"lowpass","freq":1420,"Q":3.15,"env":{"octaves":10,"decay":4.671,"sustain":1,"release":10,"attack":0.58}},"vca":{"attack":0.028,"decay":0.419,"sustain":1,"release":10}},"starter":false,"chorus":{"mix":0.16},"vibrato":{"depth":0.16,"delay":0.041,"rate":4},"mode":"mono","portamento":0.3,"kind":"tone","level":0.11735889503200105,"peak":1.4355733596275932,"songOrigin":"user","songSourceId":"lead8Voice"},"clap3Voice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"organChords4Voice":{"label":"BEST Choir Aah","category":"Orch","synth":"MRDR-3","dur":8,"note":"Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the pitch moving underneath them. Delayed vibrato and a slow swell do the rest: this is how a voice works, not an impression of one.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":0.9,"attack":0.021,"decay":1.2,"sustain":0.85,"release":0.9,"attackCurve":"lin","unison":3,"spread":9,"stereo":0.8,"filter":{"type":"bandpass","slope":-12,"freq":800,"Q":7,"track":0,"env":{"sustain":0.65,"release":0.292,"attack":0.026}}},"osc2":{"type":"sawtooth","ratio":1,"gain":0.55,"detune":6,"attack":0.03,"decay":1.4,"sustain":0.8,"release":0.9,"attackCurve":"lin","unison":2,"spread":13,"stereo":0.7,"filter":{"type":"bandpass","slope":-12,"freq":1150,"Q":9,"track":0}},"osc3":{"type":"sawtooth","ratio":1,"gain":0.3,"detune":-7,"attack":0.084,"decay":1.6,"sustain":0.7,"release":1,"attackCurve":"lin","unison":2,"spread":16,"stereo":0.9,"filter":{"type":"bandpass","slope":-12,"freq":2900,"Q":11,"track":0}},"lfo":{"type":"sine","rate":0.7,"depth":0.14,"target":"level","delay":0.9}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":3800,"Q":0.7,"track":0.3,"env":{"octaves":1.3,"attack":0.172,"decay":1.6,"sustain":0.81,"release":0.9}},"vca":{"attack":0.051,"decay":1.6,"sustain":0.88,"release":10,"attackCurve":"lin"}},"drive":0.08,"shape":"soft","humanize":{"entry":0.022},"vibrato":{"depth":0.18,"rate":5.2,"delay":0.6,"spread":0.75},"starter":false,"transpose":-12,"mode":"mono","portamento":0.043,"kind":"tone","level":0.018206374618357286,"peak":0.12059726153095279,"songOrigin":"library","songSourceId":"organChords4Voice"},"lead9Voice":{"label":"BEST Choir Aah","category":"Orch","synth":"MRDR-3","dur":8,"note":"Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the pitch moving underneath them. Delayed vibrato and a slow swell do the rest: this is how a voice works, not an impression of one.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":0.9,"attack":0.35,"decay":1.2,"sustain":0.85,"release":0.9,"attackCurve":"lin","unison":3,"spread":9,"stereo":0.8,"filter":{"type":"bandpass","slope":-12,"freq":800,"Q":7,"track":0}},"osc2":{"type":"sawtooth","ratio":1,"gain":0.55,"detune":6,"attack":0.42,"decay":1.4,"sustain":0.8,"release":0.9,"attackCurve":"lin","unison":2,"spread":13,"stereo":0.7,"filter":{"type":"bandpass","slope":-12,"freq":1150,"Q":9,"track":0}},"osc3":{"type":"sawtooth","ratio":1,"gain":0.3,"detune":-7,"attack":0.5,"decay":1.6,"sustain":0.7,"release":1,"attackCurve":"lin","unison":2,"spread":16,"stereo":0.9,"filter":{"type":"bandpass","slope":-12,"freq":2900,"Q":11,"track":0}},"lfo":{"type":"sine","rate":0.7,"depth":0.14,"target":"level","delay":0.9}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":3800,"Q":0.7,"track":0.3,"env":{"octaves":1.3,"attack":0.6,"decay":1.6,"sustain":0.55,"release":0.9}},"vca":{"attack":0.45,"decay":1.6,"sustain":0.88,"release":1.2,"attackCurve":"lin"}},"drive":0.08,"shape":"soft","humanize":{"entry":0.022},"vibrato":{"depth":0.18,"rate":5.2,"delay":0.6,"spread":0.75},"id":"bestChoirAah","kind":"tone","factory":true,"level":0.021496,"peak":0.1724}},
+  layers: [{ key: "chords2", from: "chords", independent: true }, { key: "chords3", from: "chords", independent: true }, { key: "lead8", from: "lead" }, { key: "lead2", from: "lead", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "chords4", from: "chords", independent: true }, { key: "chords5", from: "chords", independent: true }, { key: "kick2", from: "kick", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "snare3", from: "snare", independent: true }, { key: "hats2", from: "hats", independent: true }, { key: "ohats2", from: "ohats", independent: true }, { key: "clap2", from: "clap", independent: true }, { key: "lead4", from: "lead" }, { key: "organChords5", from: "organChords", independent: true }, { key: "organChords6", from: "organChords4", independent: true }, { key: "organChords2", from: "organChords2", independent: true }, { key: "organChords3", from: "organChords3", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "clap3", from: "clap", independent: true }, { key: "lead9", from: "lead", independent: true }],
+  off: ["twinkle","organChords"],
+  order: ["kick2","snare2","snare3","clap2","clap3","hats2","ohats2","bass","bass2","lead","lead8","lead2","lead3","lead9","lead4","lead5","lead6","lead7","leadHarm","chords","chords2","chords3","chords5","chords4","organChords6","organChords2","organChords3","organChords5"],
+  labels: {"ohats2":"808 Open Hat"},
+  voice: {"bass2Voice":"bestSampleHoldBass","leadVoice":"initSquare","bassVoice":"roundBass","lead2Voice":"initSquare","lead3Voice":"initSawSub","chords2Voice":"harpPluck","chords3Voice":"tpPizz","chords4Voice":"zap","leadHarmVoice":"initSquareSub","chordsVoice":"initOneFilter","kick2Voice":"fatKick","snare2Voice":"gameBoySnare","snare3Voice":"dsCrackSnare2","hats2Voice":"dsKickHard","ohats2Voice":"ds808OpenHat","clap2Voice":"bigRoomClap","lead4Voice":"toneSquare","chords5Voice":"layerBrassStack","lead5Voice":"celeste2","lead6Voice":"roundBass","lead7Voice":"tpSuperSaw","lead8Voice":"thickSquareGlide","clap3Voice":"clapRoom","lead9Voice":"bestChoirAah","organChords5Voice":"tpHarmonics","organChords6Voice":"addDrawbarBright"},
+  voiceParams: {"leadVoice":{"label":"Initial 1 Square","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"Three squares at the same pitch, seven cents either side of centre. No filter, no sweep, no modulation — the shortest thing this synth can be and still be one.","layer":{"osc1":{"type":"square","ratio":1,"detune":0,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc2":{"type":"square","ratio":1,"detune":-7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc3":{"type":"square","ratio":1,"detune":7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"starter":false,"chorus":{"mix":0.65},"vibrato":{"depth":0.01,"delay":0.025},"kind":"tone","level":0.10515738531095983,"peak":1.3232329761311765,"songOrigin":"library","songSourceId":"leadVoice"},"bassVoice":{"label":"Round Bass","category":"Bass","synth":"MonoSynth","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":1.24,"sustain":0.29,"release":0.8},"filter":{"type":"lowpass","Q":2.9,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":1.22,"sustain":0.13,"release":0.3,"baseFrequency":110,"octaves":3.9}},"starter":false,"id":"roundBass","kind":"tone","user":true,"level":0.075557,"peak":1.183},"lead2Voice":{"label":"Initial 1 Square","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"Three squares at the same pitch, seven cents either side of centre. No filter, no sweep, no modulation — the shortest thing this synth can be and still be one.","layer":{"osc1":{"type":"square","ratio":1,"detune":0,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc2":{"type":"square","ratio":1,"detune":-7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc3":{"type":"square","ratio":1,"detune":7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"id":"initSquare","kind":"tone","factory":true,"level":0.226105,"peak":1.2076},"chords2Voice":{"label":"Harp","category":"Pluck","synth":"Synth","dur":2,"note":"A triangle with no sustain at all — the string is let go the moment it is struck.","options":{"oscillator":{"type":"fattriangle","count":2},"envelope":{"attack":0.001,"decay":0.166,"sustain":0,"release":0.016}},"starter":false,"kind":"tone","level":0.0017821247795906418,"peak":0.015300100099560846,"songOrigin":"library","songSourceId":"chords2Voice"},"chords3Voice":{"label":"Pizz","category":"Pluck","synth":"MonoSynth","dur":0.8,"note":"Highpassed and cut off immediately — pizzicato strings, all attack and no body.","origin":"Tonejs/Presets MonoSynth/Pizz","options":{"oscillator":{"type":"sawtooth"},"filter":{"Q":3,"type":"highpass","rolloff":-12},"envelope":{"attack":0.01,"decay":0.3,"sustain":0,"release":0.9},"filterEnvelope":{"attack":0.01,"decay":0.1,"sustain":0,"release":0.1,"baseFrequency":800,"octaves":-1.2}},"trim":-2.3,"id":"tpPizz","kind":"tone","factory":true,"level":0.017563,"peak":1.0667},"leadHarmVoice":{"label":"Initial 3 Square Sub","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"Two squares seven cents apart with the third an octave below them. The same starting point with a floor under it — where a bass patch begins.","layer":{"osc1":{"type":"square","ratio":1,"detune":0,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc2":{"type":"square","ratio":1,"detune":7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12},"osc3":{"type":"square","ratio":0.5,"detune":0,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"starter":false,"mode":"mono","portamento":0,"kind":"tone","level":0.17128100001693228,"peak":1.20600017216475,"songOrigin":"library","songSourceId":"leadHarmVoice"},"chordsVoice":{"label":"Initial 5 One Filter","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"Three detuned saws into one lowpass and one envelope — three oscillators, a filter, an amp, the classic layout. The cutoff is parked open with no envelope on it, so closing it is the first thing you will do.","layer":{"osc1":{"type":"sawtooth","ratio":1,"detune":0,"gain":0.6,"vca":"through"},"osc2":{"type":"sawtooth","ratio":1,"detune":-7,"gain":0.6,"vca":"through"},"osc3":{"type":"sawtooth","ratio":1,"detune":7,"gain":0.6,"vca":"through"}},"global":{"filter":{"type":"lowpass","slope":-24,"freq":8000,"Q":0.7,"track":0},"vca":{"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"id":"initOneFilter","kind":"tone","factory":true,"level":0.129908,"peak":1.6351},"kick2Voice":{"label":"Fat Kick","category":"Kick","homeLane":"kick","dur":1,"note":"The game’s own kick, written down: a sine dropping 165 to 48 Hz with a short highpassed beater click and the 300 Hz knock that lets it read on a phone.","osc":{"type":"triangle","from":165,"to":48,"sweep":0.05,"attack":0.006,"decay":0.42,"curve":"exp","gain":1},"knock":1,"noise":{"type":"highpass","freq":1900,"Q":1,"decay":0.0198,"gain":0.31},"starter":false,"drive":0.06,"kind":"drum","level":0.04010737725346491,"peak":0.6968909299316585,"songOrigin":"user","songSourceId":"kick2Voice"},"snare2Voice":{"label":"Game Boy Snare","category":"Snare","dur":0.5,"note":"","noise":{"type":"bandpass","freq":3710,"Q":2.85,"decay":0.905,"gain":1.98,"color":"pink"},"body":{"type":"square","from":2345,"to":80,"decay":0.37,"gain":1.02},"trim":1.9,"monoGroup":"arcadeDrums","starter":false,"id":"gameBoySnare","kind":"noise","user":true,"level":0.083619,"peak":1.1218},"snare3Voice":{"label":"DS Crack Snare 2","category":"Snare","dur":1,"note":"Tight and driven: a short square knock, highpassed air, everything over in a tenth of a second. The backbeat for fast songs.","osc":{"type":"square","from":255,"to":440,"sweep":0.025,"decay":0.05,"curve":"exp","gain":0.55},"noise":{"type":"highpass","freq":2900,"Q":0.8,"decay":0.3,"gain":1},"drive":0.35,"id":"dsCrackSnare2","kind":"drum","factory":true,"level":0.101559,"peak":0.7},"hats2Voice":{"label":"HH Clave","category":"Hats","dur":1,"note":"Tinny Hi Hat with a Clave behind it","knock":0.79,"noise":{"type":"bandpass","freq":3950,"Q":23.45,"decay":0.435,"gain":1.47,"attack":0.000343,"to":4790,"color":"violet","slope":-24,"sweep":1.59},"ring":{"type":"bandpass","freq":400,"Q":40,"hit":0.0005,"attack":0.001,"decay":1.335,"curve":"exp","gain":0.43,"to":4746},"metal":{"wave":"square","freq":2481,"spread":0.68,"count":4,"hp":2615,"Q":6.25,"attack":0.001,"decay":0.07,"gain":0.03,"filter":"bandpass"},"drive":0.64,"bypassed":{"osc":{"type":"sine","from":227,"to":42.08,"sweep":0.962,"decay":0.685,"curve":"exp","gain":1,"attack":0}},"tune":21,"trim":3.9,"id":"dsKickHard","kind":"drum","factory":true,"level":0.048683,"peak":0.7636},"ohats2Voice":{"label":"=808 Open Hat","category":"Hats","homeLane":"ohats","dur":2,"note":"The open 808-style cymbal partner: the same inharmonic cluster left ringing with a lower filter so its body is audible as it fades.","metal":{"freq":540,"spread":1,"count":6,"hp":6100,"Q":0.9,"slope":-24,"decay":0.42},"humanize":{"gain":0.04},"id":"ds808OpenHat","kind":"drum","factory":true,"level":0.056353,"peak":1.0138},"clap2Voice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"bass2Voice":{"label":"BEST S&H Bass","category":"Bass","synth":"MRDR-3","dur":1.8,"note":"A mono bass with a firm sine floor and a held-random filter latch on the saw. The slow enough steps leave the groove intact, but every note gets a slightly different growl and the sub never disappears.","layer":{"osc1":{"type":"sine","ratio":0.5,"gain":1,"attack":0.003,"decay":0.8,"sustain":0.92,"release":0.14},"osc2":{"type":"sawtooth","ratio":1,"gain":0.78,"attack":0.003,"decay":0.65,"sustain":0.7,"release":0.13,"unison":2,"spread":9,"stereo":0.35},"osc3":{"type":"square","ratio":2,"gain":0.2,"attack":0.002,"decay":0.24,"sustain":0.28,"release":0.08},"lfo":{"type":"samplehold","rate":2.2,"depth":0,"target":"filter","delay":0.035}},"global":{"filter":{"type":"lowpass","slope":-24,"freq":150,"Q":4.7,"track":0.42,"env":{"octaves":4.4,"attack":0.004,"decay":0.38,"sustain":0.24,"release":0.12}},"vca":{"attack":0.004,"decay":0.82,"sustain":0.9,"release":0.16}},"drive":0.27,"shape":"soft","tone":{"freq":5200},"portamento":0,"starter":false,"mode":"poly","transpose":12,"sync":"off","drivePlace":"pre","chorus":{"mix":0.2},"kind":"tone","level":0.12578188589783526,"peak":1.1123089805964852,"songOrigin":"library","songSourceId":"bass2Voice"},"lead3Voice":{"label":"Initial 4 Saw Sub","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"The sawtooth pair with an octave below them — brighter on top than Initial 3 and the same weight underneath.","layer":{"osc1":{"type":"sawtooth","ratio":1,"detune":0,"gain":0.6,"attack":0,"decay":0.01,"sustain":0.75,"release":0.01},"osc2":{"type":"sawtooth","ratio":1,"detune":7,"gain":0.6,"attack":0,"decay":0.01,"sustain":0.75,"release":0.01}},"starter":false,"transpose":12,"bypassed":{"layer.osc3":{"type":"sawtooth","ratio":0.5,"detune":0,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"kind":"tone","level":0.08198665542514148,"peak":0.765950959637243,"songOrigin":"library","songSourceId":"lead3Voice"},"lead4Voice":{"label":"Square Tone","category":"Lead","synth":"GameSynth","dur":1,"note":"A direct single-oscillator square-wave replacement for the engine voice.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0,"sustain":1,"release":0.01,"attackCurve":"exponential"}},"fixedLength":0.144,"waveform":"square","attack":0.001,"release":0.089,"trim":0.8,"vibrato":{"depth":0,"rate":10.9},"mono":false,"portamento":0,"id":"toneSquare","kind":"tone","factory":true,"level":0.028709,"peak":0.5952},"organChords2Voice":{"label":"BEST Choir Aah","category":"Orch","synth":"MRDR-3","dur":8,"note":"Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the pitch moving underneath them. Delayed vibrato and a slow swell do the rest: this is how a voice works, not an impression of one.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":0.9,"attack":0.025899999999999996,"decay":0.041999999999999996,"sustain":0.85,"release":0.29325,"attackCurve":"lin","unison":3,"spread":9,"stereo":0,"filter":{"type":"bandpass","slope":-12,"freq":800,"Q":7,"track":0}},"lfo":{"type":"sine","rate":0.7,"depth":0.14,"target":"level","delay":0.9},"osc2":{"type":"sawtooth","ratio":1,"gain":0.7000000000000001,"detune":6,"attack":0.031079999999999997,"decay":0.048999999999999995,"sustain":0.8,"release":0.29325,"attackCurve":"lin","unison":2,"spread":13,"stereo":0,"filter":{"type":"bandpass","slope":-12,"freq":1495,"Q":15.65,"track":0}},"osc3":{"type":"sawtooth","ratio":1,"gain":0.37,"detune":50,"attack":0.037,"decay":0.055999999999999994,"sustain":0.7,"release":0.32583333333333336,"attackCurve":"lin","unison":2,"spread":16,"stereo":0,"filter":{"type":"bandpass","slope":-12,"freq":2900,"Q":11,"track":0}}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":3800,"Q":2.4,"track":0.3,"env":{"octaves":1.3,"attack":0.6,"decay":1.6,"sustain":0.55,"release":0.9}},"vca":{"attack":0.033299999999999996,"decay":0.055999999999999994,"sustain":0.88,"release":0.391,"attackCurve":"lin"}},"drive":0,"shape":"soft","humanize":{"entry":0},"vibrato":{"depth":0,"rate":4,"delay":0,"spread":0},"starter":false,"chorus":{"mix":0},"kind":"tone","level":0.022415517466047793,"peak":0.19753147775471083,"songOrigin":"library","songSourceId":"organChords2Voice"},"organChords3Voice":{"label":"BEST PWM Strings","category":"Orch","synth":"MRDR-3","dur":8,"note":"The string machine. Two pulses whose widths drift at 0.28 and 0.37 Hz — rates chosen not to line up — over a clean saw sub. The shimmer is the two widths passing through each other, which is why they must never share a rate.","layer":{"osc1":{"type":"pulse","width":0.5,"ratio":1,"gain":0.5,"attack":0.08666666666666667,"decay":2,"sustain":0.85,"release":2.5104,"attackCurve":"lin","unison":2,"spread":9,"stereo":0.85,"pwm":{"type":"sine","rate":0.28,"depth":0.62,"delay":0}},"osc2":{"type":"pulse","width":0.46,"ratio":1,"detune":-7,"gain":0.42,"attack":0.104,"decay":2.2,"sustain":0.82,"release":2.7196000000000002,"attackCurve":"lin","unison":2,"spread":13,"stereo":0.7,"pwm":{"type":"sine","rate":0.37,"depth":0.58,"delay":0}},"osc3":{"type":"sawtooth","ratio":0.5,"gain":0.2,"attack":0.078,"decay":2.4,"sustain":0.9,"release":2.5104,"attackCurve":"lin"}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":1530,"Q":0.8,"track":0.3,"env":{"octaves":1.4,"attack":0.8,"decay":2.4,"sustain":0.6,"release":1}},"vca":{"attack":0.09533333333333334,"decay":2.4,"sustain":0.9,"release":3.138,"attackCurve":"lin"}},"vibrato":{"depth":0.22,"rate":4.2,"delay":1.4},"starter":false,"kind":"tone","level":0.15580969454607346,"peak":0.9326230355278105,"songOrigin":"library","songSourceId":"organChords3Voice"},"chords5Voice":{"label":"Layer Brass Stack","category":"Orch","synth":"MRDR-3","dur":2.4,"note":"Three saws with no filters of their own, arriving at one shared lowpass that opens across the note — the stack reads as one horn section rather than three oscillators. A two-semitone blip gives it its attack.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":0.46,"attack":0.014000000000000002,"decay":0.5,"sustain":0.8,"release":0.12,"unison":2,"spread":11,"pitch":{"semitones":2,"decay":0.04}},"osc2":{"type":"sawtooth","ratio":2,"gain":0.2,"len":0.9,"attack":0.021,"decay":0.5,"sustain":0.7,"release":0.1},"osc3":{"type":"square","ratio":0.5,"gain":0.19,"attack":0.014000000000000002,"decay":0.6,"sustain":0.75,"release":0.12}},"global":{"filter":{"type":"lowpass","slope":-24,"freq":420,"Q":2.6,"track":0.35,"env":{"octaves":4.4,"attack":0.03,"decay":0.45,"sustain":0.3,"release":0.12}},"vca":{"attack":0.014000000000000002,"decay":0.4,"sustain":0.78,"release":0.14}},"tone":{"freq":9500},"starter":false,"transpose":12,"trim":1.1,"kind":"tone","level":0.07749369559334397,"peak":0.7302551007449553,"songOrigin":"library","songSourceId":"chords5Voice"},"chords4Voice":{"label":"Zap","category":"FX","synth":"MembraneSynth","dur":0.6,"note":"A pitch drop so fast it is heard as a click with a direction. Laser, or a very electronic rim.","options":{"pitchDecay":0.008,"octaves":8,"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":0.279,"sustain":0,"release":0.3}},"starter":false,"trim":3.8,"vibrato":{"depth":0.02},"kind":"tone","level":0.029936710634507733,"peak":0.5939361022332239,"songOrigin":"library","songSourceId":"chords4Voice"},"lead6Voice":{"label":"Round Bass","category":"Bass","synth":"MonoSynth","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.005,"decay":1.24,"sustain":0.29,"release":0.244},"filter":{"type":"lowpass","Q":10.15,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":0.461,"sustain":0.13,"release":0.3,"baseFrequency":110,"octaves":6.3}},"starter":false,"transpose":24,"mode":"legato","kind":"tone","level":0.1534928332314528,"peak":1.9964454317296096,"songOrigin":"user","songSourceId":"lead6Voice"},"lead7Voice":{"label":"Super Saw","category":"Lead","synth":"Synth","dur":1.4,"note":"Three sawtooths thirty cents apart — the trance lead, and the widest single sound here.","origin":"Tonejs/Presets Synth/SuperSaw","options":{"oscillator":{"type":"fatsawtooth","count":3,"spread":16},"envelope":{"attack":0.003,"decay":0.1,"sustain":0.91,"release":0.044,"attackCurve":"exponential"}},"starter":false,"mode":"mono","portamento":0.011,"vibrato":{"depth":0},"kind":"tone","level":0.05074025686804017,"peak":0.505393133842729,"songOrigin":"library","songSourceId":"lead7Voice"},"lead5Voice":{"label":"Celeste 2","category":"Bells","synth":"FMSynth","dur":4,"note":"Small, high and pure, with a very long tail. Made for the twinkle lane.","options":{"harmonicity":3.765,"modulationIndex":2.4,"oscillator":{"type":"square"},"modulation":{"type":"sine"},"envelope":{"attack":0.001,"decay":1.6,"sustain":0.01,"release":1.6},"modulationEnvelope":{"attack":0.001,"decay":0.4,"sustain":0,"release":0.4}},"starter":false,"transpose":24,"vibrato":{"depth":0.04},"trim":0,"id":"celeste2","kind":"tone","user":true,"level":0.034436,"peak":0.2067},"lead8Voice":{"label":"Thick Square Glide","category":"Keys","synth":"MRDR-3","dur":1.5,"note":"Three squares at the same pitch, seven cents either side of centre. No filter, no sweep, no modulation — the shortest thing this synth can be and still be one.","layer":{"osc1":{"type":"sawtooth","ratio":1,"detune":0,"gain":0.87,"attack":0,"decay":0.259,"sustain":1,"release":8.563,"pitch":{"decay":3.155,"sustain":0.14,"semitones":0},"unison":2,"spread":31},"osc2":{"type":"sawtooth","ratio":0.5,"detune":-7,"gain":0.74,"attack":0,"decay":0.25,"sustain":0.75,"release":3.658},"osc3":{"type":"square","ratio":0.25,"detune":7,"gain":0.6,"attack":0,"decay":0.25,"sustain":0.75,"release":0.12}},"global":{"filter":{"type":"lowpass","freq":1420,"Q":3.15,"env":{"octaves":10,"decay":4.671,"sustain":1,"release":10,"attack":0.58}},"vca":{"attack":0.028,"decay":0.419,"sustain":1,"release":10}},"starter":false,"chorus":{"mix":0.16},"vibrato":{"depth":0.16,"delay":0.041,"rate":4},"mode":"mono","portamento":0.3,"kind":"tone","level":0.11735889503200105,"peak":1.4355733596275932,"songOrigin":"user","songSourceId":"lead8Voice"},"clap3Voice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"organChords4Voice":{"label":"Drawbar Organ, Bright","category":"Organ","homeLane":"organChords","synth":"AdditiveSynth","dur":7.2,"note":"The upper drawbars pulled further out. Cuts through where the soft registration sits under everything.","additive":{"bars":[0,0.18,1,0.78,0.48,0.3,0.24,0.26,0.41],"attack":0.018,"decay":0.882,"sustain":0.51,"release":0.071},"starter":false,"trim":3.8,"kind":"tone","level":0.2757891490631617,"peak":1.5767871509814464,"songOrigin":"library","songSourceId":"organChordsVoice"},"lead9Voice":{"label":"BEST Choir Aah","category":"Orch","synth":"MRDR-3","dur":8,"note":"Three static bandpass formants on the /a/ vowel — 800, 1150 and 2900 Hz — with the pitch moving underneath them. Delayed vibrato and a slow swell do the rest: this is how a voice works, not an impression of one.","layer":{"osc1":{"type":"sawtooth","ratio":1,"gain":0.9,"attack":0.35,"decay":1.2,"sustain":0.85,"release":0.9,"attackCurve":"lin","unison":3,"spread":9,"stereo":0.8,"filter":{"type":"bandpass","slope":-12,"freq":800,"Q":7,"track":0}},"osc2":{"type":"sawtooth","ratio":1,"gain":0.55,"detune":6,"attack":0.42,"decay":1.4,"sustain":0.8,"release":0.9,"attackCurve":"lin","unison":2,"spread":13,"stereo":0.7,"filter":{"type":"bandpass","slope":-12,"freq":1150,"Q":9,"track":0}},"osc3":{"type":"sawtooth","ratio":1,"gain":0.3,"detune":-7,"attack":0.5,"decay":1.6,"sustain":0.7,"release":1,"attackCurve":"lin","unison":2,"spread":16,"stereo":0.9,"filter":{"type":"bandpass","slope":-12,"freq":2900,"Q":11,"track":0}},"lfo":{"type":"sine","rate":0.7,"depth":0.14,"target":"level","delay":0.9}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":3800,"Q":0.7,"track":0.3,"env":{"octaves":1.3,"attack":0.6,"decay":1.6,"sustain":0.55,"release":0.9}},"vca":{"attack":0.45,"decay":1.6,"sustain":0.88,"release":1.2,"attackCurve":"lin"}},"drive":0.08,"shape":"soft","humanize":{"entry":0.022},"vibrato":{"depth":0.18,"rate":5.2,"delay":0.6,"spread":0.75},"id":"bestChoirAah","kind":"tone","factory":true,"level":0.021496,"peak":0.1724},"organChords6Voice":{"label":"Drawbar Organ, Bright","category":"Organ","homeLane":"organChords","synth":"AdditiveSynth","dur":7.2,"note":"The upper drawbars pulled further out. Cuts through where the soft registration sits under everything.","additive":{"bars":[0,0.18,1,0.78,0.48,0.35,0.24,0.26,0.41],"attack":0.018,"decay":0.882,"sustain":0.51,"release":0.071},"starter":false,"trim":3.8,"kind":"tone","level":0.2779863785259105,"peak":1.61073214896739,"songOrigin":"library","songSourceId":"organChordsVoice"},"organChords5Voice":{"label":"Harmonics","category":"Organ","synth":"AMSynth","dur":2.6,"note":"Ring modulation at almost exactly four times the carrier — the partials line up, so it reads as an organ stop.","origin":"Tonejs/Presets AMSynth/Harmonics","options":{"harmonicity":4.84,"oscillator":{"type":"square"},"envelope":{"attack":0.005,"decay":0.3,"sustain":0.7,"release":0.8},"modulation":{"volume":12,"type":"pwm"},"modulationEnvelope":{"attack":2.275,"decay":3,"sustain":0.8,"release":0.1}},"starter":false,"trim":2.6,"kind":"tone","level":0.02495274461414691,"peak":0.11901749970705368,"songOrigin":"library","songSourceId":"organChords5Voice"}},
   lanes: {
     bass: { gain: 3.408 },
     lead2: { gain: -14.4, pan: 0.32 },
     twinkle: { gain: 6 },
-    chords3: { gain: -25.2, pan: 0.417, eq: { high: 7.4 } },
-    organChords: { gain: -1.6, pan: -0.43, send: { reverb: 0.363 }, eq: { low: -2.8, mid: -5.1, high: 6.5 }, effects: [{ id: "rhythmgate", params: { attack: 0.002, decay: 0.065 } }, { id: "widener" }, { id: "gain", params: { gain: 10 } }] },
-    chords2: { gain: -24.4, pan: 0.392, eq: { high: 6.5 } },
-    lead3: { gain: 3.4, send: { delay: 0.008, reverb: 0.196 }, effects: [{ id: "doubler" }] },
+    chords3: { gain: -25.2, pan: 0.417, eq: { high: 7.4 }, noteFx: {"strum":{"enabled":true,"direction":"up","gapMs":18},"arp":{"enabled":false,"direction":"up","rate":1,"octaves":1,"gate":80,"retrigger":"chord","latch":false}} },
+    organChords: { gain: -1.6, pan: -0.43, send: { reverb: 0.363 }, eq: { low: -2.8, mid: -5.1, high: 6.5 }, effects: [{ id: "rhythmgate", bypass: true, params: { attack: 0.002, decay: 0.065 } }, { id: "widener", bypass: true }, { id: "gain", bypass: true, params: { gain: 10 } }], noteFx: {"strum":{"enabled":false,"direction":"random","gapMs":18},"arp":{"enabled":true,"direction":"updown","rate":1,"octaves":3,"gate":80,"retrigger":"chord","latch":false}} },
+    chords2: { gain: -24.4, pan: 0.392, eq: { high: 6.5 }, noteFx: {"strum":{"enabled":true,"direction":"up","gapMs":19},"arp":{"enabled":false,"direction":"up","rate":1,"octaves":1,"repeat":true,"gate":80,"retrigger":"chord","latch":false}} },
+    lead3: { gain: 3.4, send: { delay: 0.008, reverb: 0.196 }, effects: [{ id: "doubler" }, { id: "mbComp" }] },
     leadHarm: { gain: 1.392, pan: -0.206, send: { reverb: 1.064 } },
     chords: { gain: -0.32, pan: 0.154, send: { reverb: 0.554 } },
     lead: { gain: 1, eq: { mid: 1.6 } },
     snare2: { gain: -1.7, eq: { high: 1.9 } },
     bass2: { gain: -8.4, eq: { low: -5.3, mid: 1.8 }, effects: [{ id: "compressor" }] },
     lead4: { gain: 0.6, eq: { high: 7.2 }, effects: [{ id: "autopanner", params: { rateDivision: 16, depth: 0.66 } }] },
-    organChords2: { gain: 2.5, pan: -0.477, send: { reverb: 0.723 }, eq: { mid: -5.1, high: 6.5 } },
-    organChords3: { gain: 1.5, pan: 0.476, send: { reverb: 1.045 }, eq: { mid: -5.1, high: 6.5 } },
     chords5: { gain: -2.32, pan: -0.399, send: { delay: 0.027, reverb: 0.672 } },
     chords4: { gain: -8, pan: -0.271, send: { reverb: 0.183 } },
     lead5: { gain: -5, pan: 0.492, send: { reverb: 0.337 }, eq: { low: -3.5, high: 7.7 }, effects: [{ id: "compressor" }, { id: "autopanner", params: { rateDivision: 32 } }] },
@@ -269,6 +283,10 @@ export const mix = {
     lead8: { gain: -4.5, send: { delay: 0.156, reverb: 1.021 }, eq: { mid: 1.6, high: -5.4 }, effects: [{ id: "chorus2" }, { id: "doubler" }, { id: "pingpong", params: { division: 1, feedback: 0.48, wet: 0.61 } }] },
     clap3: { gain: 6, eq: { low: -3.9, high: -0.7 }, effects: [{ id: "reverb", params: { decay: 7.6, wet: 0.6, preDelay: 0.016 } }] },
     lead9: { gain: -9.8, send: { delay: 0.182, reverb: 0.849 }, eq: { low: 4.6, high: -3.3 }, effects: [{ id: "reverb" }, { id: "chorus2" }, { id: "doubler" }] },
+    organChords5: { gain: -1.6, pan: -0.43, send: { reverb: 0.363 }, eq: { low: -2.8, mid: -5.1, high: 6.5 }, effects: [{ id: "rhythmgate", bypass: true, params: { attack: 0.002, decay: 0.065 } }, { id: "widener", bypass: true }, { id: "gain", bypass: true, params: { gain: 10 } }], noteFx: {"strum":{"enabled":false,"direction":"random","gapMs":18},"arp":{"enabled":true,"direction":"updown","rate":1,"octaves":3,"gate":80,"retrigger":"chord","latch":false}} },
+    organChords6: { gain: -5.76, pan: -0.43, send: { reverb: 0.363 }, eq: { low: -2.8, mid: -5.1, high: 6.5 }, effects: [{ id: "rhythmgate", params: { attack: 0.002, decay: 0.067, gateLength: 0.44, depth: 0.88 } }, { id: "widener" }, { id: "gain", params: { gain: 10 } }] },
+    organChords2: { gain: 2.5, pan: -0.477, send: { reverb: 0.723 }, eq: { mid: -5.1, high: 6.5 } },
+    organChords3: { gain: 1.5, pan: 0.476, send: { reverb: 1.045 }, eq: { mid: -5.1, high: 6.5 } },
   },
 };
 
@@ -281,7 +299,10 @@ export const arrangement = {
       transpose: {
         lead6: -12,
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         bass: -4,
@@ -299,6 +320,11 @@ export const arrangement = {
       },
       offset: {
         lead9: -4,
+        chords2: -0.5,
+        chords3: -0.5,
+      },
+      gain: {
+        organChords6: -3.5,
       },
     },
     {
@@ -306,10 +332,14 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead7: -3.5,
+        organChords6: -3.5,
       },
     },
     {
@@ -319,7 +349,10 @@ export const arrangement = {
       off: ["chords2","chords3"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -328,7 +361,10 @@ export const arrangement = {
       off: ["chords2","chords3"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -338,7 +374,10 @@ export const arrangement = {
       off: ["chords2","chords3"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -347,7 +386,10 @@ export const arrangement = {
       off: ["chords2","chords3"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -356,7 +398,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -364,7 +409,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -373,7 +421,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -381,7 +432,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -390,7 +444,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -401,7 +458,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -413,7 +473,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -424,7 +487,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -437,7 +503,10 @@ export const arrangement = {
       transpose: {
         lead8: 12,
         leadHarm: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -446,7 +515,10 @@ export const arrangement = {
       transpose: {
         lead8: 12,
         leadHarm: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -456,7 +528,10 @@ export const arrangement = {
       transpose: {
         lead8: 12,
         leadHarm: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -464,7 +539,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -473,15 +551,21 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
-      s: 38,
+      s: 64,
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead7: -3.5,
@@ -493,7 +577,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         chords: -3.5,
@@ -502,9 +589,76 @@ export const arrangement = {
     {
       s: 54,
       bars: 1,
+      off: ["lead4"],
+      noteFx: {
+        lead4: {
+          mode: "on",
+          strum: {
+            enabled: false,
+            direction: "up",
+            gapMs: 18,
+          },
+          arp: {
+            enabled: true,
+            direction: "up",
+            rate: 1,
+            octaves: 4,
+            repeat: false,
+            gate: 80,
+            retrigger: "chord",
+            latch: false,
+          },
+        },
+        lead3: {
+          mode: "on",
+          strum: {
+            enabled: false,
+            direction: "up",
+            gapMs: 18,
+          },
+          arp: {
+            enabled: true,
+            direction: "up",
+            rate: 0.5,
+            octaves: 4,
+            repeat: false,
+            gate: 80,
+            retrigger: "chord",
+            latch: false,
+          },
+        },
+      },
+      inlineFx: {
+        lead3: [
+          {
+            id: "delay",
+            params: {
+              sync: 1,
+              division: 0.5,
+              delayMs: 250,
+              feedback: 0.3,
+              wet: 0.35,
+            },
+          },
+          {
+            id: "pingpong",
+            params: {
+              sync: 1,
+              division: 0.5,
+              delayMs: 250,
+              feedback: 0.3,
+              wet: 0.35,
+            },
+          },
+        ],
+      },
       transpose: {
         lead8: 12,
-        lead9: -12,
+        lead4: 12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead7: -3.5,
@@ -517,7 +671,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -525,7 +682,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -534,7 +694,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -542,7 +705,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -551,7 +717,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -559,7 +728,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -568,7 +740,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -576,7 +751,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead5: -8,
@@ -589,7 +767,10 @@ export const arrangement = {
       off: ["lead5"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -601,7 +782,10 @@ export const arrangement = {
       off: ["lead5"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -613,7 +797,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -624,7 +811,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead5: 4.5,
@@ -637,7 +827,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -645,7 +838,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -655,7 +851,10 @@ export const arrangement = {
       off: ["chords2","chords3"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -663,7 +862,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -673,7 +875,10 @@ export const arrangement = {
       off: ["chords3"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -681,7 +886,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -690,7 +898,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -698,7 +909,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -707,7 +921,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -716,7 +933,10 @@ export const arrangement = {
       off: ["lead8"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -725,7 +945,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         clap3: -1.5,
@@ -736,7 +959,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -745,7 +971,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -753,7 +982,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -762,7 +994,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -770,7 +1005,10 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -779,7 +1017,10 @@ export const arrangement = {
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
@@ -787,18 +1028,24 @@ export const arrangement = {
       bars: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
       s: 20,
       bars: 1,
       from: 1,
-      off: ["organChords"],
+      off: ["organChords6"],
       transpose: {
         lead5: 12,
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -807,11 +1054,14 @@ export const arrangement = {
     {
       s: 21,
       bars: 1,
-      off: ["organChords"],
+      off: ["organChords6"],
       transpose: {
         lead5: 12,
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -821,11 +1071,14 @@ export const arrangement = {
       s: 22,
       bars: 1,
       from: 1,
-      off: ["organChords"],
+      off: ["organChords6"],
       transpose: {
         lead5: 12,
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -834,11 +1087,14 @@ export const arrangement = {
     {
       s: 23,
       bars: 1,
-      off: ["organChords"],
+      off: ["organChords6"],
       transpose: {
         lead5: 12,
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
       gain: {
         lead: 2,
@@ -848,76 +1104,98 @@ export const arrangement = {
       s: 40,
       bars: 1,
       from: 1,
-      off: ["organChords"],
+      off: ["organChords6"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
       s: 25,
       bars: 1,
-      off: ["organChords"],
+      off: ["organChords6"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
       s: 26,
       bars: 1,
       from: 1,
-      off: ["organChords"],
+      off: ["organChords6"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
       s: 26,
       bars: 1,
       from: 1,
-      off: ["organChords"],
+      off: ["organChords6"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
       s: 56,
       bars: 1,
       from: 1,
-      off: ["organChords"],
+      off: ["organChords6"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
       s: 27,
       bars: 1,
-      off: ["organChords"],
+      off: ["organChords6"],
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
       s: 28,
       bars: 1,
       from: 1,
-      delete: ["bass","bass2","chords","chords2","chords3","chords4","chords5","clap2","clap3","hats2","kick2","lead","lead2","lead3","lead4","lead5","lead6","lead7","lead8","leadHarm","ohats2","organChords","organChords2","organChords3","snare2","snare3"],
-      transpose: {
-        lead9: -12,
+      delete: ["bass","bass2","chords","chords2","chords3","chords4","chords5","clap2","clap3","hats2","kick2","lead","lead2","lead3","lead4","lead5","lead6","lead7","lead8","leadHarm","ohats2","organChords2","organChords3","organChords6","snare2","snare3"],
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
     {
-      s: 28,
+      s: 65,
       bars: 1,
       from: 1,
       transpose: {
         lead8: 12,
-        lead9: -12,
+      },
+      offset: {
+        chords2: -0.5,
+        chords3: -0.5,
       },
     },
   ],
@@ -931,12 +1209,10 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,null,null,2,null,null,null,2,null,6,null,null,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[2,2,2],null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[2,2,2],null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
     },
     {
       base: 0,
@@ -947,9 +1223,12 @@ export const arrangement = {
       snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
-      organChords3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,[277.1826309768721,369.9944227116344],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,8],null,null,null,null,null,null,null,[4,4],null,null,null,null,null,null,null],
+      lead: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null],
     },
     {
       base: 1,
@@ -960,16 +1239,16 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . C1 . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,5.22,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       clap2: seq('. . . . C1 . . . C1 . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       chords: [[87.30705785825097],null,null,null,[73.41619197935188],null,null,null,[97.99885899543733],null,[92.4986056779086],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chordsLen: [2,null,null,null,2,null,null,null,1.505504,null,5.266335,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead7: seq('. . . . . . . . G2 . F#2 . . . . . | . . . . . . . . . . . . . . . .'),
       lead7Len: [null,null,null,null,null,null,null,null,3.10174,null,5.266335,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . F5 . F7 . | A4 . . . F4 . . C4 D4 F4 . F4 . . . D4'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,2.800604,null,2.908203,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[2,2,2],null,null,null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[2,2,2],null,null,null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 2,
@@ -980,14 +1259,14 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,1.74,null,1.74,null,1.74,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . D4'),
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . D4'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[329.6275569128699,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,329.6275569128699,440],null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[329.6275569128699,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 2,
@@ -998,12 +1277,10 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,null,null,2,null,null,null,2,null,2,null,2,null,2,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: [[261.6255653005986,329.6275569128699,440],null,null,null,[261.6255653005986,311.1269837220809,415.3046975799451],null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[329.6275569128699,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[4,4,4],null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[261.6255653005986,329.6275569128699,440],null,null,null,[261.6255653005986,311.1269837220809,415.3046975799451],null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[329.6275569128699,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[4,4,4],null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('C4 . F4 . F4 . C5 . A4 . . G4 . . . C4 | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,null,1,null,1,null,2,null,3,null,null,4,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
     },
     {
       base: 3,
@@ -1014,12 +1291,12 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . D4'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 3,
@@ -1030,14 +1307,12 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('C4 . F4 . A#4 A4 G4 F4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead4Len: [1,null,1,null,1,1,1,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('C4 . F4 . A#4 A4 G4 F4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,null,1,null,1,1,1,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
     },
     {
       base: 4,
@@ -1048,12 +1323,12 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,null,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . F4 . . C4 . A4 . . F4 . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,3,null,null,2,null,3,null,null,5,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 4,
@@ -1068,6 +1343,12 @@ export const arrangement = {
       lead5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null],
       lead8: seq('C4 . F4 . A#4 A4 G4 F4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,null,1,null,1,1,1,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
+      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
+      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
     },
     {
       base: 5,
@@ -1082,6 +1363,14 @@ export const arrangement = {
       lead5Len: [1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . F4 . . C4 . A4 . . F4 . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,3,null,null,2,null,3,null,null,5,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986],null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,8,8],null,null,null,null,null,null,null,[4],null,null,null,null,null,null,null],
+      organChords6: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,8,8],null,null,null,null,null,null,null,[4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,[261.6255653005986],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[4,8,8],null,null,null,[4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,[261.6255653005986],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[4,8,8],null,null,null,[4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 5,
@@ -1098,6 +1387,12 @@ export const arrangement = {
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.241122,null,null,null,2.213246,null,null,null,3.489347,null,null,null,2.252841,null,null,null],
       lead8: seq('G#4 F4 C4 . G#4 . . G4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,1,1,null,3,null,null,9,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
+      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
+      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
     },
     {
       base: 6,
@@ -1114,6 +1409,14 @@ export const arrangement = {
       lead6Len: [7.083274,null,null,null,null,null,null,null,1.74,null,1.74,null,1.74,null,5.796875,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . F5 . F7 . | A4 . . . F4 . . C4 D4 F4 . F4 . . . G4'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,2.800604,null,2.908203,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,8],null,null,null,null,null,null,null,[4,4],null,null,null,null,null,null,null],
+      organChords6: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,8],null,null,null,null,null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 6,
@@ -1124,16 +1427,14 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead7: seq('. . . . . . . . . . . . . . . . | F2 . . . . . . . D#2 . . . . . . .'),
       lead7Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,10.709517,null,null,null,null,null,null,null,9,null,null,null,null,null,null,null],
       lead4: seq('G#4 F4 C4 . C5 . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead4Len: [1,1,2,null,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('G#4 F4 C4 . C5 . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,1,2,null,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 7,
@@ -1146,6 +1447,14 @@ export const arrangement = {
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,2,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null],
       lead8: seq('. . . . . . . . . . . . . . . . | C5 . D5 . C5 . D5 . C5 . . C4 A#4 A4 G4 .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null,2,null,2,null,3,null,null,1,1,1,2,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 7,
@@ -1157,9 +1466,14 @@ export const arrangement = {
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,1.74,null,null,null,null,null,null,null,null,null,null,null,1.74,null,1.74,null],
       bassLen: [2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,7.98402,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[15.916371,15.916371,15.916371],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('A4 F4 C4 . D4 . . F4 . . . . . . . D4 | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,1,2,null,3,null,null,8,null,null,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[15.916371,15.916371,15.916371],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 8,
@@ -1176,26 +1490,27 @@ export const arrangement = {
       chords3Len: [null,null,[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,null,null,null,null,[1,1,1],[1,1,1],null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords2: [[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords2Len: [[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChordsLen: [[10.739702,10.739702,10.739702],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       clap3: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords6: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[16,16,16],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2Len: [[16,16,16],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [[16,16,16],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 8,
       bass2: seq('F2 . . . C2 . . . F2 . . . F2 . . . | . . . . . . . . . . . . . . . .'),
       bass2Len: [2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
-      organChordsLen: [[16,16,16],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[16,16,16],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[16,16,16],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadHarm: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       chords: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       chords3: [null,null,[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords3Len: [null,null,[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords4: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
-      organChords: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,369.9944227116344,440],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
     },
     {
       base: 10,
@@ -1206,16 +1521,16 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . C1 . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('C1 . . . C1 . . . C1 . C1 . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null],
       chords4: [[587.3295358348151,698.4564628660078],[466.1637615180899,587.3295358348151],null,[587.3295358348151,698.4564628660078],null,null,[659.2551138257398,783.9908719634985],null,[698.4564628660078,880],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords4Len: [[1,1],[2,2],null,[3,3],null,null,[2,2],null,[8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead7: seq('. . . . . . . . F2 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead7Len: [null,null,null,null,null,null,null,null,7.63956,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . F5 . F7 . | . . . . . . . . . . . . . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,2.800604,null,2.908203,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 10,
@@ -1226,13 +1541,11 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: [[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[87.30705785825097],null,null,null,[73.41619197935188],null,null,null,[97.99885899543733],null,null,null,[65.40639132514966],null,null,null],
       chordsLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,[277.1826309768721,369.9944227116344],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,8],null,null,null,null,null,null,null,[4,4],null,null,null,null,null,null,null],
     },
     {
       base: 1,
@@ -1243,12 +1556,10 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,null,null,2,null,null,null,2,null,6,null,null,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[2,2,2],null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[2,2,2],null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       clap3: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
     },
     {
       base: 0,
@@ -1263,6 +1574,8 @@ export const arrangement = {
       leadHarmLen: [4,null,null,null,3,null,null,0.802734,1,null,0.761719,5,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . F5 . F7 . | . . . . . . . . . . . . . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,2.800604,null,2.908203,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 8,
@@ -1275,12 +1588,10 @@ export const arrangement = {
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
       bass: seq('F2 . . . C2 . . . F2 . C2 . F2 . . . | . . . . . . . . . . . . . . . .'),
       bassLen: [2,null,null,null,2,null,null,null,2,null,1,null,1.295987,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[293.6647679174076,369.9944227116344,440],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[293.6647679174076,369.9944227116344,440],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords6: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[16,16,16],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 8,
@@ -1291,12 +1602,10 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null],
-      organChords2: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[16,16,16],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[16,16,16],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords3: [null,null,[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords3Len: [null,null,[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,369.9944227116344,440],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
     },
     {
       base: 9,
@@ -1307,11 +1616,11 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[349.2282314330039,440,523.2511306011972],null,null,null,[369.9944227116344,440,523.2511306011972],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[349.2282314330039,440,523.2511306011972],null,null,null,[369.9944227116344,440,523.2511306011972],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 9,
@@ -1322,15 +1631,13 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null],
-      organChords2: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039],[233.08188075904496,293.6647679174076],null,[293.6647679174076,349.2282314330039],null,null,[293.6647679174076,391.99543598174927],null,[349.2282314330039,440],[391.99543598174927,466.1637615180899],[440,523.2511306011972],[466.1637615180899,587.3295358348151],null,null,null,null],
       chords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[1,1],[2,2],null,[3,3],null,null,[2,2],null,[1,1],[1,1],[1,1],[4,4],null,null,null,null],
       chords4: [[587.3295358348151,698.4564628660078],[466.1637615180899,587.3295358348151],null,[587.3295358348151,698.4564628660078],null,null,[659.2551138257398,783.9908719634985],null,[698.4564628660078,880],null,null,null,null,null,null,null,[587.3295358348151,698.4564628660078],[466.1637615180899,587.3295358348151],null,[587.3295358348151,698.4564628660078],null,null,[659.2551138257398,783.9908719634985],null,[698.4564628660078,880],[659.2551138257398,830.6093951598903],[622.2539674441618,783.9908719634985],[587.3295358348151,739.9888454232688],null,null,null,null],
       chords4Len: [[1,1],[2,2],null,[3,3],null,null,[2,2],null,[8,8],null,null,null,null,null,null,null,[1,1],[2,2],null,[3,3],null,null,[2,2],null,[1,1],[1,1],[1,1],[5,5],null,null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[349.2282314330039,440,523.2511306011972],null,null,null,null,null,null,null,[369.9944227116344,440,523.2511306011972],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
     },
     {
       base: 7,
@@ -1340,18 +1647,15 @@ export const arrangement = {
       bassLen: [2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,9.050426,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null],
       snare2: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
       snare3: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
-      organChords2: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead7: seq('. . . . . . . . . . . . . . . . | C2 . . . . . . . . . . . . . . .'),
       lead7Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,11.315163,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('A4 F4 C4 . D4 . . F4 . . . . . . . D4 | . . . . . . . . . . . . . . . .'),
       lead4Len: [1,1,2,null,3,null,null,8,null,null,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('A4 F4 C4 . D4 . . F4 . . . . . . . D4 | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,1,2,null,3,null,null,8,null,null,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChordsLen: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[1.131214,1.131214,1.131214],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       clap3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . C1 . . . . . . .').map((v) => !!v),
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 1,
@@ -1363,12 +1667,12 @@ export const arrangement = {
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,5.22,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       bassLen: [2,null,null,null,2,null,null,null,1.505504,null,5.266335,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead7: seq('. . . . . . . . G2 . F#2 . . . . . | . . . . . . . . . . . . . . . .'),
       lead7Len: [null,null,null,null,null,null,null,null,3.10174,null,5.266335,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[2,2,2],null,null,null,[4.928267,4.928267,4.928267],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[2,2,2],null,null,null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 3,
@@ -1379,12 +1683,10 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('C4 . F4 . A#4 A4 G4 F4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,null,1,null,1,1,1,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
     },
     {
       base: 6,
@@ -1397,6 +1699,12 @@ export const arrangement = {
       bass2Len: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
       lead8: seq('G#4 F4 C4 . C5 . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,1,2,null,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,440],null,null,null,null,null,null,null],
+      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
+      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,440],null,null,null,null,null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
     },
     {
       base: 4,
@@ -1407,14 +1715,14 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . C1 | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,null,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | A4 . . F4 . . C4 . A4 . . F4 . . . .'),
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,3,null,null,2,null,3,null,null,5,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . F4 . . C4 . A4 . . F4 . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,3,null,null,2,null,3,null,null,5,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 6,
@@ -1433,6 +1741,14 @@ export const arrangement = {
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . G4'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,8],null,null,null,null,null,null,null,[4,4],null,null,null,null,null,null,null],
+      organChords6: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,8],null,null,null,null,null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 4,
@@ -1451,6 +1767,12 @@ export const arrangement = {
       lead4Len: [1,null,1,null,1,1,1,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('C4 . F4 . A#4 A4 G4 F4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,null,1,null,1,1,1,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
+      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
+      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
     },
     {
       base: 5,
@@ -1469,6 +1791,14 @@ export const arrangement = {
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,3,null,null,2,null,3,null,null,5,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . F4 . . C4 . A4 . . F4 . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,3,null,null,2,null,3,null,null,5,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986],null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,8,8],null,null,null,null,null,null,null,[4],null,null,null,null,null,null,null],
+      organChords6: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,8,8],null,null,null,null,null,null,null,[4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,[261.6255653005986],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[4,8,8],null,null,null,[4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,[261.6255653005986],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[4,8,8],null,null,null,[4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 5,
@@ -1487,6 +1817,12 @@ export const arrangement = {
       lead4Len: [1,1,1,null,3,null,null,9,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('G#4 F4 C4 . G#4 . . G4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,1,1,null,3,null,null,9,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
+      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
+      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
     },
     {
       base: 7,
@@ -1497,16 +1833,16 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,2,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead7: seq('D2 . . . . . . . C#2 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead7Len: [8.953658,null,null,null,null,null,null,null,10.063565,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | C5 . D5 . C5 . D5 . C5 . . C4 A#4 A4 G4 .'),
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null,2,null,2,null,3,null,null,1,1,1,2,null],
       lead8: seq('. . . . . . . . . . . . . . . . | C5 . D5 . C5 . D5 . C5 . . C4 A#4 A4 G4 .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null,2,null,2,null,3,null,null,1,1,1,2,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 2,
@@ -1517,12 +1853,12 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,1.74,null,1.74,null,1.74,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . D4'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[329.6275569128699,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,329.6275569128699,440],null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[329.6275569128699,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 4,
@@ -1533,14 +1869,12 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,null,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null],
-      organChords2: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('C4 . F4 . A#4 A4 G4 F4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead4Len: [1,null,1,null,1,1,1,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('C4 . F4 . A#4 A4 G4 F4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,null,1,null,1,1,1,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 5,
@@ -1551,14 +1885,14 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | A4 . . F4 . . C4 . A4 . . F4 . . . .'),
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,3,null,null,2,null,3,null,null,5,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . F4 . . C4 . A4 . . F4 . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,3,null,null,2,null,3,null,null,5,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986],null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,8,8],null,null,null,null,null,null,null,[4],null,null,null,null,null,null,null],
+      organChords6: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,8,8],null,null,null,null,null,null,null,[4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 5,
@@ -1569,14 +1903,12 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null],
-      organChords2: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,[261.6255653005986],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[4,8,8],null,null,null,[4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,329.6275569128699,391.99543598174927],null,null,null,[261.6255653005986],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[4,8,8],null,null,null,[4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('G#4 F4 C4 . G#4 . . G4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead4Len: [1,1,1,null,3,null,null,9,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('G#4 F4 C4 . G#4 . . G4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,1,1,null,3,null,null,9,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 6,
@@ -1587,14 +1919,14 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . C1 . C1 C1 C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 C1 C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,440],null,null,null,null,null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,440],null,null,null,null,null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . G4'),
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . G4'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,8],null,null,null,null,null,null,null,[4,4],null,null,null,null,null,null,null],
+      organChords6: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,8],null,null,null,null,null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 7,
@@ -1604,19 +1936,16 @@ export const arrangement = {
       bassLen: [2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,9.050426,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null],
       snare2: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
       snare3: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
-      organChords2: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords3: [[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chords3Len: [[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChordsLen: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[1.3242190000000003,1.3242190000000003,1.3242190000000003],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('A4 F4 C4 . D4 . . F4 . . . . . . . D4 | . . . . . . . . . . . . . . . .'),
       lead4Len: [1,1,2,null,3,null,null,8,null,null,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('A4 F4 C4 . D4 . . F4 . . . . . . . D4 | . . . . . . . . . . . . F5 . F7 .'),
       lead8Len: [1,1,2,null,3,null,null,8,null,null,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,2.800604,null,2.908203,null],
       leadHarm: seq('. . . . . . . . . . . . . . . . | C2 . . . . . . . . . . . . . . .'),
       leadHarmLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,11.315163,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 0,
@@ -1627,11 +1956,13 @@ export const arrangement = {
       snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
-      organChords3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       chords: [[698.4564628660078,1174.6590716696303],null,null,null,[587.3295358348151,932.3275230361799],null,null,[587.3295358348151,698.4564628660078],[523.2511306011972,659.2551138257398],null,[587.3295358348151,698.4564628660078],[659.2551138257398,783.9908719634985],null,null,null,null,[87.30705785825097],null,null,null,[73.41619197935188],null,null,null,[97.99885899543733],null,null,null,[65.40639132514966],null,null,null],
       chordsLen: [[4,4],null,null,null,[3,3],null,null,[1,1],[1,1],null,[1,1],[5,5],null,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,[277.1826309768721,369.9944227116344],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,8],null,null,null,null,null,null,null,[4,4],null,null,null,null,null,null,null],
+      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null],
     },
     {
       base: 1,
@@ -1643,15 +1974,19 @@ export const arrangement = {
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,5.22,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
       bassLen: [2,null,null,null,2,null,null,null,1.505504,null,5.266335,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead7: seq('. . . . . . . . G2 . F#2 . . . . . | . . . . . . . . . . . . . . . .'),
       lead7Len: [null,null,null,null,null,null,null,null,3.10174,null,5.266335,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadHarm: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       chords: [[87.30705785825097],null,null,null,[73.41619197935188],null,null,null,[97.99885899543733],null,[92.4986056779086],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       chordsLen: [2,null,null,null,2,null,null,null,1.505504,null,5.266335,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead4: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,440,null,null,null,349.2282314330039,null,null,261.6255653005986,293.6647679174076,349.2282314330039,null,349.2282314330039,null,null,null,293.6647679174076],
+      lead4Len: [[13.075817,13.075817,13.075817],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[2,2,2],null,null,null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[2,2,2],null,null,null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[3.9751865,3.9751865,3.9751865],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 4,
@@ -1662,16 +1997,16 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . C1 | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,null,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null],
       lead5: seq('. . . . A#4 A4 G4 F4 . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead5Len: [null,null,null,null,1,1,1,1.003196,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | A4 . . F4 . . C4 . A4 . . F4 . . . .'),
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,3,null,null,2,null,3,null,null,5,null,null,null,null],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . F4 . . C4 . A4 . . F4 . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,null,null,3,null,null,2,null,3,null,null,5,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 7,
@@ -1683,11 +2018,16 @@ export const arrangement = {
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,1.74,null,null,null,null,null,null,null,null,null,null,null,1.74,null,1.74,null],
       bassLen: [2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,7.98402,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[15.916371,15.916371,15.916371],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead7: seq('. . . . . . . . . . . . . . . . | C2 . . . . . . . . . . . . . . .'),
       lead7Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,14.727273,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('A4 F4 C4 . D4 . . F4 . . . . . . . D4 | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,1,2,null,3,null,null,8,null,null,null,null,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[15.916371,15.916371,15.916371],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 2,
@@ -1698,14 +2038,12 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,null,null,2,null,null,null,2,null,2,null,2,null,2,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: [[261.6255653005986,329.6275569128699,440],null,null,null,[261.6255653005986,311.1269837220809,415.3046975799451],null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[329.6275569128699,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[4,4,4],null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[261.6255653005986,329.6275569128699,440],null,null,null,[261.6255653005986,311.1269837220809,415.3046975799451],null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[329.6275569128699,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[4,4,4],null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('C4 . F4 . F4 . C5 . A4 . . G4 . . . C4 | . . . . . . . . . . . . . . . .'),
       lead4Len: [1,null,1,null,1,null,2,null,3,null,null,4,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('C4 . F4 . F4 . C5 . A4 . . G4 . . . C4 | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,null,1,null,1,null,2,null,3,null,null,4,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
     },
     {
       base: 3,
@@ -1716,14 +2054,14 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,1.74,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . D4'),
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . D4'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,329.6275569128699,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 2,
@@ -1734,14 +2072,14 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,1.74,null,1.74,null,1.74,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . D4'),
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
       lead8: seq('. . . . . . . . . . . . . . . . | A4 . . . F4 . . C4 D4 F4 . F4 . . . D4'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,null,null,null,3,null,null,1,1,1,null,4,null,null,null,1],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[329.6275569128699,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,329.6275569128699,440],null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,null,null,null,null,[329.6275569128699,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 6,
@@ -1752,16 +2090,14 @@ export const arrangement = {
       snare3: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [[246.94165062806206,349.2282314330039,415.3046975799451],null,null,null,null,null,null,null,[233.08188075904496,293.6647679174076,391.99543598174927],null,null,null,[261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('G#4 F4 C4 . C5 . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead4Len: [1,1,2,null,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead8: seq('G#4 F4 C4 . C5 . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8Len: [1,1,2,null,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       leadHarm: seq('. . . . . . . . . . . . . . . . | F2 . . . . . . . D#2 . . . . . . .'),
       leadHarmLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,10.709517,null,null,null,null,null,null,null,10.274325,null,null,null,null,null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 7,
@@ -1772,16 +2108,16 @@ export const arrangement = {
       snare3: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,2,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,4],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | C5 . D5 . C5 . D5 . C5 . . C4 A#4 A4 G4 .'),
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null,2,null,2,null,3,null,null,1,1,1,2,null],
       lead8: seq('. . . . . . . . . . . . . . . . | C5 . D5 . C5 . D5 . C5 . . C4 A#4 A4 G4 .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,null,2,null,2,null,2,null,3,null,null,1,1,1,2,null],
       leadHarm: seq('D2 . . . . . . . C#2 . . . . . . . | . . . . . . . . . . . . . . . .'),
       leadHarmLen: [8.953658,null,null,null,null,null,null,null,10.063565,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[277.1826309768721,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 0,
@@ -1792,12 +2128,16 @@ export const arrangement = {
       snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       clap2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 . . .').map((v) => !!v),
       bass2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null],
-      organChords2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
-      organChords3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8: seq('. . . . . . . . . . . . . . . . | F4 C8 . . . . . . . . . . . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2.800604,2.859375,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead9: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead9Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[13.075817,13.075817,13.075817],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344],null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null],
+      organChords6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,null,null,null,null,[277.1826309768721,369.9944227116344],null,null,null,null,null,null,null],
+      organChords6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[4,4,8],null,null,null,null,null,null,null,[4,4],null,null,null,null,null,null,null],
+      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null],
+      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,8],null,null,null,[4,4],null,null,null],
     },
     {
       base: 8,
@@ -1810,15 +2150,43 @@ export const arrangement = {
       bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,1.74,null,null,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null,2,null],
       bass: seq('F2 . . . C2 . . . F2 . C2 . F2 . . . | . . . . . . . . . . . . . . . .'),
       bassLen: [2,null,null,null,2,null,null,null,2,null,1,null,1.295987,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      organChords2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[293.6647679174076,369.9944227116344,440],null,null,null],
-      organChords2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
-      organChords3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,349.2282314330039,466.1637615180899],null,null,null,null,null,null,null,[261.6255653005986,349.2282314330039,440],null,null,null,[293.6647679174076,369.9944227116344,440],null,null,null],
-      organChords3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,8],null,null,null,null,null,null,null,[4,4,4],null,null,null,[4,4,4],null,null,null],
       lead4: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead8: seq('. . . . . . . . . . . . B7 . F6 . | . . . . . . . . . . . . . . . .'),
       lead8Len: [null,null,null,null,null,null,null,null,null,null,null,null,2.573864,null,2.237216,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[16,16,16],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    },
+    {
+      base: 1,
+      kick2: seq('C1 . . . C1 . . . C1 . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats2: seq('. . C1 . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      ohats2: seq('C1 . . . . . C1 . . . C1 . . . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare3: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      clap2: seq('. . . . . . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bass2Len: [1.74,null,null,null,1.74,null,null,null,1.74,null,5.22,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
+      bassLen: [2,null,null,null,2,null,null,null,1.505504,null,5.266335,null,null,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null],
+      lead7: seq('. . . . . . . . G2 . F#2 . . . . . | . . . . . . . . . . . . . . . .'),
+      lead7Len: [null,null,null,null,null,null,null,null,3.10174,null,5.266335,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null],
+      organChords5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[2,2,2],null,null,null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null],
+      organChords6: [[261.6255653005986,349.2282314330039,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[293.6647679174076,391.99543598174927,466.1637615180899],null,null,null,[277.1826309768721,369.9944227116344,466.1637615180899],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      organChords6Len: [[8,8,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[2,2,2],null,null,null,[6,6,6],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    },
+    {
+      base: 8,
+      bass2: seq('F2 . . . C2 . . . F2 . . . F2 . . . | . . . . . . . . . . . . . . . .'),
+      bass2Len: [2,null,null,null,2,null,null,null,2,null,null,null,2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      leadHarm: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      chords: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      chords3: [null,null,[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],[523.2511306011972,698.4564628660078,880],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords3Len: [null,null,[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,[1,1,1],[1,1,1],[1,1,1],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      chords4: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      organChords5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
   ],
+  resolution: 32,
 };
 
 export const variants = null;

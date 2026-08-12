@@ -254,6 +254,11 @@ const sample = {
     lanes: {
       bass: {
         gain: -2.5, pan: 0.25, mute: true,
+        noteFx: {
+          strum: { enabled: true, direction: 'down', gapMs: 24 },
+          arp: { enabled: true, direction: 'updown', rate: 0.5, octaves: 2,
+            gate: 75, retrigger: 'bar', latch: false },
+        },
         send: { delay: 0.5, reverb: 0.3 },
         eq: { low: 2, mid: -1.5, high: 3 },
         effects: [
@@ -306,6 +311,8 @@ assert(JSON.stringify(wrote.masterEffects) === JSON.stringify(sent.masterEffects
   'round-trip: the master effect chain survives');
 assert(JSON.stringify(wrote.lanes.bass.effects) === JSON.stringify(sent.lanes.bass.effects),
   'round-trip: a channel effect chain survives, bypass flags and string params included');
+assert(JSON.stringify(wrote.lanes.bass.noteFx) === JSON.stringify(sent.lanes.bass.noteFx),
+  'round-trip: track strum and arpeggiator settings survive');
 assert(JSON.stringify(wrote.lanes.kick.effects) === JSON.stringify(sent.lanes.kick.effects),
   'round-trip: all six new effect ids and their custom params survive');
 assert(JSON.stringify(wrote.lanes.bass.eq) === JSON.stringify(sent.lanes.bass.eq)
@@ -496,6 +503,7 @@ const CHANGES = [
     m.layers = [{ key: 'tom2', from: 'tom', independent: true, label: 'Cowbell' }];
   }],
   ['a deleted track', (m) => { m.off = ['hats']; }],
+  ['a renamed track', (m) => { m.labels = { bass: 'Sub Bass' }; }],
   ['a voice override', (m) => { m.voice = { bassVoice: 'roundMono' }; }],
   ['the delay time', (m) => { m.fx.delay.division = 0.5; }],
   ['the delay feedback', (m) => { m.fx.delay.feedback = 0.6; }],
@@ -524,7 +532,14 @@ const NON_CHANGES = [
   ['a fourth decimal place', (m) => { m.lanes.bass.gain = -2.5001; }],
   ['an empty voice map', (m) => { m.voice = {}; }],
   ['an empty layer list', (m) => { m.layers = []; }],
+  ['an empty track-label map', (m) => { m.labels = {}; }],
 ];
+
+const renamedTrack = clone(varyBase);
+renamedTrack.labels = { bass: 'Sub Bass' };
+assert(rendered(renamedTrack).includes('labels: {"bass":"Sub Bass"}')
+  && sig(renamedTrack) !== sig(varyBase),
+  'a track name is written into song mix source and makes the desk dirty');
 
 for (const [what, change] of [...CHANGES, ...NON_CHANGES]) {
   const v = clone(varyBase);

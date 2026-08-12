@@ -29,8 +29,10 @@
 // desk's undo is a snapshot and nothing more.
 import {
   expandOrder, orderOf, resolveSection, BAR_MAPS, SWING_MAX, SWING_STRAIGHT,
+  FINE_RESOLUTION, resolutionOf,
 } from '../../src/data/arrangements.js';
 import { LANES, LANE_KEYS, lenKey, validLen } from '../../src/engine/lanes.js';
+import { createNoteFxProcessor, resolveNoteFx } from '../../src/engine/note-fx.js';
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 
@@ -64,6 +66,8 @@ const copyBar = (bar) => {
   const out = { sec: bar.sec, half: bar.half };
   if (bar.off?.length) out.off = [...bar.off];
   if (bar.delete?.length) out.delete = [...bar.delete];
+  if (bar.noteFx && Object.keys(bar.noteFx).length) out.noteFx = clone(bar.noteFx);
+  if (bar.inlineFx && Object.keys(bar.inlineFx).length) out.inlineFx = clone(bar.inlineFx);
   copyBarMaps(bar, out);
   return out;
 };
@@ -117,6 +121,10 @@ export function draftOf(bank, entry = null) {
     // draft is round-tripped through `entryOf` on EVERY edit — so anything not carried
     // is not merely ignored, it is deleted by the next thing anyone does to a bar.
     loop: entry?.loop ? clone(entry.loop) : null,
+    // Missing is the old 16-slot format. Once upgraded, a draft stays upgraded even
+    // if its last off-grid note is erased: silently compacting it back would make the
+    // next 1/32 edit repeatedly reshape every lane and would invalidate undo snapshots.
+    resolution: resolutionOf(bank, entry) === FINE_RESOLUTION ? FINE_RESOLUTION : null,
   };
 }
 
@@ -150,14 +158,23 @@ const isBankSection = (bank, sec) => sec == null || sec < (bank.sections?.length
  */
 export function readBarLane(bank, draft, barIndex, key) {
   const bar = draft?.plan?.[barIndex];
-  if (!bar || !bank) return new Array(16).fill(null);
+  const slots = draft?.resolution === FINE_RESOLUTION ? 32 : 16;
+  if (!bar || !bank) return new Array(slots).fill(null);
   const resolved = (bar.sec != null
     ? resolveSection({ ...bank, sections: sectionsOf(bank, draft) }, bar.sec)
     : null) || {};
   const arr = resolved[key] ?? bank[key];
-  if (!Array.isArray(arr)) return new Array(16).fill(null);
-  const at = bar.half * 16;
-  return Array.from({ length: 16 }, (_, i) => arr[at + i] ?? null);
+  if (!Array.isArray(arr)) return new Array(slots).fill(null);
+  const fine = slots === 32;
+  // A fine draft can still inherit a hand-authored 32-slot legacy lane. Its notes
+  // occupy the even fine slots; the odd slots are true rests. A layer written by the
+  // fine editor is 64 slots and is read directly.
+  if (fine && arr.length < 64) {
+    const at = bar.half * 16;
+    return Array.from({ length: 32 }, (_, i) => (i % 2 ? null : arr[at + i / 2] ?? null));
+  }
+  const at = bar.half * slots;
+  return Array.from({ length: slots }, (_, i) => arr[at + i] ?? null);
 }
 
 /**
@@ -182,6 +199,7 @@ export function entryOf(bank, draft) {
   const swing = draft.swing != null && draft.swing !== composedSwing ? draft.swing : null;
   const same = JSON.stringify(order) === JSON.stringify(orderOf(bank));
   const loop = draft.loop || null;
+  const resolution = draft.resolution === FINE_RESOLUTION ? FINE_RESOLUTION : null;
   // A loop counts on its own, exactly as a tempo does: a song played from bar 5 and
   // repeating bars 8-12 is arranged, even when it plays its sections in the order they
   // were composed in. Without this the markers would be unwritable on the seven songs
@@ -189,11 +207,12 @@ export function entryOf(bank, draft) {
   // and the commonest one of all: shuffling a song is usually the ONLY thing done to it,
   // and `{ swing: 62 }` has to be a whole entry or the drag would not survive a save.
   if (same && !compacted.sections.length) {
-    if (bpm == null && swing == null && !loop) return null;
+    if (bpm == null && swing == null && !loop && resolution == null) return null;
     return {
       ...(bpm == null ? {} : { bpm }),
       ...(swing == null ? {} : { swing }),
       ...(loop ? { loop } : {}),
+      ...(resolution == null ? {} : { resolution }),
     };
   }
   const out = { order };
@@ -201,6 +220,7 @@ export function entryOf(bank, draft) {
   if (bpm != null) out.bpm = bpm;
   if (swing != null) out.swing = swing;
   if (loop) out.loop = loop;
+  if (resolution != null) out.resolution = resolution;
   return out;
 }
 
@@ -277,10 +297,14 @@ export function planToOrder(plan) {
   const order = [];
   const sameOff = (a, b) => JSON.stringify(a?.off || null) === JSON.stringify(b?.off || null)
     && JSON.stringify(a?.delete || null) === JSON.stringify(b?.delete || null)
+    && JSON.stringify(a?.noteFx || null) === JSON.stringify(b?.noteFx || null)
+    && JSON.stringify(a?.inlineFx || null) === JSON.stringify(b?.inlineFx || null)
     && BAR_MAPS.every((key) => sameBarMap(a, b, key));
   const addBarBits = (e, bar) => {
     if (bar.off?.length) e.off = [...bar.off];
     if (bar.delete?.length) e.delete = [...bar.delete];
+    if (bar.noteFx && Object.keys(bar.noteFx).length) e.noteFx = clone(bar.noteFx);
+    if (bar.inlineFx && Object.keys(bar.inlineFx).length) e.inlineFx = clone(bar.inlineFx);
     copyBarMaps(bar, e);
     return e;
   };
@@ -293,6 +317,8 @@ export function planToOrder(plan) {
       // `sec` is null on a song with no sections, where the order has always been a
       // list of zeroes the engine never looks up. It writes back out as one.
       if (!bar.off?.length && !bar.delete?.length
+          && !bar.noteFx
+          && !bar.inlineFx
           && BAR_MAPS.every((key) => bar[key] == null)) order.push(bar.sec ?? 0);
       else order.push(addBarBits({ s: bar.sec ?? 0 }, bar));
       i++;
@@ -316,6 +342,7 @@ export function planToOrder(plan) {
 const copy = (draft) => ({
   plan: draft.plan.map(copyBar), sections: clone(draft.sections), bpm: draft.bpm ?? null,
   swing: draft.swing ?? null, loop: clone(draft.loop ?? null),
+  resolution: draft.resolution === FINE_RESOLUTION ? FINE_RESOLUTION : null,
 });
 const range = (draft, from, to) => {
   const a = Math.max(0, Math.min(from, to));
@@ -384,7 +411,8 @@ export function copyLaneArrangement(draft, from, to) {
   // new object that is not a new arrangement, and the desk writes what it is handed —
   // so duplicating a track on an unarranged song would give it an arrangement entry.
   const names = (bar) => LANE_LISTS.some((field) => bar[field]?.includes(from))
-    || BAR_MAPS.some((field) => Number.isFinite(bar[field]?.[from]));
+    || BAR_MAPS.some((field) => Number.isFinite(bar[field]?.[from]))
+    || bar.noteFx?.[from] != null || bar.inlineFx?.[from] != null;
   if (!draft.plan?.some(names)) return draft;
   const out = copy(draft);
   for (const bar of out.plan) {
@@ -397,6 +425,43 @@ export function copyLaneArrangement(draft, from, to) {
       if (map == null || typeof map !== 'object') continue;
       if (Number.isFinite(map[from])) map[to] = map[from];
     }
+    if (bar.noteFx?.[from] != null) {
+      bar.noteFx = { ...bar.noteFx, [to]: clone(bar.noteFx[from]) };
+    }
+    if (bar.inlineFx?.[from] != null) {
+      bar.inlineFx = { ...bar.inlineFx, [to]: clone(bar.inlineFx[from]) };
+    }
+  }
+  return out;
+}
+
+/**
+ * Snapshot one lane's complete musical content under another key.
+ *
+ * A duplicated track must stop depending on its source the instant it is made: later
+ * erasing, drawing or resizing notes on either strip cannot reach across to the other.
+ * The mix marks the new lane `independent`; this function supplies the other half of
+ * that contract by materialising every played bar (notes and per-note lengths) into
+ * arrangement-owned sections, then copying the lane-scoped bar decisions as values.
+ *
+ * Read every bar from the original draft while writes accumulate in a separate draft.
+ * That matters for repeated and delta-based sections, and also makes a duplicate of a
+ * duplicate capture what that exact row plays rather than its engine-family fallback.
+ */
+export function duplicateLaneContent(bank, draft, from, to) {
+  if (!bank || !draft || !from || !to || from === to) return draft;
+  const source = draft;
+  let out = copyLaneArrangement(source, from, to);
+  for (let bar = 0; bar < source.plan.length; bar++) {
+    // Preserve the source's pattern sharing while filling both halves. Forking each
+    // bar separately creates a run of one-bar sections; although the arrangement
+    // format can describe those, the live Mixer treats the ordinary musical unit as
+    // a two-bar pattern and the copy can surface as only every second bar. A shared
+    // write repoints every occurrence once, then the other half completes that same
+    // private destination section.
+    out = writeBarNotesShared(bank, out, bar, to,
+      readBarLane(bank, source, bar, from),
+      readBarLane(bank, source, bar, lenKey(from)));
   }
   return out;
 }
@@ -433,6 +498,44 @@ export function removeLanes(draft, keys) {
       for (const key of drop) delete bar[field][key];
       if (!Object.keys(bar[field]).length) delete bar[field];
     }
+    if (bar.noteFx) {
+      for (const key of drop) delete bar.noteFx[key];
+      if (!Object.keys(bar.noteFx).length) delete bar.noteFx;
+    }
+    if (bar.inlineFx) {
+      for (const key of drop) delete bar.inlineFx[key];
+      if (!Object.keys(bar.inlineFx).length) delete bar.inlineFx;
+    }
+  }
+  return out;
+}
+
+/** Set one lane's nondestructive Note FX override across a bar range. */
+export function setBarNoteFx(draft, from, to, lane, override = null) {
+  if (!draft || !lane) return draft;
+  const [a, b] = range(draft, from, to);
+  const out = copy(draft);
+  for (let i = a; i <= b; i++) {
+    const map = { ...(out.plan[i].noteFx || {}) };
+    if (!override || override.mode === 'inherit') delete map[lane];
+    else map[lane] = clone(override);
+    if (Object.keys(map).length) out.plan[i].noteFx = map;
+    else delete out.plan[i].noteFx;
+  }
+  return out;
+}
+
+/** Snapshot an insert chain onto one lane in a range of bars. */
+export function setBarEffects(draft, from, to, lane, list = null) {
+  if (!draft || !lane) return draft;
+  const [a, b] = range(draft, from, to);
+  const out = copy(draft);
+  const chain = Array.isArray(list) ? clone(list.slice(0, 6)) : null;
+  for (let i = a; i <= b; i++) {
+    const map = { ...(out.plan[i].inlineFx || {}) };
+    if (!chain?.length) delete map[lane]; else map[lane] = clone(chain);
+    if (Object.keys(map).length) out.plan[i].inlineFx = map;
+    else delete out.plan[i].inlineFx;
   }
   return out;
 }
@@ -540,6 +643,82 @@ export function copyLaneBars(bank, draft, from, to, lane) {
     lengths.push(read(lenKey(lane)));
   }
   return { lane, bars, lengths };
+}
+
+/**
+ * Snapshot one lane as a complete track clip.
+ *
+ * Notes alone are not a track: the lane can be muted, transposed, nudged, gained,
+ * panned, or have a bar-level Note FX/effect override. Keep those decisions beside
+ * the resolved notes so a track can be pasted as a new independent lane, including
+ * when the destination is a different song with a different section table.
+ */
+export function copyLaneTrack(bank, draft, from, to, lane) {
+  const [a, b] = range(draft, from, to);
+  const bars = [];
+  const lengths = [];
+  const edits = [];
+  for (let i = a; i <= b; i++) {
+    const bar = draft.plan[i];
+    bars.push(readBarLane(bank, draft, i, lane).map(clone));
+    lengths.push(readBarLane(bank, draft, i, lenKey(lane)).map(clone));
+    const edit = {};
+    for (const field of LANE_LISTS) {
+      if (bar[field]?.includes(lane)) edit[field] = true;
+    }
+    for (const field of BAR_MAPS) {
+      const value = typeof bar[field] === 'number' ? bar[field] : bar[field]?.[lane];
+      if (Number.isFinite(value) && value !== 0) edit[field] = value;
+    }
+    if (bar.noteFx?.[lane] != null) edit.noteFx = clone(bar.noteFx[lane]);
+    if (bar.inlineFx?.[lane] != null) edit.inlineFx = clone(bar.inlineFx[lane]);
+    edits.push(edit);
+  }
+  return { lane, bars, lengths, edits };
+}
+
+/** Paste a complete track clip onto a fresh lane without changing song length. */
+export function pasteLaneTrack(bank, draft, at, lane, clip) {
+  if (!bank || !draft || !lane || !clip?.bars?.length) return draft;
+  const start = Math.max(0, Math.floor(at));
+  const count = Math.min(clip.bars.length, Math.max(0, draft.plan.length - start));
+  let out = clip.bars.some((bar) => bar.length === 32) && draft.resolution !== FINE_RESOLUTION
+    ? { ...copy(draft), resolution: FINE_RESOLUTION } : draft;
+  for (let i = 0; i < count; i++) {
+    const bar = start + i;
+    out = writeBarNotesShared(bank, out, bar, lane, clip.bars[i], clip.lengths?.[i] || null);
+    const edit = clip.edits?.[i] || {};
+    out = setLanesOff(out, bar, bar, [lane], !!edit.off);
+    out = setLanesDeleted(out, bar, bar, [lane], !!edit.delete);
+    for (const [field, writer] of [
+      ['transpose', transposeBars], ['offset', offsetBars],
+      ['gain', gainBars], ['pan', panBars],
+    ]) {
+      out = writer(out, bar, bar, [lane], edit[field] || 0);
+    }
+    out = setBarNoteFx(out, bar, bar, lane, edit.noteFx || null);
+    out = setBarEffects(out, bar, bar, lane, edit.inlineFx || null);
+  }
+  return out;
+}
+
+/** Move or copy a lane's note bars onto another lane without changing song length. */
+export function moveLaneBars(bank, draft, from, to, sourceLane, targetLane, targetAt, {
+  copy: shouldCopy = false,
+} = {}) {
+  const clip = copyLaneBars(bank, draft, from, to, sourceLane);
+  const count = clip.bars.length;
+  const start = Math.max(0, Math.min(draft.plan.length - count, Math.floor(targetAt)));
+  if (!count || (sourceLane === targetLane && start === from)) return copy(draft);
+  let out = copy(draft);
+  if (!shouldCopy) {
+    const rest = Array.from({ length: 16 }, () => null);
+    for (let i = from; i <= to; i++) out = writeBarNotes(bank, out, i, sourceLane, rest, rest);
+  }
+  for (let i = 0; i < count; i++) {
+    out = writeBarNotes(bank, out, start + i, targetLane, clip.bars[i], clip.lengths[i]);
+  }
+  return out;
 }
 
 /** Every lane off, for a breakdown that keeps its bar count. */
@@ -741,11 +920,17 @@ export function forkBar(bank, draft, barIndex) {
  * shows if the bank's own line for the lane is hand-edited afterwards, at which point
  * these bars go on playing what they were given.
  */
-function laneWith(bank, sections, sec, half, lane, steps16) {
+function laneWith(bank, sections, sec, half, lane, steps) {
   const resolved = resolveSection({ ...bank, sections }, sec) || {};
   const current = resolved[lane] ?? bank[lane];
-  const next = Array.from({ length: 32 }, (_, i) => (Array.isArray(current) ? clone(current[i] ?? null) : null));
-  for (let i = 0; i < 16; i++) next[half * 16 + i] = steps16[i] ?? null;
+  const slots = steps.length === 32 ? 32 : 16;
+  const fine = slots === 32;
+  const next = Array.from({ length: slots * 2 }, (_, i) => {
+    if (!Array.isArray(current)) return null;
+    if (fine && current.length < 64) return i % 2 ? null : clone(current[i / 2] ?? null);
+    return clone(current[i] ?? null);
+  });
+  for (let i = 0; i < slots; i++) next[half * slots + i] = clone(steps[i] ?? null);
   return next;
 }
 
@@ -802,6 +987,56 @@ export function writeBarNotes(bank, draft, barIndex, lane, steps16, lengths16 = 
   putLane(forked.sections[idx], bank, sectionsOf(bank, forked), bar.sec, bar.half,
     lane, steps16, lengths16);
   return forked;
+}
+
+/**
+ * Materialise an arpeggiator into ordinary 1/32-capable notes.
+ *
+ * The processor is walked from the beginning of the song so continuous/latching
+ * patterns arrive in the selected range in the same state as live playback. Only the
+ * selected bars are written. Their override then disables ARP while preserving the
+ * resolved strum, avoiding a rendered pattern being arpeggiated a second time.
+ */
+export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {}) {
+  if (!bank || !draft || !lane) return draft;
+  const [a, b] = range(draft, from, to);
+  let source = copy(draft);
+  source.resolution = FINE_RESOLUTION;
+  const processor = createNoteFxProcessor();
+  const rendered = new Map();
+  for (let barIndex = 0; barIndex <= b; barIndex++) {
+    const bar = source.plan[barIndex];
+    const notes = readBarLane(bank, source, barIndex, lane);
+    const lengths = readBarLane(bank, source, barIndex, lenKey(lane));
+    const outNotes = new Array(32).fill(null);
+    const outLengths = new Array(32).fill(null);
+    const config = resolveNoteFx(trackNoteFx, bar, lane);
+    for (let slot = 0; slot < 32; slot++) {
+      const value = notes[slot];
+      const len = lengths[slot];
+      const events = processor.process({ laneKey: lane, value, len,
+        step: barIndex * 16 + slot / 2, spb: 1, config: {
+          ...config, strum: { ...(config.strum || {}), enabled: false },
+        }, barIndex });
+      if (barIndex < a || !events.length) continue;
+      const freqs = events.map((event) => event.freq);
+      const lens = events.map((event) => event.len);
+      outNotes[slot] = freqs.length === 1 ? freqs[0] : freqs;
+      outLengths[slot] = lens.length === 1 ? lens[0] : lens;
+    }
+    if (barIndex >= a) rendered.set(barIndex, { notes: outNotes, lengths: outLengths, config });
+  }
+  let out = source;
+  for (const [barIndex, material] of rendered) {
+    out = writeBarNotes(bank, out, barIndex, lane, material.notes, material.lengths);
+    const strum = material.config.strum || {};
+    out = setBarNoteFx(out, barIndex, barIndex, lane, {
+      mode: 'on',
+      ...(strum.enabled ? { strum } : {}),
+      arp: { enabled: false },
+    });
+  }
+  return out;
 }
 
 /**

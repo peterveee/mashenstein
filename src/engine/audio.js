@@ -5,7 +5,7 @@ import { createMixer, dbToGain, AUX_DEFAULTS } from './mixer.js';
 import { MAX_DELAY_SECONDS, makeReverb } from './effects.js';
 import {
   laneList, laneEchoesIn, deskBank, soloBank, barPlan, invalidateBarPlan,
-  LANE_KEYS, stepLen, toneLen, effectiveStepLen, effectiveToneLength,
+  LANE_KEYS, stepLen, toneLen, effectiveStepLen, effectiveToneLength, sequenceValue,
 } from './lanes.js';
 import {
   VoiceRack, pulseTable, createNoteCacheState, setNoteCachePlaybackActive,
@@ -17,6 +17,7 @@ import { trackIdOf } from '../data/tracks.js';
 import {
   applyArrangement, resolveSection, loopOf, loopSteps, SWING_STRAIGHT, SWING_MAX,
 } from '../data/arrangements.js';
+import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
 
 // The scheduler runs on the main thread, alongside panel builds and layout work. A
 // quarter-second of queued audio gives those unavoidable UI tasks room to finish
@@ -405,6 +406,10 @@ class AudioSys {
     this.songTrim = null;
     this.musicTrim = 1;
     this.pendingStartDelay = 0;
+    // Storage/scheduling resolution is a property of the current bank and Note FX,
+    // not of one sequencer tick. Recomputed only when either changes; the old path
+    // walked every lane and every arranged bar up to twice per sixteenth.
+    this.transportResolution = 16;
     this.songAnalyser = null;
     // Browserless/headless fallback buffers keep the public shape stable even
     // when Web Audio is unavailable; a live analyser replaces them at ensure().
@@ -450,6 +455,10 @@ class AudioSys {
     this.swing = 0;        // 0 or 50 = straight; see the swing term in scheduleStep
     // A groove change waiting for a bar line, and the ramp into it. See setSwing.
     this.pendingSwing = null;
+    this.noteFx = createNoteFxProcessor();
+    // Session-only rendered lanes. PCM is supplied by the Song Mixer and deliberately
+    // never stored in song data or used by game playback in a fresh tab.
+    this.frozenLanes = new Map();
     this.step = 0;
     this.nextTime = 0;
     this.timer = null;
@@ -504,6 +513,14 @@ class AudioSys {
     // A mixer panic is a momentary emergency cut, not a saved mute. The next
     // deliberate play/preview/SFX action opens the buses again.
     this.panicked = false;
+    // Furthest audio time through which the realtime scheduler has concrete evidence
+    // that musical output should exist. The Mixer watchdog uses this to distinguish a
+    // genuinely dead zero-in/zero-out graph from a written rest. It is deliberately
+    // short and renewed by each sounding lane: three seconds of strikes therefore
+    // needs a dense passage that keeps scheduling notes, not one old attack whose tail
+    // may quite correctly have decayed to silence.
+    this.outputExpectedUntil = 0;
+    this._contextRestarting = false;
   }
 
   // `ctxOverride` lets the offline render tools hand in an OfflineAudioContext so
@@ -711,7 +728,128 @@ class AudioSys {
     // playhead is still short of it, the bars before it play once on the way in, and
     // the wrap at the end of scheduleStep does the rest. Everything that arms a loop
     // from the UI wants the jump; everything that arms a song's own markers does not.
-    if (jump && (this.step < this.loopStart || this.step >= this.loopEnd)) this.step = this.loopStart;
+    if (jump && (this.step < this.loopStart || this.step >= this.loopEnd)) {
+      this.step = this.loopStart;
+      this.noteFx.reset();
+    }
+  }
+
+  /** Install/remove one session-only raw lane render. */
+  setFrozenLane(key, spec = null) {
+    if (!key) return false;
+    if (!spec) { this.frozenLanes.delete(key); return true; }
+    this.ensure();
+    if (!this.ctx) return false;
+    const source = Array.isArray(spec.segments) ? spec.segments : [spec];
+    const segments = [];
+    for (const item of source) {
+      const left = item.left, right = item.right || left;
+      if (!left?.length || right.length !== left.length) return false;
+      const buffer = this.ctx.createBuffer(2, left.length, item.sampleRate || this.ctx.sampleRate);
+      buffer.getChannelData(0).set(left);
+      buffer.getChannelData(1).set(right);
+      segments.push({ ...item, left: undefined, right: undefined, buffer, lastStep: null });
+    }
+    this.frozenLanes.set(key, { ...spec, left: undefined, right: undefined, segments });
+    return true;
+  }
+
+  clearFrozenLanes() { this.frozenLanes.clear(); }
+
+  _frozenLaneCovers(key, step, formSteps) {
+    const state = this.frozenLanes.get(key);
+    if (!state) return false;
+    const local = ((step % formSteps) + formSteps) % formSteps;
+    return state.segments.some((segment) => {
+      const from = Number.isFinite(segment.coverageStartStep) ? segment.coverageStartStep : 0;
+      const to = Number.isFinite(segment.coverageEndStep) ? segment.coverageEndStep : formSteps;
+      return local >= from && local < to;
+    });
+  }
+
+  _scheduleFrozenSegment(key, state, step, when, spb, formSteps) {
+    const strip = this.mixer?.lane(key);
+    if (!strip?.frozen || !state?.buffer) return;
+    const tick = this.bank?.resolution === 32 ? 0.5 : 1;
+    const discontinuity = state.lastStep == null || Math.abs(step - state.lastStep - tick) > 1e-7;
+    const boundary = Math.abs(step % 16) < 1e-7;
+    state.lastStep = step;
+    if (!discontinuity && !boundary) return;
+
+    // A sparse Freeze buffer starts at its first useful preroll bar rather than at
+    // song step zero. Play it in bar-sized pieces, just like the legacy full-form
+    // buffer, but translate the live song coordinate back to sample zero. At a form
+    // or locator-loop wrap there can be TWO valid pieces: the new pass and the prior
+    // pass's release tail. Scheduling both is what lets a long release cross the wrap
+    // without baking a second complete song pass into every frozen track.
+    if (Number.isFinite(state.segmentStartStep)) {
+      const start = state.segmentStartStep;
+      const local = ((step % formSteps) + formSteps) % formSteps;
+      const offsets = [];
+      if (local >= start) offsets.push(local - start);
+
+      const looped = this.loopStart != null && this.loopEnd != null
+        && this.loopEnd > this.loopStart && this.loopHasWrapped;
+      const repeatedForm = this.loopEnd == null && step >= formSteps;
+      if (looped) {
+        const previous = (this.loopEnd - start) + (local - this.loopStart);
+        if (previous >= 0) offsets.push(previous);
+      } else if (repeatedForm) {
+        offsets.push(formSteps - start + local);
+      }
+
+      const remaining = Math.max(tick, 16 - (local % 16));
+      for (const offsetSteps of [...new Set(offsets)]) {
+        const offset = offsetSteps * spb;
+        const duration = Math.min(remaining * spb,
+          Math.max(0, state.buffer.duration - offset));
+        if (!(duration > 0)) continue;
+        strip.wakeEffects?.(when + duration);
+        const src = this.ctx.createBufferSource(); src.buffer = state.buffer;
+        src.connect(strip.frozen);
+        src.start(when, offset, duration);
+      }
+      return;
+    }
+
+    const origin = state.originStep || 0;
+    const loopStart = state.loopStart;
+    const loopEnd = state.loopEnd;
+    let offsetSteps;
+    let remaining;
+    if (Number.isFinite(loopStart) && Number.isFinite(loopEnd) && loopEnd > loopStart) {
+      const intro = Math.max(0, loopStart - origin);
+      const loopLen = loopEnd - loopStart;
+      if (step < loopStart) {
+        offsetSteps = step - origin;
+        remaining = Math.min(16 - (step % 16), loopStart - step);
+      } else {
+        const steady = this.loopHasWrapped ? loopLen : 0;
+        offsetSteps = intro + steady + (step - loopStart);
+        remaining = Math.min(16 - (step % 16), loopEnd - step);
+      }
+    } else {
+      const local = ((step - origin) % formSteps + formSteps) % formSteps;
+      const pass = step - origin >= formSteps ? formSteps : 0;
+      offsetSteps = pass + local;
+      remaining = Math.min(16 - (step % 16), formSteps - local);
+    }
+    if (!(remaining > 0 && offsetSteps >= 0)) return;
+    const src = this.ctx.createBufferSource(); src.buffer = state.buffer;
+    src.connect(strip.frozen);
+    const offset = offsetSteps * spb;
+    const duration = Math.min(remaining * spb, Math.max(0, state.buffer.duration - offset));
+    if (duration > 0) {
+      strip.wakeEffects?.(when + duration);
+      this.expectOutput(when, Math.min(duration, 0.75));
+      src.start(when, offset, duration);
+    }
+  }
+
+  _scheduleFrozenLane(key, state, step, when, spb, formSteps) {
+    for (const segment of state?.segments || []) {
+      this._scheduleFrozenSegment(key, segment, step, when, spb, formSteps);
+    }
   }
 
   /** Markers as steps, against the form THIS engine is playing. See loopSteps. */
@@ -1004,6 +1142,114 @@ class AudioSys {
     try { this.settleContext(this.ctx.resume()); } catch (e) { /* next gesture retries */ }
   }
 
+  /** Record scheduler evidence that audible music is expected around an audio time. */
+  expectOutput(when, seconds = 0.35) {
+    if (this.offline || !Number.isFinite(when)) return;
+    const until = when + Math.max(0.1, Number(seconds) || 0);
+    if (until > this.outputExpectedUntil) this.outputExpectedUntil = until;
+  }
+
+  /** True only while recently scheduled musical events still say silence is wrong. */
+  outputExpected() {
+    return !!this.ctx && this.ctx.currentTime <= this.outputExpectedUntil;
+  }
+
+  /**
+   * Replace a failed realtime AudioContext without turning recovery into a song load.
+   *
+   * Context-owned nodes cannot be moved, so the graph and VoiceRack are rebuilt. The
+   * musical/editor state deliberately stays: source song, unsaved mix and arrangement,
+   * exact transport step, working loop, pending seek/swing, note-cache buffers and
+   * session-only frozen PCM. A short new lookahead is the only audible discontinuity.
+   */
+  async rebuildRealtimeContext() {
+    if (!this.ctx || this.offline || this._contextRestarting) return false;
+    this._contextRestarting = true;
+    const oldCtx = this.ctx;
+    const snapshot = {
+      sourceBank: this.sourceBank,
+      bank: this.bank,
+      mixEntry: this.mixEntry,
+      arrangement: this.arrangement,
+      step: this.step,
+      loopStart: this.loopStart,
+      loopEnd: this.loopEnd,
+      pendingLoop: this.pendingLoop,
+      pendingStep: this.pendingStep,
+      loopHasWrapped: this.loopHasWrapped,
+      formLoopArmed: this.formLoopArmed,
+      pendingSwing: this.pendingSwing,
+      swing: this.swing,
+      bpm: this.bpm,
+      musicTrim: this.musicTrim,
+    };
+
+    try {
+      if (this.timer) { clearInterval(this.timer); this.timer = null; }
+      this._stopCapture();
+      if (this._revTimer) { clearInterval(this._revTimer); this._revTimer = null; }
+      this._revSources = [];
+      if (this.voices) { this.voices.dispose(); this.voices = null; }
+      setNoteCachePlaybackActive(this.noteCacheState,
+        !!snapshot.bank || this.noteCachePreparationHeld);
+
+      // Do not let a platform close that never settles prevent the replacement from
+      // being built. Closing is best-effort once every reference to the old graph has
+      // been dropped; the browser owns final device teardown.
+      if (typeof oldCtx.close === 'function') {
+        try {
+          await Promise.race([
+            Promise.resolve(oldCtx.close()).catch(() => {}),
+            new Promise((resolve) => setTimeout(resolve, 500)),
+          ]);
+        } catch { /* a replacement is still the useful recovery */ }
+      }
+
+      this.ctx = null;
+      this.offline = false;
+      this.bank = null;
+      this.sourceBank = null;
+      this.mixer = null;
+      this.master = null;
+      this.outputExpectedUntil = 0;
+      this.ensure();
+      if (!this.ctx || this.ctx === oldCtx) throw new Error('AudioContext replacement was not created');
+
+      this.sourceBank = snapshot.sourceBank;
+      this.arrangement = snapshot.arrangement;
+      this.bank = snapshot.sourceBank
+        ? this.applyMix(snapshot.sourceBank, snapshot.mixEntry)
+        : snapshot.bank;
+      this.mixEntry = snapshot.mixEntry;
+      this.musicTrim = this.bank?.musicTrim ?? snapshot.musicTrim ?? 1;
+      this.bpm = this.bank?.bpm || snapshot.bpm;
+      this.swing = snapshot.swing;
+      this.pendingSwing = snapshot.pendingSwing;
+      this.step = snapshot.step;
+      this.loopStart = snapshot.loopStart;
+      this.loopEnd = snapshot.loopEnd;
+      this.pendingLoop = snapshot.pendingLoop;
+      this.pendingStep = snapshot.pendingStep;
+      this.loopHasWrapped = snapshot.loopHasWrapped;
+      this.formLoopArmed = snapshot.formLoopArmed;
+      this.pendingStartDelay = 0;
+      this.nextTime = this.ctx.currentTime + 0.1;
+      if (this.songTrim) {
+        this.songTrim.gain.cancelScheduledValues(this.ctx.currentTime);
+        this.songTrim.gain.setValueAtTime(this.bank ? this.musicTrim : 0.0001,
+          this.ctx.currentTime);
+      }
+      setNoteCachePlaybackActive(this.noteCacheState,
+        !!this.bank || this.noteCachePreparationHeld);
+      return true;
+    } catch (error) {
+      console.error('[audio] fresh AudioContext recovery failed:', error);
+      return false;
+    } finally {
+      this._contextRestarting = false;
+    }
+  }
+
   setLifecyclePaused(paused) {
     paused = !!paused;
     if (paused === this.lifecyclePaused) return;
@@ -1123,6 +1369,8 @@ class AudioSys {
     }
     const rack = this.voices;
     const plan = barPlan(bank);
+    const resolution = bank.resolution === 32 ? 32 : 16;
+    const tick = resolution === 32 ? 0.5 : 1;
     const spb = (60 / (this.bpm * this.tempo)) / 4;
     const barValue = (map, key, fallback = 0) =>
       typeof map === 'number' ? map : (Number.isFinite(map?.[key]) ? map[key] : fallback);
@@ -1130,9 +1378,11 @@ class AudioSys {
       ? value.map((v) => shift(v, semitones))
       : typeof value === 'number' && value > 0 ? value * 2 ** (semitones / 12) : value;
 
-    for (let step = 0; step < plan.length * 16; step++) {
+    for (let step = 0; step < plan.length * 16; step += tick) {
       const bar = plan[Math.floor(step / 16) % plan.length];
-      const s = (step % 16) + bar.half * 16;
+      const s = resolution === 32
+        ? Math.round((step % 16) * 2) + bar.half * 32
+        : (step % 16) + bar.half * 16;
       let b = bank;
       if (b.sections?.length && bar.sec != null) {
         const section = resolveSection(b, bar.sec % b.sections.length);
@@ -1163,10 +1413,10 @@ class AudioSys {
         const seam = seamFor(key);
         const voice = seam && voiceOf(b, key);
         if (!voice || voice.kind === 'engine') continue;
-        const written = b[key]?.[s];
+        const written = sequenceValue(b, key, s, resolution);
         if (written == null || written === false || written === 0) continue;
         const freq = written === true ? (b[seam.noteKey] ?? seam.note) : written;
-        const len = effectiveStepLen(b, key, s);
+        const len = effectiveStepLen(b, key, s, resolution);
         const duration = (scale = 1) => noteSeconds(
           len, b[seam.durKey] ?? voice.dur, spb, scale, voice.fixedLength);
         rack.prepareNoteCache(voice.id, freq, duration(), { detune: this.detune, priority: step });
@@ -2542,6 +2792,7 @@ class AudioSys {
     // Takes the early branch in setLoop and returns without touching `step`.
     this.setLoop();
     this.step = 0; // songs start from the top (section order matters now)
+    this.noteFx.reset();
     // …unless the song says otherwise. `arrangement.loop` names the bar it starts on
     // and the bars it repeats, and this is the one call every playback path in the
     // game goes through — the title screen, the hub, a level, the jukebox and
@@ -2599,12 +2850,14 @@ class AudioSys {
     // copies are scoped by it — see registerSongVoice.
     const id = trackIdOf(bank);
     this.mixEntry = entry || null;
+    this.noteFx.reset();
     const arrangementId = id || '__explicit__';
     const arranged = this.arrangement !== undefined
       ? applyArrangement(bank, arrangementId, { [arrangementId]: this.arrangement })
       : applyArrangement(bank, id);
     const merged = withVoices(deskBank(arranged, entry), entry, id);
     this.bank = merged;
+    this.refreshTransportResolution(merged, entry);
     // Only the lanes whose voice actually changed lose their synths. Disposing the
     // whole rack here — what setBank does — would cut every ringing Tone note on every
     // other channel because you moved the bass. See VoiceRack.prune.
@@ -2694,7 +2947,11 @@ class AudioSys {
     // was asked, and it arrives later — so it wins, rather than being overwritten a bar
     // afterwards by a change nothing on screen still refers to.
     this.pendingSwing = null;
+    const resolution = patch?.resolution === 32 || source.resolution === 32 ? 32 : 16;
+    if (resolution === 32) next.resolution = 32; else delete next.resolution;
     this.bank = next;
+    this.refreshTransportResolution(next, this.mixEntry);
+    this.mixer?.prepareBarEffects?.(barPlan(next), next.bpm || this.bpm);
     // A step past the end of a shortened song would keep playing past it until the
     // modulo caught up. Wrapped here so a delete never leaves the playhead adrift.
     const steps = barPlan(next).length * 16;
@@ -2817,11 +3074,24 @@ class AudioSys {
     }
     // Sends are final by here, so anything unused can be dropped from the graph.
     if (this.mixer) this.mixer.pruneAuxes();
+    if (this.mixer && bank) this.mixer.prepareBarEffects(barPlan(bank), bank.bpm || this.bpm);
 
     // `id` was read from the bank as passed in, above, before applyArrangement and
     // deskBank patched it — which is exactly what the song's preset copies need to be
     // scoped by. See registerSongVoice.
-    return withVoices(bank, entry, id);
+    const voiced = withVoices(bank, entry, id);
+    this.refreshTransportResolution(voiced, entry);
+    return voiced;
+  }
+
+  /** Cache the finest clock the current song or its Note FX actually requests. */
+  refreshTransportResolution(bank = this.bank, mix = this.mixEntry) {
+    const fineArp = Object.values(mix?.lanes || {}).some((laneMix) =>
+      laneMix?.noteFx?.arp?.enabled && Number(laneMix.noteFx.arp.rate) <= 0.5)
+      || (bank ? barPlan(bank).some((bar) => Object.values(bar.noteFx || {}).some((override) =>
+        override?.mode === 'on' && override.arp?.enabled && Number(override.arp.rate) <= 0.5)) : false);
+    this.transportResolution = bank?.resolution === 32 || fineArp ? 32 : 16;
+    return this.transportResolution;
   }
 
   /**
@@ -2921,6 +3191,7 @@ class AudioSys {
     // is the urgent direction; an aux left connected and silent costs a little CPU and
     // never costs a sound, and disconnecting one at a bar line would cut its tail.
     this.mixEntry = entry;
+    this.refreshTransportResolution(this.bank, entry);
     return when + seconds;
   }
 
@@ -3308,6 +3579,10 @@ class AudioSys {
     // is what a synth gets struck at.
     const freq = value === true ? (b[seam.noteKey] ?? seam.note) : value;
     if (freq != null) {
+      // The rack may schedule this beyond the ordinary lookahead (strums, arpeggios,
+      // written repeats). Wake a sparse lane's insert graph through the actual attack,
+      // not merely through the step on which the generated event was discovered.
+      this.mixer?.lane(key)?.wakeEffects?.(this.nextTime + delay + 0.1);
       if (!this.voices) {
         this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf, this.noteCacheState);
         // The map, by reference — so a rack rebuilt after a context teardown comes back
@@ -3539,6 +3814,8 @@ class AudioSys {
       // groove change is waiting for is the step actually about to be scheduled.
       this._applyPendingSwing();
       const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
+      const resolution = this.transportResolution;
+      const tick = resolution === 32 ? 0.5 : 1;       // transport remains in 16th units
       // SWING. The song is written on the grid; this is how hard it is PLAYED off it.
       // The number is the on-grid sixteenth's share of its pair, as a percentage: 50 is
       // straight, ~58 is where most funk and hip-hop actually sits, 66.7 is the triplet
@@ -3563,9 +3840,14 @@ class AudioSys {
       // Zero when off, and zero is exact: `x + 0` is x for every finite float, so a song
       // nobody has swung renders the samples it always did. tests/null-test.js checks
       // that claim by comparing renders sample for sample.
-      const swingOffset = this.swing && (this.step % 2)
-        ? spb * (this.swing - 50) / 50
-        : 0;
+      // At 32nd resolution the halfway ticks follow the swung sixteenth pair by
+      // interpolation: 0, half-delay, full-delay, half-delay. Legacy songs never take
+      // this branch and retain the exact arithmetic they rendered with before.
+      const swingDelay = this.swing ? spb * (this.swing - 50) / 50 : 0;
+      const swingPhase = ((this.step * 2) % 4 + 4) % 4;
+      const swingOffset = resolution === 32
+        ? (swingPhase === 2 ? swingDelay : swingPhase % 2 ? swingDelay / 2 : 0)
+        : (this.swing && (this.step % 2) ? swingDelay : 0);
       // Rhythmic insert effects share the sequencer's clock. Schedule their gain
       // envelopes before the notes for this sixteenth, using the same audio timestamp
       // that every voice below receives. This keeps straight, dotted and triplet gates
@@ -3583,7 +3865,11 @@ class AudioSys {
       // sixteenths (1/8, 1/4, 1/4 dotted, a bar) map on-beat to on-beat and inherit the
       // swing for nothing; odd or triplet ones flam against it, by a third of a
       // sixteenth at a full shuffle. That is a real limit, not an oversight.
-      this.mixer?.scheduleEffects?.(this.step, this.nextTime, spb, this.bpm * this.tempo, this.swing);
+      // Existing rhythmic effects are authored on sixteenths. Fine ticks carry notes,
+      // but must not double-trigger their modulation envelopes.
+      if (Number.isInteger(this.step)) {
+        this.mixer?.scheduleEffects?.(this.step, this.nextTime, spb, this.bpm * this.tempo, this.swing);
+      }
       // Song form: bank.sections is a list of partial banks (lane overrides) and
       // bank.order the sequence to play them in — so a track can progress
       // verse/lift/bridge instead of looping one 2-bar phrase.
@@ -3597,7 +3883,18 @@ class AudioSys {
       // src/data/arrangements.js.
       const plan = barPlan(this.bank);
       const bar = plan[Math.floor(this.step / 16) % plan.length];
-      const s = (this.step % 16) + bar.half * 16;   // index into the section's 32 steps
+      if (this.step % 16 === 0) this.mixer?.scheduleBarEffectsForBar?.(bar, this.nextTime);
+      const frozenKeys = new Set();
+      for (const key of this.frozenLanes.keys()) {
+        const state = this.frozenLanes.get(key);
+        this._scheduleFrozenLane(key, state, this.step, this.nextTime, spb,
+          plan.length * 16);
+        if (this._frozenLaneCovers(key, this.step, plan.length * 16)) frozenKeys.add(key);
+      }
+      const s = resolution === 32
+        ? Math.round((this.step % 16) * 2) + bar.half * 32
+        : (this.step % 16) + bar.half * 16;
+      const pulse = resolution === 32 ? Math.floor(s / 2) : s;
       let b = this.bank;
       if (b.sections && b.sections.length && bar.sec != null) {
         const sec = resolveSection(b, bar.sec % b.sections.length);
@@ -3610,6 +3907,7 @@ class AudioSys {
         b = { ...b };
         for (const k of [...(bar.off || []), ...(bar.delete || [])]) b[k] = null;
       }
+      const rawAt = (key) => sequenceValue(b, key, s, resolution);
       // Arrangement edits stay on the bar, so the authored section is never
       // rewritten. Frequencies are shifted here after the section delta resolves;
       // chords and layer lanes use the same recursive conversion as single notes.
@@ -3640,6 +3938,34 @@ class AudioSys {
           if (n && Array.isArray(b[key])) b[key] = b[key].map((v) => shift(v, n));
         }
       }
+      const fxPlans = new Map();
+      const planFor = (key) => {
+        if (fxPlans.has(key)) return fxPlans.get(key);
+        const config = resolveNoteFx(this.mixEntry?.lanes?.[key]?.noteFx, bar, key);
+        if (!config?.strum?.enabled && !config?.arp?.enabled) {
+          fxPlans.set(key, null);
+          return null;
+        }
+        const value = rawAt(key);
+        const len = effectiveStepLen(b, key, s, resolution);
+        const events = this.noteFx.process({ laneKey: key, value, len, step: this.step,
+          spb, config, barIndex: Math.floor(this.step / 16) });
+        fxPlans.set(key, events);
+        return events;
+      };
+      let suppressFrozen = false;
+      const at = (key) => {
+        if (suppressFrozen && frozenKeys.has(key)) return null;
+        const events = planFor(key);
+        if (!events) return rawAt(key);
+        if (!events.length) return null;
+        return events.length === 1 ? events[0].freq : events.map((event) => event.freq);
+      };
+      const eventFor = (key, freq, index = 0) => {
+        const events = planFor(key);
+        if (!events) return null;
+        return events.find((event, i) => i === index || event.freq === freq) || null;
+      };
       // Kit tally for the visualizers. `b` is fully resolved by this point —
       // section overrides merged, this bar's mute mask nulled out, and any lane
       // the desk deleted already gone with it — so this is the arrangement's own
@@ -3655,7 +3981,7 @@ class AudioSys {
         ...(b.__layers || []).filter((L) => PERCUSSION_LANES.includes(baseLane(L.key)))
           .map((L) => L.key),
       ];
-      if (percussionKeys.some((key) => b[key] && b[key][s])) {
+      if (percussionKeys.some((key) => at(key))) {
         // Swung, so a shuffled hat FLASHES shuffled rather than on a grid the song is
         // no longer playing to. The lane's own `offset` nudge is deliberately left out:
         // this queue is one time for the whole kit, and swing is the only part of the
@@ -3677,6 +4003,9 @@ class AudioSys {
           if (drop) this._percPending.splice(0, drop);
         }
       }
+      // Frozen audio has now contributed to the musical/visual tally. From this point
+      // its source notes are suppressed so the synth is not layered under its PCM.
+      suppressFrozen = true;
       // Lanes the MIX has silenced, taken out the same way a bar's mute mask is:
       // nulled, so every block below skips them on the path it already has for a
       // lane that does not play. A muted strip's fader is zero and every send taps
@@ -3727,6 +4056,19 @@ class AudioSys {
         // selected channel. Keep them on that channel's live strip so its inserts,
         // EQ, fader, and both sends are the same ones shown in the desk.
         const strip = this.mixer && this.mixer.lane(key);
+        // Channel inserts sleep while their measured output is silent. Do not wake one
+        // merely because its lane ARRAY exists on this step — that is every rest in a
+        // sparse track. `at` is already the resolved musical event (arrangement masks and
+        // Note FX included); delayed hand-built notes extend this hold again in `play`.
+        const laneValue = at(key);
+        const sounds = Array.isArray(laneValue)
+          ? laneValue.some((value) => Number.isFinite(value) && value > 0)
+          : laneValue === true || (Number.isFinite(laneValue) && laneValue > 0);
+        if (sounds) {
+          const attackAt = this.nextTime + offsetFor(key) + swingOffset;
+          strip?.wakeEffects?.(attackAt + 0.1);
+          this.expectOutput(attackAt, Math.max(0.35, spb * 2));
+        }
         const gate = this._previewing && !strip
           ? this._benchGate(key)
           : this._laneGate(key, strip ? strip.dry : this.musicBus,
@@ -3775,10 +4117,30 @@ class AudioSys {
       // or one per chord tone. Read once per lane and passed down, so a preset voice
       // and the hand-written body below it always agree about how long a note is —
       // they are two ways of playing the same drawn rectangle, not two lanes.
-      const lenOf = (key) => effectiveStepLen(b, key, s);
-      const toneLenOf = (key, i = 0) => effectiveToneLength(b, key, s, i);
+      const lenOf = (key) => {
+        const events = planFor(key);
+        if (!events) return effectiveStepLen(b, key, s, resolution);
+        const values = events.map((event) => event.len).filter((len) => len != null);
+        return values.length > 1 ? values : (values[0] ?? effectiveStepLen(b, key, s, resolution));
+      };
+      const toneLenOf = (key, i = 0) => {
+        const event = planFor(key)?.[i];
+        return event?.len ?? effectiveToneLength(b, key, s, i, resolution);
+      };
       const voiced = (key, value, opts = {}) => {
         lane(key);
+        const events = planFor(key);
+        if (events) {
+          let played = false;
+          const extraDelay = opts.delay == null ? 0 : opts.delay - voiceDelay();
+          for (const event of events) {
+            played = this.playVoice(key, b, event.freq, {
+              spb, dry, wet, ...opts,
+              delay: voiceDelay(extraDelay + event.delay), len: event.len,
+            }) || played;
+          }
+          return played;
+        }
         return this.playVoice(key, b, value,
           { spb, dry, wet, delay: voiceDelay(), len: lenOf(key), ...opts });
       };
@@ -3816,7 +4178,10 @@ class AudioSys {
             { lane: lastLane, freq, dur, gain, step: this.step });
           return;
         }
-        const t = scheduleAt(delay);
+        const t = scheduleAt(delay + (eventFor(lastLane, freq)?.delay || 0));
+        // Written repeats and Note-FX events can land well beyond the step that found
+        // them. Keep a sleeping channel insert connected through this actual attack.
+        this.mixer?.lane(lastLane)?.wakeEffects?.(t + 0.1);
         const o = this.ctx.createOscillator();
         const g = this.ctx.createGain();
         o.type = type;
@@ -3863,10 +4228,11 @@ class AudioSys {
         // note is already scheduled by the time this returns; the empty branch is
         // deliberate, and it is here rather than wrapping the three bodies in an `if`
         // so that this stays a one-line diff against code nobody wants re-indented.
-        const bassByVoice = voiced('bass', b.bass[s], { echo: bassEcho });
+        const bassNote = at('bass');
+        const bassByVoice = voiced('bass', bassNote, { echo: bassEcho });
         if (bassByVoice) {
           // nothing further: the voice is the whole bass
-        } else if (b.bassFilteredSaw && b.bass[s] != null) {
+        } else if (b.bassFilteredSaw && bassNote != null) {
           // Resonant low-pass saw bass: harmonic enough to survive small
           // speakers, but with the bright edge closing quickly into a round
           // sustained body. A quiet sine sub keeps the bottom anchored.
@@ -3874,44 +4240,47 @@ class AudioSys {
           // Each tone gets its own saw, its own filter and its own sub: a chord here is
           // three of this bass, not one of it with three pitches, and a shared filter
           // would be a different instrument.
-          for (const note of tonesOf(b.bass[s])) {
-            const t = scheduleAt();
+          for (const [toneIndex, note] of tonesOf(bassNote).entries()) {
+            const noteDur = spb * toneLenOf('bass', toneIndex);
+            const t = scheduleAt(eventFor('bass', note, toneIndex)?.delay || 0);
             const f = note * this.detune;
             const o = this.ctx.createOscillator(); o.type = 'sawtooth';
             o.frequency.setValueAtTime(f, t);
             const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass';
             filter.Q.value = b.bassFilterQ ?? 1.15;
             filter.frequency.setValueAtTime(b.bassFilterOpen ?? 1150, t);
-            filter.frequency.exponentialRampToValueAtTime(b.bassFilterClose ?? 320, t + bassDur);
+            filter.frequency.exponentialRampToValueAtTime(b.bassFilterClose ?? 320, t + noteDur);
             const g = this.ctx.createGain();
             g.gain.setValueAtTime(0.0001, t);
             g.gain.exponentialRampToValueAtTime(bassGain, t + (b.bassAttack || 0.006));
-            g.gain.exponentialRampToValueAtTime(0.0001, t + bassDur);
-            g.gain.linearRampToValueAtTime(0, t + bassDur + 0.02 - 0.005);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + noteDur);
+            g.gain.linearRampToValueAtTime(0, t + noteDur + 0.02 - 0.005);
             o.connect(filter); filter.connect(g); g.connect(dry);
             if (bassEcho) g.connect(wet);
-            o.start(t); o.stop(t + bassDur + 0.02);
-            play(note * 0.5, 'sine', bassDur * 1.05,
+            o.start(t); o.stop(t + noteDur + 0.02);
+            play(note * 0.5, 'sine', noteDur * 1.05,
               bassGain * (b.bassFilteredSawSubGain ?? 0.22), 0.008, false);
           }
-        } else if (b.bass80s && b.bass[s] != null) {
+        } else if (b.bass80s && bassNote != null) {
           // Compact 1980s-style synth bass: a square body for definition, a
           // rounded sine sub beneath it, and a very short octave tick on the
           // attack. No filterless saw drone and no compulsory ghost repeat.
-          for (const f of tonesOf(b.bass[s])) {
-            play(f, b.bass80sBodyType || 'square', bassDur,
+          for (const [toneIndex, f] of tonesOf(bassNote).entries()) {
+            const noteDur = spb * toneLenOf('bass', toneIndex);
+            play(f, b.bass80sBodyType || 'square', noteDur,
               bassGain * (b.bass80sBodyGain ?? 0.78), b.bassAttack || 0.004, bassEcho);
-            play(f * 0.5, 'sine', bassDur * 1.08,
+            play(f * 0.5, 'sine', noteDur * 1.08,
               bassGain * (b.bass80sSubGain ?? 0.34), 0.006, false);
             // A real low-mid octave layer rather than a near-inaudible click: it
             // carries the bass identity on phone speakers that cannot reproduce
             // the sub fundamental.
-            play(f * 2, 'triangle', bassDur * 0.62,
+            play(f * 2, 'triangle', noteDur * 0.62,
               bassGain * (b.bass80sOctaveGain ?? 0.34), 0.003, false);
           }
         } else {
-          for (const f of tonesOf(b.bass[s])) {
-            play(f, b.bassType || 'square', bassDur, bassGain, b.bassAttack || 0.01, bassEcho);
+          for (const [toneIndex, f] of tonesOf(bassNote).entries()) {
+            play(f, b.bassType || 'square', spb * toneLenOf('bass', toneIndex),
+              bassGain, b.bassAttack || 0.01, bassEcho);
           }
         }
         // bassRepeat: one softer restatement of the note N steps later — a
@@ -3921,13 +4290,13 @@ class AudioSys {
           if (bassByVoice) {
             // The ghost is the same voice, quieter and shorter. Restating it on the
             // hand-rolled square instead would put two different basses in one lane.
-            this.playVoice('bass', b, b.bass[s], {
+            this.playVoice('bass', b, bassNote, {
               spb, dry, wet, echo: false, delay: voiceDelay(spb * b.bassRepeat),
               durScale: b.bassRepeatDur ?? 0.8, gainScale: b.bassRepeatGain ?? 0.4,
               len: bassLen,
             });
           } else {
-            for (const f of tonesOf(b.bass[s])) {
+            for (const f of tonesOf(bassNote)) {
               play(f, b.bassType || 'square', bassDur * (b.bassRepeatDur ?? 0.8),
                 bassGain * (b.bassRepeatGain ?? 0.4), b.bassAttack || 0.01, false, spb * b.bassRepeat);
             }
@@ -3936,7 +4305,7 @@ class AudioSys {
         // The star arpeggio follows the song's key, and it wants a NOTE. A chord's
         // lowest tone is its root, and tonesOf sorts nothing — but noteCell writes the
         // array ascending, so [0] is the bottom of what was played.
-        const bassRoot = tonesOf(b.bass[s])[0];
+        const bassRoot = tonesOf(bassNote)[0];
         if (bassRoot != null) this.starRoot = bassRoot;
       }
       if (b.lead) {
@@ -3946,14 +4315,16 @@ class AudioSys {
         // leadBright is an octave sine sitting ON the square lead — part of what the
         // hand-rolled lead IS, so it goes with it rather than doubling a Tone voice
         // that has its own harmonics.
-        if (!voiced('lead', b.lead[s])) {
+        const leadNote = at('lead');
+        if (!voiced('lead', leadNote)) {
           // Once per tone. One note is one pass, which is the path every existing bank
           // takes; a recorded chord is three, each with its own oscillator and its own
           // bright octave over it.
-          for (const f of tonesOf(b.lead[s])) {
-            play(f, b.leadType || 'square', leadDur, leadGain, b.leadAttack || 0.01);
+          for (const [toneIndex, f] of tonesOf(leadNote).entries()) {
+            const noteDur = spb * toneLenOf('lead', toneIndex);
+            play(f, b.leadType || 'square', noteDur, leadGain, b.leadAttack || 0.01);
             if (b.leadBright) {
-              play(f * 2, 'sine', leadDur * 0.68,
+              play(f * 2, 'sine', noteDur * 0.68,
                 leadGain * (b.leadBrightGain ?? 0.16), 0.004, false);
             }
           }
@@ -3962,16 +4333,18 @@ class AudioSys {
       // parallel-3rds partner voice
       if (b.leadHarm) {
         lane('leadHarm');
-        if (!voiced('leadHarm', b.leadHarm[s])) {
-          for (const f of tonesOf(b.leadHarm[s])) {
-            play(f, b.harmType || b.leadType || 'square', spb * toneLenOf('leadHarm'), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
+        const harmNote = at('leadHarm');
+        if (!voiced('leadHarm', harmNote)) {
+          for (const [toneIndex, f] of tonesOf(harmNote).entries()) {
+            play(f, b.harmType || b.leadType || 'square', spb * toneLenOf('leadHarm', toneIndex), b.harmGain ?? 0.04, b.harmAttack || b.leadAttack || 0.01);
           }
         }
       }
-      if (b.twinkle && b.twinkle[s] && !voiced('twinkle', b.twinkle[s])) {
+      const twinkleNote = at('twinkle');
+      if (twinkleNote && !voiced('twinkle', twinkleNote)) {
         lane('twinkle');
-        const twinkleDur = spb * toneLenOf('twinkle');
-        for (const f of tonesOf(b.twinkle[s])) {
+        for (const [toneIndex, f] of tonesOf(twinkleNote).entries()) {
+          const twinkleDur = spb * toneLenOf('twinkle', toneIndex);
           play(f, 'sine', twinkleDur, b.twinkleGain ?? 0.014, b.twinkleAttack || 0.035);
           play(f * 2, 'sine', twinkleDur * 0.65, (b.twinkleGain ?? 0.014) * 0.28, 0.02);
         }
@@ -3980,16 +4353,17 @@ class AudioSys {
       // lane and has already scheduled the note, so the hand-written body is skipped. A
       // song naming no preset returns false having touched nothing, which is why this is
       // a guard rather than a rewrite — and why the null test stays green.
-      if (b.electroFx && b.electroFx[s] && !voiced('electroFx', b.electroFx[s])) {
+      const electroNote = at('electroFx');
+      if (electroNote && !voiced('electroFx', electroNote)) {
         lane('electroFx');
         // Sparse deterministic "random" shop-machine flourishes. The grid
         // position selects one of three tiny electronic gestures, so offline
         // auditions and live playback stay identical on every loop.
         const t = scheduleAt();
-        const f = b.electroFx[s] * this.detune;
+        const f = electroNote * this.detune;
         const gain = b.electroFxGain ?? 0.012;
         const dur = spb * (b.electroFxDur || 0.86);
-        const kind = s % 3;
+        const kind = pulse % 3;
         if (kind === 2) {
           play(f, 'sine', dur, gain, 0.002, true);
           play(f * 2.01, 'sine', dur * 0.62, gain * 0.42, 0.002, false);
@@ -4011,7 +4385,8 @@ class AudioSys {
       // `sweeps` holds a marker rather than a pitch, so the seam supplies the note a
       // synth is struck at — the same arrangement the kit uses. The `noiseBuf` guard
       // stays on the hand-written body, which is the only half that needs one.
-      if (b.sweeps && b.sweeps[s] && !voiced('sweeps', b.sweeps[s]) && this.noiseBuf) {
+      const sweepNote = at('sweeps');
+      if (sweepNote && !voiced('sweeps', sweepNote) && this.noiseBuf) {
         lane('sweeps');
         // Heavily filtered air: a narrow band slowly opens and closes beneath
         // a low-pass ceiling. It should be felt as motion, not heard as hiss.
@@ -4032,17 +4407,18 @@ class AudioSys {
         src.connect(band); band.connect(low); low.connect(g);
         if (this.ctx.createStereoPanner) {
           const pan = this.ctx.createStereoPanner();
-          const from = s % 2 ? 0.35 : -0.35;
+          const from = pulse % 2 ? 0.35 : -0.35;
           pan.pan.setValueAtTime(from, t); pan.pan.linearRampToValueAtTime(-from, t + dur);
           g.connect(pan); pan.connect(dry);
         } else g.connect(dry);
         src.start(t); src.stop(t + dur + 0.03);
       }
-      if (b.keyGliss && b.keyGliss[s]) {
+      const keyGlissNote = at('keyGliss');
+      if (keyGlissNote) {
         lane('keyGliss');
         // keyboard-sweep glissando: discrete scale notes (a hand dragged up
         // the white keys) running an octave up into the target, cresc. slightly
-        const fT = b.keyGliss[s] * this.detune;
+        const fT = keyGlissNote * this.detune;
         const steps = [-12, -10, -9, -7, -5, -4, -2, 0]; // natural-minor run
         const dt = (spb * 3) / steps.length;
         const gv = (b.keyGlissGain != null ? b.keyGlissGain : 0.035) * MELODIC_TRIM;
@@ -4055,7 +4431,7 @@ class AudioSys {
         // Undetuned, because the rack applies the song warp itself; the crescendo rides
         // `gainScale`; and dry, because the hand-written body below is dry.
         const runByVoice = steps.map((semi, i) => this.playVoice('keyGliss', b,
-          b.keyGliss[s] * Math.pow(2, semi / 12),
+          keyGlissNote * Math.pow(2, semi / 12),
           {
             spb, dry, wet, echo: false, delay: voiceDelay(i * dt),
             gainScale: 0.6 + 0.4 * ((i + 1) / steps.length),
@@ -4076,12 +4452,13 @@ class AudioSys {
       // Echo left at the default rather than off: the hand-written body builds its own
       // panned taps below, and the song's delay send is the closest a preset gets to
       // them. A dry preset here would be the one swap that sounds like a mistake.
-      if (b.gliss && b.gliss[s] && !voiced('gliss', b.gliss[s])) {
+      const glissNote = at('gliss');
+      if (glissNote && !voiced('gliss', glissNote)) {
         lane('gliss');
         // glissando: sweep up from an octave below into the target note,
         // with echo taps panned left -> center -> right across the field
         const t = scheduleAt();
-        const fT = b.gliss[s] * this.detune;
+        const fT = glissNote * this.detune;
         const o = this.ctx.createOscillator();
         o.type = b.leadType || 'square';
         o.frequency.setValueAtTime(fT * 0.5, t);
@@ -4107,18 +4484,20 @@ class AudioSys {
         });
         o.start(t); o.stop(t + spb * 4 + 0.02);
       }
-      if (b.chords && b.chords[s]) {
+      const chordNotes = at('chords');
+      if (chordNotes) {
         lane('chords');
         // A chord arrives as an array, and the rack takes it as one: it hands each
         // note its own slot out of the voice's pool, which is what `poly` is for.
-        if (!voiced('chords', b.chords[s])) {
+        if (!voiced('chords', chordNotes)) {
           // stab: all chord tones at once, short and punchy — and each as long as it
           // was drawn, which is why the length is read per tone rather than per step.
           const len = lenOf('chords');
-          b.chords[s].forEach((cf, i) => play(cf, b.chordType || 'square', spb * toneLen(len, toneLenOf('chords', i), i), b.chordGain ?? 0.05, b.chordAttack || 0.01));
+          chordNotes.forEach((cf, i) => play(cf, b.chordType || 'square', spb * toneLen(len, toneLenOf('chords', i), i), b.chordGain ?? 0.05, b.chordAttack || 0.01));
         }
       }
-      if (b.organChords && b.organChords[s] && !voiced('organChords', b.organChords[s], { echo: b.organEcho !== false })) {
+      const organNotes = at('organChords');
+      if (organNotes && !voiced('organChords', organNotes, { echo: b.organEcho !== false })) {
         lane('organChords');
         // Drawbar-style organ bed: sine partials at the common 8', 4', 2 2/3',
         // 2' and 1 1/3' relationships. It is a separate sustained lane, not a
@@ -4131,7 +4510,7 @@ class AudioSys {
         const drawbars = b.organBright
           ? [[1, 1], [2, 0.78], [3, 0.48], [4, 0.3], [6, 0.16]]
           : [[1, 1], [2, 0.62], [3, 0.32], [4, 0.2], [6, 0.1]];
-        b.organChords[s].forEach((cf, i) => {
+        organNotes.forEach((cf, i) => {
           // Per tone: a drawn length belongs to the note, and all five drawbars of one
           // note are that note. The pip below is an attack transient, not a length.
           const dur = spb * toneLen(organLen, toneLenOf('organChords', i), i);
@@ -4144,12 +4523,13 @@ class AudioSys {
           }
         });
       }
-      if (b.organGliss && b.organGliss[s]) {
+      const organGlissNote = at('organGliss');
+      if (organGlissNote) {
         lane('organGliss');
         // A quick drawbar-organ slide played as discrete scale notes, like a
         // palm skimming the keys. This lane has its own timbre so the main
         // melody does not need to become square/organ-like just to host it.
-        const target = b.organGliss[s] * this.detune;
+        const target = organGlissNote * this.detune;
         const steps = [-12, -10, -9, -7, -5, -4, -2, 0];
         const dt = (spb * (b.organGlissSpan || 2.7)) / steps.length;
         const gain = b.organGlissGain ?? 0.012;
@@ -4161,7 +4541,7 @@ class AudioSys {
         // an additive stack is the obvious thing to put here, and it brings its own
         // partials rather than borrowing the three below.
         const runByVoice = steps.map((semi, i) => this.playVoice('organGliss', b,
-          b.organGliss[s] * Math.pow(2, semi / 12),
+          organGlissNote * Math.pow(2, semi / 12),
           { spb, dry, wet, echo: false, delay: voiceDelay(i * dt) }))[0];
         if (!runByVoice) steps.forEach((semi, i) => {
           const note = target * Math.pow(2, semi / 12);
@@ -4171,13 +4551,14 @@ class AudioSys {
           }
         });
       }
-      if (b.organSwoop && b.organSwoop[s] && !voiced('organSwoop', b.organSwoop[s])) {
+      const organSwoopNote = at('organSwoop');
+      if (organSwoopNote && !voiced('organSwoop', organSwoopNote)) {
         lane('organSwoop');
         // Continuous drawbar-organ pitch glide: unlike organGliss's discrete
         // palm-run notes, every partial bends smoothly from one pitch into the
         // target for a clean dance-mix transition.
         const t = scheduleAt();
-        const target = b.organSwoop[s] * this.detune;
+        const target = organSwoopNote * this.detune;
         const from = target * Math.pow(2, (b.organSwoopFromSemitones ?? -5) / 12);
         const dur = spb * (b.organSwoopDur || 3.2);
         const gain = (b.organSwoopGain ?? 0.012) * MELODIC_TRIM;
@@ -4197,7 +4578,8 @@ class AudioSys {
           o.start(t); o.stop(t + dur + 0.02);
         }
       }
-      if (b.kick && b.kick[s] && !voiced('kick', b.kick[s], { echo: !!b.echoEverything })) {
+      const kickHit = at('kick');
+      if (kickHit && !voiced('kick', kickHit, { echo: !!b.echoEverything })) {
         lane('kick');
         // 808 kick: a long sine "boooom" that pitch-drops into a sub
         // fundamental for the thump, with a short noise click on the front so
@@ -4251,7 +4633,8 @@ class AudioSys {
           k.start(t); k.stop(t + 0.07);
         }
       }
-      if (b.hats && b.hats[s] && !voiced('hats', b.hats[s], { echo: !!b.echoEverything })) {
+      const hatsHit = at('hats');
+      if (hatsHit && !voiced('hats', hatsHit, { echo: !!b.echoEverything })) {
         lane('hats');
         const t = scheduleAt();
         const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
@@ -4263,13 +4646,14 @@ class AudioSys {
         if (b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + 0.07);
       }
-      if (b.vox && b.vox[s] && !voiced('vox', b.vox[s])) {
+      const voxNote = at('vox');
+      if (voxNote && !voiced('vox', voxNote)) {
         lane('vox');
         // Vocal hit ("hey!"): sawtooth glottal buzz with a falling pitch bend,
         // shaped by two parallel bandpass formants; vowel alternates per slot.
         const t = scheduleAt();
-        const f0 = b.vox[s];
-        const [fm1, fm2] = (s % 8 < 4) ? [750, 1150] : [600, 2000]; // "ah" / "ay"
+        const f0 = voxNote;
+        const [fm1, fm2] = (pulse % 8 < 4) ? [750, 1150] : [600, 2000]; // "ah" / "ay"
         const o = this.ctx.createOscillator();
         o.type = 'sawtooth';
         o.frequency.setValueAtTime(f0 * 1.3 * this.detune, t);
@@ -4287,13 +4671,14 @@ class AudioSys {
         if (b.echoEverything) mix.connect(wet);
         o.start(t); o.stop(t + 0.2);
       }
-      if (b.shout && b.shout[s] && !voiced('shout', b.shout[s])) {
+      const shoutNote = at('shout');
+      if (shoutNote && !voiced('shout', shoutNote)) {
         lane('shout');
         // Vocal shout ("yeah!" / "alright!"): sawtooth voice through MOVING
         // formant filters — gliding vowels read as a word, not just a hit.
         const t = scheduleAt();
-        const f0 = b.shout[s] * this.detune;
-        const word = (Math.floor(this.step / 32) + s) % 2 === 0 ? 'yeah' : 'alright';
+        const f0 = shoutNote * this.detune;
+        const word = (Math.floor(this.step / 32) + pulse) % 2 === 0 ? 'yeah' : 'alright';
         const dur = word === 'yeah' ? 0.32 : 0.46;
         const traj = word === 'yeah'
           ? [[0, 320, 2100], [0.08, 560, 1800], [0.28, 760, 1250]]
@@ -4331,7 +4716,8 @@ class AudioSys {
         if (b.echoEverything) mix.connect(wet);
         o.start(t); o.stop(t + dur + 0.02);
       }
-      if (b.ohats && b.ohats[s] && !voiced('ohats', b.ohats[s], { echo: !!b.echoEverything })) {
+      const ohatsHit = at('ohats');
+      if (ohatsHit && !voiced('ohats', ohatsHit, { echo: !!b.echoEverything })) {
         lane('ohats');
         // open hat: same noise, lower cutoff, long sizzle tail
         const t = scheduleAt();
@@ -4344,7 +4730,8 @@ class AudioSys {
         if (b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + 0.24);
       }
-      if (b.snare && b.snare[s] && !voiced('snare', b.snare[s], { echo: !!b.echoEverything })) {
+      const snareHit = at('snare');
+      if (snareHit && !voiced('snare', snareHit, { echo: !!b.echoEverything })) {
         lane('snare');
         // crisp crack: brighter noise band, short decay, just a hint of body
         const t = scheduleAt();
@@ -4364,7 +4751,8 @@ class AudioSys {
         og.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
         o.connect(og); og.connect(dry); if (b.echoEverything) og.connect(wet); o.start(t); o.stop(t + 0.08);
       }
-      if (b.crash && b.crash[s] && !voiced('crash', b.crash[s], { echo: !!b.crashEcho || !!b.echoEverything })) {
+      const crashHit = at('crash');
+      if (crashHit && !voiced('crash', crashHit, { echo: !!b.crashEcho || !!b.echoEverything })) {
         lane('crash');
         // Filtered crash: looped noise, bright on the transient and darkening
         // as it falls away — a lowpass envelope closes from crashOpen down to
@@ -4392,7 +4780,8 @@ class AudioSys {
         if (b.crashEcho || b.echoEverything) g.connect(wet);
         src.start(t); src.stop(t + dur + 0.03);
       }
-      if (b.tom && b.tom[s] && !voiced('tom', b.tom[s], { echo: !!b.echoEverything })) {
+      const tomHit = at('tom');
+      if (tomHit && !voiced('tom', tomHit, { echo: !!b.echoEverything })) {
         lane('tom');
         // Tuned tom: a rounded membrane-like pitch drop with just enough triangle
         // edge to read above the bass. It is the eighth engine kit voice; choosing
@@ -4412,7 +4801,8 @@ class AudioSys {
         if (b.echoEverything) g.connect(wet);
         o.start(t); o.stop(t + dur + 0.03);
       }
-      if (b.rim && b.rim[s] && !voiced('rim', b.rim[s])) {
+      const rimHit = at('rim');
+      if (rimHit && !voiced('rim', rimHit)) {
         lane('rim');
         // Rimshot: a stick cracking off the rim. The old version was two square
         // tones dead in 40ms — a bare click. This stacks three layers so it
@@ -4466,7 +4856,8 @@ class AudioSys {
         if (b.echoEverything) bg.connect(wet);
         bo.start(t); bo.stop(t + 0.08);
       }
-      if (b.clap && b.clap[s] && !voiced('clap', b.clap[s], { echo: !!b.echoEverything })) {
+      const clapHit = at('clap');
+      if (clapHit && !voiced('clap', clapHit, { echo: !!b.echoEverything })) {
         lane('clap');
         // three staggered high-passed bursts read as a clap
         for (let ci = 0; ci < 3; ci++) {
@@ -4491,12 +4882,12 @@ class AudioSys {
       // the original 6dB louder, not a layer, so a layer with no voice chosen makes
       // no sound at all and the desk says so on the strip rather than here.
       for (const L of b.__layers || []) {
-        const arr = b[L.key];
+        const value = at(L.key);
         // Rests are skipped before the rack is asked for anything, the way every lane
         // block above tests its own step: a percussion rest is `false`, which is not
         // a frequency, and building a synth pool to play it is work for silence.
-        if (!arr || !arr[s]) continue;
-        voiced(L.key, arr[s], { echo: laneEchoesIn(b, L.key) });
+        if (!value) continue;
+        voiced(L.key, value, { echo: laneEchoesIn(b, L.key) });
       }
       // Invincibility layer: a relentless 16th-note arpeggio over the ducked
       // theme, plus a ride tick on the offbeats. The notes are root/fifth/
@@ -4505,18 +4896,18 @@ class AudioSys {
       if (this.starMode && this.starBus) {
         const t = scheduleAt();
         const ratios = [1, 1.5, 2, 3];
-        const f = this.starRoot * 4 * ratios[s % ratios.length] * this.detune;
+        const f = this.starRoot * 4 * ratios[pulse % ratios.length] * this.detune;
         const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
         o.type = 'square';
         o.frequency.setValueAtTime(f, t);
-        const peak = s % 4 === 0 ? 0.14 : 0.09; // accent the downbeat of each group
+        const peak = pulse % 4 === 0 ? 0.14 : 0.09; // accent the downbeat of each group
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
         g.gain.exponentialRampToValueAtTime(0.0001, t + spb * 0.9);
         g.gain.linearRampToValueAtTime(0, t + spb + 0.02 - 0.005);
         o.connect(g); g.connect(this.starBus);
         o.start(t); o.stop(t + spb + 0.02);
-        if (s % 2 === 1) {
+        if (pulse % 2 === 1) {
           const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
           const hf = this.ctx.createBiquadFilter(); hf.type = 'highpass'; hf.frequency.value = 7000;
           const hg = this.ctx.createGain();
@@ -4526,7 +4917,7 @@ class AudioSys {
           src.start(t); src.stop(t + 0.06);
         }
       }
-      if (s % 4 === 0) {
+      if (this.step % 4 === 0) {
         const beatIdx = Math.floor(this.step / 4);
         const when = this.nextTime;
         // `step` as well as the beat index, and `when` read BEFORE the increment below,
@@ -4538,8 +4929,8 @@ class AudioSys {
         // wraps to a start that is not on a bar.
         for (const fn of this.beatListeners) fn(beatIdx, when, this.step);
       }
-      this.nextTime += spb;
-      this.step++;
+      this.nextTime += spb * tick;
+      this.step += tick;
       if (this.applyPendingStep() || this.applyPendingLoop()) {
         // The selected range changed on this bar line; the new range owns the next
         // scheduled step, so do not run the old loop's wrap after it.

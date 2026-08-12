@@ -5852,17 +5852,29 @@ export function createVoiceEditor({
      * it is done, rather than rebuilding a hidden panel on every keystroke. No-op once
      * the preset has been let go, which is the `forget()` path.
      */
-    onFullClosed: () => { if (state) build(); },
+    onFullClosed: () => {
+      if (!state) return;
+      if (fullStandalone) {
+        fullStandalone = false;
+        dropSolo();
+        const dismiss = close;
+        dismiss();
+        return;
+      }
+      build();
+    },
   };
 
   /** Open the full window on a preset that has one. Built once, on the first ask. */
-  function openFull(layer = 1) {
+  let fullStandalone = false;
+  function openFull(layer = 1, options = {}) {
     if (!state || !createFull) return;
+    fullStandalone = !!options.standalone;
     // The full-window editor is a big synchronous build on the sequencer's thread —
     // queue audio past it and record what the stall was for. See lib/heavy-ui.js.
     heavyUi('open full synth editor', () => {
       full ||= createFull({ kit });
-      full.open(layer);
+      full.open(layer, options);
     });
   }
 

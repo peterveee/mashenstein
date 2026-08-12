@@ -71,7 +71,8 @@ assert(!/new OfflineAudioContext/.test(src('tools/lib/render-bank-browser.js')),
 // (the SMW banks reach 20 lanes) an unsliced walk holds that thread for seconds while
 // the sequencer has a quarter-second of lookahead in front of it.
 assert(/await yieldToEventLoop\(\)/.test(page)
-  && /while \(stepAt < steps && Audio\.nextTime < limit\) \{[\s\S]{0,400}?Audio\.scheduleStep\(\)/.test(page)
+  && /const scheduleCalls = steps \* \(Audio\.bank\?\.resolution === 32 \? 2 : 1\)/.test(page)
+  && /while \(stepAt < scheduleCalls && Audio\.nextTime < limit\) \{[\s\S]{0,400}?Audio\.scheduleStep\(\)/.test(page)
   && !/for \(let i = 0; i < steps; i\+\+\) Audio\.scheduleStep\(\);/.test(page),
   'the render walk yields the main thread instead of queueing every step in one block');
 assert(/performance\.now\(\) - sliceAt < SLICE_MS/.test(page),
@@ -207,6 +208,11 @@ const bounceSource = src('tools/mixer-bounce.js');
 assert(/const bars = barPlan\(applyArrangement\(bank, trackId, table\)\)\.length/.test(bounceSource)
   && !/songBlocks\(bank, repeat\)/.test(bounceSource),
   'the bounce counts bars off the arranged form, not off the composed order');
+assert(/const ranged = rangeStart != null && rangeEnd > rangeStart/.test(bounceSource)
+  && /const steps = ranged \? rangeEnd - rangeStart : loop/.test(bounceSource)
+  && /ranged \? \{ startStep: rangeStart \}/.test(bounceSource)
+  && /Number\.isFinite\(startStep\)[\s\S]*?Audio\.step = Math\.max\(0, startStep\)/.test(page),
+  'a sparse freeze starts the shared render walk at its original song step instead of walking leading silence');
 
 {
   // bounceWav's own arithmetic, restated against the same helpers it uses. A copy on

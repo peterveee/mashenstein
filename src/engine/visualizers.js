@@ -28,6 +28,7 @@ export const VISUALIZER_NAMES = [
   'HYPER-VECTOR TUNNEL',
   'NEBULA RIBBON DRIFT',
   'GLASS BLOB EQUALIZER',
+  'HALF-PIPE HORIZON',
   // Not a scene of its own: a DJ that plays the rest of the pack, one 16-bar
   // phrase each, and mixes between them on the downbeat. Kept last so every
   // index above stays where it was.
@@ -3883,6 +3884,863 @@ class GlassBlobEqualizer extends BaseVisualizer {
 }
 
 // ---------------------------------------------------------------------------
+// HALF-PIPE HORIZON — the camera down inside a checkered trough, flying forward.
+//
+// A homage to the faux-3D special stages: sky above the lip, a checkerboard
+// wrapping up both walls, rings and spheres rushing past, and the whole horizon
+// rolling into a banked turn every few phrases. The pack already had a particle
+// cloud with a real camera and a flat horizon grid; nothing in it had put the
+// viewer INSIDE a surface and flown it forward.
+//
+// The geometry is a trick worth stating plainly, because it is what makes this
+// cheap. Every point of the trough sits at (theta, z) on a cylinder, and the
+// perspective divide scales x and y by the same k = FOV / (FOV + z). A circle
+// scaled uniformly is still a circle, and rolling the frame about the vanishing
+// point turns a circle into a circle too — so each constant-depth row of the
+// pipe lands on screen as a plain CIRCULAR ARC of radius R*k. The whole pipe
+// draws with ctx.arc rather than as a subdivided quad mesh: no faceting on the
+// near end where the cells are 70px wide, no hairline seams between neighbours,
+// and a couple of hundred path points a frame instead of a couple of thousand.
+//
+// Row depth is chosen in SCREEN space the way LASER GRID picks its grid lines,
+// not evenly in z. Even-in-z is the technically honest perspective and it looks
+// wrong here: it spends twelve of eighteen rows on sub-pixel slivers stacked at
+// the horizon, which shimmer as they scroll and buy nothing. A power curve on k
+// spreads the rows from about 1.6px at the vanishing point to 11px at the bottom
+// of the frame, which is what the eye actually reads as depth.
+// ---------------------------------------------------------------------------
+
+const PIPE_R = 300;
+const PIPE_FOV = 420;
+// The vanishing point. Everything converges here and the bank rolls about it,
+// so it is the one fixed landmark in the frame.
+const PIPE_HORIZON = 104;
+// Eye height above the trough floor, as a fraction of the way up a lip that
+// stands 1.31 radii tall. Low enough to be down IN the pipe rather than flying
+// over it, high enough that the far trough stays visible through a turn.
+const PIPE_CAM_H = 175;
+// 75 degrees either side of the trough, which puts the lip R*(1-cos) = 222 units
+// above the floor against an eye at 175 — just over the viewer's head. This is
+// the number that decides whether the scene is a half-pipe or a tunnel: past
+// about 90 degrees the walls curve back OVER the camera, the sky closes to a
+// narrow wedge, and the whole thing reads as a funnel being flown down.
+const PIPE_THETA = 1.31;
+const PIPE_COLS = 12;
+const PIPE_ROWS = 18;
+// Rows carried on PAST the near boundary. Each row is a circle, so the surface
+// stops at an arc that curves back up before it reaches the bottom corners of
+// the frame — and the wall beside the camera, which is what belongs in those
+// corners, lives on rows the ladder would otherwise never reach. Eight extra
+// rows carry the arc to a radius of 560px, well outside the frame diagonal.
+// They are enormous and almost entirely clipped, which is why they are cheap.
+const PIPE_OVER = 8;
+const PIPE_TOTAL = PIPE_ROWS + PIPE_OVER;
+const PIPE_K_MAX = 0.96;
+const PIPE_DEPTH_POW = 1.8;
+// Checker rows per beat. The ride is locked to the song's own tempo rather than
+// to wall time, so a slow track cruises and a fast one rushes. At 128bpm this is
+// a row every five frames, and a checker period every nine — a row crosses the
+// whole eighteen-row ladder in three beats. The ceiling is aliasing: the pattern
+// would start to crawl backwards somewhere past a row per two frames, which is
+// four times quicker than this.
+const PIPE_ROWS_PER_BEAT = 6;
+// Lateral bend at the horizon, in screen pixels. Expressed in screen space on
+// purpose: the racer-style `curve * z * z` grows without bound as z runs to the
+// vanishing point, which would throw the far end of the track off the frame.
+const PIPE_BEND = 118;
+const PIPE_BEND_POW = 2.2;
+const PIPE_ROLL_MAX = 0.6;
+const PIPE_BANK_EASE = 1.5;
+// Twice the rate the ride opened at. Sixteen and thirty-two beats read as a
+// track that mostly runs straight; on eight and sixteen the path is always
+// going somewhere, which is what the special stages actually feel like.
+const PIPE_BANK_HOLDS = [8, 16];
+// Corkscrews. Every so often the track stops banking and simply rolls all the
+// way over, following a helix of rings around the inside of the barrel. The
+// geometry gets this for free: every row is a circle drawn about the vanishing
+// point, so a roll of TAU is no more work than a roll of 0.2.
+const PIPE_SPIRAL_HOLDS = [10, 14, 20];
+// One ring of a corkscrew trail: how far back down the pipe the next ring sits,
+// and how far round the barrel it has wound by the time it gets there.
+const PIPE_TRAIL_STRIDE = 0.068;
+const PIPE_TRAIL_WIND = 0.42;
+const PIPE_SPIRAL_BEATS = 8;
+// How far the ring trail winds between the horizon and the lens during one.
+const PIPE_HELIX = 1.5;
+const PIPE_HELIX_EASE = 1.6;
+// The colour walk runs on its own clock, half the bank's, so the scheme and the
+// turns drift in and out of phase instead of always landing together.
+const PIPE_SCHEME_HOLDS = [8, 16];
+const PIPE_SCHEME_EASE = 0.55;
+const PIPE_SCHEME_KEYS = ['sky', 'haze', 'dark', 'light', 'lip', 'sun'];
+// Steps the blend is quantised to before it reaches glowSprite. A tint that
+// drifted continuously would bake a fresh canvas every frame and thrash the
+// cache the code rain and the nebula share; six steps is invisible at these
+// sizes and holds the map to a fixed handful.
+const PIPE_TINT_STEPS = 6;
+const PIPE_GROUPS = 10;
+// Sized for the biggest formation, not the average one: a full ring of rings
+// wants sixteen points around the barrel. Most groups use three or four of these
+// slots, and `count` is what the painter walks — the rest cost an array entry.
+const PIPE_PER_GROUP = 16;
+const PIPE_OBJ_LIFT = 34;
+const PIPE_OBJ_SIZE = 26;
+const PIPE_GATES = 4;
+const PIPE_MOTES = 210;
+// Longest streak a mote may draw. The outer ones ride nearly three radii out, so
+// as they pass the lens their screen radius can move most of the frame's width
+// in a single frame — a true motion blur, and a hard diagonal scratch across the
+// picture. The cap keeps the streak reading as speed instead of as a scratch.
+const PIPE_MOTE_STREAK = 34;
+// ---------------------------------------------------------------------------
+// What the desk is allowed to turn.
+//
+// Every value here is the preset's own shipped number, so a lab instance built
+// with the defaults is the shipped preset — not a near copy of it, the same
+// picture frame for frame. tests/visualizers.js holds that claim.
+//
+// The three interval knobs read 0 as AUTO and -1 as OFF rather than as a number
+// of beats. AUTO leaves the seeded schedule alone, drawing from the rng stream
+// exactly as it always did, which is what makes the default identical rather
+// than merely similar.
+// ---------------------------------------------------------------------------
+// About two thirds of a second from one end of the knob's range to the other.
+const PIPE_WIDTH_EASE = 3;
+const PIPE_AUTO = 0;
+const PIPE_OFF = -1;
+const PIPE_TUNE = {
+  speed: PIPE_ROWS_PER_BEAT,
+  rings: PIPE_GROUPS,
+  streaks: PIPE_MOTES,
+  turnEvery: PIPE_AUTO,
+  turnAmount: 1,
+  screwEvery: PIPE_AUTO,
+  colourEvery: PIPE_AUTO,
+  width: PIPE_THETA,
+  columns: PIPE_COLS,
+};
+export const HALF_PIPE_CONTROLS = [
+  { key: 'speed', label: 'SPEED', min: 0.5, max: 16, step: 0.5 },
+  { key: 'rings', label: 'RINGS', min: 0, max: 26, step: 1 },
+  { key: 'streaks', label: 'SKY', min: 0, max: 480, step: 30 },
+  { key: 'screwEvery', label: 'CORKSCREW', min: PIPE_OFF, max: 64, step: 4, unit: 'beats' },
+  { key: 'turnEvery', label: 'TURN EVERY', min: PIPE_OFF, max: 48, step: 4, unit: 'beats' },
+  { key: 'turnAmount', label: 'TURN HARD', min: 0, max: 2.4, step: 0.2 },
+  { key: 'colourEvery', label: 'COLOUR', min: PIPE_OFF, max: 48, step: 4, unit: 'beats' },
+  { key: 'width', label: 'PIPE WIDTH', min: 0.5, max: 2.7, step: 0.1 },
+  { key: 'columns', label: 'CHECKS', min: 4, max: 26, step: 2 },
+];
+export const HALF_PIPE_DEFAULTS = () => ({ ...PIPE_TUNE });
+// How far past the near boundary something rides before it is recycled. u = 1 is
+// the lens, and a ring there is still visible down in the trough.
+const PIPE_PAST_LENS = 1.1;
+const PIPE_SCHEMES = [
+  { sky: '#0a1b46', haze: '#20408c', dark: '#13398a', light: '#e2ecff', lip: '#8fd6ff', sun: '#ffd166' },
+  { sky: '#28093c', haze: '#5a1c74', dark: '#6b1f8f', light: '#ffe6fb', lip: '#ff70c8', sun: '#ffb3f0' },
+  { sky: '#032329', haze: '#0b5c58', dark: '#0d6d6a', light: '#dcfff4', lip: '#48e0c8', sun: '#d7ff83' },
+  { sky: '#360e12', haze: '#8c2430', dark: '#a12a35', light: '#ffe9d6', lip: '#ffd166', sun: '#ff7b5c' },
+  { sky: '#1a0836', haze: '#472a9c', dark: '#4a2fb0', light: '#e8e2ff', lip: '#b388ff', sun: '#63f3ff' },
+  { sky: '#03301c', haze: '#12734a', dark: '#158552', light: '#e6ffe8', lip: '#d7ff83', sun: '#fff1a8' },
+  { sky: '#2e1503', haze: '#96550f', dark: '#ad620f', light: '#fff3dd', lip: '#ffb347', sun: '#fff1a8' },
+];
+
+class HalfPipeHorizon extends BaseVisualizer {
+  constructor(seed, track, tune) {
+    super(seed, track);
+    this.name = VISUALIZER_NAMES[20];
+    // Merged rather than replaced: a desk that knows about six knobs must not be
+    // able to drop the four it has not heard of.
+    this.tune = { ...PIPE_TUNE, ...(tune || null) };
+    // The live half-angle, which chases the knob rather than being it. Every arc
+    // in the frame is drawn from this, so a step change would deform the whole
+    // pipe between one frame and the next — and a checkerboard that jumps width
+    // reads as a glitch rather than as an adjustment. Seeded to the target so an
+    // untouched instance never eases at all.
+    this.width = this.tune.width;
+    this.pipeRng = this.rng.stream('half-pipe');
+    this.bankRng = this.rng.stream('half-pipe-bank');
+    this.schemeRng = this.rng.stream('half-pipe-scheme');
+    // The scheme is a walk, not a fixture. A single palette held for the whole
+    // record turns a nine-minute jukebox sit into one picture; blending to the
+    // next one every eight or sixteen beats makes the ride travel somewhere.
+    this.schemeIndex = this.schemeRng.int(0, PIPE_SCHEMES.length - 1);
+    this.schemeFrom = { ...PIPE_SCHEMES[this.schemeIndex] };
+    this.schemeTo = PIPE_SCHEMES[this.schemeIndex];
+    this.schemeBlend = 1;
+    this.schemeNextBeat = this.nextHold(this.schemeRng, PIPE_SCHEME_HOLDS, this.tune.colourEvery);
+    this.scheme = { ...this.schemeFrom };
+    this.palette = [this.scheme.lip, this.scheme.light, this.scheme.sun, this.scheme.dark];
+    // Six tints: two off the live scheme's own sun and lip, two white-hot
+    // versions of those, and two off a scheme three steps along the walk — a
+    // colour the picture is deliberately NOT wearing, so the orbs read against
+    // the checker instead of disappearing into it.
+    this.tints = ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'];
+    this.altIndex = (this.schemeIndex + 3) % PIPE_SCHEMES.length;
+    this.altFrom = { sun: PIPE_SCHEMES[this.altIndex].sun, lip: PIPE_SCHEMES[this.altIndex].lip };
+    this.altTo = PIPE_SCHEMES[this.altIndex];
+    this.applyScheme();
+    this.beatRate = Math.max(0.6, (this.track.bpm || 112) / 60);
+    this.scroll = 0;
+    this.rowRate = 0;
+    // A phrase clock of its own. `beat` restarts every time a jukebox song
+    // loops, and a schedule read straight off it would either stall for a whole
+    // song or fire a turn on every wrap.
+    this.phraseBeat = 0;
+    this.bankNextBeat = this.nextHold(this.bankRng, PIPE_BANK_HOLDS, this.tune.turnEvery);
+    this.bankTarget = 0;
+    this.curve = 0;
+    this.bankRoll = 0;
+    this.roll = 0;
+    this.spiralRng = this.rng.stream('half-pipe-spiral');
+    // Whole turns of the barrel, accumulated. Kept separate from the bank so the
+    // bank stays a bounded lean and this stays an unbounded count of rolls, and
+    // so a test can tell a corkscrew from an over-enthusiastic corner.
+    this.spiral = 0;
+    this.spiralFrom = 0;
+    this.spiralTo = 0;
+    this.spiralBeat = 0;
+    this.spiralDir = 1;
+    this.spiralActive = false;
+    this.spirals = 0;
+    this.spiralNextBeat = this.nextHold(this.spiralRng, PIPE_SPIRAL_HOLDS, this.tune.screwEvery);
+    this.helix = 0;
+    this.trailMode = false;
+    this.rollCos = 1;
+    this.rollSin = 0;
+    this.rows = Array.from({ length: PIPE_TOTAL + 1 }, () => ({ cx: CX, cy: PIPE_HORIZON, r: 0, k: 0, u: 0 }));
+    this.cellDark = new Array(PIPE_TOTAL).fill(this.scheme.dark);
+    this.cellLight = new Array(PIPE_TOTAL).fill(this.scheme.light);
+    this.parityBase = 0;
+    this.groups = Array.from({ length: Math.max(0, Math.round(this.tune.rings)) }, (_, g, all) => {
+      const group = {
+        u: (g + 0.5) / Math.max(1, Math.round(this.tune.rings)),
+        kind: 0, count: 0, span: 0, centre: 0, spin: 0, spinRate: 0, tint: 0, stride: 0, wind: 0,
+        sx: new Array(PIPE_PER_GROUP).fill(CX),
+        sy: new Array(PIPE_PER_GROUP).fill(PIPE_HORIZON),
+        ss: new Array(PIPE_PER_GROUP).fill(0),
+      };
+      this.seedGroup(group);
+      return group;
+    });
+    this.halfPulse = 0;
+    // Sky motes. These live in PIPE space, not screen space, which is the whole
+    // point: they roll with the barrel through a corkscrew and streak past the
+    // lens like everything else, where a screen-space starfield would sit dead
+    // still while the world turned over. They ride outside the tube radius, and
+    // they are painted UNDER the pipe — so the surface occludes the ones that
+    // are behind it for free, and only the sky keeps its stars.
+    this.motes = Array.from({ length: Math.max(0, Math.round(this.tune.streaks)) }, () => ({
+      u: 0, theta: 0, rho: 0, speed: 1, hue: 0, x: 0, y: 0, px: 0, py: 0, k: 0,
+    }));
+    this.motes.forEach((m, i) => { this.seedMote(m); m.u = (i + 0.5) / this.motes.length; });
+    this.gates = Array.from({ length: PIPE_GATES }, () => ({ u: 0, punch: 0, cx: CX, cy: PIPE_HORIZON, r: 0, k: 0 }));
+    // Scratch for update()'s own projections. draw() reads the results and
+    // writes nothing: the video renderer's workers replay update() alone to
+    // reach a frame, so a field touched during a paint would desync a segment.
+    this.scratch = { cx: 0, cy: 0, r: 0, k: 0, u: 0 };
+  }
+
+  /**
+   * How long until the next event on one of the seeded schedules. AUTO draws from
+   * the rng exactly as the shipped preset does — which is why an untouched lab
+   * instance is not merely similar to it but identical. OFF parks the schedule
+   * past any song, so nothing fires and nothing is drawn from the stream either.
+   */
+  nextHold(rng, holds, every) {
+    if (every === PIPE_OFF) return Number.MAX_SAFE_INTEGER;
+    return every > 0 ? every : rng.pick(holds);
+  }
+
+  applyScheme() {
+    const t = smooth(clamp(this.schemeBlend));
+    for (const key of PIPE_SCHEME_KEYS) {
+      this.scheme[key] = mixHex(this.schemeFrom[key], this.schemeTo[key], t);
+    }
+    this.palette[0] = this.scheme.lip;
+    this.palette[1] = this.scheme.light;
+    this.palette[2] = this.scheme.sun;
+    this.palette[3] = this.scheme.dark;
+    // The ring and sphere tints come off a QUANTISED blend rather than the live
+    // one: these are the only colours that reach glowSprite's baked-canvas cache.
+    const q = Math.round(t * PIPE_TINT_STEPS) / PIPE_TINT_STEPS;
+    const sun = mixHex(this.schemeFrom.sun, this.schemeTo.sun, q);
+    const lip = mixHex(this.schemeFrom.lip, this.schemeTo.lip, q);
+    this.tints[0] = sun;
+    this.tints[1] = mixHex(sun, '#ffffff', 0.45);
+    this.tints[2] = lip;
+    this.tints[3] = mixHex(lip, '#ffffff', 0.45);
+    // The contrast pair walks alongside on the same blend, so it never steps.
+    this.tints[4] = mixHex(this.altFrom.sun, this.altTo.sun, q);
+    this.tints[5] = mixHex(this.altFrom.lip, this.altTo.lip, q);
+  }
+
+  /**
+   * Take a changed knob while the picture is running. Pools grow and shrink in
+   * place rather than being rebuilt, so turning the ring count up does not
+   * restart the ones already on their way down the pipe — the desk is meant to be
+   * played with while the song is going, and a rebuild on every click would be a
+   * strobe. The schedules are re-armed from the CURRENT phrase beat, so a change
+   * lands within a bar instead of whenever the old hold happened to run out.
+   */
+  applyTune(next) {
+    const before = this.tune;
+    this.tune = { ...this.tune, ...(next || null) };
+    this.resizePool(this.groups, this.tune.rings, () => {
+      const group = {
+        u: this.pipeRng.float(), kind: 0, count: 0, span: 0, centre: 0, spin: 0, spinRate: 0,
+        tint: 0, stride: 0, wind: 0,
+        sx: new Array(PIPE_PER_GROUP).fill(CX),
+        sy: new Array(PIPE_PER_GROUP).fill(PIPE_HORIZON),
+        ss: new Array(PIPE_PER_GROUP).fill(0),
+      };
+      this.seedGroup(group);
+      return group;
+    });
+    this.resizePool(this.motes, this.tune.streaks, () => {
+      const mote = { u: 0, theta: 0, rho: 0, speed: 1, hue: 0, x: 0, y: 0, px: 0, py: 0, k: 0 };
+      this.seedMote(mote);
+      mote.u = this.pipeRng.float();
+      return mote;
+    });
+    if (this.tune.turnEvery !== before.turnEvery) {
+      this.bankNextBeat = this.phraseBeat + this.nextHold(this.bankRng, PIPE_BANK_HOLDS, this.tune.turnEvery);
+    }
+    if (this.tune.colourEvery !== before.colourEvery) {
+      this.schemeNextBeat = this.phraseBeat + this.nextHold(this.schemeRng, PIPE_SCHEME_HOLDS, this.tune.colourEvery);
+    }
+    if (this.tune.screwEvery !== before.screwEvery) {
+      this.spiralNextBeat = this.phraseBeat + this.nextHold(this.spiralRng, PIPE_SPIRAL_HOLDS, this.tune.screwEvery);
+    }
+    return this.tune;
+  }
+
+  resizePool(pool, count, make) {
+    const want = Math.max(0, Math.round(count));
+    while (pool.length > want) pool.pop();
+    while (pool.length < want) pool.push(make());
+  }
+
+  seedGroup(group) {
+    group.spin = this.pipeRng.float() * TAU;
+    group.spinRate = this.pipeRng.range(3.4, 6.2);
+    group.stride = 0;
+    group.wind = 0;
+    group.kind = this.pipeRng.chance(0.5) ? 0 : 1;
+    group.count = this.pipeRng.int(3, 5);
+    group.span = 0.24;
+    group.centre = this.pipeRng.range(-0.3, 0.3);
+    if (this.trailMode) {
+      // One trail winding around the barrel, laid back down the pipe. This is
+      // the thing the roll is following, so it wants to be most of what is on
+      // screen; the short clusters are there to keep the field from reading as
+      // a single rigid helix and nothing else.
+      group.kind = 0;
+      if (this.pipeRng.chance(0.72)) {
+        group.count = this.pipeRng.int(10, 14);
+        group.span = 0;
+        group.stride = PIPE_TRAIL_STRIDE;
+        group.wind = this.spiralDir * PIPE_TRAIL_WIND;
+        group.centre = this.pipeRng.range(-0.4, 0.4);
+      } else {
+        group.count = this.pipeRng.int(2, 3);
+        group.span = 0.3;
+        group.centre = this.pipeRng.range(-1, 1);
+      }
+      group.tint = this.pipeRng.int(0, 3);
+      return;
+    }
+    // Weighted rather than uniform: the complete hoop is the rarest formation in
+    // the set. It is the biggest thing the field ever does, and one every dozen
+    // groups reads as a set piece where one in six read as wallpaper.
+    const roll = this.pipeRng.float();
+    if (roll < 0.08) {
+      // A complete circle all the way round the barrel — the hoop you fly
+      // through rather than a row you fly past. Evenly spaced over a whole turn,
+      // so the last slot sits one gap from the first and the circle closes.
+      group.kind = 0;
+      group.count = PIPE_PER_GROUP;
+      group.span = TAU / PIPE_PER_GROUP;
+      group.centre = 0;
+    } else if (roll < 0.34) {
+      // A swarm of orbs down in the trough, thrown wide as it reaches the lens.
+      group.kind = 1;
+      group.count = this.pipeRng.int(9, 13);
+      group.span = this.pipeRng.range(0.26, 0.44);
+      group.centre = this.pipeRng.range(-0.6, 0.6);
+    } else if (roll < 0.52) {
+      // Past the lip entirely, out over the open top of the pipe. Nothing is
+      // holding these up — they hang in the sky and sweep overhead as the ride
+      // reaches them, which is the one move a closed tunnel could never make.
+      group.span = 0.26;
+      group.centre = (this.pipeRng.chance(0.5) ? 1 : -1) * this.pipeRng.range(1.6, 2.6);
+    } else if (roll < 0.66) {
+      // A short trail running back down the pipe, the corkscrew's move used
+      // straight: no wind, so it reads as a lane rather than a helix.
+      group.count = this.pipeRng.int(6, 9);
+      group.span = 0;
+      group.stride = PIPE_TRAIL_STRIDE * 0.8;
+      group.centre = this.pipeRng.range(-1.1, 1.1);
+    } else if (roll < 0.8) {
+      group.span = 0.3;
+      group.centre = (this.pipeRng.chance(0.5) ? 1 : -1) * this.pipeRng.range(0.8, 1.35);
+    } else if (roll < 0.92) {
+      group.span = (this.width * 1.7) / Math.max(1, group.count - 1);
+      group.centre = 0;
+    }
+    // Orbs favour the contrast pair; rings stay on the scheme's own metal.
+    group.tint = group.kind === 1 && this.pipeRng.chance(0.6)
+      ? 4 + this.pipeRng.int(0, 1)
+      : this.pipeRng.int(0, 3);
+  }
+
+  seedMote(m) {
+    m.u = 0.004;
+    // Weighted into the open arc above the lip rather than spread evenly round
+    // the barrel: an even spread puts half the pool behind the checker, where the
+    // surface paints straight over it and the work buys nothing. The quarter that
+    // still goes anywhere is what keeps some of them emerging from behind the
+    // wall instead of every one hanging in clear air.
+    m.theta = this.pipeRng.chance(0.76)
+      ? (this.pipeRng.chance(0.5) ? 1 : -1) * this.pipeRng.range(this.width + 0.06, Math.PI)
+      : this.pipeRng.range(-Math.PI, Math.PI);
+    m.rho = PIPE_R * this.pipeRng.range(1.05, 2.9);
+    m.speed = this.pipeRng.range(0.55, 1.35);
+    m.hue = this.pipeRng.float();
+    m.k = 0;
+  }
+
+  drawMotes(ctx) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const m of this.motes) {
+      if (m.k <= 0) continue;
+      // The outer motes spend most of their run far outside the frame; skipping
+      // them is most of what this pool costs.
+      if (m.x < -40 || m.x > W + 40 || m.y < -40 || m.y > H + 40) continue;
+      const a = clamp(m.u * 5) * (0.16 + m.k * 2.4) * (0.5 + this.treble * 0.7);
+      if (a < 0.012) continue;
+      const tint = this.tints[Math.floor(m.hue * this.tints.length) % this.tints.length];
+      // Most of them streak; only the far ones are still points. The streak is
+      // the frame's own travel, so it lengthens as they come at you rather than
+      // being drawn at some invented length.
+      if (m.k > 0.05) {
+        ctx.strokeStyle = rgba(tint, a);
+        ctx.lineWidth = 0.4 + m.k * 2.2;
+        ctx.beginPath(); ctx.moveTo(m.px, m.py); ctx.lineTo(m.x, m.y); ctx.stroke();
+      } else {
+        ctx.fillStyle = rgba(tint, a);
+        ctx.fillRect(m.x - 0.5, m.y - 0.5, 1.1, 1.1);
+      }
+    }
+    ctx.restore();
+  }
+
+  // Where a constant-depth ring of the pipe lands on screen: a circle of radius
+  // R*k, its centre carrying both the track's lateral bend and the bank.
+  // u is deliberately not clamped to 1. The nearest boundary runs slightly past
+  // the lens so the trough always exits below the frame; clamped, it would bob
+  // between y=257 and y=272 as the rows recycled and flash a strip of sky along
+  // the bottom of the screen once per row.
+  rowAt(u, out) {
+    const k = Math.pow(Math.max(0, u), PIPE_DEPTH_POW) * PIPE_K_MAX;
+    // Read off the frame's cached pair. rowAt is called a few hundred times a
+    // frame once the trails and the sky motes are in, and the roll cannot change
+    // between those calls.
+    const c = this.rollCos; const s = this.rollSin;
+    // max(0, ...) is load-bearing, not defensive: the nearest boundary sits past
+    // the lens with k > K_MAX, and a fractional power of a negative base is NaN.
+    const ox = this.curve * PIPE_BEND * this.tune.turnAmount * Math.pow(Math.max(0, 1 - k / PIPE_K_MAX), PIPE_BEND_POW);
+    const oy = (PIPE_CAM_H - PIPE_R) * k;
+    out.cx = CX + ox * c - oy * s;
+    out.cy = PIPE_HORIZON + ox * s + oy * c;
+    out.r = PIPE_R * k;
+    out.k = k;
+    out.u = u;
+    return out;
+  }
+
+  // Screen angle of a point at tube angle `theta`. theta 0 is the trough, which
+  // sits directly below the row centre; positive theta climbs the right wall.
+  phi(theta) { return Math.PI / 2 - theta + this.roll; }
+
+  update(dt, a) {
+    super.update(dt, a);
+    const step = Math.max(0, dt);
+    const advance = this.beat - this.prevBeat;
+    // Tempo measured off the beat clock rather than taken from track.bpm, so the
+    // ride still keeps time when the analysis is driving the beat.
+    if (step > 0 && advance > 0 && advance < 4) {
+      this.beatRate += (clamp(advance / step, 0.6, 6) - this.beatRate) * clamp(step * 2.5, 0, 1);
+    }
+    // A song loop hands back a beat count that jumps backwards; a big forward
+    // jump is the same event seen from the other side. Neither is a phrase.
+    if (advance > 0 && advance < 8) this.phraseBeat += advance;
+    while (this.phraseBeat >= this.bankNextBeat) {
+      this.bankNextBeat += this.nextHold(this.bankRng, PIPE_BANK_HOLDS, this.tune.turnEvery);
+      // Roughly a third of the phrases straighten out. A track that is always
+      // turning reads as a wobble; the straights are what sell the corners.
+      this.bankTarget = this.bankRng.chance(0.3)
+        ? 0
+        : (this.bankRng.chance(0.5) ? 1 : -1) * this.bankRng.range(0.36, 1);
+    }
+    while (this.phraseBeat >= this.schemeNextBeat) {
+      this.schemeNextBeat += this.nextHold(this.schemeRng, PIPE_SCHEME_HOLDS, this.tune.colourEvery);
+      // Departs from wherever the walk currently IS, not from the last scheme's
+      // endpoint, so a hold that lands mid-blend still leaves without a snap.
+      this.schemeFrom = { ...this.scheme };
+      this.altFrom = { sun: this.tints[4], lip: this.tints[5] };
+      this.schemeIndex = (this.schemeIndex + 1 + this.schemeRng.int(0, PIPE_SCHEMES.length - 2)) % PIPE_SCHEMES.length;
+      this.schemeTo = PIPE_SCHEMES[this.schemeIndex];
+      this.altIndex = (this.schemeIndex + 3) % PIPE_SCHEMES.length;
+      this.altTo = PIPE_SCHEMES[this.altIndex];
+      this.schemeBlend = 0;
+    }
+    this.schemeBlend = Math.min(1, this.schemeBlend + step * PIPE_SCHEME_EASE);
+    this.applyScheme();
+
+    const ease = clamp(step * PIPE_BANK_EASE, 0, 1);
+    // The horizon roll and the track's lateral bend ease on the same clock and
+    // to the same signed target. If they disagree the picture reads as a camera
+    // tilting rather than as a pipe turning, which is the whole illusion.
+    this.curve += (this.bankTarget - this.curve) * ease;
+    this.bankRoll += (this.bankTarget * PIPE_ROLL_MAX * this.tune.turnAmount - this.bankRoll) * ease;
+
+    if (!this.spiralActive && this.phraseBeat >= this.spiralNextBeat) {
+      this.spiralActive = true;
+      this.spiralBeat = 0;
+      this.spirals++;
+      this.spiralDir = this.spiralRng.chance(0.5) ? 1 : -1;
+      this.spiralFrom = this.spiral;
+      this.spiralTo = this.spiral + this.spiralDir * TAU;
+      // Formations laid from here on are single winding trails. Groups recycle
+      // every three beats or so at this speed, so the trail assembles itself
+      // over the first bar of the roll rather than snapping into place.
+      this.trailMode = true;
+      this.spiralNextBeat = this.phraseBeat + PIPE_SPIRAL_BEATS
+        + this.nextHold(this.spiralRng, PIPE_SPIRAL_HOLDS, this.tune.screwEvery);
+    }
+    if (this.spiralActive) {
+      if (advance > 0 && advance < 8) this.spiralBeat += advance;
+      const p = clamp(this.spiralBeat / PIPE_SPIRAL_BEATS);
+      // Eased in and out, so the barrel does not start and stop dead. A full TAU
+      // means the roll lands exactly where it started and the scene is none the
+      // wiser — which is why this can accumulate forever without drifting.
+      this.spiral = this.spiralFrom + (this.spiralTo - this.spiralFrom) * smooth(p);
+      if (p >= 1) { this.spiral = this.spiralTo; this.spiralActive = false; this.trailMode = false; }
+    }
+    // The horizon orb breathes on the half-bar, not the beat. On the beat it
+    // competes with the rings and the gates, which are already there; at half
+    // the rate it reads as the thing the whole ride is heading toward rather
+    // than as one more flashing light. Same kit weighting as `pulse`, so a
+    // section with the drums arranged out swells rather than throbs.
+    const halfPhase = (((this.beat * 0.5) % 1) + 1) % 1;
+    this.halfPulse = Math.pow(1 - halfPhase, 4) * (PULSE_FLOOR + (1 - PULSE_FLOOR) * this.groove);
+    this.helix += ((this.spiralActive ? PIPE_HELIX : 0) - this.helix) * clamp(step * PIPE_HELIX_EASE, 0, 1);
+    this.roll = this.bankRoll + this.spiral;
+    this.rollCos = Math.cos(this.roll);
+    this.rollSin = Math.sin(this.roll);
+
+    this.width += (this.tune.width - this.width) * clamp(step * PIPE_WIDTH_EASE, 0, 1);
+    this.rowRate = this.beatRate * this.tune.speed * this.motion;
+    const travel = step * this.rowRate;
+    this.scroll += travel;
+    const du = travel / PIPE_ROWS;
+
+    const frac = this.scroll - Math.floor(this.scroll);
+    for (let b = 0; b <= PIPE_TOTAL; b++) this.rowAt((b + frac) / PIPE_ROWS, this.rows[b]);
+    // Every cell fades into the horizon haze rather than fading to transparent:
+    // the sky behind is a gradient, and an alpha ramp would let it show through
+    // the dark squares and wash the checker out from underneath.
+    for (let i = 0; i < PIPE_TOTAL; i++) {
+      const lit = clamp(0.08 + this.rows[i + 1].u * 1.2);
+      this.cellDark[i] = mixHex(this.scheme.haze, this.scheme.dark, lit);
+      this.cellLight[i] = mixHex(this.scheme.haze, this.scheme.light, lit);
+    }
+    // Parity is carried in TRACK space, not screen space. Keyed off the screen
+    // row it would flip every square at once each time a row recycled, which
+    // strobes instead of scrolling.
+    this.parityBase = ((-Math.floor(this.scroll) % 2) + 2) % 2;
+
+    for (const g of this.groups) {
+      g.u += du;
+      g.spin += step * g.spinRate * this.motion;
+      // Past the lens, not past the frame edge: a group at u = 1 is still on
+      // screen down in the trough, so recycling there would pop it out in view.
+      let guard = 0;
+      while (g.u > PIPE_PAST_LENS && guard++ < 4) { g.u -= PIPE_PAST_LENS; this.seedGroup(g); }
+      for (let j = 0; j < g.count; j++) {
+        // A formation with a stride lays its members back DOWN the pipe instead
+        // of across it, one behind the next, so a single group is a whole trail
+        // receding to the horizon rather than a row rushing at you.
+        const uj = g.u - j * g.stride;
+        if (uj <= 0.002) { g.ss[j] = 0; continue; }
+        const row = this.rowAt(uj, this.scratch);
+        // `+ spiral` is what makes a corkscrew read as FOLLOWING the rings: the
+        // camera roll and the ring angle advance by the same amount, so the trail
+        // holds its place in frame while the barrel turns underneath it. Between
+        // corkscrews spiral is a whole multiple of TAU, so this term vanishes.
+        // `wind` is the trail's own twist around the barrel; `helix` is the
+        // depth wind the corkscrew adds to everything else while it runs.
+        const theta = g.centre + (j - (g.count - 1) / 2) * g.span + g.wind * j
+          + this.spiral + this.spiralDir * (1 - uj) * this.helix;
+        const angle = this.phi(theta);
+        const rho = (PIPE_R - PIPE_OBJ_LIFT) * row.k;
+        g.sx[j] = row.cx + Math.cos(angle) * rho;
+        g.sy[j] = row.cy + Math.sin(angle) * rho;
+        g.ss[j] = PIPE_OBJ_SIZE * row.k;
+      }
+    }
+
+    for (const m of this.motes) {
+      m.u += du * m.speed;
+      if (m.u > PIPE_PAST_LENS) this.seedMote(m);
+      const row = this.rowAt(m.u, this.scratch);
+      const angle = this.phi(m.theta);
+      m.px = m.x; m.py = m.y;
+      m.x = row.cx + Math.cos(angle) * m.rho * row.k;
+      m.y = row.cy + Math.sin(angle) * m.rho * row.k;
+      m.k = row.k;
+      // A freshly seeded mote has no previous position; without this it draws a
+      // streak all the way from wherever the last one died.
+      if (m.u <= 0.005) { m.px = m.x; m.py = m.y; }
+      const dx = m.x - m.px; const dy = m.y - m.py;
+      const len = Math.hypot(dx, dy);
+      if (len > PIPE_MOTE_STREAK) {
+        const f = PIPE_MOTE_STREAK / len;
+        m.px = m.x - dx * f;
+        m.py = m.y - dy * f;
+      }
+    }
+
+    // Gates land on the bar line, and only where the kit is actually playing —
+    // the same rule the nebula detonates on, for the same reason.
+    const crossed = Math.floor(this.beat) !== Math.floor(this.prevBeat);
+    const slot = ((Math.floor(this.beat) % 4) + 4) % 4;
+    if (crossed && slot === 0 && !this.drumless && this.groove > 0.3) {
+      const free = this.gates.find((gate) => gate.u <= 0);
+      if (free) { free.u = 0.0001; free.punch = 0.5 + this.bass * 0.6; }
+    }
+    for (const gate of this.gates) {
+      if (gate.u <= 0) continue;
+      gate.u += du;
+      gate.punch = Math.max(0, gate.punch - step * 1.4);
+      if (gate.u > PIPE_PAST_LENS) { gate.u = 0; continue; }
+      const row = this.rowAt(gate.u, this.scratch);
+      gate.cx = row.cx; gate.cy = row.cy; gate.k = row.k;
+      gate.r = Math.max(0, (PIPE_R - 12) * row.k);
+    }
+  }
+
+  pipeArc(ctx, row, fromTheta, toTheta) {
+    ctx.arc(row.cx, row.cy, Math.max(0, row.r), this.phi(fromTheta), this.phi(toTheta), true);
+  }
+
+  drawPipe(ctx) {
+    const edge = this.width;
+    const cols = Math.max(2, Math.round(this.tune.columns));
+    const stepTheta = (edge * 2) / cols;
+    for (let i = 0; i < PIPE_TOTAL; i++) {
+      const far = this.rows[i]; const near = this.rows[i + 1];
+      // One strip for the dark half of the checker, then only the light squares
+      // on top. Half the fills of a cell-by-cell mesh, and same-coloured
+      // neighbours never meet at a seam because they are one path.
+      ctx.beginPath();
+      this.pipeArc(ctx, far, -edge, edge);
+      ctx.arc(near.cx, near.cy, Math.max(0, near.r), this.phi(edge), this.phi(-edge), false);
+      ctx.closePath();
+      ctx.fillStyle = this.cellDark[i];
+      ctx.fill();
+      ctx.fillStyle = this.cellLight[i];
+      for (let c = (i + this.parityBase) & 1; c < cols; c += 2) {
+        const t0 = -edge + c * stepTheta;
+        const t1 = t0 + stepTheta;
+        ctx.beginPath();
+        this.pipeArc(ctx, far, t0, t1);
+        ctx.arc(near.cx, near.cy, Math.max(0, near.r), this.phi(t1), this.phi(t0), false);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
+  // The wall doubles as the equalizer: each column of the checker is a wedge
+  // running away to the vanishing point, lit by its own band of the spectrum.
+  drawSpectrum(ctx) {
+    const edge = this.width;
+    const cols = Math.max(2, Math.round(this.tune.columns));
+    const stepTheta = (edge * 2) / cols;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let c = 0; c < cols; c++) {
+      const v = this.spectrumValue(this.analysis, c, cols);
+      if (v < 0.06) continue;
+      const a0 = this.phi(-edge + c * stepTheta);
+      const a1 = this.phi(-edge + (c + 1) * stepTheta);
+      ctx.beginPath();
+      for (let b = 0; b <= PIPE_TOTAL; b++) {
+        const row = this.rows[b];
+        const x = row.cx + Math.cos(a0) * row.r;
+        const y = row.cy + Math.sin(a0) * row.r;
+        if (b === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      for (let b = PIPE_TOTAL; b >= 0; b--) {
+        const row = this.rows[b];
+        ctx.lineTo(row.cx + Math.cos(a1) * row.r, row.cy + Math.sin(a1) * row.r);
+      }
+      ctx.closePath();
+      ctx.fillStyle = rgba(this.scheme.lip, 0.04 + v * (0.16 + this.pulse * 0.12));
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  drawLip(ctx) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineWidth = 1.1;
+    for (const side of [-this.width, this.width]) {
+      const angle = this.phi(side);
+      const cos = Math.cos(angle); const sin = Math.sin(angle);
+      ctx.beginPath();
+      for (let b = 0; b <= PIPE_TOTAL; b++) {
+        const row = this.rows[b];
+        const x = row.cx + cos * row.r;
+        const y = row.cy + sin * row.r;
+        if (b === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = rgba(this.scheme.lip, 0.3 + this.mid * 0.3);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // The vanishing point is where every new row of the checker is born, at full
+  // contrast, one row at a time — the one place the scroll can be caught in the
+  // act. So the horizon gets a light source sitting on it: a source-over veil in
+  // the haze colour that the rows genuinely emerge FROM, and an additive orb on
+  // top of that which swells on the beat. Everything that spawns at the horizon
+  // is drawn under it and fades in over its first sixth of the ride, so nothing
+  // is ever seen to pop into existence.
+  drawHorizonOrb(ctx) {
+    // Sits on the FAR ROW's centre, not on the frame's. As the track bends, the
+    // point the rows converge on swings out to the side by as much as the bend
+    // allows; an orb pinned to the middle of the screen would drift off the seam
+    // it exists to cover exactly when the turn is at its hardest.
+    const seam = this.rows[0];
+    const swell = this.halfPulse * 0.6 + this.bass * 0.18;
+    const r = 17 + this.bass * 7 + swell * 12;
+    // The veil's job is to hide the seam where each new row is born; the light
+    // on top of it is what makes the horizon somewhere to be heading.
+    const veil = ctx.createRadialGradient(seam.cx, seam.cy, 0, seam.cx, seam.cy, r * 3.4);
+    veil.addColorStop(0, rgba(this.scheme.haze, 0.96));
+    veil.addColorStop(0.36, rgba(this.scheme.haze, 0.66));
+    veil.addColorStop(1, rgba(this.scheme.haze, 0));
+    ctx.fillStyle = veil;
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const core = ctx.createRadialGradient(seam.cx, seam.cy, 0, seam.cx, seam.cy, r);
+    core.addColorStop(0, rgba('#ffffff', 0.3 + swell * 0.26));
+    core.addColorStop(0.28, rgba(this.scheme.sun, 0.24 + swell * 0.18));
+    core.addColorStop(0.7, rgba(this.scheme.lip, 0.09));
+    core.addColorStop(1, rgba(this.scheme.lip, 0));
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(seam.cx, seam.cy, r, 0, TAU); ctx.fill();
+    this.glowDot(ctx, seam.cx, seam.cy, r * 2.4, this.scheme.sun, 0.06 + swell * 0.09);
+    ctx.restore();
+  }
+
+  drawGates(ctx) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const gate of this.gates) {
+      if (gate.u <= 0) continue;
+      ctx.lineWidth = 0.9 + gate.k * (2.2 + gate.punch * 3);
+      // Fades up out of the horizon orb rather than appearing on top of it.
+      ctx.strokeStyle = rgba(gate.punch > 0.05 ? '#ffffff' : this.scheme.sun,
+        (0.16 + gate.punch * 0.6) * (1 - gate.u * 0.35) * clamp(gate.u * 6));
+      ctx.beginPath();
+      ctx.arc(gate.cx, gate.cy, gate.r, this.phi(-this.width), this.phi(this.width), true);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawObjects(ctx) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const g of this.groups) {
+      const tint = this.tints[g.tint];
+      const bright = (0.34 + this.pulse * 0.4 + this.hit * 0.26) * clamp(g.u * 6);
+      for (let j = 0; j < g.count; j++) {
+        const size = g.ss[j];
+        if (size < 0.4) continue;
+        const x = g.sx[j]; const y = g.sy[j];
+        if (g.kind === 0) {
+          // Rings spin edge-on and back, the way the ones they are quoting do.
+          const face = Math.abs(Math.cos(g.spin + j * 0.7));
+          ctx.lineWidth = Math.max(0.5, size * 0.3);
+          ctx.strokeStyle = rgba(tint, bright);
+          ctx.beginPath();
+          ctx.ellipse(x, y, Math.max(0.4, size * (0.16 + face * 0.84)), size, this.roll, 0, TAU);
+          ctx.stroke();
+          if (size > 6) {
+            ctx.strokeStyle = rgba('#ffffff', bright * 0.45);
+            ctx.lineWidth = Math.max(0.4, size * 0.11);
+            ctx.stroke();
+          }
+        } else {
+          const sprite = glowSprite(tint, size * 2.2);
+          if (sprite) {
+            const d = size * 2.4;
+            ctx.globalAlpha = clamp(bright * 1.3) * this.frameAlpha;
+            ctx.drawImage(sprite.canvas, x - d / 2, y - d / 2, d, d);
+            ctx.globalAlpha = this.frameAlpha;
+          } else {
+            this.glowDot(ctx, x, y, size * 1.2, tint, bright);
+          }
+          ctx.fillStyle = rgba('#ffffff', bright * 0.5);
+          ctx.beginPath();
+          ctx.arc(x, y, Math.max(0.4, size * 0.3), 0, TAU);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  draw(ctx) {
+    this.backdrop(ctx, this.scheme.sky, this.scheme.haze);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    this.glowDot(ctx, CX, PIPE_HORIZON - 6, 66 + this.bass * 34, this.scheme.sun, 0.2 + this.bass * 0.16);
+    // Painted through the roll, about the vanishing point the pipe banks around.
+    // A level haze band under a leaning pipe reads as the camera tilting rather
+    // than as the track turning, which is the entire illusion.
+    ctx.translate(CX, PIPE_HORIZON);
+    ctx.rotate(this.roll);
+    const haze = ctx.createLinearGradient(0, -26, 0, 18);
+    haze.addColorStop(0, rgba(this.scheme.lip, 0));
+    haze.addColorStop(0.5, rgba(this.scheme.lip, 0.1 + this.mid * 0.1));
+    haze.addColorStop(1, rgba(this.scheme.lip, 0));
+    ctx.fillStyle = haze;
+    ctx.fillRect(-W, -26, W * 2, 44);
+    ctx.restore();
+    // Sky motes go under the pipe: they belong to the air above the lip, and the
+    // near rows cover the lower frame anyway.
+    this.drawDust(ctx, 0.4);
+    this.drawMotes(ctx);
+    this.drawPipe(ctx);
+    this.drawSpectrum(ctx);
+    this.drawLip(ctx);
+    this.drawHorizonOrb(ctx);
+    this.drawGates(ctx);
+    this.drawObjects(ctx);
+    this.modernFinish(ctx, 0.24);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // VJ MEGAMIX — the pack playing itself.
 //
@@ -4391,9 +5249,20 @@ class VjMegamix extends BaseVisualizer {
   }
 }
 
+/**
+ * The half-pipe with its constants exposed. Deliberately NOT a member of
+ * VISUALIZER_NAMES: the pack is what the game deals and what the mixer plays, and
+ * a preset whose picture depends on where somebody left ten sliders is neither.
+ * It is reached only from the desk's own Visualiser panel, which is where the
+ * sliders are — the same line the gallery's bake-off sections hold.
+ */
+export function createHalfPipeLab(seed, track, tune) {
+  return new HalfPipeHorizon(seed >>> 0, track, tune);
+}
+
 export function createVisualizer(name, seed, track) {
   const index = typeof name === 'number' ? name : VISUALIZER_NAMES.indexOf(name);
-  const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm, EmeraldCodeRain, AcidJuliaDive, HyperVectorTunnel, NebulaRibbonDrift, GlassBlobEqualizer, VjMegamix];
+  const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm, EmeraldCodeRain, AcidJuliaDive, HyperVectorTunnel, NebulaRibbonDrift, GlassBlobEqualizer, HalfPipeHorizon, VjMegamix];
   const Ctor = constructors[Math.max(0, index) % constructors.length];
   return new Ctor(seed >>> 0, track);
 }

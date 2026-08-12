@@ -60,6 +60,17 @@ const suites = [
   // The note semantics under the piano roll: what a cell becomes when it is drawn,
   // which is the difference between a bad pixel and a bank that throws.
   'tests/piano-roll.js',
+  // Musical note processors are nondestructive and shared by live game playback and
+  // offline export. Keep their ordering and duration arithmetic browserless and exact.
+  'tests/note-fx.js',
+  // Freeze is a ranged render: sparse tracks walk only their active bars, while Note
+  // FX and written gates can extend the end into what will actually sound.
+  'tests/freeze-span.js',
+  'tests/mash-freeze.js',
+  // The audio-routing half of Note FX's neighbours: a bar-only effect keeps its tail
+  // after the next bar switches back to direct, while frozen PCM replaces source notes
+  // before the live fader. Measured in Chromium because both claims are about samples.
+  'tests/song-processing.js',
   // The fourth caller of the one-note seam: a note PLAYED into a song rather than
   // drawn into one. Same note semantics as the roll — deliberately, it imports them —
   // so what this pins is the half the roll never needed: a heard position rounded to a
@@ -219,6 +230,7 @@ const browserSuites = new Set([
   'tests/voices.js',
   'tests/null-test.js',
   'tests/new-effects.js',
+  'tests/song-processing.js',
 ]);
 
 // A browser suite renamed out of the list above would quietly rejoin the fast gate and
@@ -251,6 +263,7 @@ const soundSuites = [
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js',
   'tests/song-copies.js', 'tests/song-alternates.js',
   'tests/arrangement.js', 'tests/swing.js', 'tests/piano-roll.js', 'tests/note-recorder.js',
+  'tests/song-processing.js',
   'tests/preview.js', 'tests/key-mode.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
   'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js',
   'tests/synth-full-layout.js', 'tests/synth-graphs.js', 'tests/pot-coverage.js',

@@ -901,6 +901,40 @@ try {
     'a mono MRDR-3 choking itself never gets louder than one note of it'
     + ` (${overlap.toFixed(5)} against ${alone.toFixed(5)})`);
 
+  // A LEGATO handoff owns the gate until the note currently sounding ends. Classic Mono
+  // is deliberately made from THROUGH layers under one global VCA: those layers have a
+  // tiny anti-click gate, and retaining its first scheduled close made this exact phrase
+  // release at the end of note one even though note two was still active.
+  const legatoVoice = structuredClone(VOICES.bestClassicMono);
+  legatoVoice.mono = false;
+  legatoVoice.mode = 'legato';
+  const legatoBank = {
+    bpm: 120,
+    lead: Array.from({ length: 32 }, (_, i) => (i === 0 ? 220 : i === 4 ? 330 : null)),
+    leadLen: Array.from({ length: 32 }, (_, i) => (i === 0 ? 10 : i === 4 ? 24 : null)),
+  };
+  const renderLegato = async (bank) => (await renderer.render(bank, {
+    repeat: 1, mix: { voiceParams: { leadVoice: legatoVoice } }, trackId: 'legato-gate',
+  })).outL;
+  const legatoOut = await renderLegato(legatoBank);
+  const firstOnlyOut = await renderLegato({
+    ...legatoBank,
+    lead: legatoBank.lead.map((f, i) => (i === 4 ? null : f)),
+    leadLen: legatoBank.leadLen.map((len, i) => (i === 4 ? null : len)),
+  });
+  const windowRms = (out, from, span = 0.15) => {
+    let sum = 0; let count = 0;
+    for (let n = Math.round(SR * from); n < Math.round(SR * (from + span)); n++) {
+      const x = out[n] || 0; sum += x * x; count++;
+    }
+    return count ? Math.sqrt(sum / count) : 0;
+  };
+  const afterFirstEnd = windowRms(legatoOut, 1.65);
+  const releasedFirst = windowRms(firstOnlyOut, 1.65);
+  assert(afterFirstEnd > 0.001 && afterFirstEnd > releasedFirst * 2,
+    'an overlapping LEGATO note remains gated after the first note would have released'
+    + ` (${afterFirstEnd.toFixed(5)} active against ${releasedFirst.toFixed(5)} released)`);
+
   // A held noise layer outlasts the short buffer, so it must not be looping it. The
   // seam is periodic at exactly 0.5s, which is what correlating the signal against
   // itself half a second later measures: 0.277 on the short buffer, 0.151 on the long.

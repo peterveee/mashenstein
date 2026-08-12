@@ -36,7 +36,10 @@ const fmtStep = (v) => {
  * whole reason this file exists is that the authored ones live elsewhere and are
  * never rewritten.
  */
-const fmtLane = (arr) => `[${Array.from({ length: 32 }, (_, i) => fmtStep(arr[i])).join(', ')}]`;
+const fmtLane = (arr) => {
+  const length = arr.length > 32 ? 64 : 32;
+  return `[${Array.from({ length }, (_, i) => fmtStep(arr[i])).join(', ')}]`;
+};
 
 const fmtOrderEntry = (e) => {
   if (typeof e === 'number') return String(e);
@@ -48,6 +51,8 @@ const fmtOrderEntry = (e) => {
   // `["clap","crash"]`, which is correct and reads like a log line.
   if (e.off && e.off.length) bits.push(`off: [${e.off.map((k) => `'${k}'`).join(', ')}]`);
   if (e.delete && e.delete.length) bits.push(`delete: [${e.delete.map((k) => `'${k}'`).join(', ')}]`);
+  if (e.noteFx && Object.keys(e.noteFx).length) bits.push(`noteFx: ${JSON.stringify(e.noteFx)}`);
+  if (e.inlineFx && Object.keys(e.inlineFx).length) bits.push(`inlineFx: ${JSON.stringify(e.inlineFx)}`);
   for (const key of ['transpose', 'offset', 'gain']) {
     const map = e[key];
     if (map == null) continue;
@@ -101,12 +106,18 @@ export function renderArrangementsFile(arrangements, path) {
     const order = entry.order || [];
     const sections = entry.sections || [];
     const bpm = entry.bpm ?? null;
+    const swing = entry.swing ?? null;
+    const loop = entry.loop ?? null;
+    const resolution = entry.resolution ?? null;
     // A song with none of the three is a song nobody arranged. Skipped rather than
     // written as an empty object, so the file holds decisions and nothing else — and a
     // tempo is a decision on its own, so `{ bpm: 104 }` is a whole entry.
-    if (!order.length && !sections.length && bpm == null) continue;
+    if (!order.length && !sections.length && bpm == null && swing == null && !loop && resolution == null) continue;
     body += `  ${JSON.stringify(id)}: {\n`;
     if (bpm != null) body += `    bpm: ${bpm},\n`;
+    if (swing != null) body += `    swing: ${round(swing)},\n`;
+    if (resolution != null) body += `    resolution: ${resolution},\n`;
+    if (loop) body += `    loop: ${JSON.stringify(loop)},\n`;
     if (order.length) {
       // Wrapped at eight entries a line: an order is read as a shape — where the
       // build-ups are, where the breakdown is — and a single 44-entry line is not a

@@ -58,6 +58,12 @@ function laneLine(key, L, indent) {
   for (const b of ['low', 'mid', 'high']) if (eq[b]) eqParts.push(`${b}: ${round(eq[b])}`);
   if (eqParts.length) parts.push(`eq: { ${eqParts.join(', ')} }`);
   if (L.effects && L.effects.length) parts.push(`effects: ${fmtEffects(L.effects)}`);
+  // Note FX are musical, nondestructive channel decisions. Keep their small nested
+  // object intact: unlike an audio effect there is no parameter-default expansion in
+  // the engine, so what the editor shows is exactly what the file should say.
+  if (L.noteFx && (L.noteFx.strum?.enabled || L.noteFx.arp?.enabled)) {
+    parts.push(`noteFx: ${JSON.stringify(L.noteFx)}`);
+  }
   return parts.length ? `${indent}${key}: { ${parts.join(', ')} },\n` : '';
 }
 
@@ -83,6 +89,9 @@ export function mixEntrySource(entry, indent = '') {
   const order = (e.order || []).filter(Boolean);
   const voice = e.voice && Object.keys(e.voice).length ? e.voice : null;
   const voiceParams = e.voiceParams && Object.keys(e.voiceParams).length ? e.voiceParams : null;
+  const labels = Object.fromEntries(Object.entries(e.labels || {})
+    .filter(([key, value]) => key && typeof value === 'string' && value.trim())
+    .map(([key, value]) => [key, value.trim()]));
 
   let body = '';
   if (e.master) body += `${i2}master: ${round(e.master)},\n`;
@@ -95,8 +104,7 @@ export function mixEntrySource(entry, indent = '') {
   if (layers.length) {
     body += `${i2}layers: [${layers
       .map((l) => `{ key: ${JSON.stringify(l.key)}, from: ${JSON.stringify(l.from)}`
-        + `${l.independent ? ', independent: true' : ''}`
-        + `${l.label ? `, label: ${JSON.stringify(l.label)}` : ''} }`)
+        + `${l.independent ? ', independent: true' : ''} }`)
       .join(', ')}],\n`;
   }
   if (off.length) body += `${i2}off: ${JSON.stringify(off)},\n`;
@@ -104,6 +112,7 @@ export function mixEntrySource(entry, indent = '') {
   // song nobody has reordered has no line here and takes the engine's order, so this
   // key appearing in a diff means someone decided the strips sit somewhere else.
   if (order.length) body += `${i2}order: ${JSON.stringify(order)},\n`;
+  if (Object.keys(labels).length) body += `${i2}labels: ${JSON.stringify(labels)},\n`;
   if (voice) body += `${i2}voice: ${JSON.stringify(voice)},\n`;
   if (voiceParams) body += `${i2}voiceParams: ${JSON.stringify(voiceParams)},\n`;
   if (e.fx) {

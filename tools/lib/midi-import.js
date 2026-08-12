@@ -404,7 +404,6 @@ const imports = HELPERS.filter((h) => new RegExp(`\\b${h}\\(`).test(body));
 // is a DOUBLE, and `deskBank` fills any section where it finds no notes with a copy of
 // the lane it came from. A layer that carries a part of its own would gain the lead's
 // notes in every section it happens to rest through.
-const nameOf = (a) => a.name.replace(/[^\x20-\x7e]/g, '').trim().slice(0, 28);
 const layers = [];
 for (const a of assignments) {
   // A drum part that struck nothing this engine has a lane for has no keys at all —
@@ -415,11 +414,6 @@ for (const a of assignments) {
       key,
       from: baseLane(key),
       independent: true,
-      // The MIDI track's own name on the strip. "recorder" is what you were looking
-      // for; "lead 3" is a thing you have to go and listen to in order to identify.
-      ...(nameOf(a) && nameOf(a) !== '(unnamed)'
-        ? { label: a.kitMap ? `${nameOf(a)} ${baseLane(key)}` : nameOf(a) }
-        : {}),
     });
   }
 }

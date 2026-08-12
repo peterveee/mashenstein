@@ -1301,7 +1301,7 @@ export function createSynthFull({
     kit.undo();
   };
 
-  function open(n = 1) {
+  function open(n = 1, { anchor = null, avoidTransport = false } = {}) {
     if (!kit.voice() || !kit.layout({ layer: 1 })) return;
     layer = Math.min(3, Math.max(1, n));
     showing = true;
@@ -1321,6 +1321,21 @@ export function createSynthFull({
     pendingFrame = requestAnimationFrame(() => {
       if (!showing) return;
       el.classList.add('show');
+      if (anchor) {
+        const ar = anchor.getBoundingClientRect();
+        const wr = el.getBoundingClientRect();
+        const gap = 10;
+        const left = ar.right + gap + wr.width <= window.innerWidth
+          ? ar.right + gap
+          : Math.max(12, ar.left - gap - wr.width);
+        const transport = avoidTransport ? document.querySelector('.transport') : null;
+        const belowTransport = transport?.getBoundingClientRect().bottom + gap || 12;
+        const top = Math.min(Math.max(belowTransport, ar.top),
+          Math.max(12, window.innerHeight - wr.height - 12));
+        el.style.left = `${Math.round(left)}px`;
+        el.style.top = `${Math.round(top)}px`;
+        el.style.transform = 'none';
+      }
       // First frame with real widths: `render` ran against a `display: none` shell, where
       // every column measures zero and no name can be fitted to one. See `fitLabels`.
       fitLabels(el);
@@ -1333,6 +1348,33 @@ export function createSynthFull({
     // whole reason every other panel here is a window too.
   }
 
+  // Advanced is a window, so its title bar is a handle. Keep controls and the preset
+  // picker interactive, but let the rest of the header move the window freely.
+  el.addEventListener('pointerdown', (ev) => {
+    if (!showing || !ev.target.closest('.sfhead')
+        || ev.target.closest('button, input, select, summary, details')) return;
+    const r = el.getBoundingClientRect();
+    const dx = ev.clientX - r.left;
+    const dy = ev.clientY - r.top;
+    el.style.left = `${r.left}px`;
+    el.style.top = `${r.top}px`;
+    el.style.transform = 'none';
+    const move = (e) => {
+      const nextLeft = Math.min(Math.max(8, e.clientX - dx), Math.max(8, innerWidth - el.offsetWidth - 8));
+      const nextTop = Math.min(Math.max(8, e.clientY - dy), Math.max(8, innerHeight - el.offsetHeight - 8));
+      el.style.left = `${nextLeft}px`;
+      el.style.top = `${nextTop}px`;
+    };
+    const stop = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', stop);
+      el.removeEventListener('pointercancel', stop);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', stop, { once: true });
+    el.addEventListener('pointercancel', stop, { once: true });
+  });
+
   function close() {
     showing = false;
     keyboard.setActive(false);
@@ -1343,6 +1385,9 @@ export function createSynthFull({
     cancelAnimationFrame(pendingFrame);
     guards.clear();
     el.classList.remove('show');
+    el.style.left = '';
+    el.style.top = '';
+    el.style.transform = '';
     el.setAttribute('aria-hidden', 'true');
     // The strip is about to be the visible one again, and it has been drawing this preset
     // as it was before the window opened — the two share the value, not the DOM. See

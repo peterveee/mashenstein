@@ -35,6 +35,8 @@
 //     off: ['crash'],                         // tracks deleted from THIS song on the
 //                                             // desk. The bank keeps its notes; the
 //                                             // lane simply is not part of this mix.
+//     labels: { bass: 'Sub Bass' },            // optional display names for tracks;
+//                                             // lane keys and playback stay unchanged
 //     fx: {                                   // the shared sends the lanes feed
 //       delay:  { division: 0.75,             // beats: 1=1/4, 0.75=dotted 1/8, 0.5=1/8...
 //                 feedback: 0.35, tone: 2800, // repeats, and their damping in Hz

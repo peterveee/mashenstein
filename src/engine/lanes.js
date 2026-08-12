@@ -4,6 +4,18 @@ import {
 } from '../data/voices.js';
 import { expandOrder, orderOf, resolveSection } from '../data/arrangements.js';
 
+/**
+ * Read one sequencer slot without rewriting legacy banks. At 32 slots per bar an
+ * authored 32-slot/two-bar lane occupies the even slots of the 64-slot clock; layer
+ * lanes written by the upgraded editor already contain all 64 slots.
+ */
+export function sequenceValue(bank, key, slot, resolution = bank?.resolution === 32 ? 32 : 16) {
+  const arr = bank?.[key];
+  if (!Array.isArray(arr)) return null;
+  if (resolution === 32 && arr.length < 64) return slot % 2 ? null : arr[slot / 2] ?? null;
+  return arr[slot] ?? null;
+}
+
 // The sequencer's lane list, in mix order.
 //
 // This used to live in tools/lib/render-bank.js, where only the offline renderer
@@ -71,10 +83,8 @@ export const validLen = (v) => Number.isFinite(v) && v > 0;
  * them on a chord lane — one per tone, aligned with the frequencies on that step —
  * or null where it says nothing and the lane's own length stands.
  */
-export function stepLen(bank, laneKey, step) {
-  const arr = bank?.[lenKey(laneKey)];
-  if (!Array.isArray(arr)) return null;
-  const at = arr[step];
+export function stepLen(bank, laneKey, step, resolution = bank?.resolution === 32 ? 32 : 16) {
+  const at = sequenceValue(bank, lenKey(laneKey), step, resolution);
   if (Array.isArray(at)) return at;
   return validLen(at) ? at : null;
 }
@@ -132,14 +142,14 @@ export function legacyLaneLength(view, laneKey, voice = voiceOf(view, laneKey)) 
   return LEGACY_LANE_DUR[base] ?? 1;
 }
 
-export function effectiveToneLength(view, laneKey, step, i = 0) {
-  return toneLen(stepLen(view, laneKey, step), legacyLaneLength(view, laneKey), i);
+export function effectiveToneLength(view, laneKey, step, i = 0, resolution = view?.resolution === 32 ? 32 : 16) {
+  return toneLen(stepLen(view, laneKey, step, resolution), legacyLaneLength(view, laneKey), i);
 }
 
-export function effectiveStepLen(view, laneKey, step) {
-  const len = stepLen(view, laneKey, step);
-  if (Array.isArray(len)) return len.map((_, i) => effectiveToneLength(view, laneKey, step, i));
-  return effectiveToneLength(view, laneKey, step, 0);
+export function effectiveStepLen(view, laneKey, step, resolution = view?.resolution === 32 ? 32 : 16) {
+  const len = stepLen(view, laneKey, step, resolution);
+  if (Array.isArray(len)) return len.map((_, i) => effectiveToneLength(view, laneKey, step, i, resolution));
+  return effectiveToneLength(view, laneKey, step, 0, resolution);
 }
 
 // Desk order: the order the channel strips appear on the mixing desk, which is not
@@ -191,11 +201,15 @@ export function layerLanes(bank) {
     const root = src.get(from) || rootOf.get(from) || src.get(baseLane(key));
     if (root) rootOf.set(key, root);
   }
-  return list.map(({ key, from, label, independent }) => {
+  return list.map(({ key, from, independent }) => {
     const base = rootOf.get(key);
     return {
       key,
-      label: label || `${base?.label || from} ${key.slice((base?.key || from).length)}`,
+      // A layer's old `label` field used to hold the source MIDI track name (and
+      // sometimes a stale preset name). Track identity is owned by the desk's
+      // `labels` map and current voice selection now, so the engine only exposes a
+      // stable lane fallback here.
+      label: `${base?.label || from} ${key.slice((base?.key || from).length)}`,
       group: base?.group || 'melodic',
       layerOf: from,
       independent: !!independent,
@@ -247,7 +261,11 @@ export function deskBank(bank, entry) {
   const layers = [];
   for (const l of entry?.layers || []) {
     if (!l || !l.key || known.has(l.key) || LANE_KEYS.includes(l.key)) continue;
-    if (!known.has(l.from) || !seamFor(l.key)) continue;
+    // An independent track uses `from` only to retain its lane family, grouping and
+    // voice seam. Its notes were snapshotted when it was created, so removing the
+    // source must not make this track fail validation and disappear with it. Legacy
+    // linked layers still require their source because their arrays genuinely alias it.
+    if ((!l.independent && !known.has(l.from)) || !seamFor(l.key)) continue;
     known.add(l.key);
     layers.push(l);
   }
@@ -344,8 +362,8 @@ export function deskBank(bank, entry) {
     if (!seam || entry?.voice?.[seam.voiceKey] || entry?.voiceParams?.[seam.voiceKey]) continue;
     if (out[seam.voiceKey] == null) out[seam.voiceKey] = DEFAULT_ADDED_PERCUSSION_VOICE;
   }
-  out.__layers = layers.map(({ key, from, independent, label }) => ({
-    key, from, ...(independent ? { independent: true } : {}), ...(label ? { label } : {}),
+  out.__layers = layers.map(({ key, from, independent }) => ({
+    key, from, ...(independent ? { independent: true } : {}),
   }));
   if (order.length) out.__order = order;
   return out;
@@ -596,8 +614,6 @@ export function activeLanes(bank, repeat = 1) {
  */
 export function laneActivity(bank, repeat = 1, cellsPerBar = 4) {
   const bars = songBars(bank, repeat);
-  // A bar is 16 sixteenths, so a beat is 4 of them.
-  const stepsPerCell = 16 / cellsPerBar;
   const cells = bars.length * cellsPerBar;
   return activeLanes(bank, repeat).map((lane) => {
     const density = new Array(cells).fill(0);
@@ -609,12 +625,19 @@ export function laneActivity(bank, repeat = 1, cellsPerBar = 4) {
       // two it is belongs to the arrangement, and the desk draws that from the plan.
       if (!arr || (bar.off && bar.off.includes(lane.key))
         || (bar.delete && bar.delete.includes(lane.key))) return;
+      // A fine arrangement stores edited/duplicated lanes at 64 slots per two-bar
+      // pattern while untouched legacy lanes can still be 32 slots. Read both through
+      // sequenceValue, the same compatibility seam the scheduler uses. Indexing every
+      // array as 16 slots per bar made a freshly duplicated fine lane display the first
+      // source bar across two destination bars — the visible "every second bar" copy.
+      const resolution = bar.b?.resolution === 32 ? 32 : 16;
+      const stepsPerCell = resolution / cellsPerBar;
       for (let c = 0; c < cellsPerBar; c++) {
         let hits = 0;
         const cell = bi * cellsPerBar + c;
-        const from = bar.half * 16 + c * stepsPerCell;
+        const from = bar.half * resolution + c * stepsPerCell;
         for (let i = from; i < from + stepsPerCell; i++) {
-          const v = arr[i];
+          const v = sequenceValue(bar.b, lane.key, i, resolution);
           // Percussion lanes are booleans, melodic ones are Hz or an array of Hz.
           if (v === true || (typeof v === 'number' && v > 0) || (Array.isArray(v) && v.length)) hits++;
           steps[cell].push(v ?? null);

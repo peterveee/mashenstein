@@ -37,7 +37,7 @@ let frameSeq = 0;
  * One frame per render, thrown away afterwards: see the note at the top of
  * tools/mixer-render-entry.js for why a second render cannot share the first's.
  */
-function renderInFrame(frameUrl, args, { onStage } = {}) {
+function renderInFrame(frameUrl, args, { onStage, signal } = {}) {
   return new Promise((resolve, reject) => {
     const id = ++frameSeq;
     const frame = document.createElement('iframe');
@@ -58,6 +58,7 @@ function renderInFrame(frameUrl, args, { onStage } = {}) {
       settled = true;
       clearTimeout(readyTimer);
       removeEventListener('message', onMessage);
+      signal?.removeEventListener('abort', onAbort);
       frame.remove();
       fn(value);
     };
@@ -82,6 +83,10 @@ function renderInFrame(frameUrl, args, { onStage } = {}) {
       if (!msg.ok) { done(reject, new Error(msg.error || 'the render failed')); return; }
       done(resolve, msg);
     }
+
+    const onAbort = () => done(reject, new DOMException('Render cancelled', 'AbortError'));
+    if (signal?.aborted) { onAbort(); return; }
+    signal?.addEventListener('abort', onAbort, { once: true });
 
     addEventListener('message', onMessage);
     frame.addEventListener('error', () => done(reject, new Error('the render frame did not load')));
@@ -113,7 +118,8 @@ function renderInFrame(frameUrl, args, { onStage } = {}) {
  */
 export async function bounceWav(bank, {
   trackId, mix, arrangement = null, repeat = 1, frameUrl,
-  seed = DEFAULT_SEED, tail = 2.0, onStage,
+  seed = DEFAULT_SEED, tail = 2.0, onStage, rawLane = false, returnPcm = false,
+  pcmOnly = false, measureOnly = false, signal, range = null,
 }) {
   // Everything below this line is resolved HERE, in the desk, for one reason: the
   // bank reaches the frame as a structured clone, so `trackIdOf` on it would find
@@ -148,10 +154,16 @@ export async function bounceWav(bank, {
   // The song's own way in and loop, against that same bar count, so the two cannot
   // disagree by a bar.
   const loop = loopSteps(loopOf(bank, trackId, table), bars);
+  const formSteps = bars * 16;
+  const rangeStart = range && Number.isFinite(range.startStep)
+    ? Math.max(0, Math.min(formSteps, range.startStep)) : null;
+  const rangeEnd = rangeStart != null && Number.isFinite(range.endStep)
+    ? Math.max(rangeStart, Math.min(formSteps, range.endStep)) : null;
+  const ranged = rangeStart != null && rangeEnd > rangeStart;
   // The way in once, then `repeat` passes of the loop — rather than `repeat` passes of
   // the whole form. A song with markers but no region falls back to the form from its
   // start bar, which is what it sounds like.
-  const steps = loop
+  const steps = ranged ? rangeEnd - rangeStart : loop
     ? (loop.loop
       ? loop.loop.start - loop.start + repeat * (loop.loop.end - loop.loop.start)
       : bars * 16 - loop.start)
@@ -162,12 +174,12 @@ export async function bounceWav(bank, {
     // that has none. Sent in step with it rather than left to disagree: an odd bar
     // count rounds up to a whole block, which is a bar of silence the walk never takes.
     bank: forFrame, blocks: Math.ceil((bars * repeat) / 2), steps,
-    tail, seed, sampleRate: SR, mix, trackId, arrangement,
-    ...(loop ? { loop } : {}),
+    tail, seed, sampleRate: SR, mix, trackId, arrangement, rawLane, measureOnly,
+    ...(ranged ? { startStep: rangeStart } : loop ? { loop } : {}),
   };
   let out;
   try {
-    out = await renderInFrame(frameUrl, args, { onStage });
+    out = await renderInFrame(frameUrl, args, { onStage, signal });
   } catch (err) {
     // The just-in-time walk states its own completeness (see renderBankPage), and a
     // browser whose `OfflineAudioContext.suspend` exists but does not run the
@@ -181,10 +193,24 @@ export async function bounceWav(bank, {
     if (!/render walk incomplete/.test(err?.message || '')) throw err;
     console.warn('[bounce] just-in-time render walk did not complete —'
       + ' retrying with the whole walk up front.', err.message);
-    out = await renderInFrame(frameUrl, { ...args, upfront: true }, { onStage });
+    out = await renderInFrame(frameUrl, { ...args, upfront: true }, { onStage, signal });
   }
 
   onStage?.('measuring', 1);
+  if (measureOnly) {
+    return {
+      seconds: out.seconds, peak: out.peak, loop, steps, sampleRate: SR,
+      renderMs: out.renderMs,
+      range: ranged ? { startStep: rangeStart, endStep: rangeEnd } : null,
+    };
+  }
+  if (pcmOnly) {
+    return {
+      seconds: out.seconds, peak: out.peak, loop, steps, sampleRate: SR,
+      range: ranged ? { startStep: rangeStart, endStep: rangeEnd } : null,
+      left: out.outL, right: out.outR,
+    };
+  }
   const m = loudness([out.outL, out.outR]);
   // At unity, NOT peak-normalised: the whole point is to hear the mix as balanced,
   // and normalising would silently undo the master trim being set.
@@ -199,5 +225,7 @@ export async function bounceWav(bank, {
     clipping: out.peak > 1,
     loop,
     steps,
+    sampleRate: SR,
+    ...(returnPcm ? { left: out.outL, right: out.outR } : {}),
   };
 }

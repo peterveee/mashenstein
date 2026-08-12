@@ -6,6 +6,14 @@ mattering.
 
 ## Ideas
 
+### Record a take from the visualiser lab
+The desk's `HALF-PIPE HORIZON — LAB` is a performance — the interesting part is
+*when* the knobs get turned, and nothing captures it. A REC button on the control
+bar, `viscanvas.captureStream(60)` for the picture and a MediaStreamDestination
+hung off `Audio.master` for the song, into a MediaRecorder and out as a download.
+About forty lines, no engine changes. Written up with the caveats and the more
+expensive offline-master alternative in docs/visualiser-recording-plan.md.
+
 ### A shorter menu-board gag for phones
 The board behind Dolores (`MENU_ROWS` in src/sprites/backwall.js) is the one
 piece of hub signage that does not survive a regular-sized phone. Everything

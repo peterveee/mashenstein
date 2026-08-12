@@ -59,6 +59,8 @@ export function laneSig(L) {
   const send = {};
   for (const id of Object.keys(AUX_DEFAULTS)) send[id] = r3(s.send[id] || 0);
   const chain = chainSig(L?.effects);
+  const noteFx = L?.noteFx && (L.noteFx.strum?.enabled || L.noteFx.arp?.enabled)
+    ? JSON.parse(JSON.stringify(L.noteFx)) : null;
   return {
     gain: r3(s.gain || 0),
     pan: r3(s.pan || 0),
@@ -67,6 +69,7 @@ export function laneSig(L) {
     send,
     eq: { low: r3(s.eq.low || 0), mid: r3(s.eq.mid || 0), high: r3(s.eq.high || 0) },
     ...(chain ? { effects: chain } : {}),
+    ...(noteFx ? { noteFx } : {}),
   };
 }
 
@@ -122,6 +125,10 @@ export function mixSignature(m) {
   if (fx) out.fx = fx;
   if (m.voice && Object.keys(m.voice).length) out.voice = { ...m.voice };
   if (m.voiceParams && Object.keys(m.voiceParams).length) out.voiceParams = JSON.parse(JSON.stringify(m.voiceParams));
+  const labels = Object.fromEntries(Object.entries(m.labels || {})
+    .filter(([key, value]) => key && typeof value === 'string' && value.trim())
+    .map(([key, value]) => [key, value.trim()]));
+  if (Object.keys(labels).length) out.labels = labels;
   // Every untouched master starts empty, and the serialiser will not write an empty
   // chain — so a master somebody merely opened is not a change, and neither is one
   // they put an effect on and took straight back off.
@@ -131,11 +138,12 @@ export function mixSignature(m) {
   // The song's SHAPE — tracks duplicated onto it, tracks taken off it. Not a balance
   // decision like everything above, but a decision the file carries, so it is compared
   // like one: a mix whose only change is a deleted crash is still a mix to save.
-  // Independent pattern lanes also keep their mode and display label; ordinary
-  // duplicate layers still reduce to key/from exactly as before.
+  // Independent pattern lanes keep their mode. The old layer label was often a MIDI
+  // track name or a stale preset name; visible identity now comes from `labels` or the
+  // current voice, so it is deliberately absent from the saved shape.
   const layers = (m.layers || []).filter((l) => l && l.key && l.from)
     .map((l) => ({ key: l.key, from: l.from,
-      ...(l.independent ? { independent: true } : {}), ...(l.label ? { label: l.label } : {}) }));
+      ...(l.independent ? { independent: true } : {}) }));
   const off = (m.off || []).filter(Boolean);
   // Where the tracks sit. Shape again rather than balance, and the same rule: the file
   // carries it, so a song whose only change is a dragged strip has something to save.
@@ -143,7 +151,7 @@ export function mixSignature(m) {
   if (layers.length) out.layers = layers;
   if (off.length) out.off = off;
   if (order.length) out.order = order;
-  if (!out.master && !out.masterPan && !out.limiter && !out.voice && !out.voiceParams && !out.masterEffects
+  if (!out.master && !out.masterPan && !out.limiter && !out.voice && !out.voiceParams && !out.labels && !out.masterEffects
       && !out.fx && !out.layers && !out.off && !out.order && !Object.keys(lanes).length) return null;
   return out;
 }

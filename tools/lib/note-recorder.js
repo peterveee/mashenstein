@@ -58,7 +58,7 @@ export function laneKind(laneKey) {
 export const restValue = (laneKey) => (laneKind(laneKey) === 'perc' ? false : null);
 
 /** Sixteen rests of the right kind — what a lane with nothing in it starts from. */
-export const emptyBar = (laneKey) => new Array(16).fill(restValue(laneKey));
+export const emptyBar = (laneKey, slots = 16) => new Array(slots).fill(restValue(laneKey));
 
 /**
  * A2 — the pitch a note gets when it arrives without one, as a drum hit does.
@@ -151,9 +151,10 @@ export const stepInBar = (step) => step % 16;
  * and the downbeat is the top. Rounding forward over an ordinary bar line needs no
  * special case at all; it simply lands in the next bar.
  *
- * Sixteenths are the onset floor and there is no finer setting to offer here: a bank
- * holds sixteen note-start steps to the bar. Melodic note lengths are a separate
- * per-note field; this recorder still quantises the held length to the same grid.
+ * `grid` is expressed in the transport's sixteenth-step unit: 4 = quarter, 2 = eighth,
+ * 1 = sixteenth and 0.5 = thirty-second. The transport deliberately keeps that unit
+ * after a song upgrades, so loop markers, arrangement offsets and old recordings do
+ * not need a second coordinate system.
  */
 export function quantiseStep(heardStep, { grid = 1, from = 0, span = 32 } = {}) {
   if (!Number.isFinite(heardStep)) return from;
@@ -206,7 +207,7 @@ export function heldLength(onStep, offStep, { grid = 1, max = Infinity, span = n
   if (held < 0 && span > 0) held += span;
   if (held < 0) return null;
   const snapped = Math.round(held / grid) * grid || grid;
-  return Math.max(1, Math.min(max, snapped));
+  return Math.max(grid, Math.min(max, snapped));
 }
 
 /** A length is a number, or one per chord tone, or nothing — so `Object.is` won't do. */
@@ -242,6 +243,7 @@ const sameLen = (a, b) => (Array.isArray(a) || Array.isArray(b)
 export function createTake({
   read,
   resizable = () => true,
+  slots = 16,
   // Does a second note on the same step of this lane STACK or REPLACE?
   //
   // Injected rather than derived, because the honest answer needs the bank: a lane can
@@ -285,7 +287,7 @@ export function createTake({
    */
   function add({ bar, lane, step, midi = null, freq = null }) {
     if (!lane || !Number.isInteger(bar) || bar < 0) return null;
-    if (!Number.isInteger(step) || step < 0 || step > 15) return null;
+    if (!Number.isInteger(step) || step < 0 || step >= slots) return null;
     const kind = laneKind(lane);
     const entry = entryFor(bar, lane);
     played += 1;

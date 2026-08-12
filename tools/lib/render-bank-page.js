@@ -70,7 +70,7 @@ function yieldToEventLoop() {
  */
 export async function renderBankPage({
   bank, blocks, steps: stepsIn, loop, tail, seed, sampleRate, mix, trackId, arrangement, warp,
-  upfront = false,
+  upfront = false, rawLane = false, startStep = null,
 }, { onProgress } = {}) {
   // The bank arrives carrying the tempo it is PLAYED at — resolved by the caller,
   // where a track id still means something, so a song the desk has retuned renders at
@@ -96,6 +96,7 @@ export async function renderBankPage({
   Audio.setCaptureEnabled(false);   // the rewind recorder is realtime-only
   Audio.setNoiseSeed(seed);
   Audio.ensure(ctx);
+  if (rawLane) Audio.setVolumes({ master: 1, music: 1, sfx: 1 });
 
   // The reverb builds its impulse response by rendering noise through its own
   // offline context. That has to finish before this render starts, or the aux is
@@ -134,7 +135,12 @@ export async function renderBankPage({
   // with it the arrangement the markers live on — did not survive the trip. Steps, not
   // bars, and already clamped: the same resolver the engine and the desk use ran in the
   // caller against the same bar count this buffer was sized from.
-  if (loop) {
+  if (Number.isFinite(startStep)) {
+    // A ranged Freeze keeps the original song coordinate while sample zero becomes
+    // the beginning of its short buffer. No loop is armed here: the requested step
+    // count is one linear visit to the active span, followed only by its release tail.
+    Audio.step = Math.max(0, startStep);
+  } else if (loop) {
     Audio.step = loop.start;
     if (loop.loop) Audio.setLoop(loop.loop.start, loop.loop.end, { jump: false });
   }
@@ -163,8 +169,9 @@ export async function renderBankPage({
   const SLICE_MS = 8;
   let sliceAt = performance.now();
   let stepAt = 0;
+  const scheduleCalls = steps * (Audio.bank?.resolution === 32 ? 2 : 1);
   const buildUntil = async (limit) => {
-    while (stepAt < steps && Audio.nextTime < limit) {
+    while (stepAt < scheduleCalls && Audio.nextTime < limit) {
       Audio.scheduleStep();
       stepAt++;
       if (performance.now() - sliceAt < SLICE_MS) continue;

@@ -125,6 +125,22 @@ export const SWING_STRAIGHT = 50;
 /** The hardest shuffle the desk will write: 3:1, the odd sixteenth halfway to the next. */
 export const SWING_MAX = 75;
 
+// Note-onset resolution is deliberately a song-level arrangement decision. Existing
+// banks and entries omit it and therefore remain the 16-step-per-bar format they have
+// always been. A desk edit that needs a 32nd onset writes `resolution: 32`; lane arrays
+// in its layer sections then contain 64 slots (two bars), with note lengths still
+// measured in the engine's long-standing sixteenth-step unit (`0.5` is a 32nd).
+export const LEGACY_RESOLUTION = 16;
+export const FINE_RESOLUTION = 32;
+
+export function resolutionOf(bank, entry = null) {
+  return entry?.resolution === FINE_RESOLUTION || bank?.resolution === FINE_RESOLUTION
+    ? FINE_RESOLUTION : LEGACY_RESOLUTION;
+}
+
+export const slotsPerBar = (bank, entry = null) => resolutionOf(bank, entry);
+export const slotStep = (bank, entry = null) => LEGACY_RESOLUTION / slotsPerBar(bank, entry);
+
 /**
  * How hard a song is played off its own grid: its arrangement's swing, else the bank's
  * own, else 50 — straight.
@@ -232,6 +248,8 @@ export function expandOrder(order, hasSections = true) {
         if (e[key] == null) continue;
         bar[key] = typeof e[key] === 'number' ? e[key] : { ...e[key] };
       }
+      if (e.noteFx && typeof e.noteFx === 'object') bar.noteFx = structuredClone(e.noteFx);
+      if (e.inlineFx && typeof e.inlineFx === 'object') bar.inlineFx = structuredClone(e.inlineFx);
       plan.push(bar);
     }
   }
@@ -297,10 +315,12 @@ export function applyArrangement(bank, id, table = ARRANGEMENTS) {
   // back the composed tempo and lose it. A swing counts on its own for exactly the
   // same reason — `{ swing: 62 }` is a song played with a shuffle it was not written
   // with, and it is the only thing many of them will ever say.
-  if (!layer.length && !order && entry.bpm == null && entry.swing == null) return bank;
+  if (!layer.length && !order && entry.bpm == null && entry.swing == null
+    && entry.resolution !== FINE_RESOLUTION) return bank;
   const out = { ...bank };
   if (entry.bpm != null) out.bpm = entry.bpm;
   if (entry.swing != null) out.swing = entry.swing;
+  if (entry.resolution === FINE_RESOLUTION) out.resolution = FINE_RESOLUTION;
   // Only when there is something to add: a bank with no sections must keep having
   // none, or `songBlocks` starts reading `sections[0]` of an empty list and every
   // block becomes the bare bank by accident rather than on purpose.
@@ -320,6 +340,10 @@ export function applyArrangement(bank, id, table = ARRANGEMENTS) {
 export function arrangementIssues(bank, entry, laneKeys = null) {
   const issues = [];
   if (!entry) return issues;
+  if (entry.resolution != null
+    && entry.resolution !== LEGACY_RESOLUTION && entry.resolution !== FINE_RESOLUTION) {
+    issues.push(`the note resolution is ${entry.resolution} — it must be 16 or 32 steps per bar`);
+  }
   const sections = [...(bank.sections || []), ...(entry.sections || [])];
   const order = entry.order || orderOf(bank);
   if (!order.length) issues.push('the order is empty — a song needs at least one bar');
@@ -388,6 +412,23 @@ export function arrangementIssues(bank, entry, laneKeys = null) {
             issues.push(`order[${i}] edits "${lane}", which is not a lane`);
           }
           if (!Number.isFinite(value)) issues.push(`order[${i}] has a non-numeric ${key}`);
+        }
+      }
+      for (const [lane, config] of Object.entries(e.noteFx || {})) {
+        if (laneKeys && !laneKeys.includes(lane)) {
+          issues.push(`order[${i}] has Note FX for "${lane}", which is not a lane`);
+        }
+        if (!config || !['inherit', 'off', 'on'].includes(config.mode)) {
+          issues.push(`order[${i}] has an invalid Note FX override for "${lane}"`);
+        }
+      }
+      for (const [lane, chain] of Object.entries(e.inlineFx || {})) {
+        if (laneKeys && !laneKeys.includes(lane)) {
+          issues.push(`order[${i}] has inline effects for "${lane}", which is not a lane`);
+        }
+        if (!Array.isArray(chain) || chain.length > 6
+          || chain.some((effect) => !effect || typeof effect.id !== 'string')) {
+          issues.push(`order[${i}] has an invalid inline effect chain for "${lane}"`);
         }
       }
     }

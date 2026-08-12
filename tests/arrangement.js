@@ -23,8 +23,9 @@ import {
   draftOf, entryOf, planToOrder, setLanesOff, setLanesDeleted, transposeBars, offsetBars,
   gainBars, panBars, copyBars, pasteBars, insertSilence, copyLaneBars, silenceBars, deleteBars,
   duplicateBars, buildUp, breakdown, forkBar, writeBarNotes, writeBarNotesShared, removeLanes,
-  copyLaneArrangement,
-  compactSections, patternStarts, barCount, setTempo, setSwing, readBarLane,
+  copyLaneArrangement, copyLaneTrack, pasteLaneTrack,
+  compactSections, patternStarts, barCount, setTempo, setSwing, setBarNoteFx, setBarEffects,
+  renderArpToNotes, readBarLane,
   DRUM_LANES,
 } from '../tools/lib/arrangement-edit.js';
 import { discardSongDraft, restoreSongDraft } from '../tools/lib/mixer-drafts.js';
@@ -160,6 +161,47 @@ assert(masked.length === 2 && masked.every((b) => json(b.off) === json(['snare',
   'a mute mask lands on every bar the entry covers');
 assert(masked[0].off !== masked[1].off,
   'and each bar gets its own copy of it — two bars sharing one array change together');
+
+// Bar Note FX belong to the bar plan, survive compaction and can be materialised as
+// ordinary fine-grid notes without changing the authored bank.
+{
+  const bank = { bpm: 120, chords: [[220, 330], null, null, null, null, null, null, null,
+    null, null, null, null, null, null, null, null,
+    null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+  };
+  let draft = draftOf(bank);
+  draft = setBarNoteFx(draft, 0, 0, 'chords', { mode: 'on',
+    arp: { enabled: true, direction: 'up', rate: 0.5, octaves: 1, gate: 80, retrigger: 'chord' } });
+  const entry = entryOf(bank, draft);
+  const expanded = expandOrder(entry.order, false);
+  assert(expanded[0].noteFx.chords.arp.rate === 0.5,
+    'a bar Note FX override survives plan compaction and expansion');
+  const rendered = renderArpToNotes(bank, draft, 0, 0, 'chords', {});
+  const notes = readBarLane(bank, rendered, 0, 'chords');
+  assert(rendered.resolution === 32 && notes[0] === 220 && notes[1] === 330,
+    'Render Arp writes ordinary 1/32 notes at the selected rate');
+  assert(rendered.plan[0].noteFx.chords.arp.enabled === false,
+    'Render Arp disables only the rendered arpeggiator to prevent double processing');
+  assert(bank.chords[0][0] === 220 && bank.chords.length === 32,
+    'Render Arp never mutates the authored song bank');
+}
+
+// An editable Bar Effects card writes the ordinary arrangement snapshot shape. Power,
+// order and exact parameters all have to survive the same compaction as the bar.
+{
+  const bank = { bpm: 120, bass: new Array(32).fill(null) };
+  const chain = [
+    { id: 'delay', params: { sync: 0, delayMs: 615, feedback: 0.42, wet: 0.8 } },
+    { id: 'filter', bypass: true, params: { type: 'highpass', frequency: 740, Q: 2.5 } },
+  ];
+  const edited = setBarEffects(draftOf(bank), 0, 0, 'bass', chain);
+  chain[0].params.delayMs = 1;
+  const expanded = expandOrder(entryOf(bank, edited).order, false);
+  assert(expanded[0].inlineFx.bass[0].params.delayMs === 615
+    && expanded[0].inlineFx.bass[1].bypass === true
+    && expanded[0].inlineFx.bass[1].params.type === 'highpass',
+  'editable Bar Effects preserve parameter values, bypass and chain order');
+}
 
 // ---- the rebuilt lane helpers answer exactly what they used to ---------------
 //
@@ -470,6 +512,51 @@ assert(silentInsert.plan[2].delete.includes('bass') && silentInsert.plan[3].dele
 const laneClip = copyLaneBars(plumber, base, 0, 1, 'bass');
 assert(laneClip.bars.length === 2 && laneClip.bars[0].length === 16,
   'track-region copy captures one instrument without copying the whole song');
+
+// A full-track clip carries the lane's resolved notes and lengths as well as its
+// lane-scoped arrangement decisions. Pasting onto a fresh key is the pure half of the
+// desk's cross-song Copy Track action; the destination does not need the source's
+// section indices or its original lane key to receive the part.
+{
+  let sourceTrack = writeBarNotes(plumber, base, 0, 'bass', new Array(16).fill(220),
+    [2, ...new Array(15).fill(null)]);
+  sourceTrack = setLanesOff(sourceTrack, 1, 1, ['bass'], true);
+  sourceTrack = transposeBars(sourceTrack, 0, 0, ['bass'], 5);
+  sourceTrack = gainBars(sourceTrack, 0, 0, ['bass'], -3);
+  sourceTrack = setBarNoteFx(sourceTrack, 0, 0, 'bass', { mode: 'off' });
+  sourceTrack = setBarEffects(sourceTrack, 0, 0, 'bass', [{ id: 'reverb', params: { wet: 0.4 } }]);
+  const fullClip = copyLaneTrack(plumber, sourceTrack, 0, 1, 'bass');
+  const destinationBank = banks.shop;
+  const pastedTrack = pasteLaneTrack(destinationBank, draftOf(destinationBank, null), 0, 'bass2', fullClip);
+  assert(!(pastedTrack.plan[0].off || []).includes('bass2')
+    && pastedTrack.plan[1].off.includes('bass2'),
+  'a full-track paste carries the source lane mute decision to the matching destination bar');
+  assert(readBarLane(destinationBank, pastedTrack, 0, 'bass2')[0] === 220
+    && readBarLane(destinationBank, pastedTrack, 0, 'bass2Len')[0] === 2,
+  'a full-track paste carries resolved notes and their lengths onto the new lane');
+  assert(pastedTrack.plan[0].transpose.bass2 === 5
+    && pastedTrack.plan[0].gain.bass2 === -3
+    && pastedTrack.plan[0].noteFx.bass2.mode === 'off'
+    && pastedTrack.plan[0].inlineFx.bass2[0].id === 'reverb',
+  'a full-track paste carries per-bar transpose, gain, Note FX and bar effects');
+
+  // Import grows the destination before writing the clip. The last source bar is
+  // deliberately non-silent so this catches the old truncating paste behavior.
+  let longSource = insertSilence(sourceTrack, sourceTrack.plan.length, 2, ['bass']);
+  longSource = writeBarNotes(plumber, longSource, longSource.plan.length - 1, 'bass',
+    new Array(16).fill(330));
+  longSource = setLanesDeleted(longSource, longSource.plan.length - 1,
+    longSource.plan.length - 1, ['bass'], false);
+  const longClip = copyLaneTrack(plumber, longSource, 0, longSource.plan.length - 1, 'bass');
+  let shortDestination = deleteBars(base, 1, base.plan.length - 1);
+  shortDestination = insertSilence(shortDestination, shortDestination.plan.length,
+    longClip.bars.length - shortDestination.plan.length, ['bass2']);
+  shortDestination = pasteLaneTrack(plumber, shortDestination, 0, 'bass2', longClip);
+  assert(shortDestination.plan.length === longClip.bars.length
+    && readBarLane(plumber, shortDestination, shortDestination.plan.length - 1, 'bass2')[0] === 330
+    && !(shortDestination.plan.at(-1).delete || []).includes('bass2'),
+  'a complete-track paste can extend a shorter destination and keeps the source ending');
+}
 
 const built = buildUp(base, 0, 1, 4);
 assert(barCount(built) === barCount(base) + 6, 'a 4-pass build-up over 2 bars is 8 bars');
@@ -1100,13 +1187,18 @@ const tmp = mkdtempSync(join(tmpdir(), 'mash-arr-'));
 const arrPath = join(tmp, 'arrangements.js');
 const fixture = {
   plumber: {
+    resolution: 32,
+    swing: 62,
+    loop: { startBar: 1, fromBar: 3, toBar: 6 },
     // Up to 8, not 9: plumber's own 6 sections plus the 3 layer sections below make
     // nine, and they are addressed 0-8. The validator caught this fixture doing it.
-    order: [0, 0, { s: 1, bars: 1, transpose: { bass: 5 }, offset: { bass: 1 }, gain: { bass: -3 } },
+    order: [0, 0, { s: 1, bars: 1,
+      noteFx: { bass: { mode: 'off' } }, inlineFx: { bass: [{ id: 'pingpong', params: { wet: 0.4 } }] },
+      transpose: { bass: 5 }, offset: { bass: 1 }, gain: { bass: -3 } },
       { s: 1, bars: 1, from: 1, off: ['snare', 'clap'], delete: ['bass'] },
       { s: 2, off: ['crash'] }, 3, 4, 5, 6, 7, 8],
     sections: [
-      { base: 1, lead: Array.from({ length: 32 }, (_, i) => (i % 4 === 0 ? 440 + i : null)) },
+      { base: 1, lead: Array.from({ length: 64 }, (_, i) => (i % 4 === 0 ? 440 + i : null)) },
       { base: 0, kick: Array.from({ length: 32 }, (_, i) => i % 8 === 0) },
       { chords: Array.from({ length: 32 }, (_, i) => (i === 0 ? [220, 277, 330] : null)) },
     ],
@@ -1117,10 +1209,13 @@ const { ARRANGEMENTS: back } = await import(arrPath);
 
 assert(json(back.plumber.order) === json(fixture.plumber.order),
   'round-trip: the order survives — plain numbers, single bars, halves, lane delete and bar edits');
+assert(back.plumber.resolution === 32 && back.plumber.swing === 62
+  && json(back.plumber.loop) === json(fixture.plumber.loop),
+  'round-trip: fine resolution, swing and song loop survive');
 assert(back.plumber.sections.length === 3 && back.plumber.sections[0].base === 1,
   'round-trip: layer sections survive, and keep what they are based on');
 assert(json(back.plumber.sections[0].lead) === json(fixture.plumber.sections[0].lead),
-  'round-trip: a written lane keeps all 32 steps, rests included');
+  'round-trip: a fine-resolution written lane keeps all 64 steps, rests included');
 assert(json(back.plumber.sections[1].kick) === json(fixture.plumber.sections[1].kick),
   'round-trip: a percussion lane keeps its booleans');
 assert(json(back.plumber.sections[2].chords) === json(fixture.plumber.sections[2].chords),

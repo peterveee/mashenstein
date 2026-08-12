@@ -51,15 +51,24 @@ addEventListener('message', async (e) => {
   try {
     // Progress rides the same letterbox as the result. Cheap messages — one number,
     // a couple of times a second — so they cost nothing next to the render.
+    const renderStarted = performance.now();
     const r = await renderBankPage(job.args, {
       onProgress: (fraction) => reply({ type: 'progress', id: job.id, fraction }),
     });
+    const renderMs = performance.now() - renderStarted;
+    if (job.args.measureOnly) {
+      reply({
+        type: 'done', id: job.id, ok: true, frames: r.frames, seconds: r.seconds,
+        peak: r.peak, percussion: r.percussion, renderMs,
+      });
+      return;
+    }
     // Copied out of the AudioBuffer before transferring: those views belong to the
     // rendered buffer, and detaching them out from under it is not ours to do.
     const outL = new Float32Array(r.outL);
     const outR = new Float32Array(r.outR);
     reply(
-      { type: 'done', id: job.id, ok: true, outL, outR, frames: r.frames, seconds: r.seconds, peak: r.peak, percussion: r.percussion },
+      { type: 'done', id: job.id, ok: true, outL, outR, frames: r.frames, seconds: r.seconds, peak: r.peak, percussion: r.percussion, renderMs },
       [outL.buffer, outR.buffer],
     );
   } catch (err) {

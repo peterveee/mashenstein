@@ -227,6 +227,8 @@ assert(noteActiveAt(3.8, 0, 3, 1), 'a key lights for the sixteenth where its not
 assert(noteActiveAt(5.2, 0, 3, 4), 'and remains lit across the note rectangle’s full length');
 assert(!noteActiveAt(7, 0, 3, 4) && !noteActiveAt(null, 0, 3, 4),
   'the key goes dark at note-off and whenever playback stops');
+assert(noteActiveAt(0.5, 0, 1, 1, 32) && !noteActiveAt(0, 0, 1, 1, 32),
+  'a 1/32 onset lights on its half-sixteenth, not on the preceding grid line');
 
 // The range opens with the part at the BOTTOM of the window and room above it, rather
 // than snapped to an octave that leaves the part floating in the middle.

@@ -78,6 +78,7 @@ import * as MIDNIGHT_ORBIT from './midnight-orbit.js';
 import * as MIDNIGHT_PIGEON from './midnight-pigeon.js';
 import { MIN3 } from './min3.js';
 import * as MONSTER_MEGAMIX_ALT from './monster-megamix-alt.js';
+import * as NEON_HARBOUR from './neon-harbour.js';
 import * as NEON_LANTERN from './neon-lantern.js';
 import * as NEON_PIGEON from './neon-pigeon.js';
 import * as NEON_SIREN from './neon-siren.js';
@@ -107,6 +108,7 @@ import * as SILENT_ROCKET from './silent-rocket.js';
 import * as SILENT_VOLCANO from './silent-volcano.js';
 import * as SILVER_PYLON from './silver-pylon.js';
 import * as SLEEPY_FALCON from './sleepy-falcon.js';
+import * as SMW_ALL_INSTRUMENTS_NEWEST from './smw-all-instruments-newest.js';
 import * as SMW_ALL_INSTRUMENTS from './smw-all-instruments.js';
 import * as SMW_OVERWORLD_SMWWD1_LU9 from './smw-overworld-smwwd1-lu9.js';
 import * as SMW_OVERWORLD from './smw-overworld.js';
@@ -130,6 +132,7 @@ import * as VELVET_ROBOT from './velvet-robot.js';
 import * as WICKED_SUNDAE from './wicked-sundae.js';
 import { WII_SHOP_CHANNEL } from './wii-shop-channel.js';
 import { WIISHOPPINGCHANNEL } from './wiishoppingchannel.js';
+import * as WILD_CACTUS from './wild-cactus.js';
 import * as WILD_DOLPHIN from './wild-dolphin.js';
 import * as WILD_SUNDAE from './wild-sundae.js';
 
@@ -201,6 +204,7 @@ export const IMPORTED_BY_ID = {
   "midnight-pigeon": { bank: MIDNIGHT_PIGEON.bank, title: MIDNIGHT_PIGEON.title, group: "scratch", writable: true },
   "min3": { bank: MIN3, title: "MIN3", group: "imported", writable: false },
   "monster-megamix-alt": { bank: MONSTER_MEGAMIX_ALT.bank, title: MONSTER_MEGAMIX_ALT.title, group: "alternate", writable: true, alternateOf: "megamix" },
+  "neon-harbour": { bank: NEON_HARBOUR.bank, title: NEON_HARBOUR.title, group: "scratch", writable: true },
   "neon-lantern": { bank: NEON_LANTERN.bank, title: NEON_LANTERN.title, group: "scratch", writable: true },
   "neon-pigeon": { bank: NEON_PIGEON.bank, title: NEON_PIGEON.title, group: "scratch", writable: true },
   "neon-siren": { bank: NEON_SIREN.bank, title: NEON_SIREN.title, group: "scratch", writable: true },
@@ -230,6 +234,7 @@ export const IMPORTED_BY_ID = {
   "silent-volcano": { bank: SILENT_VOLCANO.bank, title: SILENT_VOLCANO.title, group: "scratch", writable: true },
   "silver-pylon": { bank: SILVER_PYLON.bank, title: SILVER_PYLON.title, group: "scratch", writable: true },
   "sleepy-falcon": { bank: SLEEPY_FALCON.bank, title: SLEEPY_FALCON.title, group: "scratch", writable: true },
+  "smw-all-instruments-newest": { bank: SMW_ALL_INSTRUMENTS_NEWEST.bank, title: SMW_ALL_INSTRUMENTS_NEWEST.title, group: "copy", writable: true },
   "smw-all-instruments": { bank: SMW_ALL_INSTRUMENTS.bank, title: SMW_ALL_INSTRUMENTS.title, group: "copy", writable: true },
   "smw-overworld-smwwd1-lu9": { bank: SMW_OVERWORLD_SMWWD1_LU9.bank, title: SMW_OVERWORLD_SMWWD1_LU9.title, group: "imported", writable: true },
   "smw-overworld": { bank: SMW_OVERWORLD.bank, title: SMW_OVERWORLD.title, group: "copy", writable: true },
@@ -253,6 +258,7 @@ export const IMPORTED_BY_ID = {
   "wicked-sundae": { bank: WICKED_SUNDAE.bank, title: WICKED_SUNDAE.title, group: "scratch", writable: true },
   "wii-shop-channel": { bank: WII_SHOP_CHANNEL, title: "WII SHOP CHANNEL", group: "imported", writable: false },
   "wiishoppingchannel": { bank: WIISHOPPINGCHANNEL, title: "WIISHOPPINGCHANNEL", group: "imported", writable: false },
+  "wild-cactus": { bank: WILD_CACTUS.bank, title: WILD_CACTUS.title, group: "scratch", writable: true },
   "wild-dolphin": { bank: WILD_DOLPHIN.bank, title: WILD_DOLPHIN.title, group: "scratch", writable: true },
   "wild-sundae": { bank: WILD_SUNDAE.bank, title: WILD_SUNDAE.title, group: "scratch", writable: true },
 };

@@ -3,7 +3,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { Audio } = await import('../src/engine/audio.js');
-const { createVisualizer, pickVisualizer, VISUALIZER_NAMES, MEGAMIX_CYCLE_BEATS, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition } = await import('../src/engine/visualizers.js');
+const { createVisualizer, pickVisualizer, VISUALIZER_NAMES, MEGAMIX_CYCLE_BEATS, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS } = await import('../src/engine/visualizers.js');
 const { SoundTestState } = await import('../src/game/menus.js');
 const { Input } = await import('../src/engine/input.js');
 
@@ -605,10 +605,11 @@ assert(sound.playing === -1 && Audio.bank === null, 'the next input operates the
 const TUNNEL = VISUALIZER_NAMES.indexOf('HYPER-VECTOR TUNNEL');
 const NEBULA = VISUALIZER_NAMES.indexOf('NEBULA RIBBON DRIFT');
 const GLASS = VISUALIZER_NAMES.indexOf('GLASS BLOB EQUALIZER');
+const PIPE = VISUALIZER_NAMES.indexOf('HALF-PIPE HORIZON');
 
 assert(VISUALIZER_NAMES[VISUALIZER_NAMES.length - 1] === 'VJ MEGAMIX'
-  && [TUNNEL, NEBULA, GLASS].every((i) => i > 0)
-  && [TUNNEL, NEBULA, GLASS].every((i, n, all) => n === 0 || i === all[n - 1] + 1),
+  && [TUNNEL, NEBULA, GLASS, PIPE].every((i) => i > 0)
+  && [TUNNEL, NEBULA, GLASS, PIPE].every((i, n, all) => n === 0 || i === all[n - 1] + 1),
   'the homage presets sit together in the pack and the mixer stays last');
 
 // The tunnel accumulates a feedback buffer, which makes it one of the two places
@@ -718,6 +719,253 @@ assert(Array.from(glass.peaks).every((p) => p >= 0 && p < 0.05)
 assert(glass.radii.length === 96
   && Array.from(glass.radii).every((r) => Number.isFinite(r) && r > 0 && r < 200),
   'the glass surface marches to a bounded closed contour');
+
+// Runs the half-pipe at 120bpm for `seconds`, optionally against a song whose
+// beat count restarts every `loopAt` beats.
+function runPipe(seed, seconds, feed = {}, loopAt = 0) {
+  const pipe = createVisualizer(PIPE, seed, { bpm: 120 });
+  let songBeat = 0;
+  for (let frame = 0; frame < seconds * 60; frame++) {
+    songBeat += (1 / 60) * 2;
+    const beat = loopAt ? songBeat % loopAt : songBeat;
+    pipe.update(1 / 60, {
+      ...analysis, ...feed, beat, beatPhase: beat % 1, beatPulse: Math.pow(1 - (beat % 1), 5),
+    });
+  }
+  return pipe;
+}
+
+// Every row of the pipe is a circle on screen, and the whole illusion rests on
+// where those circles land: the near one has to run PAST the lens so the trough
+// leaves the bottom of the frame, and the far one has to collapse onto the
+// vanishing point. A row that stopped short would flash a strip of sky along the
+// bottom edge once per row.
+const pipe = runPipe(0x5017c200, 6);
+const pipeRows = pipe.rows;
+assert(pipeRows.every((r) => Number.isFinite(r.cx) && Number.isFinite(r.cy) && Number.isFinite(r.r) && r.r >= 0)
+  && pipeRows.every((r, i) => i === 0 || r.r > pipeRows[i - 1].r),
+  'the pipe rows are finite and grow strictly toward the camera');
+// Each row is a circle, so the surface ends on an arc that curves back UP before
+// it reaches the bottom corners of the frame. The rows carried past the lens
+// exist to cover exactly that, and the corners are the only place it can be
+// checked: a gap there shows as a wedge of sky under the near wall.
+const nearRow = pipeRows[pipeRows.length - 1];
+const covers = (x, y) => {
+  const dx = x - nearRow.cx; const dy = y - nearRow.cy;
+  const within = Math.hypot(dx, dy) < nearRow.r;
+  // ...and inside the open arc rather than out past the lip, where sky belongs.
+  const off = Math.abs(((Math.atan2(dy, dx) - Math.PI / 2 + Math.PI) % (Math.PI * 2)) - Math.PI);
+  return within && off < 1.31;
+};
+assert(covers(0, 269) && covers(479, 269) && covers(240, 269) && pipeRows[0].r < 8,
+  'the pipe reaches both bottom corners of the frame and the far row collapses to the horizon');
+
+// draw() is the contract that lets the video renderer replay update() alone in
+// parallel workers, and this preset has no accumulating buffer to excuse a
+// write. The mixer also paints two records in one frame, so a preset that
+// marched its geometry from draw() would run at double speed through a blend.
+const pipeBefore = JSON.stringify(pipe.rows);
+const scrollBefore = pipe.scroll;
+pipe.draw(ctx);
+pipe.draw(ctx);
+assert(JSON.stringify(pipe.rows) === pipeBefore && pipe.scroll === scrollBefore,
+  'drawing the half-pipe twice in one frame moves nothing: all of its state marches in update');
+
+// Beat-locked so the checkers step with the song, motion-scaled so a breakdown
+// coasts rather than carrying on at full tilt.
+const loudRide = runPipe(0x5017c201, 12, { dynamics: 1 });
+const quietRide = runPipe(0x5017c201, 12, { dynamics: 0.02 });
+assert(quietRide.scroll < loudRide.scroll * 0.6 && quietRide.scroll > loudRide.scroll * 0.3,
+  'the ride slows through a quiet passage without stopping dead');
+
+// A jukebox song loops, which hands the preset a beat count that restarts. The
+// scroll integrates the beat DELTA rather than reading the absolute beat, so the
+// wrap cannot throw the checker backwards or jump it a row.
+const looped = createVisualizer(PIPE, 0x5017c202, { bpm: 120 });
+let loopBeat = 0;
+let wentBackwards = false;
+let jumped = false;
+let lastScroll = 0;
+let turns = 0;
+let lastTarget = looped.bankTarget;
+for (let frame = 0; frame < 60 * 200; frame++) {
+  loopBeat += (1 / 60) * 2;
+  looped.update(1 / 60, { ...analysis, beat: loopBeat % 64 });
+  if (looped.scroll < lastScroll) wentBackwards = true;
+  if (looped.scroll - lastScroll > 1.5) jumped = true;
+  lastScroll = looped.scroll;
+  if (looped.bankTarget !== lastTarget) { turns++; lastTarget = looped.bankTarget; }
+}
+assert(!wentBackwards && !jumped,
+  'a song whose beat count restarts does not throw the checker backwards or skip a row');
+assert(turns > 6, 'the bank schedule keeps dealing turns through a looping song rather than stalling');
+
+// The horizon rolls and the track bends to the same signed target. If they
+// disagreed the picture would read as a camera tilting rather than a pipe
+// turning, and the roll has to stay bank-sized: this is not the base class's
+// 90-180 degree ring rotation.
+const bankA = runPipe(0x5017c203, 90);
+const bankB = runPipe(0x5017c203, 90);
+assert(Math.abs(bankA.roll - bankB.roll) < 1e-9 && Math.abs(bankA.curve - bankB.curve) < 1e-9
+  && bankA.bankNextBeat === bankB.bankNextBeat,
+  'a replayed seed banks through exactly the same turns');
+const rolled = createVisualizer(PIPE, 0x5017c204, { bpm: 120 });
+let overBanked = false;
+let disagreed = false;
+let leaned = 0;
+for (let frame = 0; frame < 60 * 120; frame++) {
+  rolled.update(1 / 60, { ...analysis, beat: frame / 30 });
+  if (Math.abs(rolled.bankRoll) > 0.6 + 1e-9) overBanked = true;
+  // Both ease to the same signed target on the same clock, so they may only
+  // ever be on opposite sides of zero by rounding.
+  if (rolled.bankRoll * rolled.curve < -1e-9) disagreed = true;
+  leaned = Math.max(leaned, Math.abs(rolled.bankRoll));
+}
+assert(!overBanked && !disagreed && leaned > 0.15,
+  'the bank stays bank-sized and the horizon always rolls the way the track bends');
+
+// The corkscrew is a whole turn of the barrel, not a big corner: it has to land
+// exactly back where it started, or every one would leave the scene a little
+// further rotated than the last and the bank would slowly stop meaning anything.
+const screwed = createVisualizer(PIPE, 0x5017c207, { bpm: 120 });
+let midScrew = 0;
+let settledOff = 0;
+for (let frame = 0; frame < 60 * 200; frame++) {
+  screwed.update(1 / 60, { ...analysis, beat: frame / 30 });
+  if (screwed.spiralActive) midScrew = Math.max(midScrew, Math.abs(screwed.spiral - screwed.spiralFrom));
+  else settledOff = Math.max(settledOff, Math.abs(screwed.spiral % (Math.PI * 2)));
+}
+assert(screwed.spirals > 3 && midScrew > Math.PI * 1.5
+  && (settledOff < 1e-6 || Math.abs(settledOff - Math.PI * 2) < 1e-6),
+  'the corkscrew rolls the whole barrel over and settles back on a whole turn');
+
+// Rings and spheres ride the checker itself rather than marching on their own
+// clock, so they never slide along the floor. They only ever travel toward the
+// camera, and they recycle PAST the lens rather than popping out in view.
+const riding = createVisualizer(PIPE, 0x5017c205, { bpm: 120 });
+let slidBackwards = false;
+let recycled = 0;
+let outOfRange = false;
+const lastU = riding.groups.map((g) => g.u);
+for (let frame = 0; frame < 60 * 30; frame++) {
+  riding.update(1 / 60, { ...analysis, beat: frame / 30 });
+  riding.groups.forEach((g, i) => {
+    if (g.u < lastU[i]) { if (lastU[i] < 1) slidBackwards = true; else recycled++; }
+    if (!(g.u > 0 && g.u <= 1.1) || !g.sx.every(Number.isFinite)) outOfRange = true;
+    lastU[i] = g.u;
+  });
+}
+assert(!slidBackwards && !outOfRange && recycled > 8,
+  'the rings only ever travel toward the camera and recycle past the lens');
+
+// The sky motes live in pipe space so they roll with the barrel through a
+// corkscrew. They also carry a previous position for their streak, and a mote
+// that recycled without resetting it would draw a line clean across the frame
+// from wherever the last one died.
+const skied = createVisualizer(PIPE, 0x5017c208, { bpm: 120 });
+let stretched = 0;
+let moteBackwards = false;
+let recycledMotes = 0;
+const moteU = skied.motes.map((m) => m.u);
+for (let frame = 0; frame < 60 * 40; frame++) {
+  skied.update(1 / 60, { ...analysis, beat: frame / 30 });
+  skied.motes.forEach((m, i) => {
+    if (m.u < moteU[i]) recycledMotes++; else if (m.u === moteU[i]) moteBackwards = true;
+    moteU[i] = m.u;
+    if (!Number.isFinite(m.x) || !Number.isFinite(m.px)) stretched = Infinity;
+    stretched = Math.max(stretched, Math.hypot(m.x - m.px, m.y - m.py));
+  });
+}
+assert(!moteBackwards && recycledMotes > 40 && stretched <= 34.0001,
+  'sky motes stream past the lens and recycle without dragging a streak across the frame');
+
+// A corkscrew lays its rings back DOWN the pipe rather than across it, so the
+// roll has one continuous trail to follow rather than a series of rows.
+const trailed = createVisualizer(PIPE, 0x5017c209, { bpm: 120 });
+let sawTrail = false;
+let sawDepth = false;
+for (let frame = 0; frame < 60 * 120 && !sawDepth; frame++) {
+  trailed.update(1 / 60, { ...analysis, beat: frame / 30 });
+  if (!trailed.spiralActive) continue;
+  for (const g of trailed.groups) {
+    if (g.stride <= 0 || g.count < 6) continue;
+    sawTrail = true;
+    // Members recede: each one sits further from the lens than the last, and the
+    // wind carries it round the barrel as it goes.
+    if (g.u - (g.count - 1) * g.stride < g.u && g.wind !== 0) sawDepth = true;
+  }
+}
+assert(sawTrail && sawDepth,
+  'the corkscrew lays a winding trail back down the pipe for the roll to follow');
+
+// The desk's tunable version is the SAME preset with its constants exposed, and
+// that claim is the whole reason it is allowed to exist rather than being a
+// second copy of six hundred lines. Untouched, it has to march identically —
+// including through the seeded schedules, which is why AUTO draws from the rng
+// rather than substituting a fixed interval.
+const shipped = createVisualizer(PIPE, 0x5017c20b, { bpm: 120 });
+const lab = createHalfPipeLab(0x5017c20b, { bpm: 120 }, HALF_PIPE_DEFAULTS());
+let diverged = null;
+for (let frame = 0; frame < 60 * 120 && !diverged; frame++) {
+  const at = { ...analysis, beat: frame / 30, hit: frame % 30 === 0 ? 1 : 0 };
+  shipped.update(1 / 60, at);
+  lab.update(1 / 60, at);
+  for (const key of ['scroll', 'roll', 'curve', 'spiral', 'schemeBlend', 'phraseBeat']) {
+    if (Math.abs(shipped[key] - lab[key]) > 1e-12) diverged = `${key} @${frame}`;
+  }
+  if (JSON.stringify(shipped.rows) !== JSON.stringify(lab.rows)) diverged = `rows @${frame}`;
+  if (shipped.groups.map((g) => g.u).join() !== lab.groups.map((g) => g.u).join()) diverged = `groups @${frame}`;
+}
+assert(!diverged && lab.name === shipped.name && lab.width === shipped.tune.width,
+  `the lab half-pipe at its defaults is the shipped preset frame for frame${diverged ? ` (${diverged})` : ''}`);
+
+// And every knob has to actually reach something. OFF parks a schedule rather
+// than merely slowing it, which is the case a range check would miss.
+const tuned = createHalfPipeLab(0x5017c20c, { bpm: 120 }, {
+  ...HALF_PIPE_DEFAULTS(), rings: 3, streaks: 12, screwEvery: -1, turnAmount: 0,
+});
+for (let frame = 0; frame < 60 * 120; frame++) {
+  tuned.update(1 / 60, { ...analysis, beat: frame / 30, hit: frame % 30 === 0 ? 1 : 0 });
+}
+assert(tuned.groups.length === 3 && tuned.motes.length === 12
+  && tuned.spirals === 0 && Math.abs(tuned.bankRoll) < 1e-9,
+  'the knobs reach the pools and the schedules, and OFF stops a corkscrew rather than slowing it');
+
+// Turned while it is running, without rebuilding what is already on screen.
+const turning = createHalfPipeLab(0x5017c20d, { bpm: 120 }, HALF_PIPE_DEFAULTS());
+for (let frame = 0; frame < 200; frame++) turning.update(1 / 60, { ...analysis, beat: frame / 30 });
+const keptU = turning.groups.slice(0, 4).map((g) => g.u);
+turning.applyTune({ rings: 18, streaks: 40 });
+assert(turning.groups.length === 18 && turning.motes.length === 40
+  && turning.groups.slice(0, 4).every((g, i) => g.u === keptU[i]),
+  'turning a knob mid-song resizes the pools without restarting what is already travelling');
+
+// The pipe's half-angle is what every arc in the frame is drawn from, so it
+// chases its knob instead of taking it. A step change would deform the whole
+// surface between two frames, which reads as a glitch rather than an adjustment.
+turning.applyTune({ width: 2.6 });
+const widthWalk = [];
+for (let frame = 0; frame < 90; frame++) {
+  turning.update(1 / 60, { ...analysis, beat: 40 + frame / 30 });
+  widthWalk.push(turning.width);
+}
+const biggestWidthStep = widthWalk.reduce((worst, w, i) =>
+  Math.max(worst, i === 0 ? 0 : Math.abs(w - widthWalk[i - 1])), 0);
+assert(turning.tune.width === 2.6 && widthWalk[0] < 1.5 && Math.abs(turning.width - 2.6) < 0.02
+  && biggestWidthStep < 0.07,
+  'the pipe eases open to a new width over half a second rather than jumping to it');
+
+// The one path that needs a real canvas. glowSprite returns null under the stub,
+// so the sphere blit has to fall back rather than reach into a canvas that is
+// not there — and the whole scene has to survive a feed with no spectrum at all.
+const bareRide = createVisualizer(PIPE, 0x5017c206, { bpm: 120 });
+bareRide.update(1 / 60, {});
+bareRide.draw(ctx);
+bareRide.update(1 / 60, { drums: 1, drumless: false, beat: 4, hit: 1 });
+bareRide.draw(ctx);
+assert(bareRide.rows.every((r) => Number.isFinite(r.cx) && Number.isFinite(r.r))
+  && bareRide.cellLight.every((c) => /^#[0-9a-f]{6}$/.test(c)),
+  'the half-pipe draws against a bare analysis feed and a stub canvas without a real sprite');
 
 
 // --- VJ MEGAMIX -------------------------------------------------------------

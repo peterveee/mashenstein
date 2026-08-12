@@ -69,6 +69,9 @@ assert(source.includes('_retargetLayerLegato(prev, f * shift * vary((v.humanize 
 // schedules a release, which must never land on a key that is still down.
 assert(source.includes('} else if (legato && gated) {'),
   'the pooled legato retarget is gated, never fingered');
+assert(source.includes('for (const { param, level, tail = 0, fade = 0.004 } of prev.gates || [])')
+  && source.includes('legatoGates.push({ param: g.gain, level: lvl, tail, fade: 0.004 });'),
+  'MRDR-3 carries THROUGH layer gates to the active legato note end');
 
 
 

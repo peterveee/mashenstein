@@ -81,10 +81,11 @@ export function sharedPatternDescription(plan, from, to) {
 }
 
 /** The integer grid column under the audible (fractional) transport position. */
-export function playheadCell(step) {
+export function playheadCell(step, stepsPerBar = 16) {
   if (!Number.isFinite(step) || step < 0) return null;
-  const whole = Math.floor(step);
-  return { bar: Math.floor(whole / 16), step: whole % 16 };
+  const slots = stepsPerBar === 32 ? 32 : 16;
+  const whole = Math.floor(step * slots / 16);
+  return { bar: Math.floor(whole / slots), step: whole % slots };
 }
 
 /** The two-bar page containing the audible transport position. */
@@ -228,9 +229,10 @@ export const noteKey = (bar, step, rowKey) => `${bar}:${step}:${rowKey}`;
  * of a phrase survives the drag. Getting that wrong is a chord that arrives as an
  * arpeggio, which is the kind of thing a test should catch rather than an ear.
  */
-export function movedNote({ bar, step, rowAt }, dStep, dRow, { bars, rows }) {
-  const g = Math.max(0, Math.min(bars * 16 - 1, bar * 16 + step + dStep));
-  return { bar: Math.floor(g / 16), step: g % 16, rowAt: Math.max(0, Math.min(rows - 1, rowAt + dRow)) };
+export function movedNote({ bar, step, rowAt }, dStep, dRow, { bars, rows, stepsPerBar = 16 }) {
+  const g = Math.max(0, Math.min(bars * stepsPerBar - 1, bar * stepsPerBar + step + dStep));
+  return { bar: Math.floor(g / stepsPerBar), step: g % stepsPerBar,
+    rowAt: Math.max(0, Math.min(rows - 1, rowAt + dRow)) };
 }
 
 /**
@@ -279,16 +281,16 @@ export function quantiseLength(len, grid = 1) {
   return Number((Math.max(step, Math.round(value / step) * step)).toFixed(6));
 }
 
-export function clampDelta(notes, dStep, dRow, { bars, rows }) {
+export function clampDelta(notes, dStep, dRow, { bars, rows, stepsPerBar = 16 }) {
   if (!notes.length) return { dStep: 0, dRow: 0 };
-  const gs = notes.map((n) => n.bar * 16 + n.step);
+  const gs = notes.map((n) => n.bar * stepsPerBar + n.step);
   const rs = notes.map((n) => n.rowAt);
   const lowG = Math.min(...gs);
   const highG = Math.max(...gs);
   const lowR = Math.min(...rs);
   const highR = Math.max(...rs);
   return {
-    dStep: Math.max(-lowG, Math.min(bars * 16 - 1 - highG, dStep)),
+    dStep: Math.max(-lowG, Math.min(bars * stepsPerBar - 1 - highG, dStep)),
     dRow: Math.max(-lowR, Math.min(rows - 1 - highR, dRow)),
   };
 }
@@ -351,6 +353,10 @@ export function createBarGrid({
   // beat is not a gesture anybody performs on a kit.
   withLen = () => null, cellLen = () => null, addLength = () => null,
   resizable = () => false, movable = false,
+  // Runtime note-onset resolution. The transport and stored lengths remain in
+  // sixteenth-step units; only the number of addressable onset slots changes.
+  stepsPerBar = () => 16,
+  snapSlots = () => 1,
   // A panel whose rows are an INSTRUMENT rather than a track list: it shows all of
   // them and only draws the ones in view. `rowHeight` is the fallback pixel height
   // of one row; an instrument may provide `rowHeightOf(row)` for a deliberate,
@@ -424,6 +430,12 @@ export function createBarGrid({
   const kof = (b, lane) => `${b}:${lane}`;
 
   let plan = [];
+  let slots = 16;
+  const slotUnit = () => 16 / slots;
+  const snapSize = () => Math.max(1, Math.round(Number(
+    typeof snapSlots === 'function' ? snapSlots(slots) : snapSlots) || 1));
+  const snappedStep = (step) => Math.max(0, Math.min(slots - 1,
+    Math.round(step / snapSize()) * snapSize()));
   let range = { from: 0, to: 0 };
   let cols = new Map();     // `${bar}:${step}` -> the cells in that column
   let lit = [];             // the column the playhead is standing on
@@ -475,6 +487,7 @@ export function createBarGrid({
   // a control. `autoLeftAt` is the last position the transport set, so the scroll event
   // it causes can be told apart from yours.
   let followX = true;
+  let followEnabled = true;
   let autoLeftAt = null;
   // How many rows are drawn is a measurement of the scroller, and the scroller's height
   // is not the panel's to decide: folding the effects panel, dragging the desk splitter
@@ -613,13 +626,17 @@ export function createBarGrid({
    */
   function readKey(b, key) {
     const bar = plan[b];
-    if (!bar) return new Array(16).fill(null);
+    if (!bar) return new Array(slots).fill(null);
     const view = bank();
     const resolved = (bar.sec != null ? resolveSection(view, bar.sec) : null) || {};
     const arr = resolved[key] ?? view[key];
-    if (!Array.isArray(arr)) return new Array(16).fill(null);
-    const at = bar.half * 16;
-    return Array.from({ length: 16 }, (_, i) => arr[at + i] ?? null);
+    if (!Array.isArray(arr)) return new Array(slots).fill(null);
+    if (slots === 32 && arr.length < 64) {
+      const at = bar.half * 16;
+      return Array.from({ length: slots }, (_, i) => (i % 2 ? null : arr[at + i / 2] ?? null));
+    }
+    const at = bar.half * slots;
+    return Array.from({ length: slots }, (_, i) => arr[at + i] ?? null);
   }
 
   /**
@@ -655,12 +672,15 @@ export function createBarGrid({
     barViews.set(bar.sec, merged);
     return merged;
   };
-  const cellSpan = (row, value, len, b, step) => cellLen(row, value, len, {
+  const cellSpan = (row, value, len, b, step) => {
+    const length = cellLen(row, value, len, {
     bar: b,
     step,
-    blockStep: ((plan[b]?.half ?? 0) * 16) + step,
+    blockStep: ((plan[b]?.half ?? 0) * slots) + step,
     view: barView(b),
-  });
+    });
+    return length > 0 ? length / slotUnit() : length;
+  };
 
   const mutedIn = (b, lane) => (plan[b]?.off || []).includes(lane);
 
@@ -686,7 +706,8 @@ export function createBarGrid({
     const value = cur.notes[step] ?? null;
     const len = cur.lengths[step] ?? null;
     const nextValue = withCell(row, value, on);
-    const nextLen = withLen(row, value, len, on, drawn);
+    const nextLen = withLen(row, value, len, on,
+      drawn == null ? null : drawn * slotUnit());
     const noteChanged = !Object.is(nextValue, value);
     const lenChanged = !sameLen(nextLen, len);
     if (!noteChanged && !lenChanged) return false;
@@ -751,9 +772,12 @@ export function createBarGrid({
     // A figure is new notes, so the lengths that were there belonged to notes that are
     // not. Sixteen nulls rather than "say nothing": laying a groove over a part
     // somebody had drawn long notes into must not play the new one at the old lengths.
-    const cleared = Array.from({ length: 16 }, () => null);
+    const cleared = Array.from({ length: slots }, () => null);
     const a = scope();
     for (const [lane, steps] of Object.entries(byLane)) {
+      const figure = slots === 32 && steps.length === 16
+        ? Array.from({ length: 32 }, (_, i) => (i % 2 ? false : steps[i / 2]))
+        : steps.slice(0, slots);
       for (let b = a.from; b <= a.to; b++) {
         // ADD keeps what the bar already plays and puts the figure on top of it, so
         // "on 2 and 4" and then "fill" is a backbeat with a fill in it rather than a
@@ -762,8 +786,8 @@ export function createBarGrid({
         // is the whole bar as drawn, rests and all.
         const was = add ? readBar(b, lane) : null;
         const notes = add
-          ? steps.map((on, i) => (on || !!was?.[i]))
-          : steps.slice();
+          ? figure.map((on, i) => (on || !!was?.[i]))
+          : figure.slice();
         pending.set(kof(b, lane), { notes, lengths: cleared.slice() });
       }
     }
@@ -793,7 +817,7 @@ export function createBarGrid({
     const from = picked ? Math.max(range.from, picked.from) : null;
     const to = picked ? Math.min(range.to, picked.to) : null;
     const left = from != null && to != null && to >= from ? fieldX(from, 0) : null;
-    const right = left == null ? null : fieldX(to, 15);
+    const right = left == null ? null : fieldX(to, slots - 1);
     if (left == null || right == null) { selBand.classList.remove('show'); return; }
     selBand.classList.add('show');
     selBand.style.left = `${left}px`;
@@ -832,7 +856,7 @@ export function createBarGrid({
     if (!cells.length) return null;
     const rulerBox = (rulerEl || el).querySelector('.ssqbars')?.parentElement?.getBoundingClientRect();
     if (!rulerBox || ev.clientY < rulerBox.top || ev.clientY > rulerBox.bottom) return null;
-    const leftOf = (b) => cells[(b - range.from) * 16].getBoundingClientRect().left;
+    const leftOf = (b) => cells[(b - range.from) * slots].getBoundingClientRect().left;
     if (ev.clientX < leftOf(range.from)) return null;
     let lo = range.from;
     let hi = range.to;
@@ -887,11 +911,15 @@ export function createBarGrid({
    * `beat` identifies every fourth step; alternating groups and `gap` carry the quiet
    * emphasis without drawing a rule through every row. `barstart` separates the bars.
    */
-  const stepClasses = (b, i) => (i % 4 === 0 ? ' beat' : '')
-    + (Math.floor(i / 4) % 2 ? ' group-alt' : '')
-    + (i % 4 === 0 && i ? ' gap' : '')
+  const stepClasses = (b, i) => {
+    const beat = slots / 4;
+    return (i % beat === 0 ? ' beat' : '')
+    + (Math.floor(i / beat) % 2 ? ' group-alt' : '')
+    + (i % beat === 0 && i ? ' gap' : '')
+    + (slots === 32 && i % 2 ? ' fine' : '')
     + (i === 0 ? ' downbeat' : '')
     + (i === 0 && b !== range.from ? ' barstart' : '');
+  };
 
   function build() {
     if (!isOpen()) return;
@@ -902,6 +930,8 @@ export function createBarGrid({
     if (!bank()) return;
     const d = draft();
     if (!d?.plan) return;
+    const requestedSlots = Number(typeof stepsPerBar === 'function' ? stepsPerBar(d) : stepsPerBar);
+    slots = requestedSlots === 32 || d.resolution === 32 ? 32 : 16;
     barViews = new Map();
     plan = d.plan;
     if (wholeSong) {
@@ -1033,7 +1063,7 @@ export function createBarGrid({
       const picked = selectedBars?.() || null;
       for (let b = range.from; b <= range.to; b++) {
         const inSel = !!picked && b >= picked.from && b <= picked.to;
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < slots; i++) {
           const n = document.createElement('div');
           // The bars picked out, marked on the ruler itself rather than washed over the
           // field. The timeline says a selection the same way — a band across the numbers
@@ -1365,7 +1395,7 @@ export function createBarGrid({
       for (let b = bars.from; b <= bars.to; b++) {
         const pair = readPair(b, row.lane);
         const off = mutedIn(b, row.lane);
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < slots; i++) {
           const value = pair.notes[i] ?? null;
           field.push({ b, i, off, value, len: pair.lengths[i] ?? null, on: isOn(row, value) });
         }
@@ -1382,7 +1412,8 @@ export function createBarGrid({
         cell.dataset.row = row.key;
         cell.setAttribute('aria-pressed', f.on ? 'true' : 'false');
         cell.setAttribute('aria-label',
-          `${row.label}, bar ${f.b + 1}, beat ${Math.floor(f.i / 4) + 1}, sixteenth ${f.i % 4 + 1}`);
+          `${row.label}, bar ${f.b + 1}, beat ${Math.floor(f.i / (slots / 4)) + 1}, `
+          + `${slots === 32 ? 'thirty-second' : 'sixteenth'} ${f.i % (slots / 4) + 1}`);
         if (f.on) {
           const span = drawnSpan(field, at, cellSpan(row, f.value, f.len, f.b, f.i));
           if (Math.abs(span - 1) > 1e-9) cell.style.setProperty('--len', String(span));
@@ -1480,14 +1511,14 @@ export function createBarGrid({
    */
   function fieldX(b, i) {
     const cells = rulerCells();
-    const cell = cells[(b - range.from) * 16 + i];
+    const cell = cells[(b - range.from) * slots + i];
     // Against the first cell of the range, not against the offset parent — that is the
     // ruler, whose own x starts a track column and a seam away from where the field's
     // does. Cell zero IS x zero in both, by construction.
     if (cell) return cell.offsetLeft - cells[0].offsetLeft;
     const w = stepWidth();
     if (!(w > 0)) return null;
-    return ((b - range.from) * 16 + i) * w;
+    return ((b - range.from) * slots + i) * w;
   }
 
   /**
@@ -1497,7 +1528,7 @@ export function createBarGrid({
    * of them — and the one call to `getComputedStyle` stays out of the per-bar loop.
    */
   function barGap() {
-    const cell = rulerCells()[16];
+    const cell = rulerCells()[slots];
     return cell ? (parseFloat(getComputedStyle(cell).marginLeft) || 0) : 0;
   }
 
@@ -1541,7 +1572,7 @@ export function createBarGrid({
     const total = tail ? tail.offsetLeft + tail.offsetWidth - origin : 0;
     // Nothing has ever been measured: there is no pixel to size a spacer in, so the
     // whole range is the only answer that keeps the field the width of the song.
-    if (cells.length < bars * 16 || !(total > 0)) return whole;
+    if (cells.length < bars * slots || !(total > 0)) return whole;
     const estimated = !(measured > 0);
     const width = fieldPx > 0 ? fieldPx : total;
     // ---- off the RULER, bar by bar ------------------------------------------------
@@ -1557,7 +1588,7 @@ export function createBarGrid({
     // its own numbers.
     const gap = barGap();
     const edgeAt = (b) => {
-      const cell = cells[(b - range.from) * 16];
+      const cell = cells[(b - range.from) * slots];
       if (!cell) return null;
       return cell.offsetLeft - origin - (b === range.from ? 0 : gap);
     };
@@ -1613,8 +1644,8 @@ export function createBarGrid({
     // pitch window that happened to be visible before the selection.
     const rulerRoot = docked ? el : scroll;
     const ruler = [...rulerRoot.querySelectorAll('.ssqbars .ssqbarnum')];
-    const firstAt = (firstBar - range.from) * 16;
-    const lastAt = (lastBar - range.from + 1) * 16 - 1;
+    const firstAt = (firstBar - range.from) * slots;
+    const lastAt = (lastBar - range.from + 1) * slots - 1;
     const startCell = ruler[firstAt];
     const endCell = ruler[lastAt] || startCell;
     if (startCell && endCell) {
@@ -1676,16 +1707,18 @@ export function createBarGrid({
 
   function hit(cell) {
     if (!cell) return;
-    const row = rowOf(cell);
+    let row = rowOf(cell);
     if (!row) return;
     const b = Number(cell.dataset.bar);
-    const i = Number(cell.dataset.step);
+    const i = snappedStep(Number(cell.dataset.step));
+    cell = cellFor(row.key, b, i) || cell;
+    row = rowOf(cell) || row;
     const value = readBar(b, row.lane)[i] ?? null;
     // The length picker describes a NOTE BEING ADDED. A filled cell is either being
     // erased or painted over as part of an existing note, so its stored phrasing must
     // survive. `addLength` is deliberately a callback: the piano roll owns the picker,
     // while the shared grid owns every way a tap can reach a new cell.
-    const drawn = paint && !isOn(row, value) ? addLength(row) : null;
+    const drawn = paint && !isOn(row, value) ? addLength(row) / slotUnit() : null;
     if (!setCell(row, b, i, paint, drawn)) return;
     cell.classList.toggle('on', paint);
     cell.classList.toggle('edited', paint);
@@ -1709,10 +1742,12 @@ export function createBarGrid({
    * empty cell you happened to start from.
    */
   function begin(cell, force = null) {
-    const row = rowOf(cell);
+    let row = rowOf(cell);
     if (!row) return false;
     const b = Number(cell.dataset.bar);
-    const i = Number(cell.dataset.step);
+    const i = snappedStep(Number(cell.dataset.step));
+    cell = cellFor(row.key, b, i) || cell;
+    row = rowOf(cell) || row;
     paint = force != null ? force : !isOn(row, readBar(b, row.lane)[i] ?? null);
     hit(cell);
     return true;
@@ -1753,7 +1788,7 @@ export function createBarGrid({
     row: rowOf(cell), b: Number(cell.dataset.bar), i: Number(cell.dataset.step),
   });
   /** Where a cell stands in the whole field, so "two steps later" survives a bar line. */
-  const globalStep = (b, i) => b * 16 + i;
+  const globalStep = (b, i) => b * slots + i;
   /** How many steps wide the note in this cell is drawn — 1 unless something says else. */
   const spanOf = (cell) => Number(cell.style.getPropertyValue('--len')) || 1;
   const cellFor = (rowKey, b, i) => el.querySelector(
@@ -1902,7 +1937,7 @@ export function createBarGrid({
     for (let b = range.from; b <= range.to; b++) {
       for (const row of rowList) {
         const pair = readPair(b, row.lane);
-        for (let step = 0; step < 16; step++) {
+        for (let step = 0; step < slots; step++) {
           const value = pair.notes[step] ?? null;
           if (!isOn(row, value)) continue;
           out.push({
@@ -2020,14 +2055,15 @@ export function createBarGrid({
     // same hit map as clicks and hover.
     const r = drag.cell.getBoundingClientRect();
     const set = dragSet(drag);
-    const bounds = { bars: plan.length, rows: rowList.length };
+    const bounds = { bars: plan.length, rows: rowList.length, stepsPerBar: slots };
     const targetCell = cellAt(e.clientX, e.clientY);
     const targetRow = targetCell && rowOf(targetCell);
     const dRow = targetRow
       ? rowAtOf(targetRow.key) - rowAtOf(drag.row.key)
       : Math.round((e.clientY - drag.y) / r.height);
+    const rawStep = Math.round((e.clientX - drag.x) / r.width);
     const want = clampDelta(set,
-      Math.round((e.clientX - drag.x) / r.width),
+      Math.round(rawStep / snapSize()) * snapSize(),
       dRow, bounds);
     if (drag.delta && drag.delta.dStep === want.dStep && drag.delta.dRow === want.dRow) return;
     drag.delta = want;
@@ -2140,13 +2176,88 @@ export function createBarGrid({
     const notes = scopeKind === 'all' ? allNotes() : selected();
     let changed = 0;
     for (const nt of notes) {
-      const next = quantiseLength(nt.len, step);
+      const next = quantiseLength(nt.len, step / slotUnit());
       // If the effective length is already on the requested grid, leave an absent
       // Len entry absent. This keeps quantising an already-quantised legacy part a
       // no-op while still materialising a value when it actually overrides a voice
       // default such as 1.8 steps.
       if (next == null || Math.abs(next - nt.len) < 1e-9) continue;
       if (setCell(nt.row, nt.bar, nt.step, true, next)) changed++;
+    }
+    if (changed) commit();
+    return { count: notes.length, changed };
+  }
+
+  function transformNotes(scopeKind, kind, value = null) {
+    const notes = scopeKind === 'all' ? allNotes() : selected();
+    if (!notes.length) return { count: 0, changed: 0 };
+    let changed = 0;
+    if (kind === 'legato') {
+      const events = [...new Set(allNotes().map((n) => globalStep(n.bar, n.step)))].sort((a, b) => a - b);
+      for (const nt of notes) {
+        const at = globalStep(nt.bar, nt.step);
+        const next = events.find((event) => event > at);
+        if (next != null && setCell(nt.row, nt.bar, nt.step, true, next - at)) changed++;
+      }
+    } else if (kind === 'staccato' || kind === 'gate' || kind === 'scale') {
+      const percent = kind === 'staccato' ? 50 : Number(value);
+      if (percent > 0) for (const nt of notes) {
+        const next = Math.max(1, Number(((nt.len || 1) * percent / 100).toFixed(6)));
+        if (setCell(nt.row, nt.bar, nt.step, true, next)) changed++;
+      }
+    } else if (kind === 'fixed') {
+      const visual = Number(value) / slotUnit();
+      if (visual > 0) for (const nt of notes) {
+        if (setCell(nt.row, nt.bar, nt.step, true, visual)) changed++;
+      }
+    } else if (kind === 'chop') {
+      const requested = Math.max(2, Math.min(16, Math.round(Number(value) || 2)));
+      for (const nt of notes) {
+        const span = Math.max(1, nt.len || 1);
+        const count = Math.min(requested, Math.max(1, Math.floor(span)));
+        if (count < 2) continue;
+        const piece = span / count;
+        if (setCell(nt.row, nt.bar, nt.step, true, piece)) changed++;
+        const start = globalStep(nt.bar, nt.step);
+        for (let i = 1; i < count; i++) {
+          const g = Math.round(start + piece * i);
+          if (g >= plan.length * slots) break;
+          const b = Math.floor(g / slots); const step = g % slots;
+          if (setCell(nt.row, b, step, true, piece)) changed++;
+        }
+      }
+    } else if (kind === 'reverse' || kind === 'invert') {
+      const ordered = [...notes].sort((a, b) => globalStep(a.bar, a.step) - globalStep(b.bar, b.step)
+        || a.row.midi - b.row.midi);
+      const targets = [];
+      if (kind === 'reverse') {
+        const pitches = ordered.map((n) => n.row.midi).reverse();
+        ordered.forEach((nt, i) => targets.push({ nt, midi: pitches[i] }));
+      } else {
+        const groups = new Map();
+        for (const nt of ordered) {
+          const key = `${nt.bar}:${nt.step}:${nt.row.lane}`;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(nt);
+        }
+        const axis = ordered[0].row.midi;
+        for (const group of groups.values()) {
+          group.sort((a, b) => a.row.midi - b.row.midi);
+          if (group.length > 1) group.forEach((nt, i) => targets.push({
+            nt, midi: i === 0 ? nt.row.midi + 12 : nt.row.midi,
+          }));
+          else targets.push({ nt: group[0], midi: axis * 2 - group[0].row.midi });
+        }
+      }
+      for (const nt of ordered) setCell(nt.row, nt.bar, nt.step, false);
+      const nextSelection = [];
+      for (const { nt, midi } of targets) {
+        const row = rowList.find((candidate) => candidate.midi === midi);
+        if (!row) continue;
+        if (setCell(row, nt.bar, nt.step, true, nt.len)) changed++;
+        nextSelection.push(noteKey(nt.bar, nt.step, row.key));
+      }
+      if (selection.size) selection = new Set(nextSelection);
     }
     if (changed) commit();
     return { count: notes.length, changed };
@@ -2167,7 +2278,7 @@ export function createBarGrid({
    * set you have just moved is the set you still have hold of.
    */
   function moveNotes(notes, dStep, dRow) {
-    const bounds = { bars: plan.length, rows: rowList.length };
+    const bounds = { bars: plan.length, rows: rowList.length, stepsPerBar: slots };
     const d = clampDelta(notes, dStep, dRow, bounds);
     if (!d.dStep && !d.dRow) return;
     const landing = notes.map((nt) => ({ nt, at: movedNote(nt, d.dStep, d.dRow, bounds) }));
@@ -2203,14 +2314,17 @@ export function createBarGrid({
     // does not understand should leave the field exactly as it found it rather than
     // pick a meaning at random.
     if (ev.button !== 0 && ev.button !== 2) return;
-    const cell = cellAt(ev.clientX, ev.clientY);
+    let cell = cellAt(ev.clientX, ev.clientY);
     if (!cell) return;
     // A missed pointerup (window switch, browser cancellation, or a prior gesture
     // ending outside the panel) must not leave a Tone preview in its sustain stage.
     previewRelease();
     ev.preventDefault();
-    const row = rowOf(cell);
+    let row = rowOf(cell);
     if (!row) return;
+    const snapped = snappedStep(Number(cell.dataset.step));
+    cell = cellFor(row.key, Number(cell.dataset.bar), snapped) || cell;
+    row = rowOf(cell) || row;
     // What this press means is one lookup — see `gestureFor`, which is the whole table.
     const g = gestureAt(cell, row, ev);
     // A press that is not about the selection drops it, so there is always a way out:
@@ -2365,8 +2479,9 @@ export function createBarGrid({
     if (!notes.length) return;
     // ⌥ makes them longer and shorter instead of moving them — the keyboard's version
     // of dragging the right end, and the only way to do it a step at a time exactly.
-    if (ev.altKey) resizeNotes(notes, dir.step);
-    else moveNotes(notes, dir.step * (ev.shiftKey ? 16 : 1), dir.row * (ev.shiftKey ? 12 : 1));
+    if (ev.altKey) resizeNotes(notes, dir.step * snapSize());
+    else moveNotes(notes, dir.step * (ev.shiftKey ? slots : snapSize()),
+      dir.row * (ev.shiftKey ? 12 : 1));
     commit();
   });
 
@@ -2477,16 +2592,56 @@ export function createBarGrid({
     open,
     close: () => open(false),
     isOpen,
+    /**
+     * The viewport is desk-session state, not song data. Raw pixels are safe here
+     * because the snapshot also names the song and lane they came from; clamping on
+     * restore handles a resized window or a shorter edited arrangement.
+     */
+    viewState: () => ({
+      top: scrollAt.top, left: scrollAt.left, followX, followEnabled,
+      selection: [...selection], editedKey,
+    }),
+    restoreViewState(state) {
+      if (!state || typeof state !== 'object') return;
+      scrollAt = {
+        top: Math.max(0, Number(state.top) || 0),
+        left: Math.max(0, Number(state.left) || 0),
+      };
+      followEnabled = state.followEnabled !== false;
+      followX = followEnabled && state.followX !== false;
+      if (Array.isArray(state.selection)) selection = new Set(state.selection.map(String));
+      editedKey = typeof state.editedKey === 'string' ? state.editedKey : null;
+      autoLeftAt = null;
+      const scroll = el.querySelector('.ssqscroll');
+      if (!scroll) return; // the next build reads scrollAt
+      const maxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+      const maxLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+      scroll.scrollTop = Math.min(maxTop, scrollAt.top);
+      scroll.scrollLeft = Math.min(maxLeft, scrollAt.left);
+      scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
+      syncDockedChrome(scroll);
+      if (virtual) renderRows(ctx());
+    },
     /** Repaint: the selection moved, or the song changed under us. */
     refresh: () => { autoBar = null; if (isOpen()) heavyUi(`refresh ${ns}`, build); },
     /** Repaint without clearing the auto-page — for a control inside the panel. */
     redraw: () => heavyUi(`redraw ${ns}`, build),
+    /** Reflow CSS-sized columns without rebuilding the whole song. */
+    reflow() {
+      const scroll = el.querySelector('.ssqscroll');
+      if (!scroll) return;
+      scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
+      syncDockedChrome(scroll);
+      if (virtual) renderRows(ctx());
+    },
     setResizeDeferred,
     selectedCount: () => selected().length,
     adjustLengths: ({ scope: scopeKind = 'selection', percent } = {}) =>
       adjustLengths(scopeKind === 'all' ? 'all' : 'selection', percent),
     quantiseLengths: ({ scope: scopeKind = 'selection', grid = 1 } = {}) =>
       quantiseLengths(scopeKind === 'all' ? 'all' : 'selection', grid),
+    transformNotes: ({ scope: scopeKind = 'selection', kind, value = null } = {}) =>
+      transformNotes(scopeKind === 'all' ? 'all' : 'selection', kind, value),
     captureRowAnchor,
     restoreRowAnchor,
     /**
@@ -2516,7 +2671,14 @@ export function createBarGrid({
      * and moving the transport on purpose is the other way of saying "show me there",
      * so the desk calls this on a seek.
      */
-    armFollow() { followX = true; autoLeftAt = null; },
+    setFollow(enabled) {
+      followEnabled = enabled !== false;
+      followX = followEnabled;
+      autoLeftAt = null;
+      return followEnabled;
+    },
+    followEnabled: () => followEnabled,
+    armFollow() { if (followEnabled) followX = true; autoLeftAt = null; },
     /** Focus a whole-song bar/range without changing the selection or its contents. */
     focusRange,
     /** Move the window by whole rows — an octave at a time, in the roll's case. */
@@ -2537,6 +2699,7 @@ export function createBarGrid({
       selection = new Set();
       endBand();
       scrollAt = { top: 0, left: 0 };
+      followEnabled = true;
       followX = true;
       autoLeftAt = null;
       rendered = null;
@@ -2561,10 +2724,10 @@ export function createBarGrid({
       if (!isOpen()) return;
       for (const c of lit) c.classList.remove('playing');
       lit = [];
-      const at = playheadCell(step);
+      const at = playheadCell(step, slots);
       // Stopping re-arms the follow: wherever you scrolled to while it played, the next
       // transport starts by owning the view again.
-      if (!at) { followX = true; autoLeftAt = null; return; }
+      if (!at) { followX = followEnabled; autoLeftAt = null; return; }
       if (wholeSong) {
         // The whole song is in the field, so there is nothing to re-page — the view
         // follows by SCROLLING, which is what a roll does. Only when the column has
@@ -2592,7 +2755,7 @@ export function createBarGrid({
           // moved or not, so this is also where a hand that scrolled away and then came
           // back hands the time axis over again.
           if (!off) followX = true;
-          else if (followX) {
+          else if (followEnabled && followX) {
             scroll.scrollLeft = Math.max(0, x - pad);
             // The position as it landed, not as it was asked for: a scroller near the
             // end of the song clamps, and the difference would read as a hand.

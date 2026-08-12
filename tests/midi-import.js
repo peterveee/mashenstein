@@ -172,8 +172,8 @@ for (const l of many.layers.concat(kits.layers)) {
   assert(!!seamFor(l.key) && isLayer(l.key),
     `${l.key} resolves to a seam of its own, so its voice cannot reach into ${l.from}`);
 }
-assert(kits.layers.find((l) => l.key === 'kick2')?.label === 'Perc kick',
-  'a layer wears the MIDI track\'s own name on the strip');
+assert(!kits.layers.find((l) => l.key === 'kick2')?.label,
+  'a layer does not retain the MIDI track\'s own name');
 
 // ---- 6. through deskBank, which is what makes it a lane ----------------------
 //

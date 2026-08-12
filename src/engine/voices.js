@@ -3217,7 +3217,10 @@ export class VoiceRack {
     const releaseValues = (prev.envelopes || [])
       .map(({ e }) => e?.release ?? 0.015)
       .filter(Number.isFinite);
-    const release = Math.max(0, ...releaseValues);
+    const gateValues = (prev.gates || [])
+      .map(({ tail = 0, fade = 0.004 }) => tail + fade)
+      .filter(Number.isFinite);
+    const release = Math.max(0, ...releaseValues, ...gateValues);
     const finalStop = stopAt + release + 0.01;
     const glide = Math.max(0.001, v.portamento || 0.001);
     for (const { pitches, ratio } of prev.pitchSets || []) {
@@ -3256,6 +3259,21 @@ export class VoiceRack {
         const off = stopAt + envelopeRelease;
         if (envelopeRelease > 0) param.exponentialRampToValueAtTime(1e-4, off);
         param.linearRampToValueAtTime(0, off + 0.005);
+      } catch { /* the old graph may already have ended */ }
+    }
+    // A THROUGH layer has no amp envelope of its own, but it still carries a short
+    // anti-click gate. That gate was scheduled when the FIRST note was built. Moving
+    // only the global envelope therefore left the layer closing at the first note's
+    // original end: the legato pitch changed, then the sound entered release anyway.
+    // Hold it open through the active note and, where a global VCA owns the release,
+    // through that tail as well. It remains a gate rather than becoming a second ADSR.
+    for (const { param, level, tail = 0, fade = 0.004 } of prev.gates || []) {
+      try {
+        if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(time);
+        else { param.cancelScheduledValues(time); param.setValueAtTime(param.value, time); }
+        const gateEnd = stopAt + Math.max(0, tail);
+        param.setValueAtTime(Math.max(1e-4, level), gateEnd);
+        param.linearRampToValueAtTime(0, gateEnd + Math.max(0.001, fade));
       } catch { /* the old graph may already have ended */ }
     }
     for (const source of prev.sources || []) {
@@ -3533,6 +3551,7 @@ export class VoiceRack {
     const allOuts = [];
     const pitchSets = [];
     const legatoEnvelopes = [];
+    const legatoGates = [];
     const legatoSources = [];
     let lastBase = 0;
     // The chorus modulator, declared out here for the same reason the vibrato and LFO
@@ -3843,6 +3862,10 @@ export class VoiceRack {
             g.gain.setValueAtTime(lvl, lt);
             g.gain.setValueAtTime(lvl, gateEnd);
             g.gain.linearRampToValueAtTime(0, gateEnd + 0.004);
+            if (!hold) {
+              const tail = gv ? Math.max(0, gv.release ?? 0.015) + 0.005 : 0;
+              legatoGates.push({ param: g.gain, level: lvl, tail, fade: 0.004 });
+            }
             off = gateEnd + 0.006;
           } else {
             if (lDelay > 0) g.gain.setValueAtTime(0, t);
@@ -4206,7 +4229,7 @@ export class VoiceRack {
     if (mono && lastBase > 0) {
       this._last.set(glideKey, {
         freq: lastBase, outs: allOuts, pitchSets, envelopes: legatoEnvelopes,
-        sources: legatoSources, gateUntil, gateKey, stopAt: lastOff,
+        gates: legatoGates, sources: legatoSources, gateUntil, gateKey, stopAt: lastOff,
       });
     }
     if (lastOff) for (const l of vibOscs) { l.start(time); l.stop(lastOff + 0.01); }

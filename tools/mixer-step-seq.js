@@ -303,6 +303,7 @@ export function createStepSeq({
     // the panel's header row survives a fold and these must not, and a column of track
     // names has no blank half to hold them the way the roll's keyboard does.
     docked, wholeSong, scopeToggle, headerHost, selectedBars, onSelectBars,
+    stepsPerBar: (d) => (d?.resolution === 32 ? 32 : 16),
     actionRange: applyBars ? () => applyBars(figureScope) : null,
     // Rows are tracks and there are a handful, so the vertical window is never the
     // expensive one. The horizontal window is: `colWindow` needs `virtual` before it
@@ -531,6 +532,8 @@ export function createStepSeq({
     open: grid.open,
     close: grid.close,
     isOpen: grid.isOpen,
+    viewState: grid.viewState,
+    restoreViewState: grid.restoreViewState,
     refresh: grid.refresh,
     follow: grid.follow,
     focusRange: grid.focusRange,

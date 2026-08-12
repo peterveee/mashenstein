@@ -29,9 +29,11 @@ import { mixEntrySource } from '../tools/lib/mix-source.js';
 // The desk's own duplicate path: the mix gets the layer, the arrangement gets the bars
 // the source does not play in. Both halves are asserted below, against the same bank.
 import {
-  draftOf, entryOf, setLanesOff, writeBarNotes, copyLaneArrangement,
+  draftOf, entryOf, setLanesOff, writeBarNotes, writeBarNotesShared,
+  copyLaneArrangement, duplicateLaneContent, removeLanes,
 } from '../tools/lib/arrangement-edit.js';
 import { applyArrangement, resolveSection, arrangementIssues } from '../src/data/arrangements.js';
+import * as smwNewest from '../src/data/imported/smw-all-instruments-newest.js';
 
 const renderMixFile = (mix) => `export const MIX = {\n${Object.entries(mix)
   .map(([id, e]) => [id, mixEntrySource(e, '  ')]).filter(([, x]) => x)
@@ -58,6 +60,26 @@ assert(deskBank(bank, { master: -3, lanes: { bass: { gain: -2 } } }) === bank,
 assert(laneList(bank) === laneList(bank) && laneList(bank).every((l) => LANE_KEYS.includes(l.key)),
   'a bank with no layers has exactly the engine’s own lane list');
 
+// SMW All Instruments NEWEST must not retain the old linked-layer deletion behavior.
+const newestLegacyLinks = (smwNewest.mix.layers || []).filter((layer) => layer?.from
+  && layer.independent !== true);
+assert(newestLegacyLinks.length === 0,
+  'SMW All Instruments NEWEST has no legacy-linked musical layers');
+const newestLeadSections = (smwNewest.bank.sections || []).filter((section) => Array.isArray(section.lead));
+assert(newestLeadSections.length > 0 && newestLeadSections.every((section) =>
+  section.lead4 !== section.lead && section.lead8 !== section.lead && section.lead4 !== section.lead8
+  && section.lead4Len !== section.leadLen && section.lead8Len !== section.leadLen
+  && section.lead4Len !== section.lead8Len),
+  'SMW All Instruments NEWEST snapshots lead4 and lead8 notes and lengths independently');
+const newestLeadOff = deskBank(smwNewest.bank, {
+  ...smwNewest.mix,
+  off: [...new Set([...(smwNewest.mix.off || []), 'lead'])],
+});
+assert(newestLeadOff.__layers?.every((layer) => layer.independent === true)
+  && newestLeadOff.__layers?.some((layer) => layer.key === 'lead4')
+  && newestLeadOff.__layers?.some((layer) => layer.key === 'lead8'),
+  'deleting lead from SMW All Instruments NEWEST leaves its independent layers present');
+
 // ---- duplicate -------------------------------------------------------------
 const dup = deskBank(bank, { layers: [{ key: 'bass2', from: 'bass' }] });
 assert(dup !== bank, 'duplicating a track gives back a new bank');
@@ -71,6 +93,117 @@ assert(activeLanes(dup, 1).some((l) => l.key === 'bass2'),
 const order = deskLanes(dup, 1).map((l) => l.key);
 assert(order.indexOf('bass2') === order.indexOf('bass') + 1,
   'the layer sits immediately after the part it copies, on the desk');
+
+// Duplicate on the desk is a snapshot, not a permanent alias. Both tracks begin with
+// the same notes and lengths, but erasing either one afterwards leaves the other one
+// exactly as it was — including nested chord values.
+{
+  const source = {
+    bpm: 120,
+    bass: [110, [165, 220], ...new Array(30).fill(null)],
+    bassLen: [4, [2, 3], ...new Array(30).fill(null)],
+    order: [0],
+  };
+  const copied = duplicateLaneContent(source, draftOf(source, null), 'bass', 'bass2');
+  const layer = { key: 'bass2', from: 'bass', independent: true };
+  const shaped = deskBank(source, { layers: [layer] });
+  const copiedEntry = entryOf(shaped, copied);
+  const copiedPlan = draftOf(shaped, copiedEntry).plan;
+  assert(copiedPlan[0].sec === copiedPlan[1].sec
+    && copiedPlan[0].half === 0 && copiedPlan[1].half === 1,
+  'a duplicate keeps both bars together as one complete two-bar pattern');
+  const empty = new Array(16).fill(null);
+  const played = (draft, lane) => {
+    const entry = entryOf(shaped, draft);
+    const view = deskBank(applyArrangement(source, 'independent-copy', {
+      'independent-copy': entry,
+    }), { layers: [layer] });
+    return draftOf(shaped, entry).plan.flatMap((bar) => {
+      const block = { ...view, ...(resolveSection(view, bar.sec) || {}) };
+      return (block[lane] || []).slice(bar.half * 16, bar.half * 16 + 16);
+    });
+  };
+
+  let erasedCopy = copied;
+  for (let bar = 0; bar < erasedCopy.plan.length; bar++) {
+    erasedCopy = writeBarNotesShared(shaped, erasedCopy, bar, 'bass2', empty, empty);
+  }
+  const originalAfter = played(erasedCopy, 'bass');
+  const originalLengthsAfter = played(erasedCopy, 'bassLen');
+  const copyAfter = played(erasedCopy, 'bass2');
+  assert(originalAfter[0] === 110 && JSON.stringify(originalAfter[1]) === JSON.stringify([165, 220])
+    && originalLengthsAfter[0] === 4 && copyAfter.every((v) => v == null),
+  'erasing every note in a duplicate leaves the original track and its chord untouched');
+
+  let erasedSource = copied;
+  for (let bar = 0; bar < erasedSource.plan.length; bar++) {
+    erasedSource = writeBarNotesShared(shaped, erasedSource, bar, 'bass', empty, empty);
+  }
+  const sourceAfter = played(erasedSource, 'bass');
+  const duplicateAfter = played(erasedSource, 'bass2');
+  const duplicateLengthsAfter = played(erasedSource, 'bass2Len');
+  assert(sourceAfter.every((v) => v == null) && duplicateAfter[0] === 110
+    && JSON.stringify(duplicateAfter[1]) === JSON.stringify([165, 220])
+    && duplicateLengthsAfter[0] === 4,
+  'erasing every note in the original leaves the duplicate untouched');
+
+  // Delete the source itself. `from` remains useful family metadata, but cannot be an
+  // ownership edge for a track that already owns this complete snapshot.
+  const withoutSource = removeLanes(copied, ['bass']);
+  const sourceDeletedMix = { off: ['bass'], layers: [layer] };
+  const sourceDeletedBank = deskBank(source, sourceDeletedMix);
+  const sourceDeletedEntry = entryOf(sourceDeletedBank, withoutSource);
+  const sourceDeletedView = deskBank(applyArrangement(source, 'source-deleted', {
+    'source-deleted': sourceDeletedEntry,
+  }), sourceDeletedMix);
+  const sourceDeletedPlan = draftOf(sourceDeletedBank, sourceDeletedEntry).plan;
+  const survivingCopy = sourceDeletedPlan.flatMap((bar) => {
+    const block = { ...sourceDeletedView,
+      ...(resolveSection(sourceDeletedView, bar.sec) || {}) };
+    return (block.bass2 || []).slice(bar.half * 16, bar.half * 16 + 16);
+  });
+  assert(sourceDeletedView.bass === undefined && survivingCopy[0] === 110
+    && JSON.stringify(survivingCopy[1]) === JSON.stringify([165, 220]),
+  'deleting the original track leaves its independent duplicate intact');
+
+  const withoutCopy = removeLanes(copied, ['bass2']);
+  const copyDeletedEntry = entryOf(source, withoutCopy);
+  const copyDeletedView = applyArrangement(source, 'copy-deleted', {
+    'copy-deleted': copyDeletedEntry,
+  });
+  const copyDeletedPlan = draftOf(source, copyDeletedEntry).plan;
+  const survivingOriginal = copyDeletedPlan.flatMap((bar) => {
+    const block = { ...copyDeletedView,
+      ...(resolveSection(copyDeletedView, bar.sec) || {}) };
+    return (block.bass || []).slice(bar.half * 16, bar.half * 16 + 16);
+  });
+  assert(survivingOriginal[0] === 110
+    && JSON.stringify(survivingOriginal[1]) === JSON.stringify([165, 220]),
+  'deleting the independent duplicate leaves the original track intact');
+}
+
+// Fine-resolution edits use 64 slots per two-bar pattern, while an untouched legacy
+// source in that same song can still have 32. The Arrangement must read both through
+// the scheduler's compatibility seam or the copy appears to contain alternating bars.
+{
+  const source = {
+    bpm: 120, resolution: 32,
+    bass: Array.from({ length: 32 }, (_, i) => (i % 4 === 0 ? 110 + i : null)),
+    order: [0],
+  };
+  const layer = { key: 'bass2', from: 'bass', independent: true };
+  const shaped = deskBank(source, { layers: [layer] });
+  const copied = duplicateLaneContent(source, draftOf(source), 'bass', 'bass2');
+  const entry = entryOf(shaped, copied);
+  const view = deskBank(applyArrangement(source, 'fine-copy', { 'fine-copy': entry }),
+    { layers: [layer] });
+  const activity = laneActivity(view, 1, 4);
+  const original = activity.find((row) => row.key === 'bass');
+  const duplicate = activity.find((row) => row.key === 'bass2');
+  assert(JSON.stringify(duplicate?.density) === JSON.stringify(original?.density)
+    && JSON.stringify(duplicate?.steps) === JSON.stringify(original?.steps),
+  'a fine-resolution duplicate displays every bar exactly like its legacy source');
+}
 
 // Two layers of one part, in the order they were made.
 const two = deskBank(bank, { layers: [{ key: 'bass2', from: 'bass' }, { key: 'bass3', from: 'bass' }] });
@@ -122,8 +255,8 @@ assert(extra.sections.every((s) => s.tom2.length === 32 && s.tom2.every((v) => v
   'the independent lane exists through every section rather than copying tom notes');
 assert(activeLanes(extra, 1).some((l) => l.key === 'tom2'),
   'an empty independent sound still gets a mixer strip and pattern row');
-assert(laneList(extra).find((l) => l.key === 'tom2')?.label === 'Cowbell',
-  'the added sound carries its chosen voice name onto the strip and row');
+assert(laneList(extra).find((l) => l.key === 'tom2')?.label === 'tom 2',
+  'the added sound falls back to its stable engine lane identity');
 const chosenExtra = deskBank(bank, {
   layers: [{ key: 'tom2', from: 'tom', independent: true }],
   voice: { tom2Voice: 'cowbell' },
@@ -398,8 +531,8 @@ const extraRt = await roundTrip({
   layers: [{ key: 'tom2', from: 'tom', independent: true, label: 'Cowbell' }],
   voice: { tom2Voice: 'cowbell' },
 });
-assert(extraRt.layers[0].independent === true && extraRt.layers[0].label === 'Cowbell',
-  'round-trip: an independent added sound keeps its mode and display name');
+assert(extraRt.layers[0].independent === true && !extraRt.layers[0].label,
+  'round-trip: an independent added sound keeps its mode without a stale display name');
 
 const shapeOnly = await roundTrip({ off: ['crash'] });
 assert(shapeOnly && JSON.stringify(shapeOnly.off) === JSON.stringify(['crash']),

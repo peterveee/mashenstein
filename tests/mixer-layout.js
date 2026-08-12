@@ -15,6 +15,7 @@ const seq = readFileSync(new URL('../tools/mixer-step-seq.js', import.meta.url),
 const piano = readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta.url), 'utf8');
 const barGrid = readFileSync(new URL('../tools/mixer-bar-grid.js', import.meta.url), 'utf8');
 const audio = readFileSync(new URL('../src/engine/audio.js', import.meta.url), 'utf8');
+const freezeSpanSource = readFileSync(new URL('../tools/lib/freeze-span.js', import.meta.url), 'utf8');
 const touchedBody = /const touched = \(\) => \{[\s\S]*?\n  \};/.exec(editor)?.[0] || '';
 
 let failed = false;
@@ -26,6 +27,22 @@ function assert(cond, msg) {
 assert(!/schedulePreview|previewNote/.test(touchedBody)
   && !/let previewTimer|const schedulePreview/.test(editor),
   'editing a drum or noise parameter does not schedule an unsolicited note preview');
+
+assert(/const armBarOverride = \(\) => \{\s*if \(mode\) mode\.value = 'on';\s*\};/.test(entry)
+  && /\[strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(entry),
+  'editing any bar Note FX control automatically enables that bar override');
+{
+  const noteFxEditor = entry.slice(entry.indexOf('function openNoteFxEditor'),
+    entry.indexOf('function openBarEffectsEditor'));
+  const regionEditor = entry.slice(entry.indexOf('function openRegionEditor'),
+    entry.indexOf('function openNoteFxEditor'));
+  assert(/notefxrender[\s\S]*Render Arp to Notes[\s\S]*renderArpToNotes/.test(noteFxEditor)
+    && !regionEditor.includes("label: 'Render Arp to Notes'"),
+  'Render Arp to Notes lives inside the Note FX popup rather than the region menu');
+}
+assert(/const repeat = check\('Repeat pattern', current\.arp\?\.repeat !== false\)/.test(entry)
+  && /repeat: repeat\.checked/.test(entry),
+  'the Arpeggiator exposes a saved Repeat pattern option that defaults on');
 
 const envelopeTimeRows = editor.match(/envTime\(/g) || [];
 assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
@@ -77,6 +94,13 @@ assert(/const SHORT_TIME_SCALE = 2;/.test(editor)
 
 const entrySource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
 const mrdrKnob = readFileSync(new URL('../tools/mrdr3-knob.js', import.meta.url), 'utf8');
+assert(/id="importtracks"/.test(shell)
+  && /async function importTracks()/.test(entrySource)
+  && /Pick tracks from/.test(entrySource)
+  && /input\[name="importtracks-lane"\]:checked/.test(entrySource)
+  && entrySource.includes('insertSilence(destinationDraft, destinationDraft.plan.length')
+  && /independent: true/.test(entrySource),
+  'Import Tracks opens a song picker, then a checked-track picker, grows the destination, and adds independent layers');
 assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null,\s*taper = null, floor = 0, onStart = null, onEnd = null \}\)/
   .test(entrySource)
   && /const pos = clamp\(position, 0, 1\);/.test(entrySource)
@@ -276,7 +300,7 @@ assert(/searchInput = search/.test(librarySource)
 assert(/if \(voiceLibrary\.isCollapsed\('edit'\)\) voiceLibrary\.collapse\('edit', false\)/.test(entry)
   // The remembered flag is read into `libraryReopened` because the tour reads it too —
   // somebody who left the library open is not on a first visit and is not offered one.
-  && /const libraryReopened = !!localStorage\.getItem\('mash-mixer-library-open'\)/.test(entry)
+  && /const libraryReopened = sessionMatches[\s\S]*?savedDeskSession\.libraryOpen === true[\s\S]*?localStorage\.getItem\('mash-mixer-library-open'\)/.test(entry)
   && /if \(libraryReopened\) openPresetLibrary\(\)/.test(entry),
   'opening or restoring the preset library reveals its blank editor workspace');
 assert(!shell.includes('id="panicbtn"') && !/#panicbtn/.test(shell)
@@ -542,7 +566,8 @@ assert(/runtimeHealth\(\)/.test(voicesSrc)
 assert(/recordType', 'status'/.test(entry)
   && /function appendDiagnosticEvent\(/.test(entry)
   && /AUDIO OUTPUT RECOVERED/.test(entry)
-  && /recoveryTier: 'suspend\/resume context'/.test(entry)
+  && /recoveryTier: 'fresh context'/.test(entry)
+  && /Audio\.rebuildRealtimeContext\(\)/.test(entry)
   && /appendDiagnosticEvent\('PLAYBACK INTERRUPTED'/.test(entry)
   && /function lastDiagnosticAction\(/.test(entry)
   && /stallSource: heavy\?\.label \|\| action\?\.label \|\| 'unattributed'/.test(entry),
@@ -590,7 +615,7 @@ assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
   && /\$\('playstart'\)\.onclick = playFromBeginning/.test(entry),
   'Start from beginning prepares queued notes for a bounded time and starts between cache jobs');
 assert(/prepareNoteCache\(bank\)/.test(audio)
-  && /for \(let step = 0; step < plan\.length \* 16; step\+\+\)/.test(audio)
+  && /for \(let step = 0; step < plan\.length \* 16; step \+= tick\)/.test(audio)
   && /rack\.prepareNoteCache\(voice\.id, freq, duration\(\)/.test(audio)
   && /rack\.prioritisePreparedNotes\(\)/.test(audio)
   && /prepareNoteCache\(voiceId, freq, dur/.test(voicesSrc)
@@ -864,7 +889,7 @@ const arrangePanel = shell.indexOf('<div id="arrange">');
 const notes = shell.indexOf('<div id="notes">');
 const mixhead = shell.indexOf('<div id="mixhead">');
 const rack = shell.indexOf('<div id="rackwrap">');
-const devices = shell.indexOf('<div id="devices">');
+const devices = shell.indexOf('<div id="devices"');
 assert(arrangePanel >= 0 && notes > arrangePanel && mixhead > notes && rack > mixhead
   && devices > rack
   && !shell.includes('id="arrsplit"') && !shell.includes('id="devsplit"'),
@@ -910,15 +935,25 @@ assert(/const deskScale = [\s\S]*?Math\.min\(1, innerHeight \/ storedDeskVh\)/.t
 // applied at load. Notes is the exception — it belongs to the song, and restoreSongLayout
 // carries it. Written only when the fold actually changes, because the border drags call
 // these setters on every pointermove.
-assert(/const ARR_FOLD_KEY = 'mash-mixer-arr-folded'/.test(entry)
-  && /const FX_FOLD_KEY = 'mash-mixer-fx-folded'/.test(entry)
-  && /const MIXER_KEY = 'mash-mixer-rack-folded'/.test(entry)
-  && /setArrangeCollapsed\(localStorage\.getItem\(ARR_FOLD_KEY\) === '1'\)/.test(entry)
-  && /setDevicesFolded\(localStorage\.getItem\(FX_FOLD_KEY\) === '1', false\)/.test(entry)
-  && /setMixerFolded\(localStorage\.getItem\(MIXER_KEY\) === '1', false\)/.test(entry),
-  'every desk fold is remembered globally and restored on load');
-for (const [fn, key] of [['setArrangeCollapsed', 'ARR_FOLD_KEY'],
-  ['setDevicesFolded', 'FX_FOLD_KEY'], ['setMixerFolded', 'MIXER_KEY']]) {
+assert(/const LOWER_VIEW_KEY = 'mash-mixer-lower-view'/.test(entry)
+  && /const LOWER_VIEWS = new Set\(\['mixer', 'roll', 'pattern'\]\)/.test(entry)
+  && /setLowerView\(lowerView, \{ remember: false \}\)/.test(entry)
+  && /#tlfold, #arrfold, #notefold, #mixfold \{ display: none !important; \}/.test(shell),
+  'the desk remembers one lower-workspace view and exposes no panel-collapse controls');
+assert(/#devices \{[^}]*position:\s*fixed[^}]*inset:\s*0 0 0 auto[^}]*width:\s*min\(400px,[^}]*height:\s*auto !important[^}]*resize:\s*none/s.test(shell)
+  && /#devices \{[^}]*border-right:\s*0[^}]*border-radius:\s*8px 0 0 8px[^}]*box-shadow:\s*-18px 0/s.test(shell)
+  && !entry.includes("win.style.transform = 'none'")
+  && !entry.includes('event.clientX - dx'),
+  'Effects is a fixed full-height inspector flush with the right edge, not a draggable floating dialog');
+assert(/#devices #devrack \{[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*auto[^}]*flex-direction:\s*column[^}]*align-items:\s*stretch/s.test(shell)
+  && /#devices \.device \{[^}]*width:\s*100%[^}]*align-self:\s*stretch/s.test(shell)
+  && /#devices \.devgrid \{[^}]*grid-auto-flow:\s*row[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s.test(shell)
+  && /@media \(max-width:\s*620px\)[\s\S]*?#devices \.devgrid \{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/.test(shell),
+  'the effect chain stacks vertically and each plugin reflows to two compact columns, then one on narrow windows');
+assert(/#fxpicker\.show \{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s.test(shell)
+  && /const inInspector = !!anchor\?\.closest\?\.\('#devices'\)[\s\S]*?getBoundingClientRect\(\)\.left - r\.width - 6/.test(entry),
+  'the compact effect catalogue opens to the left of the inspector rather than covering its chain');
+for (const [fn, key] of []) {
   const body = new RegExp(`function ${fn}\\([\\s\\S]*?\\n\\}`).exec(entry)?.[0] || '';
   // Either shape of the same gate: `if (changed) setItem(...)`, or an early
   // `if (!changed) return;` with the write below it.
@@ -930,11 +965,11 @@ for (const [fn, key] of [['setArrangeCollapsed', 'ARR_FOLD_KEY'],
 assert(entry.includes("const edge = $('mixhead')")
   && entry.includes("const edge = $('notes')")
   && entry.includes("const edge = $('devices')")
-  && entry.includes("const edge = $('timeline')")
-  && (entry.match(/edge\.addEventListener\('pointerdown'/g) || []).length >= 4
-  && (entry.match(/edge\.addEventListener\('pointermove'/g) || []).length >= 4
+  && !entry.includes("const edge = $('timeline')")
+  && (entry.match(/edge\.addEventListener\('pointerdown'/g) || []).length >= 3
+  && (entry.match(/edge\.addEventListener\('pointermove'/g) || []).length >= 3
   && (entry.match(/edge\.addEventListener\('dblclick'/g) || []).length >= 2,
-  'all panel borders handle drag gestures, with reset gestures on remembered heights');
+  'the three legacy adjustable panel borders retain drag/reset gestures while the one-row Timeline has none');
 // Bounded to the function's own body. `[\s\S]*?` is lazy but unbounded, so a regex
 // anchored on `function notesRoom(` happily reaches unrelated layout code below and
 // passes however notesRoom is written.
@@ -952,17 +987,12 @@ assert(entry.includes('function syncPanelResizeEdges()')
   && /function setMixerFolded[\s\S]*?syncPanelResizeEdges\(\)/.test(entry)
   && /function setArrangeCollapsed[\s\S]*?syncPanelResizeEdges\(\)/.test(entry),
   'resize hit areas follow the adjacent panels’ fold state');
-assert(/function scheduleDeskFit\([^)]*\)[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?fitStrips\(\)/.test(entry)
-  && /function scheduleDeskFit\([\s\S]*?deskFitSettle[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?fitStrips\(\)/.test(entry)
-  && (entry.match(/pianoRoll\.setResizeDeferred\(true\)/g) || []).length === 3
-  && /scheduleDeskFit\(\);/.test(entry)
-  && /requestAnimationFrame\(\(\) => pianoRoll\.setResizeDeferred\(false\)\)/.test(entry)
-  && /function setResizeDeferred\(on\)[\s\S]*?resizeDirty/.test(barGrid)
-  && /if \(resizeDeferred\) \{ resizeDirty = true; return; \}/.test(barGrid)
-  && /function setNotesFolded\([\s\S]*?syncPanelResizeEdges\(\);[\s\S]*?scheduleDeskFit\(true\)/.test(entry)
-  && /function setDevicesFolded\([\s\S]*?scheduleDeskFit\(true\)/.test(entry)
-  && /function setMixerFolded\([\s\S]*?scheduleDeskFit\(true\)/.test(entry),
-  'panel folds and resizers coalesce layout work, deferring piano-roll rebuilds until settled');
+assert(/const splitter = \$\('worksplitter'\)/.test(entry)
+  && /splitter\.addEventListener\('pointerdown'/.test(entry)
+  && /splitter\.addEventListener\('pointermove'/.test(entry)
+  && /--upper-work-height/.test(entry)
+  && /function setResizeDeferred\(on\)[\s\S]*?resizeDirty/.test(barGrid),
+  'one upper/lower splitter resizes the permanent workspaces and the roll defers rebuilds while moving');
 assert(/function fitStrips\(\)[\s\S]*?scheduleMarkClipped\(\)/.test(entry)
   && /function scheduleMarkClipped\(\)[\s\S]*?requestIdleCallback/.test(entry),
   'nonessential clipping reads are deferred out of the panel-fold task');
@@ -1014,11 +1044,13 @@ assert(/function keepSelectedLaneVisible\(\)[\s\S]*?classList\.contains\('collap
   && /else if \(top < grid\.scrollTop\) grid\.scrollTop = top;/.test(entry),
   'the lane is found by index off the same row height and gap the snap uses, and a '
   + 'window too short for a whole row shows the lane\'s top rather than its feet');
-assert(/function syncArrangementLaneSelection[\s\S]*?classList\.toggle\('sel', el\.dataset\.lane === selectedLane\)[\s\S]*?if \(reveal\) keepSelectedLaneVisible\(\)/.test(entry)
+assert(/function syncArrangementLaneSelection[\s\S]*?const selected = el\.dataset\.lane === selectedLane;[\s\S]*?classList\.toggle\('sel', selected\)[\s\S]*?if \(reveal\) keepSelectedLaneVisible\(\)/.test(entry)
   && /function selectLane\(key\)[\s\S]*?syncArrangementLaneSelection\(\{ reveal: true \}\)/.test(entry)
   && /function loadTrack\(id\)[\s\S]*?buildArrangement\(\);[\s\S]{0,300}?syncArrangementLaneSelection\(\{ reveal: true \}\)/.test(entry)
   && /function buildArrangement\(\)[\s\S]*?syncArrangementLaneSelection\(\);\s*\n\s*redrawSelection\(\)/.test(entry),
   'channel selection and song load reveal the selected track while rebuilds preserve its mark');
+assert(/function selectLane\(key\)[\s\S]*?classList\.toggle\('selected', selected\)[\s\S]*?dataset\.lowerView === 'mixer'[\s\S]*?rack\.scrollLeft/.test(entry),
+  'selecting an arrangement track highlights and reveals its channel whenever the Mixer is visible');
 assert(entry.includes("const FX_KEY = 'mash-mixer-fxh'")
   && /let userFxH =/.test(entry)
   && /effectsNaturalHeight[\s\S]*?userFxH != null/.test(entry)
@@ -1028,8 +1060,11 @@ assert(entry.includes("const FX_KEY = 'mash-mixer-fxh'")
 assert(/const edge = \$\('devices'\)[\s\S]*?startCollapsed && dy < 0[\s\S]*?setDevicesFolded\(false, false\)[\s\S]*?userFxH = clampEffectsH/.test(entry)
   && /const edge = \$\('devices'\)[\s\S]*?asked <= MIN\.devices\(\)[\s\S]*?setDevicesFolded\(true, false\)[\s\S]*?userFxH = null/.test(entry),
   'dragging upward on folded Effects opens and grows it, while dragging to its floor folds it');
-assert(/const edge = \$\('timeline'\)[\s\S]*?const asked = startH \+ \(e\.clientY - from\)[\s\S]*?asked > 30[\s\S]*?setSectionsShown\(true, false\)/.test(entry),
-  'dragging down on the folded Timeline restores its section row and takes the difference from the desk');
+assert(!shell.includes('id="blocks"')
+  && !/#timeline\.sections|#blocks \.blk/.test(shell)
+  && !/SECTIONS_KEY|function setSectionsShown/.test(entry)
+  && /#timeline \{[^}]*height:\s*30px/s.test(shell),
+  'Timeline is one ruler row with no coloured section strip or reclaimable blank band');
 
 // ---- the desk column: a pinned footer and one elastic region ---------------------
 // The footer used to travel. #rackwrap was the only flex:1 child of the page column
@@ -1037,29 +1072,39 @@ assert(/const edge = \$\('timeline'\)[\s\S]*?const asked = startH \+ \(e\.client
 // stacked from the top and the footer floated into the middle of the screen. The fix
 // is structural: the four resizable regions live in #desk, the footer is outside it,
 // and which region is elastic is a class the desk sets on every fit.
-const deskAt = shell.indexOf('<main id="desk">');
+const deskAt = shell.indexOf('<main id="desk"');
 const deskEnd = shell.indexOf('</main>');
 const footerAt = shell.indexOf('<footer>');
 assert(deskAt > 0 && deskEnd > deskAt && footerAt > deskEnd,
   'the resizable regions are inside #desk and the footer is structurally after it');
-assert(shell.indexOf('<div id="arrange">') > deskAt
-  && shell.indexOf('<div id="rackwrap">') < deskEnd
-  && shell.indexOf('<div id="devices">') < deskEnd
-  && shell.indexOf('<div id="deskslack"') < deskEnd
-  && shell.indexOf('<div id="timeline"') < deskAt,
-  'arrangement, rack, effects and the slack band divide the desk; the timeline does not');
+assert(shell.indexOf('<section id="upperwork"') > deskAt
+  && shell.indexOf('<div id="timeline"') > shell.indexOf('<section id="upperwork"')
+  && shell.indexOf('<div id="arrange">') > shell.indexOf('<div id="timeline"')
+  && shell.indexOf('<div id="worksplitter"') > shell.indexOf('<div id="arrange">')
+  && shell.indexOf('<section id="lowerwork"') > shell.indexOf('<div id="worksplitter"')
+  && shell.indexOf('<div id="rackwrap">') < deskEnd,
+  'timeline and arrangement share the upper workspace above one resizable lower workspace');
 assert(/#desk \{[^}]*flex: 1 1 auto[^}]*min-height: 0[^}]*flex-direction: column[^}]*overflow: hidden/s.test(shell),
   '#desk takes the window, can be squeezed below its content, and clips itself first');
-assert(/#desk > \.greedy \{[^}]*flex: 1 1 auto[^}]*min-height: 0/s.test(shell)
-  && !/#rackwrap \{[^}]*flex: 1/s.test(shell),
-  'the elastic region is chosen by a class rather than hardwired to the rack');
+assert(/#lowerwork \{[^}]*flex:\s*1 1 auto[^}]*min-height:\s*132px/s.test(shell)
+  && /#mixerview, #lowerwork #notes \{[^}]*flex:\s*1 1 auto/s.test(shell),
+  'the selected lower view is the elastic region beneath the fixed upper ratio');
 assert(shell.includes('#deskslack { display: none; }')
   && /#deskslack\.greedy \{[^}]*background: var\(--panel\)/s.test(shell),
   'the empty band is desk-coloured and exists only while it is the elastic one');
-assert(entry.includes("const DESK_CHAIN = ['rackwrap', 'arrange', 'notes', 'deskslack']")
-  && entry.includes('function applyDeskChain()')
-  && /function fitStrips\(\) \{\s*applyDeskChain\(\)/.test(entry),
-  'the priority chain is written down once, in order, and re-run on every fit');
+assert(/function fitStrips\(\)[\s\S]*?if \(\$\('upperwork'\) && \$\('lowerwork'\)\)[\s\S]*?dataset\.lowerView === 'mixer'[\s\S]*?sizeStrips/.test(entry)
+  && /function setLowerView\(next[\s\S]*?\$\('desk'\)\.dataset\.lowerView = view/.test(entry),
+  'every fit reapplies the selected lower workspace before fitting its mixer or editor');
+const lowerViewSetter = entry.slice(entry.indexOf('function setLowerView(next'),
+  entry.indexOf("$('mixviewbtn').onclick", entry.indexOf('function setLowerView(next')));
+assert(/function laneForLowerView\(view\) \{\s*\n\s*if \(!track/.test(entry)
+  && /if \(track\) \{[\s\S]*?syncNotesPanel\(\)/.test(lowerViewSetter)
+  && lowerViewSetter.indexOf('if (track)') < lowerViewSetter.indexOf('syncNotesPanel()'),
+  'the shell may restore its lower view before the asynchronous first song exists');
+assert(/function laneForLowerView\(view\)[\s\S]*?const wanted = view === 'pattern' \? 'kit' : 'roll';[\s\S]*?lane\.key === selectedLane[\s\S]*?editorFor\(lane\.key\) === wanted[\s\S]*?lanes\.find\(\(lane\) => editorFor\(lane\.key\) === wanted\)/.test(entry)
+  && /const viewLane = laneForLowerView\(view\);[\s\S]*?\$\('desk'\)\.dataset\.lowerView = view;[\s\S]*?if \(viewLane && viewLane !== selectedLane\) selectLane\(viewLane\);[\s\S]*?syncArrangementLaneSelection\(\{ reveal: true \}\);[\s\S]*?keepLanePending = true;/.test(lowerViewSetter),
+  'Piano Roll selects a real pitched track, Pattern selects a drum track, and either '
+  + 'workspace switch reveals that track in the arrangement before and after fitting');
 // The arrangement is snapped to whole lanes, so it can never be the flex:1 one — and
 // what it cannot use has to pass DOWN the chain rather than stopping at the band. It
 // used to stop there, which boxed the piano roll into its own content height with a
@@ -1227,15 +1272,16 @@ assert(/\.arrrow\.sel \{[^}]*z-index:\s*4/s.test(shell)
 assert(/\.arrrow \{[^}]*flex-direction:\s*column[^}]*height:\s*var\(--arrrow\)[^}]*min-height:\s*var\(--arrrow\)/s.test(shell)
   && /\.arrrow-main \{[^}]*flex:\s*0 0 var\(--arrrow\)/s.test(shell)
   && /--arrhead-gap:\s*8px/.test(shell)
-  && /\.arrhead-cell \{[^}]*width:\s*calc\(var\(--arrname\) \+ var\(--gut\) \+ 4px - var\(--foldx\)\)[^}]*display:\s*grid[^}]*grid-template-columns:\s*var\(--ctlh\) 17px var\(--arrhead-gap\) minmax\(0, 1fr\)[^}]*padding-left:\s*4px; padding-right:\s*var\(--arrhead-gap\)/s.test(shell)
+  && /--arrnum:\s*18px/.test(shell)
+  && /\.arrhead-cell \{[^}]*width:\s*calc\(var\(--arrname\) \+ var\(--gut\) \+ 4px - var\(--foldx\)\)[^}]*display:\s*grid[^}]*grid-template-columns:\s*var\(--arrnum\) 17px var\(--arrhead-gap\) minmax\(0, 1fr\)[^}]*padding-left:\s*4px; padding-right:\s*var\(--arrhead-gap\)/s.test(shell)
   && /\.arrtrack-icon \{[^}]*grid-column:\s*2[^}]*grid-row:\s*1 \/ span 2/s.test(shell)
   && /\.arrtrack-top, \.arrtrack-bottom \{[^}]*grid-column:\s*4/s.test(shell)
   && /\.arrtrack-top \{[^}]*grid-row:\s*1/s.test(shell)
   && /\.arrtrack-bottom \{[^}]*grid-row:\s*2/s.test(shell)
   && /#arrange \{[^}]*max-height:\s*calc\(var\(--arrhead-h\)\s*\+ var\(--arrrow\) \* var\(--arrmax-lanes\)\s*\+ var\(--arrgap\) \* \(var\(--arrmax-lanes\) - 1\)\s*\+ var\(--arrgrid-pad\) \+ 1px\)/s.test(shell)
   && /#arrgrid \{[^}]*padding:\s*0 0 0 calc\(var\(--foldx\) - 4px\)[^}]*row-gap:\s*var\(--arrgap\)/s.test(shell)
-  && /const preset = presetForLane\(row\.key\)[\s\S]*?preset\?\.category[\s\S]*?preset\?\.label/.test(entry)
-  && /const top = document\.createElement\('div'\)[\s\S]*?top\.className = 'arrtrack-top'[\s\S]*?category\.className = 'arrpresetcat'[\s\S]*?const bottom = document\.createElement\('div'\)[\s\S]*?bottom\.className = 'arrtrack-bottom'[\s\S]*?top\.append\(name, category\)[\s\S]*?bottom\.append\(btns\)[\s\S]*?header\.append\(num, icon, top, bottom\)[\s\S]*?bottom\.append\(gainWrap\)[\s\S]*?main\.append\(header, bars\)[\s\S]*?el\.append\(main\)/.test(entry),
+  && /const preset = presetForLane\(row\.key\)[\s\S]*?const displayLabel = customTrackLabel\(row\.key\) \|\| preset\?\.label \|\| row\.label[\s\S]*?preset\?\.category/.test(entry)
+  && /const top = document\.createElement\('div'\)[\s\S]*?top\.className = 'arrtrack-top'[\s\S]*?category\.className = 'arrpresetcat'[\s\S]*?const bottom = document\.createElement\('div'\)[\s\S]*?bottom\.className = 'arrtrack-bottom'[\s\S]*?top\.append\(name\)[\s\S]*?if \(frozen\) top\.append\(freezeMark\('arrfreeze', '❄'\)\)[\s\S]*?top\.append\(category\)[\s\S]*?bottom\.append\(btns\)[\s\S]*?header\.append\(num, icon, top, bottom\)[\s\S]*?bottom\.append\(gainWrap\)[\s\S]*?main\.append\(header, bars\)[\s\S]*?el\.append\(main\)/.test(entry),
   'arrangement track headers use Logic-style identity and control rows');
 assert(/const laneRowGap = \(\) => px\(\$\('arrgrid'\), 'rowGap'\);/.test(entry)
   && /const laneStackHeight = \(count\) => count \* laneRowHeight\(\)[\s\S]*?Math\.max\(0, count - 1\) \* laneRowGap\(\)/.test(entry)
@@ -1396,7 +1442,7 @@ assert(/data-note-visual="solid"/.test(shell)
   && /--trail-thread:\s*color-mix\(in srgb, var\(--bar-colour, var\(--lane\)\) 82%, var\(--deep\)\)/.test(shell)
   && /var\(--deep\)/.test(shell),
   'the three note languages use bright fields with tinted Elastic Trails marks and playback animation is opt-in');
-assert(/box\.className = `arrbar\$\{playing \? ' has-notes' : ''\}`/.test(entry)
+assert(/box\.className = `arrbar\$\{playing \? ' has-notes' : ''\}\$\{barFrozen \? ' frozen' : ''\}`/.test(entry)
   && /const barColour = arrangementBarField\(row\.key\)[\s\S]*?box\.style\.setProperty\('--bar-colour', barColour\)/.test(entry)
   && /c\.className = 'arrcell'[\s\S]*?note \? ' note' : ''/.test(entry)
   && /const perBar = \[16, 8, 4, 2, 1\]\.find\(\(cells\) => plan\.length \* cells <= 256\)/.test(entry)
@@ -1550,6 +1596,8 @@ assert((entry.match(/addInstrument: \(anchor\) => addBlankTrack\(anchor, \{ drum
 assert(/const isIndependentLane = \(key\)[\s\S]*?const layer = isLayer\(laneKey\) && !independent/.test(entry)
   && /\?\.from\s*\n?\s*\|\| baseLane\(laneKey\);[\s\S]*?A duplicate of \$\{targetLabel\(source\)\}/.test(entry),
   'independent tracks are not presented as duplicates of Tom in the voice picker');
+assert(/function duplicateLane\(key\)[\s\S]*?duplicateLaneContent\(editBank\(\), arr, key, newKey\)[\s\S]*?\{ key: newKey, from, independent: true/.test(entry),
+  'Duplicate snapshots the source pattern and declares the new track independent');
 assert(/function openVoicePicker[\s\S]*?const pending = pendingAddTrack\?\.key === laneKey[\s\S]*?let kind = drumsOnly \? 'drums' : pending \? 'all'[\s\S]*?else if \(pending\)[\s\S]*?Choose a preset for this new track/.test(entry),
   'the plus picker starts on All without presenting the Tom engine default');
 assert(/async function deleteLane[\s\S]*?bankCache\.sig = null;[\s\S]*?localStorage\.removeItem\(LANE_KEY\)[\s\S]*?rebuildForShape\(\)/.test(entry)
@@ -1558,9 +1606,12 @@ assert(/async function deleteLane[\s\S]*?bankCache\.sig = null;[\s\S]*?localStor
   && /label: 'Delete Track', danger: true,[\s\S]*?run: \(\) => deleteLane\(laneKey\)/.test(entry)
   && /ask\(`Delete \$\{number \? `track \$\{number\}, ` : ''\}\$\{escapeHtml\(label\)\}\?`/.test(entry)
   && /The other tracks and all song bars stay in place/.test(entry)
-  && /function rebuildForShape\(\) \{[\s\S]*?bankCache = \{ bank: null, sig: null, out: null \};[\s\S]*?buildRack\(\);[\s\S]*?buildArrangement\(\);[\s\S]*?rebank\(\)/.test(entry)
+  && /function rebuildForShape\(\) \{[\s\S]*?bankCache = \{ bank: null, sig: null, arr: null, out: null \};[\s\S]*?buildRack\(\);[\s\S]*?buildArrangement\(\);[\s\S]*?rebank\(\)/.test(entry)
   && /const mixRemoved = layer[\s\S]*?\.arrrow\[data-lane=[\s\S]*?\.strip\[data-lane=/.test(entry),
   'deleting a track invalidates its shaped view, clears selection, and lives on the track menu');
+assert(/const layersOf = \(key\) => \{[\s\S]*?if \(l\.independent\) continue;[\s\S]*?if \(!sources\.has\(l\.from\)\) continue;/.test(entry)
+  && /m\.layers = \(m\.layers \|\| \[\]\)\.filter\(\(l\) => !drop\.has\(l\.key\)[\s\S]*?l\.independent \|\| !drop\.has\(l\.from\)/.test(entry),
+  'deleting either side of an independent duplicate preserves the other track');
 // `drop` is a Set, and this is the first thing deleteLane does with it. Handing a Set
 // to something expecting an array threw before a single line of the delete had run:
 // no mix edit, no repaint, and a strip that stayed exactly where it was.
@@ -1609,6 +1660,7 @@ assert(/function stripMenu\(el, key, kind\)[\s\S]*?label: `Copy \$\{Kind\}`[\s\S
 'a channel strip gets the same channel menu as the master and the send returns');
 assert(/actionSection\('Sound', \[[\s\S]*?label: 'Preset'[\s\S]*?openVoicePickerFor\(laneKey\)[\s\S]*?label: 'Edit Preset'[\s\S]*?editVoice\(laneKey\)/.test(trackBranch)
   && !/isNew: true/.test(trackBranch)
+  && /label: 'Channel Effects'[\s\S]*?openChannelEffects\(laneKey\)/.test(trackBranch)
   && /label: 'Duplicate',\s*title: layersOf\(laneKey\)\.length/.test(trackBranch)
   // Clear EMPTIES the lane rather than flagging it: rests written into every bar, the
   // right rest for the lane's kind, and the delete flags taken off with them. A flag
@@ -1621,15 +1673,19 @@ assert(/actionSection\('Sound', \[[\s\S]*?label: 'Preset'[\s\S]*?openVoicePicker
   && /label: 'Erase Notes'[\s\S]*?clearLaneBars\(laneKey, from, to, `\$\{laneLabel\} erased`, \{ shared: true \}\)/.test(trackBranch)
   && /function clearLaneBars\(laneKey, from, to, what, \{ shared = false \} = \{\}\) \{[\s\S]*?PERCUSSION_LANES\.includes\(baseLane\(laneKey\)\) \? false : null[\s\S]*?const write = shared \? writeBarNotesShared : writeBarNotes[\s\S]*?setLanesDeleted\(arrDraftOf\(\), from, to, \[laneKey\], false\)[\s\S]*?write\(eb, next, bar, laneKey, empty, noLengths\)/.test(entry)
   && !/setLanesDeleted\(arrDraftOf\(\), from, to, \[laneKey\], true\)/.test(entry)
-  // No Channel section and no Edit notes…: the first belongs to the strip, the second has
-  // a toolbar button and a key of its own. Mute and solo stay out for the older reason —
-  // both views already carry those buttons, with their state showing.
+  // No duplicate Channel action section and no Edit notes…: channel effects has one
+  // requested navigation shortcut, while the strip keeps the copy/paste/reset actions.
+  // The note editor has a toolbar button and a key of its own. Mute and solo stay out.
   && !/actionSection\('Channel'/.test(trackBranch)
   && !/copyStrip|pasteStrip|pasteEffects|resetTarget/.test(trackBranch)
+  && /label: 'Copy Track'[\s\S]*?copyTrack\(laneKey\)/.test(trackBranch)
+  && /label: 'Paste Track'[\s\S]*?pasteTrack\(\)/.test(trackBranch)
   // The item, not the word — the branch explains in a comment why it no longer has one.
   && !/label: 'Edit notes…'/.test(trackBranch)
   && !/setLaneMute|setLaneSolo/.test(trackBranch),
-'the track panel carries the sound and the part, and nothing about the channel');
+'the track panel carries the sound and part actions plus one channel-effects shortcut');
+assert(/function openChannelEffects\(key\) \{[\s\S]*?selectLane\(key\);[\s\S]*?setDevicesFolded\(false\);[\s\S]*?\}/.test(entry),
+  'Channel Effects selects that exact track and opens its effects inspector');
 // ---- one vocabulary across all three panels --------------------------------------
 //
 // Every button in the three right-click panels is Title Case, and the destructive ones
@@ -1648,13 +1704,18 @@ assert(!/label: '(?:Clear|Reset|Reset track|Delete)'/.test(regionFn)
   && panelLabels.filter((l) => l === 'Erase Notes').length === 2
   && panelLabels.filter((l) => l === 'Copy Notes').length === 2,
 'the destructive verbs name what they act on, and the notes verbs are shared by both lane panels');
+const pickerAnchor = entry.slice(entry.indexOf('function openVoicePickerFor'), entry.indexOf('/**\n * The preset editor', entry.indexOf('function openVoicePickerFor')));
+assert(/#arrgrid \.arrrow\[data-lane=/.test(pickerAnchor)
+  && /const assetArea = row\?\.querySelector\('\.arrbars'\) \|\| row/.test(pickerAnchor)
+  && /openVoicePicker\(r \? r\.right \+ 6 : innerWidth \/ 2, r \? r\.top : 120, laneKey\)/.test(pickerAnchor),
+'the track-menu preset picker anchors beside the arrangement asset area, not the mixer strip');
 // Timing and gain are per-track. Across every melodic track at once they are a no-op and
 // the master fader respectively, so the timeline panel does not offer them.
 assert(/if \(laneKey\) \{\s*addControl\(\{ field: 'offset'[\s\S]*?addControl\(\{ field: 'gain'/.test(entry)
   && /if \(!laneKey \|\| melodic\.includes\(laneKey\)\) \{\s*addControl\(\{ field: 'transpose'/.test(entry),
 'the timeline adjusts transpose only; timing and gain belong to a single track');
-// The title is the track, said the way the desk says it everywhere else, with no sub-line
-// under it explaining what a panel headed `Track 3. Rim` could possibly be about.
+// The right-click editor remains a scope editor; the richer identity belongs to the
+// hover card shared by bars and track names.
 assert(/heading\.textContent = laneKey[\s\S]*?wholeTrack \? `\$\{number \? `Track \$\{number\}\. ` : ''\}\$\{laneLabel\}`/.test(entry)
   && /if \(!\(laneKey && wholeTrack\)\) \{[\s\S]*?regtarget/.test(entry)
   && /section\(wholeTrack \? 'Adjust' : `Adjust \$\{laneLabel\}`\)/.test(entry),
@@ -1662,14 +1723,15 @@ assert(/heading\.textContent = laneKey[\s\S]*?wholeTrack \? `\$\{number \? `Trac
 assert(/\.regfoot \{[^}]*position:\s*sticky[^}]*bottom:\s*0/s.test(shell)
   && /#regionedit \{[^}]*max-height:\s*calc\(100vh - 12px\)[^}]*overflow:\s*auto/s.test(shell),
   'the taller track panel scrolls with Apply and Cancel pinned to its bottom edge');
-assert(/const nameInput = layer && wholeTrack/.test(entry)
+assert(/const nameInput = laneKey && wholeTrack/.test(entry)
   && /const wrap = section\('Track name'\)/.test(entry)
   && /nameChanged = !!next[\s\S]*?updateApply\(\)/.test(entry)
-  && /if \(nameChanged && label\)[\s\S]*?m\.layers = \(m\.layers \|\| \[\]\)\.map[\s\S]*?applyArrangementEdit\(next[\s\S]*?undo: !nameChanged/.test(entry)
+  && /if \(nameChanged && label\)[\s\S]*?m\.labels = \{ \.\.\.\(m\.labels \|\| \{\}\), \[laneKey\]: label \}[\s\S]*?applyArrangementEdit\(next[\s\S]*?undo: !nameChanged/.test(entry)
   && /label: 'Rename Track…'[\s\S]*?focusName: true/.test(entry)
   && !/async function renameLane/.test(entry)
-  && /customLayerLabel[\s\S]*?label: VOICES\[voiceId\]\.label/.test(entry),
-  'the track panel names a desk-owned track at the top, and preserves it across preset changes');
+  && !/customLayerLabel/.test(entry)
+  && !/label: VOICES\[voiceId\]\.label/.test(entry),
+  'the track panel can name every track without changing its playback key or storing a stale preset name');
 assert(entry.includes("const SONG_LAYOUT_KEY = 'mash-mixer-song-layout'")
   && /function currentSongLayout\(\) \{[\s\S]*?const notes = !\$\('notes'\)\.classList\.contains\('collapsed'\)[\s\S]*?keyboard:\s*oskShown\(\)[^}]*?notes,[^}]*?grid:\s*stepSeq\.isOpen\(\)/.test(entry)
   && /function loadTrack\(id\)[\s\S]*?rememberSongLayout\(trackId\)[\s\S]*?restoreSongLayout\(id\)/.test(entry),
@@ -1681,6 +1743,19 @@ assert(/function showStepSeq\(on\)[\s\S]*?rememberSongLayout\(\)/.test(entry)
   && /function showPianoRoll\(on\)[\s\S]*?rememberSongLayout\(\)/.test(entry)
   && /function showOsk\(on\)[\s\S]*?rememberSongLayout\(\)/.test(entry),
   'opening and closing the keyboard or either note editor updates its song layout');
+assert(/const DESK_SESSION_KEY = 'mash-mixer-desk-session'/.test(entry)
+  && /function currentDeskSession\(\)[\s\S]*?song: trackId[\s\S]*?lane: selectedLane[\s\S]*?selection: selectedBar[\s\S]*?position:[\s\S]*?loop: \{ on: loopOn, locA, locB \}[\s\S]*?lowerView[\s\S]*?effectsOpen[\s\S]*?voiceEditor[\s\S]*?popup: currentPopupSession\(\)/.test(entry)
+  && /addEventListener\('beforeunload'[\s\S]*?rememberDeskSession\(\)/.test(entry)
+  && /document\.addEventListener\('visibilitychange'[\s\S]*?rememberDeskSession\(\)/.test(entry),
+  'one versioned desk snapshot captures transport, selections, windows and popups on reload or tab discard');
+assert(/function restoreDeskSession\([\s\S]*?session\.song !== trackId[\s\S]*?selectLane\(lane\)[\s\S]*?markBar\([\s\S]*?loopOn = session\.loop\?\.on === true;[\s\S]*?jumpTo\([\s\S]*?setLowerView\([\s\S]*?setDevicesFolded\([\s\S]*?restoreDeskPopup/.test(entry)
+  && /if \(sessionMatches\) restoreDeskSession\(savedDeskSession\)/.test(entry),
+  'session restore waits for the song, then parks without autoplay and restores the working loop and surfaces');
+assert(/viewState: \(\) => \(\{[\s\S]*?top: scrollAt\.top, left: scrollAt\.left, followX,[\s\S]*?selection: \[\.\.\.selection\]/.test(barGrid)
+  && /restoreViewState\(state\)[\s\S]*?scroll\.scrollTop[\s\S]*?scroll\.scrollLeft/.test(barGrid)
+  && /viewState: grid\.viewState/.test(piano)
+  && /viewState: grid\.viewState/.test(seq),
+  'piano-roll and pattern viewports expose reload-safe scroll and note-selection state');
 
 // The two note editors, and the effects rack, are THREE separate places.
 //
@@ -1839,7 +1914,7 @@ assert(/const scope = \(\) => \{[\s\S]*?actionRange \? \(actionRange\(\) \|\| ra
   && /actionRange: applyBars \? \(\) => applyBars\(figureScope\) : null/.test(seq)
   && /applyBars: \(kind\) => \{[\s\S]*?if \(kind === 'song'\) return null;[\s\S]*?if \(kind === 'selection' && selectedBar\)/.test(entry)
   && /function layDown\(byLane, \{ add = false \} = \{\}\) \{[\s\S]*?const a = scope\(\);[\s\S]*?for \(let b = a\.from; b <= a\.to; b\+\+\)/.test(barGrid)
-  && /const was = add \? readBar\(b, lane\) : null;[\s\S]*?steps\.map\(\(on, i\) => \(on \|\| !!was\?\.\[i\]\)\)/.test(barGrid)
+  && /const was = add \? readBar\(b, lane\) : null;[\s\S]*?figure\.map\(\(on, i\) => \(on \|\| !!was\?\.\[i\]\)\)/.test(barGrid)
   && /function toggleMute\(lane\) \{[\s\S]*?setLanesOff\(draft\(\), a\.from, a\.to/.test(barGrid)
   // And the title says which bars, in words, above the items about to write them.
   && /\? 'the whole song' : barWords\(a\)/.test(barGrid),
@@ -1873,17 +1948,25 @@ assert(/if \(onSelectBars\) \{[\s\S]*?el\.addEventListener\('pointerdown'[\s\S]*
   && (entry.match(/onSelectBars: \(from, to\) => markBar\(selectedBar\?\.key \?\? null, from, to, \{ focus: false \}\)/g) || []).length === 2
   // …and without re-centring: the bars are already in front of you, and centring on
   // every move of that drag walks the field out from under the pointer.
-  && /function markBar\(key, from, to = from, \{ focus = true \} = \{\}\)/.test(entry)
+  && /function markBar\(key, from, to = from, \{ focus = true, deferEditors = false \} = \{\}\)/.test(entry)
   && /if \(focus\) \{\s*\n\s*pianoRoll\.focusRange/.test(entry)
   && /selectedBars, onSelectBars,/.test(piano),
   'and both editors can SET it from their ruler — one selection, changed wherever you'
   + ' happen to be looking');
+assert(/timelineDrag = \{ anchor, moved: false, last: bar \}/.test(entry)
+  && /if \(bar === timelineDrag\.last\) return;[\s\S]*?deferEditors: true/.test(entry)
+  && /function scheduleSelectionEditors\(\{ defer = false \} = \{\}\)[\s\S]*?selectionEditorsDirty = true;[\s\S]*?if \(defer\) return;/.test(entry)
+  && /function markBar\(key, from, to = from, \{ focus = true, deferEditors = false \} = \{\}\)[\s\S]*?scheduleSelectionEditors\(\{ defer: deferEditors \}\)/.test(entry)
+  && /\$\('barsarea'\)\.onpointerup = \(\) => \{\s*if \(timelineDrag\) scheduleSelectionEditors\(\)/.test(entry)
+  && /box\.onpointerenter = \(\) => \{[\s\S]*?deferEditors: true/.test(entry)
+  && /addEventListener\('pointerup', \(\) => \{\s*if \(dragSel\?\.moved\) scheduleSelectionEditors\(\)/.test(entry),
+  'range drags update their lightweight bands per changed bar and rebuild note editors once on release');
 // And put it away again. A ruler that can only ever select has no way out of a selection,
 // and every action on this panel reads "the bars I select" differently once there are none.
 assert(/if \(cur && b >= cur\.from && b <= cur\.to\) \{ rulerDrag = \{ anchor: b, armed: true \}; return; \}/.test(barGrid)
   && /if \(rulerDrag\.armed\) \{\s*\n\s*if \(b === rulerDrag\.anchor\) return;\s*\n\s*rulerDrag\.armed = false;/.test(barGrid)
   && /const endDrag = \(\) => \{\s*\n\s*if \(rulerDrag\?\.armed\) onSelectBars\(null\);/.test(barGrid)
-  && /function markBar\(key, from, to = from, \{ focus = true \} = \{\}\) \{\s*\n\s*selectedBar = from != null \?/.test(entry),
+  && /function markBar\(key, from, to = from, \{ focus = true, deferEditors = false \} = \{\}\) \{\s*\n\s*selectedBar = from != null \?/.test(entry),
   'a click on a region you already have puts it away, while holding the press and'
   + ' dragging starts a new one from that bar');
 // And a way out that needs no aim. A selection is a mode — it decides what a groove lands
@@ -1958,7 +2041,7 @@ assert(applyKitFn.match(/editMix\(/g)?.length === 1
 assert(/kitRoll\.songChanged\(\)/.test(entry)
   && /function paintSelectionEditors\(\)[\s\S]*?kitRoll\.refresh\(\)/.test(entry)
   && /pianoRoll\.armFollow\?\.\(\);\s*\n\s*kitRoll\.armFollow\?\.\(\);/.test(entry)
-  && /pianoRoll\.focusRange\(selFrom\(\), selTo\(\)\);\s*\n(\s*\/\/[^\n]*\n)*\s*kitRoll\.focusRange\(selFrom\(\), selTo\(\)\);/.test(entry),
+  && /pianoRoll\.focusRange\(([^;\n]+)\);\s*\n(\s*\/\/[^\n]*\n)*\s*kitRoll\.focusRange\(\1\);/.test(entry),
   'and the kit is wired wherever the roll is: the song changing, the selection moving,'
   + ' the transport arming and following');
 // A window needs the desk's standard close, and this one wears `.popclose` — but an ID in
@@ -1972,29 +2055,15 @@ assert(/:is\(#stepseq,#pianoroll,#kitroll\) \.ssqx:not\(\.popclose\)/.test(shell
   && !/:is\(#stepseq,#pianoroll,#kitroll\) \.ssqx \{/.test(shell)
   && /:is\(#stepseq,#pianoroll,#kitroll\) \.ssqx\.ssqadd \{[^}]*font-size:\s*17px/s.test(shell),
   'and the panel\'s small controls cannot shrink it, nor the guard shrink the +');
-// One button each, and each opens ONLY its own panel. The old form of this checked that
-// the view switch never reached `stepSeq`; with the views gone it is the simpler and
-// stronger claim — the roll's open path knows nothing about the grid, and vice versa.
-assert(/\$\('seqbtn'\)\.onclick = \(\) => showStepSeq\(!stepSeq\.isOpen\(\)\)/.test(entry),
-  'the grid has its own button, which toggles the grid');
-assert(/\$\('rollbtn'\)\.onclick = \(\) => showPianoRoll\(\$\('notes'\)\.classList\.contains\('collapsed'\)\)/
-  .test(entry),
-  'and the roll has its own, which folds or unfolds the notes region');
-{
-  const roll = /function showPianoRoll\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
-  const folded = /function setNotesFolded\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
-  assert(roll && !/stepSeq\./.test(roll) && folded && !/stepSeq\./.test(folded),
-    'opening the roll cannot open or shut the grid — you can work on the bassline and the'
-    + ' kit at the same time, which is the whole reason they were split apart');
-  const seq = /function showStepSeq\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
-  assert(seq && !/setNotesFolded|showPianoRoll/.test(seq),
-    'and opening the grid cannot fold the roll away either');
-}
-// The toolbar light comes off the panel's own folded state, so the button and the panel
-// cannot disagree about whether the roll is up.
-assert(/function setNotesFolded[\s\S]*?\$\('rollbtn'\)\.classList\.toggle\('on', !on\)/.test(entry),
-  'the roll’s toolbar light is set where the panel is folded, so it agrees with the'
-  + ' Notes chip and with the fold chevron');
+// Mixer, Piano Roll and Pattern are mutually exclusive lower-workspace views. Their
+// DOM survives the switch, preserving scroll/selection state without panel collapse.
+assert(/\$\('seqbtn'\)\.onclick = \(\) => setLowerView\('pattern'\)/.test(entry),
+  'the Pattern button selects the lower Pattern workspace');
+assert(/\$\('rollbtn'\)\.onclick = \(\) => setLowerView\('roll'\)/.test(entry),
+  'and the Piano Roll button selects the lower Piano Roll workspace');
+assert(/\$\('mixviewbtn'\)\.onclick = \(\) => setLowerView\('mixer'\)/.test(entry)
+  && /for \(const \[id, on\] of \[\['mixviewbtn',[\s\S]*?\['rollbtn',[\s\S]*?\['seqbtn'/.test(entry),
+  'the three toolbar buttons are one mutually exclusive lower-workspace switch');
 assert(/function setNotesFolded[\s\S]*?needsBuild = !on && !pianoRoll\.isOpen\(\)/.test(entry)
   && /function schedulePianoRollOpen\([\s\S]*?pianoRoll\.open\(true\)/.test(entry),
   'opening Notes after a folded startup initializes the roll after the layout task');
@@ -2010,11 +2079,12 @@ assert(/--ctlh: 30px; --ctlicon: 17px;/.test(shell)
   && /header \.iconbtn \{ width: var\(--ctlh\); padding: 0;/s.test(shell)
   && /header \.iconbtn > svg \{ width: var\(--ctlicon\); height: var\(--ctlicon\); \}/.test(shell),
   'one control height across the header, with square icon buttons at that height');
-// The fold column and the lane numbers under it take the same square, from the same
-// variable — a hand-set 22 next to the menu's 30 is what put them off one another.
+// Lane numbers begin at the panel-caption edge and reserve only enough room for two
+// digits. The fold buttons are hidden in this layout, so spending their full 30px square
+// on every number only pushed the useful track identity/control area to the right.
 assert(/\.foldbtn \{ width: var\(--ctlh\); height: var\(--ctlh\);/.test(shell)
-  && /\.arrnum \{[^}]*grid-column:\s*1[^}]*grid-row:\s*1 \/ span 2[^}]*width:\s*var\(--ctlh\)/s.test(shell),
-  'the panel folds are the hamburger\'s square, and the lane numbers run down it');
+  && /\.arrnum \{[^}]*grid-column:\s*1[^}]*grid-row:\s*1 \/ span 2[^}]*width:\s*var\(--arrnum\)[^}]*text-align:\s*left/s.test(shell),
+  'the panel folds keep the hamburger square while lane numbers align to the caption edge');
 const header = shell.slice(shell.indexOf('<header>'), shell.indexOf('</header>'));
 const iconOnly = ['navbtn', 'playstart', 'stop', 'play', 'pause', 'clearsolo',
   'oskbtn', 'seqbtn', 'rollbtn', 'presetbtn'];
@@ -2058,10 +2128,10 @@ assert(/export function quantiseLength\(len, grid = 1\)/.test(barGrid)
   && /function quantiseLengths\(scopeKind, grid = 1\)/.test(barGrid)
   && /quantiseLengths: \(\{ scope = 'selection', grid: gridSize = 1 \}/.test(piano)
   && /grid\.quantiseLengths\(\{ scope, grid: gridSize \}\)/.test(piano)
-  && /Quantise selected to 16ths/.test(entry)
-  && /Quantise all to 16ths/.test(entry)
-  && /title="Adjust or quantise note lengths"/.test(shell),
-  'piano-roll lengths stay freehand by default, with explicit selected/all 16th quantisation');
+  && /Quantise lengths to 16ths/.test(entry)
+  && /Custom transform all notes/.test(entry)
+  && /title="Transform selected piano-roll notes"/.test(shell),
+  'piano-roll lengths stay freehand by default, with transform and exact quantise commands');
 assert(/const openNoteLengthAdjust = \(scopeKind, x, y\) => \{[\s\S]*?heading\.textContent = 'Adjust note lengths'[\s\S]*?range\.type = 'range'[\s\S]*?number\.type = 'number'[\s\S]*?Apply length[\s\S]*?closeMenu\(\);/.test(entry)
   && /openNoteLengthAdjust\('selection', r\.left, r\.bottom \+ 4\)/.test(entry)
   && /openNoteLengthAdjust\('all', r\.left, r\.bottom \+ 4\)/.test(entry)
@@ -2122,8 +2192,8 @@ assert(/#pianoroll \.ssqcell\.on \{[^}]*translateY\(var\(--roll-note-y, 0px\)\)/
   && /rowHeight:\s*\(\) => pitchUnit/.test(piano)
   && /rowPadding:\s*\(\) => rollPadding/.test(piano)
   && /rulerHeader:\s*\(\) =>/.test(piano)
-  // Four factors, and 1.5 is not a special case: every height here is a ratio, so the
-  // half-steps cost nothing but a button.
+  // Four pitch factors are enough for the keyboard; the time axis has its own
+  // discrete buttons so dragging cannot queue whole-song rebuilds.
   && /for \(const factor of \[0\.5, 1, 1\.5, 2\]\)/.test(piano)
   && /button\.textContent = `\$\{factor\}×`/.test(piano)
   // Which is only true while the buttons DIVIDE the gutter rather than each demanding
@@ -2177,16 +2247,23 @@ assert(/if \(ruler\) \{[\s\S]*?ruler\.className = 'ssqruler'[\s\S]*?surface\.app
   && /if \(docked\) \{[\s\S]*?const track = document\.createElement\('div'\)[\s\S]*?track\.className = 'ssqruler-track'/.test(barGrid)
   && /rulerHeader:\s*\(\) =>/.test(piano)
   && /const fieldLabel = \(text\) => \{[\s\S]*?el\.className = 'rollzoom-label'[\s\S]*?el\.textContent = text/.test(piano)
-  && /return \[fieldLabel\('CHANNEL'\), voicePicker\(\),[\s\S]*?fieldLabel\('DRAW LENGTH'\), lengthPicker\(\), fieldLabel\('ZOOM'\), zoom,[\s\S]*?fieldLabel\('TOOL'\), toolPicker\(\)\]/.test(piano)
+  && /return \[fieldLabel\('CHANNEL'\), voicePicker\(\),[\s\S]*?fieldLabel\('QUANTISE'\), quantisePicker\(\),[\s\S]*?fieldLabel\('DRAW LENGTH'\), lengthPicker\(\), fieldLabel\('PITCH ZOOM'\), zoom,[\s\S]*?fieldLabel\('TIME ZOOM'\), timeZoomPicker\(\),[\s\S]*?fieldLabel\('TOOL'\), toolPicker\(\)\]/.test(piano)
+  && /const TIME_ZOOM_OPTIONS = \[0\.5, 1, 1\.5, 2, 4\]/.test(piano)
+  && /grid\.reflow\(\)/.test(piano)
+  && /const customPicker = \(\{ label, title, idPrefix, options, value, chooseValue \}\)/.test(piano)
+  && /customPicker\(\{[\s\S]*?label: 'Piano-roll quantisation'/.test(piano)
+  && /customPicker\(\{[\s\S]*?idPrefix: `rollchord-\$\{kind\}`/.test(piano)
+  && !/document\.createElement\('select'\)/.test(piano)
   && /export const NOTE_LENGTH_OPTIONS = \[[\s\S]*?\{ value: 0\.5, label: '1\/32' \},[\s\S]*?\{ value: 1, label: '1\/16' \},[\s\S]*?\{ value: 2, label: '1\/8' \},[\s\S]*?\{ value: 16, label: '1' \},/.test(piano)
   && /let noteAddLength = 1/.test(piano)
   && /addLength: \(\) => \(rollResizable\(lane\(\)\) \? noteAddLength : null\)/.test(piano)
-  && /const drawn = paint && !isOn\(row, value\) \? addLength\(row\) : null/.test(barGrid)
+  && /const drawn = paint && !isOn\(row, value\) \? addLength\(row\) \/ slotUnit\(\) : null/.test(barGrid)
   && /showLen\(cell, paint \? \(cellSpan\(row, pair\.notes\[i\] \?\? null, pair\.lengths\[i\] \?\? null, b, i\) \|\| 1\) : 1\)/.test(barGrid)
   && /const noteDrawLength = \(row, value, len\) => \{[\s\S]*?if \(drawn != null \|\| !perNoteLengthLane\(row\.lane\)\) return drawn;[\s\S]*?return 1;/.test(piano)
   && !/return effectiveToneLength\(/.test(piano)
+  && /for \(const factor of \[0\.5, 1, 1\.5, 2\]\)/.test(piano)
   && /button\.dataset\.zoom = String\(factor\)/.test(piano),
-  'note length, zoom and mouse mode are separately titled fields in the fixed keyboard gutter');
+  'quantise, note length, compact pitch zoom, button-based time zoom and mouse mode are titled fields in the keyboard gutter');
 assert(/#pianoroll \.ssqruler-label \{[^}]*position:\s*relative[^}]*padding:\s*0/s.test(shell)
   // On the arrangement's own right-hand tag column, written as the variables that put it
   // there — the header cell's padding and the gap after it, less the roll's own trim.
@@ -2234,11 +2311,10 @@ assert(/grid\.setRulerLabel\('Bar'\)/.test(piano)
 // The mouse-mode picker is the desk's, not the platform's — and the point of that is
 // the LIST. `appearance: none` only ever styled the closed box; the popup a `<select>`
 // opens is the OS's, in the OS's colours, on a desk that has nine themes.
-assert(!/createElement\('select'\)|fxsel|ssqtool/.test(piano)
-  && /field\.className = 'rolltool'/.test(piano)
+assert(/field\.className = 'rolltool'/.test(piano)
   && /menu\.className = 'rolltool-menu'/.test(piano)
-  && /menu\.setAttribute\('role', 'listbox'\)/.test(piano)
-  && /o\.setAttribute\('role', 'option'\)/.test(piano)
+  && /const toolPicker = \(\) => \{[\s\S]*?menu\.setAttribute\('role', 'listbox'\)/.test(piano)
+  && /const toolPicker = \(\) => \{[\s\S]*?o\.setAttribute\('role', 'option'\)/.test(piano)
   && /#pianoroll \.rollzoom-panel \.rolltool \{[^}]*background:\s*var\(--input\)/s.test(shell)
   && /#pianoroll \.rollzoom-panel \.rolltool::after \{[^}]*currentColor/s.test(shell)
   && /#pianoroll \.rollzoom-panel \.rolltool::after \{[^}]*pointer-events:\s*none/s.test(shell)
@@ -2270,6 +2346,23 @@ assert(/field\.onkeydown = \(ev\) =>/.test(piano)
   // And it flips up when there is no room below, rather than off the bottom of the window.
   && /const flip = below < height \+ 8 && r\.top > below/.test(piano),
   'the picker carries the keyboard, dismissal and flip-up a native select gave for free');
+assert(/let followEnabled = true/.test(barGrid)
+  && /setFollow\(enabled\)/.test(barGrid)
+  && /followEnabled: \(\) => followEnabled/.test(barGrid)
+  && /followEnabled && followX/.test(barGrid)
+  && /id="rollfollowbtn"/.test(shell)
+  && /rollFollowButton\.onclick = \(\) =>/.test(entry)
+  && /pianoRoll\.setFollow\(!pianoRoll\.followEnabled\(\)\)/.test(entry)
+  && /#notes\.rollless #notehead #rollfollowbtn/.test(shell)
+  && /#notehead #rollfollowbtn\.on \{[^}]*var\(--accent\)/s.test(shell),
+  'the piano-roll toolbar offers an icon toggle to hold the view instead of auto-following playback');
+assert(/function openNoteEditor\(laneKey, bar\)[\s\S]*?if \(kind === 'roll' && bar != null\) \{[\s\S]*?pianoRollFocusPending = \{ from: bar, to: bar \};[\s\S]*?if \(playing\) \{[\s\S]*?pianoRoll\.setFollow\(false\);[\s\S]*?syncRollFollowButton\(\);/.test(entry)
+  && /const frozen = !pianoRoll\.followEnabled\(\);[\s\S]*?rollFollowButton\.classList\.toggle\('on', frozen\)/.test(entry)
+  && /title="Freeze the piano roll view"/.test(shell),
+  'double-clicking a bar during playback opens the piano roll on that bar and arms its Freeze toggle');
+assert(/follow\(step\) \{[\s\S]*?grid\.follow\(step\);[\s\S]*?syncPlayingKeys\(step\);\s*\}/.test(piano)
+  && !/follow\(step\) \{[^}]*grid\.follow\(step\);[^}]*syncSelectedKeys\(\);[^}]*\}/.test(piano),
+  'piano-roll playback does not re-project unchanged selected keys every animation frame');
 assert(/#pianoroll \.rollwhite \.ssqkey\.playing \{[^}]*var\(--accent\)/s.test(shell)
   && /#pianoroll \.ssqkey\.keyblack\.playing \{[^}]*var\(--accent\)/s.test(shell),
   'playback colours both white and black piano-key faces');
@@ -2373,11 +2466,12 @@ assert(/\.stripbody > \.devlink \{\s*margin: 5px 0 6px/.test(shell),
   'device summaries keep their body spacing');
 assert(/function presetForLane\(laneKey\)[\s\S]*?defaultVoiceOf\(track\?\.bank, laneKey\)/.test(entry)
   && /function presetHeadingFor\(laneKey\)[\s\S]*?String\(preset\.category\)\.toUpperCase\(\)/.test(entry)
+  && /function renderPresetHeading\(el, laneKey\)[\s\S]*?laneNumbers\.get\(laneKey\)[\s\S]*?panelnumber/.test(entry)
   && /function updatePanelTitles\(\)[\s\S]*?renderPresetHeading\(\$\('devtitle'\), selectedLane\)/.test(entry)
   && /function selectLane\(key\)[\s\S]*?buildDevices\(\)[\s\S]*?pianoRoll\.refresh\(\)/.test(entry)
   && /#devhead \.panelpreset \{[^}]*text-transform:\s*none/s.test(shell)
   && /#devhead \.paneltype \{[^}]*text-transform:\s*uppercase/s.test(shell),
-  'the effects heading carries the active preset name and uppercase type, and strip selection refreshes the roll');
+  'the effects heading carries the track number, active preset name and uppercase type, and strip selection refreshes the roll');
 // The Notes header is the word, and then the preset whose part is ON SCREEN — which is
 // not always the selected strip: with the master selected the roll still shows a lane.
 // On the kit it is the selected drum, the one whose row the column marks. Only a channel
@@ -2388,7 +2482,7 @@ assert(!entry.includes("$('notetitle')") && !shell.includes('notetitle')
   && /#notehead #notepreset \{[^}]*text-transform:\s*none/s.test(shell)
   && /#notehead #notepreset:empty \{[^}]*display:\s*none/s.test(shell)
   && /<span class="label" id="notelabel">Notes<\/span>/.test(shell)
-  && /\$\('notelabel'\)\.textContent = kind === 'kit' \? 'Drum editor' : 'Notes';/.test(notesPanelSync)
+  && /\$\('notelabel'\)\.textContent = kind === 'kit' \? 'Pattern' : 'Piano Roll';/.test(notesPanelSync)
   && /\$\('notepreset'\)\.textContent = kind === 'roll' \? presetHeadingFor\(rollShownLane\(\)\)\.name : '';/.test(notesPanelSync),
   'the panel is named for what is in it — Notes and the preset on the roll, or the Drum'
   + ' editor, which is every drum in the song at once and so names no channel at all');
@@ -2399,8 +2493,8 @@ assert(!entry.includes("$('notetitle')") && !shell.includes('notetitle')
 // must not resize anything. A channel with neither editor leaves it empty, as before.
 assert(/const editorFor = \(key\) => \{[\s\S]*?if \(PERCUSSION_LANES\.includes\(baseLane\(key\)\)\) return 'kit';[\s\S]*?return rollEditable\(key\) \? 'roll' : null;/.test(entry)
   && /const laneHidesRoll = \(key\) => editorFor\(key\) !== 'roll'/.test(entry)
-  && /const notesRollUp = \(\) => notesOpen\(\) && editorFor\(selectedLane\) === 'roll'/.test(entry)
-  && /const notesKitUp = \(\) => notesOpen\(\) && editorFor\(selectedLane\) === 'kit'/.test(entry)
+  && /const notesRollUp = \(\) => notesOpen\(\) && \$\('desk'\)\.dataset\.lowerView === 'roll'[\s\S]*?editorFor\(selectedLane\) === 'roll'/.test(entry)
+  && /const notesKitUp = \(\) => notesOpen\(\) && \$\('desk'\)\.dataset\.lowerView === 'pattern'/.test(entry)
   && /\$\('notes'\)\.classList\.toggle\('rollless', kind !== 'roll'\)/.test(notesPanelSync)
   && /\$\('notes'\)\.classList\.toggle\('kitless', kind !== 'kit'\)/.test(notesPanelSync)
   && !notesPanelSync.includes('setNotesFolded')
@@ -2427,15 +2521,20 @@ assert(/forgetFit\(\) \{ fittedLane = null; \}/.test(piano)
   && /pianoRoll\.forgetFit\(\);[\s\S]{0,400}?schedulePianoRollOpen\(\);/.test(notesPanelSync + entry.slice(entry.indexOf('function syncNotesPanel')))
   && /const reopening = !on && !needsBuild && hasRoll && pianoRoll\.isOpen\(\)/.test(entry)
   && /\} else if \(reopening\) \{\s*pianoRoll\.forgetFit\(\);\s*pianoRoll\.refresh\(\);/.test(entry)
-  && /if \(notesRollUp\(\)\) pianoRoll\.refresh\(\);/.test(entry),
+  && /if \(view === 'roll'\)[\s\S]*?else pianoRoll\.refresh\(\);/.test(lowerViewSetter),
   'a roll that was taken off screen is re-fitted to its part when it comes back, on either trip');
+assert(/let pianoRollFocusPending = null;/.test(entry)
+  && /function spendPianoRollFocus\(\)[\s\S]*?requestAnimationFrame\(\(\) => pianoRoll\.focusRange\(focus\.from, focus\.to\)\)/.test(entry)
+  && /function schedulePianoRollOpen\(\)[\s\S]*?pianoRoll\.open\(true\);\s*\n\s*spendPianoRollFocus\(\);/.test(entry)
+  && /function openNoteEditor\(laneKey, bar\)[\s\S]*?pianoRollFocusPending = \{ from: bar, to: bar \}[\s\S]*?setLowerView/.test(entry),
+  'opening the piano roll from a bar spends its pitch-and-time focus only after the lazy first build');
 assert(/function schedulePianoRollOpen\([\s\S]*?if \(!notesRollUp\(\) \|\| pianoRoll\.isOpen\(\)\) return/.test(entry)
   && /function setNotesFolded\([\s\S]*?const hasRoll = !laneHidesRoll\(selectedLane\);[\s\S]*?const needsBuild = !on && !pianoRoll\.isOpen\(\) && hasRoll;/.test(entry)
   && /notes: \(\) => h\(\$\('notehead'\)\) \+ rollScopeH\(\) \+ DEV_MIN_ROLL/.test(entry)
   && /function rollScopeH\(\) \{[\s\S]*?if \(now\) lastRollScopeH = now;[\s\S]*?return lastRollScopeH;/.test(entry),
   'no roll is built for a channel that has none, and the panel floor survives its absence');
 const channelStrip = entry.slice(entry.indexOf('function channelStrip'), entry.indexOf('function sendStrip'));
-assert(channelStrip.includes('label: preset?.label || lane.label')
+assert(channelStrip.includes('label: customTrackLabel(key) || preset?.label || lane.label')
   && channelStrip.includes('sublabel: preset?.category || null')
   && channelStrip.includes("presetName.classList.add('strippreset')")
   && channelStrip.includes('openVoicePicker(ev.clientX, ev.clientY, key)')
@@ -2443,6 +2542,78 @@ assert(channelStrip.includes('label: preset?.label || lane.label')
   && !entry.includes('function stepVoice')
   && !shell.includes('.voicestep'),
   'channel strips show the current preset above its type and use that name to choose');
+assert(/function fillEffectControls\(\{[\s\S]*?visibleParams\(def, entryParams\)[\s\S]*?paramRange\(pname, def\)/.test(entry)
+  && /function buildDevices\(\)[\s\S]*?fillEffectControls\(\{[\s\S]*?grid, def, entry, patch, replaceParams/.test(entry)
+  && /function openBarEffectsEditor[\s\S]*?card\.className = `device barfxdevice[\s\S]*?fillEffectControls\(\{[\s\S]*?patch: \(params\)[\s\S]*?replaceParams: \(params\)/.test(entry)
+  && /bypass\.onclick = \(\) => \{ chain\[index\] = \{ \.\.\.chain\[index\], bypass: !effect\.bypass \}; draw\(\); \}/.test(entry)
+  && /\[chain\[index - 1\], chain\[index\]\] = \[chain\[index\], chain\[index - 1\]\]/.test(entry)
+  && /foot\.append\(snapshot, clear, closeButton, applyPlay\);[\s\S]*?panel\.append\(guide, foot\)/.test(entry)
+  && /foot\.className = 'regfoot barfxfoot'/.test(entry)
+  && /#regionedit\.barfxmodal \.barfxcontrols \{[^}]*gap:\s*8px[^}]*padding:\s*10px 12px 12px/s.test(shell)
+  && /#regionedit\.barfxmodal \.barfxcontrols \.regcontrol > span \{ font-size:\s*10\.5px; \}/.test(shell)
+  && /#regionedit:is\(\.notefxmodal, \.barfxmodal\) :is\(\.notefxfoot, \.barfxfoot\) button \{[^}]*font-size:\s*9\.5px[^}]*padding:\s*6px 9px/s.test(shell)
+  && /#regionedit\.barfxmodal \.barfxdevice \.devgrid \{[^}]*grid-auto-flow:\s*row[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s.test(shell),
+  'Bar Effects uses the channel insert parameter surface in staged, narrow editable cards with bypass and ordering');
+assert(/const freezeState = freezeLaneState\(trackId, row\.key\);[\s\S]*?el\.className = `arrrow\$\{frozen \? ' frozen' : ''\}\$\{freezeState === 'partial' \? ' partially-frozen' : ''\}`/.test(entry)
+  && /if \(frozen\) top\.append\(freezeMark\('arrfreeze', '❄'\)\)/.test(entry)
+  && /frozen \? \{ text: 'Frozen render', tone: 'ice' \}/.test(entry)
+  && /const barFrozen = freezeCoversBar\(trackId, row\.key, bar\)/.test(entry)
+  && /barOperationGroups\(plan\[bar\], row\.key, \{ frozen: barFrozen \}\)/.test(entry)
+  && /\.arrbar\.frozen:not\(\.bardeleted\) \{[^}]*background-color:\s*color-mix\(in srgb, var\(--freeze\) 58%, var\(--bar-colour, var\(--cell\)\)\) !important[^}]*box-shadow:/s.test(shell)
+  && /\.arrbar\.frozen:not\(\.bardeleted\) \.arrcell \{ background: transparent !important; \}/.test(shell)
+  && /\.arrfreeze \{[^}]*color:\s*var\(--freeze\)/s.test(shell),
+  'whole and selected-bar freezes carry the correct icy bars, a partial track state, a snowflake and tooltip explanation');
+assert(/function syncFrozenLaneUi\(lane\)[\s\S]*?strip\.classList\.toggle\('frozen', frozen\)[\s\S]*?row\.classList\.toggle\('frozen', frozen\)[\s\S]*?freezeMark\('arrfreeze', '❄'\)/.test(entry)
+  && /bar\.classList\.toggle\('frozen', freezeCoversBar/.test(entry)
+  && /function unfreezeLane\(lane[\s\S]*?syncFrozenLaneUi\(lane\)/.test(entry)
+  && /function reconcileFrozen\(id[\s\S]*?syncFrozenLaneUi\(frozen\.lane\)/.test(entry)
+  && /function installFrozenSegment[\s\S]*?frozenTracks\.set\(key, frozen\)/.test(entry)
+  && /'❄ PARTIAL' : '❄ FROZEN'/.test(entry),
+  'freezing, unfreezing and source invalidation update both track surfaces immediately');
+const freezeFingerprint = entry.slice(entry.indexOf('function freezeFingerprint'), entry.indexOf('function unfreezeLane'));
+assert(/arrangement: arrFor\(id\) \|\| null/.test(freezeFingerprint)
+  && /layers: m\.layers \|\| \[\], off: m\.off \|\| \[\]/.test(freezeFingerprint)
+  && !/\border:\s*m\.order/.test(freezeFingerprint),
+  'reordering channel strips does not invalidate an otherwise unchanged frozen lane');
+assert(/const FROZEN_INTENT_KEY = 'mash-mixer-frozen-tracks'/.test(entry)
+  && /function rememberFrozenIntent\(id, lane, scope, frozen\)[\s\S]*?persistFrozenIntent\(\)/.test(entry)
+  && /const FREEZE_HANDLE_DB = 'mash-mixer-freeze-files'/.test(entry)
+  && /function openFreezeHandleDb[\s\S]*?indexedDB\.open\(FREEZE_HANDLE_DB/.test(entry)
+  && /async function rememberFreezeBundle[\s\S]*?freezeBundleKey\(id\)[\s\S]*?handle/.test(entry)
+  && /async function readFreezeBundle[\s\S]*?getFile\(\)[\s\S]*?decodeMashFreezeBundle/.test(entry)
+  && /function installDecodedFreeze[\s\S]*?checkedFreezeMetadata[\s\S]*?installFrozenSegment/.test(entry)
+  && /function queueFrozenRestorePrompt\(id = trackId\)[\s\S]*?Load saved freezes\?[\s\S]*?await readFreezeBundle[\s\S]*?await freezeLane\(item\.lane, \{ id, restoring: true, scope: item\.scope \}\)/.test(entry)
+  && /freezeRestoreReady = true;\s*\n\s*queueFrozenRestorePrompt\(trackId\)/.test(entry)
+  && /function unfreezeLane\(lane[\s\S]*?rememberFrozenIntent\(trackId, lane, segment\.scope, false\)/.test(entry),
+  'one user-selected bundle handle is remembered, reload validates its entries, and missing or stale entries retain the refreeze fallback');
+assert(/id="exportfreezes"/.test(shell) && /id="importfreezes"/.test(shell)
+  && /async function exportFreezes[\s\S]*?Approximately \$\{estimate\}[\s\S]*?showSaveFilePicker[\s\S]*?writeMashFreezeBundle[\s\S]*?rememberFreezeBundle/.test(entry)
+  && /FREEZE EXPORT START[\s\S]*?FREEZE EXPORT END[\s\S]*?FREEZE EXPORT FAILED/.test(entry)
+  && /async function importFreezes[\s\S]*?showOpenFilePicker[\s\S]*?decodeMashFreezeBundle[\s\S]*?installDecodedFreeze/.test(entry)
+  && !/Save Selected Freeze…/.test(entry)
+  && !/Save Frozen Ranges…/.test(entry)
+  && !/offerFreezeSave/.test(entry)
+  && !/fetch\('\/freeze-cache/.test(entry),
+  'the hamburger exports all current freezes in one size-warned bundle and imports it without per-range save prompts or an automatic cache');
+assert(/id="profiletrackload"/.test(shell)
+  && /function trackProfileRange[\s\S]*?laneActivity\(bank, 1, 1\)/.test(entry)
+  && /const prerollFrom = Math\.max\(0, best - 1\)/.test(entry)
+  && /startStep: prerollFrom \* 16/.test(entry)
+  && /function isolatedTrackProfileMix[\s\S]*?mute: item\.key !== lane/.test(entry)
+  && /function profileTrackLoad[\s\S]*?measureOnly: true[\s\S]*?withoutInserts: true[\s\S]*?TRACK LOAD PROFILE/.test(entry)
+  && /Track \$\{number\} — \$\{visibleName\}/.test(entry)
+  && /profileFullMs/.test(entry) && /profileFxDeltaMs/.test(entry),
+  'DEV diagnostics profiles the shared densest window with timing-offset preroll per visible track and separates its insert-chain cost');
+assert(/function freezeSpanFor\(id, lane, scope[\s\S]*?freezeRenderSpan\(bank, lane/.test(entry)
+  && /function silentFrozenSegment\(id, lane, fingerprint, scope[\s\S]*?new Float32Array\(1\)/.test(entry)
+  && /async function freezeLane\(lane[\s\S]*?const span = freezeSpanFor\(id, lane, normalizedScope\);[\s\S]*?if \(!span\) \{[\s\S]*?silentFrozenSegment\(id, lane, fingerprint, normalizedScope\)[\s\S]*?return true;[\s\S]*?bounceWav/.test(entry),
+  'a wholly silent selected range or arranged track installs a tiny silent freeze before the offline renderer is reached');
+assert(/createNoteFxProcessor/.test(freezeSpanSource)
+  && /startStep, endStep, steps: endStep - startStep, tailSeconds/.test(freezeSpanSource)
+  && /tail: span\.tailSeconds, range: span/.test(entry)
+  && /segmentStartStep: out\.range\?\.startStep/.test(entry)
+  && /Number\.isFinite\(state\.segmentStartStep\)/.test(audio),
+  'a sparse freeze renders its Note-FX-aware active span and anchors the short PCM at its song step');
 assert(/\.strip h3\.strippreset \{[^}]*cursor:\s*pointer/s.test(shell)
   && /\.strip \.stripsub \{[^}]*text-transform:\s*uppercase/s.test(shell)
   && /\.strip \.stripsub \{[^}]*margin:\s*3px 0 3px/s.test(shell),
@@ -2480,6 +2651,43 @@ assert(/header\.addEventListener\('click', \(\) => selectLane\(row\.key\)\)/.tes
   && /mute\.onclick = \(ev\) => \{\s*ev\.stopPropagation\(\)/.test(entry)
   && /solo\.onclick = \(ev\) => \{\s*ev\.stopPropagation\(\)/.test(entry),
   'anywhere on a track header selects the track, M/S and the level opt out, and the name opens the picker only on the second click');
+const arrangementBarClick = /box\.onclick = \(ev\) => \{[\s\S]*?\n\s*\};/.exec(arrangementFn)?.[0] || '';
+assert(!arrangementBarClick.includes('jumpTo(')
+  && /playButton\.className = 'arrbarplay'[\s\S]*?jumpTo\(at, \{ start: true, immediate: true \}\)/.test(arrangementFn)
+  && /\.arrbar:hover \.arrbarplay, \.arrbarplay:focus-visible/.test(shell)
+  && /\.arrbarplay \{[^}]*right:\s*2px[^}]*top:\s*2px[^}]*width:\s*18px[^}]*height:\s*18px[^}]*border-radius:\s*3px/s.test(shell),
+  'a bar click only selects, while its small top-right hover button explicitly starts playback there');
+assert(/function barOperationGroups\(barPlanEntry, key/.test(entry)
+  && /function trackHoverGroups\(preset/.test(entry)
+  && /resolveNoteFx\(laneMix\.noteFx, barPlanEntry, key\)/.test(entry)
+  && /label: 'Note FX'[\s\S]*?label: 'Insert FX'/.test(entry)
+  && /box\.dataset\.tipkind = 'bar'/.test(arrangementFn)
+  && /box\.dataset\.tip = displayLabel/.test(arrangementFn)
+  && /box\.dataset\.tipkey = trackNumber \? `Track \$\{trackNumber\}` : 'Track'/.test(arrangementFn)
+  && /box\.dataset\.tipcontext = `Bar \$\{bar \+ 1\}`/.test(arrangementFn)
+  && /label: 'Synthesiser'[\s\S]*?\.\.\.barOperationGroups\(plan\[bar\], row\.key, \{ frozen: barFrozen \}\)/.test(arrangementFn)
+  && /name\.dataset\.tipkind = 'track'/.test(arrangementFn)
+  && /name\.dataset\.tipgroups = JSON\.stringify\(trackHoverGroups\(preset, \{ frozen \}\)\)/.test(arrangementFn)
+  && /box\.dataset\.tiphints = JSON\.stringify\(\[[\s\S]*?\{ key: 'Drag', text: 'Move' \}[\s\S]*?\{ key: '⌘ Drag', text: 'Copy' \}[\s\S]*?\{ key: 'Right-click', text: 'Edit' \}/.test(arrangementFn)
+  && !/const notes = Array\.from\([^\n]*cellNotes\(row/.test(arrangementFn)
+  && !/box\.title = `\$\{where\}/.test(arrangementFn),
+  'bar hover uses a structured operational summary for playback, transforms, Note FX and inserts, without dumping notes');
+assert(/tip\.classList\.toggle\('bartip', el\.dataset\.tipkind === 'bar'\)/.test(entry)
+  && /tip\.classList\.toggle\('tracktip', el\.dataset\.tipkind === 'track'\)/.test(entry)
+  && /JSON\.parse\(el\.dataset\.tipgroups\)/.test(entry)
+  && /#tip\.bartip \{[^}]*max-width:\s*390px/s.test(shell)
+  && /#tip\.tracktip \{[^}]*max-width:\s*340px/s.test(shell)
+  && /#tip \.tipgroup \{[^}]*grid-template-columns:\s*82px minmax\(0, 1fr\)/s.test(shell)
+  && /#tip \.tipchip\.bypassed \{[^}]*text-decoration:\s*line-through/s.test(shell)
+  && /#tip \.tiphint kbd \{[^}]*background:\s*var\(--well\)/s.test(shell),
+  'the bar summary is a styled, theme-aware card with labelled rows and clear bypass state');
+assert(/const barCopyModifier = \(ev\) => ev\.metaKey \|\| ev\.altKey/.test(entry)
+  && /barDrag\.copy = barCopyModifier\(ev\)/.test(entry)
+  && /copy: barCopyModifier\(ev\)/.test(arrangementFn),
+  'Command-drag copies bars as advertised, while the existing Option modifier remains compatible');
+assert(/if \(!playing\) \{[\s\S]*?dragSel = \{ key: row\.key, from: bar, moved: false \};[\s\S]*?return;\s*\}/.test(arrangementFn)
+  && /if \(!playing\) \{[\s\S]*?return;\s*\}[\s\S]*?const selectedRange = selectedBar\?\.key === row\.key/.test(arrangementFn),
+  'dragging an empty bar keeps the range-selection gesture, while note-bearing bars own move/copy');
 assert(entry.includes("const PARTS_KEY = 'mash-mixer-hidden-parts'")
   && entry.includes('localStorage.setItem(PARTS_KEY'),
   'which parts are hidden is remembered across reloads');
@@ -2537,8 +2745,7 @@ assert(/#osk \.oskrec::before \{/.test(shell),
 // THE assertion. A glide across the keys and a roll across the pads arrive as
 // pointermove and fire as fast as the pointer does; recording them puts sixteen
 // semitones in a bar every time somebody goes looking for a note.
-assert(/function oskPlay\(midi, \{ record = true, src = null \} = \{\} \)?/.test(entry)
-  || /function oskPlay\(midi, \{ record = true, src = null \} = \{\}\) \{/.test(entry),
+assert(/function oskPlay\(midi, \{ record = true, src = null, chord = true \} = \{\}\) \{/.test(entry),
   'oskPlay takes a record option, so a gesture can say it is not a note');
 assert(/function oskHit\(laneKey, \{ record = true, src = null \} = \{\}\) \{/.test(entry),
   'and so does oskHit');
@@ -2563,7 +2770,7 @@ assert(/function oskHoldVisual\(src, el\)[\s\S]{0,300}?classList\.add\('held'\)/
 // and the audio voice, which is what mouse release used to miss.
 assert(/function releasePreview\(src\)[\s\S]{0,180}Audio\.releasePreviewNote\(held\.laneKey, held\.freq\)/
   .test(entry)
-  && /function oskRelease\(src\)[\s\S]{0,100}releasePreview\(src\)/.test(entry)
+  && /function oskRelease\(src\)[\s\S]{0,300}releasePreview\(src\)/.test(entry)
   && /pads\.addEventListener\(type, \(ev\) => oskRelease\(`p:\$\{ev\.pointerId\}`\)\)/.test(entry)
   && /keys\.addEventListener\(type, \(ev\) => oskRelease\(`p:\$\{ev\.pointerId\}`\)/.test(entry),
   'mouse release closes both the recording token and the sounding preview note');
@@ -2573,7 +2780,7 @@ assert(/function releasePreview\(src\)[\s\S]{0,180}Audio\.releasePreviewNote\(he
 // introduced a `src` local) does not read as the handler having been lost.
 {
   const at = entry.indexOf('if (kind === 0x80 || (kind === 0x90 && !vel))');
-  const body = at < 0 ? '' : entry.slice(at, at + 700);
+  const body = at < 0 ? '' : entry.slice(at, at + 1400);
   assert(at >= 0, 'a MIDI note-off is an actual 0x80 OR a note-on at velocity zero — most'
     + ' keyboards send the second, and reading only the first loses every length');
   assert(body.includes('oskRelease(src)') && body.includes('return;'),
@@ -2612,7 +2819,6 @@ assert(/let locA = null[\s\S]*?let locB = null/.test(entry)
   && /function jumpTo\([\s\S]*?Audio\.setStepAtBoundary\(within\)[\s\S]*?pendingSeekStep = within[\s\S]*?selregion[\s\S]*?classList\.add\('pending'\)/.test(entry)
   && /function markBar\([\s\S]*?pendingSeekStep = null[\s\S]*?selregion[\s\S]*?Audio\.setLoopAtBoundary/.test(entry)
   && /\$\('timeline'\)\.onclick = \(e\) => \{[\s\S]*?const target = bar \* 16[\s\S]*?if \(!\(playing && loopOn\)\) jumpTo\(playing \? target : at\)/.test(entry)
-  && /box\.onclick = \(ev\) => \{[\s\S]*?const selectionChanges[\s\S]*?if \(!\(playing && loopOn && selectionChanges\)\) jumpTo\(at\)/.test(entry)
   && /id="looptoggle"[^>]*aria-pressed="false"[^>]*>Loop Off<\/button>/.test(shell)
   && /#loopregion \{[^}]*border: 1px solid color-mix\(in srgb, var\(--accent\) 58%, transparent\)/.test(shell)
   && /#loopregion\.pending/.test(shell)
@@ -2766,12 +2972,13 @@ assert(/stacks: \(lane\) => polyLane\(editBank\(\), lane\)/.test(entry),
   const audio = readFileSync(new URL('../src/engine/audio.js', import.meta.url), 'utf8');
   assert(/const tonesOf = \(v\) => \(Array\.isArray\(v\)/.test(audio),
     'scheduleStep resolves a step to a LIST of frequencies');
+  const noteVars = { lead: 'leadNote', bass: 'bassNote', leadHarm: 'harmNote', twinkle: 'twinkleNote' };
   for (const lane of ['lead', 'bass', 'leadHarm', 'twinkle']) {
-    assert(new RegExp(`for \\(const \\w+ of tonesOf\\(b\\.${lane}\\[s\\]\\)\\)`).test(audio),
+    assert(new RegExp(`for \\(const \\[[^\\]]+\\] of tonesOf\\(${noteVars[lane]}\\)\\.entries\\(\\)\\)`).test(audio),
       `and ${lane}'s hand-written body runs once per tone — free, because play() builds`
       + ' its own oscillator per call, which is why two keys at once always sounded');
   }
-  assert(/const bassRoot = tonesOf\(b\.bass\[s\]\)\[0\];/.test(audio),
+  assert(/const bassRoot = tonesOf\(bassNote\)\[0\];/.test(audio),
     'and the star arpeggio takes a chord\u2019s lowest tone as its root rather than the'
     + ' whole array, which would have broken it');
 }
