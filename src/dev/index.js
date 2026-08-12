@@ -11,9 +11,8 @@
 // frozen and pokeable underneath.
 //
 // Input is read from a private keydown listener rather than through the Input
-// action system, because Input.setContext() remaps keys per scene and
-// Input.textHandler swallows every letter during TURDLE — the menu must behave
-// identically wherever it was opened from.
+// action system, because Input.setContext() remaps keys per scene — the menu
+// must behave identically wherever it was opened from.
 import { Input } from '../engine/input.js';
 import { H, pushOverlayDraw, saveScreenshot, clientToLogical, setDevPortraitFill } from '../engine/renderer.js';
 import { currentState } from '../engine/states.js';

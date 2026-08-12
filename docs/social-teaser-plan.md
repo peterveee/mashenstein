@@ -149,7 +149,7 @@ Re-run all three after any cast or style change, the same way
 `CABINET_STAR` so the promo renders read the poster casting from the game rather
 than keeping a copy that goes stale.
 
-## Stills — 11 ideas
+## Stills — 10 ideas
 
 Ordered roughly by value-per-effort. The four marked **shipped** are built.
 
@@ -289,9 +289,6 @@ powered object.
 Tight crop on a boss health bar carrying that label. Companion post: the
 difficulty select, where four of the five modes are identical. Both jokes only
 land as screenshots of a real UI, which is what we have.
-
-### 11. TURDLE board mid-guess
-An easy meme slot — everyone already knows how to read that grid.
 
 ## Videos — 8 ideas
 

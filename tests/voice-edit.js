@@ -352,6 +352,68 @@ async function main() {
       nrack.dispose();
     }
 
+    // ---- 8c. a FINGER IS NOT A LENGTH ------------------------------------------
+    //
+    // GLIDE is fingered: a note slides only when it starts while the previous one is still
+    // on. A KEY is still on until it is let go, which has nothing to do with the nominal
+    // length the preview was scheduled with — a fifth of a second on a bass lane. Reading
+    // only that length cost the keyboard its glide on every key held longer than a note,
+    // which is every key anyone actually plays.
+    //
+    // And on MRDR-3 the legato handover used to re-arm a release at that same nominal
+    // length, so pressing a second key CUT the sound instead of sustaining it. Both facts
+    // are the rack's own book: `gateKey` is the key holding the gate open, and `gateUntil`
+    // is the gate the sequencer wrote.
+    {
+      const press = (id, freq) => rack.play('lead', id, freq, {
+        time: ctx.currentTime + 0.02, dur: 0.4, gain: 0.5, dry, wet, echo: true,
+        preview: true, hold: true,
+      });
+      const noteKey = (freq) => `lead|${freq.toFixed(2)}`;
+
+      // MONO: each key starts the envelope again, so the second press is a new graph —
+      // what has to survive is the GLIDE ORIGIN, and it is `gateKey` that keeps it alive
+      // once the nominal gate has run out.
+      const mono = install(VOICES.bestClassicMono);
+      const monoRecord = () => rack._last.get(`lead|${mono}|p`);
+      press(mono, 220);
+      const first = monoRecord();
+      say(!!first && first.gateKey === noteKey(220),
+        'a held MRDR-3 note names the key holding its gate open');
+      say(first.gateUntil < ctx.currentTime + 1,
+        '...while its sequencer gate is only the short nominal length it was scheduled with');
+      say(Math.abs(first.freq - 220) < 1,
+        '...and the glide origin is the pitch the finger is on');
+      press(mono, 330);
+      say(monoRecord() !== first, 'a second key on MONO starts a new graph, as MONO means');
+      say(monoRecord().gateKey === noteKey(330) && Math.abs(monoRecord().freq - 330) < 1,
+        '...and the gate and the glide origin move to it');
+      rack.releasePreview('lead', 330);
+      say(monoRecord().gateKey === null && monoRecord().gateUntil <= ctx.currentTime + 0.001,
+        'and the key coming up closes the gate rather than leaving a stale glide origin');
+
+      // LEGATO: one note under two fingers. The graph is handed over, not restarted, and
+      // nothing about its end is re-armed — a held handover that stopped its own sources
+      // at the nominal length is what made LEGATO on the keyboard fail to sustain.
+      const legato = install(VOICES.bestClassicMono);
+      VOICES[legato].mono = false;
+      VOICES[legato].mode = 'legato';
+      const legatoRecord = () => rack._last.get(`lead|${legato}|p`);
+      press(legato, 220);
+      const held = legatoRecord();
+      press(legato, 330);
+      say(legatoRecord() === held, 'a second key on LEGATO retargets the SAME graph');
+      say(held.gateUntil === Infinity && held.stopAt === Infinity,
+        '...and a held handover arms no release at all — the finger says when it ends');
+      say(held.gateKey === noteKey(330),
+        '...with the note-off passed to the key that took it: last note priority');
+      say(rack._heldNative.has(noteKey(330)) && !rack._heldNative.has(noteKey(220)),
+        '...so exactly one key can release it, and it is the one being held');
+      rack.releasePreview('lead', 330);
+      say(legatoRecord().gateKey === null,
+        '...and letting that key go is what ends the note');
+    }
+
     // ---- 9. nothing survives the rack ------------------------------------------
     {
       const before = rack._retired.size;

@@ -101,6 +101,9 @@ export function specialMoveColor(fill, ready) {
 const SPECIAL_FOLLOWER_CROWN = {
   lorenzo: 0.99, gnash: 1.08, fernwick: 1.05, b33p: 0.93,
   mochi: 0.84, chompo: 0.86, raymn: 0.9, grumpos: 1.18,
+  // Just above Fernwick's: same slim build, but the buns sit on top of the skull
+  // and the orb has to clear them.
+  kiko: 1.06,
 };
 
 function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownMax, charged, reducedMotion, alpha = 1) {

@@ -733,15 +733,27 @@ run.obstacles = [shieldTarget];
 run.useAbility();
 run.collide();
 assert(!shieldTarget.live, 'Fernwick shield contact still breaks its charged target');
-run.relay.current = 'chompo';
-run.player.setHero('chompo');
-run.player.grounded = true;
-run.player.abilityCd = 0;
-const chompTarget = makeObstacle('crate', run.camX + PLAYER_X + 20);
-run.obstacles = [chompTarget];
-run.useAbility();
-assert(!chompTarget.live, 'Miss Chomp contact still breaks its direct target');
-for (const id of ['b33p', 'raymn', 'grumpos']) {
+// Miss Chomp's contact bite, and only while she is SELECTABLE. She has left
+// the playable roster — she is still a toon, the way Gary and Dolores are, but
+// HERO_BY_ID no longer has a row for her, so useAbility() reads `ability` off
+// undefined and the suite dies on a hero the game can no longer hand you.
+// Asserting on an unreachable hero tests nothing; skipping quietly would lose
+// the coverage if she ever comes back, so it is a guard rather than a deletion.
+const { HERO_BY_ID: ROSTER } = await import('../src/data/heroes.js');
+if (ROSTER.chompo) {
+  run.relay.current = 'chompo';
+  run.player.setHero('chompo');
+  run.player.grounded = true;
+  run.player.abilityCd = 0;
+  const chompTarget = makeObstacle('crate', run.camX + PLAYER_X + 20);
+  run.obstacles = [chompTarget];
+  run.useAbility();
+  assert(!chompTarget.live, 'Miss Chomp contact still breaks its direct target');
+}
+// Kiko fires a projectile too, and the assertion below already counts her —
+// the loop simply had not been given her id, so it expected four launches from
+// three heroes.
+for (const id of ['b33p', 'raymn', 'grumpos', 'kiko']) {
   run.relay.current = id;
   run.player.setHero(id);
   run.player.grounded = true;
@@ -750,9 +762,21 @@ for (const id of ['b33p', 'raymn', 'grumpos']) {
   run.useAbility();
 }
 Audio.sfx = originalSfx;
-assert(projectileContacts === 6, 'all six weapon contact families play their specific WAV cue');
+assert(projectileContacts === 5, 'every reachable weapon contact family plays its specific WAV cue');
 assert(projectileImpacts === 0, 'weapon contacts no longer use the generic impact crash');
-assert(weaponLaunches === 3, 'B-33P, Ray M\'N, and Grumpos play distinct launch cues');
+assert(weaponLaunches === 4, 'B-33P, Ray M\'N, Grumpos and Kiko play distinct launch cues');
+
+// Both shooters fire a `pellet`, so the thing that has to keep them apart is
+// contactHero — without it Kiko's warning shot would land with B-33P's orb pop.
+let contactHeroSeen = null;
+Audio.sfx = function(name, opts, ...rest) {
+  if (name === 'contact') contactHeroSeen = opts && opts.hero;
+  return originalSfx.call(this, name, opts, ...rest);
+};
+run.projectileImpact({ type: 'pellet', contactHero: 'kiko' }, run.camX + PLAYER_X, 0);
+assert(contactHeroSeen === 'kiko', "the warning shot's impact plays Kiko's cue, not B-33P's");
+run.projectileImpact({ type: 'pellet' }, run.camX + PLAYER_X, 0);
+assert(contactHeroSeen === 'b33p', 'a pellet with no owner still falls back to B-33P');
 
 // Fernwick consumes one enemy shot per roll, without becoming invincible.
 run.relay.current = 'fernwick'; run.player.setHero('fernwick'); run.player.grounded = true; run.player.y = 0; run.player.vy = 0; run.player.abilityCd = 0; run.useAbility();

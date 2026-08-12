@@ -132,7 +132,14 @@ const PARAM_RANGES = {
   threshold: { min: -60, max: 0, step: 0.5, unit: 'dB' },
   ratio: { min: 1, max: 20, step: 0.5 },
   attack: { min: 0.001, max: 1, step: 0.001, unit: 's', log: true },
-  release: { min: 0.01, max: 2, step: 0.01, unit: 's', log: true },
+  // A millisecond floor and a millisecond step, to match ATTACK and every envelope pot
+  // on the preset editor. A compressor's release is an envelope time like any other and
+  // the interesting half of it is under a tenth of a second — ten milliseconds was a
+  // floor with real settings underneath it, and a ten-millisecond step could not tell
+  // 20 from 25. The one effect that cannot honour a 1ms release is L7, whose own
+  // envelope clamps at ten, so it overrides this floor rather than promising travel
+  // that stops at the same place wherever the pot is.
+  release: { min: 0.001, max: 2, step: 0.001, unit: 's', log: true },
   knee: { min: 0, max: 40, step: 1, unit: 'dB' },
   // L7's own three. `ceiling` is where the output stops, which is not `threshold` —
   // on a limiter of this shape the two are independent and the gap between them IS
@@ -2384,7 +2391,10 @@ export const EFFECTS = [
   { id: 'rhythmgate', name: 'Rhythmic Gate', short: 'Rhythm Gate', cost: 0.02, custom: makeRhythmicGate,
     params: ['division', 'gateLength', 'attack', 'decay', 'depth'],
     defaults: { division: 0.5, gateLength: 0.5, attack: 0.003, decay: 0.035, depth: 1 },
-    ranges: { gateLength: { min: 0.01, max: 1, step: 0.01 }, attack: { min: 0.001, max: 0.25, step: 0.001, unit: 's', log: true }, decay: { min: 0.005, max: 1, step: 0.005, unit: 's', log: true } },
+    // DECAY starts where the gate's own envelope starts — `makeRhythmicGate` floors it
+    // at a millisecond — rather than five times above it, and steps in milliseconds so
+    // the short end is dialable at all: a gate's decay is the whole character of it.
+    ranges: { gateLength: { min: 0.01, max: 1, step: 0.01 }, attack: { min: 0.001, max: 0.25, step: 0.001, unit: 's', log: true }, decay: { min: 0.001, max: 1, step: 0.001, unit: 's', log: true } },
     labels: { division: 'RATE', gateLength: 'GATE LENGTH', attack: 'ATTACK', decay: 'DECAY', depth: 'DEPTH' } },
   { id: 'flanger', name: 'Flanger', cost: 0.32, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'flanger'),
     params: ['rateSync', 'rateDivision', 'frequency', 'delayMs', 'depth', 'feedback', 'spread', 'tone', 'wet'],
@@ -2467,7 +2477,11 @@ export const EFFECTS = [
   { id: 'l7', name: 'L7 Limiter', short: 'L7', cost: 0.54, custom: makeLimiter,
     params: ['threshold', 'ceiling', 'release', 'lookahead', 'arc'],
     defaults: { threshold: 0, ceiling: -0.3, release: 0.06, lookahead: 3, arc: 1 },
-    ranges: { threshold: { min: -30, max: 0, step: 0.1, unit: 'dB' } } },
+    // RELEASE keeps the ten-millisecond floor the shared range has left behind, because
+    // `makeLimiter` clamps its own envelope there (`relS`): a pot that went to one would
+    // read three settings that all sound like ten.
+    ranges: { threshold: { min: -30, max: 0, step: 0.1, unit: 'dB' },
+      release: { min: 0.01, max: 2, step: 0.001, unit: 's', log: true } } },
   // The two compressors whose controls are NESTED. Tone builds each of these out of
   // whole Tone.Compressors — `mid`, `side`, or `low`/`mid`/`high` — so a threshold
   // is at `mid.threshold`, not on the effect. The dotted names are the parameter

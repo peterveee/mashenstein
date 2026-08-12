@@ -104,6 +104,9 @@ const suites = [
   // a diff rather than a dump.
   'tests/tune-store.js',
   'tests/layers.js',
+  // The other half of the desk's shape decisions: layers.js is which tracks a song has,
+  // this is what order they sit in.
+  'tests/track-order.js',
   'tests/preview.js',
   // The other side of preview.js: that one is a note through a CHANNEL, this is a note
   // through none — the preset library's bench, where a sound that belongs to no song is
@@ -164,6 +167,19 @@ const suites = [
   // What a length that long does to the song AFTER it: opening another song has to
   // stop the note that is still ringing, not merely duck it for half a second.
   'tests/song-switch.js',
+  // A lane trimmed over a range of bars. Also a claim about the speakers and not the
+  // graph: the trim routed every note on that lane through a gain pair BUILT PER STEP,
+  // and a new pair is a new graph to the voice rack, which answered it by disposing
+  // the pool the lookahead's notes were already booked on. The arrangement unit tests
+  // all passed — the dB was written correctly and read correctly; the bar just had no
+  // sound in it.
+  'tests/bar-gain.js',
+  // The same bar, moved rather than trimmed — and it cannot be done the same way, which
+  // is why it has a suite of its own. Pan does not compose, so the offset is added to
+  // the CHANNEL's pan instead of getting a node in front of it, and what that has to
+  // prove is arithmetic: a lane at +10 with a bar of -20 sounds like a lane at -10, the
+  // bar before it does not drift on its way there, and the pot itself never moves.
+  'tests/bar-pan.js',
   // And the mirror image of it: a cabinet's treatment handing over to a level's mix
   // must do the opposite — keep the clock, keep the note ringing, change only the
   // presentation. Same claim, opposite sign. The first is the clock, in counters; the
@@ -196,6 +212,8 @@ const browserSuites = new Set([
   'tests/sfx-routing.js',
   'tests/note-duration.js',
   'tests/song-switch.js',
+  'tests/bar-gain.js',
+  'tests/bar-pan.js',
   'tests/music-variant.js',
   'tests/music-variant-render.js',
   'tests/voices.js',
@@ -233,7 +251,7 @@ const soundSuites = [
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js',
   'tests/song-copies.js', 'tests/song-alternates.js',
   'tests/arrangement.js', 'tests/swing.js', 'tests/piano-roll.js', 'tests/note-recorder.js',
-  'tests/preview.js', 'tests/key-mode.js', 'tests/layers.js', 'tests/lfo.js',
+  'tests/preview.js', 'tests/key-mode.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
   'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js',
   'tests/synth-full-layout.js', 'tests/synth-graphs.js', 'tests/pot-coverage.js',
   'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',

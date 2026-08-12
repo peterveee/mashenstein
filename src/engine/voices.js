@@ -1175,6 +1175,18 @@ const keyMode = (v) => {
   return v?.mono === true ? 'mono' : 'poly';
 };
 
+/**
+ * How long this preset's GLIDE takes, from wherever the preset happens to keep it.
+ *
+ * The editor writes `$portamento` at the top level; a hand-written or imported Tone preset
+ * may carry it inside `options`, where `buildSpec` also finds it. One reader so the two
+ * paths cannot disagree about whether a preset has a glide at all.
+ */
+const glideTime = (v) => {
+  const p = v?.portamento ?? v?.options?.portamento ?? 0;
+  return Number.isFinite(p) && p > 0 ? p : 0;
+};
+
 // MRDR-3 optional sections have historically appeared in equivalent forms:
 // the editor's flat `bypassed['global.filter']` hold, a `$`-prefixed hold, and (for
 // hand-authored/user-imported patches) an explicit `bypass`/`enabled` flag on the live
@@ -1261,6 +1273,10 @@ export class VoiceRack {
     // and a released one decays through its envelope instead of ringing for a fixed
     // sequencer length.
     this._activePreviews = new Map();
+    // Cached BufferSources are otherwise deliberately fire-and-forget. Keep only
+    // their lightweight records until onended so loop diagnostics can distinguish
+    // a growing source population from a genuinely heavier musical passage.
+    this._cachedPlayback = new Set();
     // Held NATIVE notes, keyed the same way. The pooled classes above are released through
     // Tone's own `triggerRelease`; a native voice is a heap of scheduled AudioParams with
     // no synth object to ask, so what is kept here is the params to let go of and the
@@ -1498,16 +1514,59 @@ export class VoiceRack {
         // instead of the page. Deliberately not a slot-picking scheme — rerouting a note
         // to a different instance changes which note gets cut off, and that is a change
         // to what existing songs sound like.
+        // ---- GLIDE IS FINGERED, here and on every other path ---------------------
+        //
+        // A note glides only when it begins while the previous one is STILL GATED — the
+        // overlap that legato playing means, and the same predicate the LEGATO handoff
+        // below tests. A note after a rest starts on its own pitch. That is what every
+        // mono synth calls fingered (or legato) portamento, and `_playLayer` follows the
+        // same sentence, so GLIDE means one thing across the whole rack instead of one
+        // thing per synth class.
+        //
+        // Said by LENDING the instance a portamento for the length of one call rather
+        // than by writing `frequency` here: `setNote` reads the property synchronously
+        // while it schedules, and the classes own their own pitch writers — MembraneSynth
+        // ramps `frequency` down by octaves for its pitch decay — so a second writer on
+        // that param is a fight. Restored in the `finally`, which is what keeps the pool's
+        // record of itself matching what its synths hold (see `refresh`, and the glide
+        // assertion in tests/voice-edit.js).
+        //
+        // Tone will still refuse a ramp when the note it would glide FROM is under 5% at
+        // the note-on (`Monophonic.setNote`) — a sustain-zero patch that decayed to
+        // nothing under its own gate. That is a narrower rule than this one and it cannot
+        // be talked out of without taking over `frequency`; no preset in the library
+        // reaches it, and where it bites, the pitch left behind is one nobody can hear.
+        //
+        // ---- and a FINGER is not a length ----------------------------------------
+        //
+        // Two different facts about the note before this one, because a keyboard and a
+        // sequencer say "still sounding" in different ways. `activeUntil` is the GATE the
+        // sequencer wrote: a length, known before the note starts. `gateKey` is a KEY THAT
+        // IS STILL DOWN, and a held note has no length until the finger says so — which is
+        // why the rack takes a note-off at all. Reading only the first meant the keyboard
+        // lost its glide after the lane's nominal note length, a fifth of a second in,
+        // however long you actually held the key: play legato on the keys and the second
+        // note jumped, which is not what the pill promises.
+        const gated = mono && (slot.activeUntil || 0) > t;
+        const fingered = mono && slot.gateKey != null;
+        const overlap = gated || fingered;
+        const glide = glideTime(v);
+        const noteKey = hold ? `${laneKey}|${f.toFixed(2)}` : null;
+        const carriesGlide = typeof slot.synth.portamento === 'number';
+        if (carriesGlide) slot.synth.portamento = overlap ? glide : 0;
         try {
           if (hold) {
             // A held note uses triggerAttack so a later note-off can release it.
             // Release any previous note at this (lane, freq) first — the same key
             // pressed again restarts rather than stacking.
-            const noteKey = `${laneKey}|${f.toFixed(2)}`;
             this._releasePreview(noteKey);
             slot.synth.triggerAttack(f * detune * VoiceRack.pitchShift(v), t, 1);
             this._activePreviews.set(noteKey, { slot });
-          } else if (legato && (slot.activeUntil || 0) > t) {
+            // `gated` rather than `overlap`: this branch re-arms a release at the new
+            // note's end, and doing that to a note whose KEY IS STILL DOWN would stop a
+            // sound the finger is still asking for. A held predecessor is handled by the
+            // branch above, which is where a held note belongs.
+          } else if (legato && gated) {
             // A later note owns the same gate. Cancel the previous note's scheduled
             // release before moving the pitch, otherwise the old note-off would close
             // the new note halfway through it. Tone's envelope cancel leaves its
@@ -1527,8 +1586,15 @@ export class VoiceRack {
           } else {
             slot.synth.triggerAttackRelease(f * detune * VoiceRack.pitchShift(v), noteDur, t);
           }
-          if (mono) slot.activeUntil = t + Math.max(0.001, noteDur || 0.001);
-        } catch { return; }
+          if (mono) {
+            slot.activeUntil = t + Math.max(0.001, noteDur || 0.001);
+            // Which KEY the gate belongs to, so that a note-off can close it. A sequenced
+            // note has no key and no note-off: its gate ends where `activeUntil` says.
+            slot.gateKey = noteKey;
+          }
+        } catch { return; } finally {
+          if (carriesGlide) slot.synth.portamento = glide;
+        }
         // How far into the future this pool is committed. Notes are scheduled up to
         // a quarter-second ahead, so "is it playing" is not a question about now — and a pool
         // taken out of service has to outlive the ones already booked on it or they
@@ -1893,10 +1959,63 @@ export class VoiceRack {
       src.connect(g);
       g.connect(dry);
       if (echo && wet) g.connect(wet);
+      const active = { src, gain: g };
+      this._cachedPlayback.add(active);
+      src.onended = () => {
+        this._cachedPlayback.delete(active);
+        try { src.disconnect(); } catch { /* context may already be gone */ }
+        try { g.disconnect(); } catch { /* ditto */ }
+      };
       src.start(time);
       src.stop(time + entry.buffer.duration + 0.01);
     }
     return true;
+  }
+
+  /**
+   * Inventory one sequencer note into the rendered-note cache without playing it.
+   *
+   * Start-from-beginning calls this while the cache worker is held. It is deliberately
+   * the SAME key builders and eligibility gates as live playback: discovery must not
+   * promise a buffer for a note `_playCached` would refuse, nor render a subtly
+   * different chord shape. `priority` is the song step; repeated notes retain their
+   * latest occurrence so a late dense section is prepared before the opening bars.
+   */
+  prepareNoteCache(voiceId, freq, dur, { detune = 1, priority = 0 } = {}) {
+    if (!this.noteCache) return 0;
+    const v = VOICES[voiceId];
+    if (!v) return 0;
+    const before = this._cacheState.entries.size;
+    const hits = this._cacheState.stats.hits;
+    const mark = (entry) => {
+      if (entry) entry.preparePriority = Math.max(entry.preparePriority || 0, priority);
+    };
+    if (v.synth === 'MRDR-3') {
+      if (!this._cacheableLayer(v, v.mode || keyMode(v), false, false)) return 0;
+      mark(this._layerCacheEntry(v, voiceId, Array.isArray(freq) ? freq : [freq], dur, detune));
+    } else {
+      const mode = v.mode || keyMode(v);
+      if (!this._cacheablePool(v, mode, false, false)) return 0;
+      const notes = Array.isArray(freq) ? freq : [freq];
+      for (let i = 0; i < notes.length; i++) {
+        const f = notes[i];
+        if (f == null || !(f > 0)) continue;
+        const noteDur = Array.isArray(dur) ? (dur[i] ?? dur[0]) : dur;
+        const hz = f * detune * VoiceRack.pitchShift(v);
+        if (!Number.isFinite(hz) || !Number.isFinite(noteDur) || noteDur <= 0) continue;
+        mark(this._cacheEntry(v, voiceId, hz, noteDur));
+      }
+    }
+    // Looking at an already-prepared entry is inventory, not a playback hit. Preserve
+    // the counter's meaning so the loop log can compare actual cache use between laps.
+    this._cacheState.stats.hits = hits;
+    return this._cacheState.entries.size - before;
+  }
+
+  /** Put the latest song positions at the front without disturbing equal priorities. */
+  prioritisePreparedNotes() {
+    this._cacheState.queue.sort((a, b) =>
+      (b.entry?.preparePriority || 0) - (a.entry?.preparePriority || 0));
   }
 
   /** The cache slot for one note, rendering it in the background on a miss. */
@@ -2085,6 +2204,13 @@ export class VoiceRack {
     src.connect(g);
     g.connect(dry);
     if (echo && wet) g.connect(wet);
+    const active = { src, gain: g };
+    this._cachedPlayback.add(active);
+    src.onended = () => {
+      this._cachedPlayback.delete(active);
+      try { src.disconnect(); } catch { /* context may already be gone */ }
+      try { g.disconnect(); } catch { /* ditto */ }
+    };
     src.start(time);
     src.stop(time + entry.buffer.duration + 0.01);
     return true;
@@ -2207,9 +2333,15 @@ export class VoiceRack {
     let pool = this.pools.get(key);
     // A rebuilt mixer hands out new strip nodes, and a pool wired to the old ones
     // would play into a graph nothing is listening to.
+    //
+    // RETIRED rather than disposed, for the same reason `prune` retires: the caller is
+    // scheduling a note a quarter-second out, and the pool it is replacing very likely
+    // has notes booked on it further out still. Disposing here cut those notes before
+    // their start times ever arrived — they simply never sounded. Retiring lets what
+    // is already booked ring out on the old synths while the new note goes to the new
+    // pool. See `_retire`, which drops the key itself and disposes immediately offline.
     if (pool && (pool.dry !== dry || pool.wet !== wet)) {
-      this._disposePool(pool);
-      this.pools.delete(key);
+      this._retire(key, pool);
       pool = null;
     }
     if (!pool) {
@@ -3080,7 +3212,7 @@ export class VoiceRack {
    * Like every native path: one-shot nodes, never pooled, nothing memoised by voice id
    * — which is exactly why live edits are audible on the next note.
    */
-  _retargetLayerLegato(prev, base, time, dur, v) {
+  _retargetLayerLegato(prev, base, time, dur, v, hold = false) {
     const stopAt = time + Math.max(0.001, dur || 0.001);
     const releaseValues = (prev.envelopes || [])
       .map(({ e }) => e?.release ?? 0.015)
@@ -3098,6 +3230,21 @@ export class VoiceRack {
           else pitch.setValueAtTime(target, time);
         } catch { /* the old graph may already have ended */ }
       }
+    }
+    // ---- a HELD note stops here -------------------------------------------------
+    //
+    // The pitch moved and that is the whole of the handover: a key press has no length,
+    // so there is no release to re-arm and no source to stop early. Everything below this
+    // line is a note whose end was known before it started — and doing it to a held note
+    // is what made LEGATO on the keyboard fail to sustain at all. `source.stop(finalStop)`
+    // pulled every oscillator back to the nominal length of a note nobody had let go of,
+    // so pressing a second key CUT THE SOUND a fifth of a second later. The note ends when
+    // `_releasePreview` says it does, which is what the note-off is for.
+    if (hold) {
+      prev.freq = base;
+      prev.gateUntil = Infinity;
+      prev.stopAt = Infinity;
+      return;
     }
     // Cancel the old note's release, hold its current level, and release the same gate
     // at the new note's end. This is the envelope distinction between LEGATO and MONO.
@@ -3117,6 +3264,24 @@ export class VoiceRack {
     prev.freq = base;
     prev.gateUntil = stopAt;
     prev.stopAt = finalStop;
+  }
+
+  /**
+   * Hand a held note's release record to the key that just took its gate.
+   *
+   * LEGATO on a keyboard is one note under two fingers: the graph belongs to whoever
+   * pressed last, so the note-off that ends it has to be that key's. The record moves
+   * rather than being duplicated — two keys able to release one graph would let go of it
+   * twice, and the second call would be writing a release onto nodes already stopped.
+   */
+  _rekeyHeldNote(record, to) {
+    const from = record?.gateKey;
+    if (!from || from === to) return;
+    const held = this._heldNative.get(from);
+    if (!held) return;
+    this._heldNative.delete(from);
+    this._heldNative.set(to, held);
+    record.gateKey = to;
   }
 
   _playLayer(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false, hold = preview, spb = null }) {
@@ -3305,12 +3470,34 @@ export class VoiceRack {
     const glideKey = `${laneKey}|${v.id}${preview ? '|p' : ''}`;
     this._last ||= new Map();
     const prev = mono ? this._last.get(glideKey) : null;
-    const glideFrom = prev && v.portamento > 0 ? prev.freq : null;
-    if (legato && prev && prev.gateUntil > time && notes.length) {
+    // FINGERED, the pooled path's rule stated once more on the path that has to obey it:
+    // a glide needs the previous note to be STILL GATED at this note-on. `_last` outlives
+    // the note it describes — that is how MONO finds the note to choke — so an ungated
+    // glide origin was not "the last note" but "the last note ever", and a preset glided
+    // in from whatever this lane played bars of rest ago. Worst on a jump: the first note
+    // after a loop wrap or a seek arrived from the other side of it.
+    //
+    // `gateUntil` is the gate and nothing else — not the release tail. A note whose
+    // predecessor is still ringing out is not legato, it is a note after a rest with the
+    // room still sounding, and gliding into it is a different instrument.
+    //
+    // And a FINGER is not a length: `gateKey` is a key still down, which outlasts the
+    // nominal `gateUntil` a held preview was scheduled with. Both are "the note before
+    // this one is still on", so both open the glide and both hand over the envelope.
+    const gated = !!prev && prev.gateUntil > time;
+    const fingered = !!prev && prev.gateKey != null;
+    const overlap = gated || fingered;
+    const glideFrom = overlap && glideTime(v) > 0 ? prev.freq : null;
+    if (legato && overlap && notes.length) {
       const f = notes[0];
       const di = monoLast ? all.lastIndexOf(f) : 0;
       const noteDur = Array.isArray(dur) ? (dur[di] ?? dur[0]) : dur;
-      this._retargetLayerLegato(prev, f * shift * vary((v.humanize || {}).pitch, time, 16), time, noteDur, v);
+      this._retargetLayerLegato(prev, f * shift * vary((v.humanize || {}).pitch, time, 16), time, noteDur, v, hold);
+      // The new key owns the note now — LAST NOTE PRIORITY, which is what a mono synth
+      // does and what the retarget already did to the pitch. Without the hand-over the
+      // release record stayed under the FIRST key: letting go of the key you are actually
+      // holding did nothing, and letting go of the one you had left behind cut the note.
+      if (hold) this._rekeyHeldNote(prev, `${laneKey}|${f.toFixed(2)}`);
       return true;
     }
     // The choke: a hardware mono synth cuts the note still ringing. On the OLD note's own
@@ -3353,6 +3540,11 @@ export class VoiceRack {
     // `lastOff` is known.
     let chorusOsc = null;
     let gateUntil = 0;
+    // Which KEY holds that gate open, when a finger does. A sequenced note has none and
+    // its gate simply ends at `gateUntil`; a held one ends when the key comes up, which
+    // is what `_releasePreview` closes. Only the last tone of a chord can own it, which
+    // is exactly the tone a non-poly mode keeps.
+    let gateKey = null;
     {
       const t = time;
       // Humanise only. NO TAPS on this path: a tap is one hit repeated milliseconds
@@ -3555,9 +3747,10 @@ export class VoiceRack {
             // own rule, applied here so both behave alike under a trill.
             this._releasePreview(noteKey);
             sharedMods.holds += 1;
+            gateKey = noteKey;
             this._heldNative.set(noteKey, {
               params: heldParams, sources: heldSources, shared: sharedMods,
-              live: heldLive, voiceId: v.id,
+              live: heldLive, voiceId: v.id, glideKey,
             });
             return;
           }
@@ -4013,7 +4206,7 @@ export class VoiceRack {
     if (mono && lastBase > 0) {
       this._last.set(glideKey, {
         freq: lastBase, outs: allOuts, pitchSets, envelopes: legatoEnvelopes,
-        sources: legatoSources, gateUntil, stopAt: lastOff,
+        sources: legatoSources, gateUntil, gateKey, stopAt: lastOff,
       });
     }
     if (lastOff) for (const l of vibOscs) { l.start(time); l.stop(lastOff + 0.01); }
@@ -4424,6 +4617,21 @@ export class VoiceRack {
     };
   }
 
+  runtimeHealth() {
+    this._sweepLiveNotes();
+    let poolSlots = 0;
+    for (const pool of this.pools.values()) poolSlots += pool.slots?.length || 0;
+    return {
+      pools: this.pools.size,
+      poolSlots,
+      retiredPools: this._retired.size,
+      liveNotes: this._liveNotes.length,
+      heldNative: this._heldNative.size,
+      activePreviews: this._activePreviews.size,
+      cachedSources: this._cachedPlayback.size,
+    };
+  }
+
   /**
    * Dispose only the pools created for an on-screen preview.
    *
@@ -4476,6 +4684,14 @@ export class VoiceRack {
       }
     }
     this._heldNative.clear();
+    // Every finger is off, whether or not a note-off arrived. `gateKey` is what says a key
+    // is still down, and a stop that left one set would hand the next key a glide out of a
+    // note this call has just silenced. The pooled slots go with their pools above; the
+    // native records outlive them, so they are said here.
+    for (const record of this._last?.values() || []) {
+      record.gateKey = null;
+      record.gateUntil = Math.min(record.gateUntil, now);
+    }
     // The gated notes end by themselves and are fading with the pools above; what goes
     // here is only the RECORD of them, so a stopped bench cannot leave a later edit
     // walking filters on nodes already on their way out.
@@ -4537,14 +4753,27 @@ export class VoiceRack {
   }
 
   _releasePreview(noteKey) {
+    const at = this.ctx.currentTime;
     const entry = this._activePreviews.get(noteKey);
     if (entry) {
-      try { entry.slot.synth.triggerRelease(this.ctx.currentTime); } catch { /* ignore */ }
+      try { entry.slot.synth.triggerRelease(at); } catch { /* ignore */ }
+      // A KEY COMING UP ENDS THE GATE, which is the whole of what the fingered glide test
+      // reads: press C, let go, press E after a pause, and the E starts on its own pitch
+      // rather than sliding out of a note nobody is holding. Without this a held note's
+      // gate ran its nominal length into the future whether or not a finger was still
+      // down. Only the key that opened the gate can close it, so a trill played with two
+      // keys overlapping keeps gliding.
+      if (entry.slot.gateKey === noteKey) { entry.slot.activeUntil = at; entry.slot.gateKey = null; }
       this._activePreviews.delete(noteKey);
     }
     const held = this._heldNative.get(noteKey);
     if (held) {
-      const at = this.ctx.currentTime;
+      // The same close, on the native path's own record of the gate.
+      const record = held.glideKey ? this._last?.get(held.glideKey) : null;
+      if (record && record.gateKey === noteKey) {
+        record.gateUntil = Math.min(record.gateUntil, at);
+        record.gateKey = null;
+      }
       let stopAt = at;
       for (const h of held.params) {
         try { stopAt = Math.max(stopAt, releaseNow(h.param, at, h.e)); } catch { /* ignore */ }
@@ -4569,6 +4798,12 @@ export class VoiceRack {
     this.pools.clear();
     this._monoGroups.clear();
     this._activePreviews.clear();
+    for (const active of this._cachedPlayback) {
+      try { active.src.stop(); } catch { /* already stopped */ }
+      try { active.src.disconnect(); } catch { /* context may already be gone */ }
+      try { active.gain.disconnect(); } catch { /* ditto */ }
+    }
+    this._cachedPlayback.clear();
     this._heldNative.clear();
     this._liveNotes = [];
     // The glide origins. The nodes they point at belong to the dying context; keeping

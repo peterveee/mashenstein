@@ -21,7 +21,7 @@ import {
 } from '../src/data/arrangements.js';
 import {
   draftOf, entryOf, planToOrder, setLanesOff, setLanesDeleted, transposeBars, offsetBars,
-  gainBars, copyBars, pasteBars, insertSilence, copyLaneBars, silenceBars, deleteBars,
+  gainBars, panBars, copyBars, pasteBars, insertSilence, copyLaneBars, silenceBars, deleteBars,
   duplicateBars, buildUp, breakdown, forkBar, writeBarNotes, writeBarNotesShared, removeLanes,
   copyLaneArrangement,
   compactSections, patternStarts, barCount, setTempo, setSwing, readBarLane,
@@ -379,6 +379,23 @@ const barRoundTrip = expandOrder(planToOrder(barEdited.plan), true);
 assert(barRoundTrip[0].transpose.bass === 5 && barRoundTrip[1].offset.bass === 1
   && barRoundTrip[0].gain.bass === -3,
   'bar transpose, timing and gain survive order serialisation');
+// Pan is the only bar edit that is an OFFSET rather than a value — the number the pot
+// shows, added to wherever the channel is panned — so what is checked here is that the
+// number survives the file, and that asking for somewhere past hard left gives back hard
+// left rather than a pan of -1.2 for the mixer to make sense of.
+const panned = panBars(base, 0, 1, ['bass'], -20);
+assert(panned.plan[0].pan.bass === -20 && panned.plan[1].pan.bass === -20
+  && panned.plan[2].pan == null,
+  'a bar pan offset stays scoped to the selected lane and bars');
+assert(expandOrder(planToOrder(panned.plan), true)[0].pan.bass === -20,
+  'bar pan survives order serialisation');
+assert(panBars(base, 0, 0, ['bass'], -400).plan[0].pan.bass === -100
+  && panBars(base, 0, 0, ['bass'], 400).plan[0].pan.bass === 100
+  && panBars(base, 0, 0, ['bass'], 12.4).plan[0].pan.bass === 12,
+  'bar pan clamps to the pot\'s own range and lands on whole units');
+assert(panBars(panned, 0, 1, ['bass'], 0).plan[0].pan == null,
+  'a bar pan back at zero leaves nothing behind in the file');
+
 const lowerBounds = gainBars(offsetBars(transposeBars(base, 0, 0, ['bass'], -12), 0, 0, ['bass'], -8), 0, 0, ['bass'], -12);
 const upperBounds = gainBars(offsetBars(transposeBars(base, 0, 0, ['bass'], 12), 0, 0, ['bass'], 8), 0, 0, ['bass'], 12);
 assert(lowerBounds.plan[0].transpose.bass === -12 && lowerBounds.plan[0].offset.bass === -8

@@ -501,7 +501,7 @@ const DRUM = {
   dsKickHard: { label: 'HH Clave', category: 'Hats', dur: 1,
     note: 'Tinny Hi Hat with a Clave behind it',
     knock: 0.79,
-    noise: { type: 'bandpass', freq: 3950, Q: 23.45, decay: 0.435, gain: 1.47, attack: 0.000343, to: 4790, color: 'violet', slope: -24, sweep: 1.59 },
+    noise: { type: 'bandpass', freq: 3950, Q: 23.45, decay: 0.435, gain: 1.47, attack: 0.001, to: 4790, color: 'violet', slope: -24, sweep: 1.59 },
     ring: { type: 'bandpass', freq: 400, Q: 40, hit: 0.0005, attack: 0.001, decay: 1.335, curve: 'exp', gain: 0.43, to: 4746 },
     metal: { wave: 'square', freq: 2481, spread: 0.68, count: 4, hp: 2615, Q: 6.25, attack: 0.001, decay: 0.07, gain: 0.03, filter: 'bandpass' },
     drive: 0.64,
@@ -3190,6 +3190,36 @@ const USER_TONE = {
     starter: false,
     transpose: 0,
     mono: true },
+  celeste2: { label: 'Celeste 2', category: 'Bells', synth: 'FMSynth', dur: 4,
+    note: 'Small, high and pure, with a very long tail. Made for the twinkle lane.',
+    options: {
+      harmonicity: 3.765,
+      modulationIndex: 2.4,
+      oscillator: { type: 'square' },
+      modulation: { type: 'sine' },
+      envelope: { attack: 0.001, decay: 1.6, sustain: 0.01, release: 1.6 },
+      modulationEnvelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.4 },
+    },
+    starter: false,
+    transpose: 24,
+    vibrato: { depth: 0.04 },
+    trim: 0 },
+  thickSquareGlide: { label: 'Thick Square Glide', category: 'Keys', synth: 'MRDR-3', dur: 1.5,
+    note: 'Three squares at the same pitch, seven cents either side of centre. No filter, no '
+      + 'sweep, no modulation — the shortest thing this synth can be and still be one.',
+    layer: {
+      osc1: { type: 'square', ratio: 1, detune: 0, gain: 0.6, attack: 0, decay: 0.25, sustain: 0.75, release: 0.12, pitch: { decay: 3.155, sustain: 0.14, semitones: 0 } },
+      osc2: { type: 'square', ratio: 0.5, detune: -7, gain: 0.6, attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+      osc3: { type: 'square', ratio: 0.25, detune: 7, gain: 0.6, attack: 0, decay: 0.25, sustain: 0.75, release: 0.12 },
+    },
+    global: {
+      filter: { type: 'lowpass', freq: 5590, Q: 3.1, env: { octaves: 10, decay: 3.099, sustain: 0.86 } },
+    },
+    starter: false,
+    chorus: { mix: 0 },
+    vibrato: { depth: 0.01, delay: 0.025 },
+    mode: 'legato',
+    portamento: 0.038 },
 };
 const USER_NOISE = {
   bigRoomClap: { label: 'Big Room Clap', category: 'Clap', dur: 1,
@@ -3338,7 +3368,7 @@ const LEVELS = {
   stKickClick: 0.048943, stClap808: 0.010142, stDsHatClosed: 0.015363,
   stZap: 0.019997, stPadTriangle: 0.101497, stFmBell: 0.018029,
   stAmHollow: 0.01455, squareMono: 0.043368, fatKick: 0.035113,
-  gameBoySnare: 0.083619
+  gameBoySnare: 0.083619, celeste2: 0.034436, thickSquareGlide: 0.115047
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -3437,7 +3467,8 @@ const PEAKS = {
   stAcidSquelch: 1.6469, stBreathPad: 0.8623, stTpLectric: 0.6403,
   stKickClick: 0.6794, stClap808: 0.241, stDsHatClosed: 0.7135, stZap: 0.6253,
   stPadTriangle: 0.6968, stFmBell: 0.2199, stAmHollow: 0.1073,
-  squareMono: 0.7338, fatKick: 0.9364, gameBoySnare: 1.1218
+  squareMono: 0.7338, fatKick: 0.9364, gameBoySnare: 1.1218, celeste2: 0.2067,
+  thickSquareGlide: 1.1343
 };
 
 /**

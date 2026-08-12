@@ -344,4 +344,32 @@ const raymn = { ...gary, pal: { s: '#f0c090', a: '#f6d33c', e: '#171126', m: '#d
 // machine. `hair` is the set grey the net goes over.
 const dolores = { ...gary, pal: { s: '#e0a884', a: '#e4dccc', e: '#171126', m: '#8a4a52', b: '#6fa89c', p: '#3a3a48', f: '#2e2a38', w: '#fff', hair: '#b4aac0' } };
 
-export const HERO_SPRITES = { lorenzo, gnash, fernwick, b33p, mochi, chompo, gary, raymn, grumpos, dolores };
+// Kiko brings a palette and nothing else, the same arrangement Ray M'n and
+// Dolores are on. Worth saying plainly, because the note that used to sit in
+// hero-candidates.js said a new hero needs a pixel grid and that is not true:
+// buildSprite() (engine/sprites.js) is the only thing that turns a grid into a
+// drawable, and it is called exactly twice (game/draw.js) — once over
+// WORLD_SPRITES and once on gary.run1 to make the zombie. Every other hero's
+// grid is already unread. Heroes are vector toons; the palette is the live part.
+//
+// Her qipao blue is a hue no cabinet or hero owns. The tights are the load-
+// bearing colour on this cut: the split skirt only reads if the eye finds a LEG
+// in the gap, which a near-black legging did not give it, so they sit light and
+// warm. `ki` is the warning shot itself.
+const kiko = {
+  ...gary,
+  pal: {
+    s: '#f2c9a0', e: '#1f1626', m: '#a8465c', w: '#f4f1e6',
+    hair: '#6b4326', hairDark: '#402513', hand: '#f2c9a0',
+    browCol: '#402513',  // brows in her own dark hair, not the face ink — see BROW_L_SCALE
+    a: '#f2c14e',        // gold piping, and the bands at the buns
+    ribbon: '#f4f1e6',   // the wrapped buns and their tails, and the bracers
+    b: '#2f6fd0',        // the qipao
+    p: '#8a5a44',        // tights — light enough to show through the split
+    f: '#f4f1e6',        // white boots
+    sash: '#9fd8e8',     // pale sash, so the waist breaks the blue
+    ki: '#8fe4ff',       // the warning shot
+  },
+};
+
+export const HERO_SPRITES = { lorenzo, gnash, fernwick, b33p, mochi, chompo, gary, raymn, grumpos, dolores, kiko };

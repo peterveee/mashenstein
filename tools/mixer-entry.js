@@ -23,7 +23,7 @@ import { heavyUi, lastHeavyBuild } from './lib/heavy-ui.js';
 import { midiBuffer } from './lib/render-midi-bank.js';
 import {
   draftOf, entryOf, setLanesOff, setLanesDeleted, deleteBars, duplicateBars,
-  transposeBars, offsetBars, gainBars, copyBars, pasteBars,
+  transposeBars, offsetBars, gainBars, panBars, copyBars, pasteBars,
   insertSilence, copyLaneBars, copyLaneArrangement, writeBarNotes, writeBarNotesShared, patternStarts,
   barCount, removeLanes, setTempo, setSwing, setSongLoop, readBarLane, DRUM_LANES,
 } from './lib/arrangement-edit.js';
@@ -128,6 +128,8 @@ const MIDI_LS_KEY = 'mash-mixer-midi-on';
 const LATENCY_KEY = 'mash-mixer-latency';
 const LOOKAHEAD_KEY = 'mash-mixer-lookahead';
 const NOTE_CACHE_KEY = 'mash-mixer-note-cache';
+const LOOP_LOG_KEY = 'mash-mixer-loop-log';
+const LOOP_LOG_LIMIT = 250;
 const AUDIO_LATENCY_OPTIONS = Object.freeze([
   { id: 'interactive', hint: 'interactive', label: 'Low latency' },
   { id: 'balanced', hint: 'balanced', label: 'Balanced' },
@@ -360,7 +362,16 @@ function currentSongLayout() {
   // the notes panel (piano roll) is visible. The Arrangement, Mixer and Effects folds
   // are NOT in here — they are desk furniture and are remembered globally, next to the
   // panel heights, so they do not change under you when you switch songs.
-  return { keyboard: oskShown(), notes: !$('notes').classList.contains('collapsed'), grid: stepSeq.isOpen() };
+  const notes = !$('notes').classList.contains('collapsed');
+  return {
+    keyboard: oskShown(),
+    notes,
+    grid: stepSeq.isOpen(),
+    // An open piano roll is workspace context for one particular track. Keep that
+    // track with the panel so returning to this song cannot reopen its notes while a
+    // channel carried over from another song remains selected.
+    lane: notes && notesRollUp() ? rollShownLane() : null,
+  };
 }
 
 function notesOpenInLayout(layout) {
@@ -421,7 +432,11 @@ let bankCache = { bank: null, sig: null, out: null };
 function viewBank() {
   const m = mixFor(trackId);
   const arr = arrFor(trackId);
-  const sig = JSON.stringify([m.layers || null, m.off || null, arr]);
+  // `order` is in the signature because `deskBank` bakes it into the bank it returns.
+  // Left out, the cache went on serving the order the desk had before the drag to
+  // everything that asks it what tracks this song has — and undo, which does not clear
+  // the cache itself, put the strips back by leaving them exactly where they were.
+  const sig = JSON.stringify([m.layers || null, m.off || null, m.order || null, arr]);
   if (bankCache.bank !== track?.bank || bankCache.sig !== sig) {
     const arranged = applyArrangement(track?.bank, trackId, { [trackId]: arr });
     bankCache = { bank: track?.bank, sig, out: deskBank(arranged, m) };
@@ -674,9 +689,12 @@ function undo() {
   // applyToEngine can move, but a voice is a bank key and a duplicated or deleted
   // track is a lane: undoing either has to re-bank, or the desk goes back and the
   // sound does not. Read before the draft is restored, compared after.
+  // `order` rides along because undoing a drag has to repaint BOTH views — the plain
+  // branch below rebuilds the rack alone, which put the strips back and left the
+  // arrangement rows in the order the undone drag had left them.
   const bankSig = () => {
     const m = mixFor(trackId);
-    return JSON.stringify([m.voice || null, m.layers || null, m.off || null]);
+    return JSON.stringify([m.voice || null, m.layers || null, m.off || null, m.order || null]);
   };
   const before = bankSig();
   const arrBefore = JSON.stringify(arrFor(step.trackId) || null);
@@ -1558,6 +1576,13 @@ function loadTrack(id) {
   selectedBar = null;
   trackId = id;
   track = resolveTrack(id);
+  // Restore the track that owned this song's open piano roll before building either
+  // view of the song. Older layout records have no lane and retain the previous/global
+  // selection; a stale lane is left for buildRack's normal master fallback.
+  const layoutLane = notesOpenInLayout(songLayouts[id]) === true
+    && typeof songLayouts[id]?.lane === 'string'
+    ? songLayouts[id].lane : null;
+  if (layoutLane) selectedLane = layoutLane;
   // The same lane in a different song is played by a different preset, or by none —
   // the editor following its lane, by another route. Before buildRack, which is what
   // puts the panel back beside the strip once it knows which preset it is on.
@@ -1566,6 +1591,9 @@ function loadTrack(id) {
   syncMasterControls(mixFor(id).master || 0);
   buildTimeline();
   buildArrangement();
+  // buildRack selected the restored piano-roll lane before the arrangement rows
+  // existed. They exist now, so reveal that track in the finished arrangement.
+  syncArrangementLaneSelection({ reveal: true });
   stepSeq.songChanged();
   pianoRoll.songChanged();
   kitRoll.songChanged();
@@ -1968,7 +1996,9 @@ function stripShell(key, {
   } else {
     head.append(groupChip(tag));
   }
-  head.style.cursor = 'pointer';
+  // Cursor in the stylesheet rather than inline: a channel strip's head is also a drag
+  // handle and wants `grab`, and an inline `pointer` here is a rule no class can beat.
+  head.classList.add('headclick');
   head.title = 'Click anywhere on this strip to show its devices below';
   const body = document.createElement('div'); body.className = 'stripbody';
   const foot = document.createElement('div'); foot.className = 'stripfoot';
@@ -2704,6 +2734,132 @@ const isIndependentLane = (key) => !!(mixFor(trackId).layers || [])
   || pendingAddTrack?.key === key;
 
 /**
+ * ---- Track order -------------------------------------------------------------------
+ *
+ * Where the strips sit, dragged rather than inherited.
+ *
+ * Order used to be entirely derived — `DESK_ORDER` in src/engine/lanes.js, kit first,
+ * then whatever LANES says — which is a sensible order for the game's own songs and no
+ * order at all for an imported one, where every part is a layer and the desk's idea of
+ * "melodic" covers nine strips you would like in a particular sequence.
+ *
+ * It is stored on the MIX (`order`), beside `layers` and `off`, for the same reason
+ * those are: it is a decision about this song's shape, it belongs in the file, and it
+ * must never be written into a composition. A song nobody has dragged has no `order`
+ * and is ordered exactly as it always was — see `applyStoredOrder`, which also carries
+ * a stale list forward rather than making a lane the drag never saw disappear to the
+ * bottom of the desk.
+ */
+
+/**
+ * The dragged track and the layers riding under it, as one contiguous run.
+ *
+ * A layer is a copy of the part above it, and dragging the bass to the top of the desk
+ * while its sub stays behind at strip 9 is not a move anybody meant. So a track takes
+ * the layers that are ACTUALLY sitting under it — the run immediately below, not every
+ * layer it owns. A layer deliberately dragged somewhere else has been separated on
+ * purpose and stays where it was put.
+ */
+function laneBlock(order, from) {
+  const owned = new Set(layersOf(order[from]).map((l) => l.key));
+  const block = [order[from]];
+  while (owned.has(order[from + block.length])) block.push(order[from + block.length]);
+  return block;
+}
+
+/**
+ * Move a track so it sits where `targetKey` sits.
+ *
+ * Dragged DOWN it lands after the target, dragged UP it lands before it — the gesture
+ * every list with a drag handle in it makes, and the one the effect slots above already
+ * make. The whole desk order is written, not a delta: it is nine short strings, it is
+ * what the file should say out loud, and a delta against a derived order is a thing
+ * nobody could read in a diff.
+ */
+function reorderLane(key, targetKey) {
+  if (!key || !targetKey || key === targetKey) return;
+  const cur = deskLanes(viewBank(), 1).map((l) => l.key);
+  const from = cur.indexOf(key);
+  const to = cur.indexOf(targetKey);
+  if (from === -1 || to === -1) return;
+  const block = laneBlock(cur, from);
+  // Dropping a track onto its own layer would ask it to sit after something that is
+  // travelling with it. Nothing to do rather than an order that argues with itself.
+  if (block.includes(targetKey)) return;
+  const rest = cur.filter((k) => !block.includes(k));
+  const at = rest.indexOf(targetKey) + (from < to ? 1 : 0);
+  rest.splice(at, 0, ...block);
+  if (rest.join('\0') === cur.join('\0')) return;
+  editMix((m) => { m.order = rest; });
+  // The strips and the rows both come off `deskLanes`, and the track NUMBERS come off
+  // the rack — so this has to be the full shape rebuild, not a repaint of one row.
+  rebuildForShape();
+  const label = targetLabel(key);
+  const n = rest.indexOf(key) + 1;
+  toast(`${label} moved to ${n} of ${rest.length}`
+    + `${block.length > 1 ? `, with ${block.length - 1} layer${block.length > 2 ? 's' : ''}` : ''}`
+    + ' — ⌘Z to undo');
+}
+
+/**
+ * Wire a strip or an arrangement row as a drag handle for its own track.
+ *
+ * The same listeners as the effect slots and cards, against a different array — one
+ * function because the arrangement and the mixer are two views of ONE order, and a
+ * reorder that behaved differently depending on which of them you did it in would be
+ * two features wearing one name. The lane KEY is the payload rather than an index, so a
+ * drag that begins in the arrangement can end on a strip and mean the same thing.
+ *
+ * `handle` is the part of the row you may drag by, and the drag is armed on mousedown
+ * inside it exactly as a device card's is: a permanently draggable strip swallowed the
+ * gestures of everything living on it — the preset name, the fader, the pan pot, a
+ * drag across the bars to select them — because the container and the control were
+ * fighting for one press.
+ */
+let dragFromLane = null;
+const clearLaneDrag = () => {
+  for (const n of document.querySelectorAll('.dragging, .dropzone')) {
+    n.classList.remove('dragging', 'dropzone');
+  }
+};
+function laneDragHandle(el, handle, key, skip) {
+  el.draggable = false;
+  handle.classList.add('draghandle');
+  handle.addEventListener('mousedown', (ev) => {
+    if (skip && ev.target.closest(skip)) return;
+    el.draggable = true;
+    // Armed for this press only. Left on, the next drag from anywhere inside the strip
+    // would be a track move whether or not it started on the handle.
+    addEventListener('mouseup', () => { el.draggable = false; }, { once: true });
+  });
+  el.addEventListener('dragstart', (ev) => {
+    dragFromLane = key;
+    el.classList.add('dragging');
+    ev.dataTransfer.effectAllowed = 'move';
+    ev.dataTransfer.setData('text/plain', key);   // Firefox needs a payload
+  });
+  el.addEventListener('dragend', () => {
+    dragFromLane = null;
+    el.draggable = false;
+    clearLaneDrag();
+  });
+  el.addEventListener('dragover', (ev) => {
+    if (dragFromLane == null || dragFromLane === key) return;
+    ev.preventDefault();
+    el.classList.add('dropzone');
+  });
+  el.addEventListener('dragleave', () => el.classList.remove('dropzone'));
+  el.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    el.classList.remove('dropzone');
+    if (dragFromLane == null || dragFromLane === key) return;
+    const moved = dragFromLane;
+    dragFromLane = null;
+    reorderLane(moved, key);
+  });
+}
+
+/**
  * Duplicate a track: the same part, on a second strip, so a different voice can go
  * under it. The copy is where a layer comes from — a sub under the bass, a pad under
  * the chords, a rimshot doubling the snare — none of which the desk could do before,
@@ -2723,6 +2879,22 @@ const isIndependentLane = (key) => !!(mixFor(trackId).layers || [])
  * in the bars where the song has one at all, and an empty row in the bars where it does
  * not. The NAME still comes off the base lane, so the copy of `lead3` is `lead2` or
  * `lead4` and the rack still reads in one family.
+ *
+ * WHERE IT LANDS is directly under the track it copies, which is what the splice into
+ * `layers` is for: `deskLanes` orders a family by declaration order, so the position in
+ * that list is the position on the desk. Appending put the copy at the bottom of its
+ * family — a duplicate of `lead5` arriving as `lead8`, three strips below the part it
+ * doubles — and the key could not be renamed into place, because the number in it is a
+ * bank key rather than a position.
+ *
+ * WHAT IT PLAYS IT WITH is the whole preset, not just its name. `voice` names a library
+ * preset and `voiceParams` carries the song's own copy of one — a sound edited on this
+ * desk, or a song-local preset with nothing in the catalogue behind it (see
+ * registerSongVoice). Carrying the name alone gave the copy the LIBRARY version of a
+ * sound the source has since edited, or, where the song owns the preset outright,
+ * nothing at all: the picker opened on a duplicate that was supposed to arrive ready.
+ * The params are copied, not shared, so the two strips can be taken apart afterwards —
+ * which is the point of a layer.
  */
 function duplicateLane(key) {
   const from = key;
@@ -2739,13 +2911,41 @@ function duplicateLane(key) {
   // hand-written lane reads, and a layer has no hand-written lane — see voicesFor.
   const carried = cur.voice?.[seam.voiceKey];
   const keepVoice = carried && VOICES[carried]?.kind !== 'engine' ? carried : null;
+  const keepParams = cur.voiceParams?.[seam.voiceKey];
+  // A desk-owned name goes with the part, because that is what the name is about: a
+  // copy of "Bum bum bum bum" called "Lead 8" reads as a different part. Suffixed the
+  // way the preset editor suffixes a copied sound, so the two rows can be told apart
+  // before either has been renamed. A lane the SONG names keeps taking its name from
+  // the song — there is nothing desk-owned to copy.
+  const sourceLayer = (cur.layers || []).find((l) => l.key === key);
+  const keepLabel = sourceLayer?.label ? `${sourceLayer.label} copy`.slice(0, 48) : null;
   editMix((m) => {
-    m.layers = [...(m.layers || []), { key: newKey, from }];
+    const layers = [...(m.layers || [])];
+    // After the source, so the copy is the next row down. `deskBank` reads this list
+    // in order and requires a layer's source to be declared before it, which inserting
+    // after the source is exactly what preserves — and inserting never reorders the
+    // pairs already in it.
+    const at = layers.findIndex((l) => l.key === key);
+    // An ENGINE lane is not in this list at all: it is the lane the family is named
+    // after and it sits above every layer of it, so its copy goes in FRONT of them.
+    // Appending put a second bass under bass4 instead of under the bass.
+    const firstOfFamily = layers.findIndex((l) => baseLane(l.key) === key);
+    const insertAt = at !== -1 ? at + 1
+      : firstOfFamily !== -1 ? firstOfFamily : layers.length;
+    layers.splice(insertAt, 0,
+      { key: newKey, from, ...(keepLabel ? { label: keepLabel } : {}) });
+    m.layers = layers;
     m.lanes = m.lanes || {};
     const copy = JSON.parse(JSON.stringify(m.lanes[key] || {}));
     delete copy.mute;              // a duplicate you cannot hear is not a duplicate
     m.lanes[newKey] = copy;
     if (keepVoice) m.voice = { ...(m.voice || {}), [newSeam.voiceKey]: keepVoice };
+    if (keepParams) {
+      m.voiceParams = {
+        ...(m.voiceParams || {}),
+        [newSeam.voiceKey]: JSON.parse(JSON.stringify(keepParams)),
+      };
+    }
   });
   // The bars the source does not play in. Only reachable once the mix above has been
   // written — the new lane has to exist on the desk before the arrangement is allowed
@@ -2753,12 +2953,18 @@ function duplicateLane(key) {
   // not a thing to be left holding. No render: rebuildForShape below does it once.
   const arr = arrDraftOf();
   const withBars = copyLaneArrangement(arr, key, newKey);
-  if (withBars !== arr) applyArrangementEdit(withBars, 'duplicate', { undo: false, render: false });
+  // And if that half is refused, there is no duplicate: refusing an arrangement edit
+  // undoes the step it belongs to, which is the mix edit above. Say nothing more — the
+  // refusal has already said why — rather than announcing a track that is not there.
+  // This is how the bug above stayed invisible: the copy was rolled back and the toast
+  // still read "added under Celeste 2".
+  if (withBars !== arr
+    && !applyArrangementEdit(withBars, 'duplicate', { undo: false, render: false })) return;
   rebuildForShape();
   selectLane(newKey);
-  if (keepVoice) {
-    toast(`${targetLabel(newKey)} added — same part, same voice. Give it a different`
-      + ' one and you have a layer.');
+  if (keepVoice || keepParams) {
+    toast(`${targetLabel(newKey)} added under ${targetLabel(key)} — same part, same`
+      + ' sound. Give it a different one and you have a layer.');
     return;
   }
   // No voice or pattern is carried over: this is a new empty strip. The library is
@@ -2980,6 +3186,13 @@ async function deleteLane(key) {
     m.layers = (m.layers || []).filter((l) => !drop.has(l.key) && !drop.has(l.from));
     if (!m.layers.length) m.layers = undefined;
     if (!layer) m.off = [...new Set([...(m.off || []), key])];
+    // A deleted track's name comes out of the desk order too. `applyStoredOrder` would
+    // ignore it either way, so this is not correctness — it is so the `order` line in
+    // the file is a list of this song's tracks rather than an archaeology of them.
+    if (m.order?.length) {
+      m.order = m.order.filter((k) => !drop.has(k));
+      if (!m.order.length) m.order = undefined;
+    }
     for (const k of drop) {
       // A deleted LAYER takes its settings with it — nothing will ever read them
       // again. A lane that is only off keeps its channel, so restoring it gives back
@@ -4130,6 +4343,10 @@ function channelStrip(lane, mix, slotRows, number) {
   head.addEventListener('dblclick', (ev) => {
     if (!ev.target.closest('.strippreset')) playFromLaneStart(key);
   });
+  // …and it is the strip's handle in the other sense too: drag it to move the track.
+  // The head only, not the whole strip — everything below it is a control with a drag
+  // of its own. The preset name is excluded because it is a button living on the handle.
+  laneDragHandle(el, head, key, '.strippreset, button, input, select');
 
   const presetName = head.querySelector('h3');
   if (seam && presetName) {
@@ -4648,6 +4865,21 @@ function keepSelectedLaneVisible() {
   // out — a window too short for a whole row shows the top of the lane, not its feet.
   if (bottom > grid.scrollTop + view) grid.scrollTop = Math.min(bottom - view, top);
   else if (top < grid.scrollTop) grid.scrollTop = top;
+}
+
+/**
+ * Make the arrangement follow the channel selection in both state and position.
+ *
+ * Selection can happen before its rows exist (notably buildRack during song load), so
+ * buildArrangement calls this again after creating them. The caller chooses whether to
+ * reveal it: a channel click and a restored piano-roll track do; an unrelated rebuild
+ * only restores the selected mark and preserves the user's manual arrangement scroll.
+ */
+function syncArrangementLaneSelection({ reveal = false } = {}) {
+  for (const el of document.querySelectorAll('.arrrow')) {
+    el.classList.toggle('sel', el.dataset.lane === selectedLane);
+  }
+  if (reveal) keepSelectedLaneVisible();
 }
 
 // Asked for by a gesture that changes the arrangement's height, spent by the fit that
@@ -5630,7 +5862,8 @@ function buildTimeline() {
       + (bar.delete?.length ? `\nDeleted here: ${bar.delete.join(', ')}` : '')
       + (bar.transpose ? `\nTranspose: ${JSON.stringify(bar.transpose)}` : '')
       + (bar.offset ? `\nTiming (1/32): ${JSON.stringify(bar.offset)}` : '')
-      + (bar.gain ? `\nGain dB: ${JSON.stringify(bar.gain)}` : '');
+      + (bar.gain ? `\nGain dB: ${JSON.stringify(bar.gain)}` : '')
+      + (bar.pan ? `\nPan, offset from the mix: ${JSON.stringify(bar.pan)}` : '');
     // No number in the block: the ruler above counts the bars, and these say which
     // section they belong to. One row, one question.
     el.append(d);
@@ -7332,9 +7565,7 @@ function selectLane(key) {
   for (const pair of document.querySelectorAll('.voicepair')) {
     pair.classList.toggle('selected', !!chosenStrip && pair.contains(chosenStrip));
   }
-  for (const el of document.querySelectorAll('.arrrow')) {
-    el.classList.toggle('sel', el.dataset.lane === key);
-  }
+  syncArrangementLaneSelection({ reveal: true });
   // Do not leave the previous lane's playback accent behind until the next beat
   // after selection moves; the selected-only cue should change immediately.
   clearArrangementPlayback();
@@ -7573,6 +7804,9 @@ const arrDraftOf = () => draftOf(editBank(), arrFor(trackId));
  * song is how you lose the thing you were listening for.
  *
  */
+/** Which lanes this song has, as a comparable string. A SET — deliberately unordered. */
+const laneSetSig = () => deskLanes(viewBank(), 1).map((l) => l.key).sort().join('\0');
+
 function applyArrangementEdit(next, what, {
   undo: undoable = true, atStep = null, undoTag = null,
   render = true, persist = true, rearmLoop = true,
@@ -7581,7 +7815,10 @@ function applyArrangementEdit(next, what, {
   // A painted note can introduce a drum lane the original song did not contain.
   // Remember the lane set so that edit gets a strip immediately, while ordinary
   // note moves avoid tearing down and rebuilding every control on the desk.
-  const lanesBefore = render ? deskLanes(viewBank(), 1).map((l) => l.key).join('\0') : null;
+  // Sorted, because the question is which lanes exist and not what order they sit in.
+  // Track order is a mix decision now, so an unsorted comparison would read a dragged
+  // strip as a lane appearing and tear the whole desk down to rebuild the same rack.
+  const lanesBefore = render ? laneSetSig() : null;
   // And the bar list as it stands, because the note editors are drawn from it. Repeating
   // bars, inserting silence or deleting them changes the SHAPE without changing the lane
   // set, and that used to repaint the arrangement alone: the grid above showed eight bars
@@ -7614,7 +7851,7 @@ function applyArrangementEdit(next, what, {
   // still comes from the pre-edit arrangement. Playing uses the gap-free swap above.
   if (!playing) applyToEngine(mixFor(trackId));
   if (render) {
-    const lanesAfter = deskLanes(viewBank(), 1).map((l) => l.key).join('\0');
+    const lanesAfter = laneSetSig();
     buildTimeline();
     if (lanesAfter !== lanesBefore) {
       rebuildForShape();                      // repaints the note editors on its way past
@@ -8225,13 +8462,29 @@ const rangeHasEveryFlag = (draft, from, to, field, lanes) => {
 };
 
 const signed = (value) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value)}`;
-const timingText = (units) => {
-  if (!units) return 'On the grid';
-  let a = Math.abs(units); let b = 32;
+/**
+ * A timing nudge, as the note value it actually is.
+ *
+ * The stored unit is a 1/32 note and stays that way — every song on disk is written in
+ * it — but the control moves in HALVES of one, so the smallest nudge is a 1/64 and the
+ * number no longer spells its own fraction. Count everything in 64ths and reduce from
+ * there: 0.5 units is 1/64, 1 is 1/32, 6 is 3/16.
+ */
+const timingFraction = (units) => {
+  const sixtyfourths = Math.round(Math.abs(units) * 2);
+  let a = sixtyfourths; let b = 64;
   while (b) { const next = a % b; a = b; b = next; }
   const divisor = a || 1;
-  return `${units > 0 ? 'Delay' : 'Bring ahead'} ${Math.abs(units) / divisor}/${32 / divisor} note`;
+  return `${sixtyfourths / divisor}/${64 / divisor}`;
 };
+const timingText = (units) => (units
+  ? `${units > 0 ? 'Delay' : 'Bring ahead'} ${timingFraction(units)} note`
+  : 'On the grid');
+// A file may still carry an explicit zero where the desk would have deleted the key;
+// "on the grid" is what that means, and a signed fraction of nothing is not.
+const timingBadge = (units) => (units
+  ? `${units > 0 ? '+' : '−'}${timingFraction(units)}`
+  : 'on the grid');
 
 /**
  * The right-click editor. One panel, three scopes, and the scope is whatever you
@@ -8337,13 +8590,13 @@ function openRegionEditor(x, y, {
   }
 
   // Each of the three takes a noun, and this one's is EDITS: the desk's own bar-level
-  // changes — mute, transpose, timing, gain — as opposed to Notes (the part) and Track
+  // changes — mute, transpose, timing, gain, pan — as opposed to Notes (the part) and Track
   // (the channel and the row). It was `Reset` / `Reset track`, which read as "put the
   // track back" beside an Erase that had just taken the notes out, and could not have
   // done that: a note edit is a section of its own, and ⌘Z is what undoes one.
   const resetAction = laneKey && {
     label: 'Reset Edits',
-    title: `Set ${laneLabel}'s mute, transpose, timing and gain back to none in ${scopeName} — the notes are not touched`,
+    title: `Set ${laneLabel}'s mute, transpose, timing, gain and pan back to none in ${scopeName} — the notes are not touched`,
     run: () => {
       let next = arrDraftOf();
       next = setLanesOff(next, from, to, [laneKey], false);
@@ -8351,6 +8604,7 @@ function openRegionEditor(x, y, {
       next = transposeBars(next, from, to, [laneKey], 0);
       next = offsetBars(next, from, to, [laneKey], 0);
       next = gainBars(next, from, to, [laneKey], 0);
+      next = panBars(next, from, to, [laneKey], 0);
       applyArrangementEdit(next, wholeTrack
         ? `${laneLabel} adjustments reset across the whole song`
         : `${laneLabel} adjustments reset in ${span.toLowerCase()}`);
@@ -8543,14 +8797,31 @@ function openRegionEditor(x, y, {
     addControl({ field: 'transpose', label: 'Transpose', min: -12, max: 12, step: 1,
       format: (value) => value ? `${signed(value)} semitone${Math.abs(value) === 1 ? '' : 's'}` : 'Original pitch' });
   }
-  // Timing and gain are per-TRACK: nudging every melodic track in a bar by the same
-  // sixteenth moves nothing relative to anything, and a bar's worth of gain across the
-  // band is the master fader with extra steps. The timeline keeps transpose, which does
-  // mean something across a whole section — a key change for four bars.
+  // Timing, gain and pan are per-TRACK: nudging every melodic track in a bar by the same
+  // sixteenth moves nothing relative to anything, a bar's worth of gain across the
+  // band is the master fader with extra steps, and panning the whole band is the master
+  // balance. The timeline keeps transpose, which does mean something across a whole
+  // section — a key change for four bars.
+  //
+  // Timing moves half a unit at a time. The file's unit is a 1/32 note and stays that
+  // way, so half of one is the 1/64 that separates "behind the beat" from "late", and
+  // everything downstream takes the number as it finds it — the engine multiplies it by
+  // a 16th, the validator only asks that it be finite, the serializer keeps three
+  // decimals. The fraction therefore costs nothing but this step and a readout that
+  // spells the note value rather than the number.
   if (laneKey) {
-    addControl({ field: 'offset', label: 'Timing', min: -8, max: 8, step: 1, format: timingText });
+    addControl({ field: 'offset', label: 'Timing', min: -8, max: 8, step: 0.5, format: timingText });
     addControl({ field: 'gain', label: 'Gain', min: -12, max: 12, step: 0.5,
       format: (value) => value ? `${signed(value)} dB` : 'Original level' });
+    // An OFFSET from the channel's pot, in the pot's own numbers, and the readout says
+    // so on every position: a lane sitting at +10 with -20 here plays the bar at -10, so
+    // "20 left of the mix" is the true reading and "20 left" would not be. Re-panning
+    // the channel afterwards carries the bar with it, which is why this is not a
+    // position — a bar pinned to an absolute spot would silently escape the pot.
+    addControl({ field: 'pan', label: 'Pan', min: -100, max: 100, step: 5,
+      format: (value) => (value
+        ? `${signed(value)} — ${value < 0 ? 'left' : 'right'} of the mix`
+        : 'Where the mix puts it') });
   }
 
   const foot = document.createElement('div'); foot.className = 'regfoot';
@@ -8575,6 +8846,7 @@ function openRegionEditor(x, y, {
       if (control.field === 'transpose') next = transposeBars(next, from, to, lanes, control.value());
       else if (control.field === 'offset') next = offsetBars(next, from, to, lanes, control.value());
       else if (control.field === 'gain') next = gainBars(next, from, to, lanes, control.value());
+      else if (control.field === 'pan') next = panBars(next, from, to, lanes, control.value());
     }
     closeMenu();
     if (controls.some((control) => control.dirty)) {
@@ -8875,6 +9147,12 @@ function buildArrangement() {
     // could not predict from where you clicked. On the header cell only: the bars keep
     // their right-click for the bar menu.
     trackMenu(header, row.key);
+    // Drag the header to move the track. The ROW is what travels, because the row is
+    // what you are looking at, but only a press on the header starts it: the bars to
+    // the right have a drag of their own — select a range for this instrument — and
+    // that gesture is older and used more often than this one. The name and the two
+    // buttons opt out for the same reason they opt out of everything else on the row.
+    laneDragHandle(el, header, row.key, '.arrbtns, .arrgain, .arrname');
     const bottom = document.createElement('div');
     bottom.className = 'arrtrack-bottom';
     top.append(name, category);
@@ -9046,8 +9324,12 @@ function buildArrangement() {
       const deleted = plan[bar]?.delete?.length ? `\nDeleted here: ${plan[bar].delete.join(', ')}` : '';
       const edits = [
         plan[bar]?.transpose?.[row.key] != null ? `Transpose ${plan[bar].transpose[row.key] > 0 ? '+' : ''}${plan[bar].transpose[row.key]}` : '',
-        plan[bar]?.offset?.[row.key] != null ? `Timing ${plan[bar].offset[row.key] > 0 ? '+' : ''}${plan[bar].offset[row.key]}/32` : '',
+        plan[bar]?.offset?.[row.key] != null ? `Timing ${timingBadge(plan[bar].offset[row.key])}` : '',
         plan[bar]?.gain?.[row.key] != null ? `Gain ${plan[bar].gain[row.key] > 0 ? '+' : ''}${plan[bar].gain[row.key]} dB` : '',
+        // Left and right rather than a sign, because the number is an offset from the
+        // channel's pot and "Pan -20" invites reading it as a position.
+        plan[bar]?.pan?.[row.key] != null
+          ? `Pan ${Math.abs(plan[bar].pan[row.key])} ${plan[bar].pan[row.key] < 0 ? 'left' : 'right'} of the mix` : '',
       ].filter(Boolean);
       // Keep the most important melodic edit visible without opening a tooltip. The
       // full details remain in `title`, while a compact +5/-7 badge makes a transposed
@@ -9061,10 +9343,16 @@ function buildArrangement() {
       const gain = typeof plan[bar]?.gain === 'number'
         ? plan[bar].gain
         : plan[bar]?.gain?.[row.key];
+      const pan = typeof plan[bar]?.pan === 'number'
+        ? plan[bar].pan
+        : plan[bar]?.pan?.[row.key];
       const badge = [
         transpose != null && `${transpose > 0 ? '+' : ''}${transpose}`,
-        offset != null && `${offset > 0 ? '+' : ''}${offset}/32`,
+        offset != null && timingBadge(offset),
         gain != null && `${gain > 0 ? '+' : ''}${gain}dB`,
+        // L20 / R20, the way a console prints a pan — the one badge here that is a
+        // direction rather than a quantity, and the sign would read as a semitone.
+        pan != null && `${pan < 0 ? 'L' : 'R'}${Math.abs(pan)}`,
       ].filter(Boolean).join(' · ');
       if (badge) {
         const meta = document.createElement('span');
@@ -9168,6 +9456,9 @@ function buildArrangement() {
     grid.append(el);
     arrCells.push({ key: row.key, bars });
   });
+  // Reapply selection after replacing the rows, without moving a viewport the user may
+  // have scrolled by hand. Song load and channel selection explicitly reveal their row.
+  syncArrangementLaneSelection();
   redrawSelection();            // the rows are new; the selection is not
   updateArrangementNoteScale();
 }
@@ -9630,6 +9921,16 @@ function updateCpu() {
 //
 // One second between checks: cheap enough to run always, fast enough that the
 // three-strike rule below reacts inside a bar or two.
+const loopLogOpen = $('looplogopen');
+const loopLogDialog = $('looplogdialog');
+const loopLogClose = $('looplogclose');
+const loopLogDone = $('looplogdone');
+const loopLogCopy = $('looplogcopy');
+const loopLogDownload = $('looplogdownload');
+const loopLogClear = $('looplogclear');
+const loopLogText = $('looplogtext');
+const loopLogStatus = $('looplogstatus');
+
 const health = {
   text: '', lastWall: 0, lastCt: 0, deadRuns: 0,
   analyser: null, buf: null, longTask: 0,
@@ -9649,11 +9950,169 @@ const health = {
   samples: [],
   behindSince: 0, audioBehind: false, audioStruggling: false,
   uiStalled: false, uiStalledAt: 0,
+  // Last dead-output cause, kept so a later recovery row says what recovered rather
+  // than merely that something did. The event itself is persisted immediately below:
+  // a dead output may prevent the next audible loop boundary from ever arriving.
+  deadCause: '',
+  // The most recent control gesture, recorded before its click handler runs. When an
+  // unwrapped surface stalls, this is the only useful name a Long Task can be given:
+  // browsers report its duration but generally attribute it only to "self".
+  lastAction: null,
   // Passes that began after the scheduler's queue had emptied — the count of times
   // the music actually had a hole in it. Reset when a song is loaded, so the number
   // is about the song in front of you.
   dropouts: 0,
 };
+
+// One aggregate window per audible sequencer lap. The engine tells us the exact
+// audio time of a wrap; these fields retain the worst of the existing watchdog's
+// four-per-second observations until that boundary reaches the speakers.
+const loopHealthWindow = {
+  ratioMin: Infinity, marginMin: Infinity, longTaskMax: 0,
+  struggling: false, overloaded: false, machineBusy: false,
+};
+let loopLogRecords = [];
+try {
+  const stored = JSON.parse(localStorage.getItem(LOOP_LOG_KEY) || '[]');
+  if (Array.isArray(stored)) loopLogRecords = stored.slice(-LOOP_LOG_LIMIT);
+} catch { loopLogRecords = []; }
+const loopLogSession = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+const loopLapCounts = new Map();
+let lastLoggedDropouts = 0;
+
+const LOOP_LOG_COLUMNS = [
+  'time', 'session', 'song', 'lap', 'loopStart', 'loopEnd', 'recordType', 'status',
+  'detail', 'audioState', 'preMasterPeak', 'postMasterPeak', 'deadRuns', 'recoveryTier',
+  'stallSource', 'stallSourceMs',
+  'clockMin', 'schedulerMarginMinMs', 'longTaskMaxMs', 'dropoutsDelta', 'dropoutsTotal',
+  'bufferMode', 'latencyRequest', 'baseLatencyMs', 'outputLatencyMs', 'readAheadMs',
+  'cacheEnabled', 'cacheBuffers', 'cacheMB', 'cacheQueued', 'cacheRendering',
+  'cacheHits', 'cacheMisses', 'cacheStale', 'pools', 'poolSlots', 'retiredPools',
+  'liveNotes', 'heldNative', 'cachedSources', 'jsHeapMB',
+];
+
+function resetLoopHealthWindow() {
+  loopHealthWindow.ratioMin = Infinity;
+  loopHealthWindow.marginMin = Infinity;
+  loopHealthWindow.longTaskMax = 0;
+  loopHealthWindow.struggling = false;
+  loopHealthWindow.overloaded = false;
+  loopHealthWindow.machineBusy = false;
+  lastLoggedDropouts = health.dropouts;
+}
+
+const csvCell = (value) => {
+  if (value == null) return '';
+  const s = String(value);
+  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+};
+
+function loopLogCsv() {
+  return [LOOP_LOG_COLUMNS.join(','), ...loopLogRecords.map((record) =>
+    LOOP_LOG_COLUMNS.map((key) => csvCell(record[key])).join(','))].join('\n');
+}
+
+function persistLoopRecord(record) {
+  loopLogRecords.push(record);
+  if (loopLogRecords.length > LOOP_LOG_LIMIT) loopLogRecords.splice(0, loopLogRecords.length - LOOP_LOG_LIMIT);
+  try { localStorage.setItem(LOOP_LOG_KEY, JSON.stringify(loopLogRecords)); } catch { /* UI still holds this session */ }
+  refreshLoopLogUi();
+}
+
+function diagnosticRuntimeFields() {
+  const cache = Audio.noteCacheHealth?.() || {};
+  const runtime = Audio.voices?.runtimeHealth?.() || {};
+  const ctx = Audio.ctx;
+  const memory = performance.memory?.usedJSHeapSize;
+  return {
+    bufferMode: latencyOption(activeLatencyPreference).label,
+    latencyRequest: activeLatencyPreference,
+    baseLatencyMs: ctx?.baseLatency == null ? '' : +(ctx.baseLatency * 1000).toFixed(2),
+    outputLatencyMs: ctx?.outputLatency == null ? '' : +(ctx.outputLatency * 1000).toFixed(2),
+    readAheadMs: Math.round((Audio.sequencerLookahead || AUDIO_LOOKAHEAD_DEFAULT) * 1000),
+    cacheEnabled: !!cache.enabled, cacheBuffers: cache.buffers ?? 0,
+    cacheMB: cache.bytes == null ? '' : +(cache.bytes / (1024 * 1024)).toFixed(2),
+    cacheQueued: cache.queued ?? 0, cacheRendering: cache.rendering ?? 0,
+    cacheHits: cache.hits ?? 0, cacheMisses: cache.misses ?? 0, cacheStale: cache.stale ?? 0,
+    pools: runtime.pools ?? 0, poolSlots: runtime.poolSlots ?? 0,
+    retiredPools: runtime.retiredPools ?? 0, liveNotes: runtime.liveNotes ?? 0,
+    heldNative: runtime.heldNative ?? 0, cachedSources: runtime.cachedSources ?? 0,
+    jsHeapMB: Number.isFinite(memory) ? +(memory / (1024 * 1024)).toFixed(1) : '',
+  };
+}
+
+/** Persist a fault or recovery now; unlike a lap row, this does not wait for audio. */
+function appendDiagnosticEvent(status, detail, fields = {}) {
+  if (!DEV_USER) return;
+  persistLoopRecord({
+    time: new Date().toISOString(), session: loopLogSession, song: trackId,
+    lap: '', loopStart: Audio.loopStart ?? '', loopEnd: Audio.loopEnd ?? '',
+    recordType: 'event', status, detail, audioState: Audio.ctx?.state || '',
+    clockMin: Number.isFinite(health.ratio) ? health.ratio.toFixed(3) : '',
+    schedulerMarginMinMs: health.marginMin == null ? '' : Math.round(health.marginMin * 1000),
+    longTaskMaxMs: Math.round(health.longTask || 0), dropoutsDelta: fields.dropoutsDelta ?? 0,
+    dropoutsTotal: health.dropouts, ...diagnosticRuntimeFields(), ...fields,
+  });
+}
+
+function refreshLoopLogUi() {
+  if (!loopLogOpen) return;
+  loopLogOpen.hidden = !DEV_USER;
+  loopLogOpen.textContent = `Loop diagnostics (${loopLogRecords.length})`;
+  if (loopLogText) loopLogText.value = loopLogCsv();
+  if (loopLogStatus) {
+    const latest = loopLogRecords.at(-1);
+    loopLogStatus.textContent = latest
+      ? `${loopLogRecords.length} record${loopLogRecords.length === 1 ? '' : 's'} saved · latest: `
+        + (latest.recordType === 'event'
+          ? `${latest.song} · ${latest.status}`
+          : `${latest.song} lap ${latest.lap} · ${latest.status} · clock ${latest.clockMin || 'n/a'}x`)
+      : 'No diagnostics recorded yet. Start playback and let a song or locator loop wrap.';
+  }
+}
+
+function diagnosticActionLabel(target) {
+  const el = target?.closest?.('button, [role="button"], input, select, summary, [tabindex]');
+  if (!el) return '';
+  const named = el.getAttribute('aria-label') || el.getAttribute('title')
+    || el.textContent?.replace(/\s+/g, ' ').trim() || el.id || el.tagName.toLowerCase();
+  return named.slice(0, 100);
+}
+
+document.addEventListener('pointerdown', (event) => {
+  const label = diagnosticActionLabel(event.target);
+  if (label) health.lastAction = { label, at: performance.now() };
+}, true);
+
+function lastDiagnosticAction(within = 2000) {
+  const action = health.lastAction;
+  return action && performance.now() - action.at <= within ? action : null;
+}
+
+function appendLoopLog({ start, end }) {
+  if (!DEV_USER || !playing || !Audio.ctx || !Audio.bank) return;
+  const key = `${trackId}|${start}|${end}`;
+  const lap = (loopLapCounts.get(key) || 0) + 1;
+  loopLapCounts.set(key, lap);
+  const ctx = Audio.ctx;
+  const status = loopHealthWindow.overloaded ? 'AUDIO OVERLOADED'
+    : loopHealthWindow.struggling ? 'AUDIO STRUGGLING'
+      : loopHealthWindow.machineBusy ? 'MACHINE BUSY' : 'OK';
+  const record = {
+    time: new Date().toISOString(), session: loopLogSession, song: trackId, lap,
+    loopStart: start, loopEnd: end, recordType: 'loop', status, detail: '',
+    audioState: ctx.state, preMasterPeak: '', postMasterPeak: '', deadRuns: health.deadRuns,
+    recoveryTier: '', stallSource: '', stallSourceMs: '',
+    clockMin: Number.isFinite(loopHealthWindow.ratioMin) ? loopHealthWindow.ratioMin.toFixed(3) : '',
+    schedulerMarginMinMs: Number.isFinite(loopHealthWindow.marginMin)
+      ? Math.round(loopHealthWindow.marginMin * 1000) : '',
+    longTaskMaxMs: Math.round(loopHealthWindow.longTaskMax),
+    dropoutsDelta: Math.max(0, health.dropouts - lastLoggedDropouts), dropoutsTotal: health.dropouts,
+    ...diagnosticRuntimeFields(),
+  };
+  persistLoopRecord(record);
+  resetLoopHealthWindow();
+}
 
 // The dead-output escalation, in TICKS of the watchdog — which runs four times a
 // second, so these are 3, 6, 9 and 12 seconds. Named rather than written as numbers
@@ -9696,6 +10155,8 @@ function healthTap() {
   health.buf = new Float32Array(an.fftSize);
 }
 
+const diagnosticPeak = (value) => Number.isFinite(value) ? +value.toFixed(6) : String(value);
+
 function checkAudioHealth() {
   const ctx = Audio.ctx;
   if (!ctx) return;
@@ -9729,6 +10190,7 @@ function checkAudioHealth() {
   };
   const ratio = over(2);
   health.ratio = ratio;
+  if (playing && Number.isFinite(ratio)) loopHealthWindow.ratioMin = Math.min(loopHealthWindow.ratioMin, ratio);
 
   // What is coming OUT of the whole desk, against what is arriving at the trim.
   // `!isFinite`, not `isNaN`: an Infinity poisons a compressor exactly as hard and
@@ -9745,7 +10207,11 @@ function checkAudioHealth() {
     }
   }
   const preLR = Audio.mixer ? Audio.mixer.masterLevels() : [0, 0];
-  const pre = Math.max(preLR[0] || 0, preLR[1] || 0);
+  // Do not let `NaN || 0` launder a poisoned pre-master meter into silence. Its
+  // non-finiteness is exactly the evidence needed to name an upstream fault.
+  const preValues = [preLR[0] ?? 0, preLR[1] ?? 0];
+  const preNonFinite = preValues.some((value) => !Number.isFinite(value));
+  const pre = preNonFinite ? NaN : Math.max(preValues[0], preValues[1]);
 
   // Is output EXPECTED right now? Silence is the correct answer to a stopped
   // transport, a muted desk, a level at zero or a panic, and repairing the graph
@@ -9769,10 +10235,16 @@ function checkAudioHealth() {
   // context claims to run (the output stream itself has died). Three consecutive
   // seconds before acting, so a song change or one late timer cannot trip it.
   const clockStalled = ratio < 0.05;
-  const dead = !quiet && (nan || clockStalled || (pre > 2e-3 && post < 1e-7));
+  const dead = !quiet && (nan || preNonFinite || clockStalled || (pre > 2e-3 && post < 1e-7));
+  const previousDeadRuns = health.deadRuns;
   health.deadRuns = dead ? health.deadRuns + 1 : 0;
-  if (!dead && health.text.startsWith('AUDIO OUTPUT')) {
+  if (!dead && !quiet && health.deadCause) {
     console.log('[audio-health] output recovered');
+    appendDiagnosticEvent('AUDIO OUTPUT RECOVERED', `Recovered from ${health.deadCause}`, {
+      preMasterPeak: diagnosticPeak(pre), postMasterPeak: diagnosticPeak(post),
+      deadRuns: previousDeadRuns || '', recoveryTier: 'recovered',
+    });
+    health.deadCause = '';
     health.text = '';
   }
   if (health.deadRuns === DEAD_TIER_1) {
@@ -9798,6 +10270,13 @@ function checkAudioHealth() {
       state: ctx.state, sr: ctx.sampleRate,
       poisoned: poisoned.length ? poisoned : 'none (fault is after the trim)',
     }));
+    health.deadCause = nan || preNonFinite ? 'non-finite audio graph output'
+      : clockStalled ? 'AudioContext clock stalled'
+        : 'pre-master signal present but final output silent';
+    appendDiagnosticEvent('AUDIO OUTPUT DEAD', health.deadCause, {
+      preMasterPeak: diagnosticPeak(pre), postMasterPeak: diagnosticPeak(post),
+      deadRuns: health.deadRuns, recoveryTier: 'rebuild named chains',
+    });
     // The filter writes that led here, newest last. An unstable biquad is the
     // standing suspect for where a non-finite sample comes from, and this is the
     // only record of what was asked of one — see VoiceRack.recentFilterWrites.
@@ -9830,6 +10309,10 @@ function checkAudioHealth() {
       }
       for (const a of AUXES) Audio.mixer.setAuxEffects(a.id, effectsOf(`__aux:${a.id}`), bpm);
     }
+    appendDiagnosticEvent('AUDIO OUTPUT REPAIR', 'Still silent after first repair', {
+      preMasterPeak: diagnosticPeak(pre), postMasterPeak: diagnosticPeak(post),
+      deadRuns: health.deadRuns, recoveryTier: 'rebuild all effect chains',
+    });
   } else if (health.deadRuns === DEAD_TIER_3) {
     // Suspend and resume the EXISTING context — not a new one. In Chrome this
     // usually makes the browser re-acquire the platform output stream, which is
@@ -9842,9 +10325,17 @@ function checkAudioHealth() {
     console.warn('[audio-health] still dead — suspend/resume of the existing context'
       + ' (usually re-opens the output stream)');
     try { ctx.suspend().then(() => ctx.resume()).catch(() => {}); } catch { /* platform owns lifecycle */ }
+    appendDiagnosticEvent('AUDIO OUTPUT REPAIR', 'Still silent after graph rebuilds', {
+      preMasterPeak: diagnosticPeak(pre), postMasterPeak: diagnosticPeak(post),
+      deadRuns: health.deadRuns, recoveryTier: 'suspend/resume context',
+    });
   } else if (health.deadRuns === DEAD_TIER_4) {
     console.error('[audio-health] output did not come back; the desk needs a reload');
     health.text = 'AUDIO OUTPUT DEAD — reload the desk';
+    appendDiagnosticEvent('AUDIO OUTPUT DEAD', 'Automatic recovery exhausted; reload required', {
+      preMasterPeak: diagnosticPeak(pre), postMasterPeak: diagnosticPeak(post),
+      deadRuns: health.deadRuns, recoveryTier: 'reload required',
+    });
   }
   if (health.deadRuns >= DEAD_TIER_1) return;
 
@@ -9858,6 +10349,9 @@ function checkAudioHealth() {
   // Published for the CPU readout — see updateCpu. `Infinity` means no pass ran in
   // this window (a stopped desk), which is not a low-water mark.
   health.marginMin = sched && Number.isFinite(sched.marginMin) ? sched.marginMin : null;
+  if (playing && health.marginMin != null) {
+    loopHealthWindow.marginMin = Math.min(loopHealthWindow.marginMin, health.marginMin);
+  }
   // MACHINE BUSY: the queue actually emptied, so the music had a hole in it. Only a
   // real emptying counts — a near miss is logged below but never shown, because the
   // desk saying "nearly" every time a panel opens is the noise this readout was
@@ -9867,6 +10361,16 @@ function checkAudioHealth() {
     health.dropouts += sched.late;
     health.uiStalled = true;
     health.uiStalledAt = wall;
+    loopHealthWindow.machineBusy = true;
+    const heavy = lastHeavyBuild();
+    const action = lastDiagnosticAction();
+    appendDiagnosticEvent('PLAYBACK INTERRUPTED',
+      `${sched.late} scheduler pass${sched.late === 1 ? '' : 'es'} ran after the queue emptied`, {
+        schedulerMarginMinMs: Math.round(sched.marginMin * 1000),
+        longTaskMaxMs: Math.round(health.longTask || 0), dropoutsDelta: sched.late,
+        stallSource: heavy?.label || action?.label || 'unattributed',
+        stallSourceMs: heavy ? Math.round(heavy.ms) : '',
+      });
   } else if (health.uiStalled && wall - health.uiStalledAt > 8000) {
     health.uiStalled = false;
   }
@@ -9874,13 +10378,16 @@ function checkAudioHealth() {
     // Name the build if one just ran. The observer knows a task was long; only the
     // call site knows it was the preset library — see lib/heavy-ui.js.
     const heavy = lastHeavyBuild();
+    const action = lastDiagnosticAction();
     console.warn(`[audio-health] main-thread stall starved the scheduler: queue fell to `
       + `${Math.round(Math.max(0, sched.marginMin) * 1000)}ms`
       + (sched.late ? `, ${sched.late} pass(es) after it emptied — that was audible` : ' (near miss)')
       + (health.longTask ? `; longest task ${Math.round(health.longTask)}ms` : '')
       + (heavy ? `; after ${heavy.label} (${Math.round(heavy.ms)}ms)`
-        : '; no heavy UI build was announced — this surface is unhooked, see heavyUi'));
+        : action ? `; after ${action.label} (surface not yet protected)`
+          : '; no recent control gesture or heavy UI build — unattributed'));
   }
+  if (playing) loopHealthWindow.longTaskMax = Math.max(loopHealthWindow.longTaskMax, health.longTask);
   health.longTask = 0;
 
   // The audio thread falling behind, said in TWO stages — because by the time a
@@ -9914,6 +10421,10 @@ function checkAudioHealth() {
   const wasBehind = health.audioBehind;
   health.audioStruggling = behindFor >= STRUGGLE_MS;
   health.audioBehind = behindFor >= OVERLOAD_MS;
+  if (playing) {
+    loopHealthWindow.struggling ||= health.audioStruggling;
+    loopHealthWindow.overloaded ||= health.audioBehind;
+  }
   if (health.audioStruggling && !wasStruggling) {
     console.warn(`[audio-health] audio thread missing its deadline: clock ${ratio.toFixed(3)}x`
       + ' — stop adding to this mix');
@@ -9947,6 +10458,62 @@ function checkAudioHealth() {
 // 256 floats; what it buys is noticing a shortfall in half a second instead of three,
 // which is the difference between a warning and a post-mortem.
 setInterval(checkAudioHealth, HEALTH_TICK_MS);
+
+// scheduleStep announces a wrap when it queues the next pass, which can be up to a
+// second before it is audible. Delay the snapshot to that AudioContext time; this is
+// what makes each row describe the lap the listener just heard rather than part of
+// the lap being scheduled in front of it.
+Audio.onLoop?.((loop) => {
+  if (!DEV_USER || !Audio.ctx) return;
+  const bank = Audio.bank;
+  const song = trackId;
+  const wait = Math.max(0, (loop.when - Audio.ctx.currentTime) * 1000);
+  setTimeout(() => {
+    if (!playing || Audio.bank !== bank || trackId !== song) return;
+    appendLoopLog(loop);
+  }, wait);
+});
+
+function openLoopLog() {
+  refreshLoopLogUi();
+  if (typeof loopLogDialog.showModal === 'function') loopLogDialog.showModal();
+  else loopLogDialog.setAttribute('open', '');
+  loopLogText?.focus();
+}
+
+function closeLoopLog() {
+  if (loopLogDialog.open && typeof loopLogDialog.close === 'function') loopLogDialog.close();
+  else loopLogDialog.removeAttribute('open');
+  loopLogOpen?.focus();
+}
+
+if (loopLogOpen) loopLogOpen.onclick = openLoopLog;
+if (loopLogClose) loopLogClose.onclick = closeLoopLog;
+if (loopLogDone) loopLogDone.onclick = closeLoopLog;
+if (loopLogCopy) loopLogCopy.onclick = async () => {
+  const csv = loopLogCsv();
+  try {
+    await navigator.clipboard.writeText(csv);
+    toast('Loop diagnostics copied');
+  } catch {
+    loopLogText.value = csv;
+    loopLogText.select();
+    toast('Log selected — copy it with your keyboard');
+  }
+};
+if (loopLogDownload) loopLogDownload.onclick = () => {
+  saveBlob(`mashenstein-loop-diagnostics-${loopLogSession}.csv`,
+    new Blob([loopLogCsv()], { type: 'text/csv;charset=utf-8' }));
+};
+if (loopLogClear) loopLogClear.onclick = () => {
+  loopLogRecords = [];
+  loopLapCounts.clear();
+  try { localStorage.removeItem(LOOP_LOG_KEY); } catch { /* nothing else to clear */ }
+  resetLoopHealthWindow();
+  refreshLoopLogUi();
+  toast('Loop diagnostics cleared');
+};
+refreshLoopLogUi();
 
 /**
  * Where the work stands against the file. Not a badge in the header any more: the
@@ -10325,10 +10892,11 @@ audioSettingsDialog.addEventListener('close', () => {
 // The desk's global Escape shortcut is PANIC. A native dialog owns Escape while it
 // is open, so close this settings surface without stopping the song.
 addEventListener('keydown', (event) => {
-  if (!audioSettingsDialog.open || event.key !== 'Escape') return;
+  if ((!audioSettingsDialog.open && !loopLogDialog?.open) || event.key !== 'Escape') return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  closeAudioSettings();
+  if (audioSettingsDialog.open) closeAudioSettings();
+  else closeLoopLog();
 }, true);
 
 function applyAudioSettings() {
@@ -12474,6 +13042,7 @@ function forgetRecent(id) {
 }
 
 function selectSong(id) {
+  cancelStartPreparation();
   peakSeen = 0;
   // The dropout count is about the song in front of you, like the peak reading beside
   // it — carrying the last song's holes over would make a clean mix look faulty.
@@ -12775,6 +13344,7 @@ function releaseHeldPreviews() {
 
 /** Stop every live note and scheduled sound without changing the MIDI switch. */
 function silenceAll() {
+  cancelStartPreparation();
   releaseHeldPreviews();
   // Stop closes MIDI-held recording tokens too, but leaves the MIDI ports attached.
   releaseOskSources('m:');
@@ -12827,6 +13397,7 @@ function setPlaying(on, fromStep = null) {
   voiceLibrary.syncChanged();
   peakSeen = 0;
   if (playing) {
+    resetLoopHealthWindow();
     // Resume where the playhead was parked, not back at the top.
     const at = fromStep != null ? fromStep : parkedAt;
     startedAt = at;
@@ -12867,15 +13438,99 @@ function setPlaying(on, fromStep = null) {
   // Armed and recording look different, and which one this is has just changed.
   syncRecordUi();
 }
-$('play').onclick = () => { if (!playing) setPlaying(true); };
+const NOTE_CACHE_PREPARE_BUDGET_MS = 1800;
+let preparingFromStart = false;
+let startPreparationToken = 0;
+
+const waitForCacheTick = () => new Promise((resolve) => setTimeout(resolve, 40));
+
+function showStartPreparation(on) {
+  preparingFromStart = on;
+  $('playstart').classList.toggle('preparing', on);
+  $('playstart').setAttribute('aria-busy', String(on));
+  $('playstart').title = on
+    ? 'Preparing note cache — press again to start now'
+    : 'Play from the top of the song';
+  $('playstart').dataset.tip = on ? 'Start now' : 'Play from top';
+  $('play').disabled = on;
+}
+
+function cancelStartPreparation() {
+  if (!preparingFromStart) return false;
+  startPreparationToken++;
+  showStartPreparation(false);
+  Audio.setNoteCachePreparationHeld(false);
+  return true;
+}
+
+function startPreparedTransport(message = '') {
+  Audio.setNoteCachePreparationHeld(true);
+  showStartPreparation(false);
+  setPlaying(true, 0);
+  // `bank` now keeps preparation paused. Releasing the explicit hold here means the
+  // next ordinary Stop/Pause can warm whatever this pass discovers.
+  Audio.setNoteCachePreparationHeld(false);
+  if (message) toast(message);
+}
+
+async function playFromBeginning() {
+  if (preparingFromStart) {
+    startPreparationToken++;
+    startPreparedTransport('Starting now');
+    return;
+  }
+
+  // Hold the worker BEFORE stopping. setBank(null) normally releases it, which would
+  // let the first old job start while the complete arrangement is still being
+  // inventoried and before its late-section priorities have been sorted.
+  Audio.setNoteCachePreparationHeld(true);
+  if (playing) setPlaying(false);
+  jumpTo(0); // park and draw bar 1 while the cache is prepared
+  const initial = Audio.prepareNoteCache?.(engineBank()) || Audio.noteCacheHealth?.();
+  if (!initial?.enabled || (!initial.queued && !initial.rendering)) {
+    startPreparedTransport(initial?.buffers
+      ? `Playing from beginning · ${initial.buffers} cached note${initial.buffers === 1 ? '' : 's'}`
+      : '');
+    return;
+  }
+
+  const token = ++startPreparationToken;
+  showStartPreparation(true);
+  Audio.setNoteCachePreparationHeld(false);
+  toast(`Preparing audio… ${initial.queued} note${initial.queued === 1 ? '' : 's'} queued · press Start from beginning again to play now`, 3000);
+  const deadline = performance.now() + NOTE_CACHE_PREPARE_BUDGET_MS;
+  let held = false;
+
+  while (token === startPreparationToken) {
+    const health = Audio.noteCacheHealth?.();
+    if (!health?.enabled || (!health.queued && !health.rendering)) break;
+    if (!held && performance.now() >= deadline) {
+      // Stop at the next job boundary. OfflineAudioContext cannot be cancelled once
+      // rendering, so wait for that one job rather than starting the song beside it.
+      Audio.setNoteCachePreparationHeld(true);
+      held = true;
+    }
+    if (held && !health.rendering) break;
+    await waitForCacheTick();
+  }
+
+  if (token !== startPreparationToken) return;
+  const health = Audio.noteCacheHealth?.();
+  startPreparedTransport(health?.buffers
+    ? `Playing from beginning · ${health.buffers} cached note${health.buffers === 1 ? '' : 's'}`
+    : 'Playing from beginning');
+}
+
+$('play').onclick = () => { if (!playing && !preparingFromStart) setPlaying(true); };
 $('pause').onclick = () => { if (playing) setPlaying(false); };
 $('stop').onclick = () => {
+  cancelStartPreparation();
   const at = startedAt;
   silenceAll();
   jumpTo(at, { immediate: true });
   toast(`Stopped at bar ${Math.floor(at / 16) + 1}`);
 };
-$('playstart').onclick = () => { jumpTo(0, { start: true }); };
+$('playstart').onclick = playFromBeginning;
 $('clearsolo').onclick = clearAllSolo;
 $('oskbtn').onclick = () => showOsk(!oskShown());
 // The header's pair. Same two functions the keyboard's own buttons call, so there is one
@@ -13328,7 +13983,13 @@ $('renderwav').onclick = async () => {
         // A browser that cannot suspend an offline context reports 0 for the whole
         // render; showing "0%" for half a minute is worse than showing nothing, so it
         // stays on the plain wording until a checkpoint actually moves.
-        if (stage === 'rendering' && fraction > 0) report(Math.min(99, Math.round(fraction * 100)));
+        //
+        // Fraction 0 is a render STARTING, and it clears the number rather than being
+        // ignored — because the second time it arrives, bounceWav has thrown away an
+        // incomplete walk and started a fresh checkpoint-less one (see the retry there).
+        // Leaving the old figure up would park a dead "Bouncing… 87%" on the button for
+        // the whole retry, which is the one thing a progress readout may never do.
+        if (stage === 'rendering') report(fraction > 0 ? Math.min(99, Math.round(fraction * 100)) : null);
       },
     });
 

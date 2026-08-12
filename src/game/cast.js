@@ -75,14 +75,40 @@ const DOLORES_CAST = {
   joke: 'NOW SERVING ZERO. PLEASE HAVE YOUR NUMBER READY.',
 };
 
-// The two counter staff land together, then the roll call still ends on a
-// hero rather than the NPC bit.
+// Retired from the relay, not from the arcade: Kiko took her slot in HEROES and
+// Miss Chomp went back to the food court she always claimed. Her card is written
+// the way Dolores' is — straight, no wink at having been a hero once — because
+// she has not noticed she stopped being one. The tab is the oldest running joke
+// between her and the serving line, so it is what her card is about.
+const CHOMP_CAST = {
+  id: 'chompo', name: 'MISS CHOMP, IN RESIDENCE', short: 'MISS CHOMP', subtitle: 'IN RESIDENCE',
+  tagline: 'THE FOOD COURT IS MY HOMELAND. I AM ITS QUEEN.',
+  ability: { label: 'STANDING TAB' },
+  abilityDesc: 'AN UNSETTLED ACCOUNT AT THE SERVING LINE. THE LEDGER DISAGREES.',
+  joke: 'I CONSIDERED EATING GARY. HE DECLINED POLITELY. I RESPECTED THAT.',
+};
+
+// The three residents land together, then the roll call still ends on a hero
+// rather than the NPC bit.
+//
+// This is the WHOLE cast, including Miss Chomp, who is currently nowhere in the
+// building. What a given player is shown is castRollFor() below.
 export const CAST_HEROES = [
   ...HEROES.slice(0, -1),
   GARY_CAST,
   DOLORES_CAST,
+  CHOMP_CAST,
   HEROES[HEROES.length - 1],
 ];
+
+// Who the roll call actually shows. Everyone except Miss Chomp: she is out of
+// the food court and not placed anywhere else yet, and the roll call is
+// advertising — advertising someone unreachable is the failure worth avoiding.
+// Her card stays written and stays in CAST_HEROES, so whenever she is given a
+// cameo the gate here is the one line that has to change back.
+export function castRollFor(_slot) {
+  return CAST_HEROES.filter((h) => h.id !== 'chompo');
+}
 
 let castHeroSurface;
 
@@ -168,6 +194,7 @@ export class CastState {
   constructor(opts) { this.o = opts || {}; }
 
   enter() {
+    this.roll = castRollFor(this.o.slot);
     this.t = 0;
     this.i = 0;
     this.slotT = 0;
@@ -178,14 +205,14 @@ export class CastState {
 
   exit() { Input.clearAll(); }
 
-  isLast() { return this.i === CAST_HEROES.length - 1; }
+  isLast() { return this.i === this.roll.length - 1; }
   slotLen() { return SLOT_T + (this.isLast() ? TAIL_T : 0); }
   heroTapped() {
     if (!Input.pressed('pointer')) return false;
     const k = this.reduced ? 1 : Math.min(1, this.slotT / FADE_T);
     const ease = 1 - (1 - k) * (1 - k);
     const cx = 108 + (1 - ease) * -26;
-    const { feetOff } = this.poseFor(CAST_HEROES[this.i], false);
+    const { feetOff } = this.poseFor(this.roll[this.i], false);
     const feetY = FLOOR_Y - feetOff;
     return Input.pointer.x >= cx - 75 && Input.pointer.x <= cx + 75
       && Input.pointer.y >= feetY - 140 && Input.pointer.y <= feetY + 20;
@@ -215,7 +242,7 @@ export class CastState {
     if (this.slotT >= this.slotLen()) {
       this.slotT = 0;
       this.i++;
-      if (this.i >= CAST_HEROES.length) { this.o.onExit(true); return; } // whole cast seen
+      if (this.i >= this.roll.length) { this.o.onExit(true); return; } // whole cast seen
     }
     Input.endFrame();
   }
@@ -300,7 +327,7 @@ export class CastState {
   }
 
   draw(ctx) {
-    const hero = CAST_HEROES[Math.min(this.i, CAST_HEROES.length - 1)];
+    const hero = this.roll[Math.min(this.i, this.roll.length - 1)];
     const t = this.t;
     // Slide/fade the panel in at the top of each slot.
     const intro = this.slotT < FADE_T;
@@ -414,8 +441,8 @@ export class CastState {
 
     // --- roll-call progress + exit hint ------------------------------------
     const dotW = 8;
-    const x0 = W / 2 - (CAST_HEROES.length * dotW) / 2;
-    for (let i = 0; i < CAST_HEROES.length; i++) {
+    const x0 = W / 2 - (this.roll.length * dotW) / 2;
+    for (let i = 0; i < this.roll.length; i++) {
       ctx.fillStyle = i === this.i ? '#f6d33c' : i < this.i ? '#5a5a68' : '#2a2a3a';
       ctx.fillRect(x0 + i * dotW, H - 30, 5, 3);
     }

@@ -229,6 +229,10 @@ export function laneList(bank) {
 export function deskBank(bank, entry) {
   if (!bank) return bank;
   const off = (entry?.off || []).filter((k) => LANE_KEYS.includes(k));
+  // The desk's own track order, if this mix has one. Unlike `off` and `layers` it says
+  // nothing about what lanes the song HAS, only what order they are shown in, so it is
+  // carried through untouched and read by `deskLanes` alone — no audio path looks at it.
+  const order = (entry?.order || []).filter((k) => typeof k === 'string' && k);
   // A layer whose source is gone — deleted, or renamed out of the engine — is not a
   // lane, it is a row that plays nothing. Dropped here rather than half-built.
   //
@@ -247,7 +251,11 @@ export function deskBank(bank, entry) {
     known.add(l.key);
     layers.push(l);
   }
-  if (!off.length && !layers.length) return bank;
+  // An order on its own changes nothing about the song, so it does not go through
+  // `shape` — a spread keeps every lane array, and `sections` itself, by reference, so
+  // the bank is the same content under a different name. Only the identity changes,
+  // which costs one bar-plan recompute and no samples.
+  if (!off.length && !layers.length) return order.length ? { ...bank, __order: order } : bank;
 
   const shape = (block) => {
     const out = { ...block };
@@ -339,6 +347,7 @@ export function deskBank(bank, entry) {
   out.__layers = layers.map(({ key, from, independent, label }) => ({
     key, from, ...(independent ? { independent: true } : {}), ...(label ? { label } : {}),
   }));
+  if (order.length) out.__order = order;
   return out;
 }
 
@@ -390,18 +399,74 @@ export function soloBank(bank, laneKey, value, step = 1) {
   return out;
 }
 
-/** Active lanes, ordered for the desk. Anything unlisted keeps its LANES order. */
+/**
+ * A stored desk order applied to the lanes this song actually has.
+ *
+ * `order` is a list of lane keys, and it is never required to be complete or current:
+ * it was written by a drag on a desk that may since have gained a layer, lost a track
+ * to `off`, or been reordered on a different song entirely. So it is read as a set of
+ * decisions about the keys it names, and nothing at all about the keys it does not.
+ *
+ * Keys it names, that this song has, go in the order it names them. Every other key is
+ * placed after its nearest earlier neighbour in the DEFAULT order — which is what puts
+ * a lane the drag never saw next to the lane it belongs beside, rather than at the
+ * bottom. A duplicate made after the reorder lands under its source; a lane appended
+ * to `DESK_ORDER` next year lands where that list says, not in a pile at the end.
+ */
+function applyStoredOrder(base, order) {
+  const has = new Set(base);
+  const out = order.filter((k) => has.has(k));
+  if (!out.length) return base;
+  const placed = new Set(out);
+  for (let i = 0; i < base.length; i++) {
+    const key = base[i];
+    if (placed.has(key)) continue;
+    // Walking the default order front to back means a run of unplaced lanes keeps its
+    // own relative order: each one anchors to the one before it, which was just placed.
+    let at = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      if (placed.has(base[j])) { at = out.indexOf(base[j]) + 1; break; }
+    }
+    out.splice(at, 0, key);
+    placed.add(key);
+  }
+  return out;
+}
+
+/**
+ * Active lanes, ordered for the desk. Anything unlisted keeps its LANES order.
+ *
+ * Two orders, in this order: the default one below, then the song's own on top of it
+ * if the desk has been dragged. The default is not a fallback for songs without one —
+ * it is the ground every stored order is read against, so a partial or stale list
+ * still produces a sensible desk. See `applyStoredOrder`.
+ */
 export function deskLanes(bank, repeat = 1) {
+  // Within a family, the order the layers are DECLARED in — which is the order they
+  // were made in, because the desk splices a duplicate into `layers` directly after
+  // the track it copies. Ranking on the ordinal in the key instead put a duplicate of
+  // `lead5` at the bottom of the leads as `lead8`, three strips from the part it
+  // doubles, and no amount of renaming could move it: the number is a bank key, not a
+  // position. Fractions of one rank, so a layer can never cross into the next family.
+  const list = bank?.__layers || [];
+  const declared = new Map(list.map((l, i) => [l.key, (i + 1) / (list.length + 1)]));
   const rank = (key) => {
     // A layer sits immediately after the lane it copies — it is the same part, and a
     // "bass 2" three strips away from the bass is a strip you have to go looking for.
-    // The tenth of a rank is the ordinal, so bass2 comes before bass3.
     const base = baseLane(key);
-    const nudge = isLayer(key) ? (parseInt(key.slice(base.length), 10) || 0) / 100 : 0;
+    // The ordinal is the fallback for a layer this bank does not declare — `soloBank`
+    // hands over one layer with its chain cut off, and older callers pass raw banks.
+    const nudge = declared.get(key)
+      ?? (isLayer(key) ? (parseInt(key.slice(base.length), 10) || 0) / 100 : 0);
     const i = DESK_ORDER.indexOf(base);
     return (i === -1 ? DESK_ORDER.length + LANE_KEYS.indexOf(base) : i) + nudge;
   };
-  return activeLanes(bank, repeat).slice().sort((a, b) => rank(a.key) - rank(b.key));
+  const lanes = activeLanes(bank, repeat).slice().sort((a, b) => rank(a.key) - rank(b.key));
+  const stored = bank?.__order;
+  if (!stored?.length) return lanes;
+  const order = applyStoredOrder(lanes.map((l) => l.key), stored);
+  const by = new Map(lanes.map((l) => [l.key, l]));
+  return order.map((k) => by.get(k));
 }
 
 // Bar plans, per bank and repeat count. The sequencer asks for one every sixteenth
@@ -496,9 +561,22 @@ export function activeLanes(bank, repeat = 1) {
   // Hand-authored songs do not carry this marker, so their existing activity rule
   // remains unchanged.
   const starter = new Set(Array.isArray(bank?.starterLanes) ? bank.starterLanes : []);
-  return laneList(bank).filter(({ key }) => independent.has(key)
+  const lanes = laneList(bank);
+  const shown = new Set(lanes.filter(({ key }) => independent.has(key)
     || starter.has(key)
-    || bars.some(({ b }) => b[key] && b[key].some(Boolean)));
+    || bars.some(({ b }) => b[key] && b[key].some(Boolean))).map((l) => l.key));
+  // A DUPLICATE is as present as the track it copies. Activity alone answered for it
+  // everywhere except the one case it had to: an added track whose part is written in
+  // the arrangement rather than in the bank plays nothing HERE — it is shown because
+  // it is independent — so its copy, which plays nothing of its own either, vanished.
+  // And it vanished all the way: the desk validates an arrangement against this list,
+  // so copying the source's bar decisions onto a lane that was not in it read as an
+  // arrangement naming a lane that does not exist, the edit was refused, and refusing
+  // it undid the mix half with it. Duplicate did nothing at all, twice over.
+  // One pass in declaration order, which is creation order: a copy is always declared
+  // after the thing it copies.
+  for (const l of bank?.__layers || []) if (shown.has(l.from)) shown.add(l.key);
+  return lanes.filter(({ key }) => shown.has(key));
 }
 
 /**

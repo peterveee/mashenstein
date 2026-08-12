@@ -1,9 +1,15 @@
 // CLI for the MIDI import. The conversion lives in lib/midi-import.js, shared with
 // the mixing desk's Import MIDI button so both produce exactly the same bank.
 //
+// Every part of the file lands on a lane of its own — nothing is merged — so a track
+// past the engine's six pitched lanes becomes a layer (`lead2`) and is listed below as
+// a new strip. `--map` places a part by hand and takes a layer key as readily as a
+// lane one, which is how you say "these two go under the organ, not the lead".
+//
 // Usage:
 //   node tools/import-midi.js song.mid [--bpm=120] [--name="MY SONG"] [--out=path]
 //   node tools/import-midi.js song.mid --map="Piano 1:chords,Fretless:bass" --dry
+//   node tools/import-midi.js song.mid --map="Strings:organChords,Pad:organChords2"
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, basename, join } from 'path';
 import { fileURLToPath } from 'url';

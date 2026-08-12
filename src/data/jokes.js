@@ -27,7 +27,7 @@ export const TAG_LINES = {
   fernwick: 'THE RECEIPT FORETOLD THIS.',
   b33p: 'LOW ON CYAN.',
   mochi: 'POYO.',
-  chompo: 'WAKA, DARLING.',
+  kiko: 'THIS IS A CRIME SCENE.',
   raymn: 'HANDS OFF. LITERALLY.',
   grumpos: 'BOY.',
 };
@@ -81,10 +81,10 @@ export const EXIT_LINES = {
     'POYO.',
     'POYO? (IT IS A GOODBYE. PROBABLY.)',
   ],
-  chompo: [
-    'I ATE THE SCORE COUNTER. IT WAS CHEWY. GOODBYE.',
-    'I HAVE POSTURE TO MAINTAIN ELSEWHERE, DARLING.',
-    'THE FOOD COURT CALLS. IT ALWAYS CALLS.',
+  kiko: [
+    'THE FILE STAYS OPEN. SO DOES THE DOOR.',
+    'I HAVE LEFT MY CARD WITH THE BARREL.',
+    'I AM NOT LEAVING. I AM CANVASSING.',
   ],
   raymn: [
     'HANDS OFF. LITERALLY. THEY ARE UNSECURED.',
@@ -192,6 +192,36 @@ export const HUB_LINES = {
     'POYO POYO.',
     'POYO. (MOCHI FLOATS. THE ROOM FEELS SLIGHTLY MORE BLESSED.)',
     'POYO?? POYO.',
+  ],
+  // Her bit is JURISDICTION: a criminal investigation nobody authorised, in a
+  // building where a badge means nothing, pursued with total seriousness. The
+  // tournament that brought her here is MOTIVE and shows up once — it is not a
+  // second joke engine.
+  //
+  // The trap this pool has to stay out of is Gary and Ray M'n. All three sit in
+  // the bureaucratic register, so hers is kept to CRIMINAL procedure — warrant,
+  // custody, evidence, scene, rights, suspect, canvass, prints, discharge —
+  // words neither of them touches. Gary owns FORM in both senses already.
+  // Test for a new line: swap its nouns for HR nouns. If it still works it is
+  // Gary's line, not hers.
+  //
+  // One line per joke type, in order: the scene / rights / scope / motive /
+  // suspect / use of force / witness / contradiction / pursuit / forensics /
+  // absence of procedure / the plot. Two pay rent on the kit — the warning shot
+  // and the double jump.
+  kiko: [
+    'THE SOCKET IS A CRIME SCENE. I HAVE TAPED IT OFF. NOBODY HAS RESPECTED THE TAPE.',
+    'I READ THE VENDING MACHINE ITS RIGHTS. IT WAIVED THEM.',
+    'MY BADGE IS VALID IN A HUNDRED AND NINETY COUNTRIES. THIS IS A BUILDING.',
+    'I CAME FOR A TOURNAMENT. I FOUND A FELONY. I AM ADAPTABLE.',
+    'I HAVE OPENED A FILE ON THE VACUUM. IT IS A THICK FILE.',
+    'I FIRED A WARNING SHOT. THE BARREL HAD ALREADY BEEN WARNED. TWICE.',
+    'I ASKED DOLORES WHERE SHE WAS THAT NIGHT. SHE SAID "NEXT."',
+    'GARY IS A PERSON OF INTEREST AND ALSO A PERSON WHO IS DECEASED. BOTH ARE TRUE.',
+    'THE SUSPECT FLED VERTICALLY. I AM TRAINED FOR THAT.',
+    'I DUSTED THE POWER STRIP FOR PRINTS. IT HAD FORTY YEARS OF THEM.',
+    'NO ONE IN THIS BUILDING HAS ASKED TO SEE A WARRANT. I FIND THAT CONCERNING.',
+    'I HAVE A SUSPECT, A MOTIVE AND A CONFESSION. I STILL HAVE TO DO THE PAPERWORK.',
   ],
   chompo: [
     'I ATE THE MENU. THE SPECIALS WERE DELICIOUS.',

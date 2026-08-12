@@ -177,7 +177,8 @@ for (const [id, checks] of Object.entries({
     breath: [0, 1], reso: [0.3, 3], spread: [0, 1], body: [0, 1], air: [0, 1] },
   chorus2: { feedback: [0, 0.6], tone: [800, 20000] },
   bitcrusher: { bits: [2, 16], drive: [0, 24] },
-  rhythmgate: { gateLength: [0.01, 1], attack: [0.001, 0.25], decay: [0.005, 1] },
+  // ATTACK and DECAY start at the millisecond floor `makeRhythmicGate` itself uses.
+  rhythmgate: { gateLength: [0.01, 1], attack: [0.001, 0.25], decay: [0.001, 1] },
   flanger: { feedback: [0, 0.85], delayMs: [0.2, 10] },
   ringmod: { frequency: [0.1, 2000] },
   tape: { bias: [-1, 1], wow: [0, 1], flutter: [0, 1] },
@@ -189,6 +190,21 @@ for (const [id, checks] of Object.entries({
       `${id}.${name}: editor range is ${range.min}..${range.max}`);
   }
 }
+// Every dynamics envelope time reaches the same millisecond floor the preset editor's
+// envelope pots do — and steps in milliseconds, so 20ms and 25ms are two settings and
+// not one. L7 is the single exception, and it is an exception because its own envelope
+// clamps there: a pot must not offer travel the effect will ignore.
+for (const [id, name, min, step] of [
+  ['compressor', 'attack', 0.001, 0.001], ['compressor', 'release', 0.001, 0.001],
+  ['msComp', 'mid.release', 0.001, 0.001], ['mbComp', 'low.release', 0.001, 0.001],
+  ['mbCompN', 'high.attack', 0.001, 0.001], ['rhythmgate', 'decay', 0.001, 0.001],
+  ['l7', 'release', 0.01, 0.001],
+]) {
+  const range = paramRange(name, EFFECT_BY_ID[id]);
+  assert(range.min === min && range.step === step && range.log === true,
+    `${id}.${name}: ${range.min}s floor, ${range.step}s step, log taper`);
+}
+
 const vowelDefaults = EFFECT_BY_ID.vowel.defaults;
 assert(vowelDefaults.wet >= 0.85 && vowelDefaults.reso >= 2 && vowelDefaults.glide <= 0.1
   && vowelDefaults.rateDivision <= 0.25 && vowelDefaults.spread > 0.8,

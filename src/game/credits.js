@@ -568,7 +568,7 @@ const SCRIPT = [
   { k: 'castRole', face: 'fernwick', role: 'Fernwick, Hero of Thyme', name: 'A grocery receipt, itself' },
   { k: 'castRole', face: 'b33p', role: 'Unit B-33P "Blastbot"', name: 'Grievance filed on his behalf' },
   { k: 'castRole', face: 'mochi', role: 'Mochi', name: '"POYO" performed by Mochi' },
-  { k: 'castRole', face: 'chompo', role: 'Miss Chomp', name: 'Appetite consultant credited separately' },
+  { k: 'castRole', face: 'kiko', role: 'Kiko, Jurisdiction Pending', name: 'Warrant pending in this jurisdiction' },
   { k: 'castRole', face: 'raymn', role: "Ray M'n, Appendage-Optional", name: 'Limbs insured separately' },
   { k: 'castRole', face: 'grumpos', role: 'Grumpos, Dad of Boy', name: '"BOY" performed with range' },
   { k: 'castRole', face: 'gary', role: 'Gary', name: 'Played by Gary (deceased)' },
@@ -580,8 +580,9 @@ const SCRIPT = [
   //     villain who has the last word should not also be a row in the cast roll.
   //   Dust Devil 9000 — the same call CastState makes in the roll call: he is a
   //     surprise, and a credit spends him before the player has met him.
-  //   The TURDLE turtle — no portrait to give, and a nameplate alone reads as
-  //     filler next to eleven faces.
+  //   Miss Chomp — she is neither any more. Out of the relay and out of the food
+  //     court, held for a cameo; billing her for a part she is not in is the one
+  //     joke this list cannot make straight-faced.
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'QUALITY ASSURANCE' },
@@ -625,7 +626,16 @@ const SCRIPT = [
   // HR goes LAST on purpose. By here the crawl has done its thanks-adjacent
   // wind-down through Facilities and reads as nearly over — which is exactly
   // when the largest department in the studio arrives and does not stop.
-  { k: 'handoff', a: 'FACILITIES', b: 'HUMAN RESOURCES', from: 'mochi', to: 'chompo', lineA: 'Your turn.', lineB: "We're going to need that in writing." },
+  // Kiko takes the baton Miss Chomp used to, and Gary does not: he is the
+  // subject of the department she is running into — the module he delivers, the
+  // audit nobody performs on him, his thick file in Deceased Staff — and a man
+  // cannot introduce the department that is a joke at his expense. Kiko can,
+  // because she has no standing here at all, which is her whole bit.
+  // Her reply stays off Gary's vocabulary (see docs/notes/kiko-persona.md — swap
+  // the nouns for HR nouns and it must break): "person of interest" is criminal
+  // procedure, and applying it to the studio's largest department, all of whom
+  // are about to scroll past by name, is the scope joke she always makes.
+  { k: 'handoff', a: 'FACILITIES', b: 'HUMAN RESOURCES', from: 'mochi', to: 'kiko', lineA: 'Your turn.', lineB: 'Every one of them is a person of interest.' },
   { k: 'gap', px: 16 },
 
   // The longest department in the crawl, and deliberately so: forms, grievances

@@ -1,6 +1,7 @@
 // Relay, simplified: the full eight-hero cast in a shuffled bag. Portals
-// switch heroes automatically. The whole rule fits in one sentence, which is
-// the point.
+// switch heroes automatically, and a hero drawn out of the bag does not go
+// back in — a level is four different faces, never Lorenzo→Kiko→Grumpos→Kiko.
+// The whole rule fits in one sentence, which is the point.
 //
 // Portals are SCHEDULED per stage rather than ticking on a fixed clock. A flat
 // cadence meant a 60s stage ran through four heroes and a 120s stage through
@@ -30,7 +31,16 @@ export class Relay {
     this.rng = rng;              // seeded stream: runs replay identically
     this.stats = stats;
     this.bag = [];
+    // Everyone who has taken the baton this level, the hero you started as
+    // included. Nobody comes round twice: a stage hands off at most three
+    // times, so four of the eight appear and each appearance is someone new.
+    this.used = new Set();
     this.current = HEROES.some((h) => h.id === initialHeroId) ? initialHeroId : this.drawHero();
+    this.used.add(this.current);
+    // A hero handed in from outside never came out of the bag, so the bag is
+    // still empty here — fill it now (minus that hero) so the first hand-off
+    // can follow roster order like every other one.
+    if (!this.bag.length) this.refill();
     this.next = this.drawHero(this.current); // every portal previews this hero
     this.schedule = schedule;
     this.spawned = 0;
@@ -41,15 +51,20 @@ export class Relay {
     this.lastTagLineT = 0;
   }
 
+  // The bag only ever holds heroes who have not appeared yet, which is what
+  // keeps a level free of repeats. Only an endless run can outlast the roster;
+  // when it does the slate is wiped and the cast comes round again — still
+  // never back to back, since whoever is on the baton stays struck off.
   refill() {
-    this.bag = HEROES.map((h) => h.id);
+    let pool = HEROES.map((h) => h.id).filter((id) => !this.used.has(id));
+    if (!pool.length) {
+      this.used = new Set([this.current, this.next].filter(Boolean));
+      pool = HEROES.map((h) => h.id).filter((id) => !this.used.has(id));
+    }
+    this.bag = pool;
     for (let i = this.bag.length - 1; i > 0; i--) {
       const j = this.rng ? this.rng.int(0, i) : Math.floor(Math.random() * (i + 1));
       [this.bag[i], this.bag[j]] = [this.bag[j], this.bag[i]];
-    }
-    // no immediate repeat across the reshuffle boundary
-    if (this.current && this.bag[this.bag.length - 1] === this.current) {
-      [this.bag[0], this.bag[this.bag.length - 1]] = [this.bag[this.bag.length - 1], this.bag[0]];
     }
   }
 
@@ -64,11 +79,13 @@ export class Relay {
       const idx = HEROES.findIndex((h) => h.id === after);
       const succ = HEROES[(idx + 1) % HEROES.length].id;
       const at = this.bag.indexOf(succ);
-      if (at >= 0) { this.bag.splice(at, 1); return succ; }
+      if (at >= 0) { this.bag.splice(at, 1); this.used.add(succ); return succ; }
       // successor already used this bag: fall through to the shuffle
     }
     if (!this.bag.length) this.refill();
-    return this.bag.pop();
+    const id = this.bag.pop();
+    this.used.add(id);
+    return id;
   }
 
   update(dt) {

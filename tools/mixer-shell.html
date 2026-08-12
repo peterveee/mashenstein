@@ -476,6 +476,7 @@
   /* Only green while actually playing — not at rest. */
   .transport .playbtn.on { background: var(--go); color: var(--on-go); }
   .transport .playbtn.on:hover { background: color-mix(in srgb, var(--go) 82%, var(--ink)); }
+  .transport #playstart.preparing { color: var(--accent); background: var(--traybtn-hi); }
   .transport button:disabled { opacity: .4; }
   /* Panic used to be a red word at the far end of the header, beside Undo. It is ⎋ now:
      an emergency cut is worth a key you can hit without looking, and Stop already
@@ -1873,6 +1874,20 @@
                          background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
                          box-shadow: 0 18px 50px color-mix(in srgb, var(--deep) 60%, transparent); }
   #audiosettingsdialog::backdrop { background: rgba(10, 11, 14, .72); }
+  #looplogdialog { width: min(920px, calc(100vw - 28px)); max-width: none; max-height: min(86vh, 760px);
+                   box-sizing: border-box; padding: 0; overflow: auto; color: var(--ink);
+                   background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+                   box-shadow: 0 18px 50px color-mix(in srgb, var(--deep) 60%, transparent); }
+  #looplogdialog::backdrop { background: rgba(10, 11, 14, .72); }
+  #looplogform { padding: 20px 22px 16px; }
+  #looplogtitle { margin: 0 0 6px; color: var(--ink); font-size: 16px; font-weight: 600; }
+  #looplogtext { display: block; width: 100%; min-height: 330px; margin-top: 14px; box-sizing: border-box;
+                 resize: vertical; padding: 9px; color: var(--ink); background: var(--input);
+                 border: 1px solid var(--line); border-radius: 5px; font: 10px/1.45 ui-monospace, monospace;
+                 white-space: pre; tab-size: 2; }
+  #looplogtext:focus { outline: none; border-color: var(--accent); }
+  .looplogfoot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin-top: 12px; }
+  .looplogfoot button { padding: 7px 13px; font-size: 12px; }
   #audiosettingsform { padding: 20px 22px 16px; }
   .audiosettingshead { display: flex; align-items: flex-start; gap: 14px; }
   .audiosettingshead > div { min-width: 0; flex: 1; }
@@ -3777,6 +3792,14 @@
   #pianoroll .rollzoom-button + .rollzoom-button { border-left: 1px solid var(--line); }
   #pianoroll .rollzoom-button:hover { color: var(--ink); background: var(--hover); }
   #pianoroll .rollzoom-button.on { color: var(--on-accent); background: var(--accent); }
+  /* CHANNEL's Poly, on a lane the engine plays one note at a time. Shown and struck
+     through rather than removed: a switch that loses a button on some channels is a
+     switch you have to re-read every time you change channel, and the strike says the
+     option exists and is not available here. `:hover` is excluded or the dimmed button
+     lights up under the pointer and reads as pressable. */
+  #pianoroll .rollzoom-button:disabled { color: var(--faint); opacity: .38;
+                          text-decoration: line-through; cursor: default; }
+  #pianoroll .rollzoom-button:disabled:hover { color: var(--faint); background: transparent; }
   #pianoroll .ssqhead-cell { width: var(--keys); gap: 0; padding: 0 0 0 6px; }
 
   /* ---- the keys ------------------------------------------------------------------
@@ -5120,6 +5143,30 @@
   .devbar:active { cursor: grabbing; }
   .device.dragging { opacity: .4; }
   .device.dropzone { border-color: var(--accent); box-shadow: -3px 0 0 var(--accent); }
+
+  /* Dragging a TRACK, from either view of the one order. The drop mark is an edge on
+     the side the track will arrive on — a box outline says "into here", which is what
+     a drop on a strip would mean if strips held things, and they do: the insert slots
+     are a drop target of their own a few pixels below. An edge cannot be misread that
+     way. Strips take it on the left because the rack runs across; rows take it on the
+     top because the arrangement runs down. */
+  /* A strip head you can only click — the master and the send returns, which have no
+     place in the track order because they are not tracks. */
+  .headclick { cursor: pointer; }
+  /* …and one you can drag. Both heads take the same class, so the two views of the
+     order also have the same cursor over them. */
+  .draghandle { cursor: grab; }
+  .draghandle:active { cursor: grabbing; }
+  .strip.dragging, .arrrow.dragging { opacity: .4; }
+  .strip.dropzone { box-shadow: inset 3px 0 0 var(--accent); }
+  .arrrow.dropzone { box-shadow: inset 0 3px 0 var(--accent); }
+  /* The parts of a handle that are not a handle. Without this the grab cursor claims
+     the preset name and the M/S pair, and a button that looks draggable is a button
+     you try to drag. */
+  .draghandle .strippreset, .draghandle .arrname[role="button"] { cursor: pointer; }
+  /* A name with no voice behind it is not a button and not a handle either — it opts
+     out of the drag with the rest of the row's controls, so it says neither. */
+  .draghandle .arrname, .draghandle .arrbtns, .draghandle .arrgain { cursor: default; }
   .devbar { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; flex: none; }
   .device h4 { margin: 0; font-size: 10.5px; text-align: center; color: var(--ink);
                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
@@ -5799,6 +5846,8 @@
        is not asked to choose an engine implementation, and the song never stores it. -->
   <button id="notecachetoggle" type="button" aria-pressed="true" hidden
           title="Developer diagnostic: compare rendered-note caching with the original live-synth path. Turning it off clears prepared notes; turning it back on starts with a cold cache.">Note cache: On</button>
+  <button id="looplogopen" type="button" aria-haspopup="dialog" aria-controls="looplogdialog" hidden
+          title="Developer diagnostic: inspect, copy, or download one automatic performance record per completed sequencer loop">Loop diagnostics (0)</button>
   <!-- Where the line sits against what you hear. Positive moves it right (later);
        only an ear can settle the last few milliseconds of it. -->
   <label class="drawerrow"><span>Playhead</span>
@@ -5852,6 +5901,25 @@
     <div id="audiosettingsstatus" class="drawersubstatus" role="status" aria-live="polite"></div>
     <p class="audiorelationship"><strong>How they work together.</strong> The Audio buffer protects delivery from the audio thread to the speakers; read-ahead protects the main-thread scheduler that feeds it. They are independent, so you can increase one without changing the other. For a busy song, try Smooth playback with 500 ms or 1 second read-ahead before using Maximum safety.</p>
     <div class="audiosettingsfoot"><button id="audiosettingscancel" type="button">Cancel</button><button id="audiosettingsapply" class="primary" type="button">Apply changes</button></div>
+  </form>
+</dialog>
+<dialog id="looplogdialog" role="dialog" aria-labelledby="looplogtitle" aria-describedby="looplogintro">
+  <form id="looplogform" method="dialog">
+    <div class="audiosettingshead">
+      <div>
+        <h2 id="looplogtitle">Loop diagnostics</h2>
+        <p id="looplogintro" class="audiosettingsintro">While the transport plays, the Mixer records each heard loop plus immediate rows for playback interruptions, complete output loss, repair attempts, and recovery. Rows persist across reloads. No console work is needed.</p>
+      </div>
+      <button id="looplogclose" class="audiosettingsclose" type="button" aria-label="Close Loop diagnostics">×</button>
+    </div>
+    <div id="looplogstatus" class="drawersubstatus" role="status" aria-live="polite">No loops recorded yet.</div>
+    <textarea id="looplogtext" readonly spellcheck="false" aria-label="Loop diagnostics in CSV format"></textarea>
+    <div class="looplogfoot">
+      <button id="looplogclear" type="button">Clear log</button>
+      <button id="looplogcopy" type="button">Copy CSV</button>
+      <button id="looplogdownload" type="button">Download CSV</button>
+      <button id="looplogdone" type="button">Done</button>
+    </div>
   </form>
 </dialog>
 <div id="ctxmenu"></div>

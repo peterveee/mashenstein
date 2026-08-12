@@ -6,6 +6,7 @@ installDom();
 const { RunState } = await import('../src/game/run.js');
 const { Player } = await import('../src/game/player.js');
 const { HEROES } = await import('../src/data/heroes.js');
+const { HERO_SPRITES } = await import('../src/sprites/heroes.js');
 const {
   TOON_SPECS, toonEffectEllipse, poseFromPlayer, RUN_HEAD_TURN, drawToon,
   ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE, ACTIVE_LIMB_STYLE,
@@ -72,7 +73,20 @@ for (const hero of HEROES) {
   assert(a.rx > 0.5 && a.ry > 0.6, `${hero.id} shield envelope keeps a padded air gap`);
 }
 
-assert(Object.keys(TOON_SPECS).length === 10, 'head-yaw gallery roster still contains all ten toons');
+// The head-yaw gallery section iterates TOON_SPECS, and drawToon looks each
+// hero's palette up in HERO_SPRITES — so the invariant worth guarding is that
+// the two tables AGREE, not that either is a particular length. A hardcoded
+// count of ten went stale the moment a hero joined the cast, and then failed as
+// though something had broken when nothing had: a test that has to be edited
+// every time the roster changes is a test that will eventually be edited
+// without being read.
+const toonIds = Object.keys(TOON_SPECS);
+assert(toonIds.length >= HEROES.length,
+  `the toon roster covers at least the playable cast (${toonIds.length} toons, ${HEROES.length} heroes)`);
+assert(toonIds.every((id) => HERO_SPRITES[id] && HERO_SPRITES[id].pal),
+  'every toon in the roster has a palette to draw with');
+assert(HEROES.every((h) => TOON_SPECS[h.id]),
+  'every playable hero has a toon rig');
 assert(ACTIVE_CELEBRATION_STYLE === 'reworked', 'results-screen celebrations default to the approved rework');
 assert(ACTIVE_LOCOMOTION_STYLE === 'enhanced', 'jump and duck default to the improved motion');
 assert(ACTIVE_LIMB_STYLE === 'snap', 'the run and jump default to the ported limb spec');
@@ -143,14 +157,25 @@ assert(ACTIVE_LIMB_STYLE === 'snap', 'the run and jump default to the ported lim
       }
     }
   }
-  assert(drew === 2100, `limb-style matrix covered every combination (drew ${drew})`);
+  // Derived, not hardcoded: the point of the number is that the loops below
+  // ran every combination, and stating it as a literal only proved that the
+  // roster was still the size it was on the day it was written.
+  const expected = Object.keys(TOON_SPECS).length * KINDS.length * OVERRIDES.length * 2 * 3;
+  assert(drew === expected,
+    `limb-style matrix covered every combination (drew ${drew} of ${expected})`);
   assert(tally.bad === 0,
     `every coordinate the limb styles paint is finite (${tally.bad} of ${tally.n} were not)`);
   assert(emptyFrames.length === 0,
     `no hero/style combination paints nothing at all (${emptyFrames.slice(0, 3).join(', ')})`);
 }
-assert(Object.keys(TITLE_PARADE_ACTIONS).length === HEROES.length,
-  'title animation catalogue covers every playable hero');
+// COVERAGE, not a length match. What matters is that every playable hero has a
+// parade action; a leftover entry for a character who has left the playable
+// roster is dead data rather than a bug, and comparing lengths reported the
+// second as though it were the first.
+for (const hero of HEROES) {
+  assert(typeof TITLE_PARADE_ACTIONS[hero.id] === 'string' && TITLE_PARADE_ACTIONS[hero.id],
+    `${hero.id} has a title parade action`);
+}
 for (const hero of HEROES) {
   const action = titleParadeAction(hero.id, 0.4, 0.5);
   assert(action && Number.isFinite(action.feetLift) && action.pose,
@@ -179,9 +204,24 @@ const GALLERY_BODY_DIALS = [
   'torsoWidth', 'waistScale', 'legLength', 'legWidth', 'armLength', 'armWidth',
   'figureScaleX', 'figureScaleY',
 ];
-assert(Object.values(TOON_SPECS).every((spec) =>
-  GALLERY_BODY_DIALS.every((key) => !Object.hasOwn(spec, key))),
+// The guard is against a PROPOSAL leaking into the cast: the body-shape section
+// drives these dials on real rigs, and a value that survives into TOON_SPECS is
+// a bake-off candidate nobody chose. An approved one is listed here by hero and
+// dial, so shipping a shape stays a deliberate edit to this line rather than
+// something a gallery experiment can do quietly.
+const APPROVED_BODY_DIALS = { kiko: ['legLength'] };
+assert(Object.entries(TOON_SPECS).every(([id, spec]) =>
+  GALLERY_BODY_DIALS.every((key) =>
+    !Object.hasOwn(spec, key) || (APPROVED_BODY_DIALS[id] || []).includes(key))),
 'gallery body-shape candidates do not alter production specs');
+// `legLength` moves the HIP, not the crown — it splits her height between torso
+// and leg, and cannot make her taller on its own. Her height is `tall`, and the
+// band is the brief: above the rig default, under Lorenzo's crown (1.025 of the
+// draw height) and well under B-33P's dome (1.094). 1.02 measures 1.006.
+assert(TOON_SPECS.kiko.legLength > 1,
+  'a little more of Kiko\'s height sits in the leg than the rig default');
+assert(TOON_SPECS.kiko.tall > 1 && TOON_SPECS.kiko.tall < 1.04,
+  'Kiko stands taller than the rig default but no taller than Lorenzo');
 
 for (const id of Object.keys(TOON_SPECS)) {
   let safe = true;

@@ -417,7 +417,7 @@ assert(/prefill\(seconds = 1\)/.test(audio)
 // surface that has a heavy build — rather than a prefill number copied into three
 // files, which is three places for it to drift.
 const heavyUiSrc = readFileSync(new URL('../tools/lib/heavy-ui.js', import.meta.url), 'utf8');
-assert(/export const HEAVY_UI_PREFILL_S = 1\.2/.test(heavyUiSrc)
+assert(/export const HEAVY_UI_PREFILL_S = 2/.test(heavyUiSrc)
   && /Audio\.prefill\(HEAVY_UI_PREFILL_S\)/.test(heavyUiSrc)
   && /export function heavyUi\(label, fn\)/.test(heavyUiSrc)
   && /export function lastHeavyBuild\(/.test(heavyUiSrc),
@@ -430,8 +430,8 @@ assert(/heavyUi\('open preset library'/.test(entry)
   && /heavyUi\('open full synth editor'/.test(editor),
   'the preset library and the full synth editor announce their own big builds');
 assert(/takeSchedulerHealth/.test(entry) && /pass\(es\) after it emptied/.test(entry)
-  && /lastHeavyBuild\(\)/.test(entry) && /this surface is unhooked/.test(entry),
-  'the watchdog reports a starved scheduler in numbers, names the build, and says when one was never announced');
+  && /lastHeavyBuild\(\)/.test(entry) && /surface not yet protected/.test(entry),
+  'the watchdog reports a starved scheduler in numbers and names the build or recent control');
 // ---- the load readout says nothing until something is wrong -------------------
 //
 // The clock ratio is a DEADLINE, not a gauge: it reads 1.00 whether the graph is
@@ -486,6 +486,9 @@ assert(/const quiet = !playing \? 'transport stopped'/.test(entry)
   'the watchdog only counts dead-output strikes while output is actually expected');
 assert(/!Number\.isFinite\(v\)/.test(entry),
   'and it treats an Infinity as poison too, not only a NaN');
+assert(/const preNonFinite = preValues\.some/.test(entry)
+  && /nan \|\| preNonFinite \|\| clockStalled/.test(entry),
+  'and a poisoned pre-master meter is preserved as non-finite rather than coerced to zero');
 // A non-finite sample stops at the first compressor downstream, so WHICH chain it
 // came from is the whole question — answered by walking meters that already exist.
 assert(/const poisoned = \[\]/.test(entry)
@@ -514,6 +517,36 @@ assert(/id="notecachetoggle"[^>]*aria-pressed="true"[^>]*hidden/.test(shell)
   && /Audio\.setNoteCache\(noteCacheEnabled\)/.test(entry)
   && /localStorage\.setItem\(NOTE_CACHE_KEY, noteCacheEnabled \? '1' : '0'\)/.test(entry),
   'DEV exposes a saved hamburger toggle for live-synth versus note-cache playback');
+assert(/this\.loopListeners = \[\]/.test(audio)
+  && /onLoop\(fn\)/.test(audio)
+  && /const loop = \{ when: this\.nextTime, start: this\.loopStart, end: this\.loopEnd \}/.test(audio)
+  && /const formEnd = plan\.length \* 16/.test(audio)
+  && /for \(const fn of this\.loopListeners\) fn\(loop\)/.test(audio),
+  'the engine publishes genuine scheduler wraps with their audible AudioContext time');
+assert(/id="looplogopen"[^>]*aria-haspopup="dialog"[^>]*hidden/.test(shell)
+  && /id="looplogdialog"[^>]*role="dialog"/.test(shell)
+  && /id="looplogtext"[^>]*readonly[^>]*aria-label="Loop diagnostics in CSV format"/.test(shell)
+  && /const LOOP_LOG_KEY = 'mash-mixer-loop-log'/.test(entry)
+  && /Audio\.onLoop\?\.\(\(loop\)/.test(entry)
+  && /\(loop\.when - Audio\.ctx\.currentTime\) \* 1000/.test(entry)
+  && /localStorage\.setItem\(LOOP_LOG_KEY, JSON\.stringify\(loopLogRecords\)\)/.test(entry)
+  && /navigator\.clipboard\.writeText\(csv\)/.test(entry)
+  && /mashenstein-loop-diagnostics-\$\{loopLogSession\}\.csv/.test(entry),
+  'DEV records one persisted row at each audible loop and exposes copy/download without a console');
+assert(/runtimeHealth\(\)/.test(voicesSrc)
+  && /cachedSources: this\._cachedPlayback\.size/.test(voicesSrc)
+  && /this\._cachedPlayback\.delete\(active\)/.test(voicesSrc)
+  && /loopHealthWindow\.overloaded/.test(entry)
+  && /dropoutsDelta/.test(entry),
+  'loop rows compare existing health and cache telemetry, including live cached sources');
+assert(/recordType', 'status'/.test(entry)
+  && /function appendDiagnosticEvent\(/.test(entry)
+  && /AUDIO OUTPUT RECOVERED/.test(entry)
+  && /recoveryTier: 'suspend\/resume context'/.test(entry)
+  && /appendDiagnosticEvent\('PLAYBACK INTERRUPTED'/.test(entry)
+  && /function lastDiagnosticAction\(/.test(entry)
+  && /stallSource: heavy\?\.label \|\| action\?\.label \|\| 'unattributed'/.test(entry),
+  'diagnostics persist output death, recovery tiers, and attributed scheduler holes immediately');
 // Each exclusion is load-bearing: a mono/legato note retargets the one still
 // sounding, a vibrato pool's LFO free-runs across notes, and a held note has no
 // length until a finger says so — none of those is a pure function of (preset,
@@ -547,9 +580,25 @@ assert(/const NOTE_RENDER_JOBS = 1;/.test(voicesSrc)
   && /state\.playbackActive/.test(voicesSrc)
   && /setNoteCachePlaybackActive\(state, active\)/.test(voicesSrc),
   'offline cache preparation is single-filed and paused during transport playback');
+assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
+  && /const NOTE_CACHE_PREPARE_BUDGET_MS = 1800/.test(entry)
+  && /async function playFromBeginning\(\)/.test(entry)
+  && /Audio\.prepareNoteCache\?\.\(engineBank\(\)\)/.test(entry)
+  && /Audio\.setNoteCachePreparationHeld\(true\)[\s\S]{0,100}?if \(playing\) setPlaying\(false\)/.test(entry)
+  && /Audio\.setNoteCachePreparationHeld\(true\)/.test(entry)
+  && /if \(held && !health\.rendering\) break;/.test(entry)
+  && /\$\('playstart'\)\.onclick = playFromBeginning/.test(entry),
+  'Start from beginning prepares queued notes for a bounded time and starts between cache jobs');
+assert(/prepareNoteCache\(bank\)/.test(audio)
+  && /for \(let step = 0; step < plan\.length \* 16; step\+\+\)/.test(audio)
+  && /rack\.prepareNoteCache\(voice\.id, freq, duration\(\)/.test(audio)
+  && /rack\.prioritisePreparedNotes\(\)/.test(audio)
+  && /prepareNoteCache\(voiceId, freq, dur/.test(voicesSrc)
+  && /preparePriority/.test(voicesSrc),
+  'a cold Start from beginning inventories the resolved arrangement silently and prioritises late notes');
 assert(/createNoteCacheState\(\)/.test(voicesSrc)
   && /new VoiceRack\(this\.ctx, this\.noiseBuf, this\.crashBuf, this\.noteCacheState\)/.test(audio)
-  && /setNoteCachePlaybackActive\(noteCacheState, !!bank\)/.test(audio),
+  && /setNoteCachePlaybackActive\(noteCacheState, !!bank \|\| this\.noteCachePreparationHeld\)/.test(audio),
   'the desk cache survives rack replacement and follows the transport state');
 assert(/cacheEntryCurrent\(state, job\)/.test(voicesSrc)
   && /state\.bytes = Math\.max\(0, state\.bytes -/.test(voicesSrc)
@@ -623,6 +672,60 @@ assert(/function layerNoteSeconds\(v, dur\)/.test(voicesSrc)
 assert(/_forgetRenderedNotes\(voiceId\)/.test(audio)
   && /setLayerSolo\(voiceId, layerKey, on\)[\s\S]*?_forgetRenderedNotes\(voiceId\)/.test(audio),
   'lighting a layer solo makes the cache forget what it rendered without one');
+
+// ---- the one way this gate can rot, closed ----------------------------------
+//
+// `layerVariesWithTime` is a hand-written list of the preset keys that reach
+// `hitRandom`, and the note cache trusts it to decide which patches may be frozen into
+// a buffer. It cannot drift as PRESETS change — it reads the same keys the engine reads
+// — but it drifts the moment somebody adds a NEW randomness path to `_playLayer` and
+// does not think of it here. The failure is silent and it is the bad direction: a patch
+// that was written to breathe gets cached as one frozen draw of itself.
+//
+// `work/local/probe-layer-determinism.js` catches exactly that by measurement, and it
+// found `syncRazorLead` this way — but it needs Playwright and takes minutes over
+// seventy presets, so it is not in any suite and its header asks to be remembered.
+// Discipline is not a guard. This is: count the call sites, and require every humanised
+// one to name a key the predicate actually reads.
+{
+  const at = voicesSrc.indexOf('  _playLayer(v, {');
+  assert(at > 0, 'there is a _playLayer to check');
+  // Close the PARAMETER list before taking the body brace — the signature destructures,
+  // so the first `{` after the name belongs to the options bag, not to the method.
+  let i = voicesSrc.indexOf('(', at);
+  for (let paren = 0; i < voicesSrc.length; i++) {
+    if (voicesSrc[i] === '(') paren++;
+    else if (voicesSrc[i] === ')' && --paren === 0) break;
+  }
+  const open = voicesSrc.indexOf('{', i);
+  let end = -1;
+  for (let j = open, depth = 0; j < voicesSrc.length; j++) {
+    if (voicesSrc[j] === '{') depth++;
+    else if (voicesSrc[j] === '}' && --depth === 0) { end = j; break; }
+  }
+  const body = voicesSrc.slice(open, end);
+  const sites = [...body.matchAll(/(?:hitRandom|vary)\(/g)].length;
+  // Ten, and each one is accounted for in `layerVariesWithTime`'s comment: the vibrato
+  // rate and phase (spread), the sample-and-hold seed and its per-step draws, the
+  // legato retarget bend, the note's own gain/pitch/filter humanise, and the unison
+  // entry stagger. A new one is not necessarily wrong — it needs a key here.
+  assert(sites === 10,
+    `_playLayer has ${sites} randomness call sites, not the 10 layerVariesWithTime`
+    + ' accounts for. ADDED one? Give it a preset key, teach layerVariesWithTime to'
+    + ' refuse a patch that uses it, and run work/local/probe-layer-determinism.js.'
+    + ' MOVED one into a helper? The predicate still has to see it — the count lives'
+    + ' here because this method is where a note is built, not because ten is magic.'
+    + ' Either way, run the probe before changing this number');
+  // The humanised ones must name a key the predicate reads. `hitRandom` is called with a
+  // TIME rather than a key, so it is the count above that covers those; `vary` carries
+  // the amount, and an amount from somewhere the predicate never looks at is precisely
+  // the silent drift.
+  const known = /^(vibSpread|hum\.(gain|pitch|filter)|\(v\.humanize \|\| \{\}\)\.pitch)/;
+  for (const m of body.matchAll(/vary\(([^,]+),/g)) {
+    assert(known.test(m[1].trim()),
+      `vary(${m[1].trim()}) is humanised from something layerVariesWithTime does not read`);
+  }
+}
 
 // ---- the native multiband compressor ----------------------------------------
 const fx = readFileSync(new URL('../src/engine/effects.js', import.meta.url), 'utf8');
@@ -911,6 +1014,11 @@ assert(/function keepSelectedLaneVisible\(\)[\s\S]*?classList\.contains\('collap
   && /else if \(top < grid\.scrollTop\) grid\.scrollTop = top;/.test(entry),
   'the lane is found by index off the same row height and gap the snap uses, and a '
   + 'window too short for a whole row shows the lane\'s top rather than its feet');
+assert(/function syncArrangementLaneSelection[\s\S]*?classList\.toggle\('sel', el\.dataset\.lane === selectedLane\)[\s\S]*?if \(reveal\) keepSelectedLaneVisible\(\)/.test(entry)
+  && /function selectLane\(key\)[\s\S]*?syncArrangementLaneSelection\(\{ reveal: true \}\)/.test(entry)
+  && /function loadTrack\(id\)[\s\S]*?buildArrangement\(\);[\s\S]{0,300}?syncArrangementLaneSelection\(\{ reveal: true \}\)/.test(entry)
+  && /function buildArrangement\(\)[\s\S]*?syncArrangementLaneSelection\(\);\s*\n\s*redrawSelection\(\)/.test(entry),
+  'channel selection and song load reveal the selected track while rebuilds preserve its mark');
 assert(entry.includes("const FX_KEY = 'mash-mixer-fxh'")
   && /let userFxH =/.test(entry)
   && /effectsNaturalHeight[\s\S]*?userFxH != null/.test(entry)
@@ -1563,9 +1671,12 @@ assert(/const nameInput = layer && wholeTrack/.test(entry)
   && /customLayerLabel[\s\S]*?label: VOICES\[voiceId\]\.label/.test(entry),
   'the track panel names a desk-owned track at the top, and preserves it across preset changes');
 assert(entry.includes("const SONG_LAYOUT_KEY = 'mash-mixer-song-layout'")
-  && /function currentSongLayout\(\) \{[\s\S]*?keyboard:\s*oskShown\(\)[^}]*?notes:\s*![^}]*?grid:\s*stepSeq\.isOpen\(\)/.test(entry)
+  && /function currentSongLayout\(\) \{[\s\S]*?const notes = !\$\('notes'\)\.classList\.contains\('collapsed'\)[\s\S]*?keyboard:\s*oskShown\(\)[^}]*?notes,[^}]*?grid:\s*stepSeq\.isOpen\(\)/.test(entry)
   && /function loadTrack\(id\)[\s\S]*?rememberSongLayout\(trackId\)[\s\S]*?restoreSongLayout\(id\)/.test(entry),
   'keyboard and both note editors are remembered as separate facts, and restored per song');
+assert(/function currentSongLayout\(\)[\s\S]*?lane:\s*notes && notesRollUp\(\) \? rollShownLane\(\) : null/.test(entry)
+  && /function loadTrack\(id\)[\s\S]*?const layoutLane = notesOpenInLayout\(songLayouts\[id\]\) === true[\s\S]*?if \(layoutLane\) selectedLane = layoutLane;[\s\S]*?buildRack\(\)/.test(entry),
+  'an open piano roll restores its own track selection before the mixer and arrangement build');
 assert(/function showStepSeq\(on\)[\s\S]*?rememberSongLayout\(\)/.test(entry)
   && /function showPianoRoll\(on\)[\s\S]*?rememberSongLayout\(\)/.test(entry)
   && /function showOsk\(on\)[\s\S]*?rememberSongLayout\(\)/.test(entry),
@@ -2066,7 +2177,7 @@ assert(/if \(ruler\) \{[\s\S]*?ruler\.className = 'ssqruler'[\s\S]*?surface\.app
   && /if \(docked\) \{[\s\S]*?const track = document\.createElement\('div'\)[\s\S]*?track\.className = 'ssqruler-track'/.test(barGrid)
   && /rulerHeader:\s*\(\) =>/.test(piano)
   && /const fieldLabel = \(text\) => \{[\s\S]*?el\.className = 'rollzoom-label'[\s\S]*?el\.textContent = text/.test(piano)
-  && /return \[fieldLabel\('DRAW LENGTH'\), lengthPicker\(\), fieldLabel\('ZOOM'\), zoom,[\s\S]*?fieldLabel\('TOOL'\), toolPicker\(\)\]/.test(piano)
+  && /return \[fieldLabel\('CHANNEL'\), voicePicker\(\),[\s\S]*?fieldLabel\('DRAW LENGTH'\), lengthPicker\(\), fieldLabel\('ZOOM'\), zoom,[\s\S]*?fieldLabel\('TOOL'\), toolPicker\(\)\]/.test(piano)
   && /export const NOTE_LENGTH_OPTIONS = \[[\s\S]*?\{ value: 0\.5, label: '1\/32' \},[\s\S]*?\{ value: 1, label: '1\/16' \},[\s\S]*?\{ value: 2, label: '1\/8' \},[\s\S]*?\{ value: 16, label: '1' \},/.test(piano)
   && /let noteAddLength = 1/.test(piano)
   && /addLength: \(\) => \(rollResizable\(lane\(\)\) \? noteAddLength : null\)/.test(piano)
@@ -2664,14 +2775,30 @@ assert(/stacks: \(lane\) => polyLane\(editBank\(\), lane\)/.test(entry),
     'and the star arpeggio takes a chord\u2019s lowest tone as its root rather than the'
     + ' whole array, which would have broken it');
 }
-// The roll stays VALUE-based, which is what keeps this change invisible to editing: most
-// rack-voiced lanes in the game are bass and lead, single-note parts where clicking a new
-// pitch on an occupied step is how you CORRECT a note. Only a step that already holds a
-// chord behaves chordally.
-assert(/const isChord = \(value\) => CHORD_LANES\.includes\(baseLane\(lane\(\)\)\) \|\| Array\.isArray\(value\);/
-  .test(readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta.url), 'utf8')),
-  'the roll decides chord-ness from the STEP VALUE, not from whether the lane could hold'
-  + ' one — so a click on a single-note lane still replaces, as it always has');
+// The roll asks the CHANNEL switch, not the lane's identity. Mono is still the default
+// everywhere but the chord lanes — most rack-voiced lanes in the game are bass and lead,
+// single-note parts where clicking a new pitch on an occupied step is how you CORRECT a
+// note — but Poly is now a switch away rather than out of reach.
+{
+  const roll = readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta.url), 'utf8');
+  assert(/const isChord = \(value\) => modeFor\(lane\(\)\) === 'poly' \|\| Array\.isArray\(value\);/.test(roll),
+    'the roll decides chord-ness from the CHANNEL switch, or from a step that already'
+    + ' holds a chord — never flattening a recorded chord because the switch says Mono');
+  assert(/export const defaultVoiceMode = \(laneKey\) =>\s*\(CHORD_LANES\.includes\(baseLane\(laneKey\)\) \? 'poly' : 'mono'\);/.test(roll),
+    'and a channel starts Mono unless it is a chord lane, so the default is never the mode'
+    + ' that stacks onto a note you meant to correct');
+  assert(/const canStack = \(key\) => polyLane\(editBank\(\), key\);/.test(roll)
+    && /const modeFor = \(key\) => \(canStack\(key\)[\s\S]*?: 'mono'\);/.test(roll),
+    'Poly is gated on polyLane — the same authority the recorder asks — so vox and shout'
+    + ' cannot be handed a chord the engine would drop');
+  assert(/const voiceModes = new Map\(\);/.test(roll)
+    && /voiceModes\.get\(baseLane\(key\)\) \?\? defaultVoiceMode\(key\)/.test(roll),
+    'the switch is remembered per channel and holds only what was CHANGED, so selecting'
+    + ' chords after setting bass to Poly still gives a poly chord lane');
+  assert(!/localStorage[^\n]*voice/i.test(roll),
+    'and it is not persisted: a stale Poly on bass next week turns the click that corrects'
+    + ' a note into the click that stacks onto it');
+}
 
 // ---- MIDI and Record reach the song without the keyboard open ---------------------
 //

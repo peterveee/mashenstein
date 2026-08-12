@@ -9,7 +9,7 @@ let fade = 0;          // 0 = clear, 1 = fully covered
 let fading = 0;        // -1 fading out (revealing), +1 fading in (covering)
 let transitionStyle = 'shutter';
 const TRANSITION_SPEED = 3.5; // ~0.29s closed + ~0.29s reveal: a gentle beat, not a wait
-const TRANSITION_HEROES = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
+const TRANSITION_HEROES = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'kiko', 'raymn', 'grumpos'];
 // Null until the game knows who you are. The shutter used to open on a hero
 // from the very first transition — title, difficulty, the intro panels — which
 // spoiled a cast the intro is in the middle of introducing, and presented one of

@@ -18,7 +18,7 @@
 | FERNWICK | FERNWICK, HERO OF THYME | "THE RECEIPT FORETOLD THIS." | His sacred prophecy is printed on a faded supermarket receipt. |
 | B-33P | UNIT B-33P "BLASTBOT" | "LOW ON CYAN." | Constantly reports low on cyan. Regardless of context. |
 | MOCHI | MOCHI | "PROBABLY NOT A COSMIC ENTITY." | Adorable. The stars bend slightly toward Mochi. |
-| MISS CHOMP | MISS CHOMP | "APPETITE WITH EXCELLENT POSTURE." | Occasionally eats HUD elements and returns them with a thank-you note. |
+| KIKO | KIKO, JURISDICTION PENDING | "NOBODY REPORTED IT. I NOTICED." | Maintains a case file on every object in this building. |
 | RAY M'N | RAY M'N, APPENDAGE-OPTIONAL | "LIMBS WERE OUT OF BUDGET." | The insurance form requires a limb count. He keeps writing "OPTIONAL." |
 | GRUMPOS | GRUMPOS, DAD OF BOY | "BOY." | Throws his axe majestically. Occasionally fails to catch it. |
 
@@ -145,7 +145,12 @@ The seven heroes you are not currently playing loiter here, wandering and hoppin
 > POYO. (THE STARS LEAN CLOSER.)
 > POYO?
 
-**MISS CHOMP**
+**KIKO**
+> THE SOCKET IS A CRIME SCENE. I HAVE TAPED IT OFF. NOBODY HAS RESPECTED THE TAPE.
+> MY BADGE IS VALID IN A HUNDRED AND NINETY COUNTRIES. THIS IS A BUILDING.
+> I CAME FOR A TOURNAMENT. I FOUND A FELONY. I AM ADAPTABLE.
+
+**MISS CHOMP** *(food court, act 2 onward — no longer in the relay)*
 > I ATE THE MENU. THE SPECIALS WERE DELICIOUS.
 > THE FOOD COURT IS MY HOMELAND. I AM ITS QUEEN.
 > I TRIED TO EAT THE SCORE COUNTER AGAIN. IT IS CHEWY, DARLING.
@@ -191,17 +196,14 @@ The seven heroes you are not currently playing loiter here, wandering and hoppin
 
 *First time you open any cabinet, a breaker-box minigame runs.*
 
-> BREAKER BOX: *(one of)* BLOCK SURGE · REWIRE · CODE INJECT · PADDLE WAR · MASH INVADERS · BRICK BONK · TURDLE
+> BREAKER BOX: *(one of)* BLOCK SURGE · PADDLE WAR · MASH INVADERS · BRICK BONK
 
 Each is a parody with a legal disclaimer built in:
 
 - **BLOCK SURGE** — falling five-cell pieces, deliberately not the classic seven. Marginal note: `THESE ARE NOT THE / SHAPES YOU KNOW. / LEGALLY.`
 - **PADDLE WAR** — one-point Pong against Eggshell. `FIRST POINT WINS. HIS PADDLE IS HIS SHELL.` A blinking sign reads `"I INVENTED PONG." - EGGSHELL`
 - **BRICK BONK** — Breakout, except the wall is Eggshell's mustache. `SMASH 40% OF THE MUSTACHE`
-- **CODE INJECT** — `WATCH. THE CODE IS WATCHING BACK.`
-- **TURDLE** — `4 LETTERS. 4 GUESSES. THE TURTLE WAITS.` The turtle offers `...`, and after three guesses, `HM.`
 - **MASH INVADERS** — `CLEAR THE WAVE OF DUST DEVILS.`
-- **REWIRE** — `ROUTE THE CURRENT. ROTATE TILES.`
 
 **Outcomes:**
 > **Win** — POWER RESTORED · BONUS: *<POWERUP>* ON YOUR NEXT RUN
@@ -223,7 +225,7 @@ The outgoing hero leaves. The incoming hero announces themselves:
 | FERNWICK | THE RECEIPT FORETOLD THIS. |
 | B-33P | LOW ON CYAN. |
 | MOCHI | POYO. |
-| MISS CHOMP | WAKA, DARLING. |
+| KIKO | THIS IS A CRIME SCENE. |
 | RAY M'N | HANDS OFF. LITERALLY. |
 | GRUMPOS | BOY. |
 
@@ -237,8 +239,8 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 | GNASH → FERNWICK | ALREADY AT THE NEXT CORNER. SPEED UP. | THE RECEIPT EXPRESSLY FORBIDS RUNNING. |
 | FERNWICK → B-33P | THE PROPHECY FORETOLD A METALLIC CHASSIS. | CHASSIS OPERATIONAL. CYAN LEVEL: CRITICAL. |
 | B-33P → MOCHI | PORTAL ENGAGED. SCANNING EXTRA-DIMENSIONAL SPECIMEN. | POYO. (THE PIXELS WARP SLIGHTLY.) |
-| MOCHI → MISS CHOMP | POYO? | YOU LOOK DELICIOUS, DARLING, BUT I HAVE POSTURE TO MAINTAIN. |
-| MISS CHOMP → RAY M'N | I ATE THE SCORE COUNTER. IT WAS CHEWY. | DID IT CONTAIN MY MISSING ARM VALUE? |
+| MOCHI → KIKO | POYO? | I WILL NEED THAT AS A STATEMENT. |
+| KIKO → RAY M'N | I AM NOT LEAVING. I AM CANVASSING. | CANVASS THE GLOVE. IT ACTS ALONE. |
 | RAY M'N → GRUMPOS | HANDS OFF. LITERALLY. THEY ARE UNSECURED. | BOY. FETCH THE SPARE APPENDAGES. |
 | GRUMPOS → LORENZO | PREPARE FOR BALLISTIC DISPATCH, PLUMBER. | STANDARD PROCEDURE. AIM FOR THE DUCTWORK. |
 
@@ -593,7 +595,7 @@ Under INACCURATE LORE, Eggshell commentates a game he is not watching:
 |---|---|
 | **B-33P** | PEW |
 | **MOCHI** | PROBABLY NORMAL PHYSICS |
-| **MISS CHOMP** | MISS CHOMP ATE IT. POLITELY. / AIR: SURPRISINGLY LOW CALORIE. |
+| **KIKO** | WARNED / FORMALLY WARNED |
 | **GRUMPOS** | BOY. / THE AXE LODGED IN THE SCENERY. INTENDED. |
 
 *And the toaster — the third plug in every stage, all 27 of them:*

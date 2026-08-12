@@ -80,7 +80,10 @@ const BROW_L = 0.3, BROW_A = 0.92;
 // A scale rather than an absolute so a future BROW_L move carries him with it,
 // and he is measured as the LOWEST-contrast brow in the cast either way (see the
 // brow bake-off) — so this both keeps his hue and buys back a little presence.
-const BROW_L_SCALE = { gary: 0.4 };
+// Kiko is here for the same reason Gary is: BROW_L lightens toward WHITE, and a
+// brow that is already a mid-brown rather than near-black goes chalky at the full
+// 0.3. Hers is scaled harder than his because her ink is browner still.
+const BROW_L_SCALE = { gary: 0.4, kiko: 0.3 };
 
 //   brow  — scales the eyebrow hairline's WIDTH alone, on top of `face`.
 //   browA — the brow ink's OPACITY, absolute (not a multiplier). See BROW_A.
@@ -262,7 +265,13 @@ export const TOON_SPECS = {
   // judged better before the port and reverted, and the rest of it kept. Not a
   // cloth problem: the tunic escape measured 0.003u either way. His legs simply
   // read better on the old swing.
-  fernwick: { rig: 'humanoid', head: 'floppy', mouth: 'smile', back: 'shield', tunic: true, rollDuck: true, slim: true, armDepth: true, hands: true, limbStyle: 'tunic' },
+  //
+  // `ears` at Lorenzo's own numbers, chosen out of the ear bake-off — the same
+  // piece Kiko opted into, not a third drawing. He pays more for it than anyone:
+  // his blond mass paints AFTER the skull and stands 1.027R proud at ear-top
+  // height, so the upper half of the ear is behind hair and what shows is the
+  // lobe below his sideburn end. That is the read that was wanted.
+  fernwick: { rig: 'humanoid', head: 'floppy', mouth: 'smile', back: 'shield', tunic: true, rollDuck: true, slim: true, armDepth: true, hands: true, limbStyle: 'tunic', ears: true },
   // armLen 1.3: his arm IS his weapon, and at the stock 0.26u reach the barrel
   // died right on his own silhouette edge with no gun sticking out of him. The
   // longer bones also cure the stubbiness — the upper arm goes from 1.9x its
@@ -271,6 +280,29 @@ export const TOON_SPECS = {
   b33p: { rig: 'humanoid', head: 'dome', mouth: 'grille', cannon: true, armDepth: true, hands: true, armLen: 1.3, limbStyle: 'snap' },
   mochi: { rig: 'pika' },
   chompo: { rig: 'disc' },
+  // Kiko, straight off candidate N. The split skirt is `dress: 'split'` — one
+  // panel longer than a flare with a single slit up the travel side, so it opens
+  // toward the direction she runs. `taper: 0.8` is tighter than the rest of the
+  // cast because the qipao has to hang off a waist rather than a box.
+  // `tall` is the whole-figure height dial: it lifts head, shoulders and torso
+  // top and lengthens the legs TOGETHER, and the head's own RADIUS is not in it
+  // — so the figure grows without the face growing, which is what reads as a
+  // taller person rather than a bigger drawing. 1.02 stands her crown at 1.006
+  // of the draw height, measured rather than guessed: a little under B-33P's
+  // dome (1.094) and a little under Lorenzo (1.025), which is where she was
+  // asked to land. She was 0.91 — the shortest thing in the lane, which is not
+  // what a martial artist should be — and B-33P height (1.13) overshot it.
+  //
+  // `legLength` is the split between torso and leg WITHIN that height. It moves
+  // the hip only: the crown does not move a pixel between 1.0 and 1.12, which
+  // is why lengthening legs alone never made her taller. Just over 1 keeps a
+  // little of the leggy line a fighter wants without spending the torso on it.
+  // Her head was reworked off four references after she shipped: hair cut to the
+  // jaw, a W cut into the hairline with hair piled on the crown, two ribbon ends
+  // per bun beside the long tails, a gold band on the bun/hair join, and ears.
+  // docs/notes/kiko-persona.md records what each of those beat and why.
+  kiko: { rig: 'humanoid', tall: 1.02, legLength: 1.06, headScale: 0.88, mouthLift: 0.014, eyeLift: 0.008, head: 'buns', mouth: 'smile', slim: true, taper: 0.8, armLift: 0.014, armOut: 0.03, armDepth: true, limbStyle: 'snap', bareArms: true, puffs: true, dress: 'split', waistRise: 0.035, bracers: true, boots: 0.52, kiblast: true, handsFront: true,
+    hairCut: 'jaw', fringe: 'twin-pile', bunStubs: 'pair', bunJoin: 'band', ears: true, earStud: true },
   gary: { rig: 'humanoid', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true, limbStyle: 'snap' },
   // The serving line's own staff. Stout and short-armed on purpose: she is only
   // ever seen from the deck up, framed by a sneeze guard, so the silhouette that
@@ -281,7 +313,20 @@ export const TOON_SPECS = {
   // tatSide +1 puts the war paint on the screen-RIGHT: the depth rig swings his
   // near arm up the screen-left side, which sat over the old stripe half the
   // cycle. Face streak and torso stripe are one marking and share the sign.
-  grumpos: { rig: 'humanoid', heavy: true, head: 'bald', beard: true, back: 'axe', shoulders: 1.08, taper: 0.58, pecs: true, armDepth: true, tatSide: 1, limbStyle: 'heavy' },
+  //
+  // `earOut: 0.88` is the TUCKED ear, chosen out of the bake-off over the stock
+  // 0.95 every other eared hero wears. He is the head a stock ear shouts on, for
+  // reasons that are all measured: he is bald, so nothing beside his head
+  // competes; his R is 0.22u against everyone else's 0.21u, so the same ellipse
+  // is 5% bigger before anything is chosen; and his block head is at its widest
+  // exactly where the ear sits, 0.993R, then tapers to 0.937R only 0.2R lower,
+  // handing the ear's bottom half more clear air than a round skull would.
+  // Sliding it in to 0.88R takes the visible crescent from 0.157R to 0.087R —
+  // a little over half — while leaving the ear itself full size, so what shows
+  // is full height and reads as an ear mostly behind a head rather than as a
+  // smaller ear. His beard roots at 0.94R and paints after, landing flush with
+  // the jaw line rather than over the ear, so it takes nothing back.
+  grumpos: { rig: 'humanoid', heavy: true, head: 'bald', beard: true, back: 'axe', shoulders: 1.08, taper: 0.58, pecs: true, armDepth: true, tatSide: 1, limbStyle: 'heavy', ears: true, earOut: 0.88 },
 };
 
 // ---------------------------------------------------------------- helpers
@@ -1028,7 +1073,7 @@ function locoFoot(p, stride, lift, L) {
 }
 
 // ---------------------------------------------------------------- faces
-const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7 };
+const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7, kiko: 1.9 };
 
 // ------------------------------------------------------ victory routines
 // The results screen holds for a while, so a single looping wiggle reads as a
@@ -1039,10 +1084,16 @@ const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4
 const CELEBRATE_MOVE = {
   lorenzo: 'hop', gnash: 'spin', fernwick: 'spin', b33p: 'shimmy', mochi: 'hop',
   chompo: 'spin', gary: 'bow', raymn: 'shimmy', grumpos: 'flex', dolores: 'hips',
+  // Kiko does not celebrate, she stands down. `bow` is the only move in the set
+  // that is a held posture rather than a wiggle, which is the whole reading:
+  // everyone else is delighted and she is filing it.
+  kiko: 'bow',
 };
 // How high the signature bounce carries each hero. The light ones leave the
 // floor; Grumpos and the robot mostly rock in place.
-const CELEBRATE_BOUNCE = { mochi: 0.15, chompo: 0.11, lorenzo: 0.09, raymn: 0.07, grumpos: 0.03, b33p: 0.035 };
+// (default 0.055). Kiko sits under it deliberately: she is athletic enough to
+// leave the floor and the point is that she does not.
+const CELEBRATE_BOUNCE = { mochi: 0.15, chompo: 0.11, lorenzo: 0.09, raymn: 0.07, grumpos: 0.03, b33p: 0.035, kiko: 0.04 };
 const CEL_CYCLE = 2.6, CEL_SIG = 0.6; // seconds per loop; fraction on the signature
 // One-switch rollback for the shipped celebration redesign. Callers normally
 // omit celebrateStyle and inherit this value; the gallery's before column asks
@@ -1222,9 +1273,9 @@ export const TITLE_PARADE_ACTIONS = Object.freeze({
   fernwick: 'shield roll',
   b33p: 'cannon aim',
   mochi: 'float and squish',
-  chompo: 'chomp',
   raymn: 'rocket-fist toss',
   grumpos: 'menu flex',
+  kiko: 'warning shot',
 });
 
 export function titleParadeAction(id, time, progress) {
@@ -1252,6 +1303,11 @@ export function titleParadeAction(id, time, progress) {
     // made the title choreography sound like something it never rendered.
   }
   if (id === 'grumpos') { patch.menuAction = 'flex'; patch.squash = lift * 0.12; }
+  // `aim` on a kiblast spec is her own palms-forward stance, not B-33P's cannon
+  // (see the kiblast branch in drawArms). She plants rather than bounces: a
+  // shallow squash and no feetLift, where B-33P's is 0.35 and Gnash leaves the
+  // floor entirely.
+  if (id === 'kiko') { patch.menuAction = 'aim'; patch.squash = lift * 0.1; }
   return { pose: patch, feetLift };
 }
 
@@ -1263,6 +1319,7 @@ export function transitionCameoAction(id) {
   if (id === 'mochi') patch.float = true;
   if (id === 'chompo') patch.menuAction = 'chomp';
   if (id === 'grumpos') patch.menuAction = 'flex';
+  if (id === 'kiko') patch.menuAction = 'aim';
   return patch;
 }
 
@@ -1771,86 +1828,6 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     dot(ctx, eyeX(1), cy, 0.032 * u, p.e);
     return;
   }
-  if (ex.anime) {
-    // The drawn-eye build, in two sizes. What makes it this style rather than
-    // the shipped eye enlarged is never the SIZE — it is that the IRIS carries
-    // the eye instead of a small pupil rattling around inside a white oval,
-    // that a lash line caps it, and that a catchlight lights it. Scale the
-    // shipped eye up without those and you get a startled hero; put those in at
-    // modest size and you get this. Nothing here touches eye SHAPE: both builds
-    // are round, and the style is a drawing convention applied to the whole
-    // face rather than a marker of anything about the character.
-    //
-    // `big` is the full version. `soft` sits between it and the cast's own eye
-    // — barely larger than shipped — and spends its budget differently: MORE
-    // WHITE around a smaller iris, ONE gentle highlight instead of two, a
-    // hairline lash instead of a heavy cap, and a near-level brow. Those four
-    // are the whole difference between expressive and staring. The big build's
-    // dark mass, hard cap and down-angled brow are precisely the ingredients of
-    // a glare, which is why it reads as intense even at rest.
-    const soft = ex.anime === 'soft';
-    const A = soft
-      ? { rx: 0.058, ry: 0.07, sep: 0.082, iris: 0.66, pupil: 0.42, lash: 0.011,
-          hi: 0.3, browGap: 0.024, browW: 1.0, browTilt: 0.0035, browL: 0.7 }
-      : { rx: 0.07, ry: 0.088, sep: 0.094, iris: 0.92, pupil: 0.55, lash: 0.02,
-          hi: 0.34, browGap: 0.014, browW: 1.25, browTilt: 0.008, browL: 0.45 };
-    const rx = A.rx * u, ry = A.ry * u;
-    const ax = (side) => cx + side * A.sep * u * (turned && side !== nearSide ? 1 - 0.42 * turnDepth : 1);
-    const lookX = ((ex.calling ? 0.02 : ex.focus ? 0.01 : 0) + (ex.glanceX || 0)) * u + turnYaw * 0.03 * u;
-    const lookY = (ex.surprise || ex.cheer ? -0.006 : 0.006 + (ex.glanceY || 0)) * u;
-    const iris = p.iris || p.hairDark || p.e;
-    for (const sx of [-1, 1]) {
-      const ex0 = ax(sx);
-      outlined(ctx, '#fff', hair(0.4, 0.011 * u) * INK.face, (c) =>
-        c.ellipse(ex0, cy, rx, ry, 0, 0, Math.PI * 2));
-      // Iris sits LOW in the eye, leaving a sliver of white along the top lid.
-      // Centred, the eye reads as a stare; the sliver is what gives it a lid.
-      const ix = ex0 + lookX, iy = cy + lookY + ry * 0.08;
-      ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(ex0, cy, rx, ry, 0, 0, Math.PI * 2);
-      ctx.clip();
-      dot(ctx, ix, iy, rx * A.iris, iris);
-      dot(ctx, ix, iy + ry * 0.04, rx * A.iris * A.pupil, p.e);
-      // Highlights: one high and inboard, plus — on the big build only — a
-      // small opposed glint. That second mark exists to stop a big catchlight
-      // reading as a hole punched in the iris; at the soft size there is no
-      // hole to rescue and it is just clutter.
-      dot(ctx, ix - sx * rx * 0.3, iy - ry * 0.42, rx * A.hi, '#fff');
-      if (!soft) dot(ctx, ix + sx * rx * 0.38, iy + ry * 0.34, rx * 0.15, 'rgba(255,255,255,0.8)');
-      // The lash line: a cap over the top of the eye, clipped to it, so the eye
-      // is closed off above the way a drawn one is. Shorter and finer on the
-      // soft build — a heavy cap is a scowl's worth of weight on the lid.
-      ctx.strokeStyle = p.e;
-      ctx.lineWidth = hair(0.5, A.lash * u) * INK.face;
-      ctx.beginPath();
-      ctx.ellipse(ex0, cy, rx * 0.99, ry * 0.99, 0,
-        Math.PI * (soft ? 1.16 : 1.08), Math.PI * (soft ? 1.84 : 1.92));
-      ctx.stroke();
-      ctx.restore();
-    }
-    if (!ex.brow) {
-      // Brows always: a drawn eye has them, and without one a pair of eyes this
-      // size has nothing above it. Darker and closer than the cast's hairline
-      // brows, which at the shared lightness came out as two grey bars floating
-      // over the face.
-      ctx.strokeStyle = browInk(p.e, INK.browA * (ex.browEase ?? 1), INK.browL * A.browL);
-      ctx.lineWidth = hair(BROW_MIN, BROW_W * u * A.browW) * INK.face * INK.brow;
-      ctx.beginPath();
-      const by = cy - ry - A.browGap * u;
-      for (const sx of [-1, 1]) {
-        const bx = ax(sx);
-        // Angled down toward the nose — but only just, on the soft build. The
-        // tilt is most of what turns a brow into a scowl, and a resting face
-        // should not be wearing one.
-        const tilt = A.browTilt * (ex.annoyed ? 2 : 1) * u;
-        ctx.moveTo(bx - sx * rx * 0.85, by - tilt);
-        ctx.lineTo(bx + sx * rx * 0.8, by + tilt * 1.3);
-      }
-      ctx.stroke();
-    }
-    return;
-  }
   for (const sx of [-1, 1]) {
     // Annoyed narrows the eye to a glare — the white squashes and the pupil
     // stares straight out. Style 2 rolls the pupils up; style 3 squeezes to
@@ -1871,7 +1848,13 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
   if (!lod && !ex.brow && ex.mood !== 'bright' && !ex.relaxed && (ex.annoyed || ex.calling || ex.hmph || ex.focus || ex.browRaise || ex.mood === 'cocky' || ex.mood === 'gruff')) {
     // Fernwick (mood 'bright') draws NO brows — a bare, open brow keeps him
     // sweet and lets his blond bangs frame the eyes while running.
-    ctx.strokeStyle = browInk(p.e, INK.browA * (ex.browEase ?? 1), INK.browL * (BROW_L_SCALE[ex.id] ?? 1));
+    // `browCol` lets a palette take its brows off the full face ink. Kiko's are
+    // her own dark hair rather than her eye ink: a black brow under a brown fringe
+    // reads as a third colour on a head that only has two, and hers is the only
+    // face on the roster where the fringe comes down far enough for the two to be
+    // read against each other.
+    ctx.strokeStyle = browInk(p.browCol || p.e,
+      INK.browA * (ex.browEase ?? 1), INK.browL * (BROW_L_SCALE[ex.id] ?? 1));
     ctx.lineWidth = hair(BROW_MIN, BROW_W * u) * INK.face * INK.brow;
     ctx.beginPath();
     if (ex.annoyed && ex.madStyle === 1) {
@@ -2236,6 +2219,93 @@ function bushyBrows(ctx, p, u, cx, cy, ex, ow) {
   }
 }
 
+// How much hair a long-hair cut actually hangs, as two multipliers on the one
+// rim shape every one of those cuts shares (see drawHead's `longHair` block).
+// `long` is the shipped read for all four heads that use it and is exactly the
+// identity — nothing changes for braid, pony or bun by this table existing.
+//
+// `fall` is how far below the head's centre the hair reaches and `flare` how far it
+// stands proud of the skull. Two shorter cuts were built and lost: `crop` (to the
+// ear) and `up` (nothing at the nape), both of which also carried two loose temple
+// wisps to keep a bare nape reading as hair. Gone rather than parked — the record
+// is in docs/notes/kiko-persona.md.
+const HAIR_CUTS = {
+  long: { fall: 1, flare: 1 },
+  // Cut level just above the jaw — KIKO. Nothing reaches the shoulder, so her
+  // qipao keeps its collar and yoke, which is the whole reason the length moved.
+  jaw: { fall: 0.6, flare: 0.9 },
+};
+
+// Short ribbon ends fanning out of each bun's wrap, as [angle°, length, width].
+// 0° points straight outboard and negative is up; length and width are both in
+// bun radii. ADDITIVE — the long hanging tails are untouched by every entry
+// here, including the empty default: the tie's streamer and the tie's cut ends
+// are two different pieces of the same ribbon and the reference has both.
+//
+// Only reachable through drawToon's `opts.spec` seam for now, i.e. from a
+// gallery lab section. Kept short in every style for the reason the call site
+// spells out: past about one bun radius a stub stops reading as a cut end and
+// starts competing with the tail for the silhouette.
+// Angles are kept LOW and lengths long enough to droop. The first pass fanned
+// four short ends steeply upward off each bun and the result was unmistakable
+// and wrong: a pair of white spikes, or a crab claw. Cloth ends are heavy — they
+// leave the knot roughly sideways and fall — so nothing here points above about
+// 50° and every entry is long enough that its own bow can sag. They came back in
+// size after that: at a full bun radius they were the largest thing on her head
+// and the bun they are tied to was reading as their hub. Then back OUT again by
+// about a fifth, which is where they sit now — the droop and the hard taper are
+// what let a stub be long without reading as a flag, and neither existed when
+// length was first tried.
+//
+// The WIDTHS then came down by half, separately from the lengths, and the lengths
+// went up again with them. Those two dials pull in opposite directions and the
+// ratio is what matters: length was never what made a stub heavy — a long thin cut
+// end is ribbon, a short fat one is a paddle. They are now the finest and longest
+// they have been, which is the same shape read at a different weight.
+const BUN_STUBS = {
+  // Two ends, one just above horizontal and one below, straddling the long tail's
+  // root. Chosen over two longer ones and over three staggered at mixed lengths: it
+  // says "tied" and costs almost no head width, where three long marks stop a bun
+  // reading as one shape. The losers are gone, not parked — see the persona note.
+  pair: [[-28, 1.25, 0.16], [22, 1.12, 0.14]],
+};
+
+// The fringe, as a shape plus two independent modifiers. `sweep` is the shipped
+// read for every long-hair head and is the identity — no lift, no locks.
+//
+//   shape     'sweep', a side part across the brow. The only shape there is:
+//             'parted' (a centre part meeting in a point between the brows) and
+//             'choppy' (a row of pointed clumps at alternating depths) were both
+//             built, both lost the bake-off, and both came out — each was a
+//             second copy of the fringe path and would now need a second copy of
+//             the tuft rooting as well. docs/notes/kiko-persona.md has the record.
+//   back      how far the fringe's LOWER EDGE lifts off the brow, in R. This is
+//             the hairline: the temple ends stay put, so what opens up is a band
+//             of forehead rather than a shorter fringe. The brow's own top is at
+//             -0.633R, which is what caps this at about 0.2.
+//   tendrils  the loose locks that fall out of a fringe onto the forehead.
+//   twin      the W: three teeth cut into the hairline instead of one lock.
+// The W's shape has five more numbers, all left at their defaults in the painter
+// because only one combination survived: `wMid` (the root shared by the front and
+// middle teeth, which is what puts the W right of centre), `wBack` (the middle
+// tooth's outer root — how wide its base is), `midDrop` (how far its point comes
+// down; with wBack this is what POINTINESS is, being the ratio of the two and not
+// either alone), and `tailDrop` / `tailW` for the fine stray behind it.
+//   pile      lifts the CROWN — of the fringe and of the mass behind the skull
+//             together — so more hair sits on top. Length is untouched.
+//
+// `choppy` carries no `back` because its clump tips and notches are already
+// measured against the brow — the setback is in the points themselves.
+const FRINGES = {
+  // The default for every long-hair head but Kiko's, and the identity: no setback,
+  // no pile, no locks.
+  sweep: { shape: 'sweep' },
+  // KIKO. Hairline back 0.15R off the brow, 0.09R of hair piled on the crown, and
+  // the W cut into the hairline — a wide shallow front slope, a pointed middle
+  // tooth on a 0.33R base against a 0.26R drop, and a fine stray behind it.
+  'twin-pile': { shape: 'sweep', back: 0.15, tendrils: true, twin: true, pile: 0.09 },
+};
+
 // Head + hat + face, anchored at head center (hx, hy). Shared by the body
 // rig and the face-crop sprites.
 function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
@@ -2266,13 +2336,25 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     ctx.scale(1 - 0.08 * outlineDepth, 1);
     ctx.translate(-hx, -hy);
   }
-  const R = (spec.heavy ? 0.22 : 0.21) * u;
+  const R = (spec.heavy ? 0.22 : 0.21) * u * (spec.headScale || 1);
+  // The bun geometry, named once because TWO passes need it: the behind-head pass
+  // paints the buns, their wrap and their ribbon, and the very last pass paints
+  // the gold beads on top of the finished head. See BUN_BEAD_ARC.
+  // Named oxR/oxY/oxX rather than bun*: the half-up cut further down has its own
+  // `bunX`/`bunY` for the knot at its nape, and one pair of names meaning two
+  // different buns in one function is a trap for whoever moves code next.
+  const oxR = R * 0.46, oxY = hy - R * 0.82, oxX = (sx) => hx + sx * R * 1.02;
   // The three long-hair cuts share a head: one mass behind the skull, one
   // fringe on it, and only what hangs off the back changes. Named once here
   // because both halves of drawHead ask for it and they sit either side of the
   // skull's own fill.
   const longHair = spec.head === 'braid' || spec.head === 'pony' || spec.head === 'bun'
     || spec.head === 'buns';
+  // Looked up out here rather than beside the fringe it mostly describes,
+  // because `pile` belongs to BOTH halves of the hair: the mass behind the skull
+  // and the fringe on it have to rise together or the extra volume is a fringe
+  // sitting proud of its own hairline.
+  const fr = FRINGES[spec.fringe] || FRINGES.sweep;
   // hair/hat layers that sit BEHIND the head
   if (spec.head === 'jackal') {
     // A matched pair of tall ears, near-symmetric with just a touch of lean so
@@ -2348,14 +2430,40 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // part of itself the viewer can see — and the top is half of what a look
     // bake-off is asking about. The length that reads as "long hair" is bought
     // at the sides and by the plait; the fall only has to clear the jaw.
+    //
+    // A SHORTER cut is that same rim re-measured, not a different head. Two
+    // numbers do it, and `cut.fall === 1 && cut.flare === 1` — every cut but
+    // the ones a lab section hands in — leaves the path below byte-identical:
+    //
+    //   fall  scales everything BELOW the head's centre, which is where the
+    //         length lives. The crown control points are above it and never
+    //         move, so shortening the hair never flattens the skull.
+    //   pile  lifts everything ABOVE the head's centre — the crown, and only the
+    //         crown. This is "more hair piled on top": it buys height in the
+    //         silhouette without touching the length, which is the one thing on
+    //         this head that is already settled.
+    //   flare scales only the part of x that stands PROUD of the skull (|mx|>1),
+    //         because inboard of that the rim is behind the face and invisible.
+    //         Scaling raw x instead would pull the rim inside the head and the
+    //         hair would vanish rather than tighten.
+    const cut = HAIR_CUTS[spec.hairCut] || HAIR_CUTS.long;
+    // Positive `my` is BELOW the head centre — the path's own sign convention
+    // is mixed, so the mapper takes one direction and the call sites read it.
+    // Both mappers short-circuit at 1 rather than multiplying by it, so the
+    // shipped cut comes out of the arithmetic bit-identical instead of merely
+    // very close — `1 + (1.2 - 1) * 1` is not 1.2 in floating point.
+    const HX = (mx) => hx + R * (cut.flare === 1 || Math.abs(mx) <= 1
+      ? mx : Math.sign(mx) * (1 + (Math.abs(mx) - 1) * cut.flare));
+    const HY = (my) => hy + R * (my <= 0 ? my - (fr.pile || 0)
+      : cut.fall === 1 ? my : my * cut.fall);
     outlined(ctx, p.hair, ow, (c) => {
-      c.moveTo(hx - R * 1.2, hy + R * 0.72);                                        // left fall, past the jaw
-      c.quadraticCurveTo(hx - R * 1.46, hy - R * 0.44, hx - R * 0.46, hy - R * 1.16);
-      c.quadraticCurveTo(hx + R * 0.5, hy - R * 1.38, hx + R * 1.2, hy - R * 0.44);  // over the crown
-      c.quadraticCurveTo(hx + R * 1.42, hy + R * 0.24, hx + R * 1.12, hy + R * 0.78); // right fall
-      c.quadraticCurveTo(hx + R * 0.92, hy + R * 1.06, hx + R * 0.52, hy + R * 0.96); // tapering under the ear
-      c.quadraticCurveTo(hx, hy + R * 0.78, hx - R * 0.54, hy + R * 0.98);            // the inner edge is behind the face
-      c.quadraticCurveTo(hx - R * 0.94, hy + R * 1.08, hx - R * 1.2, hy + R * 0.72);
+      c.moveTo(HX(-1.2), HY(0.72));                                    // left fall, past the jaw
+      c.quadraticCurveTo(HX(-1.46), HY(-0.44), HX(-0.46), HY(-1.16));
+      c.quadraticCurveTo(HX(0.5), HY(-1.38), HX(1.2), HY(-0.44));      // over the crown
+      c.quadraticCurveTo(HX(1.42), HY(0.24), HX(1.12), HY(0.78));      // right fall
+      c.quadraticCurveTo(HX(0.92), HY(1.06), HX(0.52), HY(0.96));      // tapering under the ear
+      c.quadraticCurveTo(HX(0), HY(0.78), HX(-0.54), HY(0.98));        // the inner edge is behind the face
+      c.quadraticCurveTo(HX(-0.94), HY(1.08), HX(-1.2), HY(0.72));
       c.closePath();
     });
     // Where the hanging hair roots and how it swings. The hero travels +x, so
@@ -2537,19 +2645,14 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // Drawn in the behind-head pass so the skull crops their inner edge and
       // they read as sitting ON the head rather than floating beside it.
       const ribbon = p.ribbon || p.w;
-      const bunR = R * 0.46;
-      const bunY = hy - R * 0.82;
       for (const sx of [-1, 1]) {
-        const bx = hx + sx * R * 1.02;
+        const bx = oxX(sx);
         // The tails. The far one is shorter and pushed back — matched, the two
         // read as one wide ribbon behind her head rather than as a pair.
         const near = sx < 0;                       // -x is her back, as everywhere else
-        // `shortRibbons` ties them off at the bun instead of letting them fly.
-        // Its multiplier is small because the flying length below is now long:
-        // the compact cut has to stay where it always was, or the A/B it exists
-        // to run stops being a comparison and becomes two lengths of the same
-        // thing.
-        const len = (near ? 1 : 0.66) * (spec.shortRibbons ? 0.3 : 1);
+        // The far ribbon is shorter, which is the only depth cue a pair of
+        // symmetric streamers gets front-on.
+        const len = near ? 1 : 0.66;
         // They HANG, always, and running only leans them back. Two things were
         // wrong with the version that swept them out level: a pair of arcs
         // rising symmetrically off both sides of the head is the silhouette of
@@ -2582,39 +2685,101 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
         // Ribbon width, as a fraction of the head. One number for the whole
         // shape so the root, the waist and the fork stay in proportion when it
         // moves — a ribbon that tapers at a different rate than it narrows
-        // reads as a leaf.
+        // reads as a leaf. These LONG tails keep their width and their swing —
+        // thinning and calming was tried here and it was the wrong piece: it is the
+        // short cut ends that were too heavy and too busy, not the streamers.
         const rw = 0.62;
-        outlined(ctx, ribbon, hair(0.5, ow * 0.75), (c) => {
-          c.moveTo(bx + sx * R * 0.12 * rw, bunY + R * 0.2);
+        // The tails are NOT measured when a face cell is being fitted. They hang
+        // most of a head below the chin, and measured as part of the face they
+        // shrank the whole head to a third of the cell — her portrait read small
+        // beside every other hero's. They still DRAW at full length in the cell
+        // and run off its bottom edge, which is what a portrait crop does with
+        // long hair. See paintFace's `forFit` and drawToonFace's clip.
+        if (!pose.portraitFit) outlined(ctx, ribbon, hair(0.5, ow * 0.75), (c) => {
+          c.moveTo(bx + sx * R * 0.12 * rw, oxY + R * 0.2);
           c.quadraticCurveTo(ctlX - sx * R * 0.16 * rw, ctlY, tipX - sx * R * 0.02 * rw, tipY);
           // A forked end: a ribbon is cut, not rounded off.
           c.lineTo(tipX + sx * R * 0.2 * rw, tipY - R * 0.12 * rw);
           c.lineTo(tipX + sx * R * 0.16 * rw, tipY + R * 0.16 * rw);
           c.quadraticCurveTo(ctlX + sx * R * 0.22 * rw, ctlY + R * 0.16 * rw,
-            bx + sx * R * 0.34 * rw, bunY + R * 0.3);
+            bx + sx * R * 0.34 * rw, oxY + R * 0.3);
           c.closePath();
         });
+        // SHORT ribbon ends sticking out of the wrap, IN ADDITION to the long
+        // tails above — off the chibi reference, where each bun has a couple of
+        // cut ends fanning off it as well as the streamer hanging past the ear.
+        // They are the tie's other half: a ribbon wrapped round a bun has to
+        // end somewhere, and until now it ended nowhere.
+        //
+        // Drawn between the tails and the bun on purpose. The bun's own two
+        // circles land on top and swallow every root, so each stub reads as
+        // coming out from UNDER the wrap — which is the whole difference
+        // between a ribbon end and a spike glued to the side of her head.
+        // They are short by design: at hero size anything longer stops reading
+        // as a cut end and starts competing with the tail for the silhouette,
+        // and the tail is the one that should win.
+        for (const [deg, slen, sw] of BUN_STUBS[spec.bunStubs] || []) {
+          // Mirrored: 0° is straight outboard, negative is up. The far bun's
+          // stubs are shorter with its tail, so the pair keeps its depth cue.
+          const a = deg * Math.PI / 180;
+          const dx = Math.cos(a) * sx, dy = Math.sin(a);      // sx mirrors the fan; up stays up
+          // Measured from the bun's CENTRE, and it has to clear the bun's own
+          // hair circle at 1.06 oxR before any of it is visible at all — the
+          // first version reached 1.06 exactly and drew four identical columns
+          // of nothing. So the 1.0 is not a taste number: it is the wrap, and
+          // `slen` is the part that sticks out past it.
+          const reach = oxR * (1.0 + slen * (near ? 1 : 0.82));
+          // A cut end flutters at the tip and not at the root, which is under
+          // the wrap and cannot move — so the wave is applied to the tip alone,
+          // and only a tenth of it. A stub is SHORT: the same figure that reads as
+          // a gentle sway on a streamer hanging past her collarbone reads as a
+          // twitch on something this size, which is why the two pieces of the same
+          // ribbon do not share one number.
+          const rx0 = bx + dx * oxR * 0.34, ry0 = oxY + dy * oxR * 0.34;
+          // The tip DROOPS, and by MORE the longer the stub is: cloth is heavy, so
+          // a long end sags further than a short one, and a fixed sag across a set
+          // of mixed lengths reads as a fan of straight spokes instead. A flat
+          // blade at a fixed angle was the first version of this and read as a
+          // paper tag pinned to the bun.
+          const tx0 = bx + dx * reach + wave * 0.1;
+          const ty0 = oxY + dy * reach + oxR * 0.1 * (1 + slen);
+          const nx = -dy, ny = dx;                            // normal to the blade
+          const w0 = oxR * sw, w1 = w0 * 0.56;               // tapers hard toward the cut
+          outlined(ctx, ribbon, hair(0.45, ow * 0.7), (c) => {
+            c.moveTo(rx0 + nx * w0, ry0 + ny * w0);
+            // Bowed away from the head, so a stub is cloth rather than a lath.
+            c.quadraticCurveTo((rx0 + tx0) / 2 + nx * w0 * 1.5, (ry0 + ty0) / 2 + ny * w0 * 1.5,
+              tx0 + nx * w1, ty0 + ny * w1);
+            // A shallow V. Cut deep, on a piece this short, it stops being a
+            // cut end and becomes a fork — which is what read as a claw.
+            c.lineTo(tx0 - dx * oxR * 0.09, ty0 - dy * oxR * 0.09);
+            c.lineTo(tx0 - nx * w1, ty0 - ny * w1);
+            c.quadraticCurveTo((rx0 + tx0) / 2 - nx * w0 * 0.6, (ry0 + ty0) / 2 - ny * w0 * 0.6,
+              rx0 - nx * w0, ry0 - ny * w0);
+            c.closePath();
+          });
+        }
         // Hair under the wrap, and the wrap OFF-CENTRE on it — up and outboard,
         // so brown shows along the inner and lower edge of each bun. Two
         // concentric circles instead read as a pair of pale ears, which is a
         // different animal entirely.
-        outlined(ctx, p.hair, ow, (c) => c.arc(bx, bunY + R * 0.14, bunR * 1.06, 0, Math.PI * 2));
+        outlined(ctx, p.hair, ow, (c) => c.arc(bx, oxY + R * 0.14, oxR * 1.06, 0, Math.PI * 2));
         outlined(ctx, ribbon, ow, (c) =>
-          c.arc(bx + sx * bunR * 0.26, bunY - bunR * 0.12, bunR * 0.82, 0, Math.PI * 2));
+          c.arc(bx + sx * oxR * 0.26, oxY - oxR * 0.12, oxR * 0.82, 0, Math.PI * 2));
         if (!lod) {
           // The gathered band at the base, in the accent — the mark that says
           // the ribbon is tied round something.
           outlined(ctx, p.a, hair(0.4, ow * 0.5), (c) =>
-            c.ellipse(bx - sx * R * 0.08, bunY + R * 0.4, bunR * 0.42, bunR * 0.26, sx * 0.5, 0, Math.PI * 2));
+            c.ellipse(bx - sx * R * 0.08, oxY + R * 0.4, oxR * 0.42, oxR * 0.26, sx * 0.5, 0, Math.PI * 2));
           ctx.save();
           ctx.beginPath();
-          ctx.arc(bx, bunY, bunR, 0, Math.PI * 2);
+          ctx.arc(bx, oxY, oxR, 0, Math.PI * 2);
           ctx.clip();
           ctx.globalAlpha *= 0.45;
           ctx.strokeStyle = OUTLINE;
           ctx.lineWidth = hair(0.4, ow * 0.6);
           ctx.beginPath();
-          ctx.arc(bx + sx * bunR * 0.5, bunY + bunR * 0.5, bunR * 0.8, -Math.PI, Math.PI * 0.2);
+          ctx.arc(bx + sx * oxR * 0.5, oxY + oxR * 0.5, oxR * 0.8, -Math.PI, Math.PI * 0.2);
           ctx.stroke();
           ctx.restore();
         }
@@ -2687,7 +2852,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       }
     }
   }
-  if (spec.plumber) {
+  if (spec.plumber || spec.ears) {
     // Ears go BEHIND the head, so the skull's own fill cuts them off and only
     // the outboard lobe shows. Drawn on top they were two blobs sitting ON the
     // face, and the separate sideburn strips that came with them read as hair
@@ -2698,11 +2863,47 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     //
     // The right ear rides higher, following the hat. Not anatomy — the tilt
     // opens more bare head on that side, and an ear sitting at the same height
-    // as its partner leaves that space looking empty.
+    // as its partner leaves that space looking empty. Lorenzo's cap only.
+    //
+    // `spec.ears` opts any other head into the SAME piece rather than a second
+    // one: an ear is an ear, and a hero who grows one should grow the one this
+    // file already draws. It sits clear of the buns by measurement — the bun's
+    // hair circle bottoms out at -0.19R and the ear's top is -0.22R — so the two
+    // stack up the side of her head instead of colliding.
+    //
+    // It stays AFTER the behind-head hair and before the skull, which is where
+    // Lorenzo's has always been. Moved earlier, so that a long cut would cover
+    // an ear the way real hair does, it vanished entirely: her hair rim stands
+    // 1.16R proud even CROPPED and the ear spans 0.75R..1.15R, so every cut
+    // swallowed it whole. In front of the hair and cropped by the skull is also
+    // what the chibi references draw.
+    //
+    // Three dials, defaulted to the shipped piece so nobody without them moves.
+    // They exist because "behind the skull" means the only ear anyone can see is
+    // the crescent OUTBOARD of the silhouette, and that crescent is small: a
+    // round head's half-width at ear height is 0.997R, so the stock ear's outer
+    // edge at 1.15R shows 0.15R of itself and no more. `earOut` slides the ear
+    // sideways, which buys visible ear without redrawing it; `earSize` scales
+    // the whole ellipse, which buys visible ear AND a bigger one; `earY` moves
+    // it up or down past whatever the hero has hanging beside their head. What
+    // that costs is the answer the ear bake-off is looking for.
+    const earOut = spec.earOut ?? 0.95;
+    const earY = spec.earY ?? 0.08;
+    const earSize = spec.earSize ?? 1;
     for (const sx of [-1, 1]) {
       const lift = sx > 0 && spec.head === 'cap' && lorenzoFace().tilt ? R * 0.12 : 0;
       outlined(ctx, p.s, hair(0.6, ow * 0.7), (c) =>
-        c.ellipse(hx + sx * R * 0.95, hy + R * 0.08 - lift, R * 0.2, R * 0.28, 0, 0, Math.PI * 2));
+        c.ellipse(hx + sx * R * earOut, hy + R * earY - lift,
+          R * 0.2 * earSize, R * 0.28 * earSize, 0, 0, Math.PI * 2));
+      if (!lod && spec.earStud) {
+        // A stud in the lobe, in her piping gold. The lobe is the BOTTOM of the
+        // ear and the bottom is the only part of it fully outboard of the skull,
+        // so this is the one spot on an ear a mark can be seen at all. It rides
+        // the dials with the ear rather than sitting at a fixed offset, or a
+        // scaled ear would wear its stud somewhere up the middle.
+        dot(ctx, hx + sx * R * (earOut + 0.05 * earSize),
+          hy + R * (earY + 0.2 * earSize) - lift, R * 0.06, p.a);
+      }
     }
   }
   // Grumpos gets a broad chibi block-head; the softer cast keeps round heads.
@@ -2986,14 +3187,170 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // it. Hair over a brow does not read as a fringe at this size, it reads as
     // a shadow, which is the same finding Gary's mop is built around.
     const dark = p.hairDark || p.hair;
+    // HAIRLINE. `fr.back` lifts the fringe's lower edge — and ONLY its lower
+    // edge — off the brow, opening a band of forehead that the shipped sweep
+    // covers completely. The temple ends do not move with it: hair still comes
+    // down in front of each ear, which is what makes the result read as a
+    // hairline set back rather than as a fringe that got shorter. The measured
+    // ceiling on it is the brow at -0.633R, so a lift of 0.2R leaves about
+    // 0.15R of clear forehead and is as far as this can usefully go.
+    const back = -R * (fr.back || 0);
+    // PILE. The same lift the rim's crown gets, applied to the fringe's crown so
+    // the two rise as one shape — see the rim's HY. Only the points ABOVE the
+    // head move, so more hair on top never costs any length.
+    const pile = R * (fr.pile || 0);
+    // The fringe's LOWER EDGE, as a curve that can be sampled. It is two
+    // quadratics — right temple to just past the centre, then on to the left
+    // temple — and it is written out here as data rather than inline in the path
+    // because the TUFTS have to root ON it. That is the whole difference between
+    // a tuft and a sideburn: a lock whose base is a pair of points on this curve
+    // is part of the fringe, and a lock placed at hand-chosen coordinates near it
+    // is a wedge of hair floating on her cheek, which is exactly how the first
+    // version read.
+    //
+    // `s` runs 0..2 across both halves. Positive x is her front, so s = 0 is the
+    // temple on that side and s = 2 the one at her back.
+    const EDGE = [[0.8, -0.2], [0.46, -0.68], [-0.14, -0.62], [-0.58, -0.56], [-0.8, -0.16]];
+    const edgeAt = (s) => {
+      const [a, c2, b] = s <= 1 ? [EDGE[0], EDGE[1], EDGE[2]] : [EDGE[2], EDGE[3], EDGE[4]];
+      const t = s <= 1 ? s : s - 1, k = 1 - t;
+      return [hx + R * (k * k * a[0] + 2 * k * t * c2[0] + t * t * b[0]),
+        hy + R * (k * k * a[1] + 2 * k * t * c2[1] + t * t * b[1]) + back];
+    };
+    // TUFTS: the loose hair on her forehead, built the way Lorenzo's locks poke
+    // out from under his cap — a blunt spike rooted on TWO points of the
+    // hairline, wide at the base and converging to a soft point. Not the thin
+    // near-vertical strips this started as: one narrow lock down the middle reads
+    // as a mark ON her forehead, and two of them read as scratches.
+    //
+    // Drawn in the SAME path as the fringe, which is the other half of the fix.
+    // outlined() runs one fat stroke pass and then fills, so every subpath handed
+    // to it merges into a single shape with no internal seam — the same trick the
+    // plait's chain of lozenges uses. A tuft cannot come adrift from a fringe it
+    // is literally part of.
+    //
+    //   [root s, root s, drop, bias]
+    // Roots are two positions along the hairline; the tip hangs `drop` below the
+    // lower of them, biased `bias` along x. Everything is RELATIVE to the roots
+    // rather than placed absolutely, which means a lock's length is measured from
+    // the hairline: it does not stretch when the hairline lifts, and lifting the
+    // hairline carries the whole lock up with it. That is the only way to raise a
+    // tooth without flattening it, since its depth and its height on the head are
+    // two different numbers.
+    //
+    // The pair sits well apart, one either side of the parting, with the one on
+    // the heavy side reaching a little lower: that side's hairline is already the
+    // lower of the two, so the fringe and the tuft agree rather than argue.
+    // The twin pair is one W, not two teeth. They SHARE their middle root, so the
+    // hairline runs down-up-down as a single zigzag — drawn as two separate spikes
+    // with a gap of plain hairline between them, they read as a pair of little
+    // triangular teeth instead.
+    //
+    // It is solved against the brow rather than placed by eye, and the solution is
+    // what makes it wide: a brow spans |x| = 0.14R..0.68R with its TOP at -0.633R,
+    // so there are two ways past it and the W uses both. Its three ROOTS sit high
+    // on the hairline, at -0.656R..-0.747R — above the brow top — so the W can be
+    // as wide as it likes and reach out over a brow's inner half without touching
+    // it. Its two TIPS then converge INWARD to |x| ≈ 0.12R, inside the 0.27R
+    // channel between the brows, which is the only place a lock may hang below
+    // brow level with nothing under it. Wide where it is high, narrow where it is
+    // low.
+    //
+    // The W is deliberately LOPSIDED. Its two halves matched, it read as a piece
+    // of trim rather than as hair — hair does not fall symmetrically, and a
+    // symmetric zigzag on a head that already has a symmetric pair of buns is one
+    // symmetry too many. So the front half is the wide shallow one and the back
+    // half the narrow deep one:
+    //
+    //   part    base                 tip      what it is
+    //   front   +0.54R..+0.13R       -0.58R   a wide shallow slope, barely dropped
+    //   middle  +0.13R..-0.20R       -0.51R   the POINT: 0.33R base against a 0.26R drop
+    //   tail    -0.20R..-0.30R       -0.63R   the fine lock behind it, 0.10R of base
+    //
+    // POINTINESS IS THE RATIO of base to drop, not size — so a sharper point is a
+    // narrower base AND a deeper drop, and doing only the first shrinks the tooth
+    // instead of sharpening it. That is why `wBack` and `midDrop` are separate
+    // knobs and why the sharper variants move both.
+    //
+    // Four numbers place the whole thing, and every tip is derived from its own
+    // base rather than hand-placed, so moving a root drags its tip along and
+    // nothing has to be re-tuned:
+    //   wMid     the root shared by front and middle — slide it to move the middle
+    //            tooth and the tail rightward together
+    //   wBack    the middle tooth's outer root, i.e. how wide its base is
+    //   midDrop  how far the point comes down
+    //   tailDrop how far the tail does. It needs a real figure to exist at all:
+    //            at 0.045R it was flat enough to vanish, which is why the left
+    //            tendril went missing.
+    //   tailW    the tail's own base width, in `s` — it is the FINE one of the
+    //            three and reads as a stray rather than as a third point.
+    const wMid = fr.wMid || 0.76, wBack = fr.wBack || 1.06;
+    const WROOTS = [0.34, wMid, wBack, wBack + (fr.tailW || 0.12)];
+    const WTIPS = [[-0.21, 0.035], [0.02, fr.midDrop || 0.26], [0, fr.tailDrop || 0.12]];
+    // The single-lock control keeps the one-spike form, which is what it is for.
+    const TUFTS = fr.twin ? [] : [[0.78, 1.12, 0.32, 0.0]];
+    // The wisps in front of each ear. Rooted on the same curve, at its ends,
+    // where the hairline is at its lowest and there is no face underneath — so
+    // these are the two locks that may fall past the eye entirely, and the only
+    // ones that hang below the jaw.
+    const WISPS = [[0.02, 0.2, 0.42, 0.08], [1.82, 1.99, 0.46, -0.1]];
+    // Every lock is CUT INTO the fringe's lower edge rather than glued on below
+    // it, as one boundary walk: [root s, root s, tip bias, drop]. Two separate
+    // attempts failed before this and both failures were instructive.
+    //
+    // Added as extra subpaths inside the fringe's own outlined() call, narrow
+    // locks came out HOLLOW — filled, but then swallowed by the shading. Every
+    // shape this file draws gets a rim stroked just INSIDE its contour, and on a
+    // spike 0.2R wide by 0.26R deep that band covers nearly the whole tooth: what
+    // is left reads as a pale outline of a lock rather than a lock. The temple
+    // wisps survived it only because they are longer and fatter.
+    //
+    // Walked as one polygon that ran out along the teeth and back along the
+    // hairline, it came out a SCRIBBLE: the return leg was sampled at arbitrary
+    // `s` values that missed the roots the outbound leg had used, so the two legs
+    // genuinely crossed, and a nonzero fill cancelled the lobes.
+    //
+    // So: one path, one form, no self-intersection. The teeth are part of the
+    // fringe's silhouette, get the fringe's own fill and shading, and cannot come
+    // adrift from it — the same construction as Lorenzo's cap tufts, which build
+    // the band and all its locks in a single path for exactly this reason.
+    const LOCKS = !fr.tendrils ? [] : [
+      // In front of the far ear, where the hairline is lowest and there is no face
+      // underneath: the only locks that may fall past the eye.
+      [0.02, 0.2, 0.08, 0.42],
+      ...(fr.twin
+        ? WTIPS.map(([bias, drop], k) => [WROOTS[k], WROOTS[k + 1], bias, drop])
+        : [[0.78, 1.12, 0.0, 0.32]]),
+      [1.82, 1.99, -0.1, 0.46],
+    ];
+    // Enough samples that the edge still reads as the curve it is; the locks are
+    // spliced in at their exact roots rather than at sample boundaries.
+    const EDGE_N = 26;
+    const soft = (from, tip) => [from[0] + (tip[0] - from[0]) * 0.7,
+      from[1] + (tip[1] - from[1]) * 0.7];
     outlined(ctx, p.hair, ow, (c) => {
       c.moveTo(hx - R * 1.04, hy + R * 0.04);                                       // left temple, falling past the eye line
-      c.quadraticCurveTo(hx - R * 1.2, hy - R * 0.7, hx - R * 0.4, hy - R * 1.08);
-      c.quadraticCurveTo(hx + R * 0.48, hy - R * 1.3, hx + R * 1.04, hy - R * 0.5);  // over the crown
+      c.quadraticCurveTo(hx - R * 1.2, hy - R * 0.7 - pile, hx - R * 0.4, hy - R * 1.08 - pile);
+      c.quadraticCurveTo(hx + R * 0.48, hy - R * 1.3 - pile, hx + R * 1.04, hy - R * 0.5);  // over the crown, piled
       c.quadraticCurveTo(hx + R * 1.16, hy - R * 0.24, hx + R * 0.96, hy + R * 0.06); // right temple
-      c.lineTo(hx + R * 0.8, hy - R * 0.2);                                          // the fringe's edge climbs clear of the eye
-      c.quadraticCurveTo(hx + R * 0.46, hy - R * 0.68, hx - R * 0.14, hy - R * 0.62); // swept across the brow
-      c.quadraticCurveTo(hx - R * 0.58, hy - R * 0.56, hx - R * 0.8, hy - R * 0.16);  // heavy side of the part hangs lower
+      c.lineTo(...edgeAt(0));                                                        // down onto the hairline
+      let li = 0, done = 0;
+      for (let i = 1; i <= EDGE_N; i++) {
+        const sAt = (i / EDGE_N) * 2;
+        while (li < LOCKS.length && LOCKS[li][0] <= sAt) {
+          const [sa, sb, bias, drop] = LOCKS[li];
+          const ra = edgeAt(sa), rb = edgeAt(sb);
+          const tip = [(ra[0] + rb[0]) / 2 + R * bias, Math.max(ra[1], rb[1]) + R * drop];
+          c.lineTo(...ra);
+          c.lineTo(...soft(ra, tip));
+          c.quadraticCurveTo(tip[0], tip[1], ...soft(rb, tip));  // a blunt point, not a needle
+          c.lineTo(...rb);
+          done = sb;
+          li++;
+        }
+        if (sAt > done) c.lineTo(...edgeAt(sAt));
+      }
+      c.lineTo(...edgeAt(2));
       c.closePath();
     });
     if (!lod) {
@@ -3002,8 +3359,8 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       ctx.strokeStyle = dark;
       ctx.lineWidth = hair(0.4, ow * 0.7);
       ctx.beginPath();
-      ctx.moveTo(hx - R * 0.3, hy - R * 1.08);
-      ctx.quadraticCurveTo(hx + R * 0.2, hy - R * 0.9, hx + R * 0.62, hy - R * 0.4);
+      ctx.moveTo(hx - R * 0.3, hy - R * 1.08 - pile);
+      ctx.quadraticCurveTo(hx + R * 0.2, hy - R * 0.9 + back, hx + R * 0.62, hy - R * 0.4 + back);
       ctx.stroke();
     }
     if (spec.headband) {
@@ -3018,6 +3375,63 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
         c.quadraticCurveTo(hx, hy - R * 1.0, hx - R * 1.04, hy - R * 0.36);
         c.closePath();
       });
+    }
+    if (spec.head === 'buns' && spec.bunJoin && !lod) {
+      // The JOIN dressing: the arc where each bun meets the top of the head,
+      // picked out in her own piping gold. The palette calls `a` "gold piping,
+      // and the bands at the buns", so this is the colour already reserved for
+      // exactly this.
+      //
+      // Painted HERE, dead last, and that is the whole reason this block is not
+      // beside the buns it belongs to. The join is on the INBOARD side of each
+      // bun, which is behind both the skull and the fringe — drawn with the buns
+      // in the behind-head pass the row was painted and then buried, and only
+      // the one or two marks that happened to fall outside the fringe survived.
+      // Jewellery sits on top of the hair; so does this.
+      //
+      // Two dressings, one arc. `band` is a thin ribbon following the join and is
+      // the quiet answer; `beads` is a row of five, off the chibi reference, and
+      // is busier — five discs each carrying their own outline is a lot of marks
+      // for an arc this short.
+      //
+      // Neither is visible at hero size and neither pretends to be: both are
+      // well under a pixel at 24px and `!lod` excludes them there. This is detail
+      // for the hub, the menus and the HUD portrait, where her head is big enough
+      // to have jewellery at all.
+      //
+      // 4 o'clock on her right bun and 8 on her left — down and INBOARD, the half
+      // of the bun that faces the crown. In this sx-mirrored frame 0° is straight
+      // outboard and positive is down, so 104°..168° is that arc on both sides.
+      // An earlier pass ran on round to 242°, which carried it up past horizontal
+      // and put most of the gold on TOP of the bun: the wrong half of the join.
+      // JR is the wrap circle's OWN radius, so the band is centred exactly on the
+      // join — the visible boundary between white ribbon and brown hair IS that
+      // circle's edge, and half the band's width falls either side of it. 0.86
+      // sat it just outboard of the line, on white.
+      const A0 = 104, A1 = 168, JR = oxR * 0.82;
+      for (const sx of [-1, 1]) {
+        const wcx = oxX(sx) + sx * oxR * 0.26, wcy = oxY - oxR * 0.12;
+        const at = (t, r) => {
+          const a2 = (A0 + (A1 - A0) * t) * Math.PI / 180;
+          return [wcx + Math.cos(a2) * sx * r, wcy + Math.sin(a2) * r];
+        };
+        if (spec.bunJoin === 'beads') {
+          for (let i = 0; i < 4; i++) dot(ctx, ...at(i / 3, JR), oxR * 0.17, p.a);
+        } else {
+          // Sampled out along one edge and back along the other rather than
+          // stroked: an outlined fill is what every other mark on this head is,
+          // and it keeps the band's ends cut square instead of round.
+          const hw = oxR * 0.14, N = 8;
+          outlined(ctx, p.a, hair(0.4, ow * 0.5), (c) => {
+            for (let i = 0; i <= N; i++) {
+              const [x, y] = at(i / N, JR + hw);
+              if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+            }
+            for (let i = N; i >= 0; i--) c.lineTo(...at(i / N, JR - hw));
+            c.closePath();
+          });
+        }
+      }
     }
   } else if (spec.head === 'bald') {
     // Intentionally bare: Grumpos's asymmetric war-paint streak is drawn
@@ -3076,12 +3490,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
 
   // face
   const ex = expressionFor(id, pose, spec);
-  // `anime` is 'big' | 'soft'; a bare true means the full-size build.
-  const faceEx = {
-    ...ex,
-    ...(headTurn ? { turn: headTurn } : {}),
-    anime: spec.anime === true ? 'big' : spec.anime || false,
-  };
+  const faceEx = headTurn ? { ...ex, turn: headTurn } : ex;
   // Cap variants that reshape Lorenzo's brow line also move the face mask under
   // it and choose how the brows are drawn. Everyone else is untouched.
   const capV = spec.head === 'cap' ? lorenzoFace() : null;
@@ -3102,7 +3511,11 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     ctx.translate(0, faceDy);
   }
   // Fernwick's eyes sit a touch lower, giving him a taller, more childlike brow.
-  const eyeY = hy - (id === 'fernwick' ? -0.018 : 0.015) * u;
+  // `eyeLift` is the same dial pointing the other way, and a spec field rather
+  // than a hero id because it belongs to a FACE rather than to a name — it moves
+  // the whole mask (brows ride the same line), so eyes and mouth can be set
+  // against each other rather than each against the skull.
+  const eyeY = hy - (id === 'fernwick' ? -0.018 : 0.015) * u - (spec.eyeLift || 0) * u;
   drawEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, faceEx);
   if (faceEx.brow === 'bushy' && !lod) bushyBrows(ctx, p, u, hx + 0.01 * u, eyeY, ex, ow);
   if (spec.nose) outlined(ctx, p.n, hair(0.6, ow * 0.7), (c) => c.arc(hx + 0.02 * u, hy + 0.055 * u, 0.055 * u, 0, Math.PI * 2));
@@ -3186,7 +3599,22 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       ctx.stroke();
     }
   }
-  if (!spec.beard && !spec.mustache && !lod) drawMouth(ctx, spec, p, u, hx + 0.01 * u, hy + 0.11 * u, ow, ex);
+  // The mouth hangs off the SKULL, not off the draw height. 0.11u is a little
+  // over half a default head radius below centre; left absolute it stays 0.11u
+  // on a smaller skull too, which is most of the way to the chin — the reason
+  // Kiko's sat low and the face read bottom-heavy. Scaling by `headScale` is
+  // the same offset measured in heads instead of in units, and it is exactly
+  // neutral for the rest of the cast, none of whom set the dial. (Grumpos's
+  // beard-gap mouth above was already placed off R, which is this rule.)
+  // `mouthLift` is the per-face nudge on top of that rule, in u: the skull ratio
+  // says where the mouth belongs on a head of this size, and this says where it
+  // belongs on this FACE. Kiko's is set because a short lower face is the read
+  // her reference has — the distance from eyes to mouth is what makes a chibi
+  // look young, and hers was a rig default rather than a decision.
+  if (!spec.beard && !spec.mustache && !lod) {
+    const mouthY = hy + 0.11 * u * (spec.headScale || 1) - (spec.mouthLift || 0) * u;
+    drawMouth(ctx, spec, p, u, hx + 0.01 * u, mouthY, ow, ex);
+  }
   if (faceDy) ctx.restore();
   if (faceDepth > 0.001) ctx.restore();
   if (outlineDepth > 0.001) ctx.restore();
@@ -3249,7 +3677,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const farShade = depthArms ? 0.1 + 0.18 * turnDepth : 0.22 * turnDepth;
   // A slightly smaller head is the strongest lever on perceived height: it
   // also keeps the taller heavy rig inside the 24px draw box.
-  const headR = (heavy ? 0.185 : 0.21) * u;
+  // `headScale` sizes the skull independently of the body. It exists because
+  // `tall` deliberately does NOT touch the head — that is what makes a 7% dial
+  // read as more than 7% on the raider, since the eye measures height by the
+  // head it is given. The same property inverts below 1: shrinking Kiko's body
+  // with `tall` left the same skull on a smaller frame, so she came out
+  // top-heavy beside Lorenzo. This is the counterweight, and it is a separate
+  // dial rather than folded into `tall` precisely so each can be aimed.
+  const headR = (heavy ? 0.185 : 0.21) * u * (spec.headScale || 1);
   // The final multipliers are intentionally absent from every production
   // spec. They are narrow gallery dials for comparing the body-proportion
   // study without cloning this rig or moving any head/face geometry.
@@ -3406,9 +3841,31 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // does rather than folding to a shared absolute.
   const tall = spec.tall || 1;
   let hipY = -legL * 0.92 * (styledGait ? L.stance : 1);
-  let torsoTop = -(heavy ? 0.768 : 0.56) * tall * u + bob;
-  let headY = -(heavy ? 0.978 : 0.76) * tall * u + bob;
-  let shoulderY = -(heavy ? 0.708 : 0.5) * tall * u + bob;
+  const headBase = -(heavy ? 0.978 : 0.76) * u;
+  // The head's lift, as an ABSOLUTE distance rather than a scale — and the neck
+  // and shoulders take the SAME lift, not their own proportional one.
+  //
+  // This is the join: the skull's radius is deliberately outside `tall` (see
+  // above), so the head's bottom edge rises by the head's full lift while a
+  // torso top that merely scaled rose by less. The difference is a gap at the
+  // neck that opens the further the dial goes — at 1.13 it was a third of a
+  // head, and she read as a portrait floating over a dress. Lifting all three
+  // landmarks by the head's own shift keeps the neck exactly as tight as it is
+  // at 1.0, which is also why this cannot disturb the shipped cast: every hero
+  // at tall = 1 has a lift of zero and lands on the identical numbers.
+  const tallLift = headBase * (tall - 1);
+  // The other half of the same join, and the one that survived the first fix:
+  // `headScale` shrinks the skull about its CENTRE, so a smaller head lifts its
+  // own bottom edge by the radius it gave up while the collar stays put. On
+  // Kiko's 0.88 skull that is 0.025u of daylight under her chin — small in the
+  // spec, a visible gap on screen, and nothing to do with how tall she is: it
+  // was there at 0.91 too. The neck follows the head's LOWER EDGE, so the two
+  // dials can be aimed independently and the join holds under either.
+  const skullLift = headR - (heavy ? 0.185 : 0.21) * u;
+  const upper = tallLift + skullLift + bob;
+  let torsoTop = -(heavy ? 0.768 : 0.56) * u + upper;
+  let headY = headBase + tallLift + bob;
+  let shoulderY = -(heavy ? 0.708 : 0.5) * u + upper;
   if (duck) {
     // The crouch used to drop every hero to the same flat height, which is not
     // the same thing as every hero crouching by the same amount: grumpos stands
@@ -3447,14 +3904,38 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // back-limb pass, before the torso is painted. Left at the path it sat in the
   // temporal dead zone for that one pose.
   const torsoBot = hipY + 0.05 * u;
+  // Declared up here rather than beside the torso paint it feeds: the shoulder
+  // and hip caps borrow this shape's own light ramp so they can vanish into
+  // it, and the standing pose draws its near arm BEFORE the torso is painted.
+  const torsoPath = turned
+    ? (c) => turnedTorsoPath(c, torsoCx, torsoTop, torsoBot, torsoHalf, waistHalf, turnYaw)
+    : spec.taper
+      ? (c) => taperTorsoPath(c, torsoCx, torsoTop, torsoBot, torsoHalf, waistHalf)
+      : (c) => roundRectPath(c, -torsoHalf + torsoCx, torsoTop, torsoHalf * 2, torsoBot - torsoTop, torsoHalf * 0.7);
   // Where the ARMS socket, as opposed to where the shoulder line sits. The axe
   // and shield stay pinned to shoulderY; only the limbs seat lower.
-  const armY = shoulderY + (heavy ? 0.03 : 0) * u;
+  // `armLift` raises where the arms socket, in u — higher on the shoulder
+  // rather than slung under it. A per-spec dial and not a global change: armY
+  // is the root every pose in this file measures its hands from, so moving it
+  // for everyone would re-pose the entire shipped cast, and this is a request
+  // about the candidates.
+  const armY = shoulderY + (heavy ? 0.03 : 0) * u - (spec.armLift || 0) * u;
   // Running, the NEAR arm rides a little higher in its socket than the far one:
   // it is the arm carrying the silhouette, and seated at the same depth as the
   // receding one it read as slung off the bottom of the shoulder. Run only —
   // the standing pose's deltoid is already the shape the others are chasing.
-  const armYF = armY - (depthArms && run && !turned ? (heavy ? 0.018 : 0.03) : 0) * u;
+  // ...and AIRBORNE too, not just running. This lift is the reason the run's
+  // near shoulder reads as a deltoid rather than as a socket slung off the
+  // bottom of the shoulder line — and the jump had never been given it, so
+  // every hero's near arm dropped 0.03u the moment they left the ground. Beside
+  // its own run, that is a shoulder that has come loose.
+  // Airborne it lifts a shade FURTHER than the run does. On the ground the run
+  // is the reference and 0.03u is its tuned value; in the air the shoulder
+  // girdle rides up with the body and the extra 0.008u is what keeps the near
+  // arm from reading as hanging off a static socket while everything else is
+  // moving.
+  const armYF = armY - (depthArms && (run || jump) && !turned
+    ? (heavy ? 0.018 : 0.03) + (jump ? (heavy ? 0.006 : 0.008) : 0) : 0) * u;
   const leanX = run ? (walk ? 0.018 : 0.05) * u * (styledGait ? L.lean : 1)
     : duck && enhancedMotion ? 0.025 * u : 0; // crouch puts weight over the toes
   // A yawed torso has a small shoulder-to-hip offset; the top of the body is
@@ -3525,13 +4006,25 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // knee up with the rear leg extended back and the toe pointed, the apex
       // tucks both, and the fall reaches the front leg down and forward with
       // the heel dropping to meet the ground.
+      // A SCISSOR, not a double tuck. Both feet used to fold well short of full
+      // extension — the front to 42% of the leg and the trailing one to 75% at
+      // a typical airborne velocity — so the figure read as sitting down in the
+      // air rather than leaping, which is what makes every jump look low beside
+      // its own run. Measured, the jump silhouette is only 1-2% shorter than
+      // the run's, so it was never a HEIGHT problem: it is that neither leg
+      // extends, and a leap is legs doing opposite things.
+      //
+      // So the trailing leg now reaches near-straight down and back (89% at the
+      // same velocity) while the lead knee stays up. The apex still tucks both,
+      // harder on the trailing leg than before, so the gather at the top of the
+      // arc survives — it is only the rest of the arc that stops crouching.
       footF = [
         (0.1 + 0.05 * airApex + 0.05 * airFall) * u,
-        hipY + legL * (0.3 + 0.1 * airRise - 0.06 * airApex + 0.46 * airFall),
+        hipY + legL * (0.32 + 0.1 * airRise - 0.06 * airApex + 0.46 * airFall),
       ];
       footB = [
         (-0.2 - 0.04 * airApex + 0.04 * airFall) * u,
-        hipY + legL * (0.86 + 0.1 * airRise - 0.2 * airApex + 0.06 * airFall),
+        hipY + legL * (1.02 + 0.08 * airRise - 0.22 * airApex + 0.04 * airFall),
       ];
       ankleF = (0.5 * airRise + 0.4 * airApex - 0.55 * airFall) * L.ankle;
       ankleB = (0.3 + 0.25 * airApex) * L.ankle;
@@ -3735,15 +4228,40 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // the torso and reads as a lump sitting above the shoulder. Flush, there is
   // nothing left out there to orphan. The heavy rig keeps its own root: its
   // deltoid cap covers the join, so it can sit proud of the edge.
-  const nearFlush = torsoCx + sideF * (torsoHalf - armWF / 2);
-  const shF = turned
+  // Flush against the body edge — but measured at the ARM'S OWN HEIGHT rather
+  // than at the shoulder line, once the socket has been raised. This is the
+  // "dislocated shoulder" fault: a rounded shoulder corner is a long way
+  // inboard of torsoHalf up there, so a root placed at torsoHalf sits OUTSIDE
+  // the body, the shoulder cap that exists to bury it finds no room and bails
+  // (see its `r <= 0` return), and what is left on screen is the arm's own bare
+  // round end cap perched on the corner with no body under it. Raising the
+  // socket is what exposed it — at the shipped height the root is far enough
+  // down the side that torsoHalf is honest.
+  //
+  // Gated on armLift so the shipped cast keeps the geometry it was tuned with:
+  // nobody without a raised socket has the problem, and moving every hero's
+  // arms to fix a candidate's would be the wrong trade.
+  const nearFlushHalf = spec.armLift
+    ? (spec.taper
+      ? taperHalfAt(armYF, torsoTop, torsoBot, torsoHalf, waistHalf)
+      : roundHalfAt(armYF, torsoTop, torsoBot, torsoHalf, torsoHalf * 0.7))
+    : torsoHalf;
+  const nearFlush = torsoCx + sideF * (nearFlushHalf - armWF / 2);
+  // `armOut` pushes both sockets outboard, in u. A wide sleeve needs it: the
+  // puffed sleeve is roughly twice the arm's width across, so an arm rooted
+  // where a BARE limb would sit puts the sleeve's inboard edge up against the
+  // neck. Applied to both shoulders rather than only the near one — front-on
+  // the two are a mirrored pair, and moving one of them alone makes a standing
+  // hero lopsided.
+  const armOut = (spec.armOut || 0) * u;
+  const shF = (turned
     ? shoulderCx + nearSign * (torsoHalf * shSpread * (1 + 0.14 * turnDepth) + turnDepth * 0.025 * u)
     : depthRun && !heavy
       ? nearFlush
-      : shoulderCx + sideF * torsoHalf * shSpread * nearSpread;
-  const shB = turned
+      : shoulderCx + sideF * torsoHalf * shSpread * nearSpread) + sideF * armOut;
+  const shB = (turned
     ? shoulderCx - nearSign * (torsoHalf * shSpread * (1 - 0.26 * turnDepth) + turnDepth * 0.018 * u)
-    : shoulderCx + sideB * torsoHalf * shSpread * farSpread;
+    : shoulderCx + sideB * torsoHalf * shSpread * farSpread) + sideB * armOut;
   // Slide a hand target out to full arm reach along its own direction, so the
   // IK draws the arm straight: arms-out poses with a mid-reach target crook
   // the elbow into a chicken wing.
@@ -3752,6 +4270,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     return [sx + (dx / d) * (armSeg + armSegF), sy + (dy / d) * (armSeg + armSegF)];
   };
   let handF, handB, elbF = -1, elbB = -1;  // elbows trail behind by default
+  // Set by a STANDING pose that pushes both arms out in front of the body — the
+  // one case the back-pass rule below gets wrong (see armsInFront).
+  let armsReachFront = false;
   let wrenchAngle = null;
   // The sidearm's angle while it is OUT of the holster, or null while it is in
   // one. Same arrangement as wrenchAngle: the prop rides the hand, and this is
@@ -3813,10 +4334,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // outboard of the head and the limb reads as one straight point.
       handF = reach(shF, armY, [shF + sideF * 0.16 * u, armY - armL * 0.91 + pump]);
       elbF = -sideF;
-      // ...and the free hand lands ON the hip. At 0.13u outboard of a shoulder
-      // already 0.09u out it hovered 0.05u OUTSIDE his own silhouette, so the
-      // "hand on hip" was a bent flipper resting on nothing.
-      handB = [shB + sideB * 0.055 * u, armY + armL * 0.8]; elbB = sideB;
+      // ...and the free hand HANGS AT HIS SIDE, on Gary's target rather than a
+      // hand-on-hip. The hip version parked the upper arm flat across the
+      // shoulder girdle, which is the pose that put a joint on show up there —
+      // a limb doubled back over its own socket is the hardest thing on this
+      // rig to make read, and the easiest fix is not to ask it to. Gary's
+      // overhead wave has always had the quieter free arm; borrowing it makes
+      // the two celebrations rhyme, which is what Peter asked for.
+      handB = [shB + sideB * 0.04 * u, armY + armL * 0.5]; elbB = sideB;
     } else if (id === 'gnash') {
       // one cool point at the sky, the other hand on the hip
       handF = [shF + sideF * 0.12 * u, armY - armL * 0.98 + pump]; elbF = sideF;
@@ -3856,6 +4381,21 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // folding inward as the hop squashes the body underneath them.
       handF = [shF + sideF * 0.2 * u, armY - armL * 0.8 + pump * 0.45]; elbF = -sideF;
       handB = [shB + sideB * 0.2 * u, armY - armL * 0.8 - pump * 0.45]; elbB = -sideB;
+    } else if (id === 'kiko') {
+      // THE SALUTE. Both hands come together in front of the chest — a closed
+      // hand met by an open one, elbows winged out — and hold there, breathing
+      // on the pump. This is a martial artist's courtesy at the end of a bout,
+      // and it is the only celebration in the set that is a POSTURE rather than
+      // a wiggle, which is the whole point of her: everyone else is delighted
+      // and she is signing off.
+      //
+      // It replaces the generic double fist pump she was falling through to,
+      // which threw both fists up beside her head — and on a hero whose head
+      // already carries two outboard buns and two ribbons, arms up there is the
+      // one place they cannot go. It read as hands stuck behind her head.
+      const meetY = armY + armL * (0.34 - 0.03 * (pump / (0.05 * u)));
+      handF = [shoulderCx + 0.055 * u, meetY]; elbF = sideF;
+      handB = [shoulderCx - 0.02 * u, meetY + 0.012 * u]; elbB = sideB;
     } else {
       // double fist pump, alternating (lorenzo mid-hop, b33p's free arm)
       handF = [shF + sideF * 0.15 * u, armY - armL * 0.9 + pump]; elbF = sideF;
@@ -3870,6 +4410,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const hipX = torsoHalf * 0.95, hipY = armY + armL * 0.70;
       handF = [shoulderCx + sideF * hipX, hipY]; elbF = sideF;
       handB = [shoulderCx + sideB * hipX, hipY]; elbB = sideB;
+    } else if (cm.move === 'bow' && id === 'kiko') {
+      // Her bow keeps the salute: the hands stay met and travel DOWN with the
+      // body rather than sweeping out to the sides. A bow that opens its arms
+      // is a stage bow; this one is the courtesy she started in.
+      const bowY = armY + armL * (0.34 + 0.16 * (cm.squash || 0) * 3);
+      handF = [shoulderCx + 0.055 * u, bowY]; elbF = sideF;
+      handB = [shoulderCx - 0.02 * u, bowY + 0.012 * u]; elbB = sideB;
     } else if (cm.move === 'bow') {
       handF = [shF + sideF * 0.18 * u, armY + armL * 0.75]; elbF = sideF;
       handB = [shB + sideB * 0.22 * u, armY + armL * 0.55]; elbB = sideB;
@@ -4098,19 +4645,52 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // Three beats inside the 0.3s, because a thrust with no wind-up is just an
     // arm that teleported forward. The chamber is short and the thrust is
     // fast; the rest of the window is the hold, which is the frame that reads.
-    const q = Math.max(0, Math.min(1, (pose.actionTime || 0) / 0.3));
+    // No `actionTime` means "show me the move", not "show me frame zero of it".
+    // The title parade and the transition cameo both ask for `aim` and neither
+    // runs a clock, so `|| 0` froze her at the CHAMBER — hands still down at the
+    // hip, no orb — and the far arm reached across her body to get there, which
+    // is what read as her rear arm pointing the wrong way. B-33P's cannon
+    // already takes this convention for the same reason (see `aimAmount`).
+    const q = pose.actionTime == null
+      ? 1
+      : Math.max(0, Math.min(1, Number(pose.actionTime) / 0.3));
     const ease = (v) => v * v * (3 - 2 * v);
     const chamber = [shF - 0.09 * u, armY + armL * 0.62];
-    const thrust = [shF + 0.28 * u, armY + 0.05 * u];
+    // Pressed to the END of the arm, not to a point 0.28u away. Standing, both
+    // arms paint behind the torso, so the only part of this pose a player ever
+    // sees is whatever clears the silhouette — and 0.28u was inside her reach,
+    // so the IK spent the remainder on a bent elbow and kept the hand tucked
+    // near the dress. Straight and fully extended is the most forearm this rig
+    // can put outside her, which is what the transition cameo (holding the
+    // finished press, `actionTime` unset) needs to read as arms at all.
+    const thrust = reach(shF, armY, [shF + 0.3 * u, armY + 0.05 * u]);
     const v = q < 0.3 ? 0 : q < 0.52 ? ease((q - 0.3) / 0.22) : 1;
     // Both palms travel together and land a hair apart — the two-handed press
     // is the signature, and hands at different heights read as a punch.
     handF = [chamber[0] + (thrust[0] - chamber[0]) * v, chamber[1] + (thrust[1] - chamber[1]) * v];
     handB = [handF[0] - 0.05 * u, handF[1] + 0.06 * u];
     elbF = -1; elbB = -1;
+    // The NEAR arm paints in front of the torso; the far one stays behind it,
+    // which is the ordinary depth split every running frame already uses. A
+    // standing pose normally puts BOTH arms behind — right for arms at rest, and
+    // impossible here: her whole reach is barely longer than the dress is wide,
+    // so the press showed one glove at the hem and a ball of light with nothing
+    // holding it, which is the transition cameo's "where are her arms" read.
+    // Both in front is the other wrong answer — two limbs laid over the dress
+    // with no depth between them, and one of her two puffed sleeves stranded on
+    // her chest. One in front, one behind is what a body doing this looks like.
+    armsReachFront = true;
     // The orb is born at the palms and swells as they arrive, so the energy
     // reads as pushed out of her rather than as an object she was holding.
-    if (v > 0.02) kiBlast = [handF[0] + 0.05 * u, handF[1] - 0.01 * u, v, q];
+    //
+    // Seated BEYOND the palms rather than on them. Its body disc alone is 0.17u
+    // across at full size, so centred 0.05u off the hand it swallowed both the
+    // glove and most of the forearm — the arm was drawn, and then the light was
+    // painted over it. Pushed out by its own radius the hands sit at its inboard
+    // edge, which is also the truer read: she is pressing the thing, not holding
+    // it. Scaled by `grow` so the orb still hatches AT the palms and travels out
+    // as it swells, instead of starting a fifth of a unit away from her hands.
+    if (v > 0.02) kiBlast = [handF[0] + (0.05 + 0.13 * v) * u, handF[1] - 0.01 * u, v, q];
   } else if (spec.pistol && pose.menuAction === 'aim') {
     // The shot. B-33P's version of this is a whole articulated gun-ARM, which
     // is his character; hers is a hand holding a thing, so it is posed the way
@@ -4261,12 +4841,26 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const total = (armSeg + armSegF) * (0.9 - 0.05 * airApex);
       handB = [
         shB + sideB * total * (0.72 + 0.1 * airApex - 0.24 * airFall),
-        armY - total * (0.5 + 0.25 * airApex - 0.95 * airFall),
+        armY - total * (0.56 + 0.25 * airApex - 0.95 * airFall),
       ];
       elbB = -sideB;
+      // The near arm is the one carrying the silhouette, and it was folded to
+      // about three quarters of its reach — an elbow that bent read as the arm
+      // being tucked in rather than swung down, which is the other half of why
+      // an airborne hero looked gathered up. Straightened to ~0.92 of full
+      // extension along the same down-and-out line it already travelled: stated
+      // as a NORMALIZED direction times a reach, so the extension is a number
+      // that can be reasoned about rather than whatever falls out of two
+      // independent offsets.
+      const nearReach = (armSeg + armSegF) * (0.92 - 0.05 * airApex);
+      // `nearDown` against `nearOut` is the arm's ANGLE — lowering it swings the
+      // straightened arm up without shortening it, which is the difference
+      // between raising the arm and bending it.
+      const nearOut = 0.44 + 0.12 * airFall, nearDown = 0.8;
+      const nearLen = Math.hypot(nearOut, nearDown);
       handF = [
-        shF + sideF * total * (0.4 + 0.12 * airFall),
-        armYF + total * (0.72 - 0.12 * airApex),
+        shF + sideF * nearReach * (nearOut / nearLen),
+        armYF + nearReach * (nearDown / nearLen),
       ];
       elbF = sideF;
     } else if (enhancedMotion && !pose.stomp) {
@@ -4328,6 +4922,39 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     const hangY = armY + armL * standHang - sway * 0.32;
     handF = [shoulderCx + sideF * outX, hangY]; elbF = sideF;
     handB = [shoulderCx + sideB * outX, hangY]; elbB = sideB;
+    // `handsFront`: the same rest pose with the splay taken out of it — arms
+    // closer to vertical, hands down on the front of the skirt instead of held
+    // out at the hips.
+    //
+    // The clearance above is measured against the RIBS, which is the widest the
+    // body ever gets and a long way from where a resting hand actually sits. On
+    // a tapered rig that difference is the whole angle: the socket sits at 0.55
+    // of the half-width, the hand at a full half-width plus an arm, so the limb
+    // has to travel outward as far as it travels down and every idle frame
+    // reads as elbows-out. Measured against the WAIST instead — the half-width
+    // the hand is actually level with — the arm has only its own gauge to clear
+    // and hangs almost straight, which is the note.
+    //
+    // Not solved by moving the arms in front of the body. Both standing arms
+    // paint in the back pass on purpose (see drawPuff): a puffed sleeve pushed
+    // over the chest reads as holding your elbows out, which is the exact fault
+    // being fixed here. So the hands hang down beside the skirt instead of
+    // folding across it — the only place a hand can rest that low while its arm
+    // stays outside the silhouette.
+    //
+    // And taken to FULL REACH along that line, which is what straightens it: the
+    // shared rest hangs at 0.78 of a 1.1 reach precisely so the elbow keeps a
+    // visible bend, and on a bare arm that bend is a crook at the hip rather
+    // than the soft curve it reads as through a sleeve. reach() is the same
+    // helper the arms-out poses use for the same reason — put the target at the
+    // end of the limb and the IK has no bend left to make.
+    if (spec.handsFront) {
+      const foldOut = waistHalf + armW * 0.5 + 0.035 * u + sway;
+      const aimY = armY + armL * 0.84 - sway * 0.2;
+      handF = reach(shF, armY, [shoulderCx + sideF * foldOut, aimY]);
+      handB = reach(shB, armY, [shoulderCx + sideB * foldOut, aimY]);
+      elbF = sideF; elbB = sideB;
+    }
     // Periodic hands-on-hips. As hipsAmt rises the resting hands ride UP to the
     // waist and OUT to the hip points — parked right at the body's side edge so
     // the hand clears the apron and reads as planted on the hip, not tucked
@@ -4363,6 +4990,59 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // wing rather than as an arm reaching for something.
     elbB = -sideB;
   }
+
+  // A puffed sleeve, seated on the UPPER ARM and rotated onto its axis, so it
+  // travels with the limb the way a sleeve does. Drawn AFTER the arm and before
+  // the hand: cloth sits over the arm it is on, and a puff under the limb is
+  // just a lump behind it.
+  // Standing, BOTH arms draw in the back pass — before the torso — so both
+  // sleeves sit behind her body, which is the read the idle wants: arms at rest
+  // hang behind the silhouette, and a sleeve pushed in front of the chest makes
+  // her look like she is holding her elbows out. Nothing defers: a sleeve draws
+  // with the arm it is on, in whichever pass that arm belongs to.
+  const drawPuff = (sx, sy, hand, seg, dir, seg2, shade = 0) => {
+    if (!spec.puffs) return;
+    const [ex, ey] = joint(sx, sy, hand[0], hand[1], seg, dir, seg2);
+    // Seated over the SOCKET and the top of the upper arm, not clear of it. A
+    // real puffed sleeve covers the shoulder joint — and here it also has to,
+    // because it is what closes that joint now: with the sleeve parked further
+    // down the arm the shoulderCap behind it (the disc that buries the arm's
+    // root in body colour) was left uncovered, and it re-takes the light on a
+    // different ramp than the torso it sits on, so it showed as a faint circle
+    // behind the sleeve. That dot is what read as the arm socketing far forward
+    // of where it should. See the `puffs` early-out in shoulderCap.
+    //
+    // Still ON THE ARM and rotating with it, which is the whole point — it is
+    // seated at the top of the limb rather than mounted on the body.
+    // ON the socket, near enough. This is the answer to a circle that kept
+    // reappearing at her shoulder however the cap was handled: with the sleeve
+    // seated down the arm, the joint at the shoulder is LEFT OF IT whenever the
+    // arm reaches forward, so whatever is there — the cap, or the limb's own
+    // round end cap when the cap is suppressed — is exposed beside the sleeve.
+    // Nothing about the lighting: it survives the key light being switched off,
+    // which is how it was diagnosed.
+    //
+    // A real puffed sleeve covers the shoulder joint, so covering it is both
+    // correct and the fix. It still rotates onto the arm's axis and travels
+    // with the limb, which is what "attached to the upper arm" was asking for.
+    const t = 0.06;
+    const cx2 = sx + (ex - sx) * t, cy2 = sy + (ey - sy) * t;
+    const ang = Math.atan2(ey - sy, ex - sx);
+    const pr = torsoHalf * 0.56;
+    // Longer ACROSS the arm than along it — a puff bells outward from the limb,
+    // and a circle on a limb reads as a ball joint.
+    outlined(ctx, recede(p.b, shade), ow * 0.85, (c) =>
+      c.ellipse(cx2, cy2, pr * 0.86, pr, ang, 0, Math.PI * 2));
+    if (!lod) {
+      // The cuff, on the elbow side: one gold arc across the sleeve's lower
+      // edge, which is where a puffed sleeve is gathered.
+      ctx.strokeStyle = recede(p.a, shade);
+      ctx.lineWidth = hair(0.45, ow * 0.9);
+      ctx.beginPath();
+      ctx.ellipse(cx2, cy2, pr * 0.7, pr * 0.84, ang, -Math.PI * 0.42, Math.PI * 0.42);
+      ctx.stroke();
+    }
+  };
 
   // Hand decorations (grumpos bracers, plumber gloves, bare hands) draw with
   // their own arm, not as a final pass: the back hand must occlude behind the
@@ -4422,7 +5102,14 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // is not body-coloured have to say so: `fill` is an argument rather than a
   // lookup here precisely because guessing it from `id` is how this last went
   // wrong, painting a body-grey disc onto B33P's differently-coloured arm.
-  const shoulderCap = (x, y, fill = id === 'grumpos' ? p.s : p.b) => {
+  // A singlet's shoulder is BARE, so the cap that buries the arm root there has
+  // to be skin. Left at the shirt colour it painted an olive disc onto her
+  // shoulder every frame the near arm drew in front — which is exactly the
+  // "cap intersecting the upper arm" you can see in a run: the cap works by
+  // being invisible against what it sits on, and it can only do that if it is
+  // the same colour as what it sits on. It lands above the armpit line, inside
+  // the cut, so with a tank it is always in bare skin.
+  const shoulderCap = (x, y, fill = spec.tank ? p.s : id === 'grumpos' ? p.s : p.b) => {
     if (!turned && !depthArms) return;
     // Front-on the cap has to fit UNDER the torso's shoulder line. The turned
     // torso raises and broadens its near shoulder, so the cap tucks into that
@@ -4483,7 +5170,16 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // No room at all means the arm roots outside the body: there is nothing to
     // bury it in, and a cap here would be pure addition to the silhouette.
     if (r <= 0) return;
-    const g = fieldRamps(ctx);
+    // The TORSO's own ramp, not the bare field. formRamps() is fieldRamps() plus
+    // a specular blob fitted to the shape's bounds — so a cap re-lit on the
+    // plain field reproduces the torso's core and lit passes but NOT its
+    // highlight, and where it lands on that highlight it wipes it and repaints
+    // without it. That difference IS the disc: a sphere apparently growing out
+    // of the shoulder, worst on a hero whose celebration parks the arm right
+    // where the torso's specular sits. Given the torso's ramp the cap paints
+    // the torso's exact shading into itself and the upper arm connects
+    // invisibly, which is the whole job the cap was written for.
+    const g = formRamps(ctx, torsoPath);
     // Solid fill masks the arm's round root cap and the torso edge beneath it,
     // merging both shapes. Stroke only the OUTER half; a complete oval creates
     // an internal seam and reads as a separate shoulder object.
@@ -4685,9 +5381,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       ctx.beginPath();
       ctx.ellipse(hipX, legRootY, rx, ry, 0, 0, Math.PI * 2);
       ctx.fill();
-      // Same reason as shoulderCap: this buries the thigh's root, and an opaque
-      // fill over shaded pixels has to re-take the light to stay invisible.
-      const g = fieldRamps(ctx);
+      // Same reason as shoulderCap, and the same ramp: this buries the thigh's
+      // root, and an opaque fill over shaded pixels has to re-take the light on
+      // the ramp its neighbours were painted with or it becomes the disc it
+      // exists to hide.
+      const g = formRamps(ctx, torsoPath);
       if (g) { ctx.fillStyle = g.core; ctx.fill(); ctx.fillStyle = g.lit; ctx.fill(); }
       ctx.strokeStyle = OUTLINE;
       ctx.lineWidth = hair(0.5, ow * 0.65);
@@ -4951,6 +5649,15 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     } else {
       if (armDimsF) muscleLimb(ctx, shF, armYF, handF[0], handF[1], armSeg, armSegF, elbF, p.s, ow, armDimsF);
       else limb2(ctx, shF, armYF, handF[0], handF[1], armSeg, elbF, armWF, armFill, ow, armWF, true);
+      // For a SLEEVED hero the cap goes first and the sleeve covers it. In the
+      // shipped order — cap last, after everything — it painted on top of the
+      // puff, and a disc lit on the torso's ramp sitting on a sleeve lit on its
+      // own is a visible circle on her shoulder. Order is the whole fix: the
+      // cap buries the arm's root, the sleeve covers the shoulder, and they
+      // have to happen in that order for both to disappear. Everyone else keeps
+      // the shipped order exactly (see the call at the end of this block).
+      if (spec.puffs) shoulderCap(shF, armYF);
+      drawPuff(shF, armYF, handF, armSeg, elbF, armSegF);
       if (wrenchAngle != null) drawWrench(ctx, handF[0], handF[1], wrenchAngle, u, ow);
       // Gun under the hand, flash over it. The prop goes down first so the
       // glove covers the top of the grip and reads as holding it; the flash is
@@ -4987,17 +5694,23 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
         ctx.globalAlpha = 0.95 * grow;
         dot(ctx, kx, ky, r * 0.6, '#ffffff');
         ctx.restore();
-        if (!lod) {
-          // Two motes trailing back off it, so the ball is travelling rather
-          // than parked on her hands.
-          ctx.save();
-          ctx.globalAlpha = 0.5 * grow;
-          dot(ctx, kx - r * 1.8, ky + r * 0.5, r * 0.22, core);
-          dot(ctx, kx - r * 2.5, ky - r * 0.4, r * 0.14, core);
-          ctx.restore();
-        }
+        // NO trailing motes. There were two, to say the ball was travelling —
+        // and they were the circle on her shoulder: additive cyan dots walking
+        // BACKWARD from the orb, which on this pose means straight across her
+        // body, lifting the blue underneath into a pale disc. Pulling them in
+        // and down only moved the disc from her shoulder to her chest, because
+        // the orb sits in front of her sternum and everything "behind" it is
+        // her. They also had the physics backwards: the ball is still on her
+        // palms, being pushed — it has no wake yet. The corona already says
+        // "energy", and it says it without printing on the costume.
+        //
+        // Diagnosis worth keeping: this survived the key light being switched
+        // off, which ruled out the specular, and a pixel scan across the
+        // shoulder found the body's #2f6fd0 lifted to #5fa9e7 exactly where the
+        // mote landed. Three separate geometry fixes had been aimed at it
+        // first, none of which could have worked.
       }
-      shoulderCap(shF, armYF);
+      if (!spec.puffs) shoulderCap(shF, armYF);
     }
     ctx.restore();
   };
@@ -5079,8 +5792,13 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // arm in the back pass, near arm in front — the crossing limb passes BEHIND
   // the head and only the near arm shows, which is what a body turned toward
   // something it is holding actually looks like.
+  // Celebrations whose arms belong IN FRONT of the body. Standing poses draw
+  // both arms in the back pass, which is right for arms at rest — but a
+  // celebration that MEETS its hands in front of the chest (Grumpos's clap,
+  // Kiko's salute) puts them behind the torso and shows nothing at all.
   const clapFront = (pose.kind === 'celebrate' && (
     id === 'grumpos'
+    || id === 'kiko'
     || (reworkedCelebration && (id === 'dolores' || id === 'fernwick'))
   ));
   const raisedArmStudyFront = pose.kind === 'celebrate'
@@ -5098,6 +5816,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // borrowed swing, which is the tangle this replaces.
     if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
     else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(armFill, farShade), ow, armWB, true);
+    drawPuff(shB, armY, handB, armSeg, elbB, armSegF, farShade);
     if (pistolAngleB != null) drawPistol(ctx, handB[0], handB[1], pistolAngleB, u, ow, p, farShade);
     handDeco(handB[0], handB[1], farShade);
     // Standing, the cannon now hides behind the torso here same as every
@@ -5105,7 +5824,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // silhouette, matching how a plain hand peeks out at rest. It used to be
     // exempted and always drawn in front instead, which is what read as a
     // separate prop bolted to his chest rather than an arm attached to him.
-    if (stand && !raisedArmStudyFront) drawFrontArm();
+    // `armsReachFront` is the ordinary split, not both arms in front: the far
+    // arm has already gone down above, behind the torso, and the near one is
+    // held back for the front pass below. Standing normally paints both here
+    // because arms at rest are behind the body — a reach is not at rest.
+    if (stand && !raisedArmStudyFront && !armsReachFront) drawFrontArm();
   }
   limb2(ctx, hipAt(-1), legRootYB, footB[0], footB[1] - ankleLift, thighSeg, kneeB, legWB, recede(legFill, farShade), ow, legWB, false, shinSeg);
   shortsLeg(hipAt(-1), legRootYB, footB, kneeB, legWB, recede(p.p, farShade));
@@ -5143,11 +5866,6 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   }
 
   // torso
-  const torsoPath = turned
-    ? (c) => turnedTorsoPath(c, torsoCx, torsoTop, torsoBot, torsoHalf, waistHalf, turnYaw)
-    : spec.taper
-      ? (c) => taperTorsoPath(c, torsoCx, torsoTop, torsoBot, torsoHalf, waistHalf)
-      : (c) => roundRectPath(c, -torsoHalf + torsoCx, torsoTop, torsoHalf * 2, torsoBot - torsoTop, torsoHalf * 0.7);
   // Deltoid caps go UNDER the torso so only their outer arcs clear it: they
   // broaden the shoulder line without drawing a seam across the chest.
   if (spec.delts) {
@@ -5156,26 +5874,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       outlined(ctx, p.b, ow * 0.65, (c) => c.arc(torsoCx + sgn * torsoHalf * 0.86, torsoTop + dr * 0.75, dr, 0, Math.PI * 2), 'rgba(26,16,40,0.15)');
     }
   }
-  if (spec.puffs) {
-    // Puffed sleeve caps. Same idea as `delts` — a disc at each shoulder drawn
-    // UNDER the torso so only its outer arc clears the silhouette — but rounder
-    // and rimmed in the trim colour, which is what turns a shoulder into a
-    // sleeve. Under the torso and not over it: over, the cap covers the collar
-    // and the figure grows a pair of epaulettes.
-    const pr = torsoHalf * 0.52;
-    for (const sgn of [-1, 1]) {
-      outlined(ctx, p.b, ow * 0.8, (c) =>
-        c.arc(torsoCx + sgn * torsoHalf * 0.9, torsoTop + pr * 0.7, pr, 0, Math.PI * 2));
-      if (!lod) {
-        ctx.strokeStyle = p.a;
-        ctx.lineWidth = hair(0.45, ow * 0.9);
-        ctx.beginPath();
-        ctx.arc(torsoCx + sgn * torsoHalf * 0.9, torsoTop + pr * 0.7, pr * 0.86,
-          sgn < 0 ? Math.PI * 0.5 : -Math.PI * 0.5, sgn < 0 ? Math.PI * 1.4 : Math.PI * 0.4);
-        ctx.stroke();
-      }
-    }
-  }
+  // The puffed sleeve used to be drawn here, as a disc bolted to the torso at
+  // each shoulder. It is a GARMENT ON THE ARM, so it now rides the arm — see
+  // drawPuff, called from each arm pass. Mounted on the body it stayed put
+  // while the limb swung out from under it, which is exactly why it read as
+  // part of her shoulder rather than as a sleeve.
   // The heavy torso is bare skin: thinner and fainter still than the arms'
   // SKIN_OUTLINE — it is the biggest uninterrupted shape on him, and at full
   // weight its rim dominates the sprite the way no limb's can.
@@ -5190,6 +5893,98 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // to sit on that colour change and hide it, so anything that separates the
   // two puts a line of shirt colour under the leather.
   const beltY = hipY - (0.085 - (spec.beltDrop || 0)) * u + bob;
+  if (spec.tank && !duck) {
+    // A SINGLET: two narrow straps over bare shoulders and a deep V. Three cuts
+    // do it — the neckline, and one armhole per side that takes the whole
+    // shoulder corner out — and the straps are what is left between them.
+    //
+    // The constraint worth stating, because it sets every number here: the
+    // torso is 0.3u across. A strap with skin either side of it is one to two
+    // pixels of each at hero size, so this reads as a drawn garment at study
+    // scale and as a suggestion of one in a lane. The straps are therefore as
+    // narrow as they can be while still being a band rather than a line, and
+    // the armhole is cut deep — the DIAGONAL is what carries the read, not the
+    // sliver of skin outboard of the strap.
+    //
+    // Painted as skin over the shirt and clipped to the torso, like the trouser
+    // fill and the midriff: the silhouette never moves, only the colour map.
+    // And the bare shoulder runs straight into the bare arm on purpose — they
+    // are the same skin, so the strap reads as a band laid over one continuous
+    // shoulder instead of as a shape butted against a sleeve.
+    const px = torsoCx;
+    const top = torsoTop - 0.02 * u;
+    // How deep the armhole goes, and this is the number the jump pose polices.
+    // The cut is STATIC — it is a hole in the shirt, and it has to be, because
+    // a shoulder does not move much whatever the forearm does. But cut too deep
+    // it stops describing a shoulder and starts describing ribs, and the moment
+    // the arm swings away from the body (a jump throws it up and forward) what
+    // is left behind is a large skin-coloured wedge attached to nothing: a bite
+    // out of her top rather than a bare shoulder.
+    //
+    // The arm sockets at 0.18 of the torso's height, so the bare region belongs
+    // in the top third and no lower. ARM showing is bought from the STRAP being
+    // narrow, not from the armhole being deep — that was the wrong lever, and
+    // 0.5 was deep enough to leave the hole visible in every airborne frame.
+    const armpitY = torsoTop + (torsoBot - torsoTop) * 0.27;
+    const vHalf = torsoHalf * 0.32;
+    const vDepth = torsoTop + (torsoBot - torsoTop) * 0.32;
+    const strapOuter = torsoHalf * 0.66;
+    const seams = [];
+    const cuts = [];
+    // The neckline — deep, and cut as a soft-shouldered V rather than a hard
+    // wedge: straight walls to a point put a spike in the middle of her chest.
+    cuts.push((c) => {
+      c.moveTo(px - vHalf, top);
+      c.lineTo(px + vHalf, top);
+      c.quadraticCurveTo(px + vHalf * 0.42, vDepth * 0.55 + torsoTop * 0.45, px, vDepth);
+      c.quadraticCurveTo(px - vHalf * 0.42, vDepth * 0.55 + torsoTop * 0.45, px - vHalf, top);
+      c.closePath();
+    });
+    seams.push((c) => {
+      c.moveTo(px - vHalf, top);
+      c.quadraticCurveTo(px - vHalf * 0.42, vDepth * 0.55 + torsoTop * 0.45, px, vDepth);
+      c.quadraticCurveTo(px + vHalf * 0.42, vDepth * 0.55 + torsoTop * 0.45, px + vHalf, top);
+    });
+    // The armholes: from the strap's outer edge, bulging outward and down past
+    // the body's edge, so the whole shoulder corner comes out.
+    for (const sgn of [-1, 1]) {
+      const arc = (c) => {
+        c.moveTo(px + sgn * strapOuter, top);
+        // A SCOOP, concave toward the body — the sports-bra armhole rather than
+        // a corner sliced off on a diagonal. The straight/outboard version left
+        // a hard edge running across exactly the space the upper arm occupies,
+        // which is what read as the shirt cutting through her arm: a garment
+        // edge that crosses a limb has to be a curve leaving it, not a chord
+        // through it. Curving inboard also narrows the strap toward the
+        // shoulder the way a real one tapers, so the strap and the scoop are
+        // one shape instead of two decisions.
+        c.quadraticCurveTo(px + sgn * torsoHalf * 0.8, torsoTop + (armpitY - torsoTop) * 0.72,
+          px + sgn * torsoHalf * 1.3, armpitY);
+      };
+      cuts.push((c) => {
+        arc(c);
+        c.lineTo(px + sgn * torsoHalf * 1.3, top);
+        c.closePath();
+      });
+      seams.push(arc);
+    }
+    ctx.save();
+    ctx.beginPath(); torsoPath(ctx); ctx.clip();
+    ctx.fillStyle = p.s;
+    for (const cut of cuts) { ctx.beginPath(); cut(ctx); ctx.fill(); }
+    if (!lod) {
+      // Skin against a mid-value top is a weak edge — the same problem the crop
+      // hem has — so every cut gets a hairline or the garment's shape is left
+      // to be inferred.
+      ctx.globalAlpha *= 0.35;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = hair(0.45, ow * 0.6);
+      ctx.beginPath();
+      for (const seam of seams) seam(ctx);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   if (spec.crop && !duck) {
     // A cropped top: bare midriff between the hem and the waistband. Painted
     // as skin over the torso and then overwritten from the belt down by the
@@ -5250,40 +6045,11 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.fill();
     ctx.restore();
   }
-  if (spec.bust && !lod) {
-    // Chest, at the same whisper weight Grumpos's pecs are drawn at and clipped
-    // to the torso the same way. TWO SEPARATE ROUNDED CUPS with a gap at the
-    // sternum, and no vertical seam between them.
-    //
-    // That arrangement is the whole note. The first cut ran one continuous
-    // stroke across the chest and drove a sternum line down into the middle of
-    // it, so the two curves met at a hard vertex and the shape came to a POINT
-    // — twice, once at each outer end and once in the centre. A pointed chest
-    // is a cartoon of one. Two shallow crescents that never touch, each convex
-    // down and dying out at both ends on a round cap, read as roundness and as
-    // nothing else; there is no vertex anywhere in them to sharpen.
-    //
-    // Lighter than the pecs too (0.15 against 0.22, on a thinner line). This is
-    // a shape cue and not a drawing of anatomy: the figure reads female from
-    // the waist, the hair and this together, not from any one of them, so the
-    // line only has to be present — it does not have to be seen.
-    const px = torsoCx;
-    const bustY = torsoTop + (torsoBot - torsoTop) * 0.3;
-    ctx.save();
-    ctx.beginPath(); torsoPath(ctx); ctx.clip();
-    ctx.globalAlpha *= 0.15;
-    ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = hair(0.5, ow * 0.6);
-    ctx.lineCap = 'round';
-    for (const sgn of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(px + sgn * torsoHalf * 0.16, bustY - 0.014 * u);
-      ctx.quadraticCurveTo(px + sgn * torsoHalf * 0.48, bustY + 0.046 * u,
-        px + sgn * torsoHalf * 0.78, bustY - 0.026 * u);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
+  // A `bust` block used to sit here — two soft crescents at whisper weight. It
+  // is gone at Peter's call, not softened again: the figure already reads
+  // female from the waist taper, the hair and the silhouette, and a chest line
+  // was the one mark of the set that had to keep being argued about. The pecs
+  // block below is the same technique if anything ever needs it back.
   if (spec.pecs && !lod) {
     // Chest shading: a pec shelf and a short sternum line. Any more detail
     // than this turns into speckle once the sprite is back at game scale.
@@ -5600,11 +6366,25 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // — a band drawn out to the silhouette adds a corner where the contour is
     // already turning — and landing on the shared beltY, so it covers the
     // trouser colour seam instead of sitting near it.
+    //
+    // Measured at its OWN height, not off the shoulder line. A tapered torso is
+    // narrower at the waist than at the shoulders by exactly `taper`, so a belt
+    // sized off torsoHalf hangs past the body on both sides — and the harder
+    // the waist is nipped in, the further it overhangs. Grumpos's belt has
+    // always done this; hers had not, and it only showed up once a cut with a
+    // real waist existed to show it.
+    const beltHalf = (spec.taper
+      ? taperHalfAt(beltY, torsoTop, torsoBot, torsoHalf, waistHalf)
+      : roundHalfAt(beltY, torsoTop, torsoBot, torsoHalf, torsoHalf * 0.7));
+    // 0.84 of the body's half-width AT THE BELT, and a slightly finer band than
+    // it started at. Run out to the silhouette on a nipped waist the leather
+    // becomes the widest thing on the figure, which reads as a belt she has
+    // borrowed rather than one that fits.
     ctx.strokeStyle = p.w;
-    ctx.lineWidth = 0.052 * u;
+    ctx.lineWidth = 0.046 * u;
     ctx.beginPath();
-    ctx.moveTo(gearX - torsoHalf * 0.9, beltY);
-    ctx.lineTo(gearX + torsoHalf * 0.9, beltY);
+    ctx.moveTo(gearX - beltHalf * 0.84, beltY);
+    ctx.lineTo(gearX + beltHalf * 0.84, beltY);
     ctx.stroke();
     // `buckle` scales it. The 3D reference's whole waist is one big brass
     // plate, and at hero size that plate is the only thing separating a bare
@@ -5618,12 +6398,12 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // One pouch. Two is clutter at 24px and three is a tool belt, which is
       // Lorenzo's read and not hers.
       outlined(ctx, p.w, hair(0.45, ow * 0.5), (c) =>
-        roundRectPath(c, gearX - torsoHalf * 0.82, beltY - 0.008 * u, 0.07 * u, 0.075 * u, 0.018 * u));
+        roundRectPath(c, gearX - beltHalf * 0.88, beltY - 0.008 * u, 0.07 * u, 0.075 * u, 0.018 * u));
     }
     // A hip rig instead of a thigh pair: same holster, worn at the belt on the
     // near side, and emptied by the same flag when the gun is in her hand.
     if (spec.holster === 'hip' && !holsterDrawn) {
-      const hx0 = gearX + torsoHalf * 0.72;
+      const hx0 = gearX + beltHalf * 0.78;
       outlined(ctx, p.gunGrip || p.w, hair(0.45, ow * 0.5), (c) =>
         roundRectPath(c, hx0 - 0.026 * u, beltY - 0.075 * u, 0.052 * u, 0.08 * u, 0.012 * u));
       outlined(ctx, p.w, hair(0.5, ow * 0.6), (c) =>
@@ -5814,59 +6594,153 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) => c.arc(px, beltY + 0.002 * u, 0.028 * u, 0, Math.PI * 2));
   }
   if (spec.dress && !duck) {
-    // A qipao. Same construction as Fernwick's tunic — the torso's flat hem
-    // flares into a short skirt over the thighs, drawn after the legs so it
-    // drapes over the thigh roots — with the three marks that make it this
-    // garment instead of that one: gold piping round the hem, a sash at the
-    // waist in its own colour, and a SLIT up the near side. The slit is the
-    // one that earns its pixels: a flared trapezoid with no break in it is a
-    // dress on anybody, and the split panel is what says whose.
+    // A qipao, in two builds. Both are constructed the way Fernwick's tunic is
+    // — the torso's flat hem carries on into cloth over the thighs, drawn after
+    // the legs so it drapes over the thigh roots — and both carry the three
+    // marks that make it this garment: gold piping, a sash at the waist in its
+    // own colour, and a split.
+    //
+    // 'split' is the reference's own cut: a short centre panel with a long
+    // panel hanging at each side and the LEG showing in the two gaps between
+    // them. That is a very different silhouette from the plain flare — it is
+    // vertical rather than triangular, and it puts two hard gold edges down the
+    // figure where the flare has one soft hem.
+    const split = spec.dress === 'split';
     const px = torsoCx;
     const sway = jump ? 0.02 * u : 0;
-    const dressBeltY = hipY - 0.05 * u + bob;
+    // `waistRise` lifts the sash, in u. It is a per-cut dial rather than a
+    // global move because where the waist sits IS the garment's design: the
+    // split build wears it high, which is what lets its skirt be short without
+    // the panels looking cropped.
+    const dressBeltY = hipY - (0.05 + (spec.waistRise || 0)) * u + bob;
     const top = dressBeltY + 0.02 * u;
     const hemY = hipY + legL * 0.42 + bob * 0.5;
     const wTop = torsoHalf * 0.98;
     // Flares wider than the tunic: front-on the legs root at ±0.095u and this
     // hem has to clear both of them, or the thighs show past the cloth.
     const wHem = torsoHalf * (frontLegs ? 1.52 : 1.34);
-    const skirt = (c) => {
-      c.moveTo(px - wTop, top);
-      c.lineTo(px + wTop, top);
-      c.lineTo(px + wHem + sway, hemY);
-      c.quadraticCurveTo(px + sway, hemY + 0.05 * u, px - wHem + sway, hemY);
-      c.closePath();
-    };
-    outlined(ctx, p.b, ow, skirt);
-    if (!lod) {
-      // Gold piping, traced just inside the hem so it can never spill past the
-      // silhouette, and the slit running up from it.
-      ctx.save();
-      ctx.beginPath(); skirt(ctx); ctx.clip();
+    const gold = (path) => {
+      if (lod) return;
       ctx.strokeStyle = p.a;
       ctx.lineWidth = hair(0.5, 0.022 * u);
       ctx.beginPath();
-      ctx.moveTo(px - wHem + sway, hemY - 0.012 * u);
-      ctx.quadraticCurveTo(px + sway, hemY + 0.038 * u, px + wHem + sway, hemY - 0.012 * u);
+      path(ctx);
       ctx.stroke();
-      ctx.strokeStyle = OUTLINE;
-      ctx.globalAlpha *= 0.5;
-      ctx.lineWidth = hair(0.45, ow * 0.7);
-      ctx.beginPath();
-      ctx.moveTo(px + wHem * 0.44 + sway, hemY);
-      ctx.lineTo(px + wTop * 0.34, top + 0.02 * u);
-      ctx.stroke();
-      ctx.restore();
+    };
+    if (split) {
+      // THREE HANGING PANELS, cut and driven the way Grumpos's battle skirt is
+      // — because the problem with a one-piece skirt on this rig is not its
+      // shape, it is that it is a board. His pteruges solved that years ago:
+      // each panel is its own quad, pinned at the waist and free at the hem,
+      // and it inherits the swing of the LEG BENEATH IT rather than wagging as
+      // one slab at stride frequency. Three instead of his four, because this
+      // is a dress panel rather than armour strapping and four at her width
+      // comes out as fringe.
+      //
+      // The SPLIT is the gap the panels leave on one side, and it is on the
+      // screen-left (trailing) side here. What shows through it is the legging,
+      // which is already drawn — the skirt simply is not there.
+      const splitSide = -1;
+      const hemLow = hipY + legL * (duck ? 0.24 : 0.36) + bob * 0.5;
+      const halfAtY = (y) => (spec.taper
+        ? taperHalfAt(y, torsoTop, torsoBot, torsoHalf, waistHalf)
+        : torsoHalf);
+      const wTopS = halfAtY(top) * 0.98;
+      // Front-on the legs root wide, so the hem needs a real A-line or the
+      // thighs show past the cloth on both sides instead of only in the split.
+      // Flares harder than it did. A short skirt hanging near-straight reads as
+      // a tube; the A-line is most of what says "skirt" once there is not much
+      // length left to say it with, and the panels have to clear thighs that
+      // root wide front-on.
+      const flare = frontLegs ? 1.72 : 1.44;
+      const wHemS = wTopS * flare;
+      // How far each leg has swung from its OWN hip, not from the body centre:
+      // measured from centre, legs that merely stand apart read as a permanent
+      // outward pull and part the panels down the middle at rest.
+      const swingF = footF[0] - hipAt(1), swingB = footB[0] - hipAt(-1);
+      const drag = (v, max) => Math.max(-max, Math.min(max, v));
+      // `f` is the panel's centre as a fraction of wTop; `gain` how much of its
+      // leg it inherits. The panel over the split side is pulled in and barely
+      // stirs — it is the edge of the opening, and an edge that swings as hard
+      // as the middle closes the split it is supposed to be making.
+      // Equal lengths. A staggered hem — centre panel dropped, the two beside
+      // it lifted — was tried and lost: it made the skirt look damaged rather
+      // than cut.
+      const PANELS = [
+        { f: splitSide * 0.72, half: 0.3, gain: 0.25 },
+        { f: 0, half: 0.46, gain: 0.85 },
+        { f: -splitSide * 0.66, half: 0.42, gain: 1 },
+      ];
+      for (const { f, half, gain } of PANELS) {
+        const followsFront = f * splitSide < 0;
+        const lead = followsFront ? swingF : swingB;
+        const rise = followsFront ? footF[1] : footB[1];
+        const topX = px + f * wTopS;
+        const bx = px + f * wHemS + sway + drag(gain * 0.4 * lead, 0.05 * u);
+        const by = hemLow + drag(gain * 0.4 * rise, 0.04 * u);
+        const topHalf = wTopS * half;
+        const botHalf = topHalf * (1 + (flare - 1) * 0.9);
+        const panel = (c) => {
+          c.moveTo(topX - topHalf, top);
+          c.lineTo(topX + topHalf, top);
+          c.lineTo(bx + botHalf, by);
+          c.quadraticCurveTo(bx, by + 0.026 * u, bx - botHalf, by);
+          c.closePath();
+        };
+        outlined(ctx, p.b, ow, panel);
+        // Piping round each panel's own hem: on a cut skirt the hem edge is the
+        // detail, and three panels sharing one traced line would weld them back
+        // into the board this is here to avoid.
+        gold((c) => {
+          c.moveTo(bx - botHalf * 0.94, by - 0.012 * u);
+          c.quadraticCurveTo(bx, by + 0.014 * u, bx + botHalf * 0.94, by - 0.012 * u);
+        });
+      }
+    } else {
+      const skirt = (c) => {
+        c.moveTo(px - wTop, top);
+        c.lineTo(px + wTop, top);
+        c.lineTo(px + wHem + sway, hemY);
+        c.quadraticCurveTo(px + sway, hemY + 0.05 * u, px - wHem + sway, hemY);
+        c.closePath();
+      };
+      outlined(ctx, p.b, ow, skirt);
+      if (!lod) {
+        // Gold piping, traced just inside the hem so it can never spill past
+        // the silhouette, and the slit running up from it.
+        ctx.save();
+        ctx.beginPath(); skirt(ctx); ctx.clip();
+        gold((c) => {
+          c.moveTo(px - wHem + sway, hemY - 0.012 * u);
+          c.quadraticCurveTo(px + sway, hemY + 0.038 * u, px + wHem + sway, hemY - 0.012 * u);
+        });
+        ctx.strokeStyle = OUTLINE;
+        ctx.globalAlpha *= 0.5;
+        ctx.lineWidth = hair(0.45, ow * 0.7);
+        ctx.beginPath();
+        ctx.moveTo(px + wHem * 0.44 + sway, hemY);
+        ctx.lineTo(px + wTop * 0.34, top + 0.02 * u);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
-    // Sash over the waist, covering the skirt's top seam. Its own colour: a
-    // sash in the dress colour is a fold, and in the trim colour it is a belt.
+    // Sash over the waist, covering the top seam of whichever skirt this is.
+    // Its own colour: a sash in the dress colour is a fold, and in the trim
+    // colour it is a belt.
+    // Measured at its OWN height, like every other band on this rig. Sized off
+    // the shoulder line it overhangs a tapered waist on both sides — the same
+    // fault the gear belt had, and one that only shows once a cut has a real
+    // waist to show it on.
+    const sashHalf = (spec.taper
+      ? taperHalfAt(dressBeltY, torsoTop, torsoBot, torsoHalf, waistHalf)
+      : torsoHalf) * 1.04;
     outlined(ctx, p.sash || p.p, hair(0.5, ow * 0.6), (c) =>
-      roundRectPath(c, px - torsoHalf * 1.02, dressBeltY - 0.032 * u, torsoHalf * 2.04, 0.066 * u, 0.018 * u));
+      roundRectPath(c, px - sashHalf, dressBeltY - 0.032 * u, sashHalf * 2, 0.066 * u, 0.018 * u));
     if (!lod) {
       // The knot, off-centre, with a short tail — a sash tied rather than a
       // band pulled on.
       outlined(ctx, p.sash || p.p, hair(0.4, ow * 0.5), (c) =>
-        c.ellipse(px - torsoHalf * 0.36, dressBeltY + 0.004 * u, 0.032 * u, 0.026 * u, 0, 0, Math.PI * 2));
+        c.ellipse(px - sashHalf * 0.36, dressBeltY + 0.004 * u, 0.032 * u, 0.026 * u, 0, 0, Math.PI * 2));
     }
   }
   if (spec.apron && !duck) {
@@ -5991,7 +6865,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       if (!frontArmOverApron) drawNameTag();
     }
   }
-  if (!clapFront && (!stand || raisedArmStudyFront)) {
+  if (!clapFront && (!stand || raisedArmStudyFront || armsReachFront)) {
     drawFrontArm();
     if (strapOverArm) strapOverArm();
     if (apronStrapOver) apronStrapOver(); // strap passes over the near arm in the run/jump/duck cycle
@@ -6018,6 +6892,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   const drawFarArm = () => {
     if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, p.s, ow, armDimsB);
     else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(armFill, farShade), ow, armWB, true);
+    drawPuff(shB, armY, handB, armSeg, elbB, armSegF, farShade);
     if (pistolAngleB != null) drawPistol(ctx, handB[0], handB[1], pistolAngleB, u, ow, p, farShade);
     handDeco(handB[0], handB[1]);
   };
@@ -6045,6 +6920,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (armsInFront) {
     if (armDimsB) muscleLimb(ctx, shB, armY, handB[0], handB[1], armSeg, armSegF, elbB, recede(p.s, farShade), ow, armDimsB);
     else limb2(ctx, shB, armY, handB[0], handB[1], armSeg, elbB, armWB, recede(armFill, farShade), ow, armWB, true);
+    drawPuff(shB, armY, handB, armSeg, elbB, armSegF, farShade);
     handDeco(handB[0], handB[1], farShade);
     drawFrontArm();
     if (apronStrapOver) apronStrapOver();
@@ -7135,7 +8011,12 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
 
 // The raw face paint: nominal framing per rig. Extents vary a lot between
 // heroes (hats, ears, whiskers), so drawToonFace measures this and refits.
-function paintFace(ctx, heroId, spec, x, y, w, h, light = true, palette = null) {
+// `forFit` is the MEASURING pass. A face cell is fitted to the ink it contains,
+// so anything drawn here competes with the face for the box — and a trailing
+// accessory that is allowed to be cropped should not be measured at all. Cuts
+// that already answer `portrait` shorten themselves; this is for the ones that
+// keep their full length and get clipped to the cell instead (see drawToonFace).
+function paintFace(ctx, heroId, spec, x, y, w, h, light = true, palette = null, forFit = false) {
   const p = palette || pal(heroId);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -7152,7 +8033,7 @@ function paintFace(ctx, heroId, spec, x, y, w, h, light = true, palette = null) 
     // fits it to the box, so a waist-length plait is measured as part of the
     // FACE and the whole head shrinks to make room for it — the same reason no
     // back accessory is drawn here either.
-    drawHead(ctx, heroId, spec, p, u, ow, x + w / 2, y + h * 0.62, false, { portrait: true });
+    drawHead(ctx, heroId, spec, p, u, ow, x + w / 2, y + h * 0.62, false, { portrait: true, portraitFit: forFit });
   } else if (spec.rig === 'ray') {
     // ray has a real head on a floating body — crop to the head like a humanoid
     drawRayHead(ctx, heroId, p, { kind: 'idle', time: 0 }, u, ow, x + w / 2, y + h * 0.62, false, false);
@@ -7207,7 +8088,7 @@ function faceFit(heroId, spec, light = true, palette = null) {
   const key = `${heroId}|${light ? 'lit' : 'flat'}`;
   if (FACE_FIT.has(key)) return FACE_FIT.get(key);
   let fit = { x: 0, y: 0, w: 1, h: 1 }; // nominal framing, if nothing measures
-  const b = inkBounds(FIT_R * 3, (x) => paintFace(x, heroId, spec, FIT_R, FIT_R, FIT_R, FIT_R, light, palette));
+  const b = inkBounds(FIT_R * 3, (x) => paintFace(x, heroId, spec, FIT_R, FIT_R, FIT_R, FIT_R, light, palette, true));
   if (b) {
     fit = {
       x: (b.x0 - FIT_R) / FIT_R,
@@ -7273,6 +8154,9 @@ const EFFECT_FALLBACK = {
   dolores:  { cx: 0, cy: -0.5, rx: 0.6, ry: 0.7 },
   raymn:    { cx: -0.02, cy: -0.5, rx: 0.7, ry: 0.78 },
   grumpos:  { cx: 0, cy: -0.62, rx: 0.72, ry: 0.94 },
+  // Slim like Fernwick, but a shade wider and taller in the envelope: the buns
+  // sit outboard of the skull and the skirt flares past the hips.
+  kiko:     { cx: 0, cy: -0.52, rx: 0.64, ry: 0.74 },
 };
 
 function effectPoses(heroId) {
@@ -7289,6 +8173,7 @@ function effectPoses(heroId) {
     b33p: { kind: 'run', phase: 0.25, time: 0.2, grounded: true, facing: 1, menuAction: 'aim' },
     mochi: { kind: 'duck', phase: 0.5, time: 0.2, grounded: true, facing: 1, squash: 1 },
     chompo: { kind: 'run', phase: 0.25, time: 0.22, grounded: true, facing: 1, menuAction: 'chomp' },
+    kiko: { kind: 'run', phase: 0.25, time: 0.2, grounded: true, facing: 1, menuAction: 'aim' },
   }[heroId];
   if (special) poses.push(special);
   if (heroId === 'lorenzo') poses.push({
@@ -7370,6 +8255,13 @@ export function drawToonFace(ctx, heroId, x, y, w, h, opts = {}) {
   const cy = (fit.y + fit.h / 2) * h;
   const s = Math.min((1 - FACE_PAD * 2) * w / inkW, (1 - FACE_PAD * 2) * h / inkH);
   ctx.save();
+  // Anything the fit deliberately did not measure (see paintFace's `forFit`)
+  // now hangs past the box, so the box is also the crop. Every caller already
+  // hands this function a cell it owns outright — a HUD slot, a portal crop —
+  // so clipping to it can only remove ink that was never promised.
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
   // put the measured ink center on the box center, then scale it to fit
   ctx.translate(x + w / 2, y + h / 2);
   ctx.scale(s, s);

@@ -1,6 +1,5 @@
 // Every minigame must run headlessly to timeout (losable) and accept input
-// without throwing. Winnability is covered by design (and REWIRE/TURDLE by
-// direct solves below where cheap).
+// without throwing. Winnability is covered by design.
 import { installDom } from './dom-stub.js';
 const dom = installDom();
 
@@ -28,7 +27,7 @@ for (const game of MINIGAMES) {
   let t = 0;
   const actions = ['left', 'right', 'jump', 'duck'];
   let i = 0;
-  while (!ended && t < 95) {
+  while (!ended && t < 45) {
     t += TICK;
     // mash some inputs to exercise logic
     if (Math.floor(t * 10) % 7 === 0) {
@@ -81,7 +80,7 @@ for (const game of MINIGAMES) {
 {
   const { ArcadeState } = await import('../src/game/hub/index.js');
   Input.usingTouch = true;
-  const saveStub = { slot: { coins: 0, campaign: { storyFlags: { minigamesSeen: ['rewire', 'turdle'] } } } };
+  const saveStub = { slot: { coins: 0, campaign: { storyFlags: { minigamesSeen: ['blocksurge', 'brickbonk'] } } } };
   const arcade = new ArcadeState({ save: saveStub, flow: {} });
   const opts = arcade.options();
   assert(!opts.some((o) => o.game), 'arcade offers no minigames on touch');

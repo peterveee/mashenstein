@@ -35,7 +35,7 @@
 // A bare number on a chord lane throws inside scheduleStep and takes the whole render
 // page with it (see src/data/voices.js), which is why the array is built here rather
 // than left to whatever the last edit happened to leave behind.
-import { CHORD_LANES, PERCUSSION_LANES, baseLane } from '../src/data/voices.js';
+import { CHORD_LANES, PERCUSSION_LANES, baseLane, polyLane } from '../src/data/voices.js';
 import {
   LANES, validLen, perNoteLengthLane,
 } from '../src/engine/lanes.js';
@@ -316,8 +316,53 @@ export const rollResizable = (key) => perNoteLengthLane(key);
 const isChordValue = (laneKey, value) =>
   CHORD_LANES.includes(baseLane(laneKey)) || Array.isArray(value);
 
+/**
+ * ---- how many notes a channel holds on one step ------------------------------------
+ *
+ * Mono and Poly rather than Replace and Add, because it is a fact about the CHANNEL and
+ * not about the mouse: a mono channel holds one note at a time, so a new note takes the
+ * step over and clicking another pitch is how you correct one. A poly channel holds a
+ * chord, so a new note joins what is there and clicking a note in the chord picks that
+ * one back out. The replace/add behaviour follows from the mode; it is not the mode.
+ *
+ * Poly is something `bass` and `lead` can play perfectly well — every pitched body loops
+ * over the tones on a step now (`tonesOf`, src/engine/audio.js), and the keyboard/MIDI
+ * recorder has been stacking on them for a while by asking `polyLane`. This is the same
+ * capability offered to the mouse, as a mode you set rather than one the lane decides.
+ *
+ * A mode you cannot see is a mode that will surprise you, so it is a switch on the key
+ * column beside DRAW LENGTH rather than a modifier nobody has been told about.
+ */
+export const VOICE_MODES = [
+  {
+    id: 'mono',
+    label: 'Mono',
+    hint: 'Mono — one note a step; drawing another pitch replaces the note that was there',
+  },
+  {
+    id: 'poly',
+    label: 'Poly',
+    hint: 'Poly — a step holds a chord; drawing another pitch adds to it',
+  },
+];
+export const VOICE_MODE_IDS = VOICE_MODES.map((m) => m.id);
+export const voiceMode = (id) => (VOICE_MODE_IDS.includes(id) ? id : 'mono');
+
+/**
+ * What a channel starts on before anyone touches the switch.
+ *
+ * Chord lanes start Poly because chords are what they are for; everything else starts
+ * Mono. Peter's rule, and the least surprising one: the default is never the mode that
+ * can quietly stack onto a note you meant to correct.
+ */
+export const defaultVoiceMode = (laneKey) =>
+  (CHORD_LANES.includes(baseLane(laneKey)) ? 'poly' : 'mono');
+
 export const noteDrawLength = (row, value, len) => {
-  const chord = isChordValue(row.lane, value);
+  // `row.chord` is the panel's answer, which knows the MONO/POLY switch; the lane/value
+  // rule below is the fallback for a caller that has none (tests, and anything reading a
+  // note's rectangle outside a live roll).
+  const chord = row.chord ?? isChordValue(row.lane, value);
   const drawn = noteSpan({ ...row, chord }, value, len);
   if (drawn != null || !perNoteLengthLane(row.lane)) return drawn;
   // A legacy note with no *Len entry is still a note in the roll, not a request to
@@ -502,6 +547,29 @@ export function createPianoRoll({
   // Do not persist this: it is a drawing-session preference, and every new piano roll
   // starts with the useful, least surprising sixteenth-note default.
   let noteAddLength = 1;
+
+  /**
+   * Mono or Poly, per channel — see VOICE_MODES.
+   *
+   * Keyed by base lane and holding only what has been CHANGED, so a lane the switch has
+   * never been touched on answers with its own default rather than with whatever the last
+   * lane you were on happened to be set to. Selecting `chords` after setting `bass` to
+   * Poly must still give you a poly chord lane, and selecting `lead` must still give you
+   * a mono one.
+   *
+   * Not persisted, for the same reason DRAW LENGTH is not: a stale Poly on `bass` a week
+   * later turns the click that corrects a note into the click that stacks onto it, and
+   * the wrong default here costs work rather than a keystroke.
+   */
+  const voiceModes = new Map();
+  // A lane the engine plays one note at a time cannot be given a chord, whatever the
+  // switch says — `vox` and `shout` are in the roll and are in MONO_LANES. `polyLane` is
+  // the authority the recorder already asks (mixer-entry.js), so ask the same one here
+  // rather than keeping a second list that can drift from it.
+  const canStack = (key) => polyLane(editBank(), key);
+  const modeFor = (key) => (canStack(key)
+    ? voiceMode(voiceModes.get(baseLane(key)) ?? defaultVoiceMode(key))
+    : 'mono');
   const applyPitchUnitStyle = () => {
     el.style.setProperty('--roll-pitch-unit', `${pitchUnit}px`);
   };
@@ -848,6 +916,64 @@ export function createPianoRoll({
   };
 
   /**
+   * The CHANNEL switch: Mono or Poly, for the lane the roll is on.
+   *
+   * Two buttons in the zoom row's clothes rather than a third listbox. It has two states
+   * and both fit, so a picker you have to open to read would hide the very thing the
+   * control exists to show — which of them you are in while you draw.
+   */
+  const VOICE_TITLE = 'How many notes this channel holds on one step.\n'
+    + 'Mono — one note; drawing another pitch replaces it, which is how you correct a note.\n'
+    + 'Poly — a chord; drawing another pitch adds to it, and clicking a note in the chord'
+    + ' takes that one out.\n'
+    + 'Chord channels start Poly, everything else starts Mono. A step that already holds a'
+    + ' chord stays editable as one either way.';
+  const voicePicker = () => {
+    const wrap = document.createElement('span');
+    wrap.className = 'rollzoom rollvoice';
+    wrap.title = VOICE_TITLE;
+    wrap.setAttribute('role', 'group');
+    wrap.setAttribute('aria-label', 'Channel voicing — how many notes a step holds');
+    const key = lane();
+    const stacks = canStack(key);
+    const buttons = VOICE_MODES.map((m) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'rollzoom-button';
+      b.dataset.voice = m.id;
+      b.textContent = m.label;
+      b.title = m.hint;
+      // Said, not silently ignored: on `vox` and `shout` the engine plays one note, so
+      // Poly would write tones into the file that never sound.
+      if (!stacks && m.id === 'poly') {
+        b.disabled = true;
+        b.title = `${laneLabel(key)} plays one note at a time`;
+      }
+      wrap.append(b);
+      return b;
+    });
+    const paint = () => {
+      const now = modeFor(key);
+      for (const b of buttons) {
+        const on = b.dataset.voice === now;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
+    };
+    for (const b of buttons) {
+      b.onclick = (ev) => {
+        ev.stopPropagation();
+        if (b.disabled) return;
+        voiceModes.set(baseLane(key), voiceMode(b.dataset.voice));
+        paint();
+        toast(VOICE_MODES.find((m) => m.id === b.dataset.voice).hint);
+      };
+    }
+    paint();
+    return wrap;
+  };
+
+  /**
    * Is the cell being edited a chord cell?
    *
    * Two ways in, and the second one is deliberately about the VALUE rather than the lane.
@@ -857,15 +983,20 @@ export function createPianoRoll({
    * serialiser uses to decide how to write a lane out (`isChordLane` in
    * tools/lib/song-source.js asks `arr.some(Array.isArray)`).
    *
-   * Value-based rather than "is this lane poly-capable" on purpose. Most rack-voiced
-   * lanes in the game are `bass` and `lead` — single-note parts — and on those, clicking
-   * a different pitch on an occupied step is how you CORRECT a note. Making the whole
-   * lane chordal would turn that everyday gesture into stack-then-erase on 35 parts to
-   * gain something four of them wanted. So a click still replaces, and the chordal
-   * behaviour appears only on a step that already contains a chord — one you recorded —
-   * where it is what lets you pick a single tone back out of it.
+   * Not "is this lane poly-capable" on purpose. Most rack-voiced lanes in the game are
+   * `bass` and `lead` — single-note parts — and on those, clicking a different pitch on
+   * an occupied step is how you CORRECT a note. Making every poly-capable lane chordal
+   * would turn that everyday gesture into stack-then-erase on 35 parts to gain something
+   * four of them wanted. So the CHANNEL switch decides, per lane, and it starts Mono
+   * everywhere but the chord lanes.
+   *
+   * The value clause holds whatever the switch says. A step that already holds an array
+   * is a chord however it got there — recorded, imported, hand-written — and drawing on
+   * one has to be able to pick a single tone back out of it. Flattening a recorded chord
+   * to one note because the channel happened to be Mono is a way to lose work that nobody
+   * asked for; right-click still rubs the wrong tone out.
   */
-  const isChord = (value) => CHORD_LANES.includes(baseLane(lane())) || Array.isArray(value);
+  const isChord = (value) => modeFor(lane()) === 'poly' || Array.isArray(value);
   const rangeOf = () => keyboardRange(bank(), lane());
   // A roll preview uses triggerAttack for sustained Tone voices, so it needs an
   // explicit note-off just like a held keyboard key. Keep every pitch touched by one
@@ -1064,7 +1195,10 @@ export function createPianoRoll({
         };
         zoom.append(button);
       }
-      return [fieldLabel('DRAW LENGTH'), lengthPicker(), fieldLabel('ZOOM'), zoom,
+      // CHANNEL first: it says what a note IS on this lane, and DRAW LENGTH says how long
+      // that note is. The two that follow are about the panel rather than the part.
+      return [fieldLabel('CHANNEL'), voicePicker(),
+        fieldLabel('DRAW LENGTH'), lengthPicker(), fieldLabel('ZOOM'), zoom,
         fieldLabel('TOOL'), toolPicker()];
     },
     // Where the roll's controls WOULD go — the NOTES panel's header rather than a second
@@ -1133,7 +1267,10 @@ export function createPianoRoll({
     // Only a genuinely new note takes this value. The shared grid calls it for taps,
     // paint trails and Draw mode, while existing notes keep their own lengths.
     addLength: () => (rollResizable(lane()) ? noteAddLength : null),
-    cellLen: (row, value, len, meta) => noteDrawLength(row, value, len, meta),
+    // `chord` alongside the row for the same reason `withCell` and `withLen` get it: the
+    // rectangle a note draws has to read the step the way the edit will write it.
+    cellLen: (row, value, len, meta) =>
+      noteDrawLength({ ...row, chord: isChord(value) }, value, len, meta),
     // Read fresh, like `preview` below: putting a preset on a gesture lane is what
     // gives its notes a length, so the handle has to appear the moment one is chosen.
     resizable: () => rollResizable(lane()),

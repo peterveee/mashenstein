@@ -1064,9 +1064,17 @@ try {
   // step above. The note landed on is identical, so the interval is the only variable:
   // a wider leap must not make the arrival LOUDER, which is what an accidental width
   // sweep across it does. Measured 1.15 with the delay fixed, 0.92 with it tracking.
+  //
+  // SLURRED on purpose — `bassLen` holds the first note a twentieth of a step past the
+  // second one's start. A glide is fingered, so a leap has to be played legato to be a
+  // glide at all: four steps of rest between these notes and both takes arrive on the
+  // destination pitch with nothing to sweep, which is a real behaviour and a test of
+  // nothing. The overlap is kept SHORT so the choked first note is gone from the window
+  // measured below (a cycle and a half of 61.7 Hz is 24 ms of fade).
   const leap = (fromHz) => ({
     bpm: 120,
     bass: Array.from({ length: 32 }, (_, i) => (i === 0 ? fromHz : i === 4 ? 55 : null)),
+    bassLen: [4.05],
     bassVoice: 'bestPwmGrowlBass',
   });
   const fromOctave = (await renderer.render(leap(110), { repeat: 1, mix: null, trackId: null })).outL;
@@ -1077,10 +1085,16 @@ try {
     return c ? Math.sqrt(s / c) : 0;
   };
   // The second note lands on step 4 — half a second at 120 bpm — and portamento is 0.03s.
+  // Measured over the SECOND HALF of the glide, which is the window the choke has left:
+  // the note being cut fades over a cycle and a half of its own pitch, 14 ms from the
+  // octave above and 24 ms from the step above, and the two are different sounds. The
+  // pitch is still 26% above its destination 20 ms into the ramp, so a duty that does not
+  // track is still wide open here.
   const noteOn = Math.round(SR * 0.5);
+  const glideFrom = noteOn + Math.round(SR * 0.02);
   const glideWin = noteOn + Math.round(SR * 0.03);
-  const gOct = rmsIn(fromOctave, noteOn, glideWin);
-  const gStep = rmsIn(fromStep, noteOn, glideWin);
+  const gOct = rmsIn(fromOctave, glideFrom, glideWin);
+  const gStep = rmsIn(fromStep, glideFrom, glideWin);
   assert(gOct < gStep,
     'a PWM note glided into from an octave away does not arrive louder than the same note'
     + ` glided into from a step away (${(gOct / (gStep || 1)).toFixed(3)}× its energy)`);

@@ -137,10 +137,14 @@ export function mixSignature(m) {
     .map((l) => ({ key: l.key, from: l.from,
       ...(l.independent ? { independent: true } : {}), ...(l.label ? { label: l.label } : {}) }));
   const off = (m.off || []).filter(Boolean);
+  // Where the tracks sit. Shape again rather than balance, and the same rule: the file
+  // carries it, so a song whose only change is a dragged strip has something to save.
+  const order = (m.order || []).filter(Boolean);
   if (layers.length) out.layers = layers;
   if (off.length) out.off = off;
+  if (order.length) out.order = order;
   if (!out.master && !out.masterPan && !out.limiter && !out.voice && !out.voiceParams && !out.masterEffects
-      && !out.fx && !out.layers && !out.off && !Object.keys(lanes).length) return null;
+      && !out.fx && !out.layers && !out.off && !out.order && !Object.keys(lanes).length) return null;
   return out;
 }
 

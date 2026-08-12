@@ -80,6 +80,7 @@ export function mixEntrySource(entry, indent = '') {
   const masterFx = isDefaultMasterChain(e.masterEffects) ? null : e.masterEffects;
   const layers = (e.layers || []).filter((l) => l && l.key && l.from);
   const off = (e.off || []).filter(Boolean);
+  const order = (e.order || []).filter(Boolean);
   const voice = e.voice && Object.keys(e.voice).length ? e.voice : null;
   const voiceParams = e.voiceParams && Object.keys(e.voiceParams).length ? e.voiceParams : null;
 
@@ -99,6 +100,10 @@ export function mixEntrySource(entry, indent = '') {
       .join(', ')}],\n`;
   }
   if (off.length) body += `${i2}off: ${JSON.stringify(off)},\n`;
+  // The desk's track order, written only once a drag has actually moved something. A
+  // song nobody has reordered has no line here and takes the engine's order, so this
+  // key appearing in a diff means someone decided the strips sit somewhere else.
+  if (order.length) body += `${i2}order: ${JSON.stringify(order)},\n`;
   if (voice) body += `${i2}voice: ${JSON.stringify(voice)},\n`;
   if (voiceParams) body += `${i2}voiceParams: ${JSON.stringify(voiceParams)},\n`;
   if (e.fx) {

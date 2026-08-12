@@ -618,12 +618,77 @@ export function drawRoundButton(ctx, b, opts = {}) {
 // B33P's projectile is shared by the in-game and title-screen renderers.
 // Keep its tiny pixel silhouette in one place so the title tap attack reads
 // like the weapon players see during a run.
-export function drawB33pPellet(ctx, cx, cy) {
+// The shot BOTH shooters fire. B-33P's lemon is the default and is unchanged —
+// the title screen fires one and that pose is fixed — while Kiko's warning shot
+// comes through the same painter bigger and in her own colour, so the two are
+// told apart in flight rather than only by who threw them.
+//
+// Colour is passed IN rather than kept in a table here: hers is the `ki` token
+// on her palette (sprites/heroes.js), and a second copy of that hex living in
+// the renderer is exactly the kind of drift this codebase keeps out.
+//
+// This is deliberately the only place the shot's LOOK is decided, so restyling
+// it is one function and not a hunt.
+export function drawPellet(ctx, cx, cy, opts = {}) {
   const x = Math.round(cx), y = Math.round(cy);
-  ctx.fillStyle = '#f6d33c';
+  const r = Math.max(1, Math.round(3 * (opts.size || 1)));
+  const fill = opts.fill || '#f6d33c';
+  if (!opts.orb) {
+    // B-33P's lemon, untouched: a small hard disc with a highlight.
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = opts.hi || '#fff0a0';
+    ctx.fillRect(x - 1, y - r + 1, 2, 1);
+    return;
+  }
+  // Kiko's warning shot, built from the reference. Four things carry it, and
+  // they are the four that survive being nine pixels wide:
+  //   - a SHELL rather than a disc. The rim is the brightest part and the middle
+  //     is thinner, which is what makes it read as a sphere with something
+  //     moving inside instead of a coloured dot.
+  //   - a tail of streaks converging back toward the palm it left.
+  //   - a white-hot core.
+  //   - one WARM fleck in that core. The reference keeps gold in the middle of
+  //     all that blue, and it is the single detail that stops the orb reading as
+  //     a generic energy ball — so it is her own piping gold, off her palette.
+  const core = opts.hi || '#eafcff';
+  ctx.save();
+  // Tail first, so the head sits on top of it. It streams BACK: the shot always
+  // travels +x, and a tail on the leading edge would read as a comet arriving.
+  ctx.globalAlpha = 0.45;
+  ctx.strokeStyle = fill;
+  ctx.lineWidth = 1;
+  for (const k of [-1, 0, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(x - r + 1, y + k * r * 0.45);
+    ctx.lineTo(x - r - r * 2.1, y + k * r * 0.85);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.26;
+  ctx.fillStyle = fill;
   ctx.beginPath();
-  ctx.arc(x, y, 3, 0, Math.PI * 2);
+  ctx.arc(x, y, r + 2, 0, Math.PI * 2);   // outer glow
   ctx.fill();
-  ctx.fillStyle = '#fff0a0';
-  ctx.fillRect(x - 1, y - 2, 2, 1);
+  ctx.globalAlpha = 0.5;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);       // thin body
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = core;
+  ctx.beginPath();
+  ctx.arc(x, y, Math.max(1, r - 0.5), 0, Math.PI * 2);  // the bright rim
+  ctx.stroke();
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(x, y, Math.max(1, r - 2), 0, Math.PI * 2);    // white-hot core
+  ctx.fill();
+  ctx.fillStyle = opts.spark || '#f2c14e';
+  ctx.fillRect(x, y - 1, 1, 2);
+  ctx.restore();
 }
+
+// Kept so the title screen's B-33P shot keeps reading as itself at the call
+// site. Same painter, his defaults.
+export function drawB33pPellet(ctx, cx, cy) { drawPellet(ctx, cx, cy); }

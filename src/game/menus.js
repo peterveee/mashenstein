@@ -97,6 +97,19 @@ function drawParadeAccent(ctx, id, x, feetY, p) {
   } else if (id === 'chompo') {
     ctx.fillStyle = '#ffd184';
     ctx.fillRect(x + 11, feetY - 13, 2, 2); ctx.fillRect(x + 15, feetY - 17, 2, 2);
+  } else if (id === 'kiko') {
+    // The orb she is holding out, in her ki blue, plus its two loose sparks.
+    // ROUND — it was a 4x4 fillRect and read as exactly that: a square
+    // fireball. The neighbours above are pixel marks on purpose (Mochi's
+    // sparkle, Chompo's crumbs) and squares suit them; a ball of energy is the
+    // one thing in this row that has to be a circle, so it is drawn as arcs
+    // like Ray M'n's rocket-fist trail beside it.
+    ctx.fillStyle = '#8fe4ff';
+    ctx.beginPath(); ctx.arc(x + 13, feetY - 18, 2.6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#eafcff';
+    ctx.beginPath(); ctx.arc(x + 13, feetY - 18, 1.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f2c14e';
+    ctx.fillRect(x + 17, feetY - 23, 1, 1); ctx.fillRect(x + 16, feetY - 15, 1, 1);
   } else if (id === 'raymn') {
     ctx.strokeStyle = '#f6d33c'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(x + 14, feetY - 18, 5, -1.1, 0.8); ctx.stroke();
@@ -1295,7 +1308,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
 // Shuffled each time we enter the title so the cast doesn't always cross in the
 // same order. Mutated in place (Fisher-Yates) so every reader that indexes into
 // it — the parade draw, heroX, the invader strike — stays in agreement.
-const HERO_PARADE = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
+const HERO_PARADE = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'kiko', 'raymn', 'grumpos'];
 function shuffleParade() {
   for (let i = HERO_PARADE.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -2489,7 +2502,7 @@ export class IntroState {
       // box gets them to 78 — three times the original, on the one screen whose
       // entire job is introducing them. A row also says "a line-up" in a way a
       // block of four-by-two does not, which is what these two panels are about.
-      const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'chompo', 'raymn', 'grumpos'];
+      const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'kiko', 'raymn', 'grumpos'];
       // Pitch comes from the LIVE frame width, so the line-up spreads as the
       // frame opens instead of sitting at a fixed spacing inside a moving box.
       // 64 rather than 72: chompo's flame trail and mochi's ears are far wider

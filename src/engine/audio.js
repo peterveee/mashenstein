@@ -149,6 +149,12 @@ const PREVIEW_STEP = 1;
 // `_cutBenchGates`: short enough to read as a stop, long enough not to click.
 const BENCH_FADE = 0.015;
 
+// How long an arrangement's per-bar PAN takes to travel, and how far ahead of the note
+// it starts so that it arrives on it. A pan stepped under a note that is still ringing
+// is a discontinuity in both channels at once, which is a click; twelve milliseconds is
+// short enough to read as "on the beat" and has no edge in it. See `_barPan`.
+const BAR_PAN_SECONDS = 0.012;
+
 // Layered and harmonically dense cues sum much louder than a single oscillator
 // at the same nominal gain. These trims keep their perceived peaks close to the
 // everyday jump/coin/UI family while preserving their internal balance.
@@ -312,8 +318,11 @@ const SFX_TRIM = {
 const WEAPON_AUDIO_GAIN = {
   // B-33P is intentionally much lower: the orb's bright upper partials read
   // louder than its waveform peak, especially on laptop and phone speakers.
-  contact: { b33p: 0.45, grumpos: 0.94, lorenzo: 0.95, raymn: 0.76, fernwick: 0.98, chompo: 0.9 },
-  launch: { b33p: 0.42, raymn: 0.95, grumpos: 0.82 },
+  // Kiko sits between B-33P and the physical weapons. Her cues carry no
+  // impulse and no highpass noise, so they read quieter than their peak the
+  // way his bright orb reads louder than its own — trimmed far less than he is.
+  contact: { b33p: 0.45, grumpos: 0.94, lorenzo: 0.95, raymn: 0.76, fernwick: 0.98, chompo: 0.9, kiko: 0.82 },
+  launch: { b33p: 0.42, raymn: 0.95, grumpos: 0.82, kiko: 0.78 },
 };
 
 // Timbres for the 'debris' cue — what the chunks sound like hitting the floor.
@@ -375,6 +384,17 @@ class AudioSys {
     // it is started, so the only handle on a note that is still ringing is the node
     // it is connected to. Cleared and re-made per song by setBank.
     this._laneGates = new Map();
+    // The per-bar gain trims, `${lane}|${dB}` → a gain pair feeding that lane's gate.
+    // Same lifetime as the gates they hang off, for the same reason: they belong to
+    // this context, and a voice pool wired to one must keep finding the same node.
+    this._barGainBuses = new Map();
+    // The per-bar pan offsets, lane → the offset currently written on that channel's
+    // pot, in -1..1. A map of what has been SENT rather than of nodes: pan cannot be
+    // hung off a bus of its own (see mixer.setPanOffset), so the arrangement writes the
+    // channel's own panner and this is what keeps it from writing it every sixteenth.
+    // A lane absent from here has never been touched, which is what lets a song with no
+    // pan edits leave every strip exactly as the mix left it.
+    this._barPans = new Map();
     // Preset-bench notes get their own gates so changing an audition never cuts a
     // song lane. They belong to this context just like the song gates do.
     this._benchGates = new Map();
@@ -446,6 +466,10 @@ class AudioSys {
     this.starMode = false; // invincibility layer on/off
     this.starRoot = 110;   // last bass note the song played (arpeggio follows it)
     this.beatListeners = [];
+    // Exact sequencer loop boundaries, including the audio time at which the next
+    // pass will be heard. The Mixer uses this for per-lap diagnostics; an empty list
+    // costs the game nothing beyond the existing wrap branch.
+    this.loopListeners = [];
     this.songTime = 0;
     this.lifecyclePaused = false;
     // Reversed-audio capture: a ring buffer tapped off the master output
@@ -467,6 +491,7 @@ class AudioSys {
     // setNoteCache and the cache itself in voices.js. Desk-only, off by default.
     this.noteCache = false;
     this.noteCacheState = null;
+    this.noteCachePreparationHeld = false;
     // Skip building notes for lanes the mix has silenced — muted, or losing a
     // channel solo. OFF by default and never set by the game: a cabinet treatment
     // may ramp a lane the mix keeps muted back up at an audio time, and a skipped
@@ -574,6 +599,7 @@ class AudioSys {
     this.musicBus = this.ctx.createGain(); this.musicBus.gain.value = 1; this.musicBus.connect(this.songTrim);
     // Lane gates belong to the context that made them; a rebuilt graph starts with none.
     this._laneGates.clear();
+    this._barGainBuses.clear();
     this._benchGates.clear();
     this._previewOutput = null;
     this.starBus = this.ctx.createGain(); this.starBus.gain.value = 0; this.starBus.connect(this.musicGain);
@@ -1050,7 +1076,8 @@ class AudioSys {
   setNoteCache(on) {
     this.noteCache = !!on;
     if (this.noteCache && !this.noteCacheState) this.noteCacheState = createNoteCacheState();
-    if (this.noteCacheState) setNoteCachePlaybackActive(this.noteCacheState, !!this.bank);
+    if (this.noteCacheState) setNoteCachePlaybackActive(this.noteCacheState,
+      !!this.bank || this.noteCachePreparationHeld);
     if (!this.noteCache && this.noteCacheState) {
       clearNoteCacheState(this.noteCacheState);
       this.noteCacheState = null;
@@ -1074,6 +1101,105 @@ class AudioSys {
     return { enabled: this.noteCache, playbackActive: !!state.playbackActive,
       entries: state.entries.size, buffers, bytes: state.bytes,
       queued: state.queue.length, rendering: state.rendering, ...state.stats };
+  }
+
+  /**
+   * Discover every cacheable note in an already-resolved desk bank without sounding it.
+   *
+   * `bank` is the value returned by applyMix, so it already contains arrangement and
+   * voice edits. This walk mirrors scheduleStep's bar/section resolution but stops at
+   * VoiceRack's cache key builder: no strip, effect, oscillator or BufferSource is
+   * constructed. Walking from the opening forwards leaves late notes newest in the
+   * bounded LRU; the rack then sorts their render jobs latest-first, aimed at the dense
+   * ending that motivated preparation in the first place.
+   */
+  prepareNoteCache(bank) {
+    if (!this.noteCache || !this.noteCacheState || !this.ctx || !bank) return this.noteCacheHealth();
+    if (!this.voices) {
+      this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf, this.noteCacheState);
+      this.voices.soloLayers = this.soloLayers;
+      this.voices.noteCache = true;
+      this.voices.setNoteCacheState(this.noteCacheState);
+    }
+    const rack = this.voices;
+    const plan = barPlan(bank);
+    const spb = (60 / (this.bpm * this.tempo)) / 4;
+    const barValue = (map, key, fallback = 0) =>
+      typeof map === 'number' ? map : (Number.isFinite(map?.[key]) ? map[key] : fallback);
+    const shift = (value, semitones) => Array.isArray(value)
+      ? value.map((v) => shift(v, semitones))
+      : typeof value === 'number' && value > 0 ? value * 2 ** (semitones / 12) : value;
+
+    for (let step = 0; step < plan.length * 16; step++) {
+      const bar = plan[Math.floor(step / 16) % plan.length];
+      const s = (step % 16) + bar.half * 16;
+      let b = bank;
+      if (b.sections?.length && bar.sec != null) {
+        const section = resolveSection(b, bar.sec % b.sections.length);
+        if (section) b = { ...bank, ...section };
+      }
+      if (bar.off || bar.delete) {
+        b = { ...b };
+        for (const key of [...(bar.off || []), ...(bar.delete || [])]) b[key] = null;
+      }
+      const transposeKeys = new Set([
+        ...Object.keys(typeof bar.transpose === 'object' ? bar.transpose || {} : {}),
+        ...(typeof bar.transpose === 'number'
+          ? [...LANE_KEYS, ...(b.__layers || []).map((layer) => layer.key)]
+            .filter((key) => !PERCUSSION_LANES.includes(baseLane(key)))
+          : []),
+      ]);
+      if (transposeKeys.size) {
+        b = { ...b };
+        for (const key of transposeKeys) {
+          const semitones = barValue(bar.transpose, key);
+          if (semitones && Array.isArray(b[key])) b[key] = b[key].map((v) => shift(v, semitones));
+        }
+      }
+
+      const keys = new Set([...LANE_KEYS, ...(b.__layers || []).map((layer) => layer.key)]);
+      for (const key of keys) {
+        if (this.silentLaneSkip && this.mixer?.laneSilent(key)) continue;
+        const seam = seamFor(key);
+        const voice = seam && voiceOf(b, key);
+        if (!voice || voice.kind === 'engine') continue;
+        const written = b[key]?.[s];
+        if (written == null || written === false || written === 0) continue;
+        const freq = written === true ? (b[seam.noteKey] ?? seam.note) : written;
+        const len = effectiveStepLen(b, key, s);
+        const duration = (scale = 1) => noteSeconds(
+          len, b[seam.durKey] ?? voice.dur, spb, scale, voice.fixedLength);
+        rack.prepareNoteCache(voice.id, freq, duration(), { detune: this.detune, priority: step });
+
+        // These are additional calls to playVoice in scheduleStep rather than separate
+        // lanes, so inventory their distinct cache keys here as well.
+        if (key === 'bass' && b.bassRepeat) {
+          rack.prepareNoteCache(voice.id, freq, duration(b.bassRepeatDur ?? 0.8),
+            { detune: this.detune, priority: step });
+        }
+        if (key === 'keyGliss' || key === 'organGliss') {
+          for (const semi of [-12, -10, -9, -7, -5, -4, -2]) {
+            rack.prepareNoteCache(voice.id, shift(freq, semi), duration(),
+              { detune: this.detune, priority: step });
+          }
+        }
+      }
+    }
+    rack.prioritisePreparedNotes();
+    return this.noteCacheHealth();
+  }
+
+  /**
+   * Stop the stopped-transport cache worker at a clean job boundary.
+   *
+   * Start-from-beginning uses this after its short preparation budget: a render that
+   * is already running is allowed to finish, but its completion cannot launch the
+   * next queued job while the transport is about to start.
+   */
+  setNoteCachePreparationHeld(held) {
+    this.noteCachePreparationHeld = !!held;
+    setNoteCachePlaybackActive(this.noteCacheState,
+      !!this.bank || this.noteCachePreparationHeld);
   }
 
   setCaptureEnabled(enabled) {
@@ -1117,7 +1243,7 @@ class AudioSys {
     cut(this._rewindOut);
     this._cutLaneGates();
     if (this.voices) { this.voices.dispose(); this.voices = null; }
-    setNoteCachePlaybackActive(this.noteCacheState, false);
+    setNoteCachePlaybackActive(this.noteCacheState, this.noteCachePreparationHeld);
     this._percPending.length = 0;
     this._percHeard.length = 0;
     if (this._revTimer) { clearInterval(this._revTimer); this._revTimer = null; }
@@ -2163,6 +2289,79 @@ class AudioSys {
     return gate;
   }
 
+  /**
+   * The bus a lane's per-bar gain trim plays through — one per lane per dB value.
+   *
+   * KEPT, not rebuilt per step, and that is the whole point. A pooled Tone voice is
+   * wired to the `dry`/`wet` it was built with, and `VoiceRack._pool` treats a
+   * different pair as a different graph: it throws the pool away and builds a new
+   * one. A fresh GainNode per scheduled step therefore disposed the synths on every
+   * sixteenth — including the ones notes had already been booked on, a quarter-second
+   * out in the lookahead. Those notes never sounded. A bar with a gain trim on a
+   * long-tailed preset (celeste2 on the twinkle lane) played its first note and then
+   * went silent for the rest of the bar.
+   *
+   * Keyed by the dB value as well as the lane, so overlapping notes at different
+   * trims keep their own node and a level never moves under a note that is already
+   * ringing — the same rule the slot gains in the rack follow. A lane runs one bar
+   * value at a time, so this is one extra pair per trim a song actually uses, not one
+   * per step.
+   *
+   * Re-pointed rather than replaced when the gate underneath it moves, exactly as
+   * `_laneGate` re-points onto a new strip, so the pool wired to this bus stays wired
+   * to it. Cleared with the lane gates: these hang off them.
+   */
+  _barGainBus(key, db, scale, dryDest, wetDest) {
+    if (!this.ctx || !dryDest || !wetDest) return null;
+    const id = `${key}|${db}`;
+    let bus = this._barGainBuses.get(id);
+    if (!bus) {
+      const dry = this.ctx.createGain(); dry.gain.value = scale; dry.connect(dryDest);
+      const wet = this.ctx.createGain(); wet.gain.value = scale; wet.connect(wetDest);
+      bus = { dry, wet, dryDest, wetDest };
+      this._barGainBuses.set(id, bus);
+      return bus;
+    }
+    if (bus.dryDest !== dryDest) {
+      try { bus.dry.disconnect(bus.dryDest); } catch { /* already gone */ }
+      bus.dry.connect(dryDest); bus.dryDest = dryDest;
+    }
+    if (bus.wetDest !== wetDest) {
+      try { bus.wet.disconnect(bus.wetDest); } catch { /* already gone */ }
+      bus.wet.connect(wetDest); bus.wetDest = wetDest;
+    }
+    return bus;
+  }
+
+  /**
+   * A bar's PAN offset, put where the channel's own pan lives.
+   *
+   * The gain trim above gets a bus of its own; pan cannot have one, and the reason is
+   * arithmetic rather than plumbing. Two StereoPanners in series do not add: a signal
+   * sent hard right and then hard left comes out hard left, not centred. The desk's
+   * offset means what it says — a lane at +10 with a bar of -20 plays that bar at -10 —
+   * only if ONE panner ends up holding the sum, so the sum is handed to the channel's
+   * panner and the strip adds its own pot to it (see `setPanOffset` in mixer.js).
+   *
+   * What that costs is what pan automation costs in any DAW: the move is on the CHANNEL,
+   * so a note still ringing from the bar before travels with it. A gain trim is exempt
+   * from that because it can be a node per value; this cannot, and a bar's pan that only
+   * caught notes struck inside it would be the stranger behaviour of the two anyway.
+   *
+   * Silent about lanes that have nothing to say. A lane whose offset is zero and that
+   * has never carried one is left alone entirely, so every song without pan edits — the
+   * whole game — touches no AudioParam here at all.
+   */
+  _barPan(key, offset, when, force = false) {
+    const value = Number.isFinite(offset) ? offset : 0;
+    const prev = this._barPans.get(key);
+    if (prev == null && value === 0) return;
+    if (!force && prev === value) return;
+    this._barPans.set(key, value);
+    const strip = this.mixer && this.mixer.lane(key);
+    if (strip && strip.setPanOffset) strip.setPanOffset(value, when, BAR_PAN_SECONDS);
+  }
+
   /** The dry/wet gates used only by the preset library's bench. */
   _benchGate(key) {
     if (!this.ctx || !this.musicBus || !this.echoBus) return null;
@@ -2210,6 +2409,22 @@ class AudioSys {
       try { gate.wet.disconnect(); } catch { /* already gone */ }
     }
     this._laneGates.clear();
+    // The trims feed the gates, so cutting a gate already silences them — but they
+    // hold a reference to a node this song is finished with, and the next song's
+    // pools must not find one.
+    for (const bus of this._barGainBuses.values()) {
+      try { bus.dry.disconnect(); } catch { /* already gone */ }
+      try { bus.wet.disconnect(); } catch { /* already gone */ }
+    }
+    this._barGainBuses.clear();
+    // The pan offsets are not nodes to disconnect but a number written on somebody
+    // else's panner, so they have to be TAKEN BACK rather than dropped: a strip left
+    // where the last bar of the last song put it is a channel whose pot and whose sound
+    // disagree, and nothing downstream would ever correct it.
+    if (this._barPans.size) {
+      this._barPans.clear();
+      this.mixer?.clearPanOffsets?.();
+    }
   }
 
   /**
@@ -2293,7 +2508,7 @@ class AudioSys {
     if (this.bank) this._cutLaneGates();
     bank = this.applyMix(bank, mixOverride);
     this.bank = bank;
-    setNoteCachePlaybackActive(noteCacheState, !!bank);
+    setNoteCachePlaybackActive(noteCacheState, !!bank || this.noteCachePreparationHeld);
     this.musicTrim = bank?.musicTrim ?? 1;
     this.pendingStartDelay = bank ? gap : 0;
     if (this.songTrim) {
@@ -2955,6 +3170,15 @@ class AudioSys {
 
   onBeat(fn) { this.beatListeners.push(fn); }
 
+  onLoop(fn) {
+    if (typeof fn !== 'function') return () => {};
+    this.loopListeners.push(fn);
+    return () => {
+      const i = this.loopListeners.indexOf(fn);
+      if (i >= 0) this.loopListeners.splice(i, 1);
+    };
+  }
+
   startSequencer() {
     if (this.timer) return;
     this.nextTime = this.ctx.currentTime + (this.bank ? 0.5 : 0.1);
@@ -3516,13 +3740,28 @@ class AudioSys {
         if (scale === 1) {
           dry = baseDry; wet = baseWet;
         } else {
-          // A short-lived per-bar bus keeps the adjustment on every voice shape,
-          // including hand-rolled percussion and Tone presets, without duplicating
-          // the many envelope implementations below.
-          const dg = this.ctx.createGain(); const wg = this.ctx.createGain();
-          dg.gain.value = scale; wg.gain.value = scale;
-          dg.connect(baseDry); wg.connect(baseWet);
-          dry = dg; wet = wg;
+          // A per-bar bus keeps the adjustment on every voice shape, including
+          // hand-rolled percussion and Tone presets, without duplicating the many
+          // envelope implementations below. It is HELD between steps — see
+          // `_barGainBus`: a new pair of nodes each step is a new graph to the voice
+          // rack, and the rack answers a new graph by disposing the pool the
+          // lookahead's notes are already booked on.
+          const bus = this._barGainBus(key, db, scale, baseDry, baseWet);
+          if (bus) { dry = bus.dry; wet = bus.wet; }
+          else { dry = baseDry; wet = baseWet; }
+        }
+        // The bar's pan offset, written onto this channel's own pot rather than onto a
+        // node in front of it — see `_barPan`. Re-asserted on the first step of every
+        // bar so a pot dragged mid-bar, which cancels what was scheduled on it, is back
+        // in agreement with the arrangement one bar later at worst.
+        //
+        // A ramp's length AHEAD of the step, so it ARRIVES on it. `lane()` runs when a
+        // lane has something to play, which on a bar whose first note is not on the
+        // downbeat is that note — and a move that started at the note would leave its
+        // attack, the loudest part of it, still coming from where the last bar was.
+        if (strip) {
+          this._barPan(key, barValue(bar.pan, key) / 100,
+            this.nextTime - BAR_PAN_SECONDS, this.step % 16 === 0);
         }
       };
       // Point a lane at its strip and offer it to the voice library, in that order —
@@ -4305,8 +4544,20 @@ class AudioSys {
         // The selected range changed on this bar line; the new range owns the next
         // scheduled step, so do not run the old loop's wrap after it.
       } else if (this.loopEnd != null && this.step >= this.loopEnd) {
+        const loop = { when: this.nextTime, start: this.loopStart, end: this.loopEnd };
         this.step = this.loopStart;
         this.loopHasWrapped = true;
+        for (const fn of this.loopListeners) fn(loop);
+      } else if (this.loopEnd == null) {
+        // With no armed locator/form loop the arrangement repeats by indexing its
+        // bar plan modulo its length; `step` deliberately keeps increasing. Publish
+        // that implicit whole-form boundary too, or an ordinary Play-through would
+        // produce no diagnostics even though the listener hears repeated passes.
+        const formEnd = plan.length * 16;
+        if (formEnd > 0 && this.step % formEnd === 0) {
+          const loop = { when: this.nextTime, start: 0, end: formEnd };
+          for (const fn of this.loopListeners) fn(loop);
+        }
       }
     }
   }

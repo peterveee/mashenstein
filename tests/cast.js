@@ -3,7 +3,7 @@
 import { installDom } from './dom-stub.js';
 const dom = installDom();
 
-const { CastState, CAST_HEROES } = await import('../src/game/cast.js');
+const { CastState, CAST_HEROES, castRollFor } = await import('../src/game/cast.js');
 const { save } = await import('../src/engine/save.js');
 const { Input } = await import('../src/engine/input.js');
 
@@ -22,23 +22,45 @@ const TICK = 1 / 60;
 
 // 1) every hero is shown, in roster order, and the roll call ends by itself
 let exited = null;
-const st = new CastState({ realSettings: save.settings, onExit: (auto) => { exited = auto; } });
+const st = new CastState({ realSettings: save.settings, slot: save.slot, onExit: (auto) => { exited = auto; } });
 st.enter();
+const ROLL = st.roll;
 const shown = [];
 let ticks = 0;
 while (exited === null && ticks < 60 * 240) {
   st.update(TICK);
   if (exited === null) {
     st.draw(ctx);
-    const id = CAST_HEROES[Math.min(st.i, CAST_HEROES.length - 1)].id;
+    const id = ROLL[Math.min(st.i, ROLL.length - 1)].id;
     if (shown[shown.length - 1] !== id) shown.push(id);
   }
   ticks++;
 }
 st.exit();
 assert(exited === true, `roll call ended on its own after ${(ticks / 60).toFixed(1)}s (auto=${exited})`);
-assert(shown.length === CAST_HEROES.length, `showed ${shown.length}/${CAST_HEROES.length} cast members`);
-assert(shown.join(',') === CAST_HEROES.map((h) => h.id).join(','), 'every cast member appeared once, in roster order');
+assert(shown.length === ROLL.length, `showed ${shown.length}/${ROLL.length} cast members`);
+assert(shown.join(',') === ROLL.map((h) => h.id).join(','), 'every cast member appeared once, in roster order');
+
+// Miss Chomp is out of the food court and not placed anywhere else yet, so the
+// roll call must not announce her at any point in the campaign — it is
+// advertising, and she is currently unreachable.
+assert(!castRollFor(save.slot).some((h) => h.id === 'chompo'),
+  'a fresh slot is not shown Miss Chomp');
+assert(CAST_HEROES.some((h) => h.id === 'chompo'),
+  'she is still in the full cast, held for a cameo, just not in this roll');
+// Act 2 opens at UNLOCKS.frost plugs. `plugs` is a map of stage id -> array of
+// three booleans, so enough full stages to clear that threshold is the honest
+// way to reach it — the act that used to introduce her still must not.
+const { UNLOCKS } = await import('../src/data/stages.js');
+const act2 = JSON.parse(JSON.stringify(save.slot));
+act2.campaign.plugs = {};
+for (let i = 0; i < Math.ceil(UNLOCKS.frost / 3); i++) act2.campaign.plugs[`s${i}`] = [true, true, true];
+assert(!castRollFor(act2).some((h) => h.id === 'chompo'),
+  'act 2 no longer introduces her — she is not in the food court any more');
+assert(castRollFor(act2).length === CAST_HEROES.length - 1,
+  'the roll is the whole cast minus her');
+assert(!castRollFor(null).some((h) => h.id === 'chompo'),
+  'no slot at all (dev menu, boot attract) shows the same roll');
 
 // 2) every hero has the copy the screen renders
 for (const h of CAST_HEROES) {

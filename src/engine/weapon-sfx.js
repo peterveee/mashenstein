@@ -3,9 +3,9 @@
 // This is the single source of truth for those sounds. It is pure, sample-rate-
 // parameterised ESM with no Node or Web Audio dependency, so two very different
 // callers can share the exact same recipes:
-//   - the live game (src/engine/audio.js) renders the nine WIRED cues into
+//   - the live game (src/engine/audio.js) renders the eleven WIRED cues into
 //     AudioBuffers at init and plays them procedurally — no assets fetched;
-//   - tools/generate-weapon-sfx.js renders all thirty candidates to WAV for
+//   - tools/generate-weapon-sfx.js renders all thirty-six candidates to WAV for
 //     auditioning.
 // Because both derive from CUES here, the audition files can never drift from
 // what the game actually plays.
@@ -103,7 +103,7 @@ function normalize(out, SR) {
 }
 
 // [name, seconds, paint]. paint(out, SR) is bound to the primitives above.
-// Only the nine named in CONTACT_CUE / LAUNCH_CUE are wired into gameplay; the
+// Only the eleven named in CONTACT_CUE / LAUNCH_CUE are wired into gameplay; the
 // rest exist so a choice can be made by ear via the audition set.
 export const CUES = [
   ['01-b33p-laser-orb-pulse.wav', 0.27, (b, SR) => {
@@ -265,6 +265,84 @@ export const CUES = [
     osc(b, SR, { duration: 0.25, f0: 160, f1: 48, gain: 0.4, type: 'sine' });
     impulse(b, SR, 0.11, 0.13, 0.007);
   }],
+  // KIKO'S WARNING SHOT — four launches, second pass.
+  //
+  // The first four were built to a "not B-33P" brief that read: no impulse,
+  // slow attack, let it SWELL. They were rejected as too soft, and measuring
+  // them says exactly why — and it is not level. Every cue in this file is
+  // peak-normalised to 0.88 by normalize(), so per-layer gains are relative and
+  // no cue can be made louder by turning it up. Two of the four were already
+  // among the loudest things here by RMS (0.283 and 0.275, against 0.358 for
+  // the arcade bite at the top).
+  //
+  // What they were was DULL. Measured as high-frequency energy they came in at
+  // 0.008-0.017, where everything that reads as punchy sits at 0.06-0.13 —
+  // 34-thrum was the dullest cue in the entire set by a factor of two. All four
+  // were sine and triangle with their noise beds lowpassed at 620-900Hz, which
+  // is rumble, not noise: there was nothing above the mud line for the ear to
+  // catch. "Too soft" was a brightness complaint wearing a loudness costume.
+  //
+  // So this pass keeps the loudness and buys brightness: harmonically rich
+  // bodies (saw and square rather than sine), noise that is actually AUDIBLE as
+  // noise — high cutoffs and highpassed sizzle instead of sub-bass wash — and a
+  // real transient edge on the front. They still are not B-33P: his is a 0.27s
+  // square blip from a mechanism, hers are wider, noisier discharges with a
+  // tail that keeps hissing after the hit.
+  //
+  // A: CRACK. Noise transient straight off the top, saw body under it. The
+  // brightest of the four and the most like a shot going off.
+  ['31-kiko-warning-shot-crack.wav', 0.34, (b, SR) => {
+    noise(b, SR, { seed: 231, duration: 0.07, gain: 0.4, cutoff: 6400, mode: 'highpass', attack: 0.004, release: 0.9 });
+    osc(b, SR, { duration: 0.3, f0: 380, f1: 140, gain: 0.56, type: 'saw', attack: 0.006, release: 0.5 });
+    osc(b, SR, { duration: 0.24, f0: 1420, f1: 520, gain: 0.26, type: 'square', attack: 0.005, release: 0.6 });
+    noise(b, SR, { seed: 431, start: 0.02, duration: 0.3, gain: 0.44, cutoff: 3400, attack: 0.012, release: 0.6 });
+  }],
+  // B: SIZZLE. The tail is the point — a long highpassed hiss riding a rising
+  // saw, so the energy keeps burning after the front has gone.
+  ['32-kiko-warning-shot-sizzle.wav', 0.4, (b, SR) => {
+    noise(b, SR, { seed: 232, duration: 0.36, gain: 0.5, cutoff: 4200, mode: 'highpass', attack: 0.02, release: 0.45 });
+    osc(b, SR, { duration: 0.34, f0: 220, f1: 500, gain: 0.54, type: 'saw', attack: 0.016, release: 0.45, tremolo: 17 });
+    osc(b, SR, { start: 0.02, duration: 0.26, f0: 1750, f1: 900, gain: 0.2, type: 'triangle', attack: 0.01, release: 0.5 });
+    noise(b, SR, { seed: 432, start: 0.01, duration: 0.32, gain: 0.36, cutoff: 2200, attack: 0.012, release: 0.5 });
+  }],
+  // C: SURGE. Electric rather than explosive — a square body chopped by a fast
+  // tremolo, with broadband noise welded to it so the chop reads as crackle.
+  ['33-kiko-warning-shot-surge.wav', 0.36, (b, SR) => {
+    osc(b, SR, { duration: 0.32, f0: 300, f1: 620, gain: 0.5, type: 'square', attack: 0.006, release: 0.5, tremolo: 34 });
+    noise(b, SR, { seed: 233, duration: 0.32, gain: 0.5, cutoff: 5200, mode: 'highpass', attack: 0.006, release: 0.5 });
+    osc(b, SR, { start: 0.01, duration: 0.24, f0: 900, f1: 1800, gain: 0.2, type: 'saw', attack: 0.006, tremolo: 21 });
+    noise(b, SR, { seed: 433, start: 0.02, duration: 0.26, gain: 0.26, cutoff: 2800, attack: 0.006 });
+  }],
+  // D: BLAST. The heaviest — a hard front edge, a big noise body and a low saw
+  // under it. Closest to a gun of the four, which is the risk as well as the
+  // point: it must not stop reading as a palm strike.
+  ['34-kiko-warning-shot-blast.wav', 0.38, (b, SR) => {
+    noise(b, SR, { seed: 234, duration: 0.28, gain: 0.66, cutoff: 3000, attack: 0.004, release: 0.5 });
+    osc(b, SR, { duration: 0.34, f0: 260, f1: 90, gain: 0.56, type: 'saw', attack: 0.006, release: 0.5 });
+    noise(b, SR, { seed: 434, start: 0.01, duration: 0.34, gain: 0.42, cutoff: 6000, mode: 'highpass', attack: 0.012, release: 0.55 });
+    osc(b, SR, { start: 0.012, duration: 0.22, f0: 1200, f1: 460, gain: 0.24, type: 'square', attack: 0.005, release: 0.6 });
+  }],
+  // Its contact, two ways. Both are energy GIVING WAY rather than two hard
+  // things meeting, so neither has the second impulse the physical weapons use.
+  // Burst collapses inward; scatter sprays outward.
+  ['35-contact-kiko-ki-burst.wav', 0.22, (b, SR) => {
+    // Noised to match the launch it answers. It was the same fault the first
+    // launch set had — 0.022 of high-frequency energy, sine and triangle over a
+    // 1500Hz-lowpassed bed — so a bright CRACK going out was landing on a dull
+    // thump. A LITTLE, though: this is the small end of the exchange, and a
+    // contact that competes with its own launch flattens the shot into one
+    // noise. The highpassed layer is short and sits under the body rather than
+    // on top of it.
+    osc(b, SR, { duration: 0.2, f0: 620, f1: 150, gain: 0.56, type: 'sine', attack: 0.004, release: 0.5 });
+    osc(b, SR, { duration: 0.14, f0: 1500, f1: 520, gain: 0.24, type: 'saw', attack: 0.003, release: 0.55 });
+    noise(b, SR, { seed: 32, duration: 0.18, gain: 0.36, cutoff: 2600, attack: 0.005, release: 0.5 });
+    noise(b, SR, { seed: 532, duration: 0.13, gain: 0.24, cutoff: 5200, mode: 'highpass', attack: 0.006, release: 0.6 });
+  }],
+  ['36-contact-kiko-ki-scatter.wav', 0.24, (b, SR) => {
+    osc(b, SR, { duration: 0.12, f0: 880, f1: 220, gain: 0.42, type: 'sine', attack: 0.002, release: 0.88 });
+    noise(b, SR, { seed: 136, duration: 0.2, gain: 0.34, cutoff: 2600, mode: 'highpass', attack: 0.002, release: 0.92 });
+    osc(b, SR, { start: 0.01, duration: 0.14, f0: 2100, f1: 900, gain: 0.13, type: 'triangle', attack: 0.002 });
+  }],
 ];
 
 // Hero -> cue name for the cues actually triggered in gameplay.
@@ -275,12 +353,16 @@ export const CONTACT_CUE = {
   raymn: '28-contact-raymn-fist-impact.wav',
   fernwick: '29-contact-fernwick-shield-bonk.wav',
   chompo: '30-contact-miss-chomp-crunch.wav',
+  kiko: '35-contact-kiko-ki-burst.wav',
 };
 
 export const LAUNCH_CUE = {
   b33p: '01-b33p-laser-orb-pulse.wav',
   raymn: '08-raymn-rocket-fist-launch.wav',
   grumpos: '18-grumpos-axe-throw-ring.wav',
+  // CRACK, chosen by ear. Surge measured louder and brighter, but the numbers
+  // were only ever a proxy for "louder, with noise" — the pick is Peter's.
+  kiko: '31-kiko-warning-shot-crack.wav',
 };
 
 const BY_NAME = new Map(CUES.map((cue) => [cue[0], cue]));

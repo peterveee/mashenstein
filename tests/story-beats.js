@@ -265,7 +265,15 @@ function clearIntro(run) {
 
 // --- Relay exit lines: one voice per swap, once per hero per run -----------
 {
-  assert(Object.keys(EXIT_LINES).length === 8, 'every hero has exit lines');
+  const { HEROES: ROSTER } = await import('../src/data/heroes.js');
+  // Coverage against the ROSTER rather than a hardcoded 8. Every count in this
+  // suite that was written as a literal has since had to be edited by hand the
+  // first time the cast changed, and a test edited by hand is a test edited
+  // without being read.
+  for (const hero of ROSTER) {
+    assert(Array.isArray(EXIT_LINES[hero.id]) ? EXIT_LINES[hero.id].length > 0 : !!EXIT_LINES[hero.id],
+      `${hero.id} has exit lines`);
+  }
   for (const [id, lines] of Object.entries(EXIT_LINES)) {
     assert(TAG_LINES[id], `exit lines for ${id} use a real hero id`);
     assert(lines.length && lines.every((l) => typeof l === 'string' && l.length),
@@ -313,6 +321,45 @@ function clearIntro(run) {
   }
   assert(scripted / N > 0.3, `biased draw lands authored hand-offs often (${scripted}/${N})`);
   assert(scripted / N < 0.95, `bag still shuffles — hand-offs are not every swap (${scripted}/${N})`);
+}
+
+// --- Nobody appears twice in a level --------------------------------------
+{
+  const { Relay } = await import('../src/game/relay.js');
+  const { Rng } = await import('../src/engine/rng.js');
+  const { HEROES } = await import('../src/data/heroes.js');
+  // A long stage is three hand-offs, so four heroes; the hero you walked in as
+  // counts as one of them and must never be handed the baton again.
+  let dupes = 0, previewDupes = 0, runs = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    for (const start of [null, ...HEROES.map((h) => h.id)]) {
+      const relay = new Relay(new Rng(seed), { tags: 0 }, null, start);
+      const team = [relay.current];
+      // The previewed hero is on the portal before it is taken: if the preview
+      // repeated, the player would see the repeat coming even without running in.
+      if (team.includes(relay.next)) previewDupes++;
+      for (let i = 0; i < 3; i++) team.push(relay.switchHero().to);
+      if (new Set(team).size !== team.length) dupes++;
+      runs++;
+    }
+  }
+  assert(dupes === 0, `no hero appears twice in a level (${runs - dupes}/${runs} clean)`);
+  assert(previewDupes === 0, 'the portal never previews a hero already seen this level');
+  // A started hero is honoured, not quietly reshuffled away.
+  const kept = new Relay(new Rng(5), { tags: 0 }, null, 'kiko');
+  assert(kept.current === 'kiko', 'the hero you start as is the hero you start as');
+  // OVERTIME can outlast the roster. The slate wipes, but never onto the hero
+  // currently holding the baton.
+  const endless = new Relay(new Rng(9), { tags: 0 }, null);
+  const seen = [endless.current];
+  let backToBack = 0;
+  for (let i = 0; i < 40; i++) {
+    const r = endless.switchHero();
+    if (r.from === r.to) backToBack++;
+    seen.push(r.to);
+  }
+  assert(backToBack === 0, 'an endless run never hands a hero the baton they already hold');
+  assert(new Set(seen.slice(0, 8)).size === 8, 'an endless run works through the whole cast before repeating anyone');
 }
 
 // --- Portals are scheduled per stage: 3 heroes short, 4 heroes long --------

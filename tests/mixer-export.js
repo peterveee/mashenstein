@@ -163,6 +163,12 @@ assert(/askRenderPasses\('Bounce'\)/.test(entry)
 assert(!/'Render WAV'|Rendering \$\{|A render is already running|`Render failed/.test(entry),
   'and nothing user-facing still says Render');
 
+// The number never stands on its own. The button lives in a drawer section that can be
+// scrolled half out of view, and a lone "30%" there is a percentage of nothing in
+// particular — it has to keep saying what is counting.
+assert(/btn\.textContent = pct == null \? 'Bouncing…' : `Bouncing… \$\{pct\}%`/.test(entry),
+  'the progress percentage stays attached to the word Bouncing');
+
 // The static desk keeps the exports and drops only what genuinely cannot work.
 assert(!/\[data-drawer-section="files"\]'\)\?\.setAttribute\('hidden'/.test(entry),
   'the deployed desk keeps its Bounce / Files section');

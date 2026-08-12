@@ -28,7 +28,7 @@
 // Every function returns a NEW draft; none of them modify the one passed in, so the
 // desk's undo is a snapshot and nothing more.
 import {
-  expandOrder, orderOf, resolveSection, SWING_MAX, SWING_STRAIGHT,
+  expandOrder, orderOf, resolveSection, BAR_MAPS, SWING_MAX, SWING_STRAIGHT,
 } from '../../src/data/arrangements.js';
 import { LANES, LANE_KEYS, lenKey, validLen } from '../../src/engine/lanes.js';
 
@@ -37,8 +37,13 @@ const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 // Per-bar edits are deliberately lane-scoped. A number keeps the file compact for
 // the common "all lanes" case, while the desk normally writes the explicit map so a
 // bass edit cannot accidentally move the lead with it. Timing is measured in 1/32
-// notes: +8 is a quarter-note delay, -1 is one 1/32 note early.
-const BAR_MAPS = ['transpose', 'offset', 'gain'];
+// notes and may be fractional: +8 is a quarter-note delay, -1 is one 1/32 note early,
+// and -0.5 — the desk's smallest step — is a 1/64. Pan is an OFFSET in
+// pot units — the number the channel's pan knob shows, -100 to +100 — so a lane
+// sitting at +10 with a bar of -20 plays that bar at -10.
+//
+// The list itself lives with the format (`src/data/arrangements.js`), because the
+// engine's expander and the file's validator walk exactly these fields too.
 // The other half of a bar's lane-scoped state: which lanes it does not pass on. Both
 // lists hold literal lane keys, so anything that adds, removes or copies a lane has to
 // walk both of them — see removeLanes and copyLaneArrangement.
@@ -436,13 +441,29 @@ export function removeLanes(draft, keys) {
 export const transposeBars = (draft, from, to, keys, semitones) =>
   mapEdit(draft, from, to, keys, 'transpose', Number.isFinite(+semitones) ? +semitones : 0);
 
-/** Move a lane's notes in 1/32-note units over a bar range. */
+/** Move a lane's notes in 1/32-note units — halves allowed — over a bar range. */
 export const offsetBars = (draft, from, to, keys, units) =>
   mapEdit(draft, from, to, keys, 'offset', Number.isFinite(+units) ? +units : 0);
 
 /** Apply a relative gain in dB to a lane over a bar range. */
 export const gainBars = (draft, from, to, keys, db) =>
   mapEdit(draft, from, to, keys, 'gain', Number.isFinite(+db) ? +db : 0);
+
+/**
+ * Shift a lane's PAN over a bar range, in the pot's own units.
+ *
+ * An offset, never a position, and that is the whole design: the channel's knob still
+ * says where the instrument lives in the room, and the bar says how far this bar moves
+ * from there. A lane panned +10 with a bar offset of -20 plays that bar at -10, and
+ * re-panning the channel later carries every bar edit along with it rather than
+ * stranding them against a position that no longer exists.
+ *
+ * Clamped to the pot's own range so a bar cannot ask for somewhere there is no speaker;
+ * the SUM is clamped again in the mixer, which is where the channel's own pan is known.
+ */
+export const panBars = (draft, from, to, keys, units) =>
+  mapEdit(draft, from, to, keys, 'pan',
+    Number.isFinite(+units) ? Math.max(-100, Math.min(100, Math.round(+units))) : 0);
 
 /** Copy a complete structural bar range, including any song-owned note sections. */
 export function copyBars(bank, draft, from, to) {

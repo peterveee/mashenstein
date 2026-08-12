@@ -12,13 +12,14 @@ import { MusicDirector } from '../engine/music-director.js';
 import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
-import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawB33pPellet } from '../engine/sprites.js';
+import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
 import { Player, PLAYER_X, jumpHeightFor } from './player.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 import { entityBox, overlaps, makePickup, makeObstacle, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
+import { HERO_SPRITES } from '../sprites/heroes.js';
 import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
@@ -600,6 +601,7 @@ const FLIP_COIN_STEP = 0.075;  // seconds per coin
 const CELEBRATE_DIP = {
   lorenzo: 0.043, gnash: 0.043, fernwick: 0.043, b33p: 0.043, mochi: 0.010,
   chompo: 0.043, gary: 0.067, dolores: 0.043, raymn: 0.024, grumpos: 0.058,
+  kiko: 0.043,
 };
 // Seconds the payoff takes to run. It was 0.18 when the whole event was a lever
 // swinging through its arc. The marker's payoff is now a five-beat CHAIN — push,
@@ -2053,14 +2055,30 @@ export class RunState {
       this.player.ducking = false;
       Audio.sfx('dash');
     } else if (type === 'shoot') {
-      Audio.sfx('launch', { hero: 'b33p', pitch: 1.08 });
+      // TWO heroes shoot, and they are not the same weapon. B-33P's lemon is
+      // small and fast on a 1.35s recharge — that recharge IS his skill. Kiko's
+      // warning shot is fat and slow on 3.5s. The difference lives in DATA on
+      // the hero row (shotSpeed / shotSize) rather than in an id check, so the
+      // flight and hit code downstream never has to know who fired.
+      //
+      // REASONABLE FORCE rides those same two fields, which is why they exist as
+      // a pair: "wider but slower" is one trade expressed in numbers the
+      // projectile already carries, not a third special case.
+      const wide = this.modIds.includes('force');
+      const speedAdd = (hero.shotSpeed != null ? hero.shotSpeed : 260) * (wide ? 0.72 : 1);
+      const size = (hero.shotSize || 1) * (wide ? 1.5 : 1);
+      Audio.sfx('launch', { hero: hero.id, pitch: hero.id === 'b33p' ? 1.08 : 0.98 });
       const px = this.playerWorldX() + 12;
       // Charged: a three-round spread, every pellet piercing.
       const alts = charged ? [this.player.y - 6, this.player.y + 8, this.player.y + 22] : [this.player.y + 8];
       for (const alt of alts) {
-        this.projectiles.push({ type: 'pellet', x: px, alt, vx: this.speed + 260, live: true, pierce: charged || this.modIds.includes('charge'), hitIds: new Set() });
+        // contactHero is what makes the IMPACT play her burst instead of his
+        // orb pop, and it is also what the renderer reads to colour the shot —
+        // scalars only, because projectiles are pooled through assignInto.
+        this.projectiles.push({ type: 'pellet', x: px, alt, vx: this.speed + speedAdd, size, contactHero: hero.id, live: true, pierce: charged || this.modIds.includes('charge'), hitIds: new Set() });
       }
-      this.floatText(charged ? 'FULL CYAN' : 'PEW', '#f6d33c');
+      if (hero.id === 'kiko') this.floatText(charged ? 'FORMALLY WARNED' : 'WARNED', '#8fe4ff');
+      else this.floatText(charged ? 'FULL CYAN' : 'PEW', '#f6d33c');
     } else if (type === 'compress') {
       this.player.compressT = charged ? 2.6 : 1;
       Audio.sfx('power');
@@ -2815,7 +2833,6 @@ export class RunState {
   updateCoinMagnet(dt) {
     const hero = HERO_BY_ID[this.relay.current];
     let radius = Math.max(hero.magnetRadius * (this.modIds.includes('bigmagnet') ? 2 : 1), this.powerups.magnetRadius());
-    if (hero.id === 'chompo' && this.powerups.active.magnet) radius = Math.max(radius, 110);
     if (radius <= 0) return;
     const px = this.camX + PLAYER_X, py = this.groundYAt(px) - this.player.y - 8;
     for (const p of this.pickups) {
@@ -3149,6 +3166,7 @@ export class RunState {
     // Relay
     s.relayCurrent = this.relay.current; s.relayNext = this.relay.next;
     s.relayBag = copyArrayInto(this.relay.bag, s.relayBag);
+    s.relayUsed = copySetInto(this.relay.used, s.relayUsed);
     s.relaySpawned = this.relay.spawned; s.relayElapsed = this.relay.elapsed;
     s.relayTimer = this.relay.portalTimer; s.relayEvery = this.relay.portalEvery;
     s.relayLastTagLine = this.relay.lastTagLine;
@@ -3252,6 +3270,7 @@ export class RunState {
     this.relay.current = s.relayCurrent;
     this.relay.next = s.relayNext;
     this.relay.bag = s.relayBag.slice();
+    this.relay.used = new Set(s.relayUsed);
     this.relay.spawned = s.relaySpawned;
     this.relay.elapsed = s.relayElapsed;
     this.relay.portalTimer = s.relayTimer;
@@ -3479,7 +3498,7 @@ export class RunState {
       const val = Math.round(50 * pickMult * this.powerups.scoreMult());
       this.score += val;
       this.coins += 1;
-      Audio.sfx(hero.id === 'chompo' ? 'waka' : 'coin', { combo: Math.min(12, this.coinCombo) });
+      Audio.sfx('coin', { combo: Math.min(12, this.coinCombo) });
       spawn(p.x, this.groundYAt(p.x) - p.alt - 8, 0, -40, 0.4, '#f6d33c', 1, 0);
     } else if (p.def.heal) {
       // No floatie: the status pill fills the cell on the same frame and the
@@ -3998,7 +4017,20 @@ export class RunState {
         drawRocketFist(ctx, x + 4, y + 2, pr.t, pr.returning);
         ctx.restore();
       } else {
-        drawB33pPellet(ctx, x + 3, y + 2);
+        // Her ki blue comes off her own palette, so the shot can never drift
+        // from the character wearing it. B-33P has no `ki` token and falls
+        // through to the painter's default lemon.
+        // `ki` is what selects the orb: only a hero whose palette carries one
+        // gets it, so B-33P falls through to his lemon with nothing to opt out
+        // of. `a` is the warm fleck in the core — her piping gold, not a second
+        // hex invented in the renderer.
+        const shotPal = (HERO_SPRITES[pr.contactHero] || {}).pal;
+        drawPellet(ctx, x + 3, y + 2, {
+          size: pr.size,
+          fill: shotPal && shotPal.ki,
+          spark: shotPal && shotPal.a,
+          orb: !!(shotPal && shotPal.ki),
+        });
       }
     }
     };
@@ -4031,7 +4063,7 @@ export class RunState {
 
     // A soft reticle communicates which nearby obstacle the contextual power
     // will affect without adding another HUD instruction.
-    if (!this.finishing && this.player.abilityCd <= 0 && (this.relay.current === 'lorenzo' || this.relay.current === 'chompo')) {
+    if (!this.finishing && this.player.abilityCd <= 0 && this.relay.current === 'lorenzo') {
       const target = this.powerTarget();
       if (target) {
         const tx = target.x - cam + target.w / 2;

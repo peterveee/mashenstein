@@ -64,7 +64,6 @@ class InputSys {
     this.pointer = { x: 0, y: 0, down: false };
     this.buttons = [];          // virtual on-screen buttons: {id, x, y, w, h, action}
     this.chromeButtons = [];    // buttons OUTSIDE the game rect: {id, x, y, r, action} in viewport CSS px
-    this.textHandler = null;    // for TURDLE typing
     this.touches = new Map();   // pointerId -> {x0, y0, t0, action}
     this.holds = [];            // [{action, at}] releases owed to lifted taps
     this.padPrev = new Set();
@@ -93,11 +92,6 @@ class InputSys {
         return;
       }
       this.activity++;
-      if (this.textHandler && /^Key[A-Z]$|^Enter$|^Backspace$/.test(e.code)) {
-        this.textHandler(e.code);
-        e.preventDefault();
-        return; // consumed by typing — don't also fire the mapped action
-      }
       const act = this.actionForKey(e.code);
       if (act) { this.press(act); e.preventDefault(); }
       this.onAnyGesture && this.onAnyGesture();

@@ -744,8 +744,13 @@ const POSTER_TOP_Y = CAB_Y - POSTER_H - 12;
 // The post-game machine is deliberately blank, but the poster above it is not:
 // give drawPoster an OVERTIME motif without changing the cabinet palette (and
 // therefore without putting art on the machine's dead screen).
-const OVERTIME_POSTER_PALETTE = { ...OVERTIME_PALETTE, motif: 'overtime', button: '#e04848' };
-function posterLook(x) {
+// Exported so the gallery can hang the same sheet the hub does rather than
+// keeping a second copy of the OVERTIME casting, which would go stale the first
+// time this changes.
+export const OVERTIME_POSTER_PALETTE = { ...OVERTIME_PALETTE, motif: 'overtime', button: '#e04848' };
+// Exported for the same reason: the gallery has no station x, so it feeds this
+// one bay stride per cabinet and gets the wall's own alternating hang.
+export function posterLook(x) {
   const k = Math.round(x / 64);
   // `seed` is the station's own x rather than the bay index k: it is what tells
   // drawPoster where this sheet was folded, and two posters that happen to
@@ -1448,6 +1453,12 @@ export class HubState {
         swappable: false, pinned: true, roam: STAFF_ROAM,
       });
     }
+    // Miss Chomp used to stand at the serving line from act 2 onward, retired
+    // from the relay and back in the food court she always said was hers. She is
+    // out of the concourse entirely now and kept in reserve for a cameo
+    // somewhere else. Everything she needs to come back is still here — her
+    // `disc` rig in toons.js, her HUB_LINES pool, her cast card — so a cameo is
+    // a placement, not a rebuild. Nothing else in the hub reads her id.
     // Optional, as it is at every other call site: a flow that names no game song
     // simply has none, and the line below already falls back to the authored bank.
     const musicSong = this.flow.gameSongFor?.('hub');

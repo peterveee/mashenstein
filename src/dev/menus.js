@@ -642,7 +642,7 @@ export function rootMenu(dev) {
       } },
       { label: 'CAST ROLL', act: () => {
         dev.close();
-        setState(new CastState({ realSettings: dev.ctx.save.settings, onExit: () => dev.ctx.Flow.toTitle() }));
+        setState(new CastState({ realSettings: dev.ctx.save.settings, slot: dev.ctx.save.slot, onExit: () => dev.ctx.Flow.toTitle() }));
       } },
       { label: 'CREDITS', act: () => {
         dev.close();

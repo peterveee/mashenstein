@@ -53,7 +53,7 @@ export function phoneDressing() {
 // would quietly go stale the first time one of these changes.
 export const CABINET_STAR = {
   plumber: 'lorenzo', speed: 'gnash', neon: 'b33p', frost: 'fernwick',
-  crypt: 'grumpos', rhythm: 'mochi', cardboard: 'raymn', office: 'chompo',
+  crypt: 'grumpos', rhythm: 'mochi', cardboard: 'raymn', office: 'kiko',
   surge: 'gary',
 };
 
@@ -72,7 +72,7 @@ const POSTER_COPY = {
   crypt: ['GRUMPOS', 'DAD OF BOY'],
   rhythm: ['MOCHI', 'ALL AIR'],
   cardboard: ["RAY M'N", 'NO ELBOWS'],
-  office: ['MISS CHOMP', 'STILL HUNGRY'],
+  office: ['KIKO', 'STILL ASKING'],
   surge: ['GARY', 'NOT A COPY'],
   overtime: ['OVERTIME', 'NOT APPROVED'],
 };

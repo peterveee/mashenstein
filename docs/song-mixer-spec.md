@@ -68,7 +68,7 @@ delete operations).
 
 **Right-click the timeline** opens the selected-bars editor with cut/copy/paste,
 repeat, insert silence, mute, delete, and exact per-track controls (transpose ±12
-semitones, timing offset ±quarter note in 1/32 steps, gain ±12 dB in 0.5 dB steps).
+semitones, timing offset ±quarter note in 1/64 steps, gain ±12 dB in 0.5 dB steps).
 
 **Fold chevron** reveals section blocks: coloured 2-bar blocks showing verse/lift/
 bridge structure.
@@ -91,6 +91,11 @@ Each row: track number, M(ute)/S(olo) buttons, family icon, lane name.
 - **Right-click a name** — track panel: rename, change preset, duplicate, delete,
   edit part
 - **Drag across a row** — select a bar range for that instrument
+- **Drag a row's header** — reorder the track. Down lands after the drop target, up
+  lands before it. A track carries the layers sitting under it. The strips below move
+  with it: the arrangement and the mixer are two views of one order, stored per song as
+  `mix.order` and applied by `deskLanes()` in `src/engine/lanes.js`. A song nobody has
+  dragged has no `order` and keeps the engine's derived order exactly.
 - **Right-click a bar** — selected-bars editor targeted at that instrument
 
 **Colour coding**: filled cells = lane plays here; hollow/outlined cells = lane
@@ -137,7 +142,7 @@ renumber the bass).
 
 | Section | Controls |
 | --- | --- |
-| **Head** | Track number, lane name, family badge. Click to select; double-click to play from lane entry. |
+| **Head** | Track number, lane name, family badge. Click to select; double-click to play from lane entry; drag to reorder the track (moves the arrangement row with it — one order, two views). |
 | **Voice** | Button showing current voice, or — with none chosen — the engine voice the bank already plays, named in dim italics ("ENGINE" only where the bank matches no preset). `‹` `›` arrows cycle within category. Click opens the voice library panel. |
 | **EQ** | 3-band: HIGH shelf @4kHz, MID peak @1.2kHz, LOW shelf @250Hz. ±18 dB each. Transparent at 0 dB (serial biquad topology). |
 | **Sends** | DELAY SEND, REVERB SEND: 0–2 range. Absolute and identical on every channel — each taps its whole lane, so the same reading sends the same amount of kick as of lead, in every bar. (It used to be scaled by the playing section's `echoLevel`, which is why a send could do nothing at all; that key is inert now.) |

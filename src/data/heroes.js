@@ -76,18 +76,29 @@ export const HEROES = [
     ],
   },
   {
-    id: 'chompo', name: 'MISS CHOMP', short: 'MISS CHOMP',
-    tagline: 'APPETITE WITH EXCELLENT POSTURE.',
-    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.0, maxJumps: 1, canFloat: false,
-    startShield: 0, magnetRadius: 40, variableJump: true,
-    ability: { type: 'eat', cooldown: 3.5, label: 'HAZARD BITE', callout: 'EAT HAZARD' }, stomp: false, pickupBonus: 1.25,
-    joke: 'OCCASIONALLY EATS HUD ELEMENTS AND RETURNS THEM WITH A THANK-YOU NOTE.',
-    skillLabel: 'COIN MAGNET',
-    skillDesc: 'ATTRACTS COINS AND EARNS 25% MORE',
-    powerDesc: 'EATS BREAKABLE HAZARDS',
-    abilityDesc: 'EATS A NEARBY BREAKABLE HAZARD.',
+    // Kiko takes this slot in place, which is what keeps the roster at eight and
+    // leaves EIGHT HEROES. ONE SOCKET. true. Miss Chomp is not deleted — she
+    // steps back to the food court as an NPC (see game/cast.js).
+    //
+    // maxJumps 2 was Mochi's, and only the JUMP came across: canFloat stays
+    // false. The second jump is her wall kick; the hover is somebody else's.
+    id: 'kiko', name: 'KIKO, JURISDICTION PENDING', short: 'KIKO', subtitle: 'JURISDICTION PENDING',
+    tagline: 'NOBODY REPORTED IT. I NOTICED.',
+    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.0, maxJumps: 2, canFloat: false,
+    startShield: 0, magnetRadius: 0, variableJump: true,
+    // Slower and fatter than B-33P's lemon, and on twice his cooldown — his
+    // recharge is his whole skill, so the two shooters are not the same weapon.
+    ability: { type: 'shoot', cooldown: 3.5, label: 'WARNING SHOT', callout: 'WARNING SHOT' }, stomp: false,
+    shotSpeed: 170, shotSize: 1.5,
+    joke: 'MAINTAINS A CASE FILE ON EVERY OBJECT IN THIS BUILDING.',
+    skillLabel: 'FOOT PURSUIT',
+    skillDesc: 'JUMPS TWICE',
+    powerDesc: 'FIRES A BALL OF ENERGY',
+    abilityDesc: 'FIRES A SLOW BALL OF ENERGY THAT DESTROYS GROUND OBSTACLES.',
     sidegrades: [
-      { id: 'eat', name: 'HAZARD DIET', desc: 'THE FIRST HAZARD BITE EACH STAGE HAS NO COOLDOWN.' },
+      // NOT id 'wide' — that is Mochi's, and sidegrade ids are one global
+      // namespace (modIds.includes).
+      { id: 'force', name: 'REASONABLE FORCE', desc: 'THE WARNING SHOT IS WIDER BUT TRAVELS SLOWER.' },
     ],
   },
   {

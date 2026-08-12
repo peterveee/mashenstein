@@ -130,7 +130,7 @@ CAST: *"POYO."*
 **Fernwick, Hero of Thyme** ....................... performed by a grocery receipt, itself
 **Unit B-33P "Blastbot"** ......................... voice grievance filed on his behalf
 **Mochi** ......................................... "POYO" performed by Mochi; dialect coach not required
-**Miss Chomp** .................................... appetite consultant credited separately, tab pending
+**Kiko, Jurisdiction Pending** .................... warrant pending in this jurisdiction
 **Ray M'n, Appendage-Optional** ................... limbs performed by stunt limbs, insured separately
 **Grumpos, Dad of Boy** ........................... "BOY" performed with range
 **Gary** .......................................... played by Gary (deceased), SAG-AFTRA status pending since hiring
@@ -139,8 +139,9 @@ CAST: *"POYO."*
 the sequel sting, and a villain who gets the last word should not also be a row
 in the cast roll. The **Dust Devil 9000** is left out for the same reason the
 in-game cast roll leaves him out — he is a surprise, and a credit spends him
-before the player has met him. The **TURDLE turtle** has no portrait to give,
-and a nameplate alone reads as filler beside the other faces.)*
+before the player has met him. **Miss Chomp** is out of the relay and out of the
+food court both, held for a possible cameo — billing an actor for a part she is
+not in is the one joke this list cannot make straight-faced.)*
 
 ---
 
@@ -190,9 +191,9 @@ IT Support / Power Infrastructure — *could not be reached following the unplug
 
 ---
 
-**[ RELAY HANDOFF: FACILITIES → HUMAN RESOURCES ]** — *Mochi hands off to Miss Chomp*
+**[ RELAY HANDOFF: FACILITIES → HUMAN RESOURCES ]** — *Mochi hands off to Kiko*
 *"Your turn."*
-*"We're going to need that in writing."*
+*"Every one of them is a person of interest."*
 
 ---
 

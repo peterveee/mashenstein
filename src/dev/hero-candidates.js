@@ -60,6 +60,14 @@
 // strength, B goes field olive, C oxblood, E charcoal. The "beside the cast"
 // tile in the gallery is where that gets decided, not this file.
 //
+// ARMS: every cut runs `armLift: 0.014`, which sockets them a little higher on
+// the shoulder instead of slung under it. It started at 0.028 and came back
+// half way: past about 0.015 the poses that RAISE the arm — the shot and the
+// jump — root it at or above the shoulder line, and an arm leaving the body
+// above its own socket reads as detached. It is a per-spec dial rather than a
+// change to the rig, because armY is the root every pose measures its hands
+// from — moving it globally would re-pose the whole shipped cast.
+//
 // HEIGHT: every cut runs `tall: 1.07`, which lifts the head, shoulders, torso
 // top and legs off the feet together — proportions held, height changed. It
 // reads as more than 7% because the HEAD is deliberately left out of it: the
@@ -104,9 +112,9 @@ export const RAIDER_CANDIDATES = [
       + 'size — skin against a coloured torso is MORE contrast than a sleeve gives, not less. The '
       + 'trousers are the risk: khaki against skin is a narrow value gap, so watch the hip line.',
     spec: {
-      faceSeed: 0.9, rig: 'humanoid', tall: 1.07, head: 'braid', mouth: 'smile', slim: true, taper: 0.9,
+      faceSeed: 0.9, rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'braid', mouth: 'smile', slim: true, taper: 0.9,
       armDepth: true, hands: true, limbStyle: 'snap', pants: true,
-      bareArms: true, bust: true, gloves: true, gearBelt: true, holster: 'thigh', boots: 0.5,
+      bareArms: true, gloves: true, gearBelt: true, holster: 'thigh', boots: 0.5,
       pistol: true,
     },
     pal: {
@@ -121,23 +129,94 @@ export const RAIDER_CANDIDATES = [
   {
     id: 'raider-a2',
     name: 'A2 — EXPEDITION, LOW BELT',
-    note: 'A, with the belt worn on the HIPS instead of the waist and the top hem held where it '
-      + 'was — so a sliver of midriff opens between them without turning into D. About one and a '
-      + 'quarter pixels of skin at hero size, which is the whole point: it is a hint at this scale '
-      + 'and a statement at menu scale, and those are two different judgements. The trouser fill '
-      + 'drops with the belt, because the belt is there to cover that colour seam.',
+    note: 'A cut as a TANK TOP — V at the throat, armholes scooped out of each shoulder — in olive '
+      + 'rather than A\'s teal, which puts a whole hue between her and Lorenzo\'s overalls and buys '
+      + 'more separation than adjusting the teal ever could. The belt is worn on the HIPS instead of '
+      + 'the waist with the hem held where it was, so a sliver of midriff opens between them without '
+      + 'turning into D: about a pixel and a quarter of skin at hero size, a hint here and a statement '
+      + 'at menu scale, which are two different judgements. Note what a tank top CANNOT have at this '
+      + 'size: the bare shoulder outboard of the strap is half a pixel wide, so the cut-away happens '
+      + 'inboard instead — same shape from the front, and the part the eye actually gets.',
     spec: {
-      faceSeed: 1.2, rig: 'humanoid', tall: 1.07, head: 'braid', mouth: 'smile', slim: true, taper: 0.9,
+      faceSeed: 1.2, rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'braid', mouth: 'smile', slim: true, taper: 0.9,
       armDepth: true, hands: true, limbStyle: 'snap', pants: true,
-      bareArms: true, bust: true, crop: 0.78, beltDrop: 0.035, gloves: true,
+      bareArms: true, tank: true, crop: 0.78, beltDrop: 0.035, gloves: true,
       gearBelt: true, holster: 'thigh', boots: 0.5,
       pistol: true,
     },
     pal: {
       s: SKIN, e: INK, m: LIP, w: '#7a4f2c',
       hair: HAIR, hairDark: HAIR_DARK, hand: SKIN, a: BRASS, gunmetal: GUNMETAL,
-      b: '#1f8f8a',
+      // Olive rather than the teal A wears: it is the same garment cut
+      // differently, and putting it a whole hue away from Lorenzo's overalls
+      // buys more separation than any amount of adjusting the teal could.
+      b: '#6a7340',
       p: '#a98757',
+      f: '#5c3a22',
+      gunGrip: '#6b4324',
+    },
+  },
+  {
+    id: 'raider-a3',
+    name: 'A3 — A2, WAISTED',
+    note: 'A2 with the waist taken in — taper 0.78 against A2\'s 0.9, so the body narrows by a fifth '
+      + 'between the shoulder line and the belt. It is one number and nothing else moves: same '
+      + 'singlet, same olive, same belt height, same gear, so what is being judged is the FIGURE '
+      + 'rather than a redraw. The taper is the rig\'s own dial (Grumpos uses it the other way, to '
+      + 'read as muscle instead of belly), and it is worth knowing it does not touch the hips — the '
+      + 'legs root at a fixed half-separation — so this reads as a waist rather than as an hourglass. '
+      + 'It also flushed out a real bug: the belt was sized off the SHOULDER line, so on a nipped '
+      + 'waist it hung past the body on both sides. It measures at its own height now, the way '
+      + 'Grumpos\'s always has.',
+    spec: {
+      faceSeed: 2.7, rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'braid', mouth: 'smile', slim: true, taper: 0.78,
+      armDepth: true, hands: true, limbStyle: 'snap', pants: true,
+      bareArms: true, tank: true, crop: 0.78, beltDrop: 0.035, gloves: true,
+      gearBelt: true, holster: 'thigh', boots: 0.5,
+      pistol: true,
+    },
+    pal: {
+      s: SKIN, e: INK, m: LIP, w: '#7a4f2c',
+      hair: HAIR, hairDark: HAIR_DARK, hand: SKIN, a: BRASS, gunmetal: GUNMETAL,
+      // Olive rather than the teal A wears: it is the same garment cut
+      // differently, and putting it a whole hue away from Lorenzo's overalls
+      // buys more separation than any amount of adjusting the teal could.
+      b: '#6a7340',
+      p: '#a98757',
+      f: '#5c3a22',
+      gunGrip: '#6b4324',
+    },
+  },
+  {
+    id: 'raider-a4',
+    name: 'A4 — A3, SHORTS',
+    note: 'A3 with the trouser leg cut to SHORTS. Two things had to move before it read as one. The '
+      + 'HOLSTER sits at 0.74 down the thigh, which is exactly where the bare band wants to be — so '
+      + 'the hem comes up to 0.42 and the boot drops to 0.38, putting skin both above the holster and '
+      + 'below it instead of one strip the pouch covers. And the shorts are a DEEPER khaki than A3\'s: '
+      + 'a garment edge landing on bare leg has to pay for itself in value, and #a98757 against skin '
+      + 'at #f0c49a is barely a step — the cut was there and simply could not be seen. Built like the '
+      + 'top, the limb drawn in skin with a short second stroke putting the garment back on, so the '
+      + 'hem cannot slide off the leg when the knee folds.',
+    spec: {
+      faceSeed: 3.9, rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'braid', mouth: 'smile', slim: true, taper: 0.78,
+      armDepth: true, hands: true, limbStyle: 'snap', pants: true,
+      bareArms: true, tank: true, crop: 0.78, beltDrop: 0.035, gloves: true, shorts: 0.24,
+      gearBelt: true, holster: 'hip', boots: 0.3,
+      pistol: true,
+    },
+    pal: {
+      s: SKIN, e: INK, m: LIP, w: '#7a4f2c',
+      hair: HAIR, hairDark: HAIR_DARK, hand: SKIN, a: BRASS, gunmetal: GUNMETAL,
+      // Olive rather than the teal A wears: it is the same garment cut
+      // differently, and putting it a whole hue away from Lorenzo's overalls
+      // buys more separation than any amount of adjusting the teal could.
+      b: '#6a7340',
+      // Deeper than A3's khaki: the shorts hem lands against SKIN, and khaki
+      // (#a98757) against skin (#f0c49a) is barely a value step — the cut was
+      // there and simply could not be seen. A garment edge on bare leg has to
+      // pay for itself in value, not in hue.
+      p: '#7d6236',
       f: '#5c3a22',
       gunGrip: '#6b4324',
     },
@@ -151,7 +230,7 @@ export const RAIDER_CANDIDATES = [
       + 'entirely for field olive, which no hero owns, and gives up the twin-holster read with it: '
       + 'one gun, worn at the belt.',
     spec: {
-      faceSeed: 2.3, rig: 'humanoid', tall: 1.07, head: 'pony', headband: true, mouth: 'flat', slim: true, taper: 0.92,
+      faceSeed: 2.3, rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'pony', headband: true, mouth: 'flat', slim: true, taper: 0.92,
       armDepth: true, hands: true, limbStyle: 'snap', pants: true,
       gearBelt: true, bandolier: true, back: 'pack', holster: 'hip', boots: 0.55,
       pistol: true,
@@ -177,7 +256,7 @@ export const RAIDER_CANDIDATES = [
       + 'on a twig. Most character on screen and the most to lose — three garments and two straps '
       + 'is a lot of marks on a 0.3u torso, so check this one at phone scale first.',
     spec: {
-      faceSeed: 3.7, rig: 'humanoid', tall: 1.07, head: 'bun', mouth: 'smirk', slim: true, taper: 0.88,
+      faceSeed: 3.7, rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'bun', mouth: 'smirk', slim: true, taper: 0.88,
       armDepth: true, hands: true, limbStyle: 'snap', pants: true,
       jacket: true, harness: true, gearBelt: true, gloves: true,
       holster: 'thigh', boots: 0.45, pistol: true,
@@ -203,9 +282,9 @@ export const RAIDER_CANDIDATES = [
       + 'to break the column of skin down her middle, and whether the turquoise can live one '
       + 'cabinet away from Lorenzo.',
     spec: {
-      faceSeed: 1.6, rig: 'humanoid', tall: 1.07, head: 'braid', mouth: 'smirk', slim: true, legLength: 0.9, taper: 0.92,
+      faceSeed: 1.6, rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'braid', mouth: 'smirk', slim: true, legLength: 0.9, taper: 0.92,
       armDepth: true, hands: true, limbStyle: 'snap', pants: true,
-      bareArms: true, bust: true, crop: 0.45, shorts: 0.4, gloves: true,
+      bareArms: true, crop: 0.45, shorts: 0.4, gloves: true,
       gearBelt: true, buckle: 1.35, holster: 'thigh', boots: 0.58,
       pistol: 'twin',
     },
@@ -227,9 +306,9 @@ export const RAIDER_CANDIDATES = [
       + 'middle ground between the two groups, and the only candidate whose top colour is a '
       + 'neutral, so the palette lands on the leather and the brass instead of on a shirt.',
     spec: {
-      faceSeed: 3.1, rig: 'humanoid', tall: 1.07, head: 'pony', mouth: 'flat', slim: true, taper: 0.86,
+      faceSeed: 3.1, rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'pony', mouth: 'flat', slim: true, taper: 0.86,
       armDepth: true, hands: true, limbStyle: 'snap', pants: true,
-      bareArms: true, bust: true, crop: 0.88, gloves: true,
+      bareArms: true, crop: 0.88, gloves: true,
       bandolier: 'cross', gearBelt: true, buckle: 1.15, holster: 'thigh', boots: 0.62,
       pistol: true,
     },
@@ -244,196 +323,28 @@ export const RAIDER_CANDIDATES = [
   },
 ];
 
-// ---------------------------------------------------------------------------
-// THE SECOND BRIEF: a martial-artist heroine whose power move is a ki blast.
-//
-// Same arrangement, different character — she is not a cut of the raider, so
-// she gets her own list and her own gallery section. The reference is the
-// street-fighter one: ox-horn buns wrapped in ribbon, blue qipao with gold
-// piping over dark tights, spiked bracers, white boots.
-//
-// Her power move is the KIKOKEN — palms thrust forward, ball of energy — which
-// is the reason she fits this game at all. Every other signature that character
-// has is a kick, and a kick is a melee move: it needs the hero to reach a
-// hazard, and MASHENSTEIN's runner never lets them. A projectile is the same
-// shape of ability B-33P already has, so she lands on the existing `shoot` hook
-// and the existing cooldown with nothing invented for her.
-//
-// She runs `slim` like the raider does — both heroines are meant to read as
-// thinner than the male cast, and that flag is the rig's lever for it (a 0.148u
-// torso half-width against the men's 0.17u, with the arms and legs narrowed to
-// match). It costs nothing here because everything she wears is sized off the
-// torso rather than dialled in absolute units: the qipao's flare, the puffed
-// sleeve caps and the sash all narrow with her instead of hanging off her.
-//
-// FOUR COLOURWAYS and one eye study. F is the reference blue; G the same in two
-// pinks; L a deep petrol — blue with green in it; M ink-and-gold. J is not a
-// colourway — it is F wearing the softer drawn eye, kept because that question
-// is still open and it belongs on its own axis.
-//
-// The two extra colourways are chosen against the ROSTER, not for her. Mochi is
-// excluded from that check on purpose: that slot is likely to be replaced, so
-// reserving coral and purple against a character who may not exist would cost
-// two good hues for nothing. Everyone else counts.
-//
-// L aims at the gap between two heroes: 40 degrees of hue off Gnash's
-// indigo-violet (#4a50d2), and both bluer and much darker than the light teal
-// Lorenzo and Ray M'n share (#2ea8a0 / #28a8a0). So it is neither the blue
-// hero's blue nor the teal heroes' teal. A JADE cut sat in this slot first and
-// came out: green is already spoken for twice over — Fernwick's yellow-green
-// and the raider's field olive — and a third was one too many.
-//
-// M does not compete on hue at all: it is unique by VALUE, because the whole
-// cast wears mid-to-light saturated bodies and nobody is dark.
-//
-// RETIRED, and deliberately not kept around: a short-ribbon cut and a
-// full-size big-eye cut. The ribbons settled on their own once they were made
-// to hang, thin and close rather than stream out level — the question the
-// short version existed to ask stopped being a question. The big eye lost on
-// the same evidence every time it was looked at: a near-black iris filling the
-// sclera, a heavy lash cap and a down-angled brow are the ingredients of a
-// glare, and she wore one at rest. J is that eye at a size the cast can carry.
-// ---------------------------------------------------------------------------
-
-const fighterFace = {
-  s: '#f2c9a0', e: '#1f1626', m: '#a8465c', w: '#fff',
-  hair: '#6b4326', hairDark: '#402513', hand: '#f2c9a0',
-  a: '#f2c14e',            // gold piping and the bands at the bun
-  ribbon: '#f4f1e6',       // the wrapped buns, their tails, and the bracers
-  ki: '#8fe4ff',           // the blast
-  iris: '#6b4a34',         // warm brown, for the big-eye cut
-};
-
-export const FIGHTER_CANDIDATES = [
-  {
-    id: 'fighter-f',
-    name: 'F — CLASSIC',
-    note: 'The reference: ox-horn buns with the ribbons flying, blue qipao with gold piping and a '
-      + 'side slit, sash at the waist, puffed sleeves, spiked bracers, dark tights into white boots. '
-      + 'The buns are the silhouette — the one hairstyle on the roster that is symmetric and '
-      + 'outboard, which is why it survives being two pixels wide where a single tail would not.',
-    spec: {
-      faceSeed: 2.9, rig: 'humanoid', head: 'buns', mouth: 'smile', slim: true, taper: 0.9,
-      armDepth: true, limbStyle: 'snap', bareArms: true,
-      puffs: true, dress: true, bracers: true, boots: 0.5,
-      kiblast: true,
-    },
-    pal: {
-      ...fighterFace,
-      b: '#2f6fd0',        // the qipao — a blue no cabinet or hero owns
-      p: '#4a3226',        // tights
-      f: '#f4f1e6',        // white boots
-      w: '#f4f1e6',
-      sash: '#9fd8e8',     // pale sash, so the waist breaks the blue
-    },
-  },
-  {
-    id: 'fighter-g',
-    name: 'G — CLASSIC, PINK',
-    note: 'F in two pinks — a deep rose qipao over a pale rose sash, gold piping and white ribbons '
-      + 'unchanged. An alternate colourway is the oldest idea that character has, so it costs nothing '
-      + 'to ask the question here. Two things to watch: the deeper pink has to stay clear of Miss '
-      + 'Chomp\'s bow (#f0609f) and Mochi\'s cheek (#ff4d7d), which is why it sits rosier and darker '
-      + 'than either; and the tights go plum rather than brown, so the lower body belongs to the same '
-      + 'palette instead of looking like the blue cut\'s legs borrowed for the day.',
-    spec: {
-      faceSeed: 4.2, rig: 'humanoid', head: 'buns', mouth: 'smile', slim: true, taper: 0.9,
-      armDepth: true, limbStyle: 'snap', bareArms: true,
-      puffs: true, dress: true, bracers: true, boots: 0.5,
-      kiblast: true,
-    },
-    pal: {
-      ...fighterFace,
-      b: '#d94f86',        // deep rose qipao
-      p: '#5a3a44',        // plum tights, so the legs join the palette
-      f: '#f4f1e6',        // white boots
-      w: '#f4f1e6',
-      sash: '#f6a8c4',     // pale rose sash — the second pink
-      ki: '#ffc4e2',       // and the blast follows the costume
-    },
-  },
-  {
-    id: 'fighter-l',
-    name: 'L — PETROL',
-    note: 'A blue with green in it — deep petrol over a pale ice sash. It is aimed at the gap between '
-      + 'two heroes rather than at a swatch: Gnash is an indigo-violet blue (#4a50d2) and this is 40 '
-      + 'degrees of hue away from it and far less violet, while Lorenzo and Ray M\'n own a LIGHT teal '
-      + '(#2ea8a0, #28a8a0) that this sits both bluer and a good deal darker than. So it is not the '
-      + 'blue hero\'s blue and not the teal heroes\' teal. Against her own classic it reads as the '
-      + 'same family one step cooler and deeper, which is the point of an alternate rather than a '
-      + 'problem with one. Replaces the jade cut — green was already spoken for twice over.',
-    spec: {
-      faceSeed: 0.6, rig: 'humanoid', head: 'buns', mouth: 'smile', slim: true, taper: 0.9,
-      armDepth: true, limbStyle: 'snap', bareArms: true,
-      puffs: true, dress: true, bracers: true, boots: 0.5,
-      kiblast: true,
-    },
-    pal: {
-      ...fighterFace,
-      b: '#0f6f96',        // deep petrol — blue, with the green in it
-      p: '#3a4450',        // slate tights
-      f: '#f4f1e6',
-      w: '#f4f1e6',
-      sash: '#bfe0ec',     // pale ice sash
-      ki: '#9fe8ff',
-    },
-  },
-  {
-    id: 'fighter-m',
-    name: 'M — INK & GOLD',
-    note: 'The one that is unique by VALUE rather than by hue. Every hero on the roster wears a '
-      + 'mid-to-light saturated body — nobody is dark — so an ink qipao makes her the only dark '
-      + 'silhouette in a line-up, which is a bigger separation than any hue can buy. The gold piping '
-      + 'stops being trim and becomes the whole drawing, and her white ribbons, white boots and bare '
-      + 'arms carry enough light mass that she does not go to a hole. The thing to check, and the '
-      + 'reason this is a candidate and not a decision: she has to survive the DARK backdrops. Flip '
-      + 'the gallery backdrop before judging it.',
-    spec: {
-      faceSeed: 2.2, rig: 'humanoid', head: 'buns', mouth: 'smirk', slim: true, taper: 0.9,
-      armDepth: true, limbStyle: 'snap', bareArms: true,
-      puffs: true, dress: true, bracers: true, boots: 0.5,
-      kiblast: true,
-    },
-    pal: {
-      ...fighterFace,
-      b: '#242a3c',        // ink qipao
-      // Tights a step LIGHTER than the dress, not darker: below the hem they
-      // are the only thing between the skirt and the boot, and matched they
-      // merged the two into one dark column.
-      p: '#4a4452',
-      f: '#f4f1e6',
-      w: '#f4f1e6',
-      sash: '#f0d9a0',     // pale gold sash, held off the piping's own gold
-      ki: '#ffd98a',
-    },
-  },
-];
-
-FIGHTER_CANDIDATES.push({
-  id: 'fighter-j',
-  name: 'J — SOFT EYES',
-  note: 'F with the drawn eye at a size the cast can live with. Barely larger than the shipped eye, '
-    + 'and the budget goes somewhere else: more white around a smaller iris, one gentle highlight '
-    + 'instead of two, a hairline lash instead of a heavy cap, and a near-level brow. Those four '
-    + 'together are the whole difference between expressive and staring — H\'s dark mass, hard lash '
-    + 'cap and down-angled brow are the exact ingredients of a glare, which is why it reads as '
-    + 'intense even standing still. Both builds are round; nothing about either is doing anything '
-    + 'with eye shape.',
-  spec: {
-    faceSeed: 3.5, rig: 'humanoid', head: 'buns', mouth: 'smile', slim: true, taper: 0.9,
-    armDepth: true, limbStyle: 'snap', bareArms: true, anime: 'soft',
-    puffs: true, dress: true, bracers: true, boots: 0.5,
-    kiblast: true,
-  },
-  pal: {
-    ...fighterFace,
-    b: '#2f6fd0',
-    p: '#4a3226',
-    f: '#f4f1e6',
-    w: '#f4f1e6',
-    sash: '#9fd8e8',
-  },
-});
+// The martial-artist candidates used to live here. SETTLED: Kiko shipped — she
+// is in HEROES, TOON_SPECS and HERO_SPRITES now, drawn by the same painter and
+// enumerated by every production section like any other hero. A candidate list
+// for a character who exists is a second source of truth for her costume, which
+// is exactly the drift this file was written to avoid, so the cuts are gone and
+// her chosen one lives in the roster. Her power move — palms forward, ball of
+// ki — is the `kiblast` branch in drawArms, and the reason she fits a runner at
+// all: every other signature that character has is a kick, and a kick needs the
+// hero to reach a hazard.
 
 export const RAIDER_BY_ID = Object.fromEntries(RAIDER_CANDIDATES.map((c) => [c.id, c]));
-export const FIGHTER_BY_ID = Object.fromEntries(FIGHTER_CANDIDATES.map((c) => [c.id, c]));
+
+// ---------------------------------------------------------------------------
+// KIKO's head used to be worked out here. SETTLED, and shipped: the winners are
+// in TOON_SPECS.kiko, so she is drawn by every production section of the gallery
+// like any other hero and there is nothing left to compare. A candidate list for
+// a decision that has been made is a second source of truth for her costume,
+// which is exactly the drift this file exists to avoid.
+//
+// What shipped, and what each field beat, is written up in
+// docs/notes/kiko-persona.md — including the constructions that failed on the way,
+// which are the part worth not repeating: a lock placed near the fringe rather than
+// cut into it reads as a sideburn; a narrow spike drawn as its own shape gets eaten
+// by the rim shading and comes out hollow; and a fringe walked as one out-and-back
+// polygon self-intersects and comes out a scribble.

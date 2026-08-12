@@ -27,7 +27,7 @@ All eight are available in every normal stage. Portals switch between them autom
 | 3 | **FERNWICK** | Fernwick, Hero of Thyme | "THE RECEIPT FORETOLD THIS." | Starting Shield | SHIELD ROLL — short, finite roll that breaks ground hazards |
 | 4 | **B-33P** | Unit B-33P "Blastbot" | "LOW ON CYAN." | Battery Efficient (25% faster recharge) | LEMON CANNON — fires a shot that destroys ground obstacles |
 | 5 | **MOCHI** | Mochi | "PROBABLY NOT A COSMIC ENTITY." | Cosmic Float (double jump + float) | COSMIC SQUISH — shrinks temporarily and falls slowly |
-| 6 | **MISS CHOMP** | Miss Chomp | "APPETITE WITH EXCELLENT POSTURE." | Coin Magnet (attracts coins, +25%) | HAZARD BITE — eats a nearby breakable hazard |
+| 6 | **KIKO** | Kiko, Jurisdiction Pending | "NOBODY REPORTED IT. I NOTICED." | Foot Pursuit (jumps twice) | WARNING SHOT — fires a slow ball of energy that destroys ground obstacles |
 | 7 | **RAY M'N** | Ray M'n, Appendage-Optional | "LIMBS WERE OUT OF BUDGET." | Loose Assembly (survives one fatal hit) | ROCKET FIST — throws a fist that returns |
 | 8 | **GRUMPOS** | Grumpos, Dad of Boy | "BOY." | Legendary Presence (+20% score) | RETURNING AXE — throws an axe; ground + air hazards |
 
@@ -37,7 +37,7 @@ All eight are available in every normal stage. Portals switch between them autom
 - FERNWICK: "THE RECEIPT FORETOLD THIS."
 - B-33P: "LOW ON CYAN."
 - MOCHI: "POYO."
-- MISS CHOMP: "WAKA, DARLING."
+- KIKO: "THIS IS A CRIME SCENE."
 - RAY M'N: "HANDS OFF. LITERALLY."
 - GRUMPOS: "BOY."
 
@@ -47,7 +47,7 @@ All eight are available in every normal stage. Portals switch between them autom
 - Fernwick's sacred prophecy is printed on a faded supermarket receipt.
 - B-33P constantly reports low on cyan, regardless of context.
 - Mochi is adorable; the stars bend slightly toward her.
-- Miss Chomp occasionally eats HUD elements and returns them with a thank-you note.
+- Kiko maintains a case file on every object in this building.
 - Ray M'n's insurance form requires a limb count. He keeps writing "OPTIONAL."
 - Grumpos throws his axe majestically. Occasionally fails to catch it.
 
@@ -58,8 +58,8 @@ All eight are available in every normal stage. Portals switch between them autom
 | GNASH → FERNWICK | "ALREADY AT THE NEXT CORNER. SPEED UP." → "THE RECEIPT EXPRESSLY FORBIDS RUNNING." |
 | FERNWICK → B-33P | "THE PROPHECY FORETOLD A METALLIC CHASSIS." → "CHASSIS OPERATIONAL. CYAN LEVEL: CRITICAL." |
 | B-33P → MOCHI | "PORTAL ENGAGED. SCANNING EXTRA-DIMENSIONAL SPECIMEN." → "POYO. (THE PIXELS WARP SLIGHTLY.)" |
-| MOCHI → MISS CHOMP | "POYO?" → "YOU LOOK DELICIOUS, DARLING, BUT I HAVE POSTURE TO MAINTAIN." |
-| MISS CHOMP → RAY M'N | "I ATE THE SCORE COUNTER. IT WAS CHEWY." → "DID IT CONTAIN MY MISSING ARM VALUE?" |
+| MOCHI → KIKO | "POYO?" → "I WILL NEED THAT AS A STATEMENT." |
+| KIKO → RAY M'N | "I AM NOT LEAVING. I AM CANVASSING." → "CANVASS THE GLOVE. IT ACTS ALONE." |
 | RAY M'N → GRUMPOS | "HANDS OFF. LITERALLY. THEY ARE UNSECURED." → "BOY. FETCH THE SPARE APPENDAGES." |
 | GRUMPOS → LORENZO | "PREPARE FOR BALLISTIC DISPATCH, PLUMBER." → "STANDARD PROCEDURE. AIM FOR THE DUCTWORK." |
 
@@ -182,7 +182,7 @@ Each hero has a unique ability on a cooldown (1.8–3.5 seconds). An in-world ci
 
 - **Cosmic Squish** (Mochi, 3.5s, double jump + float): Shrinks temporarily and falls slowly — escape, not attack. A charged Relay Blast version extends the shrink duration considerably.
 
-- **Hazard Bite** (Miss Chomp, 3.5s, coin magnet +25% earnings): Eats the nearest breakable hazard with a full gape-hold-snap bite cycle. A charged Relay Blast version clears every breakable on screen (politely).
+- **Warning Shot** (Kiko, 3.5s): Fires a ball of energy that destroys ground obstacles. Ground-only and one-hit, like B-33P's Lemon Cannon — but slower and fatter, and on more than twice his cooldown, since his fast recharge is his whole skill. A charged Relay Blast version fires a three-round spread, every shot piercing.
 
 **Thrown-projectile heroes** (weapons leave the body and return):
 
@@ -219,18 +219,15 @@ Each stage has one mission (required to clear) and one challenge (optional bonus
 Played when first opening each cabinet. All replayable at the Arcade Corner (50 coins per play; win nets +200). Touch devices bypass minigames entirely.
 
 - **BLOCK SURGE** — falling five-cell pieces (legally distinct from the seven you know)
-- **REWIRE** — rotate tiles to route current
-- **CODE INJECT** — "THE CODE IS WATCHING BACK"
 - **PADDLE WAR** — one-point Pong against Eggshell's shell
 - **MASH INVADERS** — clear Dust Devils
 - **BRICK BONK** — Breakout against Eggshell's mustache
-- **TURDLE** — 4 letters, 4 guesses; the turtle is not impressed
 
 ### 4.8 Scoring
 
 - Base points for obstacles broken, coins collected, and stage clear (250).
 - Boss clear: 500. Challenge bonus: 100. Appliance bonus: 150.
-- Miss Chomp has a passive +25% coin pickup bonus.
+- Kiko jumps twice. She does NOT float — the second jump came across from Mochi's kit, the hover did not.
 - Grumpos has a passive +20% to all score.
 
 ### 4.9 Obstacles & Objects
@@ -239,7 +236,7 @@ Played when first opening each cabinet. All replayable at the Arcade Corner (50 
 
 **! Crates** (`qcrate`): gold-rimmed objective boxes. When broken they pop with a gold flash, white shards, and a harder kick — visually distinct from a standard crate. They always drop coins or a power-up capsule. On target missions each one counts toward the objective; the HUD floatie reports `TARGETS N/M` immediately without interrupting the run.
 
-**Coins:** small gold pickups worth 1 coin apiece and 50 score × current multiplier. Breaking any obstacle sprays coins forward so they land in the hero's path roughly 30–140 px ahead and get run through about half a second later — the run never stops for a pickup. Coins are pulled toward Miss Chomp at up to 40 px. A coin combo counter (up to 12×) resets after one second without a pickup; higher combos produce a brighter chime.
+**Coins:** small gold pickups worth 1 coin apiece and 50 score × current multiplier. Breaking any obstacle sprays coins forward so they land in the hero's path roughly 30–140 px ahead and get run through about half a second later — the run never stops for a pickup. A coin combo counter (up to 12×) resets after one second without a pickup; higher combos produce a brighter chime.
 
 **Power-up capsules:** occasionally drop from broken obstacles or drip-spawners. They arc higher than coins so the player sees them coming. Each capsule carries a coloured glow matching its power-up type. Touch pickups trigger the corresponding timer immediately; no menu, no pause.
 
@@ -315,7 +312,7 @@ XP thresholds: 100, 300, 700, 1400 (levels 1–5). Each hero has one sidegrade w
 | Fernwick | SHIELD BASH | Roll breaks hazards, ends in brief stumble |
 | B-33P | CHARGE SHOT | Pellets pierce ground and flying obstacles |
 | Mochi | EXTRA FULL OF AIR | Floats longer but becomes wider |
-| Miss Chomp | HAZARD DIET | First bite each stage has no cooldown |
+| Kiko | REASONABLE FORCE | The warning shot is wider but travels slower |
 | Ray M'n | FREELANCE FIST | Rocket fist collects coins before returning |
 | Grumpos | RICOCHET AXE | Axe hits a second target, harder to catch |
 

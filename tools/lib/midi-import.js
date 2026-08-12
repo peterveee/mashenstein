@@ -244,12 +244,12 @@ for (let i = 0; i < assignments.length; i++) {
 // a bare note at print time wherever it holds only one, so the ordinary line is still
 // `lead: seq('C4 . E4 .')`.
 const lanes = new Map();                       // lane -> step -> true | [{note, len}]
-const mapFor = (store, lane) => {
-  if (!store.has(lane)) store.set(lane, new Map());
-  return store.get(lane);
+const stepsOf = (lane) => {
+  if (!lanes.has(lane)) lanes.set(lane, new Map());
+  return lanes.get(lane);
 };
 const put = (lane, step, value, len = null) => {
-  const at = mapFor(lanes, lane);
+  const at = stepsOf(lane);
   if (isPerc(lane)) { at.set(step, true); return; }
   const pairs = at.get(step) || [];
   const hit = pairs.find((p) => p.note === value);

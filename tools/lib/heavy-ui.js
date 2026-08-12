@@ -23,11 +23,11 @@
 // implementation would be a second answer to "how long do we prefill for".
 import { Audio } from '../../src/engine/audio.js';
 
-// 1.2s covers the longest measured build several times over. Constant on purpose:
-// sizing it from recent cost is a refinement worth having only once the telemetry
-// below shows a build outrunning it, and a number that moves is a number nobody can
-// reason about from a log line.
-export const HEAVY_UI_PREFILL_S = 1.2;
+// The loop log has now caught a 1.688s main-thread stall. Queue two seconds before a
+// deliberate heavy build so that measured worst case still lands on scheduled audio.
+// Constant on purpose: a number that moves from recent timings is a number nobody can
+// reason about from a diagnostic row.
+export const HEAVY_UI_PREFILL_S = 2;
 
 // How long a finished build stays the prime suspect for a stall. Long enough to
 // cover the layout and paint that follow it, short enough that the NEXT stall is

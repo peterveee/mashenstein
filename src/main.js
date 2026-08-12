@@ -164,7 +164,7 @@ function routeDevUrl(goto, p) {
       setState(new SettingsState({ save, onDone: () => { setShakeScale(save.settings.screenShake); Flow.toTitle(); } }));
       break;
     case 'cast':
-      setState(new CastState({ realSettings: save.settings, onExit: () => Flow.toTitle() }));
+      setState(new CastState({ realSettings: save.settings, slot: save.slot, onExit: () => Flow.toTitle() }));
       break;
     case 'attract':
       setState(new AttractState({ realSettings: save.settings, onExit: () => Flow.toTitle() }));
@@ -309,6 +309,7 @@ const Flow = {
     attractStep++;
     const opts = {
       realSettings: save.settings,
+      slot: save.slot,
       onExit: (auto) => Flow.toTitle(auto ? { attractDelay: 10 } : {}),
     };
     setState(kind === 'cast' ? new CastState(opts) : new AttractState(opts));

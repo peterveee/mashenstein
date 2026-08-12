@@ -11,7 +11,7 @@ import { ZOOM, VIEW_W, ZOOM_MIN, applyWorld } from '../src/engine/camera.js';
 // The game's cameras, read from the modules that own them so the zoom-levels
 // section can never quote a number the game has stopped using.
 import { ZOOM_NORMAL, ZOOM_CLOSE, ZOOM_PHONE } from '../src/game/run.js';
-import { HUB_ZOOM } from '../src/game/hub/index.js';
+import { HUB_ZOOM, OVERTIME_POSTER_PALETTE, posterLook } from '../src/game/hub/index.js';
 import { INTRO_ZOOM_START, OUTRO_ZOOM } from '../src/game/tutorial.js';
 import { getSprite } from '../src/engine/sprites.js';
 import {
@@ -29,7 +29,9 @@ import {
   cabinetPalette, cabinetStyle, drawCabinetShell, drawCabinetScreen, drawScreenSweep,
   drawDoor, DOOR_PALETTES, OVERTIME_PALETTE, CABINET_STYLES, CABINET_STYLE,
 } from '../src/sprites/arcade.js';
-import { WALL_BASE } from '../src/sprites/backwall.js';
+import {
+  WALL_BASE, drawPoster, POSTER_W, POSTER_H, CABINET_STAR,
+} from '../src/sprites/backwall.js';
 import {
   TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim,
   setContour, setInkScale, setInkDensity,
@@ -54,7 +56,7 @@ import {
 import { PLAYER_X } from '../src/game/player.js';
 // Cast candidates — proposals with no entry in any production registry. See the
 // raider bake-off at the bottom of this file, and src/dev/hero-candidates.js.
-import { RAIDER_CANDIDATES, FIGHTER_CANDIDATES } from '../src/dev/hero-candidates.js';
+import { RAIDER_CANDIDATES } from '../src/dev/hero-candidates.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -70,17 +72,20 @@ const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 // browser, 14" laptop) and 5 (maximised on a 1440p panel). Every rung below 6 is
 // a device somebody actually plays on; there is deliberately none that is not.
 //
-// The default is the SMALLEST of them, the landscape iPhone. In landscape the
-// 16:9 frame letterboxes into the phone's short side, so the scale is 393/270 =
-// 1.46 on a 15 Pro and 375/270 = 1.39 on an SE — 1.4, the same figure hud.js
-// sizes its touch targets against. Judging at the tightest real presentation is
-// the opposite of the 1x/2x flattery this control used to forbid: nothing on
-// screen is bigger than the player will see it, and the phone is where a thin
-// stroke or a two-tone contrast fails first. World-scale tiles land close too —
-// the phone pulls its camera in to ZOOM_PHONE 2.2 against the WORLD_Z 2 these
-// tiles bake, so they read about a tenth under the handset rather than half.
+// The default is 3x, the 14" laptop maximised — the smallest DESKTOP
+// presentation and the one most of this work is actually looked at on. The
+// phone rung (1.4x) is still there and still the tightest real presentation:
+// in landscape the 16:9 frame letterboxes into the phone's short side, so the
+// scale is 393/270 = 1.46 on a 15 Pro and 375/270 = 1.39 on an SE — 1.4, the
+// same figure hud.js sizes its touch targets against. It was the default for a
+// while on the argument that judging at the tightest size is the opposite of
+// 1x/2x flattery, and that argument still holds for a FINAL check — but it made
+// every first look at the page a squint, and a page nobody can read at a glance
+// does not get read. Every rung here is still a device somebody plays on and
+// there is deliberately none that is not, so the honesty is in the LIST rather
+// than in which one opens.
 // Keep in step with the shell's options.
-let zoom = 1.4;
+let zoom = 3;
 let renderScale = 3;
 let animate = true;
 const SMOOTH_PREVIEW_PROPS = new Set(['appliance', 'cord', 'crate', 'qcrate', 'barrel', 'dustdevil', 'coin']);
@@ -716,6 +721,70 @@ function propNominalSize(name) {
   }
 }
 
+// ------------------------------------------------------- 3b. cabinet posters
+// The one-sheet that hangs over each machine, next to the machines themselves.
+// Every sheet is drawn by the hub's own drawPoster at the hub's own sizes, so
+// there are exactly two rungs here because the game only ever shows two: the
+// wall (POSTER_W through HUB_ZOOM — small, tilted, half the type a smudge) and
+// the tap-to-read blow-up (DST_H 216, straightened, fully lit), which is where
+// the wordmark and tagline become set type. A rung between them would be a size
+// nobody sees.
+//
+// The hang — tilt, tear, crease — comes from posterLook(), the hub's function,
+// fed one bay stride per cabinet: the gallery has no station x, and inventing a
+// second hanging rule here is how the row stops matching the wall. `lit: 1`
+// throughout, because the concourse's falloff is a property of the room and the
+// question this section answers is what is printed on the paper.
+{
+  const grid = section('posters', 'Cabinet posters',
+    `${CABINETS.length} machines plus OVERTIME, each with its own sheet — drawPoster() from `
+    + 'sprites/backwall.js, stock and ink straight from the cabinet palette. Top rung is wall '
+    + `size (${POSTER_W}x${POSTER_H} through the hub's ${HUB_ZOOM}x zoom); below it, the same sheet at `
+    + 'the size tapping it opens, where the type is meant to be read.');
+
+  // Cabinet order, then the post-game machine — the order they hang in.
+  const sheets = CABINETS.map((cab, i) => ({
+    id: cab.id,
+    name: cab.name,
+    sub: `${cab.id} · star: ${CABINET_STAR[cab.id] || '—'}`,
+    pal: cabinetPalette(cab, true),
+    look: posterLook(i * 64),
+  }));
+  sheets.push({
+    id: 'overtime',
+    name: 'OVERTIME',
+    sub: 'no campaign hero — punch clock art',
+    pal: OVERTIME_POSTER_PALETTE,
+    look: posterLook(sheets.length * 64),
+  });
+
+  // A tilted sheet leans outside its own box, so every tile carries a margin
+  // proportional to the sheet rather than a fixed few pixels — at the read size
+  // the same tilt swings four times as far.
+  const posterTile = (sheet, h, sub, tilt) => {
+    const w = h * (POSTER_W / POSTER_H);
+    const pad = Math.round(h * 0.09);
+    tile(grid, sheet.name, sub, Math.round(w + pad * 2), Math.round(h + pad * 2), (ctx) => {
+      drawPoster(ctx, pad + w / 2, pad, w, h, {
+        pal: sheet.pal, tilt, torn: sheet.look.torn, seed: sheet.look.seed, lit: 1,
+      });
+    });
+  };
+
+  for (const s of sheets) posterTile(s, POSTER_H * HUB_ZOOM, `${s.sub} · on the wall`, s.look.tilt);
+  // 216 is HubState.drawPosterZoom's DST_H, and it straightens as it comes
+  // forward: held up to read, it is just the sheet.
+  for (const s of sheets) posterTile(s, 216, `${s.sub} · tap-to-read`, 0);
+
+  // One tile, not nine. The locked palette carries no motif, so drawPoster gets
+  // no star, no wordmark and no badge — and its stock is the same dead #20242c
+  // on every machine, so all nine unplugged sheets are this sheet.
+  posterTile(
+    { name: 'locked', look: posterLook(0), pal: cabinetPalette(CABINETS[0], false) },
+    POSTER_H * HUB_ZOOM, 'any unplugged machine · no motif, no star, no type', posterLook(0).tilt,
+  );
+}
+
 // ---------------------------------------------------------------- 4. world sprites
 {
   const keys = Object.keys(WORLD_SPRITES);
@@ -1174,6 +1243,11 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   const HH = 60, WIDE = 216, FEET = 82;
   for (const id of Object.keys(TOON_SPECS)) {
     const candidate = CANDIDATES[id];
+    // Guarded. This table was written against a fixed roster but is indexed by
+    // whatever TOON_SPECS currently holds, so a hero added to the cast without
+    // a row here took the WHOLE PAGE down — one undefined lookup in a lab
+    // section and nothing after it draws, including every production section.
+    if (!candidate) continue;
     tile(grid, `${id} — body before / after`, candidate.label, WIDE, 94, (ctx, t) => {
       const samples = [
         [27, 'idle', null, 'CURRENT'],
@@ -3196,109 +3270,20 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   window.__candidateTiles.raiderPose = raiderPose;
 }
 
-// ------------------------------------- new hero: martial artist (lab only)
-// The second proposal, on the same terms as the first: a candidate, not cast,
-// drawn by the shipped painter through drawToon's spec/pal seam.
-{
-  const grid = section('fighter-bakeoff', 'New hero — martial artist, four colourways',
-    'GALLERY ONLY, and the same arrangement as the raider above: the shipped humanoid rig, with the '
-    + 'differences carried by flags and by gear pieces drawn beside them — ox-horn buns with ribbons, '
-    + 'a qipao with gold piping and a side slit, a sash, puffed sleeve caps, spiked bracers and dark '
-    + 'tights into white boots. '
-    + '<br><br>Her power move is the <b>KIKOKEN</b>: palms chambered at the hip, thrust forward, ball of '
-    + 'energy off the hands. That is why she fits this game at all — every other signature that '
-    + 'character has is a kick, and a kick is melee: it needs the hero to REACH a hazard, which a '
-    + 'runner never lets them do. A projectile is the same shape of ability B-33P already has, so she '
-    + 'lands on the existing <code>shoot</code> hook and the existing cooldown with nothing invented '
-    + 'for her. The orb is drawn additively in three rings off the palm position the IK actually '
-    + 'solved, so it cannot drift off her hands mid-thrust. '
-    + '<br><br>Four COLOURWAYS and one eye study. <b>F</b> is the reference blue, <b>G</b> the same in '
-    + 'two pinks, <b>L</b> a deep petrol — blue with green in it — and <b>M</b> ink-and-gold. <b>J</b> is not a colourway — it is F wearing '
-    + 'the softer drawn eye, on its own axis because that question is still open. '
-    + '<br><br>The extra colourways are picked against the ROSTER rather than for her, and Mochi is '
-    + 'excluded from that check on purpose: that slot is likely to be replaced, so reserving coral and '
-    + '<b>L</b> is aimed at the gap between two heroes: 40 degrees of hue off Gnash\'s '
-    + 'indigo-violet (#4a50d2), and both bluer and much darker than the light teal Lorenzo and Ray '
-    + 'M\'n share (#2ea8a0) — neither the blue hero\'s blue nor the teal heroes\' teal. (A jade cut '
-    + 'sat here first and came out: green is already spoken for twice, by Fernwick and by the '
-    + 'raider\'s field olive.) <b>M</b> does not compete '
-    + 'on hue at all: it is unique by VALUE. Every hero wears a mid-to-light saturated body and nobody '
-    + 'is dark, so an ink qipao makes her the only dark silhouette in a line-up — a bigger separation '
-    + 'than any hue buys, and the gold piping stops being trim and becomes the drawing. Check M on a '
-    + 'DARK backdrop before believing it. '
-    + '<br><br>RETIRED: a short-ribbon cut and a full-size big-eye cut. The ribbons settled on their '
-    + 'own once they were made to hang thin and close instead of streaming out level, so the question '
-    + 'the short version existed to ask stopped being one; and the big eye lost every time it was '
-    + 'looked at — a near-black iris filling the sclera, a heavy lash cap and a down-angled brow are '
-    + 'the ingredients of a glare, and she wore one standing still.');
-
-  const { opts, raiderPose: candPose } = window.__candidateTiles;
-  const CANDS = FIGHTER_CANDIDATES;
-  const RH = 62, RCOL = 82, RFEET = 92;
-  for (const [kind, note] of [
-    ['idle', 'Standing. The buns are the whole silhouette — the one hairstyle on the roster that is symmetric and outboard.'],
-    ['run', 'The pose she is in for 95% of a stage.'],
-    ['power', 'KIKOKEN: chamber, thrust, release. The orb swells as the palms arrive, so the energy reads as pushed out of her rather than carried.'],
-    ['jump', 'Airborne.'],
-    ['duck', 'Crouched — where the ribbons have the least room and the skirt has to clear the tucked legs.'],
-  ]) {
-    tile(grid, `fighter — ${kind}`, note, RCOL * CANDS.length, RH * 1.62, (ctx, t) => {
-      CANDS.forEach((c, i) => {
-        drawToon(ctx, c.id, candPose(kind, t), RCOL * (i + 0.5), RFEET, RH, opts(c));
-        ctx.fillStyle = '#8a8a9e';
-        ctx.font = '6px ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(c.name, RCOL * (i + 0.5), RH * 1.55);
-      });
-    }, { animated: true, wide: true, hires: 4 });
-  }
-
-  tile(grid, 'fighter — face crops', 'drawToonFace(), the size the HUD and the portal crop actually use.',
-    RCOL * CANDS.length, 54, (ctx) => {
-      CANDS.forEach((c, i) => {
-        drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
-        ctx.fillStyle = '#8a8a9e';
-        ctx.font = '6px ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(c.name, RCOL * (i + 0.5), 50);
-      });
-    }, { animated: false, wide: true, hires: 6 });
-
-  const FCAST = ['lorenzo', 'gnash', 'fernwick', 'grumpos'];
-  tile(grid, 'fighter — beside the cast', 'Four shipped heroes and every cut, same size and pose. '
-    + 'Her blue is the one no cabinet or hero owns — check that here, not on the swatch. This is also '
-    + 'where the big-eye cut is decided: the question is not whether the eye is nice, it is whether '
-    + 'ONE hero can carry a different eye style than the other ten.',
-    RCOL * (FCAST.length + CANDS.length), RH * 1.62, (ctx, t) => {
-      const row = [
-        ...FCAST.map((id) => [id, null, id]),
-        ...CANDS.map((c) => [c.id, c, c.name]),
-      ];
-      row.forEach(([id, cand, label], i) => {
-        drawToon(ctx, id, pose('idle', t), RCOL * (i + 0.5), RFEET, RH, cand ? opts(cand) : {});
-        ctx.fillStyle = cand ? '#c8b98a' : '#7a7a8e';
-        ctx.font = '6px ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(label, RCOL * (i + 0.5), RH * 1.55);
-      });
-    }, { animated: true, wide: true, hires: 4 });
-
-  {
-    const LW = 26 + CANDS.length * 62 + 44, LH = 62, LGY = 46;
-    tile(grid, 'fighter — in the lane, at size',
-      `Real ${HERO_DRAW_H}px hero through the run's own camera. Running and blasting, side by side — `
-      + 'this is the tile the ribbon question is settled on.',
-      LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
-        ctx.scale(WORLD_Z, WORLD_Z);
-        laneStrip(ctx, LW, LH, LGY);
-        CANDS.forEach((c, i) => {
-          const x = 26 + i * 62;
-          drawToon(ctx, c.id, candPose('run', t), x, LGY, HERO_DRAW_H, opts(c));
-          drawToon(ctx, c.id, candPose('power', t), x + 28, LGY, HERO_DRAW_H, opts(c));
-        });
-      }, { animated: true, wide: true, world: true, hires: 5 });
-  }
-}
+// The martial-artist bake-offs used to sit here — first her LOOK, then her whole
+// HEAD. Both are settled and shipped: split skirt and blue, then jaw-length hair, a
+// W cut into the hairline with hair piled on the crown, two ribbon cut ends per bun
+// beside the long tails, a gold band on the bun/hair join, ears with studs, and
+// brows in her own hair rather than the face ink. All of it is in TOON_SPECS.kiko
+// and HERO_SPRITES.kiko now, so every production section above draws her with it
+// and a lab comparison would only be quoting decisions back.
+//
+// The painter pieces stay in toons.js: `head: 'buns'`, `dress: 'split'`, `puffs`,
+// `bracers`, `kiblast`, `waistRise`, plus HAIR_CUTS, FRINGES and BUN_STUBS. What is
+// NOT still in there is the losing options — three fringe shapes, two hair lengths,
+// three stub sets — because each was a second copy of a path that the winner's
+// construction would now have to be maintained alongside. docs/notes/kiko-persona.md
+// is the record of what they were and why they lost.
 
 // ---------------------------------------------------------------- driver
 // Only visible tiles animate; static tiles paint once. Keeps ~200 canvases cheap.

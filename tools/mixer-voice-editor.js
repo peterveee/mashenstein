@@ -2011,17 +2011,18 @@ const TAP_KEYS = (v) => ({
  *
  * ---- what GLIDE is gated on twice --------------------------------------------
  *
- * `Monophonic.setNote` only ramps when the note it is gliding FROM is still sounding:
- *
- *     if (this.portamento > 0 && this.getLevelAtTime(t) > 0.05)  ramp
- *     else                                                       setValueAtTime
- *
  * Portamento is a legato feature, and a polyphonic preset has no legato: `play`
  * round-robins every note onto the next slot in the pool, whose previous note has long
- * since released, so the level at that moment is 0 and the second branch is always the
- * one taken. Measured — a rising line rendered at portamento 0 and 0.25 came out
- * SAMPLE-IDENTICAL, all 264,600 of them. Mono is what fixed it: one instance for the
- * whole lane, which remembers what it was playing. Hence the `when`.
+ * since released, so there is nothing to glide from. Measured — a rising line rendered
+ * at portamento 0 and 0.25 came out SAMPLE-IDENTICAL, all 264,600 of them. A non-poly
+ * mode is what fixed it: one instance for the whole lane, which remembers what it was
+ * playing. Hence the `when`.
+ *
+ * And the second gate is in the engine rather than here, because it is about the NOTE
+ * rather than the preset: a glide happens only when a note starts while the previous one
+ * is STILL GATED. That is fingered portamento, it is what both `play` and `_playLayer`
+ * test, and it is why a mono line with rests in it slides between its slurred notes and
+ * lands cleanly on the ones after a gap.
  *
  * ---- and why VELOCITY is not here at all -------------------------------------
  *
@@ -2159,6 +2160,11 @@ const commonRows = (voice = {}) => noteOrder(withParts([
   // starts the new envelope again. POLY gets a fresh pooled slot and has no legato
   // origin, so GLIDE is absent there.
   //
+  // What the two share, and what makes GLIDE mean one thing on both, is that the slide
+  // is FINGERED on either of them: a note glides only when it begins while the previous
+  // note is still gated. The same overlap that hands LEGATO its envelope is the overlap
+  // that gives MONO a pitch to come from.
+  //
   // Both are absent, not greyed, on the paths that cannot honour them — a drum has no
   // pool to hold one instance of and no Tone synth to carry a portamento. MRDR-3 is
   // the one NATIVE path where they work: `_playLayer` keeps a glide origin per
@@ -2177,7 +2183,13 @@ const commonRows = (voice = {}) => noteOrder(withParts([
     // It sat under KEY MODE before, on a fresh row of its own: a single pot on a line
     // that a greyed-out POLY patch left looking like a gap in the card.
     n('$portamento', 'GLIDE', 0, 0.5, ENV_TIME_STEP, secs, 0, '', (v) => keyMode(v) !== 'poly',
-      { scale: SHORT_TIME_SCALE }),
+      {
+        scale: SHORT_TIME_SCALE,
+        tip: 'How long the pitch takes to slide from the note before. FINGERED, like the '
+          + 'switch on a mono synth: a note only glides when it starts while the previous '
+          + 'one is still sounding its length, so slurred notes slide and a note after a '
+          + 'rest lands on its own pitch. Draw the notes overlapping in the roll to hear it.',
+      }),
   ] : []),
   ...(voice?.synth === 'MRDR-3' ? [
     pick('$sync', 'OSC SYNC', OSC_SYNC_MODES, 'off', null, {

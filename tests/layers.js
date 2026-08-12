@@ -31,7 +31,7 @@ import { mixEntrySource } from '../tools/lib/mix-source.js';
 import {
   draftOf, entryOf, setLanesOff, writeBarNotes, copyLaneArrangement,
 } from '../tools/lib/arrangement-edit.js';
-import { applyArrangement, resolveSection } from '../src/data/arrangements.js';
+import { applyArrangement, resolveSection, arrangementIssues } from '../src/data/arrangements.js';
 
 const renderMixFile = (mix) => `export const MIX = {\n${Object.entries(mix)
   .map(([id, e]) => [id, mixEntrySource(e, '  ')]).filter(([, x]) => x)
@@ -78,6 +78,36 @@ const twoOrder = deskLanes(two, 1).map((l) => l.key);
 assert(twoOrder.indexOf('bass') + 1 === twoOrder.indexOf('bass2')
   && twoOrder.indexOf('bass2') + 1 === twoOrder.indexOf('bass3'),
   'a second layer follows the first, not the other way round');
+
+// A copy of a layer in the MIDDLE of a family. The desk splices it into `layers`
+// directly after its source, and that list is the order — so a duplicate lands on the
+// next row down rather than at the bottom of the family. It cannot be done by naming:
+// the free key here is bass5, and the number in a layer key is a bank key, not a
+// position. This is the case a duplicate of lead5 in an imported song hits, where the
+// copy arrived as lead8, three strips below the part it doubles.
+const middle = deskBank(bank, {
+  layers: [
+    { key: 'bass2', from: 'bass' },
+    { key: 'bass5', from: 'bass2' },      // the duplicate, spliced in after its source
+    { key: 'bass3', from: 'bass' },
+    { key: 'bass4', from: 'bass' },
+  ],
+});
+assert(deskLanes(middle, 1).map((l) => l.key).join(' ').includes('bass bass2 bass5 bass3 bass4'),
+  'a duplicate sits directly under the track it copies, whatever number its key got');
+
+// And a copy of the LANE the family is named after goes in front of that family: the
+// lane itself is not in `layers` at all, so the desk inserts before its first layer
+// rather than appending, which would have put a second bass under bass4.
+const ofLane = deskBank(bank, {
+  layers: [
+    { key: 'bass5', from: 'bass' },       // the duplicate, inserted before the rest
+    { key: 'bass2', from: 'bass' },
+    { key: 'bass3', from: 'bass' },
+  ],
+});
+assert(deskLanes(ofLane, 1).map((l) => l.key).join(' ').includes('bass bass5 bass2 bass3'),
+  'a duplicate of the lane itself lands above the layers already under it');
 
 // An independently sequenced percussion sound is a layer for voice/mixer purposes,
 // but it starts with rests instead of copying the source pattern.
@@ -212,6 +242,34 @@ assert(extraEdited.sections.at(-1).tom2 === ownPattern,
   });
   assert(!(backwards.__layers || []).some((l) => l.key === 'tom3'),
     'a layer standing on one that does not exist yet is dropped rather than half-built');
+}
+
+// ---- a duplicate of a track that is silent in the BANK ----------------------
+// The desk writes note edits into the arrangement, never into the composition, so an
+// added track that was played in entirely on the desk has nothing in the bank at all:
+// it is a lane because it is `independent`, not because anything here can hear it. Its
+// copy is neither, and activity alone dropped it — the one shape where "the same notes
+// as my source" and "notes of my own" are both nothing.
+//
+// It then failed twice, because the desk validates an arrangement against this lane
+// list. Duplicate copies the source's per-bar decisions onto the new key, that read as
+// an arrangement naming a lane the song does not have, the edit was refused, and the
+// refusal undid the mix edit that had just added the layer. Duplicate did nothing, and
+// said it had: "Celeste 2 copy added under Celeste 2", with no new track anywhere.
+{
+  const silent = { bpm: 120, sections: [{}], order: [0] };
+  const out = deskBank(silent, {
+    layers: [
+      { key: 'tom2', from: 'tom', independent: true, label: 'Cowbell' },
+      { key: 'tom3', from: 'tom2' },
+    ],
+  });
+  const keys = deskLanes(out, 1).map((l) => l.key);
+  assert(keys.includes('tom2'), 'an added track with no notes yet is still a track');
+  assert(keys.includes('tom3'),
+    'and so is a duplicate of it — a copy is as present as the track it copies');
+  assert(!arrangementIssues(silent, { order: [{ s: 0, off: ['tom3'] }] }, keys).length,
+    'so the arrangement Duplicate writes for it is playable rather than refused');
 }
 
 // A layer of a lane the song does not play is a row that would play nothing.

@@ -187,6 +187,16 @@ export function loopSteps(loop, bars) {
 }
 
 /**
+ * The per-bar, per-lane numbers an order entry may carry, each in the units its own
+ * control uses: semitones, 1/32 notes (fractional — the desk nudges by halves, so a
+ * 1/64), dB, and pan pot units (-100..100, an OFFSET
+ * from where the channel is panned). One list, because everything that copies, folds,
+ * validates or expands a bar walks all of them the same way — a field named in one
+ * place and not the others is an edit that survives an undo but not a save.
+ */
+export const BAR_MAPS = ['transpose', 'offset', 'gain', 'pan'];
+
+/**
  * An order — a mix of numbers and `{s, bars, from, off}` — expanded into ONE ENTRY
  * PER BAR: `[{ sec, half, off }]`.
  *
@@ -218,7 +228,7 @@ export function expandOrder(order, hasSections = true) {
       // bars is four bars that change together the first time anything sorts it.
       if (e.off && e.off.length) bar.off = [...e.off];
       if (e.delete && e.delete.length) bar.delete = [...e.delete];
-      for (const key of ['transpose', 'offset', 'gain']) {
+      for (const key of BAR_MAPS) {
         if (e[key] == null) continue;
         bar[key] = typeof e[key] === 'number' ? e[key] : { ...e[key] };
       }
@@ -369,7 +379,7 @@ export function arrangementIssues(bank, entry, laneKeys = null) {
       for (const k of e.delete || []) {
         if (laneKeys && !laneKeys.includes(k)) issues.push(`order[${i}] deletes "${k}", which is not a lane`);
       }
-      for (const key of ['transpose', 'offset', 'gain']) {
+      for (const key of BAR_MAPS) {
         const map = e[key];
         if (map == null) continue;
         const values = typeof map === 'number' ? [['all', map]] : Object.entries(map);

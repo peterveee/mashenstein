@@ -522,6 +522,29 @@ export function createMixer(ctx, {
       pres.gain.value = state.mute ? 0 : dbToGain(state.gain);
     };
 
+    // The ARRANGEMENT's pan, held apart from the MIX's, and added to it.
+    //
+    // A bar can move a lane left or right of wherever its pot sits (`bar.pan`, in pot
+    // units). The two are separate numbers for the reason the fader and the gate are:
+    // one is authored and saved, the other is playback, and only one of them belongs in
+    // a mix file. Kept out of `state` deliberately — `state` is what the desk draws and
+    // what gets written to disk, and a bar's offset is neither.
+    //
+    // It is applied to the CHANNEL's panner rather than to a node of its own, because
+    // pan does not compose: two StereoPanners in series at +1 and -1 leave the signal
+    // hard left, not centred, so an offset can only mean what it says — arithmetic on
+    // the pot — if one panner ends up holding the sum. The cost of that is the honest one
+    // a DAW's pan automation has: a note still ringing from the bar before moves with it.
+    let panOffset = 0;
+    const panTarget = () => Math.max(-1, Math.min(1, state.pan + panOffset));
+    // The last value this panner was told to arrive at, kept because a ramp needs
+    // somewhere to start FROM and the param cannot be asked. `.value` on an untouched
+    // AudioParam is not an automation event in Chromium, so a lone
+    // `linearRampToValueAtTime` at the top of bar 2 interpolates from time zero: the
+    // measured result was a lane sliding across the room for the whole of bar 1 on its
+    // way to an edit that belonged to bar 2. See tests/bar-pan.js, claim 1.
+    let panWritten = state.pan;
+
     const strip = {
       key,
       dry,
@@ -532,7 +555,42 @@ export function createMixer(ctx, {
       // of the number you dialled is the wrong answer to that.
       setGain(db) { state.gain = db; applyLevel(); },
       setMute(m) { state.mute = !!m; applyLevel(); },
-      setPan(p) { state.pan = Math.max(-1, Math.min(1, p)); panner.pan.value = state.pan; },
+      // Dragging the pot cancels whatever the arrangement had scheduled and lands on the
+      // sum, so the knob still reads as the channel's position while a bar is holding it
+      // somewhere else. The sequencer writes its offset again at every bar line, so a
+      // cancel here is undone by the next bar rather than being permanent.
+      setPan(p) {
+        state.pan = Math.max(-1, Math.min(1, p));
+        panner.pan.cancelScheduledValues(ctx.currentTime);
+        panner.pan.value = panTarget();
+        panWritten = panTarget();
+      },
+      /**
+       * The arrangement's per-bar offset, AT AN AUDIO TIME — see `panOffset` above.
+       *
+       * Ramped rather than stepped, for the same reason every scheduled move on this
+       * desk is: the bar line it lands on is a quarter of a second in the future, and a
+       * pan jumped under a note that is still sounding is two gain steps, which is a
+       * click in each channel. Twelve milliseconds reads as "on the beat" and has no
+       * edge in it.
+       *
+       * Written by hand rather than through `rampParam`, and the anchor is the reason:
+       * a ramp has to be told where it starts, or it starts wherever the last event was
+       * — which, on a param nothing has automated yet, is the beginning of the render.
+       * The hold and the anchor go on at the same instant, so the anchor replaces the
+       * hold and the value cannot move before the bar line that asked for it.
+       */
+      setPanOffset(offset, when = ctx.currentTime, seconds = 0.012) {
+        panOffset = Number.isFinite(offset) ? Math.max(-2, Math.min(2, offset)) : 0;
+        const target = panTarget();
+        const at = Math.max(Number.isFinite(when) ? when : 0, ctx.currentTime);
+        if (panner.pan.cancelAndHoldAtTime) panner.pan.cancelAndHoldAtTime(at);
+        else panner.pan.cancelScheduledValues(at);
+        panner.pan.setValueAtTime(panWritten, at);
+        panner.pan.linearRampToValueAtTime(target, at + Math.max(seconds, 0.004));
+        panWritten = target;
+      },
+      get panOffset() { return panOffset; },
       /** 1 = as recorded, 0 = mono, 2 = pushed wide. */
       setWidth(w) { state.width = w; widthNode.set(w); },
       setSolo(on) {
@@ -589,7 +647,13 @@ export function createMixer(ctx, {
         if (gain != null || mute != null) {
           rampParam(ctx, pres.gain, mute ? 0 : dbToGain(gain ?? state.gain), when, seconds);
         }
-        if (pan != null) rampParam(ctx, panner.pan, Math.max(-1, Math.min(1, pan)), when, seconds);
+        // The offset rides on top of a variant's pan exactly as it rides on the pot's:
+        // a treatment that moves the lead is moving where the lead LIVES, and the bar
+        // that pushes it across the room is still that bar's edit.
+        if (pan != null) {
+          panWritten = Math.max(-1, Math.min(1, pan + panOffset));
+          rampParam(ctx, panner.pan, panWritten, when, seconds);
+        }
         if (width != null) widthNode.ramp(width, when, seconds);
         if (eq) laneEq.ramp(eq, when, seconds);
         for (const [id, v] of Object.entries(send || {})) {
@@ -977,6 +1041,15 @@ export function createMixer(ctx, {
     setLimiter(on) { limiterOn = !!on; wireMaster(); },
     clearSolo() { soloed.clear(); for (const s of strips.values()) s._applySolo(); },
     /**
+     * Every channel back to the pan its MIX says, with no arrangement offset on it.
+     *
+     * Called when a song stops or is swapped, alongside the gain trims it is the pan
+     * half of: a bar's offset belongs to the song that scheduled it, and a strip left
+     * 40 to the left because the last track ended on a bar that put it there is a mix
+     * that lies about itself the moment the next song starts.
+     */
+    clearPanOffsets() { for (const s of strips.values()) s.setPanOffset(0, ctx.currentTime, 0); },
+    /**
      * Kept, and resolved. The reverb used to build its impulse response by rendering
      * noise through its own offline context, so an offline render had to await it or
      * the aux was silent for the whole track. Ours generates the buffer in a loop and
@@ -989,6 +1062,7 @@ export function createMixer(ctx, {
       soloed.clear();
       soloedAux.clear();
       for (const s of strips.values()) {
+        s.setPanOffset(0, ctx.currentTime, 0);
         s.setGain(0); s.setPan(0); s.setMute(false); s.setWidth(1);
         s.setEQ({ low: 0, mid: 0, high: 0 });
         s.setEffects([]);

@@ -366,10 +366,11 @@ What it does and does not do:
   — where a step starts a shape whose timing lives inside the gesture rather than a note,
   and **vox** / **shout**, where a step picks a *word* and the formant path is keyed to it.
   Two words at once is not a chord. The desk says which, once per take.
-- **The piano roll is unchanged.** Clicking a new pitch on a step that already has a note
-  still *replaces* it, which is what you want on a single-note part; a step only behaves
-  chordally once it actually holds a chord, which is where it lets you pick one tone back
-  out of what you recorded.
+- **The piano roll has the same reach**, via the roll's own **CHANNEL** switch — see
+  [Mono and Poly](#mono-and-poly) below. It starts *Mono* on a single-note part, so
+  clicking a new pitch on an occupied step still replaces it, which is what you want
+  while you are correcting a line. Set it to *Poly* and the mouse stacks the way the
+  recorder does.
 - **It changes the pattern, not one bar.** A note played into a looping section lands
   in every bar that plays that part, which is the same choice the step grid's "edit all
   repeats" makes. The alternative would put your note in bar 1 of a four-bar section and
@@ -432,6 +433,47 @@ clock and the buffer, and nothing else).
 The fifth would be a **step recorder** — transport parked, each note landing on the
 playhead and advancing it — which is the same take buffer and the same flush with a
 different clock in front of it.
+
+### Mono and Poly
+
+**CHANNEL**, the first switch in the piano roll's left gutter, above **DRAW LENGTH**.
+It says how many notes the selected channel holds on one step, and the two words mean
+what they mean on any other desk:
+
+| | |
+| --- | --- |
+| **Mono** | one note a step. Drawing another pitch on an occupied step **replaces** what was there, which is how you correct a note. |
+| **Poly** | a chord. Drawing another pitch **adds** to it; clicking a note that is already in the chord takes that one out. |
+
+**Chord channels start Poly, every other channel starts Mono.** That default is the
+point of the switch rather than an oversight it works around: most of the parts in the
+game are single-note lines, and on those the click that lands on a note you already
+drew is nearly always you fixing the pitch, not you asking for a dyad. Making every
+channel chordal would turn that one gesture into stack-then-erase across some thirty-five
+parts to buy something four of them wanted.
+
+Nothing underneath is monophonic. A step has always been allowed to hold a list of
+frequencies, and every pitched voice loops over that list, so **bass**, **lead**,
+harmony and twinkle play a chord as readily as the chord channels do — the keyboard
+recorder has been stacking on them all along. The switch is the same capability handed
+to the mouse.
+
+Three things worth knowing:
+
+- **It is remembered per channel, and only where you changed it.** Setting *bass* to
+  Poly does not follow you to *lead*, and *chords* is still Poly when you get to it.
+- **It is not remembered between sessions.** A stale Poly on a bassline a week later
+  turns the click that corrects a note into the click that stacks onto it, and the
+  wrong default here costs work rather than a keystroke.
+- **A step that already holds a chord stays a chord either way.** Mono governs what a
+  *new* note does; it never flattens a chord you recorded or imported, so you can pick
+  one tone back out of it without touching the switch. Right-click still rubs out the
+  wrong one.
+
+On **vox** and **shout** the Poly button is struck through: a step there picks a *word*
+and the formant path is keyed to it, so two at once is not a chord and the engine would
+drop the extra tone. Shown rather than removed, so the switch does not change shape as
+you move down the channels.
 
 ### Limiter · A/B · Undo
 
@@ -537,6 +579,8 @@ strip below), **M** and **S**, the family mark, and the name.
   and gain controls stay together below.
 - **Double-click a bar** — open that lane's note editor: the step grid for a kit
   channel, the piano roll for a pitched one.
+- **Drag a row's header** — move the track. Where it lands is where the strip lands
+  too; see [Reorder the tracks](#reorder-the-tracks).
 - **Fold chevron** — collapse the whole panel.
 - **Splitter** (the grip below) — drag to give the arrangement more or less of the
   window; it snaps to whole lanes and never takes the rack below a bare strip.
@@ -579,7 +623,7 @@ Right-click an **arrangement lane** for that track only:
 | Mute / Unmute | silences or restores that track in the selected bars |
 | Copy Notes / Paste Notes | copies only that instrument's notes; paste may target a different instrument |
 | Erase Notes | empties those bars of that track. The notes are gone, not flagged; `⌘Z` brings them back |
-| Reset Edits | sets that track's mute, transpose, timing and gain in those bars back to none. The notes are not touched |
+| Reset Edits | sets that track's mute, transpose, timing, gain and pan in those bars back to none. The notes are not touched |
 
 Whole-track work is not on this panel: **Delete Track**, **Duplicate**, the preset and
 the track's name are on the [track panel](#right-click-a-track), which the row's
@@ -595,13 +639,23 @@ The adjustment controls are exact rather than presets:
 | Control | Range |
 | --- | --- |
 | Transpose | every semitone from `-12` to `+12`; shown on the arrangement as `+5`, `-7`, etc. One melodic lane, or every melodic track at once from the timeline |
-| Timing | every `1/32` step from a quarter-note early to a quarter-note late. One track only |
+| Timing | every `1/64` step from a quarter-note early to a quarter-note late. The stored unit stays the `1/32` note, so the desk writes halves of it — `-0.5` is one `1/64` early — and the readout names the real fraction. One track only |
 | Gain | `-12` to `+12` dB in `0.5` dB steps. One track only |
+| Pan | `-100` to `+100` in steps of `5`, in the pan pot's own numbers. An **offset from where the channel is panned**, never a position: a lane sitting at `+10` with a bar of `-20` plays that bar at `-10`, and re-panning the channel later carries every bar edit with it. Shown on the arrangement as `L20` / `R20`. One track only |
 
-Timing and gain are **not** on the timeline panel: nudging every melodic track by the
-same sixteenth moves nothing relative to anything, and a bar of gain across the whole
-band is the master fader with extra steps. Transpose does mean something across a
-section — a key change for four bars — so it stays.
+Timing, gain and pan are **not** on the timeline panel: nudging every melodic track by
+the same sixteenth moves nothing relative to anything, a bar of gain across the whole
+band is the master fader with extra steps, and panning the whole band is the master
+balance. Transpose does mean something across a section — a key change for four bars —
+so it stays.
+
+A bar's pan is the one adjustment that lands on the **channel's own pan**, because pan
+does not compose: two panners in series at hard right and hard left leave the signal
+hard left rather than centred, so an offset can only mean what it says if one panner
+holds the sum. That is also what it costs — as with pan automation in any DAW, a note
+still ringing from the bar before travels with the move. The pot itself does not turn:
+it goes on showing where the channel lives, and the bar says how far this bar is from
+there.
 
 A bar where a lane is silenced draws **hollow** — outlined in the lane's colour with
 nothing in it — which is a different thing from a bar the lane simply does not play
@@ -675,7 +729,7 @@ A strip, top to bottom:
 
 | Part | Control | Range |
 | --- | --- | --- |
-| Head | number, name, family | click anywhere on the strip to select it; **double-click the head** to play from where that channel comes in |
+| Head | number, name, family | click anywhere on the strip to select it; **double-click the head** to play from where that channel comes in; **drag the head** to move the track — see [Reorder the tracks](#reorder-the-tracks) |
 | Body | **voice** | what the channel is played *by* — see below. Bass, lead, harmony and chords only |
 | Body | **HIGH / MID / LOW** | ±18 dB — shelf at 4 kHz, peak at 1.2 kHz, shelf at 250 Hz |
 | Body | **DELAY SEND / REVERB SEND** | 0–2, 0 = shut — absolute, and the same on every channel |
@@ -1279,7 +1333,7 @@ selected channel, and either can be left up while you work.
 | Track name | a desk-owned duplicate or added track's display name. Authored song lanes keep their source names, so the field is not shown for them |
 | Sound | **Preset** (the voice library, opened against this strip) and **Edit Preset** (its parameters in the rack beside it — see [Editing a preset](#editing-a-preset-and-writing-new-ones)). Only lanes a voice can play; Edit Preset is absent on the engine's own voice, which has no entry to edit. Neither label carries the preset's name — that is on the line under the title |
 | Track | **Duplicate** (a second strip playing the same part — see below), **Copy Notes** / **Paste Notes** (the part itself; paste may target a different instrument), **Erase Notes** (empties every bar — the notes are gone, not flagged; the track, its channel and its sound stay, and `⌘Z` brings the part back), **Reset Edits**, **Delete Track** (asks first, naming the track, and says what goes with it) |
-| Adjust | exact transpose, timing and gain across every bar of that track |
+| Adjust | exact transpose, timing, gain and pan across every bar of that track |
 
 Making a **new preset** from this one is not here: the preset editor's own *Save as new*
 is the same gesture at the moment you actually want it — after you have moved something
@@ -1294,6 +1348,39 @@ to defaults (`R`). Reset includes the voice, so the channel goes back to the eng
 own; a duplicated track keeps its preset, because that is the lane, not a setting on
 it. The noun changes with the strip — *Copy Send*, *Reset Master*.
 
+### Reorder the tracks
+
+**Drag a track by its header** — the arrangement row header, or the strip head below —
+and it moves. Dragged down it lands after the track you drop it on, dragged up it lands
+before it: the same gesture as the effect slots, and the same one every list with a
+handle in it takes.
+
+The arrangement and the mixer are two views of **one order**, so a drag in either moves
+both, and the track numbers follow. That is the point of the number: it is a position,
+not a name, so "mute 7" means a different channel after you have reordered — the same
+way it would on a console you had re-patched.
+
+- **Only the header drags.** Everything below it on a strip is a control with a drag of
+  its own, and the bars beside an arrangement row select a range. The preset name and
+  the M/S pair opt out too — they are buttons living on the handle.
+- **A track takes its layers with it**, as long as they are actually sitting under it.
+  A layer dragged somewhere else on purpose was separated on purpose and stays put.
+- **The mixer's family filters hide, they do not reorder.** A drop resolves against the
+  whole song, so dragging past a hidden family does what it looks like it does.
+- Order is a decision this song carries, not a preference: it is per song, it is saved,
+  and `⌘Z` takes it back like any other edit.
+
+Until this existed, order was **derived** — the kit, then the bass, then whatever the
+engine's lane list says — which is a good order for the songs the game ships and no
+order at all for an imported one, where every part is a layer and nine melodic strips
+arrive in the sequence the MIDI happened to be written in.
+
+A song nobody has dragged has no `order` in its file and is ordered exactly as it always
+was. A stored order is read as decisions about the tracks it **names** and nothing about
+the tracks it does not, so a track added after the drag — a fresh duplicate, a lane the
+engine gains next year — lands beside the track it belongs beside rather than in a pile
+at the bottom.
+
 ### Duplicate and delete a track
 
 Every other edit on this desk is about **balance**. These two are about the song's
@@ -1303,7 +1390,7 @@ strip and an arrangement row.
 Neither touches a composition file. Both are stored in the song's mix export
 (`layers`, `off`), applied by `deskBank()` in `src/engine/lanes.js`, and undone by
 `⌘Z` like any other edit. Deleting a song's mix entry puts it back exactly as it was
-composed.
+composed. Track **order** (`order`) is stored the same way, for the same reasons.
 
 **Duplicate** gives you a second strip playing the *same part*: same notes, its own
 voice, fader, pan, EQ, sends and effect chain. That is how you layer — a sub under the
@@ -1379,6 +1466,7 @@ reach for mid-take is the one with the modifier on it.
 | The tempo it is played at, when that is not the tempo it was written at | the same `arrangement` export, as `bpm` |
 | The swing it is played with, when that is not straight | the same `arrangement` export, as `swing` |
 | Duplicated tracks (`layers`) and deleted ones | the same song source file, on the same button |
+| The order the tracks sit in, once one has been dragged (`order`) | the song's `mix` export, on the same button |
 | Every version of a writable song this desk has overwritten | `work/mix-history/`, automatically, on every save. Gitignored — see [Going back](#going-back) |
 | A version of a game song you want to keep without shipping it | its own file in `src/data/imported/`, on **Save as alternate…** — tracked, so it survives. See [Alternates](#alternates) |
 | The whole song as it stands right now, kept under a second name | its own file in `src/data/imported/`, on **Save a copy…** — tracked, and reachable by nothing but the desk. See [Copies](#copies) |
@@ -1526,7 +1614,7 @@ buttons; `/measure` is there for the command line.
 | `GET /history` | the snapshots, newest first |
 | `GET /history/<file>` | one of them, parsed. It is a module, so this is an `import()` — the name is matched against the pattern this process writes rather than merely checked for `..` |
 | `GET /midi?track=<id>&patches=1` | the song as a MIDI file |
-| `POST /import-midi?file=<name>` | a `.mid` in; a bank in `src/data/imported/`, a new track id, and the notes themselves back out |
+| `POST /import-midi?file=<name>` | a `.mid` in; a song file in `src/data/imported/`, a new track id, and the notes themselves back out — along with the `mix` the file holds, which is where the layer lanes an import needs are declared |
 | `POST /render` | renders one track through the real engine with a mix applied, writes `dist/<slug>-mix.wav`, and reports peak / LUFS against a −16 LUFS target |
 | `POST /audition` | the same render, then opens `tools/audition` on it — the plugin host runs where the mixer runs, because that is where the plugins are |
 | `POST /measure` | the same measurement across many tracks without writing files — the half of "get the volume right" that a one-song desk cannot show |
@@ -1556,10 +1644,22 @@ measure the preset it replaced — silently, and with a plausible number.
   to `src/data/imported/<id>.js` and the folder is its own registry, so the song is in
   the picker under **imported**, renders, exports MIDI and takes a mix like any other.
   The dialog lists which MIDI track landed on which lane.
+  - **One part in, one strip out — nothing is merged.** A lane holds one value per
+    step, so two parts sharing one would not stack, they would overwrite: a ten-track
+    file used to arrive as five lanes with five parts silently eaten. Every part now
+    gets a key of its own. A track that names a lane gets it; the rest fill the six
+    pitched lanes; anything past those becomes a **layer** (`lead2`, `lead3`) — an
+    ordinary strip with its own fader, EQ and sends, wearing the MIDI track's name.
+    A type 0 file, which is one MTrk carrying every channel, is split on the channel
+    first, and a second drum part strikes a second kit (`kick2`, `snare2`).
+  - **A layer arrives silent.** A layer is a preset and nothing else, so the notes are
+    there and play nothing until you choose a voice for it — the price of keeping
+    every part, and one you can hear and undo. The import dialog names them.
   - **The filename is the track id.** `Cool Song.mid` becomes `cool-song`, and
     importing that name again *replaces* it — take a song out to a DAW, bring it back
     over itself. A name a hand-written song already owns gets a suffix instead: an
-    import can never shadow a cabinet.
+    import can never shadow a cabinet. Export MIDI writes a layer as `Lead 2`, and
+    that is what the importer reads back onto `lead2`, so the round trip keeps them.
   - **What a MIDI file cannot carry** is timbre, glissando runs and per-section engine
     overrides. Those are yours to set by hand in the bank file.
   - Add, rename or delete a bank in that folder by hand and refresh the desk — the
