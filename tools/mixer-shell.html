@@ -1761,6 +1761,12 @@
      (39) and the ask modal (40), and stays under the tooltip, the tour and the
      visualiser, none of which can be open while a freeze renders. */
   #regionedit.freezeprogress { z-index: 45; }
+  /* The status line is a .devnote borrowed from the device cards, where it is a 9px
+     caption clamped narrow. Here it is the panel's only content and the thing being
+     read across the room, so it takes the panel's own 10px inset and a size that
+     matches the rest of the desk's body copy. */
+  .freezestatus { max-width: none; margin: 0; padding: 12px 10px 10px;
+                  color: var(--ink); font-size: 11px; }
   .reghead { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px 8px;
              border-bottom: 1px solid var(--line); background: var(--well); }
   .regtitle { flex: 1; min-width: 0; color: #fff; font-size: 12px; font-weight: 700; }

@@ -1,0 +1,1196 @@
+// SHOPPINGCHANNEL — one song: what it plays, how it is arranged, how it sounds.
+//
+// A copy of WIISHOPPINGCHANNEL (wiishoppingchannel), taken from the Song Mixer.
+// Everything below is that song as the desk had it at the moment of the copy.
+// It is a snapshot and nothing more: the game does not play this file, no
+// cabinet can select it, and WIISHOPPINGCHANNEL is untouched by anything done here.
+//
+// The music below is the composition. Everything under THE DESK WRITES BELOW HERE
+// is written by `npm run mixer` and will be rewritten on every save — put notes
+// about the song up here, where they survive.
+import { seq, chordSeq } from '../../engine/notes.js';
+
+export const id = "shoppingchannel";
+export const title = "SHOPPINGCHANNEL";
+export const slug = "shoppingchannel";
+export const group = "copy";
+
+export const bank = {
+  bpm: 120,
+  musicTrim: 0.7,
+  sections: [
+    {
+      bass: seq('D3 . . . . . D3 . . . . . D3 D3 D3 . | . . . . . . . . . . . . . . . .'),
+      chords: [[293.6647679174076,391.99543598174927,440,587.3295358348151],[293.6647679174076,391.99543598174927,440,587.3295358348151],[293.6647679174076,391.99543598174927,440,587.3295358348151],[293.6647679174076,391.99543598174927,440,587.3295358348151],[293.6647679174076,391.99543598174927,440,587.3295358348151],null,[293.6647679174076,391.99543598174927,440,587.3295358348151],[293.6647679174076,391.99543598174927,440,587.3295358348151],[293.6647679174076,391.99543598174927,440,587.3295358348151],[293.6647679174076,391.99543598174927,440,587.3295358348151],[293.6647679174076,391.99543598174927,440,587.3295358348151],null,[293.6647679174076,391.99543598174927,440,587.3295358348151],[293.6647679174076,391.99543598174927,440,587.3295358348151],[293.6647679174076,391.99543598174927,440,587.3295358348151],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('. . . . . . . . . . . . . . . . | C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1').map((v) => !!v),
+      hats: seq('. . . . . . . . . . . . . . . . | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+    },
+    {
+      bass: seq('G2 . . G2 D2 . . D2 G2 . . G2 D2 . . D2 | G2 . . G2 D2 . . D2 G2 . . G2 D2 . . D2'),
+      chords: [null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null,null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null],
+      kick: seq('C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1 | C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1').map((v) => !!v),
+      hats: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+    },
+    {
+      bass: seq('C2 . . C2 G2 . . G2 C2 . . C2 G2 . . G2 | C2 . . C2 G2 . . G2 F2 . . F2 C2 . . .'),
+      chords: [null,[329.6275569128699,391.99543598174927,587.3295358348151],[329.6275569128699,391.99543598174927,587.3295358348151],null,[329.6275569128699,391.99543598174927,523.2511306011972],[329.6275569128699,391.99543598174927,523.2511306011972],null,[329.6275569128699,391.99543598174927,493.8833012561241],[329.6275569128699,391.99543598174927,493.8833012561241],null,[329.6275569128699,391.99543598174927,440],[329.6275569128699,391.99543598174927,440],null,null,null,null,null,[311.1269837220809,391.99543598174927,587.3295358348151],[311.1269837220809,391.99543598174927,587.3295358348151],null,[311.1269837220809,391.99543598174927,523.2511306011972],[311.1269837220809,391.99543598174927,523.2511306011972],null,[311.1269837220809,391.9954359817493,466.1637615180899],[311.1269837220809,391.9954359817493,466.1637615180899],null,[261.6255653005986,311.1269837220809,440],[261.6255653005986,311.1269837220809,440],null,[261.6255653005986,311.12698372208087,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344]],
+      kick: seq('C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1 | C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1').map((v) => !!v),
+      hats: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+    },
+    {
+      bass: seq('B2 . . B2 F#2 . . F#2 A#2 . . A#2 E2 . . E2 | A2 . . A2 E2 . . E2 G#2 . . G#2 D2 . . D2'),
+      chords: [null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,[293.6647679174076,369.9944227116344,440],[233.08188075904496,277.1826309768721,329.6275569128699],[277.1826309768721],null,null,null,null,null,null,null,[220,261.6255653005986,329.6275569128699],null,null,[184.9972113558172,220,311.1269837220809],[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,369.9944227116344],[220,261.6255653005986,391.99543598174927],[261.6255653005986,329.6275569128699,440],[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,[293.6647679174076,349.2282314330039,523.2511306011972],null,null,null],
+      kick: seq('C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1 | C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1').map((v) => !!v),
+      hats: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+    },
+    {
+      bass: seq('A2 . . A2 E2 . . G#2 G#2 . . G#2 D#2 . . G2 | G2 . . G2 D2 . . D2 F#2 . . F#2 B1 . . B1'),
+      chords: [[261.6255653005986,329.6275569128699,493.8833012561241],null,[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,329.6275569128699],null,[261.6255653005986,329.6275569128699,493.8833012561241],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,null,[207.65234878997256,261.6255653005986,311.1269837220809],[207.65234878997256,261.6255653005986,311.1269837220809],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,[246.94165062806206,293.6647679174076,440],null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,null,null,[880,1108.7305239074883,1318.5102276514797],[880,1108.7305239074883,1318.5102276514797],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],null],
+      kick: seq('C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1 | C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1').map((v) => !!v),
+      hats: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+    },
+    {
+      bass: seq('E2 . . E2 B1 . . B1 E2 . . E2 B1 . . B1 | E2 . . E2 B1 . . B1 E2 . . E2 B1 . . B1'),
+      chords: [null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null,null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null],
+      kick: seq('C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1 | C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1').map((v) => !!v),
+      hats: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+    },
+    {
+      bass: seq('E2 . . E2 B1 . . B1 A1 . . A1 E2 . . E2 | D2 . . D2 A2 . . A2 D#2 . . D#2 D2 . . D2'),
+      chords: [null,[783.9908719634985,987.7666025122483,1479.9776908465376],[783.9908719634985,987.7666025122483,1479.9776908465376],null,[783.9908719634985,987.7666025122483,1318.5102276514797],[783.9908719634985,987.7666025122483,1318.5102276514797],null,[783.9908719634985,987.7666025122481,1174.65907166963],[783.9908719634985,987.7666025122481,1174.65907166963],null,[783.9908719634985,987.7666025122483,1108.7305239074883],[783.9908719634985,987.7666025122483,1108.7305239074883],null,null,null,null,null,[739.9888454232688,880,1318.5102276514797],[739.9888454232688,880,1318.5102276514797],null,[739.9888454232688,880,1174.6590716696303],[739.9888454232688,880,1174.6590716696303],null,[739.9888454232688,880,1108.7305239074883],[739.9888454232688,880,1108.7305239074883],null,[739.9888454232688,880,987.7666025122483],[739.9888454232688,880,987.7666025122483],null,[293.6647679174076,349.2282314330039,440],null,[277.1826309768721,329.6275569128699,415.3046975799451]],
+      kick: seq('C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1 | C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1').map((v) => !!v),
+      hats: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+    },
+    {
+      bass: seq('C#2 . . C#2 G#2 . . G#2 C2 . . C2 F#2 . . F#2 | B1 . . B1 F#2 . . F#2 E2 . . E2 B1 . . B1'),
+      chords: [null,null,[659.2551138257398,830.6093951598903],[659.2551138257398,830.6093951598903],null,[830.6093951598903,987.7666025122483],null,[523.2511306011972,622.2539674441618,739.9888454232688],null,null,null,null,null,null,null,null,null,[493.8833012561241,587.3295358348151,739.9888454232688],null,[493.8833012561241,587.3295358348151,698.4564628660078],[493.8833012561241,587.3295358348151,739.9888454232688],[493.8833012561241,587.3295358348151,830.6093951598903],[493.8833012561241,587.3295358348151,880],[587.3295358348151,739.9888454232688,987.7666025122483],[659.2551138257398,830.6093951598903,1108.7305239074883],null,null,null,[659.2551138257398,830.6093951598903,1046.5022612023945],null,null,null],
+      kick: seq('C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1 | C1 . . C1 C1 . . C1 C1 . . C1 C1 . . C1').map((v) => !!v),
+      hats: seq('C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
+    },
+    {
+      bass: seq('A2 A2 A2 A2 A2 . . . . . A2 A2 A2 A2 A2 . | A2 A2 A2 A2 A2 . . . . . . . A2 A2 A2 .'),
+      chords: [[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122481],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122481],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122481],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122481],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122481],null,null,null,null,null,[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122481],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122481],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122481],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122481],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122481],null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
+      kick: seq('C1 . . C1 C1 . . . . . . C1 C1 . . C1 | C1 . . C1 C1 . . C1 . . . . . . . .').map((v) => !!v),
+      rim: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 C1 C1 .').map((v) => !!v),
+      hats: seq('C1 C1 C1 C1 C1 C1 . . . . C1 C1 C1 C1 C1 C1 | C1 C1 C1 C1 C1 C1 C1 C1 . . . . C1 C1 C1 .').map((v) => !!v),
+    },
+  ],
+  order: [0,1,2,3,4,5,6,7,8,1,2,3,4,5,6,7,8],
+};
+
+// ---- THE DESK WRITES BELOW HERE ----------------------------------------------
+// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
+
+export const mix = {
+  masterEffects: [{ id: "mbComp" }],
+  layers: [{ key: "chords2", from: "chords" }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead2", independent: true }, { key: "lead4", from: "lead3", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "rim2", from: "rim", independent: true }],
+  voice: {"chordsVoice":"monoBright","bassVoice":"roundBass","hatsVoice":"dsClosedHat2","kickVoice":"kickTight","chords2Voice":"monoBright","lead2Voice":"tpPianoetta","lead3Voice":"epiano","rimVoice":"bigRoomClap","snare2Voice":"gameBoySnare","bass2Voice":"squareMono","lead4Voice":"epiano","rim2Voice":"bigRoomClap","rim3Voice":"bigRoomClap"},
+  voiceParams: {"snare2Voice":{"label":"Game Boy Snare","category":"Snare","dur":0.5,"note":"Pink-noise crack with a square body dropping 2.3k to 80 — the handheld backbeat, chokeable against the other arcade drums.","noise":{"type":"bandpass","freq":6480,"Q":0.9,"decay":0.61,"gain":1.98,"color":"pink"},"body":{"type":"square","from":2345,"to":80,"decay":0.37,"gain":1.02},"trim":1.9,"monoGroup":"arcadeDrums","starter":false,"kind":"noise","level":0.08867130034599335,"peak":1.3245834579499998,"songOrigin":"user","songSourceId":"snare2Voice"},"hatsVoice":{"label":"DS Closed Hat 3","category":"Hats","dur":0.5,"note":"A resonant highpassed tick — sharper than the plain closed hat, closer to metal without being metal.","noise":{"type":"highpass","freq":6585,"Q":5.1,"decay":0.162,"gain":1.72,"to":2800,"sweep":0.31},"starter":false,"kind":"drum","level":0.06672173266920933,"peak":1.854993909872,"songOrigin":"library","songSourceId":"hatsVoice"},"bass2Voice":{"label":"Square Mono","category":"Bass","synth":"MonoSynth","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0.22,"sustain":0,"release":0.129},"filter":{"type":"lowpass","Q":0.15,"rolloff":-12},"filterEnvelope":{"attack":0.001,"decay":0.607,"sustain":0.13,"release":0.128,"baseFrequency":4490,"octaves":1.3}},"starter":false,"transpose":-12,"mono":true,"kind":"tone","level":0.03371685257437114,"peak":0.6227004692117727,"songOrigin":"user","songSourceId":"bass2Voice"},"chords2Voice":{"label":"Bright Mono","category":"Lead","synth":"MonoSynth","dur":1.2,"note":"Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.004,"decay":0.15,"sustain":0.6,"release":0.2},"filter":{"type":"lowpass","Q":2,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":600,"octaves":3.2}},"starter":false,"fine":28,"kind":"tone","level":0.08768420726610465,"peak":0.8941313035844404,"songOrigin":"library","songSourceId":"chords2Voice"},"bassVoice":{"label":"Round Bass","category":"Bass","synth":"MonoSynth","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":1.24,"sustain":0.33,"release":0.8},"filter":{"type":"lowpass","Q":2.9,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":1.22,"sustain":0.16,"release":0.3,"baseFrequency":110,"octaves":3.9}},"starter":false,"mode":"mono","kind":"tone","level":0.07902175733395783,"peak":1.1841431847122437,"songOrigin":"user","songSourceId":"bassVoice"},"chordsVoice":{"label":"Bright Mono","category":"Lead","synth":"MonoSynth","dur":1.2,"note":"Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.004,"decay":0.15,"sustain":0.6,"release":0.2},"filter":{"type":"lowpass","Q":2,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":600,"octaves":3.2}},"id":"monoBright","kind":"tone","factory":true,"level":0.087427,"peak":0.8807},"kickVoice":{"label":"Tight Kick","category":"Kick","synth":"MembraneSynth","dur":1,"note":"The same shape with the tail cut short — for a busy bar where a long boom would smear into the next hit.","options":{"pitchDecay":0.02,"octaves":4,"oscillator":{"type":"sine"},"envelope":{"attack":0.001,"decay":0.16,"sustain":0,"release":0.16}},"id":"kickTight","kind":"tone","factory":true,"level":0.029608,"peak":0.6956},"lead2Voice":{"label":"Pianoetta","category":"Keys","synth":"MonoSynth","dur":2.2,"note":"A square through a gentle lowpass with a piano-ish decay. Toy upright rather than grand.","origin":"Tonejs/Presets MonoSynth/Pianoetta","options":{"oscillator":{"type":"square"},"filter":{"Q":2,"type":"lowpass","rolloff":-12},"envelope":{"attack":0.005,"decay":3,"sustain":0,"release":0.45},"filterEnvelope":{"attack":0.001,"decay":0.32,"sustain":0.9,"release":3,"baseFrequency":700,"octaves":2.3}},"id":"tpPianoetta","kind":"tone","factory":true,"level":0.111126,"peak":0.886},"lead3Voice":{"label":"Electric Piano","category":"Keys","synth":"FMSynth","dur":3,"note":"The Rhodes shape: bell in the attack, sine underneath, long decay.","options":{"harmonicity":3,"modulationIndex":10,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.002,"decay":1.2,"sustain":0.06,"release":1},"modulationEnvelope":{"attack":0.001,"decay":0.25,"sustain":0.01,"release":0.3}},"id":"epiano","kind":"tone","factory":true,"level":0.023667,"peak":0.2199},"rimVoice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"lead4Voice":{"label":"Electric Piano","category":"Keys","synth":"FMSynth","dur":3,"note":"The Rhodes shape: bell in the attack, sine underneath, long decay.","options":{"harmonicity":3,"modulationIndex":10,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.002,"decay":1.2,"sustain":0.06,"release":1},"modulationEnvelope":{"attack":0.001,"decay":0.25,"sustain":0.01,"release":0.3}},"id":"epiano","kind":"tone","factory":true,"level":0.023667,"peak":0.2199},"rim2Voice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"rim3Voice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542}},
+  lanes: {
+    kick: { gain: 5.7, eq: { low: -6.7, mid: 1.8 }, effects: [{ id: "distortion", params: { distortion: 0.7, wet: 0.65 } }] },
+    hats: { gain: 6, pan: -0.373, send: { reverb: 0.29 }, eq: { high: 3.6 } },
+    chords: { gain: -15.2, pan: -0.327, send: { reverb: 0.57 }, eq: { low: -1.8, high: 4.6 } },
+    bass: { gain: -6.5, eq: { low: -4 }, effects: [{ id: "distortion", params: { distortion: 0.17 } }, { id: "compressor" }] },
+    chords2: { gain: -15.5, pan: 0.48, send: { reverb: 0.57 }, eq: { low: -1.1, high: 7.1 } },
+    lead2: { gain: -8.16, send: { delay: 0.007, reverb: 0.202 }, eq: { high: 3.6 } },
+    lead3: { gain: 1.488, send: { delay: 0.135, reverb: 0.339 }, eq: { high: 2.6 }, effects: [{ id: "doubler", params: { depth: 0.38 } }] },
+    rim: { gain: 2.2 },
+    snare2: { gain: -3.1, send: { reverb: 1.611 } },
+    bass2: { gain: -7.5, eq: { low: -8.2 }, effects: [{ id: "distortion", params: { distortion: 0.17 } }] },
+    lead4: { gain: -7, send: { reverb: 0.339 }, eq: { low: -12.4, high: 6 }, effects: [{ id: "doubler" }, { id: "pingpong", params: { wet: 1 } }] },
+    rim2: { gain: 2.2 },
+    rim3: { gain: 2.2 },
+  },
+};
+
+export const arrangement = {
+  order: [
+    {
+      s: 23,
+      bars: 1,
+      off: ["kick"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 24,
+      bars: 1,
+      from: 1,
+      off: ["kick"],
+      transpose: {
+        bass2: 12,
+      },
+      offset: {
+        rim3: 1,
+      },
+    },
+    {
+      s: 9,
+      bars: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 10,
+      bars: 1,
+      from: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 11,
+      bars: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 12,
+      bars: 1,
+      from: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 13,
+      bars: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 14,
+      bars: 1,
+      from: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 15,
+      bars: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 16,
+      bars: 1,
+      from: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 17,
+      bars: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 18,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 19,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 20,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 21,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 22,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 23,
+      bars: 1,
+      off: ["lead4"],
+      inlineFx: {
+        lead3: [
+          {
+            id: "vibrato",
+            params: {
+              rateSync: 0,
+              rateDivision: 1,
+              frequency: 5,
+              depth: 0.17,
+              wet: 1,
+            },
+          },
+        ],
+      },
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 40,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      inlineFx: {
+        lead3: [
+          {
+            id: "vibrato",
+            params: {
+              rateSync: 0,
+              rateDivision: 1,
+              frequency: 5,
+              depth: 0.17,
+              wet: 1,
+            },
+          },
+        ],
+      },
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 25,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 26,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 27,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 28,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 29,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 30,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 31,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 32,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 33,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 34,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 35,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 36,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 37,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 38,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 23,
+      bars: 1,
+      off: ["kick"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 39,
+      bars: 1,
+      from: 1,
+      off: ["kick","lead4"],
+      inlineFx: {
+        rim: [
+          {
+            id: "pingpong",
+            params: {
+              sync: 1,
+              division: 0.75,
+              delayMs: 250,
+              feedback: 0.28,
+              wet: 0.42,
+            },
+          },
+        ],
+        snare2: [
+          {
+            id: "reverb",
+            params: {
+              decay: 3.4,
+              preDelay: 0.009916216226115456,
+              wet: 0.47,
+            },
+          },
+        ],
+        rim2: [
+          {
+            id: "doubler",
+            params: {
+              detune: 10,
+              delayMs: 11,
+              frequency: 0.91,
+              depth: 0.4,
+              width: 0.8,
+              dryPan: -1,
+              wetPan: 1,
+              wet: 0.5,
+            },
+          },
+          {
+            id: "reverb",
+            params: {
+              decay: 4.9,
+              preDelay: 0.018529663288327333,
+              wet: 0.4,
+            },
+          },
+        ],
+        rim3: [
+          {
+            id: "pingpong",
+            params: {
+              sync: 1,
+              division: 0.75,
+              delayMs: 250,
+              feedback: 0.28,
+              wet: 0.42,
+            },
+          },
+        ],
+      },
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 9,
+      bars: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 10,
+      bars: 1,
+      from: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 11,
+      bars: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 12,
+      bars: 1,
+      from: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 13,
+      bars: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 14,
+      bars: 1,
+      from: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 15,
+      bars: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 16,
+      bars: 1,
+      from: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 17,
+      bars: 1,
+      off: ["chords2","lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 18,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 19,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 20,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 21,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 22,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 23,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 40,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      inlineFx: {
+        rim: [
+          {
+            id: "chandelay",
+            params: {
+              sync: 1,
+              division: 0.125,
+              delayMs: 250,
+              feedback: 0.3,
+              tone: 4000,
+              pan: 0,
+              mix: 0.5,
+            },
+          },
+        ],
+        rim2: [
+          {
+            id: "chandelay",
+            params: {
+              sync: 1,
+              division: 0.125,
+              delayMs: 250,
+              feedback: 0.3,
+              tone: 4000,
+              pan: 0,
+              mix: 0.5,
+            },
+          },
+        ],
+        rim3: [
+          {
+            id: "chandelay",
+            params: {
+              sync: 1,
+              division: 0.125,
+              delayMs: 250,
+              feedback: 0.3,
+              tone: 4000,
+              pan: 0,
+              mix: 0.5,
+            },
+          },
+        ],
+      },
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -6,
+      },
+    },
+    {
+      s: 25,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 26,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 27,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 28,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 29,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 30,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 31,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+    },
+    {
+      s: 32,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -5,
+      },
+    },
+    {
+      s: 33,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -5,
+      },
+    },
+    {
+      s: 34,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -5,
+      },
+    },
+    {
+      s: 35,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -5,
+      },
+    },
+    {
+      s: 36,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -5,
+      },
+    },
+    {
+      s: 37,
+      bars: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -5,
+      },
+    },
+    {
+      s: 38,
+      bars: 1,
+      from: 1,
+      off: ["lead4"],
+      transpose: {
+        bass2: 12,
+      },
+      gain: {
+        lead3: -5,
+      },
+    },
+  ],
+  sections: [
+    {
+      base: 1,
+      lead2: [null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass2: seq('G2 . . G2 D2 . . D2 G2 . . G2 D2 . . D2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 1,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null],
+      bass2: seq('. . . . . . . . . . . . . . . . | G2 . . G2 D2 . . D2 G2 . . G2 D2 . . D2'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 2,
+      lead2: [null,[329.6275569128699,391.99543598174927,587.3295358348151],[329.6275569128699,391.99543598174927,587.3295358348151],null,[329.6275569128699,391.99543598174927,523.2511306011972],[329.6275569128699,391.99543598174927,523.2511306011972],null,[329.6275569128699,391.99543598174927,493.8833012561241],[329.6275569128699,391.99543598174927,493.8833012561241],null,[329.6275569128699,391.99543598174927,440],[329.6275569128699,391.99543598174927,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,[329.6275569128699,391.99543598174927,587.3295358348151],[329.6275569128699,391.99543598174927,587.3295358348151],null,[329.6275569128699,391.99543598174927,523.2511306011972],[329.6275569128699,391.99543598174927,523.2511306011972],null,[329.6275569128699,391.99543598174927,493.8833012561241],[329.6275569128699,391.99543598174927,493.8833012561241],null,[329.6275569128699,391.99543598174927,440],[329.6275569128699,391.99543598174927,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass2: seq('C2 . . C2 G2 . . G2 C2 . . C2 G2 . . G2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,[329.6275569128699,391.99543598174927,587.3295358348151],[329.6275569128699,391.99543598174927,587.3295358348151],null,[329.6275569128699,391.99543598174927,523.2511306011972],[329.6275569128699,391.99543598174927,523.2511306011972],null,[329.6275569128699,391.99543598174927,493.8833012561241],[329.6275569128699,391.99543598174927,493.8833012561241],null,[329.6275569128699,391.99543598174927,440],[329.6275569128699,391.99543598174927,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 2,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,587.3295358348151],[311.1269837220809,391.99543598174927,587.3295358348151],null,[311.1269837220809,391.99543598174927,523.2511306011972],[311.1269837220809,391.99543598174927,523.2511306011972],null,[311.1269837220809,391.9954359817493,466.1637615180899],[311.1269837220809,391.9954359817493,466.1637615180899],null,[261.6255653005986,311.1269837220809,440],[261.6255653005986,311.1269837220809,440],null,[261.6255653005986,311.12698372208087,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344]],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,587.3295358348151],[311.1269837220809,391.99543598174927,587.3295358348151],null,[311.1269837220809,391.99543598174927,523.2511306011972],[311.1269837220809,391.99543598174927,523.2511306011972],null,[311.1269837220809,391.9954359817493,466.1637615180899],[311.1269837220809,391.9954359817493,466.1637615180899],null,[261.6255653005986,311.1269837220809,440],[261.6255653005986,311.1269837220809,440],null,[261.6255653005986,311.12698372208087,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344]],
+      bass2: seq('. . . . . . . . . . . . . . . . | C2 . . C2 G2 . . G2 F2 . . F2 C2 . . .'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,587.3295358348151],[311.1269837220809,391.99543598174927,587.3295358348151],null,[311.1269837220809,391.99543598174927,523.2511306011972],[311.1269837220809,391.99543598174927,523.2511306011972],null,[311.1269837220809,391.9954359817493,466.1637615180899],[311.1269837220809,391.9954359817493,466.1637615180899],null,[261.6255653005986,311.1269837220809,440],[261.6255653005986,311.1269837220809,440],null,[261.6255653005986,311.12698372208087,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344]],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 3,
+      lead2: [null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,[293.6647679174076,369.9944227116344,440],[233.08188075904496,277.1826309768721,329.6275569128699],[277.1826309768721],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,[293.6647679174076,369.9944227116344,440],[233.08188075904496,277.1826309768721,329.6275569128699],[277.1826309768721],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass2: seq('B2 . . B2 F#2 . . F#2 A#2 . . A#2 E2 . . E2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,[293.6647679174076,369.9944227116344,440],[233.08188075904496,277.1826309768721,329.6275569128699],[277.1826309768721],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 3,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[220,261.6255653005986,329.6275569128699],null,null,[184.9972113558172,220,311.1269837220809],[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,369.9944227116344],[220,261.6255653005986,391.99543598174927],[261.6255653005986,329.6275569128699,440],[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,[293.6647679174076,349.2282314330039,523.2511306011972],null,null,null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[220,261.6255653005986,329.6275569128699],null,null,[184.9972113558172,220,311.1269837220809],[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,369.9944227116344],[220,261.6255653005986,391.99543598174927],[261.6255653005986,329.6275569128699,440],[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,[293.6647679174076,349.2282314330039,523.2511306011972],null,null,null],
+      bass2: seq('. . . . . . . . . . . . . . . . | A2 . . A2 E2 . . E2 G#2 . . G#2 D2 . . D2'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[220,261.6255653005986,329.6275569128699],null,null,[184.9972113558172,220,311.1269837220809],[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,369.9944227116344],[220,261.6255653005986,391.99543598174927],[261.6255653005986,329.6275569128699,440],[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,[293.6647679174076,349.2282314330039,523.2511306011972],null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 4,
+      lead2: [[261.6255653005986,329.6275569128699,493.8833012561241],null,[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,329.6275569128699],null,[261.6255653005986,329.6275569128699,493.8833012561241],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,null,[207.65234878997256,261.6255653005986,311.1269837220809],[207.65234878997256,261.6255653005986,311.1269837220809],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,[246.94165062806206,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [[261.6255653005986,329.6275569128699,493.8833012561241],null,[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,329.6275569128699],null,[261.6255653005986,329.6275569128699,493.8833012561241],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,null,[207.65234878997256,261.6255653005986,311.1269837220809],[207.65234878997256,261.6255653005986,311.1269837220809],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,[246.94165062806206,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass2: seq('A2 . . A2 E2 . . G#2 G#2 . . G#2 D#2 . . G2 | . . . . . . . . . . . . . . . .'),
+      lead4: [[261.6255653005986,329.6275569128699,493.8833012561241],null,[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,329.6275569128699],null,[261.6255653005986,329.6275569128699,493.8833012561241],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,null,[207.65234878997256,261.6255653005986,311.1269837220809],[207.65234878997256,261.6255653005986,311.1269837220809],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,[246.94165062806206,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 4,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,null,null,[880,1108.7305239074883,1318.5102276514797],[880,1108.7305239074883,1318.5102276514797],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,null,null,[880,1108.7305239074883,1318.5102276514797],[880,1108.7305239074883,1318.5102276514797],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],null],
+      bass2: seq('. . . . . . . . . . . . . . . . | G2 . . G2 D2 . . D2 F#2 . . F#2 B1 . . B1'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,null,null,[880,1108.7305239074883,1318.5102276514797],[880,1108.7305239074883,1318.5102276514797],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 5,
+      lead2: [null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass2: seq('E2 . . E2 B1 . . B1 E2 . . E2 B1 . . B1 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 5,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null],
+      bass2: seq('. . . . . . . . . . . . . . . . | E2 . . E2 B1 . . B1 E2 . . E2 B1 . . B1'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 6,
+      lead2: [null,[783.9908719634985,987.7666025122483,1479.9776908465376],[783.9908719634985,987.7666025122483,1479.9776908465376],null,[783.9908719634985,987.7666025122483,1318.5102276514797],[783.9908719634985,987.7666025122483,1318.5102276514797],null,[783.9908719634985,987.7666025122481,1174.65907166963],[783.9908719634985,987.7666025122481,1174.65907166963],null,[783.9908719634985,987.7666025122483,1108.7305239074883],[783.9908719634985,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,[783.9908719634985,987.7666025122483,1479.9776908465376],[783.9908719634985,987.7666025122483,1479.9776908465376],null,[783.9908719634985,987.7666025122483,1318.5102276514797],[783.9908719634985,987.7666025122483,1318.5102276514797],null,[783.9908719634985,987.7666025122481,1174.65907166963],[783.9908719634985,987.7666025122481,1174.65907166963],null,[783.9908719634985,987.7666025122483,1108.7305239074883],[783.9908719634985,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass2: seq('E2 . . E2 B1 . . B1 A1 . . A1 E2 . . E2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,[783.9908719634985,987.7666025122483,1479.9776908465376],[783.9908719634985,987.7666025122483,1479.9776908465376],null,[783.9908719634985,987.7666025122483,1318.5102276514797],[783.9908719634985,987.7666025122483,1318.5102276514797],null,[783.9908719634985,987.7666025122481,1174.65907166963],[783.9908719634985,987.7666025122481,1174.65907166963],null,[783.9908719634985,987.7666025122483,1108.7305239074883],[783.9908719634985,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 6,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,880,1318.5102276514797],[739.9888454232688,880,1318.5102276514797],null,[739.9888454232688,880,1174.6590716696303],[739.9888454232688,880,1174.6590716696303],null,[739.9888454232688,880,1108.7305239074883],[739.9888454232688,880,1108.7305239074883],null,[739.9888454232688,880,987.7666025122483],[739.9888454232688,880,987.7666025122483],null,[293.6647679174076,349.2282314330039,440],null,[277.1826309768721,329.6275569128699,415.3046975799451]],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,880,1318.5102276514797],[739.9888454232688,880,1318.5102276514797],null,[739.9888454232688,880,1174.6590716696303],[739.9888454232688,880,1174.6590716696303],null,[739.9888454232688,880,1108.7305239074883],[739.9888454232688,880,1108.7305239074883],null,[739.9888454232688,880,987.7666025122483],[739.9888454232688,880,987.7666025122483],null,[293.6647679174076,349.2282314330039,440],null,[277.1826309768721,329.6275569128699,415.3046975799451]],
+      bass2: seq('. . . . . . . . . . . . . . . . | D2 . . D2 A2 . . A2 D#2 . . D#2 D2 . . D2'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,880,1318.5102276514797],[739.9888454232688,880,1318.5102276514797],null,[739.9888454232688,880,1174.6590716696303],[739.9888454232688,880,1174.6590716696303],null,[739.9888454232688,880,1108.7305239074883],[739.9888454232688,880,1108.7305239074883],null,[739.9888454232688,880,987.7666025122483],[739.9888454232688,880,987.7666025122483],null,[293.6647679174076,349.2282314330039,440],null,[277.1826309768721,329.6275569128699,415.3046975799451]],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 7,
+      lead2: [null,null,[659.2551138257398,830.6093951598903],[659.2551138257398,830.6093951598903],null,[830.6093951598903,987.7666025122483],null,[523.2511306011972,622.2539674441618,739.9888454232688],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,null,[659.2551138257398,830.6093951598903],[659.2551138257398,830.6093951598903],null,[830.6093951598903,987.7666025122483],null,[523.2511306011972,622.2539674441618,739.9888454232688],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass2: seq('C#2 . . C#2 G#2 . . G#2 C2 . . C2 F#2 . . F#2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,null,[659.2551138257398,830.6093951598903],[659.2551138257398,830.6093951598903],null,[830.6093951598903,987.7666025122483],null,[523.2511306011972,622.2539674441618,739.9888454232688],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 7,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[493.8833012561241,587.3295358348151,739.9888454232688],null,[493.8833012561241,587.3295358348151,698.4564628660078],[493.8833012561241,587.3295358348151,739.9888454232688],[493.8833012561241,587.3295358348151,830.6093951598903],[493.8833012561241,587.3295358348151,880],[587.3295358348151,739.9888454232688,987.7666025122483],[659.2551138257398,830.6093951598903,1108.7305239074883],null,null,null,[659.2551138257398,830.6093951598903,1046.5022612023945],null,null,null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[493.8833012561241,587.3295358348151,739.9888454232688],null,[493.8833012561241,587.3295358348151,698.4564628660078],[493.8833012561241,587.3295358348151,739.9888454232688],[493.8833012561241,587.3295358348151,830.6093951598903],[493.8833012561241,587.3295358348151,880],[587.3295358348151,739.9888454232688,987.7666025122483],[659.2551138257398,830.6093951598903,1108.7305239074883],null,null,null,[659.2551138257398,830.6093951598903,1046.5022612023945],null,null,null],
+      bass2: seq('. . . . . . . . . . . . . . . . | B1 . . B1 F#2 . . F#2 E2 . . E2 B1 . . B1'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[493.8833012561241,587.3295358348151,739.9888454232688],null,[493.8833012561241,587.3295358348151,698.4564628660078],[493.8833012561241,587.3295358348151,739.9888454232688],[493.8833012561241,587.3295358348151,830.6093951598903],[493.8833012561241,587.3295358348151,880],[587.3295358348151,739.9888454232688,987.7666025122483],[659.2551138257398,830.6093951598903,1108.7305239074883],null,null,null,[659.2551138257398,830.6093951598903,1046.5022612023945],null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 8,
+      lead2: chordSeq('C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . . . . . C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . | . . . . . . . . . . . . . . . .'),
+      lead3: chordSeq('C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . . . . . C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . | . . . . . . . . . . . . . . . .'),
+      bass2: seq('A2 A2 A2 A2 A2 . . . . . A2 A2 A2 A2 A2 . | . . . . . . . . . . . . . . . .'),
+      lead4: chordSeq('C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . . . . . C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      base: 8,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . C1 . . . . .').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | A2 A2 A2 A2 A2 . . . . . . . A2 A2 A2 .'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 C1 . .').map((v) => !!v),
+    },
+    {
+      base: 1,
+      lead2: [null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bass2: seq('G2 . . G2 D2 . . D2 G2 . . G2 D2 . . D2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 1,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | G2 . . G2 D2 . . D2 G2 . . G2 D2 . . D2'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[246.94165062806206,293.6647679174076,440],[246.94165062806206,293.6647679174076,440],null,[246.94165062806206,293.6647679174076,391.99543598174927],[246.94165062806206,293.6647679174076,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344],[246.94165062806206,293.6647679174076,369.9944227116344],null,[246.94165062806206,293.6647679174076,329.6275569128699],[246.94165062806206,293.6647679174076,329.6275569128699],null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 2,
+      lead2: [null,[329.6275569128699,391.99543598174927,587.3295358348151],[329.6275569128699,391.99543598174927,587.3295358348151],null,[329.6275569128699,391.99543598174927,523.2511306011972],[329.6275569128699,391.99543598174927,523.2511306011972],null,[329.6275569128699,391.99543598174927,493.8833012561241],[329.6275569128699,391.99543598174927,493.8833012561241],null,[329.6275569128699,391.99543598174927,440],[329.6275569128699,391.99543598174927,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,[329.6275569128699,391.99543598174927,587.3295358348151],[329.6275569128699,391.99543598174927,587.3295358348151],null,[329.6275569128699,391.99543598174927,523.2511306011972],[329.6275569128699,391.99543598174927,523.2511306011972],null,[329.6275569128699,391.99543598174927,493.8833012561241],[329.6275569128699,391.99543598174927,493.8833012561241],null,[329.6275569128699,391.99543598174927,440],[329.6275569128699,391.99543598174927,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bass2: seq('C2 . . C2 G2 . . G2 C2 . . C2 G2 . . G2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,[329.6275569128699,391.99543598174927,587.3295358348151],[329.6275569128699,391.99543598174927,587.3295358348151],null,[329.6275569128699,391.99543598174927,523.2511306011972],[329.6275569128699,391.99543598174927,523.2511306011972],null,[329.6275569128699,391.99543598174927,493.8833012561241],[329.6275569128699,391.99543598174927,493.8833012561241],null,[329.6275569128699,391.99543598174927,440],[329.6275569128699,391.99543598174927,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 2,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,587.3295358348151],[311.1269837220809,391.99543598174927,587.3295358348151],null,[311.1269837220809,391.99543598174927,523.2511306011972],[311.1269837220809,391.99543598174927,523.2511306011972],null,[311.1269837220809,391.9954359817493,466.1637615180899],[311.1269837220809,391.9954359817493,466.1637615180899],null,[261.6255653005986,311.1269837220809,440],[261.6255653005986,311.1269837220809,440],null,[261.6255653005986,311.12698372208087,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344]],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,587.3295358348151],[311.1269837220809,391.99543598174927,587.3295358348151],null,[311.1269837220809,391.99543598174927,523.2511306011972],[311.1269837220809,391.99543598174927,523.2511306011972],null,[311.1269837220809,391.9954359817493,466.1637615180899],[311.1269837220809,391.9954359817493,466.1637615180899],null,[261.6255653005986,311.1269837220809,440],[261.6255653005986,311.1269837220809,440],null,[261.6255653005986,311.12698372208087,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344]],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | C2 . . C2 G2 . . G2 F2 . . F2 C2 . . .'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,587.3295358348151],[311.1269837220809,391.99543598174927,587.3295358348151],null,[311.1269837220809,391.99543598174927,523.2511306011972],[311.1269837220809,391.99543598174927,523.2511306011972],null,[311.1269837220809,391.9954359817493,466.1637615180899],[311.1269837220809,391.9954359817493,466.1637615180899],null,[261.6255653005986,311.1269837220809,440],[261.6255653005986,311.1269837220809,440],null,[261.6255653005986,311.12698372208087,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344]],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 3,
+      lead2: [null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,[293.6647679174076,369.9944227116344,440],[233.08188075904496,277.1826309768721,329.6275569128699],[277.1826309768721],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,[293.6647679174076,369.9944227116344,440],[233.08188075904496,277.1826309768721,329.6275569128699],[277.1826309768721],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bass2: seq('B2 . . B2 F#2 . . F#2 A#2 . . A#2 E2 . . E2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,[293.6647679174076,369.9944227116344,440],[233.08188075904496,277.1826309768721,329.6275569128699],[277.1826309768721],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 3,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[220,261.6255653005986,329.6275569128699],null,null,[184.9972113558172,220,311.1269837220809],[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,369.9944227116344],[220,261.6255653005986,391.99543598174927],[261.6255653005986,329.6275569128699,440],[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,[293.6647679174076,349.2282314330039,523.2511306011972],null,null,null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[220,261.6255653005986,329.6275569128699],null,null,[184.9972113558172,220,311.1269837220809],[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,369.9944227116344],[220,261.6255653005986,391.99543598174927],[261.6255653005986,329.6275569128699,440],[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,[293.6647679174076,349.2282314330039,523.2511306011972],null,null,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | A2 . . A2 E2 . . E2 G#2 . . G#2 D2 . . D2'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[220,261.6255653005986,329.6275569128699],null,null,[184.9972113558172,220,311.1269837220809],[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,369.9944227116344],[220,261.6255653005986,391.99543598174927],[261.6255653005986,329.6275569128699,440],[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,[293.6647679174076,349.2282314330039,523.2511306011972],null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 4,
+      lead2: [[261.6255653005986,329.6275569128699,493.8833012561241],null,[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,329.6275569128699],null,[261.6255653005986,329.6275569128699,493.8833012561241],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,null,[207.65234878997256,261.6255653005986,311.1269837220809],[207.65234878997256,261.6255653005986,311.1269837220809],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,[246.94165062806206,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [[261.6255653005986,329.6275569128699,493.8833012561241],null,[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,329.6275569128699],null,[261.6255653005986,329.6275569128699,493.8833012561241],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,null,[207.65234878997256,261.6255653005986,311.1269837220809],[207.65234878997256,261.6255653005986,311.1269837220809],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,[246.94165062806206,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bass2: seq('A2 . . A2 E2 . . G#2 G#2 . . G#2 D#2 . . G2 | . . . . . . . . . . . . . . . .'),
+      lead4: [[261.6255653005986,329.6275569128699,493.8833012561241],null,[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,329.6275569128699],null,[261.6255653005986,329.6275569128699,493.8833012561241],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,null,[207.65234878997256,261.6255653005986,311.1269837220809],[207.65234878997256,261.6255653005986,311.1269837220809],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,[246.94165062806206,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 4,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,null,null,[880,1108.7305239074883,1318.5102276514797],[880,1108.7305239074883,1318.5102276514797],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,null,null,[880,1108.7305239074883,1318.5102276514797],[880,1108.7305239074883,1318.5102276514797],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | G2 . . G2 D2 . . D2 F#2 . . F#2 B1 . . B1'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,null,null,[880,1108.7305239074883,1318.5102276514797],[880,1108.7305239074883,1318.5102276514797],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 5,
+      lead2: [null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bass2: seq('E2 . . E2 B1 . . B1 E2 . . E2 B1 . . B1 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 5,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | E2 . . E2 B1 . . B1 E2 . . E2 B1 . . B1'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[830.6093951598903,987.7666025122483,1479.9776908465376],[830.6093951598903,987.7666025122483,1479.9776908465376],null,[830.6093951598903,987.7666025122483,1318.5102276514797],[830.6093951598903,987.7666025122483,1318.5102276514797],null,[830.6093951598903,987.7666025122481,1244.5079348883237],[830.6093951598903,987.7666025122481,1244.5079348883237],null,[830.6093951598903,987.7666025122483,1108.7305239074883],[830.6093951598903,987.7666025122483,1108.7305239074883],null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 6,
+      lead2: [null,[783.9908719634985,987.7666025122483,1479.9776908465376],[783.9908719634985,987.7666025122483,1479.9776908465376],null,[783.9908719634985,987.7666025122483,1318.5102276514797],[783.9908719634985,987.7666025122483,1318.5102276514797],null,[783.9908719634985,987.7666025122481,1174.65907166963],[783.9908719634985,987.7666025122481,1174.65907166963],null,[783.9908719634985,987.7666025122483,1108.7305239074883],[783.9908719634985,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,[783.9908719634985,987.7666025122483,1479.9776908465376],[783.9908719634985,987.7666025122483,1479.9776908465376],null,[783.9908719634985,987.7666025122483,1318.5102276514797],[783.9908719634985,987.7666025122483,1318.5102276514797],null,[783.9908719634985,987.7666025122481,1174.65907166963],[783.9908719634985,987.7666025122481,1174.65907166963],null,[783.9908719634985,987.7666025122483,1108.7305239074883],[783.9908719634985,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bass2: seq('E2 . . E2 B1 . . B1 A1 . . A1 E2 . . E2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,[783.9908719634985,987.7666025122483,1479.9776908465376],[783.9908719634985,987.7666025122483,1479.9776908465376],null,[783.9908719634985,987.7666025122483,1318.5102276514797],[783.9908719634985,987.7666025122483,1318.5102276514797],null,[783.9908719634985,987.7666025122481,1174.65907166963],[783.9908719634985,987.7666025122481,1174.65907166963],null,[783.9908719634985,987.7666025122483,1108.7305239074883],[783.9908719634985,987.7666025122483,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 6,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,880,1318.5102276514797],[739.9888454232688,880,1318.5102276514797],null,[739.9888454232688,880,1174.6590716696303],[739.9888454232688,880,1174.6590716696303],null,[739.9888454232688,880,1108.7305239074883],[739.9888454232688,880,1108.7305239074883],null,[739.9888454232688,880,987.7666025122483],[739.9888454232688,880,987.7666025122483],null,[293.6647679174076,349.2282314330039,440],null,[277.1826309768721,329.6275569128699,415.3046975799451]],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,880,1318.5102276514797],[739.9888454232688,880,1318.5102276514797],null,[739.9888454232688,880,1174.6590716696303],[739.9888454232688,880,1174.6590716696303],null,[739.9888454232688,880,1108.7305239074883],[739.9888454232688,880,1108.7305239074883],null,[739.9888454232688,880,987.7666025122483],[739.9888454232688,880,987.7666025122483],null,[293.6647679174076,349.2282314330039,440],null,[277.1826309768721,329.6275569128699,415.3046975799451]],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | D2 . . D2 A2 . . A2 D#2 . . D#2 D2 . . D2'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,880,1318.5102276514797],[739.9888454232688,880,1318.5102276514797],null,[739.9888454232688,880,1174.6590716696303],[739.9888454232688,880,1174.6590716696303],null,[739.9888454232688,880,1108.7305239074883],[739.9888454232688,880,1108.7305239074883],null,[739.9888454232688,880,987.7666025122483],[739.9888454232688,880,987.7666025122483],null,[293.6647679174076,349.2282314330039,440],null,[277.1826309768721,329.6275569128699,415.3046975799451]],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 7,
+      lead2: [null,null,[659.2551138257398,830.6093951598903],[659.2551138257398,830.6093951598903],null,[830.6093951598903,987.7666025122483],null,[523.2511306011972,622.2539674441618,739.9888454232688],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,null,[659.2551138257398,830.6093951598903],[659.2551138257398,830.6093951598903],null,[830.6093951598903,987.7666025122483],null,[523.2511306011972,622.2539674441618,739.9888454232688],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      snare2: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bass2: seq('C#2 . . C#2 G#2 . . G#2 C2 . . C2 F#2 . . F#2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,null,[659.2551138257398,830.6093951598903],[659.2551138257398,830.6093951598903],null,[830.6093951598903,987.7666025122483],null,[523.2511306011972,622.2539674441618,739.9888454232688],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 7,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[493.8833012561241,587.3295358348151,739.9888454232688],null,[493.8833012561241,587.3295358348151,698.4564628660078],[493.8833012561241,587.3295358348151,739.9888454232688],[493.8833012561241,587.3295358348151,830.6093951598903],[493.8833012561241,587.3295358348151,880],[587.3295358348151,739.9888454232688,987.7666025122483],[659.2551138257398,830.6093951598903,1108.7305239074883],null,null,null,[659.2551138257398,830.6093951598903,1046.5022612023945],null,null,null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[493.8833012561241,587.3295358348151,739.9888454232688],null,[493.8833012561241,587.3295358348151,698.4564628660078],[493.8833012561241,587.3295358348151,739.9888454232688],[493.8833012561241,587.3295358348151,830.6093951598903],[493.8833012561241,587.3295358348151,880],[587.3295358348151,739.9888454232688,987.7666025122483],[659.2551138257398,830.6093951598903,1108.7305239074883],null,null,null,[659.2551138257398,830.6093951598903,1046.5022612023945],null,null,null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | B1 . . B1 F#2 . . F#2 E2 . . E2 B1 . . B1'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[493.8833012561241,587.3295358348151,739.9888454232688],null,[493.8833012561241,587.3295358348151,698.4564628660078],[493.8833012561241,587.3295358348151,739.9888454232688],[493.8833012561241,587.3295358348151,830.6093951598903],[493.8833012561241,587.3295358348151,880],[587.3295358348151,739.9888454232688,987.7666025122483],[659.2551138257398,830.6093951598903,1108.7305239074883],null,null,null,[659.2551138257398,830.6093951598903,1046.5022612023945],null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 8,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . C1 . . . . .').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | A2 A2 A2 A2 A2 . . . . . . . A2 A2 A2 .'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . C1 . . . . .').map((v) => !!v),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      base: 8,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
+      snare2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . C1 . . . . .').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | A2 A2 A2 A2 A2 . . . . . . . A2 A2 A2 .'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+  ],
+  bpm: 80,
+};
+
+export const variants = null;

@@ -2848,7 +2848,7 @@ class AudioSys {
     }
     // `dynamics` is relative to the song playing and the kit tally belongs to its
     // arrangement, so both start over with it. Carrying a loud song's peak into a
-    // quiet one would leave the visualizers stalled for the first half-minute of
+    // quiet one would leave the visualisers stalled for the first half-minute of
     // the new track, and carrying its hits over would credit it with a kit.
     this._analysisPeak = 0;
     this._analysis.level = 0;
@@ -4261,7 +4261,7 @@ class AudioSys {
         if (!events) return null;
         return events.find((event, i) => i === index || event.freq === freq) || null;
       };
-      // Kit tally for the visualizers. `b` is fully resolved by this point —
+      // Kit tally for the visualisers. `b` is fully resolved by this point —
       // section overrides merged, this bar's mute mask nulled out, and any lane
       // the desk deleted already gone with it — so this is the arrangement's own
       // answer to "is there a kit here", not a guess at transients in the
@@ -4283,7 +4283,7 @@ class AudioSys {
         // answer that every percussion lane shares.
         this._percPending.push(this.nextTime + swingOffset);
         // Only _readPercussion drains this, and it only runs while the jukebox
-        // visualizer is up — where the sequencer runs for the whole game. Aged
+        // visualiser is up — where the sequencer runs for the whole game. Aged
         // out by playhead rather than capped by count, so gameplay stays bounded
         // at a few seconds of sixteenths while an offline render keeps the song's
         // entire kit timeline. Stated as `!offline` rather than left to the clock:
@@ -4308,7 +4308,7 @@ class AudioSys {
       // were only costing the audio thread, which on a dense song is the difference
       // between playing and breaking up (measured: the muted twinkle lane alone was
       // 5% of a core on smw-all-instruments). AFTER the percussion tally above, so
-      // the visualizers keep following the song as arranged rather than as
+      // the visualisers keep following the song as arranged rather than as
       // monitored — the tally's comment says a muted strip still counts, and it
       // still does. Guarded by the desk's opt-in flag and off during previews; the
       // game never sets it, so every game path is byte-identical. See
@@ -5365,7 +5365,7 @@ class AudioSys {
     out.drumless = !(last >= now - beatSeconds * 2);
   }
 
-  // Stable, allocation-free readout for the jukebox visualizer. The returned
+  // Stable, allocation-free readout for the jukebox visualiser. The returned
   // object and typed arrays are owned by Audio and reused every frame. The
   // analyser values provide the organic response; songBeat() supplies the
   // exact procedural clock so kicks and phrase geometry never drift from the
@@ -5410,7 +5410,7 @@ class AudioSys {
     else this._analysisPeak += (out.level - this._analysisPeak) * 0.0006;
     // The square root is perceptual headroom: a passage 12dB down is a quarter
     // of the amplitude but nothing like a quarter as loud, and a linear ratio
-    // there reads as the visualizer having simply stopped.
+    // there reads as the visualiser having simply stopped.
     out.dynamics = this._analysisPeak > 0.01
       ? Math.max(0, Math.min(1, Math.sqrt(out.level / this._analysisPeak)))
       : 0;

@@ -7,7 +7,7 @@ import { TITLE_FONT, onGameFontsChanged, drawText, textWidth } from './sprites.j
 import { drawToon } from '../sprites/toons.js';
 import { drawApplianceFinish, drawProp, hasProp, propFrames, propFps } from '../sprites/props.js';
 
-export const VISUALIZER_NAMES = [
+export const VISUALISER_NAMES = [
   'NEON CATHEDRAL',
   'LIQUID CHROME',
   'LASER GRID AFTER DARK',
@@ -198,7 +198,7 @@ function glowSprite(hex, px) {
   return sprite;
 }
 
-class BaseVisualizer {
+class BaseVisualiser {
   constructor(seed, track = {}) {
     this.seed = seed >>> 0;
     this.rng = new Rng(this.seed);
@@ -231,7 +231,7 @@ class BaseVisualizer {
     this.focusY = CY;
     this.dust = makePool(96);
     this.dust.forEach((p) => seedDust(p, this.rng));
-    this.name = 'VISUALIZER';
+    this.name = 'VISUALISER';
     // What the corner tag says, when that is not simply the preset's name. Only
     // the megamix uses it, to announce whichever record it currently has up.
     this.label = null;
@@ -396,8 +396,8 @@ class BaseVisualizer {
   }
 }
 
-class NeonCathedral extends BaseVisualizer {
-  constructor(seed, track) { super(seed, track); this.name = VISUALIZER_NAMES[0]; this.sparks = makePool(72); this.sparks.forEach((p) => seedParticle(p, this.rng)); }
+class NeonCathedral extends BaseVisualiser {
+  constructor(seed, track) { super(seed, track); this.name = VISUALISER_NAMES[0]; this.sparks = makePool(72); this.sparks.forEach((p) => seedParticle(p, this.rng)); }
   update(dt, a) {
     super.update(dt, a);
     for (const p of this.sparks) {
@@ -487,8 +487,8 @@ class NeonCathedral extends BaseVisualizer {
   }
 }
 
-class LiquidChrome extends BaseVisualizer {
-  constructor(seed, track) { super(seed, track); this.name = VISUALIZER_NAMES[1]; }
+class LiquidChrome extends BaseVisualiser {
+  constructor(seed, track) { super(seed, track); this.name = VISUALISER_NAMES[1]; }
   draw(ctx) {
     this.backdrop(ctx, '#050615', '#160b2b');
     // A very slow camera orbit gives the whole chrome field a sense of mass.
@@ -557,8 +557,8 @@ class LiquidChrome extends BaseVisualizer {
   }
 }
 
-class LaserGrid extends BaseVisualizer {
-  constructor(seed, track) { super(seed, track); this.name = VISUALIZER_NAMES[2]; }
+class LaserGrid extends BaseVisualiser {
+  constructor(seed, track) { super(seed, track); this.name = VISUALISER_NAMES[2]; }
   draw(ctx) {
     this.backdrop(ctx, '#18082a', '#03050e');
     const horizon = 126;
@@ -619,9 +619,9 @@ class LaserGrid extends BaseVisualizer {
   }
 }
 
-class MonsterReactor extends BaseVisualizer {
+class MonsterReactor extends BaseVisualiser {
   constructor(seed, track) {
-    super(seed, track); this.name = VISUALIZER_NAMES[3]; this.sparks = makePool(70);
+    super(seed, track); this.name = VISUALISER_NAMES[3]; this.sparks = makePool(70);
     this.sparks.forEach((p) => seedParticle(p, this.rng, CX, CY, 0.8));
     this.reactors = makePool(3);
     this.reactors.forEach((p, i) => {
@@ -711,9 +711,9 @@ class MonsterReactor extends BaseVisualizer {
   }
 }
 
-class ElectricKaleidoscope extends BaseVisualizer {
+class ElectricKaleidoscope extends BaseVisualiser {
   constructor(seed, track) {
-    super(seed, track); this.name = VISUALIZER_NAMES[4]; this.symmetry = 12; this.lastPhrase = -1;
+    super(seed, track); this.name = VISUALISER_NAMES[4]; this.symmetry = 12; this.lastPhrase = -1;
     this.satellites = makePool(16);
     this.satellites.forEach((p) => {
       p.angle = this.rng.float() * TAU; p.radius = 96 + this.rng.float() * 70;
@@ -933,9 +933,9 @@ class ElectricKaleidoscope extends BaseVisualizer {
   }
 }
 
-class DeepSpaceWormhole extends BaseVisualizer {
+class DeepSpaceWormhole extends BaseVisualiser {
   constructor(seed, track) {
-    super(seed, track); this.name = VISUALIZER_NAMES[5]; this.stars = makePool(90);
+    super(seed, track); this.name = VISUALISER_NAMES[5]; this.stars = makePool(90);
     this.stars.forEach((p) => { p.z = this.rng.float(); p.life = 0.3 + this.rng.float() * 0.7; p.hue = this.rng.float(); });
   }
   update(dt, a) {
@@ -1027,9 +1027,9 @@ function roundedTrianglePath(ctx, x, y, radius, rotation = 0, corner = 0.24) {
   ctx.closePath();
 }
 
-class PrismaticStorm extends BaseVisualizer {
+class PrismaticStorm extends BaseVisualiser {
   constructor(seed, track) {
-    super(seed, track); this.name = VISUALIZER_NAMES[6]; this.shards = makePool(84);
+    super(seed, track); this.name = VISUALISER_NAMES[6]; this.shards = makePool(84);
     this.shards.forEach((p) => {
       p.angle = this.rng.float() * TAU; p.radius = 25 + this.rng.float() * 205;
       p.size = 2 + this.rng.float() * 10; p.spin = -1 + this.rng.float() * 2;
@@ -1088,7 +1088,7 @@ class PrismaticStorm extends BaseVisualizer {
 class ChromaBubblestorm extends PrismaticStorm {
   constructor(seed, track) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[14];
+    this.name = VISUALISER_NAMES[14];
     this.orbs = this.shards;
   }
   draw(ctx) {
@@ -1133,9 +1133,9 @@ class ChromaBubblestorm extends PrismaticStorm {
   }
 }
 
-class SingularityBloom extends BaseVisualizer {
+class SingularityBloom extends BaseVisualiser {
   constructor(seed, track) {
-    super(seed, track); this.name = VISUALIZER_NAMES[7]; this.orbiters = makePool(112);
+    super(seed, track); this.name = VISUALISER_NAMES[7]; this.orbiters = makePool(112);
     this.bloomScale = 0.72;
     this.bloomCycleBars = 12;
     this.bloomSwellBars = 4;
@@ -1165,8 +1165,8 @@ class SingularityBloom extends BaseVisualizer {
   }
 }
 
-class HolographicOcean extends BaseVisualizer {
-  constructor(seed, track) { super(seed, track); this.name = VISUALIZER_NAMES[8]; this.motes = makePool(80); this.motes.forEach((p) => { p.x = this.rng.float() * W; p.y = 70 + this.rng.float() * 150; p.px = p.x; p.py = p.y; p.z = this.rng.float(); p.hue = this.rng.float(); }); }
+class HolographicOcean extends BaseVisualiser {
+  constructor(seed, track) { super(seed, track); this.name = VISUALISER_NAMES[8]; this.motes = makePool(80); this.motes.forEach((p) => { p.x = this.rng.float() * W; p.y = 70 + this.rng.float() * 150; p.px = p.x; p.py = p.y; p.z = this.rng.float(); p.hue = this.rng.float(); }); }
   update(dt, a) { super.update(dt, a); for (const p of this.motes) { p.px = p.x; p.py = p.y; p.x += Math.sin(this.t * (0.4 + p.z) + p.hue * 8) * dt * 8; p.y -= dt * (2 + p.z * 5); if (p.y < 58) { p.y = 235; p.x = this.rng.float() * W; } } }
   draw(ctx) {
     this.backdrop(ctx, '#02192b', '#050625'); const horizon = this.focusY + 14; const sunX = this.focusX + 36 * Math.sin(this.t * 0.22); const sunY = 76 + Math.cos(this.t * 0.31) * 12;
@@ -1180,8 +1180,8 @@ class HolographicOcean extends BaseVisualizer {
   }
 }
 
-class DataRainAscension extends BaseVisualizer {
-  constructor(seed, track) { super(seed, track); this.name = VISUALIZER_NAMES[9]; this.streams = Array.from({ length: 38 }, () => ({ x: this.rng.float() * W, y: this.rng.float() * H, speed: 20 + this.rng.float() * 90, length: 5 + Math.floor(this.rng.float() * 15), phase: this.rng.float(), brightness: 0.2 + this.rng.float() * 0.8 })); }
+class DataRainAscension extends BaseVisualiser {
+  constructor(seed, track) { super(seed, track); this.name = VISUALISER_NAMES[9]; this.streams = Array.from({ length: 38 }, () => ({ x: this.rng.float() * W, y: this.rng.float() * H, speed: 20 + this.rng.float() * 90, length: 5 + Math.floor(this.rng.float() * 15), phase: this.rng.float(), brightness: 0.2 + this.rng.float() * 0.8 })); }
   // Fall speed carries the loudness: quiet sections leave the rain hanging.
   update(dt, a) { super.update(dt, a); for (const s of this.streams) { s.y += dt * s.speed * (0.55 + this.treble * 1.5) * this.motion; if (s.y - s.length * 7 > H) { s.y = -this.rng.float() * 90; s.x = this.rng.float() * W; } } }
   draw(ctx) {
@@ -1193,8 +1193,8 @@ class DataRainAscension extends BaseVisualizer {
   }
 }
 
-class FractalFlame extends BaseVisualizer {
-  constructor(seed, track) { super(seed, track); this.name = VISUALIZER_NAMES[10]; this.branches = makePool(68); this.branches.forEach((p) => { p.angle = this.rng.float() * TAU; p.radius = 16 + this.rng.float() * 100; p.length = 25 + this.rng.float() * 100; p.spin = -1 + this.rng.float() * 2; p.z = 0.25 + this.rng.float() * 0.75; p.hue = this.rng.float(); }); }
+class FractalFlame extends BaseVisualiser {
+  constructor(seed, track) { super(seed, track); this.name = VISUALISER_NAMES[10]; this.branches = makePool(68); this.branches.forEach((p) => { p.angle = this.rng.float() * TAU; p.radius = 16 + this.rng.float() * 100; p.length = 25 + this.rng.float() * 100; p.spin = -1 + this.rng.float() * 2; p.z = 0.25 + this.rng.float() * 0.75; p.hue = this.rng.float(); }); }
   // The flame keeps its shape when quiet but stops climbing and curling.
   update(dt, a) { super.update(dt, a); for (const p of this.branches) { p.angle += dt * p.spin * (0.2 + this.mid) * this.motion; p.radius += dt * (4 + this.bass * 20) * this.motion; if (p.radius > 125) p.radius = 12 + this.rng.float() * 18; } }
   draw(ctx) {
@@ -1208,10 +1208,10 @@ class FractalFlame extends BaseVisualizer {
   }
 }
 
-class OscilloscopeOverdrive extends BaseVisualizer {
+class OscilloscopeOverdrive extends BaseVisualiser {
   constructor(seed, track) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[11];
+    this.name = VISUALISER_NAMES[11];
     this.trace = Array.from({ length: 180 }, (_, i) => ({ u: i / 179, x: CX, y: CY, age: 1 }));
     this.particles = makePool(120);
     this.particles.forEach((p) => seedParticle(p, this.rng, CX, CY, 0.9));
@@ -1300,10 +1300,10 @@ class OscilloscopeOverdrive extends BaseVisualizer {
   }
 }
 
-class ArcadeArtGallery extends BaseVisualizer {
+class ArcadeArtGallery extends BaseVisualiser {
   constructor(seed, track) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[12];
+    this.name = VISUALISER_NAMES[12];
     // These are the same vector painters used by the game world, deliberately
     // drawn at a much larger logical size so their fine outlines and highlights
     // survive the screensaver's full-screen presentation.
@@ -1449,7 +1449,7 @@ class ArcadeArtGallery extends BaseVisualizer {
     };
   }
   artGalleryBackdrop(ctx) {
-    // A bespoke black-box exhibition space: no shared visualizer gradient,
+    // A bespoke black-box exhibition space: no shared visualiser gradient,
     // no space tunnel, and no central nebula for the objects to orbit.
     ctx.fillStyle = '#030309';
     ctx.fillRect(0, 0, W, H);
@@ -1509,7 +1509,7 @@ class ArcadeArtGallery extends BaseVisualizer {
     }
 
     // A low, receding gallery floor gives the objects a sense of scale and
-    // depth without becoming another grid-based visualizer.
+    // depth without becoming another grid-based visualiser.
     const floorY = H * 0.77;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -1744,12 +1744,12 @@ class ArcadeArtGallery extends BaseVisualizer {
 
 // A dedicated flight deck for the game's animated appliance prop. This scene
 // deliberately has its own silhouette language (runway lights, launch rails,
-// and a deep blue hangar wash) so the toasters feel like a new visualizer, not
+// and a deep blue hangar wash) so the toasters feel like a new visualiser, not
 // another pass over an existing preset's background.
-class ToasterSkyParade extends BaseVisualizer {
+class ToasterSkyParade extends BaseVisualiser {
   constructor(seed, track) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[13];
+    this.name = VISUALISER_NAMES[13];
     this.toasters = makePool(72);
     for (const p of this.toasters) this.resetToaster(p, true);
     // Opening beat: one larger hero toaster makes the first pass and loop,
@@ -1980,7 +1980,7 @@ class ToasterSkyParade extends BaseVisualizer {
         p.rotation = p.loopDirection * loopAngle;
       } else p.loopActive = false;
       // The opening lead gets one deliberately large loop, independent of the
-      // later random stunt schedule, so the visualizer announces itself before
+      // later random stunt schedule, so the visualiser announces itself before
       // the swarm joins.
       const introLoopT = (this.t - p.introLoopStart) / p.introLoopDuration;
       if (p.introChoreo && introLoopT >= 0 && introLoopT < 1) {
@@ -2133,10 +2133,10 @@ function rainLatinIndex(ch) {
   return at < 0 ? -1 : RAIN_KANA.length + at;
 }
 
-class EmeraldCodeRain extends BaseVisualizer {
+class EmeraldCodeRain extends BaseVisualiser {
   constructor(seed, track) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[15];
+    this.name = VISUALISER_NAMES[15];
     // The field only works monochrome, so the seeded palette is spent on which
     // green it is — emerald through jade — rather than on four hues. Snapped to
     // five steps so every seed shares one of five cached atlases.
@@ -2439,10 +2439,10 @@ const ACID_RAMP = ACID_HEX.map((hex) => {
 });
 const LOG2E = Math.LOG2E;
 
-class AcidJuliaDive extends BaseVisualizer {
+class AcidJuliaDive extends BaseVisualiser {
   constructor(seed, track) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[16];
+    this.name = VISUALISER_NAMES[16];
     // The acid ramp is the whole point of the preset, so the shared dust and the
     // core glow take it instead of a seeded pack palette.
     this.palette = ACID_HEX;
@@ -2950,10 +2950,10 @@ const PLASMA_LISSAJOUS = [[3, 2], [5, 4], [3, 4], [5, 2], [7, 4]];
 // percent, and the cost is a one-off few milliseconds on the first draw only.
 const PLASMA_WARM_FRAMES = 30;
 
-class HyperVectorTunnel extends BaseVisualizer {
+class HyperVectorTunnel extends BaseVisualiser {
   constructor(seed, track) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[17];
+    this.name = VISUALISER_NAMES[17];
     // The neon set is the point of the homage, so it replaces the seeded pack
     // palette outright — drawDust and the core glow read from it too.
     this.palette = PLASMA_HEX;
@@ -3246,10 +3246,10 @@ const NEBULA_SHOCK_SPEED = 260;
 const NEBULA_SHOCK_BAND = 26;
 const NEBULA_FOV = 260;
 
-class NebulaRibbonDrift extends BaseVisualizer {
+class NebulaRibbonDrift extends BaseVisualiser {
   constructor(seed, track) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[18];
+    this.name = VISUALISER_NAMES[18];
     this.nebulaRng = this.rng.stream('nebula');
     this.shimmerRng = this.rng.stream('nebula-shimmer');
     this.palette = NEBULA_COOL.slice();
@@ -3576,10 +3576,10 @@ const EQ_GRAVITY = 1.6;
 const EQ_HANG = 0.35;
 const BLOB_TEMPS = ['#28e0a0', '#ff4fd0', '#ffb347', '#6a5cff'];
 
-class GlassBlobEqualizer extends BaseVisualizer {
+class GlassBlobEqualizer extends BaseVisualiser {
   constructor(seed, track) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[19];
+    this.name = VISUALISER_NAMES[19];
     this.blobRng = this.rng.stream('glass-blob');
     this.balls = Array.from({ length: BLOB_BALLS }, () => ({
       ang: this.blobRng.float() * TAU,
@@ -3915,6 +3915,23 @@ const PIPE_FOV = 420;
 // The vanishing point. Everything converges here and the bank rolls about it,
 // so it is the one fixed landmark in the frame.
 const PIPE_HORIZON = 104;
+// How close the vanishing point is ever allowed to get to an edge of the logical
+// frame. The bend swings that point around (CX, PIPE_HORIZON), and `roll` carries
+// the corkscrew as well as the bank — so at a full turn it ORBITS the anchor at
+// the bend's radius. With only 104px of headroom above the horizon, the default
+// bend of 118 already put it off the top of the frame during a screw. The cap
+// below keeps it inside this inset, whatever the roll is doing.
+const PIPE_EDGE_MARGIN = 34;
+// How far the picture's CONTENTS fade back when a song quietens, as opposed to how
+// far the ride slows. `motion` already handles the speed — but the rings, gates and
+// wall lights were driven entirely by the beat, so through a fade they went on
+// flashing at full strength over a pipe that was visibly slowing down. Presence is
+// the missing half: what is on the ride recedes with the song instead of only what
+// the ride is doing. Floored, like motion is, because a picture that goes to
+// nothing reads as a fault rather than as an ending.
+const PIPE_PRESENCE_FLOOR = 0.28;
+const PIPE_PRESENCE_EASE = 1.6;
+const PIPE_LIMIT_EASE = 1.8;
 // Eye height above the trough floor, as a fraction of the way up a lip that
 // stands 1.31 radii tall. Low enough to be down IN the pipe rather than flying
 // over it, high enough that the far trough stays visible through a turn.
@@ -3926,6 +3943,11 @@ const PIPE_CAM_H = 175;
 // narrow wedge, and the whole thing reads as a funnel being flown down.
 const PIPE_THETA = 1.31;
 const PIPE_COLS = 12;
+// How far the trough sits in its own shadow, and how much the lips catch the sky.
+// The pair is what makes the barrel read as round; turned off, the pipe is the flat
+// ribbon it used to be.
+const PIPE_TROUGH_SHADE = 0.42;
+const PIPE_LIP_LIFT = 0.1;
 const PIPE_ROWS = 18;
 // Rows carried on PAST the near boundary. Each row is a circle, so the surface
 // stops at an arc that curves back up before it reaches the bottom corners of
@@ -3943,11 +3965,11 @@ const PIPE_DEPTH_POW = 1.8;
 // whole eighteen-row ladder in three beats. The ceiling is aliasing: the pattern
 // would start to crawl backwards somewhere past a row per two frames, which is
 // four times quicker than this.
-const PIPE_ROWS_PER_BEAT = 6;
+const PIPE_ROWS_PER_BEAT = 7;
 // Lateral bend at the horizon, in screen pixels. Expressed in screen space on
 // purpose: the racer-style `curve * z * z` grows without bound as z runs to the
 // vanishing point, which would throw the far end of the track off the frame.
-const PIPE_BEND = 118;
+const PIPE_BEND = 168;
 const PIPE_BEND_POW = 2.2;
 const PIPE_ROLL_MAX = 0.6;
 const PIPE_BANK_EASE = 1.5;
@@ -3959,7 +3981,10 @@ const PIPE_BANK_HOLDS = [8, 16];
 // way over, following a helix of rings around the inside of the barrel. The
 // geometry gets this for free: every row is a circle drawn about the vanishing
 // point, so a roll of TAU is no more work than a roll of 0.2.
-const PIPE_SPIRAL_HOLDS = [10, 14, 20];
+// On the bar grid like everything else, but drawn from three lengths rather than
+// two so a screw keeps drifting in and out of phase with the banking instead of
+// always arriving on the same boundary as a turn.
+const PIPE_SPIRAL_HOLDS = [8, 16, 24];
 // One ring of a corkscrew trail: how far back down the pipe the next ring sits,
 // and how far round the barrel it has wound by the time it gets there.
 const PIPE_TRAIL_STRIDE = 0.068;
@@ -3997,7 +4022,7 @@ const PIPE_MOTE_STREAK = 34;
 //
 // Every value here is the preset's own shipped number, so a lab instance built
 // with the defaults is the shipped preset — not a near copy of it, the same
-// picture frame for frame. tests/visualizers.js holds that claim.
+// picture frame for frame. tests/visualisers.js holds that claim.
 //
 // The three interval knobs read 0 as AUTO and -1 as OFF rather than as a number
 // of beats. AUTO leaves the seeded schedule alone, drawing from the rng stream
@@ -4006,6 +4031,33 @@ const PIPE_MOTE_STREAK = 34;
 // ---------------------------------------------------------------------------
 // About two thirds of a second from one end of the knob's range to the other.
 const PIPE_WIDTH_EASE = 3;
+// Smootherstep: zero first AND second derivative at both ends, so a move that uses
+// it has nothing to jerk at either edge and still arrives at its target instead of
+// forever approaching it. The turns run on this; so does the width drift.
+const sCurve = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+// How long the pipe holds a width before drifting to another — the same two or
+// four bars the bank and the colour walk run on, so everything that changes about
+// the ride changes on a musical boundary you can hear coming.
+const PIPE_WIDTH_HOLDS = [8, 16];
+// The outer bounds of the drift, in absolute half-angle. Below the minimum the
+// checker stops reading as a pipe you are inside and becomes a strip down the
+// middle of the frame; above the maximum the barrel opens out past the frame and
+// the far wall stops being visible at all. PIPE WIDTH sits between them as the
+// width the ride KEEPS COMING BACK TO, not as a limit.
+// How much of the ride's pace comes from a fixed reference rather than from the
+// song's own tempo. Straight beat-rate meant an 80bpm track travelled at two
+// thirds the speed of a 120bpm one and read as crawling — the pipe is a journey,
+// and a journey has a pace of its own that the music rides on top of. Blending
+// toward 2.0 beats/s (120bpm) lifts the slow tracks much more than it touches the
+// fast ones, which is exactly where the problem was.
+const PIPE_RATE_REFERENCE = 2.0;
+const PIPE_RATE_ANCHOR = 0.4;
+// How often the drift simply returns to the knob instead of picking a new width.
+// Too high and the pipe reads as one size with occasional excursions; too low and
+// the knob stops meaning anything.
+const PIPE_WIDTH_HOME = 0.18;
+const PIPE_WIDTH_MIN = 0.5;
+const PIPE_WIDTH_MAX = 2.0;
 const PIPE_AUTO = 0;
 const PIPE_OFF = -1;
 const PIPE_TUNE = {
@@ -4014,6 +4066,10 @@ const PIPE_TUNE = {
   streaks: PIPE_MOTES,
   turnEvery: PIPE_AUTO,
   turnAmount: 1,
+  turnEase: 0.55,
+  depth: 1,
+  settle: 1,
+  widthDrift: 0.7,
   screwEvery: PIPE_AUTO,
   colourEvery: PIPE_AUTO,
   width: PIPE_THETA,
@@ -4026,6 +4082,20 @@ export const HALF_PIPE_CONTROLS = [
   { key: 'screwEvery', label: 'CORKSCREW', min: PIPE_OFF, max: 64, step: 4, unit: 'beats' },
   { key: 'turnEvery', label: 'TURN EVERY', min: PIPE_OFF, max: 48, step: 4, unit: 'beats' },
   { key: 'turnAmount', label: 'TURN HARD', min: 0, max: 2.4, step: 0.2 },
+  // What fraction of the phrase is spent TURNING, the rest being held over at full
+  // lean. Low is a quick decisive move into a long hold; 1 is turning continuously
+  // and never sitting in a corner.
+  { key: 'turnEase', label: 'TURN TIME', min: 0.15, max: 1, step: 0.05 },
+  // Cross-barrel shading. 0 is the flat ribbon; above 1 the trough goes deeper
+  // than a real half-pipe would, which is sometimes the more striking picture.
+  { key: 'depth', label: 'DEPTH', min: 0, max: 2, step: 0.1 },
+  // How much the picture fades back as a song quietens. 0 keeps every ring at
+  // full strength through a fade-out, which is what it used to do.
+  { key: 'settle', label: 'SETTLE', min: 0, max: 1.6, step: 0.1 },
+  // How far either side of PIPE WIDTH the tube may wander, as a fraction of the
+  // room between it and the hard bounds. 0 holds the knob's width for ever; 1 can
+  // reach 0.5 and 2.0, though the bell draw means it rarely does.
+  { key: 'widthDrift', label: 'WIDTH DRIFT', min: 0, max: 1, step: 0.05 },
   { key: 'colourEvery', label: 'COLOUR', min: PIPE_OFF, max: 48, step: 4, unit: 'beats' },
   { key: 'width', label: 'PIPE WIDTH', min: 0.5, max: 2.7, step: 0.1 },
   { key: 'columns', label: 'CHECKS', min: 4, max: 26, step: 2 },
@@ -4044,10 +4114,10 @@ const PIPE_SCHEMES = [
   { sky: '#2e1503', haze: '#96550f', dark: '#ad620f', light: '#fff3dd', lip: '#ffb347', sun: '#fff1a8' },
 ];
 
-class HalfPipeHorizon extends BaseVisualizer {
+class HalfPipeHorizon extends BaseVisualiser {
   constructor(seed, track, tune) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[20];
+    this.name = VISUALISER_NAMES[20];
     // Merged rather than replaced: a desk that knows about six knobs must not be
     // able to drop the four it has not heard of.
     this.tune = { ...PIPE_TUNE, ...(tune || null) };
@@ -4057,9 +4127,21 @@ class HalfPipeHorizon extends BaseVisualizer {
     // reads as a glitch rather than as an adjustment. Seeded to the target so an
     // untouched instance never eases at all.
     this.width = this.tune.width;
+    // The knob is the CEILING, and the drift only ever narrows from it. Held as a
+    // fraction so turning PIPE WIDTH down still means what it says.
+    this.widthBase = this.tune.width;
+    this.widthFrom = 1;
+    this.widthTarget = 1;
+    this.widthFromBeat = 0;
+    this.widthHold = PIPE_WIDTH_HOLDS[0];
     this.pipeRng = this.rng.stream('half-pipe');
     this.bankRng = this.rng.stream('half-pipe-bank');
     this.schemeRng = this.rng.stream('half-pipe-scheme');
+    // Its own stream, like every other schedule here: sharing one would make the
+    // width drift reshuffle the turns, and two rides with the same seed would stop
+    // matching the moment either changed.
+    this.widthRng = this.rng.stream('half-pipe-width');
+    this.widthNextBeat = this.nextHold(this.widthRng, PIPE_WIDTH_HOLDS, 0);
     // The scheme is a walk, not a fixture. A single palette held for the whole
     // record turns a nine-minute jukebox sit into one picture; blending to the
     // next one every eight or sixteen beats makes the ride travel somewhere.
@@ -4089,7 +4171,15 @@ class HalfPipeHorizon extends BaseVisualizer {
     this.bankNextBeat = this.nextHold(this.bankRng, PIPE_BANK_HOLDS, this.tune.turnEvery);
     this.bankTarget = 0;
     this.curve = 0;
+    // The bend's angular velocity. A spring needs somewhere to keep it, and
+    // starting it at zero is exactly what makes a corner ease IN.
+    this.bankFrom = 0;
+    this.bankFromBeat = 0;
+    this.bankHold = PIPE_BANK_HOLDS[0];
     this.bankRoll = 0;
+    this.presence = 1;
+    this.bendAmp = 0;
+    this.bendLimit = PIPE_BEND * 4;
     this.roll = 0;
     this.spiralRng = this.rng.stream('half-pipe-spiral');
     // Whole turns of the barrel, accumulated. Kept separate from the bank so the
@@ -4118,6 +4208,9 @@ class HalfPipeHorizon extends BaseVisualizer {
         sx: new Array(PIPE_PER_GROUP).fill(CX),
         sy: new Array(PIPE_PER_GROUP).fill(PIPE_HORIZON),
         ss: new Array(PIPE_PER_GROUP).fill(0),
+        // Per-member fade. The brightness used to be one number for the whole
+        // group, which is why a trail could be deleted at full strength.
+        sf: new Array(PIPE_PER_GROUP).fill(0),
       };
       this.seedGroup(group);
       return group;
@@ -4192,6 +4285,9 @@ class HalfPipeHorizon extends BaseVisualizer {
         sx: new Array(PIPE_PER_GROUP).fill(CX),
         sy: new Array(PIPE_PER_GROUP).fill(PIPE_HORIZON),
         ss: new Array(PIPE_PER_GROUP).fill(0),
+        // Per-member fade. The brightness used to be one number for the whole
+        // group, which is why a trail could be deleted at full strength.
+        sf: new Array(PIPE_PER_GROUP).fill(0),
       };
       this.seedGroup(group);
       return group;
@@ -4349,7 +4445,9 @@ class HalfPipeHorizon extends BaseVisualizer {
     const c = this.rollCos; const s = this.rollSin;
     // max(0, ...) is load-bearing, not defensive: the nearest boundary sits past
     // the lens with k > K_MAX, and a fractional power of a negative base is NaN.
-    const ox = this.curve * PIPE_BEND * this.tune.turnAmount * Math.pow(Math.max(0, 1 - k / PIPE_K_MAX), PIPE_BEND_POW);
+    // The amplitude is capped in update() so the vanishing point (k = 0, where this
+    // power term is 1 and the offset is at its largest) stays inside the frame.
+    const ox = this.bendAmp * Math.pow(Math.max(0, 1 - k / PIPE_K_MAX), PIPE_BEND_POW);
     const oy = (PIPE_CAM_H - PIPE_R) * k;
     out.cx = CX + ox * c - oy * s;
     out.cy = PIPE_HORIZON + ox * s + oy * c;
@@ -4376,12 +4474,20 @@ class HalfPipeHorizon extends BaseVisualizer {
     // jump is the same event seen from the other side. Neither is a phrase.
     if (advance > 0 && advance < 8) this.phraseBeat += advance;
     while (this.phraseBeat >= this.bankNextBeat) {
-      this.bankNextBeat += this.nextHold(this.bankRng, PIPE_BANK_HOLDS, this.tune.turnEvery);
+      const hold = this.nextHold(this.bankRng, PIPE_BANK_HOLDS, this.tune.turnEvery);
+      this.bankNextBeat += hold;
+      // Departs from wherever the lean actually IS, so a target that changes mid
+      // turn continues from there rather than snapping back to start.
+      this.bankFrom = this.curve;
+      this.bankFromBeat = this.phraseBeat;
+      this.bankHold = hold;
       // Roughly a third of the phrases straighten out. A track that is always
-      // turning reads as a wobble; the straights are what sell the corners.
+      // turning reads as a wobble; the straights are what sell the corners. The
+      // leans that DO happen are big ones — a timed curve can afford them, where a
+      // chase had to keep them modest to stay smooth.
       this.bankTarget = this.bankRng.chance(0.3)
         ? 0
-        : (this.bankRng.chance(0.5) ? 1 : -1) * this.bankRng.range(0.36, 1);
+        : (this.bankRng.chance(0.5) ? 1 : -1) * this.bankRng.range(0.62, 1);
     }
     while (this.phraseBeat >= this.schemeNextBeat) {
       this.schemeNextBeat += this.nextHold(this.schemeRng, PIPE_SCHEME_HOLDS, this.tune.colourEvery);
@@ -4398,12 +4504,31 @@ class HalfPipeHorizon extends BaseVisualizer {
     this.schemeBlend = Math.min(1, this.schemeBlend + step * PIPE_SCHEME_EASE);
     this.applyScheme();
 
-    const ease = clamp(step * PIPE_BANK_EASE, 0, 1);
-    // The horizon roll and the track's lateral bend ease on the same clock and
-    // to the same signed target. If they disagree the picture reads as a camera
-    // tilting rather than as a pipe turning, which is the whole illusion.
-    this.curve += (this.bankTarget - this.curve) * ease;
-    this.bankRoll += (this.bankTarget * PIPE_ROLL_MAX * this.tune.turnAmount - this.bankRoll) * ease;
+    // The turn is a TIMED CURVE between two leans, not a chase toward one.
+    //
+    // Three attempts at this, and the difference matters. A one-pole has its
+    // greatest angular velocity in its first frame — it eases out but never in, so
+    // every corner starts with a flick. A critically damped spring fixes the flick
+    // but asymptotes: it spends the whole phrase approaching a lean it never quite
+    // reaches, which is smooth and gutless. What a big move actually needs is to
+    // leave from rest, ARRIVE, and sit there.
+    //
+    // So: smootherstep from the old lean to the new one over a musical duration.
+    // Zero first AND second derivative at both ends, so there is nothing to jerk at
+    // either edge, and it genuinely reaches 1 — the remainder of the phrase is
+    // spent held over at full lean, which is what reads as commitment. Run in BEAT
+    // space rather than seconds so the move lands with the phrase whatever the
+    // tempo is.
+    const turnBeats = Math.max(0.5, this.bankHold * this.tune.turnEase);
+    const t = clamp((this.phraseBeat - this.bankFromBeat) / turnBeats);
+    const eased = sCurve(t);
+    this.curve = this.bankFrom + (this.bankTarget - this.bankFrom) * eased;
+    // The horizon roll is DERIVED from the bend rather than chased separately.
+    // Both used to ease toward the same signed target on the same clock, which is
+    // the same thing right up until the two disagree — and a roll that leads or
+    // lags the bend reads as a camera tilting rather than as a pipe turning, which
+    // is the whole illusion. Deriving it makes disagreeing impossible.
+    this.bankRoll = this.curve * PIPE_ROLL_MAX * this.tune.turnAmount;
 
     if (!this.spiralActive && this.phraseBeat >= this.spiralNextBeat) {
       this.spiralActive = true;
@@ -4436,12 +4561,85 @@ class HalfPipeHorizon extends BaseVisualizer {
     const halfPhase = (((this.beat * 0.5) % 1) + 1) % 1;
     this.halfPulse = Math.pow(1 - halfPhase, 4) * (PULSE_FLOOR + (1 - PULSE_FLOOR) * this.groove);
     this.helix += ((this.spiralActive ? PIPE_HELIX : 0) - this.helix) * clamp(step * PIPE_HELIX_EASE, 0, 1);
+    // Eased slowly on purpose: this should read as the picture settling over a
+    // phrase, not as a meter following the level.
+    const wantPresence = PIPE_PRESENCE_FLOOR + (1 - PIPE_PRESENCE_FLOOR) * this.dynamics;
+    this.presence += (wantPresence - this.presence) * clamp(step * PIPE_PRESENCE_EASE, 0, 1);
+    // `settle` scales the whole effect, so 0 is exactly the old behaviour.
+    this.settle = 1 - this.tune.settle * (1 - this.presence);
+
     this.roll = this.bankRoll + this.spiral;
     this.rollCos = Math.cos(this.roll);
     this.rollSin = Math.sin(this.roll);
 
-    this.width += (this.tune.width - this.width) * clamp(step * PIPE_WIDTH_EASE, 0, 1);
-    this.rowRate = this.beatRate * this.tune.speed * this.motion;
+    // How far the bend may reach in the direction it is currently leaning, before
+    // the vanishing point would come within PIPE_EDGE_MARGIN of an edge. A ray-box
+    // clip from the anchor along the roll direction — cheap, and exact rather than
+    // the worst-case circle, so a sideways lean still gets the full bend it has
+    // room for and only a lean toward the low ceiling is shortened.
+    const want = this.curve * PIPE_BEND * this.tune.turnAmount;
+    const dir = want < 0 ? -1 : 1;
+    const rx = this.rollCos * dir; const ry = this.rollSin * dir;
+    let reach = PIPE_BEND * 4;
+    if (rx > 1e-6) reach = Math.min(reach, (W - PIPE_EDGE_MARGIN - CX) / rx);
+    else if (rx < -1e-6) reach = Math.min(reach, (PIPE_EDGE_MARGIN - CX) / rx);
+    if (ry > 1e-6) reach = Math.min(reach, (H - PIPE_EDGE_MARGIN - PIPE_HORIZON) / ry);
+    else if (ry < -1e-6) reach = Math.min(reach, (PIPE_EDGE_MARGIN - PIPE_HORIZON) / ry);
+    reach = Math.max(0, reach);
+    // Tightens instantly and relaxes slowly. Easing BOTH ways would let the limit
+    // lag behind a fast screw and allow exactly the overshoot this exists to stop;
+    // easing neither would pulse the bend as the screw came round.
+    this.bendLimit = reach < this.bendLimit
+      ? reach
+      : this.bendLimit + (reach - this.bendLimit) * clamp(step * PIPE_LIMIT_EASE, 0, 1);
+    this.bendAmp = clamp(want, -this.bendLimit, this.bendLimit);
+
+    // The pipe narrows and opens again on its own schedule.
+    //
+    // The knob stays the widest it will ever be — this only ever takes width AWAY,
+    // so PIPE WIDTH still means "as wide as this" rather than "somewhere near
+    // this". Same timed S-curve the turns use, over a longer hold, so the tube
+    // arrives at a width and travels at it for a while instead of pulsing.
+    while (this.phraseBeat >= this.widthNextBeat) {
+      const hold = this.nextHold(this.widthRng, PIPE_WIDTH_HOLDS, 0);
+      this.widthNextBeat += hold;
+      this.widthFrom = this.widthTarget;
+      this.widthFromBeat = this.phraseBeat;
+      this.widthHold = hold;
+      // Never above 1: 1 IS the knob. A third of the time it opens right back out,
+      // so the narrow stretches read as somewhere the pipe went rather than as the
+      // width it now happens to be.
+      // Drawn around the knob rather than away from it, and drawn from a BELL
+      // rather than flat: three uniforms averaged land near the middle far more
+      // often than near either end, so the ride spends most of its time at or
+      // beside the width it was set to and only occasionally goes right out to
+      // the wide or narrow extreme. A flat draw here made every width equally
+      // likely, which reads as the pipe having no home to return to.
+      //
+      // The two sides are scaled independently so the knob keeps its meaning
+      // wherever it sits: DRIFT is a fraction of the room available in each
+      // direction, not a fixed amount that would fall off one end.
+      const base = Math.max(0.01, this.widthBase);
+      const drift = this.tune.widthDrift;
+      const low = Math.max(PIPE_WIDTH_MIN, base - drift * (base - PIPE_WIDTH_MIN));
+      const high = Math.min(PIPE_WIDTH_MAX, base + drift * (PIPE_WIDTH_MAX - base));
+      const bell = (this.widthRng.float() + this.widthRng.float()) / 2;
+      // And a third of the time it simply comes home, which is what makes the
+      // knob read as the song's own width rather than as one option among many.
+      const want = this.widthRng.chance(PIPE_WIDTH_HOME)
+        ? base
+        : (bell < 0.5 ? low + (base - low) * (bell * 2) : base + (high - base) * ((bell - 0.5) * 2));
+      this.widthTarget = want / base;
+    }
+    this.widthBase += (this.tune.width - this.widthBase) * clamp(step * PIPE_WIDTH_EASE, 0, 1);
+    const wt = clamp((this.phraseBeat - this.widthFromBeat) / Math.max(0.5, this.widthHold * 0.6));
+    this.width = this.widthBase * (this.widthFrom + (this.widthTarget - this.widthFrom) * sCurve(wt));
+    // max(), not a plain blend: this exists to stop slow songs crawling, and a
+    // blend would have paid for that by SLOWING every fast one. Below the
+    // reference it lifts; at or above it, it leaves the tempo alone.
+    const paced = Math.max(this.beatRate,
+      this.beatRate + (PIPE_RATE_REFERENCE - this.beatRate) * PIPE_RATE_ANCHOR);
+    this.rowRate = paced * this.tune.speed * this.motion;
     const travel = step * this.rowRate;
     this.scroll += travel;
     const du = travel / PIPE_ROWS;
@@ -4452,7 +4650,10 @@ class HalfPipeHorizon extends BaseVisualizer {
     // the sky behind is a gradient, and an alpha ramp would let it show through
     // the dark squares and wash the checker out from underneath.
     for (let i = 0; i < PIPE_TOTAL; i++) {
-      const lit = clamp(0.08 + this.rows[i + 1].u * 1.2);
+      // Sunk toward the horizon haze as the song quietens, so the tube recedes
+      // rather than the whole frame simply being dimmed — a global alpha would take
+      // the sky down with it and read as somebody turning the brightness off.
+      const lit = clamp(0.08 + this.rows[i + 1].u * 1.2) * (0.62 + 0.38 * this.settle);
       this.cellDark[i] = mixHex(this.scheme.haze, this.scheme.dark, lit);
       this.cellLight[i] = mixHex(this.scheme.haze, this.scheme.light, lit);
     }
@@ -4466,14 +4667,33 @@ class HalfPipeHorizon extends BaseVisualizer {
       g.spin += step * g.spinRate * this.motion;
       // Past the lens, not past the frame edge: a group at u = 1 is still on
       // screen down in the trough, so recycling there would pop it out in view.
+      //
+      // Measured against the LAST member rather than the first. A cluster has
+      // stride 0 and the two are the same number, but a corkscrew trail is ten
+      // to fourteen rings laid back down the pipe at 0.068 apart — most of the
+      // pipe's whole length — and testing the front of that deletes the entire
+      // trail while its tail is still halfway down the barrel, in full view. The
+      // wrap subtracts the trail's own length too, so the group re-enters with
+      // its front ring at the horizon and assembles itself coming towards you,
+      // which is what seedGroup's own comment says it is for.
+      const span = (g.count - 1) * g.stride;
       let guard = 0;
-      while (g.u > PIPE_PAST_LENS && guard++ < 4) { g.u -= PIPE_PAST_LENS; this.seedGroup(g); }
+      while (g.u - span > PIPE_PAST_LENS && guard++ < 4) {
+        g.u -= PIPE_PAST_LENS + span;
+        this.seedGroup(g);
+      }
       for (let j = 0; j < g.count; j++) {
         // A formation with a stride lays its members back DOWN the pipe instead
         // of across it, one behind the next, so a single group is a whole trail
         // receding to the horizon rather than a row rushing at you.
         const uj = g.u - j * g.stride;
-        if (uj <= 0.002) { g.ss[j] = 0; continue; }
+        if (uj <= 0.002) { g.ss[j] = 0; g.sf[j] = 0; continue; }
+        // Fades UP out of the horizon and back DOWN into the lens, on the
+        // member's own depth. There was only ever a fade up, so a ring reached
+        // the near end at full brightness and was simply removed — visible as a
+        // blink whenever that happened to land while it was still on screen,
+        // which depended on where it sat around the barrel. Hence "sometimes".
+        g.sf[j] = clamp(uj * 6) * clamp((PIPE_PAST_LENS - uj) * 7);
         const row = this.rowAt(uj, this.scratch);
         // `+ spiral` is what makes a corkscrew read as FOLLOWING the rings: the
         // camera roll and the ring angle advance by the same amount, so the trail
@@ -4535,6 +4755,41 @@ class HalfPipeHorizon extends BaseVisualizer {
     ctx.arc(row.cx, row.cy, Math.max(0, row.r), this.phi(fromTheta), this.phi(toTheta), true);
   }
 
+  /**
+   * Shade one row band ACROSS the barrel, so the tube reads as round.
+   *
+   * The distance fade in update() already darkens rows toward the horizon, which
+   * gives depth ALONG the pipe — but every column at a given depth was the same
+   * colour, and a cylinder lit flat across its width reads as a painted ribbon
+   * rather than as a surface you are inside. This is the missing cue: the trough
+   * sits in its own shadow while the lips catch the sky, which is what a real
+   * half-pipe does and what tells the eye the checker is curving away.
+   *
+   * A gradient rather than per-cell fills, deliberately: shading cell by cell
+   * would double the fill count that the single-strip trick above exists to
+   * avoid. Two gradients a row costs nothing and the shading is smooth instead
+   * of banded. Endpoints are the two lip positions on this row's arc, so the
+   * shading rolls with the pipe rather than sitting level on the screen.
+   */
+  barrelShade(ctx, row, base, edge) {
+    const depth = this.tune.depth;
+    if (!depth || !(row.r > 0)) return base;
+    const a = this.phi(-edge); const b = this.phi(edge);
+    const grad = ctx.createLinearGradient(
+      row.cx + row.r * Math.cos(a), row.cy + row.r * Math.sin(a),
+      row.cx + row.r * Math.cos(b), row.cy + row.r * Math.sin(b),
+    );
+    // Toward the scheme's own sky rather than toward black: an occlusion tint
+    // borrowed from the palette stays in the picture, where black just makes a
+    // grey smear across it.
+    const trough = mixHex(base, this.scheme.sky, clamp(PIPE_TROUGH_SHADE * depth));
+    const lip = mixHex(base, this.scheme.light, clamp(PIPE_LIP_LIFT * depth));
+    grad.addColorStop(0, lip);
+    grad.addColorStop(0.5, trough);
+    grad.addColorStop(1, lip);
+    return grad;
+  }
+
   drawPipe(ctx) {
     const edge = this.width;
     const cols = Math.max(2, Math.round(this.tune.columns));
@@ -4548,9 +4803,9 @@ class HalfPipeHorizon extends BaseVisualizer {
       this.pipeArc(ctx, far, -edge, edge);
       ctx.arc(near.cx, near.cy, Math.max(0, near.r), this.phi(edge), this.phi(-edge), false);
       ctx.closePath();
-      ctx.fillStyle = this.cellDark[i];
+      ctx.fillStyle = this.barrelShade(ctx, near, this.cellDark[i], edge);
       ctx.fill();
-      ctx.fillStyle = this.cellLight[i];
+      ctx.fillStyle = this.barrelShade(ctx, near, this.cellLight[i], edge);
       for (let c = (i + this.parityBase) & 1; c < cols; c += 2) {
         const t0 = -edge + c * stepTheta;
         const t1 = t0 + stepTheta;
@@ -4588,7 +4843,7 @@ class HalfPipeHorizon extends BaseVisualizer {
         ctx.lineTo(row.cx + Math.cos(a1) * row.r, row.cy + Math.sin(a1) * row.r);
       }
       ctx.closePath();
-      ctx.fillStyle = rgba(this.scheme.lip, 0.04 + v * (0.16 + this.pulse * 0.12));
+      ctx.fillStyle = rgba(this.scheme.lip, (0.04 + v * (0.16 + this.pulse * 0.12)) * this.settle);
       ctx.fill();
     }
     ctx.restore();
@@ -4658,7 +4913,7 @@ class HalfPipeHorizon extends BaseVisualizer {
       ctx.lineWidth = 0.9 + gate.k * (2.2 + gate.punch * 3);
       // Fades up out of the horizon orb rather than appearing on top of it.
       ctx.strokeStyle = rgba(gate.punch > 0.05 ? '#ffffff' : this.scheme.sun,
-        (0.16 + gate.punch * 0.6) * (1 - gate.u * 0.35) * clamp(gate.u * 6));
+        (0.16 + gate.punch * 0.6) * (1 - gate.u * 0.35) * clamp(gate.u * 6) * this.settle);
       ctx.beginPath();
       ctx.arc(gate.cx, gate.cy, gate.r, this.phi(-this.width), this.phi(this.width), true);
       ctx.stroke();
@@ -4671,10 +4926,12 @@ class HalfPipeHorizon extends BaseVisualizer {
     ctx.globalCompositeOperation = 'lighter';
     for (const g of this.groups) {
       const tint = this.tints[g.tint];
-      const bright = (0.34 + this.pulse * 0.4 + this.hit * 0.26) * clamp(g.u * 6);
+      const base = (0.34 + this.pulse * 0.4 + this.hit * 0.26) * this.settle;
       for (let j = 0; j < g.count; j++) {
         const size = g.ss[j];
         if (size < 0.4) continue;
+        const bright = base * g.sf[j];
+        if (bright <= 0.002) continue;
         const x = g.sx[j]; const y = g.sy[j];
         if (g.kind === 0) {
           // Rings spin edge-on and back, the way the ones they are quoting do.
@@ -5038,19 +5295,52 @@ export const MEGAMIX_TRANSITIONS = [
 ];
 
 const MEGAMIX_SOLO_TRANSITIONS = MEGAMIX_TRANSITIONS.filter((move) => move.solo);
-const MEGAMIX_INDEX = VISUALIZER_NAMES.indexOf('VJ MEGAMIX');
-const MEGAMIX_ROSTER = VISUALIZER_NAMES.map((_, index) => index).filter((index) => index !== MEGAMIX_INDEX);
+const MEGAMIX_INDEX = VISUALISER_NAMES.indexOf('VJ MEGAMIX');
+const MEGAMIX_ROSTER = VISUALISER_NAMES.map((_, index) => index).filter((index) => index !== MEGAMIX_INDEX);
+
+/**
+ * The two presets that put MASHENSTEIN's cast and appliances on screen.
+ *
+ * Named here rather than left to be worked out, because the modules they draw
+ * from — ../sprites/toons.js and ../sprites/props.js — are imported at module
+ * scope. Declining to OFFER these two does not keep the characters out of a
+ * bundle; a build that wants them gone has to strip those modules as well, and
+ * then it must not deal these presets to anything, or the pack draws nothing.
+ * tools/build-visualiser.js does both halves.
+ */
+export const SPRITE_VISUALISERS = ['ARCADE ART GALLERY', 'TOASTER SKY PARADE'];
+
+// Which presets the pack will DEAL. Not which it can build: createVisualiser
+// stays a plain lookup, because the game's dev menu addresses presets by index
+// and an excluded one would silently become its neighbour. This governs the two
+// paths that choose for you — the jukebox's shuffle and the megamix's deck.
+let excludedVisualisers = new Set();
+
+/**
+ * Take presets out of circulation for this build. The game never calls it; a
+ * host that has stripped the sprite modules does, at boot, once.
+ */
+export function setExcludedVisualisers(names = []) {
+  excludedVisualisers = new Set(
+    names.map((name) => (typeof name === 'number' ? name : VISUALISER_NAMES.indexOf(name)))
+      .filter((index) => index >= 0),
+  );
+}
+
+export function isVisualiserExcluded(index) {
+  return excludedVisualisers.has(index);
+}
 // Presets whose frame is expensive enough that painting two of them at once is a
 // real risk on a phone. With one of these on either deck the mixer sticks to the
 // transitions that only ever paint ONE record per frame.
 const MEGAMIX_HEAVY = new Set(['ACID JULIA DIVE']
-  .map((name) => VISUALIZER_NAMES.indexOf(name))
+  .map((name) => VISUALISER_NAMES.indexOf(name))
   .filter((index) => index >= 0));
 
-class VjMegamix extends BaseVisualizer {
+class VjMegamix extends BaseVisualiser {
   constructor(seed, track) {
     super(seed, track);
-    this.name = VISUALIZER_NAMES[MEGAMIX_INDEX];
+    this.name = VISUALISER_NAMES[MEGAMIX_INDEX];
     this.rosterRng = this.rng.stream('megamix-roster');
     this.mixRng = this.rng.stream('megamix-mix');
     this.childRng = this.rng.stream('megamix-child');
@@ -5083,7 +5373,7 @@ class VjMegamix extends BaseVisualizer {
   }
 
   spawn(index) {
-    return createVisualizer(index, (this.childRng.next() * 0xffffffff) >>> 0, this.track);
+    return createVisualiser(index, (this.childRng.next() * 0xffffffff) >>> 0, this.track);
   }
 
   // Dealt from a shuffled deck rather than picked at random: one pass plays
@@ -5095,7 +5385,10 @@ class VjMegamix extends BaseVisualizer {
       // pickTransition() bypasses that rule outright in this mode — and the
       // costly pairings are exactly the ones worth watching the frame rate
       // through, which is the other half of what this bench is for.
-      this.roster = this.rosterRng.shuffle(MEGAMIX_ROSTER);
+      // Excluded presets never reach the deck, in an audition too: a build that
+      // stripped the sprite modules cannot draw them, and "the whole pack" means
+      // the whole pack that exists in this build.
+      this.roster = this.rosterRng.shuffle(MEGAMIX_ROSTER.filter((index) => !isVisualiserExcluded(index)));
       // A reshuffle must not put the record that is already on the deck back on
       // top of the pile.
       if (this.roster.length > 1 && this.roster[0] === this.currentIndex) this.roster.push(this.roster.shift());
@@ -5251,7 +5544,7 @@ class VjMegamix extends BaseVisualizer {
 
 /**
  * The half-pipe with its constants exposed. Deliberately NOT a member of
- * VISUALIZER_NAMES: the pack is what the game deals and what the mixer plays, and
+ * VISUALISER_NAMES: the pack is what the game deals and what the mixer plays, and
  * a preset whose picture depends on where somebody left ten sliders is neither.
  * It is reached only from the desk's own Visualiser panel, which is where the
  * sliders are — the same line the gallery's bake-off sections hold.
@@ -5260,8 +5553,8 @@ export function createHalfPipeLab(seed, track, tune) {
   return new HalfPipeHorizon(seed >>> 0, track, tune);
 }
 
-export function createVisualizer(name, seed, track) {
-  const index = typeof name === 'number' ? name : VISUALIZER_NAMES.indexOf(name);
+export function createVisualiser(name, seed, track) {
+  const index = typeof name === 'number' ? name : VISUALISER_NAMES.indexOf(name);
   const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm, EmeraldCodeRain, AcidJuliaDive, HyperVectorTunnel, NebulaRibbonDrift, GlassBlobEqualizer, HalfPipeHorizon, VjMegamix];
   const Ctor = constructors[Math.max(0, index) % constructors.length];
   return new Ctor(seed >>> 0, track);
@@ -5269,8 +5562,10 @@ export function createVisualizer(name, seed, track) {
 
 // `random` is injectable so tests can prove the no-immediate-repeat rule
 // without relying on global Math.random state.
-export function pickVisualizer(previous = -1, random = Math.random) {
-  let next = Math.floor(random() * VISUALIZER_NAMES.length) % VISUALIZER_NAMES.length;
-  if (VISUALIZER_NAMES.length > 1 && next === previous) next = (next + 1 + Math.floor(random() * (VISUALIZER_NAMES.length - 1))) % VISUALIZER_NAMES.length;
-  return next;
+export function pickVisualiser(previous = -1, random = Math.random) {
+  const pack = VISUALISER_NAMES.map((_, index) => index).filter((index) => !isVisualiserExcluded(index));
+  if (!pack.length) return 0;
+  let at = Math.floor(random() * pack.length) % pack.length;
+  if (pack.length > 1 && pack[at] === previous) at = (at + 1 + Math.floor(random() * (pack.length - 1))) % pack.length;
+  return pack[at];
 }

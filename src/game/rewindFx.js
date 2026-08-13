@@ -91,7 +91,7 @@ export class TapeRewindEffect {
       // Headless canvases (Node, the render tools) have no ImageData, and the
       // grain is the only part of the tape effect that needs one. Skip it and
       // keep the bars, wobble, OSD and vignette rather than taking the frame
-      // down — the same fallback ensureBuffers() makes in visualizers.js. The
+      // down — the same fallback ensureBuffers() makes in visualisers.js. The
       // flag latches so this is one failed probe, not one per frame.
       const img = nc.createImageData?.(N, N);
       if (!img?.data || img.data.length !== N * N * 4) {

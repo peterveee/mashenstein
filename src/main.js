@@ -1,11 +1,11 @@
 // MASHENSTEIN: THE UNPLUGGENING — boot + campaign flow orchestration.
 import {
   initRenderer, beginRenderFrame, bctx, blit, setShakeScale, setFancyFx, pushOverlayDraw,
-  noteRendererFrame, rendererDiagnostics, rendererBackend, W, chrome, screen, visualizerFrame, setChromeOverlay,
+  noteRendererFrame, rendererDiagnostics, rendererBackend, W, chrome, screen, visualiserFrame, setChromeOverlay,
 } from './engine/renderer.js';
 import { startLoop, frameRate, frameHealth } from './engine/loop.js';
 import { drawText, textWidth } from './engine/sprites.js';
-import { VISUALIZER_NAMES, setMegamixAudition } from './engine/visualizers.js';
+import { VISUALISER_NAMES, setMegamixAudition } from './engine/visualisers.js';
 import { Input } from './engine/input.js';
 import { Audio, PORTAL_RELAY, PORTAL_RELAY_GAIN } from './engine/audio.js';
 
@@ -180,13 +180,13 @@ function routeDevUrl(goto, p) {
       setMegamixAudition(audition);
       setState(new SoundTestState({
         onDone: () => { setMegamixAudition(false); Flow.toTitle(); },
-        // The visualizer only starts over a playing track, so the audition
+        // The visualiser only starts over a playing track, so the audition
         // cues the megamix song itself — the last row of the jukebox, and the
         // one the mixer was written against.
         ...(audition ? {
           initialTrack: JUKEBOX.length - 1,
-          startVisualizer: true,
-          startVisualizerIndex: VISUALIZER_NAMES.indexOf('VJ MEGAMIX'),
+          startVisualiser: true,
+          startVisualiserIndex: VISUALISER_NAMES.indexOf('VJ MEGAMIX'),
         } : {}),
       }));
       break;
@@ -628,9 +628,9 @@ function boot() {
       beginRenderFrame();
       let drawFpsReadout = null;
       const menuState = currentState();
-      const visualizerActive = menuState instanceof SoundTestState
+      const visualiserActive = menuState instanceof SoundTestState
         && menuState.visualState !== 'list';
-      // The visualizer introduces itself with the track and preset names for
+      // The visualiser introduces itself with the track and preset names for
       // five seconds. Do not compete with that lower-third; the diagnostics
       // take its place only once those titles have faded cleanly away.
       //
@@ -639,17 +639,17 @@ function boot() {
       // re-announces on every handover, so yielding to the titles would keep the
       // readout down almost the whole time. It also forces the readout up
       // without touching the saved setting.
-      const auditioning = visualizerActive && menuState.visualizer?.audition === true;
-      const visualizerTitlesVisible = visualizerActive && !auditioning && menuState.labelT < 6;
+      const auditioning = visualiserActive && menuState.visualiser?.audition === true;
+      const visualiserTitlesVisible = visualiserActive && !auditioning && menuState.labelT < 6;
       // Touch devices with a letterbox margin get the readout out on #chrome,
       // in the dead black beside/above the game, rather than over the art.
       // A screen can stand the diagnostic down for as long as it is up, the
-      // same way the visualizer's titles do below. Read as a static off the
+      // same way the visualiser's titles do below. Read as a static off the
       // constructor rather than an instanceof, matching how lifecycle.js reads
       // portraitMode: a static survives the module-identity mismatches that
       // make instanceof quietly fail.
       const hidesFps = menuState?.constructor?.hidesFps === true;
-      const showChromeFps = save.settings.showFps && !visualizerActive && !hidesFps
+      const showChromeFps = save.settings.showFps && !visualiserActive && !hidesFps
         && Input.isTouchDevice() && chrome.mode !== 'none';
       if ((save.settings.showFps || auditioning) && !hidesFps) {
         const fps = frameRate() || '--';
@@ -746,21 +746,21 @@ function boot() {
               drawText(ctx, lines[i], pad, top + i * lineH, ink, s, 'ui');
             }
           });
-        } else if (!visualizerTitlesVisible) {
+        } else if (!visualiserTitlesVisible) {
           const label = `FPS ${fps}${hitchNow ? ' ' + hitchNow : ''}${hitchSum ? ' D' + hitchSum : ''} ${dens}`;
-          // Keep the diagnostic above the visualizer surface. Once its titles
+          // Keep the diagnostic above the visualiser surface. Once its titles
           // are gone, use their bottom-centre berth in both orientations.
           drawFpsReadout = (ctx) => {
-            const availableW = visualizerFrame.right - visualizerFrame.left - 18;
-            const scale = visualizerActive
+            const availableW = visualiserFrame.right - visualiserFrame.left - 18;
+            const scale = visualiserActive
               ? Math.max(0.42, Math.min(0.65, availableW / textWidth(label, 1, 'bold')))
               : 0.65;
             const tw = textWidth(label, scale, 'bold');
-            const x = visualizerActive
-              ? (visualizerFrame.left + visualizerFrame.right - tw) * 0.5
+            const x = visualiserActive
+              ? (visualiserFrame.left + visualiserFrame.right - tw) * 0.5
               : W - 5 - tw;
-            const y = visualizerActive
-              ? visualizerFrame.bottom - 14
+            const y = visualiserActive
+              ? visualiserFrame.bottom - 14
               : 3;
             ctx.fillStyle = 'rgba(5,6,12,0.68)';
             ctx.fillRect(x - 5, y - scale * 3, tw + 10, scale * 16);
@@ -817,7 +817,7 @@ function boot() {
     input: Input,
     audio: Audio,
     // Screens opt in by declaring a static portraitMode (see portraitAllowedFor);
-    // today that is the jukebox alone, a self-contained listening/visualizer
+    // today that is the jukebox alone, a self-contained listening/visualiser
     // surface intentionally usable in portrait. The landscape gate still covers
     // everything else, including the title and gameplay states.
     allowPortrait: allowPortraitNow,

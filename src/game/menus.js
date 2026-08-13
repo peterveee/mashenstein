@@ -1,10 +1,10 @@
 // Title, slot select, difficulty select (the joke), intro cutscene, results,
 // finale, settings. All keyboard + touch navigable.
-import { W, H, bakeSS, screen, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualizerFullscreen, setJukeboxPortrait, visualizerFrame } from '../engine/renderer.js';
+import { W, H, bakeSS, screen, setFancyFx, setSceneGlow, setSkyFx, setOverlayMerge, pushOverlayDraw, setVisualiserFullscreen, setJukeboxPortrait, visualiserFrame } from '../engine/renderer.js';
 import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
-import { VISUALIZER_NAMES, clamp, createVisualizer, pickVisualizer, smooth } from '../engine/visualizers.js';
+import { VISUALISER_NAMES, clamp, createVisualiser, pickVisualiser, smooth } from '../engine/visualisers.js';
 import { defaultSettings } from '../engine/save.js';
 import { formatBuildTime } from '../engine/build-time.js';
 import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H, TEXT_INK_TOP, drawB33pPellet } from '../engine/sprites.js';
@@ -1561,7 +1561,7 @@ export class TitleState {
     this.extrasFocus = extrasFocus;
   }
   enter() {
-    setVisualizerFullscreen(false);
+    setVisualiserFullscreen(false);
     invalidateTitleParadeCache();
     this.singleToasterOpening = !titleToasterIntroSeen;
     titleToasterIntroSeen = true;
@@ -3505,7 +3505,7 @@ const VISUAL_OUT_GAP = 0.10;
 const VISUAL_OUT_TOTAL = 0.45;
 
 export class SoundTestState {
-  // The listening/visualizer surface is deliberately usable in portrait: it
+  // The listening/visualiser surface is deliberately usable in portrait: it
   // fills the viewport non-uniformly and counter-scales its own type (see
   // layout() and portraitTextYScale below). lifecycle.js reads this to decide
   // the rotate overlay stays down here.
@@ -3515,14 +3515,14 @@ export class SoundTestState {
   // always was. The dev menu passes a longer one to audition a song that lives on the
   // mixing desk rather than in the game — see src/dev/desk-songs.js.
   constructor({
-    onDone, initialTrack = -1, startVisualizer = false, startVisualizerIndex = null,
+    onDone, initialTrack = -1, startVisualiser = false, startVisualiserIndex = null,
     tracks = JUKEBOX,
   }) {
     this.onDone = onDone;
     this.tracks = tracks && tracks.length ? tracks : JUKEBOX;
     this.initialTrack = initialTrack;
-    this.startVisualizerOnEnter = startVisualizer;
-    this.startVisualizerIndex = Number.isInteger(startVisualizerIndex) ? startVisualizerIndex : null;
+    this.startVisualiserOnEnter = startVisualiser;
+    this.startVisualiserIndex = Number.isInteger(startVisualiserIndex) ? startVisualiserIndex : null;
     // Vertical layout is re-measured against the device's safe area every frame
     // (see layout()); these are the letterboxed numbers it starts from.
     this.visibleRows = JUKEBOX_VISIBLE_ROWS;
@@ -3540,13 +3540,13 @@ export class SoundTestState {
     this.idleT = 0;
     this.visualState = 'list'; // list -> in -> active -> out
     this.visualT = 0;
-    this.visualizer = null;
-    this.previousVisualizer = null;
+    this.visualiser = null;
+    this.previousVisualiser = null;
     this.visualSwitchT = 0;
     this.labelT = 0;
     this.shownLabel = null;
-    this.visualizerIndex = -1;
-    this.lastVisualizerIndex = -1;
+    this.visualiserIndex = -1;
+    this.lastVisualiserIndex = -1;
     this.fullscreenReady = false;
     this.actTok = 0;
   }
@@ -3564,56 +3564,56 @@ export class SoundTestState {
     this.idleT = 0;
     this.visualState = 'list';
     this.visualT = 0;
-    this.visualizer = null;
-    this.previousVisualizer = null;
+    this.visualiser = null;
+    this.previousVisualiser = null;
     this.visualSwitchT = 0;
     this.labelT = 0;
-    this.visualizerIndex = -1;
-    this.lastVisualizerIndex = -1;
+    this.visualiserIndex = -1;
+    this.lastVisualiserIndex = -1;
     this.fullscreenReady = false;
     this.actTok = Input.activity;
     Audio.setBank(null);
     if (this.playing >= 0) {
       this.openTrack(this.playing);
       this.resetIdle();
-      if (this.startVisualizerOnEnter) this.startVisualizer();
+      if (this.startVisualiserOnEnter) this.startVisualiser();
     }
     Input.setMenuButtons();
   }
   exit() {
     Audio.setBank(null);
-    this.clearVisualizer();
+    this.clearVisualiser();
     setJukeboxPortrait(false);
   }
-  clearVisualizer() {
-    setVisualizerFullscreen(false);
+  clearVisualiser() {
+    setVisualiserFullscreen(false);
     this.visualState = 'list';
     this.visualT = 0;
-    this.visualizer = null;
-    this.previousVisualizer = null;
+    this.visualiser = null;
+    this.previousVisualiser = null;
     this.visualSwitchT = 0;
     this.labelT = 0;
     this.shownLabel = null;
-    this.visualizerIndex = -1;
+    this.visualiserIndex = -1;
     this.fullscreenReady = false;
     this.visualSwipe = null;
   }
   resetIdle() {
     this.idleT = this.playing >= 0 ? -(Audio.pendingStartDelay || 0) : 0;
     this.actTok = Input.activity;
-    this.clearVisualizer();
+    this.clearVisualiser();
   }
-  startVisualizer() {
+  startVisualiser() {
     if (this.playing < 0 || this.visualState !== 'list') return;
-    const requested = this.startVisualizerIndex;
-    this.startVisualizerIndex = null;
-    this.visualizerIndex = requested == null
-      ? pickVisualizer(this.lastVisualizerIndex, Math.random)
-      : ((requested % VISUALIZER_NAMES.length) + VISUALIZER_NAMES.length) % VISUALIZER_NAMES.length;
-    this.lastVisualizerIndex = this.visualizerIndex;
-    const seed = ((Math.random() * 0xffffffff) ^ (this.visualizerIndex * 0x9e3779b9)) >>> 0;
-    this.visualizer = createVisualizer(this.visualizerIndex, seed, this.tracks[this.playing].bank);
-    this.previousVisualizer = null;
+    const requested = this.startVisualiserIndex;
+    this.startVisualiserIndex = null;
+    this.visualiserIndex = requested == null
+      ? pickVisualiser(this.lastVisualiserIndex, Math.random)
+      : ((requested % VISUALISER_NAMES.length) + VISUALISER_NAMES.length) % VISUALISER_NAMES.length;
+    this.lastVisualiserIndex = this.visualiserIndex;
+    const seed = ((Math.random() * 0xffffffff) ^ (this.visualiserIndex * 0x9e3779b9)) >>> 0;
+    this.visualiser = createVisualiser(this.visualiserIndex, seed, this.tracks[this.playing].bank);
+    this.previousVisualiser = null;
     this.visualSwitchT = 0;
     this.labelT = 0;
     this.visualState = 'in';
@@ -3621,7 +3621,7 @@ export class SoundTestState {
     this.fullscreenReady = false;
     this.actTok = Input.activity;
   }
-  wakeVisualizer() {
+  wakeVisualiser() {
     if (this.visualState === 'list') return false;
     this.visualState = 'out';
     this.visualT = 0;
@@ -3632,22 +3632,22 @@ export class SoundTestState {
     this.actTok = Input.activity;
     return true;
   }
-  switchVisualizer(delta) {
-    if (!this.visualizer || this.visualState === 'out') return;
-    const count = VISUALIZER_NAMES.length;
-    const next = (this.visualizerIndex + delta + count) % count;
-    this.previousVisualizer = this.visualizer;
-    this.visualizerIndex = next;
+  switchVisualiser(delta) {
+    if (!this.visualiser || this.visualState === 'out') return;
+    const count = VISUALISER_NAMES.length;
+    const next = (this.visualiserIndex + delta + count) % count;
+    this.previousVisualiser = this.visualiser;
+    this.visualiserIndex = next;
     const seed = ((Math.random() * 0xffffffff) ^ (next * 0x9e3779b9) ^ this.t * 1000) >>> 0;
-    this.visualizer = createVisualizer(next, seed, this.tracks[this.playing]?.bank);
+    this.visualiser = createVisualiser(next, seed, this.tracks[this.playing]?.bank);
     this.visualSwitchT = 0.35;
     this.labelT = 0;
     this.actTok = Input.activity;
   }
-  handleVisualizerSwipe() {
-    // A touch on the full-screen visualizer is ambiguous until it either
+  handleVisualiserSwipe() {
+    // A touch on the full-screen visualiser is ambiguous until it either
     // travels horizontally or is released. Hold the activity token while the
-    // finger is down so the visualizer does not wake on pointer-down; a tap
+    // finger is down so the visualiser does not wake on pointer-down; a tap
     // still wakes on release, while a completed swipe is consumed here.
     if (Input.pressed('pointer') && Input.usingTouch && this.visualState !== 'out') {
       this.visualSwipe = {
@@ -3667,7 +3667,7 @@ export class SoundTestState {
       // letterboxed desktop view and portrait full-screen view.
       if (!gesture.moved && Math.abs(dx) >= 26 && Math.abs(dx) > Math.abs(dy) * 1.15) {
         gesture.moved = true;
-        this.switchVisualizer(dx < 0 ? 1 : -1);
+        this.switchVisualiser(dx < 0 ? 1 : -1);
       }
       return true;
     }
@@ -3677,11 +3677,11 @@ export class SoundTestState {
     if (gesture.moved) {
       this.actTok = Input.activity;
     } else {
-      this.wakeVisualizer();
+      this.wakeVisualiser();
     }
     return true;
   }
-  visualizerInput() {
+  visualiserInput() {
     return Input.activity !== this.actTok
       || Input.pressed('pointer') || Input.pressed('confirm') || Input.pressed('back')
       || Input.pressed('jump') || Input.pressed('ability') || Input.pressed('pause');
@@ -3764,7 +3764,7 @@ export class SoundTestState {
   }
   done() {
     Audio.setBank(null);
-    this.clearVisualizer();
+    this.clearVisualiser();
     setJukeboxPortrait(false);
     this.onDone();
   }
@@ -3776,16 +3776,16 @@ export class SoundTestState {
     const n = this.tracks.length;
     const total = n + 1; // +1 for the trailing BACK row
     if (this.visualState !== 'list') {
-      const swipeHandled = this.handleVisualizerSwipe();
+      const swipeHandled = this.handleVisualiserSwipe();
       const previous = Input.pressed('left') || Input.pressed('up');
       const next = Input.pressed('right') || Input.pressed('down');
-      if (this.visualState !== 'out' && (previous || next)) this.switchVisualizer(next ? 1 : -1);
-      else if (!swipeHandled && this.visualizerInput()) this.wakeVisualizer();
-      if (this.visualizer) this.visualizer.update(dt, Audio.musicAnalysis());
+      if (this.visualState !== 'out' && (previous || next)) this.switchVisualiser(next ? 1 : -1);
+      else if (!swipeHandled && this.visualiserInput()) this.wakeVisualiser();
+      if (this.visualiser) this.visualiser.update(dt, Audio.musicAnalysis());
       // The megamix changes record without the jukebox switching preset, so the
       // corner tag is re-announced whenever the name it would print changes —
       // not only when the player asks for a different preset.
-      const shownLabel = this.visualizer ? (this.visualizer.label || this.visualizer.name) : null;
+      const shownLabel = this.visualiser ? (this.visualiser.label || this.visualiser.name) : null;
       if (shownLabel !== this.shownLabel) {
         this.shownLabel = shownLabel;
         this.labelT = 0;
@@ -3793,36 +3793,36 @@ export class SoundTestState {
       if (this.visualState !== 'out') this.labelT += dt;
       if (this.visualSwitchT > 0) {
         this.visualSwitchT = Math.max(0, this.visualSwitchT - dt);
-        if (this.visualSwitchT === 0) this.previousVisualizer = null;
+        if (this.visualSwitchT === 0) this.previousVisualiser = null;
       }
       this.visualT += dt;
       if (this.visualState === 'in' && !this.fullscreenReady
         && this.visualT >= VISUAL_MENU_FADE + VISUAL_GAP) {
         // The menu has fully disappeared and the beat-sized gap is over. Only
-        // now expand the canvas, while the frame is already a dark visualizer
+        // now expand the canvas, while the frame is already a dark visualiser
         // field, so the menu never visibly zooms or crops.
-        setVisualizerFullscreen(true);
+        setVisualiserFullscreen(true);
         this.fullscreenReady = true;
       }
       if (this.visualState === 'out' && this.fullscreenReady
         && this.visualT >= VISUAL_OUT_FADE + VISUAL_OUT_GAP) {
         // Restore the normal letterboxed canvas before the menu starts its
         // return fade, making the reverse transition just as stable.
-        setVisualizerFullscreen(false);
+        setVisualiserFullscreen(false);
         this.fullscreenReady = false;
       }
       if (this.visualState === 'in' && this.visualT >= 1.0) {
         this.visualState = 'active';
         this.visualT = VISUAL_IN_TOTAL;
       } else if (this.visualState === 'out' && this.visualT >= VISUAL_OUT_TOTAL) {
-        this.clearVisualizer();
+        this.clearVisualiser();
       }
       Input.endFrame();
       return;
     }
     if (this.playing >= 0) {
       this.idleT += dt;
-      if (this.idleT >= 5) this.startVisualizer();
+      if (this.idleT >= 5) this.startVisualiser();
     }
     if (Input.pressed('down') || Input.pressed('right')) {
       this.idx = (this.idx + 1) % total;
@@ -3982,7 +3982,7 @@ export class SoundTestState {
     ctx.restore();
   }
   draw(ctx) {
-    if (this.visualState === 'list' || !this.visualizer) {
+    if (this.visualState === 'list' || !this.visualiser) {
       this.drawList(ctx);
       return;
     }
@@ -4021,28 +4021,28 @@ export class SoundTestState {
         preset.draw(surface);
         preset.frameAlpha = 1;
       };
-      if (this.previousVisualizer && this.visualSwitchT > 0) {
+      if (this.previousVisualiser && this.visualSwitchT > 0) {
         const switchP = 1 - this.visualSwitchT / 0.35;
-        paint(this.previousVisualizer, visualAlpha * (1 - switchP));
-        paint(this.visualizer, visualAlpha * switchP);
+        paint(this.previousVisualiser, visualAlpha * (1 - switchP));
+        paint(this.visualiser, visualAlpha * switchP);
       } else {
-        paint(this.visualizer, visualAlpha);
+        paint(this.visualiser, visualAlpha);
       }
       surface.restore();
       // Keep the screensaver metadata quiet and out of the way: the track hugs
       // the lower-left edge while the current preset balances it on the right.
       // A safe inset keeps both clear of rounded mobile display corners — plus
       // whatever the device reports for a notch or home indicator, since a
-      // fullscreen visualizer reaches the physical screen edge the same way the
+      // fullscreen visualiser reaches the physical screen edge the same way the
       // portrait list does. Those read 0 on hardware with nothing to dodge.
-      const portraitLabels = visualizerFrame.bottom - visualizerFrame.top
-        > (visualizerFrame.right - visualizerFrame.left) * 1.35;
+      const portraitLabels = visualiserFrame.bottom - visualiserFrame.top
+        > (visualiserFrame.right - visualiserFrame.left) * 1.35;
       const labelScale = portraitLabels ? 0.9 : 0.82;
       const labelInset = portraitLabels ? 10 : 24;
       const trackLabel = this.tracks[this.playing]?.name || 'NOW PLAYING';
-      const visualLabel = this.visualizer.label || this.visualizer.name;
-      const safeLeft = visualizerFrame.left + labelInset + screen.safeLeft;
-      const safeRight = visualizerFrame.right - labelInset - screen.safeRight;
+      const visualLabel = this.visualiser.label || this.visualiser.name;
+      const safeLeft = visualiserFrame.left + labelInset + screen.safeLeft;
+      const safeRight = visualiserFrame.right - labelInset - screen.safeRight;
       const trackWidth = textWidth(trackLabel, labelScale);
       const visualWidth = textWidth(visualLabel, labelScale);
       const maxWidth = Math.max(32, safeRight - safeLeft);
@@ -4060,8 +4060,8 @@ export class SoundTestState {
         ? Math.max(safeLeft, (safeLeft + safeRight - fittedVisualWidth) * 0.5)
         : Math.min(W - labelInset - fittedVisualWidth, safeRight - fittedVisualWidth);
       const labelY = (portraitLabels
-        ? Math.min(H - 25, visualizerFrame.bottom - 28)
-        : Math.min(H - 14, visualizerFrame.bottom - 14)) - screen.safeBottom;
+        ? Math.min(H - 25, visualiserFrame.bottom - 28)
+        : Math.min(H - 14, visualiserFrame.bottom - 14)) - screen.safeBottom;
       const labelFade = 1 - smooth(clamp((this.labelT - 5) / 1));
       surface.save();
       surface.globalAlpha = visualAlpha * labelFade * 0.92;

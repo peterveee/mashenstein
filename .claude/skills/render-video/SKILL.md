@@ -1,24 +1,24 @@
 ---
 name: render-video
-description: Export an MP4 of a jukebox visualizer set to a rendered music bank, using tools/render-video.js. Use when asked for a video, trailer, clip, or screen-capture of a visualizer or track.
+description: Export an MP4 of a jukebox visualiser set to a rendered music bank, using tools/render-video.js. Use when asked for a video, trailer, clip, or screen-capture of a visualiser or track.
 ---
 
 # Rendering MASHENSTEIN videos
 
-`tools/render-video.js` exports an MP4 of any visualizer driven by any music
+`tools/render-video.js` exports an MP4 of any visualiser driven by any music
 bank. It is **dev tooling and never ships** — nothing in `src/` imports from
 `tools/`, the build only bundles `src/gate.js` and `src/main.js`, and the
 dependency runs one way (the tool imports *from* `src/`). Rendered MP4s land in
 `dist/`, which is gitignored, so a 300MB video is never committed.
 
 ```
-node tools/render-video.js [trackId] [visualizer] [outPath] [--flags]
+node tools/render-video.js [trackId] [visualiser] [outPath] [--flags]
 ```
 
 Defaults render the whole MONSTER MEGAMIX with TOASTER SKY PARADE at 1080p60.
 `trackId` accepts `megamix|hub|title|finale|shop`, a cabinet id, or a shop-theme
-id (see `tools/lib/tracks.js`); `visualizer` accepts a name or index from
-`VISUALIZER_NAMES`. Useful flags: `--frames=N` (smoke test), `--ss=1` (faster,
+id (see `tools/lib/tracks.js`); `visualiser` accepts a name or index from
+`VISUALISER_NAMES`. Useful flags: `--frames=N` (smoke test), `--ss=1` (faster,
 slightly softer diagonals), `--workers=N`, `--no-gpu`, `--pixel`, `--crf=N`,
 `--size=WxH` (arbitrary frame, cover-cropped), `--fade=N` (audio fade-out).
 
@@ -31,7 +31,7 @@ Measured on a 12-core M-series: 7800 frames went from ~43 min to **3:37**.
    `--use-angle=metal --enable-gpu --ignore-gpu-blocklist` took end-to-end
    throughput from 3.45 to 19.3 fps. This is the single biggest lever — check it
    first for any Chromium-based rendering work in this repo.
-2. **Segments render in parallel.** `draw()` on every visualizer is
+2. **Segments render in parallel.** `draw()` on every visualiser is
    side-effect free — no RNG draws, no writes to `this.*` or particle state; all
    mutation lives in `update()`. So a worker reaches any frame by replaying
    `update()` alone, at ~0.01ms/frame against ~250ms to draw one. Each worker
@@ -60,7 +60,7 @@ scales the *context*, so the same logical 480x270 drawing code rasterizes at
 1080p. `--pixel` opts back into the game's own presentation (draw small,
 nearest-neighbour upscale) if you ever want that look deliberately.
 
-Verified safe: no visualizer or sprite code calls `setTransform`/`resetTransform`,
+Verified safe: no visualiser or sprite code calls `setTransform`/`resetTransform`,
 which would break a pre-scaled context. Re-check that if you point this at new
 drawing code.
 
@@ -72,7 +72,7 @@ There is no Web Audio graph in an offline render, so `analyseSong()` reproduces
 to 0–255, the same 55/240/2200/9000 Hz band splits and feature-level one-poles,
 stepped once per video frame. The tool prints mean/peak for bass, mid and treble
 — healthy values on megamix are ~0.66/0.40/0.23 mean. All-zero or pegged-at-1.0
-means the analysis is wrong, and the visualizer will look dead or fully saturated.
+means the analysis is wrong, and the visualiser will look dead or fully saturated.
 
 Audio itself comes from `renderBank()`, the same DSP as `tools/render-track.js`,
 so a video's soundtrack is identical to the WAV audition. It is mono, because
@@ -90,10 +90,10 @@ independently is invisible at 16:9 but stretches the art at any other aspect.)
 | Instagram feed 4:5 | `1080x1350` | 216 (44%) |
 | Reels / Stories 9:16 | `1080x1920` | 152 (32%) |
 
-Cropping suits **radial** visualizers (PRISMATIC STORM, MONSTER REACTOR,
+Cropping suits **radial** visualisers (PRISMATIC STORM, MONSTER REACTOR,
 SINGULARITY BLOOM) — shards leaving frame reads as energy. It suits wide
 travelling compositions like TOASTER SKY PARADE far less, since the flock's
-horizontal spread is the composition. Check what the visualizer's `draw()`
+horizontal spread is the composition. Check what the visualiser's `draw()`
 actually spans before promising a portrait cut; PRISMATIC STORM's field, for
 instance, is ±240 logical px horizontally but only ±150 vertically.
 
@@ -104,7 +104,7 @@ For upload, re-render at a higher CRF rather than transcoding the master — sam
 wall time, but a single-generation encode. Instagram transcodes to roughly
 3-5 Mbps regardless, so `--crf=20` is plenty: on a 49s 4:5 clip that measured
 44MB / 7.5 Mbps against the crf-12 master's 106MB / 18 Mbps, at 44.9 dB PSNR
-(visually indistinguishable). Dense, high-motion visualizers compress worse than
+(visually indistinguishable). Dense, high-motion visualisers compress worse than
 you would guess — hard-edged translucent shards give x264 little to reuse
 between frames.
 

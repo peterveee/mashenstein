@@ -526,6 +526,25 @@ if (watch) {
     console.error(err.message || err);
   }
 
+  // The visualiser, as a standalone page at /visualiser.html. Self-contained: it
+  // synthesises its songs through the engine rather than fetching audio, so it needs
+  // nothing from the server it is served by and works from any subpath — which is
+  // what a project Pages site is.
+  //
+  // Through the tool's own builder, for the Song Mixer's reason above and for one of
+  // its own: that builder is what resolves src/sprites/toons.js and props.js to a
+  // stub. A second esbuild call here would quietly ship MASHENSTEIN's whole cast on a
+  // public page.
+  try {
+    const { buildVisualiserHtml } = await import('../tools/build-visualiser.js');
+    const html = await buildVisualiserHtml(root);
+    writeFileSync(join(root, 'dist', 'visualiser.html'), html);
+    console.log(`dist/visualiser.html written (${(html.length / 1024).toFixed(0)} KB visualiser)`);
+  } catch (err) {
+    console.error('Visualiser build failed (the game build is unaffected):');
+    console.error(err.message || err);
+  }
+
   // The public MRDR-3 playground shares the editor, graph, preset and keyboard modules
   // with Song Mixer but gets its own small shell and direct `/MRDR3/` deployment path.
   try {

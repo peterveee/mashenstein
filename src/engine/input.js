@@ -175,7 +175,7 @@ class InputSys {
       if (t && !t.isButton) { t.x = p.x; t.y = p.y; }
       // Menus use a leftward touch swipe as their Back gesture. Keep it out of
       // gameplay and the hub (where a horizontal drag steers the player), and
-      // let the jukebox visualizer consume the same back press as a preset
+      // let the jukebox visualiser consume the same back press as a preset
       // browse gesture before it can wake the screen.
       if (t && !t.isButton && this.usingTouch && (this.context === 'menu' || this.menuKeys)
         && !t.menuSwipeBack) {

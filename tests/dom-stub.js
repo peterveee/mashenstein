@@ -21,7 +21,7 @@ export function installDom({
       measureText: () => ({ width: 0 }),
       // Deliberately no createImageData: its absence is the signal painters use
       // to detect a headless canvas and fall back (see ensureBuffers in
-      // visualizers.js). Providing one here tells every such painter it is
+      // visualisers.js). Providing one here tells every such painter it is
       // running on a real 2D context, and they then bake buffers into nothing.
       getImageData: () => ({ data: new Uint8ClampedArray(4) }),
       clearRect(...args) { contextCalls.push({ method: 'clearRect', canvas: this.canvas, args }); },

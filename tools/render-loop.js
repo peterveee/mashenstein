@@ -448,7 +448,7 @@ function paintGary(ctx, LW, LH, u, cycle, t) {
 //   ~4.25          the last one leaves the bottom of the frame
 //   4.25 - 4.5     black
 //
-// Depth is done the way the jukebox visualizers do it: one z per coin driving
+// Depth is done the way the jukebox visualisers do it: one z per coin driving
 // size, fall speed and opacity together, so the far ones are small, slow and dim
 // and the near ones are large, fast and bright. Sorted by z once at build time, so
 // near coins draw over far ones without a per-frame sort.

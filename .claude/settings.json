@@ -5,7 +5,7 @@
       "Bash(node -e ' *)",
       "Bash(node /private/tmp/claude-502/-Users-Peter-mashenstein/29985fc2-886d-4e3a-8612-fb2d4234a4b5/scratchpad/check-real-songs.js)",
       "Bash(node /private/tmp/claude-502/-Users-Peter-mashenstein/29985fc2-886d-4e3a-8612-fb2d4234a4b5/scratchpad/check-megamix-clap.js)",
-      "Bash(node tests/visualizers.js)",
+      "Bash(node tests/visualisers.js)",
       "Bash(echo \"=== exit $? ===\")",
       "Bash(node tests/arrangement.js)",
       "Bash(node /private/tmp/claude-502/-Users-Peter-mashenstein/78c82489-1a13-4309-96b0-064e5de02dcf/scratchpad/julia-res.mjs)",

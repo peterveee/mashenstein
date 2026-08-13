@@ -414,7 +414,7 @@ assert(/Audio\.setSampleRate\(44100\)/.test(entry)
 // A silenced lane costs nothing: the desk opts in to the scheduler skipping muted
 // lanes and the losers of a channel solo — states whose synthesis reaches no output
 // at all (mute zeroes the fader every send taps below; solo zeroes the gate above
-// everything). The skip nulls lanes AFTER the percussion tally so visualizers keep
+// everything). The skip nulls lanes AFTER the percussion tally so visualisers keep
 // following the arrangement, and never during a preview. The game never sets the
 // flag, so every game path is untouched.
 assert(/setSilentLaneSkip\(on\)/.test(audio)
@@ -2582,10 +2582,17 @@ assert(/function syncFrozenLaneUi\(lane\)[\s\S]*?strip\.classList\.toggle\('froz
   && /'❄ PARTIAL' : '❄ FROZEN'/.test(entry),
   'freezing, unfreezing and source invalidation update both track surfaces immediately');
 const freezeFingerprint = entry.slice(entry.indexOf('function freezeFingerprint'), entry.indexOf('function unfreezeLane'));
-assert(/arrangement: arrFor\(id\) \|\| null/.test(freezeFingerprint)
-  && /layers: m\.layers \|\| \[\], off: m\.off \|\| \[\]/.test(freezeFingerprint)
-  && !/\border:\s*m\.order/.test(freezeFingerprint),
+// The claim, not the implementation that used to make it. `m.order` is the desk's
+// display order and no audio path reads it (see the note in deskBank), so a strip drag
+// must never cost a freeze. What the fingerprint DOES cover is now behaviour-tested in
+// tests/freeze-fingerprint.js, against a real song rather than against this file's text.
+assert(!/\border:\s*m\.order/.test(freezeFingerprint),
   'reordering channel strips does not invalidate an otherwise unchanged frozen lane');
+assert(/arrangement: laneOnlyBlock\(arrFor\(id\), sources\)/.test(freezeFingerprint)
+  && /freezeNoteSources\(m, lane\)/.test(freezeFingerprint)
+  && /v: 2/.test(freezeFingerprint),
+  'and a freeze is fingerprinted against its OWN lane, so a note added to another track'
+  + ' does not throw away every render in the song');
 assert(/const FROZEN_INTENT_KEY = 'mash-mixer-frozen-tracks'/.test(entry)
   && /function rememberFrozenIntent\(id, lane, scope, frozen\)[\s\S]*?persistFrozenIntent\(\)/.test(entry)
   && /const FREEZE_HANDLE_DB = 'mash-mixer-freeze-files'/.test(entry)
@@ -3406,6 +3413,63 @@ assert(bankNamed?.id === 'stRoundMono' && bankNamed.starter === true
   'a starter named by the bank forks into a song-local copy that is editable, and the'
   + ' frozen starter itself is left alone');
 delete CATALOGUE[copyId];
+
+// ---- the diagnostics log reaches the disk ----------------------------------
+//
+// A downloadable CSV is right for keeping a log and wrong for reading one. Both halves
+// have to exist for the file to appear, and neither is visible from the other's file.
+{
+  assert(/req\.method === 'POST' && req\.url === '\/diagnostics-log'/.test(server)
+    && /join\('work', 'local', 'mixer-diagnostics\.csv'\)/.test(server),
+    'the dev server writes the posted diagnostics log to work/local/, the disposable drawer');
+  assert(/fetch\('\/diagnostics-log'/.test(entry) && /mirrorDiagnosticsLog\(\)/.test(entry),
+    'and the desk posts it there when a record lands');
+  const mirror = entry.slice(entry.indexOf('function mirrorDiagnosticsLog'),
+    entry.indexOf('function persistLoopRecord'));
+  assert(/setTimeout\(/.test(mirror) && /diagnosticsMirrorTimer != null\) return/.test(mirror),
+    'debounced, so a lap row and a fault event in the same frame are one write, not two');
+  assert(/diagnosticsMirrorOff = true/.test(mirror),
+    'a desk not served by `npm run mixer` stops trying rather than warning on every record');
+  assert(/if \(!DEV_USER/.test(mirror),
+    'and a non-dev desk never posts its log anywhere at all');
+}
+
+// ---- a refused freeze restore says which one, and why ----------------------
+//
+// The restore loop can refuse a single range down four separate paths, and every one of
+// them used to end in silence or in a console line nobody was looking at. What the user
+// saw was "no current saved render can be loaded" over a bundle that had just loaded
+// three whole tracks and refused one range — true of that range, false of the bundle,
+// and missing the only fact that decides whether to re-export or re-render.
+{
+  const restore = entry.slice(entry.indexOf('function queueFrozenRestorePrompt'),
+    entry.indexOf('function freezeMark'));
+  assert(restore.length > 500, 'the freeze restore prompt is where this test thinks it is');
+  assert(/rejected\.set\([\s\S]{0,200}?the saved bundle holds/.test(restore),
+    'a range the bundle holds at a DIFFERENT scope is reported, not skipped in silence —'
+    + ' a whole-track freeze can never show this, because its key is always `all`');
+  assert(/rejected\.set\(key, `\$\{bundle\.file\.name\} does not contain this range`\)/.test(restore),
+    'a range the bundle does not mention at all is reported too, and names the file');
+  assert(/catch \(error\) \{[\s\S]{0,400}?rejected\.set\(key, error\.message\)/.test(restore),
+    'a whole-bundle failure — permission, a moved file, the wrong song — reaches the dialog');
+  assert(/if \(!record\) \{[\s\S]{0,200}?rejected\.set\(freezeRequestKey\(item\), 'no saved freeze bundle/.test(restore),
+    'and so does having no remembered bundle at all');
+  assert(/const detail = why\.length[\s\S]{0,200}?<ul>/.test(restore)
+    && /\$\{detail\}|\+ detail/.test(restore),
+    'the reasons are rendered into the refreeze dialog, not only into the console');
+  assert(/appendDiagnosticEvent\('FREEZE RESTORE SKIPPED'/.test(restore),
+    'and persisted, so a CSV can answer this after the dialog is gone');
+  assert(/loadedKeys\.size \? 'could not be loaded from the saved render'/.test(restore),
+    'a bundle that loaded some ranges is not described as though it loaded none');
+  // Reasons are plain text and escaped once, where they are rendered. Nesting the
+  // escaped name inside a string that is escaped again turns "Bass & Lead" into
+  // "Bass &amp;amp; Lead" in the one dialog that exists to be read carefully.
+  assert(/rejected\.set\([\s\S]{0,200}?freezeRequestPlainName/.test(restore)
+    && !/rejected\.set\([\s\S]{0,120}?escapeHtml/.test(restore),
+    'reasons carry plain text, so escaping them at render is not double-escaping');
+  assert(/const freezeRequestName = \(id, item\) => escapeHtml\(freezeRequestPlainName\(id, item\)\)/.test(entry),
+    'and the escaped name is defined in terms of the plain one, so the two cannot drift');
+}
 
 // ---- performance relief ships in SHADOW ------------------------------------
 //

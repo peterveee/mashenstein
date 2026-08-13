@@ -21,7 +21,7 @@ import { AttractState } from '../game/attract.js';
 import { ResultsState, BriefingState, FieldGuideState, SoundTestState, JUKEBOX, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
 import { CastState } from '../game/cast.js';
 import { CreditsState } from '../game/credits.js';
-import { VISUALIZER_NAMES, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition } from '../engine/visualizers.js';
+import { VISUALISER_NAMES, MEGAMIX_AUDITION_BEATS, MEGAMIX_TRANSITIONS, setMegamixAudition } from '../engine/visualisers.js';
 import { GROUPS, byGroup } from '../../tools/lib/tunables.js';
 import { readOne, defaultOf, knows, changed, tuningAvailable } from './tunables.js';
 import { nudge, revertTuning, resyncRun } from './tune-store.js';
@@ -333,7 +333,7 @@ function gameAlternatesMenu(dev) {
   };
 }
 
-function visualizersMenu(dev) {
+function visualisersMenu(dev) {
   const previousState = currentState();
   const launch = (index, audition = false) => {
     // Set on every launch, not just the audition one, so the mode cannot leak
@@ -348,15 +348,15 @@ function visualizersMenu(dev) {
         dev.reopenMenuAfterState(previousState);
       },
       initialTrack: JUKEBOX.length - 1,
-      startVisualizer: true,
-      startVisualizerIndex: index,
+      startVisualiser: true,
+      startVisualiserIndex: index,
     }));
   };
-  const megamixIndex = VISUALIZER_NAMES.indexOf('VJ MEGAMIX');
+  const megamixIndex = VISUALISER_NAMES.indexOf('VJ MEGAMIX');
   const build = () => ({
     title: 'VISUALISERS',
     items: [
-      ...VISUALIZER_NAMES.map((name, index) => ({
+      ...VISUALISER_NAMES.map((name, index) => ({
         label: `${String(index + 1).padStart(2, '0')}  ${name}`,
         act: () => launch(index),
       })),
@@ -648,7 +648,7 @@ export function rootMenu(dev) {
         dev.close();
         setState(new CreditsState({ settings: dev.ctx.save.settings, onDone: () => dev.ctx.Flow.toHub() }));
       } },
-      { label: 'VISUALISERS ▸', submenu: () => visualizersMenu(dev) },
+      { label: 'VISUALISERS ▸', submenu: () => visualisersMenu(dev) },
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
       { label: 'SAVE ▸', submenu: () => saveMenu(dev) },
       { label: 'RUN ▸', submenu: () => runMenu(dev) },

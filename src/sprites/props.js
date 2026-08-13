@@ -2848,7 +2848,7 @@ export function drawProp(ctx, name, x, y, w, h, frame = 0) {
   return true;
 }
 
-// A rare visualizer-only appliance finish still uses the original vector
+// A rare visualiser-only appliance finish still uses the original vector
 // painter, so only its authored casing planes change colour—not the toast,
 // wings, outlines, or transparent bounds as with a post-process tint.
 export function drawApplianceFinish(ctx, x, y, w, h, frame, finish) {

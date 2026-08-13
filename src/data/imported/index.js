@@ -28,6 +28,7 @@ import * as BITTER_MARKET from './bitter-market.js';
 import * as BRAVE_COMET from './brave-comet.js';
 import * as BRAVE_DIVER from './brave-diver.js';
 import * as BRAVE_SIREN from './brave-siren.js';
+import * as CASTLE from './castle.js';
 import { CHOPIN3 } from './chopin3.js';
 import * as CHROME_DOLPHIN from './chrome-dolphin.js';
 import * as CHROME_MEADOW from './chrome-meadow.js';
@@ -49,6 +50,7 @@ import * as ELECTRIC_CAROUSEL from './electric-carousel.js';
 import * as ELECTRIC_LANTERN from './electric-lantern.js';
 import * as ELECTRIC_MIRROR from './electric-mirror.js';
 import * as ELECTRIC_SCOOTER from './electric-scooter.js';
+import * as ENDING from './ending.js';
 import * as FROZEN_BEETLE from './frozen-beetle.js';
 import * as FROZEN_DIVER from './frozen-diver.js';
 import * as FROZEN_HARBOUR from './frozen-harbour.js';
@@ -103,6 +105,7 @@ import * as SALTY_TEMPLE from './salty-temple.js';
 import * as SECRET_BALLOON from './secret-balloon.js';
 import * as SECRET_DIVER from './secret-diver.js';
 import * as SECRET_MONSTER from './secret-monster.js';
+import * as SHOPPINGCHANNEL from './shoppingchannel.js';
 import * as SILENT_BEETLE from './silent-beetle.js';
 import * as SILENT_ROCKET from './silent-rocket.js';
 import * as SILENT_VOLCANO from './silent-volcano.js';
@@ -117,6 +120,7 @@ import * as SMWGOOD from './smwgood.js';
 import * as SUGAR_DIVER from './sugar-diver.js';
 import * as SUGAR_KITTEN from './sugar-kitten.js';
 import * as SUNKEN_PARADE from './sunken-parade.js';
+import * as SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2 from './super-mario-3d-world-bowser-castle2.js';
 import * as THE_FOOD_COURT_ALT_2 from './the-food-court-alt-2.js';
 import * as THE_FOOD_COURT_ALT from './the-food-court-alt.js';
 import * as THUNDER_JUKEBOX from './thunder-jukebox.js';
@@ -154,6 +158,7 @@ export const IMPORTED_BY_ID = {
   "brave-comet": { bank: BRAVE_COMET.bank, title: BRAVE_COMET.title, group: "scratch", writable: true },
   "brave-diver": { bank: BRAVE_DIVER.bank, title: BRAVE_DIVER.title, group: "scratch", writable: true },
   "brave-siren": { bank: BRAVE_SIREN.bank, title: BRAVE_SIREN.title, group: "scratch", writable: true },
+  "castle": { bank: CASTLE.bank, title: CASTLE.title, group: "imported", writable: true },
   "chopin3": { bank: CHOPIN3, title: "CHOPIN3", group: "imported", writable: false },
   "chrome-dolphin": { bank: CHROME_DOLPHIN.bank, title: CHROME_DOLPHIN.title, group: "scratch", writable: true },
   "chrome-meadow": { bank: CHROME_MEADOW.bank, title: CHROME_MEADOW.title, group: "scratch", writable: true },
@@ -175,6 +180,7 @@ export const IMPORTED_BY_ID = {
   "electric-lantern": { bank: ELECTRIC_LANTERN.bank, title: ELECTRIC_LANTERN.title, group: "scratch", writable: true },
   "electric-mirror": { bank: ELECTRIC_MIRROR.bank, title: ELECTRIC_MIRROR.title, group: "scratch", writable: true },
   "electric-scooter": { bank: ELECTRIC_SCOOTER.bank, title: ELECTRIC_SCOOTER.title, group: "scratch", writable: true },
+  "ending": { bank: ENDING.bank, title: ENDING.title, group: "imported", writable: true },
   "frozen-beetle": { bank: FROZEN_BEETLE.bank, title: FROZEN_BEETLE.title, group: "scratch", writable: true },
   "frozen-diver": { bank: FROZEN_DIVER.bank, title: FROZEN_DIVER.title, group: "scratch", writable: true },
   "frozen-harbour": { bank: FROZEN_HARBOUR.bank, title: FROZEN_HARBOUR.title, group: "scratch", writable: true },
@@ -229,6 +235,7 @@ export const IMPORTED_BY_ID = {
   "secret-balloon": { bank: SECRET_BALLOON.bank, title: SECRET_BALLOON.title, group: "scratch", writable: true },
   "secret-diver": { bank: SECRET_DIVER.bank, title: SECRET_DIVER.title, group: "scratch", writable: true },
   "secret-monster": { bank: SECRET_MONSTER.bank, title: SECRET_MONSTER.title, group: "scratch", writable: true },
+  "shoppingchannel": { bank: SHOPPINGCHANNEL.bank, title: SHOPPINGCHANNEL.title, group: "copy", writable: true },
   "silent-beetle": { bank: SILENT_BEETLE.bank, title: SILENT_BEETLE.title, group: "scratch", writable: true },
   "silent-rocket": { bank: SILENT_ROCKET.bank, title: SILENT_ROCKET.title, group: "scratch", writable: true },
   "silent-volcano": { bank: SILENT_VOLCANO.bank, title: SILENT_VOLCANO.title, group: "scratch", writable: true },
@@ -243,6 +250,7 @@ export const IMPORTED_BY_ID = {
   "sugar-diver": { bank: SUGAR_DIVER.bank, title: SUGAR_DIVER.title, group: "scratch", writable: true },
   "sugar-kitten": { bank: SUGAR_KITTEN.bank, title: SUGAR_KITTEN.title, group: "scratch", writable: true },
   "sunken-parade": { bank: SUNKEN_PARADE.bank, title: SUNKEN_PARADE.title, group: "scratch", writable: true },
+  "super-mario-3d-world-bowser-castle2": { bank: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.bank, title: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.title, group: "imported", writable: true },
   "the-food-court-alt-2": { bank: THE_FOOD_COURT_ALT_2.bank, title: THE_FOOD_COURT_ALT_2.title, group: "alternate", writable: true, alternateOf: "hub" },
   "the-food-court-alt": { bank: THE_FOOD_COURT_ALT.bank, title: THE_FOOD_COURT_ALT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "thunder-jukebox": { bank: THUNDER_JUKEBOX.bank, title: THUNDER_JUKEBOX.title, group: "scratch", writable: true },

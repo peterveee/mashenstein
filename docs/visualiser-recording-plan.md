@@ -72,9 +72,9 @@ with no dropped frames.
 This needs three things that do not exist:
 
 1. **A `--tune` flag** on `render-video.js`. It currently resolves a preset with
-   `VISUALIZER_NAMES.indexOf(...)` and exits if it misses, and the lab is
+   `VISUALISER_NAMES.indexOf(...)` and exits if it misses, and the lab is
    deliberately not in that list — see the comment on `createHalfPipeLab` in
-   [src/engine/visualizers.js](../src/engine/visualizers.js). The renderer already
+   [src/engine/visualisers.js](../src/engine/visualisers.js). The renderer already
    bundles that module, so the factory is in reach; what is missing is a way to
    pass a tuning in and a branch to call it.
 2. **Automation playback.** The list is keyed on beat rather than wall time, so it
@@ -98,6 +98,6 @@ one.
 
 Whatever gets built, the shipped preset must not move. `HALF-PIPE HORIZON` at
 index 20 is what the game deals and what the megamix mixes, and
-[tests/visualizers.js](../tests/visualizers.js) holds the claim that the lab at its
+[tests/visualisers.js](../tests/visualisers.js) holds the claim that the lab at its
 defaults is that preset frame for frame. Recording is a desk feature; it does not
 get to reach into the pack.

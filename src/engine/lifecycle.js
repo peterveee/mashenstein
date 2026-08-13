@@ -29,7 +29,7 @@ export function lifecyclePolicy({
   //
   // Android phones get the same treatment outside the jukebox: portrait is
   // useless for a landscape-only arcade game and the rotate overlay is the
-  // clearest signal. The listening/visualizer surface can explicitly opt out;
+  // clearest signal. The listening/visualiser surface can explicitly opt out;
   // tablets are wide enough to be usable in either orientation.
   const phonePortrait = (isIphone || isAndroidPhone)
     && (standalone || devBrowserBypass) && portrait && !allowPortrait;

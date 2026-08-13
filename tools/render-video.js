@@ -1,4 +1,4 @@
-// Offline MP4 render of a jukebox visualizer driven by a rendered music bank.
+// Offline MP4 render of a jukebox visualiser driven by a rendered music bank.
 //
 // Dev tooling — this never ships. Nothing in src/ imports from tools/, the
 // build only bundles src/gate.js and src/main.js, and the dependency runs one
@@ -8,15 +8,17 @@
 // The song comes from the GAME'S OWN ENGINE via tools/lib/render-bank-browser.js
 // (the same render render-track.js writes, so the video's audio is byte-identical
 // to the WAV audition — and it carries src/data/mix.js, which the old JS mirror
-// could not see), and the picture comes from src/engine/visualizers.js in Chromium on
+// could not see), and the picture comes from src/engine/visualisers.js in Chromium on
 // a real 480x270 Canvas2D — the same surface the game draws to. Frames are
 // stepped at a fixed dt instead of wall-clock, so the render is deterministic
 // and never drops a frame no matter how slow the capture is.
 //
-// The visualizer's beat/bass/mid/treble reactions come from an offline
-// reimplementation of the engine's AnalyserNode readout (see analyseSong
-// below), fed the actual rendered samples. So the toasters react to the mix
-// rather than to a stand-in clock.
+// The visualiser's beat/bass/mid/treble reactions come from an offline
+// reimplementation of the engine's AnalyserNode readout (analyseSong in
+// tools/lib/song-analysis.js), fed the actual rendered samples. So the toasters
+// react to the mix rather than to a stand-in clock. That module is shared with
+// the file-driven visualiser page rather than copied into it — a hand-maintained
+// mirror is what got tools/lib/render-bank.js deleted.
 //
 // Resolution: by default the canvas is --scale x the logical 480x270 and the
 // context is scaled to match, so every path, gradient and prop is rasterized at
@@ -26,9 +28,9 @@
 // would happily have drawn. --pixel opts back into the game's own look: draw at
 // 480x270 and upscale with nearest neighbour.
 //
-// Usage: node tools/render-video.js [trackId] [visualizer] [outPath] [--flags]
+// Usage: node tools/render-video.js [trackId] [visualiser] [outPath] [--flags]
 //   trackId     megamix | hub | title | finale | shop | cabinet id  (default megamix)
-//   visualizer  name or index into VISUALIZER_NAMES        (default TOASTER SKY PARADE)
+//   visualiser  name or index into VISUALISER_NAMES        (default TOASTER SKY PARADE)
 //   --repeat=N  times to walk the song form                (default 1)
 //   --fps=N     video frame rate                           (default 60)
 //   --scale=N   resolution multiple of 480x270             (default 4 -> 1920x1080)
@@ -37,7 +39,7 @@
 //   --ss=N      supersample factor, downsampled in-page    (default 2)
 //   --pixel     draw at 480x270 and nearest-upscale instead of rendering native
 //   --crf=N     x264 quality, lower is better              (default 12)
-//   --seed=N    visualizer RNG seed                        (default 0x7042ade)
+//   --seed=N    visualiser RNG seed                        (default 0x7042ade)
 //   --frames=N  stop after N frames (smoke test)           (default whole song)
 //   --workers=N parallel render workers                    (default min(4, cores-4))
 //   --no-gpu    rasterize on CPU (fallback; ~5x slower)
@@ -50,10 +52,11 @@ import { join, dirname, basename, resolve } from 'path';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import { renderBankBrowser } from './lib/render-bank-browser.js';
+import { analyseSong } from './lib/song-analysis.js';
 import { wavBuffer, SR } from './lib/wav.js';
 import { resolveOrExit } from './lib/tracks.js';
 import { bpmOf } from '../src/data/arrangements.js';
-import { VISUALIZER_NAMES } from '../src/engine/visualizers.js';
+import { VISUALISER_NAMES } from '../src/engine/visualisers.js';
 
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const W = 480;
@@ -113,17 +116,17 @@ const WORKERS = Math.max(1, Math.round(num('workers', Math.min(4, Math.max(1, cp
 
 const track = resolveOrExit(trackId);
 // The tempo the song is PLAYED at, which is what the beat clock has to run on: the
-// visualizers pulse off it, and a song the desk retuned would otherwise flash against
+// visualisers pulse off it, and a song the desk retuned would otherwise flash against
 // its own downbeats for the whole video. See bpmOf.
 const BPM = bpmOf(track.bank, track.id);
 const visualIndex = /^\d+$/.test(String(visualArg))
-  ? Number(visualArg) % VISUALIZER_NAMES.length
-  : VISUALIZER_NAMES.indexOf(String(visualArg).toUpperCase());
+  ? Number(visualArg) % VISUALISER_NAMES.length
+  : VISUALISER_NAMES.indexOf(String(visualArg).toUpperCase());
 if (visualIndex < 0) {
-  console.error(`unknown visualizer "${visualArg}" — try one of:\n  ${VISUALIZER_NAMES.join('\n  ')}`);
+  console.error(`unknown visualiser "${visualArg}" — try one of:\n  ${VISUALISER_NAMES.join('\n  ')}`);
   process.exit(1);
 }
-const visualName = VISUALIZER_NAMES[visualIndex];
+const visualName = VISUALISER_NAMES[visualIndex];
 const visualSlug = visualName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 const OUT = resolve(ROOT, outArg || `work/video/${track.slug}-${visualSlug}.mp4`);
 
@@ -146,175 +149,13 @@ console.log(`audio      ${seconds.toFixed(1)}s, peak ${peak.toFixed(3)}, `
   + (loop?.loop
     ? `in on bar ${loop.start / 16 + 1}, then ${REPEAT} × bars ${loop.loop.start / 16 + 1}-${loop.loop.end / 16}`
     : `${blocks * 2} bars`));
-console.log(`visualizer ${visualName} (#${visualIndex}), seed 0x${SEED.toString(16)}`);
+console.log(`visualiser ${visualName} (#${visualIndex}), seed 0x${SEED.toString(16)}`);
 console.log(`video      ${FRAMES} frames @ ${FPS}fps, ${OUT_W}x${OUT_H}`
   + (PIXEL ? ' (480x270 nearest-upscaled)' : `, drawn at ${OUT_W * SS}x${OUT_H * SS}`)
   + (SIZE ? `, cover-cropped from 16:9 (keeps ${(W * Math.max(OUT_W / W, OUT_H / H) > OUT_W ? OUT_W / Math.max(OUT_W / W, OUT_H / H) : W).toFixed(0)}/${W} logical px wide)` : ''));
 
-// -------------------------------------------------------- offline analysis
-
-// In-place iterative radix-2 FFT.
-function fft(re, im) {
-  const n = re.length;
-  for (let i = 1, j = 0; i < n; i++) {
-    let bit = n >> 1;
-    for (; j & bit; bit >>= 1) j ^= bit;
-    j ^= bit;
-    if (i < j) {
-      const tr = re[i]; re[i] = re[j]; re[j] = tr;
-      const ti = im[i]; im[i] = im[j]; im[j] = ti;
-    }
-  }
-  for (let len = 2; len <= n; len <<= 1) {
-    const ang = (-2 * Math.PI) / len;
-    const wr = Math.cos(ang);
-    const wi = Math.sin(ang);
-    const half = len >> 1;
-    for (let i = 0; i < n; i += len) {
-      let cr = 1;
-      let ci = 0;
-      for (let k = 0; k < half; k++) {
-        const ur = re[i + k];
-        const ui = im[i + k];
-        const xr = re[i + k + half];
-        const xi = im[i + k + half];
-        const vr = xr * cr - xi * ci;
-        const vi = xr * ci + xi * cr;
-        re[i + k] = ur + vr; im[i + k] = ui + vi;
-        re[i + k + half] = ur - vr; im[i + k + half] = ui - vi;
-        const ncr = cr * wr - ci * wi;
-        ci = cr * wi + ci * wr;
-        cr = ncr;
-      }
-    }
-  }
-}
-
-/**
- * Reproduce Audio.musicAnalysis() offline, one step per video frame.
- *
- * The engine reads a 256-point AnalyserNode (smoothingTimeConstant 0.72) once
- * per rendered frame, so a per-frame step over the rendered samples lands on
- * the same numbers the jukebox screensaver sees. Everything here mirrors the
- * Web Audio spec: Blackman window, magnitudes normalised by fftSize, exponential
- * smoothing on the linear magnitudes, then dB mapped across [-100, -30] to 0..255.
- * `beat` comes from the bank's own tempo, matching songBeat()'s procedural clock.
- */
-function analyseSong(samples, bpm, percussionAt = []) {
-  const N = 256;             // engine's songAnalyser.fftSize
-  const BINS = N / 2;
-  const TAU_SMOOTH = 0.72;   // engine's smoothingTimeConstant
-  const MIN_DB = -100;
-  const MAX_DB = -30;
-  const nyquist = SR / 2;
-
-  const window = new Float64Array(N);
-  for (let i = 0; i < N; i++) {
-    window[i] = 0.42 - 0.5 * Math.cos((2 * Math.PI * i) / N) + 0.08 * Math.cos((4 * Math.PI * i) / N);
-  }
-
-  const smoothed = new Float64Array(BINS);
-  const spectrum = new Uint8Array(BINS);
-  const re = new Float64Array(N);
-  const im = new Float64Array(N);
-
-  // _analysisBand(lo, hi): mean of the byte bins covering [lo, hi), /255.
-  const bandRange = (lo, hi) => {
-    const a = Math.max(0, Math.floor((lo / nyquist) * BINS));
-    const b = Math.min(BINS, Math.max(a + 1, Math.ceil((hi / nyquist) * BINS)));
-    return [a, b];
-  };
-  const BASS = bandRange(55, 240);
-  const MID = bandRange(240, 2200);
-  const TREBLE = bandRange(2200, 9000);
-  const band = ([a, b]) => {
-    let sum = 0;
-    for (let i = a; i < b; i++) sum += spectrum[i];
-    return sum / ((b - a) * 255);
-  };
-
-  // The engine's own kit timeline, not a second guess at it: renderBankBrowser
-  // hands back the times scheduleStep() queued while it laid the song down. Same
-  // four-beat density window and two-beat drumless gap _readPercussion() uses.
-  const hits = [...percussionAt].sort((a, b) => a - b);
-  const beatSeconds = 60 / bpm;
-  let hitAt = 0;
-  let heardFrom = 0;
-
-  const frames = [];
-  let bass = 0;
-  let mid = 0;
-  let treble = 0;
-  let level = 0;
-  let peak = 0;
-  let drums = 0;
-  let hit = 0;
-  for (let f = 0; f < FRAMES; f++) {
-    const t = f / FPS;
-    const end = Math.round(t * SR);
-    // RMS over the unwindowed time-domain window, matching what the engine
-    // reads out of getByteTimeDomainData(). The byte quantisation the live path
-    // goes through is far below the resolution any of this drives.
-    let square = 0;
-    for (let i = 0; i < N; i++) {
-      const at = end - N + i;
-      const s = at >= 0 && at < samples.length ? samples[at] : 0;
-      square += s * s;
-    }
-    const rms = Math.sqrt(square / N);
-    for (let i = 0; i < N; i++) {
-      const at = end - N + i;
-      re[i] = (at >= 0 && at < samples.length ? samples[at] : 0) * window[i];
-      im[i] = 0;
-    }
-    fft(re, im);
-    for (let k = 0; k < BINS; k++) {
-      const mag = Math.sqrt(re[k] * re[k] + im[k] * im[k]) / N;
-      smoothed[k] = TAU_SMOOTH * smoothed[k] + (1 - TAU_SMOOTH) * mag;
-      const db = smoothed[k] > 0 ? 20 * Math.log10(smoothed[k]) : MIN_DB;
-      const scaled = (255 * (db - MIN_DB)) / (MAX_DB - MIN_DB);
-      spectrum[k] = Math.max(0, Math.min(255, Math.round(scaled)));
-    }
-    // The extra feature-level one-pole from musicAnalysis().
-    bass += (band(BASS) - bass) * 0.34;
-    mid += (band(MID) - mid) * 0.30;
-    treble += (band(TREBLE) - treble) * 0.38;
-    // Loudness, same shape as musicAnalysis(): fast attack / slow release on the
-    // level, a reference that jumps to new peaks and decays over ~30s, and a
-    // perceptual square root on the ratio. A rendered clip has to slow down in
-    // the same places the live jukebox does.
-    level += (rms - level) * (rms > level ? 0.45 : 0.12);
-    if (level > peak) peak = level;
-    else peak += (level - peak) * 0.0006;
-    const dynamics = peak > 0.01 ? Math.max(0, Math.min(1, Math.sqrt(level / peak))) : 0;
-
-    // Two indices walking the same sorted list: `hitAt` is the playhead and
-    // `heardFrom` the trailing edge of the four-beat window, so this stays O(1)
-    // a frame instead of rescanning the song's hits every sixtieth of a second.
-    const wasAt = hitAt;
-    while (hitAt < hits.length && hits[hitAt] <= t) hitAt++;
-    while (heardFrom < hitAt && hits[heardFrom] < t - beatSeconds * 4) heardFrom++;
-    drums += (Math.min(1, (hitAt - heardFrom) / 4) - drums) * 0.08;
-    const drumless = !(hitAt > 0 && hits[hitAt - 1] >= t - beatSeconds * 2);
-    // The onset, mirroring _readPercussion(): the playhead advancing over a hit
-    // IS the frame that hit is heard, which is the same test the engine makes
-    // when its pending queue drains. Same 0.55 fall, so a preset choreographed
-    // on `hit` cuts identically in a rendered clip and in the browser.
-    hit = hitAt > wasAt ? 1 : hit * 0.55;
-
-    const beat = (t * bpm) / 60;
-    const beatPhase = ((beat % 1) + 1) % 1;
-    frames.push({
-      bass, mid, treble, level, dynamics, drums, drumless, hit, beat, beatPhase,
-      beatPulse: Math.pow(1 - beatPhase, 5),
-      spectrum: Array.from(spectrum),
-    });
-  }
-  return frames;
-}
-
 console.log('analysing  song…');
-const analysis = analyseSong(pcm, BPM, percussion);
+const analysis = analyseSong(pcm, BPM, percussion, { fps: FPS, frames: FRAMES, sampleRate: SR });
 const avg = (key) => analysis.reduce((a, f) => a + f[key], 0) / analysis.length;
 const max = (key) => analysis.reduce((a, f) => Math.max(a, f[key]), 0);
 const min = (key) => analysis.reduce((a, f) => Math.min(a, f[key]), Infinity);
@@ -346,8 +187,8 @@ const esbuild = require('esbuild');
 
 const entry = join(work, 'entry.js');
 writeFileSync(entry, `
-import { createVisualizer } from ${JSON.stringify(join(ROOT, 'src/engine/visualizers.js'))};
-window.__mkVisualizer = (index, seed, track) => createVisualizer(index, seed, track);
+import { createVisualiser } from ${JSON.stringify(join(ROOT, 'src/engine/visualisers.js'))};
+window.__mkVisualiser = (index, seed, track) => createVisualiser(index, seed, track);
 `);
 const bundle = await esbuild.build({
   entryPoints: [entry],
@@ -392,7 +233,7 @@ const html = `<!doctype html><meta charset="utf-8">
 const GPU_ARGS = ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'];
 const USE_GPU = flags.gpu !== 'false' && !flags['no-gpu'];
 
-// The visualizer integrates state in update() and draws from it without ever
+// The visualiser integrates state in update() and draws from it without ever
 // writing back — no RNG draws, no mutation in draw() or its helpers. So a
 // worker can reach any frame by replaying update() alone and will land in
 // exactly the state a serial run would have. Replay costs ~0.01ms/frame
@@ -407,7 +248,7 @@ async function renderRange(from, to, segmentPath, onProgress) {
   await page.evaluate((faces) => Promise.all(faces.map((face) => document.fonts.load(face).catch(() => {}))), GAME_FONT_FACES);
 
   await page.evaluate(({ index, seed, bpm, fps, w, h, outW, outH, ss, skip }) => {
-    // The visualizer draws in logical 480x270 coordinates. Scaling the context
+    // The visualiser draws in logical 480x270 coordinates. Scaling the context
     // instead of the finished bitmap means its gradients, strokes and 8x-baked
     // prop sprites are all rasterized at output resolution — the same drawing
     // code, just never asked to squeeze itself into 480x270 first.
@@ -437,7 +278,7 @@ async function renderRange(from, to, segmentPath, onProgress) {
       octx.imageSmoothingQuality = 'high';
     }
 
-    const vis = window.__mkVisualizer(index, seed, { bpm });
+    const vis = window.__mkVisualiser(index, seed, { bpm });
     const dt = 1 / fps;
     const advance = (a) => {
       a.spectrum = Uint8Array.from(a.spectrum);

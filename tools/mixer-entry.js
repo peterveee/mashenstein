@@ -2,8 +2,8 @@
 // the same channel strip the game will use, and the same one the offline renderer
 // runs when it writes a WAV. Nothing here reimplements audio.
 import { Audio } from '../src/engine/audio.js';
-import { createVisualizer, VISUALIZER_NAMES, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS }
-  from '../src/engine/visualizers.js';
+import { createVisualiser, VISUALISER_NAMES, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS }
+  from '../src/engine/visualisers.js';
 import { resolveNoteFx } from '../src/engine/note-fx.js';
 // The boundary logic for handing a cabinet mix over to a level's, so 'Hear the change'
 // auditions exactly what the game does rather than a second implementation of it.
@@ -4647,15 +4647,15 @@ function visHint(text) {
 function startPreset(index) {
   // The lab sits one past the end of the pack, so browsing with the arrows reaches
   // it and wraps past it like anything else.
-  const total = VISUALIZER_NAMES.length + 1;
+  const total = VISUALISER_NAMES.length + 1;
   visIndex = ((index % total) + total) % total;
   const track = { bpm: Audio.bank?.bpm || appliedBank?.bpm || 120 };
   const seed = ((Math.random() * 0xffffffff) ^ (visIndex * 0x9e3779b9)) >>> 0;
-  const lab = visIndex === VISUALIZER_NAMES.length;
-  visPreset = lab ? createHalfPipeLab(seed, track, visLabTune) : createVisualizer(visIndex, seed, track);
+  const lab = visIndex === VISUALISER_NAMES.length;
+  visPreset = lab ? createHalfPipeLab(seed, track, visLabTune) : createVisualiser(visIndex, seed, track);
   // The drawer's picker is the same choice by another route, so it follows along
   // and is already on the right preset when the desk comes back.
-  $('vispreset').value = lab ? VIS_LAB : VISUALIZER_NAMES[visIndex];
+  $('vispreset').value = lab ? VIS_LAB : VISUALISER_NAMES[visIndex];
   $('visualiser').classList.toggle('lab', lab);
   if (lab) renderVisKnobs();
 }
@@ -4685,7 +4685,7 @@ function renderVisKnobs() {
   syncVisKnobs();
 }
 
-/** AUTO and OFF are values, not absences — see nextHold() in visualizers.js. */
+/** AUTO and OFF are values, not absences — see nextHold() in visualisers.js. */
 function visKnobText(control, value) {
   if (control.unit === 'beats') {
     if (value < 0) return 'OFF';
@@ -4731,7 +4731,7 @@ function resetVisTune() {
 
 function openVisualiser() {
   if (visualiserOpen) return;
-  startPreset(VISUALIZER_NAMES.indexOf($('vispreset').value));
+  startPreset(VISUALISER_NAMES.indexOf($('vispreset').value));
   visualiserOpen = true;
   visAt = 0;
   sizeVisualiser();
@@ -4757,7 +4757,7 @@ function closeVisualiser() {
   meterAt = 0;
 }
 
-for (const name of VISUALIZER_NAMES) {
+for (const name of VISUALISER_NAMES) {
   const option = document.createElement('option');
   option.value = name;
   option.textContent = name;
@@ -4797,7 +4797,7 @@ addEventListener('keydown', (ev) => {
   const step = VIS_STEP[ev.key];
   if (step) {
     startPreset(visIndex + step);
-    visHint(VISUALIZER_NAMES[visIndex]);
+    visHint(VISUALISER_NAMES[visIndex]);
     return;
   }
   closeVisualiser();
@@ -11961,11 +11961,47 @@ function loopLogCsv() {
     LOOP_LOG_COLUMNS.map((key) => csvCell(record[key])).join(','))].join('\n');
 }
 
+// Mirror the log onto the disk of the machine the desk is running on.
+//
+// The CSV has always been downloadable, which is right for keeping one and wrong for
+// READING one: the question a performance investigation asks is "what did the last two
+// passes do", and it is usually asked by somebody who is not sitting at this browser.
+// The dev server writes it to `work/local/mixer-diagnostics.csv`, where anything can
+// read it without a download, a file picker or a paste.
+//
+// Debounced, because a lap row and a fault event can land within a frame of each other
+// and the point is a file on disk, not a request per record. Fire-and-forget: this is a
+// convenience on top of localStorage, which remains the log that actually persists, so a
+// desk served from anywhere but `npm run mixer` simply gets a 404 and carries on. The
+// failure is remembered rather than logged each time — a console warning four times a
+// minute about a mirror nobody asked for is its own kind of noise.
+let diagnosticsMirrorTimer = null;
+let diagnosticsMirrorOff = false;
+function mirrorDiagnosticsLog() {
+  if (!DEV_USER || diagnosticsMirrorOff || diagnosticsMirrorTimer != null) return;
+  diagnosticsMirrorTimer = setTimeout(async () => {
+    diagnosticsMirrorTimer = null;
+    try {
+      const response = await fetch('/diagnostics-log', {
+        method: 'POST',
+        headers: { 'content-type': 'text/csv' },
+        body: loopLogCsv(),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      diagnosticsMirrorOff = true;
+      console.log('[diagnostics] not mirroring to disk —'
+        + ` this desk is not served by \`npm run mixer\` (${error.message})`);
+    }
+  }, 2000);
+}
+
 function persistLoopRecord(record) {
   loopLogRecords.push(record);
   if (loopLogRecords.length > LOOP_LOG_LIMIT) loopLogRecords.splice(0, loopLogRecords.length - LOOP_LOG_LIMIT);
   try { localStorage.setItem(LOOP_LOG_KEY, JSON.stringify(loopLogRecords)); } catch { /* UI still holds this session */ }
   refreshLoopLogUi();
+  mirrorDiagnosticsLog();
 }
 
 function diagnosticRuntimeFields() {
@@ -16433,11 +16469,20 @@ function installDecodedFreeze(id, decoded, available, savedName) {
 }
 
 const freezeRequestKey = (item) => `${item.lane}\0${freezeScopeId(item.scope || item)}`;
-const freezeRequestName = (id, item) => {
-  const lane = escapeHtml(freezeLaneLabel(id, item.lane));
+/**
+ * What a frozen range is called, as PLAIN TEXT.
+ *
+ * The escaped form below is for dialog markup and is not safe to nest inside another
+ * string that will itself be escaped — a lane called "Bass & Lead" comes out as
+ * "Bass &amp;amp; Lead" the second time round. Reasons, log lines and diagnostics rows
+ * take this one and are escaped exactly once, where they are rendered.
+ */
+const freezeRequestPlainName = (id, item) => {
+  const lane = freezeLaneLabel(id, item.lane);
   const scope = item.scope || item;
   return scope.whole ? lane : `${lane} bars ${scope.from + 1}–${scope.to + 1}`;
 };
+const freezeRequestName = (id, item) => escapeHtml(freezeRequestPlainName(id, item));
 
 /**
  * A reload can reinstall exact lossless PCM only from locations the user selected.
@@ -16463,6 +16508,21 @@ function queueFrozenRestorePrompt(id = trackId) {
     catch { /* an unavailable handle database retains the identity-based fallback */ }
     if (trackId !== id) return;
     const loadedKeys = new Set();
+    // WHY a remembered range did not come back, keyed as `pending` is keyed below.
+    //
+    // Every path out of the load could refuse a single entry and say nothing about it:
+    // a range whose key did not match was skipped with a bare `continue`, and a range
+    // that failed its compatibility check only reached the console. What the user then
+    // saw was "no current saved render can be loaded" over a bundle that had just
+    // loaded three others out of four — true, and useless. The reason is the whole
+    // question: a range the bundle does not hold is re-exported, a range whose song
+    // changed underneath it is re-rendered, and those are different afternoons.
+    const rejected = new Map();
+    if (!record) {
+      for (const item of remembered) {
+        rejected.set(freezeRequestKey(item), 'no saved freeze bundle is remembered for this song');
+      }
+    }
     if (record) {
       const yes = await ask(
         'Load saved freezes?',
@@ -16484,15 +16544,42 @@ function queueFrozenRestorePrompt(id = trackId) {
           const key = freezeRequestKey(item);
           // The bundle is an export snapshot. Intent is the current state, so ranges
           // explicitly unfrozen after export are deliberately ignored on reload.
-          if (!wantedKeys.has(key)) continue;
+          if (!wantedKeys.has(key)) {
+            // ...but a lane that IS still wanted, at a range this bundle does not hold,
+            // is not a deliberate unfreeze — it is an export and a selection that have
+            // drifted apart, and it is the one case a whole-track freeze can never show
+            // you, because its key is always `all`. Say which range the bundle has.
+            for (const want of remembered.filter((entry) => entry.lane === item.lane)) {
+              const wantKey = freezeRequestKey(want);
+              if (loadedKeys.has(wantKey)) continue;
+              rejected.set(wantKey,
+                `the saved bundle holds ${freezeRequestPlainName(id, item)}, not this range`);
+            }
+            continue;
+          }
           try {
             installDecodedFreeze(id, decoded, available, bundle.file.name);
             loadedKeys.add(key);
+            rejected.delete(key);
           } catch (error) {
+            rejected.set(key, error.message);
             console.warn(`Could not load ${freezeRequestName(id, item)}: ${error.message}`);
           }
         }
+        // A range the bundle simply does not mention at all — neither at this scope nor
+        // any other. Distinct from the drift above, and it means the export predates it.
+        for (const item of remembered) {
+          const key = freezeRequestKey(item);
+          if (loadedKeys.has(key) || rejected.has(key)) continue;
+          rejected.set(key, `${bundle.file.name} does not contain this range`);
+        }
       } catch (error) {
+        // The whole bundle failed — permission refused, file moved, wrong song. One
+        // reason covers every range in it, and it is the only one worth showing.
+        for (const item of remembered) {
+          const key = freezeRequestKey(item);
+          if (!loadedKeys.has(key)) rejected.set(key, error.message);
+        }
         console.warn(`Could not load ${record.name}: ${error.message}`);
       }
       const loaded = loadedKeys.size;
@@ -16508,9 +16595,26 @@ function queueFrozenRestorePrompt(id = trackId) {
     const labels = pending.map((item) => `<b>${freezeRequestName(id, item)}</b>`).join(', ');
     const pendingName = pending.length === 1
       ? (pending[0].scope.whole ? 'track' : 'selection') : `${pending.length} selections`;
+    // One line per range that could not come back, and what stopped it. Without this
+    // the dialog announced a failure and withheld the only fact that decides what to do
+    // about it — and it is at its most misleading in exactly the case that produced it:
+    // a bundle that loaded three whole tracks and refused one range, reported as though
+    // nothing had loaded at all.
+    const why = pending
+      .map((item) => ({ name: freezeRequestName(id, item), plain: freezeRequestPlainName(id, item),
+        reason: rejected.get(freezeRequestKey(item)) }))
+      .filter((row) => row.reason);
+    const detail = why.length
+      ? `<ul>${why.map((row) => `<li>${row.name} — ${escapeHtml(row.reason)}</li>`).join('')}</ul>`
+      : '';
+    for (const row of why) {
+      appendDiagnosticEvent('FREEZE RESTORE SKIPPED', `${row.plain}: ${row.reason}`);
+    }
     const yes = await ask(
       `Refreeze ${pendingName}?`,
-      `<p>${labels} ${pending.length === 1 ? 'was' : 'were'} frozen when this mixer was last closed, but no current saved render can be loaded.</p>`
+      `<p>${labels} ${pending.length === 1 ? 'was' : 'were'} frozen when this mixer was last closed, but `
+      + `${loadedKeys.size ? 'could not be loaded from the saved render' : 'no current saved render can be loaded'}.</p>`
+      + detail
       + '<p>Render again from the current song now?</p>',
       pending.length === 1 ? 'Refreeze' : 'Refreeze selections',
     );
@@ -16567,12 +16671,97 @@ function syncFrozenLaneUi(lane) {
 }
 
 /** Only source-side decisions: track order and live fader/pan/EQ/inserts/sends omitted. */
+/**
+ * The lanes whose note ARRAYS one lane's render actually reads.
+ *
+ * Itself, and — only for a legacy linked layer — whatever it is a double of, because
+ * those arrays genuinely alias the source's (see `deskBank`). An independent layer
+ * owns its own notes and stops the walk.
+ */
+function freezeNoteSources(mix, lane) {
+  const sources = new Set([lane]);
+  const byKey = new Map((mix?.layers || []).map((L) => [L.key, L]));
+  for (let cursor = lane; ;) {
+    const layer = byKey.get(cursor);
+    if (!layer || layer.independent || !layer.from || sources.has(layer.from)) break;
+    sources.add(layer.from);
+    cursor = layer.from;
+  }
+  return sources;
+}
+
+/** True for a lane's notes or its lengths — `seamFor` knows both lanes and layer keys. */
+const isLaneNoteArray = (key, value) => Array.isArray(value)
+  && !!seamFor(/Len$/.test(key) ? key.slice(0, -3) : key);
+
+/**
+ * One bank, section or arrangement block with every OTHER lane's notes taken out.
+ *
+ * Everything that is not a lane array is kept verbatim — tempo, swing, resolution,
+ * order and its per-bar maps, the voice keys, the section list itself. Only the big
+ * per-lane note and length arrays are dropped, and only for lanes this render never
+ * hears. That is deliberately more conservative than enumerating what a render depends
+ * on: a bank-level setting nobody thought of still invalidates, which is the failure
+ * mode you want.
+ */
+function laneOnlyBlock(block, sources) {
+  if (!block || typeof block !== 'object' || Array.isArray(block)) return block ?? null;
+  const out = {};
+  for (const [key, value] of Object.entries(block)) {
+    if (key === 'sections') {
+      out.sections = (value || []).map((section) => laneOnlyBlock(section, sources));
+      continue;
+    }
+    if (key === 'layers') {
+      out.layers = (value || []).map((layer) => laneOnlyBlock(layer, sources));
+      continue;
+    }
+    if (isLaneNoteArray(key, value)
+      && !sources.has(/Len$/.test(key) ? key.slice(0, -3) : key)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * What a frozen lane's render depends on — and, as importantly, what it does not.
+ *
+ * A freeze is invalidated when its fingerprint stops matching, and this used to hash
+ * the WHOLE arrangement. On a desk song the arrangement *is* the notes: 54 sections and
+ * 191 KB of them on the stress song. So one note added to any track threw away every
+ * freeze in the song, including tracks and bars nobody had been near — which is both
+ * wrong and expensive, because each one costs minutes to render again.
+ *
+ * `freezeLane` hands the renderer a mix from `rawFreezeMix`, and that mutes every lane
+ * but this one. So no other lane's notes can reach the samples, and no other lane's
+ * notes belong in this hash. Everything else stays: the order and its per-bar transpose,
+ * gain, pan, offset and mute masks; the tempo, swing and resolution; the voice and its
+ * parameters; the layer definitions; the deleted-lane list. Those are small, they are
+ * edited rarely, and being wrong about one of them means stale audio playing under a
+ * changed song — so where there was any doubt, it is still in here.
+ *
+ * `v2` because the shape changed: an older bundle's fingerprint cannot accidentally
+ * match a newer one, so every existing freeze needs rendering once more. That is the
+ * last time it should happen for an edit to another track.
+ */
 function freezeFingerprint(id, lane) {
   const m = mixFor(id) || {};
+  const sources = freezeNoteSources(m, lane);
+  // The voice, by the same argument as the notes: `withVoices` applies each lane's
+  // preset through its own seam key, and every other lane is muted, so no other lane's
+  // voice can reach these samples. Twenty-eight tracks means voice edits are constant;
+  // hashing the whole map would put this back where it started.
+  const voiceKeys = new Set([...sources]
+    .map((key) => seamFor(key)?.voiceKey).filter(Boolean));
+  const pick = (map) => Object.fromEntries(Object.entries(map || {})
+    .filter(([key]) => voiceKeys.has(key)));
   return JSON.stringify({
-    arrangement: arrFor(id) || null,
-    layers: m.layers || [], off: m.off || [],
-    voice: m.voice || {}, voiceParams: m.voiceParams || {},
+    v: 2,
+    lane,
+    arrangement: laneOnlyBlock(arrFor(id), sources),
+    layers: (m.layers || []).filter((L) => sources.has(L.key) || sources.has(L.from)),
+    off: m.off || [],
+    voice: pick(m.voice), voiceParams: pick(m.voiceParams),
     noteFx: m.lanes?.[lane]?.noteFx || null,
   });
 }
@@ -16681,7 +16870,7 @@ function showFreezeProgress(lane, controller, label = targetLabel(lane)) {
   const title = document.createElement('div'); title.className = 'regtitle';
   title.textContent = `Freeze · ${label}`;
   head.append(title); panel.append(head);
-  const status = document.createElement('div'); status.className = 'devnote';
+  const status = document.createElement('div'); status.className = 'devnote freezestatus';
   status.textContent = 'Preparing raw lane render…'; panel.append(status);
   const foot = document.createElement('div'); foot.className = 'regfoot';
   const cancel = document.createElement('button'); cancel.textContent = 'Cancel Freeze';

@@ -1,0 +1,325 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Visualiser</title>
+<!-- EMERALD CODE RAIN bakes a glyph atlas the first time it
+     draws, so the face has to be resident before the first frame or the whole
+     session keeps the fallback. Offline, Trebuchet is a fine degradation. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400..600&family=Permanent+Marker&display=swap">
+<style>
+  /* The desk's palette, and only the palette. tools/mixer-shell.html carries 5,700
+     lines of CSS for a control surface made of faders and arrangement rows; this
+     page is a full-window canvas with one strip of controls over it, and splicing
+     that stylesheet in would import 420KB of rules for elements that do not exist
+     here. Same tokens, same idioms, its own layout. */
+  :root {
+    --bg: #14161a; --panel: #1d2026; --panel2: #24282f; --line: #333944;
+    --ink: #e6e9ef; --dim: #8b93a3; --accent: #4ec9b0; --hot: #e5534b;
+    --ctl: #79839a; --ctl-hi: #9aa5bd;
+    --input: #1b2129; --hover: #313a47; --primary: #2f4a44; --on-primary: #fff;
+    --ctlh: 24px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #000;
+    color: var(--ink);
+    font: 12px/1.4 Fredoka, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  canvas#viscanvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* ---- the drop target, which is the whole window until a file is loaded ---- */
+  #drop {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    background: radial-gradient(ellipse at 50% 40%, #1b2028 0%, #0a0c0f 70%);
+    z-index: 30; text-align: center; padding: 24px;
+  }
+  #drop.gone { display: none; }
+  #drop.over { background: radial-gradient(ellipse at 50% 40%, #23343a 0%, #0a0c0f 70%); }
+  /* This screen is read from across the room before anything is playing, so it
+     runs at its own type scale rather than the control strip's 12px — that strip
+     is for a pointer at arm's length and is deliberately left alone. */
+  #drop h1 {
+    font: 400 44px/1.1 'Lilita One', Fredoka, sans-serif; letter-spacing: .04em;
+    margin: 0 0 14px; color: var(--ink);
+  }
+  /* `margin: auto` is what actually centres this. A block with a max-width does
+     NOT centre itself because its parent says text-align: center — that centres
+     the LINES inside it, while the box stays at the start of the cell, which put
+     this paragraph about 128px left of the heading and the cards above it. */
+  #drop p {
+    margin: 0 auto 22px; color: var(--dim); max-width: 46ch;
+    font-size: 17px; line-height: 1.55;
+  }
+  #drop .formats { color: var(--ctl); font-size: 14px; margin-top: 12px; }
+  #drop .source {
+    border: 1px solid var(--line); border-radius: 6px; background: rgba(29,32,38,.6);
+    padding: 18px 20px; margin: 0 auto 14px; max-width: 560px; text-align: center;
+  }
+  #drop .sourcehead {
+    font-size: 13px; letter-spacing: .14em; color: var(--dim); margin-bottom: 12px;
+  }
+  #drop .note {
+    color: var(--ctl); font-size: 14px; line-height: 1.55; margin: 12px auto 0;
+    max-width: 46ch;
+  }
+  /* The controls on this screen get the screen's scale too, not the strip's. */
+  #drop button, #drop .selectfield { height: 30px; font-size: 15px; }
+  #drop .selectfield { min-width: 240px; }
+
+  /* ---- progress ---- */
+  #progress { display: none; width: min(420px, 80vw); margin: 0 auto; }
+  #progress.on { display: block; }
+  #progress .bar { height: 4px; background: var(--input); border-radius: 2px; overflow: hidden; }
+  #progress .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .12s linear; }
+  #progress .stage { color: var(--dim); margin-top: 8px; font-variant-numeric: tabular-nums; }
+
+  /* ---- the control strip ---- */
+  #ui {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    background: linear-gradient(to top, rgba(10,12,15,.94) 60%, rgba(10,12,15,0));
+    padding: 26px 12px 10px; display: none;
+    transition: opacity .35s ease;
+  }
+  #ui.on { display: block; }
+  /* Fade the chrome out of the way when nothing is being touched — but never while
+     a menu is open or a control has focus, or the thing you are reaching for
+     disappears under your hand. */
+  #ui.idle { opacity: 0; pointer-events: none; }
+  #ui:focus-within { opacity: 1 !important; pointer-events: auto !important; }
+
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .row + .row { margin-top: 8px; }
+  .spacer { flex: 1 1 auto; }
+
+  button, select, input[type=text], input[type=number], .selectfield {
+    height: var(--ctlh); background: var(--input); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px; padding: 0 8px;
+    font: inherit; cursor: pointer;
+  }
+  button:hover, .selectfield:hover { background: var(--hover); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.on { background: var(--primary); border-color: var(--accent); color: var(--on-primary); }
+  button.wide { min-width: 84px; }
+  input[type=number] { width: 74px; text-align: right; font-variant-numeric: tabular-nums; cursor: text; }
+  label.field { display: inline-flex; align-items: center; gap: 5px; color: var(--dim); }
+  .readout { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .readout b { color: var(--ink); font-weight: 500; }
+  .warn { color: var(--hot); }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; height: var(--ctlh);
+    background: transparent; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 3px; background: var(--input); border: 1px solid var(--line); border-radius: 2px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px; margin-top: -6px;
+    border-radius: 50%; background: var(--ctl); border: none;
+  }
+  input[type=range]:hover::-webkit-slider-thumb { background: var(--ctl-hi); }
+
+  /* ---- the half-pipe lab's knob row ---- */
+  .labrow { gap: 10px 14px; margin-top: 10px; }
+  .labknob {
+    display: grid; grid-template-columns: auto 92px 34px; align-items: center; gap: 6px;
+  }
+  .labknob span { color: var(--dim); font-size: 11px; letter-spacing: .04em; white-space: nowrap; }
+  .labknob input[type=range] { width: 92px; }
+  .labknob b {
+    color: var(--ink); font-weight: 500; font-size: 11px; text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- transport ---- */
+  #scrub { position: relative; height: 34px; cursor: pointer; user-select: none; }
+  #scrubwave { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #time { font-variant-numeric: tabular-nums; color: var(--dim); min-width: 92px; }
+  #time b { color: var(--ink); font-weight: 500; }
+
+  /* The beat lamp is the whole point of the tempo row: a grid that is wrong is
+     obvious in half a second here, and invisible if you only watch the art. */
+  #beatlamp {
+    width: 16px; height: 16px; border-radius: 50%; background: var(--input);
+    border: 1px solid var(--line); flex: 0 0 auto;
+  }
+  #beatlamp.beat { background: var(--ctl); }
+  #beatlamp.bar { background: var(--accent); }
+
+  /* ---- the preset picker, styled here since the desk's stylesheet is not loaded ---- */
+  .selectfield {
+    display: inline-flex; align-items: center; min-width: 200px; text-align: left;
+  }
+  .selectfield-value { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .selectfield::after { content: '▾'; color: var(--dim); margin-left: 6px; }
+  .selectmenu {
+    position: fixed; z-index: 50; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px; max-height: 60vh; overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,.5); min-width: 200px;
+  }
+  .selectoption { padding: 4px 8px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
+  .selectoption:hover, .selectoption[aria-selected=true] { background: var(--hover); }
+  .selectoption[aria-selected=true] { color: var(--accent); }
+
+  /* ---- the live stats overlay ---- */
+  #stats {
+    position: fixed; top: 0; left: 0; z-index: 25; padding: 10px 12px;
+    background: rgba(20,22,26,.9); border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line); display: none;
+    font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums; min-width: 262px;
+  }
+  #stats.on { display: block; }
+  #stats h3 {
+    font: 500 10px/1 Fredoka, sans-serif; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--dim); margin: 0 0 6px;
+  }
+  #stats h3 + .st { margin-top: 0; }
+  #stats .st { display: grid; grid-template-columns: 86px 1fr; gap: 4px; }
+  #stats .st u { color: var(--dim); text-decoration: none; }
+  #stats .st span { color: var(--ink); }
+  #stats .due { color: var(--accent); }
+  #stats .bar2 {
+    display: inline-block; width: 74px; height: 5px; background: var(--input);
+    border-radius: 3px; overflow: hidden; vertical-align: middle; margin-right: 5px;
+  }
+  #stats .bar2 i { display: block; height: 100%; background: var(--ctl); }
+
+  /* ---- the collapsible analysis panel ---- */
+  #panel {
+    position: fixed; top: 0; right: 0; z-index: 25; width: 268px; max-height: 100vh;
+    overflow-y: auto; background: rgba(20,22,26,.93); border-left: 1px solid var(--line);
+    border-bottom: 1px solid var(--line); padding: 10px; display: none;
+  }
+  #panel.on { display: block; }
+  #panel h2 {
+    font: 500 11px/1 Fredoka, sans-serif; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--dim); margin: 0 0 8px;
+  }
+  #panel h2 + h2 { margin-top: 14px; }
+  .meter { display: grid; grid-template-columns: 62px 1fr 38px; gap: 6px; align-items: center; margin-bottom: 3px; }
+  .meter span { color: var(--dim); }
+  .meter i { display: block; height: 6px; background: var(--input); border-radius: 3px; overflow: hidden; }
+  .meter i u { display: block; height: 100%; width: 0; background: var(--ctl); text-decoration: none; }
+  .meter b { font-weight: 400; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .lamp { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--input); border: 1px solid var(--line); }
+  .lamp.on { background: var(--hot); border-color: var(--hot); }
+  #panel .note { color: var(--ctl); font-size: 11px; line-height: 1.45; margin: 8px 0 0; }
+
+  #err {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 60; background: var(--hot);
+    color: #fff; padding: 8px 12px; font-family: ui-monospace, monospace; font-size: 11px;
+    white-space: pre-wrap; display: none;
+  }
+  #err.on { display: block; }
+  .kbd {
+    color: var(--ctl); font-size: 11px;
+  }
+  .kbd b { color: var(--dim); font-weight: 500; }
+</style>
+
+<canvas id="viscanvas"></canvas>
+
+<div id="drop">
+  <div>
+    <h1>VISUALISER</h1>
+    <p>Pick a track, or drop an audio file anywhere on this window, and the
+      visuals will run in time with it.</p>
+
+    <div class="source">
+      <div class="sourcehead">GENERATED TRACK</div>
+      <div class="row" style="justify-content:center">
+        <span id="songslot"></span>
+        
+        <button type="button" id="playsong" class="wide">PLAY</button>
+      </div>
+      <div class="note">Played live, note by note — no audio file and nothing to
+        download. The tempo and every drum hit come from the sequencer rather than
+        being guessed at, so the timing is exact.</div>
+    </div>
+
+    <div class="source">
+      <div class="sourcehead">AUDIO FILE</div>
+      <button type="button" id="pick" class="wide">CHOOSE A FILE</button>
+      <input type="file" id="file" accept="audio/*" hidden>
+      <div class="formats">mp3 · wav · m4a · flac · ogg — analysed in the browser, never uploaded</div>
+    </div>
+
+    <div id="progress"><div class="bar"><i></i></div><div class="stage"></div></div>
+  </div>
+</div>
+
+<div id="stats"></div>
+
+<div id="panel">
+  <h2>Analysis</h2>
+  <div id="meters"></div>
+  <h2>Loudness</h2>
+  <div class="readout" id="loudread"></div>
+  <label class="field" style="margin-top:8px">
+    <input type="checkbox" id="normalise"> normalise to −16 LUFS
+  </label>
+  <h2>Onsets</h2>
+  <label class="field">sensitivity
+    <input type="range" id="onsense" min="0.05" max="1.2" step="0.05" value="0.3">
+    <b class="readout" id="onsenseval">0.30</b>
+  </label>
+  <div class="readout" id="onsetread"></div>
+  <h2>Breathe</h2>
+  <label class="field">amount
+    <input type="range" id="breathe" min="1" max="4" step="0.1" value="1">
+    <b class="readout" id="breatheval">1.0</b>
+  </label>
+  <p class="note">Normalising a file fixes the frequency bands, which clamp on a
+    hot master. It cannot fix <b>dynamics</b> — that is a ratio against the song's
+    own rolling peak, so gain cancels out of it. If a limited master reads as one
+    flat chorus, this is the knob for it.</p>
+</div>
+
+<div id="ui">
+  <div class="row"><div id="scrub" style="flex:1 1 auto"><canvas id="scrubwave"></canvas></div></div>
+  <div class="row">
+    <button type="button" id="open" title="pick another song or file">OPEN</button>
+    <button type="button" id="play" class="wide">PLAY</button>
+    <div id="time"><b>0:00</b> / 0:00</div>
+    <label class="field">vol <input type="range" id="vol" min="0" max="1.5" step="0.01" value="1"></label>
+    <div class="spacer"></div>
+    <label class="field">visualiser <span id="presetslot"></span></label>
+    <button type="button" id="prev" title="previous preset ([)">‹</button>
+    <button type="button" id="next" title="next preset (])">›</button>
+    <label class="field">seed <input type="text" id="seed" size="9" style="width:88px"></label>
+    <button type="button" id="reseed" title="new seed (R)">↻</button>
+  </div>
+  <div class="row">
+    <div id="beatlamp"></div>
+    <label class="field">bpm <input type="number" id="bpm" step="0.01" min="20" max="400"></label>
+    <button type="button" id="half" title="halve the tempo">÷2</button>
+    <button type="button" id="dbl" title="double the tempo">×2</button>
+    <button type="button" id="tap" title="tap the tempo (T)">TAP</button>
+    <button type="button" id="auto" class="on" title="use the detected beat grid, which follows tempo drift">AUTO GRID</button>
+    <label class="field">nudge <input type="range" id="nudge" min="-0.5" max="0.5" step="0.002" value="0"></label>
+    <button type="button" id="here" title="put the downbeat at the playhead">DOWNBEAT HERE</button>
+    <label class="field">bar <input type="number" id="barbeats" step="1" min="2" max="12" value="4" style="width:52px"></label>
+    <button type="button" id="click" title="hear the detected grid">CLICK</button>
+    <div class="spacer"></div>
+    <div class="readout" id="tempread"></div>
+    <button type="button" id="showstats" title="live preset stats (S)">STATS</button>
+    <button type="button" id="showpanel">ANALYSIS</button>
+    <button type="button" id="full" title="fullscreen (F)">⛶</button>
+  </div>
+  <div class="row kbd">
+    <b>space</b> play · <b>← →</b> seek · <b>[ ]</b> preset · <b>T</b> tap · <b>R</b> reseed · <b>S</b> stats · <b>F</b> fullscreen
+  </div>
+</div>
+
+<div id="err"></div>
+
+<script>
+  window.onerror = (message, source, line) => {
+    const box = document.getElementById('err');
+    box.className = 'on';
+    box.textContent = message + '\n' + source + ':' + line;
+  };
+</script>
+<script>/*__BUNDLE__*/</script>

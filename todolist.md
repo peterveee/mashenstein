@@ -181,12 +181,12 @@ lane at a time. **Full plan written:**
   MIDI into *chosen lanes* of an existing song rather than minting a new bank —
   which is what keeps mute masks and section sharing alive across a round trip.
 
-### Spin the visualizer out as an MP4 maker for any audio file
-Drop in an MP3/WAV, preview a visualizer reacting to it live, export an MP4 carrying
+### Spin the visualiser out as an MP4 maker for any audio file
+Drop in an MP3/WAV, preview a visualiser reacting to it live, export an MP4 carrying
 the original track. Self-contained — no game, no music bank. **Full plan:**
-`docs/visualizer-spinout-plan.md`.
+`docs/visualiser-spinout-plan.md`.
 
-- **Cheaper than it sounds.** `createVisualizer` (`src/engine/visualizers.js:2517`)
+- **Cheaper than it sounds.** `createVisualiser` (`src/engine/visualisers.js:2517`)
   is already a pure function of an analysis feed and only reads `.bpm` off the track
   object; `tools/render-video.js` is already the whole export pipeline bar one line
   (`renderBankBrowser`); and `analyseSong()` (`render-video.js:192`) takes raw PCM and
@@ -245,6 +245,78 @@ built on it stops being theoretical.
   holds them ~10s. The renderer has `rendererDiagnostics()`; audio has no equivalent. First
   step is counters — active notes, oscillators, filters, scheduled tails — not culling.
   Any threshold has to come from real device profiling, not from a guess.
+
+### Sixteenth triplets (and a per-song note grid that can hold them)
+
+The engine can write a note on a sixteenth and, since `resolution: 32`, on a half
+sixteenth. It cannot write one on a triplet, and nothing in it can: 24 slots per bar
+divides neither 16 nor 32. Swing at 66.7 gives the *shuffle* — a 2:1 delay on the odd
+sixteenth (`src/engine/audio.js:4076`), so you get two of the three triplet positions
+and never the middle one, one number for the whole song. The arpeggiator takes a float
+`rate` but only fires on integral phase (`src/engine/note-fx.js:86`) against a transport
+that moves in 1 or 0.5, so `rate: 0.667` fires every *two* sixteenths, not three per beat.
+
+**The grid number is 96.** LCM of 32 and 24 — sixteenths, thirty-seconds, sixteenth
+triplets, plus eighth and thirty-second triplets for free. 48 covers triplets but not
+thirty-seconds. Once the code stops hardcoding, the value is just data, so the set can be
+`{16, 32, 48, 96}` and a triplet-only song pays 3× rather than 6×.
+
+**Per song, not global — and the seam already exists.** `resolutionOf(bank, entry)`
+(`src/data/arrangements.js:136`) already reads the number off the arrangement entry or the
+bank, defaulting to 16, and `tests/null-test.js` already guards that an unswung 16-step
+song renders sample-for-sample as before. This is widening an enum, not inventing a
+mechanism. The engine also already goes *finer* than per-song: `_fineBars`
+(`audio.js:4150`) skips an entire fine tick in any bar that cannot carry fine content, and
+`_fineLanes`/`coarseHere` (`audio.js:4192`) skips individual lanes on fine ticks. Both are
+gated on the literal `resolution === 32` and generalise to `resolution > 16` directly.
+
+**The tax is smaller than 6×.** `newSchedulerWork` (`audio.js:365`) is explicit that lane
+resolution is per tick and bounded by lane count, while voice building is per NOTE and
+"the far larger main-thread cost on a dense bar". A finer grid creates no notes, so
+`voiceCalls`/`voicePlays` are unchanged; what multiplies is tick passes and lane reads,
+and the two skips already exist to make the empty ones nearly free.
+
+Four things stay global:
+
+- **The transport has to stop being a float.** `this.step += tick` (`audio.js:5242`) is
+  exact at 0.5 and drifts at 1/6. `step` becomes an integer counter with a per-song
+  divisor — 1 for legacy, a literal no-op. Every exactness test rewrites against the
+  counter: `Number.isInteger(this.step)` (`audio.js:4100`), `step % 16` (`audio.js:841`),
+  arp phase (`note-fx.js:86`). Worth landing alone, guarded by the null test, first.
+- **29 `resolution === 32 ? 0.5 : 1` literals** across `lanes.js`, `audio.js`,
+  `mixer-piano-roll.js`, `mixer-step-seq.js`, `mixer-bar-grid.js`, `mixer-entry.js`,
+  `lib/freeze-span.js`, `lib/render-bank-page.js` → `16 / resolution`.
+- **Swing's `(step * 2) % 4` phase** (`audio.js:4077`) generalises, with the musical call
+  attached: a triplet tick probably should not swing at all.
+- **The desk is the bigger job.** The piano roll, step sequencer and bar grid draw a column
+  per slot, and the whole-song roll already costs ~200ms for "tens of thousands of DOM
+  nodes" (`audio.js:3739`). 96 columns to a bar is unusable — the display grid has to
+  decouple from the storage grid: draw sixteenths, add a snap menu (1/16, 1/32, 1/16T),
+  render off-grid slots only where occupied.
+
+**The cheaper alternative, if only triplets are wanted:** keep 16/32 and give notes a
+fractional offset. Swing is already "an offset on the NOTE, never on the clock"
+(`audio.js:4060`), every note event already carries a per-event `delay` in seconds — strum
+uses it (`note-fx.js:105`) — and a pitched slot already holds a list of `{note, len}`
+pairs. A triplet group becomes three notes carrying offsets of 0, +1/3, +2/3. No tick
+change, no transport refactor, no CPU multiplier. Costs: percussion slots hold a bare
+`true` and would need widening; the arp, rhythmic gates and freeze spans stay on
+sixteenths and never see the triplets; and the roll needs to select a note that is not at
+its column's left edge.
+
+**The importer is a separate, smaller job either way.** `tools/lib/midi-import.js` never
+mentions resolution: `STEPS_PER_BLOCK = 32` is a constant (line 33), `ticksPerStep =
+ppq / 4` (line 144), every onset rounds to that grid (line 268), and the printer splits
+`seq` strings at slot 16 (line 364). Thirty-seconds alone are a contained one-file change
+today, since the engine already plays them.
+
+**Before committing, bench it.** The `_schedWork` counters already separate tick cost from
+note cost; a run on SMW All Instruments NEWEST with a synthetic fine section gives the real
+slope. Rough shape for that song as it stands (27 lanes, 55 sections, 130 bars, 1854 notes,
+132 bpm, ~3.9 min): 2,080 tick passes at 16-res, 4,160 at 32, 12,480 at 96 — 8.8/s to
+52.8/s. Lane reads if nothing skips: 56k → 337k. Notes built: 1,854 at every resolution.
+Note also that this song is *marked* `resolution: 32` and has **zero** notes on a half
+step — it pays the doubling for nothing today, which is exactly what `_fineBars` is for.
 
 ## Done
 <!-- move shipped items here with a date -->

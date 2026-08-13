@@ -148,19 +148,19 @@ export const screen = {
   inputScaleX: 1, inputScaleY: 1, inputLeft: 0, inputTop: 0,
   safeTop: 0, safeRight: 0, safeBottom: 0, safeLeft: 0,
 };
-export const visualizerFrame = { left: 0, top: 0, right: W, bottom: H };
-let visualizerFullscreen = false;
+export const visualiserFrame = { left: 0, top: 0, right: W, bottom: H };
+let visualiserFullscreen = false;
 let jukeboxPortrait = false;
 let devPortraitFill = false;
 
 // The game normally preserves its 16:9 logical frame with letterbox margins.
 // Screensaver visuals are an exception: they are decorative and can stretch
 // into the entire viewport while the list is hidden. Input remains logical and
-// the mode is reverted as soon as the visualizer wakes or exits.
-export function setVisualizerFullscreen(on) {
+// the mode is reverted as soon as the visualiser wakes or exits.
+export function setVisualiserFullscreen(on) {
   const next = !!on;
-  if (next === visualizerFullscreen) return;
-  visualizerFullscreen = next;
+  if (next === visualiserFullscreen) return;
+  visualiserFullscreen = next;
   if (typeof window !== 'undefined' && canvas) resize();
 }
 
@@ -177,7 +177,7 @@ export function setJukeboxPortrait(on) {
 // The dev overlay (local builds only) takes the same whole-phone canvas while
 // it is open, so a menu opened from the portrait card is read at a full page of
 // finger-sized rows rather than in the 16:9 band across the middle. It outranks
-// the visualizer's cover crop for the duration: a menu cropped top and bottom
+// the visualiser's cover crop for the duration: a menu cropped top and bottom
 // by a fullscreen preset would lose its breadcrumb and its footer.
 export function setDevPortraitFill(on) {
   const next = !!on;
@@ -490,7 +490,7 @@ function freshCanvasAfterWebglFailure() {
 }
 
 export function initRenderer(platform = {}, persistence = {}) {
-  visualizerFullscreen = false;
+  visualiserFullscreen = false;
   devPortraitFill = false;
   // The density seed limits initial high-DPI fill-rate; measured frame timing
   // decides where every device ultimately settles. phonePlatform picks the
@@ -579,10 +579,10 @@ function resize() {
   // scale — no integer-snapping needed, on desktop or phone.
   const scale = Math.min(winW / W, winH / H);
   // An open dev overlay claims portrait for itself and outranks the cover crop
-  // (see setDevPortraitFill), so `coverFit` — not the visualizer flag — is what
+  // (see setDevPortraitFill), so `coverFit` — not the visualiser flag — is what
   // the rest of this function asks about.
   const devFill = devPortraitFill && winH > winW;
-  const coverFit = visualizerFullscreen && !devFill;
+  const coverFit = visualiserFullscreen && !devFill;
   const portraitFill = devFill || (jukeboxPortrait && !coverFit && winH > winW);
   const fillViewport = coverFit || portraitFill;
   const cssW = fillViewport ? Math.round(winW) : Math.round(W * scale);
@@ -595,25 +595,25 @@ function resize() {
   if (coverFit) {
     const cover = Math.max(winW / W, winH / H);
     const visibleW = winW / cover, visibleH = winH / cover;
-    visualizerFrame.left = (W - visibleW) * 0.5;
-    visualizerFrame.top = (H - visibleH) * 0.5;
-    visualizerFrame.right = visualizerFrame.left + visibleW;
-    visualizerFrame.bottom = visualizerFrame.top + visibleH;
+    visualiserFrame.left = (W - visibleW) * 0.5;
+    visualiserFrame.top = (H - visibleH) * 0.5;
+    visualiserFrame.right = visualiserFrame.left + visibleW;
+    visualiserFrame.bottom = visualiserFrame.top + visibleH;
     inputScaleX = cover;
     inputScaleY = cover;
-    inputLeft = visualizerFrame.left;
-    inputTop = visualizerFrame.top;
+    inputLeft = visualiserFrame.left;
+    inputTop = visualiserFrame.top;
   } else if (portraitFill) {
     // The portrait jukebox — and the dev overlay — deliberately fill the
     // viewport non-uniformly. Pointer coordinates must follow that same X/Y
     // mapping or taps land above/below the row the player touched.
-    visualizerFrame.left = 0; visualizerFrame.top = 0;
-    visualizerFrame.right = W; visualizerFrame.bottom = H;
+    visualiserFrame.left = 0; visualiserFrame.top = 0;
+    visualiserFrame.right = W; visualiserFrame.bottom = H;
     inputScaleX = winW / W;
     inputScaleY = winH / H;
   } else {
-    visualizerFrame.left = 0; visualizerFrame.top = 0;
-    visualizerFrame.right = W; visualizerFrame.bottom = H;
+    visualiserFrame.left = 0; visualiserFrame.top = 0;
+    visualiserFrame.right = W; visualiserFrame.bottom = H;
   }
   // Rebuild the density ladder for this viewport (native is the ceiling rung).
   // On a resize/rotation that moves native, preserve the current position by
@@ -621,7 +621,7 @@ function resize() {
   // drift as the ladder's length changes.
   const prevLadder = ladder;
   // Preserve the renderer's existing rounded-CSS density contract outside
-  // fullscreen mode; the visualizer presentation only changes the element's
+  // fullscreen mode; the visualiser presentation only changes the element's
   // CSS box, not the logical backing-store budget.
   nativeDensity = (coverFit ? scale : Math.round(W * scale) / W) * dpr;
   ladder = buildLadder(nativeDensity);
@@ -638,7 +638,7 @@ function resize() {
   canvas.height = pxH;
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
-  // Fullscreen visualizers use the viewport as a cover frame, preserving the
+  // Fullscreen visualisers use the viewport as a cover frame, preserving the
   // logical 16:9 aspect ratio instead of stretching circles and typography.
   // A little edge crop is preferable to visibly distorted artwork.
   canvas.style.objectFit = coverFit ? 'cover' : portraitFill ? 'fill' : '';
@@ -653,7 +653,7 @@ function resize() {
   // letterboxed (desktop, landscape phones) the notch sits out in the black
   // margin and nothing in the frame needs to move, which is why this stays 0
   // there. A canvas stretched over the whole viewport — the portrait jukebox —
-  // or covering it (fullscreen visualizers) reaches the physical screen edge,
+  // or covering it (fullscreen visualisers) reaches the physical screen edge,
   // so logical y=0 IS under the island and every pixel of the inset is real.
   // Divided by the same input mapping pointers use, so all three modes convert
   // with one formula.

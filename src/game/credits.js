@@ -119,11 +119,11 @@ const INCOMING_INK = '#f6d33c';
 const HANDOFF_LINE_CARRY = 34;
 
 // ---- the sky ---------------------------------------------------------------
-// Modelled on the ARCADE ART GALLERY visualizer's night sky (its `galleryStars`
+// Modelled on the ARCADE ART GALLERY visualiser's night sky (its `galleryStars`
 // recipe: depth-weighted radius, per-star twinkle rate, additive blend) but
 // owned here rather than shared. That painter is a method bound to a live
-// visualizer's audio-derived palette and clock, so reusing it literally would
-// have meant refactoring a shipped visualizer's look to serve a dev-only
+// visualiser's audio-derived palette and clock, so reusing it literally would
+// have meant refactoring a shipped visualiser's look to serve a dev-only
 // screen. Same recipe, no risk to it.
 const STAR_COUNT = 150;
 // Fixed seed: the sky is the same every time the credits roll, so a screenshot
@@ -367,7 +367,7 @@ function drawSky(ctx, stars, dust, t, scroll, reduced, tune = {}) {
 
   // The Monster Mix is playing over this screen, so the sky answers it. Bass
   // swells the nebulae, the beat flares the stars. musicAnalysis() is the same
-  // allocation-free readout the jukebox visualizers use, and it degrades to a
+  // allocation-free readout the jukebox visualisers use, and it degrades to a
   // deterministic fallback with no Web Audio at all.
   let pulse = 0, bass = 0;
   if (!reduced) {
@@ -1140,7 +1140,7 @@ export class CreditsState {
   // Read by the FPS readout in main.js. A credit roll is the one screen whose
   // whole job is to be looked at, and a diagnostic parked over it is in the
   // shot — the same reasoning that already stands the readout down while the
-  // visualizer's titles are up.
+  // visualiser's titles are up.
   static hidesFps = true;
 
   // settings is optional: the sky only reads reducedMotion off it, and a caller

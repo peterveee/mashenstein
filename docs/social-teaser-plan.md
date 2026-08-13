@@ -292,8 +292,8 @@ land as screenshots of a real UI, which is what we have.
 
 ## Videos — 8 ideas
 
-### 1. Visualizer loops (the pipeline is already done)
-15 visualizers x 13 music banks via `tools/render-video.js`, with
+### 1. Visualiser loops (the pipeline is already done)
+15 visualisers x 13 music banks via `tools/render-video.js`, with
 `--size=1080x1350 --repeat --fade`. TOASTER SKY PARADE on MONSTER MEGAMIX,
 PRISMATIC STORM on the shop theme, NEON CATHEDRAL on CRYPT SHIFT. One a week
 indefinitely, captioned with the track name. Constraints: `--size` and
@@ -468,7 +468,7 @@ of the coin and what stops the spin reading as a pulse.
 Three implementation notes:
 
 - **Depth is one `z` per coin driving size, fall speed and brightness together**,
-  the way the jukebox visualizers do it. Sorted by z once at build time so near
+  the way the jukebox visualisers do it. Sorted by z once at build time so near
   coins draw over far ones with no per-frame sort.
 - **Distance darkens, it does not make transparent.** The first pass used
   `globalAlpha` for depth, and distant coins came out see-through with the coins
@@ -495,7 +495,7 @@ one back.
 - **Sizes:** 1080x1350 (4:5 feed), 1080x1080 (square), 1080x1920 (Reels).
 - **Gameplay must not be cropped to portrait.** The game is 16:9; portrait
   targets crop the sides rather than letterbox. Cropping is fine for
-  visualizers, wrong for gameplay — letterbox the 16:9 clip into a designed 9:16
+  visualisers, wrong for gameplay — letterbox the 16:9 clip into a designed 9:16
   frame instead.
 - **Renders land in `dist/`,** which is gitignored, so large MP4s are never
   committed. Stills worth keeping should be archived deliberately.
@@ -525,7 +525,7 @@ series, the menu board as a standalone, and the reel as the first video.
 
 Still outstanding, in the order they are worth building:
 
-1. **Visualizer loops (video #1)** — no new code needed at all:
+1. **Visualiser loops (video #1)** — no new code needed at all:
    `node tools/render-video.js megamix "TOASTER SKY PARADE" --size=1080x1350 --fade=1`.
 2. **Mugshot grid (still #3)** — `drawToonFace` at output resolution; a short
    painter added to `render-social.js`, since the harness now exists.

@@ -16,7 +16,17 @@ const suites = [
   'tests/mouse-controls.js',
   'tests/settings-menu.js',
   'tests/sound-test-menu.js',
-  'tests/visualizers.js',
+  'tests/visualisers.js',
+  // The other end of the same pack: the presets driven by an imported file instead
+  // of by the sequencer. song-analysis pins the engine mirror that render-video and
+  // the page now share; beat-detect pins the estimates that stand in for a
+  // sequencer that isn't there; beat-detect-audio checks those estimates against
+  // real renders whose tempo is known, because a synthetic fixture can always be
+  // tuned until it passes.
+  'tests/song-analysis.js',
+  'tests/beat-detect.js',
+  'tests/beat-detect-audio.js',
+  'tests/visualiser-page.js',
   'tests/megamix.js',
   'tests/mix.js',
   'tests/mixer-layout.js',
@@ -77,6 +87,12 @@ const suites = [
   // FX and written gates can extend the end into what will actually sound.
   'tests/freeze-span.js',
   'tests/mash-freeze.js',
+  // And what a frozen track actually DEPENDS on. Beside the freeze suites because it is
+  // the third question about the same feature: freeze-span picks what to render,
+  // mash-freeze pins the file it goes into, and this decides when the render is stale.
+  // Getting it wrong in one direction wastes minutes of rendering; in the other it
+  // plays stale audio under a song that has moved.
+  'tests/freeze-fingerprint.js',
   // The audio-routing half of Note FX's neighbours: a bar-only effect keeps its tail
   // after the next bar switches back to direct, while frozen PCM replaces source notes
   // before the live fader. Measured in Chromium because both claims are about samples.
@@ -226,6 +242,7 @@ const suites = [
 // `npx playwright install chromium` fails all of them at the launch rather than at an
 // assertion; that is the second reason not to fire them off unasked.
 const browserSuites = new Set([
+  'tests/beat-detect-audio.js',
   'tests/mixer-loop.js',
   'tests/song-loop.js',
   'tests/voice-edit.js',
@@ -268,7 +285,9 @@ for (const s of browserSuites) {
 // most important thing to find out about — and it is the reason this group is not
 // simply "the fast ones".
 const soundSuites = [
-  'tests/sound-test-menu.js', 'tests/visualizers.js', 'tests/megamix.js', 'tests/mix.js',
+  'tests/sound-test-menu.js', 'tests/visualisers.js', 'tests/megamix.js', 'tests/mix.js',
+  'tests/song-analysis.js', 'tests/beat-detect.js', 'tests/beat-detect-audio.js',
+  'tests/visualiser-page.js',
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js',
   'tests/song-copies.js', 'tests/song-alternates.js',

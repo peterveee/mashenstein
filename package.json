@@ -12,6 +12,7 @@
     "test:all": "node tests/run-all.js --all",
     "test:sound": "node tests/run-all.js --sound",
     "gallery": "node tools/build-gallery.js",
+    "visualiser": "node tools/build-visualiser.js",
     "archive": "node tools/archive-release.js",
     "archive:gallery": "node tools/archive-gallery.js",
     "sim": "node tools/fairness-sim.js",

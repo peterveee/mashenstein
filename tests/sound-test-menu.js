@@ -8,7 +8,7 @@ const { TITLE_THEME, HUB_THEME } = await import('../src/data/cabinets.js');
 const { COUNTER_DANCE_MIX_THEME } = await import('../src/data/shop-themes.js');
 const { MEGAMIX_THEME } = await import('../src/data/megamix.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
-const { VISUALIZER_NAMES } = await import('../src/engine/visualizers.js');
+const { VISUALISER_NAMES } = await import('../src/engine/visualisers.js');
 const { portraitAllowedFor } = await import('../src/engine/lifecycle.js');
 
 let failed = false;
@@ -113,16 +113,16 @@ assert(keyboard.idx === 14 && keyboard.listStart === 8,
 Input.press('confirm'); keyboard.update(1 / 60); Input.release('confirm'); Input.endFrame();
 assert(keyboardReturned === 1, 'keyboard confirmation activates fixed BACK');
 
-const preview = new SoundTestState({ onDone: () => {}, initialTrack: JUKEBOX.length - 1, startVisualizer: true });
+const preview = new SoundTestState({ onDone: () => {}, initialTrack: JUKEBOX.length - 1, startVisualiser: true });
 preview.enter();
-assert(preview.playing === JUKEBOX.length - 1 && preview.visualizer
-  && VISUALIZER_NAMES.includes(preview.visualizer.name),
+assert(preview.playing === JUKEBOX.length - 1 && preview.visualiser
+  && VISUALISER_NAMES.includes(preview.visualiser.name),
   'dev visualiser preview starts the Monster Mix with a random preset');
 preview.exit();
 
-const forced = new SoundTestState({ onDone: () => {}, initialTrack: JUKEBOX.length - 1, startVisualizer: true, startVisualizerIndex: 13 });
+const forced = new SoundTestState({ onDone: () => {}, initialTrack: JUKEBOX.length - 1, startVisualiser: true, startVisualiserIndex: 13 });
 forced.enter();
-assert(forced.visualizerIndex === 13 && forced.visualizer?.name === 'TOASTER SKY PARADE',
+assert(forced.visualiserIndex === 13 && forced.visualiser?.name === 'TOASTER SKY PARADE',
   'dev visualiser submenu can launch a specific preset');
 forced.exit();
 

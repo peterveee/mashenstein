@@ -21,6 +21,7 @@ import { loudness, gainToTarget, LOUDNESS_TARGET } from './lib/loudness.js';
 import { midiBuffer } from './lib/render-midi-bank.js';
 import { bankFromMidi } from './lib/midi-import.js';
 import { writeImportedIndex, importId, slugFor, IMPORTED_DIR } from './lib/imported-index.js';
+import { buildVisualiserHtml } from './build-visualiser.js';
 // Through lib/tracks.js, not src/data/tracks.js: that is what registers the songs in
 // src/data/imported/ as tracks, so an import is renderable without a restart.
 import { resolveTrack, listTracks, registerTrack, unregisterTrack } from './lib/tracks.js';
@@ -113,6 +114,18 @@ async function buildRenderFramePage() {
   const shell = readFileSync(join(ROOT, 'tools/mixer-render-shell.html'), 'utf8');
   return shell.replace('/*__BUNDLE__*/', () => js);
 }
+
+// The file-driven visualiser: the jukebox presets played against an imported MP3
+// or WAV instead of against a song the sequencer is playing. It needs nothing from
+// this server but the bundle — the file never leaves the browser — so it is a
+// read-only route with none of the save or history machinery anywhere near it.
+//
+// Request-built like everything else here, so an edit to the analyser or to a
+// preset lands on refresh. Built by the same function that writes the standalone
+// dist/visualiser.html rather than a second copy of the configuration — that
+// configuration is what keeps the cast out of the bundle, and a served page that
+// quietly carried them while the built one did not would be the worst of both.
+const buildVisualiserPage = () => buildVisualiserHtml(ROOT);
 
 // The standalone MRDR-3 playground shares the editor and keyboard bundle with the
 // desk, but has its own full-window shell. Keep it request-built in development so
@@ -1113,6 +1126,32 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // Loop Diagnostics, straight onto the disk of the machine the desk is running on.
+    //
+    // The CSV has always been downloadable, which is right for keeping one and wrong for
+    // reading one: a performance question is usually "what did the last two passes do",
+    // asked by somebody who is not sitting at the browser. Downloading, finding and
+    // pasting it is three steps of friction on the one artefact the whole investigation
+    // turns on. The desk posts it here instead, and it lands at a stable path anyone —
+    // or anything — can just read.
+    //
+    // Overwritten rather than appended: the desk sends the whole log each time, and it
+    // already bounds itself to the most recent records. `work/local/` because it is
+    // generated, disposable, and gitignored — see CLAUDE.md.
+    if (req.method === 'POST' && req.url === '/diagnostics-log') {
+      // A tight limit of its own: the log is bounded by its record cap and is a few
+      // hundred KB at worst, so the render-sized default would only ever let a mistake
+      // through quietly.
+      const bytes = await readBytes(req, 16 * 1024 * 1024);
+      if (!bytes) { res.writeHead(413); res.end('diagnostics log too large'); return; }
+      mkdirSync(join(ROOT, 'work', 'local'), { recursive: true });
+      const file = join('work', 'local', 'mixer-diagnostics.csv');
+      writeFileSync(join(ROOT, file), bytes);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ file, bytes: bytes.length }));
+      return;
+    }
+
     // Still here, and still the renderer the AUDITION button and the loudness sweep
     // below go through: those two run on this machine by necessity — one opens a
     // plugin window, the other renders thirty-four songs to compare them — and
@@ -1518,6 +1557,16 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'GET' && (req.url === '/MRDR3/' || req.url.startsWith('/MRDR3/?'))) {
       const html = await buildMrdr3Page();
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(html);
+      return;
+    }
+
+    // Both spellings, with or without the trailing slash. The desk's own code
+    // says "visualiser" and the preset pack says "visualiser", so whichever one
+    // you have in your fingers is the one that should answer.
+    if (req.method === 'GET' && /^\/visuali[sz]er\/?(\?|$)/.test(req.url)) {
+      const html = await buildVisualiserPage();
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(html);
       return;

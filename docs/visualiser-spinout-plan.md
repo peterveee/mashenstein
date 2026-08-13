@@ -1,9 +1,9 @@
-# Visualizer spin-out: an MP4 maker for arbitrary audio files
+# Visualiser spin-out: an MP4 maker for arbitrary audio files
 
 ## Objective
 
 A self-contained app where someone drops in an MP3 or WAV, previews any of the
-jukebox visualizers reacting to it live, and exports an MP4 carrying the
+jukebox visualisers reacting to it live, and exports an MP4 carrying the
 original track. No game, no music bank, no sequencer.
 
 Status: **idea only, nothing built.** Written up 2026-07-29 after a feasibility
@@ -12,18 +12,18 @@ two of the three hard pieces already exist and are battle-tested.
 
 ## Why this is cheap
 
-**The visualizer is already a pure function of an analysis feed.** It has no
+**The visualiser is already a pure function of an analysis feed.** It has no
 idea the game exists. The entire contract is:
 
 ```js
-const vis = createVisualizer(name, seed, { bpm });   // visualizers.js:2517
+const vis = createVisualiser(name, seed, { bpm });   // visualisers.js:2517
 vis.update(dt, { bass, mid, treble, level, dynamics, beat, beatPhase, beatPulse, spectrum });
 vis.draw(ctx);                                       // writes no state
 ```
 
-The `track` object it is handed only ever reads `.bpm`, at `visualizers.js:164`,
+The `track` object it is handed only ever reads `.bpm`, at `visualisers.js:164`,
 and only as a fallback when `analysis.beat` is absent. Nothing else in
-`src/engine/visualizers.js` reaches into game data.
+`src/engine/visualisers.js` reaches into game data.
 
 **`tools/render-video.js` is already ~90% of the export pipeline.** Chromium +
 Canvas2D at output resolution, supersampling, cover-crop to arbitrary aspect
@@ -48,7 +48,7 @@ in `analyseSong`, and `songBeat()` in the live path, because the sequencer is
 the source of truth. An arbitrary MP3 has none of that.
 
 This matters more than it looks. The presets lean on beat heavily:
-`ringRotationAt()` (`visualizers.js:132`) picks seeded 4/8/16-beat holds and
+`ringRotationAt()` (`visualisers.js:132`) picks seeded 4/8/16-beat holds and
 eases a 90–180° turn over exactly one beat, and `beatPulse` drives accents in
 nearly every preset. A wrong or drifting beat does not degrade gracefully — it
 reads as broken.
@@ -64,7 +64,7 @@ Two tiers:
 ## The easy-to-miss risk: loudness
 
 `dynamics` is `sqrt(level / recentPeak)` with a ~30s peak decay, and it feeds
-`MOTION_FLOOR` / `MOTION_EASE` (`visualizers.js:48-53`) — the whole
+`MOTION_FLOOR` / `MOTION_EASE` (`visualisers.js:48-53`) — the whole
 slow-down-through-a-breakdown behaviour. Those constants were tuned against
 *our own mixes*.
 
@@ -79,7 +79,7 @@ side is done.
 14 of the 17 presets are abstract and ship clean. Three are not:
 
 - **ARCADE ART GALLERY** and **TOASTER SKY PARADE** call `drawToon`
-  (`visualizers.js:1564`, `:1590`) and `drawProp`/`drawApplianceFinish`
+  (`visualisers.js:1564`, `:1590`) and `drawProp`/`drawApplianceFinish`
   (`:1510`, `:1722`), pulling in `src/sprites/toons.js` (~5,500 lines) and
   `src/sprites/props.js`. These put MASHENSTEIN heroes and appliances on screen.
 
@@ -117,10 +117,10 @@ mp3/wav/m4a. A Node CLI variant would shell out to ffmpeg, already in the pipeli
 - **`analyseSong` mirrors `musicAnalysis` by hand.** Two implementations of the
   same filter chain that must stay in step; a spin-out doubles the reasons to
   touch them. Worth extracting to a shared module if this goes ahead.
-- **Logical 480×270 is baked in** as `W`/`H` consts throughout `visualizers.js`.
+- **Logical 480×270 is baked in** as `W`/`H` consts throughout `visualisers.js`.
   Not a blocker — `render-video.js` already resolves it with a cover-crop
   transform and rasterizes at output resolution — but nothing can be drawn
   *outside* that logical frame.
-- **`screen.px` is read once** at `visualizers.js:2087` (density in the fractal
+- **`screen.px` is read once** at `visualisers.js:2087` (density in the fractal
   preset), the only import from `src/engine/renderer.js`. A spin-out needs a
   one-line stub for it.
