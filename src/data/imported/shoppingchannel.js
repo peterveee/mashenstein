@@ -82,6 +82,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
+  master: -1.3,
   masterEffects: [{ id: "mbComp" }],
   layers: [{ key: "chords2", from: "chords" }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead2", independent: true }, { key: "lead4", from: "lead3", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "rim2", from: "rim", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }],
   voice: {"chordsVoice":"monoBright","bassVoice":"roundBass","hatsVoice":"dsClosedHat2","kickVoice":"kickTight","chords2Voice":"monoBright","lead2Voice":"tpPianoetta","lead3Voice":"epiano","rimVoice":"bigRoomClap","snare2Voice":"gameBoySnare","bass2Voice":"squareMono","lead4Voice":"epiano","rim2Voice":"bigRoomClap","rim3Voice":"bigRoomClap","lead5Voice":"addDrawbarBright","lead6Voice":"fullOrgan"},
@@ -206,8 +207,8 @@ export const arrangement = {
         lead5: -12,
       },
       gain: {
-        lead3: -6,
-        lead2: -7.5,
+        lead3: -3.5,
+        lead2: -5.5,
       },
     },
     {
