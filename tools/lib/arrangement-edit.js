@@ -124,6 +124,9 @@ export function draftOf(bank, entry = null) {
     // Missing is the old 16-slot format. Once upgraded, a draft stays upgraded even
     // if its last off-grid note is erased: silently compacting it back would make the
     // next 1/32 edit repeatedly reshape every lane and would invalidate undo snapshots.
+    // Two deliberate acts do put it back, and neither is silent: leaving the roll's 1/32
+    // quantise, and saving. Both go through `normaliseArrangementResolution`, which
+    // refuses outright while a single note sits on an odd slot.
     resolution: resolutionOf(bank, entry) === FINE_RESOLUTION ? FINE_RESOLUTION : null,
   };
 }
@@ -221,6 +224,109 @@ export function entryOf(bank, draft) {
   if (swing != null) out.swing = swing;
   if (loop) out.loop = loop;
   if (resolution != null) out.resolution = resolution;
+  return out;
+}
+
+// Keys that are not a lane. A section is otherwise a partial bank, so every other array
+// on it is a lane's notes or a lane's lengths and is measured in slots. `order` and a
+// draft's `plan` are one entry per BAR and pass 64 on any song over thirty bars, which is
+// the trap `_wideLaneKeys` names in the engine; counting them made every long song look
+// as though it had content between the sixteenths. `plan` is here because these helpers
+// are handed a live draft as well as a file entry — see the piano roll's quantise picker.
+const NOT_A_LANE = new Set(['order', 'plan', 'sections']);
+const laneArrays = function* (obj) {
+  for (const [key, value] of Object.entries(obj || {})) {
+    if (!NOT_A_LANE.has(key) && Array.isArray(value)) yield [key, value];
+  }
+};
+
+/**
+ * Is a slot occupied? A rest is null; a percussion lane writes `false` for a step it
+ * does not strike, and `.` is what `seq` leaves behind for one.
+ */
+const occupied = (v) => v !== null && v !== undefined && v !== false && v !== '.';
+
+/**
+ * Does anything in this song actually sound BETWEEN the sixteenths?
+ *
+ * `sequenceValue` folds a lane array under 64 slots onto the even slots and returns null
+ * between them, so only a 64-slot-or-longer array can say anything on an odd one — and
+ * only if something is written there. The length arrays count too: `stepLen` reads them
+ * through the same seam.
+ *
+ * The bank half is separate from the entry half because only one of them is ours. See
+ * `normaliseArrangementResolution`.
+ */
+export function fineContent(obj) {
+  for (const [, arr] of laneArrays(obj)) {
+    if (arr.length < 64) continue;
+    for (let i = 1; i < arr.length; i += 2) if (occupied(arr[i])) return true;
+  }
+  return false;
+}
+
+/** As `fineContent`, but over a whole bank or entry — its own lanes and its sections. */
+const anyFineContent = (obj) => !!obj
+  && (fineContent(obj) || (obj.sections || []).some(fineContent));
+
+/** Does this bank or entry hold a 64-slot lane array at all, occupied or not? */
+const anyWideLane = (obj) => !!obj
+  && ([obj, ...(obj.sections || [])].some((o) => [...laneArrays(o)].some(([, a]) => a.length >= 64)));
+
+/** A 64-slot lane array back down to the 32 the sixteenth grid indexes. */
+const narrow = (arr) => arr.filter((_, i) => i % 2 === 0);
+
+/**
+ * Drop `resolution: 32` from an entry that never uses it, and narrow its lanes to match.
+ *
+ * A song is promoted the moment the piano roll's quantise picker is set to 1/32 — it has
+ * to be, because a note cannot be placed on a grid that is not drawn. Nothing demoted it
+ * again, so picking the fine grid once and not using it left the song fine FOREVER, and
+ * that flag is not free: `refreshTransportResolution` reads it as `native-32-step-bank`,
+ * which sets `_fineBars` to null and turns off the whole-tick fast path for the whole
+ * song. Measured on SMW All Instruments NEWEST — 27 lanes carrying notes, 65 bars, not
+ * one note on an odd slot — that was 1,040 extra scheduler passes over two minutes, each
+ * running the full bar preamble to find nothing.
+ *
+ * Deliberately NOT done in `draftOf` or `entryOf`: a draft round-trips through `entryOf`
+ * on every single edit, and compacting a live draft would reshape every lane the moment
+ * a 1/32 note was erased and invalidate the undo snapshots beside it (see the note on
+ * `draftOf`'s `resolution`). A save is the one moment the question is settled, and a
+ * demoted file promotes again cleanly the next time the picker is touched.
+ *
+ * Refuses in the two cases where 32 is load-bearing:
+ *
+ *   · something is written on an odd slot — the song is genuinely fine;
+ *   · the BANK carries a 64-slot lane. The composition is above the desk's marker and is
+ *     never rewritten, so its arrays would stay wide while the flag said sixteenths, and
+ *     `sequenceValue` would index them directly and play the first bar twice as fast.
+ *
+ * A track-level 1/32 arpeggiator does NOT block the demotion: it promotes the transport
+ * through `trackFine` on its own, independently of the bank's `resolution`.
+ *
+ * With no bank to check, nothing is demoted — the same answer `_wideLaneKeys` gives when
+ * it has not been handed one. A save that cannot see the music does not get to decide
+ * how finely that music is written.
+ */
+export function normaliseArrangementResolution(bank, entry) {
+  if (entry?.resolution !== FINE_RESOLUTION) return entry;
+  if (!bank) return entry;
+  if (anyFineContent(entry)) return entry;
+  if (anyWideLane(bank)) return entry;      // subsumes "the bank has fine content"
+  const out = { ...entry };
+  delete out.resolution;
+  if (out.sections) {
+    out.sections = out.sections.map((section) => {
+      const next = { ...section };
+      for (const [key, arr] of laneArrays(section)) {
+        if (arr.length >= 64) next[key] = narrow(arr);
+      }
+      return next;
+    });
+  }
+  for (const [key, arr] of laneArrays(entry)) {
+    if (arr.length >= 64) out[key] = narrow(arr);
+  }
   return out;
 }
 

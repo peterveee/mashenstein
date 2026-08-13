@@ -29,6 +29,11 @@ import { isDefaultMasterChain, EFFECT_BY_ID, paramRange } from '../src/engine/ef
 import { renderArrangementsFile } from './lib/arrangements-source.js';
 import { bpmOf, arrangementIssues } from '../src/data/arrangements.js';
 import { writeSongFile, writableSongPath, snapshotSongFile, notesImport } from './lib/song-file.js';
+// Applied on the way to disk, not while editing: a song promoted to the 1/32 grid by the
+// piano roll's quantise picker and never actually written on stays promoted forever
+// otherwise, and the flag costs the sequencer its whole-tick fast path for the whole
+// song. See normaliseArrangementResolution.
+import { normaliseArrangementResolution } from './lib/arrangement-edit.js';
 // The same builder scratch songs are born through — an alternate is a song file like
 // any other, so it is written by the one function that knows that shape.
 import { songFile } from './lib/song-source.js';
@@ -786,7 +791,7 @@ const server = createServer(async (req, res) => {
         group: 'copy',
         bank: source.bank,
         mix,
-        arrangement,
+        arrangement: normaliseArrangementResolution(source.bank, arrangement),
         variants,
         note: `A copy of ${source.title} (${sourceId}), taken from the Song Mixer.\n`
           + `Everything below is that song as the desk had it at the moment of the copy.\n`
@@ -879,7 +884,7 @@ const server = createServer(async (req, res) => {
         alternateOf: parentId,
         bank: parent.bank,
         mix,
-        arrangement,
+        arrangement: normaliseArrangementResolution(parent.bank, arrangement),
         variants,
         note: `An alternate of ${parent.title} (${parentId}), saved from the Song Mixer.\n`
           + `The music below is ${parent.title}'s, copied as it stood. The game can play\n`
@@ -955,7 +960,11 @@ const server = createServer(async (req, res) => {
         return;
       }
       const snap = snapshotSongFile(ROOT, parentId, HISTORY_DIR, stamp());
-      writeSongFile(ROOT, parentId, { mix, arrangement, variants });
+      writeSongFile(ROOT, parentId, {
+        mix,
+        arrangement: normaliseArrangementResolution(parent?.bank, arrangement),
+        variants,
+      });
       writeSongsIndex(join(ROOT, 'src/data/songs'));
       console.log(`promoted ${id} over ${parentId}`
         + (snap ? `  (was: work/mix-history/${snap})` : ''));
@@ -1040,7 +1049,7 @@ const server = createServer(async (req, res) => {
         if (snap) snaps.push(snap);
         writeSongFile(ROOT, id, {
           mix,
-          arrangement,
+          arrangement: normaliseArrangementResolution(track?.bank, arrangement),
           variants,
         });
         written.push(id);

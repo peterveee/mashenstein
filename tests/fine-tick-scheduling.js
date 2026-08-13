@@ -13,10 +13,17 @@
 // by design — the safe answer is "all of them" — and the whole value of them rests on
 // that being got right, which is what this suite is.
 //
+// The last section is the other half of the same subject: a song wearing `resolution: 32`
+// that never writes on a half step gets NO fast path at all, and until the normaliser
+// existed nothing ever took the flag back off.
+//
 // Browserless on purpose: every claim here is about the precompute, and none of it
 // needs an AudioContext to be true.
 import { Audio } from '../src/engine/audio.js';
-import { seq } from '../src/engine/notes.js';
+import { seq, n } from '../src/engine/notes.js';
+import { sequenceValue } from '../src/engine/lanes.js';
+import { applyArrangement } from '../src/data/arrangements.js';
+import { normaliseArrangementResolution } from '../tools/lib/arrangement-edit.js';
 
 let failed = false;
 const assert = (ok, message) => {
@@ -235,6 +242,90 @@ const plan = (bank, mix) => {
     ctx: previous.ctx, offline: previous.offline, bank: previous.bank, mixer: previous.mixer,
     transportResolution: previous.resolution, step: previous.step,
   });
+}
+
+// ---- taking the flag back off -------------------------------------------------
+//
+// `resolution: 32` is written the moment the piano roll's quantise picker is set to
+// 1/32, because a note cannot be placed on a grid that is not drawn. Nothing used to
+// write it back, so a song the grid was merely TRIED on stayed fine for good — and a
+// fine song is precisely the one `_fineBars` refuses to help, because a native 32-step
+// bank is allowed to have its music on the odd slots. `normaliseArrangementResolution`
+// is what asks whether it actually does.
+{
+  // 64 slots — two bars of thirty-seconds — with every note on an even one, which is
+  // what the roll writes when the grid was drawn fine and used coarsely.
+  const wide = (...pairs) => Array.from({ length: 64 }, (_, i) => (i % 2 ? null : pairs[i / 2] ?? null));
+  const bank = { bpm: 120, sections: [{ lead: seq('C4 . . . . . . . . . . . . . . .') }], order: [0] };
+  const fineEntry = () => ({
+    order: [0, 1],
+    resolution: 32,
+    sections: [{ base: 0, lead: wide(n('C4'), null, n('E4')), leadLen: wide(2, null, 4) }],
+  });
+
+  const tidy = normaliseArrangementResolution(bank, fineEntry());
+  assert(tidy.resolution === undefined, 'a fine entry with nothing on an odd slot loses the flag');
+  assert(tidy.sections[0].lead.length === 32, 'and its 64-slot lane narrows to the sixteenth grid');
+  assert(tidy.sections[0].leadLen.length === 32, 'and so does the length array beside it');
+  assert(tidy.sections[0].base === 0, 'while everything that is not a lane is carried through');
+  assert(JSON.stringify(tidy.order) === '[0,1]', 'and `order` is left alone, not mistaken for a lane');
+
+  // THE claim: narrowing is lossless. Every sixteenth reads the same note through
+  // `sequenceValue` before and after, which is the whole permission to do it at all.
+  const before = fineEntry().sections[0];
+  const after = tidy.sections[0];
+  let same = true;
+  for (const key of ['lead', 'leadLen']) {
+    for (let s = 0; s < 32; s++) {
+      if (sequenceValue({ resolution: 32, [key]: before[key] }, key, s * 2, 32)
+        !== sequenceValue({ [key]: after[key] }, key, s, 16)) same = false;
+    }
+  }
+  assert(same, 'and every sixteenth reads the same note either side of the narrowing');
+
+  // Refusals. Each of these is a song where 32 is load-bearing.
+  const withOddNote = fineEntry();
+  withOddNote.sections[0].lead[3] = n('G4');
+  assert(normaliseArrangementResolution(bank, withOddNote).resolution === 32,
+    'one note on an odd slot and the flag stays');
+
+  const withOddLength = fineEntry();
+  withOddLength.sections[0].leadLen[5] = 1;
+  assert(normaliseArrangementResolution(bank, withOddLength).resolution === 32,
+    'a LENGTH on an odd slot keeps it too — stepLen reads through the same seam');
+
+  const wideBank = { ...bank, sections: [{ lead: wide(n('C4')) }] };
+  assert(normaliseArrangementResolution(wideBank, fineEntry()).resolution === 32,
+    'a 64-slot lane in the COMPOSITION keeps it — that half of the file is never rewritten');
+
+  assert(normaliseArrangementResolution(null, fineEntry()).resolution === 32,
+    'and with no bank to check, nothing is decided');
+
+  const plain = { order: [0, 1], bpm: 104 };
+  assert(normaliseArrangementResolution(bank, plain) === plain,
+    'an entry that was never fine comes back untouched, by identity');
+
+  assert(JSON.stringify(normaliseArrangementResolution(bank, tidy)) === JSON.stringify(tidy),
+    'and running it twice changes nothing the second time');
+
+  // A live draft goes through the same function, and a draft's `plan` is one entry per
+  // BAR — long enough to look like a 64-slot lane on any song over thirty bars.
+  const draft = {
+    plan: Array.from({ length: 80 }, () => ({ sec: 0, half: 0 })),
+    resolution: 32,
+    sections: [{ base: 0, lead: wide(n('C4')) }],
+  };
+  const tidyDraft = normaliseArrangementResolution(bank, draft);
+  assert(tidyDraft.resolution === undefined && tidyDraft.plan.length === 80,
+    'an 80-bar draft demotes, and its plan is not mistaken for a lane and halved');
+
+  // And the point of all of it: the fast path comes back.
+  const was = plan(applyArrangement(bank, 'x', { x: fineEntry() }), null);
+  assert(was.fineBarsReason === 'native-32-step-bank' && was.fineBars === null,
+    'before: the flag alone costs the song every whole-tick skip');
+  const now = plan(applyArrangement(bank, 'x', { x: tidy }), null);
+  assert(now.resolution === 16 && now.fineBarsReason === '' && now.fineBars?.size === 0,
+    'after: back on the sixteenth clock, with no bar owing a half tick');
 }
 
 console.log(failed ? 'FINE TICK SCHEDULING: FAILED' : 'FINE TICK SCHEDULING: PASSED');

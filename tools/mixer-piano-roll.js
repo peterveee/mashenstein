@@ -40,6 +40,7 @@ import {
   LANES, validLen, perNoteLengthLane,
 } from '../src/engine/lanes.js';
 import { createBarGrid } from './mixer-bar-grid.js';
+import { normaliseArrangementResolution } from './lib/arrangement-edit.js';
 import { SCALE_BY_ID, inScale } from './mixer-voice-library.js';
 import { deskNoteName } from './mixer-note-names.js';
 
@@ -1098,6 +1099,22 @@ export function createPianoRoll({
       const current = draft();
       if (quantise === 0.5 && current?.resolution !== 32) {
         apply({ ...current, resolution: 32 }, '32nd-note piano-roll grid');
+        toast(`Quantise ${QUANTISE_OPTIONS.find((o) => o.value === quantise)?.label || '1/16'}`);
+        return;
+      }
+      // LEAVING the fine grid, having written nothing on it. Picking 1/32 promotes the
+      // song — it has to, a note cannot be placed on a grid that is not drawn — and
+      // before this nothing ever put it back, so trying the grid once left the song fine
+      // for good. That is not free: the sequencer reads `resolution: 32` as
+      // `native-32-step-bank` and turns off its whole-tick fast path for the entire song
+      // (see refreshTransportResolution). The demotion the note on `draftOf` warns
+      // against is the SILENT one, on erasing the last off-grid note; this is a deliberate
+      // pick, it takes an undo step of its own, and it refuses the moment a 1/32 note
+      // exists anywhere in the song.
+      const tidied = quantise !== 0.5 && current?.resolution === 32
+        ? normaliseArrangementResolution(editBank(), current) : current;
+      if (tidied !== current) {
+        apply({ ...tidied, resolution: null }, 'back to the 1/16 grid');
       } else {
         grid.refresh();
       }
