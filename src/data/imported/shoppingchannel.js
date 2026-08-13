@@ -84,25 +84,26 @@ export const bank = {
 export const mix = {
   master: -1.3,
   masterEffects: [{ id: "mbComp" }],
-  layers: [{ key: "chords2", from: "chords" }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead2", independent: true }, { key: "lead4", from: "lead3", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "rim2", from: "rim", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }],
-  voice: {"chordsVoice":"monoBright","bassVoice":"roundBass","hatsVoice":"dsClosedHat2","kickVoice":"kickTight","chords2Voice":"monoBright","lead2Voice":"tpPianoetta","lead3Voice":"epiano","rimVoice":"bigRoomClap","snare2Voice":"gameBoySnare","bass2Voice":"squareMono","lead4Voice":"epiano","rim2Voice":"bigRoomClap","rim3Voice":"bigRoomClap","lead5Voice":"addDrawbarBright","lead6Voice":"fullOrgan"},
-  voiceParams: {"snare2Voice":{"label":"Game Boy Snare","category":"Snare","dur":0.5,"note":"Pink-noise crack with a square body dropping 2.3k to 80 — the handheld backbeat, chokeable against the other arcade drums.","noise":{"type":"bandpass","freq":6480,"Q":0.9,"decay":0.61,"gain":1.98,"color":"pink"},"body":{"type":"square","from":2345,"to":80,"decay":0.37,"gain":1.02},"trim":1.9,"monoGroup":"arcadeDrums","starter":false,"kind":"noise","level":0.08867130034599335,"peak":1.3245834579499998,"songOrigin":"user","songSourceId":"snare2Voice"},"hatsVoice":{"label":"DS Closed Hat 3","category":"Hats","dur":0.5,"note":"A resonant highpassed tick — sharper than the plain closed hat, closer to metal without being metal.","noise":{"type":"highpass","freq":6585,"Q":5.1,"decay":0.162,"gain":1.72,"to":2800,"sweep":0.31},"starter":false,"kind":"drum","level":0.06672173266920933,"peak":1.854993909872,"songOrigin":"library","songSourceId":"hatsVoice"},"bass2Voice":{"label":"Square Mono","category":"Bass","synth":"MonoSynth","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0.22,"sustain":0,"release":0.129},"filter":{"type":"lowpass","Q":0.15,"rolloff":-12},"filterEnvelope":{"attack":0.001,"decay":0.607,"sustain":0.13,"release":0.128,"baseFrequency":4490,"octaves":1.3}},"starter":false,"transpose":-12,"mono":true,"kind":"tone","level":0.03371685257437114,"peak":0.6227004692117727,"songOrigin":"user","songSourceId":"bass2Voice"},"chords2Voice":{"label":"Bright Mono","category":"Lead","synth":"MonoSynth","dur":1.2,"note":"Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.004,"decay":0.15,"sustain":0.6,"release":0.2},"filter":{"type":"lowpass","Q":2,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":600,"octaves":3.2}},"starter":false,"fine":28,"kind":"tone","level":0.08768420726610465,"peak":0.8941313035844404,"songOrigin":"library","songSourceId":"chords2Voice"},"bassVoice":{"label":"Round Bass","category":"Bass","synth":"MonoSynth","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":1.24,"sustain":0.33,"release":0.8},"filter":{"type":"lowpass","Q":2.9,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":1.22,"sustain":0.16,"release":0.3,"baseFrequency":110,"octaves":3.9}},"starter":false,"mode":"mono","kind":"tone","level":0.07902175733395783,"peak":1.1841431847122437,"songOrigin":"user","songSourceId":"bassVoice"},"chordsVoice":{"label":"Bright Mono","category":"Lead","synth":"MonoSynth","dur":1.2,"note":"Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.004,"decay":0.15,"sustain":0.6,"release":0.2},"filter":{"type":"lowpass","Q":2,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":600,"octaves":3.2}},"id":"monoBright","kind":"tone","factory":true,"level":0.087427,"peak":0.8807},"kickVoice":{"label":"Tight Kick","category":"Kick","synth":"MembraneSynth","dur":1,"note":"The same shape with the tail cut short — for a busy bar where a long boom would smear into the next hit.","options":{"pitchDecay":0.02,"octaves":4,"oscillator":{"type":"sine"},"envelope":{"attack":0.001,"decay":0.16,"sustain":0,"release":0.16}},"id":"kickTight","kind":"tone","factory":true,"level":0.029608,"peak":0.6956},"lead2Voice":{"label":"Pianoetta","category":"Keys","synth":"MonoSynth","dur":2.2,"note":"A square through a gentle lowpass with a piano-ish decay. Toy upright rather than grand.","origin":"Tonejs/Presets MonoSynth/Pianoetta","options":{"oscillator":{"type":"square"},"filter":{"Q":2,"type":"lowpass","rolloff":-12},"envelope":{"attack":0.005,"decay":3,"sustain":0,"release":0.45},"filterEnvelope":{"attack":0.001,"decay":0.32,"sustain":0.9,"release":3,"baseFrequency":700,"octaves":2.3}},"id":"tpPianoetta","kind":"tone","factory":true,"level":0.111126,"peak":0.886},"lead3Voice":{"label":"Electric Piano","category":"Keys","synth":"FMSynth","dur":3,"note":"The Rhodes shape: bell in the attack, sine underneath, long decay.","options":{"harmonicity":3,"modulationIndex":10,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.002,"decay":1.2,"sustain":0.06,"release":1},"modulationEnvelope":{"attack":0.001,"decay":0.25,"sustain":0.01,"release":0.3}},"id":"epiano","kind":"tone","factory":true,"level":0.023667,"peak":0.2199},"rimVoice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"lead4Voice":{"label":"Electric Piano","category":"Keys","synth":"FMSynth","dur":3,"note":"The Rhodes shape: bell in the attack, sine underneath, long decay.","options":{"harmonicity":3,"modulationIndex":10,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.002,"decay":1.2,"sustain":0.06,"release":1},"modulationEnvelope":{"attack":0.001,"decay":0.25,"sustain":0.01,"release":0.3}},"id":"epiano","kind":"tone","factory":true,"level":0.023667,"peak":0.2199},"rim2Voice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"rim3Voice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"lead5Voice":{"label":"Drawbar Organ, Bright","category":"Organ","homeLane":"organChords","synth":"AdditiveSynth","dur":7.2,"note":"The upper drawbars pulled further out. Cuts through where the soft registration sits under everything.","additive":{"bars":[0.39,0.52,1,0.78,0.48,0.3,0.17,0.16,0.32],"attack":0.006,"decay":0.005,"sustain":0.22,"release":0.005,"perc":{"ratio":3,"gain":0.72,"attack":0.002,"decay":0.08},"damp":0.35},"starter":false,"transpose":0,"kind":"tone","level":0.08941953263907777,"peak":0.6999125196896199,"songOrigin":"library","songSourceId":"lead5Voice"},"lead6Voice":{"label":"Full Organ","category":"Organ","synth":"FMSynth","dur":3,"note":"All stops out: harmonically dense and completely flat in level, like a key held down.","options":{"harmonicity":2,"modulationIndex":2,"oscillator":{"type":"square"},"modulation":{"type":"square"},"envelope":{"attack":0.01,"decay":0.01,"sustain":1,"release":0.2},"modulationEnvelope":{"attack":0.01,"decay":0.01,"sustain":0.82,"release":0.082}},"starter":false,"vibrato":{"depth":0.03},"kind":"tone","level":0.06244855541016535,"peak":0.21786836597471732,"songOrigin":"library","songSourceId":"lead6Voice"}},
+  layers: [{ key: "chords2", from: "chords" }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead2", independent: true }, { key: "lead4", from: "lead3", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "rim2", from: "rim", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }],
+  voice: {"chordsVoice":"monoBright","bassVoice":"roundBass","hatsVoice":"dsClosedHat2","kickVoice":"kickTight","chords2Voice":"monoBright","lead2Voice":"tpPianoetta","lead3Voice":"epiano","rimVoice":"bigRoomClap","snare2Voice":"gameBoySnare","bass2Voice":"squareMono","lead4Voice":"epiano","rim2Voice":"bigRoomClap","rim3Voice":"bigRoomClap","lead5Voice":"addDrawbarBright","lead6Voice":"fullOrgan","lead7Voice":"harpPluck"},
+  voiceParams: {"snare2Voice":{"label":"Game Boy Snare","category":"Snare","dur":0.5,"note":"Pink-noise crack with a square body dropping 2.3k to 80 — the handheld backbeat, chokeable against the other arcade drums.","noise":{"type":"bandpass","freq":6480,"Q":0.9,"decay":0.61,"gain":1.98,"color":"pink"},"body":{"type":"square","from":2345,"to":80,"decay":0.37,"gain":1.02},"trim":1.9,"monoGroup":"arcadeDrums","starter":false,"kind":"noise","level":0.08867130034599335,"peak":1.3245834579499998,"songOrigin":"user","songSourceId":"snare2Voice"},"hatsVoice":{"label":"DS Closed Hat 3","category":"Hats","dur":0.5,"note":"A resonant highpassed tick — sharper than the plain closed hat, closer to metal without being metal.","noise":{"type":"highpass","freq":6585,"Q":5.1,"decay":0.162,"gain":1.72,"to":2800,"sweep":0.31},"starter":false,"kind":"drum","level":0.06672173266920933,"peak":1.854993909872,"songOrigin":"library","songSourceId":"hatsVoice"},"bass2Voice":{"label":"Square Mono","category":"Bass","synth":"MonoSynth","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0.22,"sustain":0,"release":0.129},"filter":{"type":"lowpass","Q":0.15,"rolloff":-12},"filterEnvelope":{"attack":0.001,"decay":0.607,"sustain":0.13,"release":0.128,"baseFrequency":4490,"octaves":1.3}},"starter":false,"transpose":-12,"mono":true,"kind":"tone","level":0.03371685257437114,"peak":0.6227004692117727,"songOrigin":"user","songSourceId":"bass2Voice"},"chords2Voice":{"label":"Bright Mono","category":"Lead","synth":"MonoSynth","dur":1.2,"note":"Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.004,"decay":0.15,"sustain":0.6,"release":0.2},"filter":{"type":"lowpass","Q":2,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":600,"octaves":3.2}},"starter":false,"fine":28,"kind":"tone","level":0.08768420726610465,"peak":0.8941313035844404,"songOrigin":"library","songSourceId":"chords2Voice"},"bassVoice":{"label":"Round Bass","category":"Bass","synth":"MonoSynth","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":1.24,"sustain":0.33,"release":0.8},"filter":{"type":"lowpass","Q":2.9,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":1.22,"sustain":0.16,"release":0.3,"baseFrequency":110,"octaves":3.9}},"starter":false,"mode":"mono","kind":"tone","level":0.07902175733395783,"peak":1.1841431847122437,"songOrigin":"user","songSourceId":"bassVoice"},"chordsVoice":{"label":"Bright Mono","category":"Lead","synth":"MonoSynth","dur":1.2,"note":"Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.004,"decay":0.15,"sustain":0.6,"release":0.2},"filter":{"type":"lowpass","Q":2,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":600,"octaves":3.2}},"id":"monoBright","kind":"tone","factory":true,"level":0.087427,"peak":0.8807},"kickVoice":{"label":"Tight Kick","category":"Kick","synth":"MembraneSynth","dur":1,"note":"The same shape with the tail cut short — for a busy bar where a long boom would smear into the next hit.","options":{"pitchDecay":0.02,"octaves":4,"oscillator":{"type":"sine"},"envelope":{"attack":0.001,"decay":0.16,"sustain":0,"release":0.16}},"id":"kickTight","kind":"tone","factory":true,"level":0.029608,"peak":0.6956},"lead2Voice":{"label":"Pianoetta","category":"Keys","synth":"MonoSynth","dur":2.2,"note":"A square through a gentle lowpass with a piano-ish decay. Toy upright rather than grand.","origin":"Tonejs/Presets MonoSynth/Pianoetta","options":{"oscillator":{"type":"triangle"},"filter":{"Q":2,"type":"lowpass","rolloff":-12},"envelope":{"attack":0.002,"decay":0.554,"sustain":0,"release":0.528},"filterEnvelope":{"attack":0.004,"decay":0.32,"sustain":0.9,"release":3,"baseFrequency":880,"octaves":2.3}},"starter":false,"vibrato":{"depth":0.03},"kind":"tone","level":0.04102093147826859,"peak":0.6942988811792932,"songOrigin":"library","songSourceId":"lead2Voice"},"lead3Voice":{"label":"Electric Piano","category":"Keys","synth":"FMSynth","dur":3,"note":"The Rhodes shape: bell in the attack, sine underneath, long decay.","options":{"harmonicity":3,"modulationIndex":10,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.002,"decay":1.2,"sustain":0.06,"release":1},"modulationEnvelope":{"attack":0.001,"decay":0.25,"sustain":0.01,"release":0.3}},"id":"epiano","kind":"tone","factory":true,"level":0.023667,"peak":0.2199},"rimVoice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"lead4Voice":{"label":"Electric Piano","category":"Keys","synth":"FMSynth","dur":3,"note":"The Rhodes shape: bell in the attack, sine underneath, long decay.","options":{"harmonicity":3,"modulationIndex":10,"oscillator":{"type":"sine"},"modulation":{"type":"sine"},"envelope":{"attack":0.002,"decay":1.2,"sustain":0.06,"release":1},"modulationEnvelope":{"attack":0.001,"decay":0.25,"sustain":0.01,"release":0.3}},"id":"epiano","kind":"tone","factory":true,"level":0.023667,"peak":0.2199},"rim2Voice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"rim3Voice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"noise","user":true,"level":0.018347,"peak":0.3542},"lead5Voice":{"label":"Drawbar Organ, Bright","category":"Organ","homeLane":"organChords","synth":"AdditiveSynth","dur":7.2,"note":"The upper drawbars pulled further out. Cuts through where the soft registration sits under everything.","additive":{"bars":[0.31,0.44,1,0.78,0.48,0.3,0.14,0.16,0.34],"attack":0.01,"decay":0.005,"sustain":0.22,"release":0.005,"perc":{"ratio":3,"gain":0.72,"attack":0.002,"decay":0.08},"damp":0.35},"starter":false,"transpose":0,"kind":"tone","level":0.08810888699323978,"peak":1.0322927836004219,"songOrigin":"library","songSourceId":"lead5Voice"},"lead6Voice":{"label":"Full Organ","category":"Organ","synth":"FMSynth","dur":3,"note":"All stops out: harmonically dense and completely flat in level, like a key held down.","options":{"harmonicity":2,"modulationIndex":2,"oscillator":{"type":"square"},"modulation":{"type":"square"},"envelope":{"attack":0.01,"decay":0.01,"sustain":1,"release":0.2},"modulationEnvelope":{"attack":0.01,"decay":0.01,"sustain":0.82,"release":0.082}},"starter":false,"vibrato":{"depth":0.03},"kind":"tone","level":0.06244855541016535,"peak":0.21786836597471732,"songOrigin":"library","songSourceId":"lead6Voice"},"lead7Voice":{"label":"Harp","category":"Pluck","synth":"Synth","dur":2,"note":"A triangle with no sustain at all — the string is let go the moment it is struck.","options":{"oscillator":{"type":"triangle"},"envelope":{"attack":0.002,"decay":0.7,"sustain":0,"release":0.7}},"id":"harpPluck","kind":"tone","factory":true,"level":0.04711,"peak":0.6946}},
   lanes: {
     kick: { gain: 5.7, eq: { low: -6.7, mid: 1.8 }, effects: [{ id: "distortion", params: { distortion: 0.7, wet: 0.65 } }] },
     hats: { gain: 6, pan: -0.373, send: { reverb: 0.29 }, eq: { high: 3.6 } },
     chords: { gain: -18.1, pan: -0.378, send: { reverb: 0.57 }, eq: { low: -1.8, high: 4.6 } },
     bass: { gain: -6.5, eq: { low: -4 }, effects: [{ id: "distortion", params: { distortion: 0.17 } }, { id: "compressor" }] },
     chords2: { gain: -24.6, pan: 0.518, send: { reverb: 0.57 }, eq: { low: -1.1, high: 7.1 } },
-    lead2: { gain: -8.16, send: { delay: 0.007, reverb: 0.202 }, eq: { high: 3.6 } },
-    lead3: { gain: 1.488, send: { delay: 0.135, reverb: 0.339 }, eq: { high: 2.6 }, effects: [{ id: "doubler", params: { depth: 0.38 } }] },
+    lead2: { gain: -2, pan: -0.213, send: { delay: 0.008, reverb: 0.202 }, eq: { high: 3.6 } },
+    lead3: { gain: 0.4, pan: 0.179, send: { delay: 0.018, reverb: 0.339 }, eq: { high: 2.6 }, effects: [{ id: "doubler", params: { depth: 0.38 } }] },
     rim: { gain: 2.2 },
-    snare2: { gain: -3.1, send: { reverb: 1.611 } },
+    snare2: { gain: -4.24, send: { reverb: 1.611 } },
     bass2: { gain: -7.5, eq: { low: -8.2 }, effects: [{ id: "distortion", params: { distortion: 0.17 } }] },
     lead4: { gain: -7, send: { reverb: 0.339 }, eq: { low: -12.4, high: 6 }, effects: [{ id: "doubler" }, { id: "pingpong", params: { wet: 1 } }] },
     rim2: { gain: 2.2 },
     rim3: { gain: 2.2 },
-    lead5: { gain: -2.08, send: { reverb: 0.237 }, effects: [{ id: "widener", bypass: true }] },
-    lead6: { gain: -6.56, send: { delay: 0.071, reverb: 1.05 } },
+    lead5: { gain: -3.84, send: { reverb: 0.087 }, effects: [{ id: "widener", bypass: true }] },
+    lead6: { gain: -13.6, send: { delay: 0.071, reverb: 1.05 } },
+    lead7: { send: { delay: 0.601 }, noteFx: {"strum":{"enabled":false,"direction":"up","gapMs":18},"arp":{"enabled":true,"direction":"up","rate":1,"octaves":3,"repeat":false,"gate":80,"retrigger":"chord","latch":false}} },
   },
 };
 
@@ -115,6 +116,7 @@ export const arrangement = {
       transpose: {
         bass2: 12,
         lead5: -12,
+        lead7: -12,
       },
     },
     {
@@ -125,6 +127,7 @@ export const arrangement = {
       transpose: {
         bass2: 12,
         lead5: -12,
+        lead7: -12,
       },
       offset: {
         rim3: 1,
@@ -159,7 +162,7 @@ export const arrangement = {
       },
     },
     {
-      s: 12,
+      s: 59,
       bars: 1,
       from: 1,
       off: ["chords2","lead4"],
@@ -167,18 +170,24 @@ export const arrangement = {
         bass2: 12,
         lead5: -12,
       },
+      gain: {
+        lead6: -6.5,
+      },
     },
     {
-      s: 13,
+      s: 60,
       bars: 1,
       off: ["chords2","lead4"],
       transpose: {
         bass2: 12,
         lead5: -12,
       },
+      gain: {
+        lead6: -6.5,
+      },
     },
     {
-      s: 14,
+      s: 61,
       bars: 1,
       from: 1,
       off: ["chords2","lead4"],
@@ -186,14 +195,20 @@ export const arrangement = {
         bass2: 12,
         lead5: -12,
       },
+      gain: {
+        lead6: -6.5,
+      },
     },
     {
-      s: 15,
+      s: 58,
       bars: 1,
       off: ["chords2","lead4"],
       transpose: {
         bass2: 12,
         lead5: -12,
+      },
+      gain: {
+        lead6: -6.5,
       },
     },
     {
@@ -209,6 +224,7 @@ export const arrangement = {
       gain: {
         lead3: -3.5,
         lead2: -5.5,
+        lead6: -6.5,
       },
     },
     {
@@ -302,6 +318,26 @@ export const arrangement = {
       s: 48,
       bars: 1,
       off: ["lead2","lead4"],
+      noteFx: {
+        lead6: {
+          mode: "on",
+          strum: {
+            enabled: false,
+            direction: "up",
+            gapMs: 18,
+          },
+          arp: {
+            enabled: true,
+            direction: "up",
+            rate: 1,
+            octaves: 3,
+            repeat: false,
+            gate: 80,
+            retrigger: "bar",
+            latch: true,
+          },
+        },
+      },
       inlineFx: {
         lead3: [
           {
@@ -320,6 +356,7 @@ export const arrangement = {
         bass2: 12,
         lead3: -12,
         lead5: -12,
+        lead7: -12,
       },
       gain: {
         lead3: -6,
@@ -331,6 +368,26 @@ export const arrangement = {
       bars: 1,
       from: 1,
       off: ["lead2","lead4"],
+      noteFx: {
+        lead6: {
+          mode: "on",
+          strum: {
+            enabled: false,
+            direction: "up",
+            gapMs: 18,
+          },
+          arp: {
+            enabled: true,
+            direction: "up",
+            rate: 1,
+            octaves: 3,
+            repeat: false,
+            gate: 80,
+            retrigger: "bar",
+            latch: true,
+          },
+        },
+      },
       inlineFx: {
         lead3: [
           {
@@ -349,6 +406,7 @@ export const arrangement = {
         bass2: 12,
         lead3: -12,
         lead5: -12,
+        lead7: -12,
       },
       gain: {
         lead3: -6,
@@ -524,6 +582,7 @@ export const arrangement = {
       transpose: {
         bass2: 12,
         lead5: -12,
+        lead7: -12,
       },
       gain: {
         lead3: -6,
@@ -597,6 +656,7 @@ export const arrangement = {
       transpose: {
         bass2: 12,
         lead5: -12,
+        lead7: -12,
       },
       gain: {
         lead3: -6,
@@ -663,7 +723,7 @@ export const arrangement = {
     {
       s: 15,
       bars: 1,
-      off: ["chords2","lead4"],
+      off: ["chords2","lead4","lead6"],
       transpose: {
         bass2: 12,
         lead5: -12,
@@ -1062,6 +1122,8 @@ export const arrangement = {
       rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead3Len: [[0.96,0.96,0.96],null,[0.96,0.96,0.96],[0.96,0.96,0.96],null,[0.96,0.96,0.96],null,[0.96,0.96,0.96],null,null,[0.96,0.96,0.96],[0.96,0.96,0.96],null,[0.96,0.96,0.96],null,[0.96,0.96,0.96],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6: [[987.7666025122483],null,null,null,null,null,null,null,[932.3275230361799],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6Len: [[9],null,null,null,null,null,null,null,[7],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 4,
@@ -1156,6 +1218,8 @@ export const arrangement = {
       bass2: seq('A2 A2 A2 A2 A2 . . . . . A2 A2 A2 A2 A2 . | . . . . . . . . . . . . . . . .'),
       lead4: chordSeq('C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . . . . . C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . | . . . . . . . . . . . . . . . .'),
       lead3Len: [[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],null,null,null,null,null,[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7: [[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7Len: [[15.306108,15.306108,15.306108,15.306108],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 8,
@@ -1167,6 +1231,8 @@ export const arrangement = {
       rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 C1 . .').map((v) => !!v),
       lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],null,null,null,null,null,null,null,[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],null],
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[1],null,null,null,null,null,null,null,null],
+      lead7: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[15.306108,15.306108,15.306108,15.306108],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 1,
@@ -1345,8 +1411,8 @@ export const arrangement = {
       bass2: seq('. . . . . . . . . . . . . . . . | A2 A2 A2 A2 A2 . . . . . . . A2 A2 A2 .'),
       lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
       rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . C1 . . . . .').map((v) => !!v),
-      lead5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
-      lead5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1],null,null,null,null,null,null,null,[1,1,1,1],[1,1,1,1],[1,1,1,1],null],
+      lead7: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[15.306108,15.306108,15.306108,15.306108],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 8,
@@ -1358,6 +1424,8 @@ export const arrangement = {
       lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],null,null,null,null,null,null,null,[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],null],
       lead5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
       lead5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],null,null,null,null,null,null,null,[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],null],
+      lead7: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[15.745384,15.745384,15.745384,15.745384],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 4,
@@ -1368,6 +1436,8 @@ export const arrangement = {
       rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,[739.9888454232688,987.7666025122483,1174.6590716696303],null,null,null,null,[880,1108.7305239074883,1318.5102276514797],[880,1108.7305239074883,1318.5102276514797],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],[987.7666025122483,1244.5079348883237],null],
       lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[0.96,0.96,0.96],null,null,[0.96,0.96,0.96],null,null,null,null,[0.96,0.96,0.96],[0.96,0.96,0.96],[0.96,0.96],[0.96,0.96],[0.96,0.96],null],
+      lead6: chordSeq('. . . . . . . . . . . . . . . . | D5 . . . . . . . . . . . . . . .'),
+      lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[8,8,7.785866],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 5,
@@ -1419,9 +1489,9 @@ export const arrangement = {
       rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead5: [null,null,[659.2551138257398,830.6093951598903],[659.2551138257398,830.6093951598903],null,[830.6093951598903,987.7666025122483],null,[523.2511306011972,622.2539674441618,739.9888454232688],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead5Len: [null,null,[0.91,0.91],[0.91,0.91],null,[0.91,0.91],null,[0.91,0.91,0.91],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead5Len: [null,null,[0.91,0.91],[0.91,0.91],null,[1.9319960000000003,1.9319960000000003],null,[4.048828,4.048828,4.048828],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead6: [null,null,null,null,null,null,null,[261.6255653005986,311.1269837220809,369.9944227116344],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead6Len: [null,null,null,null,null,null,null,[8.421165,8.421165,8.421165],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6Len: [null,null,null,null,null,null,null,[8.882457,8.882457,8.882457],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 7,
@@ -1431,7 +1501,9 @@ export const arrangement = {
       rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[493.8833012561241,587.3295358348151,739.9888454232688],null,[493.8833012561241,587.3295358348151,698.4564628660078],[493.8833012561241,587.3295358348151,739.9888454232688],[493.8833012561241,587.3295358348151,830.6093951598903],[493.8833012561241,587.3295358348151,880],[587.3295358348151,739.9888454232688,987.7666025122483],[659.2551138257398,830.6093951598903,1108.7305239074883],null,null,null,[659.2551138257398,830.6093951598903,1046.5022612023945],null,null,null],
-      lead5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[0.91,0.91,0.91],null,[0.91,0.91,0.91],[0.91,0.91,0.91],[0.91,0.91,0.91],[0.91,0.91,0.91],[0.91,0.91,0.91],[2.448153,2.448153,2.448153],null,null,null,[2.448153,2.448153,2.448153],null,null,null],
+      lead5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[0.91,0.91,0.91],null,[0.91,0.91,0.91],[0.91,0.91,0.91],[0.91,0.91,0.91],[0.91,0.91,0.91],[0.91,0.91,0.91],[3.473899,3.473899,3.473899],null,null,null,[3.473899,3.473899,3.473899],null,null,null],
+      lead6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,null,null,null,null,null,null,[277.1826309768721,329.6275569128699,415.3046975799451],null,null,null,[261.6255653005986,329.6275569128699,415.3046975799451],null,null,null],
+      lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[7.979403,7.979403,7.979403],null,null,null,null,null,null,null,[3.742898,3.831143,4.166193],null,null,null,[3.831143,3.831143,3.764027],null,null,null],
     },
     {
       base: 8,
@@ -1440,6 +1512,8 @@ export const arrangement = {
       lead4: chordSeq('C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . . . . . C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . | . . . . . . . . . . . . . . . .'),
       lead5: [[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],null,null,null,null,null,[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead5Len: [[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],null,null,null,null,null,[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7: [[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7Len: [[15.745384,15.745384,15.745384,15.745384],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 8,
@@ -1449,6 +1523,8 @@ export const arrangement = {
       lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122481],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
       lead5: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],[523.2511306011972,659.2551138257398,739.9888454232688,987.7666025122483],null],
       lead5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],null,null,null,null,null,null,null,[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],null],
+      lead7: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,659.2551138257398,783.9908719634985,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[15.745384,15.745384,15.745384,15.745384],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 5,
@@ -1525,8 +1601,8 @@ export const arrangement = {
       lead2: chordSeq('C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . . . . . C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . | . . . . . . . . . . . . . . . .'),
       bass2: seq('A2 A2 A2 A2 A2 . . . . . A2 A2 A2 A2 A2 . | . . . . . . . . . . . . . . . .'),
       lead4: chordSeq('C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . . . . . C#5min7 C#5min7 C#5min7 C#5min7 C#5min7 . | . . . . . . . . . . . . . . . .'),
-      lead5: [[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],null,null,null,null,null,[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      lead5Len: [[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1],null,null,null,null,null,[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7: [[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7Len: [[15.306108,15.306108,15.306108,15.306108],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       base: 8,
@@ -1537,6 +1613,56 @@ export const arrangement = {
       lead3Len: [[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],null,null,null,null,null,[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],[0.96,0.96,0.96,0.96],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead5: [[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],null,null,null,null,null,[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead5Len: [[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],null,null,null,null,null,[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],[0.91,0.91,0.91,0.91],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7: [[554.3652619537442,659.2551138257398,830.6093951598903,987.7666025122483],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead7Len: [[15.745384,15.745384,15.745384,15.745384],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    },
+    {
+      base: 4,
+      lead2: [[261.6255653005986,329.6275569128699,493.8833012561241],null,[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,329.6275569128699],null,[261.6255653005986,329.6275569128699,493.8833012561241],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,null,[207.65234878997256,261.6255653005986,311.1269837220809],[207.65234878997256,261.6255653005986,311.1269837220809],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,[246.94165062806206,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass2: seq('A2 . . A2 E2 . . G#2 G#2 . . G#2 D#2 . . G2 | . . . . . . . . . . . . . . . .'),
+      lead4: [[261.6255653005986,329.6275569128699,493.8833012561241],null,[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,329.6275569128699],null,[261.6255653005986,329.6275569128699,493.8833012561241],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,null,[207.65234878997256,261.6255653005986,311.1269837220809],[207.65234878997256,261.6255653005986,311.1269837220809],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,[246.94165062806206,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead6: [[659.2551138257398,783.9908719634985,987.7666025122483],null,null,null,null,null,null,null,[523.2511306011972,622.2539674441618,932.3275230361799],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6Len: [[7.864347,7.781605,8.497337],null,null,null,null,null,null,null,[7.794744,7.897017,8.104048],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [[261.6255653005986,329.6275569128699,493.8833012561241],null,[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,329.6275569128699],null,[261.6255653005986,329.6275569128699,493.8833012561241],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,null,[207.65234878997256,261.6255653005986,311.1269837220809],[207.65234878997256,261.6255653005986,311.1269837220809],null,[261.6255653005986,311.1269837220809,466.1637615180899],null,[246.94165062806206,293.6647679174076,440],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3Len: [[0.96,0.96,0.96],null,[0.96,0.96,0.96],[0.96,0.96,0.96],null,[0.96,0.96,0.96],null,[0.96,0.96,0.96],null,null,[0.96,0.96,0.96],[0.96,0.96,0.96],null,[0.96,0.96,0.96],null,[0.96,0.96,0.96],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    },
+    {
+      base: 2,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,587.3295358348151],[311.1269837220809,391.99543598174927,587.3295358348151],null,[311.1269837220809,391.99543598174927,523.2511306011972],[311.1269837220809,391.99543598174927,523.2511306011972],null,[311.1269837220809,391.9954359817493,466.1637615180899],[311.1269837220809,391.9954359817493,466.1637615180899],null,[261.6255653005986,311.1269837220809,440],[261.6255653005986,311.1269837220809,440],null,[261.6255653005986,311.12698372208087,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344]],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,587.3295358348151],[311.1269837220809,391.99543598174927,587.3295358348151],null,[311.1269837220809,391.99543598174927,523.2511306011972],[311.1269837220809,391.99543598174927,523.2511306011972],null,[311.1269837220809,391.99543598174927,466.1637615180899],[311.1269837220809,391.99543598174927,466.1637615180899],null,[261.6255653005986,311.1269837220809,440],[261.6255653005986,311.1269837220809,440],null,[261.6255653005986,311.1269837220809,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344]],
+      bass2: seq('. . . . . . . . . . . . . . . . | C2 . . C2 G2 . . G2 F2 . . F2 C2 . . .'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[311.1269837220809,391.99543598174927,587.3295358348151],[311.1269837220809,391.99543598174927,587.3295358348151],null,[311.1269837220809,391.99543598174927,523.2511306011972],[311.1269837220809,391.99543598174927,523.2511306011972],null,[311.1269837220809,391.9954359817493,466.1637615180899],[311.1269837220809,391.9954359817493,466.1637615180899],null,[261.6255653005986,311.1269837220809,440],[261.6255653005986,311.1269837220809,440],null,[261.6255653005986,311.12698372208087,391.99543598174927],null,[246.94165062806206,293.6647679174076,369.9944227116344]],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[0.96,0.96,0.96],[0.96,0.96,0.96],null,[0.96,0.96,0.96],[0.96,0.96,0.96],null,[0.96,0.96,0.96],[0.96,0.96,0.96],null,[0.96,0.96,0.96],[0.96,0.96,0.96],null,[0.96,0.96,0.96],null,[0.96,0.96,0.96]],
+      lead6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[523.2511306011972,622.2539674441618,783.9908719634985],null,[493.8833012561241,587.3295358348151,739.9888454232688]],
+      lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[1.664595,1.664595,1.664595],null,[7.607422,7.716087,7.937678]],
+    },
+    {
+      base: 3,
+      lead2: [null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,[293.6647679174076,369.9944227116344,440],[233.08188075904496,277.1826309768721,329.6275569128699],[277.1826309768721],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: [null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,[293.6647679174076,369.9944227116344,440],[233.08188075904496,277.1826309768721,329.6275569128699],[277.1826309768721],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass2: seq('B2 . . B2 F#2 . . F#2 A#2 . . A#2 E2 . . E2 | . . . . . . . . . . . . . . . .'),
+      lead4: [null,null,null,null,[246.94165062806206,293.6647679174076,369.9944227116344],null,[293.6647679174076,369.9944227116344,440],[233.08188075904496,277.1826309768721,329.6275569128699],[277.1826309768721],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead3Len: [null,null,null,null,[0.96,0.96,0.96],null,[0.96,0.96,0.96],[0.96,0.96,0.96],[0.96],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6: [null,null,null,null,null,null,null,[466.1637615180899,554.3652619537442,659.2551138257398],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead6Len: [null,null,null,null,null,null,null,[8.751598000000001,8.426491,8.477095],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    },
+    {
+      base: 3,
+      lead2: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[220,261.6255653005986,329.6275569128699],null,null,[184.9972113558172,220,311.1269837220809],[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,369.9944227116344],[220,261.6255653005986,391.99543598174927],[261.6255653005986,329.6275569128699,440],[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,[293.6647679174076,349.2282314330039,523.2511306011972],null,null,null],
+      lead3: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[220,261.6255653005986,329.6275569128699],null,null,[184.9972113558172,220,311.1269837220809],[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,369.9944227116344],[220,261.6255653005986,391.99543598174927],[261.6255653005986,329.6275569128699,440],[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,[293.6647679174076,349.2282314330039,523.2511306011972],null,null,null],
+      bass2: seq('. . . . . . . . . . . . . . . . | A2 . . A2 E2 . . E2 G#2 . . G#2 D2 . . D2'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[220,261.6255653005986,329.6275569128699],null,null,[184.9972113558172,220,311.1269837220809],[220,261.6255653005986,329.6275569128699],[220,261.6255653005986,369.9944227116344],[220,261.6255653005986,391.99543598174927],[261.6255653005986,329.6275569128699,440],[293.6647679174076,349.2282314330039,493.8833012561241],null,null,null,[293.6647679174076,349.2282314330039,523.2511306011972],null,null,null],
+      rim2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      rim3: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[0.96,0.96,0.96],null,null,[0.96,0.96,0.96],[0.96,0.96,0.96],[0.96,0.96,0.96],[0.96,0.96,0.96],[0.96,0.96,0.96],[0.96,0.96,0.96],null,null,null,[0.96,0.96,0.96],null,null,null],
+      lead6: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[440,523.2511306011972,659.2551138257398],null,null,null,null,null,null,null,[587.3295358348151,698.4564628660078,987.7666025122483],null,null,null,[587.3295358348151,698.4564628660078,1046.5022612023945],null,null,null],
+      lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[7.712358,7.712358,7.712358],null,null,null,null,null,null,null,[3.666016,3.666016,3.666016],null,null,null,[3.956321,3.956321,3.956321],null,null,null],
     },
   ],
   bpm: 80,

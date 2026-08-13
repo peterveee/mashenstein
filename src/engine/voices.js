@@ -1268,6 +1268,10 @@ export class VoiceRack {
     // Pools taken out of service but still sounding — see `_retire`. Keyed by their
     // own disposal timer so `dispose` can cancel one that has not fired yet.
     this._retired = new Map();
+    // The same list for an OFFLINE render, which has no timers to key them by — see
+    // `_retire`. Held only so `dispose` can account for them and so the graph keeps a
+    // reference to synths that still have notes booked on them.
+    this._retiredOffline = [];
     // Active preview notes, keyed by `${laneKey}|${freq}` → { slot }.
     // A note-off calls `triggerRelease` on the stored synth so a held key sustains
     // and a released one decays through its envelope instead of ringing for a fixed
@@ -4339,9 +4343,16 @@ export class VoiceRack {
   _retire(key, pool) {
     this.pools.delete(key);
     // An offline render never edits a preset mid-play, and its clock does not run at
-    // wall speed, so a timer would fire in the wrong place if it fired at all. Keep
-    // the immediate, deterministic disposal where there is nothing to listen to.
-    if (typeof this.ctx.startRendering === 'function') { this._disposePool(pool); return; }
+    // wall speed, so a timer would fire in the wrong place if it fired at all.
+    //
+    // It must not dispose HERE either, which is what it used to do. Offline, "now" is
+    // SCHEDULING time and the walk runs bars ahead of the render clock, so disposing on
+    // the spot tore down synths that notes were already booked on — those notes never
+    // sounded, and a lane carrying per-bar gain trims (each trim is a bus of its own,
+    // and a new bus is a new graph to `_pool`) lost whole bars it should have played.
+    // A render is bounded and the whole graph goes with the context, so the pool is
+    // simply set aside instead and let ring.
+    if (typeof this.ctx.startRendering === 'function') { this._retiredOffline.push(pool); return; }
     const now = this.ctx.currentTime;
     const quiet = Math.max(pool.until, now) + VoiceRack.tailOf(pool.spec);
     const timer = setTimeout(() => {
@@ -4647,7 +4658,7 @@ export class VoiceRack {
     return {
       pools: this.pools.size,
       poolSlots,
-      retiredPools: this._retired.size,
+      retiredPools: this._retired.size + this._retiredOffline.length,
       liveNotes: this._liveNotes.length,
       heldNative: this._heldNative.size,
       activePreviews: this._activePreviews.size,
@@ -4817,6 +4828,8 @@ export class VoiceRack {
   dispose() {
     for (const [timer, pool] of this._retired) { clearTimeout(timer); this._disposePool(pool); }
     this._retired.clear();
+    for (const pool of this._retiredOffline) this._disposePool(pool);
+    this._retiredOffline.length = 0;
     for (const pool of this.pools.values()) this._disposePool(pool);
     this.pools.clear();
     this._monoGroups.clear();
