@@ -41,6 +41,7 @@ import { resolveTrack } from '../src/data/tracks.js';
 // Through the registry it played at 120 with none of its mix. Importing the file
 // also keeps the other ~120 imported banks out of the bundle.
 import * as WII_SHOPPING_CHANNEL from '../src/data/imported/shoppingchannel.js';
+import * as SNC_SPECIAL_STAGE from '../src/data/imported/s-n-c-special-stage.js';
 import { bpmOf } from '../src/data/arrangements.js';
 
 const $ = (id) => document.getElementById(id);
@@ -87,6 +88,7 @@ const nameOf = (index) => (index === LAB_INDEX ? LAB : VISUALISER_NAMES[index]);
 // rather than a built-in one, which is why the imported index is loaded above.
 const SONGS = [
   { id: 'shoppingchannel', title: 'Wii Shopping Channel', song: WII_SHOPPING_CHANNEL },
+  { id: 's-n-c-special-stage', title: 'S*N*C Special Stage', song: SNC_SPECIAL_STAGE },
   { id: 'megamix', title: 'MONSTER MEGAMIX' },
   { id: 'hub', title: 'THE FOOD COURT' },
   { id: 'shop', title: 'CHECKOUT PROMENADE' },
@@ -117,6 +119,26 @@ const clickGain = ctx.createGain();
 normGain.connect(monitorGain).connect(ctx.destination);
 clickGain.connect(ctx.destination);
 clickGain.gain.value = 0.35;
+
+// iOS will not start audio outside a user gesture, and a gesture's permission
+// does not survive an await. Loading a file is all awaits — arrayBuffer, decode,
+// detection — so by the time play() runs the tap is long gone and the context is
+// still suspended. So the tap itself unlocks the context, before any of that:
+// resume, plus a one-sample silent buffer started synchronously, which is what
+// Safari actually accepts as consent.
+let audioUnlocked = false;
+function unlockAudio() {
+  try {
+    if (ctx.state === 'suspended') ctx.resume();
+    if (audioUnlocked) return;
+    const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    audioUnlocked = true;
+  } catch { /* an older engine without the trick still plays on desktop */ }
+}
 
 const song = {
   // 'file' plays a decoded buffer against a precomputed analysis table; 'live'
@@ -387,6 +409,7 @@ function play() {
     transport.playing = true;
     $('play').textContent = 'PAUSE';
     if (!view.raf) view.raf = requestAnimationFrame(frame);
+    wake();
     return;
   }
   if (!song.buffer || transport.playing) return;
@@ -400,11 +423,14 @@ function play() {
   transport.startedAt = ctx.currentTime;
   transport.playing = true;
   $('play').textContent = 'PAUSE';
+  wake();
   scheduleClicks();
   if (!view.raf) view.raf = requestAnimationFrame(frame);
 }
 
 function pause() {
+  // A reload was waiting on the music finishing. It has.
+  if (updatePending) { reloadNow(updatePending); return; }
   if (song.mode === 'live') {
     // suspend(), not setBank(null): the song keeps its place, and currentTime
     // stops with it so the elapsed reading does too.
@@ -908,7 +934,7 @@ const songSelect = createCustomSelect({
   optionClass: 'selectoption',
 });
 $('songslot').appendChild(songSelect);
-$('playsong').onclick = () => loadSong(songSelect.value);
+$('playsong').onclick = () => { unlockAudio(); loadSong(songSelect.value); };
 
 $('open').onclick = () => {
   // Fade down before the picker arrives rather than cutting to it. The frame loop
@@ -922,7 +948,7 @@ $('open').onclick = () => {
   }, FADE_CLOSE * 1000);
 };
 
-$('pick').onclick = () => $('file').click();
+$('pick').onclick = () => { unlockAudio(); $('file').click(); };
 $('file').onchange = () => { if ($('file').files[0]) loadFile($('file').files[0]); };
 for (const type of ['dragenter', 'dragover']) {
   window.addEventListener(type, (ev) => { ev.preventDefault(); $('drop').classList.add('over'); });
@@ -930,12 +956,13 @@ for (const type of ['dragenter', 'dragover']) {
 window.addEventListener('dragleave', () => $('drop').classList.remove('over'));
 window.addEventListener('drop', (ev) => {
   ev.preventDefault();
+  unlockAudio();
   $('drop').classList.remove('over');
   const file = ev.dataTransfer?.files?.[0];
   if (file) loadFile(file);
 });
 
-$('play').onclick = () => (transport.playing ? pause() : play());
+$('play').onclick = () => { unlockAudio(); transport.playing ? pause() : play(); };
 $('vol').oninput = () => {
   const v = Number($('vol').value);
   monitorGain.gain.value = v;             // the file path
@@ -1052,6 +1079,11 @@ let idleTimer = 0;
 function wake() {
   $('ui').classList.remove('idle');
   clearTimeout(idleTimer);
+  // Only hide the chrome while something is actually playing. Paused — including
+  // the case where a phone has refused to start the audio at all — the PLAY
+  // button is the one thing on screen you need, and fading it out leaves nothing
+  // to press and no way to know why.
+  if (!transport.playing) return;
   idleTimer = setTimeout(() => {
     $('ui').classList.add('idle');
     // Touching a button leaves it focused on iOS, and a focused control inside
@@ -1064,6 +1096,69 @@ function wake() {
 for (const type of ['pointermove', 'pointerdown', 'touchstart', 'keydown', 'wheel']) {
   window.addEventListener(type, wake, { passive: true });
 }
+
+// ---------------------------------------------------------------- staying current
+//
+// A static page on a static host is cached by the browser and there is no header
+// to tell it otherwise, so a tab left running overnight keeps yesterday's build.
+// The build stamps its own content hash into the page and writes the same hash to
+// a text file beside it; this polls that file — a dozen bytes, against two
+// megabytes for the page itself — and reloads when they disagree.
+//
+// A 404 means nothing published this file (the dev server, or an old deploy), and
+// the check simply stops rather than retrying forever.
+const BUILD = window.__VIS_BUILD__;
+let updatePending = false;
+let updateTimer = 0;
+
+// A plain reload can be served the very document it is trying to replace, which
+// with a version file that has already moved on is an infinite loop. So: reload
+// through a changed URL, which forces a real fetch, and remember which version
+// we did it for. If the page comes back still not matching, the host is serving
+// something stale and asking again will not fix it — stop rather than spin.
+const RELOAD_KEY = 'mash-vis-reloaded-for';
+function reloadNow(version) {
+  try { if (version) sessionStorage.setItem(RELOAD_KEY, version); } catch { /* private mode */ }
+  const url = new URL(location.href);
+  url.searchParams.set('v', version || String(Date.now()));
+  location.replace(url.toString());
+}
+
+async function checkForUpdate() {
+  if (!BUILD || BUILD.startsWith('/*') || location.protocol === 'file:') return false;
+  try {
+    const url = new URL('visualiser-version.txt', location.href);
+    url.searchParams.set('t', String(Math.floor(Date.now() / 1000)));
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return false;
+    const latest = (await res.text()).trim();
+    if (!latest || latest === BUILD) return true;
+    let already = null;
+    try { already = sessionStorage.getItem(RELOAD_KEY); } catch { /* private mode */ }
+    if (already === latest) return false;   // reloaded for this one already; it did not take
+    updatePending = latest;
+    // Nothing playing: just take it. Mid-song a reload would cut the music off,
+    // so offer it instead and take it the moment playback stops.
+    if (!transport.playing) reloadNow(latest);
+    else $('fresh').hidden = false;
+    return true;
+  } catch { return true; }
+}
+
+function startUpdateWatch() {
+  if (!BUILD || BUILD.startsWith('/*') || location.protocol === 'file:') return;
+  const tick = async () => {
+    const keepGoing = await checkForUpdate();
+    if (keepGoing && !updatePending) updateTimer = setTimeout(tick, 10 * 60 * 1000);
+  };
+  tick();
+  // Coming back to a backgrounded tab is exactly when it is most likely stale.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !updatePending) checkForUpdate();
+  });
+}
+$('fresh').onclick = () => reloadNow(updatePending);
+startUpdateWatch();
 
 window.addEventListener('resize', () => { sizeCanvas(); if (song.prep) drawWaveform(); });
 sizeCanvas();

@@ -312,11 +312,15 @@ today, since the engine already plays them.
 
 **Before committing, bench it.** The `_schedWork` counters already separate tick cost from
 note cost; a run on SMW All Instruments NEWEST with a synthetic fine section gives the real
-slope. Rough shape for that song as it stands (27 lanes, 55 sections, 130 bars, 1854 notes,
-132 bpm, ~3.9 min): 2,080 tick passes at 16-res, 4,160 at 32, 12,480 at 96 — 8.8/s to
-52.8/s. Lane reads if nothing skips: 56k → 337k. Notes built: 1,854 at every resolution.
-Note also that this song is *marked* `resolution: 32` and has **zero** notes on a half
-step — it pays the doubling for nothing today, which is exactly what `_fineBars` is for.
+slope. Rough shape for that song (27 lanes carrying notes, 55 sections, 65 bars, 1,854
+notes, 132 bpm, ~2 min): 1,040 tick passes at 16-res, 2,080 at 32, 6,240 at 96 — 8.8/s to
+52.8/s. Lane reads if nothing skips: 28k → 168k. Notes built: 1,854 at every resolution.
+
+*Since written:* the song's stale `resolution: 32` has been taken off (it had zero notes on
+a half step), and the desk now normalises on save — see
+`normaliseArrangementResolution` in `tools/lib/arrangement-edit.js`. It still runs a
+32-step transport, because one bar carries a 1/32 arp, but `_fineBars` is down to that one
+bar and the other 64 take the whole-tick fast path.
 
 ## Done
 <!-- move shipped items here with a date -->

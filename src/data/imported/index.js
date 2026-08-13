@@ -99,6 +99,7 @@ import * as RUBBER_PYLON from './rubber-pylon.js';
 import * as RUBBER_SUNDAE from './rubber-sundae.js';
 import * as RUSTY_COMET from './rusty-comet.js';
 import * as RUSTY_TYPHOON from './rusty-typhoon.js';
+import * as S_N_C_SPECIAL_STAGE from './s-n-c-special-stage.js';
 import * as SALTY_CANYON from './salty-canyon.js';
 import * as SALTY_TANGO from './salty-tango.js';
 import * as SALTY_TEMPLE from './salty-temple.js';
@@ -117,6 +118,7 @@ import * as SMW_OVERWORLD_SMWWD1_LU9 from './smw-overworld-smwwd1-lu9.js';
 import * as SMW_OVERWORLD from './smw-overworld.js';
 import * as SMW_TITLE_2 from './smw-title-2.js';
 import * as SMWGOOD from './smwgood.js';
+import * as SPECIAL_STAGE_1 from './special-stage-1.js';
 import * as SUGAR_DIVER from './sugar-diver.js';
 import * as SUGAR_KITTEN from './sugar-kitten.js';
 import * as SUNKEN_PARADE from './sunken-parade.js';
@@ -229,6 +231,7 @@ export const IMPORTED_BY_ID = {
   "rubber-sundae": { bank: RUBBER_SUNDAE.bank, title: RUBBER_SUNDAE.title, group: "scratch", writable: true },
   "rusty-comet": { bank: RUSTY_COMET.bank, title: RUSTY_COMET.title, group: "scratch", writable: true },
   "rusty-typhoon": { bank: RUSTY_TYPHOON.bank, title: RUSTY_TYPHOON.title, group: "scratch", writable: true },
+  "s-n-c-special-stage": { bank: S_N_C_SPECIAL_STAGE.bank, title: S_N_C_SPECIAL_STAGE.title, group: "copy", writable: true },
   "salty-canyon": { bank: SALTY_CANYON.bank, title: SALTY_CANYON.title, group: "scratch", writable: true },
   "salty-tango": { bank: SALTY_TANGO.bank, title: SALTY_TANGO.title, group: "scratch", writable: true },
   "salty-temple": { bank: SALTY_TEMPLE.bank, title: SALTY_TEMPLE.title, group: "scratch", writable: true },
@@ -247,6 +250,7 @@ export const IMPORTED_BY_ID = {
   "smw-overworld": { bank: SMW_OVERWORLD.bank, title: SMW_OVERWORLD.title, group: "copy", writable: true },
   "smw-title-2": { bank: SMW_TITLE_2.bank, title: SMW_TITLE_2.title, group: "imported", writable: true },
   "smwgood": { bank: SMWGOOD.bank, title: SMWGOOD.title, group: "imported", writable: true },
+  "special-stage-1": { bank: SPECIAL_STAGE_1.bank, title: SPECIAL_STAGE_1.title, group: "imported", writable: true },
   "sugar-diver": { bank: SUGAR_DIVER.bank, title: SUGAR_DIVER.title, group: "scratch", writable: true },
   "sugar-kitten": { bank: SUGAR_KITTEN.bank, title: SUGAR_KITTEN.title, group: "scratch", writable: true },
   "sunken-parade": { bank: SUNKEN_PARADE.bank, title: SUNKEN_PARADE.title, group: "scratch", writable: true },

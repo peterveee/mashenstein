@@ -71,10 +71,18 @@ assert(!/new OfflineAudioContext/.test(src('tools/lib/render-bank-browser.js')),
 // (the SMW banks reach 20 lanes) an unsliced walk holds that thread for seconds while
 // the sequencer has a quarter-second of lookahead in front of it.
 assert(/await yieldToEventLoop\(\)/.test(page)
-  && /const scheduleCalls = steps \* \(Audio\.bank\?\.resolution === 32 \? 2 : 1\)/.test(page)
+  && /const scheduleCalls = steps \* \(Audio\.transportResolution === 32 \? 2 : 1\)/.test(page)
   && /while \(stepAt < scheduleCalls && Audio\.nextTime < limit\) \{[\s\S]{0,400}?Audio\.scheduleStep\(\)/.test(page)
   && !/for \(let i = 0; i < steps; i\+\+\) Audio\.scheduleStep\(\);/.test(page),
   'the render walk yields the main thread instead of queueing every step in one block');
+// THE TRANSPORT, not the bank — and pinned here as source text because the sliced walk
+// above is pinned the same way and the two are the same line. The count of scheduleStep
+// CALLS is a question only `transportResolution` answers: a 16-step bank with a 1/32
+// arpeggiator anywhere runs a 32-step transport, and asking the bank gave that song half
+// the calls it needed and a render that stopped at the halfway bar. What it SOUNDS like
+// is tests/render-length.js; this is the line that has to stay written that way.
+assert(!/scheduleCalls = steps \* \(Audio\.bank/.test(page),
+  'and it sizes that walk off the transport, which the bank is only one of three ways to promote');
 assert(/performance\.now\(\) - sliceAt < SLICE_MS/.test(page),
   'it slices by time, so a step costing more on a busy song yields sooner rather than later');
 // The walk is just-in-time against the render head: the graph stands a fixed horizon

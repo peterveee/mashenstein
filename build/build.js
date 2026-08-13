@@ -537,9 +537,10 @@ if (watch) {
   // public page.
   try {
     const { buildVisualiserHtml } = await import('../tools/build-visualiser.js');
-    const html = await buildVisualiserHtml(root);
+    const { html, version } = await buildVisualiserHtml(root);
     writeFileSync(join(root, 'dist', 'visualiser.html'), html);
-    console.log(`dist/visualiser.html written (${(html.length / 1024).toFixed(0)} KB visualiser)`);
+    writeFileSync(join(root, 'dist', 'visualiser-version.txt'), `${version}\n`);
+    console.log(`dist/visualiser.html written (${(html.length / 1024).toFixed(0)} KB visualiser, build ${version})`);
   } catch (err) {
     console.error('Visualiser build failed (the game build is unaffected):');
     console.error(err.message || err);

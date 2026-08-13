@@ -182,7 +182,15 @@ export async function renderBankPage({
   // AudioSys.takeSchedulerWork and work/local/bench-scheduler-work.js, which reads it
   // to compare two engine revisions without a wall clock in the comparison.
   Audio.takeSchedulerWork?.();
-  const scheduleCalls = steps * (Audio.bank?.resolution === 32 ? 2 : 1);
+  // THE TRANSPORT'S tick, not the bank's — `steps` is a count of sixteenths, and this
+  // turns it into a count of scheduleStep CALLS, which is a question only the transport
+  // can answer. The bank is one of three things that promote it: a natively 32-step
+  // bank, a track-level 1/32 arp, or a bar-level one (see refreshTransportResolution).
+  // Reading the bank meant a 16-step song with a 1/32 arpeggiator anywhere got half the
+  // calls its transport needed, and the render simply stopped at the halfway bar with
+  // the buffer's back half left silent. Same bug, same cause, as the frozen-lane tick in
+  // AudioSys._scheduleFrozenSegment.
+  const scheduleCalls = steps * (Audio.transportResolution === 32 ? 2 : 1);
   const buildUntil = async (limit) => {
     while (stepAt < scheduleCalls && Audio.nextTime < limit) {
       Audio.scheduleStep();

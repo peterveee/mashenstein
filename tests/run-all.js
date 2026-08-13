@@ -226,6 +226,11 @@ const suites = [
   'tests/music-variant-render.js',
   'tests/voices.js',
   'tests/null-test.js',
+  // Beside the null test because it is the same kind of claim about the same walk, one
+  // level cruder: the null test says the samples are right, this says there ARE samples
+  // all the way to the end. A render that stopped at the halfway bar came back the right
+  // LENGTH with its back half silent, and every baseline comparison above was happy.
+  'tests/render-length.js',
   'tests/new-effects.js',
   'tools/fairness-sim.js',
   'tools/economy-sim.js',
@@ -256,6 +261,7 @@ const browserSuites = new Set([
   'tests/music-variant-render.js',
   'tests/voices.js',
   'tests/null-test.js',
+  'tests/render-length.js',
   'tests/new-effects.js',
   'tests/song-processing.js',
 ]);
@@ -300,7 +306,8 @@ const soundSuites = [
   'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',
   'tests/sfx-routing.js', 'tests/pitch-curve.js',
   'tests/note-duration.js', 'tests/song-switch.js', 'tests/music-variant.js',
-  'tests/music-variant-render.js', 'tests/null-test.js', 'tests/new-effects.js',
+  'tests/music-variant-render.js', 'tests/null-test.js', 'tests/render-length.js',
+  'tests/new-effects.js',
 ];
 // A suite renamed out of `suites` would silently vanish from this group too, and a
 // gate that covers less than it looks like it covers is the failure this file already

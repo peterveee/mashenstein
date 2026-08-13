@@ -16,6 +16,7 @@
 // Usage: node tools/build-visualiser.js   (or: npm run visualiser)
 import esbuild from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -51,13 +52,21 @@ export async function buildVisualiserHtml(root) {
   // </script> inside the bundle would terminate the tag early.
   const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
   const shell = readFileSync(join(root, 'tools/visualiser-shell.html'), 'utf8');
-  return shell.replace('/*__BUNDLE__*/', () => js);
+  const page = shell.replace('/*__BUNDLE__*/', () => js);
+  // Hashed BEFORE the stamp is written in, or the stamp would be hashing itself.
+  // Content-derived rather than a timestamp, so rebuilding without changing
+  // anything does not tell every open tab to reload.
+  const version = createHash('sha1').update(page).digest('hex').slice(0, 12);
+  return { html: page.replace('/*__VERSION__*/', () => version), version };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-  const html = await buildVisualiserHtml(root);
+  const { html, version } = await buildVisualiserHtml(root);
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'dist/visualiser.html'), html);
-  console.log(`dist/visualiser.html written (${(html.length / 1024).toFixed(0)} KB)`);
+  // The page polls this. A few bytes, so checking costs nothing next to
+  // re-fetching two megabytes of page to find out it has not changed.
+  writeFileSync(join(root, 'dist/visualiser-version.txt'), `${version}\n`);
+  console.log(`dist/visualiser.html written (${(html.length / 1024).toFixed(0)} KB, build ${version})`);
 }

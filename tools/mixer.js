@@ -130,7 +130,7 @@ async function buildRenderFramePage() {
 // dist/visualiser.html rather than a second copy of the configuration — that
 // configuration is what keeps the cast out of the bundle, and a served page that
 // quietly carried them while the built one did not would be the worst of both.
-const buildVisualiserPage = () => buildVisualiserHtml(ROOT);
+const buildVisualiserPage = async () => (await buildVisualiserHtml(ROOT)).html;
 
 // The standalone MRDR-3 playground shares the editor and keyboard bundle with the
 // desk, but has its own full-window shell. Keep it request-built in development so

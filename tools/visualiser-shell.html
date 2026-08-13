@@ -82,6 +82,31 @@
     transition: opacity .35s ease;
   }
   #ui.on { display: block; }
+  /* Touch. Every control was 24px tall — Apple's minimum is 44 — and twenty of
+     them packed into a strip that took half a phone's screen, so a miss on OPEN
+     landed on PLAY beside it. Fingers get their own sizes, the hints row goes
+     (there is no keyboard to hint at), and the strip is capped and scrollable so
+     it can never swallow the picture or push a control off the bottom.
+     The safe-area inset is what keeps the last row clear of the home indicator,
+     which the viewport-fit=cover meta tag otherwise lets it sit under. */
+  @media (pointer: coarse) {
+    #ui {
+      padding: 20px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+      max-height: 58vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    #ui .row { gap: 10px 12px; }
+    #ui .row + .row { margin-top: 12px; }
+    #ui .kbd { display: none; }
+    #ui button, #ui .selectfield, #ui input[type=number], #ui input[type=text] {
+      min-height: 44px; font-size: 15px; padding: 0 12px;
+    }
+    #ui button.wide { min-width: 96px; }
+    #ui #prev, #ui #next, #ui #reseed, #ui #full, #ui #half, #ui #dbl { min-width: 44px; }
+    #ui input[type=range] { height: 44px; }
+    #ui input[type=range]::-webkit-slider-thumb { width: 20px; height: 20px; margin-top: -10px; }
+    #scrub { height: 44px; }
+    #drop button, #drop .selectfield { min-height: 44px; font-size: 16px; }
+  }
   /* Fade the chrome out of the way when nothing is being touched — but never while
      a menu is open or a control has focus, or the thing you are reaching for
      disappears under your hand. */
@@ -213,6 +238,14 @@
   .lamp.on { background: var(--hot); border-color: var(--hot); }
   #panel .note { color: var(--ctl); font-size: 11px; line-height: 1.45; margin: 8px 0 0; }
 
+  #fresh {
+    position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 55;
+    background: var(--primary); border: 1px solid var(--accent); color: var(--on-primary);
+    border-radius: 999px; padding: 0 16px; height: 32px; font: inherit; cursor: pointer;
+  }
+  #fresh[hidden] { display: none; }
+  @media (pointer: coarse) { #fresh { min-height: 44px; font-size: 15px; } }
+
   #err {
     position: fixed; left: 0; right: 0; top: 0; z-index: 60; background: var(--hot);
     color: #fff; padding: 8px 12px; font-family: ui-monospace, monospace; font-size: 11px;
@@ -324,6 +357,8 @@
   </div>
 </div>
 
+<button type="button" id="fresh" hidden>NEW VERSION &middot; TAP TO RELOAD</button>
+
 <div id="err"></div>
 
 <script>
@@ -333,4 +368,5 @@
     box.textContent = message + '\n' + source + ':' + line;
   };
 </script>
+<script>window.__VIS_BUILD__ = '/*__VERSION__*/';</script>
 <script>/*__BUNDLE__*/</script>
