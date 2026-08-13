@@ -195,7 +195,9 @@ async function loadFile(file) {
 
     await finishLoad();
   } catch (err) {
-    setStage(`could not read that file — ${err.message}`, 0);
+    // decodeAudioData is the real test, not the file's name or its reported type:
+    // a container this browser cannot decode fails here whatever it is called.
+    setStage(`could not read ${file.name || 'that file'} — ${err.message || 'unsupported audio'}`, 0);
   }
 }
 
@@ -213,6 +215,9 @@ async function finishLoad() {
   $('progress').classList.remove('on');
   $('drop').classList.add('gone');
   $('ui').classList.add('on');
+  // Arms the idle timer. Without this the strip only ever hides after an input
+  // event, which on a phone may never come.
+  wake();
   syncControls();
   drawWaveform();
   startPreset(view.index);
@@ -1036,15 +1041,29 @@ window.addEventListener('keydown', (ev) => {
   else if (key === 'f') $('full').click();
 });
 
-// Fade the chrome away when the mouse settles, like the desk's overlay does.
+// Fade the chrome away when nothing is being touched, like the desk's overlay.
+//
+// `pointermove` alone is a mouse assumption. A phone has no hovering pointer, so
+// on a touch device the timer was never ARMED — the class that hides the strip
+// was only ever scheduled by a wake, and without one the controls sat over the
+// picture for ever. Hence: arm it as soon as the strip appears, and treat a tap
+// as a wake in its own right.
 let idleTimer = 0;
 function wake() {
   $('ui').classList.remove('idle');
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => $('ui').classList.add('idle'), 2800);
+  idleTimer = setTimeout(() => {
+    $('ui').classList.add('idle');
+    // Touching a button leaves it focused on iOS, and a focused control inside
+    // the strip used to pin it visible for good. Hand focus back when the strip
+    // goes, so the next fade is not fighting a button nobody is using.
+    const held = document.activeElement;
+    if (held && held !== document.body && $('ui').contains(held)) held.blur();
+  }, 2800);
 }
-window.addEventListener('pointermove', wake);
-window.addEventListener('keydown', wake);
+for (const type of ['pointermove', 'pointerdown', 'touchstart', 'keydown', 'wheel']) {
+  window.addEventListener(type, wake, { passive: true });
+}
 
 window.addEventListener('resize', () => { sizeCanvas(); if (song.prep) drawWaveform(); });
 sizeCanvas();

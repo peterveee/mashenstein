@@ -86,7 +86,13 @@
      a menu is open or a control has focus, or the thing you are reaching for
      disappears under your hand. */
   #ui.idle { opacity: 0; pointer-events: none; }
-  #ui:focus-within { opacity: 1 !important; pointer-events: auto !important; }
+  /* Keyboard focus only. `:focus-within` matched a button that had merely been
+     TAPPED — iOS leaves it focused — and the !important then pinned the strip
+     visible for the rest of the session. :focus-visible does not match a pointer
+     or touch activation, so this now protects tabbing without defeating the fade.
+     Its own rule rather than a selector list: if a browser cannot parse :has(),
+     dropping this must not take the fade with it. */
+  #ui:has(:focus-visible) { opacity: 1 !important; pointer-events: auto !important; }
 
   .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .row + .row { margin-top: 8px; }
@@ -242,7 +248,12 @@
     <div class="source">
       <div class="sourcehead">AUDIO FILE</div>
       <button type="button" id="pick" class="wide">CHOOSE A FILE</button>
-      <input type="file" id="file" accept="audio/*" hidden>
+      <!-- Extensions AND explicit MIME types, not just `audio/*`. iOS matches this
+           list against a file's UTI and greys out anything it cannot place, so a
+           plain mp3 reached from the Files app was unselectable under the wildcard
+           alone. Listing both is what makes Safari offer them. -->
+      <input type="file" id="file" hidden
+        accept="audio/*,.mp3,.m4a,.aac,.wav,.aiff,.aif,.flac,.ogg,.oga,.opus,.mp4,.caf,audio/mpeg,audio/mp3,audio/mp4,audio/x-m4a,audio/aac,audio/wav,audio/x-wav,audio/wave,audio/aiff,audio/x-aiff,audio/flac,audio/x-flac,audio/ogg,audio/opus">
       <div class="formats">mp3 · wav · m4a · flac · ogg — analysed in the browser, never uploaded</div>
     </div>
 
