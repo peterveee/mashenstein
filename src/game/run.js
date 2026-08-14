@@ -3259,6 +3259,10 @@ export class RunState {
       applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot,
       escapeWall: this.escapeWall,
       copterCaught: this.copter ? this.copter.caught : 0,
+      // Which road the hero is on, as an INDEX rather than the island object:
+      // a snapshot outlives the frame it was taken in, and storing the live
+      // object would tie a restore to an entity graph that has moved on.
+      route: this.islands.indexOf(this.route),
     };
   }
 
@@ -3275,6 +3279,10 @@ export class RunState {
       this.relay.elapsed = s.relayState.elapsed || 0;
     }
     this.player = new Player(this.relay.current, this.modIds);
+    // A fresh Player starts at altitude 0, which means "on the floor" — so the
+    // floor has to be the one the snapshot was taken on, or the hero is stood
+    // on the base ground while the run still believes he is on a slab.
+    this.route = s.route >= 0 ? this.islands[s.route] : null;
     this.player.abilityCooldowns = { ...(s.abilityCooldowns || {}) };
     this.player.relayCharge = !!s.relayCharge;
     this.spawner.nextX = Math.max(s.spawnerX, s.camX + 400);
@@ -3332,6 +3340,11 @@ export class RunState {
     s.coinCombo = this.coinCombo; s.coinComboT = this.coinComboT;
     s.powerupsCollected = this.powerupsCollected;
     s.hintT = this.hintT; s.bonusT = this.bonusT;
+    // Which road he is on. `player.y` is altitude above the CURRENT floor, so
+    // restoring y without restoring the floor it was measured from puts the
+    // hero at the right height above the wrong thing — rewinding onto a slab
+    // would drop him through it, and off one would stand him on air.
+    s.route = this.islands.indexOf(this.route);
 
     // Player mutable state. Written field by field rather than by assignInto:
     // Player carries far more than the rewind restores, and listing what is
@@ -3436,6 +3449,8 @@ export class RunState {
     this.coinCombo = s.coinCombo; this.coinComboT = s.coinComboT;
     this.powerupsCollected = s.powerupsCollected;
     this.hintT = s.hintT; this.bonusT = s.bonusT;
+    // Before the player fields below: `p.y` is read against this floor.
+    this.route = s.route >= 0 ? this.islands[s.route] : null;
 
     // Player: restore mutable fields in-place.
     const p = this.player;
