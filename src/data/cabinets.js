@@ -80,6 +80,21 @@ export const CABINETS = [
     // start of the game and half a jump by the end). `rise` defaults to 30 and
     // is capped by MAX_ISLAND_RISE, which is derived from the heavy hero's apex.
     islands: [{ at: 0.34, dwell: 0.8 }, { at: 0.62, dwell: 0.7 }],
+    // Converging forks: a high road you catch with an ordinary jump, running
+    // above the lane before easing back down to meet it. Miss the jump and you
+    // are on the low road, which is simply the ground — there is no wrong
+    // answer, only a different one.
+    //
+    // `prize` rides the high road and `lowPrize` the low, and they are
+    // deliberately different KINDS rather than different amounts: coins up
+    // against a power-up down means the answer depends on what you need at that
+    // moment. "One road pays better" would be solved once and stop being a
+    // choice thereafter. `hold` is how much of the span runs at full height
+    // before the descent begins.
+    forks: [
+      { at: 0.22, dwell: 2.4, hold: 0.55, prize: 'coins', lowPrize: 'capShield' },
+      { at: 0.78, dwell: 3.0, hold: 0.6, prize: 'coins', lowPrize: 'capSpeed' },
+    ],
     // ONE harmonic bed (the original A-F-C-G loop) for the whole song — no
     // section-to-section progressions. Movement comes from melodic variations
     // that keep the exact same rhythm with different notes, and from chords
