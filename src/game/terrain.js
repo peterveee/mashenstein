@@ -28,6 +28,50 @@ export function terrainGroundY(cabinet, worldX, baseY = 232) {
 // resting 1.6 the frame shows 300 units and this walked 480, painting a third
 // of its columns past the right edge; on a phone at 2.2 it showed 218 and still
 // walked 480. Callers that have no camera to ask (tutorial, hub) keep W.
+/**
+ * How thick a floating island's slab is drawn.
+ *
+ * A CONSTANT, not the island's height above the ground — and that distinction is
+ * the whole difference between an island and a step. Filling the full rise puts
+ * the slab's underside flush on the ground, and the two greens merge into one
+ * mass that reads as a plateau you have climbed onto. Six pixels leaves daylight
+ * under it, which is what says "this thing is in the air".
+ *
+ * The gap it leaves is load-bearing too: at the 29px ceiling islands are capped
+ * at, six pixels of slab leaves 23px of clearance against a 14px standing
+ * hitbox (PLAYER_H), so the lane really does run underneath — a hero who does
+ * not jump passes below the island rather than being blocked by it.
+ */
+export const ISLAND_THICKNESS = 6;
+
+/**
+ * Floating islands: flat slabs hanging over the lane.
+ *
+ * Drawn with the cabinet's own ground colours rather than a palette of their
+ * own, because a slab is a piece of the floor that happens to be up in the air —
+ * a differently-coloured one reads as a prop you can pass through, which is
+ * exactly the wrong thing to tell the player about a surface they can stand on.
+ *
+ * The underside gets the dark fill and a lit top edge, the same two-tone the
+ * ground line uses, so the side you can land on is the side that is lit.
+ */
+export function drawIslands(ctx, camX, cabinet, islands, viewW = W) {
+  const right = Math.min(W, Math.ceil(viewW) + 2);
+  for (const is of islands) {
+    const sx = is.x - camX;
+    if (sx > right || sx + is.w < 0) continue;
+    ctx.fillStyle = cabinet.groundDark;
+    ctx.fillRect(sx, is.topY, is.w, ISLAND_THICKNESS);
+    ctx.strokeStyle = cabinet.ground;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(sx, is.topY);
+    ctx.lineTo(sx + is.w, is.topY);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+}
+
 export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232, viewW = W) {
   if (!PROFILES[cabinet && cabinet.id]) return;
   // Overscan one step so the line's last segment still leaves the frame rather

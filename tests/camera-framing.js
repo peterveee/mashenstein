@@ -65,5 +65,44 @@ const runwayLoss = 1 - (480 / PHONE) / (480 / TABLET);
 assert(runwayLoss < 0.12,
   `the phone framing costs under 12% of visible runway (${(runwayLoss * 100).toFixed(1)}%)`);
 
+// ---- what a floating island costs the frame ---------------------------------
+//
+// A hero standing on a slab is already `rise` up before they jump at all, so
+// the island is the first thing in the game to ask the camera for meaningfully
+// more headroom than rolling terrain's 9-18px. The groundline is pinned to its
+// screen y at every zoom, so the frame pays for that height by craning (to
+// PAN_MAX) and then, only for what the crane could not buy, by opening the
+// zoom. Both are cheap here and it is worth keeping them cheap: the numbers
+// below are what stop a future `rise` bump from quietly pulling the picture
+// back every time somebody hops onto a slab.
+const { framingFor, setRestingZoom } = await import('../src/engine/camera.js');
+const { worstJumpApex } = await import('../src/game/spawner.js');
+const RISE = Math.floor(worstJumpApex() * 0.8);
+const JUMP = 57;          // an ordinary hero's apex
+const DOUBLE = 98;        // Mochi, or anyone wearing the cape
+
+setRestingZoom(TABLET);
+const standing = framingFor(0, RISE);
+const hop = framingFor(JUMP, RISE);
+assert(standing.zoom === TABLET && standing.pan === 0,
+  'standing on a slab costs the frame nothing at all');
+assert(hop.zoom === TABLET,
+  `and an ordinary jump from one still does not open the zoom (pan ${hop.pan})`);
+assert(hop.pan > 0 && hop.pan <= 38,
+  `it is paid for out of the crane instead (${hop.pan}px of pan)`);
+
+// The one case that does move the picture, named so it is a decision rather
+// than a surprise: a double jump taken FROM a slab.
+const dbl = framingFor(DOUBLE, RISE);
+assert(dbl.zoom < TABLET, `a double jump from a slab does open the frame (${dbl.zoom.toFixed(2)})`);
+assert(dbl.zoom > 1.6,
+  `but by less than a sixth, not a lurch (${(1 - dbl.zoom / TABLET) * 100 | 0}%)`);
+
+// Desktop has the headroom to not care at all.
+setRestingZoom(DESKTOP);
+assert(framingFor(DOUBLE, RISE).zoom === DESKTOP,
+  'on desktop even a double jump from a slab leaves the zoom alone');
+setRestingZoom(TABLET);
+
 console.log(failed ? 'CAMERA FRAMING: FAILED' : 'CAMERA FRAMING: PASSED');
 process.exit(failed ? 1 : 0);

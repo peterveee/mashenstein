@@ -16,6 +16,22 @@ export const COIN_FLOOR = 8;
 // Worst-case airtime among heroes: heavy Grumpos (gravity ×1.25).
 export function worstAirtime() { return (2 * BASE_JUMP_V * 0.9) / (GRAVITY * 1.25); }
 
+/**
+ * Worst-case jump APEX, on the same deliberately pessimistic footing as
+ * `worstAirtime`: the lowest jumpMult in the cast (B-33P's 0.9) crossed with
+ * the heaviest gravity (Grumpos' ×1.25). No single hero is both, which is the
+ * point — a height cleared by this imaginary worst hero is cleared by all of
+ * them. Comes out at ~37px against a real cast minimum of 45.5 (Grumpos).
+ *
+ * What it is FOR: anything the player has to land on top of. A slab the one
+ * heavy hero cannot reach is not a difficulty spike, it is a bug that only
+ * shows up on one eighth of the relay bag.
+ */
+export function worstJumpApex() {
+  const v = BASE_JUMP_V * 0.9;
+  return (v * v) / (2 * GRAVITY * 1.25);
+}
+
 export class Spawner {
   constructor({ cabinet, rng, tierMax = 2, react = REACT_FLOOR, iceSlide = 0 }) {
     this.cabinet = cabinet;
