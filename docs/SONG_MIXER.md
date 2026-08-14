@@ -155,6 +155,64 @@ Four buttons rather than one that changes its meaning: Pause holds position, Sto
 back to the top of the take, and a button you have to read before aiming at is a
 button you cannot aim at.
 
+### Rearrange
+
+**Rearrange** is a temporary audition layer. **Generate** builds a same-length recipe
+with a song-shaped roadmap — verse, chorus, verse, bridge and final chorus/outro where
+the source is long enough — then fills each four-bar section with repeatable, musical
+source slices. Most sections alternate half-bar or bar cells (A–B–A–B), with longer
+source grabs kept occasional. The four-bar roadmap above the list shows each output block
+and its bar range; click a block to play from its beginning. The list shows the section name,
+source range, repeat count, output position and any small shared melodic transpose. Tap the **👍** beside a section to keep
+that section as an anchor; the next **Generate** reuses it (and returning sections of the
+same role) while rebuilding the other sections. When used, a transpose is a gentle
+whole tone, perfect fourth, or perfect fifth shared by the pitched lanes. Chorus source phrases favour the
+denser parts of the current arrangement, while verses and bridges provide contrast.
+Before Generate, the **Extremeness** slider controls how hard the recipe cuts: lower values
+favour longer, bar-aligned phrases with fewer source jumps and transpositions; higher values
+allow shorter cells, more independent source changes, odd boundaries and occasional glitches.
+The **Transpose** dial controls shared melodic lifts: Off, gentle whole-tone shifts, or a
+larger palette that also permits fourths and fifths. The **Patterning** dial controls the
+balance between one-off source choices and returning A/B motifs with repeated passes.
+These settings affect the next generated recipe only; the saved JSON contains the resulting
+operations, so loading it does not depend on the slider.
+Use **▶** or double-click a row to audition from that section/bar. **👎** marks a section
+for replacement, asking the next Generate to choose a different source area.
+**Play Rearrangement** gives a four-beat count-in, then starts that recipe from its top, while the ordinary transport
+controls continue to play and pause it. **Double-clicking a row** starts it from that
+section/bar. **Generate** while it is playing starts the new
+recipe again. **Return to Song** clears the recipe and restores the ordinary loop
+controls.
+
+The **Original drums / Steady 4/4 drums** toggle is Rearrange-only. Steady mode leaves
+the source kit voices and their arrangement mutes in place, but replaces their authored
+triggers with exact kick beats 1–4, snare/clap beats 2 and 4, eighth-note hats, and
+restrained rim, tom, open-hat and crash fills. Its rhythm follows the rearranged output clock,
+so a melodic cut can jump source bars without making the pulse stumble. The mode is
+stored in the recipe JSON and never changes the song’s drum lanes.
+
+In the piano roll, drag a beat range and press **Fav +** to make that range a session
+favourite. Favourites are whole-band source slices: every later **Generate** includes
+each one once (untransposed) while the surrounding sections are rebuilt. The Rearrange
+status shows how many are armed; they are cleared when you switch source songs, and are
+not written into song, mix, arrangement, or recipe JSON data.
+
+Each operation row also has a square selector for targeted remixing. Select just the
+16th/eighth-note pieces you want, then use **Split halves** to interleave the two halves,
+**Unroll repeats** to turn a compact repeated row into individually selectable pieces,
+**×2 loops** to turn a cell into a tighter repeated figure, **÷2 loops** to join repeated
+passes into a longer source phrase, **Reroll selected** to choose new source material
+for only those rows, or **Remove selected** to replace a slice with nearby material.
+Remove also preserves the exact output duration, compacting adjacent repeats where it
+can; unsupported combinations stay unchanged and explain why in the toast.
+
+The recipe does not change the mix, arrangement, normal Save, WAV, or MIDI export. Use
+**Save JSON…** and **Load JSON…** in the Rearrange list to keep the versioned recipe. A
+loaded file must name an available source song with the same number of transport steps;
+loading never starts playback automatically. Generated JSON also carries a readable
+`form` array with contiguous output ranges for the named sections; older v1 files that
+only contain `operations` remain loadable.
+
 ### S — clear solo
 
 Lit whenever *anything* on the desk is soloed, channel or send, wherever it is in the

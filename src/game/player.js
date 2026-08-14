@@ -111,6 +111,8 @@ export class Player {
     this.assemblyGraceUsed = 0;
     this.hazardEaten = false; // Miss Chomp mastery
     this.grounded = true;
+    // Airborne because something threw him, not because he jumped. See launch().
+    this.launched = false;
     this.slideT = 0;      // ice landing slide (visual/control feel)
     this.landedT = 0;     // landing squash timer (visual only)
     // The incoming hero's arrival, set by whoever ran them through a portal.
@@ -179,11 +181,32 @@ export class Player {
       : this.duckAmount < before ? -1 : 0;
   }
 
+  /**
+   * Thrown, rather than jumping. A spring pad's arc.
+   *
+   * Separate from jumpPressed because it is not a jump in any of the ways that
+   * matter: it costs no jump from the budget, it ignores the hero's jumpMult
+   * (the pad is the same machine whoever stands on it — a road it can only
+   * throw half the cast onto is a broken road), and the variable-jump cut does
+   * not apply to it. One air jump is left in hand deliberately: the pad chooses
+   * the road, the player still gets to place the landing on it.
+   */
+  launch(vy) {
+    this.vy = vy;
+    this.grounded = false;
+    this.launched = true;
+    this.stomping = false;
+    this.ducking = false;
+    this.duckDirection = -1;
+    this.jumps = 1;
+  }
+
   jumpPressed(audio) {
     if (this.rollT > 0 || this.stumbleT > 0) return false;
     if (this.grounded || this.jumps < this.maxJumps) {
       if (!this.grounded && this.jumps === 0) this.jumps = 1; // walked off a ledge
       this.vy = BASE_JUMP_V * (this.jumpScale || 1) * this.hero.jumpMult * (this.jumps > 0 ? AIR_JUMP_SCALE : 1);
+      this.launched = false;
       this.jumps++;
       this.grounded = false;
       this.ducking = false;
@@ -235,8 +258,13 @@ export class Player {
     const holdJump = input.held('jump');
     const holdDuck = input.held('duck');
 
-    // Variable jump: release early = short hop.
-    if (!holdJump && this.vy > VARIABLE_JUMP_CUT && this.hero.variableJump) this.vy = VARIABLE_JUMP_CUT;
+    // Variable jump: release early = short hop. `launched` is exempt, and has
+    // to be: the cut is a contract about the JUMP BUTTON — hold it for height,
+    // let go for a hop — and a spring pad is not the jump button. Without the
+    // exemption a hero who happened not to be holding jump when he ran over a
+    // pad had his 200px arc clipped to 60 on the very next frame, which reads
+    // as the pad simply not working.
+    if (!holdJump && !this.launched && this.vy > VARIABLE_JUMP_CUT && this.hero.variableJump) this.vy = VARIABLE_JUMP_CUT;
 
     // Float (Mochi): hold jump while falling caps fall speed.
     const floatCap = this.mods.includes('wide') ? -45 : -60;
@@ -251,6 +279,7 @@ export class Player {
         this.y = 0;
         this.grounded = true;
         this.jumps = 0;
+        this.launched = false;
         const wasStomp = this.stomping;
         this.stomping = false;
         this.vy = 0;

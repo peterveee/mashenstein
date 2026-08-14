@@ -18,6 +18,11 @@ import {
   applyArrangement, resolveSection, loopOf, loopSteps, SWING_STRAIGHT, SWING_MAX,
 } from '../data/arrangements.js';
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
+import {
+  rearrangementPosition as resolveRearrangementPosition,
+  rearrangementDrumMode,
+  rearrangementDrumHit,
+} from '../../tools/lib/rearrange.js';
 
 // The scheduler runs on the main thread, alongside panel builds and layout work. A
 // quarter-second of queued audio gives those unavoidable UI tasks room to finish
@@ -507,6 +512,15 @@ class AudioSys {
     // never stored in song data or used by game playback in a fresh tab.
     this.frozenLanes = new Map();
     this.step = 0;
+    // Session-only Mixer audition. The recipe changes which SOURCE step is read;
+    // `step` remains the continuous OUTPUT clock so swing, effects, and transport
+    // timing do not restart at every collage cut.
+    this.rearrangement = null;
+    this._rearrangeSourceBar = null;
+    // Short, session-only count-in clicks used by Mixer Rearrange starts. They live
+    // on the SFX bus rather than the song trim, so the four beats remain audible while
+    // the new song is held back at its exact output downbeat.
+    this._countInSources = [];
     this.nextTime = 0;
     this.timer = null;
     // Foreground scheduler safety margin. The game leaves this at the responsive
@@ -790,6 +804,49 @@ class AudioSys {
       this.step = this.loopStart;
       this.noteFx.reset();
     }
+  }
+
+  /** Install/remove the Mixer-only temporary source-range playlist. */
+  setRearrangement(recipe = null) {
+    this.rearrangement = recipe || null;
+    this._rearrangeSourceBar = null;
+  }
+
+  _clearCountIn() {
+    const sources = this._countInSources.splice(0);
+    const now = this.ctx?.currentTime ?? 0;
+    for (const source of sources) {
+      try { source.stop(now + 0.005); } catch { /* already stopped */ }
+    }
+  }
+
+  _scheduleCountIn(beats, startTime, bpm) {
+    this._clearCountIn();
+    if (!this.ctx || !this.sfxGain || !Number.isInteger(beats) || beats <= 0
+      || !Number.isFinite(startTime) || !Number.isFinite(bpm) || bpm <= 0) return;
+    const beatSeconds = 60 / bpm;
+    for (let index = 0; index < beats; index++) {
+      const when = startTime + index * beatSeconds;
+      const accent = index === 0 || index === beats - 1;
+      const oscillator = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(accent ? 1180 : 860, when);
+      gain.gain.setValueAtTime(0.0001, when);
+      gain.gain.exponentialRampToValueAtTime((accent ? 0.13 : 0.085) * this.cueGain, when + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.075);
+      gain.gain.linearRampToValueAtTime(0, when + 0.095);
+      oscillator.connect(gain); gain.connect(this.sfxGain);
+      oscillator.start(when);
+      oscillator.stop(when + 0.1);
+      this._countInSources.push(oscillator);
+    }
+  }
+
+  /** Map an output transport step to the source step currently being heard. */
+  rearrangementPosition(step = this.step) {
+    if (!this.rearrangement) return null;
+    return resolveRearrangementPosition(this.rearrangement, step);
   }
 
   /** Install/remove one session-only raw lane render. */
@@ -2799,7 +2856,8 @@ class AudioSys {
   // because the cabinet screen has a shutter closing over it — about 0.29s of it — and
   // whether the remainder is heard as a beat of silence or as a mistake is a thing to
   // decide by ear rather than by argument. See MusicDirector.play.
-  setBank(bank, mixOverride = undefined, arrangementOverride = undefined, { gap = 0.5, formLoop = true } = {}) {
+  setBank(bank, mixOverride = undefined, arrangementOverride = undefined,
+    { gap = 0.5, formLoop = true, countIn = 0 } = {}) {
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.
     // Compared against the bank as PASSED IN: applyMix may hand back a copy with
@@ -2808,6 +2866,7 @@ class AudioSys {
     if (this.sourceBank === bank && mixOverride === undefined && arrangementOverride === undefined) return;
     this.resumeAfterPanic();
     this.stopPreview();
+    this._clearCountIn();
     this.sourceBank = bank;
     const noteCacheState = this.noteCacheState;
     // A new song has its own arrangement, or none. `undefined` means the ordinary
@@ -2830,9 +2889,14 @@ class AudioSys {
     if (this.bank) this._cutLaneGates();
     bank = this.applyMix(bank, mixOverride);
     this.bank = bank;
+    const nextBpm = bank?.bpm || this.bpm;
+    const countInBeats = Number.isInteger(countIn) ? Math.max(0, countIn) : 0;
+    const countInLead = countInBeats ? 0.02 : 0;
+    const countInSeconds = countInBeats ? countInBeats * (60 / nextBpm) : 0;
+    const startGap = Math.max(gap, countInSeconds + countInLead);
     setNoteCachePlaybackActive(noteCacheState, !!bank || this.noteCachePreparationHeld);
     this.musicTrim = bank?.musicTrim ?? 1;
-    this.pendingStartDelay = bank ? gap : 0;
+    this.pendingStartDelay = bank ? startGap : 0;
     if (this.songTrim) {
       const now = this.ctx.currentTime;
       this.songTrim.gain.cancelScheduledValues(now);
@@ -2840,11 +2904,12 @@ class AudioSys {
         // Mute any notes left in the old lookahead window, then open the new
         // bank after a clean gap.
         this.songTrim.gain.setValueAtTime(0.0001, now);
-        this.songTrim.gain.setTargetAtTime(this.musicTrim, now + gap, 0.01);
-        this.nextTime = now + gap;
+        this.songTrim.gain.setTargetAtTime(this.musicTrim, now + startGap, 0.01);
+        this.nextTime = now + startGap;
       } else {
         this.songTrim.gain.setValueAtTime(0.0001, now);
       }
+      if (bank && countInBeats) this._scheduleCountIn(countInBeats, now + countInLead, nextBpm);
     }
     // `dynamics` is relative to the song playing and the kit tally belongs to its
     // arrangement, so both start over with it. Carrying a loud song's peak into a
@@ -3027,6 +3092,12 @@ class AudioSys {
     // A step past the end of a shortened song would keep playing past it until the
     // modulo caught up. Wrapped here so a delete never leaves the playhead adrift.
     const steps = barPlan(next).length * 16;
+    if (this.rearrangement && this.rearrangement.source?.steps !== steps) {
+      // A bar edit changed the source address space. Keeping the old recipe would
+      // point at a range that no longer exists, so the temporary audition expires
+      // while the arrangement itself remains untouched.
+      this.setRearrangement(null);
+    }
     if (steps > 0 && this.step >= steps) this.step %= steps;
     // And the song's own loop with it, for the same reason: an edit that shortens the
     // form can leave the region hanging off the end of it, and `loopSteps` clamps
@@ -4038,12 +4109,27 @@ class AudioSys {
       const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
       const resolution = this.transportResolution;
       const tick = resolution === 32 ? 0.5 : 1;       // transport remains in 16th units
+      // The scheduler clock is the rearranged song's output position. Every read of
+      // authored musical data below uses this mapped source position instead, while
+      // `this.step` continues to drive the output-time groove and wrap machinery.
+      const rearranged = this.rearrangementPosition(this.step);
+      const sourceStep = rearranged ? rearranged.sourceStep : this.step;
+      // A basic Rearrange kit is driven by the OUTPUT clock. Pitched lanes still use
+      // `sourceStep` below, but percussion needs a steady 4/4 pulse even when the
+      // collage jumps between off-beat source slices.
+      const basicRearrangeDrums = !!rearranged
+        && rearrangementDrumMode(this.rearrangement) === 'basic4';
+      const sourceBarIndex = Math.floor(sourceStep / 16);
+      const sourceBarChanged = rearranged
+        ? sourceBarIndex !== this._rearrangeSourceBar
+        : false;
+      if (rearranged) this._rearrangeSourceBar = sourceBarIndex;
       // Telemetry only, and read once here rather than recomputed at each counter:
       // `fine` is "this pass sits between two sixteenths", which is precisely the set
       // of passes a lane-local optimisation hopes to make cheaper. Legacy 16-step
       // songs never take it, so their counters read fine* === 0 and say so.
       const work = this._schedWork;
-      const fine = !Number.isInteger(this.step);
+      const fine = !Number.isInteger(sourceStep);
       work.ticks++;
       if (fine) work.fineTicks++;
       // SWING. The song is written on the grid; this is how hard it is PLAYED off it.
@@ -4112,15 +4198,22 @@ class AudioSys {
       // the whole of arranging: the same phrase again with the kit out of it. See
       // src/data/arrangements.js.
       const plan = barPlan(this.bank);
-      const bar = plan[Math.floor(this.step / 16) % plan.length];
-      if (this.step % 16 === 0) this.mixer?.scheduleBarEffectsForBar?.(bar, this.nextTime);
+      const bar = plan[sourceBarIndex % plan.length];
+      if ((sourceStep % 16 === 0 || sourceBarChanged)
+        && Number.isFinite(sourceStep)) {
+        this.mixer?.scheduleBarEffectsForBar?.(bar, this.nextTime);
+      }
       const frozenKeys = new Set();
       for (const key of this.frozenLanes.keys()) {
+        // A frozen percussion stem contains the authored drum pattern. In the basic
+        // Rearrange mode it must not leak back underneath the generated kit; melodic
+        // freezes continue to follow their mapped source position as before.
+        if (basicRearrangeDrums && PERCUSSION_LANES.includes(baseLane(key))) continue;
         const state = this.frozenLanes.get(key);
         work.preambleFrozenWalks++;
-        this._scheduleFrozenLane(key, state, this.step, this.nextTime, spb,
+        this._scheduleFrozenLane(key, state, sourceStep, this.nextTime, spb,
           plan.length * 16);
-        if (this._frozenLaneCovers(key, this.step, plan.length * 16)) frozenKeys.add(key);
+        if (this._frozenLaneCovers(key, sourceStep, plan.length * 16)) frozenKeys.add(key);
       }
       // THE HALF TICK NOTHING IS WAITING FOR.
       //
@@ -4147,8 +4240,8 @@ class AudioSys {
       // `_fineBars` is null whenever a half step could carry AUTHORED content rather
       // than only generated events — a natively 32-step bank, a 64-slot lane array, a
       // track-level 1/32 arp — and then nothing here runs at all.
-      if (resolution === 32 && !Number.isInteger(this.step) && this.fineLaneSkip
-        && this._fineBars && !this._fineBars.has(Math.floor(this.step / 16) % plan.length)) {
+      if (resolution === 32 && !Number.isInteger(sourceStep) && this.fineLaneSkip
+        && this._fineBars && !this._fineBars.has(sourceBarIndex % plan.length)) {
         // The one thing a skipped tick still owes the song. `noteFx.process` holds each
         // lane's arpeggiator state — where the run started, how far through it is, when
         // it expires — and that state advances per CALL, not per note. Show it the same
@@ -4156,21 +4249,20 @@ class AudioSys {
         // note. `value` is null because that is precisely what `sequenceValue` returns
         // on an odd slot for every lane here, which is what `_fineBars` being non-null
         // guarantees; with no source tones `len` is never read.
-        const barIndex = Math.floor(this.step / 16);
         for (const key of this._fineTickLanes) {
           const config = resolveNoteFx(this.mixEntry?.lanes?.[key]?.noteFx, bar, key);
           if (!config?.strum?.enabled && !config?.arp?.enabled) continue;
           work.notePlans++;
           work.fineNotePlans++;
           this.noteFx.process({ laneKey: key, value: null, len: null, step: this.step,
-            spb, config, barIndex });
+            spb, config, barIndex: Math.floor(this.step / 16) });
         }
         this._advanceTransport(spb, tick, plan);
         return;
       }
       const s = resolution === 32
-        ? Math.round((this.step % 16) * 2) + bar.half * 32
-        : (this.step % 16) + bar.half * 16;
+        ? Math.round((sourceStep % 16) * 2) + bar.half * 32
+        : (sourceStep % 16) + bar.half * 16;
       const pulse = resolution === 32 ? Math.floor(s / 2) : s;
       let b = this.bank;
       if (b.sections && b.sections.length && bar.sec != null) {
@@ -4190,10 +4282,28 @@ class AudioSys {
       // `sequenceValue` returns for it anyway, so the answer is the same and the walk to
       // reach it is not taken. Null when nothing is known yet, which means "ask them all".
       const coarseHere = fine && resolution === 32 && this.fineLaneSkip && this._fineLanes;
+      const writtenPercussion = (key) => {
+        const values = b?.[key];
+        if (!Array.isArray(values)) return false;
+        return values.some((value) => Array.isArray(value)
+          ? value.some((tone) => !!tone)
+          : !!value);
+      };
+      const basicPercussionKeys = basicRearrangeDrums
+        ? new Set([...PERCUSSION_LANES, ...(b.__layers || [])
+          .filter((layer) => PERCUSSION_LANES.includes(baseLane(layer.key)))
+          .map((layer) => layer.key)]
+          .filter((key) => b?.[key] != null && (writtenPercussion(key) || voiceOf(b, key))))
+        : null;
       const rawAt = (key) => {
         if (coarseHere && !this._fineLanes.has(key)) return null;
         work.laneReads++;
         if (fine) work.fineLaneReads++;
+        if (basicPercussionKeys?.has(key)
+          && b?.[key] != null
+          && PERCUSSION_LANES.includes(baseLane(key))) {
+          return rearrangementDrumHit(baseLane(key), this.step, this.rearrangement.seed);
+        }
         return sequenceValue(b, key, s, resolution);
       };
       // Arrangement edits stay on the bar, so the authored section is never
@@ -4201,7 +4311,32 @@ class AudioSys {
       // chords and layer lanes use the same recursive conversion as single notes.
       const barValue = (map, key, fallback = 0) =>
         typeof map === 'number' ? map : (Number.isFinite(map?.[key]) ? map[key] : fallback);
-      const semitone = (key) => barValue(bar.transpose, key);
+      // A bar's pan is the one per-bar transform that lives on a channel rather than
+      // in the note being scheduled. Apply it at every bar edge, including a loop
+      // wrap, before asking any lane whether it has a note. Without this, a sparse
+      // lane whose first loop bar is a rest could leave the previous bar's offset on
+      // its panner through that rest (and through any release tail). Note-bearing
+      // lanes still pass through _barPan below for mid-bar edits; this edge pass is
+      // what makes the reset independent of note density.
+      if (Number.isInteger(sourceStep)
+        && (sourceStep % 16 === 0 || sourceBarChanged) && this.mixer) {
+        const panKeys = new Set(this._barPans.keys());
+        if (typeof bar.pan === 'number') {
+          for (const key of LANE_KEYS) panKeys.add(key);
+          for (const layer of b.__layers || []) if (layer?.key) panKeys.add(layer.key);
+        } else {
+          for (const key of Object.keys(bar.pan || {})) panKeys.add(key);
+        }
+        for (const key of panKeys) {
+          if (!this.mixer.lane(key)) continue;
+          this._barPan(key, barValue(bar.pan, key) / 100,
+            this.nextTime - BAR_PAN_SECONDS, true);
+        }
+      }
+      const rearrangeTranspose = rearranged?.operation?.transpose || 0;
+      const semitone = (key) => barValue(bar.transpose, key)
+        + (rearrangeTranspose && !PERCUSSION_LANES.includes(baseLane(key))
+          ? rearrangeTranspose : 0);
       const shift = (v, n) => Array.isArray(v)
         ? v.map((x) => shift(x, n))
         : typeof v === 'number' && v > 0 ? v * 2 ** (n / 12) : v;
@@ -4219,6 +4354,11 @@ class AudioSys {
             .filter((k) => !PERCUSSION_LANES.includes(baseLane(k)))
           : []),
       ]);
+      if (rearrangeTranspose) {
+        for (const key of [...LANE_KEYS, ...(b.__layers || []).map((L) => L.key)]) {
+          if (!PERCUSSION_LANES.includes(baseLane(key))) transposeKeys.add(key);
+        }
+      }
       if (transposeKeys.size) {
         work.preambleTransposes++;
         b = { ...b };
@@ -4396,9 +4536,9 @@ class AudioSys {
           else { dry = baseDry; wet = baseWet; }
         }
         // The bar's pan offset, written onto this channel's own pot rather than onto a
-        // node in front of it — see `_barPan`. Re-asserted on the first step of every
-        // bar so a pot dragged mid-bar, which cancels what was scheduled on it, is back
-        // in agreement with the arrangement one bar later at worst.
+        // node in front of it — see `_barPan`. Bar edges are handled for every touched
+        // lane above, so this note-local write only needs to catch a lane first heard
+        // after the edge (or a lane whose value changed in the middle of the bar).
         //
         // A ramp's length AHEAD of the step, so it ARRIVES on it. `lane()` runs when a
         // lane has something to play, which on a bar whose first note is not on the
@@ -4406,7 +4546,7 @@ class AudioSys {
         // attack, the loudest part of it, still coming from where the last bar was.
         if (strip) {
           this._barPan(key, barValue(bar.pan, key) / 100,
-            this.nextTime - BAR_PAN_SECONDS, this.step % 16 === 0);
+            this.nextTime - BAR_PAN_SECONDS);
         }
       };
       // Point a lane at its strip and offer it to the voice library, in that order —

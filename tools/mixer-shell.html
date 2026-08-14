@@ -483,6 +483,72 @@
   .transport .playbtn.on:hover { background: color-mix(in srgb, var(--go) 82%, var(--ink)); }
   .transport #playstart.preparing { color: var(--accent); background: var(--traybtn-hi); }
   .transport button:disabled { opacity: .4; }
+  /* Rearrange is a transport mode, but its operation list is a small working window
+     rather than a drawer or modal. It stays above the desk while the transport remains
+     aimable underneath. */
+  #rearrangebtn { min-width: 86px; padding: 4px 9px; white-space: nowrap; }
+  #rearrangepanel { position: fixed; top: 56px; right: var(--rgut); z-index: 34;
+                    display: flex; flex-direction: column; width: min(500px, calc(100vw - 24px));
+                    max-height: calc(100vh - 70px); overflow: hidden;
+                    background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+                    box-shadow: 0 14px 34px color-mix(in srgb, var(--deep) 70%, transparent); }
+  #rearrangepanel[hidden] { display: none; }
+  #rearrangepanel .rehead { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px 8px;
+                             background: var(--well); border-bottom: 1px solid var(--line); }
+  #rearrangepanel .retitle { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; }
+  #rearrangepanel .resub { margin-top: 2px; color: var(--dim); font-size: 10px; font-weight: 400; }
+  #rearrangepanel .reclose { width: 22px; height: 22px; padding: 0; border: 0; background: none;
+                              color: var(--dim); font-size: 17px; line-height: 1; }
+  #rearrangepanel .reclose:hover { color: var(--ink); border-color: transparent; }
+  #rearrangestatus { padding: 7px 12px; color: var(--dim); font-size: 10px; border-bottom: 1px solid var(--line); }
+  #rearrangeform { display: flex; gap: 4px; overflow-x: auto; padding: 6px 8px 5px;
+                   border-bottom: 1px solid var(--line); background: var(--well); }
+  #rearrangeform[hidden] { display: none; }
+  #rearrangeform .reformseg { flex: 1 0 82px; min-width: 82px; display: flex; flex-direction: column;
+                              align-items: flex-start; gap: 1px; padding: 4px 6px; border: 1px solid var(--line);
+                              border-radius: 4px; background: var(--traybtn); color: var(--dim); font-size: 9px;
+                              text-align: left; }
+  #rearrangeform .reformseg:hover, #rearrangeform .reformseg:focus-visible { color: var(--ink); border-color: var(--accent-line); }
+  #rearrangeform .reformseg.active { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+  #rearrangeform .reformseg strong { font-size: 10px; font-weight: 700; }
+  #rearrangeform .reformseg small { color: inherit; opacity: .8; font-size: 8px; }
+  #rearrangepanel .recontrol { flex: 1 0 100%; display: grid; grid-template-columns: auto minmax(110px, 1fr) auto;
+    align-items: center; gap: 7px; padding: 2px 2px 4px; color: var(--dim); font-size: 10px; }
+  #rearrangepanel .recontrol label { color: var(--ink); font-weight: 700; white-space: nowrap; }
+  #rearrangepanel .recontrol input[type=range] { min-width: 110px; width: 100%; }
+  #rearrangepanel .recontrol output { min-width: 5ch; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+  #rearrangepanel .recontrolhint { grid-column: 1 / -1; display: flex; justify-content: space-between; margin-top: -3px;
+    color: var(--faint); font-size: 9px; font-weight: 400; }
+  #rearrangelist { flex: 1 1 auto; min-height: 70px; overflow: auto; margin: 0; padding: 4px 6px 6px 30px;
+                   list-style: decimal; }
+  #rearrangelist li { display: flex; align-items: center; gap: 5px; margin: 2px 0; padding: 5px 7px;
+                      border: 1px solid transparent; border-radius: 5px; color: var(--dim); font-size: 10px; line-height: 1.35; }
+  #rearrangelist li.active { color: var(--ink); background: var(--accent-wash); border-color: var(--accent-line); }
+  #rearrangelist li.selected { outline: 1px solid var(--accent-line); background: color-mix(in srgb, var(--accent-wash) 55%, transparent); }
+  #rearrangelist li.kept { box-shadow: inset 2px 0 var(--accent); }
+  #rearrangelist li.disliked { box-shadow: inset 2px 0 var(--hot); }
+  #rearrangelist li.favourite .reop { color: var(--accent); }
+  #rearrangelist li .reselect { flex: none; width: 21px; height: 20px; padding: 0; border: 1px solid transparent;
+                                 border-radius: 4px; color: var(--faint); background: transparent; font-size: 12px; line-height: 18px; }
+  #rearrangelist li .reselect:hover, #rearrangelist li .reselect:focus-visible { color: var(--ink); border-color: var(--accent-line); }
+  #rearrangelist li .reselect[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+  #rearrangelist li .reop { flex: 1 1 auto; min-width: 0; color: var(--ink); }
+  #rearrangelist li .reout { flex: none; color: var(--faint); margin-left: auto; }
+  #rearrangelist li .rekeep { flex: none; width: 21px; height: 20px; padding: 0; border: 1px solid transparent;
+                              border-radius: 4px; color: var(--faint); background: transparent; font-size: 12px; line-height: 18px; }
+  #rearrangelist li .rekeep:hover, #rearrangelist li .rekeep:focus-visible { color: var(--ink); border-color: var(--accent-line); }
+  #rearrangelist li .rekeep.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+  #rearrangelist li .replaysection, #rearrangelist li .redown { flex: none; width: 21px; height: 20px; padding: 0;
+                              border: 1px solid transparent; border-radius: 4px; color: var(--faint);
+                              background: transparent; font-size: 11px; line-height: 18px; }
+  #rearrangelist li .replaysection:hover, #rearrangelist li .replaysection:focus-visible,
+  #rearrangelist li .redown:hover, #rearrangelist li .redown:focus-visible { color: var(--ink); border-color: var(--accent-line); }
+  #rearrangelist li .redown.on { color: var(--on-accent); background: var(--hot); border-color: var(--hot); }
+  #rearrangepanel .refoot { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px;
+                             border-top: 1px solid var(--line); background: var(--well); }
+  #rearrangepanel .refoot button { flex: 1 1 auto; padding: 5px 8px; font-size: 10px; }
+  #rearrangepanel .refoot #replay { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  #rearrangepanel .refoot #rereturn { border-color: var(--hot-line); color: var(--hot); }
   /* Panic used to be a red word at the far end of the header, beside Undo. It is ⎋ now:
      an emergency cut is worth a key you can hit without looking, and Stop already
      silences everything you can hear. Its tooltip is where the key is written down;
@@ -1368,6 +1434,15 @@
                           border: 1px solid var(--line); border-radius: 999px; }
   #notehead #notelenbtn[hidden],
   #notes.collapsed #notehead #notelenbtn { display: none; }
+  #notehead .roll-actions { display: flex; align-items: center; gap: 3px; margin-left: 5px;
+                             flex: none; }
+  #notehead .roll-action { height: 19px; padding: 1px 6px; color: var(--dim);
+                           background: var(--input); border: 1px solid var(--line);
+                           border-radius: 3px; font: 600 9px/15px var(--font); cursor: pointer; }
+  #notehead .roll-action:hover:not(:disabled),
+  #notehead .roll-action:focus-visible { color: var(--ink); border-color: var(--accent); }
+  #notehead .roll-action.on { color: var(--on-accent); background: var(--accent); }
+  #notehead .roll-action:disabled { opacity: .4; cursor: default; }
   #notehead #rollfollowbtn { display: grid; place-items: center; flex: none; width: 22px; height: 20px;
                              margin-left: 2px; padding: 0; color: var(--dim); background: none;
                              border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
@@ -3641,6 +3716,35 @@
                       box-shadow: inset 1px 0 0 color-mix(in srgb, var(--selected-ink) 55%, transparent),
                                   inset -1px 0 0 color-mix(in srgb, var(--selected-ink) 55%, transparent); }
   :is(#pianoroll,#kitroll) .ssqselband.show { display: block; }
+  /* The beat-level piano-roll range uses a brighter, solid-tinted companion band so it
+     remains distinguishable from the desk's whole-bar selection when both are present. */
+  :is(#pianoroll,#kitroll) .ssqtimeband { position: absolute; top: 0; bottom: 0;
+                      display: none; pointer-events: none;
+                      transform: translateX(calc(-1 * var(--roll-scroll-x, 0px)));
+                      background: color-mix(in srgb, var(--accent) 13%, transparent);
+                      box-shadow: inset 1px 0 0 color-mix(in srgb, var(--accent) 75%, transparent),
+                                  inset -1px 0 0 color-mix(in srgb, var(--accent) 75%, transparent); }
+  :is(#pianoroll,#kitroll) .ssqtimeband.show { display: block; }
+  /* Locator pins sit above the beat range and travel with the same horizontal scroll.
+     The clip itself is inert so it never steals ruler drags; only the small pin button
+     receives the right-click menu. */
+  :is(#pianoroll,#kitroll) .ssqlocatorclip { position: absolute; z-index: 13; overflow: hidden;
+                      top: 0; bottom: 0; right: 0; pointer-events: none;
+                      left: calc(var(--keys) + var(--keyseam)); }
+  :is(#pianoroll,#kitroll) .ssqlocator { position: absolute; top: 0; bottom: 0; width: 20px;
+                      margin-left: -8px; padding: 0; border: 0; border-radius: 0;
+                      pointer-events: auto; cursor: context-menu;
+                      transform: translateX(calc(-1 * var(--roll-scroll-x, 0px)));
+                      background: linear-gradient(to right, transparent 7px, var(--accent) 7px 10px, transparent 10px); }
+  :is(#pianoroll,#kitroll) .ssqlocator::after { content: ''; position: absolute; top: -2px; left: 4px;
+                      width: 11px; height: 9px; background: var(--accent);
+                      clip-path: polygon(0 100%, 20% 0, 80% 0, 100% 100%); border-radius: 1px 1px 0 0; }
+  :is(#pianoroll,#kitroll) .ssqlocator::before { content: attr(data-locator); position: absolute;
+                      top: 1px; left: 11px; z-index: 1; min-width: 11px; padding: 1px 3px;
+                      color: var(--accent); background: var(--panel); border: 1px solid var(--accent);
+                      border-radius: 3px; font: 700 8px/10px var(--font); text-align: center;
+                      pointer-events: none; }
+  :is(#pianoroll,#kitroll) .ssqlocator.dragging { filter: drop-shadow(0 0 4px var(--accent)); }
   /* The numbers under it come forward, so the band reads as being over the ruler rather
      than as the ruler having gone dim. */
   :is(#pianoroll,#kitroll) .ssqbarnum.insel { position: relative; z-index: 3; color: var(--ink); }
@@ -3892,6 +3996,14 @@
   #pianoroll .rollzoom-button:disabled { color: var(--faint); opacity: .38;
                           text-decoration: line-through; cursor: default; }
   #pianoroll .rollzoom-button:disabled:hover { color: var(--faint); background: transparent; }
+  #pianoroll .rolllabeltoggle { pointer-events: auto; display: block; flex: none; width: 100%;
+                          height: 17px; padding: 0 6px; color: var(--faint); background: var(--input);
+                          border: 1px solid var(--line); border-radius: 3px;
+                          font: 700 9px/15px var(--font); text-align: left; cursor: pointer; }
+  #pianoroll .rolllabeltoggle::before { content: 'Note names '; color: var(--dim); font-weight: 400; }
+  #pianoroll .rolllabeltoggle:hover { color: var(--ink); border-color: var(--accent); }
+  #pianoroll .rolllabeltoggle.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+  #pianoroll .rolllabeltoggle.on::before { color: var(--on-accent); }
   #pianoroll .ssqhead-cell { width: var(--keys); gap: 0; padding: 0 0 0 6px; }
 
   /* ---- the keys ------------------------------------------------------------------
@@ -4161,6 +4273,20 @@
                                   calc(2px + var(--roll-rowpad-bottom, 0px)) 1px;
                            width: max(2px, calc(var(--len, 1) * 100% - 2px));
                            background: var(--lane); border-radius: 3px; }
+  #pianoroll .ssqnote-label { position: absolute; z-index: 4; left: 5px; right: 3px;
+                           top: 50%; transform: translateY(-50%); overflow: hidden;
+                           white-space: nowrap; text-overflow: ellipsis; pointer-events: none;
+                           color: color-mix(in srgb, var(--ink) 88%, transparent);
+                           font: 700 9px/1 var(--font); text-align: left; }
+  #pianoroll .ssqcell.paste-preview { z-index: 4; background: none; }
+  #pianoroll .ssqcell.paste-preview::before { content: ''; position: absolute;
+                           inset: calc(2px + var(--roll-rowpad-top, 0px)) auto
+                                  calc(2px + var(--roll-rowpad-bottom, 0px)) 1px;
+                           width: max(2px, calc(var(--paste-len, 1) * 100% - 2px));
+                           border: 1px dashed color-mix(in srgb, var(--accent) 88%, var(--ink));
+                           background: color-mix(in srgb, var(--accent) 20%, transparent);
+                           border-radius: 3px; pointer-events: none; }
+  #pianoroll.paste-armed .ssqcell { cursor: copy; }
   /* Which of the two gestures a press would begin. `move` on the body of a note,
      `ew-resize` within a few pixels of its right end — the same as every DAW, and the
      only way the edge is discoverable rather than found by accident. Notes on vox and
@@ -5719,6 +5845,11 @@
   </div>
 
   <div class="grp">
+    <button id="rearrangebtn" type="button" aria-pressed="false"
+            data-tip="Rearrange" data-tipsays="Build a temporary musical collage from this song. Double-click a row or use ▶ to play from that section or bar. Tap 👍 to keep it for the next Generate, or 👎 to ask for a replacement; Save song does not include it.">Rearrange</button>
+  </div>
+
+  <div class="grp">
     <!-- Record, on its own next to the transport like the Solo button. A filled circle;
          the colour carries the state: red dot at rest, whole button red with a white
          dot while recording. -->
@@ -5896,6 +6027,54 @@
   </div>
 
 </header>
+
+<section id="rearrangepanel" hidden aria-label="Rearrange recipe">
+  <div class="rehead">
+    <div class="retitle">Rearrange<div class="resub">A temporary, same-length song form — verse, chorus and bridge blocks built from four-bar phrases, often re-cut as alternating half-bar or bar cells. Set the three dials before Generate: Extremeness controls the size of the cuts, Transpose controls melodic lifts, and Patterning controls how strongly motifs return. Play Rearrangement counts four beats before the first bar. Use ▶ or double-click a row to play from that section or bar. Tap 👍 to keep a section for the next Generate, or 👎 to ask for a replacement. Select individual rows for Split halves, Unroll repeats, ×2 loops, ÷2 loops, Reroll selected, or Remove selected. Removing a slice fills its exact output time with nearby material so the new song stays the same length. Toggle Steady 4/4 drums to keep the existing kit sounds while replacing the source drum patterns. In the Piano Roll, drag a range and press Fav + to include it in every new recipe. Every part stays together; pitched parts may shift by a gentle whole tone, fourth, or fifth.</div></div>
+    <button id="reclose" class="reclose" type="button" aria-label="Close Rearrange">×</button>
+  </div>
+  <div id="rearrangestatus" role="status" aria-live="polite">Generate a recipe to begin.</div>
+  <div id="rearrangeform" hidden aria-label="Four-bar Rearrange roadmap"></div>
+  <ol id="rearrangelist" aria-label="Rearrange operations"></ol>
+  <div class="refoot">
+    <div class="recontrol">
+      <label for="reextreme">Extremeness</label>
+      <input id="reextreme" type="range" min="0" max="100" step="5" value="35"
+             aria-describedby="reextremehint" title="Dial from smooth, repeated phrases to wild chopped collage">
+      <output id="reextremevalue" for="reextreme">35%</output>
+      <div id="reextremehint" class="recontrolhint"><span>Smooth</span><span>Wild</span></div>
+    </div>
+    <div class="recontrol">
+      <label for="retranspose">Transpose</label>
+      <input id="retranspose" type="range" min="0" max="100" step="5" value="45"
+             aria-describedby="retransposehint" title="Dial the amount of shared melodic lift">
+      <output id="retransposevalue" for="retranspose">±2/5</output>
+      <div id="retransposehint" class="recontrolhint"><span>Off</span><span>±2 / 5 / 7</span></div>
+    </div>
+    <div class="recontrol">
+      <label for="repattern">Patterning</label>
+      <input id="repattern" type="range" min="0" max="100" step="5" value="55"
+             aria-describedby="repatternhint" title="Dial between one-off variation and returning motifs">
+      <output id="repatternvalue" for="repattern">Balanced</output>
+      <div id="repatternhint" class="recontrolhint"><span>Loose</span><span>Motif</span></div>
+    </div>
+    <button id="reselectall" type="button">Select all slices</button>
+    <button id="reclearselection" type="button">Clear selection</button>
+    <button id="resplit" type="button">Split halves</button>
+    <button id="reunroll" type="button">Unroll repeats</button>
+    <button id="redoublerepeats" type="button">×2 loops</button>
+    <button id="rehalfrepeats" type="button">÷2 loops</button>
+    <button id="rerollselected" type="button">Reroll selected</button>
+    <button id="reremove" type="button">Remove selected</button>
+    <button id="redrums" type="button" aria-pressed="false">Original drums</button>
+    <button id="regenerate" type="button">Generate</button>
+    <button id="replay" type="button">Play Rearrangement</button>
+    <button id="resave" type="button">Save JSON…</button>
+    <button id="reload" type="button">Load JSON…</button>
+    <button id="rereturn" type="button">Return to Song</button>
+    <input id="rearrangefile" type="file" accept="application/json,.json" hidden>
+  </div>
+</section>
 
 <!-- Two permanent workspaces and one boundary. Timeline and arrangement are one upper
      editing surface; Mixer, Piano Roll and Pattern take turns in the lower one. -->

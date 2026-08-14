@@ -101,11 +101,41 @@ async function main() {
     const beforePendingSeek = { step: Audio.step, pending: Audio.pendingStep };
     Audio.scheduleStep();
     const afterPendingSeek = { step: Audio.step, pending: Audio.pendingStep };
+
+    // Per-bar pan is the one arrangement transform that temporarily lives on a
+    // channel strip. Make the first bar of the loop a rest for this lane, then put a
+    // pan edit on the second bar. The wrap must clear that offset before the new
+    // (silent) bar begins; waiting for the lane's next note would leave a release tail
+    // and the strip's live state in the previous bar's position.
+    const sparse = new Array(32).fill(null);
+    sparse[16] = 440;
+    const sparseLen = new Array(32).fill(null);
+    sparseLen[16] = 1;
+    const panBank = {
+      bpm: 120,
+      twinkle: sparse,
+      twinkleLen: sparseLen,
+      order: [
+        { s: 0, bars: 1 },
+        { s: 0, bars: 1, pan: { twinkle: -60 } },
+      ],
+    };
+    Audio.setBank(panBank, { lanes: { twinkle: { pan: 0 } } });
+    Audio.nextTime = 0;
+    Audio.songTrim.gain.cancelScheduledValues(0);
+    Audio.songTrim.gain.setValueAtTime(Audio.musicTrim, 0);
+    Audio.setLoop(0, 32);
+    Audio.step = 0;
+    for (let i = 0; i < 32; i++) Audio.scheduleStep();
+    const panBeforeSparseWrap = Audio.mixer.lane('twinkle').panOffset;
+    Audio.scheduleStep(); // step 0 of the new loop; there is no twinkle note here
+    const panAfterSparseWrap = Audio.mixer.lane('twinkle').panOffset;
     return {
       focusedAhead, backgroundAhead, invalidAhead,
       armed, atLocatorA, ...locatorLoop,
       beforePendingBoundary, afterPendingBoundary,
       beforePendingSeek, afterPendingSeek,
+      panBeforeSparseWrap, panAfterSparseWrap,
     };
   });
   await browser.close();
@@ -142,6 +172,10 @@ async function main() {
   'a normal playing seek stays queued until the current bar completes');
   assert(out.afterPendingSeek.step === 32 && out.afterPendingSeek.pending == null,
   'the normal seek lands on the first step after that bar boundary');
+  assert(out.panBeforeSparseWrap === -0.6,
+    'the sparse loop test reaches the second bar\'s -60 pan offset');
+  assert(out.panAfterSparseWrap === 0,
+    'a loop boundary resets per-bar pan before a silent first bar');
 
   console.log(failed ? 'MIXER LOOP: FAILED' : 'MIXER LOOP: PASSED');
   process.exit(failed ? 1 : 0);

@@ -1132,6 +1132,65 @@ export const PROP_PAINTERS = {
   // it stays honest, and this is the one line that ships it. The pre-bake-off
   // pad is kept as boostPadLegacy.
   boostPad(ctx, w, h, frame = 0) { PROP_PAINTERS.rampChevron(ctx, w, h, frame); },
+  // The spring. Sibling to the boost pad and drawn to be read as one: same
+  // black-and-gold, same chevrons, same "run over it and it pays out" contract.
+  // The one difference is the axis, and every mark here is about that axis —
+  // the coil, the chevrons and the plate all point UP, because what this thing
+  // sells is a road two hundred pixels above the one you are on, and a player
+  // has about a sixth of a second to decide whether they want it.
+  //
+  // Unlike the ramp it stands PROUD of the floor rather than sunk into it. A
+  // recess says "the floor does something here"; a spring is a machine bolted
+  // on top of the floor, and the silhouette is the only thing that will survive
+  // being seen at lane speed. PROP_TALL buys the height for it.
+  springPad(ctx, w, h, frame = 0) {
+    const u = Math.max(w, h);
+    // The cycle is a WIND-UP, not a loop of equal frames. It compresses through
+    // most of it — accelerating, so the tension reads as building rather than
+    // as a bar sliding — and then fires, overshooting past its own rest height
+    // before settling. A plain sine would give it a bounce with no moment in
+    // it, and the moment is the whole reason a player looks at it twice.
+    const p = (frame % 8) / 8;
+    const wind = Math.min(1, p / 0.62);
+    const open = p > 0.62 ? (p - 0.62) / 0.38 : 0;
+    const squash = p <= 0.62
+      ? 1 - 0.34 * wind * wind
+      : 0.66 + 0.34 * open + 0.22 * Math.sin(open * Math.PI);
+    // Base plate: the bit bolted to the floor, always at full width.
+    fineShape(ctx, '#171c2b', u, (c) => rr(c, 0, h * 0.82, w, h * 0.18, h * 0.03),
+      'rgba(6,6,14,0.65)', 0.018);
+    plain(ctx, 'rgba(120,132,164,0.35)', (c) => rr(c, w * 0.02, h * 0.82, w * 0.96, h * 0.04, h * 0.02));
+    // Coil. Three turns drawn as flat bars rather than a helix — at 16px wide a
+    // traced spiral is mush, and stacked bars that move together read as a
+    // spring the moment they compress.
+    const coilTop = h * (0.82 - 0.5 * squash), coilH = h * 0.82 - coilTop;
+    for (let i = 0; i < 3; i++) {
+      const y = coilTop + (coilH * (i + 0.15)) / 3;
+      plain(ctx, i % 2 ? '#8a6a12' : '#f6d33c',
+        (c) => rr(c, w * 0.28, y, w * 0.44, coilH * 0.2, coilH * 0.08));
+    }
+    // The plate you actually hit, riding on top of the coil.
+    fineShape(ctx, '#171c2b', u, (c) => rr(c, w * 0.06, coilTop - h * 0.13, w * 0.88, h * 0.15, h * 0.04),
+      'rgba(6,6,14,0.65)', 0.018);
+    plain(ctx, '#f6d33c', (c) => rr(c, w * 0.1, coilTop - h * 0.115, w * 0.8, h * 0.05, h * 0.02));
+    // Two chevrons climbing off the plate, brightest at the moment it fires.
+    // 45 degrees exactly, same rule the ramp's chase follows.
+    const cw = w * 0.3, ct = h * 0.09;
+    for (let i = 0; i < 2; i++) {
+      const cy = coilTop - h * (0.2 + i * 0.16) - open * h * 0.1;
+      // They brighten as it winds and go white at the release, so the pad is
+      // saying "about to" for most of the cycle and "now" for the rest of it.
+      plain(ctx, open > 0 ? '#fff6d0' : `rgba(246,211,60,${(0.5 + 0.4 * wind - i * 0.3).toFixed(3)})`, (c) => {
+        c.moveTo(w / 2 - cw, cy);
+        c.lineTo(w / 2, cy - cw);
+        c.lineTo(w / 2 + cw, cy);
+        c.lineTo(w / 2 + cw - ct, cy);
+        c.lineTo(w / 2, cy - cw + ct);
+        c.lineTo(w / 2 - cw + ct, cy);
+        c.closePath();
+      });
+    }
+  },
   target(ctx, w, h) {
     const u = Math.max(w, h);
     shape(ctx, '#fff', u, (c) => c.arc(w / 2, h / 2, w * 0.46, 0, Math.PI * 2));
@@ -2469,6 +2528,7 @@ export const PROP_FRAMES = {
   // period rather than an arbitrary count. The portals get twelve: they are
   // the largest art in the set and a six-frame vortex strobes.
   boostPad: 8,
+  springPad: 8,
   rampChevron: 8, rampWedge: 8, rampTurbine: 8, rampGate: 8,
   flagWave: 8, flagPennant: 8, flagBeacon: 8, flagPlug: 8,
   portalArch: 12, portalRift: 12, portalRings: 12, portalTube: 12,
@@ -2493,6 +2553,7 @@ const PROP_FPS = {
   // ripple at 16fps is a flutter, at 10 it is a wave. The portals sit in
   // between, slow enough that the vortex turns rather than flickers.
   boostPad: 16,
+  springPad: 16,
   rampChevron: 16, rampWedge: 16, rampTurbine: 20, rampGate: 14,
   flagWave: 10, flagPennant: 10, flagBeacon: 10, flagPlug: 10,
   portalArch: 12, portalRift: 14, portalRings: 12, portalTube: 12,
@@ -2517,6 +2578,10 @@ export const PROP_TALL = {
   // floor" — the depth is bought by making the whole mark flatter, not by
   // moving it down. The hitbox is still 14x4.
   boostPad: 1.15,
+  // A spring stands ON the floor rather than in it, and the whole point of the
+  // mark is the height it promises. 3.2 over the 16x6 hitbox gives it 19px of
+  // visible machine above a lane the hero is 14px tall in.
+  springPad: 3.2,
   rampChevron: 1.15, rampWedge: 3, rampTurbine: 3.25, rampGate: 4.5,
 };
 export function propTall(name) { return PROP_TALL[name] || 1; }
@@ -2564,6 +2629,7 @@ const PROP_DETAIL_SCALE = {
   // doubling them would quadruple a twelve-frame cache for detail SS is
   // already resolving.
   boostPad: 2, boostPadLegacy: 2,
+  springPad: 2,
   rampChevron: 2, rampWedge: 2, rampTurbine: 2, rampGate: 2,
   flagWave: 2, flagPennant: 2, flagBeacon: 2, flagPlug: 2,
 };

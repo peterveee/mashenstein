@@ -424,8 +424,8 @@ export const ROLL_TOOLS = [
   {
     id: 'select',
     label: 'Select',
-    hint: 'Select — band notes, then move or stretch them together; arrows nudge,'
-      + ' ⌫ or right-click deletes',
+    hint: 'Select — band notes, then move or stretch them together; ⇧←/→ changes length,'
+      + ' ⇧⌥←/→ moves a bar, ⇧↑/↓ moves an octave; ⌫ or right-click deletes',
   },
   {
     id: 'paint',
@@ -576,6 +576,17 @@ export function createPianoRoll({
   // The desk's bar selection, drawn on this ruler and changed from it — the same drag
   // the timeline has, on the same selection. See createBarGrid.
   selectedBars = null, onSelectBars = null,
+  selectedTime = null, onSelectTime = null,
+  onAddRearrangeFavourite = null, rearrangeFavouriteState = null,
+  locators = null, onLoopTime = null,
+  locatorPositions = null,
+  onLocatorMove = null, onLocatorMoveEnd = null,
+  onDoubleClickStep = null,
+  onSelectTimeEnd = null,
+  menu = null, onClearLocator = null, onClearLocators = null, onEraseTime = null,
+  // Erasing is an explicit piano-roll action, not a global Delete shortcut: removing
+  // song structure from a note-editing keystroke is too easy to do accidentally.
+  eraseSelectedBars = null,
   scale = () => ({ root: 0, id: 'chromatic' }),
   pitchSize = ROW_H,
   toast = () => {},
@@ -587,6 +598,13 @@ export function createPianoRoll({
   // Do not persist this: it is a drawing-session preference, and every new piano roll
   // starts with the useful, least surprising sixteenth-note default.
   let noteAddLength = 1;
+  const NOTE_LABELS_KEY = 'mash-mixer-roll-note-labels';
+  let noteLabels = (() => {
+    if (typeof localStorage === 'undefined') return true;
+    return localStorage.getItem(NOTE_LABELS_KEY) !== '0';
+  })();
+  let noteClipboard = null;
+  let syncActionState = () => {};
   let quantise = 1;
   const ZOOM_KEY = 'mash-mixer-roll-time-zoom';
   let timeZoom = (() => {
@@ -648,8 +666,8 @@ export function createPianoRoll({
     + 'RIGHT-CLICK rubs a note out, in every mode — right-drag rubs out a run.\n'
     + 'Hold ⌘ to drag a rectangle round notes, ⇧-click to add one to the set,'
     + ' then move or stretch them together.\n'
-    + 'With notes picked out: arrows nudge them (⇧ by a bar or an octave),'
-    + ' ⌥← ⌥→ shorten and lengthen, ⌫ takes them out, ⎋ lets them go.\n'
+    + 'With notes picked out: arrows nudge them, ⇧←/→ shorten and lengthen,'
+    + ' ⇧⌥←/→ moves a bar, ⇧↑/↓ moves an octave; ⌫ takes them out, ⎋ lets them go.\n'
     + 'Hold ⌥ at any time for Paint: a run of separate notes, or a run rubbed out.\n'
     + 'Draw, Select, Paint and Erase each do one thing, with no modifier and no aiming.';
 
@@ -1157,6 +1175,29 @@ export function createPianoRoll({
     return wrap;
   };
 
+  const noteNamesToggle = () => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'rolllabeltoggle';
+    button.title = 'Show or hide note names inside longer notes';
+    button.setAttribute('aria-label', 'Show or hide note names');
+    const paint = () => {
+      button.textContent = noteLabels ? 'On' : 'Off';
+      button.classList.toggle('on', noteLabels);
+      button.setAttribute('aria-pressed', noteLabels ? 'true' : 'false');
+    };
+    button.onclick = (ev) => {
+      ev.stopPropagation();
+      noteLabels = !noteLabels;
+      if (typeof localStorage !== 'undefined') localStorage.setItem(NOTE_LABELS_KEY, noteLabels ? '1' : '0');
+      paint();
+      grid.redraw();
+      toast(noteLabels ? 'Note names shown' : 'Note names hidden');
+    };
+    paint();
+    return button;
+  };
+
   const chordSelect = (kind) => {
     let options;
     let label;
@@ -1444,10 +1485,156 @@ export function createPianoRoll({
   // onto the physical key faces once the grid exists.
   let syncSelectedKeys = () => {};
 
+  const editingActions = () => {
+    const bar = document.createElement('span');
+    bar.className = 'roll-actions';
+    const make = (label, tip, run) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'roll-action';
+      button.textContent = label;
+      button.dataset.tip = label;
+      button.dataset.tipsays = tip;
+      button.onclick = (ev) => {
+        ev.stopPropagation();
+        run();
+        syncActionState();
+      };
+      bar.append(button);
+      return button;
+    };
+    const all = make('Select all', 'Select every note in this track — ⌘/Ctrl+A', () => {
+      const count = grid.selectAll();
+      toast(count ? `${count} note${count === 1 ? '' : 's'} selected` : 'No notes in this track');
+    });
+    const none = make('Select none', 'Clear the selected notes', () => {
+      grid.clearSelection();
+      toast('Note selection cleared');
+    });
+    const locatorSelect = make('Select locators',
+      'Select notes whose attacks fall between the two timeline locators', () => {
+        const picked = locators?.() || null;
+        if (!picked) return;
+        const count = grid.selectTimeRange(picked.start, picked.end);
+        onSelectTime?.(picked);
+        onSelectTimeEnd?.(picked);
+        grid.redraw();
+        toast(count ? `${count} note${count === 1 ? '' : 's'} selected between locators`
+          : 'No notes between the locators');
+      });
+    const loopRange = make('Loop range',
+      'Loop the selected beat range from the piano roll', () => {
+        const picked = selectedTime?.() || null;
+        if (picked && onLoopTime) onLoopTime(picked);
+      });
+    const favourite = make('Fav +',
+      'Always include the selected piano-roll range in the next Rearrange recipe', () => {
+        const picked = selectedTime?.() || null;
+        if (picked && onAddRearrangeFavourite) onAddRearrangeFavourite(picked);
+      });
+    const cut = make('Cut', 'Cut the selected notes — ⌘/Ctrl+X', () => {
+      const clip = grid.copySelection();
+      if (!clip) return;
+      noteClipboard = clip;
+      grid.deleteSelection();
+      toast('Notes cut — ⌘/Ctrl+V to place them');
+    });
+    const copy = make('Copy', 'Copy the selected notes — ⌘/Ctrl+C', () => {
+      const clip = grid.copySelection();
+      if (!clip) return;
+      noteClipboard = clip;
+      toast('Notes copied — click Paste, then click where they should land');
+    });
+    const paste = make('Paste', 'Place copied notes: click Paste, then click a time column', () => {
+      if (!noteClipboard) return;
+      grid.armPaste(noteClipboard);
+      toast('Paste armed — click the time column for the first note, or press Escape');
+    });
+    const erase = make('Erase bar',
+      'Erase this instrument\'s selected bar(s) — the song bars and other tracks stay',
+      () => {
+        const picked = selectedBars?.() || null;
+        if (picked && eraseSelectedBars) eraseSelectedBars(picked);
+      });
+    syncActionState = () => {
+      const selected = grid.selectedCount() > 0;
+      const time = selectedTime?.() || null;
+      const pair = locators?.() || null;
+      none.disabled = !selected;
+      cut.disabled = !selected;
+      copy.disabled = !selected;
+      paste.disabled = !noteClipboard;
+      locatorSelect.disabled = !pair || pair.end <= pair.start;
+      loopRange.disabled = !time || time.end <= time.start || !onLoopTime;
+      favourite.disabled = !time || time.end <= time.start || !onAddRearrangeFavourite;
+      const isFavourite = !!time && !!rearrangeFavouriteState?.(time);
+      favourite.textContent = isFavourite ? 'Fav ✓' : 'Fav +';
+      favourite.classList.toggle('on', isFavourite);
+      erase.disabled = !grid.isOpen() || !selectedBars?.() || !eraseSelectedBars;
+      paste.classList.toggle('on', grid.pasteArmed());
+      all.disabled = !grid.isOpen();
+    };
+    syncActionState();
+    return [bar];
+  };
+
+  /** Right-click actions for the locator pins drawn on the piano-roll ruler. */
+  const timeContextMenu = (ev, picked) => {
+    if (!menu || !picked || picked.end <= picked.start) return;
+    menu(ev.clientX, ev.clientY, 'Piano roll · Selected range', [
+      { label: 'Loop selected range', run: () => onLoopTime?.(picked) },
+      { label: 'Select notes in range', run: () => {
+        const count = grid.selectTimeRange(picked.start, picked.end);
+        grid.redraw();
+        toast(count ? `${count} note${count === 1 ? '' : 's'} selected in range`
+          : 'No notes in the selected range');
+      } },
+      { label: 'Erase notes in range', run: () => onEraseTime?.(picked) },
+      { label: 'Clear selected range', run: () => {
+        onSelectTime?.(null);
+        grid.redraw();
+        toast('Piano-roll range cleared');
+      } },
+    ]);
+  };
+
+  /** Right-click actions for the locator pins drawn on the piano-roll ruler. */
+  const locatorContextMenu = (ev, id) => {
+    const picked = locators?.() || null;
+    const items = [];
+    if (picked && picked.end > picked.start) {
+      items.push(
+        { label: 'Loop between locators', run: () => onLoopTime?.(picked) },
+        { label: 'Select notes between locators', run: () => {
+        const count = grid.selectTimeRange(picked.start, picked.end);
+        onSelectTime?.(picked);
+        onSelectTimeEnd?.(picked);
+        grid.redraw();
+          toast(count ? `${count} note${count === 1 ? '' : 's'} selected between locators`
+            : 'No notes between the locators');
+        } },
+        { label: 'Erase notes between locators', run: () => onEraseTime?.(picked) },
+      );
+    }
+    if (onClearLocator) items.push({ label: `Clear locator ${id}`, run: () => onClearLocator(id) });
+    if (picked && onClearLocators) {
+      items.push({ label: 'Clear both locators', run: () => onClearLocators() });
+    }
+    if (menu && items.length) menu(ev.clientX, ev.clientY, `Piano roll · Locator ${id}`, items);
+  };
+
   const grid = createBarGrid({
     el, Audio, bank, editBank, draft, sel, apply, engineBank, laneLabel,
-    selectedBars, onSelectBars,
+    selectedBars, onSelectBars, selectedTime, onSelectTime,
+    locatorPositions: () => locatorPositions?.(),
+    onLocatorContextMenu: locatorContextMenu,
+    onLocatorMove,
+    onLocatorMoveEnd,
+    onTimeContextMenu: timeContextMenu,
+    onDoubleClickStep,
+    onSelectTimeEnd,
     ns: 'roll',
+    toast,
     // The two that make this a roll rather than a pattern editor: it shows the whole
     // song and it lives in the page. See createBarGrid.
     wholeSong: true,
@@ -1457,6 +1644,7 @@ export function createPianoRoll({
     // "the hats are wrong in this whole song".
     scopeToggle: false,
     stepsPerBar: (d) => (d?.resolution === 32 ? 32 : 16),
+    noteLabels: () => noteLabels,
     snapSlots: (slots) => Math.max(1, Math.round(quantise / (16 / slots))),
     // Eighty-eight rows, drawn a screenful at a time. The base pitch size is dynamic so
     // a future zoom control can rebuild this same grid without a second geometry path.
@@ -1508,6 +1696,7 @@ export function createPianoRoll({
         chordSelect('inversion'), doubleRootToggle(), chordInputToggle(),
         fieldLabel('DRAW LENGTH'), lengthPicker(), fieldLabel('PITCH ZOOM'), zoom,
         fieldLabel('TIME ZOOM'), timeZoomPicker(),
+        fieldLabel('NOTE NAMES'), noteNamesToggle(),
         fieldLabel('TOOL'), toolPicker()];
     },
     // Where the roll's controls WOULD go — the NOTES panel's header rather than a second
@@ -1601,6 +1790,7 @@ export function createPianoRoll({
     movable: true,
     tool: () => (toolId === 'chord' ? 'draw' : toolId),
     selectable: true,
+    headerExtra: editingActions,
     selectionChanged: () => syncSelectedKeys(),
 
     preview: previewRollNote,
@@ -1688,6 +1878,36 @@ export function createPianoRoll({
   // number below be a bare number stacked over its own beat 1.
   grid.setRulerLabel('Bar');
 
+  // Standard editing keys belong to the open piano roll, but never to a text field or
+  // the rest of the desk. The grid's own listener still owns arrows/Delete/Escape for
+  // an active selection; these four commands are the host-level clipboard actions.
+  addEventListener('keydown', (ev) => {
+    if (!grid.isOpen() || ev.target?.closest?.('input, select, textarea, [contenteditable="true"]')) return;
+    if (!(ev.metaKey || ev.ctrlKey) || ev.altKey) return;
+    const key = String(ev.key).toLowerCase();
+    if (!['a', 'x', 'c', 'v'].includes(key)) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    if (key === 'a') {
+      const count = grid.selectAll();
+      toast(count ? `${count} note${count === 1 ? '' : 's'} selected` : 'No notes in this track');
+    } else if (key === 'c') {
+      const clip = grid.copySelection();
+      if (clip) { noteClipboard = clip; toast('Notes copied — click Paste, then click where they should land'); }
+    } else if (key === 'x') {
+      const clip = grid.copySelection();
+      if (clip) {
+        noteClipboard = clip;
+        grid.deleteSelection();
+        toast('Notes cut — ⌘/Ctrl+V to place them');
+      }
+    } else if (noteClipboard) {
+      grid.armPaste(noteClipboard);
+      toast('Paste armed — click the time column for the first note, or press Escape');
+    }
+    syncActionState();
+  });
+
   let selectedKeys = [];
   const clearSelectedKeys = () => {
     for (const key of selectedKeys) key.classList.remove('selected');
@@ -1704,6 +1924,7 @@ export function createPianoRoll({
       key.classList.add('selected');
       selectedKeys.push(key);
     }
+    syncActionState();
   };
 
   // Project the sounding note rectangles back to their row-header keys. Looking only
@@ -1792,6 +2013,15 @@ export function createPianoRoll({
     viewState: grid.viewState,
     restoreViewState: grid.restoreViewState,
     setPitchSize,
+    // The locator and context-menu callbacks occasionally need to repaint only the
+    // ruler/pins after a transport boundary changes. Keep this small redraw seam on
+    // the piano-roll wrapper rather than reaching through it to the private bar grid.
+    redraw() {
+      grid.redraw();
+      syncSelectedKeys();
+      syncActionState();
+    },
+    syncActions: () => syncActionState(),
     setFollow: grid.setFollow,
     followEnabled: grid.followEnabled,
     refresh() {
@@ -1838,6 +2068,7 @@ export function createPianoRoll({
     forgetFit() { fittedLane = null; },
     songChanged() {
       clearPlayingKeys();
+      noteClipboard = null;
       grid.songChanged();
       syncSelectedKeys();
       fittedLane = lane();

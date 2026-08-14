@@ -332,7 +332,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       // this transform in RunState.draw(); the full-resolution overlay has its
       // own context and must recreate it before applying the same world camera.
       if (opts.mirror) { c.translate(W, 0); c.scale(-1, 1); }
-      applyWorld(c, z, pan);
+      applyWorld(c, z, pan, opts.floorY ?? GROUND_Y);
       paint(c);
       c.restore();
     });
@@ -515,7 +515,15 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     for (let i = 0; i < e.n; i++) draw1(x, Math.round(GROUND_Y - 11 - i * step), 'bottom', false, bw, 11);
   } else if (e.def.tall) {
     // one tall piece of art rather than two stacked tiles
-    if (propName) draw1(x, Math.round(GROUND_Y), 'bottom', true, bw, 18);
+    //
+    // `dy` is the TOP of the sh-tall box, not its bottom — draw1 seats the art
+    // so that its base lands at `dy + sh` (see the oy it computes for a bottom
+    // anchor). The stack branch above has always passed `GROUND_Y - 11` for its
+    // 11px tiles; this one passed a bare GROUND_Y for an 18px box, which put
+    // every pipe in the game exactly its own height underground. Only its cap
+    // was ever above the floor, which is why it read as a stub rather than as
+    // a pipe, and why it looked "sunk" the moment tunnels started spawning them.
+    if (propName) draw1(x, Math.round(GROUND_Y - 18), 'bottom', true, bw, 18);
     else { draw1(x, Math.round(GROUND_Y - 11), 'bottom', true); draw1(x, Math.round(GROUND_Y - 18), 'bottom', true); }
   } else if (e.def.falls && !e.fell) {
     // telegraph: hang from "ceiling" with a warning shimmer

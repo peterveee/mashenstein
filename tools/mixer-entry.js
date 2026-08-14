@@ -87,6 +87,12 @@ import { SONG_STYLES } from './lib/song-styles.js';
 // The musical machinery that turns a seed into a playable bank — browser-safe, so
 // New Song works on the static deployed mixer without a server.
 import { newSongPlan } from './lib/new-song-plan.js';
+import {
+  generateRearrangement, validateRearrangement,
+  randomSeed, transformRearrangement, rearrangementDrumMode,
+  REARRANGE_EXTREMENESS_DEFAULT, REARRANGE_TRANSPOSE_DEFAULT,
+  REARRANGE_PATTERN_DEFAULT,
+} from './lib/rearrange.js';
 // What the desk means by "changed": a mix reduced to what src/data/mix.js can hold.
 // Shared with the serialiser's tests, which hold the two to each other.
 import { mixChanged } from './lib/mix-signature.js';
@@ -324,6 +330,21 @@ let trackId = (lastSong && resolveTrack(lastSong)) ? lastSong : (Object.keys(sav
 let track = null;
 let playing = false;
 let abHeld = false;
+
+// Rearrange is a session-only transport recipe. It is intentionally kept beside
+// playback state rather than in draft/arrangement storage: Save song must never make
+// a temporary audition part of the composition.
+let rearrangeRecipe = null;
+let rearrangePanelOpen = false;
+// Section thumbs are a refinement aid, not song data. They survive regeneration in
+// this desk session and feed the selected section operations back into the next recipe.
+const rearrangeKeptSections = new Set();
+const rearrangeDislikedSections = new Set();
+const rearrangeSelectedOperations = new Set();
+// Piano-roll favourites are session-only source ranges. Rearrange cuts the whole band
+// together, so the time range is the identity (the lane is retained only for a useful
+// label in the toast and future per-lane affordances).
+const rearrangeFavourites = [];
 
 // One reload-safe description of the desk as a workspace. Song and mix edits keep
 // their existing stores; this record only joins the transient pieces that make up
@@ -1713,6 +1734,9 @@ function editFx(id, patch, tag) {
 
 function loadTrack(id) {
   pendingAddTrack = null;
+  if (rearrangeActive()) clearRearrangement({ announce: false });
+  rearrangeSelectedOperations.clear();
+  rearrangeFavourites.length = 0;
   // A deferred grid open belongs to the song whose button was clicked. If a song
   // switch wins the race, cancel that intent unless the grid is already visible.
   stepSeqWanted = stepSeq.isOpen();
@@ -1789,7 +1813,10 @@ function loadTrack(id) {
   parkedAt = 0;
   locA = null;                 // locators don't carry across songs
   locB = null;
+  pianoRollTimeSelection = null;
+  pianoRollLoopRange = null;
   applyLoop(0);
+  renderRearrangeList();
   if (hasSongLayout) restoreSongLayout(id);
   // A song without a record inherits the current desk once, then owns its own state.
   rememberSongLayout(id);
@@ -6543,6 +6570,559 @@ function songShape() {
   return { order, bars, spb, totalSteps, loopSecs: totalSteps * spb };
 }
 
+const rearrangeActive = () => !!rearrangeRecipe;
+
+function rearrangeSourceSteps() { return songShape().totalSteps; }
+
+function rearrangeSourceProfile() {
+  const bars = songShape().bars.length;
+  const rows = laneActivity(viewBank(), 1, 1);
+  const profile = new Array(bars).fill(0);
+  for (const row of rows) {
+    for (let i = 0; i < bars; i++) profile[i] += Number(row.density?.[i]) || 0;
+  }
+  return profile.map((value) => value / Math.max(1, rows.length));
+}
+
+function rearrangeStepLabel(step) {
+  const n = Math.max(0, Math.floor(Number(step) || 0));
+  return `bar ${Math.floor(n / 16) + 1}, beat ${Math.floor((n % 16) / 4) + 1}, 16th ${(n % 4) + 1}`;
+}
+
+function rearrangeOutputLabel(step) {
+  const n = Math.max(0, Math.floor(Number(step) || 0));
+  return `${Math.floor(n / 16) + 1}:${String(Math.floor((n % 16) / 4) + 1)}.${(n % 4) + 1}`;
+}
+
+function rearrangeTransposeLabel(value) {
+  const n = Number(value) || 0;
+  if (!n) return '';
+  const interval = ({
+    '-7': 'perfect fifth', '-5': 'perfect fourth', '-2': 'whole tone',
+    '2': 'whole tone', '5': 'perfect fourth', '7': 'perfect fifth',
+    '-12': 'octave', '12': 'octave',
+  })[String(n)];
+  return ` · transpose ${n > 0 ? '+' : ''}${n}${interval ? ` (${interval})` : ''}`;
+}
+
+function syncRearrangeDrumControl() {
+  const button = $('redrums');
+  if (!button) return;
+  const mode = rearrangementDrumMode(rearrangeRecipe);
+  const active = !!rearrangeRecipe && mode === 'basic4';
+  button.disabled = !rearrangeRecipe;
+  button.textContent = active ? 'Steady 4/4 drums ✓' : 'Original drums';
+  button.classList.toggle('on', active);
+  button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  button.title = active
+    ? 'Use a deterministic four-on-the-floor pattern from the existing drum sounds'
+    : 'Play the source song’s original drum patterns';
+}
+
+function syncRearrangeButton() {
+  const button = $('rearrangebtn');
+  if (!button) return;
+  button.classList.toggle('on', rearrangeActive());
+  button.setAttribute('aria-pressed', rearrangeActive() ? 'true' : 'false');
+  button.textContent = rearrangeActive() ? 'Rearrange · ON' : 'Rearrange';
+  button.title = rearrangeActive()
+    ? 'Rearrange is active — open its operation list or return to the normal song'
+    : 'Create a temporary musical collage from this song';
+}
+
+function rearrangeExtremeness() {
+  const value = Number($('reextreme')?.value);
+  return Number.isFinite(value)
+    ? Math.max(0, Math.min(100, value)) / 100
+    : REARRANGE_EXTREMENESS_DEFAULT;
+}
+
+function syncRearrangeExtremeness() {
+  const control = $('reextreme');
+  const output = $('reextremevalue');
+  if (!control || !output) return;
+  const value = Math.max(0, Math.min(100, Number(control.value) || 0));
+  output.value = `${value}%`;
+  output.textContent = `${value}%`;
+  control.title = value < 30
+    ? 'Smooth: longer phrases, fewer source jumps, and gentle boundaries'
+    : value > 70
+      ? 'Wild: shorter cuts, more source jumps, and more rhythmic glitches'
+      : 'Balanced: musical phrase loops with some chopped variation';
+}
+
+function rearrangeTransposeAmount() {
+  const value = Number($('retranspose')?.value);
+  return Number.isFinite(value)
+    ? Math.max(0, Math.min(100, value)) / 100
+    : REARRANGE_TRANSPOSE_DEFAULT;
+}
+
+function syncRearrangeTranspose() {
+  const control = $('retranspose');
+  const output = $('retransposevalue');
+  if (!control || !output) return;
+  const value = Math.max(0, Math.min(100, Number(control.value) || 0));
+  const label = value <= 0 ? 'Off'
+    : value < 35 ? '±2'
+      : value < 70 ? '±2/5'
+        : '±2/5/7';
+  output.value = label;
+  output.textContent = label;
+  control.title = value <= 0
+    ? 'No melodic transposition'
+    : value < 35
+      ? 'Gentle whole-tone lifts only'
+      : value < 70
+        ? 'Whole-tone and fourth lifts'
+        : 'Whole-tone, fourth, and fifth lifts';
+}
+
+function rearrangePatterning() {
+  const value = Number($('repattern')?.value);
+  return Number.isFinite(value)
+    ? Math.max(0, Math.min(100, value)) / 100
+    : REARRANGE_PATTERN_DEFAULT;
+}
+
+function syncRearrangePatterning() {
+  const control = $('repattern');
+  const output = $('repatternvalue');
+  if (!control || !output) return;
+  const value = Math.max(0, Math.min(100, Number(control.value) || 0));
+  const label = value < 30 ? 'Loose' : value > 70 ? 'Motif' : 'Balanced';
+  output.value = label;
+  output.textContent = label;
+  control.title = value < 30
+    ? 'More one-off source choices and fewer repeated passes'
+    : value > 70
+      ? 'More A/B motifs, repeated cells, and returning figures'
+      : 'A musical balance of variation and recurring motifs';
+}
+
+function syncRearrangeLoopControls() {
+  const disabled = rearrangeActive();
+  for (const id of ['looptoggle', 'formloop', 'songloopstart', 'songloopfrom', 'songloopto', 'songloopclear']) {
+    const el = $(id);
+    if (el) el.disabled = disabled;
+  }
+  if (disabled) {
+    $('looptoggle')?.setAttribute('title', 'The Rearrange recipe owns the temporary output loop');
+    $('formloop')?.setAttribute('title', 'The Rearrange recipe owns the temporary output loop');
+  }
+  syncLoopButton();
+  syncSongLoopUi();
+}
+
+function renderRearrangeForm() {
+  const strip = $('rearrangeform');
+  if (!strip) return;
+  strip.textContent = '';
+  const form = rearrangeRecipe?.form;
+  if (!Array.isArray(form) || !form.length) {
+    strip.hidden = true;
+    return;
+  }
+  strip.hidden = false;
+  form.forEach((section, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'reformseg';
+    button.dataset.section = String(index);
+    const startBar = Math.floor(section.start / 16) + 1;
+    const endBar = Math.ceil(section.end / 16);
+    const title = document.createElement('strong');
+    title.textContent = section.name;
+    const range = document.createElement('small');
+    range.textContent = `Bars ${startBar}–${endBar}`;
+    button.append(title, range);
+    button.title = `Play ${section.name}, output bars ${startBar}–${endBar}`;
+    button.setAttribute('aria-label', button.title);
+    button.onclick = () => playRearrangementAt(section.start);
+    strip.append(button);
+  });
+}
+
+function renderRearrangeList() {
+  const list = $('rearrangelist');
+  if (!list) return;
+  const hasRecipe = !!rearrangeRecipe;
+  $('reselectall')?.toggleAttribute('disabled', !hasRecipe);
+  $('reclearselection')?.toggleAttribute('disabled', !rearrangeSelectedOperations.size);
+  for (const id of ['resplit', 'reunroll', 'redoublerepeats', 'rehalfrepeats', 'rerollselected', 'reremove']) {
+    $(id)?.toggleAttribute('disabled', !hasRecipe || !rearrangeSelectedOperations.size);
+  }
+  list.textContent = '';
+  renderRearrangeForm();
+  if (!rearrangeRecipe) {
+    $('rearrangestatus').textContent = rearrangeFavourites.length
+      ? `${rearrangeFavourites.length} piano-roll favourite${rearrangeFavourites.length === 1 ? '' : 's'} ready · Generate to include them`
+      : 'Generate a recipe to begin.';
+    syncRearrangeDrumControl();
+    return;
+  }
+  let output = 0;
+  rearrangeRecipe.operations.forEach((op, index) => {
+    const rowStart = output;
+    const sectionIndex = rearrangeRecipe.form?.findIndex((item) => output >= item.start && output < item.end) ?? -1;
+    const section = sectionIndex >= 0 ? rearrangeRecipe.form[sectionIndex] : null;
+    const li = document.createElement('li');
+    li.dataset.operation = String(index);
+    li.title = `Double-click to play from ${rearrangeOutputLabel(rowStart)}`;
+    li.ondblclick = (event) => {
+      if (event.target.closest('button')) return;
+      playRearrangementAt(rowStart);
+    };
+    if (sectionIndex >= 0) li.dataset.section = String(sectionIndex);
+    if (sectionIndex >= 0 && rearrangeKeptSections.has(sectionIndex)) li.classList.add('kept');
+    if (sectionIndex >= 0 && rearrangeDislikedSections.has(sectionIndex)) li.classList.add('disliked');
+    if (rearrangeSelectedOperations.has(index)) li.classList.add('selected');
+    const choose = document.createElement('button');
+    choose.type = 'button';
+    choose.className = 'reselect';
+    choose.textContent = rearrangeSelectedOperations.has(index) ? '✓' : '□';
+    choose.title = rearrangeSelectedOperations.has(index)
+      ? 'Remove this slice from the edit selection'
+      : 'Select this slice for a split, repeat, or reroll edit';
+    choose.setAttribute('aria-label', choose.title);
+    choose.setAttribute('aria-pressed', rearrangeSelectedOperations.has(index) ? 'true' : 'false');
+    choose.onclick = () => toggleRearrangeOperation(index);
+    li.append(choose);
+    const favourite = op.repeats === 1 && op.transpose === 0
+      && rearrangeFavourites.some((item) => item.from === op.from && item.length === op.length);
+    if (favourite) li.classList.add('favourite');
+    if (section && output === section.start) {
+      const play = document.createElement('button');
+      play.type = 'button';
+      play.className = 'replaysection';
+      play.textContent = '▶';
+      play.title = `Play ${section.name} from ${rearrangeOutputLabel(rowStart)}`;
+      play.setAttribute('aria-label', play.title);
+      play.onclick = () => playRearrangementAt(rowStart);
+      li.append(play);
+      const keep = document.createElement('button');
+      keep.type = 'button';
+      keep.className = 'rekeep';
+      keep.textContent = '👍';
+      keep.title = rearrangeKeptSections.has(sectionIndex)
+        ? `Keep ${section.name} in the next recipe (selected)`
+        : `Keep ${section.name} in the next recipe`;
+      keep.setAttribute('aria-label', keep.title);
+      keep.setAttribute('aria-pressed', rearrangeKeptSections.has(sectionIndex) ? 'true' : 'false');
+      keep.classList.toggle('on', rearrangeKeptSections.has(sectionIndex));
+      keep.onclick = () => voteRearrangeSection(sectionIndex, 'keep');
+      li.append(keep);
+      const down = document.createElement('button');
+      down.type = 'button';
+      down.className = 'redown';
+      down.textContent = '👎';
+      down.title = rearrangeDislikedSections.has(sectionIndex)
+        ? `Ask for a different ${section.name} (selected)`
+        : `Ask for a different ${section.name} on the next recipe`;
+      down.setAttribute('aria-label', down.title);
+      down.setAttribute('aria-pressed', rearrangeDislikedSections.has(sectionIndex) ? 'true' : 'false');
+      down.classList.toggle('on', rearrangeDislikedSections.has(sectionIndex));
+      down.onclick = () => voteRearrangeSection(sectionIndex, 'dislike');
+      li.append(down);
+    }
+    const source = document.createElement('span');
+    source.className = 'reop';
+    source.textContent = `${favourite ? '★ ' : ''}${section?.name || 'Slice'} · ${rearrangeStepLabel(op.from)} → ${op.length} sixteenths × ${op.repeats}`;
+    li.append(source);
+    const details = document.createElement('span');
+    details.className = 'reout';
+    details.textContent = `${rearrangeOutputLabel(output)}–${rearrangeOutputLabel(output + op.length * op.repeats - 1)}`
+      + rearrangeTransposeLabel(op.transpose);
+    li.append(details);
+    list.append(li);
+    output += op.length * op.repeats;
+  });
+  const form = rearrangeRecipe.form?.map((section) => section.name).join(' → ');
+  const kept = rearrangeKeptSections.size ? ` · ${rearrangeKeptSections.size} kept` : '';
+  const disliked = rearrangeDislikedSections.size ? ` · ${rearrangeDislikedSections.size} to change` : '';
+  const favourites = rearrangeFavourites.length
+    ? ` · ${rearrangeFavourites.length} piano-roll favourite${rearrangeFavourites.length === 1 ? '' : 's'}` : '';
+  const selected = rearrangeSelectedOperations.size
+    ? ` · ${rearrangeSelectedOperations.size} slice${rearrangeSelectedOperations.size === 1 ? '' : 's'} selected` : '';
+  const drums = rearrangementDrumMode(rearrangeRecipe) === 'basic4'
+    ? ' · steady 4/4 drums' : '';
+  $('rearrangestatus').textContent = `${form ? `${form} · ` : ''}${rearrangeRecipe.operations.length} operations · ${output / 16} bars · seed ${rearrangeRecipe.seed}${drums}${kept}${disliked}${favourites}${selected}`;
+  syncRearrangeDrumControl();
+}
+
+function toggleRearrangeOperation(index) {
+  if (!rearrangeRecipe?.operations?.[index]) return;
+  if (rearrangeSelectedOperations.has(index)) rearrangeSelectedOperations.delete(index);
+  else rearrangeSelectedOperations.add(index);
+  renderRearrangeList();
+  syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
+}
+
+function selectAllRearrangeOperations() {
+  if (!rearrangeRecipe?.operations?.length) return;
+  rearrangeSelectedOperations.clear();
+  rearrangeRecipe.operations.forEach((_, index) => rearrangeSelectedOperations.add(index));
+  renderRearrangeList();
+  toast(`Selected all ${rearrangeRecipe.operations.length} Rearrange slices`);
+}
+
+function clearRearrangeOperationSelection() {
+  rearrangeSelectedOperations.clear();
+  renderRearrangeList();
+}
+
+function transformSelectedRearrange(action, label) {
+  if (!rearrangeRecipe) { toast('Generate a Rearrange recipe first'); return; }
+  if (!rearrangeSelectedOperations.size) { toast('Select one or more Rearrange slices first'); return; }
+  const wasPlaying = playing;
+  if (wasPlaying) setPlaying(false);
+  try {
+    const result = transformRearrangement(rearrangeRecipe,
+      [...rearrangeSelectedOperations], action, { seed: randomSeed() });
+    if (!result.changed) {
+      if (wasPlaying) setPlaying(true);
+      toast(`${label} needs a longer slice or a compatible repeat count`);
+      return;
+    }
+    installRearrangement(result.recipe, { announce: false });
+    if (wasPlaying) playRearrangement();
+    toast(`${label} · changed ${result.changed} slice${result.changed === 1 ? '' : 's'}`);
+  } catch (error) {
+    if (wasPlaying) setPlaying(true);
+    toast(error?.message || `Could not ${label.toLowerCase()}`);
+  }
+}
+
+function toggleRearrangeDrums() {
+  if (!rearrangeRecipe) { toast('Generate a Rearrange recipe first'); return; }
+  const mode = rearrangementDrumMode(rearrangeRecipe);
+  const next = { ...rearrangeRecipe, drums: mode === 'basic4' ? 'original' : 'basic4' };
+  const wasPlaying = playing;
+  if (wasPlaying) setPlaying(false);
+  installRearrangement(next, { announce: false });
+  if (wasPlaying) playRearrangement();
+  toast(next.drums === 'basic4'
+    ? 'Rearrange drums · steady 4/4 pattern'
+    : 'Rearrange drums · original source patterns');
+}
+
+function voteRearrangeSection(sectionIndex, vote) {
+  if (!rearrangeRecipe?.form?.[sectionIndex]) return;
+  const selected = vote === 'keep' ? rearrangeKeptSections : rearrangeDislikedSections;
+  const other = vote === 'keep' ? rearrangeDislikedSections : rearrangeKeptSections;
+  if (selected.has(sectionIndex)) selected.delete(sectionIndex);
+  else { selected.add(sectionIndex); other.delete(sectionIndex); }
+  renderRearrangeList();
+  syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
+}
+
+function rearrangeKeptAnchors() {
+  if (!rearrangeRecipe?.form?.length || !rearrangeKeptSections.size) return [];
+  const anchors = [];
+  for (const index of rearrangeKeptSections) {
+    const section = rearrangeRecipe.form[index];
+    if (!section) continue;
+    let output = 0;
+    const operations = [];
+    let complete = true;
+    for (const operation of rearrangeRecipe.operations) {
+      const end = output + operation.length * operation.repeats;
+      if (output >= section.start && end <= section.end) operations.push({ ...operation });
+      else if (output < section.end && end > section.start) complete = false;
+      output = end;
+    }
+    if (complete && operations.length) {
+      anchors.push({ index, role: section.role, steps: section.end - section.start, operations });
+    }
+  }
+  return anchors;
+}
+
+function rearrangeDislikedAnchors() {
+  if (!rearrangeRecipe?.form?.length || !rearrangeDislikedSections.size) return [];
+  return [...rearrangeDislikedSections].map((index) => {
+    const section = rearrangeRecipe.form[index];
+    if (!section) return null;
+    const operations = rearrangeSectionOperations(index);
+    const first = operations[0];
+    return {
+      index,
+      role: section.role,
+      steps: section.end - section.start,
+      source: section.source,
+      ...(first ? { from: first.from } : {}),
+    };
+  }).filter(Boolean);
+}
+
+function rearrangeSectionOperations(sectionIndex) {
+  const section = rearrangeRecipe?.form?.[sectionIndex];
+  if (!section) return [];
+  let output = 0;
+  const operations = [];
+  for (const operation of rearrangeRecipe.operations) {
+    const end = output + operation.length * operation.repeats;
+    if (output >= section.start && end <= section.end) operations.push({ ...operation });
+    output = end;
+  }
+  return operations;
+}
+
+function syncRearrangeProgress(outputStep = null) {
+  if (rearrangeRecipe && !Audio.rearrangement) {
+    rearrangeRecipe = null;
+    rearrangeKeptSections.clear();
+    rearrangeDislikedSections.clear();
+    syncRearrangeButton();
+    syncRearrangeLoopControls();
+    renderRearrangeList();
+  }
+  if (!rearrangeRecipe) return;
+  const pos = outputStep == null ? null : Audio.rearrangementPosition(outputStep);
+  document.querySelectorAll('#rearrangelist li.active').forEach((el) => el.classList.remove('active'));
+  document.querySelectorAll('#rearrangeform .reformseg.active').forEach((el) => el.classList.remove('active'));
+  if (pos) document.querySelector(`#rearrangelist li[data-operation="${pos.operationIndex}"]`)?.classList.add('active');
+  if (pos?.formIndex != null) {
+    document.querySelector(`#rearrangeform .reformseg[data-section="${pos.formIndex}"]`)?.classList.add('active');
+  }
+  if (pos) {
+    const drums = rearrangementDrumMode(rearrangeRecipe) === 'basic4'
+      ? ' · steady 4/4 drums' : '';
+    $('rearrangestatus').textContent = `${pos.form?.name ? `${pos.form.name} · ` : ''}Operation ${pos.operationIndex + 1}/${rearrangeRecipe.operations.length} · repetition ${pos.repeatIndex + 1}/${pos.operation.repeats}`
+      + ` · source ${rearrangeStepLabel(pos.sourceStep)}`
+      + drums
+      + (rearrangeSelectedOperations.size ? ` · ${rearrangeSelectedOperations.size} selected` : '');
+  }
+}
+
+function installRearrangement(recipe, { announce = true } = {}) {
+  rearrangeRecipe = recipe;
+  rearrangeSelectedOperations.clear();
+  Audio.setRearrangement(recipe);
+  syncRearrangeButton();
+  syncRearrangeLoopControls();
+  renderRearrangeList();
+  syncRearrangeDrumControl();
+  if (announce) toast(`Rearrange ready · ${recipe.operations.length} operations`);
+}
+
+function clearRearrangement({ announce = true } = {}) {
+  rearrangeRecipe = null;
+  rearrangeSelectedOperations.clear();
+  rearrangeKeptSections.clear();
+  rearrangeDislikedSections.clear();
+  Audio.setRearrangement(null);
+  syncRearrangeButton();
+  syncRearrangeLoopControls();
+  renderRearrangeList();
+  syncRearrangeDrumControl();
+  if (announce) toast('Returned to the normal song');
+}
+
+function generateRearrangeRecipe({ restart = false } = {}) {
+  const wasPlaying = playing;
+  if (wasPlaying) setPlaying(false);
+  const steps = rearrangeSourceSteps();
+  let recipe;
+  try {
+    recipe = generateRearrangement(steps, {
+      seed: randomSeed(),
+      extremeness: rearrangeExtremeness(),
+      transposeAmount: rearrangeTransposeAmount(),
+      patterning: rearrangePatterning(),
+      sourceProfile: rearrangeSourceProfile(),
+      anchors: rearrangeKeptAnchors(),
+      avoid: rearrangeDislikedAnchors(),
+      favourites: rearrangeFavourites,
+    });
+  } catch (error) {
+    toast(error?.message || 'Could not fit those Rearrange favourites');
+    if (wasPlaying) setPlaying(true);
+    return;
+  }
+  recipe.source.song = trackId;
+  recipe.source.title = track?.title || trackId;
+  installRearrangement(recipe, { announce: false });
+  if (wasPlaying || restart) playRearrangement();
+  else toast(`Generated ${recipe.operations.length} Rearrange operations`);
+}
+
+function playRearrangement() {
+  if (!rearrangeRecipe) generateRearrangeRecipe();
+  if (!rearrangeRecipe) return;
+  if (playing) setPlaying(false);
+  Audio.setRearrangement(rearrangeRecipe);
+  syncRearrangeLoopControls();
+  setPlaying(true, 0, { countIn: 4 });
+  toast('Playing Rearrange from the beginning');
+}
+
+function playRearrangementAt(outputStep) {
+  if (!rearrangeRecipe) return;
+  const total = rearrangeSourceSteps();
+  const at = ((Math.floor(Number(outputStep) || 0) % total) + total) % total;
+  if (playing) setPlaying(false);
+  Audio.setRearrangement(rearrangeRecipe);
+  syncRearrangeLoopControls();
+  setPlaying(true, at, { countIn: 4 });
+  toast(`Playing Rearrange from ${rearrangeOutputLabel(at)}`);
+}
+
+function returnToSong() {
+  if (playing) setPlaying(false);
+  clearRearrangement({ announce: false });
+  Audio.step = 0;
+  parkedAt = 0;
+  applyLoop(0);
+  toast('Returned to the normal song');
+}
+
+function saveRearrangeJson() {
+  if (!rearrangeRecipe) { toast('Generate a Rearrange recipe first'); return; }
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  const name = `${track?.slug || trackId}-rearrange-${stamp}.json`;
+  const payload = JSON.parse(JSON.stringify(rearrangeRecipe));
+  saveBlob(name, new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' }));
+  toast(`Saved ${name}`);
+}
+
+async function loadRearrangeJson(file) {
+  if (!file) return;
+  try {
+    const raw = JSON.parse(await file.text());
+    const sourceSong = raw.source?.song;
+    if (sourceSong && sourceSong !== trackId) {
+      if (resolveTrack(sourceSong)) {
+        const switchIt = await ask('Open the recipe’s song?',
+          `<p>This Rearrange recipe belongs to <b>${escapeHtml(raw.source.title || sourceSong)}</b>.</p>`
+          + '<p>Open that song before loading the recipe?</p>', 'Open song');
+        if (!switchIt) return;
+        selectSong(sourceSong);
+      } else {
+        throw new Error(`The source song ${sourceSong} is not available`);
+      }
+    }
+    const recipe = validateRearrangement(raw, rearrangeSourceSteps(), { songId: trackId });
+    rearrangeKeptSections.clear();
+    rearrangeDislikedSections.clear();
+    installRearrangement(recipe);
+  } catch (error) {
+    await tell('Could not load Rearrange JSON', escapeHtml(error.message || String(error)));
+  }
+}
+
+function openRearrangePanel() {
+  rearrangePanelOpen = true;
+  $('rearrangepanel').hidden = false;
+  renderRearrangeList();
+  syncRearrangeButton();
+}
+
+function closeRearrangePanel() {
+  rearrangePanelOpen = false;
+  $('rearrangepanel').hidden = true;
+}
+
 /**
  * Where in the song the music being HEARD right now is, as a fractional sixteenth.
  *
@@ -6583,6 +7163,12 @@ function heardStepNow() {
   // every lap the desk read a step in the bar AFTER the loop, and lit its first note.
   // Wrap against the range the transport is actually turning round in instead.
   return wrappedPlaybackStep(led, at, totalSteps);
+}
+
+function sourceHeardStepNow() {
+  const output = heardStepNow();
+  if (output == null) return null;
+  return Audio.rearrangementPosition(output)?.sourceStep ?? output;
 }
 
 // The arrangement marks need a small amount of paint lead so the mark is on the glass
@@ -6700,6 +7286,11 @@ const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padSt
 let locA = null;              // first locator step (null = not placed)
 let locB = null;              // second locator step
 let loopOn = false;
+// The piano roll owns a finer, beat-level selection than the desk's bar selection.
+// It is session-only; the explicit loop range is kept separately so a later bar click
+// cannot silently replace a loop the user armed from the roll.
+let pianoRollTimeSelection = null;
+let pianoRollLoopRange = null;
 // Two different positions. `loopAnchor` is the start of the LOOP REGION (the
 // lesser of the two locators). `parkedAt` is where the playhead is, to the step
 // — Play resumes exactly where you paused.
@@ -6711,12 +7302,17 @@ let parkedAt = 0;
 /**
  * Resolve the range the transport should loop.
  *
- * The highlighted bar range is the desk's primary selection. Alt-click locators are
- * retained as a fallback for the older locator workflow, but they must not override a
- * range the user has visibly selected in the timeline or arrangement.
+ * An explicitly armed piano-roll range wins first, followed by the highlighted bar
+ * range. Alt-click locators are retained as a fallback for the older locator workflow,
+ * but they must not override a range the user has visibly selected elsewhere.
  */
 function currentLoopBounds() {
   const { totalSteps } = songShape();
+  if (pianoRollLoopRange) {
+    const start = clamp(Math.round(Number(pianoRollLoopRange.start) || 0), 0, totalSteps);
+    const end = clamp(Math.round(Number(pianoRollLoopRange.end) || 0), start, totalSteps);
+    if (end > start) return { start, end };
+  }
   if (selectedBar) {
     const totalBars = Math.max(1, Math.floor(totalSteps / 16));
     const from = clamp(Math.min(selectedBar.from, selectedBar.to), 0, totalBars - 1);
@@ -6783,10 +7379,21 @@ const songLoopGoverns = () => formLoopOn && !!songLoopOf() && !(loopOn && curren
 
 function syncLoopButton() {
   const button = $('looptoggle');
+  if (rearrangeActive()) {
+    button.textContent = 'Recipe Loop';
+    button.classList.add('on');
+    button.setAttribute('aria-pressed', 'true');
+    syncSelReadout();
+    hideLoopUi();
+    return;
+  }
   const bounds = currentLoopBounds();
   const bars = bounds ? Math.max(1, Math.round((bounds.end - bounds.start) / 16)) : 0;
+  const beats = bounds ? Math.max(1, Math.round((bounds.end - bounds.start) / 4)) : 0;
+  const exactBars = bounds && (bounds.end - bounds.start) % 16 === 0;
   button.textContent = loopOn
-    ? (bars ? `Loop ${bars} Bar${bars === 1 ? '' : 's'}` : 'Loop On')
+    ? (exactBars ? `Loop ${bars} Bar${bars === 1 ? '' : 's'}`
+      : beats ? `Loop ${beats} Beat${beats === 1 ? '' : 's'}` : 'Loop On')
     : 'Loop Off';
   button.classList.toggle('on', loopOn);
   button.setAttribute('aria-pressed', loopOn ? 'true' : 'false');
@@ -6814,6 +7421,11 @@ function syncPendingSeek() {
 /** Arm the highlighted range, or the two song-relative locators. */
 function applyLoop(atStep = null) {
   const { totalSteps } = songShape();
+  if (rearrangeActive()) {
+    Audio.setLoop();
+    syncRearrangeLoopControls();
+    return;
+  }
   const bounds = currentLoopBounds();
   pendingLoopAnchor = null;
   pendingSeekStep = null;
@@ -6839,6 +7451,32 @@ function applyLoop(atStep = null) {
   loopAnchor = start;
   showLoopUi(start, end, totalSteps);
   syncSongLoopUi();
+}
+
+/** Arm a piano-roll range, swapping it at the next safe boundary when already playing. */
+function armPianoRollLoop(range, { announce = true } = {}) {
+  const total = songShape().totalSteps;
+  const start = clamp(Math.round(Number(range?.start) || 0), 0, total);
+  const end = clamp(Math.round(Number(range?.end) || 0), start, total);
+  if (end <= start) return false;
+  pianoRollLoopRange = { start, end };
+  loopOn = true;
+  const bounds = currentLoopBounds();
+  if (playing && bounds && Audio.loopStart != null && Audio.loopEnd != null) {
+    pendingSeekStep = null;
+    $('selregion').classList.remove('pending');
+    Audio.setLoopAtBoundary(bounds.start, bounds.end);
+    pendingLoopAnchor = { start: bounds.start, end: bounds.end };
+    $('loopregion').classList.add('pending');
+    syncLoopButton();
+  } else {
+    applyLoop();
+  }
+  if (announce) {
+    const beats = Math.max(1, Math.round((end - start) / 4));
+    toast(`Loop armed from the piano roll — ${beats} beat${beats === 1 ? '' : 's'}`);
+  }
+  return true;
 }
 
 function hideLoopUi() {
@@ -6873,16 +7511,17 @@ function showLocatorUi(totalSteps = songShape().totalSteps) {
 function toggleLocator(step) {
   const within = ((Math.floor(step) % songShape().totalSteps) + songShape().totalSteps) % songShape().totalSteps;
   // Clicking on an existing locator clears it
-  if (locA === within) { locA = null; applyLoop(); return 'A-cleared'; }
-  if (locB === within) { locB = null; applyLoop(); return 'B-cleared'; }
+  if (locA === within) { locA = null; applyLoop(); pianoRoll?.redraw?.(); return 'A-cleared'; }
+  if (locB === within) { locB = null; applyLoop(); pianoRoll?.redraw?.(); return 'B-cleared'; }
   // Place at the first empty slot
-  if (locA == null) { locA = within; applyLoop(); return 'A'; }
-  if (locB == null) { locB = within; applyLoop(); return 'B'; }
+  if (locA == null) { locA = within; applyLoop(); pianoRoll?.redraw?.(); return 'A'; }
+  if (locB == null) { locB = within; applyLoop(); pianoRoll?.redraw?.(); return 'B'; }
   // Both are set — replace the nearer one
   const dA = Math.abs(locA - within);
   const dB = Math.abs(locB - within);
   if (dA <= dB) { locA = within; } else { locB = within; }
   applyLoop();
+  pianoRoll?.redraw?.();
   return dA <= dB ? 'A' : 'B';
 }
 
@@ -6896,6 +7535,11 @@ function toggleLocator(step) {
  */
 function applyLoopNoJump() {
   const { totalSteps } = songShape();
+  if (rearrangeActive()) {
+    Audio.setLoop();
+    syncRearrangeLoopControls();
+    return;
+  }
   const bounds = currentLoopBounds();
   pendingLoopAnchor = null;
   pendingSeekStep = null;
@@ -7036,6 +7680,7 @@ $('songloopclear').onclick = () => {
 };
 
 $('formloop').onclick = () => {
+  if (rearrangeActive()) return;
   formLoopOn = !formLoopOn;
   localStorage.setItem(FORM_LOOP_KEY, formLoopOn ? '1' : '0');
   applyLoop(Audio.step);
@@ -7046,7 +7691,9 @@ $('formloop').onclick = () => {
 };
 
 $('looptoggle').onclick = () => {
+  if (rearrangeActive()) return;
   loopOn = !loopOn;
+  if (!loopOn) pianoRollLoopRange = null;
   applyLoop();
   if (loopOn) {
     const bounds = currentLoopBounds();
@@ -7063,11 +7710,11 @@ $('looptoggle').onclick = () => {
 // Clicking directly on a locator pin clears it.
 $('locatorA').onclick = (e) => {
   e.stopPropagation();
-  if (locA != null) { locA = null; applyLoop(); toast('Locator A cleared'); }
+  if (locA != null) { locA = null; applyLoop(); pianoRoll.redraw(); toast('Locator A cleared'); }
 };
 $('locatorB').onclick = (e) => {
   e.stopPropagation();
-  if (locB != null) { locB = null; applyLoop(); toast('Locator B cleared'); }
+  if (locB != null) { locB = null; applyLoop(); pianoRoll.redraw(); toast('Locator B cleared'); }
 };
 
 /**
@@ -8615,6 +9262,12 @@ let arrCells = [];
 // arrangement row is the current target for lane-specific actions; the range itself
 // remains the same selection in both places.
 let selectedBar = null;
+// Delete is deliberately scoped to the last surface the user worked on. A bar selected
+// in the arrangement may be erased; clicking Notes, the Pattern editor or the Mixer must
+// take that destructive key away from the arrangement before it can do anything.
+let arrangementKeyboardActive = false;
+const lowerSurface = $('lowerwork');
+lowerSurface?.addEventListener('pointerdown', () => { arrangementKeyboardActive = false; });
 // Deliberately NOT cleared by `loadTrack`. Track and note clips hold resolved musical
 // values rather than source-song section references, so they mean the same thing in
 // any song — and lifting a part out of one song into another is a reason to have a
@@ -9041,6 +9694,9 @@ function flushSelectionEditors() {
 
 function markBar(key, from, to = from, { focus = true, deferEditors = false } = {}) {
   selectedBar = from != null ? { key: key ?? null, from, to: to ?? from } : null;
+  // A visible arrangement selection is a new loop source; do not let a previously
+  // armed beat range win invisibly after the user moves back to the desk timeline.
+  pianoRollLoopRange = null;
   syncLoopButton();
   if (loopOn) {
     const bounds = currentLoopBounds();
@@ -9092,7 +9748,13 @@ function syncSelReadout() {
   const stat = $('selstat');
   if (!stat) return;
   stat.hidden = !selectedBar;
-  if (!selectedBar) return;
+  if (!selectedBar) {
+    if (loopOn && pianoRollLoopRange) {
+      const beats = Math.max(1, Math.round((pianoRollLoopRange.end - pianoRollLoopRange.start) / 4));
+      $('looptoggle').title = `Playing the piano-roll range — ${beats} beat${beats === 1 ? '' : 's'} round`;
+    }
+    return;
+  }
   const from = selFrom();
   const to = selTo();
   $('selnow').textContent = from === to ? `${from + 1}` : `${from + 1}-${to + 1}`;
@@ -9314,6 +9976,48 @@ function rollShownLane() {
   return sel || rollLanes()[0] || 'lead';
 }
 
+function normalizedRearrangeFavourite(range) {
+  const total = songShape().totalSteps;
+  const start = clamp(Math.round(Number(range?.start) || 0), 0, total);
+  const end = clamp(Math.round(Number(range?.end) || 0), start, total);
+  if (end <= start) return null;
+  // Form sections are four bars, so a favourite remains one self-contained phrase and
+  // can be inserted without splitting it across the generated roadmap.
+  if (end - start > 64) return null;
+  return { from: start, length: end - start };
+}
+
+function isRearrangeFavourite(range) {
+  const favourite = normalizedRearrangeFavourite(range);
+  return !!favourite && rearrangeFavourites.some((item) =>
+    item.from === favourite.from && item.length === favourite.length);
+}
+
+function toggleRearrangeFavourite(range, lane = rollShownLane()) {
+  const favourite = normalizedRearrangeFavourite(range);
+  if (!favourite) {
+    toast('Choose a positive piano-roll range up to four bars for a favourite');
+    return;
+  }
+  const index = rearrangeFavourites.findIndex((item) =>
+    item.from === favourite.from && item.length === favourite.length);
+  if (index >= 0) {
+    rearrangeFavourites.splice(index, 1);
+    toast(`Removed Rearrange favourite · ${rearrangeStepLabel(favourite.from)}`);
+  } else {
+    const used = rearrangeFavourites.reduce((sum, item) => sum + item.length, 0);
+    if (used + favourite.length > songShape().totalSteps) {
+      toast('Those favourites are longer than one song — remove one before adding this');
+      return;
+    }
+    rearrangeFavourites.push({ ...favourite, lane: String(lane || rollShownLane()) });
+    rearrangeFavourites.sort((a, b) => a.from - b.from || a.length - b.length);
+    toast(`Added Rearrange favourite · ${rearrangeStepLabel(favourite.from)} for ${rearrangeStepLabel(favourite.from + favourite.length - 1)}`);
+  }
+  pianoRoll?.syncActions?.();
+  renderRearrangeList();
+}
+
 const pianoRoll = createPianoRoll({
   el: $('pianoroll'),
   Audio,
@@ -9337,6 +10041,79 @@ const pianoRoll = createPianoRoll({
   // draw the result on their own numbers.
   selectedBars: () => (selectedBar ? { from: selFrom(), to: selTo() } : null),
   onSelectBars: (from, to) => markBar(selectedBar?.key ?? null, from, to, { focus: false }),
+  selectedTime: () => pianoRollTimeSelection,
+  onAddRearrangeFavourite: (range) => toggleRearrangeFavourite(range, rollShownLane()),
+  rearrangeFavouriteState: (range) => isRearrangeFavourite(range),
+  onSelectTime: (range) => {
+    pianoRollTimeSelection = range && {
+      start: Math.max(0, Math.round(Number(range.start) || 0)),
+      end: Math.max(0, Math.round(Number(range.end) || 0)),
+    };
+    // With no loop armed this is only an editing range. If a loop IS armed, keep the
+    // previous transport range until the drag finishes, then hand the completed range
+    // to the boundary-safe loop path below.
+    if (!loopOn) pianoRollLoopRange = null;
+  },
+  onSelectTimeEnd: (range) => {
+    if (!loopOn || !range || range.end <= range.start) return;
+    armPianoRollLoop(range, { announce: false });
+    toast('Loop range updated from the piano roll');
+  },
+  locators: () => (locA != null && locB != null
+    ? { start: Math.min(locA, locB), end: Math.max(locA, locB) } : null),
+  locatorPositions: () => ({ A: locA, B: locB }),
+  onLocatorMove: (which, value) => {
+    if (which === 'A') locA = value;
+    if (which === 'B') locB = value;
+  },
+  onLocatorMoveEnd: (which, value) => {
+    if (which === 'A') locA = value;
+    if (which === 'B') locB = value;
+    const pair = locA != null && locB != null
+      ? { start: Math.min(locA, locB), end: Math.max(locA, locB) } : null;
+    if (loopOn && pair && pair.end > pair.start) armPianoRollLoop(pair);
+    else {
+      pianoRollLoopRange = null;
+      applyLoop();
+    }
+    pianoRoll.redraw();
+    toast(`Locator ${which} moved`);
+  },
+  onDoubleClickStep: (step) => {
+    jumpTo(step, { start: true });
+    toast(`Playing from bar ${barOf(step)}, beat ${(Math.floor(step % 16 / 4) + 1)}`);
+  },
+  onLoopTime: (range) => armPianoRollLoop(range),
+  menu: (x, y, title, items) => { closeMenu(); openMenu(x, y, title, items); },
+  onClearLocator: (which) => {
+    if (which === 'A') locA = null;
+    if (which === 'B') locB = null;
+    applyLoop();
+    pianoRoll.redraw();
+    toast(`Locator ${which} cleared`);
+  },
+  onClearLocators: () => {
+    locA = null;
+    locB = null;
+    applyLoop();
+    pianoRoll.redraw();
+    toast('Both locators cleared');
+  },
+  onEraseTime: async (range) => {
+    const count = pianoRoll.countTimeRange(range.start, range.end);
+    if (!count) { toast('No notes between the locators'); return; }
+    const ok = await ask(`Erase ${count} note${count === 1 ? '' : 's'}?`,
+      '<p>This removes the notes between the piano-roll locators from the selected instrument.</p>',
+      'Erase notes');
+    if (!ok) return;
+    const erased = pianoRoll.eraseTimeRange(range.start, range.end);
+    toast(`${erased} note${erased === 1 ? '' : 's'} erased between locators`);
+  },
+  eraseSelectedBars: ({ from, to }) => {
+    const laneKey = rollShownLane();
+    const span = from === to ? `bar ${from + 1}` : `bars ${from + 1}–${to + 1}`;
+    clearLaneBars(laneKey, from, to, `${presetHeadingFor(laneKey).name} erased in ${span}`);
+  },
   laneLabel: (key) => presetHeadingFor(key).name,
   // The key, shared with the on-screen keyboard rather than copied: see the note on
   // `scale` in mixer-piano-roll.js. Read-only — the keyboard is where it is chosen.
@@ -9792,6 +10569,7 @@ function laneForLowerView(view) {
 
 function setLowerView(next, { remember = true } = {}) {
   const view = LOWER_VIEWS.has(next) ? next : 'mixer';
+  arrangementKeyboardActive = false;
   const viewLane = laneForLowerView(view);
   lowerView = view;
   $('desk').dataset.lowerView = view;
@@ -9864,6 +10642,7 @@ setLowerView(lowerView, { remember: false });
  * on a drum lands.
  */
 function openNoteEditor(laneKey, bar) {
+  arrangementKeyboardActive = false;
   if (bar != null && !(selectedBar && bar >= selFrom() && bar <= selTo())) {
     markBar(laneKey || 'kick', bar);
   }
@@ -9950,11 +10729,12 @@ const pasteLaneMessage = (draft, from, laneLabel, clip) => {
  */
 function clearLaneBars(laneKey, from, to, what, { shared = false } = {}) {
   const rest = PERCUSSION_LANES.includes(baseLane(laneKey)) ? false : null;
-  const empty = Array.from({ length: 16 }, () => rest);
+  const slots = arrDraftOf().resolution === 32 ? 32 : 16;
+  const empty = Array.from({ length: slots }, () => rest);
   // Cleared means cleared: the lengths of notes that are gone go with them, or the
   // next note drawn on one of these steps inherits the length of whatever used to be
   // there. `null` here, always — a length has no percussion form.
-  const noLengths = Array.from({ length: 16 }, () => null);
+  const noLengths = Array.from({ length: slots }, () => null);
   const write = shared ? writeBarNotesShared : writeBarNotes;
   const eb = editBank();
   // The flags come off with the notes: a bar that was marked deleted and is now empty
@@ -9962,6 +10742,18 @@ function clearLaneBars(laneKey, from, to, what, { shared = false } = {}) {
   let next = setLanesDeleted(arrDraftOf(), from, to, [laneKey], false);
   for (let bar = from; bar <= to; bar++) next = write(eb, next, bar, laneKey, empty, noLengths);
   applyArrangementEdit(next, what);
+}
+
+/** Delete in the arrangement means erase this instrument's notes, never remove song bars. */
+function eraseSelectedArrangementBars() {
+  if (!arrangementKeyboardActive || !selectedBar?.key) return false;
+  const from = selFrom();
+  const to = selTo();
+  const laneKey = selectedBar.key;
+  const span = from === to ? `bar ${from + 1}` : `bars ${from + 1}–${to + 1}`;
+  clearLaneBars(laneKey, from, to,
+    `${presetHeadingFor(laneKey).name} erased in ${span}`);
+  return true;
 }
 
 const barFieldValue = (bar, field, lane) => {
@@ -10555,6 +11347,7 @@ function timelineMenu(ev) {
 function barMenu(ev, laneKey, bar) {
   ev.preventDefault();
   ev.stopPropagation();
+  arrangementKeyboardActive = true;
   const inSel = selectedBar && bar >= selFrom() && bar <= selTo();
   if (!inSel) markBar(laneKey, bar);
   else if (selectedBar.key !== laneKey) markBar(laneKey, selFrom(), selTo());
@@ -11136,6 +11929,7 @@ function buildArrangement() {
       };
       box.append(playButton);
       box.onclick = (ev) => {
+        arrangementKeyboardActive = true;
         if (dragClickSuppress) { dragClickSuppress = false; return; }
         const selectionChanges = !selectedBar || selFrom() !== bar || selTo() !== bar;
         // Only when it is a different channel. A double-click sends this handler
@@ -11154,6 +11948,7 @@ function buildArrangement() {
       // the pointer can leave the bar it started in, which is the whole gesture.
       box.onpointerdown = (ev) => {
         if (ev.button !== 0) return;
+        arrangementKeyboardActive = true;
         // Empty bars have no musical content to carry. Keep their original gesture:
         // dragging across the row selects a bar range. A note-bearing bar is the only
         // place where the newer move/copy gesture should take ownership.
@@ -11557,24 +12352,29 @@ function tick() {
   const beat = Audio.songBeat();
   if (beat != null && track) {
     const { spb, totalSteps, loopSecs } = songShape();
+    const outputHeard = heardStepNow() ?? 0;
     const heardStep = heardStepNow() ?? 0;
-    const frac = heardStep / totalSteps;
+    const sourceStep = sourceHeardStepNow() ?? heardStep;
+    const frac = sourceStep / totalSteps;
     $('playhead').style.left = (frac * 100) + '%';
-    $('tnow').textContent = `${fmtTime(heardStep * spb)}/${fmtTime(loopSecs)}`;
-    $('barnow').textContent = `${Math.floor(heardStep / 16) + 1}/${totalSteps / 16}`;
+    $('tnow').textContent = `${fmtTime(outputHeard * spb)}/${fmtTime(loopSecs)}`;
+    $('barnow').textContent = `${Math.floor(outputHeard / 16) + 1}/${totalSteps / 16}`;
     const visualStep = arrangementVisualStep(heardStep);
     followArrangementVisual(visualStep);
-    oskFollow(heardStep);
-    stepSeq.follow(heardStep);
-    pianoRoll.follow(heardStep);
-    kitRoll.follow(heardStep);
+    if (rearrangeActive()) followArrangementVisual(arrangementVisualStep(sourceStep));
+    oskFollow(sourceStep);
+    stepSeq.follow(sourceStep);
+    pianoRoll.follow(sourceStep);
+    kitRoll.follow(sourceStep);
     recordFollow(heardStep);
+    syncRearrangeProgress(outputHeard);
   } else {
     followArrangementVisual(null);
     oskFollow(null);
     stepSeq.follow(null);
     pianoRoll.follow(null);
     kitRoll.follow(null);
+    syncRearrangeProgress(null);
   }
   const peakText = peakSeen > 0
     ? `Master peak ${(20 * Math.log10(peakSeen)).toFixed(1)} dBFS${peakSeen >= 1 ? '  ** CLIPPING **' : ''}` : '';
@@ -15474,7 +16274,7 @@ function panicAll() {
  *  When `fromStep` is 0 and loop is on with locators set, the loop is armed
  *  WITHOUT jumping — the song plays from the start and begins looping only
  *  when it reaches the locator region naturally. */
-function setPlaying(on, fromStep = null) {
+function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
   // Before `playing` changes, so `recording()` is still true and the take can measure
   // the keys that are still down against the position the music actually stopped at.
   // The transport stopping is the take ending; the arm stays on, so hitting play again
@@ -15493,7 +16293,7 @@ function setPlaying(on, fromStep = null) {
     // Resume where the playhead was parked, not back at the top.
     const at = fromStep != null ? fromStep : parkedAt;
     startedAt = at;
-    Audio.setBank(track.bank, mixFor(trackId), arrFor(trackId));
+    Audio.setBank(track.bank, mixFor(trackId), arrFor(trackId), { countIn });
     applyToEngine(mixFor(trackId));
     Audio.step = at;
     // "Play from start" with loop on: arm the selected loop region but don't jump
@@ -15630,6 +16430,7 @@ async function playFromBeginning() {
 }
 
 async function playFromParked() {
+  if (rearrangeActive()) { setPlaying(true); return; }
   const bounds = loopOn ? currentLoopBounds() : null;
   if (!bounds) { setPlaying(true); return; }
   return prepareAndStart({ fromStep: parkedAt, range: bounds, control: 'play' });
@@ -15645,6 +16446,36 @@ $('stop').onclick = () => {
   toast(`Stopped at bar ${Math.floor(at / 16) + 1}`);
 };
 $('playstart').onclick = playFromBeginning;
+$('rearrangebtn').onclick = () => {
+  if (rearrangePanelOpen) closeRearrangePanel();
+  else openRearrangePanel();
+};
+$('reclose').onclick = closeRearrangePanel;
+$('reextreme').oninput = syncRearrangeExtremeness;
+syncRearrangeExtremeness();
+$('retranspose').oninput = syncRearrangeTranspose;
+syncRearrangeTranspose();
+$('repattern').oninput = syncRearrangePatterning;
+syncRearrangePatterning();
+$('reselectall').onclick = selectAllRearrangeOperations;
+$('reclearselection').onclick = clearRearrangeOperationSelection;
+$('resplit').onclick = () => transformSelectedRearrange('split', 'Split halves');
+$('reunroll').onclick = () => transformSelectedRearrange('unroll', 'Unrolled repeats');
+$('redoublerepeats').onclick = () => transformSelectedRearrange('double-repeats', 'Doubled loops');
+$('rehalfrepeats').onclick = () => transformSelectedRearrange('half-repeats', 'Halved loops');
+$('rerollselected').onclick = () => transformSelectedRearrange('reroll', 'Rerolled slices');
+$('reremove').onclick = () => transformSelectedRearrange('remove', 'Removed slices');
+$('redrums').onclick = toggleRearrangeDrums;
+$('regenerate').onclick = () => generateRearrangeRecipe({ restart: rearrangeActive() && playing });
+$('replay').onclick = playRearrangement;
+$('rereturn').onclick = returnToSong;
+$('resave').onclick = saveRearrangeJson;
+$('reload').onclick = () => $('rearrangefile').click();
+$('rearrangefile').onchange = async () => {
+  const file = $('rearrangefile').files?.[0];
+  $('rearrangefile').value = '';
+  await loadRearrangeJson(file);
+};
 $('clearsolo').onclick = clearAllSolo;
 $('oskbtn').onclick = () => showOsk(!oskShown());
 // The header's pair. Same two functions the keyboard's own buttons call, so there is one
@@ -15809,6 +16640,14 @@ addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   // Never steal keys from a control the user is actually typing or dragging in.
   if (e.target.matches('input, select, textarea')) return;
+  // Delete is an arrangement-only erase of the selected instrument bar(s). It never
+  // removes song structure, and the lower workspace clears the arrangement context as
+  // soon as it receives a pointer press. Backspace remains an ordinary browser key.
+  if (e.key === 'Delete' && arrangementKeyboardActive && selectedBar?.key) {
+    e.preventDefault();
+    eraseSelectedArrangementBars();
+    return;
+  }
   // The on-screen keyboard, while it is catching keys, gets first refusal on the
   // letters — it wants M, S, B and L for notes, and having them mute the channel
   // half way up a run is not a shortcut anyone asked for. Everything it does not

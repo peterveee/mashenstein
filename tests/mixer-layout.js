@@ -18,6 +18,69 @@ const audio = readFileSync(new URL('../src/engine/audio.js', import.meta.url), '
 const freezeSpanSource = readFileSync(new URL('../tools/lib/freeze-span.js', import.meta.url), 'utf8');
 const touchedBody = /const touched = \(\) => \{[\s\S]*?\n  \};/.exec(editor)?.[0] || '';
 
+assert(/id="rearrangebtn"/.test(shell)
+  && /id="rearrangepanel"/.test(shell)
+  && /id="rearrangelist"/.test(shell)
+  && /id="rearrangeform"/.test(shell)
+  && /id="regenerate"/.test(shell)
+  && /id="resplit"/.test(shell)
+  && /id="reunroll"/.test(shell)
+  && /id="redoublerepeats"/.test(shell)
+  && /id="rehalfrepeats"/.test(shell)
+  && /id="rerollselected"/.test(shell)
+  && /id="reremove"/.test(shell)
+  && /id="reextreme"/.test(shell)
+  && /id="reextremevalue"/.test(shell)
+  && /id="retranspose"/.test(shell)
+  && /id="retransposevalue"/.test(shell)
+  && /id="repattern"/.test(shell)
+  && /id="repatternvalue"/.test(shell)
+  && /id="redrums"/.test(shell)
+  && /Steady 4\/4 drums/.test(shell)
+  && /id="resave"/.test(shell)
+  && /id="reload"/.test(shell),
+  'the toolbar exposes the non-blocking Rearrange operation list and JSON controls');
+assert(/generateRearrangement\(steps/.test(entry)
+  && /validateRearrangement\(raw/.test(entry)
+  && /Audio\.setRearrangement\(recipe\)/.test(entry)
+  && /rearrangeKeptSections/.test(entry)
+  && /rearrangeDislikedSections/.test(entry)
+  && /anchors: rearrangeKeptAnchors\(\)/.test(entry)
+  && /avoid: rearrangeDislikedAnchors\(\)/.test(entry)
+  && /className = 'rekeep'/.test(entry)
+  && /className = 'redown'/.test(entry)
+  && /classList\.add\('favourite'\)/.test(entry)
+  && /className = 'reselect'/.test(entry)
+  && /transformSelectedRearrange/.test(entry)
+  && /playRearrangementAt/.test(entry)
+  && /renderRearrangeForm/.test(entry)
+  && /data-section/.test(entry)
+  && /toggleRearrangeDrums/.test(entry)
+  && /setPlaying\(true, 0, \{ countIn: 4 \}\)/.test(entry)
+  && /setPlaying\(true, at, \{ countIn: 4 \}\)/.test(entry)
+  && /Audio\.setBank\(track\.bank, mixFor\(trackId\), arrFor\(trackId\), \{ countIn \}\)/.test(entry)
+  && /transformSelectedRearrange\('remove', 'Removed slices'\)/.test(entry)
+  && /extremeness: rearrangeExtremeness\(\)/.test(entry)
+  && /transposeAmount: rearrangeTransposeAmount\(\)/.test(entry)
+  && /patterning: rearrangePatterning\(\)/.test(entry)
+  && /syncRearrangeExtremeness/.test(entry)
+  && /syncRearrangeTranspose/.test(entry)
+  && /syncRearrangePatterning/.test(entry)
+  && /ondblclick/.test(entry)
+  && /perfect fourth/.test(entry)
+  && /perfect fifth/.test(entry)
+  && /syncRearrangeProgress\(outputHeard\)/.test(entry),
+  'the Rearrange panel generates, validates, installs, and follows a live recipe');
+assert(/setRearrangement\(recipe = null\)/.test(audio)
+  && /const sourceStep = rearranged \? rearranged\.sourceStep : this\.step/.test(audio)
+  && /rearrangeTranspose/.test(audio)
+  && /rearrangementDrumHit/.test(audio)
+  && /basicRearrangeDrums/.test(audio)
+  && /_scheduleCountIn/.test(audio)
+  && /const startGap = Math\.max\(gap, countInSeconds/.test(audio)
+  && /_scheduleFrozenLane\(key, state, sourceStep/.test(audio),
+  'the real scheduler maps source ranges while keeping output transport timing');
+
 let failed = false;
 function assert(cond, msg) {
   if (!cond) { console.error('FAIL:', msg); failed = true; }
@@ -1797,8 +1860,70 @@ const rollSrc = readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta
 // already does or a decision the roll should not be asking for, on the row that has to stay
 // readable while notes are drawn under it.
 assert(!/ssqlane-pick|ssqoctbtn|ssqscalekind|ssqroot|Find the part/.test(rollSrc)
-  && !/setLane|setScale|SCALES\b|headerExtra/.test(rollSrc),
-  'the roll puts nothing in the notes header');
+  && /headerExtra:\s*editingActions/.test(rollSrc)
+  && /make\('Select all'/.test(rollSrc)
+  && /make\('Select none'/.test(rollSrc)
+  && /make\('Cut'/.test(rollSrc)
+  && /make\('Copy'/.test(rollSrc)
+  && /make\('Paste'/.test(rollSrc)
+  && /make\('Select locators'/.test(rollSrc)
+  && /make\('Loop range'/.test(rollSrc)
+  && /make\('Fav \+'/.test(rollSrc)
+  && /onAddRearrangeFavourite/.test(rollSrc)
+  && /rearrangeFavouriteState/.test(rollSrc),
+  'the Notes header exposes compact selection and clipboard actions');
+assert(/selectedTime = null, onSelectTime = null/.test(barGrid)
+  && /const snapTime = \(a, b\) =>/.test(barGrid)
+  && /onSelectTime\(snapTime\(step, step\)\)/.test(barGrid)
+  && /function selectTimeRange\(start, end\)/.test(barGrid)
+  && /className = 'ssqtimeband'/.test(barGrid)
+  && /selectedTime: \(\) => pianoRollTimeSelection/.test(entry)
+  && /rearrangeFavourites/.test(entry)
+  && /onAddRearrangeFavourite: \(range\) => toggleRearrangeFavourite/.test(entry)
+  && /favourites: rearrangeFavourites/.test(entry)
+  && /locators: \(\) => \(locA != null && locB != null/.test(entry)
+  && /onLoopTime: \(range\) => armPianoRollLoop\(range\)/.test(entry),
+  'the piano roll selects beat-snapped time ranges, can select between locators, and arms that range for looping');
+assert(/locatorPositions = null, onLocatorContextMenu = null/.test(barGrid)
+  && /className = `ssqlocator locator-/.test(barGrid)
+  && /onLocatorContextMenu\?\.\(ev, id, Number\(value\)\)/.test(barGrid)
+  && /onLocatorMoveEnd\?\.\(done\.id, done\.value\)/.test(barGrid)
+  && /onTimeContextMenu = null/.test(barGrid)
+  && /onDoubleClickStep = null/.test(barGrid)
+  && /onDoubleClickStep\(beat \* slotUnit\(\)\)/.test(barGrid)
+  && /onSelectTimeEnd = null/.test(barGrid)
+  && /onSelectTimeEnd\?\.\(selectedTime\?\.\(\) \|\| null\)/.test(barGrid)
+  && /const timeContextMenu = \(ev, picked\) =>/.test(rollSrc)
+  && /Loop selected range/.test(rollSrc)
+  && /Clear selected range/.test(rollSrc)
+  && /const locatorContextMenu = \(ev, id\) =>/.test(rollSrc)
+  && /Loop between locators/.test(rollSrc)
+  && /Erase notes between locators/.test(rollSrc)
+  && /onClearLocator: \(which\) =>/.test(entry)
+  && /onLocatorMoveEnd: \(which, value\) =>/.test(entry)
+  && /redraw\(\) \{[\s\S]*?grid\.redraw\(\)/.test(rollSrc)
+  && /onDoubleClickStep: \(step\) =>/.test(entry)
+  && /onSelectTimeEnd: \(range\) =>/.test(entry)
+  && /Loop range updated from the piano roll/.test(entry)
+  && /onEraseTime: async \(range\) =>/.test(entry),
+  'piano-roll locator pins have a right-click menu for looping, selecting, erasing, and clearing');
+assert(/cell\.dataset\.tip = row\.label/.test(barGrid)
+  && /cell\.dataset\.tipsays = `Bar/.test(barGrid)
+  && /className = 'ssqnote-label'/.test(barGrid)
+  && /\.ssqcell\.paste-preview/.test(shell),
+  'notes expose pitch tooltips, fitted inline labels and a visible paste preview');
+assert(/NOTE_LABELS_KEY = 'mash-mixer-roll-note-labels'/.test(rollSrc)
+  && /const noteNamesToggle = \(\) =>/.test(rollSrc)
+  && /noteLabels = !noteLabels/.test(rollSrc)
+  && /noteLabels: \(\) => noteLabels/.test(rollSrc)
+  && /noteLabels\?\.\(\) !== false/.test(barGrid)
+  && /\.rolllabeltoggle/.test(shell),
+  'the piano roll can persistently show or hide inline note names while retaining hover tooltips');
+assert(/const moveBar = horizontal && ev\.shiftKey && ev\.altKey/.test(barGrid)
+  && /else if \(horizontal && \(ev\.shiftKey \|\| ev\.altKey\)\) resizeNotes/.test(barGrid)
+  && /⇧←\/→ shorten and lengthen/.test(rollSrc)
+  && /⇧⌥←\/→ moves a bar/.test(rollSrc),
+  'Shift arrows resize notes and the longer Shift-Option gesture moves by a bar');
 // `headerHost` stays: it is also what keeps the grid from building a second header inside
 // the scroll area, and a host given nothing to hold gets no bar at all rather than an
 // empty span holding a gap open in someone else\'s header.
@@ -3192,6 +3317,17 @@ assert(shortcuts.indexOf("e.shiftKey && key === 'r'") > 0
   && shortcuts.indexOf("e.shiftKey && key === 'r'") < shortcuts.indexOf("key === 'r'"),
   '⇧R is tested BEFORE the plain-R reset — this handler lowercases the key and does not'
   + ' look at Shift, so the wrong order resets the channel every time you try to arm');
+assert(!entry.includes('deleteSelectedBarsShortcut')
+  && /if \(e\.key === 'Delete' && arrangementKeyboardActive && selectedBar\?\.key\)/.test(entry)
+  && /function eraseSelectedArrangementBars\(\)[\s\S]*?clearLaneBars\(laneKey, from, to/.test(entry)
+  && !/e\.key === 'Backspace'[^\n]*arrangementKeyboardActive/.test(entry),
+  'Delete erases only the selected instrument bars while the arrangement is active');
+assert(/const erase = make\('Erase bar'/.test(rollSrc)
+  && /eraseSelectedBars\(picked\)/.test(rollSrc)
+  && /eraseSelectedBars: \(\{ from, to \}\)[\s\S]*?clearLaneBars\(laneKey, from, to/.test(entry),
+  'the piano roll exposes an explicit action to erase the selected instrument bar(s)');
+assert(/if \(ev\.key === 'Backspace' \|\| ev\.key === 'Delete'\) \{[\s\S]*?ev\.stopImmediatePropagation\(\)[\s\S]*?deleteSelection\(\)/.test(barGrid),
+  'selected notes keep their existing local Delete behavior');
 assert(/const dropped = recArmed \? discardTake\(\) : 0;\s*\n\s*panicAll\(\)/.test(entry)
   && !/if \(key === 'escape'\)[\s\S]{0,200}?discardTake\(\)/.test(entry),
   'the panic takes the unwritten end of a take with it, and the on-screen keyboard no'

@@ -81,23 +81,65 @@ const HEAD_MARGIN = 10;
 // the engine layer does not reach up into game code for one number.
 const HERO_HEIGHT = 24;
 
-// The world y at the top of the frame at pan 0. Solving z * (GROUND_Y - camY)
-// = GROUND_Y is what pins the groundline to its own screen y for EVERY z —
+// The world y at the top of the frame at pan 0. Solving z * (floorY - camY)
+// = GROUND_Y is what pins the ANCHOR LINE to screen y GROUND_Y for EVERY z —
 // which is why a mid-jump zoom change reads as the frame opening up rather than
 // as a pan. `pan` then slides that whole pinned frame down bodily.
-export function camYFor(z) { return GROUND_Y - GROUND_Y / z; }
+//
+// `floorY` is which world line gets that treatment, and it defaults to the one
+// the game has always used. It exists for raised and sunken ROADS: a road that
+// climbs 200px into the sky cannot be framed by craning and zooming out — the
+// crane runs out after 38px and the zoom would shrink the whole game to fit a
+// hero who is simply standing somewhere else. Re-pinning instead keeps the hero
+// exactly where he always sits in the frame and moves the WORLD past him, which
+// is what climbing is supposed to look like. run.js eases this value, so on the
+// base ground it is GROUND_Y to the pixel and every existing framing is
+// byte-identical.
+export function camYFor(z, floorY = GROUND_Y) { return floorY - GROUND_Y / z; }
 
 // Screen y of a world y at zoom z. For the handful of things that draw in screen
 // space but have to sit on a world object (the blackout mission's light radius).
-export function screenYFor(worldY, z, pan = 0) { return (worldY - camYFor(z)) * z + pan; }
+export function screenYFor(worldY, z, pan = 0, floorY = GROUND_Y) {
+  return (worldY - camYFor(z, floorY)) * z + pan;
+}
 
 // The transform itself. Draw world content between save/restore around this.
 // Anything drawing in SCREEN space that has to stay welded to the world — the
 // style packs' backgrounds — takes the same `pan` as a plain translate.
-export function applyWorld(ctx, z, pan = 0) {
+export function applyWorld(ctx, z, pan = 0, floorY = GROUND_Y) {
   ctx.translate(0, pan);
   ctx.scale(z, z);
-  ctx.translate(0, -camYFor(z));
+  ctx.translate(0, -camYFor(z, floorY));
+}
+
+// How far a re-pinned anchor has carried the frame, in SCREEN px. Positive when
+// the hero is above the groundline. The backgrounds are authored against
+// GROUND_Y in screen space, so this is the distance they have to travel to stay
+// welded to a world that has slid underneath them.
+export function anchorShift(z, floorY) { return (GROUND_Y - floorY) * z; }
+
+// How much of that shift the backgrounds actually take.
+//
+// Not all of it, and that is the whole point of the number. The scenery back
+// there is FAR AWAY: hills a mile off barely move when you climb a hundred feet,
+// and taking the shift at 1 slides the horizon clean out of the frame the
+// instant the road leaves the ground. At 0.42 the range sinks convincingly while
+// the sky it sits in stays where the sky belongs — which is the same reasoning
+// the horizontal parallax factors already encode, applied to the axis that never
+// needed one until a road went up.
+export const BG_FOLLOW = 0.42;
+
+// Ease the anchor toward the floor the hero is standing on.
+//
+// Deliberately ASYMMETRIC, and much more so than the zoom's. Climbing wants to
+// be felt — the anchor lagging behind a rising hero is what shows him gaining
+// height rather than the world simply being redrawn around him — so a rise is
+// slow. A fall is the opposite: a hero who steps off a 200px road is travelling
+// at terminal velocity within half a second, and an anchor that eases down
+// politely leaves him below the bottom edge of the frame while he does it.
+export function easeFloor(current, target, dt) {
+  const k = target < current ? 4.5 : 14;
+  return current + (target - current) * (1 - Math.exp(-k * dt));
 }
 
 // The framing a hero `y` px above the ground needs: how far to crane, and what
@@ -118,6 +160,21 @@ export function framingFor(y, groundLift = 0) {
   const need = Math.max(1, y + HERO_HEIGHT + HEAD_MARGIN + groundLift);
   const pan = Math.max(0, Math.min(PAN_MAX, need * ZOOM - GROUND_Y));
   return { pan, zoom: Math.min(ZOOM, Math.max(ZOOM_MIN, (GROUND_Y + pan) / need)) };
+}
+
+// How much hero ALTITUDE the resting frame can hold, in world px, with the
+// crane fully spent and the zoom untouched.
+//
+// This is the number that decides when re-pinning is worth doing at all. Below
+// it the existing camera copes — a hero on a stack of platforms is framed by
+// craning, exactly as a hero mid-jump always was, and the groundline he came
+// from stays on screen where he can see it. Above it the crane and the zoom are
+// being asked to hold a line the player has left and has no further use for.
+//
+// Live, not a constant: ZOOM moves with the device and the settings, and a
+// phone frame genuinely holds less than a desktop one, so it re-pins sooner.
+export function restingHeadroom() {
+  return (GROUND_Y + PAN_MAX) / ZOOM - HERO_HEIGHT - HEAD_MARGIN;
 }
 
 // Ease the live zoom toward a target. Pulls back fast so a jump is never clipped

@@ -97,6 +97,31 @@ assert(ring.slots.length <= Math.max(poolBefore, ring.capacity),
 // Read the newest record, deep-copy what it claims, run the world on, and check
 // the record still claims the same thing. A shared object or Set would have
 // followed the live world forward.
+//
+// God mode from here on, and it is the aliasing that requires it rather than
+// squeamishness about dying: a death re-enters the state, which RESETS the ring,
+// which then legitimately writes over the very record being watched — so a run
+// that dies inside the window fails this for a reason that has nothing to do
+// with sharing. The RESET path is still exercised: the recycling checks above
+// run before this and deliberately let the hero die twenty times.
+//
+// Switching god mode on is not enough on its own, and that was the residual
+// one-in-twenty-five flake. The hero may be MID-DEATH at this point — the last
+// of those twenty kills still playing out — and `updateDead` re-enters several
+// frames later, long after `takeHit` has stopped being able to prevent
+// anything. So the death in flight is flushed out first, and only then is the
+// record read. (The seed is `Date.now()`-derived, so every run lays a different
+// lane; that is why this reproduced roughly once in twenty-five rather than
+// never or always.)
+run.takeHit = () => {};
+for (let i = 0; i < 240 && run.dead; i++) frames(1);
+assert(!run.dead, 'the hero is alive and the world is running before the record is read');
+// A reset during the window would silently invalidate everything below, so it
+// is caught and named rather than left to surface as three confusing aliasing
+// failures. If this ever fires, the assertions after it mean nothing.
+let ringResets = 0;
+const ringReset = ring.reset.bind(ring);
+ring.reset = () => { ringResets++; return ringReset(); };
 const newest = ring.slots[(ring.start + ring.length - 1) % ring.capacity];
 const recorded = {
   camX: newest.camX,
@@ -111,6 +136,8 @@ assert(recorded.obstacleCount > 0, `the record holds live obstacles (${recorded.
 
 frames(120); // two seconds of live play on top of the reading above
 
+assert(ringResets === 0,
+  `the ring was not reset under the reading (${ringResets} resets — if this fires, the three below are meaningless)`);
 assert(newest.camX === recorded.camX, 'a recorded camera position does not drift with the live one');
 assert(newest.tRun === recorded.tRun, 'nor does its clock');
 assert(newest.player.y === recorded.playerY, 'nor the recorded player');

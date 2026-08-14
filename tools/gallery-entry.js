@@ -54,6 +54,14 @@ import {
   FINISH_MARKER_BY_ID, plungerStandY, PLUNGER_CX,
 } from '../src/game/finishMarker.js';
 import { PLAYER_X } from '../src/game/player.js';
+// Roads are built by the SAME function the run builds them with, off the SAME
+// cabinet data, and drawn through the SAME painters. Anything less and this
+// page becomes a second implementation of the art it is supposed to be the
+// reference for — which is the one thing a gallery may never be.
+import { buildRoutes, routeRise } from '../src/game/routes.js';
+import {
+  drawRoutes, drawSubsoil, terrainGroundY, soilOf, ISLAND_THICKNESS,
+} from '../src/game/terrain.js';
 // Cast candidates — proposals with no entry in any production registry. See the
 // raider bake-off at the bottom of this file, and src/dev/hero-candidates.js.
 import { RAIDER_CANDIDATES } from '../src/dev/hero-candidates.js';
@@ -917,6 +925,152 @@ function propNominalSize(name) {
       if (style.ground) style.ground(ctx, t * 60, cab, obstacles);
       if (style.post) style.post(ctx, t);
     }, { animated: true });
+  }
+}
+
+// ------------------------------------------------------- 7c. raised routes
+// The roads that leave the lane, and the ground they are cut out of.
+//
+// Built with buildRoutes() off PLUMBER's own cabinet data, so every number on
+// this page — heights, spans, the width of a hole — is the number the stage
+// actually ships. Each tile then frames one WINDOW of one road and paints it
+// with the run's own drawSubsoil/drawRoutes, at the run's world zoom. Nothing
+// here re-implements any of it; that is the whole reason routes.js exists as a
+// module rather than as a method on RunState.
+{
+  const cab = CABINETS.find((c) => c.id === 'plumber');
+  const style = getStylePack(cab.style, {});
+  // The plumber stage's real length and base speed. `dwell` is in SECONDS, so a
+  // road's span only exists once you say how fast the stage runs.
+  const TOTAL = 9072;
+  const SPEED = 160;
+  const CLOUD_FROM = 108;
+  const CLOUD_TO = 168;
+  const groundAt = (wx) => terrainGroundY(cab, wx);
+  const routes = buildRoutes(cab, { totalDist: TOTAL, speed: SPEED, groundYAt: groundAt });
+  // Exactly what RunState.routeGroundY does, and the profile inside it is the
+  // run's own.
+  const topAt = (wx, r) => (r.kind === 'island' ? r.topY : groundAt(wx) - routeRise(wx, r));
+
+  // One window on the world: `ww` world units wide, centred on (cx, midY).
+  //
+  // Framed by its CENTRE rather than by an anchor line, because these tiles are
+  // looking at things the run's camera never frames the same way twice — a
+  // chamber roof, a cut face, the last column of a road — and "put this bit in
+  // the middle" is the only instruction that serves all of them.
+  const routeTile = (grid, name, sub, cx, ww, midY, opts = {}) => {
+    const wh = ww * (H / W);
+    tile(grid, name, sub, ww * WORLD_Z, wh * WORLD_Z, (ctx) => {
+      const camX = cx - ww / 2;
+      const topY = midY - wh / 2;
+      // Flat sky rather than the pack's bg(). A background is drawn in SCREEN
+      // space against a 480x270 frame — the run calls it OUTSIDE the world
+      // transform — so putting one inside a tile's own scale and translate
+      // paints a horizon in the wrong place and makes the road look wrong for a
+      // reason that has nothing to do with the road. Everything below this line
+      // is world-space, and is exactly what the run draws.
+      ctx.fillStyle = cab.sky ? cab.sky[1] : '#a8e0f8';
+      ctx.fillRect(0, 0, ww * WORLD_Z, wh * WORLD_Z);
+      ctx.save();
+      ctx.scale(WORLD_Z, WORLD_Z);
+      ctx.translate(0, -topY);
+      if (style.ground) style.ground(ctx, camX, cab, opts.obstacles || []);
+      drawSubsoil(ctx, cab, ww, topY + wh, camX);
+      drawRoutes(ctx, camX, cab, routes, topAt, ww,
+        { groundAt, cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO, bottomY: topY + wh });
+      ctx.restore();
+    }, { animated: false, hires: 2, wide: ww > 200 });
+  };
+
+  const steps = routes.filter((r) => r.stack);
+  const sky = routes.find((r) => r.sky);
+  const tunnel = routes.find((r) => r.kind === 'tunnel');
+
+  {
+    const grid = section('routes-ground', 'Ground — cross-section',
+      `drawSubsoil(): turf, root zone, an 8px blend, then three soil bands (${soilOf(cab)}) parted by `
+      + 'seams that wander, with pebbles set through all of them and the odd boulder straddling one. '
+      + 'A gradient reads as a brown wash — earth in section is layered, and the boundaries wobble. '
+      + 'These layers are what the cut at an opening is a cut THROUGH, which is why no opening needs '
+      + 'an edge drawn on it.');
+    // Plain lane, well clear of any road: the point of these is the soil, and a
+    // window over a tunnel is mostly the hole in it.
+    //
+    // Deep windows on purpose. The first seam is 44px under the line and the
+    // second 112, so a shallow tile shows a brown rectangle and a caption
+    // claiming layers — which is worse than showing nothing, because the page
+    // is supposed to be the thing you check the claim against.
+    routeTile(grid, 'the whole profile',
+      'turf, root zone, topsoil, the first seam, the packed band, the second seam',
+      1000, 240, GROUND_Y + 64);
+    routeTile(grid, 'a boulder in it', 'four times its neighbours, and across a seam rather than inside a band',
+      5900, 150, GROUND_Y + 62);
+  }
+
+  if (tunnel) {
+    const grid = section('routes-tunnel', 'Tunnel — the low road',
+      `${Math.round(tunnel.w)}px of span, ${-tunnel.peak}px deep. Deeper than the best jumper in the `
+      + 'cast can clear, because that is the only thing keeping him down there — there is no ceiling '
+      + 'collision and there should not be one: the whole mechanism works because there is only ever ONE floor.');
+    routeTile(grid, 'entrance',
+      `${Math.round(tunnel.mouthW)}px — ${Math.round(tunnel.mouthW / 8)} hero-widths, cleared on purpose`,
+      tunnel.x + tunnel.mouthW / 2, 84, GROUND_Y + 6);
+    for (const h of tunnel.holes || []) {
+      routeTile(grid, 'mid-span hole',
+        `${Math.round(h.w)}px — a stride, not a second decision`,
+        h.x + h.w / 2, 84, GROUND_Y + 6);
+    }
+    routeTile(grid, 'the chamber', 'roof rim lit from below, floor keeps the lane\'s own ground line',
+      tunnel.x + tunnel.w * 0.42, 150, GROUND_Y + tunnel.rise * 0.55);
+    routeTile(grid, 'a skeleton',
+      'one per tunnel, pinned just under the floor — the only deep earth ever on screen',
+      2910, 92, GROUND_Y + tunnel.rise + 12);
+    routeTile(grid, 'climbing out',
+      'the merge: the floor rises to meet the lane, so the route drops away with nothing to fall',
+      tunnel.x + tunnel.w * 0.95, 150, GROUND_Y + tunnel.rise * 0.34);
+  }
+
+  if (sky) {
+    const grid = section('routes-sky', 'Sky road — the high road',
+      `Enters at ${sky.entry}px — spring only, three times a jump — climbs to ${sky.peak}, holds, and `
+      + `stops at ${sky.end} in MID-AIR: you fall the last stretch, because a road that eases back down `
+      + `to the lane has no ending. Drawn as dirt below ${CLOUD_FROM}px of rise and as cloud above ${CLOUD_TO}.`);
+    // Framed on the ROAD rather than on a height guessed from the data: `topAt`
+    // is the same function the run stands the hero on, so a tile cannot end up
+    // pointed at the sky above a road that turned out to be somewhere else.
+    const onRoad = (f, drop = 12) => topAt(sky.x + sky.w * f, sky) + drop;
+    routeTile(grid, 'the lip', 'where the spring puts you down — flat, and honest ground',
+      sky.x + sky.w * sky.lip * 0.5, 92, onRoad(sky.lip * 0.5));
+    routeTile(grid, 'the climb', 'dirt becoming weather on the way up',
+      sky.x + sky.w * (sky.lip + sky.climb * 0.62), 92, onRoad(sky.lip + sky.climb * 0.62));
+    routeTile(grid, 'the top', `cloud, ${sky.peak}px above the lane`,
+      sky.x + sky.w * 0.62, 92, onRoad(0.62));
+    routeTile(grid, 'the end', `it stops in the air — the last ${sky.end}px is a fall`,
+      sky.x + sky.w - 22, 92, onRoad(0.985, 22));
+  }
+
+  if (steps.length) {
+    const grid = section('routes-islands', 'Islands — staircases',
+      'Treads GROW as the climb does: the bottom step is a foothold you are off in a stride, and the run '
+      + 'you spend time on is the high one with the reward. An equal-length low tread is a road a few '
+      + `pixels above the lane, which is neither. Slab body is ${ISLAND_THICKNESS}px of soil under a 3px `
+      + 'turf cap — the same number the fairness sweep measures a hazard against.');
+    for (const id of [...new Set(steps.map((r) => r.stack))]) {
+      const st = steps.filter((r) => r.stack === id);
+      // The first steps rather than the whole flight. A four-step stack spans
+      // nearly six hundred world px, and at the world zoom this page insists on
+      // — no tile may show art smaller than the game does — that is a card
+      // three thousand pixels wide. The caption carries the full figures; the
+      // picture carries what the climb LOOKS like, which is the bottom of it.
+      const from = st[0].x - 24;
+      routeTile(grid, `${st.length}-step stack — the bottom of the climb`,
+        `rises ${st.map((r) => r.entry).join(' / ')}px · treads ${st.map((r) => Math.round(r.w)).join(' → ')}px`,
+        from + 150, 300, GROUND_Y - st[Math.min(1, st.length - 1)].entry / 2 + 6);
+    }
+    const top = steps[steps.length - 1];
+    routeTile(grid, 'a slab, close up',
+      'turf cap overhanging both ends, soil, a scalloped underside, stones set into the cut face',
+      top.x + top.w / 2, 66, top.topY + 6);
   }
 }
 

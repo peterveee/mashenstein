@@ -36,17 +36,33 @@ const PLX = ZOOM;
 // smoothly, and the half-pixel strokeRect offsets exist to keep a 1px line
 // crisp rather than to position anything.
 function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody) {
-  ctx.fillStyle = colBody;
-  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
-  ctx.fillStyle = colTop;
-  ctx.fillRect(0, GROUND_Y, W, 3);
-  // carve gaps
+  // A gap is drawn by NOT drawing, rather than by painting a black rectangle
+  // over ground that has already been laid.
+  //
+  // The old way put `#08060c` down every hole in the game, which is a colour
+  // that belongs to nothing else on screen — and once a lower route existed it
+  // was actively wrong, because looking down a hole should show you what is
+  // under it: the sky, the hills, and the ground of the area below. A hole you
+  // can see through is the whole difference between a level with two heights in
+  // it and a level with a black rectangle in it.
+  const cuts = [];
   for (const ob of obstacles || []) {
-    if (ob.live && ob.def && ob.def.isGap) {
-      const x = ob.x - camX;
-      ctx.fillStyle = '#08060c';
-      ctx.fillRect(x, GROUND_Y, ob.w, H - GROUND_Y);
-    }
+    if (ob.live && ob.def && ob.def.isGap) cuts.push([ob.x - camX, ob.x - camX + ob.w]);
+  }
+  cuts.sort((a, b) => a[0] - b[0]);
+  const runs = [];
+  let open = 0;
+  for (const [a, b] of cuts) {
+    if (a > open) runs.push([open, Math.min(a, W)]);
+    open = Math.max(open, b);
+  }
+  if (open < W) runs.push([open, W]);
+  for (const [a, b] of runs) {
+    if (b <= a) continue;
+    ctx.fillStyle = colBody;
+    ctx.fillRect(a, GROUND_Y, b - a, H - GROUND_Y);
+    ctx.fillStyle = colTop;
+    ctx.fillRect(a, GROUND_Y, b - a, 3);
   }
 }
 

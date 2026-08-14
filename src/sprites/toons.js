@@ -1624,11 +1624,35 @@ function expressionFor(id, pose = {}, spec = null) {
   // of jump faces (see the `jf` lookup below). Clinging overrides all of that
   // with the celebration face instead, held for the length of the slide.
   const clinging = clingAmount(pose) > 0.35;
+  // FALLING IS NOT JUMPING.
+  //
+  // The jump face is rolled once at launch and held for the whole hang time —
+  // `kind` stays 'jump' for every airborne frame, which is the whole reason the
+  // roll is held (see the `jf` lookup below). The cost was that the delighted
+  // one stayed on all the way down too, including the drop off a platform the
+  // player has just missed, where a grin reads as the hero enjoying their
+  // mistake.
+  //
+  // Two thresholds, not one flag, because "going down" and "going down badly"
+  // want different faces. Past -60 (the variable-jump cut, so the same speed the
+  // engine already treats as the end of a hop's rise) the hero is properly on
+  // the way down and the excited face simply drops out — the smile going is
+  // enough, and anything stronger would fire on the descent of every ordinary
+  // hop, which is most of the time anyone spends in the air. Past -240 — three
+  // quarters of BASE_JUMP_V, which a jump cannot reach coming down from its own
+  // apex and only a fall from higher than you jumped gets to — it becomes
+  // alarm, which is the missed-jump case.
+  //
+  // A stomp is exempt and so is a float: both are descents the player ASKED
+  // for, and `effort` already owns the stomp's face.
+  const dropping = pose.kind === 'jump' && !pose.stomp && !pose.float && !clinging;
+  const falling = dropping && (pose.vy || 0) < -60;
+  const plunging = dropping && (pose.vy || 0) < -240;
   // Face-only moods let a running cameo react without switching its body into
   // a celebration animation. Production poses do not set these flags.
   // jumpFace 1 ("excited") also lands here — see the `jf` variant lookup below.
   const joy = pose.kind === 'celebrate' || !!pose.faceJoy || clinging
-    || (pose.kind === 'jump' && !pose.stomp && !clinging && (pose.jumpFace | 0) === 1);
+    || (pose.kind === 'jump' && !pose.stomp && !clinging && !falling && (pose.jumpFace | 0) === 1);
   // Celebrating faces ride the routine: at the top of a bounce the grin opens
   // into a full cheer, and between beats the eyes squeeze shut, delighted.
   const reworkedCelebration = joy && usesReworkedCelebration(pose);
@@ -1718,7 +1742,7 @@ function expressionFor(id, pose = {}, spec = null) {
     // BROW_L_SCALE is the one that needs it.
     id,
     focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll || jf === 2,
-    surprise: !clinging && (jf === 0 || jf === 3 || !!pose.faceSurprised),
+    surprise: !clinging && (jf === 0 || jf === 3 || plunging || !!pose.faceSurprised),
     // Startled brow: opt-in via pose.browRaise (a cameo can force it), or the
     // jump face rolled the startled variant; see the branch it unlocks in
     // drawEyes for why the surprise face needed its own shape.

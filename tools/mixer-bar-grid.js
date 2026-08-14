@@ -142,8 +142,9 @@ const BAR_OVERSCAN = 1;
  * screen's direction and the array's direction disagree, and the reason it is a table
  * rather than a sign flip somewhere in a handler.
  *
- * With ⇧ the step becomes a bar and the row an octave: the same gesture at the scale
- * you actually work in when a phrase is in the wrong place rather than slightly out.
+ * In a piano roll, ⇧ on horizontal arrows changes note length, while ⇧⌥ makes the
+ * longer horizontal gesture move a phrase by a bar. ⇧ on vertical arrows remains an
+ * octave move; the grid itself keeps this table neutral and lets the handler decide.
  */
 const ARROWS = {
   ArrowLeft: { step: -1, row: 0 },
@@ -343,6 +344,7 @@ export function drawnSpan(field, at, len) {
  */
 export function createBarGrid({
   el, Audio, bank, editBank, draft, sel, apply, engineBank, onClose = () => {},
+  toast = () => {},
   ns = 'grid', rows, isOn, withCell, preview = () => {}, previewRelease = () => {},
   // ---- lengths, and the gestures that need them
   //
@@ -402,11 +404,22 @@ export function createBarGrid({
   // a selection is made everywhere else on this desk, so it is where one is made here.
   // Null from `selectedBars` means nothing is picked out.
   selectedBars = null, onSelectBars = null,
+  // A piano-roll time selection is finer than the desk's bar selection. The range is
+  // absolute musical sixteenths, end-exclusive (independent of a 16/32-cell drawing),
+  // and is deliberately a separate callback so a beat drag never changes the
+  // arrangement's selected bars underneath the editor.
+  selectedTime = null, onSelectTime = null,
+  locatorPositions = null, onLocatorContextMenu = null,
+  onLocatorMove = null, onLocatorMoveEnd = null,
+  onTimeContextMenu = null,
+  onDoubleClickStep = null,
+  onSelectTimeEnd = null,
   // Where the panel's own controls go. Given a host, they are placed INTO it rather than
   // into a header of their own — so a docked panel adds its controls to the row the region
   // already has instead of stacking a second row under it. Two headers naming the same
   // channel is a row of chrome for nothing.
   headerHost = null,
+  noteLabels = () => true,
   title, headerExtra = () => [], rulerHeader = () => [], rowHeader = () => [], lead = () => [],
   laneLabel = (key) => key,
 }) {
@@ -463,6 +476,9 @@ export function createBarGrid({
   // clip that starts where the field starts, so it can never reach the corner labels, and
   // it travels sideways on the same `--roll-scroll-x` the ruler's own cells do.
   let selBand = null;
+  let timeBand = null;
+  let locatorClip = null;
+  let locatorDrag = null;
   // The bars strip's own cell container, held rather than looked up: it is the time axis
   // as MEASURED, and both the playhead and the bar window read it — see `rulerCells`.
   let barCellsEl = null;
@@ -510,6 +526,10 @@ export function createBarGrid({
   let editScope = null;
   let marquee = null;       // the rubber band, while one is being drawn
   let barViews = new Map();
+  // A paste is deliberately a two-step gesture. The clipboard belongs to the piano
+  // roll host; the grid owns only the armed preview and the eventual arrangement write.
+  let pastePlacement = null;
+  let pastePreviewCells = [];
 
   const isOpen = () => el.classList.contains('show');
   const barWords = (r) => (r.from === r.to
@@ -824,6 +844,93 @@ export function createBarGrid({
     selBand.style.width = `${Math.max(0, right + stepWidth() - left)}px`;
   }
 
+  /** Draw the beat-level time range over the same ruler geometry as the bar band. */
+  function placeTimeBand() {
+    if (!timeBand) return;
+    const picked = selectedTime?.() || null;
+    const unit = slotUnit();
+    const start = picked ? Math.max(range.from * 16, Number(picked.start) || 0) : null;
+    const end = picked ? Math.min((range.to + 1) * 16, Number(picked.end) || 0) : null;
+    if (start == null || end == null || end <= start) {
+      timeBand.classList.remove('show');
+      return;
+    }
+    const first = Math.max(0, Math.floor(start / unit));
+    const last = Math.max(first, Math.ceil(end / unit) - 1);
+    const firstBar = Math.floor(first / slots);
+    const firstStep = first % slots;
+    const lastBar = Math.floor(last / slots);
+    const lastStep = last % slots;
+    const left = fieldX(firstBar, firstStep);
+    const right = fieldX(lastBar, lastStep);
+    if (left == null || right == null) { timeBand.classList.remove('show'); return; }
+    timeBand.classList.add('show');
+    timeBand.style.left = `${left}px`;
+    timeBand.style.width = `${Math.max(0, right + stepWidth() - left)}px`;
+  }
+
+  /** Position the piano-roll's locator pins in the same measured field as the notes. */
+  function placeLocatorPins() {
+    if (!locatorClip) return;
+    locatorClip.replaceChildren();
+    const positions = locatorPositions?.() || null;
+    if (!positions) return;
+    const unit = slotUnit();
+    for (const [id, value] of Object.entries(positions)) {
+      if (!Number.isFinite(Number(value))) continue;
+      const rendered = Math.max(0, Number(value) / unit);
+      const bar = Math.floor(rendered / slots);
+      const step = Math.max(0, Math.min(slots - 1, Math.round(rendered - bar * slots)));
+      const left = fieldX(bar, step);
+      if (left == null) continue;
+      const pin = document.createElement('button');
+      pin.type = 'button';
+      pin.className = `ssqlocator locator-${String(id).toLowerCase()}`;
+      pin.dataset.locator = id;
+      pin.style.left = `${left}px`;
+      pin.setAttribute('aria-label', `Locator ${id}`);
+      pin.dataset.tip = `Locator ${id}`;
+      pin.dataset.tipsays = 'Right-click for loop, note selection, erase and locator actions';
+      pin.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== 0) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        locatorDrag = { id, pin, value: Number(value) };
+        pin.classList.add('dragging');
+        const move = (e) => {
+          if (!locatorDrag || !(e.buttons & 1)) return;
+          const step = stepUnder(e);
+          if (step == null) return;
+          const next = Math.max(0, Math.round(step * unit));
+          locatorDrag.value = next;
+          onLocatorMove?.(id, next);
+          const nextBar = Math.floor(step / slots);
+          const nextStep = step % slots;
+          const nextLeft = fieldX(nextBar, nextStep);
+          if (nextLeft != null) pin.style.left = `${nextLeft}px`;
+        };
+        const stop = () => {
+          removeEventListener('pointermove', move);
+          removeEventListener('pointerup', stop);
+          removeEventListener('pointercancel', stop);
+          const done = locatorDrag;
+          locatorDrag = null;
+          pin.classList.remove('dragging');
+          if (done) onLocatorMoveEnd?.(done.id, done.value);
+        };
+        addEventListener('pointermove', move);
+        addEventListener('pointerup', stop);
+        addEventListener('pointercancel', stop);
+      });
+      pin.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        onLocatorContextMenu?.(ev, id, Number(value));
+      });
+      locatorClip.append(pin);
+    }
+  }
+
   // ---- drawing ---------------------------------------------------------------------
 
   /**
@@ -871,6 +978,7 @@ export function createBarGrid({
       // Anywhere in the ruler, not only on a cell — `barUnder` is what decides whether
       // there is a bar there, and the gaps between the cells are part of the ruler.
       if (ev.button !== 0 || !ev.target?.closest?.('.ssqruler, .ssqbars, .ssqnums')) return;
+      if (onSelectTime && ev.target.closest('.ssqnums')) return;
       const b = barUnder(ev);
       if (b == null) return;
       ev.preventDefault();
@@ -903,6 +1011,93 @@ export function createBarGrid({
     };
     addEventListener('pointerup', endDrag);
     addEventListener('pointercancel', endDrag);
+  }
+
+  // Beat-range selection lives on the BEAT strip, leaving the BAR strip's existing
+  // arrangement selection semantics untouched. The selected edges snap outward to
+  // whole musical beats (four sixteenths), regardless of 16/32 drawn cells.
+  let timeDrag = null;
+  const stepUnder = (ev) => {
+    const direct = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.ssqbarnum');
+    if (direct && direct.closest('.ssqnums')) {
+      const b = Number(direct.dataset.bar); const i = Number(direct.dataset.step);
+      if (Number.isFinite(b) && Number.isFinite(i)) return b * slots + i;
+    }
+    const cells = rulerCells();
+    let best = null; let distance = Infinity;
+    for (const cell of cells) {
+      const r = cell.getBoundingClientRect();
+      const d = ev.clientX < r.left ? r.left - ev.clientX
+        : ev.clientX > r.right ? ev.clientX - r.right : 0;
+      if (d < distance) { distance = d; best = cell; if (!d) break; }
+    }
+    if (!best) return null;
+    return Number(best.dataset.bar) * slots + Number(best.dataset.step);
+  };
+  const snapTime = (a, b) => {
+    const unit = slotUnit();
+    const low = Math.min(a, b) * unit;
+    const high = (Math.max(a, b) + 1) * unit;
+    const start = Math.floor(low / 4) * 4;
+    const end = Math.min((range.to + 1) * 16, Math.ceil(high / 4) * 4);
+    return { start, end: Math.max(start + 4, end) };
+  };
+  if (onSelectTime) {
+    el.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 0 || !ev.target?.closest?.('.ssqnums')) return;
+      const step = stepUnder(ev);
+      if (step == null) return;
+      ev.preventDefault();
+      timeDrag = { anchor: step };
+      onSelectTime(snapTime(step, step));
+      selectionChanged();
+      placeTimeBand();
+    });
+    addEventListener('pointermove', (ev) => {
+      if (!timeDrag || !(ev.buttons & 1)) return;
+      const step = stepUnder(ev);
+      if (step == null) return;
+      onSelectTime(snapTime(timeDrag.anchor, step));
+      selectionChanged();
+      placeTimeBand();
+    });
+    const endTimeDrag = () => {
+      if (timeDrag) onSelectTimeEnd?.(selectedTime?.() || null);
+      timeDrag = null;
+    };
+    addEventListener('pointerup', endTimeDrag);
+    addEventListener('pointercancel', endTimeDrag);
+  }
+
+  // The selected beat band is visually translucent and intentionally does not take
+  // pointer events, so delegate its right-click from the ruler and resolve the hit
+  // back to a musical position. This is the range itself as the target, not a locator.
+  if (onTimeContextMenu) {
+    el.addEventListener('contextmenu', (ev) => {
+      if (!ev.target?.closest?.('.ssqruler')) return;
+      const picked = selectedTime?.() || null;
+      if (!picked || Number(picked.end) <= Number(picked.start)) return;
+      const step = stepUnder(ev);
+      if (step == null) return;
+      const at = step * slotUnit();
+      if (at < Number(picked.start) || at >= Number(picked.end)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      onTimeContextMenu(ev, picked);
+    });
+  }
+
+  if (onDoubleClickStep) {
+    el.addEventListener('dblclick', (ev) => {
+      if (!ev.target?.closest?.('.ssqruler')) return;
+      const step = stepUnder(ev);
+      if (step == null) return;
+      const beat = Math.max(0, Math.floor(step / Math.max(1, slots / 4))
+        * Math.max(1, slots / 4));
+      ev.preventDefault();
+      ev.stopPropagation();
+      onDoubleClickStep(beat * slotUnit());
+    });
   }
 
   /**
@@ -1094,6 +1289,8 @@ export function createBarGrid({
     // `1` of its own first beat instead of being pushed four characters to the right of
     // the barline by a word that the corner already said.
     selBand = null;
+    timeBand = null;
+    locatorClip = null;
     strip('ssqbars', rulerLabel, (b, i) => (i === 0 ? (rulerLabel ? `${b + 1}` : `Bar ${b + 1}`) : null));
     strip('ssqnums', 'Beat', (b, i) => (i % 4 === 0 ? `${i / 4 + 1}` : null));
 
@@ -1125,13 +1322,25 @@ export function createBarGrid({
     scroll.append(body);
     if (docked) {
       rulerEl = ruler;
-      if (selectedBars) {
+      if (selectedBars || selectedTime) {
         const clip = document.createElement('div');
         clip.className = 'ssqselclip';
-        selBand = document.createElement('div');
-        selBand.className = 'ssqselband';
-        clip.append(selBand);
+        if (selectedBars) {
+          selBand = document.createElement('div');
+          selBand.className = 'ssqselband';
+          clip.append(selBand);
+        }
+        if (selectedTime) {
+          timeBand = document.createElement('div');
+          timeBand.className = 'ssqtimeband';
+          clip.append(timeBand);
+        }
         ruler.append(clip);
+      }
+      if (locatorPositions) {
+        locatorClip = document.createElement('div');
+        locatorClip.className = 'ssqlocatorclip';
+        ruler.append(locatorClip);
       }
       const surface = document.createElement('div');
       surface.className = 'ssqdock';
@@ -1163,6 +1372,8 @@ export function createBarGrid({
     // After the rows: the ruler is measured for this, and a ruler in a panel with no
     // layout yet measures nothing.
     placeSelBand();
+    placeTimeBand();
+    placeLocatorPins();
     scroll.scrollTop = scrollAt.top;
     scroll.scrollLeft = scrollAt.left;
     scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
@@ -1171,6 +1382,8 @@ export function createBarGrid({
     // been resized, can leave the remembered position past the end.
     renderRows(c);
     placeSelBand();
+    placeTimeBand();
+    placeLocatorPins();
     scroll.addEventListener('scroll', () => {
       noteScroll(scroll);
       syncDockedChrome(scroll);
@@ -1418,6 +1631,29 @@ export function createBarGrid({
           const span = drawnSpan(field, at, cellSpan(row, f.value, f.len, f.b, f.i));
           if (Math.abs(span - 1) > 1e-9) cell.style.setProperty('--len', String(span));
           if (resizable(row)) cell.classList.add('sizeable');
+          const musicalLength = span * slotUnit();
+          const lengthText = Math.abs(musicalLength - 0.25) < 1e-6 ? '1/64'
+            : Math.abs(musicalLength - 0.5) < 1e-6 ? '1/32'
+              : Math.abs(musicalLength - 1) < 1e-6 ? '1/16'
+                : Math.abs(musicalLength - 2) < 1e-6 ? '1/8'
+                  : Math.abs(musicalLength - 4) < 1e-6 ? '1/4'
+                    : Math.abs(musicalLength - 8) < 1e-6 ? '1/2'
+                      : Math.abs(musicalLength - 16) < 1e-6 ? '1 bar'
+                        : `${Number(musicalLength.toFixed(3))} sixteenths`;
+          cell.dataset.tip = row.label;
+          cell.dataset.tipsays = `Bar ${f.b + 1}, beat ${Math.floor(f.i / (slots / 4)) + 1}, `
+            + `${slots === 32 ? 'thirty-second' : 'sixteenth'} ${f.i % (slots / 4) + 1} · `
+            + `Length ${lengthText}`;
+          // At taller pitch zooms a one-step note is wide enough for the name. Short
+          // black-key rows stay clean until their measured height can carry readable
+          // text; long notes qualify on width as well as height.
+          if (noteLabels?.() !== false && Number(row.height) >= 17 && span >= 0.9) {
+            const label = document.createElement('span');
+            label.className = 'ssqnote-label';
+            label.textContent = row.label;
+            label.setAttribute('aria-hidden', 'true');
+            cell.append(label);
+          }
           // A selection is a set of PLACES, so it redraws from the same strings after
           // every rebuild — nothing about it is held in an element.
           if (selection.size && selection.has(noteKey(f.b, f.i, row.key))) cell.classList.add('sel');
@@ -1932,6 +2168,139 @@ export function createBarGrid({
     return out;
   }
 
+  /** Clear the non-destructive notes shown while Paste is waiting for a click. */
+  function clearPastePreview() {
+    for (const cell of pastePreviewCells) {
+      cell.classList.remove('paste-preview');
+      cell.style.removeProperty('--paste-len');
+    }
+    pastePreviewCells = [];
+  }
+
+  /** Show the part of an armed paste that is currently inside the virtualized window. */
+  function paintPastePreview(anchor) {
+    clearPastePreview();
+    if (!pastePlacement || !anchor) return;
+    const clip = pastePlacement.clip;
+    for (const note of clip.notes || []) {
+      const sixteenths = Number(note.offset) || 0;
+      const cellStep = Math.round((anchor.step + sixteenths / slotUnit()));
+      const b = anchor.bar + Math.floor(cellStep / slots);
+      const step = cellStep % slots;
+      if (b < range.from || b > range.to || step < 0 || step >= slots) continue;
+      const row = rowList.find((candidate) => Number(candidate.midi) === Number(note.midi));
+      const cell = row ? cellFor(row.key, b, step) : null;
+      if (!cell) continue;
+      cell.classList.add('paste-preview');
+      const visualLen = Math.max(0.25, (Number(note.length) || 1) / slotUnit());
+      cell.style.setProperty('--paste-len', String(visualLen));
+      pastePreviewCells.push(cell);
+    }
+  }
+
+  /** The note set the host may serialize for its session clipboard. */
+  function copySelection() {
+    const notes = selected();
+    if (!notes.length) return null;
+    const first = Math.min(...notes.map((note) => note.bar * slots + note.step));
+    return {
+      resolution: 16,
+      notes: notes.map((note) => ({
+        midi: Number(note.row.midi),
+        offset: (note.bar * slots + note.step - first) * slotUnit(),
+        length: Math.max(0.25, (Number(note.len) || 1) * slotUnit()),
+      })),
+    };
+  }
+
+  /** Stage a complete clip at an absolute sixteenth position and commit once. */
+  function pasteNotes(clip, anchorSixteenths) {
+    if (!clip?.notes?.length || !Number.isFinite(Number(anchorSixteenths))) {
+      return { count: 0, changed: 0, overflow: false };
+    }
+    const anchor = Number(anchorSixteenths);
+    const end = Math.max(...clip.notes.map((note) =>
+      (Number(note.offset) || 0) + (Number(note.length) || 1)));
+    if (anchor < 0 || anchor + end > plan.length * 16) {
+      return { count: clip.notes.length, changed: 0, overflow: true };
+    }
+    let changed = 0;
+    const nextSelection = [];
+    for (const note of clip.notes) {
+      const midi = Number(note.midi);
+      const row = rowList.find((candidate) => Number(candidate.midi) === midi);
+      if (!row) continue;
+      const at = anchor + (Number(note.offset) || 0);
+      const slot = Math.round(at / slotUnit());
+      const b = Math.floor(slot / slots);
+      const step = slot % slots;
+      if (setCell(row, b, step, true, Math.max(0.25, (Number(note.length) || 1) / slotUnit()))) {
+        changed++;
+      }
+      nextSelection.push(noteKey(b, step, row.key));
+    }
+    if (changed) {
+      selection = new Set(nextSelection);
+      commit();
+    }
+    return { count: clip.notes.length, changed, overflow: false };
+  }
+
+  function armPaste(clip) {
+    clearPastePreview();
+    pastePlacement = clip?.notes?.length ? { clip } : null;
+    if (!pastePlacement) return false;
+    el.classList.add('paste-armed');
+    selectionChanged();
+    return true;
+  }
+
+  function cancelPaste() {
+    clearPastePreview();
+    pastePlacement = null;
+    el.classList.remove('paste-armed');
+    selectionChanged();
+  }
+
+  function selectAllNotes() {
+    const notes = allNotes();
+    selection = new Set(notes.map((note) => noteKey(note.bar, note.step, note.row.key)));
+    paintSelection();
+    return notes.length;
+  }
+
+  /** Notes whose attacks fall inside an absolute musical-sixteenth range. */
+  function notesInTimeRange(start, end) {
+    const from = Number(start); const to = Number(end);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return [];
+    return allNotes().filter((note) => {
+      const at = note.bar * 16 + note.step * slotUnit();
+      return at >= from && at < to;
+    });
+  }
+
+  /** Select every note whose attack falls inside an absolute musical-sixteenth range. */
+  function selectTimeRange(start, end) {
+    const notes = notesInTimeRange(start, end);
+    if (!Number.isFinite(Number(start)) || !Number.isFinite(Number(end)) || Number(end) <= Number(start)) {
+      clearSelection();
+      return 0;
+    }
+    select(notes.map((note) => noteKey(note.bar, note.step, note.row.key)));
+    return notes.length;
+  }
+
+  /** Erase a time range as one undoable piano-roll edit. */
+  function eraseTimeRange(start, end) {
+    const notes = notesInTimeRange(start, end);
+    if (!notes.length) return 0;
+    const removed = new Set(notes.map((note) => noteKey(note.bar, note.step, note.row.key)));
+    for (const note of notes) setCell(note.row, note.bar, note.step, false);
+    selection = new Set([...selection].filter((key) => !removed.has(key)));
+    commit();
+    return notes.length;
+  }
+
   function allNotes() {
     const out = [];
     for (let b = range.from; b <= range.to; b++) {
@@ -2316,6 +2685,22 @@ export function createBarGrid({
     if (ev.button !== 0 && ev.button !== 2) return;
     let cell = cellAt(ev.clientX, ev.clientY);
     if (!cell) return;
+    // Paste owns the next left click. The row is intentionally ignored: copied
+    // pitches remain absolute, and the clicked column is the only insertion decision.
+    if (pastePlacement && ev.button === 0) {
+      ev.preventDefault();
+      const anchor = (Number(cell.dataset.bar) * slots + Number(cell.dataset.step)) * slotUnit();
+      const result = pasteNotes(pastePlacement.clip, anchor);
+      if (result.overflow) {
+        toast?.('Paste would run past the end of the song — choose an earlier bar');
+      } else {
+        cancelPaste();
+      }
+      return;
+    }
+    // A different editing gesture takes ownership and only cancels placement; the
+    // session clipboard itself remains available for the next Paste command.
+    if (pastePlacement) cancelPaste();
     // A missed pointerup (window switch, browser cancellation, or a prior gesture
     // ending outside the panel) must not leave a Tone preview in its sustain stage.
     previewRelease();
@@ -2426,6 +2811,13 @@ export function createBarGrid({
     atEdge = null;
   };
   el.addEventListener('pointermove', (ev) => {
+    if (pastePlacement && !drag) {
+      const target = cellAt(ev.clientX, ev.clientY);
+      if (target) paintPastePreview({
+        bar: Number(target.dataset.bar),
+        step: Number(target.dataset.step),
+      });
+    }
     if (!movable || drag) return;
     // Decided without measuring anything: no mode but `auto` offers the handle, and any
     // modifier means the press is already spoken for.
@@ -2443,6 +2835,7 @@ export function createBarGrid({
   // a panel nobody is pointing at is an offer that is not being made.
   el.addEventListener('pointerleave', () => {
     if (drag) return;
+    if (pastePlacement) clearPastePreview();
     clearEdge();
   });
 
@@ -2451,8 +2844,15 @@ export function createBarGrid({
   // acting when this panel is open and holding something, and never while somebody is
   // typing into a field.
   addEventListener('keydown', (ev) => {
-    if (!selectable || !selection.size || !isOpen()) return;
+    if (!isOpen()) return;
     if (ev.target?.closest?.('input, select, textarea, [contenteditable="true"]')) return;
+    if (pastePlacement && ev.key === 'Escape') {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      cancelPaste();
+      return;
+    }
+    if (!selectable || !selection.size) return;
     // Stopped outright, like the arrows below: Escape is the desk's panic, and letting go
     // of a selection is not an emergency. Only ever reached with notes actually picked
     // out — with none, this listener has already returned and the panic is what ⎋ means.
@@ -2464,6 +2864,7 @@ export function createBarGrid({
     }
     if (ev.key === 'Backspace' || ev.key === 'Delete') {
       ev.preventDefault();
+      ev.stopImmediatePropagation();
       deleteSelection();
       return;
     }
@@ -2477,11 +2878,13 @@ export function createBarGrid({
     ev.stopImmediatePropagation();
     const notes = selected();
     if (!notes.length) return;
-    // ⌥ makes them longer and shorter instead of moving them — the keyboard's version
-    // of dragging the right end, and the only way to do it a step at a time exactly.
-    if (ev.altKey) resizeNotes(notes, dir.step * snapSize());
-    else moveNotes(notes, dir.step * (ev.shiftKey ? slots : snapSize()),
-      dir.row * (ev.shiftKey ? 12 : 1));
+    // Horizontal ⇧ is the short, easy-to-reach length gesture. The longer ⇧⌥ form
+    // moves the phrase by a whole bar; ⌥ alone remains a compatible length gesture.
+    const horizontal = dir.step !== 0;
+    const moveBar = horizontal && ev.shiftKey && ev.altKey;
+    if (moveBar) moveNotes(notes, dir.step * slots, 0);
+    else if (horizontal && (ev.shiftKey || ev.altKey)) resizeNotes(notes, dir.step * snapSize());
+    else moveNotes(notes, dir.step * snapSize(), dir.row * (ev.shiftKey ? 12 : 1));
     commit();
   });
 
@@ -2539,6 +2942,7 @@ export function createBarGrid({
     if (!on) {
       previewRelease();
       pending.clear();
+      cancelPaste();
       // Nothing to watch while it is shut, and the next `build` points it at the
       // scroller it makes.
       sizeWatch?.disconnect();
@@ -2620,6 +3024,9 @@ export function createBarGrid({
       scroll.scrollLeft = Math.min(maxLeft, scrollAt.left);
       scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
       syncDockedChrome(scroll);
+      placeSelBand();
+      placeTimeBand();
+      placeLocatorPins();
       if (virtual) renderRows(ctx());
     },
     /** Repaint: the selection moved, or the song changed under us. */
@@ -2632,10 +3039,23 @@ export function createBarGrid({
       if (!scroll) return;
       scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
       syncDockedChrome(scroll);
+      placeSelBand();
+      placeTimeBand();
+      placeLocatorPins();
       if (virtual) renderRows(ctx());
     },
     setResizeDeferred,
     selectedCount: () => selected().length,
+    selectAll: selectAllNotes,
+    selectTimeRange,
+    eraseTimeRange,
+    countTimeRange: (start, end) => notesInTimeRange(start, end).length,
+    clearSelection,
+    copySelection,
+    deleteSelection,
+    armPaste,
+    cancelPaste,
+    pasteArmed: () => !!pastePlacement,
     adjustLengths: ({ scope: scopeKind = 'selection', percent } = {}) =>
       adjustLengths(scopeKind === 'all' ? 'all' : 'selection', percent),
     quantiseLengths: ({ scope: scopeKind = 'selection', grid = 1 } = {}) =>
@@ -2696,6 +3116,7 @@ export function createBarGrid({
       pending.clear();
       paint = null;
       drag = null;
+      cancelPaste();
       selection = new Set();
       endBand();
       scrollAt = { top: 0, left: 0 };

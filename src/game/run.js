@@ -1,7 +1,7 @@
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, paintChrome } from '../engine/renderer.js';
-import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, framingFor, easeZoom, easePan, setRestingZoom } from '../engine/camera.js';
+import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, anchorShift, BG_FOLLOW, setRestingZoom } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
 import { Input } from '../engine/input.js';
 import {
@@ -13,7 +13,7 @@ import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
 import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
-import { Player, PLAYER_X, GRAVITY, jumpHeightFor } from './player.js';
+import { Player, PLAYER_X, PLAYER_W, GRAVITY, jumpHeightFor } from './player.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstJumpApex, COIN_GAP, COIN_FLOOR } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
@@ -31,7 +31,8 @@ import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF } from './draw.js';
-import { drawTerrain, drawRoutes, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
+import { drawTerrain, drawRoutes, drawSubsoil, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
+import { routeRise, roadAt, buildRoutes, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
 import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
@@ -74,15 +75,58 @@ const ACT_BANNER_FADE = 0.3;
 // that dismissed the card BEFORE it from carrying through into this one.
 const ZONE_CARD_FADE = 0.25;
 const ZONE_CARD_ARM = 0.4;
-// How high a floating island may sit, in px above the ground under it.
+// How high a road may carry the hero before the camera stops craning at it and
+// RE-PINS to the road instead (camera.js's `floorY`). Set to the island ceiling
+// on purpose: everything that could already be reached with a jump frames
+// exactly as it always did, and only a road that has left jump range — which is
+// to say only a road you are committed to — moves the anchor.
+// How high a road may carry the hero before the camera re-pins to it.
 //
-// Derived rather than chosen: `worstJumpApex()` is ~37px for the pessimistic
-// worst hero (and 45.5 for the real one, Grumpos), and a slab you can only just
-// touch at the very top of a perfect jump is one you miss constantly. 80% of
-// that leaves the margin the landing actually needs, and it lands at 29px —
-// which is also comfortably inside the camera's headroom, so the frame does not
-// have to crane for an island the way it will for a full high road.
-const MAX_ISLAND_RISE = Math.floor(worstJumpApex() * 0.8);
+// Derived from the FRAME, not from the jump. The old value was the island
+// ceiling, which re-pinned for anything above one hop — and that was wrong the
+// moment islands started stacking: a staircase topping out at 80px is held
+// comfortably by the crane, and moving the anchor for it slides the lane and
+// the steps you climbed off the bottom of the screen, taking away the one thing
+// you need to see to get back down. What the anchor is FOR is a road the frame
+// cannot hold at all.
+//
+// `restingHeadroom()` is what the frame holds at full crane; subtracting a
+// pessimistic jump apex leaves the standing height at which a hero can still
+// jump without the zoom opening up. Live, because ZOOM moves with the device.
+function camAnchorFree() {
+  return Math.max(MAX_ISLAND_RISE, restingHeadroom() - worstJumpApex());
+}
+// The same band going DOWN, and far smaller, because the crane has nothing to
+// spend there: the apron below the groundline is the budget for craning UP, and
+// there is no equivalent underneath. Any road that dips more than a few pixels
+// below the lane has to be followed rather than framed.
+const CAM_ANCHOR_DOWN = 10;
+// How far the hero may sink below the re-pinned anchor before it stops easing
+// and simply follows him. Only ever engages while the anchor is off the
+// groundline, so rolling terrain — which dips the hero up to 18px below
+// GROUND_Y and has always been framed by the crane — never sees it.
+const CAM_FOOTROOM = 6;
+// A spring launches to the road's entry height plus this. Clearance rather than
+// exactness: the hero has to be DESCENDING to be caught by a road (see
+// updateRoute), so the arc must peak above it rather than at it.
+const SPRING_CLEAR = 16;
+// Where the pad sits relative to the mouth it is aimed at. The launch solves for
+// height and the placement solves for distance, so this is the one number that
+// says "arrive just inside the road rather than exactly on its lip".
+const SPRING_LEAD = 12;
+// Lane kept clear either side of an opening, so nothing can crowd a hero into
+// one he did not choose.
+const OPENING_CLEAR = 26;
+// Rise above which a sky road is drawn as cloud rather than as dirt, and the
+// band over which it changes its mind. Below the first number it is a slab of
+// ground held up in the air; above the second it is weather.
+// Set above the sky road's own ENTRY height on purpose. The lip is where the
+// spring puts you down and it wants to be honest ground under your feet — a
+// landing platform half dissolved into fog reads as neither one thing nor the
+// other. The changeover belongs to the climb, which is the stretch that is
+// about leaving the ground in the first place.
+const CLOUD_FROM = 108;
+const CLOUD_TO = 168;
 // Jump faces: expressionFor's `jf` lookup (toons.js) — 0 surprised, 1 excited,
 // 2 determined, 3 startled.
 const JUMP_FACE_COUNT = 4;
@@ -293,6 +337,10 @@ const BOOST_FLARE_T = 0.3;
 // Longer than the pad's own flare: the pad is behind you almost immediately,
 // and the thing the boost is actually about is what it did to YOU.
 const BOOST_LEAN_T = 0.5;
+// The spring's own flare. Longer than the pad's because the hero is still ON
+// SCREEN above it for most of a second, and a confirmation that has finished
+// before the thing it confirms has stopped happening is not a confirmation.
+const SPRING_FLARE_T = 0.5;
 
 const PAUSE_BUTTONS = [
   // 'pause' toggles, so it resumes from here; 'escape' while already paused is
@@ -699,6 +747,7 @@ export class RunState {
     this.prevCamX = 0;
     this.prevCamZoom = ZOOM;
     this.prevCamPan = 0;
+    this.prevCamFloorY = GROUND_Y;
     this.prevTRun = 0;
     this.prevFinishPlayerX = PLAYER_X;
     this.prevIntroRunX = PLAYER_X;
@@ -722,33 +771,53 @@ export class RunState {
   routeGroundY(worldX, route) {
     if (!route) return this.groundYAt(worldX);
     if (route.kind === 'island') return route.topY;
-    return this.groundYAt(worldX) - this.forkRise(worldX, route);
+    return this.groundYAt(worldX) - this.routeRise(worldX, route);
+  }
+
+  /** See routes.js — the profile itself is geometry and lives with the rest. */
+  routeRise(worldX, f) { return routeRise(worldX, f); }
+
+  /**
+   * How far the hero falls when a road runs out under him.
+   *
+   * Sampled at the road's LAST COLUMN rather than at the hero's own x, and that
+   * is the whole subtlety: by the time this is asked he is already past the
+   * span, where the road correctly does not exist and reports a height of zero.
+   * Asking there gave a drop of nothing, which was fine while every fork eased
+   * down to meet the ground and wrong the moment one stopped at height.
+   *
+   * An island keeps its own arithmetic because its top is a fixed line rather
+   * than an offset from the rolling ground beneath it.
+   */
+  routeExitDrop(worldX, r) {
+    if (r.kind === 'island') return this.groundYAt(worldX) - r.topY;
+    return this.routeRise(r.x + r.w - 0.001, r);
   }
 
   /**
-   * How far a fork's high road sits above the ground at this x.
+   * The floor an ENTITY stands on.
    *
-   * Full height from the moment the span opens — the mouth is a LEDGE, not a
-   * slope, and that is deliberate: a road that rose gradually out of the floor
-   * would collect a hero who simply kept running, and then the fork would not
-   * be a choice at all. You jump to catch it or you stay low.
-   *
-   * The far end is the opposite: it eases down on the same smoothstep the
-   * terrain uses, so the two roads converge instead of the high one stopping
-   * dead. That easing IS the convergence — by the time the span closes, the
-   * road and the ground are the same line and the route drops away with
-   * nothing to fall.
+   * Almost everything in the game stands on the base ground and always has, so
+   * this answers `groundYAt` unless the thing was deliberately laid on a road.
+   * That one field is what lets an underground section be a PLACE rather than a
+   * corridor: a crate down there is an ordinary crate with an ordinary hitbox,
+   * boxed against the tunnel floor instead of the lane, and nothing about
+   * collision, breaking, debris or drawing has to learn what a tunnel is.
    */
-  forkRise(worldX, f) {
-    const t = (worldX - f.x) / f.w;
-    // `t < 0`, not `t <= 0`: the mouth itself is already at full height. Letting
-    // the very first column sit at ground level draws a vertical wall from the
-    // floor up to the road, which reads as something the hero will run into
-    // rather than a ledge he can jump to.
-    if (t < 0 || t >= 1) return 0;
-    if (t < f.hold) return f.rise;
-    const k = (t - f.hold) / (1 - f.hold);
-    return f.rise * (1 - k * k * (3 - 2 * k));
+  entityGroundY(e) {
+    return e && e.route ? this.routeGroundY(e.x, e.route) : this.groundYAt(e.x);
+  }
+
+  /**
+   * Whether an entity is on the same road as the hero, and therefore his
+   * problem. Roads are far enough apart vertically that boxes rarely meet
+   * anyway, but "rarely" is not the contract — a hero falling INTO a tunnel
+   * passes straight down through the lane's own obstacle band on the way, and
+   * being clipped by a crate he had already run under is not a hazard, it is a
+   * bug with a hitbox.
+   */
+  sharesRoute(e) {
+    return (e.route || null) === (this.route || null);
   }
 
   /** Where the player's own feet rest right now. */
@@ -756,10 +825,41 @@ export class RunState {
     return this.routeGroundY(this.playerWorldX(), this.route);
   }
 
-  /** The raised route covering this x, if any. Routes never overlap. */
+  /**
+   * The road at this x a FALLING hero could land on. Routes never overlap.
+   *
+   * Tunnels are excluded because there is nothing to land on: a tunnel is a hole
+   * with the lane running over the top of it, so the only way in is the mouth
+   * (tunnelMouthAt) and the only thing above it is the ground you are on.
+   */
   routeAt(worldX) {
     for (const r of this.routes) {
-      if (worldX >= r.x && worldX <= r.x + r.w) return r;
+      if (r.kind === 'tunnel') continue;
+      if (worldX >= r.x && worldX <= r.x + r.w && roadAt(worldX, r)) return r;
+    }
+    return null;
+  }
+
+  /**
+   * The tunnel whose MOUTH covers this x.
+   *
+   * A tunnel's mouth is a short window at the head of its span, not the whole
+   * thing. Past the mouth the ground overhead is solid again and the tunnel is
+   * scenery running beneath a hero who chose not to take it — so a jump that
+   * clears the hole has to stay cleared, and it would not if the tunnel went on
+   * claiming the lane behind its own entrance.
+   */
+  tunnelMouthAt(worldX) {
+    for (const r of this.routes) {
+      if (r.kind !== 'tunnel') continue;
+      if (worldX >= r.x && worldX <= r.x + r.mouthW) return r;
+      // Every hole counts as a mouth. This is the one place that decides whether
+      // the lane is open under the hero, so a hole the renderer carves and the
+      // spawner puts a gap in but this does not know about would be a hole you
+      // can see, fall past the edge of, and land on solid air.
+      for (const h of r.holes || []) {
+        if (worldX >= h.x && worldX <= h.x + h.w) return r;
+      }
     }
     return null;
   }
@@ -779,22 +879,59 @@ export class RunState {
    * road from underneath is how you get on top of it, and a runner that clonks
    * its head on the platform it is trying to reach reads as broken.
    *
-   * OFF is just arithmetic, and it is where the two kinds part company. `y` is
-   * altitude above the CURRENT floor, so leaving a road means adding the drop
-   * between it and the ground below. An ISLAND stops dead, so that drop is its
-   * full height and the hero falls. A FORK has already eased down to meet the
-   * ground by the time its span closes, so the same subtraction comes out at
-   * zero and he simply keeps running — the roads have converged. One line of
-   * arithmetic, both endings, no special case.
+   * OFF is just arithmetic, and it is where the kinds part company. `y` is
+   * altitude above the CURRENT floor, so leaving a road means adding the height
+   * the road had left under it. An ISLAND stops dead at its full height. A road
+   * that ends in the air stops at whatever `end` it settled to and the hero
+   * falls that far. A TUNNEL has climbed back to meet the lane by the time its
+   * span closes, so the same expression comes out at zero and he simply keeps
+   * running. One line of arithmetic, every ending, no special case.
+   *
+   * A TUNNEL is that same line run BACKWARDS. There is nothing to land on going
+   * down, so it does not need a sweep: a hero on the ground who reaches the
+   * mouth has the floor taken out from under him, and rebasing his altitude
+   * against the new, lower floor is what makes him fall into it. He can only be
+   * claimed at ground level — clear the hole and you are over the top of it,
+   * altitude above zero, and it never sees you.
    */
   updateRoute(prevFeetY) {
     const x = this.playerWorldX();
     if (this.route) {
-      if (x >= this.route.x && x <= this.route.x + this.route.w) return false;
-      const drop = this.groundYAt(x) - this.routeGroundY(x, this.route);
+      const onRoad = x >= this.route.x && x <= this.route.x + this.route.w;
+      // Over a BREAK, but only once he is down at the surface. A hero in the
+      // air above a gap has not left the road — he is jumping it, which is the
+      // entire point of putting one there — and taking the road away under him
+      // mid-jump rebased his altitude to the lane and dragged the camera down
+      // with it. From up on a cloud that reads as the world snapping back to
+      // the ground every time you press jump. `y <= 0` is the moment there is
+      // no longer anything to stand on, and not a moment before it.
+      const overGap = onRoad && !roadAt(x, this.route);
+      if (onRoad && !(overGap && this.player.y <= 0.01)) return false;
+      // Off the end, or down into a break — the same thing as far as the
+      // arithmetic is concerned, since either way there is no longer a road
+      // under him and his altitude has to be rebased against whatever is. The
+      // only difference is where the height comes from: at a break it is the
+      // road's height right there, and at the end it is the lip's.
+      const drop = overGap ? routeRise(x, this.route) : this.routeExitDrop(x, this.route);
       this.player.y += drop;
       if (drop > 0.01) this.player.grounded = false;
       this.route = null;
+      return false;
+    }
+    // Down the hole. Checked before the landing sweep because a hero at ground
+    // level is not descending onto anything and the sweep would never see him.
+    const hole = this.tunnelMouthAt(x);
+    if (hole && this.player.y <= 0.01 && this.player.grounded) {
+      this.route = hole;
+      const fall = this.routeGroundY(x, hole) - this.groundYAt(x);
+      this.player.y += fall;
+      // Only a HOLE puts him in the air. A ramp starts level with the lane, so
+      // he keeps his feet and simply finds the ground going down under them —
+      // taking his jump away there would read as a stumble.
+      if (fall > 0.01) {
+        this.player.grounded = false;
+        this.player.jumps = 1;    // no free hop off a floor that is not there
+      }
       return false;
     }
     if (this.player.vy > 0) return false;       // rising: pass through from below
@@ -829,11 +966,51 @@ export class RunState {
     // the overwhelming case where nothing has changed.
     applyFraming(this.renderSettings || this.save.settings);
     const heroX = this.playerWorldX();
-    // Rolling terrain owes headroom, and an island owes MORE of it: the hero is
-    // already `rise` up before they jump at all. Asking routeGroundY rather than
-    // groundYAt is what keeps framingFor honest about how much frame the hero
-    // actually needs — miss it and a jump taken from a slab clips the top.
-    const lift = GROUND_Y - this.routeGroundY(heroX, this.route);
+    const floor = this.routeGroundY(heroX, this.route);
+    // ---- where the frame is pinned -----------------------------------------
+    //
+    // The crane and the zoom can hold a hero who is somewhere ELSE for a moment;
+    // they cannot hold one who now LIVES two hundred pixels up. Craning runs out
+    // after the 38px apron, and buying the rest with zoom would shrink the whole
+    // game to keep a groundline on screen that the player has left behind and
+    // has no further use for.
+    //
+    // So past the point where the road stops being reachable, the anchor stops
+    // being the groundline and becomes the ROAD. The hero holds his screen
+    // position and the world slides down past him, which is what climbing looks
+    // like from inside it. Below the free band nothing moves at all, so islands,
+    // low forks, hills and every ordinary jump frame exactly as they always did.
+    //
+    // Handed over gradually rather than switched: the anchor takes NONE of a
+    // rise inside the free band, ALL of one at twice the band, and a smoothstep
+    // of it between. Two things fall out of that shape, and both matter more
+    // than they look. Below the band nothing moves, so islands, low forks,
+    // hills and every ordinary jump frame to the pixel as they always did.
+    // Above it the anchor lands exactly ON the road — not a fixed distance
+    // under it — so once it has caught up, standing on a cloud costs the same
+    // framing as standing on the ground, which is the entire reason for
+    // re-pinning instead of craning.
+    const roadRise = this.groundYAt(heroX) - floor;
+    const band = roadRise < 0 ? CAM_ANCHOR_DOWN : camAnchorFree();
+    const k = Math.max(0, Math.min(1, (Math.abs(roadRise) - band) / band));
+    const anchorLift = roadRise * (k * k * (3 - 2 * k));
+    this.camFloorY = easeFloor(this.camFloorY, GROUND_Y - anchorLift, dt);
+    // The ease is deliberately behind the hero on the way up, and that lag is
+    // the only thing that could put him under the bottom edge on the way down.
+    // Guarded on the anchor being off the groundline so rolling terrain — which
+    // dips the hero below GROUND_Y and has always been framed by the crane —
+    // never reaches this at all.
+    if (Math.abs(this.camFloorY - GROUND_Y) > 0.5) {
+      this.camFloorY = Math.max(this.camFloorY, floor - this.player.y - CAM_FOOTROOM);
+    }
+    // Rolling terrain owes headroom, and a road owes MORE of it: the hero is
+    // already `rise` up before they jump at all. Measured against the anchor
+    // rather than against GROUND_Y, so once the anchor has caught up with a
+    // climbing road the framing is the resting one again — a jump taken from a
+    // sky road costs exactly what a jump on the ground costs, which is the
+    // point of re-pinning. Identical to the old `GROUND_Y - routeGroundY` for
+    // as long as the anchor sits on the groundline, which is most of the game.
+    const lift = this.camFloorY - floor;
     const want = framingFor(this.player.y, lift);
     this.camPan = easePan(this.camPan, want.pan, dt);
     this.camZoom = easeZoom(this.camZoom, want.zoom, dt);
@@ -857,13 +1034,19 @@ export class RunState {
   // lowest point of its footprint. The lowest-point rule exists to stop a flat
   // base floating at one end, and rotating to the slope solves that properly;
   // keeping both would bury the pad by the full rise of the hill.
-  drawAtGround(ctx, worldX, fn, footW = 0, sink = 0, conformCam = null) {
+  //
+  // `route` seats the draw on a ROAD instead of on the lane, and it is the same
+  // road the entity's hitbox is boxed against (entityGroundY). Everything below
+  // still samples the terrain the same way, because a road rides the terrain's
+  // own shape — a slab on a hill still needs its lowest-point seating.
+  drawAtGround(ctx, worldX, fn, footW = 0, sink = 0, conformCam = null, route = null) {
     const cx = worldX + footW / 2;
     const conform = conformCam != null && footW > 0;
-    let gy = this.groundYAt(cx);
+    const floorAt = route ? (x) => this.routeGroundY(x, route) : (x) => this.groundYAt(x);
+    let gy = floorAt(cx);
     const over = footW * (4 / 3) / 2; // drawn half-width, centered on the box
     if (footW > 0 && !conform) {
-      gy = Math.max(gy, this.groundYAt(cx - over), this.groundYAt(cx + over));
+      gy = Math.max(gy, floorAt(cx - over), floorAt(cx + over));
     }
     ctx.save();
     ctx.translate(0, gy - GROUND_Y + sink);
@@ -883,6 +1066,7 @@ export class RunState {
     this.prevCamX = this.camX;
     this.prevCamZoom = this.camZoom;
     this.prevCamPan = this.camPan;
+    this.prevCamFloorY = this.camFloorY;
     this.prevTRun = this.tRun;
     this.prevFinishPlayerX = this.finishPlayerX;
     this.prevIntroRunX = this.introRunX;
@@ -892,6 +1076,7 @@ export class RunState {
     this.prevCamX = this.camX;
     this.prevCamZoom = this.camZoom;
     this.prevCamPan = this.camPan;
+    this.prevCamFloorY = this.camFloorY;
     this.prevTRun = this.tRun;
     this.prevFinishPlayerX = this.finishPlayerX;
     this.prevIntroRunX = this.introRunX;
@@ -925,6 +1110,9 @@ export class RunState {
     this.camX = 0;
     this.camZoom = ZOOM;
     this.camPan = 0;
+    // Which world line the frame pins to screen GROUND_Y. The groundline, until
+    // a road carries the hero out of the crane's reach — see updateCamera.
+    this.camFloorY = GROUND_Y;
     this.speedBoost = 0;
     this.tRun = 0;
     this.score = 0;
@@ -1101,32 +1289,17 @@ export class RunState {
     // is broken on exactly one eighth of the relay bag. Same instinct as
     // spawner.js's worstAirtime().
     this.route = null;
-    const noRoutes = this.bossCab || this.overtime || !Number.isFinite(this.totalDist);
-    const speed = this.baseSpeed();
-    const mk = (kind) => (d) => {
-      const x = d.at * this.totalDist;
-      const w = (d.dwell ?? 0.7) * speed;
-      const rise = Math.min(d.rise ?? 30, MAX_ISLAND_RISE);
-      return {
-        kind, x, w, rise,
-        // Islands get a FLAT top, fixed here from the ground under the slab's
-        // middle rather than evaluated per column. A floating slab is a flat
-        // thing; letting it ride the hills underneath would tilt the floor the
-        // hero stands on and hand `groundDelta` a slope the art would lean the
-        // dust and boost effects into. A fork's road is not floating — it is a
-        // road — so it keeps the terrain's own shape and only rises off it.
-        topY: kind === 'island' ? this.groundYAt(x + w / 2) - rise : 0,
-        // How much of a fork's span is spent at full height before it starts
-        // coming back down to meet the ground.
-        hold: d.hold ?? 0.6,
-        prize: d.prize || (kind === 'island' ? 'coins' : 'coins'),
-        lowPrize: d.lowPrize || null,
-      };
-    };
-    this.routes = noRoutes ? [] : [
-      ...(this.cabinet.islands || []).map(mk('island')),
-      ...(this.cabinet.forks || []).map(mk('fork')),
-    ].sort((a, b) => a.x - b.x);
+    // Built by routes.js. It is pure geometry off the cabinet's data and this
+    // stage's own length and speed, so the asset gallery can build the very
+    // same roads the run does and draw them through the very same painters —
+    // which is the only way that page can be trusted not to drift.
+    this.routes = (this.bossCab || this.overtime || !Number.isFinite(this.totalDist))
+      ? []
+      : buildRoutes(this.cabinet, {
+        totalDist: this.totalDist,
+        speed: this.baseSpeed(),
+        groundYAt: (wx) => this.groundYAt(wx),
+      });
 
     // Mission setup.
     this.mission = this.stage ? { ...this.stage.mission, count: 0, done: false } : { type: 'endless', desc: 'RUN. FOREVER. THAT IS THE WHOLE DEAL.' };
@@ -1726,7 +1899,7 @@ export class RunState {
       updateProfileAdd('spawnMs', spawnAt);
     }
     this.spawnApplianceMaybe();
-    if (this.routes.length) { this.spawnRoutePrizes(); this.clearRouteHazards(); }
+    if (this.routes.length) { this.spawnRoutePrizes(); this.clearRouteHazards(); this.spawnRouteEntries(); }
     // Swept every frame, not just on the frame the portal appears: the drip
     // capsule and the appliance both spawn at their own clock a little further
     // out than the portal does, so either can land in the column afterwards.
@@ -2139,14 +2312,19 @@ export class RunState {
   // ------------------------------------------------------------------ ability
   powerTarget(type = HERO_BY_ID[this.relay.current].ability.type) {
     const px = this.playerWorldX();
+    // Only ever something on the hero's OWN road. These are x-range searches,
+    // and x alone stopped being enough the day a second road ran under the
+    // first: a crate in a tunnel is within 46px of a hero on the lane above it
+    // and is no more his to stomp than one in another stage.
+    const mine = (ob) => ob.live && this.sharesRoute(ob);
     if (type === 'stomp' && this.player.grounded) {
       return this.obstacles
-        .filter((ob) => ob.live && ob.def.ground && ob.def.breakable && ob.x + ob.w >= px - 8 && ob.x <= px + 46)
+        .filter((ob) => mine(ob) && ob.def.ground && ob.def.breakable && ob.x + ob.w >= px - 8 && ob.x <= px + 46)
         .sort((a, b) => Math.abs(a.x - px) - Math.abs(b.x - px))[0] || null;
     }
     if (type === 'eat') {
       return this.obstacles
-        .filter((ob) => ob.live && ob.def.breakable && !ob.def.isGap && ob.x + ob.w >= px - 4 && ob.x <= px + 80)
+        .filter((ob) => mine(ob) && ob.def.breakable && !ob.def.isGap && ob.x + ob.w >= px - 4 && ob.x <= px + 80)
         .sort((a, b) => a.x - b.x)[0] || null;
     }
     return null;
@@ -2268,7 +2446,7 @@ export class RunState {
               && ob.x > this.camX && ob.x < this.camX + W) {
             this.startChompBite(ob);
             this.projectileImpact({ type: 'chomp' }, ob.x + ob.w / 2,
-              this.groundYAt(ob.x) - ob.alt - ob.h / 2);
+              this.entityGroundY(ob) - ob.alt - ob.h / 2);
             this.breakObstacle(ob, true);
             ate++;
           }
@@ -2314,7 +2492,7 @@ export class RunState {
       if (!ob.live || !ob.def.ground || !ob.def.breakable) continue;
       if (Math.abs(ob.x + ob.w / 2 - px) < radius + ob.w / 2) {
         this.projectileImpact({ type: 'spanner' }, ob.x + ob.w / 2,
-          this.groundYAt(ob.x) - ob.alt - ob.h / 2);
+          this.entityGroundY(ob) - ob.alt - ob.h / 2);
         this.breakObstacle(ob);
         if (this.modIds.includes('shockwave')) this.scatterCoins(ob.x);
         this.player.vy = 200; this.player.grounded = false; this.player.jumps = 1; // bounce
@@ -2407,7 +2585,7 @@ export class RunState {
     const r = () => this.fxRng.float();
     const bulk = Math.min(2, (ob.w * ob.h) / 140); // a stacked crate throws more than a switch
     shardBurst(cx, cy, Math.round((d.count || 9) * (0.7 + bulk * 0.3)), 78, 0.75, d.colors, {
-      size: d.size, grav: d.grav ?? 340, floor: this.groundYAt(ob.x), rand: r,
+      size: d.size, grav: d.grav ?? 340, floor: this.entityGroundY(ob), rand: r,
     });
     if (d.spark) burst(cx, cy, 5, 110, 0.22, d.spark, 1, 30, r); // machines throw sparks too
   }
@@ -2441,7 +2619,7 @@ export class RunState {
     // Material-coloured crumbs make the direction readable even when the
     // obstacle itself is tiny or the cabinet treatment is visually busy.
     const fromX = ob.x + ob.w / 2;
-    const fromY = this.groundYAt(ob.x) - ob.alt - ob.h / 2;
+    const fromY = this.entityGroundY(ob) - ob.alt - ob.h / 2;
     const mouthX = this.playerWorldX() + 9;
     const mouthY = this.groundYAt(mouthX) - this.player.y - 11;
     const d = DEBRIS[ob.type] || DEBRIS_DEFAULT;
@@ -2466,7 +2644,7 @@ export class RunState {
     ob.live = false;
     const cx = ob.x + ob.w / 2;
     if (!silent) {
-      const cy = this.groundYAt(ob.x) - ob.alt - ob.h / 2;
+      const cy = this.entityGroundY(ob) - ob.alt - ob.h / 2;
       if (ob.def.qbox) { Audio.sfx('blockBreak'); this.qboxPop(cx, cy); }
       else {
         Audio.sfx('crunch');
@@ -2913,7 +3091,7 @@ export class RunState {
             }
             continue;
           }
-          const box = entityBox(ob, this.groundYAt(ob.x));
+          const box = entityBox(ob, this.entityGroundY(ob));
           const pbox = { x: pr.x, y: this.groundYAt(pr.x) - pr.alt - 4, w: 8, h: 8 };
           if (overlaps(box, pbox)) {
             pr.hitIds.add(ob.id);
@@ -3188,6 +3366,158 @@ export class RunState {
    * each coin — which is not a constant, since the ground rolls and the slab
    * does not.
    */
+  /**
+   * The catapult. What a spring pad does when a hero runs onto it.
+   *
+   * Solved for HEIGHT, at the moment of contact, against the hero who is
+   * actually standing on it. That is what makes one pad serve the whole relay
+   * bag: Grumpos falls under 1.25g and everyone else under 1g, so a fixed
+   * launch velocity would throw the cast to eight different altitudes and a
+   * road placed for the average of them would be unreachable for a quarter of
+   * them. Taking the apex as the given and the velocity as the unknown —
+   * v = sqrt(2gh) — puts every hero at the same height, and the only thing
+   * their weight still changes is how far along the road they come down, which
+   * is what `lip` is for.
+   *
+   * The gravity multiplier is in there too, so the pad still works while a
+   * low-gravity power-up is running rather than firing the hero into orbit.
+   */
+  springLaunch(ob) {
+    const road = ob.springFor;
+    const target = (road ? road.entry : 60) + SPRING_CLEAR;
+    const g = this.player.gravity * this.powerups.gravityMultiplier();
+    this.player.launch(Math.sqrt(2 * g * target));
+    this.player.jumpFace = rollJumpFace(this.fxRng, this.player.jumpFace);
+    Audio.sfx('boost');
+    Audio.sfx('slideWhistle');
+    this.score += 50;
+    burst(ob.x + ob.w / 2, this.groundYAt(ob.x) - 2, 10, 70, 0.45, '#f6d33c', 1, 90,
+      () => this.fxRng.float());
+  }
+
+  /**
+   * The way onto a road that is too high to jump to.
+   *
+   * Placed rather than authored. The pad has to sit exactly far enough back
+   * that the arc it fires is coming DOWN as it crosses the road's mouth — a
+   * hero still rising passes up through a road rather than landing on it (see
+   * updateRoute's one-way rule), so a pad a little too close throws him
+   * straight through the thing it was aiming at. Time to apex is sqrt(2h/g)
+   * and the lane moves at `speed`, so the distance back is the product, and
+   * SPRING_LEAD carries the apex just inside the lip rather than onto its edge.
+   *
+   * Gravity here is the plain one, not the standing hero's: the pad is world
+   * furniture and has to be in the same place for everybody. The spread that
+   * leaves — a heavy hero apexes about a tenth of the run earlier — is what
+   * the road's flat `lip` absorbs.
+   */
+  spawnRouteEntries() {
+    for (const r of this.routes) {
+      if (r.sprung || this.camX + W + 240 < r.x) continue;
+      r.sprung = true;
+      // A tunnel's mouth is a HOLE, and the lane already knows how to have one:
+      // a gap obstacle is exactly the right shape, both terrain renderers carve
+      // it for free, and it telegraphs itself the way every other gap on the
+      // stage does. `tunnel` is what stops it also being the death it usually
+      // is — falling in here is the point rather than the failure, and
+      // updateRoute catches the hero on the road below.
+      if (r.kind === 'tunnel') {
+        // Every hole along it — and the entrance too, unless that entrance is a
+        // RAMP, which is not an opening at all: the lane runs over the top of it
+        // and the route peels away downward underneath, so there is nothing to
+        // cut and nothing to fall through.
+        for (const span of [...(r.ramp ? [] : [{ x: r.x, w: r.mouthW }]), ...(r.holes || [])]) {
+          const hole = makeObstacle('gap', span.x, {});
+          hole.w = span.w;
+          hole.tunnel = r;
+          this.obstacles.push(hole);
+        }
+        this.populateRoute(r);
+        continue;
+      }
+      this.populateRoute(r);
+      if (!r.spring) continue;
+      const h = r.entry + SPRING_CLEAR;
+      const back = Math.sqrt((2 * h) / GRAVITY) * this.speed;
+      const px = r.x + SPRING_LEAD - back;
+      const pad = makeObstacle('springPad', px, 0);
+      pad.springFor = r;
+      this.obstacles.push(pad);
+      // Nothing to react to on the approach. The pad is not a hazard, but the
+      // run-up to it is the one stretch where the player is choosing rather
+      // than dodging, and a crate in it turns the choice into a scramble.
+      for (const ob of this.obstacles) {
+        // A spring pad and a tunnel's own mouth are ROUTE FURNITURE, not lane
+        // clutter. Sweeping the mouth is exactly right for everything standing
+        // on it and exactly wrong for the hole itself, which is the thing the
+        // sweep is clearing a path TO — and the sweep runs after the mouth is
+        // laid, so without this it deleted it every time.
+        if (!ob.live || !ob.def || ob.def.isSpring || ob.tunnel || ob.route) continue;
+        if (ob.def.action === 'none' && !ob.def.isGap) continue;
+        if (ob.x + ob.w >= px - this.spawner.react * this.speed && ob.x <= px + pad.w + 20) ob.live = false;
+      }
+    }
+  }
+
+  /**
+   * Furnish a road, so that going down there is a SECTION rather than a
+   * corridor with a prize at the end of it.
+   *
+   * An empty tunnel is a held breath: the choice was made at the mouth and then
+   * nothing happens for four seconds. What makes it a place is having the same
+   * things to deal with as the lane — something to jump, something to smash —
+   * so the road is somewhere you are PLAYING rather than somewhere you are
+   * being conveyed.
+   *
+   * It is not a second `Spawner`, and deliberately not. The spawner's job is
+   * pattern selection, difficulty ramp, mission furniture and the finish wall,
+   * none of which a branch wants; what a branch needs from it is the ONE
+   * invariant that makes a lane fair, which is that consecutive things you must
+   * react to are at least a reaction runway apart. That is `spawner.react`, and
+   * it is read here rather than reimplemented.
+   *
+   * The RNG is a named stream off the run's own seed, so a road is identical on
+   * a replay and the main lane's sequence is undisturbed by whether the branch
+   * was ever generated.
+   */
+  populateRoute(r) {
+    if (r.populated || !r.hazards || !r.hazards.length) return;
+    r.populated = true;
+    const rng = this.rng.stream(`route:${r.kind}:${Math.round(r.x)}`);
+    const speed = this.baseSpeed();
+    // The reaction runway is a FLOOR, not a rhythm — it is the closest two
+    // things you must react to may ever be, and a lane built at exactly that
+    // spacing is a wall of hazards that happens to be technically survivable.
+    // 2.2x of it, jittered up to another half again, puts a branch at roughly
+    // one event a second, which is a section you play rather than a gauntlet
+    // you endure. The floor underneath it is what protects the slowest stage.
+    const gap = Math.max(110, this.spawner.react * speed * 2.2);
+    // Start clear of the way IN and stop clear of the way OUT. On a tunnel that
+    // is the mouth he is still falling down; on a sky road it is the lip he is
+    // still landing on, and at the far end it is the drop he does not choose
+    // the timing of.
+    const from = r.x + (r.kind === 'tunnel' ? r.mouthW + gap * 0.6 : r.w * r.lip + gap * 0.4);
+    const to = r.x + r.w - gap * 0.8;
+    // NOTHING under an opening, and nothing in the run-up to one. A hole is a
+    // choice, and a hazard sitting in it — or close enough in front of it that
+    // dodging drops you through — turns the choice into an ambush: the player
+    // did not decide to go underground, the lane decided for him. The openings
+    // are `holes`, which populateRoute has to know about because they are cut
+    // into the middle of the very span it is furnishing.
+    const openings = r.kind === 'tunnel' ? (r.holes || []) : [];
+    const overOpening = (x, w2) => openings.some((h) =>
+      x + w2 >= h.x - OPENING_CLEAR && x <= h.x + h.w + OPENING_CLEAR);
+    for (let x = from; x < to; x += gap * (0.9 + rng.float() * 0.7)) {
+      const type = r.hazards[rng.int(0, r.hazards.length - 1)];
+      const ob = makeObstacle(type, x, {});
+      if (overOpening(x, ob.w)) continue;
+      // The one field that puts it underground. Everything else about it —
+      // hitbox, breaking, debris, drawing — is an ordinary obstacle's.
+      ob.route = r;
+      this.obstacles.push(ob);
+    }
+  }
+
   spawnRoutePrizes() {
     for (const is of this.routes) {
       if (is.spawned || this.camX + W < is.x) continue;
@@ -3197,6 +3527,9 @@ export class RunState {
       const inset = 14;
       if (is.prize === 'coins') {
         for (let x = is.x + inset; x <= is.x + is.w - inset; x += COIN_GAP) {
+          // Nothing strung over a break in the road. A coin you cannot reach
+          // without leaving the road is a coin that punishes you for taking it.
+          if (!roadAt(x, is)) continue;
           const alt = this.groundYAt(x) - this.routeGroundY(x, is) + COIN_FLOOR;
           this.pickups.push(makePickup('coin', x, alt));
         }
@@ -3205,6 +3538,14 @@ export class RunState {
         const alt = this.groundYAt(x) - this.routeGroundY(x, is) + COIN_FLOOR;
         this.pickups.push(makePickup(is.prize, x, alt));
       }
+      // The one big thing, two thirds of the way along, on top of whatever the
+      // coin run pays. Placed late on purpose: a power-up sitting at the mouth
+      // pays out before the road has asked anything of you.
+      if (is.bonus) {
+        const x = is.x + is.w * 0.66;
+        const alt = this.groundYAt(x) - this.routeGroundY(x, is) + COIN_FLOOR + 6;
+        this.pickups.push(makePickup(is.bonus, x, alt));
+      }
       // The road NOT taken. A fork is only a decision if the two sides are worth
       // different things — coins up and a power-up down means the answer depends
       // on what you need right now, where "one road simply pays better" would be
@@ -3212,6 +3553,21 @@ export class RunState {
       // ground, so its prize is an ordinary ground-level pickup.
       if (is.lowPrize) {
         this.pickups.push(makePickup(is.lowPrize, is.x + is.w / 2, COIN_FLOOR));
+      }
+      // A tunnel mouth is drawn out of the same gap a PIT is drawn out of, and
+      // from the lane the two are the same hole — one kills you and one is a
+      // road, and nothing on the surface says which. Coins do. A line of them
+      // diving in is the oldest "this way" the genre has, and on the approach
+      // it is the only warning the player gets, so it is laid for every tunnel
+      // whatever else that tunnel is paying.
+      if (is.kind === 'tunnel') {
+        const n = 5;
+        for (let i = 0; i < n; i++) {
+          const t = i / (n - 1);
+          const x = is.x + 5 + t * (is.mouthW - 10);
+          const drop = this.groundYAt(x) - this.routeGroundY(x, is);   // negative
+          this.pickups.push(makePickup('coin', x, COIN_FLOOR + t * drop));
+        }
       }
     }
   }
@@ -3231,30 +3587,96 @@ export class RunState {
    * standing on the island, so being up there would not be safe after all —
    * and it draws straight through the slab, which says the opposite.
    *
+   * THREE — the way OUT of a tunnel. Twelve seconds under the lane is twelve
+   * seconds of not seeing it, so a hero surfacing has no idea what is standing
+   * where he comes up. `fairGap` assumes a hero who has been watching the lane
+   * approach; this one has been watching a cave.
+   *
    * Retired rather than never spawned: the lane is filled far ahead of the
    * sweep, and dropping the offending obstacle is much less invasive than
    * teaching the spawner about a second kind of wall.
+   *
+   * CONTINUOUS, not one-shot. It used to fire once, gated on the route's far
+   * END coming within lookahead — which is fine for a 74px island and badly
+   * wrong for a 1920px tunnel, because the camera does not reach 200px short of
+   * that end until long after the hero has run into the mouth. The entrance was
+   * being cleared several seconds after he had already fallen through it. And
+   * even correctly timed, one shot cannot hold: the spawner keeps filling ahead
+   * of the sweep for as long as the route lasts, so anything laid afterwards
+   * floated over the hole it was laid on. Every check below is idempotent —
+   * they only ever clear `live` — so re-running is free.
    */
   clearRouteHazards() {
     for (const is of this.routes) {
-      if (is.cleared || this.camX + W + 200 < is.x + is.w) continue;
-      is.cleared = true;
+      // In range if any part of the route is inside the lane's lookahead and
+      // has not gone by. Bounded by the obstacle list, which is culled, and by
+      // the handful of routes a stage carries.
+      if (is.x > this.camX + W + 200 || is.x + is.w < this.camX - 100) continue;
       // Where the hero lands off the end, and the first moment they could act on
       // whatever is waiting there. A fork has already converged by the time its
       // span closes, so there is no fall and no exit window to clear — the hero
       // arrives on the ground running, with a jump in hand, which is exactly the
       // case the spawner's own invariant already covers.
+      // Where the hero lands off the end, and the first moment he could act on
+      // whatever is waiting there. Keyed to the actual DROP rather than to the
+      // kind of road: a route that converges leaves him running with a jump in
+      // hand — the case the spawner's own invariant already covers — and one
+      // that stops at height leaves him committed to a fall he did not choose
+      // the timing of, which it does not.
       const exitFrom = is.x + is.w;
-      const exitTo = is.kind === 'fork' ? exitFrom
-        : exitFrom + Math.sqrt((2 * is.rise) / GRAVITY) * this.speed
+      const fall = this.routeExitDrop(exitFrom, is);
+      const exitTo = fall <= 0.01 ? exitFrom
+        : exitFrom + Math.sqrt((2 * fall) / GRAVITY) * this.speed
           + this.spawner.react * this.speed;
       for (const ob of this.obstacles) {
-        if (!ob.live || !ob.def) continue;
+        // A spring pad and a tunnel's own mouth are ROUTE FURNITURE, not lane
+        // clutter. Sweeping the mouth is exactly right for everything standing
+        // on it and exactly wrong for the hole itself, which is the thing the
+        // sweep is clearing a path TO — and the sweep runs after the mouth is
+        // laid, so without this it deleted it every time.
+        if (!ob.live || !ob.def || ob.def.isSpring || ob.tunnel || ob.route) continue;
+        // A TUNNEL runs UNDER the lane, so nothing on the lane is in its way and
+        // the slab test below — which asks whether a hazard reaches up into the
+        // road — would answer yes for every obstacle on the stage. Only its
+        // MOUTH touches the lane, and that is a hole: whatever was standing
+        // there is standing on nothing.
+        if (is.kind === 'tunnel') {
+          // NO PIPES OVER A TUNNEL, anywhere along it — not just at the holes.
+          //
+          // A pipe standing on the lane above an underground chamber is a
+          // promise the game does not keep: it is the one prop in the genre that
+          // means "you can go down here", and it is sitting on the roof of the
+          // one place you actually can. The player reads it as the way in, tries
+          // it, and finds an obstacle to jump. Every other hazard is honest
+          // about being a hazard; this one is not, so it does not stand here.
+          // `type`, not `kind` (every obstacle's kind is 'obstacle') and not
+          // `def.sprite` (the pipe def wears the crate sprite).
+          if (ob.type === 'pipe') { ob.live = false; continue; }
+          // Each way in gets the same clearance the entrance gets: whatever was
+          // standing on a hole is standing on nothing.
+          let onHole = false;
+          for (const span of [{ x: is.x, w: is.mouthW }, ...(is.holes || [])]) {
+            if (ob.x + ob.w >= span.x - 8 && ob.x <= span.x + span.w + 8) { onHole = true; break; }
+          }
+          if (onHole) { ob.live = false; continue; }
+          // And the way OUT. A tunnel converges, so the hero surfaces running
+          // with a jump in hand — which is the case `fairGap` covers, and it is
+          // still not enough here. `fairGap` reasons about a hero who has been
+          // watching the lane come toward him; this one has spent twelve seconds
+          // under it looking at a cave, and arrives with no idea what is
+          // standing where he comes up. One reaction runway, cleared.
+          if (ob.def.action !== 'none' && ob.x + ob.w >= exitFrom
+            && ob.x <= exitFrom + this.spawner.react * this.speed) ob.live = false;
+          continue;
+        }
         // Measured at the OBSTACLE's x, not once for the whole route: a fork's
         // road descends, so a crate that clears it at the mouth can still be
         // buried in it near the merge. A single height would keep exactly the
         // hazards that the converging half runs into.
-        const underside = this.routeGroundY(ob.x, is) + ISLAND_THICKNESS;
+        // Read from terrain.js rather than kept here: this is the height of the
+        // thing on screen, and a sweep measuring a slab thinner than the one
+        // drawn leaves hazards standing through the platform.
+        const underside = this.routeGroundY(ob.x, is) + ISLAND_THICKNESS + 3;
         const inExit = ob.x + ob.w >= exitFrom && ob.x <= exitTo && ob.def.action !== 'none';
         const underSlab = ob.x + ob.w >= is.x && ob.x <= exitFrom
           && this.groundYAt(ob.x) - ob.alt - ob.h < underside;
@@ -3332,6 +3754,10 @@ export class RunState {
       // a snapshot outlives the frame it was taken in, and storing the live
       // object would tie a restore to an entity graph that has moved on.
       route: this.routes.indexOf(this.route),
+      // And where the camera was pinned while he was on it. Restoring the road
+      // without the anchor drops a hero who checkpointed on a cloud back into a
+      // frame still centred on the groundline two hundred pixels below him.
+      camFloorY: this.camFloorY,
     };
   }
 
@@ -3352,6 +3778,7 @@ export class RunState {
     // floor has to be the one the snapshot was taken on, or the hero is stood
     // on the base ground while the run still believes he is on a slab.
     this.route = s.route >= 0 ? this.routes[s.route] : null;
+    this.camFloorY = s.camFloorY ?? GROUND_Y;
     this.player.abilityCooldowns = { ...(s.abilityCooldowns || {}) };
     this.player.relayCharge = !!s.relayCharge;
     this.spawner.nextX = Math.max(s.spawnerX, s.camX + 400);
@@ -3404,6 +3831,7 @@ export class RunState {
   writeRewindSnapshot(s) {
     // Camera & run
     s.camX = this.camX; s.camZoom = this.camZoom; s.camPan = this.camPan;
+    s.camFloorY = this.camFloorY;
     s.distance = this.distance; s.tRun = this.tRun; s.score = this.score; s.coins = this.coins;
     s.battery = this.battery; s.damageTaken = this.damageTaken; s.speedBoost = this.speedBoost;
     s.coinCombo = this.coinCombo; s.coinComboT = this.coinComboT;
@@ -3425,6 +3853,7 @@ export class RunState {
     ps.duckAmount = p.duckAmount; ps.duckDirection = p.duckDirection;
     ps.floating = p.floating; ps.iframes = p.iframes; ps.anim = p.anim;
     ps.stomping = p.stomping; ps.dashT = p.dashT; ps.rollT = p.rollT;
+    ps.launched = p.launched;
     ps.compressT = p.compressT; ps.stumbleT = p.stumbleT;
     ps.rollBashed = p.rollBashed; ps.rollDeflectUsed = p.rollDeflectUsed;
     ps.rollPlows = p.rollPlows; ps.deflectFlashT = p.deflectFlashT;
@@ -3513,6 +3942,7 @@ export class RunState {
   restoreRewindSnapshot(s) {
     // Camera & run
     this.camX = s.camX; this.camZoom = s.camZoom; this.camPan = s.camPan;
+    this.camFloorY = s.camFloorY ?? GROUND_Y;
     this.distance = s.distance; this.tRun = s.tRun; this.score = s.score; this.coins = s.coins;
     this.battery = s.battery; this.damageTaken = s.damageTaken; this.speedBoost = s.speedBoost;
     this.coinCombo = s.coinCombo; this.coinComboT = s.coinComboT;
@@ -3531,6 +3961,7 @@ export class RunState {
     p.duckAmount = ps.duckAmount; p.duckDirection = ps.duckDirection;
     p.floating = ps.floating; p.iframes = ps.iframes; p.anim = ps.anim;
     p.stomping = ps.stomping; p.dashT = ps.dashT; p.rollT = ps.rollT;
+    p.launched = !!ps.launched;
     p.compressT = ps.compressT; p.stumbleT = ps.stumbleT;
     p.rollBashed = ps.rollBashed; p.rollDeflectUsed = ps.rollDeflectUsed;
     p.rollPlows = ps.rollPlows; p.deflectFlashT = ps.deflectFlashT;
@@ -3637,7 +4068,17 @@ export class RunState {
     // Obstacles.
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
+      // Somebody else's road, somebody else's problem. Cheap enough to run for
+      // every obstacle on every frame, and it is the line that lets a road be
+      // furnished with real hazards without them reaching up or down into the
+      // lane the hero is actually on.
+      if (!this.sharesRoute(ob)) continue;
       if (ob.def.isGap) {
+        // A tunnel mouth is the same hole drawn the same way, and falling into
+        // it is the whole idea rather than the failure — updateRoute has the
+        // hero on a road a moment later. It is still a real gap to everything
+        // else, which is what makes it carve the ground and telegraph itself.
+        if (ob.tunnel) continue;
         // Pit: if player is over the gap at ground level, fall in.
         const over = pbox.x + pbox.w / 2 > ob.x && pbox.x + pbox.w / 2 < ob.x + ob.w;
         if (over && this.player.grounded && this.player.y <= 0) {
@@ -3645,8 +4086,20 @@ export class RunState {
         }
         continue;
       }
+      if (ob.def.isSpring) {
+        const box = entityBox(ob, this.entityGroundY(ob));
+        // `grounded` is the whole interface. Run over it and it fires; jump it
+        // and it never sees you — which is what makes the road above it a
+        // decision rather than a thing that happens to you.
+        if (overlaps(pbox, box) && this.player.grounded && !ob.used) {
+          ob.used = true;
+          ob.firedT = SPRING_FLARE_T;
+          this.springLaunch(ob);
+        }
+        continue;
+      }
       if (ob.def.isBoost) {
-        const box = entityBox(ob, this.groundYAt(ob.x));
+        const box = entityBox(ob, this.entityGroundY(ob));
         if (overlaps(pbox, box) && this.player.grounded) {
           if (!ob.used) {
             ob.used = true;
@@ -3666,7 +4119,7 @@ export class RunState {
         }
         continue;
       }
-      const box = entityBox(ob, this.groundYAt(ob.x));
+      const box = entityBox(ob, this.entityGroundY(ob));
       // Crates are solid enough to land on, but still hurt when run into.
       // Once a descending player has made a clean top contact, keep that crate
       // harmless until it passes behind them instead of turning the next frame
@@ -3681,7 +4134,7 @@ export class RunState {
         if (!this.player.rollContactIds.has(ob.id)) {
           this.player.rollContactIds.add(ob.id);
           this.projectileImpact({ type: 'shield' }, ob.x + ob.w / 2,
-            this.groundYAt(ob.x) - ob.alt - ob.h / 2);
+            this.entityGroundY(ob) - ob.alt - ob.h / 2);
         }
       }
       const playerBottom = pbox.y + pbox.h;
@@ -3718,7 +4171,7 @@ export class RunState {
           && !ob.def.isGap && !this.player.spannerFlurryHitIds.has(ob.id)) {
         this.player.spannerFlurryHitIds.add(ob.id);
         this.projectileImpact({ type: 'spanner' }, ob.x + ob.w / 2,
-          this.groundYAt(ob.x) - ob.alt - ob.h / 2);
+          this.entityGroundY(ob) - ob.alt - ob.h / 2);
         this.breakObstacle(ob);
         this.player.spannerFlurryT = 0;
         this.player.spannerFlurryHitIds = null;
@@ -4118,6 +4571,7 @@ export class RunState {
     const cam = mix(Number.isFinite(this.prevCamX) ? this.prevCamX : this.camX, this.camX);
     const z = mix(Number.isFinite(this.prevCamZoom) ? this.prevCamZoom : this.camZoom, this.camZoom);
     const pan = mix(Number.isFinite(this.prevCamPan) ? this.prevCamPan : this.camPan, this.camPan);
+    const floorY = mix(Number.isFinite(this.prevCamFloorY) ? this.prevCamFloorY : this.camFloorY, this.camFloorY);
     const renderT = mix(Number.isFinite(this.prevTRun) ? this.prevTRun : this.tRun, this.tRun);
     const renderSettings = this.renderSettings || this.save.settings;
     const heroScreenX = this.finishing
@@ -4138,20 +4592,64 @@ export class RunState {
     // depth cue would be imperceptible and any factor below 1 unwelds the hills
     // from the groundline for the sake of it. `bgPan: 0` opts out the two packs
     // whose "background" is screen furniture rather than scenery.
+    //
+    // A re-pinned anchor (a sky road, a tunnel) is the other camera move they
+    // take, and they take a FRACTION of it — BG_FOLLOW. The scenery back there
+    // is miles off: hills do not drop out of the sky because you climbed onto a
+    // cloud, and shifting them by the full amount slides the horizon clean out
+    // of the frame the instant a road leaves the ground. What the fraction buys
+    // is the range visibly sinking as you rise, which is the whole read.
+    const climb = anchorShift(z, floorY);
+    const bgShift = (pan + climb * BG_FOLLOW) * (this.style.bgPan ?? 1);
     ctx.save();
-    ctx.translate(0, pan * (this.style.bgPan ?? 1));
+    if (Math.abs(climb) > 0.5) {
+      // The sky is not scenery and cannot be allowed to run out. A pack's own
+      // gradient is drawn 0..H in the SHIFTED space, so once the shift is more
+      // than a few pixels the top of the frame is raw canvas. This lays the
+      // same gradient down first, over the same shifted range — canvas clamps a
+      // gradient to its end colours outside its own stops, so the strip above
+      // is flat sky and the pack then repaints the rest of it identically.
+      // Drawn over the FULL range rather than just the exposed strip because a
+      // seam is exactly what a two-piece sky produces.
+      const g = ctx.createLinearGradient(0, bgShift, 0, bgShift + H);
+      g.addColorStop(0, this.cabinet.sky ? this.cabinet.sky[0] : '#78c8f0');
+      g.addColorStop(1, this.cabinet.sky ? this.cabinet.sky[1] : '#a8e0f8');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.translate(0, bgShift);
     this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist);
     ctx.restore();
 
     // ---- world band. Everything from here to post() draws through the camera,
     // in the same coordinates it always did: x offsets from cam, absolute y.
     ctx.save();
-    applyWorld(ctx, z, pan);
+    applyWorld(ctx, z, pan, floorY);
 
     // Ground line + gaps.
     this.style.ground(ctx, cam, this.cabinet, this.obstacles);
     if (!this.bossCab) drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, W / z);
-    if (this.routes.length) drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.routeGroundY(wx, r), W / z);
+    if (this.routes.length) {
+      // The earth first, and across the whole frame rather than under the
+      // tunnel alone. The packs fill 38px below the groundline and nothing
+      // filled below THAT, so the moment the camera dropped to follow a hero
+      // underground the frame showed sky and parallax hills beneath the world.
+      // Only paid for when a road actually goes down there.
+      const bottomWorldY = camYFor(z, floorY) + H / z + 8;
+      if (this.camFloorY > GROUND_Y + 1 || this.routes.some((r) => r.kind === 'tunnel'
+        && r.x - cam < W / z + 8 && r.x + r.w - cam > -8)) {
+        // The tunnel spans are OVERHANGS: the lane there has a whole second area
+        // running under it, so the earth stops at the slab and what is below is
+        // air with the same sky and the same hills behind it. That one omission
+        // is the difference between a level with a low road and a level with a
+        // cave in it.
+        drawSubsoil(ctx, this.cabinet, W / z, bottomWorldY, cam,
+          this.routes.filter((r) => r.kind === 'tunnel'));
+      }
+      drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.routeGroundY(wx, r), W / z,
+        { groundAt: (wx) => this.groundYAt(wx), cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO,
+          bottomY: bottomWorldY });
+    }
 
     // Entities. On a converting style (lcd) the whole cast is held back past
     // post() with the hero, so enemies and pickups stay in colour against the
@@ -4207,7 +4705,8 @@ export class RunState {
       const boost = ob.def.isBoost;
       const paint = () => this.drawAtGround(ctx, ob.x,
         () => drawWorldEntity(ctx, ob, cam, renderT, this.style, renderSettings),
-        ob.w, ob.def.ground && ob.alt === 0 ? (boost ? 2.5 : 1.5) : 0, boost ? cam : null);
+        ob.w, ob.def.ground && ob.alt === 0 ? (boost ? 2.5 : 1.5) : 0, boost ? cam : null,
+        ob.route);
       if (smearing) {
         // Furthest first, so nearer ghosts paint over further ones and the real
         // sprite lands on top of the lot. Translating is enough: screen x is
@@ -4238,7 +4737,7 @@ export class RunState {
       const q = Math.max(0, Math.min(1, bite.t / bite.duration));
       const e = q * q * (3 - 2 * q);
       const fromX = ob.x - cam + ob.w / 2;
-      const terrainY = this.groundYAt(ob.x);
+      const terrainY = this.entityGroundY(ob);
       const terrainDy = terrainY - GROUND_Y + (ob.def.ground && ob.alt === 0 ? 1.5 : 0);
       const fromY = GROUND_Y + terrainDy - ob.alt - ob.h / 2;
       const mouthWorldX = this.playerWorldX() + 9;
@@ -4347,7 +4846,11 @@ export class RunState {
       const target = this.powerTarget();
       if (target) {
         const tx = target.x - cam + target.w / 2;
-        const ty = Math.round(this.groundYAt(target.x) - target.alt - target.h / 2);
+        // Against the target's OWN floor. On the lane these are the same
+        // number, and underground they are a hundred pixels apart — the reticle
+        // was ringing a patch of empty lane above a crate the hero was standing
+        // next to in a tunnel.
+        const ty = Math.round(this.entityGroundY(target) - target.alt - target.h / 2);
         const pulse = this.save.settings.reducedMotion ? 4 : 4 + Math.sin(renderT * 7);
         ctx.strokeStyle = 'rgba(246,211,60,0.65)';
         ctx.beginPath(); ctx.arc(tx, ty, Math.max(target.w, target.h) * 0.65 + pulse, 0, Math.PI * 2); ctx.stroke();
@@ -4389,7 +4892,7 @@ export class RunState {
     // where the question becomes real again and the orb should return.
     const orbAlpha = this.finishing ? Math.max(0, 1 - this.finishT / 0.6) : 1;
     const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, this.mission.type === 'fuse',
-      { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan, specialOrbAlpha: orbAlpha,
+      { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan, floorY, specialOrbAlpha: orbAlpha,
         // Every field the LAST live frame left behind has to be cleared, not
         // just the kind. He arrives here mid-landing — squash from hitting the
         // cap, lean from the run, and whatever duck state the slide left — and
@@ -4427,7 +4930,7 @@ export class RunState {
     this.style.post(ctx, renderT);
     if (this.style.actorsAbovePost) {
       ctx.save();
-      applyWorld(ctx, z, pan);
+      applyWorld(ctx, z, pan, floorY);
       drawActors();
       drawHero();
       ctx.restore();
@@ -4441,7 +4944,7 @@ export class RunState {
       // nearly the whole frame and the mission would stop being a mission.
       const hsx = heroScreenX;   // follows the opening run-in, not the anchor
       const px = (hsx + 6) * z;
-      const py = screenYFor(this.groundYAt(cam + hsx) - this.player.y - 8, z, pan);
+      const py = screenYFor(this.groundYAt(cam + hsx) - this.player.y - 8, z, pan, floorY);
       const r = 130;
       // Only the centre moves, so the ramp is built once in local space and
       // carried to the hero by the transform. Rebuilt in place it cost a
@@ -4670,7 +5173,7 @@ export class RunState {
     ctx.strokeStyle = '#f00';
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
-      const b = entityBox(ob, this.groundYAt(ob.x));
+      const b = entityBox(ob, this.entityGroundY(ob));
       ctx.strokeRect(b.x - this.camX, b.y, b.w, b.h);
     }
     ctx.restore();

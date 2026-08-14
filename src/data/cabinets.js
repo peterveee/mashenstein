@@ -72,28 +72,122 @@ export const CABINETS = [
     mechanic: 'qcrates', // breakable !-crates, pipes as secret routes
     sky: ['#78c8f0', '#a8e0f8'], ground: '#3a9c48', groundDark: '#2a7038',
     far: '#5ab060', hills: '#48a050',
+    // What the ground is made of UNDER the turf — the cutaway you see inside a
+    // tunnel and along the underside of every raised road. A real brown rather
+    // than the green taken down a few stops: soil is not grass with the lights
+    // off, and darkening `groundDark` gave an underground that read as the
+    // inside of a hill instead of as being in the earth.
+    soil: '#6b4426',
     // Floating islands — the "secret routes" the mechanic line above has always
     // promised. `at` is a fraction of the stage, the same convention
-    // stage.applianceAt uses; `dwell` is SECONDS spent on the slab, converted
-    // against this stage's own base speed so the beat is the same length in
-    // world 1 and on UNPLUGGED (a fixed pixel width would be one jump at the
-    // start of the game and half a jump by the end). `rise` defaults to 30 and
-    // is capped by MAX_ISLAND_RISE, which is derived from the heavy hero's apex.
-    islands: [{ at: 0.34, dwell: 0.8 }, { at: 0.62, dwell: 0.7 }],
-    // Converging forks: a high road you catch with an ordinary jump, running
-    // above the lane before easing back down to meet it. Miss the jump and you
-    // are on the low road, which is simply the ground — there is no wrong
-    // answer, only a different one.
+    // stage.applianceAt uses; `dwell` is SECONDS, converted against this stage's
+    // own base speed so the beat is the same length in world 1 and on UNPLUGGED
+    // (a fixed pixel width would be one jump at the start of the game and half
+    // a jump by the end).
     //
-    // `prize` rides the high road and `lowPrize` the low, and they are
-    // deliberately different KINDS rather than different amounts: coins up
-    // against a power-up down means the answer depends on what you need at that
-    // moment. "One road pays better" would be solved once and stop being a
-    // choice thereafter. `hold` is how much of the span runs at full height
-    // before the descent begins.
+    // A STAIRCASE rather than one slab. `steps` expands this into that many
+    // islands, each `step` px above the one before and with a gap you jump
+    // across, so height is climbed instead of hopped onto — a slab one hop up
+    // is a slab you are barely above, and being on it does not feel like
+    // anything. Four steps of 27 tops out at 110, well past anything a single
+    // jump off the lane could reach. `topPrize` pays out on the last one only: everything below it is on
+    // the way, and paying on the way removes the reason to keep going up.
+    //
+    // Missing a step costs the climb and nothing else. There is no fall damage
+    // anywhere in this game, which is exactly what makes a stack worth trying.
+    islands: [
+      // The warm-up, and the shape every stack here follows: ONE short foothold
+      // just off the lane, then up to a longer run with the coins on it. A low
+      // slab as long as a high one is a road running a few pixels above the
+      // ground, which is neither a platform nor a lane — the bottom step is a
+      // stride, and the reward is two steps up.
+      { at: 0.07, dwell: 1.8, steps: 2, rise: 29, step: 27, topPrize: 'capShield' },
+      { at: 0.45, dwell: 4.0, steps: 4, rise: 29, step: 27, topPrize: 'capMagnet' },
+    ],
+    // Converging forks: a road that leaves the lane, runs somewhere else for a
+    // while, and eases back down to meet it. `prize` rides the high road and
+    // `lowPrize` the low, deliberately different KINDS rather than different
+    // amounts: coins up against a power-up down means the answer depends on
+    // what you need at that moment, where "one road simply pays better" would
+    // be solved once and stop being a choice thereafter.
+    //
+    // The span is described by three fractions, each the point at which the
+    // road changes what it is doing: `lip` (flat at `entry`, the landing),
+    // `climb` (rising to `peak`), and `hold` (where the descent begins). A road
+    // with no `peak` is flat at `entry` for its whole length, which is what the
+    // first one here is and what every fork used to be.
+    //
+    // `end` is the height the descent settles at, and it is the difference
+    // between a road that ENDS and a road you merely walk off. Easing all the
+    // way to 0 put the hero back on the lane still running and the whole
+    // excursion finished with a shrug; stopping in the air finishes it with a
+    // drop. Falling injures nobody here, so the only thing it costs is the one
+    // beat of the ride whose timing the player does not choose.
     forks: [
-      { at: 0.22, dwell: 2.4, hold: 0.55, prize: 'coins', lowPrize: 'capShield' },
-      { at: 0.78, dwell: 3.0, hold: 0.6, prize: 'coins', lowPrize: 'capSpeed' },
+      // THE HIGH ROAD. `spring` puts a pad on the ground before the mouth and
+      // that pad is the only way up — 96px is three times a jump — so taking it
+      // is a decision made once, on the approach, by NOT jumping over the pad.
+      // Then it climbs to 210 and you are in the clouds with the hills below
+      // you, and there is no coming back to the lane until the road brings you
+      // back. That is the whole point of the numbers: at the old 29px the two
+      // roads were one hop apart, so missing the turn cost nothing and taking
+      // it committed you to nothing.
+      //
+      // It comes down to 96 and stops there — the height the spring threw you
+      // to. You leave the road exactly as far above the lane as you were when
+      // you joined it, and you get there the same way you would have without
+      // the pad: by falling. The descent is short (`hold` at 0.82) so the last
+      // stretch is a drop off the end of the clouds rather than a long ramp
+      // walked back down to where you started.
+      {
+        at: 0.58, dwell: 7.5, spring: true, sky: true,
+        entry: 96, peak: 210, lip: 0.2, climb: 0.34, hold: 0.82, end: 96,
+        // Breaks in the road, so being up here asks something of you between
+        // the two ends of it. Fractions along the span; `gapSec` is their width
+        // in SECONDS, which is a third of a jump at any speed — clearable
+        // without a run-up, and not clearable by accident.
+        gaps: [0.42, 0.6, 0.75], gapSec: 0.3,
+        prize: 'coins', lowPrize: 'capSpeed',
+      },
+    ],
+    // And the low road: a whole underground SECTION, not a shortcut. A hole in
+    // the lane you either clear or drop into; once you are in it the only way
+    // out is the far end, where it climbs back up and hands you to the ground
+    // still running. `mouth` is how much of the span is that open hole — the
+    // rest runs under solid ground, so the choice is made at the entrance and
+    // then it is made.
+    //
+    // EARLY and LONG, both deliberately. Early because the underground is the
+    // stage's most distinctive thing and burying it at 78% means most players
+    // meet it once and tired; twelve seconds because at four it was a held
+    // breath — you chose at the mouth and then nothing happened until the exit.
+    // It is now the longest single stretch on the stage, and it has to earn
+    // that with `hazards`, which is what makes it somewhere you are playing
+    // rather than somewhere you are being conveyed.
+    //
+    // 96px of depth is not a taste number. There is no ceiling collision in
+    // this engine and there should not be one — the whole route mechanism works
+    // because there is only ever ONE floor — so what keeps a hero in a tunnel
+    // is the tunnel being deeper than he can jump. The best jumper in the cast
+    // apexes at 69, and 96 leaves that clearance under the roof rather than
+    // putting his head through it, and headroom to fight in besides.
+    tunnels: [
+      {
+        // A GAP you can see and jump, leading to a steep slope rather than a
+        // vertical drop. The ramped version — level with the lane, nothing cut
+        // out of it — read as ground that simply went down, and gave the player
+        // nothing to aim a jump at: there was no visible hole, so there was no
+        // visible way to refuse. `entry: 18` puts a real notch in the lane, and
+        // a short `climb` runs it down to full depth fast enough to feel like a
+        // slide and slow enough not to be a fall.
+        at: 0.18, dwell: 12, depth: 96, entry: 18, lip: 0.012, climb: 0.06, hold: 0.88,
+        // Plumber's own furniture, minus the cactus — a desert plant is the one
+        // thing in the set that cannot be underground. The pipe earns its place
+        // twice over: it is tall enough to be a real jump and it is the thing
+        // this cabinet is named after.
+        hazards: ['crate', 'barrel', 'pipe', 'drone'],
+        prize: 'coins', bonus: 'capShield', lowPrize: 'capSpeed',
+      },
     ],
     // ONE harmonic bed (the original A-F-C-G loop) for the whole song — no
     // section-to-section progressions. Movement comes from melodic variations

@@ -60,6 +60,37 @@ assert(apexOf(worst) > MAX_RISE,
 assert(apexOf(worst) - MAX_RISE >= 10,
   `with real margin, not a hairline (${(apexOf(worst) - MAX_RISE).toFixed(1)}px)`);
 
+// ---- nothing a cabinet declares may go missing -------------------------------
+// The overlap guard drops a road that would collide with the one before it,
+// which is right — two floors at once is not a thing the mechanism can express —
+// but it does it SILENTLY, and that is how the plumber sky road vanished from
+// the stage: a staircase two routes earlier was given a longer dwell, its span
+// grew, and the guard quietly ate the set piece thirteen pixels later. Nothing
+// failed. The run just stopped having a high road in it.
+//
+// Pure, so it costs nothing and runs before the bundle is even built. Layout is
+// scale-invariant — `totalDist` is duration * speed and every span is seconds *
+// speed, so speed cancels — which means one check covers every stage of a
+// cabinet and every difficulty of each.
+const { buildRoutes } = await import('../src/game/routes.js');
+const { terrainGroundY } = await import('../src/game/terrain.js');
+const { CABINETS: CABS } = await import('../src/data/cabinets.js');
+for (const cab of CABS) {
+  const declared = (cab.islands || []).reduce((n, d) => n + Math.max(1, d.steps ?? 1), 0)
+    + (cab.forks || []).length + (cab.tunnels || []).length;
+  if (!declared) continue;
+  for (const [label, dur, mult] of [['stage 1', 60, 0.9], ['stage 3', 60, 1], ['long stage', 120, 1]]) {
+    const speed = 160 * mult;
+    const built = buildRoutes(cab, {
+      totalDist: dur * speed * 1.05,
+      speed,
+      groundYAt: (wx) => terrainGroundY(cab, wx),
+    });
+    assert(built.length === declared,
+      `${cab.id} lays every road it declares on a ${label} (${built.length}/${declared})`);
+  }
+}
+
 try {
   new Function(outputFiles[0].text)();
 } catch (e) {
@@ -95,10 +126,57 @@ if (!inRun()) {
 for (let i = 0; i < 400 && run.camX <= 0; i++) frames(1);
 assert(run.camX > 0, 'reached a live, scrolling run');
 assert(run.routes.length > 0, `the stage carries raised routes (${run.routes.length})`);
+const bestApexEarly = cast.reduce((a, h) => Math.max(a, apexOf(h)), 0);
+const GROUND_Y_CHK = 232;   // the world line the camera pins to at rest
 
+// The reachability rule is about the MOUTH, and only about mouths the hero has
+// to reach under his own power. A sprung road is entered by catapult and a
+// tunnel by falling, and capping either at a jump's height would be capping the
+// wrong thing — the cap exists so a road you must JUMP to is jumpable.
+// A STACK is capped on the step, not on where it ends up: step three is a jump
+// from step two, not from the ground. That is what lets a staircase reach 83px
+// while every individual jump on it stays inside one hop.
+let prevStep = null;
 for (const is of run.routes) {
-  assert(is.rise <= MAX_RISE, `${is.kind} rise is capped at the reachable ceiling (${is.rise})`);
+  const under = is.stack && prevStep && prevStep.stack === is.stack ? prevStep.entry : 0;
+  if (is.kind !== 'tunnel' && !is.spring) {
+    assert(is.entry - under <= MAX_RISE,
+      `a ${is.kind} you must jump to is within reach of the floor below it `
+      + `(${is.entry} - ${under} <= ${MAX_RISE})`);
+  }
   assert(is.w > 0, `${is.kind} has a real width (${is.w.toFixed(0)}px)`);
+  prevStep = is;
+}
+
+// ---- the staircase ----------------------------------------------------------
+// A slab one hop up is a slab you are barely above. Height has to be climbed.
+const stacks = new Map();
+for (const r of run.routes.filter((x) => x.stack)) {
+  if (!stacks.has(r.stack)) stacks.set(r.stack, []);
+  stacks.get(r.stack).push(r);
+}
+assert(stacks.size >= 1, `the stage carries staircases (${stacks.size})`);
+const tallest = [...stacks.values()].reduce((a, b) => (b.length > a.length ? b : a));
+assert(tallest.length >= 3, `the tallest has real height to it (${tallest.length} steps)`);
+assert(Math.max(...tallest.map((r) => r.entry)) > bestApexEarly * 1.4,
+  `past a single jump at the top (${Math.max(...tallest.map((r) => r.entry))}px vs ${bestApexEarly.toFixed(1)})`);
+for (const [id, steps] of stacks) {
+  const tops = steps.map((r) => r.entry);
+  assert(tops.every((v, i) => i === 0 || v > tops[i - 1]),
+    `${id}: each step is higher than the last (${tops.join(', ')})`);
+  // The bottom step is a FOOTHOLD, not a road. A low slab as long as a high one
+  // is a lane running a few pixels above the lane, which is neither.
+  assert(steps[steps.length - 1].w > steps[0].w * 1.3,
+    `${id}: the low step is short and the high one is the run (${steps.map((r) => Math.round(r.w)).join(' -> ')}px)`);
+  // A real GAP between treads, or it is a ramp rather than a climb — the jump
+  // is along as well as up.
+  for (let i = 1; i < steps.length; i++) {
+    const gap = steps[i].x - (steps[i - 1].x + steps[i - 1].w);
+    assert(gap > 8, `${id}: step ${i} is a jump away from the one below (${gap.toFixed(0)}px of air)`);
+  }
+  // The reward is on TOP. Paying out on the way up removes the reason to climb.
+  assert(steps[steps.length - 1].prize !== steps[0].prize,
+    `${id}: the top step pays something the others do not (${steps[steps.length - 1].prize})`);
 }
 // Flat, not riding the hills underneath: one number for the whole slab. Only
 // islands — a fork's road is a road and keeps the terrain's own shape.
@@ -211,7 +289,6 @@ const hazardType = Object.keys(OBSTACLES).find((t) => OBSTACLES[t].action === 'j
 assert(!!hazardType, `there is an action hazard to test with (${hazardType})`);
 run.obstacles.push(makeObstacle(hazardType, exitFrom + 10, 0));
 run.obstacles.push(makeObstacle(hazardType, exitFrom + 30, 0));
-island.cleared = false;
 run.camX = exitFrom - 100;
 run.clearRouteHazards();
 const survivors = run.obstacles.filter((o) => o.live && o.def && o.def.action !== 'none'
@@ -219,38 +296,76 @@ const survivors = run.obstacles.filter((o) => o.live && o.def && o.def.action !=
 assert(survivors.length === 0,
   `nothing you must react to is left in the landing zone (${survivors.length} left)`);
 
+// ---- and the sweep KEEPS clearing ------------------------------------------
+// It used to fire once, gated on the route's far END coming within lookahead.
+// That is fine for a 74px island and badly wrong for a 1920px tunnel: the camera
+// does not reach 200px short of that end until long after the hero has run into
+// the mouth, so the entrance was being cleared seconds after he had fallen
+// through it. And even correctly timed, one shot cannot hold — the spawner keeps
+// filling ahead of the sweep for as long as the route lasts.
+const tunnelEarly = run.routes.find((r) => r.kind === 'tunnel');
+assert(!!tunnelEarly, 'the stage carries a tunnel to check the sweep against');
+run.camX = tunnelEarly.x - 300;   // at the MOUTH, nowhere near the far end
+const squatter = makeObstacle(hazardType, tunnelEarly.x + tunnelEarly.mouthW / 2, {});
+run.obstacles.push(squatter);
+run.clearRouteHazards();
+assert(!squatter.live,
+  'a hazard standing on the entrance is cleared while the hero is still approaching it');
+// Laid AFTER the first sweep, which the one-shot version could never catch.
+const latecomer = makeObstacle(hazardType, tunnelEarly.x + tunnelEarly.mouthW / 2, {});
+run.obstacles.push(latecomer);
+run.clearRouteHazards();
+assert(!latecomer.live, 'and so is one that arrives after the first sweep has run');
+
 // ---- the fork: a high road that CONVERGES rather than stopping --------------
 // The whole difference between the two kinds is the ending. An island stops and
 // you fall; a fork has already come back down to meet the ground by the time
 // its span closes, so the same arithmetic produces no drop at all.
-const mouthRise = run.forkRise(fork.x + 2, fork);
-assert(Math.abs(mouthRise - fork.rise) < 0.001,
-  'a fork is at full height from its mouth — a ledge you jump to, not a slope you walk up');
+const mouthRise = run.routeRise(fork.x + 2, fork);
+assert(Math.abs(mouthRise - fork.entry) < 0.001,
+  'a fork is at full entry height from its mouth — a ledge you jump to, not a slope you walk up');
 // If the mouth were a slope, a hero who never jumped would be collected by it
 // and the fork would stop being a choice.
-assert(run.forkRise(fork.x - 1, fork) === 0, 'and it does not exist before the mouth');
+assert(run.routeRise(fork.x - 1, fork) === 0, 'and it does not exist before the mouth');
 
 const holdEnd = fork.x + fork.w * fork.hold;
-assert(Math.abs(run.forkRise(holdEnd - 2, fork) - fork.rise) < 0.5,
+assert(Math.abs(run.routeRise(holdEnd - 2, fork) - fork.peak) < 0.5,
   'it holds full height through the hold fraction');
 const nearEnd = fork.x + fork.w * (1 - 0.02);
-assert(run.forkRise(nearEnd, fork) < fork.rise * 0.15,
-  `and has eased back down to the ground by the end (${run.forkRise(nearEnd, fork).toFixed(1)}px left)`);
-assert(run.forkRise(fork.x + fork.w + 1, fork) === 0, 'meeting it exactly at the merge');
+assert(Math.abs(run.routeRise(nearEnd, fork) - fork.end) < fork.rise * 0.15,
+  `and has eased down to its ending height by the end (${run.routeRise(nearEnd, fork).toFixed(1)} ~= ${fork.end})`);
+assert(run.routeRise(fork.x + fork.w + 1, fork) === 0, 'and does not exist past its own span');
 
-// Riding one to the end should hand the hero back to the ground still running,
-// not drop him. That is the convergence.
+// ---- the ending is a DROP, not a walk ---------------------------------------
+// The descent settles at `end` and the road stops there, in the air. A road
+// that eased all the way down to meet the lane had no ending at all — the hero
+// walked back onto the ground and the excursion finished with a shrug.
+assert(fork.end > 0, `a fork ends in the air (${fork.end}px up)`);
+assert(Math.abs(run.routeRise(fork.x + fork.w - 1, fork) - fork.end) < 1,
+  'the last column of the road is at exactly that height');
+// The drop has to be measured at the road's own last column. At the hero's x he
+// is already past the span, where the road correctly reports nothing — which is
+// what used to make this come out as no drop at all.
+assert(Math.abs(run.routeExitDrop(fork.x + fork.w + 4, fork) - fork.end) < 1,
+  'and the exit drop is measured there, not at a hero already past it');
+
 standAt(fork.x + fork.w * 0.5);
 run.route = fork;
 run.player.y = 0;
 run.player.grounded = true;
 run.camX = fork.x + fork.w + 2 - PLAYER_X;
 frames(1);
-assert(run.route === null, 'riding a fork to the end returns the hero to the ground');
-assert(run.player.grounded,
-  'still running rather than falling — the roads converged instead of the high one stopping');
-assert(Math.abs(run.player.y) < 1.5,
-  `and at ground level, with nothing to fall (y=${run.player.y.toFixed(2)})`);
+assert(run.route === null, 'riding a fork to the end takes the hero off it');
+assert(!run.player.grounded, 'into a FALL rather than back onto the ground');
+assert(Math.abs(run.player.y - fork.end) < 2,
+  `with the road's remaining height under him (y=${run.player.y.toFixed(1)} ~= ${fork.end})`);
+frames(60);
+assert(run.player.grounded && run.route === null, 'and he lands back in the lane');
+
+// The one road that must NOT do that is a tunnel: you cannot fall off the
+// bottom of one, so it climbs back out and converges as forks used to.
+const tun0 = run.routes.find((r) => r.kind === 'tunnel');
+assert(tun0.end === 0, 'a tunnel still converges — there is no falling out of a low road');
 
 // ---- the two roads are worth different KINDS of thing -----------------------
 fork.spawned = false;
@@ -297,6 +412,321 @@ const groundSnap = run.makeSnapshot();
 run.route = island;
 run.restoreSnapshot(groundSnap);
 assert(run.route === null, 'and one taken on the ground restores him to the ground');
+
+// ---- the high road: a choice you are LOCKED INTO ----------------------------
+// The whole complaint about the first pass. At 29px the two roads were one hop
+// apart, so a hero on the ground could rejoin the high one anywhere along it and
+// a hero on the high one could step off whenever he liked. Neither road cost
+// anything, so neither was a choice. What makes it one is the CLIMB: past the
+// lip the road leaves jump range and stays there.
+const sky = run.routes.find((r) => r.sky);
+assert(!!sky, 'the stage carries a sky road');
+const bestApex = cast.reduce((a, h) => Math.max(a, apexOf(h)), 0);
+assert(bestApex > 0, `the cast's best jump is a real height (${bestApex.toFixed(1)}px)`);
+assert(sky.peak > bestApex * 2,
+  `it climbs far past anything a jump can reach (${sky.peak}px against a ${bestApex.toFixed(1)}px best apex)`);
+// Sampled along the span rather than asserted on `peak` alone: what matters is
+// that there is no WINDOW anywhere past the lip where the ground and the road
+// are a jump apart. A road that dipped back into reach in the middle would be
+// exactly as unbinding as the 29px one was.
+let reachable = 0;
+for (let t = 0.28; t < 0.9; t += 0.02) {
+  if (run.routeRise(sky.x + sky.w * t, sky) <= bestApex) reachable++;
+}
+assert(reachable === 0,
+  `and never dips back into reach along its length (${reachable} reachable samples)`);
+// The double jump is the obvious way round a rule like this, so it gets its own
+// check: even two full jumps, stacked, do not reach the road.
+const doubleApex = bestApex * (1 + 0.85 * 0.85);
+assert(sky.peak > doubleApex,
+  `not even a double jump reaches it (${doubleApex.toFixed(1)}px stacked)`);
+
+// ---- breaks in the high road ------------------------------------------------
+// A road you are locked onto should still ask something of you between its ends.
+const { roadAt } = await import('../src/game/routes.js');
+assert((sky.gaps || []).length > 0, `the sky road has breaks in it (${(sky.gaps || []).length})`);
+for (const g of sky.gaps) {
+  assert(!roadAt(g.x + g.w / 2, sky), 'there is no road in the middle of a break');
+  assert(roadAt(g.x - 4, sky) && roadAt(g.x + g.w + 4, sky), 'and road either side of it');
+  // Clearable: the jump has to cross it, or the road is a dead end rather than a
+  // challenge. Measured against the WORST hero, as every reachability bound here is.
+  const span = apexOf(worst) > 0 ? 114 : 114;   // world-1 jump span
+  assert(g.w < span * 0.55,
+    `a break is comfortably inside a jump (${Math.round(g.w)}px of a ${span}px span)`);
+  // Never in the landing zone the spring aims at.
+  assert(g.x > sky.x + sky.w * sky.lip,
+    'and never inside the lip, which is where the spring puts you down');
+}
+// Nothing is strung over one — a coin you can only reach by leaving the road is
+// a coin that punishes you for taking it.
+sky.spawned = false;
+run.pickups.length = 0;
+run.camX = sky.x - 100;
+run.spawnRoutePrizes();
+const overGap = run.pickups.filter((p) => p.live && p.alt > 40
+  && sky.gaps.some((g) => p.x >= g.x && p.x <= g.x + g.w));
+assert(overGap.length === 0, `nothing hangs over a break (${overGap.length})`);
+// And falling through one takes the hero off the road rather than carrying him
+// across it on nothing.
+// Re-pinned each tick rather than set once. The run's seed comes from
+// `Date.now()`, so how fast the world is moving under him — and therefore where
+// one frame leaves him — is different every time this file runs.
+let leftAtBreak = false;
+for (let i = 0; i < 3 && !leftAtBreak; i++) {
+  standAt(sky.gaps[0].x + sky.gaps[0].w * 0.35);
+  run.route = sky;
+  run.player.y = 0;
+  run.player.grounded = true;
+  frames(1);
+  leftAtBreak = run.route === null;
+}
+assert(run.route === null, 'running into a break takes the hero off the road');
+assert(!run.player.grounded, 'and drops him');
+// But JUMPING one does not. A hero in the air over a gap has not left the road,
+// he is clearing it — and taking the road out from under him mid-jump rebased
+// his altitude to the lane and dragged the camera down with it, which from up
+// on a cloud reads as the world snapping to the ground every time you jump.
+standAt(sky.gaps[1].x + sky.gaps[1].w * 0.4);
+run.route = sky;
+run.player.y = 34;          // mid-jump, well clear of the road's surface
+run.player.vy = 120;
+run.player.grounded = false;
+const anchorBefore = run.camFloorY;
+frames(1);
+assert(run.route === sky, 'jumping a break keeps the hero on the road');
+run.camFloorY = anchorBefore;
+for (let i = 0; i < 20; i++) {
+  run.camX = sky.gaps[1].x + sky.gaps[1].w * 0.4 - PLAYER_X;
+  run.route = sky; run.player.y = 34; run.player.vy = 120; run.player.grounded = false;
+  frames(1);
+}
+assert(run.camFloorY < GROUND_Y_CHK - 100,
+  `and the camera stays up on the road with him (${run.camFloorY.toFixed(0)})`);
+
+// ---- the spring pad: the only way up ----------------------------------------
+sky.sprung = false;
+run.obstacles.length = 0;
+run.camX = sky.x - 400;
+run.spawnRouteEntries();
+const pad = run.obstacles.find((o) => o.live && o.def && o.def.isSpring);
+assert(!!pad, 'a spring pad is placed for a sprung road');
+assert(pad.x < sky.x, `and it sits BEFORE the mouth, on the ground (pad ${pad.x.toFixed(0)} < mouth ${sky.x.toFixed(0)})`);
+assert(pad.springFor === sky, 'aimed at the road it belongs to');
+
+// Run over it: the pad fires and the hero goes up far enough to reach a road
+// nothing else in the game can reach.
+standAt(pad.x - 6);
+run.player.grounded = true;
+let peakY = 0;
+for (let i = 0; i < 120 && !run.route; i++) {
+  frames(1);
+  peakY = Math.max(peakY, run.player.y);
+  if (run.playerWorldX() > sky.x + sky.w * 0.5) break;
+}
+assert(pad.used, 'running over it fires it');
+assert(peakY > MAX_RISE * 2,
+  `and it throws the hero well past jump range (${peakY.toFixed(0)}px against a ${MAX_RISE}px ceiling)`);
+assert(run.route === sky, 'landing him on the high road');
+
+// Riding it: he is genuinely up there, and cannot get down by jumping.
+run.camX = sky.x + sky.w * 0.5 - PLAYER_X;
+frames(1);
+assert(run.route === sky, 'he is still on it half way along');
+assert(run.groundYAt(run.playerWorldX()) - run.playerGroundY() > bestApex,
+  'with the lane further below him than any jump could climb back');
+
+// Jump the pad instead and it never sees you — which is the choice.
+pad.used = false;
+run.route = null;
+standAt(pad.x - 40);
+dom.keyDown('Space');
+for (let i = 0; i < 40 && run.playerWorldX() < pad.x + pad.w + 10; i++) frames(1);
+dom.keyUp('Space');
+assert(!pad.used, 'jumping over the pad leaves it unfired — the low road is a decision, not a failure');
+
+// ---- a road is FURNISHED, not just travelled ---------------------------------
+// An empty branch is a held breath: you choose at the mouth and then nothing
+// happens until the exit. What makes one a section is having the same things to
+// deal with the lane has — and having them spaced by the same rule, because a
+// hero arrives on a branch already committed rather than running onto it with a
+// jump in hand.
+const furnished = run.routes.find((r) => r.hazards);
+assert(!!furnished, 'a route declares hazards to furnish it with');
+run.obstacles.length = 0;
+furnished.populated = false;
+run.populateRoute(furnished);
+const laid = run.obstacles.filter((o) => o.live && o.route === furnished);
+assert(laid.length >= 6, `and they are laid along it (${laid.length} of them)`);
+assert(laid.every((o) => o.x > furnished.x && o.x < furnished.x + furnished.w),
+  'all of them inside the span');
+// Nothing at the way in or the way out: both are moments whose timing the
+// player does not choose.
+const inset = Math.min(...laid.map((o) => o.x)) - furnished.x;
+const outset = furnished.x + furnished.w - Math.max(...laid.map((o) => o.x));
+assert(inset > 40 && outset > 40,
+  `clear of the entrance and the exit (${inset.toFixed(0)}px in, ${outset.toFixed(0)}px out)`);
+// The one invariant a lane owes the player, applied to the branch.
+const react = run.spawner.react * run.baseSpeed();
+const xs = laid.map((o) => o.x).sort((a, b) => a - b);
+let tight = 0;
+for (let i = 1; i < xs.length; i++) if (xs[i] - xs[i - 1] < react) tight++;
+assert(tight === 0,
+  `spaced by at least a reaction runway (${react.toFixed(0)}px), ${tight} too close`);
+// And they are boxed against the ROAD, not the lane — which is the one field
+// that makes a crate underground an ordinary crate.
+const probe = laid[0];
+assert(Math.abs(run.entityGroundY(probe) - run.routeGroundY(probe.x, furnished)) < 0.001,
+  'boxed against the road they stand on rather than the ground far above it');
+assert(!run.sharesRoute(probe),
+  'and they are not the hero\'s problem while he is up on the lane');
+
+// ---- the tunnel: the same thing, downwards ----------------------------------
+const tunnel = run.routes.find((r) => r.kind === 'tunnel');
+assert(!!tunnel, 'the stage carries a tunnel');
+// Sampled past the lip, because the way IN may be a ramp: a ramped tunnel is
+// level with the lane at its mouth by definition, and the whole read of it is
+// that the ground goes down under you rather than out from under you.
+assert(run.routeRise(tunnel.x + tunnel.w * 0.5, tunnel) < 0,
+  'a tunnel reads as a NEGATIVE rise — the floor moving down, not a new kind of object');
+assert(run.routeGroundY(tunnel.x + tunnel.w * 0.4, tunnel) > run.groundYAt(tunnel.x + tunnel.w * 0.4),
+  'and its floor is genuinely below the lane');
+// Its mouth is a real hole in the lane, carved by the same gap machinery
+// everything else uses — but it is not the death a gap usually is.
+tunnel.sprung = false;
+run.obstacles.length = 0;
+run.camX = tunnel.x - 400;
+run.spawnRouteEntries();
+const cuts = run.obstacles.filter((o) => o.live && o.def && o.def.isGap && o.tunnel === tunnel);
+// A RAMPED entrance is not cut out of the lane at all — the ground peels away
+// downward and the lane runs over the top of it — so the only gaps a ramped
+// tunnel owns are its mid-span holes.
+const wants = (tunnel.ramp ? 0 : 1) + (tunnel.holes || []).length;
+assert(cuts.length === wants,
+  `every opening is cut into the lane and nothing else is (${cuts.length}/${wants}, ramp=${!!tunnel.ramp})`);
+const hole = cuts[0];
+assert(!!hole, 'there is an opening to check');
+const owner = [...(tunnel.ramp ? [] : [{ x: tunnel.x, w: tunnel.mouthW }]), ...(tunnel.holes || [])]
+  .find((sp) => Math.abs(sp.x - hole.x) < 0.001);
+assert(!!owner && Math.abs(hole.w - owner.w) < 0.001,
+  `as wide as the opening it cuts and no wider (${hole.w.toFixed(0)}px)`);
+// Sized off the HERO and not off the span. A hole is something you step into or
+// step over; at a third of a jump's span it was neither, and it also grew with
+// the stage's speed while the hero stayed the same size.
+const { PLAYER_W } = await import('../src/game/player.js');
+// The ENTRANCE is the decision — wide enough to be a real gap in the lane, and
+// still well inside a jump's span at the slowest stage so clearing it is a jump
+// you make rather than one you have to nail.
+assert(tunnel.mouthW <= PLAYER_W * 9,
+  `the entrance is hero-scaled, not span-scaled (${tunnel.mouthW}px vs a ${PLAYER_W}px hero)`);
+assert(tunnel.mouthW < 114 * 0.75,
+  `and comfortably inside a jump's span (${tunnel.mouthW}px vs 114px at the slowest stage)`);
+// A MID-SPAN hole is a second chance rather than a second decision, so it is
+// smaller than the entrance. It used to be a ninth of the whole span.
+for (const h of tunnel.holes || []) {
+  assert(h.w < tunnel.mouthW,
+    `a mid-span hole is narrower than the entrance (${Math.round(h.w)}px vs ${tunnel.mouthW}px)`);
+  assert(h.w <= PLAYER_W * 4,
+    `and a stride wide (${Math.round(h.w)}px vs a ${PLAYER_W}px hero)`);
+}
+
+// ---- nothing standing in an opening ----------------------------------------
+// A hole is a choice. A hazard in it — or close enough in front of it that
+// dodging drops you through — makes the lane choose for you.
+tunnel.populated = false;
+run.obstacles.length = 0;
+run.populateRoute(tunnel);
+const openings = [{ x: tunnel.x, w: tunnel.mouthW }, ...(tunnel.holes || [])];
+assert(openings.length >= 1, `the tunnel has ${openings.length} opening(s) to keep clear`);
+const inHole = run.obstacles.filter((o) => o.live && o.route === tunnel
+  && openings.some((h) => o.x + o.w >= h.x - 20 && o.x <= h.x + h.w + 20));
+assert(inHole.length === 0,
+  `nothing is laid in or beside an opening (${inHole.length} found)`);
+
+// Run into it and you fall in rather than dying. The lane is cleared down to
+// the hole itself first: the spawner keeps filling ahead of the camera, and a
+// cactus landing on the approach would fail this for a reason that has nothing
+// to do with the hole.
+const onlyHole = () => { for (const o of run.obstacles) if (o !== hole) o.live = false; };
+const deathsBefore = run.damageTaken;
+standAt(tunnel.x - 20);
+onlyHole();
+for (let i = 0; i < 30 && !run.route; i++) { onlyHole(); frames(1); }
+assert(run.route === tunnel, 'running into the mouth puts the hero on the low road');
+assert(run.damageTaken === deathsBefore, 'and it does not kill him — this hole is a road');
+for (let i = 0; i < 60; i++) { onlyHole(); frames(1); }
+assert(run.player.grounded && run.route === tunnel, 'he is on the tunnel floor');
+// A RAMP is not a fall. He keeps his feet and the ground goes down under him,
+// which is the whole difference between riding one and dropping through a hole.
+if (tunnel.ramp) {
+  assert(run.routeRise(tunnel.x + 1, tunnel) === 0,
+    'a ramped tunnel starts level with the lane — nothing to fall through');
+}
+// Measured where the tunnel is actually AT depth. On a ramp the first stretch is
+// still on its way down, and being able to hop out of the top of a descent is
+// not the invariant — the invariant is that the deep part holds you.
+run.camX = tunnel.x + tunnel.w * 0.5 - PLAYER_X;
+run.route = tunnel;
+run.player.y = 0;
+const roof = run.groundYAt(run.playerWorldX()) - run.playerGroundY();
+assert(-roof > bestApex,
+  `with the lane too far overhead to jump back out (${(-roof).toFixed(0)}px against a ${bestApex.toFixed(1)}px apex)`);
+
+// And it converges, exactly as a fork does — the same one line of arithmetic.
+assert(Math.abs(run.routeRise(tunnel.x + tunnel.w + 1, tunnel)) < 0.001,
+  'the tunnel meets the ground at its far end');
+run.camX = tunnel.x + tunnel.w + 2 - PLAYER_X;
+run.player.y = 0;
+frames(1);
+assert(run.route === null && Math.abs(run.player.y) < 1.5,
+  'so riding it out returns the hero to the lane still running');
+
+// ---- the camera re-pins, or none of the above is playable -------------------
+// A road 210px up cannot be framed by craning (38px of apron) or by zooming
+// (the whole game would shrink to hold a groundline the player has left). The
+// anchor moves instead, and the test is that it MOVES and that it comes back —
+// a stuck anchor is a camera looking at the wrong part of the world forever.
+// GROUND_Y only — ZOOM is a live binding the run's own copy of the module has
+// already moved (applyFraming), and this import is a SEPARATE instance from the
+// bundle the game is running out of, so its value would be the shipped default
+// rather than the one on screen. The run's resting zoom is asked for directly.
+const { GROUND_Y: GY, ZOOM_MIN } = await import('../src/engine/camera.js');
+// Parked on the road's plateau rather than allowed to ride it, so the anchor is
+// being asked about ONE height for long enough to settle there. Left to run he
+// would reach the merge and come down again mid-measurement.
+const parkX = sky.x + sky.w * (sky.lip + sky.climb + 0.05);
+for (let i = 0; i < 180; i++) {
+  run.camX = parkX - PLAYER_X;
+  run.route = sky;
+  run.player.y = 0;
+  run.player.grounded = true;
+  frames(1);
+}
+assert(run.camFloorY < GY - 100,
+  `riding the sky road carries the camera anchor up with it (${run.camFloorY.toFixed(0)} vs a ${GY} groundline)`);
+// It takes the ROAD's own rise and not the rolling terrain under it, which is
+// the same division of labour the camera has always used: the groundline is
+// pinned and hills are paid for by the crane. So the anchor lands at
+// GROUND_Y - rise exactly, and what is left over is one hill's worth.
+assert(Math.abs(run.camFloorY - (GY - run.routeRise(parkX, sky))) < 1.5,
+  `settling on the road's own height (${run.camFloorY.toFixed(1)} vs ${(GY - run.routeRise(parkX, sky)).toFixed(1)})`);
+const leftover = run.camFloorY - run.routeGroundY(parkX, sky);
+assert(leftover >= 0 && leftover <= 18,
+  `with only the hill under it left for the crane (${leftover.toFixed(1)}px)`);
+// The point of re-pinning rather than craning: once the anchor has caught up,
+// standing on a cloud costs exactly what standing on the ground costs. Zooming
+// out to hold a groundline the player has left would shrink the whole game.
+assert(run.camZoom > ZOOM_MIN + 0.15,
+  `at the resting zoom rather than pulled back to hold it (${run.camZoom.toFixed(2)}, floor ${ZOOM_MIN})`);
+run.route = null;
+for (let i = 0; i < 240; i++) {
+  run.camX = tunnel.x - 900 - PLAYER_X;
+  run.route = null;
+  run.player.y = 0;
+  run.player.grounded = true;
+  frames(1);
+}
+assert(Math.abs(run.camFloorY - GY) < 2,
+  `and back to the groundline once he is off it (${run.camFloorY.toFixed(1)})`);
 
 // ---- a cabinet with no islands is untouched ---------------------------------
 const { CABINETS } = await import('../src/data/cabinets.js');

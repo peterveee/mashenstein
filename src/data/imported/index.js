@@ -106,6 +106,9 @@ import * as SALTY_TEMPLE from './salty-temple.js';
 import * as SECRET_BALLOON from './secret-balloon.js';
 import * as SECRET_DIVER from './secret-diver.js';
 import * as SECRET_MONSTER from './secret-monster.js';
+import * as SHOP_80BPM from './shop-80bpm.js';
+import * as SHOP_CHORDS from './shop-chords.js';
+import * as SHOPPING_FULL from './shopping-full.js';
 import * as SHOPPINGCHANNEL from './shoppingchannel.js';
 import * as SILENT_BEETLE from './silent-beetle.js';
 import * as SILENT_ROCKET from './silent-rocket.js';
@@ -141,6 +144,7 @@ import { WIISHOPPINGCHANNEL } from './wiishoppingchannel.js';
 import * as WILD_CACTUS from './wild-cactus.js';
 import * as WILD_DOLPHIN from './wild-dolphin.js';
 import * as WILD_SUNDAE from './wild-sundae.js';
+import * as WIPL_BGM_SHOP_COPY from './wipl-bgm-shop-copy.js';
 import * as WIPL_BGM_SHOP from './wipl-bgm-shop.js';
 
 export const IMPORTED_BY_ID = {
@@ -239,6 +243,9 @@ export const IMPORTED_BY_ID = {
   "secret-balloon": { bank: SECRET_BALLOON.bank, title: SECRET_BALLOON.title, group: "scratch", writable: true },
   "secret-diver": { bank: SECRET_DIVER.bank, title: SECRET_DIVER.title, group: "scratch", writable: true },
   "secret-monster": { bank: SECRET_MONSTER.bank, title: SECRET_MONSTER.title, group: "scratch", writable: true },
+  "shop-80bpm": { bank: SHOP_80BPM.bank, title: SHOP_80BPM.title, group: "imported", writable: true },
+  "shop-chords": { bank: SHOP_CHORDS.bank, title: SHOP_CHORDS.title, group: "copy", writable: true },
+  "shopping-full": { bank: SHOPPING_FULL.bank, title: SHOPPING_FULL.title, group: "copy", writable: true },
   "shoppingchannel": { bank: SHOPPINGCHANNEL.bank, title: SHOPPINGCHANNEL.title, group: "copy", writable: true },
   "silent-beetle": { bank: SILENT_BEETLE.bank, title: SILENT_BEETLE.title, group: "scratch", writable: true },
   "silent-rocket": { bank: SILENT_ROCKET.bank, title: SILENT_ROCKET.title, group: "scratch", writable: true },
@@ -274,6 +281,7 @@ export const IMPORTED_BY_ID = {
   "wild-cactus": { bank: WILD_CACTUS.bank, title: WILD_CACTUS.title, group: "scratch", writable: true },
   "wild-dolphin": { bank: WILD_DOLPHIN.bank, title: WILD_DOLPHIN.title, group: "scratch", writable: true },
   "wild-sundae": { bank: WILD_SUNDAE.bank, title: WILD_SUNDAE.title, group: "scratch", writable: true },
+  "wipl-bgm-shop-copy": { bank: WIPL_BGM_SHOP_COPY.bank, title: WIPL_BGM_SHOP_COPY.title, group: "copy", writable: true },
   "wipl-bgm-shop": { bank: WIPL_BGM_SHOP.bank, title: WIPL_BGM_SHOP.title, group: "imported", writable: true },
 };
 

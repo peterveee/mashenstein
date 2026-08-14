@@ -22,6 +22,12 @@ export const OBSTACLES = {
   pipe:       { w: 14, h: 18, sprite: 'crate', ground: true, breakable: false, action: 'jump', tall: true },
   gap:        { w: 56, h: 20, sprite: null, ground: true, isGap: true, action: 'jump' },
   boostPad:   { w: 14, h: 4,  sprite: 'boostPad', ground: true, isBoost: true, action: 'none' },
+  // The boost pad's vertical cousin. Same contract — run over it and it pays
+  // out, jump it and it does not — pointed up instead of forward, because what
+  // it buys is a road you cannot otherwise reach. `action: 'none'` is the
+  // literal truth: nothing about it has to be avoided, and jumping it is a
+  // choice rather than a save.
+  springPad:  { w: 16, h: 6,  sprite: 'springPad', ground: true, isSpring: true, action: 'none' },
   switch:     { w: 8, h: 8,   sprite: 'battery', alt: 46, breakable: true, action: 'none', isSwitch: true, bob: true },
   tombstone:  { w: 11, h: 8,  sprite: 'tombstone', ground: true, breakable: true, action: 'jump' },
   zombie:     { w: 10, h: 14, sprite: 'zombieWalk', ground: true, breakable: true, action: 'jump', vx: -14, shamble: true },
