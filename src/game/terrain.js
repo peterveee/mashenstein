@@ -55,18 +55,33 @@ export const ISLAND_THICKNESS = 6;
  * The underside gets the dark fill and a lit top edge, the same two-tone the
  * ground line uses, so the side you can land on is the side that is lit.
  */
-export function drawIslands(ctx, camX, cabinet, islands, viewW = W) {
+export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W) {
   const right = Math.min(W, Math.ceil(viewW) + 2);
-  for (const is of islands) {
-    const sx = is.x - camX;
-    if (sx > right || sx + is.w < 0) continue;
+  for (const r of routes) {
+    const sx = r.x - camX;
+    if (sx > right || sx + r.w < 0) continue;
+    // Walked in columns rather than drawn as a rect, because a fork's road is
+    // not level: it holds its height and then eases back down to meet the
+    // ground, and that descent is the convergence the player is meant to read
+    // coming. An island's surface is flat, so the same walk draws it as a
+    // straight slab without needing to know the difference.
+    // Rounded INWARD at both ends. Rounding out puts a column a pixel outside
+    // the span, where the road does not exist and its height reads as zero —
+    // which draws a spike down to the ground at the mouth and again at the
+    // merge, and the one at the mouth looks like a wall in the hero's path.
+    const from = Math.max(0, Math.ceil(sx));
+    const to = Math.min(right, Math.floor(sx + r.w));
     ctx.fillStyle = cabinet.groundDark;
-    ctx.fillRect(sx, is.topY, is.w, ISLAND_THICKNESS);
+    for (let x = from; x <= to; x += 2) {
+      ctx.fillRect(x, topAt(camX + x, r), 3, ISLAND_THICKNESS);
+    }
     ctx.strokeStyle = cabinet.ground;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(sx, is.topY);
-    ctx.lineTo(sx + is.w, is.topY);
+    for (let x = from; x <= to; x += 2) {
+      const y = topAt(camX + x, r);
+      if (x === from) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
     ctx.stroke();
     ctx.lineWidth = 1;
   }

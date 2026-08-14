@@ -31,7 +31,7 @@ import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF } from './draw.js';
-import { drawTerrain, drawIslands, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
+import { drawTerrain, drawRoutes, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
 import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
@@ -720,7 +720,35 @@ export class RunState {
    * of the run that is not on an island.
    */
   routeGroundY(worldX, route) {
-    return route ? route.topY : this.groundYAt(worldX);
+    if (!route) return this.groundYAt(worldX);
+    if (route.kind === 'island') return route.topY;
+    return this.groundYAt(worldX) - this.forkRise(worldX, route);
+  }
+
+  /**
+   * How far a fork's high road sits above the ground at this x.
+   *
+   * Full height from the moment the span opens — the mouth is a LEDGE, not a
+   * slope, and that is deliberate: a road that rose gradually out of the floor
+   * would collect a hero who simply kept running, and then the fork would not
+   * be a choice at all. You jump to catch it or you stay low.
+   *
+   * The far end is the opposite: it eases down on the same smoothstep the
+   * terrain uses, so the two roads converge instead of the high one stopping
+   * dead. That easing IS the convergence — by the time the span closes, the
+   * road and the ground are the same line and the route drops away with
+   * nothing to fall.
+   */
+  forkRise(worldX, f) {
+    const t = (worldX - f.x) / f.w;
+    // `t < 0`, not `t <= 0`: the mouth itself is already at full height. Letting
+    // the very first column sit at ground level draws a vertical wall from the
+    // floor up to the road, which reads as something the hero will run into
+    // rather than a ledge he can jump to.
+    if (t < 0 || t >= 1) return 0;
+    if (t < f.hold) return f.rise;
+    const k = (t - f.hold) / (1 - f.hold);
+    return f.rise * (1 - k * k * (3 - 2 * k));
   }
 
   /** Where the player's own feet rest right now. */
@@ -728,51 +756,53 @@ export class RunState {
     return this.routeGroundY(this.playerWorldX(), this.route);
   }
 
-  /** The island covering this x, if any. Islands never overlap. */
-  islandAt(worldX) {
-    for (const is of this.islands) {
-      if (worldX >= is.x && worldX <= is.x + is.w) return is;
+  /** The raised route covering this x, if any. Routes never overlap. */
+  routeAt(worldX) {
+    for (const r of this.routes) {
+      if (worldX >= r.x && worldX <= r.x + r.w) return r;
     }
     return null;
   }
 
   /**
-   * Getting on and off an island.
+   * Getting on and off a raised route.
    *
    * ON is a swept test rather than a point test: at 232px/s the hero moves ~4px
-   * a frame and falls faster, so asking "are my feet at the island top" misses
-   * it outright most frames. Asking "did the segment I just travelled CROSS the
-   * top going down" cannot. It also corrects the case where player.update has
-   * already clamped the hero to the base ground in the same frame — the island
-   * top is always above that, so the crossing still registers and wins.
+   * a frame and falls faster, so asking "are my feet at the road's height"
+   * misses it outright most frames. Asking "did the segment I just travelled
+   * CROSS that height going down" cannot. It also corrects the case where
+   * player.update has already clamped the hero to the base ground in the same
+   * frame — the road is always above that, so the crossing still registers and
+   * wins.
    *
    * One-way on purpose: only a DESCENDING hero lands. Jumping up through the
-   * slab from underneath is how you get on top of it, and a runner that clonks
-   * its head on a platform it is trying to reach reads as broken.
+   * road from underneath is how you get on top of it, and a runner that clonks
+   * its head on the platform it is trying to reach reads as broken.
    *
-   * OFF is just arithmetic. `y` is altitude above the CURRENT floor, so when the
-   * floor drops by `rise` the same world position is `rise` higher above the new
-   * one — hence `y += rise`, grounded false, and gravity does the rest.
+   * OFF is just arithmetic, and it is where the two kinds part company. `y` is
+   * altitude above the CURRENT floor, so leaving a road means adding the drop
+   * between it and the ground below. An ISLAND stops dead, so that drop is its
+   * full height and the hero falls. A FORK has already eased down to meet the
+   * ground by the time its span closes, so the same subtraction comes out at
+   * zero and he simply keeps running — the roads have converged. One line of
+   * arithmetic, both endings, no special case.
    */
   updateRoute(prevFeetY) {
     const x = this.playerWorldX();
     if (this.route) {
-      // Still over my own island? The lip is where it ends.
       if (x >= this.route.x && x <= this.route.x + this.route.w) return false;
-      // Step off the lip. `y` is altitude above the CURRENT floor, so rebasing
-      // onto the ground below means adding the drop between the two — which is
-      // the slab's height above that ground, measured where the hero leaves it
-      // rather than the stored `rise` (the terrain may have rolled underneath).
-      this.player.y += this.groundYAt(x) - this.route.topY;
-      this.player.grounded = false;
+      const drop = this.groundYAt(x) - this.routeGroundY(x, this.route);
+      this.player.y += drop;
+      if (drop > 0.01) this.player.grounded = false;
       this.route = null;
       return false;
     }
     if (this.player.vy > 0) return false;       // rising: pass through from below
-    const is = this.islandAt(x);
+    const is = this.routeAt(x);
     if (!is) return false;
+    const top = this.routeGroundY(x, is);
     const feetY = this.groundYAt(x) - this.player.y;
-    if (prevFeetY > is.topY || feetY < is.topY) return false;   // did not cross downward
+    if (prevFeetY > top || feetY < top) return false;   // did not cross downward
     this.route = is;
     this.player.y = 0;
     this.player.vy = 0;
@@ -1051,34 +1081,52 @@ export class RunState {
     this.spawner.nextX = 300;
     this.drip = new DripSpawner(this.rng.stream('drip'), this.bench);
 
-    // Floating islands: short slabs over the lane, jumped onto for a reward and
-    // fallen off the end of. Resolved to world spans here, once.
+    // ---- raised routes: islands and forks ----------------------------------
     //
-    // Authored in SECONDS of dwell rather than pixels, and converted against
-    // this stage's own base speed. A jump spans 114px in world 1 and 253 on
-    // UNPLUGGED, so a slab written as "150px" is one jump long at the start of
+    // ONE mechanism, two endings. An island and a fork's high road are the same
+    // object — a surface above the lane that the hero catches with an ordinary
+    // jump — and they differ only in what happens when it runs out. An island
+    // STOPS, so you fall off the lip. A fork CONVERGES, ramping back down to
+    // meet the ground so the two roads become one again.
+    //
+    // Both are authored in SECONDS rather than pixels, converted against this
+    // stage's own base speed. A jump spans 114px in world 1 and 253 on
+    // UNPLUGGED, so a road written as "150px" is one jump long at the start of
     // the game and less than half a jump by the end — the hero would sail
-    // straight over the thing. Seconds keep the beat the same length wherever
-    // it is played, which is what the number is actually describing.
+    // straight over it. Seconds keep the beat the same length wherever it is
+    // played, which is what the number is actually describing.
     //
     // `rise` is validated against the HEAVY hero, not the average one: Grumpos
-    // clears 45.5px against everyone else's 57, and a slab only he cannot reach
-    // is a slab that reads as broken on exactly one hero. Same instinct as
+    // clears 45.5px against everyone else's 57, and a road only he cannot reach
+    // is broken on exactly one eighth of the relay bag. Same instinct as
     // spawner.js's worstAirtime().
     this.route = null;
-    this.islands = (this.bossCab || this.overtime || !Number.isFinite(this.totalDist))
-      ? []
-      : (this.cabinet.islands || []).map((is) => {
-        const x = is.at * this.totalDist;
-        const w = (is.dwell ?? 0.7) * this.baseSpeed();
-        const rise = Math.min(is.rise ?? 30, MAX_ISLAND_RISE);
-        // A FLAT top, fixed at construction from the ground under the slab's
-        // middle — not `base - rise` evaluated per column. A floating slab is a
-        // flat thing; letting it ride the hills underneath would tilt the floor
-        // the hero is standing on and hand `groundDelta` a slope that the art
-        // would then lean the dust and boost effects into.
-        return { x, w, rise, topY: this.groundYAt(x + w / 2) - rise, prize: is.prize || 'coins' };
-      });
+    const noRoutes = this.bossCab || this.overtime || !Number.isFinite(this.totalDist);
+    const speed = this.baseSpeed();
+    const mk = (kind) => (d) => {
+      const x = d.at * this.totalDist;
+      const w = (d.dwell ?? 0.7) * speed;
+      const rise = Math.min(d.rise ?? 30, MAX_ISLAND_RISE);
+      return {
+        kind, x, w, rise,
+        // Islands get a FLAT top, fixed here from the ground under the slab's
+        // middle rather than evaluated per column. A floating slab is a flat
+        // thing; letting it ride the hills underneath would tilt the floor the
+        // hero stands on and hand `groundDelta` a slope the art would lean the
+        // dust and boost effects into. A fork's road is not floating — it is a
+        // road — so it keeps the terrain's own shape and only rises off it.
+        topY: kind === 'island' ? this.groundYAt(x + w / 2) - rise : 0,
+        // How much of a fork's span is spent at full height before it starts
+        // coming back down to meet the ground.
+        hold: d.hold ?? 0.6,
+        prize: d.prize || (kind === 'island' ? 'coins' : 'coins'),
+        lowPrize: d.lowPrize || null,
+      };
+    };
+    this.routes = noRoutes ? [] : [
+      ...(this.cabinet.islands || []).map(mk('island')),
+      ...(this.cabinet.forks || []).map(mk('fork')),
+    ].sort((a, b) => a.x - b.x);
 
     // Mission setup.
     this.mission = this.stage ? { ...this.stage.mission, count: 0, done: false } : { type: 'endless', desc: 'RUN. FOREVER. THAT IS THE WHOLE DEAL.' };
@@ -1647,7 +1695,7 @@ export class RunState {
     const res = this.player.update(wdt, Input, {
       speed: sp, ice: this.cabinet.mechanic === 'ice', gravityScale: this.powerups.gravityMultiplier(),
     });
-    const tookIsland = this.islands.length ? this.updateRoute(prevFeetY) : false;
+    const tookIsland = this.routes.length ? this.updateRoute(prevFeetY) : false;
     if (res.landed || tookIsland) {
       Audio.sfx('land');
       burst(this.camX + PLAYER_X + 6, this.playerGroundY(), 5, 30, 0.3, '#c8b898', 1, 40, () => this.fxRng.float());
@@ -1678,7 +1726,7 @@ export class RunState {
       updateProfileAdd('spawnMs', spawnAt);
     }
     this.spawnApplianceMaybe();
-    if (this.islands.length) { this.spawnIslandPrizes(); this.clearIslandHazards(); }
+    if (this.routes.length) { this.spawnRoutePrizes(); this.clearRouteHazards(); }
     // Swept every frame, not just on the frame the portal appears: the drip
     // capsule and the appliance both spawn at their own clock a little further
     // out than the portal does, so either can land in the column afterwards.
@@ -3140,17 +3188,30 @@ export class RunState {
    * each coin — which is not a constant, since the ground rolls and the slab
    * does not.
    */
-  spawnIslandPrizes() {
-    for (const is of this.islands) {
+  spawnRoutePrizes() {
+    for (const is of this.routes) {
       if (is.spawned || this.camX + W < is.x) continue;
       is.spawned = true;
-      if (is.prize !== 'coins') continue;
-      // Inset from both lips so nothing sits where the hero is still landing or
-      // already stepping off, and so the row reads as ON the slab.
+      // Inset from both ends so nothing sits where the hero is still landing or
+      // already leaving, and so the row reads as ON the road.
       const inset = 14;
-      for (let x = is.x + inset; x <= is.x + is.w - inset; x += COIN_GAP) {
-        const alt = this.groundYAt(x) - is.topY + COIN_FLOOR;
-        this.pickups.push(makePickup('coin', x, alt));
+      if (is.prize === 'coins') {
+        for (let x = is.x + inset; x <= is.x + is.w - inset; x += COIN_GAP) {
+          const alt = this.groundYAt(x) - this.routeGroundY(x, is) + COIN_FLOOR;
+          this.pickups.push(makePickup('coin', x, alt));
+        }
+      } else if (is.prize) {
+        const x = is.x + is.w / 2;
+        const alt = this.groundYAt(x) - this.routeGroundY(x, is) + COIN_FLOOR;
+        this.pickups.push(makePickup(is.prize, x, alt));
+      }
+      // The road NOT taken. A fork is only a decision if the two sides are worth
+      // different things — coins up and a power-up down means the answer depends
+      // on what you need right now, where "one road simply pays better" would be
+      // solved once and then stop being a choice. The low road is the base
+      // ground, so its prize is an ordinary ground-level pickup.
+      if (is.lowPrize) {
+        this.pickups.push(makePickup(is.lowPrize, is.x + is.w / 2, COIN_FLOOR));
       }
     }
   }
@@ -3174,18 +3235,26 @@ export class RunState {
    * sweep, and dropping the offending obstacle is much less invasive than
    * teaching the spawner about a second kind of wall.
    */
-  clearIslandHazards() {
-    for (const is of this.islands) {
+  clearRouteHazards() {
+    for (const is of this.routes) {
       if (is.cleared || this.camX + W + 200 < is.x + is.w) continue;
       is.cleared = true;
-      // Where the hero lands off the lip, and the first moment they could act
-      // on whatever is waiting there.
+      // Where the hero lands off the end, and the first moment they could act on
+      // whatever is waiting there. A fork has already converged by the time its
+      // span closes, so there is no fall and no exit window to clear — the hero
+      // arrives on the ground running, with a jump in hand, which is exactly the
+      // case the spawner's own invariant already covers.
       const exitFrom = is.x + is.w;
-      const exitTo = exitFrom + Math.sqrt((2 * is.rise) / GRAVITY) * this.speed
-        + this.spawner.react * this.speed;
-      const underside = is.topY + ISLAND_THICKNESS;
+      const exitTo = is.kind === 'fork' ? exitFrom
+        : exitFrom + Math.sqrt((2 * is.rise) / GRAVITY) * this.speed
+          + this.spawner.react * this.speed;
       for (const ob of this.obstacles) {
         if (!ob.live || !ob.def) continue;
+        // Measured at the OBSTACLE's x, not once for the whole route: a fork's
+        // road descends, so a crate that clears it at the mouth can still be
+        // buried in it near the merge. A single height would keep exactly the
+        // hazards that the converging half runs into.
+        const underside = this.routeGroundY(ob.x, is) + ISLAND_THICKNESS;
         const inExit = ob.x + ob.w >= exitFrom && ob.x <= exitTo && ob.def.action !== 'none';
         const underSlab = ob.x + ob.w >= is.x && ob.x <= exitFrom
           && this.groundYAt(ob.x) - ob.alt - ob.h < underside;
@@ -3262,7 +3331,7 @@ export class RunState {
       // Which road the hero is on, as an INDEX rather than the island object:
       // a snapshot outlives the frame it was taken in, and storing the live
       // object would tie a restore to an entity graph that has moved on.
-      route: this.islands.indexOf(this.route),
+      route: this.routes.indexOf(this.route),
     };
   }
 
@@ -3282,7 +3351,7 @@ export class RunState {
     // A fresh Player starts at altitude 0, which means "on the floor" — so the
     // floor has to be the one the snapshot was taken on, or the hero is stood
     // on the base ground while the run still believes he is on a slab.
-    this.route = s.route >= 0 ? this.islands[s.route] : null;
+    this.route = s.route >= 0 ? this.routes[s.route] : null;
     this.player.abilityCooldowns = { ...(s.abilityCooldowns || {}) };
     this.player.relayCharge = !!s.relayCharge;
     this.spawner.nextX = Math.max(s.spawnerX, s.camX + 400);
@@ -3344,7 +3413,7 @@ export class RunState {
     // restoring y without restoring the floor it was measured from puts the
     // hero at the right height above the wrong thing — rewinding onto a slab
     // would drop him through it, and off one would stand him on air.
-    s.route = this.islands.indexOf(this.route);
+    s.route = this.routes.indexOf(this.route);
 
     // Player mutable state. Written field by field rather than by assignInto:
     // Player carries far more than the rewind restores, and listing what is
@@ -3450,7 +3519,7 @@ export class RunState {
     this.powerupsCollected = s.powerupsCollected;
     this.hintT = s.hintT; this.bonusT = s.bonusT;
     // Before the player fields below: `p.y` is read against this floor.
-    this.route = s.route >= 0 ? this.islands[s.route] : null;
+    this.route = s.route >= 0 ? this.routes[s.route] : null;
 
     // Player: restore mutable fields in-place.
     const p = this.player;
@@ -4082,7 +4151,7 @@ export class RunState {
     // Ground line + gaps.
     this.style.ground(ctx, cam, this.cabinet, this.obstacles);
     if (!this.bossCab) drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, W / z);
-    if (this.islands.length) drawIslands(ctx, cam, this.cabinet, this.islands, W / z);
+    if (this.routes.length) drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.routeGroundY(wx, r), W / z);
 
     // Entities. On a converting style (lcd) the whole cast is held back past
     // post() with the hero, so enemies and pickups stay in colour against the

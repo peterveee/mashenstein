@@ -1,18 +1,25 @@
-// Floating islands: short slabs over the lane that a hero jumps onto for the
-// reward on top and steps off the far end of.
+// Raised routes: floating islands and converging forks.
+//
+// Both are the same object — a surface above the lane caught with an ordinary
+// jump — and differ only in the ending. An island STOPS, so you fall off the
+// lip. A fork CONVERGES, easing back down to meet the ground so the two roads
+// become one again.
 //
 // The mechanism deliberately avoids a second collision system. `player.y` is
-// altitude above the floor rather than a world coordinate, so an island is not
-// a surface the physics has to know about — it is the floor MOVING, and the run
-// owns which floor is current. That buys a lot, but it puts the weight on four
-// things that unit-testing the helpers would not catch, so this drives the real
+// altitude above the floor rather than a world coordinate, so a raised route is
+// not a surface the physics has to know about — it is the floor MOVING, and the
+// run owns which floor is current. That buys a lot, but it puts the weight on
+// things unit-testing the helpers would not catch, so this drives the real
 // bundle into a real run and pokes the live state:
 //
-//   - the slab is reachable by the WORST hero, not the average one
+//   - the road is reachable by the WORST hero, not the average one
 //   - landing is swept, so a fast fall cannot tunnel through the top
-//   - a rising hero passes up through the slab instead of clonking on it
-//   - stepping off the lip rebases altitude, so the hero falls exactly the
-//     slab's height rather than teleporting or hanging in the air
+//   - a rising hero passes up through it instead of clonking on it
+//   - leaving an island rebases altitude, so the hero falls exactly its height
+//   - leaving a fork produces NO drop, because it already met the ground
+//   - a fork is full height at its mouth, so a hero who never jumps is not
+//     quietly collected by it — which is what keeps it a choice
+//   - both snapshot systems carry which road the hero was on
 import esbuild from 'esbuild';
 import { installDom } from './dom-stub.js';
 import { join, dirname } from 'node:path';
@@ -87,20 +94,26 @@ if (!inRun()) {
 // poking the state before this point tests nothing.
 for (let i = 0; i < 400 && run.camX <= 0; i++) frames(1);
 assert(run.camX > 0, 'reached a live, scrolling run');
-assert(run.islands.length > 0, `the stage carries islands (${run.islands.length})`);
+assert(run.routes.length > 0, `the stage carries raised routes (${run.routes.length})`);
 
-for (const is of run.islands) {
-  assert(is.rise <= MAX_RISE, `island rise is capped at the reachable ceiling (${is.rise})`);
-  assert(is.w > 0, `island has a real width (${is.w.toFixed(0)}px)`);
-  // Flat, not riding the hills underneath: one number for the whole slab.
-  assert(Number.isFinite(is.topY), 'island top is a fixed height, not a per-column curve');
+for (const is of run.routes) {
+  assert(is.rise <= MAX_RISE, `${is.kind} rise is capped at the reachable ceiling (${is.rise})`);
+  assert(is.w > 0, `${is.kind} has a real width (${is.w.toFixed(0)}px)`);
+}
+// Flat, not riding the hills underneath: one number for the whole slab. Only
+// islands — a fork's road is a road and keeps the terrain's own shape.
+for (const is of run.routes.filter((r) => r.kind === 'island')) {
+  assert(Number.isFinite(is.topY) && is.topY > 0,
+    'an island top is a fixed height, not a per-column curve');
 }
 
 // ---- teleport the hero under a slab and jump onto it ------------------------
 // Driving 30 seconds of real running to arrive at 0.34 of the stage would make
 // this test a slow re-run of the smoke test. Placing the camera is the same
 // world state, reached directly.
-const island = run.islands[0];
+const island = run.routes.find((r) => r.kind === 'island');
+const fork = run.routes.find((r) => r.kind === 'fork');
+assert(!!island && !!fork, 'the stage carries both an island and a fork');
 const PLAYER_X = run.playerWorldX() - run.camX;
 
 function standAt(worldX) {
@@ -177,7 +190,7 @@ assert(run.route === island, 'a hero falling at speed still catches the slab (no
 // one-shot spawn has fired and those coins are long gone. Re-arm it.
 island.spawned = false;
 run.camX = island.x - 100;
-run.spawnIslandPrizes();
+run.spawnRoutePrizes();
 const onSlab = run.pickups.filter((p) => p.live && p.type === 'coin'
   && p.x >= island.x && p.x <= island.x + island.w);
 assert(onSlab.length > 0, `the slab carries a reward (${onSlab.length} coins)`);
@@ -200,11 +213,57 @@ run.obstacles.push(makeObstacle(hazardType, exitFrom + 10, 0));
 run.obstacles.push(makeObstacle(hazardType, exitFrom + 30, 0));
 island.cleared = false;
 run.camX = exitFrom - 100;
-run.clearIslandHazards();
+run.clearRouteHazards();
 const survivors = run.obstacles.filter((o) => o.live && o.def && o.def.action !== 'none'
   && o.x >= exitFrom && o.x < exitFrom + 60);
 assert(survivors.length === 0,
   `nothing you must react to is left in the landing zone (${survivors.length} left)`);
+
+// ---- the fork: a high road that CONVERGES rather than stopping --------------
+// The whole difference between the two kinds is the ending. An island stops and
+// you fall; a fork has already come back down to meet the ground by the time
+// its span closes, so the same arithmetic produces no drop at all.
+const mouthRise = run.forkRise(fork.x + 2, fork);
+assert(Math.abs(mouthRise - fork.rise) < 0.001,
+  'a fork is at full height from its mouth — a ledge you jump to, not a slope you walk up');
+// If the mouth were a slope, a hero who never jumped would be collected by it
+// and the fork would stop being a choice.
+assert(run.forkRise(fork.x - 1, fork) === 0, 'and it does not exist before the mouth');
+
+const holdEnd = fork.x + fork.w * fork.hold;
+assert(Math.abs(run.forkRise(holdEnd - 2, fork) - fork.rise) < 0.5,
+  'it holds full height through the hold fraction');
+const nearEnd = fork.x + fork.w * (1 - 0.02);
+assert(run.forkRise(nearEnd, fork) < fork.rise * 0.15,
+  `and has eased back down to the ground by the end (${run.forkRise(nearEnd, fork).toFixed(1)}px left)`);
+assert(run.forkRise(fork.x + fork.w + 1, fork) === 0, 'meeting it exactly at the merge');
+
+// Riding one to the end should hand the hero back to the ground still running,
+// not drop him. That is the convergence.
+standAt(fork.x + fork.w * 0.5);
+run.route = fork;
+run.player.y = 0;
+run.player.grounded = true;
+run.camX = fork.x + fork.w + 2 - PLAYER_X;
+frames(1);
+assert(run.route === null, 'riding a fork to the end returns the hero to the ground');
+assert(run.player.grounded,
+  'still running rather than falling — the roads converged instead of the high one stopping');
+assert(Math.abs(run.player.y) < 1.5,
+  `and at ground level, with nothing to fall (y=${run.player.y.toFixed(2)})`);
+
+// ---- the two roads are worth different KINDS of thing -----------------------
+fork.spawned = false;
+run.pickups.length = 0;
+run.camX = fork.x - 100;
+run.spawnRoutePrizes();
+const high = run.pickups.filter((p) => p.live && p.alt > fork.rise * 0.5);
+const low = run.pickups.filter((p) => p.live && p.alt <= fork.rise * 0.5);
+assert(high.length > 0 && low.length > 0,
+  `both roads carry a reward (${high.length} up, ${low.length} down)`);
+assert(high.some((p) => p.type === 'coin'), 'coins on the high road');
+assert(low.some((p) => p.type !== 'coin'),
+  `and something else entirely on the low one (${low.map((p) => p.type).join(', ')})`);
 
 // ---- rewind carries the road, not just the height ---------------------------
 // `player.y` is altitude above the CURRENT floor, so a snapshot that records y
@@ -217,7 +276,7 @@ run.player.y = 0;
 const ring = run.rewindFrames;
 run.writeRewindSnapshot(ring.slotForWrite());
 const rec = ring.slots[ring.slots.length - 1] || ring.slots[0];
-assert(rec.route === run.islands.indexOf(island),
+assert(rec.route === run.routes.indexOf(island),
   'a rewind snapshot records which road the hero was on');
 // Move him off it, then rewind back onto it.
 run.route = null;
@@ -228,7 +287,7 @@ assert(Math.abs(run.playerGroundY() - island.topY) < 0.001,
   'with the slab, not the ground, as his floor again');
 
 const snap = run.makeSnapshot();
-assert(snap.route === run.islands.indexOf(island), 'a checkpoint records it too');
+assert(snap.route === run.routes.indexOf(island), 'a checkpoint records it too');
 run.route = null;
 run.restoreSnapshot(snap);
 assert(run.route === island, 'and a checkpoint restore puts him back on it');
@@ -244,5 +303,5 @@ const { CABINETS } = await import('../src/data/cabinets.js');
 const bare = CABINETS.filter((c) => !c.islands);
 assert(bare.length > 0, `most cabinets declare no islands and are unaffected (${bare.length})`);
 
-console.log(failed ? 'ISLANDS: FAILED' : 'ISLANDS: PASSED');
+console.log(failed ? 'ROUTES: FAILED' : 'ROUTES: PASSED');
 process.exit(failed ? 1 : 0);
