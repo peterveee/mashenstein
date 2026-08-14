@@ -662,6 +662,24 @@ export function createMixer(ctx, {
       send: { ...defaultSends() },
     };
 
+    // A presentation transition writes AudioParams into the future. Keep the
+    // corresponding public state in that same future, rather than leaving a
+    // treatment's mute flag behind after its fader has already opened. The scheduler
+    // commits these values from scheduleEffects(); manual setters cancel only the
+    // fields whose AudioParams they take back, so a user edit during a crossfade wins.
+    const pendingState = new Map();
+    const queueState = (at, key, value) => pendingState.set(key, { at, value });
+    const cancelState = (...keys) => { for (const key of keys) pendingState.delete(key); };
+    const commitState = (at) => {
+      for (const [key, item] of pendingState) {
+        if (at + 1e-9 < item.at) continue;
+        if (key === 'eq') Object.assign(state.eq, item.value);
+        else if (key.startsWith('send:')) state.send[key.slice(5)] = item.value;
+        else state[key] = item.value;
+        pendingState.delete(key);
+      }
+    };
+
     // Solo is a monitoring state, so it is resolved here rather than by Tone's
     // global solo bus: the wet path has to follow it too, and it must never be
     // written into a saved mix.
@@ -712,13 +730,14 @@ export function createMixer(ctx, {
       // Both write the fader, and both cancel whatever was scheduled on it: you have
       // just taken manual control of this lane, and a transition's ramp arriving on top
       // of the number you dialled is the wrong answer to that.
-      setGain(db) { state.gain = db; applyLevel(); },
-      setMute(m) { state.mute = !!m; applyLevel(); },
+      setGain(db) { cancelState('gain', 'mute'); state.gain = db; applyLevel(); },
+      setMute(m) { cancelState('gain', 'mute'); state.mute = !!m; applyLevel(); },
       // Dragging the pot cancels whatever the arrangement had scheduled and lands on the
       // sum, so the knob still reads as the channel's position while a bar is holding it
       // somewhere else. The sequencer writes its offset again at every bar line, so a
       // cancel here is undone by the next bar rather than being permanent.
       setPan(p) {
+        cancelState('pan');
         state.pan = Math.max(-1, Math.min(1, p));
         panner.pan.cancelScheduledValues(ctx.currentTime);
         panner.pan.value = panTarget();
@@ -751,12 +770,13 @@ export function createMixer(ctx, {
       },
       get panOffset() { return panOffset; },
       /** 1 = as recorded, 0 = mono, 2 = pushed wide. */
-      setWidth(w) { state.width = w; widthNode.set(w); },
+      setWidth(w) { cancelState('width'); state.width = w; widthNode.set(w); },
       setSolo(on) {
         if (on) soloed.add(key); else soloed.delete(key);
         for (const s of strips.values()) s._applySolo();
       },
       setEQ(patch = {}) {
+        cancelState('eq');
         Object.assign(state.eq, patch);
         laneEq.set(patch);
       },
@@ -764,6 +784,7 @@ export function createMixer(ctx, {
       setSend(patch = {}) {
         for (const [id, v] of Object.entries(patch)) {
           if (v == null || !sends.has(id)) continue;
+          cancelState(`send:${id}`);
           state.send[id] = v;
           const g = sends.get(id).gain;
           g.cancelScheduledValues(ctx.currentTime);
@@ -850,28 +871,44 @@ export function createMixer(ctx, {
        * The gate belongs to monitoring; a variant that hides the lead has not muted it,
        * and the desk should go on showing what the song says.
        *
-       * `state` is deliberately NOT written. It describes the mix AS AUTHORED, which is
-       * what the desk draws and what pruneAuxes counts. A target that has not arrived is
-       * not that yet, and recording it here would make the faders jump a quarter of a
-       * second before the sound did.
+       * `state` is not written immediately. It describes the mix AS AUTHORED, which is
+       * what the desk draws and what pruneAuxes counts until the target audio time
+       * arrives; the scheduler then commits the staged values without touching the
+       * already-scheduled AudioParams.
        */
       rampTo({ gain, mute, pan, width, eq, send } = {}, when, seconds = 0) {
+        const at = Math.max(when, ctx.currentTime);
         if (gain != null || mute != null) {
           rampParam(ctx, pres.gain, mute ? 0 : dbToGain(gain ?? state.gain), when, seconds);
+          queueState(at, 'gain', gain ?? state.gain);
+          queueState(at, 'mute', !!mute);
         }
         // The offset rides on top of a variant's pan exactly as it rides on the pot's:
         // a treatment that moves the lead is moving where the lead LIVES, and the bar
         // that pushes it across the room is still that bar's edit.
+        //
+        // `queueState` records the AUTHORED value, not the offset one: `state.pan` is
+        // the channel's own position and the bar's offset rides on top of it, so
+        // committing the sum would fold a bar's edit into the channel permanently.
         if (pan != null) {
+          const target = Math.max(-1, Math.min(1, pan));
           panWritten = Math.max(-1, Math.min(1, pan + panOffset));
           rampParam(ctx, panner.pan, panWritten, when, seconds);
+          queueState(at, 'pan', target);
         }
-        if (width != null) widthNode.ramp(width, when, seconds);
-        if (eq) laneEq.ramp(eq, when, seconds);
+        if (width != null) {
+          widthNode.ramp(width, when, seconds);
+          queueState(at, 'width', width);
+        }
+        if (eq) {
+          laneEq.ramp(eq, when, seconds);
+          queueState(at, 'eq', { ...eq });
+        }
         for (const [id, v] of Object.entries(send || {})) {
           if (v == null || !sends.has(id)) continue;
           if (v > 0) wakeAux(id);
           rampParam(ctx, sends.get(id).gain, v, when, seconds);
+          queueState(at, `send:${id}`, v);
         }
       },
 
@@ -885,6 +922,8 @@ export function createMixer(ctx, {
       _sends: sends,
       _applySolo: applySolo,
       _monitor: (g) => { monitor.gain.setTargetAtTime(g, ctx.currentTime, 0.01); },
+      _commitScheduledState: commitState,
+      _clearScheduledState: () => pendingState.clear(),
     };
     strips.set(key, strip);
     // A strip built while a send is soloed has to arrive already silenced on its dry
@@ -1201,6 +1240,7 @@ export function createMixer(ctx, {
      * a swung note needs depends on which side of the beat it started from.
      */
     scheduleEffects(step, when, sixteenth, bpm = 120, swing = 50) {
+      for (const strip of strips.values()) strip._commitScheduledState(when);
       const slots = [
         ...[...strips.values()].map((s) => s._slot),
         ...[...strips.values()].flatMap((s) => s._barFxSlots || []),
@@ -1297,6 +1337,10 @@ export function createMixer(ctx, {
       for (const s of strips.values()) {
         s.clearBarEffects();
         s.setPanOffset(0, ctx.currentTime, 0);
+        // Scheduled STATE goes with the scheduled params. Leaving it behind would let a
+        // transition that has just been cancelled still commit its mute or its send a
+        // beat later, onto a channel that is no longer in that arrangement at all.
+        s._clearScheduledState();
         s.setGain(0); s.setPan(0); s.setMute(false); s.setWidth(1);
         s.setEQ({ low: 0, mid: 0, high: 0 });
         s.setEffects([]);

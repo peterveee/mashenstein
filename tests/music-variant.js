@@ -243,10 +243,20 @@ async function main() {
       armedDelay: Audio.pendingStartDelay,
     };
     recordRamps();
+    Audio.rampMix = (mix, when, seconds) => {
+      calls.push({ when, seconds, step: Audio.step, mix });
+      return realRampMix(mix, when, seconds);
+    };
     run(5);
     MusicDirector.request(null);
     run(40);
-    r.authored = { ...authored, firedAtStep: calls[0]?.step ?? null };
+    const leadAfterHandover = Audio.mixer.lane('lead');
+    r.authored = {
+      ...authored,
+      firedAtStep: calls[0]?.step ?? null,
+      leadStateMute: leadAfterHandover.state.mute,
+      leadPresGain: leadAfterHandover._pres.gain.value,
+    };
 
     // ---- the room blooms into the handover and rings out of it -------------------
     // Three moves on one parameter, and the ORDER is the whole thing: rampMix anchors
@@ -402,6 +412,8 @@ async function main() {
 
   assert(out.authored.quantize === 'beat' && out.authored.firedAtStep === 8,
     'the treatment\u2019s own quantize is what steers — asked at step 5, it lands on the next beat at 8');
+  assert(out.authored.leadStateMute === false,
+    'the normal mix clears the treatment mute on the lead after the first loop handover');
   assert(out.authored.gap === 0.15 && out.authored.armedDelay === 0.15,
     'and the silence it asks for on arrival reaches setBank, instead of its default half second');
 
