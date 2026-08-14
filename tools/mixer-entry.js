@@ -8540,6 +8540,14 @@ function openChannelEffects(key) {
 
 
 function selectLane(key) {
+  // A preset editor is docked to the lane that opened it. Once selection moves to a
+  // different channel, leaving that panel mounted makes the visible controls describe
+  // the previous strip while the desk highlight and keyboard describe the new one. Take
+  // down both the compact panel and any full-window synth editor before changing the
+  // selection; the next channel can open its own editor explicitly.
+  if (voiceEditor.isOpen() && voiceEditor.laneKey && voiceEditor.laneKey !== key) {
+    dismissVoiceEditor();
+  }
   selectedLane = key;
   // The selection moving off a name puts that name back to its first click.
   if (armedPresetLane !== key) armedPresetLane = null;

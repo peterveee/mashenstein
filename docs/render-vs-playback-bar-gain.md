@@ -3,8 +3,9 @@
 Found while chasing "bar 9 of SHOPPINGCHANNEL sounds muted, bars 8 and 10 are fine".
 Bar 9 was a symptom. The real defect is that **an offline render and live playback take
 different code paths, and one of them was wrong** — so a song that plays correctly on
-the desk bounces to a WAV with notes missing. One fault is fixed and verified; two are
-open. This is the handoff.
+the desk bounces to a WAV with notes missing. Three faults are fixed and verified; a
+fresh desk bounce/listening pass remains the final audible acceptance gate for the
+complete SHOPPINGCHANNEL song.
 
 The first question asked was whether anything drops instruments to control clipping.
 **It does not.** The bounce writes at unity (`bounceWav`, tools/mixer-bounce.js), and
@@ -69,7 +70,7 @@ in four-bar blocks, whole song scheduled before rendering, exactly as a bounce d
 Only the block after the last retire survived. Everything booked before it was gone.
 
 In the real song, lead3 soloed, dBFS RMS per bar against a reference render with the
-per-bar trims stripped:
+per-bar trims stripped, after Fault 1 but before Fault 2:
 
 | bar | before fix | after fix | reference |
 | --- | --- | --- | --- |
@@ -89,13 +90,19 @@ per-bar trims stripped:
 needs at least two different trim values with untrimmed bars before them. The suite
 proved the level was right while whole bars went missing.
 
-**Pending work:** promote `work/local/bargain-min.js` into `tests/bar-gain.js` as a
-second case. It is written, it reproduces the bug cleanly, and it passes with the fix.
-That is the guard this needs.
+**Implemented:** the multi-switch case from `work/local/bargain-min.js` is now a second
+case in `tests/bar-gain.js`. It renders sixteen bars with `none / −6 / none / −10.5`
+four-bar blocks, checks every bar remains audible, and checks each block against a
+no-trim reference. `tests/bar-gain.js` is also included in the sound-test group.
 
-## Fault 2 — untrimmed bars take the FOLLOWING block's trim. OPEN
+The shared JIT render walk now checks completion against `scheduleCalls` rather than
+the musical `steps` count, so a 1/32 transport cannot report success after scheduling
+only half of its required calls. The render metadata exposes both scheduled and expected
+call counts for focused coverage.
 
-After the fix, bars carrying no trim of their own still render attenuated, by very
+## Fault 2 — untrimmed bars take the FOLLOWING block's trim. FIXED
+
+After Fault 1, bars carrying no trim of their own still rendered attenuated, by very
 close to the trim value of the *next* block:
 
 | bars | measured deficit | next block's trim |
@@ -133,35 +140,67 @@ So a single isolated trim change is nearly harmless, and the trim is barely appl
 all in that configuration. The effect needs a *history* of switches. Any explanation has
 to account for both this and the uniform-trim result above.
 
-### Leads worth pulling
+### Cause and fix
 
-1. **The chunked just-in-time walk.** The minimal harness schedules all 256 steps up
-   front and behaves perfectly. The real bounce interleaves scheduling with
-   `OfflineAudioContext.suspend` checkpoints (see `renderBankPage` in
-   tools/lib/render-bank-page.js). That is the largest structural difference between
-   the clean repro and the dirty one. Reproduce the minimal case with a chunked walk
-   first.
-2. **`echo` in the pool key.** lead3 has delay and reverb sends; the minimal lane has
-   none. `_pool`'s key includes `echo`, and `_barGainBus` scales dry and wet
-   separately — worth checking the wet path across a switch.
-3. **Instrument rather than infer.** Monkey-patch `VoiceRack._pool` from the page to
-   log `(step, laneKey, db, dry-node identity)` per call. Three renders of black-box
-   RMS did not settle this; one instrumented render should.
+The saved arrangement was resolving the correct dB values. The defect was the route
+change itself: a pooled preset voice was handed a new dry/wet gain bus whenever its bar
+trim changed. `VoiceRack._pool` correctly treats a changed route as a new graph, so the
+trim sequence repeatedly retired and replaced the pool. The old pool was kept alive after
+Fault 1, but the route transition still made the audible level depend on the history of
+prior trims and on which long-release slots were active.
 
-## Fault 3 — silent stretches. OPEN
+For pooled voices, `scheduleStep` now keeps the stable lane gate/strip route and passes the
+bar trim as `gainScale` to `playVoice`. That applies the same linear factor to the voice's
+per-note gain while preserving the dry and wet sends, pool identity, and release tails.
+Hand-rolled engine lanes retain the existing bar-gain bus because their envelopes
+converge on the native `play` helper rather than a pooled voice gain.
 
-Independent of the trims, and unchanged by the fix. lead3 has notes and is not muted,
-yet renders at or near digital silence:
+### Evidence
+
+- The browser-backed `tests/bar-gain.js` switch case passes every bar and measures
+  0.00, −6.00, −0.00 and −10.49 dB for the four requested blocks.
+- The diagnostic SHOPPINGCHANNEL route trace isolated the cause: the expected dB value
+  was resolved at each changed bar, but each switch changed the pool's dry/wet identity.
+  JIT and upfront walks made the same 1,024 calls and the same route decisions, ruling
+  out the chunked walk as the source of the attenuation.
+- The focused browser regression is the acceptance gate for the gain arithmetic. A full
+  48 kHz, 64-bar A/B is intentionally not claimed here: it exceeded the available local
+  render window before producing a result.
+
+## Fault 3 — silent stretches. FIXED
+
+Independent of the trim-route faults, the original probe showed lead3 with notes and no
+mute at or near digital silence:
 
 - bars 26, 40, 41, 42 (bar 41 is bar 9's twin), 60–64
 - bars 61–64 are −∞ in **every** lane, not just lead3
 
-**Caveat before chasing the end-of-song silence:** it may be an artifact of the probe
-harness rather than the desk. `tools/lib/render-bank-browser.js` sizes the render from
-`songBlocks(bank)`, computed off the composed bank; `tools/mixer-bounce.js` counts bars
-from `applyArrangement` and passes `steps` explicitly. Verify against a real desk bounce
-before treating the last bars as an engine fault. The mid-song silence at bars 40–42 is
-**not** explained that way and is the one to chase.
+The renderer was the cause. When a caller supplied an explicit desk arrangement, the
+page applied that arrangement to the scheduler, but `openRenderer().render()` still
+sized the `OfflineAudioContext` and its fallback step count from `songBlocks(bank)` on
+the composed form. A longer arranged form was therefore truncated at the composed end;
+per-bar probes that continued across the arranged timeline saw digital silence. The
+same mismatch made quiet lane-only stretches look like an instrument or pool failure.
+
+### The fix
+
+`tools/lib/render-bank-browser.js` now builds one `sizedBank` with the explicit
+arrangement before resolving tempo, swing, loop length, block count and buffer steps.
+The page still receives the original bank plus the arrangement and applies it through
+`Audio.setArrangement`; both sides now use the same bar plan. Composed-form renders
+remain unchanged when no arrangement is supplied.
+
+### Evidence
+
+- The focused arranged-render regression in `tests/render-length.js` uses a two-bar
+  composition with an eight-bar explicit arrangement. It schedules all 128 steps,
+  allocates 16.25 seconds, and remains audible near the end of the form.
+- A reduced-rate full SHOPPINGCHANNEL render schedules all 1,024 calls and has nonzero
+  RMS in every arranged bar, including 40–42 and 61–64. This is diagnostic PCM evidence,
+  not a claim of a production-rate listening session.
+
+Fault 3 is therefore **FIXED**. A fresh desk bounce/listening pass remains the final
+audible acceptance gate for the complete SHOPPINGCHANNEL song.
 
 ## Where the render and live playback diverge
 

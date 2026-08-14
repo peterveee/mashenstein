@@ -59,7 +59,8 @@ addEventListener('message', async (e) => {
     if (job.args.measureOnly) {
       reply({
         type: 'done', id: job.id, ok: true, frames: r.frames, seconds: r.seconds,
-        peak: r.peak, percussion: r.percussion, renderMs,
+        peak: r.peak, percussion: r.percussion,
+        scheduledCalls: r.scheduledCalls, expectedScheduleCalls: r.expectedScheduleCalls, renderMs,
       });
       return;
     }
@@ -68,7 +69,9 @@ addEventListener('message', async (e) => {
     const outL = new Float32Array(r.outL);
     const outR = new Float32Array(r.outR);
     reply(
-      { type: 'done', id: job.id, ok: true, outL, outR, frames: r.frames, seconds: r.seconds, peak: r.peak, percussion: r.percussion, renderMs },
+      { type: 'done', id: job.id, ok: true, outL, outR, frames: r.frames, seconds: r.seconds,
+        peak: r.peak, percussion: r.percussion,
+        scheduledCalls: r.scheduledCalls, expectedScheduleCalls: r.expectedScheduleCalls, renderMs },
       [outL.buffer, outR.buffer],
     );
   } catch (err) {

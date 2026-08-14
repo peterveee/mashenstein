@@ -20,7 +20,9 @@ import { readFileSync, unlinkSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { songBlocks, barPlan, LANE_KEYS } from '../../src/engine/lanes.js';
 import { trackIdOf } from '../../src/data/tracks.js';
-import { bpmOf, swingOf, loopOf, loopSteps, SWING_STRAIGHT } from '../../src/data/arrangements.js';
+import {
+  applyArrangement, bpmOf, swingOf, loopOf, loopSteps, SWING_STRAIGHT,
+} from '../../src/data/arrangements.js';
 import { DEFAULT_SEED } from './render-bank-page.js';
 
 const require = createRequire(import.meta.url);
@@ -62,6 +64,7 @@ window.__renderBank = async (args) => {
   window.__pcm = new Uint8Array(interleave(r.outL, r.outR).buffer);
   return { bytes: window.__pcm.length, frames: r.frames, seconds: r.seconds, peak: r.peak,
     percussion: r.percussion, schedulerWork: r.schedulerWork,
+    scheduledCalls: r.scheduledCalls, expectedScheduleCalls: r.expectedScheduleCalls,
     fineBars: r.fineBars, fineTickLanes: r.fineTickLanes,
     fineBarsReason: r.fineBarsReason, fineLanes: r.fineLanes,
     transportResolution: r.transportResolution };
@@ -120,19 +123,30 @@ export async function openRenderer({ headless = true } = {}) {
     // at the right speed and the wrong groove — which is worse than either alone, because
     // it sounds nearly right.
     //
-    // Order still is NOT applied. The rest of an arrangement — the order it plays its
-    // sections in, and any layer sections — stays out of an offline render for the
-    // bank-identity reason: `plumber` and `megamix` both render in their composed order
-    // rather than the arranged one. That gap predates this and is deliberately left
-    // alone HERE; closing it changes what every existing render sounds like. A caller
-    // that wants the arranged form passes `arrangement` explicitly, which the page hands
-    // to `setArrangement` — that is the door the desk's own bounce goes through.
-    const played = bpmOf(gated, id);
-    const swung = swingOf(gated, id);
+    // Order is still opt-in: ordinary reference renders keep the composed form, while
+    // a caller that wants the desk's arranged form passes `arrangement` explicitly.
+    // That form is handed to `setArrangement` in the page, and its tempo, feel and
+    // length are resolved here before the OfflineAudioContext is sized.
+    // An explicit arrangement is the desk's live form, not merely metadata passed
+    // to the page. Resolve the tempo, feel and bar count against it here as well as
+    // in Audio.setArrangement below. Otherwise a draft that lengthens a song is
+    // scheduled against the right order but the buffer is still sized from the
+    // composed bank, leaving its final bars as silence.
+    const arrangementId = id || '__explicit__';
+    const arrangementTable = arrangement !== undefined
+      ? { [arrangementId]: arrangement }
+      : undefined;
+    const lookupId = arrangement !== undefined ? arrangementId : id;
+    const sizedBank = arrangement !== undefined
+      ? applyArrangement(gated, arrangementId, arrangementTable)
+      : gated;
+    const played = bpmOf(gated, lookupId, arrangementTable);
+    const swung = swingOf(gated, lookupId, arrangementTable);
     const forPage = played === gated.bpm && swung === (gated.swing ?? SWING_STRAIGHT)
       ? gated
       : { ...gated, bpm: played, swing: swung };
-    const blocks = songBlocks(gated, repeat).length;
+    const blocks = songBlocks(sizedBank, repeat).length;
+    const arrangedFormSteps = arrangement !== undefined ? barPlan(sizedBank).length * 16 : 0;
 
     // The song's own start-and-loop, when the caller asked for it. Off by default, and
     // deliberately: a reference render is a claim about the ENGINE — the null test
@@ -143,11 +157,9 @@ export async function openRenderer({ headless = true } = {}) {
     // Resolved out here for the same reason the mix and the tempo are: the page holds a
     // JSON copy of the bank, and `loopOf` needs the identity that copy does not have.
     // Against the same bar count that sizes the buffer below, so the two cannot
-    // disagree — note that this is the COMPOSED form unless the caller passed an
-    // arrangement, which is the tempo-only gap described above and not a new one.
+    // disagree — the composed form unless the caller passed an explicit arrangement.
     const loop = songLoop
-      ? loopSteps(loopOf(gated, id, arrangement !== undefined ? { [id]: arrangement } : undefined),
-        barPlan(gated).length)
+      ? loopSteps(loopOf(gated, lookupId, arrangementTable), barPlan(sizedBank).length)
       : null;
     // The way in once, then `repeat` passes of the loop — rather than `repeat` passes of
     // the whole form. A song with markers but no region falls back to the form from its
@@ -155,8 +167,8 @@ export async function openRenderer({ headless = true } = {}) {
     const steps = loop
       ? (loop.loop
         ? loop.loop.start - loop.start + repeat * (loop.loop.end - loop.loop.start)
-        : blocks * 32 - loop.start)
-      : 0;
+        : (arrangedFormSteps || blocks * 32) - loop.start)
+      : arrangedFormSteps * repeat;
 
     // A fresh page per render: Audio is a singleton and ensure() binds one context
     // for its lifetime, so contexts cannot be swapped in place. Re-evaluating the
@@ -243,6 +255,8 @@ export async function openRenderer({ headless = true } = {}) {
     return {
       outL, outR, seconds: meta.seconds, blocks, peak: meta.peak,
       percussion: meta.percussion || [],
+      scheduledCalls: meta.scheduledCalls,
+      expectedScheduleCalls: meta.expectedScheduleCalls,
       // Operation counts for the walk that produced this — see work/local/bench-scheduler-work.js.
       schedulerWork: meta.schedulerWork || null,
       fineBars: meta.fineBars, fineTickLanes: meta.fineTickLanes,

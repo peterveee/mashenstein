@@ -51,6 +51,14 @@ const assert = (cond, msg) => {
 const BPM = 120;
 const TRIM_DB = -6;
 const SECONDS = 5;
+const SWITCH_BARS = 16;
+const SWITCH_SECONDS = SWITCH_BARS * 2 + 3;
+const SWITCH_PLAN = [
+  { from: 1, to: 4, db: null },
+  { from: 5, to: 8, db: -6 },
+  { from: 9, to: 12, db: null },
+  { from: 13, to: 16, db: -10.5 },
+];
 
 async function main() {
   let chromium;
@@ -170,6 +178,100 @@ async function main() {
     assert(Math.abs(ratio - 1) < 0.02,
       `note ${i + 1} at ${TRIM_DB} dB on the bar matches ${TRIM_DB} dB on the lane `
       + `(ratio ${ratio.toFixed(4)})`);
+  });
+
+  // This is the whole-song regression that the original one-bar test could not see.
+  // A trim change retires a pooled voice, so the bug only appears when several different
+  // bar values are scheduled before OfflineAudioContext renders the first sample. Keep
+  // the fixture deliberately small, but use the same alternating two-bar source shape
+  // and long notes as work/local/bargain-min.js.
+  async function renderSwitches(withTrims) {
+    const page = await browser.newPage();
+    page.on('pageerror', (e) => errors.push(`switches: ${e.message}`));
+    await page.setContent(
+      `<!doctype html><meta charset="utf-8">`
+      + `<script>${bundleJs.replace(/<\/script>/gi, '<\\/script>')}<\/script>`,
+      { waitUntil: 'load' },
+    );
+    const out = await page.evaluate(async (cfg) => {
+      const Audio = window.__Audio;
+      const SR = 44100;
+      const notes = new Array(32).fill(null);
+      const lens = new Array(32).fill(null);
+      [0, 4, 8, 12, 16, 20, 24, 28].forEach((s, i) => {
+        notes[s] = 440 * (2 ** ((i % 4) / 12));
+        lens[s] = 3;
+      });
+      const order = [];
+      for (const segment of cfg.plan) {
+        for (let bar = segment.from; bar <= segment.to; bar++) {
+          order.push({
+            s: 0,
+            bars: 1,
+            from: (bar - 1) % 2,
+            ...(cfg.withTrims && segment.db != null
+              ? { gain: { twinkle: segment.db } } : {}),
+          });
+        }
+      }
+      const bank = {
+        bpm: cfg.bpm,
+        twinkle: notes,
+        twinkleLen: lens,
+        twinkleVoice: 'celeste2',
+        twinkleGain: 0.25,
+        order,
+      };
+      const ctx = new OfflineAudioContext(2, SR * cfg.seconds, SR);
+      Audio.setCaptureEnabled(false);
+      Audio.setNoiseSeed(1);
+      Audio.ensure(ctx);
+      if (Audio.mixer) await Audio.mixer.ready;
+      Audio.setBank(bank, null);
+      Audio.nextTime = 0;
+      Audio.songTrim.gain.cancelScheduledValues(0);
+      Audio.songTrim.gain.setValueAtTime(Audio.musicTrim, 0);
+      for (let i = 0; i < cfg.bars * 16; i++) Audio.scheduleStep();
+      const buf = await ctx.startRendering();
+      const L = buf.getChannelData(0);
+      const R = buf.getChannelData(1);
+      const secPerBar = (60 / cfg.bpm) * 4;
+      const rms = (from, to) => {
+        const a = Math.max(0, Math.floor(from * SR));
+        const b = Math.min(L.length, Math.floor(to * SR));
+        let sum = 0;
+        for (let i = a; i < b; i++) sum += L[i] * L[i] + R[i] * R[i];
+        return b > a ? Math.sqrt(sum / ((b - a) * 2)) : 0;
+      };
+      const bars = Array.from({ length: cfg.bars }, (_, bar) =>
+        rms(bar * secPerBar, (bar + 1) * secPerBar));
+      const blocks = Array.from({ length: cfg.plan.length }, (_, block) =>
+        rms(block * 4 * secPerBar, (block + 1) * 4 * secPerBar));
+      return { bars, blocks, floor: rms(cfg.seconds - 0.5, cfg.seconds) };
+    }, {
+      bpm: BPM, bars: SWITCH_BARS, seconds: SWITCH_SECONDS, plan: SWITCH_PLAN, withTrims,
+    });
+    await page.close();
+    return out;
+  }
+
+  const switched = await renderSwitches(true);
+  const untrimmed = await renderSwitches(false);
+  assert(!errors.length, `no page errors after trim-switch render${errors.length ? `: ${errors.join('; ')}` : ''}`);
+  const db = (v) => (v > 0 ? 20 * Math.log10(v) : -Infinity);
+  const expectedBlockDb = SWITCH_PLAN.map((segment) => segment.db ?? 0);
+
+  switched.bars.forEach((level, i) => {
+    assert(level > Math.max(switched.floor * 20, 1e-4),
+      `switching-trim case keeps bar ${i + 1} audible `
+      + `(rms ${level.toExponential(2)}, floor ${switched.floor.toExponential(2)})`);
+  });
+  switched.blocks.forEach((level, i) => {
+    const measured = db(level) - db(untrimmed.blocks[i]);
+    const expected = expectedBlockDb[i];
+    assert(Math.abs(measured - expected) < 0.75,
+      `four-bar block ${i + 1} keeps its requested trim ${expected} dB `
+      + `(measured ${measured.toFixed(2)} dB)`);
   });
 
   await browser.close();

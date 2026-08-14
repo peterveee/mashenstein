@@ -305,7 +305,7 @@ const soundSuites = [
   'tests/synth-full-layout.js', 'tests/synth-graphs.js', 'tests/pot-coverage.js',
   'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',
   'tests/sfx-routing.js', 'tests/pitch-curve.js',
-  'tests/note-duration.js', 'tests/song-switch.js', 'tests/music-variant.js',
+  'tests/note-duration.js', 'tests/song-switch.js', 'tests/bar-gain.js', 'tests/music-variant.js',
   'tests/music-variant-render.js', 'tests/null-test.js', 'tests/render-length.js',
   'tests/new-effects.js',
 ];

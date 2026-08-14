@@ -1062,6 +1062,8 @@ assert(/function syncArrangementLaneSelection[\s\S]*?const selected = el\.datase
   'channel selection and song load reveal the selected track while rebuilds preserve its mark');
 assert(/function selectLane\(key\)[\s\S]*?classList\.toggle\('selected', selected\)[\s\S]*?dataset\.lowerView === 'mixer'[\s\S]*?rack\.scrollLeft/.test(entry),
   'selecting an arrangement track highlights and reveals its channel whenever the Mixer is visible');
+assert(/function selectLane\(key\)[\s\S]*?voiceEditor\.isOpen\(\)[\s\S]*?voiceEditor\.laneKey[\s\S]*?voiceEditor\.laneKey !== key[\s\S]*?dismissVoiceEditor\(\)/.test(entry),
+  'changing channel strips dismisses the previous lane\'s preset controls');
 assert(entry.includes("const FX_KEY = 'mash-mixer-fxh'")
   && /let userFxH =/.test(entry)
   && /effectsNaturalHeight[\s\S]*?userFxH != null/.test(entry)

@@ -4334,6 +4334,11 @@ class AudioSys {
       // the non-finite guard in `play`, so a warning can name the lane that carries
       // the bad number rather than only the step it happened on.
       let lastLane = '';
+      // Pooled voices keep a stable dry/wet route for their lifetime. A per-bar trim
+      // is applied to their note level instead of selecting a new bus, which would
+      // force VoiceRack to retire and rebuild the pool. Native hand-rolled lanes still
+      // use the bus below because their envelope paths converge on `play`.
+      let laneGainScale = 1;
       const offsetFor = (key) => barValue(bar.offset, key) * spb / 2;
       const scheduleAt = (delta = 0) => this.nextTime + laneOffset + swingOffset + delta;
       // The same instant, as an OFFSET from the step edge rather than an absolute time —
@@ -4375,15 +4380,17 @@ class AudioSys {
         laneOffset = offsetFor(key);
         const db = barValue(bar.gain, key);
         const scale = 10 ** (db / 20);
-        if (scale === 1) {
+        const voice = voiceOf(b, key);
+        const pooledVoice = !!voice && voice.kind !== 'engine';
+        laneGainScale = pooledVoice ? scale : 1;
+        if (scale === 1 || pooledVoice) {
           dry = baseDry; wet = baseWet;
         } else {
-          // A per-bar bus keeps the adjustment on every voice shape, including
-          // hand-rolled percussion and Tone presets, without duplicating the many
-          // envelope implementations below. It is HELD between steps — see
-          // `_barGainBus`: a new pair of nodes each step is a new graph to the voice
-          // rack, and the rack answers a new graph by disposing the pool the
-          // lookahead's notes are already booked on.
+          // A per-bar bus keeps the adjustment on every native voice shape, including
+          // hand-rolled percussion, without duplicating the many envelope
+          // implementations below. Pooled presets take the stable route above and
+          // receive the same scale in `playVoice`. The bus is HELD between steps — a
+          // new pair each step is a new graph to the voice rack.
           const bus = this._barGainBus(key, db, scale, baseDry, baseWet);
           if (bus) { dry = bus.dry; wet = bus.wet; }
           else { dry = baseDry; wet = baseWet; }
@@ -4432,13 +4439,15 @@ class AudioSys {
           for (const event of events) {
             played = this.playVoice(key, b, event.freq, {
               spb, dry, wet, ...opts,
+              gainScale: (opts.gainScale ?? 1) * laneGainScale,
               delay: voiceDelay(extraDelay + event.delay), len: event.len,
             }) || played;
           }
           return played;
         }
         return this.playVoice(key, b, value,
-          { spb, dry, wet, delay: voiceDelay(), len: lenOf(key), ...opts });
+          { spb, dry, wet, delay: voiceDelay(), len: lenOf(key), ...opts,
+            gainScale: (opts.gainScale ?? 1) * laneGainScale });
       };
       // Every oscillator voice on the desk goes through here — bass, lead, harmony,
       // twinkle, chords, both organs and electroFx — so MELODIC_TRIM lands on all of
@@ -4588,7 +4597,8 @@ class AudioSys {
             // hand-rolled square instead would put two different basses in one lane.
             this.playVoice('bass', b, bassNote, {
               spb, dry, wet, echo: false, delay: voiceDelay(spb * b.bassRepeat),
-              durScale: b.bassRepeatDur ?? 0.8, gainScale: b.bassRepeatGain ?? 0.4,
+              durScale: b.bassRepeatDur ?? 0.8,
+              gainScale: (b.bassRepeatGain ?? 0.4) * laneGainScale,
               len: bassLen,
             });
           } else {
@@ -4730,7 +4740,7 @@ class AudioSys {
           keyGlissNote * Math.pow(2, semi / 12),
           {
             spb, dry, wet, echo: false, delay: voiceDelay(i * dt),
-            gainScale: 0.6 + 0.4 * ((i + 1) / steps.length),
+            gainScale: laneGainScale * (0.6 + 0.4 * ((i + 1) / steps.length)),
           }))[0];
         if (!runByVoice) steps.forEach((semi, i) => {
           const t = scheduleAt(i * dt);
@@ -4838,7 +4848,8 @@ class AudioSys {
         // partials rather than borrowing the three below.
         const runByVoice = steps.map((semi, i) => this.playVoice('organGliss', b,
           organGlissNote * Math.pow(2, semi / 12),
-          { spb, dry, wet, echo: false, delay: voiceDelay(i * dt) }))[0];
+          { spb, dry, wet, echo: false, delay: voiceDelay(i * dt),
+            gainScale: laneGainScale }))[0];
         if (!runByVoice) steps.forEach((semi, i) => {
           const note = target * Math.pow(2, semi / 12);
           for (const [ratio, level] of partials) {

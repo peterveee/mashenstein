@@ -297,8 +297,8 @@ export async function renderBankPage({
   // So the walk states its own completeness, and a short render is refused rather
   // than returned. `bounceWav` and the Chromium renderer catch this and retry once
   // with `upfront: true` — slower, and it cannot half-happen.
-  if (stepAt < steps) {
-    throw new Error(`render walk incomplete: ${stepAt}/${steps} steps scheduled`
+  if (stepAt < scheduleCalls) {
+    throw new Error(`render walk incomplete: ${stepAt}/${scheduleCalls} schedule calls scheduled`
       + ' — just-in-time suspensions did not run to the end here'
       + (suspendRejected ? ` (${JSON.stringify(suspendRejected)})` : ''));
   }
@@ -321,6 +321,8 @@ export async function renderBankPage({
 
   return {
     outL: L, outR: R, frames: L.length, seconds: L.length / sampleRate, peak, percussion,
+    scheduledCalls: stepAt,
+    expectedScheduleCalls: scheduleCalls,
     // What the scheduler DID to produce this, as operation counts. Deterministic from
     // the song, so two engine revisions rendering the same bank can be compared exactly
     // — which a wall clock on this laptop cannot do at the sizes involved.

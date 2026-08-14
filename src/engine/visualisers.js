@@ -29,6 +29,7 @@ export const VISUALISER_NAMES = [
   'NEBULA RIBBON DRIFT',
   'GLASS BLOB EQUALIZER',
   'HALF-PIPE HORIZON',
+  'ASTRAL TRAVEL',
   // Not a scene of its own: a DJ that plays the rest of the pack, one 16-bar
   // phrase each, and mixes between them on the downbeat. Kept last so every
   // index above stays where it was.
@@ -4998,6 +4999,559 @@ class HalfPipeHorizon extends BaseVisualiser {
 }
 
 // ---------------------------------------------------------------------------
+// ASTRAL TRAVEL — flying INTO the light instead of past it.
+//
+// The other tunnels in the pack are built out of rings: a shape at a depth, then
+// the same shape further back, and the illusion is in the spacing. This one has
+// no rings at all. It draws the light itself as a strand — one continuous
+// filament that starts as a hair beside the vanishing point, coils outward as it
+// comes at the camera, and sweeps out past the frame. Nothing is ever drawn
+// toward the vanishing point; the convergence falls out of the projection, which
+// is why every strand aims at the same place without being told to.
+//
+// The geometry worth stating, because everything else follows from it: a strand
+// is a helix of CONSTANT world radius around the travel axis. Its screen radius
+// is therefore FOV·R/z — a couple of pixels off centre when it is far away, and
+// far outside the frame by the time it arrives. The twist per unit depth is what
+// turns a spoke into a curve, and it has to be read together with the flight
+// speed: the SHAPE is twist times the depth on screen, but the RATE the whole
+// picture rotates is twist times how fast the camera is moving. A tight coil
+// flown quickly is a spinning wheel, not a journey — so the coil is deep and the
+// flight is slow, and the sense of speed is carried by the motes, which run at
+// several times the camera.
+//
+// There is not one straight line in it. Strands and motes are both sampled off
+// the same helix and traced as splines, and the shared dust bed — which paints
+// two-point streaks — is deliberately not drawn.
+//
+// No offscreen buffers, no feedback: every frame is rebuilt from update() state
+// alone, so drawing it twice yields the same pixels and the megamix can blend it
+// like any other record. The glow is five passes of the same tapered strip, which
+// is cheaper here than a bloom buffer and holds a hard edge on the core where a
+// blur would smear it.
+// Population. The fills are additive strips of real screen area, so this is the
+// preset's whole cost curve — 56 looked no denser than this and measured a third
+// slower.
+const ASTRAL_STRANDS = 48;
+// Smoothness is node count, spacing and the spline together. The strand turns
+// twist·Δz between samples, so at this coil a bare polyline draws the inner
+// spiral as a visible hexagon however the nodes are spaced.
+const ASTRAL_NODES = 30;
+// Zoomed right in. This is the one number that decides whether the preset reads
+// as a view of a tunnel or as being inside one: at 195 the whole corridor sat in
+// frame with room around it, and at 340 a strand arrives already too big to see
+// the end of.
+const ASTRAL_FOV = 340;
+const ASTRAL_NEAR = 26;
+// Shallow on purpose. A deep field puts most of its strands too far away to be
+// anything but hair round the vanishing point; cutting it keeps the population in
+// the range where it is actually travelling past the camera.
+const ASTRAL_FAR = 1050;
+// Screen radius at which a strand's near end is safely outside the frame.
+// Sampling any closer buys nothing but enormous coordinates: at z→0 the
+// projection runs away, and a polygon a hundred thousand pixels wide is a real
+// cost in the rasteriser for pixels nobody sees.
+const ASTRAL_EDGE = 720;
+// The colour wheel is angular, not random: hue comes from where a strand sits
+// around the axis, so neighbours agree and the frame reads as one prism rather
+// than as confetti. Ordered the way light disperses — aqua through blue, violet,
+// rose, amber, back to white-gold. Nothing holds its colour: the whole wheel
+// turns under the field, so every strand cycles through all six as the song runs.
+const ASTRAL_WHEEL = ['#5ef0dd', '#7cc8ff', '#b98cff', '#ff6fae', '#ff9d5c', '#ffe6a4'];
+// Motes are ribbons too, just thin and fast ones — they ride the same helix and
+// are traced the same way, because a straight dash in this picture reads as a
+// scratch on the lens.
+const ASTRAL_MOTES = 90;
+const ASTRAL_MOTE_NODES = 7;
+// World spacing of the knots that ride each strand. They are pinned to WORLD
+// depth, not to the strand, so the camera advancing slides them outward along the
+// curve and off the edge of the frame. This is the whole answer to why a tunnel
+// of smooth ribbons can still read as a picture: a ribbon whose shape does not
+// change frame to frame gives the eye nothing to measure travel against, and one
+// bright point moving along it gives it everything.
+const ASTRAL_BEAD_SPACING = 150;
+// The bloom, as concentric strips of the same strand rather than a blurred
+// buffer. Widths are multiples of the strand's own perspective half-width, so the
+// glow narrows into the distance along with the light making it. `cap` is in
+// pixels and matters: without it the outer layers scale with the strand, and a
+// close pass grows a great translucent wedge whose straight edge is the one thing
+// in the frame that looks drawn rather than lit.
+const ASTRAL_LAYERS = [
+  { spread: 3.4, cap: 10, alpha: 0.05 },
+  { spread: 2.1, cap: 13, alpha: 0.09 },
+  { spread: 1.3, cap: 17, alpha: 0.16 },
+  { spread: 0.8, cap: 99, alpha: 0.5 },
+  // The ridge. Without an inner layer a wide strand is a flat slab of colour with
+  // a hairline down it; this is the bright middle a real beam has, and it is what
+  // stops the near passes reading as grey tape.
+  { spread: 0.34, cap: 99, alpha: 0.55 },
+];
+// World units per second at rest. See the note on rotation above. This is a
+// read together with the twist, because the two multiply: the rate the picture
+// ROTATES is twist times this. Slowing the flight to fix a spinning screen was
+// the wrong half of the product — it bought a calm picture that nobody was
+// traveling through. Uncoiling the helix instead buys the same calm rotation at
+// four times the speed, which is what a fly-through needs.
+const ASTRAL_SPEED = 75;
+// How fast a launched mote runs, at rush 1. Independent of the camera: these are
+// the only things in the picture with any pace, which is what makes them read as
+// shooting past a slow flight rather than as the whole scene speeding up.
+const ASTRAL_MOTE_SPEED = 150;
+
+// Traces a polyline as a quadratic spline through its own midpoints, forward or
+// back along the same buffers. Node count alone cannot fix the coil: the corners
+// appear exactly where the picture is densest, and doubling the nodes to hide
+// them doubles five fills per strand. Curving through the midpoints costs nothing
+// and removes them outright.
+function astralSpline(ctx, xs, ys, back) {
+  const n = xs.length;
+  if (back) {
+    for (let i = n - 2; i > 0; i--) {
+      ctx.quadraticCurveTo(xs[i], ys[i], (xs[i] + xs[i - 1]) * 0.5, (ys[i] + ys[i - 1]) * 0.5);
+    }
+    ctx.lineTo(xs[0], ys[0]);
+    return;
+  }
+  for (let i = 1; i < n - 1; i++) {
+    ctx.quadraticCurveTo(xs[i], ys[i], (xs[i] + xs[i + 1]) * 0.5, (ys[i] + ys[i + 1]) * 0.5);
+  }
+  ctx.lineTo(xs[n - 1], ys[n - 1]);
+}
+
+const astralHue = (t) => {
+  const u = (((t % 1) + 1) % 1) * ASTRAL_WHEEL.length;
+  const i = Math.floor(u);
+  return mixHex(ASTRAL_WHEEL[i % ASTRAL_WHEEL.length], ASTRAL_WHEEL[(i + 1) % ASTRAL_WHEEL.length], u - i);
+};
+
+class AstralTravel extends BaseVisualiser {
+  constructor(seed, track) {
+    super(seed, track);
+    this.name = VISUALISER_NAMES[21];
+    this.palette = ASTRAL_WHEEL;
+    this.astralRng = this.rng.stream('astral');
+    this.spin = this.astralRng.chance(0.5) ? 1 : -1;
+    // Distance travelled, in world units. The helices are fixed in world space,
+    // so this is the only thing that moves — every strand's angle is read off it.
+    this.cam = 0;
+    this.speed = ASTRAL_SPEED;
+    this.warp = 0;
+    // A rotation kick per drum, decaying over about a beat. The base drift is
+    // almost nothing now, so what turns the picture is the kit: the field leans
+    // into every hit and coasts between them, which is the difference between
+    // moving in time with the song and merely moving while it plays.
+    this.rollKick = 0;
+    this.breath = 0;
+    this.roll = 0;
+    this.hueShift = this.astralRng.float();
+    this.fov = ASTRAL_FOV;
+    // Where the corridor is aimed, and where it is aimed AT. The camera chases
+    // the wander rather than sitting on it, which is the whole difference between
+    // steering through the field and the field sliding around underneath: the lag
+    // is what makes a turn read as weight.
+    this.aimX = CX;
+    this.aimY = CY;
+    // Bearings are dealt on the golden angle rather than drawn at random. A
+    // uniform draw clumps — a dozen strands land in one quadrant and the opposite
+    // side of the frame goes empty for a bar — and because strands are recycled
+    // forever, one accumulator keeps the field evenly spread for the whole song
+    // without any bookkeeping about where the others are.
+    this.spawnAng = this.astralRng.float() * TAU;
+    this.strands = Array.from({ length: ASTRAL_STRANDS }, () => this.seedStrand({
+      nodes: Array.from({ length: ASTRAL_NODES }, () => ({ x: 0, y: 0, h: 0, nx: 0, ny: 0 })),
+    }, true));
+    this.motes = Array.from({ length: ASTRAL_MOTES }, () => this.seedMote({}, true));
+    this.prevHit = 0;
+    // Something in the air before the first downbeat lands, so the preset does not
+    // open on bare strands.
+    this.launchMotes(14);
+    // Scratch edges for the strip being painted. Preallocated because paintStrand
+    // runs five times per strand per frame and a frame must not allocate.
+    this.edge = {
+      ax: new Float64Array(ASTRAL_NODES), ay: new Float64Array(ASTRAL_NODES),
+      bx: new Float64Array(ASTRAL_NODES), by: new Float64Array(ASTRAL_NODES),
+      mx: new Float64Array(ASTRAL_MOTE_NODES), my: new Float64Array(ASTRAL_MOTE_NODES),
+    };
+  }
+
+  // `cold` seeds a strand somewhere along the whole corridor, so the first frame
+  // opens on a field already in flight rather than on empty space filling up.
+  // Every later respawn drops in beyond the far plane instead.
+  seedStrand(s, cold = false) {
+    const rng = this.astralRng;
+    this.spawnAng += 2.39996 + (rng.float() - 0.5) * 0.5;
+    s.ang = this.spawnAng;
+    // Biased inward: a handful of wide strands sweep the corners while most stay
+    // near the axis, which is what gives the knot at the centre its density.
+    s.radius = 10 + Math.pow(rng.float(), 1.8) * 210;
+    s.twist = (0.0009 + rng.float() * 0.0026) * this.spin;
+    // Deliberately SHORTER than the corridor. A strand that spans the whole depth
+    // is the same curve on screen from one frame to the next — its far end is
+    // always at the vanishing point and its near end always off the edge — and a
+    // shape that never changes is a picture you are looking at. Ends that arrive,
+    // sweep out and leave are half of what makes it a place you are moving
+    // through; the knots below are the other half.
+    s.length = ASTRAL_FAR * (0.45 + rng.float() * 0.6);
+    s.z = cold
+      ? ASTRAL_NEAR + rng.float() * (ASTRAL_FAR - ASTRAL_NEAR)
+      : ASTRAL_FAR + rng.float() * 400;
+    s.width = 1.4 + rng.float() * 3.4;
+    s.bright = 0.42 + rng.float() * 0.58;
+    // A small hue offset off the angular wheel, so strands sitting on the same
+    // bearing do not come out identically coloured.
+    s.tint = (rng.float() - 0.5) * 0.14;
+    // Where this strand's knots sit in world depth. Seeded per strand so they do
+    // not all arrive in step, which would read as a pulse rather than as travel.
+    s.beadPhase = rng.float() * ASTRAL_BEAD_SPACING;
+    s.hex = ASTRAL_WHEEL[0];
+    s.hexFar = ASTRAL_WHEEL[0];
+    s.hexNear = ASTRAL_WHEEL[0];
+    return s;
+  }
+
+  // One mote, aimed and lit. `cold` is the constructor's first fill, which leaves
+  // the pool empty and waiting for the first drum rather than opening on a shower
+  // nobody played.
+  seedMote(p, cold = false) {
+    const rng = this.astralRng;
+    p.ang = rng.float() * TAU;
+    p.radius = 6 + Math.pow(rng.float(), 1.4) * 330;
+    p.z = ASTRAL_FAR * (0.55 + rng.float() * 0.42);
+    p.hue = rng.float();
+    p.bright = 0.4 + rng.float() * 0.6;
+    // The spread is what you overtake. It is also the only pace in the picture, so
+    // it runs well above the camera rather than around it.
+    p.rush = 2.6 + rng.float() * 5.4;
+    p.twist = (0.0032 + rng.float() * 0.009) * this.spin;
+    p.alive = !cold;
+    return p;
+  }
+
+  // Fire up to `count` of them. Whatever is still flying is left alone: a mote
+  // that gets recycled mid-flight snaps to a new bearing, and a field of those
+  // reads as flicker rather than as rhythm.
+  launchMotes(count) {
+    let budget = count;
+    for (const p of this.motes) {
+      if (budget <= 0) break;
+      if (p.alive) continue;
+      this.seedMote(p);
+      budget--;
+    }
+  }
+
+  update(dt, a) {
+    super.update(dt, a);
+    const step = clamp(dt, 0, 1 / 20);
+    // Cruising speed follows the arrangement, not the transient: loudness sets
+    // where the flight settles and the eased `motion` keeps a single stab from
+    // jolting the camera.
+    const target = ASTRAL_SPEED * (0.55 + this.motion * 0.55) * (0.8 + this.bass * 0.4);
+    this.speed += (target - this.speed) * clamp(step * 1.5, 0, 1);
+    // The surge. A kit hit is an event, so it gets an envelope of its own that
+    // decays over about a beat rather than being folded into the cruise — and at
+    // this speed the surge is most of the travel, so the corridor advances in
+    // time with the drums instead of at a constant crawl.
+    this.warp = Math.max(this.warp - step * this.warp * 2.2, this.hit * 0.85);
+    this.rollKick = Math.max(this.rollKick - step * this.rollKick * 3, this.hit * 0.9);
+    const advance = step * this.speed * (1 + this.warp * 2.4 + this.bass * 0.25);
+    this.cam += advance;
+    this.roll += step * (0.003 + this.mid * 0.012 + this.rollKick * 0.18) * this.spin * this.motion;
+    // The breath. `pulse` is a spike — right for a knot flaring as it passes,
+    // wrong for a ribbon, which should swell and settle rather than flicker. One
+    // pole on it is the difference between the strands pulsing and the strands
+    // strobing.
+    this.breath += (this.pulse - this.breath) * clamp(step * 7, 0, 1);
+    // The wheel turns under everything. Slow enough to be a drift rather than a
+    // strobe, and fastest when the arrangement is busy.
+    this.hueShift += step * (0.022 + this.mid * 0.07);
+    // Two sines per axis, deliberately incommensurate, so the path never repeats
+    // on a bar and the flight has no visible loop.
+    const wanderX = CX + Math.sin(this.flow * 0.21 + this.focusPhase) * (44 + this.mid * 24) * this.motion
+      + Math.sin(this.flow * 0.11 + 1.7) * 18 * this.motion;
+    const wanderY = CY + Math.cos(this.flow * 0.17 + this.focusPhase * 0.7) * (26 + this.bass * 16) * this.motion
+      + Math.cos(this.flow * 0.08 + 0.6) * 11 * this.motion;
+    this.aimX += (wanderX - this.aimX) * clamp(step * 1.7, 0, 1);
+    this.aimY += (wanderY - this.aimY) * clamp(step * 1.7, 0, 1);
+    // The pump. Dollying the lens on the beat moves every strand at once, which is
+    // a breath the whole picture takes rather than a flash laid over it.
+    this.fov = ASTRAL_FOV * (1 + this.breath * 0.13 + this.bass * 0.09 + this.warp * 0.24);
+    for (const s of this.strands) {
+      s.z -= advance;
+      if (s.z + s.length < ASTRAL_NEAR) this.seedStrand(s);
+    }
+    // Motes are fired, not fed. Everything in the pool that is not currently
+    // flying is simply not drawn, so a bar with no kit under it goes quiet in the
+    // picture as well as in the mix.
+    if (this.hit > 0.35 && this.prevHit <= 0.35) this.launchMotes(3 + Math.round(this.hit * 9));
+    else if (this.drumless && Math.floor(this.beat) !== Math.floor(this.prevBeat)) this.launchMotes(2);
+    this.prevHit = this.hit;
+    const moteStep = step * ASTRAL_MOTE_SPEED * (0.7 + this.treble * 0.9) * this.motion;
+    for (const p of this.motes) {
+      if (!p.alive) continue;
+      p.z -= moteStep * p.rush;
+      if (p.z < ASTRAL_NEAR) p.alive = false;
+    }
+  }
+
+  // Where the whole field is pointing. The shared ring choreography turns it on
+  // the pack's 4/8/16-beat holds, so this rolls with everything else rather than
+  // only on its own clock.
+  rollAt() {
+    return this.roll + this.ringRotation * 0.22;
+  }
+
+  // Fills the strand's own node list — position, half-width, and the normal each
+  // pass needs to build its strip. Returns false when there is nothing on screen
+  // to draw, which is the common case for a strand still behind the far plane.
+  layout(s, roll) {
+    const fov = this.fov;
+    const zNear = Math.max(ASTRAL_NEAR, (fov * s.radius) / ASTRAL_EDGE, s.z);
+    const zFar = Math.min(ASTRAL_FAR, s.z + s.length);
+    if (!(zFar > zNear * 1.02)) return false;
+    const ratio = zFar / zNear;
+    const span = zFar - zNear;
+    const nodes = s.nodes;
+    // How the nodes are spread along the strand is a straight trade. Geometric in
+    // depth is linear on SCREEN — the right answer for a gentle strand, where the
+    // picture is all radial reach. But the angle a strand turns between two nodes
+    // is twist times their depth gap, so on a tight coil geometric spacing puts
+    // its widest gaps exactly where the curve is sharpest, and the inner spiral
+    // comes out as a fan of straight chords. Linear in depth is uniform in ANGLE,
+    // which is what that strand needs. So each strand is placed on the blend its
+    // own coil asks for, by total turn.
+    const coil = clamp(Math.abs(s.twist) * span / 5);
+    for (let i = 0; i < ASTRAL_NODES; i++) {
+      const u = i / (ASTRAL_NODES - 1);
+      const z = zNear + (zNear * Math.pow(ratio, Math.pow(u, 0.75)) - zNear) * (1 - coil)
+        + span * u * coil;
+      const ang = s.ang + s.twist * (z + this.cam) + roll;
+      const k = fov / z;
+      const r = s.radius * k;
+      const node = nodes[i];
+      node.x = this.aimX + Math.cos(ang) * r;
+      node.y = this.aimY + Math.sin(ang) * r;
+      // Perspective width, pinched at both ends so the strand has no cut edge — it
+      // fades into the vanishing point at one end and out of frame at the other.
+      // Capped, because the near end of a close pass is otherwise a slab.
+      node.h = Math.min(18, Math.max(0.16, s.width * k * 1.9 * (1 + this.breath * 0.24)))
+        * Math.pow(Math.sin(Math.PI * u), 0.4);
+    }
+    for (let i = 0; i < ASTRAL_NODES; i++) {
+      const a = nodes[Math.max(0, i - 1)];
+      const b = nodes[Math.min(ASTRAL_NODES - 1, i + 1)];
+      const dx = b.x - a.x; const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      nodes[i].nx = -dy / len;
+      nodes[i].ny = dx / len;
+    }
+    // Hue off the bearing of the strand's midpoint, so the wheel turns with the
+    // field instead of being painted onto the screen. The two neighbours either
+    // side of it are the dispersion: a strand is a different colour where it
+    // leaves the vanishing point than where it passes the camera.
+    const mid = nodes[ASTRAL_NODES >> 1];
+    const bearing = Math.atan2(mid.y - this.aimY, mid.x - this.aimX) / TAU + s.tint + this.hueShift;
+    s.hex = astralHue(bearing);
+    s.hexFar = astralHue(bearing + 0.3);
+    s.hexNear = astralHue(bearing - 0.22);
+    return true;
+  }
+
+  // The light ramp along a strand, shared by every pass: nearly nothing at the
+  // vanishing point, brightest in the middle distance, easing off as it leaves the
+  // frame. A strand that stayed bright to its last node would read as a line
+  // someone cropped. `hex` overrides the dispersion, for the white core.
+  // Built once per strand and reused by every pass, with the pass's own weight
+  // applied through globalAlpha. Baking the alpha into the stops instead meant a
+  // gradient object and three colour strings per pass — five times the work for
+  // the same ramp, and it showed in the frame time.
+  strandGradient(ctx, s, hex = null) {
+    const near = s.nodes[0];
+    const far = s.nodes[ASTRAL_NODES - 1];
+    if (Math.hypot(far.x - near.x, far.y - near.y) < 0.6) return rgba(hex || s.hex, 0.6);
+    const g = ctx.createLinearGradient(far.x, far.y, near.x, near.y);
+    g.addColorStop(0, rgba(hex || s.hexFar, 0.1));
+    g.addColorStop(0.42, rgba(hex || s.hex, 1));
+    g.addColorStop(1, rgba(hex || s.hexNear, 0.22));
+    return g;
+  }
+
+  // Nested strips, widest and faintest first. One wide strip at low alpha was the
+  // obvious way to fake the bloom and it does not work: a flat fill has a hard
+  // edge, so a strand ends up inside a visible grey wedge. Stacking them
+  // additively puts the falloff ACROSS the strand where a blur would have put it,
+  // for five fills and no buffer.
+  paintStrand(ctx, s, alpha) {
+    const nodes = s.nodes;
+    const { ax, ay, bx, by } = this.edge;
+    // The two widest passes are the expensive ones — they are the biggest area in
+    // the frame — and on a thin or faint strand they are also the two nobody can
+    // see. Spending them only where there is a beam wide enough to have a halo is
+    // most of this preset's cost back, at no visible difference.
+    const from = (alpha < 0.2 || s.width < 2) ? 2 : 0;
+    const paint = this.strandGradient(ctx, s);
+    ctx.fillStyle = paint;
+    for (let li = from; li < ASTRAL_LAYERS.length; li++) {
+      const layer = ASTRAL_LAYERS[li];
+      const a = alpha * layer.alpha;
+      if (a < 0.004) continue;
+      ctx.globalAlpha = a * this.frameAlpha;
+      for (let i = 0; i < ASTRAL_NODES; i++) {
+        const n = nodes[i]; const h = Math.min(layer.cap, n.h * layer.spread);
+        ax[i] = n.x + n.nx * h; ay[i] = n.y + n.ny * h;
+        bx[i] = n.x - n.nx * h; by[i] = n.y - n.ny * h;
+      }
+      ctx.beginPath();
+      ctx.moveTo(ax[0], ay[0]);
+      astralSpline(ctx, ax, ay, false);
+      ctx.lineTo(bx[ASTRAL_NODES - 1], by[ASTRAL_NODES - 1]);
+      astralSpline(ctx, bx, by, true);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = this.frameAlpha;
+  }
+
+  paintCore(ctx, s, alpha) {
+    const nodes = s.nodes;
+    const { ax, ay } = this.edge;
+    for (let i = 0; i < ASTRAL_NODES; i++) { ax[i] = nodes[i].x; ay[i] = nodes[i].y; }
+    ctx.strokeStyle = this.strandGradient(ctx, s, '#ffffff');
+    ctx.globalAlpha = alpha * this.frameAlpha;
+    ctx.lineWidth = 0.6 + this.pulse * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(ax[0], ay[0]);
+    astralSpline(ctx, ax, ay, false);
+    ctx.stroke();
+    ctx.globalAlpha = this.frameAlpha;
+  }
+
+  // The knots riding one strand. Their world depth is fixed, so `zb + cam` — and
+  // with it the bearing — is constant for the life of the knot: it is a material
+  // point on the helix, and the only thing that changes is how close it is.
+  drawBeads(ctx, s, roll, alpha) {
+    const first = Math.ceil((this.cam + Math.max(ASTRAL_NEAR, s.z) - s.beadPhase) / ASTRAL_BEAD_SPACING);
+    const last = Math.floor((this.cam + Math.min(ASTRAL_FAR, s.z + s.length) - s.beadPhase) / ASTRAL_BEAD_SPACING);
+    for (let i = first; i <= last; i++) {
+      const world = s.beadPhase + i * ASTRAL_BEAD_SPACING;
+      const zb = world - this.cam;
+      if (zb < ASTRAL_NEAR) continue;
+      const r = (s.radius * this.fov) / zb;
+      if (r > ASTRAL_EDGE) continue;
+      const ang = s.ang + s.twist * world + roll;
+      const x = this.aimX + Math.cos(ang) * r;
+      const y = this.aimY + Math.sin(ang) * r;
+      // Square in depth: a knot is a hint at the far end and a flare by the time
+      // it passes, which is the acceleration the eye actually reads as speed. Kept
+      // small — at disc size these stop being knots in a light and become a field
+      // of bubbles floating in front of one.
+      const depth = clamp(1 - zb / ASTRAL_FAR);
+      const size = 0.45 + depth * depth * (2.4 + this.pulse * 1.6);
+      // Weighted by where it sits along its own strand, so a knot fades out with
+      // the light carrying it instead of hanging in the air after the tip has gone.
+      const along = Math.sin(Math.PI * clamp((zb - s.z) / s.length));
+      const a = alpha * along * (0.22 + depth * 0.7);
+      if (a < 0.01) continue;
+      ctx.fillStyle = rgba(s.hex, a * 0.45);
+      ctx.beginPath(); ctx.arc(x, y, size * 1.9, 0, TAU); ctx.fill();
+      ctx.fillStyle = rgba('#ffffff', a * (0.35 + this.pulse * 0.4));
+      ctx.beginPath(); ctx.arc(x, y, size * 0.6, 0, TAU); ctx.fill();
+    }
+  }
+
+  // A mote is a short length of its own helix, so it curves with everything else
+  // and a jump stretches it further round the coil rather than into a spike. The
+  // path is built once and stroked twice — wide and faint, then thin and hot —
+  // which is the same glow the strands get, at two operations instead of five.
+  drawMotes(ctx, roll) {
+    const trail = 110 + this.treble * 180 + this.warp * 420;
+    const { mx, my } = this.edge;
+    ctx.lineCap = 'round';
+    for (const p of this.motes) {
+      if (!p.alive) continue;
+      const z0 = Math.max(ASTRAL_NEAR, p.z);
+      // Seven nodes have to carry the whole streak, so the trail is cut to the
+      // depth over which the mote's own coil turns about a radian and a half —
+      // beyond that the spline starts cutting chords across its own curve.
+      const z1 = Math.min(ASTRAL_FAR, z0 + Math.min(trail * (0.4 + p.rush * 0.3), 1.6 / Math.abs(p.twist)));
+      if (!(z1 > z0 * 1.02)) continue;
+      if ((p.radius * this.fov) / z0 > ASTRAL_EDGE) continue;
+      const ratio = z1 / z0;
+      for (let i = 0; i < ASTRAL_MOTE_NODES; i++) {
+        const z = z0 * Math.pow(ratio, i / (ASTRAL_MOTE_NODES - 1));
+        const ang = p.ang + p.twist * (z + this.cam) + roll;
+        const r = (p.radius * this.fov) / z;
+        mx[i] = this.aimX + Math.cos(ang) * r;
+        my[i] = this.aimY + Math.sin(ang) * r;
+      }
+      const depth = clamp(1 - z0 / ASTRAL_FAR);
+      const alpha = p.bright * depth * (0.16 + this.treble * 0.5 + this.pulse * 0.16);
+      if (alpha < 0.012) continue;
+      const hex = astralHue(p.hue + this.hueShift);
+      ctx.beginPath();
+      ctx.moveTo(mx[0], my[0]);
+      astralSpline(ctx, mx, my, false);
+      ctx.strokeStyle = rgba(hex, alpha * 0.3);
+      ctx.lineWidth = 1.1 + depth * 2.6;
+      ctx.stroke();
+      ctx.strokeStyle = rgba(hex, alpha);
+      ctx.lineWidth = 0.35 + depth * 0.9;
+      ctx.stroke();
+    }
+  }
+
+  draw(ctx) {
+    // Black, opaque, and no gradient: the corridor is empty space, and any lift in
+    // the background greys out the one thing the preset is made of.
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, W, H);
+    const roll = this.rollAt();
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineJoin = 'round';
+    // The haze. Three soft lights placed around the axis on the same wheel the
+    // strands read from, so the quadrants of the frame carry the colour that the
+    // strands crossing them are about to be.
+    for (let i = 0; i < 3; i++) {
+      const ang = roll * 0.6 + (i / 3) * TAU;
+      const hex = astralHue(ang / TAU + this.hueShift);
+      this.glowDot(ctx, this.aimX + Math.cos(ang) * 130, this.aimY + Math.sin(ang) * 95,
+        140 + this.bass * 70, hex, 0.06 + this.mid * 0.07);
+    }
+    // Deliberately NOT off `level`: broadband amplitude runs around 0.04 on these
+    // banks, so a picture keyed to it sits at its floor for the whole song. The
+    // bands and the kit are where the loudness actually is.
+    const strength = 0.36 + this.bass * 0.24 + this.mid * 0.15 + this.breath * 0.28;
+    for (const s of this.strands) {
+      if (!this.layout(s, roll)) continue;
+      // Both ends of a strand's life are faded rather than cut. Without the second
+      // term a strand spends its last second as a pointed leaf floating in open
+      // frame — the far tip is all that is left of it, and a lone tip that does not
+      // reach the vanishing point reads as debris rather than as light.
+      const born = clamp((ASTRAL_FAR - s.z) / 200);
+      const leaving = clamp((s.z + s.length - ASTRAL_NEAR) / 520);
+      const alpha = clamp(s.bright * strength * born * leaving);
+      if (alpha < 0.004) continue;
+      this.paintStrand(ctx, s, alpha);
+      this.paintCore(ctx, s, alpha * (0.32 + this.pulse * 0.3));
+      if (alpha > 0.12) this.drawBeads(ctx, s, roll, alpha);
+    }
+    this.drawMotes(ctx, roll);
+    // The knot the strands come out of. It is a light, not a hole: the darkness in
+    // the middle of the reference picture is where the strands cross, and that is
+    // drawn by the strands themselves.
+    this.glowDot(ctx, this.aimX, this.aimY, 18 + this.bass * 34 + this.warp * 46,
+      '#ffffff', 0.16 + this.pulse * 0.3);
+    this.glowDot(ctx, this.aimX, this.aimY, 58 + this.bass * 74,
+      astralHue(roll / TAU + this.hueShift + 0.5), 0.1 + this.mid * 0.16);
+    ctx.restore();
+    // No drawDust: the shared bed paints two-point streaks, and a straight line is
+    // the one mark this picture does not contain. The motes are its dust.
+    this.modernFinish(ctx, 0.36);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // VJ MEGAMIX — the pack playing itself.
 //
@@ -5333,7 +5887,7 @@ export function isVisualiserExcluded(index) {
 // Presets whose frame is expensive enough that painting two of them at once is a
 // real risk on a phone. With one of these on either deck the mixer sticks to the
 // transitions that only ever paint ONE record per frame.
-const MEGAMIX_HEAVY = new Set(['ACID JULIA DIVE']
+const MEGAMIX_HEAVY = new Set(['ACID JULIA DIVE', 'ASTRAL TRAVEL']
   .map((name) => VISUALISER_NAMES.indexOf(name))
   .filter((index) => index >= 0));
 
@@ -5555,7 +6109,7 @@ export function createHalfPipeLab(seed, track, tune) {
 
 export function createVisualiser(name, seed, track) {
   const index = typeof name === 'number' ? name : VISUALISER_NAMES.indexOf(name);
-  const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm, EmeraldCodeRain, AcidJuliaDive, HyperVectorTunnel, NebulaRibbonDrift, GlassBlobEqualizer, HalfPipeHorizon, VjMegamix];
+  const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm, EmeraldCodeRain, AcidJuliaDive, HyperVectorTunnel, NebulaRibbonDrift, GlassBlobEqualizer, HalfPipeHorizon, AstralTravel, VjMegamix];
   const Ctor = constructors[Math.max(0, index) % constructors.length];
   return new Ctor(seed >>> 0, track);
 }

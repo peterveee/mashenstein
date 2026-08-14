@@ -141,6 +141,7 @@ import { WIISHOPPINGCHANNEL } from './wiishoppingchannel.js';
 import * as WILD_CACTUS from './wild-cactus.js';
 import * as WILD_DOLPHIN from './wild-dolphin.js';
 import * as WILD_SUNDAE from './wild-sundae.js';
+import * as WIPL_BGM_SHOP from './wipl-bgm-shop.js';
 
 export const IMPORTED_BY_ID = {
   "arcade-theme": { bank: ARCADE_THEME.bank, title: ARCADE_THEME.title, group: "alternate", writable: true, alternateOf: "hub" },
@@ -273,6 +274,7 @@ export const IMPORTED_BY_ID = {
   "wild-cactus": { bank: WILD_CACTUS.bank, title: WILD_CACTUS.title, group: "scratch", writable: true },
   "wild-dolphin": { bank: WILD_DOLPHIN.bank, title: WILD_DOLPHIN.title, group: "scratch", writable: true },
   "wild-sundae": { bank: WILD_SUNDAE.bank, title: WILD_SUNDAE.title, group: "scratch", writable: true },
+  "wipl-bgm-shop": { bank: WIPL_BGM_SHOP.bank, title: WIPL_BGM_SHOP.title, group: "imported", writable: true },
 };
 
 for (const [id, entry] of Object.entries(IMPORTED_BY_ID)) registerTrack({ id, ...entry });

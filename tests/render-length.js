@@ -58,6 +58,9 @@ try {
   for (const [what, mix] of [['no arp', null], ['a 1/32 arp on the lead', arpMix]]) {
     const out = await renderer.render(bank, { mix, trackId: 'render-length-probe', repeat: 1, tail: 0.25 });
     const n = out.outL.length;
+    assert(out.scheduledCalls === out.expectedScheduleCalls,
+      `${what}: the render walk scheduled every transport call`
+      + ` (${out.scheduledCalls}/${out.expectedScheduleCalls})`);
     const first = rms(out.outL, 0, Math.floor(n / 4));
     const last = rms(out.outL, Math.floor(n * 0.6), Math.floor(n * 0.85));
     assert(first > 1e-3, `${what}: the song starts`);
@@ -69,6 +72,33 @@ try {
         'and the arp did promote the transport — otherwise this proves nothing');
     }
   }
+
+  // An explicit desk arrangement can be longer than the composition it edits. The
+  // render must size its walk and buffer from that arranged bar plan, or the last bars
+  // are never scheduled and a per-bar probe reports them as silence.
+  const arrangedBank = {
+    bpm: 120,
+    lead: [...bar(), ...bar()],
+    sections: [{ lead: [...bar(), ...bar()] }],
+    order: [0],
+  };
+  const arranged = {
+    bpm: 120,
+    order: Array.from({ length: 8 }, (_, i) => ({ s: 0, bars: 1, from: i % 2 })),
+  };
+  const arrangedOut = await renderer.render(arrangedBank, {
+    arrangement: arranged, mix: null, trackId: 'arranged-render-length-probe', tail: 0.25,
+  });
+  assert(arrangedOut.scheduledCalls === arrangedOut.expectedScheduleCalls,
+    `the arranged render walks every transport call (${arrangedOut.scheduledCalls}/${arrangedOut.expectedScheduleCalls})`);
+  assert(arrangedOut.steps === 8 * 16,
+    `an explicit arrangement sizes the walk from all eight bars (${arrangedOut.steps} steps)`);
+  assert(arrangedOut.seconds > 16 && arrangedOut.seconds < 16.5,
+    `the buffer covers the arranged form, not the two-bar composition (${arrangedOut.seconds.toFixed(2)}s)`);
+  const arrangedLast = rms(arrangedOut.outL,
+    Math.floor(arrangedOut.outL.length * 0.72), Math.floor(arrangedOut.outL.length * 0.92));
+  assert(arrangedLast > 1e-3,
+    `the arranged form is still audible near its end (${arrangedLast.toExponential(2)})`);
 } finally {
   await renderer.close?.();
 }

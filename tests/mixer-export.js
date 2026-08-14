@@ -62,6 +62,9 @@ assert(/render-bank-page\.js/.test(src('tools/mixer-render-entry.js')),
   'the desk render frame imports the same walk');
 assert(!/new OfflineAudioContext/.test(src('tools/lib/render-bank-browser.js')),
   'and the Chromium renderer no longer carries a copy of it');
+assert(/scheduledCalls: r\.scheduledCalls/.test(src('tools/lib/render-bank-browser.js'))
+  && /expectedScheduleCalls: r\.expectedScheduleCalls/.test(src('tools/lib/render-bank-browser.js')),
+  'the browser renderer preserves render-walk completeness metadata');
 
 // ---- and it does not stall the desk that opened it ----------------------------
 // The frame is same-origin, so it is a document boundary and not a thread one: the
@@ -103,8 +106,8 @@ assert(/if \(!canSuspend\) \{\s*\n\s*await buildUntil\(Infinity\);/.test(page),
 // check can tell a broken bounce from a quiet song. Sabotage harness:
 // work/local/verify-jit-failure.js (suspend that rejects, rejects midway, or never
 // settles — all three refused; one that resolves at once is correctly kept).
-assert(/if \(stepAt < steps\) \{/.test(page) && /render walk incomplete/.test(page),
-  'a walk that did not schedule every step refuses to return a file');
+assert(/if \(stepAt < scheduleCalls\) \{/.test(page) && /render walk incomplete/.test(page),
+  'a walk that did not schedule every transport call refuses to return a file');
 assert(/suspendRejected/.test(page) && !/\.catch\(\(\) => \{\}\);/.test(page),
   'and no suspension rejection is swallowed — each one is recorded for that refusal to name');
 assert(/upfront = false,/.test(page) && /const canSuspend = !upfront &&/.test(page),
