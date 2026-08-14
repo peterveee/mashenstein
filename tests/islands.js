@@ -206,6 +206,39 @@ const survivors = run.obstacles.filter((o) => o.live && o.def && o.def.action !=
 assert(survivors.length === 0,
   `nothing you must react to is left in the landing zone (${survivors.length} left)`);
 
+// ---- rewind carries the road, not just the height ---------------------------
+// `player.y` is altitude above the CURRENT floor, so a snapshot that records y
+// without recording which floor it was measured from restores the hero at the
+// right height above the wrong thing. Both snapshot systems are checked: the
+// rewind ring and the checkpoint.
+standAt(island.x + island.w / 2);
+run.route = island;
+run.player.y = 0;
+const ring = run.rewindFrames;
+run.writeRewindSnapshot(ring.slotForWrite());
+const rec = ring.slots[ring.slots.length - 1] || ring.slots[0];
+assert(rec.route === run.islands.indexOf(island),
+  'a rewind snapshot records which road the hero was on');
+// Move him off it, then rewind back onto it.
+run.route = null;
+run.player.y = 40;
+run.restoreRewindSnapshot(rec);
+assert(run.route === island, 'and rewinding puts him back on that road');
+assert(Math.abs(run.playerGroundY() - island.topY) < 0.001,
+  'with the slab, not the ground, as his floor again');
+
+const snap = run.makeSnapshot();
+assert(snap.route === run.islands.indexOf(island), 'a checkpoint records it too');
+run.route = null;
+run.restoreSnapshot(snap);
+assert(run.route === island, 'and a checkpoint restore puts him back on it');
+// A checkpoint taken on the base ground must NOT strand him on a slab.
+run.route = null;
+const groundSnap = run.makeSnapshot();
+run.route = island;
+run.restoreSnapshot(groundSnap);
+assert(run.route === null, 'and one taken on the ground restores him to the ground');
+
 // ---- a cabinet with no islands is untouched ---------------------------------
 const { CABINETS } = await import('../src/data/cabinets.js');
 const bare = CABINETS.filter((c) => !c.islands);
