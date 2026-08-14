@@ -72,6 +72,14 @@ export const CABINETS = [
     mechanic: 'qcrates', // breakable !-crates, pipes as secret routes
     sky: ['#78c8f0', '#a8e0f8'], ground: '#3a9c48', groundDark: '#2a7038',
     far: '#5ab060', hills: '#48a050',
+    // Floating islands — the "secret routes" the mechanic line above has always
+    // promised. `at` is a fraction of the stage, the same convention
+    // stage.applianceAt uses; `dwell` is SECONDS spent on the slab, converted
+    // against this stage's own base speed so the beat is the same length in
+    // world 1 and on UNPLUGGED (a fixed pixel width would be one jump at the
+    // start of the game and half a jump by the end). `rise` defaults to 30 and
+    // is capped by MAX_ISLAND_RISE, which is derived from the heavy hero's apex.
+    islands: [{ at: 0.34, dwell: 0.8 }, { at: 0.62, dwell: 0.7 }],
     // ONE harmonic bed (the original A-F-C-G loop) for the whole song — no
     // section-to-section progressions. Movement comes from melodic variations
     // that keep the exact same rhythm with different notes, and from chords

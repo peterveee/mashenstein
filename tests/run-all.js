@@ -97,6 +97,7 @@ const suites = [
   'tests/density.js',
   'tests/frame-health.js',
   'tests/camera-framing.js',
+  'tests/islands.js',
   'tests/rewind-pooling.js',
   'tests/art-warmup.js',
   'tests/title-sign.js',

@@ -13,9 +13,9 @@ import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
 import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawB33pPellet } from '../engine/sprites.js';
-import { Player, PLAYER_X, jumpHeightFor } from './player.js';
+import { Player, PLAYER_X, GRAVITY, jumpHeightFor } from './player.js';
 import { Relay, portalSchedule } from './relay.js';
-import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX } from './spawner.js';
+import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstJumpApex, COIN_GAP, COIN_FLOOR } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 import { entityBox, overlaps, makePickup, makeObstacle, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
@@ -30,7 +30,7 @@ import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF } from './draw.js';
-import { drawTerrain, terrainGroundY } from './terrain.js';
+import { drawTerrain, drawIslands, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
 import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
@@ -73,6 +73,15 @@ const ACT_BANNER_FADE = 0.3;
 // that dismissed the card BEFORE it from carrying through into this one.
 const ZONE_CARD_FADE = 0.25;
 const ZONE_CARD_ARM = 0.4;
+// How high a floating island may sit, in px above the ground under it.
+//
+// Derived rather than chosen: `worstJumpApex()` is ~37px for the pessimistic
+// worst hero (and 45.5 for the real one, Grumpos), and a slab you can only just
+// touch at the very top of a perfect jump is one you miss constantly. 80% of
+// that leaves the margin the landing actually needs, and it lands at 29px —
+// which is also comfortably inside the camera's headroom, so the frame does not
+// have to crane for an island the way it will for a full high road.
+const MAX_ISLAND_RISE = Math.floor(worstJumpApex() * 0.8);
 // Jump faces: expressionFor's `jf` lookup (toons.js) — 0 surprised, 1 excited,
 // 2 determined, 3 startled.
 const JUMP_FACE_COUNT = 4;
@@ -693,8 +702,86 @@ export class RunState {
     this.prevIntroRunX = PLAYER_X;
   }
 
+  // The base ground: the one line every stage has had, a pure function of x.
+  // Entities live on this. Nothing below changes what it returns.
   groundYAt(worldX) {
     return this.bossCab ? GROUND_Y : terrainGroundY(this.cabinet, worldX, GROUND_Y);
+  }
+
+  /**
+   * The floor for a given ROUTE, which is what the player actually stands on.
+   *
+   * `player.y` is altitude above the floor rather than a world coordinate (see
+   * player.js's `y <= 0` landing), so a second road does not need a second
+   * collision system — it needs the floor to move. A route of null is the base
+   * ground, which is every entity, every boss cabinet, and the player for all
+   * of the run that is not on an island.
+   */
+  routeGroundY(worldX, route) {
+    return route ? route.topY : this.groundYAt(worldX);
+  }
+
+  /** Where the player's own feet rest right now. */
+  playerGroundY() {
+    return this.routeGroundY(this.playerWorldX(), this.route);
+  }
+
+  /** The island covering this x, if any. Islands never overlap. */
+  islandAt(worldX) {
+    for (const is of this.islands) {
+      if (worldX >= is.x && worldX <= is.x + is.w) return is;
+    }
+    return null;
+  }
+
+  /**
+   * Getting on and off an island.
+   *
+   * ON is a swept test rather than a point test: at 232px/s the hero moves ~4px
+   * a frame and falls faster, so asking "are my feet at the island top" misses
+   * it outright most frames. Asking "did the segment I just travelled CROSS the
+   * top going down" cannot. It also corrects the case where player.update has
+   * already clamped the hero to the base ground in the same frame — the island
+   * top is always above that, so the crossing still registers and wins.
+   *
+   * One-way on purpose: only a DESCENDING hero lands. Jumping up through the
+   * slab from underneath is how you get on top of it, and a runner that clonks
+   * its head on a platform it is trying to reach reads as broken.
+   *
+   * OFF is just arithmetic. `y` is altitude above the CURRENT floor, so when the
+   * floor drops by `rise` the same world position is `rise` higher above the new
+   * one — hence `y += rise`, grounded false, and gravity does the rest.
+   */
+  updateRoute(prevFeetY) {
+    const x = this.playerWorldX();
+    if (this.route) {
+      // Still over my own island? The lip is where it ends.
+      if (x >= this.route.x && x <= this.route.x + this.route.w) return false;
+      // Step off the lip. `y` is altitude above the CURRENT floor, so rebasing
+      // onto the ground below means adding the drop between the two — which is
+      // the slab's height above that ground, measured where the hero leaves it
+      // rather than the stored `rise` (the terrain may have rolled underneath).
+      this.player.y += this.groundYAt(x) - this.route.topY;
+      this.player.grounded = false;
+      this.route = null;
+      return false;
+    }
+    if (this.player.vy > 0) return false;       // rising: pass through from below
+    const is = this.islandAt(x);
+    if (!is) return false;
+    const feetY = this.groundYAt(x) - this.player.y;
+    if (prevFeetY > is.topY || feetY < is.topY) return false;   // did not cross downward
+    this.route = is;
+    this.player.y = 0;
+    this.player.vy = 0;
+    this.player.jumps = 0;
+    this.player.grounded = true;
+    this.player.stomping = false;
+    // Reported rather than sounded here: player.update may ALSO have clamped the
+    // hero onto the base ground this same frame (the island top is always above
+    // it, so a fast fall crosses both), and the caller would then play `land`
+    // twice for one landing. One landing, one caller, one sound.
+    return true;
   }
 
   // The dolly. Camera Y never TRACKS the hero — both numbers come out of
@@ -710,7 +797,11 @@ export class RunState {
     // the overwhelming case where nothing has changed.
     applyFraming(this.renderSettings || this.save.settings);
     const heroX = this.playerWorldX();
-    const lift = GROUND_Y - this.groundYAt(heroX);   // rolling terrain owes headroom too
+    // Rolling terrain owes headroom, and an island owes MORE of it: the hero is
+    // already `rise` up before they jump at all. Asking routeGroundY rather than
+    // groundYAt is what keeps framingFor honest about how much frame the hero
+    // actually needs — miss it and a jump taken from a slab clips the top.
+    const lift = GROUND_Y - this.routeGroundY(heroX, this.route);
     const want = framingFor(this.player.y, lift);
     this.camPan = easePan(this.camPan, want.pan, dt);
     this.camZoom = easeZoom(this.camZoom, want.zoom, dt);
@@ -957,6 +1048,35 @@ export class RunState {
     });
     this.spawner.nextX = 300;
     this.drip = new DripSpawner(this.rng.stream('drip'), this.bench);
+
+    // Floating islands: short slabs over the lane, jumped onto for a reward and
+    // fallen off the end of. Resolved to world spans here, once.
+    //
+    // Authored in SECONDS of dwell rather than pixels, and converted against
+    // this stage's own base speed. A jump spans 114px in world 1 and 253 on
+    // UNPLUGGED, so a slab written as "150px" is one jump long at the start of
+    // the game and less than half a jump by the end — the hero would sail
+    // straight over the thing. Seconds keep the beat the same length wherever
+    // it is played, which is what the number is actually describing.
+    //
+    // `rise` is validated against the HEAVY hero, not the average one: Grumpos
+    // clears 45.5px against everyone else's 57, and a slab only he cannot reach
+    // is a slab that reads as broken on exactly one hero. Same instinct as
+    // spawner.js's worstAirtime().
+    this.route = null;
+    this.islands = (this.bossCab || this.overtime || !Number.isFinite(this.totalDist))
+      ? []
+      : (this.cabinet.islands || []).map((is) => {
+        const x = is.at * this.totalDist;
+        const w = (is.dwell ?? 0.7) * this.baseSpeed();
+        const rise = Math.min(is.rise ?? 30, MAX_ISLAND_RISE);
+        // A FLAT top, fixed at construction from the ground under the slab's
+        // middle — not `base - rise` evaluated per column. A floating slab is a
+        // flat thing; letting it ride the hills underneath would tilt the floor
+        // the hero is standing on and hand `groundDelta` a slope that the art
+        // would then lean the dust and boost effects into.
+        return { x, w, rise, topY: this.groundYAt(x + w / 2) - rise, prize: is.prize || 'coins' };
+      });
 
     // Mission setup.
     this.mission = this.stage ? { ...this.stage.mission, count: 0, done: false } : { type: 'endless', desc: 'RUN. FOREVER. THAT IS THE WHOLE DEAL.' };
@@ -1513,16 +1633,21 @@ export class RunState {
 
     // Player physics. (jumpScale survives hero swaps)
     this.player.jumpScale = this.corrupted.includes('nojump') ? 0.6 : 1;
+    // Where the feet were BEFORE the step, for the island sweep below. Taken
+    // against the base ground on purpose: it is the frame of reference both
+    // sides of the test share, whichever route the hero is on.
+    const prevFeetY = this.routeGroundY(this.playerWorldX(), this.route) - this.player.y;
     const res = this.player.update(wdt, Input, {
       speed: sp, ice: this.cabinet.mechanic === 'ice', gravityScale: this.powerups.gravityMultiplier(),
     });
-    if (res.landed) {
+    const tookIsland = this.islands.length ? this.updateRoute(prevFeetY) : false;
+    if (res.landed || tookIsland) {
       Audio.sfx('land');
-      burst(this.camX + PLAYER_X + 6, this.groundYAt(this.camX + PLAYER_X), 5, 30, 0.3, '#c8b898', 1, 40, () => this.fxRng.float());
+      burst(this.camX + PLAYER_X + 6, this.playerGroundY(), 5, 30, 0.3, '#c8b898', 1, 40, () => this.fxRng.float());
       if (res.stompLand) { shake(2, 0.15); this.stompBreak(); }
     }
     if (this.player.grounded && Math.floor(this.player.anim) % 4 === 0 && this.fxRng.chance(0.1)) {
-      spawn(this.camX + PLAYER_X, this.groundYAt(this.camX + PLAYER_X) - 1, -30, -10, 0.4, '#c8b898', 1, 30);
+      spawn(this.camX + PLAYER_X, this.playerGroundY() - 1, -30, -10, 0.4, '#c8b898', 1, 30);
     }
 
     // Systems.
@@ -1546,6 +1671,7 @@ export class RunState {
       updateProfileAdd('spawnMs', spawnAt);
     }
     this.spawnApplianceMaybe();
+    if (this.islands.length) { this.spawnIslandPrizes(); this.clearIslandHazards(); }
     // Swept every frame, not just on the frame the portal appears: the drip
     // capsule and the appliance both spawn at their own clock a little further
     // out than the portal does, so either can land in the column afterwards.
@@ -1636,7 +1762,7 @@ export class RunState {
   }
   playerWorldX() { return this.camX + this.heroScreenX(); }
   playerBox() {
-    return this.player.box(this.camX, this.groundYAt(this.playerWorldX()), this.heroScreenX());
+    return this.player.box(this.camX, this.playerGroundY(), this.heroScreenX());
   }
 
   // The two-button card, held between the ACT card and the entrance. Nothing
@@ -2401,7 +2527,7 @@ export class RunState {
           Audio.sfx('portal', { gain: PORTAL_RELAY_IN_GAIN, shape: PORTAL_RELAY_IN });
         }
       }
-      const hbox = this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X));
+      const hbox = this.player.box(this.camX, this.playerGroundY());
       if (overlaps(hbox, pbox)) {
         this.doSwitch();
         this.portal.spent = 0;
@@ -2786,7 +2912,7 @@ export class RunState {
     if (!on || this.save.settings.reducedMotion) return;
     if (this.fxRng.chance(0.6)) {
       const hue = Math.floor((this.tRun * 420 + this.fxRng.float() * 90) % 360);
-      const gy = this.groundYAt(this.camX + PLAYER_X);
+      const gy = this.playerGroundY();
       spawn(this.camX + PLAYER_X + 6 + (this.fxRng.float() - 0.5) * 10,
         gy - this.player.y - 6 - this.fxRng.float() * 16,
         -50 - this.fxRng.float() * 60, -20 + this.fxRng.float() * 40,
@@ -2974,6 +3100,75 @@ export class RunState {
       // challenge counter in the HUD is the readout.
       this.challenge.count++;
       this.score += 20;
+    }
+  }
+
+  /**
+   * The reason to go up there.
+   *
+   * A row of coins along the slab, spawned once as it comes into view. They are
+   * ORDINARY air pickups at the slab's height, not a new kind of entity: the
+   * game already places coins in arcs above the lane, and a hero standing on
+   * the island is at exactly the altitude that runs through them. Nothing about
+   * pickup collision, magnetism or the coin combo needs to learn what an island
+   * is.
+   *
+   * `alt` is measured up from the BASE ground because that is the frame every
+   * pickup is boxed against, so it is the slab's height above the ground under
+   * each coin — which is not a constant, since the ground rolls and the slab
+   * does not.
+   */
+  spawnIslandPrizes() {
+    for (const is of this.islands) {
+      if (is.spawned || this.camX + W < is.x) continue;
+      is.spawned = true;
+      if (is.prize !== 'coins') continue;
+      // Inset from both lips so nothing sits where the hero is still landing or
+      // already stepping off, and so the row reads as ON the slab.
+      const inset = 14;
+      for (let x = is.x + inset; x <= is.x + is.w - inset; x += COIN_GAP) {
+        const alt = this.groundYAt(x) - is.topY + COIN_FLOOR;
+        this.pickups.push(makePickup('coin', x, alt));
+      }
+    }
+  }
+
+  /**
+   * The two places an island makes the lane unfair, swept together.
+   *
+   * ONE — the far lip's landing. Stepping off is the only move in the game whose
+   * timing the player does not choose: the slab runs out and gravity takes over.
+   * A hazard where they come down is unfair in a way the spawner's own invariant
+   * does not cover, because `fairGap` reasons about a hero on the ground with a
+   * jump in hand and this hero is already committed to a fall.
+   *
+   * TWO — anything tall enough to reach into the slab. Short hazards passing
+   * underneath are the point and they stay; a stacked crate is a different
+   * thing. Its hitbox is measured from the ground and would overlap a hero
+   * standing on the island, so being up there would not be safe after all —
+   * and it draws straight through the slab, which says the opposite.
+   *
+   * Retired rather than never spawned: the lane is filled far ahead of the
+   * sweep, and dropping the offending obstacle is much less invasive than
+   * teaching the spawner about a second kind of wall.
+   */
+  clearIslandHazards() {
+    for (const is of this.islands) {
+      if (is.cleared || this.camX + W + 200 < is.x + is.w) continue;
+      is.cleared = true;
+      // Where the hero lands off the lip, and the first moment they could act
+      // on whatever is waiting there.
+      const exitFrom = is.x + is.w;
+      const exitTo = exitFrom + Math.sqrt((2 * is.rise) / GRAVITY) * this.speed
+        + this.spawner.react * this.speed;
+      const underside = is.topY + ISLAND_THICKNESS;
+      for (const ob of this.obstacles) {
+        if (!ob.live || !ob.def) continue;
+        const inExit = ob.x + ob.w >= exitFrom && ob.x <= exitTo && ob.def.action !== 'none';
+        const underSlab = ob.x + ob.w >= is.x && ob.x <= exitFrom
+          && this.groundYAt(ob.x) - ob.alt - ob.h < underside;
+        if (inExit || underSlab) ob.live = false;
+      }
     }
   }
 
@@ -3848,6 +4043,7 @@ export class RunState {
     // Ground line + gaps.
     this.style.ground(ctx, cam, this.cabinet, this.obstacles);
     if (!this.bossCab) drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, W / z);
+    if (this.islands.length) drawIslands(ctx, cam, this.cabinet, this.islands, W / z);
 
     // Entities. On a converting style (lcd) the whole cast is held back past
     // post() with the hero, so enemies and pickups stay in colour against the
@@ -4083,10 +4279,13 @@ export class RunState {
           ? { kind: 'celebrate', grounded: true, vy: 0, squash: 0, lean: 0,
             ducking: false, duckAmount: 0, roll: false, float: false, stomp: false, cling: 0 }
           : undefined,
-      groundY: this.groundYAt(cam + heroScreenX),
+      groundY: this.routeGroundY(cam + heroScreenX, this.route),
         // How the terrain rises or falls either side of the hero, so a floor
         // effect can lie IN the floor instead of on a level line through it.
-        groundDelta: (dx) => this.groundYAt(cam + heroScreenX + dx) - this.groundYAt(cam + heroScreenX),
+        // On a slab this comes out flat, which is correct — the island is a
+        // level platform, whatever the hills below it are doing.
+        groundDelta: (dx) => this.routeGroundY(cam + heroScreenX + dx, this.route)
+          - this.routeGroundY(cam + heroScreenX, this.route),
         shield: this.powerups.shieldStack, settings: this.save.settings,
         invincible: this.powerups.active.unpeel ? this.powerups.active.unpeel.t : 0 });
 
@@ -4345,7 +4544,7 @@ export class RunState {
     applyWorld(ctx, this.camZoom, this.camPan);
     ctx.lineWidth = 1 / this.camZoom;
     ctx.strokeStyle = '#0f0';
-    const pb = this.player.box(this.camX, this.groundYAt(this.camX + PLAYER_X));
+    const pb = this.player.box(this.camX, this.playerGroundY());
     ctx.strokeRect(pb.x - this.camX, pb.y, pb.w, pb.h);
     ctx.strokeStyle = '#f00';
     for (const ob of this.obstacles) {
