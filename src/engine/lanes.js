@@ -1,6 +1,6 @@
 import {
   baseLane, isLayer, seamFor, PERCUSSION_LANES, CHORD_LANES, voiceOf,
-  DEFAULT_ADDED_PERCUSSION_VOICE,
+  defaultAddedVoice,
 } from '../data/voices.js';
 import { expandOrder, orderOf, resolveSection } from '../data/arrangements.js';
 
@@ -347,20 +347,17 @@ export function deskBank(bank, entry) {
   // deleted from the top and left in a section would come back in that section, and a
   // layer would fall back to the top-level part instead of following the section's.
   if (Array.isArray(bank.sections)) out.sections = bank.sections.map((s) => shape(s));
-  // Earlier builds created an independent lane with notes but no voice. The layer
-  // loop quite correctly skipped it, producing the particularly confusing state of
-  // a lit step and a percussion tally with no audio. Give only those independent
-  // lanes the same Tom preset new channels now receive explicitly. A chosen library
-  // or song-local voice is merged afterwards and still wins.
+  // An independent lane carries notes of its own, and with no voice named it is a lit
+  // step and a tally with no audio. Give it the starter preset its lane calls for — a
+  // Tom on a drum, a square on anything pitched, which is what a MIDI import's melodic
+  // layers get. NOT the Tom on both: a drum preset on a lead row reads as configured
+  // and routes a tune through a membrane thud. A chosen library or song-local voice is
+  // merged afterwards and still wins.
   for (const { key, independent } of layers) {
     if (!independent) continue;
     const seam = seamFor(key);
-    // Only percussion layers can use the generic Tom starter. Melodic lanes need
-    // an explicit library voice; assigning a drum preset here makes a new bass or
-    // lead row appear to be configured while silently routing it through noise.
-    if (!seam || !PERCUSSION_LANES.includes(baseLane(key))) continue;
     if (!seam || entry?.voice?.[seam.voiceKey] || entry?.voiceParams?.[seam.voiceKey]) continue;
-    if (out[seam.voiceKey] == null) out[seam.voiceKey] = DEFAULT_ADDED_PERCUSSION_VOICE;
+    if (out[seam.voiceKey] == null) out[seam.voiceKey] = defaultAddedVoice(key);
   }
   out.__layers = layers.map(({ key, from, independent }) => ({
     key, from, ...(independent ? { independent: true } : {}),

@@ -4643,8 +4643,12 @@ export class RunState {
         // air with the same sky and the same hills behind it. That one omission
         // is the difference between a level with a low road and a level with a
         // cave in it.
+        // Only the stretch where the two levels are genuinely apart counts as an
+        // overhang. Either side of it they are within a slab's thickness of each
+        // other, and there the lane's own earth is the right picture — one piece
+        // of ground, rather than two welded together in a long thin point.
         drawSubsoil(ctx, this.cabinet, W / z, bottomWorldY, cam,
-          this.routes.filter((r) => r.kind === 'tunnel'));
+          this.routes.map((r) => (r.kind === 'tunnel' ? r.openSpan : null)).filter(Boolean));
       }
       drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.routeGroundY(wx, r), W / z,
         { groundAt: (wx) => this.groundYAt(wx), cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO,

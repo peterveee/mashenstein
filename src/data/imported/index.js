@@ -51,6 +51,7 @@ import * as ELECTRIC_LANTERN from './electric-lantern.js';
 import * as ELECTRIC_MIRROR from './electric-mirror.js';
 import * as ELECTRIC_SCOOTER from './electric-scooter.js';
 import * as ENDING from './ending.js';
+import * as EVERYTHING_IS_LOOKING_UP_M3 from './everything-is-looking-up-m3.js';
 import * as FROZEN_BEETLE from './frozen-beetle.js';
 import * as FROZEN_DIVER from './frozen-diver.js';
 import * as FROZEN_HARBOUR from './frozen-harbour.js';
@@ -78,6 +79,7 @@ import * as MARBLE_VOLCANO from './marble-volcano.js';
 import * as MIDNIGHT_LADDER from './midnight-ladder.js';
 import * as MIDNIGHT_ORBIT from './midnight-orbit.js';
 import * as MIDNIGHT_PIGEON from './midnight-pigeon.js';
+import * as MIN_NEW from './min-new.js';
 import { MIN3 } from './min3.js';
 import * as MONSTER_MEGAMIX_ALT from './monster-megamix-alt.js';
 import * as NEON_HARBOUR from './neon-harbour.js';
@@ -188,6 +190,7 @@ export const IMPORTED_BY_ID = {
   "electric-mirror": { bank: ELECTRIC_MIRROR.bank, title: ELECTRIC_MIRROR.title, group: "scratch", writable: true },
   "electric-scooter": { bank: ELECTRIC_SCOOTER.bank, title: ELECTRIC_SCOOTER.title, group: "scratch", writable: true },
   "ending": { bank: ENDING.bank, title: ENDING.title, group: "imported", writable: true },
+  "everything-is-looking-up-m3": { bank: EVERYTHING_IS_LOOKING_UP_M3.bank, title: EVERYTHING_IS_LOOKING_UP_M3.title, group: "imported", writable: true },
   "frozen-beetle": { bank: FROZEN_BEETLE.bank, title: FROZEN_BEETLE.title, group: "scratch", writable: true },
   "frozen-diver": { bank: FROZEN_DIVER.bank, title: FROZEN_DIVER.title, group: "scratch", writable: true },
   "frozen-harbour": { bank: FROZEN_HARBOUR.bank, title: FROZEN_HARBOUR.title, group: "scratch", writable: true },
@@ -215,6 +218,7 @@ export const IMPORTED_BY_ID = {
   "midnight-ladder": { bank: MIDNIGHT_LADDER.bank, title: MIDNIGHT_LADDER.title, group: "scratch", writable: true },
   "midnight-orbit": { bank: MIDNIGHT_ORBIT.bank, title: MIDNIGHT_ORBIT.title, group: "scratch", writable: true },
   "midnight-pigeon": { bank: MIDNIGHT_PIGEON.bank, title: MIDNIGHT_PIGEON.title, group: "scratch", writable: true },
+  "min-new": { bank: MIN_NEW.bank, title: MIN_NEW.title, group: "copy", writable: true },
   "min3": { bank: MIN3, title: "MIN3", group: "imported", writable: false },
   "monster-megamix-alt": { bank: MONSTER_MEGAMIX_ALT.bank, title: MONSTER_MEGAMIX_ALT.title, group: "alternate", writable: true, alternateOf: "megamix" },
   "neon-harbour": { bank: NEON_HARBOUR.bank, title: NEON_HARBOUR.title, group: "scratch", writable: true },

@@ -33,6 +33,10 @@ import { heavyUi, lastHeavyBuild } from './lib/heavy-ui.js';
 import {
   newReliefState, reliefTransition, newAuxDuty, accumulateAuxDuty, auxDutySummary,
 } from './lib/performance-relief.js';
+// What Rearrange is allowed to believe about the song it is cutting up: where notes
+// are held, what each bar's pitches are, where the kit accents fall — and what key it
+// is in. Built while parked; see `rearrangeSourceProfile`.
+import { buildRearrangeProfile, detectKey } from './lib/rearrange-profile.js';
 import { midiBuffer } from './lib/render-midi-bank.js';
 import {
   draftOf, entryOf, setLanesOff, setLanesDeleted, deleteBars, duplicateBars,
@@ -60,7 +64,7 @@ import { offeredVoices, offeredByCategory, offeredByEngine } from '../src/data/v
 // it, so nothing in that folder ships.
 import '../src/data/imported/index.js';
 import { MIX, VARIANTS, laneSettings, LANE_DEFAULTS } from '../src/data/mix.js';
-import { VOICES, VOICE_LANES, seamFor, isLayer, baseLane, defaultVoiceOf, voiceOf, registerSongVoice, songVoiceKey, isKitVoice, PERCUSSION_LANES, DEFAULT_ADDED_PERCUSSION_VOICE, polyLane } from '../src/data/voices.js';
+import { VOICES, VOICE_LANES, seamFor, isLayer, baseLane, defaultVoiceOf, voiceOf, registerSongVoice, songVoiceKey, isKitVoice, PERCUSSION_LANES, defaultAddedVoice, polyLane } from '../src/data/voices.js';
 import { createVoiceEditor } from './mixer-voice-editor.js';
 // The same preset, in a window instead of a column. A layout over the editor's own
 // controls, not a second editor — see the note at the top of the file.
@@ -89,9 +93,10 @@ import { SONG_STYLES } from './lib/song-styles.js';
 import { newSongPlan } from './lib/new-song-plan.js';
 import {
   generateRearrangement, validateRearrangement,
-  randomSeed, transformRearrangement, rearrangementDrumMode,
-  REARRANGE_EXTREMENESS_DEFAULT, REARRANGE_TRANSPOSE_DEFAULT,
-  REARRANGE_PATTERN_DEFAULT,
+  randomSeed, transformRearrangement, rearrangementDrumMode, rearrangementPosition,
+  REARRANGE_TRANSPOSE_DEFAULT,
+  REARRANGE_STYLE_NAMES, REARRANGE_STYLE_DEFAULT, REARRANGE_VARIATION_DEFAULT,
+  harmonyNumeral,
 } from './lib/rearrange.js';
 // What the desk means by "changed": a mix reduced to what src/data/mix.js can hold.
 // Shared with the serialiser's tests, which hold the two to each other.
@@ -336,6 +341,19 @@ let abHeld = false;
 // a temporary audition part of the composition.
 let rearrangeRecipe = null;
 let rearrangePanelOpen = false;
+// True while the desk's draft is ahead of what is being heard: an edit made during
+// playback is installed by the engine at the next output bar line, and the panel says
+// so until it lands. Cleared by the engine's own announcement rather than a timer,
+// because with a wide sequencer read-ahead "the next bar" can genuinely be the one
+// after it, and a panel that guessed would be telling you about audio nobody played.
+let rearrangePending = false;
+// Playhead-following for the operation list and the roadmap rail. The list scrolls to
+// keep the active row visible — but a hand on the wheel outranks the playhead, so any
+// manual scroll holds the follow off for a few seconds rather than snatching the list
+// back mid-read.
+let rearrangeFollowedRow = -1;
+let rearrangeFollowHeldUntil = 0;
+const holdRearrangeFollow = () => { rearrangeFollowHeldUntil = performance.now() + 4000; };
 // Section thumbs are a refinement aid, not song data. They survive regeneration in
 // this desk session and feed the selected section operations back into the next recipe.
 const rearrangeKeptSections = new Set();
@@ -1817,6 +1835,9 @@ function loadTrack(id) {
   pianoRollLoopRange = null;
   applyLoop(0);
   renderRearrangeList();
+  // The new song's key, straight away if the panel is up. The analysis cache misses on
+  // the new bank by identity; the sync rebuilds it when the transport is parked.
+  if (rearrangePanelOpen) syncRearrangeKeyReadout();
   if (hasSongLayout) restoreSongLayout(id);
   // A song without a record inherits the current desk once, then owns its own state.
   rememberSongLayout(id);
@@ -2554,10 +2575,13 @@ function laneVoiceId(laneKey) {
   if (params) return registerSongVoice(seam.voiceKey, trackId, params);
   const chosen = m.voice?.[seam.voiceKey];
   if (chosen) return chosen;
+  // The same starter the engine's own merge writes onto an unvoiced independent lane
+  // (`defaultAddedVoice` in src/data/voices.js) — a Tom on a drum, a square on anything
+  // pitched. Answering `null` for the pitched half is what left an imported song's
+  // melodic layers reading `Tom` on the strip: the name fell through to the percussion
+  // default below while the lane played the square, or nothing at all.
   const independent = (m.layers || []).some((l) => l.key === laneKey && l.independent);
-  if (independent) {
-    return PERCUSSION_LANES.includes(baseLane(laneKey)) ? DEFAULT_ADDED_PERCUSSION_VOICE : null;
-  }
+  if (independent) return defaultAddedVoice(laneKey);
   return null;
 }
 
@@ -2566,7 +2590,7 @@ function presetForLane(laneKey) {
   const chosen = laneVoiceId(laneKey);
   return (chosen && VOICES[chosen])
     || (isIndependentLane(laneKey)
-      ? VOICES[DEFAULT_ADDED_PERCUSSION_VOICE]
+      ? VOICES[defaultAddedVoice(laneKey)]
       : defaultVoiceOf(track?.bank, laneKey));
 }
 
@@ -3503,6 +3527,32 @@ function setTrackNoteFx(key, next) {
   buildRack();
 }
 
+/**
+ * Retire a lane's track arpeggiator once its notes have been written out.
+ *
+ * A whole-song render leaves the arp nothing to apply to, so leaving it armed only
+ * means the next bar added to the song quietly arpeggiates rendered material. The
+ * strum is a separate decision and stays. No `pushUndo`: this rides the step
+ * `applyArrangementEdit` pushed a moment ago, which snapshots mix and arrangement
+ * together, so one ⌘Z puts back both the notes and the arp.
+ */
+function clearTrackArp(key) {
+  const current = noteFxFor(key);
+  if (!current.arp?.enabled) return;
+  const next = { ...current, arp: { ...current.arp, enabled: false } };
+  editMix((m) => {
+    m.lanes = m.lanes || {};
+    m.lanes[key] = m.lanes[key] || emptyLaneMix();
+    if (next.strum?.enabled) m.lanes[key].noteFx = next;
+    else delete m.lanes[key].noteFx;
+  }, undefined, { undo: false });
+  applyToEngine(mixFor(trackId));
+  buildRack();
+  // Bar badges resolve against the track, so the grid drawn a moment ago by
+  // applyArrangementEdit is describing an arpeggiator that has just gone.
+  buildArrangement();
+}
+
 function openNoteFxEditor(x, y, key, scope = null) {
   if (regionPanelBusy()) return;
   closeMenu();
@@ -3636,14 +3686,27 @@ function openNoteFxEditor(x, y, key, scope = null) {
     const draft = arrDraftOf();
     const from = scope?.from ?? 0;
     const to = scope?.to ?? Math.max(0, draft.plan.length - 1);
-    const ok = applyArrangementEdit(renderArpToNotes(editBank(), draft, from, to, key, trackDefault), '');
+    // A whole-song render consumes the track arpeggiator outright, so it is retired
+    // here rather than suppressed bar by bar. Telling the render that up front is what
+    // lets it leave the bars unmarked instead of stamping an arp-off override on
+    // every one of them.
+    const retireTrackArp = !scope && Boolean(trackDefault.arp?.enabled);
+    const ok = applyArrangementEdit(
+      renderArpToNotes(editBank(), draft, from, to, key, trackDefault,
+        { trackArpCleared: retireTrackArp }), '');
     if (!ok) return;
+    if (retireTrackArp) clearTrackArp(key);
     if (scope) {
       selectLane(key);
       markBar(key, from, to);
       jumpTo(from * 16, { start: true, immediate: true });
       toast(`Playing ${targetLabel(key)} from bar ${from + 1} with rendered Note FX — ⌘Z to undo`);
-    } else toast(`${targetLabel(key)} arpeggiator rendered — ⌘Z to undo`);
+    } else {
+      toast(`${targetLabel(key)} arpeggiator rendered to notes and switched off — ⌘Z to undo`);
+      // The panel is now describing an arp that no longer exists. Redraw it from the
+      // track it just changed, so Render reads as spent rather than still offered.
+      openNoteFxEditor(x, y, key, scope);
+    }
   };
   const clear = document.createElement('button'); clear.textContent = scope ? 'Inherit Track' : 'Clear Note FX';
   clear.onclick = () => {
@@ -5010,7 +5073,7 @@ function openVoicePicker(x, y, laneKey) {
     // to keep saying what it DOES — put the lane back and write nothing — while saying
     // what that sounds like. A lane whose bank is tuned past every preset has no name
     // to show and reads `built in`, as it always did.
-    const named = independent ? VOICES[DEFAULT_ADDED_PERCUSSION_VOICE]
+    const named = independent ? VOICES[defaultAddedVoice(laneKey)]
       : defaultVoiceOf(track?.bank, laneKey);
     const def = entry(null, 'Engine default', named ? named.label : 'Built in',
       `What ${targetLabel(laneKey)} plays with nothing set — the hand-written voice the`
@@ -6574,7 +6637,39 @@ const rearrangeActive = () => !!rearrangeRecipe;
 
 function rearrangeSourceSteps() { return songShape().totalSteps; }
 
-function rearrangeSourceProfile() {
+// The rich source profile is a whole-bank walk — every lane, every sixteenth — so it
+// is built once and held against the bank it describes. `viewBank()` is memoised and
+// hands back a new object whenever the mix, arrangement or song changes, which makes
+// object identity the whole invalidation: an edited draft is a miss, not a stale
+// answer.
+//
+// PLAYBACK WINS. The walk happens when the Rearrange panel opens, which is a parked
+// moment, and Generate then uses whatever is cached. Generating during playback never
+// starts one: on a miss it falls back to the cheap per-bar density the generator has
+// always accepted, rather than putting a full song walk on the main thread underneath
+// an audio graph that is already the thing this desk struggles to keep fed.
+let rearrangeProfileCache = null;
+
+function rearrangeSourceProfile({ build = false } = {}) {
+  const bank = viewBank();
+  // No bank yet — the desk is still booting. Written as two explicit checks, not
+  // `cache?.bank === bank`: with a null cache AND an undefined bank that comparison
+  // is undefined === undefined, which is TRUE, and the "hit" then reads .profile off
+  // the null it just proved was there.
+  if (!bank) return null;
+  if (rearrangeProfileCache && rearrangeProfileCache.bank === bank) {
+    return rearrangeProfileCache.profile;
+  }
+  // A stale cache is no answer at all — the song it described is not the song being
+  // cut up any more.
+  if (!build) return null;
+  const profile = buildRearrangeProfile(bank);
+  rearrangeProfileCache = { bank, profile };
+  return profile;
+}
+
+/** The old per-bar density array, still the fallback when no rich profile is ready. */
+function rearrangeDensityProfile() {
   const bars = songShape().bars.length;
   const rows = laneActivity(viewBank(), 1, 1);
   const profile = new Array(bars).fill(0);
@@ -6582,6 +6677,17 @@ function rearrangeSourceProfile() {
     for (let i = 0; i < bars; i++) profile[i] += Number(row.density?.[i]) || 0;
   }
   return profile.map((value) => value / Math.max(1, rows.length));
+}
+
+/**
+ * What Generate should score against: the rich profile, built on the spot when the
+ * transport is parked and it is missing — a parked desk has main thread to spare, and
+ * "press Generate, get the musical version" must not depend on which order the panel
+ * was opened and the song was chosen in. Only mid-playback does it settle for the
+ * cheap per-bar density, because playback wins.
+ */
+function rearrangeGenerationProfile() {
+  return rearrangeSourceProfile({ build: !playing }) || rearrangeDensityProfile();
 }
 
 function rearrangeStepLabel(step) {
@@ -6605,18 +6711,36 @@ function rearrangeTransposeLabel(value) {
   return ` · transpose ${n > 0 ? '+' : ''}${n}${interval ? ` (${interval})` : ''}`;
 }
 
+// One name per drum mode, used by the button, the status line and every toast that
+// mentions it. The three are genuinely different treatments and the labels have to say
+// which is which — "original" and "song" both describe the song's own drums, so neither
+// word can be left to carry the distinction on its own.
+const REARRANGE_DRUM_ORDER = ['song', 'original', 'basic4'];
+const REARRANGE_DRUM_LABELS = {
+  song: 'Song groove',
+  original: 'Chopped drums',
+  basic4: 'Steady 4/4',
+};
+const REARRANGE_DRUM_TIPS = {
+  song: 'The song’s own drum patterns, played straight underneath the rearranged parts',
+  original: 'The drums are chopped with everything else, following each slice’s source',
+  basic4: 'A steady four-on-the-floor built from the song’s existing kit sounds',
+};
+
+function rearrangeDrumLabel(mode) {
+  return REARRANGE_DRUM_LABELS[mode] || REARRANGE_DRUM_LABELS.original;
+}
+
 function syncRearrangeDrumControl() {
   const button = $('redrums');
   if (!button) return;
   const mode = rearrangementDrumMode(rearrangeRecipe);
-  const active = !!rearrangeRecipe && mode === 'basic4';
   button.disabled = !rearrangeRecipe;
-  button.textContent = active ? 'Steady 4/4 drums ✓' : 'Original drums';
-  button.classList.toggle('on', active);
-  button.setAttribute('aria-pressed', active ? 'true' : 'false');
-  button.title = active
-    ? 'Use a deterministic four-on-the-floor pattern from the existing drum sounds'
-    : 'Play the source song’s original drum patterns';
+  // A three-way cycle, so the label states the mode rather than a pressed/unpressed
+  // state that could only ever describe two of them.
+  button.textContent = `Drums: ${rearrangeDrumLabel(mode)}`;
+  button.classList.toggle('on', !!rearrangeRecipe && mode !== 'original');
+  button.title = `${REARRANGE_DRUM_TIPS[mode] || REARRANGE_DRUM_TIPS.original} — click for ${rearrangeDrumLabel(REARRANGE_DRUM_ORDER[(REARRANGE_DRUM_ORDER.indexOf(mode) + 1) % REARRANGE_DRUM_ORDER.length]).toLowerCase()}`;
 }
 
 function syncRearrangeButton() {
@@ -6630,25 +6754,161 @@ function syncRearrangeButton() {
     : 'Create a temporary musical collage from this song';
 }
 
-function rearrangeExtremeness() {
-  const value = Number($('reextreme')?.value);
-  return Number.isFinite(value)
-    ? Math.max(0, Math.min(100, value)) / 100
-    : REARRANGE_EXTREMENESS_DEFAULT;
+// Style is a hard gate on what the generator may emit, so the control is a three-way
+// choice rather than a point on a scale. Held here rather than read back off the DOM
+// so the panel and the generator cannot disagree about which one is selected.
+let rearrangeStyleChoice = REARRANGE_STYLE_DEFAULT;
+
+function rearrangeStyle() {
+  return REARRANGE_STYLE_NAMES.includes(rearrangeStyleChoice)
+    ? rearrangeStyleChoice : REARRANGE_STYLE_DEFAULT;
 }
 
-function syncRearrangeExtremeness() {
-  const control = $('reextreme');
-  const output = $('reextremevalue');
+const REARRANGE_STYLE_TIPS = {
+  phrase: 'Phrase: whole one to four-bar phrases, always starting on a bar line',
+  groove: 'Groove: bar and half-bar cells on eight-step boundaries',
+  chop: 'Chop: beat and half-bar cells, still landing on the beat',
+};
+
+function setRearrangeStyle(style) {
+  if (!REARRANGE_STYLE_NAMES.includes(style)) return;
+  rearrangeStyleChoice = style;
+  syncRearrangeStyle();
+}
+
+function syncRearrangeStyle() {
+  const group = $('restyle');
+  if (!group) return;
+  const active = rearrangeStyle();
+  for (const button of group.querySelectorAll('button[data-style]')) {
+    const on = button.dataset.style === active;
+    button.setAttribute('aria-checked', on ? 'true' : 'false');
+    button.classList.toggle('on', on);
+    button.tabIndex = on ? 0 : -1;
+  }
+  group.title = REARRANGE_STYLE_TIPS[active] || '';
+}
+
+function rearrangeVariation() {
+  const value = Number($('revariation')?.value);
+  return Number.isFinite(value)
+    ? Math.max(0, Math.min(100, value)) / 100
+    : REARRANGE_VARIATION_DEFAULT;
+}
+
+function syncRearrangeVariation() {
+  const control = $('revariation');
+  const output = $('revariationvalue');
   if (!control || !output) return;
   const value = Math.max(0, Math.min(100, Number(control.value) || 0));
-  output.value = `${value}%`;
-  output.textContent = `${value}%`;
+  const label = value < 30 ? 'Familiar' : value > 70 ? 'Different' : 'Balanced';
+  output.value = label;
+  output.textContent = label;
   control.title = value < 30
-    ? 'Smooth: longer phrases, fewer source jumps, and gentle boundaries'
+    ? 'Familiar: motifs come back, and the safest-sounding slice is the one taken'
     : value > 70
-      ? 'Wild: shorter cuts, more source jumps, and more rhythmic glitches'
-      : 'Balanced: musical phrase loops with some chopped variation';
+      ? 'Different: fresh material each time, reaching further for it'
+      : 'Balanced: recurring motifs with new material between them';
+}
+
+function rearrangeAllowGlitches() {
+  return !!$('reglitch')?.checked;
+}
+
+function rearrangeChordLoop() {
+  const value = $('rechords')?.value;
+  return ['auto', 'edm', 'house', 'anthem', 'dark', 'off'].includes(value) ? value : 'auto';
+}
+
+function rearrangeChordWalk() {
+  const value = $('rewalk')?.value;
+  return ['full', 'half', 'turn'].includes(value) ? value : 'half';
+}
+
+/** The chord a slice plays as, for the playback status: ' · chord VI'. */
+function rearrangeHarmonyLabel(op) {
+  const degrees = Number(op?.harmony) || 0;
+  if (!degrees) return '';
+  return ` · chord ${harmonyNumeral(degrees, rearrangeRecipe?.key?.minor !== false)}`;
+}
+
+const KEY_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
+
+const rearrangeKeyName = (key) => key
+  ? `${KEY_NAMES[key.tonic] || '?'} ${key.minor ? 'minor' : 'major'}` : '';
+
+/**
+ * The key the chord loops would walk in, shown BESIDE the control before Generate is
+ * ever pressed — read off the same analysis the generator will use, so what the panel
+ * says and what Generate does cannot disagree. Building it here when the transport is
+ * parked is what makes the readout self-healing: opening the panel mid-playback or
+ * switching songs under it shows the key the moment there is a parked sync to build
+ * in, instead of "no analysis yet" until someone reopens the panel in the right order.
+ *
+ * An unclear key is shown as a GUESS and still used — an ambiguous reading is nearly
+ * always the relative major/minor pair, which share a scale — and the picker beside
+ * it is the correction when the guess is wrong.
+ */
+function syncRearrangeKeyReadout() {
+  const out = $('rechordskey');
+  if (!out) return;
+  syncRearrangeKeyOptions();
+  const manual = rearrangeKeyChoice();
+  const profile = rearrangeSourceProfile({ build: !playing });
+  const detected = profile ? detectKey(profile) : null;
+  const clear = detected && detected.confidence >= 0.02;
+  const label = manual ? rearrangeKeyName(manual)
+    : detected ? `${rearrangeKeyName(detected)}${clear ? '' : ' ?'}` : 'no analysis yet';
+  out.value = label;
+  out.textContent = label;
+  out.title = manual
+    ? `Chord loops walk in ${label} because you said so; set the picker back to Detected to trust the analysis`
+    : detected
+      ? clear
+        ? `The song reads as ${rearrangeKeyName(detected)}; chord loops walk its scale degrees`
+        : `Best guess — the song does not settle clearly. Usually the relative pair, which walks the same notes; pick a key yourself to overrule it`
+      : playing
+        ? 'Pause to analyse the song — the walk is skipped while music is playing'
+        : 'The song has no pitched notes to read a key from';
+  syncRearrangeChordLoopControl();
+}
+
+/** Fill the key picker once: Detected, then all twenty-four keys. */
+function syncRearrangeKeyOptions() {
+  const select = $('rekey');
+  if (!select || select.options.length > 1) return;
+  for (const minor of [true, false]) {
+    for (let tonic = 0; tonic < 12; tonic++) {
+      const option = document.createElement('option');
+      option.value = `${tonic}${minor ? 'm' : 'M'}`;
+      option.textContent = rearrangeKeyName({ tonic, minor });
+      select.append(option);
+    }
+  }
+}
+
+/** The manually chosen key, or null when the picker trusts the analysis. */
+function rearrangeKeyChoice() {
+  const value = $('rekey')?.value;
+  const match = /^(\d{1,2})([mM])$/.exec(value || '');
+  if (!match) return null;
+  const tonic = Number(match[1]);
+  return tonic >= 0 && tonic <= 11 ? { tonic, minor: match[2] === 'm' } : null;
+}
+
+/**
+ * One pitch system per recipe: while a chord loop is on, the chromatic Transpose dial
+ * does nothing, and a control that does nothing must say so rather than sit there
+ * looking adjustable. Setting the loop to Off hands the dial back.
+ */
+function syncRearrangeChordLoopControl() {
+  const dial = $('retranspose');
+  if (!dial) return;
+  const walking = rearrangeChordLoop() !== 'off';
+  dial.disabled = walking;
+  dial.title = walking
+    ? 'A chord loop owns the pitch — set Chord loop to Off to use the chromatic lift'
+    : 'Dial the amount of shared chromatic lift — every note the same distance';
 }
 
 function rearrangeTransposeAmount() {
@@ -6669,6 +6929,9 @@ function syncRearrangeTranspose() {
         : '±2/5/7';
   output.value = label;
   output.textContent = label;
+  // A disabled dial keeps the chord-loop explanation on its tooltip; the range
+  // description would contradict the control doing nothing.
+  if (control.disabled) return;
   control.title = value <= 0
     ? 'No melodic transposition'
     : value < 35
@@ -6676,28 +6939,6 @@ function syncRearrangeTranspose() {
       : value < 70
         ? 'Whole-tone and fourth lifts'
         : 'Whole-tone, fourth, and fifth lifts';
-}
-
-function rearrangePatterning() {
-  const value = Number($('repattern')?.value);
-  return Number.isFinite(value)
-    ? Math.max(0, Math.min(100, value)) / 100
-    : REARRANGE_PATTERN_DEFAULT;
-}
-
-function syncRearrangePatterning() {
-  const control = $('repattern');
-  const output = $('repatternvalue');
-  if (!control || !output) return;
-  const value = Math.max(0, Math.min(100, Number(control.value) || 0));
-  const label = value < 30 ? 'Loose' : value > 70 ? 'Motif' : 'Balanced';
-  output.value = label;
-  output.textContent = label;
-  control.title = value < 30
-    ? 'More one-off source choices and fewer repeated passes'
-    : value > 70
-      ? 'More A/B motifs, repeated cells, and returning figures'
-      : 'A musical balance of variation and recurring motifs';
 }
 
 function syncRearrangeLoopControls() {
@@ -6725,22 +6966,136 @@ function renderRearrangeForm() {
   }
   strip.hidden = false;
   form.forEach((section, index) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'reformseg';
-    button.dataset.section = String(index);
     const startBar = Math.floor(section.start / 16) + 1;
     const endBar = Math.ceil(section.end / 16);
-    const title = document.createElement('strong');
-    title.textContent = section.name;
-    const range = document.createElement('small');
+    const slices = rearrangeSectionOperationIndices(index);
+    const allSelected = slices.length
+      && slices.every((slice) => rearrangeSelectedOperations.has(slice));
+    // A div, not a button: this segment CONTAINS buttons now — the whole-part actions
+    // that used to be crammed into the first row of the part down in the list, where
+    // they made that one row a different shape from every row under it and made its
+    // per-slice checkbox look like it meant the whole part. They are section actions,
+    // and this rail is the section UI, so they live here.
+    const seg = document.createElement('div');
+    seg.className = 'reformseg';
+    seg.dataset.section = String(index);
+    seg.dataset.role = section.role || '';
+    if (rearrangeKeptSections.has(index)) seg.classList.add('kept');
+    if (rearrangeDislikedSections.has(index)) seg.classList.add('disliked');
+    // Clicking anywhere that is not one of the buttons plays from here, which is what
+    // the whole segment used to do and what a rail like this should still do.
+    seg.onclick = (event) => {
+      if (event.target.closest('button')) return;
+      playRearrangementAt(section.start);
+    };
+
+    const top = document.createElement('div');
+    top.className = 'reformtop';
+    const choose = document.createElement('button');
+    choose.type = 'button';
+    choose.className = 'reselect';
+    choose.textContent = allSelected ? '✓' : '□';
+    choose.title = allSelected
+      ? `Deselect all ${slices.length} slices in ${section.name}`
+      : `Select all ${slices.length} slices in ${section.name}`;
+    choose.setAttribute('aria-label', choose.title);
+    choose.setAttribute('aria-pressed', allSelected ? 'true' : 'false');
+    choose.onclick = () => toggleRearrangeSectionSlices(index);
+    const chip = document.createElement('i');
+    chip.className = 'rerolechip';
+    const name = document.createElement('button');
+    name.type = 'button';
+    name.className = 'reformname';
+    name.textContent = section.name;
+    name.title = `Play ${section.name}, output bars ${startBar}–${endBar}`;
+    name.setAttribute('aria-label', name.title);
+    name.onclick = () => playRearrangementAt(section.start);
+    top.append(choose, chip, name);
+
+    const range = document.createElement('div');
+    range.className = 'reformbars';
     range.textContent = `Bars ${startBar}–${endBar}`;
-    button.append(title, range);
-    button.title = `Play ${section.name}, output bars ${startBar}–${endBar}`;
-    button.setAttribute('aria-label', button.title);
-    button.onclick = () => playRearrangementAt(section.start);
-    strip.append(button);
+    // The walk this part takes, bar by bar: 'i – VI – III – VII'. Read off the DRAFT
+    // recipe's operations rather than any palette name, so it shows what will actually
+    // sound — including a part that only partly walks, or does not walk at all.
+    const chords = rearrangeSectionChordLine(index);
+    const walk = document.createElement('div');
+    walk.className = 'reformchords';
+    if (chords) {
+      walk.textContent = chords;
+      walk.title = `${section.name} walks ${chords} in ${rearrangeKeyName(rearrangeRecipe?.key)}`;
+    }
+
+    const acts = document.createElement('div');
+    acts.className = 'reformacts';
+    const keep = document.createElement('button');
+    keep.type = 'button';
+    keep.className = 'rekeep';
+    keep.textContent = '👍';
+    keep.title = rearrangeKeptSections.has(index)
+      ? `Keep ${section.name} in the next recipe (selected)`
+      : `Keep ${section.name} in the next recipe`;
+    keep.setAttribute('aria-label', keep.title);
+    keep.setAttribute('aria-pressed', rearrangeKeptSections.has(index) ? 'true' : 'false');
+    keep.classList.toggle('on', rearrangeKeptSections.has(index));
+    keep.onclick = () => voteRearrangeSection(index, 'keep');
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.className = 'redown';
+    down.textContent = '👎';
+    down.title = rearrangeDislikedSections.has(index)
+      ? `Ask for a different ${section.name} (selected)`
+      : `Ask for a different ${section.name} on the next recipe`;
+    down.setAttribute('aria-label', down.title);
+    down.setAttribute('aria-pressed', rearrangeDislikedSections.has(index) ? 'true' : 'false');
+    down.classList.toggle('on', rearrangeDislikedSections.has(index));
+    down.onclick = () => voteRearrangeSection(index, 'dislike');
+    acts.append(keep, down);
+
+    seg.append(top, range, walk, acts);
+    strip.append(seg);
   });
+}
+
+/** A part's bar-by-bar chord walk as numerals, or '' when it plays as written. */
+function rearrangeSectionChordLine(sectionIndex) {
+  const section = rearrangeRecipe?.form?.[sectionIndex];
+  const key = rearrangeRecipe?.key;
+  if (!section || !key) return '';
+  const minor = key.minor !== false;
+  const chords = [];
+  for (let step = section.start; step < section.end; step += 16) {
+    const harmony = rearrangementPosition(rearrangeRecipe, step)?.operation?.harmony || 0;
+    chords.push(harmony ? harmonyNumeral(harmony, minor) : (minor ? 'i' : 'I'));
+  }
+  return chords.some((numeral) => numeral !== (minor ? 'i' : 'I'))
+    ? chords.join(' – ') : '';
+}
+
+/** Every operation index that sounds inside one form section. */
+function rearrangeSectionOperationIndices(sectionIndex) {
+  const section = rearrangeRecipe?.form?.[sectionIndex];
+  if (!section) return [];
+  const out = [];
+  let output = 0;
+  rearrangeRecipe.operations.forEach((op, index) => {
+    if (output >= section.start && output < section.end) out.push(index);
+    output += op.length * op.repeats;
+  });
+  return out;
+}
+
+/** Select a whole part's slices at once, or clear them if they are all already in. */
+function toggleRearrangeSectionSlices(sectionIndex) {
+  const slices = rearrangeSectionOperationIndices(sectionIndex);
+  if (!slices.length) return;
+  const allSelected = slices.every((slice) => rearrangeSelectedOperations.has(slice));
+  for (const slice of slices) {
+    if (allSelected) rearrangeSelectedOperations.delete(slice);
+    else rearrangeSelectedOperations.add(slice);
+  }
+  renderRearrangeList();
+  syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
 }
 
 function renderRearrangeList() {
@@ -6753,6 +7108,9 @@ function renderRearrangeList() {
     $(id)?.toggleAttribute('disabled', !hasRecipe || !rearrangeSelectedOperations.size);
   }
   list.textContent = '';
+  // The draft is ahead of the audio: mark the whole panel so the rows and the roadmap
+  // read as "made, not yet heard". One class; the flash itself is CSS.
+  $('rearrangepanel')?.classList.toggle('pending', rearrangePending);
   renderRearrangeForm();
   if (!rearrangeRecipe) {
     $('rearrangestatus').textContent = rearrangeFavourites.length
@@ -6762,20 +7120,30 @@ function renderRearrangeList() {
     return;
   }
   let output = 0;
+  let previousSection = -1;
   rearrangeRecipe.operations.forEach((op, index) => {
     const rowStart = output;
     const sectionIndex = rearrangeRecipe.form?.findIndex((item) => output >= item.start && output < item.end) ?? -1;
     const section = sectionIndex >= 0 ? rearrangeRecipe.form[sectionIndex] : null;
     const li = document.createElement('li');
     li.dataset.operation = String(index);
+    // A rule above the first row of each new part, so the form is readable straight
+    // off the list — where one Verse stops and the next Chorus starts should not
+    // require reading every row's label to find.
+    if (sectionIndex >= 0 && previousSection >= 0 && sectionIndex !== previousSection) {
+      li.classList.add('resectionstart');
+    }
+    if (sectionIndex >= 0) previousSection = sectionIndex;
     li.title = `Double-click to play from ${rearrangeOutputLabel(rowStart)}`;
     li.ondblclick = (event) => {
       if (event.target.closest('button')) return;
       playRearrangementAt(rowStart);
     };
     if (sectionIndex >= 0) li.dataset.section = String(sectionIndex);
-    if (sectionIndex >= 0 && rearrangeKeptSections.has(sectionIndex)) li.classList.add('kept');
-    if (sectionIndex >= 0 && rearrangeDislikedSections.has(sectionIndex)) li.classList.add('disliked');
+    // The role colour is carried by the row's own left rule, which runs unbroken down
+    // every slice of a part — that rule IS the grouping. Kept/disliked state lives on
+    // the rail now, with the controls that set it.
+    if (section?.role) li.dataset.role = section.role;
     if (rearrangeSelectedOperations.has(index)) li.classList.add('selected');
     const choose = document.createElement('button');
     choose.type = 'button';
@@ -6791,43 +7159,31 @@ function renderRearrangeList() {
     const favourite = op.repeats === 1 && op.transpose === 0
       && rearrangeFavourites.some((item) => item.from === op.from && item.length === op.length);
     if (favourite) li.classList.add('favourite');
-    if (section && output === section.start) {
-      const play = document.createElement('button');
-      play.type = 'button';
-      play.className = 'replaysection';
-      play.textContent = '▶';
-      play.title = `Play ${section.name} from ${rearrangeOutputLabel(rowStart)}`;
-      play.setAttribute('aria-label', play.title);
-      play.onclick = () => playRearrangementAt(rowStart);
-      li.append(play);
-      const keep = document.createElement('button');
-      keep.type = 'button';
-      keep.className = 'rekeep';
-      keep.textContent = '👍';
-      keep.title = rearrangeKeptSections.has(sectionIndex)
-        ? `Keep ${section.name} in the next recipe (selected)`
-        : `Keep ${section.name} in the next recipe`;
-      keep.setAttribute('aria-label', keep.title);
-      keep.setAttribute('aria-pressed', rearrangeKeptSections.has(sectionIndex) ? 'true' : 'false');
-      keep.classList.toggle('on', rearrangeKeptSections.has(sectionIndex));
-      keep.onclick = () => voteRearrangeSection(sectionIndex, 'keep');
-      li.append(keep);
-      const down = document.createElement('button');
-      down.type = 'button';
-      down.className = 'redown';
-      down.textContent = '👎';
-      down.title = rearrangeDislikedSections.has(sectionIndex)
-        ? `Ask for a different ${section.name} (selected)`
-        : `Ask for a different ${section.name} on the next recipe`;
-      down.setAttribute('aria-label', down.title);
-      down.setAttribute('aria-pressed', rearrangeDislikedSections.has(sectionIndex) ? 'true' : 'false');
-      down.classList.toggle('on', rearrangeDislikedSections.has(sectionIndex));
-      down.onclick = () => voteRearrangeSection(sectionIndex, 'dislike');
-      li.append(down);
+    // Every row is now the same shape — checkbox, colour, text, output position — so
+    // the slices of a part line up under each other instead of the first one sitting
+    // out on its own with three extra buttons in front of it.
+    const chip = document.createElement('i');
+    chip.className = 'rerolechip';
+    li.append(chip);
+    // The chord column. Present on EVERY row, empty when a slice plays as written, so
+    // the rows stay aligned and a change of chord is visible as a change in one fixed
+    // place — not a suffix hiding at the far end of the longest rows.
+    const chord = document.createElement('b');
+    chord.className = 'rechordbadge';
+    if (op.harmony) {
+      const numeral = harmonyNumeral(op.harmony, rearrangeRecipe?.key?.minor !== false);
+      chord.textContent = numeral;
+      chord.title = `Plays as the ${numeral} of ${rearrangeKeyName(rearrangeRecipe?.key) || 'the key'}`;
     }
+    li.append(chord);
     const source = document.createElement('span');
     source.className = 'reop';
-    source.textContent = `${favourite ? '★ ' : ''}${section?.name || 'Slice'} · ${rearrangeStepLabel(op.from)} → ${op.length} sixteenths × ${op.repeats}`;
+    // The part is named once, on the rail and on the row that starts it. Repeating it
+    // on every slice was six identical words down the left of the list saying nothing
+    // that the colour rule beside them does not already say.
+    const startsPart = !!section && output === section.start;
+    source.textContent = `${favourite ? '★ ' : ''}${startsPart ? `${section.name} · ` : ''}${rearrangeStepLabel(op.from)} → ${op.length} sixteenths × ${op.repeats}`;
+    if (startsPart) source.classList.add('restarts');
     li.append(source);
     const details = document.createElement('span');
     details.className = 'reout';
@@ -6846,7 +7202,8 @@ function renderRearrangeList() {
     ? ` · ${rearrangeSelectedOperations.size} slice${rearrangeSelectedOperations.size === 1 ? '' : 's'} selected` : '';
   const drums = rearrangementDrumMode(rearrangeRecipe) === 'basic4'
     ? ' · steady 4/4 drums' : '';
-  $('rearrangestatus').textContent = `${form ? `${form} · ` : ''}${rearrangeRecipe.operations.length} operations · ${output / 16} bars · seed ${rearrangeRecipe.seed}${drums}${kept}${disliked}${favourites}${selected}`;
+  const songKey = rearrangeRecipe.key ? ` · ${rearrangeKeyName(rearrangeRecipe.key)}` : '';
+  $('rearrangestatus').textContent = `${form ? `${form} · ` : ''}${rearrangeRecipe.operations.length} operations · ${output / 16} bars${songKey} · seed ${rearrangeRecipe.seed}${drums}${kept}${disliked}${favourites}${selected}`;
   syncRearrangeDrumControl();
 }
 
@@ -6874,36 +7231,31 @@ function clearRearrangeOperationSelection() {
 function transformSelectedRearrange(action, label) {
   if (!rearrangeRecipe) { toast('Generate a Rearrange recipe first'); return; }
   if (!rearrangeSelectedOperations.size) { toast('Select one or more Rearrange slices first'); return; }
-  const wasPlaying = playing;
-  if (wasPlaying) setPlaying(false);
   try {
     const result = transformRearrangement(rearrangeRecipe,
       [...rearrangeSelectedOperations], action, { seed: randomSeed() });
     if (!result.changed) {
-      if (wasPlaying) setPlaying(true);
       toast(`${label} needs a longer slice or a compatible repeat count`);
       return;
     }
-    installRearrangement(result.recipe, { announce: false });
-    if (wasPlaying) playRearrangement();
-    toast(`${label} · changed ${result.changed} slice${result.changed === 1 ? '' : 's'}`);
+    applyRearrangeEdit(result.recipe,
+      `${label} · changed ${result.changed} slice${result.changed === 1 ? '' : 's'}`);
   } catch (error) {
-    if (wasPlaying) setPlaying(true);
     toast(error?.message || `Could not ${label.toLowerCase()}`);
   }
 }
 
-function toggleRearrangeDrums() {
+function cycleRearrangeDrums() {
   if (!rearrangeRecipe) { toast('Generate a Rearrange recipe first'); return; }
   const mode = rearrangementDrumMode(rearrangeRecipe);
-  const next = { ...rearrangeRecipe, drums: mode === 'basic4' ? 'original' : 'basic4' };
-  const wasPlaying = playing;
-  if (wasPlaying) setPlaying(false);
-  installRearrangement(next, { announce: false });
-  if (wasPlaying) playRearrangement();
-  toast(next.drums === 'basic4'
-    ? 'Rearrange drums · steady 4/4 pattern'
-    : 'Rearrange drums · original source patterns');
+  const next = REARRANGE_DRUM_ORDER[
+    (REARRANGE_DRUM_ORDER.indexOf(mode) + 1) % REARRANGE_DRUM_ORDER.length];
+  const recipe = { ...rearrangeRecipe };
+  // No field still means the chopped-source behaviour, so a saved recipe stays
+  // readable by anything that only knows the original two modes.
+  if (next === 'original') delete recipe.drums;
+  else recipe.drums = next;
+  applyRearrangeEdit(recipe, `Rearrange drums · ${REARRANGE_DRUM_LABELS[next].toLowerCase()}`);
 }
 
 function voteRearrangeSection(sectionIndex, vote) {
@@ -6981,24 +7333,52 @@ function syncRearrangeProgress(outputStep = null) {
   const pos = outputStep == null ? null : Audio.rearrangementPosition(outputStep);
   document.querySelectorAll('#rearrangelist li.active').forEach((el) => el.classList.remove('active'));
   document.querySelectorAll('#rearrangeform .reformseg.active').forEach((el) => el.classList.remove('active'));
-  if (pos) document.querySelector(`#rearrangelist li[data-operation="${pos.operationIndex}"]`)?.classList.add('active');
+  if (pos) {
+    const row = document.querySelector(`#rearrangelist li[data-operation="${pos.operationIndex}"]`);
+    row?.classList.add('active');
+    // Follow the playhead: when the active row CHANGES and the listener has not just
+    // scrolled by hand, bring it into view. 'nearest' only moves the list when the row
+    // is actually outside it, so a list that fits entirely never twitches — and only
+    // on the change, so the four-times-a-second progress tick cannot pin the scroll
+    // position against a reader's thumb.
+    if (row && pos.operationIndex !== rearrangeFollowedRow
+      && performance.now() >= rearrangeFollowHeldUntil) {
+      row.scrollIntoView({ block: 'nearest' });
+    }
+    rearrangeFollowedRow = pos.operationIndex;
+  } else {
+    rearrangeFollowedRow = -1;
+  }
   if (pos?.formIndex != null) {
-    document.querySelector(`#rearrangeform .reformseg[data-section="${pos.formIndex}"]`)?.classList.add('active');
+    const seg = document.querySelector(`#rearrangeform .reformseg[data-section="${pos.formIndex}"]`);
+    seg?.classList.add('active');
+    // The rail follows too — same rule, its own scroll.
+    if (performance.now() >= rearrangeFollowHeldUntil) seg?.scrollIntoView({ block: 'nearest' });
   }
   if (pos) {
-    const drums = rearrangementDrumMode(rearrangeRecipe) === 'basic4'
-      ? ' · steady 4/4 drums' : '';
+    const mode = rearrangementDrumMode(rearrangeRecipe);
     $('rearrangestatus').textContent = `${pos.form?.name ? `${pos.form.name} · ` : ''}Operation ${pos.operationIndex + 1}/${rearrangeRecipe.operations.length} · repetition ${pos.repeatIndex + 1}/${pos.operation.repeats}`
       + ` · source ${rearrangeStepLabel(pos.sourceStep)}`
-      + drums
+      + rearrangeHarmonyLabel(pos.operation)
+      + ` · ${rearrangeDrumLabel(mode).toLowerCase()}`
+      + (rearrangePending ? ' · edit lands next bar' : '')
       + (rearrangeSelectedOperations.size ? ` · ${rearrangeSelectedOperations.size} selected` : '');
   }
 }
 
-function installRearrangement(recipe, { announce = true } = {}) {
+/**
+ * Put a recipe on the desk, and on the audio.
+ *
+ * `live` means this is an edit to something already playing, and then the engine takes
+ * it as a queued install: the bar being heard finishes as the bar it was promised to
+ * be, and the next one is the new arrangement. The desk's draft changes immediately
+ * either way — the panel shows what you have made, marked as not yet heard until it is.
+ */
+function installRearrangement(recipe, { announce = true, live = false } = {}) {
   rearrangeRecipe = recipe;
   rearrangeSelectedOperations.clear();
-  Audio.setRearrangement(recipe);
+  if (live) rearrangePending = Audio.queueRearrangement(recipe) === 'queued';
+  else { Audio.setRearrangement(recipe); rearrangePending = false; }
   syncRearrangeButton();
   syncRearrangeLoopControls();
   renderRearrangeList();
@@ -7006,11 +7386,25 @@ function installRearrangement(recipe, { announce = true } = {}) {
   if (announce) toast(`Rearrange ready · ${recipe.operations.length} operations`);
 }
 
+/**
+ * Change the collage without interrupting it.
+ *
+ * Every edit on this panel goes through here. Nobody auditions an arrangement by
+ * restarting it after each change, so while Rearrange is playing an edit is queued for
+ * the next output bar instead of stopping the transport, re-seeking, and counting four
+ * beats in again. Stopped, it simply lands.
+ */
+function applyRearrangeEdit(recipe, message = '') {
+  installRearrangement(recipe, { announce: false, live: playing && rearrangeActive() });
+  if (message) toast(rearrangePending ? `${message} · from the next bar` : message);
+}
+
 function clearRearrangement({ announce = true } = {}) {
   rearrangeRecipe = null;
   rearrangeSelectedOperations.clear();
   rearrangeKeptSections.clear();
   rearrangeDislikedSections.clear();
+  rearrangePending = false;
   Audio.setRearrangement(null);
   syncRearrangeButton();
   syncRearrangeLoopControls();
@@ -7020,17 +7414,25 @@ function clearRearrangement({ announce = true } = {}) {
 }
 
 function generateRearrangeRecipe({ restart = false } = {}) {
-  const wasPlaying = playing;
+  // Regenerating while the collage plays is how this is actually used: listen, press
+  // Generate, hear the next bar as a different arrangement. That path never stops the
+  // transport. Only a normal song playing underneath still has to be handed over.
+  const live = playing && rearrangeActive();
+  const wasPlaying = playing && !live;
   if (wasPlaying) setPlaying(false);
   const steps = rearrangeSourceSteps();
   let recipe;
   try {
     recipe = generateRearrangement(steps, {
       seed: randomSeed(),
-      extremeness: rearrangeExtremeness(),
+      style: rearrangeStyle(),
+      variation: rearrangeVariation(),
+      allowGlitches: rearrangeAllowGlitches(),
+      progression: rearrangeChordLoop(),
+      walk: rearrangeChordWalk(),
+      key: rearrangeKeyChoice(),
       transposeAmount: rearrangeTransposeAmount(),
-      patterning: rearrangePatterning(),
-      sourceProfile: rearrangeSourceProfile(),
+      sourceProfile: rearrangeGenerationProfile(),
       anchors: rearrangeKeptAnchors(),
       avoid: rearrangeDislikedAnchors(),
       favourites: rearrangeFavourites,
@@ -7042,8 +7444,12 @@ function generateRearrangeRecipe({ restart = false } = {}) {
   }
   recipe.source.song = trackId;
   recipe.source.title = track?.title || trackId;
-  installRearrangement(recipe, { announce: false });
-  if (wasPlaying || restart) playRearrangement();
+  installRearrangement(recipe, { announce: false, live });
+  if (live) {
+    toast(rearrangePending
+      ? `New arrangement · ${recipe.operations.length} slices, from the next bar`
+      : `New arrangement · ${recipe.operations.length} slices`);
+  } else if (wasPlaying || restart) playRearrangement();
   else toast(`Generated ${recipe.operations.length} Rearrange operations`);
 }
 
@@ -7051,6 +7457,9 @@ function playRearrangement() {
   if (!rearrangeRecipe) generateRearrangeRecipe();
   if (!rearrangeRecipe) return;
   if (playing) setPlaying(false);
+  // Asking to hear it from the top means hearing the draft, so any queued edit is
+  // taken now rather than waiting for a bar line in a pass that no longer exists.
+  rearrangePending = false;
   Audio.setRearrangement(rearrangeRecipe);
   syncRearrangeLoopControls();
   setPlaying(true, 0, { countIn: 4 });
@@ -7062,9 +7471,13 @@ function playRearrangementAt(outputStep) {
   const total = rearrangeSourceSteps();
   const at = ((Math.floor(Number(outputStep) || 0) % total) + total) % total;
   if (playing) setPlaying(false);
+  // Jumping somewhere is asking to hear the draft from there, so it installs at once.
+  rearrangePending = false;
   Audio.setRearrangement(rearrangeRecipe);
   syncRearrangeLoopControls();
-  setPlaying(true, at, { countIn: 4 });
+  // No count-in here: only the deliberate from-the-top start gets four beats. Auditioning
+  // a section is a jump, and a jump that answers four beats late stops being aimable.
+  setPlaying(true, at);
   toast(`Playing Rearrange from ${rearrangeOutputLabel(at)}`);
 }
 
@@ -7114,6 +7527,12 @@ async function loadRearrangeJson(file) {
 function openRearrangePanel() {
   rearrangePanelOpen = true;
   $('rearrangepanel').hidden = false;
+  // Opening the panel is the parked moment this work belongs in: one walk of the song,
+  // held for every Generate afterwards. Skipped while playing, because a full-bank walk
+  // on the main thread is exactly the kind of stall the audio graph cannot absorb —
+  // Generate falls back to the cheap per-bar density until the next parked open.
+  if (!playing) rearrangeSourceProfile({ build: true });
+  syncRearrangeKeyReadout();
   renderRearrangeList();
   syncRearrangeButton();
 }
@@ -9319,8 +9738,7 @@ function sourceLaneLabel(id, key, fallback) {
   const independent = (sourceMix.layers || []).some((layer) =>
     layer?.key === key && layer.independent);
   const preset = chosenPreset
-    || (independent && PERCUSSION_LANES.includes(baseLane(key))
-      ? VOICES[DEFAULT_ADDED_PERCUSSION_VOICE] : null)
+    || (independent ? VOICES[defaultAddedVoice(key)] : null)
     || defaultVoiceOf(source?.bank, key);
   return preset?.label || fallback || cap(key);
 }
@@ -10814,6 +11232,25 @@ const effectDisplayName = (effect) => EFFECT_BY_ID[effect?.id]?.short
   || EFFECT_BY_ID[effect?.id]?.name || effect?.id || 'Unknown effect';
 
 /**
+ * What a bar's Note FX override is worth printing in the grid.
+ *
+ * The presence of an override is not the answer, and badging `mode` alone was how a
+ * whole row came to read NFX after a render that had removed every arpeggiator in it.
+ * An override can exist purely to hold something OFF — that is what Render Arp used to
+ * leave behind, and what an inherited-off track still leaves behind today. Resolve it
+ * and badge what will actually sound, the way the hover card already does.
+ */
+function noteFxBadge(barPlanEntry, key, trackNoteFx) {
+  const override = barPlanEntry?.noteFx?.[key];
+  if (!override || override.mode === 'inherit') return '';
+  const armed = (fx) => Boolean(fx?.strum?.enabled || fx?.arp?.enabled);
+  // NFX OFF earns its badge by saying the bar departs from the track. A track with no
+  // Note FX to switch off gives it nothing to report.
+  if (override.mode === 'off') return armed(trackNoteFx) ? 'NFX OFF' : '';
+  return armed(resolveNoteFx(trackNoteFx, barPlanEntry, key)) ? 'NFX' : '';
+}
+
+/**
  * The hover card describes processing, not content. Notes already have three visual
  * languages in the bar itself and a full editor on double-click; spelling every note
  * again in a system tooltip hid the decisions that are otherwise hardest to spot.
@@ -11597,6 +12034,8 @@ function buildArrangement() {
   rows.forEach((row) => {
     const freezeState = freezeLaneState(trackId, row.key);
     const frozen = freezeState !== 'live';
+    // The lane's track Note FX, read once per row: every bar badge resolves against it.
+    const laneNoteFx = mixFor(trackId).lanes?.[row.key]?.noteFx || null;
     const el = document.createElement('div');
     el.className = `arrrow${frozen ? ' frozen' : ''}${freezeState === 'partial' ? ' partially-frozen' : ''}`;
     el.dataset.lane = row.key;
@@ -11879,8 +12318,7 @@ function buildArrangement() {
         // L20 / R20, the way a console prints a pan — the one badge here that is a
         // direction rather than a quantity, and the sign would read as a semitone.
         pan != null && `${pan < 0 ? 'L' : 'R'}${Math.abs(pan)}`,
-        plan[bar]?.noteFx?.[row.key]?.mode === 'off' && 'NFX OFF',
-        plan[bar]?.noteFx?.[row.key]?.mode === 'on' && 'NFX',
+        noteFxBadge(plan[bar], row.key, laneNoteFx),
         barFx.length && `FX${barFx.length}${barFxNames ? ` · ${barFxNames}` : ''}`,
       ].filter(Boolean).join(' · ');
       if (badge) {
@@ -13312,6 +13750,17 @@ setInterval(checkAudioHealth, HEALTH_TICK_MS);
 // second before it is audible. Delay the snapshot to that AudioContext time; this is
 // what makes each row describe the lap the listener just heard rather than part of
 // the lap being scheduled in front of it.
+// A queued Rearrange edit reaching the audio. The panel stops flashing here and only
+// here: this fires when the scheduler actually consumed the recipe, which with a wide
+// read-ahead can be a bar later than the arithmetic suggests. Anything self-timed
+// would clear the mark while the old arrangement was still coming out of the speakers.
+Audio.onRearrangementInstalled?.(() => {
+  if (!rearrangePending) return;
+  rearrangePending = false;
+  renderRearrangeList();
+  syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
+});
+
 Audio.onLoop?.((loop) => {
   if (!DEV_USER || !Audio.ctx) return;
   const bank = Audio.bank;
@@ -16326,6 +16775,10 @@ function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
     // carry the mix you are looking at, playing or not.
     applyToEngine(mixFor(trackId));
     flushSelectionEditors();
+    // Pausing is the parked moment the song analysis waits for. If the Rearrange
+    // panel was opened mid-playback its key readout deferred the walk; run it now so
+    // the answer appears the moment there is main thread to spare.
+    if (rearrangePanelOpen) syncRearrangeKeyReadout();
   }
   // Armed and recording look different, and which one this is has just changed.
   syncRecordUi();
@@ -16451,12 +16904,35 @@ $('rearrangebtn').onclick = () => {
   else openRearrangePanel();
 };
 $('reclose').onclick = closeRearrangePanel;
-$('reextreme').oninput = syncRearrangeExtremeness;
-syncRearrangeExtremeness();
+$('restyle').onclick = (event) => {
+  const button = event.target.closest('button[data-style]');
+  if (button) setRearrangeStyle(button.dataset.style);
+};
+// Arrow keys move between segments, as a radio group should.
+$('restyle').onkeydown = (event) => {
+  const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
+    : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+  if (!step) return;
+  event.preventDefault();
+  const order = REARRANGE_STYLE_NAMES;
+  const next = order[(order.indexOf(rearrangeStyle()) + step + order.length) % order.length];
+  setRearrangeStyle(next);
+  $('restyle').querySelector(`button[data-style="${next}"]`)?.focus();
+};
+syncRearrangeStyle();
+$('revariation').oninput = syncRearrangeVariation;
+syncRearrangeVariation();
+$('rechords').onchange = syncRearrangeKeyReadout;
+$('rekey').onchange = syncRearrangeKeyReadout;
+syncRearrangeKeyReadout();
 $('retranspose').oninput = syncRearrangeTranspose;
 syncRearrangeTranspose();
-$('repattern').oninput = syncRearrangePatterning;
-syncRearrangePatterning();
+// Wheel and touch, not 'scroll': the follow's own scrollIntoView fires 'scroll' too,
+// and a guard that reacts to itself would hold itself off forever.
+for (const id of ['rearrangelist', 'rearrangeform']) {
+  $(id)?.addEventListener('wheel', holdRearrangeFollow, { passive: true });
+  $(id)?.addEventListener('touchmove', holdRearrangeFollow, { passive: true });
+}
 $('reselectall').onclick = selectAllRearrangeOperations;
 $('reclearselection').onclick = clearRearrangeOperationSelection;
 $('resplit').onclick = () => transformSelectedRearrange('split', 'Split halves');
@@ -16465,7 +16941,7 @@ $('redoublerepeats').onclick = () => transformSelectedRearrange('double-repeats'
 $('rehalfrepeats').onclick = () => transformSelectedRearrange('half-repeats', 'Halved loops');
 $('rerollselected').onclick = () => transformSelectedRearrange('reroll', 'Rerolled slices');
 $('reremove').onclick = () => transformSelectedRearrange('remove', 'Removed slices');
-$('redrums').onclick = toggleRearrangeDrums;
+$('redrums').onclick = cycleRearrangeDrums;
 $('regenerate').onclick = () => generateRearrangeRecipe({ restart: rearrangeActive() && playing });
 $('replay').onclick = playRearrangement;
 $('rereturn').onclick = returnToSong;

@@ -22,6 +22,7 @@ import {
   rearrangementPosition as resolveRearrangementPosition,
   rearrangementDrumMode,
   rearrangementDrumHit,
+  harmonicShift,
 } from '../../tools/lib/rearrange.js';
 
 // The scheduler runs on the main thread, alongside panel builds and layout work. A
@@ -517,6 +518,13 @@ class AudioSys {
     // timing do not restart at every collage cut.
     this.rearrangement = null;
     this._rearrangeSourceBar = null;
+    // One resolved output bar, for song-groove drums. See `_rearrangeOutputBank`.
+    this._rearrangeOutputBar = null;
+    // A recipe waiting for the next output bar line. Editing the collage while it
+    // plays installs here rather than into `rearrangement`, so the bar you are
+    // hearing finishes as the bar you were promised. See `queueRearrangement`.
+    this.pendingRearrangement = null;
+    this._rearrangeListeners = [];
     // Short, session-only count-in clicks used by Mixer Rearrange starts. They live
     // on the SFX bus rather than the song trim, so the four beats remain audible while
     // the new song is held back at its exact output downbeat.
@@ -806,10 +814,78 @@ class AudioSys {
     }
   }
 
-  /** Install/remove the Mixer-only temporary source-range playlist. */
+  /** Install/remove the Mixer-only temporary source-range playlist, at once. */
   setRearrangement(recipe = null) {
     this.rearrangement = recipe || null;
     this._rearrangeSourceBar = null;
+    this._rearrangeOutputBar = null;
+    this.pendingRearrangement = null;
+  }
+
+  /**
+   * Install a recipe at the next OUTPUT bar line instead of immediately.
+   *
+   * The desk's edits — Generate, a drum mode, a slice transform — arrive while the
+   * collage is playing, and stopping to install them costs the count-in, the note
+   * cache's warmth and the listener's place in the song. Nobody auditions an
+   * arrangement by restarting it after every change. So the new recipe waits at the
+   * bar line: the bar being heard finishes as the bar it was promised to be, and the
+   * next one is the new arrangement.
+   *
+   * Queueing again before the boundary REPLACES what is waiting rather than stacking
+   * behind it, so a flurry of edits collapses into one install of the latest draft.
+   * That is not a compromise — the desk's draft is already cumulative, and the recipe
+   * handed here is always the whole of it.
+   *
+   * Returns 'installed' when it took effect at once (nothing was playing, or the
+   * source length changed so the output wrap has to be rebuilt anyway) and 'queued'
+   * when it is waiting, so the caller can say which happened.
+   */
+  queueRearrangement(recipe = null) {
+    const swappable = recipe && this.rearrangement && this.timer && this.bank
+      // A recipe of a different length cannot be swapped mid-flight: the output wrap
+      // is computed from it, so the transport would be inside a song that no longer
+      // exists. Take it now and let the caller restart.
+      && recipe.source?.steps === this.rearrangement.source?.steps;
+    if (!swappable) {
+      this.setRearrangement(recipe);
+      return 'installed';
+    }
+    this.pendingRearrangement = {
+      recipe,
+      boundary: this.step % 16 === 0 ? this.step : (Math.floor(this.step / 16) + 1) * 16,
+    };
+    return 'queued';
+  }
+
+  /** Swap in a queued recipe once the transport reaches its bar line. */
+  applyPendingRearrangement() {
+    if (!this.pendingRearrangement || this.step < this.pendingRearrangement.boundary) return false;
+    const recipe = this.pendingRearrangement.recipe;
+    const at = this.step;
+    this.setRearrangement(recipe);
+    for (const fn of this._rearrangeListeners) {
+      // A desk listener repainting a panel must never be able to stop the scheduler.
+      try { fn(recipe, at); } catch { /* the audio keeps its own promises */ }
+    }
+    return true;
+  }
+
+  /**
+   * Announce a queued recipe actually reaching the audio, with its output step.
+   *
+   * The desk flashes pending slices until this fires. That flash has to track the
+   * real hand-off rather than a guess at it: with a wide sequencer read-ahead the
+   * "next bar" can genuinely be the bar after next, and a panel that cleared itself
+   * on a timer would be lying about what is being heard.
+   */
+  onRearrangementInstalled(fn) {
+    if (typeof fn !== 'function') return () => {};
+    this._rearrangeListeners.push(fn);
+    return () => {
+      const i = this._rearrangeListeners.indexOf(fn);
+      if (i >= 0) this._rearrangeListeners.splice(i, 1);
+    };
   }
 
   _clearCountIn() {
@@ -827,7 +903,10 @@ class AudioSys {
     const beatSeconds = 60 / bpm;
     for (let index = 0; index < beats; index++) {
       const when = startTime + index * beatSeconds;
-      const accent = index === 0 || index === beats - 1;
+      // One accented click, then the rest identical: "ONE two three four". The old
+      // shape also lifted the LAST beat, which read as a pickup into nothing — the
+      // count must land on the downbeat, not point at itself.
+      const accent = index === 0;
       const oscillator = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       oscillator.type = 'square';
@@ -847,6 +926,51 @@ class AudioSys {
   rearrangementPosition(step = this.step) {
     if (!this.rearrangement) return null;
     return resolveRearrangementPosition(this.rearrangement, step);
+  }
+
+  /**
+   * The bank a Rearrange OUTPUT bar plays, for song-groove percussion.
+   *
+   * The same merge `scheduleStep` performs for the source bar — the bar's section over
+   * the bank, then its mute/delete mask nulled out — done again for the output clock,
+   * because in this mode the drums are somewhere else in the song from everything
+   * above them.
+   *
+   * Memoised on the bar object: `barPlan` hands back the same objects for a bank until
+   * the arrangement is edited (which replaces the plan), and `setBank` replaces the
+   * bank, so identity on both is the whole invalidation. That turns sixteen merges a
+   * bar into one, which is what keeps this out of the scheduler's measured hot path.
+   * Percussion is never transposed, so the per-bar transpose pass has nothing to add.
+   */
+  _rearrangeOutputBank(bar) {
+    const cached = this._rearrangeOutputBar;
+    if (cached && cached.bar === bar && cached.bank === this.bank) return cached.b;
+    let b = this.bank;
+    if (b?.sections?.length && bar.sec != null) {
+      const sec = resolveSection(b, bar.sec % b.sections.length);
+      if (sec) b = { ...this.bank, ...sec };
+    }
+    if (bar.off || bar.delete) {
+      b = { ...b };
+      for (const k of [...(bar.off || []), ...(bar.delete || [])]) b[k] = null;
+    }
+    this._rearrangeOutputBar = { bar, bank: this.bank, b };
+    return b;
+  }
+
+  /**
+   * The slot in an output bar's bank that song-groove percussion reads at `this.step`.
+   *
+   * Deliberately the same shape as the source `s` in `scheduleStep` — sixteenth within
+   * the bar, doubled at 32 resolution, offset by which half of its section the bar is —
+   * because it answers the same question about a different clock. A method rather than
+   * an expression so the formula is reachable from a test without an AudioContext; it
+   * runs once per tick, and only while song-groove drums are on.
+   */
+  _rearrangeOutputSlot(bar, resolution = this.transportResolution) {
+    return resolution === 32
+      ? Math.round((this.step % 16) * 2) + bar.half * 32
+      : (this.step % 16) + bar.half * 16;
   }
 
   /** Install/remove one session-only raw lane render. */
@@ -1300,6 +1424,9 @@ class AudioSys {
       loopEnd: this.loopEnd,
       pendingLoop: this.pendingLoop,
       pendingStep: this.pendingStep,
+      // The audition survives a fresh context, and so does an edit still waiting at a
+      // bar line — `step` is restored with it, so the boundary still means what it did.
+      pendingRearrangement: this.pendingRearrangement,
       loopHasWrapped: this.loopHasWrapped,
       formLoopArmed: this.formLoopArmed,
       pendingSwing: this.pendingSwing,
@@ -1354,6 +1481,10 @@ class AudioSys {
       this.loopEnd = snapshot.loopEnd;
       this.pendingLoop = snapshot.pendingLoop;
       this.pendingStep = snapshot.pendingStep;
+      this.pendingRearrangement = snapshot.pendingRearrangement;
+      // The bank is a new object after applyMix, so the memoised output bar for
+      // song-groove drums belongs to a song that no longer exists.
+      this._rearrangeOutputBar = null;
       this.loopHasWrapped = snapshot.loopHasWrapped;
       this.formLoopArmed = snapshot.formLoopArmed;
       this.pendingStartDelay = 0;
@@ -2867,6 +2998,11 @@ class AudioSys {
     this.resumeAfterPanic();
     this.stopPreview();
     this._clearCountIn();
+    // A Rearrange edit still waiting at a bar line is waiting against a transport this
+    // call is about to move — pausing parks it, playing re-seeks it. Take the edit now
+    // rather than leaving it queued against a position that no longer means anything;
+    // the desk's draft is what should be heard when the music comes back.
+    if (this.pendingRearrangement) this.setRearrangement(this.pendingRearrangement.recipe);
     this.sourceBank = bank;
     const noteCacheState = this.noteCacheState;
     // A new song has its own arrangement, or none. `undefined` means the ordinary
@@ -4106,6 +4242,10 @@ class AudioSys {
       // After those two, which can both move `this.step` — the boundary a pending
       // groove change is waiting for is the step actually about to be scheduled.
       this._applyPendingSwing();
+      // And a queued Rearrange recipe with it, for the same reason: its boundary is a
+      // bar line in the OUTPUT song, so it must be tested against the step this pass
+      // is really about to schedule rather than the one it arrived on.
+      this.applyPendingRearrangement();
       const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
       const resolution = this.transportResolution;
       const tick = resolution === 32 ? 0.5 : 1;       // transport remains in 16th units
@@ -4114,11 +4254,19 @@ class AudioSys {
       // `this.step` continues to drive the output-time groove and wrap machinery.
       const rearranged = this.rearrangementPosition(this.step);
       const sourceStep = rearranged ? rearranged.sourceStep : this.step;
-      // A basic Rearrange kit is driven by the OUTPUT clock. Pitched lanes still use
-      // `sourceStep` below, but percussion needs a steady 4/4 pulse even when the
-      // collage jumps between off-beat source slices.
-      const basicRearrangeDrums = !!rearranged
-        && rearrangementDrumMode(this.rearrangement) === 'basic4';
+      // Both generated drum modes are driven by the OUTPUT clock. Pitched lanes still
+      // use `sourceStep` below, but percussion needs a pulse that keeps running when
+      // the collage jumps between off-beat source slices.
+      //
+      //   basic4 — a steady generated kit, ignoring what the song wrote.
+      //   song   — the song's own authored percussion, read at the output position.
+      //            Same notes the song has always had, in the order it wrote them,
+      //            underneath a top that has been re-cut. `_rearrangeOutputBar` below
+      //            resolves that second bar once per bar rather than once per tick.
+      const rearrangeDrumMode = rearranged
+        ? rearrangementDrumMode(this.rearrangement) : null;
+      const basicRearrangeDrums = rearrangeDrumMode === 'basic4';
+      const songRearrangeDrums = rearrangeDrumMode === 'song';
       const sourceBarIndex = Math.floor(sourceStep / 16);
       const sourceBarChanged = rearranged
         ? sourceBarIndex !== this._rearrangeSourceBar
@@ -4205,15 +4353,21 @@ class AudioSys {
       }
       const frozenKeys = new Set();
       for (const key of this.frozenLanes.keys()) {
+        const frozenPercussion = PERCUSSION_LANES.includes(baseLane(key));
         // A frozen percussion stem contains the authored drum pattern. In the basic
         // Rearrange mode it must not leak back underneath the generated kit; melodic
         // freezes continue to follow their mapped source position as before.
-        if (basicRearrangeDrums && PERCUSSION_LANES.includes(baseLane(key))) continue;
+        if (basicRearrangeDrums && frozenPercussion) continue;
+        // Song groove wants the authored pattern at the OUTPUT position — which is
+        // precisely what the stem holds there, because a freeze is the song rendered
+        // against its own transport. So the same PCM serves both modes and only the
+        // launch point moves; nothing has to be re-rendered to play drums straight.
+        const frozenStep = songRearrangeDrums && frozenPercussion ? this.step : sourceStep;
         const state = this.frozenLanes.get(key);
         work.preambleFrozenWalks++;
-        this._scheduleFrozenLane(key, state, sourceStep, this.nextTime, spb,
+        this._scheduleFrozenLane(key, state, frozenStep, this.nextTime, spb,
           plan.length * 16);
-        if (this._frozenLaneCovers(key, sourceStep, plan.length * 16)) frozenKeys.add(key);
+        if (this._frozenLaneCovers(key, frozenStep, plan.length * 16)) frozenKeys.add(key);
       }
       // THE HALF TICK NOTHING IS WAITING FOR.
       //
@@ -4276,6 +4430,15 @@ class AudioSys {
         b = { ...b };
         for (const k of [...(bar.off || []), ...(bar.delete || [])]) b[k] = null;
       }
+      // SONG GROOVE'S SECOND BAR. The output position names a bar of the song too, with
+      // its own section, its own mute mask and its own half — everything resolved above
+      // for the source bar, resolved again for the clock the drums are actually on.
+      // Memoised on the bar object, so a whole bar of ticks costs one merge rather than
+      // sixteen; see `_rearrangeOutputBank`. Nothing here runs in any other drum mode.
+      const outputBar = songRearrangeDrums
+        ? plan[Math.floor(this.step / 16) % plan.length] : null;
+      const outputBank = outputBar ? this._rearrangeOutputBank(outputBar) : null;
+      const sOutput = outputBar ? this._rearrangeOutputSlot(outputBar, resolution) : 0;
       // Lanes this HALF STEP cannot be about. `_fineLanes` is the set that can — a lane
       // array long enough to be indexed directly on an odd slot, or a lane whose Note FX
       // generate events of their own. Everything else would be handed the null that
@@ -4303,6 +4466,12 @@ class AudioSys {
           && b?.[key] != null
           && PERCUSSION_LANES.includes(baseLane(key))) {
           return rearrangementDrumHit(baseLane(key), this.step, this.rearrangement.seed);
+        }
+        // Song groove: the authored hit at the OUTPUT position, out of the output bar's
+        // own resolved bank. The source read is not consulted at all for percussion —
+        // that is the whole point, the drums are not being chopped.
+        if (songRearrangeDrums && PERCUSSION_LANES.includes(baseLane(key))) {
+          return sequenceValue(outputBank, key, sOutput, resolution);
         }
         return sequenceValue(b, key, s, resolution);
       };
@@ -4334,6 +4503,12 @@ class AudioSys {
         }
       }
       const rearrangeTranspose = rearranged?.operation?.transpose || 0;
+      // A chord loop: this slice plays N scale DEGREES away, in the recipe's key.
+      // Unlike the chromatic transpose above, the distance differs per note — that is
+      // what turns an Am riff into an F major one — so it cannot ride through
+      // `semitone`; it is applied per value in the transpose pass below.
+      const rearrangeHarmony = rearranged?.operation?.harmony || 0;
+      const rearrangeKey = rearrangeHarmony ? this.rearrangement?.key || null : null;
       const semitone = (key) => barValue(bar.transpose, key)
         + (rearrangeTranspose && !PERCUSSION_LANES.includes(baseLane(key))
           ? rearrangeTranspose : 0);
@@ -4354,17 +4529,27 @@ class AudioSys {
             .filter((k) => !PERCUSSION_LANES.includes(baseLane(k)))
           : []),
       ]);
-      if (rearrangeTranspose) {
+      if (rearrangeTranspose || rearrangeKey) {
         for (const key of [...LANE_KEYS, ...(b.__layers || []).map((L) => L.key)]) {
           if (!PERCUSSION_LANES.includes(baseLane(key))) transposeKeys.add(key);
         }
       }
+      // The chord loop, note by note: each frequency steps `rearrangeHarmony` scale
+      // degrees within the recipe's key, so a minor phrase lands on its VI as a major
+      // chord rather than as the parallel-minor smudge a flat shift would give.
+      // Recursive for the same reason `shift` is — chords and layer values nest.
+      const harm = (v) => Array.isArray(v)
+        ? v.map(harm)
+        : typeof v === 'number' && v > 0 ? harmonicShift(v, rearrangeKey, rearrangeHarmony) : v;
       if (transposeKeys.size) {
         work.preambleTransposes++;
         b = { ...b };
         for (const key of transposeKeys) {
           const n = semitone(key);
-          if (n && Array.isArray(b[key])) b[key] = b[key].map((v) => shift(v, n));
+          const wantHarmony = rearrangeKey && !PERCUSSION_LANES.includes(baseLane(key));
+          if ((n || wantHarmony) && Array.isArray(b[key])) {
+            b[key] = b[key].map((v) => shift(wantHarmony ? harm(v) : v, n));
+          }
         }
       }
       const fxPlans = new Map();
@@ -4376,13 +4561,26 @@ class AudioSys {
         if (coarseHere && !this._fineLanes.has(key)) { fxPlans.set(key, null); return null; }
         work.notePlans++;
         if (fine) work.fineNotePlans++;
-        const config = resolveNoteFx(this.mixEntry?.lanes?.[key]?.noteFx, bar, key);
+        // A song-groove percussion lane is entirely a creature of the output bar, so its
+        // per-bar Note FX override and its note length come from there too. Anything
+        // else would arpeggiate this bar's hits with another bar's settings.
+        //
+        // Asked as a predicate rather than by comparing `fxBar === outputBar`: the
+        // source and output bars can be the SAME object — the plan repeats, so two
+        // positions a whole number of bars apart in the form share one — while `s` and
+        // `sOutput` still point at different sixteenths of it. Identity would then send
+        // a melodic lane's length lookup to the drums' slot.
+        const onOutputClock = songRearrangeDrums && PERCUSSION_LANES.includes(baseLane(key));
+        const config = resolveNoteFx(this.mixEntry?.lanes?.[key]?.noteFx,
+          onOutputClock ? outputBar : bar, key);
         if (!config?.strum?.enabled && !config?.arp?.enabled) {
           fxPlans.set(key, null);
           return null;
         }
         const value = rawAt(key);
-        const len = effectiveStepLen(b, key, s, resolution);
+        const len = onOutputClock
+          ? effectiveStepLen(outputBank, key, sOutput, resolution)
+          : effectiveStepLen(b, key, s, resolution);
         const events = this.noteFx.process({ laneKey: key, value, len, step: this.step,
           spb, config, barIndex: Math.floor(this.step / 16) });
         fxPlans.set(key, events);

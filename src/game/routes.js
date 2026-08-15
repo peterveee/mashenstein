@@ -22,12 +22,14 @@ export const MAX_ISLAND_RISE = Math.floor(worstJumpApex() * 0.8);
 // purpose, so it is wide enough to be a real gap in the lane and still well
 // inside a jump's 114px span at the slowest stage.
 //
-// A MID-SPAN hole is a second chance, not a second decision. Three hero-widths:
-// step into it if you fancy it, and if you never noticed it you were running
-// fast enough to be over it. It used to be a ninth of the whole span — 155px on
-// the plumber tunnel — which is not a hole, it is a missing lane.
+// A MID-SPAN hole is a second chance rather than a second decision, but it still
+// has to be a JUMP. At three hero-widths it was a crack: too narrow to have to
+// aim at, narrow enough that the hero's own width let him scuff across the far
+// lip. Six is 48px against a 114px jump at the slowest stage — you have to mean
+// it, and it is never close to impossible. (It started life at a ninth of the
+// whole span, 155px, which is not a hole, it is a missing lane.)
 export const TUNNEL_MOUTH_W = PLAYER_W * 7;
-export const TUNNEL_HOLE_W = PLAYER_W * 3;
+export const TUNNEL_HOLE_W = PLAYER_W * 6;
 
 // Clear lane between one road ending and the next beginning, in SECONDS — the
 // same unit the roads themselves are authored in, so the breathing space scales
@@ -151,6 +153,25 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt }) {
       // the lane for one, because there is nothing to fall through — which is
       // also why it needs no gap obstacle and no opening in the roof.
       ramp: down && entry === 0,
+      // The stretch where this route is far enough below the lane for the two to
+      // be drawn as separate levels. Outside it they are within a slab's
+      // thickness of each other and the honest picture is one piece of ground —
+      // see drawTunnel. Scanned once here rather than solved, because the
+      // profile has four segments and the answer is a range, not a root.
+      openSpan: down ? (() => {
+        const SEP = 34;
+        let a = null;
+        let b = null;
+        for (let t = 0; t <= 1; t += 0.002) {
+          const wx = x + w * t;
+          const deep = -routeRise(wx, {
+            x, w, entry, peak, lip, climb, hold, end,
+          }) >= SEP;
+          if (deep && a === null) a = wx;
+          if (deep) b = wx;
+        }
+        return a === null ? null : { x: a, w: b - a };
+      })() : null,
       // BREAKS IN THE ROAD. Stretches of the span where there is simply nothing
       // to stand on, so a road you are locked onto still asks something of you
       // between its ends. Authored as fractions along the span with a width in

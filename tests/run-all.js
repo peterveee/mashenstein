@@ -50,6 +50,14 @@ const suites = [
   // because they arm the same machinery and only one of them is saved with the song.
   'tests/song-loop.js',
   'tests/rearrange.js',
+  // What Rearrange is allowed to believe about the song it is cutting up. Ahead of the
+  // recipe suite's own concerns because the generator's boundary choices are only as
+  // good as this, and a wrong number here makes worse music rather than an error.
+  'tests/rearrange-profile.js',
+  // And the two claims about a recipe that is already PLAYING: the song's own drums
+  // running straight underneath a rearranged top, and an edit that waits for the bar
+  // line instead of restarting the transport.
+  'tests/rearrange-drums.js',
   // The arrangement layer, beside the mix layer it mirrors: that one is what a song
   // sounds like, this one is what plays when. Its first assertion is the one that
   // matters — an empty layer hands every song back the bank it always had — which is
@@ -299,6 +307,7 @@ const soundSuites = [
   'tests/mixer-layout.js', 'tests/performance-relief.js', 'tests/mixer-export.js', 'tests/midi-import.js',
   'tests/mixer-undo.js', 'tests/mixer-loop.js', 'tests/song-loop.js', 'tests/new-song.js',
   'tests/song-copies.js', 'tests/song-alternates.js',
+  'tests/rearrange.js', 'tests/rearrange-profile.js', 'tests/rearrange-drums.js',
   'tests/arrangement.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
   'tests/piano-roll.js', 'tests/note-recorder.js',
   'tests/song-processing.js',

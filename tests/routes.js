@@ -625,8 +625,33 @@ assert(tunnel.mouthW < 114 * 0.75,
 for (const h of tunnel.holes || []) {
   assert(h.w < tunnel.mouthW,
     `a mid-span hole is narrower than the entrance (${Math.round(h.w)}px vs ${tunnel.mouthW}px)`);
-  assert(h.w <= PLAYER_W * 4,
-    `and a stride wide (${Math.round(h.w)}px vs a ${PLAYER_W}px hero)`);
+  // Still a real JUMP, though. At three hero-widths it was a crack: too narrow
+  // to have to aim at, and narrow enough that the hero's own width let him scuff
+  // across the far lip instead of falling in.
+  assert(h.w >= PLAYER_W * 5,
+    `wide enough that clearing it is deliberate (${Math.round(h.w)}px vs a ${PLAYER_W}px hero)`);
+  assert(h.w < 114 * 0.6,
+    `and never close to impossible (${Math.round(h.w)}px of a 114px jump)`);
+}
+
+// ---- the two levels stay distinct -------------------------------------------
+// A tunnel converges, and a fixed-thickness slab drawn over a rising floor
+// tapers the air between them to a knife edge and then welds them together in a
+// long thin point. `openSpan` is the stretch where they are genuinely apart —
+// the only stretch drawn as two levels at all.
+assert(!!tunnel.openSpan, 'a tunnel knows where it is deep enough to be a second level');
+assert(tunnel.openSpan.x > tunnel.x && tunnel.openSpan.x + tunnel.openSpan.w < tunnel.x + tunnel.w,
+  'and that stretch is inside its span, clear of both ends');
+for (const t of [0.02, 0.995]) {
+  const wx = tunnel.x + tunnel.w * t;
+  assert(wx < tunnel.openSpan.x || wx > tunnel.openSpan.x + tunnel.openSpan.w,
+    `the ends are not drawn as two levels (t=${t})`);
+}
+// Everywhere inside it there is real air between the lane and the floor.
+for (let t = 0; t <= 1; t += 0.05) {
+  const wx = tunnel.openSpan.x + tunnel.openSpan.w * t;
+  assert(-run.routeRise(wx, tunnel) >= 30,
+    `and inside it the levels are a slab apart (${Math.round(-run.routeRise(wx, tunnel))}px)`);
 }
 
 // ---- nothing standing in an opening ----------------------------------------

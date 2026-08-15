@@ -509,6 +509,8 @@ const APRON = 38;
 // Where one soil band gives way to the next, in world px below the groundline.
 // Two seams, so the earth reads as three layers: the worked topsoil you can see
 // roots in, the packed subsoil under it, and the cold stuff below that.
+// How much under-turf green sits above the soil. Thin, and flat — see drawEarth.
+const TURF = 5;
 const SOIL_SEAM_1 = 44;
 const SOIL_SEAM_2 = 112;
 
@@ -635,20 +637,23 @@ function drawEarth(ctx, cabinet, camX, runs, surfaceY, bottomY) {
   };
   for (const [from, to] of runs) {
     if (to <= from) continue;
-    const s0 = surfaceY((from + to) / 2);
-    // Root zone, thin, fading into the soil below it.
-    const rz = ctx.createLinearGradient(0, s0 + 5, 0, s0 + 18);
-    rz.addColorStop(0, dark);
-    rz.addColorStop(1, mix(dark, soil, 1));
-    band(from, to, () => 5, rz, bottomY);
-    band(from, to, () => 18, soil, bottomY);
+    // Turf, then soil. No fade between them.
+    //
+    // There was a thirteen-pixel gradient from the under-turf green into the
+    // brown, on the theory that a root zone blends. On a cutaway drawn in flat
+    // colour it does not read as blending, it reads as a muddy band that
+    // belongs to neither material — and it was the thing making the join look
+    // wrong every time. Ground in this game is drawn in flat colour; the join
+    // between two flat colours is a line.
+    band(from, to, () => TURF, dark, bottomY);
+    band(from, to, () => TURF + 5, soil, bottomY);
     // Two bedding seams, wobbling, measured down from the surface so they ride
     // the terrain instead of cutting across it.
     band(from, to, (wx) => SOIL_SEAM_1 + seamWobble(wx), darken(soil, 0.78), bottomY);
     band(from, to, (wx) => SOIL_SEAM_2 + seamWobble(wx), darken(soil, 0.58), bottomY);
     // Pebbles and the odd boulder through the lot.
     drawStones(ctx, camX, soil, from - camX, to - camX,
-      (x) => surfaceY(camX + x) + 20, (x) => surfaceY(camX + x) + SUBSOIL_DEPTH,
+      (x) => surfaceY(camX + x) + TURF + 8, (x) => surfaceY(camX + x) + SUBSOIL_DEPTH,
       GROUND_STONE_STRIDE, 0.4, { perSlot: 3, maxR: 6, clipY: bottomY });
     drawBoulders(ctx, camX, soil, from, to, surfaceY, bottomY);
   }
@@ -671,7 +676,15 @@ export function drawSubsoil(ctx, cabinet, right, bottomY, camX = 0, overhangs = 
     open = Math.max(open, sp.x + sp.w);
   }
   if (open < camX + right + 8) runs.push([open, camX + right + 8]);
-  drawEarth(ctx, cabinet, camX, runs, () => GROUND_BASE, bottomY);
+  // Following the TERRAIN, not a flat line.
+  //
+  // This was `() => GROUND_BASE`, which put every layer at a fixed world y while
+  // the grass above it rolled — so on any slope the green band stretched and
+  // pinched, and the soil under it kept a dead flat top edge that belonged to no
+  // surface in the picture. It read as the ground being upside down, because in
+  // effect it was: the layers were ignoring the shape of the thing they were
+  // layers OF.
+  drawEarth(ctx, cabinet, camX, runs, (wx) => terrainGroundY(cabinet, wx), bottomY);
 }
 
 // Walk a profile as a PATH rather than as a column of rects.
@@ -787,8 +800,25 @@ function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY) {
   // else, which is exactly why the two levels look like one place. So the lane
   // gets an underside here and the space below it gets nothing at all.
   const UNDER = 26;
-  const underAt = (wx) => groundAt(wx) + UNDER;
-  for (const [f, t] of lane) {
+  const MIN_AIR = 8;
+  // The slab's thickness ADAPTS to the air under it, and stops entirely where
+  // there is not enough air to be worth calling a gap.
+  //
+  // This is the fix for the wedge at the far end. A tunnel converges — its floor
+  // climbs back to meet the lane — and drawing a fixed-thickness slab over a
+  // rising floor tapers the air between them to a knife edge and then to
+  // nothing, so the two levels visibly weld together in a long thin point. They
+  // should stay DISTINCT wherever they are distinct, and where they are not,
+  // the honest picture is one piece of ground, not two touching.
+  const airAt = (wx) => floorAt(wx) - groundAt(wx);
+  const underAt = (wx) => groundAt(wx) + Math.min(UNDER, airAt(wx) - MIN_AIR);
+  // Clipped to the stretch the route itself says is deep enough to be a second
+  // level at all.
+  const open = r.openSpan;
+  const lit = open
+    ? lane.map(([f, t]) => [Math.max(f, open.x), Math.min(t, open.x + open.w)])
+    : lane;
+  for (const [f, t] of lit) {
     if (t <= f) continue;
     ctx.beginPath();
     ctx.moveTo(f - camX, groundAt(f));
@@ -817,6 +847,35 @@ function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY) {
 
   // ---- the area below, which is just more ground --------------------------
   drawEarth(ctx, cabinet, camX, [[a, b]], floorAt, bottomY);
+  // ---- and the shade the lane casts over it -------------------------------
+  //
+  // Without this the air under the slab shows bright parallax hills at exactly
+  // the value of the grass, so a brown underside sitting on top of them reads as
+  // ground upside down. It is not a decoration: there is a shelf of earth
+  // overhead, and the thing directly under a shelf is shadow. Strongest against
+  // the underside and gone within thirty pixels, so it separates the two levels
+  // without darkening the one you are playing on.
+  if (open) {
+    const f = Math.max(a, open.x);
+    const t2 = Math.min(b, open.x + open.w);
+    if (t2 > f) {
+      const mid = (f + t2) / 2;
+      const top = groundAt(mid) + UNDER;
+      const sh = ctx.createLinearGradient(0, top, 0, top + 34);
+      sh.addColorStop(0, 'rgba(24,16,8,0.34)');
+      sh.addColorStop(1, 'rgba(24,16,8,0)');
+      ctx.fillStyle = sh;
+      ctx.beginPath();
+      ctx.moveTo(f - camX, groundAt(f) + UNDER);
+      for (let wx = f; wx <= t2; wx += 5) ctx.lineTo(wx - camX, groundAt(wx) + UNDER);
+      ctx.lineTo(t2 - camX, groundAt(t2) + UNDER);
+      for (let wx = t2; wx >= f; wx -= 5) {
+        ctx.lineTo(wx - camX, Math.min(floorAt(wx), groundAt(wx) + UNDER + 34));
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
   // Its surface keeps the cabinet's own lit ground line, because it IS ground —
   // the same stuff the lane is made of, further down.
   ctx.strokeStyle = cabinet.ground;

@@ -19,10 +19,12 @@
 // `lead3` — which is an ordinary lane everywhere downstream (see the layer notes in
 // src/engine/lanes.js) with its own strip, fader and voice.
 //
-// A layer arrives SILENT: a preset is the whole of what a layer is, and one with no
-// voice makes no sound rather than doubling the part it copies. That is the price of
-// keeping every part, and it is a choice you can hear and undo — a merged part is
-// neither. The import summary names them so nobody has to discover it by listening.
+// A layer arrives on a STARTER preset, not on the sound the part had in the DAW, which
+// no MIDI file carries: a square on anything pitched, the Tom on a piece of kit
+// (`defaultAddedVoice` in src/data/voices.js). Neutral rather than absent — an unvoiced
+// layer used to arrive silent, so a fifteen-part import was fourteen strips of lit steps
+// making no sound, and a drum starter on a lead was worse still. The import summary
+// names the layers so the parts to re-voice are on the page rather than found by ear.
 //
 // The CLI is tools/import-midi.js; the desk posts files here through the mixer.
 import { parseMidi, tempoOf, notesOf } from './midi-parse.js';
@@ -427,8 +429,9 @@ const source = `// ${title} — imported from ${from} by tools/import-midi.js.
 //
 // ${parts.length} part${parts.length === 1 ? '' : 's'} in the file, ${laneKeys.length} lane${laneKeys.length === 1 ? '' : 's'} here — nothing was merged onto anything else.${layers.length ? `
 // ${layers.length} of them ${layers.length === 1 ? 'is a layer' : 'are layers'} (${layers.map((l) => l.key).join(', ')}): real lanes with the
-// notes below, declared in the mix at the foot of this file, and SILENT until you
-// give each one a voice on the desk. A layer is a preset and nothing else.` : ''}
+// notes below, declared in the mix at the foot of this file. Each starts on the
+// neutral starter preset for its lane — a square if it is pitched — until you choose
+// one on the desk. A layer is a preset and nothing else.` : ''}
 import { ${imports.join(', ')} } from '../../engine/notes.js';
 
 export const id = ${JSON.stringify(id)};

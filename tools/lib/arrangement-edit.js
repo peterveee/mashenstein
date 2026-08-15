@@ -1100,10 +1100,18 @@ export function writeBarNotes(bank, draft, barIndex, lane, steps16, lengths16 = 
  *
  * The processor is walked from the beginning of the song so continuous/latching
  * patterns arrive in the selected range in the same state as live playback. Only the
- * selected bars are written. Their override then disables ARP while preserving the
- * resolved strum, avoiding a rendered pattern being arpeggiated a second time.
+ * selected bars are written.
+ *
+ * A rendered bar must not be arpeggiated a second time, and the old guarantee was an
+ * `arp: { enabled: false }` override stamped on every one of them. That stamp lies in
+ * the grid: a bar carrying it wears an NFX badge for an effect it no longer has. So a
+ * stamp is written only where it changes what the bar plays. `trackArpCleared` is how
+ * a whole-song render says the caller is about to retire the track arpeggiator itself —
+ * with the arp gone from the track there is nothing left to suppress, and the bars
+ * inherit clean.
  */
-export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {}) {
+export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {},
+  { trackArpCleared = false } = {}) {
   if (!bank || !draft || !lane) return draft;
   const [a, b] = range(draft, from, to);
   let source = copy(draft);
@@ -1130,13 +1138,32 @@ export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {}) 
       outNotes[slot] = freqs.length === 1 ? freqs[0] : freqs;
       outLengths[slot] = lens.length === 1 ? lens[0] : lens;
     }
-    if (barIndex >= a) rendered.set(barIndex, { notes: outNotes, lengths: outLengths, config });
+    // A bar whose arp is off — inherited off, or an explicit `mode: 'off'` — renders
+    // to the notes it already had, so writing it back would fork the section to say
+    // nothing. The processor still walked it above; only the write is skipped.
+    if (barIndex >= a && config.arp?.enabled) {
+      rendered.set(barIndex, { notes: outNotes, lengths: outLengths, config });
+    }
   }
+  // Two strums play the same iff both are off, or they agree on the direction and gap
+  // the processor will actually use — see `process`, which floors a missing gap to 0
+  // and reads anything but down/random as up.
+  const strumSig = (fx) => (fx?.strum?.enabled
+    ? `${['down', 'random'].includes(fx.strum.direction) ? fx.strum.direction : 'up'}`
+      + `/${Math.max(0, Math.min(250, Number(fx.strum.gapMs) || 0))}`
+    : 'off');
+  const trackAfter = trackArpCleared
+    ? { ...trackNoteFx, arp: { ...(trackNoteFx?.arp || {}), enabled: false } }
+    : (trackNoteFx || {});
   let out = source;
   for (const [barIndex, material] of rendered) {
     out = writeBarNotes(bank, out, barIndex, lane, material.notes, material.lengths);
     const strum = material.config.strum || {};
-    out = setBarNoteFx(out, barIndex, barIndex, lane, {
+    // Inheriting the track already leaves the arp off and the same strum on, so the
+    // override has nothing to say. Clear it rather than stamp it.
+    const inherits = !trackAfter.arp?.enabled
+      && strumSig(trackAfter) === strumSig(material.config);
+    out = setBarNoteFx(out, barIndex, barIndex, lane, inherits ? null : {
       mode: 'on',
       ...(strum.enabled ? { strum } : {}),
       arp: { enabled: false },

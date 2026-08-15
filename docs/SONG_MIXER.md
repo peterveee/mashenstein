@@ -168,28 +168,103 @@ that section as an anchor; the next **Generate** reuses it (and returning sectio
 same role) while rebuilding the other sections. When used, a transpose is a gentle
 whole tone, perfect fourth, or perfect fifth shared by the pitched lanes. Chorus source phrases favour the
 denser parts of the current arrangement, while verses and bridges provide contrast.
-Before Generate, the **Extremeness** slider controls how hard the recipe cuts: lower values
-favour longer, bar-aligned phrases with fewer source jumps and transpositions; higher values
-allow shorter cells, more independent source changes, odd boundaries and occasional glitches.
-The **Transpose** dial controls shared melodic lifts: Off, gentle whole-tone shifts, or a
-larger palette that also permits fourths and fifths. The **Patterning** dial controls the
-balance between one-off source choices and returning A/B motifs with repeated passes.
-These settings affect the next generated recipe only; the saved JSON contains the resulting
-operations, so loading it does not depend on the slider.
-Use **▶** or double-click a row to audition from that section/bar. **👎** marks a section
-for replacement, asking the next Generate to choose a different source area.
-**Play Rearrangement** gives a four-beat count-in, then starts that recipe from its top, while the ordinary transport
-controls continue to play and pause it. **Double-clicking a row** starts it from that
-section/bar. **Generate** while it is playing starts the new
-recipe again. **Return to Song** clears the recipe and restores the ordinary loop
-controls.
+#### Style and Variation
 
-The **Original drums / Steady 4/4 drums** toggle is Rearrange-only. Steady mode leaves
-the source kit voices and their arrangement mutes in place, but replaces their authored
-triggers with exact kick beats 1–4, snare/clap beats 2 and 4, eighth-note hats, and
-restrained rim, tom, open-hat and crash fills. Its rhythm follows the rearranged output clock,
-so a melodic cut can jump source bars without making the pulse stumble. The mode is
-stored in the recipe JSON and never changes the song’s drum lanes.
+**Style** decides how big the cuts are and what they line up to. It is a hard rule
+rather than a leaning, so a chosen style can be relied on:
+
+| Style | Cell lengths | Source starts land on |
+| --- | --- | --- |
+| **Phrase** | one, two or four bars | bar lines |
+| **Groove** (default) | half-bar and bar, occasionally two | eight-step boundaries |
+| **Chop** | beat and half-bar | beats |
+
+**Variation** dials between motifs that keep coming back and fresh material each time.
+At **Familiar** a section establishes a cell and returns to it, and the generator takes
+the best-sounding slice available. At **Different** it reaches further for material it
+has not used.
+
+Under **Advanced**:
+
+- **Chord loop** (default Auto) walks every four-bar Verse, Chorus and Bridge around a
+  four-chord loop of the song's own key, one chord per bar — the way modern pop and
+  dance music moves; Intros and Outros stay put. The movement is *diatonic*: each note
+  steps within the scale, so an Am riff played "as the VI" comes back as F major with
+  the right chord quality, not as a flat pitch-shift. The minor palettes are the club
+  standards — `i–VI–III–VII` (the EDM loop), `i–v–VI–iv` (house), `VI–VII–i` (the
+  anthem build), `i–iv–VI–v` (dark pop) — and Auto picks one per part, the same one
+  for every return of that part. Major-key songs always take the axis progression
+  `I–V–vi–IV`. The key travels in the saved JSON so the recipe replays identically
+  anywhere.
+- A part that walks is built as **one bar-length cell repeated four times** — the club
+  shape. Progressions over alternating A/B cells re-harmonised phrases that were
+  already answering themselves, and sounded like it; the A/B and collage shapes still
+  appear in parts that play their written harmony.
+- **Walk** sets how much of each four-bar part actually changes chord: **Last two
+  bars** (default — the riff holds home, then moves: `i–i–III–VII`), **Turnaround
+  only** (`i–i–i–VII`, the subtlest), or **Full loop** (every bar).
+- **The key** comes from the song analysis, which runs at any parked moment — opening
+  the panel, switching songs under it, pausing, or pressing Generate — never during
+  playback, which always wins. The readout beside the picker shows what was found; an
+  unclear reading is shown with a `?` and still used (ambiguity is nearly always the
+  relative major/minor pair, which walk the same notes). The **key picker** overrules
+  the analysis outright: name the key and the loops trust you.
+- **Allow glitches** is the only thing that permits one and two-sixteenth cuts and
+  starts off any musical boundary — nothing else reaches them.
+- **Transpose** (Off by default) is the older *chromatic* lift — every note the same
+  distance. When it is on, the interval chosen is the one that leaves the section
+  agreeing best with what was just heard. **One pitch system per recipe:** while a
+  chord loop is on, this dial is disabled and ignored entirely — set the loop to Off
+  to hand pitch back to it.
+
+The chords are visible everywhere they act: the detected key sits beside the Chord
+loop control the moment the panel opens (or says "no clear key" / "no analysis yet"),
+each rail card states its walk bar by bar (`i – VI – III – VII`), every list row has a
+fixed chord column showing the numeral it plays as (empty means as written), and the
+playback status names the chord currently sounding.
+
+Where the song can be analysed, Generate also **scores** its choices instead of only
+rolling them. It avoids cutting into notes that are still sounding — preferring a
+longer phrase to a boundary that would slice a chord in half — matches the pitches of
+neighbouring slices, and draws choruses from busier material than verses. The analysis
+runs when the panel is opened while parked; generating during playback uses the last
+one rather than interrupting the audio to walk the song again.
+
+These settings affect the next **Generate** only. The saved JSON contains the resulting
+operations, so loading a recipe does not depend on where the controls are.
+
+#### Playing and editing
+
+Use **▶** or double-click a row to audition from that section/bar — these jump straight
+in, with no count-in. **👎** marks a section for replacement, asking the next Generate
+to choose a different source area. **Play Rearrangement** is the one start that counts
+in: four beats — one accented click, then three identical — before the recipe's top,
+while the ordinary transport controls continue to play and pause it. **Return to Song**
+clears the recipe and restores the ordinary loop controls.
+
+**Edits made while it is playing are heard from the next bar.** Generate, the drum mode
+and every slice transform install at the next output bar line rather than stopping the
+transport — no restart, no second count-in, and the note cache stays warm. The panel
+marks the rows as a draft until the change is actually consumed by the scheduler, which
+with a wide sequencer read-ahead can be a bar later than the arithmetic suggests. Making
+several edits before the boundary installs the latest one, once.
+
+#### Drums
+
+The **Drums** button cycles three treatments, all Rearrange-only and all stored in the
+recipe JSON without ever changing the song's own drum lanes:
+
+- **Song groove** (the default for new recipes) plays the song's authored percussion at
+  the *output* clock, so the groove runs straight underneath a rearranged top. The output
+  bar's own section, mute mask and bar are resolved for it, and a frozen percussion stem
+  simply plays from the output position. This is what makes a chopped arrangement sound
+  played rather than assembled.
+- **Chopped drums** cuts the drums along with everything else, following each slice's
+  source position. This is what a recipe with no `drums` field means, so every recipe
+  saved before Song groove existed keeps the behaviour it was auditioned with.
+- **Steady 4/4** leaves the source kit voices and their arrangement mutes in place, but
+  replaces their authored triggers with exact kick beats 1–4, snare/clap beats 2 and 4,
+  eighth-note hats, and restrained rim, tom, open-hat and crash fills.
 
 In the piano roll, drag a beat range and press **Fav +** to make that range a session
 favourite. Favourites are whole-band source slices: every later **Generate** includes

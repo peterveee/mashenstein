@@ -171,6 +171,32 @@ export const PERCUSSION_LANES = ['kick', 'snare', 'clap', 'rim', 'hats', 'ohats'
 // drafts that created an independent lane without naming any voice at all.
 export const DEFAULT_ADDED_PERCUSSION_VOICE = 'tom';
 
+// The same courtesy for a PITCHED lane, and it has to be a different preset: `tom` is a
+// drum, so handing it to a new bass or lead — or to the fifteen melodic layers a MIDI
+// import arrives with — labels the strip `Tom` and plays a membrane thud where a tune
+// should be. `toneSquare` is the neutral pitched starter: a single-oscillator square,
+// the sound the engine's own default oscillator makes, so an unvoiced melodic lane
+// arrives sounding like the arcade rather than like a drum.
+//
+// It cannot be an ENGINE preset (`engSquare`) even though that is the same waveform: an
+// engine preset is a bundle of bank keys the hand-written lane body reads, and a layer
+// has no body to read them — `voiceOf` returns null for that pairing, which is silence.
+export const DEFAULT_ADDED_MELODIC_VOICE = 'toneSquare';
+
+/**
+ * The starter preset for a lane nothing has voiced yet — a drum for a drum, a square
+ * for anything pitched.
+ *
+ * One answer in one place, because the desk asks it from four directions (the strip
+ * heading, the picker's default row, the track clipboard, the bank the engine plays)
+ * and any of them disagreeing is a strip that names a sound it does not make.
+ */
+export const defaultAddedVoice = (laneKey) => (
+  PERCUSSION_LANES.includes(baseLane(laneKey))
+    ? DEFAULT_ADDED_PERCUSSION_VOICE
+    : DEFAULT_ADDED_MELODIC_VOICE
+);
+
 /**
  * Lanes whose bank holds an ARRAY of frequencies per step — a chord, not a note.
  *

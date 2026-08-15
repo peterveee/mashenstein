@@ -180,10 +180,50 @@ assert(masked[0].off !== masked[1].off,
   const notes = readBarLane(bank, rendered, 0, 'chords');
   assert(rendered.resolution === 32 && notes[0] === 220 && notes[1] === 330,
     'Render Arp writes ordinary 1/32 notes at the selected rate');
-  assert(rendered.plan[0].noteFx.chords.arp.enabled === false,
-    'Render Arp disables only the rendered arpeggiator to prevent double processing');
+  assert(!rendered.plan[0].noteFx,
+    'a rendered bar over an arp-less track keeps no override — inheriting is already arp off');
   assert(bank.chords[0][0] === 220 && bank.chords.length === 32,
     'Render Arp never mutates the authored song bank');
+
+  // The stamp is not gone, it is earned. A track arpeggiator left running would take a
+  // second pass over the notes just written, so a bar rendered under one is marked —
+  // and stops being marked once the caller says that arp is being retired.
+  const trackArp = { arp: { enabled: true, direction: 'up', rate: 1, octaves: 1,
+    gate: 80, retrigger: 'chord' } };
+  let live = draftOf(bank);
+  live = setBarNoteFx(live, 0, 0, 'chords', null);
+  const underTrack = renderArpToNotes(bank, live, 0, 0, 'chords', trackArp);
+  assert(underTrack.plan[0].noteFx.chords.arp.enabled === false,
+    'a bar rendered under a live track arp is stamped arp-off to prevent double processing');
+  const retired = renderArpToNotes(bank, live, 0, 0, 'chords', trackArp,
+    { trackArpCleared: true });
+  assert(!retired.plan[0].noteFx,
+    'a whole-song render that retires the track arp leaves its bars unmarked');
+  assert(json(readBarLane(bank, retired, 0, 'chords'))
+    === json(readBarLane(bank, underTrack, 0, 'chords')),
+    'and renders exactly the same notes either way');
+
+  // A strum the bar would LOSE by inheriting is still worth an override. The track's
+  // own strum is not — inheriting hands that back unchanged — so the case to hold is a
+  // strum the bar overrode for itself, which must outlive the arp that came with it.
+  let strumBar = draftOf(bank);
+  strumBar = setBarNoteFx(strumBar, 0, 0, 'chords',
+    { mode: 'on', strum: { enabled: true, direction: 'down', gapMs: 30 } });
+  const strummed = renderArpToNotes(bank, strumBar, 0, 0, 'chords', trackArp,
+    { trackArpCleared: true });
+  assert(strummed.plan[0].noteFx.chords.strum.enabled === true
+    && strummed.plan[0].noteFx.chords.strum.gapMs === 30
+    && strummed.plan[0].noteFx.chords.arp.enabled === false,
+    'a rendered bar keeps an override for a strum the track would not give it back');
+
+  // Nothing to render, nothing to write: a bar whose arp is off must not fork a
+  // section just to store the notes it already had.
+  let silentFx = draftOf(bank);
+  silentFx = setBarNoteFx(silentFx, 0, 0, 'chords', { mode: 'off' });
+  const untouched = renderArpToNotes(bank, silentFx, 0, 0, 'chords', trackArp);
+  assert(untouched.plan[0].noteFx.chords.mode === 'off'
+    && untouched.plan[0].sec === silentFx.plan[0].sec,
+    'a bar with Note FX switched off is left exactly as it was');
 }
 
 // An editable Bar Effects card writes the ordinary arrangement snapshot shape. Power,

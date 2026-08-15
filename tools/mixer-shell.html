@@ -488,62 +488,148 @@
      aimable underneath. */
   #rearrangebtn { min-width: 86px; padding: 4px 9px; white-space: nowrap; }
   #rearrangepanel { position: fixed; top: 56px; right: var(--rgut); z-index: 34;
-                    display: flex; flex-direction: column; width: min(500px, calc(100vw - 24px));
+                    display: flex; flex-direction: column; width: min(880px, calc(100vw - 24px));
                     max-height: calc(100vh - 70px); overflow: hidden;
                     background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
                     box-shadow: 0 14px 34px color-mix(in srgb, var(--deep) 70%, transparent); }
   #rearrangepanel[hidden] { display: none; }
-  #rearrangepanel .rehead { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px 8px;
+  /* ONE COLOUR PER PART OF THE FORM.
+     Fixed hues rather than anything derived from --accent: the desk has eight themes
+     and the accent is teal in one, gold in another, cyan in a third — but a Chorus
+     should be the same colour in all of them, and the point of the colour is that the
+     THIRD chorus is recognisably the same part as the first. Mid-lightness and
+     saturated, so a chip reads on the darkest panel and the lightest alike, and no
+     two of them are a red/green pair.
+     Always beside the part's NAME, never instead of it: the colour is reinforcement
+     for a form you can already read, not the only way to tell one part from another. */
+  #rearrangepanel { --role-intro: #6fae8f; --role-verse: #4f9dd9; --role-chorus: #e8a33d;
+                    --role-bridge: #b57bd8; --role-outro: #94a0b0; }
+  #rearrangepanel [data-role="Intro"] { --rolecolour: var(--role-intro); }
+  #rearrangepanel [data-role="Verse"] { --rolecolour: var(--role-verse); }
+  #rearrangepanel [data-role="Chorus"] { --rolecolour: var(--role-chorus); }
+  #rearrangepanel [data-role="Bridge"] { --rolecolour: var(--role-bridge); }
+  #rearrangepanel [data-role="Outro"] { --rolecolour: var(--role-outro); }
+  #rearrangepanel .rerolechip { flex: none; width: 9px; height: 9px; border-radius: 2px;
+    background: var(--rolecolour, var(--faint)); }
+  #rearrangepanel .rehead { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px 7px;
                              background: var(--well); border-bottom: 1px solid var(--line); }
-  #rearrangepanel .retitle { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; }
-  #rearrangepanel .resub { margin-top: 2px; color: var(--dim); font-size: 10px; font-weight: 400; }
+  #rearrangepanel .retitle { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; }
+  #rearrangepanel .resub { margin-top: 2px; color: var(--dim); font-size: 11px; font-weight: 400;
+                            line-height: 1.45; }
   #rearrangepanel .reclose { width: 22px; height: 22px; padding: 0; border: 0; background: none;
                               color: var(--dim); font-size: 17px; line-height: 1; }
   #rearrangepanel .reclose:hover { color: var(--ink); border-color: transparent; }
-  #rearrangestatus { padding: 7px 12px; color: var(--dim); font-size: 10px; border-bottom: 1px solid var(--line); }
-  #rearrangeform { display: flex; gap: 4px; overflow-x: auto; padding: 6px 8px 5px;
-                   border-bottom: 1px solid var(--line); background: var(--well); }
+  #rearrangestatus { padding: 6px 12px; color: var(--dim); font-size: 11px; border-bottom: 1px solid var(--line); }
+  /* The roadmap is a RAIL, not a ribbon: the form reads top to bottom beside the list,
+     one segment per section, always all visible — the thing the horizontal strip could
+     not do once a song had more sections than the panel had width. */
+  #rearrangepanel .rebody { display: flex; flex: 1 1 auto; min-height: 0; }
+  #rearrangeform { display: flex; flex-direction: column; gap: 4px; flex: none; width: 156px;
+                   overflow-y: auto; overflow-x: hidden; padding: 6px;
+                   border-right: 1px solid var(--line); background: var(--well); }
   #rearrangeform[hidden] { display: none; }
-  #rearrangeform .reformseg { flex: 1 0 82px; min-width: 82px; display: flex; flex-direction: column;
-                              align-items: flex-start; gap: 1px; padding: 4px 6px; border: 1px solid var(--line);
-                              border-radius: 4px; background: var(--traybtn); color: var(--dim); font-size: 9px;
-                              text-align: left; }
-  #rearrangeform .reformseg:hover, #rearrangeform .reformseg:focus-visible { color: var(--ink); border-color: var(--accent-line); }
-  #rearrangeform .reformseg.active { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
-  #rearrangeform .reformseg strong { font-size: 10px; font-weight: 700; }
-  #rearrangeform .reformseg small { color: inherit; opacity: .8; font-size: 8px; }
-  #rearrangepanel .recontrol { flex: 1 0 100%; display: grid; grid-template-columns: auto minmax(110px, 1fr) auto;
+  /* One card per part, holding everything that acts on the WHOLE part: select its
+     slices, play it, keep it, ask for a different one. */
+  #rearrangeform .reformseg { flex: none; width: 100%; display: flex; flex-direction: column;
+                              gap: 2px; padding: 5px 6px 4px; border: 1px solid var(--line);
+                              border-radius: 4px; background: var(--traybtn); color: var(--dim);
+                              font-size: 10px; text-align: left; cursor: pointer; }
+  #rearrangeform .reformseg:hover { border-color: var(--accent-line); }
+  #rearrangeform .reformseg.active { color: var(--ink); background: var(--accent-wash);
+    border-color: var(--accent); }
+  #rearrangeform .reformseg.kept { box-shadow: inset 0 0 0 1px var(--accent); }
+  #rearrangeform .reformseg.disliked { box-shadow: inset 0 0 0 1px var(--hot); }
+  #rearrangeform .reformtop { display: flex; align-items: center; gap: 4px; }
+  #rearrangeform .reformname { flex: 1 1 auto; min-width: 0; padding: 0; border: 0; background: none;
+    color: var(--ink); font-size: 11px; font-weight: 700; text-align: left; }
+  #rearrangeform .reformname:hover { color: var(--accent); border-color: transparent; }
+  /* Indented to clear the checkbox, so the name, the bar range and the two verdict
+     buttons all hang off one line down the card. */
+  #rearrangeform .reformbars { padding-left: 24px; color: var(--dim); font-size: 9px; }
+  #rearrangeform .reformacts { display: flex; gap: 3px; padding-left: 22px; }
+  #rearrangepanel .recontrol { flex: 1 1 320px; display: grid; grid-template-columns: auto minmax(110px, 1fr) auto;
     align-items: center; gap: 7px; padding: 2px 2px 4px; color: var(--dim); font-size: 10px; }
   #rearrangepanel .recontrol label { color: var(--ink); font-weight: 700; white-space: nowrap; }
   #rearrangepanel .recontrol input[type=range] { min-width: 110px; width: 100%; }
   #rearrangepanel .recontrol output { min-width: 5ch; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+  /* Style is a three-way choice, not a position on a scale, so it gets segments
+     rather than a slider — the dial next to it is the one that has a middle. */
+  #rearrangepanel .restylerow { grid-template-columns: auto 1fr; }
+  #rearrangepanel .restyle { display: flex; gap: 3px; }
+  #rearrangepanel .restyle button { flex: 1 1 0; padding: 4px 6px; font-size: 10px; }
+  #rearrangepanel .restyle button[aria-checked="true"] { color: var(--on-accent);
+    background: var(--accent); border-color: var(--accent); }
+  #rearrangepanel .readvanced { flex: 1 0 100%; margin-top: 2px; border-top: 1px solid var(--line);
+    padding-top: 5px; }
+  #rearrangepanel .readvanced > summary { display: inline-block; color: var(--dim); font-size: 10px;
+    cursor: pointer; padding: 2px 0; border: 0; background: none; }
+  #rearrangepanel .readvanced > summary:hover { color: var(--ink); }
+  /* Open, its two controls share one row — the panel is wide enough now that stacking
+     them would only make the drawer taller than the things it is hiding. */
+  #rearrangepanel .readvanced[open] { display: flex; flex-wrap: wrap; align-items: center;
+    gap: 4px 18px; }
+  #rearrangepanel .readvanced .recontrol { flex: 1 1 300px; display: grid; margin-top: 2px; }
+  #rearrangepanel .rechordrow { flex: 0 1 auto; grid-template-columns: auto auto auto; }
+  #rearrangepanel .rechordrow select { font-size: 10px; padding: 3px 5px; }
+  /* The detected key, live beside the control that depends on it. */
+  #rechordskey { min-width: 8ch; text-align: left; color: var(--accent); font-weight: 700; }
+  /* The chord column: one fixed slot on every row, empty when a slice plays as
+     written, so a chord CHANGE is a change in one place the eye already watches. */
+  #rearrangelist li .rechordbadge { flex: none; width: 26px; text-align: center;
+    color: var(--accent); font-size: 10px; font-weight: 700; font-style: normal; }
+  /* The walk a part takes, on its rail card: 'i – VI – III – VII'. */
+  #rearrangeform .reformchords { padding-left: 24px; color: var(--accent); font-size: 9px;
+    font-weight: 700; letter-spacing: .02em; }
+  #rearrangeform .reformchords:empty { display: none; }
+  #rearrangepanel .recheck { display: flex; align-items: center; gap: 5px; margin-top: 2px;
+    color: var(--ink); font-size: 10px; font-weight: 700; white-space: nowrap; }
+  #rearrangepanel .recheck input { margin: 0; }
   #rearrangepanel .recontrolhint { grid-column: 1 / -1; display: flex; justify-content: space-between; margin-top: -3px;
     color: var(--faint); font-size: 9px; font-weight: 400; }
-  #rearrangelist { flex: 1 1 auto; min-height: 70px; overflow: auto; margin: 0; padding: 4px 6px 6px 30px;
+  #rearrangelist { flex: 1 1 auto; min-height: 70px; overflow: auto; margin: 0; padding: 4px 6px 6px 32px;
                    list-style: decimal; }
-  #rearrangelist li { display: flex; align-items: center; gap: 5px; margin: 2px 0; padding: 5px 7px;
-                      border: 1px solid transparent; border-radius: 5px; color: var(--dim); font-size: 10px; line-height: 1.35; }
+  #rearrangelist li { display: flex; align-items: center; gap: 5px; margin: 0; padding: 4px 7px;
+                      border: 1px solid transparent; border-radius: 5px; color: var(--dim); font-size: 11px; line-height: 1.35; }
   #rearrangelist li.active { color: var(--ink); background: var(--accent-wash); border-color: var(--accent-line); }
   #rearrangelist li.selected { outline: 1px solid var(--accent-line); background: color-mix(in srgb, var(--accent-wash) 55%, transparent); }
-  #rearrangelist li.kept { box-shadow: inset 2px 0 var(--accent); }
-  #rearrangelist li.disliked { box-shadow: inset 2px 0 var(--hot); }
+  /* THE GROUPING, DRAWN. Every slice of a part carries an unbroken rule down its left
+     edge in that part's colour, so the rows under a heading are visibly hanging off
+     it rather than merely following it. The rule is the row's own left border, and the
+     rows within a part sit flush against each other so it reads as one line; the gap
+     and the divider come only where the part CHANGES. */
+  #rearrangelist li { border-left: 3px solid var(--rolecolour, transparent); border-radius: 0 5px 5px 0; }
+  #rearrangelist li.resectionstart { margin-top: 10px; position: relative; }
+  #rearrangelist li.resectionstart::before { content: ''; position: absolute;
+    left: -28px; right: 2px; top: -6px; height: 1px; background: var(--line); }
+  #rearrangelist li .reop.restarts { font-weight: 700; color: var(--ink); }
   #rearrangelist li.favourite .reop { color: var(--accent); }
-  #rearrangelist li .reselect { flex: none; width: 21px; height: 20px; padding: 0; border: 1px solid transparent;
-                                 border-radius: 4px; color: var(--faint); background: transparent; font-size: 12px; line-height: 18px; }
-  #rearrangelist li .reselect:hover, #rearrangelist li .reselect:focus-visible { color: var(--ink); border-color: var(--accent-line); }
-  #rearrangelist li .reselect[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+  /* An edit made while the collage plays is installed at the next output bar line, so
+     until it lands the panel is showing a draft rather than what is being heard. A
+     dashed left rule and a slow pulse on the status say so, without the flashing
+     becoming the loudest thing in a panel you are reading rows off. */
+  /* The part rule goes dashed rather than changing colour: which part a row belongs to
+     is not in doubt while an edit is pending, only whether you have heard it yet. */
+  #rearrangepanel.pending #rearrangelist li { border-left-style: dashed; }
+  #rearrangepanel.pending #rearrangestatus { color: var(--accent); animation: repending 1.4s ease-in-out infinite; }
+  @keyframes repending { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+  @media (prefers-reduced-motion: reduce) {
+    #rearrangepanel.pending #rearrangestatus { animation: none; }
+  }
+  /* The square is the same control in both places, so it is the same square: on a row
+     it selects that slice, on a rail card it selects every slice in the part. */
+  #rearrangepanel .reselect { flex: none; width: 18px; height: 18px; padding: 0; border: 1px solid transparent;
+                              border-radius: 4px; color: var(--faint); background: transparent; font-size: 11px; line-height: 16px; }
+  #rearrangepanel .reselect:hover, #rearrangepanel .reselect:focus-visible { color: var(--ink); border-color: var(--accent-line); }
+  #rearrangepanel .reselect[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
   #rearrangelist li .reop { flex: 1 1 auto; min-width: 0; color: var(--ink); }
-  #rearrangelist li .reout { flex: none; color: var(--faint); margin-left: auto; }
-  #rearrangelist li .rekeep { flex: none; width: 21px; height: 20px; padding: 0; border: 1px solid transparent;
-                              border-radius: 4px; color: var(--faint); background: transparent; font-size: 12px; line-height: 18px; }
-  #rearrangelist li .rekeep:hover, #rearrangelist li .rekeep:focus-visible { color: var(--ink); border-color: var(--accent-line); }
-  #rearrangelist li .rekeep.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
-  #rearrangelist li .replaysection, #rearrangelist li .redown { flex: none; width: 21px; height: 20px; padding: 0;
+  #rearrangelist li .reout { flex: none; color: var(--faint); margin-left: auto; font-variant-numeric: tabular-nums; }
+  #rearrangeform .rekeep, #rearrangeform .redown { flex: none; width: 22px; height: 19px; padding: 0;
                               border: 1px solid transparent; border-radius: 4px; color: var(--faint);
-                              background: transparent; font-size: 11px; line-height: 18px; }
-  #rearrangelist li .replaysection:hover, #rearrangelist li .replaysection:focus-visible,
-  #rearrangelist li .redown:hover, #rearrangelist li .redown:focus-visible { color: var(--ink); border-color: var(--accent-line); }
-  #rearrangelist li .redown.on { color: var(--on-accent); background: var(--hot); border-color: var(--hot); }
+                              background: transparent; font-size: 11px; line-height: 17px; }
+  #rearrangeform .rekeep:hover, #rearrangeform .rekeep:focus-visible,
+  #rearrangeform .redown:hover, #rearrangeform .redown:focus-visible { color: var(--ink); border-color: var(--accent-line); }
+  #rearrangeform .rekeep.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+  #rearrangeform .redown.on { color: var(--on-accent); background: var(--hot); border-color: var(--hot); }
   #rearrangepanel .refoot { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px;
                              border-top: 1px solid var(--line); background: var(--well); }
   #rearrangepanel .refoot button { flex: 1 1 auto; padding: 5px 8px; font-size: 10px; }
@@ -6030,48 +6116,83 @@
 
 <section id="rearrangepanel" hidden aria-label="Rearrange recipe">
   <div class="rehead">
-    <div class="retitle">Rearrange<div class="resub">A temporary, same-length song form — verse, chorus and bridge blocks built from four-bar phrases, often re-cut as alternating half-bar or bar cells. Set the three dials before Generate: Extremeness controls the size of the cuts, Transpose controls melodic lifts, and Patterning controls how strongly motifs return. Play Rearrangement counts four beats before the first bar. Use ▶ or double-click a row to play from that section or bar. Tap 👍 to keep a section for the next Generate, or 👎 to ask for a replacement. Select individual rows for Split halves, Unroll repeats, ×2 loops, ÷2 loops, Reroll selected, or Remove selected. Removing a slice fills its exact output time with nearby material so the new song stays the same length. Toggle Steady 4/4 drums to keep the existing kit sounds while replacing the source drum patterns. In the Piano Roll, drag a range and press Fav + to include it in every new recipe. Every part stays together; pitched parts may shift by a gentle whole tone, fourth, or fifth.</div></div>
+    <div class="retitle">Rearrange<div class="resub">A temporary, same-length re-cut of this song — the song itself is never changed. <b>Style</b> sets the size of the cuts, <b>Variation</b> how often motifs return, <b>Drums</b> what the kit does. Edits while playing are heard from the next bar. Hover any control for detail.</div></div>
     <button id="reclose" class="reclose" type="button" aria-label="Close Rearrange">×</button>
   </div>
   <div id="rearrangestatus" role="status" aria-live="polite">Generate a recipe to begin.</div>
-  <div id="rearrangeform" hidden aria-label="Four-bar Rearrange roadmap"></div>
-  <ol id="rearrangelist" aria-label="Rearrange operations"></ol>
+  <div class="rebody">
+    <div id="rearrangeform" hidden aria-label="Rearrange roadmap"></div>
+    <ol id="rearrangelist" aria-label="Rearrange operations"></ol>
+  </div>
   <div class="refoot">
-    <div class="recontrol">
-      <label for="reextreme">Extremeness</label>
-      <input id="reextreme" type="range" min="0" max="100" step="5" value="35"
-             aria-describedby="reextremehint" title="Dial from smooth, repeated phrases to wild chopped collage">
-      <output id="reextremevalue" for="reextreme">35%</output>
-      <div id="reextremehint" class="recontrolhint"><span>Smooth</span><span>Wild</span></div>
+    <div class="recontrol restylerow">
+      <label id="restylelabel">Style</label>
+      <div id="restyle" class="restyle" role="radiogroup" aria-labelledby="restylelabel">
+        <button type="button" data-style="phrase" role="radio" aria-checked="false"
+                title="Whole one to four-bar phrases, always on a bar line">Phrase</button>
+        <button type="button" data-style="groove" role="radio" aria-checked="true"
+                title="Bar and half-bar cells on eight-step boundaries — the musical default">Groove</button>
+        <button type="button" data-style="chop" role="radio" aria-checked="false"
+                title="Beat and half-bar cells, still landing on the beat">Chop</button>
+      </div>
     </div>
     <div class="recontrol">
-      <label for="retranspose">Transpose</label>
-      <input id="retranspose" type="range" min="0" max="100" step="5" value="45"
-             aria-describedby="retransposehint" title="Dial the amount of shared melodic lift">
-      <output id="retransposevalue" for="retranspose">±2/5</output>
-      <div id="retransposehint" class="recontrolhint"><span>Off</span><span>±2 / 5 / 7</span></div>
+      <label for="revariation">Variation</label>
+      <input id="revariation" type="range" min="0" max="100" step="5" value="45"
+             aria-describedby="revariationhint" title="Dial between returning motifs and fresh material">
+      <output id="revariationvalue" for="revariation">Balanced</output>
+      <div id="revariationhint" class="recontrolhint"><span>Familiar</span><span>Different</span></div>
     </div>
-    <div class="recontrol">
-      <label for="repattern">Patterning</label>
-      <input id="repattern" type="range" min="0" max="100" step="5" value="55"
-             aria-describedby="repatternhint" title="Dial between one-off variation and returning motifs">
-      <output id="repatternvalue" for="repattern">Balanced</output>
-      <div id="repatternhint" class="recontrolhint"><span>Loose</span><span>Motif</span></div>
-    </div>
-    <button id="reselectall" type="button">Select all slices</button>
-    <button id="reclearselection" type="button">Clear selection</button>
-    <button id="resplit" type="button">Split halves</button>
-    <button id="reunroll" type="button">Unroll repeats</button>
-    <button id="redoublerepeats" type="button">×2 loops</button>
-    <button id="rehalfrepeats" type="button">÷2 loops</button>
-    <button id="rerollselected" type="button">Reroll selected</button>
-    <button id="reremove" type="button">Remove selected</button>
-    <button id="redrums" type="button" aria-pressed="false">Original drums</button>
-    <button id="regenerate" type="button">Generate</button>
-    <button id="replay" type="button">Play Rearrangement</button>
-    <button id="resave" type="button">Save JSON…</button>
-    <button id="reload" type="button">Load JSON…</button>
-    <button id="rereturn" type="button">Return to Song</button>
+    <details id="readvanced" class="readvanced">
+      <summary>Advanced</summary>
+      <div class="recontrol rechordrow">
+        <label for="rechords">Chord loop</label>
+        <select id="rechords" title="Walk verse/chorus riffs around a four-chord loop of the song’s own key — one chord per bar, the way dance music moves. Auto picks a loop per part; Off keeps every slice in its written harmony. Major-key songs always take I–V–vi–IV.">
+          <option value="auto" selected>Auto</option>
+          <option value="edm">i – VI – III – VII</option>
+          <option value="house">i – v – VI – iv</option>
+          <option value="anthem">VI – VII – i – i</option>
+          <option value="dark">i – iv – VI – v</option>
+          <option value="off">Off</option>
+        </select>
+        <select id="rekey" title="The key the chord loops walk in. Detected trusts the analysis — shown beside it, marked as a guess when the song does not settle — or name the key yourself and the loops trust you">
+          <option value="auto" selected>Detected key</option>
+        </select>
+        <output id="rechordskey" for="rekey">no analysis yet</output>
+      </div>
+      <div class="recontrol rechordrow">
+        <label for="rewalk">Walk</label>
+        <select id="rewalk" title="How much of each four-bar part actually changes chord. Last two bars holds the riff home then moves; Turnaround only lifts into the bar line; Full loop re-harmonises every bar">
+          <option value="half" selected>Last two bars</option>
+          <option value="turn">Turnaround only</option>
+          <option value="full">Full loop</option>
+        </select>
+      </div>
+      <label class="recheck" for="reglitch" title="Permit one and two-sixteenth cuts and starts off any musical boundary">
+        <input id="reglitch" type="checkbox"> Allow glitches
+      </label>
+      <div class="recontrol">
+        <label for="retranspose">Transpose</label>
+        <input id="retranspose" type="range" min="0" max="100" step="5" value="0"
+               aria-describedby="retransposehint" title="Dial the amount of shared chromatic lift — every note the same distance. Sections walking a chord loop skip it">
+        <output id="retransposevalue" for="retranspose">Off</output>
+        <div id="retransposehint" class="recontrolhint"><span>Off</span><span>±2 / 5 / 7</span></div>
+      </div>
+    </details>
+    <button id="reselectall" type="button" title="Select every slice in the list">Select all slices</button>
+    <button id="reclearselection" type="button" title="Clear the slice selection">Clear selection</button>
+    <button id="resplit" type="button" title="Interleave each selected slice’s two halves: A B A B, same length">Split halves</button>
+    <button id="reunroll" type="button" title="Turn a compact repeated row into separately selectable passes">Unroll repeats</button>
+    <button id="redoublerepeats" type="button" title="Halve the source cell and double its repeats — a tighter figure">×2 loops</button>
+    <button id="rehalfrepeats" type="button" title="Join repeated passes into one longer source phrase">÷2 loops</button>
+    <button id="rerollselected" type="button" title="Choose new source material for only the selected slices">Reroll selected</button>
+    <button id="reremove" type="button" title="Replace selected slices with nearby material; the song keeps its exact length">Remove selected</button>
+    <button id="redrums" type="button">Drums: Song groove</button>
+    <button id="regenerate" type="button" title="Build a new arrangement — while playing, it is heard from the next bar">Generate</button>
+    <button id="replay" type="button" title="Start the rearrangement from the top, after a four-beat count-in">Play Rearrangement</button>
+    <button id="resave" type="button" title="Save this recipe as a small JSON file — instructions, not audio">Save JSON…</button>
+    <button id="reload" type="button" title="Load a saved recipe for this song; it never starts playback by itself">Load JSON…</button>
+    <button id="rereturn" type="button" title="Clear the rearrangement and return to the normal song">Return to Song</button>
     <input id="rearrangefile" type="file" accept="application/json,.json" hidden>
   </div>
 </section>

@@ -103,6 +103,18 @@ const TREE_MAX = 18; // tallest crown, reserved as tile headroom
 // Slower than the far hill layer's 0.15: the volcano sits behind that range,
 // so it must drift more slowly than the crests occluding it.
 const VOLCANO_PLX = 0.09 * PLX;
+// How far a hill's body is baked BELOW the bottom of the frame.
+//
+// A hill tile used to stop at `H`, which is right for as long as the background
+// only ever moves down. Going below the lane moves the whole background UP, and
+// then everything under the ridge simply ran out — leaving a straight-edged
+// strip of nothing where the hills should have carried on. Patching that strip
+// with a flat fill at the caller only moved the problem: a solid colour butted
+// against a shaded tile is a seam in a different place. The body is a fill, so
+// baking more of it costs one taller canvas per hill layer and nothing per
+// frame.
+const HILL_UNDERFILL = 220;
+
 function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const period = Math.max(16, Math.round(Math.PI * wl));
   const top = yBase - amp;
@@ -122,7 +134,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   if (!tile) {
     tile = document.createElement('canvas');
     tile.width = (period + MARGIN * 2) * SS;
-    tile.height = Math.max(1, (H - tileTop) * SS);
+    tile.height = Math.max(1, (H - tileTop + HILL_UNDERFILL) * SS);
     const x = tile.getContext('2d');
     x.scale(SS, SS);
     x.translate(MARGIN, -tileTop); // tile-local 0 is ridge x 0; the margin sits left of it
@@ -136,9 +148,9 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
     };
     const ridgePath = () => {
       x.beginPath();
-      x.moveTo(-OVER, H);
+      x.moveTo(-OVER, H + HILL_UNDERFILL);
       for (let px = -OVER; px <= period + OVER; px += 2) x.lineTo(px, ridge(px));
-      x.lineTo(period + OVER, H);
+      x.lineTo(period + OVER, H + HILL_UNDERFILL);
       x.closePath();
     };
     ridgePath();
@@ -219,7 +231,8 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = true;
   for (let x0 = -off; x0 < W; x0 += period) {
-    ctx.drawImage(tile, x0 - MARGIN, tileTop, period + MARGIN * 2, H - tileTop);
+    ctx.drawImage(tile, x0 - MARGIN, tileTop,
+      period + MARGIN * 2, H - tileTop + HILL_UNDERFILL);
   }
   ctx.imageSmoothingEnabled = prev;
 }

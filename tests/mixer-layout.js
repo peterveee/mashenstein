@@ -29,17 +29,139 @@ assert(/id="rearrangebtn"/.test(shell)
   && /id="rehalfrepeats"/.test(shell)
   && /id="rerollselected"/.test(shell)
   && /id="reremove"/.test(shell)
-  && /id="reextreme"/.test(shell)
-  && /id="reextremevalue"/.test(shell)
+  && /id="restyle"/.test(shell)
+  && /id="revariation"/.test(shell)
+  && /id="revariationvalue"/.test(shell)
   && /id="retranspose"/.test(shell)
   && /id="retransposevalue"/.test(shell)
-  && /id="repattern"/.test(shell)
-  && /id="repatternvalue"/.test(shell)
   && /id="redrums"/.test(shell)
-  && /Steady 4\/4 drums/.test(shell)
+  && /Drums: Song groove/.test(shell)
   && /id="resave"/.test(shell)
   && /id="reload"/.test(shell),
   'the toolbar exposes the non-blocking Rearrange operation list and JSON controls');
+// The three drum treatments are named identically wherever they appear — button,
+// status line, toast — because "original" and "song" both describe the song's own
+// drums and neither word can carry the distinction by itself.
+assert(/#rearrangepanel\.pending/.test(shell)
+  && /song: 'Song groove'/.test(entry)
+  && /original: 'Chopped drums'/.test(entry)
+  && /basic4: 'Steady 4\/4'/.test(entry)
+  && /REARRANGE_DRUM_ORDER = \['song', 'original', 'basic4'\]/.test(entry)
+  && /cycleRearrangeDrums/.test(entry)
+  && /rearrangeDrumLabel\(mode\)/.test(entry),
+  'the three Rearrange drum modes cycle under one set of names');
+// Every key the generator reads has a control, and every control a key: Style and
+// Variation in the open, glitches and Transpose behind Advanced and both off by
+// default. Nothing is left deciding things from behind a preset.
+assert(/data-style="phrase"/.test(shell)
+  && /data-style="groove"/.test(shell)
+  && /data-style="chop"/.test(shell)
+  && /id="reglitch" type="checkbox"/.test(shell)
+  && /id="readvanced"/.test(shell)
+  && /<summary>Advanced<\/summary>/.test(shell)
+  && /id="retranspose"[^>]*[\s\S]{0,120}?value="0"/.test(shell)
+  && /Familiar<\/span><span>Different/.test(shell)
+  && /rearrangeStyleChoice = REARRANGE_STYLE_DEFAULT/.test(entry)
+  && /function rearrangeAllowGlitches/.test(entry)
+  && /rearrangeProfileCache/.test(entry)
+  && /rearrangeSourceProfile\(\{ build: true \}\)/.test(entry)
+  && /function rearrangeGenerationProfile/.test(entry),
+  'Rearrange exposes Style, Variation and an Advanced drawer, and profiles while parked');
+// The roadmap is a vertical rail beside the list, not a ribbon above it: every section
+// of the form stays visible at once, however many the song has. The rebody wrapper is
+// what makes the two share the panel's height with independent scrolls.
+assert(/class="rebody"/.test(shell)
+  && /#rearrangepanel \.rebody \{ display: flex; flex: 1 1 auto; min-height: 0; \}/.test(shell)
+  && /#rearrangeform \{ display: flex; flex-direction: column;/.test(shell)
+  && /border-right: 1px solid var\(--line\)/.test(shell)
+  && /Hover any control for detail\./.test(shell),
+  'the Rearrange roadmap runs vertically beside the list, under a short header note');
+// The list is readable as a FORM (a rule above the first row of each part) and follows
+// the playhead — but only when the active row changes, and never against a hand that
+// just scrolled: wheel/touch hold the follow off, and 'scroll' deliberately does not,
+// because the follow's own scrollIntoView fires it.
+assert(/resectionstart/.test(entry)
+  && /#rearrangelist li\.resectionstart/.test(shell)
+  && /rearrangeFollowHeldUntil/.test(entry)
+  && /scrollIntoView\(\{ block: 'nearest' \}\)/.test(entry)
+  && /pos\.operationIndex !== rearrangeFollowedRow/.test(entry)
+  && /addEventListener\('wheel', holdRearrangeFollow, \{ passive: true \}\)/.test(entry)
+  && !/addEventListener\('scroll', holdRearrangeFollow/.test(entry),
+  'the Rearrange list rules off each part and follows playback without fighting the user');
+// Whole-part actions belong to the rail, not to the first row of the part down in the
+// list — where they made that one row a different shape from every row under it and
+// made its per-slice checkbox read as if it meant the whole part. Every list row is now
+// checkbox, colour chip, text, output position, and nothing else.
+assert(/toggleRearrangeSectionSlices/.test(entry)
+  && /rearrangeSectionOperationIndices/.test(entry)
+  && /Select all \$\{slices\.length\} slices in \$\{section\.name\}/.test(entry)
+  && !/replaysection/.test(entry)
+  && !/replaysection/.test(shell)
+  && /#rearrangeform \.rekeep, #rearrangeform \.redown/.test(shell)
+  && /#rearrangepanel \.reselect \{/.test(shell),
+  'Rearrange section actions live on the rail, so every list row is the same shape');
+// One colour per ROLE, fixed rather than derived from --accent: the desk has eight
+// themes and the accent differs in each, but a Chorus should be one colour in all of
+// them — and the third Chorus should be recognisably the same part as the first.
+assert(/--role-intro:/.test(shell)
+  && /--role-verse:/.test(shell)
+  && /--role-chorus:/.test(shell)
+  && /--role-bridge:/.test(shell)
+  && /--role-outro:/.test(shell)
+  && /\[data-role="Chorus"\] \{ --rolecolour: var\(--role-chorus\); \}/.test(shell)
+  && /\.rerolechip \{/.test(shell)
+  && /border-left: 3px solid var\(--rolecolour, transparent\)/.test(shell)
+  && /seg\.dataset\.role = section\.role/.test(entry)
+  && /li\.dataset\.role = section\.role/.test(entry)
+  && /chip\.className = 'rerolechip'/.test(entry),
+  'each part of the form carries one theme-independent colour, in the rail and the list');
+// Chord loops: harmonic movement is DIATONIC — per-note degree steps within the
+// song's detected key, so an Am riff plays as F major on the VI — never a flat
+// semitone shift wearing a chord's name. The engine applies it per value in the
+// transpose pass, and only when the recipe both carries a key and asks for it.
+assert(/id="rechords"/.test(shell)
+  && /value="edm"/.test(shell) && /value="house"/.test(shell)
+  && /value="anthem"/.test(shell) && /value="dark"/.test(shell)
+  && /progression: rearrangeChordLoop\(\)/.test(entry)
+  && /rearrangeHarmonyLabel/.test(entry)
+  && /harmonicShift\(v, rearrangeKey, rearrangeHarmony\)/.test(audio)
+  && /const rearrangeKey = rearrangeHarmony \? this\.rearrangement\?\.key \|\| null : null/.test(audio)
+  && /shift\(wantHarmony \? harm\(v\) : v, n\)/.test(audio),
+  'chord loops move notes by scale degrees in the recipe key, applied in the engine');
+// The chords are VISIBLE, and the two pitch systems never share a recipe: the detected
+// key sits beside the control before Generate is pressed, every row carries a
+// fixed-width chord column (empty = plays as written, so rows stay aligned), each rail
+// card states its walk, and the chromatic dial is disabled while a loop is on.
+assert(/id="rechordskey"/.test(shell)
+  && /rechordbadge/.test(entry) && /\.rechordbadge \{ flex: none; width: 26px/.test(shell)
+  && /reformchords/.test(entry) && /\.reformchords:empty \{ display: none; \}/.test(shell)
+  && /rearrangeSectionChordLine/.test(entry)
+  && /syncRearrangeKeyReadout/.test(entry)
+  && /syncRearrangeChordLoopControl/.test(entry)
+  && /dial\.disabled = walking/.test(entry)
+  && /const chromatic = keyed \? 0 : transpose/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8')),
+  'chord walks are visible everywhere and lock out the chromatic dial while active');
+// The key is never a dead end: the analysis's best guess is used even when unclear
+// (shown with a '?'), the picker overrules it outright, and the analysis rebuilds
+// itself at any parked sync — panel open order and song switches must not strand the
+// readout on "no analysis yet".
+assert(/id="rekey"/.test(shell)
+  && /key: rearrangeKeyChoice\(\)/.test(entry)
+  && /function rearrangeKeyChoice/.test(entry)
+  && /syncRearrangeKeyOptions/.test(entry)
+  && /rearrangeSourceProfile\(\{ build: !playing \}\)/.test(entry)
+  && /if \(rearrangePanelOpen\) syncRearrangeKeyReadout\(\)/.test(entry)
+  && /overrideKey \|\| \(detected \? \{ tonic: detected\.tonic, minor: detected\.minor \} : null\)/
+    .test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8')),
+  'the chord-loop key self-heals, guesses when unclear, and yields to a manual pick');
+// A walking section is ONE repeated cell, and the walk has an amount: hold-then-move
+// by default, turnaround for subtlety, full loop by name. Listening drove both rules.
+assert(/id="rewalk"/.test(shell)
+  && /value="half" selected/.test(shell)
+  && /walk: rearrangeChordWalk\(\)/.test(entry)
+  && /function rearrangeChordWalk/.test(entry)
+  && /REARRANGE_WALKS/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8')),
+  'the chord walk has a visible amount control, defaulting to the back half');
 assert(/generateRearrangement\(steps/.test(entry)
   && /validateRearrangement\(raw/.test(entry)
   && /Audio\.setRearrangement\(recipe\)/.test(entry)
@@ -55,17 +177,21 @@ assert(/generateRearrangement\(steps/.test(entry)
   && /playRearrangementAt/.test(entry)
   && /renderRearrangeForm/.test(entry)
   && /data-section/.test(entry)
-  && /toggleRearrangeDrums/.test(entry)
+  && /cycleRearrangeDrums/.test(entry)
   && /setPlaying\(true, 0, \{ countIn: 4 \}\)/.test(entry)
-  && /setPlaying\(true, at, \{ countIn: 4 \}\)/.test(entry)
+  // Only the deliberate from-the-top start counts in; a section jump plays at once.
+  && /setPlaying\(true, at\)/.test(entry)
+  && !/setPlaying\(true, at, \{ countIn/.test(entry)
+  && /const accent = index === 0;/.test(audio)
   && /Audio\.setBank\(track\.bank, mixFor\(trackId\), arrFor\(trackId\), \{ countIn \}\)/.test(entry)
   && /transformSelectedRearrange\('remove', 'Removed slices'\)/.test(entry)
-  && /extremeness: rearrangeExtremeness\(\)/.test(entry)
+  && /style: rearrangeStyle\(\)/.test(entry)
+  && /variation: rearrangeVariation\(\)/.test(entry)
+  && /allowGlitches: rearrangeAllowGlitches\(\)/.test(entry)
   && /transposeAmount: rearrangeTransposeAmount\(\)/.test(entry)
-  && /patterning: rearrangePatterning\(\)/.test(entry)
-  && /syncRearrangeExtremeness/.test(entry)
+  && /syncRearrangeStyle/.test(entry)
+  && /syncRearrangeVariation/.test(entry)
   && /syncRearrangeTranspose/.test(entry)
-  && /syncRearrangePatterning/.test(entry)
   && /ondblclick/.test(entry)
   && /perfect fourth/.test(entry)
   && /perfect fifth/.test(entry)
@@ -78,8 +204,34 @@ assert(/setRearrangement\(recipe = null\)/.test(audio)
   && /basicRearrangeDrums/.test(audio)
   && /_scheduleCountIn/.test(audio)
   && /const startGap = Math\.max\(gap, countInSeconds/.test(audio)
-  && /_scheduleFrozenLane\(key, state, sourceStep/.test(audio),
+  && /_scheduleFrozenLane\(key, state, frozenStep/.test(audio),
   'the real scheduler maps source ranges while keeping output transport timing');
+// Song groove reads the song's own percussion at the OUTPUT clock, which needs a
+// second bar resolved per bar — memoised, or it lands in a scheduler hot path whose
+// lane resolution was measured at 21:1 against note construction.
+assert(/songRearrangeDrums/.test(audio)
+  && /_rearrangeOutputBank\(outputBar\)/.test(audio)
+  && /_rearrangeOutputSlot\(outputBar, resolution\)/.test(audio)
+  && /cached\.bar === bar && cached\.bank === this\.bank/.test(audio)
+  && /sequenceValue\(outputBank, key, sOutput, resolution\)/.test(audio)
+  && /const frozenStep = songRearrangeDrums && frozenPercussion \? this\.step : sourceStep/.test(audio)
+  // A predicate, never `fxBar === outputBar`: the plan repeats, so a source and an
+  // output position can share one bar object at two different sixteenths of it.
+  && /const onOutputClock = songRearrangeDrums && PERCUSSION_LANES\.includes\(baseLane\(key\)\)/.test(audio)
+  && /const len = onOutputClock/.test(audio),
+  'song-groove percussion resolves its own output bar, once per bar');
+// An edit to a playing collage waits for the next output bar line instead of stopping
+// the transport, re-seeking, and counting four beats in again.
+assert(/queueRearrangement\(recipe = null\)/.test(audio)
+  && /applyPendingRearrangement\(\)/.test(audio)
+  && /onRearrangementInstalled\(fn\)/.test(audio)
+  && /this\.applyPendingRearrangement\(\);/.test(audio)
+  && /if \(this\.pendingRearrangement\) this\.setRearrangement\(this\.pendingRearrangement\.recipe\)/.test(audio)
+  && /Audio\.queueRearrangement\(recipe\) === 'queued'/.test(entry)
+  && /Audio\.onRearrangementInstalled\?\.\(/.test(entry)
+  && /function applyRearrangeEdit/.test(entry)
+  && /classList\.toggle\('pending', rearrangePending\)/.test(entry),
+  'Rearrange edits install at the next output bar without restarting playback');
 
 let failed = false;
 function assert(cond, msg) {
@@ -1610,18 +1762,28 @@ assert(!/#navdrawer \{[^}]*box-shadow/s.test(rules)
 // surface; and the dark ink on the mute and section badges, which is legible on a
 // saturated fill in any theme. Anything beyond that is a theme hardcoded again.
 //
-// The ceiling moved 42 → 43 when the Advanced window grew its own keyboard. Every one
-// of the 43 was accounted for at that point, and the count is the whole audit:
+// The ceiling moved 42 → 43 when the Advanced window grew its own keyboard, and
+// 43 → 46 when Rearrange coloured the parts of the form. The sum was re-done at that
+// point rather than the number nudged, and it is the whole audit:
 //
-//   30  the keyboards — #synthfull .sfk*, #osk .oskkey*, #pianoroll .rollblack
-//   10  the moulded fader cap — its radial gradient and rim
-//    3  the badge inks — #0d1013, #5a101d, #230d0d
+//   24  the keyboards — #synthfull .sfk*, #osk .oskkey*, #pianoroll .rollblack
+//    6  the moulded fader cap — its radial gradient and rim
+//   11  the badge inks, the fader pip and the keyboard's own dark ground
+//    5  the form-part colours — --role-intro/verse/chorus/bridge/outro
+//
+// The fourth row is the newest and the one most worth arguing with, so: those five are
+// fixed ON PURPOSE. Every other colour here follows the theme, but the desk has eight
+// themes whose accent is teal in one and gold in another, and a Chorus has to be the
+// same colour in all of them or the thing the colour exists to say — that the third
+// chorus is the same part as the first — stops being sayable. They are defined once on
+// #rearrangepanel and used through var(--rolecolour), so they are a ramp of their own
+// rather than five hexes sprayed through the rules.
 //
 // A number is a poor guard on its own, so raise it only after doing that sum again. A
-// colour that does not land in one of those three rows is the thing this is here to
+// colour that does not land in one of those four rows is the thing this is here to
 // catch, and it will still trip on the next one.
 const strayHexes = (rules.match(/#[0-9a-fA-F]{6}\b/g) || []).length;
-assert(strayHexes <= 43, `the rules carry ${strayHexes} literal hexes; only the keyboards, the fader cap and the badge inks should be fixed`);
+assert(strayHexes <= 46, `the rules carry ${strayHexes} literal hexes; only the keyboards, the fader cap, the badge inks and the form-part colours should be fixed`);
 assert(!/hsl\(\$\{laneHue\(key\)\} 3[02]% 1[25]%\)/.test(entry)
   && entry.includes('let panelIsLight = false')
   && /const arrangementBarColour = \(key, shade = 56\) => \{[\s\S]*?const themed = themeTrackColour\(key\)[\s\S]*?58%/.test(entry)

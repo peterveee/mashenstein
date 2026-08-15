@@ -5,6 +5,8 @@
 // note data: the live engine resolves the current song/mix at playback time, so a
 // recipe remains small, readable, and safe to discard without changing a song.
 
+import { cutCost, chromaMatch, energyOver, detectKey } from './rearrange-profile.js';
+
 export const REARRANGE_KIND = 'mashenstein-rearrangement';
 export const REARRANGE_VERSION = 1;
 export const REARRANGE_GRID = 'sixteenth';
@@ -19,20 +21,238 @@ export const REARRANGE_PATTERN_DEFAULT = 0.5;
 // octave jumps now.
 export const REARRANGE_TRANSPOSES = Object.freeze([-12, -7, -5, -2, 0, 2, 5, 7, 12]);
 export const REARRANGE_GENERATED_TRANSPOSES = Object.freeze([-7, -5, -2, 2, 5, 7]);
-// Rearrange can optionally replace authored percussion triggers with a small,
-// deterministic four-on-the-floor kit.  Keep this in the recipe rather than in the
-// song bank so the normal song, exports, and saved arrangements remain untouched.
-export const REARRANGE_DRUM_MODES = Object.freeze(['original', 'basic4']);
+// How the collage treats percussion. Keep this in the recipe rather than in the song
+// bank so the normal song, exports, and saved arrangements remain untouched.
+//
+//   original — percussion is chopped with everything else, at the mapped source
+//              position. The drums go where the collage goes.
+//   song     — the song's OWN authored percussion, read at the output clock, so the
+//              groove runs straight underneath a rearranged top. This is what makes a
+//              chopped arrangement sound played rather than assembled, and it is the
+//              default for newly generated recipes.
+//   basic4   — a deterministic four-on-the-floor kit built from the existing kit
+//              sounds, also on the output clock, ignoring what the song wrote.
+//
+// A recipe with no `drums` field still means `original`, so every saved v1 file keeps
+// the behaviour it was auditioned with.
+export const REARRANGE_DRUM_MODES = Object.freeze(['original', 'song', 'basic4']);
+export const REARRANGE_DRUM_DEFAULT = 'song';
 
 export const REARRANGE_FORM_ROLES = Object.freeze([
   'Intro', 'Verse', 'Chorus', 'Bridge', 'Outro',
 ]);
+
+// How big each part of the form should feel, against the song's own busiest bar. Only
+// consulted when a rich profile can measure energy; the ordering is the point rather
+// than the exact numbers — a chorus above a verse, an intro and an outro below both.
+const ROLE_ENERGY = Object.freeze({
+  Intro: 0.35, Verse: 0.55, Chorus: 0.95, Bridge: 0.5, Outro: 0.3,
+});
 
 const PHRASE_STEPS = 64; // four bars at sixteen sixteenths per bar
 
 const PHRASE_LENGTH_WEIGHTS = Object.freeze([
   [1, 2], [2, 4], [4, 7], [8, 34], [16, 42], [32, 10], [64, 1],
 ]);
+
+/**
+ * ---- STYLES ------------------------------------------------------------------
+ *
+ * The three ways this generator is asked to cut a song up. Each is a hard GATE on
+ * cell length and on where in the source a cell may start — not a nudge, a gate, so
+ * "Groove" can be relied on to produce bar and half-bar cells on eight-step
+ * boundaries and nothing else. Musical taste beyond that is scored, not gated; see
+ * `scoreOffset`.
+ *
+ * `grid` is applied to the ABSOLUTE source position, not to an offset within the
+ * chosen phrase, because a phrase base is only aligned to four bars when the song
+ * divides evenly into them. Aligning the offset would quietly let the last phrase of
+ * an odd-length song cut anywhere.
+ *
+ * Glitches — one and two-sixteenth cuts, and starts off any musical boundary — are
+ * not a style. They are an explicit switch, because they are the one thing here that
+ * cannot be arrived at by accident and should not be.
+ */
+export const REARRANGE_STYLES = Object.freeze({
+  phrase: {
+    // Whole phrases: one to four bars, always on a bar line. The least chopped
+    // setting the generator has, for songs whose melodies need room.
+    cells: [[16, 30], [32, 45], [64, 25]],
+    grid: 16,
+    pairChance: 0.2,
+    loopChance: 0.9,
+    patterning: 0.6,
+  },
+  groove: {
+    // Bar and half-bar cells on eight-step boundaries. The default: enough movement
+    // to be an arrangement rather than an excerpt, aligned enough to stay danceable.
+    cells: [[8, 38], [16, 52], [32, 10]],
+    grid: 8,
+    pairChance: 0.62,
+    loopChance: 0.55,
+    patterning: 0.65,
+  },
+  chop: {
+    // Beat and half-bar cells, still on the beat. Busy, and still metrical.
+    cells: [[4, 40], [8, 45], [16, 15]],
+    grid: 4,
+    pairChance: 0.7,
+    loopChance: 0.3,
+    patterning: 0.45,
+  },
+});
+export const REARRANGE_STYLE_NAMES = Object.freeze(Object.keys(REARRANGE_STYLES));
+export const REARRANGE_STYLE_DEFAULT = 'groove';
+export const REARRANGE_VARIATION_DEFAULT = 0.45;
+
+/**
+ * ---- HARMONY: CHORD LOOPS --------------------------------------------------------
+ *
+ * A chromatic transpose moves the TAPE — every note by the same distance, so an Am
+ * phrase shifted down four semitones comes back as Fm. Dance music does not do that.
+ * It walks the same riff around a four-chord loop of the KEY: Am becomes F, C, G —
+ * major chords, because that is what those degrees of A minor are. Getting there
+ * needs diatonic movement: each note steps N degrees within the song's scale, and the
+ * chord qualities fall out on their own (see `harmonicShift`).
+ *
+ * A progression here is therefore four SCALE-DEGREE OFFSETS, one per bar of a
+ * four-bar section, applied to whatever slice sounds in that bar. Offset 0 is the
+ * material as written; -2 plays it as the VI; the riff stays the riff throughout.
+ * That one-chord-per-bar walk over a repeating cell IS the modern pop/EDM move, and
+ * it needs no note data — which is what keeps it inside the recipe contract.
+ *
+ * The minor palettes are the standard club vocabulary; a song detected as MAJOR gets
+ * the axis progression (I–V–vi–IV) whichever palette is asked for, because the minor
+ * numerals do not mean anything there.
+ */
+export const REARRANGE_PROGRESSIONS = Object.freeze({
+  edm: { label: 'i – VI – III – VII', minor: [0, -2, 2, -1] },     // Titanium, Animals
+  house: { label: 'i – v – VI – iv', minor: [0, -3, -2, 3] },      // the nu-disco loop
+  anthem: { label: 'VI – VII – i – i', minor: [-2, -1, 0, 0] },    // the festival build
+  dark: { label: 'i – iv – VI – v', minor: [0, 3, -2, -3] },       // synthwave/dark pop
+});
+export const REARRANGE_PROGRESSION_NAMES = Object.freeze(Object.keys(REARRANGE_PROGRESSIONS));
+// One major-key walk fits every request: the axis progression, pop's I–V–vi–IV.
+const MAJOR_PROGRESSION = Object.freeze([0, -3, -2, 3]);
+// How many bars of the four-bar loop actually move. Listening said a full walk is
+// often too much: the riff loses its footing when every bar re-harmonises. The
+// default holds home for two bars and moves on the back half; the turnaround holds
+// three and lifts only into the bar line — the oldest trick in pop, and the subtlest.
+export const REARRANGE_WALKS = Object.freeze({ full: 4, half: 2, turn: 1 });
+export const REARRANGE_WALK_DEFAULT = 'half';
+
+/**
+ * A palette reduced to its walk amount: home for the held bars, then the palette's
+ * MOVING chords, in order, at the end. Selected by movement rather than by bar
+ * position, because the anthem palette (VI–VII–i–i) moves at the START — a
+ * positional mask kept its two home bars and threw its lift away, leaving a
+ * "walking" section of four identical tonic bars. This way every reduced walk still
+ * walks: EDM gives i–i–III–VII, the anthem its classic i–i–VI–VII.
+ */
+function walkedChords(palette, walk) {
+  const bars = REARRANGE_WALKS[walk] ?? REARRANGE_WALKS[REARRANGE_WALK_DEFAULT];
+  if (bars >= palette.length) return palette;
+  const moving = palette.filter((chord) => chord !== 0);
+  const tail = moving.slice(-Math.max(1, Math.min(bars, moving.length)));
+  return [...new Array(palette.length - tail.length).fill(0), ...tail];
+}
+// Degree offsets a recipe may carry: within one octave of scale degrees.
+export const REARRANGE_HARMONY_RANGE = 7;
+
+const MINOR_SCALE = Object.freeze([0, 2, 3, 5, 7, 8, 10]);
+const MAJOR_SCALE = Object.freeze([0, 2, 4, 5, 7, 9, 11]);
+const MINOR_NUMERALS = Object.freeze(['i', 'ii°', 'III', 'iv', 'v', 'VI', 'VII']);
+const MAJOR_NUMERALS = Object.freeze(['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°']);
+
+/** The roman numeral a degree offset lands on, for labels: -2 in minor is 'VI'. */
+export function harmonyNumeral(degrees, minor = true) {
+  const numerals = minor ? MINOR_NUMERALS : MAJOR_NUMERALS;
+  return numerals[((degrees % 7) + 7) % 7];
+}
+
+/**
+ * Move one frequency by whole SCALE DEGREES within a key.
+ *
+ * This is the note-level mechanics of the chord loop: A stepped -2 degrees in A minor
+ * is F, C is A, E is C — the Am triad has become an F major triad, no note having
+ * moved the same distance as its neighbours. A note outside the scale keeps its
+ * colour by riding with the nearest scale tone below it, staying the same distance
+ * sharp of wherever that tone lands.
+ *
+ * Pure and exact per note: octaves are preserved through the degree arithmetic, and
+ * degree 0 returns the frequency untouched.
+ */
+export function harmonicShift(freq, key, degrees) {
+  if (!degrees || !(typeof freq === 'number') || !(freq > 0) || !key) return freq;
+  const scale = key.minor ? MINOR_SCALE : MAJOR_SCALE;
+  const semis = Math.round(12 * Math.log2(freq / 440)) + 57; // exact for tempered input
+  const rel = (((semis % 12) - (key.tonic % 12)) % 12 + 12) % 12;
+  let index = scale.indexOf(rel);
+  let chromatic = 0;
+  if (index < 0) {
+    // Between scale tones: hold on to the one below and keep the sharpness.
+    index = scale.findLastIndex((tone) => tone < rel);
+    if (index < 0) index = scale.length - 1;
+    chromatic = rel - scale[index];
+  }
+  const target = index + degrees;
+  const octaves = Math.floor(target / 7);
+  const landed = scale[((target % 7) + 7) % 7];
+  const delta = landed + chromatic - rel + octaves * 12;
+  return freq * 2 ** (delta / 12);
+}
+
+/**
+ * Walk a section's slices through a four-chord loop, one chord per output bar.
+ *
+ * Each operation takes the degree offset of the bar it sounds in. An operation whose
+ * repeats cross a chord change is split so each pass carries its own bar's chord —
+ * the split moves no audio, it only lets two passes wear two harmonies. A single
+ * unrepeated slice longer than a bar is left alone: there is nothing to split, and
+ * re-pitching half a phrase mid-note is exactly the artefact this feature avoids.
+ * Output duration is untouched throughout.
+ */
+function applyHarmonyLoop(operations, chords) {
+  const out = [];
+  let cursor = 0;
+  for (const operation of operations) {
+    const span = operation.length * operation.repeats;
+    if (operation.length > 16 || operation.favourite) {
+      out.push(operation);
+      cursor += span;
+      continue;
+    }
+    let run = null;
+    for (let pass = 0; pass < operation.repeats; pass++) {
+      const chord = chords[Math.floor(cursor / 16) % chords.length] || 0;
+      if (run && run.chord === chord) run.repeats++;
+      else {
+        if (run) out.push(run.chord ? { ...operation, repeats: run.repeats, harmony: run.chord }
+          : { ...operation, repeats: run.repeats });
+        run = { chord, repeats: 1 };
+      }
+      cursor += operation.length;
+    }
+    if (run) out.push(run.chord ? { ...operation, repeats: run.repeats, harmony: run.chord }
+      : { ...operation, repeats: run.repeats });
+  }
+  return out;
+}
+
+// What Allow glitches adds: sub-beat cells, and an unaligned grid to place them on.
+const GLITCH_CELLS = Object.freeze([[1, 3], [2, 6]]);
+
+// How the scorer weighs one candidate slice against another. The cut penalty is the
+// heaviest by a distance, and deliberately: a phrase chosen slightly wrong still
+// sounds like music, and a cut through a held chord sounds like a fault in the file.
+const CUT_WEIGHT = 1;
+const CHROMA_WEIGHT = 0.5;
+const ENERGY_WEIGHT = 0.35;
+const CONTINUITY_WEIGHT = 0.3;
+// Held voices a boundary may cross before the generator would rather lengthen the
+// phrase than take it. One is a single sustained note under a cut, which is usually
+// inaudible; beyond that it is a chord being sliced.
+const CUT_TOLERANCE = 1;
 
 const int = (value) => Number.isInteger(value) ? value : null;
 
@@ -154,9 +374,176 @@ function sourceStart(maxStart, random, extremeness = REARRANGE_EXTREMENESS_DEFAU
   return Math.min(maxStart, start);
 }
 
+/**
+ * The style a generation runs under, as one object.
+ *
+ * With a named style this is that style, plus glitch cells if they were asked for.
+ * Without one it is the continuous Extremeness behaviour this generator has always
+ * had, expressed in the same shape — which is what lets there be a single code path
+ * rather than a legacy generator kept alive beside a new one. A caller passing
+ * `extremeness` and nothing else gets exactly the distribution it always got: the
+ * weights below ARE the old `PHRASE_LENGTH_WEIGHTS`, and `grid: null` means the old
+ * `sourceStart` snapping rather than an aligned candidate list.
+ */
+function resolveStyle(style, allowGlitches) {
+  const named = style && REARRANGE_STYLES[style] ? REARRANGE_STYLES[style] : null;
+  if (!named) {
+    return {
+      name: null,
+      cells: PHRASE_LENGTH_WEIGHTS.map(([value, weight]) => [value, weight]),
+      grid: null,
+      pairChance: null,
+      loopChance: null,
+      patterning: null,
+      glitches: true,
+    };
+  }
+  return {
+    name: style,
+    cells: allowGlitches ? [...GLITCH_CELLS, ...named.cells] : named.cells,
+    // Glitches are allowed to land anywhere; that is what makes them glitches.
+    grid: allowGlitches ? 1 : named.grid,
+    pairChance: named.pairChance,
+    loopChance: named.loopChance,
+    patterning: named.patterning,
+    glitches: !!allowGlitches,
+  };
+}
+
+/** Cell lengths this style permits that also fit the space and the source. */
+function styleCells(style, maxLength, sourceSpan, { divides = 0 } = {}) {
+  return style.cells.filter(([value]) => value <= maxLength && value <= sourceSpan
+    && (!divides || divides % value === 0));
+}
+
+/**
+ * The source positions a cell of this length may start at, in absolute steps.
+ *
+ * A styled generation gets an aligned candidate list; an unstyled one gets null,
+ * meaning "use the old weighted-snap random instead".
+ */
+function offsetCandidates(style, sourceBase, sourceSpan, length) {
+  const maxOffset = Math.max(0, sourceSpan - length);
+  if (!style.grid || !maxOffset) return null;
+  const out = [];
+  const first = ((style.grid - (sourceBase % style.grid)) % style.grid);
+  for (let offset = first; offset <= maxOffset; offset += style.grid) out.push(offset);
+  return out.length ? out : [0];
+}
+
+/**
+ * How good a slice sounds where it is, higher being better.
+ *
+ * Four questions, in the order they matter. Does taking it cut through anything that
+ * is still sounding, at either end? Do its pitches agree with what the listener just
+ * heard? Is it as big as this part of the form wants to feel? And does it simply carry
+ * on from the previous slice, which is the cheapest continuity there is.
+ *
+ * Everything is a preference. The one hard rule lives in `pickCell`, which would
+ * rather take a longer phrase than a boundary that slices a chord in half.
+ */
+function scoreOffset(from, length, ctx) {
+  const profile = ctx.profile;
+  if (!profile) return 0;
+  let score = -CUT_WEIGHT * (cutCost(profile, from) + cutCost(profile, from + length));
+  if (ctx.previousEnd != null) {
+    score += CHROMA_WEIGHT * chromaMatch(profile, ctx.previousEnd, from);
+    if (from === ctx.previousEnd) score += CONTINUITY_WEIGHT;
+  }
+  if (ctx.energyTarget != null) {
+    const energy = energyOver(profile, from, length);
+    if (energy != null) score += ENERGY_WEIGHT * (1 - Math.abs(energy - ctx.energyTarget));
+  }
+  return score;
+}
+
+/** The held voices a slice would cross at its two boundaries. */
+function boundaryCut(from, length, profile) {
+  if (!profile) return 0;
+  return cutCost(profile, from) + cutCost(profile, from + length);
+}
+
+/**
+ * Choose where a cell of `length` comes from.
+ *
+ * With no rich profile this is the generator's original weighted snap, unchanged —
+ * an unscored choice is not a worse choice when there is nothing to score against.
+ * With one, the aligned candidates are ranked and the pick is taken from the top of
+ * that ranking, `variation` deciding how far down the ranking it is allowed to reach.
+ * At Familiar that pool is one candidate and the result is the best available slice;
+ * at Different it widens, and the recipe finds material the safe answer would miss.
+ */
+function pickOffset(length, ctx, { exclude = null } = {}) {
+  const { style, sourceBase, sourceSpan, random, intensity } = ctx;
+  const maxOffset = Math.max(0, sourceSpan - length);
+  if (!maxOffset) return 0;
+  const candidates = offsetCandidates(style, sourceBase, sourceSpan, length);
+  // Unstyled and unscored: the original weighted snap, untouched.
+  if (!candidates) return sourceStart(maxOffset, random, intensity);
+  // Styled but unscored — no profile to rank against, so any aligned candidate will do.
+  if (!ctx.profile) {
+    const open = candidates.filter((offset) => offset !== exclude);
+    const pool = open.length ? open : candidates;
+    return pool[Math.floor(random() * pool.length)];
+  }
+  const usable = candidates.filter((offset) => offset !== exclude);
+  const pool = usable.length ? usable : candidates;
+  const scored = pool
+    .map((offset) => ({ offset, score: scoreOffset(sourceBase + offset, length, ctx) }))
+    .sort((a, b) => b.score - a.score || a.offset - b.offset);
+  const reach = Math.max(1, Math.round(scored.length * (0.02 + ctx.variation * 0.5)));
+  return scored[Math.floor(random() * Math.min(reach, scored.length))].offset;
+}
+
+/**
+ * Choose a cell length AND where it comes from, refusing to slice a chord in half.
+ *
+ * The length is rolled from the style's weights, as it always was. What is new is what
+ * happens when the best slice at that length still crosses too much held material:
+ * rather than take it, the generator reaches for the next longer cell the style allows
+ * and asks again. A longer phrase is the one repair that always works — it moves the
+ * boundary rather than disguising it — and it is why the default output has fewer
+ * chopped holes in it without sounding more timid.
+ *
+ * Returns null only when the style permits no cell that fits at all.
+ */
+function pickCell(lengths, ctx, options = {}) {
+  if (!lengths.length) return null;
+  const length = weighted(lengths, ctx.random);
+  const ordered = [length, ...lengths.map(([value]) => value)
+    .filter((value) => value > length).sort((a, b) => a - b)];
+  let fallback = null;
+  for (const candidate of ordered) {
+    const offset = pickOffset(candidate, ctx, options);
+    const cut = boundaryCut(ctx.sourceBase + offset, candidate, ctx.profile);
+    if (cut <= CUT_TOLERANCE) return { length: candidate, offset };
+    if (!fallback || cut < fallback.cut) fallback = { length: candidate, offset, cut };
+  }
+  return fallback ? { length: fallback.length, offset: fallback.offset } : null;
+}
+
+/**
+ * Move a slice off a duplicate of the one before it, without leaving the grid.
+ *
+ * The nudge has always been a flat four sixteenths — a beat, which was a fine answer
+ * while nothing promised where cuts could land. A style promises exactly that, so a
+ * styled generation steps to its own next candidate instead: a Groove recipe cannot
+ * acquire an off-beat slice by way of a duplicate that had to be broken. Unstyled, it
+ * is the same four sixteenths it always was.
+ */
+function nudgeOffset(offset, length, style, sourceBase, sourceSpan) {
+  const maxOffset = Math.max(0, sourceSpan - length);
+  if (!maxOffset) return offset;
+  const candidates = offsetCandidates(style, sourceBase, sourceSpan, length);
+  if (!candidates || candidates.length < 2) return (offset + 4) % (maxOffset + 1);
+  const index = candidates.indexOf(offset);
+  return candidates[(index < 0 ? 0 : index + 1) % candidates.length];
+}
+
 function operationEqual(a, b) {
   return !!a && !!b && a.from === b.from && a.length === b.length
-    && a.repeats === b.repeats && a.transpose === b.transpose;
+    && a.repeats === b.repeats && a.transpose === b.transpose
+    && (a.harmony || 0) === (b.harmony || 0);
 }
 
 function anchoredOperations(anchor, sectionSteps, sourceSteps) {
@@ -279,7 +666,8 @@ function findAvoid(avoid, sectionIndex, section) {
 }
 
 function chooseTranspose(role, random, extremeness = REARRANGE_EXTREMENESS_DEFAULT,
-  transposeAmount = REARRANGE_TRANSPOSE_DEFAULT) {
+  transposeAmount = REARRANGE_TRANSPOSE_DEFAULT, profile = null,
+  previousEnd = null, source = null) {
   // Keep the occasional shift phrase-wide. A chorus landing by a whole tone, fourth,
   // or fifth is a recognisable lift; transposing every tiny slice independently is not.
   const intensity = clampExtremeness(extremeness);
@@ -292,14 +680,23 @@ function chooseTranspose(role, random, extremeness = REARRANGE_EXTREMENESS_DEFAU
     : amount < 0.7
       ? [-5, -2, 2, 5]
       : REARRANGE_GENERATED_TRANSPOSES;
+  // WHETHER to lift is still a roll — a lift that arrived every time would stop being
+  // a lift. WHICH one is not, where the song can be asked: the interval that leaves
+  // this section agreeing best with what the listener just heard is the one that sounds
+  // like a modulation rather than like a mistake.
+  if (profile && previousEnd != null && source != null) {
+    let best = null;
+    for (const value of choices) {
+      const match = chromaMatch(profile, previousEnd, source, value);
+      if (!best || match > best.match) best = { value, match };
+    }
+    if (best) return best.value;
+  }
   return weighted(choices.map((value) => [value, 1]), random);
 }
 
-function sectionOperations(sectionSteps, sourceBase, sourceSpan, transpose, random, previous = null,
-  favourites = [], extremeness = REARRANGE_EXTREMENESS_DEFAULT,
-  patterning = REARRANGE_PATTERN_DEFAULT) {
-  const intensity = clampExtremeness(extremeness);
-  const pattern = clampControl(patterning, REARRANGE_PATTERN_DEFAULT);
+function sectionOperations(sectionSteps, transpose, previous, favourites, ctx) {
+  const { style, sourceBase, sourceSpan, random, intensity, pattern } = ctx;
   // Favourites are exact source slices the player asked to hear in every new recipe.
   // They consume output space once, then the remaining space is filled with the normal
   // musical cell/loop choices. Keep them untransposed so the selected phrase remains
@@ -315,36 +712,65 @@ function sectionOperations(sectionSteps, sourceBase, sourceSpan, transpose, rand
     const used = fixed.reduce((sum, operation) => sum + operation.length, 0);
     const remaining = sectionSteps - used;
     if (remaining <= 0) return fixed;
-    const filler = sectionOperations(remaining, sourceBase, sourceSpan, transpose, random,
-      fixed[fixed.length - 1], [], intensity, pattern);
+    const filler = sectionOperations(remaining, transpose, fixed[fixed.length - 1], [], ctx);
     return fixed.concat(filler);
   }
   // A four-bar section is more useful as a pattern of smaller cells than as one
   // unbroken two-bar grab. The common case alternates two adjacent half-bars (or
   // bars) and then repeats that pair: A, B, A, B. This keeps the phrase musical while
   // making the rearrangement audibly different from simply looping a long excerpt.
-  if (sectionSteps >= 32 && random() < Math.min(0.95, 0.28 + intensity * 0.34 + pattern * 0.25)) {
-    const cellChoices = [
-      [8, 4 + intensity * 58],
-      [16, 40],
-      [32, (1 - intensity) * 20],
-      [64, (1 - intensity) * 12],
-    ].filter(([value, weight]) => weight > 0 && sectionSteps % value === 0
-      && value <= sourceSpan);
+  //
+  // A/B alternation is a MOTIF, so Familiar reaches for it more readily than Different
+  // does — the pair coming back is the thing a listener recognises.
+  const pairChance = style.pairChance == null
+    ? Math.min(0.95, 0.28 + intensity * 0.34 + pattern * 0.25)
+    : Math.max(0, Math.min(0.95, style.pairChance + (0.5 - ctx.variation) * 0.2));
+  if (sectionSteps >= 32 && random() < pairChance) {
+    const cellChoices = style.name
+      ? styleCells(style, sectionSteps, sourceSpan, { divides: sectionSteps })
+      : [
+        [8, 4 + intensity * 58],
+        [16, 40],
+        [32, (1 - intensity) * 20],
+        [64, (1 - intensity) * 12],
+      ].filter(([value, weight]) => weight > 0 && sectionSteps % value === 0
+        && value <= sourceSpan);
     if (cellChoices.length) {
-      const length = weighted(cellChoices, random);
+      // A and its length together, so that a cell whose boundaries can only land in
+      // held material gets lengthened rather than taken. Every candidate length here
+      // divides the section, so a longer motif is still a whole number of cells.
+      const scoredCell = ctx.profile || style.name ? pickCell(cellChoices, ctx) : null;
+      const length = scoredCell ? scoredCell.length : weighted(cellChoices, random);
       const maxStart = Math.max(0, sourceSpan - length);
-      const pairStartMax = Math.max(0, sourceSpan - length * 2);
-      const first = sourceStart(pairStartMax || maxStart, random, intensity);
-      let second = pairStartMax ? first + length : sourceStart(maxStart, random, intensity);
-      if (second === first && maxStart > 0) second = (first + length) % (maxStart + 1);
+      // The two halves of the motif. `first` is scored where a profile exists, and
+      // `second` is normally the cell straight after it — an A/B built out of adjacent
+      // source material is a phrase answering itself rather than two unrelated grabs.
+      const first = scoredCell
+        ? scoredCell.offset
+        : sourceStart(Math.max(0, sourceSpan - length * 2) || maxStart, random, intensity);
+      // B is normally the cell straight after A — a phrase answering itself, rather
+      // than two unrelated grabs. Normally, not always: if carrying straight on would
+      // put the answer's boundaries through held material, a scored cell elsewhere is
+      // the better musician's choice. Without a profile there is nothing to check
+      // against and the adjacent cell stands, as it always did.
+      const adjacent = first + length <= maxStart ? first + length : null;
+      let second = adjacent;
+      if (adjacent == null) second = pickOffset(length, ctx, { exclude: first });
+      else if (ctx.profile
+        && boundaryCut(sourceBase + adjacent, length, ctx.profile) > CUT_TOLERANCE) {
+        const scored = pickOffset(length, ctx, { exclude: first });
+        if (boundaryCut(sourceBase + scored, length, ctx.profile)
+          < boundaryCut(sourceBase + adjacent, length, ctx.profile)) second = scored;
+      }
+      if (second === first && maxStart > 0) second = nudgeOffset(first, length, style, sourceBase, sourceSpan);
+      ctx.previousEnd = sourceBase + second + length;
       const operations = [];
       for (let output = 0; output < sectionSteps; output += length) {
         const fromOffset = ((output / length) % 2) ? second : first;
         const operation = { from: sourceBase + fromOffset, length, repeats: 1, transpose };
         const prior = operations[operations.length - 1] || previous;
         if (operationEqual(prior, operation)) {
-          operation.from = sourceBase + (fromOffset + length) % (maxStart + 1);
+          operation.from = sourceBase + nudgeOffset(fromOffset, length, style, sourceBase, sourceSpan);
           // If the transpose dial is Off, keep the source key rather than using a
           // pitch change merely to disguise a duplicate at a one-cell boundary.
           if (operationEqual(prior, operation) && transpose !== 0) {
@@ -360,47 +786,85 @@ function sectionOperations(sectionSteps, sourceBase, sourceSpan, transpose, rand
   // twice, or a one-bar figure four times. Only a minority opens up into smaller
   // collage cuts, so the form remains audible instead of becoming a list of tiny
   // unrelated edits.
-  const loopChoices = PHRASE_LENGTH_WEIGHTS
-    .map(([value, weight]) => [value, weight * (
-      value >= 32 ? 1 + (1 - intensity) * 8
-        : value === 16 ? 1 + (1 - intensity) * 2 : 1)])
-    .filter(([value]) => value <= sourceSpan
-      && value <= sectionSteps && sectionSteps / value <= 4);
-  if (loopChoices.length && random() < 0.96 - intensity * 0.12) {
-    const length = weighted(loopChoices, random);
+  const loopChoices = style.name
+    ? styleCells(style, sectionSteps, sourceSpan)
+      .filter(([value]) => sectionSteps % value === 0 && sectionSteps / value <= 4)
+    : PHRASE_LENGTH_WEIGHTS
+      .map(([value, weight]) => [value, weight * (
+        value >= 32 ? 1 + (1 - intensity) * 8
+          : value === 16 ? 1 + (1 - intensity) * 2 : 1)])
+      .filter(([value]) => value <= sourceSpan
+        && value <= sectionSteps && sectionSteps / value <= 4);
+  // One recognisable loop is the most Familiar shape a section can take, so the dial
+  // moves this too: at Different the generator opens the section up into cells instead.
+  const loopChance = style.loopChance == null
+    ? 0.96 - intensity * 0.12
+    : Math.max(0, Math.min(0.95, style.loopChance + (0.5 - ctx.variation) * 0.3));
+  if (loopChoices.length && random() < loopChance) {
+    // Every candidate `pickCell` may escalate to comes out of `loopChoices`, which is
+    // already filtered to lengths that divide the section — so a longer, safer phrase
+    // is still a whole number of passes.
+    const { length, offset } = pickCell(loopChoices, ctx);
     const repeats = sectionSteps / length;
-    const offset = sourceStart(sourceSpan - length, random, intensity);
+    ctx.previousEnd = sourceBase + offset + length;
     const operation = { from: sourceBase + offset, length, repeats, transpose };
     if (!operationEqual(previous, operation)) return [operation];
     const shifted = sourceSpan > length
-      ? sourceBase + ((offset + 4) % (sourceSpan - length + 1)) : operation.from;
+      ? sourceBase + nudgeOffset(offset, length, style, sourceBase, sourceSpan) : operation.from;
     if (shifted !== operation.from) return [{ ...operation, from: shifted }];
     return transpose === 0
       ? [operation]
       : [{ ...operation, transpose: operation.transpose === 0 ? 2 : 0 }];
   }
   const operations = [];
+  // Cells this section has already established. Reusing one is what makes a section
+  // hang together rather than reading as a list of unrelated edits, so Familiar reaches
+  // back into this often and Different rarely.
+  const motifs = [];
   let output = 0;
   while (output < sectionSteps) {
     const remaining = sectionSteps - output;
-    const choices = PHRASE_LENGTH_WEIGHTS.filter(([value]) => value <= remaining && value <= sourceSpan);
+    const choices = style.name
+      ? styleCells(style, remaining, sourceSpan)
+      : PHRASE_LENGTH_WEIGHTS.filter(([value]) => value <= remaining && value <= sourceSpan);
     const lengths = choices.length ? choices : [[Math.min(1, remaining), 1]];
-    let length = weighted(lengths, random);
-    // Glitches are still possible, but only as an occasional subdivision inside a
-    // phrase. The normal choices are beat/half-bar/bar lengths.
-    if (remaining > 8 && random() < 0.01 + intensity * 0.09) {
-      const glitches = [[1, 4], [2, 6], [4, 10], [8, 12]].filter(([value]) => value <= remaining && value <= sourceSpan);
-      if (glitches.length) length = weighted(glitches, random);
+    let length = null;
+    let offset = null;
+    // A motif returning, in preference to new material. Only where it fits the space
+    // that is left, and never as the very first cell — there is nothing to return to.
+    const reuse = style.name ? motifs.filter((motif) => motif.length <= remaining) : [];
+    if (reuse.length && random() < (1 - ctx.variation) * 0.55) {
+      const motif = reuse[Math.floor(random() * reuse.length)];
+      length = motif.length;
+      offset = motif.offset;
+    } else {
+      // Glitches are still possible, but only as an occasional subdivision inside a
+      // phrase. The normal choices are beat/half-bar/bar lengths. In a styled
+      // generation they exist at all only because Allow glitches was switched on.
+      if (style.glitches && remaining > 8 && random() < 0.01 + intensity * 0.09) {
+        const glitches = [[1, 4], [2, 6], [4, 10], [8, 12]]
+          .filter(([value]) => value <= remaining && value <= sourceSpan);
+        if (glitches.length) {
+          length = weighted(glitches, random);
+          offset = pickOffset(length, ctx);
+        }
+      }
+      if (length == null) {
+        // Every length `pickCell` may escalate to comes out of `lengths`, which is
+        // already filtered to what fits the space left, so it cannot overrun.
+        ({ length, offset } = pickCell(lengths, ctx));
+        motifs.push({ length, offset });
+      }
     }
     const maxRepeats = Math.min(4, Math.max(1, Math.floor(remaining / length)));
     const repeats = weighted(repeatWeights(pattern).filter(([value]) => value <= maxRepeats), random);
-    const offset = sourceStart(sourceSpan - length, random, intensity);
     const op = { from: sourceBase + offset, length, repeats, transpose };
     const previousOp = operations[operations.length - 1] || previous;
     if (operationEqual(previousOp, op)) {
-      if (sourceSpan > length) op.from = sourceBase + ((offset + 4) % (sourceSpan - length + 1));
+      if (sourceSpan > length) op.from = sourceBase + nudgeOffset(offset, length, style, sourceBase, sourceSpan);
       else if (transpose !== 0) op.transpose = op.transpose === 0 ? 2 : 0;
     }
+    ctx.previousEnd = op.from + op.length;
     operations.push(op);
     output += length * repeats;
   }
@@ -436,23 +900,93 @@ function validateForm(form, sourceSteps) {
 /**
  * Generate a same-length recipe for a source song.
  *
- * The source is sampled independently for each operation (wild collage), while
- * slice lengths and repeats are weighted toward musical groupings.  The result is
- * deterministic for a given seed and has no dependency on browser APIs.
+ * TWO WAYS IN, ONE GENERATOR.
+ *
+ * Pass a `style` — 'phrase', 'groove' or 'chop' — and cell lengths and source
+ * alignment become hard gates, which is what the desk does. Pass the older continuous
+ * `extremeness`/`patterning` instead and the behaviour is exactly what it always was;
+ * that path is not a separate generator kept alive beside this one, it is this one
+ * with `grid: null` and the original weights. See `resolveStyle`.
+ *
+ * Pass a rich `sourceProfile` (see lib/rearrange-profile.js) and every source choice
+ * is SCORED rather than rolled: boundaries avoid held notes, neighbours are chosen to
+ * agree harmonically, and section energy follows the form. Pass the old flat array of
+ * per-bar densities, or nothing, and the choices fall back to the weighted random this
+ * has always used — an unscored choice is not a worse choice when there is nothing to
+ * score against.
+ *
+ * Deterministic for a given seed and set of inputs, with no dependency on browser APIs.
  */
 export function generateRearrangement(sourceSteps, {
   seed = randomSeed(), random = null, sourceProfile = null, anchors = null, avoid = null,
   favourites = null, extremeness = REARRANGE_EXTREMENESS_DEFAULT,
   transposeAmount = REARRANGE_TRANSPOSE_DEFAULT, patterning = REARRANGE_PATTERN_DEFAULT,
+  style = null, variation = REARRANGE_VARIATION_DEFAULT, allowGlitches = false,
+  progression = 'off', key = null, walk = REARRANGE_WALK_DEFAULT,
 } = {}) {
   if (!Number.isInteger(sourceSteps) || sourceSteps <= 0) {
     throw new RangeError('sourceSteps must be a positive integer');
   }
   const rng = random || seededRandom(seed);
   const actualSeed = Number(seed) >>> 0;
-  const intensity = clampExtremeness(extremeness);
   const transpose = clampControl(transposeAmount, REARRANGE_TRANSPOSE_DEFAULT);
-  const pattern = clampControl(patterning, REARRANGE_PATTERN_DEFAULT);
+  const resolvedStyle = resolveStyle(style, allowGlitches);
+  const varied = clampControl(variation, REARRANGE_VARIATION_DEFAULT);
+  // With a style in charge, Variation IS the intensity dial. Everything Extremeness
+  // still reaches — how widely source phrases are sampled, how often a lift is taken,
+  // how often a permitted glitch fires — moves with the one control the desk shows,
+  // so there is no second dial quietly deciding things from behind a preset.
+  const intensity = resolvedStyle.name ? varied : clampExtremeness(extremeness);
+  // Variation replaces Patterning where a style is in charge: the two are the same
+  // question asked from opposite ends, so the dial is mapped rather than added to.
+  const pattern = resolvedStyle.patterning == null
+    ? clampControl(patterning, REARRANGE_PATTERN_DEFAULT)
+    : clampControl(resolvedStyle.patterning + (0.5 - varied) * 0.5, REARRANGE_PATTERN_DEFAULT);
+  // A rich profile is what turns scoring on. A plain array is still read for section
+  // energy by `profileScore`, exactly as before.
+  const rich = sourceProfile && !Array.isArray(sourceProfile) && sourceProfile.steps > 0
+    ? sourceProfile : null;
+  const energyProfile = Array.isArray(sourceProfile) ? sourceProfile
+    : rich ? Array.from(rich.energy) : null;
+  // CHORD LOOPS need a key to move degrees in. A caller-supplied `key` wins outright —
+  // the person at the desk saying "this is in D minor" outranks any analysis. Failing
+  // that, the analysis's BEST key is taken even when the song does not settle clearly:
+  // an ambiguous reading is nearly always the relative major/minor pair, which share a
+  // scale, so the walk comes out the same notes either way — and a low-confidence
+  // guess that walks is more musical than a refusal that leaves the dial dead. The
+  // desk shows the guess as a guess; only a song with no pitched content at all has
+  // genuinely nothing to walk in.
+  const wantProgression = progression && progression !== 'off';
+  const overrideKey = key && Number.isInteger(key.tonic) && key.tonic >= 0 && key.tonic <= 11
+    ? { tonic: key.tonic, minor: !!key.minor } : null;
+  const detected = wantProgression && !overrideKey && rich ? detectKey(rich) : null;
+  const keyed = wantProgression
+    ? overrideKey || (detected ? { tonic: detected.tonic, minor: detected.minor } : null)
+    : null;
+  // ONE PITCH SYSTEM PER RECIPE. While chord loops are walking, the chromatic dial is
+  // ignored entirely — not just in the walking sections. A verse lifted a whole tone
+  // chromatically next to a chorus walking diatonic chords is two unrelated pitch
+  // grammars fighting over one song, and the same reading on the dial has to mean the
+  // same thing every time: with a chord loop on, it means nothing, and the desk says
+  // so on the control itself.
+  const chromatic = keyed ? 0 : transpose;
+  // One walk per ROLE, chosen once so every returning Chorus takes the same trip. A
+  // major-key song takes the axis progression whatever was asked; the minor palettes
+  // are the club vocabulary and their numerals only mean something in minor.
+  const roleChords = new Map();
+  const chordsForRole = (role) => {
+    if (!keyed || role === 'Intro' || role === 'Outro') return null;
+    if (roleChords.has(role)) return roleChords.get(role);
+    let chords = null;
+    if (!keyed.minor) chords = MAJOR_PROGRESSION;
+    else if (REARRANGE_PROGRESSIONS[progression]) chords = REARRANGE_PROGRESSIONS[progression].minor;
+    else {
+      const names = REARRANGE_PROGRESSION_NAMES;
+      chords = REARRANGE_PROGRESSIONS[names[Math.floor(rng() * names.length)]].minor;
+    }
+    roleChords.set(role, chords);
+    return chords;
+  };
   const operations = [];
   const form = [];
   const roleSources = new Map();
@@ -490,7 +1024,7 @@ export function generateRearrangement(sourceSteps, {
     const rejected = findAvoid(avoid, sectionIndex, section);
     let source = roleSources.get(section.role);
     if (source == null || rejected) {
-      source = chooseSource(section.role, candidates, phraseSpan, sourceProfile, usedSources, rng,
+      source = chooseSource(section.role, candidates, phraseSpan, energyProfile, usedSources, rng,
         rejected ? [rejected] : null, intensity);
       roleSources.set(section.role, source);
       usedSources.add(source);
@@ -506,11 +1040,53 @@ export function generateRearrangement(sourceSteps, {
       // that preserves the form's identity while the unkept roles are regenerated.
       roleTemplates.set(section.role, sectionOps);
     } else if (!sectionOps || sectionOps.steps !== section.steps || hasFavourites) {
-      const sectionTranspose = chooseTranspose(section.role, rng, intensity, transpose);
+      // Does this section walk a chord loop? Every four-bar Verse/Chorus/Bridge with a
+      // key does. A repeated cell sitting on one chord for four bars is exactly the
+      // material a progression exists for — the same riff walked around the loop IS
+      // the arrangement — and an earlier draft that left some sections plain "for
+      // contrast" read as the feature not working. Contrast comes from Intro/Outro
+      // staying put and from the i bars the walk mask holds. A section that walks
+      // takes NO chromatic lift on top: two pitch systems moving one phrase is mud.
+      const palette = section.steps === PHRASE_STEPS && !hasFavourites
+        ? chordsForRole(section.role) : null;
+      const chords = palette ? walkedChords(palette, walk) : null;
+      const sectionTranspose = chords ? 0 : chooseTranspose(section.role, rng, intensity, chromatic,
+        rich, previous ? previous.from + previous.length : null, source);
+      // What every source choice inside this section is scored against. `previousEnd`
+      // moves as cells are laid down, so "does this agree with what came before" is
+      // asked about the slice actually just heard rather than the section's opening.
+      const ctx = {
+        style: resolvedStyle,
+        sourceBase: source,
+        sourceSpan,
+        random: rng,
+        intensity,
+        pattern,
+        variation: varied,
+        profile: rich,
+        previousEnd: previous ? previous.from + previous.length : null,
+        // A chorus should feel bigger than a verse. With no profile this is null and
+        // energy simply stops being one of the things a slice is judged on.
+        energyTarget: rich ? ROLE_ENERGY[section.role] ?? null : null,
+      };
+      // ONE CHUNK, REPEATED, WALKED. A section that carries chords is built as a
+      // single bar cell played four times — the club shape. Walking an A/B pair
+      // re-harmonises a phrase that is already answering itself, and listening said
+      // exactly that: disjointed. The A/B and collage shapes still happen, in the
+      // sections that play their written harmony.
+      let built;
+      if (chords) {
+        const cell = pickCell([[16, 1]], ctx) || { length: 16, offset: 0 };
+        built = [{ from: source + cell.offset, length: 16, repeats: 4, transpose: 0 }];
+        ctx.previousEnd = source + cell.offset + 16;
+      } else {
+        built = sectionOperations(section.steps, sectionTranspose, previous,
+          favouriteBuckets[sectionIndex], ctx);
+      }
       sectionOps = {
         steps: section.steps,
-        operations: sectionOperations(section.steps, source, sourceSpan, sectionTranspose, rng, previous,
-          favouriteBuckets[sectionIndex], intensity, pattern),
+        operations: chords ? applyHarmonyLoop(built, chords) : built,
+        walked: !!chords,
       };
       // A favourite is a one-shot user request, not a new Verse/Chorus template. Do
       // not silently repeat it in every returning section of the same role.
@@ -526,11 +1102,17 @@ export function generateRearrangement(sourceSteps, {
     for (const operation of sectionOps.operations) {
       const copy = { ...operation };
       const prior = operations[operations.length - 1];
-      if (operationEqual(prior, copy) && !copy.favourite) {
+      // A walked section's repeats are the SAME cell on purpose — nudging one run to
+      // break a "duplicate" would swap the riff mid-walk, which is worse than any
+      // adjacent repetition could be.
+      if (operationEqual(prior, copy) && !copy.favourite && !sectionOps.walked) {
         const maxOffset = Math.max(0, sourceSpan - copy.length);
         const offset = copy.from - source;
-        copy.from = source + (maxOffset ? (offset + 4) % (maxOffset + 1) : 0);
-        if (operationEqual(prior, copy) && transpose > 0) {
+        copy.from = source + (maxOffset
+          ? nudgeOffset(offset, copy.length, resolvedStyle, source, sourceSpan) : 0);
+        // Never disguise a duplicate with a pitch change on a slice that already
+        // carries a chord — that would stack both pitch systems on one operation.
+        if (operationEqual(prior, copy) && chromatic > 0 && !copy.harmony) {
           copy.transpose = copy.transpose === 0 ? 2 : 0;
         }
       }
@@ -557,6 +1139,9 @@ export function generateRearrangement(sourceSteps, {
     source: { steps: sourceSteps },
     seed: actualSeed,
     grid: REARRANGE_GRID,
+    // The key rides in the recipe because harmony offsets mean nothing without it —
+    // a saved file must replay the same chords on a desk that never ran the analysis.
+    ...(keyed && operations.some((op) => op.harmony) ? { key: keyed } : {}),
     form,
     operations,
   };
@@ -728,6 +1313,16 @@ export function validateRearrangement(value, sourceSteps, { songId = null } = {}
   if (!REARRANGE_DRUM_MODES.includes(drums)) {
     throw new Error('Rearrange JSON has an unsupported drum mode');
   }
+  // The key is optional, but harmony offsets are meaningless without one: degrees
+  // only name notes once a tonic and a mode say which scale they are degrees OF.
+  let key = null;
+  if (value.key != null) {
+    const tonic = int(value.key.tonic);
+    if (tonic == null || tonic < 0 || tonic > 11 || typeof value.key.minor !== 'boolean') {
+      throw new Error('Rearrange JSON has an invalid key');
+    }
+    key = { tonic, minor: value.key.minor };
+  }
   if (!Array.isArray(value.operations) || !value.operations.length) {
     throw new Error('Rearrange JSON has no operations');
   }
@@ -737,7 +1332,9 @@ export function validateRearrangement(value, sourceSteps, { songId = null } = {}
     const length = int(raw?.length);
     const repeats = int(raw?.repeats);
     const transpose = raw?.transpose == null ? 0 : int(raw.transpose);
-    if (from == null || length == null || repeats == null || transpose == null) {
+    const harmony = raw?.harmony == null ? 0 : int(raw.harmony);
+    if (from == null || length == null || repeats == null || transpose == null
+      || harmony == null) {
       throw new Error(`Operation ${index + 1} has a non-integer field`);
     }
     if (from < 0 || length < 1 || from + length > sourceSteps) {
@@ -747,8 +1344,11 @@ export function validateRearrangement(value, sourceSteps, { songId = null } = {}
     if (!REARRANGE_TRANSPOSES.includes(transpose)) {
       throw new Error(`Operation ${index + 1} has an unsupported transpose`);
     }
+    if (harmony && (!key || Math.abs(harmony) > REARRANGE_HARMONY_RANGE)) {
+      throw new Error(`Operation ${index + 1} has a chord offset ${key ? 'out of range' : 'but the recipe names no key'}`);
+    }
     total += length * repeats;
-    return { from, length, repeats, transpose };
+    return { from, length, repeats, transpose, ...(harmony ? { harmony } : {}) };
   });
   if (total !== sourceSteps) {
     throw new Error(`Rearrange output is ${total} steps, expected ${sourceSteps}`);
@@ -764,6 +1364,7 @@ export function validateRearrangement(value, sourceSteps, { songId = null } = {}
     seed: value.seed >>> 0,
     grid: REARRANGE_GRID,
     ...(drums === 'original' ? {} : { drums }),
+    ...(key ? { key } : {}),
     ...(form ? { form } : {}),
     operations,
   };
