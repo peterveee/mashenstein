@@ -2,7 +2,23 @@
 
 Date: 2026-08-16
 
-Status: design proposal. Nothing here is implemented.
+Status: **built**. What began as a design proposal is now shipped; this document is kept
+as the record of why, including the two places its own evidence turned out to be wrong.
+
+**What shipped**
+
+| Piece | Where |
+| --- | --- |
+| Phrase-grid detection, and the generator honouring it | `detectPhraseGrid` in `rearrange-profile.js`, `sourceCandidates` in `rearrange.js` |
+| Form grammars — Song, Dance, Loop, AABA, Arch | `REARRANGE_FORMS` in `rearrange.js`; **Form** select in Advanced |
+| The song's own detected form as a grammar | `detectSongForm` in `rearrange-profile.js`; Form → *This song's own* |
+| Letter / role / bars split into independent fields | `fitForm` in `rearrange.js` |
+| GRAIN dial, Style demoted to an Advanced override | `grainStyle` in `rearrange.js`; **Grain** in the header |
+| Chord walks at any part length of four bars or more | the gate in `rearrange.js`, `pacedChords` |
+| Offline rendering of a recipe, for auditioning | `render-bank-page.js`, `render-bank-browser.js` |
+
+Confirmed by ear on `smw-overworld`, `special-stage-1` and `shop`. The sections below are
+the reasoning as it developed, corrections included.
 
 M8TRX generates good arrangements and they all have the same skeleton. This document
 says exactly which lines of code that skeleton lives in, why the constraint is
@@ -85,6 +101,10 @@ each part longer, not by adding more drops).
 
 ## Candidate structures
 
+> **Built.** Five of these shipped as `REARRANGE_FORMS`, plus a sixth that is not a shape
+> at all — *This song's own*, read off the material by `detectSongForm`. Odd part lengths
+> came free with the letter/role/bars split rather than needing a modifier of their own.
+
 Six worth having. Bar counts are the unit shape; the length dial multiplies or repeats
 per the entry's own strategy.
 
@@ -154,6 +174,12 @@ Not touched: the recipe format, the validator, the engine, the timeline, save/lo
 form is already just contiguous named ranges, and it stays that.
 
 ## Open questions
+
+> **Resolved.** Form ships as a select in Advanced and Style became GRAIN, a dial in the
+> header, with Style surviving in Advanced as an exact override defaulting to Auto. The
+> two never contradict each other because Auto means "follow the dial", and the dial greys
+> out while a named style is in force. The dial's two ENDS are hard gates, which is what
+> answers the objection recorded below.
 
 **Does Form belong in Advanced, or on a dial?** Advanced is my recommendation — a form
 is a choice, not a continuum, and the four dials are already each doing one honest job.

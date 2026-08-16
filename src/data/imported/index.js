@@ -24,6 +24,7 @@ import * as AUDITION_MOTORIK from './audition-motorik.js';
 import * as AUDITION_SURF from './audition-surf.js';
 import * as AUDITION_TECHNO from './audition-techno.js';
 import { BABY_PORTABLE_ROCK_4 } from './baby-portable-rock-4.js';
+import * as BARBER_OF_SEVILLE_OUVERTURE from './barber-of-seville-ouverture.js';
 import * as BITTER_MARKET from './bitter-market.js';
 import * as BRAVE_COMET from './brave-comet.js';
 import * as BRAVE_DIVER from './brave-diver.js';
@@ -126,6 +127,7 @@ import * as SMWGOOD from './smwgood.js';
 import * as SPECIAL_STAGE_1 from './special-stage-1.js';
 import * as SUGAR_DIVER from './sugar-diver.js';
 import * as SUGAR_KITTEN from './sugar-kitten.js';
+import * as SUNKEN_CACTUS from './sunken-cactus.js';
 import * as SUNKEN_PARADE from './sunken-parade.js';
 import * as SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2 from './super-mario-3d-world-bowser-castle2.js';
 import * as THE_FOOD_COURT_ALT_2 from './the-food-court-alt-2.js';
@@ -163,6 +165,7 @@ export const IMPORTED_BY_ID = {
   "audition-surf": { bank: AUDITION_SURF.bank, title: AUDITION_SURF.title, group: "styleAudition", writable: true },
   "audition-techno": { bank: AUDITION_TECHNO.bank, title: AUDITION_TECHNO.title, group: "styleAudition", writable: true },
   "baby-portable-rock-4": { bank: BABY_PORTABLE_ROCK_4, title: "BABY PORTABLE ROCK 4", group: "imported", writable: false },
+  "barber-of-seville-ouverture": { bank: BARBER_OF_SEVILLE_OUVERTURE.bank, title: BARBER_OF_SEVILLE_OUVERTURE.title, group: "imported", writable: true },
   "bitter-market": { bank: BITTER_MARKET.bank, title: BITTER_MARKET.title, group: "scratch", writable: true },
   "brave-comet": { bank: BRAVE_COMET.bank, title: BRAVE_COMET.title, group: "scratch", writable: true },
   "brave-diver": { bank: BRAVE_DIVER.bank, title: BRAVE_DIVER.title, group: "scratch", writable: true },
@@ -265,6 +268,7 @@ export const IMPORTED_BY_ID = {
   "special-stage-1": { bank: SPECIAL_STAGE_1.bank, title: SPECIAL_STAGE_1.title, group: "imported", writable: true },
   "sugar-diver": { bank: SUGAR_DIVER.bank, title: SUGAR_DIVER.title, group: "scratch", writable: true },
   "sugar-kitten": { bank: SUGAR_KITTEN.bank, title: SUGAR_KITTEN.title, group: "scratch", writable: true },
+  "sunken-cactus": { bank: SUNKEN_CACTUS.bank, title: SUNKEN_CACTUS.title, group: "scratch", writable: true },
   "sunken-parade": { bank: SUNKEN_PARADE.bank, title: SUNKEN_PARADE.title, group: "scratch", writable: true },
   "super-mario-3d-world-bowser-castle2": { bank: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.bank, title: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.title, group: "imported", writable: true },
   "the-food-court-alt-2": { bank: THE_FOOD_COURT_ALT_2.bank, title: THE_FOOD_COURT_ALT_2.title, group: "alternate", writable: true, alternateOf: "hub" },

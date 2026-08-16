@@ -307,6 +307,53 @@ export function triadMatch(profile, step, span, key) {
   return total ? match / total : 0;
 }
 
+const DEGREE_SCALES = Object.freeze({
+  minor: Object.freeze([0, 2, 3, 5, 7, 8, 10]),
+  major: Object.freeze([0, 2, 4, 5, 7, 9, 11]),
+});
+
+/**
+ * WHICH DEGREE OF THE KEY THIS STRETCH OF SONG IS ALREADY SITTING ON.
+ *
+ * A chord walk moves material by a number of scale degrees, so it only lands where it is
+ * aimed if you know where it started. The walk used to assume every part opened on the
+ * TONIC: grab a bar that is really on the iv, ask for `i iv v VI`, and what comes out is
+ * `iv VII i ii` — a real progression in the right key, transposed by however wrong the
+ * assumption was, and labelled with the chords it was supposed to be.
+ *
+ * `triadMatch` above answers this for the tonic alone; this scores all seven diatonic triads
+ * over the window's chroma and returns the best fit, with the share of the window's pitched
+ * energy that agrees. Callers should treat a low `confidence` as "no idea" and fall back —
+ * percussion, a held single note or a silent grab genuinely have no degree.
+ */
+export function sourceDegree(profile, step, span, key) {
+  if (!profile?.chroma || !key || !(profile.bars > 0) || !(span > 0)) return null;
+  const tonic = ((Number(key.tonic) % 12) + 12) % 12;
+  const scale = key.minor === false ? DEGREE_SCALES.major : DEGREE_SCALES.minor;
+  const first = Math.max(0, Math.floor(step / STEPS_PER_BAR));
+  const last = Math.min(profile.bars, Math.ceil((step + span) / STEPS_PER_BAR));
+  const bins = new Float64Array(12);
+  let total = 0;
+  for (let bar = first; bar < Math.max(first + 1, last); bar++) {
+    for (let pc = 0; pc < 12; pc++) {
+      const value = profile.chroma[bar * 12 + pc] || 0;
+      bins[pc] += value;
+      total += value;
+    }
+  }
+  if (!total) return null;
+  let degree = 0;
+  let confidence = -1;
+  for (let candidate = 0; candidate < 7; candidate++) {
+    // The diatonic triad on that degree: root, third and fifth taken up the scale.
+    let match = 0;
+    for (const offset of [0, 2, 4]) match += bins[(tonic + scale[(candidate + offset) % 7]) % 12];
+    const score = match / total;
+    if (score > confidence) { confidence = score; degree = candidate; }
+  }
+  return { degree, confidence };
+}
+
 /** Normalised pitched onset density in a window, used to reject over-busy walk cells. */
 export function onsetRate(profile, step, span) {
   if (!profile?.onsets?.length || !(span > 0)) return 0;
@@ -409,4 +456,171 @@ export function profileEnergyArray(profile) {
   if (Array.isArray(profile)) return profile;
   if (!profile?.energy) return null;
   return Array.from(profile.energy);
+}
+
+/**
+ * ---- THE SONG'S OWN FORM ------------------------------------------------------
+ *
+ * Where this song actually changes, and which of its parts come back.
+ *
+ * The generator's form grammars are hand-written shapes. This is the other kind: the
+ * shape the material already has. Measured across 75 imported songs, only 29% of real
+ * parts are four bars long — lengths of 13, 14, 16 and 22 bars are ordinary — so a
+ * roadmap read off the song is a different proposition from any ladder imposed on it.
+ *
+ * HOW. A self-similarity matrix over per-bar features, with a Foote checkerboard novelty
+ * curve down its diagonal: high where the block before a bar is self-similar, the block
+ * after it is self-similar, and the two do not resemble each other. Peaks are boundaries.
+ * Segments that resemble each other get the same letter, which is what makes a returning
+ * part expressible at all.
+ *
+ * TWO THINGS LEARNED THE HARD WAY, both worth keeping written down.
+ *
+ * 1. COARSE KERNELS ONLY. A two-bar kernel finds real material changes that are
+ *    nonetheless INSIDE a chorus. Including them turns a legible eighteen-part form into
+ *    confetti. The fine scale is the right answer to a different question — where may a
+ *    slice safely start — and that question is `cutCost`'s, not this one's.
+ *
+ * 2. THE PHRASE GRID DECIDES THE PHASE. Bar features inherit the two-bar lane pattern, so
+ *    boundaries land on even bars whatever the music does; a song with a three-bar intro
+ *    then reads a bar early throughout. `detectPhraseGrid` answers that from harmony,
+ *    which is the one view the lane grid cannot reach, and its answer is applied here.
+ */
+const FORM_KERNELS = Object.freeze([4, 8]);
+
+/** One feature vector per bar: harmony, rhythm, kit and how big the bar feels. */
+function formFeatures(profile) {
+  const out = [];
+  for (let bar = 0; bar < profile.bars; bar++) {
+    const vector = [];
+    for (let pc = 0; pc < 12; pc++) vector.push(profile.chroma[bar * 12 + pc] || 0);
+    for (const lane of [profile.onsets, profile.percussion]) {
+      const slice = [];
+      let peak = 0;
+      for (let s = 0; s < STEPS_PER_BAR; s++) {
+        const value = lane[bar * STEPS_PER_BAR + s] || 0;
+        slice.push(value);
+        if (value > peak) peak = value;
+      }
+      for (const value of slice) vector.push(peak > 0 ? value / peak : 0);
+    }
+    // Density carries its own weight: two bars of the same riff at different densities
+    // are a real boundary, and on a drop it is the only thing that marks one.
+    vector.push((profile.energy[bar] || 0) * 1.5);
+    out.push(vector);
+  }
+  return out;
+}
+
+const cosineOf = (a, b) => {
+  let dot = 0; let na = 0; let nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  if (!na || !nb) return na === nb ? 1 : 0;
+  return dot / Math.sqrt(na * nb);
+};
+
+/** Foote novelty at one kernel width, standardised so widths can be compared. */
+function noveltyAt(ssm, half) {
+  const n = ssm.length;
+  const raw = new Array(n).fill(0);
+  for (let c = 0; c < n; c++) {
+    let same = 0; let cross = 0; let sameN = 0; let crossN = 0;
+    for (let i = -half; i < half; i++) {
+      for (let j = -half; j < half; j++) {
+        const a = c + i; const b = c + j;
+        if (a < 0 || b < 0 || a >= n || b >= n) continue;
+        if ((i < 0) === (j < 0)) { same += ssm[a][b]; sameN++; }
+        else { cross += ssm[a][b]; crossN++; }
+      }
+    }
+    if (sameN && crossN) raw[c] = (same / sameN) - (cross / crossN);
+  }
+  const mean = raw.reduce((t, v) => t + v, 0) / (n || 1);
+  const sd = Math.sqrt(raw.reduce((t, v) => t + (v - mean) ** 2, 0) / (n || 1)) || 1;
+  return raw.map((v) => (v - mean) / sd);
+}
+
+/**
+ * The song's parts: `[{ letter, role, bars }]`, or null when it cannot say.
+ *
+ * Roles are assigned from ENERGY rather than guessed from position alone: the busiest
+ * returning letter is the chorus, the quietest is the bridge, and the parts at the two
+ * ends are the intro and outro. That is what lets the generator's existing role machinery
+ * — source preference and energy target — steer a detected form as well as a written one.
+ */
+export function detectSongForm(profile, { minBars = 16, threshold = 0.1 } = {}) {
+  if (!profile?.chroma || !(profile.bars >= minBars)) return null;
+  const features = formFeatures(profile);
+  const ssm = features.map((a) => features.map((b) => cosineOf(a, b)));
+
+  const curves = FORM_KERNELS.filter((half) => half * 2 <= ssm.length).map((half) => noveltyAt(ssm, half));
+  if (!curves.length) return null;
+  const curve = ssm.map((_, i) => Math.max(...curves.map((c) => c[i])));
+
+  // Peaks at least four bars apart, strongest first, so a boundary cannot be crowded out
+  // by a slightly stronger one two bars away.
+  const found = [];
+  for (let i = 1; i < curve.length - 1; i++) {
+    if (curve[i] >= threshold && curve[i] >= curve[i - 1] && curve[i] >= curve[i + 1]) found.push(i);
+  }
+  found.sort((a, b) => curve[b] - curve[a]);
+  const bounds = [];
+  for (const i of found) if (bounds.every((k) => Math.abs(k - i) >= 4)) bounds.push(i);
+  bounds.sort((a, b) => a - b);
+
+  // The phase correction. Without it a song with an odd-length intro reads a bar early
+  // for its whole length — the boundaries are locked to the lane grid, not to the music.
+  const grid = detectPhraseGrid(profile);
+  const shift = grid.confident
+    ? ((grid.offset % 2) - (bounds.filter((b) => b % 2).length > bounds.length / 2 ? 1 : 0) + 2) % 2
+    : 0;
+  const edges = [0, ...bounds.map((b) => b + shift).filter((b) => b > 0 && b < profile.bars), profile.bars];
+  const segments = [];
+  for (let i = 0; i < edges.length - 1; i++) {
+    if (edges[i + 1] > edges[i]) segments.push([edges[i], edges[i + 1]]);
+  }
+  if (segments.length < 2) return null;
+
+  // Letters: a segment that resembles an earlier one IS that one returning.
+  const meanBetween = ([a0, a1], [b0, b1]) => {
+    const span = Math.min(a1 - a0, b1 - b0);
+    let total = 0;
+    for (let k = 0; k < span; k++) total += ssm[a0 + k][b0 + k];
+    return span ? total / span : 0;
+  };
+  const letters = [];
+  for (let i = 0; i < segments.length; i++) {
+    let assigned = null;
+    for (let j = 0; j < i; j++) {
+      // LENGTH IS PART OF IDENTITY. `meanBetween` walks the shorter of the two, so a
+      // sixteen-bar part and an eight-bar one that open alike score as the same thing —
+      // which collapsed a real 16/8 alternation into a single repeated letter. A part
+      // that is twice as long is a different part however familiarly it begins.
+      const a = segments[i][1] - segments[i][0];
+      const b = segments[j][1] - segments[j][0];
+      if (Math.max(a, b) > Math.min(a, b) * 1.5) continue;
+      if (meanBetween(segments[i], segments[j]) >= 0.86) { assigned = letters[j]; break; }
+    }
+    letters.push(assigned ?? String.fromCharCode(65 + new Set(letters).size));
+  }
+
+  const meanEnergy = ([from, to]) => {
+    let total = 0;
+    for (let bar = from; bar < to; bar++) total += profile.energy[bar] || 0;
+    return to > from ? total / (to - from) : 0;
+  };
+  const energies = segments.map(meanEnergy);
+  const loudest = energies.indexOf(Math.max(...energies));
+  const quietest = energies.indexOf(Math.min(...energies));
+  const busyLetter = letters[loudest];
+  const calmLetter = letters[quietest];
+
+  return segments.map(([from, to], index) => {
+    let role = 'Verse';
+    if (index === 0) role = 'Intro';
+    else if (index === segments.length - 1) role = 'Outro';
+    else if (letters[index] === busyLetter) role = 'Chorus';
+    else if (letters[index] === calmLetter) role = 'Bridge';
+    return { letter: letters[index], role, bars: to - from };
+  });
 }

@@ -6,7 +6,8 @@
 // recipe remains small, readable, and safe to discard without changing a song.
 
 import {
-  cutCost, chromaMatch, energyOver, detectKey, walkCellScore, detectPhraseGrid,
+  cutCost, chromaMatch, energyOver, detectKey, walkCellScore, detectPhraseGrid, sourceDegree,
+  detectSongForm,
 } from './rearrange-profile.js';
 
 export const REARRANGE_KIND = 'mashenstein-rearrangement';
@@ -81,9 +82,28 @@ export const REARRANGE_FORM_ROLES = Object.freeze([
 // than the exact numbers — a chorus above a verse, an intro and an outro below both.
 const ROLE_ENERGY = Object.freeze({
   Intro: 0.35, Verse: 0.55, Chorus: 0.95, Bridge: 0.5, Outro: 0.3,
+  // Added with the form grammars. A Drop is the loudest thing in a dance form, a Build
+  // leans up into it, a Breakdown drops away, and a Loop sits in the middle because a
+  // one-letter form has nothing to contrast against.
+  Build: 0.7, Drop: 1, Breakdown: 0.4, Loop: 0.6, Prechorus: 0.7,
+});
+
+/**
+ * Which part of the source a role reaches for, as a table rather than a stair of `if`s.
+ *
+ * `first`/`last` are positional — an Intro opens with the song's opening and an Outro
+ * closes with its ending. `dense`/`sparse` are scored against the energy profile. A role
+ * that is not named here scores neutrally, which is what every role outside the original
+ * five used to do by accident and now does on purpose.
+ */
+const ROLE_SOURCE = Object.freeze({
+  Intro: 'first', Outro: 'last',
+  Chorus: 'dense', Drop: 'dense', Build: 'dense',
+  Verse: 'sparse', Breakdown: 'sparse',
 });
 
 const PHRASE_STEPS = 64; // four bars at sixteen sixteenths per bar
+const PHRASE_BAR_STEPS = 16; // one bar, the unit a form grammar counts in
 
 const PHRASE_LENGTH_WEIGHTS = Object.freeze([
   [4, 7], [8, 34], [16, 42], [32, 10], [64, 1],
@@ -444,7 +464,7 @@ function walkedChords(palette, walk) {
   return [...new Array(palette.length - tail.length).fill(0), ...tail];
 }
 
-function pacedChords(palette, bars, pace = REARRANGE_CHORD_PACE_DEFAULT, walk = REARRANGE_WALK_DEFAULT) {
+export function pacedChords(palette, bars, pace = REARRANGE_CHORD_PACE_DEFAULT, walk = REARRANGE_WALK_DEFAULT) {
   const active = REARRANGE_CHORD_PACE_NAMES.includes(pace) ? pace : REARRANGE_CHORD_PACE_DEFAULT;
   // Slow pacing owns the phrase grammar: it must still arrive at IV/V/vi even when a
   // legacy Walk setting asked for a reduced mask. The faster compatibility modes retain
@@ -461,13 +481,31 @@ function pacedChords(palette, bars, pace = REARRANGE_CHORD_PACE_DEFAULT, walk = 
   // phrase-sized boundaries. Eight bars produce 1 1 1 1 | 4 4 | 5 | 6; four bars
   // compress to 1 1 | 4 | 5, still leaving the riff home before the lift.
   const moving = selected.filter((degree) => degree !== 0);
-  if (bars >= 8) {
-    const tail = [moving[0] || 0, moving[0] || 0, moving[1] || 0, moving[2] || 0];
-    return [...new Array(bars - tail.length).fill(0), ...tail];
-  }
-  if (bars >= 4) return [0, 0, moving[0] || 0, moving[1] || 0]
-    .slice(0, bars);
-  return new Array(bars).fill(0);
+  const eight = () => [0, 0, 0, 0, moving[0] || 0, moving[0] || 0, moving[1] || 0, moving[2] || 0];
+  const four = () => [0, 0, moving[0] || 0, moving[1] || 0];
+  // One phrase's worth of shape: hold home, then move at its end. The padding goes at the
+  // FRONT for the same reason the eight-bar shape opens on four tonic bars — the point of
+  // slow pacing is that the riff is established before the harmony leaves.
+  //
+  // It must return exactly `n` entries. The old code sliced a four-entry array to `n`,
+  // which silently returned FOUR chords for a five-, six- or seven-bar part — unreachable
+  // while every part was exactly four bars, and immediately reachable once form grammars
+  // could emit a six-bar one.
+  const shapeFor = (n) => {
+    if (n >= 8) return eight();
+    if (n >= 4) return [...new Array(n - 4).fill(0), ...four()];
+    return new Array(n).fill(0);
+  };
+  if (bars <= 8) return shapeFor(bars);
+  // Longer parts REPEAT the phrase shape rather than stretching it. Holding the tonic for
+  // twelve bars and then moving in the last four is not a slow progression, it is a part
+  // that forgot to begin — and form grammars made long parts ordinary, where the four-bar
+  // gate meant this branch could only ever see eight.
+  const out = [];
+  let left = bars;
+  while (left > 8) { out.push(...eight()); left -= 8; }
+  out.push(...shapeFor(left));
+  return out;
 }
 // Degree offsets a recipe may carry: within one octave of scale degrees.
 export const REARRANGE_HARMONY_RANGE = 7;
@@ -843,7 +881,95 @@ function sourceStart(maxStart, random, extremeness = REARRANGE_EXTREMENESS_DEFAU
  * `extremeness` and nothing else gets the old phrase weights, with a four-sixteenth
  * candidate grid so even the compatibility path cannot create an off-grid base cut.
  */
-function resolveStyle(style) {
+/**
+ * ---- GRAIN -------------------------------------------------------------------
+ *
+ * How finely the song is cut, as a continuum rather than four named boxes.
+ *
+ * Style was the last categorical control on a panel that had decided everything else is
+ * a dial, and `Mix` was the admission that its categories were too rigid — an option
+ * whose only meaning was "do not commit to one of these". Cell length is plainly
+ * continuous (64 -> 32 -> 16 -> 8 -> 4 steps), so it is a dial.
+ *
+ * THE ENDS STAY HARD. The objection to making this a dial is a real one and it is worth
+ * writing down: the point of naming a style is being able to RELY on it, and a dial at
+ * 90% that "usually" gives beats is a weaker promise than a gate. So the two extremes
+ * are gates — at 0 nothing shorter than a bar may be emitted, at 1 nothing longer — and
+ * only the middle interpolates. Anyone who needs the exact old promise still names the
+ * style outright, which is why Style survives in Advanced rather than being deleted.
+ *
+ * THE GRID FALLS OUT, it is not chosen. A cell of four steps cannot start on an
+ * eight-step boundary, so the alignment grid is simply the shortest cell the blend still
+ * permits. That keeps the two from ever disagreeing, which is exactly the bug a separate
+ * grid control would invite.
+ */
+export const REARRANGE_GRAIN_DEFAULT = 0.5;
+
+// Where each cell length is most at home on the dial. Reading the same way the labels
+// do: whole phrases at the bottom, single beats at the top.
+const GRAIN_CENTRES = Object.freeze([[64, 0], [32, 0.16], [16, 0.36], [8, 0.66], [4, 0.92]]);
+const GRAIN_WIDTH = 0.26;
+
+/** The five readings the dial shows, so the desk and the library cannot drift apart. */
+export const REARRANGE_GRAIN_LABELS = Object.freeze(['Phrases', 'Bars', 'Groove', 'Beats', 'Shards']);
+export function grainLabel(grain = REARRANGE_GRAIN_DEFAULT) {
+  const amount = clampControl(grain, REARRANGE_GRAIN_DEFAULT);
+  return REARRANGE_GRAIN_LABELS[
+    Math.min(REARRANGE_GRAIN_LABELS.length - 1, Math.floor(amount * REARRANGE_GRAIN_LABELS.length))];
+}
+
+/** The cell-length distribution, alignment grid and shape chances at a grain setting. */
+export function grainStyle(grain = REARRANGE_GRAIN_DEFAULT) {
+  const amount = clampControl(grain, REARRANGE_GRAIN_DEFAULT);
+  const cells = [];
+  for (const [length, centre] of GRAIN_CENTRES) {
+    // The hard ends. Below a bar is refused at the bottom of the dial and above it at
+    // the top, so "Phrases" and "Shards" are promises rather than tendencies.
+    if (amount <= 0.02 && length < 16) continue;
+    if (amount >= 0.98 && length > 16) continue;
+    const weight = Math.exp(-(((amount - centre) / GRAIN_WIDTH) ** 2)) * 100;
+    cells.push([length, weight]);
+  }
+  // A cell less than a tenth as likely as the most likely one is noise, and noise must
+  // not be allowed to set the alignment grid: a single stray four-step cell at the
+  // middle of the dial would otherwise drag Groove's whole alignment down to the beat.
+  const peak = Math.max(...cells.map(([, weight]) => weight), 0);
+  const kept = cells
+    .filter(([, weight]) => weight >= peak * 0.1)
+    .map(([length, weight]) => [length, Math.max(1, Math.round(weight))]);
+  if (!kept.length) kept.push([16, 100]);
+  cells.length = 0;
+  cells.push(...kept);
+  // Alignment is the shortest cell the blend allows: a four-step cell cannot begin on an
+  // eight-step boundary, so this can never contradict the lengths above it.
+  const grid = Math.min(...cells.map(([length]) => length), 16);
+  // The shape chances move with the dial for the same reason the lengths do — long
+  // phrases want looping and repay pairing less than beats do.
+  const between = (low, high) => low + (high - low) * amount;
+  return {
+    // A real name, because `style.name` is the flag meaning "a gate is in force". Left
+    // null, the grain dial would fall through to the legacy continuous branch and emit
+    // the very cell lengths it was set to forbid — a 32-step phrase at full Shards.
+    name: 'grain',
+    grain: amount,
+    cells,
+    grid,
+    pairChance: between(0.2, 0.7),
+    loopChance: between(0.9, 0.3),
+    patterning: between(0.6, 0.45),
+  };
+}
+
+/**
+ * Which gate a generation runs under.
+ *
+ * A NAMED style still wins outright and still means exactly what it meant — that is what
+ * keeps it worth naming. `auto`, or no style at all when a grain was supplied, resolves
+ * to the dial. No style and no grain is the historical continuous path, untouched, so
+ * every caller written before any of this still generates identically.
+ */
+function resolveStyle(style, grain = null) {
+  if ((style === 'auto' || style == null) && grain != null) return grainStyle(grain);
   const named = style && REARRANGE_STYLES[style] ? REARRANGE_STYLES[style] : null;
   if (!named) {
     return {
@@ -865,8 +991,8 @@ function resolveStyle(style) {
   };
 }
 
-function styleForLetter(style, letter, seed) {
-  if (style !== 'mix') return resolveStyle(style);
+function styleForLetter(style, letter, seed, grain = null) {
+  if (style !== 'mix') return resolveStyle(style, grain);
   // Keep the choice stable for a returning letter and independent of how many random
   // source choices happened before it. That makes Mix a form decision, not a dice roll
   // that can change when a favourite or a fill is added elsewhere.
@@ -1208,9 +1334,99 @@ function formRoles(units) {
   return roles;
 }
 
-function formFor(sourceSteps) {
-  const units = Math.floor(sourceSteps / PHRASE_STEPS);
-  const remainder = sourceSteps % PHRASE_STEPS;
+/**
+ * ---- FORM GRAMMARS -----------------------------------------------------------
+ *
+ * The generator used to know ONE macro form — the Intro/Verse/Chorus ladder above,
+ * stretched to whatever length was asked for, every part exactly four bars. Measured
+ * against the imported catalogue that is not what songs do: only 29% of detected parts
+ * are four bars, and real part lengths run 2, 3, 5, 6, 8, 13, 14, 16, 22 and beyond.
+ *
+ * THREE FIELDS, NOT ONE. A part carries a `letter` (identity — what shares material
+ * with what), a `role` (intent — what it should feel like, which is what steers source
+ * choice and energy) and `bars` (length). The old code derived the letter FROM the role,
+ * which is why two different verses could not be expressed: every Verse in a song was
+ * letter B and therefore literally the same generated material. `A B C B D B` needs
+ * these to be three separate things.
+ *
+ * FITTING. A grammar is an optional `intro`, a `cycle` that repeats, and an optional
+ * `outro`. The fitter lays the intro, repeats the cycle while the bar budget allows,
+ * and closes with the outro, trimming the final part to land on the exact length. That
+ * is the same shape the historical ladder had — a fixed opening, a repeating middle, a
+ * closing Outro — said as data instead of as a stair of `if`s.
+ */
+export const REARRANGE_FORMS = Object.freeze({
+  song: Object.freeze({ label: 'Song', legacy: true }),
+  source: Object.freeze({
+    // Not a shape at all: the shape THIS song already has, read off the material by
+    // `detectSongForm`. Every grammar beside it is an opinion imposed on the song; this
+    // one is the song's own roadmap, with its real part lengths and its real returns.
+    // Falls back to the ladder when the analysis cannot say — a short song, or one with
+    // no structure to find.
+    label: "This song's own",
+    detected: true,
+  }),
+  dance: Object.freeze({
+    label: 'Dance',
+    // No verse or chorus at all. The vocabulary M8TRX's own kits already imply — it
+    // ships Techno, House and Deep house and then describes their output as verses.
+    intro: [{ letter: 'A', role: 'Intro', bars: 8 }],
+    cycle: [
+      { letter: 'B', role: 'Build', bars: 4 },
+      { letter: 'C', role: 'Drop', bars: 8 },
+      { letter: 'D', role: 'Breakdown', bars: 8 },
+    ],
+    outro: [{ letter: 'E', role: 'Outro', bars: 8 }],
+  }),
+  loop: Object.freeze({
+    label: 'Loop',
+    // One letter throughout: no contrast by material at all. What changes is what
+    // accretes and falls away, which is the minimalist shape and the one the Hypnosis
+    // dial is already reaching for.
+    cycle: [{ letter: 'A', role: 'Loop', bars: 8 }],
+  }),
+  aaba: Object.freeze({
+    label: 'AABA',
+    // Two of the same, a contrasting middle, then the first again. No chorus. The
+    // eight-bar unit is the point — at four it collapses into the ladder with new names.
+    cycle: [
+      { letter: 'A', role: 'Verse', bars: 8 },
+      { letter: 'A', role: 'Verse', bars: 8 },
+      { letter: 'B', role: 'Bridge', bars: 8 },
+      { letter: 'A', role: 'Verse', bars: 8 },
+    ],
+  }),
+  arch: Object.freeze({
+    label: 'Arch',
+    // The hook deliberately late: the payoff is the delay. This is the grammar that
+    // most needs variable lengths — at a flat four bars it is just the ladder with the
+    // chorus moved.
+    intro: [{ letter: 'A', role: 'Intro', bars: 4 }],
+    cycle: [
+      { letter: 'B', role: 'Verse', bars: 8 },
+      { letter: 'C', role: 'Verse', bars: 8 },
+      { letter: 'D', role: 'Prechorus', bars: 4 },
+      { letter: 'E', role: 'Chorus', bars: 8 },
+      { letter: 'C', role: 'Verse', bars: 8 },
+      { letter: 'E', role: 'Chorus', bars: 8 },
+    ],
+    outro: [{ letter: 'F', role: 'Outro', bars: 4 }],
+  }),
+});
+export const REARRANGE_FORM_NAMES = Object.freeze(Object.keys(REARRANGE_FORMS));
+export const REARRANGE_FORM_DEFAULT = 'song';
+
+/**
+ * The historical ladder, unchanged.
+ *
+ * Kept as its own path rather than expressed in the grammar table because it is
+ * genuinely irregular for short songs — the one/two/three-unit cases are not a cycle
+ * with an intro bolted on — and reproducing it EXACTLY matters more than expressing it
+ * uniformly. Every recipe made before form grammars existed still generates identically.
+ */
+function legacyForm(outputSteps) {
+  const units = Math.floor(outputSteps / PHRASE_STEPS);
+  const remainder = outputSteps % PHRASE_STEPS;
   const roles = formRoles(units);
   const letters = new Map();
   let nextLetter = 0;
@@ -1218,12 +1434,67 @@ function formFor(sourceSteps) {
     if (!letters.has(role)) letters.set(role, String.fromCharCode(65 + nextLetter++));
     return { role, name: role, letter: letters.get(role), steps: PHRASE_STEPS };
   });
-  if (!units) sections[0].steps = sourceSteps;
+  if (!units) sections[0].steps = outputSteps;
   else if (remainder) {
     if (!letters.has('Outro')) letters.set('Outro', String.fromCharCode(65 + nextLetter++));
     sections.push({ role: 'Outro', name: 'Outro', letter: letters.get('Outro'), steps: remainder });
   }
   return sections;
+}
+
+/** Lay a grammar's parts out across exactly `outputSteps`, trimming the last to fit. */
+function fitForm(grammar, outputSteps) {
+  const wanted = [...(grammar.intro || [])];
+  const cycle = grammar.cycle || [];
+  const outroBars = (grammar.outro || []).reduce((sum, part) => sum + part.bars, 0);
+  const budget = outputSteps / PHRASE_BAR_STEPS;
+  if (cycle.length) {
+    let used = wanted.reduce((sum, part) => sum + part.bars, 0);
+    // Leave room for the outro, but never at the cost of emitting no cycle at all: a
+    // song too short for one pass still has to be SOME form rather than an empty list.
+    let guard = 0;
+    while (used + outroBars < budget && guard < 4096) {
+      const part = cycle[guard % cycle.length];
+      wanted.push(part);
+      used += part.bars;
+      guard++;
+    }
+  }
+  wanted.push(...(grammar.outro || []));
+
+  // Trim to the exact length. Parts that no longer fit are dropped and the last
+  // surviving one absorbs the remainder, so the form always covers the output exactly —
+  // which `validateForm` requires and every downstream index depends on.
+  const sections = [];
+  let remaining = outputSteps;
+  for (const part of wanted) {
+    if (remaining <= 0) break;
+    const steps = Math.min(part.bars * PHRASE_BAR_STEPS, remaining);
+    sections.push({ role: part.role, name: part.role, letter: part.letter, steps });
+    remaining -= steps;
+  }
+  if (!sections.length) {
+    sections.push({ role: 'Verse', name: 'Verse', letter: 'A', steps: outputSteps });
+  } else if (remaining > 0) {
+    sections[sections.length - 1].steps += remaining;
+  }
+  return sections;
+}
+
+function formFor(outputSteps, form = REARRANGE_FORM_DEFAULT, detected = null) {
+  const grammar = REARRANGE_FORMS[form] || REARRANGE_FORMS[REARRANGE_FORM_DEFAULT];
+  if (grammar.detected) {
+    // The song's own roadmap, turned into a grammar. The first and last parts do not
+    // repeat — an intro that came back every cycle would not be an intro — so only the
+    // middle tiles when the output is longer than the song.
+    if (!detected || detected.length < 2) return legacyForm(outputSteps);
+    const shaped = detected.length >= 3
+      ? { intro: [detected[0]], cycle: detected.slice(1, -1), outro: [detected[detected.length - 1]] }
+      : { cycle: detected };
+    return fitForm(shaped, outputSteps);
+  }
+  if (grammar.legacy) return legacyForm(outputSteps);
+  return fitForm(grammar, outputSteps);
 }
 
 function profileScore(profile, start, span) {
@@ -1298,22 +1569,23 @@ function chooseSource(role, candidates, span, profile, used, random, blocked = n
   extremeness = REARRANGE_EXTREMENESS_DEFAULT) {
   const availableCandidates = candidates.filter((start) => !candidateBlocked(start, span, blocked));
   const candidatePool = availableCandidates.length ? availableCandidates : candidates;
-  if (role === 'Intro') return candidatePool[0];
-  if (role === 'Outro') return candidatePool[candidatePool.length - 1];
+  const reach = ROLE_SOURCE[role] || null;
+  if (reach === 'first') return candidatePool[0];
+  if (reach === 'last') return candidatePool[candidatePool.length - 1];
   const scored = candidatePool.map((start, index) => ({
     start,
     index,
     score: profileScore(profile, start, span),
   }));
   const hasProfile = scored.some((entry) => entry.score != null);
-  const preferred = role === 'Chorus' ? 1 : role === 'Verse' ? -1 : 0;
+  const preferred = reach === 'dense' ? 1 : reach === 'sparse' ? -1 : 0;
   scored.sort((a, b) => {
     if (hasProfile && a.score !== b.score) return preferred * (b.score - a.score);
     // With no density profile, later source phrases make a useful chorus contrast,
     // while verses favour the opening material. The random pick below still keeps
     // each recipe seed different.
-    if (role === 'Chorus' && a.start !== b.start) return b.start - a.start;
-    if (role === 'Verse' && a.start !== b.start) return a.start - b.start;
+    if (reach === 'dense' && a.start !== b.start) return b.start - a.start;
+    if (reach === 'sparse' && a.start !== b.start) return a.start - b.start;
     return a.index - b.index;
   });
   const available = scored.filter((entry) => !candidateBlocked(entry.start, span, blocked));
@@ -1596,7 +1868,8 @@ export function generateRearrangement(sourceSteps, {
   progression = 'off', key = null, walk = null,
   chordPace = null, fill = 'none',
   outputSteps = sourceSteps, uniqueLetters = [], letterTemplates = null,
-  phraseOffset = null,
+  // `form` names the GRAMMAR; the recipe's own `form` field is the sections it built.
+  phraseOffset = null, form: formName = REARRANGE_FORM_DEFAULT, grain = null,
 } = {}) {
   if (!Number.isInteger(sourceSteps) || sourceSteps <= 0) {
     throw new RangeError('sourceSteps must be a positive integer');
@@ -1607,7 +1880,7 @@ export function generateRearrangement(sourceSteps, {
   const rng = random || seededRandom(seed);
   const actualSeed = Number(seed) >>> 0;
   const transpose = clampControl(transposeAmount, REARRANGE_TRANSPOSE_DEFAULT);
-  const resolvedStyle = resolveStyle(style);
+  const resolvedStyle = resolveStyle(style, grain);
   const { mood: moodV, hypnosis: hypnosisV, chaos: chaosV, drive: driveV, pattern } =
     resolveCreative({ mood, hypnosis, chaos, drive, variation, extremeness, patterning },
       resolvedStyle);
@@ -1692,7 +1965,10 @@ export function generateRearrangement(sourceSteps, {
     }
   }
   const usedSources = new Set();
-  const sections = formFor(outputSteps);
+  // The song's own form, when that is what was asked for. Read from the rich profile
+  // only — a flat density array cannot describe a structure.
+  const detectedForm = REARRANGE_FORMS[formName]?.detected && rich ? detectSongForm(rich) : null;
+  const sections = formFor(outputSteps, formName, detectedForm);
   const phraseSpan = Math.min(PHRASE_STEPS, sourceSteps);
   // The song's own phrase grid, so a four-bar grab starts where its phrases do rather
   // than where its file happens to begin.
@@ -1771,7 +2047,18 @@ export function generateRearrangement(sourceSteps, {
       // contrast" read as the feature not working. Contrast comes from Intro/Outro
       // staying put and from the i bars the walk mask holds. A section that walks
       // takes NO chromatic lift on top: two pitch systems moving one phrase is mud.
-      const palette = section.steps === PHRASE_STEPS && !hasFavourites
+      // Any part of four bars or more may walk, not only ones of exactly four.
+      //
+      // The old test was `=== PHRASE_STEPS`, written when every part WAS four bars. Form
+      // grammars made eight- and sixteen-bar parts ordinary, and under that test every one
+      // of them silently fell through to plain material — a Dance form would generate its
+      // drops with no harmony at all and sound flat for a reason nothing named. Four bars
+      // stays the floor because `pacedChords` needs that much room to leave home and come
+      // back; below it the walk is all tonic anyway. Whole bars only: a walk assigns one
+      // chord per bar, so a part that is not a whole number of bars has no grid to sit on.
+      const walkableLength = section.steps >= PHRASE_STEPS
+        && section.steps % PHRASE_BAR_STEPS === 0;
+      const palette = walkableLength && !hasFavourites
         ? chordsForRole(section.role) : null;
       const walkScore = palette && rich && keyed
         ? walkCellScore(rich, source, 16, keyed) : 1;
@@ -1784,7 +2071,7 @@ export function generateRearrangement(sourceSteps, {
       // What every source choice inside this section is scored against. `previousEnd`
       // moves as cells are laid down, so "does this agree with what came before" is
       // asked about the slice actually just heard rather than the section's opening.
-      const sectionStyle = styleForLetter(style, section.letter || section.role, actualSeed);
+      const sectionStyle = styleForLetter(style, section.letter || section.role, actualSeed, grain);
       const sectionPattern = sectionStyle.patterning == null
         ? clampControl(patterning, REARRANGE_PATTERN_DEFAULT)
         : clampControl(sectionStyle.patterning + (hypnosisV - 0.5) * 0.5, REARRANGE_PATTERN_DEFAULT);
@@ -2561,24 +2848,54 @@ function barAlignedOperations(operations) {
  * Returns how many operations ended up on something other than the tonic, which is the
  * honest measure of whether a walk happened at all.
  */
-function applyWalkChords(operations, chords) {
+/** Below this share of a window's pitched energy, the "chord" it is sitting on is a guess,
+ *  and a guess is worse than the old assumption. Percussion, one held note and a near-silent
+ *  grab all land here and are left to the tonic reading. */
+const WALK_DEGREE_MIN = 0.5;
+
+function applyWalkChords(operations, chords, { profile = null, key = null } = {}) {
   let step = 0;
   let moved = 0;
   for (const operation of operations) {
     const bar = Math.floor(step / WALK_BAR_STEPS);
-    const harmony = chords[Math.min(chords.length - 1, bar)] || 0;
-    if (harmony) moved += 1;
-    if (harmony) operation.harmony = harmony;
+    const target = chords[Math.min(chords.length - 1, bar)] || 0;
+    // WHERE THE MATERIAL ALREADY IS, so the shift lands where it is aimed. `harmony` is a
+    // RELATIVE move in scale degrees, and the walk used to assume every part opened on the
+    // tonic: grab a bar that is really on the iv, ask for i iv v VI, and out comes
+    // iv VII i ii — the right key, the right shape, transposed by however wrong the
+    // assumption was, and labelled with the chords it was meant to be. Reading the degree
+    // off the source and subtracting it makes the label true.
+    const found = profile && key
+      ? sourceDegree(profile, operation.from, operation.length * operation.repeats, key)
+      : null;
+    const sitting = found && found.confidence >= WALK_DEGREE_MIN ? found.degree : 0;
+    // Modulo seven: the same chord an octave away is the same chord, and it keeps the offset
+    // inside REARRANGE_HARMONY_RANGE, which the validator holds every recipe to.
+    const shift = (((target - sitting) % 7) + 7) % 7;
+    if (shift) operation.harmony = shift;
     else delete operation.harmony;
+    // Counted on the TARGET, not the shift: a bar already sitting on the chord the walk
+    // wants needs no shift and is still a bar of the progression.
+    if (target) moved += 1;
     step += operation.length * operation.repeats;
   }
   return moved;
 }
 
-/** A part of fewer than four bars has no room for the slow phrase grammar, which spends its
- *  opening bars at home; `active` walks the palette a bar at a time instead. The generator
- *  already makes this same choice for short sections — see `rebuildRearrangeSection`. */
-const walkPaceFor = (bars) => (bars >= 4 ? 'slow' : 'active');
+/**
+ * A WALK YOU ASKED FOR HAS TO BE AUDIBLE FROM THE START.
+ *
+ * The slow phrase grammar spends its opening bars at home — over four bars it reads
+ * `i i iv v`, so half the part sounds exactly as it did before you turned the walk on, which
+ * lands as "it half worked". That grammar is right for GENERATION, where it is one voice
+ * among many in a whole arrangement and the point is that the song breathes; it is wrong for
+ * a switch you pressed on one part, where the point is to hear the difference.
+ *
+ * `active` moves a bar at a time — `i iv v VI` — so only the downbeat is home and everything
+ * after it has somewhere to go. Generation keeps `slow`; this applies to the manual toggle
+ * and its dice alone.
+ */
+const walkPaceFor = () => 'active';
 
 /**
  * Cut the operation list so no slice straddles one of `cuts` (output steps).
@@ -2634,7 +2951,7 @@ function replaceSectionOperations(operations, indices, replacement) {
   return [...operations.slice(0, first), ...replacement, ...operations.slice(last + 1)];
 }
 
-export function toggleRearrangeSectionWalk(recipe, sectionIndex) {
+export function toggleRearrangeSectionWalk(recipe, sectionIndex, { key = null, profile = null } = {}) {
   const ranges = formSectionRanges(recipe);
   const section = ranges[sectionIndex];
   if (!section) throw new Error('That M8TRX section does not exist');
@@ -2642,26 +2959,44 @@ export function toggleRearrangeSectionWalk(recipe, sectionIndex) {
   const { recipe: base, indices } = sectionOperationsFor(recipe, sectionIndex, section);
   if (!indices.length) throw new Error('This part has no slices to walk');
   const ops = base.operations.map((operation) => ({ ...operation }));
-  const walking = indices.some((index) => ops[index].harmony);
+  // A part counts as walking if it carries shifts OR a stamped chord line — with the source
+  // degree compensated a bar can want a chord it is already sitting on, which needs no shift
+  // at all, and a part of those would otherwise read as not walking and refuse to turn off.
+  const walking = indices.some((index) => ops[index].harmony)
+    || (Array.isArray(section.chords) && section.chords.some((degree) => degree));
   if (walking) {
     for (const index of indices) delete ops[index].harmony;
-    return { recipe: rebuildForm(base, ops), changed: indices.length };
+    const off = rebuildForm(base, ops);
+    off.form = off.form.map((item, at) => {
+      if (at !== sectionIndex) return item;
+      const { chords: _gone, ...rest } = item;
+      return rest;
+    });
+    return { recipe: off, changed: indices.length };
   }
-  if (!recipe.key) throw new Error('Choose a key before turning on a chord walk');
+  // A recipe only carries a key if the GENERATOR walked something in it, so a plain
+  // arrangement has none — and the desk's own key (named, or detected) is the answer in that
+  // case. Whichever it is, it gets written onto the recipe below: a harmony offset without a
+  // key is meaningless to a desk that never ran the analysis, which is why it rides along.
+  const walkKey = recipe.key || key;
+  if (!walkKey) throw new Error('No key to walk in — the song did not settle on one, so name a key in Advanced');
   const palette = Array.isArray(section.chords) && section.chords.length
     ? section.chords : REARRANGE_PROGRESSIONS.pop.minor;
   const bars = Math.max(1, Math.ceil((section.end - section.start) / WALK_BAR_STEPS));
-  const chords = pacedChords(palette, bars, walkPaceFor(bars), 'full');
+  const chords = pacedChords(palette, bars, walkPaceFor(), 'full');
   const walked = barAlignedOperations(indices.map((index) => ops[index]));
-  const moved = applyWalkChords(walked, chords);
+  const moved = applyWalkChords(walked, chords, { profile, key: walkKey });
   // REFUSED RATHER THAN SILENTLY DONE. One bar is one chord and one chord is not a walk;
   // saying so is the whole difference between a control that cannot help here and a control
   // that appears broken.
   if (!moved) throw new Error('This part is too short to walk a chord loop — it is one bar');
-  return {
-    recipe: rebuildForm(base, replaceSectionOperations(ops, indices, walked)),
-    changed: walked.length,
-  };
+  const next = rebuildForm({ ...base, key: walkKey }, replaceSectionOperations(ops, indices, walked));
+  // THE CHORDS THIS PART SOUNDS, BAR BY BAR — stamped so the panel can print what you hear
+  // rather than the shift that got it there. Those are the same number only while the part
+  // is assumed to open on the tonic, which is the assumption this removes; and a recipe
+  // opened on a desk that never ran the analysis can still draw its chord line from here.
+  next.form = next.form.map((item, at) => (at === sectionIndex ? { ...item, chords } : item));
+  return { recipe: next, changed: walked.length };
 }
 
 /**
@@ -2776,7 +3111,7 @@ export function regenerateRearrangementSection(recipe, sectionIndex, {
 }
 
 /** Keep material fixed and reroll only a section's chord order. */
-export function rerollSectionWalk(recipe, sectionIndex, { seed = recipe?.seed || 0 } = {}) {
+export function rerollSectionWalk(recipe, sectionIndex, { seed = recipe?.seed || 0, key = null, profile = null } = {}) {
   const ranges = formSectionRanges(recipe);
   const section = ranges[sectionIndex];
   if (!section) throw new Error('That M8TRX section does not exist');
@@ -2787,15 +3122,17 @@ export function rerollSectionWalk(recipe, sectionIndex, { seed = recipe?.seed ||
     .map((name) => REARRANGE_PROGRESSIONS[name].minor);
   const palette = palettes[Math.floor(rng() * palettes.length)] || REARRANGE_PROGRESSIONS.pop.minor;
   const bars = Math.max(1, Math.ceil((section.end - section.start) / WALK_BAR_STEPS));
-  const chords = pacedChords(palette, bars, walkPaceFor(bars), 'full');
+  const chords = pacedChords(palette, bars, walkPaceFor(), 'full');
   const operations = base.operations.map((operation) => ({ ...operation }));
   // Same two corrections as the toggle: a part needs one slot per bar before a progression
   // can be laid over it, and a slice belongs to the bar its DURATION puts it in rather than
   // to its index in the pass count.
   const walked = barAlignedOperations(indices.map((index) => operations[index]));
-  const moved = applyWalkChords(walked, chords);
+  const walkKey = base.key || key;
+  if (!walkKey) throw new Error('No key to walk in — the song did not settle on one, so name a key in Advanced');
+  const moved = applyWalkChords(walked, chords, { profile, key: walkKey });
   if (!moved) throw new Error('This part is too short to walk a chord loop — it is one bar');
-  const next = rebuildForm({ ...base, seed: Number(seed) >>> 0 },
+  const next = rebuildForm({ ...base, seed: Number(seed) >>> 0, key: walkKey },
     replaceSectionOperations(operations, indices, walked));
   next.form = next.form.map((item, index) => index === sectionIndex ? { ...item, chords } : item);
   return { recipe: next, changed: walked.length };

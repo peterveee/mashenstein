@@ -11,8 +11,8 @@
 // again, capped at a bar", and that rule is asserted here rather than left implied.
 import {
   buildRearrangeProfile, cutCost, chromaMatch, energyOver, pitchClass, profileEnergyArray,
-  detectPhraseGrid,
-  detectKey,
+  detectPhraseGrid, detectSongForm,
+  detectKey, sourceDegree,
 } from '../tools/lib/rearrange-profile.js';
 
 let failed = false;
@@ -316,6 +316,94 @@ assert(detectPhraseGrid(null).offset === 0 && detectPhraseGrid(null).confident =
   const grid = detectPhraseGrid(sparse);
   assert(Number.isFinite(grid.confidence),
     'a song that is mostly silence still yields a finite confidence');
+}
+
+// WHICH DEGREE OF THE KEY A STRETCH OF SONG IS ALREADY ON.
+//
+// A chord walk moves material by a number of scale degrees, so it only lands where it is
+// aimed if you know where it started. `triadMatch` answers this for the tonic alone; this
+// scores all seven diatonic triads and takes the best fit. Fixtures are triads written out
+// by hand, so the right answer is readable off the notes.
+{
+  const chroma = new Float32Array(4 * 12);
+  const set = (bar, pcs) => pcs.forEach((pc) => { chroma[bar * 12 + pc] = 1; });
+  set(0, [9, 0, 4]);   // A C E — i of A minor
+  set(1, [2, 5, 9]);   // D F A — iv
+  set(2, [4, 7, 11]);  // E G B — v
+  // bar 3 left empty: silence has no degree at all
+  const profile = { steps: 64, bars: 4, chroma,
+    onsets: new Float32Array(64), sustains: new Float32Array(64),
+    percussion: new Float32Array(64), energy: new Float32Array(64) };
+  const aMinor = { tonic: 9, minor: true };
+  assert(sourceDegree(profile, 0, 16, aMinor)?.degree === 0, 'an A minor triad in A minor reads as the tonic');
+  assert(sourceDegree(profile, 16, 16, aMinor)?.degree === 3, 'a D minor triad in A minor reads as the iv');
+  assert(sourceDegree(profile, 32, 16, aMinor)?.degree === 4, 'an E minor triad in A minor reads as the v');
+  assert(sourceDegree(profile, 48, 16, aMinor) === null, 'a silent bar has no degree rather than a wrong one');
+  assert(sourceDegree(profile, 0, 16, aMinor).confidence > 0.9,
+    'a clean triad is reported with high confidence');
+  // The same notes read against a different key give a different degree, which is the
+  // whole point: a degree is a position IN a key, not a property of the notes.
+  assert(sourceDegree(profile, 0, 16, { tonic: 2, minor: true })?.degree !== 0,
+    'the same triad read against another key is not the tonic');
+  assert(sourceDegree(null, 0, 16, aMinor) === null && sourceDegree(profile, 0, 0, aMinor) === null,
+    'no profile and no span are answered with null rather than a guess');
+}
+
+// ---- the song's own form --------------------------------------------------------
+//
+// The detector is judged by ear on real songs; what a test can pin is that it never lies
+// about coverage, never invents a form out of nothing, and treats length as part of a
+// part's identity — a sixteen-bar part is not an eight-bar one however alike they open.
+
+{
+  // Sixteen bars of one idea, then sixteen of a plainly different one.
+  const triad = [C5, E5, G5];
+  const other = [D5, G5];
+  const bank = {
+    bpm: 120,
+    sections: [
+      { chords: lane({ 0: triad, 8: triad, 16: triad, 24: triad }), kick: hits(0, 8, 16, 24) },
+      { chords: lane({ 0: other, 4: other, 8: other, 12: other, 16: other, 20: other }),
+        kick: hits(0, 4, 8, 12, 16, 20, 24, 28), snare: hits(4, 12, 20, 28) },
+    ],
+    order: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+  };
+  const profile = buildRearrangeProfile(bank);
+  const form = detectSongForm(profile);
+  assert(form && form.length >= 2, 'a song of two plainly different halves reports more than one part');
+  assert(form.reduce((sum, part) => sum + part.bars, 0) === profile.bars,
+    'and the parts it reports cover the song exactly, with no bar lost or invented');
+  assert(form.every((part) => part.bars > 0 && Number.isInteger(part.bars)),
+    'every part is a whole positive number of bars');
+  assert(form.every((part) => typeof part.letter === 'string' && part.letter
+    && typeof part.role === 'string' && part.role),
+    'and every part carries both an identity and a role');
+}
+
+{
+  // Too short to have a form, and nothing at all: both must decline rather than guess.
+  const short = buildRearrangeProfile({ bpm: 120, lead: lane({ 0: C5 }), order: [0, 0] });
+  assert(detectSongForm(short) === null, 'a song too short to have a form reports none');
+  assert(detectSongForm(null) === null && detectSongForm({ bars: 0 }) === null,
+    'and no profile at all reports none rather than throwing');
+}
+
+{
+  // One idea for the whole song has no internal boundary to find. Whatever it returns,
+  // it must not claim a structure that is not there.
+  const flat = buildRearrangeProfile({
+    bpm: 120,
+    chords: lane({ 0: [C5, E5, G5], 16: [C5, E5, G5] }),
+    kick: hits(0, 8, 16, 24),
+    order: new Array(16).fill(0),
+  });
+  const form = detectSongForm(flat);
+  assert(form === null || form.reduce((sum, part) => sum + part.bars, 0) === flat.bars,
+    'an unchanging song either reports no form or one that still covers it exactly');
+  if (form) {
+    assert(new Set(form.map((part) => part.letter)).size <= form.length,
+      'and never invents more identities than it has parts');
+  }
 }
 
 console.log(failed ? 'REARRANGE PROFILE: FAILED' : 'REARRANGE PROFILE: PASSED');

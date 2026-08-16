@@ -6,6 +6,9 @@ import {
   REARRANGE_EXTREMENESS_DEFAULT,
   REARRANGE_TRANSPOSE_DEFAULT, REARRANGE_PATTERN_DEFAULT,
   REARRANGE_STYLE_NAMES, REARRANGE_STYLE_DEFAULT,
+  REARRANGE_FORM_NAMES, REARRANGE_FORMS, REARRANGE_FORM_DEFAULT,
+  REARRANGE_STYLES, REARRANGE_GRAIN_LABELS, REARRANGE_GRAIN_DEFAULT, grainStyle, grainLabel,
+  REARRANGE_CHORD_PACE_NAMES, pacedChords,
   REARRANGE_FILL_NAMES,
   harmonicShift, harmonyNumeral,
   generateRearrangement, sourceCandidates, validateRearrangement, rearrangementPosition,
@@ -1270,12 +1273,70 @@ assert(seededRandom(7)() === seededRandom(7)(), 'the seeded random helper is sta
     assert(allWalked,
       'a part whose slice runs across its edge is cut there and walks, losing no material');
   }
-  // And a walk still needs a key to walk within.
-  const keyless = generateRearrangement(64 * 4, { seed: 5, style: 'phrase' });
-  delete keyless.key;
-  let needsKey = false;
-  try { toggleRearrangeSectionWalk(keyless, 0); } catch { needsKey = true; }
-  assert(needsKey, 'a chord walk without a key is refused');
+  // THE WALK LANDS WHERE IT IS AIMED, whatever the material was already sitting on.
+  //
+  // `harmony` is a RELATIVE move in scale degrees, and the walk used to assume every part
+  // opened on the tonic. Grab a bar that is really on the iv, ask for i iv v VI, and out came
+  // iv VII i ii° — the right key and the right shape, transposed by however wrong the
+  // assumption was, and labelled with the chords it was supposed to be. Reading the degree
+  // off the source and subtracting it makes the label true.
+  {
+    const key = { tonic: 9, minor: true };                  // A minor
+    const bars = 64;
+    const chroma = new Float32Array(bars * 12);
+    for (let bar = 0; bar < bars; bar += 1) for (const pc of [2, 5, 9]) chroma[bar * 12 + pc] = 1;
+    const onIv = { steps: bars * 16, bars, chroma,          // every bar is D F A — the iv
+      onsets: new Float32Array(bars * 16), sustains: new Float32Array(bars * 16),
+      percussion: new Float32Array(bars * 16), energy: new Float32Array(bars * 16) };
+    const plainWalk = generateRearrangement(64 * 8, { seed: 999, style: 'phrase' });
+    const sounding = (recipe, index) => {
+      const span = recipe.form[index];
+      let at = 0;
+      const out = [];
+      for (const op of recipe.operations) {
+        const duration = op.length * op.repeats;
+        if (at >= span.start && at + duration <= span.end) out.push((3 + (op.harmony || 0)) % 7);
+        at += duration;
+      }
+      return out;                                            // 3 = the iv the material sits on
+    };
+    const blind = toggleRearrangeSectionWalk(plainWalk, 1, { key }).recipe;
+    const aware = toggleRearrangeSectionWalk(plainWalk, 1, { key, profile: onIv }).recipe;
+    assert(JSON.stringify(sounding(blind, 1)) !== JSON.stringify(blind.form[1].chords),
+      'without the profile the walk sounds a transposition of the chords it names');
+    assert(JSON.stringify(sounding(aware, 1)) === JSON.stringify(aware.form[1].chords),
+      'with the profile the walk sounds exactly the chords its line names');
+    // Percussion and near-silence have no chord, and a guess there is worse than the old
+    // reading, so a low-confidence window is left alone rather than compensated.
+    const noise = { ...onIv, chroma: new Float32Array(bars * 12) };
+    const unsure = toggleRearrangeSectionWalk(plainWalk, 1, { key, profile: noise }).recipe;
+    assert(JSON.stringify(unsure.form[1].chords) === JSON.stringify(blind.form[1].chords),
+      'material with no readable chord falls back rather than being compensated on a guess');
+    // Turning it off again clears the stamped line as well as the shifts.
+    const cleared = toggleRearrangeSectionWalk(aware, 1, { key, profile: onIv }).recipe;
+    assert(cleared.form[1].chords === undefined
+      && sounding(cleared, 1).every((degree) => degree === 3),
+      'turning the walk off clears its chord line and leaves the material as written');
+  }
+  // A RECIPE BUILT WITHOUT WALKS CARRIES NO KEY, and that must not lock walking out.
+  //
+  // The generator only writes `key` onto a recipe when it walked something itself, so a
+  // plain arrangement has none — and the walk refused every such recipe with "choose a key".
+  // Choosing one did not help either: the Key select is a next-Go setting and never reached
+  // the recipe already on the timeline, so there was no way out from inside the panel. The
+  // desk passes the key it is SHOWING, and it is written onto the recipe, because a harmony
+  // offset means nothing to a desk that never ran the analysis.
+  const plain = generateRearrangement(64 * 8, { seed: 999, style: 'phrase' });
+  assert(plain.key === undefined, 'a recipe generated without walks carries no key of its own');
+  let refusedWithout = false;
+  try { toggleRearrangeSectionWalk(plain, 1); } catch { refusedWithout = true; }
+  assert(refusedWithout, 'a chord walk with no key anywhere is refused');
+  const supplied = toggleRearrangeSectionWalk(plain, 1, { key: { tonic: 4, minor: true } });
+  validateRearrangement(supplied.recipe, 64 * 8);
+  assert(supplied.changed > 0 && supplied.recipe.key?.tonic === 4,
+    'the desk’s own key lets a keyless recipe walk, and rides along in the recipe');
+  assert(rearrangementOutputSteps(supplied.recipe) === rearrangementOutputSteps(plain),
+    'supplying a key to a walk never changes the output length');
 }
 
 // ---- the source's phrase grid -------------------------------------------------
@@ -1332,6 +1393,213 @@ assert(seededRandom(7)() === seededRandom(7)(), 'the seeded random helper is sta
     'while a named offset genuinely changes what the generator reaches for');
   assert(recipeOf({ phraseOffset: 48 }) === recipeOf({ phraseOffset: 48 }),
     'and the same offset with the same seed still gives the same recipe');
+}
+
+// ---- form grammars ------------------------------------------------------------
+//
+// Two claims matter more than the shapes themselves. The default must generate EXACTLY
+// what it generated before grammars existed, and every grammar must cover the output
+// exactly — `validateForm` demands contiguity and every downstream index depends on it.
+
+{
+  const steps = 64 * 8;
+  assert(JSON.stringify(generateRearrangement(steps, { seed: 5 }).operations)
+    === JSON.stringify(generateRearrangement(steps, { seed: 5, form: 'song' }).operations),
+    'the default form is the historical ladder, unchanged');
+
+  for (const name of REARRANGE_FORM_NAMES) {
+    for (const length of [64 * 2, 64 * 5, 64 * 8, 64 * 13]) {
+      const recipe = generateRearrangement(length, { seed: 21, form: name });
+      const covered = recipe.form.reduce((sum, s) => sum + (s.end - s.start), 0);
+      assert(covered === length && recipe.form[0].start === 0
+        && recipe.form.every((s, i) => i === 0 || s.start === recipe.form[i - 1].end),
+        `form '${name}' covers ${length / 16} bars exactly and contiguously`);
+      assert(rearrangementOutputSteps(recipe) === length,
+        `and form '${name}' at ${length / 16} bars produces the exact output length`);
+    }
+  }
+}
+
+{
+  // The thing the old model could not say. A grammar that names the same letter twice
+  // must reuse its material — that is what a letter MEANS — while a different letter in
+  // the same form reaches somewhere else.
+  const recipe = generateRearrangement(64 * 8, { seed: 5, form: 'aaba' });
+  const letters = recipe.form.map((s) => s.letter);
+  assert(letters.filter((l) => l === 'A').length > 1,
+    'AABA emits the same letter more than once, which the role-derived model could not');
+  const aSources = new Set(recipe.form.filter((s) => s.letter === 'A').map((s) => s.source));
+  assert(aSources.size === 1, 'and every part sharing a letter grabs the same source material');
+  const bSource = recipe.form.find((s) => s.letter === 'B')?.source;
+  assert(bSource != null && !aSources.has(bSource),
+    'while a different letter is genuinely different material');
+}
+
+{
+  // Variable part length is the point of the exercise: a grammar that asks for eight-
+  // and four-bar parts must not be flattened back onto the four-bar grid.
+  const dance = generateRearrangement(64 * 8, { seed: 3, form: 'dance' });
+  const bars = dance.form.map((s) => (s.end - s.start) / 16);
+  assert(bars.some((b) => b !== 4), 'a dance form emits parts that are not four bars');
+  assert(bars.some((b) => b === 8), 'including the eight-bar parts it asks for');
+  assert(dance.form.some((s) => s.role === 'Drop'),
+    'and its roles are its own vocabulary, not verse and chorus');
+}
+
+{
+  // A form shorter than one pass of its cycle still has to be a form rather than an
+  // empty list or a throw — the fitter's trimming is load-bearing, not decorative.
+  for (const name of REARRANGE_FORM_NAMES) {
+    const tiny = generateRearrangement(64, { seed: 8, form: name });
+    assert(tiny.form.length > 0 && tiny.form.reduce((sum, s) => sum + (s.end - s.start), 0) === 64,
+      `form '${name}' still covers a song too short for one cycle`);
+  }
+  const unknown = generateRearrangement(64 * 4, { seed: 8, form: 'not-a-form' });
+  assert(unknown.form.length > 0,
+    'an unknown form name falls back to the default rather than throwing');
+}
+
+// ---- grain --------------------------------------------------------------------
+//
+// The dial that replaced Style in the open. The claim that has to hold is the one that
+// made a dial arguable at all: the ENDS are gates, not tendencies. In between it may
+// interpolate freely, and a named style must still overrule it outright — that is what
+// keeps Style worth having in Advanced.
+
+{
+  const lengthsAt = (grain) => grainStyle(grain).cells.map(([length]) => length);
+
+  assert(lengthsAt(0).every((length) => length >= 16),
+    'at the bottom of the dial nothing shorter than a bar may be emitted');
+  assert(lengthsAt(1).every((length) => length <= 16),
+    'at the top of the dial nothing longer than a bar may be emitted');
+  assert(grainStyle(0).grid === 16, 'and the bottom of the dial aligns to the bar');
+
+  // Monotonic: turning the dial up never makes the cutting coarser.
+  let previous = null;
+  for (let grain = 0; grain <= 1.0001; grain += 0.05) {
+    const shortest = Math.min(...lengthsAt(grain));
+    if (previous != null) {
+      assert(shortest <= previous,
+        `grain ${grain.toFixed(2)} is no coarser than the setting below it`);
+    }
+    previous = shortest;
+    const style = grainStyle(grain);
+    assert(style.grid === Math.min(...lengthsAt(grain), 16),
+      `grain ${grain.toFixed(2)} aligns to the shortest cell it permits`);
+    assert(style.cells.every(([, weight]) => weight > 0),
+      `grain ${grain.toFixed(2)} emits no zero-weight cell`);
+  }
+
+  assert(REARRANGE_GRAIN_LABELS.length === 5
+    && grainLabel(0) === 'Phrases' && grainLabel(1) === 'Shards',
+    'the dial reads from Phrases to Shards');
+  assert(grainLabel(-5) === 'Phrases' && grainLabel(99) === 'Shards',
+    'and a nonsense reading is clamped rather than falling off the end');
+}
+
+{
+  const steps = 64 * 8;
+  const cellsOf = (options) => {
+    const recipe = generateRearrangement(steps, { seed: 31, ...options });
+    return recipe.operations.map((op) => op.length);
+  };
+
+  // A named style still wins outright — the whole reason it survives in Advanced.
+  const named = cellsOf({ style: 'phrase', grain: 1 });
+  assert(named.every((length) => REARRANGE_STYLES.phrase.cells.some(([c]) => c === length)),
+    'a named style overrules the grain dial completely');
+
+  // 'auto' hands the decision to the dial.
+  const coarse = cellsOf({ style: 'auto', grain: 0 });
+  const fine = cellsOf({ style: 'auto', grain: 1 });
+  assert(coarse.every((length) => length >= 16), 'auto at grain 0 cuts no finer than a bar');
+  assert(fine.every((length) => length <= 16), 'auto at grain 1 cuts no coarser than a bar');
+  assert(Math.min(...fine) < Math.min(...coarse),
+    'and the dial genuinely changes how finely the song is cut');
+
+  // The historical path is untouched: no style and no grain generates as it always did.
+  assert(JSON.stringify(cellsOf({})) === JSON.stringify(cellsOf({ grain: null })),
+    'no style and no grain is the legacy continuous path, unchanged');
+  assert(JSON.stringify(cellsOf({ style: 'groove' }))
+    === JSON.stringify(cellsOf({ style: 'groove', grain: 0.9 })),
+    'and a grain supplied alongside a named style changes nothing');
+}
+
+// ---- chord walks at any part length --------------------------------------------
+//
+// A walk assigns ONE CHORD PER BAR, so the returned array must be exactly as long as the
+// part. The old code sliced a four-entry shape, which returned four chords for a six-bar
+// part — invisible while every part was exactly four bars, and live the moment a form
+// grammar could emit one. That is the bug these exist to keep dead.
+
+{
+  const palette = [0, -2, 2, -1];
+  for (let bars = 2; bars <= 32; bars++) {
+    for (const pace of REARRANGE_CHORD_PACE_NAMES) {
+      const chords = pacedChords(palette, bars, pace, 'full');
+      assert(chords.length === bars,
+        `${pace} pacing gives a ${bars}-bar part exactly ${bars} chords`);
+      assert(chords.every((degree) => Number.isInteger(degree)),
+        `and every entry at ${bars} bars under ${pace} is a real scale degree`);
+    }
+  }
+
+  // Slow holds home and then moves, at every length — the riff is established before the
+  // harmony leaves, which is the whole point of the pacing.
+  assert(pacedChords(palette, 6, 'slow', 'full').slice(0, 4).every((d) => d === 0),
+    'a six-bar part under slow pacing still opens at home');
+  assert(pacedChords(palette, 16, 'slow', 'full').some((d, i) => i > 8 && d !== 0),
+    'and a sixteen-bar part moves again in its second half rather than holding twelve bars');
+  const long = pacedChords(palette, 16, 'slow', 'full');
+  assert(JSON.stringify(long.slice(0, 8)) === JSON.stringify(long.slice(8)),
+    'a sixteen-bar part is the eight-bar phrase shape repeated, not stretched');
+  assert(JSON.stringify(pacedChords(palette, 8, 'slow', 'full'))
+    === JSON.stringify([0, 0, 0, 0, -2, -2, 2, -1]),
+    'and the documented eight-bar shape is unchanged');
+}
+
+{
+  // The gate itself: parts of four bars and up may walk, whatever grammar built them.
+  const steps = 64 * 12;
+  const walkedOf = (form) => {
+    const recipe = generateRearrangement(steps, {
+      seed: 9, form, progression: 'edm', key: { tonic: 9, minor: true },
+    });
+    return recipe.form.filter((s) => Array.isArray(s.chords) && s.chords.some((c) => c !== 0));
+  };
+  for (const form of ['song', 'dance', 'aaba', 'arch']) {
+    const walked = walkedOf(form);
+    assert(walked.length > 0, `form '${form}' has parts that carry a chord walk`);
+    assert(walked.every((s) => s.chords.length === (s.end - s.start) / 16),
+      `and every walked part in '${form}' carries one chord per bar`);
+  }
+  const eightBar = walkedOf('aaba').filter((s) => (s.end - s.start) / 16 === 8);
+  assert(eightBar.length > 0,
+    'an eight-bar part walks — under the old four-bar gate it silently played flat');
+}
+
+// ---- the song's own form -------------------------------------------------------
+
+{
+  // Detected parts become the grammar, with the ends held out of the repeat: an intro
+  // that came back every cycle would not be an intro. The DETECTOR has its own suite in
+  // tests/rearrange-profile.js; this is about the wiring and the fallback.
+  //
+  // Without a profile there is nothing to read, and it must fall back rather than throw
+  // or produce an empty form.
+  const fallback = generateRearrangement(64 * 8, { seed: 9, form: 'source' });
+  assert(fallback.form.length > 0
+    && fallback.form.reduce((sum, s) => sum + (s.end - s.start), 0) === 64 * 8,
+    "form 'source' with nothing to read falls back to the ladder and still covers the output");
+  assert(JSON.stringify(fallback.operations)
+    === JSON.stringify(generateRearrangement(64 * 8, { seed: 9, form: 'song' }).operations),
+    'and that fallback is exactly the ladder, not a third behaviour');
+
+  assert(REARRANGE_FORM_NAMES.includes('source'),
+    "'source' is offered alongside the written grammars");
+  assert(REARRANGE_FORMS.source.detected === true && !REARRANGE_FORMS.source.cycle,
+    'and it is marked as read-from-the-song rather than carrying a shape of its own');
 }
 
 console.log(failed ? 'REARRANGE: FAILED' : 'REARRANGE: PASSED');

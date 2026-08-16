@@ -82,16 +82,20 @@ assert(/#rearrangepanel\.pending/.test(shell)
 // "Advanced" is gone as a CONCEPT. Key, Fill new sections and Transpose were only advanced
 // because they had nowhere else to sit; they stand in the Generate band beside the dials
 // they modify, where the band they are in is what states their scope.
-// STYLE IS A DIAL, like the five beside it. It was four segmented buttons — the one
-// non-dial in a row of dials, and the widest thing in the band. The scale runs from the
-// biggest cuts to the smallest and then to Mix, which is not a smaller cut but a decision
-// to let each repeated letter keep its own identity, so it sits at the free end and is
-// where the panel opens.
-assert(/id="restyle" type="range" min="0" max="3" step="1" value="3"/.test(shell)
-  && /id="restylevalue"/.test(shell)
-  && /Phrase<\/span><span>Mix/.test(shell)
-  && /REARRANGE_STYLE_SCALE = Object\.freeze\(\['phrase', 'groove', 'chop', 'mix'\]\)/.test(entry)
-  && /setRearrangeStyle\(REARRANGE_STYLE_SCALE\[Number\(\$\('restyle'\)\.value\) \|\| 0\]\)/.test(entry)
+// GRAIN IS THE DIAL, and Style is its exact override in Advanced. Style used to be the
+// dial itself, with a fourth position — Mix — that existed only to say "do not commit to
+// one of these", which is a dial admitting it should not have been four boxes. How finely
+// the song is cut is a continuum, so Grain runs it: Phrases to Shards, hard-limited at
+// both ends. Style survives for the one thing a dial cannot do, which is promise, and it
+// defaults to Auto so the two can never state contradictory intents.
+assert(/id="regrain" type="range" min="0" max="100" step="5" value="50"/.test(shell)
+  && /id="regrainvalue"/.test(shell)
+  && /Phrases<\/span><span>Shards/.test(shell)
+  && /<select id="restyle"/.test(shell)
+  && /<option value="auto" selected>Auto \(follow Grain\)<\/option>/.test(shell)
+  && /setRearrangeGrain\(Number\(\$\('regrain'\)\.value\) \/ 100\)/.test(entry)
+  && /grain: rearrangeGrain\(\)/.test(entry)
+  && !/REARRANGE_STYLE_SCALE/.test(entry)
   && !/data-style="groove"/.test(shell)
   && /id="relength"/.test(shell)
   && !/id="rechordpace"/.test(shell)
@@ -158,7 +162,28 @@ assert(/id="restyle" type="range" min="0" max="3" step="1" value="3"/.test(shell
   && /Collage<\/span><span>Locked loop/.test(shell)
   && /Tame<\/span><span>Feral/.test(shell)
   && /Chill<\/span><span>Peak-time/.test(shell)
-  && /rearrangeStyleChoice = REARRANGE_STYLE_DEFAULT/.test(entry)
+  // Style opens on Auto, which is what keeps Grain and Style from stating two different
+  // intents: the override only participates once someone asks for it by name.
+  && /let rearrangeStyleChoice = 'auto';/.test(entry)
+  && /REARRANGE_STYLE_OPTIONS = Object\.freeze\(\['auto', \.\.\.REARRANGE_STYLE_CHOICES\]\)/.test(entry)
+  // The dial greys while a named style is in force, rather than sitting live and deciding
+  // nothing — a control that looks active and changes nothing is worse than a dead one.
+  && /dial\.disabled = overridden;/.test(entry)
+  // FORM is the macro shape, and it sits ABOVE Style in Advanced because it is the bigger
+  // decision: Form governs how long a part is, Grain and Style govern the cuts inside one.
+  // Song is the historical ladder and the default, so nothing built before it changes.
+  && /<select id="reform"/.test(shell)
+  && /<option value="song" selected>Song<\/option>/.test(shell)
+  && /<option value="dance">Dance<\/option>/.test(shell)
+  // The song's own roadmap is offered beside the written shapes — read off the material
+  // rather than imposed on it, which is the only entry here that is not an opinion.
+  && /<option value="source">This song&rsquo;s own<\/option>/.test(shell)
+  && shell.indexOf('id="reform"') < shell.indexOf('<select id="restyle"')
+  && /form: rearrangeForm\(\)/.test(entry)
+  && /\$\('reform'\)\.onchange = \(\) => \{ setRearrangeForm\(\$\('reform'\)\.value\); \};/.test(entry)
+  // A non-default Form or a named Style is a set advanced setting, and the button counts it.
+  && /rearrangeForm\(\) !== REARRANGE_FORM_DEFAULT,/.test(entry)
+  && /rearrangeStyle\(\) !== 'auto',/.test(entry)
   && !/function rearrangeAllowGlitches/.test(entry)
   && /rearrangeProfileCache/.test(entry)
   && /rearrangeSourceProfile\(\{ build: true \}\)/.test(entry)

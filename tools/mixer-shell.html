@@ -6620,16 +6620,18 @@
            control it modifies rather than across the row from it. -->
       <button id="reseedhold" class="defer" type="button" aria-pressed="false" aria-label="Vary this one" title="Every press of Go builds a completely different arrangement. Turn this on and Go keeps the one you are hearing instead, changing only what the dials ask for — so you can move one dial and hear what that dial did.">📌 Vary this one</button>
       <div class="revr"></div>
-      <!-- STYLE IS A DIAL LIKE THE REST OF THEM. It was four segmented buttons, which made
-           the one control in this band that is not a dial also the widest thing in it. On a
-           slider it reads as what it is — a scale from the biggest cuts to the smallest and
-           then to "let each letter choose", which is where it sits by default. -->
+      <!-- GRAIN, WHICH STYLE USED TO BE. Style was four named boxes on a dial's track, and
+           its fourth box — Mix — existed only to say "do not commit to one of these". How
+           finely the song is cut is a continuum, so this is a real dial now: from whole
+           phrases to single beats. The two ENDS are still hard gates, because the reason to
+           name a cut size is being able to rely on it. Naming one exactly is still possible,
+           in Advanced, where Style now lives. -->
       <div class="recontrol defer">
-        <label for="restyle">Style</label>
-        <input id="restyle" type="range" min="0" max="3" step="1" value="3"
-               aria-describedby="restylehint" title="How the song is cut. Phrase takes whole one to four-bar phrases; Chop works in beats; Mix gives each repeated letter its own stable identity.">
-        <output id="restylevalue" for="restyle">Mix</output>
-        <div id="restylehint" class="recontrolhint"><span>Phrase</span><span>Mix</span></div>
+        <label for="regrain">Grain</label>
+        <input id="regrain" type="range" min="0" max="100" step="5" value="50"
+               aria-describedby="regrainhint" title="How finely the song is cut. Phrases takes whole one to four-bar phrases; Groove works in bars and half-bars; Shards works in beats. At either end it is a hard limit, not a leaning.">
+        <output id="regrainvalue" for="regrain">Groove</output>
+        <div id="regrainhint" class="recontrolhint"><span>Phrases</span><span>Shards</span></div>
       </div>
       <div class="recontrol defer">
         <label for="remood">Mood</label>
@@ -6668,7 +6670,36 @@
            something you cannot see from the outside — the desk's rule about hidden preset
            parameters applies hardest to the controls you have put behind a door. -->
       <div id="readvancedpop" class="repop" popover aria-label="Advanced M8TRX settings">
-        <div class="repophead"><b>Advanced</b><span>All four only affect the next Go.</span></div>
+        <div class="repophead"><b>Advanced</b><span>These only affect the next Go.</span></div>
+        <!-- FORM is the macro shape — how many parts, how long each is, and which of them
+             come back. It sits above Style because it is the bigger decision: Form governs
+             part lengths, Style and Grain govern the cuts inside them. Song is the historical
+             Intro/Verse/Chorus ladder and is what every arrangement built before this used. -->
+        <div class="recontrol rechordrow defer">
+          <label for="reform">Form</label>
+          <select id="reform" title="The overall shape of the arrangement. Song is the familiar Intro/Verse/Chorus roadmap in four-bar parts. This song's own reads the roadmap off the material instead — its real part lengths and its real repeats. Dance builds and drops with no verse or chorus. Loop is one idea that grows and falls away. AABA states an idea twice, contrasts, and returns. Arch holds the hook back for a bigger payoff.">
+            <option value="song" selected>Song</option>
+            <option value="source">This song&rsquo;s own</option>
+            <option value="dance">Dance</option>
+            <option value="loop">Loop</option>
+            <option value="aaba">AABA</option>
+            <option value="arch">Arch</option>
+          </select>
+        </div>
+        <!-- Style, kept for the one thing a dial cannot do: promise. Grain interpolates,
+             which is right for finding a feel and wrong for "bars and half-bars, nothing
+             else". Auto hands the decision back to the dial and is the default, so the two
+             can never state contradictory intents. -->
+        <div class="recontrol rechordrow defer">
+          <label for="restyle">Style</label>
+          <select id="restyle" title="Auto follows the Grain dial. Naming a style instead is an exact promise about cut sizes: Phrase takes whole one to four-bar phrases, Groove bars and half-bars, Chop beats, and Mix gives each repeated letter its own stable identity.">
+            <option value="auto" selected>Auto (follow Grain)</option>
+            <option value="phrase">Phrase</option>
+            <option value="groove">Groove</option>
+            <option value="chop">Chop</option>
+            <option value="mix">Mix</option>
+          </select>
+        </div>
         <div class="recontrol rechordrow defer">
           <label for="relength">New length</label>
           <select id="relength" title="Choose a shorter or longer M8TRX output. Base slices stay musical; the source song is never changed.">

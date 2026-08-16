@@ -261,6 +261,8 @@ const SCOPES = {
   rehypnosis: 'generate',
   rechaos: 'generate',
   redrive: 'generate',
+  regrain: 'generate',
+  reform: 'generate',
   retranspose: 'generate',
   rekey: 'generate',
   refill: 'generate',

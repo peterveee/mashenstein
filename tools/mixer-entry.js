@@ -101,6 +101,8 @@ import {
   rearrangementDrumMode, rearrangementPosition,
   REARRANGE_TRANSPOSE_DEFAULT, REARRANGE_TRANSPOSES,
   REARRANGE_STYLE_CHOICES, REARRANGE_STYLE_DEFAULT,
+  REARRANGE_GRAIN_DEFAULT, grainLabel,
+  REARRANGE_FORM_NAMES, REARRANGE_FORM_DEFAULT,
   REARRANGE_FILL_NAMES, REARRANGE_FILL_DEFAULT,
   REARRANGE_CREATIVE_DEFAULTS, moodWalkKey, driveDrumKit, REARRANGE_KIND,
   harmonyNumeral,
@@ -6986,52 +6988,95 @@ function syncBounceScope() {
 // Style is a hard gate on what the generator may emit, so the control is a compact
 // choice rather than a point on a scale. Held here rather than read back off the DOM
 // so the panel and the generator cannot disagree about which one is selected.
-let rearrangeStyleChoice = REARRANGE_STYLE_DEFAULT;
-// Keep the library's legacy default for callers that import it, while the desk opens
-// with the more useful per-letter Mix choice.
-rearrangeStyleChoice = 'mix';
+/**
+ * Style is now an OVERRIDE, and 'auto' is the default.
+ *
+ * Grain owns how finely the song is cut. Style survives in Advanced for the one thing a
+ * dial cannot do — promise — so naming one is an exact claim about cut sizes rather than
+ * a leaning. Left on Auto it does not participate at all, which is what stops the panel
+ * carrying two controls that answer the same question and disagree.
+ */
+let rearrangeStyleChoice = 'auto';
+const REARRANGE_STYLE_OPTIONS = Object.freeze(['auto', ...REARRANGE_STYLE_CHOICES]);
 
 function rearrangeStyle() {
-  return REARRANGE_STYLE_CHOICES.includes(rearrangeStyleChoice)
-    ? rearrangeStyleChoice : 'mix';
-}
-
-const REARRANGE_STYLE_TIPS = {
-  mix: 'Mix: each repeated letter keeps a stable phrase, groove or chop identity',
-  phrase: 'Phrase: whole one to four-bar phrases, always starting on a bar line',
-  groove: 'Groove: bar and half-bar cells on eight-step boundaries',
-  chop: 'Chop: beat and half-bar cells, still landing on the beat',
-};
-
-function setRearrangeStyle(style) {
-  if (!REARRANGE_STYLE_CHOICES.includes(style)) return;
-  rearrangeStyleChoice = style;
-  syncRearrangeStyle();
+  return REARRANGE_STYLE_OPTIONS.includes(rearrangeStyleChoice)
+    ? rearrangeStyleChoice : 'auto';
 }
 
 /**
- * Style, left to right, as a scale rather than as four buttons.
+ * The macro shape the next Go builds: how many parts, how long, and which return.
  *
- * The order is the size of the cuts — whole phrases, then grooves, then beats — and then
- * Mix, which is not a smaller cut but a decision to let each repeated letter keep its own
- * identity. That belongs at the free end, and it is where the panel opens.
- *
- * Kept as its own array rather than reusing REARRANGE_STYLE_CHOICES: that one leads with
- * 'mix' because it is the library's option list, and an option list is not a scale.
+ * Song is the historical ladder and the default, so an arrangement built before form
+ * grammars existed is still exactly what this produces. The others are the shapes the
+ * imported catalogue actually shows — where only 29% of parts are four bars long.
  */
-const REARRANGE_STYLE_SCALE = Object.freeze(['phrase', 'groove', 'chop', 'mix']);
-const REARRANGE_STYLE_WORDS = { phrase: 'Phrase', groove: 'Groove', chop: 'Chop', mix: 'Mix' };
+let rearrangeFormChoice = REARRANGE_FORM_DEFAULT;
+function rearrangeForm() {
+  return REARRANGE_FORM_NAMES.includes(rearrangeFormChoice)
+    ? rearrangeFormChoice : REARRANGE_FORM_DEFAULT;
+}
+function setRearrangeForm(form) {
+  if (!REARRANGE_FORM_NAMES.includes(form)) return;
+  rearrangeFormChoice = form;
+  syncRearrangeForm();
+}
+function syncRearrangeForm() {
+  const select = $('reform');
+  if (!select) return;
+  select.value = rearrangeForm();
+  syncRearrangeAdvanced();
+}
+
+/** How finely the song is cut, 0..1. The dial that replaced Style in the open. */
+let rearrangeGrainValue = REARRANGE_GRAIN_DEFAULT;
+function rearrangeGrain() {
+  const value = Number(rearrangeGrainValue);
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : REARRANGE_GRAIN_DEFAULT;
+}
+function setRearrangeGrain(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return;
+  rearrangeGrainValue = Math.max(0, Math.min(1, number));
+  syncRearrangeGrain();
+}
+function syncRearrangeGrain() {
+  const dial = $('regrain');
+  const output = $('regrainvalue');
+  if (!dial || !output) return;
+  const label = grainLabel(rearrangeGrain());
+  dial.value = String(Math.round(rearrangeGrain() * 100));
+  output.value = label;
+  output.textContent = label;
+  // Greyed while a named style is in force: the dial is genuinely not deciding anything
+  // then, and a live-looking control that changes nothing is worse than a dead one.
+  const overridden = rearrangeStyle() !== 'auto';
+  dial.disabled = overridden;
+  dial.title = overridden
+    ? `Style is set to ${REARRANGE_STYLE_WORDS[rearrangeStyle()]} in Advanced, which decides`
+      + ' the cut sizes outright. Set Style back to Auto to use this dial.'
+    : 'How finely the song is cut. Phrases takes whole one to four-bar phrases; Groove works'
+      + ' in bars and half-bars; Shards works in beats. At either end it is a hard limit,'
+      + ' not a leaning.';
+  syncRearrangeSeedHold();
+}
+
+function setRearrangeStyle(style) {
+  if (!REARRANGE_STYLE_OPTIONS.includes(style)) return;
+  rearrangeStyleChoice = style;
+  syncRearrangeStyle();
+  // The dial greys or un-greys with it; the form is independent and is left alone.
+  syncRearrangeGrain();
+}
+
+const REARRANGE_STYLE_WORDS = {
+  auto: 'Auto', phrase: 'Phrase', groove: 'Groove', chop: 'Chop', mix: 'Mix',
+};
 
 function syncRearrangeStyle() {
-  const dial = $('restyle');
-  const output = $('restylevalue');
-  if (!dial || !output) return;
-  const active = rearrangeStyle();
-  const at = Math.max(0, REARRANGE_STYLE_SCALE.indexOf(active));
-  dial.value = String(at);
-  output.value = REARRANGE_STYLE_WORDS[active];
-  output.textContent = REARRANGE_STYLE_WORDS[active];
-  dial.title = REARRANGE_STYLE_TIPS[active] || '';
+  const select = $('restyle');
+  if (!select) return;
+  select.value = rearrangeStyle();
   syncRearrangeSeedHold();
 }
 
@@ -7173,6 +7218,29 @@ const rearrangeKeyName = (key) => key
  * always the relative major/minor pair, which share a scale — and the picker beside
  * it is the correction when the guess is wrong.
  */
+/**
+ * The key the panel is actually showing: the one you named, or the detected one as Mood
+ * re-reads it. The same resolution the readout prints, so what the readout says and what a
+ * walk walks in cannot disagree.
+ *
+ * This exists because `recipe.key` is NOT a reliable answer. The generator only writes a key
+ * onto a recipe when it happened to walk something itself — so a recipe generated with no
+ * walks in it carries no key at all, and every attempt to turn a walk on afterwards was
+ * refused with "Choose a key before turning on a chord walk". Picking a key did not help
+ * either: the Key select is a next-Go setting and never reached the recipe already on the
+ * timeline. There was no way out of that from inside the panel.
+ */
+function rearrangeEffectiveKey() {
+  if (rearrangeChordLoop() === 'off') return null;
+  const manual = rearrangeKeyChoice();
+  if (manual) return manual;
+  const profile = rearrangeSourceProfile({ build: !playing });
+  const detected = profile ? detectKey(profile) : null;
+  return detected
+    ? moodWalkKey({ tonic: detected.tonic, minor: detected.minor }, rearrangeMood())
+    : null;
+}
+
 function syncRearrangeKeyReadout() {
   const out = $('rechordskey');
   if (!out) return;
@@ -7281,6 +7349,8 @@ function syncRearrangeAdvanced() {
     ($('rekey')?.value ?? 'auto') !== 'auto',
     ($('refill')?.value ?? REARRANGE_FILL_DEFAULT) !== REARRANGE_FILL_DEFAULT,
     Number($('retranspose')?.value || 0) > 0,
+    rearrangeForm() !== REARRANGE_FORM_DEFAULT,
+    rearrangeStyle() !== 'auto',
   ].filter(Boolean).length;
   button.textContent = set ? `Advanced · ${set} set ⌄` : 'Advanced ⌄';
   button.classList.toggle('set', set > 0);
@@ -7758,14 +7828,28 @@ function renderRearrangeTimeline(geometry = rearrangeTimelineGeometry()) {
       }
       const foot = document.createElement('div');
       foot.className = 'reslicefoot';
-      if (op.fill) {
+      // ONE MARK PER FILL, ON THE SLICE IT STARTS AT. A fill chops a part's ending into
+      // several cells and every one of them carries `fill`, so a tick on each drew four
+      // identical dots in a row for one event — four statements of one fact, and the dots
+      // read as a property of the slices rather than as a thing that begins here. Marking
+      // only where the run starts keeps what the mark is FOR (where does the fill come in)
+      // and drops the repetition. The part card's F already says the part has one at all.
+      if (op.fill && !placed[placed.indexOf(entry) - 1]?.op?.fill) {
         const tick = document.createElement('i');
         tick.className = 'refilltick';
+        tick.title = `${op.fill} fill starts here`;
         foot.append(tick);
       }
       const chord = document.createElement('b');
       chord.className = 'rechordbadge';
-      if (op.harmony) chord.textContent = harmonyNumeral(op.harmony, rearrangeRecipe?.key?.minor !== false);
+      // The chord this slice SOUNDS, taken from the part's stamped line where there is one —
+      // `op.harmony` is the relative move that got it there, and printing that is only the
+      // same number while the material is assumed to open on the tonic.
+      const stampedChords = Array.isArray(section.chords) && section.chords.length ? section.chords : null;
+      const sounding = stampedChords
+        ? stampedChords[Math.min(stampedChords.length - 1, Math.floor((entry.start - section.start) / 16))]
+        : op.harmony;
+      if (sounding) chord.textContent = harmonyNumeral(sounding, rearrangeRecipe?.key?.minor !== false);
       else if (op.transpose) chord.textContent = op.transpose > 0 ? `+${op.transpose}` : String(op.transpose);
       foot.append(chord);
       slice.append(foot);
@@ -7793,8 +7877,17 @@ function rearrangeSectionChordLine(sectionIndex, notation = 'degree', limitSteps
   // A part that repeats states its walk ONCE. Sixteen bars of numerals is not a chord
   // line, it is a wall, and the part's own '×4' already says the rest is the same again.
   const until = limitSteps > 0 ? Math.min(section.end, section.start + limitSteps) : section.end;
+  // WHAT THE PART SOUNDS, NOT THE SHIFT THAT GOT IT THERE. `harmony` is a RELATIVE move in
+  // scale degrees, so reading the numeral straight off it is only true while the material is
+  // assumed to start on the tonic. A walked part stamps the chords it actually plays onto
+  // its form entry, bar by bar; that is what gets printed when it is there, and the old
+  // reading stays as the fallback for recipes written before it was.
+  const stamped = Array.isArray(section.chords) && section.chords.length ? section.chords : null;
   for (let step = section.start; step < until; step += 16) {
-    const harmony = rearrangementPosition(rearrangeRecipe, step)?.operation?.harmony || 0;
+    const bar = Math.floor((step - section.start) / 16);
+    const harmony = stamped
+      ? (stamped[Math.min(stamped.length - 1, bar)] || 0)
+      : (rearrangementPosition(rearrangeRecipe, step)?.operation?.harmony || 0);
     if (notation === 'roman') chords.push(harmonyNumeral(harmony, minor));
     else chords.push(String(((harmony % 7) + 7) % 7 + 1));
   }
@@ -8705,6 +8798,8 @@ function rerollRearrangeSectionMaterial(sectionIndex) {
     const result = regenerateRearrangementSection(rearrangeRecipe, sectionIndex, {
       seed: randomSeed(),
       style: rearrangeStyle(),
+      grain: rearrangeGrain(),
+      form: rearrangeForm(),
       mood: rearrangeMood(),
       hypnosis: rearrangeHypnosis(),
       chaos: rearrangeChaos(),
@@ -8735,6 +8830,8 @@ function transformSelectedRearrange(action, label, options = {}) {
       profile: rearrangeGenerationProfile(),
       key: rearrangeKeyChoice() || rearrangeRecipe.key || null,
       style: rearrangeStyle(),
+      grain: rearrangeGrain(),
+      form: rearrangeForm(),
       mood: rearrangeMood(),
       hypnosis: rearrangeHypnosis(),
       chaos: rearrangeChaos(),
@@ -8807,7 +8904,10 @@ function transformRearrangeSectionUi(index, action, label, options = {}) {
 function toggleRearrangeWalkUi(index) {
   if (!rearrangeRecipe) return;
   try {
-    const result = toggleRearrangeSectionWalk(rearrangeRecipe, index);
+    // The key the PANEL is showing, not only the one the recipe happens to carry — see
+    // rearrangeEffectiveKey. A recipe generated without walks carries no key at all.
+    const result = toggleRearrangeSectionWalk(rearrangeRecipe, index,
+      { key: rearrangeEffectiveKey(), profile: rearrangeGenerationProfile() });
     applyRearrangeEdit(result.recipe, 'Chord walk toggled');
   } catch (error) { toast(error?.message || 'Could not toggle the chord walk'); }
 }
@@ -8815,7 +8915,8 @@ function toggleRearrangeWalkUi(index) {
 function rerollRearrangeWalkUi(index) {
   if (!rearrangeRecipe) return;
   try {
-    const result = rerollSectionWalk(rearrangeRecipe, index, { seed: randomSeed() });
+    const result = rerollSectionWalk(rearrangeRecipe, index,
+      { seed: randomSeed(), key: rearrangeEffectiveKey(), profile: rearrangeGenerationProfile() });
     applyRearrangeEdit(result.recipe, 'Chord walk rerolled');
   } catch (error) { toast(error?.message || 'Could not reroll the chord walk'); }
 }
@@ -9019,6 +9120,8 @@ function generateRearrangeRecipe({ restart = false, freshSeed = false } = {}) {
     recipe = generateRearrangement(steps, {
       seed,
       style: rearrangeStyle(),
+      grain: rearrangeGrain(),
+      form: rearrangeForm(),
       mood: rearrangeMood(),
       hypnosis: rearrangeHypnosis(),
       chaos: rearrangeChaos(),
@@ -9259,6 +9362,8 @@ function rearrangeSettingsSnapshot() {
   return {
     mood: dial('mood'), hypnosis: dial('hypnosis'), chaos: dial('chaos'), drive: dial('drive'),
     style: rearrangeStyle(),
+    grain: rearrangeGrain(),
+    form: rearrangeForm(),
     length: $('relength')?.value ?? '1',
     drums: rearrangeDrumsChoice,
     key: $('rekey')?.value ?? 'auto',
@@ -9396,7 +9501,9 @@ function applyRearrangeSettings(settings) {
     const control = $(spec.id);
     if (control && Number.isFinite(value)) control.value = String(Math.max(0, Math.min(100, value)));
   }
-  if (REARRANGE_STYLE_CHOICES.includes(settings.style)) setRearrangeStyle(settings.style);
+  if (REARRANGE_STYLE_OPTIONS.includes(settings.style)) setRearrangeStyle(settings.style);
+  if (settings.grain != null) setRearrangeGrain(settings.grain);
+  if (REARRANGE_FORM_NAMES.includes(settings.form)) setRearrangeForm(settings.form);
   const select = (id, value) => {
     const control = $(id);
     if (control && value != null
@@ -9417,6 +9524,8 @@ function applyRearrangeSettings(settings) {
   rearrangeSeedHold = !!settings.seedHold;
   syncRearrangeDials();
   syncRearrangeStyle();
+  syncRearrangeGrain();
+  syncRearrangeForm();
   syncRearrangeTranspose();
   syncRearrangeKeyReadout();
   syncRearrangeSeedHold();
@@ -18932,10 +19041,14 @@ $('rearrangebtn').onclick = () => {
 };
 // A range input brings its own arrow keys, so the hand-rolled radio-group keyboard handling
 // this replaced is gone with the buttons.
-$('restyle').oninput = () => {
-  setRearrangeStyle(REARRANGE_STYLE_SCALE[Number($('restyle').value) || 0]);
+$('regrain').oninput = () => { setRearrangeGrain(Number($('regrain').value) / 100); };
+$('reform').onchange = () => { setRearrangeForm($('reform').value); };
+$('restyle').onchange = () => {
+  setRearrangeStyle($('restyle').value);
 };
 syncRearrangeStyle();
+syncRearrangeGrain();
+syncRearrangeForm();
 for (const [name, spec] of Object.entries(REARRANGE_DIALS)) {
   $(spec.id).oninput = () => {
     syncRearrangeDial(name);

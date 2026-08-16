@@ -32,6 +32,12 @@ either way, so the timeline never moves under a pointer heading for a slice.
 
 Nothing in this panel ever changes the song. M8TRX is a performance layer over it.
 
+**Parts are no longer all four bars.** **Form** decides how long each part is: several
+grammars use eight- and sixteen-bar parts, and *This song's own* uses whatever lengths the
+song actually has. Anything below that reads "four bars" as a fixed quantity is describing
+behaviour that has changed. Chord walks follow — any part of four bars or more can carry
+one, at one chord per bar.
+
 **Transport is the desk's own.** M8TRX has no Play or Stop of its own: the desk's ▶ and ■
 work while a recipe is armed, and **start-from-the-beginning** plays the recipe from its
 top with the four-beat count-in. **Undo is borrowed the same way**: while a recipe is live
@@ -44,7 +50,7 @@ becomes Recipe Once / Recipe Loop. The two histories never merge.
 
 | Control | Scope | What it does |
 | --- | --- | --- |
-| **Style** — Phrase / Groove / Chop / Mix | Next Generate | Hard gate on slice lengths and where cuts may land. Phrase = whole bars, Chop = beats, Mix = a stable choice per repeated letter. |
+| **Grain** | Next Generate | How finely the song is cut: Phrases ▸ Bars ▸ Groove ▸ Beats ▸ Shards. The two ENDS are hard limits rather than leanings — at the bottom nothing shorter than a bar is emitted, at the top nothing longer — and the middle interpolates between them. Greys out while a named **Style** is set in Advanced, because then it is not deciding anything. |
 | **Mood** slider | Next Generate | Dark ↔ euphoric, and the only dial that touches harmony. See the four dials below. |
 | **Hypnosis** slider | Next Generate | Collage ↔ locked loop: how much the song repeats itself. |
 | **Chaos** slider | Next Generate | Tame ↔ feral: how far from the safest answer a choice may land. |
@@ -104,6 +110,8 @@ the first.
 
 | Control | What it sets |
 | --- | --- |
+| **Form** | The overall shape Go builds — how many parts, how long each is, and which of them come back. **Song** is the familiar Intro/Verse/Chorus roadmap in four-bar parts. **This song's own** reads the roadmap off the material instead, with the song's real part lengths and its real repeats. **Dance** builds and drops, with no verse or chorus. **Loop** is one idea that grows and falls away. **AABA** states an idea twice, contrasts, and returns. **Arch** holds the hook back for a bigger payoff. |
+| **Style** | An exact override for **Grain**, and Auto — the default — simply follows the dial. Naming one is a *promise* about cut sizes rather than a leaning: Phrase takes whole one to four-bar phrases, Groove bars and half-bars, Chop beats, and Mix gives each repeated letter its own stable identity. This is the one thing a dial cannot do, which is why it survives. |
 | **Key** | The key walks move within. **Detected** trusts the analysis (marked `?` when the song does not settle) and is what Mood re-reads; naming one yourself overrules both. The readout beside it shows the key Go will *actually* walk in, marked `· Mood` when the dial moved it. **None · chromatic** turns the chord walks off entirely. |
 | **Fill new sections** | Whether the sections **Go builds** get an end-of-part fill, and which shape. Auto's rate follows Drive — roughly one part in three at the centre — and can always come out as no fill at all. The Part rail's **Fill this ending** is the one that acts on the part in hand, now. |
 | **Transpose** | How adventurous generated chromatic lifts are. Off means the generator adds none. Live only when **Key** is *None · chromatic*: with a key in play the harmony belongs to Mood, and the dial says so rather than sitting there looking adjustable. |
@@ -313,7 +321,8 @@ and "Split halves" after those names were retired.
 
 | Was | Now | Why |
 | --- | --- | --- |
-| `Style` — four segmented buttons | **a dial**, `Phrase ▸ Groove ▸ Chop ▸ Mix` | It is a scale — biggest cuts to smallest, then "let each letter choose" — and as the one non-dial in a row of dials it was also the widest thing in the band. Mix stays the default, at the free end. |
+| `Style` — four segmented buttons, then a four-stop dial | **`Grain`**, a real dial — and Style demoted to an exact override in Advanced | Style was four named boxes sitting on a dial's track, and its fourth box, `Mix`, existed only to say *do not commit to one of these* — a control admitting it should not have been boxes. How finely a song is cut is a continuum, so Grain runs it. The objection to a dial is real and is answered rather than waved away: naming a cut size is worth doing because you can RELY on it, so Grain's two ends stay hard gates and Style stays reachable for an exact promise. Auto is its default, so the two can never state contradictory intents. |
+| every part exactly four bars | **`Form`**, in Advanced | The generator knew one macro shape — the Intro/Verse/Chorus ladder — stretched to any length, every part four bars. Measured across the imported catalogue only 29% of real parts are four bars long; 13, 14, 16 and 22 are ordinary. Form offers five written shapes and, more usefully, *This song's own*, read off the material. |
 | `📌 Hold seed` | **`📌 Vary this one`** | "Seed" is the number a roll starts from, which is an implementation detail. What the button decides is what **Go** means: a *variation* of the arrangement in front of you (same roll, reshaped by the dials) or a completely different one. Lucky dip is always fresh either way. |
 | `Key`, `Fill new sections`, `New length`, `Transpose` | behind an **`Advanced ⌄`** popup | The four reached for least, and between them half the width of the band. The button **counts whatever is off its default** — `Advanced · 2 set` — so a popup can never hide a setting the next Go will read. |
 | Panel `?` and `×` | the desk's **`?`**; no close button | The `?` is the third control the desk lends M8TRX, after `Undo M8TRX` and `Recipe Once / Loop`, and it opens a fuller explanation than the old three paragraphs. The M8TRX button in the toolbar is the way in and the way out. |
