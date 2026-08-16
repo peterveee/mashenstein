@@ -544,7 +544,7 @@
   #rearrangepanel .rerail > b { color: var(--dim); font-size: 9px; font-weight: 700;
                                  letter-spacing: .13em; text-transform: uppercase; }
   #rearrangepanel .rerail > span { color: var(--faint); font-size: 8.5px; line-height: 1.4; }
-  /* NO RECIPE, NO RECIPE CONTROLS. Return to Song empties the panel without closing it, and
+  /* NO RECIPE, NO RECIPE CONTROLS. Exit M8TRX empties the panel without closing it, and
      what was left standing was a row of controls with nothing to act on: a drums menu for
      drums that are not playing, Save version and Save JSON with nothing to save, a Return
      to Song that has already returned, and two selection rails inviting a click on slices
@@ -553,7 +553,7 @@
      nothing to look at yet.
      TWO SURVIVE, and they are the two that are not about the recipe: Clear locks & shelf
      acts on the kept state that OUTLIVES a recipe (it disables itself when there is none),
-     and Load JSON is the other way IN — hide it and Return to Song becomes a one-way door
+     and Load JSON is the other way IN — hide it and Exit M8TRX becomes a one-way door
      out of every saved recipe on disk. The Generate band stays whole for the same reason:
      the dials and Go are how a panel with nothing in it stops being one. */
   #rearrangepanel.norecipe #reinspector,
@@ -6671,19 +6671,23 @@
            parameters applies hardest to the controls you have put behind a door. -->
       <div id="readvancedpop" class="repop" popover aria-label="Advanced M8TRX settings">
         <div class="repophead"><b>Advanced</b><span>These only affect the next Go.</span></div>
-        <!-- FORM is the macro shape — how many parts, how long each is, and which of them
-             come back. It sits above Style because it is the bigger decision: Form governs
-             part lengths, Style and Grain govern the cuts inside them. Song is the historical
-             Intro/Verse/Chorus ladder and is what every arrangement built before this used. -->
+        <!-- FORM decides how many parts the arrangement has, how long each is, and which of
+             them come back. It sits above Style because it is the bigger decision: Form
+             governs part lengths, Grain and Style govern the cuts inside them. Song — the
+             historical Intro/Verse/Chorus ladder — is the default, so an arrangement built
+             before form grammars existed is still exactly what this produces, and nobody
+             meets a new shape without having asked for one. Random rolls a shape per Go
+             from the seed, so a held seed still rebuilds the same one. -->
         <div class="recontrol rechordrow defer">
           <label for="reform">Form</label>
-          <select id="reform" title="The overall shape of the arrangement. Song is the familiar Intro/Verse/Chorus roadmap in four-bar parts. This song's own reads the roadmap off the material instead — its real part lengths and its real repeats. Dance builds and drops with no verse or chorus. Loop is one idea that grows and falls away. AABA states an idea twice, contrasts, and returns. Arch holds the hook back for a bigger payoff.">
+          <select id="reform" title="The overall shape of the arrangement. Song is the familiar Intro/Verse/Chorus roadmap in four-bar parts. This song's own reads the roadmap off the material instead — its real part lengths and its real repeats. Dance builds and drops with no verse or chorus. Loop is one idea that grows and falls away. AABA states an idea twice, contrasts, and returns. Arch holds the hook back. Random picks one each time you press Go.">
             <option value="song" selected>Song</option>
             <option value="source">This song&rsquo;s own</option>
             <option value="dance">Dance</option>
             <option value="loop">Loop</option>
             <option value="aaba">AABA</option>
             <option value="arch">Arch</option>
+            <option value="random">Random</option>
           </select>
         </div>
         <!-- Style, kept for the one thing a dial cannot do: promise. Grain interpolates,
@@ -6746,6 +6750,13 @@
            way to the dials. -->
       <button id="readvancedbtn" class="defer reright" type="button" popovertarget="readvancedpop"
               title="Key, Fill new sections, New length and Transpose — the settings that shape what Go builds. All four only affect the next Go.">Advanced ⌄</button>
+      <!-- THE WAY OUT IS ON THE FIRST ROW. It lived down in the Arrangement band, which is
+           below the fold on a short window — so the one control someone reaches for when
+           they have changed their mind was the one they could not see. It is deliberately
+           last, past Advanced: visible without being on the path to anything. It still
+           hides itself when there is no recipe, because then there is nothing to return
+           from; that rule is by id and travelled with the button. -->
+      <button id="rereturn" class="rehot" type="button" title="Clear the rearrangement and return to the normal song">Exit M8TRX</button>
     </div>
     <div class="rerail"><b>Generate</b><span>dashed = waits. Nothing here is heard until you press Go.</span></div>
   </div>
@@ -6767,7 +6778,6 @@
       <button id="resaveversion" type="button" title="Save this M8TRX recipe in the song file for the Mixer only; it never becomes a game alternate">Save version</button>
       <button id="resave" type="button" title="Save this recipe as a small JSON file — instructions, not audio">Save JSON…</button>
       <button id="reload" type="button" title="Load a saved recipe for this song; it never starts playback by itself">Load JSON…</button>
-      <button id="rereturn" class="rehot" type="button" title="Clear the rearrangement and return to the normal song">Return to Song</button>
       <input id="rearrangefile" type="file" accept="application/json,.json" hidden>
       <!-- NOTHING IS LEFT ON THIS ROW BUT CONTROLS. What is loaded and what just happened
            went to the desk's status bar; the help went UP, onto the desk's own ? beside the
@@ -6867,7 +6877,7 @@
       so you can see it has: <b>Undo M8TRX</b> (M8TRX's history only — your mix and
       arrangement history is kept separately and comes back untouched),
       <b>Recipe Once / Recipe Loop</b>, and this <b>?</b>. The <b>M8TRX</b> button in the
-      toolbar is how you leave; <b>Return to Song</b> clears the recipe altogether.</p>
+      toolbar is how you leave; <b>Exit M8TRX</b> clears the recipe altogether.</p>
   </div>
   <div id="reclipstrip" hidden aria-label="M8TRX session clip shelf"></div>
 </section>

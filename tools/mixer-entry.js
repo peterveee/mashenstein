@@ -102,7 +102,7 @@ import {
   REARRANGE_TRANSPOSE_DEFAULT, REARRANGE_TRANSPOSES,
   REARRANGE_STYLE_CHOICES, REARRANGE_STYLE_DEFAULT,
   REARRANGE_GRAIN_DEFAULT, grainLabel,
-  REARRANGE_FORM_NAMES, REARRANGE_FORM_DEFAULT,
+  REARRANGE_FORM_NAMES, REARRANGE_FORM_DEFAULT, REARRANGE_FORM_RANDOM,
   REARRANGE_FILL_NAMES, REARRANGE_FILL_DEFAULT,
   REARRANGE_CREATIVE_DEFAULTS, moodWalkKey, driveDrumKit, REARRANGE_KIND,
   harmonyNumeral,
@@ -711,6 +711,13 @@ function openPopover() {
  * the row holding Undo M8TRX and the ? — the two controls the desk lends M8TRX — so the
  * panel was eating its own buttons.
  */
+// The last values written, so an unchanged measurement costs nothing. This is not a
+// micro-optimisation: writing a custom property the observer below is watching for is how
+// a ResizeObserver feeds itself, and a measure/write loop on this desk is a measure/write
+// loop competing with the audio graph for the one core it has.
+let deskHeadH = null;
+let deskFootH = null;
+
 function measureDeskEdges() {
   const root = document.documentElement.style;
   const header = document.querySelector('header');
@@ -718,10 +725,56 @@ function measureDeskEdges() {
   // Distances from the EDGES of the viewport, not the elements' own heights: the footer does
   // not sit flush to the bottom of the window, so its height was 14px short of the space it
   // actually claims and the panel overlapped it by exactly that much.
-  if (header) root.setProperty('--headh', `${Math.ceil(header.getBoundingClientRect().bottom)}px`);
+  if (header) {
+    const value = Math.ceil(header.getBoundingClientRect().bottom);
+    if (value !== deskHeadH) { deskHeadH = value; root.setProperty('--headh', `${value}px`); }
+  }
   if (footer) {
-    const top = footer.getBoundingClientRect().top;
-    root.setProperty('--footh', `${Math.max(0, Math.ceil(innerHeight - top))}px`);
+    const value = Math.max(0, Math.ceil(innerHeight - footer.getBoundingClientRect().top));
+    if (value !== deskFootH) { deskFootH = value; root.setProperty('--footh', `${value}px`); }
+  }
+}
+
+/**
+ * At most ONE measurement per frame, however many things ask for one.
+ *
+ * PLAYBACK WINS. A window drag fires `resize` continuously and the observer alongside it,
+ * and each measurement is a forced layout — `getBoundingClientRect` on two elements after
+ * a style write. Run twice per frame for the length of a drag, that is enough main-thread
+ * work to starve the audio graph, which is exactly what dragging the window edge during
+ * M8TRX playback sounded like. Coalescing makes a drag cost one measurement per frame no
+ * matter how many events it generates.
+ */
+let deskEdgeFrame = 0;
+function scheduleDeskEdges() {
+  if (deskEdgeFrame) return;
+  deskEdgeFrame = requestAnimationFrame(() => {
+    deskEdgeFrame = 0;
+    measureDeskEdges();
+  });
+}
+
+/**
+ * Re-measure whenever the header or footer actually CHANGES SIZE, not only when the
+ * window does.
+ *
+ * The bug this closes: `openRearrangePanel` measured on the way in, before the panel was
+ * shown — and the footer GROWS a line when M8TRX's own status joins it. So the panel was
+ * sized against a footer one line shorter than the one it then had to sit above, and it
+ * covered it. Nothing looked wrong until a resize happened to re-measure, which is why it
+ * read as "the footer is only in front after a resize".
+ *
+ * An observer rather than another call site at the point of the symptom: the header wraps
+ * at some widths, the footer grows and shrinks with what it has to say, and fonts settle
+ * after boot. Every one of those is the same measurement going stale, and chasing them one
+ * at a time is how the next one gets missed.
+ */
+function watchDeskEdges() {
+  if (typeof ResizeObserver !== 'function') return;
+  const observer = new ResizeObserver(() => scheduleDeskEdges());
+  for (const selector of ['header', 'footer']) {
+    const element = document.querySelector(selector);
+    if (element) observer.observe(element);
   }
 }
 
@@ -6534,9 +6587,17 @@ writeWorkRatio(upperWorkRatio, false);
 // twenty-channel song that is twenty forced reflows, which is not a thing to do
 // several times between two paints.
 let fitPending = 0;
+// PLAYBACK WINS, AND A HIDDEN RACK IS NOT WORTH MEASURING. M8TRX's panel covers the desk
+// edge to edge, so every strip this fit measures while it is open is a forced reflow for
+// something nobody can see — and dragging the window edge during M8TRX playback was
+// audibly spending the one core the audio graph has on exactly that. The fit is not
+// skipped, it is DEFERRED: the debt is remembered and paid the moment the panel closes,
+// because the rack still has to be right when it comes back.
+let deskFitOwed = false;
 addEventListener('resize', () => {
   cancelAnimationFrame(fitPending);
   fitPending = requestAnimationFrame(() => {
+    if (rearrangePanelOpen) { deskFitOwed = true; return; }
     scheduleDeskFit(true);
     updateArrangementNoteScale();
   });
@@ -7012,12 +7073,13 @@ function rearrangeStyle() {
  * imported catalogue actually shows — where only 29% of parts are four bars long.
  */
 let rearrangeFormChoice = REARRANGE_FORM_DEFAULT;
+const REARRANGE_FORM_OPTIONS = Object.freeze([...REARRANGE_FORM_NAMES, REARRANGE_FORM_RANDOM]);
 function rearrangeForm() {
-  return REARRANGE_FORM_NAMES.includes(rearrangeFormChoice)
+  return REARRANGE_FORM_OPTIONS.includes(rearrangeFormChoice)
     ? rearrangeFormChoice : REARRANGE_FORM_DEFAULT;
 }
 function setRearrangeForm(form) {
-  if (!REARRANGE_FORM_NAMES.includes(form)) return;
+  if (!REARRANGE_FORM_OPTIONS.includes(form)) return;
   rearrangeFormChoice = form;
   syncRearrangeForm();
 }
@@ -7025,6 +7087,8 @@ function syncRearrangeForm() {
   const select = $('reform');
   if (!select) return;
   select.value = rearrangeForm();
+  // Back in Advanced, so the popup's counter has to see it — and that call already
+  // refreshes the seed-hold state, which a generator input must do.
   syncRearrangeAdvanced();
 }
 
@@ -8078,10 +8142,10 @@ function renderRearrangeList() {
   // The draft is ahead of the audio: mark the whole panel so the slices and the status
   // read as "made, not yet heard". One class; the flash itself is CSS.
   $('rearrangepanel')?.classList.toggle('pending', rearrangePending);
-  // NO RECIPE, NO RECIPE CONTROLS. Return to Song leaves the panel standing — the M8TRX
+  // NO RECIPE, NO RECIPE CONTROLS. Exit M8TRX leaves the panel standing — the M8TRX
   // button in the toolbar is the way out, not this — but everything scoped to a recipe was
   // left standing with it: a drums menu for drums that are not playing, Save version and
-  // Save JSON with nothing to save, a Return to Song that has already returned, and two
+  // Save JSON with nothing to save, a Exit M8TRX that has already returned, and two
   // selection rails inviting you to click slices in an empty timeline. One class says
   // "there is nothing here yet" and the panel shows only what can act on that: the dials,
   // Go, the kept state that outlives a recipe, and Load JSON, which is the other way in.
@@ -9315,6 +9379,11 @@ function playRearrangementAt(outputStep, { part = null } = {}) {
 function returnToSong() {
   if (playing) setPlaying(false);
   clearRearrangement({ announce: false });
+  // RETURNING TO THE SONG MEANS LEAVING M8TRX. Clearing the recipe without closing the panel
+  // left its chrome across the whole window over an empty timeline — which was survivable
+  // while the panel was a small inset window and is not now that it covers the desk edge to
+  // edge. Its own label says return to the SONG, and the song is what is underneath.
+  closeRearrangePanel();
   Audio.step = 0;
   parkedAt = 0;
   applyLoop(0);
@@ -9503,7 +9572,7 @@ function applyRearrangeSettings(settings) {
   }
   if (REARRANGE_STYLE_OPTIONS.includes(settings.style)) setRearrangeStyle(settings.style);
   if (settings.grain != null) setRearrangeGrain(settings.grain);
-  if (REARRANGE_FORM_NAMES.includes(settings.form)) setRearrangeForm(settings.form);
+  if (REARRANGE_FORM_OPTIONS.includes(settings.form)) setRearrangeForm(settings.form);
   const select = (id, value) => {
     const control = $(id);
     if (control && value != null
@@ -9596,11 +9665,14 @@ async function loadRearrangeJson(file) {
 }
 
 function openRearrangePanel() {
-  // Re-measured on the way in: the header's height depends on whether its row has wrapped,
-  // and the boot-time measurement was taken before fonts and the toolbar had settled.
-  measureDeskEdges();
   rearrangePanelOpen = true;
   $('rearrangepanel').hidden = false;
+  // Re-measured on the way in — AFTER the panel is up, because the footer grows a line
+  // when M8TRX's own status joins it. Measuring first sized the panel against a footer one
+  // line shorter than the one it then had to sit above, so it covered it until some later
+  // resize happened to re-measure. `watchDeskEdges` is the belt to this brace: the header
+  // also wraps at some widths and the boot measurement predates fonts settling.
+  measureDeskEdges();
   if (savedM8trx[trackId]) {
     const { recipe: parkedRaw, settings, editor } = unwrapM8trx(savedM8trx[trackId]);
     // The dials come back whether or not the recipe does — they are what a returning
@@ -9639,6 +9711,12 @@ function openRearrangePanel() {
 function closeRearrangePanel() {
   rearrangePanelOpen = false;
   $('rearrangepanel').hidden = true;
+  // Pay whatever the resize handler deferred while the panel was covering the rack.
+  if (deskFitOwed) {
+    deskFitOwed = false;
+    scheduleDeskFit(true);
+    updateArrangementNoteScale();
+  }
   // The footer line goes with the panel. The recipe may still be armed and sounding, but
   // the desk's status bar is the desk's, and a closed panel does not get to keep a third
   // of it — the toolbar button already reads "M8TRX · ON" while one is live.
@@ -18420,13 +18498,14 @@ addEventListener('keyup', (e) => {
   oskRelease(`k:${key}`);
 });
 addEventListener('resize', () => {
-  measureDeskEdges();
+  scheduleDeskEdges();
   if (!oskShown()) return;
   // Docked it has no position to keep — it has a width to re-fit instead.
   if (oskEl.classList.contains('docked')) { fitDockedKeys(); return; }
   oskPlace(parseFloat(oskEl.style.left) || 0, parseFloat(oskEl.style.top) || 0);
 });
 measureDeskEdges();
+watchDeskEdges();
 
 // ---- wiring ----------------------------------------------------------------
 // Loading a song is a thing you do a few times an hour, so it does not need a

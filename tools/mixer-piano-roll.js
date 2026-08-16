@@ -1908,6 +1908,23 @@ export function createPianoRoll({
     syncActionState();
   });
 
+  // Both projections below ask the same question — which ROWS have a cell in this
+  // state — and then put a class on those rows' keys. Collecting the row names first is
+  // what keeps them cheap. Asking for the key of every matching CELL costs one document
+  // walk per NOTE; asking once for the key column and matching names against it costs
+  // one walk per PASS, and the column is windowed, so the loop is a couple of dozen
+  // keys however long the song is. On a dense roll — a 55-notes-a-bar import against
+  // the 15 to 30 an authored song carries — that is the difference between hundreds of
+  // walks a frame and one.
+  const paintRowKeys = (rows, className, into) => {
+    if (!rows.size) return;
+    for (const key of el.querySelectorAll('.ssqkeys .ssqkey')) {
+      if (!rows.has(key.dataset.row)) continue;
+      key.classList.add(className);
+      into.push(key);
+    }
+  };
+
   let selectedKeys = [];
   const clearSelectedKeys = () => {
     for (const key of selectedKeys) key.classList.remove('selected');
@@ -1916,14 +1933,11 @@ export function createPianoRoll({
   syncSelectedKeys = () => {
     clearSelectedKeys();
     if (!grid.isOpen()) return;
-    const seen = new Set();
+    const rows = new Set();
     for (const cell of el.querySelectorAll('.ssqcell.on:is(.sel,.edited)')) {
-      const key = el.querySelector(`.ssqkeys .ssqkey[data-row="${cell.dataset.row}"]`);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      key.classList.add('selected');
-      selectedKeys.push(key);
+      rows.add(cell.dataset.row);
     }
+    paintRowKeys(rows, 'selected', selectedKeys);
     syncActionState();
   };
 
@@ -1933,24 +1947,45 @@ export function createPianoRoll({
   // Keep this here, beside the piano-roll wrapper, rather than teaching the generic
   // step grid about pitch faces.
   let playingKeys = [];
+  // The slot this projection was last built for, and the reason it is a slot rather
+  // than a step. `follow` is called from the desk's animation frame with a CONTINUOUS
+  // position, so the number arriving here changes sixty times a second — but the set of
+  // sounding notes only changes when the playhead crosses the integer boundary
+  // `noteActiveAt` compares against, because both ends of that comparison are whole
+  // slots. So the answer inside one sixteenth is not merely close to the last one, it
+  // is the same answer, and at 145bpm five frames in six were recomputing it. Cleared
+  // to null wherever the keys themselves are rebuilt, so a new key column is always
+  // re-projected rather than inheriting a slot number the old one earned.
+  let playingSlot = null;
+  // The key the projection was built against, which is how a REBUILT column is told
+  // from the same one. `renderRows` makes fresh headers whenever the row or bar window
+  // moves — scrolling the roll while the song plays — and the slot number alone would
+  // then skip a frame that has new keys to light. Holding the first key is enough:
+  // any rebuild replaces it, so an identity compare catches every one of them, and the
+  // lookup stops at the first match rather than walking the column.
+  let playingAnchor = null;
   const clearPlayingKeys = () => {
     for (const key of playingKeys) key.classList.remove('playing');
     playingKeys = [];
+    playingSlot = null;
+    playingAnchor = null;
   };
   const syncPlayingKeys = (step) => {
+    if (!grid.isOpen() || !Number.isFinite(step)) { clearPlayingKeys(); return; }
+    const slots = draft()?.resolution === 32 ? 32 : 16;
+    const at = Math.floor(step * slots / 16);
+    const anchor = el.querySelector('.ssqkeys .ssqkey');
+    if (at === playingSlot && anchor === playingAnchor) return;
     clearPlayingKeys();
-    if (!grid.isOpen() || !Number.isFinite(step)) return;
-    const seen = new Set();
+    playingSlot = at;
+    playingAnchor = anchor;
+    const rows = new Set();
     for (const cell of el.querySelectorAll('.ssqcell.on:not(.muted)')) {
       const span = Number(cell.style.getPropertyValue('--len')) || 1;
-      if (!noteActiveAt(step, cell.dataset.bar, cell.dataset.step, span,
-        draft()?.resolution === 32 ? 32 : 16)) continue;
-      const key = el.querySelector(`.ssqkeys .ssqkey[data-row="${cell.dataset.row}"]`);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      key.classList.add('playing');
-      playingKeys.push(key);
+      if (!noteActiveAt(step, cell.dataset.bar, cell.dataset.step, span, slots)) continue;
+      rows.add(cell.dataset.row);
     }
+    paintRowKeys(rows, 'playing', playingKeys);
   };
 
   // The wheel scrolls PITCH, which is the axis this panel is about. A trackpad's

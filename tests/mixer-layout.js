@@ -169,20 +169,25 @@ assert(/id="regrain" type="range" min="0" max="100" step="5" value="50"/.test(sh
   // The dial greys while a named style is in force, rather than sitting live and deciding
   // nothing — a control that looks active and changes nothing is worse than a dead one.
   && /dial\.disabled = overridden;/.test(entry)
-  // FORM is the macro shape, and it sits ABOVE Style in Advanced because it is the bigger
-  // decision: Form governs how long a part is, Grain and Style govern the cuts inside one.
-  // Song is the historical ladder and the default, so nothing built before it changes.
+  // FORM sits in Advanced, above Style, because it is the bigger decision of the two: Form
+  // governs how long a part is, Grain and Style govern the cuts inside one. Song is the
+  // default, so an arrangement built before form grammars existed is still what this makes
+  // and nobody meets a new shape without asking. Random rolls one per Go FROM THE SEED, so
+  // a held seed still rebuilds the same shape.
   && /<select id="reform"/.test(shell)
+  && /<option value="song" selected>Song<\/option>/.test(shell)
+  && /<option value="random">Random<\/option>/.test(shell)
+  && shell.indexOf('id="readvancedpop"') < shell.indexOf('id="reform"')
+  && shell.indexOf('id="reform"') < shell.indexOf('<select id="restyle"')
+  && /rearrangeForm\(\) !== REARRANGE_FORM_DEFAULT,/.test(entry)
   && /<option value="song" selected>Song<\/option>/.test(shell)
   && /<option value="dance">Dance<\/option>/.test(shell)
   // The song's own roadmap is offered beside the written shapes — read off the material
   // rather than imposed on it, which is the only entry here that is not an opinion.
   && /<option value="source">This song&rsquo;s own<\/option>/.test(shell)
-  && shell.indexOf('id="reform"') < shell.indexOf('<select id="restyle"')
   && /form: rearrangeForm\(\)/.test(entry)
   && /\$\('reform'\)\.onchange = \(\) => \{ setRearrangeForm\(\$\('reform'\)\.value\); \};/.test(entry)
   // A non-default Form or a named Style is a set advanced setting, and the button counts it.
-  && /rearrangeForm\(\) !== REARRANGE_FORM_DEFAULT,/.test(entry)
   && /rearrangeStyle\(\) !== 'auto',/.test(entry)
   && !/function rearrangeAllowGlitches/.test(entry)
   && /rearrangeProfileCache/.test(entry)
@@ -211,15 +216,34 @@ assert(/<div class="reband rearr">/.test(shell)
   && /Click a slice in the timeline to change what it is made of\./.test(shell)
   && /Click a slice to move, join, split or delete it\./.test(shell)
   && /bar\.classList\.toggle\('empty'/.test(entry)
-  // …but an invitation to click a slice needs slices to click. Return to Song empties the
+  // …but an invitation to click a slice needs slices to click. Exit M8TRX empties the
   // panel without closing it, and everything scoped to a recipe went with the recipe: the
-  // drums menu, Lock what's playing, both Saves, Return to Song itself, and the two rails.
+  // drums menu, Lock what's playing, both Saves, Exit M8TRX itself, and the two rails.
   // Clear locks & shelf and Load JSON stay — the kept state outlives a recipe, and Load is
-  // the other way in, so hiding it would make Return to Song a one-way door.
+  // the other way in, so hiding it would make Exit M8TRX a one-way door.
   && /classList\.toggle\('norecipe', !rearrangeRecipe\)/.test(entry)
   && /#rearrangepanel\.norecipe #reinspector,/.test(shell)
   && /#rearrangepanel\.norecipe #redrumsrow,/.test(shell)
+  // PLAYBACK WINS ON A WINDOW DRAG. Three things fire continuously while an edge is being
+  // dragged, and each was main-thread work competing with the audio graph for one core:
+  // the desk-edge measurement is coalesced to one a frame and writes only when the number
+  // actually changed (a write is what feeds the ResizeObserver watching for it), and the
+  // rack fit — twenty forced reflows on a big song — is DEFERRED entirely while M8TRX's
+  // panel is covering the rack, then paid when it closes.
+  && /function scheduleDeskEdges\(\)/.test(entry)
+  && /new ResizeObserver\(\(\) => scheduleDeskEdges\(\)\)/.test(entry)
+  && /if \(value !== deskHeadH\)/.test(entry)
+  && /if \(rearrangePanelOpen\) \{ deskFitOwed = true; return; \}/.test(entry)
+  && /if \(deskFitOwed\) \{/.test(entry)
   && /#rearrangepanel\.norecipe #rereturn,/.test(shell)
+  // THE WAY OUT IS ON THE FIRST ROW, past Advanced. In the Arrangement band it was below
+  // the fold on a short window, so the control you reach for having changed your mind was
+  // the one you could not see. Named for the mode it leaves, matching the toolbar button
+  // that got you in.
+  && />Exit M8TRX<\/button>/.test(shell)
+  && shell.indexOf('id="rereturn"') < shell.indexOf('class="reband rearr"')
+  && shell.indexOf('id="readvancedbtn"') < shell.indexOf('id="rereturn"')
+  && !/Return to Song/.test(shell)
   && /#rearrangepanel\.norecipe \.reband\.rearr \.revr \{ display: none; \}/.test(shell)
   // Clear locks & shelf survives, but only while it has something to clear — hidden when it
   // is disabled anyway, back the moment a lock or a clip outlives the recipe.
@@ -311,6 +335,11 @@ assert(!/id="reundo"/.test(shell)
   // nowhere in that path. That is the product boundary working — M8TRX never reaches a file
   // — but a bounce is "what I am hearing, written down", and with a recipe up that is what
   // it is not. So it says so, like every other control the desk lends M8TRX.
+  // …and RETURNING TO THE SONG HANDS THEM ALL BACK, panel included. Clearing the recipe
+  // without closing the panel left its chrome across the whole window over an empty
+  // timeline — survivable when the panel was a small inset window, not now it covers the
+  // desk edge to edge.
+  && /clearRearrangement\(\{ announce: false \}\);\n  \/\/ RETURNING TO THE SONG MEANS LEAVING M8TRX[\s\S]{0,400}?closeRearrangePanel\(\);/.test(entry)
   && /function syncBounceScope\(\)/.test(entry)
   && /button\.textContent = m8 \? 'Bounce song' : 'Bounce';/.test(entry)
   && /if \(!button \|\| rendering\) return;/.test(entry)
@@ -3287,6 +3316,18 @@ assert(/function openNoteEditor\(laneKey, bar\)[\s\S]*?if \(kind === 'roll' && b
 assert(/follow\(step\) \{[\s\S]*?grid\.follow\(step\);[\s\S]*?syncPlayingKeys\(step\);\s*\}/.test(piano)
   && !/follow\(step\) \{[^}]*grid\.follow\(step\);[^}]*syncSelectedKeys\(\);[^}]*\}/.test(piano),
   'piano-roll playback does not re-project unchanged selected keys every animation frame');
+// The same argument one step further, for the keys that DO change. `follow` is handed a
+// continuous position, but `noteActiveAt` compares whole slots at both ends, so every
+// frame inside one sixteenth resolves to the same set — recomputing it was five frames
+// in six doing work already done. The anchor is what keeps the skip honest: `renderRows`
+// builds fresh headers whenever the row or bar window moves, and a slot number alone
+// would hold a scroll's new keys dark until the next sixteenth.
+assert(/const at = Math\.floor\(step \* slots \/ 16\);/.test(piano)
+  && /const anchor = el\.querySelector\('\.ssqkeys \.ssqkey'\);/.test(piano)
+  && /if \(at === playingSlot && anchor === playingAnchor\) return;/.test(piano)
+  && /playingSlot = null;\s*playingAnchor = null;/.test(piano),
+  'the roll re-projects sounding keys on the slot boundary rather than every animation '
+  + 'frame, and a rebuilt key column re-projects even inside the same slot');
 assert(/#pianoroll \.rollwhite \.ssqkey\.playing \{[^}]*var\(--accent\)/s.test(shell)
   && /#pianoroll \.ssqkey\.keyblack\.playing \{[^}]*var\(--accent\)/s.test(shell),
   'playback colours both white and black piano-key faces');
@@ -3298,7 +3339,12 @@ assert(/selectionChanged\s*=\s*\(\)\s*=>\s*{}/.test(barGrid)
   && /f\.on && editedKey === noteKey\(f\.b, f\.i, row\.key\)/.test(barGrid)
   && /if \(!keys\.length \|\| keys\.some\(\(key\) => key !== editedKey\)\) editedKey = null/.test(barGrid)
   && /selectionChanged:\s*\(\)\s*=>\s*syncSelectedKeys\(\)/.test(piano)
-  && /\.ssqkeys \.ssqkey\[data-row="\$\{cell\.dataset\.row\}"\]/.test(piano)
+  // Cells name their ROWS and the row names are matched against the key column once.
+  // Asking for the key of each matching cell by `[data-row="..."]` said the same thing
+  // and cost a document walk per note, which a dense roll pays sixty times a second.
+  && /\.ssqcell\.on:is\(\.sel,\.edited\)'\)\)[\s\S]*?rows\.add\(cell\.dataset\.row\)/.test(piano)
+  && /paintRowKeys\(rows, 'selected', selectedKeys\)/.test(piano)
+  && /querySelectorAll\('\.ssqkeys \.ssqkey'\)[\s\S]*?rows\.has\(key\.dataset\.row\)/.test(piano)
   && /\.ssqkey\.selected\s*\{[^}]*var\(--accent\)/s.test(shell)
   && /\.ssqlane:has\(\.ssqcell\.on\.edited\) \.ssqkey/.test(shell)
   && /\.rollwhite\.ssqlane:has\(\.ssqcell\.on\.edited\) \.ssqkey[\s\S]*?background-color:[^;]*var\(--accent\)/.test(shell)

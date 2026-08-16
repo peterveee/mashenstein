@@ -1417,6 +1417,35 @@ export const REARRANGE_FORM_NAMES = Object.freeze(Object.keys(REARRANGE_FORMS));
 export const REARRANGE_FORM_DEFAULT = 'song';
 
 /**
+ * `random` is a CHOICE, not a grammar, and it is resolved before anything is built.
+ *
+ * From the seed rather than from the running rng, for the same reason Mix resolves its
+ * per-letter style from the seed: it must not move when an unrelated roll happens earlier
+ * in the recipe, and a held seed has to rebuild the same arrangement. Resolved up front so
+ * the recipe records the shape it actually used — nothing downstream ever sees 'random'.
+ *
+ * `source` is excluded: it needs an analysis that may not exist, and a random pick that
+ * silently became the ladder half the time would be a dice roll that lies about itself.
+ */
+export const REARRANGE_FORM_RANDOM = 'random';
+const RANDOM_FORM_POOL = Object.freeze(
+  REARRANGE_FORM_NAMES.filter((name) => name !== 'source'));
+
+export function resolveFormName(form, seed = 0) {
+  if (form !== REARRANGE_FORM_RANDOM) {
+    return REARRANGE_FORMS[form] ? form : REARRANGE_FORM_DEFAULT;
+  }
+  // A full avalanche (splitmix32's finaliser), not one multiply. A single round leaves the
+  // low bits barely mixed, and with a pool this small that showed straight through as
+  // consecutive seeds pairing up — 1 and 2 giving the same shape, 3 and 4 the next.
+  let hash = (Number(seed) >>> 0) + 0x9e3779b9;
+  hash = Math.imul(hash ^ (hash >>> 16), 0x21f0aaad) >>> 0;
+  hash = Math.imul(hash ^ (hash >>> 15), 0x735a2d97) >>> 0;
+  hash = (hash ^ (hash >>> 15)) >>> 0;
+  return RANDOM_FORM_POOL[hash % RANDOM_FORM_POOL.length];
+}
+
+/**
  * The historical ladder, unchanged.
  *
  * Kept as its own path rather than expressed in the grammar table because it is
@@ -1965,10 +1994,13 @@ export function generateRearrangement(sourceSteps, {
     }
   }
   const usedSources = new Set();
+  // A random form is decided here, once, from the seed — so the recipe carries the shape
+  // it was built from rather than the word 'random'.
+  const builtForm = resolveFormName(formName, actualSeed);
   // The song's own form, when that is what was asked for. Read from the rich profile
   // only — a flat density array cannot describe a structure.
-  const detectedForm = REARRANGE_FORMS[formName]?.detected && rich ? detectSongForm(rich) : null;
-  const sections = formFor(outputSteps, formName, detectedForm);
+  const detectedForm = REARRANGE_FORMS[builtForm]?.detected && rich ? detectSongForm(rich) : null;
+  const sections = formFor(outputSteps, builtForm, detectedForm);
   const phraseSpan = Math.min(PHRASE_STEPS, sourceSteps);
   // The song's own phrase grid, so a four-bar grab starts where its phrases do rather
   // than where its file happens to begin.
@@ -2898,6 +2930,22 @@ function applyWalkChords(operations, chords, { profile = null, key = null } = {}
 const walkPaceFor = () => 'active';
 
 /**
+ * A bar-per-chord line that actually goes somewhere.
+ *
+ * The palette a part offers can be all tonic — the old slow grammar wrote `[0,0,0,…]` for
+ * any part under four bars and stamped it onto the form, so recipes carry them. Paced, that
+ * gives a walk of nothing, and the walk then refused a perfectly long part with "it is one
+ * bar", which was both wrong and unanswerable: nothing in the panel could edit that palette.
+ * A part with bars to fill always gets a progression; the default is used when its own has
+ * no movement in it.
+ */
+function walkableChords(palette, bars) {
+  const paced = pacedChords(palette, bars, walkPaceFor(), 'full');
+  if (bars <= 1 || paced.some((degree) => degree)) return paced;
+  return pacedChords(REARRANGE_PROGRESSIONS.pop.minor, bars, walkPaceFor(), 'full');
+}
+
+/**
  * Cut the operation list so no slice straddles one of `cuts` (output steps).
  *
  * A slice that runs across a part's edge belongs to neither part, and ordinary editing DOES
@@ -2983,13 +3031,18 @@ export function toggleRearrangeSectionWalk(recipe, sectionIndex, { key = null, p
   const palette = Array.isArray(section.chords) && section.chords.length
     ? section.chords : REARRANGE_PROGRESSIONS.pop.minor;
   const bars = Math.max(1, Math.ceil((section.end - section.start) / WALK_BAR_STEPS));
-  const chords = pacedChords(palette, bars, walkPaceFor(), 'full');
+  const chords = walkableChords(palette, bars);
   const walked = barAlignedOperations(indices.map((index) => ops[index]));
   const moved = applyWalkChords(walked, chords, { profile, key: walkKey });
-  // REFUSED RATHER THAN SILENTLY DONE. One bar is one chord and one chord is not a walk;
-  // saying so is the whole difference between a control that cannot help here and a control
-  // that appears broken.
-  if (!moved) throw new Error('This part is too short to walk a chord loop — it is one bar');
+  // REFUSED RATHER THAN SILENTLY DONE, and refused in the part's own terms. One bar is one
+  // chord and one chord is not a walk. Anything longer always gets a progression now
+  // (see walkableChords), so this can only be the genuine single-bar case — it used to
+  // announce "it is one bar" over a four-bar part whose palette happened to be all tonic.
+  if (!moved) {
+    throw new Error(bars <= 1
+      ? 'This part is one bar long — one chord is not a walk'
+      : 'There is no chord loop to walk this part around');
+  }
   const next = rebuildForm({ ...base, key: walkKey }, replaceSectionOperations(ops, indices, walked));
   // THE CHORDS THIS PART SOUNDS, BAR BY BAR — stamped so the panel can print what you hear
   // rather than the shift that got it there. Those are the same number only while the part
@@ -3122,7 +3175,7 @@ export function rerollSectionWalk(recipe, sectionIndex, { seed = recipe?.seed ||
     .map((name) => REARRANGE_PROGRESSIONS[name].minor);
   const palette = palettes[Math.floor(rng() * palettes.length)] || REARRANGE_PROGRESSIONS.pop.minor;
   const bars = Math.max(1, Math.ceil((section.end - section.start) / WALK_BAR_STEPS));
-  const chords = pacedChords(palette, bars, walkPaceFor(), 'full');
+  const chords = walkableChords(palette, bars);
   const operations = base.operations.map((operation) => ({ ...operation }));
   // Same two corrections as the toggle: a part needs one slot per bar before a progression
   // can be laid over it, and a slice belongs to the bar its DURATION puts it in rather than
@@ -3131,7 +3184,11 @@ export function rerollSectionWalk(recipe, sectionIndex, { seed = recipe?.seed ||
   const walkKey = base.key || key;
   if (!walkKey) throw new Error('No key to walk in — the song did not settle on one, so name a key in Advanced');
   const moved = applyWalkChords(walked, chords, { profile, key: walkKey });
-  if (!moved) throw new Error('This part is too short to walk a chord loop — it is one bar');
+  if (!moved) {
+    throw new Error(bars <= 1
+      ? 'This part is one bar long — one chord is not a walk'
+      : 'There is no chord loop to walk this part around');
+  }
   const next = rebuildForm({ ...base, seed: Number(seed) >>> 0, key: walkKey },
     replaceSectionOperations(operations, indices, walked));
   next.form = next.form.map((item, index) => index === sectionIndex ? { ...item, chords } : item);

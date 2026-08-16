@@ -309,7 +309,7 @@ the form name and output bar range, for example `Verse · Bars 5–8`.
 - The operation list and roadmap remain useful while the source arrangement
   playhead jumps between mapped source positions.
 - Closing the panel leaves the recipe armed and marks the toolbar button active.
-- **Return to Song** stops playback, clears Rearrange, resets the parked position to
+- **Exit M8TRX** stops playback, clears Rearrange, resets the parked position to
   step 0, and restores normal loop controls.
 - Switching to another source song clears the active recipe, votes and favourites.
 - Selected-range looping and Game Loop controls are disabled while Rearrange owns

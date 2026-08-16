@@ -238,7 +238,7 @@ indented by their own label, and the eye scans one column of first buttons.
    The dials are the DESK's dials: the deferred dash stops at bordered controls, because a
    slider here has to be the same object as a slider on a channel strip.
 2. **Arrangement** (`.reband.rearr`) — M8TRX drums, Clear locks & shelf, Lock what's
-   playing, Save version, JSON save/load, Return to Song. Nothing else: what is loaded and
+   playing, Save version, JSON save/load, Exit M8TRX. Nothing else: what is loaded and
    what just happened live in the DESK's status bar (`#m8status`, holding `#remetasong` and
    `#rearrangestatus`), which the panel stops above rather than covering. There is no close
    button — the toolbar's M8TRX button is the way in and the way out.
@@ -282,7 +282,7 @@ it, and light dismiss comes free.
 and relabels itself `Undo M8TRX` — the same borrowing `#looptoggle` already does for Recipe
 Once / Recipe Loop — routed through `undoGesture()` and kept honest by `syncUndoButton()`.
 The two stacks never merge: a desk edit made while a recipe is up waits on the desk's stack
-and is handed back intact on Return to Song, so a recipe edit can never be undone into a
+and is handed back intact on Exit M8TRX, so a recipe edit can never be undone into a
 fader move. Two Undo buttons a few inches apart was the alternative, and "which one am I
 about to press" is exactly the confusion the rest of this panel was rebuilt to kill.
 

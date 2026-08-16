@@ -6,7 +6,7 @@ import {
   REARRANGE_EXTREMENESS_DEFAULT,
   REARRANGE_TRANSPOSE_DEFAULT, REARRANGE_PATTERN_DEFAULT,
   REARRANGE_STYLE_NAMES, REARRANGE_STYLE_DEFAULT,
-  REARRANGE_FORM_NAMES, REARRANGE_FORMS, REARRANGE_FORM_DEFAULT,
+  REARRANGE_FORM_NAMES, REARRANGE_FORMS, REARRANGE_FORM_DEFAULT, resolveFormName,
   REARRANGE_STYLES, REARRANGE_GRAIN_LABELS, REARRANGE_GRAIN_DEFAULT, grainStyle, grainLabel,
   REARRANGE_CHORD_PACE_NAMES, pacedChords,
   REARRANGE_FILL_NAMES,
@@ -1318,6 +1318,25 @@ assert(seededRandom(7)() === seededRandom(7)(), 'the seeded random helper is sta
       && sounding(cleared, 1).every((degree) => degree === 3),
       'turning the walk off clears its chord line and leaves the material as written');
   }
+  // A PART WITH BARS TO FILL IS NEVER "TOO SHORT". The palette a part offers can be all
+  // tonic — the old slow grammar wrote [0,0,0,…] for anything under four bars and stamped it
+  // onto the form, so recipes carry them — and paced, that is a walk of nothing. The walk
+  // then refused a four-bar part with "it is one bar": wrong, and unanswerable, because
+  // nothing in the panel can edit that palette. It falls back to the default progression.
+  {
+    const stamped = generateRearrangement(64 * 8, { seed: 999, style: 'phrase' });
+    stamped.key = { tonic: 4, minor: true };
+    stamped.form = stamped.form.map((section, index) => (
+      index === 1 ? { ...section, chords: [0, 0, 0, 0] } : section));
+    const bars = (stamped.form[1].end - stamped.form[1].start) / 16;
+    assert(bars > 1, 'the fixture part really does have bars to fill');
+    const walked = toggleRearrangeSectionWalk(stamped, 1, { key: stamped.key }).recipe;
+    validateRearrangement(walked, 64 * 8);
+    assert(walked.form[1].chords.some((degree) => degree),
+      'a part whose own palette is all tonic still gets a progression rather than a refusal');
+    assert(rerollSectionWalk(walked, 1, { seed: 7, key: stamped.key }).recipe.form[1].chords
+      .some((degree) => degree), 'the same holds when the walk is rerolled');
+  }
   // A RECIPE BUILT WITHOUT WALKS CARRIES NO KEY, and that must not lock walking out.
   //
   // The generator only writes `key` onto a recipe when it walked something itself, so a
@@ -1595,6 +1614,22 @@ assert(seededRandom(7)() === seededRandom(7)(), 'the seeded random helper is sta
   assert(JSON.stringify(fallback.operations)
     === JSON.stringify(generateRearrangement(64 * 8, { seed: 9, form: 'song' }).operations),
     'and that fallback is exactly the ladder, not a third behaviour');
+
+  // Random is a CHOICE resolved before anything is built, so a recipe never records the
+  // word — and a held seed has to rebuild the same shape, or the pin would be a lie.
+  const rolled = generateRearrangement(64 * 8, { seed: 7, form: 'random' });
+  assert(JSON.stringify(rolled.operations)
+    === JSON.stringify(generateRearrangement(64 * 8, { seed: 7, form: 'random' }).operations),
+    'a random form with the same seed rebuilds the same arrangement');
+  assert(resolveFormName('random', 7) !== 'random'
+    && REARRANGE_FORMS[resolveFormName('random', 7)],
+    'and it resolves to a real grammar rather than leaving the word in place');
+  assert(new Set([...Array(64).keys()].map((seed) => resolveFormName('random', seed))).size > 1,
+    'different seeds roll different shapes');
+  assert([...Array(256).keys()].every((seed) => resolveFormName('random', seed) !== 'source'),
+    "and 'source' is never rolled — it needs an analysis that may not exist");
+  assert(resolveFormName('nonsense', 1) === REARRANGE_FORM_DEFAULT,
+    'an unknown form name resolves to the default');
 
   assert(REARRANGE_FORM_NAMES.includes('source'),
     "'source' is offered alongside the written grammars");

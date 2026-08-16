@@ -239,7 +239,7 @@ Use **▶** or double-click a row to audition from that section/bar — these ju
 in, with no count-in. **👎** marks a section for replacement, asking the next Generate
 to choose a different source area. **Play Rearrangement** is the one start that counts
 in: four beats — one accented click, then three identical — before the recipe's top,
-while the ordinary transport controls continue to play and pause it. **Return to Song**
+while the ordinary transport controls continue to play and pause it. **Exit M8TRX**
 clears the recipe and restores the ordinary loop controls.
 
 **Edits made while it is playing are heard from the next bar.** Generate, the drum mode

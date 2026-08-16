@@ -63,7 +63,7 @@ becomes Recipe Once / Recipe Loop. The two histories never merge.
 | **Lock what’s playing** | Part | Locks whichever part is sounding right now, so the next Generate keeps it verbatim. |
 | **Save M8TRX version** | Persistence | Stores the recipe, the settings that built it, **and locks/shelf/unique-letter opt-outs**, in the song file for the Mixer only. Never becomes a game alternate. Reopening the panel restores all of it, so the next tweak starts exactly where you left off. |
 | **Save JSON… / Load JSON…** | Persistence | A small instructions file — no audio, no notes — that also carries locks and the shelf. Load never auto-plays. A malformed shelf entry in a hand-edited file is dropped rather than breaking the load; the toast says how many. |
-| **Return to Song** | Arrangement | Clears the recipe and gives the transport back to the normal song. |
+| **Exit M8TRX** | Arrangement, now | Clears the recipe and gives the transport back to the normal song. Sits at the far right of the FIRST row: it is what you reach for having changed your mind, and down in the Arrangement band it was below the fold on a short window — the one control you could not see at the moment you wanted it. Hidden while there is no recipe, because then there is nothing to return from. |
 
 ### The four dials
 
@@ -110,7 +110,7 @@ the first.
 
 | Control | What it sets |
 | --- | --- |
-| **Form** | The overall shape Go builds — how many parts, how long each is, and which of them come back. **Song** is the familiar Intro/Verse/Chorus roadmap in four-bar parts. **This song's own** reads the roadmap off the material instead, with the song's real part lengths and its real repeats. **Dance** builds and drops, with no verse or chorus. **Loop** is one idea that grows and falls away. **AABA** states an idea twice, contrasts, and returns. **Arch** holds the hook back for a bigger payoff. |
+| **Form** | The overall shape: how many parts, how long each is, and which of them come back. **Song** — the familiar Intro/Verse/Chorus roadmap in four-bar parts — is the default, so nothing changes until you ask it to. **This song's own** reads the roadmap off the material instead, with the song's real part lengths and its real repeats. **Dance** builds and drops, with no verse or chorus. **Loop** is one idea that grows and falls away. **AABA** states an idea twice, contrasts, and returns. **Arch** holds the hook back. **Random** rolls one per Go, from the seed — so a pinned seed rebuilds the same shape. |
 | **Style** | An exact override for **Grain**, and Auto — the default — simply follows the dial. Naming one is a *promise* about cut sizes rather than a leaning: Phrase takes whole one to four-bar phrases, Groove bars and half-bars, Chop beats, and Mix gives each repeated letter its own stable identity. This is the one thing a dial cannot do, which is why it survives. |
 | **Key** | The key walks move within. **Detected** trusts the analysis (marked `?` when the song does not settle) and is what Mood re-reads; naming one yourself overrules both. The readout beside it shows the key Go will *actually* walk in, marked `· Mood` when the dial moved it. **None · chromatic** turns the chord walks off entirely. |
 | **Fill new sections** | Whether the sections **Go builds** get an end-of-part fill, and which shape. Auto's rate follows Drive — roughly one part in three at the centre — and can always come out as no fill at all. The Part rail's **Fill this ending** is the one that acts on the part in hand, now. |
@@ -124,13 +124,12 @@ the first.
 | **Clear locks & shelf** | Arrangement | Empties every lock, everything on the shelf, and every repeated-letter opt-out — a start from scratch for the next Go without leaving M8TRX or discarding the recipe on the timeline. Disabled when there is nothing to clear. |
 | **Lock what's playing** | Part | Locks whichever part is sounding right now, so the next Go keeps it verbatim. |
 | **Save version / Save JSON… / Load JSON…** | Persistence | See the table above. |
-| **Return to Song** | Arrangement | Clears the recipe and gives the transport back to the normal song. |
 | **?** | — | The three paragraphs explaining what M8TRX is, how to read the timeline and how to select. A top-layer popover, so nothing on the desk can clip it. |
 | **×** | Transport | Closes the panel. The recipe stays armed. |
 
 There is **no Undo button here.** While a recipe is live the desk's own Undo becomes
 `Undo M8TRX` and drives M8TRX's 40-deep stack; the desk's mix and arrangement history waits
-untouched and comes back on Return to Song.
+untouched and comes back on Exit M8TRX.
 
 ## Selection · material — what the held slices are made of
 

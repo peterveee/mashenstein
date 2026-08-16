@@ -24,6 +24,7 @@ import * as AUDITION_MOTORIK from './audition-motorik.js';
 import * as AUDITION_SURF from './audition-surf.js';
 import * as AUDITION_TECHNO from './audition-techno.js';
 import { BABY_PORTABLE_ROCK_4 } from './baby-portable-rock-4.js';
+import * as BARBER_OF_SEVILLE_OUVERTURE_2 from './barber-of-seville-ouverture-2.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE from './barber-of-seville-ouverture.js';
 import * as BITTER_MARKET from './bitter-market.js';
 import * as BRAVE_COMET from './brave-comet.js';
@@ -165,6 +166,7 @@ export const IMPORTED_BY_ID = {
   "audition-surf": { bank: AUDITION_SURF.bank, title: AUDITION_SURF.title, group: "styleAudition", writable: true },
   "audition-techno": { bank: AUDITION_TECHNO.bank, title: AUDITION_TECHNO.title, group: "styleAudition", writable: true },
   "baby-portable-rock-4": { bank: BABY_PORTABLE_ROCK_4, title: "BABY PORTABLE ROCK 4", group: "imported", writable: false },
+  "barber-of-seville-ouverture-2": { bank: BARBER_OF_SEVILLE_OUVERTURE_2.bank, title: BARBER_OF_SEVILLE_OUVERTURE_2.title, group: "copy", writable: true },
   "barber-of-seville-ouverture": { bank: BARBER_OF_SEVILLE_OUVERTURE.bank, title: BARBER_OF_SEVILLE_OUVERTURE.title, group: "imported", writable: true },
   "bitter-market": { bank: BITTER_MARKET.bank, title: BITTER_MARKET.title, group: "scratch", writable: true },
   "brave-comet": { bank: BRAVE_COMET.bank, title: BRAVE_COMET.title, group: "scratch", writable: true },
