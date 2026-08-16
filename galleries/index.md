@@ -60,3 +60,4 @@ Do not edit by hand.
 | 2026-08-11 | `548b46c` | [2026-08-11-548b46c.html](2026-08-11-548b46c.html) | feat: add sound test suite and audio-related tests |
 | 2026-08-11 | `c46ef2f` | [2026-08-11-c46ef2f.html](2026-08-11-c46ef2f.html) | Add new hero proposals: raider heroine and martial artist |
 | 2026-08-11 | `2a3b1a9` | [2026-08-11-2a3b1a9.html](2026-08-11-2a3b1a9.html) | Enhance audio note caching system |
+| 2026-08-16 | `c680f60` | [2026-08-16-c680f60.html](2026-08-16-c680f60.html) | Archive published build 414ae37 |
