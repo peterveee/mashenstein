@@ -407,6 +407,13 @@ async function readCurrentArrangements() {
   };
 }
 
+async function readCurrentM8trx() {
+  return {
+    ...await readSongStateDir(join(ROOT, 'src/data/songs'), 'm8trx'),
+    ...await readSongStateDir(join(ROOT, IMPORTED_DIR), 'm8trx'),
+  };
+}
+
 /**
  * The arrangement layer's own snapshot, taken with the mix's and named to match.
  *
@@ -972,6 +979,7 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({
         ok: true, id, into: parentId, snapshot: snap || null, variants,
         mix: await readCurrentMix(), arrangements: await readCurrentArrangements(),
+        m8trx: await readCurrentM8trx(),
       }));
       return;
     }
@@ -1024,6 +1032,9 @@ const server = createServer(async (req, res) => {
         const variants = patchMode
           ? (has(body.patch, 'variants') ? body.patch.variants : (current.variants ?? null))
           : (current.variants ?? null);
+        const m8trx = patchMode
+          ? (has(body.patch, 'm8trx') ? body.patch.m8trx : (current.m8trx ?? null))
+          : (current.m8trx ?? null);
         const bad = validateVariants(variants);
         if (bad.length) {
           // In front of whoever wrote it, rather than going quiet in a level six screens
@@ -1051,6 +1062,7 @@ const server = createServer(async (req, res) => {
           mix,
           arrangement: normaliseArrangementResolution(track?.bank, arrangement),
           variants,
+          m8trx,
         });
         written.push(id);
       }
@@ -1068,6 +1080,7 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({
         ok: true, saved: written, snapshot: snaps[0] || null,
         mix: await readCurrentMix(), arrangements: await readCurrentArrangements(),
+        m8trx: await readCurrentM8trx(),
       }));
       return;
     }
@@ -1560,6 +1573,7 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({
         mix: await readCurrentMix(), arrangements: await readCurrentArrangements(),
+        m8trx: await readCurrentM8trx(),
       }));
       return;
     }

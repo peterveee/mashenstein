@@ -15,6 +15,74 @@ export const NOTE_FX_DIRECTIONS = Object.freeze([
   'up', 'down', 'updown', 'downup', 'random', 'asPlayed',
 ]);
 
+// A range is stored in MIDI note numbers, in the file's spelling — 60 is C4, the same
+// number `src/engine/notes.js` speaks. Frequencies are what the processor hands the
+// rack, but a pitch window is something a person reads and types as notes, so notes are
+// what is saved. The desk spells them for the eye through `deskNoteName`, one octave
+// down, exactly as it does for every other pitch on screen.
+const hzOfMidi = (midi) => 440 * 2 ** ((midi - 69) / 12);
+// Two tones are "the same note" for folding purposes when they land on the same
+// semitone. Nothing here compares raw floats: a bank's E5 halved twice does not equal
+// its own E3 to the last decimal, and an arpeggio that plays the same key twice because
+// of the seventeenth digit is exactly what folding is supposed to prevent.
+const semitoneOfHz = (hz) => Math.round(12 * Math.log2(hz / 440));
+
+/**
+ * The MIDI span offered as a range bound — A0 to C8, the same eighty-eight keys the
+ * desk's own keyboard spans. A window is a place on that board, so it may not be
+ * narrower than the board is.
+ */
+export const NOTE_FX_RANGE_MIN = 21;
+export const NOTE_FX_RANGE_MAX = 108;
+
+/**
+ * The pitch window an arpeggiator is confined to, or null when it is free.
+ *
+ * A window narrower than an octave has nowhere to put a chromatic set — some pitch class
+ * would have no home in it — so the top is read as at least an octave above the bottom.
+ * That widening lives here rather than in the fold so the desk badge prints the window
+ * that will actually sound.
+ */
+export function noteFxRange(arp = {}) {
+  if (!arp?.rangeLimit) return null;
+  const lo = Number(arp.rangeLo);
+  const hi = Number(arp.rangeHi);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+  return { lo, hi: Math.max(hi, lo + 12) };
+}
+
+/**
+ * Drop every tone into [lo, hi] by whole octaves, so the arpeggio sits in one register
+ * whatever the source chord's voicing — a lead written up at C6 and a pad written down
+ * at C2 arpeggiate in the same place.
+ *
+ * Octaves are the only transposition allowed: the notes stay the notes, which is what
+ * separates this from a clamp. Anything already inside the window keeps the octave it
+ * was written in, so a two-octave window still hears the difference between a chord
+ * voiced low in it and one voiced high.
+ *
+ * Folding can land two tones on the same semitone — the octave stack does it every time
+ * the stack is taller than the window — and the duplicate is dropped rather than
+ * stuttered. First one in wins, which keeps `asPlayed` in the order it was played.
+ */
+export function foldTonesToRange(list, lo, hi) {
+  const bottom = hzOfMidi(lo);
+  if (!(bottom > 0)) return [...list];
+  const top = Math.max(hzOfMidi(hi), bottom * 2);
+  const out = [];
+  const seen = new Set();
+  for (const tone of list) {
+    let freq = tone;
+    while (freq < bottom - 1e-9) freq *= 2;
+    while (freq > top + 1e-9) freq /= 2;
+    const key = semitoneOfHz(freq);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(freq);
+  }
+  return out;
+}
+
 export function orderedTones(value, direction = 'up', seed = '') {
   const source = tones(value);
   const up = [...source].sort((a, b) => a - b);
@@ -62,9 +130,16 @@ export function createNoteFxProcessor() {
         for (let octave = 0; octave < octaves; octave++) {
           for (const tone of source) expanded.push(tone * 2 ** octave);
         }
+        // The stack is built first and folded second, so the window has the last word:
+        // whatever Octaves asks for, nothing sounds outside the range. A stack taller
+        // than the window folds its upper octaves back onto notes already in it, and
+        // those duplicates go — set a four-octave stack inside a one-octave window and
+        // you get the one octave, not the same four notes four times.
+        const range = noteFxRange(arp);
+        const stack = range ? foldTonesToRange(expanded, range.lo, range.hi) : expanded;
         const duration = Array.isArray(len)
           ? Math.max(rate, ...len.filter(Number.isFinite)) : Math.max(rate, Number(len) || rate);
-        const passLength = orderedTones(expanded, arp.direction || 'up').length;
+        const passLength = orderedTones(stack, arp.direction || 'up').length;
         // A one-shot is triggered by each new chord even when the repeating mode was
         // formerly Continuous. Give it enough lifetime to finish its one complete
         // traversal; otherwise a short source chord could cut it off after one note.
@@ -72,7 +147,7 @@ export function createNoteFxProcessor() {
         const restart = oneShot || !state || arp.retrigger !== 'continuous'
           || (arp.retrigger === 'bar' && state.barIndex !== barIndex);
         state = {
-          tones: expanded, started: restart ? step : state.started,
+          tones: stack, started: restart ? step : state.started,
           index: restart ? 0 : state.index,
           expires: arp.latch ? Infinity
             : step + Math.max(duration, oneShot ? Math.max(0, passLength - 1) * rate : rate),

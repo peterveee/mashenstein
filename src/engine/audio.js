@@ -20,8 +20,10 @@ import {
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
 import {
   rearrangementPosition as resolveRearrangementPosition,
+  rearrangementOutputSteps,
   rearrangementDrumMode,
   rearrangementDrumHit,
+  REARRANGE_GENERATED_DRUMS,
   harmonicShift,
 } from '../../tools/lib/rearrange.js';
 
@@ -517,6 +519,10 @@ class AudioSys {
     // `step` remains the continuous OUTPUT clock so swing, effects, and transport
     // timing do not restart at every collage cut.
     this.rearrangement = null;
+    // Whether a finished recipe starts again. The desk owns the decision; the scheduler
+    // only reports the boundary, because stopping the transport from inside the
+    // scheduling loop would cut the bar it is in the middle of writing.
+    this.rearrangeLoop = true;
     this._rearrangeSourceBar = null;
     // One resolved output bar, for song-groove drums. See `_rearrangeOutputBank`.
     this._rearrangeOutputBar = null;
@@ -843,9 +849,9 @@ class AudioSys {
    */
   queueRearrangement(recipe = null) {
     const swappable = recipe && this.rearrangement && this.timer && this.bank
-      // A recipe of a different length cannot be swapped mid-flight: the output wrap
-      // is computed from it, so the transport would be inside a song that no longer
-      // exists. Take it now and let the caller restart.
+      // A recipe for a different SOURCE cannot be swapped mid-flight. Output length is
+      // deliberately allowed to change: the mapping wraps at the new recipe length on
+      // the next bar, while the source address space remains safe.
       && recipe.source?.steps === this.rearrangement.source?.steps;
     if (!swappable) {
       this.setRearrangement(recipe);
@@ -4265,8 +4271,20 @@ class AudioSys {
       //            resolves that second bar once per bar rather than once per tick.
       const rearrangeDrumMode = rearranged
         ? rearrangementDrumMode(this.rearrangement) : null;
-      const basicRearrangeDrums = rearrangeDrumMode === 'basic4';
-      const songRearrangeDrums = rearrangeDrumMode === 'song';
+      // Every generated kit takes this path — they differ in pattern, not in where the
+      // pulse comes from, which is the output clock for all of them.
+      const basicRearrangeDrums = !!rearrangeDrumMode
+        && REARRANGE_GENERATED_DRUMS.includes(rearrangeDrumMode);
+      // A fill is a whole-band edit. Even when the recipe normally keeps the authored
+      // song groove straight, its final burst follows the same output-to-source mapping
+      // as the melodic lanes so the transition is audible in the kit too.
+      const rearrangeFill = !!rearranged?.operation?.fill;
+      // A SILENCED SLICE. Nothing sounds for its span — no authored lane, no generated
+      // kit, no frozen stem — while the transport, the groove and the wrap machinery all
+      // keep running underneath, because the slice still takes its time. Gated here rather
+      // than per lane so there is one answer to "does this tick make a sound".
+      const rearrangeMute = !!rearranged?.operation?.mute;
+      const songRearrangeDrums = rearrangeDrumMode === 'song' && !rearrangeFill;
       const sourceBarIndex = Math.floor(sourceStep / 16);
       const sourceBarChanged = rearranged
         ? sourceBarIndex !== this._rearrangeSourceBar
@@ -4352,7 +4370,7 @@ class AudioSys {
         this.mixer?.scheduleBarEffectsForBar?.(bar, this.nextTime);
       }
       const frozenKeys = new Set();
-      for (const key of this.frozenLanes.keys()) {
+      for (const key of (rearrangeMute ? [] : this.frozenLanes.keys())) {
         const frozenPercussion = PERCUSSION_LANES.includes(baseLane(key));
         // A frozen percussion stem contains the authored drum pattern. In the basic
         // Rearrange mode it must not leak back underneath the generated kit; melodic
@@ -4459,13 +4477,15 @@ class AudioSys {
           .filter((key) => b?.[key] != null && (writtenPercussion(key) || voiceOf(b, key))))
         : null;
       const rawAt = (key) => {
+        if (rearrangeMute) return null;
         if (coarseHere && !this._fineLanes.has(key)) return null;
         work.laneReads++;
         if (fine) work.fineLaneReads++;
         if (basicPercussionKeys?.has(key)
           && b?.[key] != null
           && PERCUSSION_LANES.includes(baseLane(key))) {
-          return rearrangementDrumHit(baseLane(key), this.step, this.rearrangement.seed);
+          return rearrangementDrumHit(baseLane(key), this.step, this.rearrangement.seed,
+            rearrangeDrumMode);
         }
         // Song groove: the authored hit at the OUTPUT position, out of the output bar's
         // own resolved bank. The source read is not consulted at all for percussion —
@@ -5131,13 +5151,14 @@ class AudioSys {
       const chordNotes = at('chords');
       if (chordNotes) {
         lane('chords');
-        // A chord arrives as an array, and the rack takes it as one: it hands each
-        // note its own slot out of the voice's pool, which is what `poly` is for.
+        // A chord arrives as an array — except through an arp plan, which feeds one
+        // tone per tick — and the rack takes it as one: it hands each note its own
+        // slot out of the voice's pool, which is what `poly` is for.
         if (!voiced('chords', chordNotes)) {
           // stab: all chord tones at once, short and punchy — and each as long as it
           // was drawn, which is why the length is read per tone rather than per step.
           const len = lenOf('chords');
-          chordNotes.forEach((cf, i) => play(cf, b.chordType || 'square', spb * toneLen(len, toneLenOf('chords', i), i), b.chordGain ?? 0.05, b.chordAttack || 0.01));
+          tonesOf(chordNotes).forEach((cf, i) => play(cf, b.chordType || 'square', spb * toneLen(len, toneLenOf('chords', i), i), b.chordGain ?? 0.05, b.chordAttack || 0.01));
         }
       }
       const organNotes = at('organChords');
@@ -5154,7 +5175,7 @@ class AudioSys {
         const drawbars = b.organBright
           ? [[1, 1], [2, 0.78], [3, 0.48], [4, 0.3], [6, 0.16]]
           : [[1, 1], [2, 0.62], [3, 0.32], [4, 0.2], [6, 0.1]];
-        organNotes.forEach((cf, i) => {
+        tonesOf(organNotes).forEach((cf, i) => {
           // Per tone: a drawn length belongs to the note, and all five drawbars of one
           // note are that note. The pip below is an attack transient, not a length.
           const dur = spb * toneLen(organLen, toneLenOf('organChords', i), i);
@@ -5602,9 +5623,14 @@ class AudioSys {
         // bar plan modulo its length; `step` deliberately keeps increasing. Publish
         // that implicit whole-form boundary too, or an ordinary Play-through would
         // produce no diagnostics even though the listener hears repeated passes.
-        const formEnd = plan.length * 16;
+        const formEnd = this.rearrangement
+          ? rearrangementOutputSteps(this.rearrangement)
+          : plan.length * 16;
         if (formEnd > 0 && this.step % formEnd === 0) {
-          const loop = { when: this.nextTime, start: 0, end: formEnd };
+          const loop = { when: this.nextTime, start: 0, end: formEnd,
+            // The listener needs to know this wrap is a RECIPE wrap to act on it, and
+            // when it will be heard, since the scheduler runs ahead of the ear.
+            ...(this.rearrangement ? { rearrangement: true, looping: this.rearrangeLoop !== false } : {}) };
           for (const fn of this.loopListeners) fn(loop);
         }
       }

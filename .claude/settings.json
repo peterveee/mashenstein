@@ -20,7 +20,8 @@
       "Bash(grep -oE '\\\\b[A-Z0-9]{2,6}-[0-9]\\\\b' docs/synth-naming.md)",
       "Bash(awk -F- '{ if \\(length\\($1\\)!=4\\) print \"NOT 4 CHARS: \" $0; else print \"ok  \" $0 }')",
       "Bash(node --check tools/lib/rearrange.js)",
-      "Bash(node tests/rearrange.js)"
+      "Bash(node tests/rearrange.js)",
+      "Bash(grep -n \"detail.title\\\\|reinspectinfo\\\\|Output \\\\${rearrangeStepLabel\\\\|slice.title\" tests/mixer-layout.js)"
     ]
   }
 }

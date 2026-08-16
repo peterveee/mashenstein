@@ -52,7 +52,7 @@ export function readSongFile(root, id) {
  * would overwrite the music. A song that has lost its marker is a song to fix by
  * hand, not one to write over.
  */
-export function writeSongFile(root, id, { mix = null, arrangement = null, variants = null } = {}) {
+export function writeSongFile(root, id, { mix = null, arrangement = null, variants = null, m8trx = null } = {}) {
   const path = writableSongPath(root, id);
   if (!path) throw new Error(`no writable song file for "${id}"`);
   const src = readFileSync(path, 'utf8');
@@ -66,7 +66,7 @@ export function writeSongFile(root, id, { mix = null, arrangement = null, varian
   //
   // `deskTail` is shared with `songFile` — creation and save write the identical
   // shape, so the first save of a new song diffs as what changed, not as a reformat.
-  const body = deskTail({ mix, arrangement, variants });
+  const body = deskTail({ mix, arrangement, variants, m8trx });
 
   writeFileSync(path, src.slice(0, at) + body);
   return path;

@@ -5,10 +5,10 @@
 // note data: the live engine resolves the current song/mix at playback time, so a
 // recipe remains small, readable, and safe to discard without changing a song.
 
-import { cutCost, chromaMatch, energyOver, detectKey } from './rearrange-profile.js';
+import { cutCost, chromaMatch, energyOver, detectKey, walkCellScore } from './rearrange-profile.js';
 
 export const REARRANGE_KIND = 'mashenstein-rearrangement';
-export const REARRANGE_VERSION = 1;
+export const REARRANGE_VERSION = 2;
 export const REARRANGE_GRID = 'sixteenth';
 export const REARRANGE_EXTREMENESS_DEFAULT = 0.35;
 // The generator API keeps the full musical interval palette by default. The mixer
@@ -19,7 +19,19 @@ export const REARRANGE_PATTERN_DEFAULT = 0.5;
 // perfect fifth. The older values remain accepted when loading a saved v1 file, so a
 // recipe made before this change does not become unusable; generation never chooses
 // octave jumps now.
-export const REARRANGE_TRANSPOSES = Object.freeze([-12, -7, -5, -2, 0, 2, 5, 7, 12]);
+// Every semitone in the octave either way. The old shortlist (±2/5/7/12) was the set the
+// GENERATOR picks from and it still is — see REARRANGE_GENERATED_TRANSPOSES — but there is
+// no reason a person reaching for a minor third on one slice should be told it is not a
+// supported interval. This list is what the validator accepts and what the desk offers.
+/** Named stutter rhythms, as relative cell weights across the slice's own time. */
+export const REARRANGE_STUTTER_SHAPES = Object.freeze({
+  gallop: Object.freeze([2, 1, 1]),
+  ramp: Object.freeze([4, 2, 1, 1]),
+  build: Object.freeze([1, 1, 2, 4]),
+});
+
+export const REARRANGE_TRANSPOSES = Object.freeze(
+  Array.from({ length: 25 }, (unused, index) => index - 12));
 export const REARRANGE_GENERATED_TRANSPOSES = Object.freeze([-7, -5, -2, 2, 5, 7]);
 // How the collage treats percussion. Keep this in the recipe rather than in the song
 // bank so the normal song, exports, and saved arrangements remain untouched.
@@ -35,8 +47,28 @@ export const REARRANGE_GENERATED_TRANSPOSES = Object.freeze([-7, -5, -2, 2, 5, 7
 //
 // A recipe with no `drums` field still means `original`, so every saved v1 file keeps
 // the behaviour it was auditioned with.
-export const REARRANGE_DRUM_MODES = Object.freeze(['original', 'song', 'basic4']);
+export const REARRANGE_DRUM_MODES = Object.freeze([
+  'original', 'song', 'basic4', 'halftime', 'break', 'boombap', 'garage',
+  'disco', 'house', 'deephouse', 'techno']);
+/** The generated kits: modes that ignore what the song wrote and play their own pattern. */
+export const REARRANGE_GENERATED_DRUMS = Object.freeze(
+  ['basic4', 'halftime', 'break', 'boombap', 'garage',
+    'disco', 'house', 'deephouse', 'techno']);
 export const REARRANGE_DRUM_DEFAULT = 'song';
+
+/**
+ * The kits in energy order, for the desk's Auto setting: the song's own groove at the
+ * bottom, four-to-the-floor at the top. Auto is resolved to one of these names BEFORE
+ * the recipe is built, so a saved file always names a real kit and nothing downstream
+ * has to know the dial exists.
+ */
+export const REARRANGE_DRIVE_KITS = Object.freeze([
+  'song', 'halftime', 'boombap', 'garage', 'deephouse', 'disco', 'house', 'techno']);
+export function driveDrumKit(drive = 0.5) {
+  const amount = clampControl(drive, REARRANGE_CREATIVE_DEFAULTS.drive);
+  return REARRANGE_DRIVE_KITS[
+    Math.min(REARRANGE_DRIVE_KITS.length - 1, Math.floor(amount * REARRANGE_DRIVE_KITS.length))];
+}
 
 export const REARRANGE_FORM_ROLES = Object.freeze([
   'Intro', 'Verse', 'Chorus', 'Bridge', 'Outro',
@@ -52,7 +84,7 @@ const ROLE_ENERGY = Object.freeze({
 const PHRASE_STEPS = 64; // four bars at sixteen sixteenths per bar
 
 const PHRASE_LENGTH_WEIGHTS = Object.freeze([
-  [1, 2], [2, 4], [4, 7], [8, 34], [16, 42], [32, 10], [64, 1],
+  [4, 7], [8, 34], [16, 42], [32, 10], [64, 1],
 ]);
 
 /**
@@ -69,11 +101,20 @@ const PHRASE_LENGTH_WEIGHTS = Object.freeze([
  * divides evenly into them. Aligning the offset would quietly let the last phrase of
  * an odd-length song cut anywhere.
  *
- * Glitches — one and two-sixteenth cuts, and starts off any musical boundary — are
- * not a style. They are an explicit switch, because they are the one thing here that
- * cannot be arrived at by accident and should not be.
+ * Sub-beat cells are not a style. They only appear in an explicit section-ending fill;
+ * normal material remains beat-aligned and phraseable.
  */
 export const REARRANGE_STYLES = Object.freeze({
+  mix: {
+    // Mix is resolved per letter during generation. Its gates are the union of the
+    // three named styles; the per-letter choice below supplies the actual musical
+    // identity while keeping repeated letters consistent.
+    cells: [[4, 20], [8, 38], [16, 30], [32, 10], [64, 2]],
+    grid: 4,
+    pairChance: 0.58,
+    loopChance: 0.58,
+    patterning: 0.58,
+  },
   phrase: {
     // Whole phrases: one to four bars, always on a bar line. The least chopped
     // setting the generator has, for songs whose melodies need room.
@@ -101,9 +142,62 @@ export const REARRANGE_STYLES = Object.freeze({
     patterning: 0.45,
   },
 });
-export const REARRANGE_STYLE_NAMES = Object.freeze(Object.keys(REARRANGE_STYLES));
+// Keep the three historical names in this export for callers that use it as a style
+// gate. The desk's richer choice list adds Mix without making old recipes or tests
+// suddenly treat the union gate as a named cell style.
+export const REARRANGE_STYLE_NAMES = Object.freeze(['phrase', 'groove', 'chop']);
+export const REARRANGE_STYLE_CHOICES = Object.freeze(['mix', ...REARRANGE_STYLE_NAMES]);
 export const REARRANGE_STYLE_DEFAULT = 'groove';
 export const REARRANGE_VARIATION_DEFAULT = 0.45;
+
+/**
+ * ---- THE FOUR DIALS ----------------------------------------------------------
+ *
+ * Variation was one slider doing six jobs — how far down the candidate ranking a
+ * pick could reach, how often a motif came back, how many passes a cell took, how
+ * wide the source pool was, how likely a lift was. Asking "familiar or different?"
+ * about all of that at once is why it never quite answered anything. It is four
+ * questions, so it is four dials:
+ *
+ *   MOOD      dark ↔ euphoric   — the key it walks in, the palette, the lift's direction
+ *   HYPNOSIS  collage ↔ loop    — how much the section repeats itself
+ *   CHAOS     tame ↔ feral      — how far a choice may stray from the safest one
+ *   DRIVE     chill ↔ peak-time — energy: density, fills, chord pace, the kit
+ *
+ * `variation` is still accepted and still means exactly what it meant: it maps onto
+ * hypnosis and chaos from opposite ends (see `resolveCreative`), so every recipe made
+ * by an older caller generates identically. Same rule the retired `extremeness` and
+ * `patterning` dials get.
+ */
+export const REARRANGE_CREATIVE_DEFAULTS = Object.freeze({
+  mood: 0.5, hypnosis: 0.55, chaos: 0.45, drive: 0.5,
+});
+
+// The minimum score a walking cell needs before a section is allowed to carry
+// harmony. It is intentionally exported so taste can be tuned and tested without
+// hiding a magic number in the generator.
+export const REARRANGE_WALK_MIN = 0.18;
+
+// Base material stays on a beat boundary. Sub-beat work is reserved for an explicit
+// section-ending fill, so a recipe reads as an arrangement with a deliberate pickup
+// rather than an accidental collection of off-grid cuts.
+export const REARRANGE_FILL_SHAPES = Object.freeze({
+  burst: Object.freeze({ label: 'Burst', steps: 4, cells: [[1, 4]] }),
+  rush: Object.freeze({ label: 'Rush', steps: 8, cells: [[2, 2], [1, 4]] }),
+  machinegun: Object.freeze({ label: 'Machine gun', steps: 16, cells: [[4, 2], [2, 2], [1, 4]] }),
+});
+export const REARRANGE_FILL_NAMES = Object.freeze(Object.keys(REARRANGE_FILL_SHAPES));
+export const REARRANGE_FILL_DEFAULT = 'auto';
+
+// Chord pace controls how long a riff stays home before it moves. Slow is deliberately
+// the default: 1 1 1 1 | 4 4 | 5 | 6 reads like a song section, not a new chord every bar.
+export const REARRANGE_CHORD_PACES = Object.freeze({
+  slow: { label: 'Slow', repeat: 4 },
+  steady: { label: 'Steady', repeat: 2 },
+  active: { label: 'Active', repeat: 1 },
+});
+export const REARRANGE_CHORD_PACE_NAMES = Object.freeze(Object.keys(REARRANGE_CHORD_PACES));
+export const REARRANGE_CHORD_PACE_DEFAULT = 'slow';
 
 /**
  * ---- HARMONY: CHORD LOOPS --------------------------------------------------------
@@ -126,20 +220,211 @@ export const REARRANGE_VARIATION_DEFAULT = 0.45;
  * numerals do not mean anything there.
  */
 export const REARRANGE_PROGRESSIONS = Object.freeze({
+  pop: { label: 'i – iv – v – VI', minor: [0, 3, 4, 5] },          // slow song grammar
   edm: { label: 'i – VI – III – VII', minor: [0, -2, 2, -1] },     // Titanium, Animals
   house: { label: 'i – v – VI – iv', minor: [0, -3, -2, 3] },      // the nu-disco loop
   anthem: { label: 'VI – VII – i – i', minor: [-2, -1, 0, 0] },    // the festival build
   dark: { label: 'i – iv – VI – v', minor: [0, 3, -2, -3] },       // synthwave/dark pop
 });
 export const REARRANGE_PROGRESSION_NAMES = Object.freeze(Object.keys(REARRANGE_PROGRESSIONS));
-// One major-key walk fits every request: the axis progression, pop's I–V–vi–IV.
-const MAJOR_PROGRESSION = Object.freeze([0, -3, -2, 3]);
+
+/**
+ * ---- THE FULL PALETTE SHELF ------------------------------------------------------
+ *
+ * The five names above are what a caller may ask for BY NAME, and that list is closed —
+ * it is the desk's progression control. Mood's Auto path reaches a wider shelf, because
+ * one palette per dial position meant one progression per song, forever: the same four
+ * chords whatever the seed, in every section, in every recipe made at that setting.
+ *
+ * DISTINCT IN THE FIRST TWO MOVING CHORDS IS THE ADMISSION TEST, and it is a harder
+ * test than it sounds. `pacedChords` at 'slow' — the pace every recipe uses until Drive
+ * passes 0.6 — keeps only a palette's MOVING degrees, in order, in a fixed rhythm. And
+ * every section that walks is exactly PHRASE_STEPS long, four bars, which takes the
+ * `bars >= 4` shape: `i i m0 m1`. The third moving chord never sounds at all in a
+ * generated recipe, and only appears on the longer sections the transform paths build.
+ *
+ * So a palette IS its first two moving chords here. I–V–vi–IV and I–V–vi–iii are the
+ * same palette where it counts, whatever they look like written down. Every entry below
+ * differs from every other in that pair, or it does not earn a place on the shelf.
+ *
+ * Note that a degree may be spelled up or down — -3 and +4 are both v, an octave apart —
+ * and the sign is chosen to keep the shift small, not to change the chord.
+ */
+const MINOR_PALETTES = Object.freeze({
+  ...Object.fromEntries(REARRANGE_PROGRESSION_NAMES
+    .map((name) => [name, REARRANGE_PROGRESSIONS[name].minor])),
+  andalusian: Object.freeze([0, -1, -2, -3]),  // i – VII – VI – v, the descending tetrachord
+  epic: Object.freeze([0, 2, -1, -2]),         // i – III – VII – VI, the trailer loop
+  lament: Object.freeze([0, -2, 3, 4]),        // i – VI – iv – v, doo-wop in the minor
+  modal: Object.freeze([0, -1, 3, -2]),        // i – VII – iv – VI, the rock minor
+});
+// The major-key walks. The axis progression — I–V–vi–IV — answered every request on its
+// own until Mood arrived, and it is still the middle of the ladder; the other four exist
+// because a major song had nowhere to go when the dial moved. The lift is the festival
+// cadence, IV–V–I, which under a reduced walk mask comes out as the oldest turnaround
+// there is: three bars home and the dominant into the bar line.
+const MAJOR_PALETTES = Object.freeze({
+  sensitive: Object.freeze([0, -5, -2, 3]),    // I – iii – vi – IV, the soft one
+  ballad: Object.freeze([0, 3, -2, -3]),       // I – IV – vi – V, the slow-song walk
+  axis: Object.freeze([0, -3, -2, 3]),         // I – V – vi – IV, the axis
+  doowop: Object.freeze([0, -2, 3, 4]),        // I – vi – IV – V, the fifties turnaround
+  lift: Object.freeze([3, 4, 0, 0]),           // IV – V – I – I, the festival cadence
+});
+
+/** The degrees behind a palette name, whichever shelf it sits on. */
+export function paletteDegrees(name) {
+  return MINOR_PALETTES[name] || MAJOR_PALETTES[name] || null;
+}
 // How many bars of the four-bar loop actually move. Listening said a full walk is
 // often too much: the riff loses its footing when every bar re-harmonises. The
 // default holds home for two bars and moves on the back half; the turnaround holds
 // three and lifts only into the bar line — the oldest trick in pop, and the subtlest.
-export const REARRANGE_WALKS = Object.freeze({ full: 4, half: 2, turn: 1 });
+export const REARRANGE_WALKS = Object.freeze({ auto: 2, full: 4, half: 2, turn: 1, cadence: 2 });
 export const REARRANGE_WALK_DEFAULT = 'half';
+
+/**
+ * ---- MOOD: WHICH KEY, WHICH PALETTE, WHICH DIRECTION -----------------------------
+ *
+ * The emotion dial's whole job is harmonic. It moves three things, and the first is
+ * the big one: at the dark end a major song is re-read in its RELATIVE MINOR, at the
+ * bright end a minor song in its relative major.
+ *
+ * Relative, not parallel, and that is the whole trick. A relative pair shares its
+ * pitch-class set exactly — A minor and C major are the same seven notes — so every
+ * note of the material is still a scale tone in the new key and `harmonicShift` walks
+ * it cleanly. The parallel minor would push a third of the song's notes onto the
+ * "nearest scale tone below, keep the sharpness" branch on every walked bar, which is
+ * the smudge that branch exists to survive rather than a sound to aim for. What
+ * actually changes is where HOME is: the same riff over an Am–F–C–G loop instead of a
+ * C–G–Am–F one is the same notes read as sad, which is exactly the ask.
+ *
+ * Only ever applied to a DETECTED key. Somebody who names a key at the desk has said
+ * what the song is in, and no dial overrules that.
+ */
+export function moodWalkKey(key, mood = REARRANGE_CREATIVE_DEFAULTS.mood) {
+  if (!key) return key;
+  const amount = clampControl(mood, REARRANGE_CREATIVE_DEFAULTS.mood);
+  if (amount <= 1 / 3 && !key.minor) return { tonic: (key.tonic + 9) % 12, minor: true };
+  if (amount >= 2 / 3 && key.minor) return { tonic: (key.tonic + 3) % 12, minor: false };
+  return { tonic: key.tonic, minor: !!key.minor };
+}
+
+/**
+ * ---- WHICH PALETTE AUTO REACHES FOR ----------------------------------------------
+ *
+ * A BAND IS A SET, NOT A PALETTE. The ladder still runs from the synthwave loop at the
+ * bottom to the festival build at the top, and each rung still means what its word on
+ * the desk says — but a rung now holds two or three palettes that agree about the mood
+ * and disagree about the route. Which one a section takes is `palettePick` below.
+ *
+ * The first entry of each band is the palette that band has always given, so
+ * `moodPalette(mood)` with no pick still answers exactly what it used to.
+ */
+const MOOD_MINOR_BANDS = Object.freeze([
+  Object.freeze(['dark', 'andalusian']),           // Noir
+  Object.freeze(['house', 'andalusian', 'lament']),// Brooding
+  Object.freeze(['pop', 'lament', 'modal']),       // Bittersweet
+  Object.freeze(['edm', 'epic', 'pop']),           // Golden
+  Object.freeze(['anthem', 'edm', 'epic']),        // Euphoric
+]);
+// The major ladder. Noir holds a single palette because a major song only stays major
+// down here when somebody NAMED the key — a detected one has already been re-read into
+// its relative minor by `moodWalkKey` — and the one palette it gets is the unresolved
+// one, ending on V.
+const MOOD_MAJOR_BANDS = Object.freeze([
+  Object.freeze(['sensitive']),                    // Noir
+  Object.freeze(['ballad', 'sensitive']),          // Brooding
+  Object.freeze(['axis', 'ballad']),               // Bittersweet
+  Object.freeze(['doowop', 'axis']),               // Golden
+  Object.freeze(['lift', 'doowop']),               // Euphoric
+]);
+
+function moodBand(mood) {
+  const amount = clampControl(mood, REARRANGE_CREATIVE_DEFAULTS.mood);
+  if (amount < 0.2) return 0;
+  if (amount < 0.4) return 1;
+  if (amount < 0.6) return 2;
+  if (amount < 0.8) return 3;
+  return 4;
+}
+
+/** Every palette this Mood setting may reach, in a minor key or a major one. */
+export function moodPalettes(mood = REARRANGE_CREATIVE_DEFAULTS.mood, minor = true) {
+  return (minor ? MOOD_MINOR_BANDS : MOOD_MAJOR_BANDS)[moodBand(mood)];
+}
+
+export function moodPalette(mood = REARRANGE_CREATIVE_DEFAULTS.mood, pick = 0, minor = true) {
+  const set = moodPalettes(mood, minor);
+  const index = Math.trunc(Number(pick)) || 0;
+  return set[((index % set.length) + set.length) % set.length];
+}
+
+/**
+ * WHICH palette within the band, for one role of one recipe.
+ *
+ * Hashed from the seed and the role rather than drawn from the running rng, for the
+ * same reason `styleForLetter` is: the answer has to be a property of the form, stable
+ * whatever else happened before it. Adding a favourite or a fill elsewhere in the song
+ * must not re-harmonise the Chorus. Every returning Chorus therefore agrees by
+ * construction, and re-rolling the seed re-rolls the harmony along with everything else
+ * — which is the thing one palette per band could never do.
+ *
+ * The linear combination is run through `seededRandom` rather than taken modulo the
+ * band size directly. A band holds two or three palettes, so a bare modulo reads the
+ * bottom bit or two of the hash — and with both multipliers odd, that bottom bit is
+ * just the parity of `seed + role`. Every odd seed picked identically. The PRNG is
+ * there to mix, so mix with it.
+ */
+function palettePick(seed, role, count) {
+  if (count <= 1) return 0;
+  const code = typeof role === 'string' && role ? role.charCodeAt(0) : 0;
+  const hash = (Math.imul(Number(seed) >>> 0, 1664525) + Math.imul(code, 1013904223)) >>> 0;
+  return Math.min(count - 1, Math.floor(seededRandom(hash)() * count));
+}
+
+/**
+ * How much of the loop moves. A dark section wants the full walk — the more chords it
+ * passes through the heavier it sits — where a euphoric one wants the turnaround, all
+ * lift and no wandering. The middle is the same 'half' the desk has always defaulted to.
+ */
+export function moodWalk(mood = REARRANGE_CREATIVE_DEFAULTS.mood) {
+  const amount = clampControl(mood, REARRANGE_CREATIVE_DEFAULTS.mood);
+  if (amount < 1 / 3) return 'full';
+  if (amount > 2 / 3) return 'turn';
+  return REARRANGE_WALK_DEFAULT;
+}
+
+/**
+ * How much Mood wants a walked slice sitting on this degree.
+ *
+ * The numeral already says which way a degree leans: in minor, offsets 2, 5 and 6 land
+ * on III, VI and VII — the major chords the key owns — where 1, 3 and 4 land on ii°, iv
+ * and v. Euphoric leans on the bright ones and noir on the dark ones, by the same thumb
+ * on the scale `chooseTranspose` puts on a chromatic lift, and for the same reason: it
+ * is a preference, not a rule, so a dark setting still reaches a III now and then.
+ *
+ * Offset 0 is held NEUTRAL rather than read as its numeral. It is the tonic, but it is
+ * also the option that takes the walk off the slice entirely, and a mood dial quietly
+ * deleting harmony at one end would be the control doing something it does not say.
+ */
+function moodDegreeWeight(degree, minor, mood = REARRANGE_CREATIVE_DEFAULTS.mood) {
+  if (!degree) return 1;
+  const numeral = harmonyNumeral(degree, minor);
+  const bright = numeral[0] === numeral[0].toUpperCase() && !numeral.includes('°');
+  const lean = clampControl(mood, REARRANGE_CREATIVE_DEFAULTS.mood) - 0.5;
+  return 1 + lean * 1.6 * (bright ? 1 : -1);
+}
+
+/**
+ * How fast the chords move under a section. Slow is the song grammar and holds the
+ * middle of the dial; only a genuinely driven setting starts changing chord every bar.
+ */
+export function drivePace(drive = REARRANGE_CREATIVE_DEFAULTS.drive) {
+  const amount = clampControl(drive, REARRANGE_CREATIVE_DEFAULTS.drive);
+  if (amount < 0.6) return 'slow';
+  if (amount < 0.85) return 'steady';
+  return 'active';
+}
 
 /**
  * A palette reduced to its walk amount: home for the held bars, then the palette's
@@ -155,6 +440,32 @@ function walkedChords(palette, walk) {
   const moving = palette.filter((chord) => chord !== 0);
   const tail = moving.slice(-Math.max(1, Math.min(bars, moving.length)));
   return [...new Array(palette.length - tail.length).fill(0), ...tail];
+}
+
+function pacedChords(palette, bars, pace = REARRANGE_CHORD_PACE_DEFAULT, walk = REARRANGE_WALK_DEFAULT) {
+  const active = REARRANGE_CHORD_PACE_NAMES.includes(pace) ? pace : REARRANGE_CHORD_PACE_DEFAULT;
+  // Slow pacing owns the phrase grammar: it must still arrive at IV/V/vi even when a
+  // legacy Walk setting asked for a reduced mask. The faster compatibility modes retain
+  // the old walk selector for callers that explicitly choose them.
+  const selected = active === 'slow' ? palette : walkedChords(palette, walk);
+  if (bars <= 1) return [selected[0] || 0];
+  if (active === 'active') return new Array(bars).fill(null)
+    .map((_, index) => selected[index % selected.length] || 0);
+  if (active === 'steady') {
+    return new Array(bars).fill(null)
+      .map((_, index) => selected[Math.floor(index / 2) % selected.length] || 0);
+  }
+  // Slow: hold tonic for the opening phrase, then let the remaining degrees arrive at
+  // phrase-sized boundaries. Eight bars produce 1 1 1 1 | 4 4 | 5 | 6; four bars
+  // compress to 1 1 | 4 | 5, still leaving the riff home before the lift.
+  const moving = selected.filter((degree) => degree !== 0);
+  if (bars >= 8) {
+    const tail = [moving[0] || 0, moving[0] || 0, moving[1] || 0, moving[2] || 0];
+    return [...new Array(bars - tail.length).fill(0), ...tail];
+  }
+  if (bars >= 4) return [0, 0, moving[0] || 0, moving[1] || 0]
+    .slice(0, bars);
+  return new Array(bars).fill(0);
 }
 // Degree offsets a recipe may carry: within one octave of scale degrees.
 export const REARRANGE_HARMONY_RANGE = 7;
@@ -203,7 +514,8 @@ export function harmonicShift(freq, key, degrees) {
 }
 
 /**
- * Walk a section's slices through a four-chord loop, one chord per output bar.
+ * Walk a section's slices through a paced chord loop. Active mode changes per bar;
+ * slower modes hold the riff over phrase-sized groups.
  *
  * Each operation takes the degree offset of the bar it sounds in. An operation whose
  * repeats cross a chord change is split so each pass carries its own bar's chord —
@@ -239,9 +551,6 @@ function applyHarmonyLoop(operations, chords) {
   return out;
 }
 
-// What Allow glitches adds: sub-beat cells, and an unaligned grid to place them on.
-const GLITCH_CELLS = Object.freeze([[1, 3], [2, 6]]);
-
 // How the scorer weighs one candidate slice against another. The cut penalty is the
 // heaviest by a distance, and deliberately: a phrase chosen slightly wrong still
 // sounds like music, and a cut through a held chord sounds like a fault in the file.
@@ -266,6 +575,49 @@ function clampExtremeness(value) {
 function clampControl(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : fallback;
+}
+
+/**
+ * THE FOUR DIALS, AND THE ONE THEY REPLACED — resolved in exactly one place.
+ *
+ * A dial that was given a value wins. Anything not given falls back to `variation`,
+ * which is the same number the old single slider always was — hypnosis is its far side
+ * (Familiar WAS "repeat yourself"), chaos is its near side. So an older caller passing
+ * only `variation` lands on exactly the numbers it used to, and a caller passing both
+ * gets its explicit dial honoured per axis rather than fought over.
+ *
+ * `pattern` comes out of here too: Hypnosis replaces Patterning where a style is in
+ * charge, because the two are the same question, so the dial is mapped rather than
+ * added to.
+ *
+ * One function because there are now two entry points — a whole generation and a single
+ * rebuilt part — and a dial that meant something slightly different depending on which
+ * one you came through would be the worst kind of bug to hear and not be able to name.
+ */
+function resolveCreative({
+  mood = null, hypnosis = null, chaos = null, drive = null,
+  variation = REARRANGE_VARIATION_DEFAULT,
+  extremeness = REARRANGE_EXTREMENESS_DEFAULT,
+  patterning = REARRANGE_PATTERN_DEFAULT,
+} = {}, resolvedStyle = { name: null, patterning: null }) {
+  const varied = clampControl(variation, REARRANGE_VARIATION_DEFAULT);
+  const moodV = mood == null ? REARRANGE_CREATIVE_DEFAULTS.mood
+    : clampControl(mood, REARRANGE_CREATIVE_DEFAULTS.mood);
+  const hypnosisV = hypnosis == null ? 1 - varied
+    : clampControl(hypnosis, REARRANGE_CREATIVE_DEFAULTS.hypnosis);
+  // With a style in charge, Chaos IS the intensity dial. Everything Extremeness still
+  // reaches — how widely source phrases are sampled and how often a lift is taken —
+  // through a control the desk shows, so there is no second dial quietly deciding
+  // things from behind a preset.
+  const chaosV = chaos == null
+    ? (resolvedStyle.name ? varied : clampExtremeness(extremeness))
+    : clampControl(chaos, REARRANGE_CREATIVE_DEFAULTS.chaos);
+  const driveV = drive == null ? REARRANGE_CREATIVE_DEFAULTS.drive
+    : clampControl(drive, REARRANGE_CREATIVE_DEFAULTS.drive);
+  const pattern = resolvedStyle.patterning == null
+    ? clampControl(patterning, REARRANGE_PATTERN_DEFAULT)
+    : clampControl(resolvedStyle.patterning + (hypnosisV - 0.5) * 0.5, REARRANGE_PATTERN_DEFAULT);
+  return { mood: moodV, hypnosis: hypnosisV, chaos: chaosV, drive: driveV, pattern };
 }
 
 function repeatWeights(patterning = REARRANGE_PATTERN_DEFAULT) {
@@ -309,11 +661,115 @@ function drumRandom(lane, step, seed = 0) {
  * the eighth-note grid. Open hats, rims, toms and crashes supply the occasional fill
  * without moving the backbeat.
  */
-export function rearrangementDrumHit(lane, step, seed = 0) {
+export function rearrangementDrumHit(lane, step, seed = 0, style = 'basic4') {
   if (!Number.isInteger(step)) return false;
   const phase = ((step % 16) + 16) % 16;
   const chance = drumRandom(lane, step, seed);
-  switch (String(lane || '')) {
+  const key = String(lane || '');
+  // Each generated kit is a whole feel, not a variation on four-to-the-floor: where the
+  // kick sits against the backbeat IS the style, so they are written out per lane rather
+  // than derived from one another. Everything not named here falls through to the
+  // four-to-the-floor below, which is what `basic4` has always been.
+  if (style === 'halftime') {
+    // The backbeat moved to bar-centre: half the speed at the same tempo.
+    if (key === 'kick') return phase === 0 || phase === 10;
+    if (key === 'snare' || key === 'clap') return phase === 8;
+    if (key === 'hats') return phase % 4 === 0;
+    if (key === 'ohats') return phase === 12 && chance < 0.5;
+    if (key === 'crash') return phase === 0 && chance < 0.25;
+    if (key === 'rim') return phase === 14 && chance < 0.2;
+    if (key === 'tom') return phase === 15 && chance < 0.18;
+    return false;
+  }
+  if (style === 'break') {
+    // Amen-shaped: kick off the second beat, snare on the backbeat, busy hats.
+    if (key === 'kick') return phase === 0 || phase === 6 || (phase === 11 && chance < 0.6);
+    if (key === 'snare') return phase === 4 || phase === 12 || (phase === 14 && chance < 0.35);
+    if (key === 'clap') return phase === 12;
+    if (key === 'hats') return phase % 2 === 0;
+    if (key === 'ohats') return phase === 14 && chance < 0.5;
+    if (key === 'rim') return (phase === 7 || phase === 15) && chance < 0.3;
+    if (key === 'tom') return phase === 15 && chance < 0.2;
+    if (key === 'crash') return phase === 0 && chance < 0.3;
+    return false;
+  }
+  if (style === 'boombap') {
+    // Kick on one and the and-of-three, snare hard on two and four, swung-feeling hats.
+    if (key === 'kick') return phase === 0 || phase === 10;
+    if (key === 'snare' || key === 'clap') return phase === 4 || phase === 12;
+    if (key === 'hats') return phase % 2 === 0 && chance < 0.85;
+    if (key === 'ohats') return phase === 14 && chance < 0.4;
+    if (key === 'rim') return phase === 7 && chance < 0.25;
+    if (key === 'tom') return phase === 15 && chance < 0.15;
+    if (key === 'crash') return phase === 0 && chance < 0.2;
+    return false;
+  }
+  // THE FOUR-TO-THE-FLOOR FAMILY. They share a kick on every beat, so what separates them
+  // is everything else: where the backbeat is and whether it is a snare or a clap, how the
+  // hats sit against the kick, and how much is left out. Written as four patterns rather
+  // than one with switches, because "house is disco with less" is a description, not an
+  // implementation, and the moment one of them needs to move the shared version fights it.
+  if (style === 'disco') {
+    // Busiest of the four: a real kit playing it, snare AND clap on the backbeat, sixteenth
+    // hats, and the open hat answering on every off-beat.
+    if (key === 'kick') return phase % 4 === 0;
+    if (key === 'snare') return phase === 4 || phase === 12;
+    if (key === 'clap') return phase === 4 || phase === 12;
+    if (key === 'hats') return true;
+    if (key === 'ohats') return phase % 4 === 2;
+    if (key === 'tom') return (phase === 14 || phase === 15) && chance < 0.3;
+    if (key === 'rim') return (phase === 7 || phase === 15) && chance < 0.25;
+    if (key === 'crash') return phase === 0 && chance < 0.25;
+    return false;
+  }
+  if (style === 'house') {
+    // The clap IS the backbeat — no snare at all — over eighth hats and the off-beat open.
+    if (key === 'kick') return phase % 4 === 0;
+    if (key === 'clap') return phase === 4 || phase === 12;
+    if (key === 'snare') return false;
+    if (key === 'hats') return phase % 2 === 0;
+    if (key === 'ohats') return phase % 4 === 2;
+    if (key === 'rim') return phase === 10 && chance < 0.22;
+    if (key === 'crash') return phase === 0 && chance < 0.18;
+    return false;
+  }
+  if (style === 'deephouse') {
+    // Sparser and softer: the clap only answers the fourth beat, the hats stay off the
+    // beat, and a shaker-ish rim carries the swing.
+    if (key === 'kick') return phase % 4 === 0;
+    if (key === 'clap') return phase === 12;
+    if (key === 'snare') return phase === 4 && chance < 0.25;
+    if (key === 'hats') return phase % 4 === 2;
+    if (key === 'ohats') return phase % 8 === 6 && chance < 0.6;
+    if (key === 'rim') return (phase === 6 || phase === 14) && chance < 0.45;
+    if (key === 'crash') return phase === 0 && chance < 0.12;
+    return false;
+  }
+  if (style === 'techno') {
+    // Kick-dominant and machine-like: no backbeat on two at all, driving off-beat
+    // sixteenth hats, and accents where a hand would not put them.
+    if (key === 'kick') return phase % 4 === 0;
+    if (key === 'clap') return phase === 12;
+    if (key === 'snare') return false;
+    if (key === 'hats') return phase % 2 === 1;
+    if (key === 'ohats') return phase % 4 === 2 && chance < 0.7;
+    if (key === 'rim') return (phase === 3 || phase === 11) && chance < 0.4;
+    if (key === 'tom') return phase === 15 && chance < 0.12;
+    if (key === 'crash') return phase === 0 && chance < 0.15;
+    return false;
+  }
+  if (style === 'garage') {
+    // Two-step: the second backbeat is displaced and the kick skips, which is the shuffle.
+    if (key === 'kick') return phase === 0 || phase === 9;
+    if (key === 'snare' || key === 'clap') return phase === 4 || phase === 14;
+    if (key === 'hats') return phase % 2 === 1 || phase === 0;
+    if (key === 'ohats') return (phase === 6 || phase === 10) && chance < 0.55;
+    if (key === 'rim') return phase === 11 && chance < 0.3;
+    if (key === 'tom') return phase === 15 && chance < 0.15;
+    if (key === 'crash') return phase === 0 && chance < 0.22;
+    return false;
+  }
+  switch (key) {
     case 'kick':
       return phase % 4 === 0;
     case 'snare':
@@ -377,37 +833,46 @@ function sourceStart(maxStart, random, extremeness = REARRANGE_EXTREMENESS_DEFAU
 /**
  * The style a generation runs under, as one object.
  *
- * With a named style this is that style, plus glitch cells if they were asked for.
+ * With a named style this is that style. Explicit fill overlays are added only at a
+ * section boundary after the base material has been generated.
  * Without one it is the continuous Extremeness behaviour this generator has always
  * had, expressed in the same shape — which is what lets there be a single code path
  * rather than a legacy generator kept alive beside a new one. A caller passing
- * `extremeness` and nothing else gets exactly the distribution it always got: the
- * weights below ARE the old `PHRASE_LENGTH_WEIGHTS`, and `grid: null` means the old
- * `sourceStart` snapping rather than an aligned candidate list.
+ * `extremeness` and nothing else gets the old phrase weights, with a four-sixteenth
+ * candidate grid so even the compatibility path cannot create an off-grid base cut.
  */
-function resolveStyle(style, allowGlitches) {
+function resolveStyle(style) {
   const named = style && REARRANGE_STYLES[style] ? REARRANGE_STYLES[style] : null;
   if (!named) {
     return {
       name: null,
       cells: PHRASE_LENGTH_WEIGHTS.map(([value, weight]) => [value, weight]),
-      grid: null,
+      grid: 4,
       pairChance: null,
       loopChance: null,
       patterning: null,
-      glitches: true,
     };
   }
   return {
     name: style,
-    cells: allowGlitches ? [...GLITCH_CELLS, ...named.cells] : named.cells,
-    // Glitches are allowed to land anywhere; that is what makes them glitches.
-    grid: allowGlitches ? 1 : named.grid,
+    cells: named.cells,
+    grid: named.grid,
     pairChance: named.pairChance,
     loopChance: named.loopChance,
     patterning: named.patterning,
-    glitches: !!allowGlitches,
   };
+}
+
+function styleForLetter(style, letter, seed) {
+  if (style !== 'mix') return resolveStyle(style);
+  // Keep the choice stable for a returning letter and independent of how many random
+  // source choices happened before it. That makes Mix a form decision, not a dice roll
+  // that can change when a favourite or a fill is added elsewhere.
+  const code = typeof letter === 'string' && letter ? letter.charCodeAt(0) : 0;
+  const hash = (Math.imul(Number(seed) >>> 0, 1664525) + Math.imul(code, 1013904223)) >>> 0;
+  const roll = hash % 100;
+  const name = roll < 60 ? 'groove' : roll < 90 ? 'phrase' : 'chop';
+  return { name, ...REARRANGE_STYLES[name] };
 }
 
 /** Cell lengths this style permits that also fit the space and the source. */
@@ -469,17 +934,21 @@ function boundaryCut(from, length, profile) {
  * With no rich profile this is the generator's original weighted snap, unchanged —
  * an unscored choice is not a worse choice when there is nothing to score against.
  * With one, the aligned candidates are ranked and the pick is taken from the top of
- * that ranking, `variation` deciding how far down the ranking it is allowed to reach.
- * At Familiar that pool is one candidate and the result is the best available slice;
- * at Different it widens, and the recipe finds material the safe answer would miss.
+ * that ranking, CHAOS deciding how far down the ranking it is allowed to reach.
+ * At Tame that pool is one candidate and the result is the best available slice;
+ * at Feral it widens, and the recipe finds material the safe answer would miss.
  */
 function pickOffset(length, ctx, { exclude = null } = {}) {
-  const { style, sourceBase, sourceSpan, random, intensity } = ctx;
+  const { style, sourceBase, sourceSpan, random, chaos } = ctx;
   const maxOffset = Math.max(0, sourceSpan - length);
   if (!maxOffset) return 0;
   const candidates = offsetCandidates(style, sourceBase, sourceSpan, length);
-  // Unstyled and unscored: the original weighted snap, untouched.
-  if (!candidates) return sourceStart(maxOffset, random, intensity);
+  // Unstyled, or styled with nowhere legal to land: the original weighted snap. The
+  // empty-array case is not the same as the null one and used to fall through to an
+  // index off the end of an empty list — a latent crash for any style whose alignment
+  // admits no start for a cell this long in a span this short, which the seeded streams
+  // happened not to reach until the fill roll changed and moved them.
+  if (!candidates || !candidates.length) return sourceStart(maxOffset, random, chaos);
   // Styled but unscored — no profile to rank against, so any aligned candidate will do.
   if (!ctx.profile) {
     const open = candidates.filter((offset) => offset !== exclude);
@@ -491,7 +960,7 @@ function pickOffset(length, ctx, { exclude = null } = {}) {
   const scored = pool
     .map((offset) => ({ offset, score: scoreOffset(sourceBase + offset, length, ctx) }))
     .sort((a, b) => b.score - a.score || a.offset - b.offset);
-  const reach = Math.max(1, Math.round(scored.length * (0.02 + ctx.variation * 0.5)));
+  const reach = Math.max(1, Math.round(scored.length * (0.02 + ctx.chaos * 0.5)));
   return scored[Math.floor(random() * Math.min(reach, scored.length))].offset;
 }
 
@@ -543,7 +1012,147 @@ function nudgeOffset(offset, length, style, sourceBase, sourceSpan) {
 function operationEqual(a, b) {
   return !!a && !!b && a.from === b.from && a.length === b.length
     && a.repeats === b.repeats && a.transpose === b.transpose
-    && (a.harmony || 0) === (b.harmony || 0);
+    && (a.harmony || 0) === (b.harmony || 0) && !!a.mute === !!b.mute
+    && (a.fill || null) === (b.fill || null);
+}
+
+function fillShapeFor(name, sectionSteps, random,
+  drive = REARRANGE_CREATIVE_DEFAULTS.drive, chaos = REARRANGE_CREATIVE_DEFAULTS.chaos) {
+  if (name === 'none' || name === false) return null;
+  if (name && REARRANGE_FILL_SHAPES[name]) return REARRANGE_FILL_SHAPES[name];
+  // AUTO HAS TO BE ABLE TO SAY NO. The last branch here used to be `roll < 1`, which is
+  // every roll — so "sparse" was left entirely to a budget downstream, and a song came out
+  // with a fill on nine sections in ten. A fill is a transition accent: the ending it
+  // decorates only means something if most endings are left plain, so the common outcome
+  // has to be no fill at all, and the budget above is a ceiling rather than the whole rule.
+  //
+  // DRIVE scales how often, CHAOS skews which shape — a feral setting reaches past the
+  // burst for the rush and the machine gun. Even at peak-time the total stays under a
+  // half, so "most endings are left plain" survives the loudest setting on the desk.
+  if (sectionSteps >= 16) {
+    const scale = 0.4 + 1.2 * clampControl(drive, REARRANGE_CREATIVE_DEFAULTS.drive);
+    const wild = clampControl(chaos, REARRANGE_CREATIVE_DEFAULTS.chaos)
+      - REARRANGE_CREATIVE_DEFAULTS.chaos;
+    const roll = random();
+    if (roll < Math.max(0.01, (0.04 + 0.10 * wild) * scale)) return REARRANGE_FILL_SHAPES.machinegun;
+    if (roll < (0.12 + 0.06 * wild) * scale) return REARRANGE_FILL_SHAPES.rush;
+    if (roll < 0.28 * scale) return REARRANGE_FILL_SHAPES.burst;
+  }
+  return null;
+}
+
+/** Replace the final boundary of a section with an explicit, whole-band fill. */
+function appendSectionFill(operations, sectionSteps, ctx) {
+  const shape = fillShapeFor(ctx.fill, sectionSteps, ctx.random, ctx.drive, ctx.chaos);
+  if (!shape || sectionSteps < shape.steps || !operations.length) return operations;
+  let used = operations.reduce((sum, operation) => sum + operation.length * operation.repeats, 0);
+  const target = sectionSteps - shape.steps;
+  if (used < target) return operations;
+  // Keep the source material at the end of the section and retrigger nearby fragments
+  // at smaller musical subdivisions. This is an overlay in recipe terms: no source
+  // notes are rewritten, and the engine sees `fill` and can keep the whole band together.
+  const out = [];
+  let cursor = 0;
+  for (const operation of operations) {
+    const duration = operation.length * operation.repeats;
+    if (cursor + duration <= target) {
+      out.push(operation);
+      cursor += duration;
+      continue;
+    }
+    if (cursor < target) {
+      const keep = target - cursor;
+      if (keep % operation.length === 0 && keep / operation.length <= operation.repeats) {
+        out.push({ ...operation, repeats: keep / operation.length });
+        cursor = target;
+      } else {
+        // A long loop may not divide the requested fill boundary (for example a
+        // four-bar row before a final beat). Rebuild only the pre-fill span from a
+        // beat-aligned cell; this is still a recipe edit, never a note-data rewrite.
+        const baseLength = [32, 16, 8, 4].find((length) => length <= ctx.sourceSpan
+          && target % length === 0);
+        if (!baseLength) return operations;
+        const baseFrom = Math.max(ctx.sourceBase, Math.min(operation.from,
+          ctx.sourceBase + ctx.sourceSpan - baseLength));
+        out.length = 0;
+        let remainingBase = target;
+        while (remainingBase > 0) {
+          const repeats = Math.min(4, Math.floor(remainingBase / baseLength));
+          if (!repeats) return operations;
+          out.push({ from: baseFrom, length: baseLength, repeats,
+            transpose: operation.transpose || 0 });
+          remainingBase -= repeats * baseLength;
+        }
+        cursor = target;
+      }
+    }
+    break;
+  }
+  const maxCell = Math.max(...shape.cells.map(([length]) => length));
+  const source = [...out].reverse().find((operation) => operation.length >= maxCell)
+    || operations.find((operation) => operation.length >= maxCell)
+    || out[out.length - 1] || operations[operations.length - 1];
+  const from = Math.max(ctx.sourceBase, Math.min(source.from,
+    ctx.sourceBase + Math.max(0, ctx.sourceSpan - maxCell)));
+  const shapeName = Object.entries(REARRANGE_FILL_SHAPES)
+    .find(([, value]) => value === shape)?.[0] || 'burst';
+  // A fill is a little edit, not one source cell stamped four times. Build a pool of
+  // nearby offsets for each cell size (including offsets inside a repeated source
+  // phrase), then choose a different candidate from the seeded random stream whenever
+  // one exists. The same seed still reproduces the same fill, but its final sixteenths
+  // can answer each other instead of sounding like a looped note.
+  const sourcePool = (length) => {
+    const candidates = [];
+    const seen = new Set();
+    for (const operation of [...out, ...operations]) {
+      const maxOffset = Math.max(0, operation.length - length);
+      const stride = Math.max(1, length);
+      for (let offset = 0; offset <= maxOffset; offset += stride) {
+        const candidate = operation.from + offset;
+        if (candidate < ctx.sourceBase
+          || candidate + length > ctx.sourceBase + ctx.sourceSpan
+          || seen.has(candidate)) continue;
+        seen.add(candidate);
+        candidates.push(candidate);
+      }
+    }
+    if (!candidates.length) candidates.push(from);
+    return candidates;
+  };
+  let previousFrom = null;
+  const chooseSource = (length) => {
+    const candidates = sourcePool(length);
+    const alternates = candidates.filter((candidate) => candidate !== previousFrom);
+    const pool = alternates.length ? alternates : candidates;
+    const random = Number(ctx.random?.()) || 0;
+    const selected = pool[Math.min(pool.length - 1, Math.floor(Math.max(0, Math.min(0.999999, random)) * pool.length))];
+    previousFrom = selected;
+    return selected;
+  };
+  for (const [length, repeats] of shape.cells) {
+    for (let repeat = 0; repeat < repeats; repeat++) {
+      out.push({ from: chooseSource(length), length, repeats: 1, transpose: source.transpose || 0,
+        ...(source.harmony ? { harmony: source.harmony } : {}), fill: shapeName });
+    }
+  }
+  used = out.reduce((sum, operation) => sum + operation.length * operation.repeats, 0);
+  return used === sectionSteps ? out : operations;
+}
+
+function fillOverlays(operations) {
+  const out = [];
+  let cursor = 0;
+  for (const operation of operations) {
+    const duration = operation.length * operation.repeats;
+    if (operation.fill) {
+      const previous = out[out.length - 1];
+      if (previous && previous.shape === operation.fill && previous.end === cursor) {
+        previous.end += duration;
+      } else out.push({ shape: operation.fill, start: cursor, end: cursor + duration });
+    }
+    cursor += duration;
+  }
+  return out;
 }
 
 function anchoredOperations(anchor, sectionSteps, sourceSteps) {
@@ -555,11 +1164,18 @@ function anchoredOperations(anchor, sectionSteps, sourceSteps) {
     const length = int(raw?.length);
     const repeats = int(raw?.repeats);
     const transpose = raw?.transpose == null ? 0 : int(raw.transpose);
+    const harmony = raw?.harmony == null ? 0 : int(raw.harmony);
+    const fill = raw?.fill == null ? null : String(raw.fill);
+    const favourite = raw?.favourite === true;
     if (from == null || length == null || repeats == null || transpose == null
-      || from < 0 || length < 1 || from + length > sourceSteps
+      || harmony == null || from < 0 || length < 1 || from + length > sourceSteps
       || repeats < 1 || repeats > 4 || !REARRANGE_TRANSPOSES.includes(transpose)) return null;
+    if (fill && !REARRANGE_FILL_NAMES.includes(fill)) return null;
+    if (harmony && Math.abs(harmony) > REARRANGE_HARMONY_RANGE) return null;
     total += length * repeats;
-    operations.push({ from, length, repeats, transpose });
+    operations.push({ from, length, repeats, transpose,
+      ...(harmony ? { harmony } : {}), ...(fill ? { fill } : {}),
+      ...(favourite ? { favourite: true } : {}) });
   }
   return total === sectionSteps ? operations : null;
 }
@@ -568,6 +1184,8 @@ function findAnchor(anchors, sectionIndex, section) {
   if (!Array.isArray(anchors)) return null;
   return anchors.find((anchor) => anchor?.index === sectionIndex
     && anchor.steps === section.steps)
+    || anchors.find((anchor) => anchor?.letter && anchor.letter === section.letter
+      && anchor.steps === section.steps)
     || anchors.find((anchor) => anchor?.role === section.role
       && anchor.steps === section.steps)
     || null;
@@ -592,9 +1210,17 @@ function formFor(sourceSteps) {
   const units = Math.floor(sourceSteps / PHRASE_STEPS);
   const remainder = sourceSteps % PHRASE_STEPS;
   const roles = formRoles(units);
-  const sections = roles.map((role) => ({ role, name: role, steps: PHRASE_STEPS }));
+  const letters = new Map();
+  let nextLetter = 0;
+  const sections = roles.map((role) => {
+    if (!letters.has(role)) letters.set(role, String.fromCharCode(65 + nextLetter++));
+    return { role, name: role, letter: letters.get(role), steps: PHRASE_STEPS };
+  });
   if (!units) sections[0].steps = sourceSteps;
-  else if (remainder) sections.push({ role: 'Outro', name: 'Outro', steps: remainder });
+  else if (remainder) {
+    if (!letters.has('Outro')) letters.set('Outro', String.fromCharCode(65 + nextLetter++));
+    sections.push({ role: 'Outro', name: 'Outro', letter: letters.get('Outro'), steps: remainder });
+  }
   return sections;
 }
 
@@ -667,7 +1293,7 @@ function findAvoid(avoid, sectionIndex, section) {
 
 function chooseTranspose(role, random, extremeness = REARRANGE_EXTREMENESS_DEFAULT,
   transposeAmount = REARRANGE_TRANSPOSE_DEFAULT, profile = null,
-  previousEnd = null, source = null) {
+  previousEnd = null, source = null, mood = REARRANGE_CREATIVE_DEFAULTS.mood) {
   // Keep the occasional shift phrase-wide. A chorus landing by a whole tone, fourth,
   // or fifth is a recognisable lift; transposing every tiny slice independently is not.
   const intensity = clampExtremeness(extremeness);
@@ -680,6 +1306,11 @@ function chooseTranspose(role, random, extremeness = REARRANGE_EXTREMENESS_DEFAU
     : amount < 0.7
       ? [-5, -2, 2, 5]
       : REARRANGE_GENERATED_TRANSPOSES;
+  // WHICH WAY the lift goes is the one thing Mood gets to say about a chromatic move:
+  // a bright setting leans up, a dark one down. It is a thumb on the scale rather than
+  // a rule, because the interval that agrees with what was just heard still wins — a
+  // modulation that fights the material is not made better by pointing the right way.
+  const lean = (clampControl(mood, REARRANGE_CREATIVE_DEFAULTS.mood) - 0.5);
   // WHETHER to lift is still a roll — a lift that arrived every time would stop being
   // a lift. WHICH one is not, where the song can be asked: the interval that leaves
   // this section agreeing best with what the listener just heard is the one that sounds
@@ -687,16 +1318,17 @@ function chooseTranspose(role, random, extremeness = REARRANGE_EXTREMENESS_DEFAU
   if (profile && previousEnd != null && source != null) {
     let best = null;
     for (const value of choices) {
-      const match = chromaMatch(profile, previousEnd, source, value);
+      const match = chromaMatch(profile, previousEnd, source, value)
+        + lean * 0.08 * Math.sign(value);
       if (!best || match > best.match) best = { value, match };
     }
     if (best) return best.value;
   }
-  return weighted(choices.map((value) => [value, 1]), random);
+  return weighted(choices.map((value) => [value, 1 + lean * 1.6 * Math.sign(value)]), random);
 }
 
 function sectionOperations(sectionSteps, transpose, previous, favourites, ctx) {
-  const { style, sourceBase, sourceSpan, random, intensity, pattern } = ctx;
+  const { style, sourceBase, sourceSpan, random, chaos: intensity, hypnosis, pattern } = ctx;
   // Favourites are exact source slices the player asked to hear in every new recipe.
   // They consume output space once, then the remaining space is filled with the normal
   // musical cell/loop choices. Keep them untransposed so the selected phrase remains
@@ -712,7 +1344,9 @@ function sectionOperations(sectionSteps, transpose, previous, favourites, ctx) {
     const used = fixed.reduce((sum, operation) => sum + operation.length, 0);
     const remaining = sectionSteps - used;
     if (remaining <= 0) return fixed;
-    const filler = sectionOperations(remaining, transpose, fixed[fixed.length - 1], [], ctx);
+    const filler = sectionOperations(remaining, transpose, fixed[fixed.length - 1], [], ctx)
+      .map((operation) => remaining % 4 === 0 || operation.length % 4 === 0
+        ? operation : { ...operation, favourite: true });
     return fixed.concat(filler);
   }
   // A four-bar section is more useful as a pattern of smaller cells than as one
@@ -720,11 +1354,11 @@ function sectionOperations(sectionSteps, transpose, previous, favourites, ctx) {
   // bars) and then repeats that pair: A, B, A, B. This keeps the phrase musical while
   // making the rearrangement audibly different from simply looping a long excerpt.
   //
-  // A/B alternation is a MOTIF, so Familiar reaches for it more readily than Different
-  // does — the pair coming back is the thing a listener recognises.
+  // A/B alternation is a MOTIF, so HYPNOSIS reaches for it more readily as it rises —
+  // the pair coming back is the thing a listener recognises.
   const pairChance = style.pairChance == null
     ? Math.min(0.95, 0.28 + intensity * 0.34 + pattern * 0.25)
-    : Math.max(0, Math.min(0.95, style.pairChance + (0.5 - ctx.variation) * 0.2));
+    : Math.max(0, Math.min(0.95, style.pairChance + (hypnosis - 0.5) * 0.2));
   if (sectionSteps >= 32 && random() < pairChance) {
     const cellChoices = style.name
       ? styleCells(style, sectionSteps, sourceSpan, { divides: sectionSteps })
@@ -795,11 +1429,11 @@ function sectionOperations(sectionSteps, transpose, previous, favourites, ctx) {
           : value === 16 ? 1 + (1 - intensity) * 2 : 1)])
       .filter(([value]) => value <= sourceSpan
         && value <= sectionSteps && sectionSteps / value <= 4);
-  // One recognisable loop is the most Familiar shape a section can take, so the dial
-  // moves this too: at Different the generator opens the section up into cells instead.
+  // One recognisable loop is the most hypnotic shape a section can take, so the dial
+  // moves this too: at Scatter the generator opens the section up into cells instead.
   const loopChance = style.loopChance == null
     ? 0.96 - intensity * 0.12
-    : Math.max(0, Math.min(0.95, style.loopChance + (0.5 - ctx.variation) * 0.3));
+    : Math.max(0, Math.min(0.95, style.loopChance + (hypnosis - 0.5) * 0.3));
   if (loopChoices.length && random() < loopChance) {
     // Every candidate `pickCell` may escalate to comes out of `loopChoices`, which is
     // already filtered to lengths that divide the section — so a longer, safer phrase
@@ -818,8 +1452,8 @@ function sectionOperations(sectionSteps, transpose, previous, favourites, ctx) {
   }
   const operations = [];
   // Cells this section has already established. Reusing one is what makes a section
-  // hang together rather than reading as a list of unrelated edits, so Familiar reaches
-  // back into this often and Different rarely.
+  // hang together rather than reading as a list of unrelated edits, so Trance reaches
+  // back into this often and Scatter rarely.
   const motifs = [];
   let output = 0;
   while (output < sectionSteps) {
@@ -827,34 +1461,22 @@ function sectionOperations(sectionSteps, transpose, previous, favourites, ctx) {
     const choices = style.name
       ? styleCells(style, remaining, sourceSpan)
       : PHRASE_LENGTH_WEIGHTS.filter(([value]) => value <= remaining && value <= sourceSpan);
-    const lengths = choices.length ? choices : [[Math.min(1, remaining), 1]];
+    const lengths = choices.length ? choices : [[Math.min(4, remaining), 1]];
     let length = null;
     let offset = null;
     // A motif returning, in preference to new material. Only where it fits the space
     // that is left, and never as the very first cell — there is nothing to return to.
     const reuse = style.name ? motifs.filter((motif) => motif.length <= remaining) : [];
-    if (reuse.length && random() < (1 - ctx.variation) * 0.55) {
+    if (reuse.length && random() < hypnosis * 0.55) {
       const motif = reuse[Math.floor(random() * reuse.length)];
       length = motif.length;
       offset = motif.offset;
     } else {
-      // Glitches are still possible, but only as an occasional subdivision inside a
-      // phrase. The normal choices are beat/half-bar/bar lengths. In a styled
-      // generation they exist at all only because Allow glitches was switched on.
-      if (style.glitches && remaining > 8 && random() < 0.01 + intensity * 0.09) {
-        const glitches = [[1, 4], [2, 6], [4, 10], [8, 12]]
-          .filter(([value]) => value <= remaining && value <= sourceSpan);
-        if (glitches.length) {
-          length = weighted(glitches, random);
-          offset = pickOffset(length, ctx);
-        }
-      }
-      if (length == null) {
-        // Every length `pickCell` may escalate to comes out of `lengths`, which is
-        // already filtered to what fits the space left, so it cannot overrun.
-        ({ length, offset } = pickCell(lengths, ctx));
-        motifs.push({ length, offset });
-      }
+      // Every length `pickCell` may escalate to comes out of `lengths`, which is
+      // already filtered to what fits the space left, so it cannot overrun. Base
+      // material is never shorter than a beat; sub-beat edits are fill overlays.
+      ({ length, offset } = pickCell(lengths, ctx));
+      motifs.push({ length, offset });
     }
     const maxRepeats = Math.min(4, Math.max(1, Math.floor(remaining / length)));
     const repeats = weighted(repeatWeights(pattern).filter(([value]) => value <= maxRepeats), random);
@@ -871,7 +1493,7 @@ function sectionOperations(sectionSteps, transpose, previous, favourites, ctx) {
   return operations;
 }
 
-function validateForm(form, sourceSteps) {
+function validateForm(form, outputSteps, sourceSteps = outputSteps) {
   if (form == null) return null;
   if (!Array.isArray(form) || !form.length) throw new Error('Rearrange JSON has an invalid form');
   let cursor = 0;
@@ -881,24 +1503,32 @@ function validateForm(form, sourceSteps) {
     const source = raw?.source == null ? null : int(raw.source);
     const role = typeof raw?.role === 'string' ? raw.role : '';
     const name = typeof raw?.name === 'string' ? raw.name : '';
-    if (start == null || end == null || !name || !REARRANGE_FORM_ROLES.includes(role)) {
+    const letter = typeof raw?.letter === 'string' ? raw.letter : null;
+    if (start == null || end == null || !name || !REARRANGE_FORM_ROLES.includes(role)
+      || (letter != null && !/^[A-Z]$/.test(letter))) {
       throw new Error(`Form section ${index + 1} has invalid fields`);
     }
-    if (start !== cursor || end <= start || end > sourceSteps) {
+    if (start !== cursor || end <= start || end > outputSteps) {
       throw new Error(`Form section ${index + 1} is not a contiguous output range`);
     }
-    if (source != null && (source < 0 || source >= sourceSteps)) {
-      throw new Error(`Form section ${index + 1} has an invalid source range`);
-    }
     cursor = end;
-    return { name, role, start, end, ...(source == null ? {} : { source }) };
+    return {
+      name, role, start, end,
+      ...(letter == null ? {} : { letter }),
+      ...(Array.isArray(raw?.chords) ? { chords: raw.chords.map((value) => Array.isArray(value) ? [...value] : value) } : {}),
+      // `source` is a display hint, not playback authority. Older drafts could carry
+      // a stale hint after a variable-length edit; discard that hint and let the
+      // validator rebuild it from the operations below instead of rejecting the file.
+      ...(source != null && source >= 0 && source < sourceSteps ? { source } : {}),
+    };
   });
-  if (cursor !== sourceSteps) throw new Error('Rearrange form does not cover the output');
+  if (cursor !== outputSteps) throw new Error('Rearrange form does not cover the output');
   return out;
 }
 
 /**
- * Generate a same-length recipe for a source song.
+ * Generate a variable-length recipe for a source song. Base slices stay beat-aligned;
+ * any sub-beat work is marked as an explicit boundary fill.
  *
  * TWO WAYS IN, ONE GENERATOR.
  *
@@ -921,27 +1551,31 @@ export function generateRearrangement(sourceSteps, {
   seed = randomSeed(), random = null, sourceProfile = null, anchors = null, avoid = null,
   favourites = null, extremeness = REARRANGE_EXTREMENESS_DEFAULT,
   transposeAmount = REARRANGE_TRANSPOSE_DEFAULT, patterning = REARRANGE_PATTERN_DEFAULT,
-  style = null, variation = REARRANGE_VARIATION_DEFAULT, allowGlitches = false,
-  progression = 'off', key = null, walk = REARRANGE_WALK_DEFAULT,
+  style = null, variation = REARRANGE_VARIATION_DEFAULT,
+  mood = null, hypnosis = null, chaos = null, drive = null,
+  progression = 'off', key = null, walk = null,
+  chordPace = null, fill = 'none',
+  outputSteps = sourceSteps, uniqueLetters = [], letterTemplates = null,
 } = {}) {
   if (!Number.isInteger(sourceSteps) || sourceSteps <= 0) {
     throw new RangeError('sourceSteps must be a positive integer');
   }
+  if (!Number.isInteger(outputSteps) || outputSteps <= 0 || outputSteps % 4 !== 0) {
+    throw new RangeError('outputSteps must be a positive beat-aligned integer');
+  }
   const rng = random || seededRandom(seed);
   const actualSeed = Number(seed) >>> 0;
   const transpose = clampControl(transposeAmount, REARRANGE_TRANSPOSE_DEFAULT);
-  const resolvedStyle = resolveStyle(style, allowGlitches);
-  const varied = clampControl(variation, REARRANGE_VARIATION_DEFAULT);
-  // With a style in charge, Variation IS the intensity dial. Everything Extremeness
-  // still reaches — how widely source phrases are sampled, how often a lift is taken,
-  // how often a permitted glitch fires — moves with the one control the desk shows,
-  // so there is no second dial quietly deciding things from behind a preset.
-  const intensity = resolvedStyle.name ? varied : clampExtremeness(extremeness);
-  // Variation replaces Patterning where a style is in charge: the two are the same
-  // question asked from opposite ends, so the dial is mapped rather than added to.
-  const pattern = resolvedStyle.patterning == null
-    ? clampControl(patterning, REARRANGE_PATTERN_DEFAULT)
-    : clampControl(resolvedStyle.patterning + (0.5 - varied) * 0.5, REARRANGE_PATTERN_DEFAULT);
+  const resolvedStyle = resolveStyle(style);
+  const { mood: moodV, hypnosis: hypnosisV, chaos: chaosV, drive: driveV, pattern } =
+    resolveCreative({ mood, hypnosis, chaos, drive, variation, extremeness, patterning },
+      resolvedStyle);
+  const intensity = chaosV;
+  // Mood and Drive own the harmony settings the desk used to ask for by name. An
+  // explicit `walk`/`chordPace` from a caller still wins — the library keeps working
+  // for anything that has an opinion of its own.
+  const walkShape = walk ?? moodWalk(moodV);
+  const pace = chordPace ?? drivePace(driveV);
   // A rich profile is what turns scoring on. A plain array is still read for section
   // energy by `profileScore`, exactly as before.
   const rich = sourceProfile && !Array.isArray(sourceProfile) && sourceProfile.steps > 0
@@ -960,8 +1594,13 @@ export function generateRearrangement(sourceSteps, {
   const overrideKey = key && Number.isInteger(key.tonic) && key.tonic >= 0 && key.tonic <= 11
     ? { tonic: key.tonic, minor: !!key.minor } : null;
   const detected = wantProgression && !overrideKey && rich ? detectKey(rich) : null;
+  // MOOD RE-READS A DETECTED KEY, AND ONLY A DETECTED ONE. Dark takes a major song into
+  // its relative minor, euphoric takes a minor song into its relative major — the same
+  // seven notes, a different home. A key given by name is a statement of fact about the
+  // song and no dial moves it; see `moodWalkKey`.
   const keyed = wantProgression
-    ? overrideKey || (detected ? { tonic: detected.tonic, minor: detected.minor } : null)
+    ? overrideKey || (detected
+      ? moodWalkKey({ tonic: detected.tonic, minor: detected.minor }, moodV) : null)
     : null;
   // ONE PITCH SYSTEM PER RECIPE. While chord loops are walking, the chromatic dial is
   // ignored entirely — not just in the walking sections. A verse lifted a whole tone
@@ -970,19 +1609,25 @@ export function generateRearrangement(sourceSteps, {
   // same thing every time: with a chord loop on, it means nothing, and the desk says
   // so on the control itself.
   const chromatic = keyed ? 0 : transpose;
-  // One walk per ROLE, chosen once so every returning Chorus takes the same trip. A
-  // major-key song takes the axis progression whatever was asked; the minor palettes
-  // are the club vocabulary and their numerals only mean something in minor.
+  // One walk per ROLE, chosen once so every returning Chorus takes the same trip — and
+  // chosen SEPARATELY per role, so the Verse and the Chorus do not walk one identical
+  // loop for the length of the song. That was the single biggest reason a Mood setting
+  // sounded like one progression: the whole form shared it. A major-key song takes a
+  // major walk whatever palette was asked for; the minor palettes are the club
+  // vocabulary and their numerals only mean something in minor.
   const roleChords = new Map();
   const chordsForRole = (role) => {
     if (!keyed || role === 'Intro' || role === 'Outro') return null;
     if (roleChords.has(role)) return roleChords.get(role);
     let chords = null;
-    if (!keyed.minor) chords = MAJOR_PROGRESSION;
-    else if (REARRANGE_PROGRESSIONS[progression]) chords = REARRANGE_PROGRESSIONS[progression].minor;
-    else {
-      const names = REARRANGE_PROGRESSION_NAMES;
-      chords = REARRANGE_PROGRESSIONS[names[Math.floor(rng() * names.length)]].minor;
+    // A caller naming a palette outright still gets that palette, in every section —
+    // an explicit request is a statement about the whole arrangement, and Mood does not
+    // get to spread it across three. Auto is Mood's to answer, per role.
+    if (keyed.minor && REARRANGE_PROGRESSIONS[progression]) {
+      chords = REARRANGE_PROGRESSIONS[progression].minor;
+    } else {
+      const set = moodPalettes(moodV, keyed.minor);
+      chords = paletteDegrees(set[palettePick(actualSeed, role, set.length)]);
     }
     roleChords.set(role, chords);
     return chords;
@@ -991,8 +1636,22 @@ export function generateRearrangement(sourceSteps, {
   const form = [];
   const roleSources = new Map();
   const roleTemplates = new Map();
+  if (letterTemplates && typeof letterTemplates === 'object') {
+    for (const [letter, template] of Object.entries(letterTemplates)) {
+      if (template && Array.isArray(template.operations) && Number.isInteger(template.steps)) {
+        roleTemplates.set(letter, {
+          steps: template.steps,
+          operations: template.operations.map((operation) => ({ ...operation })),
+          walked: !!template.walked,
+          verbatim: !!template.verbatim,
+          resizable: !!template.resizable,
+          ...(Array.isArray(template.chords) ? { chords: [...template.chords] } : {}),
+        });
+      }
+    }
+  }
   const usedSources = new Set();
-  const sections = formFor(sourceSteps);
+  const sections = formFor(outputSteps);
   const phraseSpan = Math.min(PHRASE_STEPS, sourceSteps);
   const candidates = sourceCandidates(sourceSteps, phraseSpan);
   const normalizedFavourites = Array.isArray(favourites)
@@ -1018,6 +1677,12 @@ export function generateRearrangement(sourceSteps, {
     favouriteBuckets[sectionIndex].push(favourite);
     remainingSectionSteps[sectionIndex] -= favourite.length;
   }
+  // Auto fills are transition accents, not a new rhythm layer. Keep them sparse: one
+  // section in three at the middle of the Drive dial, one in six at its bottom, two in
+  // three at the top. The ceiling is only half the rule — `fillShapeFor` still has to
+  // roll one, and still has to be able to say no.
+  let fillBudget = fill === 'auto'
+    ? Math.max(1, Math.ceil(sections.length * (1 + 2 * driveV) / 6)) : Infinity;
   let output = 0;
   let previous = null;
   for (const [sectionIndex, section] of sections.entries()) {
@@ -1033,13 +1698,28 @@ export function generateRearrangement(sourceSteps, {
     const preserved = anchoredOperations(findAnchor(anchors, sectionIndex, section),
       section.steps, sourceSteps);
     const hasFavourites = favouriteBuckets[sectionIndex].length > 0;
-    let sectionOps = preserved && !hasFavourites ? { steps: section.steps, operations: preserved }
-      : (rejected ? null : roleTemplates.get(section.role));
+    const templateKey = uniqueLetters.includes(section.letter)
+      ? `section:${sectionIndex}` : (section.letter || section.role);
+    const storedTemplate = rejected ? null : roleTemplates.get(templateKey);
+    const templateOperations = storedTemplate
+      && (storedTemplate.steps === section.steps || storedTemplate.resizable)
+      ? (storedTemplate.steps === section.steps
+        ? storedTemplate.operations.map((operation) => ({ ...operation }))
+        : fitTemplateOperations(storedTemplate.operations, section.steps))
+      : null;
+    const usableTemplate = storedTemplate && templateOperations?.length
+      ? { ...storedTemplate, operations: templateOperations } : null;
+    let sectionOps = preserved && !hasFavourites
+      ? { steps: section.steps, operations: preserved, verbatim: true }
+      : (usableTemplate ? {
+        ...usableTemplate,
+        steps: section.steps,
+      } : null);
     if (preserved && !hasFavourites) {
       // A kept Verse/Chorus should remain the motif for its returning sections too;
       // that preserves the form's identity while the unkept roles are regenerated.
-      roleTemplates.set(section.role, sectionOps);
-    } else if (!sectionOps || sectionOps.steps !== section.steps || hasFavourites) {
+      roleTemplates.set(templateKey, sectionOps);
+    } else if (!sectionOps || hasFavourites) {
       // Does this section walk a chord loop? Every four-bar Verse/Chorus/Bridge with a
       // key does. A repeated cell sitting on one chord for four bars is exactly the
       // material a progression exists for — the same riff walked around the loop IS
@@ -1049,25 +1729,38 @@ export function generateRearrangement(sourceSteps, {
       // takes NO chromatic lift on top: two pitch systems moving one phrase is mud.
       const palette = section.steps === PHRASE_STEPS && !hasFavourites
         ? chordsForRole(section.role) : null;
-      const chords = palette ? walkedChords(palette, walk) : null;
+      const walkScore = palette && rich && keyed
+        ? walkCellScore(rich, source, 16, keyed) : 1;
+      const walkable = palette && walkScore >= REARRANGE_WALK_MIN;
+      const chords = palette
+        && walkable ? pacedChords(palette, Math.max(1, Math.ceil(section.steps / 16)), pace, walkShape)
+        : null;
       const sectionTranspose = chords ? 0 : chooseTranspose(section.role, rng, intensity, chromatic,
-        rich, previous ? previous.from + previous.length : null, source);
+        rich, previous ? previous.from + previous.length : null, source, moodV);
       // What every source choice inside this section is scored against. `previousEnd`
       // moves as cells are laid down, so "does this agree with what came before" is
       // asked about the slice actually just heard rather than the section's opening.
+      const sectionStyle = styleForLetter(style, section.letter || section.role, actualSeed);
+      const sectionPattern = sectionStyle.patterning == null
+        ? clampControl(patterning, REARRANGE_PATTERN_DEFAULT)
+        : clampControl(sectionStyle.patterning + (hypnosisV - 0.5) * 0.5, REARRANGE_PATTERN_DEFAULT);
       const ctx = {
-        style: resolvedStyle,
+        style: sectionStyle,
         sourceBase: source,
         sourceSpan,
         random: rng,
-        intensity,
-        pattern,
-        variation: varied,
+        mood: moodV,
+        hypnosis: hypnosisV,
+        chaos: chaosV,
+        drive: driveV,
+        pattern: sectionPattern || pattern,
         profile: rich,
         previousEnd: previous ? previous.from + previous.length : null,
-        // A chorus should feel bigger than a verse. With no profile this is null and
-        // energy simply stops being one of the things a slice is judged on.
-        energyTarget: rich ? ROLE_ENERGY[section.role] ?? null : null,
+        // A chorus should feel bigger than a verse, and Drive decides how much bigger
+        // everything is allowed to feel. With no profile this is null and energy simply
+        // stops being one of the things a slice is judged on.
+        energyTarget: rich && ROLE_ENERGY[section.role] != null
+          ? Math.min(1, ROLE_ENERGY[section.role] * (0.5 + driveV)) : null,
       };
       // ONE CHUNK, REPEATED, WALKED. A section that carries chords is built as a
       // single bar cell played four times — the club shape. Walking an A/B pair
@@ -1077,24 +1770,35 @@ export function generateRearrangement(sourceSteps, {
       let built;
       if (chords) {
         const cell = pickCell([[16, 1]], ctx) || { length: 16, offset: 0 };
-        built = [{ from: source + cell.offset, length: 16, repeats: 4, transpose: 0 }];
+        const bars = Math.max(1, Math.ceil(section.steps / 16));
+        built = [{ from: source + cell.offset, length: 16, repeats: bars, transpose: 0 }];
         ctx.previousEnd = source + cell.offset + 16;
       } else {
         built = sectionOperations(section.steps, sectionTranspose, previous,
-          favouriteBuckets[sectionIndex], ctx);
+          favouriteBuckets[sectionIndex], { ...ctx, fill });
+      }
+      const sectionFill = fill === 'auto' && fillBudget <= 0 ? 'none' : fill;
+      const beforeFillCount = built.filter((operation) => operation.fill).length;
+      built = appendSectionFill(built, section.steps, { ...ctx, fill: sectionFill });
+      if (fill === 'auto' && built.filter((operation) => operation.fill).length > beforeFillCount) {
+        fillBudget--;
       }
       sectionOps = {
         steps: section.steps,
         operations: chords ? applyHarmonyLoop(built, chords) : built,
         walked: !!chords,
+        ...(chords ? { chords: [...chords] } : {}),
       };
       // A favourite is a one-shot user request, not a new Verse/Chorus template. Do
       // not silently repeat it in every returning section of the same role.
-      if (!hasFavourites) roleTemplates.set(section.role, sectionOps);
+      if (!hasFavourites) roleTemplates.set(templateKey, sectionOps);
     } else {
       sectionOps = {
         steps: sectionOps.steps,
         operations: sectionOps.operations.map((operation) => ({ ...operation })),
+        ...(Array.isArray(sectionOps.chords) ? { chords: [...sectionOps.chords] } : {}),
+        walked: !!sectionOps.walked,
+        verbatim: !!sectionOps.verbatim,
       };
     }
     const sectionStart = output;
@@ -1102,10 +1806,11 @@ export function generateRearrangement(sourceSteps, {
     for (const operation of sectionOps.operations) {
       const copy = { ...operation };
       const prior = operations[operations.length - 1];
-      // A walked section's repeats are the SAME cell on purpose — nudging one run to
-      // break a "duplicate" would swap the riff mid-walk, which is worse than any
-      // adjacent repetition could be.
-      if (operationEqual(prior, copy) && !copy.favourite && !sectionOps.walked) {
+      // A walked section's repeats are the SAME cell on purpose — and a thumbed-up
+      // section is verbatim by contract. Neither may be nudged to disguise a duplicate;
+      // both are deliberate material choices the next Generate must respect.
+      if (operationEqual(prior, copy) && !copy.favourite && !sectionOps.walked
+        && !sectionOps.verbatim) {
         const maxOffset = Math.max(0, sourceSpan - copy.length);
         const offset = copy.from - source;
         copy.from = source + (maxOffset
@@ -1117,7 +1822,6 @@ export function generateRearrangement(sourceSteps, {
         }
       }
       const outputOperation = { ...copy };
-      delete outputOperation.favourite;
       operations.push(outputOperation);
       output += copy.length * copy.repeats;
       previous = outputOperation;
@@ -1126,6 +1830,9 @@ export function generateRearrangement(sourceSteps, {
     form.push({
       name: section.name,
       role: section.role,
+      ...(section.letter ? { letter: section.letter } : {}),
+      ...(sectionOps.walked && Array.isArray(sectionOps.chords)
+        ? { chords: [...sectionOps.chords] } : {}),
       start: sectionStart,
       end: output,
       source: sectionOutputOperations.length
@@ -1133,21 +1840,27 @@ export function generateRearrangement(sourceSteps, {
         : source,
     });
   }
+  const fills = fillOverlays(operations);
   return {
     kind: REARRANGE_KIND,
     version: REARRANGE_VERSION,
     source: { steps: sourceSteps },
+    ...(outputSteps === sourceSteps ? {} : { output: { steps: outputSteps } }),
     seed: actualSeed,
     grid: REARRANGE_GRID,
     // The key rides in the recipe because harmony offsets mean nothing without it —
     // a saved file must replay the same chords on a desk that never ran the analysis.
     ...(keyed && operations.some((op) => op.harmony) ? { key: keyed } : {}),
+    ...(fills.length ? { fills } : {}),
     form,
     operations,
   };
 }
 
 function splitOperation(operation) {
+  // Two sixteenths is the real floor — below that there are no halves to make. It used to
+  // refuse anything under half a bar, which quietly ruled out splitting a beat into two
+  // eighths, the most ordinary chop there is.
   if (operation.length < 2) return [operation];
   const firstLength = Math.floor(operation.length / 2);
   const secondLength = operation.length - firstLength;
@@ -1174,12 +1887,30 @@ function rerollFrom(operation, sourceSteps, random) {
   return next === operation.from ? (operation.from + 4) % (maxStart + 1) : next;
 }
 
-function compactAdjacentOperations(operations) {
+/**
+ * Join runs of identical adjacent slices into one repeated slice.
+ *
+ * `boundaries` is the set of output positions a PART begins at, and compaction stops at
+ * every one of them. Without it the last slice of one part and the first of the next
+ * could merge into a single repeated slice straddling the join — which reads as the
+ * following part having quietly lost a slice to its neighbour, and is how a Replace on
+ * the chorus was disturbing the verse.
+ *
+ * `touched` limits compaction to the joins an edit actually reached. Compacting the whole
+ * array was audibly identical but not VISUALLY identical: two blocks in an untouched part
+ * could fall together into one, and a part you did not edit changing shape is exactly the
+ * thing you cannot let a panel do, however equivalent the audio.
+ */
+function compactAdjacentOperations(operations, boundaries = null, touched = null) {
   const out = [];
-  for (const operation of operations) {
+  let cursor = 0;
+  for (const [index, operation] of operations.entries()) {
     const previous = out[out.length - 1];
-    if (!previous || previous.from !== operation.from || previous.length !== operation.length
-      || previous.transpose !== operation.transpose) {
+    const startsPart = !!boundaries?.has(cursor);
+    const reached = !touched || touched.has(index) || touched.has(index - 1);
+    cursor += operation.length * operation.repeats;
+    if (startsPart || !reached || !previous || previous.from !== operation.from || previous.length !== operation.length
+      || previous.transpose !== operation.transpose || (previous.fill || null) !== (operation.fill || null)) {
       out.push({ ...operation });
       continue;
     }
@@ -1193,8 +1924,53 @@ function compactAdjacentOperations(operations) {
   return out;
 }
 
+/**
+ * Fit a reusable clip to a target form slot. Clip cards are allowed to move between
+ * letters whose slots are not the same length: repeat the clip as a motif when the
+ * destination is longer, and trim/split its final cell when it is shorter. This is
+ * only used for explicit `resizable` templates; ordinary generator templates retain
+ * the exact-length contract and are ignored when they do not fit.
+ */
+function fitTemplateOperations(operations, targetSteps) {
+  if (!Array.isArray(operations) || !operations.length || !Number.isInteger(targetSteps)
+    || targetSteps <= 0) return null;
+  const units = [];
+  for (const operation of operations) {
+    const repeats = Math.max(1, Math.min(4, Math.floor(Number(operation?.repeats) || 1)));
+    for (let repeat = 0; repeat < repeats; repeat++) {
+      const length = Math.floor(Number(operation?.length) || 0);
+      if (length > 0) units.push({ ...operation, length, repeats: 1 });
+    }
+  }
+  if (!units.length) return null;
+  const out = [];
+  let remaining = targetSteps;
+  let cursor = 0;
+  // A clip is made from beat-aligned slices, so a repeated unit can always be
+  // trimmed on a beat boundary. The guard keeps malformed hand-authored data from
+  // turning a Generate click into an infinite loop.
+  while (remaining > 0 && out.length < 4096) {
+    const unit = units[cursor % units.length];
+    const duration = unit.length * unit.repeats;
+    if (duration <= remaining) {
+      out.push({ ...unit });
+      remaining -= duration;
+    } else {
+      const fit = trimOperations([unit], remaining);
+      if (fit?.length) {
+        out.push(...fit);
+        remaining -= fit.reduce((sum, operation) => sum + operation.length * operation.repeats, 0);
+      }
+    }
+    cursor++;
+    if (cursor > units.length * 4096) break;
+  }
+  if (remaining !== 0) return null;
+  return compactAdjacentOperations(out);
+}
+
 /** Replace selected output time with a neighbouring slice, preserving song length. */
-function removeSelectedOperations(operations, selected, sourceSteps, random) {
+function removeSelectedOperations(operations, selected, sourceSteps, random, boundaries = null) {
   const templates = operations
     .map((operation, index) => selected.has(index) ? null : operation);
   if (!templates.some(Boolean)) return null;
@@ -1225,7 +2001,713 @@ function removeSelectedOperations(operations, selected, sourceSteps, random) {
       transpose: template.transpose,
     };
   });
-  return compactAdjacentOperations(replacement);
+  return compactAdjacentOperations(replacement, boundaries, selected);
+}
+
+function deleteSelectedOperations(operations, selected) {
+  const kept = operations.filter((_, index) => !selected.has(index)).map((operation) => ({ ...operation }));
+  return kept.length ? kept : null;
+}
+
+/** Remove selected output rows by looping a short neighbouring motif through the freed
+ * time. This keeps the replacement musical as a unit: deleting 3 and 4 from
+ * 1 2 3 4 can therefore become 1 2 1 2 instead of extending only slice 2. */
+function removeSelectedWithLoop(operations, selected, sourceSteps, random, boundaries = null) {
+  const units = [];
+  operations.forEach((operation, index) => {
+    for (let repeat = 0; repeat < operation.repeats; repeat++) {
+      units.push({ index, operation: { ...operation, repeats: 1 } });
+    }
+  });
+  const out = [];
+  // Slices are unrolled to single passes so a motif can be measured against the gap in
+  // whole cells. An untouched slice must come back out the way it went in, though — so it
+  // is re-gathered here from its OWN passes rather than left for the compactor, which
+  // works on what things look like and would happily fold a neighbouring slice in with it.
+  const touched = new Set();
+  let passThrough = -1;
+  let unitCursor = 0;
+  while (unitCursor < units.length) {
+    const unit = units[unitCursor];
+    if (!selected.has(unit.index)) {
+      const previous = out[out.length - 1];
+      if (previous && passThrough === unit.index) previous.repeats += 1;
+      else { out.push({ ...unit.operation }); passThrough = unit.index; }
+      unitCursor++;
+      continue;
+    }
+    passThrough = -1;
+    const blockStart = unitCursor;
+    while (unitCursor < units.length && selected.has(units[unitCursor].index)) unitCursor++;
+    const target = units.slice(blockStart, unitCursor)
+      .reduce((sum, item) => sum + item.operation.length, 0);
+    const candidates = [];
+    for (let start = 0; start < units.length; start++) {
+      if (selected.has(units[start].index)) continue;
+      let duration = 0;
+      const motif = [];
+      for (let end = start; end < Math.min(units.length, start + 4); end++) {
+        if (selected.has(units[end].index)) break;
+        motif.push(units[end].operation);
+        duration += units[end].operation.length;
+        if (duration > target) break;
+        if (duration > 0 && target % duration === 0) {
+          const distance = Math.abs(start - blockStart);
+          candidates.push({ motif: motif.map((operation) => ({ ...operation })),
+            duration, score: motif.length * 100 - distance + random() * 0.01 });
+        }
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    const chosen = candidates[0];
+    if (!chosen) {
+      // A one-cell gap may have no multi-cell divisor. Fall back to the established
+      // neighbour fill rather than changing duration or rejecting the edit.
+      const fallback = removeSelectedOperations(operations, selected, sourceSteps, random);
+      return fallback || operations.map((operation) => ({ ...operation }));
+    }
+    for (let pass = 0; pass < target / chosen.duration; pass++) {
+      for (const operation of chosen.motif) { touched.add(out.length); out.push({ ...operation }); }
+    }
+  }
+  return compactAdjacentOperations(out, boundaries, touched);
+}
+
+/** Return contiguous form ranges, deriving one range when a hand-authored recipe has
+ * no form metadata. This is the single boundary authority used by variable-length
+ * transforms and the desk inspector. */
+export function formSectionRanges(recipe) {
+  const total = rearrangementOutputSteps(recipe);
+  if (!(total > 0)) return [];
+  const form = Array.isArray(recipe?.form) && recipe.form.length ? recipe.form : null;
+  if (!form) return [{ name: 'Section', role: 'Verse', letter: 'A', start: 0, end: total }];
+  let cursor = 0;
+  const ranges = [];
+  for (const raw of form) {
+    const start = Number.isInteger(raw?.start) ? raw.start : cursor;
+    const end = Number.isInteger(raw?.end) ? raw.end : start;
+    if (start !== cursor || end <= start || end > total) return [];
+    ranges.push({ ...raw, start, end });
+    cursor = end;
+  }
+  return cursor === total ? ranges : [];
+}
+
+/** Rebuild form boundaries after an edit changes output duration. Boundaries snap to
+ * operation edges so a section never owns half of a repeated cell. */
+export function rebuildForm(recipe, operations = recipe?.operations, ownership = null) {
+  if (!Array.isArray(operations) || !operations.length) throw new Error('Rearrange has no operations');
+  const total = operations.reduce((sum, operation) => sum + operation.length * operation.repeats, 0);
+  const old = formSectionRanges(recipe);
+  const templates = old.length ? old : [{ name: 'Section', role: 'Verse', letter: 'A', start: 0, end: total }];
+  const oldTotal = templates[templates.length - 1].end || total;
+  const shaped = (form) => ({
+    ...recipe,
+    operations: operations.map((operation) => ({ ...operation })),
+    ...(total === recipe?.source?.steps ? {} : { output: { steps: total } }),
+    form,
+  });
+  // AN EDIT INSIDE ONE PART MUST NOT MOVE ANOTHER. Boundaries used to be rescaled by
+  // total/oldTotal and re-snapped to the nearest slice edge, which meant deleting a slice
+  // in the chorus shortened every part in the song by a share of it — measured, one delete
+  // moved eight slices out of the verse and into its neighbour. Two rules replace that:
+  //
+  //   1. An edit that does not change the song's LENGTH does not move a boundary at all.
+  //      Transposing, rerolling, splitting, unrolling and the two in-place removals all
+  //      leave the parts exactly where they were.
+  //   2. When the length does change, each part is as long as the slices that belong to
+  //      it — the caller says which, and a part that loses all of its slices goes away.
+  //
+  // The old proportional pass is kept only as the fallback for callers with no ownership
+  // to hand, and it is now reached solely by edits that resize a part on purpose.
+  if (total === oldTotal) return shaped(templates.map((template) => ({ ...template })));
+  if (Array.isArray(ownership) && ownership.length === operations.length) {
+    const spans = new Array(templates.length).fill(0);
+    let mapped = true;
+    operations.forEach((operation, index) => {
+      const owner = ownership[index];
+      if (!(owner >= 0 && owner < spans.length)) { mapped = false; return; }
+      spans[owner] += operation.length * operation.repeats;
+    });
+    if (mapped) {
+      let cursor = 0;
+      const form = [];
+      templates.forEach((template, index) => {
+        if (!spans[index]) return;
+        form.push({ ...template, start: cursor, end: cursor + spans[index] });
+        cursor += spans[index];
+      });
+      if (form.length && cursor === total) return shaped(form);
+    }
+  }
+  const edges = [0];
+  let cursor = 0;
+  for (const operation of operations) {
+    cursor += operation.length * operation.repeats;
+    edges.push(cursor);
+  }
+  const nearest = (target, min, max) => edges
+    .filter((edge) => edge >= min && edge <= max)
+    .sort((a, b) => Math.abs(a - target) - Math.abs(b - target))[0] ?? max;
+  let start = 0;
+  const form = templates.map((template, index) => {
+    const end = index === templates.length - 1
+      ? total
+      : nearest(Math.round((template.end / oldTotal) * total / 4) * 4, start + 4, total);
+    const next = { ...template, start, end };
+    start = end;
+    return next;
+  });
+  return shaped(form);
+}
+
+function alignedRerollFrom(operation, sourceSteps, random, profile = null, key = null,
+  { style = null, chaos = REARRANGE_CREATIVE_DEFAULTS.chaos,
+    drive = REARRANGE_CREATIVE_DEFAULTS.drive } = {}) {
+  const maxStart = Math.max(0, sourceSteps - operation.length);
+  if (!maxStart) return operation.from;
+  // THE STYLE'S GRID IS A FLOOR HERE, not a replacement. The stride has always widened
+  // with the slice, and a style only ever makes cuts land more squarely — so Phrase
+  // rerolls even a beat-long slice onto bar lines, while an unstyled call keeps the
+  // four-sixteenth grid it has always stepped on.
+  const grid = Math.max(style?.grid || 4, Math.max(4, Math.min(16, operation.length)));
+  // DRIVE READS THE SOURCE'S OWN ENERGY. Peak-time reaches for the busiest bars the song
+  // has, chill for the quietest, and the middle of the dial is the flat preference this
+  // scoring always carried — so the dial adds a direction rather than replacing a number.
+  const energyWeight = 0.05
+    + (clampControl(drive, REARRANGE_CREATIVE_DEFAULTS.drive) - 0.5) * 0.2;
+  const candidates = [];
+  for (let from = 0; from <= maxStart; from += grid) {
+    let score = 0;
+    if (profile && !Array.isArray(profile)) {
+      const end = Math.min(profile.steps - 1, from + operation.length);
+      score += (chromaMatch(profile, operation.from, from, 0) || 0) * 0.7;
+      score -= (cutCost(profile, from) || 0) * 0.25;
+      score -= (cutCost(profile, end) || 0) * 0.25;
+      score += (energyOver(profile, from, operation.length) || 0) * energyWeight;
+      score += (walkCellScore(profile, from, operation.length, key) || 0) * 0.1;
+    }
+    candidates.push({ from, score: score + random() * 0.02 });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  const open = candidates.filter((candidate) => candidate.from !== operation.from);
+  const usable = open.length ? open : candidates;
+  // REACH, not the top of the list. The scores are only a preference — best fit first —
+  // and taking the single best answer made reroll deterministic the moment a profile was
+  // in play: measured, it reached TWO sources out of thirty-two across four hundred rolls,
+  // ping-ponging between the same pair. The `random() * 0.02` above was meant to be the
+  // variety, but a jitter that small is noise beside a real score; it only ever decided
+  // anything in the profileless case, where every score is zero and the jitter IS the
+  // sort. That is why reroll looked random in isolation and felt dead on the desk.
+  //
+  // AND CHAOS IS THAT REACH — tame ↔ feral is exactly the question "how far may this
+  // stray from the safest answer", which is what the fraction below decides. 0.18 is the
+  // floor `chooseSource` uses for the same job, and the slope puts this generator's own
+  // default chaos on the 0.4 that was measured: a caller naming no dials rolls precisely
+  // as it did, while the desk's slider now runs the whole span.
+  const span = 0.18 + clampControl(chaos, REARRANGE_CREATIVE_DEFAULTS.chaos) * 0.63;
+  const reach = Math.max(1, Math.min(usable.length, Math.round(usable.length * span)));
+  const pick = usable[Math.floor(random() * reach)] || usable[0];
+  return (pick || { from: operation.from }).from;
+}
+
+function sectionOperationIndices(recipe, sectionIndex) {
+  const section = formSectionRanges(recipe)[sectionIndex];
+  if (!section) return { section: null, indices: [] };
+  const indices = [];
+  let cursor = 0;
+  for (const [index, operation] of recipe.operations.entries()) {
+    const end = cursor + operation.length * operation.repeats;
+    if (cursor >= section.start && end <= section.end) indices.push(index);
+    else if (cursor < section.end && end > section.start) return { section, indices: [], crossed: true };
+    cursor = end;
+  }
+  return { section, indices };
+}
+
+function trimOperations(operations, target) {
+  const out = [];
+  let remaining = target;
+  for (const operation of operations) {
+    if (remaining <= 0) break;
+    const duration = operation.length * operation.repeats;
+    if (duration <= remaining) {
+      out.push({ ...operation });
+      remaining -= duration;
+      continue;
+    }
+    const repeats = Math.min(operation.repeats, Math.floor(remaining / operation.length));
+    if (repeats > 0) {
+      out.push({ ...operation, repeats });
+      remaining -= repeats * operation.length;
+    }
+    if (remaining > 0 && operation.length >= 8) {
+      const halves = splitOperation({ ...operation, repeats: 1 });
+      out.push(...trimOperations(halves, remaining));
+      remaining = 0;
+    }
+  }
+  return remaining === 0 ? out : null;
+}
+
+function resizeFormSection(recipe, sectionIndex, operations, delta) {
+  const ranges = formSectionRanges(recipe);
+  const sourceSteps = int(recipe?.source?.steps);
+  const form = ranges.map((section, index) => {
+    if (index < sectionIndex) return { ...section };
+    if (index === sectionIndex) return { ...section, end: section.end + delta };
+    return { ...section, start: section.start + delta, end: section.end + delta };
+  });
+  const total = operations.reduce((sum, operation) => sum + operation.length * operation.repeats, 0);
+  const next = { ...recipe, operations: operations.map((operation) => ({ ...operation })), form };
+  if (total === sourceSteps) delete next.output;
+  else next.output = { steps: total };
+  return next;
+}
+
+/**
+ * Fit a run of copied slices to a span, by cutting or by leaving silence.
+ *
+ * The receiving space keeps its own length whatever is dropped into it, so a paste never
+ * moves a boundary or changes the song. Longer material is cut; shorter material leaves
+ * the rest of the space silent rather than being stretched over ground it was not written
+ * for — and the silence is visible, hearable, and one click from being filled properly.
+ */
+function fitOperationsToSpan(operations, span, sourceSteps) {
+  const copied = operations.map((operation) => ({ ...operation }));
+  const total = copied.reduce((sum, operation) => sum + operation.length * operation.repeats, 0);
+  if (total > span) {
+    const cut = trimOperations(copied, span);
+    if (!cut) throw new Error('That material will not cut down to fit here');
+    return cut;
+  }
+  let remaining = span - total;
+  const base = copied[0].from;
+  while (remaining > 0) {
+    const length = Math.min(remaining, sourceSteps);
+    copied.push({ from: Math.max(0, Math.min(base, sourceSteps - length)),
+      length, repeats: 1, transpose: 0, mute: true });
+    remaining -= length;
+  }
+  return copied;
+}
+
+/**
+ * Put copied slices over a CONTIGUOUS RUN of slices, fitted to the time that run takes.
+ *
+ * This is the general paste, and a whole part is only the case where the run happens to be
+ * every slice in one: a paste onto three slices in the middle of a verse works the same
+ * way and for the same reason. Duration is conserved, so `rebuildForm` freezes every
+ * boundary and no part changes length.
+ */
+export function replaceRearrangementSlices(recipe, indices, operations) {
+  if (!Array.isArray(operations) || !operations.length) throw new Error('Nothing to paste');
+  const run = [...new Set((Array.isArray(indices) ? indices : [indices])
+    .map((index) => int(index)).filter((index) => index != null
+      && index >= 0 && index < (recipe?.operations?.length || 0)))].sort((a, b) => a - b);
+  if (!run.length) throw new Error('Select where the copy should go');
+  if (run[run.length - 1] - run[0] !== run.length - 1) {
+    throw new Error('Paste needs slices that sit next to each other');
+  }
+  const sourceSteps = int(recipe?.source?.steps);
+  for (const operation of operations) {
+    if (operation.from < 0 || operation.from + operation.length > sourceSteps) {
+      throw new Error('That material does not fit this song');
+    }
+  }
+  const span = run.reduce((sum, index) =>
+    sum + recipe.operations[index].length * recipe.operations[index].repeats, 0);
+  const pasted = fitOperationsToSpan(operations, span, sourceSteps);
+  const ranges = formSectionRanges(recipe);
+  const owners = [];
+  let cursor = 0;
+  const home = (() => {
+    let at = 0;
+    for (let index = 0; index < run[0]; index += 1) {
+      at += recipe.operations[index].length * recipe.operations[index].repeats;
+    }
+    return ranges.findIndex((range) => at >= range.start && at < range.end);
+  })();
+  const nextOperations = [];
+  recipe.operations.forEach((operation, index) => {
+    if (index === run[0]) {
+      pasted.forEach((slice) => { nextOperations.push(slice); owners.push(home); });
+    }
+    if (index < run[0] || index > run[run.length - 1]) {
+      nextOperations.push({ ...operation });
+      owners.push(ranges.findIndex((range) => cursor >= range.start && cursor < range.end));
+    }
+    cursor += operation.length * operation.repeats;
+  });
+  const next = rebuildForm(recipe, nextOperations, owners);
+  next.fills = fillOverlays(nextOperations);
+  return { recipe: next, changed: pasted.length };
+}
+
+/** Put one part's slices into another part. The part is just a run that fills a section. */
+export function replaceRearrangementSection(recipe, sectionIndex, operations) {
+  const { section, indices, crossed } = sectionOperationIndices(recipe, sectionIndex);
+  if (!section) throw new Error('That M8TRX section does not exist');
+  if (crossed || !indices.length) throw new Error('Section boundaries must fall between slices first');
+  return replaceRearrangementSlices(recipe, indices, operations);
+}
+
+function selectedHas(indices, index) {
+  return index >= indices[0] && index <= indices[indices.length - 1];
+}
+
+/** Apply a section-sized duration, pitch or fill edit while keeping the operation
+ * contract valid. These are intentionally pure so the desk can queue them at the next
+ * bar. */
+export function transformRearrangementSection(recipe, sectionIndex, action, {
+  value = 0, seed = recipe?.seed || 0,
+} = {}) {
+  const sourceSteps = int(recipe?.source?.steps);
+  if (!sourceSteps || !Array.isArray(recipe?.operations)) throw new Error('Rearrange has no operations');
+  const { section, indices, crossed } = sectionOperationIndices(recipe, sectionIndex);
+  if (!section) throw new Error('That M8TRX section does not exist');
+  if (crossed || !indices.length) throw new Error('Section boundaries must fall between slices first');
+  const selected = new Set(indices);
+  const ops = recipe.operations.map((operation) => ({ ...operation }));
+  if (action === 'delete') {
+    // A whole part out. Its slices go, its form entry goes, and the song gets shorter by
+    // exactly what it was taking; the parts after it move up.
+    if (indices.length === recipe.operations.length) throw new Error('Keep at least one M8TRX part');
+    const nextOperations = recipe.operations
+      .filter((unused, index) => !selected.has(index)).map((operation) => ({ ...operation }));
+    const owners = [];
+    let cursor = 0;
+    const ranges = formSectionRanges(recipe);
+    recipe.operations.forEach((operation, index) => {
+      if (!selected.has(index)) {
+        owners.push(ranges.findIndex((range) => cursor >= range.start && cursor < range.end));
+      }
+      cursor += operation.length * operation.repeats;
+    });
+    const next = rebuildForm(recipe, nextOperations, owners);
+    next.fills = fillOverlays(nextOperations);
+    return { recipe: next, changed: indices.length };
+  }
+  if (action === 'fill' && String(value) === 'none') {
+    // TAKING A FILL OFF. The chopped cells cannot be un-chopped — the slices they replaced
+    // are gone — but they can stop being a fill and be gathered back into as few slices as
+    // their material allows, which is as close to before as the recipe can get.
+    let stripped = 0;
+    for (const index of indices) {
+      if (!ops[index].fill) continue;
+      delete ops[index].fill;
+      stripped += 1;
+    }
+    if (!stripped) return { recipe: { ...recipe }, changed: 0 };
+    const tidied = compactAdjacentOperations(ops.slice(indices[0], indices[indices.length - 1] + 1),
+      null, new Set(ops.map((unused, index) => index)));
+    const nextOperations = [
+      ...ops.slice(0, indices[0]),
+      ...tidied,
+      ...ops.slice(indices[indices.length - 1] + 1),
+    ];
+    const next = rebuildForm(recipe, nextOperations);
+    next.fills = fillOverlays(nextOperations);
+    return { recipe: next, changed: stripped };
+  }
+  if (action === 'fill') {
+    const shapeName = String(value || 'machinegun');
+    if (!REARRANGE_FILL_NAMES.includes(shapeName)) throw new Error('Choose a supported fill shape');
+    const sectionOperations = indices.map((index) => ops[index]);
+    const minSource = Math.min(...sectionOperations.map((operation) => operation.from));
+    // Reuse the section's own source neighbourhood. Clamping the base leaves room
+    // for a four-step cell even when the section currently ends on a tiny fill cell.
+    const sourceBase = Math.max(0, Math.min(sourceSteps - 4, minSource));
+    const sourceEnd = Math.max(...sectionOperations.map((operation) => operation.from + operation.length));
+    const filled = appendSectionFill(sectionOperations, section.end - section.start, {
+      fill: shapeName, random: seededRandom(seed), sourceBase,
+      sourceSpan: Math.max(4, Math.min(sourceSteps - sourceBase, sourceEnd - sourceBase)),
+    });
+    if (!filled.some((operation) => operation.fill)) {
+      throw new Error('This section is too short for that fill');
+    }
+    const nextOperations = [
+      ...ops.slice(0, indices[0]),
+      ...filled,
+      ...ops.slice(indices[indices.length - 1] + 1),
+    ];
+    const next = rebuildForm(recipe, nextOperations);
+    next.fills = fillOverlays(nextOperations);
+    return { recipe: next, changed: filled.length };
+  }
+  if (action === 'transpose') {
+    const transpose = int(value);
+    if (!REARRANGE_TRANSPOSES.includes(transpose)) throw new Error('Choose a supported transpose amount');
+    if (indices.some((index) => ops[index].harmony)) {
+      throw new Error('Turn the chord walk off before transposing this section');
+    }
+    for (const index of indices) ops[index].transpose = transpose;
+    return { recipe: rebuildForm(recipe, ops), changed: indices.length };
+  }
+  if (action === 'double') {
+    const insertAt = indices[indices.length - 1] + 1;
+    const copy = indices.map((index) => ({ ...ops[index], harmony: ops[index].harmony || 0 }));
+    const expanded = [...ops.slice(0, insertAt), ...copy, ...ops.slice(insertAt)];
+    return {
+      recipe: resizeFormSection(recipe, sectionIndex, expanded, section.end - section.start),
+      changed: copy.length,
+    };
+  }
+  if (action === 'halve') {
+    const chosen = indices.map((index) => ops[index]);
+    const half = Math.floor((section.end - section.start) / 2 / 4) * 4;
+    const kept = trimOperations(chosen, Math.max(4, half));
+    if (!kept) throw new Error('This section cannot be halved on its current slice boundaries');
+    const reduced = [...ops.slice(0, indices[0]), ...kept, ...ops.slice(indices[indices.length - 1] + 1)];
+    return {
+      recipe: resizeFormSection(recipe, sectionIndex, reduced, -(section.end - section.start - half)),
+      changed: 1,
+    };
+  }
+  throw new Error(`Unsupported section action: ${action}`);
+}
+
+/** Strip or restore a section's diatonic walk. The stored form chord palette is the
+ * reversible source of truth; when a legacy recipe lacks it, the common pop palette
+ * is used as a safe fallback. */
+const WALK_BAR_STEPS = 16;
+
+/**
+ * A CHORD PROGRESSION NEEDS A PLACE TO PUT EACH CHORD.
+ *
+ * Harmony lives on an OPERATION, and a walk is one chord per BAR — so a part built from a
+ * single four-bar grab has exactly one slot for four chords, and the slow phrase grammar
+ * opens on the tonic. Turning the walk on then wrote the tonic over the tonic: the library
+ * reported `changed: 1`, nothing sounded different, the chord line stayed empty because
+ * every chord equalled the tonic, and the card's W stayed unlit. It looked like a dead
+ * button, and it looked dead only on parts made of few, long slices, which is why it seemed
+ * to work at random.
+ *
+ * So the walk cuts the part into bars first. Every pass replays the same source material it
+ * always did and every grab stays contiguous, so the total duration and the audio are
+ * unchanged — this is the same lossless move `unroll` makes for repeats, extended to grabs
+ * longer than a bar. A sub-bar slice is already inside one bar and is left alone.
+ */
+function barAlignedOperations(operations) {
+  const out = [];
+  for (const operation of operations) {
+    for (let pass = 0; pass < operation.repeats; pass += 1) {
+      if (operation.length <= WALK_BAR_STEPS) { out.push({ ...operation, repeats: 1 }); continue; }
+      for (let at = 0; at < operation.length; at += WALK_BAR_STEPS) {
+        out.push({
+          ...operation,
+          from: operation.from + at,
+          length: Math.min(WALK_BAR_STEPS, operation.length - at),
+          repeats: 1,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Lay a bar-per-chord palette over bar-aligned operations, by where each one STARTS.
+ *
+ * The old walk advanced its bar counter by `repeats`, which counts PASSES rather than bars:
+ * on a chopped part of sixteen quarter-bar slices it ran off the end of the palette after
+ * three of them and pinned the last chord across the rest of the part. Accumulating real
+ * duration is the only thing that maps a slice to the bar it is actually in.
+ *
+ * Returns how many operations ended up on something other than the tonic, which is the
+ * honest measure of whether a walk happened at all.
+ */
+function applyWalkChords(operations, chords) {
+  let step = 0;
+  let moved = 0;
+  for (const operation of operations) {
+    const bar = Math.floor(step / WALK_BAR_STEPS);
+    const harmony = chords[Math.min(chords.length - 1, bar)] || 0;
+    if (harmony) moved += 1;
+    if (harmony) operation.harmony = harmony;
+    else delete operation.harmony;
+    step += operation.length * operation.repeats;
+  }
+  return moved;
+}
+
+/** A part of fewer than four bars has no room for the slow phrase grammar, which spends its
+ *  opening bars at home; `active` walks the palette a bar at a time instead. The generator
+ *  already makes this same choice for short sections — see `rebuildRearrangeSection`. */
+const walkPaceFor = (bars) => (bars >= 4 ? 'slow' : 'active');
+
+/** The operations of one section, replaced wholesale. `sectionOperationIndices` only ever
+ *  returns a contiguous run — it walks the list in order and takes what sits inside the
+ *  section — so the run can be spliced out and a different-length one put back. */
+function replaceSectionOperations(operations, indices, replacement) {
+  const first = indices[0];
+  const last = indices[indices.length - 1];
+  if (last - first !== indices.length - 1) throw new Error('That M8TRX part is not one run of slices');
+  return [...operations.slice(0, first), ...replacement, ...operations.slice(last + 1)];
+}
+
+export function toggleRearrangeSectionWalk(recipe, sectionIndex) {
+  const ranges = formSectionRanges(recipe);
+  const section = ranges[sectionIndex];
+  if (!section) throw new Error('That M8TRX section does not exist');
+  const { indices } = sectionOperationIndices(recipe, sectionIndex);
+  if (!indices.length) return { recipe: { ...recipe }, changed: 0 };
+  const ops = recipe.operations.map((operation) => ({ ...operation }));
+  const walking = indices.some((index) => ops[index].harmony);
+  if (walking) {
+    for (const index of indices) delete ops[index].harmony;
+    return { recipe: rebuildForm(recipe, ops), changed: indices.length };
+  }
+  if (!recipe.key) throw new Error('Choose a key before turning on a chord walk');
+  const palette = Array.isArray(section.chords) && section.chords.length
+    ? section.chords : REARRANGE_PROGRESSIONS.pop.minor;
+  const bars = Math.max(1, Math.ceil((section.end - section.start) / WALK_BAR_STEPS));
+  const chords = pacedChords(palette, bars, walkPaceFor(bars), 'full');
+  const walked = barAlignedOperations(indices.map((index) => ops[index]));
+  const moved = applyWalkChords(walked, chords);
+  // REFUSED RATHER THAN SILENTLY DONE. One bar is one chord and one chord is not a walk;
+  // saying so is the whole difference between a control that cannot help here and a control
+  // that appears broken.
+  if (!moved) throw new Error('This part is too short to walk a chord loop — it is one bar');
+  return {
+    recipe: rebuildForm(recipe, replaceSectionOperations(ops, indices, walked)),
+    changed: walked.length,
+  };
+}
+
+/**
+ * Build one part again FROM SCRATCH, in the space it already occupies.
+ *
+ * This is the part card's dice, and it is not the same thing as rerolling its slices.
+ * A reroll keeps the part's shape — the same cell lengths in the same places — and only
+ * moves where each one is taken from, so a chopped verse stays chopped in exactly that
+ * rhythm. This throws the shape away too: the part is generated again through the same
+ * `sectionOperations` the generator uses, so it can come back as an A/B pair where it was
+ * a single loop, four bars of one figure where it was a collage, from a different phrase
+ * of the song entirely.
+ *
+ * THE ONE THING IT MAY NOT CHANGE IS ITS LENGTH. The rebuilt part is written into the
+ * exact step span the old one held, so no boundary moves, no other part is touched, and
+ * the song is the same length before and after — the same rule every other in-place edit
+ * on this panel obeys.
+ *
+ * What it deliberately preserves:
+ *   - a WALK. If the part was walking chords, the rebuild walks the same ones, so the
+ *     form's chord line stays true and a rolled chorus still lands on its own harmony.
+ *   - FAVOURITES. Those are slices the player asked to hear; they are handed to the
+ *     builder as fixed material rather than rolled away.
+ *   - a FILL. If the part ended with one, it ends with one of the same shape.
+ * A LOCKED part refuses outright: a lock means verbatim, and the dice is the loudest
+ * possible way to break that promise.
+ */
+export function regenerateRearrangementSection(recipe, sectionIndex, {
+  seed = randomSeed(), sourceProfile = null, style = null, progression = 'auto', key = null,
+  mood = null, hypnosis = null, chaos = null, drive = null,
+  transposeAmount = REARRANGE_TRANSPOSE_DEFAULT, locked = false,
+} = {}) {
+  const sourceSteps = int(recipe?.source?.steps);
+  if (!sourceSteps || !Array.isArray(recipe?.operations)) throw new Error('M8TRX has no operations');
+  const { section, indices, crossed } = sectionOperationIndices(recipe, sectionIndex);
+  if (!section) throw new Error('That M8TRX part does not exist');
+  if (crossed || !indices.length) throw new Error('Part boundaries must fall between slices first');
+  if (locked) throw new Error('This part is locked — unlock it before rolling it');
+  const sectionSteps = section.end - section.start;
+  if (sectionSteps <= 0) return { recipe: { ...recipe }, changed: 0 };
+  const rng = seededRandom(seed);
+  const resolvedStyle = resolveStyle(style);
+  const { mood: moodV, hypnosis: hypnosisV, chaos: chaosV, drive: driveV, pattern } =
+    resolveCreative({ mood, hypnosis, chaos, drive }, resolvedStyle);
+  const rich = sourceProfile && !Array.isArray(sourceProfile) && sourceProfile.steps > 0
+    ? sourceProfile : null;
+  const energyProfile = Array.isArray(sourceProfile) ? sourceProfile
+    : rich ? Array.from(rich.energy) : null;
+  const existing = indices.map((index) => recipe.operations[index]);
+  const role = recipe.form?.[sectionIndex]?.role || 'Verse';
+  // A fresh phrase of the song to build from — the same choice generation makes, with the
+  // part's own role still steering it, so a rolled Chorus reaches for chorus material.
+  const phraseSpan = Math.min(PHRASE_STEPS, sourceSteps);
+  const candidates = sourceCandidates(sourceSteps, phraseSpan);
+  const source = chooseSource(role, candidates, phraseSpan, energyProfile, new Set(), rng,
+    null, chaosV);
+  const sourceSpan = Math.min(phraseSpan, sourceSteps - source);
+  // The walk this part was on, kept exactly. Its chords live on the form entry.
+  const walkedChordLoop = Array.isArray(recipe.form?.[sectionIndex]?.chords)
+    && existing.some((operation) => operation.harmony != null)
+    ? [...recipe.form[sectionIndex].chords] : null;
+  const keyed = walkedChordLoop ? (key || recipe.key || null) : null;
+  const chromatic = keyed ? 0 : clampControl(transposeAmount, REARRANGE_TRANSPOSE_DEFAULT);
+  const favourites = existing.filter((operation) => operation.favourite)
+    .map((operation) => ({ from: operation.from, length: operation.length }));
+  const ctx = {
+    style: styleForLetter(resolvedStyle, recipe.form?.[sectionIndex]?.letter || role,
+      Number(seed) >>> 0),
+    sourceBase: source,
+    sourceSpan,
+    random: rng,
+    mood: moodV, hypnosis: hypnosisV, chaos: chaosV, drive: driveV,
+    pattern,
+    profile: rich,
+    previousEnd: null,
+    energyTarget: rich && ROLE_ENERGY[role] != null
+      ? Math.min(1, ROLE_ENERGY[role] * (0.5 + driveV)) : null,
+  };
+  let built;
+  if (walkedChordLoop) {
+    // ONE CHUNK, REPEATED, WALKED — the club shape, exactly as generation builds it.
+    const cell = pickCell([[16, 1]], ctx) || { length: 16, offset: 0 };
+    const bars = Math.max(1, Math.ceil(sectionSteps / 16));
+    built = [{ from: source + cell.offset, length: 16, repeats: bars, transpose: 0 }];
+  } else {
+    const sectionTranspose = chooseTranspose(role, rng, chaosV, chromatic, rich, null,
+      source, moodV);
+    built = sectionOperations(sectionSteps, sectionTranspose, null, favourites, ctx);
+  }
+  // A part that ended with a fill ends with one of the same shape.
+  const oldFill = existing.find((operation) => operation.fill)?.fill || null;
+  if (oldFill) built = appendSectionFill(built, sectionSteps, { ...ctx, fill: oldFill });
+  if (walkedChordLoop) built = applyHarmonyLoop(built, walkedChordLoop);
+  const rebuiltSteps = built.reduce((sum, operation) => sum + operation.length * operation.repeats, 0);
+  if (rebuiltSteps !== sectionSteps) {
+    // The builder is contracted to fill its span exactly; refusing beats writing a part
+    // that would shove every boundary after it along.
+    throw new Error('That part could not be rebuilt at its exact length');
+  }
+  const operations = [
+    ...recipe.operations.slice(0, indices[0]).map((operation) => ({ ...operation })),
+    ...built.map((operation) => ({ ...operation })),
+    ...recipe.operations.slice(indices[indices.length - 1] + 1).map((operation) => ({ ...operation })),
+  ];
+  const next = rebuildForm({ ...recipe, seed: Number(seed) >>> 0 }, operations);
+  const fills = fillOverlays(operations);
+  if (fills.length) next.fills = fills;
+  else delete next.fills;
+  return { recipe: next, changed: built.length };
+}
+
+/** Keep material fixed and reroll only a section's chord order. */
+export function rerollSectionWalk(recipe, sectionIndex, { seed = recipe?.seed || 0 } = {}) {
+  const ranges = formSectionRanges(recipe);
+  const section = ranges[sectionIndex];
+  if (!section) throw new Error('That M8TRX section does not exist');
+  const { indices } = sectionOperationIndices(recipe, sectionIndex);
+  if (!indices.length) return { recipe: { ...recipe }, changed: 0 };
+  const rng = seededRandom(seed);
+  const palettes = REARRANGE_PROGRESSION_NAMES.filter((name) => name !== 'off')
+    .map((name) => REARRANGE_PROGRESSIONS[name].minor);
+  const palette = palettes[Math.floor(rng() * palettes.length)] || REARRANGE_PROGRESSIONS.pop.minor;
+  const bars = Math.max(1, Math.ceil((section.end - section.start) / WALK_BAR_STEPS));
+  const chords = pacedChords(palette, bars, walkPaceFor(bars), 'full');
+  const operations = recipe.operations.map((operation) => ({ ...operation }));
+  // Same two corrections as the toggle: a part needs one slot per bar before a progression
+  // can be laid over it, and a slice belongs to the bar its DURATION puts it in rather than
+  // to its index in the pass count.
+  const walked = barAlignedOperations(indices.map((index) => operations[index]));
+  const moved = applyWalkChords(walked, chords);
+  if (!moved) throw new Error('This part is too short to walk a chord loop — it is one bar');
+  const next = rebuildForm({ ...recipe, seed: Number(seed) >>> 0 },
+    replaceSectionOperations(operations, indices, walked));
+  next.form = next.form.map((item, index) => index === sectionIndex ? { ...item, chords } : item);
+  return { recipe: next, changed: walked.length };
 }
 
 /**
@@ -1234,8 +2716,19 @@ function removeSelectedOperations(operations, selected, sourceSteps, random) {
  * These are audition controls rather than song edits. Every supported transform
  * preserves each selected row's output duration, so the recipe remains the same
  * length and its form boundaries stay valid.
+ *
+ * THE DIALS MEAN WHAT THEY MEAN NOW, not what they meant at Generate. Reroll is the one
+ * action here that makes a musical choice rather than performing a named operation, so
+ * it is the one that reads Style, Mood, Hypnosis, Chaos and Drive — from the desk, at
+ * the moment the button is pressed. Sliding to euphoric and rolling a slice has to give
+ * a euphoric roll, or the sliders are a record of what was once asked for instead of
+ * controls. What they cannot do from here is re-read the KEY: that is a whole-form
+ * decision and one slice cannot make it alone (see `regenerateRearrangementSection`).
  */
-export function transformRearrangement(recipe, indices, action, { seed = recipe?.seed || 0 } = {}) {
+export function transformRearrangement(recipe, indices, action, {
+  seed = recipe?.seed || 0, value = 0, profile = null, key = null,
+  style = null, mood = null, hypnosis = null, chaos = null, drive = null,
+} = {}) {
   const sourceSteps = int(recipe?.source?.steps);
   if (!sourceSteps || !Array.isArray(recipe?.operations) || !recipe.operations.length) {
     throw new Error('Rearrange has no operations to transform');
@@ -1244,24 +2737,128 @@ export function transformRearrangement(recipe, indices, action, { seed = recipe?
     .map((index) => int(index)).filter((index) => index != null && index >= 0
       && index < recipe.operations.length));
   if (!selected.size) throw new Error('Select one or more Rearrange slices first');
+  // Resolved through the same one function generation uses, so a dial cannot mean
+  // something slightly different depending on which door it came in through.
+  const resolvedStyle = resolveStyle(style);
+  const creative = resolveCreative({ mood, hypnosis, chaos, drive }, resolvedStyle);
   const random = seededRandom(seed);
+  // Which part each EXISTING slice belongs to, so an edit that changes the song's length
+  // can hand rebuildForm the membership instead of leaving it to guess from proportions.
+  const ranges = formSectionRanges(recipe);
+  const partStarts = new Set(ranges.map((range) => range.start));
+  const owners = [];
+  let ownerCursor = 0;
+  for (const operation of recipe.operations) {
+    owners.push(ranges.findIndex((range) => ownerCursor >= range.start && ownerCursor < range.end));
+    ownerCursor += operation.length * operation.repeats;
+  }
   if (action === 'remove') {
-    const operations = removeSelectedOperations(recipe.operations, selected, sourceSteps, random);
+    const operations = removeSelectedOperations(recipe.operations, selected, sourceSteps, random, partStarts);
     if (!operations) return { recipe: { ...recipe }, changed: 0 };
     return {
-      recipe: {
+      recipe: rebuildForm({
         ...recipe,
         seed: Number(seed) >>> 0,
         operations,
-      },
+      }, operations),
+      changed: selected.size,
+    };
+  }
+  if (action === 'walk-on') {
+    // A WALK OVER THE SLICES YOU PICKED, not over their whole part. Turning one on used to
+    // be a part-sized decision on the grounds that a progression needs bars to move
+    // across — but a run of bars is a run of bars whether or not it happens to be a whole
+    // part, and picking three of four and getting all four is not what selecting means.
+    if (!recipe.key) throw new Error('Choose a key before turning on a chord walk');
+    const run = [...selected].sort((a, b) => a - b);
+    const home = ranges[owners[run[0]]];
+    const palette = Array.isArray(home?.chords) && home.chords.length
+      ? home.chords : REARRANGE_PROGRESSIONS.pop.minor;
+    const span = run.reduce((sum, index) =>
+      sum + recipe.operations[index].length * recipe.operations[index].repeats, 0);
+    const bars = Math.max(1, Math.ceil(span / 16));
+    // Slow pacing is the phrase grammar — hold the tonic, then lift — and it needs a
+    // phrase to do it in. Asked for over one or two bars it holds for the whole run and
+    // nothing moves at all, which is not a walk, so a short run steps every bar instead.
+    const chords = pacedChords(palette, bars, bars >= 4 ? 'slow' : 'active', 'full');
+    let bar = 0;
+    let changed = 0;
+    const operations = recipe.operations.map((raw, index) => {
+      const operation = { ...raw };
+      if (!selected.has(index)) return operation;
+      const harmony = chords[Math.min(chords.length - 1, bar)] || 0;
+      bar += operation.repeats;
+      changed += 1;
+      if (!harmony) { const { harmony: was, ...plain } = operation; void was; return plain; }
+      return { ...operation, harmony, transpose: 0 };
+    });
+    return {
+      recipe: rebuildForm({ ...recipe, seed: Number(seed) >>> 0 }, operations, owners),
+      changed,
+    };
+  }
+  if (action === 'join') {
+    // THE OPPOSITE OF SPLIT. The first slice of the run keeps its place and its material
+    // and grows to cover the time the rest of them were taking; they go. Duration is
+    // conserved, so the part it sits in does not change length and no boundary moves.
+    const run = [...selected].sort((a, b) => a - b);
+    if (run.length < 2) return { recipe: { ...recipe }, changed: 0 };
+    if (run[run.length - 1] - run[0] !== run.length - 1) {
+      throw new Error('Join needs slices that sit next to each other');
+    }
+    const first = recipe.operations[run[0]];
+    const span = run.reduce((sum, index) =>
+      sum + recipe.operations[index].length * recipe.operations[index].repeats, 0);
+    // A join is the undo of a chop, so the result is a PLAIN slice: whatever the run was
+    // tagged as — a fill, a stutter's machine-gun cells — it is one continuous grab now,
+    // and a lone slice claiming to be a transition accent would make the engine treat it
+    // as whole-band and the panel draw a fill tick on something that no longer fills.
+    const { fill, ...plain } = first;
+    void fill;
+    let joined = null;
+    if (span <= sourceSteps) {
+      // Prefer one longer grab. If the source runs out before the slice does, start it
+      // earlier rather than refusing — the material is still the one that was there.
+      joined = { ...plain, from: Math.max(0, Math.min(plain.from, sourceSteps - span)),
+        length: span, repeats: 1 };
+    } else if (span % plain.length === 0 && span / plain.length <= 4) {
+      joined = { ...plain, repeats: span / plain.length };
+    }
+    if (!joined) return { recipe: { ...recipe }, changed: 0 };
+    const operations = [];
+    const ownership = [];
+    recipe.operations.forEach((operation, index) => {
+      if (index === run[0]) { operations.push(joined); ownership.push(owners[index]); return; }
+      if (selected.has(index)) return;
+      operations.push({ ...operation });
+      ownership.push(owners[index]);
+    });
+    const next = rebuildForm({ ...recipe, seed: Number(seed) >>> 0 }, operations, ownership);
+    next.fills = fillOverlays(operations);
+    return { recipe: next, changed: run.length };
+  }
+  if (action === 'delete') {
+    const operations = deleteSelectedOperations(recipe.operations, selected);
+    if (!operations) throw new Error('Keep at least one M8TRX slice');
+    const kept = owners.filter((_, index) => !selected.has(index));
+    return {
+      recipe: rebuildForm({ ...recipe, seed: Number(seed) >>> 0 }, operations, kept),
+      changed: selected.size,
+    };
+  }
+  if (action === 'remove-loop') {
+    const operations = removeSelectedWithLoop(recipe.operations, selected, sourceSteps, random, partStarts);
+    return {
+      recipe: rebuildForm({ ...recipe, seed: Number(seed) >>> 0 }, operations),
       changed: selected.size,
     };
   }
   let changed = 0;
   const operations = [];
+  const ownership = [];
   recipe.operations.forEach((raw, index) => {
     const operation = { ...raw };
-    if (!selected.has(index)) { operations.push(operation); return; }
+    if (!selected.has(index)) { operations.push(operation); ownership.push(owners[index]); return; }
     let replacement = [operation];
     if (action === 'split') replacement = splitOperation(operation);
     else if (action === 'unroll' && operation.repeats > 1) {
@@ -1269,22 +2866,151 @@ export function transformRearrangement(recipe, indices, action, { seed = recipe?
         .map(() => ({ ...operation, repeats: 1 }));
     }
     else if (action === 'double-repeats' && operation.length % 2 === 0
-      && operation.length >= 2 && operation.repeats * 2 <= 4) {
+      && operation.length >= 8 && operation.repeats * 2 <= 4) {
       replacement = [{ ...operation, length: operation.length / 2, repeats: operation.repeats * 2 }];
     } else if (action === 'half-repeats' && operation.repeats % 2 === 0
       && operation.from + operation.length * 2 <= sourceSteps) {
       replacement = [{ ...operation, length: operation.length * 2, repeats: operation.repeats / 2 }];
+    } else if (action === 'repeat-more' && operation.repeats < 4) {
+      replacement = [{ ...operation, repeats: operation.repeats + 1 }];
+    } else if (action === 'repeat-less' && operation.repeats > 1) {
+      replacement = [{ ...operation, repeats: operation.repeats - 1 }];
+    } else if (action === 'transpose') {
+      const transpose = int(value);
+      if (!REARRANGE_TRANSPOSES.includes(transpose)) throw new Error('Choose a supported transpose amount');
+      if (operation.harmony) throw new Error('Turn the chord walk off before transposing this slice');
+      replacement = [{ ...operation, transpose }];
     } else if (action === 'reroll') {
-      replacement = [{ ...operation, from: rerollFrom(operation, sourceSteps, random) }];
+      // REROLL IS THE RANDOM ONE, so it rolls all three of the things a slice is: where it
+      // comes from, how its time is cut up, and what pitch it plays. It used to move only
+      // the source, which made it the mildest control in the panel while reading as the
+      // boldest. What it will NOT do is change how LONG the slice is: duration is the one
+      // property every edit here holds still, because the moment it moves, everything
+      // after it moves too and a reroll stops being a local decision.
+      // Mix is a decision about the FORM — each repeated letter keeps a phrase, groove or
+      // chop identity — so a slice rerolls under its own part's identity, resolved off
+      // the recipe's seed rather than this press's. Rolling a slice twice must not move
+      // the letter it belongs to under a different style each time.
+      const sliceStyle = styleForLetter(style,
+        recipe.form?.[owners[index]]?.letter || '', recipe.seed || 0);
+      let next = {
+        ...operation,
+        from: alignedRerollFrom(operation, sourceSteps, random, profile, key, {
+          style: sliceStyle, chaos: creative.chaos, drive: creative.drive,
+        }),
+      };
+      const duration = operation.length * operation.repeats;
+      // Same time, cut differently: one grab of it, or the front of it retriggered.
+      // WHETHER to re-cut is a flat roll, because a reroll that always re-cut would make
+      // the button mean "chop this" — but HOW MANY passes is Hypnosis's question, and it
+      // is the same question generation asks, so it is weighted by the same table. A
+      // collage setting takes the single grab; a loop setting retriggers the front of it.
+      if (!operation.fill && random() < 0.55) {
+        const weights = new Map(repeatWeights(creative.pattern));
+        const splits = [];
+        for (const passes of [1, 2, 3, 4]) {
+          const cell = duration / passes;
+          if (!Number.isInteger(cell) || cell < 1) continue;
+          if (next.from + cell > sourceSteps) continue;
+          splits.push([{ length: cell, repeats: passes }, weights.get(passes) || 1]);
+        }
+        if (splits.length) {
+          const pick = weighted(splits, random);
+          next = { ...next, length: pick.length, repeats: pick.repeats };
+        }
+      }
+      // And a new pitch, within whichever system the slice is already using — a walked
+      // slice gets another degree of the key, a plain one another interval. Never both:
+      // the recipe carries one pitch system at a time and a reroll must not smuggle in a
+      // second.
+      // Either way MOOD picks the direction — the bright degrees of the key, or an upward
+      // lift, at the euphoric end; the dark ones and a drop at the noir end. It is a
+      // weighting, so the middle of the dial is the even choice this always made.
+      if (random() < 0.4) {
+        if (operation.harmony && recipe.key) {
+          const degrees = [0, 1, 2, 3, 4, 5, 6].filter((degree) => degree !== operation.harmony);
+          const degree = weighted(degrees.map((value) =>
+            [value, moodDegreeWeight(value, recipe.key.minor, creative.mood)]), random);
+          if (degree) next = { ...next, harmony: degree };
+          else { const { harmony, ...plain } = next; void harmony; next = plain; }
+        } else if (!operation.harmony) {
+          const lean = creative.mood - 0.5;
+          next = {
+            ...next,
+            transpose: weighted([0, ...REARRANGE_GENERATED_TRANSPOSES]
+              .map((value) => [value, 1 + lean * 1.6 * Math.sign(value)]), random),
+          };
+        }
+      }
+      replacement = [next];
+    } else if (action === 'stutter') {
+      // A FILL AIMED AT ONE SLICE. The slice's opening fragment is retriggered across its
+      // own time — a beat becomes four sixteenths of the same beat — so the time it takes
+      // is unchanged and only its rhythm is. It is tagged as a fill because that is what
+      // it is to the engine: fills are whole-band and bypass Song groove for their own
+      // span, which is what makes the kit stutter WITH the music instead of playing a
+      // straight bar underneath a stuttering top.
+      const duration = operation.length * operation.repeats;
+      const shape = REARRANGE_STUTTER_SHAPES[String(value)];
+      let cells = null;
+      if (shape) {
+        // A named rhythm is a set of relative cell WEIGHTS, so it lands on any slice long
+        // enough to divide by their sum: gallop is long-short-short, ramp accelerates.
+        const unit = duration / shape.reduce((sum, weight) => sum + weight, 0);
+        if (Number.isInteger(unit) && unit >= 1) cells = shape.map((weight) => weight * unit);
+      } else {
+        // Number(), not int(): int() answers null for a STRING, and the count arrives as
+        // one from a <select>. Falling back to 4 on every string meant the dropdown did
+        // ×4 whichever number was chosen — and did it for ×8 on a beat, where the honest
+        // answer is that four sixteenths will not divide into eight.
+        const count = Math.trunc(Number(value));
+        const cell = Number.isFinite(count) && count > 1 ? duration / count : NaN;
+        if (Number.isInteger(cell) && cell >= 1) cells = new Array(count).fill(cell);
+      }
+      if (cells) {
+        replacement = cells.map((length) => ({
+          from: operation.from, length, repeats: 1,
+          transpose: operation.transpose || 0,
+          ...(operation.harmony ? { harmony: operation.harmony } : {}),
+          fill: 'machinegun',
+        }));
+      }
+    } else if (action === 'mute' || action === 'unmute') {
+      // Silence is a property of the slice, not a removal of it: the time is still taken,
+      // the parts around it do not move, and turning it back on returns the material that
+      // was always there. Deleting and re-adding could not promise that.
+      const silent = action === 'mute';
+      if (!!operation.mute !== silent) {
+        if (silent) replacement = [{ ...operation, mute: true }];
+        else { const { mute, ...heard } = operation; void mute; replacement = [heard]; }
+      }
+    } else if (action === 'harmony') {
+      // MIX AND MATCH. A walk sets a part's chords in one go, but which chord any ONE
+      // slice plays is its own business — a bar of the 4 inside a 1 4 6 7 part, or a bar
+      // left as written inside a walked one. Setting a chord clears any chromatic
+      // transpose on that slice, because a recipe carries one pitch system at a time.
+      const degree = int(value) || 0;
+      if (degree && !recipe.key) throw new Error('Choose a key before setting a slice chord');
+      if (Math.abs(degree) > REARRANGE_HARMONY_RANGE) throw new Error('That chord is out of range');
+      if (degree) replacement = [{ ...operation, harmony: degree, transpose: 0 }];
+      else { const { harmony, ...plain } = operation; void harmony; replacement = [plain]; }
+    } else if (action === 'walk-off' && operation.harmony) {
+      // Dropping a walk is per-SLICE, unlike turning one on. A walk is a progression over
+      // a section's bars, so switching it on is a decision about the whole part — but the
+      // bars you want back as written are whichever ones you picked, and making you undo
+      // the part's whole walk to free two of them is not the same edit.
+      const { harmony, ...plain } = operation;
+      void harmony;
+      replacement = [plain];
     }
     if (replacement.length !== 1 || !operationEqual(replacement[0], operation)) changed++;
     operations.push(...replacement);
+    for (let pass = 0; pass < replacement.length; pass += 1) ownership.push(owners[index]);
   });
   return {
     recipe: {
-      ...recipe,
+      ...rebuildForm(recipe, operations, ownership),
       seed: Number(seed) >>> 0,
-      operations,
     },
     changed,
   };
@@ -1292,7 +3018,8 @@ export function transformRearrangement(recipe, indices, action, { seed = recipe?
 
 /** Validate and clone a recipe before it reaches the audio engine. */
 export function validateRearrangement(value, sourceSteps, { songId = null } = {}) {
-  if (!value || value.kind !== REARRANGE_KIND || value.version !== REARRANGE_VERSION) {
+  if (!value || value.kind !== REARRANGE_KIND
+    || ![1, REARRANGE_VERSION].includes(value.version)) {
     throw new Error('Not a supported Rearrange JSON file');
   }
   if (value.grid !== REARRANGE_GRID) throw new Error('Rearrange JSON uses an unsupported grid');
@@ -1302,7 +3029,11 @@ export function validateRearrangement(value, sourceSteps, { songId = null } = {}
   if (value.source?.steps !== sourceSteps) {
     throw new Error(`This recipe needs ${value.source?.steps || '?'} steps; the current song has ${sourceSteps}`);
   }
-  const form = validateForm(value.form, sourceSteps);
+  const outputSteps = int(value.output?.steps) || sourceSteps;
+  if (outputSteps <= 0 || outputSteps % 4 !== 0) {
+    throw new Error('Rearrange JSON has an invalid beat-aligned output length');
+  }
+  const form = validateForm(value.form, outputSteps, sourceSteps);
   if (songId && value.source?.song && value.source.song !== songId) {
     throw new Error(`This recipe belongs to ${value.source.song}`);
   }
@@ -1337,9 +3068,21 @@ export function validateRearrangement(value, sourceSteps, { songId = null } = {}
       || harmony == null) {
       throw new Error(`Operation ${index + 1} has a non-integer field`);
     }
+    const fill = raw?.fill == null ? null : String(raw.fill);
+    const favourite = raw?.favourite === true;
     if (from < 0 || length < 1 || from + length > sourceSteps) {
       throw new Error(`Operation ${index + 1} is outside the source song`);
     }
+    if (length < 4 && !fill && !favourite) {
+      throw new Error(`Operation ${index + 1} is a sub-beat slice without a fill`);
+    }
+    if (!fill && !favourite && (from % 4 !== 0 || length % 4 !== 0)) {
+      throw new Error(`Operation ${index + 1} is not beat-aligned`);
+    }
+    if (fill && !REARRANGE_FILL_NAMES.includes(fill)) {
+      throw new Error(`Operation ${index + 1} has an unsupported fill`);
+    }
+    const mute = raw?.mute === true;
     if (repeats < 1 || repeats > 4) throw new Error(`Operation ${index + 1} has invalid repeats`);
     if (!REARRANGE_TRANSPOSES.includes(transpose)) {
       throw new Error(`Operation ${index + 1} has an unsupported transpose`);
@@ -1348,11 +3091,32 @@ export function validateRearrangement(value, sourceSteps, { songId = null } = {}
       throw new Error(`Operation ${index + 1} has a chord offset ${key ? 'out of range' : 'but the recipe names no key'}`);
     }
     total += length * repeats;
-    return { from, length, repeats, transpose, ...(harmony ? { harmony } : {}) };
+    return {
+      from, length, repeats, transpose,
+      ...(harmony ? { harmony } : {}),
+      ...(mute ? { mute: true } : {}),
+      ...(fill ? { fill } : {}),
+      ...(favourite ? { favourite: true } : {}),
+    };
   });
-  if (total !== sourceSteps) {
-    throw new Error(`Rearrange output is ${total} steps, expected ${sourceSteps}`);
+  if (total !== outputSteps) {
+    throw new Error(`Rearrange output is ${total} steps, expected ${outputSteps}`);
   }
+  const repairedForm = form?.map((section) => {
+    if (section.source != null) return section;
+    let cursor = 0;
+    let source = null;
+    for (const operation of operations) {
+      const end = cursor + operation.length * operation.repeats;
+      if (cursor < section.end && end > section.start) {
+        source = source == null ? operation.from : Math.min(source, operation.from);
+      }
+      cursor = end;
+      if (cursor >= section.end) break;
+    }
+    return source == null ? section : { ...section, source };
+  });
+  const fills = fillOverlays(operations);
   return {
     kind: REARRANGE_KIND,
     version: REARRANGE_VERSION,
@@ -1363,16 +3127,18 @@ export function validateRearrangement(value, sourceSteps, { songId = null } = {}
     },
     seed: value.seed >>> 0,
     grid: REARRANGE_GRID,
+    ...(outputSteps === sourceSteps ? {} : { output: { steps: outputSteps } }),
     ...(drums === 'original' ? {} : { drums }),
     ...(key ? { key } : {}),
-    ...(form ? { form } : {}),
+    ...(fills.length ? { fills } : {}),
+    ...(repairedForm ? { form: repairedForm } : {}),
     operations,
   };
 }
 
 /** Return the source mapping and operation/repeat row for an output step. */
 export function rearrangementPosition(recipe, outputStep) {
-  const total = recipe?.source?.steps || 0;
+  const total = rearrangementOutputSteps(recipe) || recipe?.output?.steps || recipe?.source?.steps || 0;
   if (!(total > 0) || !Number.isFinite(outputStep)) return null;
   const wrapped = ((outputStep % total) + total) % total;
   let cursor = 0;

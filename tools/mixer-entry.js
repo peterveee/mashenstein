@@ -4,7 +4,8 @@
 import { Audio } from '../src/engine/audio.js';
 import { createVisualiser, VISUALISER_NAMES, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS }
   from '../src/engine/visualisers.js';
-import { resolveNoteFx } from '../src/engine/note-fx.js';
+import { resolveNoteFx, noteFxRange, NOTE_FX_RANGE_MIN, NOTE_FX_RANGE_MAX }
+  from '../src/engine/note-fx.js';
 // The boundary logic for handing a cabinet mix over to a level's, so 'Hear the change'
 // auditions exactly what the game does rather than a second implementation of it.
 import { MusicDirector } from '../src/engine/music-director.js';
@@ -93,9 +94,15 @@ import { SONG_STYLES } from './lib/song-styles.js';
 import { newSongPlan } from './lib/new-song-plan.js';
 import {
   generateRearrangement, validateRearrangement,
-  randomSeed, transformRearrangement, rearrangementDrumMode, rearrangementPosition,
-  REARRANGE_TRANSPOSE_DEFAULT,
-  REARRANGE_STYLE_NAMES, REARRANGE_STYLE_DEFAULT, REARRANGE_VARIATION_DEFAULT,
+  randomSeed, transformRearrangement, transformRearrangementSection,
+  toggleRearrangeSectionWalk, rerollSectionWalk, replaceRearrangementSlices,
+  regenerateRearrangementSection,
+  REARRANGE_STUTTER_SHAPES, REARRANGE_DRUM_MODES, REARRANGE_GENERATED_DRUMS,
+  rearrangementDrumMode, rearrangementPosition,
+  REARRANGE_TRANSPOSE_DEFAULT, REARRANGE_TRANSPOSES,
+  REARRANGE_STYLE_CHOICES, REARRANGE_STYLE_DEFAULT,
+  REARRANGE_FILL_NAMES, REARRANGE_FILL_DEFAULT,
+  REARRANGE_CREATIVE_DEFAULTS, moodWalkKey, driveDrumKit, REARRANGE_KIND,
   harmonyNumeral,
 } from './lib/rearrange.js';
 // What the desk means by "changed": a mix reduced to what src/data/mix.js can hold.
@@ -297,6 +304,9 @@ const ARRANGE_KEY = 'mash-mixer-arrangement';
 let savedArr = JSON.parse(JSON.stringify(ARRANGEMENTS));
 let arrDraft = {};
 try { arrDraft = JSON.parse(localStorage.getItem(ARRANGE_KEY) || '{}'); } catch { arrDraft = {}; }
+const M8TRX_KEY = 'mash-mixer-m8trx';
+let savedM8trx = {};
+try { savedM8trx = JSON.parse(localStorage.getItem(M8TRX_KEY) || '{}') || {}; } catch { savedM8trx = {}; }
 
 // Rendered PCM lives in memory while the desk is open. It reaches disk only when the
 // user chooses Export Freezes… and a location; one song-sized bundle contains every
@@ -336,11 +346,24 @@ let track = null;
 let playing = false;
 let abHeld = false;
 
-// Rearrange is a session-only transport recipe. It is intentionally kept beside
-// playback state rather than in draft/arrangement storage: Save song must never make
-// a temporary audition part of the composition.
+// The active M8TRX recipe is a Mixer transport draft. Saving it is an explicit separate
+// action (`Save M8TRX version`) and writes only the parked recipe, never the song's game
+// arrangement or an alternate.
 let rearrangeRecipe = null;
 let rearrangePanelOpen = false;
+// The drums choice is the DESK's, not the recipe's: 'auto' is resolved to a real kit at
+// Generate from the Drive dial, so a saved recipe always names a kit and nothing
+// downstream has to know the setting exists.
+let rearrangeDrumsChoice = 'original';
+// SEED HOLD. Every Generate rolls a fresh seed, which is right for "give me another one"
+// and wrong for "give me that one, but darker" — a dial moved between two rolls tells you
+// nothing, because everything else moved too. Pinning the seed makes a tweak attributable:
+// the same song comes back, shaped by whatever the dials now say.
+let rearrangeSeedHold = false;
+// The generator settings the recipe on the timeline was built from, so the panel can tell
+// "you have changed something since" from "you have not" — which is the whole difference
+// between Reshape doing something and doing nothing. Null until a recipe is generated.
+let rearrangeBuiltFrom = null;
 // True while the desk's draft is ahead of what is being heard: an edit made during
 // playback is installed by the engine at the next output bar line, and the panel says
 // so until it lands. Cleared by the engine's own announcement rather than a timer,
@@ -356,13 +379,28 @@ let rearrangeFollowHeldUntil = 0;
 const holdRearrangeFollow = () => { rearrangeFollowHeldUntil = performance.now() + 4000; };
 // Section thumbs are a refinement aid, not song data. They survive regeneration in
 // this desk session and feed the selected section operations back into the next recipe.
-const rearrangeKeptSections = new Set();
-const rearrangeDislikedSections = new Set();
+const rearrangeLockedSections = new Set();
+const rearrangeUniqueLetters = new Set();
 const rearrangeSelectedOperations = new Set();
 // Piano-roll favourites are session-only source ranges. Rearrange cuts the whole band
 // together, so the time range is the identity (the lane is retained only for a useful
 // label in the toast and future per-lane affordances).
 const rearrangeFavourites = [];
+const rearrangeClips = [];
+// One part on the clipboard, for copying a part's slices onto another part. Session only,
+// like everything else on this panel, and cleared with the recipe.
+let rearrangeCopiedSection = null;
+// M8TRX's OWN history. The desk's Undo is for the song — the mix, the arrangement, the
+// notes — and M8TRX never touches any of those, so an edit here has no business appearing
+// in that stack and a song edit has no business being undone from this panel.
+const rearrangeUndoStack = [];
+// Does a finished recipe start again? Off by default: M8TRX is for auditioning an
+// arrangement, and an arrangement that never ends never shows you its ending.
+let rearrangeLoopOn = false;
+// Where a queued jump is heading, until the scheduler takes it at the next bar line.
+let rearrangeSeekStep = null;
+let rearrangeSeekPart = null;
+const REARRANGE_UNDO_DEPTH = 40;
 
 // One reload-safe description of the desk as a workspace. Song and mix edits keep
 // their existing stores; this record only joins the transient pieces that make up
@@ -620,7 +658,69 @@ function pushUndo(tag) {
     hadArr: trackId in arrDraft,
   });
   if (undoStack.length > 200) undoStack.shift();
-  $('undo').disabled = false;
+  syncUndoButton();
+}
+
+/**
+ * ONE UNDO BUTTON, TWO HISTORIES, NEVER MIXED.
+ *
+ * While a recipe is live the desk's Undo governs M8TRX's stack and says so — the same
+ * borrowing the loop button already does when it becomes Recipe Once / Recipe Loop. Two
+ * Undo buttons a few inches apart was the alternative, and the question "which one am I
+ * about to press" is exactly the scope confusion the rest of this panel was rebuilt to
+ * kill: in M8TRX the answer is now "the only one there is, and it says M8TRX on it".
+ *
+ * The stacks stay strictly separate. A desk edit made while a recipe is up goes on the
+ * desk's stack and waits there; returning to the song hands the button back with that
+ * history intact. An M8TRX edit can never be undone into a fader move, or the other way
+ * round, which is the property that made two buttons look necessary in the first place.
+ */
+function syncUndoButton() {
+  const button = $('undo');
+  if (!button) return;
+  const m8 = rearrangeActive();
+  button.disabled = m8 ? !rearrangeUndoStack.length : undoStack.length === 0;
+  button.textContent = m8 ? 'Undo M8TRX' : 'Undo';
+  button.dataset.tip = m8 ? 'Undo M8TRX' : 'Undo';
+  button.dataset.tipsays = m8
+    ? 'Back through M8TRX edits only — the recipe, never the song. The desk’s own mix and arrangement history is kept separately while a recipe is up, and comes back the moment you return to the song.'
+    : 'Back through mix and arrangement edits alike — a painted step, a moved fader, a bar dropped out of the song.';
+}
+
+/** ⌘Z and the button, routed to whichever history is in charge. */
+function undoGesture() {
+  if (rearrangeActive()) { undoRearrange(); return; }
+  undo();
+}
+
+/** Whatever is open in the top layer, or null. Guarded: `:popover-open` is a parse error
+ *  on a browser without popover support, where the answer is null anyway. */
+function openPopover() {
+  try { return document.querySelector('[popover]:popover-open'); } catch { return null; }
+}
+
+/**
+ * How tall the desk's header and status bar are, published so the M8TRX panel can sit
+ * exactly between them.
+ *
+ * Measured, never written down. Both were magic numbers first and both were wrong: the
+ * footer is one line of 11px text, which moves with the font stack, and the header WRAPS
+ * to a second row at some window widths. A panel pinned at a hardcoded 56px then covered
+ * the row holding Undo M8TRX and the ? — the two controls the desk lends M8TRX — so the
+ * panel was eating its own buttons.
+ */
+function measureDeskEdges() {
+  const root = document.documentElement.style;
+  const header = document.querySelector('header');
+  const footer = document.querySelector('footer');
+  // Distances from the EDGES of the viewport, not the elements' own heights: the footer does
+  // not sit flush to the bottom of the window, so its height was 14px short of the space it
+  // actually claims and the panel overlapped it by exactly that much.
+  if (header) root.setProperty('--headh', `${Math.ceil(header.getBoundingClientRect().bottom)}px`);
+  if (footer) {
+    const top = footer.getBoundingClientRect().top;
+    root.setProperty('--footh', `${Math.max(0, Math.ceil(innerHeight - top))}px`);
+  }
 }
 
 // Every step on this stack is one song wide, and there is deliberately no way to make
@@ -893,7 +993,7 @@ function undo() {
   else delete arrDraft[step.trackId];
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
-  $('undo').disabled = undoStack.length === 0;
+  syncUndoButton();
   const arrMoved = JSON.stringify(arrFor(step.trackId) || null) !== arrBefore;
   if (step.trackId === trackId && arrMoved) {
     // Bars moved: the sequencer needs the order it had, and the timeline and grid
@@ -1755,6 +1855,12 @@ function loadTrack(id) {
   if (rearrangeActive()) clearRearrangement({ announce: false });
   rearrangeSelectedOperations.clear();
   rearrangeFavourites.length = 0;
+  rearrangeClips.length = 0;
+  rearrangeLockedSections.clear();
+  // A held seed belongs to the arrangement it was pinned on. The next song's recipe is
+  // a different song, so the pin has nothing left to hold.
+  rearrangeSeedHold = false;
+  syncRearrangeSeedHold();
   // A deferred grid open belongs to the song whose button was clicked. If a song
   // switch wins the race, cancel that intent unless the grid is already visible.
   stepSeqWanted = stepSeq.isOpen();
@@ -3553,6 +3659,26 @@ function clearTrackArp(key) {
   buildArrangement();
 }
 
+/**
+ * The bounds the arpeggiator's range offers, spelled the way the desk spells every other
+ * pitch: the same eighty-eight keys as the on-screen keyboard, so a window can be put
+ * anywhere a note can be played. The two ends are offered from different slices of that
+ * span because the fold needs a whole octave to work in — the highest Lowest and the
+ * lowest Highest are a window exactly one octave tall, so no pick on either list is an
+ * impossible one.
+ */
+const NOTE_FX_RANGE_BOUNDS = Array.from(
+  { length: NOTE_FX_RANGE_MAX - NOTE_FX_RANGE_MIN + 1 },
+  (_, i) => [NOTE_FX_RANGE_MIN + i, deskNoteName(NOTE_FX_RANGE_MIN + i, { fancy: true })]);
+const NOTE_FX_RANGE_LO_OPTIONS = NOTE_FX_RANGE_BOUNDS
+  .filter(([midi]) => midi <= NOTE_FX_RANGE_MAX - 12);
+const NOTE_FX_RANGE_HI_OPTIONS = NOTE_FX_RANGE_BOUNDS
+  .filter(([midi]) => midi >= NOTE_FX_RANGE_MIN + 12);
+// Desk C2–C4: two octaves around the register a chord lane already sits in, so switching
+// the range on is a decision about where the arpeggio lives, not an instant transposition.
+const NOTE_FX_RANGE_DEFAULT_LO = 48;
+const NOTE_FX_RANGE_DEFAULT_HI = 72;
+
 function openNoteFxEditor(x, y, key, scope = null) {
   if (regionPanelBusy()) return;
   closeMenu();
@@ -3626,6 +3752,27 @@ function openNoteFxEditor(x, y, key, scope = null) {
   const arpRate = field('Rate', [[4, '1/4'], [2, '1/8'], [1, '1/16'], [0.5, '1/32']],
     current.arp?.rate ?? 1);
   const octaves = number('Octaves', 1, 4, 1, current.arp?.octaves ?? 1, 'octaves');
+  const rangeTip = {
+    name: 'Arpeggiator range',
+    says: 'Folds every arpeggiated note by whole octaves until it lands between these two, so the pattern plays in the same register whatever octave the chord was written in. Notes already inside keep their octave. The window is at least an octave tall — moving one end pushes the other — and an octave stack taller than the window folds back into it rather than sounding above it.',
+  };
+  const rangeOn = check('Keep notes inside a range', current.arp?.rangeLimit);
+  const rangeLo = field('Lowest', NOTE_FX_RANGE_LO_OPTIONS,
+    current.arp?.rangeLo ?? NOTE_FX_RANGE_DEFAULT_LO, rangeTip);
+  const rangeHi = field('Highest', NOTE_FX_RANGE_HI_OPTIONS,
+    current.arp?.rangeHi ?? NOTE_FX_RANGE_DEFAULT_HI, rangeTip);
+  // The fold needs a whole octave to work in — in anything shorter some pitch class has
+  // nowhere to land. Rather than take a narrower window and quietly play a wider one,
+  // the two ends push each other apart on screen, so the panel reads as it sounds.
+  const keepAnOctave = (moved) => {
+    const lo = Number(rangeLo.value);
+    const hi = Number(rangeHi.value);
+    if (hi - lo >= 12) return;
+    if (moved === rangeLo) rangeHi.value = lo + 12;
+    else rangeLo.value = hi - 12;
+  };
+  rangeLo.addEventListener('input', () => keepAnOctave(rangeLo));
+  rangeHi.addEventListener('input', () => keepAnOctave(rangeHi));
   const repeat = check('Repeat pattern', current.arp?.repeat !== false);
   const gate = number('Gate', 1, 150, 1, current.arp?.gate ?? 80, 'percent of rate');
   const retrigger = field('Retrigger', [['chord', 'Each chord'], ['bar', 'Each bar'],
@@ -3639,6 +3786,7 @@ function openNoteFxEditor(x, y, key, scope = null) {
     if (mode) mode.value = 'on';
   };
   for (const control of [strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves,
+    rangeOn, rangeLo, rangeHi,
     repeat, gate, retrigger, latch]) control.addEventListener('input', armBarOverride);
   panel.append(form);
 
@@ -3654,6 +3802,11 @@ function openNoteFxEditor(x, y, key, scope = null) {
     arp: { enabled: arpOn.checked, direction: arpDir.value,
       rate: clamp(Number(arpRate.value) || 1, 0.5, 4),
       octaves: clamp(Math.round(Number(octaves.value) || 1), 1, 4),
+      rangeLimit: rangeOn.checked,
+      rangeLo: clamp(Math.round(Number(rangeLo.value) || NOTE_FX_RANGE_DEFAULT_LO),
+        NOTE_FX_RANGE_MIN, NOTE_FX_RANGE_MAX - 12),
+      rangeHi: clamp(Math.round(Number(rangeHi.value) || NOTE_FX_RANGE_DEFAULT_HI),
+        NOTE_FX_RANGE_MIN + 12, NOTE_FX_RANGE_MAX),
       repeat: repeat.checked,
       gate: clamp(Number(gate.value) || 80, 1, 150), retrigger: retrigger.value,
       latch: latch.checked },
@@ -6695,6 +6848,8 @@ function rearrangeStepLabel(step) {
   return `bar ${Math.floor(n / 16) + 1}, beat ${Math.floor((n % 16) / 4) + 1}, 16th ${(n % 4) + 1}`;
 }
 
+// Compact bar:beat.sixteenth notation keeps the visible rows musical without
+// throwing away the expanded wording used by hover text and toasts.
 function rearrangeOutputLabel(step) {
   const n = Math.max(0, Math.floor(Number(step) || 0));
   return `${Math.floor(n / 16) + 1}:${String(Math.floor((n % 16) / 4) + 1)}.${(n % 4) + 1}`;
@@ -6715,16 +6870,31 @@ function rearrangeTransposeLabel(value) {
 // mentions it. The three are genuinely different treatments and the labels have to say
 // which is which — "original" and "song" both describe the song's own drums, so neither
 // word can be left to carry the distinction on its own.
-const REARRANGE_DRUM_ORDER = ['song', 'original', 'basic4'];
 const REARRANGE_DRUM_LABELS = {
   song: 'Song groove',
   original: 'Chopped drums',
   basic4: 'Steady 4/4',
+  halftime: 'Half-time',
+  break: 'Breakbeat',
+  boombap: 'Boom bap',
+  garage: 'Two-step',
+  disco: 'Disco',
+  house: 'House',
+  deephouse: 'Deep house',
+  techno: 'Techno',
 };
 const REARRANGE_DRUM_TIPS = {
   song: 'The song’s own drum patterns, played straight underneath the rearranged parts',
   original: 'The drums are chopped with everything else, following each slice’s source',
   basic4: 'A steady four-on-the-floor built from the song’s existing kit sounds',
+  halftime: 'The backbeat at bar centre: half the speed at the same tempo',
+  break: 'An amen-shaped break — kick off the second beat, busy hats',
+  boombap: 'Kick on one and the and-of-three, snare hard on two and four',
+  garage: 'Two-step: the second backbeat displaced and the kick skipping',
+  disco: 'Four on the floor with a live kit: snare and clap together, sixteenth hats, open hat on every off-beat',
+  house: 'Four on the floor, the clap carrying the backbeat alone over eighth hats',
+  deephouse: 'Sparser house: the clap answers only the fourth beat, hats stay off the beat',
+  techno: 'Kick-dominant and machine-like: no backbeat on two, driving off-beat sixteenths',
 };
 
 function rearrangeDrumLabel(mode) {
@@ -6732,15 +6902,40 @@ function rearrangeDrumLabel(mode) {
 }
 
 function syncRearrangeDrumControl() {
-  const button = $('redrums');
-  if (!button) return;
+  const select = $('redrums');
+  if (!select) return;
   const mode = rearrangementDrumMode(rearrangeRecipe);
-  button.disabled = !rearrangeRecipe;
-  // A three-way cycle, so the label states the mode rather than a pressed/unpressed
-  // state that could only ever describe two of them.
-  button.textContent = `Drums: ${rearrangeDrumLabel(mode)}`;
-  button.classList.toggle('on', !!rearrangeRecipe && mode !== 'original');
-  button.title = `${REARRANGE_DRUM_TIPS[mode] || REARRANGE_DRUM_TIPS.original} — click for ${rearrangeDrumLabel(REARRANGE_DRUM_ORDER[(REARRANGE_DRUM_ORDER.indexOf(mode) + 1) % REARRANGE_DRUM_ORDER.length]).toLowerCase()}`;
+  // A cycling button could name the mode OR offer the alternatives, never both, and with
+  // seven of them the cycle had become a way of hiding six behind one.
+  if (!select.options.length) {
+    const auto = document.createElement('option');
+    auto.value = 'auto';
+    auto.textContent = 'Drums: Auto · Drive';
+    auto.title = 'Let the Drive dial pick the kit at the next Go: the song\'s own groove at the bottom, four-to-the-floor at the top';
+    select.append(auto);
+    for (const name of REARRANGE_DRUM_MODES) {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = `Drums: ${rearrangeDrumLabel(name)}`;
+      option.title = REARRANGE_DRUM_TIPS[name] || '';
+      select.append(option);
+    }
+  }
+  select.disabled = !rearrangeRecipe && rearrangeDrumsChoice !== 'auto';
+  // Auto is a GENERATION setting, so it stays selected between Generates and names what
+  // it resolved to; every other choice is applied to the recipe now and reads off it.
+  if (rearrangeDrumsChoice === 'auto') {
+    select.value = 'auto';
+    const kit = driveDrumKit(rearrangeDrive());
+    select.options[0].textContent = rearrangeRecipe
+      ? `Drums: Auto → ${rearrangeDrumLabel(mode)}`
+      : `Drums: Auto → ${rearrangeDrumLabel(kit)}`;
+    select.title = `Auto follows Drive — the next Go builds ${rearrangeDrumLabel(kit)}`;
+    return;
+  }
+  select.options[0].textContent = 'Drums: Auto · Drive';
+  select.value = mode;
+  select.title = REARRANGE_DRUM_TIPS[mode] || REARRANGE_DRUM_TIPS.original;
 }
 
 function syncRearrangeButton() {
@@ -6748,81 +6943,210 @@ function syncRearrangeButton() {
   if (!button) return;
   button.classList.toggle('on', rearrangeActive());
   button.setAttribute('aria-pressed', rearrangeActive() ? 'true' : 'false');
-  button.textContent = rearrangeActive() ? 'Rearrange · ON' : 'Rearrange';
+  button.textContent = rearrangeActive() ? 'M8TRX · ON' : 'M8TRX';
   button.title = rearrangeActive()
-    ? 'Rearrange is active — open its operation list or return to the normal song'
-    : 'Create a temporary musical collage from this song';
+    ? 'M8TRX is active — open its timeline or return to the normal song'
+    : 'Create a musical M8TRX arrangement from this song';
+  syncBounceScope();
 }
 
-// Style is a hard gate on what the generator may emit, so the control is a three-way
+/**
+ * BOUNCE SAYS WHAT IT WILL BOUNCE, while a recipe is live.
+ *
+ * A bounce is "what I am hearing, written down" — and with M8TRX armed that is exactly
+ * what it is not: the render walks the SONG's own bank, mix and arrangement, and the word
+ * "rearrange" does not appear anywhere in that path. That is the product boundary working
+ * as designed (M8TRX never reaches the WAV), but it made Bounce the one control on the desk
+ * that quietly means something else in M8TRX mode. Everything else the desk lends M8TRX
+ * relabels itself to say so — Undo becomes Undo M8TRX, the loop button becomes Recipe Once,
+ * the ? becomes M8TRX's help — so this does too, rather than handing back a file of the
+ * plain song and leaving you to diagnose it by ear.
+ *
+ * Left alone mid-render: the button's text is the progress readout while a bounce runs, and
+ * `renderwav.onclick` restores whatever label it captured at the click.
+ */
+function syncBounceScope() {
+  const button = $('renderwav');
+  if (!button || rendering) return;
+  const m8 = rearrangeActive();
+  button.textContent = m8 ? 'Bounce song' : 'Bounce';
+  button.title = m8
+    ? 'Bounce THE SONG to a WAV — the mix and arrangement as they stand. M8TRX is a performance layer and never reaches the file, so the recipe on the timeline is not in this bounce. Asks how many passes first.'
+    : 'Bounce this song to a WAV, offline through the real engine, with the mix as it stands — asks how many passes first';
+  // Audition renders through the same path, so it carries the same caveat. Its label already
+  // names what it does rather than what it renders, so only the tooltip needs to change.
+  const audition = $('auditionwav');
+  if (audition) {
+    audition.title = m8
+      ? 'Bounce THE SONG and open it in tools/audition — a real AU plugin over it, its own GUI, previewed before you keep it. The M8TRX recipe is not in this bounce.'
+      : 'Bounce this song and open it in tools/audition — a real AU plugin over it, its own GUI, previewed before you keep it';
+  }
+}
+
+// Style is a hard gate on what the generator may emit, so the control is a compact
 // choice rather than a point on a scale. Held here rather than read back off the DOM
 // so the panel and the generator cannot disagree about which one is selected.
 let rearrangeStyleChoice = REARRANGE_STYLE_DEFAULT;
+// Keep the library's legacy default for callers that import it, while the desk opens
+// with the more useful per-letter Mix choice.
+rearrangeStyleChoice = 'mix';
 
 function rearrangeStyle() {
-  return REARRANGE_STYLE_NAMES.includes(rearrangeStyleChoice)
-    ? rearrangeStyleChoice : REARRANGE_STYLE_DEFAULT;
+  return REARRANGE_STYLE_CHOICES.includes(rearrangeStyleChoice)
+    ? rearrangeStyleChoice : 'mix';
 }
 
 const REARRANGE_STYLE_TIPS = {
+  mix: 'Mix: each repeated letter keeps a stable phrase, groove or chop identity',
   phrase: 'Phrase: whole one to four-bar phrases, always starting on a bar line',
   groove: 'Groove: bar and half-bar cells on eight-step boundaries',
   chop: 'Chop: beat and half-bar cells, still landing on the beat',
 };
 
 function setRearrangeStyle(style) {
-  if (!REARRANGE_STYLE_NAMES.includes(style)) return;
+  if (!REARRANGE_STYLE_CHOICES.includes(style)) return;
   rearrangeStyleChoice = style;
   syncRearrangeStyle();
 }
 
+/**
+ * Style, left to right, as a scale rather than as four buttons.
+ *
+ * The order is the size of the cuts — whole phrases, then grooves, then beats — and then
+ * Mix, which is not a smaller cut but a decision to let each repeated letter keep its own
+ * identity. That belongs at the free end, and it is where the panel opens.
+ *
+ * Kept as its own array rather than reusing REARRANGE_STYLE_CHOICES: that one leads with
+ * 'mix' because it is the library's option list, and an option list is not a scale.
+ */
+const REARRANGE_STYLE_SCALE = Object.freeze(['phrase', 'groove', 'chop', 'mix']);
+const REARRANGE_STYLE_WORDS = { phrase: 'Phrase', groove: 'Groove', chop: 'Chop', mix: 'Mix' };
+
 function syncRearrangeStyle() {
-  const group = $('restyle');
-  if (!group) return;
+  const dial = $('restyle');
+  const output = $('restylevalue');
+  if (!dial || !output) return;
   const active = rearrangeStyle();
-  for (const button of group.querySelectorAll('button[data-style]')) {
-    const on = button.dataset.style === active;
-    button.setAttribute('aria-checked', on ? 'true' : 'false');
-    button.classList.toggle('on', on);
-    button.tabIndex = on ? 0 : -1;
-  }
-  group.title = REARRANGE_STYLE_TIPS[active] || '';
+  const at = Math.max(0, REARRANGE_STYLE_SCALE.indexOf(active));
+  dial.value = String(at);
+  output.value = REARRANGE_STYLE_WORDS[active];
+  output.textContent = REARRANGE_STYLE_WORDS[active];
+  dial.title = REARRANGE_STYLE_TIPS[active] || '';
+  syncRearrangeSeedHold();
 }
 
-function rearrangeVariation() {
-  const value = Number($('revariation')?.value);
+/**
+ * ---- THE FOUR DIALS --------------------------------------------------------------
+ *
+ * One table, because these controls are the same control four times: a 0–100 slider
+ * whose reading is a WORD. Five bands each, so the word changes often enough to feel
+ * like it is tracking the hand but not so often that it flickers while dragging.
+ *
+ * The bands are stated in desk units (0–100) and the reader divides by a hundred; the
+ * library's defaults and these markup values are the same numbers on purpose, so a
+ * fresh panel and a bare `generateRearrangement` call agree without either quoting the
+ * other.
+ */
+const REARRANGE_DIALS = Object.freeze({
+  mood: {
+    id: 'remood', label: 'Mood',
+    words: ['Noir', 'Brooding', 'Bittersweet', 'Golden', 'Euphoric'],
+    tips: [
+      'Noir: re-read in the relative minor, walking the darkest loop it has',
+      'Brooding: minor, and the chords move through more of the loop',
+      'Bittersweet: the key the song is actually in, walked as pop does',
+      'Golden: major, reaching for the brighter changes',
+      'Euphoric: the relative major, lifting through the festival cadence',
+    ],
+  },
+  hypnosis: {
+    id: 'rehypnosis', label: 'Hypnosis',
+    words: ['Scatter', 'Restless', 'Woven', 'Circling', 'Trance'],
+    tips: [
+      'Scatter: through-composed — it keeps moving and rarely looks back',
+      'Restless: new material more often than returning material',
+      'Woven: motifs come back with fresh material between them',
+      'Circling: a few pieces of the song, going round',
+      'Trance: locked — each part is one figure and its answer, repeating',
+    ],
+  },
+  chaos: {
+    id: 'rechaos', label: 'Chaos',
+    words: ['Tame', 'Playful', 'Frisky', 'Unruly', 'Feral'],
+    tips: [
+      'Tame: the best-scoring slice every time, and no lifts',
+      'Playful: mostly safe, occasionally not',
+      'Frisky: reaches past the obvious answer, and sometimes takes a lift',
+      'Unruly: well down the ranking, with lifts and wilder fills',
+      'Feral: whatever it finds down there — it will surprise you both ways',
+    ],
+  },
+  drive: {
+    id: 'redrive', label: 'Drive',
+    words: ['Ambient', 'Cruise', 'Rolling', 'Charged', 'Peak-time'],
+    tips: [
+      'Ambient: sparse, low-energy material and almost no fills',
+      'Cruise: relaxed, with the chords holding home',
+      'Rolling: the song\'s own energy, fills about one part in three',
+      'Charged: denser material, more fills, chords moving every two bars',
+      'Peak-time: highest-energy material, fills everywhere, a chord a bar',
+    ],
+  },
+});
+
+/** The band a 0–100 reading falls in: five words across the dial. */
+const rearrangeDialBand = (value) => Math.min(4, Math.floor(Math.max(0, value) / 20));
+
+function rearrangeDial(name) {
+  const spec = REARRANGE_DIALS[name];
+  const value = Number($(spec.id)?.value);
   return Number.isFinite(value)
     ? Math.max(0, Math.min(100, value)) / 100
-    : REARRANGE_VARIATION_DEFAULT;
+    : REARRANGE_CREATIVE_DEFAULTS[name];
 }
 
-function syncRearrangeVariation() {
-  const control = $('revariation');
-  const output = $('revariationvalue');
+const rearrangeMood = () => rearrangeDial('mood');
+const rearrangeHypnosis = () => rearrangeDial('hypnosis');
+const rearrangeChaos = () => rearrangeDial('chaos');
+const rearrangeDrive = () => rearrangeDial('drive');
+
+function syncRearrangeDial(name) {
+  const spec = REARRANGE_DIALS[name];
+  const control = $(spec.id);
+  const output = $(`${spec.id}value`);
   if (!control || !output) return;
   const value = Math.max(0, Math.min(100, Number(control.value) || 0));
-  const label = value < 30 ? 'Familiar' : value > 70 ? 'Different' : 'Balanced';
-  output.value = label;
-  output.textContent = label;
-  control.title = value < 30
-    ? 'Familiar: motifs come back, and the safest-sounding slice is the one taken'
-    : value > 70
-      ? 'Different: fresh material each time, reaching further for it'
-      : 'Balanced: recurring motifs with new material between them';
+  const band = rearrangeDialBand(value);
+  output.value = spec.words[band];
+  output.textContent = spec.words[band];
+  control.title = spec.tips[band];
 }
 
-function rearrangeAllowGlitches() {
-  return !!$('reglitch')?.checked;
+const syncRearrangeDials = () => {
+  for (const name of Object.keys(REARRANGE_DIALS)) syncRearrangeDial(name);
+};
+
+function rearrangeOutputSteps() {
+  const source = rearrangeSourceSteps();
+  const factor = Number($('relength')?.value);
+  if (!Number.isFinite(factor) || factor <= 0) return source;
+  return Math.max(16, Math.round((source * factor) / 4) * 4);
 }
 
+/**
+ * Whether the recipe walks chord loops at all. Mood owns WHICH loop and Drive owns how
+ * fast it moves, so there is no palette picker any more; the one remaining question is
+ * whether the song has a key to walk in, and that is the Key control's to answer.
+ * Key = None is the chromatic escape — it turns the loops off and hands the song back
+ * to the Transpose dial, which is otherwise dead on any song with a detectable key.
+ */
 function rearrangeChordLoop() {
-  const value = $('rechords')?.value;
-  return ['auto', 'edm', 'house', 'anthem', 'dark', 'off'].includes(value) ? value : 'auto';
+  return $('rekey')?.value === 'none' ? 'off' : 'auto';
 }
 
-function rearrangeChordWalk() {
-  const value = $('rewalk')?.value;
-  return ['full', 'half', 'turn'].includes(value) ? value : 'half';
+function rearrangeFill() {
+  const value = $('refill')?.value;
+  return value === 'none' || REARRANGE_FILL_NAMES.includes(value) ? value : REARRANGE_FILL_DEFAULT;
 }
 
 /** The chord a slice plays as, for the playback status: ' · chord VI'. */
@@ -6853,30 +7177,52 @@ function syncRearrangeKeyReadout() {
   const out = $('rechordskey');
   if (!out) return;
   syncRearrangeKeyOptions();
+  if (rearrangeChordLoop() === 'off') {
+    out.value = 'chord loops off';
+    out.textContent = 'chord loops off';
+    out.title = 'No key, so no chord walk: every part keeps its written harmony and the chromatic Transpose dial is live';
+    syncRearrangeChordLoopControl();
+    return;
+  }
   const manual = rearrangeKeyChoice();
   const profile = rearrangeSourceProfile({ build: !playing });
   const detected = profile ? detectKey(profile) : null;
   const clear = detected && detected.confidence >= 0.02;
-  const label = manual ? rearrangeKeyName(manual)
-    : detected ? `${rearrangeKeyName(detected)}${clear ? '' : ' ?'}` : 'no analysis yet';
+  // MOOD IS SHOWN, NOT HIDDEN. The dark and euphoric ends re-read a detected key in its
+  // relative minor/major, so the readout has to name the key Generate will ACTUALLY walk
+  // in — otherwise the panel says A minor and the song comes out in C. A key named by
+  // hand is never re-read, and reads the same here as it will play.
+  const walked = manual || (detected
+    ? moodWalkKey({ tonic: detected.tonic, minor: detected.minor }, rearrangeMood()) : null);
+  const moved = !manual && detected && walked
+    && (walked.tonic !== detected.tonic || walked.minor !== detected.minor);
+  const label = walked
+    ? `${rearrangeKeyName(walked)}${manual || clear ? '' : ' ?'}${moved ? ' · Mood' : ''}`
+    : 'no analysis yet';
   out.value = label;
   out.textContent = label;
   out.title = manual
     ? `Chord loops walk in ${label} because you said so; set the picker back to Detected to trust the analysis`
-    : detected
-      ? clear
-        ? `The song reads as ${rearrangeKeyName(detected)}; chord loops walk its scale degrees`
-        : `Best guess — the song does not settle clearly. Usually the relative pair, which walks the same notes; pick a key yourself to overrule it`
-      : playing
-        ? 'Pause to analyse the song — the walk is skipped while music is playing'
-        : 'The song has no pitched notes to read a key from';
+    : moved
+      ? `The song reads as ${rearrangeKeyName(detected)}; Mood re-reads it in its relative ${walked.minor ? 'minor' : 'major'} — the same notes with a different home. Centre the Mood dial to keep the key as analysed`
+      : detected
+        ? clear
+          ? `The song reads as ${rearrangeKeyName(detected)}; chord loops walk its scale degrees`
+          : `Best guess — the song does not settle clearly. Usually the relative pair, which walks the same notes; pick a key yourself to overrule it`
+        : playing
+          ? 'Pause to analyse the song — the walk is skipped while music is playing'
+          : 'The song has no pitched notes to read a key from';
   syncRearrangeChordLoopControl();
 }
 
-/** Fill the key picker once: Detected, then all twenty-four keys. */
+/** Fill the key picker once: Detected, None, then all twenty-four keys. */
 function syncRearrangeKeyOptions() {
   const select = $('rekey');
   if (!select || select.options.length > 1) return;
+  const none = document.createElement('option');
+  none.value = 'none';
+  none.textContent = 'None · chromatic';
+  select.append(none);
   for (const minor of [true, false]) {
     for (let tonic = 0; tonic < 12; tonic++) {
       const option = document.createElement('option');
@@ -6899,7 +7245,7 @@ function rearrangeKeyChoice() {
 /**
  * One pitch system per recipe: while a chord loop is on, the chromatic Transpose dial
  * does nothing, and a control that does nothing must say so rather than sit there
- * looking adjustable. Setting the loop to Off hands the dial back.
+ * looking adjustable. Setting the Key picker to None hands the dial back.
  */
 function syncRearrangeChordLoopControl() {
   const dial = $('retranspose');
@@ -6907,7 +7253,7 @@ function syncRearrangeChordLoopControl() {
   const walking = rearrangeChordLoop() !== 'off';
   dial.disabled = walking;
   dial.title = walking
-    ? 'A chord loop owns the pitch — set Chord loop to Off to use the chromatic lift'
+    ? 'Mood owns the pitch while the song has a key — set Key to None · chromatic to use the shared lift instead'
     : 'Dial the amount of shared chromatic lift — every note the same distance';
 }
 
@@ -6916,6 +7262,30 @@ function rearrangeTransposeAmount() {
   return Number.isFinite(value)
     ? Math.max(0, Math.min(100, value)) / 100
     : REARRANGE_TRANSPOSE_DEFAULT;
+}
+
+/**
+ * The Advanced button states what is behind it.
+ *
+ * Key, Fill new sections and Transpose are reached for least and were half the width of the
+ * Generate band, so they sit in a popup. A popup, though, is a place a setting can hide: the
+ * next Go would read a key you named an hour ago with nothing on screen to say so. So the
+ * button counts whatever is off its default — `Advanced · 2 set` — and lights while it is
+ * non-empty. The desk's rule against hidden preset parameters bites hardest on the controls
+ * that have been put behind a door.
+ */
+function syncRearrangeAdvanced() {
+  const button = $('readvancedbtn');
+  if (!button) return;
+  const set = [
+    ($('rekey')?.value ?? 'auto') !== 'auto',
+    ($('refill')?.value ?? REARRANGE_FILL_DEFAULT) !== REARRANGE_FILL_DEFAULT,
+    Number($('retranspose')?.value || 0) > 0,
+  ].filter(Boolean).length;
+  button.textContent = set ? `Advanced · ${set} set ⌄` : 'Advanced ⌄';
+  button.classList.toggle('set', set > 0);
+  // These four are generator inputs too, so changing one gives Reshape something to do.
+  syncRearrangeSeedHold();
 }
 
 function syncRearrangeTranspose() {
@@ -6943,19 +7313,188 @@ function syncRearrangeTranspose() {
 
 function syncRearrangeLoopControls() {
   const disabled = rearrangeActive();
-  for (const id of ['looptoggle', 'formloop', 'songloopstart', 'songloopfrom', 'songloopto', 'songloopclear']) {
+  // The song's own loop controls still stand down while a recipe owns the transport —
+  // but the recipe's OWN loop is a real switch, not a label. It was drawn permanently on
+  // and permanently disabled, which left no way to hear a rearrangement end.
+  for (const id of ['formloop', 'songloopstart', 'songloopfrom', 'songloopto', 'songloopclear']) {
     const el = $(id);
     if (el) el.disabled = disabled;
   }
+  if ($('looptoggle')) $('looptoggle').disabled = false;
   if (disabled) {
-    $('looptoggle')?.setAttribute('title', 'The Rearrange recipe owns the temporary output loop');
+    $('looptoggle')?.setAttribute('title', rearrangeLoopOn
+      ? 'The recipe starts again when it ends — click to let it stop instead'
+      : 'The recipe stops when it ends — click to loop it');
     $('formloop')?.setAttribute('title', 'The Rearrange recipe owns the temporary output loop');
   }
   syncLoopButton();
   syncSongLoopUi();
 }
 
-function renderRearrangeForm() {
+function clipTemplateForSection(sectionIndex) {
+  if (!rearrangeRecipe?.form?.[sectionIndex]) return null;
+  const operations = rearrangeSectionOperations(sectionIndex);
+  if (!operations.length) return null;
+  const section = rearrangeRecipe.form[sectionIndex];
+  return {
+    id: `${trackId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    label: `${section.letter || ''} · ${section.name}`,
+    letter: section.letter || '',
+    steps: section.end - section.start,
+    operations,
+    // A clip is an explicit user choice: preserve its rows exactly when the target
+    // letter happens to have the same size, and allow the generator to repeat/trim
+    // it when the reassigned letter has a different slot length.
+    resizable: true,
+    verbatim: true,
+    ...(rearrangeRecipe.key ? { key: { ...rearrangeRecipe.key } } : {}),
+  };
+}
+
+function clipTemplateForSelectedRearrangeSlices() {
+  if (!rearrangeRecipe || !rearrangeSelectedOperations.size) return null;
+  const indices = [...rearrangeSelectedOperations]
+    .filter((index) => rearrangeRecipe.operations?.[index])
+    .sort((a, b) => a - b);
+  if (!indices.length) return null;
+  const operations = indices.map((index) => ({ ...rearrangeRecipe.operations[index] }));
+  const steps = operations.reduce((sum, operation) =>
+    sum + operation.length * operation.repeats, 0);
+  if (!steps) return null;
+  let output = 0;
+  const sections = new Set();
+  for (const [index, section] of (rearrangeRecipe.form || []).entries()) {
+    const start = output;
+    output = section.end;
+    let cursor = 0;
+    for (const [operationIndex, operation] of rearrangeRecipe.operations.entries()) {
+      const end = cursor + operation.length * operation.repeats;
+      if (indices.includes(operationIndex) && cursor >= start && end <= output) sections.add(index);
+      cursor = end;
+    }
+  }
+  const sourceSections = [...sections].map((index) => rearrangeRecipe.form[index]).filter(Boolean);
+  const sourceLabel = sourceSections.length === 1
+    ? `${sourceSections[0].letter || ''} · ${sourceSections[0].name}`.trim()
+    : 'Selected slices';
+  const durationLabel = steps % 16 === 0 ? `${steps / 16} bars` : `${steps} sixteenths`;
+  return {
+    id: `${trackId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    label: `${sourceLabel} · ${durationLabel}`,
+    letter: sourceSections[0]?.letter || '',
+    steps,
+    operations,
+    resizable: true,
+    verbatim: true,
+    ...(rearrangeRecipe.key ? { key: { ...rearrangeRecipe.key } } : {}),
+  };
+}
+
+/** Whether a letter already belongs to a clip on the shelf — at most one clip per letter. */
+function rearrangeClipLetterTaken(letter, excludeIndex = -1) {
+  return !!letter && rearrangeClips.some((clip, index) => index !== excludeIndex && clip.letter === letter);
+}
+
+function addRearrangeClip(clip) {
+  if (!clip) return;
+  // A freshly snapshotted clip inherits its source section's letter, and TWO sections can
+  // share one letter (two Choruses are both 'C'). Saving both to the shelf used to leave
+  // them silently sitting on the same letter with no warning — and at Generate time,
+  // `Object.fromEntries` on the shelf array keeps only the LAST one, so the first was not
+  // just unused, it looked used right up until the moment it quietly wasn't. The letter
+  // picker already refuses a REASSIGNMENT onto a taken letter; a clip cannot be allowed to
+  // arrive on one silently either, so a collision here strips the letter instead — the
+  // clip is saved, it simply is not yet assigned to anything.
+  const bumped = rearrangeClipLetterTaken(clip.letter);
+  if (bumped) clip.letter = '';
+  rearrangeClips.push(clip);
+  renderRearrangeClips();
+  renderRearrangeInspector();
+  toast(bumped
+    ? `Saved ${clip.label} to the M8TRX shelf — its letter was already taken, so choose one for it`
+    : `Saved ${clip.label} to the M8TRX shelf`);
+}
+
+function snapshotRearrangeClip(sectionIndex) {
+  addRearrangeClip(clipTemplateForSection(sectionIndex));
+}
+
+function snapshotSelectedRearrangeClip() {
+  const clip = clipTemplateForSelectedRearrangeSlices();
+  if (!clip) {
+    toast('Select one or more M8TRX slices first');
+    return;
+  }
+  addRearrangeClip(clip);
+}
+
+function rearrangeClipLetterChoices() {
+  const choices = [];
+  const seen = new Set();
+  for (const section of rearrangeRecipe?.form || []) {
+    const letter = typeof section.letter === 'string' ? section.letter : '';
+    if (!letter || seen.has(letter)) continue;
+    seen.add(letter);
+    choices.push({ letter, label: `${letter} · ${section.name}` });
+  }
+  for (const clip of rearrangeClips) {
+    const letter = typeof clip.letter === 'string' ? clip.letter : '';
+    if (!letter || seen.has(letter)) continue;
+    seen.add(letter);
+    choices.push({ letter, label: `${letter} · saved assignment` });
+  }
+  return choices;
+}
+
+function assignRearrangeClipLetter(index, letter) {
+  const clip = rearrangeClips[index];
+  if (!clip) return;
+  const next = typeof letter === 'string' && /^[A-Z]$/.test(letter) ? letter : '';
+  if (rearrangeClipLetterTaken(next, index)) {
+    toast(`${next} already has a clip assigned`);
+    renderRearrangeClips();
+    return;
+  }
+  clip.letter = next;
+  renderRearrangeClips();
+  toast(next ? `${clip.label} assigned to ${next}` : `${clip.label} left unassigned`);
+}
+
+function renderRearrangeClips() {
+  const shelf = $('reclipstrip');
+  if (!shelf) return;
+  shelf.textContent = '';
+  if (!rearrangeClips.length) { shelf.hidden = true; return; }
+  shelf.hidden = false;
+  const label = document.createElement('span'); label.className = 'reclipslabel'; label.textContent = 'Clip shelf';
+  shelf.append(label);
+  rearrangeClips.forEach((clip, index) => {
+    const row = document.createElement('span'); row.className = 'reclip';
+    const use = document.createElement('button'); use.type = 'button'; use.className = 'reclipuse'; use.textContent = clip.label;
+    use.title = clip.letter
+      ? `Use ${clip.label} for letter ${clip.letter} on the next Go`
+      : 'This clip is unassigned; choose a letter before you press Go';
+    use.onclick = () => toast(clip.letter
+      ? `${clip.label} ready for letter ${clip.letter}`
+      : 'Assign this clip to a letter before you press Go');
+    const assign = document.createElement('select'); assign.className = 'reclipletter';
+    assign.title = 'Choose which repeated letter uses this clip on the next Go';
+    assign.setAttribute('aria-label', `Letter assignment for ${clip.label}`);
+    const none = document.createElement('option'); none.value = ''; none.textContent = '—';
+    assign.append(none);
+    for (const choice of rearrangeClipLetterChoices()) {
+      const option = document.createElement('option'); option.value = choice.letter; option.textContent = choice.label;
+      assign.append(option);
+    }
+    assign.value = clip.letter || '';
+    assign.onchange = () => assignRearrangeClipLetter(index, assign.value);
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'reclipremove'; remove.textContent = '×'; remove.title = 'Remove this clip';
+    remove.onclick = () => { rearrangeClips.splice(index, 1); renderRearrangeClips(); renderRearrangeInspector(); };
+    row.append(use, assign, remove); shelf.append(row);
+  });
+}
+
+function renderRearrangeTimeline(geometry = rearrangeTimelineGeometry()) {
   const strip = $('rearrangeform');
   if (!strip) return;
   strip.textContent = '';
@@ -6965,12 +7504,33 @@ function renderRearrangeForm() {
     return;
   }
   strip.hidden = false;
+  // WHICH PART IS HELD, resolved once for the whole draw. Without this the card carried no
+  // mark at all and the only part that ever looked picked was whichever one was SOUNDING —
+  // usually the first, which made holding a part look like it worked on the intro and
+  // nowhere else.
+  const heldSection = rearrangeSelectedSectionIndex();
+  // ONE SCALE FOR THE WHOLE PANEL, AND A LINE IS AT MOST FOUR BARS. Every slice's width is
+  // its share of that scale, so a bar is a bar wherever it is drawn: a two-bar part fills
+  // half a line, and a part longer than four bars wraps onto as many lines as it needs
+  // rather than shrinking its slices to fit one. Where no part reaches four bars the
+  // longest one sets the scale instead, so a short song still uses the width it has.
+  const longest = Math.max(1, ...geometry.sections.map((entry) =>
+    entry.ops.reduce((sum, op) => sum + op.span, 0)));
+  const timescale = Math.min(REARRANGE_LINE_STEPS, longest);
   form.forEach((section, index) => {
     const startBar = Math.floor(section.start / 16) + 1;
     const endBar = Math.ceil(section.end / 16);
-    const slices = rearrangeSectionOperationIndices(index);
+    const placed = geometry.sections[index]?.ops || [];
+    const slices = placed.map((entry) => entry.index);
+    const cycle = rearrangeCycleLength(placed.map((entry) => entry.op));
+    const passes = cycle ? placed.length / cycle : 1;
     const allSelected = slices.length
       && slices.every((slice) => rearrangeSelectedOperations.has(slice));
+    // The row is the part: its controls at the left, its time across the rest.
+    const row = document.createElement('div');
+    row.className = 'rerow';
+    row.dataset.section = String(index);
+    row.dataset.role = section.role || '';
     // A div, not a button: this segment CONTAINS buttons now — the whole-part actions
     // that used to be crammed into the first row of the part down in the list, where
     // they made that one row a different shape from every row under it and made its
@@ -6978,224 +7538,493 @@ function renderRearrangeForm() {
     // and this rail is the section UI, so they live here.
     const seg = document.createElement('div');
     seg.className = 'reformseg';
+    seg.classList.toggle('chosen', index === heldSection);
     seg.dataset.section = String(index);
     seg.dataset.role = section.role || '';
-    if (rearrangeKeptSections.has(index)) seg.classList.add('kept');
-    if (rearrangeDislikedSections.has(index)) seg.classList.add('disliked');
-    // Clicking anywhere that is not one of the buttons plays from here, which is what
-    // the whole segment used to do and what a rail like this should still do.
+    seg.draggable = true;
+    seg.ondragstart = (event) => {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(index));
+      seg.classList.add('dragging');
+    };
+    seg.ondragend = () => seg.classList.remove('dragging');
+    seg.ondragover = (event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; };
+    seg.ondrop = (event) => {
+      event.preventDefault();
+      const from = Number(event.dataTransfer.getData('text/plain'));
+      if (Number.isInteger(from) && from !== index) reorderRearrangeSections(from, index);
+    };
+    if (rearrangeLockedSections.has(index)) seg.classList.add('locked');
+    if (allSelected) seg.classList.add('chosen');
+    // The card IS the part's checkbox. Clicking it anywhere that is not one of its own
+    // buttons takes the whole part into the selection, which is what a box in the corner
+    // did while also being a second thing to aim at for the same job. Playing from here
+    // stays on the name, where a title you can click already reads as "go to this".
     seg.onclick = (event) => {
       if (event.target.closest('button')) return;
-      playRearrangementAt(section.start);
+      toggleRearrangeSectionSlices(index);
     };
+    // Double-click plays from here AND keeps the part held: the two single clicks that
+    // precede it would have selected the part and then let go of it again.
+    seg.ondblclick = (event) => {
+      if (event.target.closest('button')) return;
+      playRearrangementAt(section.start, { part: index });
+      selectRearrangeSectionSlices(index);
+    };
+    seg.title = allSelected
+      ? `Deselect the ${slices.length} slices in ${section.name} · double-click to play from here`
+      : `Select all ${slices.length} slices in ${section.name} · double-click to play from here`;
 
     const top = document.createElement('div');
     top.className = 'reformtop';
-    const choose = document.createElement('button');
-    choose.type = 'button';
-    choose.className = 'reselect';
-    choose.textContent = allSelected ? '✓' : '□';
-    choose.title = allSelected
-      ? `Deselect all ${slices.length} slices in ${section.name}`
-      : `Select all ${slices.length} slices in ${section.name}`;
-    choose.setAttribute('aria-label', choose.title);
-    choose.setAttribute('aria-pressed', allSelected ? 'true' : 'false');
-    choose.onclick = () => toggleRearrangeSectionSlices(index);
     const chip = document.createElement('i');
     chip.className = 'rerolechip';
     const name = document.createElement('button');
     name.type = 'button';
     name.className = 'reformname';
-    name.textContent = section.name;
+    name.textContent = `${section.letter || ''} · ${section.name}`;
     name.title = `Play ${section.name}, output bars ${startBar}–${endBar}`;
     name.setAttribute('aria-label', name.title);
     name.onclick = () => playRearrangementAt(section.start);
-    top.append(choose, chip, name);
-
-    const range = document.createElement('div');
+    const range = document.createElement('span');
     range.className = 'reformbars';
-    range.textContent = `Bars ${startBar}–${endBar}`;
-    // The walk this part takes, bar by bar: 'i – VI – III – VII'. Read off the DRAFT
-    // recipe's operations rather than any palette name, so it shows what will actually
-    // sound — including a part that only partly walks, or does not walk at all.
-    const chords = rearrangeSectionChordLine(index);
+    range.textContent = `Bars ${startBar}–${endBar}${passes > 1 ? ` · ×${passes}` : ''}`;
+    if (passes > 1) range.title = `${section.name} plays the same ${cycle} slice${cycle === 1 ? '' : 's'} ${passes} times`;
+    top.append(chip, name);
+    // The walk this part takes, bar by bar, as roman numerals: 'i i | IV IV | V | VI'.
+    // Read off the DRAFT recipe's operations rather than any palette name, so it shows
+    // what will actually sound — including a part that only partly walks, or not at all.
+    const cycleSteps = passes > 1
+      ? Math.round((section.end - section.start) / passes) : 0;
+    const chords = rearrangeSectionChordLine(index, 'roman', cycleSteps);
     const walk = document.createElement('div');
     walk.className = 'reformchords';
     if (chords) {
-      walk.textContent = chords;
-      walk.title = `${section.name} walks ${chords} in ${rearrangeKeyName(rearrangeRecipe?.key)}`;
+      // Built as elements rather than set as text so the separator can be its own thing: a
+      // solid glyph, bigger than the numerals it sits between and tight against them. As
+      // plain text the arrow came out thin and floating in a gap on either side, which read
+      // as three loose numerals rather than one progression.
+      walk.textContent = '';
+      chords.split(' → ').forEach((step, at) => {
+        if (at) {
+          const arrow = document.createElement('i');
+          arrow.className = 'rewalkarrow';
+          arrow.textContent = '→';
+          walk.append(arrow);
+        }
+        walk.append(document.createTextNode(step));
+      });
+      walk.title = `${section.name} plays the chords ${chords.replace(/ → /g, ', then ')} in ${rearrangeKeyName(rearrangeRecipe?.key)}, one per bar`;
+      walk.setAttribute('aria-label', walk.title);
     }
+
+    top.append(walk, range);
 
     const acts = document.createElement('div');
     acts.className = 'reformacts';
-    const keep = document.createElement('button');
-    keep.type = 'button';
-    keep.className = 'rekeep';
-    keep.textContent = '👍';
-    keep.title = rearrangeKeptSections.has(index)
-      ? `Keep ${section.name} in the next recipe (selected)`
-      : `Keep ${section.name} in the next recipe`;
-    keep.setAttribute('aria-label', keep.title);
-    keep.setAttribute('aria-pressed', rearrangeKeptSections.has(index) ? 'true' : 'false');
-    keep.classList.toggle('on', rearrangeKeptSections.has(index));
-    keep.onclick = () => voteRearrangeSection(index, 'keep');
-    const down = document.createElement('button');
-    down.type = 'button';
-    down.className = 'redown';
-    down.textContent = '👎';
-    down.title = rearrangeDislikedSections.has(index)
-      ? `Ask for a different ${section.name} (selected)`
-      : `Ask for a different ${section.name} on the next recipe`;
-    down.setAttribute('aria-label', down.title);
-    down.setAttribute('aria-pressed', rearrangeDislikedSections.has(index) ? 'true' : 'false');
-    down.classList.toggle('on', rearrangeDislikedSections.has(index));
-    down.onclick = () => voteRearrangeSection(index, 'dislike');
-    acts.append(keep, down);
+    const lock = document.createElement('button');
+    lock.type = 'button'; lock.className = 'relock';
+    lock.textContent = rearrangeLockedSections.has(index) ? '🔒' : '🔓';
+    lock.classList.toggle('on', rearrangeLockedSections.has(index));
+    lock.title = rearrangeLockedSections.has(index)
+      ? `Unlock ${section.name}` : `Keep ${section.name} verbatim through the next Go`;
+    lock.setAttribute('aria-label', lock.title);
+    lock.setAttribute('aria-pressed', rearrangeLockedSections.has(index) ? 'true' : 'false');
+    lock.onclick = () => toggleRearrangeLock(index);
+    // The card's own 'Grab' is gone. It locked this part, but ONLY while this part was
+    // the one sounding — so on any card you were actually looking at, it usually did
+    // nothing and said so in a toast. The lock beside it does the same job with no
+    // condition attached, and the header's Lock what's playing covers the heard case.
+    const halve = document.createElement('button');
+    halve.type = 'button'; halve.className = 'rehalve'; halve.textContent = '½';
+    halve.title = 'Halve this section’s output';
+    halve.onclick = () => transformRearrangeSectionUi(index, 'halve', 'Section halved');
+    const double = document.createElement('button');
+    double.type = 'button'; double.className = 'redouble'; double.textContent = '×2';
+    double.title = 'Repeat this section once';
+    double.onclick = () => transformRearrangeSectionUi(index, 'double', 'Section doubled');
+    // A NEW TAKE ON THIS PART, built from scratch. Not a reshuffle of the slices that are
+    // there — the part is generated again, so it can come back chopped where it was one
+    // loop, or as a pair where it was a collage, from a different phrase of the song. The
+    // one thing it may not change is its LENGTH, so the song's form never moves and no
+    // other part is touched. The dice beside Walk in the toolbar is the harmony's version
+    // of this one; this is the material's.
+    const dice = document.createElement('button');
+    dice.type = 'button'; dice.className = 'rediceSection'; dice.textContent = '🎲';
+    dice.title = `Build ${section.name} again from scratch — new material AND a new chop, in exactly the space it already takes. Its walk, its favourites and its fill are kept`;
+    dice.setAttribute('aria-label', dice.title);
+    dice.onclick = () => rerollRearrangeSectionMaterial(index);
+    // THE PART'S OWN CONTROLS BELONG ON THE PART. They were a whole toolbar row away,
+    // which meant holding a card, travelling to the bottom of the panel, and coming back
+    // — for edits that are about the thing your pointer is already on. The ones that get
+    // used constantly stay as icons; the rest are on the card's right-click menu.
+    // ICONS FOR THE THREE PRESSED WHILE LOOKING AT THE PART, each lit when it is on so the
+    // card answers "does this part walk, does it fill" without being opened. An emoji on
+    // its own is a rebus, so every one of them carries a title and an aria-label that says
+    // the whole thing in words.
+    const carriesFill = placed.some((entry) => entry.op.fill);
+    const partWalks = !!chords;
+    const walkButton = document.createElement('button');
+    // W AND F, NOT A WALKING MAN AND A LIGHTNING BOLT. A pictogram on a 24px button is a
+    // rebus you have to solve every time, and neither of these two has a picture anyone
+    // already knows — a walking figure for "moves around the key" is a pun, not an icon. The
+    // initial of the word plus the lit/unlit state is the whole message: W on means this
+    // part walks, F on means it ends on a fill. Both still carry the sentence in their title.
+    walkButton.type = 'button'; walkButton.className = 'rewalkbutton'; walkButton.textContent = 'W';
+    walkButton.classList.toggle('on', partWalks);
+    walkButton.title = partWalks
+      ? `${section.name} walks a chord loop — turn it off, or reroll its order`
+      : `Walk ${section.name} around the song’s own key`;
+    walkButton.setAttribute('aria-label', walkButton.title);
+    walkButton.onclick = (event) => { event.stopPropagation(); openRearrangeWalkMenu(event, index); };
+    const fill = document.createElement('button');
+    fill.type = 'button'; fill.className = 'refillbutton'; fill.textContent = 'F';
+    fill.classList.toggle('on', carriesFill);
+    fill.title = carriesFill
+      ? `${section.name} ends on a ${placed.find((entry) => entry.op.fill)?.op.fill} fill — change or remove it`
+      : `Put a fill on ${section.name}’s ending`;
+    fill.setAttribute('aria-label', fill.title);
+    fill.onclick = (event) => { event.stopPropagation(); openRearrangeFillMenu(event, index); };
+    const shelf = document.createElement('button');
+    shelf.type = 'button'; shelf.className = 'reclipbutton'; shelf.textContent = '💾';
+    shelf.title = `Save ${section.name} to the shelf, for the next Go to reuse`;
+    shelf.setAttribute('aria-label', shelf.title);
+    shelf.onclick = () => snapshotRearrangeClip(index);
+    // NO ⋯ ON THE CARD. Right-clicking anywhere on the part opens the same menu, so the
+    // button was a second door onto one room, taking a slot from a row that has to stay
+    // readable at card width. The right-click is the only way in now, which also means the
+    // row below holds nothing but the presses that DO something on contact.
+    //
+    // IN GROUPS, because seven buttons at an even 2px is a strip you have to read from the
+    // left every time to find the one you want. Spaced, the hand aims at a group first:
+    // what the next Go does to this part, how long it is, and what it plays. The shelf
+    // sits on its own — it is the only one that puts something OUTSIDE the card.
+    for (const group of [[lock, dice], [halve, double], [walkButton, fill], [shelf]]) {
+      const box = document.createElement('div');
+      box.className = 'reactgroup';
+      box.append(...group);
+      acts.append(box);
+    }
 
-    seg.append(top, range, walk, acts);
-    strip.append(seg);
+    seg.append(top, acts);
+
+    const lane = document.createElement('ol');
+    lane.className = 'restrip';
+    lane.setAttribute('aria-label', `${section.name} slices`);
+    lane.style.setProperty('--timescale', String(timescale));
+    const variants = rearrangeSliceVariants(placed.map((entry) => entry.op));
+    placed.forEach((entry) => {
+      const { op, index: opIndex, start, end, span } = entry;
+      const slice = document.createElement('li');
+      slice.className = 'reslice';
+      slice.dataset.operation = String(opIndex);
+      slice.dataset.section = String(index);
+      if (section.role) slice.dataset.role = section.role;
+      // The slice's own step count IS its width: flex-grow against a zero basis divides
+      // the row by time, so the strip reads as the part's bar line rather than a list.
+      slice.style.setProperty('--slicespan', String(Math.max(1, span)));
+      if (rearrangeSelectedOperations.has(opIndex)) slice.classList.add('selected');
+      if (op.mute) slice.dataset.mute = 'on';
+      const favourite = op.repeats === 1 && op.transpose === 0
+        && rearrangeFavourites.some((item) => item.from === op.from && item.length === op.length);
+      if (favourite) slice.classList.add('favourite');
+      slice.dataset.variant = String(variants.get(`${op.from}:${op.length}`) || 0);
+      // The start of every pass after the first, so a doubled part shows its seam.
+      if (cycle && placed.indexOf(entry) % cycle === 0 && placed.indexOf(entry) > 0) {
+        slice.dataset.cycle = 'on';
+      }
+      // Compact bar:beat.sixteenth notation on the block, which may be only a few pixels
+      // wide; the full wording waits on the hover, where there is room for it. The pass
+      // count goes UNDER it rather than beside it — a narrow block clips from the right,
+      // and '52:1.1 ×4' losing its tail leaves you reading a source position that is not
+      // the whole truth about what happens there.
+      const label = document.createElement('span');
+      label.className = 'reslicelabel';
+      label.textContent = `${favourite ? '★ ' : ''}${rearrangeOutputLabel(op.from)}`;
+      slice.append(label);
+      if (op.repeats > 1) {
+        // Ruled per pass, so the block's own divisions say how many times it goes round.
+        slice.dataset.repeats = String(op.repeats);
+        slice.style.setProperty('--repeats', String(op.repeats));
+        const passes = document.createElement('span');
+        passes.className = 'reslicerepeat';
+        passes.textContent = `×${op.repeats}`;
+        slice.append(passes);
+      }
+      const foot = document.createElement('div');
+      foot.className = 'reslicefoot';
+      if (op.fill) {
+        const tick = document.createElement('i');
+        tick.className = 'refilltick';
+        foot.append(tick);
+      }
+      const chord = document.createElement('b');
+      chord.className = 'rechordbadge';
+      if (op.harmony) chord.textContent = harmonyNumeral(op.harmony, rearrangeRecipe?.key?.minor !== false);
+      else if (op.transpose) chord.textContent = op.transpose > 0 ? `+${op.transpose}` : String(op.transpose);
+      foot.append(chord);
+      slice.append(foot);
+      slice.title = `${op.mute ? 'MUTED · ' : ''}Source ${rearrangeStepLabel(op.from)} · ${op.length} sixteenths × ${op.repeats}`
+        + ` · output ${rearrangeStepLabel(start)}–${rearrangeStepLabel(end)}`
+        + (op.transpose ? rearrangeTransposeLabel(op.transpose) : '')
+        + (op.fill ? ` · ${op.fill} fill` : '')
+        + (op.harmony ? ` · plays as the ${harmonyNumeral(op.harmony, rearrangeRecipe?.key?.minor !== false)} of ${rearrangeKeyName(rearrangeRecipe?.key) || 'the key'}` : '')
+        + ' · click to select, drag across several, double-click to play from here';
+      lane.append(slice);
+    });
+
+    row.append(seg, lane);
+    strip.append(row);
   });
 }
 
-/** A part's bar-by-bar chord walk as numerals, or '' when it plays as written. */
-function rearrangeSectionChordLine(sectionIndex) {
+/** A part's bar-by-bar chord walk as grouped scale-degree notation, or '' when it plays as written. */
+function rearrangeSectionChordLine(sectionIndex, notation = 'degree', limitSteps = 0) {
   const section = rearrangeRecipe?.form?.[sectionIndex];
   const key = rearrangeRecipe?.key;
   if (!section || !key) return '';
   const minor = key.minor !== false;
   const chords = [];
-  for (let step = section.start; step < section.end; step += 16) {
+  // A part that repeats states its walk ONCE. Sixteen bars of numerals is not a chord
+  // line, it is a wall, and the part's own '×4' already says the rest is the same again.
+  const until = limitSteps > 0 ? Math.min(section.end, section.start + limitSteps) : section.end;
+  for (let step = section.start; step < until; step += 16) {
     const harmony = rearrangementPosition(rearrangeRecipe, step)?.operation?.harmony || 0;
-    chords.push(harmony ? harmonyNumeral(harmony, minor) : (minor ? 'i' : 'I'));
+    if (notation === 'roman') chords.push(harmonyNumeral(harmony, minor));
+    else chords.push(String(((harmony % 7) + 7) % 7 + 1));
   }
-  return chords.some((numeral) => numeral !== (minor ? 'i' : 'I'))
-    ? chords.join(' – ') : '';
+  const tonic = notation === 'roman' ? (minor ? 'i' : 'I') : '1';
+  if (!chords.some((chord) => chord !== tonic)) return '';
+  // A HELD CHORD IS COUNTED, NOT REPEATED. Two bars of the tonic written out as `i i` reads
+  // as `ii` — the supertonic, a different chord — and at a glance that is not a near miss,
+  // it is the wrong information. `i ×2` cannot be misread, and ×N is already the desk's word
+  // for "this again" on slices and part cards.
+  const groups = [];
+  let group = [];
+  const flush = () => {
+    if (!group.length) return;
+    groups.push(group.length > 1 ? `${group[0]} ×${group.length}` : group[0]);
+    group = [];
+  };
+  chords.forEach((chord) => {
+    if (group.length && group[group.length - 1] !== chord) flush();
+    group.push(chord);
+  });
+  flush();
+  // ARROWS, NOT PIPES. A walk is a progression — it GOES somewhere — and a pipe is a
+  // divider, the same mark a bar line uses everywhere else on this desk. Read quickly,
+  // `i i | iv | v` looked like three bars of something rather than one chord moving to the
+  // next; `i i → iv → v` cannot be read any way but forwards.
+  return groups.join(' → ');
+}
+
+/**
+ * One walk of the draft, giving every slice its place on the timeline.
+ *
+ * The timeline draws a part as a row and a slice as a block whose width is its share of
+ * that row, so drawing it and following it both need the same per-operation output
+ * extents. Walking the operation list once and passing the answer around is also what
+ * stops a card from re-walking the whole recipe per button it builds.
+ */
+/** Four bars. One line of the timeline holds this much, and a longer part wraps. */
+const REARRANGE_LINE_STEPS = 64;
+
+function rearrangeTimelineGeometry() {
+  const form = Array.isArray(rearrangeRecipe?.form) ? rearrangeRecipe.form : [];
+  const sections = form.map((section, index) => ({
+    index, section, span: Math.max(1, section.end - section.start), ops: [],
+  }));
+  const ops = [];
+  let output = 0;
+  for (const [index, op] of (rearrangeRecipe?.operations || []).entries()) {
+    const span = op.length * op.repeats;
+    // A slice belongs to the part its START falls in — the rule the list read before it.
+    const sectionIndex = form.findIndex((item) => output >= item.start && output < item.end);
+    const entry = { index, op, start: output, end: output + span - 1, span, sectionIndex };
+    ops.push(entry);
+    if (sectionIndex >= 0) sections[sectionIndex].ops.push(entry);
+    output += span;
+  }
+  return { total: output, sections, ops };
+}
+
+/** How many members a part-colour family has. See the ceiling note in mixer-shell.html. */
+const REARRANGE_SLICE_VARIANTS = 3;
+
+/**
+ * Which member of its part's colour family each slice in ONE part wears.
+ *
+ * A slice's identity is where it comes FROM — `from` and `length` — not how many passes
+ * it takes, so a riff heard four times and the same riff heard three times later in the
+ * part are one material and wear one variant.
+ *
+ * SCOPED TO THE PART, WHICH IS THE WHOLE POINT AND ALSO THE WHOLE RISK. Colour used to be
+ * a hash of the material's own identity, and it was a hash rather than a first-seen index
+ * because a first-seen index walked the WHOLE timeline: rebuild one part into a different
+ * number of pieces — which the part dice does on purpose — and every material after it
+ * shifted, so parts nobody touched appeared to change colour and one edit read as the
+ * whole recipe changing.
+ *
+ * Ranking inside a single part cannot do that. The map is built from one part's own
+ * operations and nothing else, so an edit to a part repaints that part and reaches no
+ * further: the blast radius is exactly the thing that changed. What it does mean is that
+ * editing a part CAN renumber that part's own colours — drop its distinct materials from
+ * three to two and the third moves up — and that is correct, because the part really does
+ * now hold different material.
+ *
+ * Ranking rather than hashing within the part, because a hash may collide and a rank may
+ * not: two materials in one part must never land on the same variant while a free one is
+ * going spare, and that guarantee IS the feature.
+ */
+function rearrangeSliceVariants(ops) {
+  const variants = new Map();
+  for (const op of ops) {
+    const key = `${op.from}:${op.length}`;
+    if (!variants.has(key)) variants.set(key, variants.size % REARRANGE_SLICE_VARIANTS);
+  }
+  return variants;
+}
+
+/**
+ * How long a part's repeating cycle is, in slices, or 0 if it does not repeat.
+ *
+ * Doubling a part copies its slices rather than raising a repeat count — the SEQUENCE
+ * repeats, and no single slice does — so nothing in the recipe records that the second
+ * half is the first one again. It does not have to: the material says so, and reading it
+ * back off the slices means a part that repeats because it was generated that way is
+ * marked exactly like one that repeats because it was doubled by hand.
+ */
+function rearrangeCycleLength(ops) {
+  const count = ops.length;
+  if (count < 2) return 0;
+  const same = (a, b) => a.from === b.from && a.length === b.length && a.repeats === b.repeats
+    && (a.transpose || 0) === (b.transpose || 0) && (a.harmony || 0) === (b.harmony || 0)
+    && (a.fill || null) === (b.fill || null) && !!a.mute === !!b.mute;
+  for (let period = 1; period <= count / 2; period += 1) {
+    if (count % period) continue;
+    let repeats = true;
+    for (let index = period; index < count && repeats; index += 1) {
+      if (!same(ops[index], ops[index - period])) repeats = false;
+    }
+    if (repeats) return period;
+  }
+  return 0;
 }
 
 /** Every operation index that sounds inside one form section. */
 function rearrangeSectionOperationIndices(sectionIndex) {
-  const section = rearrangeRecipe?.form?.[sectionIndex];
-  if (!section) return [];
-  const out = [];
-  let output = 0;
-  rearrangeRecipe.operations.forEach((op, index) => {
-    if (output >= section.start && output < section.end) out.push(index);
-    output += op.length * op.repeats;
-  });
-  return out;
+  return rearrangeTimelineGeometry().sections[sectionIndex]?.ops.map((entry) => entry.index) || [];
 }
 
-/** Select a whole part's slices at once, or clear them if they are all already in. */
+/** Move a whole form block on the M8TRX timeline without changing its internal edits. */
+function reorderRearrangeSections(fromIndex, toIndex) {
+  if (!rearrangeRecipe?.form?.length) return;
+  const form = rearrangeRecipe.form;
+  if (fromIndex < 0 || toIndex < 0 || fromIndex >= form.length || toIndex >= form.length) return;
+  const blocks = form.map((section, index) => ({
+    section,
+    operations: rearrangeSectionOperations(index),
+  }));
+  const [moved] = blocks.splice(fromIndex, 1);
+  blocks.splice(toIndex, 0, moved);
+  let output = 0;
+  const operations = [];
+  const nextForm = blocks.map(({ section, operations: block }) => {
+    const start = output;
+    operations.push(...block.map((operation) => ({ ...operation })));
+    output += block.reduce((sum, operation) => sum + operation.length * operation.repeats, 0);
+    return { ...section, start, end: output };
+  });
+  applyRearrangeEdit({ ...rearrangeRecipe, form: nextForm, operations },
+    `Moved ${moved.section.letter || moved.section.name}`);
+}
+
+/**
+ * Take one whole part into the selection, or drop it if it was already the one held.
+ *
+ * Exactly ONE part at a time: picking a part replaces whatever was selected rather than
+ * adding to it. A part is a thing you are working on, and an edit aimed at "the Chorus"
+ * that quietly also lands on a Verse picked three clicks ago is the kind of mistake you
+ * only notice after it has been installed. Runs that cross parts are still reachable by
+ * dragging across the slices themselves, where the range is visible while you make it.
+ */
 function toggleRearrangeSectionSlices(sectionIndex) {
   const slices = rearrangeSectionOperationIndices(sectionIndex);
   if (!slices.length) return;
-  const allSelected = slices.every((slice) => rearrangeSelectedOperations.has(slice));
-  for (const slice of slices) {
-    if (allSelected) rearrangeSelectedOperations.delete(slice);
-    else rearrangeSelectedOperations.add(slice);
+  const held = slices.length === rearrangeSelectedOperations.size
+    && slices.every((slice) => rearrangeSelectedOperations.has(slice));
+  if (held) {
+    rearrangeSelectedOperations.clear();
+    renderRearrangeList();
+    syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
+    return;
   }
+  selectRearrangeSectionSlices(sectionIndex);
+}
+
+/** Hold one part, without the toggle — what a double-click needs, since its two single
+ *  clicks would otherwise select the part and then let go of it again. */
+function selectRearrangeSectionSlices(sectionIndex) {
+  const slices = rearrangeSectionOperationIndices(sectionIndex);
+  if (!slices.length) return;
+  rearrangeSelectedOperations.clear();
+  for (const slice of slices) rearrangeSelectedOperations.add(slice);
   renderRearrangeList();
   syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
 }
 
 function renderRearrangeList() {
-  const list = $('rearrangelist');
-  if (!list) return;
-  const hasRecipe = !!rearrangeRecipe;
-  $('reselectall')?.toggleAttribute('disabled', !hasRecipe);
-  $('reclearselection')?.toggleAttribute('disabled', !rearrangeSelectedOperations.size);
-  for (const id of ['resplit', 'reunroll', 'redoublerepeats', 'rehalfrepeats', 'rerollselected', 'reremove']) {
-    $(id)?.toggleAttribute('disabled', !hasRecipe || !rearrangeSelectedOperations.size);
-  }
-  list.textContent = '';
-  // The draft is ahead of the audio: mark the whole panel so the rows and the roadmap
+  if (!$('rearrangeform')) return;
+  // Every toolbar enabled state is settled in one place, by the thing that draws the
+  // toolbar — see renderRearrangeInspector at the foot of this function.
+  // The draft is ahead of the audio: mark the whole panel so the slices and the status
   // read as "made, not yet heard". One class; the flash itself is CSS.
   $('rearrangepanel')?.classList.toggle('pending', rearrangePending);
-  renderRearrangeForm();
+  // NO RECIPE, NO RECIPE CONTROLS. Return to Song leaves the panel standing — the M8TRX
+  // button in the toolbar is the way out, not this — but everything scoped to a recipe was
+  // left standing with it: a drums menu for drums that are not playing, Save version and
+  // Save JSON with nothing to save, a Return to Song that has already returned, and two
+  // selection rails inviting you to click slices in an empty timeline. One class says
+  // "there is nothing here yet" and the panel shows only what can act on that: the dials,
+  // Go, the kept state that outlives a recipe, and Load JSON, which is the other way in.
+  $('rearrangepanel')?.classList.toggle('norecipe', !rearrangeRecipe);
+  // The status lives in the desk's footer now, so the pending pulse is toggled there too.
+  // It shows only while the panel is up: the footer is the desk's line, and a closed panel
+  // has no business holding a third of it.
+  const strip = $('m8status');
+  if (strip) {
+    const was = strip.hidden;
+    strip.hidden = !rearrangePanelOpen;
+    strip.classList.toggle('pending', rearrangePending);
+    // Showing this line makes the footer TALLER, so the panel's bottom edge has to be
+    // re-measured after it appears rather than before. Measured on the way into the panel
+    // alone, the answer was one layout stale and the panel overlapped the bar by 14px.
+    if (was !== strip.hidden) measureDeskEdges();
+  }
+  const geometry = rearrangeTimelineGeometry();
+  renderRearrangeTimeline(geometry);
+  renderRearrangeClips();
+  const meta = $('remetasong');
   if (!rearrangeRecipe) {
+    if (meta) meta.textContent = track?.title || trackId || '';
     $('rearrangestatus').textContent = rearrangeFavourites.length
-      ? `${rearrangeFavourites.length} piano-roll favourite${rearrangeFavourites.length === 1 ? '' : 's'} ready · Generate to include them`
-      : 'Generate a recipe to begin.';
+      ? `${rearrangeFavourites.length} piano-roll favourite${rearrangeFavourites.length === 1 ? '' : 's'} ready · Go to include them`
+      : 'Press Go ▸ to build a recipe.';
     syncRearrangeDrumControl();
+    renderRearrangeInspector();
     return;
   }
-  let output = 0;
-  let previousSection = -1;
-  rearrangeRecipe.operations.forEach((op, index) => {
-    const rowStart = output;
-    const sectionIndex = rearrangeRecipe.form?.findIndex((item) => output >= item.start && output < item.end) ?? -1;
-    const section = sectionIndex >= 0 ? rearrangeRecipe.form[sectionIndex] : null;
-    const li = document.createElement('li');
-    li.dataset.operation = String(index);
-    // A rule above the first row of each new part, so the form is readable straight
-    // off the list — where one Verse stops and the next Chorus starts should not
-    // require reading every row's label to find.
-    if (sectionIndex >= 0 && previousSection >= 0 && sectionIndex !== previousSection) {
-      li.classList.add('resectionstart');
-    }
-    if (sectionIndex >= 0) previousSection = sectionIndex;
-    li.title = `Double-click to play from ${rearrangeOutputLabel(rowStart)}`;
-    li.ondblclick = (event) => {
-      if (event.target.closest('button')) return;
-      playRearrangementAt(rowStart);
-    };
-    if (sectionIndex >= 0) li.dataset.section = String(sectionIndex);
-    // The role colour is carried by the row's own left rule, which runs unbroken down
-    // every slice of a part — that rule IS the grouping. Kept/disliked state lives on
-    // the rail now, with the controls that set it.
-    if (section?.role) li.dataset.role = section.role;
-    if (rearrangeSelectedOperations.has(index)) li.classList.add('selected');
-    const choose = document.createElement('button');
-    choose.type = 'button';
-    choose.className = 'reselect';
-    choose.textContent = rearrangeSelectedOperations.has(index) ? '✓' : '□';
-    choose.title = rearrangeSelectedOperations.has(index)
-      ? 'Remove this slice from the edit selection'
-      : 'Select this slice for a split, repeat, or reroll edit';
-    choose.setAttribute('aria-label', choose.title);
-    choose.setAttribute('aria-pressed', rearrangeSelectedOperations.has(index) ? 'true' : 'false');
-    choose.onclick = () => toggleRearrangeOperation(index);
-    li.append(choose);
-    const favourite = op.repeats === 1 && op.transpose === 0
-      && rearrangeFavourites.some((item) => item.from === op.from && item.length === op.length);
-    if (favourite) li.classList.add('favourite');
-    // Every row is now the same shape — checkbox, colour, text, output position — so
-    // the slices of a part line up under each other instead of the first one sitting
-    // out on its own with three extra buttons in front of it.
-    const chip = document.createElement('i');
-    chip.className = 'rerolechip';
-    li.append(chip);
-    // The chord column. Present on EVERY row, empty when a slice plays as written, so
-    // the rows stay aligned and a change of chord is visible as a change in one fixed
-    // place — not a suffix hiding at the far end of the longest rows.
-    const chord = document.createElement('b');
-    chord.className = 'rechordbadge';
-    if (op.harmony) {
-      const numeral = harmonyNumeral(op.harmony, rearrangeRecipe?.key?.minor !== false);
-      chord.textContent = numeral;
-      chord.title = `Plays as the ${numeral} of ${rearrangeKeyName(rearrangeRecipe?.key) || 'the key'}`;
-    }
-    li.append(chord);
-    const source = document.createElement('span');
-    source.className = 'reop';
-    // The part is named once, on the rail and on the row that starts it. Repeating it
-    // on every slice was six identical words down the left of the list saying nothing
-    // that the colour rule beside them does not already say.
-    const startsPart = !!section && output === section.start;
-    source.textContent = `${favourite ? '★ ' : ''}${startsPart ? `${section.name} · ` : ''}${rearrangeStepLabel(op.from)} → ${op.length} sixteenths × ${op.repeats}`;
-    if (startsPart) source.classList.add('restarts');
-    li.append(source);
-    const details = document.createElement('span');
-    details.className = 'reout';
-    details.textContent = `${rearrangeOutputLabel(output)}–${rearrangeOutputLabel(output + op.length * op.repeats - 1)}`
-      + rearrangeTransposeLabel(op.transpose);
-    li.append(details);
-    list.append(li);
-    output += op.length * op.repeats;
-  });
+  // What is loaded, beside the name of the thing loading it: the song, how many parts the
+  // recipe has, and how long it runs. It sits with the title rather than in the status line
+  // because it is what this panel IS at rest, not what just happened to it.
+  if (meta) {
+    const parts = rearrangeRecipe.form?.length || 0;
+    meta.textContent = `${track?.title || trackId} · ${parts} part${parts === 1 ? '' : 's'}`
+      + ` · ${geometry.total / 16} bars`;
+  }
   const form = rearrangeRecipe.form?.map((section) => section.name).join(' → ');
-  const kept = rearrangeKeptSections.size ? ` · ${rearrangeKeptSections.size} kept` : '';
-  const disliked = rearrangeDislikedSections.size ? ` · ${rearrangeDislikedSections.size} to change` : '';
+  const kept = rearrangeLockedSections.size ? ` · ${rearrangeLockedSections.size} kept` : '';
+  const disliked = '';
   const favourites = rearrangeFavourites.length
     ? ` · ${rearrangeFavourites.length} piano-roll favourite${rearrangeFavourites.length === 1 ? '' : 's'}` : '';
   const selected = rearrangeSelectedOperations.size
@@ -7203,8 +8032,491 @@ function renderRearrangeList() {
   const drums = rearrangementDrumMode(rearrangeRecipe) === 'basic4'
     ? ' · steady 4/4 drums' : '';
   const songKey = rearrangeRecipe.key ? ` · ${rearrangeKeyName(rearrangeRecipe.key)}` : '';
-  $('rearrangestatus').textContent = `${form ? `${form} · ` : ''}${rearrangeRecipe.operations.length} operations · ${output / 16} bars${songKey} · seed ${rearrangeRecipe.seed}${drums}${kept}${disliked}${favourites}${selected}`;
+  $('rearrangestatus').textContent = `${form ? `${form} · ` : ''}${rearrangeRecipe.operations.length} operations · ${geometry.total / 16} bars${songKey} · seed ${rearrangeRecipe.seed}${rearrangeSeedHold ? ' · varying this one' : ''}${drums}${kept}${disliked}${favourites}${selected}`;
   syncRearrangeDrumControl();
+  renderRearrangeInspector();
+}
+
+function renderRearrangeInspector() {
+  const info = $('reinspectinfo');
+  if (!info) return;
+  // The rails are STATIC markup: the same controls in the same places whether one slice is
+  // selected or twenty. A rail whose scope holds nothing swaps its controls for one line of
+  // instruction, but it keeps its HEIGHT while it does, so the timeline under it never steps
+  // up and down while you are aiming at a slice in it.
+  const geometry = rearrangeTimelineGeometry();
+  const selected = [...rearrangeSelectedOperations].sort((a, b) => a - b);
+  const index = selected[0];
+  const operation = index == null ? null : rearrangeRecipe?.operations?.[index];
+  const entry = index == null ? null : geometry.ops[index];
+  const sectionIndex = entry?.sectionIndex ?? -1;
+  const section = sectionIndex >= 0 ? rearrangeRecipe.form[sectionIndex] : rearrangeRecipe?.form?.[0];
+  const many = selected.length > 1;
+  const has = !!rearrangeRecipe;
+  const any = has && selected.length > 0;
+
+  // SCOPE IS NAMED IN WORDS, NEVER IN COLOUR. Four scope hues were the obvious answer and
+  // the wrong one: they collide with four of the five fixed part-role hues, so a blue badge
+  // would mean "selection" in the rail and "Verse" on the card two inches below it. Each
+  // rail states its subject as a sentence instead, and the accent stays reserved for the one
+  // thing it has always meant — on, selected, or moving.
+  const heldSection = rearrangeSelectedSectionIndex();
+  const heldPart = heldSection >= 0 ? rearrangeRecipe.form[heldSection] : null;
+  const partName = heldPart ? `${heldPart.letter || ''} · ${heldPart.name}`.trim().replace(/^· /, '') : 'no part';
+  // "all of B" rather than "6 slices" when the whole part is in hand: the two are the same
+  // selection, and only one of them says why it looks that way.
+  const wholePart = any && heldSection >= 0
+    && selected.length === rearrangeSectionOperationIndices(heldSection).length;
+  const count = wholePart
+    ? `all of ${heldPart.letter || heldPart.name}`
+    : `${selected.length} slice${selected.length === 1 ? '' : 's'}`;
+  const subject = !has ? 'no recipe yet'
+    : !any ? 'nothing held'
+    : heldPart ? `${count} in ${partName}` : count;
+  for (const [id, text] of [['reinspectinfo', subject], ['resubarr', subject],
+                            ['resubpart', has ? partName : 'no recipe yet']]) {
+    const cell = $(id);
+    if (cell) cell.textContent = text;
+  }
+  // The exact output range is a hover on the subject rather than a second line: the rail has
+  // two lines and it must keep them, because a rail that grew a line would move the timeline.
+  if (!has) {
+    info.title = 'Press Go ▸ to build a recipe, then click a slice.';
+  } else if (many) {
+    const last = geometry.ops[selected[selected.length - 1]];
+    const steps = selected.reduce((sum, item) => sum + (geometry.ops[item]?.span || 0), 0);
+    info.title = `Output ${rearrangeStepLabel(entry?.start || 0)}–${rearrangeStepLabel(last?.end || 0)}`
+      + ` · ${String(+(steps / 16).toFixed(2))} bars`;
+  } else if (operation) {
+    info.title = `Output ${rearrangeStepLabel(entry?.start || 0)}–${rearrangeStepLabel(entry?.end || 0)}`
+      + ` · source ${rearrangeStepLabel(operation.from)} · ${operation.length} sixteenths × ${operation.repeats}`
+      + (operation.fill ? ` · ${operation.fill} fill` : '');
+  } else {
+    info.title = 'Click a slice, or drag across several.';
+  }
+  // AN EMPTY SCOPE SHOWS ITS INVITATION, NOT THIRTY DEAD BUTTONS. Same height either way.
+  for (const bar of document.querySelectorAll('#reinspector .rebar')) {
+    bar.classList.toggle('empty', bar.dataset.scope === 'part' ? heldSection < 0 : !any);
+  }
+
+  // One walked slice in the selection is enough to disable the chromatic dial: a recipe
+  // carries one pitch system at a time, and the library refuses the mix.
+  const walksHere = any && selected.some((item) => rearrangeRecipe.operations[item]?.harmony);
+  const dial = $('reslicetranspose');
+  if (dial) {
+    if (!dial.options.length) {
+      for (const amount of REARRANGE_TRANSPOSES) {
+        const option = document.createElement('option');
+        option.value = String(amount);
+        option.textContent = amount === 0 ? 'Off' : amount > 0 ? `+${amount}` : String(amount);
+        dial.append(option);
+      }
+    }
+    dial.value = String(operation?.transpose || 0);
+    dial.disabled = !any || walksHere;
+    dial.title = walksHere
+      ? 'Chord-walk slice: turn the walk off before changing transpose'
+      : 'Transpose the selected slices; Off removes the transpose';
+  }
+  const chord = $('reslicechord');
+  if (chord) {
+    const minor = rearrangeRecipe?.key?.minor !== false;
+    const wanted = `${minor ? 'm' : 'M'}`;
+    if (chord.dataset.mode !== wanted) {
+      chord.dataset.mode = wanted;
+      chord.textContent = '';
+      const asWritten = document.createElement('option');
+      asWritten.value = '0';
+      asWritten.textContent = 'As written';
+      chord.append(asWritten);
+      for (let degree = 1; degree < 7; degree += 1) {
+        const option = document.createElement('option');
+        option.value = String(degree);
+        option.textContent = harmonyNumeral(degree, minor);
+        chord.append(option);
+      }
+    }
+    chord.value = String(operation?.harmony || 0);
+    chord.disabled = !any || !rearrangeRecipe?.key;
+    chord.title = rearrangeRecipe?.key
+      ? 'What chord these slices play — any degree of the key, or As written'
+      : 'No key detected, so there is nothing to move a chord within';
+  }
+  $('recopysection')?.toggleAttribute('disabled', !any);
+  // Paste needs somewhere contiguous to land, the same run Join needs.
+  $('repastesection')?.toggleAttribute('disabled', !any || !rearrangeCopiedSection
+    || selected[selected.length - 1] - selected[0] !== selected.length - 1);
+  const silent = any && selected.every((item) => rearrangeRecipe.operations[item]?.mute);
+  const mute = $('remute');
+  if (mute) {
+    mute.textContent = silent ? 'Unmute' : 'Mute';
+    mute.classList.toggle('on', silent);
+    mute.disabled = !any;
+    mute.title = silent
+      ? 'Let the selected slices sound again'
+      : 'Mute the selected slices: nothing sounds for their time, and the song keeps its exact length';
+  }
+  // Join wants a run that is actually a run.
+  const run = selected.length > 1
+    && selected[selected.length - 1] - selected[0] === selected.length - 1;
+  $('rejoin')?.toggleAttribute('disabled', !run);
+  // M8TRX has no Undo of its own: while a recipe is live the desk's Undo is M8TRX's, and
+  // this is what keeps its label and its enabled state honest as the stack moves.
+  syncUndoButton();
+  $('reclearkept')?.toggleAttribute('disabled',
+    !rearrangeLockedSections.size && !rearrangeClips.length && !rearrangeUniqueLetters.size);
+  $('reclearselection')?.toggleAttribute('disabled', !any);
+  for (const id of ['rerollselected', 'reclipselected', 'reremove', 'redeleteselected', 'reloopremove', 'reunroll']) {
+    $(id)?.toggleAttribute('disabled', !any);
+  }
+  const stutter = $('restutter');
+  if (stutter) {
+    stutter.disabled = !any;
+    stutter.value = '';
+    // EACH OPTION SAYS WHETHER IT FITS. ×3 and ×6 are not offered at all: on a sixteenth
+    // grid a slice divides by three only when its duration is a multiple of three, and
+    // generated durations are powers of two — measured, they landed on 1.4% of slices,
+    // which is a menu item that is a guessing game rather than a choice. Gallop carries
+    // the swung, triplet-ish feel instead and fits any slice. The rest are greyed when
+    // they will not divide what is in hand, rather than offered and then refused.
+    for (const option of stutter.options) {
+      if (!option.value) continue;
+      const shape = REARRANGE_STUTTER_SHAPES[option.value];
+      const parts = shape ? shape.reduce((sum, weight) => sum + weight, 0) : Number(option.value);
+      option.disabled = !any || !selected.some((item) => {
+        const op = rearrangeRecipe.operations[item];
+        const duration = (op?.length || 0) * (op?.repeats || 0);
+        return parts > 1 && duration % parts === 0 && duration / parts >= 1;
+      });
+    }
+  }
+  $('redoublerepeats')?.toggleAttribute('disabled',
+    !any || selected.every((item) => (rearrangeRecipe.operations[item]?.repeats || 1) >= 4));
+  $('rehalfrepeats')?.toggleAttribute('disabled',
+    !any || selected.every((item) => (rearrangeRecipe.operations[item]?.repeats || 1) <= 1));
+  const splitter = $('resplit');
+  if (splitter) {
+    const splittable = any && selected.some((item) => (rearrangeRecipe.operations[item]?.length || 0) >= 2);
+    splitter.disabled = !splittable;
+    splitter.title = splittable || !any
+      ? 'Interleave each selected slice’s two halves: A B A B, same length'
+      : rearrangeEditRefusal('split', selected);
+  }
+  // Everything that acts on a whole PART now lives on the part's own card — its icons and
+  // its right-click menu — so nothing here has to be kept in step with a selection that may
+  // not be a part at all.
+  $('replayfrom')?.toggleAttribute('disabled', !has);
+}
+
+/**
+ * The slice context menu.
+ *
+ * Everything on it is reachable from the toolbar already. It exists because the toolbar is
+ * a long way from the block you are looking at, and the edits made most are the ones made
+ * over and over on one slice after another — transpose this, walk that, silence the other.
+ * Right-clicking a slice that is not held takes it first, so the menu always acts on what
+ * was aimed at rather than on whatever happened to be selected beforehand.
+ */
+function openRearrangeSliceMenu(event, index) {
+  const menu = $('reslicemenu');
+  if (!menu || !rearrangeRecipe) return;
+  if (!rearrangeSelectedOperations.has(index)) {
+    rearrangeSelectedOperations.clear();
+    rearrangeSelectedOperations.add(index);
+    renderRearrangeList();
+  }
+  const picked = [...rearrangeSelectedOperations].sort((a, b) => a - b);
+  const op = rearrangeRecipe.operations[index];
+  const many = picked.length > 1;
+  const walking = picked.some((item) => rearrangeRecipe.operations[item]?.harmony);
+  const part = rearrangeSelectedSectionIndex();
+  menu.textContent = '';
+  const head = document.createElement('div');
+  head.className = 'remenuhead';
+  head.textContent = many ? `${picked.length} slices` : `Slice ${index + 1}`;
+  menu.append(head);
+  const close = () => { menu.hidden = true; };
+  const item = (label, handler, disabled = false) => {
+    const button = document.createElement('button');
+    button.type = 'button'; button.textContent = label; button.disabled = disabled;
+    button.onclick = () => { close(); handler(); };
+    menu.append(button);
+    return button;
+  };
+  const sep = () => { const line = document.createElement('div'); line.className = 'remenusep'; menu.append(line); };
+
+  // The two pitch systems, as rows of one-press choices rather than selects — a menu that
+  // makes you open a second menu has not saved anyone anything. Both are here because
+  // either can be the one you want, and which of them a slice is currently using is
+  // exactly what you are looking at the block to find out.
+  const label = (text) => { const el = document.createElement('div'); el.className = 'remenuhead';
+    el.textContent = text; menu.append(el); };
+  label('Transpose');
+  const pitch = document.createElement('div');
+  pitch.className = 'remenurow';
+  // TWO ROWS, BY WHAT THE INTERVAL DOES RATHER THAN BY ITS SIZE. The top row is the moves
+  // that keep a fragment sounding like itself — the fifth, the fourth, the tone — with Off
+  // in the middle where it has always been, so the shape of the control somebody already
+  // knows is still there and has simply grown a ±7 on each end. The second row is the ones
+  // that recolour it: the thirds, and the semitone lift.
+  //
+  // The octave is deliberately absent. It is the one transpose that changes no note of the
+  // material — same pitch classes, same chord, same everything but register — so it is the
+  // one entry a row of quick musical choices gains nothing by carrying. Anything not here,
+  // the octave included, is still on the inspector's full ±12 dial.
+  const INTERVAL_NAMES = {
+    1: 'a semitone', 2: 'a tone', 3: 'a minor third', 4: 'a major third',
+    5: 'a fourth', 7: 'a fifth',
+  };
+  const pitchButton = (row, amount) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = amount === 0 ? 'Off' : amount > 0 ? `+${amount}` : String(amount);
+    button.disabled = walking;
+    button.title = walking ? 'These slices walk a chord loop; turn the walk off first'
+      : amount === 0 ? 'Play at written pitch'
+        : `Transpose ${INTERVAL_NAMES[Math.abs(amount)]} ${amount > 0 ? 'up' : 'down'} — ${Math.abs(amount)} semitones`;
+    // Which one a slice is already on, marked exactly as the chord row below marks its
+    // degree. The two rows are the same kind of control and have to read as one.
+    button.classList.toggle('on', (op?.transpose || 0) === amount);
+    button.onclick = () => { close(); transformSelectedRearrange('transpose', 'Slice transpose changed', { value: amount }); };
+    row.append(button);
+  };
+  for (const amount of [-7, -5, -2, 0, 2, 5, 7]) pitchButton(pitch, amount);
+  menu.append(pitch);
+  const colour = document.createElement('div');
+  colour.className = 'remenurow';
+  for (const amount of [-4, -3, -1, 1, 3, 4]) pitchButton(colour, amount);
+  menu.append(colour);
+  // The CHORD the slices play, degree by degree. Turning a walk on gives a part a
+  // progression; this is how one bar of it is argued with, and it was the thing the menu
+  // could not do — you could switch a walk off but not change what it walked to.
+  const minor = rearrangeRecipe?.key?.minor !== false;
+  label(rearrangeRecipe?.key ? `Chord · ${rearrangeKeyName(rearrangeRecipe.key)}` : 'Chord · no key found');
+  const chord = document.createElement('div');
+  chord.className = 'remenurow';
+  for (let degree = 0; degree < 7; degree += 1) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = degree === 0 ? '–' : harmonyNumeral(degree, minor);
+    button.disabled = !rearrangeRecipe?.key;
+    button.title = degree === 0 ? 'Play as written' : `Play the ${harmonyNumeral(degree, minor)} chord`;
+    button.classList.toggle('on', (op?.harmony || 0) === degree);
+    button.onclick = () => { close(); transformSelectedRearrange('harmony', 'Slice chord changed', { value: degree }); };
+    chord.append(button);
+  }
+  menu.append(chord);
+  item(walking ? `Chord walk off${many ? ` ×${picked.length}` : ''}` : 'Chord walk these slices', () => {
+    if (walking) transformSelectedRearrange('walk-off', 'Chord walk off');
+    else transformSelectedRearrange('walk-on', 'Chord walk on');
+  }, part < 0);
+  item('New chords', () => {
+    const index = rearrangeSelectedSectionIndex();
+    if (index >= 0) rerollRearrangeWalkUi(index);
+  }, part < 0 || !walking);
+  sep();
+  item('🎲 New material', () => transformSelectedRearrange('reroll', 'New material under those slices'));
+  item(op?.mute ? 'Unmute' : 'Mute', () => transformSelectedRearrange(op?.mute ? 'unmute' : 'mute',
+    op?.mute ? 'Slices sounding' : 'Slices muted'));
+  item('Stutter ×4', () => transformSelectedRearrange('stutter', 'Slice stuttered ×4', { value: '4' }));
+  item('Split', () => transformSelectedRearrange('split', 'Slices split'));
+  item('Join', () => transformSelectedRearrange('join', 'Slices joined'),
+    picked.length < 2 || picked[picked.length - 1] - picked[0] !== picked.length - 1);
+  sep();
+  item('Copy', () => $('recopysection')?.click());
+  item('Paste here', () => $('repastesection')?.click(), !rearrangeCopiedSection);
+  item('Delete', () => transformSelectedRearrange('delete', 'Deleted slices'));
+  sep();
+  item('Play from here', () => playRearrangeSelection());
+
+  menu.hidden = false;
+  // Placed after it is measurable, and pulled back inside the window rather than off it.
+  const width = menu.offsetWidth;
+  const height = menu.offsetHeight;
+  menu.style.left = `${Math.max(6, Math.min(event.clientX, window.innerWidth - width - 6))}px`;
+  menu.style.top = `${Math.max(6, Math.min(event.clientY, window.innerHeight - height - 6))}px`;
+}
+
+/**
+ * The part's right-click menu — everything about a whole part that is not worth an icon.
+ *
+ * The icons on the card are the four pressed constantly; these are the ones pressed
+ * occasionally and deliberately, which is exactly the split a "more" menu is for. They
+ * used to be a toolbar row at the bottom of the panel, so acting on the card under your
+ * pointer meant travelling to the other end of the window and back.
+ */
+function openRearrangeMenuAt(anchor, build) {
+  const menu = $('reslicemenu');
+  if (!menu) return;
+  menu.textContent = '';
+  build(menu, () => { menu.hidden = true; });
+  menu.hidden = false;
+  const width = menu.offsetWidth;
+  const height = menu.offsetHeight;
+  // Under the button it belongs to, or at the pointer when there is no button — and
+  // pulled back inside the window rather than hanging off it either way.
+  const box = anchor?.getBoundingClientRect?.();
+  const left = box ? box.left : (anchor?.clientX ?? 0);
+  const top = box ? box.bottom + 4 : (anchor?.clientY ?? 0);
+  menu.style.left = `${Math.max(6, Math.min(left, window.innerWidth - width - 6))}px`;
+  menu.style.top = `${Math.max(6, Math.min(top, window.innerHeight - height - 6))}px`;
+}
+
+/** The rows shared by the little menus: a heading, an item, a rule. */
+function rearrangeMenuParts(menu, close) {
+  return {
+    head: (text) => { const el = document.createElement('div'); el.className = 'remenuhead';
+      el.textContent = text; menu.append(el); },
+    item: (label, handler, disabled = false) => { const button = document.createElement('button');
+      button.type = 'button'; button.textContent = label; button.disabled = disabled;
+      button.onclick = () => { close(); handler(); }; menu.append(button); },
+    sep: () => { const line = document.createElement('div'); line.className = 'remenusep'; menu.append(line); },
+  };
+}
+
+/**
+ * EVERYTHING A PART CAN BE TOLD TO DO, IN WORDS.
+ *
+ * The card's icons are for speed and they are learnable, but an icon is only ever a
+ * reminder of something you already know — nobody reads ⌁ and thinks "fill". This is the
+ * same set written out, opened by right-clicking the card — which is now the only way in.
+ * The ⋯ button beside the icons opened this very menu, so it was a second door onto one
+ * room, and it cost a slot in a row that has to stay readable at card width.
+ */
+function openRearrangePartMenu(event, index) {
+  const section = rearrangeRecipe?.form?.[index];
+  if (!section) return;
+  const slices = rearrangeSectionOperationIndices(index);
+  const walking = !!rearrangeSectionChordLine(index, 'roman');
+  const locked = rearrangeLockedSections.has(index);
+  const carries = slices.some((slice) => rearrangeRecipe.operations[slice]?.fill);
+  const bars = Math.max(1, Math.round((section.end - section.start) / 16));
+  openRearrangeMenuAt(event.currentTarget?.tagName === 'BUTTON' ? event.currentTarget : event, (menu, close) => {
+    const { head, item, sep } = rearrangeMenuParts(menu, close);
+    head(`${section.letter || ''} · ${section.name} · ${bars} bar${bars === 1 ? '' : 's'}`.trim());
+    item('Play from here', () => playRearrangementAt(section.start, { part: index }));
+    item('Hold this part', () => selectRearrangeSectionSlices(index));
+    sep();
+    item(locked ? 'Unlock — let the next Go rebuild it' : 'Lock — keep it verbatim through the next Go',
+      () => toggleRearrangeLock(index));
+    item('Rebuild this part from scratch', () => rerollRearrangeSectionMaterial(index));
+    item('Regenerate separately from its twins', () => {
+      if (!section.letter) return;
+      rearrangeUniqueLetters.add(section.letter);
+      toast(`${section.letter} will be built on its own at the next Go`);
+      renderRearrangeList();
+    }, !section.letter);
+    sep();
+    item('Halve this part — the song gets shorter',
+      () => transformRearrangeSectionUi(index, 'halve', 'Section halved'));
+    item('Double this part — the song gets longer',
+      () => transformRearrangeSectionUi(index, 'double', 'Section doubled'));
+    sep();
+    head('Chord walk');
+    item(walking ? 'Stop this part walking' : 'Walk this part around the song’s key',
+      () => toggleRearrangeWalkUi(index));
+    item('New chords for this part', () => rerollRearrangeWalkUi(index), !walking);
+    sep();
+    head('Fill at this part’s ending');
+    for (const [value, name] of [['burst', 'Burst — the final beat'],
+      ['rush', 'Rush — the final half-bar'], ['machinegun', 'Machine gun — the final bar']]) {
+      item(name, () => transformRearrangeSectionUi(index, 'fill', `${name.split(' —')[0]} fill added`, { value }));
+    }
+    item('No fill at all', () => transformRearrangeSectionUi(index, 'fill', 'Fill removed', { value: 'none' }), !carries);
+    sep();
+    item('Save this part to the shelf', () => snapshotRearrangeClip(index));
+    item('Delete this part', () => transformRearrangeSectionUi(index, 'delete', 'Part removed'),
+      (rearrangeRecipe?.form?.length || 0) < 2);
+  });
+}
+
+/** The part's chord walk: on or off, and a reroll of its order. */
+function openRearrangeWalkMenu(event, index) {
+  const section = rearrangeRecipe?.form?.[index];
+  if (!section) return;
+  const walking = !!rearrangeSectionChordLine(index, 'roman');
+  openRearrangeMenuAt(event.currentTarget, (menu, close) => {
+    const { head, item } = rearrangeMenuParts(menu, close);
+    head(`Chord walk · ${section.letter || section.name}`);
+    item(walking ? 'Walk off' : 'Walk this part', () => toggleRearrangeWalkUi(index));
+    item('🎲 New chords', () => rerollRearrangeWalkUi(index), !walking);
+  });
+}
+
+/** The fill at the part's ending, by shape. */
+function openRearrangeFillMenu(event, index) {
+  const section = rearrangeRecipe?.form?.[index];
+  if (!section) return;
+  const carries = rearrangeSectionOperationIndices(index)
+    .some((slice) => rearrangeRecipe.operations[slice]?.fill);
+  openRearrangeMenuAt(event.currentTarget, (menu, close) => {
+    const { head, item } = rearrangeMenuParts(menu, close);
+    head(`Fill this ending · ${section.letter || section.name}`);
+    for (const [value, name] of [['burst', 'Burst · final beat'], ['rush', 'Rush · final half-bar'],
+      ['machinegun', 'Machine gun · final bar']]) {
+      item(name, () => transformRearrangeSectionUi(index, 'fill', `${name.split(' ·')[0]} fill added`, { value }));
+    }
+    item('No fill', () => transformRearrangeSectionUi(index, 'fill', 'Fill removed', { value: 'none' }), !carries);
+  });
+}
+
+function closeRearrangeSliceMenu() {
+  const menu = $('reslicemenu');
+  if (menu && !menu.hidden) menu.hidden = true;
+}
+
+/** Which part the current selection sits in — what the toolbar's part-level controls aim at. */
+function rearrangeSelectedSectionIndex() {
+  const first = [...rearrangeSelectedOperations].sort((a, b) => a - b)[0];
+  if (first == null) return -1;
+  return rearrangeTimelineGeometry().ops[first]?.sectionIndex ?? -1;
+}
+
+/** Step back through M8TRX's own edits. Recipes are replaced wholesale rather than
+ *  mutated, so the previous one IS the undo state and no snapshot is needed. */
+function undoRearrange() {
+  const previous = rearrangeUndoStack.pop();
+  if (!previous) { toast('Nothing to undo on M8TRX'); return; }
+  installRearrangement(previous, { announce: false, undoable: false,
+    live: playing && rearrangeActive() });
+  toast(rearrangePending ? 'M8TRX undo · from the next bar' : 'M8TRX undo');
+}
+
+/**
+ * A start from scratch for the NEXT Generate, without leaving M8TRX or discarding the
+ * recipe currently on the timeline. Locks, the shelf, and the repeated-letter opt-outs
+ * are all "what should Generate do differently" state — the same bucket every other
+ * reset in this panel already clears together (see `clearRearrangement`,
+ * `loadRearrangeJson`) — so one button empties all three rather than three separate ones.
+ */
+function clearRearrangeKeptState() {
+  if (!rearrangeLockedSections.size && !rearrangeClips.length && !rearrangeUniqueLetters.size) {
+    toast('Nothing locked or on the shelf');
+    return;
+  }
+  rearrangeLockedSections.clear();
+  rearrangeClips.length = 0;
+  rearrangeUniqueLetters.clear();
+  renderRearrangeList();
+  toast('Cleared every lock and the shelf');
+}
+
+/** Play from the selection's start, or from the top of the part when nothing is picked. */
+function playRearrangeSelection() {
+  if (!rearrangeRecipe) return;
+  const geometry = rearrangeTimelineGeometry();
+  const first = [...rearrangeSelectedOperations].sort((a, b) => a - b)[0];
+  const at = first == null ? (rearrangeRecipe.form?.[0]?.start || 0) : (geometry.ops[first]?.start || 0);
+  playRearrangementAt(at);
+}
+
+/** Let a repeated letter go its own way on the next Go. */
+function makeRearrangeSectionUnique() {
+  const sectionIndex = Math.max(0, rearrangeSelectedSectionIndex());
+  const letter = rearrangeRecipe?.form?.[sectionIndex]?.letter;
+  if (!letter) return;
+  rearrangeUniqueLetters.add(letter);
+  toast(`${letter} will be unique on the next Go`);
 }
 
 function toggleRearrangeOperation(index) {
@@ -7215,12 +8527,118 @@ function toggleRearrangeOperation(index) {
   syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
 }
 
-function selectAllRearrangeOperations() {
-  if (!rearrangeRecipe?.operations?.length) return;
+/** A plain click means "this one" — pressed again on the same lone slice, it lets go. */
+function selectOneRearrangeOperation(index) {
+  if (!rearrangeRecipe?.operations?.[index]) return;
+  const only = rearrangeSelectedOperations.size === 1 && rearrangeSelectedOperations.has(index);
   rearrangeSelectedOperations.clear();
-  rearrangeRecipe.operations.forEach((_, index) => rearrangeSelectedOperations.add(index));
+  if (!only) rearrangeSelectedOperations.add(index);
   renderRearrangeList();
-  toast(`Selected all ${rearrangeRecipe.operations.length} Rearrange slices`);
+  syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
+}
+
+function selectRearrangeOperationRange(from, to) {
+  const low = Math.min(from, to);
+  const high = Math.max(from, to);
+  rearrangeSelectedOperations.clear();
+  for (let index = low; index <= high; index += 1) {
+    if (rearrangeRecipe?.operations?.[index]) rearrangeSelectedOperations.add(index);
+  }
+  renderRearrangeList();
+  syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
+}
+
+/**
+ * Dragging across the strip selects the run you dragged over.
+ *
+ * Delegated to the timeline once, so a re-render never orphans it, and painted straight
+ * onto the elements while the pointer is down — rebuilding the whole timeline four times
+ * a second under a moving finger would fight the drag it is trying to draw. The commit
+ * at the end is the only render.
+ */
+function wireRearrangeTimelineSelection() {
+  const timeline = $('rearrangeform');
+  if (!timeline) return;
+  let anchor = -1;
+  let last = -1;
+  let moved = false;
+  // The double-click is counted HERE rather than left to the browser's own dblclick. A
+  // single click selects, selecting re-renders the timeline, and the second click of a
+  // pair therefore lands on a freshly built element — the browser never sees two clicks
+  // on one target and dispatches nothing. It also meant the pair selected and then
+  // deselected, so a double-click on a slice did precisely nothing at all.
+  let lastSlice = -1;
+  let lastAt = 0;
+  const sliceAt = (x, y) => document.elementFromPoint(x, y)?.closest?.('.reslice');
+  const paint = (from, to) => {
+    const low = Math.min(from, to);
+    const high = Math.max(from, to);
+    for (const el of timeline.querySelectorAll('.reslice')) {
+      const index = Number(el.dataset.operation);
+      el.classList.toggle('selected', index >= low && index <= high);
+    }
+  };
+  const finish = () => { anchor = -1; last = -1; moved = false; };
+  timeline.addEventListener('contextmenu', (event) => {
+    const slice = event.target.closest?.('.reslice');
+    if (slice) {
+      event.preventDefault();
+      openRearrangeSliceMenu(event, Number(slice.dataset.operation));
+      return;
+    }
+    const card = event.target.closest?.('.reformseg');
+    if (!card) return;
+    event.preventDefault();
+    openRearrangePartMenu(event, Number(card.dataset.section));
+  });
+  timeline.addEventListener('pointerdown', (event) => {
+    closeRearrangeSliceMenu();
+    if (event.button !== 0) return;
+    const slice = event.target.closest?.('.reslice');
+    if (!slice) return;
+    anchor = Number(slice.dataset.operation);
+    last = anchor;
+    moved = false;
+    try { timeline.setPointerCapture(event.pointerId); } catch { /* capture is a nicety */ }
+  });
+  timeline.addEventListener('pointermove', (event) => {
+    if (anchor < 0) return;
+    // Capture pins event.target to the element the drag started on, so the slice under
+    // the pointer has to be asked for by position rather than read off the event.
+    const slice = sliceAt(event.clientX, event.clientY);
+    if (!slice) return;
+    const index = Number(slice.dataset.operation);
+    if (!Number.isInteger(index) || index === last) return;
+    last = index;
+    if (index !== anchor) moved = true;
+    paint(anchor, index);
+  });
+  timeline.addEventListener('pointerup', (event) => {
+    if (anchor < 0) return;
+    const from = anchor;
+    const to = last;
+    const dragged = moved;
+    finish();
+    try { timeline.releasePointerCapture(event.pointerId); } catch { /* already released */ }
+    if (dragged) { lastSlice = -1; selectRearrangeOperationRange(from, to); return; }
+    const doubled = from === lastSlice && performance.now() - lastAt < 400;
+    lastSlice = from;
+    lastAt = performance.now();
+    if (doubled) {
+      // Keep it held — the first click of the pair took it, and letting the second one
+      // put it back down is how "play from here" used to lose its own selection.
+      if (!rearrangeSelectedOperations.has(from)) {
+        rearrangeSelectedOperations.clear();
+        rearrangeSelectedOperations.add(from);
+      }
+      playRearrangementAt(rearrangeTimelineGeometry().ops[from]?.start || 0);
+      renderRearrangeList();
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.shiftKey) toggleRearrangeOperation(from);
+    else selectOneRearrangeOperation(from);
+  });
+  timeline.addEventListener('pointercancel', () => { finish(); renderRearrangeList(); });
 }
 
 function clearRearrangeOperationSelection() {
@@ -7228,14 +8646,115 @@ function clearRearrangeOperationSelection() {
   renderRearrangeList();
 }
 
-function transformSelectedRearrange(action, label) {
-  if (!rearrangeRecipe) { toast('Generate a Rearrange recipe first'); return; }
+/**
+ * Why an edit did nothing, in the terms of the slices actually in hand.
+ *
+ * "Needs a longer slice or a compatible repeat count" covers every refusal and explains
+ * none of them; a person holding four slices wants to know which of the four was the
+ * problem and what about it. Everything here is read off the selection, so the answer
+ * names real numbers.
+ */
+function rearrangeEditRefusal(action, indices, options = {}) {
+  const ops = indices.map((index) => rearrangeRecipe?.operations?.[index]).filter(Boolean);
+  if (!ops.length) return 'Select one or more slices first.';
+  const many = ops.length > 1;
+  const these = many ? `these ${ops.length} slices are` : 'this slice is';
+  switch (action) {
+    case 'split':
+      return `Nothing to halve — ${these} already one sixteenth long.`;
+    case 'repeat-more':
+      return `Already at four passes, which is as many as a slice may take.`;
+    case 'repeat-less':
+      return `${many ? 'These slices' : 'This slice'} already ${many ? 'play' : 'plays'} once, so there is no pass to remove.`;
+    case 'unroll':
+      return `${many ? 'These slices' : 'This slice'} already ${many ? 'play' : 'plays'} once each — there are no repeats to separate.`;
+    case 'join':
+      return indices.length < 2
+        ? 'Join needs two or more slices; pick a run of them.'
+        : 'Join needs slices that sit next to each other.';
+    case 'stutter': {
+      const count = Number(options.value);
+      const shape = REARRANGE_STUTTER_SHAPES[String(options.value)];
+      const parts = shape ? shape.reduce((sum, weight) => sum + weight, 0) : count;
+      const lengths = [...new Set(ops.map((op) => op.length * op.repeats))].join(', ');
+      return `That rhythm needs ${parts} equal parts, and ${lengths} sixteenths does not divide by ${parts}.`;
+    }
+    case 'harmony':
+      return rearrangeRecipe?.key
+        ? 'That chord is out of range for this key.'
+        : 'No key was detected for this song, so there is nothing to move a chord within.';
+    case 'transpose':
+      return ops.some((op) => op.harmony)
+        ? 'These slices walk a chord loop; turn the walk off before transposing them.'
+        : 'That transpose is not available for these slices.';
+    case 'mute':
+    case 'unmute':
+      return `${many ? 'These slices are' : 'This slice is'} already ${action === 'mute' ? 'silent' : 'sounding'}.`;
+    case 'reroll':
+      return 'No other material on this grid fits these slices.';
+    default:
+      return `${many ? 'These slices' : 'This slice'} cannot take that edit.`;
+  }
+}
+
+/**
+ * Reroll one part's material, whatever is selected.
+ *
+ * The card's buttons act on the part they are drawn on — that is what a card is — so
+ * this deliberately does NOT go through the selection. Rerolling the chorus you clicked
+ * while three verse slices happen to be held would be the panel doing something other
+ * than what the button under your finger says.
+ */
+function rerollRearrangeSectionMaterial(sectionIndex) {
+  if (!rearrangeRecipe) { toast('Press Go ▸ to build an M8TRX recipe first'); return; }
+  const name = rearrangeRecipe.form?.[sectionIndex]?.name || 'this part';
+  try {
+    const result = regenerateRearrangementSection(rearrangeRecipe, sectionIndex, {
+      seed: randomSeed(),
+      style: rearrangeStyle(),
+      mood: rearrangeMood(),
+      hypnosis: rearrangeHypnosis(),
+      chaos: rearrangeChaos(),
+      drive: rearrangeDrive(),
+      progression: rearrangeChordLoop(),
+      key: rearrangeKeyChoice(),
+      transposeAmount: rearrangeTransposeAmount(),
+      sourceProfile: rearrangeGenerationProfile(),
+      locked: rearrangeLockedSections.has(sectionIndex),
+    });
+    if (!result.changed) { toast(`${name} could not be rebuilt`); return; }
+    applyRearrangeEdit(result.recipe,
+      `${name} rebuilt · ${result.changed} slice${result.changed === 1 ? '' : 's'}`);
+  } catch (error) {
+    toast(error?.message || `Could not roll ${name}`);
+  }
+}
+
+function transformSelectedRearrange(action, label, options = {}) {
+  if (!rearrangeRecipe) { toast('Press Go ▸ to build an M8TRX recipe first'); return; }
   if (!rearrangeSelectedOperations.size) { toast('Select one or more Rearrange slices first'); return; }
   try {
+    // Reroll is the only transform that makes a musical choice rather than performing a
+    // named operation, so it is the only one handed the panel's dials — and it is handed
+    // them live, at the press, not the values Generate happened to run under. The others
+    // do exactly what their word says and would only be given controls they ignore.
+    const creative = action === 'reroll' ? {
+      profile: rearrangeGenerationProfile(),
+      key: rearrangeKeyChoice() || rearrangeRecipe.key || null,
+      style: rearrangeStyle(),
+      mood: rearrangeMood(),
+      hypnosis: rearrangeHypnosis(),
+      chaos: rearrangeChaos(),
+      drive: rearrangeDrive(),
+    } : { profile: null };
     const result = transformRearrangement(rearrangeRecipe,
-      [...rearrangeSelectedOperations], action, { seed: randomSeed() });
+      [...rearrangeSelectedOperations], action, {
+        seed: randomSeed(),
+        ...creative,
+        ...options,
+      });
     if (!result.changed) {
-      toast(`${label} needs a longer slice or a compatible repeat count`);
+      toast(rearrangeEditRefusal(action, [...rearrangeSelectedOperations], options));
       return;
     }
     applyRearrangeEdit(result.recipe,
@@ -7245,11 +8764,9 @@ function transformSelectedRearrange(action, label) {
   }
 }
 
-function cycleRearrangeDrums() {
-  if (!rearrangeRecipe) { toast('Generate a Rearrange recipe first'); return; }
-  const mode = rearrangementDrumMode(rearrangeRecipe);
-  const next = REARRANGE_DRUM_ORDER[
-    (REARRANGE_DRUM_ORDER.indexOf(mode) + 1) % REARRANGE_DRUM_ORDER.length];
+function setRearrangeDrums(next) {
+  if (!rearrangeRecipe) { toast('Press Go ▸ to build an M8TRX recipe first'); return; }
+  if (!REARRANGE_DRUM_MODES.includes(next)) return;
   const recipe = { ...rearrangeRecipe };
   // No field still means the chopped-source behaviour, so a saved recipe stays
   // readable by anything that only knows the original two modes.
@@ -7258,20 +8775,62 @@ function cycleRearrangeDrums() {
   applyRearrangeEdit(recipe, `Rearrange drums · ${REARRANGE_DRUM_LABELS[next].toLowerCase()}`);
 }
 
-function voteRearrangeSection(sectionIndex, vote) {
+function toggleRearrangeLock(sectionIndex) {
   if (!rearrangeRecipe?.form?.[sectionIndex]) return;
-  const selected = vote === 'keep' ? rearrangeKeptSections : rearrangeDislikedSections;
-  const other = vote === 'keep' ? rearrangeDislikedSections : rearrangeKeptSections;
-  if (selected.has(sectionIndex)) selected.delete(sectionIndex);
-  else { selected.add(sectionIndex); other.delete(sectionIndex); }
-  renderRearrangeList();
-  syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
+  if (rearrangeLockedSections.has(sectionIndex)) rearrangeLockedSections.delete(sectionIndex);
+  else rearrangeLockedSections.add(sectionIndex);
+  renderRearrangeTimeline();
+  // The timeline redraws the card's own lock glyph; the toolbar's Clear-kept-state
+  // button also reads `rearrangeLockedSections.size` and needs the same nudge, or it
+  // sits disabled right after the very lock that should have woken it up.
+  renderRearrangeInspector();
+  toast(rearrangeLockedSections.has(sectionIndex)
+    ? `Locked ${rearrangeRecipe.form[sectionIndex].letter || rearrangeRecipe.form[sectionIndex].name}`
+    : 'Section unlocked');
+}
+
+function grabRearrangeSection() {
+  if (!rearrangeRecipe || !playing) { toast('Play M8TRX, then lock what is playing'); return; }
+  const position = Audio.rearrangementPosition(Audio.step);
+  if (position?.formIndex != null) {
+    rearrangeLockedSections.add(position.formIndex);
+    renderRearrangeTimeline();
+    renderRearrangeInspector();
+    toast(`Locked the heard section ${position.form?.letter || position.form?.name || ''}`.trim());
+  }
+}
+
+function transformRearrangeSectionUi(index, action, label, options = {}) {
+  if (!rearrangeRecipe) return;
+  try {
+    const result = transformRearrangementSection(rearrangeRecipe, index, action, {
+      seed: randomSeed(), ...options,
+    });
+    if (!result.changed) { toast(`${label} is not available for this section`); return; }
+    applyRearrangeEdit(result.recipe, label);
+  } catch (error) { toast(error?.message || `Could not ${label.toLowerCase()}`); }
+}
+
+function toggleRearrangeWalkUi(index) {
+  if (!rearrangeRecipe) return;
+  try {
+    const result = toggleRearrangeSectionWalk(rearrangeRecipe, index);
+    applyRearrangeEdit(result.recipe, 'Chord walk toggled');
+  } catch (error) { toast(error?.message || 'Could not toggle the chord walk'); }
+}
+
+function rerollRearrangeWalkUi(index) {
+  if (!rearrangeRecipe) return;
+  try {
+    const result = rerollSectionWalk(rearrangeRecipe, index, { seed: randomSeed() });
+    applyRearrangeEdit(result.recipe, 'Chord walk rerolled');
+  } catch (error) { toast(error?.message || 'Could not reroll the chord walk'); }
 }
 
 function rearrangeKeptAnchors() {
-  if (!rearrangeRecipe?.form?.length || !rearrangeKeptSections.size) return [];
+  if (!rearrangeRecipe?.form?.length || !rearrangeLockedSections.size) return [];
   const anchors = [];
-  for (const index of rearrangeKeptSections) {
+  for (const index of rearrangeLockedSections) {
     const section = rearrangeRecipe.form[index];
     if (!section) continue;
     let output = 0;
@@ -7284,27 +8843,11 @@ function rearrangeKeptAnchors() {
       output = end;
     }
     if (complete && operations.length) {
-      anchors.push({ index, role: section.role, steps: section.end - section.start, operations });
+      anchors.push({ index, role: section.role, letter: section.letter,
+        steps: section.end - section.start, operations });
     }
   }
   return anchors;
-}
-
-function rearrangeDislikedAnchors() {
-  if (!rearrangeRecipe?.form?.length || !rearrangeDislikedSections.size) return [];
-  return [...rearrangeDislikedSections].map((index) => {
-    const section = rearrangeRecipe.form[index];
-    if (!section) return null;
-    const operations = rearrangeSectionOperations(index);
-    const first = operations[0];
-    return {
-      index,
-      role: section.role,
-      steps: section.end - section.start,
-      source: section.source,
-      ...(first ? { from: first.from } : {}),
-    };
-  }).filter(Boolean);
 }
 
 function rearrangeSectionOperations(sectionIndex) {
@@ -7323,19 +8866,47 @@ function rearrangeSectionOperations(sectionIndex) {
 function syncRearrangeProgress(outputStep = null) {
   if (rearrangeRecipe && !Audio.rearrangement) {
     rearrangeRecipe = null;
-    rearrangeKeptSections.clear();
-    rearrangeDislikedSections.clear();
+    rearrangeLockedSections.clear();
+    rearrangeUniqueLetters.clear();
     syncRearrangeButton();
     syncRearrangeLoopControls();
     renderRearrangeList();
   }
   if (!rearrangeRecipe) return;
   const pos = outputStep == null ? null : Audio.rearrangementPosition(outputStep);
-  document.querySelectorAll('#rearrangelist li.active').forEach((el) => el.classList.remove('active'));
+  document.querySelectorAll('#rearrangeform .reslice.active').forEach((el) => {
+    el.classList.remove('active');
+    el.style.removeProperty('--replayed');
+  });
   document.querySelectorAll('#rearrangeform .reformseg.active').forEach((el) => el.classList.remove('active'));
+  // The queued jump's destination, marked until the scheduler actually takes it. Cleared
+  // by the ENGINE having let go of it, never by a timer here: the bar line is the
+  // engine's to decide and a self-timed clear would stop pulsing while still waiting.
+  document.querySelectorAll('#rearrangeform .seeking').forEach((el) => el.classList.remove('seeking'));
+  if (rearrangeSeekStep != null) {
+    if (Audio.pendingStep == null) { rearrangeSeekStep = null; rearrangeSeekPart = null; }
+    else if (rearrangeSeekPart != null) {
+      document.querySelector(`#rearrangeform .reformseg[data-section="${rearrangeSeekPart}"]`)
+        ?.classList.add('seeking');
+    } else {
+      const heading = Audio.rearrangementPosition(rearrangeSeekStep);
+      if (heading) {
+        document.querySelector(`#rearrangeform .reslice[data-operation="${heading.operationIndex}"]`)
+          ?.classList.add('seeking');
+      }
+    }
+  }
   if (pos) {
-    const row = document.querySelector(`#rearrangelist li[data-operation="${pos.operationIndex}"]`);
+    const row = document.querySelector(`#rearrangeform .reslice[data-operation="${pos.operationIndex}"]`);
     row?.classList.add('active');
+    // How far through the sounding slice the playhead is, as the width of the bar drawn
+    // under it. One style write on one element per tick: the block says which slice, the
+    // bar says where inside it, and neither needs a redraw of the timeline to say so.
+    if (row) {
+      const span = Math.max(1, pos.outputEnd - pos.outputStart + 1);
+      row.style.setProperty('--replayed',
+        Math.min(1, Math.max(0, (pos.outputStep - pos.outputStart + 1) / span)).toFixed(3));
+    }
     // Follow the playhead: when the active row CHANGES and the listener has not just
     // scrolled by hand, bring it into view. 'nearest' only moves the list when the row
     // is actually outside it, so a list that fits entirely never twitches — and only
@@ -7352,13 +8923,11 @@ function syncRearrangeProgress(outputStep = null) {
   if (pos?.formIndex != null) {
     const seg = document.querySelector(`#rearrangeform .reformseg[data-section="${pos.formIndex}"]`);
     seg?.classList.add('active');
-    // The rail follows too — same rule, its own scroll.
-    if (performance.now() >= rearrangeFollowHeldUntil) seg?.scrollIntoView({ block: 'nearest' });
   }
   if (pos) {
     const mode = rearrangementDrumMode(rearrangeRecipe);
     $('rearrangestatus').textContent = `${pos.form?.name ? `${pos.form.name} · ` : ''}Operation ${pos.operationIndex + 1}/${rearrangeRecipe.operations.length} · repetition ${pos.repeatIndex + 1}/${pos.operation.repeats}`
-      + ` · source ${rearrangeStepLabel(pos.sourceStep)}`
+      + ` · source ${rearrangeOutputLabel(pos.sourceStep)}`
       + rearrangeHarmonyLabel(pos.operation)
       + ` · ${rearrangeDrumLabel(mode).toLowerCase()}`
       + (rearrangePending ? ' · edit lands next bar' : '')
@@ -7374,9 +8943,14 @@ function syncRearrangeProgress(outputStep = null) {
  * be, and the next one is the new arrangement. The desk's draft changes immediately
  * either way — the panel shows what you have made, marked as not yet heard until it is.
  */
-function installRearrangement(recipe, { announce = true, live = false } = {}) {
+function installRearrangement(recipe, { announce = true, live = false, undoable = true } = {}) {
+  if (undoable && rearrangeRecipe && rearrangeRecipe !== recipe) {
+    rearrangeUndoStack.push(rearrangeRecipe);
+    if (rearrangeUndoStack.length > REARRANGE_UNDO_DEPTH) rearrangeUndoStack.shift();
+  }
   rearrangeRecipe = recipe;
   rearrangeSelectedOperations.clear();
+  Audio.rearrangeLoop = rearrangeLoopOn;
   if (live) rearrangePending = Audio.queueRearrangement(recipe) === 'queued';
   else { Audio.setRearrangement(recipe); rearrangePending = false; }
   syncRearrangeButton();
@@ -7395,17 +8969,38 @@ function installRearrangement(recipe, { announce = true, live = false } = {}) {
  * beats in again. Stopped, it simply lands.
  */
 function applyRearrangeEdit(recipe, message = '') {
+  // An edit that leaves the slice COUNT alone leaves every index meaning what it meant,
+  // so the selection survives it. The slice controls live in the inspector now, and an
+  // inspector that emptied itself after each press would make "+ + +" three selections
+  // and three presses. A count-changing edit still clears: those indices are gone.
+  const held = rearrangeRecipe?.operations?.length === recipe?.operations?.length
+    ? [...rearrangeSelectedOperations] : null;
   installRearrangement(recipe, { announce: false, live: playing && rearrangeActive() });
+  if (held?.length) {
+    held.forEach((index) => rearrangeSelectedOperations.add(index));
+    renderRearrangeList();
+  }
   if (message) toast(rearrangePending ? `${message} · from the next bar` : message);
 }
 
 function clearRearrangement({ announce = true } = {}) {
   rearrangeRecipe = null;
+  rearrangeSeekStep = null;
+  rearrangeSeekPart = null;
+  rearrangeCopiedSection = null;
+  rearrangeUndoStack.length = 0;
   rearrangeSelectedOperations.clear();
-  rearrangeKeptSections.clear();
-  rearrangeDislikedSections.clear();
+  rearrangeLockedSections.clear();
+  rearrangeUniqueLetters.clear();
   rearrangePending = false;
   Audio.setRearrangement(null);
+  // THE DRUMS MENU GOES BACK TO ITS DEFAULT WITH THE RECIPE IT BELONGED TO. Its row is
+  // hidden while there is no recipe (see `.norecipe` in the shell), and a control you
+  // cannot see must not be holding the next Go to anything — the desk's rule is that every
+  // key an engine path reads has a pot you can find. Left as it was, a hidden menu still
+  // reading "Techno" would build techno drums at the next Go with nothing on screen saying
+  // so. Chopped is the neutral setting: it writes no `drums` field at all.
+  rearrangeDrumsChoice = 'original';
   syncRearrangeButton();
   syncRearrangeLoopControls();
   renderRearrangeList();
@@ -7413,7 +9008,7 @@ function clearRearrangement({ announce = true } = {}) {
   if (announce) toast('Returned to the normal song');
 }
 
-function generateRearrangeRecipe({ restart = false } = {}) {
+function generateRearrangeRecipe({ restart = false, freshSeed = false } = {}) {
   // Regenerating while the collage plays is how this is actually used: listen, press
   // Generate, hear the next bar as a different arrangement. That path never stops the
   // transport. Only a normal song playing underneath still has to be handed over.
@@ -7421,20 +9016,34 @@ function generateRearrangeRecipe({ restart = false } = {}) {
   const wasPlaying = playing && !live;
   if (wasPlaying) setPlaying(false);
   const steps = rearrangeSourceSteps();
+  // The pin holds THIS recipe's seed, so moving a dial reshapes the song you are already
+  // listening to. The dice passes `freshSeed` and rolls past the pin without releasing it
+  // — a lucky dip is meant to be a new song, and the one it lands on becomes the held one.
+  const seed = !freshSeed && rearrangeSeedHold && rearrangeRecipe
+    ? rearrangeRecipe.seed : randomSeed();
   let recipe;
   try {
     recipe = generateRearrangement(steps, {
-      seed: randomSeed(),
+      seed,
       style: rearrangeStyle(),
-      variation: rearrangeVariation(),
-      allowGlitches: rearrangeAllowGlitches(),
+      mood: rearrangeMood(),
+      hypnosis: rearrangeHypnosis(),
+      chaos: rearrangeChaos(),
+      drive: rearrangeDrive(),
       progression: rearrangeChordLoop(),
-      walk: rearrangeChordWalk(),
+      fill: rearrangeFill(),
+      uniqueLetters: [...rearrangeUniqueLetters],
+      letterTemplates: Object.fromEntries(rearrangeClips
+        .filter((clip) => /^[A-Z]$/.test(clip.letter || ''))
+        .map((clip) => [clip.letter, {
+        steps: clip.steps, operations: clip.operations, key: clip.key,
+        resizable: !!clip.resizable, verbatim: !!clip.verbatim,
+        }])),
+      outputSteps: rearrangeOutputSteps(),
       key: rearrangeKeyChoice(),
       transposeAmount: rearrangeTransposeAmount(),
       sourceProfile: rearrangeGenerationProfile(),
       anchors: rearrangeKeptAnchors(),
-      avoid: rearrangeDislikedAnchors(),
       favourites: rearrangeFavourites,
     });
   } catch (error) {
@@ -7444,13 +9053,118 @@ function generateRearrangeRecipe({ restart = false } = {}) {
   }
   recipe.source.song = trackId;
   recipe.source.title = track?.title || trackId;
+  // Auto resolves to a real kit HERE, before the recipe is installed or saved, so the
+  // word 'auto' never reaches a file, the validator, or the engine.
+  const kit = rearrangeDrumsChoice === 'auto'
+    ? driveDrumKit(rearrangeDrive()) : rearrangeDrumsChoice;
+  if (kit && kit !== 'original') recipe.drums = kit;
+  // A PRESS THAT CHANGES NOTHING HAS TO SAY SO. The primary greys out for this case before
+  // you can press it (see syncRearrangeSeedHold), so reaching here means something changed
+  // the signature without changing a slice — a dial nudged and put back, a setting the
+  // generator ignored at this key. Kept as the backstop, because "it did nothing and said
+  // nothing" is the failure this whole pair of controls is trying to avoid.
+  if (rearrangeSeedHold && rearrangeRecipe
+      && JSON.stringify(recipe.operations) === JSON.stringify(rearrangeRecipe.operations)
+      && JSON.stringify(recipe.form) === JSON.stringify(rearrangeRecipe.form)) {
+    toast('Same settings, same arrangement — move a dial to reshape it, or turn off '
+      + '“Vary this one” for a different one', 4200);
+    rearrangeBuiltFrom = rearrangeGenerationSignature();
+    syncRearrangeSeedHold();
+    if (wasPlaying) setPlaying(true);
+    return;
+  }
+  // What this recipe was built from, so the panel knows when you have moved on from it.
+  rearrangeBuiltFrom = rearrangeGenerationSignature();
   installRearrangement(recipe, { announce: false, live });
+  syncRearrangeSeedHold();
   if (live) {
     toast(rearrangePending
       ? `New arrangement · ${recipe.operations.length} slices, from the next bar`
       : `New arrangement · ${recipe.operations.length} slices`);
   } else if (wasPlaying || restart) playRearrangement();
   else toast(`Generated ${recipe.operations.length} Rearrange operations`);
+}
+
+/**
+ * LUCKY DIP. Roll the four dials somewhere musical, roll a fresh seed, and generate.
+ *
+ * Not uniform: a uniform roll spends most of its time in the corners, and the corners
+ * are where this stops being music. Mood is the exception and roams the whole range —
+ * every reading of it is a real song. The other three are drawn towards the middle,
+ * Drive never quite sleeps or redlines, and the one genuinely bad corner — feral
+ * material with nothing repeating — is pulled back rather than shipped.
+ *
+ * `Math.random` on purpose. The recipe stays reproducible from the seed written into
+ * it; the dip is the one throw that is meant to be unrepeatable.
+ */
+function luckyDip() {
+  // Two rolls subtracted give a triangular distribution: peaked at the centre, still
+  // able to reach the ends, and one line of arithmetic.
+  const towardsMiddle = (centre, spread) => centre + (Math.random() - Math.random()) * spread;
+  const snap = (value) => Math.max(0, Math.min(100, Math.round(value / 5) * 5));
+  const rolled = {
+    mood: snap(Math.random() * 100),
+    hypnosis: snap(towardsMiddle(55, 45)),
+    chaos: snap(towardsMiddle(45, 35)),
+    drive: snap(15 + Math.random() * 70),
+  };
+  if (rolled.chaos >= 70 && rolled.hypnosis <= 25) rolled.hypnosis = 40;
+  for (const [name, value] of Object.entries(rolled)) {
+    const control = $(REARRANGE_DIALS[name].id);
+    if (control) control.value = String(value);
+  }
+  syncRearrangeDials();
+  syncRearrangeKeyReadout();
+  syncRearrangeDrumControl();
+  const words = Object.entries(rolled)
+    .map(([name, value]) => REARRANGE_DIALS[name].words[rearrangeDialBand(value)]);
+  toast(`Lucky dip · ${words.join(', ')}`);
+  generateRearrangeRecipe({ restart: rearrangeActive() && playing, freshSeed: true });
+}
+
+/** The pin: held is a state, so it lights up and says which way it will go next. */
+function syncRearrangeSeedHold() {
+  const button = $('reseedhold');
+  if (!button) return;
+  button.classList.toggle('on', rearrangeSeedHold);
+  button.setAttribute('aria-pressed', rearrangeSeedHold ? 'true' : 'false');
+  // NO "SEED", NO "ROLL". Both are words for the machinery, and the machinery is not what
+  // anyone is asking about — the question is "if I nudge Drive and press Go, do I get this
+  // song again but pushier, or do I get a different song?" So the tooltip answers that, in
+  // those terms, and says what it is FOR: hearing what one dial did.
+  button.title = rearrangeSeedHold
+    ? 'On: Go keeps the arrangement you are hearing and changes only what the dials ask for — so you can move one dial and hear what that dial did. Turn it off to get a completely different arrangement on every press.'
+    : 'Every press of Go builds a completely different arrangement. Turn this on and Go keeps the one you are hearing instead, changing only what the dials ask for — so you can move one dial and hear what that dial did.';
+  // THE PRIMARY SAYS WHICH OF ITS TWO JOBS IT IS ABOUT TO DO. This pin used to be a claim
+  // about invisible state — you pressed it and nothing on screen changed — and the button it
+  // governs was called "Go", which is a word for pressing rather than for what happens. Now
+  // the pin's effect is the primary's LABEL, so the pair explains itself without a tooltip.
+  const primary = $('regenerate');
+  if (!primary) return;
+  // "New variation" over-promised: with the pin on, the seed and the dials ARE the inputs,
+  // so a press that follows no dial move rebuilds the identical thing. What the press
+  // actually does in that mode is apply wherever the dials are now to the arrangement you
+  // are holding — so it says that, and a press that would change nothing says so too.
+  primary.textContent = rearrangeSeedHold ? 'Reshape this one ▸' : 'New arrangement ▸';
+  // THE BUTTON THAT WOULD DO NOTHING IS THE ONE THAT GREYS OUT — not the pin above it.
+  //
+  // With the arrangement held, the seed and every dial are the inputs they already were, so
+  // a press before you have moved anything rebuilds a bit-identical recipe. Disabling it
+  // says that in advance instead of after the fact, and it teaches the mechanism: move a
+  // dial and the button lights.
+  //
+  // Deliberately NOT the pin. The pin is armed BEFORE you know which dial you are about to
+  // move — "keep this one" is a decision about the arrangement you are hearing — so a pin
+  // that only enabled once a dial had moved would be unavailable at the exact moment you
+  // reach for it, and would force the two presses into the wrong order.
+  const spent = rearrangeSeedHold && !!rearrangeRecipe
+    && rearrangeBuiltFrom === rearrangeGenerationSignature();
+  primary.disabled = spent;
+  primary.title = !rearrangeSeedHold
+    ? 'Build a completely new arrangement from these settings — while playing, it is heard from the next bar'
+    : spent
+      ? 'Nothing to reshape yet — move a dial and this lights up. Or turn off “Vary this one” for a completely different arrangement.'
+      : 'Rebuild the arrangement you are hearing with the dials where they are now — while playing, it is heard from the next bar';
 }
 
 function playRearrangement() {
@@ -7466,13 +9180,34 @@ function playRearrangement() {
   toast('Playing Rearrange from the beginning');
 }
 
-function playRearrangementAt(outputStep) {
+function playRearrangementAt(outputStep, { part = null } = {}) {
   if (!rearrangeRecipe) return;
-  const total = rearrangeSourceSteps();
+  const total = rearrangeRecipe.output?.steps || rearrangeSourceSteps();
   const at = ((Math.floor(Number(outputStep) || 0) % total) + total) % total;
+  // ALREADY PLAYING IS A SEEK, NOT A RESTART. Stopping the transport and starting it again
+  // at the new position is audible as a stop and a start — which is the wrong answer when
+  // the music is running and you have pointed at the bar you want next. The bar being
+  // heard finishes, and the jump lands on its line, the same way clicking the song's own
+  // timeline behaves. The slice you aimed at pulses until it arrives, because a jump that
+  // waits has to say that it is waiting or it reads as a click that missed.
+  if (playing && rearrangeActive()) {
+    rearrangePending = false;
+    Audio.setRearrangement(rearrangeRecipe);
+    Audio.setStepAtBoundary(at);
+    rearrangeSeekStep = at;
+    // Aiming at a PART flashes the part. Marking only the slice its first bar happens to
+    // land in would answer a question nobody asked — you pointed at a section, and what is
+    // being waited for is the section.
+    rearrangeSeekPart = part;
+    syncRearrangeProgress(Audio.rearrangement ? Audio.step : null);
+    toast(`Playing from ${rearrangeOutputLabel(at)} at the next bar`);
+    return;
+  }
   if (playing) setPlaying(false);
   // Jumping somewhere is asking to hear the draft from there, so it installs at once.
   rearrangePending = false;
+  rearrangeSeekStep = null;
+  rearrangeSeekPart = null;
   Audio.setRearrangement(rearrangeRecipe);
   syncRearrangeLoopControls();
   // No count-in here: only the deliberate from-the-top start gets four beats. Auditioning
@@ -7491,12 +9226,243 @@ function returnToSong() {
 }
 
 function saveRearrangeJson() {
-  if (!rearrangeRecipe) { toast('Generate a Rearrange recipe first'); return; }
+  if (!rearrangeRecipe) { toast('Press Go ▸ to build an M8TRX recipe first'); return; }
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const name = `${track?.slug || trackId}-rearrange-${stamp}.json`;
-  const payload = JSON.parse(JSON.stringify(rearrangeRecipe));
+  // `editor` rides ON the recipe object rather than wrapping it, because a JSON export's
+  // top level IS the recipe by contract (`validateRearrangement` reads `kind` straight off
+  // it) — a caller loading this file with an older build, or feeding it to a tool that
+  // only knows the recipe schema, sees exactly what it always saw. Omitted entirely when
+  // there is nothing to carry, so an untouched recipe exports as lean as it always did.
+  const editor = rearrangeEditorSnapshot();
+  const payload = { ...JSON.parse(JSON.stringify(rearrangeRecipe)), ...(editor ? { editor } : {}) };
   saveBlob(name, new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' }));
-  toast(`Saved ${name}`);
+  toast(`Saved ${name}${editor ? ' with locks and shelf' : ''}`);
+}
+
+/**
+ * The desk settings that BUILT a recipe, saved beside it.
+ *
+ * A recipe is a finished arrangement; the dials are the question that produced it, and
+ * coming back to a parked version to find the dials at their factory positions loses
+ * the more useful half — the recipe you can hear is right there, but the settings you
+ * would tweak to get the next one are gone. Stored in desk units (0–100), because that
+ * is the reading on the control and the same reading has to mean the same thing.
+ */
+/**
+ * The generator inputs, as one comparable string.
+ *
+ * Everything the recipe was BUILT from and nothing else: drums are applied after generation
+ * and the pin is a mode rather than an input, so neither belongs here — including them would
+ * make the primary light up for a change that cannot alter a single slice.
+ */
+function rearrangeGenerationSignature() {
+  const { drums, seedHold, ...built } = rearrangeSettingsSnapshot();
+  return JSON.stringify(built);
+}
+
+function rearrangeSettingsSnapshot() {
+  const dial = (name) => Number($(REARRANGE_DIALS[name].id)?.value ?? '');
+  return {
+    mood: dial('mood'), hypnosis: dial('hypnosis'), chaos: dial('chaos'), drive: dial('drive'),
+    style: rearrangeStyle(),
+    length: $('relength')?.value ?? '1',
+    drums: rearrangeDrumsChoice,
+    key: $('rekey')?.value ?? 'auto',
+    fill: $('refill')?.value ?? REARRANGE_FILL_DEFAULT,
+    transpose: Number($('retranspose')?.value ?? 0),
+    seedHold: rearrangeSeedHold,
+  };
+}
+
+/**
+ * Locks, the shelf, and repeated-letter opt-outs, saved beside a recipe.
+ *
+ * These are the other half of what a returning session needs back: the recipe is the
+ * result, but locks/shelf/uniqueLetters are what the NEXT Generate would have used —
+ * losing them on save is losing exactly the editorial work that got here. Omitted
+ * entirely when there is nothing to carry, so an untouched recipe still saves as lean
+ * as it always did.
+ */
+function rearrangeEditorSnapshot() {
+  const locks = [...rearrangeLockedSections].sort((a, b) => a - b);
+  const shelf = rearrangeClips.map((clip) => ({
+    label: clip.label,
+    letter: clip.letter || '',
+    steps: clip.steps,
+    operations: clip.operations.map((operation) => ({ ...operation })),
+    resizable: !!clip.resizable,
+    verbatim: !!clip.verbatim,
+    ...(clip.key ? { key: { ...clip.key } } : {}),
+  }));
+  const uniqueLetters = [...rearrangeUniqueLetters];
+  return (locks.length || shelf.length || uniqueLetters.length)
+    ? { locks, shelf, uniqueLetters } : null;
+}
+
+/**
+ * A shelf item read back from a file is untrusted the same way a loaded recipe is: it
+ * came from disk, possibly hand-edited, possibly from an older build. This is basic
+ * shape and bounds only, not the recipe validator's job repeated — just enough that a
+ * malformed entry is dropped rather than handed to the generator as a from/length pair
+ * that could point outside the song or crash the next Go.
+ */
+function sanitizeRearrangeClip(raw, sourceSteps) {
+  if (!raw || typeof raw !== 'object') return null;
+  const steps = Number(raw.steps);
+  if (!Number.isInteger(steps) || steps <= 0) return null;
+  if (!Array.isArray(raw.operations) || !raw.operations.length) return null;
+  const operations = [];
+  for (const op of raw.operations) {
+    const from = Number(op?.from);
+    const length = Number(op?.length);
+    const repeats = Number(op?.repeats);
+    if (!Number.isInteger(from) || from < 0) return null;
+    if (!Number.isInteger(length) || length <= 0) return null;
+    if (!Number.isInteger(repeats) || repeats < 1 || repeats > 4) return null;
+    if (Number.isInteger(sourceSteps) && from + length > sourceSteps) return null;
+    operations.push({
+      from, length, repeats, transpose: Number(op?.transpose) || 0,
+      ...(op?.harmony ? { harmony: Number(op.harmony) || 0 } : {}),
+      ...(op?.mute ? { mute: true } : {}),
+      ...(typeof op?.fill === 'string' ? { fill: op.fill } : {}),
+      ...(op?.favourite ? { favourite: true } : {}),
+    });
+  }
+  const letter = typeof raw.letter === 'string' && /^[A-Z]$/.test(raw.letter) ? raw.letter : '';
+  return {
+    id: `${trackId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    label: typeof raw.label === 'string' && raw.label
+      ? raw.label : (letter ? `${letter} · restored` : 'Restored clip'),
+    letter, steps, operations,
+    resizable: !!raw.resizable,
+    verbatim: !!raw.verbatim,
+    ...(raw.key && Number.isInteger(raw.key.tonic) ? { key: { tonic: raw.key.tonic, minor: !!raw.key.minor } } : {}),
+  };
+}
+
+/** ` · N shelf items could not be restored`, or '' — composed onto whichever toast follows. */
+function rearrangeDropNote(dropped) {
+  return dropped ? ` · ${dropped} shelf item${dropped === 1 ? '' : 's'} could not be restored` : '';
+}
+
+/**
+ * Replace locks/shelf/uniqueLetters wholesale — this is what those now ARE, not a merge
+ * with whatever the session already had. `editor` absent still clears: a lock is an
+ * index position in a SPECIFIC recipe's form, and carrying it over onto a different
+ * recipe is how a lock ends up holding the wrong part verbatim.
+ *
+ * Returns `{ dropped }` rather than toasting itself — this always runs immediately before
+ * a caller's OWN toast (installing a recipe, restoring a version), and a toast here would
+ * only ever be the message a viewer never gets to read before the next one replaces it.
+ */
+function applyRearrangeEditorState(editor, sourceSteps) {
+  rearrangeLockedSections.clear();
+  rearrangeClips.length = 0;
+  rearrangeUniqueLetters.clear();
+  if (!editor || typeof editor !== 'object') { renderRearrangeClips(); return { dropped: 0 }; }
+  if (Array.isArray(editor.locks)) {
+    for (const index of editor.locks) {
+      if (Number.isInteger(index) && index >= 0) rearrangeLockedSections.add(index);
+    }
+  }
+  let dropped = 0;
+  if (Array.isArray(editor.shelf)) {
+    for (const raw of editor.shelf) {
+      const clip = sanitizeRearrangeClip(raw, sourceSteps);
+      if (!clip) { dropped++; continue; }
+      // A hand-edited or corrupted file could carry two shelf items on one letter, the
+      // same collision `addRearrangeClip` already guards against at creation time.
+      if (rearrangeClipLetterTaken(clip.letter)) clip.letter = '';
+      rearrangeClips.push(clip);
+    }
+  }
+  if (Array.isArray(editor.uniqueLetters)) {
+    for (const letter of editor.uniqueLetters) {
+      if (typeof letter === 'string' && /^[A-Z]$/.test(letter)) rearrangeUniqueLetters.add(letter);
+    }
+  }
+  renderRearrangeClips();
+  return { dropped };
+}
+
+/**
+ * A saved blob is either a bare recipe (everything saved before the dials existed) or
+ * the wrapper. The recipe carries `kind`, so the two are told apart by the data itself
+ * rather than by a version number somebody has to remember to bump.
+ */
+function unwrapM8trx(blob) {
+  if (blob?.kind === REARRANGE_KIND) return { recipe: blob, settings: null, editor: null };
+  return { recipe: blob?.recipe ?? null, settings: blob?.settings ?? null, editor: blob?.editor ?? null };
+}
+
+function applyRearrangeSettings(settings) {
+  if (!settings || typeof settings !== 'object') return;
+  for (const [name, spec] of Object.entries(REARRANGE_DIALS)) {
+    const value = Number(settings[name]);
+    const control = $(spec.id);
+    if (control && Number.isFinite(value)) control.value = String(Math.max(0, Math.min(100, value)));
+  }
+  if (REARRANGE_STYLE_CHOICES.includes(settings.style)) setRearrangeStyle(settings.style);
+  const select = (id, value) => {
+    const control = $(id);
+    if (control && value != null
+      && [...control.options].some((option) => option.value === String(value))) {
+      control.value = String(value);
+    }
+  };
+  select('relength', settings.length);
+  select('rekey', settings.key);
+  select('refill', settings.fill);
+  if (settings.drums === 'auto' || REARRANGE_DRUM_MODES.includes(settings.drums)) {
+    rearrangeDrumsChoice = settings.drums;
+  }
+  const transpose = Number(settings.transpose);
+  if ($('retranspose') && Number.isFinite(transpose)) {
+    $('retranspose').value = String(Math.max(0, Math.min(100, transpose)));
+  }
+  rearrangeSeedHold = !!settings.seedHold;
+  syncRearrangeDials();
+  syncRearrangeStyle();
+  syncRearrangeTranspose();
+  syncRearrangeKeyReadout();
+  syncRearrangeSeedHold();
+  syncRearrangeDrumControl();
+  // A restored key or fill is exactly the case the count is for: the setting arrived from a
+  // file rather than from a press, so nothing on screen would otherwise say it is set.
+  syncRearrangeAdvanced();
+}
+
+async function saveM8trxVersion() {
+  if (!rearrangeRecipe) { toast('Press Go ▸ to build an M8TRX recipe first'); return; }
+  const editor = rearrangeEditorSnapshot();
+  const payload = {
+    recipe: JSON.parse(JSON.stringify(rearrangeRecipe)),
+    settings: rearrangeSettingsSnapshot(),
+    ...(editor ? { editor } : {}),
+  };
+  if (STATIC) {
+    savedM8trx[trackId] = payload;
+    localStorage.setItem(M8TRX_KEY, JSON.stringify(savedM8trx));
+    persistLocalSave();
+    toast('Saved M8TRX version for the Mixer only');
+    return;
+  }
+  try {
+    const res = await fetch('/save', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: trackId, patch: { m8trx: payload } }),
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+    const body = JSON.parse(text);
+    if (body?.m8trx && typeof body.m8trx === 'object') savedM8trx = body.m8trx;
+    else savedM8trx[trackId] = payload;
+    localStorage.setItem(M8TRX_KEY, JSON.stringify(savedM8trx));
+    toast('Saved M8TRX version for the Mixer only');
+  } catch (error) {
+    await tell('Could not save the M8TRX version', escapeHtml(error.message || String(error)));
+  }
 }
 
 async function loadRearrangeJson(file) {
@@ -7516,17 +9482,48 @@ async function loadRearrangeJson(file) {
       }
     }
     const recipe = validateRearrangement(raw, rearrangeSourceSteps(), { songId: trackId });
-    rearrangeKeptSections.clear();
-    rearrangeDislikedSections.clear();
-    installRearrangement(recipe);
+    // `raw.editor` is read off the file BEFORE validation, not off `recipe` — the
+    // validator rebuilds a fixed-shape object from a fixed field whitelist and would
+    // silently drop anything it does not recognise, editor included.
+    const { dropped } = applyRearrangeEditorState(raw.editor, rearrangeSourceSteps());
+    installRearrangement(recipe, { announce: false });
+    toast(`Rearrange ready · ${recipe.operations.length} operations${rearrangeDropNote(dropped)}`);
   } catch (error) {
     await tell('Could not load Rearrange JSON', escapeHtml(error.message || String(error)));
   }
 }
 
 function openRearrangePanel() {
+  // Re-measured on the way in: the header's height depends on whether its row has wrapped,
+  // and the boot-time measurement was taken before fonts and the toolbar had settled.
+  measureDeskEdges();
   rearrangePanelOpen = true;
   $('rearrangepanel').hidden = false;
+  if (savedM8trx[trackId]) {
+    const { recipe: parkedRaw, settings, editor } = unwrapM8trx(savedM8trx[trackId]);
+    // The dials come back whether or not the recipe does — they are what a returning
+    // user reaches for, and a recipe that no longer fits the song is no reason to open
+    // the panel at the factory settings.
+    applyRearrangeSettings(settings);
+    // Unlike settings, a missing editor block does NOT clear the current session — a
+    // save made before this feature existed carried no opinion on locks/shelf, and an
+    // opinion of "empty" is not the same as no opinion at all.
+    const editorResult = editor ? applyRearrangeEditorState(editor, rearrangeSourceSteps()) : null;
+    if (!rearrangeRecipe && parkedRaw) {
+      try {
+        const parked = validateRearrangement(parkedRaw, rearrangeSourceSteps(), { songId: trackId });
+        installRearrangement(parked, { announce: false, live: false });
+        toast(`Restored the saved M8TRX version — parked, not playing${rearrangeDropNote(editorResult?.dropped)}`);
+      } catch {
+        delete savedM8trx[trackId];
+        localStorage.setItem(M8TRX_KEY, JSON.stringify(savedM8trx));
+      }
+    } else if (editorResult?.dropped) {
+      // A recipe was already active, so the branch above never ran — this is the only
+      // chance to say that some of what just got restored did not make it.
+      toast(`${editorResult.dropped} shelf item${editorResult.dropped === 1 ? '' : 's'} could not be restored`);
+    }
+  }
   // Opening the panel is the parked moment this work belongs in: one walk of the song,
   // held for every Generate afterwards. Skipped while playing, because a full-bank walk
   // on the main thread is exactly the kind of stall the audio graph cannot absorb —
@@ -7540,6 +9537,11 @@ function openRearrangePanel() {
 function closeRearrangePanel() {
   rearrangePanelOpen = false;
   $('rearrangepanel').hidden = true;
+  // The footer line goes with the panel. The recipe may still be armed and sounding, but
+  // the desk's status bar is the desk's, and a closed panel does not get to keep a third
+  // of it — the toolbar button already reads "M8TRX · ON" while one is live.
+  const strip = $('m8status');
+  if (strip) strip.hidden = true;
 }
 
 /**
@@ -7799,9 +9801,9 @@ const songLoopGoverns = () => formLoopOn && !!songLoopOf() && !(loopOn && curren
 function syncLoopButton() {
   const button = $('looptoggle');
   if (rearrangeActive()) {
-    button.textContent = 'Recipe Loop';
-    button.classList.add('on');
-    button.setAttribute('aria-pressed', 'true');
+    button.textContent = rearrangeLoopOn ? 'Recipe Loop' : 'Recipe Once';
+    button.classList.toggle('on', rearrangeLoopOn);
+    button.setAttribute('aria-pressed', rearrangeLoopOn ? 'true' : 'false');
     syncSelReadout();
     hideLoopUi();
     return;
@@ -8110,7 +10112,14 @@ $('formloop').onclick = () => {
 };
 
 $('looptoggle').onclick = () => {
-  if (rearrangeActive()) return;
+  if (rearrangeActive()) {
+    rearrangeLoopOn = !rearrangeLoopOn;
+    Audio.rearrangeLoop = rearrangeLoopOn;
+    syncLoopButton();
+    syncRearrangeLoopControls();
+    toast(rearrangeLoopOn ? 'Recipe loops when it ends' : 'Recipe plays once, then stops');
+    return;
+  }
   loopOn = !loopOn;
   if (!loopOn) pianoRollLoopRange = null;
   applyLoop();
@@ -11292,10 +13301,18 @@ function barOperationGroups(barPlanEntry, key, { frozen = false } = {}) {
     text: `Strum · ${NOTE_FX_DIRECTION_LABELS[resolved.strum.direction] || 'Up'} · ${resolved.strum.gapMs ?? 18} ms`,
     tone: 'active',
   });
-  if (resolved.arp?.enabled) noteItems.push({
-    text: `Arp · ${NOTE_FX_DIRECTION_LABELS[resolved.arp.direction] || 'Up'} · ${noteFxRateLabel(resolved.arp.rate ?? 1)} · ${resolved.arp.octaves ?? 1} oct`,
-    tone: 'active',
-  });
+  if (resolved.arp?.enabled) {
+    // The window is worth a card line of its own: it is the one arpeggiator setting that
+    // moves notes the bar does not contain, so a bar reading as a chord it never plays
+    // is otherwise unexplained. Printed resolved, so a window the engine had to widen
+    // to an octave says the octave it will use.
+    const window = noteFxRange(resolved.arp);
+    noteItems.push({
+      text: `Arp · ${NOTE_FX_DIRECTION_LABELS[resolved.arp.direction] || 'Up'} · ${noteFxRateLabel(resolved.arp.rate ?? 1)} · ${resolved.arp.octaves ?? 1} oct`
+        + (window ? ` · ${deskNoteName(window.lo, { fancy: true })}–${deskNoteName(window.hi, { fancy: true })}` : ''),
+      tone: 'active',
+    });
+  }
   if (!noteItems.length) noteItems.push({
     text: override?.mode === 'off' ? 'Off for this bar' : 'None',
     tone: override?.mode === 'off' ? 'warn' : 'quiet',
@@ -13762,6 +15779,17 @@ Audio.onRearrangementInstalled?.(() => {
 });
 
 Audio.onLoop?.((loop) => {
+  // A recipe reaching its end with looping off STOPS there — at the moment the ear
+  // reaches the boundary, not when the scheduler does: the scheduler runs a lookahead
+  // ahead of the music, and parking the transport early would cut the final bar off.
+  if (loop.rearrangement && !loop.looping && playing) {
+    const wait = Math.max(0, (loop.when - Audio.ctx.currentTime) * 1000);
+    setTimeout(() => {
+      if (!playing || !rearrangeActive() || rearrangeLoopOn) return;
+      setPlaying(false);
+      toast('M8TRX finished');
+    }, wait);
+  }
   if (!DEV_USER || !Audio.ctx) return;
   const bank = Audio.bank;
   const song = trackId;
@@ -16290,11 +18318,13 @@ addEventListener('keyup', (e) => {
   oskRelease(`k:${key}`);
 });
 addEventListener('resize', () => {
+  measureDeskEdges();
   if (!oskShown()) return;
   // Docked it has no position to keep — it has a width to re-fit instead.
   if (oskEl.classList.contains('docked')) { fitDockedKeys(); return; }
   oskPlace(parseFloat(oskEl.style.left) || 0, parseFloat(oskEl.style.top) || 0);
 });
+measureDeskEdges();
 
 // ---- wiring ----------------------------------------------------------------
 // Loading a song is a thing you do a few times an hour, so it does not need a
@@ -16879,6 +18909,10 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
 }
 
 async function playFromBeginning() {
+  // START FROM THE TOP IS THE ONE THAT COUNTS IN, and while a recipe is armed the top is
+  // the recipe's. M8TRX used to carry its own Play button for this; the desk's transport
+  // already means "from the beginning", so it says it here instead of twice.
+  if (rearrangeActive()) { playRearrangement(); return; }
   return prepareAndStart({ fromStep: 0, control: 'start' });
 }
 
@@ -16903,47 +18937,134 @@ $('rearrangebtn').onclick = () => {
   if (rearrangePanelOpen) closeRearrangePanel();
   else openRearrangePanel();
 };
-$('reclose').onclick = closeRearrangePanel;
-$('restyle').onclick = (event) => {
-  const button = event.target.closest('button[data-style]');
-  if (button) setRearrangeStyle(button.dataset.style);
-};
-// Arrow keys move between segments, as a radio group should.
-$('restyle').onkeydown = (event) => {
-  const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
-    : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
-  if (!step) return;
-  event.preventDefault();
-  const order = REARRANGE_STYLE_NAMES;
-  const next = order[(order.indexOf(rearrangeStyle()) + step + order.length) % order.length];
-  setRearrangeStyle(next);
-  $('restyle').querySelector(`button[data-style="${next}"]`)?.focus();
+// A range input brings its own arrow keys, so the hand-rolled radio-group keyboard handling
+// this replaced is gone with the buttons.
+$('restyle').oninput = () => {
+  setRearrangeStyle(REARRANGE_STYLE_SCALE[Number($('restyle').value) || 0]);
 };
 syncRearrangeStyle();
-$('revariation').oninput = syncRearrangeVariation;
-syncRearrangeVariation();
-$('rechords').onchange = syncRearrangeKeyReadout;
-$('rekey').onchange = syncRearrangeKeyReadout;
+for (const [name, spec] of Object.entries(REARRANGE_DIALS)) {
+  $(spec.id).oninput = () => {
+    syncRearrangeDial(name);
+    // Mood decides which key the walk lands in and Drive decides which kit Auto builds,
+    // so both readouts have to follow the hand rather than wait for the next Go.
+    if (name === 'mood') syncRearrangeKeyReadout();
+    if (name === 'drive') syncRearrangeDrumControl();
+    // Moving a dial is what gives Reshape something to do, so it is what lights it up.
+    syncRearrangeSeedHold();
+  };
+}
+syncRearrangeDials();
+$('refill').onchange = syncRearrangeAdvanced;
+// New length had no handler at all — it was only ever read at generate time, so changing it
+// left Reshape greyed out as though nothing had moved.
+$('relength').onchange = syncRearrangeAdvanced;
+$('rekey').onchange = () => { syncRearrangeKeyReadout(); syncRearrangeAdvanced(); };
 syncRearrangeKeyReadout();
-$('retranspose').oninput = syncRearrangeTranspose;
+// Placed under its own button, and re-placed every time it opens: the band above it wraps
+// with the window, so the button is not where it was last time.
+$('readvancedpop').addEventListener('toggle', (event) => {
+  const button = $('readvancedbtn');
+  button.classList.toggle('on', event.newState === 'open');
+  if (event.newState !== 'open') return;
+  const pop = $('readvancedpop');
+  const at = button.getBoundingClientRect();
+  pop.style.left = `${Math.max(8, Math.min(at.left, innerWidth - pop.offsetWidth - 8))}px`;
+  pop.style.top = `${Math.max(8, Math.min(at.bottom + 6, innerHeight - pop.offsetHeight - 8))}px`;
+});
+syncRearrangeAdvanced();
+$('redice').onclick = luckyDip;
+$('reseedhold').onclick = () => {
+  rearrangeSeedHold = !rearrangeSeedHold;
+  syncRearrangeSeedHold();
+  renderRearrangeList();
+  toast(rearrangeSeedHold
+    ? 'Go will keep this arrangement and change only what the dials ask for'
+    : 'Go will build a completely different arrangement each time');
+};
+syncRearrangeSeedHold();
+$('retranspose').oninput = () => { syncRearrangeTranspose(); syncRearrangeAdvanced(); };
 syncRearrangeTranspose();
 // Wheel and touch, not 'scroll': the follow's own scrollIntoView fires 'scroll' too,
 // and a guard that reacts to itself would hold itself off forever.
-for (const id of ['rearrangelist', 'rearrangeform']) {
+for (const id of ['rearrangeform']) {
   $(id)?.addEventListener('wheel', holdRearrangeFollow, { passive: true });
   $(id)?.addEventListener('touchmove', holdRearrangeFollow, { passive: true });
 }
-$('reselectall').onclick = selectAllRearrangeOperations;
+wireRearrangeTimelineSelection();
+// The menu closes on anything that is not itself: a click elsewhere, Escape, or the panel
+// scrolling out from under it.
+document.addEventListener('pointerdown', (event) => {
+  if (!event.target.closest?.('#reslicemenu')) closeRearrangeSliceMenu();
+}, true);
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeRearrangeSliceMenu(); });
+$('rearrangeform')?.addEventListener('scroll', closeRearrangeSliceMenu, { passive: true });
 $('reclearselection').onclick = clearRearrangeOperationSelection;
-$('resplit').onclick = () => transformSelectedRearrange('split', 'Split halves');
-$('reunroll').onclick = () => transformSelectedRearrange('unroll', 'Unrolled repeats');
-$('redoublerepeats').onclick = () => transformSelectedRearrange('double-repeats', 'Doubled loops');
-$('rehalfrepeats').onclick = () => transformSelectedRearrange('half-repeats', 'Halved loops');
-$('rerollselected').onclick = () => transformSelectedRearrange('reroll', 'Rerolled slices');
-$('reremove').onclick = () => transformSelectedRearrange('remove', 'Removed slices');
-$('redrums').onclick = cycleRearrangeDrums;
+$('reslicetranspose').onchange = () => transformSelectedRearrange('transpose', 'Slice transpose changed',
+  { value: Number($('reslicetranspose').value) });
+$('restutter').onchange = () => {
+  const shape = $('restutter').value;
+  if (!shape) return;
+  const label = REARRANGE_STUTTER_SHAPES[shape]
+    ? `${shape[0].toUpperCase()}${shape.slice(1)} stutter` : `Slice stuttered ×${shape}`;
+  transformSelectedRearrange('stutter', label, { value: shape });
+};
+$('reclearkept').onclick = clearRearrangeKeptState;
+$('reslicechord').onchange = () => transformSelectedRearrange('harmony', 'Slice chord changed',
+  { value: Number($('reslicechord').value) });
+$('remute').onclick = () => {
+  const selected = [...rearrangeSelectedOperations];
+  const silent = selected.length
+    && selected.every((item) => rearrangeRecipe?.operations?.[item]?.mute);
+  transformSelectedRearrange(silent ? 'unmute' : 'mute', silent ? 'Slices sounding' : 'Slices muted');
+};
+$('rejoin').onclick = () => transformSelectedRearrange('join', 'Slices joined');
+// The Part rail's own ½ and ×2, on whichever part is held — the same two transforms the
+// part card carries, reached without going back to the card.
+$('recopysection').onclick = () => {
+  const picked = [...rearrangeSelectedOperations].sort((a, b) => a - b);
+  if (!picked.length) { toast('Select the slices to copy'); return; }
+  const bars = picked.reduce((sum, index) => {
+    const op = rearrangeRecipe.operations[index];
+    return sum + (op ? op.length * op.repeats : 0);
+  }, 0) / 16;
+  rearrangeCopiedSection = {
+    name: picked.length === 1 ? '1 slice' : `${picked.length} slices`,
+    bars,
+    operations: picked.map((index) => ({ ...rearrangeRecipe.operations[index] })),
+  };
+  renderRearrangeList();
+  toast(`Copied ${rearrangeCopiedSection.name} · ${String(+bars.toFixed(2))} bars`);
+};
+$('repastesection').onclick = () => {
+  const picked = [...rearrangeSelectedOperations];
+  if (!picked.length || !rearrangeCopiedSection) { toast('Copy something first, then select where it goes'); return; }
+  try {
+    const result = replaceRearrangementSlices(rearrangeRecipe, picked, rearrangeCopiedSection.operations);
+    applyRearrangeEdit(result.recipe, `Pasted ${rearrangeCopiedSection.name}`);
+  } catch (error) { toast(error?.message || 'Could not paste there'); }
+};
+$('replayfrom').onclick = playRearrangeSelection;
+$('resplit').onclick = () => transformSelectedRearrange('split', 'Split');
+$('reunroll').onclick = () => transformSelectedRearrange('unroll', 'Separated passes');
+$('redoublerepeats').onclick = () => transformSelectedRearrange('repeat-more', 'Repeat increased');
+$('rehalfrepeats').onclick = () => transformSelectedRearrange('repeat-less', 'Repeat reduced');
+$('rerollselected').onclick = () => transformSelectedRearrange('reroll', 'New material under those slices');
+$('reclipselected').onclick = snapshotSelectedRearrangeClip;
+$('reremove').onclick = () => transformSelectedRearrange('remove', 'Borrowed from the neighbours');
+$('redeleteselected').onclick = () => transformSelectedRearrange('delete', 'Deleted slices');
+$('reloopremove').onclick = () => transformSelectedRearrange('remove-loop', 'Looped a neighbour');
+$('redrums').onchange = () => {
+  rearrangeDrumsChoice = $('redrums').value;
+  // Auto is a setting for the NEXT Generate — there is nothing to apply now, and
+  // silently resolving it onto the current recipe would make the dial lie about what
+  // built this one. Every other choice is an edit to the recipe in front of you.
+  if (rearrangeDrumsChoice === 'auto') syncRearrangeDrumControl();
+  else setRearrangeDrums(rearrangeDrumsChoice);
+};
 $('regenerate').onclick = () => generateRearrangeRecipe({ restart: rearrangeActive() && playing });
-$('replay').onclick = playRearrangement;
+$('regrab').onclick = grabRearrangeSection;
+$('resaveversion').onclick = saveM8trxVersion;
 $('rereturn').onclick = returnToSong;
 $('resave').onclick = saveRearrangeJson;
 $('reload').onclick = () => $('rearrangefile').click();
@@ -17019,7 +19140,13 @@ const tutorial = createTutorial({
   },
   restoreRoom: () => setNotesFolded(false),
 });
-$('helpbtn').onclick = () => tutorial.open();
+// The third control the desk lends M8TRX, after Undo and the loop toggle: while the panel
+// is up, ? explains the panel rather than the desk behind it. A desk tour opened from on top
+// of a full-screen mode would be answering a question nobody just asked.
+$('helpbtn').onclick = () => {
+  if (rearrangePanelOpen) { $('rehelptext')?.showPopover(); return; }
+  tutorial.open();
+};
 
 // Lives on the master's pinned card, not in the toolbar: it is a property of the
 // master strip, and the toolbar is for what you touch WHILE mixing.
@@ -17056,9 +19183,13 @@ async function refreshSaved() {
   try {
     const res = await fetch('/mix');
     if (!res.ok) throw new Error(String(res.status));
-    const { mix, arrangements } = await res.json();
+    const { mix, arrangements, m8trx } = await res.json();
     if (mix && typeof mix === 'object') saved = mix;
     if (arrangements && typeof arrangements === 'object') savedArr = arrangements;
+    if (m8trx && typeof m8trx === 'object') {
+      savedM8trx = m8trx;
+      localStorage.setItem(M8TRX_KEY, JSON.stringify(savedM8trx));
+    }
   } catch { /* keep the copy we have — see above */ }
 }
 
@@ -17107,12 +19238,12 @@ $('resetoriginal').onclick = async () => {
 
 
 
-$('undo').onclick = undo;
+$('undo').onclick = undoGesture;
 
 // Keyboard shortcuts. Everything here is something you reach for repeatedly while
 // balancing; anything you do once per session stays a button.
 addEventListener('keydown', (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undoGesture(); return; }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   // Never steal keys from a control the user is actually typing or dragging in.
   if (e.target.matches('input, select, textarea')) return;
@@ -17138,6 +19269,15 @@ addEventListener('keydown', (e) => {
   // when the on-screen keyboard was catching keys. Careful about what that claims: the
   // take is written every beat, so this drops the last half-second at most and ⌘Z is what
   // takes back the part already in the song.
+  // A popover is the smallest thing on screen with something to back out of, so it takes
+  // the key first, exactly as the dialogs and menus above already do. It has to be closed
+  // BY HAND here: the browser's own dismiss-on-Escape for a popover is a default action,
+  // and the preventDefault below would cancel it — which is precisely what left the M8TRX
+  // help card sitting open over a desk that had just silenced itself.
+  if (e.key === 'Escape') {
+    const popover = openPopover();
+    if (popover) { e.preventDefault(); popover.hidePopover(); return; }
+  }
   if (e.key === 'Escape') {
     e.preventDefault();
     const dropped = recArmed ? discardTake() : 0;
@@ -18880,6 +21020,7 @@ function persistLocalSave() {
   try {
     localStorage.setItem(LOCAL_SAVE_KEY, JSON.stringify({
       mix: pick(saved), arr: pick(savedArr), variants: pick(variantSaved),
+      m8trx: pick(savedM8trx),
     }));
   } catch { /* a full or blocked store loses the copy, not the session */ }
 }
@@ -18892,6 +21033,9 @@ function applyLocalSave() {
     for (const [id, value] of Object.entries(store[key] || {})) {
       if (mine.has(id)) target[id] = value;
     }
+  }
+  for (const [id, value] of Object.entries(store.m8trx || {})) {
+    if (mine.has(id)) savedM8trx[id] = value;
   }
 }
 

@@ -487,11 +487,22 @@
      rather than a drawer or modal. It stays above the desk while the transport remains
      aimable underneath. */
   #rearrangebtn { min-width: 86px; padding: 4px 9px; white-space: nowrap; }
-  #rearrangepanel { position: fixed; top: 56px; right: var(--rgut); z-index: 34;
-                    display: flex; flex-direction: column; width: min(880px, calc(100vw - 24px));
-                    max-height: calc(100vh - 70px); overflow: hidden;
-                    background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
-                    box-shadow: 0 14px 34px color-mix(in srgb, var(--deep) 70%, transparent); }
+  /* IT STOPS ABOVE THE STATUS BAR. Covering the desk's footer hid the one line that says
+     what the desk is doing, and M8TRX's own status now lives IN that bar — so the panel has
+     to leave it showing or it would be hiding its own readout. `--footh` is measured from
+     the footer rather than guessed, because the footer's height is one line of text and one
+     line of text is a thing that changes with the theme's font stack. */
+  /* EDGE TO EDGE, AND OPAQUE. A strip of channel strips showing down one side is the desk
+     saying "you are still in the mixer" while you are reading a timeline — and a mixer is
+     not a backdrop, it is another instrument with its own faders you can see moving. The
+     panel covers the whole width between the header and the status bar and nothing shows
+     past it. No radius and no side borders either: an edge-to-edge surface has no corners
+     to round, and a border down a screen edge is a line with nothing on the far side. */
+  #rearrangepanel { position: fixed; top: var(--headh, 56px); left: 0; right: 0;
+                    bottom: var(--footh, 28px);
+                    z-index: 34; display: flex; flex-direction: column;
+                    overflow: hidden; background: var(--panel);
+                    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   #rearrangepanel[hidden] { display: none; }
   /* ONE COLOUR PER PART OF THE FORM.
      Fixed hues rather than anything derived from --accent: the desk has eight themes
@@ -502,139 +513,599 @@
      two of them are a red/green pair.
      Always beside the part's NAME, never instead of it: the colour is reinforcement
      for a form you can already read, not the only way to tell one part from another. */
-  #rearrangepanel { --role-intro: #6fae8f; --role-verse: #4f9dd9; --role-chorus: #e8a33d;
+  /* INTRO IS ROSE, NOT GREEN. It was #6fae8f, a sage green — and the accent, which is the
+     one colour on this desk reserved for SELECTED / PLAYING, is teal (#4ec9b0 on the default
+     theme, cyan on ocean, dark teal on light). Once slices took their fill from the role
+     rather than a per-slice hue, a whole Intro row read as a row that was lit. Rose is the
+     hue nobody else is using: the other four are blue, amber, purple and grey, and the nine
+     themes' accents run teal, cyan, gold, tan, orange and lilac — the red-pink corner is the
+     only one left that cannot be mistaken for any of them. */
+  #rearrangepanel { --role-intro: #c9738d; --role-verse: #4f9dd9; --role-chorus: #e8a33d;
                     --role-bridge: #b57bd8; --role-outro: #94a0b0; }
   #rearrangepanel [data-role="Intro"] { --rolecolour: var(--role-intro); }
   #rearrangepanel [data-role="Verse"] { --rolecolour: var(--role-verse); }
   #rearrangepanel [data-role="Chorus"] { --rolecolour: var(--role-chorus); }
   #rearrangepanel [data-role="Bridge"] { --rolecolour: var(--role-bridge); }
   #rearrangepanel [data-role="Outro"] { --rolecolour: var(--role-outro); }
-  #rearrangepanel .rerolechip { flex: none; width: 9px; height: 9px; border-radius: 2px;
+  #rearrangepanel .rerolechip { flex: none; width: 11px; height: 11px; border-radius: 3px;
     background: var(--rolecolour, var(--faint)); }
-  #rearrangepanel .rehead { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px 7px;
-                             background: var(--well); border-bottom: 1px solid var(--line); }
-  #rearrangepanel .retitle { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; }
-  #rearrangepanel .resub { margin-top: 2px; color: var(--dim); font-size: 11px; font-weight: 400;
-                            line-height: 1.45; }
-  #rearrangepanel .reclose { width: 22px; height: 22px; padding: 0; border: 0; background: none;
-                              color: var(--dim); font-size: 17px; line-height: 1; }
+  /* A BAND IS A SCOPE, AND ITS RAIL IS THE LABEL. Controls start hard against the left edge
+     on every row — one column for the eye to run down — and the words that say what the row
+     acts on sit out of the way on the right, where they cost the controls no indent. The
+     rail is the same width on every band so the three explanations line up as a column of
+     their own. */
+  #rearrangepanel .reband { display: flex; align-items: stretch;
+                            border-bottom: 1px solid var(--line); background: var(--panel); }
+  #rearrangepanel .rebandbody { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px;
+                                 flex: 1 1 auto; min-width: 0; padding: 6px 10px; }
+  #rearrangepanel .rerail { flex: 0 0 212px; width: 212px; display: flex; flex-direction: column;
+                             justify-content: center; gap: 2px; padding: 5px 10px;
+                             border-left: 1px solid var(--line); text-align: right; }
+  #rearrangepanel .rerail > b { color: var(--dim); font-size: 9px; font-weight: 700;
+                                 letter-spacing: .13em; text-transform: uppercase; }
+  #rearrangepanel .rerail > span { color: var(--faint); font-size: 8.5px; line-height: 1.4; }
+  /* NO RECIPE, NO RECIPE CONTROLS. Return to Song empties the panel without closing it, and
+     what was left standing was a row of controls with nothing to act on: a drums menu for
+     drums that are not playing, Save version and Save JSON with nothing to save, a Return
+     to Song that has already returned, and two selection rails inviting a click on slices
+     in a timeline that is not drawn. Hidden rather than disabled, because a disabled
+     control still says "this is part of what you are looking at" — and here there is
+     nothing to look at yet.
+     TWO SURVIVE, and they are the two that are not about the recipe: Clear locks & shelf
+     acts on the kept state that OUTLIVES a recipe (it disables itself when there is none),
+     and Load JSON is the other way IN — hide it and Return to Song becomes a one-way door
+     out of every saved recipe on disk. The Generate band stays whole for the same reason:
+     the dials and Go are how a panel with nothing in it stops being one. */
+  #rearrangepanel.norecipe #reinspector,
+  #rearrangepanel.norecipe #redrumsrow,
+  #rearrangepanel.norecipe #regrab,
+  #rearrangepanel.norecipe #resaveversion,
+  #rearrangepanel.norecipe #resave,
+  #rearrangepanel.norecipe #rereturn,
+  #rearrangepanel.norecipe .reband.rearr .revr { display: none; }
+  /* Clear locks & shelf goes too WHEN THERE IS NOTHING KEPT — it already disables itself in
+     that case, and a lone greyed button is the empty panel's only remaining piece of
+     furniture. The moment a lock or a clip survives into the empty state it comes back, so
+     nothing is ever being held out of sight with no way to let it go. */
+  #rearrangepanel.norecipe #reclearkept:disabled { display: none; }
+  /* The deferred band is recessed and its rail border is dashed, so the one thing that is
+     true of everything inside it — none of it is heard until Go — is said by the surface as
+     well as by every control's own border. */
+  #rearrangepanel .reband.regen { background: var(--panel2); }
+  #rearrangepanel .reband.regen > .rerail { border-left-style: dashed; }
+  #rearrangepanel .reband.regen > .rerail > b { color: var(--ink); }
+  /* DASHED MEANS IT WAITS. Solid borders act the moment you press them; a dashed one does
+     nothing until the next Go. The panel already drew a pending edit dashed, so this is an
+     existing word being used for the whole of what it means rather than a new one. */
+  /* The mark goes on the CONTROL, never on the group box around it. Marking both drew a
+     dashed rectangle round each dial and a second dashed rule along its slider — two
+     statements of one fact, and at six dials in a row it read as hatching rather than as a
+     border meaning something. */
+  /* THE DIALS ARE THE DESK'S DIALS. A slider here has to be the same object as a slider on
+     a channel strip — same groove, same handle, same size — so the panel reads as part of
+     the desk rather than as a guest on it. That means the deferred mark stops at the
+     sliders: it is carried by the band's own recessed surface, by its dashed rail, and by
+     every bordered control in it, which is enough said three ways. (It also avoids a trap:
+     `border-style` on a range input, which has no border of its own, resolves to `medium
+     currentColor` — a 3px near-black rectangle, invisible on the dark themes and a heavy
+     black ring on the three pale ones.) */
+  #rearrangepanel button.defer,
+  #rearrangepanel select.defer,
+  #rearrangepanel .defer > select { border-style: dashed; }
+  /* A dial's reading is a word, and the words are not all four letters long. Give the
+     readout room for the longest of them ("Bittersweet") or the number beside it shifts
+     every time the value crosses a band. */
+  /* Every dial the same width, and that width is the readout's: 11 characters for
+     "Bittersweet" plus the label beside it. Narrower than the band's first draft, because
+     six equal dials in a row is a scale you read across, and a scale reads better tight. */
+  /* Every dial the same width, and that width is the readout's: 11 characters for
+     "Bittersweet" plus the label beside it. The right margin is not decoration — a dial's
+     reading is right-aligned and the next dial's label is left-aligned, so at the row's
+     normal 8px they collided into "Bittersweet Hypnosis" and read as one run-on line. */
+  #rearrangepanel .reband .recontrol { flex: 0 1 auto; display: grid;
+    grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 1px 7px;
+    width: 148px; margin-right: 10px; }
+  #rearrangepanel .reband .recontrol > label { grid-column: 1; grid-row: 1; }
+  #rearrangepanel .reband .recontrol > output { grid-column: 2; grid-row: 1;
+    min-width: 11ch; text-align: right; }
+  #rearrangepanel .reband .recontrol > input[type=range] { grid-column: 1 / -1; grid-row: 2;
+    min-width: 0; width: 100%; }
+  #rearrangepanel .reband .recontrol > .recontrolhint { grid-column: 1 / -1; grid-row: 3;
+    margin-top: 0; }
+  /* A select's label goes above it rather than beside it: three of these sit in a row and a
+     label to the left of each would cost more width than the control it names. */
+  #rearrangepanel .reband .rechordrow { grid-template-columns: minmax(0, 1fr); width: auto;
+    min-width: 128px; max-width: 210px; }
+  #rearrangepanel .reband .rechordrow > label { grid-column: 1; grid-row: 1; color: var(--dim);
+    font-size: 9px; font-weight: 400; letter-spacing: .09em; text-transform: uppercase; }
+  #rearrangepanel .reband .rechordrow > select { grid-column: 1; grid-row: 2; min-height: 26px;
+    width: 100%; font-size: 11.5px; padding: 3px 6px; }
+  #rearrangepanel .reband .rechordrow > output { grid-column: 1; grid-row: 3; min-width: 0;
+    text-align: left; }
+  #rearrangepanel .reband button { min-height: 28px; padding: 4px 9px; font-size: 11.5px;
+    white-space: nowrap; }
+  /* The press that spends the settings above it. Filled rather than outlined, because it is
+     the only control in that band that does anything on its own. */
+  #rearrangepanel .reprime { background: var(--accent); border-color: var(--accent);
+    color: var(--on-accent); font-weight: 700; letter-spacing: .03em; }
+  #rearrangepanel .reprime:hover { background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+    border-color: var(--accent); }
+  /* The warning is the WORD. Hot text on the light themes' pale buttons measured 2.91:1, so
+     the colour moves to the border where a hue costs nothing to read. */
+  #rearrangepanel .rehot { border-color: var(--hot); color: var(--ink); font-weight: 700; }
+  #rearrangepanel .rehot:hover { background: color-mix(in srgb, var(--hot) 14%, var(--panel));
+    border-color: var(--hot); }
+  #rearrangepanel .revr { flex: none; width: 1px; align-self: stretch; margin: 0 3px;
+    background: var(--line); }
+  /* Pushed to the far end of its row, against the rail. */
+  #rearrangepanel .reright { margin-left: auto; }
+  /* What this is, what is loaded and what just happened, hard right against the rail. */
+  #rearrangepanel .remeta { display: flex; align-items: baseline; gap: 9px; min-width: 0;
+    margin-left: auto; padding-left: 6px; }
+  #rearrangepanel .resm { flex: none; min-height: 24px; padding: 2px 7px; font-size: 11px; }
+  #rearrangepanel .reclose { border: 0; background: none; color: var(--dim); font-size: 17px;
+    line-height: 1; padding: 0 2px; }
   #rearrangepanel .reclose:hover { color: var(--ink); border-color: transparent; }
-  #rearrangestatus { padding: 6px 12px; color: var(--dim); font-size: 11px; border-bottom: 1px solid var(--line); }
-  /* The roadmap is a RAIL, not a ribbon: the form reads top to bottom beside the list,
-     one segment per section, always all visible — the thing the horizontal strip could
-     not do once a song had more sections than the panel had width. */
-  #rearrangepanel .rebody { display: flex; flex: 1 1 auto; min-height: 0; }
-  #rearrangeform { display: flex; flex-direction: column; gap: 4px; flex: none; width: 156px;
-                   overflow-y: auto; overflow-x: hidden; padding: 6px;
-                   border-right: 1px solid var(--line); background: var(--well); }
+  /* THE BLURB IS A FIRST RUN, NOT A WALL. Three paragraphs of 11px prose held the middle of
+     the header permanently, and it is the first thing a returning user stops reading. Behind
+     the ? it costs nothing and is still one click away. It opens in the TOP LAYER, so
+     neither the panel's own overflow: hidden nor the desk's z-order can clip it. */
+  /* A POPUP THAT CANNOT HIDE A SET VALUE. Placed under its button rather than centred —
+     it is a drawer off a control, not a message — and in the top layer, so the panel's own
+     overflow: hidden cannot clip it the way it would clip an absolutely-positioned menu.
+     `inset: auto` undoes the popover default of `inset: 0; margin: auto`, which would
+     otherwise centre it in the viewport before the placement below ever ran. */
+  #rearrangepanel .repop[popover] { position: fixed; inset: auto; margin: 0;
+    gap: 10px; min-width: 272px; padding: 11px 13px 13px; border: 1px solid var(--accent-line);
+    border-radius: 7px; background: var(--panel2); color: var(--dim);
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--deep) 70%, transparent); }
+  /* `display` belongs ONLY on the open state. A closed popover is hidden by a UA rule
+     (`[popover]:not(:popover-open) { display: none }`), and an id-scoped `display: grid`
+     outranks it — which left this thing sitting open over the band from the moment the desk
+     loaded, permanently, with no way to shut it. */
+  #rearrangepanel .repop[popover]:popover-open { display: grid; }
+  #rearrangepanel .repophead { display: grid; gap: 2px; padding-bottom: 8px;
+    border-bottom: 1px dashed var(--line); }
+  #rearrangepanel .repophead b { color: var(--ink); font-size: 10px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase; }
+  #rearrangepanel .repophead span { color: var(--faint); font-size: 9.5px; line-height: 1.4; }
+  #rearrangepanel .repop .recontrol { width: auto; }
+  #rearrangepanel .repop .rechordrow { max-width: none; }
+  /* The button says what is behind it. A control that has been moved off screen is still a
+     control the next Go reads, so when any of the three is off its default the button counts
+     them — the alternative is a door with a setting behind it and no way to tell from
+     outside, which is the one thing this panel's whole redesign is against. */
+  #rearrangepanel #readvancedbtn.set { border-color: var(--accent); color: var(--accent); }
+  #rearrangepanel #readvancedbtn.on { border-color: var(--accent); color: var(--accent);
+    background: var(--accent-wash); }
+  /* Room to actually explain the thing. It lives outside the panel now — opened from the
+     desk's own ?, which becomes M8TRX's while a recipe is up — so it is sized to be read
+     rather than to fit in a corner: a column of prose at a comfortable measure, scrolled if
+     the window is short, over a dimmed desk so it reads as the one thing in front of you. */
+  .resub[popover] { width: min(74ch, calc(100vw - 48px)); max-height: calc(100vh - 96px);
+    overflow-y: auto; margin: auto; padding: 22px 26px 24px; border: 1px solid var(--line);
+    border-radius: 10px; background: var(--panel2); color: var(--dim);
+    box-shadow: 0 18px 60px color-mix(in srgb, var(--deep) 80%, transparent);
+    font-size: 12.5px; line-height: 1.65; }
+  .resub[popover] h2 { margin: 0 0 4px; color: var(--ink); font-size: 15px; font-weight: 700;
+    letter-spacing: .06em; }
+  .resub[popover] h3 { margin: 16px 0 4px; color: var(--accent); font-size: 10px;
+    font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  .resub[popover] p { margin: 0; max-width: 68ch; }
+  .resub[popover] b { color: var(--ink); font-weight: 700; }
+  .resub[popover]::backdrop { background: color-mix(in srgb, var(--deep) 62%, transparent); }
+  /* THE FORM, LAID OUT AS TIME, TO ONE SCALE. A bar is the same width in every row, so a
+     four-bar part draws half as long as an eight-bar one and a short part leaves the rest
+     of its track empty. Every block on the panel can then be compared with every other by
+     eye alone — how long this part runs, how much of it one slice takes, whether the
+     chorus outlasts the verse — instead of only with the blocks in its own row. The part's
+     own controls ride at the left of its row, so the thing you act on and the thing you
+     are looking at are the same object. */
+  #rearrangepanel .rebody { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; }
+  /* THE GAP BETWEEN PARTS HAS TO BEAT THE SEAM INSIDE ONE. A repeat boundary is a rule
+     drawn inside a lane and a part boundary is the end of the part — they are different
+     KINDS of edge, and at 7px the row gap was close enough to the seam that a doubled part
+     could read as two parts. Widened until the hierarchy is obvious at a glance. */
+  #rearrangeform { display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto;
+                   min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 8px;
+                   background: var(--well); }
   #rearrangeform[hidden] { display: none; }
+  #rearrangeform .rerow { display: flex; align-items: stretch; gap: 8px; flex: none; min-width: 0; }
   /* One card per part, holding everything that acts on the WHOLE part: select its
      slices, play it, keep it, ask for a different one. */
-  #rearrangeform .reformseg { flex: none; width: 100%; display: flex; flex-direction: column;
-                              gap: 2px; padding: 5px 6px 4px; border: 1px solid var(--line);
+  #rearrangeform .reformseg { flex: 0 0 372px; width: 372px; min-width: 0; display: flex; flex-direction: column;
+                              gap: 4px; padding: 7px 9px 6px; border: 1px solid var(--line);
                               border-radius: 4px; background: var(--traybtn); color: var(--dim);
-                              font-size: 10px; text-align: left; cursor: pointer; }
+                              font-size: 12px; text-align: left; cursor: pointer; }
   #rearrangeform .reformseg:hover { border-color: var(--accent-line); }
-  #rearrangeform .reformseg.active { color: var(--ink); background: var(--accent-wash);
-    border-color: var(--accent); }
-  #rearrangeform .reformseg.kept { box-shadow: inset 0 0 0 1px var(--accent); }
-  #rearrangeform .reformseg.disliked { box-shadow: inset 0 0 0 1px var(--hot); }
-  #rearrangeform .reformtop { display: flex; align-items: center; gap: 4px; }
+  #rearrangeform .reformseg.dragging { opacity: .45; border-style: dashed; }
+  /* PLAYING IS NOT SELECTED, AND THEY MUST NOT LOOK ALIKE. The accent OUTLINE means "this
+     is what an edit will land on" and belongs to the selection alone; playback gets a soft
+     ground and the moving bar under the sounding slice. When the playhead borrowed the
+     accent border, the thing that looked selected walked from part to part on its own, and
+     a selection you did not make is worse than no highlight at all. */
+  #rearrangeform .reformseg.active { color: var(--ink); background: var(--accent-wash); }
+  #rearrangeform .reformseg.locked { box-shadow: inset 0 0 0 1px var(--accent); }
+  /* THE HELD PART WEARS A BAR DOWN ITS LEFT EDGE. A ring all the way round it was the
+     same mark the LOCK already uses, so a held part and a kept one looked alike; an edge
+     is a different shape of statement and reads at a glance from across a stack of rows.
+     The border grows by three and the padding gives three back, so nothing inside the card
+     moves when it is taken — a selection that nudged its own contents would be the one
+     thing you notice about it. */
+  #rearrangeform .reformseg.chosen { border-left-width: 4px; padding-left: 6px;
+    border-left-color: var(--accent); }
+  #rearrangeform .reformtop { display: flex; align-items: center; gap: 7px; }
   #rearrangeform .reformname { flex: 1 1 auto; min-width: 0; padding: 0; border: 0; background: none;
-    color: var(--ink); font-size: 11px; font-weight: 700; text-align: left; }
+    color: var(--ink); font-size: 14px; font-weight: 700; text-align: left; }
   #rearrangeform .reformname:hover { color: var(--accent); border-color: transparent; }
-  /* Indented to clear the checkbox, so the name, the bar range and the two verdict
-     buttons all hang off one line down the card. */
-  #rearrangeform .reformbars { padding-left: 24px; color: var(--dim); font-size: 9px; }
-  #rearrangeform .reformacts { display: flex; gap: 3px; padding-left: 22px; }
-  #rearrangepanel .recontrol { flex: 1 1 320px; display: grid; grid-template-columns: auto minmax(110px, 1fr) auto;
-    align-items: center; gap: 7px; padding: 2px 2px 4px; color: var(--dim); font-size: 10px; }
+  /* The bar range rides the top line, hard right, opposite the name: it answers "where
+     in the song is this" and having it on a line of its own was a whole row of card
+     height spent on four words. */
+  #rearrangeform .reformbars { flex: none; margin-left: auto; padding-left: 8px; color: var(--dim);
+                               font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #rearrangepanel .recontrol { display: grid; grid-template-columns: auto minmax(90px, 1fr) auto;
+    align-items: center; gap: 8px; padding: 0; color: var(--dim); font-size: 10px; }
   #rearrangepanel .recontrol label { color: var(--ink); font-weight: 700; white-space: nowrap; }
   #rearrangepanel .recontrol input[type=range] { min-width: 110px; width: 100%; }
   #rearrangepanel .recontrol output { min-width: 5ch; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
-  /* Style is a three-way choice, not a position on a scale, so it gets segments
-     rather than a slider — the dial next to it is the one that has a middle. */
-  #rearrangepanel .restylerow { grid-template-columns: auto 1fr; }
-  #rearrangepanel .restyle { display: flex; gap: 3px; }
-  #rearrangepanel .restyle button { flex: 1 1 0; padding: 4px 6px; font-size: 10px; }
-  #rearrangepanel .restyle button[aria-checked="true"] { color: var(--on-accent);
-    background: var(--accent); border-color: var(--accent); }
-  #rearrangepanel .readvanced { flex: 1 0 100%; margin-top: 2px; border-top: 1px solid var(--line);
-    padding-top: 5px; }
-  #rearrangepanel .readvanced > summary { display: inline-block; color: var(--dim); font-size: 10px;
-    cursor: pointer; padding: 2px 0; border: 0; background: none; }
-  #rearrangepanel .readvanced > summary:hover { color: var(--ink); }
-  /* Open, its two controls share one row — the panel is wide enough now that stacking
-     them would only make the drawer taller than the things it is hiding. */
-  #rearrangepanel .readvanced[open] { display: flex; flex-wrap: wrap; align-items: center;
-    gap: 4px 18px; }
-  #rearrangepanel .readvanced .recontrol { flex: 1 1 300px; display: grid; margin-top: 2px; }
-  #rearrangepanel .rechordrow { flex: 0 1 auto; grid-template-columns: auto auto auto; }
-  #rearrangepanel .rechordrow select { font-size: 10px; padding: 3px 5px; }
+  /* Style used to be four segmented buttons here, on the argument that a hard gate on cut
+     sizes is a choice rather than a point on a scale. It IS a scale — biggest cuts to
+     smallest, then "let each letter choose" — and as the one non-dial in a row of dials it
+     was also the widest thing in the band. It is a dial now, like the rest. */
+  /* "Advanced" is gone as a concept. Key, Fill new sections and Transpose were only advanced
+     because they had nowhere to sit; they belong in the Generate band beside the dials they
+     modify, where their scope is stated by the row they are in. */
+  #rearrangepanel .rechordrow { grid-template-columns: auto minmax(0, 1fr) auto; }
+  #rearrangepanel .rechordrow select { min-height: 32px; font-size: 12px; padding: 5px 7px; }
   /* The detected key, live beside the control that depends on it. */
   #rechordskey { min-width: 8ch; text-align: left; color: var(--accent); font-weight: 700; }
-  /* The chord column: one fixed slot on every row, empty when a slice plays as
-     written, so a chord CHANGE is a change in one place the eye already watches. */
-  #rearrangelist li .rechordbadge { flex: none; width: 26px; text-align: center;
-    color: var(--accent); font-size: 10px; font-weight: 700; font-style: normal; }
-  /* The walk a part takes, on its rail card: 'i – VI – III – VII'. */
-  #rearrangeform .reformchords { padding-left: 24px; color: var(--accent); font-size: 9px;
-    font-weight: 700; letter-spacing: .02em; }
+  /* The chord a slice is walked to, in the corner of the slice itself. It is drawn only
+     when the slice actually moves — on a proportional strip there is no column to keep
+     aligned, so an empty slot everywhere would only be noise on the narrow blocks. */
+  /* Both marks are drawn in --ink, not the accent. The slice sits on a wash of its part's
+     colour, and on the three light themes the accent lands within ~1.1:1 of that wash —
+     the numeral measured as good as invisible. Which slices are walked is told by the
+     numeral BEING there, so the colour was reinforcement, and reinforcement that only
+     works on six themes out of nine is worth less than a mark you can read on all nine. */
+  /* Flush left, under the source label. The fixed 26px right-aligned box this used to be
+     was a COLUMN in the old vertical list, where every row needed its chord in the same
+     place; inside a slice it just pushed the numeral a code-width in from the edge and
+     left it hanging under nothing. */
+  #rearrangeform .rechordbadge { flex: none; text-align: left;
+    color: var(--sliceink); font-size: 10px; font-weight: 700; font-style: normal; }
+  /* The walk a part takes, on its card, as ROMAN NUMERALS — the same notation the slices
+     in that part write in their own corners. Scale degrees ('4 | 5 | 1 1') read as bar
+     counts or beat groupings to anyone who has not been told otherwise, and the two
+     places naming the same chords had no business naming them differently. */
+  /* Shrinkable and clipped: the walk is the line that can grow without limit, and the
+     part's NAME is the one thing on this row that must never be pushed off it. */
+  #rearrangeform .reformchords { flex: 0 1 auto; min-width: 0; margin-left: auto; color: var(--ink);
+    font-size: 10px; font-weight: 700; letter-spacing: .02em; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  /* With the walk on the top line the bar range follows it rather than claiming the
+     margin, so the two facts about WHERE this part sits read as one group. */
+  #rearrangeform .reformtop .reformbars { margin-left: 0; }
   #rearrangeform .reformchords:empty { display: none; }
+  /* The move between chords, drawn as a mark rather than as punctuation: solid, a size up
+     from the numerals so it survives being small, dim so the chords stay the thing you read,
+     and tight against both sides so a walk reads as one run instead of three loose words. */
+  /* A FULL ARROW, NOT A WEDGE. `▸` is a small triangle inside its em box — set beside 10px
+     numerals it shrank to a dot and stopped being an arrow at all. `→` occupies its whole
+     cell in a monospace face, so it reads at this size, and it takes --dim rather than
+     --faint because a mark you cannot see is not reinforcement, it is noise. */
+  #rearrangeform .rewalkarrow { display: inline-block; margin: 0 2px; color: var(--dim);
+    font-size: 13px; font-style: normal; font-weight: 700; line-height: 1;
+    vertical-align: -1px; }
   #rearrangepanel .recheck { display: flex; align-items: center; gap: 5px; margin-top: 2px;
     color: var(--ink); font-size: 10px; font-weight: 700; white-space: nowrap; }
   #rearrangepanel .recheck input { margin: 0; }
   #rearrangepanel .recontrolhint { grid-column: 1 / -1; display: flex; justify-content: space-between; margin-top: -3px;
     color: var(--faint); font-size: 9px; font-weight: 400; }
-  #rearrangelist { flex: 1 1 auto; min-height: 70px; overflow: auto; margin: 0; padding: 4px 6px 6px 32px;
-                   list-style: decimal; }
-  #rearrangelist li { display: flex; align-items: center; gap: 5px; margin: 0; padding: 4px 7px;
-                      border: 1px solid transparent; border-radius: 5px; color: var(--dim); font-size: 11px; line-height: 1.35; }
-  #rearrangelist li.active { color: var(--ink); background: var(--accent-wash); border-color: var(--accent-line); }
-  #rearrangelist li.selected { outline: 1px solid var(--accent-line); background: color-mix(in srgb, var(--accent-wash) 55%, transparent); }
-  /* THE GROUPING, DRAWN. Every slice of a part carries an unbroken rule down its left
-     edge in that part's colour, so the rows under a heading are visibly hanging off
-     it rather than merely following it. The rule is the row's own left border, and the
-     rows within a part sit flush against each other so it reads as one line; the gap
-     and the divider come only where the part CHANGES. */
-  #rearrangelist li { border-left: 3px solid var(--rolecolour, transparent); border-radius: 0 5px 5px 0; }
-  #rearrangelist li.resectionstart { margin-top: 10px; position: relative; }
-  #rearrangelist li.resectionstart::before { content: ''; position: absolute;
-    left: -28px; right: 2px; top: -6px; height: 1px; background: var(--line); }
-  #rearrangelist li .reop.restarts { font-weight: 700; color: var(--ink); }
-  #rearrangelist li.favourite .reop { color: var(--accent); }
+  /* THREE RAILS THAT ACT NOW, ONE LINE EACH. The twenty slice operations were one wrapping
+     bar in which the only cue that three of them acted on the whole part was a faint box
+     round them. Split by scope and given a row apiece they read as three sentences instead
+     of one list, and the row a control is in is what says who it hits. */
+  #reinspector { display: flex; flex-direction: column; }
+  #reinspector .rebar { display: flex; align-items: stretch; min-height: 42px;
+                        border-bottom: 1px solid var(--line); background: var(--panel); }
+  /* The part rail is tinted, because it is the one rail whose subject is a different KIND of
+     thing from the two above it. */
+  #reinspector .rebar.repartbar { background: color-mix(in srgb, var(--panel2) 55%, var(--panel)); }
+  #reinspector .reops { display: flex; align-items: center; gap: 5px; flex: 1 1 auto; min-width: 0;
+                        padding: 5px 10px; white-space: nowrap;
+                        overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+  /* AN EMPTY SCOPE SAYS WHAT TO CLICK. With nothing held, thirty greyed-out controls read as
+     a broken panel; one line of instruction reads as an instrument waiting. The row keeps
+     its height either way, which is what keeps the timeline still — the old bar kept the
+     same promise by never changing at all, this one keeps it by never changing SIZE. */
+  #reinspector .reprompt { display: none; align-items: center; flex: 1 1 auto; min-width: 0;
+                           padding: 5px 10px; color: var(--faint); font-size: 10.5px; }
+  #reinspector .rebar.empty > .reops { display: none; }
+  #reinspector .rebar.empty > .reprompt { display: flex; }
+  #reinspector .rerail { gap: 1px; }
+  #reinspector .resubject { color: var(--ink); font-size: 11px; white-space: nowrap;
+                            overflow: hidden; text-overflow: ellipsis; }
+  #reinspector .reopslabel { flex: none; color: var(--dim); font-size: 9px; letter-spacing: .09em;
+                             text-transform: uppercase; }
+  #reinspector button { flex: none; min-height: 28px; padding: 4px 9px; font-size: 11.5px; }
+  #reinspector select { flex: none; min-height: 28px; padding: 3px 6px; font-size: 11.5px; }
+  #reinspector #reslicetranspose { width: 74px; }
+  #reinspector #restutter { width: 124px; }
+  #reinspector #reslicechord { width: 96px; }
+  #reinspector #refillselected { width: 148px; }
+  #reinspector .refillbadge { color: var(--ink); font-weight: 700; }
+  /* Clips are saved material, not a status line. Give the shelf enough height and
+     contrast to make the saved choices findable, while keeping its cards in one
+     horizontal, scrollable row when a session accumulates more than will fit. */
+  /* THE SLICE MENU. Everything here is reachable from the toolbar already — this exists
+     because the toolbar is a long way from the block you are looking at, and the edits
+     people make most are the ones they make over and over on one slice after another.
+     It opens where the pointer is, so the hand does not travel. */
+  /* W and F: the initial of the word, lit or unlit. A pictogram at this size is a rebus you
+     re-solve every glance, and neither "walks the key" nor "ends on a fill" has a picture
+     anyone already knows. Letters need weight and a fixed width to read as marks rather than
+     as text that happens to be in a box. */
+  #rearrangeform .refillbutton, #rearrangeform .rewalkbutton {
+    min-width: 24px; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    color: var(--dim); }
+  #rearrangeform .refillbutton.on, #rearrangeform .rewalkbutton.on {
+    color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+  #reslicemenu { position: fixed; z-index: 37; min-width: 214px; padding: 5px;
+                 border: 1px solid var(--line); border-radius: 7px; background: var(--panel2);
+                 box-shadow: 0 12px 30px color-mix(in srgb, var(--deep) 70%, transparent);
+                 font-size: 12px; }
+  #reslicemenu[hidden] { display: none; }
+  #reslicemenu .remenuhead { padding: 5px 8px 3px; color: var(--dim); font-size: 10px;
+                             font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  #reslicemenu button { display: block; width: 100%; padding: 6px 9px; border: 0; border-radius: 5px;
+                        background: none; color: var(--ink); font-size: 12px; text-align: left; }
+  #reslicemenu button:hover:not(:disabled) { background: var(--accent-wash); }
+  #reslicemenu button:disabled { color: var(--faint); }
+  #reslicemenu .remenusep { height: 1px; margin: 4px 6px; background: var(--line); }
+  #reslicemenu .remenurow { display: flex; gap: 3px; padding: 2px 4px; }
+  #reslicemenu .remenurow button { width: auto; flex: 1 1 0; min-width: 0; padding: 5px 1px;
+                                   text-align: center; border: 1px solid var(--line);
+                                   font-size: 11px; font-variant-numeric: tabular-nums; }
+  #reslicemenu .remenurow button.on { color: var(--on-accent); background: var(--accent);
+                                      border-color: var(--accent); font-weight: 700; }
+  #reclipstrip { display: flex; align-items: stretch; gap: 8px; min-height: 58px; overflow-x: auto;
+                 padding: 8px 12px; border-top: 1px solid var(--line); background: var(--well); font-size: 12px; }
+  /* AN EMPTY SHELF IS NOT A SHELF. renderRearrangeClips has always set hidden on it when
+     there are no clips, but `#reclipstrip { display: flex }` is an author rule and the
+     hidden attribute is only a UA one, so the attribute lost the cascade and the strip
+     went on holding 58px of nothing at the foot of the panel — a labelled empty box that
+     the timeline above it could have used. The row of cards is the panel's whole point;
+     it gets the space back the moment the shelf has nothing to show. Same pairing as
+     #rearrangeform[hidden] above: any element given a display here needs its own
+     [hidden] rule or the attribute does nothing. */
+  #reclipstrip[hidden] { display: none; }
+  #reclipstrip .reclipslabel { display: flex; align-items: center; flex: none; color: var(--ink);
+                               font-size: 12px; font-weight: 700; margin-right: 2px; }
+  #reclipstrip .reclip { display: inline-flex; gap: 4px; align-items: center; flex: none;
+                         padding: 5px 6px; border: 1px solid var(--line); border-radius: 5px;
+                         background: var(--traybtn); }
+  #reclipstrip .reclipuse { min-width: 108px; min-height: 34px; padding: 6px 10px;
+                            font-size: 12px; font-weight: 700; }
+  #reclipstrip .reclipletter { min-width: 108px; min-height: 32px; padding: 5px 7px; font-size: 12px; }
+  #reclipstrip .reclipremove { width: 28px; min-width: 28px; min-height: 28px; padding: 2px;
+                               font-size: 16px; line-height: 1; }
+  #reinspector .reslicetranspose { width: 58px; min-width: 58px; min-height: 32px; padding: 4px; font-size: 11px; }
+  #reinspector .reinspectrow button { min-width: 30px; min-height: 34px; padding: 5px 7px; font-size: 12px; }
+  #rearrangeform .reformacts button { min-width: 28px; min-height: 28px; padding: 4px 6px; font-size: 11px; }
+  /* The part's own dice is a glyph, not a word, so it takes the same size bump the
+     header's lucky dip does — 11px renders an emoji noticeably smaller than the text
+     beside it. */
+  #rearrangeform .reformacts .rediceSection { font-size: 13px; padding: 2px; }
+  /* THE GAP IS THE GROUPING. Buttons that belong together keep the old 2px — they read as
+     one control with two ends, ½ ×2 and W F both being exactly that — and the space
+     between groups is what the eye lands on first. Dropping the ⋯ paid for it: seven
+     buttons plus three group gaps is narrower than the eight evenly spaced were, so no
+     card that used to fit its row now scrolls it. */
+  #rearrangeform .reformacts { display: flex; flex-wrap: nowrap; gap: 10px; margin-top: auto;
+                                padding-left: 0; overflow-x: auto; scrollbar-width: thin; }
+  #rearrangeform .reformacts .reactgroup { display: flex; flex: none; gap: 2px; }
+  /* The part's slices, side by side across the rest of its row. A slice's width is its
+     share of the part stated outright — its own step count over the part's, as a
+     percentage basis. Growing from a zero basis instead would have each block pay for its
+     own padding and border BEFORE the proportional share was handed out, and with ten
+     blocks in a row that fixed cost is a tenth of the row spent equally on slices whose
+     durations are not equal. Border-box means the padding is inside the share, and no gap
+     between blocks means the shares still add to the row. The floor under it all is so a
+     one-sixteenth fill stays something you can see and hit; where the floor is what wins,
+     the row overflows into its own scroll rather than lying about the other slices. */
+  /* Four bars to a line, then wrap. Past that a part drawn in one go either squeezes its
+     slices to nothing or runs off the side, and neither tells you anything; a sixteen-bar
+     part reads as four lines of four, which is how it is counted anyway. Wrapping is what
+     leaves the tail of an odd part empty — five bars is a full line and then one bar with
+     three bars of nothing after it, which is the shape of the part, honestly drawn. A
+     slice that will not fit in what is left of a line moves down whole rather than being
+     cut in two. */
+  /* align-content: stretch, not flex-start: a part's line of slices fills the row rather
+     than sitting 58px tall inside a 67px row with the part's card standing over it. The
+     slices and the card that names them are one band across the panel, and a band whose
+     halves are different heights reads as two things that happen to be adjacent. */
+  #rearrangeform .restrip { display: flex; flex-wrap: wrap; align-content: stretch;
+                            flex: 1 1 auto; min-width: 0; align-items: stretch;
+                            margin: 0; padding: 0; list-style: none; touch-action: pan-y; }
+  #rearrangeform .reslice { position: relative; min-height: 58px;
+                            flex: 0 0 calc(var(--slicespan, 1) / var(--timescale, 1) * 100%);
+                            min-width: 14px;
+                            display: flex; flex-direction: column; gap: 2px; overflow: hidden;
+                            padding: 5px 5px; border: 1px solid var(--line); border-radius: 4px;
+                            background: color-mix(in srgb, var(--material, var(--traybtn)) 30%, var(--traybtn));
+                            color: var(--slicedim); font-size: 10px; line-height: 1.3;
+                            cursor: pointer; user-select: none; }
+  /* A SLICE WEARS ITS PART'S COLOUR, VARIED. Slices used to be coloured by their source
+     material off a twelve-hue wheel, which made a returning riff visible anywhere in the
+     song — and made every row a fruit salad with no relationship to the part it sat in.
+     The question a row actually gets asked is "how many different things are in THIS
+     part, and where do they change", so that is what the colour answers now: one family
+     per role, and a different member of it for each distinct piece of material in the
+     part. The same material in a different part is a different colour, deliberately —
+     cross-part identity is what the label's source position is for.
+
+     THE HUE IS NEVER MOVED, AND THAT IS THE FIRST RULE. The accent means one thing on
+     this desk — this is the slice you are hearing — and the accent is a different hue in
+     each of the nine themes, so a variant that shifts hue is a variant that walks onto
+     somebody's accent. It is not hypothetical: an earlier cut of this spread the family
+     over ±26° and Intro's green (h 162) came out at 188, which is daylight's accent and
+     eleven degrees off midnight's. The fixed role palette already sits close enough
+     without help — Bridge 312 against violet's 311, Chorus 73 against carbon's 72 — so
+     the variants move LIGHTNESS and CHROMA only, and every block stays the hue its part's
+     square already is.
+
+     LIGHTNESS IS SET HERE, NOT INHERITED. The role colours are chips, mixed to read at
+     postage-stamp size, and their lightness runs all over — Chorus sits at L 0.76 where
+     Verse is 0.67. Inherited into a wash that is 30% of the block, that spread drops the
+     worst label contrast to 3.8:1. Set here across 0.52 / 0.46 / 0.34 it measures 4.58:1
+     against the nine themes' ink, beside 4.69:1 for the material wheel this replaced.
+
+     THREE VARIANTS, AND THE CEILING IS THE INK. With hue held, separation has to come out
+     of a lightness band that is bounded at both ends by the label: too light and it loses
+     the theme's ink on carbon, too dark and it loses it on paper. Three shades is what
+     that band holds while every pair on every theme stays clearly apart — measured, the
+     closest pair anywhere is 0.041 in OKLab, against 0.014 for a first cut that read as
+     no variation at all. A part with more than three distinct materials repeats a colour,
+     and the source label on the block is what tells those apart.
+
+     THE CHROMA CLAMP IS DOING REAL WORK AT BOTH ENDS. The floor is why a near-grey Outro
+     still separates — scaling the chroma of a colour that has almost none produces three
+     greys — and it is why the middle variant is boosted rather than merely lighter. The
+     ceiling stops Bridge and Chorus, which start saturated, from blowing out to a painted
+     tile when the same boost is applied to them. Crushing chroma instead of raising it was
+     tried and is the one thing that cannot work: at ×0.15 every role's pale variant lands
+     on the same grey, so the row loses the part identity the whole scheme exists to give.
+
+     A WASH OF THE COLOUR, NOT A TILE PAINTED IN IT. Bright painted blocks were tried and
+     they read as the loudest thing on the panel — the timeline is something you look PAST
+     to find the one slice that is playing, and when every block shouts the playhead has
+     nothing to stand out against. Washed at 30% of a mid-lightness colour the blocks stay
+     legible on all nine themes, keep the theme's own ink for their text, and leave the
+     accent free to mean one thing: this is the slice you are hearing. */
+  /* The plain part colour first, then the varied one where relative colour syntax exists.
+     Reading a channel off another colour is the only way to vary a family without keeping
+     a second copy of the role palette in JS — and a browser that cannot do it must still
+     get coloured blocks, so the unvaried role colour is what it falls back to rather than
+     an invalid custom property, which would take every slice down to bare tray grey. */
+  #rearrangeform .reslice { --slicel: 0.52; --slicec: 0.7; --slicecadd: 0;
+    --material: var(--rolecolour, var(--faint)); }
+  @supports (color: oklch(from white l c h)) {
+    #rearrangeform .reslice {
+      --material: oklch(from var(--rolecolour, var(--faint))
+        var(--slicel) clamp(0.055, calc(c * var(--slicec) + var(--slicecadd)), 0.21) h); }
+  }
+  #rearrangeform .reslice[data-variant="1"] { --slicel: 0.46; --slicec: 1.3; --slicecadd: 0.12; }
+  #rearrangeform .reslice[data-variant="2"] { --slicel: 0.34; --slicec: 0.7; --slicecadd: 0; }
+  /* The slice's text takes the THEME's ink, as everything else on the desk does — the
+     block is a wash rather than a painted tile, so there is a theme underneath it to
+     belong to. Kept as their own names so the slice's marks can be retuned in one place. */
+  #rearrangepanel { --sliceink: var(--ink); --slicedim: var(--dim); }
+  /* A REPEATED SLICE IS NOT A LONG ONE, AND MUST NOT DRAW LIKE ONE. Four passes of a bar
+     and one four-bar grab take the same time and until now took the same block; the '×4'
+     was the only thing telling them apart, and a number is not what the eye reads when it
+     is scanning a row for shape. Ruled at each pass boundary, the block shows its own
+     rhythm — the divisions are the repeats, so a glance counts them. The first rule falls
+     at x=0, under the slice's own left border, which is why only the inner ones show. */
+  /* Drawn as an overlay that STARTS one cell in and ends at the right edge, so the rules
+     fall strictly between passes. Tiling the whole block instead put a rule at x=0 as
+     well — hard against the left border, on repeated slices only — and since slices butt
+     together with no gap that read as a thicker edge on some blocks than others. The
+     overlay spans repeats-1 cells, so one tile of it is exactly one pass. */
+  #rearrangeform .reslice[data-repeats]::before {
+    content: ''; position: absolute; top: 0; bottom: 0; right: 0;
+    left: calc(100% / var(--repeats, 2));
+    background-image: linear-gradient(to right,
+      color-mix(in srgb, var(--sliceink) 45%, transparent) 0 1px, transparent 1px);
+    background-size: calc(100% / (var(--repeats, 2) - 1)) 100%;
+    pointer-events: none; }
+  /* WHERE A PART STARTS SAYING ITSELF AGAIN. The border grows and the padding shrinks by
+     the same amount, so the seam is visible without the block's contents moving — the one
+     thing a marker on an edge must not do when slices butt against each other. */
+  #rearrangeform .reslice[data-cycle] { border-left-width: 3px; padding-left: 3px;
+    border-left-color: var(--sliceink); }
+  #rearrangeform .reslice:hover { border-color: var(--accent-line); }
+  #rearrangeform .reslicelabel { flex: none; min-width: 0; color: var(--sliceink); font-size: 11px;
+                                 font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #rearrangeform .reslicerepeat { flex: none; color: var(--slicedim); font-size: 11px; font-weight: 700;
+                                  font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #rearrangeform .reslice.favourite .reslicelabel { color: var(--accent); }
+  /* min-width: 0 so a narrow slice CLIPS its chord mark rather than being propped open
+     by it — an inflexible badge inside would otherwise become the real width floor, and
+     a one-sixteenth block would draw twice as wide as the time it stands for. */
+  #rearrangeform .reslicefoot { display: flex; align-items: center; gap: 3px; min-width: 0;
+                                margin-top: auto; overflow: hidden; }
+  #rearrangeform .refilltick { flex: none; width: 6px; height: 6px; border-radius: 2px;
+                               background: var(--sliceink); }
+  /* A SILENCED SLICE STILL TAKES ITS TIME, and is drawn as time that passes with nothing
+     in it: the material's colour drains out, the block is hatched, and its label dims. It
+     is deliberately not the "removed" look, because it has not been removed — the slice is
+     still there, still that long, and one click from sounding again. */
+  #rearrangeform .reslice[data-mute] { background: var(--well);
+    background-image: repeating-linear-gradient(135deg,
+      color-mix(in srgb, var(--ink) 9%, transparent) 0 4px, transparent 4px 9px); }
+  #rearrangeform .reslice[data-mute] .reslicelabel,
+  #rearrangeform .reslice[data-mute] .reslicerepeat,
+  #rearrangeform .reslice[data-mute] .rechordbadge { color: var(--faint); }
+  #rearrangeform .reslice[data-mute] .refilltick { background: var(--faint); }
+  /* Aimed at, but not arrived: the destination of a queued jump pulses until the bar line
+     comes round. It borrows the panel's own pending rhythm, so "made, not yet heard" looks
+     the same whether it is an edit waiting or a jump waiting. */
+  #rearrangeform .reslice.seeking, #rearrangeform .reformseg.seeking {
+    outline: 2px dashed var(--accent); outline-offset: -1px;
+    animation: repending 1s ease-in-out infinite; }
+  #rearrangeform .reslice.selected { outline: 2px solid var(--accent); outline-offset: -1px;
+    background: color-mix(in srgb, var(--accent-wash) 60%, var(--traybtn)); }
+  /* WHERE THE MUSIC IS, DRAWN UNDER IT. The sounding slice gets a bar along its foot that
+     grows as the slice plays, so the row shows both which block is sounding and how far
+     through it the playhead is — a whole-block highlight could only say the first. */
+  #rearrangeform .reslice.active { color: var(--sliceink); }
+  /* THE PLAYHEAD IS THE BAR, AND ONLY THE BAR. The sounding slice used to also carry an
+     accent ring around the whole block, which was two marks for one fact: the bar already
+     says both which slice is sounding AND how far through it the playhead is, so the ring
+     could only repeat the weaker half of that. It also put a bright rectangle around a
+     block every time the playhead entered it, which reads as the selection moving on its
+     own — the accent OUTLINE belongs to the selection, and nothing else in this panel may
+     borrow it. The hairline of ink under the bar is what keeps the accent visible on the
+     LIGHT themes, where it measured 1.17:1 against the wash — near enough the same colour
+     to be gone. */
+  #rearrangeform .reslice.active::after { content: ''; position: absolute; left: 0; bottom: 0;
+    height: 5px; width: calc(var(--replayed, 0) * 100%); background: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 60%, transparent); }
   /* An edit made while the collage plays is installed at the next output bar line, so
      until it lands the panel is showing a draft rather than what is being heard. A
      dashed left rule and a slow pulse on the status say so, without the flashing
      becoming the loudest thing in a panel you are reading rows off. */
-  /* The part rule goes dashed rather than changing colour: which part a row belongs to
-     is not in doubt while an edit is pending, only whether you have heard it yet. */
-  #rearrangepanel.pending #rearrangelist li { border-left-style: dashed; }
-  #rearrangepanel.pending #rearrangestatus { color: var(--accent); animation: repending 1.4s ease-in-out infinite; }
+  /* The slices go dashed rather than changing colour: which part a slice belongs to is
+     not in doubt while an edit is pending, only whether you have heard it yet. */
+  #rearrangepanel.pending #rearrangeform .reslice { border-style: dashed; }
+  /* The status moved to the desk's footer, so the pending pulse follows it there — it is
+     the same fact ("made, not yet heard") wearing the same rhythm, just no longer inside
+     the element that carries the class. */
+  #m8status.pending #rearrangestatus { color: var(--accent); animation: repending 1.4s ease-in-out infinite; }
   @keyframes repending { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+  /* M8TRX's line in the desk's own status bar: what the recipe is, then what just happened
+     to it. It reads as one sentence with the desk's other footer facts rather than as a
+     panel that has escaped, so the name leads and the rest is dim. */
+  #m8status { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  #m8status[hidden] { display: none; }
+  #m8status > b { flex: none; color: var(--ink); font-weight: 700; letter-spacing: .06em; }
+  #m8status > em { flex: none; color: var(--dim); font-style: normal; white-space: nowrap; }
+  #m8status > #rearrangestatus { min-width: 0; color: var(--dim); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
   @media (prefers-reduced-motion: reduce) {
-    #rearrangepanel.pending #rearrangestatus { animation: none; }
+    #m8status.pending #rearrangestatus { animation: none; }
+    #rearrangeform .reslice.seeking, #rearrangeform .reformseg.seeking { animation: none; }
   }
-  /* The square is the same control in both places, so it is the same square: on a row
-     it selects that slice, on a rail card it selects every slice in the part. */
-  #rearrangepanel .reselect { flex: none; width: 18px; height: 18px; padding: 0; border: 1px solid transparent;
-                              border-radius: 4px; color: var(--faint); background: transparent; font-size: 11px; line-height: 16px; }
-  #rearrangepanel .reselect:hover, #rearrangepanel .reselect:focus-visible { color: var(--ink); border-color: var(--accent-line); }
-  #rearrangepanel .reselect[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
-  #rearrangelist li .reop { flex: 1 1 auto; min-width: 0; color: var(--ink); }
-  #rearrangelist li .reout { flex: none; color: var(--faint); margin-left: auto; font-variant-numeric: tabular-nums; }
-  #rearrangeform .rekeep, #rearrangeform .redown { flex: none; width: 22px; height: 19px; padding: 0;
-                              border: 1px solid transparent; border-radius: 4px; color: var(--faint);
-                              background: transparent; font-size: 11px; line-height: 17px; }
-  #rearrangeform .rekeep:hover, #rearrangeform .rekeep:focus-visible,
-  #rearrangeform .redown:hover, #rearrangeform .redown:focus-visible { color: var(--ink); border-color: var(--accent-line); }
-  #rearrangeform .rekeep.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
-  #rearrangeform .redown.on { color: var(--on-accent); background: var(--hot); border-color: var(--hot); }
-  #rearrangepanel .refoot { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px;
-                             border-top: 1px solid var(--line); background: var(--well); }
-  #rearrangepanel .refoot button { flex: 1 1 auto; padding: 5px 8px; font-size: 10px; }
-  #rearrangepanel .refoot #replay { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-  #rearrangepanel .refoot #rereturn { border-color: var(--hot-line); color: var(--hot); }
+
+  #rearrangeform .relock.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+  /* The pin is a held state, so it lights the way every other held control on the desk
+     does — the same accent the part lock uses. It keeps its dashed border while lit: it is
+     still a setting for the next Go, whether it is on or off. */
+  #rearrangepanel #reseedhold.on { background: var(--accent); color: var(--on-accent);
+                                    border-color: var(--accent); }
+  /* Chord walk is a held state too, and lights the same way. */
+  #rearrangepanel #rewalkselected.on { background: var(--accent); color: var(--on-accent);
+                                        border-color: var(--accent); }
   /* Panic used to be a red word at the far end of the header, beside Undo. It is ⎋ now:
      an emergency cut is worth a key you can hit without looking, and Stop already
      silences everything you can hear. Its tooltip is where the key is written down;
@@ -2032,10 +2503,13 @@
   .notefxfoot .notefxrender { flex: 1 0 100%; }
   /* The file and song controls live in one left drawer. It overlays the desk rather
      than changing its width, so opening it never makes the channel strips jump. */
-  #drawerbackdrop { position: fixed; inset: 0; z-index: 31; display: none;
+  /* Above M8TRX (34). The nav drawer is a modal surface over the whole desk, so whatever
+     working panel happens to be open, the menu opens ON TOP of it — a menu you can summon
+     but not see is worse than no menu. */
+  #drawerbackdrop { position: fixed; inset: 0; z-index: 35; display: none;
                     background: rgba(8,10,14,.62); opacity: 0; transition: opacity .18s ease; }
   #drawerbackdrop.show { display: block; opacity: 1; }
-  #navdrawer { position: fixed; inset: 0 auto 0 0; z-index: 32; display: flex;
+  #navdrawer { position: fixed; inset: 0 auto 0 0; z-index: 36; display: flex;
                flex-direction: column; width: min(390px, 92vw); max-width: 100vw;
                background: var(--panel2); border-right: 1px solid var(--line);
                transform: translateX(-102%); transition: transform .18s ease;
@@ -5932,7 +6406,7 @@
 
   <div class="grp">
     <button id="rearrangebtn" type="button" aria-pressed="false"
-            data-tip="Rearrange" data-tipsays="Build a temporary musical collage from this song. Double-click a row or use ▶ to play from that section or bar. Tap 👍 to keep it for the next Generate, or 👎 to ask for a replacement; Save song does not include it.">Rearrange</button>
+            data-tip="M8TRX" data-tipsays="Build a temporary musical collage from this song. Double-click a row or use ▶ to play from that section or bar. Tap 👍 to keep it for the next Generate, or 👎 to ask for a replacement; Save song does not include it.">M8TRX</button>
   </div>
 
   <div class="grp">
@@ -6114,87 +6588,251 @@
 
 </header>
 
-<section id="rearrangepanel" hidden aria-label="Rearrange recipe">
-  <div class="rehead">
-    <div class="retitle">Rearrange<div class="resub">A temporary, same-length re-cut of this song — the song itself is never changed. <b>Style</b> sets the size of the cuts, <b>Variation</b> how often motifs return, <b>Drums</b> what the kit does. Edits while playing are heard from the next bar. Hover any control for detail.</div></div>
-    <button id="reclose" class="reclose" type="button" aria-label="Close Rearrange">×</button>
+<!-- FIVE BANDS, AND A CONTROL'S BAND IS ITS SCOPE. Four different things can be acted on —
+     the selection, one part, the whole arrangement, and what the next Go will build — and
+     before this almost nothing on screen said which one a control touched; two controls were
+     both called Fill for that reason. Now the answer is POSITION: a control's row is its
+     scope, permanently, so the meaning of a row never changes under you. The scope's name and
+     its one-line explanation sit in a rail down the RIGHT, so every row of controls starts
+     hard against the same left edge instead of being indented by its own label. -->
+<section id="rearrangepanel" hidden aria-label="M8TRX arrangement recipe">
+  <!-- 1 · GENERATE. Everything in here is deferred: it changes nothing until Go is pressed.
+       That is drawn as a DASHED border, which extends a language the panel already had — a
+       pending edit already drew the timeline dashed — rather than inventing a new one. -->
+  <div class="reband regen">
+    <div class="rebandbody">
+      <!-- THE PRESS COMES FIRST, THEN WHAT IT SPENDS. Every other row in this panel starts
+           with the thing you do, and the top row had it last, at the end of a scan across
+           six dials. The button also SAYS which of its two jobs it is about to do — a new
+           arrangement, or a variation of the one you are hearing — so the pin beside it
+           needs no explaining: press it and watch the primary's label change. -->
+      <button id="regenerate" class="reprime" type="button" title="Build a new arrangement from these settings — while playing, it is heard from the next bar">New arrangement ▸</button>
+      <!-- WAS "HOLD SEED", WHICH IS A PROGRAMMER'S WORD FOR IT. A seed is the number a roll
+           starts from; nobody playing an instrument has any reason to know that. What the
+           button actually offers is the difference between "give me another one" and "keep
+           this one and let me shape it", so it says that instead — and it sits against the
+           control it modifies rather than across the row from it. -->
+      <button id="reseedhold" class="defer" type="button" aria-pressed="false" aria-label="Vary this one" title="Every press of Go builds a completely different arrangement. Turn this on and Go keeps the one you are hearing instead, changing only what the dials ask for — so you can move one dial and hear what that dial did.">📌 Vary this one</button>
+      <div class="revr"></div>
+      <!-- STYLE IS A DIAL LIKE THE REST OF THEM. It was four segmented buttons, which made
+           the one control in this band that is not a dial also the widest thing in it. On a
+           slider it reads as what it is — a scale from the biggest cuts to the smallest and
+           then to "let each letter choose", which is where it sits by default. -->
+      <div class="recontrol defer">
+        <label for="restyle">Style</label>
+        <input id="restyle" type="range" min="0" max="3" step="1" value="3"
+               aria-describedby="restylehint" title="How the song is cut. Phrase takes whole one to four-bar phrases; Chop works in beats; Mix gives each repeated letter its own stable identity.">
+        <output id="restylevalue" for="restyle">Mix</output>
+        <div id="restylehint" class="recontrolhint"><span>Phrase</span><span>Mix</span></div>
+      </div>
+      <div class="recontrol defer">
+        <label for="remood">Mood</label>
+        <input id="remood" type="range" min="0" max="100" step="5" value="50"
+               aria-describedby="remoodhint" title="The emotion of the harmony. Dark re-reads the song in its relative minor and walks a brooding loop; euphoric lifts it into the relative major and reaches for the festival cadence.">
+        <output id="remoodvalue" for="remood">Bittersweet</output>
+        <div id="remoodhint" class="recontrolhint"><span>Dark</span><span>Euphoric</span></div>
+      </div>
+      <div class="recontrol defer">
+        <label for="rehypnosis">Hypnosis</label>
+        <input id="rehypnosis" type="range" min="0" max="100" step="5" value="55"
+               aria-describedby="rehypnosishint" title="How much the song repeats itself. Collage keeps moving through new material; locked builds each part from a few pieces that keep coming back.">
+        <output id="rehypnosisvalue" for="rehypnosis">Woven</output>
+        <div id="rehypnosishint" class="recontrolhint"><span>Collage</span><span>Locked loop</span></div>
+      </div>
+      <div class="recontrol defer">
+        <label for="rechaos">Chaos</label>
+        <input id="rechaos" type="range" min="0" max="100" step="5" value="45"
+               aria-describedby="rechaoshint" title="How far a choice may stray from the safest one. Tame takes the best-scoring slice every time; feral reaches further down the ranking and takes lifts a careful recipe would leave alone.">
+        <output id="rechaosvalue" for="rechaos">Frisky</output>
+        <div id="rechaoshint" class="recontrolhint"><span>Tame</span><span>Feral</span></div>
+      </div>
+      <div class="recontrol defer">
+        <label for="redrive">Drive</label>
+        <input id="redrive" type="range" min="0" max="100" step="5" value="50"
+               aria-describedby="redrivehint" title="Energy. Raises the density each part aims for, how often a part ends with a fill, how fast the chords move, and which kit Auto drums pick.">
+        <output id="redrivevalue" for="redrive">Rolling</output>
+        <div id="redrivehint" class="recontrolhint"><span>Chill</span><span>Peak-time</span></div>
+      </div>
+      <!-- THE FOUR THAT ARE REACHED FOR LEAST, IN A POPUP — but a popup that CANNOT hide a
+           set value. Key, Fill new sections, New length and Transpose are the shape-and-
+           harmony settings: worth having, rarely touched, and between them they were half
+           the width of the band. Behind one button it reads as the five dials it mostly is.
+           The button states its own contents (`Advanced · 2 set`) whenever any of the four
+           is off its default, so nothing in here can be quietly holding the next Go to
+           something you cannot see from the outside — the desk's rule about hidden preset
+           parameters applies hardest to the controls you have put behind a door. -->
+      <div id="readvancedpop" class="repop" popover aria-label="Advanced M8TRX settings">
+        <div class="repophead"><b>Advanced</b><span>All four only affect the next Go.</span></div>
+        <div class="recontrol rechordrow defer">
+          <label for="relength">New length</label>
+          <select id="relength" title="Choose a shorter or longer M8TRX output. Base slices stay musical; the source song is never changed.">
+            <option value="0.5">Half</option>
+            <option value="0.75">Three quarters</option>
+            <option value="1" selected>Original</option>
+            <option value="1.25">Five quarters</option>
+            <option value="1.5">One and a half</option>
+          </select>
+        </div>
+        <div class="recontrol rechordrow defer">
+          <label for="rekey">Key</label>
+          <select id="rekey" title="The key the chord loops walk in. Detected trusts the analysis — shown beside it, marked as a guess when the song does not settle — or name the key yourself and the loops trust you. None turns the chord loops off entirely and hands the song back to the chromatic Transpose dial.">
+            <option value="auto" selected>Detected key</option>
+          </select>
+          <output id="rechordskey" for="rekey">no analysis yet</output>
+        </div>
+        <!-- Was "Fill on Generate", which could be read as the same control as the part's
+             own Fill. Named for what it acts on now: only the sections Go builds. -->
+        <div class="recontrol rechordrow defer">
+          <label for="refill">Fill new sections</label>
+          <select id="refill" title="A whole-band fill at the end of sections Go builds. Auto uses sparse burst/rush/machine-gun shapes; it never adds off-grid base slices. The Part rail's ‘Fill this ending’ is the one that acts on the part you are holding, now.">
+            <option value="auto" selected>Auto · sparse</option>
+            <option value="burst">Burst · final beat</option>
+            <option value="rush">Rush · final half-bar</option>
+            <option value="machinegun">Machine gun · final bar</option>
+            <option value="none">Off</option>
+          </select>
+        </div>
+        <div class="recontrol defer">
+          <label for="retranspose">Transpose</label>
+          <input id="retranspose" type="range" min="0" max="100" step="5" value="0"
+                 aria-describedby="retransposehint" title="Dial the amount of shared chromatic lift — every note the same distance. Sections walking a chord loop skip it">
+          <output id="retransposevalue" for="retranspose">Off</output>
+          <div id="retransposehint" class="recontrolhint"><span>Off</span><span>±2 / 5 / 7</span></div>
+        </div>
+      </div>
+      <!-- Lucky dip sits WITH THE DIALS, because the dials are what it moves: it throws all
+           five somewhere musical and then builds from where they landed. Beside the primary
+           it read as a second way to press Go, which is the smaller half of what it does. -->
+      <button id="redice" class="defer" type="button" aria-label="Lucky dip" title="Throws every dial somewhere musical at random and builds an arrangement from it. The dials move to where they landed, so if you like what you hear you can see why and nudge it from there.">🎲 Lucky dip</button>
+      <!-- Parked far right, against the rail: four settings that are worth having and rarely
+           touched should be the last thing on the row, not something the eye crosses on its
+           way to the dials. -->
+      <button id="readvancedbtn" class="defer reright" type="button" popovertarget="readvancedpop"
+              title="Key, Fill new sections, New length and Transpose — the settings that shape what Go builds. All four only affect the next Go.">Advanced ⌄</button>
+    </div>
+    <div class="rerail"><b>Generate</b><span>dashed = waits. Nothing here is heard until you press Go.</span></div>
   </div>
-  <div id="rearrangestatus" role="status" aria-live="polite">Generate a recipe to begin.</div>
+
+  <!-- 2 · ARRANGEMENT. The whole recipe, and the song it never touches. -->
+  <div class="reband rearr">
+    <div class="rebandbody">
+      <div id="redrumsrow" class="recontrol rechordrow">
+        <label for="redrums">M8TRX drums</label>
+        <select id="redrums" title="What the drums do while M8TRX plays" aria-label="M8TRX drums"></select>
+      </div>
+      <!-- M8TRX has no Undo button of its own. While a recipe is live the DESK's Undo is
+           M8TRX's — it relabels itself "Undo M8TRX", the same borrowing the loop button
+           already does for Recipe Once / Recipe Loop — and the two histories stay strictly
+           separate, so a recipe edit can never be undone into a fader move. -->
+      <button id="reclearkept" type="button" title="Clear every locked part and everything on the shelf — a start from scratch for the next Go. Does not touch the recipe currently on the timeline">Clear locks &amp; shelf</button>
+      <button id="regrab" type="button" title="Lock whichever part is sounding right now, so the next Go keeps it verbatim">Lock what’s playing</button>
+      <div class="revr"></div>
+      <button id="resaveversion" type="button" title="Save this M8TRX recipe in the song file for the Mixer only; it never becomes a game alternate">Save version</button>
+      <button id="resave" type="button" title="Save this recipe as a small JSON file — instructions, not audio">Save JSON…</button>
+      <button id="reload" type="button" title="Load a saved recipe for this song; it never starts playback by itself">Load JSON…</button>
+      <button id="rereturn" class="rehot" type="button" title="Clear the rearrangement and return to the normal song">Return to Song</button>
+      <input id="rearrangefile" type="file" accept="application/json,.json" hidden>
+      <!-- NOTHING IS LEFT ON THIS ROW BUT CONTROLS. What is loaded and what just happened
+           went to the desk's status bar; the help went UP, onto the desk's own ? beside the
+           Undo it already borrows; and the close went entirely — the M8TRX button in the
+           toolbar is the way in and it is the way out, and a second closer three feet away
+           from it was one control too many for a panel that is a mode rather than a
+           window. -->
+    </div>
+    <div class="rerail"><b>Arrangement</b><span>the whole recipe, and the song it never touches</span></div>
+  </div>
+
+  <!-- 3–5 · THE THREE RAILS THAT ACT NOW. Each keeps a FIXED height whether it is holding
+       its controls or its one-line invitation, so the timeline below never steps up or down
+       under a pointer already heading for a slice — the promise the old static toolbar kept
+       by never changing at all, kept here by never changing HEIGHT. A rail whose scope holds
+       nothing says what to click instead of showing thirty dead buttons. -->
+  <div id="reinspector" aria-label="M8TRX slice and part editor">
+    <div class="rebar rematerial" data-scope="selection">
+      <div class="reops">
+        <button id="reclearselection" type="button" title="Clear the slice selection">Clear</button>
+        <button id="replayfrom" type="button" title="Play from the start of the selection">Play from here</button>
+        <div class="revr"></div>
+        <button id="rerollselected" type="button" title="Puts different bits of the song under the slices you are holding — new material every time, often cut up a new way, sometimes at a new pitch. It rolls under the sliders as they are set NOW, not as they were at Go, so move Mood to euphoric and the roll comes back euphoric. How LONG the slices are never changes, so nothing after them moves.">🎲 New material</button>
+        <label class="reopslabel" for="reslicetranspose">Pitch</label>
+        <select id="reslicetranspose" title="Shift the selected slices by a fixed interval. A part walking a chord loop takes its pitch from the walk instead, so this and Chord walk are never both on" aria-label="Transpose selected slices"></select>
+        <select id="reslicechord" title="What chord these slices play, one slice at a time — any degree of the song’s key, or As written to leave them alone. A part’s Chord walk sets all of its chords at once; this overrules it slice by slice" aria-label="Chord for the selected slices"></select>
+        <select id="restutter" title="Retrigger the start of each selected slice across its own time — a beat becomes four sixteenths of that beat. Options that will not divide the selected slices evenly are greyed out. Gallop is the swung feel, and it fits any slice. Whole-band, so the kit stutters with it" aria-label="Stutter the selected slices">
+          <option value="">Stutter…</option>
+          <option value="2">×2</option>
+          <option value="4">×4</option>
+          <option value="8">×8</option>
+          <option value="gallop">Gallop · swung</option>
+          <option value="ramp">Ramp · slowing</option>
+          <option value="build">Build · quickening</option>
+        </select>
+        <button id="redoublerepeats" type="button" title="Repeat each selected slice one more time; duration grows">Repeat +</button>
+        <button id="rehalfrepeats" type="button" title="Repeat each selected slice one fewer time; duration shrinks">Repeat −</button>
+      </div>
+      <div class="reprompt">Click a slice in the timeline to change what it is made of.</div>
+      <div class="rerail"><b>Selection · material</b><span id="reinspectinfo" class="resubject">nothing held</span></div>
+    </div>
+
+    <div class="rebar rearrops" data-scope="selection">
+      <div class="reops">
+        <button id="recopysection" type="button" title="Copy the selected slices — one, a run of them, or a whole part">Copy</button>
+        <button id="repastesection" type="button" title="Put the copied slices over the selected ones, fitted to the time they take: longer material is cut to fit, shorter material leaves the rest silent. The song keeps its exact length, so nothing after it moves">Paste</button>
+        <button id="remute" type="button" title="Mute the selected slices: nothing sounds for their time, the song keeps its exact length, and the material comes back when you turn it off">Mute</button>
+        <button id="rejoin" type="button" title="The opposite of Split: the first of the selected slices keeps its place and grows to cover the whole run, and the rest go. The song keeps its exact length">Join</button>
+        <button id="resplit" type="button" title="Interleave each selected slice’s two halves: A B A B, same length">Split</button>
+        <button id="reunroll" type="button" title="Turn a compact repeated slice into separately selectable passes">Separate passes</button>
+        <button id="reremove" type="button" title="Replace the selected slices with the material either side of them; the song keeps its exact length. Not a drum fill — that is the Part rail's Fill this ending">Borrow neighbours</button>
+        <button id="reloopremove" type="button" title="Remove the selected slices and loop one nearby motif through their whole span, such as 1 2 1 2">Loop a neighbour</button>
+        <button id="reclipselected" class="defer" type="button" title="Save the selected slices to the session shelf, for the next Go to reuse">To shelf ⌁</button>
+        <button id="redeleteselected" class="rehot" type="button" title="Delete selected slices entirely; M8TRX output becomes shorter">Delete slices</button>
+      </div>
+      <div class="reprompt">Click a slice to move, join, split or delete it.</div>
+      <div class="rerail"><b>Selection · arrangement</b><span id="resubarr" class="resubject">nothing held</span></div>
+    </div>
+
+      </div>
   <div class="rebody">
-    <div id="rearrangeform" hidden aria-label="Rearrange roadmap"></div>
-    <ol id="rearrangelist" aria-label="Rearrange operations"></ol>
+    <div id="rearrangeform" hidden aria-label="M8TRX timeline"></div>
   </div>
-  <div class="refoot">
-    <div class="recontrol restylerow">
-      <label id="restylelabel">Style</label>
-      <div id="restyle" class="restyle" role="radiogroup" aria-labelledby="restylelabel">
-        <button type="button" data-style="phrase" role="radio" aria-checked="false"
-                title="Whole one to four-bar phrases, always on a bar line">Phrase</button>
-        <button type="button" data-style="groove" role="radio" aria-checked="true"
-                title="Bar and half-bar cells on eight-step boundaries — the musical default">Groove</button>
-        <button type="button" data-style="chop" role="radio" aria-checked="false"
-                title="Beat and half-bar cells, still landing on the beat">Chop</button>
-      </div>
-    </div>
-    <div class="recontrol">
-      <label for="revariation">Variation</label>
-      <input id="revariation" type="range" min="0" max="100" step="5" value="45"
-             aria-describedby="revariationhint" title="Dial between returning motifs and fresh material">
-      <output id="revariationvalue" for="revariation">Balanced</output>
-      <div id="revariationhint" class="recontrolhint"><span>Familiar</span><span>Different</span></div>
-    </div>
-    <details id="readvanced" class="readvanced">
-      <summary>Advanced</summary>
-      <div class="recontrol rechordrow">
-        <label for="rechords">Chord loop</label>
-        <select id="rechords" title="Walk verse/chorus riffs around a four-chord loop of the song’s own key — one chord per bar, the way dance music moves. Auto picks a loop per part; Off keeps every slice in its written harmony. Major-key songs always take I–V–vi–IV.">
-          <option value="auto" selected>Auto</option>
-          <option value="edm">i – VI – III – VII</option>
-          <option value="house">i – v – VI – iv</option>
-          <option value="anthem">VI – VII – i – i</option>
-          <option value="dark">i – iv – VI – v</option>
-          <option value="off">Off</option>
-        </select>
-        <select id="rekey" title="The key the chord loops walk in. Detected trusts the analysis — shown beside it, marked as a guess when the song does not settle — or name the key yourself and the loops trust you">
-          <option value="auto" selected>Detected key</option>
-        </select>
-        <output id="rechordskey" for="rekey">no analysis yet</output>
-      </div>
-      <div class="recontrol rechordrow">
-        <label for="rewalk">Walk</label>
-        <select id="rewalk" title="How much of each four-bar part actually changes chord. Last two bars holds the riff home then moves; Turnaround only lifts into the bar line; Full loop re-harmonises every bar">
-          <option value="half" selected>Last two bars</option>
-          <option value="turn">Turnaround only</option>
-          <option value="full">Full loop</option>
-        </select>
-      </div>
-      <label class="recheck" for="reglitch" title="Permit one and two-sixteenth cuts and starts off any musical boundary">
-        <input id="reglitch" type="checkbox"> Allow glitches
-      </label>
-      <div class="recontrol">
-        <label for="retranspose">Transpose</label>
-        <input id="retranspose" type="range" min="0" max="100" step="5" value="0"
-               aria-describedby="retransposehint" title="Dial the amount of shared chromatic lift — every note the same distance. Sections walking a chord loop skip it">
-        <output id="retransposevalue" for="retranspose">Off</output>
-        <div id="retransposehint" class="recontrolhint"><span>Off</span><span>±2 / 5 / 7</span></div>
-      </div>
-    </details>
-    <button id="reselectall" type="button" title="Select every slice in the list">Select all slices</button>
-    <button id="reclearselection" type="button" title="Clear the slice selection">Clear selection</button>
-    <button id="resplit" type="button" title="Interleave each selected slice’s two halves: A B A B, same length">Split halves</button>
-    <button id="reunroll" type="button" title="Turn a compact repeated row into separately selectable passes">Unroll repeats</button>
-    <button id="redoublerepeats" type="button" title="Halve the source cell and double its repeats — a tighter figure">×2 loops</button>
-    <button id="rehalfrepeats" type="button" title="Join repeated passes into one longer source phrase">÷2 loops</button>
-    <button id="rerollselected" type="button" title="Choose new source material for only the selected slices">Reroll selected</button>
-    <button id="reremove" type="button" title="Replace selected slices with nearby material; the song keeps its exact length">Remove selected</button>
-    <button id="redrums" type="button">Drums: Song groove</button>
-    <button id="regenerate" type="button" title="Build a new arrangement — while playing, it is heard from the next bar">Generate</button>
-    <button id="replay" type="button" title="Start the rearrangement from the top, after a four-beat count-in">Play Rearrangement</button>
-    <button id="resave" type="button" title="Save this recipe as a small JSON file — instructions, not audio">Save JSON…</button>
-    <button id="reload" type="button" title="Load a saved recipe for this song; it never starts playback by itself">Load JSON…</button>
-    <button id="rereturn" type="button" title="Clear the rearrangement and return to the normal song">Return to Song</button>
-    <input id="rearrangefile" type="file" accept="application/json,.json" hidden>
+  <div id="reslicemenu" hidden role="menu" aria-label="Slice actions"></div>
+  <!-- WHAT M8TRX IS, ON THE DESK'S OWN ?. It sits outside the panel's flow so it can never
+       be clipped by it, and it opens from the header button that already becomes M8TRX's
+       while a recipe is up — the same borrowing as Undo M8TRX and Recipe Once / Loop. -->
+  <div id="rehelptext" class="resub" popover aria-label="About M8TRX">
+    <h2>M8TRX</h2>
+    <p><b>A performance layer over a finished song.</b> It cuts the whole band into slices and
+      rebuilds them as a <b>recipe</b> — a form of named parts, each part a row of slices —
+      which you then play, edit and reroll. <b>It never changes the song.</b> Nothing here
+      writes to the arrangement, the mix, the notes or the game's copy of the track, and
+      nothing is kept unless you save it.</p>
+    <h3>Reading the timeline</h3>
+    <p>One row per part, drawn to <b>a single time scale</b>: a bar is the same width
+      everywhere, so a four-bar part runs half as long as an eight-bar one and parts can be
+      compared by eye. Each block is one slice, as wide as the time it takes, and
+      <b>coloured by the piece of the song it came from</b> — the same colour anywhere means
+      the same material returning. A hatched block is muted and still takes its time; a thick
+      left edge is where a part starts saying itself again; a small square marks a fill.</p>
+    <h3>Holding things</h3>
+    <p>Click a slice to take it, ⌘/ctrl-click to add or remove one, or press and drag across a
+      run — across rows too. Click a part's card to take that whole part. Double-click
+      anything to play from it. Whatever you are holding is what the rails above the timeline
+      act on, and <b>each rail says in words what it would hit</b>: “2 slices in B · Verse”,
+      “all of B”, “nothing held”.</p>
+    <h3>Solid acts now, dashed waits</h3>
+    <p>A control's <b>band is its scope</b>. The rows stack in a fixed order, so the meaning of
+      a row never changes under you: the top band builds, the one under it holds the whole
+      recipe, and the rails below act on what you are holding. Everything in the top band is
+      <b>drawn dashed</b>, which means it changes nothing until you press <b>Go</b>; a solid
+      border acts the moment you press it. While an edit is waiting for the next bar the whole
+      timeline draws dashed too.</p>
+    <h3>Elsewhere on the desk</h3>
+    <p>While a recipe is live the desk lends M8TRX three of its own controls, each relabelled
+      so you can see it has: <b>Undo M8TRX</b> (M8TRX's history only — your mix and
+      arrangement history is kept separately and comes back untouched),
+      <b>Recipe Once / Recipe Loop</b>, and this <b>?</b>. The <b>M8TRX</b> button in the
+      toolbar is how you leave; <b>Return to Song</b> clears the recipe altogether.</p>
   </div>
+  <div id="reclipstrip" hidden aria-label="M8TRX session clip shelf"></div>
 </section>
 
 <!-- Two permanent workspaces and one boundary. Timeline and arrangement are one upper
@@ -6327,6 +6965,12 @@
   <span id="nowsong" title="The song on the desk">—</span>
   <span id="songrole" title="Current mixer role"></span>
   <span id="peakinfo"></span>
+  <!-- WHAT M8TRX IS DOING, IN THE DESK'S OWN STATUS BAR. The panel stops short of this bar
+       rather than covering it, so the one line that says what the recipe is and what just
+       happened to it sits where every other "state of the desk" line already lives. It cost
+       the Arrangement band its whole right-hand cluster, which is width the controls get
+       back. Empty and hidden whenever no recipe is armed. -->
+  <span id="m8status" hidden><b>M8TRX</b><em id="remetasong"></em><span id="rearrangestatus" role="status" aria-live="polite"></span></span>
   <span class="sp" style="flex:1"></span>
   <!-- Keys only. The double-click and the playhead nudge are both discoverable where
        they live — the timeline and strip heads carry the first in their tooltips, and

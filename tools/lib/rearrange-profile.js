@@ -287,6 +287,118 @@ export function energyOver(profile, step, span) {
   return seen ? total / seen : null;
 }
 
+/** Fraction of a window's pitched chroma that belongs to the tonic triad. This is a
+ * preference score for chord walking, not a claim that the source is in the key. */
+export function triadMatch(profile, step, span, key) {
+  if (!profile || !key || !profile.chroma || !(profile.bars > 0)) return 0;
+  const tonic = ((Number(key.tonic) % 12) + 12) % 12;
+  const scale = key.minor ? [0, 3, 7] : [0, 4, 7];
+  const allowed = new Set(scale.map((offset) => (tonic + offset) % 12));
+  const first = Math.max(0, Math.floor(step / STEPS_PER_BAR));
+  const last = Math.min(profile.bars, Math.ceil((step + span) / STEPS_PER_BAR));
+  let total = 0; let match = 0;
+  for (let bar = first; bar < Math.max(first + 1, last); bar++) {
+    for (let pc = 0; pc < 12; pc++) {
+      const value = profile.chroma[bar * 12 + pc] || 0;
+      total += value;
+      if (allowed.has(pc)) match += value;
+    }
+  }
+  return total ? match / total : 0;
+}
+
+/** Normalised pitched onset density in a window, used to reject over-busy walk cells. */
+export function onsetRate(profile, step, span) {
+  if (!profile?.onsets?.length || !(span > 0)) return 0;
+  const start = Math.max(0, Math.floor(step));
+  const end = Math.min(profile.onsets.length, start + Math.ceil(span));
+  let total = 0;
+  for (let index = start; index < end; index++) total += profile.onsets[index] || 0;
+  return total / Math.max(1, end - start);
+}
+
+/** Combined preference for a candidate walking cell. Higher is safer to re-harmonise. */
+export function walkCellScore(profile, step, span, key) {
+  if (!profile || !key) return 0;
+  return triadMatch(profile, step, span, key) * 0.7
+    + Math.min(1, onsetRate(profile, step, span) / 2) * 0.15
+    - Math.min(1, cutCost(profile, step)) * 0.15;
+}
+
+/**
+ * WHERE THE SONG'S PHRASES ACTUALLY START.
+ *
+ * Everything upstream of this assumed phrases begin at bar 0. Real songs have intros of
+ * arbitrary length — a three-bar intro puts every phrase on an ODD bar — so a four-bar
+ * grid measured from bar 0 is displaced by a bar for the whole song. That is not a
+ * detection nicety: cutting a "four-bar phrase" one bar out of phase is audible, and it
+ * happens on ordinary imported material.
+ *
+ * WHY CHROMA AND NOTHING ELSE. A lane in this engine is a 32-slot TWO-BAR pattern, and
+ * `bar.half` alternates 0/1 across the song. Any score built on onsets, kit accents or
+ * energy therefore inherits a period-2 comb: even bars look like boundaries whatever
+ * the music is doing. Measured on `smw-overworld`, a rhythm-based novelty curve means
+ * +0.52 on even bars against -0.05 on odd, and subtracting the neighbouring bars makes
+ * the split WORSE rather than cancelling it — the bias is in the representation, not on
+ * top of it. Harmony is the one view that does not inherit the lane grid.
+ *
+ * WHAT IT MEASURES. A phrase boundary is where the chord content turns over, so the
+ * bar-to-bar chroma distance should pile up ON the grid and be low off it. The score for
+ * an offset is (mean change on the grid) - (mean change off it), and the winner is the
+ * offset where harmony most prefers to move.
+ *
+ * TRUST THE CONFIDENCE, NOT THE OFFSET. The margin over the runner-up is returned
+ * because it is the whole story: songs whose phase is known by ear separate at ~0.06,
+ * while the cases this gets WRONG sit at 0.001-0.01. A caller that shifts on a hair is
+ * worse than one that never shifts, so `confident` is deliberately conservative and
+ * callers are expected to fall back to offset 0 rather than guess.
+ */
+export function detectPhraseGrid(profile, span = 4, minMargin = 0.02) {
+  const bars = profile?.bars || 0;
+  const flat = { offset: 0, confidence: 0, confident: false, scores: [] };
+  if (!profile?.chroma || bars < span * 2) return flat;
+
+  const barChroma = (bar) => {
+    const out = new Array(12);
+    for (let pc = 0; pc < 12; pc++) out[pc] = profile.chroma[bar * 12 + pc] || 0;
+    return out;
+  };
+  // 1 - cosine, so "how much did the harmony move into this bar".
+  const change = new Array(bars).fill(0);
+  let previous = barChroma(0);
+  for (let bar = 1; bar < bars; bar++) {
+    const current = barChroma(bar);
+    let dot = 0; let na = 0; let nb = 0;
+    for (let pc = 0; pc < 12; pc++) {
+      dot += previous[pc] * current[pc];
+      na += previous[pc] * previous[pc];
+      nb += current[pc] * current[pc];
+    }
+    // Two silent bars are identical, not maximally different — a rest must not read as
+    // a chord change, or an empty intro would win every time.
+    change[bar] = 1 - ((!na || !nb) ? (na === nb ? 1 : 0) : dot / Math.sqrt(na * nb));
+    previous = current;
+  }
+
+  const scores = [];
+  for (let offset = 0; offset < span; offset++) {
+    let on = 0; let onCount = 0; let off = 0; let offCount = 0;
+    for (let bar = 1; bar < bars; bar++) {
+      if (bar % span === offset) { on += change[bar]; onCount++; }
+      else { off += change[bar]; offCount++; }
+    }
+    scores.push({ offset, score: (on / (onCount || 1)) - (off / (offCount || 1)) });
+  }
+  scores.sort((a, b) => b.score - a.score || a.offset - b.offset);
+  const confidence = scores[0].score - (scores[1]?.score ?? scores[0].score);
+  return {
+    offset: scores[0].offset,
+    confidence,
+    confident: confidence >= minMargin,
+    scores,
+  };
+}
+
 /**
  * The old per-bar density array, for callers that still hand one around.
  *

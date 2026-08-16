@@ -15,12 +15,13 @@ const seq = readFileSync(new URL('../tools/mixer-step-seq.js', import.meta.url),
 const piano = readFileSync(new URL('../tools/mixer-piano-roll.js', import.meta.url), 'utf8');
 const barGrid = readFileSync(new URL('../tools/mixer-bar-grid.js', import.meta.url), 'utf8');
 const audio = readFileSync(new URL('../src/engine/audio.js', import.meta.url), 'utf8');
+const rearrange = readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8');
 const freezeSpanSource = readFileSync(new URL('../tools/lib/freeze-span.js', import.meta.url), 'utf8');
 const touchedBody = /const touched = \(\) => \{[\s\S]*?\n  \};/.exec(editor)?.[0] || '';
 
 assert(/id="rearrangebtn"/.test(shell)
+  && /data-tip="M8TRX"[^>]*>M8TRX<\/button>/.test(shell)
   && /id="rearrangepanel"/.test(shell)
-  && /id="rearrangelist"/.test(shell)
   && /id="rearrangeform"/.test(shell)
   && /id="regenerate"/.test(shell)
   && /id="resplit"/.test(shell)
@@ -28,14 +29,24 @@ assert(/id="rearrangebtn"/.test(shell)
   && /id="redoublerepeats"/.test(shell)
   && /id="rehalfrepeats"/.test(shell)
   && /id="rerollselected"/.test(shell)
+  && /id="reclipselected"/.test(shell)
   && /id="reremove"/.test(shell)
+  && /id="redeleteselected"/.test(shell)
+  && /id="reloopremove"/.test(shell)
   && /id="restyle"/.test(shell)
-  && /id="revariation"/.test(shell)
-  && /id="revariationvalue"/.test(shell)
+  && /id="remood"/.test(shell)
+  && /id="remoodvalue"/.test(shell)
+  && /id="rehypnosis"/.test(shell)
+  && /id="rehypnosisvalue"/.test(shell)
+  && /id="rechaos"/.test(shell)
+  && /id="rechaosvalue"/.test(shell)
+  && /id="redrive"/.test(shell)
+  && /id="redrivevalue"/.test(shell)
+  && /id="redice"/.test(shell)
+  && /id="reseedhold"/.test(shell)
   && /id="retranspose"/.test(shell)
   && /id="retransposevalue"/.test(shell)
   && /id="redrums"/.test(shell)
-  && /Drums: Song groove/.test(shell)
   && /id="resave"/.test(shell)
   && /id="reload"/.test(shell),
   'the toolbar exposes the non-blocking Rearrange operation list and JSON controls');
@@ -46,60 +57,531 @@ assert(/#rearrangepanel\.pending/.test(shell)
   && /song: 'Song groove'/.test(entry)
   && /original: 'Chopped drums'/.test(entry)
   && /basic4: 'Steady 4\/4'/.test(entry)
-  && /REARRANGE_DRUM_ORDER = \['song', 'original', 'basic4'\]/.test(entry)
-  && /cycleRearrangeDrums/.test(entry)
-  && /rearrangeDrumLabel\(mode\)/.test(entry),
-  'the three Rearrange drum modes cycle under one set of names');
-// Every key the generator reads has a control, and every control a key: Style and
-// Variation in the open, glitches and Transpose behind Advanced and both off by
-// default. Nothing is left deciding things from behind a preset.
-assert(/data-style="phrase"/.test(shell)
-  && /data-style="groove"/.test(shell)
-  && /data-style="chop"/.test(shell)
-  && /id="reglitch" type="checkbox"/.test(shell)
-  && /id="readvanced"/.test(shell)
-  && /<summary>Advanced<\/summary>/.test(shell)
+  // The generated kits are a family: one dropdown, one clock, one pattern function.
+  && /halftime: 'Half-time'/.test(entry)
+  && /break: 'Breakbeat'/.test(entry)
+  && /boombap: 'Boom bap'/.test(entry)
+  && /garage: 'Two-step'/.test(entry)
+  && /disco: 'Disco'/.test(entry) && /house: 'House'/.test(entry)
+  && /deephouse: 'Deep house'/.test(entry) && /techno: 'Techno'/.test(entry)
+  && /setRearrangeDrums/.test(entry)
+  && /REARRANGE_GENERATED_DRUMS\.includes\(rearrangeDrumMode\)/.test(audio)
+  && /rearrangementDrumHit\(baseLane\(key\), this\.step, this\.rearrangement\.seed,\n            rearrangeDrumMode\)/.test(audio)
+  && /rearrangeDrumLabel\(mode\)/.test(entry)
+  // The recipe's own loop is a real switch, and Once stops at the heard boundary.
+  && /rearrangeLoopOn = !rearrangeLoopOn/.test(entry)
+  && /Recipe Once/.test(entry)
+  && /loop\.rearrangement && !loop\.looping && playing/.test(entry)
+  && /looping: this\.rearrangeLoop !== false/.test(audio),
+  'the Rearrange drum modes are one dropdown and the recipe loop is a real switch');
+// Every key the generator reads has a control, and every control a key: Style, the five
+// dials, Length, fills and Key. Chord loop, Walk and Chord pace are gone — Mood and Drive
+// decide all three now, so the selects that used to ask would have been a second dial
+// quietly overruling the first. Retired glitch controls are not part of the panel either.
+//
+// "Advanced" is gone as a CONCEPT. Key, Fill new sections and Transpose were only advanced
+// because they had nowhere else to sit; they stand in the Generate band beside the dials
+// they modify, where the band they are in is what states their scope.
+// STYLE IS A DIAL, like the five beside it. It was four segmented buttons — the one
+// non-dial in a row of dials, and the widest thing in the band. The scale runs from the
+// biggest cuts to the smallest and then to Mix, which is not a smaller cut but a decision
+// to let each repeated letter keep its own identity, so it sits at the free end and is
+// where the panel opens.
+assert(/id="restyle" type="range" min="0" max="3" step="1" value="3"/.test(shell)
+  && /id="restylevalue"/.test(shell)
+  && /Phrase<\/span><span>Mix/.test(shell)
+  && /REARRANGE_STYLE_SCALE = Object\.freeze\(\['phrase', 'groove', 'chop', 'mix'\]\)/.test(entry)
+  && /setRearrangeStyle\(REARRANGE_STYLE_SCALE\[Number\(\$\('restyle'\)\.value\) \|\| 0\]\)/.test(entry)
+  && !/data-style="groove"/.test(shell)
+  && /id="relength"/.test(shell)
+  && !/id="rechordpace"/.test(shell)
+  && !/id="rechords"/.test(shell)
+  && !/id="rewalk"/.test(shell)
+  && /id="refill"/.test(shell)
+  && /id="rekey"/.test(shell)
+  && !/id="readvanced"/.test(shell)
+  && !/readvancedhead/.test(shell)
+  && !/<details id="readvanced"/.test(shell)
+  && /<div class="reband regen">/.test(shell)
+  // DASHED MEANS IT WAITS — on every BORDERED control in the band, never on the group box
+  // around one (marking both drew a dashed box round each dial and a second dashed rule
+  // along its slider, which at six dials reads as hatching rather than as a border).
+  //
+  // The sliders are the exception, on purpose: a dial here has to be the same object as a
+  // dial on a channel strip, or the panel reads as a guest on the desk rather than part of
+  // it. The band's recessed surface and its dashed rail already say "deferred" twice more.
+  && /#rearrangepanel button\.defer,/.test(shell)
+  && /#rearrangepanel \.defer > select \{ border-style: dashed; \}/.test(shell)
+  && !/#rearrangepanel \.defer,/.test(shell)
+  && !/slider-runnable-track \{ border-style: dashed/.test(shell)
+  && /class="recontrol rechordrow defer"/.test(shell)
+  && /id="reseedhold" class="defer"/.test(shell)
+  && /id="redice" class="defer"/.test(shell)
+  // THE TWO FILLS CAN NO LONGER BE READ AS ONE CONTROL. One names the sections Go builds,
+  // the other names the ending of the part in hand, and they are in different bands.
+  && />Fill new sections</.test(shell)
+  // The part's fill left the toolbar for the part's own card, so its wording moved with
+  // it — into the ⋯ menu that now carries everything a whole part can be told to do.
+  && /head\(`Fill this ending · \$\{section\.letter \|\| section\.name\}`\)/.test(entry)
+  && /head\('Fill at this part’s ending'\)/.test(entry)
+  && !/>Fill on Generate</.test(shell)
+  // The band is called Generate and the button is called Go, so the label and the press
+  // are not the same word.
+  // THE PRIMARY SAYS WHICH OF ITS TWO JOBS IT IS ABOUT TO DO, and it leads the row rather
+  // than ending it: every other row in this panel starts with the thing you do. "Go" was a
+  // word for pressing rather than for what happens, and the pin that governs it used to be
+  // a claim about invisible state — now pressing the pin changes the primary's label, so
+  // the pair explains itself.
+  && />New arrangement ▸<\/button>/.test(shell)
+  && /primary\.textContent = rearrangeSeedHold \? 'Reshape this one ▸' : 'New arrangement ▸';/.test(entry)
+  // THE BUTTON THAT WOULD DO NOTHING GREYS OUT — and it is the primary, not the pin. With
+  // the arrangement held and no dial moved, the seed and every input are what they already
+  // were and the generator is deterministic, so a press rebuilds the identical recipe.
+  // Disabling says so before the press rather than after, and teaches the mechanism: move a
+  // dial and it lights. The PIN stays live throughout on purpose — it is armed before you
+  // know which dial you are about to move, so gating it would put the two presses in the
+  // wrong order and take the control away at the moment you reach for it.
+  && /function rearrangeGenerationSignature\(\)/.test(entry)
+  && /const \{ drums, seedHold, \.\.\.built \} = rearrangeSettingsSnapshot\(\);/.test(entry)
+  && /rearrangeBuiltFrom === rearrangeGenerationSignature\(\)/.test(entry)
+  && /primary\.disabled = spent;/.test(entry)
+  // Every generator input has to re-light it, including New length, which had no change
+  // handler at all — it was only ever read at generate time.
+  && /\$\('relength'\)\.onchange = syncRearrangeAdvanced;/.test(entry)
+  // Lucky dip moved to sit WITH the dials it throws; Advanced parked far right.
+  && /#rearrangepanel \.reright \{ margin-left: auto; \}/.test(shell)
+  && /id="readvancedbtn" class="defer reright"/.test(shell)
+  && /id="regenerate" class="reprime"/.test(shell)
+  && /<b>Generate<\/b><span>dashed = waits\./.test(shell)
   && /id="retranspose"[^>]*[\s\S]{0,120}?value="0"/.test(shell)
-  && /Familiar<\/span><span>Different/.test(shell)
+  && /Dark<\/span><span>Euphoric/.test(shell)
+  && /Collage<\/span><span>Locked loop/.test(shell)
+  && /Tame<\/span><span>Feral/.test(shell)
+  && /Chill<\/span><span>Peak-time/.test(shell)
   && /rearrangeStyleChoice = REARRANGE_STYLE_DEFAULT/.test(entry)
-  && /function rearrangeAllowGlitches/.test(entry)
+  && !/function rearrangeAllowGlitches/.test(entry)
   && /rearrangeProfileCache/.test(entry)
   && /rearrangeSourceProfile\(\{ build: true \}\)/.test(entry)
   && /function rearrangeGenerationProfile/.test(entry),
-  'Rearrange exposes Style, Variation and an Advanced drawer, and profiles while parked');
-// The roadmap is a vertical rail beside the list, not a ribbon above it: every section
-// of the form stays visible at once, however many the song has. The rebody wrapper is
-// what makes the two share the panel's height with independent scrolls.
+  'the Generate band holds every deferred control, dashed, and Advanced is gone');
+// A CONTROL'S BAND IS ITS SCOPE, and the rails that act now say in WORDS what they would
+// hit. Colour was the obvious answer and the wrong one: four scope hues collide with four
+// of the five fixed part-role hues, so the accent stays reserved for on/selected/moving and
+// every rail states its subject as a sentence instead.
+assert(/<div class="reband rearr">/.test(shell)
+  && /<b>Arrangement<\/b><span>the whole recipe, and the song it never touches/.test(shell)
+  && /class="rebar rematerial" data-scope="selection"/.test(shell)
+  && /class="rebar rearrops" data-scope="selection"/.test(shell)
+  && /<b>Selection · material<\/b>/.test(shell)
+  && /<b>Selection · arrangement<\/b>/.test(shell)
+  && /id="resubarr" class="resubject"/.test(shell)
+  && /#rearrangepanel \.rerail \{ flex: 0 0 212px; width: 212px;/.test(shell)
+  // AN EMPTY SCOPE SAYS WHAT TO CLICK, at the same height. Thirty greyed-out controls read
+  // as a broken panel; one line of instruction reads as an instrument waiting. The height
+  // is what matters — a rail that changed size would move the timeline under a pointer
+  // already heading for a slice, which is the one thing this layout must never do.
+  && /#reinspector \.rebar \{ display: flex; align-items: stretch; min-height: 42px;/.test(shell)
+  && /#reinspector \.rebar\.empty > \.reops \{ display: none; \}/.test(shell)
+  && /#reinspector \.rebar\.empty > \.reprompt \{ display: flex; \}/.test(shell)
+  && /Click a slice in the timeline to change what it is made of\./.test(shell)
+  && /Click a slice to move, join, split or delete it\./.test(shell)
+  && /bar\.classList\.toggle\('empty'/.test(entry)
+  // …but an invitation to click a slice needs slices to click. Return to Song empties the
+  // panel without closing it, and everything scoped to a recipe went with the recipe: the
+  // drums menu, Lock what's playing, both Saves, Return to Song itself, and the two rails.
+  // Clear locks & shelf and Load JSON stay — the kept state outlives a recipe, and Load is
+  // the other way in, so hiding it would make Return to Song a one-way door.
+  && /classList\.toggle\('norecipe', !rearrangeRecipe\)/.test(entry)
+  && /#rearrangepanel\.norecipe #reinspector,/.test(shell)
+  && /#rearrangepanel\.norecipe #redrumsrow,/.test(shell)
+  && /#rearrangepanel\.norecipe #rereturn,/.test(shell)
+  && /#rearrangepanel\.norecipe \.reband\.rearr \.revr \{ display: none; \}/.test(shell)
+  // Clear locks & shelf survives, but only while it has something to clear — hidden when it
+  // is disabled anyway, back the moment a lock or a clip outlives the recipe.
+  && /#rearrangepanel\.norecipe #reclearkept:disabled \{ display: none; \}/.test(shell)
+  && !/#rearrangepanel\.norecipe #reload/.test(shell)
+  // The drums menu is the one hidden control that could still have STEERED the next Go, so
+  // clearing the recipe puts it back to the setting that writes no drums field at all. A
+  // hidden pot holding "Techno" is exactly the hidden preset parameter this desk refuses.
+  && /rearrangeDrumsChoice = 'original';\n  syncRearrangeButton\(\)/.test(entry)
+  // AN EMPTY SHELF IS NOT A SHELF. It has always set `hidden` on itself when there are no
+  // clips, but an author `display` beats the UA's [hidden] rule, so it needs its own — or
+  // it goes on holding 58px of nothing that the timeline could have used.
+  && /#reclipstrip\[hidden\] \{ display: none; \}/.test(shell)
+  && /if \(!rearrangeClips\.length\) \{ shelf\.hidden = true; return; \}/.test(entry)
+  // The subject is a sentence, and it is the same sentence in both selection rails.
+  && /\$\(id\)/.test(entry)
+  && /`\$\{count\} in \$\{partName\}`/.test(entry)
+  && /'nothing held'/.test(entry)
+  && /`all of \$\{heldPart\.letter \|\| heldPart\.name\}`/.test(entry)
+  // Renames that make a control name its own scope.
+  && />🎲 New material</.test(shell)
+  // The PART scope left the toolbar for the part's own card: a row at the foot of the
+  // panel for edits aimed at the thing under your pointer meant travelling the height of
+  // the window and back. Its wording moved with it, into the card's ⋯ menu.
+  // Walk and fill each earned a card mark, lit when they are on, so the card answers "does
+  // this part walk, does it fill" without being opened — and the mark is the INITIAL of the
+  // word, not a pictogram. A walking figure for "moves around the key" is a pun rather than
+  // an icon, and at 24px a rebus is something you re-solve every glance.
+  && /walkButton\.textContent = 'W'/.test(entry)
+  && /fill\.textContent = 'F'/.test(entry)
+  && /shelf\.textContent = '💾'/.test(entry)
+  && /#rearrangeform \.refillbutton\.on, #rearrangeform \.rewalkbutton\.on/.test(shell)
+  // THE HELD PART WEARS ITS MARK. This regressed once to a card that carried nothing at all,
+  // which left the only lit card the SOUNDING one — so holding a part looked like it worked
+  // on the intro and nowhere else. The class and the rule that draws it are pinned together.
+  && /seg\.classList\.toggle\('chosen', index === heldSection\)/.test(entry)
+  && /const heldSection = rearrangeSelectedSectionIndex\(\);/.test(entry)
+  && /#rearrangeform \.reformseg\.chosen \{ border-left-width: 4px;/.test(shell)
+  && /function openRearrangeWalkMenu/.test(entry)
+  && /function openRearrangeFillMenu/.test(entry)
+  // …and the whole set is written out in WORDS behind a right-click on the card: an icon is
+  // a reminder of something you already know, so the fast way and the legible way are one
+  // menu reached two ways. The right-click is the ONLY way in — the card's ⋯ button was a
+  // second door onto the same room, spending a slot in a row that has to stay readable at
+  // card width, so the card must keep carrying the contextmenu handler that replaced it.
+  && /function openRearrangePartMenu/.test(entry)
+  && /item\('Play from here'/.test(entry)
+  && /item\('Rebuild this part from scratch'/.test(entry)
+  && /'Lock — keep it verbatim through the next Go'/.test(entry)
+  && /item\('Delete this part'/.test(entry)
+  && /const card = event\.target\.closest\?\.\('\.reformseg'\)/.test(entry)
+  && !/'remore'/.test(entry)
+  // The row that is left reads in groups, not as one even strip: what the next Go does to
+  // the part, how long it is, what it plays, and the shelf on its own. Tight inside a
+  // group, wide between them — the gap IS the grouping, so both halves are pinned.
+  && /\[\[lock, dice\], \[halve, double\], \[walkButton, fill\], \[shelf\]\]/.test(entry)
+  && /box\.className = 'reactgroup'/.test(entry)
+  && /#rearrangeform \.reformacts \{ display: flex; flex-wrap: nowrap; gap: 10px;/.test(shell)
+  && /#rearrangeform \.reformacts \.reactgroup \{ display: flex; flex: none; gap: 2px; \}/.test(shell)
+  && !/id="repartbar"/.test(shell)
+  && />Delete slices</.test(shell)
+  // Mute, not Silence: the code has called it mute since the day it was written — op.mute,
+  // data-mute, 'unmute' — and the button was the only place using a second word for it.
+  && />Mute</.test(shell)
+  && !/>Silence</.test(shell)
+  && /mute\.textContent = silent \? 'Unmute' : 'Mute'/.test(entry)
+  // ½ and ×2 live on the card, with the rest of what acts on a part.
+  && /halve\.textContent = '½'/.test(entry)
+  && /double\.textContent = '×2'/.test(entry),
+  'the two selection rails name their scope in words and collapse to an invitation');
+// ONE UNDO BUTTON, TWO HISTORIES, NEVER MIXED. M8TRX has no Undo of its own: while a recipe
+// is live the desk's Undo becomes it and says so, the same borrowing the loop button
+// already does for Recipe Once / Recipe Loop. The stacks never merge, so a recipe edit
+// cannot be undone into a fader move.
+assert(!/id="reundo"/.test(shell)
+  && /function syncUndoButton\(\)/.test(entry)
+  && /const m8 = rearrangeActive\(\);/.test(entry)
+  && /button\.disabled = m8 \? !rearrangeUndoStack\.length : undoStack\.length === 0;/.test(entry)
+  && /button\.textContent = m8 \? 'Undo M8TRX' : 'Undo';/.test(entry)
+  && /function undoGesture\(\)/.test(entry)
+  && /if \(rearrangeActive\(\)\) \{ undoRearrange\(\); return; \}/.test(entry)
+  && /\$\('undo'\)\.onclick = undoGesture;/.test(entry)
+  // Bounce is the one desk control that quietly MEANS something else in M8TRX mode: the
+  // render walks the song's own bank, mix and arrangement, and the word "rearrange" appears
+  // nowhere in that path. That is the product boundary working — M8TRX never reaches a file
+  // — but a bounce is "what I am hearing, written down", and with a recipe up that is what
+  // it is not. So it says so, like every other control the desk lends M8TRX.
+  && /function syncBounceScope\(\)/.test(entry)
+  && /button\.textContent = m8 \? 'Bounce song' : 'Bounce';/.test(entry)
+  && /if \(!button \|\| rendering\) return;/.test(entry)
+  && /e\.preventDefault\(\); undoGesture\(\); return;/.test(entry),
+  'the desk Undo becomes M8TRX\'s while a recipe is live, with the stacks kept apart');
+// THE BLURB IS A FIRST RUN, NOT A WALL. Three paragraphs of 11px prose held the middle of
+// the header permanently; behind the ? they cost nothing and are still one click away. The
+// top layer is what keeps them clear of the panel's own overflow and the desk's z-order.
+// The help went UP, onto the desk's own ? — the third control the desk lends M8TRX, after
+// Undo and the loop toggle. A desk tour opened from on top of a full-screen mode would be
+// answering a question nobody just asked. The panel's own × went entirely: the M8TRX button
+// in the toolbar is the way in and the way out, and a second closer was one too many.
+assert(/id="rehelptext" class="resub" popover/.test(shell)
+  && !/id="reclose"/.test(shell)
+  && !/id="rehelp"/.test(shell)
+  && /if \(rearrangePanelOpen\) \{ \$\('rehelptext'\)\?\.showPopover\(\); return; \}/.test(entry)
+  && /\.resub\[popover\] \{ width: min\(74ch, calc\(100vw - 48px\)\)/.test(shell)
+  && /\.resub\[popover\] h3 \{/.test(shell)
+  // Escape has to reach the popover. The desk claims it for PANIC and preventDefaults it,
+  // which cancels the browser's own dismiss — so the popover takes the key first, exactly
+  // as the dialogs and menus above it already do.
+  && /function openPopover\(\)/.test(entry)
+  && /const popover = openPopover\(\);/.test(entry)
+  && /popover\.hidePopover\(\); return;/.test(entry),
+  'the panel blurb is a top-layer disclosure that Escape can actually close');
+// KEY, FILL AND TRANSPOSE GO BEHIND A DOOR — but the door says what is behind it. They are
+// the least-reached-for three and were half the width of the Generate band; a popup that
+// could hide a set value would be the panel's own rule about hidden preset parameters
+// broken by the redesign meant to enforce it.
+assert(/id="readvancedbtn"[^>]*popovertarget="readvancedpop"/.test(shell)
+  && /id="readvancedpop" class="repop" popover/.test(shell)
+  && /#rearrangepanel \.repop\[popover\] \{ position: fixed; inset: auto; margin: 0;/.test(shell)
+  && /function syncRearrangeAdvanced\(\)/.test(entry)
+  && /button\.textContent = set \? `Advanced · \$\{set\} set ⌄` : 'Advanced ⌄';/.test(entry)
+  && /button\.classList\.toggle\('set', set > 0\)/.test(entry)
+  && /#rearrangepanel #readvancedbtn\.set \{ border-color: var\(--accent\)/.test(shell)
+  // Every way a value can arrive has to refresh the count, including one restored from file.
+  && /\$\('rekey'\)\.onchange = \(\) => \{ syncRearrangeKeyReadout\(\); syncRearrangeAdvanced\(\); \}/.test(entry)
+  && /\$\('refill'\)\.onchange = syncRearrangeAdvanced/.test(entry)
+  && /\$\('retranspose'\)\.oninput = \(\) => \{ syncRearrangeTranspose\(\); syncRearrangeAdvanced\(\); \}/.test(entry),
+  'Advanced is a popup whose button counts whatever is set behind it');
+// THE PANEL STOPS ABOVE THE DESK'S STATUS BAR, and M8TRX's own line lives IN it. Covering
+// that bar hid the line saying what the desk is doing — and, once M8TRX's status moved
+// there, its own readout too.
+assert(/id="m8status" hidden>/.test(shell)
+  && /id="remetasong"/.test(shell)
+  && /<span id="rearrangestatus" role="status" aria-live="polite">/.test(shell)
+  // EDGE TO EDGE AND OPAQUE, between the header and that bar. A strip of channel strips
+  // showing down one side is the desk saying "you are still in the mixer" while you read a
+  // timeline — and a mixer is not a backdrop, it is another instrument with faders you can
+  // watch moving. Full height whether or not a recipe exists, so opening M8TRX is a change
+  // of mode rather than a window landing on top of one.
+  && /top: var\(--headh, 56px\); left: 0; right: 0;/.test(shell)
+  && /bottom: var\(--footh, 28px\)/.test(shell)
+  // BOTH EDGES ARE MEASURED, NEVER WRITTEN DOWN. Both were magic numbers first and both
+  // were wrong: the footer is one line of text whose height moves with the font stack, and
+  // the header WRAPS to a second row at some widths — so a panel pinned at a hardcoded 56px
+  // covered the row carrying Undo M8TRX and the ?, the two controls the desk lends M8TRX.
+  && /function measureDeskEdges\(\)/.test(entry)
+  && /setProperty\('--headh'/.test(entry)
+  && /setProperty\('--footh'/.test(entry)
+  && /#m8status\.pending #rearrangestatus \{ color: var\(--accent\)/.test(shell)
+  && /strip\.hidden = !rearrangePanelOpen;/.test(entry)
+  && /\$\('remetasong'\)/.test(entry),
+  'the panel leaves the desk status bar showing and puts its own line in it');
+// The form is laid out as TIME: one row per part, the part's own controls at the left
+// of it, and its slices across the rest as blocks whose widths are their share of that
+// part. Proportions are read within a row, so every row spans the same track.
 assert(/class="rebody"/.test(shell)
-  && /#rearrangepanel \.rebody \{ display: flex; flex: 1 1 auto; min-height: 0; \}/.test(shell)
-  && /#rearrangeform \{ display: flex; flex-direction: column;/.test(shell)
-  && /border-right: 1px solid var\(--line\)/.test(shell)
-  && /Hover any control for detail\./.test(shell),
-  'the Rearrange roadmap runs vertically beside the list, under a short header note');
-// The list is readable as a FORM (a rule above the first row of each part) and follows
-// the playhead — but only when the active row changes, and never against a hand that
-// just scrolled: wheel/touch hold the follow off, and 'scroll' deliberately does not,
-// because the follow's own scrollIntoView fires it.
-assert(/resectionstart/.test(entry)
-  && /#rearrangelist li\.resectionstart/.test(shell)
+  && /#rearrangepanel \.rebody \{ display: flex; flex: 1 1 auto; min-height: 0; min-width: 0;/.test(shell)
+  && /#rearrangeform \{ display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto;/.test(shell)
+  && /overflow-x: hidden; overflow-y: auto/.test(shell)
+  && /#rearrangeform \.rerow \{ display: flex; align-items: stretch;/.test(shell)
+  && /#rearrangeform \.reformseg \{ flex: 0 0 372px; width: 372px; min-width: 0;/.test(shell)
+  // ONE SCALE: a slice's width is its share of the timeline's LONGEST part, so a bar is
+  // the same width in every row and a four-bar part draws half as long as an eight-bar
+  // one. Stated as a basis rather than grown from zero, because growing makes every block
+  // pay for its own padding and border first — a tenth of a ten-slice row, spent equally
+  // on slices of unequal length.
+  && /flex: 0 0 calc\(var\(--slicespan, 1\) \/ var\(--timescale, 1\) \* 100%\)/.test(shell)
+  && /const timescale = Math\.min\(REARRANGE_LINE_STEPS, longest\)/.test(entry)
+  && /REARRANGE_LINE_STEPS = 64/.test(entry)
+  && /#rearrangeform \.restrip \{ display: flex; flex-wrap: wrap; align-content: stretch;/.test(shell)
+  && /#rearrangeform \.reslice \{ position: relative; min-height: 58px;/.test(shell)
+  && /min-width: 14px;/.test(shell)
+  && /--timescale/.test(entry)
+  && /#rearrangeform \.reformacts \{ display: flex; flex-wrap: nowrap/.test(shell)
+  && /id="reinspector"/.test(shell)
+  && /id="reinspectinfo"/.test(shell)
+  && /#reinspector \{ display: flex; flex-direction: column; \}/.test(shell)
+  && /id="reslicetranspose"/.test(shell)
+  // A slice's chord is its own business: any degree of the key, or as written, one
+  // slice at a time — a part's Walk sets them all at once, this overrules it slice by
+  // slice. Join is Split's opposite. Transpose offers every semitone in the octave.
+  && /id="reslicechord"/.test(shell)
+  && /id="rejoin"/.test(shell)
+  // Silence: the slice keeps its time and gives it back, so the engine gates every
+  // sounding path on it rather than the recipe dropping the slice.
+  && /id="remute"/.test(shell)
+  && /rearrangeMute/.test(audio)
+  && /if \(rearrangeMute\) return null;/.test(audio)
+  && /rearrangeMute \? \[\] : this\.frozenLanes\.keys\(\)/.test(audio)
+  && /#rearrangeform \.reslice\[data-mute\]/.test(shell)
+  // A right-click menu at the pointer, for the edits made over and over on one slice
+  // after another. Everything on it is reachable from the toolbar too.
+  && /id="reslicemenu"/.test(shell)
+  // Aiming at a part flashes the PART, not whichever slice its first bar lands in.
+  && /#rearrangeform \.reslice\.seeking, #rearrangeform \.reformseg\.seeking/.test(shell)
+  && /playRearrangementAt\(section\.start, \{ part: index \}\)/.test(entry)
+  && /function openRearrangeSliceMenu/.test(entry)
+  // The menu carries BOTH pitch systems as one-press rows — switching a walk off but
+  // not being able to change what it walks to was the gap.
+  && /transformSelectedRearrange\('harmony', 'Slice chord changed', \{ value: degree \}\)/.test(entry)
+  && /#reslicemenu \.remenurow button\.on/.test(shell)
+  // Transpose covers the intervals a fragment is actually moved by, over two rows: the
+  // ones that keep it sounding like itself, then the ones that recolour it. Off stays in
+  // the middle of the first row, so the control somebody already knows grew ends rather
+  // than being rearranged under them.
+  && /for \(const amount of \[-7, -5, -2, 0, 2, 5, 7\]\) pitchButton\(pitch, amount\)/.test(entry)
+  && /for \(const amount of \[-4, -3, -1, 1, 3, 4\]\) pitchButton\(colour, amount\)/.test(entry)
+  // The octave is the one transpose that changes no note of the material — same pitch
+  // classes, same chord, only the register — so a row of quick musical choices does not
+  // carry it. The inspector's full ±12 dial still does.
+  && !/const amount of \[[^\]]*(-12|12)[^\]]*\]\) pitchButton/.test(entry)
+  && /REARRANGE_TRANSPOSES/.test(entry)
+  // Named intervals, because the number is not what a musician is choosing between.
+  && /5: 'a fourth', 7: 'a fifth'/.test(entry)
+  // Marked with the same `.on` the chord row uses: two rows of the same kind of control
+  // have to read as one thing, and one of them showing its current value is not that.
+  && /button\.classList\.toggle\('on', \(op\?\.transpose \|\| 0\) === amount\)/.test(entry)
+  // The reroll is the one people reach for blind, so it wears a die in both places it
+  // appears — and the same name, which it did not have when the menu called it Make new.
+  && /item\('🎲 New material'/.test(entry)
+  && />🎲 New material<\/button>/.test(shell)
+  && /addEventListener\('contextmenu'/.test(entry)
+  // M8TRX no longer carries its own Play and Stop: the desk's transport already means
+  // both, and Stop was literally forwarding to the desk's own button.
+  && !/id="replay"/.test(shell)
+  && !/id="restop"/.test(shell)
+  && /if \(rearrangeActive\(\)\) \{ playRearrangement\(\); return; \}/.test(entry)
+  // Select all is gone: a whole-arrangement selection was one click away from an edit
+  // that hits every slice in the song, and picking a part or dragging a run says what
+  // you meant instead.
+  && !/id="reselectall"/.test(shell)
+  && !/selectAllRearrangeOperations/.test(entry)
+  // A refusal says WHY, in the terms of the slices in hand, and Split's floor is two
+  // sixteenths — the real limit — not half a bar.
+  && /function rearrangeEditRefusal/.test(entry)
+  && /toast\(rearrangeEditRefusal\(action, \[\.\.\.rearrangeSelectedOperations\], options\)\)/.test(entry)
+  && !/needs a longer slice or a compatible repeat count/.test(entry)
+  && /if \(operation\.length < 2\) return \[operation\];/
+    .test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  && /function undoRearrange/.test(entry)
+  && /rearrangeUndoStack/.test(entry)
+  && /transformSelectedRearrange\('harmony', 'Slice chord changed'/.test(entry)
+  && /transformSelectedRearrange\('join', 'Slices joined'\)/.test(entry)
+  // Join is the undo of a chop, so it yields a PLAIN slice — a lone one still tagged as
+  // a fill would be treated as whole-band by the engine and drawn with a fill tick.
+  && /const \{ fill, \.\.\.plain \} = first;/
+    .test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  // Walk applies to the slices you picked, on as well as off — a run of bars is a run
+  // of bars whether or not it happens to be a whole part.
+  && /transformSelectedRearrange\('walk-on', 'Chord walk on'\)/.test(entry)
+  && /action === 'walk-on'/
+    .test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  && /seg\.ondblclick/.test(entry)
+  // Turning a walk ON is a decision about the whole part; taking it OFF is per-slice,
+  // so the bars you want back as written are whichever ones you picked.
+  && /transformSelectedRearrange\('walk-off', 'Chord walk off'\)/.test(entry)
+  && /action === 'walk-off' && operation\.harmony/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  && /action === 'harmony'/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  && /action === 'join'/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  // The generator keeps its musical shortlist; the person gets the whole octave.
+  && /Array\.from\(\{ length: 25 \}/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  && /REARRANGE_GENERATED_TRANSPOSES = Object\.freeze\(\[-7, -5, -2, 2, 5, 7\]\)/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  && /id="replayfrom"/.test(shell)
+  // The old two-stream rail and list are gone, not merely restyled.
+  && !/id="rearrangelist"/.test(shell)
+  && !/rearrangecontent/.test(shell)
+  && /rearrangeTimelineGeometry/.test(entry)
+  && /--slicespan/.test(entry)
+  && /reorderRearrangeSections/.test(entry)
+  && /draggable = true/.test(entry),
+  'the M8TRX form is one row per part, with slices as wide as the time they take');
+// A slice block is too narrow to hang controls off, so selection is the control: click
+// one, drag a run, and the inspector edits whatever is selected. The drag is painted on
+// the elements while the pointer is down and committed once, on release.
+assert(/wireRearrangeTimelineSelection/.test(entry)
+  && /setPointerCapture/.test(entry)
+  && /elementFromPoint/.test(entry)
+  && /selectRearrangeOperationRange/.test(entry)
+  && /selectOneRearrangeOperation/.test(entry)
+  && /touch-action: pan-y/.test(shell)
+  && /user-select: none/.test(shell)
+  // An edit that keeps the slice count keeps the selection, so a repeated press of the
+  // same inspector button does not need the selection made again between presses.
+  && /rearrangeRecipe\?\.operations\?\.length === recipe\?\.operations\?\.length/.test(entry),
+  'M8TRX slices are selected by click and drag, and the selection survives in-place edits');
+assert(/#reclipstrip \{ display: flex; align-items: stretch; gap: 8px; min-height: 58px;/.test(shell)
+  && /#reclipstrip \.reclip \{ display: inline-flex; gap: 4px; align-items: center; flex: none;/.test(shell)
+  && /#reclipstrip \.reclipuse \{ min-width: 108px; min-height: 34px;/.test(shell)
+  && /#reclipstrip \.reclipletter \{ min-width: 108px; min-height: 32px;/.test(shell)
+  && /clipTemplateForSelectedRearrangeSlices/.test(entry)
+  && /snapshotSelectedRearrangeClip/.test(entry)
+  && /\$\('reclipselected'\)\.onclick = snapshotSelectedRearrangeClip/.test(entry)
+  && /assignRearrangeClipLetter/.test(entry)
+  && /resizable: !!clip\.resizable/.test(entry),
+  'the M8TRX clip shelf has readable cards and controls');
+// A letter may carry at most one clip. Reassigning ONTO a taken letter already refused;
+// a freshly snapshotted clip that INHERITS a taken letter (two Choruses both default to
+// 'C') used to arrive on it silently — invisible in the UI and, since Object.fromEntries
+// keeps only the last of two same-keyed entries, silently dropped from the next Generate
+// too. `rearrangeClipLetterTaken` is now the one check both paths share.
+assert(/function rearrangeClipLetterTaken\(letter, excludeIndex = -1\)/.test(entry)
+  && /const bumped = rearrangeClipLetterTaken\(clip\.letter\)/.test(entry)
+  && /if \(rearrangeClipLetterTaken\(next, index\)\)/.test(entry)
+  && /its letter was already taken, so choose one for it/.test(entry),
+  'a clip can never silently arrive on a letter another clip already has');
+// A start from scratch for the next Generate — locks, the shelf, and the repeated-letter
+// opt-outs cleared together, in one button, disabled when there is nothing to clear.
+assert(/id="reclearkept"/.test(shell)
+  && /function clearRearrangeKeptState\(\)/.test(entry)
+  && /\$\('reclearkept'\)\.onclick = clearRearrangeKeptState/.test(entry)
+  && /!rearrangeLockedSections\.size && !rearrangeClips\.length && !rearrangeUniqueLetters\.size/.test(entry),
+  'Clear locks & shelf resets the next-Generate editorial state in one place');
+// Locks, the shelf, and unique-letter opt-outs are the OTHER half of what a session did
+// to reach a recipe; losing them on save loses exactly that work. Saved beside the recipe
+// in both places a recipe is saved — the M8TRX version and the plain JSON export — and
+// read back before validation strips anything the schema does not recognise.
+assert(/function rearrangeEditorSnapshot\(\)/.test(entry)
+  && /function sanitizeRearrangeClip\(raw, sourceSteps\)/.test(entry)
+  && /function applyRearrangeEditorState\(editor, sourceSteps\)/.test(entry)
+  && /return \{ recipe: blob, settings: null, editor: null \}/.test(entry)
+  && /editor: blob\?\.editor \?\? null/.test(entry)
+  && /\.\.\.\(editor \? \{ editor \} : \{\}\)/.test(entry)
+  && /const \{ dropped \} = applyRearrangeEditorState\(raw\.editor, rearrangeSourceSteps\(\)\)/.test(entry)
+  // A restore that finds no editor block leaves the current session's locks/shelf alone
+  // rather than clearing them — that is what "no opinion" means, same as `settings`.
+  && /const editorResult = editor \? applyRearrangeEditorState\(editor, rearrangeSourceSteps\(\)\) : null/.test(entry),
+  'locks, the shelf, and unique-letter opt-outs round-trip through both save paths');
+// The sounding slice is marked where it sits on its row, with a bar under it that grows
+// as it plays — so the timeline says both which slice and how far through it. The follow
+// moves only when the active slice changes, and never against a hand that just
+// scrolled: wheel/touch hold the follow off, and 'scroll' deliberately does not, because
+// the follow's own scrollIntoView fires it.
+assert(/#rearrangeform \.reslice\.active::after/.test(shell)
+  // Playing and selected must not look alike: the accent OUTLINE belongs to the
+  // selection alone, so the playhead cannot look like a selection walking the song.
+  && /#rearrangeform \.reslice\.active \{ color: var\(--sliceink\); \}/.test(shell)
+  // The bar is the WHOLE playhead. A ring round the sounding block is two marks for one
+  // fact — the bar already says which slice and how far through it — and a bright
+  // rectangle appearing round each block in turn reads as the selection moving by itself.
+  && !/\.reslice\.active \{ box-shadow:/.test(shell)
+  && !/\.reslice\.active \{ outline:/.test(shell)
+  && /#rearrangeform \.reformseg\.active \{ color: var\(--ink\); background: var\(--accent-wash\); \}/.test(shell)
+  && /width: calc\(var\(--replayed, 0\) \* 100%\); background: var\(--accent\)/.test(shell)
+  && /setProperty\('--replayed'/.test(entry)
   && /rearrangeFollowHeldUntil/.test(entry)
   && /scrollIntoView\(\{ block: 'nearest' \}\)/.test(entry)
   && /pos\.operationIndex !== rearrangeFollowedRow/.test(entry)
   && /addEventListener\('wheel', holdRearrangeFollow, \{ passive: true \}\)/.test(entry)
   && !/addEventListener\('scroll', holdRearrangeFollow/.test(entry),
-  'the Rearrange list rules off each part and follows playback without fighting the user');
-// Whole-part actions belong to the rail, not to the first row of the part down in the
-// list — where they made that one row a different shape from every row under it and
-// made its per-slice checkbox read as if it meant the whole part. Every list row is now
-// checkbox, colour chip, text, output position, and nothing else.
+  'the M8TRX playhead underlines the sounding slice and follows without fighting the user');
+// Whole-part actions belong to the part's own card at the head of its row; per-slice
+// actions belong to the inspector, acting on the selection. Neither set is duplicated
+// onto the slice blocks, which are only as wide as the time they take.
 assert(/toggleRearrangeSectionSlices/.test(entry)
   && /rearrangeSectionOperationIndices/.test(entry)
   && /Select all \$\{slices\.length\} slices in \$\{section\.name\}/.test(entry)
   && !/replaysection/.test(entry)
   && !/replaysection/.test(shell)
-  && /#rearrangeform \.rekeep, #rearrangeform \.redown/.test(shell)
-  && /#rearrangepanel \.reselect \{/.test(shell),
-  'Rearrange section actions live on the rail, so every list row is the same shape');
+  && !/reopactions/.test(entry)
+  && !/reopactions/.test(shell)
+  // The card IS the part's checkbox, and it holds exactly one part: picking a part
+  // replaces the selection rather than adding to it.
+  && !/className = 'reselect'/.test(entry)
+  && !/\.reselect \{/.test(shell)
+  && /function selectRearrangeSectionSlices/.test(entry)
+  && /#rearrangeform \.relock\.on/.test(shell)
+  // The held part is an EDGE, not a ring: a ring is what the lock already draws, so a
+  // held part and a kept one read alike. Geometry-neutral — border grows, padding gives back.
+  && /#rearrangeform \.reformseg\.chosen \{ border-left-width: 4px; padding-left: 6px;/.test(shell),
+  'M8TRX part actions ride the row head and slice actions the inspector, never the blocks');
+// Visible slice blocks use compact notation; expanded bar/beat/16th wording remains
+// available on hover so the shorthand is not a loss of context.
+assert(/Compact bar:beat\.sixteenth notation/.test(entry)
+  && /rearrangeOutputLabel\(op\.from\)/.test(entry)
+  && /slice\.title = `\$\{op\.mute \? 'MUTED · ' : ''\}Source \$\{rearrangeStepLabel/.test(entry)
+  // The exact output range is the hover on the rail's subject line rather than a second
+  // line under it: the rail has two lines and must keep them, because a rail that grew a
+  // line would move the timeline.
+  && /info\.title = `Output \$\{rearrangeStepLabel/.test(entry)
+  && /className = 'reslicerepeat'/.test(entry)
+  // Four passes of a bar and one four-bar grab take the same time; the block is ruled
+  // at each pass boundary so they do not draw identically.
+  && /#rearrangeform \.reslice\[data-repeats\]/.test(shell)
+  && /#rearrangeform \.reslice\[data-repeats\]::before/.test(shell)
+  && /background-size: calc\(100% \/ \(var\(--repeats, 2\) - 1\)\) 100%/.test(shell)
+  && /slice\.dataset\.repeats = String\(op\.repeats\)/.test(entry),
+  'M8TRX slice blocks hide verbose bar/beat labels behind compact notation');
 // One colour per ROLE, fixed rather than derived from --accent: the desk has eight
 // themes and the accent differs in each, but a Chorus should be one colour in all of
 // them — and the third Chorus should be recognisably the same part as the first.
@@ -110,18 +592,70 @@ assert(/--role-intro:/.test(shell)
   && /--role-outro:/.test(shell)
   && /\[data-role="Chorus"\] \{ --rolecolour: var\(--role-chorus\); \}/.test(shell)
   && /\.rerolechip \{/.test(shell)
-  && /border-left: 3px solid var\(--rolecolour, transparent\)/.test(shell)
+  // A slice is coloured by its PART, varied per distinct material inside that part — the
+  // row it sits in is the thing the colour should belong to, and what a row gets asked is
+  // how many different pieces are in it and where they change. Held mid-lightness so the
+  // wash can be strong without the label losing the ground under it.
+  // The colour IS the block: painted outright, with a fixed dark text that reads on
+  // every hue, rather than a wash capped by what the theme's ink could survive.
+  && /background: color-mix\(in srgb, var\(--material, var\(--traybtn\)\) 30%, var\(--traybtn\)\)/.test(shell)
+  && /--sliceink: var\(--ink\); --slicedim: var\(--dim\)/.test(shell)
+  // The fill is the whole signal: no coloured edge beside it, and a neutral outline.
+  && !/border-left: 5px solid var\(--material/.test(shell)
+  && !/border: 1px solid var\(--rolecolour/.test(shell)
+  // A fill aimed at one slice: its opening fragment retriggered across its own time.
+  && /action === 'stutter'/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  && /id="restutter"/.test(shell) && /REARRANGE_STUTTER_SHAPES/.test(entry)
+  // Stutter options that cannot divide the selection are greyed rather than offered
+  // and then refused: on a sixteenth grid ×3 and ×6 fit about one slice in seventy.
+  && /option\.disabled = !any \|\| !selected\.some/.test(entry)
+  && /gallop: Object\.freeze\(\[2, 1, 1\]\)/
+    .test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  // The family comes from the part's own --rolecolour, so there is ONE definition of what
+  // colour a part is and the slices are derived from it rather than keeping a second copy.
+  && /--material: oklch\(from var\(--rolecolour, var\(--faint\)\)/.test(shell)
+  && /\.reslice\[data-variant="1"\]/.test(shell)
+  && /\.reslice\[data-variant="2"\]/.test(shell)
+  // THE HUE IS NEVER MOVED. The accent means "this is playing" and it is a different hue
+  // in each of the nine themes, so a hue-shifted variant walks onto somebody's accent —
+  // an earlier cut spread the family ±26° and Intro's green came out on daylight's accent
+  // exactly. The bare `h` at the end of the relative colour is that rule, in the one place
+  // it can be enforced: no calc, no offset, nothing to drift.
+  && /var\(--slicel\) clamp\(0\.055, calc\(c \* var\(--slicec\) \+ var\(--slicecadd\)\), 0\.21\) h\)/.test(shell)
+  && !/--sliceh/.test(shell)
+  // LIGHTNESS IS PINNED, NOT INHERITED. Role colours are chips and their lightness runs
+  // from 0.67 to 0.76; inherited into a 30% wash that drops the worst label contrast to
+  // 3.8:1 across the nine themes. Set across 0.52/0.46/0.34 it measures 4.58:1, beside
+  // 4.69:1 for the material wheel it replaced — and the closest pair on any theme is
+  // 0.041 in OKLab, where the first cut of this managed 0.014 and read as no variation.
+  && /--slicel: 0\.52; --slicec: 0\.7; --slicecadd: 0;/.test(shell)
+  && /\[data-variant="1"\] \{ --slicel: 0\.46; --slicec: 1\.3; --slicecadd: 0\.12; \}/.test(shell)
+  && /\[data-variant="2"\] \{ --slicel: 0\.34; --slicec: 0\.7; --slicecadd: 0; \}/.test(shell)
+  && !/oklch\(0\.52 0\.17 /.test(entry)
+  // THREE, and the number is load-bearing rather than arbitrary: a fourth clearly-separated
+  // variant needs more hue than ±26° and Chorus orange arrives in Intro's green.
+  && /const REARRANGE_SLICE_VARIANTS = 3;/.test(entry)
+  // Ranked within ONE part, never hashed and never ranked across the timeline. A hash can
+  // collide, and two materials in one part landing on one variant while a third goes spare
+  // is the exact thing this exists to prevent. Ranking across the whole timeline is the
+  // older bug: rebuild one part into a different number of pieces and every material after
+  // it shifted, so one edit read as the whole recipe changing. Pinning the SIGNATURE —
+  // one part's ops, not the recipe — is what stops that coming back quietly.
+  && /function rearrangeSliceVariants\(ops\)/.test(entry)
+  && /variants\.set\(key, variants\.size % REARRANGE_SLICE_VARIANTS\)/.test(entry)
+  && /const variants = rearrangeSliceVariants\(placed\.map\(\(entry\) => entry\.op\)\);/.test(entry)
+  && !/rearrangeSliceVariants\(rearrangeRecipe/.test(entry)
   && /seg\.dataset\.role = section\.role/.test(entry)
-  && /li\.dataset\.role = section\.role/.test(entry)
+  && /slice\.dataset\.role = section\.role/.test(entry)
   && /chip\.className = 'rerolechip'/.test(entry),
-  'each part of the form carries one theme-independent colour, in the rail and the list');
+  'each part of the form carries one theme-independent colour, on its card and its slices');
 // Chord loops: harmonic movement is DIATONIC — per-note degree steps within the
 // song's detected key, so an Am riff plays as F major on the VI — never a flat
 // semitone shift wearing a chord's name. The engine applies it per value in the
 // transpose pass, and only when the recipe both carries a key and asks for it.
-assert(/id="rechords"/.test(shell)
-  && /value="edm"/.test(shell) && /value="house"/.test(shell)
-  && /value="anthem"/.test(shell) && /value="dark"/.test(shell)
+assert(/moodPalette/.test(rearrange)
+  && /dark: \{ label:/.test(rearrange) && /house: \{ label:/.test(rearrange)
+  && /anthem: \{ label:/.test(rearrange) && /edm: \{ label:/.test(rearrange)
   && /progression: rearrangeChordLoop\(\)/.test(entry)
   && /rearrangeHarmonyLabel/.test(entry)
   && /harmonicShift\(v, rearrangeKey, rearrangeHarmony\)/.test(audio)
@@ -133,9 +667,18 @@ assert(/id="rechords"/.test(shell)
 // fixed-width chord column (empty = plays as written, so rows stay aligned), each rail
 // card states its walk, and the chromatic dial is disabled while a loop is on.
 assert(/id="rechordskey"/.test(shell)
-  && /rechordbadge/.test(entry) && /\.rechordbadge \{ flex: none; width: 26px/.test(shell)
+  && /rechordbadge/.test(entry) && /#rearrangeform \.rechordbadge \{ flex: none; text-align: left;/.test(shell)
   && /reformchords/.test(entry) && /\.reformchords:empty \{ display: none; \}/.test(shell)
-  && /rearrangeSectionChordLine/.test(entry)
+  && /rearrangeSectionChordLine\(index, 'roman', cycleSteps\)/.test(entry)
+  // A doubled part shows the seam where it starts again, states its walk once, and
+  // marks the pass count — geometry unchanged, since the border grows as padding shrinks.
+  && /function rearrangeCycleLength/.test(entry)
+  && /#rearrangeform \.reslice\[data-cycle\] \{ border-left-width: 3px; padding-left: 3px;/.test(shell)
+  // ARROWS, not pipes: a walk goes somewhere, and a pipe is the mark a bar line uses
+  // everywhere else on this desk, so `i i | iv | v` read as three bars rather than a move.
+  && /groups\.join\(' → '\)/.test(entry)
+  && /pop: \{ label: 'i – iv – v – VI'/.test(rearrange)
+  && /edm: \{ label: 'i – VI – III – VII'/.test(rearrange)
   && /syncRearrangeKeyReadout/.test(entry)
   && /syncRearrangeChordLoopControl/.test(entry)
   && /dial\.disabled = walking/.test(entry)
@@ -151,46 +694,88 @@ assert(/id="rekey"/.test(shell)
   && /syncRearrangeKeyOptions/.test(entry)
   && /rearrangeSourceProfile\(\{ build: !playing \}\)/.test(entry)
   && /if \(rearrangePanelOpen\) syncRearrangeKeyReadout\(\)/.test(entry)
-  && /overrideKey \|\| \(detected \? \{ tonic: detected\.tonic, minor: detected\.minor \} : null\)/
+  // The claim is that a manual pick OVERRULES detection and that detection is still used
+  // when there is no pick. Pinned as that shape rather than as the exact expression, so
+  // work that post-processes the detected key does not read as this contract breaking.
+  && /overrideKey \|\| \(detected[\s\S]{0,120}?detected\.tonic, minor: detected\.minor \}/
     .test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8')),
   'the chord-loop key self-heals, guesses when unclear, and yields to a manual pick');
-// A walking section is ONE repeated cell, and the walk has an amount: hold-then-move
-// by default, turnaround for subtlety, full loop by name. Listening drove both rules.
-assert(/id="rewalk"/.test(shell)
-  && /value="half" selected/.test(shell)
-  && /walk: rearrangeChordWalk\(\)/.test(entry)
-  && /function rearrangeChordWalk/.test(entry)
-  && /REARRANGE_WALKS/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8')),
-  'the chord walk has a visible amount control, defaulting to the back half');
+// A walking section is ONE repeated cell, and the walk still has an amount — but MOOD
+// chooses it now, so there is no select to pin. Dark takes the full loop (the more
+// chords it passes through, the heavier it sits), euphoric takes the turnaround, and
+// the middle is the same back-half hold the old control defaulted to.
+assert(/export function moodWalk/.test(rearrange)
+  && /return REARRANGE_WALK_DEFAULT;/.test(rearrange)
+  && /if \(amount < 1 \/ 3\) return 'full';/.test(rearrange)
+  && /if \(amount > 2 \/ 3\) return 'turn';/.test(rearrange)
+  && /const walkShape = walk \?\? moodWalk\(moodV\)/.test(rearrange)
+  && /REARRANGE_WALKS/.test(rearrange),
+  'the chord walk takes its amount from Mood, still holding the back half at rest');
+// Drive owns the chord pace the same way, and resolves it to one of the same three
+// names the retired select offered.
+assert(/export function drivePace/.test(rearrange)
+  && /const pace = chordPace \?\? drivePace\(driveV\)/.test(rearrange)
+  && /if \(amount < 0\.6\) return 'slow';/.test(rearrange)
+  && /if \(amount < 0\.85\) return 'steady';/.test(rearrange)
+  && /return 'active';/.test(rearrange),
+  'Drive picks the chord pace, holding the song grammar until the top of the dial');
 assert(/generateRearrangement\(steps/.test(entry)
   && /validateRearrangement\(raw/.test(entry)
   && /Audio\.setRearrangement\(recipe\)/.test(entry)
-  && /rearrangeKeptSections/.test(entry)
-  && /rearrangeDislikedSections/.test(entry)
+  && /rearrangeLockedSections/.test(entry)
   && /anchors: rearrangeKeptAnchors\(\)/.test(entry)
-  && /avoid: rearrangeDislikedAnchors\(\)/.test(entry)
-  && /className = 'rekeep'/.test(entry)
-  && /className = 'redown'/.test(entry)
+  && !/className = 'rekeep'/.test(entry)
+  && !/className = 'redown'/.test(entry)
+  && !/voteRearrangeSection/.test(entry)
+  && /className = 'relock'/.test(entry)
   && /classList\.add\('favourite'\)/.test(entry)
-  && /className = 'reselect'/.test(entry)
+  && /id="redeleteselected"/.test(shell)
+  && /id="reloopremove"/.test(shell)
+  && /id="reslicetranspose"/.test(shell)
+  // Fill came back to the part CARD as an icon — it went to the toolbar once because on
+  // the card it rendered accent-on-accent at 1.00:1 when lit, which the .on rule now
+  // fixes properly. The shapes live under the card's ⋯; the icon is the common case.
+  && /className = 'refillbutton'/.test(entry)
+  && /#rearrangeform \.refillbutton\.on/.test(shell)
+  && /openRearrangeFillMenu\(event, index\)/.test(entry)
+  // A part can be removed outright from its own ⋯ menu, and copied onto another part.
+  && /id="recopysection"/.test(shell) && /id="repastesection"/.test(shell)
+  && /transformRearrangeSectionUi\(index, 'delete', 'Part removed'\)/.test(entry)
+  // Copy and Paste act on the SELECTION — one slice, a run, or a whole part — and a
+  // paste is fitted to the time the selection takes, so nothing after it moves.
+  && /replaceRearrangementSlices/.test(entry)
+  && /export function replaceRearrangementSlices/
+    .test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  && /function fitOperationsToSpan/
+    .test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  && /transformRearrangeSectionUi\(index, 'delete', 'Part removed'\)/.test(entry)
+  && /value: Number\(\$\('reslicetranspose'\)\.value\)/.test(entry)
+  && /transformSelectedRearrange\('delete', 'Deleted slices'\)/.test(entry)
+  && /transformSelectedRearrange\('remove-loop', 'Looped a neighbour'\)/.test(entry)
   && /transformSelectedRearrange/.test(entry)
   && /playRearrangementAt/.test(entry)
-  && /renderRearrangeForm/.test(entry)
+  && /renderRearrangeTimeline/.test(entry)
   && /data-section/.test(entry)
-  && /cycleRearrangeDrums/.test(entry)
   && /setPlaying\(true, 0, \{ countIn: 4 \}\)/.test(entry)
   // Only the deliberate from-the-top start counts in; a section jump plays at once.
   && /setPlaying\(true, at\)/.test(entry)
   && !/setPlaying\(true, at, \{ countIn/.test(entry)
   && /const accent = index === 0;/.test(audio)
   && /Audio\.setBank\(track\.bank, mixFor\(trackId\), arrFor\(trackId\), \{ countIn \}\)/.test(entry)
-  && /transformSelectedRearrange\('remove', 'Removed slices'\)/.test(entry)
+  // 'Fill' on a part's card adds a drum fill at its ending; this replaces slices with
+  // material from beside them. Two different things, so no longer two 'Fill's.
+  && /transformSelectedRearrange\('remove', 'Borrowed from the neighbours'\)/.test(entry)
+  && /Borrow neighbours<\/button>/.test(shell)
   && /style: rearrangeStyle\(\)/.test(entry)
-  && /variation: rearrangeVariation\(\)/.test(entry)
-  && /allowGlitches: rearrangeAllowGlitches\(\)/.test(entry)
+  && /mood: rearrangeMood\(\)/.test(entry)
+  && /hypnosis: rearrangeHypnosis\(\)/.test(entry)
+  && /chaos: rearrangeChaos\(\)/.test(entry)
+  && /drive: rearrangeDrive\(\)/.test(entry)
+  && /fill: rearrangeFill\(\)/.test(entry)
+  && /outputSteps: rearrangeOutputSteps\(\)/.test(entry)
   && /transposeAmount: rearrangeTransposeAmount\(\)/.test(entry)
   && /syncRearrangeStyle/.test(entry)
-  && /syncRearrangeVariation/.test(entry)
+  && /syncRearrangeDials/.test(entry)
   && /syncRearrangeTranspose/.test(entry)
   && /ondblclick/.test(entry)
   && /perfect fourth/.test(entry)
@@ -244,7 +829,7 @@ assert(!/schedulePreview|previewNote/.test(touchedBody)
   'editing a drum or noise parameter does not schedule an unsolicited note preview');
 
 assert(/const armBarOverride = \(\) => \{\s*if \(mode\) mode\.value = 'on';\s*\};/.test(entry)
-  && /\[strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(entry),
+  && /\[strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves,\s*rangeOn, rangeLo, rangeHi,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(entry),
   'editing any bar Note FX control automatically enables that bar override');
 {
   const noteFxEditor = entry.slice(entry.indexOf('function openNoteFxEditor'),
@@ -258,6 +843,16 @@ assert(/const armBarOverride = \(\) => \{\s*if \(mode\) mode\.value = 'on';\s*\}
 assert(/const repeat = check\('Repeat pattern', current\.arp\?\.repeat !== false\)/.test(entry)
   && /repeat: repeat\.checked/.test(entry),
   'the Arpeggiator exposes a saved Repeat pattern option that defaults on');
+// The window is two ends of one setting, so the panel may not offer a pick the fold
+// cannot honour: Lowest stops an octave short of the top of the span, Highest starts an
+// octave above its bottom, and moving either one carries the other with it.
+assert(/const rangeOn = check\('Keep notes inside a range', current\.arp\?\.rangeLimit\)/.test(entry)
+  && /rangeLimit: rangeOn\.checked/.test(entry)
+  && /rangeLo: clamp\([\s\S]{0,120}?NOTE_FX_RANGE_MAX - 12\)/.test(entry)
+  && /NOTE_FX_RANGE_LO_OPTIONS = NOTE_FX_RANGE_BOUNDS\s*\.filter\(\(\[midi\]\) => midi <= NOTE_FX_RANGE_MAX - 12\)/.test(entry)
+  && /NOTE_FX_RANGE_HI_OPTIONS = NOTE_FX_RANGE_BOUNDS\s*\.filter\(\(\[midi\]\) => midi >= NOTE_FX_RANGE_MIN \+ 12\)/.test(entry)
+  && /if \(hi - lo >= 12\) return;/.test(entry),
+  'the Arpeggiator range is saved as two note bounds that can never be less than an octave apart');
 
 const envelopeTimeRows = editor.match(/envTime\(/g) || [];
 assert(/const ENV_MAX_SECONDS = 10;/.test(editor)
@@ -759,7 +1354,7 @@ assert(/id="notecachetoggle"[^>]*aria-pressed="true"[^>]*hidden/.test(shell)
 assert(/this\.loopListeners = \[\]/.test(audio)
   && /onLoop\(fn\)/.test(audio)
   && /const loop = \{ when: this\.nextTime, start: this\.loopStart, end: this\.loopEnd \}/.test(audio)
-  && /const formEnd = plan\.length \* 16/.test(audio)
+  && /const formEnd = this\.rearrangement[\s\S]{0,120}rearrangementOutputSteps/.test(audio)
   && /for \(const fn of this\.loopListeners\) fn\(loop\)/.test(audio),
   'the engine publishes genuine scheduler wraps with their audible AudioContext time');
 assert(/id="looplogopen"[^>]*aria-haspopup="dialog"[^>]*hidden/.test(shell)

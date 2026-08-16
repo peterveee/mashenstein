@@ -1,4 +1,5 @@
-import { createNoteFxProcessor, orderedTones, resolveNoteFx } from '../src/engine/note-fx.js';
+import { createNoteFxProcessor, orderedTones, resolveNoteFx, noteFxRange, foldTonesToRange }
+  from '../src/engine/note-fx.js';
 
 let failed = false;
 function assert(cond, msg) {
@@ -80,6 +81,79 @@ const later = p.process({ laneKey: 'lead', value: null, len: null, step: 4,
   spb: 0.1, barIndex: 1, config: latched });
 assert(first[0]?.freq === 440 && later[0]?.freq === 220,
   'continuous latch retains the chord across bars and advances its pattern');
+
+// ---- the pitch window -------------------------------------------------------------------
+//
+// The point of a range is that the SOURCE stops deciding the register. These read in MIDI
+// note numbers, the file's spelling: 48 is C3, an octave below the desk's C3.
+const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
+const midiOf = (freq) => Math.round(12 * Math.log2(freq / 440) + 69);
+
+assert(json(foldTonesToRange([hz(84), hz(88), hz(91)], 48, 72).map(midiOf)) === '[72,64,67]',
+  'a chord written above the window folds down into it by whole octaves');
+assert(json(foldTonesToRange([hz(24), hz(28)], 48, 72).map(midiOf)) === '[48,52]',
+  'a chord written below the window folds up into it');
+assert(json(foldTonesToRange([hz(55), hz(64)], 48, 72).map(midiOf)) === '[55,64]',
+  'notes already inside the window keep the octave they were written in');
+assert(json(foldTonesToRange([hz(48), hz(60), hz(72), hz(84)], 48, 60).map(midiOf)) === '[48,60]',
+  'an octave stack taller than the window folds back in and drops the duplicates');
+assert(noteFxRange({ rangeLimit: true, rangeLo: 48, rangeHi: 52 })?.hi === 60,
+  'a window shorter than an octave is read as a whole octave, which is the least the fold needs');
+assert(noteFxRange({ rangeLo: 48, rangeHi: 72 }) === null
+  && noteFxRange({ rangeLimit: true }) === null,
+  'no window unless the limit is on and both ends are set');
+
+const ranged = createNoteFxProcessor();
+const rangedFx = { arp: { enabled: true, direction: 'up', rate: 1, octaves: 2, gate: 80,
+  retrigger: 'chord', latch: false, rangeLimit: true, rangeLo: 48, rangeHi: 72 } };
+const rangedEvents = [];
+for (let step = 0; step <= 3; step += 1) {
+  rangedEvents.push(...ranged.process({ laneKey: 'chords',
+    value: step === 0 ? [hz(84), hz(88), hz(91)] : null,
+    len: 4, step, spb: 0.1, barIndex: 0, config: rangedFx }));
+}
+assert(json(rangedEvents.map((e) => midiOf(e.freq))) === '[64,67,72,64]',
+  'a high chord arpeggiates inside the window, its second octave folded back into the pattern');
+assert(rangedEvents.every((e) => midiOf(e.freq) >= 48 && midiOf(e.freq) <= 72),
+  'no arpeggiated note sounds outside the window');
+
+// ---- and the scheduler survives it ------------------------------------------------------
+//
+// Everything above is the processor in isolation. This is the shape that took the desk
+// down: an arpeggiator hands `at()` ONE event per tick, `at()` collapses a one-event
+// plan to a bare frequency, and the hand-written chord bodies were written for arrays.
+// With no voice preset on the lane — the default — the rack declines the note and the
+// fallback body is exactly what runs. Rendered through the real engine because no
+// processor-level assertion can see which body the frequency lands in; a regression
+// here throws inside scheduleStep and the render rejects.
+{
+  const { openRenderer } = await import('../tools/lib/render-bank-browser.js');
+  const rest = new Array(31).fill(null);
+  const bank = {
+    bpm: 120,
+    sections: [{ chords: [[220, 277, 330], ...rest], organChords: [[220, 330], ...rest] }],
+    order: [{
+      s: 0,
+      noteFx: {
+        chords: { mode: 'on', arp: { enabled: true, rate: 0.5, direction: 'up',
+          retrigger: 'chord', gate: 80, octaves: 1 } },
+        organChords: { mode: 'on', arp: { enabled: true, rate: 0.5, direction: 'up',
+          retrigger: 'chord', gate: 80, octaves: 1 } },
+      },
+    }],
+  };
+  const renderer = await openRenderer();
+  try {
+    const r = await renderer.render(bank, { repeat: 1, mix: null, trackId: null });
+    assert(r.peak > 0.001,
+      'an arpeggiated chord lane with no voice preset renders sound through the'
+      + ` hand-written bodies (peak ${r.peak.toFixed(4)})`);
+  } catch (err) {
+    assert(false, `an arpeggiated chord lane must not kill the scheduler: ${err.message}`);
+  } finally {
+    await renderer.close();
+  }
+}
 
 console.log(failed ? '\nNOTE FX: FAILED' : '\nNOTE FX: PASSED');
 process.exit(failed ? 1 : 0);

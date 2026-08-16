@@ -11,6 +11,7 @@
 // again, capped at a bar", and that rule is asserted here rather than left implied.
 import {
   buildRearrangeProfile, cutCost, chromaMatch, energyOver, pitchClass, profileEnergyArray,
+  detectPhraseGrid,
   detectKey,
 } from '../tools/lib/rearrange-profile.js';
 
@@ -254,6 +255,67 @@ assert(detectKey(null) === null
     'a song with no notes profiles cleanly and offers no reason to avoid any cut');
   assert(chromaMatch(null, 0, 0) === 1 && cutCost(null, 0) === 0 && energyOver(null, 0, 4) === null,
     'and every accessor answers safely with no profile at all');
+}
+
+// ---- where the phrases start --------------------------------------------------
+//
+// The bug this exists to stop: a song with a three-bar intro has every phrase on an ODD
+// bar, and a four-bar grid measured from bar 0 cuts all of them a bar out of phase.
+// These fixtures put the harmony changes on a KNOWN grid and check that the grid is the
+// one that comes back.
+
+/** A song whose harmony turns over every four bars, starting at `offset`. */
+const phraseSong = (offset, bars = 24) => {
+  const chords = [[C5, E5, G5], [A4, C5, E5], [D5, G5], [G5, D5]];
+  const sections = [];
+  const order = [];
+  // Two bars to a section, and one section per pair, so each bar can carry its own
+  // chord — the fixture has to be able to change harmony on an odd bar.
+  for (let bar = 0; bar < bars; bar += 2) {
+    const chordAt = (b) => chords[Math.floor(Math.max(0, b - offset) / 4) % chords.length];
+    sections.push({
+      chords: [...lane({ 0: chordAt(bar), 8: chordAt(bar) }).slice(0, 16),
+        ...lane({ 0: chordAt(bar + 1), 8: chordAt(bar + 1) }).slice(0, 16)],
+    });
+    order.push(sections.length - 1);
+  }
+  return { bpm: 120, chords: lane({}), sections, order };
+};
+
+for (const offset of [0, 1, 2, 3]) {
+  const grid = detectPhraseGrid(buildRearrangeProfile(phraseSong(offset)));
+  assert(grid.offset === offset,
+    `a song whose harmony moves every four bars from bar ${offset} reports that grid`);
+  assert(grid.confident,
+    `and is confident about it (margin ${grid.confidence.toFixed(3)})`);
+}
+
+{
+  // The conservative half of the contract. A song with no harmonic movement gives the
+  // estimator nothing to prefer, and a caller must get "offset 0, not confident" rather
+  // than a coin toss it would then act on.
+  const flat = buildRearrangeProfile({
+    bpm: 120,
+    chords: lane({ 0: [C5, E5, G5], 16: [C5, E5, G5] }),
+    order: [0, 0, 0, 0, 0, 0, 0, 0],
+  });
+  const grid = detectPhraseGrid(flat);
+  assert(!grid.confident && grid.offset === 0,
+    'a song whose harmony never moves reports no confident phrase grid');
+}
+
+assert(detectPhraseGrid(null).offset === 0 && detectPhraseGrid(null).confident === false,
+  'and no profile at all yields the safe answer rather than throwing');
+
+{
+  // Silence must not read as a chord change: two empty bars are the SAME harmony, not
+  // maximally different. Without that rule an empty intro invents a phrase grid.
+  const sparse = buildRearrangeProfile({
+    bpm: 120, chords: lane({ 0: [C5, E5, G5] }), order: [0, 0, 0, 0, 0, 0, 0, 0],
+  });
+  const grid = detectPhraseGrid(sparse);
+  assert(Number.isFinite(grid.confidence),
+    'a song that is mostly silence still yields a finite confidence');
 }
 
 console.log(failed ? 'REARRANGE PROFILE: FAILED' : 'REARRANGE PROFILE: PASSED');

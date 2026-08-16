@@ -152,16 +152,18 @@ export function bankSource(bank, indent = '') {
  * `bankSource` keeps an arrangement readable. Starts WITH the marker line, because
  * `writeSongFile` splices at `indexOf(DESK_MARKER)`.
  */
-export function deskTail({ mix = null, arrangement = null, variants = null } = {}) {
+export function deskTail({ mix = null, arrangement = null, variants = null, m8trx = null } = {}) {
   return `${DESK_MARKER} ----------------------------------------------\n`
     + `// Rewritten whole by the mixing desk. Nothing below this line is hand-edited.\n\n`
     + `export const mix = ${(mix && mixEntrySource(mix)) || 'null'};\n\n`
     + `export const arrangement = ${arrangement ? bankSource(arrangement) : 'null'};\n\n`
-    + `export const variants = ${(variants && variantsSource(variants)) || 'null'};\n`;
+    + `export const variants = ${(variants && variantsSource(variants)) || 'null'};\n\n`
+    + `// M8TRX is a Mixer-only parked recipe. It is intentionally not a game alternate.\n`
+    + `export const m8trx = ${m8trx ? JSON.stringify(m8trx) : 'null'};\n`;
 }
 
 export function songFile({
-  id, title, slug, group, bank, mix, arrangement, variants, note, seed, alternateOf,
+  id, title, slug, group, bank, mix, arrangement, variants, m8trx = null, note, seed, alternateOf,
 }) {
   const head = `// ${title} — one song: what it plays, how it is arranged, how it sounds.\n`
     + `//\n`
@@ -182,7 +184,7 @@ export function songFile({
     + `\n`
     + `export const bank = ${bankSource(bank)};\n\n`;
 
-  return head + deskTail({ mix, arrangement, variants });
+  return head + deskTail({ mix, arrangement, variants, m8trx });
 }
 
 export const DESK_MARKER = '// ---- THE DESK WRITES BELOW HERE';

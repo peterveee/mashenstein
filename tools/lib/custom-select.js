@@ -70,6 +70,20 @@ export function createCustomSelect({
     active = (index + optionEls.length) % optionEls.length;
     optionEls.forEach((option, item) => option.classList.toggle('active', item === active));
     field.setAttribute('aria-activedescendant', optionEls[active].id);
+    // A list long enough to scroll — a note picker is eighty-eight keys — must follow
+    // the arrow keys, or Down walks the selection off the bottom of a menu that never
+    // moves. Written as the menu's own scrollTop rather than `scrollIntoView`, which is
+    // free to scroll ancestors as well: a stray document scroll under a FIXED menu moves
+    // nothing on screen but reaches the dismiss listener, which would shut the menu the
+    // moment it opened.
+    if (open) {
+      const top = optionEls[active].offsetTop;
+      const bottom = top + optionEls[active].offsetHeight;
+      if (top < menu.scrollTop) menu.scrollTop = top;
+      else if (bottom > menu.scrollTop + menu.clientHeight) {
+        menu.scrollTop = bottom - menu.clientHeight;
+      }
+    }
   };
 
   const closeMenu = ({ focus = false } = {}) => {
@@ -89,7 +103,14 @@ export function createCustomSelect({
   const onDocDown = (ev) => {
     if (!menu.contains(ev.target) && !field.contains(ev.target)) closeMenu();
   };
-  const onDismiss = () => closeMenu();
+  // The desk scrolling under an open menu should close it — the menu is fixed and would
+  // be left pointing at nothing. The menu scrolling INSIDE ITSELF is the opposite: a
+  // capped list is meant to be wheeled through, and the capture-phase listener sees
+  // that scroll too. Ignore the ones that came from the list.
+  const onDismiss = (ev) => {
+    if (ev?.target instanceof Node && menu.contains(ev.target)) return;
+    closeMenu();
+  };
   const onGlobalClose = () => closeMenu();
   const choose = (next) => {
     const nextValue = String(next);

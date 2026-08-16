@@ -1,10 +1,16 @@
-# Rearrange feature handover
+# Rearrange feature handover (historical detail)
 
 Date: 2026-08-15
 
 This document covers the temporary Song Mixer Rearrange work. It describes the
 Rearrange-specific changes made during this work; the repository also contains
 other unrelated dirty-worktree changes that must be preserved.
+
+> Current authoritative handover: read [M8TRX_HANDOVER.md](./M8TRX_HANDOVER.md)
+> first. M8TRX replaced the old user-facing Rearrange name, retired the Glitches
+> path in favor of fills, added variable-length/letter/clip workflows, and now uses
+> a split section-rail/slice-stream layout. The detailed notes below document the
+> earlier implementation and may use superseded labels or same-length assumptions.
 
 ## What the feature does
 
@@ -550,4 +556,3 @@ listening sign-off.
 - `tests/rearrange-drums.js` — song groove scheduling and queued installs.
 - `tests/mixer-layout.js` — Mixer/audio/UI source contract checks.
 - `docs/SONG_MIXER.md` — user-facing Rearrange behavior and controls.
-
