@@ -7676,7 +7676,12 @@ function renderRearrangeTimeline(geometry = rearrangeTimelineGeometry()) {
       ? `${section.name} walks a chord loop — turn it off, or reroll its order`
       : `Walk ${section.name} around the song’s own key`;
     walkButton.setAttribute('aria-label', walkButton.title);
-    walkButton.onclick = (event) => { event.stopPropagation(); openRearrangeWalkMenu(event, index); };
+    // A WALK IS ON OR OFF, so W is a switch and not a door. It opened a two-item menu whose
+    // first item was "Walk this part" and whose second — a reroll of the chord order — is
+    // already in the part menu a right-click away, so the menu was a click in front of a
+    // toggle. The button lights when the part walks, which is the answer to the only
+    // question it asks.
+    walkButton.onclick = (event) => { event.stopPropagation(); toggleRearrangeWalkUi(index); };
     const fill = document.createElement('button');
     fill.type = 'button'; fill.className = 'refillbutton'; fill.textContent = 'F';
     fill.classList.toggle('on', carriesFill);
@@ -8430,18 +8435,6 @@ function openRearrangePartMenu(event, index) {
   });
 }
 
-/** The part's chord walk: on or off, and a reroll of its order. */
-function openRearrangeWalkMenu(event, index) {
-  const section = rearrangeRecipe?.form?.[index];
-  if (!section) return;
-  const walking = !!rearrangeSectionChordLine(index, 'roman');
-  openRearrangeMenuAt(event.currentTarget, (menu, close) => {
-    const { head, item } = rearrangeMenuParts(menu, close);
-    head(`Chord walk · ${section.letter || section.name}`);
-    item(walking ? 'Walk off' : 'Walk this part', () => toggleRearrangeWalkUi(index));
-    item('🎲 New chords', () => rerollRearrangeWalkUi(index), !walking);
-  });
-}
 
 /** The fill at the part's ending, by shape. */
 function openRearrangeFillMenu(event, index) {

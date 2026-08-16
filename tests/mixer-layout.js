@@ -233,7 +233,11 @@ assert(/<div class="reband rearr">/.test(shell)
   && /seg\.classList\.toggle\('chosen', index === heldSection\)/.test(entry)
   && /const heldSection = rearrangeSelectedSectionIndex\(\);/.test(entry)
   && /#rearrangeform \.reformseg\.chosen \{ border-left-width: 4px;/.test(shell)
-  && /function openRearrangeWalkMenu/.test(entry)
+  // W is a switch, not a door: a walk is on or off, and the reroll of its chord order is
+  // already in the part menu a right-click away, so its two-item menu was a click in front
+  // of a toggle.
+  && /walkButton\.onclick = \(event\) => \{ event\.stopPropagation\(\); toggleRearrangeWalkUi\(index\); \};/.test(entry)
+  && !/function openRearrangeWalkMenu/.test(entry)
   && /function openRearrangeFillMenu/.test(entry)
   // …and the whole set is written out in WORDS behind a right-click on the card: an icon is
   // a reminder of something you already know, so the fast way and the legible way are one

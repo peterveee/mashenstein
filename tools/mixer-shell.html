@@ -5765,7 +5765,13 @@
     position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%) translateY(8px);
     background: var(--panel2); border: 1px solid var(--accent); color: var(--ink);
     padding: 9px 16px; border-radius: 6px; font-size: 12px; pointer-events: none;
-    opacity: 0; transition: opacity .16s, transform .16s; z-index: 8;
+    /* ABOVE EVERY PANEL, because it is the desk's only way of answering back. At z-index 8
+       it sat under the M8TRX panel (34) — and once that panel went edge to edge and full
+       height, every toast it raised was painted behind it. "Choose a key before turning on
+       a chord walk" was being said to a covered strip of screen, which is indistinguishable
+       from a button that does nothing. It cannot swallow a click either way: pointer-events
+       are off, so being on top costs nothing. */
+    opacity: 0; transition: opacity .16s, transform .16s; z-index: 40;
   }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 

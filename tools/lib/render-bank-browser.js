@@ -105,7 +105,7 @@ export async function openRenderer({ headless = true } = {}) {
 
   async function render(bank, {
     repeat = 1, lanes = null, tail = 2.0, seed = DEFAULT_SEED, mix, trackId, arrangement, warp,
-    songLoop = false, fineLaneSkip = true,
+    songLoop = false, fineLaneSkip = true, rearrangement = null,
   } = {}) {
     const gated = gateLanes(bank, lanes);
     // Resolved in Node, where bank identity still holds; the page cannot do this
@@ -194,6 +194,7 @@ export async function openRenderer({ headless = true } = {}) {
       ...(steps ? { steps } : {}),
       ...(loop ? { loop } : {}),
       ...(arrangement !== undefined ? { arrangement } : {}),
+      ...(rearrangement ? { rearrangement } : {}),
       // Normalised here so the page never has to guess: a warp is always both
       // numbers, and pitch defaults to unity rather than to tempo — the game's
       // speed burst moves the clock and leaves the key alone.

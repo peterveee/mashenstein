@@ -8,7 +8,7 @@ import {
   REARRANGE_STYLE_NAMES, REARRANGE_STYLE_DEFAULT,
   REARRANGE_FILL_NAMES,
   harmonicShift, harmonyNumeral,
-  generateRearrangement, validateRearrangement, rearrangementPosition,
+  generateRearrangement, sourceCandidates, validateRearrangement, rearrangementPosition,
   rearrangementOutputSteps, seededRandom, transformRearrangement,
   transformRearrangementSection,
   rearrangementDrumHit, rearrangementDrumMode,
@@ -1228,12 +1228,110 @@ assert(seededRandom(7)() === seededRandom(7)(), 'the seeded random helper is sta
     try { toggleRearrangeSectionWalk(tiny, oneBar); } catch { refused = true; }
     assert(refused, 'a one-bar part refuses to walk rather than silently doing nothing');
   }
+  // A SLICE ACROSS A PART'S EDGE IS CUT THERE, NOT REFUSED. Ordinary editing produces them
+  // — joins and repeat changes move durations around — and a slice belonging to neither part
+  // used to leave the walk returning `changed: 0` in silence.
+  {
+    const start = generateRearrangement(64 * 8, { seed: 11, style: 'phrase' });
+    start.key = { tonic: 4, minor: true };
+    const boundary = start.form[1].end;
+    let at = 0;
+    let straddler = -1;
+    start.operations.forEach((op, index) => {
+      if (at < boundary && at + op.length * op.repeats > boundary) straddler = index;
+      at += op.length * op.repeats;
+    });
+    // Join the two slices either side of a boundary to manufacture one that spans it.
+    let crossed = start;
+    if (straddler < 0) {
+      at = 0;
+      let pair = -1;
+      start.operations.forEach((op, index) => {
+        if (at + op.length * op.repeats === boundary) pair = index;
+        at += op.length * op.repeats;
+      });
+      if (pair >= 0 && start.operations[pair + 1]) {
+        try { crossed = transformRearrangement(start, [pair, pair + 1], 'join', {}).recipe; } catch { /* leave as-is */ }
+      }
+    }
+    const heard = (r) => r.operations.flatMap((op) => new Array(op.repeats).fill(null)
+      .flatMap(() => new Array(op.length).fill(null).map((_, n) => op.from + n)));
+    const before = heard(crossed);
+    const total = rearrangementOutputSteps(crossed);
+    let allWalked = true;
+    crossed.form.forEach((_, index) => {
+      try {
+        const out = toggleRearrangeSectionWalk(crossed, index).recipe;
+        validateRearrangement(out, 64 * 8);
+        if (rearrangementOutputSteps(out) !== total) allWalked = false;
+        if (JSON.stringify(heard(out)) !== JSON.stringify(before)) allWalked = false;
+      } catch { allWalked = false; }
+    });
+    assert(allWalked,
+      'a part whose slice runs across its edge is cut there and walks, losing no material');
+  }
   // And a walk still needs a key to walk within.
   const keyless = generateRearrangement(64 * 4, { seed: 5, style: 'phrase' });
   delete keyless.key;
   let needsKey = false;
   try { toggleRearrangeSectionWalk(keyless, 0); } catch { needsKey = true; }
   assert(needsKey, 'a chord walk without a key is refused');
+}
+
+// ---- the source's phrase grid -------------------------------------------------
+//
+// A song with a three-bar intro has every phrase on an odd bar. Striding four-bar grabs
+// from step 0 then lands every one of them a bar out of phase for the whole song, which
+// is audible however well the rest of the scoring behaves. These pin the correction and,
+// just as importantly, pin that it stays OFF unless something can actually say so.
+
+{
+  const steps = 64 * 8;
+
+  const plain = sourceCandidates(steps, 64, 0);
+  assert(plain.every((from) => from % 64 === 0),
+    'with no offset every four-bar grab starts on a four-bar boundary, as it always did');
+  assert(plain[0] === 0 && plain.includes(steps - 64),
+    'and the run covers the song from its first phrase to its last');
+
+  // Three bars in: the grid moves with the song, and bar 0 survives as the intro.
+  const shifted = sourceCandidates(steps, 64, 48);
+  assert(shifted[0] === 0, 'an offset grid still offers the intro before the first phrase');
+  assert(shifted.slice(1).every((from) => (from - 48) % 64 === 0 || from === steps - 64),
+    'and every other candidate sits on the song\'s own phrase grid');
+  assert(shifted.includes(48) && !shifted.includes(64),
+    'the phrase after a three-bar intro starts at bar 3, not at bar 4');
+}
+
+{
+  // Degenerate input is a caller bug, not a licence to read out of bounds or hand back
+  // an empty candidate list — `chooseSource` indexes into this unconditionally.
+  const steps = 64 * 4;
+  for (const bad of [-16, steps * 4, 0]) {
+    const list = sourceCandidates(steps, 64, bad);
+    assert(list.length > 0, `an offset of ${bad} still yields at least one candidate`);
+    assert(list.every((from) => from >= 0 && from + 64 <= steps),
+      `and every candidate from an offset of ${bad} is in bounds`);
+  }
+  assert(sourceCandidates(32, 64, 16).every((from) => from >= 0),
+    'a span longer than the song does not produce a negative start');
+}
+
+{
+  // The regression guarantee that matters most: a song nothing can say anything about
+  // generates EXACTLY what it generated before this existed.
+  const steps = 64 * 6;
+  const flatDensity = new Array(steps / 16).fill(0.5);
+  const recipeOf = (options) => JSON.stringify(
+    generateRearrangement(steps, { seed: 9, ...options }).operations);
+  assert(recipeOf({ sourceProfile: flatDensity }) === recipeOf({ sourceProfile: flatDensity, phraseOffset: 0 }),
+    'a legacy density array cannot move the phrase grid');
+  assert(recipeOf({}) === recipeOf({ phraseOffset: 0 }),
+    'and no profile at all leaves the historical striding in place');
+  assert(recipeOf({ phraseOffset: 48 }) !== recipeOf({ phraseOffset: 0 }),
+    'while a named offset genuinely changes what the generator reaches for');
+  assert(recipeOf({ phraseOffset: 48 }) === recipeOf({ phraseOffset: 48 }),
+    'and the same offset with the same seed still gives the same recipe');
 }
 
 console.log(failed ? 'REARRANGE: FAILED' : 'REARRANGE: PASSED');

@@ -342,9 +342,41 @@ would score twelve of twelve — which is a threshold fitted to twelve songs, so
 lead and not a result. The expected values for the four misses are themselves inferred
 rather than ground truth.
 
-Next step is a stronger estimator over a proper φ (not just parity), validated by ear
-on a handful of songs with known intros rather than against section metadata that has
-already proved untrustworthy.
+### Built, and confirmed by ear
+
+**Shipped.** `detectPhraseGrid` in `tools/lib/rearrange-profile.js`, consumed by
+`sourceCandidates` in `tools/lib/rearrange.js`.
+
+The estimator scores four-bar units by how much the bar-to-bar chroma distance piles up
+ON a candidate grid versus off it, and returns a **confidence** alongside the offset.
+Callers apply it only when confident and otherwise stride from zero exactly as before —
+a wrong offset displaces every phrase of a song that was previously right, so the
+conservative direction is not shifting. `hub`, the case the estimator gets wrong, is
+correctly rejected at a margin of 0.0009; the ear-confirmed songs sit at 0.06–0.07.
+
+**The correction is one line of arithmetic in one function**, and the reason is worth
+keeping: a whole-bar offset is a multiple of 16, and the styles align cells to 16, 8 or
+4 steps — all of which divide 16. Bar and beat alignment are therefore untouched by it.
+The four-bar phrase stride is the only grid an offset in bars can break.
+
+Bar 0 stays a candidate whenever the offset is non-zero: the material before the first
+full phrase *is* the song's intro, and that is exactly what an Intro part should reach
+for.
+
+**Verified by listening**, which is the only thing that could settle it. `smw-overworld`
+(offset 1) and `special-stage-1` (offset 3) were bounced with and without the
+correction, identical in seed, style and form —
+`work/local/render-m8trx.js` — and the phased renders were judged better on both.
+
+Supporting change: the offline renderer now accepts a recipe (`rearrangement` through
+`render-bank-browser.js` into `render-bank-page.js`, installed after the arrangement
+resolves), so any M8TRX performance can be bounced to WAV for audition. Opt-in; omit it
+and every existing render is byte-identical.
+
+**Still open.** The confidence threshold is calibrated on twelve songs, four of them
+labelled by inference rather than by listening. `shop` reports offset 1 *above* the
+threshold on one of those unverified labels — if that call is wrong, the threshold is
+too loose. That is the next thing to put through the same A/B.
 
 ### Where a model genuinely fits
 

@@ -5,7 +5,9 @@
 // note data: the live engine resolves the current song/mix at playback time, so a
 // recipe remains small, readable, and safe to discard without changing a song.
 
-import { cutCost, chromaMatch, energyOver, detectKey, walkCellScore } from './rearrange-profile.js';
+import {
+  cutCost, chromaMatch, energyOver, detectKey, walkCellScore, detectPhraseGrid,
+} from './rearrange-profile.js';
 
 export const REARRANGE_KIND = 'mashenstein-rearrangement';
 export const REARRANGE_VERSION = 2;
@@ -1237,12 +1239,50 @@ function profileScore(profile, start, span) {
   return seen ? total / seen : null;
 }
 
-function sourceCandidates(sourceSteps, span) {
+/**
+ * Where in the source a phrase may be grabbed from.
+ *
+ * `offset` is the song's PHRASE GRID, in steps — see `detectPhraseGrid`. Songs have
+ * intros of arbitrary length, and a three-bar intro puts every phrase of the song on an
+ * odd bar. Striding from zero then lands every candidate one bar out of phase for the
+ * whole song, and a "four-bar phrase" that starts on the second bar of the phrase is
+ * audibly wrong however well the rest of the scoring behaves.
+ *
+ * Only this stride needs the correction. The styles align cells to 16, 8 or 4 steps and
+ * a whole-BAR offset is a multiple of 16, so bar and beat alignment are untouched by it;
+ * four-bar phrase starts are the one grid an offset in bars can actually break.
+ *
+ * Zero is kept as a candidate whenever the offset is not itself zero: the material
+ * before the first full phrase is the song's intro, and it is exactly what an Intro
+ * section should be allowed to reach for.
+ */
+export function sourceCandidates(sourceSteps, span, offset = 0) {
   const maxStart = Math.max(0, sourceSteps - span);
+  const base = Math.max(0, Math.min(offset | 0, maxStart));
   const out = [];
-  for (let start = 0; start <= maxStart; start += PHRASE_STEPS) out.push(start);
+  if (base > 0) out.push(0);
+  for (let start = base; start <= maxStart; start += PHRASE_STEPS) out.push(start);
   if (out[out.length - 1] !== maxStart) out.push(maxStart);
   return out.length ? out : [0];
+}
+
+/**
+ * The source's phrase grid in steps, or 0 when nothing can say.
+ *
+ * Deliberately conservative in both directions. A caller may name `phraseOffset`
+ * outright (including 0 to turn the correction off); otherwise it is read from a rich
+ * profile, and ONLY when the estimate is confident. A wrong offset is worse than none —
+ * it displaces every phrase on a song that was previously right — so anything doubtful
+ * falls back to the historical behaviour of striding from zero.
+ */
+function resolvePhraseOffset(profile, requested = null) {
+  if (requested != null) {
+    const named = Number(requested);
+    return Number.isFinite(named) && named >= 0 ? Math.floor(named) : 0;
+  }
+  if (!profile || !profile.chroma || !(profile.bars > 0)) return 0;
+  const grid = detectPhraseGrid(profile);
+  return grid.confident ? grid.offset * 16 : 0;
 }
 
 function candidateBlocked(start, span, blocked) {
@@ -1556,6 +1596,7 @@ export function generateRearrangement(sourceSteps, {
   progression = 'off', key = null, walk = null,
   chordPace = null, fill = 'none',
   outputSteps = sourceSteps, uniqueLetters = [], letterTemplates = null,
+  phraseOffset = null,
 } = {}) {
   if (!Number.isInteger(sourceSteps) || sourceSteps <= 0) {
     throw new RangeError('sourceSteps must be a positive integer');
@@ -1653,7 +1694,10 @@ export function generateRearrangement(sourceSteps, {
   const usedSources = new Set();
   const sections = formFor(outputSteps);
   const phraseSpan = Math.min(PHRASE_STEPS, sourceSteps);
-  const candidates = sourceCandidates(sourceSteps, phraseSpan);
+  // The song's own phrase grid, so a four-bar grab starts where its phrases do rather
+  // than where its file happens to begin.
+  const phraseBase = resolvePhraseOffset(rich, phraseOffset);
+  const candidates = sourceCandidates(sourceSteps, phraseSpan, phraseBase);
   const normalizedFavourites = Array.isArray(favourites)
     ? favourites.map((raw) => ({
       from: int(raw?.from), length: int(raw?.length),
@@ -2536,6 +2580,50 @@ function applyWalkChords(operations, chords) {
  *  already makes this same choice for short sections — see `rebuildRearrangeSection`. */
 const walkPaceFor = (bars) => (bars >= 4 ? 'slow' : 'active');
 
+/**
+ * Cut the operation list so no slice straddles one of `cuts` (output steps).
+ *
+ * A slice that runs across a part's edge belongs to neither part, and ordinary editing DOES
+ * produce them — repeats and joins move durations around, and measured over forty seeds
+ * about one section in twelve ended up with one. Refusing to walk such a part was correct
+ * and useless: the answer is to cut the slice where the edge is, which costs nothing.
+ * Lossless, like every other cut here — passes are unrolled and a long grab is divided at
+ * the boundary, so every sixteenth of source still plays in the same order at the same time,
+ * and M8TRX's own undo puts it back if the shape is not wanted.
+ */
+function cutOperationsAt(operations, cuts) {
+  const wanted = [...new Set(cuts)].sort((a, b) => a - b);
+  const out = [];
+  let cursor = 0;
+  for (const operation of operations) {
+    const passes = operation.repeats > 1
+      ? new Array(operation.repeats).fill(null).map(() => ({ ...operation, repeats: 1 }))
+      : [{ ...operation }];
+    for (const pass of passes) {
+      let from = pass.from;
+      let left = pass.length;
+      while (left > 0) {
+        const next = wanted.find((cut) => cut > cursor && cut < cursor + left);
+        const take = next === undefined ? left : next - cursor;
+        out.push({ ...pass, from, length: take, repeats: 1 });
+        cursor += take;
+        from += take;
+        left -= take;
+      }
+    }
+  }
+  return out;
+}
+
+/** A part's slices, with the part's own edges cut clear first if anything straddles them. */
+function sectionOperationsFor(recipe, sectionIndex, section) {
+  const first = sectionOperationIndices(recipe, sectionIndex);
+  if (!first.crossed && first.indices.length) return { recipe, indices: first.indices };
+  const cut = rebuildForm(recipe, cutOperationsAt(recipe.operations, [section.start, section.end]));
+  const again = sectionOperationIndices(cut, sectionIndex);
+  return { recipe: cut, indices: again.indices };
+}
+
 /** The operations of one section, replaced wholesale. `sectionOperationIndices` only ever
  *  returns a contiguous run — it walks the list in order and takes what sits inside the
  *  section — so the run can be spliced out and a different-length one put back. */
@@ -2550,13 +2638,14 @@ export function toggleRearrangeSectionWalk(recipe, sectionIndex) {
   const ranges = formSectionRanges(recipe);
   const section = ranges[sectionIndex];
   if (!section) throw new Error('That M8TRX section does not exist');
-  const { indices } = sectionOperationIndices(recipe, sectionIndex);
-  if (!indices.length) return { recipe: { ...recipe }, changed: 0 };
-  const ops = recipe.operations.map((operation) => ({ ...operation }));
+  // A slice across the part's edge is cut there rather than refused — see sectionOperationsFor.
+  const { recipe: base, indices } = sectionOperationsFor(recipe, sectionIndex, section);
+  if (!indices.length) throw new Error('This part has no slices to walk');
+  const ops = base.operations.map((operation) => ({ ...operation }));
   const walking = indices.some((index) => ops[index].harmony);
   if (walking) {
     for (const index of indices) delete ops[index].harmony;
-    return { recipe: rebuildForm(recipe, ops), changed: indices.length };
+    return { recipe: rebuildForm(base, ops), changed: indices.length };
   }
   if (!recipe.key) throw new Error('Choose a key before turning on a chord walk');
   const palette = Array.isArray(section.chords) && section.chords.length
@@ -2570,7 +2659,7 @@ export function toggleRearrangeSectionWalk(recipe, sectionIndex) {
   // that appears broken.
   if (!moved) throw new Error('This part is too short to walk a chord loop — it is one bar');
   return {
-    recipe: rebuildForm(recipe, replaceSectionOperations(ops, indices, walked)),
+    recipe: rebuildForm(base, replaceSectionOperations(ops, indices, walked)),
     changed: walked.length,
   };
 }
@@ -2604,6 +2693,7 @@ export function regenerateRearrangementSection(recipe, sectionIndex, {
   seed = randomSeed(), sourceProfile = null, style = null, progression = 'auto', key = null,
   mood = null, hypnosis = null, chaos = null, drive = null,
   transposeAmount = REARRANGE_TRANSPOSE_DEFAULT, locked = false,
+  phraseOffset = null,
 } = {}) {
   const sourceSteps = int(recipe?.source?.steps);
   if (!sourceSteps || !Array.isArray(recipe?.operations)) throw new Error('M8TRX has no operations');
@@ -2626,7 +2716,8 @@ export function regenerateRearrangementSection(recipe, sectionIndex, {
   // A fresh phrase of the song to build from — the same choice generation makes, with the
   // part's own role still steering it, so a rolled Chorus reaches for chorus material.
   const phraseSpan = Math.min(PHRASE_STEPS, sourceSteps);
-  const candidates = sourceCandidates(sourceSteps, phraseSpan);
+  const candidates = sourceCandidates(sourceSteps, phraseSpan,
+    resolvePhraseOffset(rich, phraseOffset));
   const source = chooseSource(role, candidates, phraseSpan, energyProfile, new Set(), rng,
     null, chaosV);
   const sourceSpan = Math.min(phraseSpan, sourceSteps - source);
@@ -2689,22 +2780,22 @@ export function rerollSectionWalk(recipe, sectionIndex, { seed = recipe?.seed ||
   const ranges = formSectionRanges(recipe);
   const section = ranges[sectionIndex];
   if (!section) throw new Error('That M8TRX section does not exist');
-  const { indices } = sectionOperationIndices(recipe, sectionIndex);
-  if (!indices.length) return { recipe: { ...recipe }, changed: 0 };
+  const { recipe: base, indices } = sectionOperationsFor(recipe, sectionIndex, section);
+  if (!indices.length) throw new Error('This part has no slices to walk');
   const rng = seededRandom(seed);
   const palettes = REARRANGE_PROGRESSION_NAMES.filter((name) => name !== 'off')
     .map((name) => REARRANGE_PROGRESSIONS[name].minor);
   const palette = palettes[Math.floor(rng() * palettes.length)] || REARRANGE_PROGRESSIONS.pop.minor;
   const bars = Math.max(1, Math.ceil((section.end - section.start) / WALK_BAR_STEPS));
   const chords = pacedChords(palette, bars, walkPaceFor(bars), 'full');
-  const operations = recipe.operations.map((operation) => ({ ...operation }));
+  const operations = base.operations.map((operation) => ({ ...operation }));
   // Same two corrections as the toggle: a part needs one slot per bar before a progression
   // can be laid over it, and a slice belongs to the bar its DURATION puts it in rather than
   // to its index in the pass count.
   const walked = barAlignedOperations(indices.map((index) => operations[index]));
   const moved = applyWalkChords(walked, chords);
   if (!moved) throw new Error('This part is too short to walk a chord loop — it is one bar');
-  const next = rebuildForm({ ...recipe, seed: Number(seed) >>> 0 },
+  const next = rebuildForm({ ...base, seed: Number(seed) >>> 0 },
     replaceSectionOperations(operations, indices, walked));
   next.form = next.form.map((item, index) => index === sectionIndex ? { ...item, chords } : item);
   return { recipe: next, changed: walked.length };

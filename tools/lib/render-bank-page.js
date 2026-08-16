@@ -71,7 +71,7 @@ function yieldToEventLoop() {
 export async function renderBankPage({
   bank, blocks, steps: stepsIn, loop, tail, seed, sampleRate, mix, trackId, arrangement, warp,
   upfront = false, rawLane = false, startStep = null, prerollSeconds = 0,
-  fineLaneSkip = true,
+  fineLaneSkip = true, rearrangement,
 }, { onProgress } = {}) {
   // The bank arrives carrying the tempo it is PLAYED at — resolved by the caller,
   // where a track id still means something, so a song the desk has retuned renders at
@@ -122,6 +122,14 @@ export async function renderBankPage({
   // desk takes and therefore the path worth being able to render. Omitted, nothing is
   // called and the render is exactly what it always was.
   if (arrangement !== undefined) Audio.setArrangement(arrangement);
+
+  // An M8TRX recipe, when a caller wants to bounce a performance rather than the song.
+  // After `setArrangement`, because the recipe maps OUTPUT positions onto source ones
+  // and the source it maps onto is whatever the arrangement just resolved. The caller
+  // sizes the buffer from `rearrangementOutputSteps`, so `steps` already describes the
+  // performance and nothing here has to know the recipe's length. Omitted, nothing is
+  // called and the render is exactly what it always was.
+  if (rearrangement) Audio.setRearrangement(rearrangement);
 
   // After setBank: setBank re-reads the mix, and the warp has to be the last word
   // on the clock before the first step is scheduled.
