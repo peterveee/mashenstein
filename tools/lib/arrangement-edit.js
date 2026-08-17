@@ -29,8 +29,17 @@
 // desk's undo is a snapshot and nothing more.
 import {
   expandOrder, orderOf, resolveSection, BAR_MAPS, SWING_MAX, SWING_STRAIGHT,
-  FINE_RESOLUTION, resolutionOf,
+  FINE_RESOLUTION, resolutionOf, RESOLUTIONS, LEGACY_RESOLUTION, promoteResolution,
 } from '../../src/data/arrangements.js';
+
+/**
+ * A resolution worth writing down, or null.
+ *
+ * The sixteenth grid is the absence of a decision — every bank that has never been near
+ * the desk omits the key, and an entry that wrote `resolution: 16` would be claiming a
+ * choice nobody made. So only a finer grid is carried, and null means "as composed".
+ */
+const fineOr = (v) => (RESOLUTIONS.includes(v) && v !== LEGACY_RESOLUTION ? v : null);
 import { LANES, LANE_KEYS, lenKey, validLen } from '../../src/engine/lanes.js';
 import { createNoteFxProcessor, resolveNoteFx } from '../../src/engine/note-fx.js';
 
@@ -127,7 +136,7 @@ export function draftOf(bank, entry = null) {
     // Two deliberate acts do put it back, and neither is silent: leaving the roll's 1/32
     // quantise, and saving. Both go through `normaliseArrangementResolution`, which
     // refuses outright while a single note sits on an odd slot.
-    resolution: resolutionOf(bank, entry) === FINE_RESOLUTION ? FINE_RESOLUTION : null,
+    resolution: fineOr(resolutionOf(bank, entry)),
   };
 }
 
@@ -161,20 +170,23 @@ const isBankSection = (bank, sec) => sec == null || sec < (bank.sections?.length
  */
 export function readBarLane(bank, draft, barIndex, key) {
   const bar = draft?.plan?.[barIndex];
-  const slots = draft?.resolution === FINE_RESOLUTION ? 32 : 16;
+  const slots = resolutionOf(null, draft);
   if (!bar || !bank) return new Array(slots).fill(null);
   const resolved = (bar.sec != null
     ? resolveSection({ ...bank, sections: sectionsOf(bank, draft) }, bar.sec)
     : null) || {};
   const arr = resolved[key] ?? bank[key];
   if (!Array.isArray(arr)) return new Array(slots).fill(null);
-  const fine = slots === 32;
-  // A fine draft can still inherit a hand-authored 32-slot legacy lane. Its notes
-  // occupy the even fine slots; the odd slots are true rests. A layer written by the
-  // fine editor is 64 slots and is read directly.
-  if (fine && arr.length < 64) {
-    const at = bar.half * 16;
-    return Array.from({ length: 32 }, (_, i) => (i % 2 ? null : arr[at + i / 2] ?? null));
+  // A fine draft can still inherit a hand-authored coarser lane. Its notes occupy every
+  // stride'th slot; the ones between are true rests. A layer written by the fine editor
+  // already has a slot per tick and is read directly. Same fold, same guards, as
+  // `sequenceValue` in the engine — the two must agree or the roll draws a note the
+  // scheduler will not play.
+  const laneResolution = arr.length / 2;
+  const stride = slots / laneResolution;
+  if (arr.length < slots * 2 && Number.isInteger(stride) && RESOLUTIONS.includes(laneResolution)) {
+    const at = bar.half * laneResolution;
+    return Array.from({ length: slots }, (_, i) => (i % stride ? null : arr[at + i / stride] ?? null));
   }
   const at = bar.half * slots;
   return Array.from({ length: slots }, (_, i) => arr[at + i] ?? null);
@@ -202,7 +214,7 @@ export function entryOf(bank, draft) {
   const swing = draft.swing != null && draft.swing !== composedSwing ? draft.swing : null;
   const same = JSON.stringify(order) === JSON.stringify(orderOf(bank));
   const loop = draft.loop || null;
-  const resolution = draft.resolution === FINE_RESOLUTION ? FINE_RESOLUTION : null;
+  const resolution = fineOr(draft.resolution);
   // A loop counts on its own, exactly as a tempo does: a song played from bar 5 and
   // repeating bars 8-12 is arranged, even when it plays its sections in the order they
   // were composed in. Without this the markers would be unwritable on the seven songs
@@ -246,35 +258,74 @@ const laneArrays = function* (obj) {
  */
 const occupied = (v) => v !== null && v !== undefined && v !== false && v !== '.';
 
+// `fineContent`, `anyFineContent` and `anyWideLane` used to live here. They each asked a
+// yes/no question about the 32nd grid — "does anything sound on an ODD slot", "is any
+// lane 64 long" — which is the right shape only while there are two grids to choose
+// between. With four, the question is not whether a song is fine but HOW fine, so
+// `laneNeeds` / `contentNeeds` / `bankFloor` below answer with a resolution instead.
+
+/** A lane array back down to a coarser grid, keeping every `stride`th slot. */
+const narrow = (arr, stride = 2) => arr.filter((_, i) => i % stride === 0);
+
 /**
- * Does anything in this song actually sound BETWEEN the sixteenths?
+ * Which grids this ONE lane could sit under, as a set.
  *
- * `sequenceValue` folds a lane array under 64 slots onto the even slots and returns null
- * between them, so only a 64-slot-or-longer array can say anything on an odd one — and
- * only if something is written there. The length arrays count too: `stepLen` reads them
- * through the same seam.
+ * Two ways a lane is compatible with a grid, and the difference is what makes this a set
+ * rather than a single number:
  *
- * The bank half is separate from the entry half because only one of them is ours. See
- * `normaliseArrangementResolution`.
+ *   · COARSER than the lane — the lane is narrowed onto it, which needs the stride to
+ *     divide evenly AND every occupied slot to survive the thinning;
+ *   · AT OR FINER than the lane — the lane is left alone and `sequenceValue` folds it on
+ *     read, which needs the grid to be a whole multiple of the lane's own.
+ *
+ * `rewritable` is false for the composition half of a song file, which the desk never
+ * rewrites: those lanes can only be folded, never narrowed. That asymmetry is the whole
+ * reason a bank can hold an entry off a grid it would otherwise be happy on.
+ *
+ * A lane whose length is not two bars of a known grid is not ours to judge, so it
+ * accepts anything rather than vetoing every option.
  */
-export function fineContent(obj) {
-  for (const [, arr] of laneArrays(obj)) {
-    if (arr.length < 64) continue;
-    for (let i = 1; i < arr.length; i += 2) if (occupied(arr[i])) return true;
+function laneTargets(arr, rewritable) {
+  const laneRes = arr.length / 2;
+  if (!RESOLUTIONS.includes(laneRes)) return new Set(RESOLUTIONS);
+  const out = new Set();
+  for (const target of RESOLUTIONS) {
+    if (target >= laneRes) {
+      if (target % laneRes === 0) out.add(target);
+      continue;
+    }
+    if (!rewritable || laneRes % target) continue;
+    const stride = laneRes / target;
+    let fits = true;
+    for (let i = 0; i < arr.length && fits; i++) if (occupied(arr[i]) && i % stride) fits = false;
+    if (fits) out.add(target);
   }
-  return false;
+  return out;
 }
 
-/** As `fineContent`, but over a whole bank or entry — its own lanes and its sections. */
-const anyFineContent = (obj) => !!obj
-  && (fineContent(obj) || (obj.sections || []).some(fineContent));
+/** Every lane array in an object and its sections. */
+const allLanes = function* (obj) {
+  for (const o of [obj, ...(obj?.sections || [])]) if (o) yield* laneArrays(o);
+};
 
-/** Does this bank or entry hold a 64-slot lane array at all, occupied or not? */
-const anyWideLane = (obj) => !!obj
-  && ([obj, ...(obj.sections || [])].some((o) => [...laneArrays(o)].some(([, a]) => a.length >= 64)));
-
-/** A 64-slot lane array back down to the 32 the sixteenth grid indexes. */
-const narrow = (arr) => arr.filter((_, i) => i % 2 === 0);
+/**
+ * The coarsest grid EVERY lane can live on — the entry's, which may be rewritten, and
+ * the bank's, which may not.
+ *
+ * An intersection rather than an LCM, and that distinction is a bug's worth of
+ * difference: the LCM of "this lane wants 16" and "that lane forces 32" is 32, but a
+ * 96-slot triplet lane cannot be expressed at 32 at all, and demoting to it leaves a lane
+ * whose length and whose flag disagree. Only a grid every lane separately accepts is
+ * safe. Null when there is no such grid, meaning "leave it exactly as it is".
+ */
+function commonResolution(bank, entry) {
+  let allowed = new Set(RESOLUTIONS);
+  const narrowTo = (set) => { allowed = new Set([...allowed].filter((r) => set.has(r))); };
+  for (const [, arr] of allLanes(entry)) narrowTo(laneTargets(arr, true));
+  for (const [, arr] of allLanes(bank)) narrowTo(laneTargets(arr, false));
+  for (const target of RESOLUTIONS) if (allowed.has(target)) return target;
+  return null;
+}
 
 /**
  * Drop `resolution: 32` from an entry that never uses it, and narrow its lanes to match.
@@ -309,25 +360,27 @@ const narrow = (arr) => arr.filter((_, i) => i % 2 === 0);
  * how finely that music is written.
  */
 export function normaliseArrangementResolution(bank, entry) {
-  if (entry?.resolution !== FINE_RESOLUTION) return entry;
+  const stored = entry?.resolution;
+  if (!RESOLUTIONS.includes(stored) || stored === LEGACY_RESOLUTION) return entry;
   if (!bank) return entry;
-  if (anyFineContent(entry)) return entry;
-  if (anyWideLane(bank)) return entry;      // subsumes "the bank has fine content"
+  const need = commonResolution(bank, entry);
+  if (need == null || need >= stored) return entry;
   const out = { ...entry };
-  delete out.resolution;
-  if (out.sections) {
-    out.sections = out.sections.map((section) => {
-      const next = { ...section };
-      for (const [key, arr] of laneArrays(section)) {
-        if (arr.length >= 64) next[key] = narrow(arr);
-      }
-      return next;
-    });
-  }
-  for (const [key, arr] of laneArrays(entry)) {
-    if (arr.length >= 64) out[key] = narrow(arr);
-  }
-  return out;
+  if (need === LEGACY_RESOLUTION) delete out.resolution; else out.resolution = need;
+  // Only lanes FINER than the target move. A lane already coarser than the song is the
+  // ordinary case — a hand-authored sixteenth lane under a triplet arrangement — and
+  // `sequenceValue` folds it on read; rewriting it would be churn for no change.
+  const narrowed = (obj) => {
+    const next = { ...obj };
+    for (const [key, arr] of laneArrays(obj)) {
+      const laneRes = arr.length / 2;
+      if (!RESOLUTIONS.includes(laneRes) || laneRes <= need || laneRes % need) continue;
+      next[key] = narrow(arr, laneRes / need);
+    }
+    return next;
+  };
+  if (out.sections) out.sections = out.sections.map(narrowed);
+  return narrowed(out);
 }
 
 /**
@@ -448,7 +501,7 @@ export function planToOrder(plan) {
 const copy = (draft) => ({
   plan: draft.plan.map(copyBar), sections: clone(draft.sections), bpm: draft.bpm ?? null,
   swing: draft.swing ?? null, loop: clone(draft.loop ?? null),
-  resolution: draft.resolution === FINE_RESOLUTION ? FINE_RESOLUTION : null,
+  resolution: fineOr(draft.resolution),
 });
 const range = (draft, from, to) => {
   const a = Math.max(0, Math.min(from, to));
@@ -788,8 +841,12 @@ export function pasteLaneTrack(bank, draft, at, lane, clip) {
   if (!bank || !draft || !lane || !clip?.bars?.length) return draft;
   const start = Math.max(0, Math.floor(at));
   const count = Math.min(clip.bars.length, Math.max(0, draft.plan.length - start));
-  let out = clip.bars.some((bar) => bar.length === 32) && draft.resolution !== FINE_RESOLUTION
-    ? { ...copy(draft), resolution: FINE_RESOLUTION } : draft;
+  // A clip's bars were copied at some grid and must be pasted at one that can hold them.
+  const clipGrid = promoteResolution(...clip.bars.map((bar) => (
+    RESOLUTIONS.includes(bar.length) ? bar.length : LEGACY_RESOLUTION)));
+  const pasteAt = promoteResolution(resolutionOf(null, draft), clipGrid);
+  let out = pasteAt !== resolutionOf(null, draft)
+    ? { ...copy(draft), resolution: pasteAt } : draft;
   for (let i = 0; i < count; i++) {
     const bar = start + i;
     out = writeBarNotesShared(bank, out, bar, lane, clip.bars[i], clip.lengths?.[i] || null);
@@ -1029,11 +1086,16 @@ export function forkBar(bank, draft, barIndex) {
 function laneWith(bank, sections, sec, half, lane, steps) {
   const resolved = resolveSection({ ...bank, sections }, sec) || {};
   const current = resolved[lane] ?? bank[lane];
-  const slots = steps.length === 32 ? 32 : 16;
-  const fine = slots === 32;
+  // The incoming bar's length IS the grid being written at — the caller read it out of
+  // the same draft through `readBarLane`.
+  const slots = RESOLUTIONS.includes(steps.length) ? steps.length : LEGACY_RESOLUTION;
+  const laneResolution = Array.isArray(current) ? current.length / 2 : slots;
+  const stride = slots / laneResolution;
+  const fold = Array.isArray(current) && current.length < slots * 2
+    && Number.isInteger(stride) && RESOLUTIONS.includes(laneResolution);
   const next = Array.from({ length: slots * 2 }, (_, i) => {
     if (!Array.isArray(current)) return null;
-    if (fine && current.length < 64) return i % 2 ? null : clone(current[i / 2] ?? null);
+    if (fold) return i % stride ? null : clone(current[i / stride] ?? null);
     return clone(current[i] ?? null);
   });
   for (let i = 0; i < slots; i++) next[half * slots + i] = clone(steps[i] ?? null);
@@ -1115,21 +1177,26 @@ export function renderArpToNotes(bank, draft, from, to, lane, trackNoteFx = {},
   if (!bank || !draft || !lane) return draft;
   const [a, b] = range(draft, from, to);
   let source = copy(draft);
-  source.resolution = FINE_RESOLUTION;
+  // The arp's finest rate is a 1/32, so rendering it to notes needs at least that grid.
+  // PROMOTE rather than assign: a triplet song forced to 32 would have its 96-slot lanes
+  // read as though they were 64, and every note after the first would land on the wrong
+  // slot. 16 -> 32 as before; 48 -> 96, the grid that holds both.
+  source.resolution = promoteResolution(resolutionOf(null, draft), FINE_RESOLUTION);
   const processor = createNoteFxProcessor();
   const rendered = new Map();
   for (let barIndex = 0; barIndex <= b; barIndex++) {
     const bar = source.plan[barIndex];
     const notes = readBarLane(bank, source, barIndex, lane);
     const lengths = readBarLane(bank, source, barIndex, lenKey(lane));
-    const outNotes = new Array(32).fill(null);
-    const outLengths = new Array(32).fill(null);
+    const slots = source.resolution;
+    const outNotes = new Array(slots).fill(null);
+    const outLengths = new Array(slots).fill(null);
     const config = resolveNoteFx(trackNoteFx, bar, lane);
-    for (let slot = 0; slot < 32; slot++) {
+    for (let slot = 0; slot < slots; slot++) {
       const value = notes[slot];
       const len = lengths[slot];
       const events = processor.process({ laneKey: lane, value, len,
-        step: barIndex * 16 + slot / 2, spb: 1, config: {
+        step: barIndex * 16 + slot * 16 / slots, spb: 1, config: {
           ...config, strum: { ...(config.strum || {}), enabled: false },
         }, barIndex });
       if (barIndex < a || !events.length) continue;

@@ -11,8 +11,9 @@
 //
 // The rule this file exists to keep: what comes back must equal what went in. A
 // song that reads beautifully and plays differently is worse than an ugly array.
-import { noteName, n, chord } from '../../src/engine/notes.js';
+import { noteName, n, chord, TWO_BARS_OF_SIXTEENTHS } from '../../src/engine/notes.js';
 import { isLenKey } from '../../src/engine/lanes.js';
+import { RESOLUTIONS } from '../../src/data/arrangements.js';
 // The desk's own mix serialisers, so `deskTail` below is the ONE builder of the
 // desk-owned half of a song file. No cycle: mix-source imports only from the engine.
 import { mixEntrySource, variantsSource } from './mix-source.js';
@@ -47,8 +48,26 @@ const isPerc = (arr) => arr.some((v) => v === true || v === false)
   && arr.every((v) => v === true || v === false || v == null);
 const isChordLane = (arr) => arr.some((v) => Array.isArray(v));
 
-/** 32 tokens as two bars, the way the hand-written banks are laid out. */
-const twoBars = (toks) => `${toks.slice(0, 16).join(' ')} | ${toks.slice(16).join(' ')}`;
+/** The tokens as two bars, the way the hand-written banks are laid out. */
+const twoBars = (toks) => `${toks.slice(0, toks.length / 2).join(' ')} | ${toks.slice(toks.length / 2).join(' ')}`;
+
+// A lane is two bars, so its length is twice the grid it is stored on: 32 at the
+// sixteenth, 64 at the 32nd, 96 at the triplet grid, 192 at 96. Any other length is
+// something else and is written out as-is.
+//
+// This check is why the widening had to happen HERE and not only in the engine. It used
+// to be `arr.length !== 32`, and a longer lane failed it silently — no error, no warning,
+// just a song file that stopped being shorthand and started being a wall of raw numbers.
+// A quiet fallback is the right behaviour for a lane that is not prettifiable; it is the
+// wrong behaviour for one the format simply had not been taught about yet.
+const LANE_LENGTHS = new Set(RESOLUTIONS.map((r) => r * 2));
+
+// `seq('...')` for the sixteenth grid every hand-written bank uses, and `seq('...', 96)`
+// for anything finer — the second argument is what makes the round trip exact rather
+// than merely plausible.
+const call = (fn, toks) => (toks.length === TWO_BARS_OF_SIXTEENTHS
+  ? `${fn}('${twoBars(toks)}')`
+  : `${fn}('${twoBars(toks)}', ${toks.length})`);
 
 /**
  * One lane, as source. Shorthand when it round-trips exactly, a raw array when it
@@ -56,12 +75,12 @@ const twoBars = (toks) => `${toks.slice(0, 16).join(' ')} | ${toks.slice(16).joi
  */
 export function laneSource(arr) {
   if (!Array.isArray(arr)) return null;
-  if (arr.length !== 32) return JSON.stringify(arr);
+  if (!LANE_LENGTHS.has(arr.length)) return JSON.stringify(arr);
 
   if (isPerc(arr)) {
     // Percussion is booleans. `seq(...).map((v) => !!v)` is how every bank spells it.
     const toks = arr.map((v) => (v ? 'C1' : '.'));
-    return `seq('${twoBars(toks)}').map((v) => !!v)`;
+    return `${call('seq', toks)}.map((v) => !!v)`;
   }
 
   if (isChordLane(arr)) {
@@ -72,7 +91,7 @@ export function laneSource(arr) {
       if (!name) return JSON.stringify(arr);
       toks.push(name);
     }
-    return `chordSeq('${twoBars(toks)}')`;
+    return call('chordSeq', toks);
   }
 
   const toks = [];
@@ -82,10 +101,10 @@ export function laneSource(arr) {
     if (!name) return JSON.stringify(arr);   // not a pitch — keep the number
     toks.push(name);
   }
-  return `seq('${twoBars(toks)}')`;
+  return call('seq', toks);
 }
 
-const isLane = (v) => Array.isArray(v) && v.length === 32
+const isLane = (v) => Array.isArray(v) && LANE_LENGTHS.has(v.length)
   && v.every((x) => x == null || typeof x === 'number' || typeof x === 'boolean' || Array.isArray(x));
 
 function valueSource(v, indent, key = null) {

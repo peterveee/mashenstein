@@ -20,7 +20,8 @@
 // Browserless on purpose: every claim here is about the precompute, and none of it
 // needs an AudioContext to be true.
 import { Audio } from '../src/engine/audio.js';
-import { seq, n } from '../src/engine/notes.js';
+import { seq, chordSeq, n } from '../src/engine/notes.js';
+import { laneSource } from '../tools/lib/song-source.js';
 import { sequenceValue } from '../src/engine/lanes.js';
 import {
   applyArrangement, RESOLUTIONS, promoteResolution,
@@ -409,6 +410,62 @@ const plan = (bank, mix) => {
   Audio.swing = 0;
   Audio.transportResolution = 16;
   Audio.step = 0;
+}
+
+// ---- and the grid survives being written down -------------------------------
+//
+// The normaliser above decides what resolution a song is SAVED at; these are the two
+// claims that make that decision safe to act on. First that the demotion walks down the
+// set instead of flipping a switch — a song is only as fine as its content needs, and
+// "needs" now has four answers rather than two. Second that a lane at any of those grids
+// round-trips through `laneSource` as readable shorthand.
+//
+// The second one is here because it used to fail SILENTLY. The length check was
+// `arr.length !== 32`, so a 96-slot lane fell straight through to raw JSON: no error, no
+// warning, just a song file that quietly stopped being shorthand.
+{
+  const lane = (slots, at) => Array.from({ length: slots },
+    (_, i) => (at.includes(i) ? n('C4') : null));
+  const entryAt = (resolution, at) => ({ resolution, lead: lane(resolution * 2, at) });
+  const emptyBank = { lead: lane(32, []) };
+
+  const triplets = normaliseArrangementResolution(emptyBank, entryAt(96, [0, 4, 8]));
+  assert(triplets.resolution === 48 && triplets.lead.length === 96,
+    'content that only lands on triplets demotes 96 -> 48 and narrows its lane with it');
+
+  const straight = normaliseArrangementResolution(emptyBank, entryAt(48, [0, 3, 6]));
+  assert(straight.resolution === undefined && straight.lead.length === 32,
+    'content on plain sixteenths goes all the way home and drops the key');
+
+  const held = normaliseArrangementResolution(emptyBank, entryAt(48, [0, 2, 4]));
+  assert(held.resolution === 48 && held.lead.length === 96,
+    'but a genuine triplet holds the song at 48 — this is the one that must NOT move');
+
+  // The composition half of a file is never rewritten, so its lane lengths are a floor.
+  // 48 is chosen over 32 here because a 96-slot lane cannot be expressed at 32 at all:
+  // the target has to be one EVERY lane accepts, not the LCM of what they each want.
+  const wideBank = { lead: lane(64, []) };
+  const floored = normaliseArrangementResolution(wideBank, entryAt(48, [0, 3, 6]));
+  assert(floored.resolution === 48,
+    'a 64-slot bank lane keeps the entry off a grid it cannot narrow onto');
+
+  const evalLane = (src) => new Function('seq', 'chordSeq', 'n', `return (${src});`)(seq, chordSeq, n);
+  const roundTrips = RESOLUTIONS.every((res) => {
+    const slots = res * 2;
+    // Every fifth slot, so occupancy lines up with no stride and cannot be thinned away.
+    const original = lane(slots, [...Array(slots).keys()].filter((i) => i % 5 === 0));
+    const src = laneSource(original);
+    const back = evalLane(src);
+    return src.startsWith('seq(') && Array.isArray(back) && back.length === slots
+      && back.every((v, i) => v === original[i]);
+  });
+  assert(roundTrips,
+    'a lane at every grid writes as seq() shorthand and comes back element for element');
+
+  const perc = Array.from({ length: 96 }, (_, i) => i % 3 === 0);
+  const percBack = evalLane(laneSource(perc));
+  assert(percBack.length === 96 && percBack.every((v, i) => v === perc[i]),
+    'and so does a 96-slot percussion lane, as booleans');
 }
 
 console.log(failed ? 'FINE TICK SCHEDULING: FAILED' : 'FINE TICK SCHEDULING: PASSED');

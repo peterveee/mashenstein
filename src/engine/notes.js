@@ -51,21 +51,31 @@ export function chord(name) {
   return CHORD_IV[m[2] || 'maj'].map((semi) => root * Math.pow(2, semi / 12));
 }
 
-/** "A3min7 . . . F3maj7 . . ." -> 32-length array of frequency-arrays (or null). */
-export function chordSeq(str) {
+// A lane is two bars. At the sixteenth grid every song has always been written on, that
+// is 32 slots — which is why it was a literal here for so long, and why it stays the
+// default: every one of the ~180 hand-written banks calls these with one argument and
+// must keep producing exactly what it always did.
+//
+// A song stored on a finer grid writes the count it needs: 64 at `resolution: 32`, 96 at
+// 48, 192 at 96. `tools/lib/song-source.js` is what emits that second argument, and the
+// `|` in the shorthand stays purely cosmetic at every size — token COUNT is the timing.
+export const TWO_BARS_OF_SIXTEENTHS = 32;
+
+/** "A3min7 . . . F3maj7 . . ." -> `slots`-length array of frequency-arrays (or null). */
+export function chordSeq(str, slots = TWO_BARS_OF_SIXTEENTHS) {
   const toks = str.replace(/\|/g, ' ').trim().split(/\s+/);
   const out = [];
-  for (let i = 0; i < 32; i++) {
+  for (let i = 0; i < slots; i++) {
     const tk = toks[i % toks.length];
     out.push(tk === '.' ? null : chord(tk));
   }
   return out;
 }
 
-/** "A2 . . A2 | C3 . . ." -> 32-length note array (pads/truncates), '.' = rest. */
-export function seq(str) {
+/** "A2 . . A2 | C3 . . ." -> `slots`-length note array (pads/truncates), '.' = rest. */
+export function seq(str, slots = TWO_BARS_OF_SIXTEENTHS) {
   const toks = str.replace(/\|/g, ' ').trim().split(/\s+/);
   const out = [];
-  for (let i = 0; i < 32; i++) out.push(n(toks[i % toks.length] === '.' ? null : toks[i % toks.length]));
+  for (let i = 0; i < slots; i++) out.push(n(toks[i % toks.length] === '.' ? null : toks[i % toks.length]));
   return out;
 }
