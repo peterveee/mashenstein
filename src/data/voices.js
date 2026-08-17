@@ -3154,37 +3154,6 @@ const TONE = {
       vca: { attack: 2.2, decay: 5, sustain: 0.94, release: 3.6, attackCurve: 'lin' },
     },
     vibrato: { depth: 0.05, rate: 2.2, delay: 3 } },
-  simpleSquare: { label: 'Simple Square', category: 'Lead', synth: 'MonoSynth', dur: 1.2,
-    note: 'Square through an opening filter: the arcade lead with an envelope the raw '
-      + 'oscillator cannot give it.',
-    options: {
-      oscillator: { type: 'square' },
-      envelope: { attack: 0.002, decay: 0.15, sustain: 0.88, release: 0.2 },
-      filter: { type: 'lowpass', Q: 0.1, rolloff: -12 },
-      filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 2915, octaves: 1.2 },
-    },
-    starter: true },
-  simpleSawtooth: { label: 'Simple Sawtooth', category: 'Lead', synth: 'MonoSynth', dur: 1.2,
-    note: 'Sawtooth through an opening filter: the arcade lead with an envelope the raw '
-      + 'oscillator cannot give it.',
-    options: {
-      oscillator: { type: 'sawtooth' },
-      envelope: { attack: 0.002, decay: 0.15, sustain: 0.88, release: 0.2 },
-      filter: { type: 'lowpass', Q: 0.1, rolloff: -12 },
-      filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 2915, octaves: 1.2 },
-    },
-    starter: true },
-  simpleTriangle: { label: 'Simple Triangle', category: 'Lead', synth: 'MonoSynth', dur: 1.2,
-    note: 'Triangle wave through an opening filter: the arcade lead with an envelope the raw '
-      + 'oscillator cannot give it.',
-    options: {
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.002, decay: 0.15, sustain: 0.88, release: 0.2 },
-      filter: { type: 'lowpass', Q: 0.1, rolloff: -12 },
-      filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 2915, octaves: 1.2 },
-    },
-    starter: true,
-    trim: 1.2 },
 };
 
 // User presets live in their own tables rather than beside the built-in library.
@@ -4032,6 +4001,44 @@ const STARTER = {
       envelope: { attack: 0.008, decay: 0.2, sustain: 0.6, release: 0.3 },
       modulationEnvelope: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 0.3 },
     } },
+  // The three the MIDI importer starts a pitched lane on — see `importStarterFor` in
+  // tools/lib/midi-import.js. They were written into TONE carrying `starter: true`,
+  // which is the one place a starter cannot live: TONE is a WRITABLE table, `tableOf`
+  // finds an entry there and the voice editor can then edit a preset the desk also
+  // treats as frozen. tests/voice-source.js is the assertion that catches it, by
+  // counting the writable tables against the voices that are actually editable.
+  //
+  // Ids unchanged by the move, deliberately. They are not prefixed `st` like their
+  // neighbours because a preset id is a reference: the importer names two of them, and
+  // every song already imported names them in its mix.
+  simpleSquare: { label: 'Simple Square', category: 'Lead', kind: 'tone', synth: 'MonoSynth', dur: 1.2,
+    note: 'Square through an opening filter: the arcade lead with an envelope the raw '
+      + 'oscillator cannot give it.',
+    options: {
+      oscillator: { type: 'square' },
+      envelope: { attack: 0.002, decay: 0.15, sustain: 0.88, release: 0.2 },
+      filter: { type: 'lowpass', Q: 0.1, rolloff: -12 },
+      filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 2915, octaves: 1.2 },
+    } },
+  simpleSawtooth: { label: 'Simple Sawtooth', category: 'Lead', kind: 'tone', synth: 'MonoSynth', dur: 1.2,
+    note: 'Sawtooth through an opening filter: the arcade lead with an envelope the raw '
+      + 'oscillator cannot give it.',
+    options: {
+      oscillator: { type: 'sawtooth' },
+      envelope: { attack: 0.002, decay: 0.15, sustain: 0.88, release: 0.2 },
+      filter: { type: 'lowpass', Q: 0.1, rolloff: -12 },
+      filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 2915, octaves: 1.2 },
+    } },
+  simpleTriangle: { label: 'Simple Triangle', category: 'Lead', kind: 'tone', synth: 'MonoSynth', dur: 1.2,
+    note: 'Triangle wave through an opening filter: the arcade lead with an envelope the raw '
+      + 'oscillator cannot give it.',
+    options: {
+      oscillator: { type: 'triangle' },
+      envelope: { attack: 0.002, decay: 0.15, sustain: 0.88, release: 0.2 },
+      filter: { type: 'lowpass', Q: 0.1, rolloff: -12 },
+      filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 2915, octaves: 1.2 },
+    },
+    trim: 1.2 },
 };
 
 export const VOICES = {};
