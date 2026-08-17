@@ -38,14 +38,23 @@ const A2 = n('A2');
 const row = (midi) => ({ midi, freq: midiFreq(midi) });
 const A2ROW = row(freqMidi(A2));
 
+// `null` first and default: a short click draws a note one snap division long, so the
+// thing you draw is the division you chose to draw it on. The triplet values are here
+// for the times you want a 1/16T note on a 1/16 snap, which is the case the picker is
+// still for.
 assert(JSON.stringify(NOTE_LENGTH_OPTIONS) === JSON.stringify([
+  { value: null, label: 'Snap' },
+  { value: 1 / 3, label: '1/32T' },
   { value: 0.5, label: '1/32' },
+  { value: 2 / 3, label: '1/16T' },
   { value: 1, label: '1/16' },
+  { value: 4 / 3, label: '1/8T' },
   { value: 2, label: '1/8' },
+  { value: 8 / 3, label: '1/4T' },
   { value: 4, label: '1/4' },
   { value: 8, label: '1/2' },
   { value: 16, label: '1' },
-]), 'new piano-roll notes offer 32nd through whole-note lengths, defaulting to 16th');
+]), 'new-note lengths run 1/32T to a whole note, defaulting to the snap division');
 
 // ---- pitch <-> semitone --------------------------------------------------------
 assert(freqMidi(midiFreq(57)) === 57 && freqMidi(A2) === 45,

@@ -81,7 +81,7 @@ prefilled with an adjective-and-noun name no other song is using — `PINK SCOOT
 `HAPPY DOLPHIN` — so a new song is memorable rather than `UNTITLED SONG 3`; clearing
 the field lets the server pick one. The other defaults are 8 bars, Blank, and Auto
 style. BPM starts **empty**, meaning "the tempo this style is written at"; a number
-typed in the 40–220 field still wins.
+typed in the 40–240 field still wins.
 
 The style is a **pack** — [`tools/lib/song-styles.js`](../tools/lib/song-styles.js) —
 and it decides the whole character of the generated song: its tempo, its key and mode,
@@ -312,7 +312,7 @@ loop armed, clicking the timeline *moves the loop* rather than escaping it. Defa
 | --- | --- |
 | **Bar** | bar under the playhead, of the song's total |
 | **Time** | position / length of the song form |
-| **BPM** | **draggable.** The tempo the song is played at, 40–220. **Saved with the song**, on its `arrangement` — the bank keeps the tempo it was written at. Teal while it differs from that; click to go back to it. |
+| **BPM** | **draggable.** The tempo the song is played at, 40–240. **Saved with the song**, on its `arrangement` — the bank keeps the tempo it was written at. Teal while it differs from that; click to go back to it. |
 | **Swing** | **draggable.** How far off its own grid the whole song is played, 50–75%. Saved the same way, on the same `arrangement`. Teal while it is not straight; click to go back to straight. |
 | **CPU** | rough load: the engine's own ~10% plus every active effect's measured cost. Red past 45%. Hover for what is running. |
 

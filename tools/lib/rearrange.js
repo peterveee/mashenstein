@@ -515,10 +515,14 @@ const MAJOR_SCALE = Object.freeze([0, 2, 4, 5, 7, 9, 11]);
 const MINOR_NUMERALS = Object.freeze(['i', 'ii°', 'III', 'iv', 'v', 'VI', 'VII']);
 const MAJOR_NUMERALS = Object.freeze(['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°']);
 
+/** A degree folded into one octave, which is what naming a chord comes down to: a palette
+ *  writes its VI as -2 or as 5, and both are the same chord of the same key. */
+const soundingDegree = (degrees) => (((degrees % 7) + 7) % 7);
+
 /** The roman numeral a degree offset lands on, for labels: -2 in minor is 'VI'. */
 export function harmonyNumeral(degrees, minor = true) {
   const numerals = minor ? MINOR_NUMERALS : MAJOR_NUMERALS;
-  return numerals[((degrees % 7) + 7) % 7];
+  return numerals[soundingDegree(degrees)];
 }
 
 /**
@@ -574,19 +578,26 @@ function applyHarmonyLoop(operations, chords) {
       cursor += span;
       continue;
     }
+    // Generation grabs its walked material from one cell and moves it by the loop, so what
+    // a pass SOUNDS is what it was moved by: `chord` and `harmony` are the same number here.
+    // They part company in `applyWalkChords`, where the move is compensated for material
+    // that was not sitting on the tonic to begin with — see the note there. `chord: 0` is
+    // written out rather than left off: the tonic is an ANSWER, and a slice with no answer
+    // at all is a slice no walk has been over.
+    const walkedPass = (repeats, chord) => (chord
+      ? { ...operation, repeats, harmony: chord, chord: soundingDegree(chord) }
+      : { ...operation, repeats, chord: 0 });
     let run = null;
     for (let pass = 0; pass < operation.repeats; pass++) {
       const chord = chords[Math.floor(cursor / 16) % chords.length] || 0;
       if (run && run.chord === chord) run.repeats++;
       else {
-        if (run) out.push(run.chord ? { ...operation, repeats: run.repeats, harmony: run.chord }
-          : { ...operation, repeats: run.repeats });
+        if (run) out.push(walkedPass(run.repeats, run.chord));
         run = { chord, repeats: 1 };
       }
       cursor += operation.length;
     }
-    if (run) out.push(run.chord ? { ...operation, repeats: run.repeats, harmony: run.chord }
-      : { ...operation, repeats: run.repeats });
+    if (run) out.push(walkedPass(run.repeats, run.chord));
   }
   return out;
 }
@@ -1140,7 +1151,12 @@ function nudgeOffset(offset, length, style, sourceBase, sourceSpan) {
 function operationEqual(a, b) {
   return !!a && !!b && a.from === b.from && a.length === b.length
     && a.repeats === b.repeats && a.transpose === b.transpose
-    && (a.harmony || 0) === (b.harmony || 0) && !!a.mute === !!b.mute
+    && (a.harmony || 0) === (b.harmony || 0)
+    // `?? -1`, not `|| 0`: a slice walked home to the tonic and a slice no walk has been
+    // over are not the same slice, and taking one back out of a walk has to count as a
+    // change even though nothing about how it plays moves.
+    && (a.chord ?? -1) === (b.chord ?? -1)
+    && !!a.mute === !!b.mute
     && (a.fill || null) === (b.fill || null);
 }
 
@@ -1259,6 +1275,9 @@ function appendSectionFill(operations, sectionSteps, ctx) {
   };
   for (const [length, repeats] of shape.cells) {
     for (let repeat = 0; repeat < repeats; repeat++) {
+      // The shift rides along — it is a decision about the part — but not the chord reading:
+      // these cells fetch DIFFERENT material, and what the slice they replace was sitting on
+      // says nothing about what they sit on.
       out.push({ from: chooseSource(length), length, repeats: 1, transpose: source.transpose || 0,
         ...(source.harmony ? { harmony: source.harmony } : {}), fill: shapeName });
     }
@@ -1293,6 +1312,7 @@ function anchoredOperations(anchor, sectionSteps, sourceSteps) {
     const repeats = int(raw?.repeats);
     const transpose = raw?.transpose == null ? 0 : int(raw.transpose);
     const harmony = raw?.harmony == null ? 0 : int(raw.harmony);
+    const chord = raw?.chord == null ? null : int(raw.chord);
     const fill = raw?.fill == null ? null : String(raw.fill);
     const favourite = raw?.favourite === true;
     if (from == null || length == null || repeats == null || transpose == null
@@ -1300,9 +1320,10 @@ function anchoredOperations(anchor, sectionSteps, sourceSteps) {
       || repeats < 1 || repeats > 4 || !REARRANGE_TRANSPOSES.includes(transpose)) return null;
     if (fill && !REARRANGE_FILL_NAMES.includes(fill)) return null;
     if (harmony && Math.abs(harmony) > REARRANGE_HARMONY_RANGE) return null;
+    if (raw?.chord != null && (chord == null || chord < 0 || chord >= 7)) return null;
     total += length * repeats;
     operations.push({ from, length, repeats, transpose,
-      ...(harmony ? { harmony } : {}), ...(fill ? { fill } : {}),
+      ...(harmony ? { harmony } : {}), ...(chord == null ? {} : { chord }), ...(fill ? { fill } : {}),
       ...(favourite ? { favourite: true } : {}) });
   }
   return total === sectionSteps ? operations : null;
@@ -2213,7 +2234,9 @@ export function generateRearrangement(sourceSteps, {
     grid: REARRANGE_GRID,
     // The key rides in the recipe because harmony offsets mean nothing without it —
     // a saved file must replay the same chords on a desk that never ran the analysis.
-    ...(keyed && operations.some((op) => op.harmony) ? { key: keyed } : {}),
+    // Any slice a walk has been over needs it: a bar left at home still says which home,
+    // and the panel cannot name a degree without knowing the scale it is a degree of.
+    ...(keyed && operations.some((op) => op.harmony || op.chord) ? { key: keyed } : {}),
     ...(fills.length ? { fills } : {}),
     form,
     operations,
@@ -2613,12 +2636,17 @@ function trimOperations(operations, target) {
   return remaining === 0 ? out : null;
 }
 
-function resizeFormSection(recipe, sectionIndex, operations, delta) {
+function resizeFormSection(recipe, sectionIndex, operations, delta, chords = null) {
   const ranges = formSectionRanges(recipe);
   const sourceSteps = int(recipe?.source?.steps);
   const form = ranges.map((section, index) => {
     if (index < sectionIndex) return { ...section };
-    if (index === sectionIndex) return { ...section, end: section.end + delta };
+    // A chord line is one entry per BAR of the part it describes, so a part that changes
+    // length changes how many chords it has room for. Left at its old length it was read
+    // clamped, which pinned its last chord over every bar past the end of it.
+    if (index === sectionIndex) {
+      return { ...section, end: section.end + delta, ...(chords ? { chords } : {}) };
+    }
     return { ...section, start: section.start + delta, end: section.end + delta };
   });
   const total = operations.reduce((sum, operation) => sum + operation.length * operation.repeats, 0);
@@ -2804,15 +2832,23 @@ export function transformRearrangementSection(recipe, sectionIndex, action, {
     if (indices.some((index) => ops[index].harmony)) {
       throw new Error('Turn the chord walk off before transposing this section');
     }
-    for (const index of indices) ops[index].transpose = transpose;
+    // As on one slice: a chromatic move takes the material off whatever chord it was read
+    // as sitting on, so the reading does not ride along with it.
+    for (const index of indices) { ops[index].transpose = transpose; delete ops[index].chord; }
     return { recipe: rebuildForm(recipe, ops), changed: indices.length };
   }
+  // A part's chord line is one entry per BAR of it, so an edit that changes how many bars
+  // the part has has to say what the new ones are called.
+  const chordLine = Array.isArray(section.chords) && section.chords.length ? section.chords : null;
   if (action === 'double') {
     const insertAt = indices[indices.length - 1] + 1;
     const copy = indices.map((index) => ({ ...ops[index], harmony: ops[index].harmony || 0 }));
     const expanded = [...ops.slice(0, insertAt), ...copy, ...ops.slice(insertAt)];
     return {
-      recipe: resizeFormSection(recipe, sectionIndex, expanded, section.end - section.start),
+      // The copy is the same slices in the same order, so it walks the same walk again —
+      // and the line that names it is that line again.
+      recipe: resizeFormSection(recipe, sectionIndex, expanded, section.end - section.start,
+        chordLine ? [...chordLine, ...chordLine] : null),
       changed: copy.length,
     };
   }
@@ -2823,7 +2859,8 @@ export function transformRearrangementSection(recipe, sectionIndex, action, {
     if (!kept) throw new Error('This section cannot be halved on its current slice boundaries');
     const reduced = [...ops.slice(0, indices[0]), ...kept, ...ops.slice(indices[indices.length - 1] + 1)];
     return {
-      recipe: resizeFormSection(recipe, sectionIndex, reduced, -(section.end - section.start - half)),
+      recipe: resizeFormSection(recipe, sectionIndex, reduced, -(section.end - section.start - half),
+        chordLine ? chordLine.slice(0, Math.max(1, Math.ceil(half / WALK_BAR_STEPS))) : null),
       changed: 1,
     };
   }
@@ -2906,6 +2943,18 @@ function applyWalkChords(operations, chords, { profile = null, key = null } = {}
     const shift = (((target - sitting) % 7) + 7) % 7;
     if (shift) operation.harmony = shift;
     else delete operation.harmony;
+    // WHAT THE SLICE SOUNDS, WRITTEN ON THE SLICE. `harmony` is the MOVE, and a bar already
+    // sitting on the chord the walk wants moves by nothing at all — so the shift cannot say
+    // what is playing, and the part's stamped line cannot either: that is one entry per bar
+    // of the part it was stamped on, so it goes stale the moment the part is doubled, or one
+    // slice is taken back out of the walk, and a slice playing exactly as written then sat
+    // in the strip labelled `iv`. This is a LABEL and never playback authority — the engine
+    // moves notes by `harmony`, which is untouched here.
+    //
+    // The tonic is written out as `chord: 0` rather than left off, because a walked bar that
+    // lands home is not the same thing as a slice no walk has ever been over, and only the
+    // second of those has nothing to say about what it sounds.
+    operation.chord = soundingDegree(target);
     // Counted on the TARGET, not the shift: a bar already sitting on the chord the walk
     // wants needs no shift and is still a bar of the progression.
     if (target) moved += 1;
@@ -3010,10 +3059,10 @@ export function toggleRearrangeSectionWalk(recipe, sectionIndex, { key = null, p
   // A part counts as walking if it carries shifts OR a stamped chord line — with the source
   // degree compensated a bar can want a chord it is already sitting on, which needs no shift
   // at all, and a part of those would otherwise read as not walking and refuse to turn off.
-  const walking = indices.some((index) => ops[index].harmony)
+  const walking = indices.some((index) => ops[index].harmony || ops[index].chord != null)
     || (Array.isArray(section.chords) && section.chords.some((degree) => degree));
   if (walking) {
-    for (const index of indices) delete ops[index].harmony;
+    for (const index of indices) { delete ops[index].harmony; delete ops[index].chord; }
     const off = rebuildForm(base, ops);
     off.form = off.form.map((item, at) => {
       if (at !== sectionIndex) return item;
@@ -3266,16 +3315,26 @@ export function transformRearrangement(recipe, indices, action, {
     // phrase to do it in. Asked for over one or two bars it holds for the whole run and
     // nothing moves at all, which is not a walk, so a short run steps every bar instead.
     const chords = pacedChords(palette, bars, bars >= 4 ? 'slow' : 'active', 'full');
-    let bar = 0;
+    let step = 0;
     let changed = 0;
     const operations = recipe.operations.map((raw, index) => {
       const operation = { ...raw };
       if (!selected.has(index)) return operation;
-      const harmony = chords[Math.min(chords.length - 1, bar)] || 0;
-      bar += operation.repeats;
+      // The bar a slice is IN, by accumulated DURATION. Advancing by `repeats` counted
+      // passes: a run of half-bar slices then ran through the palette at twice the speed of
+      // the music and pinned its last chord across the rest of the selection — the same
+      // mistake `applyWalkChords` names in its own header, left standing in this path.
+      const harmony = chords[Math.min(chords.length - 1, Math.floor(step / WALK_BAR_STEPS))] || 0;
+      step += operation.length * operation.repeats;
       changed += 1;
-      if (!harmony) { const { harmony: was, ...plain } = operation; void was; return plain; }
-      return { ...operation, harmony, transpose: 0 };
+      // This walk has no source profile to read, so it moves the material by the loop and
+      // what it sounds is what it was moved by — as in generation, `chord` is `harmony`.
+      if (!harmony) {
+        const { harmony: was, ...plain } = operation;
+        void was;
+        return { ...plain, chord: 0 };
+      }
+      return { ...operation, harmony, chord: soundingDegree(harmony), transpose: 0 };
     });
     return {
       recipe: rebuildForm({ ...recipe, seed: Number(seed) >>> 0 }, operations, owners),
@@ -3364,7 +3423,11 @@ export function transformRearrangement(recipe, indices, action, {
       const transpose = int(value);
       if (!REARRANGE_TRANSPOSES.includes(transpose)) throw new Error('Choose a supported transpose amount');
       if (operation.harmony) throw new Error('Turn the chord walk off before transposing this slice');
-      replacement = [{ ...operation, transpose }];
+      // A slice the walk left where it was still carries the chord it was READ as sitting
+      // on, and a chromatic move takes it off that chord — so the label goes with it.
+      const { chord: was, ...plain } = operation;
+      void was;
+      replacement = [{ ...plain, transpose }];
     } else if (action === 'reroll') {
       // REROLL IS THE RANDOM ONE, so it rolls all three of the things a slice is: where it
       // comes from, how its time is cut up, and what pitch it plays. It used to move only
@@ -3378,8 +3441,14 @@ export function transformRearrangement(recipe, indices, action, {
       // the letter it belongs to under a different style each time.
       const sliceStyle = styleForLetter(style,
         recipe.form?.[owners[index]]?.letter || '', recipe.seed || 0);
+      // The sounding chord is read off the MATERIAL, and a reroll fetches different
+      // material — so whatever it was sitting on is not what the new grab sits on, and the
+      // label goes rather than being carried onto a slice it was never about. The shift
+      // survives, because that is a decision about the slice rather than a reading of it.
+      const { chord: read, ...rolled } = operation;
+      void read;
       let next = {
-        ...operation,
+        ...rolled,
         from: alignedRerollFrom(operation, sourceSteps, random, profile, key, {
           style: sliceStyle, chaos: creative.chaos, drive: creative.drive,
         }),
@@ -3457,6 +3526,8 @@ export function transformRearrangement(recipe, indices, action, {
           from: operation.from, length, repeats: 1,
           transpose: operation.transpose || 0,
           ...(operation.harmony ? { harmony: operation.harmony } : {}),
+          // Same material, retriggered — so whatever it was sitting on, these cells sit on.
+          ...(operation.chord == null ? {} : { chord: operation.chord }),
           fill: 'machinegun',
         }));
       }
@@ -3477,15 +3548,23 @@ export function transformRearrangement(recipe, indices, action, {
       const degree = int(value) || 0;
       if (degree && !recipe.key) throw new Error('Choose a key before setting a slice chord');
       if (Math.abs(degree) > REARRANGE_HARMONY_RANGE) throw new Error('That chord is out of range');
-      if (degree) replacement = [{ ...operation, harmony: degree, transpose: 0 }];
-      else { const { harmony, ...plain } = operation; void harmony; replacement = [plain]; }
-    } else if (action === 'walk-off' && operation.harmony) {
+      // Set by hand, with nothing read about the material: the honest label for a slice
+      // moved this way is the move itself, so any reading a walk left on it comes off.
+      const { chord: read, harmony: was, ...plain } = operation;
+      void read; void was;
+      replacement = degree ? [{ ...plain, harmony: degree, transpose: 0 }] : [plain];
+    } else if (action === 'walk-off' && (operation.harmony || operation.chord != null)) {
       // Dropping a walk is per-SLICE, unlike turning one on. A walk is a progression over
       // a section's bars, so switching it on is a decision about the whole part — but the
       // bars you want back as written are whichever ones you picked, and making you undo
       // the part's whole walk to free two of them is not the same edit.
-      const { harmony, ...plain } = operation;
-      void harmony;
+      //
+      // A slice the walk found ALREADY on the chord it wanted carries no shift, only the
+      // reading — and it was unreachable here while this asked for a shift, so the one kind
+      // of walked slice that looks like it is doing nothing was also the one kind that
+      // could not be taken out of the walk.
+      const { harmony, chord, ...plain } = operation;
+      void harmony; void chord;
       replacement = [plain];
     }
     if (replacement.length !== 1 || !operationEqual(replacement[0], operation)) changed++;
@@ -3549,8 +3628,12 @@ export function validateRearrangement(value, sourceSteps, { songId = null } = {}
     const repeats = int(raw?.repeats);
     const transpose = raw?.transpose == null ? 0 : int(raw.transpose);
     const harmony = raw?.harmony == null ? 0 : int(raw.harmony);
+    // The absolute degree the slice SOUNDS, where a walk was able to work it out; absent on
+    // a slice no walk has been over, and 0 on one walked home to the tonic. A label for the
+    // panel, not playback: the engine moves notes by `harmony`. See applyWalkChords.
+    const chord = raw?.chord == null ? null : int(raw.chord);
     if (from == null || length == null || repeats == null || transpose == null
-      || harmony == null) {
+      || harmony == null || (raw?.chord != null && chord == null)) {
       throw new Error(`Operation ${index + 1} has a non-integer field`);
     }
     const fill = raw?.fill == null ? null : String(raw.fill);
@@ -3575,10 +3658,17 @@ export function validateRearrangement(value, sourceSteps, { songId = null } = {}
     if (harmony && (!key || Math.abs(harmony) > REARRANGE_HARMONY_RANGE)) {
       throw new Error(`Operation ${index + 1} has a chord offset ${key ? 'out of range' : 'but the recipe names no key'}`);
     }
+    // A NAMED CHORD NEEDS A KEY, and the tonic is the one that does not: `chord: 0` is what
+    // a walk writes on a bar it left at home, and a walk whose every bar lands there moves
+    // nothing, so the recipe it comes out of carries no key to name them in.
+    if (chord != null && (chord < 0 || chord >= 7 || (chord && !key))) {
+      throw new Error(`Operation ${index + 1} names a chord ${key ? 'outside the key' : 'but the recipe names no key'}`);
+    }
     total += length * repeats;
     return {
       from, length, repeats, transpose,
       ...(harmony ? { harmony } : {}),
+      ...(chord == null ? {} : { chord }),
       ...(mute ? { mute: true } : {}),
       ...(fill ? { fill } : {}),
       ...(favourite ? { favourite: true } : {}),

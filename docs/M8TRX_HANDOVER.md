@@ -556,9 +556,18 @@ The browser-safe deterministic implementation is tools/lib/rearrange.js.
   output length; old same-length recipes omit output.
 - Operations retain from, length, repeats, and transpose, with optional harmony and
   fill fields.
+- A walked operation also carries `chord`: the absolute degree of the key it SOUNDS,
+  0–6, written out as 0 on a bar the walk left at home. `harmony` is the MOVE, and with
+  the source degree compensated a bar already sitting on the chord the walk wants moves
+  by nothing — so the shift alone cannot say what is playing, and neither can the part's
+  chord line, which is one entry per bar of the part it was stamped on and goes stale
+  when the part is doubled or a slice is taken back out of the walk. `chord` is a LABEL:
+  the engine transposes by `harmony` and never reads it. Absent means no walk has been
+  over the slice; a chord needs the recipe's key, except the tonic, which does not.
 - form entries carry contiguous start/end output ranges, name/role, optional letter,
-  and optional chord palette. Form source values are display hints; stale hints are
-  discarded rather than used as playback authority.
+  and optional chord palette — one entry per bar of the part, kept that way through
+  double and halve. Form source values are display hints; stale hints are discarded
+  rather than used as playback authority.
 - Optional key, fills, drums, and output fields are validated.
 
 ### Generation

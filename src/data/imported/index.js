@@ -26,6 +26,7 @@ import * as AUDITION_TECHNO from './audition-techno.js';
 import { BABY_PORTABLE_ROCK_4 } from './baby-portable-rock-4.js';
 import * as BARBER_2 from './barber-2.js';
 import * as BARBER_3 from './barber-3.js';
+import * as BARBER_4 from './barber-4.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE_2 from './barber-of-seville-ouverture-2.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE from './barber-of-seville-ouverture.js';
 import * as BARBER_OF_SEVILLE from './barber-of-seville.js';
@@ -172,6 +173,7 @@ export const IMPORTED_BY_ID = {
   "baby-portable-rock-4": { bank: BABY_PORTABLE_ROCK_4, title: "BABY PORTABLE ROCK 4", group: "imported", writable: false },
   "barber-2": { bank: BARBER_2.bank, title: BARBER_2.title, group: "imported", writable: true },
   "barber-3": { bank: BARBER_3.bank, title: BARBER_3.title, group: "imported", writable: true },
+  "barber-4": { bank: BARBER_4.bank, title: BARBER_4.title, group: "imported", writable: true },
   "barber-of-seville-ouverture-2": { bank: BARBER_OF_SEVILLE_OUVERTURE_2.bank, title: BARBER_OF_SEVILLE_OUVERTURE_2.title, group: "copy", writable: true },
   "barber-of-seville-ouverture": { bank: BARBER_OF_SEVILLE_OUVERTURE.bank, title: BARBER_OF_SEVILLE_OUVERTURE.title, group: "imported", writable: true },
   "barber-of-seville": { bank: BARBER_OF_SEVILLE.bank, title: BARBER_OF_SEVILLE.title, group: "imported", writable: true },

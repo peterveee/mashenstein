@@ -558,6 +558,7 @@
      the dials and Go are how a panel with nothing in it stops being one. */
   #rearrangepanel.norecipe #reinspector,
   #rearrangepanel.norecipe #redrumsrow,
+  #rearrangepanel.norecipe #redrumskit,
   #rearrangepanel.norecipe #regrab,
   #rearrangepanel.norecipe #resaveversion,
   #rearrangepanel.norecipe #resave,
@@ -622,6 +623,15 @@
     width: 100%; font-size: 11.5px; padding: 3px 6px; }
   #rearrangepanel .reband .rechordrow > output { grid-column: 1; grid-row: 3; min-width: 0;
     text-align: left; }
+  /* THE MISSING-KIT OFFER. Inherits its whole build from .recontrol.rechordrow, so it lines
+     up with M8TRX drums by BEING the same control rather than by matching its measurements —
+     the two cannot come out of step under a later edit to the row.
+     Nothing here is a colour on the words. The row is only ever on screen when there is
+     something to fix, so its being there is the whole signal; a --hot wash under a label
+     would be saying it twice, and on the light themes it is the reading that suffers. The
+     border alone marks it, at the same weight the desk's other invalid fields wear. */
+  #rearrangepanel #redrumskit[hidden] { display: none; }
+  #rearrangepanel #redrumskit > select { border-color: var(--hot-line); }
   #rearrangepanel .reband button { min-height: 28px; padding: 4px 9px; font-size: 11.5px;
     white-space: nowrap; }
   /* The press that spends the settings above it. Filled rather than outlined, because it is
@@ -6767,6 +6777,29 @@
       <div id="redrumsrow" class="recontrol rechordrow">
         <label for="redrums">M8TRX drums</label>
         <select id="redrums" title="What the drums do while M8TRX plays" aria-label="M8TRX drums"></select>
+      </div>
+      <!-- THE SETTING THAT CANNOT SOUND, answered by a PEER of the menu that took it.
+           Every generated kit writes into role-keyed lanes — kick, snare, clap, hats — so a
+           song with no percussion at all takes the setting in silence and plays nothing.
+           That is the one failure on this row you cannot hear: the menu says Half-time, the
+           status line says Half-time, and the bar goes by empty. So the fix is offered where
+           the choice was made, rather than three panels away in the pattern editor.
+           A SECOND SELECT AND NOT A WARNING CARD. Same .rechordrow, same label-above-select
+           build, same height as the menu it stands beside — the two read as one question in
+           two halves, what the drums play and what they ARE, which is what they are. An alert
+           box in a row of controls reads as something that has gone wrong with the desk; a
+           control that is only there when it has something to fix reads as the desk offering
+           the answer. It also costs the band no height, so the timeline below never steps
+           down under a pointer already on its way to a slice.
+           Only ever on screen for the generated kits. Chopped drums and Song groove replay
+           what the song wrote, so on a drumless song they are silent by agreement rather than
+           by accident, and there is nothing to offer.
+           The list is KITS verbatim — the same names in the same order as the pattern
+           editor's Kit button, over the same one-undo applyKit. Two ways in to one control,
+           not two controls. -->
+      <div id="redrumskit" class="recontrol rechordrow" hidden>
+        <label for="redrumkit">Drum kit</label>
+        <select id="redrumkit" aria-label="Drum kit"></select>
       </div>
       <!-- M8TRX has no Undo button of its own. While a recipe is live the DESK's Undo is
            M8TRX's — it relabels itself "Undo M8TRX", the same borrowing the loop button

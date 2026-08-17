@@ -31,6 +31,7 @@ import { LANES } from '../src/engine/lanes.js';
 import { baseLane } from '../src/data/voices.js';
 import { DRUM_LANES } from './lib/arrangement-edit.js';
 import { createBarGrid } from './mixer-bar-grid.js';
+import { resolutionOf } from '../src/data/arrangements.js';
 
 // Where they live now. Re-exported because they were always general — they are about
 // bars and patterns, not about drums — and tests/arrangement.js imports them here.
@@ -303,7 +304,10 @@ export function createStepSeq({
     // the panel's header row survives a fold and these must not, and a column of track
     // names has no blank half to hold them the way the roll's keyboard does.
     docked, wholeSong, scopeToggle, headerHost, selectedBars, onSelectBars,
-    stepsPerBar: (d) => (d?.resolution === 32 ? 32 : 16),
+    // Follows the song's grid. The pattern editor can RENDER any of them — the shared
+    // grid engine is generic — but has no picker of its own yet, so it cannot promote a
+    // song onto one. Drawing a triplet still starts in the roll; see the plan.
+    stepsPerBar: (d) => resolutionOf(null, d),
     actionRange: applyBars ? () => applyBars(figureScope) : null,
     // Rows are tracks and there are a handful, so the vertical window is never the
     // expensive one. The horizontal window is: `colWindow` needs `virtual` before it

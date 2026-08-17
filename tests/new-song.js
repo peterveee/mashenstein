@@ -52,10 +52,10 @@ try {
     && SONG_ADJECTIVES.includes(defaults.title.split(' ')[0])
     && SONG_NOUNS.includes(defaults.title.split(' ')[1]),
   'an untitled New Song is named from the adjective and noun vocabularies, never numbered');
-  assert(NEW_SONG_LIMITS.minBpm === 40 && NEW_SONG_LIMITS.maxBpm === 220
+  assert(NEW_SONG_LIMITS.minBpm === 40 && NEW_SONG_LIMITS.maxBpm === 240
     && NEW_SONG_LIMITS.minBars === 1 && NEW_SONG_LIMITS.maxBars === 64,
-  'New Song limits are 40–220 BPM and 1–64 bars');
-  for (const bad of [{ bpm: 39 }, { bpm: 221 }, { bars: 0 }, { bars: 65 }, { bars: 1.5 }, { template: 'nope' }]) {
+  'New Song limits are 40–240 BPM and 1–64 bars');
+  for (const bad of [{ bpm: 39 }, { bpm: 241 }, { bars: 0 }, { bars: 65 }, { bars: 1.5 }, { template: 'nope' }]) {
     let threw = false;
     try { validateNewSong(bad); } catch { threw = true; }
     assert(threw, `invalid New Song input is rejected (${JSON.stringify(bad)})`);

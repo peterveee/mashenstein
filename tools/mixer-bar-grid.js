@@ -27,7 +27,9 @@
 // A PENDING EDIT IS ONE GESTURE. A paint-drag across twelve steps is one undo step and
 // one re-render: cells are painted straight onto the DOM as the pointer moves, and the
 // draft is built once, on release.
-import { resolveSection } from '../src/data/arrangements.js';
+import {
+  resolveSection, RESOLUTIONS, LEGACY_RESOLUTION, promoteResolution, resolutionOf,
+} from '../src/data/arrangements.js';
 import { lenKey } from '../src/engine/lanes.js';
 import { writeBarNotes, writeBarNotesShared, setLanesOff } from './lib/arrangement-edit.js';
 // A whole-song roll is tens of thousands of nodes built in one task — measured at
@@ -81,9 +83,30 @@ export function sharedPatternDescription(plan, from, to) {
 }
 
 /** The integer grid column under the audible (fractional) transport position. */
+/**
+ * What a length in sixteenths is called, for a readout.
+ *
+ * Exact matches only, and a plain count of sixteenths otherwise: a note dragged to an
+ * arbitrary length has no name, and inventing the nearest one would tell the reader it
+ * is on a grid it is not on. Triplet values are thirds, so they are compared with a
+ * tolerance rather than by equality.
+ */
+const LENGTH_NAMES = [
+  [1 / 3, '1/32T'], [0.25, '1/64'], [0.5, '1/32'], [2 / 3, '1/16T'], [1, '1/16'],
+  [4 / 3, '1/8T'], [2, '1/8'], [8 / 3, '1/4T'], [4, '1/4'], [16 / 3, '1/2T'],
+  [8, '1/2'], [16, '1 bar'],
+];
+
+export function noteLengthName(sixteenths) {
+  for (const [value, name] of LENGTH_NAMES) {
+    if (Math.abs(sixteenths - value) < 1e-6) return name;
+  }
+  return `${Number(sixteenths.toFixed(3))} sixteenths`;
+}
+
 export function playheadCell(step, stepsPerBar = 16) {
   if (!Number.isFinite(step) || step < 0) return null;
-  const slots = stepsPerBar === 32 ? 32 : 16;
+  const slots = RESOLUTIONS.includes(stepsPerBar) ? stepsPerBar : 16;
   const whole = Math.floor(step * slots / 16);
   return { bar: Math.floor(whole / slots), step: whole % slots };
 }
@@ -651,9 +674,14 @@ export function createBarGrid({
     const resolved = (bar.sec != null ? resolveSection(view, bar.sec) : null) || {};
     const arr = resolved[key] ?? view[key];
     if (!Array.isArray(arr)) return new Array(slots).fill(null);
-    if (slots === 32 && arr.length < 64) {
-      const at = bar.half * 16;
-      return Array.from({ length: slots }, (_, i) => (i % 2 ? null : arr[at + i / 2] ?? null));
+    // A lane written coarser than the grid occupies every stride'th slot of it. Same
+    // fold, same guards, as `sequenceValue` in the engine — these two must agree or the
+    // grid draws a note the scheduler will not play.
+    const laneResolution = arr.length / 2;
+    const stride = slots / laneResolution;
+    if (arr.length < slots * 2 && Number.isInteger(stride) && RESOLUTIONS.includes(laneResolution)) {
+      const at = bar.half * laneResolution;
+      return Array.from({ length: slots }, (_, i) => (i % stride ? null : arr[at + i / stride] ?? null));
     }
     const at = bar.half * slots;
     return Array.from({ length: slots }, (_, i) => arr[at + i] ?? null);
@@ -795,8 +823,12 @@ export function createBarGrid({
     const cleared = Array.from({ length: slots }, () => null);
     const a = scope();
     for (const [lane, steps] of Object.entries(byLane)) {
-      const figure = slots === 32 && steps.length === 16
-        ? Array.from({ length: 32 }, (_, i) => (i % 2 ? false : steps[i / 2]))
+      // A house figure is written as sixteen sixteenths. On a finer grid it lands on
+      // every stride'th slot with rests between, rather than being squashed into the
+      // first sixteen slots of the bar.
+      const figureStride = steps.length && slots % steps.length === 0 ? slots / steps.length : 1;
+      const figure = figureStride > 1
+        ? Array.from({ length: slots }, (_, i) => (i % figureStride ? false : steps[i / figureStride]))
         : steps.slice(0, slots);
       for (let b = a.from; b <= a.to; b++) {
         // ADD keeps what the bar already plays and puts the figure on top of it, so
@@ -1106,12 +1138,29 @@ export function createBarGrid({
    * `beat` identifies every fourth step; alternating groups and `gap` carry the quiet
    * emphasis without drawing a rule through every row. `barstart` separates the bars.
    */
+  /**
+   * One slot's place in the count, in words.
+   *
+   * "sixteenth 3" and "thirty-second 5" are kept for the two grids that have always had
+   * them, so every existing readout is unchanged. A triplet grid has no comfortable name
+   * for one slot — a 48-step bar's slot is a third of a sixteenth — so it counts instead,
+   * which is what a musician reading a triplet does anyway.
+   */
+  const slotLabel = (i) => {
+    const per = Math.max(1, slots / 4);
+    const beat = Math.floor(i / per) + 1;
+    const word = slots === 16 ? 'sixteenth' : slots === 32 ? 'thirty-second' : null;
+    return word
+      ? `beat ${beat}, ${word} ${i % per + 1}`
+      : `beat ${beat}, step ${i % per + 1} of ${per}`;
+  };
+
   const stepClasses = (b, i) => {
     const beat = slots / 4;
     return (i % beat === 0 ? ' beat' : '')
     + (Math.floor(i / beat) % 2 ? ' group-alt' : '')
     + (i % beat === 0 && i ? ' gap' : '')
-    + (slots === 32 && i % 2 ? ' fine' : '')
+    + (i % (slots / 16) ? ' fine' : '')
     + (i === 0 ? ' downbeat' : '')
     + (i === 0 && b !== range.from ? ' barstart' : '');
   };
@@ -1125,8 +1174,14 @@ export function createBarGrid({
     if (!bank()) return;
     const d = draft();
     if (!d?.plan) return;
+    // The grid draws a column per SLOT of whatever grid the song is stored on. The
+    // panel may ask for finer than the song currently is — that is the snap picker
+    // reaching for a grid the song is about to be promoted onto — so take the finer of
+    // the two, by the same LCM rule the engine promotes by.
     const requestedSlots = Number(typeof stepsPerBar === 'function' ? stepsPerBar(d) : stepsPerBar);
-    slots = requestedSlots === 32 || d.resolution === 32 ? 32 : 16;
+    slots = promoteResolution(
+      RESOLUTIONS.includes(requestedSlots) ? requestedSlots : LEGACY_RESOLUTION,
+      resolutionOf(d));
     barViews = new Map();
     plan = d.plan;
     if (wholeSong) {
@@ -1625,24 +1680,15 @@ export function createBarGrid({
         cell.dataset.row = row.key;
         cell.setAttribute('aria-pressed', f.on ? 'true' : 'false');
         cell.setAttribute('aria-label',
-          `${row.label}, bar ${f.b + 1}, beat ${Math.floor(f.i / (slots / 4)) + 1}, `
-          + `${slots === 32 ? 'thirty-second' : 'sixteenth'} ${f.i % (slots / 4) + 1}`);
+          `${row.label}, bar ${f.b + 1}, ${slotLabel(f.i)}`);
         if (f.on) {
           const span = drawnSpan(field, at, cellSpan(row, f.value, f.len, f.b, f.i));
           if (Math.abs(span - 1) > 1e-9) cell.style.setProperty('--len', String(span));
           if (resizable(row)) cell.classList.add('sizeable');
           const musicalLength = span * slotUnit();
-          const lengthText = Math.abs(musicalLength - 0.25) < 1e-6 ? '1/64'
-            : Math.abs(musicalLength - 0.5) < 1e-6 ? '1/32'
-              : Math.abs(musicalLength - 1) < 1e-6 ? '1/16'
-                : Math.abs(musicalLength - 2) < 1e-6 ? '1/8'
-                  : Math.abs(musicalLength - 4) < 1e-6 ? '1/4'
-                    : Math.abs(musicalLength - 8) < 1e-6 ? '1/2'
-                      : Math.abs(musicalLength - 16) < 1e-6 ? '1 bar'
-                        : `${Number(musicalLength.toFixed(3))} sixteenths`;
+          const lengthText = noteLengthName(musicalLength);
           cell.dataset.tip = row.label;
-          cell.dataset.tipsays = `Bar ${f.b + 1}, beat ${Math.floor(f.i / (slots / 4)) + 1}, `
-            + `${slots === 32 ? 'thirty-second' : 'sixteenth'} ${f.i % (slots / 4) + 1} · `
+          cell.dataset.tipsays = `Bar ${f.b + 1}, ${slotLabel(f.i)} · `
             + `Length ${lengthText}`;
           // At taller pitch zooms a one-step note is wide enough for the name. Short
           // black-key rows stay clean until their measured height can carry readable
@@ -2594,6 +2640,30 @@ export function createBarGrid({
           const b = Math.floor(g / slots); const step = g % slots;
           if (setCell(nt.row, b, step, true, piece)) changed++;
         }
+      }
+    } else if (kind === 'quantise') {
+      // Note STARTS onto the current snap. `quantiseLengths` is the other half of this
+      // and moves nothing — a note can be exactly a sixteenth long and still begin
+      // between two of them.
+      //
+      // Cleared before any are written, and that ordering is the whole of it: two notes
+      // can snap onto each other's old slots, and writing as we go would have the second
+      // move land on a cell the first had not vacated yet — one note eaten per collision,
+      // silently. A note that snaps onto a slot another note KEEPS still merges, which is
+      // what quantising means.
+      const size = snapSize();
+      const moves = [];
+      for (const nt of notes) {
+        const at = globalStep(nt.bar, nt.step);
+        const to = Math.max(0, Math.min(plan.length * slots - 1,
+          Math.round(at / size) * size));
+        if (to !== at) moves.push({ nt, to });
+      }
+      for (const { nt } of moves) setCell(nt.row, nt.bar, nt.step, false);
+      for (const { nt, to } of moves) {
+        const b = Math.floor(to / slots);
+        const step = to % slots;
+        if (b < plan.length && setCell(nt.row, b, step, true, nt.len)) changed++;
       }
     } else if (kind === 'reverse' || kind === 'invert') {
       const ordered = [...notes].sort((a, b) => globalStep(a.bar, a.step) - globalStep(b.bar, b.step)

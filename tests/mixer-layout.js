@@ -507,9 +507,10 @@ assert(/class="rebody"/.test(shell)
     .test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
   && /seg\.ondblclick/.test(entry)
   // Turning a walk ON is a decision about the whole part; taking it OFF is per-slice,
-  // so the bars you want back as written are whichever ones you picked.
+  // so the bars you want back as written are whichever ones you picked — including a bar
+  // the walk found ALREADY on the chord it wanted, which carries a reading and no shift.
   && /transformSelectedRearrange\('walk-off', 'Chord walk off'\)/.test(entry)
-  && /action === 'walk-off' && operation\.harmony/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
+  && /action === 'walk-off' && \(operation\.harmony \|\| operation\.chord != null\)/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
   && /action === 'harmony'/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
   && /action === 'join'/.test(readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8'))
   // The generator keeps its musical shortlist; the person gets the whole octave.
@@ -1475,6 +1476,7 @@ assert(/const NOTE_RENDER_JOBS = 1;/.test(voicesSrc)
   'offline cache preparation is single-filed and paused during transport playback');
 assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
   && /const NOTE_CACHE_PREPARE_BUDGET_MS = 1800/.test(entry)
+  && /const deadline = performance\.now\(\) \+ budget;/.test(entry)
   && /async function playFromBeginning\(\)/.test(entry)
   && /Audio\.prepareNoteCache\?\.\(engineBank\(\), range/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)[\s\S]{0,100}?if \(playing\) setPlaying\(false\)/.test(entry)
@@ -1482,6 +1484,34 @@ assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
   && /if \(held && !health\.rendering\) break;/.test(entry)
   && /\$\('playstart'\)\.onclick = playFromBeginning/.test(entry),
   'Start from beginning prepares queued notes for a bounded time and starts between cache jobs');
+// The two halves of the backlog fix. `queued` is the live queue and the lifetime
+// counter is named apart from it, and — the part that keeps it fixed — the stats are
+// spread FIRST in both health builders, so a counter can never overwrite a live
+// reading again. Without this the pre-roll's drained-yet? test can never fire.
+assert(/hits: 0, misses: 0, queuedTotal: 0, started: 0/.test(voicesSrc)
+  && /state\.stats\.queuedTotal\+\+/.test(voicesSrc)
+  && !/stats\.queued\+\+/.test(voicesSrc)
+  && /\.\.\.state\.stats,[\s\S]{0,200}?queued: state\.queue\.length/.test(voicesSrc)
+  && /\.\.\.state\.stats,[\s\S]{0,200}?queued: state\.queue\.length/.test(audio),
+  'note cache health reports the live backlog, unshadowed by any lifetime counter');
+assert(/const NOTE_CACHE_PREPARE_CEILING_MS = 6000/.test(entry)
+  && /const NOTE_CACHE_PREPARE_PER_NOTE_MS = \d+/.test(entry)
+  && /const prepareBudgetFor = \(backlog\) => Math\.min\(NOTE_CACHE_PREPARE_CEILING_MS/.test(entry)
+  && /const budget = prepareBudgetFor\(initial\.queued\)/.test(entry)
+  && /if \(!initial\?\.enabled \|\| \(!initial\.queued && !initial\.rendering\)\)/.test(entry),
+  'the pre-roll scales its wait with the real backlog, caps it, and skips it when warm');
+// Play is a demand for sound. The recovery ladder latches its give-up for the life of
+// the page, so without this a single bad overload leaves the session silent through
+// every later press — and the revive has to run BEFORE setBank, and must not start a
+// rebuild of its own beside it.
+assert(/function reviveAudioForPlay\(\)/.test(entry)
+  && /if \(health\.recovering\) return;/.test(entry)
+  && /health\.freshRecoveries = 0;/.test(entry)
+  && /if \(Audio\.ctx && Audio\.ctx\.state !== 'running'\) Audio\.resumeContext\?\.\(\);/.test(entry)
+  && /if \(rebuildsSpent\) health\.deadRuns = DEAD_TIER_2;/.test(entry)
+  && !/reviveAudioForPlay[\s\S]{0,1200}?rebuildRealtimeContext/.test(entry)
+  && /reviveAudioForPlay\(\);[\s\S]{0,200}?Audio\.setBank\(track\.bank/.test(entry),
+  'Play clears the watchdog give-up, resumes the context, and arms the ladder before the bank goes in');
 assert(/prepareNoteCache\(bank, \{ startStep = 0, endStep = null \} = \{\}\)/.test(audio)
   && /for \(let t = Math\.floor\(from \/ tick\); t \* tick < to; t\+\+\)/.test(audio)
   && /rack\.prepareNoteCache\(voice\.id, freq, duration\(\)/.test(audio)
@@ -2991,6 +3021,76 @@ assert(applyKitFn.match(/editMix\(/g)?.length === 1
   && /applyKit: \(name, voices\) => applyKit\(name, voices\)/.test(entry)
   && /export const KITS = \[/.test(seq),
   'a whole kit of sounds is one mix edit and one undo step, and never touches a step');
+// THE ONE SETTING ON THAT ROW THAT CAN FAIL WITHOUT A SOUND. A generated kit writes its hits
+// into role-keyed lanes — kick, snare, clap, hats — so on a song with no percussion at all it
+// plays nothing while the menu, the status line and the timeline all report success. The fix
+// is offered as a PEER of the menu that took the setting: the same .rechordrow build, holding
+// the pattern editor's own Kit list rather than a second one that could drift from it.
+const kitOfferFn = /function syncRearrangeKitOffer\(mode, [\s\S]*?\n\}/.exec(entry)?.[0] || '';
+assert(/<div id="redrumskit" class="recontrol rechordrow" hidden>/.test(shell)
+  && /<label for="redrumkit">Drum kit<\/label>/.test(shell)
+  && /<select id="redrumkit" aria-label="Drum kit"><\/select>/.test(shell)
+  && /#rearrangepanel\.norecipe #redrumskit,/.test(shell)
+  // EVERY mode, not just the generated ones. On a song with no percussion channels the whole
+  // menu is a dead letter — the kits have no lanes to write to and the two that replay the
+  // song have nothing to replay — so the row is up whenever the song has none.
+  && /const wanted = !!rearrangeRecipe && noDrums;/.test(kitOfferFn)
+  && /noDrums = !songKitLanes\(\)\.length/.test(kitOfferFn)
+  // KITS verbatim, and a disabled resting option that is not one of them — picking a kit
+  // takes the row off screen, so a value left selected would be showing on the NEXT drumless
+  // song as though it had already been applied.
+  && /for \(const \[label\] of KITS\)/.test(kitOfferFn)
+  && /none\.disabled = true;/.test(kitOfferFn)
+  && /select\.value = '';/.test(kitOfferFn)
+  // BOTH exits of the drum sync. The Auto path resolves its kit and returns early, and an
+  // offer asked only at the bottom would never be asked for the setting Drive picks.
+  && /syncRearrangeKitOffer\(mode, noDrums\);\s*\n\s*return;\s*\n\s*\}/.test(entry)
+  && /select\.title = REARRANGE_DRUM_TIPS\[mode\][^\n]*\n\s*syncRearrangeKitOffer\(mode, noDrums\);/.test(entry)
+  && /import \{ createStepSeq, KITS \} from '\.\/mixer-step-seq\.js'/.test(entry)
+  && /\$\('redrumkit'\)\.onchange[\s\S]*?KITS\.find\(\(\[label\]\) => label === \$\('redrumkit'\)\.value\)/.test(entry)
+  && /\$\('redrumkit'\)\.onchange[\s\S]*?applyKit\(kit\[0\], kit\[1\]\)/.test(entry),
+  'a song with no drum channels puts a Drum kit menu beside the one that took the setting,'
+  + ' holding the pattern editor\'s own kits');
+// AND THE TWO A KIT CANNOT RESCUE ARE CLOSED, not left in the list doing nothing. Chopped
+// drums and Song groove replay what the song WROTE, so a song that wrote no drums leaves them
+// with no source — and unlike the generated kits, adding a kit does not fix it: a kit is
+// sounds, so they come back with channels and still no steps. The list marks them instead.
+// Derived as the complement of the generated kits, so a kit added later cannot fall into a
+// second hand-kept list and go missing. Auto stays open — it is a setting for the next Go and
+// Drive can move before then.
+const drumControlFn = /function syncRearrangeDrumControl\(\)[\s\S]*?\n\}/.exec(entry)?.[0] || '';
+assert(/const noDrums = !songKitLanes\(\)\.length;/.test(drumControlFn)
+  && /if \(option\.value === 'auto' \|\| REARRANGE_GENERATED_DRUMS\.includes\(option\.value\)\) continue;/.test(drumControlFn)
+  && /option\.disabled = noDrums;/.test(drumControlFn)
+  && /noDrums \? ' — none in song' : ''/.test(drumControlFn)
+  // Relabelled on every sync, not in the build-once block, or the first song the panel opened
+  // on would decide the list for every song after it.
+  && drumControlFn.indexOf('const noDrums') > drumControlFn.indexOf('if (!select.options.length)')
+  && /syncRearrangeKitOffer\(mode, noDrums\)/.test(drumControlFn),
+  'on a song with no drums the two modes that replay what it wrote are closed and say so,'
+  + ' and Auto is left open');
+// A SELECT AND NOT THE DESK'S POPUP MENU, and the z-indexes are the reason: #ctxmenu is below
+// this panel, so a menu opened from it would open behind the thing that asked for it. That is
+// what #reslicemenu's own layer exists to get around, and a native select needs neither.
+assert(/#ctxmenu \{ position: fixed; z-index: 30;/.test(shell)
+  && /#rearrangepanel \{ position: fixed[\s\S]{0,200}?z-index: 34;/.test(shell)
+  && /#reslicemenu \{ position: fixed; z-index: 37;/.test(shell)
+  && !/redrumskitadd/.test(entry) && !/redrumskitadd/.test(shell),
+  'the offer\'s list is a select, because a desk menu opened from this panel opens behind it');
+// The offer reads the LANE LIST, so it is re-asked where the lane list is reported changed —
+// the choke point the note editors already sit in, not the kit menu's own handler. Anything
+// that adds or removes drums clears it: the offer itself, the arrangement's +, a delete, an
+// undo stepping back over any of them.
+assert(/function rebuildForShape\(\)[\s\S]*?kitRoll\.refresh\(\);[\s\S]*?syncRearrangeDrumControl\(\);[\s\S]*?rebank\(\);/.test(entry)
+  && !/applyKit\(kit\[0\], kit\[1\]\);\s*\n\s*syncRearrangeDrumControl/.test(entry),
+  'the missing-kit offer is cleared where the lane list changes, not at one call site');
+// ONE READER behind the offer and the keyboard's pads. They ask the same question — what
+// drums does this song have — and a row of pads under a panel saying there are none would be
+// one of them lying.
+assert(/const oskKitLanes = songKitLanes;/.test(entry)
+  && /function songKitLanes\(\) \{/.test(entry)
+  && (entry.match(/deskLanes\(bank, 1\)\.filter\(\(l\) => PERCUSSION_LANES\.includes\(baseLane\(l\.key\)\)\)/g) || []).length === 1,
+  'the pads and the missing-kit offer read the song\'s drums through one function');
 assert(/kitRoll\.songChanged\(\)/.test(entry)
   && /function paintSelectionEditors\(\)[\s\S]*?kitRoll\.refresh\(\)/.test(entry)
   && /pianoRoll\.armFollow\?\.\(\);\s*\n\s*kitRoll\.armFollow\?\.\(\);/.test(entry)
@@ -3207,9 +3307,9 @@ assert(/if \(ruler\) \{[\s\S]*?ruler\.className = 'ssqruler'[\s\S]*?surface\.app
   && /customPicker\(\{[\s\S]*?label: 'Piano-roll quantisation'/.test(piano)
   && /customPicker\(\{[\s\S]*?idPrefix: `rollchord-\$\{kind\}`/.test(piano)
   && !/document\.createElement\('select'\)/.test(piano)
-  && /export const NOTE_LENGTH_OPTIONS = \[[\s\S]*?\{ value: 0\.5, label: '1\/32' \},[\s\S]*?\{ value: 1, label: '1\/16' \},[\s\S]*?\{ value: 2, label: '1\/8' \},[\s\S]*?\{ value: 16, label: '1' \},/.test(piano)
-  && /let noteAddLength = 1/.test(piano)
-  && /addLength: \(\) => \(rollResizable\(lane\(\)\) \? noteAddLength : null\)/.test(piano)
+  && /export const NOTE_LENGTH_OPTIONS = \[[\s\S]*?\{ value: null, label: 'Snap' \},[\s\S]*?\{ value: 1, label: '1\/16' \},[\s\S]*?\{ value: 2, label: '1\/8' \},[\s\S]*?\{ value: 16, label: '1' \},/.test(piano)
+  && /let noteAddLength = null/.test(piano)
+  && /addLength: \(\) => \(rollResizable\(lane\(\)\) \? \(noteAddLength \?\? quantise\) : null\)/.test(piano)
   && /const drawn = paint && !isOn\(row, value\) \? addLength\(row\) \/ slotUnit\(\) : null/.test(barGrid)
   && /showLen\(cell, paint \? \(cellSpan\(row, pair\.notes\[i\] \?\? null, pair\.lengths\[i\] \?\? null, b, i\) \|\| 1\) : 1\)/.test(barGrid)
   && /const noteDrawLength = \(row, value, len\) => \{[\s\S]*?if \(drawn != null \|\| !perNoteLengthLane\(row\.lane\)\) return drawn;[\s\S]*?return 1;/.test(piano)

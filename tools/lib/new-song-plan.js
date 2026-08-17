@@ -17,7 +17,7 @@ import {
 export const NEW_SONG_TEMPLATES = ['blank', 'beat', 'full-band'];
 export const NEW_SONG_STYLES = [AUTO_STYLE, ...STYLE_IDS];
 export const NEW_SONG_DEFAULTS = { bpm: 120, bars: 8, template: 'blank', style: AUTO_STYLE };
-export const NEW_SONG_LIMITS = { minBpm: 40, maxBpm: 220, minBars: 1, maxBars: 64 };
+export const NEW_SONG_LIMITS = { minBpm: 40, maxBpm: 240, minBars: 1, maxBars: 64 };
 export const NEW_SONG_DEFAULT_SEED = 0;
 
 const STEPS = 32;

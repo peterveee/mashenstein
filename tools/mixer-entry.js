@@ -77,7 +77,9 @@ import {
 } from './mixer-voice-library.js';
 // The step grid: what the kit PLAYS, as opposed to which bars let it through. It
 // writes through the same arrangement seam everything else in this section does.
-import { createStepSeq } from './mixer-step-seq.js';
+// KITS travels with it: M8TRX's missing-kit offer puts up the SAME list this panel's Kit
+// button does, from the one definition, so the two can never come to hold different kits.
+import { createStepSeq, KITS } from './mixer-step-seq.js';
 // The pitched half. Same window, same write path — see mixer-bar-grid.js.
 import { createPianoRoll, rollEditable, rollResizable } from './mixer-piano-roll.js';
 import { discardSongDraft, restoreSongDraft } from './lib/mixer-drafts.js';
@@ -3091,6 +3093,13 @@ function rebuildForShape() {
   stepSeq.refresh();
   pianoRoll.refresh();
   kitRoll.refresh();
+  // M8TRX's missing-kit offer reads the LANE LIST, which is precisely what just changed, and
+  // it is the only thing on that panel that does. Here for the same reason the editors are:
+  // the choke point rather than the call sites, so the offer cannot outlive its reason
+  // whichever way the drums arrived — the offer's own Kit button, the arrangement's +, a
+  // delete, or an undo stepping back over any of them. Cheap, and a no-op with the panel
+  // shut; nothing in this function runs per frame.
+  syncRearrangeDrumControl();
   fitStrips();
   rebank();
   applyToEngine(mixFor(trackId));
@@ -6964,6 +6973,80 @@ function rearrangeDrumLabel(mode) {
   return REARRANGE_DRUM_LABELS[mode] || REARRANGE_DRUM_LABELS.original;
 }
 
+/**
+ * The drum lanes this song has, in desk order — the kit, as it was assembled.
+ *
+ * Guarded, because the keyboard can now be built before there is a song to build it
+ * from: the preset library switches it on as it opens, which can land in the moment
+ * between the page starting and a track being resolved. `viewBank` has nothing to
+ * return then, and `deskLanes` reads `.sections` off it without asking.
+ */
+function songKitLanes() {
+  const bank = viewBank();
+  if (!bank) return [];
+  return deskLanes(bank, 1).filter((l) => PERCUSSION_LANES.includes(baseLane(l.key)));
+}
+
+/**
+ * THE ROW THAT CANNOT SOUND, said out loud, and the one thing that helps.
+ *
+ * On a song with no percussion channels EVERY setting on the drums menu is a dead letter,
+ * and it took two passes to see that. The generated kits write their hits into role-keyed
+ * lanes — kick, snare, clap, hats — and have none to write to. Chopped drums and Song groove
+ * replay what the song wrote, and it wrote nothing. Whichever is chosen, the menu takes it,
+ * the status line reports it, and the bar goes by empty: nothing to hear, and so nothing to
+ * diagnose by ear. You would go looking at Drive, at the recipe, at the mix, and never at the
+ * fact that the song has no drums in it.
+ *
+ * So the offer is up whenever the song has none, not only for the kits it can fix. It does
+ * not pretend to fix all of it — a kit is SOUNDS, and the two that replay the song are still
+ * empty afterwards for want of steps, which is why they are closed in the menu rather than
+ * left to fail quietly. What it fixes is the half a kit CAN fix, and the row's presence is
+ * what says the song is the problem.
+ *
+ * `mode` is the RESOLVED kit, so the tooltip names what is actually selected — Auto included,
+ * which reads as whatever Drive resolved it to rather than as "Auto".
+ */
+function syncRearrangeKitOffer(mode, noDrums = !songKitLanes().length) {
+  const row = $('redrumskit');
+  const select = $('redrumkit');
+  if (!row || !select) return;
+  const wanted = !!rearrangeRecipe && noDrums;
+  row.hidden = !wanted;
+  if (!wanted) return;
+  if (!select.options.length) {
+    // The resting option states the PROBLEM, because the row appearing is the only other
+    // thing that says there is one. Disabled: it is a readout of what the song has, and
+    // "none" is not a kit anybody can choose their way back to.
+    const none = document.createElement('option');
+    none.value = '';
+    none.disabled = true;
+    none.textContent = 'None in this song';
+    select.append(none);
+    // KITS verbatim — same names, same order as the pattern editor's Kit menu, so the two
+    // lists cannot come to disagree about what a kit is called or which ones exist.
+    for (const [label] of KITS) {
+      const option = document.createElement('option');
+      option.value = label;
+      option.textContent = label;
+      select.append(option);
+    }
+  }
+  // Always back to the readout. Picking a kit gives the song drums, which takes this row off
+  // screen entirely — so a value left selected would only ever be seen on the way out, and
+  // would be showing on the next drumless song as though it were already applied.
+  select.value = '';
+  // The sentence the row used to carry, kept where it costs no height. Both halves of it,
+  // because "no drums" alone reads as a complaint about the mix rather than about the
+  // setting standing next to it. And the honest limit at the end: a kit is sounds, so it
+  // wakes the generated patterns and leaves the two that replay the song still waiting for
+  // something to replay.
+  select.title = `${rearrangeDrumLabel(mode)} has nothing to play — this song has no drum`
+    + ' channels. Pick a kit and its sounds are added, which is what the generated patterns'
+    + ' need; Chopped drums and Song groove replay what the song wrote, so they stay silent'
+    + ' until something is programmed. Sounds only — no step is touched, and it is one undo.';
+}
+
 function syncRearrangeDrumControl() {
   const select = $('redrums');
   if (!select) return;
@@ -6985,6 +7068,25 @@ function syncRearrangeDrumControl() {
     }
   }
   select.disabled = !rearrangeRecipe && rearrangeDrumsChoice !== 'auto';
+  // THE TWO THAT NOTHING CAN RESCUE, said in the list rather than found out by ear.
+  //
+  // Chopped drums and Song groove both REPLAY what the song wrote — one cut with the collage,
+  // one straight underneath it — so on a song that wrote no drums at all they have no source
+  // and produce nothing. Offered as live choices they are two menu entries that quietly do
+  // nothing, which is the same silent failure the generated kits had, and the fix that works
+  // for those does not work for these: a kit is SOUNDS, and adding one leaves these two with
+  // channels but still no steps to replay. So they are closed rather than offered, and they
+  // say which of the two problems they have.
+  //
+  // Derived from the generated list rather than written out again: the complement is what
+  // "replays the song's own drums" MEANS here, and a second hand-kept list of two would be a
+  // place for the next kit added to go missing.
+  const noDrums = !songKitLanes().length;
+  for (const option of select.options) {
+    if (option.value === 'auto' || REARRANGE_GENERATED_DRUMS.includes(option.value)) continue;
+    option.disabled = noDrums;
+    option.textContent = `Drums: ${rearrangeDrumLabel(option.value)}${noDrums ? ' — none in song' : ''}`;
+  }
   // Auto is a GENERATION setting, so it stays selected between Generates and names what
   // it resolved to; every other choice is applied to the recipe now and reads off it.
   if (rearrangeDrumsChoice === 'auto') {
@@ -6994,11 +7096,18 @@ function syncRearrangeDrumControl() {
       ? `Drums: Auto → ${rearrangeDrumLabel(mode)}`
       : `Drums: Auto → ${rearrangeDrumLabel(kit)}`;
     select.title = `Auto follows Drive — the next Go builds ${rearrangeDrumLabel(kit)}`;
+    // Auto itself stays open even when Drive is sitting on Song groove: it is a setting for
+    // the NEXT Go and the dial can move before then, so closing it would be the panel
+    // refusing a choice on the strength of a number nobody has committed to yet.
+    // What is PLAYING, not what the dial will build next: the recipe on the timeline is the
+    // thing going silent, and the Drive dial's next answer is not yet anyone's problem.
+    syncRearrangeKitOffer(mode, noDrums);
     return;
   }
   select.options[0].textContent = 'Drums: Auto · Drive';
   select.value = mode;
   select.title = REARRANGE_DRUM_TIPS[mode] || REARRANGE_DRUM_TIPS.original;
+  syncRearrangeKitOffer(mode, noDrums);
 }
 
 function syncRearrangeButton() {
@@ -7258,9 +7367,24 @@ function rearrangeFill() {
   return value === 'none' || REARRANGE_FILL_NAMES.includes(value) ? value : REARRANGE_FILL_DEFAULT;
 }
 
+/**
+ * THE CHORD A SLICE SOUNDS, as an absolute degree of the recipe's key — 0 for the tonic,
+ * and null for a slice no walk has been over.
+ *
+ * `harmony` is the MOVE, so it names the chord only while the material is assumed to open on
+ * the tonic. A walk that could read the source does not assume that: it works out where the
+ * material already sits and moves it the rest of the way, then writes down what it landed
+ * on. That reading is the answer wherever it is there, and the move is the answer wherever
+ * it is not — a chord set by hand on one slice is a move, with nothing read about anything.
+ */
+function rearrangeSoundingChord(op) {
+  if (!op) return 0;
+  return op.chord == null ? (Number(op.harmony) || 0) : (Number(op.chord) || 0);
+}
+
 /** The chord a slice plays as, for the playback status: ' · chord VI'. */
 function rearrangeHarmonyLabel(op) {
-  const degrees = Number(op?.harmony) || 0;
+  const degrees = rearrangeSoundingChord(op);
   if (!degrees) return '';
   return ` · chord ${harmonyNumeral(degrees, rearrangeRecipe?.key?.minor !== false)}`;
 }
@@ -7906,22 +8030,29 @@ function renderRearrangeTimeline(geometry = rearrangeTimelineGeometry()) {
       }
       const chord = document.createElement('b');
       chord.className = 'rechordbadge';
-      // The chord this slice SOUNDS, taken from the part's stamped line where there is one —
-      // `op.harmony` is the relative move that got it there, and printing that is only the
-      // same number while the material is assumed to open on the tonic.
-      const stampedChords = Array.isArray(section.chords) && section.chords.length ? section.chords : null;
-      const sounding = stampedChords
-        ? stampedChords[Math.min(stampedChords.length - 1, Math.floor((entry.start - section.start) / 16))]
-        : op.harmony;
+      // WHAT THIS SLICE SOUNDS, ASKED OF THE SLICE. It used to be read off the part's
+      // stamped chord line by bar, which is the walk's INTENTION for that bar rather than
+      // anything this slice agreed to — so a slice taken back out of the walk, or a copy
+      // living past the end of a line that was never lengthened when the part was doubled,
+      // sat there labelled `iv` while playing exactly as written. See applyWalkChords.
+      const sounding = rearrangeSoundingChord(op);
       if (sounding) chord.textContent = harmonyNumeral(sounding, rearrangeRecipe?.key?.minor !== false);
       else if (op.transpose) chord.textContent = op.transpose > 0 ? `+${op.transpose}` : String(op.transpose);
       foot.append(chord);
       slice.append(foot);
+      const keyName = rearrangeKeyName(rearrangeRecipe?.key) || 'the key';
       slice.title = `${op.mute ? 'MUTED · ' : ''}Source ${rearrangeStepLabel(op.from)} · ${op.length} sixteenths × ${op.repeats}`
         + ` · output ${rearrangeStepLabel(start)}–${rearrangeStepLabel(end)}`
         + (op.transpose ? rearrangeTransposeLabel(op.transpose) : '')
         + (op.fill ? ` · ${op.fill} fill` : '')
-        + (op.harmony ? ` · plays as the ${harmonyNumeral(op.harmony, rearrangeRecipe?.key?.minor !== false)} of ${rearrangeKeyName(rearrangeRecipe?.key) || 'the key'}` : '')
+        // A WALKED SLICE THAT MOVED BY NOTHING STILL HAS SOMETHING TO SAY. The walk reads
+        // where the material already sits and only moves it the rest of the way, so a bar
+        // that is already on the chord the walk wants is left alone — and with the hover
+        // silent about it, a badge over an unmoved slice read as a fault rather than as
+        // the one case where the walk had nothing to do.
+        + (op.harmony
+          ? ` · plays as the ${harmonyNumeral(op.harmony, rearrangeRecipe?.key?.minor !== false)} of ${keyName}`
+          : (sounding ? ` · already sits on the ${harmonyNumeral(sounding, rearrangeRecipe?.key?.minor !== false)} of ${keyName}, so the walk leaves it as written` : ''))
         + ' · click to select, drag across several, double-click to play from here';
       lane.append(slice);
     });
@@ -7941,17 +8072,22 @@ function rearrangeSectionChordLine(sectionIndex, notation = 'degree', limitSteps
   // A part that repeats states its walk ONCE. Sixteen bars of numerals is not a chord
   // line, it is a wall, and the part's own '×4' already says the rest is the same again.
   const until = limitSteps > 0 ? Math.min(section.end, section.start + limitSteps) : section.end;
-  // WHAT THE PART SOUNDS, NOT THE SHIFT THAT GOT IT THERE. `harmony` is a RELATIVE move in
-  // scale degrees, so reading the numeral straight off it is only true while the material is
-  // assumed to start on the tonic. A walked part stamps the chords it actually plays onto
-  // its form entry, bar by bar; that is what gets printed when it is there, and the old
-  // reading stays as the fallback for recipes written before it was.
+  // WHAT THE PART SOUNDS, NOT THE SHIFT THAT GOT IT THERE — and asked of the SLICE playing
+  // in each bar. `harmony` is a RELATIVE move, so the numeral is only true off it while the
+  // material is assumed to start on the tonic; a walk that read the source writes down what
+  // it landed on instead. This used to be read off the part's stamped line, which is the
+  // walk's intention for the part rather than a report on the slices in it: doubling the
+  // part left every bar past the old end pinned to the line's last chord, and taking one
+  // slice back out of the walk did not change the line at all.
   const stamped = Array.isArray(section.chords) && section.chords.length ? section.chords : null;
   for (let step = section.start; step < until; step += 16) {
     const bar = Math.floor((step - section.start) / 16);
-    const harmony = stamped
+    const op = rearrangementPosition(rearrangeRecipe, step)?.operation;
+    // The stamped line stays as the fallback for recipes written before slices carried what
+    // they sound — the same reading those recipes have always been printed with.
+    const harmony = op?.chord == null && stamped
       ? (stamped[Math.min(stamped.length - 1, bar)] || 0)
-      : (rearrangementPosition(rearrangeRecipe, step)?.operation?.harmony || 0);
+      : rearrangeSoundingChord(op);
     if (notation === 'roman') chords.push(harmonyNumeral(harmony, minor));
     else chords.push(String(((harmony % 7) + 7) % 7 + 1));
   }
@@ -8391,6 +8527,12 @@ function openRearrangeSliceMenu(event, index) {
   const op = rearrangeRecipe.operations[index];
   const many = picked.length > 1;
   const walking = picked.some((item) => rearrangeRecipe.operations[item]?.harmony);
+  // WALKED IS NOT THE SAME AS MOVED. A bar the walk found already on the chord it wanted is
+  // part of the walk and carries no shift, so asking for a shift hid "walk off" behind the
+  // one slice that most looks like it should not be there — a slice showing a chord and
+  // doing nothing. Transpose still asks for a shift: it is the pitch systems that clash.
+  const walked = walking
+    || picked.some((item) => rearrangeRecipe.operations[item]?.chord != null);
   const part = rearrangeSelectedSectionIndex();
   menu.textContent = '';
   const head = document.createElement('div');
@@ -8468,14 +8610,14 @@ function openRearrangeSliceMenu(event, index) {
     chord.append(button);
   }
   menu.append(chord);
-  item(walking ? `Chord walk off${many ? ` ×${picked.length}` : ''}` : 'Chord walk these slices', () => {
-    if (walking) transformSelectedRearrange('walk-off', 'Chord walk off');
+  item(walked ? `Chord walk off${many ? ` ×${picked.length}` : ''}` : 'Chord walk these slices', () => {
+    if (walked) transformSelectedRearrange('walk-off', 'Chord walk off');
     else transformSelectedRearrange('walk-on', 'Chord walk on');
   }, part < 0);
   item('New chords', () => {
     const index = rearrangeSelectedSectionIndex();
     if (index >= 0) rerollRearrangeWalkUi(index);
-  }, part < 0 || !walking);
+  }, part < 0 || !walked);
   sep();
   item('🎲 New material', () => transformSelectedRearrange('reroll', 'New material under those slices'));
   item(op?.mute ? 'Unmute' : 'Mute', () => transformSelectedRearrange(op?.mute ? 'unmute' : 'mute',
@@ -9491,6 +9633,8 @@ function sanitizeRearrangeClip(raw, sourceSteps) {
     operations.push({
       from, length, repeats, transpose: Number(op?.transpose) || 0,
       ...(op?.harmony ? { harmony: Number(op.harmony) || 0 } : {}),
+      // The same material comes back, so what it was read as sitting on comes back with it.
+      ...(op?.chord == null ? {} : { chord: Number(op.chord) || 0 }),
       ...(op?.mute ? { mute: true } : {}),
       ...(typeof op?.fill === 'string' ? { fill: op.fill } : {}),
       ...(op?.favourite ? { favourite: true } : {}),
@@ -12968,6 +13112,11 @@ noteLengthMenuButton.onclick = (ev) => {
     { label: 'Repeat into 4', run: () => run('chop', 4, 'Repeated into 4') },
     { label: 'Invert chords / mirror melody', run: () => run('invert', null, 'Inverted') },
     { label: 'Reverse note order', run: () => run('reverse', null, 'Reversed') },
+    // Starts, then lengths. Two different edits and both are wanted: a note can begin
+    // off the grid and be exactly a sixteenth long, or begin on it and be a ragged
+    // length. This one follows the QUANTISE picker, so it snaps to triplets when that is
+    // what the roll is set to; the one below it is always sixteenths.
+    { label: `Quantise starts to ${pianoRoll.quantiseLabel()}`, run: () => run('quantise', null, `Quantised to ${pianoRoll.quantiseLabel()}`) },
     { label: 'Quantise lengths to 16ths', run: () => runNoteLengthQuantise('selection') },
     { label: 'Custom transform all notes…', run: () => openNoteLengthAdjust('all', r.left, r.bottom + 4) },
   ]);
@@ -15132,7 +15281,7 @@ function updateCpu() {
   const cache = Audio.noteCacheHealth?.();
   const cacheLine = cache?.enabled
     ? `\nNote cache: ${cache.buffers} buffers / ${(cache.bytes / (1024 * 1024)).toFixed(1)} MB; `
-      + `${cache.queued} queued, ${cache.rendering} rendering; ${cache.hits} hits, `
+      + `${cache.queued} still to render, ${cache.rendering} rendering; ${cache.hits} hits, `
       + `${cache.misses} misses, ${cache.stale} stale discarded`
       + (cache.playbackActive ? '; preparation paused during playback.' : '.') : '';
   el.title = (health.audioBehind || health.audioStruggling
@@ -15290,7 +15439,11 @@ const LOOP_LOG_COLUMNS = [
   'frameHotspot', 'frameHotspotMs',
   'reliefMs', 'reliefEnters', 'reliefVerdict', 'auxDuty',
   'bufferMode', 'latencyRequest', 'baseLatencyMs', 'outputLatencyMs', 'readAheadMs',
-  'cacheEnabled', 'cacheBuffers', 'cacheMB', 'cacheQueued', 'cacheRendering',
+  // `cacheQueued` is the BACKLOG at the moment of the row — what the cache still owes.
+  // Before the queuedTotal rename it silently carried the lifetime count instead, which
+  // is why every row logged before 2026-08-17 has it equal to `cacheMisses`.
+  'cacheEnabled', 'cacheBuffers', 'cacheMB', 'cacheQueued', 'cacheQueuedTotal',
+  'cacheRendering',
   'cacheHits', 'cacheMisses', 'cacheStale', 'pools', 'poolSlots', 'retiredPools',
   'liveNotes', 'heldNative', 'cachedSources', 'jsHeapMB',
   'operationDurationMs', 'operationBytes', 'operationSegments', 'heapBeforeMB', 'heapAfterMB',
@@ -15514,7 +15667,8 @@ function diagnosticRuntimeFields() {
     readAheadMs: Math.round((Audio.sequencerLookahead || AUDIO_LOOKAHEAD_DEFAULT) * 1000),
     cacheEnabled: !!cache.enabled, cacheBuffers: cache.buffers ?? 0,
     cacheMB: cache.bytes == null ? '' : +(cache.bytes / (1024 * 1024)).toFixed(2),
-    cacheQueued: cache.queued ?? 0, cacheRendering: cache.rendering ?? 0,
+    cacheQueued: cache.queued ?? 0, cacheQueuedTotal: cache.queuedTotal ?? 0,
+    cacheRendering: cache.rendering ?? 0,
     cacheHits: cache.hits ?? 0, cacheMisses: cache.misses ?? 0, cacheStale: cache.stale ?? 0,
     pools: runtime.pools ?? 0, poolSlots: runtime.poolSlots ?? 0,
     retiredPools: runtime.retiredPools ?? 0, liveNotes: runtime.liveNotes ?? 0,
@@ -15652,6 +15806,57 @@ function healthTap() {
 }
 
 const diagnosticPeak = (value) => Number.isFinite(value) ? +value.toFixed(6) : String(value);
+
+/**
+ * A play press is a demand for sound, so it takes back every giving-up the desk did.
+ *
+ * THE RECOVERY LADDER LATCHES. Once two fresh contexts have failed, `freshRecoveries`
+ * stays at two for the life of the page and the third tier stops replacing the context
+ * at all — every later strike goes straight to "reload the desk". Nothing cleared that
+ * but a reload, so one bad overload could leave the rest of a session silent even after
+ * the mix that caused it was fixed. Pressing Play is the least ambiguous statement there
+ * is that sound is wanted now, and it is a fresh gesture besides, which is exactly what
+ * a suspended context needs. So it resets the strike count, hands the ladder its full
+ * allowance back, and resumes a context that is not running.
+ *
+ * The clock ring is emptied with them. Its samples were taken across however long the
+ * desk sat silent, and a stale pair reads as a stopped clock — the watchdog would trip
+ * its own dead-output detector on the first tick after Play and repair a graph that had
+ * only just been handed back.
+ *
+ * WHAT IT DOES NOT DO is rebuild anything here. `rebuildRealtimeContext` nulls `ctx`,
+ * `bank` and `mixer` before restoring them from a snapshot, and setPlaying is about to
+ * call `setBank` — starting one under the other races two writers into the same fields.
+ * A desk that had already spent both rebuild tiers instead has its strike count parked
+ * one tier short of the fresh context, so the ladder itself replaces the graph three
+ * seconds later, on its own timeline, IF the silence is still there. If it is not, the
+ * next quarter-second tick reads healthy and puts the count back to zero.
+ */
+function reviveAudioForPlay() {
+  // A rebuild in flight owns the graph and will reset all of this when it settles.
+  if (health.recovering) return;
+  const wasDead = !!health.deadCause || health.deadRuns >= DEAD_TIER_1;
+  // Have the cheap tiers already been tried and failed in this session? Only then is
+  // skipping them right; a first fault still deserves a chain rebuild before a context.
+  const rebuildsSpent = health.freshRecoveries > 0 || health.deadRuns >= DEAD_TIER_2;
+  health.deadRuns = 0;
+  health.freshRecoveries = 0;
+  health.samples.length = 0;
+  health.lastWall = 0;
+  health.lastCt = 0;
+  if (health.text.startsWith('AUDIO OUTPUT')) health.text = '';
+  if (Audio.ctx && Audio.ctx.state !== 'running') Audio.resumeContext?.();
+  if (!wasDead) return;
+  if (rebuildsSpent) health.deadRuns = DEAD_TIER_2;
+  appendDiagnosticEvent('AUDIO REVIVE ON PLAY',
+    `Play cleared ${health.deadCause || 'a dead output'}`
+    + (rebuildsSpent ? '; both rebuild tiers already spent, so the next strike replaces the context'
+      : '; the repair ladder starts again from the first tier'), {
+      deadRuns: health.deadRuns,
+      recoveryTier: rebuildsSpent ? 'fresh context armed' : 'ladder rearmed',
+    });
+  health.deadCause = '';
+}
 
 function checkAudioHealth() {
   const ctx = Audio.ctx;
@@ -16640,7 +16845,7 @@ function pushTempo() {
   showTempo();
 }
 function setDeskTempo(v) {
-  const bpm = clamp(Math.round(v), 40, 220);
+  const bpm = clamp(Math.round(v), 40, 240);
   if (bpm === Math.round(deskTempo())) return;
   // Deliberately NOT through `applyArrangementEdit`. That path re-pushes the whole mix
   // at the engine and rebuilds every row of the bar grid, which is right for an edit
@@ -17707,19 +17912,11 @@ function buildOsk() {
   syncRecordUi();
 }
 
-/**
- * The drum lanes this song has, in desk order — the kit, as it was assembled.
- *
- * Guarded, because the keyboard can now be built before there is a song to build it
- * from: the preset library switches it on as it opens, which can land in the moment
- * between the page starting and a track being resolved. `viewBank` has nothing to
- * return then, and `deskLanes` reads `.sections` off it without asking.
- */
-const oskKitLanes = () => {
-  const bank = viewBank();
-  if (!bank) return [];
-  return deskLanes(bank, 1).filter((l) => PERCUSSION_LANES.includes(baseLane(l.key)));
-};
+// The keyboard's pads and M8TRX's missing-kit offer ask the same question — what drums
+// does this song actually have — and they must never answer it differently: a row of pads
+// under a panel saying the song has no drums is one of them lying. One reader, declared
+// with the M8TRX control that also reads it.
+const oskKitLanes = songKitLanes;
 // Pads are the SONG's kit — one pad per drum channel it has. The bench has no kit and
 // no channels: it is one preset, and the thing you want to do to a drum preset you are
 // shaping is play it up and down to hear its pitch envelope. So the bench always gets
@@ -18769,7 +18966,7 @@ async function createNewSong() {
     + `<option value="auto"${sel(prefs.style, 'auto')}>Auto</option>`
     + SONG_STYLES.map((s) => `<option value="${s.id}"${sel(prefs.style, s.id)}>${escapeHtml(s.label)} · ${s.bpm} BPM</option>`).join('')
     + '</select></label>'
-    + '<label class="askfield">Tempo<input id="newsongbpm" type="number" min="40" max="220" step="1"></label>'
+    + '<label class="askfield">Tempo<input id="newsongbpm" type="number" min="40" max="240" step="1"></label>'
     + `<label class="askcheck" id="newsongtempofield"><input id="newsongstyletempo" type="checkbox"${prefs.styleTempo ? ' checked' : ''}>Use the template’s own tempo</label>`
     + `<label class="askfield">Bars<input id="newsongbars" type="number" min="1" max="64" step="1" value="${prefs.bars}"></label>`,
     'Create');
@@ -19014,6 +19211,9 @@ function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
   voiceLibrary.syncChanged();
   peakSeen = 0;
   if (playing) {
+    // BEFORE the bank goes in, so a context that is suspended or a watchdog that has
+    // given up is dealt with while there is still nothing depending on either.
+    reviveAudioForPlay();
     resetLoopHealthWindow();
     // Resume where the playhead was parked, not back at the top.
     const at = fromStep != null ? fromStep : parkedAt;
@@ -19059,7 +19259,32 @@ function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
   // Armed and recording look different, and which one this is has just changed.
   syncRecordUi();
 }
+/**
+ * How long Play may warm the cache before the song has to start.
+ *
+ * SCALED BY THE BACKLOG, because a flat budget spends the same 1800ms on a four-lane
+ * sketch with nine notes to render as on the stress song with fourteen hundred, and
+ * neither is the right answer for the other. The floor is what a small song used to
+ * get and still gets; the ramp buys the dense song more of its ending — the rack sorts
+ * render jobs latest-first precisely because the dense ending is what kills playback
+ * and nothing warms during playback to save it.
+ *
+ * The ceiling is a judgement, not a measurement: warming barber-3 to the 64MB cap took
+ * roughly three minutes of parked transport, so no tolerable pre-roll finishes a cold
+ * dense song and the honest choice is how long a person will watch a spinner. Six
+ * seconds reads as loading; more reads as broken. The rest is bought by the cache
+ * warming whenever the transport is stopped — and by freezing a track, which is the
+ * actual remedy on a song this size. Every wait is skippable: press the control again.
+ *
+ * PER_NOTE_MS is the shape of the ramp, not a per-render cost. A render is nowhere
+ * near 4ms; this is simply the slope that puts the ceiling around the point where a
+ * backlog stops being a cold patch and starts being a cold song.
+ */
 const NOTE_CACHE_PREPARE_BUDGET_MS = 1800;
+const NOTE_CACHE_PREPARE_CEILING_MS = 6000;
+const NOTE_CACHE_PREPARE_PER_NOTE_MS = 4;
+const prepareBudgetFor = (backlog) => Math.min(NOTE_CACHE_PREPARE_CEILING_MS,
+  NOTE_CACHE_PREPARE_BUDGET_MS + Math.max(0, backlog) * NOTE_CACHE_PREPARE_PER_NOTE_MS);
 let preparingFromStart = false;
 let startPreparationToken = 0;
 let preparationControl = 'start';
@@ -19120,6 +19345,11 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
   if (fromStep === 0) jumpTo(0); // park and draw bar 1 while the cache is prepared
   const initial = Audio.prepareNoteCache?.(engineBank(), range
     ? { startStep: range.start, endStep: range.end } : {}) || Audio.noteCacheHealth?.();
+  // A WARM SONG STARTS INSTANTLY. `queued` is the live backlog, so nothing queued and
+  // nothing rendering means there is nothing to wait for. This test could not fire
+  // before `queuedTotal` was renamed apart from it: it used to read the lifetime
+  // counter, which never returns to zero, so every Play after the session's first
+  // cache miss paid the whole budget and then waited out a render as well.
   if (!initial?.enabled || (!initial.queued && !initial.rendering)) {
     startPreparedTransport(initial?.buffers
       ? `Playing ${range ? 'loop' : 'from beginning'} · ${initial.buffers} cached note${initial.buffers === 1 ? '' : 's'}`
@@ -19130,8 +19360,12 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
   const token = ++startPreparationToken;
   showStartPreparation(true, control);
   Audio.setNoteCachePreparationHeld(false);
-  toast(`Preparing ${range ? 'loop' : 'audio'}… ${initial.queued} note${initial.queued === 1 ? '' : 's'} queued · press ${control === 'play' ? 'Play' : 'Start from beginning'} again to play now`, 3000);
-  const deadline = performance.now() + NOTE_CACHE_PREPARE_BUDGET_MS;
+  const budget = prepareBudgetFor(initial.queued);
+  toast(`Preparing ${range ? 'loop' : 'audio'}… ${initial.queued} note${initial.queued === 1 ? '' : 's'} to render · press ${control === 'play' ? 'Play' : 'Start from beginning'} again to play now`, 3000);
+  // The backlog is fixed by now — prepareNoteCache has already inventoried the whole
+  // range and queued every miss in it — so the budget is decided once here rather than
+  // recomputed against a number that can only fall.
+  const deadline = performance.now() + budget;
   let held = false;
 
   while (token === startPreparationToken) {
@@ -19311,6 +19545,18 @@ $('redrums').onchange = () => {
   // built this one. Every other choice is an edit to the recipe in front of you.
   if (rearrangeDrumsChoice === 'auto') syncRearrangeDrumControl();
   else setRearrangeDrums(rearrangeDrumsChoice);
+};
+// The offer's list, and it is the pattern editor's Kit menu — same KITS, same order, same
+// one-undo applyKit behind it, so this is a second WAY IN to one control rather than a second
+// control. A select rather than the desk's popup menu: #ctxmenu sits at z-index 30 and this
+// panel at 34, so a menu opened from here would open BEHIND the panel that asked for it —
+// which is exactly what #reslicemenu's own 37 exists to get around. A native select has no
+// such problem, and it is what every other list on this row already is.
+$('redrumkit').onchange = () => {
+  const kit = KITS.find(([label]) => label === $('redrumkit').value);
+  // Nothing here re-asks the offer: applyKit ends in rebuildForShape, which is where the
+  // lane list changing gets reported, and that is true of every other way drums arrive too.
+  if (kit) applyKit(kit[0], kit[1]);
 };
 $('regenerate').onclick = () => generateRearrangeRecipe({ restart: rearrangeActive() && playing });
 $('regrab').onclick = grabRearrangeSection;

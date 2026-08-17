@@ -1654,19 +1654,23 @@ class AudioSys {
     }
   }
 
+  // The rack-less mirror of VoiceRack.noteCacheHealth — same field names, same
+  // stats-first ordering, and for the same reason: `queued` is the live backlog and
+  // must not be overwritten by a lifetime counter that happens to share a name.
   noteCacheHealth() {
     if (!this.noteCacheState) return {
       enabled: false, playbackActive: !!this.bank, entries: 0, buffers: 0,
-      bytes: 0, queued: 0, rendering: 0, hits: 0, misses: 0, started: 0,
-      completed: 0, failed: 0, stale: 0,
+      bytes: 0, queued: 0, rendering: 0, hits: 0, misses: 0, queuedTotal: 0,
+      started: 0, completed: 0, failed: 0, stale: 0,
     };
     if (this.voices?.noteCacheHealth) return this.voices.noteCacheHealth();
     const state = this.noteCacheState;
     let buffers = 0;
     for (const entry of state.entries.values()) if (entry.buffer) buffers++;
-    return { enabled: this.noteCache, playbackActive: !!state.playbackActive,
+    return { ...state.stats, enabled: this.noteCache,
+      playbackActive: !!state.playbackActive,
       entries: state.entries.size, buffers, bytes: state.bytes,
-      queued: state.queue.length, rendering: state.rendering, ...state.stats };
+      queued: state.queue.length, rendering: state.rendering };
   }
 
   /**

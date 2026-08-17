@@ -825,8 +825,14 @@ export function createNoteCacheState() {
     idlePending: false,
     cancelIdle: null,
     generation: 0,
+    // LIFETIME TOTALS, and every name here carries `Total` when a live field of the
+    // same idea exists. `queuedTotal` used to be `queued`, which collided with the
+    // live backlog in the health object below and silently won the spread: every
+    // reader that asked "how much is left to render" was handed "how many jobs has
+    // this session ever made", a number that only goes up. The pre-roll's
+    // drained-yet? test was the casualty.
     stats: {
-      hits: 0, misses: 0, queued: 0, started: 0, completed: 0,
+      hits: 0, misses: 0, queuedTotal: 0, started: 0, completed: 0,
       failed: 0, stale: 0,
     },
   };
@@ -2133,7 +2139,7 @@ export class VoiceRack {
   _queueRender(job) {
     const state = this._cacheState;
     state.queue.push(job);
-    state.stats.queued++;
+    state.stats.queuedTotal++;
     pumpCache(state);
   }
 
@@ -4679,11 +4685,22 @@ export class VoiceRack {
     this._specRev = state.revisions;
   }
 
+  /**
+   * What the cache holds and what it still owes, in one object.
+   *
+   * THE LIFETIME TOTALS ARE SPREAD FIRST and the live readings written over them. The
+   * two families are named apart now — `queuedTotal` against `queued` — so nothing
+   * should collide, but this ordering is what makes a future collision harmless
+   * instead of silent: a counter can never overwrite the measurement of the moment.
+   * `queued` is the BACKLOG, jobs still waiting to render, and it falls to zero when
+   * the cache is warm. Anyone asking "is there work left" wants this one.
+   */
   noteCacheHealth() {
     const state = this._cacheState;
     let buffers = 0;
     for (const entry of state.entries.values()) if (entry.buffer) buffers++;
     return {
+      ...state.stats,
       enabled: !!this.noteCache,
       playbackActive: !!state.playbackActive,
       entries: state.entries.size,
@@ -4691,7 +4708,6 @@ export class VoiceRack {
       bytes: state.bytes,
       queued: state.queue.length,
       rendering: state.rendering,
-      ...state.stats,
     };
   }
 

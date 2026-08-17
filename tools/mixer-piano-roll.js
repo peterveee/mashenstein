@@ -41,6 +41,9 @@ import {
 } from '../src/engine/lanes.js';
 import { createBarGrid } from './mixer-bar-grid.js';
 import { normaliseArrangementResolution } from './lib/arrangement-edit.js';
+import {
+  RESOLUTIONS, LEGACY_RESOLUTION, promoteResolution, resolutionOf,
+} from '../src/data/arrangements.js';
 import { SCALE_BY_ID, inScale } from './mixer-voice-library.js';
 import { deskNoteName } from './mixer-note-names.js';
 
@@ -51,21 +54,58 @@ const LABELS = Object.fromEntries(
 // One grid step is a sixteenth. These are the lengths a fresh tap can ask for; the
 // stored values stay in steps so the engine and the existing per-note editor share one
 // unit. A whole note is therefore sixteen steps, while a 32nd is half a step.
+// How long a note drawn with a short click is.
+//
+// `null` is the default and means "however long one snap division is" — draw on a 1/16T
+// snap and you get a 1/16T note, without setting the same value in two places. That is
+// what a short click almost always wants: the thing you are drawing IS the division you
+// chose to draw it on. The explicit values below stay for the times it is not.
 export const NOTE_LENGTH_OPTIONS = [
+  { value: null, label: 'Snap' },
+  { value: 1 / 3, label: '1/32T' },
   { value: 0.5, label: '1/32' },
+  { value: 2 / 3, label: '1/16T' },
   { value: 1, label: '1/16' },
+  { value: 4 / 3, label: '1/8T' },
   { value: 2, label: '1/8' },
+  { value: 8 / 3, label: '1/4T' },
   { value: 4, label: '1/4' },
   { value: 8, label: '1/2' },
   { value: 16, label: '1' },
 ];
 
+// Snap divisions, in sixteenths, coarsest first. `gridFor` below turns one into the
+// grid a song must be stored on to hold it.
+//
+// It stops at 1/32T deliberately. The next value up in expressive terms is 1/64T, which
+// a 96-step grid can hold — but plain 1/64 needs 192, because a grid of 2^n x 3 always
+// reaches one triplet level deeper than its plain notes do. Offering the triplet without
+// the note it is a triplet OF reads as a bug, so the menu stops where the pair stops.
 export const QUANTISE_OPTIONS = [
   { value: 4, label: '1/4' },
+  { value: 8 / 3, label: '1/4T' },
   { value: 2, label: '1/8' },
+  { value: 4 / 3, label: '1/8T' },
   { value: 1, label: '1/16' },
+  { value: 2 / 3, label: '1/16T' },
   { value: 0.5, label: '1/32' },
+  { value: 1 / 3, label: '1/32T' },
 ];
+
+/**
+ * The coarsest grid that can place a note on this division.
+ *
+ * A division of `v` sixteenths needs `16 / v` slots to the bar, and the grid has to be a
+ * whole multiple of that — so 1/16T wants 24 a bar and gets 48, the first grid that holds
+ * both it and the plain sixteenths already in the song.
+ */
+export function gridFor(quantise) {
+  const need = Math.round(16 / quantise);
+  return RESOLUTIONS.find((r) => r % need === 0) ?? LEGACY_RESOLUTION;
+}
+
+/** The label for a snap value, for a toast. */
+const snapLabel = (v) => QUANTISE_OPTIONS.find((o) => Math.abs(o.value - v) < 1e-9)?.label || '1/16';
 
 // Discrete controls keep a zoom gesture to one layout pass. The old range input could
 // queue a full whole-song rebuild for every pointer movement.
@@ -597,7 +637,10 @@ export function createPianoRoll({
   let rollPadding = { before: 0, after: 0 };
   // Do not persist this: it is a drawing-session preference, and every new piano roll
   // starts with the useful, least surprising sixteenth-note default.
-  let noteAddLength = 1;
+  // null = follow the quantise picker; see NOTE_LENGTH_OPTIONS. Resolved at the point of
+  // use rather than written through on every quantise change, so switching snap moves the
+  // draw length with it and switching back does not strand an old value.
+  let noteAddLength = null;
   const NOTE_LABELS_KEY = 'mash-mixer-roll-note-labels';
   let noteLabels = (() => {
     if (typeof localStorage === 'undefined') return true;
@@ -877,11 +920,15 @@ export function createPianoRoll({
     const options = NOTE_LENGTH_OPTIONS.map((option, i) => {
       const o = document.createElement('div');
       o.className = 'rolltool-option';
-      o.id = `rolllength-opt-${String(option.value).replace('.', '-')}`;
+      o.id = `rolllength-opt-${option.label.replace(/\W/g, '')}`;
       o.setAttribute('role', 'option');
-      o.dataset.length = String(option.value);
+      // The INDEX, not the value. A dataset is strings, and neither `null` (the Snap
+      // option) nor a third survives being written out and parsed back — `Number('null')`
+      // is NaN and 0.333… is not the number it started as.
+      o.dataset.index = String(i);
       o.textContent = option.label;
-      o.title = `${option.label} note`;
+      o.title = option.value == null
+        ? 'As long as one snap division' : `${option.label} note`;
       o.addEventListener('pointerdown', (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
@@ -894,10 +941,10 @@ export function createPianoRoll({
 
     const paint = () => {
       const selected = NOTE_LENGTH_OPTIONS.find((option) => option.value === noteAddLength)
-        || NOTE_LENGTH_OPTIONS[1];
+        || NOTE_LENGTH_OPTIONS[0];
       value.textContent = selected.label;
       for (const o of options) {
-        const on = Number(o.dataset.length) === selected.value;
+        const on = NOTE_LENGTH_OPTIONS[Number(o.dataset.index)] === selected;
         o.classList.toggle('on', on);
         o.setAttribute('aria-selected', on ? 'true' : 'false');
       }
@@ -949,7 +996,9 @@ export function createPianoRoll({
     };
 
     const choose = (length) => {
-      noteAddLength = Number(length);
+      // `Number(null)` is 0, which would draw zero-length notes — the Snap option has to
+      // survive the trip through the menu's string values as null, not be coerced.
+      noteAddLength = length == null || length === '' ? null : Number(length);
       paint();
       closeMenu({ focus: true });
     };
@@ -981,7 +1030,7 @@ export function createPianoRoll({
       else if (ev.key === 'ArrowUp') setActive(active - 1);
       else if (ev.key === 'Home') setActive(0);
       else if (ev.key === 'End') setActive(options.length - 1);
-      else choose(options[active].dataset.length);
+      else choose(NOTE_LENGTH_OPTIONS[Number(options[active].dataset.index)]?.value ?? null);
     };
 
     paint();
@@ -1115,9 +1164,14 @@ export function createPianoRoll({
     chooseValue: (next) => {
       quantise = Number(next) || 1;
       const current = draft();
-      if (quantise === 0.5 && current?.resolution !== 32) {
-        apply({ ...current, resolution: 32 }, '32nd-note piano-roll grid');
-        toast(`Quantise ${QUANTISE_OPTIONS.find((o) => o.value === quantise)?.label || '1/16'}`);
+      // PROMOTION. A note cannot be placed on a grid that is not drawn, so picking a
+      // finer snap moves the song onto a grid that can hold it. The LCM rather than the
+      // snap's own grid: picking 1/16T on a song that already has 32nds needs 96, since
+      // 48 cannot express a 32nd and 32 cannot express a triplet.
+      const wanted = promoteResolution(resolutionOf(null, current), gridFor(quantise));
+      if (wanted !== resolutionOf(null, current)) {
+        apply({ ...current, resolution: wanted }, `${snapLabel(quantise)} piano-roll grid`);
+        toast(`Quantise ${snapLabel(quantise)}`);
         return;
       }
       // LEAVING the fine grid, having written nothing on it. Picking 1/32 promotes the
@@ -1129,14 +1183,15 @@ export function createPianoRoll({
       // against is the SILENT one, on erasing the last off-grid note; this is a deliberate
       // pick, it takes an undo step of its own, and it refuses the moment a 1/32 note
       // exists anywhere in the song.
-      const tidied = quantise !== 0.5 && current?.resolution === 32
+      const tidied = current?.resolution != null
         ? normaliseArrangementResolution(editBank(), current) : current;
       if (tidied !== current) {
-        apply({ ...tidied, resolution: null }, 'back to the 1/16 grid');
+        apply({ ...tidied, resolution: tidied.resolution ?? null },
+          `back to the ${tidied.resolution ? `1/${tidied.resolution / 4}` : '1/16'} grid`);
       } else {
         grid.refresh();
       }
-      toast(`Quantise ${QUANTISE_OPTIONS.find((o) => o.value === quantise)?.label || '1/16'}`);
+      toast(`Quantise ${snapLabel(quantise)}`);
     },
   });
 
@@ -1643,7 +1698,7 @@ export function createPianoRoll({
     // bar you click, always. The step grid keeps the switch for the times the answer is
     // "the hats are wrong in this whole song".
     scopeToggle: false,
-    stepsPerBar: (d) => (d?.resolution === 32 ? 32 : 16),
+    stepsPerBar: (d) => promoteResolution(resolutionOf(null, d), gridFor(quantise)),
     noteLabels: () => noteLabels,
     snapSlots: (slots) => Math.max(1, Math.round(quantise / (16 / slots))),
     // Eighty-eight rows, drawn a screenful at a time. The base pitch size is dynamic so
@@ -1779,7 +1834,7 @@ export function createPianoRoll({
     },
     // Only a genuinely new note takes this value. The shared grid calls it for taps,
     // paint trails and Draw mode, while existing notes keep their own lengths.
-    addLength: () => (rollResizable(lane()) ? noteAddLength : null),
+    addLength: () => (rollResizable(lane()) ? (noteAddLength ?? quantise) : null),
     // `chord` alongside the row for the same reason `withCell` and `withLen` get it: the
     // rectangle a note draws has to read the step the way the edit will write it.
     cellLen: (row, value, len, meta) =>
@@ -2078,7 +2133,9 @@ export function createPianoRoll({
     setResizeDeferred: grid.setResizeDeferred,
     supportsLengths: () => rollResizable(lane()),
     quantise: () => quantise,
-    onsetResolution: () => (draft()?.resolution === 32 ? 32 : 16),
+    /** The snap's NAME, for a menu that has to say what it is about to do. */
+    quantiseLabel: () => snapLabel(quantise),
+    onsetResolution: () => resolutionOf(null, draft()),
     inputChord: (rootMidi) => (chordInput && canStack(lane())
       ? chordFrequencies(rootMidi, chordType, {
         inversion: chordInversion, voicing: chordVoicing, doubleRoot: chordDoubleRoot,

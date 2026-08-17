@@ -1317,6 +1317,80 @@ assert(seededRandom(7)() === seededRandom(7)(), 'the seeded random helper is sta
     assert(cleared.form[1].chords === undefined
       && sounding(cleared, 1).every((degree) => degree === 3),
       'turning the walk off clears its chord line and leaves the material as written');
+    // WHAT A SLICE SOUNDS IS WRITTEN ON THE SLICE, and it has to be: with the source degree
+    // compensated, a bar already sitting on the chord the walk wants moves by NOTHING, so
+    // the shift cannot say what is playing. The panel used to ask the part's stamped line
+    // instead — the walk's intention for that bar, not a report on the slice in it — and a
+    // slice playing exactly as written sat in the strip labelled `iv`.
+    const walkedOps = (recipe) => {
+      const span = recipe.form[1];
+      let at = 0;
+      const out = [];
+      for (const [index, op] of recipe.operations.entries()) {
+        const duration = op.length * op.repeats;
+        if (at >= span.start && at + duration <= span.end) out.push([index, op]);
+        at += duration;
+      }
+      return out;
+    };
+    assert(walkedOps(aware).every(([, op]) => op.chord === (3 + (op.harmony || 0)) % 7),
+      'every walked slice carries the chord it sounds, shift or no shift');
+    const unmoved = walkedOps(aware).find(([, op]) => !op.harmony && op.chord);
+    assert(unmoved, 'the material really does sit on a chord the walk asks for somewhere');
+    // And it can be taken back out of the walk. Asking for a SHIFT to find a walked slice
+    // hid this behind the one slice that most looks like it should not be there.
+    const freed = transformRearrangement(aware, [unmoved[0]], 'walk-off', { seed: 1 });
+    assert(freed.changed === 1 && freed.recipe.operations[unmoved[0]].chord === undefined,
+      'a slice the walk left as written can still be taken out of the walk');
+    // DOUBLING A PART DOUBLES ITS BARS, so the line that names them has that many entries.
+    // Left at its old length it was read clamped, which pinned its last chord over every
+    // bar of the copy — and the copy plays the same slices, carrying their own chords.
+    const twice = transformRearrangementSection(aware, 1, 'double').recipe;
+    assert(twice.form[1].chords.length === (twice.form[1].end - twice.form[1].start) / 16
+      && JSON.stringify(twice.form[1].chords)
+        === JSON.stringify([...aware.form[1].chords, ...aware.form[1].chords])
+      && walkedOps(twice).every(([, op]) => op.chord === (3 + (op.harmony || 0)) % 7),
+      'doubling a walked part gives the copy its own bars of the same chord line');
+    assert(JSON.stringify(validateRearrangement(JSON.parse(JSON.stringify(aware)), 64 * 8)
+      .operations) === JSON.stringify(aware.operations),
+      'the chord a slice sounds survives the JSON round trip, tonic bars included');
+  }
+  // A SLICE BELONGS TO THE BAR ITS DURATION PUTS IT IN — in the selection walk too. This
+  // one advanced its palette by `repeats`, which counts PASSES: a run of half-bar slices
+  // ran through the progression at twice the speed of the music and then pinned its last
+  // chord over the rest of the selection. The part walk names that mistake in its own
+  // header and was fixed for it; this path kept it.
+  {
+    const key = { tonic: 4, minor: true };
+    const halves = {
+      kind: 'mashenstein.rearrange', version: 2, grid: 16, seed: 4, key,
+      source: { steps: 128 },
+      form: [{ name: 'Verse', role: 'Verse', letter: 'A', start: 0, end: 128, source: 0 }],
+      operations: Array.from({ length: 16 }, (unused, index) => (
+        { from: (index % 8) * 8, length: 8, repeats: 1, transpose: 0 })),
+    };
+    const on = transformRearrangement(halves, [...halves.operations.keys()], 'walk-on', { seed: 4 }).recipe;
+    const perBar = [];
+    let at = 0;
+    for (const op of on.operations) {
+      if (at % 16 === 0) perBar.push(op.chord ?? null);
+      at += op.length * op.repeats;
+    }
+    assert(perBar.length === 8 && perBar.every((chord) => chord != null),
+      'the selection walk names all eight bars of a part cut into half-bar slices');
+    assert(new Set(perBar.slice(4)).size > 1,
+      'and it is still moving in the second half rather than pinned to its last chord');
+    // Two slices inside one bar play the SAME chord: a bar is one chord, however it is cut.
+    let step = 0;
+    let sameWithinBar = true;
+    const byBar = new Map();
+    for (const op of on.operations) {
+      const bar = Math.floor(step / 16);
+      if (byBar.has(bar) && byBar.get(bar) !== (op.chord ?? null)) sameWithinBar = false;
+      byBar.set(bar, op.chord ?? null);
+      step += op.length * op.repeats;
+    }
+    assert(sameWithinBar, 'both halves of a bar walk to that bar’s chord, not to two of them');
   }
   // A PART WITH BARS TO FILL IS NEVER "TOO SHORT". The palette a part offers can be all
   // tonic — the old slow grammar wrote [0,0,0,…] for anything under four bars and stamped it
