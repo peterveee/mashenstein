@@ -20,7 +20,7 @@ import { wavBuffer } from './lib/wav.js';
 import { loudness, gainToTarget, LOUDNESS_TARGET } from './lib/loudness.js';
 import { midiBuffer } from './lib/render-midi-bank.js';
 import { bankFromMidi } from './lib/midi-import.js';
-import { writeImportedIndex, importId, slugFor, IMPORTED_DIR } from './lib/imported-index.js';
+import { writeImportedIndex, importId, slugFor, IMPORTED_DIR, SCRATCH_DIR, SONG_DIRS, songFileIn } from './lib/imported-index.js';
 import { buildVisualiserHtml } from './build-visualiser.js';
 // Through lib/tracks.js, not src/data/tracks.js: that is what registers the songs in
 // src/data/imported/ as tracks, so an import is renderable without a restart.
@@ -396,6 +396,7 @@ async function readCurrentMix() {
   return {
     ...await readSongStateDir(join(ROOT, 'src/data/songs'), 'mix'),
     ...await readSongStateDir(join(ROOT, IMPORTED_DIR), 'mix'),
+    ...await readSongStateDir(join(ROOT, SCRATCH_DIR), 'mix'),
   };
 }
 
@@ -404,6 +405,7 @@ async function readCurrentArrangements() {
   return {
     ...await readSongStateDir(join(ROOT, 'src/data/songs'), 'arrangement'),
     ...await readSongStateDir(join(ROOT, IMPORTED_DIR), 'arrangement'),
+    ...await readSongStateDir(join(ROOT, SCRATCH_DIR), 'arrangement'),
   };
 }
 
@@ -411,6 +413,7 @@ async function readCurrentM8trx() {
   return {
     ...await readSongStateDir(join(ROOT, 'src/data/songs'), 'm8trx'),
     ...await readSongStateDir(join(ROOT, IMPORTED_DIR), 'm8trx'),
+    ...await readSongStateDir(join(ROOT, SCRATCH_DIR), 'm8trx'),
   };
 }
 
@@ -634,7 +637,7 @@ async function renderTrack(trackId, mix, { repeat = 1, write = true, arrangement
 }
 
 function idTaken(id, root, resolver) {
-  return existsSync(join(root, IMPORTED_DIR, `${id}.js`))
+  return !!songFileIn(root, id)
     || existsSync(join(root, 'src/data/songs', `${id}.js`))
     || !!resolver(id);
 }
@@ -677,13 +680,17 @@ const server = createServer(async (req, res) => {
           // Absent or `auto` and the seed picks the style pack — see song-styles.js.
           style: body?.style,
           seed: body?.seed ?? randomSongSeed(),
+          // `work/scratch/` is two levels under the root like the in-tree song folders,
+          // but it reaches the engine through `src/` rather than out of it.
+          notesPath: '../../src/engine/notes.js',
         });
       } catch (err) {
         res.writeHead(400, { 'content-type': 'text/plain' });
         res.end(String(err.message || err));
         return;
       }
-      const file = join(ROOT, IMPORTED_DIR, `${spec.id}.js`);
+      // Into the disposable drawer, not `src/data/imported/` — see SCRATCH_DIR.
+      const file = join(ROOT, SCRATCH_DIR, `${spec.id}.js`);
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, spec.source);
       writeImportedIndex(ROOT);
@@ -698,7 +705,7 @@ const server = createServer(async (req, res) => {
       });
       res.writeHead(201, { 'content-type': 'application/json' });
       res.end(JSON.stringify({
-        file: 'src/data/imported/' + `${spec.id}.js`,
+        file: `${SCRATCH_DIR}/${spec.id}.js`,
         // What the seed decided, so the desk can say it rather than leaving the style
         // to be guessed at from the sound.
         style: spec.styleLabel, key: spec.key, bpm: spec.bpm,
@@ -716,7 +723,11 @@ const server = createServer(async (req, res) => {
       const id = String(body?.id || '');
       const track = resolveTrack(id);
       const target = id ? writableSongPath(ROOT, id) : null;
-      const importedRoot = join(ROOT, IMPORTED_DIR) + '/';
+      // Both song drawers, because scratch material now lives in `work/scratch/` and a
+      // guard naming one directory would have quietly stopped deleting the very group
+      // this route exists for. Still a whitelist of roots and not a blacklist: the point
+      // is that `src/data/songs` — the game's own catalogue — can never be reached.
+      const songRoots = SONG_DIRS.map((dir) => join(ROOT, dir) + '/');
       // A style audition is a scratch song under its own heading — same directory, same
       // marker, same disposability. See the group list in src/data/tracks.js.
       // Alternates too: a candidate you decided against is exactly the kind of file
@@ -729,7 +740,7 @@ const server = createServer(async (req, res) => {
       const madeHere = track && (track.group === 'scratch' || track.group === 'styleAudition'
         || track.group === 'alternate' || track.group === 'copy');
       if (!madeHere || track.writable !== true
-        || !target || !target.startsWith(importedRoot)) {
+        || !target || !songRoots.some((root) => target.startsWith(root))) {
         res.writeHead(404, { 'content-type': 'text/plain' });
         res.end('only writable scratch songs can be deleted');
         return;
@@ -1068,7 +1079,7 @@ const server = createServer(async (req, res) => {
       }
       // Keep whichever catalogue contains the saved file in sync. The generated
       // index is what makes a new scratch source visible after a page rebuild.
-      if (written.some((id) => writableSongPath(ROOT, id)?.includes(`/${IMPORTED_DIR}/`))) {
+      if (written.some((id) => SONG_DIRS.some((dir) => writableSongPath(ROOT, id)?.includes(`/${dir}/`)))) {
         writeImportedIndex(ROOT);
       }
       writeSongsIndex(join(ROOT, 'src/data/songs'));
@@ -1465,7 +1476,31 @@ const server = createServer(async (req, res) => {
       // The filename is the track id, so importing the same file twice edits the same
       // song rather than growing a second one. Settled before the conversion: the bank
       // writes its own id into the file, the way every other song file does.
-      const id = importId(ROOT, slugFor(q.get('file') || 'imported'), (x) => !!resolveTrack(x));
+      const base = slugFor(q.get('file') || 'imported');
+      // An explicit id is the ANSWER to the question below: the desk asking again with
+      // the name somebody chose. It may be the existing one — replace, deliberately —
+      // or a free one, which leaves the old song alone entirely.
+      const chosen = q.get('id') ? slugFor(q.get('id')) : null;
+      const id = chosen || importId(ROOT, base, (x) => !!resolveTrack(x));
+      const dir = join(ROOT, IMPORTED_DIR);
+      const existed = existsSync(join(dir, `${id}.js`));
+
+      // REPLACING A SONG IS NOT A SIDE EFFECT OF WHAT A FILE ON YOUR DISK IS CALLED.
+      //
+      // Re-importing lands on the same id on purpose — that is how a DAW edit comes back
+      // over itself — but the write is the whole file, so it takes the desk's half with
+      // the notes: voices, faders, sends, arrangement, M8TRX. Deriving all of that from
+      // a filename, with no question asked, made "import" the one destructive button
+      // here that never checked. So the first ask returns the collision instead, having
+      // written nothing, and the desk comes back with a name.
+      if (existed && !chosen) {
+        const known = resolveTrack(id);
+        res.writeHead(409, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({
+          code: 'exists', id, title: known?.title || id, suggested: newScratchId(base),
+        }));
+        return;
+      }
       let out;
       try {
         out = bankFromMidi(Buffer.concat(chunks), {
@@ -1479,10 +1514,20 @@ const server = createServer(async (req, res) => {
         res.end(String(err.message || err));
         return;
       }
-      const dir = join(ROOT, IMPORTED_DIR);
-      const existed = existsSync(join(dir, `${id}.js`));
       mkdirSync(dir, { recursive: true });
       const file = join(IMPORTED_DIR, `${id}.js`);
+      // AN IMPORT OVER AN EXISTING SONG IS THE MOST DESTRUCTIVE WRITE THE DESK MAKES.
+      //
+      // Re-importing deliberately lands on the same id — that is how a DAW edit comes
+      // back over itself — and rewrites the file WHOLE, so the desk's half goes with the
+      // notes: every voice chosen, every fader, every send, the arrangement, the M8TRX
+      // recipe. A save replaces strictly less than that and has always left a snapshot
+      // first; this left none, which made the safer operation the protected one.
+      //
+      // Only when something was there: a first import has nothing to lose, and
+      // `snapshotSongFile` returns null for a legacy bank with no desk marker, which is
+      // the honest answer for a file that never had a desk half to keep.
+      const snap = existed ? snapshotSongFile(ROOT, id, HISTORY_DIR, stamp()) : null;
       writeFileSync(join(ROOT, file), out.source);
 
       // Load the bank we just wrote, so this process can render and export the new
@@ -1517,10 +1562,11 @@ const server = createServer(async (req, res) => {
       console.log(`imported ${file} — ${out.title}`
         + ` (${out.bpm}bpm, ${out.blocks} blocks -> ${out.sections} sections)`
         + (out.layers.length ? `, ${out.layers.length} on layers: ${out.layers.map((l) => l.key).join(', ')}` : '')
-        + `  [track: ${id}]`);
+        + `  [track: ${id}]`
+        + (snap ? `  (replaced — was: work/mix-history/${snap})` : ''));
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({
-        ...out, source: undefined, file, mix,
+        ...out, source: undefined, file, mix, replaced: existed, snapshot: snap,
         track: { id, title: out.title, slug: id, bank, group: 'imported', writable: true },
       }));
       return;

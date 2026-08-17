@@ -126,12 +126,20 @@ const sectioned = {
     'the second bar of a section reads slots 16-31, not 0-15');
   Audio.step = 20;
   assert(Audio._rearrangeOutputSlot(plan[1], 16) === 20, 'and keeps its offset within the bar');
+  // Promote the transport for the two below, because that is the state they describe:
+  // `step` counts whole ticks, and a HALF step is only a position the transport can
+  // hold once its resolution is 32. Writing 4.5 at a sixteenth transport used to stick
+  // because `step` was a plain field; it is now the tick counter's reading, so an
+  // impossible position quantises to the nearest real one.
+  const wasResolution = Audio.transportResolution;
+  Audio.transportResolution = 32;
   Audio.step = 4;
   assert(Audio._rearrangeOutputSlot(plan[0], 32) === 8,
     'a promoted transport doubles the sixteenth into the 32-slot address space');
   Audio.step = 4.5;
   assert(Audio._rearrangeOutputSlot(plan[0], 32) === 9,
     'and a half tick lands on the odd slot between them');
+  Audio.transportResolution = wasResolution;
 }
 
 // ---- the whole claim: the collage moves, the groove does not ------------------

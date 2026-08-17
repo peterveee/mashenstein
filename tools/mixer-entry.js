@@ -14944,6 +14944,7 @@ function tick() {
     requestAnimationFrame(tick);
     return;
   }
+  let spanAt = now;
   if (Audio.mixer) {
     const laneLevels = new Map();
     for (const mt of meters) {
@@ -14955,6 +14956,19 @@ function tick() {
         : Audio.mixer.lane(mt.key)?.level();
       const vals = Array.isArray(v) ? v : [v];
       let loudest = 0;
+      // A strip that reads silence, has already fallen to the floor and holds no peak
+      // has nothing left to animate: every assignment below would write back the value
+      // already there. Skipping them is not an approximation — it is the same five
+      // style writes per channel, declined. Worth declining because this loop is the
+      // one per-frame cost that scales with how many LANES a song has, and the songs
+      // that struggle are the ones carrying two dozen strips of which most are resting
+      // at any moment. The falling case is deliberately excluded: a meter on its way
+      // down still has frames to draw, and `shown > 0` keeps it in the loop until it
+      // arrives. See `mixer-general-performance-plan.md`, priority 6.
+      if (mt.chans.every((ch, i) => !(vals[i] > 0) && !(ch.shown > 0) && !(ch.held > 0))) {
+        laneLevels.set(mt.key, 0);
+        continue;
+      }
       mt.chans.forEach((ch, i) => {
         const lin = typeof vals[i] === 'number' ? vals[i] : 0;
         if (lin > loudest) loudest = lin;
@@ -14983,6 +14997,7 @@ function tick() {
       const lin = laneLevels.has(key) ? laneLevels.get(key) : Audio.mixer.lane(key)?.level();
       updateArrangementMeter(readout, lin, now, dt);
     }
+    spanAt = frameSpan('meters', spanAt);
   }
   const beat = Audio.songBeat();
   if (beat != null && track) {
@@ -14997,12 +15012,18 @@ function tick() {
     const visualStep = arrangementVisualStep(heardStep);
     followArrangementVisual(visualStep);
     if (rearrangeActive()) followArrangementVisual(arrangementVisualStep(sourceStep));
+    spanAt = frameSpan('arrangement', spanAt);
     oskFollow(sourceStep);
+    spanAt = frameSpan('keyboard', spanAt);
     stepSeq.follow(sourceStep);
+    spanAt = frameSpan('stepseq', spanAt);
     pianoRoll.follow(sourceStep);
+    spanAt = frameSpan('pianoroll', spanAt);
     kitRoll.follow(sourceStep);
+    spanAt = frameSpan('kitroll', spanAt);
     recordFollow(heardStep);
     syncRearrangeProgress(outputHeard);
+    spanAt = frameSpan('rearrange', spanAt);
   } else {
     followArrangementVisual(null);
     oskFollow(null);
@@ -15264,6 +15285,9 @@ const LOOP_LOG_COLUMNS = [
   // Priority 0 telemetry — measurement only, no behaviour behind any of it yet.
   'schedTicks', 'schedFineTickPct', 'schedLaneReads', 'schedFineLaneReadPct',
   'schedLaneReadsPerTick', 'schedPreamblePerTick',
+  // Which named section of the desk's animation frame spent the most, and how much —
+  // the column that turns "a 340ms task ran" into something to go and read.
+  'frameHotspot', 'frameHotspotMs',
   'reliefMs', 'reliefEnters', 'reliefVerdict', 'auxDuty',
   'bufferMode', 'latencyRequest', 'baseLatencyMs', 'outputLatencyMs', 'readAheadMs',
   'cacheEnabled', 'cacheBuffers', 'cacheMB', 'cacheQueued', 'cacheRendering',
@@ -15290,6 +15314,7 @@ function resetLoopHealthWindow() {
   loopHealthWindow.reliefMs = 0;
   loopHealthWindow.reliefEnters = 0;
   loopHealthWindow.reliefVerdict = '';
+  frameSpans.clear();
   auxDuty.clear();
   lastLoggedDropouts = health.dropouts;
 }
@@ -15302,6 +15327,35 @@ function resetLoopHealthWindow() {
 // noise floor to be judged against. The accepted stress baseline is a pair of Clock
 // minima 0.4% apart, and 0.4% is not a result until the spread of an unchanged run is
 // known.
+
+// ---- which part of the desk owned the animation frame -----------------------
+//
+// `longTaskMaxMs` says the main thread was blocked. It has never said BY WHAT, and
+// `stallSource` only names a stall that a click was standing next to — so every
+// periodic cost the desk pays lands in the CSV as "unattributed", 154 rows of it in
+// one investigation. That is the difference between reading a diagnosis and spending
+// an evening inferring one, and the answer was a DOM projection in a panel that no
+// column mentioned.
+//
+// So the desk times its own frame. Spans are accumulated by name and the heaviest is
+// written beside the long task it explains. Deliberately a running timestamp rather
+// than a wrapper taking a callback: this is instrumentation on the one path that was
+// already too expensive, and it should not allocate a closure per section per frame
+// to say so. One `performance.now()` per boundary is the whole cost.
+let frameSpans = new Map();
+const frameSpan = (name, since) => {
+  const now = performance.now();
+  frameSpans.set(name, (frameSpans.get(name) || 0) + (now - since));
+  return now;
+};
+
+/** The heaviest named section of the window, and what it spent. */
+function frameHotspotFields() {
+  let name = '';
+  let ms = 0;
+  for (const [key, spent] of frameSpans) if (spent > ms) { ms = spent; name = key; }
+  return name ? { frameHotspot: name, frameHotspotMs: Math.round(ms) } : {};
+}
 
 /** Fold this tick's scheduler-work counters into the lap window. */
 function accumulateSchedulerWork() {
@@ -15479,7 +15533,18 @@ function appendDiagnosticEvent(status, detail, fields = {}) {
     clockMin: Number.isFinite(health.ratio) ? health.ratio.toFixed(3) : '',
     schedulerMarginMinMs: health.marginMin == null ? '' : Math.round(health.marginMin * 1000),
     longTaskMaxMs: Math.round(health.longTask || 0), dropoutsDelta: fields.dropoutsDelta ?? 0,
-    dropoutsTotal: health.dropouts, ...diagnosticRuntimeFields(), ...fields,
+    dropoutsTotal: health.dropouts, ...diagnosticRuntimeFields(),
+    // Scheduler work and the frame's heaviest owner on EVENT rows too, not only on the
+    // lap row. These columns used to appear only in `appendLoopLog`, which is a fine
+    // place for them right up until the song is long enough to be interesting: a lap
+    // row is written when a loop wraps, so a seven-minute import nobody plays to the
+    // end emits event after event and never a single lap. Four sessions of diagnostics
+    // on one such song carried 223 rows, every one of them an event, and every
+    // scheduler-work column in all of them blank — the instrumentation was wired
+    // correctly and reported nothing, which is the worst of both. Both helpers read a
+    // window reset at the same points, so these are rates since the last lap or reset
+    // rather than since the song began.
+    ...schedulerWorkFields(), ...frameHotspotFields(), ...fields,
   });
 }
 
@@ -21064,16 +21129,54 @@ $('exportjson').onclick = async () => {
 //
 // Importing the same filename again lands on the same track id, so a song that has
 // been round the DAW comes back over itself rather than piling up copies.
+/**
+ * The name to import under, when the id this file would take is already a song.
+ *
+ * Prefilled with a FREE name, so the default answer is the one that destroys nothing
+ * and replacing is something you have to type back. Returns null when the answer is to
+ * back out — at which point the server has written nothing, because the collision was
+ * reported before the conversion ran, let alone the file write.
+ */
+async function askImportName(fileName, info) {
+  const ok = await ask(`${escapeHtml(info.title)} already exists`,
+    `Importing <b>${escapeHtml(fileName)}</b> under the same name replaces that song `
+    + `completely — not only its notes, but everything the desk holds for it: the voices, `
+    + `the faders, the sends, the arrangement and any M8TRX recipe. A copy of that half is `
+    + `kept in <b>Restore a previous save</b>, but importing under a new name leaves the `
+    + `song alone entirely.`
+    + `<label class="askfield">Import as<input id="askimportid" type="text" `
+    + `value="${escapeHtml(info.suggested)}" spellcheck="false"></label>`,
+    'Import', { cancel: true });
+  if (!ok) return null;
+  const value = ($('askimportid')?.value || '').trim();
+  return value || info.suggested;
+}
+
 $('importmidi').onclick = () => $('midifile').click();
 $('midifile').onchange = async () => {
   const file = $('midifile').files[0];
   if (!file) return;
   $('midifile').value = '';
   toast(`Reading ${file.name}…`);
-  const res = await fetch(`/import-midi?file=${encodeURIComponent(file.name)}`, {
-    method: 'POST', body: await file.arrayBuffer(),
-  });
-  const body = await res.text();
+  // Held rather than re-read: answering the name question posts the same bytes a second
+  // time, and the input has already been cleared so the File is the only copy left.
+  const bytes = await file.arrayBuffer();
+  const post = (id = null) => fetch(`/import-midi?file=${encodeURIComponent(file.name)}`
+    + (id ? `&id=${encodeURIComponent(id)}` : ''), { method: 'POST', body: bytes });
+
+  let res = await post();
+  let body = await res.text();
+  // The server refuses a silent replacement and says which song it would have been.
+  if (res.status === 409) {
+    let info = null;
+    try { info = JSON.parse(body); } catch { /* not the collision — fall through */ }
+    if (info?.code === 'exists') {
+      const name = await askImportName(file.name, info);
+      if (!name) { toast('Import cancelled — nothing was written'); return; }
+      res = await post(name);
+      body = await res.text();
+    }
+  }
   if (!res.ok) { await tell(`Could not import ${file.name}`, escapeHtml(body)); return; }
   const out = JSON.parse(body);
   if (!out.track) {                     // server older than this page
@@ -21094,7 +21197,11 @@ $('midifile').onchange = async () => {
   const lanes = out.assignments.map((a) => `${a.name} → ${a.lane}`).join('\n  ');
   const notes = (out.moved ? `${out.moved} notes moved onto the sixteenth grid.\n` : '')
     + (out.foreignDrums.length ? `GM percussion outside our kit: ${out.foreignDrums.join(', ')}\n` : '');
-  toast(`${replaced ? 'Replaced' : 'Imported'} ${out.track.title} — ${playing ? 'now playing' : 'loaded'}`);
+  // `out.replaced` is the SERVER's answer — a file was there and has been written over —
+  // which is the one worth saying, because it is the one with a snapshot behind it.
+  toast(`${out.replaced ?? replaced ? 'Replaced' : 'Imported'} ${out.track.title}`
+    + ` — ${playing ? 'now playing' : 'loaded'}`
+    + (out.snapshot ? ' · previous version kept in Restore a previous save' : ''));
   await tell(`Imported ${escapeHtml(file.name)}`,
     `<b>${out.bpm} bpm</b>, ${out.blocks} blocks → ${out.sections} sections, `
     + `written to <b>${escapeHtml(out.file)}</b>.<br><br>`

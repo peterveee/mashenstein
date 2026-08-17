@@ -19,17 +19,20 @@
 // `lead3` — which is an ordinary lane everywhere downstream (see the layer notes in
 // src/engine/lanes.js) with its own strip, fader and voice.
 //
-// A layer arrives on a STARTER preset, not on the sound the part had in the DAW, which
-// no MIDI file carries: a square on anything pitched, the Tom on a piece of kit
-// (`defaultAddedVoice` in src/data/voices.js). Neutral rather than absent — an unvoiced
-// layer used to arrive silent, so a fifteen-part import was fourteen strips of lit steps
-// making no sound, and a drum starter on a lead was worse still. The import summary
-// names the layers so the parts to re-voice are on the page rather than found by ear.
+// Every lane arrives on a STARTER preset, not on the sound the part had in the DAW,
+// which no MIDI file carries. Neutral rather than absent — an unvoiced layer used to
+// arrive silent, so a fifteen-part import was fourteen strips of lit steps making no
+// sound, and a drum starter on a lead was worse still. The import summary names the
+// layers so the parts to re-voice are on the page rather than found by ear.
+//
+// Pitched lanes take the MonoSynth starters named at `importStarterFor` below; a piece
+// of kit takes the Tom (`defaultAddedVoice` in src/data/voices.js). The pitched half is
+// the importer's own answer rather than the desk-wide one — see the note there.
 //
 // The CLI is tools/import-midi.js; the desk posts files here through the mixer.
 import { parseMidi, tempoOf, notesOf } from './midi-parse.js';
 import { LANE_KEYS, lenKey, perNoteLengthLane } from '../../src/engine/lanes.js';
-import { baseLane, seamFor } from '../../src/data/voices.js';
+import { baseLane, seamFor, MONO_LANES } from '../../src/data/voices.js';
 import { deskTail } from './song-source.js';
 
 const STEPS_PER_BLOCK = 32;                    // two bars of 4/4 in sixteenths
@@ -39,6 +42,37 @@ const CHORD_BASES = new Set(['chords', 'organChords']);
 // spells chords and `snare2` is a boolean, the same as the lanes they are copies of.
 const isPerc = (lane) => PERC_BASES.has(baseLane(lane));
 const isChordal = (lane) => CHORD_BASES.has(baseLane(lane));
+
+// ---- what an imported pitched lane arrives sounding like --------------------
+//
+// A MonoSynth starter, not the engine's game square. `defaultAddedVoice` answers this
+// for a lane added anywhere else and its answer is `toneSquare` — a GameSynth, fixed
+// length, no filter, the arcade's own oscillator. That is the right neutral for a lane
+// added to a MASHENSTEIN song by hand, and the wrong one for a MIDI file: an import is
+// somebody's arrangement arriving from a DAW, usually orchestral or at least played,
+// and fourteen lanes of identical arcade square is a poor first hearing of it. The
+// `simple*` family is what the library already marks `starter: true`, and it is a real
+// MonoSynth — an oscillator through a filter with an envelope on both.
+//
+// Deliberately NOT changed in `defaultAddedVoice` itself: this is the importer's
+// opinion about imports, and a layer added by hand on the desk keeps the arcade square
+// it has always had.
+//
+// Saw on the bass and square on everything else, rather than one preset everywhere,
+// because the whole point is that an import should not arrive as N copies of one sound.
+// The bass is the one part a single rule can reliably tell apart, and saw-under-square
+// is the oldest correct answer in synthesis.
+const IMPORT_STARTER_BASS = 'simpleSawtooth';
+const IMPORT_STARTER_PITCHED = 'simpleSquare';
+// The gesture lanes are excluded and must stay excluded: they build their own node
+// graph with the timing inside the gesture, so a preset there is not a timbre for a
+// note, it is a different instrument. `MONO_LANES` is the same list the piano roll
+// declines to draw. Percussion is excluded because it is not a square-tone problem —
+// its starter is a drum and stays one.
+const importStarterFor = (lane) => {
+  if (isPerc(lane) || MONO_LANES.includes(baseLane(lane))) return null;
+  return baseLane(lane) === 'bass' ? IMPORT_STARTER_BASS : IMPORT_STARTER_PITCHED;
+};
 
 // The names tools/render-midi-bank.js writes, so our own exports come home to the
 // lanes they left from.
@@ -419,7 +453,50 @@ for (const a of assignments) {
     });
   }
 }
-const mix = layers.length ? { layers } : null;
+// ---- the parts keep their names ---------------------------------------------
+//
+// A MIDI file's one piece of human information is what the composer called each part,
+// and an import used to throw it away: fourteen strips reading Lead, Lead 2, Lead 3 are
+// fourteen questions to answer by ear when the file already said Oboe, Clarinet, Horn.
+//
+// Written to `mix.labels`, which is the desk's RENAME channel, and that is what makes
+// this safe to do again. Layer labels were once copied from MIDI names onto the layer
+// entry itself, where they sat beside the preset and could contradict it — a strip
+// reading "Strings" while a square played. The desk resolves a track's identity as
+// rename, then preset, then engine lane (see `deskLanes` in tools/mixer-entry.js) and
+// strips `layer.label` outright. So a name written here is exactly a name typed into the
+// strip: it outranks the preset deliberately, and choosing a sound no longer argues with
+// it.
+const labels = {};
+for (const a of assignments) {
+  // A kit part became several lanes at once, and Kick, Snare and Hats already say what
+  // they are far better than one part name repeated across all three of them.
+  if (a.kitMap) continue;
+  const name = String(a.name || '').trim();
+  if (!name || name === '(unnamed)') continue;
+  // The same test the assignment itself had to pass. `drums` in particular is the name
+  // of a decision rather than of a lane and must never reach a mix.
+  if (!LANE_KEYS.includes(a.lane) && !seamFor(a.lane)) continue;
+  labels[a.lane] = name;
+}
+
+// The starter for every pitched lane the import wrote, named outright. A bank that
+// names a preset IS what the lane plays with nothing chosen — see `resolveDefault` in
+// src/data/voices.js — so this reaches the real lanes and the layers by one route, and
+// the desk can still overwrite any of it on the first click.
+const voice = {};
+for (const lane of laneKeys) {
+  const starter = importStarterFor(lane);
+  const seam = starter && seamFor(lane);
+  if (seam) voice[seam.voiceKey] = starter;
+}
+const mix = layers.length || Object.keys(voice).length || Object.keys(labels).length
+  ? {
+    ...(layers.length ? { layers } : {}),
+    ...(Object.keys(voice).length ? { voice } : {}),
+    ...(Object.keys(labels).length ? { labels } : {}),
+  }
+  : null;
 
 const source = `// ${title} — imported from ${from} by tools/import-midi.js.
 //
@@ -429,9 +506,14 @@ const source = `// ${title} — imported from ${from} by tools/import-midi.js.
 //
 // ${parts.length} part${parts.length === 1 ? '' : 's'} in the file, ${laneKeys.length} lane${laneKeys.length === 1 ? '' : 's'} here — nothing was merged onto anything else.${layers.length ? `
 // ${layers.length} of them ${layers.length === 1 ? 'is a layer' : 'are layers'} (${layers.map((l) => l.key).join(', ')}): real lanes with the
-// notes below, declared in the mix at the foot of this file. Each starts on the
-// neutral starter preset for its lane — a square if it is pitched — until you choose
-// one on the desk. A layer is a preset and nothing else.` : ''}
+// notes below, declared in the mix at the foot of this file. A layer is a preset and
+// nothing else.` : ''}
+//
+// Every pitched lane starts on a MonoSynth starter — Simple Sawtooth on the bass,
+// Simple Square on the rest — because a MIDI file carries no timbre and arriving as one
+// arcade square on every lane is a poor first hearing of somebody's arrangement. Kit
+// lanes start on the Tom. All of it is a starting point: choose the real sounds on the
+// desk and it rewrites the mix below.
 import { ${imports.join(', ')} } from '../../engine/notes.js';
 
 export const id = ${JSON.stringify(id)};

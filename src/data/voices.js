@@ -3154,6 +3154,37 @@ const TONE = {
       vca: { attack: 2.2, decay: 5, sustain: 0.94, release: 3.6, attackCurve: 'lin' },
     },
     vibrato: { depth: 0.05, rate: 2.2, delay: 3 } },
+  simpleSquare: { label: 'Simple Square', category: 'Lead', synth: 'MonoSynth', dur: 1.2,
+    note: 'Square through an opening filter: the arcade lead with an envelope the raw '
+      + 'oscillator cannot give it.',
+    options: {
+      oscillator: { type: 'square' },
+      envelope: { attack: 0.002, decay: 0.15, sustain: 0.88, release: 0.2 },
+      filter: { type: 'lowpass', Q: 0.1, rolloff: -12 },
+      filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 2915, octaves: 1.2 },
+    },
+    starter: true },
+  simpleSawtooth: { label: 'Simple Sawtooth', category: 'Lead', synth: 'MonoSynth', dur: 1.2,
+    note: 'Sawtooth through an opening filter: the arcade lead with an envelope the raw '
+      + 'oscillator cannot give it.',
+    options: {
+      oscillator: { type: 'sawtooth' },
+      envelope: { attack: 0.002, decay: 0.15, sustain: 0.88, release: 0.2 },
+      filter: { type: 'lowpass', Q: 0.1, rolloff: -12 },
+      filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 2915, octaves: 1.2 },
+    },
+    starter: true },
+  simpleTriangle: { label: 'Simple Triangle', category: 'Lead', synth: 'MonoSynth', dur: 1.2,
+    note: 'Triangle wave through an opening filter: the arcade lead with an envelope the raw '
+      + 'oscillator cannot give it.',
+    options: {
+      oscillator: { type: 'triangle' },
+      envelope: { attack: 0.002, decay: 0.15, sustain: 0.88, release: 0.2 },
+      filter: { type: 'lowpass', Q: 0.1, rolloff: -12 },
+      filterEnvelope: { attack: 0.002, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 2915, octaves: 1.2 },
+    },
+    starter: true,
+    trim: 1.2 },
 };
 
 // User presets live in their own tables rather than beside the built-in library.
@@ -3394,7 +3425,8 @@ const LEVELS = {
   stKickClick: 0.048943, stClap808: 0.010142, stDsHatClosed: 0.015363,
   stZap: 0.019997, stPadTriangle: 0.101497, stFmBell: 0.018029,
   stAmHollow: 0.01455, squareMono: 0.043368, fatKick: 0.035113,
-  gameBoySnare: 0.083619, celeste2: 0.034436, thickSquareGlide: 0.115047
+  gameBoySnare: 0.083619, celeste2: 0.034436, thickSquareGlide: 0.115047,
+  simpleSquare: 0.116548, simpleSawtooth: 0.069537, simpleTriangle: 0.076624
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -3494,7 +3526,8 @@ const PEAKS = {
   stKickClick: 0.6794, stClap808: 0.241, stDsHatClosed: 0.7135, stZap: 0.6253,
   stPadTriangle: 0.6968, stFmBell: 0.2199, stAmHollow: 0.1073,
   squareMono: 0.7338, fatKick: 0.9364, gameBoySnare: 1.1218, celeste2: 0.2067,
-  thickSquareGlide: 1.1343
+  thickSquareGlide: 1.1343, simpleSquare: 0.785, simpleSawtooth: 0.7751,
+  simpleTriangle: 0.6951
 };
 
 /**

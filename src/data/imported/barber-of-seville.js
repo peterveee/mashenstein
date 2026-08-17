@@ -1,4 +1,4 @@
-// BARBER-OF-SEVILLE-(OUVERTURE) — imported from Barber-Of-Seville-(Ouverture).mid by tools/import-midi.js.
+// BARBER-OF-SEVILLE — imported from Barber-Of-Seville.mid by tools/import-midi.js.
 //
 // Quantised to sixteenths and sliced into two-bar blocks; identical blocks share a
 // section. Timbre, glissando runs and per-section engine overrides are not in a MIDI
@@ -16,9 +16,9 @@
 // desk and it rewrites the mix below.
 import { seq, n } from '../../engine/notes.js';
 
-export const id = "barber-of-seville-ouverture";
-export const title = "BARBER-OF-SEVILLE-(OUVERTURE)";
-export const slug = "barber-of-seville-ouverture";
+export const id = "barber-of-seville";
+export const title = "BARBER-OF-SEVILLE";
+export const slug = "barber-of-seville";
 export const group = "imported";
 
 export const bank = {

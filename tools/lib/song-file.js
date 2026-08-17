@@ -14,9 +14,19 @@ import { join, relative } from 'path';
 // (here) write the identical shape, so neither can reformat the other's work. The mix
 // serialisers this file used to import live behind it now; see the note over deskTail.
 import { deskTail, DESK_MARKER } from './song-source.js';
+import { SCRATCH_DIR, songFileIn } from './imported-index.js';
 
 export const songPath = (root, id) => join(root, 'src/data/songs', `${id}.js`);
-export const scratchSongPath = (root, id) => join(root, 'src/data/imported', `${id}.js`);
+
+/**
+ * A desk-written song's file, wherever it is kept.
+ *
+ * Two drawers rather than one since scratch songs moved to `work/`: this asks the list
+ * rather than naming a directory, and falls back to where a NEW scratch song would be
+ * written so a caller testing `existsSync` on the result still gets a truthful "no".
+ */
+export const scratchSongPath = (root, id) => songFileIn(root, id)
+  || join(root, SCRATCH_DIR, `${id}.js`);
 
 /**
  * The editable source for a track, if it has one. Built-in songs live in the

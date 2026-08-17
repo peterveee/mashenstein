@@ -1483,7 +1483,7 @@ assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
   && /\$\('playstart'\)\.onclick = playFromBeginning/.test(entry),
   'Start from beginning prepares queued notes for a bounded time and starts between cache jobs');
 assert(/prepareNoteCache\(bank, \{ startStep = 0, endStep = null \} = \{\}\)/.test(audio)
-  && /for \(let step = Math\.floor\(from \/ tick\) \* tick; step < to; step \+= tick\)/.test(audio)
+  && /for \(let t = Math\.floor\(from \/ tick\); t \* tick < to; t\+\+\)/.test(audio)
   && /rack\.prepareNoteCache\(voice\.id, freq, duration\(\)/.test(audio)
   && /rack\.prioritisePreparedNotes\(\)/.test(audio)
   && /prepareNoteCache\(voiceId, freq, dur/.test(voicesSrc)
@@ -4479,6 +4479,73 @@ delete CATALOGUE[copyId];
     'the scheduler counts its passes and which of them were fractional');
   assert(!/if \([^)]*work\.[a-zA-Z]+/.test(scheduleStep),
     'no scheduling decision is taken on a work counter — they are telemetry, not state');
+}
+
+// ---- the frame names its own heaviest section ------------------------------
+//
+// `longTaskMaxMs` reports that the main thread was blocked and never by what, and
+// `stallSource` only names a stall a click happened to be standing next to. On the
+// import that motivated this, 154 diagnostic rows of 223 read "unattributed" while the
+// cost was a DOM projection in a panel no column mentioned. These spans are the fix, so
+// what they must not become is another cost on the path they measure.
+{
+  assert(/const frameSpan = \(name, since\) => \{/.test(entry),
+    'the frame timer takes a timestamp, not a callback — instrumentation on the frame '
+    + 'does not allocate a closure per section per frame to describe it');
+  assert(!/frameSpan\('[a-z]+',\s*\(\)\s*=>/.test(entry),
+    'and no call site passes it one anyway');
+  for (const section of ['meters', 'arrangement', 'keyboard', 'stepseq', 'pianoroll',
+    'kitroll', 'rearrange']) {
+    assert(new RegExp(`frameSpan\\('${section}', spanAt\\)`).test(entry),
+      `the animation frame names its ${section} section`);
+  }
+  assert(/for \(const \[key, spent\] of frameSpans\) if \(spent > ms\)/.test(entry),
+    'the heaviest section of the window is the one reported');
+  const reset = entry.slice(entry.indexOf('function resetLoopHealthWindow'),
+    entry.indexOf('function accumulateSchedulerWork'));
+  assert(reset.length > 100 && /frameSpans\.clear\(\)/.test(reset),
+    'and the spans are a WINDOW, cleared where every other health figure is');
+  assert(/'frameHotspot', 'frameHotspotMs',/.test(entry),
+    'both columns are registered, or the CSV drops them silently');
+  // The same rule the scheduler-work counters are held to, for the same reason.
+  assert(!/if \([^)]*frameSpans/.test(entry),
+    'nothing branches on a frame span — they are telemetry, not state');
+}
+
+// Scheduler work and the frame hotspot have to reach EVENT rows, not only lap rows.
+// They were lap-only, which is a distinction without a difference on a song short
+// enough to loop and a total blackout on one that is not: four sessions on a
+// seven-minute import produced 223 rows, every one an event, and every scheduler-work
+// column in all of them blank.
+{
+  const event = entry.slice(entry.indexOf('function appendDiagnosticEvent'),
+    entry.indexOf('function refreshLoopLogUi'));
+  assert(event.length > 200, 'the diagnostics event writer is where this test thinks it is');
+  assert(/\.\.\.schedulerWorkFields\(\), \.\.\.frameHotspotFields\(\), \.\.\.fields,/.test(event),
+    'an event row carries the scheduler-work and frame-hotspot columns');
+  assert(/\.\.\.fields,/.test(event) && event.indexOf('...fields,')
+    > event.indexOf('...schedulerWorkFields()'),
+    'and an explicit field still wins over the computed one, so a caller can override');
+  const lap = entry.slice(entry.indexOf('function appendLoopLog'),
+    entry.indexOf('const HEALTH_TICK_MS'));
+  assert(/\.\.\.schedulerWorkFields\(\),/.test(lap),
+    'the lap row keeps them too — this widened where they appear, it did not move them');
+}
+
+// ---- a resting meter strip is not redrawn ----------------------------------
+//
+// The meter loop is the one per-frame cost that scales with how many LANES a song has,
+// and it ran unconditionally. The skip has to be exactly equivalent rather than merely
+// cheap: a strip still FALLING has frames left to draw, and only one that has arrived
+// at the floor with no peak held can be declined.
+{
+  assert(/if \(mt\.chans\.every\(\(ch, i\) => !\(vals\[i\] > 0\) && !\(ch\.shown > 0\) && !\(ch\.held > 0\)\)\)/
+    .test(entry),
+    'a meter is skipped only when it reads silence AND has fallen AND holds no peak — '
+    + 'a falling meter stays in the loop until it arrives');
+  assert(/laneLevels\.set\(mt\.key, 0\);\s*continue;/.test(entry),
+    'and a skipped strip still publishes its level, so the arrangement VUs that read '
+    + 'laneLevels do not fall back to a second engine lookup per frame');
 }
 
 // A freeze render takes minutes and the region panel is the only place it reports

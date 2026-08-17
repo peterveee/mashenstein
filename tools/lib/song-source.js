@@ -162,8 +162,17 @@ export function deskTail({ mix = null, arrangement = null, variants = null, m8tr
     + `export const m8trx = ${m8trx ? JSON.stringify(m8trx) : 'null'};\n`;
 }
 
+/**
+ * Where a song file two levels under the repo root reaches the note shorthand —
+ * `src/data/songs/`, `src/data/imported/`, and every caller that existed before scratch
+ * songs moved out of the tree. Passing `notesPath` is how a file written anywhere else
+ * says so; `work/scratch/` is two levels down as well but reaches a different way.
+ */
+export const NOTES_IMPORT_DEFAULT = '../../engine/notes.js';
+
 export function songFile({
   id, title, slug, group, bank, mix, arrangement, variants, m8trx = null, note, seed, alternateOf,
+  notesPath = NOTES_IMPORT_DEFAULT,
 }) {
   const head = `// ${title} — one song: what it plays, how it is arranged, how it sounds.\n`
     + `//\n`
@@ -171,7 +180,7 @@ export function songFile({
     + `// The music below is the composition. Everything under THE DESK WRITES BELOW HERE\n`
     + `// is written by \`npm run mixer\` and will be rewritten on every save — put notes\n`
     + `// about the song up here, where they survive.\n`
-    + `import { seq, chordSeq } from '../../engine/notes.js';\n\n`
+    + `import { seq, chordSeq } from '${notesPath}';\n\n`
     + `export const id = ${JSON.stringify(id)};\n`
     + `export const title = ${JSON.stringify(title)};\n`
     + `export const slug = ${JSON.stringify(slug)};\n`

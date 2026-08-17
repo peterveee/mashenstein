@@ -30,6 +30,7 @@ import {
   songBars, sequenceValue, effectiveStepLen, perNoteLengthLane, laneList,
 } from '../../src/engine/lanes.js';
 import { PERCUSSION_LANES, baseLane } from '../../src/data/voices.js';
+import { resolutionOf } from '../../src/data/arrangements.js';
 
 const STEPS_PER_BAR = 16;
 
@@ -134,15 +135,20 @@ export function buildRearrangeProfile(bank) {
       // treats it, so it can neither start a note nor be holding one.
       const muted = (bar.off && bar.off.includes(key)) || (bar.delete && bar.delete.includes(key));
       if (muted || !Array.isArray(view?.[key])) continue;
-      const resolution = view.resolution === 32 ? 32 : 16;
+      const resolution = resolutionOf(view);
+      const stride = resolution / STEPS_PER_BAR;
       for (let slot = 0; slot < STEPS_PER_BAR; slot++) {
         const step = bi * STEPS_PER_BAR + slot;
-        // At a promoted resolution both halves of the sixteenth belong to it: a 32nd
-        // note is still an event in this sixteenth as far as a bar-grid cut cares.
-        const address = bar.half * resolution + slot * (resolution / STEPS_PER_BAR);
+        // At a promoted resolution EVERY slot inside the sixteenth belongs to it: a
+        // 32nd or a triplet is still an event in this sixteenth as far as a bar-grid
+        // cut cares. The profile is deliberately a sixteenth-grid view — Rearrange
+        // addresses its recipes in sixteenths and saved ones must keep meaning what
+        // they meant — so the whole stride collapses onto the one step, first sound
+        // winning, rather than only the half that used to be the only other option.
+        const address = bar.half * resolution + slot * stride;
         let value = sequenceValue(view, key, address, resolution);
-        if (resolution === 32 && !sounds(value)) {
-          value = sequenceValue(view, key, address + 1, resolution) ?? value;
+        for (let k = 1; k < stride && !sounds(value); k++) {
+          value = sequenceValue(view, key, address + k, resolution) ?? value;
         }
         if (!sounds(value)) continue;
         found.push({ step, view, address, resolution, value });

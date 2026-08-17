@@ -7,6 +7,7 @@ import {
   barPlan, songBars, sequenceValue, effectiveStepLen,
 } from '../../src/engine/lanes.js';
 import { createNoteFxProcessor, resolveNoteFx } from '../../src/engine/note-fx.js';
+import { resolutionOf } from '../../src/data/arrangements.js';
 
 const audible = (value) => value === true
   || (Number.isFinite(value) && value > 0)
@@ -33,7 +34,7 @@ export function freezeRenderSpan(bank, lane, trackNoteFx = null, {
   const from = Math.max(0, Math.min(formSteps, Number(playStartStep) || 0));
   const to = Math.max(from, Math.min(formSteps,
     Number.isFinite(playEndStep) ? playEndStep : formSteps));
-  const resolution = bank.resolution === 32 ? 32 : 16;
+  const resolution = resolutionOf(bank);
   const tick = 16 / resolution;
   const spb = (60 / (Number(bank.bpm) || 112)) / 4;
   const processor = createNoteFxProcessor();

@@ -285,6 +285,11 @@ function phasedWave(ctx, type, phase) {
 
 const NOISE_Q = 2;
 
+// Where GameSynth's fall across the note LANDS, as a fraction of that note's own peak —
+// the level a note-off finds, and therefore the level its RELEASE gets to work on. See
+// the long note at the envelope itself in `_playGame`; this is the one number to turn.
+const GAME_NOTE_OFF_LEVEL = 0.1;       // -20 dB
+
 /**
  * A number in [0,1) that depends only on WHEN a hit is scheduled.
  *
@@ -756,10 +761,26 @@ function noteFilterWrite(entry) {
 const CACHE_SILENCE_FLOOR = 1e-5;      // -100 dBFS
 const CACHE_TAIL_GUARD_S = 0.01;
 // The two bounds the note cache is held to — see `_trimNoteCache` for which one binds
-// when. 256 entries is several bars of the densest chord layer in the catalogue; 64MB
-// is about a minute and a half of stereo pad, and small enough that the desk never
-// trades a core problem for a memory one.
-const NOTE_CACHE_ENTRIES = 256;
+// when. 64MB is about a minute and a half of stereo pad, and small enough that the desk
+// never trades a core problem for a memory one.
+//
+// The count was 256, chosen as "several bars of the densest chord layer in the
+// catalogue". That is the right unit for a song that REPEATS: a few bars of distinct
+// notes is the whole working set, because bar 40 asks for what bar 8 already rendered.
+// An imported one need not repeat at all. Measured on a MIDI import of the Barber of
+// Seville overture — 266 bars, 262 of them structurally unique — the song asks for
+// 3,435 distinct keys, so 256 held 7% of it and the LRU evicted mid-song while the
+// transport was still playing: buffers fell 164 → 131 over twenty seconds of playback,
+// with every eviction guaranteeing a later miss. A cache that cannot survive one pass
+// of the song is doing bookkeeping, not caching.
+//
+// So let the BYTES bind, which is what the paragraph in `_trimNoteCache` says they are
+// for. The count stays as the backstop it was always described as, set where it binds
+// only for notes small enough that thousands of them still fit the byte budget: at the
+// ~130KB a desk note averaged in that measurement, 64MB binds first at about 490
+// entries and this number is never reached; at the ~10KB of a closed hat, 2048 entries
+// is 20MB and the LRU still means something.
+const NOTE_CACHE_ENTRIES = 2048;
 const NOTE_CACHE_BYTES = 64 * 1024 * 1024;
 // A render creates a complete throwaway graph and asks the browser to run it. One at a
 // time is deliberate: the live AudioContext and an OfflineAudioContext are both asking
@@ -1787,14 +1808,37 @@ export class VoiceRack {
         vibEnv.connect(hzGain);
         hzGain.connect(pitch);
       }
+      // THE NOTE-OFF LEVEL, and why the fall stops above silence.
+      //
+      // This path is an arcade AR — attack, then a fall across the note — and it stays
+      // one. What it cannot be is a fall that has already ARRIVED at silence by the time
+      // the note ends, because then there is nothing left for RELEASE to act on: the pot
+      // was on the panel, the key was on the preset, and the ramp it scheduled ran from
+      // -80 dB to zero where no one could hear it. A control that cannot move a sample is
+      // the same bug as a key with no control, seen from the other end.
+      //
+      // So the fall lands on a LEVEL at note-off and the release carries that level to
+      // silence, which is the shape every other path in the rack already has. Measured
+      // before and after by work/local/game-synth-envelope-probe.mjs.
+      //
+      // One number, relative to the note's own peak so it means the same thing at every
+      // gain: turn it down toward zero for the old near-silent landing, up toward 1 for
+      // a note that barely falls at all. -20 dB is a tenth of the amplitude — an
+      // unmistakable decay across the note, and still plainly audible in a mix, which is
+      // what a release needs in order to be heard ending.
+      const peak = gain * makeup;
+      const off = end + release;
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(gain * makeup, peakAt);
-      g.gain.exponentialRampToValueAtTime(0.0001, end);
-      g.gain.linearRampToValueAtTime(0, end + release);
-      // This path has no SUSTAIN to hold — its envelope is an arcade AR, attack then a
-      // fall across the note, and there is no level for a finger to sit on. So a held
-      // preview does not sustain; it gets a NOTE-OFF, which is the half that was missing.
-      // Before this, a previewed game note ran its full four seconds whatever the key did.
+      g.gain.exponentialRampToValueAtTime(peak, peakAt);
+      g.gain.exponentialRampToValueAtTime(peak * GAME_NOTE_OFF_LEVEL, end);
+      // The release proper. Skipped rather than scheduled at zero length when the preset
+      // asks for none: two ramps landing on the same timestamp is a degenerate segment,
+      // and the linear finish below already takes it to zero without a click.
+      if (release > 0) g.gain.exponentialRampToValueAtTime(peak * 1e-4, off);
+      g.gain.linearRampToValueAtTime(0, off + 0.005);
+      // A held preview gets a NOTE-OFF rather than a sustain — there is still no level
+      // for a finger to sit ON, only one for it to cut. Before this, a previewed game
+      // note ran its full four seconds whatever the key did.
       if (hold) {
         const noteKey = `${laneKey}|${f.toFixed(2)}`;
         this._releasePreview(noteKey);
@@ -1808,8 +1852,8 @@ export class VoiceRack {
       // the filtered copy.
       g.connect(dry);
       if (echo && wet) g.connect(wet);
-      o.start(t); o.stop(end + release + 0.005);
-      lastOff = Math.max(lastOff, end + release + 0.005);
+      o.start(t); o.stop(off + 0.01);
+      lastOff = Math.max(lastOff, off + 0.01);
     });
     // A chord of nothing but rests built no oscillators, so there is nothing to wobble.
     if (lfo && lastOff) { lfo.start(time); lfo.stop(lastOff); }

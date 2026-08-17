@@ -10,9 +10,40 @@
 // to see the imports to include the banks, and the game must NOT — src/data/tracks.js
 // deliberately does not import this file, so nobody's scratch MIDI ships in the game.
 import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, relative, sep } from 'path';
 
 export const IMPORTED_DIR = 'src/data/imported';
+
+// Scratch songs live in the disposable drawer, and the reason is the drawer's whole
+// point: `work/` is the one directory that is always safe to delete (see CLAUDE.md), and
+// a scratch song is by definition something you made to hear an idea. They had
+// accumulated to 97 files in `src/data/imported/`, tracked, outnumbering the eleven
+// genuine MIDI imports nine to one and making the folder's own name a lie.
+//
+// What stays in `src/data/imported/`: MIDI imports, the copies "Save a copy" takes, the
+// style auditions, and game alternates. Those are either somebody's source arriving from
+// outside or a deliberate keepsake — none of them is throwaway by construction.
+//
+// The consequence, stated because it is the trade and not a side effect: a scratch song
+// is no longer in version control. A fresh clone has none, and deleting one is final.
+export const SCRATCH_DIR = 'work/scratch';
+
+// Every directory a desk song may be read from, and the order they win in when an id
+// somehow exists in both. New scratch songs are written to SCRATCH_DIR; everything the
+// desk creates that is NOT scratch keeps going to IMPORTED_DIR.
+export const SONG_DIRS = [IMPORTED_DIR, SCRATCH_DIR];
+
+/**
+ * How `src/data/imported/index.js` reaches a bank in `dir` — the generated index lives
+ * in the imported folder and now has to import across the tree to the scratch drawer.
+ * Computed rather than written out so the two directories can move independently, and
+ * forced to forward slashes because this string becomes an ES import specifier.
+ */
+const specifierFrom = (fromDir, dir, file) => {
+  if (dir === fromDir) return `./${file}`;
+  const rel = relative(fromDir, dir).split(sep).join('/');
+  return `${rel.startsWith('.') ? rel : `./${rel}`}/${file}`;
+};
 
 /** "CHOPIN3.MID" -> "chopin3": the filename becomes the track id, so it must be one. */
 export function slugFor(name) {
@@ -21,13 +52,31 @@ export function slugFor(name) {
   return slug || 'imported';
 }
 
-/** What is in the folder right now: one entry per bank file, sorted by id. */
+/** What is in the folders right now: one entry per bank file, sorted by id. */
 export function readImported(root) {
-  const dir = join(root, IMPORTED_DIR);
-  if (!existsSync(dir)) return [];
   const out = [];
+  const seen = new Set();
+  for (const songDir of SONG_DIRS) readSongDir(root, songDir, out, seen);
+  // Sorted across the two directories rather than within each, so the generated index
+  // reads as one list of songs and stays byte-stable when a song changes drawer. By
+  // FILE name, which is what a single-directory `readdirSync().sort()` gave before there
+  // were two: sorting by id instead reorders `the-food-court-alt-2` against
+  // `the-food-court-alt` — identical output, gratuitous diff in a tracked generated file.
+  out.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+  return out;
+}
+
+function readSongDir(root, songDir, out, seen) {
+  const dir = join(root, songDir);
+  if (!existsSync(dir)) return;
   for (const file of readdirSync(dir).sort()) {
     if (!file.endsWith('.js') || file === 'index.js') continue;
+    // One id, one song. A file that collides with one already found in an earlier
+    // directory is skipped rather than merged: two entries under one key would make the
+    // generated index quietly drop one of them, and which one would depend on the
+    // object literal's ordering.
+    const id = file.replace(/\.js$/, '');
+    if (seen.has(id)) continue;
     const src = readFileSync(join(dir, file), 'utf8');
     const bank = /export const bank\s*=/m.test(src);
     const m = /^export const ([A-Za-z_$][\w$]*)\s*=/m.exec(src);
@@ -49,8 +98,9 @@ export function readImported(root) {
     // the group is: the file is the record. A parent inferred from an id would go on
     // being inferred after somebody renamed either end of it.
     const parentLiteral = /^export const alternateOf\s*=\s*("(?:\\.|[^"])*")\s*;?/m.exec(src);
+    seen.add(id);
     out.push({
-      id: file.replace(/\.js$/, ''),
+      id,
       constName: bank ? null : m[1],
       bankExport: bank ? 'bank' : m[1],
       title: title || m[1],
@@ -58,9 +108,24 @@ export function readImported(root) {
       writable: bank && src.includes('// ---- THE DESK WRITES BELOW HERE'),
       alternateOf: bank && parentLiteral ? JSON.parse(parentLiteral[1]) : null,
       file,
+      dir: songDir,
     });
   }
-  return out;
+}
+
+/**
+ * The path of the song file with this id, in whichever song directory holds it.
+ *
+ * The one place that knows a song can be in more than one drawer, so every caller that
+ * used to ask `existsSync(join(root, IMPORTED_DIR, id + '.js'))` asks this instead and
+ * cannot go on being right about only half the tree.
+ */
+export function songFileIn(root, id) {
+  for (const dir of SONG_DIRS) {
+    const path = join(root, dir, `${id}.js`);
+    if (existsSync(path)) return path;
+  }
+  return null;
 }
 
 /**
@@ -75,11 +140,12 @@ export function readImported(root) {
  * @param {(id: string) => boolean} isTaken  usually resolveTrack
  */
 export function importId(root, slug, isTaken = () => false) {
-  const dir = join(root, IMPORTED_DIR);
   // A bank already at that id is this song coming back, whatever else claims the
   // name — which is what makes the suffixed case land on itself the second time too:
-  // plumber.mid becomes plumber-2 once, and plumber-2 every time after.
-  const free = (id) => existsSync(join(dir, `${id}.js`)) || !isTaken(id);
+  // plumber.mid becomes plumber-2 once, and plumber-2 every time after. Asked of every
+  // song directory, or an import would take the id of a scratch song in the drawer and
+  // the two would fight over one entry in the index.
+  const free = (id) => songFileIn(root, id) || !isTaken(id);
   let id = slug;
   for (let i = 2; !free(id); i++) id = `${slug}-${i}`;
   return id;
@@ -102,11 +168,12 @@ export function writeImportedIndex(root) {
     local.set(e.id, name);
   }
 
+  const from = (e) => specifierFrom(IMPORTED_DIR, e.dir, e.file);
   const imports = entries.map((e) => e.constName
     ? (local.get(e.id) === e.constName
-      ? `import { ${e.constName} } from './${e.file}';`
-      : `import { ${e.constName} as ${local.get(e.id)} } from './${e.file}';`)
-    : `import * as ${local.get(e.id)} from './${e.file}';`).join('\n');
+      ? `import { ${e.constName} } from '${from(e)}';`
+      : `import { ${e.constName} as ${local.get(e.id)} } from '${from(e)}';`)
+    : `import * as ${local.get(e.id)} from '${from(e)}';`).join('\n');
   const body = entries.map((e) => {
     const bank = e.constName ? local.get(e.id) : `${local.get(e.id)}.bank`;
     const title = e.constName ? JSON.stringify(e.title) : `${local.get(e.id)}.title`;
@@ -147,7 +214,11 @@ for (const [id, entry] of Object.entries(IMPORTED_BY_ID)) registerTrack({ id, ..
   // this second index generated from the folder too, so a newly saved alternate is
   // selectable without a hand edit or a hardcoded id list. Scratch/MIDI imports stay
   // out of it and therefore stay out of the game bundle.
-  const alternates = entries.filter((e) => e.group === 'alternate' && !e.constName);
+  // Never from the scratch drawer, and not merely because nothing there is marked
+  // `alternate` today: this index reaches the GAME bundle, and `work/` is gitignored, so
+  // a build from a fresh clone would be missing a file the game imports by name.
+  const alternates = entries.filter((e) => e.group === 'alternate' && !e.constName
+    && e.dir === IMPORTED_DIR);
   const altUsed = new Set();
   const altLocal = (e) => {
     let name = `GAME_ALT_${e.id.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`;
@@ -157,7 +228,7 @@ for (const [id, entry] of Object.entries(IMPORTED_BY_ID)) registerTrack({ id, ..
   };
   const altImports = alternates.map((e) => {
     const name = altLocal(e);
-    return `import * as ${name} from './imported/${e.file}';`;
+    return `import * as ${name} from '${specifierFrom('src/data', e.dir, e.file)}';`;
   }).join('\n');
   const altNames = alternates.map((e, i) => {
     const name = [...altUsed][i];

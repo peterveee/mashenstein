@@ -127,15 +127,70 @@ export const SWING_MAX = 75;
 
 // Note-onset resolution is deliberately a song-level arrangement decision. Existing
 // banks and entries omit it and therefore remain the 16-step-per-bar format they have
-// always been. A desk edit that needs a 32nd onset writes `resolution: 32`; lane arrays
-// in its layer sections then contain 64 slots (two bars), with note lengths still
-// measured in the engine's long-standing sixteenth-step unit (`0.5` is a 32nd).
+// always been. A desk edit that needs a 32nd onset writes `resolution: 32`; one that
+// needs a sixteenth TRIPLET writes 48. Lane arrays in its layer sections then contain
+// two bars at that grid — 64 slots at 32, 96 at 48 — with note lengths still measured
+// in the engine's long-standing sixteenth-step unit, so `0.5` is a 32nd and `2/3` is a
+// triplet sixteenth whatever grid the onsets are stored on.
+//
+// `FINE_RESOLUTION` is kept as the name of the 32-step grid specifically; it is not
+// "the fine one" any more, so anything asking "is this finer than a sixteenth" should
+// compare against LEGACY_RESOLUTION rather than against it.
 export const LEGACY_RESOLUTION = 16;
 export const FINE_RESOLUTION = 32;
 
+/**
+ * Every note grid a song may be stored on, coarsest first.
+ *
+ * 16 is the sixteenth the engine was written on. 32 adds the half sixteenth. 48 is the
+ * first that can hold a sixteenth TRIPLET — three in the space of two sixteenths is 24
+ * to the bar, and 48 is the least common multiple of 16 and 24, so a song can carry
+ * straight sixteenths and triplets at once. 48 does not contain 32, so a song that
+ * wants thirty-seconds AND triplets needs 96, the LCM of 32 and 24. Eighth and
+ * thirty-second triplets come free with both.
+ *
+ * The set is deliberately closed under LCM — the LCM of any two members is a member —
+ * which is what `promoteResolution` relies on and what guarantees that a lane written
+ * on a coarser grid always folds onto a finer one by a WHOLE number of slots. Without
+ * that, `sequenceValue` would have to interpolate a note onto a slot between two it
+ * was written on, which is not a thing a note can be.
+ */
+export const RESOLUTIONS = [16, 32, 48, 96];
+
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+
+/**
+ * The coarsest grid that can hold everything the arguments need — their LCM, snapped
+ * up to a member of RESOLUTIONS.
+ *
+ * This is the rule behind every promotion: asking for a triplet grid on a 16-step song
+ * gives 48, and on a 32-step song gives 96, because those are the grids that hold BOTH
+ * what the song already has and what is being added. Anything not a positive number is
+ * ignored, so an absent `resolution` costs nothing.
+ */
+export function promoteResolution(...wanted) {
+  let out = LEGACY_RESOLUTION;
+  for (const v of wanted) {
+    if (!Number.isFinite(v) || v <= 0) continue;
+    out = out * v / gcd(out, v);
+  }
+  // A hand-edited file can name a number that is not a member and not an LCM of two —
+  // `resolution: 24` say — so take the first grid that CONTAINS what was asked for
+  // rather than the first that equals it. Nothing is ever rounded down; that would
+  // drop notes rather than merely cost ticks.
+  return RESOLUTIONS.find((r) => r % out === 0) ?? RESOLUTIONS[RESOLUTIONS.length - 1];
+}
+
+/**
+ * The grid a song is read on: the finer of what the entry asks for and what the bank
+ * was written on.
+ *
+ * The finer of the two, not the entry's alone — a bank stored with 64-slot lanes has
+ * notes on odd slots, and reading it at 16 would silently drop every one of them.
+ */
 export function resolutionOf(bank, entry = null) {
-  return entry?.resolution === FINE_RESOLUTION || bank?.resolution === FINE_RESOLUTION
-    ? FINE_RESOLUTION : LEGACY_RESOLUTION;
+  const known = (v) => (RESOLUTIONS.includes(v) ? v : LEGACY_RESOLUTION);
+  return promoteResolution(known(bank?.resolution), known(entry?.resolution));
 }
 
 export const slotsPerBar = (bank, entry = null) => resolutionOf(bank, entry);
@@ -315,12 +370,16 @@ export function applyArrangement(bank, id, table = ARRANGEMENTS) {
   // back the composed tempo and lose it. A swing counts on its own for exactly the
   // same reason — `{ swing: 62 }` is a song played with a shuffle it was not written
   // with, and it is the only thing many of them will ever say.
+  // A resolution counts on its own for the same reason a tempo does, and "counts" now
+  // means any grid finer than the sixteenth rather than the one that used to exist.
+  const fine = RESOLUTIONS.includes(entry.resolution) && entry.resolution !== LEGACY_RESOLUTION
+    ? entry.resolution : null;
   if (!layer.length && !order && entry.bpm == null && entry.swing == null
-    && entry.resolution !== FINE_RESOLUTION) return bank;
+    && fine == null) return bank;
   const out = { ...bank };
   if (entry.bpm != null) out.bpm = entry.bpm;
   if (entry.swing != null) out.swing = entry.swing;
-  if (entry.resolution === FINE_RESOLUTION) out.resolution = FINE_RESOLUTION;
+  if (fine != null) out.resolution = fine;
   // Only when there is something to add: a bank with no sections must keep having
   // none, or `songBlocks` starts reading `sections[0]` of an empty list and every
   // block becomes the bare bank by accident rather than on purpose.
@@ -340,9 +399,9 @@ export function applyArrangement(bank, id, table = ARRANGEMENTS) {
 export function arrangementIssues(bank, entry, laneKeys = null) {
   const issues = [];
   if (!entry) return issues;
-  if (entry.resolution != null
-    && entry.resolution !== LEGACY_RESOLUTION && entry.resolution !== FINE_RESOLUTION) {
-    issues.push(`the note resolution is ${entry.resolution} — it must be 16 or 32 steps per bar`);
+  if (entry.resolution != null && !RESOLUTIONS.includes(entry.resolution)) {
+    issues.push(`the note resolution is ${entry.resolution} — it must be one of`
+      + ` ${RESOLUTIONS.join(', ')} steps per bar`);
   }
   const sections = [...(bank.sections || []), ...(entry.sections || [])];
   const order = entry.order || orderOf(bank);

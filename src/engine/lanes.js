@@ -2,17 +2,32 @@ import {
   baseLane, isLayer, seamFor, PERCUSSION_LANES, CHORD_LANES, voiceOf,
   defaultAddedVoice,
 } from '../data/voices.js';
-import { expandOrder, orderOf, resolveSection } from '../data/arrangements.js';
+import {
+  expandOrder, orderOf, resolveSection, resolutionOf, RESOLUTIONS,
+} from '../data/arrangements.js';
 
 /**
- * Read one sequencer slot without rewriting legacy banks. At 32 slots per bar an
- * authored 32-slot/two-bar lane occupies the even slots of the 64-slot clock; layer
- * lanes written by the upgraded editor already contain all 64 slots.
+ * Read one sequencer slot without rewriting legacy banks. A lane written on a coarser
+ * grid than the clock occupies every Nth slot of it: at 32 slots per bar an authored
+ * 32-slot/two-bar lane occupies the even slots of the 64-slot clock, and at 48 it
+ * occupies every third of 96. Layer lanes written by the upgraded editor already
+ * contain a slot per tick.
+ *
+ * A lane array is always two bars, so its own grid is half its length — that is what
+ * makes the stride knowable without being told. The stride is guaranteed whole because
+ * RESOLUTIONS is closed under LCM and every promotion goes through
+ * `promoteResolution`; the checks below are what keeps a hand-written lane of some
+ * other length reading exactly as it always did rather than being folded by accident.
  */
-export function sequenceValue(bank, key, slot, resolution = bank?.resolution === 32 ? 32 : 16) {
+export function sequenceValue(bank, key, slot, resolution = resolutionOf(bank)) {
   const arr = bank?.[key];
   if (!Array.isArray(arr)) return null;
-  if (resolution === 32 && arr.length < 64) return slot % 2 ? null : arr[slot / 2] ?? null;
+  const laneResolution = arr.length / 2;
+  const stride = resolution / laneResolution;
+  if (arr.length < resolution * 2 && Number.isInteger(stride)
+    && RESOLUTIONS.includes(laneResolution)) {
+    return slot % stride ? null : arr[slot / stride] ?? null;
+  }
   return arr[slot] ?? null;
 }
 
@@ -83,7 +98,7 @@ export const validLen = (v) => Number.isFinite(v) && v > 0;
  * them on a chord lane — one per tone, aligned with the frequencies on that step —
  * or null where it says nothing and the lane's own length stands.
  */
-export function stepLen(bank, laneKey, step, resolution = bank?.resolution === 32 ? 32 : 16) {
+export function stepLen(bank, laneKey, step, resolution = resolutionOf(bank)) {
   const at = sequenceValue(bank, lenKey(laneKey), step, resolution);
   if (Array.isArray(at)) return at;
   return validLen(at) ? at : null;
@@ -142,11 +157,11 @@ export function legacyLaneLength(view, laneKey, voice = voiceOf(view, laneKey)) 
   return LEGACY_LANE_DUR[base] ?? 1;
 }
 
-export function effectiveToneLength(view, laneKey, step, i = 0, resolution = view?.resolution === 32 ? 32 : 16) {
+export function effectiveToneLength(view, laneKey, step, i = 0, resolution = resolutionOf(view)) {
   return toneLen(stepLen(view, laneKey, step, resolution), legacyLaneLength(view, laneKey), i);
 }
 
-export function effectiveStepLen(view, laneKey, step, resolution = view?.resolution === 32 ? 32 : 16) {
+export function effectiveStepLen(view, laneKey, step, resolution = resolutionOf(view)) {
   const len = stepLen(view, laneKey, step, resolution);
   if (Array.isArray(len)) return len.map((_, i) => effectiveToneLength(view, laneKey, step, i, resolution));
   return effectiveToneLength(view, laneKey, step, 0, resolution);
@@ -627,7 +642,7 @@ export function laneActivity(bank, repeat = 1, cellsPerBar = 4) {
       // sequenceValue, the same compatibility seam the scheduler uses. Indexing every
       // array as 16 slots per bar made a freshly duplicated fine lane display the first
       // source bar across two destination bars — the visible "every second bar" copy.
-      const resolution = bar.b?.resolution === 32 ? 32 : 16;
+      const resolution = resolutionOf(bar.b);
       const stepsPerCell = resolution / cellsPerBar;
       for (let c = 0; c < cellsPerBar; c++) {
         let hits = 0;

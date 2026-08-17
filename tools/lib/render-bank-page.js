@@ -198,7 +198,11 @@ export async function renderBankPage({
   // calls its transport needed, and the render simply stopped at the halfway bar with
   // the buffer's back half left silent. Same bug, same cause, as the frozen-lane tick in
   // AudioSys._scheduleFrozenSegment.
-  const scheduleCalls = steps * (Audio.transportResolution === 32 ? 2 : 1);
+  // `steps` is in sixteenths; the transport takes `resolution / 16` calls to cross one
+  // of them — 1 at 16, 2 at 32, 3 at 48, 6 at 96. Anything narrower than this stops the
+  // walk early and leaves the back of the buffer silent, which is the failure the note
+  // above describes and tests/render-length.js guards.
+  const scheduleCalls = steps * (Audio.transportResolution / 16);
   const buildUntil = async (limit) => {
     while (stepAt < scheduleCalls && Audio.nextTime < limit) {
       Audio.scheduleStep();

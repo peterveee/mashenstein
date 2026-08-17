@@ -74,7 +74,7 @@ assert(/scheduledCalls: r\.scheduledCalls/.test(src('tools/lib/render-bank-brows
 // (the SMW banks reach 20 lanes) an unsliced walk holds that thread for seconds while
 // the sequencer has a quarter-second of lookahead in front of it.
 assert(/await yieldToEventLoop\(\)/.test(page)
-  && /const scheduleCalls = steps \* \(Audio\.transportResolution === 32 \? 2 : 1\)/.test(page)
+  && /const scheduleCalls = steps \* \(Audio\.transportResolution \/ 16\)/.test(page)
   && /while \(stepAt < scheduleCalls && Audio\.nextTime < limit\) \{[\s\S]{0,400}?Audio\.scheduleStep\(\)/.test(page)
   && !/for \(let i = 0; i < steps; i\+\+\) Audio\.scheduleStep\(\);/.test(page),
   'the render walk yields the main thread instead of queueing every step in one block');

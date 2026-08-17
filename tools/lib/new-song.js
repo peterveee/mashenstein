@@ -17,8 +17,17 @@ export {
   newSongPlan, buildNewSongBank,
 } from './new-song-plan.js';
 
-/** Build the source file written into src/data/imported for a new scratch song. */
-export function newScratchSong({ id, title, slug = id, group = 'scratch', ...input } = {}) {
+/**
+ * Build the source file for a new scratch song.
+ *
+ * Written into `work/scratch/` by the desk (see SCRATCH_DIR) and into
+ * `src/data/imported/` by tools/style-auditions.js, which is the same generator filed
+ * under its own heading. Two destinations, two ways to reach the note shorthand, so the
+ * caller says which — the default is the in-tree one every other song file uses.
+ */
+export function newScratchSong({
+  id, title, slug = id, group = 'scratch', notesPath, ...input
+} = {}) {
   if (!id) throw new Error('a scratch song needs an id');
   const { spec, seed, style, root, bank, key } = newSongPlan({ title, ...input });
   const source = songFile({
@@ -33,6 +42,7 @@ export function newScratchSong({ id, title, slug = id, group = 'scratch', ...inp
     mix: null,
     arrangement: null,
     seed,
+    ...(notesPath ? { notesPath } : {}),
     note: `Created in the Song Mixer as a ${spec.template} starter.\n`
       + styleSummary(style, root, spec.bpm),
   });

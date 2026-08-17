@@ -22,7 +22,9 @@
 import { Audio } from '../src/engine/audio.js';
 import { seq, n } from '../src/engine/notes.js';
 import { sequenceValue } from '../src/engine/lanes.js';
-import { applyArrangement } from '../src/data/arrangements.js';
+import {
+  applyArrangement, RESOLUTIONS, promoteResolution,
+} from '../src/data/arrangements.js';
 import { normaliseArrangementResolution } from '../tools/lib/arrangement-edit.js';
 
 let failed = false;
@@ -326,6 +328,87 @@ const plan = (bank, mix) => {
   const now = plan(applyArrangement(bank, 'x', { x: tidy }), null);
   assert(now.resolution === 16 && now.fineBarsReason === '' && now.fineBars?.size === 0,
     'after: back on the sixteenth clock, with no bar owing a half tick');
+}
+
+// ---- the grid widens: sixteenth triplets ------------------------------------
+//
+// A sixteenth triplet is three notes in the space of two sixteenths — 24 to the bar,
+// which divides neither 16 nor 32. 48 is the least common multiple of 16 and 24 and is
+// therefore the coarsest grid that can hold straight sixteenths and triplets at once;
+// 96 is the LCM of 32 and 24, for a song that wants thirty-seconds as well.
+//
+// The claims below are the ones the rest of the engine leans on. Two of them matter
+// more than the others: that the set is closed under LCM, because `sequenceValue`
+// folds a coarse lane onto a fine clock by a WHOLE stride and there is no such thing
+// as a note halfway between two slots; and that widening the grid changes nothing
+// about a song that never asked for it.
+{
+  assert(JSON.stringify(RESOLUTIONS) === JSON.stringify([16, 32, 48, 96]),
+    'the grids a song may be stored on');
+
+  assert(promoteResolution(16, 48) === 48, 'triplets on a sixteenth song promote to 48');
+  assert(promoteResolution(32, 48) === 96,
+    'triplets on a THIRTY-SECOND song promote to 96 — 48 cannot express a 32nd');
+  assert(promoteResolution(16, 16) === 16, 'and a song that asks for nothing stays where it was');
+  assert(promoteResolution(24) === 48,
+    'a hand-edited 24 snaps up to a grid that contains it, never down to one that drops notes');
+
+  const closed = RESOLUTIONS.every((a) => RESOLUTIONS.every((b) => {
+    const p = promoteResolution(a, b);
+    return RESOLUTIONS.includes(p) && p % a === 0 && p % b === 0;
+  }));
+  assert(closed, 'the set is closed under LCM, so every promotion divides both sides evenly');
+
+  // A legacy two-bar lane read at a triplet clock: every third slot, nothing between.
+  const legacy = { resolution: 48, lead: Array.from({ length: 32 }, (_, i) => (i === 4 ? 660 : null)) };
+  assert(sequenceValue(legacy, 'lead', 12, 48) === 660,
+    'a 32-slot lane on a 48 clock puts its sixteenth 4 on slot 12 — stride 3');
+  assert(sequenceValue(legacy, 'lead', 13, 48) === null
+    && sequenceValue(legacy, 'lead', 14, 48) === null,
+  'and says nothing on the two triplet slots between sixteenths');
+
+  // A lane genuinely written on the triplet grid: 96 slots is two bars at 48, and three
+  // evenly spaced notes across one sixteenth-pair is what a sixteenth triplet IS.
+  const trip = { resolution: 48, lead: Array.from({ length: 96 }, (_, i) => ([0, 2, 4].includes(i) ? 440 : null)) };
+  assert([0, 2, 4].every((s) => sequenceValue(trip, 'lead', s, 48) === 440)
+    && [1, 3].every((s) => sequenceValue(trip, 'lead', s, 48) === null),
+  'three triplet notes land on their own slots and nothing is smeared between them');
+
+  // The reason the transport counts ticks instead of adding them up.
+  const drift = (res) => {
+    Audio.transportResolution = res;
+    Audio.step = 0;
+    for (let i = 0; i < res * 4; i++) Audio._tick += 1;
+    return Math.abs(Audio.step - 64);
+  };
+  assert(RESOLUTIONS.every((res) => drift(res) === 0),
+    'four bars of whole ticks lands on step 64 exactly, at every resolution');
+
+  // Swing, through the engine's own method rather than a copy of it. `spb` is 1 so the
+  // numbers below read as fractions of a sixteenth.
+  const swingAt = (res, step, swing = 66) => {
+    Audio.transportResolution = res;
+    Audio.swing = swing;
+    Audio.step = step;
+    return Audio._swingOffset(1);
+  };
+  const full = (66 - 50) / 50;
+  assert(swingAt(16, 0) === 0 && swingAt(16, 1) === full,
+    'at 16 the downbeat holds and the off-beat sixteenth takes the whole delay, as before');
+  assert(swingAt(32, 0.5) === full / 2,
+    'at 32 the half step still interpolates between the pair, as before');
+  assert(swingAt(48, 1) === full && swingAt(48, 0) === 0,
+    'at 48 a whole sixteenth swings exactly as it always did');
+  assert(swingAt(48, 1 / 3) === 0 && swingAt(48, 2 / 3) === 0,
+    'but a TRIPLET slot does not swing — it is not in the pair swing has an opinion about');
+  assert(swingAt(96, 0.5) === full / 2 && swingAt(96, 1 / 3) === 0,
+    'at 96 the 32nd grid still swings and the triplet still does not');
+  assert(swingAt(48, 1, 50) === 0 && swingAt(48, 1, 0) === 0,
+    'and a straight song is untouched at any grid — zero, exactly, so the render is bit-identical');
+
+  Audio.swing = 0;
+  Audio.transportResolution = 16;
+  Audio.step = 0;
 }
 
 console.log(failed ? 'FINE TICK SCHEDULING: FAILED' : 'FINE TICK SCHEDULING: PASSED');

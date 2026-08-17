@@ -16,6 +16,7 @@ import { VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBank
 import { trackIdOf } from '../data/tracks.js';
 import {
   applyArrangement, resolveSection, loopOf, loopSteps, SWING_STRAIGHT, SWING_MAX,
+  resolutionOf, promoteResolution, LEGACY_RESOLUTION, FINE_RESOLUTION,
 } from '../data/arrangements.js';
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
 import {
@@ -101,9 +102,25 @@ const MELODIC_TRIM = 3.5;                  // +10.9 dB
  */
 const noteSeconds = (len, fallback, spb, durScale = 1, fixedLength = 0) => {
   const one = (i) => {
-    // fixedLength is an absolute duration in seconds — a sound-design choice
-    // that overrides everything else. Zero or omission means not set.
-    if (fixedLength > 0) return fixedLength;
+    // fixedLength is an absolute duration in seconds — a sound-design choice, and the
+    // LANE'S DEFAULT length rather than an override of every note drawn on it. Zero or
+    // omission means not set.
+    //
+    // A default because that is already what it is on the other side of the seam:
+    // `legacyLaneLength` converts it to steps for every lane that carries per-note
+    // lengths, so by the time `len` reaches here the preset's choice is inside it —
+    // and a note the piano roll gave a length of its own has replaced it, which is the
+    // entire point of drawing one. Short-circuiting on it a second time beat that drawn
+    // length, and eight GameSynth presets carry one: every note on them sounded for
+    // 63-463ms however long the roll said, which is a lane whose resize handle does
+    // nothing. See work/local/game-synth-envelope-probe.mjs for the measurement.
+    //
+    // `len == null` is exactly the case where no such folding happened. The one-shot
+    // lanes — gestures, vocals, drums — are not in PER_NOTE_LENGTH_BASES, so
+    // `legacyLaneLength` returns null for them and there is no per-note length for
+    // `fixedLength` to have been folded into. There it still stands alone and absolute,
+    // which is what keeps a one-shot's sound-design length exactly what it was.
+    if (fixedLength > 0 && len == null) return fixedLength;
     const requested = toneLen(len, fallback, i);
     return spb * requested * durScale;
   };
@@ -609,6 +626,33 @@ class AudioSys {
     this._contextRestarting = false;
   }
 
+  // THE TRANSPORT CLOCK, and why it is a counter rather than a number.
+  //
+  // `step` is the song position in SIXTEENTHS, fractional, and that is the unit the
+  // whole program reads: `% 16` is the bar line, `% 4` the beat, `Number.isInteger`
+  // the on-grid test, and the desk, the visualisers and the MIDI export all count in
+  // it. None of that changes here.
+  //
+  // What changes is that it is now DERIVED from an integer tick counter instead of
+  // accumulated. `step += tick` is exact while the tick is 1 or 0.5 and stops being
+  // exact the moment it is a third: 1/3 has no float representation, so three of them
+  // do not add to 1, and every `% 16` and `Number.isInteger` downstream fails a little
+  // more each bar. Dividing does not have that problem — `1/3` is inexact but `3/3` is
+  // exactly 1 — so counting whole ticks and dividing on read is exact on every step,
+  // beat and bar line at any resolution, which is what makes a triplet grid possible.
+  //
+  // An accessor rather than a method because `Audio.step = 0` is written from outside
+  // the engine — tools/lib/render-bank-page.js and the desk's transport both seek that
+  // way — and those call sites are correct as they stand.
+  //
+  // The `|| 16` is the same default the field itself carries: reading a position off a
+  // half-built transport should give the sixteenth grid, not NaN. Worth having because
+  // NaN here does not throw — it propagates silently into every `% 16` downstream and
+  // the song simply stops, which is the hardest kind of failure to trace back.
+  get step() { return this._tick * 16 / (this.transportResolution || 16); }
+
+  set step(v) { this._tick = Math.round(v * (this.transportResolution || 16) / 16); }
+
   // `ctxOverride` lets the offline render tools hand in an OfflineAudioContext so
   // WAVs, stems and videos are produced by THIS engine rather than a reimplementation
   // of it (see tools/lib/render-bank-browser.js). An offline context has no running
@@ -974,9 +1018,24 @@ class AudioSys {
    * runs once per tick, and only while song-groove drums are on.
    */
   _rearrangeOutputSlot(bar, resolution = this.transportResolution) {
-    return resolution === 32
-      ? Math.round((this.step % 16) * 2) + bar.half * 32
-      : (this.step % 16) + bar.half * 16;
+    return Math.round((this.step % 16) * resolution / 16) + bar.half * resolution;
+  }
+
+  /**
+   * How late this tick's notes are played, in seconds — the whole of swing.
+   *
+   * A method for the same reason `_rearrangeOutputSlot` is one: the formula is the
+   * musical claim, and it should be reachable from a test without an AudioContext.
+   * See the long note at the call site in `scheduleStep` for what it means and why a
+   * triplet is not part of it.
+   */
+  _swingOffset(spb) {
+    if (!this.swing) return 0;
+    const halves = this.step * 2;
+    if (!Number.isInteger(halves)) return 0;
+    const delay = spb * (this.swing - 50) / 50;
+    const phase = ((halves % 4) + 4) % 4;
+    return phase === 2 ? delay : phase % 2 ? delay / 2 : 0;
   }
 
   /** Install/remove one session-only raw lane render. */
@@ -1024,7 +1083,7 @@ class AudioSys {
     // same song position at the same audio time, so they sum coherently — a whole-track
     // freeze came back thirty-two times over, at thirty-two times the cost.
     // See work/local/frozen-tick-probe.js, which drives this method and counts them.
-    const tick = this.transportResolution === 32 ? 0.5 : 1;
+    const tick = 16 / this.transportResolution;
     const discontinuity = state.lastStep == null || Math.abs(step - state.lastStep - tick) > 1e-7;
     const boundary = Math.abs(step % 16) < 1e-7;
     state.lastStep = step;
@@ -1630,8 +1689,8 @@ class AudioSys {
     }
     const rack = this.voices;
     const plan = barPlan(bank);
-    const resolution = bank.resolution === 32 ? 32 : 16;
-    const tick = resolution === 32 ? 0.5 : 1;
+    const resolution = resolutionOf(bank);
+    const tick = 16 / resolution;
     const formSteps = plan.length * 16;
     const from = Math.max(0, Math.min(formSteps, Number(startStep) || 0));
     const to = Math.max(from, Math.min(formSteps,
@@ -1643,12 +1702,15 @@ class AudioSys {
       ? value.map((v) => shift(v, semitones))
       : typeof value === 'number' && value > 0 ? value * 2 ** (semitones / 12) : value;
 
-    for (let step = Math.floor(from / tick) * tick; step < to; step += tick) {
+    // Counted in whole ticks for the same reason the transport is (see `get step`):
+    // `step += tick` is exact at 1 and 0.5 and drifts at a third, and this walk is the
+    // note cache — a step that has drifted reads the slot next door and caches the
+    // wrong note for the rest of the render.
+    for (let t = Math.floor(from / tick); t * tick < to; t++) {
+      const step = t * tick;
       if (step < from) continue;
       const bar = plan[Math.floor(step / 16) % plan.length];
-      const s = resolution === 32
-        ? Math.round((step % 16) * 2) + bar.half * 32
-        : (step % 16) + bar.half * 16;
+      const s = Math.round((step % 16) * resolution / 16) + bar.half * resolution;
       let b = bank;
       if (b.sections?.length && bar.sec != null) {
         const section = resolveSection(b, bar.sec % b.sections.length);
@@ -3226,8 +3288,9 @@ class AudioSys {
     // was asked, and it arrives later — so it wins, rather than being overwritten a bar
     // afterwards by a change nothing on screen still refers to.
     this.pendingSwing = null;
-    const resolution = patch?.resolution === 32 || source.resolution === 32 ? 32 : 16;
-    if (resolution === 32) next.resolution = 32; else delete next.resolution;
+    const resolution = resolutionOf(source, patch);
+    if (resolution !== LEGACY_RESOLUTION) next.resolution = resolution;
+    else delete next.resolution;
     this.bank = next;
     this.refreshTransportResolution(next, this.mixEntry);
     this.mixer?.prepareBarEffects?.(barPlan(next), next.bpm || this.bpm);
@@ -3394,7 +3457,12 @@ class AudioSys {
     const barFine = plan.some((bar) => Object.values(bar.noteFx || {}).some((override) =>
       override?.mode === 'on' && isFine(override)));
     const was = this.transportResolution;
-    this.transportResolution = bank?.resolution === 32 || trackFine || barFine ? 32 : 16;
+    // The clock has to hold everything at once: the grid the song is stored on AND the
+    // finest thing generated on top of it. A 1/32 arp over a triplet song is the case
+    // that makes this an LCM rather than a maximum — 48 cannot express a 32nd and 32
+    // cannot express a triplet, so the transport runs at 96 and both land exactly.
+    this.transportResolution = promoteResolution(
+      resolutionOf(bank), trackFine || barFine ? FINE_RESOLUTION : LEGACY_RESOLUTION);
     // COMING DOWN OFF THE HALF STEP.
     //
     // `scheduleStep` advances `this.step` by the transport's tick, so at 32 the step is
@@ -3410,8 +3478,14 @@ class AudioSys {
     //
     // Round UP: the half step being left behind is one the old resolution already
     // scheduled, and the next whole step is the next thing that has not been played.
-    if (was === 32 && this.transportResolution === 16 && !Number.isInteger(this.step)) {
-      this.step = Math.ceil(this.step);
+    //
+    // Rescaling the counter is what keeps the musical POSITION fixed while the unit
+    // under it changes — `_tick` counts ticks, and a tick is worth a different number
+    // of sixteenths on either side of this line. Going finer is always exact, so the
+    // ceiling only ever bites coming back down, which is the case the comment above
+    // describes.
+    if (this.transportResolution !== was) {
+      this._tick = Math.ceil(this._tick * this.transportResolution / was);
     }
 
     // Every lane that carries Note FX at all — at any rate — from either source. On a
@@ -3460,7 +3534,8 @@ class AudioSys {
     // that silently costs the whole-tick fast path, and a reader needs to see which of
     // the three reasons produced it. A song that lands here is not unoptimised — the
     // per-lane skip above still applies to it — it simply cannot skip a whole tick.
-    this._fineBarsReason = bank?.resolution === 32 ? 'native-32-step-bank'
+    this._fineBarsReason = resolutionOf(bank) !== LEGACY_RESOLUTION
+      ? `native-${resolutionOf(bank)}-step-bank`
       : trackFine ? 'track-level-1/32-arp'
         : wide && wide.size ? 'a-lane-array-of-64-or-more' : '';
     this._fineBars = this._fineBarsReason
@@ -4254,7 +4329,7 @@ class AudioSys {
       this.applyPendingRearrangement();
       const spb = (60 / (this.bpm * this.tempo)) / 4; // seconds per 16th step
       const resolution = this.transportResolution;
-      const tick = resolution === 32 ? 0.5 : 1;       // transport remains in 16th units
+      const tick = 16 / resolution;                   // transport remains in 16th units
       // The scheduler clock is the rearranged song's output position. Every read of
       // authored musical data below uses this mapped source position instead, while
       // `this.step` continues to drive the output-time groove and wrap machinery.
@@ -4323,13 +4398,22 @@ class AudioSys {
       // nobody has swung renders the samples it always did. tests/null-test.js checks
       // that claim by comparing renders sample for sample.
       // At 32nd resolution the halfway ticks follow the swung sixteenth pair by
-      // interpolation: 0, half-delay, full-delay, half-delay. Legacy songs never take
-      // this branch and retain the exact arithmetic they rendered with before.
-      const swingDelay = this.swing ? spb * (this.swing - 50) / 50 : 0;
-      const swingPhase = ((this.step * 2) % 4 + 4) % 4;
-      const swingOffset = resolution === 32
-        ? (swingPhase === 2 ? swingDelay : swingPhase % 2 ? swingDelay / 2 : 0)
-        : (this.swing && (this.step % 2) ? swingDelay : 0);
+      // interpolation: 0, half-delay, full-delay, half-delay. Legacy songs land on the
+      // whole steps of that same pattern — 0 and full-delay — and so retain the exact
+      // arithmetic they rendered with before.
+      //
+      // AND A TRIPLET DOES NOT SWING. Swing is a statement about a PAIR of sixteenths:
+      // hold the first, delay the second. A triplet slot is not in that pair — it is a
+      // third of the way through a sixteenth, with no on-beat/off-beat parity to
+      // inherit — so there is no answer to "how swung is it" and it keeps the position
+      // it was written on. Shoving it toward the nearer of the two would turn three
+      // even notes into a limp, which is the one thing writing them on a real grid was
+      // for. Same call `makeRhythmicGate` already makes for a gate pulse that lands
+      // between sixteenths: the grid has no opinion there, so it is left alone.
+      //
+      // `halves` is the position counted in HALF sixteenths, which is exactly the grid
+      // swing has an opinion about; a whole number means the tick is on it.
+      const swingOffset = this._swingOffset(spb);
       // Rhythmic insert effects share the sequencer's clock. Schedule their gain
       // envelopes before the notes for this sixteenth, using the same audio timestamp
       // that every voice below receives. This keeps straight, dotted and triplet gates
@@ -4412,7 +4496,7 @@ class AudioSys {
       // `_fineBars` is null whenever a half step could carry AUTHORED content rather
       // than only generated events — a natively 32-step bank, a 64-slot lane array, a
       // track-level 1/32 arp — and then nothing here runs at all.
-      if (resolution === 32 && !Number.isInteger(sourceStep) && this.fineLaneSkip
+      if (resolution > LEGACY_RESOLUTION && !Number.isInteger(sourceStep) && this.fineLaneSkip
         && this._fineBars && !this._fineBars.has(sourceBarIndex % plan.length)) {
         // The one thing a skipped tick still owes the song. `noteFx.process` holds each
         // lane's arpeggiator state — where the run started, how far through it is, when
@@ -4432,10 +4516,11 @@ class AudioSys {
         this._advanceTransport(spb, tick, plan);
         return;
       }
-      const s = resolution === 32
-        ? Math.round((sourceStep % 16) * 2) + bar.half * 32
-        : (sourceStep % 16) + bar.half * 16;
-      const pulse = resolution === 32 ? Math.floor(s / 2) : s;
+      const s = Math.round((sourceStep % 16) * resolution / 16) + bar.half * resolution;
+      // The SIXTEENTH this tick falls in, which is the unit everything that has never
+      // heard of a finer grid still counts in — bar effects, the rhythmic gates, the
+      // per-bar reads below.
+      const pulse = Math.floor(s * 16 / resolution);
       let b = this.bank;
       if (b.sections && b.sections.length && bar.sec != null) {
         const sec = resolveSection(b, bar.sec % b.sections.length);
@@ -4462,7 +4547,7 @@ class AudioSys {
       // generate events of their own. Everything else would be handed the null that
       // `sequenceValue` returns for it anyway, so the answer is the same and the walk to
       // reach it is not taken. Null when nothing is known yet, which means "ask them all".
-      const coarseHere = fine && resolution === 32 && this.fineLaneSkip && this._fineLanes;
+      const coarseHere = fine && resolution > LEGACY_RESOLUTION && this.fineLaneSkip && this._fineLanes;
       const writtenPercussion = (key) => {
         const values = b?.[key];
         if (!Array.isArray(values)) return false;
@@ -5609,7 +5694,10 @@ class AudioSys {
         for (const fn of this.beatListeners) fn(beatIdx, when, this.step);
       }
       this.nextTime += spb * tick;
-      this.step += tick;
+      // One whole tick, whatever the tick is worth in sixteenths. `nextTime` still
+      // accumulates: it is seconds, it has to follow a tempo that can change under it,
+      // and the drift over a two-minute song is ~1e-13s against a 2.3e-5s sample period.
+      this._tick += 1;
       if (this.applyPendingStep() || this.applyPendingLoop()) {
         // The selected range changed on this bar line; the new range owns the next
         // scheduled step, so do not run the old loop's wrap after it.
