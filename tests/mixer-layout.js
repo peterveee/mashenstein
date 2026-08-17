@@ -1140,7 +1140,7 @@ assert(/if \(o\.fm && \(o\.fm\.index \?\? 1\) > 0\) \{/.test(voicesEngine)
 // The taps stepper redraws THE SURFACE IT IS ON. Everything about the card changes with
 // the count — the readout, the TIME offsets, FALLOFF, the walks, the per-tap overrides —
 // so it cannot patch itself in place, and it is reachable from the full window only: a
-// Drum Synth strip opens on Quick and never carries this card. Calling the strip's
+// KLNG8 strip opens on Quick and never carries this card. Calling the strip's
 // `build` was therefore a repaint of the one surface the button is not on.
 assert(/const tapsGroup = \(repaint = build\) => \{/.test(editor)
   && /if \(group\.taps\) \{ card\.append\(tapsGroup\(repaint\)\); return card; \}/.test(editor)
@@ -1426,6 +1426,16 @@ assert(/id="looplogopen"[^>]*aria-haspopup="dialog"[^>]*hidden/.test(shell)
   && /navigator\.clipboard\.writeText\(csv\)/.test(entry)
   && /mashenstein-loop-diagnostics-\$\{loopLogSession\}\.csv/.test(entry),
   'DEV records one persisted row at each audible loop and exposes copy/download without a console');
+assert(/id="perfdiagopen"[^>]*aria-controls="perfdiag"[^>]*hidden/.test(shell)
+  && /id="perfdiag"[^>]*aria-labelledby="perfdiagtitle"/.test(shell)
+  && /id="perfdiaghead"/.test(shell) && /id="perfdiaglog"/.test(shell)
+  && /PERF_DIAG_LIMIT = 240/.test(entry)
+  && /function samplePerfDiag\(force = false\)/.test(entry)
+  && /function recordPerfDiag\(kind, status, detail/.test(entry)
+  && /function placePerfDiag\(/.test(entry)
+  && /window\.open\('', 'mash-mixer-performance'/.test(entry)
+  && /perfDiagHead\?\.addEventListener\('pointerdown'/.test(entry),
+  'DEV exposes a draggable live cache/CPU log with an optional browser pop-out');
 assert(/runtimeHealth\(\)/.test(voicesSrc)
   && /cachedSources: this\._cachedPlayback\.size/.test(voicesSrc)
   && /this\._cachedPlayback\.delete\(active\)/.test(voicesSrc)
@@ -1450,6 +1460,9 @@ assert(/mode === 'poly'/.test(voicesSrc)
   && /!preview && !hold/.test(voicesSrc)
   && /v\.kind !== 'drum' && v\.kind !== 'noise'/.test(voicesSrc),
   'and it refuses every voice whose note is not a pure function of (preset, pitch, length)');
+assert(/v\.synth === 'DuoSynth' \? null/.test(voicesSrc)
+  && /vibratoAmount/.test(voicesSrc) && /vibratoRate/.test(voicesSrc),
+  'DuoSynth keeps its native vibrato and does not stack the rack-wide vibrato wrapper');
 // A bounce must synthesise, not replay: the file IS the reference for what the song
 // sounds like, and a cache miss inside one would put a rendered note beside a live one.
 assert(/if \(typeof ctx\.startRendering === 'function'\) return false;/.test(voicesSrc),
@@ -1474,16 +1487,21 @@ assert(/const NOTE_RENDER_JOBS = 1;/.test(voicesSrc)
   && /state\.playbackActive/.test(voicesSrc)
   && /setNoteCachePlaybackActive\(state, active\)/.test(voicesSrc),
   'offline cache preparation is single-filed and paused during transport playback');
+assert(/allowMrdrTailCulling = false/.test(voicesSrc)
+  && /setMrdrTailCulling\(on\)/.test(audio)
+  && /_recordMrdrTailOpportunity\(/.test(voicesSrc)
+  && /below_50ms_gate/.test(voicesSrc)
+  && /mrdrTailCulling = false/.test(audio),
+  'MRDR tail cleanup is explicitly live-only, measured first, and conservative by default');
 assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
-  && /const NOTE_CACHE_PREPARE_BUDGET_MS = 1800/.test(entry)
-  && /const deadline = performance\.now\(\) \+ budget;/.test(entry)
+  && /const selected = initial\.plan\?\.selected/.test(entry)
+  && /Preparing MRDR-3/.test(entry)
   && /async function playFromBeginning\(\)/.test(entry)
   && /Audio\.prepareNoteCache\?\.\(engineBank\(\), range/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)[\s\S]{0,100}?if \(playing\) setPlaying\(false\)/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)/.test(entry)
-  && /if \(held && !health\.rendering\) break;/.test(entry)
   && /\$\('playstart'\)\.onclick = playFromBeginning/.test(entry),
-  'Start from beginning prepares queued notes for a bounded time and starts between cache jobs');
+  'Start from beginning prepares the selected cache plan and starts only after its queue drains');
 // The two halves of the backlog fix. `queued` is the live queue and the lifetime
 // counter is named apart from it, and — the part that keeps it fixed — the stats are
 // spread FIRST in both health builders, so a counter can never overwrite a live
@@ -1494,12 +1512,13 @@ assert(/hits: 0, misses: 0, queuedTotal: 0, started: 0/.test(voicesSrc)
   && /\.\.\.state\.stats,[\s\S]{0,200}?queued: state\.queue\.length/.test(voicesSrc)
   && /\.\.\.state\.stats,[\s\S]{0,200}?queued: state\.queue\.length/.test(audio),
   'note cache health reports the live backlog, unshadowed by any lifetime counter');
-assert(/const NOTE_CACHE_PREPARE_CEILING_MS = 6000/.test(entry)
-  && /const NOTE_CACHE_PREPARE_PER_NOTE_MS = \d+/.test(entry)
-  && /const prepareBudgetFor = \(backlog\) => Math\.min\(NOTE_CACHE_PREPARE_CEILING_MS/.test(entry)
-  && /const budget = prepareBudgetFor\(initial\.queued\)/.test(entry)
+assert(/beginPreparedNotePlan\(\)/.test(voicesSrc)
+  && /commitPreparedNotePlan\(\)/.test(voicesSrc)
+  && /MRDR_PLAN_HEAVY/.test(voicesSrc)
+  && /NOTE_CACHE_PLAN_BYTES/.test(voicesSrc)
+  && /plan: \{/.test(voicesSrc)
   && /if \(!initial\?\.enabled \|\| \(!initial\.queued && !initial\.rendering\)\)/.test(entry),
-  'the pre-roll scales its wait with the real backlog, caps it, and skips it when warm');
+  'the pre-roll selects a bounded MRDR plan and skips the wait when warm');
 // Play is a demand for sound. The recovery ladder latches its give-up for the life of
 // the page, so without this a single bad overload leaves the session silent through
 // every later press — and the revive has to run BEFORE setBank, and must not start a
@@ -1566,6 +1585,12 @@ assert(/this\._specRev\.set\(voiceId, \(this\._specRev\.get\(voiceId\) \|\| 0\) 
 assert(/_cacheableLayer\(v, mode, preview, hold\)/.test(voicesSrc)
   && /export function layerVariesWithTime\(v\)/.test(voicesSrc),
   'the desk can play MRDR-3 notes from rendered notes too');
+assert(/this\._mrdrLaneStages = new Map\(\)/.test(voicesSrc)
+  && /_ensureMrdrLaneStage\(/.test(voicesSrc)
+  && /buildChorusLeg\(/.test(voicesSrc)
+  && /laneEffects = true/.test(voicesSrc)
+  && /laneEffects: false/.test(voicesSrc),
+  'MRDR chorus is a persistent lane stage and cache renders stop before it');
 // Each of these is a way for a note to depend on something other than its own pitch
 // and length. The humanise keys and the sample-and-hold LFO are seeded from the note's
 // TIME (`hitRandom`); a tempo-synced LFO reads `spb`, which is not in the key; a noise
@@ -1584,16 +1609,16 @@ assert(/\(hum\.entry \?\? 0\) > 0/.test(voicesSrc)
 assert(/_layerCacheEntry\(v, voiceId, notes, dur, detune\)/.test(voicesSrc)
   && /parts\.push\('r'\)/.test(voicesSrc),
   'a layer note-on is cached whole, chord and rests together, never tone by tone');
-// The width IS the sound on the patches worth caching — a per-oscillator spread, a
-// chorus panned apart — and a mono render would collapse it without a sound to show
-// for it. Stored mono only when both channels came back identical.
+// The width IS the sound on the patches worth caching — a per-oscillator spread. The
+// preset-internal chorus is outside the buffer and is supplied by the persistent lane
+// stage. A mono render would still collapse unison width without a sound to show for it.
 assert(/new OAC\(2, Math\.ceil\(seconds \* sr\), sr\)/.test(voicesSrc)
   && /function collapseMono\(buffer\)/.test(voicesSrc),
   'a layer note renders in stereo, and is kept in stereo when it is one');
 // `tailOf` reads `v.options`, which MRDR-3 presets do not have, so it returns its
 // one-second floor for all of them — and this song's string pad holds a 3.1s release.
-assert(/function layerNoteSeconds\(v, dur\)/.test(voicesSrc)
-  && /layerNoteSeconds\(v, longest\)/.test(voicesSrc),
+assert(/function layerNoteSeconds\(v, dur, \{ includeChorus = true \}/.test(voicesSrc)
+  && /layerNoteSeconds\(v, longest, \{ includeChorus: false \}\)/.test(voicesSrc),
   'and for as long as its own release, not the floor tailOf would have given it');
 // A solo is monitoring, so it never reaches `refresh` — but it changes what a note IS.
 assert(/_forgetRenderedNotes\(voiceId\)/.test(audio)
@@ -2579,7 +2604,14 @@ assert(/function stripMenu\(el, key, kind\)[\s\S]*?label: `Copy \$\{Kind\}`[\s\S
   && /stripMenu\(el, key, 'send'\)/.test(entry)
   && /stripMenu\(el, '__master', 'master'\)/.test(entry),
 'a channel strip gets the same channel menu as the master and the send returns');
-assert(/actionSection\('Sound', \[[\s\S]*?label: 'Preset'[\s\S]*?openVoicePickerFor\(laneKey\)[\s\S]*?label: 'Edit Preset'[\s\S]*?editVoice\(laneKey\)/.test(trackBranch)
+// The two editor buttons each name a surface and each ASK for it. `advanced` is not
+// left to default here, because the default is the preset's own opinion — a drum
+// jumps to the full window from the strip's one ✎, which is right when there is one
+// button and wrong when there are two beside each other saying different things.
+assert(/actionSection\('Sound', \[[\s\S]*?label: 'Preset'[\s\S]*?openVoicePickerFor\(laneKey\)[\s\S]*?label: 'Edit Preset'[\s\S]*?editVoice\(laneKey, \{ advanced: false \}\)[\s\S]*?label: 'Edit Advanced'[\s\S]*?editVoice\(laneKey, \{ advanced: true \}\)/.test(trackBranch)
+  // Offered only where there is a second surface behind it — the Drum Synth and
+  // MRDR-3 — and gated on the editor's own answer rather than a list kept here.
+  && /trackPreset && isQuickVoice\(trackPreset\) && \{\s*label: 'Edit Advanced'/.test(trackBranch)
   && !/isNew: true/.test(trackBranch)
   && /label: 'Channel Effects'[\s\S]*?openChannelEffects\(laneKey\)/.test(trackBranch)
   && /label: 'Duplicate',\s*title: layersOf\(laneKey\)\.length/.test(trackBranch)
@@ -2873,6 +2905,49 @@ assert(!/#kitroll \.ssqcell \{/.test(shell)
   && /if \(cls === 'ssqbars'\) barCells\.push\(n\);/.test(barGrid),
   'the docked kit keeps the pattern editor\'s own pads and spacing, and the field measures'
   + ' the ruler rather than multiplying a step width by sixteen');
+// ---- the display grid is not the storage grid ---------------------------------------
+//
+// A song with one triplet bar is stored at 48 and stays there, so the roll used to draw
+// forty-eight columns a bar for all sixty-five of them: a mostly-sixteenth song reading
+// as a triplet song. The columns follow the SNAP now (see `displayCols`), and the split
+// is only safe while the two units stay told apart — POSITIONS in stored slots, WIDTHS in
+// drawn columns. Every ruler and field index counts columns; every `dataset.step`, bound
+// and anchor counts slots.
+assert(/let cols = 16;\s*\n\s*let colStride = 1;/.test(barGrid)
+  && /const slotUnit = \(\) => 16 \/ slots;\s*\n\s*const colUnit = \(\) => 16 \/ cols;/.test(barGrid)
+  && /cols = displayCols\(slots, snapSize\(\)\);\s*\n\s*colStride = slots \/ cols;/.test(barGrid)
+  // The ruler and the field are built out of columns, and the cell still says which slot
+  // it begins on — that is what keeps setCell, globalStep and the drag bounds untouched.
+  && /for \(let i = 0; i < cols; i\+\+\)/.test(barGrid)
+  && /n\.dataset\.step = String\(i \* colStride\)/.test(barGrid)
+  && /for \(let c = 0; c < cols; c\+\+\) \{\s*\n\s*const i = c \* colStride;/.test(barGrid)
+  && /const at = \(b - range\.from\) \* cols \+ colOf\(i\);/.test(barGrid)
+  // Widths are columns wherever a width is written down, and `colStride` is the only way
+  // across: a distance between two notes is slots, the length drawn for it is columns.
+  && /return length > 0 \? length \/ colUnit\(\) : length;/.test(barGrid)
+  && /drawn == null \? null : drawn \* colUnit\(\)/.test(barGrid)
+  && /const musicalLength = span \* colUnit\(\);/.test(barGrid)
+  && /setCell\(nt\.row, nt\.bar, nt\.step, true, \(next - at\) \/ colStride\)/.test(barGrid)
+  && /Math\.round\(\(e\.clientX - drag\.x\) \/ r\.width\) \* colStride/.test(barGrid),
+  'the roll draws a column per snap division of a song stored finer than that, and keeps'
+  + ' positions in slots while every width is in columns');
+// An off-grid note is not hidden and not moved: it is drawn inside the column it falls
+// in, as a real `.ssqcell` carrying its own storage slot — which is why selection,
+// dragging, resizing and the keyboard reach it without knowing it exists.
+assert(/insets\.push\(\{ at: k \/ colStride, step: i \+ k, value, len: pair\.lengths\[i \+ k\] \?\? null \}\)/.test(barGrid)
+  && /const inset = from > 0;/.test(barGrid)
+  && /cell\.style\.setProperty\('--at', String\(from\)\)/.test(barGrid)
+  && /drawnSpan\(field, at, cellSpan\(row, value, len, f\.b, step\), from\)/.test(barGrid)
+  && /export function drawnSpan\(field, at, len, from = 0\)/.test(barGrid)
+  // One column wide, so every gesture that measures a cell measures a column — and the
+  // box takes no presses, or it would swallow the column to its right.
+  && /#pianoroll \.ssqcell\.ssqinset \{[^}]*position:\s*absolute/s.test(shell)
+  && /#pianoroll \.ssqcell\.ssqinset \{[^}]*left:\s*calc\(var\(--at, 0\) \* 100%\)/s.test(shell)
+  && /#pianoroll \.ssqcell\.ssqinset \{[^}]*width:\s*100%/s.test(shell)
+  && /#pianoroll \.ssqcell\.ssqinset \{[^}]*pointer-events:\s*none/s.test(shell)
+  && /#pianoroll \.ssqcell\.ssqinset::before \{[^}]*pointer-events:\s*auto/s.test(shell)
+  && /#pianoroll \.ssqcell\.on > \.ssqinset \{[^}]*transform:\s*none/s.test(shell),
+  'a note between two columns is drawn where it really is, as a cell like any other');
 // The kit's controls go in the panel's own header row, beside its name — the row a region
 // already has, rather than a second row of chrome under it eating the field. They are
 // built only when there are any, so the roll gets no bar and no gap where one would be,
@@ -2988,7 +3063,7 @@ assert(/const SCOPES = \[\s*\n\s*\['bar', 'the bar being played'\]/.test(seq)
   && /let figureAdds = readStored\(MODE_KEY/.test(seq)
   && /function scopeButton\(\)[\s\S]*?Apply to: \$\{at\[1\]\} ▾[\s\S]*?setFigureScope\(id\); grid\.refresh\(\);/.test(seq)
   && /function modeButton\(\)[\s\S]*?figureAdds \? 'Add' : 'Replace'[\s\S]*?setFigureAdds\(!figureAdds\)/.test(seq)
-  && /headerExtra: \(\) => \[kitButton\(\), grooveButton\(\), \.\.\.\(docked \? \[scopeButton\(\)\] : \[\]\), modeButton\(\)\]/.test(seq)
+  && /headerExtra: \(\) => \[kitButton\(\), grooveButton\(\), snapPicker\(\),\s*\n\s*\.\.\.\(docked \? \[scopeButton\(\)\] : \[\]\), modeButton\(\)\]/.test(seq)
   && !seq.includes('settingItems'),
   'both settings are controls on that strip rather than lines inside the menus they'
   + ' govern — the scope only where a panel shows more than it acts on');
@@ -3303,14 +3378,14 @@ assert(/if \(ruler\) \{[\s\S]*?ruler\.className = 'ssqruler'[\s\S]*?surface\.app
   && /return \[fieldLabel\('CHANNEL'\), voicePicker\(\),[\s\S]*?fieldLabel\('QUANTISE'\), quantisePicker\(\),[\s\S]*?fieldLabel\('DRAW LENGTH'\), lengthPicker\(\), fieldLabel\('PITCH ZOOM'\), zoom,[\s\S]*?fieldLabel\('TIME ZOOM'\), timeZoomPicker\(\),[\s\S]*?fieldLabel\('TOOL'\), toolPicker\(\)\]/.test(piano)
   && /const TIME_ZOOM_OPTIONS = \[0\.5, 1, 1\.5, 2, 4\]/.test(piano)
   && /grid\.reflow\(\)/.test(piano)
-  && /const customPicker = \(\{ label, title, idPrefix, options, value, chooseValue \}\)/.test(piano)
+  && /import \{ customPicker \} from '\.\/mixer-picker\.js'/.test(piano)
   && /customPicker\(\{[\s\S]*?label: 'Piano-roll quantisation'/.test(piano)
   && /customPicker\(\{[\s\S]*?idPrefix: `rollchord-\$\{kind\}`/.test(piano)
   && !/document\.createElement\('select'\)/.test(piano)
   && /export const NOTE_LENGTH_OPTIONS = \[[\s\S]*?\{ value: null, label: 'Snap' \},[\s\S]*?\{ value: 1, label: '1\/16' \},[\s\S]*?\{ value: 2, label: '1\/8' \},[\s\S]*?\{ value: 16, label: '1' \},/.test(piano)
   && /let noteAddLength = null/.test(piano)
   && /addLength: \(\) => \(rollResizable\(lane\(\)\) \? \(noteAddLength \?\? quantise\) : null\)/.test(piano)
-  && /const drawn = paint && !isOn\(row, value\) \? addLength\(row\) \/ slotUnit\(\) : null/.test(barGrid)
+  && /const drawn = paint && !isOn\(row, value\) \? addLength\(row\) \/ colUnit\(\) : null/.test(barGrid)
   && /showLen\(cell, paint \? \(cellSpan\(row, pair\.notes\[i\] \?\? null, pair\.lengths\[i\] \?\? null, b, i\) \|\| 1\) : 1\)/.test(barGrid)
   && /const noteDrawLength = \(row, value, len\) => \{[\s\S]*?if \(drawn != null \|\| !perNoteLengthLane\(row\.lane\)\) return drawn;[\s\S]*?return 1;/.test(piano)
   && !/return effectiveToneLength\(/.test(piano)
@@ -3436,7 +3511,7 @@ assert(/selectionChanged\s*=\s*\(\)\s*=>\s*{}/.test(barGrid)
   && /let editedKey = null/.test(barGrid)
   && /if \(on\) editedKey = edit[\s\S]*?else editedKey = null/.test(barGrid)
   && /cell\.classList\.toggle\('edited', paint\)/.test(barGrid)
-  && /f\.on && editedKey === noteKey\(f\.b, f\.i, row\.key\)/.test(barGrid)
+  && /on && editedKey === noteKey\(f\.b, step, row\.key\)/.test(barGrid)
   && /if \(!keys\.length \|\| keys\.some\(\(key\) => key !== editedKey\)\) editedKey = null/.test(barGrid)
   && /selectionChanged:\s*\(\)\s*=>\s*syncSelectedKeys\(\)/.test(piano)
   // Cells name their ROWS and the row names are matched against the key column once.

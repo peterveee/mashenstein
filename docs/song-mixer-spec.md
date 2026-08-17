@@ -229,7 +229,7 @@ Floating window — drag by title bar, remembers position.
 - **Built-in**: the game's hand-written voice code paths (Filtered Saw, 80s Bass,
   drawbar organ, plain waveforms). These are bank keys, not synths.
 - **Synth presets**: built from Tone.js classes (MonoSynth, FMSynth, AMSynth,
-  MembraneSynth, MetalSynth, NoiseSynth, DrumSynth).
+  MembraneSynth, MetalSynth, NoiseSynth, KLNG8).
 
 Categories: Bass, Lead, Pad, Keys, Pluck, Organ, Bells, Orch, FX, Kick, Snare, Hats,
 Clap, Tom, Crash, Perc.
@@ -241,7 +241,7 @@ Peak level tracks in real-time as you edit (ratio-based, ~10ms offline render).
 Save measures properly via the server's offline render pipeline.
 
 **Drum constructions**: Tone drums (oscillator-based, 808-like), noise presets
-(filtered burst from seeded buffer + optional pitched body), drum synth/Microtonic
+(filtered burst from seeded buffer + optional pitched body), KLNG8/Microtonic
 (oscillator + filtered noise with independent envelopes summed into drive). All use
 the engine's seeded noise buffer (not `Math.random`) so stems sum to the mix.
 

@@ -66,7 +66,7 @@ import { offeredVoices, offeredByCategory, offeredByEngine } from '../src/data/v
 import '../src/data/imported/index.js';
 import { MIX, VARIANTS, laneSettings, LANE_DEFAULTS } from '../src/data/mix.js';
 import { VOICES, VOICE_LANES, seamFor, isLayer, baseLane, defaultVoiceOf, voiceOf, registerSongVoice, songVoiceKey, isKitVoice, PERCUSSION_LANES, defaultAddedVoice, polyLane } from '../src/data/voices.js';
-import { createVoiceEditor } from './mixer-voice-editor.js';
+import { createVoiceEditor, isQuickVoice } from './mixer-voice-editor.js';
 // The same preset, in a window instead of a column. A layout over the editor's own
 // controls, not a second editor — see the note at the top of the file.
 import { createSynthFull } from './mixer-synth-full.js';
@@ -1665,7 +1665,7 @@ addEventListener('pointerdown', (e) => {
   // describing would be a tour that cannot get past card 9.
   const customMenu = e.target.closest && e.target.closest('.regcustommenu');
   const inside = customMenu || [menu(), $('regionedit'), $('fxpicker'), $('navdrawer'),
-    $('voicepicker'), $('tut')]
+    $('voicepicker'), $('perfdiag'), $('tut')]
     .some((el) => el.contains(e.target));
   const opener = [$('navbtn')].some((el) => el.contains(e.target))
     || (e.target.closest && e.target.closest('.devaddcard'));
@@ -2345,7 +2345,7 @@ function buildRack() {
  * is what puts every fader in the rack on one line.
  */
 function stripShell(key, {
-  label, tag, sublabel = null, colour, tint, cls = '', number = null,
+  label, tag, sublabel = null, synth = null, colour, tint, cls = '', number = null,
 }) {
   const el = document.createElement('div');
   el.className = `strip ${cls}`.trim();
@@ -2375,7 +2375,16 @@ function stripShell(key, {
   if (sublabel != null) {
     const sub = document.createElement('div');
     sub.className = 'stripsub';
-    sub.textContent = sublabel;
+    sub.append(document.createTextNode(sublabel));
+    // Beside the category, never under it. Every head in the rack is one line of name
+    // over one line of caption and they are level across the whole desk — a second line
+    // here would drop this strip's fader out of the row it shares with every other.
+    if (synth) {
+      const s = document.createElement('span');
+      s.className = 'stripsynth';
+      s.textContent = synth;
+      sub.append(s);
+    }
     head.append(sub);
   } else {
     head.append(groupChip(tag));
@@ -2770,9 +2779,54 @@ function synthesizerLabelFor(preset) {
   if (!preset) return null;
   if (preset.synth) return String(preset.synth);
   if (preset.kind === 'noise') return 'Noise Synth';
-  if (preset.kind === 'drum') return 'Drum Synth';
+  if (preset.kind === 'drum') return 'KLNG8';
   if (preset.kind === 'engine') return 'Game Engine';
   return preset.kind ? cap(preset.kind) : null;
+}
+
+/**
+ * The same families as `synthesizerLabelFor`, three characters wide, for the one place
+ * that has no room for the word: the strip head, where the abbreviation sits beside the
+ * preset's category on the caption line.
+ *
+ * Three characters for every one of them, because the strips are a rack and a ragged
+ * column of 2s and 3s reads as noise. `FM`/`AM` are the ones that pay for it — they are
+ * the two everybody would write with two letters — but they are also the two nobody has
+ * to decode, so the padding costs nothing to read.
+ *
+ * The named instruments keep their number (`MR3`, `KL8`) rather than being truncated to
+ * letters, which is what stops four M-words — MRDR-3, MonoSynth, MembraneSynth,
+ * MetalSynth — collapsing into each other at 8.5px. Two more that would collide are
+ * split on purpose: `GME` is the GameSynth preset class, `ENG` is the game's own voice.
+ */
+const SYNTH_ABBR = {
+  'KLNG8': 'KL8',
+  'MRDR-3': 'MR3',
+  'Game Engine': 'ENG',
+  'MonoSynth': 'MNO',
+  'FMSynth': 'FMS',
+  'Noise Synth': 'NSE',
+  'MembraneSynth': 'MBR',
+  'MetalSynth': 'MTL',
+  'Synth': 'SYN',
+  'DuoSynth': 'DUO',
+  'AMSynth': 'AMS',
+  'AdditiveSynth': 'ADD',
+  'GameSynth': 'GME',
+};
+
+/**
+ * The strip's synth tag, or nothing at all.
+ *
+ * Nothing at all is the important half. `presetForLane` answers with a fallback for a
+ * lane the catalogue does not know yet — see `laneVoiceId` — and a fallback's `kind` is
+ * `engine`, so a tag taken straight off it would stencil ENG onto the one lane that is
+ * certainly not the engine. A family this map has never heard of is the same case: leave
+ * the line to the category alone rather than inventing three letters for it.
+ */
+function synthAbbrevFor(preset) {
+  if (!preset) return null;
+  return SYNTH_ABBR[synthesizerLabelFor(preset)] || null;
 }
 
 /**
@@ -3813,7 +3867,13 @@ function openNoteFxEditor(x, y, key, scope = null) {
   const arpDir = field('Pattern', [['up', 'Up'], ['down', 'Down'], ['updown', 'Up / Down'],
     ['downup', 'Down / Up'], ['random', 'Random'], ['asPlayed', 'As played / stored']],
   current.arp?.direction || 'up');
-  const arpRate = field('Rate', [[4, '1/4'], [2, '1/8'], [1, '1/16'], [0.5, '1/32']],
+  // Triplet rates, now that the transport can hold them. The arp fires on integral phase
+  // (`(step - started) / rate`), which used to make a third impossible however it was
+  // spelled — `step` only ever moved in 1s and 0.5s, so `rate: 2/3` fired every TWO
+  // sixteenths rather than three to the beat. The counter behind `step` is exact at 48
+  // and 96 now, so these land. Same labels and order as the roll's snap menu.
+  const arpRate = field('Rate', [[4, '1/4'], [8 / 3, '1/4T'], [2, '1/8'], [4 / 3, '1/8T'],
+    [1, '1/16'], [2 / 3, '1/16T'], [0.5, '1/32'], [1 / 3, '1/32T']],
     current.arp?.rate ?? 1);
   const octaves = number('Octaves', 1, 4, 1, current.arp?.octaves ?? 1, 'octaves');
   const rangeTip = {
@@ -3864,7 +3924,7 @@ function openNoteFxEditor(x, y, key, scope = null) {
     strum: { enabled: strumOn.checked, direction: strumDir.value,
       gapMs: clamp(Number(gap.value) || 0, 0, 250) },
     arp: { enabled: arpOn.checked, direction: arpDir.value,
-      rate: clamp(Number(arpRate.value) || 1, 0.5, 4),
+      rate: clamp(Number(arpRate.value) || 1, 1 / 3, 4),
       octaves: clamp(Math.round(Number(octaves.value) || 1), 1, 4),
       rangeLimit: rangeOn.checked,
       rangeLo: clamp(Math.round(Number(rangeLo.value) || NOTE_FX_RANGE_DEFAULT_LO),
@@ -4478,9 +4538,11 @@ function placeVoiceEditor() {
   pairHead.append(sharedTitle);
   const stripType = strip.querySelector('.striphead .stripsub');
   if (stripType) {
-    const sharedType = document.createElement('div');
+    // Cloned rather than copied as text: the caption is a category with an optional
+    // `.stripsynth` beside it, and the separator between them is drawn by the stylesheet,
+    // so `textContent` would hand this line "ORCHMR3" with the space and the dot gone.
+    const sharedType = stripType.cloneNode(true);
     sharedType.className = 'voicepairtype';
-    sharedType.textContent = stripType.textContent;
     pairHead.append(sharedType);
   }
 }
@@ -4493,8 +4555,22 @@ function placeVoiceEditor() {
  * at the moment you want it — after you have moved something and decided to keep it —
  * so the option had no caller left and is gone rather than left as a branch nothing
  * takes. The editor's own `state.isNew` is unaffected: that is what its Save as new sets.
+ *
+ * WHICH SURFACE IT LANDS ON. Two presets have both — the KLNG8 and MRDR-3 — and
+ * `advanced` says which one was asked for:
+ *
+ *   undefined  the caller has no opinion, so the preset decides. This is the strip's ✎,
+ *              which is one button and cannot offer a choice: a drum goes to the full
+ *              window, because its Quick surface is eight pots of a kit that has
+ *              hundreds, and everything else docks beside the strip.
+ *   true       the full window, standalone — nothing docked behind it.
+ *   false      the docked Quick panel, on a drum as much as on anything else.
+ *
+ * The track panel passes it explicitly on both of its buttons, so **Edit Preset** and
+ * **Edit Advanced** each do exactly what they are called there. A preset with only one
+ * surface ignores it; there is nothing else to open.
  */
-function editVoice(laneKey) {
+function editVoice(laneKey, { advanced } = {}) {
   let chosen = laneVoiceId(laneKey);
   // A GENERATED SONG NAMES ITS INSTRUMENTS IN THE BANK, NOT IN THE MIX.
   //
@@ -4548,18 +4624,34 @@ function editVoice(laneKey) {
   }
   closeMenu();
   selectLane(laneKey);
+  // Whether there is a second surface to ask for at all. Both windowed branches below
+  // are gated on it, so `advanced: true` on a preset that has only the one panel opens
+  // that panel rather than nothing.
+  const hasAdvanced = isQuickVoice(VOICES[chosen]);
+  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"]`);
   // Already open on this very preset: bring it into view and stop. Re-opening would
   // call `open` again, which takes the CURRENT sound as the baseline — so a second
   // click on the ✎ would quietly make your unsaved edits the thing Revert goes back to.
   if (voiceEditor.isOpen() && voiceEditor.laneKey === laneKey
       && voiceEditor.editing === chosen) {
+    // Except when the full window is what was asked for and it is not up yet — then the
+    // panel already being open is no reason to refuse. Not `standalone`: there IS a
+    // panel behind this one, it was there first, and closing the window should reveal it
+    // rather than put the preset down.
+    if (advanced && hasAdvanced && !voiceEditor.fullOpen) {
+      voiceEditor.openFull(1, { anchor: strip, avoidTransport: true });
+      return;
+    }
     voiceEditEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
     return;
   }
   if (!voiceEditor.open(chosen, { laneKey, laneLabel: targetLabel(laneKey) })) return;
-  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"]`);
   const fullEngine = VOICES[chosen]?.kind === 'drum' ? 'drum' : VOICES[chosen]?.synth;
-  if (strip && fullEngine === 'drum') {
+  // Straight to the full window with nothing docked behind it. `standalone` is what
+  // says so: closing the window puts the preset down, rather than uncovering a panel
+  // the user never asked to open. A drum takes this route on its own — see the note on
+  // `advanced` above — and `advanced: false` is the one thing that overrules it.
+  if (strip && ((fullEngine === 'drum' && advanced !== false) || (advanced && hasAdvanced))) {
     voiceEditEl.classList.remove('show');
     voiceEditor.openFull(1, { standalone: true, anchor: strip, avoidTransport: true });
     return;
@@ -5407,6 +5499,7 @@ function channelStrip(lane, mix, slotRows, number) {
   const { el, head, body, foot } = stripShell(key, {
     label: customTrackLabel(key) || preset?.label || lane.label,
     sublabel: preset?.category || null,
+    synth: synthAbbrevFor(preset),
     tag: lane.group, colour: laneColour(key), tint: laneTint(key), number,
   });
   // The head is the strip's handle, so double-clicking it plays the channel: from
@@ -13564,7 +13657,10 @@ const NOTE_FX_DIRECTION_LABELS = {
   up: 'Up', down: 'Down', updown: 'Up / Down', downup: 'Down / Up',
   random: 'Random', asPlayed: 'As played',
 };
-const noteFxRateLabel = (rate) => ({ 4: '1/4', 2: '1/8', 1: '1/16', 0.5: '1/32' }[rate]
+const NOTE_FX_RATE_LABELS = [[4, '1/4'], [8 / 3, '1/4T'], [2, '1/8'], [4 / 3, '1/8T'],
+  [1, '1/16'], [2 / 3, '1/16T'], [0.5, '1/32'], [1 / 3, '1/32T']];
+const noteFxRateLabel = (rate) => (NOTE_FX_RATE_LABELS
+  .find(([v]) => Math.abs(v - rate) < 1e-9)?.[1]
   || `${rate} steps`);
 const effectDisplayName = (effect) => EFFECT_BY_ID[effect?.id]?.short
   || EFFECT_BY_ID[effect?.id]?.name || effect?.id || 'Unknown effect';
@@ -13741,13 +13837,23 @@ function openRegionEditor(x, y, {
   close.textContent = '×'; close.title = 'Close'; close.onclick = closeMenu;
   head.append(heading, close); el.append(head);
 
-  const section = (caption) => {
+  // `note` is a VALUE on the caption line, not more caption: the section says what it is
+  // for and the note says what it is currently pointed at. It keeps its own case, because
+  // every note this takes is a brand — MonoSynth, FMSynth, MRDR-3 — and `.regcap` is
+  // uppercase, which would hand back MONOSYNTH.
+  const section = (caption, note = null) => {
     const wrap = document.createElement('div'); wrap.className = 'regsection';
     const cap = document.createElement('div'); cap.className = 'regcap'; cap.textContent = caption;
+    if (note) {
+      const value = document.createElement('span');
+      value.className = 'regcapnote';
+      value.textContent = note;
+      cap.append(value);
+    }
     wrap.append(cap); el.append(wrap); return wrap;
   };
-  const actionSection = (caption, actions) => {
-    const wrap = section(caption);
+  const actionSection = (caption, actions, note = null) => {
+    const wrap = section(caption, note);
     const grid = document.createElement('div'); grid.className = 'regactions';
     for (const action of actions.filter(Boolean)) {
       const button = document.createElement('button');
@@ -13901,9 +14007,9 @@ function openRegionEditor(x, y, {
     // strip and the arrangement row, and a second copy in here would be a switch you
     // have to close the panel to see the state of.
     if (trackSeam) {
-      // Two buttons, both about the preset: which one, and what it sounds like. The
-      // preset's own name is not in either label — it is on the line under the title,
-      // and it was making both buttons different lengths on every track.
+      // Buttons about the preset: which one, and what it sounds like. The preset's own
+      // name is not in any label — it is on the line under the title, and it was making
+      // the buttons different lengths on every track.
       //
       // "New preset from this…" is gone: the preset editor's own Save as new is the same
       // gesture at the moment you actually want it, which is after you have moved
@@ -13915,8 +14021,27 @@ function openRegionEditor(x, y, {
         // nothing for the editor to show.
         trackPreset && trackPreset.kind !== 'engine' && {
           label: 'Edit Preset', title: `Open ${trackPreset.label} in the preset editor`,
-          run: () => editVoice(laneKey) },
-      ]);
+          run: () => editVoice(laneKey, { advanced: false }) },
+        // The KLNG8 and MRDR-3 are the two with a second, wider surface, and until
+        // now the only door to it was the ADVANCED button inside the panel — so getting
+        // to it meant opening the small one first and then leaving it. This is the same
+        // door, from the same panel that offers the small one, one click either way.
+        //
+        // Absent on every other preset rather than disabled: a button that cannot ever
+        // light on this track is a promise of a screen that does not exist.
+        trackPreset && isQuickVoice(trackPreset) && {
+          label: 'Edit Advanced',
+          title: `Open ${trackPreset.label} in the full-window editor — every control on one screen`,
+          run: () => editVoice(laneKey, { advanced: true }) },
+      ],
+      // Which synth these two buttons would open. The title already names the PRESET
+      // ("Track 7. Round Bass"); this is the other half of that identity, and it is the
+      // half that says what the editor behind Edit Preset will actually look like —
+      // KLNG8's six source cards and MonoSynth's filter page are not the same screen.
+      // In full, not the strip's three letters: this is where there is room for the word,
+      // and seeing MNO on the channel and MonoSynth here is how the abbreviation is
+      // learned. Null on a lane with no preset, which drops the note and leaves SOUND.
+      synthesizerLabelFor(trackPreset));
     }
     actionSection('Track', [
       { label: 'Rename Track…', title: `Rename ${laneLabel}`,
@@ -15181,6 +15306,7 @@ function tick() {
     kitRoll.follow(null);
     syncRearrangeProgress(null);
   }
+  writeGridInfo();
   const peakText = peakSeen > 0
     ? `Master peak ${(20 * Math.log10(peakSeen)).toFixed(1)} dBFS${peakSeen >= 1 ? '  ** CLIPPING **' : ''}` : '';
   // The watchdog's verdict outranks the peak readout: a desk that is starving or
@@ -15188,6 +15314,54 @@ function tick() {
   $('peakinfo').textContent = health.text
     ? `** ${health.text} **${peakText ? '  —  ' + peakText : ''}` : peakText;
   requestAnimationFrame(tick);
+}
+
+/**
+ * WHICH GRID THIS SONG RUNS ON, AND WHAT PUT IT THERE.
+ *
+ * The resolution is not something anyone sets. It is promoted by what you do — picking a
+ * triplet snap, switching on a 1/32 arpeggiator, pasting a fine clip — and demoted again
+ * on save when nothing needs it. That is the right behaviour, and the reason there is
+ * deliberately no resolution dial; but it makes the cost invisible, and this is the line
+ * that makes it visible again.
+ *
+ * The sting is in `_fineBars`. A SONG-WIDE reason — the bank's own grid, a track-level
+ * 1/32 arp, a lane written wider than the flag — sets it to null, and then no bar may skip
+ * a tick for the whole song. One arpeggiator on one channel is paid for by all sixty-five
+ * bars. A per-bar reason leaves the set intact and only those bars pay, which is why the
+ * two cases read differently below.
+ *
+ * Silent on an ordinary sixteenth song, which is nearly all of them: a status bar that
+ * says "normal" all day teaches you to stop reading it.
+ */
+let gridInfoWas = null;
+function writeGridInfo() {
+  const el = $('gridinfo');
+  if (!el) return;
+  const res = Audio.transportResolution || 16;
+  const reason = Audio._fineBarsReason || '';
+  const bars = Audio._fineBars;
+  let text = '';
+  if (reason) {
+    const why = /^native-\d+-step-bank$/.test(reason) ? "the song's own grid"
+      : reason === 'track-level-1/32-arp' ? 'a 1/32 arp on a channel'
+        : reason === 'a-lane-array-of-64-or-more' ? 'a lane written finer than the flag'
+          : reason;
+    text = `Grid ${res} — ${why}, every bar`;
+  } else if (bars && bars.size) {
+    text = `Grid ${res} — ${bars.size} bar${bars.size === 1 ? '' : 's'}`;
+  } else if (res !== 16) {
+    text = `Grid ${res}`;
+  }
+  // Written only on change. This runs every frame, and setting textContent on a node that
+  // already says the right thing still costs a layout.
+  if (text === gridInfoWas) return;
+  gridInfoWas = text;
+  el.textContent = text;
+  el.title = text
+    ? `${text}. The grid follows the music — a triplet snap or a 1/32 arp promotes it, and`
+      + ' saving demotes it again when nothing needs it.'
+    : 'The note grid this song is stored on, and what promoted it';
 }
 
 /**
@@ -15355,6 +15529,20 @@ const loopLogClear = $('looplogclear');
 const profileTrackLoadButton = $('profiletrackload');
 const loopLogText = $('looplogtext');
 const loopLogStatus = $('looplogstatus');
+const perfDiagOpen = $('perfdiagopen');
+const perfDiag = $('perfdiag');
+const perfDiagHead = $('perfdiaghead');
+const perfDiagClose = $('perfdiagclose');
+const perfDiagDone = $('perfdiagdone');
+const perfDiagClear = $('perfdiagclear');
+const perfDiagPopout = $('perfdiagpopout');
+const perfDiagState = $('perfdiagstate');
+const perfDiagStatus = $('perfdiagstatus');
+const perfDiagLog = $('perfdiaglog');
+const perfDiagMetricEls = new Map(
+  [...document.querySelectorAll('#perfdiagmetrics .perfmetric')]
+    .map((el) => [el.dataset.perfmetric, el]),
+);
 
 const health = {
   text: '', lastWall: 0, lastCt: 0, deadRuns: 0,
@@ -15426,6 +15614,19 @@ const loopLogSession = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0,
 const loopLapCounts = new Map();
 let lastLoggedDropouts = 0;
 
+// The persisted loop CSV is deliberately sparse: it records loop boundaries and
+// fault/recovery events, not a row every quarter second. This smaller session ring is
+// the live window's readout. It is cheap to overwrite, never touches localStorage, and
+// gives a developer the sequence immediately before a dropout without turning the
+// diagnostics file into a telemetry firehose.
+const PERF_DIAG_LIMIT = 240;
+const PERF_DIAG_SAMPLE_MS = 1000;
+let perfDiagRecords = [];
+let perfDiagLastSampleAt = 0;
+let perfDiagLastKey = '';
+let perfDiagPopup = null;
+const PERF_POS_KEY = 'mash-mixer-perfdiag-pos';
+
 const LOOP_LOG_COLUMNS = [
   'time', 'session', 'song', 'lap', 'loopStart', 'loopEnd', 'recordType', 'status',
   'detail', 'audioState', 'preMasterPeak', 'postMasterPeak', 'deadRuns', 'recoveryTier',
@@ -15443,9 +15644,12 @@ const LOOP_LOG_COLUMNS = [
   // Before the queuedTotal rename it silently carried the lifetime count instead, which
   // is why every row logged before 2026-08-17 has it equal to `cacheMisses`.
   'cacheEnabled', 'cacheBuffers', 'cacheMB', 'cacheQueued', 'cacheQueuedTotal',
-  'cacheRendering',
+  'cacheRendering', 'cachePlanCandidates', 'cachePlanSelected', 'cachePlanCompleted',
+  'cachePlanPending', 'cachePlanSelectedMB', 'cachePlanBenefit',
   'cacheHits', 'cacheMisses', 'cacheStale', 'pools', 'poolSlots', 'retiredPools',
-  'liveNotes', 'heldNative', 'cachedSources', 'jsHeapMB',
+  'liveNotes', 'heldNative', 'cachedSources', 'mrdrLaneStages', 'mrdrChorusLegs',
+  'mrdrTailEligible', 'mrdrTailCulled', 'mrdrTailSkipped', 'mrdrTailPotentialMs',
+  'mrdrTailSavedMs', 'mrdrTailRatio', 'jsHeapMB',
   'operationDurationMs', 'operationBytes', 'operationSegments', 'heapBeforeMB', 'heapAfterMB',
   'profileTrack', 'profilePreset', 'profileBars', 'profileAudioSeconds',
   'profileFullMs', 'profileDryMs', 'profileLoadPct', 'profileFxDeltaMs',
@@ -15659,6 +15863,8 @@ function diagnosticRuntimeFields() {
   const runtime = Audio.voices?.runtimeHealth?.() || {};
   const ctx = Audio.ctx;
   const memory = performance.memory?.usedJSHeapSize;
+  const plan = cache.plan || {};
+  const tail = runtime.mrdrTail || {};
   return {
     bufferMode: latencyOption(activeLatencyPreference).label,
     latencyRequest: activeLatencyPreference,
@@ -15669,17 +15875,159 @@ function diagnosticRuntimeFields() {
     cacheMB: cache.bytes == null ? '' : +(cache.bytes / (1024 * 1024)).toFixed(2),
     cacheQueued: cache.queued ?? 0, cacheQueuedTotal: cache.queuedTotal ?? 0,
     cacheRendering: cache.rendering ?? 0,
+    cachePlanCandidates: plan.candidates ?? 0, cachePlanSelected: plan.selected ?? 0,
+    cachePlanCompleted: plan.completed ?? 0, cachePlanPending: plan.pending ?? 0,
+    cachePlanSelectedMB: plan.selectedBytes == null
+      ? '' : +(plan.selectedBytes / (1024 * 1024)).toFixed(2),
+    cachePlanBenefit: plan.selectedBenefit == null ? '' : +Number(plan.selectedBenefit).toFixed(2),
     cacheHits: cache.hits ?? 0, cacheMisses: cache.misses ?? 0, cacheStale: cache.stale ?? 0,
     pools: runtime.pools ?? 0, poolSlots: runtime.poolSlots ?? 0,
     retiredPools: runtime.retiredPools ?? 0, liveNotes: runtime.liveNotes ?? 0,
     heldNative: runtime.heldNative ?? 0, cachedSources: runtime.cachedSources ?? 0,
+    mrdrLaneStages: runtime.mrdrLaneStages ?? 0, mrdrChorusLegs: runtime.mrdrChorusLegs ?? 0,
+    mrdrTailEligible: tail.eligible ?? 0, mrdrTailCulled: tail.culled ?? 0,
+    mrdrTailSkipped: tail.skipped ?? 0,
+    mrdrTailPotentialMs: tail.potentialSeconds == null ? '' : Math.round(tail.potentialSeconds * 1000),
+    mrdrTailSavedMs: tail.savedSeconds == null ? '' : Math.round(tail.savedSeconds * 1000),
+    mrdrTailRatio: tail.potentialRatio == null ? '' : +Number(tail.potentialRatio).toFixed(4),
     jsHeapMB: Number.isFinite(memory) ? +(memory / (1024 * 1024)).toFixed(1) : '',
   };
+}
+
+function perfDiagSnapshot() {
+  const fields = diagnosticRuntimeFields();
+  const scheduler = schedulerWorkFields();
+  const hotspot = frameHotspotFields();
+  const ratio = Number.isFinite(health.ratio) ? +health.ratio.toFixed(3) : null;
+  const margin = Number.isFinite(health.marginMin) ? +(health.marginMin * 1000).toFixed(1) : null;
+  const status = health.audioBehind ? 'AUDIO OVERLOADED'
+    : health.audioStruggling ? 'AUDIO STRUGGLING'
+      : health.uiStalled ? 'PLAYBACK INTERRUPTED'
+        : playing ? (fields.cacheRendering ? 'CACHE RENDERING' : 'PLAYING') : 'STOPPED';
+  return {
+    ...fields, ...scheduler, ...hotspot, status, ratio, margin,
+    longTask: Math.round(Math.max(health.longTask || 0, loopHealthWindow.longTaskMax || 0)),
+    dropouts: health.dropouts || 0, audioState: Audio.ctx?.state || 'uninitialised',
+    playing: !!playing, time: new Date().toISOString(),
+  };
+}
+
+const perfNumber = (value, suffix = '') => value == null || value === '' || !Number.isFinite(Number(value))
+  ? '—' : `${value}${suffix}`;
+
+function perfDiagDetail(snapshot) {
+  const clock = perfNumber(snapshot.ratio, 'x');
+  const margin = perfNumber(snapshot.margin, ' ms');
+  const cache = `cache q${snapshot.cacheQueued}/r${snapshot.cacheRendering}`
+    + (snapshot.cachePlanCandidates ? ` · plan ${snapshot.cachePlanCompleted}/${snapshot.cachePlanSelected}` : '')
+    + ` · hits ${snapshot.cacheHits || 0}/misses ${snapshot.cacheMisses || 0}`;
+  const cpu = snapshot.frameHotspot
+    ? ` · hot ${snapshot.frameHotspot} ${snapshot.frameHotspotMs || 0}ms`
+    : '';
+  return `clock ${clock} · margin ${margin} · ${cache} · dropouts ${snapshot.dropouts}${cpu}`;
+}
+
+function perfDiagPayload() {
+  return {
+    current: perfDiagCurrent,
+    records: perfDiagRecords.slice(),
+  };
+}
+
+let perfDiagCurrent = null;
+
+function syncPerfDiagPopup() {
+  const popup = perfDiagPopup;
+  if (!popup || popup.closed) { perfDiagPopup = null; return; }
+  try {
+    const payload = perfDiagPayload();
+    const state = popup.document.getElementById('mash-perf-state');
+    const metrics = popup.document.getElementById('mash-perf-metrics');
+    const log = popup.document.getElementById('mash-perf-log');
+    if (!state || !metrics || !log) return;
+    const current = payload.current || {};
+    state.textContent = `${current.status || 'WAITING'} · ${current.time || ''}`;
+    metrics.textContent = current.status ? [
+      `AUDIO  ${current.status} · clock ${perfNumber(current.ratio, 'x')} · margin ${perfNumber(current.margin, ' ms')} · long task ${perfNumber(current.longTask, ' ms')} · dropouts ${current.dropouts} · ${current.frameHotspot ? `hot ${current.frameHotspot} ${current.frameHotspotMs || 0}ms` : 'no frame hotspot yet'}`,
+      `CACHE  ${current.cacheEnabled ? 'on' : 'off'} · ${current.cacheBuffers} buffers · ${current.cacheMB || 0} MB · queue ${current.cacheQueued} · rendering ${current.cacheRendering} · plan ${current.cachePlanCompleted || 0}/${current.cachePlanSelected || 0} · hits/misses/stale ${current.cacheHits || 0}/${current.cacheMisses || 0}/${current.cacheStale || 0}`,
+      `MRDR   ${current.mrdrLaneStages || 0} lane stages · ${current.mrdrChorusLegs || 0} wet legs · ${current.liveNotes || 0} live notes · ${current.cachedSources || 0} cached sources · tails ${current.mrdrTailCulled || 0} culled`,
+      `OUTPUT ${current.audioState || '—'} · ${current.bufferMode || '—'} · base ${perfNumber(current.baseLatencyMs, ' ms')} · read-ahead ${perfNumber(current.readAheadMs, ' ms')} · heap ${perfNumber(current.jsHeapMB, ' MB')}`,
+    ].join('\n') : 'Waiting for a sample…';
+    log.textContent = payload.records.map((record) => {
+      const time = record.time?.slice(11, 23) || '';
+      return `${time} ${String(record.status || '').padEnd(22)} ${record.detail || ''}`;
+    }).join('\n');
+    log.scrollTop = log.scrollHeight;
+  } catch {
+    perfDiagPopup = null;
+  }
+}
+
+function refreshPerfDiagUi() {
+  if (!perfDiagOpen || !perfDiag) return;
+  perfDiagOpen.hidden = !DEV_USER;
+  if (!DEV_USER) return;
+  const current = perfDiagCurrent || perfDiagSnapshot();
+  const metricText = {
+    audio: `${current.status || 'WAITING'}\nclock ${perfNumber(current.ratio, 'x')} · margin ${perfNumber(current.margin, ' ms')}\nlong task ${perfNumber(current.longTask, ' ms')} · dropouts ${current.dropouts || 0}\n${current.frameHotspot ? `hot ${current.frameHotspot} · ${current.frameHotspotMs || 0} ms` : 'no frame hotspot yet'}${current.schedTicks ? `\nscheduler ${current.schedTicks} ticks · fine ${current.schedFineTickPct || 0}% · lanes ${current.schedLaneReads || 0}` : ''}`,
+    cache: `${current.cacheEnabled ? 'ON' : 'OFF'} · ${current.cacheBuffers || 0} buffers · ${current.cacheMB || 0} MB\nqueue ${current.cacheQueued || 0} · rendering ${current.cacheRendering || 0}\nplan ${current.cachePlanCompleted || 0}/${current.cachePlanSelected || 0} · pending ${current.cachePlanPending || 0}\nhits ${current.cacheHits || 0} · misses ${current.cacheMisses || 0} · stale ${current.cacheStale || 0}`,
+    mrdr: `${current.mrdrLaneStages || 0} lane stages · ${current.mrdrChorusLegs || 0} wet legs\nlive ${current.liveNotes || 0} · cached ${current.cachedSources || 0}\ntails ${current.mrdrTailCulled || 0} culled · ${current.mrdrTailSkipped || 0} skipped`,
+    browser: `${current.audioState || '—'} · ${current.bufferMode || '—'}\nbase ${perfNumber(current.baseLatencyMs, ' ms')} · read-ahead ${perfNumber(current.readAheadMs, ' ms')}\nheap ${perfNumber(current.jsHeapMB, ' MB')} · pools ${current.pools || 0}`,
+  };
+  for (const [key, el] of perfDiagMetricEls) {
+    const p = el.querySelector('p');
+    if (p) p.textContent = metricText[key] || '—';
+    el.classList.toggle('bad', key === 'audio' && /OVERLOADED|STRUGGLING|INTERRUPTED/.test(current.status || ''));
+  }
+  if (perfDiagState) perfDiagState.textContent = current.status
+    ? `${current.status} · ${current.time?.slice(11, 23) || ''}` : 'Waiting for playback';
+  if (perfDiagStatus) perfDiagStatus.textContent = perfDiagRecords.length
+    ? `${perfDiagRecords.length} live message${perfDiagRecords.length === 1 ? '' : 's'} · latest: ${perfDiagRecords.at(-1).detail}`
+    : 'Open the song and press Play to begin live sampling.';
+  if (perfDiagLog) {
+    perfDiagLog.textContent = perfDiagRecords.map((record) => {
+      const time = record.time?.slice(11, 23) || '';
+      return `${time} ${String(record.status || '').padEnd(22)} ${record.detail || ''}`;
+    }).join('\n');
+    perfDiagLog.scrollTop = perfDiagLog.scrollHeight;
+  }
+  syncPerfDiagPopup();
+}
+
+function recordPerfDiag(kind, status, detail, snapshot = null) {
+  if (!DEV_USER) return;
+  const current = snapshot || perfDiagSnapshot();
+  perfDiagCurrent = current;
+  perfDiagRecords.push({
+    time: current.time, kind, status, detail,
+    ...current,
+  });
+  if (perfDiagRecords.length > PERF_DIAG_LIMIT) {
+    perfDiagRecords.splice(0, perfDiagRecords.length - PERF_DIAG_LIMIT);
+  }
+  refreshPerfDiagUi();
+}
+
+function samplePerfDiag(force = false) {
+  if (!DEV_USER || (!playing && !force)) return;
+  const now = performance.now();
+  if (!force && now - perfDiagLastSampleAt < PERF_DIAG_SAMPLE_MS) return;
+  const snapshot = perfDiagSnapshot();
+  const key = [snapshot.status, snapshot.ratio, snapshot.margin, snapshot.cacheQueued,
+    snapshot.cacheRendering, snapshot.cachePlanPending, snapshot.dropouts,
+    snapshot.mrdrLaneStages, snapshot.mrdrChorusLegs].join('|');
+  // Keep the once-a-second heartbeat while playing, but also retain immediate samples
+  // when a verdict or queue state changes so a dropout has a useful lead-in.
+  if (!force && key === perfDiagLastKey && now - perfDiagLastSampleAt < PERF_DIAG_SAMPLE_MS * 2) return;
+  perfDiagLastSampleAt = now;
+  perfDiagLastKey = key;
+  recordPerfDiag('sample', snapshot.status, perfDiagDetail(snapshot), snapshot);
 }
 
 /** Persist a fault or recovery now; unlike a lap row, this does not wait for audio. */
 function appendDiagnosticEvent(status, detail, fields = {}) {
   if (!DEV_USER) return;
+  recordPerfDiag('event', status, detail);
   persistLoopRecord({
     time: new Date().toISOString(), session: loopLogSession, song: trackId,
     lap: '', loopStart: Audio.loopStart ?? '', loopEnd: Audio.loopEnd ?? '',
@@ -15760,6 +16108,9 @@ function appendLoopLog({ start, end }) {
     reliefMs: loopHealthWindow.reliefMs, reliefEnters: loopHealthWindow.reliefEnters,
     reliefVerdict: loopHealthWindow.reliefVerdict, auxDuty: auxDutySummary(auxDuty),
   };
+  const liveSnapshot = perfDiagSnapshot();
+  recordPerfDiag('loop', status,
+    `lap ${lap} · ${perfDiagDetail(liveSnapshot)}`, liveSnapshot);
   persistLoopRecord(record);
   resetLoopHealthWindow();
 }
@@ -16207,6 +16558,7 @@ function checkAudioHealth() {
     health.lastCpuAt = wall;
     updateCpu();
   }
+  samplePerfDiag();
 }
 // Four times a second. The clock check is two subtractions and the analyser read is
 // 256 floats; what it buys is noticing a shortfall in half a second instead of three,
@@ -16249,6 +16601,100 @@ Audio.onLoop?.((loop) => {
     appendLoopLog(loop);
   }, wait);
 });
+
+function placePerfDiag(x = null, y = null) {
+  if (!perfDiag) return;
+  if (x == null || y == null) {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(PERF_POS_KEY) || 'null'); } catch { saved = null; }
+    x = saved?.x ?? Math.max(8, (innerWidth - perfDiag.offsetWidth) / 2);
+    y = saved?.y ?? 70;
+  }
+  const left = clamp(Number(x) || 8, 6, Math.max(6, innerWidth - perfDiag.offsetWidth - 6));
+  const top = clamp(Number(y) || 8, 6, Math.max(6, innerHeight - perfDiag.offsetHeight - 6));
+  perfDiag.style.left = `${left}px`;
+  perfDiag.style.top = `${top}px`;
+  perfDiag.style.transform = 'none';
+  try { localStorage.setItem(PERF_POS_KEY, JSON.stringify({ x: left, y: top })); } catch { /* optional preference */ }
+}
+
+function openPerfDiag() {
+  if (!DEV_USER || !perfDiag) return;
+  perfDiag.hidden = false;
+  perfDiagOpen?.setAttribute('aria-expanded', 'true');
+  placePerfDiag();
+  samplePerfDiag(true);
+  perfDiagClose?.focus();
+}
+
+function closePerfDiag() {
+  if (!perfDiag) return;
+  perfDiag.hidden = true;
+  perfDiagOpen?.setAttribute('aria-expanded', 'false');
+  perfDiagOpen?.focus();
+}
+
+// The panel is intentionally not modal: a developer can drag it out of the way while
+// moving faders, and the song continues under it. Buttons in the title bar are excluded
+// so a click on Clear/Pop out never starts a move gesture.
+perfDiagHead?.addEventListener('pointerdown', (event) => {
+  if (perfDiag?.hidden || event.target.closest('button')) return;
+  event.preventDefault();
+  const rect = perfDiag.getBoundingClientRect();
+  const dx = event.clientX - rect.left;
+  const dy = event.clientY - rect.top;
+  const move = (next) => placePerfDiag(next.clientX - dx, next.clientY - dy);
+  const stop = () => {
+    perfDiagHead.classList.remove('dragging');
+    perfDiagHead.removeEventListener('pointermove', move);
+  };
+  perfDiagHead.classList.add('dragging');
+  try { perfDiagHead.setPointerCapture(event.pointerId); } catch { /* synthetic pointer */ }
+  perfDiagHead.addEventListener('pointermove', move);
+  perfDiagHead.addEventListener('pointerup', stop, { once: true });
+  perfDiagHead.addEventListener('pointercancel', stop, { once: true });
+});
+
+function openPerfDiagPopup() {
+  if (!DEV_USER) return;
+  const popup = window.open('', 'mash-mixer-performance',
+    'popup=yes,width=900,height=680,resizable=yes,scrollbars=yes');
+  if (!popup) { toast('Pop-out blocked — the in-page log is still available'); return; }
+  perfDiagPopup = popup;
+  popup.document.open();
+  popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>MASHENSTEIN live performance</title><style>
+    :root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:16px;background:#151820;color:#e8ebf2;font:12px/1.45 ui-monospace,monospace}
+    h1{margin:0 0 4px;color:#50d0ba;font:600 15px/1.2 ui-sans-serif,system-ui;letter-spacing:.08em}
+    #mash-perf-state{color:#a4acbb;font-size:10px}#mash-perf-metrics{margin:14px 0 10px;padding:10px;border:1px solid #303746;border-radius:6px;white-space:pre-wrap}
+    #mash-perf-log{margin:0;padding:10px;min-height:500px;max-height:calc(100vh - 100px);overflow:auto;border:1px solid #303746;border-radius:6px;background:#0e1117;white-space:pre-wrap}
+  </style></head><body><h1>LIVE PERFORMANCE</h1><div id="mash-perf-state">Waiting for playback</div><pre id="mash-perf-metrics">Waiting for a sample…</pre><pre id="mash-perf-log" tabindex="0"></pre></body></html>`);
+  popup.document.close();
+  popup.addEventListener('beforeunload', () => { if (perfDiagPopup === popup) perfDiagPopup = null; }, { once: true });
+  popup.focus();
+  syncPerfDiagPopup();
+}
+
+perfDiagOpen?.addEventListener('click', () => { closeMenu(); openPerfDiag(); });
+perfDiagClose?.addEventListener('click', closePerfDiag);
+perfDiagDone?.addEventListener('click', closePerfDiag);
+perfDiagClear?.addEventListener('click', () => {
+  perfDiagRecords = [];
+  perfDiagCurrent = null;
+  perfDiagLastKey = '';
+  refreshPerfDiagUi();
+  toast('Live performance log cleared');
+});
+perfDiagPopout?.addEventListener('click', openPerfDiagPopup);
+addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || perfDiag?.hidden) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  closePerfDiag();
+}, true);
+addEventListener('resize', () => {
+  if (!perfDiag?.hidden) placePerfDiag(perfDiag.offsetLeft, perfDiag.offsetTop);
+});
+refreshPerfDiagUi();
 
 function openLoopLog() {
   refreshLoopLogUi();
@@ -19259,32 +19705,7 @@ function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
   // Armed and recording look different, and which one this is has just changed.
   syncRecordUi();
 }
-/**
- * How long Play may warm the cache before the song has to start.
- *
- * SCALED BY THE BACKLOG, because a flat budget spends the same 1800ms on a four-lane
- * sketch with nine notes to render as on the stress song with fourteen hundred, and
- * neither is the right answer for the other. The floor is what a small song used to
- * get and still gets; the ramp buys the dense song more of its ending — the rack sorts
- * render jobs latest-first precisely because the dense ending is what kills playback
- * and nothing warms during playback to save it.
- *
- * The ceiling is a judgement, not a measurement: warming barber-3 to the 64MB cap took
- * roughly three minutes of parked transport, so no tolerable pre-roll finishes a cold
- * dense song and the honest choice is how long a person will watch a spinner. Six
- * seconds reads as loading; more reads as broken. The rest is bought by the cache
- * warming whenever the transport is stopped — and by freezing a track, which is the
- * actual remedy on a song this size. Every wait is skippable: press the control again.
- *
- * PER_NOTE_MS is the shape of the ramp, not a per-render cost. A render is nowhere
- * near 4ms; this is simply the slope that puts the ceiling around the point where a
- * backlog stops being a cold patch and starts being a cold song.
- */
-const NOTE_CACHE_PREPARE_BUDGET_MS = 1800;
-const NOTE_CACHE_PREPARE_CEILING_MS = 6000;
-const NOTE_CACHE_PREPARE_PER_NOTE_MS = 4;
-const prepareBudgetFor = (backlog) => Math.min(NOTE_CACHE_PREPARE_CEILING_MS,
-  NOTE_CACHE_PREPARE_BUDGET_MS + Math.max(0, backlog) * NOTE_CACHE_PREPARE_PER_NOTE_MS);
+/** Selected preparation is allowed to finish; a second press remains the escape hatch. */
 let preparingFromStart = false;
 let startPreparationToken = 0;
 let preparationControl = 'start';
@@ -19360,24 +19781,21 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
   const token = ++startPreparationToken;
   showStartPreparation(true, control);
   Audio.setNoteCachePreparationHeld(false);
-  const budget = prepareBudgetFor(initial.queued);
-  toast(`Preparing ${range ? 'loop' : 'audio'}… ${initial.queued} note${initial.queued === 1 ? '' : 's'} to render · press ${control === 'play' ? 'Play' : 'Start from beginning'} again to play now`, 3000);
-  // The backlog is fixed by now — prepareNoteCache has already inventoried the whole
-  // range and queued every miss in it — so the budget is decided once here rather than
-  // recomputed against a number that can only fall.
-  const deadline = performance.now() + budget;
-  let held = false;
-
+  const selected = initial.plan?.selected || 0;
+  const planned = initial.plan?.candidates || 0;
+  toast(`Preparing ${range ? 'loop' : 'audio'}… ${selected || initial.queued} sound${(selected || initial.queued) === 1 ? '' : 's'} selected${planned ? ` of ${planned}` : ''} · press ${control === 'play' ? 'Play' : 'Start from beginning'} again to play now`, 3000);
   while (token === startPreparationToken) {
     const health = Audio.noteCacheHealth?.();
     if (!health?.enabled || (!health.queued && !health.rendering)) break;
-    if (!held && performance.now() >= deadline) {
-      // Stop at the next job boundary. OfflineAudioContext cannot be cancelled once
-      // rendering, so wait for that one job rather than starting the song beside it.
-      Audio.setNoteCachePreparationHeld(true);
-      held = true;
+    const plan = health.plan || {};
+    const done = plan.completed || 0;
+    if (health.queued || health.rendering) {
+      const total = Math.max(0, plan.selected || selected || health.queued + done);
+      const label = total ? `Preparing MRDR-3 ${Math.min(total, done)} / ${total}` : 'Preparing audio';
+      showStartPreparation(true, control);
+      $('play').dataset.tip = `${label} · Start now`;
+      $('playstart').dataset.tip = `${label} · Start now`;
     }
-    if (held && !health.rendering) break;
     await waitForCacheTick();
   }
 

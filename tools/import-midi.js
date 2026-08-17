@@ -72,7 +72,18 @@ for (const a of out.assignments) {
 }
 console.log(`  ${out.blocks} blocks -> ${out.sections} unique section${out.sections === 1 ? '' : 's'}`
   + `, order [${out.order.join(', ')}]`);
-if (out.moved) console.log(`  ${out.moved} notes moved onto the sixteenth grid`);
+// The grid it chose, and what it could not hold. Both matter and they are different
+// things: a note that had to move is a note this song plays differently from the file,
+// and `bestGrid === resolution` says no grid we have would have done better — the music
+// is finer than the format goes (a 64th, a grace note, an unquantised performance).
+console.log(`  grid ${out.resolution} steps/bar`
+  + (out.resolution === 16 ? '' : ` (${out.tripletEvidence} triplet onsets no swing could produce)`));
+if (out.moved) {
+  console.log(`  ${out.moved} note${out.moved === 1 ? '' : 's'} moved onto that grid`
+    + (out.unplaced && out.bestGrid === out.resolution
+      ? ' — no grid this format has would hold them exactly'
+      : out.bestGrid !== out.resolution ? ` — ${out.bestGrid} would fit more` : ''));
+}
 if (out.foreignDrums.length) {
   console.log(`  GM percussion outside our kit: ${out.foreignDrums.join(', ')}`);
 }

@@ -122,7 +122,10 @@ export function createNoteFxProcessor() {
     const arp = config.arp || {};
     let events = [];
     if (arp.enabled) {
-      const rate = Math.max(0.5, Number(arp.rate) || 1);
+      // A 1/32T is a third, which is below the old floor of a half. The floor exists to
+      // stop a zero or a negative rate spinning the phase test, not to pick a grid — the
+      // transport decides that, and it can hold a third now.
+      const rate = Math.max(1 / 3, Number(arp.rate) || 1);
       let state = arpState.get(laneKey);
       if (source.length) {
         const octaves = Math.max(1, Math.min(4, Math.round(arp.octaves) || 1));

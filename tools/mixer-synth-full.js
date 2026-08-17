@@ -1,4 +1,4 @@
-// The full-window synth editor: MRDR-3 and Drum Synth's Advanced controls on one screen.
+// The full-window synth editor: MRDR-3 and KLNG8's Advanced controls on one screen.
 //
 // The strip panel is 366px wide — three channel strips — and everything about it is a
 // concession to that: 42px pots, 9.5px labels, four grid columns, and one long scroll.
@@ -131,7 +131,7 @@ export function createSynthFull({
     choices.sort((a, b) => String(a.category || '').localeCompare(String(b.category || ''))
       || String(a.label || a.id).localeCompare(String(b.label || b.id)));
     bar.append(
-      span('sfsynth', v?.synth || (v?.kind === 'drum' ? 'DRUM SYNTH' : '')),
+      span('sfsynth', v?.synth || (v?.kind === 'drum' ? 'KLNG8' : '')),
     );
     if (choices.length) {
       // A native select is compact, but it cannot search a catalogue of several
@@ -260,7 +260,7 @@ export function createSynthFull({
     //
     // Two ways in. `trio: 'curve'` is MRDR-3's, where the three stages are also a trio on
     // the strip; `door: 'curve'` is for a curve that is an ordinary row on the strip and
-    // only wants the door HERE — the Drum Synth's CURVE and RATE CURVE, which are one and
+    // only wants the door HERE — the KLNG8's CURVE and RATE CURVE, which are one and
     // two per card rather than a trio, and have no business being a trio anywhere.
     const behindDoor = (r) => r.trio === 'curve' || r.door === 'curve';
     const curveRows = curves ? spec.rows.filter(behindDoor) : [];
@@ -393,7 +393,7 @@ export function createSynthFull({
     // It is still ABSENT rather than greyed when it does not apply — PWM on anything but a
     // pulse has no width to move — and nothing above it moves when it goes.
     //
-    // `flowSub` is the other case, and it is the Drum Synth's: a sub-section whose length
+    // `flowSub` is the other case, and it is the KLNG8's: a sub-section whose length
     // never changes, on a card standing in a band of cards half its height. Pinned, the
     // slack would open INSIDE the card — a rule floating two hundred pixels below the rows
     // it belongs to — where the honest place for it is under everything, at the foot of a
@@ -584,7 +584,7 @@ export function createSynthFull({
    * `centsEnv`, which runs the pitch and filter envelopes, does not, so a curve panel
    * there would be three controls that move no sample.
    *
-   * The Drum Synth's CURVE and RATE CURVE come here too, which is what generalised it:
+   * The KLNG8's CURVE and RATE CURVE come here too, which is what generalised it:
    * they are the same question (what SHAPE does this envelope have) asked with one and
    * two controls instead of three, and RATE CURVE has a third answer. So a button cycles
    * its row's options rather than swapping two, and the drawing is looked up by the value

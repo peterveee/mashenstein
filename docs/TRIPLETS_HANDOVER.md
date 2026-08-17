@@ -4,7 +4,7 @@ The song format's note grid used to be sixteenths, with one optional refinement 
 thirty-seconds. It now widens per song to hold triplets. The engine plays them, the desk
 draws them, and songs round-trip through source unchanged.
 
-This is the state after Stages 1–4, what is left, and the traps.
+This is the state after Stages 1–4b, what is left, and the traps.
 
 ---
 
@@ -99,11 +99,12 @@ about the 32nd grid, which only works while there are two grids to choose betwee
 
 ### Stage 4 core — drawing them
 
-`tools/mixer-bar-grid.js` draws a column per slot of whatever grid the song is on; the
-`=== 32 ? 32 : 16` clamp is gone. Its lane fold now mirrors `sequenceValue` exactly — **the
-two must agree or the grid draws a note the scheduler will not play.** House figures stamp
-onto every stride instead of squashing into the first sixteen slots. `noteLengthName`
-gained triplet values.
+`tools/mixer-bar-grid.js` drew a column per slot of whatever grid the song is on; the
+`=== 32 ? 32 : 16` clamp is gone. (Stage 4b below decoupled that again — the columns now
+follow the SNAP — but everything else here stands.) Its lane fold mirrors `sequenceValue`
+exactly — **the two must agree or the grid draws a note the scheduler will not play.**
+House figures stamp onto every stride instead of squashing into the first sixteen slots.
+`noteLengthName` gained triplet values.
 
 `QUANTISE_OPTIONS` in `tools/mixer-piano-roll.js`:
 
@@ -129,69 +130,75 @@ round trip, so options are keyed by INDEX now.
 `transformNotes`). Notes are **cleared before any are written** — two notes can snap onto
 each other's old slots, and writing as we go eats one per collision, silently.
 
----
+### Stage 4b — the display/storage split
 
-## What is next: Stage 4b, the display/storage split
+A song with ONE triplet bar is stored at 48, and the roll drew 48 columns a bar for all
+65 bars. The triplets were safe — the normaliser refuses to demote while one exists, and
+that is tested — but a mostly-sixteenth song read as a triplet song. The argument was
+**legibility, not cost**; an earlier decision skipped this after finding the roll
+virtualises its columns, which answered the wrong question.
 
-**The problem.** A song with ONE triplet bar is stored at 48, so the roll draws 48 columns
-a bar for all 65 bars. The triplets are safe — the normaliser refuses to demote while one
-exists, and that is tested — but a mostly-sixteenth song reads as a triplet song.
+`displayCols(slots, snapSize)` in `tools/mixer-bar-grid.js` is the whole rule, and it
+diverges from the plan in one word. The plan said the smallest divisor of `slots` that is
+**>=** `max(16, slots / snapSize())`. That is not enough: 1/8T divides a bar twelve ways,
+sixteen is more than twelve, and none of the sixteen lands on a triplet — so the coarse
+triplet snaps drew a grid you could not aim at. It is a **MULTIPLE** of the snap
+divisions, so three rules hold together:
 
-The argument is **legibility, not cost**. An earlier decision skipped this after finding
-the roll virtualises its columns (`virtual: true, wholeSong: true`); that answered the
-wrong question.
+| | why |
+| --- | --- |
+| divides `slots` evenly | `colStride` is whole; a column holds a whole number of slots |
+| never fewer than 16 | a 1/4 snap must not draw four columns a bar |
+| a multiple of the snap's divisions | every snap division gets a line of its own |
 
-**The trick that keeps it small.** A cell's `dataset.step` keeps holding the STORAGE slot,
-not its column index. Then `setCell`, `globalStep`, the transforms and the
-`movedNote`/`clampDelta` bounds all keep working in storage units untouched — only the cell
-ARRAYS and the build loops move to columns.
+The whole matrix is pinned in `tests/piano-roll.js`. In short: **1/16 draws 16 columns on
+any song, every triplet snap draws 24, 1/32 draws 32, 1/32T draws 48**, and a panel with
+no snap of its own — the step grid — still draws one column per slot, exactly as before.
 
-**New state, computed in `build()` beside `slots`:**
+**The trick that kept it small.** A cell's `dataset.step` holds the STORAGE slot, not its
+column index, so `setCell`, `globalStep`, `snappedStep`, the transforms and the
+`movedNote`/`clampDelta` bounds all keep working in storage units untouched. Only the cell
+ARRAYS and the build loops count columns.
 
-```js
-cols       // smallest divisor of `slots` that is >= max(16, slots / snapSize())
-colStride  // slots / cols — storage slots per column, always whole
-colUnit()  // 16 / cols — musical sixteenths per column, for WIDTHS
-```
+**Two unit systems, and this is where the next bug will be.** `slotUnit()` is musical
+sixteenths per STORAGE slot and is for POSITIONS. `colUnit()` is per COLUMN and is for
+WIDTHS — `cellSpan`, the `--len` multiplier, the length readout, and **the `drawn`
+argument `setCell` takes**, which is a width and therefore moved with the rest of them.
+`colStride` is the only crossing: the places that needed one are `legato` (a distance
+between two notes becoming a length) and `chop` (a length becoming positions).
 
-`max(16, …)` stops a 1/4 snap drawing four columns a bar. The divisor search keeps
-`colStride` whole. With no `snapSlots` supplied — the step grid today — it resolves to
-`cols === slots`, exactly its current behaviour.
+**Off-grid notes render as insets** — a real `.ssqcell` carrying its own bar, storage step
+and row, positioned inside its column at `--at` of the way across it. That is why
+selection, dragging, resizing, the marquee and the keyboard reach one without knowing it
+exists. It is a `div[role=button]` rather than a `button` because it is drawn INSIDE the
+column's button; it is one column wide so every gesture that measures a cell measures a
+column; and the BOX takes no pointer events while its `::before` does, or it would swallow
+presses over the column to its right.
 
-**Two unit systems, and this is where the bugs will be.** `slotUnit()` is musical
-sixteenths per STORAGE slot and stays for POSITIONS (`blockStep`, drag `offset`, the paste
-anchor). Everything about WIDTH switches to `colUnit()`: `cellSpan`
-(`length / slotUnit()` → `/ colUnit()`), the `--len` CSS multiplier, and
-`musicalLength = span * colUnit()` in the length readout. Getting one backwards renders
-notes the wrong length, which looks like a data bug rather than a display one.
+`drawnSpan` gained a `from` argument and inset awareness: a note is clipped by the first
+off-grid note after it as well as by the next filled column, and an inset is measured from
+where it really starts rather than from its column line.
 
-**Sites to move to `cols`:** the ruler build loop and the field build loop; the cell-array
-indexing in `leftOf`, `cellAt`, `fieldX`, `barGap`, `colWindow` and the ruler-selection
-range; `stepClasses`' beat maths. `cellAt(b, i)` and `fieldX(b, i)` keep taking a STORAGE
-slot and map it — column `Math.floor(i / colStride)`.
-
-**Off-grid notes render as insets.** The field loop gathers, per column, any occupied
-storage slot in `(s, s+colStride)` and draws a marker at `k / colStride` across the cell —
-selectable, carrying its own real slot in its dataset so a drag reads back correctly.
-Needs CSS in `tools/mixer-shell.html`.
-
-**Traps.** `drawnSpan(field, at, span)` walks the flat field array to clip a note against
-its neighbour; that array becomes one entry per column, so its lookahead is in columns and
-`span` must be too. `fieldX` falls back to a uniform column width, which is why collapsing
-empty off-grid columns with CSS is NOT a valid shortcut. And `tests/mixer-layout.js` pins
-several of these lines as source text.
+Two things fixed in passing, both squarely in the blast radius: the beat strip numbered `1..8`
+on a 32-slot song (and would have said `1..12` on a 48) because it labelled every fourth
+CELL; and `syncPlayingKeys` still read `resolution === 32 ? 32 : 16`, a Stage-2 leftover
+that would have lit the wrong keys on any 48/96 song. The grid now exposes `slotsPerBar()`
+and `colsPerBar()` for it, and `noteActiveAt` takes `cols` so it can read a `--len` that
+counts columns.
 
 ---
 
 ## Then
 
-1. **The step grid cannot instigate.** It renders any grid but has no snap picker;
-   `customPicker` lives inside the piano roll's closure and needs extracting to a shared
-   module so both panels use literally the same control. Until then a triplet hi-hat means
-   setting the snap in the roll first.
-2. **Measure the ruler DOM cost at 48.** The ruler still builds one element per step for
-   the whole song — 3,120 for a 65-bar song at 48 against 1,040 at 16. The reasoning that
-   this is fine comes from reading the code, not from a measurement.
+1. **The step grid cannot instigate.** It renders any grid but has no snap picker, so it
+   also draws every slot — it is where a wide song looks widest. `customPicker` lives
+   inside the piano roll's closure and needs extracting to a shared module so both panels
+   use literally the same control; `snapSlots` is already the only thing `displayCols`
+   wants from it. Until then a triplet hi-hat means setting the snap in the roll first.
+2. **Measure the ruler DOM cost at 48.** Less pressing than it was: the ruler builds one
+   element per COLUMN now, so a 65-bar song at 48 on the default snap is 1,040 again
+   rather than 3,120. It is still 3,120 at a 1/32T snap and 6,240 on a 96-slot song in the
+   step grid, and the reasoning that this is fine still comes from reading the code.
 3. **Grid readout.** `_fineBarsReason` already names why a song runs a fine clock
    (`native-48-step-bank`, `track-level-1/32-arp`). Surfacing it on the desk turns an
    invisible cost into something actionable. Wants `tools/mixer-entry.js`.

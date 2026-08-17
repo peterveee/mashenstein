@@ -359,7 +359,7 @@ for (const v of noise) {
   }
 }
 
-// The drum synth: four optional sources, so the shape rule is "at least one".
+// The KLNG8: four optional sources, so the shape rule is "at least one".
 for (const v of drum) {
   assert(v.osc || v.noise || v.ring || v.metal || v.knock > 0,
     `${v.id}: a drum preset has at least one source`);
@@ -729,7 +729,7 @@ try {
   assert(maxDiff < 5e-6,
     `a bank naming no preset renders deterministically (max diff ${maxDiff.toExponential(2)})`);
 
-  // The drum synth's reason for building on the seeded buffer rather than Tone.Noise:
+  // The KLNG8's reason for building on the seeded buffer rather than Tone.Noise:
   // two renders of the same drum-voice bank are the same samples, which is what lets
   // stems sum back to the mix. dsSnare exercises every path at once — oscillator,
   // noise and the drive between them.
@@ -741,7 +741,7 @@ try {
     drumDiff = Math.max(drumDiff, Math.abs(d1.outL[n] - d2.outL[n]));
   }
   assert(drumDiff < 5e-6,
-    `a drum-synth voice renders deterministically (max diff ${drumDiff.toExponential(2)})`);
+    `a KLNG8 voice renders deterministically (max diff ${drumDiff.toExponential(2)})`);
 
   // ---- humanise is variation, and it is still deterministic -----------------
   //
@@ -1222,14 +1222,13 @@ try {
 
   // ---- Chorus 2 ---------------------------------------------------------------
   //
-  // MIX is the switch, so a chorus block at zero has to build nothing — the same deal the
-  // LFO's DEPTH makes, and the same test it deserves: a preset carrying the section but
-  // not using it is the preset without it.
+  // MIX is the switch for the expensive leg. A zero-mix preset still uses the cheap
+  // persistent lane bus so a later live edit can crossfade chorus into a held note.
   const chorusPatch = (chorus) => bassPatch({ drive: 0, ...(chorus ? { chorus } : {}) });
   const noCho = (await placeTake(chorusPatch(null), 'chorus')).outL;
   const zeroCho = (await placeTake(chorusPatch({ mix: 0, rate: 0.8, depth: 0.5, width: 1 }), 'chorus')).outL;
   assert(worstDiff(noCho, zeroCho) === 0,
-    'CHORUS at zero mix builds nothing — the switch is the pot, as it is on the LFO');
+    'CHORUS at zero mix has no expensive wet leg and remains sonically dry');
 
   const wideTake = await placeTake(chorusPatch({ mix: 0.6, rate: 0.8, depth: 0.5, width: 1 }), 'chorus');
   assert(worstDiff(noCho, wideTake.outL) > peakOf(noCho) * 0.05,
@@ -1250,12 +1249,11 @@ try {
     `WIDTH opens the two antiphase lines across the field (side energy ${sideRms(wideTake).toFixed(5)}`
     + ` against ${sideRms(narrowTake).toFixed(5)})`);
 
-  // Key-synced and deterministic, which is the whole reason it is an OscillatorNode
-  // started at the note's own time rather than a free-running one: two renders of the
-  // same bar have to be the same samples or stems stop summing to the mix.
+  // Deterministic offline lane origin: live stages are free-running across note-ons, but
+  // two offline renders of the same bar must still match or stems stop summing to the mix.
   const twiceTake = await placeTake(chorusPatch({ mix: 0.6, rate: 0.8, depth: 0.5, width: 1 }), 'chorus');
   assert(worstDiff(wideTake.outL, twiceTake.outL) === 0,
-    'a chorused note renders identically twice — the modulator is key-synced, not free-running');
+    'an offline chorused lane renders identically twice — its origin is deterministic');
 } finally {
   await renderer.close();
 }

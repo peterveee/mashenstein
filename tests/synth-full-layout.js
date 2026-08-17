@@ -69,6 +69,51 @@ if (mrdrStrip.mode !== 'quick' || mrdrStrip.groups[0]?.title !== 'Quick') {
   ok('switching from MRDR-3 to GameSynth selects the correct strip surface');
 }
 
+// DuoSynth is the one pooled class that already has a vibrato LFO inside Tone.DuoSynth.
+// Its native amount/rate controls must not sit beside the rack-wide `$vibrato` controls,
+// or the editor presents two pitch modulators for one sound.
+const duoSpec = panelSpec({ kind: 'tone', synth: 'DuoSynth' });
+const duoCommonVibrato = duoSpec.common.rows.filter((r) => r.path?.startsWith('$vibrato'));
+const duoGroup = duoSpec.groups.find((g) => g.title === 'Duo');
+if (duoCommonVibrato.length || !duoGroup
+  || !duoGroup.rows.some((r) => r.path === 'vibratoAmount')
+  || !duoGroup.rows.some((r) => r.path === 'vibratoRate')) {
+  fail('DuoSynth exposes duplicate generic and native vibrato controls');
+} else {
+  ok('DuoSynth exposes one authoritative native vibrato pair');
+}
+const duoRatio = duoGroup?.rows.find((r) => r.path === 'harmonicity');
+if (!duoRatio || duoRatio.step !== 0.0001 || duoRatio.fmt(1.003) !== '1.0030' || duoRatio.scale !== 3) {
+  fail('DuoSynth ratio does not provide fine near-unison control');
+} else {
+  ok('DuoSynth ratio reaches 1.003 with a fine nonlinear control');
+}
+
+// Each DuoSynth voice is a Tone MonoSynth internally, so each needs its own filter
+// rather than inheriting one shared/hidden filter.  Keep this leaf-level check close to
+// the vibrato/ratio checks: a title-only assertion would let a card be present but empty.
+for (const [title, prefix] of [['Voice 1 Filter', 'voice0.'], ['Voice 2 Filter', 'voice1.']]) {
+  const filterGroup = duoSpec.groups.find((g) => g.title === title);
+  const paths = new Set((filterGroup?.rows || []).map((r) => r.path));
+  const expected = [
+    `${prefix}filter.type`,
+    `${prefix}filter.rolloff`,
+    `${prefix}filterEnvelope.baseFrequency`,
+    `${prefix}filter.Q`,
+    `${prefix}filterEnvelope.octaves`,
+    `${prefix}filterEnvelope.attack`,
+    `${prefix}filterEnvelope.decay`,
+    `${prefix}filterEnvelope.sustain`,
+    `${prefix}filterEnvelope.release`,
+  ];
+  const missing = expected.filter((path) => !paths.has(path));
+  if (!filterGroup || missing.length) {
+    fail(`${title} is missing exposed filter controls${missing.length ? `: ${missing.join(', ')}` : ''}`);
+  } else {
+    ok(`${title} exposes filter, cutoff, resonance and filter-envelope controls`);
+  }
+}
+
 // ---- the invariant ----------------------------------------------------------
 const problems = checkFullLayout(VOICE);
 if (problems.length) {
@@ -113,63 +158,63 @@ for (const layer of [1, 2, 3]) {
 }
 if (!failed) ok('all three layers build, and every band fills its own column count');
 
-// Drum Synth uses the same window renderer but has no layer/mixer band. Its source cards
+// KLNG8 uses the same window renderer but has no layer/mixer band. Its source cards
 // still have to satisfy the same exactly-once invariant, including the new Master Tune
 // row and Ring/Metal Attack rows.
 const drumProblems = checkFullLayout(DRUM);
 if (drumProblems.length) {
-  for (const p of drumProblems) fail(`Drum Synth: ${p}`);
+  for (const p of drumProblems) fail(`KLNG8: ${p}`);
 } else {
   const { common, groups } = panelSpec(DRUM);
   const rows = common.rows.length + groups.reduce((n, g) => n + (g.rows || []).length, 0);
-  ok(`Drum Synth — ${rows} controls, every one placed exactly once`);
+  ok(`KLNG8 — ${rows} controls, every one placed exactly once`);
 }
 try {
   const Ld = fullLayout(DRUM);
   for (const b of Ld.bands) {
     const span = b.cells.reduce((n, c) => n + (c.span || 1), 0);
-    if (span !== b.cols) fail(`Drum Synth: band '${b.name}' spans ${span}, not ${b.cols}`);
+    if (span !== b.cols) fail(`KLNG8: band '${b.name}' spans ${span}, not ${b.cols}`);
   }
   if (Ld.total !== panelSpec(DRUM).common.rows.length
     + panelSpec(DRUM).groups.reduce((n, g) => n + (g.rows || []).length, 0)) {
-    fail(`Drum Synth: layout total ${Ld.total} does not match panel rows`);
+    fail(`KLNG8: layout total ${Ld.total} does not match panel rows`);
   }
   // One band of six single-column cards: the drum window is read ACROSS the signal path,
   // and each card is narrow enough that its own rows read DOWN it. A card that grew back
   // to two columns would be one that had quietly gone wide again.
-  if (Ld.bands.length !== 1) fail(`Drum Synth: expected 1 band, got ${Ld.bands.length}`);
+  if (Ld.bands.length !== 1) fail(`KLNG8: expected 1 band, got ${Ld.bands.length}`);
   const cells = Ld.bands[0]?.cells || [];
-  if (cells.length !== 6) fail(`Drum Synth: expected 6 cards, got ${cells.length}`);
-  if (cells.some((c) => (c.span || 1) !== 1)) fail('Drum Synth: a card is wider than one column');
+  if (cells.length !== 6) fail(`KLNG8: expected 6 cards, got ${cells.length}`);
+  if (cells.some((c) => (c.span || 1) !== 1)) fail('KLNG8: a card is wider than one column');
   // What Master absorbed: Drive and Humanise as rules under its own rows, Taps as a door
   // in its header. Those three are what freed the columns the six signal sections need.
   const cellFor = (key) => cells.find((c) => c.card?.key === key);
   const subsOf = (key) => (cellFor(key)?.card?.sub || []).map((s) => s.rule);
   if (!isDeepStrictEqual(subsOf('note'), ['DRIVE', 'HUMANISE'])) {
-    fail(`Drum Synth: Master carries ${JSON.stringify(subsOf('note'))}, not Drive and Humanise`);
+    fail(`KLNG8: Master carries ${JSON.stringify(subsOf('note'))}, not Drive and Humanise`);
   }
   const doors = (cellFor('note')?.card?.panels || []);
-  if (!doors.some((p) => p.taps)) fail('Drum Synth: Taps is not a door on the Master card');
+  if (!doors.some((p) => p.taps)) fail('KLNG8: Taps is not a door on the Master card');
   // A sub-section's and a door's rows are still that section's own — taken from the card
   // they came from, not copied — so the exactly-once walk above proves nothing was lost.
   if ((cellFor('note')?.card?.sub || []).some((s) => !s.rows?.length)) {
-    fail('Drum Synth: a Master sub-section came through with no rows');
+    fail('KLNG8: a Master sub-section came through with no rows');
   }
   // The curve door, on every card that has a curve to put behind it. Left in the grid,
   // CURVE and RATE CURVE cost a full-width row each on the three longest cards.
   const withCurves = cells.filter((c) => c.curves).map((c) => c.card?.key);
   if (!isDeepStrictEqual(withCurves, ['osc', 'noise', 'ring'])) {
-    fail(`Drum Synth: the curve door is on ${JSON.stringify(withCurves)}, not osc/noise/ring`);
+    fail(`KLNG8: the curve door is on ${JSON.stringify(withCurves)}, not osc/noise/ring`);
   }
   for (const key of withCurves) {
     if (!(cellFor(key)?.card?.rows || []).some((r) => r.door === 'curve')) {
-      fail(`Drum Synth: the ${key} card asks for a curve door with no curve row to put in it`);
+      fail(`KLNG8: the ${key} card asks for a curve door with no curve row to put in it`);
     }
   }
 } catch (err) {
-  fail(`Drum Synth: fullLayout threw — ${err.message}`);
+  fail(`KLNG8: fullLayout threw — ${err.message}`);
 }
-if (!failed) ok('Drum Synth builds one complete band of six narrow cards');
+if (!failed) ok('KLNG8 builds one complete band of six narrow cards');
 
 // Quick is data too: its collective rows must preserve envelope ratios and its Taps row
 // must never flatten authored tap spacing just to change the count.

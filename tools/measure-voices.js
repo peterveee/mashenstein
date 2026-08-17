@@ -51,7 +51,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FILE = join(ROOT, 'src/data/voices.js');
 const DRY = process.argv.includes('--dry');
 
-// Noise and drum-synth presets are measured too: they are built from native nodes
+// Noise and KLNG8 presets are measured too: they are built from native nodes
 // rather than a Tone class, but their level is derived exactly the same way.
 const tone = Object.values(VOICES).filter((v) => ['tone', 'noise', 'drum'].includes(v.kind));
 const levels = {};

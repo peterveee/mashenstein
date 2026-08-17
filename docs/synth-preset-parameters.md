@@ -233,7 +233,7 @@ Same layout as FMSynth: `RATIO`, `CARRIER`, `MODULATOR`, two envelopes.
 
 ---
 
-### Drum Synth Presets (native `_playDrum` path)
+### KLNG8 Presets (native `_playDrum` path)
 
 #### Oscillator Section (optional)
 | Label | Path | Min | Max | Default | Unit |

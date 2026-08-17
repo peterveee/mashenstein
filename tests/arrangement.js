@@ -17,7 +17,7 @@ import { listTracks, resolveTrack } from '../tools/lib/tracks.js';
 import { renderArrangementsFile } from '../tools/lib/arrangements-source.js';
 import {
   ARRANGEMENTS, applyArrangement, resolveSection, expandOrder, orderOf, arrangementIssues, bpmOf,
-  swingOf, SWING_MAX, SWING_STRAIGHT,
+  swingOf, SWING_MAX, SWING_STRAIGHT, resolutionOf,
 } from '../src/data/arrangements.js';
 import {
   draftOf, entryOf, planToOrder, setLanesOff, setLanesDeleted, transposeBars, offsetBars,
@@ -259,7 +259,10 @@ const legacyBlocks = (bank, repeat = 1) => {
 };
 const legacyActivity = (bank, repeat = 1, cellsPerBar = 4) => {
   const blocks = legacyBlocks(bank, repeat);
-  const stepsPerCell = 16 / cellsPerBar;
+  // The song's own grid, not a flat sixteen. This reimplementation exists to be an
+  // INDEPENDENT check on `laneActivity`, and a copy that only understands one grid stops
+  // being that the moment a song is stored on another one.
+  const stepsPerCell = resolutionOf(bank) / cellsPerBar;
   const cells = blocks.length * 2 * cellsPerBar;
   return activeLanes(bank, repeat).map((lane) => {
     const density = new Array(cells).fill(0);

@@ -31,7 +31,9 @@ import { LANES } from '../src/engine/lanes.js';
 import { baseLane } from '../src/data/voices.js';
 import { DRUM_LANES } from './lib/arrangement-edit.js';
 import { createBarGrid } from './mixer-bar-grid.js';
-import { resolutionOf } from '../src/data/arrangements.js';
+import { resolutionOf, promoteResolution } from '../src/data/arrangements.js';
+import { customPicker } from './mixer-picker.js';
+import { QUANTISE_OPTIONS, gridFor } from './mixer-piano-roll.js';
 
 // Where they live now. Re-exported because they were always general — they are about
 // bars and patterns, not about drums — and tests/arrangement.js imports them here.
@@ -294,6 +296,34 @@ export function createStepSeq({
   // when the desk says the lane set really has changed — see `forgetRows`.
   let kitOrder = null;
   const kit = () => (kitOrder = drumRowOrder(kitLanes(), kitOrder));
+
+  // SNAP. The same list, the same labels and the same order as the piano roll's, from the
+  // same constant — a drum grid whose "1/16T" meant something different from the roll's
+  // would be worse than not having one.
+  //
+  // The grid could always RENDER any resolution; what it had no way to do was ASK for one,
+  // so a triplet hi-hat meant going to the roll to promote the song and coming back. This
+  // is that missing half. Promotion is by LCM against what the song already holds, exactly
+  // as the roll does it, and saving demotes again when nothing needs the fine grid.
+  let snap = 1;
+  const snapPicker = () => customPicker({
+    label: 'Step grid snap',
+    title: 'Draw drum hits on this division',
+    idPrefix: 'seqsnap',
+    options: QUANTISE_OPTIONS,
+    value: () => snap,
+    chooseValue: (next) => {
+      snap = Number(next) || 1;
+      const current = draft();
+      const wanted = promoteResolution(resolutionOf(null, current), gridFor(snap));
+      if (wanted !== resolutionOf(null, current)) {
+        apply({ ...current, resolution: wanted }, `${snapLabel(snap)} step grid`);
+        return;
+      }
+      grid.refresh();
+    },
+  });
+  const snapLabel = (v) => QUANTISE_OPTIONS.find((o) => Math.abs(o.value - v) < 1e-9)?.label || '1/16';
   const inSong = (lane) => kitLanes().includes(lane);
 
   const grid = createBarGrid({
@@ -307,7 +337,8 @@ export function createStepSeq({
     // Follows the song's grid. The pattern editor can RENDER any of them — the shared
     // grid engine is generic — but has no picker of its own yet, so it cannot promote a
     // song onto one. Drawing a triplet still starts in the roll; see the plan.
-    stepsPerBar: (d) => resolutionOf(null, d),
+    stepsPerBar: (d) => promoteResolution(resolutionOf(null, d), gridFor(snap)),
+    snapSlots: (slots) => Math.max(1, Math.round((snap * slots) / 16)),
     actionRange: applyBars ? () => applyBars(figureScope) : null,
     // Rows are tracks and there are a handful, so the vertical window is never the
     // expensive one. The horizontal window is: `colWindow` needs `virtual` before it
@@ -346,7 +377,8 @@ export function createStepSeq({
     // how far a figure reaches and whether it replaces or adds. Same set either way; the
     // window's go in its own header beside the title, the docked kit's in its strip.
     lead: () => [addButton()],
-    headerExtra: () => [kitButton(), grooveButton(), ...(docked ? [scopeButton()] : []), modeButton()],
+    headerExtra: () => [kitButton(), grooveButton(), snapPicker(),
+      ...(docked ? [scopeButton()] : []), modeButton()],
 
     // The same header cell the arrangement rows carry: number, then name, so the two
     // lists read as one list. The button is NOT the strip's mute — it drops the lane

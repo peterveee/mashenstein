@@ -786,6 +786,52 @@ const NOTE_CACHE_BYTES = 64 * 1024 * 1024;
 // time is deliberate: the live AudioContext and an OfflineAudioContext are both asking
 // the same device for work, so two background renders are a poor trade for a cache hit.
 const NOTE_RENDER_JOBS = 1;
+const NOTE_CACHE_PLAN_BYTES = 48 * 1024 * 1024;
+const MRDR_PLAN_HEAVY = 12;
+const MRDR_PLAN_REPEAT = 12;
+const MRDR_PLAN_DENSE_BAR = 24;
+
+/** Heuristic topology cost used only to rank cache candidates, never as a sound value. */
+function estimateMrdrEventCost(v, notes, dur) {
+  if (!v || v.synth !== 'MRDR-3') return 0;
+  const L = v.layer || {};
+  const solo = null; // preparation runs against resolved voice data; live solo invalidates separately
+  const active = ['osc1', 'osc2', 'osc3'].filter((key) => {
+    const s = L[key];
+    return s && (s.gain ?? 1) > 0 && !sectionBypassed(v, `layer.${key}`, s)
+      && (!solo || solo.has(key));
+  });
+  const toneCount = Math.max(1, (Array.isArray(notes) ? notes : [notes]).filter((f) => f > 0).length);
+  const mode = v.mode || keyMode(v);
+  const voices = mode === 'poly' ? toneCount : Math.min(1, toneCount);
+  let topology = 0;
+  for (const key of active) {
+    const s = L[key];
+    const unison = Math.max(1, Math.min(5, Math.round(s.unison ?? 1)));
+    const pwm = s.type === 'pulse' && s.pwm && (s.pwm.depth ?? 0) > 0;
+    const syncBend = v.sync && s.pitch && (s.pitch.semitones ?? 0) !== 0;
+    const sourceCount = unison * (pwm ? 2 : 1);
+    topology += sourceCount;
+    if (s.filter && !sectionBypassed(v, `layer.${key}.filter`, s.filter)) {
+      const slope = Number(s.filter.slope) || 12;
+      topology += Math.max(1, Math.round(slope / 12)) * 0.6;
+    }
+    if (s.stereo > 0 && unison > 1) topology += unison * 0.2;
+    if (s.fm && (s.fm.index ?? 1) > 0) topology += 0.25;
+    if (pwm) topology += 0.25;
+    if (syncBend) topology += Math.ceil((Number(s.len) || 1) / 0.032) * 0.25;
+  }
+  if (v.global?.filter && !sectionBypassed(v, 'global.filter', v.global.filter)) {
+    topology += Math.max(1, Math.round((Number(v.global.filter.slope) || 12) / 12)) * 0.6;
+  }
+  if (v.global?.vca && !sectionBypassed(v, 'global.vca', v.global.vca)) topology += 0.2;
+  if (v.lfo && (v.lfo.depth ?? 0) > 0) topology += 0.25;
+  if (v.vibrato && (v.vibrato.depth ?? 0) > 0) topology += 0.25;
+  const lengths = Array.isArray(dur) ? dur : [dur];
+  const longest = Math.max(0.1, ...lengths.filter(Number.isFinite));
+  const seconds = Math.min(30, Math.max(0.1, layerNoteSeconds(v, longest)));
+  return topology * voices * seconds;
+}
 
 /**
  * Run a render when the main thread has room — and NEVER inside the scheduling pass.
@@ -825,6 +871,11 @@ export function createNoteCacheState() {
     idlePending: false,
     cancelIdle: null,
     generation: 0,
+    plan: {
+      id: 0, candidates: 0, selected: 0, completed: 0, failed: 0,
+      skippedCheap: 0, skippedBudget: 0, selectedBytes: 0, totalBenefit: 0,
+      selectedBenefit: 0, pending: 0,
+    },
     // LIFETIME TOTALS, and every name here carries `Total` when a live field of the
     // same idea exists. `queuedTotal` used to be `queued`, which collided with the
     // live backlog in the health object below and silently won the spread: every
@@ -887,6 +938,11 @@ function pumpCache(state) {
       state.stats.failed++;
       console.warn('[voices] note cache job failed', error?.message || error);
     }).finally(() => {
+      if (job.planId && state.plan?.id === job.planId) {
+        state.plan.completed++;
+        if (job.entry?.failed) state.plan.failed++;
+        state.plan.pending = Math.max(0, state.plan.pending - 1);
+      }
       state.rendering = Math.max(0, state.rendering - 1);
       pumpCache(state);
     });
@@ -910,6 +966,11 @@ export function clearNoteCacheState(state) {
   state.entries.clear();
   state.revisions.clear();
   state.rendering = 0;
+  state.plan = {
+    id: state.plan?.id || 0, candidates: 0, selected: 0, completed: 0, failed: 0,
+    skippedCheap: 0, skippedBudget: 0, selectedBytes: 0, totalBenefit: 0,
+    selectedBenefit: 0, pending: 0,
+  };
 }
 function trimSilence(buffer) {
   const channels = buffer.numberOfChannels;
@@ -976,7 +1037,7 @@ function collapseMono(buffer) {
  * counted rather than skipped — the bypass state is not worth reading to save silence
  * that is trimmed anyway.
  */
-function layerNoteSeconds(v, dur) {
+function layerNoteSeconds(v, dur, { includeChorus = true } = {}) {
   const L = v?.layer || {};
   const gv = v?.global?.vca || null;
   // The global VCA's own release, which can outlast every layer's — that is the whole
@@ -997,9 +1058,9 @@ function layerNoteSeconds(v, dur) {
       : own + Math.max(0, s.release ?? 0.015) + 0.005;
     end = Math.max(end, off);
   }
-  // The chorus modulator outlives the last envelope so the delay lines drain under a
-  // moving LFO — see CHORUS_TAIL_S — and what they drain is still sound.
-  if ((v?.chorus?.mix ?? 0) > 0) end += CHORUS_TAIL_S;
+  // Full song renders include the chorus delay drain. Pre-chorus note-cache renders pass
+  // includeChorus:false because the standing lane stage owns that tail at replay.
+  if (includeChorus && (v?.chorus?.mix ?? 0) > 0) end += CHORUS_TAIL_S;
   // The margin every source stop in `_playLayer` already carries.
   return end + 0.02;
 }
@@ -1039,39 +1100,37 @@ const STOP_FADE = 0.012;
 // engine constants in the same sense `LFO_FILTER_CENTS` is — the units the DEPTH pot is
 // denominated in, not a value a patch could usefully state a second way.
 //
-// Deterministic like everything else on this path: a plain `OscillatorNode` started at the
-// note's own time with phase zero, so an offline render and a live take produce identical
-// samples and stems still sum to the mix. A free-running chorus would be exactly the
-// order-dependent state this file refuses to keep.
+// The live lane keeps this oscillator free-running so successive notes do not restart
+// their modulation phase. Offline renders still start each lane stage from a deterministic
+// transport origin, so repeated renders and stems remain reproducible.
 const CHORUS_BASE_S = 0.0055;
 const CHORUS_SWING_S = 0.004;
 // How far past the last envelope the modulator has to keep running for the delay lines to
 // drain under a still-moving LFO rather than a frozen one.
 const CHORUS_TAIL_S = 0.1;
 
-/**
- * Build the chorus in front of `dest` and hand back its input and its modulator.
- *
- * The oscillator is returned rather than started here because the caller does not yet
- * know when the note ends — see the bottom of `_playLayer`, where every shared modulator
- * on this path is started at once.
- */
-function buildChorus(ctx, spec, t, dest) {
-  const input = ctx.createGain();
-  const mix = Math.min(1, Math.max(0, spec.mix ?? 0));
+function rampParam(param, value, at, seconds = 0.015) {
+  if (!param) return;
+  const t = Number.isFinite(at) ? at : 0;
+  try {
+    if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(t);
+    else if (param.cancelScheduledValues) param.cancelScheduledValues(t);
+    if (param.linearRampToValueAtTime) param.linearRampToValueAtTime(value, t + seconds);
+    else param.setValueAtTime(value, t);
+  } catch {
+    try { param.setValueAtTime(value, t); } catch { /* context may be closing */ }
+  }
+}
+
+/** Build only the wet part of the MRDR Juno chorus. The lane owns the dry branch. */
+function buildChorusLeg(ctx, spec, t, stage) {
   const rate = Math.min(8, Math.max(0.05, spec.rate ?? 0.8));
   const depth = Math.min(1, Math.max(0, spec.depth ?? 0.5));
   const width = Math.min(1, Math.max(0, spec.width ?? 1));
-  // Equal power, the same curve the strip's own Chorus 2 insert uses — MIX at half is
-  // half of each and no dip through the middle of the travel.
-  const dry = ctx.createGain();
-  dry.gain.setValueAtTime(Math.cos((mix * Math.PI) / 2), t);
-  input.connect(dry); dry.connect(dest);
-  // Two lines summing, so each takes 1/√2 of the wet leg for the same reason.
-  const wetLevel = Math.sin((mix * Math.PI) / 2) / Math.SQRT2;
   const osc = ctx.createOscillator();
   osc.type = 'sine';
   osc.frequency.setValueAtTime(rate, t);
+  const sides = [];
   for (const side of [-1, 1]) {
     const delay = ctx.createDelay(0.05);
     delay.delayTime.setValueAtTime(CHORUS_BASE_S, t);
@@ -1079,21 +1138,34 @@ function buildChorus(ctx, spec, t, dest) {
     swing.gain.setValueAtTime(side * depth * CHORUS_SWING_S, t);
     osc.connect(swing); swing.connect(delay.delayTime);
     const level = ctx.createGain();
-    level.gain.setValueAtTime(wetLevel, t);
-    input.connect(delay);
+    level.gain.setValueAtTime(0, t);
+    stage.input.connect(delay);
     let tail = delay;
-    // WIDTH at zero is both lines up the middle, which is a mono chorus and still a real
-    // sound — the drift is between the two delays, not between the two speakers. The
-    // panner is skipped entirely there so the graph is what it would have been without
-    // one, and skipped on any context that has no `createStereoPanner` at all.
     if (width > 0 && ctx.createStereoPanner) {
       const pan = ctx.createStereoPanner();
       pan.pan.setValueAtTime(side * width, t);
       delay.connect(pan); tail = pan;
-    }
-    tail.connect(level); level.connect(dest);
+      sides.push({ delay, swing, level, pan, side });
+    } else sides.push({ delay, swing, level, pan: null, side });
+    tail.connect(level); level.connect(stage.output);
   }
-  return { input, osc };
+  osc.start(t);
+  return { osc, sides, spec: { ...spec }, stopped: false };
+}
+
+function disconnectChorusLeg(leg) {
+  if (!leg) return;
+  for (const side of leg.sides || []) {
+    for (const node of [side.delay, side.swing, side.level, side.pan]) {
+      try { node?.disconnect(); } catch { /* already disconnected */ }
+    }
+  }
+  try { leg.osc?.disconnect(); } catch { /* already disconnected */ }
+}
+
+function mrdrDryFingerprint(v) {
+  if (!v || v.synth !== 'MRDR-3') return '';
+  return JSON.stringify(v, (key, value) => key === 'chorus' ? undefined : value);
 }
 
 /**
@@ -1299,6 +1371,18 @@ export class VoiceRack {
     // `_retire`. Held only so `dispose` can account for them and so the graph keeps a
     // reference to synths that still have notes booked on them.
     this._retiredOffline = [];
+    // MRDR's preset-internal chorus is a lane insert, not a note effect. The stage is
+    // deliberately owned here rather than by Mixer: the preset chooses its settings,
+    // while the ordinary channel strip remains downstream and reusable by every voice.
+    this._mrdrLaneStages = new Map();
+    this._mrdrDryFingerprints = new Map();
+    // Tail cleanup is a live Mixer optimisation and is opt-in. Offline racks, cache
+    // render racks and game playback remain exact by default.
+    this.allowMrdrTailCulling = false;
+    this._mrdrTailStats = {
+      eligible: 0, skipped: 0, culled: 0, potentialSeconds: 0, baselineSeconds: 0, savedSeconds: 0,
+      skipReasons: Object.create(null),
+    };
     // Active preview notes, keyed by `${laneKey}|${freq}` → { slot }.
     // A note-off calls `triggerRelease` on the stored synth so a held key sustains
     // and a released one decays through its envelope instead of ringing for a fixed
@@ -1341,18 +1425,22 @@ export class VoiceRack {
     return {
       synth: v.synth,
       opts,
-      // Depth is capped at 1 on THIS path alone, and it is Tone's cap rather than ours:
-      // `Tone.Vibrato.depth` is a NormalRange param, so a 0–12 setting from the pot
-      // would be rejected outright and take the note with it. The native paths carry
-      // the full range; a Tone preset turned past 1 simply stops getting deeper, which
-      // is the most a `Tone.Vibrato` can do.
-      vibrato: v.vibrato && v.vibrato.depth > 0
-        ? {
-          rate: v.vibrato.rate ?? 5,
-          depth: Math.min(1, v.vibrato.depth),
-          type: v.vibrato.type || 'sine',
-        }
-        : null,
+      // DuoSynth already has Tone's own vibrato LFO wired across both internal voices
+      // (`vibratoAmount`/`vibratoRate`). Do not add the rack-wide Tone.Vibrato wrapper as
+      // well: that was a second, unrelated pitch modulator exposed by the shared Note
+      // card. The native paths carry the shared `$vibrato`; DuoSynth keeps one authority.
+      //
+      // For the other Tone classes, depth is capped at 1 on THIS path alone, and it is
+      // Tone's cap rather than ours: `Tone.Vibrato.depth` is a NormalRange param, so a
+      // 0–12 setting from the pot would be rejected outright and take the note with it.
+      vibrato: v.synth === 'DuoSynth' ? null
+        : v.vibrato && v.vibrato.depth > 0
+          ? {
+            rate: v.vibrato.rate ?? 5,
+            depth: Math.min(1, v.vibrato.depth),
+            type: v.vibrato.type || 'sine',
+          }
+          : null,
     };
   }
 
@@ -1411,6 +1499,134 @@ export class VoiceRack {
     return semis ? Math.pow(2, semis / 12) : 1;
   }
 
+  /** Return the persistent MRDR route for one lane/scope and update its destinations. */
+  _ensureMrdrLaneStage(laneKey, voiceId, v, {
+    dry, wet, echo = true, time = 0, preview = false, scope = null,
+  } = {}) {
+    const lane = laneKey || `voice:${voiceId}`;
+    const stageKey = `${scope || (preview ? 'preview' : 'song')}|${lane}`;
+    let stage = this._mrdrLaneStages.get(stageKey);
+    if (!stage) {
+      const input = this.ctx.createGain();
+      const direct = this.ctx.createGain();
+      const output = this.ctx.createGain();
+      input.connect(direct); direct.connect(output);
+      stage = {
+        key: stageKey, laneKey: lane, voiceId, scope: scope || (preview ? 'preview' : 'song'),
+        input, direct, output, dry: null, wet: null, echo: false, chorus: null,
+        retiredChorus: new Set(), lastTime: time, disposed: false,
+      };
+      this._mrdrLaneStages.set(stageKey, stage);
+      direct.gain.setValueAtTime(1, time);
+    }
+    stage.voiceId = voiceId;
+    stage.lastTime = Math.max(stage.lastTime || 0, Number.isFinite(time) ? time : 0);
+    if (stage.dry !== dry || stage.wet !== wet || stage.echo !== !!echo) {
+      try { stage.output.disconnect(); } catch { /* first connection or dead context */ }
+      stage.dry = dry || null;
+      stage.wet = wet || null;
+      stage.echo = !!echo;
+      if (stage.dry) stage.output.connect(stage.dry);
+      if (stage.echo && stage.wet) stage.output.connect(stage.wet);
+    }
+    this._updateMrdrLaneStage(stage, v?.chorus, time);
+    return stage;
+  }
+
+  _retireMrdrChorus(stage, at) {
+    const leg = stage?.chorus;
+    if (!leg || leg.stopped) return;
+    stage.chorus = null;
+    leg.stopped = true;
+    for (const side of leg.sides || []) rampParam(side.level.gain, 0, at);
+    try { leg.osc.stop(at + CHORUS_TAIL_S); } catch { /* already stopped */ }
+    const dispose = () => {
+      disconnectChorusLeg(leg);
+      stage.retiredChorus?.delete(leg);
+    };
+    stage.retiredChorus?.add(leg);
+    if (typeof this.ctx.startRendering === 'function') dispose();
+    else {
+      const now = Number.isFinite(this.ctx.currentTime) ? this.ctx.currentTime : at;
+      setTimeout(dispose, Math.max(0, (at + CHORUS_TAIL_S - now) * 1000) + 40);
+    }
+  }
+
+  _updateMrdrLaneStage(stage, spec, at = 0) {
+    if (!stage || stage.disposed) return;
+    const time = Number.isFinite(at) ? at : 0;
+    const mix = Math.min(1, Math.max(0, Number(spec?.mix) || 0));
+    if (!(mix > 0)) {
+      rampParam(stage.direct.gain, 1, time);
+      this._retireMrdrChorus(stage, time);
+      return;
+    }
+    const leg = stage.chorus && !stage.chorus.stopped
+      ? stage.chorus : (stage.chorus = buildChorusLeg(this.ctx, spec, time, stage));
+    const rate = Math.min(8, Math.max(0.05, spec.rate ?? 0.8));
+    const depth = Math.min(1, Math.max(0, spec.depth ?? 0.5));
+    const width = Math.min(1, Math.max(0, spec.width ?? 1));
+    const wetLevel = Math.sin((mix * Math.PI) / 2) / Math.SQRT2;
+    rampParam(stage.direct.gain, Math.cos((mix * Math.PI) / 2), time);
+    for (const side of leg.sides || []) {
+      rampParam(side.level.gain, wetLevel, time);
+      rampParam(side.swing.gain, side.side * depth * CHORUS_SWING_S, time);
+      if (side.pan) rampParam(side.pan.pan, side.side * width, time);
+    }
+    rampParam(leg.osc.frequency, rate, time);
+    leg.spec = { ...spec };
+  }
+
+  setMrdrTailCulling(enabled) {
+    this.allowMrdrTailCulling = !!enabled;
+  }
+
+  _recordMrdrTailOpportunity(v, { notes, dur, time, preview, hold, mode }) {
+    const stats = this._mrdrTailStats;
+    const skip = (reason) => {
+      stats.skipped++;
+      stats.skipReasons[reason] = (stats.skipReasons[reason] || 0) + 1;
+    };
+    if (!this.allowMrdrTailCulling) { skip('policy_off'); return null; }
+    if (preview || hold || mode !== 'poly') { skip('interactive_or_nonpoly'); return null; }
+    if (v.drive > 0) { skip('nonlinear_drive'); return null; }
+    if (v.layer?.lfo?.target === 'level' && (v.layer.lfo.depth ?? 0) > 0) {
+      skip('unbounded_level_lfo'); return null;
+    }
+    const layers = ['osc1', 'osc2', 'osc3'].map((key) => v.layer?.[key])
+      .filter((s) => s && (s.gain ?? 1) > 0 && s.vca !== 'through');
+    if (!layers.length) { skip('no_eligible_layers'); return null; }
+    if (layers.some((s) => (s.release ?? 0.015) < 0.5 || s.releaseCurve === 'lin')) {
+      skip('short_or_linear_release'); return null;
+    }
+    if (layers.some((s) => (s.filter?.Q ?? 0) > 1)
+      || (v.global?.filter?.Q ?? 0) > 1) {
+      skip('resonant_filter'); return null;
+    }
+    const longest = Math.max(0.1, ...(Array.isArray(dur) ? dur : [dur]).filter(Number.isFinite));
+    let authoredEnd = time + longest;
+    for (const s of layers) {
+      const delay = Math.min(0.5, Math.max(0, s.delay ?? 0));
+      authoredEnd = Math.max(authoredEnd, time + delay + longest * (s.len ?? 1));
+    }
+    const longestRelease = Math.max(...layers.map((s) => s.release ?? 0.015));
+    const releaseEnd = authoredEnd + longestRelease;
+    // gateAdsr already reaches the -100 dB floor in its final 5 ms linear segment;
+    // source.stop carries another 5 ms of safety. There is normally no material tail
+    // to reclaim. Keep the measured opportunity explicit and refuse anything under 50 ms.
+    const predictedSilent = releaseEnd + 0.005;
+    const scheduledStop = releaseEnd + 0.01;
+    const potential = Math.max(0, scheduledStop - predictedSilent);
+    stats.baselineSeconds += Math.max(0, scheduledStop - time);
+    stats.potentialSeconds += potential;
+    if (potential < 0.05) { skip('below_50ms_gate'); return null; }
+    if (potential / Math.max(0.001, scheduledStop - time) < 0.1) {
+      skip('below_10_percent_gate'); return null;
+    }
+    stats.eligible++;
+    return { cullAt: predictedSilent, fadeAt: Math.max(time, predictedSilent - STOP_FADE), saved: potential };
+  }
+
   /**
    * `preview` and `hold` are two questions that used to be one.
    *
@@ -1424,7 +1640,10 @@ export class VoiceRack {
    * leave one note per step ringing to the 30-second safety stop. Defaults to `preview`,
    * so a caller that says nothing gets the finger.
    */
-  play(laneKey, voiceId, freq, { time, dur, gain, detune = 1, dry, wet, echo = true, preview = false, hold = preview, spb = null }) {
+  play(laneKey, voiceId, freq, {
+    time, dur, gain, detune = 1, dry, wet, echo = true, preview = false,
+    hold = preview, spb = null, laneEffects = true,
+  }) {
     const v = VOICES[voiceId];
     const monoGroup = v?.monoGroup
       ? `${v.monoGroup}|${preview ? 'preview' : 'live'}` : null;
@@ -1452,10 +1671,12 @@ export class VoiceRack {
       if (this.noteCache
         && this._cacheableLayer(v, v.mode || keyMode(v), preview, hold)
         && this._playCachedLayer(v, voiceId, Array.isArray(freq) ? freq : [freq],
-          { time, dur, gain, detune, dry, wet, echo })) {
+          { time, dur, gain, detune, dry, wet, echo, laneKey, preview, laneEffects })) {
         return true;
       }
-      return this._playLayer(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, spb });
+      return this._playLayer(v, {
+        freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, spb, laneEffects,
+      });
     }
     if (!v || !SYNTHS[v.synth]) return false;
     const notes = Array.isArray(freq) ? freq : [freq];
@@ -1975,6 +2196,137 @@ export class VoiceRack {
     return true;
   }
 
+  beginPreparedNotePlan() {
+    const state = this._cacheState;
+    const stale = state.queue.filter((job) => job.planId);
+    if (stale.length) state.stats.stale += stale.length;
+    state.queue = state.queue.filter((job) => !job.planId);
+    state.plan = {
+      id: (state.plan?.id || 0) + 1, candidates: 0, selected: 0, completed: 0,
+      failed: 0, skippedCheap: 0, skippedBudget: 0, selectedBytes: 0,
+      totalBenefit: 0, selectedBenefit: 0, pending: 0,
+    };
+    this._preparedPlan = { id: state.plan.id, candidates: new Map() };
+  }
+
+  _layerCacheDescriptor(v, voiceId, notes, dur, detune = 1) {
+    const list = Array.isArray(notes) ? notes : [notes];
+    const shift = VoiceRack.pitchShift(v) * detune;
+    const parts = [];
+    let sounded = false;
+    let longest = 0;
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i];
+      if (f == null || !(f > 0)) { parts.push('r'); continue; }
+      const noteDur = Array.isArray(dur) ? (dur[i] ?? dur[0]) : dur;
+      const hz = f * shift;
+      if (!Number.isFinite(hz) || !Number.isFinite(noteDur) || noteDur <= 0) return null;
+      parts.push(`${hz.toFixed(2)}:${Math.round(noteDur * 1000)}`);
+      longest = Math.max(longest, noteDur);
+      sounded = true;
+    }
+    if (!sounded) return null;
+    const rev = this._specRev?.get(voiceId) || 0;
+    return {
+      key: `L|${voiceId}|${rev}|${parts.join(',')}|${this.ctx.sampleRate}`,
+      notes: list, dur, detune, longest,
+      eventCost: estimateMrdrEventCost(v, list, dur),
+      estimatedBytes: Math.ceil(layerNoteSeconds(v, longest, { includeChorus: false })
+        * this.ctx.sampleRate * (this._mrdrCacheChannels(v) || 2) * 4),
+    };
+  }
+
+  _mrdrCacheChannels(v) {
+    for (const key of ['osc1', 'osc2', 'osc3']) {
+      const s = v?.layer?.[key];
+      if (s && (s.stereo ?? 0) > 0 && (s.unison ?? 1) > 1) return 2;
+    }
+    return 1;
+  }
+
+  _recordPreparedMrdr(v, voiceId, notes, dur, detune, priority) {
+    const descriptor = this._layerCacheDescriptor(v, voiceId, notes, dur, detune);
+    if (!descriptor) return 0;
+    const existing = this._noteCache.get(descriptor.key);
+    if (existing) {
+      existing.preparePriority = Math.max(existing.preparePriority || 0, priority || 0);
+      return 0;
+    }
+    const plan = this._preparedPlan;
+    const prior = plan.candidates.get(descriptor.key);
+    if (prior) {
+      prior.occurrences++;
+      prior.latestStep = Math.max(prior.latestStep, priority || 0);
+      const bar = Math.floor((priority || 0) / 16);
+      prior.barCosts.set(bar, (prior.barCosts.get(bar) || 0) + descriptor.eventCost);
+      prior.barCost = Math.max(prior.barCost, prior.barCosts.get(bar));
+      prior.priority = Math.max(prior.priority, priority || 0);
+    } else {
+      const bar = Math.floor((priority || 0) / 16);
+      const barCosts = new Map([[bar, descriptor.eventCost]]);
+      plan.candidates.set(descriptor.key, {
+        ...descriptor, voiceId, occurrences: 1, latestStep: priority || 0,
+        barCost: descriptor.eventCost, barCosts, priority: priority || 0,
+      });
+    }
+    return 1;
+  }
+
+  commitPreparedNotePlan() {
+    const plan = this._preparedPlan;
+    if (!plan) return this.noteCacheHealth();
+    const state = this._cacheState;
+    const candidates = [...plan.candidates.values()];
+    const totalBenefit = candidates.reduce((sum, c) => sum + c.eventCost * c.occurrences, 0);
+    let available = NOTE_CACHE_PLAN_BYTES;
+    const selected = [];
+    const rank = (c) => {
+      if (c.eventCost >= MRDR_PLAN_HEAVY && c.occurrences >= 2) return 0;
+      if (c.eventCost >= MRDR_PLAN_HEAVY) return 1;
+      if (c.eventCost * c.occurrences >= MRDR_PLAN_REPEAT) return 2;
+      if (c.eventCost >= 6 && c.barCost >= MRDR_PLAN_DENSE_BAR) return 3;
+      return 99;
+    };
+    candidates.sort((a, b) => rank(a) - rank(b)
+      || (b.eventCost * b.occurrences) - (a.eventCost * a.occurrences)
+      || b.barCost - a.barCost || b.latestStep - a.latestStep);
+    for (const candidate of candidates) {
+      const tier = rank(candidate);
+      if (tier === 99) { state.plan.skippedCheap++; continue; }
+      const hit = this._noteCache.get(candidate.key);
+      const already = !!hit && (hit.buffer || hit.rendering);
+      if (!already && candidate.estimatedBytes > available) {
+        state.plan.skippedBudget++;
+        continue;
+      }
+      if (!already) available -= candidate.estimatedBytes;
+      const entry = this._layerCacheEntry(
+        VOICES[candidate.voiceId], candidate.voiceId, candidate.notes, candidate.dur, candidate.detune,
+      );
+      if (!entry) continue;
+      entry.preparePriority = candidate.priority;
+      entry.planId = plan.id;
+      entry.planSelected = true;
+      for (const job of state.queue) {
+        if (job.entry === entry) {
+          job.planId = plan.id;
+          job.planPriority = candidate.priority;
+        }
+      }
+      selected.push(candidate);
+      state.plan.selected++;
+      state.plan.selectedBytes += already ? 0 : candidate.estimatedBytes;
+      state.plan.selectedBenefit += candidate.eventCost * candidate.occurrences;
+    }
+    state.plan.candidates = candidates.length;
+    state.plan.totalBenefit = totalBenefit;
+    state.plan.pending = state.queue.filter((job) => job.planId === plan.id).length;
+    state.queue.sort((a, b) => (b.planPriority || b.entry?.preparePriority || 0)
+      - (a.planPriority || a.entry?.preparePriority || 0));
+    this._preparedPlan = null;
+    return this.noteCacheHealth();
+  }
+
   /**
    * Ask for a rendered note and play it, or say the cache could not help.
    *
@@ -2046,7 +2398,9 @@ export class VoiceRack {
     };
     if (v.synth === 'MRDR-3') {
       if (!this._cacheableLayer(v, v.mode || keyMode(v), false, false)) return 0;
-      mark(this._layerCacheEntry(v, voiceId, Array.isArray(freq) ? freq : [freq], dur, detune));
+      const notes = Array.isArray(freq) ? freq : [freq];
+      if (this._preparedPlan) return this._recordPreparedMrdr(v, voiceId, notes, dur, detune, priority);
+      mark(this._layerCacheEntry(v, voiceId, notes, dur, detune));
     } else {
       const mode = v.mode || keyMode(v);
       if (!this._cacheablePool(v, mode, false, false)) return 0;
@@ -2224,7 +2578,8 @@ export class VoiceRack {
       }
     };
     this._queueRender({ key: entry.key, entry, voiceId, revision: entry.revision,
-      generation: entry.generation, run: job });
+      generation: entry.generation, planId: entry.planId || 0,
+      planPriority: entry.preparePriority || 0, run: job });
   }
 
   /**
@@ -2242,7 +2597,9 @@ export class VoiceRack {
    * The chord repeats — songs are made of chords that come back — so the hit rate
    * survives the wider key.
    */
-  _playCachedLayer(v, voiceId, notes, { time, dur, gain, detune, dry, wet, echo }) {
+  _playCachedLayer(v, voiceId, notes, {
+    time, dur, gain, detune, dry, wet, echo, laneKey = '', preview = false, laneEffects = true,
+  }) {
     const ctx = this.ctx;
     // An offline render must synthesise, not replay: a bounce is the reference for
     // what the song IS, and a cache miss inside one would put a rendered note beside
@@ -2250,14 +2607,21 @@ export class VoiceRack {
     if (typeof ctx.startRendering === 'function') return false;
     const entry = this._layerCacheEntry(v, voiceId, notes, dur, detune);
     if (!entry?.buffer) return false;
+    const laneStage = laneEffects
+      ? this._ensureMrdrLaneStage(laneKey, voiceId, v, {
+        dry, wet, echo, time, preview, scope: preview ? 'preview' : 'song',
+      }) : null;
     const src = ctx.createBufferSource();
     src.buffer = entry.buffer;
     const g = ctx.createGain();
-    // Rendered at unity, scaled here: one buffer serves every level the song asks for.
-    g.gain.value = gain;
-    src.connect(g);
-    g.connect(dry);
-    if (echo && wet) g.connect(wet);
+      // Rendered at unity, scaled here: one buffer serves every level the song asks for.
+      g.gain.value = gain;
+      src.connect(g);
+      if (laneStage) g.connect(laneStage.input);
+      else {
+        g.connect(dry);
+        if (echo && wet) g.connect(wet);
+      }
     const active = { src, gain: g };
     this._cachedPlayback.add(active);
     src.onended = () => {
@@ -2274,28 +2638,9 @@ export class VoiceRack {
   _layerCacheEntry(v, voiceId, notes, dur, detune) {
     const state = this._cacheState;
     this._noteCache ||= state.entries;
-    const shift = VoiceRack.pitchShift(v) * detune;
-    // Every tone IN ITS PLACE, rests included. `_playLayer` reads per-tone lengths
-    // positionally against the chord it was handed, so a key that dropped the rests
-    // would pair the surviving tones with the wrong lengths — and two different chords
-    // would share a key.
-    const parts = [];
-    let sounded = false;
-    for (let i = 0; i < notes.length; i++) {
-      const f = notes[i];
-      if (f == null || !(f > 0)) { parts.push('r'); continue; }
-      const noteDur = Array.isArray(dur) ? (dur[i] ?? dur[0]) : dur;
-      const hz = f * shift;
-      if (!Number.isFinite(hz) || !Number.isFinite(noteDur) || noteDur <= 0) return null;
-      parts.push(`${hz.toFixed(2)}:${Math.round(noteDur * 1000)}`);
-      sounded = true;
-    }
-    if (!sounded) return null;
-    // `L|` because this shares the LRU with the pooled entries above and the two key
-    // shapes must not be able to collide. `specRev` does the same job it does there:
-    // `refresh` bumps it, so an edited preset simply has different keys.
-    const rev = this._specRev?.get(voiceId) || 0;
-    const key = `L|${voiceId}|${rev}|${parts.join(',')}|${this.ctx.sampleRate}`;
+    const descriptor = this._layerCacheDescriptor(v, voiceId, notes, dur, detune);
+    if (!descriptor) return null;
+    const key = descriptor.key;
     const hit = this._noteCache.get(key);
     if (hit) {
       this._noteCache.delete(key);
@@ -2303,7 +2648,8 @@ export class VoiceRack {
       if (hit.buffer) state.stats.hits++;
       return hit;
     }
-    const entry = { key, voiceId, revision: rev, generation: state.generation,
+    const entry = { key, voiceId, revision: this._specRev?.get(voiceId) || 0,
+      generation: state.generation,
       buffer: null, rendering: true };
     this._noteCache.set(key, entry);
     state.stats.misses++;
@@ -2316,9 +2662,10 @@ export class VoiceRack {
    * Render one whole layer note-on offline, at unity, into `entry.buffer`.
    *
    * IN STEREO, and that is the difference from `_renderNote` that matters. A layer
-   * carries a per-oscillator `stereo` spread and a chorus is two delay lines panned
-   * apart — the width IS the sound on exactly the lush patches worth caching, and a
-   * mono render would collapse it silently. Most presets are mono all the same, so
+   * carries a per-oscillator `stereo` spread. Internal chorus is deliberately outside
+   * this buffer and is supplied by the persistent lane stage at replay, while a
+   * mono render would still collapse unison width silently. Most presets are mono all
+   * the same, so
    * `collapseMono` puts the second channel back when it turns out to carry nothing.
    *
    * Sized by `layerNoteSeconds` rather than `VoiceRack.tailOf`, which cannot see an
@@ -2336,7 +2683,7 @@ export class VoiceRack {
         const sr = this.ctx.sampleRate;
         const longest = Array.isArray(dur)
           ? dur.reduce((m, d) => Math.max(m, Number.isFinite(d) ? d : 0), 0) : dur;
-        const seconds = Math.min(30, layerNoteSeconds(v, longest));
+        const seconds = Math.min(30, layerNoteSeconds(v, longest, { includeChorus: false }));
         const ctx = new OAC(2, Math.ceil(seconds * sr), sr);
         const rack = new VoiceRack(ctx);
         const out = ctx.createGain();
@@ -2348,6 +2695,7 @@ export class VoiceRack {
         const warped = notes.map((f) => (f > 0 ? f * detune : f));
         const played = rack.play('bass', voiceId, warped, {
           time: 0, dur, gain: 1, dry: out, wet: null, echo: false,
+          laneEffects: false,
         });
         Tone.setContext(prevToneCtx);
         // A preset whose every layer is off builds nothing and plays nothing. Caching
@@ -2369,7 +2717,8 @@ export class VoiceRack {
       }
     };
     this._queueRender({ key: entry.key, entry, voiceId, revision: entry.revision,
-      generation: entry.generation, run: job });
+      generation: entry.generation, planId: entry.planId || 0,
+      planPriority: entry.preparePriority || 0, run: job });
   }
 
   /**
@@ -2715,7 +3064,7 @@ export class VoiceRack {
   }
 
   /**
-   * A drum-synth voice: the Microtonic construction — one oscillator and one noise
+   * A KLNG8 voice: the Microtonic construction — one oscillator and one noise
    * generator, each with its own envelope, summed and optionally driven into a
    * waveshaper. `_playNoise` grew from the engine's snare and stops at "a burst with
    * a thump under it"; this is the other way round, a drum designed as two sources:
@@ -2746,7 +3095,7 @@ export class VoiceRack {
     const n = v.noise;
     const r = v.ring;
     const m = v.metal;
-    // A Drum Synth tune is a master pitch offset, not another pitch envelope.  Keep it
+    // A KLNG8 tune is a master pitch offset, not another pitch envelope.  Keep it
     // outside the tap bend so +12 semitones doubles every pitched source while each tap
     // still keeps its authored detune relationship.  Zero is deliberately neutral for
     // every existing preset, which predates this optional key.
@@ -3356,7 +3705,10 @@ export class VoiceRack {
     record.gateKey = to;
   }
 
-  _playLayer(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false, hold = preview, spb = null }) {
+  _playLayer(v, {
+    freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '',
+    preview = false, hold = preview, spb = null, laneEffects = true,
+  }) {
     const ctx = this.ctx;
     const L = v.layer;
     if (!L) return false;
@@ -3390,6 +3742,7 @@ export class VoiceRack {
     const legato = mode === 'legato';
     const monoLast = mono ? all.filter((f) => f > 0).slice(-1) : null;
     const notes = monoLast && monoLast.length ? monoLast : all;
+    const tailPlan = this._recordMrdrTailOpportunity(v, { notes, dur, time, preview, hold, mode });
     const hum = v.humanize || {};
     const shift = VoiceRack.pitchShift(v) * detune;
     const nyquist = ctx.sampleRate * 0.5;
@@ -3442,7 +3795,13 @@ export class VoiceRack {
     // nothing, so there is no `chorus.on` and there never will be. Every other value
     // falls back to the number the panel opens on, so winding MIX up on a preset that has
     // never had a chorus gives you a chorus rather than a pot that moves and does nothing.
-    const choSpec = !held('chorus', v.chorus) && (v.chorus?.mix ?? 0) > 0 ? v.chorus : null;
+    // Keep a cheap lane bus even when chorus mix is zero. That lets a chorus edit reach
+    // a sounding note through the standing route; cache renders explicitly bypass it.
+    const laneStage = laneEffects
+      ? this._ensureMrdrLaneStage(laneKey, v.id,
+        held('chorus', v.chorus) ? { ...v, chorus: null } : v, {
+        dry, wet, echo, time, preview, scope: preview ? 'preview' : 'song',
+      }) : null;
 
     // ---- the shared modulators, one of each per note-on ----------------------
     // Vibrato exactly as `_playAdditive` builds it: the same key, the same semitones,
@@ -3608,10 +3967,6 @@ export class VoiceRack {
     const legatoGates = [];
     const legatoSources = [];
     let lastBase = 0;
-    // The chorus modulator, declared out here for the same reason the vibrato and LFO
-    // oscillators are: it is built inside `chainFor`, and nothing can be started until
-    // `lastOff` is known.
-    let chorusOsc = null;
     let gateUntil = 0;
     // Which KEY holds that gate open, when a finger does. A sequenced note has none and
     // its gate simply ends at `gateUntil`; a held one ends when the key comes up, which
@@ -3660,30 +4015,21 @@ export class VoiceRack {
         return into;
       };
 
-      // One chain per note, built on demand: shaper → tone → trem → chorus → out. A note
-      // of nothing but rests builds none of it.
+      // One chain per note-on, built on demand: shaper → tone → trem → lane bus → out.
+      // Cache renders pass laneEffects=false and therefore stop at the pre-chorus bus.
       let chain = null;
       const chainFor = () => {
         if (chain) return chain;
         const out = ctx.createGain();
         out.gain.value = gain * fade;
-        out.connect(dry);
-        if (echo && wet) out.connect(wet);
+        if (tailPlan) out.gain.linearRampToValueAtTime(0, tailPlan.cullAt);
+        if (laneStage) out.connect(laneStage.input);
+        else {
+          out.connect(dry);
+          if (echo && wet) out.connect(wet);
+        }
         allOuts.push(out);
         let into = out;
-        if (choSpec) {
-          // LAST, after the tremolo and after everything the note's own shaping does —
-          // a Juno's chorus is the stage AFTER the VCA, not another colour inside the
-          // voice. It sits before `out` rather than after it so the echo send, which
-          // taps `out`, hears the chorused instrument: the same rule the shaper follows.
-          //
-          // One per NOTE-ON, shared by every tone in the chord, because that is what the
-          // hardware is — one pair of delay lines the whole keyboard runs through. Per
-          // note it would be three choruses beating against each other.
-          const c = buildChorus(ctx, choSpec, t, into);
-          chorusOsc = c.osc;
-          into = c.input;
-        }
         if (lfoSpec && lfoSpec.target === 'level') {
           // Proper bipolar tremolo around the authored level: depth 0.5 means a
           // gain swing from .5 to 1.5, rather than only a shallow downward pull.
@@ -4263,7 +4609,8 @@ export class VoiceRack {
               const ownStart = sourceStarts.get(src);
               src.start(ownStart ?? (lt + late));
               const ownEnd = sourceEnds.get(src);
-              src.stop(ownEnd ?? (off + 0.01));
+              const naturalStop = ownEnd ?? (off + 0.01);
+              src.stop(tailPlan ? Math.min(naturalStop, tailPlan.cullAt + STOP_FADE) : naturalStop);
             }
             // A bypassed layer is held by the GLOBAL VCA, so its sources have to be let go
             // when that is — otherwise a key-up would release the envelope and leave the
@@ -4307,16 +4654,13 @@ export class VoiceRack {
       }
       lfoOsc.start(time); lfoOsc.stop(lastOff + 0.01);
     }
-    if (chorusOsc && lastOff) {
-      // A hair past the last envelope, because the delay lines are still draining when it
-      // ends: stop the modulator ON the tail and the last few milliseconds of a chorused
-      // release freeze at whatever offset the LFO happened to be holding.
-      chorusOsc.start(time); chorusOsc.stop(lastOff + CHORUS_TAIL_S);
-    }
     if (lastOff) {
       sharedMods.oscs.push(...vibOscs);
       if (lfoOsc) sharedMods.oscs.push(lfoOsc);
-      if (chorusOsc) sharedMods.oscs.push(chorusOsc);
+    }
+    if (tailPlan) {
+      this._mrdrTailStats.culled++;
+      this._mrdrTailStats.savedSeconds += tailPlan.saved;
     }
     return true;
   }
@@ -4603,14 +4947,27 @@ export class VoiceRack {
    */
   refresh(voiceId) {
     const v = VOICES[voiceId];
-    // The note cache is keyed on this number, so bumping it is the whole of "forget
-    // what this preset used to sound like" — the stale buffers simply stop being
-    // reachable and fall off the end of the LRU. Every edit the panel makes comes
-    // through here, which is why this is the one line that has to exist for a cached
-    // voice to be editable at all. See `_cacheEntry`.
     this._specRev ||= new Map();
-    this._specRev.set(voiceId, (this._specRev.get(voiceId) || 0) + 1);
-    this._invalidateCacheEntries(voiceId);
+    // MRDR cache buffers stop before the lane chorus. Chorus-only edits update standing
+    // stages but retain useful dry buffers; all other MRDR edits retain the conservative
+    // revision/purge behaviour used by the rest of the rack.
+    let invalidate = true;
+    if (v?.synth === 'MRDR-3') {
+      const nextDry = mrdrDryFingerprint(v);
+      const previousDry = this._mrdrDryFingerprints.get(voiceId);
+      this._mrdrDryFingerprints.set(voiceId, nextDry);
+      invalidate = previousDry == null || previousDry !== nextDry;
+      for (const stage of this._mrdrLaneStages.values()) {
+        if (stage.voiceId === voiceId) {
+          const chorus = sectionBypassed(v, 'chorus', v.chorus) ? null : v.chorus;
+          this._updateMrdrLaneStage(stage, chorus, this.ctx.currentTime || 0);
+        }
+      }
+    }
+    if (invalidate) {
+      this._specRev.set(voiceId, (this._specRev.get(voiceId) || 0) + 1);
+      this._invalidateCacheEntries(voiceId);
+    }
     // ---- the native paths ---------------------------------------------------
     //
     // A pooled synth is an OBJECT that stands there between notes, so an edit can be
@@ -4708,6 +5065,7 @@ export class VoiceRack {
       bytes: state.bytes,
       queued: state.queue.length,
       rendering: state.rendering,
+      plan: { ...(state.plan || {}) },
     };
   }
 
@@ -4715,14 +5073,24 @@ export class VoiceRack {
     this._sweepLiveNotes();
     let poolSlots = 0;
     for (const pool of this.pools.values()) poolSlots += pool.slots?.length || 0;
+    let chorusLegs = 0;
+    for (const stage of this._mrdrLaneStages.values()) if (stage.chorus) chorusLegs++;
     return {
       pools: this.pools.size,
       poolSlots,
       retiredPools: this._retired.size + this._retiredOffline.length,
+      mrdrLaneStages: this._mrdrLaneStages.size,
+      mrdrChorusLegs: chorusLegs,
       liveNotes: this._liveNotes.length,
       heldNative: this._heldNative.size,
       activePreviews: this._activePreviews.size,
       cachedSources: this._cachedPlayback.size,
+      mrdrTail: {
+        ...this._mrdrTailStats,
+        potentialRatio: this._mrdrTailStats.baselineSeconds > 0
+          ? this._mrdrTailStats.potentialSeconds / this._mrdrTailStats.baselineSeconds : 0,
+        skipReasons: { ...this._mrdrTailStats.skipReasons },
+      },
     };
   }
 
@@ -4902,6 +5270,14 @@ export class VoiceRack {
     this._cachedPlayback.clear();
     this._heldNative.clear();
     this._liveNotes = [];
+    for (const stage of this._mrdrLaneStages.values()) {
+      this._retireMrdrChorus(stage, Number.isFinite(this.ctx?.currentTime) ? this.ctx.currentTime : 0);
+      for (const node of [stage.input, stage.direct, stage.output]) {
+        try { node?.disconnect(); } catch { /* context may already be gone */ }
+      }
+      stage.disposed = true;
+    }
+    this._mrdrLaneStages.clear();
     // The glide origins. The nodes they point at belong to the dying context; keeping
     // the map would glide the next song's first note from the last song's last one.
     if (this._last) this._last.clear();

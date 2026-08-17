@@ -138,7 +138,7 @@ const NEW_NOISE = {
   taps: [0, 0.011, 0.023], tapFalloff: 0.78,
 };
 const NEW_DRUM = {
-  label: 'Test Thump', category: 'Kick', dur: 1, note: 'A drum-synth kick the test made up.',
+  label: 'Test Thump', category: 'Kick', dur: 1, note: 'A KLNG8 kick the test made up.',
   osc: { type: 'sine', from: 180, to: 50, sweep: 0.05, decay: 0.4, curve: 'exp', gain: 1 },
   noise: { type: 'lowpass', freq: 3000, Q: 0.7, decay: 0.02, gain: 0.4 },
   drive: 0.3,

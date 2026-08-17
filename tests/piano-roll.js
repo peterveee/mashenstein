@@ -22,7 +22,7 @@ import {
 } from '../tools/mixer-piano-roll.js';
 import {
   gestureFor, noteKey, movedNote, clampDelta, stretched, MIN_NOTE_LENGTH, quantiseLength, drawnSpan,
-  centeredRangeOffset,
+  centeredRangeOffset, displayCols,
 } from '../tools/mixer-bar-grid.js';
 import { draftOf, writeBarNotes, entryOf } from '../tools/lib/arrangement-edit.js';
 import { seq, n } from '../src/engine/notes.js';
@@ -238,6 +238,11 @@ assert(!noteActiveAt(7, 0, 3, 4) && !noteActiveAt(null, 0, 3, 4),
   'the key goes dark at note-off and whenever playback stops');
 assert(noteActiveAt(0.5, 0, 1, 1, 32) && !noteActiveAt(0, 0, 1, 1, 32),
   'a 1/32 onset lights on its half-sixteenth, not on the preceding grid line');
+// A drawn column stopped being a stored slot at Stage 4b, and `--len` counts COLUMNS.
+// Two columns of a 48-slot song drawn sixteen to the bar is six slots, so the key stays
+// lit for a full eighth note rather than going dark a third of the way through it.
+assert(noteActiveAt(1.9, 0, 0, 2, 48, 16) && !noteActiveAt(2.1, 0, 0, 2, 48, 16),
+  'a note two DRAWN columns long lights its key for two columns, not for two slots');
 
 // The range opens with the part at the BOTTOM of the window and room above it, rather
 // than snapped to an octave that leaves the part floating in the middle.
@@ -353,6 +358,52 @@ assert(drawnSpan(fractionalField, 0, 1.5) === 1.5
   'the roll keeps fractional note lengths in the drawn rectangle, including sub-sixteenths');
 assert(drawnSpan(fractionalField, 0, 4.5) === 2,
   'a later note clips only the visible rectangle and does not quantise its stored length');
+
+// ---- the display grid, which is no longer the storage grid ------------------------
+//
+// One triplet bar puts a whole song on a 48-slot grid and it stays there — the
+// normaliser will not demote while that note exists. Drawing all forty-eight columns
+// for sixty-five bars is what made a mostly-sixteenth song read as a triplet song, so
+// the SNAP decides how many columns a bar is drawn in, under three rules that everything
+// downstream leans on.
+for (const slots of [16, 32, 48, 96]) {
+  for (const snap of [1, 2, 3, 4, 6, 8, 12, 16, 24]) {
+    if (slots % snap) continue;                  // not a snap this grid can hold
+    const cols = displayCols(slots, snap);
+    const stride = slots / cols;
+    assert(Number.isInteger(stride) && stride >= 1
+      && cols >= 16 && snap % stride === 0 && Number.isInteger(cols / 4),
+      `${slots} slots at a ${snap}-slot snap draws ${cols} columns: a whole stride, never`
+      + ' coarser than a sixteenth, a line under every snap division, and four beats');
+  }
+}
+assert(displayCols(48, 3) === 16 && displayCols(96, 6) === 16 && displayCols(32, 2) === 16,
+  'a 1/16 snap draws sixteen columns a bar whatever the song is stored on — which is the'
+  + ' whole of why the split exists');
+assert(displayCols(48, 2) === 24 && displayCols(96, 4) === 24,
+  'and a 1/16T snap draws twenty-four, so the triplets stand on lines of their own');
+assert(displayCols(48, 8) === 24 && displayCols(96, 16) === 24,
+  'a 1/4T snap is twelve columns short of showing itself at sixteen: the rule is a'
+  + ' MULTIPLE of the snap divisions, not merely enough of them');
+assert(displayCols(16, 1) === 16 && displayCols(32, 1) === 32
+  && displayCols(48, 1) === 48 && displayCols(96, 1) === 96,
+  'and a panel with no snap of its own — the step grid — draws every slot, exactly as it'
+  + ' did before any of this existed');
+
+// An off-grid note is drawn INSIDE the column it falls in, and it is a note: nothing
+// may be drawn through it, and it is not clipped by the column line it hangs off.
+const insetField = [
+  { on: true, insets: [{ at: 1 / 3 }] },
+  { on: false, insets: [] },
+  { on: false, insets: [{ at: 2 / 3 }] },
+  { on: false, insets: [] },
+];
+assert(drawnSpan(insetField, 0, 4) === 1 / 3,
+  'a note on the column line is clipped by an off-grid note a third of the way across it');
+assert(Math.abs(drawnSpan(insetField, 0, 4, 1 / 3) - (2 + 2 / 3 - 1 / 3)) < 1e-9,
+  'and that off-grid note runs on to the next one, measured from where it really starts');
+assert(drawnSpan(insetField, 1, 4) === 1 + 2 / 3,
+  'an empty column is clipped by the off-grid note in the column after it');
 assert(noteKey(3, 7, '48') === '3:7:48',
   'a selected note is a PLACE — bar, step and row — so it survives a rebuild as a string');
 

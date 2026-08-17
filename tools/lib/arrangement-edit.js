@@ -214,7 +214,14 @@ export function entryOf(bank, draft) {
   const swing = draft.swing != null && draft.swing !== composedSwing ? draft.swing : null;
   const same = JSON.stringify(order) === JSON.stringify(orderOf(bank));
   const loop = draft.loop || null;
-  const resolution = fineOr(draft.resolution);
+  // Only when it DIFFERS from the composition, exactly as `bpm` and `swing` above are.
+  // A bank that declares its own grid already says so in the half of the file the desk
+  // never rewrites; echoing it into the arrangement would give every such song a spurious
+  // entry the moment it was opened and saved untouched, which is the one thing an empty
+  // ARRANGEMENTS is supposed to prove cannot happen.
+  const composedResolution = resolutionOf(bank);
+  const resolution = draft.resolution != null && draft.resolution !== composedResolution
+    ? fineOr(draft.resolution) : null;
   // A loop counts on its own, exactly as a tempo does: a song played from bar 5 and
   // repeating bars 8-12 is arranged, even when it plays its sections in the order they
   // were composed in. Without this the markers would be unwritable on the seven songs

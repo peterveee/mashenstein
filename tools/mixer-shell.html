@@ -2164,9 +2164,21 @@
   /* The preset name is the sound currently assigned to the lane; this line is its
      category/type, not the original track name. Give it a little separation so the two
      levels read as a hierarchy. */
+  /* `nowrap` holds the invariant two rules down: this line carries a category AND a synth
+     tag now, and the widest pair (ORGAN · MR3) is ~67px in a 130px strip. That fits with
+     room to spare, but a longer category added later would wrap to a second line and take
+     this one strip's fader out of the row it shares with the rest of the rack. */
   .strip .stripsub { text-align: center; font-size: 8.5px; line-height: 1;
-                     letter-spacing: .07em; text-transform: uppercase;
+                     letter-spacing: .07em; text-transform: uppercase; white-space: nowrap;
                      color: var(--lane, var(--dim)); opacity: .95; margin: 3px 0 3px; }
+  /* The synth family, three letters, on the caption line beside the category — what is
+     playing the lane, next to what the lane is for. It inherits the lane's colour and
+     steps back on opacity instead of taking a grey of its own: the category is the thing
+     you scan the rack for and has to win, and one colour per strip keeps the head reading
+     as one line rather than two competing tags. Inheriting also means it is correct in
+     the light themes for free, which a hardcoded ink would not be. */
+  .strip .stripsub .stripsynth { opacity: .62; }
+  .strip .stripsub .stripsynth::before { content: '·'; margin: 0 .34em; opacity: .7; }
   /* The word on the strip, in the lane's own colour. The family MARK is on the
      arrangement row instead — see groupIcon().
      The same box as .stripsub above it, down to the line-height and the margins: a
@@ -2421,6 +2433,13 @@
   .regsection:last-child { border-bottom: none; }
   .regcap { margin-bottom: 6px; color: var(--dim); font-size: 8.5px;
             letter-spacing: .07em; text-transform: uppercase; }
+  /* The value on a caption line — currently the synth behind the Sound section's two
+     buttons. Brighter than its own caption on purpose: SOUND is the label and the synth
+     is the answer, and a value dimmer than the word introducing it reads as disabled.
+     `none` on the transform because these are brands and MONOSYNTH is not one of them. */
+  .regcap .regcapnote { text-transform: none; letter-spacing: .02em;
+                        color: var(--ink); opacity: .72; }
+  .regcap .regcapnote::before { content: '·'; margin: 0 .45em; opacity: .5; }
   .regactions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
   .regactions button { min-width: 0; padding: 6px 5px; font-size: 10px;
                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2622,6 +2641,48 @@
   #looplogtext:focus { outline: none; border-color: var(--accent); }
   .looplogfoot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; margin-top: 12px; }
   .looplogfoot button { padding: 7px 13px; font-size: 12px; }
+  /* Live performance diagnostics are deliberately a window, not a modal dialog. The
+     transport, meters and editors stay usable underneath while the developer watches
+     the cache and scheduler settle. */
+  #perfdiag { position: fixed; z-index: 46; left: 50%; top: 70px; width: min(820px, calc(100vw - 24px));
+              height: min(620px, calc(100vh - 86px)); min-width: 330px; min-height: 260px;
+              display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;
+              color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+              border-radius: 9px; box-shadow: 0 24px 70px color-mix(in srgb, var(--deep) 72%, transparent); }
+  #perfdiag[hidden] { display: none; }
+  #perfdiaghead { display: flex; align-items: center; gap: 10px; flex: none; min-height: 43px;
+                  padding: 7px 10px 7px 14px; cursor: move; user-select: none;
+                  touch-action: none; background: var(--panel2); border-bottom: 1px solid var(--line); }
+  #perfdiaghead.dragging { cursor: grabbing; }
+  #perfdiagtitle { min-width: 0; flex: 1; }
+  #perfdiagtitle strong { display: block; color: var(--accent); font-size: 12px; letter-spacing: .08em; }
+  #perfdiagstate { display: block; margin-top: 2px; color: var(--dim); font-size: 9px; }
+  .perfdiagheadbuttons { display: flex; align-items: center; gap: 4px; flex: none; }
+  .perfdiagheadbuttons button { min-width: 27px; min-height: 26px; padding: 3px 7px; font-size: 10px; }
+  #perfdiagmetrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+                     flex: none; padding: 9px 10px 7px; background: var(--bg); }
+  .perfmetric { min-width: 0; padding: 7px 8px; background: var(--panel2);
+                border: 1px solid var(--line); border-radius: 5px; }
+  .perfmetric h3 { margin: 0 0 4px; color: var(--dim); font-size: 9px; letter-spacing: .08em;
+                   font-weight: 600; text-transform: uppercase; }
+  .perfmetric p { margin: 0; color: var(--ink); font: 10px/1.55 ui-monospace, monospace;
+                  white-space: pre-wrap; overflow-wrap: anywhere; }
+  .perfmetric.bad { border-color: color-mix(in srgb, var(--hot) 65%, var(--line)); }
+  .perfmetric.bad h3, .perfmetric.bad p { color: var(--hot); }
+  #perfdiagstatus { flex: none; min-height: 18px; padding: 7px 10px; color: var(--dim);
+                    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+                    font-size: 10px; line-height: 1.35; }
+  #perfdiaglog { flex: 1; min-height: 0; margin: 0; padding: 8px 10px 12px; overflow: auto;
+                 color: var(--ink); background: var(--input); font: 10px/1.5 ui-monospace, monospace;
+                 white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+  #perfdiagfoot { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+                  flex: none; padding: 7px 10px; background: var(--panel2); border-top: 1px solid var(--line); }
+  #perfdiagfoot span { min-width: 0; color: var(--dim); font-size: 9px; }
+  #perfdiagfoot button { flex: none; padding: 5px 9px; font-size: 10px; }
+  @media (max-width: 680px) {
+    #perfdiagmetrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #perfdiag { min-width: 0; }
+  }
   #audiosettingsform { padding: 20px 22px 16px; }
   .audiosettingshead { display: flex; align-items: flex-start; gap: 14px; }
   .audiosettingshead > div { min-width: 0; flex: 1; }
@@ -2861,6 +2922,12 @@
   .voicepairhead .voicepairtype { font-size: 8.5px; line-height: 1;
                                   letter-spacing: .07em; text-transform: uppercase;
                                   color: var(--lane, var(--dim)); opacity: .95; margin: 3px 0 3px; }
+  /* This line is a CLONE of the strip's own caption, so it arrives carrying the same
+     `.stripsynth` child and needs the same two rules — the pair head is a different
+     parent, and `.strip .stripsub .stripsynth` above stops matching the moment the
+     clone is renamed. */
+  .voicepairhead .voicepairtype .stripsynth { opacity: .62; }
+  .voicepairhead .voicepairtype .stripsynth::before { content: '·'; margin: 0 .34em; opacity: .7; }
   .voicepair > .strip .striphead > h3,
   .voicepair > .strip .striphead > .stripsub,
   .voicepair > #voiceedit .vehead > .vetitle,
@@ -3542,7 +3609,7 @@
      the difference by being shorter instead — see its `height: auto` above. */
   #synthfull .sfband-layer { flex: 0 0 auto; min-height: 120px; }
   #synthfull .sfband-shared { flex: 0 0 auto; min-height: 120px; }
-  /* The Drum Synth's one band: six tall columns, the whole instrument across the window.
+  /* The KLNG8's one band: six tall columns, the whole instrument across the window.
      No floor — the cards decide the height — and no shrink, for the reason the bands above
      do not shrink either: a squeezed band clips a card, and a clipped control is a control
      gone with nothing on screen to say it was ever there. */
@@ -3921,7 +3988,7 @@
   #synthfull .vegroup > .devgrid.sfsubgrid { margin-top: 0; }
   #synthfull .vegroup > .devgrid.sffoot { margin-top: auto; }
   /* ---- and the third way: SPREAD ---------------------------------------------
-     The Drum Synth's, where a card is a stack of blocks — its source rows, whatever
+     The KLNG8's, where a card is a stack of blocks — its source rows, whatever
      sub-sections it carries, its envelope — on a band whose cards are wildly different
      lengths. Neither of the two rules above suits it. Bottom-aligning drops the whole
      stack to the floor and opens the gap under the header; reading from the top banks
@@ -4843,6 +4910,27 @@
                                   calc(2px + var(--roll-rowpad-bottom, 0px)) 1px;
                            width: max(2px, calc(var(--len, 1) * 100% - 2px));
                            background: var(--lane); border-radius: 3px; }
+  /* ---- a note the drawn grid has no column of its own for ----------------------------
+     The roll draws a column per SNAP division and the song may be stored finer than that
+     — one triplet bar puts a whole song on a 48-slot grid, and drawing all forty-eight
+     columns for sixty-five bars makes a mostly-sixteenth song read as a triplet song (see
+     `displayCols`). So a note between two columns is drawn INSIDE the column it falls in,
+     `--at` of the way across it.
+     It is a real `.ssqcell` carrying its own bar, storage step and row, which is the whole
+     trick: selection, dragging, resizing, the marquee and the keyboard all reach it
+     without knowing it is drawn any differently. One column wide for the same reason —
+     every gesture that measures a cell measures a column, and a rectangle `--len` columns
+     long has to start from one.
+     Which leaves a mostly-empty box hanging over the column to its right, so the BOX takes
+     no presses and the rectangle it draws takes them instead: exactly the pseudo-element
+     hit test a long note already relies on (see `cellAt`). */
+  #pianoroll .ssqcell.ssqinset { position: absolute; top: 0; bottom: 0; height: auto;
+                           left: calc(var(--at, 0) * 100%); width: 100%; margin: 0;
+                           pointer-events: none; }
+  #pianoroll .ssqcell.ssqinset::before { pointer-events: auto; }
+  /* Lifted to its pitch centre once, not twice — `.ssqcell.on` has already moved the
+     column this hangs in whenever that column holds a note of its own. */
+  #pianoroll .ssqcell.on > .ssqinset { transform: none; }
   #pianoroll .ssqnote-label { position: absolute; z-index: 4; left: 5px; right: 3px;
                            top: 50%; transform: translateY(-50%); overflow: hidden;
                            white-space: nowrap; text-overflow: ellipsis; pointer-events: none;
@@ -7044,6 +7132,12 @@
 <footer>
   <span id="nowsong" title="The song on the desk">—</span>
   <span id="songrole" title="Current mixer role"></span>
+  <!-- WHAT GRID THIS SONG RUNS ON, AND WHAT PUT IT THERE. The resolution is chosen for you
+       — a triplet snap promotes it, so does a 1/32 arp, so does pasting a fine clip — which
+       is the right behaviour and makes the cost invisible. A song-wide reason also turns
+       OFF the whole-tick fast path for every bar, so one arpeggiator on one channel is paid
+       for by all of them. Empty on an ordinary sixteenth song, which is most of them. -->
+  <span id="gridinfo" title="The note grid this song is stored on, and what promoted it"></span>
   <span id="peakinfo"></span>
   <!-- WHAT M8TRX IS DOING, IN THE DESK'S OWN STATUS BAR. The panel stops short of this bar
        rather than covering it, so the one line that says what the recipe is and what just
@@ -7212,6 +7306,8 @@
           title="Developer diagnostic: compare rendered-note caching with the original live-synth path. Turning it off clears prepared notes; turning it back on starts with a cold cache.">Note cache: On</button>
   <button id="looplogopen" type="button" aria-haspopup="dialog" aria-controls="looplogdialog" hidden
           title="Developer diagnostic: inspect, copy, or download one automatic performance record per completed sequencer loop">Loop diagnostics (0)</button>
+  <button id="perfdiagopen" type="button" aria-haspopup="dialog" aria-controls="perfdiag" aria-expanded="false" hidden
+          title="Developer diagnostic: watch live cache, MRDR graph, scheduler and CPU-pressure status while the song plays">Live performance log</button>
   <!-- Where the line sits against what you hear. Positive moves it right (later);
        only an ear can settle the last few milliseconds of it. -->
   <label class="drawerrow"><span>Playhead</span>
@@ -7294,6 +7390,26 @@
     </div>
   </form>
 </dialog>
+<section id="perfdiag" role="dialog" aria-modal="false" hidden aria-labelledby="perfdiagtitle" aria-describedby="perfdiagintro">
+  <div id="perfdiaghead">
+    <div id="perfdiagtitle"><strong>LIVE PERFORMANCE</strong><span id="perfdiagstate">Waiting for playback</span></div>
+    <div class="perfdiagheadbuttons">
+      <button id="perfdiagpopout" type="button" title="Open this live log in a separate browser window">Pop out</button>
+      <button id="perfdiagclear" type="button" title="Clear the live message list">Clear</button>
+      <button id="perfdiagclose" type="button" aria-label="Close live performance log" title="Close">×</button>
+    </div>
+  </div>
+  <p id="perfdiagintro" hidden>Live cache and audio-pressure diagnostics for development use.</p>
+  <div id="perfdiagmetrics" aria-live="polite">
+    <div class="perfmetric" data-perfmetric="audio"><h3>Audio / CPU</h3><p>Waiting…</p></div>
+    <div class="perfmetric" data-perfmetric="cache"><h3>Note cache</h3><p>Waiting…</p></div>
+    <div class="perfmetric" data-perfmetric="mrdr"><h3>MRDR graph</h3><p>Waiting…</p></div>
+    <div class="perfmetric" data-perfmetric="browser"><h3>Browser / output</h3><p>Waiting…</p></div>
+  </div>
+  <div id="perfdiagstatus" role="status" aria-live="polite">Open the song and press Play to begin live sampling.</div>
+  <pre id="perfdiaglog" tabindex="0" aria-label="Live performance status messages"></pre>
+  <div id="perfdiagfoot"><span>Samples are session-only; use Loop diagnostics for the persisted CSV.</span><button id="perfdiagdone" type="button">Done</button></div>
+</section>
 <div id="ctxmenu"></div>
 <div id="regionedit"></div>
 <div id="fxpicker"></div>

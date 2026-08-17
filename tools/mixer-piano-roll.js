@@ -40,6 +40,7 @@ import {
   LANES, validLen, perNoteLengthLane,
 } from '../src/engine/lanes.js';
 import { createBarGrid } from './mixer-bar-grid.js';
+import { customPicker } from './mixer-picker.js';
 import { normaliseArrangementResolution } from './lib/arrangement-edit.js';
 import {
   RESOLUTIONS, LEGACY_RESOLUTION, promoteResolution, resolutionOf,
@@ -226,11 +227,14 @@ export function keyCenterOffset(midi, rowH = ROW_H) {
 }
 
 /** Whether a drawn note rectangle is sounding at the heard sixteenth. */
-export function noteActiveAt(step, bar, at, span = 1, slots = 16) {
+export function noteActiveAt(step, bar, at, span = 1, slots = 16, cols = slots) {
   if (!Number.isFinite(step)) return false;
   const heard = step * slots / 16;
   const start = Number(bar) * slots + Number(at);
-  const length = Math.max(1, Number(span) || 1);
+  // `span` is a width in DRAWN columns and the position is in stored slots, which stopped
+  // being the same number once the roll could draw a 48-slot song sixteen columns to the
+  // bar. A note is still at least one slot long, so it lights its own key.
+  const length = Math.max(1, (Number(span) || 1) * (slots / (cols || slots)));
   return Number.isFinite(start) && heard >= start && heard < start + length;
 }
 
@@ -1040,120 +1044,8 @@ export function createPianoRoll({
   // The remaining roll fields use the same small custom list as TOOL and DRAW LENGTH.
   // Keeping the popup in the document body avoids clipping inside the keyboard gutter
   // and, importantly, keeps the open list out of the operating system's native chrome.
-  const customPicker = ({ label, title, idPrefix, options, value, chooseValue }) => {
-    const field = document.createElement('button');
-    field.type = 'button';
-    field.className = 'rolltool rollcustomselect';
-    field.title = title;
-    field.setAttribute('role', 'combobox');
-    field.setAttribute('aria-haspopup', 'listbox');
-    field.setAttribute('aria-expanded', 'false');
-    field.setAttribute('aria-label', label);
-    const valueEl = document.createElement('span');
-    valueEl.className = 'rolltool-value';
-    field.append(valueEl);
-
-    const menu = document.createElement('div');
-    menu.className = 'rolltool-menu';
-    menu.setAttribute('role', 'listbox');
-    menu.setAttribute('aria-label', label);
-    menu.hidden = true;
-    let open = false;
-    let active = 0;
-
-    const optionEls = options.map((option, i) => {
-      const o = document.createElement('div');
-      o.className = 'rolltool-option';
-      o.id = `${idPrefix}-opt-${i}`;
-      o.setAttribute('role', 'option');
-      o.textContent = option.label;
-      o.dataset.value = String(option.value);
-      o.addEventListener('pointerdown', (ev) => {
-        ev.preventDefault(); ev.stopPropagation(); choose(option.value);
-      });
-      o.addEventListener('pointerenter', () => setActive(i));
-      return o;
-    });
-    menu.append(...optionEls);
-
-    const paint = () => {
-      const current = value();
-      const selected = options.find((option) => String(option.value) === String(current))
-        || options[0];
-      valueEl.textContent = selected.label;
-      optionEls.forEach((o) => {
-        const on = o.dataset.value === String(selected.value);
-        o.classList.toggle('on', on);
-        o.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
-    };
-    const setActive = (i) => {
-      active = (i + optionEls.length) % optionEls.length;
-      optionEls.forEach((o, n) => o.classList.toggle('active', n === active));
-      field.setAttribute('aria-activedescendant', optionEls[active].id);
-    };
-    const closeMenu = ({ focus = false } = {}) => {
-      if (!open) return;
-      open = false; menu.hidden = true; menu.remove();
-      field.setAttribute('aria-expanded', 'false');
-      field.removeAttribute('aria-activedescendant');
-      document.removeEventListener('pointerdown', onDocDown, true);
-      window.removeEventListener('resize', onDismiss, true);
-      window.removeEventListener('scroll', onDismiss, true);
-      if (focus) field.focus();
-    };
-    const onDocDown = (ev) => {
-      if (!menu.contains(ev.target) && !field.contains(ev.target)) closeMenu();
-    };
-    const onDismiss = () => closeMenu();
-    const choose = (next) => {
-      chooseValue(next);
-      paint();
-      closeMenu({ focus: true });
-    };
-    const openMenu = () => {
-      if (open) return;
-      open = true; document.body.append(menu); menu.hidden = false;
-      field.setAttribute('aria-expanded', 'true');
-      const current = String(value());
-      setActive(Math.max(0, options.findIndex((o) => String(o.value) === current)));
-      const r = field.getBoundingClientRect();
-      menu.style.minWidth = `${Math.round(r.width)}px`;
-      menu.style.left = `${Math.round(r.left)}px`;
-      const height = menu.offsetHeight;
-      const below = window.innerHeight - r.bottom;
-      const flip = below < height + 8 && r.top > below;
-      menu.style.top = `${Math.round(flip ? r.top - height - 3 : r.bottom + 3)}px`;
-      field.classList.toggle('flipped', flip);
-      document.addEventListener('pointerdown', onDocDown, true);
-      window.addEventListener('resize', onDismiss, true);
-      window.addEventListener('scroll', onDismiss, true);
-    };
-    field.onclick = (ev) => {
-      ev.stopPropagation();
-      if (open) closeMenu({ focus: true }); else openMenu();
-    };
-    field.onkeydown = (ev) => {
-      if (ev.key === 'Tab') { closeMenu(); return; }
-      if (ev.key === 'Escape') {
-        if (!open) return;
-        ev.preventDefault(); ev.stopPropagation(); closeMenu({ focus: true }); return;
-      }
-      if (!open) {
-        if (!['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(ev.key)) return;
-        ev.preventDefault(); ev.stopPropagation(); openMenu(); return;
-      }
-      if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(ev.key)) return;
-      ev.preventDefault(); ev.stopPropagation();
-      if (ev.key === 'ArrowDown') setActive(active + 1);
-      else if (ev.key === 'ArrowUp') setActive(active - 1);
-      else if (ev.key === 'Home') setActive(0);
-      else if (ev.key === 'End') setActive(optionEls.length - 1);
-      else choose(optionEls[active].dataset.value);
-    };
-    paint();
-    return field;
-  };
+  // `customPicker` now lives in ./mixer-picker.js, so the step sequencer can use the
+  // same control rather than a lookalike. See the note there.
 
   const quantisePicker = () => customPicker({
     label: 'Piano-roll quantisation',
@@ -2027,7 +1919,11 @@ export function createPianoRoll({
   };
   const syncPlayingKeys = (step) => {
     if (!grid.isOpen() || !Number.isFinite(step)) { clearPlayingKeys(); return; }
-    const slots = draft()?.resolution === 32 ? 32 : 16;
+    // Off the grid rather than off the song: the roll may be drawing a finer clock than
+    // the arrangement is stored on while a snap is promoting it, and `--len` below is in
+    // that grid's DRAWN columns.
+    const slots = grid.slotsPerBar();
+    const cols = grid.colsPerBar();
     const at = Math.floor(step * slots / 16);
     const anchor = el.querySelector('.ssqkeys .ssqkey');
     if (at === playingSlot && anchor === playingAnchor) return;
@@ -2037,7 +1933,7 @@ export function createPianoRoll({
     const rows = new Set();
     for (const cell of el.querySelectorAll('.ssqcell.on:not(.muted)')) {
       const span = Number(cell.style.getPropertyValue('--len')) || 1;
-      if (!noteActiveAt(step, cell.dataset.bar, cell.dataset.step, span, slots)) continue;
+      if (!noteActiveAt(step, cell.dataset.bar, cell.dataset.step, span, slots, cols)) continue;
       rows.add(cell.dataset.row);
     }
     paintRowKeys(rows, 'playing', playingKeys);

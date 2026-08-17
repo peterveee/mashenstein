@@ -480,7 +480,7 @@ and fifty-odd presets in a table, of four kinds.
 - **Noise presets** are native nodes on the engine's own seeded noise buffer — a
   filtered burst, an optional pitched body, optional taps. The snares, claps and hats
   Tone could not provide (see the offline rule below).
-- **Drum-synth presets** (`ds` ids) are the Microtonic construction on the same seeded
+- **KLNG8 presets** (`ds` ids) are the Microtonic construction on the same seeded
   buffer: an oscillator with a pitch envelope and a filtered noise source, each with
   its own attack/decay/curve envelope, summed into a tanh drive. Either half can be
   left out — a tom is all oscillator, a clap all noise. `_playDrum` in
@@ -507,9 +507,9 @@ Rules the design turns on:
   first trigger is at exactly t=0 — so polyphony is a pool of monophonic synths that
   grows to the widest chord asked of it. Nothing uses `Tone.Noise`, which seeds from
   `Math.random` and would stop two renders matching: every noisy preset — the noise
-  kind and the drum synth alike — is built on the engine's seeded buffer, so renders
+  kind and the KLNG8 alike — is built on the engine's seeded buffer, so renders
   stay sample-deterministic and stems sum to the mix. `tests/voices.js` renders every
-  preset, fails on a silent one, and checks a drum-synth render twice for identity.
+  preset, fails on a silent one, and checks a KLNG8 render twice for identity.
 - **Levels are measured at both ends.** `tools/measure-voices.js` renders one note of
   each lane's own voice and one note of each preset at unity, and writes both tables
   back into the library; the engine divides one by the other. Melodic lanes land

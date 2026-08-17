@@ -1,6 +1,6 @@
 // The SHAPE of a pitch sweep, measured off the rendered samples.
 //
-// `sweep` says how far and how long. `pitchCurve` (drum synth) and `sweepCurve` (game
+// `sweep` says how far and how long. `pitchCurve` (KLNG8) and `sweepCurve` (game
 // synth) say where in that time the pitch actually goes, and that is most of what the
 // drop sounds like: an even glide, a hang-then-plunge, or a snap that is at the note
 // before you hear it travel. Three shapes that a knob cannot express, so they are a pill.

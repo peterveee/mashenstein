@@ -16,7 +16,7 @@ import { VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBank
 import { trackIdOf } from '../data/tracks.js';
 import {
   applyArrangement, resolveSection, loopOf, loopSteps, SWING_STRAIGHT, SWING_MAX,
-  resolutionOf, promoteResolution, LEGACY_RESOLUTION, FINE_RESOLUTION,
+  resolutionOf, promoteResolution, LEGACY_RESOLUTION, FINE_RESOLUTION, RESOLUTIONS,
 } from '../data/arrangements.js';
 import { createNoteFxProcessor, resolveNoteFx } from './note-fx.js';
 import {
@@ -604,6 +604,9 @@ class AudioSys {
     this.noteCache = false;
     this.noteCacheState = null;
     this.noteCachePreparationHeld = false;
+    // Live-only MRDR tail reclaim is measured and opt-in. Offline and game racks keep
+    // the exact authored tail unless the Song Mixer explicitly enables this switch.
+    this.mrdrTailCulling = false;
     // Skip building notes for lanes the mix has silenced — muted, or losing a
     // channel solo. OFF by default and never set by the game: a cabinet treatment
     // may ramp a lane the mix keeps muted back up at an audio time, and a skipped
@@ -1654,6 +1657,11 @@ class AudioSys {
     }
   }
 
+  setMrdrTailCulling(on) {
+    this.mrdrTailCulling = !!on;
+    this.voices?.setMrdrTailCulling(this.mrdrTailCulling);
+  }
+
   // The rack-less mirror of VoiceRack.noteCacheHealth — same field names, same
   // stats-first ordering, and for the same reason: `queued` is the live backlog and
   // must not be overwritten by a lifetime counter that happens to share a name.
@@ -1662,6 +1670,7 @@ class AudioSys {
       enabled: false, playbackActive: !!this.bank, entries: 0, buffers: 0,
       bytes: 0, queued: 0, rendering: 0, hits: 0, misses: 0, queuedTotal: 0,
       started: 0, completed: 0, failed: 0, stale: 0,
+      plan: { candidates: 0, selected: 0, completed: 0, failed: 0, pending: 0 },
     };
     if (this.voices?.noteCacheHealth) return this.voices.noteCacheHealth();
     const state = this.noteCacheState;
@@ -1670,7 +1679,7 @@ class AudioSys {
     return { ...state.stats, enabled: this.noteCache,
       playbackActive: !!state.playbackActive,
       entries: state.entries.size, buffers, bytes: state.bytes,
-      queued: state.queue.length, rendering: state.rendering };
+      queued: state.queue.length, rendering: state.rendering, plan: { ...(state.plan || {}) } };
   }
 
   /**
@@ -1689,9 +1698,11 @@ class AudioSys {
       this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf, this.noteCacheState);
       this.voices.soloLayers = this.soloLayers;
       this.voices.noteCache = true;
+      this.voices.setMrdrTailCulling(this.mrdrTailCulling);
       this.voices.setNoteCacheState(this.noteCacheState);
     }
     const rack = this.voices;
+    rack.beginPreparedNotePlan?.();
     const plan = barPlan(bank);
     const resolution = resolutionOf(bank);
     const tick = 16 / resolution;
@@ -1767,6 +1778,7 @@ class AudioSys {
         }
       }
     }
+    rack.commitPreparedNotePlan?.();
     rack.prioritisePreparedNotes();
     return this.noteCacheHealth();
   }
@@ -3454,19 +3466,35 @@ class AudioSys {
    * cannot notice it was skipped. See the fast path at the top of scheduleStep.
    */
   refreshTransportResolution(bank = this.bank, mix = this.mixEntry) {
-    const isFine = (fx) => !!fx?.arp?.enabled && Number(fx.arp.rate) <= 0.5;
+    // THE GRID AN ARPEGGIATOR NEEDS. Its rate is in sixteenths, so a rate of `r` wants
+    // `16 / r` slots to the bar — 32 for a 1/32, 24 for a 1/16T — and the grid has to be a
+    // whole multiple of that. Returning the resolution rather than a yes/no is what lets a
+    // triplet rate promote to 48 the way a 1/32 has always promoted to 32; asking only
+    // "is it 0.5 or finer" could not express the difference, and a 1/16T arp on a
+    // sixteenth clock fires every two sixteenths instead of three to the beat.
+    const arpGrid = (fx) => {
+      if (!fx?.arp?.enabled) return LEGACY_RESOLUTION;
+      const rate = Number(fx.arp.rate);
+      if (!(rate > 0)) return LEGACY_RESOLUTION;
+      const need = Math.round(LEGACY_RESOLUTION / rate);
+      return RESOLUTIONS.find((r) => r % need === 0) ?? LEGACY_RESOLUTION;
+    };
     const laneFx = mix?.lanes || {};
-    const trackFine = Object.values(laneFx).some((laneMix) => isFine(laneMix?.noteFx));
+    const trackGrid = promoteResolution(
+      ...Object.values(laneFx).map((laneMix) => arpGrid(laneMix?.noteFx)));
     const plan = bank ? barPlan(bank) : [];
-    const barFine = plan.some((bar) => Object.values(bar.noteFx || {}).some((override) =>
-      override?.mode === 'on' && isFine(override)));
+    const barGrid = promoteResolution(...plan.flatMap((bar) => Object.values(bar.noteFx || {})
+      .map((override) => (override?.mode === 'on' ? arpGrid(override) : LEGACY_RESOLUTION))));
+    // Kept as booleans for `_fineBars` below, which only asks WHETHER a bar owes a fine
+    // tick, not how fine.
+    const isFine = (fx) => arpGrid(fx) !== LEGACY_RESOLUTION;
+    const trackFine = trackGrid !== LEGACY_RESOLUTION;
     const was = this.transportResolution;
     // The clock has to hold everything at once: the grid the song is stored on AND the
     // finest thing generated on top of it. A 1/32 arp over a triplet song is the case
     // that makes this an LCM rather than a maximum — 48 cannot express a 32nd and 32
     // cannot express a triplet, so the transport runs at 96 and both land exactly.
-    this.transportResolution = promoteResolution(
-      resolutionOf(bank), trackFine || barFine ? FINE_RESOLUTION : LEGACY_RESOLUTION);
+    this.transportResolution = promoteResolution(resolutionOf(bank), trackGrid, barGrid);
     // COMING DOWN OFF THE HALF STEP.
     //
     // `scheduleStep` advances `this.step` by the transport's tick, so at 32 the step is
@@ -4103,6 +4131,7 @@ class AudioSys {
         this.voices.soloLayers = this.soloLayers;
         // ...and the desk's note cache, which outlives racks the same way.
         this.voices.noteCache = !!this.noteCache;
+        this.voices.setMrdrTailCulling(this.mrdrTailCulling);
         this.voices.setNoteCachePlaybackActive(!!this.bank);
       }
       this._schedWork.voicePlays++;

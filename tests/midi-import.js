@@ -25,7 +25,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, copyFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { bankFromMidi } from '../tools/lib/midi-import.js';
+import { bankFromMidi, detectGrid } from '../tools/lib/midi-import.js';
 import { midiBuffer } from '../tools/lib/render-midi-bank.js';
 import { deskBank, activeLanes, LANE_KEYS } from '../src/engine/lanes.js';
 import { seamFor, baseLane, isLayer } from '../src/data/voices.js';
@@ -237,6 +237,59 @@ assert(back.includes('lead') && back.includes('lead2'),
   `a layer exports as "Lead 2" and comes home to lead2 (${back.join(', ')})`);
 assert(back.includes('kick') && back.includes('kick2') && back.includes('snare'),
   'a drum layer makes the trip too — and the kit it came from stays one kit');
+
+// ---- triplets, and the thing they are constantly confused with -----------------
+//
+// A shuffle and a triplet look identical on a sixteenth grid: both put notes where no
+// sixteenth is. Getting the two apart is the whole of `detectGrid`, and it is expensive
+// in both directions — a shuffled song imported at 48 loses its swing value and gains a
+// re-grid nobody asked for; a triplet fill imported at 16 simply loses the fill.
+//
+// The tell is that swing moves the SECOND note of a pair of sixteenths later. At 66.7%
+// that lands exactly on the third triplet position, which is why a shuffle sounds like
+// triplets — but no swing setting can ever produce the MIDDLE one. On the 48 grid a pair
+// is six slots, a triplet group sits on 0/2/4, and swing reaches 4 and never 2.
+{
+  const PPQ = 96;
+  const S = PPQ / 4;                       // ticks per sixteenth
+  const slot = S / 3;                      // ticks per 48-grid slot
+  const at = (ticks) => detectGrid(ticks, PPQ);
+
+  assert(at(Array.from({ length: 32 }, (_, i) => i * S)).resolution === 16,
+    'straight sixteenths import on the sixteenth grid');
+
+  const shuffled = Array.from({ length: 32 },
+    (_, i) => (i % 2 ? (i - 1) * S + (S * 4) / 3 : i * S));
+  const shuffle = at(shuffled);
+  assert(shuffle.resolution === 16 && shuffle.evidence === 0,
+    'a full 2:1 shuffle is NOT mistaken for triplets — it never touches the middle slot');
+
+  const nudge = [3, -2, 5, -4, 1, -3, 4, -1];
+  assert(at(Array.from({ length: 32 }, (_, i) => i * S + nudge[i % 8])).resolution === 16,
+    'and neither is a humanised performance');
+
+  const groups = (count, span, offsets) => {
+    const out = [];
+    for (let g = 0; g < count; g++) for (const k of offsets) out.push((g * span + k) * slot);
+    return out;
+  };
+  assert(at(groups(3, 6, [0, 2, 4])).resolution === 48,
+    'three sixteenth-triplet groups import at 48');
+  assert(at(groups(4, 12, [0, 4, 8])).resolution === 48,
+    'eighth triplets are caught by the same test — their groups land on 2 mod 6 as well');
+
+  // The case that actually turns up: a straight song with one fill in it.
+  const mixed = [...Array.from({ length: 28 }, (_, i) => i * S),
+    ...groups(3, 6, [0, 2, 4]).map((t) => t + 32 * S)];
+  assert(at(mixed).resolution === 48,
+    'one genuine triplet fill among straight sixteenths still promotes the song');
+
+  assert(at([0, S, S * 2 + 8]).resolution === 16,
+    'a single stray off-grid note is a humanised hit, not a reason to re-grid');
+  assert(at(groups(2, 6, [0, 2, 4])).evidence === 2
+    && at(groups(2, 6, [0, 2, 4])).resolution === 16,
+  'two groups is under the evidence bar — three is the bar, and it is deliberate');
+}
 
 console.log(failed ? '\nMIDI IMPORT: FAILED' : '\nMIDI IMPORT: PASSED');
 process.exit(failed ? 1 : 0);

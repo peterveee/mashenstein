@@ -3,7 +3,7 @@
 // for a hero. Same rules: one HTML file per synth, no server, no network, boots from
 // file://, which is also what Design's CSP requires.
 //
-// MRDR-3 and Drum Synth share one full-window Advanced surface in the game
+// MRDR-3 and KLNG8 share one full-window Advanced surface in the game
 // (`tools/mixer-synth-full.js`, `FULL_EDITORS`), so they are built as a matched pair here
 // too — same palette read, same table renderer, same rules for what a brief may claim.
 // Only the per-synth prose and control inventory differ.
@@ -83,7 +83,7 @@ const swatches = themes.map((t) => `
  * `sectionOn`, and a bare `i` for which of the three layers this is — the caller knows
  * all three, so they are substituted back in rather than printed, and `i === 1` is then
  * decided here because "(i === 1 || …)" in a design brief is a leaked implementation
- * detail, not a condition. Drum Synth's groups carry none of that — `p`/`base` stay
+ * detail, not a condition. KLNG8's groups carry none of that — `p`/`base` stay
  * empty and `i` stays 0, and the substitutions below are simply no-ops.
  *
  * Everything after that is cosmetic and applies to both synths alike: drop the arrow
@@ -485,7 +485,7 @@ const SYNTHS = [
       2560&nbsp;px wide</b> and 720&nbsp;px to 1440&nbsp;px tall, at whatever aspect the
       window happens to be. The 366&nbsp;px cage is gone and none of its compromises need
       defending. Signal flow, grouping, knob size, how the three layers sit against each
-      other, what is on screen at once and what is a tab or a page — all open. Drum Synth
+      other, what is on screen at once and what is a tab or a page — all open. KLNG8
       shares this same full-window surface (see its own brief) — the two should read as a
       matched pair, not two unrelated plugins.`,
     structureLi: (body) => `<li><b>The three layers are structurally identical.</b> Whatever
@@ -496,13 +496,13 @@ const SYNTHS = [
   },
   {
     id: 'drum',
-    voice: { synth: 'Drum Synth', kind: 'drum' },
-    outFile: 'drum-synth.html',
-    pageTitle: 'MASHENSTEIN — Drum Synth editor',
-    h1: 'Drum Synth — editor',
+    voice: { synth: 'KLNG8', kind: 'drum' },
+    outFile: 'klng8.html',
+    pageTitle: 'MASHENSTEIN — KLNG8 editor',
+    h1: 'KLNG8 — editor',
     hasTaps: true,
     briefHtml: (body) => `
-    <b>Drum Synth</b> is the mixer's variable multi-source percussion instrument: up to
+    <b>KLNG8</b> is the mixer's variable multi-source percussion instrument: up to
     five switchable sound sources — a pitched <b>Oscillator</b> (with its own FM operator),
     <b>Noise</b>, a struck resonant filter (<b>Ring</b>) and an inharmonic square cluster
     (<b>Metal</b>) — summed through a shared <b>Drive</b> stage, plus <b>Humanise</b> and a
@@ -522,7 +522,7 @@ const SYNTHS = [
       MRDR-3 shares this same full-window surface (see its own brief) — the two should read
       as a matched pair, not two unrelated plugins.`,
     structureLi: () => `<li><b>The sources are independent, not identical.</b> Unlike
-        MRDR-3's three matched layers, Drum Synth's five switched sections
+        MRDR-3's three matched layers, KLNG8's five switched sections
         (Oscillator, its FM, Noise, Ring, Metal) are each a different mechanism with a
         different control set — there is no shared shape to repeat, so each card earns its
         own layout.</li>`,

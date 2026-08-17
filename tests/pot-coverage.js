@@ -145,6 +145,10 @@ const CASES = [
 const HIDDEN_OK = {
   noise: ['dur', 'fixedLength'],
   drum: ['dur', 'fixedLength'],
+  // DuoSynth's built-in vibrato is its authoritative pitch LFO. The generic rack-wide
+  // `vibrato` read remains in the shared builder for legacy/imported shapes, but Duo's
+  // panel deliberately exposes only `vibratoAmount`/`vibratoRate` on its native card.
+  DuoSynth: ['vibrato'],
 };
 
 /**
@@ -157,8 +161,13 @@ const HIDDEN_OK = {
  * value only means anything when a SECOND voice names the same group. It is set in the
  * song file and read by the rack, which is the one shape "every key gets a pot" was never
  * about — see the note above, and `_monoGroups` in src/engine/voices.js.
+ *
+ * `chorus` is the same kind of compatibility read for the pooled Tone families. The
+ * user-facing chorus is a channel insert on MRDR-3 (the three MRDR chorus pots are still
+ * checked below); old pooled presets may retain the legacy field, but it is not an
+ * editable per-voice control and must not be mistaken for one.
  */
-const HIDDEN_OK_EVERY = ['monoGroup'];
+const HIDDEN_OK_EVERY = ['monoGroup', 'chorus'];
 const LEGACY_LENGTH_KEYS = new Set(['dur', 'fixedLength']);
 
 /**

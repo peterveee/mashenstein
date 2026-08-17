@@ -503,7 +503,7 @@ const NOISE = {
 
 };
 
-// Drum-synth presets — the Microtonic construction, played by `_playDrum` in
+// KLNG8 presets — the Microtonic construction, played by `_playDrum` in
 // src/engine/voices.js. Where a NOISE preset is a burst with a thump under it, one of
 // these is a drum designed as two equal sources, each with its own envelope:
 //
@@ -519,7 +519,7 @@ const NOISE = {
 // renders stay deterministic and stems still sum to the mix.
 const DRUM = {
   dsKick: { label: 'DS Kick', category: 'Kick', dur: 1,
-    note: 'The drum-synth 808: a sine dropping an octave and a half into a long sub '
+    note: 'The KLNG8 808: a sine dropping an octave and a half into a long sub '
       + 'tail, with a filtered click on the front and a little drive to round it.',
     osc: { type: 'sine', from: 165, to: 48, sweep: 0.045, decay: 0.45, curve: 'exp', gain: 1 },
     noise: { type: 'lowpass', freq: 3200, Q: 0.7, decay: 0.015, gain: 0.4 },
@@ -561,7 +561,7 @@ const DRUM = {
     note: 'The same band left ringing for most of half a second.',
     noise: { type: 'highpass', freq: 6800, Q: 1, decay: 0.42, gain: 1 } },
 
-  // Two more matched pairs, both built on the one thing the drum-synth has that the
+  // Two more matched pairs, both built on the one thing the KLNG8 has that the
   // noise table does not: a cutoff that MOVES while the hit decays. That sweep is most
   // of what separates a hat from a burst of hiss — a struck cymbal brightens for the
   // first few milliseconds and then darkens for the rest of its life, and a fixed
@@ -624,7 +624,7 @@ const DRUM = {
       + 'the laser tom every drum synth ships and every second track uses once.',
     osc: { type: 'sawtooth', from: 1900, to: 50, sweep: 0.085, decay: 0.1, curve: 'exp', gain: 1 },
     drive: 0.5 },
-  // ---- the sections the drum synth grew ------------------------------------
+  // ---- the sections the KLNG8 grew ------------------------------------
   //
   // Everything below uses something `_playDrum` could not do until it did: a struck
   // RESONATOR (a click into a filter narrow enough to ring, which is what a rim, a
@@ -688,7 +688,7 @@ const DRUM = {
 
   // ---- the engine's own kit, as data ---------------------------------------
   //
-  // Not new sounds: the three hand-written drums in `scheduleStep` that the drum synth
+  // Not new sounds: the three hand-written drums in `scheduleStep` that the KLNG8
   // could NOT state until it grew a knock, a two-stage decay, a sagging cluster and the
   // long buffer. Each is that engine block transcribed — same frequencies, same times,
   // same relative levels — which is the only way to answer "can this construction make
@@ -709,7 +709,7 @@ const DRUM = {
   // `Shop Kick` and `Megamix Kick` are ENGINE presets — two bank keys each, `kickTail`
   // and `kickKnock`, which is all the hand-written kick has to be tuned by — so a song
   // could have those tunings and could not edit them. These are the same three sounds
-  // as drum-synth presets, where every part of them is on a knob.
+  // as KLNG8 presets, where every part of them is on a knob.
   //
   // Only the tail and the knock differ, because only they ever did: `kickGain` scales
   // the whole stack equally, so the click stays at 0.31 of the body throughout, and a
@@ -820,7 +820,7 @@ const DRUM = {
     starter: false },
 
   // ---- requested machine auditions ---------------------------------------
-  // These are deliberately all drum-synth entries: the family resemblance is in
+  // These are deliberately all KLNG8 entries: the family resemblance is in
   // the construction, not just in the label. They are starting points for listening,
   // not claims of component-level recreations of the original hardware.
   ds909Kick: { label: '=909 Kick', category: 'Kick', homeLane: 'kick', dur: 2,

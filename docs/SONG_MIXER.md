@@ -567,6 +567,32 @@ The fifth would be a **step recorder** — transport parked, each note landing o
 playhead and advancing it — which is the same take buffer and the same flush with a
 different clock in front of it.
 
+### Quantise, and what the grid is showing you
+
+**QUANTISE** is the roll's snap: where a note you draw or drag lands, from `1/4` down to
+`1/32`, and the triplet of each — `1/4T`, `1/8T`, `1/16T`, `1/32T`. It stops there on
+purpose. A `1/64T` is reachable on the grid a `1/32T` needs, but a plain `1/64` is not,
+and offering the triplet without the note it is a triplet *of* reads as a bug.
+
+**It is also the only control over the song's note grid**, and that is deliberate. Songs
+hold sixteen note starts to the bar; picking a triplet snap widens that to 48 (or 96,
+where the song also uses thirty-seconds), and saving narrows it again to the coarsest
+grid that still holds every note written. There is no resolution setting to go with it —
+a raw one would either be undone on save or leave songs paying for a grid they never use.
+
+**The roll draws a column per snap division**, which is not the same as a column per slot
+the song can hold. One triplet keeps a whole song on the wide grid, and drawing all
+forty-eight columns a bar for a song that is otherwise straight sixteenths makes it read
+as a triplet song. So on `1/16` you get the sixteen columns you expect, and any note that
+falls between two of them is drawn *between* them — a shorter mark standing a third or a
+half of the way across its cell. Nothing is hidden and nothing has moved: click it, drag
+it, stretch it, rub it out, exactly as with any other note. Move the snap to `1/16T` and
+the same bar is drawn in twenty-four columns with the triplets on lines of their own and
+the straight sixteenths now the ones in between.
+
+The **step grid** has no snap of its own yet and draws every slot, so it is where a wide
+song looks widest. To put a triplet on a drum lane, set the snap in the roll first.
+
 ### Mono and Poly
 
 **CHANNEL**, the first switch in the piano roll's left gutter, above **DRAW LENGTH**.
@@ -990,7 +1016,7 @@ Points worth knowing:
   constructions sit in the kit columns: the Tone drums (MembraneSynth and MetalSynth —
   oscillator-based, so they read as 808), the **noise presets** (a filtered burst on
   the engine's own seeded buffer, with an optional pitched body — the hissing snares
-  and claps), and the **drum synth** (`ds` presets): the Microtonic construction, an
+  and claps), and the **KLNG8** (`ds` presets): the Microtonic construction, an
   oscillator with a pitch envelope and a filtered noise source, each with its own
   envelope, summed into a drive — plus, since, a struck **resonator** (a click into a
   filter narrow enough to ring, which is what a rim, a clave and a snare shell are) and
@@ -1092,7 +1118,7 @@ silence per pixel. See `VoiceRack.refresh`.)
   as what an envelope is: four times. A noise preset shows the burst, an optional
   pitched **body** under it, and its **taps**: the repeats that turn one hit into a
   clap, each with its own offset so an unevenly-spaced 808 clap stays unevenly spaced.
-  A **drum-synth** preset (the `ds` kit) shows the Microtonic layout: an **oscillator**
+  A **KLNG8** preset (the `ds` kit) shows the Microtonic layout: an **oscillator**
   section — waveform, a pitch that falls `PITCH → FALLS TO` over `SWEEP` in the shape
   `SWEEP CURVE` names (`EXP` an even glide, `LIN` a hang then a plunge, `SNAP` the
   analogue drum machine's own: the click, then the body), its own attack/hold/decay with

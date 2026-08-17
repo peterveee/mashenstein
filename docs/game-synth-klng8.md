@@ -17,7 +17,7 @@ The audio engine has **seven** voice paths, dispatched in `VoiceRack.play()`:
 | `synth: 'AdditiveSynth'` | `_playAdditive()` | Stacked sine partials — drawbar organs, bells, glass | **No** | No |
 | `synth: 'MRDR-3'` | `_playLayer()` | Up to three complete voices summed — the engine's own layered voices, editable | **No** | No |
 | `kind: 'noise'` | `_playNoise()` | Filtered noise bursts (snares, claps, hats, shakers) | **No** | No |
-| `kind: 'drum'` | `_playDrum()` | Multi-source drum synthesis (kicks, toms, zaps, cymbals) | **No** | No |
+| `kind: 'drum'` | `_playDrum()` | Multi-source KLNG8esis (kicks, toms, zaps, cymbals) | **No** | No |
 
 **This document covers the five native paths** — the ones built entirely from Web Audio
 nodes that never touch `Tone.Synth` or its relatives. The native synths are dispatched
@@ -417,12 +417,12 @@ Filtered noise bursts with an optional pitched body — the snare, clap, hat, an
 
 ---
 
-## 6. Drum Synth Presets (`_playDrum`)
+## 6. KLNG8 Presets (`_playDrum`)
 
 **File:** `src/engine/voices.js` lines ~444–550
 
 ### Purpose
-Full drum synthesis in the "Microtonic" style — **four** independent sources (oscillator, noise, resonator, metal cluster), each with its own envelope, summed and optionally driven into a waveshaper. This is a drum designed from first principles rather than a filtered noise burst with a thump under it.
+Full KLNG8esis in the "Microtonic" style — **four** independent sources (oscillator, noise, resonator, metal cluster), each with its own envelope, summed and optionally driven into a waveshaper. This is a drum designed from first principles rather than a filtered noise burst with a thump under it.
 
 The osc and noise sections are the original pair. The resonator and the cluster were added because filtered noise cannot make two sounds the kit needs: something **struck that then rings** (a rim, a clave, the shell of a snare) and something genuinely **metallic** (a hat, a cowbell, a cymbal). Every addition is default-off, and a preset that names none of the new keys renders sample-identically to how it did before they existed — verified by re-measuring the whole library.
 
@@ -740,9 +740,9 @@ native synth output ──→ wet (GainNode) → delay send → echoBus → ... 
 
 ## 9. Comparison: GameSynth vs Noise vs Drum
 
-| Aspect | GameSynth | Noise | Drum Synth |
+| Aspect | GameSynth | Noise | KLNG8 |
 |--------|-----------|-------|------------|
-| **Purpose** | Simple pitched tones | Filtered noise percussion | Full drum synthesis |
+| **Purpose** | Simple pitched tones | Filtered noise percussion | Full KLNG8esis |
 | **Sound sources** | 1 oscillator, **or** noise through a note-tracking bandpass | 1 noise burst + optional pitched body | 4 independent sources (osc, noise, ring, metal), each optional |
 | **Pitch envelope** | `pitch.semitones` → the note, over its own A/D/S/R, in cents | Body: `from`→`to` Hz | Osc: `from`→`to` over `sweep`, shaped by `pitchCurve` (+ optional FM); Noise/ring/metal: filter sweeps |
 | **Filter** | One bandpass, on the `noise` waveform only, centred on the note | Biquad cascade on the burst (`slope`) | Biquad cascade per section, plus a tone filter after the shaper |
@@ -780,7 +780,7 @@ native synth output ──→ wet (GainNode) → delay send → echoBus → ... 
 
 - **Noise**: When the sound is mostly air — snares, claps, hats, shakers. The pitched body (triangle knock) tells a snare from a hiss. Taps make claps. This is the engine's own snare construction, extracted into presets.
 
-- **Drum Synth**: When you want to design a drum from first principles — a kick with a sine drop and a noise click, a snare with a triangle knock and a noise band, a tom that's all pitch. The drive shaper adds warmth or crunch. This is the Microtonic model: two sources, each fully enveloped, summed and shaped.
+- **KLNG8**: When you want to design a drum from first principles — a kick with a sine drop and a noise click, a snare with a triangle knock and a noise band, a tom that's all pitch. The drive shaper adds warmth or crunch. This is the Microtonic model: two sources, each fully enveloped, summed and shaped.
 
 - **AdditiveSynth**: When the sound is a *spectrum you place by hand* — an organ
   registration, a bell, glass. If you find yourself wanting a filter on it, you

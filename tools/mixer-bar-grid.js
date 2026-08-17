@@ -319,17 +319,67 @@ export function clampDelta(notes, dStep, dRow, { bars, rows, stepsPerBar = 16 })
   };
 }
 
-export function drawnSpan(field, at, len) {
+export function drawnSpan(field, at, len, from = 0) {
   if (!(len > 0)) return 1;
   const available = field.length - at;
   if (!(available > 0)) return 1;
-  let span = Math.min(len, available);
+  let span = Math.min(len, available - from);
   // A later note on the same pitch is a visual boundary, but it must not quantise
   // the note before it. Keep the real fractional length up to that boundary.
-  for (let k = 1; k < available; k++) {
-    if (field[at + k].on) { span = Math.min(span, k); break; }
+  //
+  // A boundary is a column filled at its own left edge — or, where the song is stored
+  // finer than it is drawn, the first OFF-GRID note standing part of the way across a
+  // column (see `displayCols`). Both are notes on this pitch and neither may be drawn
+  // through; `from` is how far into its own column the note being measured begins, so
+  // an inset is not clipped by the column start it hangs off.
+  for (let k = 0; k < available; k++) {
+    const cell = field[at + k];
+    const inner = k === 0
+      ? cell.insets?.find((x) => x.at > from)?.at
+      : (cell.on ? 0 : cell.insets?.[0]?.at);
+    if (inner == null) continue;
+    span = Math.min(span, k + inner - from);
+    break;
   }
   return Math.max(Number.EPSILON, span);
+}
+
+/**
+ * How many columns a bar is DRAWN in, given the grid it is STORED on.
+ *
+ * The two stopped being the same thing once a song could be stored at 48 or 96. One
+ * triplet bar puts a whole song on a 48-slot grid — the normaliser will not demote
+ * while that note exists, and it should not — but drawing forty-eight columns a bar for
+ * sixty-five bars makes a mostly-sixteenth song read as a triplet song. The argument is
+ * legibility: the roll should look like the music, not like the storage.
+ *
+ * So the SNAP decides, under three rules: the columns divide the stored grid evenly, so
+ * a column holds a whole number of slots; there are never fewer than sixteen, so a 1/4
+ * snap does not draw four columns a bar; and every snap division gets a line of its own,
+ * which is the difference between a grid and a decoration — a snap you cannot see is a
+ * snap you cannot aim at. That last one is a MULTIPLE, not a minimum: 1/8T divides a bar
+ * twelve ways, and sixteen columns is more than twelve without any of them landing on a
+ * triplet.
+ *
+ * Draw on 1/16 and a 48-slot song is sixteen columns a bar with its triplets shown as
+ * insets; reach for 1/16T and it is twenty-four, with the triplets on the lines and the
+ * straight sixteenths between them. Neither picture is a lie and neither loses a note —
+ * every slot is still addressable, and `snapSlots` is the one control over which of them
+ * get a line of their own.
+ *
+ * A panel that supplies no snap (the step grid) asks for one column per slot, which is
+ * exactly what it drew before any of this existed.
+ */
+export function displayCols(slots, snapSize = 1) {
+  const stored = RESOLUTIONS.includes(slots) ? slots : LEGACY_RESOLUTION;
+  const snap = Math.max(1, Math.round(Number(snapSize) || 1));
+  // Snap divisions to the bar. Whole for every pairing the pickers can reach, because
+  // the song is promoted to a grid that holds the snap before this is asked.
+  const divisions = Math.max(1, Math.ceil(stored / snap));
+  for (let c = LEGACY_RESOLUTION; c <= stored; c++) {
+    if (stored % c === 0 && c % divisions === 0) return c;
+  }
+  return stored;
 }
 
 /**
@@ -466,14 +516,33 @@ export function createBarGrid({
   const kof = (b, lane) => `${b}:${lane}`;
 
   let plan = [];
+  // ---- the two grids, and the one rule for telling them apart ----------------------
+  //
+  // `slots` is STORAGE: the address space of every read and write, and the unit of every
+  // POSITION — `dataset.step`, `globalStep`, the drag bounds, the paste anchor. `cols` is
+  // DISPLAY: what is drawn, one cell per column, chosen by the snap (see `displayCols`).
+  // Every WIDTH is in columns, because a width is a number of drawn cells: `cellSpan`,
+  // the `--len` multiplier, the length a resize hands back to `setCell`.
+  //
+  // Getting one backwards renders notes the wrong length, which looks like a data bug
+  // rather than a drawing one — so: positions divide by `slotUnit()`, widths by
+  // `colUnit()`, and `colStride` converts between them.
   let slots = 16;
+  let cols = 16;
+  let colStride = 1;
   const slotUnit = () => 16 / slots;
+  const colUnit = () => 16 / cols;
+  /** The column a storage slot falls in, and the slot that column begins on. */
+  const colOf = (i) => Math.floor(i / colStride);
+  const colStart = (i) => colOf(i) * colStride;
   const snapSize = () => Math.max(1, Math.round(Number(
     typeof snapSlots === 'function' ? snapSlots(slots) : snapSlots) || 1));
+  /** One snap division as a WIDTH — never less than a column, since a column is finer. */
+  const snapCols = () => snapSize() / colStride;
   const snappedStep = (step) => Math.max(0, Math.min(slots - 1,
     Math.round(step / snapSize()) * snapSize()));
   let range = { from: 0, to: 0 };
-  let cols = new Map();     // `${bar}:${step}` -> the cells in that column
+  let colCells = new Map();  // `${bar}:${slot of a column's start}` -> the cells in it
   let lit = [];             // the column the playhead is standing on
   let paint = null;         // the value a drag is painting, decided by its first cell
   let autoBar = null;       // first bar of the two-bar page being heard
@@ -727,7 +796,8 @@ export function createBarGrid({
     blockStep: ((plan[b]?.half ?? 0) * slots) + step,
     view: barView(b),
     });
-    return length > 0 ? length / slotUnit() : length;
+    // In COLUMNS: this is how wide the note is DRAWN, and a drawn cell is a column.
+    return length > 0 ? length / colUnit() : length;
   };
 
   const mutedIn = (b, lane) => (plan[b]?.off || []).includes(lane);
@@ -743,10 +813,10 @@ export function createBarGrid({
   /**
    * Stage one cell. Returns false when it already held that, so a drag can skip it.
    *
-   * `drawn` is a length in steps — what a resize is FOR. Absent (a paint, an erase,
-   * a keyboard press) the panel decides what happens to the length that was there,
-   * which for the roll means: a new note inherits nothing and an erased one takes its
-   * length with it. Nothing here knows which; `withLen` does.
+   * `step` is a STORAGE slot; `drawn` is a length in DRAWN COLUMNS — what a resize is
+   * FOR. Absent (a paint, an erase, a keyboard press) the panel decides what happens to
+   * the length that was there, which for the roll means: a new note inherits nothing and
+   * an erased one takes its length with it. Nothing here knows which; `withLen` does.
    */
   function setCell(row, b, step, on, drawn = null) {
     const key = kof(b, row.lane);
@@ -755,7 +825,7 @@ export function createBarGrid({
     const len = cur.lengths[step] ?? null;
     const nextValue = withCell(row, value, on);
     const nextLen = withLen(row, value, len, on,
-      drawn == null ? null : drawn * slotUnit());
+      drawn == null ? null : drawn * colUnit());
     const noteChanged = !Object.is(nextValue, value);
     const lenChanged = !sameLen(nextLen, len);
     if (!noteChanged && !lenChanged) return false;
@@ -913,7 +983,7 @@ export function createBarGrid({
       const rendered = Math.max(0, Number(value) / unit);
       const bar = Math.floor(rendered / slots);
       const step = Math.max(0, Math.min(slots - 1, Math.round(rendered - bar * slots)));
-      const left = fieldX(bar, step);
+      const left = fieldXFine(bar, step);
       if (left == null) continue;
       const pin = document.createElement('button');
       pin.type = 'button';
@@ -938,7 +1008,7 @@ export function createBarGrid({
           onLocatorMove?.(id, next);
           const nextBar = Math.floor(step / slots);
           const nextStep = step % slots;
-          const nextLeft = fieldX(nextBar, nextStep);
+          const nextLeft = fieldXFine(nextBar, nextStep);
           if (nextLeft != null) pin.style.left = `${nextLeft}px`;
         };
         const stop = () => {
@@ -995,7 +1065,7 @@ export function createBarGrid({
     if (!cells.length) return null;
     const rulerBox = (rulerEl || el).querySelector('.ssqbars')?.parentElement?.getBoundingClientRect();
     if (!rulerBox || ev.clientY < rulerBox.top || ev.clientY > rulerBox.bottom) return null;
-    const leftOf = (b) => cells[(b - range.from) * slots].getBoundingClientRect().left;
+    const leftOf = (b) => cells[(b - range.from) * cols].getBoundingClientRect().left;
     if (ev.clientX < leftOf(range.from)) return null;
     let lo = range.from;
     let hi = range.to;
@@ -1155,12 +1225,19 @@ export function createBarGrid({
       : `beat ${beat}, step ${i % per + 1} of ${per}`;
   };
 
+  /**
+   * Where a COLUMN sits in the count, as classes.
+   *
+   * `fine` is "not on a sixteenth", which is a question about musical position rather
+   * than about column index: a bar drawn in twenty-four columns has a sixteenth every
+   * third one, so it cannot be asked as `i % (cols / 16)` — that stride is not whole.
+   */
   const stepClasses = (b, i) => {
-    const beat = slots / 4;
+    const beat = cols / 4;
     return (i % beat === 0 ? ' beat' : '')
     + (Math.floor(i / beat) % 2 ? ' group-alt' : '')
     + (i % beat === 0 && i ? ' gap' : '')
-    + (i % (slots / 16) ? ' fine' : '')
+    + ((i * 16) % cols ? ' fine' : '')
     + (i === 0 ? ' downbeat' : '')
     + (i === 0 && b !== range.from ? ' barstart' : '');
   };
@@ -1182,6 +1259,10 @@ export function createBarGrid({
     slots = promoteResolution(
       RESOLUTIONS.includes(requestedSlots) ? requestedSlots : LEGACY_RESOLUTION,
       resolutionOf(d));
+    // And a column per SNAP division, which is not the same number — see `displayCols`.
+    // After `slots`, because the snap is asked in slots of the grid just chosen.
+    cols = displayCols(slots, snapSize());
+    colStride = slots / cols;
     barViews = new Map();
     plan = d.plan;
     if (wholeSong) {
@@ -1196,7 +1277,7 @@ export function createBarGrid({
         to: Math.max(0, Math.min(wanted.to, plan.length - 1)),
       };
     }
-    cols = new Map();
+    colCells = new Map();
     lit = [];
     el.textContent = '';
     const c = ctx();
@@ -1313,7 +1394,7 @@ export function createBarGrid({
       const picked = selectedBars?.() || null;
       for (let b = range.from; b <= range.to; b++) {
         const inSel = !!picked && b >= picked.from && b <= picked.to;
-        for (let i = 0; i < slots; i++) {
+        for (let i = 0; i < cols; i++) {
           const n = document.createElement('div');
           // The bars picked out, marked on the ruler itself rather than washed over the
           // field. The timeline says a selection the same way — a band across the numbers
@@ -1321,7 +1402,9 @@ export function createBarGrid({
           // also leaves the steps alone, which is what you are actually reading.
           n.className = 'ssqbarnum' + stepClasses(b, i) + (inSel ? ' insel' : '');
           n.dataset.bar = String(b);
-          n.dataset.step = String(i);
+          // The STORAGE slot the column begins on, not the column's index — everything
+          // that reads a cell's step back out is asking a question about the song.
+          n.dataset.step = String(i * colStride);
           const t = text(b, i);
           if (t != null) n.textContent = t;
           cellsEl.append(n);
@@ -1347,7 +1430,10 @@ export function createBarGrid({
     timeBand = null;
     locatorClip = null;
     strip('ssqbars', rulerLabel, (b, i) => (i === 0 ? (rulerLabel ? `${b + 1}` : `Bar ${b + 1}`) : null));
-    strip('ssqnums', 'Beat', (b, i) => (i % 4 === 0 ? `${i / 4 + 1}` : null));
+    // Four numbers to a bar, whatever it is drawn in. Counted off the columns rather
+    // than every fourth cell, which said 1-8 on a 32-slot song and would have said 1-12
+    // on a 48: beats are how you say where a hit is out loud, and there are four.
+    strip('ssqnums', 'Beat', (b, i) => (i % (cols / 4) === 0 ? `${i / (cols / 4) + 1}` : null));
 
     // ---- a row per whatever the panel says a row is
     const body = document.createElement('div');
@@ -1537,7 +1623,7 @@ export function createBarGrid({
     // and a guess that agrees with the real window by luck would otherwise keep its
     // guessed spacers — a field a few bars wide over a song of sixty.
     rendered = bars.estimated ? null : { ...win, barFrom: bars.from, barTo: bars.to };
-    cols = new Map();
+    colCells = new Map();
     lit = [];
     for (const old of [...bodyEl.querySelectorAll('.ssqrow, .ssqpad')]) old.remove();
     fixedBodyEl?.replaceChildren();
@@ -1663,32 +1749,61 @@ export function createBarGrid({
       for (let b = bars.from; b <= bars.to; b++) {
         const pair = readPair(b, row.lane);
         const off = mutedIn(b, row.lane);
-        for (let i = 0; i < slots; i++) {
+        for (let c = 0; c < cols; c++) {
+          const i = c * colStride;
+          // The slots this column covers but does not BEGIN on. A song stored finer than
+          // it is drawn keeps every one of them, so they are gathered here and drawn
+          // where they really are — a fraction of the way across the cell — rather than
+          // being folded onto a line they are not on. Ordered, so each is clipped
+          // against the next.
+          const insets = [];
+          for (let k = 1; k < colStride; k++) {
+            const value = pair.notes[i + k] ?? null;
+            if (!isOn(row, value)) continue;
+            insets.push({ at: k / colStride, step: i + k, value, len: pair.lengths[i + k] ?? null });
+          }
           const value = pair.notes[i] ?? null;
-          field.push({ b, i, off, value, len: pair.lengths[i] ?? null, on: isOn(row, value) });
+          field.push({ b, c, i, off, value, on: isOn(row, value), len: pair.lengths[i] ?? null, insets });
         }
       }
-      field.forEach((f, at) => {
-        const cell = document.createElement('button');
-        cell.type = 'button';
-        cell.className = 'ssqcell' + stepClasses(f.b, f.i)
-          + (f.on ? ' on' : '')
-          + (f.on && editedKey === noteKey(f.b, f.i, row.key) ? ' edited' : '')
+      /**
+       * One note, as a control — whether it stands on a column line or between two.
+       *
+       * An inset is a `.ssqcell` like any other, carrying its own bar, STORAGE step and
+       * row: that is the whole trick, and it is why selection, dragging, resizing, the
+       * marquee and the keyboard all reach an off-grid note without knowing one exists.
+       * `--at` is how far across its column it is drawn; `from` is the same number, for
+       * clipping it against whatever comes next.
+       */
+      const noteCell = (f, at, step, from, value, len) => {
+        const inset = from > 0;
+        const on = inset || f.on;
+        // A div where a column is a button, because an inset is drawn INSIDE its column
+        // and a button inside a button is not a thing a document may contain. It is still
+        // a control: same role, same focus, same Enter/Space, and the panel's own keydown
+        // handler is what performs the gesture either way.
+        const cell = document.createElement(inset ? 'div' : 'button');
+        if (inset) { cell.setAttribute('role', 'button'); cell.tabIndex = 0; }
+        else cell.type = 'button';
+        cell.className = 'ssqcell' + (inset ? ' ssqinset' : stepClasses(f.b, f.c))
+          + (on ? ' on' : '')
+          + (on && editedKey === noteKey(f.b, step, row.key) ? ' edited' : '')
           + (f.off ? ' muted' : '');
         cell.dataset.bar = f.b;
-        cell.dataset.step = f.i;
+        cell.dataset.step = step;
         cell.dataset.row = row.key;
-        cell.setAttribute('aria-pressed', f.on ? 'true' : 'false');
+        cell.setAttribute('aria-pressed', on ? 'true' : 'false');
         cell.setAttribute('aria-label',
-          `${row.label}, bar ${f.b + 1}, ${slotLabel(f.i)}`);
-        if (f.on) {
-          const span = drawnSpan(field, at, cellSpan(row, f.value, f.len, f.b, f.i));
+          `${row.label}, bar ${f.b + 1}, ${slotLabel(step)}`);
+        if (inset) cell.style.setProperty('--at', String(from));
+        if (on) {
+          const span = drawnSpan(field, at, cellSpan(row, value, len, f.b, step), from);
           if (Math.abs(span - 1) > 1e-9) cell.style.setProperty('--len', String(span));
           if (resizable(row)) cell.classList.add('sizeable');
-          const musicalLength = span * slotUnit();
+          const musicalLength = span * colUnit();
           const lengthText = noteLengthName(musicalLength);
           cell.dataset.tip = row.label;
-          cell.dataset.tipsays = `Bar ${f.b + 1}, ${slotLabel(f.i)} · `
+          cell.dataset.tipsays = `Bar ${f.b + 1}, ${slotLabel(step)} · `
             + `Length ${lengthText}`;
           // At taller pitch zooms a one-step note is wide enough for the name. Short
           // black-key rows stay clean until their measured height can carry readable
@@ -1702,12 +1817,23 @@ export function createBarGrid({
           }
           // A selection is a set of PLACES, so it redraws from the same strings after
           // every rebuild — nothing about it is held in an element.
-          if (selection.size && selection.has(noteKey(f.b, f.i, row.key))) cell.classList.add('sel');
+          if (selection.size && selection.has(noteKey(f.b, step, row.key))) cell.classList.add('sel');
+        }
+        return cell;
+      };
+      field.forEach((f, at) => {
+        const cell = noteCell(f, at, f.i, 0, f.value, f.len);
+        // Inside the column, because a column is the only box on screen that knows where
+        // its own left edge is: the field's geometry is measured, not multiplied, and an
+        // inset positioned in the flex row would need a pixel we deliberately never
+        // compute. `--at` is a fraction of its parent, which needs no measurement at all.
+        for (const mark of f.insets) {
+          cell.append(noteCell(f, at, mark.step, mark.at, mark.value, mark.len));
         }
         cells.append(cell);
         const col = kof(f.b, f.i);
-        if (!cols.has(col)) cols.set(col, []);
-        cols.get(col).push(cell);
+        if (!colCells.has(col)) colCells.set(col, []);
+        colCells.get(col).push(cell);
       });
       colPad(bars.padRight);
       rowEl.append(cells);
@@ -1793,14 +1919,31 @@ export function createBarGrid({
    */
   function fieldX(b, i) {
     const cells = rulerCells();
-    const cell = cells[(b - range.from) * slots + i];
+    const at = (b - range.from) * cols + colOf(i);
+    const cell = cells[at];
     // Against the first cell of the range, not against the offset parent — that is the
     // ruler, whose own x starts a track column and a seam away from where the field's
     // does. Cell zero IS x zero in both, by construction.
     if (cell) return cell.offsetLeft - cells[0].offsetLeft;
     const w = stepWidth();
     if (!(w > 0)) return null;
-    return ((b - range.from) * slots + i) * w;
+    return at * w;
+  }
+
+  /**
+   * The same x, but honest about where INSIDE a column a slot falls.
+   *
+   * `fieldX` answers in whole columns, which is what a band or a bar edge wants. The
+   * playhead and the locator pins want the real position: on a grid drawn coarser than
+   * the song is stored on, a third of the way across a cell is a place a note can be,
+   * and a cursor that waits at the column line until the next one is a cursor that has
+   * stopped telling you where the music is.
+   */
+  function fieldXFine(b, i) {
+    const x = fieldX(b, i);
+    if (x == null) return null;
+    const k = i - colStart(i);
+    return k ? x + (k / colStride) * stepWidth() : x;
   }
 
   /**
@@ -1810,7 +1953,7 @@ export function createBarGrid({
    * of them — and the one call to `getComputedStyle` stays out of the per-bar loop.
    */
   function barGap() {
-    const cell = rulerCells()[slots];
+    const cell = rulerCells()[cols];
     return cell ? (parseFloat(getComputedStyle(cell).marginLeft) || 0) : 0;
   }
 
@@ -1854,7 +1997,7 @@ export function createBarGrid({
     const total = tail ? tail.offsetLeft + tail.offsetWidth - origin : 0;
     // Nothing has ever been measured: there is no pixel to size a spacer in, so the
     // whole range is the only answer that keeps the field the width of the song.
-    if (cells.length < bars * slots || !(total > 0)) return whole;
+    if (cells.length < bars * cols || !(total > 0)) return whole;
     const estimated = !(measured > 0);
     const width = fieldPx > 0 ? fieldPx : total;
     // ---- off the RULER, bar by bar ------------------------------------------------
@@ -1870,7 +2013,7 @@ export function createBarGrid({
     // its own numbers.
     const gap = barGap();
     const edgeAt = (b) => {
-      const cell = cells[(b - range.from) * slots];
+      const cell = cells[(b - range.from) * cols];
       if (!cell) return null;
       return cell.offsetLeft - origin - (b === range.from ? 0 : gap);
     };
@@ -1926,8 +2069,8 @@ export function createBarGrid({
     // pitch window that happened to be visible before the selection.
     const rulerRoot = docked ? el : scroll;
     const ruler = [...rulerRoot.querySelectorAll('.ssqbars .ssqbarnum')];
-    const firstAt = (firstBar - range.from) * slots;
-    const lastAt = (lastBar - range.from + 1) * slots - 1;
+    const firstAt = (firstBar - range.from) * cols;
+    const lastAt = (lastBar - range.from + 1) * cols - 1;
     const startCell = ruler[firstAt];
     const endCell = ruler[lastAt] || startCell;
     if (startCell && endCell) {
@@ -2000,7 +2143,7 @@ export function createBarGrid({
     // erased or painted over as part of an existing note, so its stored phrasing must
     // survive. `addLength` is deliberately a callback: the piano roll owns the picker,
     // while the shared grid owns every way a tap can reach a new cell.
-    const drawn = paint && !isOn(row, value) ? addLength(row) / slotUnit() : null;
+    const drawn = paint && !isOn(row, value) ? addLength(row) / colUnit() : null;
     if (!setCell(row, b, i, paint, drawn)) return;
     cell.classList.toggle('on', paint);
     cell.classList.toggle('edited', paint);
@@ -2111,8 +2254,13 @@ export function createBarGrid({
       const away = Math.abs(y - centre);
       if (away < distance) { nearest = row; distance = away; }
     }
+    // The same time, on the nearest pitch. An off-grid note has a cell only on the row
+    // it is written on, so a row that has nothing there falls back to the column — which
+    // is the cell a press at that x would have found if the inset were not drawn over it.
     return nearest
-      ? (cellFor(nearest.key, direct.dataset.bar, direct.dataset.step) || direct)
+      ? (cellFor(nearest.key, direct.dataset.bar, direct.dataset.step)
+        || cellFor(nearest.key, direct.dataset.bar, colStart(Number(direct.dataset.step)))
+        || direct)
       : direct;
   };
 
@@ -2235,10 +2383,12 @@ export function createBarGrid({
       const step = cellStep % slots;
       if (b < range.from || b > range.to || step < 0 || step >= slots) continue;
       const row = rowList.find((candidate) => Number(candidate.midi) === Number(note.midi));
-      const cell = row ? cellFor(row.key, b, step) : null;
+      // A ghost, so a clip note landing between two columns shows in the column it lands
+      // in rather than not at all — the real write is at the slot, not at the cell.
+      const cell = row ? (cellFor(row.key, b, step) || cellFor(row.key, b, colStart(step))) : null;
       if (!cell) continue;
       cell.classList.add('paste-preview');
-      const visualLen = Math.max(0.25, (Number(note.length) || 1) / slotUnit());
+      const visualLen = Math.max(0.25, (Number(note.length) || 1) / colUnit());
       cell.style.setProperty('--paste-len', String(visualLen));
       pastePreviewCells.push(cell);
     }
@@ -2254,7 +2404,7 @@ export function createBarGrid({
       notes: notes.map((note) => ({
         midi: Number(note.row.midi),
         offset: (note.bar * slots + note.step - first) * slotUnit(),
-        length: Math.max(0.25, (Number(note.len) || 1) * slotUnit()),
+        length: Math.max(0.25, (Number(note.len) || 1) * colUnit()),
       })),
     };
   }
@@ -2280,7 +2430,7 @@ export function createBarGrid({
       const slot = Math.round(at / slotUnit());
       const b = Math.floor(slot / slots);
       const step = slot % slots;
-      if (setCell(row, b, step, true, Math.max(0.25, (Number(note.length) || 1) / slotUnit()))) {
+      if (setCell(row, b, step, true, Math.max(0.25, (Number(note.length) || 1) / colUnit()))) {
         changed++;
       }
       nextSelection.push(noteKey(b, step, row.key));
@@ -2476,7 +2626,8 @@ export function createBarGrid({
     const dRow = targetRow
       ? rowAtOf(targetRow.key) - rowAtOf(drag.row.key)
       : Math.round((e.clientY - drag.y) / r.height);
-    const rawStep = Math.round((e.clientX - drag.x) / r.width);
+    // Pixels give COLUMNS — a cell is one — and the bounds below count STORAGE slots.
+    const rawStep = Math.round((e.clientX - drag.x) / r.width) * colStride;
     const want = clampDelta(set,
       Math.round(rawStep / snapSize()) * snapSize(),
       dRow, bounds);
@@ -2591,7 +2742,7 @@ export function createBarGrid({
     const notes = scopeKind === 'all' ? allNotes() : selected();
     let changed = 0;
     for (const nt of notes) {
-      const next = quantiseLength(nt.len, step / slotUnit());
+      const next = quantiseLength(nt.len, step / colUnit());
       // If the effective length is already on the requested grid, leave an absent
       // Len entry absent. This keeps quantising an already-quantised legacy part a
       // no-op while still materialising a value when it actually overrides a voice
@@ -2612,7 +2763,9 @@ export function createBarGrid({
       for (const nt of notes) {
         const at = globalStep(nt.bar, nt.step);
         const next = events.find((event) => event > at);
-        if (next != null && setCell(nt.row, nt.bar, nt.step, true, next - at)) changed++;
+        // The gap between two notes is a distance in STORAGE slots; a length is in drawn
+        // columns.
+        if (next != null && setCell(nt.row, nt.bar, nt.step, true, (next - at) / colStride)) changed++;
       }
     } else if (kind === 'staccato' || kind === 'gate' || kind === 'scale') {
       const percent = kind === 'staccato' ? 50 : Number(value);
@@ -2621,7 +2774,7 @@ export function createBarGrid({
         if (setCell(nt.row, nt.bar, nt.step, true, next)) changed++;
       }
     } else if (kind === 'fixed') {
-      const visual = Number(value) / slotUnit();
+      const visual = Number(value) / colUnit();
       if (visual > 0) for (const nt of notes) {
         if (setCell(nt.row, nt.bar, nt.step, true, visual)) changed++;
       }
@@ -2635,7 +2788,8 @@ export function createBarGrid({
         if (setCell(nt.row, nt.bar, nt.step, true, piece)) changed++;
         const start = globalStep(nt.bar, nt.step);
         for (let i = 1; i < count; i++) {
-          const g = Math.round(start + piece * i);
+          // `piece` is a width in columns; where the next piece STARTS is in slots.
+          const g = Math.round(start + piece * colStride * i);
           if (g >= plan.length * slots) break;
           const b = Math.floor(g / slots); const step = g % slots;
           if (setCell(nt.row, b, step, true, piece)) changed++;
@@ -2953,7 +3107,7 @@ export function createBarGrid({
     const horizontal = dir.step !== 0;
     const moveBar = horizontal && ev.shiftKey && ev.altKey;
     if (moveBar) moveNotes(notes, dir.step * slots, 0);
-    else if (horizontal && (ev.shiftKey || ev.altKey)) resizeNotes(notes, dir.step * snapSize());
+    else if (horizontal && (ev.shiftKey || ev.altKey)) resizeNotes(notes, dir.step * snapCols());
     else moveNotes(notes, dir.step * snapSize(), dir.row * (ev.shiftKey ? 12 : 1));
     commit();
   });
@@ -3197,7 +3351,7 @@ export function createBarGrid({
       plan = [];
       barViews = new Map();
       range = { from: 0, to: 0 };
-      cols = new Map();
+      colCells = new Map();
       lit = [];
       autoBar = null;
       editedKey = null;
@@ -3229,9 +3383,11 @@ export function createBarGrid({
         // placed off the ruler's geometry — the field only builds the bars near the
         // viewport, so the column being heard has no cell of its own the moment you
         // scroll away from it, and the transport is exactly when you want to be able to.
-        lit = cols.get(kof(at.bar, at.step)) || [];
+        // The ring is a mark on a CELL, so it lands on the column the slot falls in; the
+        // line is free to stand between two columns and does — see `fieldXFine`.
+        lit = colCells.get(kof(at.bar, colStart(at.step))) || [];
         for (const c of lit) c.classList.add('playing');
-        const x = fieldX(at.bar, at.step);
+        const x = fieldXFine(at.bar, at.step);
         if (playhead && x != null) {
           playhead.hidden = false;
           playhead.style.left = `${x}px`;
@@ -3267,7 +3423,7 @@ export function createBarGrid({
         autoBar = window.from;
         build();
       }
-      lit = cols.get(kof(at.bar, at.step)) || [];
+      lit = colCells.get(kof(at.bar, colStart(at.step))) || [];
       for (const c of lit) c.classList.add('playing');
       // And move the line. Measured off the cell rather than computed from a step width,
       // because the beat and bar gaps are margins — a formula here would have to know
@@ -3294,6 +3450,9 @@ export function createBarGrid({
     /** And the bars an action reaches, for a menu that has to name them — see `scope`. */
     actionSpan,
     setRulerLabel(label) { rulerLabel = label; },
+    /** The grid the song is STORED on, and the one it is DRAWN in — see `displayCols`. */
+    slotsPerBar: () => slots,
+    colsPerBar: () => cols,
     get linked() { return linked; },
     get range() { return range; },
     get action() { return scope(); },

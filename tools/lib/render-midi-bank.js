@@ -6,7 +6,7 @@
 import {
   songBlocks, stepLen, toneLen, perNoteLengthLane, effectiveToneLength,
 } from '../../src/engine/lanes.js';
-import { SWING_STRAIGHT } from '../../src/data/arrangements.js';
+import { SWING_STRAIGHT, resolutionOf, LEGACY_RESOLUTION } from '../../src/data/arrangements.js';
 import { baseLane, isLayer } from '../../src/data/voices.js';
 
 const PPQ = 96;          // ticks per quarter note
@@ -219,7 +219,29 @@ export function midiBuffer(bank, {
   // Onsets move and lengths do not, which is the engine's bargain as well — see the
   // swing block in scheduleStep.
   const swingTicks = Math.round((TPS * ((swing || SWING_STRAIGHT) - SWING_STRAIGHT)) / 50);
-  const tickAt = (bi, s) => (bi * 32 + s) * TPS + (s % 2 ? swingTicks : 0);
+  // THE GRID THIS SONG IS WRITTEN ON. A block is two bars, so it holds `2 * resolution`
+  // slots — 32 at the sixteenth grid this walk used to assume outright, 96 at the triplet
+  // one. PPQ 96 covers every member exactly: 384 ticks to the bar divided by 16, 32, 48
+  // or 96 is 24, 12, 8 or 4, all whole, so nothing is lost to rounding at any of them.
+  //
+  // Reading `32` flat was also wrong for songs that already existed: a `resolution: 32`
+  // song has 64-slot blocks, so the walk stopped at the halfway point AND spread the
+  // first bar's slots over two bars' worth of ticks.
+  const resolution = resolutionOf(bank);
+  const slotsPerBlock = resolution * 2;
+  const ticksPerSlot = (TPS * LEGACY_RESOLUTION) / resolution;
+  // Swing, at any grid, by the same rule the engine uses (`AudioSys._swingOffset`): the
+  // offset is a statement about a PAIR of sixteenths, so a slot that is not a whole or
+  // half sixteenth is not in it and does not move. `halves` is the slot's position
+  // counted in half sixteenths — a whole number means it is on the grid swing knows.
+  const swingAt = (s) => {
+    if (!swingTicks) return 0;
+    const halves = (s * LEGACY_RESOLUTION * 2) / resolution;
+    if (!Number.isInteger(halves)) return 0;
+    const phase = ((halves % 4) + 4) % 4;
+    return phase === 2 ? swingTicks : phase % 2 ? Math.round(swingTicks / 2) : 0;
+  };
+  const tickAt = (bi, s) => (bi * slotsPerBlock + s) * ticksPerSlot + swingAt(s);
   const tracks = [];
   const trackNames = [];
   // What went into each track, so the CLI can say where a part actually starts. A
@@ -257,18 +279,18 @@ export function midiBuffer(bank, {
     blocks.forEach((b, bi) => {
       const lane = b[L.lane];
       if (!lane) return;
-      for (let s = 0; s < 32; s++) {
+      for (let s = 0; s < slotsPerBlock; s++) {
         const v = lane[s];
         if (!v) continue;
         const tick = tickAt(bi, s);
         // What the roll drew on this step, if anything: the note-off follows the
         // rectangle rather than the lane, and a chord's tones can differ.
-        const len = stepLen(b, L.lane, s);
+        const len = stepLen(b, L.lane, s, resolution);
         // chord lanes hold an array of simultaneous pitches; melodic lanes a scalar
         (Array.isArray(v) ? v : [v]).forEach((hz, i) => {
           if (!(hz > 0)) { deadPitches++; return; }
           const length = perNoteLengthLane(L.lane)
-            ? effectiveToneLength(b, L.lane, s, i)
+            ? effectiveToneLength(b, L.lane, s, i, resolution)
             : toneLen(len, L.dur(b), i);
           note(notes, ch(L.ch), midiNote(hz), tick, length * TPS, L.vel);
         });
@@ -312,7 +334,7 @@ export function midiBuffer(bank, {
     const notes = [];
     blocks.forEach((b, bi) => {
       if (!b[lane]) return;
-      for (let s = 0; s < 32; s++) {
+      for (let s = 0; s < slotsPerBlock; s++) {
         if (!b[lane][s]) continue;
         note(notes, 9, keyNum, tickAt(bi, s), TPS * 0.5, DRUM_VEL[baseLane(lane)] ?? 90);
       }

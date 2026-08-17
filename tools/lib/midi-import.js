@@ -34,8 +34,89 @@ import { parseMidi, tempoOf, notesOf } from './midi-parse.js';
 import { LANE_KEYS, lenKey, perNoteLengthLane } from '../../src/engine/lanes.js';
 import { baseLane, seamFor, MONO_LANES } from '../../src/data/voices.js';
 import { deskTail } from './song-source.js';
+import { LEGACY_RESOLUTION, RESOLUTIONS } from '../../src/data/arrangements.js';
+
+/** The grid a sixteenth triplet needs: LCM(16, 24). */
+const TRIPLET_RESOLUTION = 48;
 
 const STEPS_PER_BLOCK = 32;                    // two bars of 4/4 in sixteenths
+
+/**
+ * Does this performance hold real triplets, or is it just swung?
+ *
+ * The two look alike on a sixteenth grid — both put notes where no sixteenth is — and
+ * telling them apart is the whole job, because getting it wrong is expensive in both
+ * directions. Import a shuffled song at 48 and every off-beat becomes a triplet slot
+ * with no swing value to undo; import a triplet fill at 16 and the fill is gone.
+ *
+ * THE TELL: swing moves the second note of a PAIR of sixteenths later. At 66.7% that
+ * lands it exactly on the last of the three triplet positions, which is why a shuffle
+ * sounds like triplets — but nothing swing can do ever produces the MIDDLE one. On a
+ * 48-grid a pair of sixteenths is six slots and a triplet group sits on 0, 2 and 4;
+ * swing reaches 4 and never 2. So an onset at `slot % 6 === 2` is a note no swing
+ * setting could have written, and that is the evidence.
+ *
+ * Eighth and quarter triplets are caught by the same test — their groups land on slots
+ * 8 and 16, both of which are 2 mod 6.
+ *
+ * `minEvidence` is three groups' worth. One stray note near a middle position is a
+ * humanised performance, not a triplet, and should not re-grid a whole song.
+ */
+export function detectGrid(onsetTicks, ppq, { minEvidence = 3, tolerance = 0.02 } = {}) {
+  const empty = { resolution: LEGACY_RESOLUTION, evidence: 0, misfits: 0, best: LEGACY_RESOLUTION };
+  if (!(ppq > 0) || !onsetTicks.length) return empty;
+  const perSixteenth = ppq / 4;
+
+  // ---- 1. are triplets ALLOWED? -------------------------------------------------
+  // The middle-slot test above. Grids with a factor of three stay off the table until it
+  // passes, because a shuffled song fits 48 beautifully and must not be re-gridded onto it.
+  const perTripletSlot = perSixteenth / 3;
+  let middles = 0;
+  for (const tick of onsetTicks) {
+    const inSixteenths = tick / perSixteenth;
+    if (Math.abs(inSixteenths - Math.round(inSixteenths)) <= tolerance) continue;
+    const inSlots = tick / perTripletSlot;
+    const slot = Math.round(inSlots);
+    if (Math.abs(inSlots - slot) > tolerance * 3) continue;
+    if (((slot % 6) + 6) % 6 === 2) middles++;
+  }
+  const tripletsAllowed = middles >= minEvidence;
+
+  // ---- 2. how well does each grid actually FIT? ----------------------------------
+  // How many onsets no amount of rounding can place on it. `tolerance` is a share of a
+  // sixteenth, so it is the same physical window whatever the grid.
+  const misfitsAt = (resolution) => {
+    const perSlot = (LEGACY_RESOLUTION * perSixteenth) / resolution;
+    let bad = 0;
+    for (const tick of onsetTicks) {
+      const inSlots = tick / perSlot;
+      if (Math.abs(inSlots - Math.round(inSlots)) * (perSlot / perSixteenth) > tolerance) bad++;
+    }
+    return bad;
+  };
+
+  // ---- 3. climb only when it is worth it -----------------------------------------
+  // Coarsest first, stepping up only where the finer grid places at least `minEvidence`
+  // notes the current one cannot. A finer grid is never free — it multiplies scheduler
+  // ticks and widens every lane array — so "fits marginally better" is not a reason.
+  const candidates = RESOLUTIONS.filter((r) => tripletsAllowed || r % 3 !== 0);
+  const misfits = new Map(candidates.map((r) => [r, misfitsAt(r)]));
+  let chosen = candidates[0];
+  for (const r of candidates.slice(1)) {
+    if (misfits.get(chosen) - misfits.get(r) >= minEvidence) chosen = r;
+  }
+  return {
+    resolution: chosen,
+    evidence: middles,
+    // What is STILL wrong after choosing. Not zero for a 64th note, a grace note or a
+    // rubato performance — no grid we have can hold those — and the caller reports it
+    // rather than pretending the import was exact.
+    misfits: misfits.get(chosen),
+    // The best any available grid could have done, so the caller can tell "this song is
+    // finer than we can express" from "we picked badly".
+    best: [...misfits.entries()].reduce((a, b) => (b[1] < a[1] ? b : a))[0],
+  };
+}
 const PERC_BASES = new Set(['kick', 'snare', 'clap', 'rim', 'hats', 'ohats', 'crash', 'tom']);
 const CHORD_BASES = new Set(['chords', 'organChords']);
 // Layers are lanes, so every test about what a lane HOLDS asks the base: `chords3`
@@ -295,12 +376,24 @@ const put = (lane, step, value, len = null) => {
   at.set(step, pairs);
 };
 
+// The grid is chosen from the WHOLE performance before a single onset is rounded, because
+// the question "is this song triplety" is not answerable one note at a time.
+const grid = detectGrid(assignments.flatMap((a) => a.notes.map((nt) => nt.on)), parsed.ppq);
+const resolution = grid.resolution;
+// Ticks per SLOT of the chosen grid. A bar is four quarters, so `4 * ppq / resolution` —
+// which is the old `ppq / 4` exactly when the resolution is 16, and every song that was
+// importing correctly before still is.
+const ticksPerSlot = (4 * parsed.ppq) / resolution;
+const slotsPerBlock = STEPS_PER_BLOCK * (resolution / LEGACY_RESOLUTION);
+// A slot's worth of note length, in the sixteenths the bank format measures lengths in.
+const slotLength = LEGACY_RESOLUTION / resolution;
+
 let lastStep = 0;
 let moved = 0;
 const foreignDrums = new Map();
 for (const a of assignments) {
   for (const nt of a.notes) {
-    const exact = nt.on / ticksPerStep;
+    const exact = nt.on / ticksPerSlot;
     const step = Math.round(exact);
     if (Math.abs(exact - step) > 0.02) moved++;
     lastStep = Math.max(lastStep, step);
@@ -316,14 +409,16 @@ for (const a of assignments) {
       if (!a.kitMap.has(base)) a.kitMap.set(base, claim(base));
       put(a.kitMap.get(base), step, true);
     } else {
-      const off = Math.round((nt.off ?? nt.on) / ticksPerStep);
-      put(a.lane, step, nt.note, Math.max(1, off - step));
+      const off = Math.round((nt.off ?? nt.on) / ticksPerSlot);
+      // Lengths are in sixteenths whatever grid the ONSETS are on, so the slot count
+      // converts. At 16 that is a multiply by one and the arithmetic is untouched.
+      put(a.lane, step, nt.note, Math.max(slotLength, (off - step) * slotLength));
     }
   }
 }
 
 // ---- slice into two-bar blocks ---------------------------------------------
-const blockCount = Math.max(1, Math.ceil((lastStep + 1) / STEPS_PER_BLOCK));
+const blockCount = Math.max(1, Math.ceil((lastStep + 1) / slotsPerBlock));
 // A layer sits with the lane it is a copy of, in ordinal order — `lead`, `lead2`,
 // `lead3`, then the next lane. The same rule `deskLanes` sorts the strips by, so the
 // file reads in the order the desk shows it.
@@ -339,8 +434,8 @@ function tokens(lane, block) {
   const at = lanes.get(lane);
   const out = [];
   let any = false;
-  for (let i = 0; i < STEPS_PER_BLOCK; i++) {
-    const v = at.get(block * STEPS_PER_BLOCK + i);
+  for (let i = 0; i < slotsPerBlock; i++) {
+    const v = at.get(block * slotsPerBlock + i);
     if (v === undefined) { out.push('.'); continue; }
     any = true;
     if (isPerc(lane)) { out.push('C1'); continue; }
@@ -363,8 +458,8 @@ function blockLengths(lane, block) {
   const at = lanes.get(lane);
   const out = [];
   let any = false;
-  for (let i = 0; i < STEPS_PER_BLOCK; i++) {
-    const v = at.get(block * STEPS_PER_BLOCK + i);
+  for (let i = 0; i < slotsPerBlock; i++) {
+    const v = at.get(block * slotsPerBlock + i);
     if (v === undefined || v === true) { out.push(null); continue; }
     out.push(isChordal(lane) || v.length > 1 ? v.map((p) => p.len) : v[0].len);
     any = true;
@@ -397,7 +492,10 @@ for (const block of blocks) {
 }
 
 // ---- print it as source ----------------------------------------------------
-const bars = (t) => `${t.slice(0, 16).join(' ')} | ${t.slice(16).join(' ')}`;
+const bars = (t) => `${t.slice(0, t.length / 2).join(' ')} | ${t.slice(t.length / 2).join(' ')}`;
+// `seq('…')` defaults to two bars of sixteenths; anything finer has to say how many slots
+// it is, or it reads back the wrong length. Same rule `tools/lib/song-source.js` follows.
+const slotArg = (t) => (t.length === STEPS_PER_BLOCK ? '' : `, ${t.length}`);
 const laneLine = (lane, t) => {
   // Notes stacked on one step are written as their own notes, which need n(), so the
   // whole lane goes out as an array rather than a seq/chordSeq string. True of a chord
@@ -409,9 +507,9 @@ const laneLine = (lane, t) => {
       : isChordal(lane) ? `chord('${x}')` : `n('${x}')`));
     return `      ${lane}: [${cells.join(', ')}],`;
   }
-  if (isChordal(lane)) return `      ${lane}: chordSeq('${bars(t)}'),`;
-  if (isPerc(lane)) return `      ${lane}: seq('${bars(t)}').map((v) => !!v),`;
-  return `      ${lane}: seq('${bars(t)}'),`;
+  if (isChordal(lane)) return `      ${lane}: chordSeq('${bars(t)}'${slotArg(t)}),`;
+  if (isPerc(lane)) return `      ${lane}: seq('${bars(t)}'${slotArg(t)}).map((v) => !!v),`;
+  return `      ${lane}: seq('${bars(t)}'${slotArg(t)}),`;
 };
 
 const body = sections.map((section, i) => {
@@ -523,7 +621,7 @@ export const group = "imported";
 
 export const bank = {
   bpm: ${bpm},
-  musicTrim: 0.7,
+${resolution === LEGACY_RESOLUTION ? '' : `  resolution: ${resolution},\n`}  musicTrim: 0.7,
   sections: [
 ${body}
   ],
@@ -544,7 +642,13 @@ ${deskTail({ mix })}`;
       notes: a.notes.length,
     })),
     layers, mix,
-    moved, foreignDrums: [...foreignDrums.entries()].map(([k, c]) => `${k} x${c}`),
+    moved, resolution, tripletEvidence: grid.evidence,
+    // How many onsets no grid we have could place exactly, and whether a finer one would
+    // have helped. `unplaced > 0` with `bestGrid === resolution` means the music is finer
+    // than the format goes — a 64th, a grace note, an unquantised performance — and not
+    // that the wrong grid was chosen.
+    unplaced: grid.misfits, bestGrid: grid.best,
+    foreignDrums: [...foreignDrums.entries()].map(([k, c]) => `${k} x${c}`),
     unknownLanes: laneKeys.filter((l) => !LANE_KEYS.includes(l) && !seamFor(l)),
     fromFileTempo: fileBpm != null,
     ppq: parsed.ppq, format: parsed.format,

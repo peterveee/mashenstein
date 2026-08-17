@@ -653,6 +653,24 @@ const adsr = (path, { sustain = true } = {}) => [
 ];
 
 /**
+ * The filter controls on a Tone MonoSynth, optionally rooted under one of DuoSynth's
+ * internal voices.  DuoSynth is two MonoSynths joined at the pitch input, so exposing
+ * this same small set on both voices is the honest model: there is no separate Duo
+ * filter hiding behind the two voice envelopes.
+ */
+const monoFilterRows = (prefix = '') => [
+  pick(`${prefix}filter.type`, 'TYPE', FILTER_TYPES, 'lowpass'),
+  pick(`${prefix}filter.rolloff`, 'SLOPE', [-12, -24, -48], -12),
+  cutoffHz(`${prefix}filterEnvelope.baseFrequency`, 'CUTOFF', 200),
+  resQ(`${prefix}filter.Q`, 1),
+  // Tone's FrequencyEnvelope expresses its range as octaves above/below the base
+  // frequency. Keep this bipolar, like the MRDR-3 filter envelope, so closing sweeps
+  // are available as well as the familiar opening sweep.
+  n(`${prefix}filterEnvelope.octaves`, 'ENV AMOUNT', -ENV_OCT_MAX, ENV_OCT_MAX, 0.1,
+    semis, 0, 'oct', null, { origin: 0, scale: ENV_OCT_SCALE }),
+];
+
+/**
  * What each synth class offers, grouped the way you would reach for it: what makes
  * the sound, then what shapes it.
  *
@@ -1367,33 +1385,7 @@ const SYNTH_GROUPS = {
   MonoSynth: [
     { title: 'Oscillator', rows: osc('oscillator', 'sawtooth') },
     { title: 'Amp Envelope', rows: adsr('envelope') },
-    // Where the filter SITS, all in one place: its type and slope, the cutoff it
-    // starts from, how hard it resonates and how far the envelope opens it.
-    // `baseFrequency` and `octaves` are Tone's, and Tone files them under the
-    // envelope — but they are not timing, they are the range the envelope moves
-    // the filter ACROSS, and reading them next to an attack in milliseconds
-    // told you nothing about either.
-    { title: 'Filter', rows: [
-      pick('filter.type', 'TYPE', FILTER_TYPES, 'lowpass'),
-      pick('filter.rolloff', 'SLOPE', [-12, -24, -48], -12),
-      cutoffHz('filterEnvelope.baseFrequency', 'CUTOFF', 200),
-      resQ('filter.Q', 1),
-      // Filter envelope depth — the Roland ENV AMOUNT, in octaves. Zero is no
-      // modulation (the envelope does nothing and the filter stays at CUTOFF).
-      //
-      // BIPOLAR, exactly like the Global Filter's row, and for the same ten-octave reach
-      // and taper — so the two pots read alike, which is the whole rule for a control
-      // that appears twice. It was positive-only on the belief that Tone can only sweep
-      // UP from the cutoff. It cannot: `FrequencyEnvelope` sets its scale's top to
-      // `baseFrequency * 2 ** octaves`, so a NEGATIVE octaves puts the top below the base
-      // and the envelope closes the filter instead of opening it. `tpPizz` has been
-      // storing -1.2 all along — a plucked string whose filter shuts as the note starts,
-      // which is the sound — and this pot could not reach it: the panel showed 0 and
-      // would have written 0 the first time anyone touched the knob.
-      n('filterEnvelope.octaves', 'ENV AMOUNT', -ENV_OCT_MAX, ENV_OCT_MAX, 0.1, semis, 0,
-        'oct', null, { origin: 0, scale: ENV_OCT_SCALE }),
-    ] },
-    // Left with what an envelope actually is: four times.
+    { title: 'Filter', rows: monoFilterRows() },
     { title: 'Filter Envelope', rows: adsr('filterEnvelope') },
   ],
   FMSynth: [
@@ -1422,14 +1414,29 @@ const SYNTH_GROUPS = {
       // The interesting range is the sliver either side of 1: two voices a few
       // thousandths apart is the detune this class is for, and a whole-number
       // harmonicity is an interval, which is a different instrument.
-      n('harmonicity', 'RATIO', 0.9, 2.1, 0.001, fixed(3), 1),
+      n('harmonicity', 'RATIO', 0.9, 2.1, 0.0001, fixed(4), 1, '', null, {
+        // Near-unison Duo patches live in the first few thousandths above 1. A cubic
+        // response puts that useful range under the hand instead of spending almost all
+        // of the knob on octave-ish intervals, while the four-decimal step keeps 1.003
+        // (about +5.2 cents on voice 1) directly reachable by drag or type-in.
+        scale: 3,
+        tip: 'Voice 1 pitch ÷ Voice 0 pitch. 1.000 = unison; 1.003 ≈ +5.2 cents.',
+      }),
       n('vibratoAmount', 'VIBRATO', 0, 1, 0.01, fixed(2), 0.5, '', null,
         { scale: VIB_DEPTH_SCALE }),
       n('vibratoRate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz', null,
         { scale: SLOW_END_SCALE }),
     ] },
     { title: 'Voice 1', rows: [...osc('voice0.oscillator', 'sawtooth'), ...adsr('voice0.envelope')] },
+    { title: 'Voice 1 Filter', rows: [
+      ...monoFilterRows('voice0.'),
+      ...adsr('voice0.filterEnvelope'),
+    ] },
     { title: 'Voice 2', rows: [...osc('voice1.oscillator', 'square'), ...adsr('voice1.envelope')] },
+    { title: 'Voice 2 Filter', rows: [
+      ...monoFilterRows('voice1.'),
+      ...adsr('voice1.filterEnvelope'),
+    ] },
   ],
   MembraneSynth: [
     { title: 'Drum', rows: [
@@ -1546,7 +1553,7 @@ const BODY_DEFAULT = { type: 'triangle', from: 210, to: 140, decay: 0.06, gain: 
 const FM_INDEX_SEED = 0.2;
 
 /**
- * A drum-synth preset: the Microtonic construction. Two sources, each with its own
+ * A KLNG8 preset: the Microtonic construction. Two sources, each with its own
  * envelope, summed into an optional drive — see `_playDrum`. Both sections can be
  * switched off (a tom is all osc, a clap all noise), so both are optional groups;
  * a preset with neither is silent, and a silent preset is refused at save.
@@ -2082,7 +2089,7 @@ const commonRows = (voice = {}) => noteOrder(withParts([
   // The one row here every path honours: `trim` is folded into the note's gain in
   // scheduleStep, BEFORE the rack is asked to play anything, so it lands on a hat
   // exactly as it lands on a lead. Which is why it is also the only thing left on a
-  // one-shot's Note card (plus Drum Synth's sound-level TUNE directly below it).
+  // one-shot's Note card (plus KLNG8's sound-level TUNE directly below it).
   n('$trim', 'TRIM', -6, 6, 0.1, fixed(1), 0, 'dB'),
   // Drum tuning is a property of the sound, not of the note that triggers it. It is
   // optional and neutral at zero so existing drums remain source-identical until touched.
@@ -2129,31 +2136,37 @@ const commonRows = (voice = {}) => noteOrder(withParts([
     // SYNC leaves KEY MODE holding half a line by itself, and without this VIB DEPTH
     // flows into the other half — the vibrato beginning mid-row beside a heading it has
     // nothing to do with, which is the interleaving that moving it down here undid.
-    n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi',
-      null, { scale: VIB_DEPTH_SCALE, startRow: true }),
-    n('$vibrato.rate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz',
-      vibratoOn, { scale: SLOW_END_SCALE }),
-    // The third of the three, beside the two it belongs with rather than stranded on one
-    // synth's own card. Every NATIVE path measures the onset from its own note-on and so
-    // honours it; the Tone path's LFO lives in the pool and free-runs across notes, with
-    // no note-on for a delay to be measured from — hence the `when`, which greys it there
-    // rather than offering a control that would silently do nothing.
-    envTime('$vibrato.delay', 'VIB DELAY', 0, secs, 0, 's',
-      (v) => vibratoOn(v) && NATIVE_SYNTHS.includes(v?.synth)),
-    // The ensemble control. At zero every unison voice wobbles at one rate in one phase,
-    // which is one singer through a chorus however many oscillators are running; wound up,
-    // each voice takes its own rate and its own starting phase and the stack becomes a
-    // SECTION. Scattered per unison index rather than per layer, deliberately — voice 2 is
-    // the same singer in every layer, because a person has one larynx feeding all of their
-    // formants, and scattering per layer pulls one voice apart instead of adding voices.
-    //
-    // MRDR-3 with unison: it is the only path that builds multiple vibrato voices to
-    // de-correlate. A single-voice MRDR-3 patch and the pooled classes have nothing for
-    // SPREAD to separate.
-    n('$vibrato.spread', 'VIB SPREAD', 0, 1, 0.01, fixed(2), 0, '',
-      (v) => vibratoOn(v) && hasUnison(v),
-      { tip: 'How far the unison voices drift apart in rate and phase — 0 is one wobble '
-          + 'on every voice, 1 is a room full of singers who are not counting together' }),
+    // DuoSynth already owns a real vibrato LFO inside Tone.DuoSynth. Showing the generic
+    // `$vibrato` rows here as well made two different pitch modulators look like one
+    // feature, and editing both could stack them. Keep the Duo controls on its own card;
+    // every other synth uses the shared preset-vibrato layer below.
+    ...(voice.synth === 'DuoSynth' ? [] : [
+      n('$vibrato.depth', 'VIB DEPTH', 0, 12, 0.01, fixed(2), 0, 'semi',
+        null, { scale: VIB_DEPTH_SCALE, startRow: true }),
+      n('$vibrato.rate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz',
+        vibratoOn, { scale: SLOW_END_SCALE }),
+      // The third of the three, beside the two it belongs with rather than stranded on one
+      // synth's own card. Every NATIVE path measures the onset from its own note-on and so
+      // honours it; the Tone path's LFO lives in the pool and free-runs across notes, with
+      // no note-on for a delay to be measured from — hence the `when`, which greys it there
+      // rather than offering a control that would silently do nothing.
+      envTime('$vibrato.delay', 'VIB DELAY', 0, secs, 0, 's',
+        (v) => vibratoOn(v) && NATIVE_SYNTHS.includes(v?.synth)),
+      // The ensemble control. At zero every unison voice wobbles at one rate in one phase,
+      // which is one singer through a chorus however many oscillators are running; wound up,
+      // each voice takes its own rate and its own starting phase and the stack becomes a
+      // SECTION. Scattered per unison index rather than per layer, deliberately — voice 2 is
+      // the same singer in every layer, because a person has one larynx feeding all of their
+      // formants, and scattering per layer pulls one voice apart instead of adding voices.
+      //
+      // MRDR-3 with unison: it is the only path that builds multiple vibrato voices to
+      // de-correlate. A single-voice MRDR-3 patch and the pooled classes have nothing for
+      // SPREAD to separate.
+      n('$vibrato.spread', 'VIB SPREAD', 0, 1, 0.01, fixed(2), 0, '',
+        (v) => vibratoOn(v) && hasUnison(v),
+        { tip: 'How far the unison voices drift apart in rate and phase — 0 is one wobble '
+            + 'on every voice, 1 is a room full of singers who are not counting together' }),
+    ]),
   ]),
   // LEGATO and MONO hold one instance for the whole lane, so GLIDE has a pitch to slide
   // from. LEGATO keeps the current envelope running across an overlapping note; MONO
@@ -2300,7 +2313,15 @@ export function panelSpec(voice = {}) {
 // ---- the pilot Quick surfaces ----------------------------------------------
 
 const QUICK_SYNTHS = new Set(['MRDR-3', 'drum']);
-const isQuickVoice = (voice) => QUICK_SYNTHS.has(voice?.kind === 'drum' ? 'drum' : voice?.synth);
+/**
+ * The presets built for a Quick surface — which are exactly the presets that have a
+ * full window behind it. One set, because the two go together: a Quick surface is only
+ * worth drawing when there is somewhere to put the controls it leaves out, and the
+ * ADVANCED button that opens that window is gated on this. Exported so the desk can ask
+ * the same question before offering **Edit Advanced** — see `editVoice` in
+ * tools/mixer-entry.js.
+ */
+export const isQuickVoice = (voice) => QUICK_SYNTHS.has(voice?.kind === 'drum' ? 'drum' : voice?.synth);
 
 const stageDefault = (stage) => ({ attack: 0.01, decay: 1, release: 0.015 }[stage] ?? 0);
 
@@ -2864,7 +2885,7 @@ const FULL_TITLES = {
 const MIXER_ROWS = ['ratio', 'detune', 'unison', 'spread', 'stereo', 'len', 'delay'];
 
 /**
- * THE DRUM SYNTH'S FULL WINDOW: six tall columns, one band, no scroll.
+ * THE KLNG8'S FULL WINDOW: six tall columns, one band, no scroll.
  *
  * It was nine cards on three bands, each card a third of the window wide. A third of
  * 1600px is 525 pixels, which is eight pot columns — so every section drew its four
@@ -3015,7 +3036,7 @@ function buildDrumFullLayout(voice, problems) {
     if (where.length > 1) problems.push(`PLACED ${where.length}×  ${label(path)}  ${path}  (${where.join(', ')})`);
     if (!seen.has(path)) problems.push(`PLACED BUT NOT A ROW  ${path}`);
   }
-  return { synth: 'Drum Synth', kind: 'drum', layer: 1, total: seen.size, bands };
+  return { synth: 'KLNG8', kind: 'drum', layer: 1, total: seen.size, bands };
 }
 
 export function fullLayout(voice = {}, { layer = 1 } = {}) {
@@ -3966,7 +3987,7 @@ export function createVoiceEditor({
    * `groupCard`. It is the whole card that changes when the count does: the readout, the
    * rows, the walks and every per-hit pot appear and disappear with it, so the stepper
    * cannot redraw itself in place. Calling the strip's `build` directly is what it used
-   * to do, and the strip is the surface this is least often reached from — a Drum Synth
+   * to do, and the strip is the surface this is least often reached from — a KLNG8
    * strip opens on Quick, and in the full window the card lives behind the Master card's
    * TAPS door, which redraws its own popover body so the panel does not shut under the
    * button you just pressed.
@@ -4733,12 +4754,12 @@ export function createVoiceEditor({
     if (v.kind === 'drum' && createFull && fullLayout(v)) {
       const kind = document.createElement('span');
       kind.className = 'vesynth veclass';
-      kind.textContent = 'Drum Synth';
+      kind.textContent = 'KLNG8';
       sub.append(synLabel('SYNTH'), kind);
       const open = document.createElement('button');
       open.className = 'devlink veopen';
       open.textContent = 'ADVANCED';
-      open.title = 'Open the full-window Drum Synth editor — every control on one screen';
+      open.title = 'Open the full-window KLNG8 editor — every control on one screen';
       open.onclick = () => openFull();
       sub.append(open);
     }

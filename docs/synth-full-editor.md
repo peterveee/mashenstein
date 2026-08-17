@@ -1,13 +1,13 @@
-# The full-window MRDR-3 and Drum Synth editor
+# The full-window MRDR-3 and KLNG8 editor
 
 Handoff note. Written 2026-08-08, at the end of the session that built it.
 
 ## What it is
 
-MRDR-3 and Drum Synth's preset editors have two surfaces now. The **strip panel** (`#voiceedit`) remains
+MRDR-3 and KLNG8's preset editors have two surfaces now. The **strip panel** (`#voiceedit`) remains
 366px, three channel strips wide, and one long scroll; its pilot surfaces show Quick controls
 and an **ADVANCED** button. That button opens the shared **full window** (`#synthfull`): MRDR-3
-holds the same 169 controls in a six-column grid, while Drum Synth uses the same renderer for
+holds the same 169 controls in a six-column grid, while KLNG8 uses the same renderer for
 its own source cards.
 
 It came from a Claude Design handoff (`README.md` plus an interactive prototype, in Peter's
@@ -141,7 +141,7 @@ Counts today: **167 controls, 97 on screen at once, 35 per hidden layer.** (Prin
 `node tests/synth-full-layout.js`, which derives them — never type them here without
 running it.)
 
-Drum Synth uses the same renderer without MRDR's layer mixer, and now in **one band of six
+KLNG8 uses the same renderer without MRDR's layer mixer, and now in **one band of six
 single-column cards** — OSCILLATOR, FM, NOISE, RING, METAL and MASTER (with DRIVE and
 HUMANISE as sub-sections, and TAPS behind a door in its header). It was nine cards on three bands, each
 two columns wide; at 525px a card seats eight pot columns, so every section drew its source

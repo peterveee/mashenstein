@@ -1,17 +1,17 @@
-# Pilot Quick Editors: MRDR-3 and Drum Synth
+# Pilot Quick Editors: MRDR-3 and KLNG8
 
 ## Summary
 
 Implement Quick/Advanced editing for only two synths first:
 
 - **MRDR-3:** complex melodic/layered test case.
-- **Drum Synth:** variable multi-source percussion test case.
+- **KLNG8:** variable multi-source percussion test case.
 
 Other synth types retain their current detailed editor until the pilot has been used and evaluated.
 
 Quick contains a compact set of pots in the existing four-column grid. Advanced reuses the repo's
 existing non-modal full-window editor (`#synthfull`) and its detailed controls; this pilot
-extends that window from MRDR-3 to Drum Synth. Both views edit the same live preset and share
+extends that window from MRDR-3 to KLNG8. Both views edit the same live preset and share
 audition, Save, Revert and level measurement.
 
 There are no hidden macro offsets:
@@ -62,7 +62,7 @@ Filter rules:
 - If a Quick-created Global Filter returns to neutral without any Advanced edits, it is removed again. Once changed in Advanced it remains an ordinary section.
 - The Advanced `LFO` card is named **Mod LFO**. Mod LFO and per-layer PWM remain Advanced-only.
 
-## Drum Synth Quick Editor
+## KLNG8 Quick Editor
 
 Maximum eight pots:
 
@@ -102,7 +102,7 @@ Exact behaviour:
 ## UI and Integration
 
 - Add declarative pilot Quick specifications beside the current detailed definitions in `tools/mixer-voice-editor.js`.
-- Default MRDR-3 and Drum Synth to Quick. Add one clear **Advanced** button; Advanced closes with its `✕` or Escape.
+- Default MRDR-3 and KLNG8 to Quick. Add one clear **Advanced** button; Advanced closes with its `✕` or Escape.
 - Lazily construct the existing full-window editor only when requested. It uses no backdrop and keeps mixer playback and controls interactive.
 - Preserve the editor’s strip-docked, library-docked and floating lifecycles through the shared full-window surface.
 - Use the existing `state.voice`, `touched()`, refresh, measurement, song-local draft and Save/Revert paths. No parallel editor state.
