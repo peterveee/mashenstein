@@ -116,6 +116,16 @@ assert(ring.slots.length <= Math.max(poolBefore, ring.capacity),
 run.takeHit = () => {};
 for (let i = 0; i < 240 && run.dead; i++) frames(1);
 assert(!run.dead, 'the hero is alive and the world is running before the record is read');
+// AND THE RING HAS SOMETHING IN IT.
+//
+// The death flushed above resets the ring, and the loop exits on the frame the hero
+// revives — which can be before a single capture has run. `length` is then 0, and the
+// newest-record index `(start + length - 1) % capacity` is `-1`: `slots[-1]` is
+// undefined, and this died reading `camX` off it rather than failing an assertion. The
+// engine's own `pop()` guards on an empty ring; this read did not. Measured at 4 failures
+// in 40 runs before this, and the probe that found it printed `length=0 start=0 dead=false`.
+for (let i = 0; i < 240 && !ring.length; i++) frames(1);
+assert(ring.length > 0, `the ring holds a record to read (${ring.length})`);
 // A reset during the window would silently invalidate everything below, so it
 // is caught and named rather than left to surface as three confusing aliasing
 // failures. If this ever fires, the assertions after it mean nothing.

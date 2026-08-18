@@ -30,7 +30,7 @@ import { VOICES, VOICE_CATEGORIES } from '../src/data/voices.js';
 // The same K-weighted mean the server measures a save with. Pure arithmetic, no node
 // imports, so it bundles into the desk like anything else in tools/lib.
 import { noteLevel } from './lib/loudness.js';
-import { VoiceRack } from '../src/engine/voices.js';
+import { VoiceRack, MAX_UNISON } from '../src/engine/voices.js';
 import { heavyUi } from './lib/heavy-ui.js';
 // The fold mark, shared with the keyboard's, so the two put-away buttons on the
 // library's workspace are provably one control rather than two that look alike.
@@ -605,10 +605,12 @@ const osc = (path, def = 'sine', { voicings = true } = {}) => {
         write: (v, o) => joinOsc(o, readShape(v)) },
       // UNISON, the same word the layer cards use for the same idea — how many detuned
       // copies of the oscillator sound at once. STACK was this panel's private name for it.
-      // To 12: Tone's FatOscillator takes any count, and `tpAlienChorus` is built on 10 of
-      // them. An 8 stop did not save the CPU — the preset already spends it — it only
-      // stopped the panel from admitting what the preset was.
-      n(`${path}.count`, 'UNISON', 1, 12, 1, fixed(0), 3, '', (v) => readVoicing(v) === 'fat'),
+      // To MAX_UNISON, which is where MRDR-3's layers and TNGR-2's oscillators stop as
+      // well. It used to run to 12 because Tone's FatOscillator takes any count and
+      // `tpAlienChorus` was built on 10 of them — the panel was admitting what the preset
+      // was. The preset came down instead, and the engine now caps what it is handed, so a
+      // stop above the ceiling would only be a pot that moves and does nothing.
+      n(`${path}.count`, 'UNISON', 1, MAX_UNISON, 1, fixed(0), 3, '', (v) => readVoicing(v) === 'fat'),
       n(`${path}.spread`, 'SPREAD', 0, 100, 1, fixed(0), 20, 'ct', (v) => readVoicing(v) === 'fat'),
     ] : []),
   ];
@@ -728,7 +730,7 @@ const tngrOsc = (key, level) => {
     // THE STACK: how many copies of this oscillator there are, how far apart they are
     // tuned, and how wide they sit. Two of the three are dead at UNISON 1, so they read as
     // one idea and are greyed as one.
-    n(at('unison'), 'UNISON', 1, 4, 1, fixed(0), 1, '', null, { startRow: true }),
+    n(at('unison'), 'UNISON', 1, MAX_UNISON, 1, fixed(0), 1, '', null, { startRow: true }),
     n(at('spread'), 'SPREAD', 0, 50, 1, fixed(0), 12, 'ct', stacked),
     n(at('stereo'), 'STEREO', 0, 1, 0.01, fixed(2), 0, '', stacked),
     // AND THE MOVEMENT, LAST. Where in the table this oscillator starts, and how far it
@@ -1018,7 +1020,7 @@ const layerGroups = () => {
             tip: 'How long this layer’s note is, against the drawn one — 62% dies '
               + 'inside the note, 100% is the note as written, 108% overhangs it. '
               + 'The layer’s own envelope times are measured against it.' }),
-        n(`$${p}.unison`, 'UNISON', 1, 5, 1, fixed(0), 1),
+        n(`$${p}.unison`, 'UNISON', 1, MAX_UNISON, 1, fixed(0), 1),
         n(`$${p}.spread`, 'SPREAD', 0, 100, 1, fixed(0), 20, 'ct',
           (v) => (getAt(v, `$${p}.unison`) ?? 1) > 1),
         // The third member of the unison family: SPREAD detunes the voices, STEREO places

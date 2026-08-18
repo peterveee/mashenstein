@@ -981,7 +981,22 @@ export function createVoiceLibrary({
 
     function drawList() {
       results.textContent = '';
-      const groups = grouped();
+      let groups = grouped();
+      // Searching for a sound should not strand the user inside the synth that happened
+      // to be selected for the previous preset. If the query has no hit there but does
+      // have one under the remaining library filters, broaden to Any synth and keep the
+      // query intact. The dropdown changes with it, so the widened search is visible.
+      if (!groups.length && query.trim() && synth !== 'any') {
+        const previousSynth = synth;
+        synth = 'any';
+        const broadened = grouped();
+        if (broadened.length) {
+          syn.value = 'any';
+          groups = broadened;
+        } else {
+          synth = previousSynth;
+        }
+      }
       if (!groups.length) {
         const none = document.createElement('div');
         none.className = 'fxgroup voicesearch-none';

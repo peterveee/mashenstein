@@ -1177,10 +1177,15 @@ assert(/const engineOf = \(v\) => v\?\.kind === 'drum' \? 'drum' : v\?\.synth \|
   && /if \(!pending && selectedEngine && initialEngines\.includes\(selectedEngine\)\) engine = selectedEngine/.test(entry)
   && /className = 'fxsel voiceengine'/.test(entry)
   && /keepEngine = \(v\) => engine === 'all' \|\| engineOf\(v\) === engine/.test(entry)
+  && /if \(q && !shown && engine !== 'all'\)[\s\S]*?engine = 'all';[\s\S]*?refreshEngineOptions\(\);[\s\S]*?draw\(query\);/.test(entry)
   && /if \(pending && !drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(entry)
   && !/entry\(null, 'Engine default'/.test(entry)
   && /#voicepicker \.voiceengine \{[^}]*width: 132px[^}]*flex: 0 0 132px/s.test(shell),
   'the compact picker shows the selected engine, hides kind filters on existing tracks, and has no Engine default row');
+assert(/let groups = grouped\(\);/.test(librarySource)
+  && /if \(!groups\.length && query\.trim\(\) && synth !== 'any'\)/.test(librarySource)
+  && /synth = 'any';[\s\S]*?const broadened = grouped\(\);[\s\S]*?syn\.value = 'any';/.test(librarySource),
+  'a no-hit preset search broadens the current synth filter to Any synth while keeping the query');
 assert(/searchInput = search/.test(librarySource)
   && /searchInput\?\.focus\(\{ preventScroll: true \}\)/.test(librarySource),
   'opening the preset library focuses the Search presets field');
@@ -2236,13 +2241,17 @@ assert(/\.arrrow \{[^}]*flex-direction:\s*column[^}]*height:\s*var\(--arrrow\)[^
   && /\.arrrow-main \{[^}]*flex:\s*0 0 var\(--arrrow\)/s.test(shell)
   && /--arrhead-gap:\s*8px/.test(shell)
   && /--arrnum:\s*18px/.test(shell)
-  && /\.arrhead-cell \{[^}]*width:\s*calc\(var\(--arrname\) \+ var\(--gut\) \+ 4px - var\(--foldx\)\)[^}]*display:\s*grid[^}]*grid-template-columns:\s*var\(--arrnum\) 17px var\(--arrhead-gap\) minmax\(0, 1fr\)[^}]*padding-left:\s*4px; padding-right:\s*var\(--arrhead-gap\)/s.test(shell)
+  // The name cell PINS while the bars scroll under it, so it carries the inset that used
+  // to be `#arrgrid`'s left padding: a sticky element pins to the scrollport's padding
+  // edge, which made that padding a strip the bars scrolled into and showed through. It
+  // takes the inset as its own padding and adds it to its width, so nothing else moves.
+  && /\.arrhead-cell \{[^}]*position:\s*sticky[^}]*left:\s*0[^}]*z-index:\s*12[^}]*--arr-gridpad:\s*calc\(var\(--foldx\) - 4px\)[^}]*padding-left:\s*calc\(var\(--arr-gridpad\) \+ 4px\)[^}]*width:\s*calc\(var\(--arrname\) \+ var\(--gut\) \+ 4px - var\(--foldx\)\s*\+ var\(--arr-gridpad\)\)[^}]*display:\s*grid[^}]*grid-template-columns:\s*var\(--arrnum\) 17px var\(--arrhead-gap\) minmax\(0, 1fr\)[^}]*padding-right:\s*var\(--arrhead-gap\)/s.test(shell)
   && /\.arrtrack-icon \{[^}]*grid-column:\s*2[^}]*grid-row:\s*1 \/ span 2/s.test(shell)
   && /\.arrtrack-top, \.arrtrack-bottom \{[^}]*grid-column:\s*4/s.test(shell)
   && /\.arrtrack-top \{[^}]*grid-row:\s*1/s.test(shell)
   && /\.arrtrack-bottom \{[^}]*grid-row:\s*2/s.test(shell)
   && /#arrange \{[^}]*max-height:\s*calc\(var\(--arrhead-h\)\s*\+ var\(--arrrow\) \* var\(--arrmax-lanes\)\s*\+ var\(--arrgap\) \* \(var\(--arrmax-lanes\) - 1\)\s*\+ var\(--arrgrid-pad\) \+ 1px\)/s.test(shell)
-  && /#arrgrid \{[^}]*padding:\s*0 0 0 calc\(var\(--foldx\) - 4px\)[^}]*row-gap:\s*var\(--arrgap\)/s.test(shell)
+  && /#arrgrid \{[^}]*overflow-x:\s*auto[^}]*padding:\s*0;[^}]*row-gap:\s*var\(--arrgap\)/s.test(shell)
   && /const preset = presetForLane\(row\.key\)[\s\S]*?const displayLabel = customTrackLabel\(row\.key\) \|\| preset\?\.label \|\| row\.label[\s\S]*?preset\?\.category/.test(entry)
   && /const top = document\.createElement\('div'\)[\s\S]*?top\.className = 'arrtrack-top'[\s\S]*?category\.className = 'arrpresetcat'[\s\S]*?const bottom = document\.createElement\('div'\)[\s\S]*?bottom\.className = 'arrtrack-bottom'[\s\S]*?top\.append\(name\)[\s\S]*?if \(frozen\) top\.append\(freezeMark\('arrfreeze', '❄'\)\)[\s\S]*?top\.append\(category\)[\s\S]*?bottom\.append\(btns\)[\s\S]*?header\.append\(num, icon, top, bottom\)[\s\S]*?bottom\.append\(gainWrap\)[\s\S]*?main\.append\(header, bars\)[\s\S]*?el\.append\(main\)/.test(entry),
   'arrangement track headers use Logic-style identity and control rows');

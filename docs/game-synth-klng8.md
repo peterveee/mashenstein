@@ -225,7 +225,7 @@ numbers, shipped alongside the originals for A/B.
 
 ```
   per layer (osc1|osc2|osc3), per note:
-  [unison ×1–5 on .detune] OscillatorNode(s) ──→ [_filterChain] ──→ GainNode (adsr)
+  [unison ×1–4 on .detune] OscillatorNode(s) ──→ [_filterChain] ──→ GainNode (adsr)
         │                        │ pitchRamp        │ + filter env  │ × 1/√count
         │                        │ (pitch env/glide) │  (cents on   ▼
         │  [fm modulator, one per stack] ─→ freq     │   .detune)   │
@@ -314,7 +314,7 @@ the others into the shared drive. It is MRDR-3's alone: no other panel has one.
 | `vca` | `'env'` | Which envelope shapes this layer. `'env'` is its own, as it always was; **`'through'` takes it out** and hands the shaping to the global VCA — three oscillators into a mixer, one filter, one envelope, which is the classic mono-synth architecture. Through, the layer contributes a flat gate at its LEVEL, closed over 4 ms when the global VCA has finished, and `len`/GATE stops meaning anything |
 | `attack/decay/sustain/release` | `adsr` defaults | Plain seconds, clamped to the note; `sustain` is where the fall lands |
 | `attackCurve` / `curve` / `releaseCurve` | `'exp'` | Per stage, `'exp'` or `'lin'`. `curve` is the decay's, and keeps its historical name |
-| `unison` / `spread` | 1 / 20 | 1–5 voices across `spread` cents, 1/√count normalised |
+| `unison` / `spread` | 1 / 20 | 1–4 voices across `spread` cents, 1/√count normalised (MAX_UNISON) |
 | `stereo` | `0` | Where those voices STAND. Zero builds no panner and is mono, exactly as this path always was; 1 puts the outer voices hard left and right. One `StereoPannerNode` per voice, placed BEFORE the layer's filter so the filter stays one node handling two channels rather than becoming a filter per voice. Costs ~29% CPU on a three-layer unison-5 patch and nothing at all at zero. Folding to mono loses ~2.9 dB — the equal-power pan law, not cancellation — which the measured level absorbs |
 | `pitch.{semitones,attack,decay,sustain,release}` | — | The bend, in semitones on `.detune` — so it COMPOSES with a glide instead of fighting it for `.frequency`. Attack defaults to 0: the note is already away when it starts |
 | `filter.{type,slope,freq,Q,track}` | — | `_filterChain`; `track` = key follow, referenced to A2 = 110 Hz. **No sweep pair** — the cutoff sits still and the envelope moves it |

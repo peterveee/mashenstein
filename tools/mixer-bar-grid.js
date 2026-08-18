@@ -419,6 +419,11 @@ export function createBarGrid({
   el, Audio, bank, editBank, draft, sel, apply, engineBank, onClose = () => {},
   toast = () => {},
   ns = 'grid', rows, isOn, withCell, preview = () => {}, previewRelease = () => {},
+  // The inverse of `isOn`, optional: given the value on a step, WHICH row keys does it
+  // fill? A panel whose rows are its lanes has no use for it — `isOn` asked of a
+  // handful of rows is already the cheap question. A panel whose rows are eighty-eight
+  // pitches on ONE lane does: see `allNotes`.
+  keysOf = null,
   // ---- lengths, and the gestures that need them
   //
   // A panel that says nothing about length gets the behaviour it had before lengths
@@ -552,6 +557,11 @@ export function createBarGrid({
   // the row object back — rebuilt on every draw, because a roll's rows move when the
   // octave does and a stale index would write the note you were looking at before.
   let rowIndex = new Map();
+  // The same rows again, by key, but holding WHERE each one sits. `rowAt` is on every
+  // note this panel hands out, and deriving it by walking the row list cost a pass over
+  // the whole keyboard per note — which on a select-all is the keyboard walked once per
+  // note in the song.
+  let rowAtIndex = new Map();
   // The rows as data, the body they are drawn into, and the slice of them that is
   // currently drawn — see `renderRows`. `scrollAt` outlives every rebuild, because
   // where you are in an eighty-eight-row instrument is not something a repaint may
@@ -1453,6 +1463,7 @@ export function createBarGrid({
     if (wholeSong && editScope !== null && nextEditScope !== editScope) editedKey = null;
     editScope = nextEditScope;
     rowIndex = new Map(list.map((r) => [String(r.key), r]));
+    rowAtIndex = new Map(list.map((r, at) => [String(r.key), at]));
     rowList = list;
     rebuildRowPositions();
     bodyEl = body;
@@ -2315,7 +2326,7 @@ export function createBarGrid({
 
   // ---- the selection ---------------------------------------------------------------
 
-  const rowAtOf = (key) => rowList.findIndex((r) => String(r.key) === String(key));
+  const rowAtOf = (key) => rowAtIndex.get(String(key)) ?? -1;
   const keyOfCell = (cell) => noteKey(cell.dataset.bar, cell.dataset.step, cell.dataset.row);
   const isSelected = (cell) => selection.has(keyOfCell(cell));
 
@@ -2336,13 +2347,18 @@ export function createBarGrid({
   const clearSelection = () => { if (selection.size) select([]); };
 
   /**
-   * What the selection actually holds, read out of the bank.
+   * Visit the places the selection holds that STILL hold a note.
    *
    * Notes that are no longer there are dropped on the way — a selection is a set of
    * PLACES, and an undo or an edit from the step grid can empty one of them.
+   *
+   * One bar of one lane is read once for the whole pass. A selection is a set of
+   * places, but the places crowd: a roll selection is hundreds of notes drawn from a
+   * handful of bars on a SINGLE lane, and reading the bank per NOTE re-read — and
+   * re-allocated — the same sixteen values once for every note standing in them.
    */
-  function selected() {
-    const out = [];
+  function eachSelected(visit) {
+    const pairs = new Map();
     for (const key of selection) {
       const cut = key.indexOf(':');
       const cut2 = key.indexOf(':', cut + 1);
@@ -2351,15 +2367,39 @@ export function createBarGrid({
       const rowKey = key.slice(cut2 + 1);
       const row = rowIndex.get(rowKey);
       if (!row) continue;
-      const pair = readPair(bar, row.lane);
+      const at = `${bar}:${row.lane}`;
+      let pair = pairs.get(at);
+      if (!pair) { pair = readPair(bar, row.lane); pairs.set(at, pair); }
       const value = pair.notes[step] ?? null;
       if (!isOn(row, value)) continue;
+      visit(row, rowKey, bar, step, value, pair.lengths[step] ?? null);
+    }
+  }
+
+  /** What the selection actually holds, read out of the bank. */
+  function selected() {
+    const out = [];
+    eachSelected((row, rowKey, bar, step, value, len) => {
       out.push({
         bar, step, row, rowAt: rowAtOf(rowKey), value,
-        len: cellSpan(row, value, pair.lengths[step] ?? null, bar, step),
+        len: cellSpan(row, value, len, bar, step),
       });
-    }
+    });
     return out;
+  }
+
+  /**
+   * How many notes the selection holds — the count WITHOUT the geometry.
+   *
+   * The desk asks this on every selection change, twice, only ever to grey a button
+   * out. `selected` answers it too, but it answers it by measuring every note's drawn
+   * length first, and how long a note is drawn is not a question "is anything
+   * selected" has ever needed the answer to.
+   */
+  function selectedCount() {
+    let count = 0;
+    eachSelected(() => { count++; });
+    return count;
   }
 
   /** Clear the non-destructive notes shown while Paste is waiting for a click. */
@@ -2497,24 +2537,67 @@ export function createBarGrid({
     return notes.length;
   }
 
+  /**
+   * Every note in the edit range, in row-then-step order within each bar.
+   *
+   * Two ways to the same answer, and which one runs is a property of the PANEL.
+   *
+   * A step grid's rows ARE its lanes — a handful of them — so asking each row about
+   * each step is already the cheap question, and `isOn` is the only thing that knows
+   * what "filled" means for a kick.
+   *
+   * A piano roll's rows are eighty-eight PITCHES on one lane, and there that same
+   * question is eighty-eight times too big: every row reads the same bar, and every
+   * row runs the same arithmetic over the same note to establish that eighty-seven of
+   * them are not it. `keysOf` is the panel answering the inverted question instead —
+   * given the value on this step, which rows does it fill — so a bar is read once and
+   * a note is placed once, however tall the keyboard is. The order is restored per bar
+   * so both paths hand back the same list.
+   */
   function allNotes() {
     const out = [];
-    for (let b = range.from; b <= range.to; b++) {
-      for (const row of rowList) {
-        const pair = readPair(b, row.lane);
-        for (let step = 0; step < slots; step++) {
-          const value = pair.notes[step] ?? null;
-          if (!isOn(row, value)) continue;
-          out.push({
-            bar: b,
-            step,
-            row,
-            rowAt: rowAtOf(row.key),
-            value,
-            len: cellSpan(row, value, pair.lengths[step] ?? null, b, step),
-          });
+    const noteAt = (row, b, step, value, len) => ({
+      bar: b,
+      step,
+      row,
+      rowAt: rowAtOf(row.key),
+      value,
+      len: cellSpan(row, value, len, b, step),
+    });
+    if (!keysOf) {
+      for (let b = range.from; b <= range.to; b++) {
+        const pairs = new Map();
+        for (const row of rowList) {
+          let pair = pairs.get(row.lane);
+          if (!pair) { pair = readPair(b, row.lane); pairs.set(row.lane, pair); }
+          for (let step = 0; step < slots; step++) {
+            const value = pair.notes[step] ?? null;
+            if (!isOn(row, value)) continue;
+            out.push(noteAt(row, b, step, value, pair.lengths[step] ?? null));
+          }
         }
       }
+      return out;
+    }
+    const lanes = [...new Set(rowList.map((row) => row.lane))];
+    for (let b = range.from; b <= range.to; b++) {
+      const found = [];
+      for (const lane of lanes) {
+        const pair = readPair(b, lane);
+        for (let step = 0; step < slots; step++) {
+          const value = pair.notes[step] ?? null;
+          if (value == null) continue;
+          for (const key of keysOf(value) || []) {
+            const row = rowIndex.get(String(key));
+            // A note the keyboard has no row for is a note this panel cannot show, and
+            // the scan above would not have found it either.
+            if (!row || row.lane !== lane) continue;
+            found.push(noteAt(row, b, step, value, pair.lengths[step] ?? null));
+          }
+        }
+      }
+      found.sort((a, b2) => a.rowAt - b2.rowAt || a.step - b2.step);
+      out.push(...found);
     }
     return out;
   }
@@ -2814,10 +2897,21 @@ export function createBarGrid({
         if (to !== at) moves.push({ nt, to });
       }
       for (const { nt } of moves) setCell(nt.row, nt.bar, nt.step, false);
+      // The selection follows the notes, as it does after a drag: a note that snapped is
+      // still the note you had hold of, and leaving the old keys behind lights up cells
+      // it has just left. Only the movers need rewriting — a note already on the grid
+      // never left its key — and an empty selection stays empty, which is the ordinary
+      // case for the whole-track scope.
+      const moved = new Map();
       for (const { nt, to } of moves) {
         const b = Math.floor(to / slots);
         const step = to % slots;
-        if (b < plan.length && setCell(nt.row, b, step, true, nt.len)) changed++;
+        if (b >= plan.length) continue;
+        if (setCell(nt.row, b, step, true, nt.len)) changed++;
+        moved.set(noteKey(nt.bar, nt.step, nt.row.key), noteKey(b, step, nt.row.key));
+      }
+      if (selection.size && moved.size) {
+        selection = new Set([...selection].map((key) => moved.get(key) ?? key));
       }
     } else if (kind === 'reverse' || kind === 'invert') {
       const ordered = [...notes].sort((a, b) => globalStep(a.bar, a.step) - globalStep(b.bar, b.step)
@@ -3269,7 +3363,7 @@ export function createBarGrid({
       if (virtual) renderRows(ctx());
     },
     setResizeDeferred,
-    selectedCount: () => selected().length,
+    selectedCount: () => selectedCount(),
     selectAll: selectAllNotes,
     selectTimeRange,
     eraseTimeRange,

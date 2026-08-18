@@ -1942,9 +1942,11 @@ const TONE = {
     },
     trim: -2.3 },
   tpAlienChorus: { label: 'Alien Chorus', category: 'Orch', synth: 'Synth', dur: 4,
-    note: "Ten detuned sines spread across sixty cents. Enormous, and the dearest preset in the library by some way.",
+    note: "Four detuned sines spread across sixty cents. Still the widest thing in the library — the "
+      + "spread is what makes it enormous, not the head count, which is why it survived coming down "
+      + "from ten to the MAX_UNISON every family now shares.",
     origin: "Tonejs/Presets Synth/AlienChorus",
-    options: {"oscillator":{"type":"fatsine4","spread":60,"count":10},"envelope":{"attack":0.4,"decay":0.01,"sustain":1,"attackCurve":"exponential","releaseCurve":"exponential","release":0.4}} },
+    options: {"oscillator":{"type":"fatsine4","spread":60,"count":4},"envelope":{"attack":0.4,"decay":0.01,"sustain":1,"attackCurve":"exponential","releaseCurve":"exponential","release":0.4}} },
   tpDelicateWind: { label: 'Delicate Wind Part', category: 'Orch', synth: 'Synth', dur: 5,
     note: "Two full seconds of attack. Not a note so much as a slow arrival — it needs a held section to be heard at all.",
     origin: "Tonejs/Presets Synth/DelicateWindPart",
@@ -2983,12 +2985,12 @@ const TONE = {
     vibrato: { depth: 0.07, rate: 3.1, delay: 1.4, spread: 0.35 } },
 
   bestMegaSawLead: { label: 'Mega Saw Lead', category: 'Lead', synth: 'MRDR-3', dur: 1.6,
-    note: 'Eleven oscillators. Two unison saws a fifth apart, a sub under them, all through '
+    note: 'Nine oscillators. Two unison saws a fifth apart, a sub under them, all through '
       + 'one shared filter that opens across every note — the shared stage is the whole '
-      + 'point, because eleven separate filters would be eleven sounds instead of one.',
+      + 'point, because nine separate filters would be nine sounds instead of one.',
     layer: {
-      osc1: { type: 'sawtooth', ratio: 1, gain: 0.85, attack: 0.006, decay: 0.5, sustain: 0.8, release: 0.18, unison: 5, spread: 26, stereo: 0.5 },
-      osc2: { type: 'sawtooth', ratio: 1.4983, gain: 0.4, attack: 0.01, decay: 0.5, sustain: 0.7, release: 0.18, unison: 5, spread: 34, stereo: 0.65 },
+      osc1: { type: 'sawtooth', ratio: 1, gain: 0.85, attack: 0.006, decay: 0.5, sustain: 0.8, release: 0.18, unison: 4, spread: 26, stereo: 0.5 },
+      osc2: { type: 'sawtooth', ratio: 1.4983, gain: 0.4, attack: 0.01, decay: 0.5, sustain: 0.7, release: 0.18, unison: 4, spread: 34, stereo: 0.65 },
       osc3: { type: 'pulse', width: 0.5, ratio: 0.5, gain: 0.42, attack: 0.004, decay: 0.6, sustain: 0.85, release: 0.16, pwm: { type: 'sine', rate: 0.42, depth: 0.5, delay: 0.1 } },
       lfo: { type: 'sine', rate: 5.4, depth: 0.12, target: 'filter', delay: 0.4 },
     },
@@ -3697,7 +3699,7 @@ const LEVELS = {
   hat808Open: 0.073498, metalCrash: 0.196216, cowbell: 0.121817,
   woodBlock: 0.008281, zap: 0.019997, tpBah: 0.005703, tpBassGuitar: 0.085495,
   tpBassy: 0.097032, tpBrassCircuit: 0.060105, tpCoolGuy: 0.246214,
-  tpPianoetta: 0.111126, tpPizz: 0.017563, tpAlienChorus: 0.076996,
+  tpPianoetta: 0.111126, tpPizz: 0.017563, tpAlienChorus: 0.070974,
   tpDelicateWind: 0.050353, tpLectric: 0.031326, tpMarimba: 0.056977,
   tpSteelpan: 0.029149, tpSuperSaw: 0.024461, tpTreeTrunk: 0.028838,
   tpElectricCello: 0.020704, tpKalimba: 0.028046, tpThinSaws: 0.017535,
@@ -3729,7 +3731,7 @@ const LEVELS = {
   mrdrCello: 0.109413, mrdrContrabass: 0.106148, bestVoiceBox70s: 0.125505,
   bestRobotVox: 0.100299, bestVowelPad: 0.020792, syncRazorLead: 0.136959,
   syncVowelLead: 0.029297, syncBassBite: 0.135509, syncWireClav: 0.073221,
-  syncOrbitPad: 0.073164, bestMegaSawLead: 0.144096, bestHeroLead: 0.167599,
+  syncOrbitPad: 0.073164, bestMegaSawLead: 0.139899, bestHeroLead: 0.167599,
   bestScreamerLead: 0.126888, bestMonsterBass: 0.129316,
   bestReeseBass: 0.157514, bestPwmStrings: 0.132846, bestPwmBrass: 0.183361,
   bestPwmPadWide: 0.029779, bestPwmBass: 0.156609, bestPwmGrowlBass: 0.117542,
@@ -3826,7 +3828,7 @@ const PEAKS = {
   hat808: 0.9311, hat808Open: 1.1697, metalCrash: 2.3556, cowbell: 3.0877,
   woodBlock: 0.2198, zap: 0.6253, tpBah: 0.1386, tpBassGuitar: 0.7916,
   tpBassy: 1.3042, tpBrassCircuit: 1.0582, tpCoolGuy: 2.9141,
-  tpPianoetta: 0.886, tpPizz: 1.0667, tpAlienChorus: 0.9626,
+  tpPianoetta: 0.886, tpPizz: 1.0667, tpAlienChorus: 0.8054,
   tpDelicateWind: 0.2183, tpLectric: 0.6403, tpMarimba: 0.6906,
   tpSteelpan: 0.2812, tpSuperSaw: 0.2661, tpTreeTrunk: 0.6572,
   tpElectricCello: 0.2173, tpKalimba: 0.2195, tpThinSaws: 0.2098,
@@ -3856,7 +3858,7 @@ const PEAKS = {
   mrdrContrabass: 0.5527, bestVoiceBox70s: 0.9061, bestRobotVox: 0.8279,
   bestVowelPad: 0.2133, syncRazorLead: 1.0048, syncVowelLead: 0.2337,
   syncBassBite: 0.9036, syncWireClav: 0.8055, syncOrbitPad: 0.5669,
-  bestMegaSawLead: 0.8605, bestHeroLead: 0.8489, bestScreamerLead: 0.9794,
+  bestMegaSawLead: 0.8201, bestHeroLead: 0.8489, bestScreamerLead: 0.9794,
   bestMonsterBass: 0.742, bestReeseBass: 0.8646, bestPwmStrings: 0.7017,
   bestPwmBrass: 0.8545, bestPwmPadWide: 0.4509, bestPwmBass: 0.874,
   bestPwmGrowlBass: 0.9064, bestPwmHollowLead: 0.8933, bestPwmReedLead: 0.6421,

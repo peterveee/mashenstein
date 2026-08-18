@@ -30,11 +30,13 @@ import * as BARBER_4 from './barber-4.js';
 import * as BARBER_5 from './barber-5.js';
 import * as BARBER_6 from './barber-6.js';
 import * as BARBER_7 from './barber-7.js';
+import * as BARBER_96_16TH from './barber-96-16th.js';
 import * as BARBER_96_SIMPLE from './barber-96-simple.js';
 import * as BARBER_96 from './barber-96.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE_2 from './barber-of-seville-ouverture-2.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE from './barber-of-seville-ouverture.js';
 import * as BARBER_OF_SEVILLE from './barber-of-seville.js';
+import * as BARBER_Q from './barber-q.js';
 import * as BARBER from './barber.js';
 import * as BITTER_MARKET from '../../../work/scratch/bitter-market.js';
 import * as BRAVE_COMET from '../../../work/scratch/brave-comet.js';
@@ -108,6 +110,7 @@ import * as PINK_MIRROR from '../../../work/scratch/pink-mirror.js';
 import * as PINK_ORBIT from '../../../work/scratch/pink-orbit.js';
 import * as PLASTIC_OWL from '../../../work/scratch/plastic-owl.js';
 import * as PLUMBER_PANIC_ALT from './plumber-panic-alt.js';
+import * as ROSSINI_BARBER_OF_SEVILLE_OVERTURE from './rossini-barber-of-seville-overture.js';
 import * as ROYAL_HARBOUR from '../../../work/scratch/royal-harbour.js';
 import * as ROYAL_WALTZ from '../../../work/scratch/royal-waltz.js';
 import * as RUBBER_PUPPET from '../../../work/scratch/rubber-puppet.js';
@@ -186,11 +189,13 @@ export const IMPORTED_BY_ID = {
   "barber-5": { bank: BARBER_5.bank, title: BARBER_5.title, group: "imported", writable: true },
   "barber-6": { bank: BARBER_6.bank, title: BARBER_6.title, group: "imported", writable: true },
   "barber-7": { bank: BARBER_7.bank, title: BARBER_7.title, group: "imported", writable: true },
+  "barber-96-16th": { bank: BARBER_96_16TH.bank, title: BARBER_96_16TH.title, group: "copy", writable: true },
   "barber-96-simple": { bank: BARBER_96_SIMPLE.bank, title: BARBER_96_SIMPLE.title, group: "copy", writable: true },
   "barber-96": { bank: BARBER_96.bank, title: BARBER_96.title, group: "copy", writable: true },
   "barber-of-seville-ouverture-2": { bank: BARBER_OF_SEVILLE_OUVERTURE_2.bank, title: BARBER_OF_SEVILLE_OUVERTURE_2.title, group: "copy", writable: true },
   "barber-of-seville-ouverture": { bank: BARBER_OF_SEVILLE_OUVERTURE.bank, title: BARBER_OF_SEVILLE_OUVERTURE.title, group: "imported", writable: true },
   "barber-of-seville": { bank: BARBER_OF_SEVILLE.bank, title: BARBER_OF_SEVILLE.title, group: "imported", writable: true },
+  "barber-q": { bank: BARBER_Q.bank, title: BARBER_Q.title, group: "imported", writable: true },
   "barber": { bank: BARBER.bank, title: BARBER.title, group: "imported", writable: true },
   "bitter-market": { bank: BITTER_MARKET.bank, title: BITTER_MARKET.title, group: "scratch", writable: true },
   "brave-comet": { bank: BRAVE_COMET.bank, title: BRAVE_COMET.title, group: "scratch", writable: true },
@@ -264,6 +269,7 @@ export const IMPORTED_BY_ID = {
   "pink-orbit": { bank: PINK_ORBIT.bank, title: PINK_ORBIT.title, group: "scratch", writable: true },
   "plastic-owl": { bank: PLASTIC_OWL.bank, title: PLASTIC_OWL.title, group: "scratch", writable: true },
   "plumber-panic-alt": { bank: PLUMBER_PANIC_ALT.bank, title: PLUMBER_PANIC_ALT.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "rossini-barber-of-seville-overture": { bank: ROSSINI_BARBER_OF_SEVILLE_OVERTURE.bank, title: ROSSINI_BARBER_OF_SEVILLE_OVERTURE.title, group: "imported", writable: true },
   "royal-harbour": { bank: ROYAL_HARBOUR.bank, title: ROYAL_HARBOUR.title, group: "scratch", writable: true },
   "royal-waltz": { bank: ROYAL_WALTZ.bank, title: ROYAL_WALTZ.title, group: "scratch", writable: true },
   "rubber-puppet": { bank: RUBBER_PUPPET.bank, title: RUBBER_PUPPET.title, group: "scratch", writable: true },

@@ -52,6 +52,24 @@ const LAYER_WAVES = [...NATIVE_WAVES, 'pulse', 'noise'];
 // the engine, so a pink layer and a pink drum are the same pink.
 const NOISE_COLORS = ['white', 'pink', 'brown', 'blue', 'violet'];
 const DRAWBARS = 9;
+// The one ceiling on how many detuned copies of an oscillator a preset may ask for,
+// restated here for the same reason ALLOWED is: MAX_UNISON is exported from the engine
+// module, which imports Tone and cannot be loaded in Node. MRDR-3 spells it `unison` on a
+// layer, TNGR-2 the same on an oscillator, and Tone `oscillator.count` on a Fat* voicing —
+// three spellings, one number.
+const MAX_UNISON = 4;
+
+/** Every Tone `oscillator` bag in an options tree — DuoSynth keeps two, under voice0/voice1. */
+const fatOscillators = (node, found = []) => {
+  if (!node || typeof node !== 'object') return found;
+  for (const [k, val] of Object.entries(node)) {
+    if (k === 'oscillator' && val && typeof val === 'object' && typeof val.count === 'number') {
+      found.push(val);
+    }
+    fatOscillators(val, found);
+  }
+  return found;
+};
 
 const all = Object.values(VOICES);
 const tone = all.filter((v) => v.kind === 'tone');
@@ -148,6 +166,15 @@ for (const v of tone) {
     || v.synth === 'TNGR-2'
     || (v.options && typeof v.options === 'object'),
     `${v.id}: has constructor options or native synth parameters`);
+  // Tone spells unison as `oscillator.count` on a Fat* voicing, and it is the same
+  // ceiling MRDR-3's layers and TNGR-2's oscillators stop at — one number of detuned
+  // copies for all three families. `buildSpec` clamps whatever it is handed, so a song or
+  // a saved patch above it is capped rather than broken; a SHIPPED preset above it would
+  // be a catalogue that lies about what it plays, which is what this catches.
+  for (const osc of fatOscillators(v.options)) {
+    assert((osc.count ?? 1) >= 1 && (osc.count ?? 1) <= MAX_UNISON,
+      `${v.id}: its Tone unison (oscillator.count ${osc.count}) stays within the engine's cap`);
+  }
 }
 
 // The layer stack. As with the additive block above, every failure here is SILENCE
@@ -228,7 +255,7 @@ for (const v of tone.filter((x) => x.synth === 'MRDR-3')) {
         `${v.id}: its PWM rate is inside the pot's range`);
     }
     assert((o.len ?? 1) > 0, `${v.id}: every layer length multiplier is above zero`);
-    assert((o.unison ?? 1) >= 1 && (o.unison ?? 1) <= 5,
+    assert((o.unison ?? 1) >= 1 && (o.unison ?? 1) <= MAX_UNISON,
       `${v.id}: unison stays within the engine's cap`);
     if (o.pitch) {
       // The bend is an ENVELOPE now, in semitones on `.detune`, so the old "both ends are
@@ -1255,6 +1282,58 @@ try {
   const twiceTake = await placeTake(chorusPatch({ mix: 0.6, rate: 0.8, depth: 0.5, width: 1 }), 'chorus');
   assert(worstDiff(wideTake.outL, twiceTake.outL) === 0,
     'an offline chorused lane renders identically twice — its origin is deterministic');
+
+  // ---- the unison ceiling, on the way in ---------------------------------------
+  //
+  // The shipped catalogue is checked against MAX_UNISON above, but the catalogue is not
+  // the only thing that reaches the engine: a song carries its own `voiceParams`, the
+  // desk saves user patches, and an imported bank was written before the ceiling existed.
+  // None of those can be edited retroactively, so the clamp is at the BUILD — and a clamp
+  // is only worth having if a preset above the ceiling renders as one at it.
+  //
+  // Measured against the renderer's OWN repeat noise rather than against zero. Two
+  // renders of one bestMegaSawLead differ by ~1e-7 (spread vibrato scatters per unison
+  // index, and the phase-wave cache evicts between takes — see the determinism assertion
+  // further up), so "identical" here means "no further apart than the same input is from
+  // itself". The pair below each claim is the control: without it this would pass just as
+  // well on an engine that had stopped building unison at all.
+  const atUnison = (n) => {
+    const v = JSON.parse(JSON.stringify(VOICES.bestMegaSawLead));
+    v.layer.osc1.unison = n;
+    v.layer.osc2.unison = n;
+    return { repeat: 1, trackId: null,
+      mix: { voice: { bassVoice: 'bestMegaSawLead' }, voiceParams: { bassVoice: v } } };
+  };
+  const capped = await renderer.render(oneNote('bass'), atUnison(9));
+  const atCap = await renderer.render(oneNote('bass'), atUnison(MAX_UNISON));
+  const atCapAgain = await renderer.render(oneNote('bass'), atUnison(MAX_UNISON));
+  const under = await renderer.render(oneNote('bass'), atUnison(2));
+  const floor = Math.max(worstDiff(atCapAgain.outL, atCap.outL), 1e-6);
+  const cappedDiff = worstDiff(capped.outL, atCap.outL);
+  assert(cappedDiff <= floor,
+    `a song asking for unison 9 renders as one asking for ${MAX_UNISON}`
+    + ` (${cappedDiff.toExponential(2)} against a repeat noise floor of ${floor.toExponential(2)})`);
+  assert(worstDiff(under.outL, atCap.outL) > floor * 100,
+    'while a real value below the cap still renders as itself — the clamp caps, it does not flatten');
+
+  // Tone's spelling of the same control, capped in `buildSpec` rather than `_playLayer`.
+  const atCount = (n) => {
+    const v = JSON.parse(JSON.stringify(VOICES.tpAlienChorus));
+    v.options.oscillator.count = n;
+    return { repeat: 1, trackId: null,
+      mix: { voice: { bassVoice: 'tpAlienChorus' }, voiceParams: { bassVoice: v } } };
+  };
+  const fatCapped = await renderer.render(oneNote('bass'), atCount(12));
+  const fatAtCap = await renderer.render(oneNote('bass'), atCount(MAX_UNISON));
+  const fatAgain = await renderer.render(oneNote('bass'), atCount(MAX_UNISON));
+  const fatUnder = await renderer.render(oneNote('bass'), atCount(2));
+  const fatFloor = Math.max(worstDiff(fatAgain.outL, fatAtCap.outL), 1e-6);
+  const fatDiff = worstDiff(fatCapped.outL, fatAtCap.outL);
+  assert(fatDiff <= fatFloor,
+    `a Tone preset asking for oscillator.count 12 renders as one asking for ${MAX_UNISON}`
+    + ` (${fatDiff.toExponential(2)} against ${fatFloor.toExponential(2)})`);
+  assert(worstDiff(fatUnder.outL, fatAtCap.outL) > fatFloor * 100,
+    'and a count below the cap is still that count');
 } finally {
   await renderer.close();
 }

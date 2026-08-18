@@ -1205,9 +1205,21 @@
   #timeline.edge-dragging::after { background: color-mix(in srgb, var(--dim) 18%, transparent); }
   #barsarea { position: absolute; top: 5px; bottom: 5px;
               left: var(--contentx); right: var(--rgut); }
+  /* When the arrangement scrolls, the ruler stops dividing the window and takes the
+     rows' own width instead, shifted by however far they have been scrolled. Everything
+     inside it — playhead, locators, loop and selection regions — is positioned in PERCENT
+     of this box, so widening it moves all of them with the bars for free. */
+  #timeline { overflow: hidden; }
+  #upperwork[data-arrscroll="1"] #barsarea { right: auto;
+                                             width: var(--arr-content-w);
+                                             transform: translateX(calc(var(--arr-scroll, 0px) * -1)); }
   /* The fold sits in the column the ruler is inset by — space that was empty, and
      exactly where the arrangement's fold is, so the two line up down the page. */
-  #tlhead { position: absolute; left: var(--foldx); top: 0; height: 30px;
+  /* The ruler's own pinned column. Scrolled, `#barsarea` is wider than the window and
+     shifted left, so its early bars pass behind this caption — the same bleed the lane
+     names had, and fixed the same way: opaque, and above what slides under it. */
+  #tlhead { position: absolute; left: var(--foldx); top: 0; height: 30px; z-index: 12;
+            padding-right: var(--capgap); background: var(--panel);
             display: flex; align-items: center; gap: var(--capgap); }
   /* A bar ruler over the song form: numbers and ticks where a DAW puts them, so a
      position can be read off rather than counted. The former section-colour strip
@@ -1370,10 +1382,28 @@
      content-sized this changes nothing; when the arrangement is the region taking
      the desk's slack — the mixer folded away — it is what puts the extra height
      into the scroller instead of leaving a dead band under the last lane. */
+  /* ONE SCROLLER FOR THE RULER AND THE ROWS.
+     A bar cell cannot draw narrower than 12px — four of padding each side and four of
+     gap — so past about 128 bars the rows want more width than the window has. This used
+     to be `overflow-x: hidden`, and the ruler above went on dividing the SAME song across
+     the width it had: two different pixels-per-bar over one set of columns, drifting
+     further apart the further right you looked, until bar 157 sat under the mark for 193.
+     The rows scroll instead, the ruler is dragged along by `--arr-scroll`, and the two
+     cannot disagree because they are handed the same width. */
   #arrgrid { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
-             overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable;
-             padding: 0 0 0 calc(var(--foldx) - 4px); row-gap: var(--arrgap); }
+             overflow-y: auto; overflow-x: auto; scrollbar-gutter: stable;
+             /* No left padding: a sticky cell pins to the scrollport's PADDING edge, so
+                any inset here is a strip the bars scroll into and show through, beside
+                the lane names. The inset moves into the name cell below, which is the one
+                thing that never scrolls. */
+             padding: 0; row-gap: var(--arrgap); }
+  /* AS WIDE AS ITS BARS, and never narrower than the scrollport.
+     A flex child stretches to the scroller's visible width, not to its content's — so the
+     row box ended at the right edge of the window while the bars inside it ran on past it.
+     A sticky name cell can only stick within its own box, so the names pinned for the
+     first screenful and then slid away with everything else. */
   .arrrow { display: flex; flex-direction: column; align-items: stretch;
+            width: max-content; min-width: 100%;
             position: relative; height: var(--arrrow); min-height: var(--arrrow); }
   /* A hairline BETWEEN tracks, and nothing above the first or below the last — the
      panel already has edges. It rides in the middle of the row gap and is drawn as a
@@ -1392,7 +1422,7 @@
   /* The row follows Logic's two-line track header: the upper line identifies the
      track, and the lower line carries the controls. The bar grid remains beside
      both lines and fills their full height. */
-  .arrrow-main { display: flex; align-items: flex-start; flex: 0 0 var(--arrrow);
+  .arrrow-main { display: flex; align-items: flex-start; flex: 0 0 var(--arrrow); width: 100%;
                  min-width: 0; gap: var(--namegap); }
   /* The two-line track header is one cell, exactly as wide as the ruler above is
      inset, so the bars still line up with the bar numbers. */
@@ -1402,11 +1432,26 @@
      both track lines. It needs only enough room for two tabular digits, not the old
      fold-button square; reclaiming that space moves the icon and both identity/control
      lines left while leaving the shared bar origin untouched. */
-  .arrhead-cell { width: calc(var(--arrname) + var(--gut) + 4px - var(--foldx));
+  /* PINNED while the bars scroll under it: a lane you cannot name is a lane you cannot
+     read, and the whole point of scrolling is to go somewhere the name would have left. */
+  /* ABOVE THE BARS IT COVERS, and opaque. At z-index 3 it tied with the note heads
+     (`.arrhit`), and a tie goes to whichever comes later in the DOM — the bars — so the
+     scrolled melody drew straight through the lane names. 12 clears every mark, the mute
+     letter and the bar's own play button, and stays under the drag cue. */
+  .arrhead-cell { position: sticky; left: 0; z-index: 12; background: var(--panel);
+                  /* OVER THE SCROLLER'S OWN LEFT PADDING, not beside it. A sticky element
+                     pins to the scrollport's PADDING edge, so `#arrgrid`'s left inset was
+                     a strip the bars scrolled into and showed through, to the left of the
+                     lane names. Pulled left by exactly that inset and given it back as
+                     padding, the cell covers the strip and its contents do not move. */
+                  --arr-gridpad: calc(var(--foldx) - 4px);
+                  padding-left: calc(var(--arr-gridpad) + 4px);
+                  width: calc(var(--arrname) + var(--gut) + 4px - var(--foldx)
+                              + var(--arr-gridpad));
                   height: var(--arrrow); flex: none; display: grid;
                   grid-template-columns: var(--arrnum) 17px var(--arrhead-gap) minmax(0, 1fr);
                   grid-template-rows: var(--arrrow-main) calc(var(--arrrow) - var(--arrrow-main));
-                  padding-left: 4px; padding-right: var(--arrhead-gap); }
+                  padding-right: var(--arrhead-gap); }
   /* Left-aligned at the cell edge: #arrgrid's inset plus this cell's four pixels is
      exactly --foldx, which is also where the Arrangement header begins. */
   .arrnum { grid-column: 1; grid-row: 1 / span 2; align-self: center;
@@ -1468,8 +1513,13 @@
              margin-top: 0; position: relative; }
   /* A bar is the unit you point at — the beats inside it are a picture of what it
      plays, not sixteen separate targets. */
-  .arrbar { flex: 1; display: flex; cursor: pointer; min-width: 0; position: relative;
-            padding-inline: 4px; border-radius: 3px; }
+  /* THE FLOOR IS A THREE-MINUTE SONG ON A 1920 SCREEN.
+     Ninety bars — 120bpm makes a bar two seconds — across the 1654px left beside the name
+     column is 18px a bar, and 18 is `--arr-barmin` plus `.arrbars`' 4px gap. So the songs
+     this desk is for fill the window exactly, and only the ones longer than that scroll,
+     rather than every song being squeezed until the marks stop meaning anything. */
+  .arrbar { flex: 1; display: flex; cursor: pointer; min-width: var(--arr-barmin, 14px);
+            position: relative; padding-inline: 4px; border-radius: 3px; }
   /* Frozen means this row is playing rendered audio rather than its live source. Give
      every ordinary bar the same unmistakable ice cast while retaining enough of the
      lane colour to keep track identity. Deleted bars keep their red hatch and outline;
@@ -2822,11 +2872,6 @@
   #voicepicker .voicesearch::placeholder { color: var(--dim); }
   #voicepicker .voicesearch:focus { outline: none; border-color: var(--accent); }
   #voicepicker .voicesearch-none { padding: 4px 6px; font-size: 11px; color: var(--dim); }
-  /* The way out of a filter that is hiding the answer, offered where the answer would
-     have been. */
-  #voicepicker .voicesearch-more { width: auto; margin-top: 4px; padding: 3px 6px;
-                                   font-size: 10px; color: var(--accent);
-                                   border-color: var(--accent-line); }
   /* A layer has no kind filter: it already has the identity of the track it copies. */
   #voicepicker .voicewhy { font-size: 10px; line-height: 1.35; color: var(--dim);
                            max-width: 260px; }

@@ -5572,31 +5572,28 @@ function openVoicePicker(x, y, laneKey) {
       }
       results.append(g);
     }
+    // A query is a request for a SOUND, not a request to be told that the currently
+    // selected engine cannot make it. If the engine-specific view is empty but the same
+    // query exists elsewhere in the offered catalogue, broaden to All engines and keep
+    // the query in place so the result appears without a second click or retype.
+    if (q && !shown && engine !== 'all') {
+      const elsewhere = offeredVoices(laneKey, offer)
+        .some((v) => keep(v) && hit(v));
+      if (elsewhere) {
+        engine = 'all';
+        refreshEngineOptions();
+        draw(query);
+        return;
+      }
+    }
     // A search that finds nothing has to say so. An empty panel reads as broken.
     //
-    // And when the filter is what is hiding the answer, the message says so and is the
-    // button that fixes it: a search for "808" on a lead strip finding nothing, while
-    // the drums it is sitting on hold six of them, is the filter being unhelpful in
-    // the one way a filter can be.
+    // If there really is no match in the offered kind, say so plainly rather than leaving
+    // a blank panel that reads as broken.
     if (q && !shown) {
       const none = document.createElement('div');
       none.className = 'fxgroup voicesearch-none';
-      const elsewhere = kind === 'all'
-        ? 0 : offeredVoices(laneKey, offer).filter((v) => keepEngine(v) && hit(v)).length;
       none.textContent = `Nothing matches “${query.trim()}” in ${kind}`;
-      if (elsewhere) {
-        const more = document.createElement('button');
-        more.className = 'voicesearch-more';
-        more.textContent = `${elsewhere} in the rest of the library`;
-        more.onclick = () => {
-          kind = 'all';
-          for (const c of chips.children) c.classList.toggle('on', c.textContent === 'All');
-          draw(search.value);
-        };
-        none.append(more);
-      } else {
-        none.textContent = `Nothing matches “${query.trim()}”`;
-      }
       results.append(none);
     }
   };
@@ -10719,6 +10716,10 @@ function jumpTo(step, { start = false, immediate = false } = {}) {
   stepSeq.armFollow?.();
   pianoRoll.armFollow?.();
   kitRoll.armFollow?.();
+  // The arrangement follows for the same reason the rolls do — and here rather than in
+  // the stopped branch alone, because Stop seeks while `playing` is still true and would
+  // otherwise leave the view a screen and a half away from the bar it returned to.
+  followArrangementScroll(within / totalSteps);
   if (!playing) {
     parkedAt = within;                              // Play resumes on this step
     if (start) { setPlaying(true, within); return; }
@@ -13307,9 +13308,14 @@ const runNoteLengthQuantise = (scopeKind) => {
 noteLengthMenuButton.onclick = (ev) => {
   if (noteLengthMenuButton.hidden) return;
   const r = noteLengthMenuButton.getBoundingClientRect();
-  const run = (kind, value, label) => {
-    const result = pianoRoll.transformNotes({ scope: 'selection', kind, value });
-    if (!result.count) { toast('Select one or more notes first'); return; }
+  // Every item here acts on the SELECTION unless it passes 'all', which is the whole
+  // track across the whole song — `allNotes` in the grid, and the roll spans every bar.
+  const run = (kind, value, label, scopeKind = 'selection') => {
+    const result = pianoRoll.transformNotes({ scope: scopeKind, kind, value });
+    if (!result.count) {
+      toast(scopeKind === 'all' ? 'There are no notes in this track' : 'Select one or more notes first');
+      return;
+    }
     toast(result.changed ? `${label} — ${result.changed} note${result.changed === 1 ? '' : 's'}`
       : `${label} made no change`);
   };
@@ -13339,6 +13345,16 @@ noteLengthMenuButton.onclick = (ev) => {
     // length. This one follows the QUANTISE picker, so it snaps to triplets when that is
     // what the roll is set to; the one below it is always sixteenths.
     { label: `Quantise starts to ${pianoRoll.quantiseLabel()}`, run: () => run('quantise', null, `Quantised to ${pianoRoll.quantiseLabel()}`) },
+    // The same edit with the track as its scope, because selecting first is the step that
+    // gets skipped: a part imported off the grid needs every note moved, not the handful
+    // under the last marquee, and doing it lane by lane with ⌘A in between is where a
+    // quantise silently does not happen. Follows the QUANTISE picker like the item above,
+    // and the picker is the only thing deciding what survives: at 1/16 a note sitting on
+    // a triplet position is FLATTENED onto the nearest sixteenth, which is the point of
+    // the item — an imported performance is meant to come out straight. Pick a triplet
+    // division instead and the triplets are what lands on the grid.
+    { label: `Quantise all starts to ${pianoRoll.quantiseLabel()}`,
+      run: () => run('quantise', null, `Quantised the track to ${pianoRoll.quantiseLabel()}`, 'all') },
     { label: 'Quantise lengths to 16ths', run: () => runNoteLengthQuantise('selection') },
     { label: 'Custom transform all notes…', run: () => openNoteLengthAdjust('all', r.left, r.bottom + 4) },
   ]);
@@ -15113,6 +15129,76 @@ function buildArrangement() {
   syncArrangementLaneSelection();
   redrawSelection();            // the rows are new; the selection is not
   updateArrangementNoteScale();
+  syncArrangementScroll();
+}
+
+/**
+ * Hand the ruler the rows' own width, and keep the two scrolled together.
+ *
+ * A bar cell has a floor of twelve pixels — four of padding each side and four of gap —
+ * so a long song wants more width than the window has, and the rows overflow. The ruler
+ * has no such floor: left alone it divides the same song across whatever width it is
+ * given, which is a SECOND pixels-per-bar over the same columns. The two agreed only
+ * while the song was short enough for the rows to fit; past that they drifted apart by a
+ * bar for every few, and on a 290-bar song bar 157 sat under the mark for 193.
+ *
+ * Measured rather than recomputed: whatever the rows actually came out as is the width
+ * the ruler takes, so there is no second formula to fall out of step with the first.
+ */
+/**
+ * Page the arrangement along when playback runs off the right edge.
+ *
+ * A CHUNK at a time, not a pixel at a time: a view that slides continuously under a
+ * playhead pinned to the middle makes the bars the moving object and the song impossible
+ * to read against. Jumping a screenful leaves the next stretch still, which is what you
+ * are trying to look at, and it only happens when the playhead has actually left.
+ *
+ * A tenth of a screen of lead-in, so the playhead lands just inside the new view rather
+ * than on its very edge with nothing in front of it.
+ */
+function followArrangementScroll(frac) {
+  const grid = $('arrgrid');
+  const upper = $('upperwork');
+  if (!grid || upper?.dataset.arrscroll !== '1') return;
+  const span = grid.scrollWidth - grid.clientWidth;
+  if (span <= 0) return;
+  const bars = grid.querySelector('.arrrow .arrbars');
+  const width = bars ? bars.scrollWidth : grid.scrollWidth;
+  // The playhead's x in the SCROLLER's coordinates, which start at the row's left edge —
+  // so the pinned name column counts. Measuring from the first bar instead put the
+  // playhead a column further left than it really was, and the view sat still while it
+  // walked off the right-hand side.
+  const inset = bars ? bars.offsetLeft : 0;
+  const x = inset + Math.max(0, Math.min(1, frac)) * width;
+  // And the names are painted OVER the bars they cover, so the visible span starts after
+  // them: a playhead behind that edge is on screen and unreadable, which is off screen.
+  const left = grid.scrollLeft + inset;
+  const right = grid.scrollLeft + grid.clientWidth;
+  // Behind the view as well as ahead of it: a loop that jumps back to the top should
+  // take the window with it rather than leave you looking at the bars it just left.
+  if (x >= left && x < right - 4) return;
+  const lead = grid.clientWidth * 0.1;
+  grid.scrollLeft = Math.max(0, Math.min(span, x - inset - lead));
+}
+
+function syncArrangementScroll() {
+  const grid = $('arrgrid');
+  const upper = $('upperwork');
+  if (!grid || !upper) return;
+  const bars = grid.querySelector('.arrrow .arrbars');
+  const width = bars ? Math.round(bars.scrollWidth) : 0;
+  // Only when the rows genuinely want more than they have. A song that fits keeps the
+  // behaviour it always had: bars stretched across the window, no scrollbar to reach for.
+  const scrolls = width > 0 && grid.scrollWidth > grid.clientWidth + 1;
+  upper.dataset.arrscroll = scrolls ? '1' : '0';
+  upper.style.setProperty('--arr-content-w', `${width}px`);
+  if (!scrolls) upper.style.setProperty('--arr-scroll', '0px');
+  else upper.style.setProperty('--arr-scroll', `${Math.round(grid.scrollLeft)}px`);
+  if (grid.dataset.scrollBound === '1') return;
+  grid.dataset.scrollBound = '1';
+  grid.addEventListener('scroll', () => {
+    upper.style.setProperty('--arr-scroll', `${Math.round(grid.scrollLeft)}px`);
+  }, { passive: true });
 }
 
 /** Keep note marks readable as more bars share the same width. Five pixels is the
@@ -15435,6 +15521,7 @@ function tick() {
     $('barnow').textContent = `${Math.floor(outputHeard / 16) + 1}/${totalSteps / 16}`;
     const visualStep = arrangementVisualStep(heardStep);
     followArrangementVisual(visualStep);
+    followArrangementScroll(frac);
     if (rearrangeActive()) followArrangementVisual(arrangementVisualStep(sourceStep));
     spanAt = frameSpan('arrangement', spanAt);
     oskFollow(sourceStep);

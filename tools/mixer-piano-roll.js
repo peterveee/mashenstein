@@ -1699,6 +1699,13 @@ export function createPianoRoll({
 
     // ---- the three that make this the roll
     isOn: (row, value) => noteOn(row, value),
+    // `isOn` inverted, and the reason a select-all over a long import is a walk of the
+    // NOTES rather than of the keyboard once per note: a step's value already names the
+    // rows it fills. Same answer as `noteOn` above — the rows are keyed by midi — but
+    // reached once per note instead of once per note per key.
+    keysOf: (value) => (Array.isArray(value) ? value : [value])
+      .filter((f) => typeof f === 'number' && f > 0)
+      .map((f) => String(freqMidi(f))),
     withCell: (row, value, on) => {
       if (toolId === 'chord') {
         return on ? chordFrequencies(row.midi, chordType, {

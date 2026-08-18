@@ -62,6 +62,25 @@ import {
  * Deliberately narrow: only these four exact words, which no real waveform matches
  * and nothing but that bug could have written.
  */
+/**
+ * How many detuned copies of one oscillator any preset may ask for.
+ *
+ * One ceiling for all three synth families, because unison is the one control that
+ * multiplies NODES rather than shaping them: a layer at 5 is five OscillatorNodes per
+ * note per layer, and a three-layer poly chord reaches thirty before a filter is built.
+ * TNGR-2 has stopped at four since it was written (see `src/engine/tngr2/schema.js`);
+ * MRDR-3 stopped at five and Tone's `oscillator.count` stopped nowhere at all, which is
+ * two different answers to one question. This is the answer.
+ *
+ * Applied where presets are BUILT rather than where they are written, so a song, an
+ * imported bank or a saved user patch carrying a bigger number is capped on the way in
+ * rather than trusted. Shipped presets were brought down to it as well, so the number on
+ * disk says what is heard — see `bestMegaSawLead` and `tpAlienChorus`.
+ */
+export const MAX_UNISON = 4;
+
+const clampUnison = (n, dflt = 1) => Math.max(1, Math.min(MAX_UNISON, Math.round(Number(n) || dflt)));
+
 const VOICING_WORDS = ['single', 'fat', 'am', 'fm'];
 
 function scrubOscTypes(node) {
@@ -69,6 +88,27 @@ function scrubOscTypes(node) {
   for (const [k, val] of Object.entries(node)) {
     if (k === 'type' && typeof val === 'string' && VOICING_WORDS.includes(val)) delete node[k];
     else scrubOscTypes(val);
+  }
+}
+
+/**
+ * Bring a Tone preset's unison down to `MAX_UNISON`.
+ *
+ * Tone spells unison as `count` on a Fat* voicing and takes whatever it is handed —
+ * `tpAlienChorus` shipped at ten, which is ten OscillatorNodes and ten Gains per slot,
+ * times the notes in a chord. Only a key literally named `oscillator` is read: the
+ * native paths have `count`s of their own that mean something else entirely (a metal
+ * hat's inharmonic partials, an organ's drawbars) and none of them lives in `options`.
+ *
+ * Recursive because DuoSynth keeps its two oscillators under `voice0`/`voice1`.
+ */
+function clampFatCount(node) {
+  if (!node || typeof node !== 'object') return;
+  for (const [k, val] of Object.entries(node)) {
+    if (k === 'oscillator' && val && typeof val === 'object' && typeof val.count === 'number') {
+      val.count = clampUnison(val.count);
+    }
+    clampFatCount(val);
   }
 }
 
@@ -854,7 +894,7 @@ function estimateMrdrEventCost(v, notes, dur) {
   let topology = 0;
   for (const key of active) {
     const s = L[key];
-    const unison = Math.max(1, Math.min(5, Math.round(s.unison ?? 1)));
+    const unison = clampUnison(s.unison);
     const pwm = s.type === 'pulse' && s.pwm && (s.pwm.depth ?? 0) > 0;
     const syncBend = v.sync && s.pitch && (s.pitch.semitones ?? 0) !== 0;
     const sourceCount = unison * (pwm ? 2 : 1);
@@ -1466,6 +1506,7 @@ export class VoiceRack {
     // Cloned so a voice that Tone mutates in place cannot edit the catalogue.
     const opts = v.options ? JSON.parse(JSON.stringify(v.options)) : {};
     scrubOscTypes(opts);
+    clampFatCount(opts);
     // Glide is a constructor option on every Tone synth. It only becomes audible in a
     // non-poly key mode because those modes keep one note on one instance.
     if (v.portamento) opts.portamento = v.portamento;
@@ -4709,7 +4750,7 @@ export class VoiceRack {
           // Unison: free at 1 — no extra nodes, no detune arithmetic. Above 1 the
           // voices sit symmetrically across `spread` cents on `.detune`, scaled by
           // 1/√count so a stack arrives at the level one voice did.
-          const count = Math.max(1, Math.min(5, Math.round(spec.unison ?? 1)));
+          const count = clampUnison(spec.unison);
           const norm = count > 1 ? 1 / Math.sqrt(count) : 1;
           // The bandwidth makeup `_playGame` derives: a bandpass keeps only its
           // slice of the noise, the slice narrows with the note, and the level goes
