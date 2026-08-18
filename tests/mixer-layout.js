@@ -890,6 +890,10 @@ assert(!/schedulePreview|previewNote/.test(touchedBody)
   && !/let previewTimer|const schedulePreview/.test(editor),
   'editing a drum or noise parameter does not schedule an unsolicited note preview');
 
+assert(/if \(gesturing\) editDeferred = true;\s*else onEdit/.test(touchedBody)
+  && /if \(editDeferred\) \{\s*editDeferred = false;\s*onEdit\(state\.id, asSongPreset\(state\.voice\)\);\s*\}/.test(editor),
+  'a slider keeps the live voice moving but persists its song-owned preset once per gesture');
+
 assert(/const armBarOverride = \(\) => \{\s*if \(mode\) mode\.value = 'on';\s*\};/.test(entry)
   && /\[strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves,\s*rangeOn, rangeLo, rangeHi,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(entry),
   'editing any bar Note FX control automatically enables that bar override');
@@ -1514,9 +1518,15 @@ assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
   && /Audio\.prepareNoteCache\?\.\(engineBank\(\), range/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)[\s\S]{0,100}?if \(playing\) setPlaying\(false\)/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)/.test(entry)
+  && /const NOTE_CACHE_START_BUDGET_MS = 1200/.test(entry)
+  && /const initialPending = initial\?\.plan\?\.pending \|\| 0/.test(entry)
+  && /if \(preparationFailed \|\| !initial\?\.enabled \|\| \(!initialPending && !initial\.rendering\)\)/.test(entry)
+  && /Audio\.ensure\?\.\(\)/.test(entry)
+  && /playback starts automatically/.test(entry)
+  && !/press \$\{control === 'play' \? 'Play' : 'Start from beginning'\} again to play now/.test(entry)
   && /async function startPreparedTransport[\s\S]*?Audio\.ctx\?\.state === 'suspended'[\s\S]*?await Audio\.ctx\.resume\(\)/.test(entry)
   && /\$\('playstart'\)\.onclick = playFromBeginning/.test(entry),
-  'Start from beginning prepares the selected cache plan and starts only after its queue drains');
+  'Start from beginning primes audio, warms the selected cache briefly, and starts automatically');
 // The two halves of the backlog fix. `queued` is the live queue and the lifetime
 // counter is named apart from it, and — the part that keeps it fixed — the stats are
 // spread FIRST in both health builders, so a counter can never overwrite a live
@@ -1532,7 +1542,8 @@ assert(/beginPreparedNotePlan\(\)/.test(voicesSrc)
   && /MRDR_PLAN_HEAVY/.test(voicesSrc)
   && /NOTE_CACHE_PLAN_BYTES/.test(voicesSrc)
   && /plan: \{/.test(voicesSrc)
-  && /if \(!initial\?\.enabled \|\| \(!initial\.queued && !initial\.rendering\)\)/.test(entry),
+  && /const planPending = health\?\.plan\?\.pending \|\| 0/.test(entry)
+  && /if \(!health\?\.enabled \|\| \(!planPending && !health\.rendering\)\)/.test(entry),
   'the pre-roll selects a bounded MRDR plan and skips the wait when warm');
 // Play is a demand for sound. The recovery ladder latches its give-up for the life of
 // the page, so without this a single bad overload leaves the session silent through
@@ -1554,6 +1565,7 @@ assert(/prepareNoteCache\(bank, \{ startStep = 0, endStep = null \} = \{\}\)/.te
   && /preparePriority/.test(voicesSrc),
   'a cold Start from beginning inventories the resolved arrangement silently and prioritises late notes');
 assert(/async function playFromParked\(\)[\s\S]*?loopOn \? currentLoopBounds\(\) : null[\s\S]*?prepareAndStart\(\{ fromStep: parkedAt, range: bounds, control: 'play' \}\)/.test(entry)
+  && /if \(preparingFromStart\) \{[\s\S]*?return prepareAndStart\(\{ fromStep: parkedAt, range: bounds, control: 'play' \}\);/.test(entry)
   && /startStep: range\.start, endStep: range\.end/.test(entry)
   && /\$\('play'\)\.onclick = \(\) => \{ if \(!playing\) void playFromParked\(\); \}/.test(entry),
   'Play inventories and warms only the armed locator loop before starting it');
@@ -2307,6 +2319,29 @@ assert(/function openVoicePicker[\s\S]*?className = 'voiceclose popclose'[\s\S]*
   && /function openVoicePicker[\s\S]*?draw\(''\);[\s\S]*?el\.classList\.add\('show'\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(entry)
   && /#voicepicker button\.voiceclose \{[^}]*width:\s*34px[^}]*height:\s*34px[^}]*font-size:\s*23px/s.test(shell),
   'the preset selector has the large close button and focuses Search presets');
+// The panel opens filtered, keeps the last search and wraps a hundred presets over
+// sixteen columns, so the highlighted row answers "what is this lane on?" only while it
+// happens to be on screen — and on a generated song, which names its sound in the bank
+// rather than in the mix, nothing is highlighted at all. The header says it in words,
+// and clicking it drops whatever filter is hiding the row and scrolls to it.
+assert(/const nowPreset = pending \? null : selectedPreset;/.test(entry)
+  && /const nowInList = !!nowPreset && offeredVoices\(laneKey, offer\)\.some\(\(v\) => v\.id === nowPreset\.id\)/.test(entry)
+  && /const now = pending \? null : document\.createElement\(nowInList \? 'button' : 'span'\)/.test(entry)
+  && /nowName\.textContent = nowPreset\?\.label \|\| 'the engine’s own voice'/.test(entry)
+  && /head\.append\(who\);\s*\n\s*if \(now\) head\.append\(now\);/.test(entry)
+  && /if \(id\) btn\.dataset\.voice = id;/.test(entry)
+  && /const currentRow = \(\)[\s\S]*?querySelector\(`button\[data-voice="\$\{CSS\.escape\(nowPreset\.id\)\}"\]`\)/.test(entry)
+  && /if \(now && nowInList\) now\.onclick = \(ev\) => \{ ev\.stopPropagation\(\); revealCurrent\(\); \}/.test(entry)
+  && /#voicepicker \.voicenow \{[^}]*color: var\(--ink\)/s.test(shell),
+  'the preset selector names the preset the lane is on now, and clicking it reveals that row');
+// Sticky rather than scrolling away with the columns: the negative margin cancels the
+// panel's own padding so the band covers its full width, and the padding it takes in
+// exchange puts the row back where it sat.
+assert(/#voicepicker \.voicehead \{[^}]*position: sticky[^}]*top: 0[^}]*margin: -9px -8px 8px[^}]*padding: 9px 8px 8px[^}]*background: var\(--panel2\)/s.test(shell),
+  'the selector head stays visible while the preset columns scroll under it');
+// Opening ON the current sound rather than at the top of a list it is somewhere inside.
+assert(/requestAnimationFrame\(\(\) => \{[\s\S]*?if \(!el\.classList\.contains\('show'\)\) return;[\s\S]*?currentRow\(\)\?\.scrollIntoView\(\{ block: 'nearest', inline: 'nearest' \}\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(entry),
+  'the selector opens with the current preset already scrolled into view');
 assert(/id="font"[^>]*>[\s\S]*?<\/select>\s*<\/label>\s*<label[^>]*>\s*<span>Theme<\/span>\s*<select id="theme"/s.test(shell),
   'the colour theme selector sits beside the font selector in Desk settings');
 assert(entry.includes("const THEME_KEY = 'mash-mixer-theme'")
@@ -4654,6 +4689,13 @@ assert(/if \(chosen === voiceEditor\.editing && preset === voiceEditor\.voice\) 
   && /const choiceChanged = chosen !== voiceEditor\.editing \|\| preset !== voiceEditor\.voice;/.test(entry),
   'the editor follows its lane by preset OBJECT — a song-local id stays put across a'
   + ' change of preset, so an id comparison reads a new synth as the old one');
+
+// Standalone Advanced hides the compact panel, but it is still the active editor. The
+// preset picker lives in that full window, so using only `isOpen()` here changes the lane
+// and then refuses to rebind the window: every subsequent control edits the abandoned
+// copy of the previous preset and appears to do nothing.
+assert(/\(!voiceEditor\.isOpen\(\) && !voiceEditor\.fullOpen\)/.test(entry),
+  'lane following remains active while standalone Advanced is the only visible editor');
 
 // And the other half of the same rule: the lane can still change presets under the panel,
 // so the panel has to follow or go. A refused `open` leaves the OLD surface — MRDR-3's

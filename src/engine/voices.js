@@ -1969,7 +1969,19 @@ export class VoiceRack {
     this._tngr2Offline ||= new Map();
     let booking = this._tngr2Offline.get(key);
     if (!booking) {
-      booking = { voice: v, laneKey, dry, wet: echo ? wet : null, events: [], next: 1 };
+      // THE EVENT ID COUNTER OUTLIVES THE BOOKING.
+      //
+      // An event id is a note's identity inside the processor: a note-off names the
+      // note-on it ends. The bookings are emptied at every flush — the schedule is handed
+      // over a stretch at a time — so a counter living on the booking restarted at 1 for
+      // each stretch, and the second stretch's notes wore the first stretch's names. A
+      // note-off then ended a note that had already finished while the note it was meant
+      // for played on: one French Horn note sustained for the rest of the song.
+      this._tngr2OfflineIds ||= new Map();
+      booking = {
+        voice: v, laneKey, dry, wet: echo ? wet : null, events: [],
+        next: this._tngr2OfflineIds.get(key) || 1,
+      };
       this._tngr2Offline.set(key, booking);
     }
     const durationAt = (index) => {
@@ -1994,6 +2006,9 @@ export class VoiceRack {
       }
       made = true;
     });
+    // Kept where the next stretch of this lane will find it, whatever happens to the
+    // booking it was counting in.
+    this._tngr2OfflineIds.set(key, booking.next);
     return made;
   }
 
@@ -2004,13 +2019,44 @@ export class VoiceRack {
    * it is asked — so a node created here is in place for the first sample. Returns the
    * number of lanes it built, which is zero for a song with no TNGR-2 on it.
    */
+  /**
+   * Build the offline lanes for whatever has been collected — and CALLABLE AGAIN.
+   *
+   * The bounce walks the schedule just in time: the graph stands a few seconds ahead of
+   * the render head and no further, because an offline graph built whole processes every
+   * node for the whole song. So the schedule is not complete when the render starts, and a
+   * lane built once from the first few seconds of it plays the first few seconds and then
+   * nothing — which is a part missing from a bounce with no error to say so.
+   *
+   * A lane the second call already knows is not rebuilt. Its notes are POSTED, exactly as
+   * the live path posts them, and the schedule stays one node per lane: the voice
+   * allocator sees the song as one stream, so a chord steals the same way in a stem as in
+   * the mix. The cushion is what makes it safe — events posted from a checkpoint are for
+   * a time at least a horizon ahead, which is the same lookahead the live path runs on,
+   * rather than the zero cushion that made port delivery unreliable before
+   * `startRendering` (docs/TNGR-2-completion-spec.md §3, finding b).
+   */
   async flushTngr2Offline() {
     const booked = this._tngr2Offline;
     if (!booked || !booked.size) return 0;
     this._tngr2Offline = new Map();
+    this._tngr2OfflineLanes ||= new Map();
+    // Lanes belong to the CONTEXT that built them. A page that bounces twice reuses the
+    // rack, and a node from the last render is not a node this one can post to.
+    for (const [key, entry] of this._tngr2OfflineLanes) {
+      if (entry.context !== this.ctx) this._tngr2OfflineLanes.delete(key);
+    }
     let built = 0;
     for (const booking of booked.values()) {
       try {
+        const already = this._tngr2OfflineLanes.get(booking.laneKey);
+        if (already) {
+          // Posted as collected: these events already carry absolute FRAMES, which is what
+          // the processor reads. Routing them through `tngr2NoteOn` would convert a frame
+          // number as though it were seconds and land every note hours into the render.
+          for (const event of booking.events) already.node.port.postMessage(event);
+          continue;
+        }
         const node = await renderTngr2Lane(this.ctx, {
           stored: tngr2PatchForVoice(booking.voice),
           vibrato: tngr2VibratoOf(booking.voice),
@@ -2020,6 +2066,7 @@ export class VoiceRack {
           destination: booking.dry || this.ctx.destination,
         });
         if (booking.wet) node.connect(booking.wet);
+        this._tngr2OfflineLanes.set(booking.laneKey, { node, context: this.ctx });
         built++;
       } catch (err) {
         // A lane that cannot be built is a lane that renders silence. Say so rather than

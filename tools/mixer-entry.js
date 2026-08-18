@@ -4501,7 +4501,13 @@ voiceEditEl.addEventListener('pointerdown', (ev) => {
  * is what keeps the ‹ › audition loop from losing the hover under the pointer.
  */
 function syncVoiceEditorToLane(laneKey, { autoCopy = true } = {}) {
-  if (!voiceEditor.isOpen() || !laneKey || voiceEditor.laneKey !== laneKey) return false;
+  // Standalone Advanced deliberately hides the compact panel behind it. That does not
+  // mean the editor has let go of the lane: the full window still reads and writes the
+  // same state.voice, and a preset chosen in its own title bar must move that state onto
+  // the lane's new song-local copy. Treating only the compact panel's `show` class as
+  // ownership changed the lane but left Advanced editing the detached previous object.
+  if ((!voiceEditor.isOpen() && !voiceEditor.fullOpen)
+      || !laneKey || voiceEditor.laneKey !== laneKey) return false;
   let chosen = laneVoiceId(laneKey);
   let preset = chosen && VOICES[chosen];
   if (!preset || preset.kind === 'engine') { dismissVoiceEditor(); return true; }
@@ -5320,6 +5326,9 @@ function openVoicePicker(x, y, laneKey) {
   const entry = (id, label, kind, title) => {
     const btn = document.createElement('button');
     btn.className = (id === chosen || (!id && !chosen)) ? 'on' : '';
+    // Named, so the header's readout can scroll to the row it is naming without
+    // searching the panel for a label that two presets could share.
+    if (id) btn.dataset.voice = id;
     const n = document.createElement('span');
     n.textContent = label;
     const k = document.createElement('span');
@@ -5355,6 +5364,67 @@ function openVoicePicker(x, y, laneKey) {
   const who = document.createElement('span');
   who.className = 'voicewho';
   who.textContent = `${targetLabel(laneKey)} voice`;
+
+  // WHAT THE LANE IS ON NOW, named rather than only highlighted.
+  //
+  // The chosen row carries `on`, and a highlight answers this only while the row is on
+  // screen. It routinely is not: the panel opens filtered to the engine the lane plays,
+  // keeps the search from the last time it was opened, and wraps a hundred presets over
+  // sixteen columns — so the one preset you most want named is the one scrolled past.
+  // And on a generated song, whose lane names its sound in the BANK rather than in the
+  // mix, no row is highlighted at all; the sound has a name and the panel never said it.
+  //
+  // `selectedPreset` above is that name, already worked out for the engine filter: the
+  // chosen preset, or the song's own copy, or the bank's default, in that order.
+  //
+  // A button when the library holds a row for it — clicking is the way BACK to the row,
+  // dropping whatever filter is hiding it — and a plain span when it does not, which is
+  // a frozen starter on a generated song. There is nothing to scroll to there, and a
+  // button that does nothing is worse than a label.
+  //
+  // The PLUS picker has none of this: a track that does not exist yet is not on
+  // anything, and the head already says so in the line under it.
+  const nowPreset = pending ? null : selectedPreset;
+  const nowInList = !!nowPreset && offeredVoices(laneKey, offer).some((v) => v.id === nowPreset.id);
+  const now = pending ? null : document.createElement(nowInList ? 'button' : 'span');
+  if (now) {
+    now.className = 'voicenow';
+    if (nowInList) now.type = 'button';
+    const nowName = document.createElement('span');
+    nowName.className = 'voicenow-name';
+    nowName.textContent = nowPreset?.label || 'the engine’s own voice';
+    now.append(nowName);
+    if (nowPreset?.category) {
+      const nowCat = document.createElement('span');
+      nowCat.className = 'voicenow-cat';
+      nowCat.textContent = nowPreset.category;
+      now.append(nowCat);
+    }
+    now.title = nowPreset
+      ? `This lane is on ${nowPreset.label}`
+        + (nowInList ? ' — click to show it in the list below' : '')
+      : 'This lane is on the engine’s own voice — no preset is chosen';
+  }
+  // The row for the current preset, or null while a filter is hiding it.
+  const currentRow = () => (nowPreset
+    ? results.querySelector(`button[data-voice="${CSS.escape(nowPreset.id)}"]`)
+    : null);
+  // Put that row back on screen, whatever is hiding it. The filters are only dropped
+  // when one of them is the thing in the way, so clicking this while the row is already
+  // visible leaves the panel exactly as it was bar the scroll.
+  const revealCurrent = () => {
+    if (!currentRow()) {
+      voicePickerQuery = '';
+      search.value = '';
+      engine = 'all';
+      if (KINDS.some((k) => k.id === 'all')) kind = 'all';
+      for (const c of chips.children) c.classList.toggle('on', c.textContent === 'All');
+      refreshEngineOptions();
+      draw('');
+    }
+    currentRow()?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  };
+  if (now && nowInList) now.onclick = (ev) => { ev.stopPropagation(); revealCurrent(); };
 
   // Drums or not — the one split the catalogue's categories do not make, and the only
   // one that is about the LANE. A lead strip has no use for seven columns of kit before
@@ -5435,7 +5505,9 @@ function openVoicePicker(x, y, laneKey) {
   refreshEngineOptions();
   engineSelect.title = 'Show presets for the current engine, or all engines';
   engineSelect.onchange = () => { engine = engineSelect.value; draw(search.value); };
-  head.append(who, chips);
+  head.append(who);
+  if (now) head.append(now);
+  head.append(chips);
   head.append(engineSelect);
   head.append(search);
   if (layer) {
@@ -5518,7 +5590,7 @@ function openVoicePicker(x, y, laneKey) {
         more.textContent = `${elsewhere} in the rest of the library`;
         more.onclick = () => {
           kind = 'all';
-          for (const c of chips.children) c.classList.toggle('on', c.textContent === 'all');
+          for (const c of chips.children) c.classList.toggle('on', c.textContent === 'All');
           draw(search.value);
         };
         none.append(more);
@@ -5561,7 +5633,12 @@ function openVoicePicker(x, y, laneKey) {
   el.style.left = `${Math.max(4, Math.min(x, innerWidth - r.width - 6))}px`;
   el.style.top = `${Math.max(4, Math.min(y, innerHeight - r.height - 6))}px`;
   requestAnimationFrame(() => {
-    if (el.classList.contains('show')) search.focus({ preventScroll: true });
+    if (!el.classList.contains('show')) return;
+    // Opening ON the sound the lane already plays, rather than at the top of a list it
+    // is somewhere inside. `nearest` so a row that is already visible does not move,
+    // and `preventScroll` on the focus after it so the caret does not undo the scroll.
+    currentRow()?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    search.focus({ preventScroll: true });
   });
 }
 
@@ -12538,11 +12615,17 @@ function scheduleSelectionEditors({ defer = false } = {}) {
     // A large piano roll or drum grid can take longer than the audio lookahead. Let
     // the browser paint it only when there is idle time; playback remains authoritative
     // and the timeline/loop overlay already show the new selection immediately.
+    //
+    // With a deadline, because a playing desk animates every frame and never LOOKS
+    // idle to the browser: without one this callback simply never fired, and clicking
+    // from track to track mid-song changed the roll's header but never its notes. The
+    // paint itself is safe past the deadline — it runs through heavyUi, which queues
+    // two seconds of audio ahead of the build.
     if (selectionRefreshIdle) return;
     selectionRefreshIdle = requestIdleCallback(() => {
       selectionRefreshIdle = 0;
       if (selectionEditorsDirty) paintSelectionEditors();
-    });
+    }, { timeout: 300 });
     return;
   }
   // Without an idle callback to wait for, the next frame is the nearest thing. It used
@@ -19794,11 +19877,18 @@ function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
   // Armed and recording look different, and which one this is has just changed.
   syncRecordUi();
 }
-/** Selected preparation is allowed to finish; a second press remains the escape hatch. */
+/**
+ * Warm the cache briefly, then start. A cache is an optimisation, not a prerequisite
+ * for sound: waiting forever for an OfflineAudioContext is worse than letting the first
+ * notes use the live rack and warming the rest for the next pass.
+ */
+const NOTE_CACHE_START_BUDGET_MS = 1200;
 let preparingFromStart = false;
 let startPreparationToken = 0;
 let preparationControl = 'start';
 let preparationFromStep = 0;
+let preparationHandoff = 0;
+let startingPreparedTransport = false;
 
 const waitForCacheTick = () => new Promise((resolve) => setTimeout(resolve, 40));
 
@@ -19811,46 +19901,77 @@ function showStartPreparation(on, control = preparationControl) {
   $('playstart').setAttribute('aria-busy', String(on && fromTop));
   $('play').setAttribute('aria-busy', String(on && !fromTop));
   $('playstart').title = on && fromTop
-    ? 'Preparing note cache — press again to start now'
+    ? 'Preparing note cache — playback starts automatically'
     : 'Play from the top of the song';
   $('play').title = on && !fromTop
-    ? 'Preparing this loop — press again to start now'
+    ? 'Preparing this loop — playback starts automatically'
     : 'Play (space)';
   $('playstart').dataset.tip = on && fromTop ? 'Start now' : 'Play from top';
-  $('playstart').disabled = on && !fromTop;
-  $('play').disabled = on && fromTop;
+  // Both transport buttons remain live while the cache warms. They are useful escape
+  // hatches in their own right: Start means step 0, Play means the parked/loop step.
+  // Disabling one while telling the user to press it again was both contradictory and
+  // the source of the old "press play to start" dead end.
+  $('playstart').disabled = false;
+  $('play').disabled = false;
 }
 
 function cancelStartPreparation() {
-  if (!preparingFromStart) return false;
+  if (!preparingFromStart && !startingPreparedTransport) return false;
   startPreparationToken++;
+  preparationHandoff++;
   showStartPreparation(false);
   Audio.setNoteCachePreparationHeld(false);
   return true;
 }
 
 async function startPreparedTransport(message = '', fromStep = preparationFromStep) {
+  if (startingPreparedTransport) return false;
+  startingPreparedTransport = true;
+  const handoff = ++preparationHandoff;
+  let started = false;
   Audio.setNoteCachePreparationHeld(true);
   showStartPreparation(false);
-  // Cache preparation finishes in an async callback, so this handoff is no longer
-  // necessarily inside the click that unlocked Web Audio. Resume before the bank is
-  // scheduled; otherwise the desk can say it is playing while a suspended context
-  // holds every cached source silent.
-  if (Audio.ctx?.state === 'suspended' && typeof Audio.ctx.resume === 'function') {
-    try { await Audio.ctx.resume(); } catch { /* the next user gesture can retry */ }
+  try {
+    // Cache preparation finishes in an async callback, so this handoff is no longer
+    // necessarily inside the click that unlocked Web Audio. Resume before the bank is
+    // scheduled; otherwise the desk can say it is playing while a suspended context
+    // holds every cached source silent. `prepareAndStart` also calls ensure() inside the
+    // original gesture, which makes this a retry rather than the first unlock attempt.
+    if (Audio.ctx?.state === 'suspended' && typeof Audio.ctx.resume === 'function') {
+      try { await Audio.ctx.resume(); } catch { /* setPlaying retries on the gesture path */ }
+    }
+    // Stop can arrive while resume() is pending. Do not resurrect playback after that
+    // deliberate cancellation, and do not leave the cache hold behind on the abort path.
+    if (handoff !== preparationHandoff) return false;
+    setPlaying(true, fromStep);
+    started = true;
+    // `bank` now keeps preparation paused. Releasing the explicit hold here means the
+    // next ordinary Stop/Pause can warm whatever this pass discovers.
+    Audio.setNoteCachePreparationHeld(false);
+    if (message) toast(message);
+    return true;
+  } finally {
+    if (!started) Audio.setNoteCachePreparationHeld(false);
+    startingPreparedTransport = false;
   }
-  setPlaying(true, fromStep);
-  // `bank` now keeps preparation paused. Releasing the explicit hold here means the
-  // next ordinary Stop/Pause can warm whatever this pass discovers.
-  Audio.setNoteCachePreparationHeld(false);
-  if (message) toast(message);
 }
 
 async function prepareAndStart({ fromStep = 0, range = null, control = 'start' } = {}) {
+  if (startingPreparedTransport) return;
   if (preparingFromStart) {
     startPreparationToken++;
-    await startPreparedTransport('Starting now');
+    // The button that was actually clicked owns the position. In particular, Start
+    // from beginning must still mean step 0 if a locator-loop warm-up is in progress.
+    const immediateStep = control === 'start' ? 0 : preparationFromStep;
+    await startPreparedTransport('Starting now', immediateStep);
     return;
+  }
+
+  // Unlock/create the realtime context in the click that requested playback. The final
+  // start happens after async cache work, so relying on that later callback as the first
+  // autoplay gesture is intermittent on browsers that require an explicit unlock.
+  try { Audio.ensure?.(); } catch (error) {
+    console.warn('[mixer] audio context could not be primed before cache preparation', error);
   }
 
   // Hold the worker BEFORE stopping. setBank(null) normally releases it, which would
@@ -19860,14 +19981,24 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
   if (playing) setPlaying(false);
   preparationFromStep = fromStep;
   if (fromStep === 0) jumpTo(0); // park and draw bar 1 while the cache is prepared
-  const initial = Audio.prepareNoteCache?.(engineBank(), range
-    ? { startStep: range.start, endStep: range.end } : {}) || Audio.noteCacheHealth?.();
-  // A WARM SONG STARTS INSTANTLY. `queued` is the live backlog, so nothing queued and
-  // nothing rendering means there is nothing to wait for. This test could not fire
-  // before `queuedTotal` was renamed apart from it: it used to read the lifetime
-  // counter, which never returns to zero, so every Play after the session's first
-  // cache miss paid the whole budget and then waited out a render as well.
-  if (!initial?.enabled || (!initial.queued && !initial.rendering)) {
+  let initial;
+  let preparationFailed = false;
+  try {
+    initial = Audio.prepareNoteCache?.(engineBank(), range
+      ? { startStep: range.start, endStep: range.end } : {}) || Audio.noteCacheHealth?.();
+  } catch (error) {
+    // Inventory is only an optimisation. A malformed/edited arrangement must never
+    // strand the transport with its cache hold set and no way to start the song.
+    preparationFailed = true;
+    console.warn('[mixer] note cache preparation skipped; starting live', error);
+    initial = Audio.noteCacheHealth?.() || { enabled: false };
+  }
+  // A WARM SONG STARTS INSTANTLY. Only the selected plan is a reason to wait: the cache
+  // can also contain unrelated jobs left by an earlier pass, and those must not hold a
+  // fresh transport hostage. `plan.pending` is the selected live backlog; `rendering`
+  // covers the one job already inside OfflineAudioContext when the plan was committed.
+  const initialPending = initial?.plan?.pending || 0;
+  if (preparationFailed || !initial?.enabled || (!initialPending && !initial.rendering)) {
     await startPreparedTransport(initial?.buffers
       ? `Playing ${range ? 'loop' : 'from beginning'} · ${initial.buffers} cached note${initial.buffers === 1 ? '' : 's'}`
       : '');
@@ -19879,14 +20010,18 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
   Audio.setNoteCachePreparationHeld(false);
   const selected = initial.plan?.selected || 0;
   const planned = initial.plan?.candidates || 0;
-  toast(`Preparing ${range ? 'loop' : 'audio'}… ${selected || initial.queued} sound${(selected || initial.queued) === 1 ? '' : 's'} selected${planned ? ` of ${planned}` : ''} · press ${control === 'play' ? 'Play' : 'Start from beginning'} again to play now`, 3000);
+  toast(`Preparing ${range ? 'loop' : 'audio'}… ${selected || initialPending} sound${(selected || initialPending) === 1 ? '' : 's'} selected${planned ? ` of ${planned}` : ''}`, 3000);
+  const deadline = performance.now() + NOTE_CACHE_START_BUDGET_MS;
+  let budgetExpired = false;
   while (token === startPreparationToken) {
     const health = Audio.noteCacheHealth?.();
-    if (!health?.enabled || (!health.queued && !health.rendering)) break;
+    const planPending = health?.plan?.pending || 0;
+    if (!health?.enabled || (!planPending && !health.rendering)) break;
+    if (performance.now() >= deadline) { budgetExpired = true; break; }
     const plan = health.plan || {};
     const done = plan.completed || 0;
-    if (health.queued || health.rendering) {
-      const total = Math.max(0, plan.selected || selected || health.queued + done);
+    if (planPending || health.rendering) {
+      const total = Math.max(0, plan.selected || selected || planPending + done);
       const label = total ? `Preparing MRDR-3 ${Math.min(total, done)} / ${total}` : 'Preparing audio';
       showStartPreparation(true, control);
       $('play').dataset.tip = `${label} · Start now`;
@@ -19899,7 +20034,7 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
   const health = Audio.noteCacheHealth?.();
   await startPreparedTransport(health?.buffers
     ? `Playing ${range ? 'loop' : 'from beginning'} · ${health.buffers} cached note${health.buffers === 1 ? '' : 's'}`
-    : `Playing ${range ? 'loop' : 'from beginning'}`);
+    : `Playing ${range ? 'loop' : 'from beginning'}${budgetExpired ? ' · live warm-up' : ''}`);
 }
 
 async function playFromBeginning() {
@@ -19913,6 +20048,12 @@ async function playFromBeginning() {
 async function playFromParked() {
   if (rearrangeActive()) { setPlaying(true); return; }
   const bounds = loopOn ? currentLoopBounds() : null;
+  // While a top-of-song warm-up is in progress, the ordinary no-loop branch must not
+  // bypass the handoff with a raw setPlaying(true). Route Play through the same token
+  // cancellation so the cache callback cannot start a second transport a moment later.
+  if (preparingFromStart) {
+    return prepareAndStart({ fromStep: parkedAt, range: bounds, control: 'play' });
+  }
   if (!bounds) { setPlaying(true); return; }
   return prepareAndStart({ fromStep: parkedAt, range: bounds, control: 'play' });
 }

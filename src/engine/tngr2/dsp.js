@@ -250,8 +250,25 @@ Tngr2Lfo.prototype.gate = function gate(spec, startFrame, seed) {
   this.value = 0;
 };
 
-Tngr2Lfo.prototype.tick = function tick() {
+Tngr2Lfo.prototype.advance = function advance(samples) {
+  var count = Math.max(1, Math.round(samples || 1));
+  // Only the value on the control grid is consumed. Jump to the phase of the last sample
+  // in this span instead of evaluating the same sine on every intervening audio sample.
   var phase = this.phase;
+  var crossed = 0;
+  // Repeated addition is intentional: it lands on the exact phases the former per-sample
+  // tick did, preserving the rendered samples while skipping only waveform evaluation.
+  for (var skip = 1; skip < count; skip++) {
+    phase += this.inc;
+    if (phase >= 1) {
+      crossed = Math.floor(phase);
+      phase -= crossed;
+      if (this.shape === TNGR2_LFO_HOLD) {
+        this.step += crossed;
+        this.held = tngr2Hold(this.step, this.seed);
+      }
+    }
+  }
   var value;
   if (this.shape === TNGR2_LFO_SINE) {
     value = Math.sin(phase * 6.283185307179586);
@@ -266,24 +283,28 @@ Tngr2Lfo.prototype.tick = function tick() {
     // in every host and every render.
     value = this.held;
   }
-  this.phase += this.inc;
+  this.phase = phase + this.inc;
   if (this.phase >= 1) {
-    this.phase -= 1;
+    crossed = Math.floor(this.phase);
+    this.phase -= crossed;
     if (this.shape === TNGR2_LFO_HOLD) {
-      this.step++;
+      this.step += crossed;
       this.held = tngr2Hold(this.step, this.seed);
     }
   }
   // DELAY fades the LFO in from the note's start, so a vibrato can arrive after the
   // attack rather than being present in it.
   var scale = 1;
-  if (this.delayLeft > 0) {
-    scale = 1 - this.delayLeft / this.delaySamples;
-    this.delayLeft--;
+  var delayAtLast = Math.max(0, this.delayLeft - (count - 1));
+  if (delayAtLast > 0) {
+    scale = 1 - delayAtLast / this.delaySamples;
   }
+  this.delayLeft = Math.max(0, this.delayLeft - count);
   this.value = value * scale;
   return this.value;
 };
+
+Tngr2Lfo.prototype.tick = function tick() { return this.advance(1); };
 
 /**
  * A topology-preserving-transform state variable filter, per channel.
@@ -711,6 +732,13 @@ function Tngr2Voice(rate) {
   this.glideStep = 1;
   this.glideLeft = 0;
   this.pitchMul = 1;
+  // Position/filter envelopes become constant at sustain. These flags carry their last
+  // change to the next control-grid frame, then let a held note stop recomputing the
+  // exact same table positions and SVF coefficients thousands of times per second.
+  this.posDirty = false;
+  this.filterDirty = false;
+  this.posLfoFrame = 0;
+  this.vibFrame = 0;
   this.l = 0;
   this.r = 0;
   // Assigned by the core. Active voices stay in this slot order so summing remains
@@ -738,6 +766,10 @@ Tngr2Voice.prototype.start = function start(note, age, patch, tables, core, star
   this.glideStep = 1;
   this.glideLeft = 0;
   this.pitchMul = 1;
+  this.posDirty = false;
+  this.filterDirty = false;
+  this.posLfoFrame = startFrame - 1;
+  this.vibFrame = startFrame - 1;
   var specs = patch.sources;
   this.count = Math.min(TNGR2_MAX_SOURCES, specs.length);
   var span = tables ? tables.frames - 1 : 0;
@@ -808,6 +840,8 @@ Tngr2Voice.prototype.retarget = function retarget(hz, patch, regate, tables) {
     this.env.gate(patch.amp);
     this.posEnv.gate(patch.positionEnv);
     this.filterEnv.gate(patch.filterEnv);
+    this.posDirty = patch.usesPosEnv;
+    this.filterDirty = patch.usesFilterEnv;
   }
 };
 
@@ -890,10 +924,28 @@ Tngr2Voice.prototype.tick = function tick(frame, tables) {
   var s;
   var src;
   // Only what this patch actually moves — see the liveness flags in tngr2CompilePatch.
-  if (patch.usesPosEnv) this.posEnv.tick();
-  if (patch.usesFilterEnv) this.filterEnv.tick();
-  if (patch.usesLfo1) this.lfo1.tick();
-  if (patch.usesVibrato) this.vib.tick();
+  // An ADSR in sustain returns the same number forever. Unlike the amplitude envelope,
+  // these two only feed control-rate destinations, so once their last change has landed
+  // on the grid there is no work to do until note-off moves them into release.
+  if (patch.usesPosEnv && this.posEnv.stage !== TNGR2_STAGE_SUSTAIN
+      && this.posEnv.stage !== TNGR2_STAGE_OFF) {
+    this.posEnv.tick();
+    this.posDirty = true;
+  }
+  if (patch.usesFilterEnv && this.filterEnv.stage !== TNGR2_STAGE_SUSTAIN
+      && this.filterEnv.stage !== TNGR2_STAGE_OFF) {
+    this.filterEnv.tick();
+    this.filterDirty = true;
+  }
+  var onGrid = patch.gridMoves && (frame & TNGR2_MOD_MASK) === 0;
+  if (patch.usesLfo1 && onGrid) {
+    this.lfo1.advance(frame - this.posLfoFrame);
+    this.posLfoFrame = frame;
+  }
+  if (patch.usesVibrato && (onGrid || this.gliding)) {
+    this.vib.advance(frame - this.vibFrame);
+    this.vibFrame = frame;
+  }
   if (this.gliding) {
     for (s = 0; s < this.count; s++) this.sources[s].baseInc *= this.glideStep;
     if (--this.glideLeft <= 0) this.gliding = false;
@@ -901,10 +953,15 @@ Tngr2Voice.prototype.tick = function tick(frame, tables) {
   // The expensive destinations, on the absolute frame grid — see TNGR2_MOD_MASK. A patch
   // with nothing moving had them settled at note-on and cannot have changed since, so it
   // never comes back here at all.
-  var onGrid = patch.gridMoves && (frame & TNGR2_MOD_MASK) === 0;
   if (this.gliding || (onGrid && patch.usesVibrato)) this.applyPitch(tables);
-  if (onGrid && (patch.usesPosEnv || patch.usesLfo1)) this.applyPosition(tables);
-  if (onGrid && patch.usesFilterEnv) this.applyFilter();
+  if (onGrid && (this.posDirty || patch.usesLfo1)) {
+    this.applyPosition(tables);
+    this.posDirty = false;
+  }
+  if (onGrid && this.filterDirty) {
+    this.applyFilter();
+    this.filterDirty = false;
+  }
   var l = 0;
   var r = 0;
   for (s = 0; s < this.count; s++) {
@@ -1001,7 +1058,12 @@ Tngr2Core.prototype.installTables = function installTables(tables) {
 
 /** Install a patch, compiled once. Notes bind to whatever is current at note-on. */
 Tngr2Core.prototype.installPatch = function installPatch(patch) {
-  this.patch = tngr2CompilePatch(patch);
+  this.installCompiledPatch(tngr2CompilePatch(patch));
+};
+
+/** Install an already-compiled patch without doing object/array work on the audio thread. */
+Tngr2Core.prototype.installCompiledPatch = function installCompiledPatch(patch) {
+  this.patch = patch || tngr2CompilePatch(null);
   this.compileLfoDelays();
 };
 
@@ -1237,9 +1299,12 @@ Tngr2Core.prototype.health = function health(frame) {
 // Evaluated once, for Node — tests, tools and the reference renderer below. The browser
 // never takes this path; it gets the same text through the worklet.
 const evaluated = new Function(`${TNGR2_DSP_SOURCE}
-return { Tngr2Core, Tngr2Voice, Tngr2Env, tngr2SeededPhase };`)();
+return { Tngr2Core, Tngr2Voice, Tngr2Env, tngr2SeededPhase, tngr2CompilePatch };`)();
 
-export const { Tngr2Core, Tngr2Voice, Tngr2Env, tngr2SeededPhase } = evaluated;
+export const {
+  Tngr2Core, Tngr2Voice, Tngr2Env, tngr2SeededPhase,
+  tngr2CompilePatch: compileTngr2Patch,
+} = evaluated;
 
 /**
  * Audio time to the integer frame the core counts in.

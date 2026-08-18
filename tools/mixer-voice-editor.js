@@ -3357,15 +3357,38 @@ function buildTngr2FullLayout(voice, problems) {
     // and bottom-aligning banked the whole of that spare height in one gap under the
     // fader. Three pot rows instead of five, in a card half the height, and the slack is
     // now the breathing room the fader wanted anyway.
-    card: { ...take(group, key), pots: potsFor() },
+    card: SPLIT[key]
+      ? splitAt({ ...take(group, key), pots: potsFor(), top: true, spread: true }, SPLIT[key])
+      : { ...take(group, key), pots: potsFor() },
   });
+  /*
+   * TWO BLOCKS TO A CARD, WITH THE SLACK BETWEEN THEM.
+   *
+   * SETTINGS and EFFECTS are each two unrelated things sharing a frame: how the preset is
+   * tuned and played, and then its vibrato; what the drive IS, and then its chorus. Run
+   * together as one list they read as one list, and the reader has to find the seam.
+   *
+   * So each is hung from the top and its second half pinned to the floor, and the card's
+   * spare height becomes the rule between them. Split by LABEL and only here, because it
+   * is this window's arrangement rather than a property of the rows — the strip shows the
+   * same controls as one list and is right to.
+   */
+  const splitAt = (card, label) => {
+    const at = (card.rows || []).findIndex((r) => r.label === label);
+    if (at < 0) return card;
+    return { ...card, rows: card.rows.slice(0, at), foot: card.rows.slice(at) };
+  };
+  const SPLIT = { note: 'VIB DEPTH', effects: 'CHORUS' };
   // SETTINGS is titled from FULL_TITLES like every other window card, so it says the same
   // word here as it does on MRDR-3 rather than the strip's 'Note' — this card is
   // everything about how the preset is PLAYED.
   const settings = {
     kind: 'card',
     span: 4,
-    card: { ...take(common, 'note'), title: FULL_TITLES.note, pots: 4 },
+    card: splitAt(
+      { ...take(common, 'note'), title: FULL_TITLES.note, pots: 4, top: true, spread: true },
+      SPLIT.note,
+    ),
   };
   /*
    * ONE ROW OF FOUR COLUMNS, EVERY ONE OF THEM A PAIR.
@@ -3926,7 +3949,8 @@ export function createVoiceEditor({
     // it lives, and an edit that never reached it would be lost on the next applyMix
     // — which re-registers the catalogue entry from the mix and would put the old
     // sound straight back over this one. No-op on a library preset.
-    onEdit(state.id, asSongPreset(state.voice));
+    if (gesturing) editDeferred = true;
+    else onEdit(state.id, asSongPreset(state.voice));
     onDirty(state.id, true);
     scheduleEstimate();
     paintFoot();
@@ -3940,6 +3964,10 @@ export function createVoiceEditor({
   // `onStart`/`onEnd` (see `numRow`), so this is true from the pointer going down to it
   // coming up — including the whole of a drag that is sitting still against a stop.
   let gesturing = false;
+  // A song-owned voice is persisted with a synchronous clone + localStorage write.
+  // Keep the live VOICES object moving under the hand, but do that heavier book-keeping
+  // once per gesture rather than once per pointer pixel.
+  let editDeferred = false;
 
   /**
    * Re-measure the level, once the hand is off the control.
@@ -3972,6 +4000,10 @@ export function createVoiceEditor({
     undoHistory.end();
     if (!gesturing) return;
     gesturing = false;
+    if (editDeferred) {
+      editDeferred = false;
+      onEdit(state.id, asSongPreset(state.voice));
+    }
     if (!estimateDeferred) return;
     estimateDeferred = false;
     scheduleEstimate();

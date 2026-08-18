@@ -43,7 +43,8 @@ class Tngr2Processor extends AudioWorkletProcessor {
     if (opts.tables) this.core.installTables(opts.tables);
     // The patch before the schedule: a queued note binds to whatever is installed when it
     // is APPLIED, and applying begins the moment process() first runs.
-    if (opts.patch) this.core.installPatch(opts.patch);
+    if (opts.compiledPatch) this.core.installCompiledPatch(opts.compiledPatch);
+    else if (opts.patch) this.core.installPatch(opts.patch);
     // The schedule known before the first sample. Delivered with the node, because the
     // port cannot be relied on to arrive before an offline render has already finished.
     if (opts.events && opts.events.length) this.core.scheduleAll(opts.events);
@@ -54,6 +55,9 @@ class Tngr2Processor extends AudioWorkletProcessor {
       if (msg.type === 'stop') { this.done = true; return; }
       if (msg.type === 'report') { this.port.postMessage(this.core.health(currentFrame)); return; }
       if (msg.type === 'installTables') { this.core.installTables(msg.tables); return; }
+      if (msg.type === 'installCompiledPatch') {
+        this.core.installCompiledPatch(msg.patch); return;
+      }
       if (msg.type === 'installPatch') { this.core.installPatch(msg.patch); return; }
       this.core.schedule(msg);
     };
@@ -110,7 +114,8 @@ export function ensureTngr2Dsp(ctx) {
  * render, a scheduled bar. Live note-ons arrive afterwards on `node.port`.
  */
 export function createTngr2Node(ctx, {
-  channels = 2, events = null, maxVoices = 16, tables = null, patch = null, frameOffset = 0,
+  channels = 2, events = null, maxVoices = 16, tables = null, patch = null,
+  compiledPatch = null, frameOffset = 0,
 } = {}) {
   return new AudioWorkletNode(ctx, TNGR2_PROCESSOR_NAME, {
     numberOfInputs: 0,
@@ -123,6 +128,7 @@ export function createTngr2Node(ctx, {
       // forbids making cross-origin isolation a site requirement just for table sharing,
       // and names the one-time copy as the alternative to take.
       ...(tables ? { tables } : {}),
+      ...(compiledPatch ? { compiledPatch } : {}),
       ...(patch ? { patch } : {}),
       ...(frameOffset ? { frameOffset } : {}),
     },

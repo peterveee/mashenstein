@@ -72,6 +72,15 @@ window.__lifecycle = async ({ stored }) => {
     out.patchKeptNode = changed.node === first.node;
     out.patchApplied = changed.patch.oscA.position === 0.9;
 
+    // Switching one lane to another family set must not evict the first set and force a
+    // repack/re-clone when another lane (or a later preset) asks for it again.
+    await tngr2Lane(ctx, 'bass', {
+      stored: { ...stored, oscA: { ...stored.oscA, table: 'basic' }, oscB: { ...stored.oscB, on: false } },
+    });
+    out.tableSetsAfterAlternate = tngr2ControllerHealth(ctx).tableSets;
+    const restored = await tngr2Lane(ctx, 'bass', { stored });
+    out.tableCacheReused = restored.tables === lead.tables;
+
     // Live scheduling: these go over the port, which is correct for a running context.
     first.node.connect(ctx.destination);
     tngr2NoteOn(first, { at: ctx.currentTime + 0.02, hz: 110, velocity: 1, eventId: 1 });
@@ -436,6 +445,8 @@ try {
     'each lane gets its own node, and the controller knows how many it holds');
   assert(life.patchKeptNode, 'a patch change reaches a lane without replacing its node');
   assert(life.patchApplied, 'and the new patch is what the lane now holds');
+  assert(life.tableSetsAfterAlternate === 2 && life.tableCacheReused,
+    'different lane family sets stay cached and returning to one reuses its packed payload');
   assert(life.generation === 2, 'a panic carries its transport generation');
   assert(life.releasedOne && life.afterRelease === 1 && life.laneGone,
     'releasing one lane leaves the others alone');

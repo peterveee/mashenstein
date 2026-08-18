@@ -28,6 +28,7 @@
 import { ensureTngr2Dsp, createTngr2Node, canHostTngr2 } from './worklet.js';
 import { packTngr2Tables } from './tables.js';
 import { migrateTngr2, tngr2CoreParams } from './schema.js';
+import { compileTngr2Patch } from './dsp.js';
 
 export { canHostTngr2 };
 
@@ -42,18 +43,19 @@ export const frameAt = (seconds, sampleRate) => Math.max(0, Math.round(seconds *
 
 // Per context: the lanes it holds, and the table payload it has already built.
 const contexts = new WeakMap();
+const MAX_TABLE_SETS = 8;
 
 const stateFor = (ctx) => {
   let state = contexts.get(ctx);
   if (!state) {
-    state = { lanes: new Map(), tables: null, families: '', revision: 0 };
+    state = { lanes: new Map(), tableCache: new Map(), revision: 0 };
     contexts.set(ctx, state);
   }
   return state;
 };
 
 /**
- * The packed tables for a set of families, built once per context and reused.
+ * The packed tables for each set of families, built once per context and reused.
  *
  * Keyed on the family list, so a song that reaches a new timbre rebuilds rather than
  * silently playing the wrong one — and a song that does not never pays again.
@@ -61,10 +63,20 @@ const stateFor = (ctx) => {
 function tablesFor(ctx, families) {
   const state = stateFor(ctx);
   const key = [...new Set(families)].sort().join(',');
-  if (state.tables && state.families === key) return state.tables;
-  state.tables = packTngr2Tables(families);
-  state.families = key;
-  return state.tables;
+  const cached = state.tableCache.get(key);
+  if (cached) {
+    // Refresh insertion order: the small map is an LRU, not a session-long history of
+    // every pair somebody happened to audition in the editor.
+    state.tableCache.delete(key);
+    state.tableCache.set(key, cached);
+    return cached;
+  }
+  const tables = packTngr2Tables(families);
+  state.tableCache.set(key, tables);
+  if (state.tableCache.size > MAX_TABLE_SETS) {
+    state.tableCache.delete(state.tableCache.keys().next().value);
+  }
+  return tables;
 }
 
 /** Which families a patch needs — so a lane never carries the whole catalogue. */
@@ -157,9 +169,15 @@ export async function tngr2Lane(ctx, laneKey, { stored, seed = 0, maxVoices = 16
     // A lane that is already playing takes a patch change as a message: continuous values
     // reach sounding notes, and structural ones bind to the notes that follow. Rebuilding
     // the node instead would cut every note that was still sounding.
-    existing.node.port.postMessage({ type: 'installPatch', patch: params });
-    existing.params = params;
-    existing.patch = patch;
+    const signature = JSON.stringify(params);
+    if (signature !== existing.signature) {
+      existing.node.port.postMessage({
+        type: 'installCompiledPatch', patch: compileTngr2Patch(params),
+      });
+      existing.params = params;
+      existing.patch = patch;
+      existing.signature = signature;
+    }
     const tables = tablesFor(ctx, familiesOf(patch));
     if (tables !== existing.tables) {
       existing.node.port.postMessage({ type: 'installTables', tables });
@@ -169,7 +187,9 @@ export async function tngr2Lane(ctx, laneKey, { stored, seed = 0, maxVoices = 16
   }
   await ensureTngr2Dsp(ctx);
   const tables = tablesFor(ctx, familiesOf(patch));
-  const node = createTngr2Node(ctx, { tables, patch: params, maxVoices });
+  const node = createTngr2Node(ctx, {
+    tables, compiledPatch: compileTngr2Patch(params), maxVoices,
+  });
   const lane = {
     key: laneKey, node, tables, patch, params, ctx, generation: 0,
     signature: JSON.stringify(params),
@@ -196,7 +216,9 @@ export function syncTngr2Patch(lane, stored, { seed = 0, vibrato = null, effects
   const { patch, params } = prepareTngr2Patch(stored, { seed, vibrato, effects });
   const signature = JSON.stringify(params);
   if (signature === lane.signature) return false;
-  lane.node.port.postMessage({ type: 'installPatch', patch: params });
+  lane.node.port.postMessage({
+    type: 'installCompiledPatch', patch: compileTngr2Patch(params),
+  });
   lane.patch = patch;
   lane.params = params;
   lane.signature = signature;
@@ -279,8 +301,7 @@ export function releaseTngr2Context(ctx) {
   if (!state) return 0;
   const keys = [...state.lanes.keys()];
   for (const key of keys) releaseTngr2Lane(ctx, key);
-  state.tables = null;
-  state.families = '';
+  state.tableCache.clear();
   contexts.delete(ctx);
   return keys.length;
 }
@@ -288,17 +309,26 @@ export function releaseTngr2Context(ctx) {
 /** What the controller is holding, for §11's diagnostics. */
 export function tngr2ControllerHealth(ctx) {
   const state = contexts.get(ctx);
-  if (!state) return { lanes: 0, families: 0, tableBytes: 0 };
+  if (!state) return { lanes: 0, families: 0, tableBytes: 0, tableSets: 0 };
   let bytes = 0;
-  if (state.tables) {
-    for (const levels of state.tables.families) {
-      for (const level of levels) bytes += level.byteLength;
+  const families = new Set();
+  const buffers = new Set();
+  for (const tables of state.tableCache.values()) {
+    for (const family of Object.keys(tables.index || {})) families.add(family);
+    for (const levels of tables.families) {
+      for (const level of levels) {
+        const buffer = level.buffer || level;
+        if (buffers.has(buffer)) continue;
+        buffers.add(buffer);
+        bytes += level.byteLength;
+      }
     }
   }
   return {
     lanes: state.lanes.size,
-    families: state.tables ? state.tables.families.length : 0,
+    families: families.size,
     tableBytes: bytes,
+    tableSets: state.tableCache.size,
   };
 }
 
@@ -353,7 +383,9 @@ export async function renderTngr2Lane(ctx, {
   const { patch, params } = prepareTngr2Patch(stored, { seed, vibrato, effects });
   await ensureTngr2Dsp(ctx);
   const tables = tablesFor(ctx, familiesOf(patch));
-  const node = createTngr2Node(ctx, { tables, patch: params, maxVoices, events, frameOffset });
+  const node = createTngr2Node(ctx, {
+    tables, compiledPatch: compileTngr2Patch(params), maxVoices, events, frameOffset,
+  });
   node.connect(destination || ctx.destination);
   return node;
 }

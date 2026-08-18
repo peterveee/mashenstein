@@ -17,6 +17,7 @@
 // CDP, and identity survives neither crossing. See the notes in its two callers.
 import { Audio } from '../../src/engine/audio.js';
 import { MIX } from '../../src/data/mix.js';
+import { voiceOf, VOICE_LANES } from '../../src/data/voices.js';
 
 /**
  * The noise seed every render starts from.
@@ -243,6 +244,25 @@ export async function renderBankPage({
   // JIT render asks for the walk that cannot half-happen. Feature detection covers
   // the browsers that never had `suspend` (Firefox); this covers the ones that have
   // it and cannot be relied on to honour it.
+  // TNGR-2 IS FED AS THE WALK GOES, NOT BUILT FROM A SCHEDULE THAT IS NOT FINISHED.
+  //
+  // Its worklet takes a schedule at construction, and the walk here is just-in-time — the
+  // graph stands a horizon ahead of the render head and no further, because an offline
+  // graph built whole processes every node for the whole song. So the schedule is NOT
+  // complete when the render starts. A lane built once from the first horizon plays the
+  // first horizon and then nothing, with no error to say so: a French Horn that sounds for
+  // three notes and is missing for the remaining seven minutes.
+  //
+  // Forcing the whole walk up front fixed that and cost what the lazy walk exists to save
+  // — measured on a 7.5-minute song, a bounce that crawled and sat near zero. So the lane
+  // is fed instead: built at the first checkpoint that has notes for it, and posted to at
+  // every checkpoint after. One node per lane either way, which is what keeps a chord
+  // stealing voices the same way in a stem as in the mix.
+  //
+  // What makes posting safe here and not before `startRendering` is the CUSHION. A
+  // checkpoint hands over notes that are at least a horizon in the future — the same
+  // lookahead the live path runs on — where the pre-render post had none, which is
+  // finding (b) in docs/TNGR-2-completion-spec.md §3.
   const canSuspend = !upfront && typeof ctx.suspend === 'function';
   // A walk that throws inside a suspension must fail the RENDER, not vanish into a
   // swallowed rejection — without this, a bad bank would come back as a "successful"
@@ -255,9 +275,25 @@ export async function renderBankPage({
   // before `startRendering` has even been called and the only place that can judge
   // the damage is after the render, against `stepAt`.
   let suspendRejected = null;
+  // Lanes built across EVERY flush, not just the one before the render: a lane that first
+  // has notes at bar forty is built at the checkpoint before it, and a count taken only at
+  // the start would report zero for a song whose TNGR-2 part is present throughout.
+  let tngr2Lanes = 0;
+  // The leading slice of the bar the pre-walk owns, so the number only ever goes up. A
+  // quarter is generous — the walk is node CREATION and the render that follows is every
+  // one of those nodes processed for the length of the song — but a bar that reaches 25%
+  // quickly and then crawls is honest about which part is which, where one that reaches
+  // 2% and stops is not.
+  const reportRender = (frac) => onProgress?.(frac);
   if (!canSuspend) {
     await buildUntil(Infinity);
   } else {
+    // A TNGR-2 lane needs its whole schedule before the render starts, so the walk runs to
+    // the end HERE — but the checkpoints below still go up, and they are what draws the
+    // progress bar. Turning them off with the walk cost the bounce dialog its percentage
+    // entirely: a long render with no sign of life, which is worse than a slow one.
+    // `buildUntil` returns at once when there is nothing left to walk, so each checkpoint
+    // costs a suspend and a resume and reports.
     // Far enough ahead that a checkpoint arriving late (the desk's main thread is
     // shared) still has audio standing in front of the head; close enough that the
     // alive graph stays a window, not a song.
@@ -271,7 +307,10 @@ export async function renderBankPage({
         .then(async () => {
           try {
             await buildUntil(frame / sampleRate + HORIZON_S);
-            onProgress?.(frame / N);
+            // The stretch just walked, handed to TNGR-2 before the render reaches it.
+            // Its lanes are built once and fed after that — see `flushTngr2Offline`.
+            tngr2Lanes += (await Audio.voices?.flushTngr2Offline?.()) || 0;
+            reportRender(frame / N);
           } catch (e) {
             walkError = walkError || e;
           } finally {
@@ -302,7 +341,7 @@ export async function renderBankPage({
   // the whole walk, because a worklet takes its schedule at construction: the port cannot
   // be relied on to deliver before `startRendering()` returns. See
   // docs/TNGR-2-completion-spec.md §3, finding (b).
-  await Audio.voices?.flushTngr2Offline?.();
+  tngr2Lanes += (await Audio.voices?.flushTngr2Offline?.()) || 0;
 
   const buf = await ctx.startRendering();
   if (walkError) throw walkError;
@@ -342,6 +381,10 @@ export async function renderBankPage({
 
   return {
     outL: L, outR: R, frames: L.length, seconds: L.length / sampleRate, peak, percussion,
+    // What the walk did for TNGR-2, so a bounce missing a part can be diagnosed from the
+    // render's own report rather than from a console nobody was watching.
+    tngr2Lanes,
+    tngr2Walk: canSuspend ? 'jit' : 'upfront',
     scheduledCalls: stepAt,
     expectedScheduleCalls: scheduleCalls,
     // What the scheduler DID to produce this, as operation counts. Deterministic from

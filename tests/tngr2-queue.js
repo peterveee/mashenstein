@@ -86,5 +86,39 @@ const note = (freq, hold) => ({ freq, time: 0, dur: 0.5, gain: 0.8, hold });
   assert(rack.played.length === 0, 'a lane that fails to build plays nothing');
 }
 
+// ---- event ids survive the hand-over -----------------------------------------
+//
+// The offline schedule is handed to a lane a stretch at a time, and the bookings are
+// emptied at every hand-over. An event id is a note's IDENTITY inside the processor — a
+// note-off names the note-on it ends, and `findVoice` returns the first ACTIVE voice
+// holding that id. So a counter living on the booking restarted at 1 for each stretch,
+// the second stretch's notes wore the first stretch's names, and a note-off went to the
+// wrong voice: one note released early and the other left sounding for good.
+//
+// Measured on barber-96 before this: three ids reused while still sounding, the first at
+// 51.8 seconds — a French Horn drone from just under a minute in, thickening as the song
+// went on. Zero after.
+{
+  const rack = harness();
+  rack.ctx = { sampleRate: 44100 };
+  const voice = { id: 'tngrBrassSection', synth: 'TNGR-2' };
+  const collect = (hz, time) => rack._collectTngr2(voice, {
+    freq: [hz], time, dur: 3, gain: 0.8, laneKey: 'chords',
+  });
+  const idsIn = (rack2) => [...rack2._tngr2Offline.values()]
+    .flatMap((b) => b.events.filter((e) => e.type === 'noteOn').map((e) => e.eventId));
+
+  collect(220, 0); collect(277, 0.5);
+  const first = idsIn(rack);
+  // The hand-over: exactly what `flushTngr2Offline` does to the books.
+  rack._tngr2Offline = new Map();
+  collect(330, 4); collect(392, 4.5);
+  const second = idsIn(rack);
+  assert(first.length === 2 && second.length === 2, 'both stretches booked their notes');
+  assert(!second.some((id) => first.includes(id)),
+    `the second stretch takes fresh event ids (${first.join(',')} then ${second.join(',')}) —`
+    + ' a repeated id sends a note-off to a note that is still sounding');
+}
+
 console.log(failed ? `\nTNGR-2 QUEUE: ${failed} FAILED` : '\nTNGR-2 QUEUE: PASSED');
 process.exit(failed ? 1 : 0);

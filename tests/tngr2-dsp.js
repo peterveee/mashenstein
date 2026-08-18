@@ -11,6 +11,7 @@
  */
 import {
   renderTngr2, Tngr2Core, Tngr2Voice, tngr2SeededPhase, frameAt, TNGR2_DEFAULT_ENV,
+  compileTngr2Patch,
 } from '../src/engine/tngr2/dsp.js';
 import { packTngr2Tables } from '../src/engine/tngr2/tables.js';
 
@@ -39,6 +40,13 @@ const noteOff = (id, at, rate) => ({ type: 'noteOff', frame: frameAt(at, rate), 
 const peak = (chs) => {
   let max = 0;
   for (const ch of chs) for (const s of ch) max = Math.max(max, Math.abs(s));
+  return max;
+};
+const maxDiff = (a, b) => {
+  let max = 0;
+  for (let c = 0; c < a.length; c++) {
+    for (let i = 0; i < a[c].length; i++) max = Math.max(max, Math.abs(a[c][i] - b[c][i]));
+  }
   return max;
 };
 const rms = (chs, from, to, rate) => {
@@ -154,6 +162,21 @@ core.process(scratch, 0, RATE, 0);
 assert(core.findVoice(2) !== null, 'the still-held note survives the steal');
 assert(core.findVoice(3) !== null, 'the new note got a voice');
 
+// Live controller edits compile on the main thread, then install this form directly in
+// the worklet. It must be the exact same patch the core would compile for itself.
+const precompiled = new Tngr2Core({ sampleRate: RATE, maxVoices: 2 });
+precompiled.installTables(tables);
+precompiled.installCompiledPatch(compileTngr2Patch(patch));
+precompiled.scheduleAll([noteOn(31, 0, 220, RATE), noteOff(31, 0.2, RATE)]);
+const compiledOut = [new Float32Array(RATE), new Float32Array(RATE)];
+precompiled.process(compiledOut, 0, RATE, 0);
+const rawPatch = renderTngr2({
+  tables, patch, sampleRate: RATE, seconds: 1,
+  events: [noteOn(31, 0, 220, RATE), noteOff(31, 0.2, RATE)], maxVoices: 2,
+});
+assert(maxDiff(compiledOut, rawPatch.channels) === 0,
+  'a main-thread compiled patch is sample-identical to an audio-thread compiled patch');
+
 // ---- note off, panic ---------------------------------------------------------
 const panicked = renderTngr2({ tables, patch,
   sampleRate: RATE, seconds: 1,
@@ -242,6 +265,48 @@ assert(late.late === 1 && late.worstLate === 256,
   assert(calls.position > 1, `position motion updates its own destination (${calls.position} calls)`);
   assert(calls.pitch === 1 && calls.filter === 1,
     `position-only motion leaves pitch and filter at note-on (${calls.pitch}, ${calls.filter})`);
+}
+
+// Once a control envelope reaches sustain it is a constant, not ongoing modulation.
+// It should stop revisiting its destination, then wake when note-off begins release.
+{
+  const calls = { position: 0, filter: 0 };
+  const originalPosition = Tngr2Voice.prototype.applyPosition;
+  const originalFilter = Tngr2Voice.prototype.applyFilter;
+  Tngr2Voice.prototype.applyPosition = function countedPosition(...args) {
+    calls.position++;
+    return originalPosition.apply(this, args);
+  };
+  Tngr2Voice.prototype.applyFilter = function countedFilter(...args) {
+    calls.filter++;
+    return originalFilter.apply(this, args);
+  };
+  try {
+    const settling = new Tngr2Core({ sampleRate: RATE });
+    settling.installTables(tables);
+    settling.installPatch(patchWith({
+      amp: { attack: 0, decay: 0, sustain: 1, release: 0.1 },
+      positionEnv: { attack: 0, decay: 0.001, sustain: 0.5, release: 0.01 },
+      filterEnv: { amount: 1, attack: 0, decay: 0.001, sustain: 0.5, release: 0.01 },
+      oscA: { table: 'crystal', position: 0, envAmount: 1, level: 1, unison: 1 },
+    }));
+    settling.schedule(noteOn(1, 0, 220, RATE));
+    const heldFrames = Math.round(RATE * 0.1);
+    settling.process([new Float32Array(heldFrames), new Float32Array(heldFrames)], 0, heldFrames, 0);
+    const heldCalls = { ...calls };
+    assert(heldCalls.position < 20 && heldCalls.filter < 20,
+      `settled control envelopes sleep during a held note (${heldCalls.position} position,`
+      + ` ${heldCalls.filter} filter updates)`);
+    settling.schedule(noteOff(1, 0.1, RATE));
+    const releaseFrames = Math.round(RATE * 0.02);
+    settling.process([new Float32Array(releaseFrames), new Float32Array(releaseFrames)],
+      heldFrames, releaseFrames, 0);
+    assert(calls.position > heldCalls.position && calls.filter > heldCalls.filter,
+      'note-off wakes settled position and filter envelopes for their release');
+  } finally {
+    Tngr2Voice.prototype.applyPosition = originalPosition;
+    Tngr2Voice.prototype.applyFilter = originalFilter;
+  }
 }
 
 // ---- the table lookup ---------------------------------------------------------

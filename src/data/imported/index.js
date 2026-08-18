@@ -30,6 +30,7 @@ import * as BARBER_4 from './barber-4.js';
 import * as BARBER_5 from './barber-5.js';
 import * as BARBER_6 from './barber-6.js';
 import * as BARBER_7 from './barber-7.js';
+import * as BARBER_96_SIMPLE from './barber-96-simple.js';
 import * as BARBER_96 from './barber-96.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE_2 from './barber-of-seville-ouverture-2.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE from './barber-of-seville-ouverture.js';
@@ -185,6 +186,7 @@ export const IMPORTED_BY_ID = {
   "barber-5": { bank: BARBER_5.bank, title: BARBER_5.title, group: "imported", writable: true },
   "barber-6": { bank: BARBER_6.bank, title: BARBER_6.title, group: "imported", writable: true },
   "barber-7": { bank: BARBER_7.bank, title: BARBER_7.title, group: "imported", writable: true },
+  "barber-96-simple": { bank: BARBER_96_SIMPLE.bank, title: BARBER_96_SIMPLE.title, group: "copy", writable: true },
   "barber-96": { bank: BARBER_96.bank, title: BARBER_96.title, group: "copy", writable: true },
   "barber-of-seville-ouverture-2": { bank: BARBER_OF_SEVILLE_OUVERTURE_2.bank, title: BARBER_OF_SEVILLE_OUVERTURE_2.title, group: "copy", writable: true },
   "barber-of-seville-ouverture": { bank: BARBER_OF_SEVILLE_OUVERTURE.bank, title: BARBER_OF_SEVILLE_OUVERTURE.title, group: "imported", writable: true },

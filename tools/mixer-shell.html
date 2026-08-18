@@ -2775,10 +2775,36 @@
   #voicepicker.show { display: block; max-width: min(1180px, 94vw); }
   #voicepicker .voiceresults { display: flex; flex-wrap: wrap; gap: 4px 12px;
                                align-items: flex-start; }
-  /* Lane, engine, search and the way back, on one row. */
-  #voicepicker .voicehead { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+  /* Lane, what it is on now, engine, search and the way back, on one row. Sticky: the
+     panel scrolls its own columns, and the name of the preset the lane is playing is
+     the last thing that should scroll off the top of it. The negative margin cancels
+     the panel's padding so the band spans the full width, and the padding it takes in
+     exchange puts the row back exactly where it sat. */
+  #voicepicker .voicehead { position: sticky; top: 0; z-index: 2;
+                            display: flex; align-items: center; gap: 8px;
+                            margin: -9px -8px 8px; padding: 9px 8px 8px;
+                            background: var(--panel2); border-radius: 8px 8px 0 0; }
   #voicepicker .voicewho { font-size: 9px; letter-spacing: .07em; color: var(--dim);
                            text-transform: uppercase; white-space: nowrap; }
+  /* What the lane is on NOW, in words. The highlighted row says it too — until a
+     filter, a search or a scroll hides it, and on a generated song, whose lane names
+     its sound in the bank rather than in the mix, there is no highlighted row to say
+     it at all. Ink rather than dim: it is the answer to a question, not a label. */
+  /* Shrinks before it overflows: the head is one nowrap row, and on a narrow window the
+     name gives up characters rather than pushing Search off the end of it. */
+  #voicepicker .voicenow { display: flex; flex: 0 1 auto; justify-content: flex-start;
+                           align-items: baseline; gap: 6px; width: auto;
+                           min-width: 90px; max-width: 230px;
+                           margin: 0; padding: 3px 7px; font-size: 11px; color: var(--ink);
+                           background: var(--input); border: 1px solid var(--line);
+                           border-radius: 4px; }
+  #voicepicker .voicenow-name { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                                white-space: nowrap; }
+  #voicepicker .voicenow-cat { flex: none; font-size: 8.5px; letter-spacing: .06em;
+                               text-transform: uppercase; color: var(--faint); }
+  /* Only the clickable one lights up — as a span it is a readout with nowhere to go. */
+  #voicepicker button.voicenow:hover { color: var(--accent); background: var(--hover);
+                                       border-color: var(--accent-line); }
   #voicepicker .voicesearch { flex: 1; min-width: 140px; margin: 0; padding: 5px 8px;
                               font: inherit; font-size: 11px; color: var(--ink);
                               background: var(--input); border: 1px solid var(--line);

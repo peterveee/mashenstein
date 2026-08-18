@@ -67,7 +67,8 @@ window.__renderBank = async (args) => {
     scheduledCalls: r.scheduledCalls, expectedScheduleCalls: r.expectedScheduleCalls,
     fineBars: r.fineBars, fineTickLanes: r.fineTickLanes,
     fineBarsReason: r.fineBarsReason, fineLanes: r.fineLanes,
-    transportResolution: r.transportResolution };
+    transportResolution: r.transportResolution,
+    tngr2Lanes: r.tngr2Lanes, tngr2Walk: r.tngr2Walk };
 };
 
 // Handed back as a file download rather than a base64 string over CDP. A two-minute
@@ -273,6 +274,10 @@ export async function openRenderer({ headless = true } = {}) {
       percussion: meta.percussion || [],
       scheduledCalls: meta.scheduledCalls,
       expectedScheduleCalls: meta.expectedScheduleCalls,
+      // How the walk treated TNGR-2: which mode it ran in and how many lanes it built.
+      // A bounce missing a part is diagnosable from the render's own report this way.
+      tngr2Lanes: meta.tngr2Lanes,
+      tngr2Walk: meta.tngr2Walk,
       // Operation counts for the walk that produced this — see work/local/bench-scheduler-work.js.
       schedulerWork: meta.schedulerWork || null,
       fineBars: meta.fineBars, fineTickLanes: meta.fineTickLanes,

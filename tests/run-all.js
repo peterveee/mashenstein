@@ -141,6 +141,10 @@ const suites = [
   // the worklet's — a held note queued against a missing lane used to come back sounding
   // with nothing left that could release it, which on a keyboard glide is every key.
   'tests/tngr2-queue.js',
+  // And the offline half of the same question: a lane that does not enter until after the
+  // bounce's just-in-time horizon. Its worklet takes the schedule at construction, so the
+  // walk has to be complete before the render starts or the part is simply not there.
+  'tests/tngr2-jit-bounce.js',
   // ...and the proof that it IS both hosts: the same events through a real worklet and
   // through the reference renderer, compared at zero tolerance. §2's "do not maintain two
   // approximate synths" is only worth something if something checks it.
@@ -285,6 +289,7 @@ const suites = [
 // assertion; that is the second reason not to fire them off unasked.
 const browserSuites = new Set([
   'tests/tngr2-audio.js',
+  'tests/tngr2-jit-bounce.js',
   'tests/tngr2-worklet-proof.js',
   'tests/tngr2-dsp-parity.js',
   'tests/beat-detect-audio.js',
