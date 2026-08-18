@@ -118,6 +118,33 @@ const suites = [
   'tests/voice-source.js',
   'tests/mrdr3-playground.js',
   'tests/formants.js',
+  'tests/tngr2.js',
+  'tests/tngr2-audio.js',
+  // The gate the whole TNGR-2 completion plan hangs off: whether this project can host
+  // an AudioWorkletProcessor live AND in the OfflineAudioContext its stems come out of.
+  // Kept as a permanent regression now that it passes — see docs/TNGR-2-completion-spec.md §3.
+  'tests/tngr2-worklet-proof.js',
+  // The DSP core on its own, in Node — browserless, which is itself the claim: the core
+  // takes its rate as an argument and is handed its frame, so it reaches for no worklet
+  // global and the same source runs in both hosts.
+  'tests/tngr2-dsp.js',
+  // The wavetable assets: finite, zero-DC, cyclic, band-limited per mip level, and —
+  // the one that rots quietly — still matching the authoring they were generated from.
+  'tests/tngr2-tables.js',
+  // The preset schema: defaults, validation, and the migration that has to carry all 43
+  // prototype-shaped presets into v1 without changing what any of them was measured at.
+  'tests/tngr2-schema.js',
+  // Lifecycle and exports: one node per lane, stems summing to their mix, and a range
+  // render matching the same range inside a full one.
+  'tests/tngr2-controller.js',
+  // A key pressed on a lane that has not finished building. The rack's bookkeeping, not
+  // the worklet's — a held note queued against a missing lane used to come back sounding
+  // with nothing left that could release it, which on a keyboard glide is every key.
+  'tests/tngr2-queue.js',
+  // ...and the proof that it IS both hosts: the same events through a real worklet and
+  // through the reference renderer, compared at zero tolerance. §2's "do not maintain two
+  // approximate synths" is only worth something if something checks it.
+  'tests/tngr2-dsp-parity.js',
   'tests/effect-presets.js',
   // And the third thing a preset file has to be true about: that every key in it has a
   // control, and every control has a key behind it. Reads the engine's own `v.<key>`
@@ -257,6 +284,9 @@ const suites = [
 // `npx playwright install chromium` fails all of them at the launch rather than at an
 // assertion; that is the second reason not to fire them off unasked.
 const browserSuites = new Set([
+  'tests/tngr2-audio.js',
+  'tests/tngr2-worklet-proof.js',
+  'tests/tngr2-dsp-parity.js',
   'tests/beat-detect-audio.js',
   'tests/mixer-loop.js',
   'tests/song-loop.js',
@@ -312,7 +342,15 @@ const soundSuites = [
   'tests/piano-roll.js', 'tests/note-recorder.js',
   'tests/song-processing.js',
   'tests/preview.js', 'tests/key-mode.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
-  'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js',
+  'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js', 'tests/tngr2-audio.js',
+  'tests/tngr2-worklet-proof.js', 'tests/tngr2-dsp.js', 'tests/tngr2-dsp-parity.js',
+  'tests/tngr2-tables.js', 'tests/tngr2-schema.js', 'tests/tngr2-controller.js',
+  // The preset schema: defaults, validation, and the migration that has to carry all 43
+  // prototype-shaped presets into v1 without changing what any of them was measured at.
+  'tests/tngr2-schema.js',
+  // Lifecycle and exports: one node per lane, stems summing to their mix, and a range
+  // render matching the same range inside a full one.
+  'tests/tngr2-controller.js',
   'tests/synth-full-layout.js', 'tests/synth-graphs.js', 'tests/pot-coverage.js',
   'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',
   'tests/sfx-routing.js', 'tests/pitch-curve.js',

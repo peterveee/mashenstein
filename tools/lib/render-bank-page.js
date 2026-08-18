@@ -295,6 +295,15 @@ export async function renderBankPage({
     }
   }
 
+  // TNGR-2's offline lanes, built from the schedule that has just been walked.
+  //
+  // Nothing has rendered yet — an OfflineAudioContext does not start until it is asked —
+  // so a node created here is in place for the first sample. It has to happen HERE, after
+  // the whole walk, because a worklet takes its schedule at construction: the port cannot
+  // be relied on to deliver before `startRendering()` returns. See
+  // docs/TNGR-2-completion-spec.md §3, finding (b).
+  await Audio.voices?.flushTngr2Offline?.();
+
   const buf = await ctx.startRendering();
   if (walkError) throw walkError;
   // THE CHECK THAT MAKES JIT SAFE TO SHIP.

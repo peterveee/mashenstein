@@ -70,6 +70,14 @@ const METHODS = methodsOf(read('src/engine/voices.js'));
 // `pitchShift` is the one that matters — it is where TRANSPOSE and FINE are honoured, and
 // three of the five paths call it.
 const HELPERS = ['pitchShift', 'buildSpec', 'tailOf'];
+const extraReads = (files) => {
+  const keys = new Set();
+  for (const file of files || []) {
+    for (const k of readsIn(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'))) keys.add(k);
+  }
+  return keys;
+};
+
 const keysOfMethod = (name, seen = new Set()) => {
   const keys = new Set();
   if (seen.has(name) || !METHODS.has(name)) return keys;
@@ -101,7 +109,8 @@ const clean = (keys) => new Set([...keys].filter((k) => !BUILTIN.has(k) && !STRU
 // LENGTH and FIXED LENGTH into the note, and scheduleStep folds TRIM into its gain.
 const SHARED = clean(readsIn(read('src/engine/audio.js')));
 
-const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== 'AdditiveSynth' && s !== 'MRDR-3');
+const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== 'AdditiveSynth'
+  && s !== 'MRDR-3' && s !== 'TNGR-2');
 
 /**
  * One case per play path. `methods` is what `play` dispatches to for that voice — plus,
@@ -123,6 +132,14 @@ const CASES = [
   // existence and a tap array here would only describe a panel that does not exist.
   { name: 'MRDR-3', voice: { synth: 'MRDR-3', layer: {} },
     methods: ['_playLayer'] },
+  // TNGR-2's parameters are read in two places now: the rack hands a note to the lane's
+  // worklet node, and the controller composes the patch that node holds — which is where
+  // the shared voice-level controls (key mode, glide, vibrato) are picked up. Both are
+  // named, or the shared four would look like pots with nothing behind them.
+  { name: 'TNGR-2', voice: { synth: 'TNGR-2', tngr2: { oscA: {}, oscB: {}, amp: {}, filter: {} } },
+    methods: ['_playTngr2Node', 'warmTngr2Lane', '_collectTngr2', 'flushTngr2Offline',
+      '_tngr2Output'],
+    also: ['src/engine/tngr2/controller.js'] },
   ...POOLED.map((synth) => ({
     name: synth,
     voice: { synth },
@@ -184,7 +201,8 @@ let failed = 0;
 const fail = (msg) => { failed++; console.log(`FAIL: ${msg}`); };
 
 for (const c of CASES) {
-  const engine = clean(new Set(c.methods.flatMap((m) => [...keysOfMethod(m)])));
+  const engine = clean(new Set([...c.methods.flatMap((m) => [...keysOfMethod(m)]),
+    ...extraReads(c.also)]));
   // A one-shot never reaches a length: see HIDDEN_OK.
   for (const k of SHARED) if (!(c.oneShot && (k === 'dur' || k === 'fixedLength'))) engine.add(k);
 
@@ -219,7 +237,8 @@ const inert = new Map();
 for (const [id, v] of Object.entries(VOICES)) {
   const c = CASE_FOR(v);
   if (!c) continue;
-  const engine = clean(new Set(c.methods.flatMap((m) => [...keysOfMethod(m)])));
+  const engine = clean(new Set([...c.methods.flatMap((m) => [...keysOfMethod(m)]),
+    ...extraReads(c.also)]));
   for (const k of SHARED) if (!(c.oneShot && (k === 'dur' || k === 'fixedLength'))) engine.add(k);
   for (const k of Object.keys(v)) {
     if (STRUCTURAL.has(k) || engine.has(k) || k === 'options') continue;

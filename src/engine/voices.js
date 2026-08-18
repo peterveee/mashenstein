@@ -32,6 +32,12 @@
 // buffer, the way AudioSys.noiseBuf already is, before NoiseSynth can be offered.
 import * as Tone from 'tone';
 import { VOICES } from '../data/voices.js';
+import { isTngr2Table } from './tngr2/families.js';
+import {
+  tngr2Lane, tngr2LaneNow, tngr2NoteOn, tngr2NoteOff, releaseTngr2Context,
+  tngr2ControllerHealth, canHostTngr2, renderTngr2Lane, tngr2PatchForVoice, tngr2VibratoOf,
+  syncTngr2Patch, tngr2EffectsOf,
+} from './tngr2/controller.js';
 
 /**
  * The allowlist. A catalogue entry's `synth` is looked up here and nowhere else, so
@@ -281,6 +287,14 @@ function phasedWave(ctx, type, phase) {
   if (perCtx.size >= PHASE_WAVE_CACHE) perCtx.delete(perCtx.keys().next().value);
   perCtx.set(key, wave);
   return wave;
+}
+
+/** A stable integer seed from a preset id — for TNGR-2's per-patch phase seeding. */
+function hashSeed(text) {
+  let h = 2166136261;
+  const s = String(text || '');
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return (h >>> 8) & 0x7fffffff;
 }
 
 const NOISE_Q = 2;
@@ -652,6 +666,39 @@ function centsEnv(params, cents, e = {}, t, end, { base = 0, dfltAttack = 0.01 }
     p.linearRampToValueAtTime(base + cents * s, decayEnd);
     if (decayEnd < end) p.setValueAtTime(base + cents * s, end);
     p.linearRampToValueAtTime(base, end + Math.max(0.001, e.release ?? 0.015));
+  }
+}
+
+/** TNGR-2's long envelopes must keep their authored time instead of fitting into a note. */
+function gateCentsEnv(params, cents, e = {}, t, end, { base = 0, dfltAttack = 0.01 } = {}) {
+  if (!cents) return;
+  const attack = Math.max(0, Number(e.attack ?? dfltAttack) || 0);
+  const decay = Math.max(0, Number(e.decay) || 0);
+  const sustain = Math.min(1, Math.max(0, Number(e.sustain) || 0));
+  const release = Math.max(0.001, Number(e.release) || 0.015);
+  const valueAt = (at) => {
+    const elapsed = Math.max(0, at - t);
+    if (attack > 0 && elapsed < attack) return cents * elapsed / attack;
+    if (decay > 0 && elapsed < attack + decay) {
+      return cents * (1 + (sustain - 1) * ((elapsed - attack) / decay));
+    }
+    return cents * sustain;
+  };
+  const attackEnd = t + attack;
+  const decayEnd = attackEnd + decay;
+  for (const param of params) {
+    if (attack > 0) {
+      param.setValueAtTime(base, t);
+      param.linearRampToValueAtTime(base + cents, attackEnd);
+    } else param.setValueAtTime(base + cents, t);
+    if (decay > 0) param.linearRampToValueAtTime(base + cents * sustain, decayEnd);
+    else param.setValueAtTime(base + cents * sustain, attackEnd);
+    // A short played note may end halfway through a slow pad attack. Pin the value the
+    // authored curve has actually reached, then release from there; do not compress the
+    // whole attack into the gate and turn every chord into a repeated swell.
+    param.cancelScheduledValues(end);
+    param.setValueAtTime(base + valueAt(end), end);
+    param.linearRampToValueAtTime(base, end + release);
   }
 }
 
@@ -1664,6 +1711,15 @@ export class VoiceRack {
     if (v && v.synth === 'AdditiveSynth') {
       return this._playAdditive(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold });
     }
+    if (v && v.synth === 'TNGR-2') {
+      // TNGR-2 is its AudioWorklet and nothing else. Live, notes go to the lane's
+      // persistent node; offline, they are collected for `flushTngr2Offline`. There is no
+      // second synthesis path to fall back to — see `_playTngr2Node` for what happens
+      // when a lane has no node, and `warmTngr2Lane` for the warning when it cannot.
+      return this._playTngr2Node(v, {
+        freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, spb,
+      });
+    }
     if (v && v.synth === 'MRDR-3') {
       // Rendered once, replayed after that — when this preset is the kind that can be.
       // The gate and the replay both refuse everything they are unsure of, and then
@@ -1857,7 +1913,294 @@ export class VoiceRack {
     return true;
   }
 
-  /** Native game oscillator: the simple voice path without Tone's ADSR layer. */
+  /**
+   * Prepare a lane's worklet node ahead of the notes that will use it.
+   *
+   * Called when a song loads or a lane's voice changes — never from the scheduler, which
+   * cannot await. TNGR-2 has no second synthesis path, so a lane that cannot be built is
+   * a lane that will be silent; that case is reported once, loudly, rather than left to
+   * be found as a missing part in a mix.
+   */
+  async warmTngr2Lane(v, laneKey) {
+    if (!v || v.synth !== 'TNGR-2') return false;
+    if (!canHostTngr2(this.ctx)) {
+      // The cause is almost always an insecure origin: AudioWorklet needs https or
+      // localhost, so the LAN dev URL (http://MBP14.local:8001) and file:// have no
+      // `audioWorklet` at all. The deployed game is https and unaffected.
+      if (!this._tngr2Warned) {
+        this._tngr2Warned = true;
+        console.error('TNGR-2 cannot play: AudioWorklet needs a secure context '
+          + '(https or localhost). This page is ' + (globalThis.location?.origin || '?')
+          + ' — TNGR-2 lanes will be silent here.');
+      }
+      return false;
+    }
+    try {
+      const lane = await tngr2Lane(this.ctx, laneKey, {
+        // The VOICE's patch, not just its tngr2 block: key mode, glide and vibrato are
+        // shared controls stored on the voice. See `tngr2PatchForVoice`.
+        stored: tngr2PatchForVoice(v), seed: hashSeed(v.id || laneKey),
+        vibrato: tngr2VibratoOf(v), effects: tngr2EffectsOf(v),
+      });
+      // Routing happens at the first note, not here: the dry/wet buses belong to the
+      // scheduling call, not to the lane. See `_playTngr2Node`.
+      return !!lane;
+    } catch (err) {
+      console.error(`TNGR-2: lane ${laneKey} failed to build — ${err?.message || err}`);
+      return false;
+    }
+  }
+
+  /**
+   * Book a note for an OFFLINE render instead of playing it.
+   *
+   * An offline context is scheduled in full and then rendered in one go, so the whole
+   * schedule is known before the first sample — which is exactly the delivery the port
+   * cannot do. Notes are gathered per lane here, and `flushTngr2Offline` builds one node
+   * per lane with the schedule in `processorOptions` just before `startRendering()`.
+   */
+  _collectTngr2(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', hold = false }) {
+    const notes = Array.isArray(freq) ? freq : [freq];
+    const shift = VoiceRack.pitchShift(v) * detune;
+    const amp = Math.max(0, Number(gain) || 0);
+    if (!(amp > 0) || !notes.some((n) => n > 0)) return false;
+    const rate = this.ctx.sampleRate;
+    const key = `${laneKey}|${v.id || ''}`;
+    this._tngr2Offline ||= new Map();
+    let booking = this._tngr2Offline.get(key);
+    if (!booking) {
+      booking = { voice: v, laneKey, dry, wet: echo ? wet : null, events: [], next: 1 };
+      this._tngr2Offline.set(key, booking);
+    }
+    const durationAt = (index) => {
+      const raw = Array.isArray(dur) ? (dur[index] ?? dur[0]) : dur;
+      return Math.max(0.001, Number(raw) || 0.001);
+    };
+    let made = false;
+    notes.forEach((note, index) => {
+      if (!(note > 0)) return;
+      const hz = note * shift;
+      if (!Number.isFinite(hz) || !(hz > 0)) return;
+      const eventId = booking.next++;
+      booking.events.push({
+        type: 'noteOn', frame: Math.max(0, Math.round(time * rate)), eventId,
+        hz, velocity: Math.min(1, amp),
+      });
+      if (!hold) {
+        booking.events.push({
+          type: 'noteOff', eventId,
+          frame: Math.max(0, Math.round((time + durationAt(index)) * rate)),
+        });
+      }
+      made = true;
+    });
+    return made;
+  }
+
+  /**
+   * Build the offline lanes booked during scheduling. Call once, before `startRendering`.
+   *
+   * Nothing has been rendered at this point — an OfflineAudioContext does not start until
+   * it is asked — so a node created here is in place for the first sample. Returns the
+   * number of lanes it built, which is zero for a song with no TNGR-2 on it.
+   */
+  async flushTngr2Offline() {
+    const booked = this._tngr2Offline;
+    if (!booked || !booked.size) return 0;
+    this._tngr2Offline = new Map();
+    let built = 0;
+    for (const booking of booked.values()) {
+      try {
+        const node = await renderTngr2Lane(this.ctx, {
+          stored: tngr2PatchForVoice(booking.voice),
+          vibrato: tngr2VibratoOf(booking.voice),
+          effects: tngr2EffectsOf(booking.voice),
+          events: booking.events,
+          seed: hashSeed(booking.voice.id || booking.laneKey),
+          destination: booking.dry || this.ctx.destination,
+        });
+        if (booking.wet) node.connect(booking.wet);
+        built++;
+      } catch (err) {
+        // A lane that cannot be built is a lane that renders silence. Say so rather than
+        // leaving a gap in the mix that looks like an arrangement decision.
+        console.warn(`TNGR-2: offline lane ${booking.laneKey} failed — ${err?.message || err}`);
+      }
+    }
+    return built;
+  }
+
+  /**
+   * What a lane sends to the mix: its node, or its node through a chorus.
+   *
+   * CHORUS is a lane effect, not a voice one — one stereo pair for everything the lane
+   * plays, exactly as MRDR-3 builds it, and from the same `buildChorusLeg` so the two
+   * synths are provably running one chorus rather than two that resemble each other. The
+   * drive is NOT here: it lives in the core, because PLACE is about the voice filter.
+   *
+   * At mix zero there is no chorus at all — the engine builds nothing, which is what
+   * makes MIX the switch and why the three pots behind it grey out.
+   */
+  _tngr2Output(lane, v, time) {
+    const spec = v.chorus || {};
+    const mix = Math.min(1, Math.max(0, Number(spec.mix) || 0));
+    if (!(mix > 0)) return lane.node;
+    const stage = { input: this.ctx.createGain(), direct: this.ctx.createGain(), output: this.ctx.createGain() };
+    lane.node.connect(stage.input);
+    stage.input.connect(stage.direct);
+    stage.direct.connect(stage.output);
+    const leg = buildChorusLeg(this.ctx, spec, time, stage);
+    const depth = Math.min(1, Math.max(0, spec.depth ?? 0.5));
+    const width = Math.min(1, Math.max(0, spec.width ?? 1));
+    // Equal power between dry and wet, the same law the layer stage uses, so winding MIX
+    // up moves the sound rather than making it louder.
+    const wetLevel = Math.sin((mix * Math.PI) / 2) / Math.SQRT2;
+    stage.direct.gain.setValueAtTime(Math.cos((mix * Math.PI) / 2), time);
+    for (const side of leg.sides || []) {
+      side.level.gain.setValueAtTime(wetLevel, time);
+      side.swing.gain.setValueAtTime(side.side * depth * CHORUS_SWING_S, time);
+      if (side.pan) side.pan.pan.setValueAtTime(side.side * width, time);
+    }
+    lane.chorus = leg;
+    return stage.output;
+  }
+
+  /**
+   * Hold a note until its lane exists, then play it.
+   *
+   * The lane is built once per key — a second note arriving while the first is still
+   * waiting joins the queue rather than starting another build. If the build fails there
+   * is nothing to fall back to, so the queue is dropped and `warmTngr2Lane` has already
+   * said why.
+   */
+  _queueTngr2(v, laneKey, note) {
+    const key = laneKey;
+    this._tngr2Pending ||= new Map();
+    let pending = this._tngr2Pending.get(key);
+    if (!pending) {
+      pending = { notes: [], building: false };
+      this._tngr2Pending.set(key, pending);
+    }
+    pending.notes.push(note);
+    // A KEY IS DOWN ON A LANE THAT DOES NOT EXIST YET.
+    //
+    // A held note has no note-off of its own — lifting the key is what ends it — and a
+    // queued note has no lane and no event id for a note-off to name. So what goes in the
+    // books is the QUEUED NOTE ITSELF: lifting the key marks it cancelled and the flush
+    // below drops it, exactly as releasing a live one posts its note-off.
+    //
+    // Without this, a note-off inside the build window had nothing to find, and every key
+    // pressed while the lane warmed came back sounding the moment it resolved, with no
+    // finger on it and nothing left that could ever release it. On a glide across the
+    // board that is the whole glide, stuck — which is what this is here for.
+    if (note.hold) {
+      for (const one of (Array.isArray(note.freq) ? note.freq : [note.freq])) {
+        if (!(one > 0)) continue;
+        const noteKey = `${laneKey}|${one.toFixed(2)}`;
+        this._releasePreview(noteKey);
+        this._heldNative.set(noteKey, { tngr2Queued: note });
+      }
+    }
+    if (pending.building) return true;
+    pending.building = true;
+    this.warmTngr2Lane(v, laneKey).then((ok) => {
+      const waiting = pending.notes.splice(0);
+      this._tngr2Pending.delete(key);
+      if (!ok) return;
+      // A cancelled note is one whose key came up before the lane arrived. Playing it now
+      // would be a note nobody is holding, at a time that has already passed.
+      for (const held of waiting) {
+        if (held.cancelled) continue;
+        this._playTngr2Node(v, { ...held, laneKey });
+      }
+    }).catch(() => { this._tngr2Pending.delete(key); });
+    return true;
+  }
+
+  /**
+   * Play a note through a lane's persistent worklet node.
+   *
+   * Offline, the notes are COLLECTED rather than posted, and handed to a node built at
+   * the end of the scheduling pass — see `_collectTngr2` and `flushTngr2Offline`. Port
+   * delivery is not ordered against `startRendering()`, so posting here would render
+   * silence about as often as not (docs/TNGR-2-completion-spec.md §3, finding b).
+   */
+  _playTngr2Node(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', hold = false }) {
+    if (typeof this.ctx?.startRendering === 'function') {
+      return this._collectTngr2(v, {
+        freq, time, dur, gain, detune, dry, wet, echo, laneKey, hold,
+      });
+    }
+    // Keyed on the LANE alone. A lane is a lane whatever preset is sitting on it, which
+    // is what §5 means by one node per {context, lane} — and keying on the preset as well
+    // would strand the old node, still connected, every time the sound changed.
+    const lane = tngr2LaneNow(this.ctx, laneKey);
+    // A lane that has not been built yet builds itself, and this note waits for it.
+    //
+    // Registering a worklet module is asynchronous and a scheduling pass is not, so the
+    // first note on a lane cannot have a node to talk to. It is not dropped: notes are
+    // scheduled a quarter-second ahead, so they are queued here and posted the moment the
+    // lane resolves, which is comfortably inside that window — and they carry absolute
+    // times, so arriving late costs nothing. Without this the first note of every lane
+    // would be silent, and with no lane ever warmed, EVERY note would be.
+    if (!lane) return this._queueTngr2(v, laneKey, {
+      freq, time, dur, gain, detune, dry, wet, echo, hold,
+    }, v);
+    // The preset as it is NOW — an edit or a preset change since the node was built.
+    syncTngr2Patch(lane, tngr2PatchForVoice(v), {
+      seed: hashSeed(v.id || laneKey), vibrato: tngr2VibratoOf(v), effects: tngr2EffectsOf(v),
+    });
+    const notes = Array.isArray(freq) ? freq : [freq];
+    const shift = VoiceRack.pitchShift(v) * detune;
+    const amp = Math.max(0, Number(gain) || 0);
+    if (!(amp > 0) || !notes.some((n) => n > 0)) return false;
+    // The lane's output chain, rebuilt when its CHORUS changes. Built once and left
+    // alone, turning the chorus up did nothing at all until the song was reloaded —
+    // the one effect that is native nodes rather than a number in the patch.
+    const chorusKey = JSON.stringify(v.chorus || null);
+    if (!lane.connected || lane.chorusKey !== chorusKey) {
+      if (lane.connected) {
+        try { lane.node.disconnect(); } catch { /* nothing attached yet */ }
+        try { lane.out?.disconnect(); } catch { /* ditto */ }
+      }
+      const out = this._tngr2Output(lane, v, time);
+      if (dry) out.connect(dry);
+      if (echo && wet) out.connect(wet);
+      lane.out = out;
+      lane.chorusKey = chorusKey;
+      lane.connected = true;
+    }
+    const durationAt = (index) => {
+      const raw = Array.isArray(dur) ? (dur[index] ?? dur[0]) : dur;
+      return Math.max(0.001, Number(raw) || 0.001);
+    };
+    let made = false;
+    notes.forEach((note, index) => {
+      if (!(note > 0)) return;
+      const hz = note * shift;
+      if (!Number.isFinite(hz) || !(hz > 0)) return;
+      // The event id is the note's identity: it is what a note-off refers to and what
+      // seeds the phase, so it has to be stable between a stem and the mix it belongs to
+      // — hence derived from the lane, the pitch and the time rather than from a counter.
+      const eventId = (Math.round(time * 1000) * 131 + Math.round(hz) * 17 + index) | 0;
+      tngr2NoteOn(lane, { at: time, hz, velocity: Math.min(1, amp), eventId });
+      if (!hold) {
+        tngr2NoteOff(lane, { at: time + durationAt(index), eventId });
+      } else {
+        // A HELD note has no note-off of its own — a key is down, and only lifting it
+        // ends the note. So the lane and the event id are written down under the same
+        // key `_releasePreview` and `stopPreview` look under, exactly as the pooled and
+        // native paths write down their nodes. Without this there is nothing in the
+        // books to release and a swept keyboard leaves a note sounding for ever.
+        const noteKey = `${laneKey}|${note.toFixed(2)}`;
+        this._releasePreview(noteKey);
+        this._heldNative.set(noteKey, { tngr2: { lane, eventId } });
+      }
+      made = true;
+    });
+    return made;
+  }
+
   _playGame(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false, hold = preview }) {
     const notes = Array.isArray(freq) ? freq : [freq];
     const attack = Math.max(0.001, v.attack ?? 0.01);
@@ -5083,6 +5426,7 @@ export class VoiceRack {
       mrdrChorusLegs: chorusLegs,
       liveNotes: this._liveNotes.length,
       heldNative: this._heldNative.size,
+      tngr2: this._tngr2Health(),
       activePreviews: this._activePreviews.size,
       cachedSources: this._cachedPlayback.size,
       mrdrTail: {
@@ -5092,6 +5436,15 @@ export class VoiceRack {
         skipReasons: { ...this._mrdrTailStats.skipReasons },
       },
     };
+  }
+
+  /**
+   * What TNGR-2 is holding. Lanes and voices come from the poly allocator, `waves` is
+   * the per-context PeriodicWave cache — the three numbers that grow if a note-off, a
+   * sweep or the cache cap ever stops working.
+   */
+  _tngr2Health() {
+    return this.ctx ? tngr2ControllerHealth(this.ctx) : { lanes: 0, families: 0, tableBytes: 0 };
   }
 
   /**
@@ -5130,6 +5483,13 @@ export class VoiceRack {
     // than a note-off, and it may not wait for a ten-second release.
     const now = this.ctx.currentTime;
     const off = now + STOP_FADE;
+    // TNGR-2's held notes first: they are events rather than nodes, and the loop below
+    // reaches straight for `held.params`.
+    for (const [noteKey, held] of [...this._heldNative]) {
+      if (!held?.tngr2) continue;
+      tngr2NoteOff(held.tngr2.lane, { at: now, eventId: held.tngr2.eventId });
+      this._heldNative.delete(noteKey);
+    }
     for (const held of this._heldNative.values()) {
       for (const h of held.params) {
         try {
@@ -5194,7 +5554,7 @@ export class VoiceRack {
     const now = this.ctx.currentTime;
     for (const { chain, spec, mul } of live) {
       if (!spec) continue;
-      const freq = Math.max(20, (spec.freq ?? 1150) * mul);
+      const freq = Math.max(20, (spec.freq ?? spec.cutoff ?? 1150) * mul);
       for (const st of chain.stages) {
         try { st.frequency.setTargetAtTime(freq, now, 0.008); } catch { /* gone with the note */ }
       }
@@ -5202,8 +5562,9 @@ export class VoiceRack {
       // flat Q and would multiply the peak if they resonated too. The same rule
       // `_filterChain` builds by.
       const q = chain.stages[0]?.Q;
-      if (q && spec.Q != null) {
-        try { q.setTargetAtTime(spec.Q, now, 0.008); } catch { /* ditto */ }
+      const qValue = spec.Q ?? spec.resonance ?? null;
+      if (q && qValue != null) {
+        try { q.setTargetAtTime(qValue, now, 0.008); } catch { /* ditto */ }
       }
     }
   }
@@ -5229,6 +5590,20 @@ export class VoiceRack {
       this._activePreviews.delete(noteKey);
     }
     const held = this._heldNative.get(noteKey);
+    // A TNGR-2 note is not nodes, it is an event id inside a lane's processor, so it is
+    // released by saying so rather than by ramping a gain and stopping a source.
+    if (held?.tngr2) {
+      tngr2NoteOff(held.tngr2.lane, { at, eventId: held.tngr2.eventId });
+      this._heldNative.delete(noteKey);
+      return;
+    }
+    // Still waiting for its lane — see `_queueTngr2`. There is nothing to tell to stop, so
+    // the note is struck off before it is ever played.
+    if (held?.tngr2Queued) {
+      held.tngr2Queued.cancelled = true;
+      this._heldNative.delete(noteKey);
+      return;
+    }
     if (held) {
       // The same close, on the native path's own record of the gate.
       const record = held.glideKey ? this._last?.get(held.glideKey) : null;
@@ -5243,6 +5618,7 @@ export class VoiceRack {
       // Re-scheduled, not stopped twice: the last `stop()` before a source has ended is
       // the one that takes effect, so this pulls the far-future stop back to the tail.
       for (const src of held.sources) { try { src.stop(stopAt + 0.01); } catch { /* ignore */ } }
+      if (held.polyRecord) held.polyRecord.stopAt = stopAt + 0.01;
       // The note-on's shared modulators go when its LAST tone does — a chord releases
       // one key at a time and the rest are still wobbling.
       const shared = held.shared;
@@ -5269,6 +5645,9 @@ export class VoiceRack {
     }
     this._cachedPlayback.clear();
     this._heldNative.clear();
+    // The worklet lanes go with the context too: a persistent node per lane is exactly the
+    // thing that would otherwise outlive the rack that made it.
+    if (this.ctx) { try { releaseTngr2Context(this.ctx); } catch { /* context already gone */ } }
     this._liveNotes = [];
     for (const stage of this._mrdrLaneStages.values()) {
       this._retireMrdrChorus(stage, Number.isFinite(this.ctx?.currentTime) ? this.ctx.currentTime : 0);

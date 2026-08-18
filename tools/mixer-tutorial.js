@@ -34,6 +34,7 @@ const SEEN_KEY = 'mash-mixer-tutorial-seen';
  * @param {Function} deps.selectLane         (laneKey) => void
  * @param {Function} deps.openPicker         ({anchor}) => void, the effect catalogue
  * @param {Function} deps.editVoice          (laneKey) => void, opens the synth editor
+ * @param {Function} deps.hasPreset          (laneKey) => is there a preset to edit at all
  * @param {Function} deps.showDrawer         () => void, idempotent unlike openDrawer
  * @param {Function} deps.closePopups        closeMenu — drawer, pickers, context menus
  * @param {Function} deps.makeRoomForStrips  () => did it fold something to fit the rack
@@ -41,6 +42,7 @@ const SEEN_KEY = 'mash-mixer-tutorial-seen';
  */
 export function createTutorial({
   el, placeCard, tourLane, selectLane, openPicker, editVoice, showDrawer, closePopups,
+  hasPreset = () => false,
   makeRoomForStrips = () => false, restoreRoom = () => {},
 }) {
   const $ = (id) => document.getElementById(id);
@@ -192,21 +194,19 @@ export function createTutorial({
     {
       id: 'openSynth',
       title: 'Edit it',
-      anchor: onStrip('.stripedit'),
+      anchor: onStrip('.striphead'),
       prefer: 'side',
-      says: 'The » beside the name opens the synthesiser itself, docked next to its strip. '
-        + 'It is a window, not a menu: leave it open and work while the sound changes under '
-        + 'your hands.\n\nEditing from a strip copies the preset into this song first, so '
-        + 'you are working on this song’s own version of it. Your edits ride the undo '
-        + 'stack and belong to the song.',
-      // The pen is display:none until the strip head is hovered, so there is nothing to
-      // point at unless the tour holds that state for the length of the card.
-      reveal: onStrip('.striphead'),
-      // And for the same reason the plan cannot ask whether it is on screen — at the
-      // moment the plan is drawn up nothing is hovered and every pen on the desk is
-      // hidden. Existence is the question here: a channel running the engine's own voice
-      // has no preset to open, and that is what leaves this card out.
-      available: () => !!strip()?.querySelector('.stripedit'),
+      says: 'Right-click a strip for EDIT PRESET, which opens the synthesiser itself right '
+        + 'where you clicked. It is a window, not a dialogue: leave it open, drag it '
+        + 'wherever you want it, and work while the sound changes under your hands.'
+        + '\n\nEditing from a strip copies the preset into this song first, so you are '
+        + 'working on this song’s own version of it. Your edits ride the undo stack and '
+        + 'belong to the song.',
+      // A channel running the engine's own voice has no preset to open, and that is what
+      // leaves this card out. Asked of the desk rather than of the strip's DOM: the »
+      // that used to stand for "this one has something to edit" is gone with the menu
+      // that replaced it, and a menu is not on screen to be queried.
+      available: () => hasPreset(lane),
     },
     {
       id: 'insideSynth',
@@ -220,9 +220,9 @@ export function createTutorial({
         + 'on/off switch in their bar, and off is a bypass rather than a delete — it keeps '
         + 'what you had and puts it back exactly as you left it.',
       setup: () => editVoice(lane),
-      // Same question as the catalogue: the editor is only reachable from a strip that has
-      // a preset to edit, which is what the pen means.
-      available: () => !!strip()?.querySelector('.stripedit'),
+      // Same question as the card before it: the editor is only reachable from a channel
+      // that has a preset to edit.
+      available: () => hasPreset(lane),
     },
     {
       id: 'library',

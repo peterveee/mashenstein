@@ -19,13 +19,13 @@
 // `lead3` — which is an ordinary lane everywhere downstream (see the layer notes in
 // src/engine/lanes.js) with its own strip, fader and voice.
 //
-// Every lane arrives on a STARTER preset, not on the sound the part had in the DAW,
+// Every lane arrives on a starting preset, not on the sound the part had in the DAW,
 // which no MIDI file carries. Neutral rather than absent — an unvoiced layer used to
 // arrive silent, so a fifteen-part import was fourteen strips of lit steps making no
 // sound, and a drum starter on a lead was worse still. The import summary names the
 // layers so the parts to re-voice are on the page rather than found by ear.
 //
-// Pitched lanes take the MonoSynth starters named at `importStarterFor` below; a piece
+// Pitched lanes take the MonoSynth presets named at `importStarterFor` below; a piece
 // of kit takes the Tom (`defaultAddedVoice` in src/data/voices.js). The pitched half is
 // the importer's own answer rather than the desk-wide one — see the note there.
 //
@@ -132,8 +132,9 @@ const isChordal = (lane) => CHORD_BASES.has(baseLane(lane));
 // added to a MASHENSTEIN song by hand, and the wrong one for a MIDI file: an import is
 // somebody's arrangement arriving from a DAW, usually orchestral or at least played,
 // and fourteen lanes of identical arcade square is a poor first hearing of it. The
-// `simple*` family is what the library already marks `starter: true`, and it is a real
-// MonoSynth — an oscillator through a filter with an envelope on both.
+// `simple*` family is a real MonoSynth — an oscillator through a filter with an
+// envelope on both — and ordinary editable library presets, so a lane that arrives on
+// one can be changed away from it and chosen back from the picker like any other.
 //
 // Deliberately NOT changed in `defaultAddedVoice` itself: this is the importer's
 // opinion about imports, and a layer added by hand on the desk keeps the arcade square

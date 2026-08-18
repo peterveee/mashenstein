@@ -408,10 +408,12 @@ voiceEditor = createVoiceEditor({
   toggleMidi: (on) => midi.setEnabled(on),
   createFull: ({ kit }) => createSynthFull({
     kit, el: $('synthfull'), backdrop: $('synthfullback'),
-    // Seven visible octaves use the full panel width; the narrower percentage keys
-    // still retain the shared pointer/computer/MIDI behavior. The whole board is on
-    // screen, so C2 is where it sits rather than where it starts.
-    keyboard: { octaves: 7, initialOctave: 2 },
+    // Five visible octaves, the same board the Song Mixer's Advanced editor shows — the
+    // window is sized to its cards now rather than to the screen, and a seven-octave
+    // board was the widest thing on it. The narrower percentage keys still retain the
+    // shared pointer/computer/MIDI behavior, and the whole board is on screen, so C2 is
+    // where it sits rather than where it starts.
+    keyboard: { octaves: 5, initialOctave: 2 },
     performance: performancePanel,
     headExtra: () => masterMeter.root,
   }),

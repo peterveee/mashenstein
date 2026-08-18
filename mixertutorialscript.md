@@ -214,13 +214,14 @@ something was chosen.*
 
 ### 13 — open the synth
 
-*Anchor the `»` beside the preset name. The strip head gets held in its hover state for
-this card, or the `»` is not visible to point at.*
+*Anchor the strip head. There is no button to point at — the way in is the strip's own
+right-click menu.*
 
 > **Edit it**
 >
-> The `»` beside the name opens the synthesiser itself, docked next to its strip. It is
-> a window, not a menu: leave it open and work while the sound changes under your hands.
+> Right-click a strip for EDIT PRESET, which opens the synthesiser itself right where you
+> clicked. It is a window, not a dialogue: leave it open, drag it wherever you want it,
+> and work while the sound changes under your hands.
 >
 > Editing from a strip copies the preset into this song first, so you are working on
 > this song's own version of it. Your edits ride the undo stack and belong to the song.

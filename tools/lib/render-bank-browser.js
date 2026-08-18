@@ -174,15 +174,30 @@ export async function openRenderer({ headless = true } = {}) {
     // for its lifetime, so contexts cannot be swapped in place. Re-evaluating the
     // bundle costs milliseconds; relaunching the browser would cost a second.
     const errors = [];
+    // Served from an https ORIGIN rather than handed over with `setContent`.
+    //
+    // `setContent` leaves the page on `about:blank`, whose origin is opaque and whose
+    // `isSecureContext` is false — and on a page that is not a secure context Chromium
+    // does not put `audioWorklet` on an AudioContext AT ALL. Not a worklet that fails to
+    // produce sound: no worklet to ask. That is the real reason every worklet this project
+    // has tried has "rendered silence offline" (see the notes at the top of
+    // src/engine/effects.js and src/engine/voices.js, which blamed the secure-context rule
+    // without noticing that this page is the thing failing it).
+    //
+    // Nothing is served over the network: the route fulfils the request from the bundle in
+    // memory, exactly as `setContent` did, and only the URL is https. Everything that
+    // rendered before renders identically — the origin is not an input to the audio — and
+    // TNGR-2's worklet path becomes possible here at all.
+    const html = '<!doctype html><meta charset="utf-8">'
+      + `<script>${bundleJs.replace(/<\/script>/gi, '<\\/script>')}<\/script>`;
     const openPage = async () => {
       const p = await browser.newPage();
       errors.length = 0;
       p.on('pageerror', (e) => errors.push(e.message));
-      await p.setContent(
-        `<!doctype html><meta charset="utf-8">`
-        + `<script>${bundleJs.replace(/<\/script>/gi, '<\\/script>')}<\/script>`,
-        { waitUntil: 'load' },
-      );
+      await p.route('**/*', (route) => route.fulfill({
+        status: 200, contentType: 'text/html', body: html,
+      }));
+      await p.goto('https://mashenstein.render/', { waitUntil: 'load' });
       return p;
     };
     let page = await openPage();

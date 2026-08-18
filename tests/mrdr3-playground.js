@@ -88,8 +88,9 @@ assert(/Audio\.setCaptureEnabled\(false\);\s*\n\s*Audio\.ensure\(\);/.test(stand
   'the standalone playground turns the rewind capture tap off before it builds its graph');
 assert((standalone.match(/Audio\.ensure\(\)/g) || []).length === 1,
   'and there is still only the one door to ensure() for that line to sit in front of');
-assert(/keyboard: \{ octaves: 7, initialOctave: 2 \}/.test(mixerEntry),
-  'the Song Mixer Advanced editor uses the same seven-octave compact keyboard range');
+assert(/keyboard: \{ octaves: 5, initialOctave: 2 \}/.test(mixerEntry)
+  && /keyboard: \{ octaves: 5, initialOctave: 2 \}/.test(standalone),
+  'both full-window editors show the same five-octave compact keyboard range');
 // The whole board is on screen, so there is no octave shift and no PANIC to press; a
 // drag across the keys glides, which per-key `pointerenter` could not do under capture.
 assert(!/sfkoct|sfkpanic|PANIC/.test(keyboard) && !/minOctave|maxOctave/.test(mixerEntry),
@@ -140,8 +141,9 @@ assert(/board\.addEventListener\('pointermove'/.test(keyboard)
   assert.equal(n('A4'), 440);
   ok('the performance keyboard is a piano: blacks on the seams, Cs labelled, C3 in the middle');
 }
-assert(/octaves: 7/.test(standalone) && /min-width: 1400px/.test(readFileSync(
-  new URL('../tools/mrdr3-shell.html', import.meta.url), 'utf8')));
+assert(/octaves: 5/.test(standalone) && /min-width: 1400px/.test(readFileSync(
+  new URL('../tools/mrdr3-shell.html', import.meta.url), 'utf8')),
+  'the standalone page shows the shared five-octave board on a shell wide enough for it');
 assert(/html, body[\s\S]*overflow-y: auto/.test(readFileSync(
   new URL('../tools/mrdr3-shell.html', import.meta.url), 'utf8'))
   && /#synthfull \.sfbody \{ flex: none; min-height: 0; overflow: visible;/.test(

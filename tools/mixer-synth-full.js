@@ -1,4 +1,4 @@
-// The full-window synth editor: MRDR-3 and KLNG8's Advanced controls on one screen.
+// The full-window synth editor: MRDR-3, TNGR-2 and KLNG8's Advanced controls on one screen.
 //
 // The strip panel is 366px wide — three channel strips — and everything about it is a
 // concession to that: 42px pots, 9.5px labels, four grid columns, and one long scroll.
@@ -29,18 +29,30 @@ import { envelopeGraph, responseGraph } from './mixer-synth-graphs.js';
 import { createSynthKeyboard } from './mixer-synth-keyboard.js';
 
 /** The synth classes that have a full-window layout. The rest open the strip panel only. */
-export const FULL_EDITORS = ['MRDR-3', 'drum'];
+export const FULL_EDITORS = ['MRDR-3', 'TNGR-2', 'drum'];
 
-/** Find a card's rows by the label they carry, which is the name the desk calls them. */
-const byLabel = (rows, want) => {
+/**
+ * Find a card's rows by the label they carry, which is the name the desk calls them.
+ *
+ * `optional` names the ones a card is allowed not to have, and they come back undefined
+ * rather than failing the whole lookup. Two cards need that: a native BiquadFilterNode
+ * has one fixed slope, so TNGR-2's filter has no SLOPE pill, and TNGR-2's POSITION
+ * envelope genuinely ends at its sustain — there is no release stage for a pot to edit.
+ * Without this the graph silently did not appear, which reads as a broken panel rather
+ * than as a card that declined one.
+ */
+const byLabel = (rows, want, optional = []) => {
   const out = {};
   for (const [key, label] of Object.entries(want)) {
     out[key] = rows.find((r) => r.label === label);
+    if (!out[key] && !optional.includes(key)) return null;
   }
-  return Object.values(out).every(Boolean) ? out : null;
+  return out;
 };
 const ENV_ROWS = { attack: 'ATTACK', decay: 'DECAY', sustain: 'SUSTAIN', release: 'RELEASE' };
 const FILTER_ROWS = { freq: 'CUTOFF', Q: 'RESONANCE', type: 'TYPE', slope: 'SLOPE' };
+const ENV_OPTIONAL = ['release'];
+const FILTER_OPTIONAL = ['slope'];
 
 /**
  * A waveform, drawn.
@@ -65,6 +77,14 @@ const GLYPH = {
   // fell back to words for the whole row, since a row draws only when EVERY option can.
   pwm: 'M1,12 L1,2.5 L3,2.5 L3,12 L8,12 L8,2.5 L12,2.5 L12,12 L16,12 L16,2.5 L22,2.5 L22,12 L23,12',
   noise: 'M1,7 L3,3 L5,11 L7,4.5 L9,12 L11,3.5 L13,9 L15,2.5 L17,10.5 L19,5 L21,11.5 L23,6.5',
+  // TNGR-2 spells its LFO shapes short. `saw` is the same ramp `sawtooth` draws above, and
+  // a row draws only when EVERY option can — one missing name put the whole LFO row back
+  // to words.
+  saw: 'M1,12 L7,2.5 L7,12 L13,2.5 L13,12 L19,2.5 L19,12 L23,9',
+  // SAMPLE AND HOLD: a level taken and then held flat until the next one. The steps are
+  // uneven on purpose — an even staircase is a ramp, and this is the one shape whose whole
+  // character is that you cannot tell where it goes next.
+  samplehold: 'M1,9 L5,9 L5,4 L9,4 L9,11.5 L13,11.5 L13,6 L17,6 L17,2.5 L21,2.5 L21,8.5 L23,8.5',
   // The LFO's three destinations, as what they DO: a corner coming down, a swell, and a bend.
   filter: 'M1,4 L10,4 C15,4 16,11 22,11',
   level: 'M1,11 C5,11 6,4 11,4 C16,4 17,11 22,11',
@@ -236,10 +256,15 @@ export function createSynthFull({
       bar.append(share);
     }
     const shut = document.createElement('button');
-    shut.className = 'sfshut';
+    // The desk's standard close, not a mark of this window's own — see `.popclose`.
+    shut.className = 'sfshut popclose';
     shut.type = 'button';
     shut.textContent = '✕';
-    shut.title = 'Close — the panel beside the strip is still on this preset';
+    // Not "the panel beside the strip is still on this preset", which it used to say:
+    // opened from either menu's EDIT ADVANCED this window is standalone and closing it
+    // puts the preset down entirely. Only the ADVANCED button inside the small panel
+    // leaves something behind, and one title cannot promise both.
+    shut.title = 'Close the full editor';
     shut.onclick = () => close();
     bar.append(shut);
     return bar;
@@ -251,7 +276,9 @@ export function createSynthFull({
   // one, with the title and the row list the layout decided. That is how the Note card
   // splits in two, how PLS WIDTH moves into the PWM sub-section, and how a card keeps its
   // own switch, its solo button and its tooltips while showing a different set of rows.
-  const card = (spec, { graph = null, curves = false, tabs = null } = {}) => {
+  const card = (spec, {
+    graph = null, curves = false, tabs = null, graphHeight = 0, fader: faderLabel = null,
+  } = {}) => {
     // The pots this card drew, by path — so a graph handle can move the needle of the
     // control it is dragging. `set` is display-only, so there is no write loop.
     const pots = new Map();
@@ -269,7 +296,11 @@ export function createSynthFull({
     // other on/offs rather than as a pair of words inside the card — it is the control
     // that decides whether the four stages under it do anything at all.
     const ampRow = spec.rows.find((r) => r.label === 'AMP' && r.kind === 'pick');
-    const bodyRows = spec.rows.filter((r) => r !== ampRow
+    // A row asked for as a FADER comes out of the pot grid and lies along the top of the
+    // card instead — the same key, range and write path, just lying down. It is still
+    // placed exactly once; what changes is the shape it is drawn in.
+    const faderRow = faderLabel ? spec.rows.find((r) => r.label === faderLabel) : null;
+    const bodyRows = spec.rows.filter((r) => r !== ampRow && r !== faderRow
       && !(curves && behindDoor(r)));
     const c = kit.groupCard(
       { ...spec.group, title: spec.title, rows: bodyRows },
@@ -299,6 +330,14 @@ export function createSynthFull({
     // `fullLayout`. It is a class rather than an inline style so the column floor stays in
     // the stylesheet with the pot size it has to clear.
     if (spec.grid === 4) c.classList.add('sfgrid4');
+    // A card that names how many pots it wants across gets exactly that many columns,
+    // rather than as many as its width happens to auto-fill. The oscillators want five
+    // so their tuning-and-position row is one line; an envelope wants four, which is
+    // what an ADSR is.
+    if (spec.pots > 0) {
+      const grid = c.querySelector('.devgrid');
+      if (grid) grid.style.gridTemplateColumns = `repeat(${spec.pots}, minmax(0, 1fr))`;
+    }
     // Blocks divide the slack rather than banking it under the header — see `spread` in
     // `fullLayout`.
     if (spec.spread) c.classList.add('sfspread');
@@ -310,7 +349,8 @@ export function createSynthFull({
     if (spec.top) c.classList.add('sftop');
     fitLabels(c);
     pairChoices(c);
-    if (graph) addGraph(c, spec, graph, pots);
+    if (faderRow) c.querySelector('.devgrid')?.before(fader(faderRow));
+    if (graph) addGraph(c, spec, graph, pots, graphHeight);
     // TYPE and SLOPE ride directly under the curve they describe, not down with the pots.
     //
     // The grid takes `margin-top: auto` so that the knob rows across a whole band land on
@@ -704,6 +744,9 @@ export function createSynthFull({
    * where there is room to read a word and no room to draw a box round it.
    */
   const choiceRow = (row) => {
+    // A long list is a dropdown on both surfaces — see `dropRow`. Deferring rather than
+    // drawing a second one keeps the desk to one dropdown.
+    if (row.dropdown) return kit.dropRow(row, guards, redrawGraphs).wrap;
     // A choice row is built full width and PAIRS UP afterwards — see `pairChoices`. It is
     // built wide rather than half because half is a measurement: two of them share a line
     // only where both actually fit on one, and that is not known until the card is in the
@@ -956,9 +999,9 @@ export function createSynthFull({
    * `onChange`: a pot drag redraws the SVGs from the shared voice without rebuilding the
    * card. Without both directions the graph and pots would disagree during a gesture.
    */
-  const addGraph = (c, spec, kind, pots) => {
+  const addGraph = (c, spec, kind, pots, height) => {
     const want = kind === 'filter' ? FILTER_ROWS : ENV_ROWS;
-    const rows = byLabel(spec.rows, want);
+    const rows = byLabel(spec.rows, want, kind === 'filter' ? FILTER_OPTIONAL : ENV_OPTIONAL);
     if (!rows) return;
     const onLive = (pairs) => {
       for (const [row, x] of pairs) pots.get(row.path)?.(x);
@@ -966,6 +1009,7 @@ export function createSynthFull({
     const graphOptions = {
       rows, read: kit.read, writeMany: kit.writeMany, onLive,
       onStart: kit.beginUndo, onEnd: kit.endUndo,
+      ...(height ? { h: height } : {}),
     };
     const g = kind === 'filter'
       ? responseGraph(graphOptions)
@@ -1203,6 +1247,11 @@ export function createSynthFull({
     guards.clear();
     graphsToDraw = [];
     el.textContent = '';
+    // Cleared before every render, not just written: these are set from the band below and
+    // live on the window itself, so a TNGR-2 panel followed by an MRDR-3 one would leave
+    // the second wearing the first's width.
+    el.style.removeProperty('--sf-boardw');
+    el.style.removeProperty('--sf-winw');
     el.append(head());
 
     const body = div('sfbody');
@@ -1211,12 +1260,49 @@ export function createSynthFull({
       // Each band carries its own column count — three layers want thirds, five cards
       // want fifths. See the `bands` note in `fullLayout`.
       row.style.setProperty('--sf-cols', String(band.cols || 6));
+      // A band may also fix the WIDTH of a column instead of dividing the window into
+      // equal fractions of it. Then the band is as wide as its cards and no wider, and
+      // the keyboard below takes the same width — a board still spanning the screen under
+      // a narrowed set of cards is the widest thing on the panel, which reads as the cards
+      // having shrunk rather than as the panel having been sized.
+      if (band.track) {
+        row.style.setProperty('--sf-track', `${band.track}px`);
+        // One gap between every pair of TRACKS — the grid does not know where a card ends,
+        // so a cell spanning four tracks is four tracks and the three gaps inside it.
+        // Counting cards here instead put the board 78px narrow.
+        const gaps = Math.max(0, band.cols - 1);
+        const boardw = `calc(${band.cols} * ${band.track}px + ${gaps} * var(--sf-bandgap, 6px))`;
+        el.style.setProperty('--sf-boardw', boardw);
+        // And the WINDOW is the band plus the body's own padding and its border, so there
+        // is no side margin at all: the panel is exactly as wide as the cards inside it.
+        // Still capped at the viewport, so a narrow screen shrinks the tracks rather than
+        // putting half the panel off the edge.
+        el.style.setProperty('--sf-winw',
+          `min(calc(${boardw} + var(--sf-winpad, 14px)), calc(100vw - 24px))`);
+      }
       band.cells.forEach((cell, i) => {
         const slot = div('sfcell');
         slot.style.gridColumn = `span ${cell.span || 1}`;
         if (cell.kind === 'mixer') slot.append(mixCell(cell));
         else if (cell.kind === 'tabs') slot.append(tabbed(cell, `${band.name}:${i}`));
-        else slot.append(card(cell.card, { graph: cell.graph, curves: cell.curves }));
+        // A STACK is two or more short cards sharing one column, one above the other.
+        // The alternative is a column each, and a column is as tall as the tallest card
+        // in the band — so a four-pot card next to a twelve-row oscillator is mostly air.
+        // The slot is already a grid, so the cards simply become its rows.
+        else if (cell.kind === 'stack') {
+          slot.classList.add('sfstack');
+          for (const one of cell.cards) {
+            slot.append(card(one.card, {
+              graph: one.graph, curves: one.curves, graphHeight: one.graphHeight,
+              fader: one.fader,
+            }));
+          }
+        } else {
+          slot.append(card(cell.card, {
+            graph: cell.graph, curves: cell.curves, graphHeight: cell.graphHeight,
+            fader: cell.fader,
+          }));
+        }
         row.append(slot);
       });
       body.append(row);
@@ -1301,10 +1387,30 @@ export function createSynthFull({
     kit.undo();
   };
 
-  function open(n = 1, { anchor = null, avoidTransport = false } = {}) {
+  /**
+   * WHERE IT OPENS. `at` is the click that asked for it — a right-click on a channel
+   * strip, a button in the track panel — and the window goes beside that point. It used
+   * to take an `anchor` ELEMENT instead, and neither element it was ever given read as
+   * "here": a channel strip is a hundred-pixel column at the bottom of the desk and this
+   * window is 900px tall, so its top was decided by the fit rather than by the anchor,
+   * and an arrangement row put it hard against the left edge. `anchor` is still accepted
+   * for a caller that has an element and no pointer; nothing in the desk is one today.
+   *
+   * With neither, the stylesheet's own `left: 50%; top: 50%` and the `.show` transform
+   * centre it — which is what the tour and a restored session get, both of them arriving
+   * with no click behind them. A previous DRAG is cleared on the way in for that case,
+   * or the second open would land wherever the first one was pushed.
+   */
+  function open(n = 1, { at = null, anchor = null, avoidTransport = false } = {}) {
     if (!kit.voice() || !kit.layout({ layer: 1 })) return;
     layer = Math.min(3, Math.max(1, n));
     showing = true;
+    // Back to the stylesheet's centre before anything is drawn. Dragging writes
+    // `left`/`top` in pixels and sets `transform` to none, and all three survive a close —
+    // so without this an open with nothing to place against lands wherever the last drag
+    // pushed it, which after a window resize is often partly off screen. The two placed
+    // branches below overwrite these again in the same frame.
+    el.style.left = ''; el.style.top = ''; el.style.transform = '';
     keyboard.setActive(true);
     window.addEventListener('keydown', onKeyDown, true);
     el.setAttribute('aria-hidden', 'false');
@@ -1321,16 +1427,22 @@ export function createSynthFull({
     pendingFrame = requestAnimationFrame(() => {
       if (!showing) return;
       el.classList.add('show');
-      if (anchor) {
-        const ar = anchor.getBoundingClientRect();
+      // One placement, from a point: an anchor element is reduced to its right edge and
+      // its top, which is exactly what the element branch used to compute for itself.
+      const ar = anchor?.getBoundingClientRect();
+      const from = at || (ar && { x: ar.right, y: ar.top });
+      if (from) {
         const wr = el.getBoundingClientRect();
         const gap = 10;
-        const left = ar.right + gap + wr.width <= window.innerWidth
-          ? ar.right + gap
-          : Math.max(12, ar.left - gap - wr.width);
+        const left = from.x + gap + wr.width <= window.innerWidth
+          ? from.x + gap
+          : Math.max(12, from.x - gap - wr.width);
+        // The transport is a fixed bar across the top of the desk and this window is tall
+        // enough that a click low on the screen would otherwise clamp it right over the
+        // one control you need to hear what you are editing.
         const transport = avoidTransport ? document.querySelector('.transport') : null;
         const belowTransport = transport?.getBoundingClientRect().bottom + gap || 12;
-        const top = Math.min(Math.max(belowTransport, ar.top),
+        const top = Math.min(Math.max(belowTransport, from.y),
           Math.max(12, window.innerHeight - wr.height - 12));
         el.style.left = `${Math.round(left)}px`;
         el.style.top = `${Math.round(top)}px`;
@@ -1348,31 +1460,77 @@ export function createSynthFull({
     // whole reason every other panel here is a window too.
   }
 
-  // Advanced is a window, so its title bar is a handle. Keep controls and the preset
-  // picker interactive, but let the rest of the header move the window freely.
+  /**
+   * Where a dragged window is allowed to land: fully on screen where it fits, and
+   * otherwise free to slide the other way so the edge that is off-screen can be brought
+   * back. `min`/`max` around the same number gives both cases without a branch — a window
+   * wider than the screen gets a range that runs the other way, from a negative left up
+   * to the margin, instead of a range collapsed to a single frozen value.
+   */
+  const EDGE = 8;
+  const between = (v, a, b) => Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
+  function placeWindow(x, y, w, h) {
+    el.style.left = `${Math.round(between(x, EDGE, innerWidth - w - EDGE))}px`;
+    el.style.top = `${Math.round(between(y, EDGE, innerHeight - h - EDGE))}px`;
+  }
+
+  /**
+   * Advanced is a window, so its title bar is a handle. Keep controls and the preset
+   * picker interactive, but let the rest of the header move the window freely.
+   *
+   * THE DRAG THAT WOULD NOT LET GO. The listeners used to go on `el` with no pointer
+   * capture, which meant `pointermove` only arrived while the pointer was over the
+   * window — and so did `pointerup`. Release the button anywhere else (easy: a fast drag
+   * outruns the window, and the window stops dead at the screen edge while the hand keeps
+   * going) and `stop` never ran. The move listener stayed live with the button already up,
+   * so the window then followed the bare cursor around the desk until the pointer happened
+   * to be released over it — which is what parked it at the bottom of the screen, over and
+   * over. Capturing the pointer gives every move AND the up to this element wherever the
+   * hand is, and `lostpointercapture` closes the last door: whatever ends the gesture,
+   * the drag ends with it.
+   *
+   * The other two costs of a drag are paid here rather than per move: `.sfdrag` suspends
+   * the open/close transition, which otherwise animated the window out from under the
+   * cursor for 220ms on the first grab as `transform` went from centred to `none`; and the
+   * window is measured ONCE, because reading `offsetWidth` after writing `left` forces a
+   * synchronous layout of all nine cards, every move, on a desk whose audio wants that core.
+   */
+  let endDrag = null;
   el.addEventListener('pointerdown', (ev) => {
-    if (!showing || !ev.target.closest('.sfhead')
-        || ev.target.closest('button, input, select, summary, details')) return;
+    if (!showing || endDrag || ev.button !== 0 || !ev.target.closest('.sfhead')
+        || ev.target.closest('button, input, select, summary, details, textarea')) return;
+    // Otherwise the header's own text takes the gesture as a selection drag, which is the
+    // sticky, half-there feel of a title bar that will not move.
+    ev.preventDefault();
     const r = el.getBoundingClientRect();
     const dx = ev.clientX - r.left;
     const dy = ev.clientY - r.top;
+    const w = r.width;
+    const h = r.height;
+    el.classList.add('sfdrag');
     el.style.left = `${r.left}px`;
     el.style.top = `${r.top}px`;
     el.style.transform = 'none';
+    try { el.setPointerCapture(ev.pointerId); } catch { /* not a real pointer */ }
     const move = (e) => {
-      const nextLeft = Math.min(Math.max(8, e.clientX - dx), Math.max(8, innerWidth - el.offsetWidth - 8));
-      const nextTop = Math.min(Math.max(8, e.clientY - dy), Math.max(8, innerHeight - el.offsetHeight - 8));
-      el.style.left = `${nextLeft}px`;
-      el.style.top = `${nextTop}px`;
+      if (e.pointerId !== ev.pointerId) return;
+      placeWindow(e.clientX - dx, e.clientY - dy, w, h);
     };
-    const stop = () => {
+    const stop = (e) => {
+      if (e && e.pointerId !== ev.pointerId) return;
+      endDrag = null;
+      el.classList.remove('sfdrag');
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', stop);
       el.removeEventListener('pointercancel', stop);
+      el.removeEventListener('lostpointercapture', stop);
+      try { el.releasePointerCapture(ev.pointerId); } catch { /* already gone */ }
     };
+    endDrag = stop;
     el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', stop, { once: true });
-    el.addEventListener('pointercancel', stop, { once: true });
+    el.addEventListener('pointerup', stop);
+    el.addEventListener('pointercancel', stop);
+    el.addEventListener('lostpointercapture', stop);
   });
 
   function close() {
@@ -1385,6 +1543,10 @@ export function createSynthFull({
     cancelAnimationFrame(pendingFrame);
     guards.clear();
     el.classList.remove('show');
+    // A window closed mid-drag (Escape, a lane follow) never sees the pointer up that
+    // ends the gesture, and the listeners are on the shell itself — they outlive the
+    // contents emptied below. Ended here, or the next open inherits a live drag.
+    endDrag?.();
     el.style.left = '';
     el.style.top = '';
     el.style.transform = '';

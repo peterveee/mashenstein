@@ -37,7 +37,7 @@ const assert = (cond, msg) => {
 // by name in `play()` before the Tone allowlist is reached, and they read `$` keys off the
 // entry rather than an `options` bag. They are in the same list because it is the same
 // question — what may a preset's `synth` say.
-const ALLOWED = ['GameSynth', 'AdditiveSynth', 'MRDR-3', 'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
+const ALLOWED = ['GameSynth', 'AdditiveSynth', 'MRDR-3', 'TNGR-2', 'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
 // The waveforms an OscillatorNode will take. `pwm` and `pulse` are Tone's and throw on a
 // native oscillator — see NATIVE_WAVES in src/engine/voices.js.
 const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
@@ -145,6 +145,7 @@ for (const v of tone) {
   assert(v.peak > 0 && v.peak !== 1,
     `${v.id}: carries a measured peak (${v.peak}), not the placeholder`);
   assert(v.synth === 'GameSynth' || v.synth === 'AdditiveSynth' || v.synth === 'MRDR-3'
+    || v.synth === 'TNGR-2'
     || (v.options && typeof v.options === 'object'),
     `${v.id}: has constructor options or native synth parameters`);
 }

@@ -30,6 +30,7 @@ import * as BARBER_4 from './barber-4.js';
 import * as BARBER_5 from './barber-5.js';
 import * as BARBER_6 from './barber-6.js';
 import * as BARBER_7 from './barber-7.js';
+import * as BARBER_96 from './barber-96.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE_2 from './barber-of-seville-ouverture-2.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE from './barber-of-seville-ouverture.js';
 import * as BARBER_OF_SEVILLE from './barber-of-seville.js';
@@ -61,6 +62,7 @@ import * as ELECTRIC_LANTERN from '../../../work/scratch/electric-lantern.js';
 import * as ELECTRIC_MIRROR from '../../../work/scratch/electric-mirror.js';
 import * as ELECTRIC_SCOOTER from '../../../work/scratch/electric-scooter.js';
 import * as ENDING from './ending.js';
+import * as EVERYTHING_IS_LOOKING_UP_M3_2 from './everything-is-looking-up-m3-2.js';
 import * as EVERYTHING_IS_LOOKING_UP_M3 from './everything-is-looking-up-m3.js';
 import * as FROZEN_BEETLE from '../../../work/scratch/frozen-beetle.js';
 import * as FROZEN_DIVER from '../../../work/scratch/frozen-diver.js';
@@ -77,6 +79,7 @@ import * as HAPPY_MEADOW from '../../../work/scratch/happy-meadow.js';
 import * as HAPPY_WOMBAT from '../../../work/scratch/happy-wombat.js';
 import * as HAUNTED_SIREN from '../../../work/scratch/haunted-siren.js';
 import * as HAUNTED_SUNDAE from '../../../work/scratch/haunted-sundae.js';
+import * as HAUNTED_VOLCANO from '../../../work/scratch/haunted-volcano.js';
 import * as HUNGRY_CANYON from '../../../work/scratch/hungry-canyon.js';
 import * as HUNGRY_LADDER from '../../../work/scratch/hungry-ladder.js';
 import * as JOLLY_ORBIT from '../../../work/scratch/jolly-orbit.js';
@@ -121,6 +124,8 @@ import * as SECRET_MONSTER from '../../../work/scratch/secret-monster.js';
 import * as SHOP_80BPM from './shop-80bpm.js';
 import * as SHOP_CHORDS from './shop-chords.js';
 import * as SHOPPING_FULL from './shopping-full.js';
+import * as SHOPPINGCHANNEL_SWING from './shoppingchannel-swing.js';
+import * as SHOPPINGCHANNEL_WVE from './shoppingchannel-wve.js';
 import * as SHOPPINGCHANNEL from './shoppingchannel.js';
 import * as SILENT_BEETLE from '../../../work/scratch/silent-beetle.js';
 import * as SILENT_ROCKET from '../../../work/scratch/silent-rocket.js';
@@ -180,6 +185,7 @@ export const IMPORTED_BY_ID = {
   "barber-5": { bank: BARBER_5.bank, title: BARBER_5.title, group: "imported", writable: true },
   "barber-6": { bank: BARBER_6.bank, title: BARBER_6.title, group: "imported", writable: true },
   "barber-7": { bank: BARBER_7.bank, title: BARBER_7.title, group: "imported", writable: true },
+  "barber-96": { bank: BARBER_96.bank, title: BARBER_96.title, group: "copy", writable: true },
   "barber-of-seville-ouverture-2": { bank: BARBER_OF_SEVILLE_OUVERTURE_2.bank, title: BARBER_OF_SEVILLE_OUVERTURE_2.title, group: "copy", writable: true },
   "barber-of-seville-ouverture": { bank: BARBER_OF_SEVILLE_OUVERTURE.bank, title: BARBER_OF_SEVILLE_OUVERTURE.title, group: "imported", writable: true },
   "barber-of-seville": { bank: BARBER_OF_SEVILLE.bank, title: BARBER_OF_SEVILLE.title, group: "imported", writable: true },
@@ -211,6 +217,7 @@ export const IMPORTED_BY_ID = {
   "electric-mirror": { bank: ELECTRIC_MIRROR.bank, title: ELECTRIC_MIRROR.title, group: "scratch", writable: true },
   "electric-scooter": { bank: ELECTRIC_SCOOTER.bank, title: ELECTRIC_SCOOTER.title, group: "scratch", writable: true },
   "ending": { bank: ENDING.bank, title: ENDING.title, group: "imported", writable: true },
+  "everything-is-looking-up-m3-2": { bank: EVERYTHING_IS_LOOKING_UP_M3_2.bank, title: EVERYTHING_IS_LOOKING_UP_M3_2.title, group: "imported", writable: true },
   "everything-is-looking-up-m3": { bank: EVERYTHING_IS_LOOKING_UP_M3.bank, title: EVERYTHING_IS_LOOKING_UP_M3.title, group: "imported", writable: true },
   "frozen-beetle": { bank: FROZEN_BEETLE.bank, title: FROZEN_BEETLE.title, group: "scratch", writable: true },
   "frozen-diver": { bank: FROZEN_DIVER.bank, title: FROZEN_DIVER.title, group: "scratch", writable: true },
@@ -227,6 +234,7 @@ export const IMPORTED_BY_ID = {
   "happy-wombat": { bank: HAPPY_WOMBAT.bank, title: HAPPY_WOMBAT.title, group: "scratch", writable: true },
   "haunted-siren": { bank: HAUNTED_SIREN.bank, title: HAUNTED_SIREN.title, group: "scratch", writable: true },
   "haunted-sundae": { bank: HAUNTED_SUNDAE.bank, title: HAUNTED_SUNDAE.title, group: "scratch", writable: true },
+  "haunted-volcano": { bank: HAUNTED_VOLCANO.bank, title: HAUNTED_VOLCANO.title, group: "scratch", writable: true },
   "hungry-canyon": { bank: HUNGRY_CANYON.bank, title: HUNGRY_CANYON.title, group: "scratch", writable: true },
   "hungry-ladder": { bank: HUNGRY_LADDER.bank, title: HUNGRY_LADDER.title, group: "scratch", writable: true },
   "jolly-orbit": { bank: JOLLY_ORBIT.bank, title: JOLLY_ORBIT.title, group: "scratch", writable: true },
@@ -271,6 +279,8 @@ export const IMPORTED_BY_ID = {
   "shop-80bpm": { bank: SHOP_80BPM.bank, title: SHOP_80BPM.title, group: "imported", writable: true },
   "shop-chords": { bank: SHOP_CHORDS.bank, title: SHOP_CHORDS.title, group: "copy", writable: true },
   "shopping-full": { bank: SHOPPING_FULL.bank, title: SHOPPING_FULL.title, group: "copy", writable: true },
+  "shoppingchannel-swing": { bank: SHOPPINGCHANNEL_SWING.bank, title: SHOPPINGCHANNEL_SWING.title, group: "copy", writable: true },
+  "shoppingchannel-wve": { bank: SHOPPINGCHANNEL_WVE.bank, title: SHOPPINGCHANNEL_WVE.title, group: "copy", writable: true },
   "shoppingchannel": { bank: SHOPPINGCHANNEL.bank, title: SHOPPINGCHANNEL.title, group: "copy", writable: true },
   "silent-beetle": { bank: SILENT_BEETLE.bank, title: SILENT_BEETLE.title, group: "scratch", writable: true },
   "silent-rocket": { bank: SILENT_ROCKET.bank, title: SILENT_ROCKET.title, group: "scratch", writable: true },

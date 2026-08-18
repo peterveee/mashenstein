@@ -18,6 +18,9 @@ const audio = readFileSync(new URL('../src/engine/audio.js', import.meta.url), '
 const rearrange = readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8');
 const freezeSpanSource = readFileSync(new URL('../tools/lib/freeze-span.js', import.meta.url), 'utf8');
 const touchedBody = /const touched = \(\) => \{[\s\S]*?\n  \};/.exec(editor)?.[0] || '';
+// The desk entry with every comment taken out, for the assertions that mean "no code
+// does this any more" — a note explaining what was REMOVED must not read as the thing.
+const bareEntry = entry.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 assert(/id="rearrangebtn"/.test(shell)
   && /data-tip="M8TRX"[^>]*>M8TRX<\/button>/.test(shell)
@@ -1158,11 +1161,22 @@ assert(/const SOURCES = \[[\s\S]*?label: 'Library'[\s\S]*?label: 'My presets'/.t
 // chips since (usage counts), and will gain more, but search stays the thing directly
 // before the close so the eye lands on it in the same place every time.
 assert(/head\.append\(title, sources,[^)]*search, close\)/.test(
-  librarySource)
+    librarySource)
   && /#voicelib \.vlclose \{ margin-left: auto; \}/.test(shell)
   && !/const searchRow = document\.createElement\('div'\)/.test(
     librarySource),
   'the preset search sits in the top header immediately before the far-right close');
+assert(/let voicePickerQuery = '';[\s\S]*?search\.value = voicePickerQuery[\s\S]*?voicePickerQuery = search\.value[\s\S]*?draw\(search\.value\)/.test(entry),
+  'the strip preset picker keeps its search when it is reopened');
+assert(/const engineOf = \(v\) => v\?\.kind === 'drum' \? 'drum' : v\?\.synth \|\| null/.test(entry)
+  && /const enginesForKind = \(kindId\) =>[\s\S]*?filter\(keepOf\(kindId\)\)/.test(entry)
+  && /if \(!pending && selectedEngine && initialEngines\.includes\(selectedEngine\)\) engine = selectedEngine/.test(entry)
+  && /className = 'fxsel voiceengine'/.test(entry)
+  && /keepEngine = \(v\) => engine === 'all' \|\| engineOf\(v\) === engine/.test(entry)
+  && /if \(pending && !drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(entry)
+  && !/entry\(null, 'Engine default'/.test(entry)
+  && /#voicepicker \.voiceengine \{[^}]*width: 132px[^}]*flex: 0 0 132px/s.test(shell),
+  'the compact picker shows the selected engine, hides kind filters on existing tracks, and has no Engine default row');
 assert(/searchInput = search/.test(librarySource)
   && /searchInput\?\.focus\(\{ preventScroll: true \}\)/.test(librarySource),
   'opening the preset library focuses the Search presets field');
@@ -1500,6 +1514,7 @@ assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
   && /Audio\.prepareNoteCache\?\.\(engineBank\(\), range/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)[\s\S]{0,100}?if \(playing\) setPlaying\(false\)/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)/.test(entry)
+  && /async function startPreparedTransport[\s\S]*?Audio\.ctx\?\.state === 'suspended'[\s\S]*?await Audio\.ctx\.resume\(\)/.test(entry)
   && /\$\('playstart'\)\.onclick = playFromBeginning/.test(entry),
   'Start from beginning prepares the selected cache plan and starts only after its queue drains');
 // The two halves of the backlog fix. `queued` is the live queue and the lifetime
@@ -2150,7 +2165,7 @@ assert(/function measureRungAt\(n\) \{\s*return atShed\(n,/.test(entry)
   && /chromeRungs = SHED_ORDER\.map\(\(_, i\) => measureRungAt\(i\)\)/.test(entry)
   && /const stripChromeAt = \(n\) => stripRungAt\(n\)\.chrome;/.test(entry)
   && /function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(entry)
-  && shell.includes('#rackwrap.measuring .voicepair { height: auto; }'),
+  && shell.includes('#rackwrap.measuring .strip { height: auto; }'),
   'one chrome height per rung, measured off the ladder, and the floor is the last of them');
 // ---- one line for every fader ------------------------------------------------------
 // The foot is bottom-anchored, so pan, mute/solo and the limiter always landed
@@ -2532,7 +2547,7 @@ assert((entry.match(/addInstrument: \(anchor\) => addBlankTrack\(anchor, \{ drum
   // — the strip, the row menu, the drum editor — refuses it, in both directions of the
   // rule: the lane's own preset is still shown, or a drum would have no entry to be on.
   && /const isDrumChoice = \(v\) => isKitVoice\(v\) \|\| \(chosen && v\?\.id === chosen\)/.test(entry)
-  && /if \(!drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(entry)
+  && /if \(pending && !drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(entry)
   && /const blocked = home === 'lead' && pendingAddTrack\.drumsOnly;/.test(entry),
   'both pattern editors can only add drums — the picker holds nothing but the kit and the'
   + ' re-key to a melodic lane is refused, while the arrangement plus stays neutral');
@@ -2608,7 +2623,7 @@ assert(/function stripMenu\(el, key, kind\)[\s\S]*?label: `Copy \$\{Kind\}`[\s\S
 // left to default here, because the default is the preset's own opinion — a drum
 // jumps to the full window from the strip's one ✎, which is right when there is one
 // button and wrong when there are two beside each other saying different things.
-assert(/actionSection\('Sound', \[[\s\S]*?label: 'Preset'[\s\S]*?openVoicePickerFor\(laneKey\)[\s\S]*?label: 'Edit Preset'[\s\S]*?editVoice\(laneKey, \{ advanced: false \}\)[\s\S]*?label: 'Edit Advanced'[\s\S]*?editVoice\(laneKey, \{ advanced: true \}\)/.test(trackBranch)
+assert(/actionSection\('Sound', \[[\s\S]*?label: 'Preset'[\s\S]*?openVoicePickerFor\(laneKey, \{ x, y \}\)[\s\S]*?label: 'Edit Preset'[\s\S]*?editVoice\(laneKey, \{ advanced: false, at: \{ x, y \} \}\)[\s\S]*?label: 'Edit Advanced'[\s\S]*?editVoice\(laneKey, \{ advanced: true, at: \{ x, y \} \}\)/.test(trackBranch)
   // Offered only where there is a second surface behind it — the Drum Synth and
   // MRDR-3 — and gated on the editor's own answer rather than a list kept here.
   && /trackPreset && isQuickVoice\(trackPreset\) && \{\s*label: 'Edit Advanced'/.test(trackBranch)
@@ -2657,11 +2672,84 @@ assert(!/label: '(?:Clear|Reset|Reset track|Delete)'/.test(regionFn)
   && panelLabels.filter((l) => l === 'Erase Notes').length === 2
   && panelLabels.filter((l) => l === 'Copy Notes').length === 2,
 'the destructive verbs name what they act on, and the notes verbs are shared by both lane panels');
+// EVERY WINDOW ABOUT A TRACK OPENS BESIDE THE TRACK, AND THE TRACK IS THE ARRANGEMENT ROW.
+//
+// The channel strip is the lowest thing on the desk and about a hundred pixels wide, so a
+// window anchored to it lands in the bottom of the screen whatever asked for it — the full
+// editor is 900px tall, and its top was decided by the fit rather than by the anchor. One
+// helper answers "where is this lane", arrangement first, and every caller goes through it.
+const laneAnchorFn = entry.slice(entry.indexOf('function laneAnchor(laneKey)'),
+  entry.indexOf('function openVoicePickerFor'));
+assert(laneAnchorFn.indexOf('#arrgrid .arrrow[data-lane="${id}"] .arrtrack-top') > 0
+  && laneAnchorFn.indexOf('#arrgrid .arrrow[data-lane="${id}"] .arrtrack-top')
+     < laneAnchorFn.indexOf('.strip[data-lane="${id}"]')
+  // A folded arrangement leaves its rows in the document at no size at all, and a
+  // zero-height anchor is a window in the corner rather than a window beside the track.
+  && /const shown = \(el\) => \(el && el\.getBoundingClientRect\(\)\.height > 0 \? el : null\)/.test(laneAnchorFn),
+'laneAnchor answers with the arrangement row it can measure, and only then the mixer strip');
+// Choosing a preset and editing one are one gesture split in half, so they land in the
+// same place: at the click. The track name is the fallback for the prompts that have no
+// pointer behind them — a track arriving by paste, by import or by a toast.
 const pickerAnchor = entry.slice(entry.indexOf('function openVoicePickerFor'), entry.indexOf('/**\n * The preset editor', entry.indexOf('function openVoicePickerFor')));
-assert(/#arrgrid \.arrrow\[data-lane=/.test(pickerAnchor)
-  && /const assetArea = row\?\.querySelector\('\.arrbars'\) \|\| row/.test(pickerAnchor)
-  && /openVoicePicker\(r \? r\.right \+ 6 : innerWidth \/ 2, r \? r\.top : 120, laneKey\)/.test(pickerAnchor),
-'the track-menu preset picker anchors beside the arrangement asset area, not the mixer strip');
+assert(/function openVoicePickerFor\(laneKey, at = null\)/.test(pickerAnchor)
+  && /if \(at && at\.x != null && at\.y != null\) \{ openVoicePicker\(at\.x, at\.y, laneKey\); return; \}/.test(pickerAnchor)
+  && /const r = laneAnchor\(laneKey\)\?\.getBoundingClientRect\(\)/.test(pickerAnchor)
+  && /openVoicePicker\(r \? r\.left : innerWidth \/ 2, r \? r\.bottom \+ 6 : 120, laneKey\)/.test(pickerAnchor),
+'the preset picker opens at the click, and falls back to the arrangement track name');
+assert(/preset && \{ label: 'Preset', run: \(\) => openVoicePickerFor\(key, at\) \}/.test(entry)
+  && /run: \(\) => openVoicePickerFor\(laneKey, \{ x, y \}\) \}/.test(entry),
+'both menus hand the picker the pointer they were opened at');
+// The three "this new track has no sound yet" prompts are the same offer from the same
+// place, so they ask the same function rather than each finding a strip of their own.
+assert(!/\.strip\[data-lane="\$\{CSS\.escape\((?:newKey|lane)\)\}"\] \.strippreset/.test(entry)
+  && (entry.match(/openVoicePickerFor\(/g) || []).length >= 4,
+'a track added, pasted or imported without a sound offers the picker on its own row');
+// …EXCEPT THE PRESET EDITOR, which follows the POINTER rather than any element. A right-
+// click on a channel strip puts it beside that strip because that is where the click was;
+// the track panel's own buttons put it beside the track panel for the same reason. Both
+// of its surfaces take the same `at`, and every caller that has a pointer hands one over.
+const editVoiceFn = entry.slice(entry.indexOf('function editVoice(laneKey'),
+  entry.indexOf('// ---- the preset library'));
+const editVoiceCode = editVoiceFn.replace(/^\s*\/\/.*$/gm, '');
+assert(/function editVoice\(laneKey, \{ advanced, at = null \} = \{\}\)/.test(editVoiceFn)
+  && !/anchor/.test(editVoiceCode)
+  && (editVoiceFn.match(/openFull\(1, \{[^}]*at, avoidTransport: true \}\)/g) || []).length === 2
+  && /placeVoiceEditor\(\);\s*placeEditorAtPointer\(at\);/.test(editVoiceFn),
+'the preset editor opens at the click that asked for it, on both of its surfaces');
+const stripMenuAt = entry.slice(entry.indexOf('function stripMenu(el, key, kind)'),
+  entry.indexOf('/** The TRACK panel'));
+assert(/const at = \{ x: ev\.clientX, y: ev\.clientY \};/.test(stripMenuAt)
+  && /editVoice\(key, \{ advanced: false, at \}\)/.test(stripMenuAt)
+  && /editVoice\(key, \{ advanced: true, at \}\)/.test(stripMenuAt)
+  // openMenu closes the menu before `run` fires, so the pointer has to be captured in the
+  // contextmenu handler rather than read off the item's own event.
+  && stripMenuAt.indexOf('const at = {') < stripMenuAt.indexOf('openMenu('),
+  'the strip menu holds the right-click position for the editor it opens');
+assert(/editVoice\(laneKey, \{ advanced: false, at: \{ x, y \} \}\)/.test(entry)
+  && /editVoice\(laneKey, \{ advanced: true, at: \{ x, y \} \}\)/.test(entry),
+'the track panel opens the editor beside the track panel');
+const pointerFn = entry.slice(entry.indexOf('function placeEditorAtPointer(at)'),
+  entry.indexOf('// Dragged by its header'));
+assert(/const right = at\.x \+ EDITOR_POINTER_GAP;/.test(pointerFn)
+  && /right \+ r\.width <= innerWidth \? right : at\.x - EDITOR_POINTER_GAP - r\.width/.test(pointerFn)
+  && /clampFloatingEditor\(left, at\.y\)/.test(pointerFn)
+  // No click behind it — the tour, a restored session — is the one case that centres.
+  && /clampFloatingEditor\(\(innerWidth - r\.width\) \/ 2, \(innerHeight - r\.height\) \/ 2\)/.test(pointerFn)
+  // Placing is the desk moving its own furniture, so it must not overwrite the position
+  // the user last dragged the window to.
+  && !/localStorage/.test(pointerFn)
+  && /function clampFloatingEditor\(x, y\)[\s\S]*?return \{ left, top \};/.test(entry),
+'the window flips to the other side of the pointer rather than hanging off the screen');
+const synthFull = readFileSync(new URL('../tools/mixer-synth-full.js', import.meta.url), 'utf8');
+const fullOpenFn = synthFull.slice(synthFull.indexOf('function open(n = 1'),
+  synthFull.indexOf('const EDGE = 8;'));
+assert(/function open\(n = 1, \{ at = null, anchor = null, avoidTransport = false \} = \{\}\)/.test(fullOpenFn)
+  && /const from = at \|\| \(ar && \{ x: ar\.right, y: ar\.top \}\);/.test(fullOpenFn)
+  && /el\.style\.left = ''; el\.style\.top = ''; el\.style\.transform = '';/.test(fullOpenFn)
+  // Tall window, fixed transport bar across the top: a click low on the desk clamps the
+  // window upward, and without this floor it clamps straight over the transport.
+  && /Math\.max\(belowTransport, from\.y\)/.test(fullOpenFn),
+'the full window opens at the pointer, clears a previous drag, and stays clear of the transport');
 // Timing and gain are per-track. Across every melodic track at once they are a no-op and
 // the master fader respectively, so the timeline panel does not offer them.
 assert(/if \(laneKey\) \{\s*addControl\(\{ field: 'offset'[\s\S]*?addControl\(\{ field: 'gain'/.test(entry)
@@ -3833,6 +3921,11 @@ assert(/function barOperationGroups\(barPlanEntry, key/.test(entry)
   && !/const notes = Array\.from\([^\n]*cellNotes\(row/.test(arrangementFn)
   && !/box\.title = `\$\{where\}/.test(arrangementFn),
   'bar hover uses a structured operational summary for playback, transforms, Note FX and inserts, without dumping notes');
+assert(/const hasActiveNoteFx = \(fx\) => Boolean\(fx\?\.strum\?\.enabled \|\| fx\?\.arp\?\.enabled\)/.test(entry)
+  && /if \(hasActiveNoteFx\(laneNoteFx\)\)[\s\S]*?arrtrack-notefx[\s\S]*?Track Note FX enabled/.test(arrangementFn)
+  && /const openTrackNoteFx = \(ev\)[\s\S]*?openNoteFxEditor\(r\.left, r\.bottom \+ 4, row\.key\)[\s\S]*?noteFx\.addEventListener\('click', openTrackNoteFx\)/.test(entry)
+  && /\.arrtrack-notefx \{/.test(shell),
+  'a track with active Note FX shows the compact NFX marker in its header');
 assert(/tip\.classList\.toggle\('bartip', el\.dataset\.tipkind === 'bar'\)/.test(entry)
   && /tip\.classList\.toggle\('tracktip', el\.dataset\.tipkind === 'track'\)/.test(entry)
   && /JSON\.parse\(el\.dataset\.tipgroups\)/.test(entry)
@@ -3859,31 +3952,70 @@ assert(/function applyStripParts\(\)[\s\S]*?wrap\.classList\.toggle\(p\.cls[\s\S
 assert(/buildLaneFilter\(all\);[\s\S]{0,120}?buildPartFilter\(\);[\s\S]{0,80}?applyStripParts\(\)/.test(entry),
   'a rack rebuild redraws the switches and re-applies the hidden parts');
 
-// A docked voice editor collapses, it does not close: beside a strip it folds back into
-// the strip that opens it, in the library it folds to the rail. Only the floating window
-// — which has neither a lane nor a dock — keeps the ✕.
-assert(/const folds = el\.classList\.contains\('vedocked'\) \|\| !!state\.laneKey;/.test(editor),
-  'the editor folds whenever it is docked — beside a strip as well as in the library');
+// ONLY THE LIBRARY'S DOCK FOLDS. A channel's editor is a free window over the desk with
+// nothing on the strip to bring it back, so the honest mark on it is the desk's ✕ — the
+// « would be promising a way back that no longer exists.
+assert(/const folds = el\.classList\.contains\('vedocked'\);/.test(editor)
+  && !/state\.laneKey/.test(editor.slice(editor.indexOf('const folds = el.classList'),
+    editor.indexOf('shut.onclick = () => closePanel();',
+      editor.indexOf('const folds = el.classList')))),
+  'the editor folds only in the library, and a channel’s editor closes outright');
 assert(/if \(folds\) shut\.append\(foldIcon\('left'\)\); else shut\.textContent = '✕';/.test(editor),
-  'folding shows the « that mirrors the » which opened it, closing keeps the ✕');
+  'folding shows the « that puts it away, closing keeps the ✕');
 assert(/#voiceedit \.veclose\.vefold \{[^}]*width:\s*28px[^}]*height:\s*28px/s.test(shell),
   'the fold mark is the same box wherever the panel is docked');
-// The » on the strip head and the « in the editor are one pair, so they are one box in
-// one corner: same size, same offsets, measured identical on the live page (top 223,
-// centre 237). Kept as literals here because the whole point is that the two agree.
-assert(/\.stripedit \{[^}]*top:\s*4px;\s*right:\s*2px;\s*width:\s*28px;\s*height:\s*28px/s.test(shell)
-  && /#voiceedit \.veclose\.vefold \{[^}]*right:\s*2px/s.test(shell)
-  && /#voiceedit \.veclose \{[^}]*top:\s*4px/s.test(shell),
-  'the strip’s » sits in the same 28px corner box as the editor’s «, so they line up');
-assert(/\.stripedit \{[^}]*z-index:\s*2[^}]*background:\s*color-mix/s.test(shell),
-  'the » draws over the strip name with its own backing rather than blending into it');
-assert(/\.voicepair > \.strip \.striphead:hover \.stripedit,\s*\.voicepair > \.strip \.stripedit \{\s*display: none/s
-  .test(shell), 'the » is gone while the panel it opens is out, hover included');
-assert(/function placeVoiceEditor\(\)[\s\S]*?voicepairhead[\s\S]*?strip\.querySelector\('\.striphead h3'\)[\s\S]*?sharedTitle\.addEventListener\('click', choosePreset\)[\s\S]*?strip\.querySelector\('\.striphead \.stripsub'\)/.test(entry)
-  && /\.voicepair \{[^}]*position:\s*relative/s.test(shell)
-  && /\.voicepairhead \{[^}]*align-items:\s*center/s.test(shell)
-  && /\.voicepair > \.strip \.striphead > h3,[\s\S]*?\.voicepair > #voiceedit \.vehead > \.vetag \{ visibility: hidden; \}/.test(shell),
-  'an expanded channel uses one centered strip identity instead of a separate editor preset heading');
+// THE SAME TRAP AS THE STEP SEQUENCER'S ✕, and the same fix. Both editors wear
+// `.popclose`, and in both an ID in front of a class was quietly shrinking it back to the
+// 11px mark that `.popclose` exists to abolish — so the two windows you open most often
+// were the two wearing a close half the size of every other on the desk.
+assert((editor.match(/shut\.className = folds \? 'veclose vefold' : 'veclose popclose';/g) || []).length === 2
+  && /#voiceedit \.veclose\.popclose \{[^}]*width:\s*28px[^}]*height:\s*28px[^}]*font-size:\s*19px/s.test(shell)
+  // The base rule may position it and nothing else: a width, a padding or a font-size
+  // there outranks `.popclose` and takes the size back.
+  && !/#voiceedit \.veclose \{[^}]*(?:width|padding|font-size)/s.test(shell),
+  'the preset editor’s ✕ is the desk’s standard close, and its own rule cannot shrink it');
+assert(/shut\.className = 'sfshut popclose'/.test(synthFull)
+  && /#synthfull \.sfshut \{ margin-right: -5px; \}/.test(shell),
+  'the full editor’s ✕ is the same close, with nothing but its optical inset of its own');
+
+// NOTHING EDITS A PRESET FROM THE CHANNEL STRIP ANY MORE. The » that used to sit on the
+// head is gone, and so is the `.voicepair` wrapper that made the strip and the editor one
+// wide object in the rack. Both directions are asserted, because either one left behind
+// would be a rule with nothing to match or a button with no styling.
+assert(!/stripedit/.test(entry) && !/^\s*\.stripedit[ .:,{]/m.test(shell)
+  && !/^\s*\.voicepair[ .>:,{]/m.test(shell)
+  && !/voicepair/.test(bareEntry),
+  'the strip head carries no edit button and the strip/editor pair is gone');
+// The way in is the strip's own right-click menu, beside the picker that chooses which
+// preset — which sound, then what that sound does.
+const stripMenuFn = entry.slice(entry.indexOf('function stripMenu(el, key, kind)'),
+  entry.indexOf('/** The TRACK panel'));
+assert(/const preset = kind === 'channel' \? editablePresetFor\(key\) : null;/.test(stripMenuFn)
+  && /preset && \{ label: 'Preset', run: \(\) => openVoicePickerFor\(key, at\) \}/.test(stripMenuFn)
+  && /preset && \{ label: 'Edit Preset', run: \(\) => editVoice\(key, \{ advanced: false, at \}\) \}/.test(stripMenuFn)
+  && /preset && isQuickVoice\(preset\) && \{\s*label: 'Edit Advanced', run: \(\) => editVoice\(key, \{ advanced: true, at \}\)/.test(stripMenuFn),
+  'a channel’s right-click menu opens the preset picker and both editor surfaces');
+// A send return and the master have no preset, so they get none of those three.
+assert(/kind === 'channel' \?/.test(stripMenuFn),
+  'the send returns and the master keep the list they always had');
+// One predicate behind every door to the editor — an ENGINE preset is a bundle of bank
+// keys rather than a synth, and there is no panel to draw for it.
+assert(/function editablePresetFor\(laneKey\) \{\s*const preset = presetForLane\(laneKey\);\s*return preset && preset\.kind !== 'engine' \? preset : null;/.test(entry)
+  && /hasPreset: \(key\) => !!key && !!editablePresetFor\(key\)/.test(entry),
+  'whether a lane has a preset the editor can draw is asked in one place');
+// The panel is a window wherever it was opened from, so a rack repaint re-places it on
+// the body rather than threading it back between two strips — and re-places it where it
+// already is, or a moved fader would fling the window back to the middle.
+const placeFn = bareEntry.slice(bareEntry.indexOf('function placeVoiceEditor()'),
+  bareEntry.indexOf('function editVoice(laneKey'));
+assert(/el\.classList\.add\('vefloat'\)/.test(placeFn)
+  && /if \(laneKey\) clampFloatingEditor\(r\.left, r\.top\); else placeFloatingEditor\(\);/.test(placeFn)
+  && !/centreFloatingEditor/.test(placeFn),
+  'a repaint keeps the editor where it is; only an open centres it');
+// Centred in the middle of the screen, the panel is the only thing on screen naming the
+// channel it edits — so the caption says which one.
+assert(/tag\.textContent = `\$\{state\.laneLabel \? `\$\{state\.laneLabel\} · ` : ''\}`/.test(editor),
+  'the floating editor’s caption names the channel it was opened from');
 
 // ---- recording ---------------------------------------------------------------------
 //

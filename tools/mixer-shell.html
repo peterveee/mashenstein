@@ -1433,6 +1433,11 @@
   .arrpresetcat { flex: none; margin-left: auto; color: var(--faint); font-size: 9px; line-height: 1;
                   letter-spacing: .04em; text-transform: uppercase; text-align: right;
                ß   position: relative; top: -1px; }
+  .arrtrack-notefx { flex: none; color: var(--on-accent); font-size: 8.5px; line-height: 1;
+                     letter-spacing: .05em; font-weight: 700; padding: 2px 4px;
+                     border: 1px solid var(--accent); border-radius: 3px;
+                     background: var(--accent); box-shadow: 0 0 0 1px var(--accent-line);
+                     position: relative; top: -1px; }
   .arrbtns { display: flex; gap: 2px; flex: none; }
   .arrbtns button { width: 19px; height: 18px; padding: 0; font-size: 9.5px; line-height: 1;
                     border-radiußs: 3px; color: var(--dim); }
@@ -1926,8 +1931,7 @@
   /* Measuring a rung for real rather than adding its parts up — see stripChromeAt().
      All three of these are given a height explicitly (--striph, --bodyh), which is
      what the measurement is trying to produce. */
-  #rackwrap.measuring .strip,
-  #rackwrap.measuring .voicepair { height: auto; }
+  #rackwrap.measuring .strip { height: auto; }
   #rackwrap.measuring .stripbody { height: auto; }
   /* All: lit when nothing is hidden, which makes it the state as well as the switch. */
   #lanefilter button.all.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
@@ -2172,12 +2176,12 @@
                      letter-spacing: .07em; text-transform: uppercase; white-space: nowrap;
                      color: var(--lane, var(--dim)); opacity: .95; margin: 3px 0 3px; }
   /* The synth family, three letters, on the caption line beside the category — what is
-     playing the lane, next to what the lane is for. It inherits the lane's colour and
-     steps back on opacity instead of taking a grey of its own: the category is the thing
-     you scan the rack for and has to win, and one colour per strip keeps the head reading
-     as one line rather than two competing tags. Inheriting also means it is correct in
-     the light themes for free, which a hardcoded ink would not be. */
-  .strip .stripsub .stripsynth { opacity: .62; }
+     playing the lane, next to what the lane is for. It inherits everything from the
+     caption and takes nothing back: same colour, same size, same weight, same brightness
+     as the category, because the two are one line stating two facts and neither is the
+     small print of the other. The interpunct alone carries the division — a dimmed tag
+     read as a disabled one, and at 8.5px anything stepped back is a tag you squint at.
+     Inheriting also means it is correct in the light themes for free. */
   .strip .stripsub .stripsynth::before { content: '·'; margin: 0 .34em; opacity: .7; }
   /* The word on the strip, in the lane's own colour. The family MARK is on the
      arrangement row instead — see groupIcon().
@@ -2771,8 +2775,7 @@
   #voicepicker.show { display: block; max-width: min(1180px, 94vw); }
   #voicepicker .voiceresults { display: flex; flex-wrap: wrap; gap: 4px 12px;
                                align-items: flex-start; }
-  /* Lane, search and the way back, on one row. Engine default was a category of one
-     and spent a 150px column saying a single word; it is chrome, like the search. */
+  /* Lane, engine, search and the way back, on one row. */
   #voicepicker .voicehead { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
   #voicepicker .voicewho { font-size: 9px; letter-spacing: .07em; color: var(--dim);
                            text-transform: uppercase; white-space: nowrap; }
@@ -2780,10 +2783,8 @@
                               font: inherit; font-size: 11px; color: var(--ink);
                               background: var(--input); border: 1px solid var(--line);
                               border-radius: 4px; }
-  /* Sized to its label rather than to a column, and outlined so it reads as the
-     control it is — the buttons in the columns below are borderless until hovered. */
-  #voicepicker .voicedefault { width: auto; flex: none; white-space: nowrap;
-                               background: var(--input); border-color: var(--line); }
+  #voicepicker .voiceengine { width: 132px; min-width: 132px; flex: 0 0 132px;
+                              margin: 0; padding: 5px 8px; font-size: 11px; }
   /* Drums or pitched, next to the lane's name because it is a fact about the lane —
      the panel opens on the kind the strip plays, and `all` puts the library back. */
   #voicepicker .voicekinds { display: flex; flex: none; gap: 2px; padding: 2px;
@@ -2800,9 +2801,7 @@
   #voicepicker .voicesearch-more { width: auto; margin-top: 4px; padding: 3px 6px;
                                    font-size: 10px; color: var(--accent);
                                    border-color: var(--accent-line); }
-  /* Where Engine default sits on every other lane. A layer has none — see the strip
-     preset name —
-     so the space says what the lane IS instead of offering a choice that silences it. */
+  /* A layer has no kind filter: it already has the identity of the track it copies. */
   #voicepicker .voicewhy { font-size: 10px; line-height: 1.35; color: var(--dim);
                            max-width: 260px; }
   #voicepicker .fxgroup { display: flex; flex-direction: column; gap: 2px; min-width: 150px; }
@@ -2832,107 +2831,18 @@
   .voicenone { color: var(--faintest); cursor: default; background: var(--input); border-style: dashed; }
   .voicenone::after { content: none; }
   #voicepicker button.on .vkind { color: var(--accent); }
-  /* Into the editor from the strip's own header, on hover — beside the ✎ on the voice
-     row and the two items on the right-click menu. Not in the preset picker: choosing
-     a sound and shaping one are different jobs, and the panel for the first was not
-     the place to hide the second.
-     Absolutely placed, not in the flow: the head's contents are aligned against every
-     other strip's to the pixel, and an inline button would move them.
+  /* NOTHING HERE ABOUT EDITING A PRESET FROM A STRIP. Two things used to be, and both
+     are gone: a `.stripedit` chevron that appeared on hover in the corner of the head,
+     drawn over the tail of the preset's own name because a 132px column has nowhere else
+     to put it; and a `.voicepair` wrapper that took the strip and the editor, gave them
+     one border and one shared header, and made an edited channel simply wider.
 
-     The same 28px box, in the same corner, as the editor's own fold mark — see
-     `#voiceedit .veclose.vefold`. The two are one pair: » brings the panel out, « puts
-     it away, and when the panel is open they sit on the same line of the same header
-     band. A pair that did not line up read as two unrelated controls.
-
-     It draws OVER the name rather than beside it. The head is centred text under a
-     coloured wash, so a bare chevron in the corner landed on top of whatever the last
-     letters of a long name were and blended into them; its own backing lifts it off
-     the caption, and covering the tail of "Lead-Harmony" for as long as the pointer is
-     on the strip costs nothing — the name is still whole the moment you look away. */
-  .stripedit { display: none; position: absolute; top: 4px; right: 2px;
-               width: 28px; height: 28px; padding: 0; line-height: 0;
-               place-items: center; z-index: 2; color: var(--ink);
-               background: color-mix(in srgb, var(--panel) 88%, transparent);
-               border: none; border-radius: 5px; }
-  .striphead:hover .stripedit { display: grid; }
-  .stripedit:hover { color: var(--accent);
-                     background: color-mix(in srgb, var(--panel) 88%, transparent); }
-  .stripedit::after { content: none; }
-
-  /* ---- The preset editor -----------------------------------------------------
-     A floating window like the keyboard, for the same reason: you leave it open and
-     keep working — play the song, move a fader, step a lane — while the sound changes
-     under you. Above the pickers in the stack and below the keyboard, which is the
-     order you reach for them in. */
-  /* ---- strip + editor, as ONE object ------------------------------------------
-     The wrapper carries everything that draws a container — border, radius, background,
-     the selected outline — and the strip and the panel inside it carry none of it. So
-     opening the editor does not put a second box next to a channel; it makes that
-     channel wider. A divider marks where the controls stop and the sound starts. */
-  .voicepair { position: relative; display: flex; flex: none; align-items: stretch;
-               background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-               height: var(--striph, auto); min-height: 0; }
-  .voicepair.selected { border-color: color-mix(in srgb, var(--dim) 82%, var(--panel)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--selected-ink) 30%, transparent); }
-  /* Both children give up their own frame — that is what makes the pair one object.
-     `.strip.selected` is listed explicitly to out-weigh it: it carries the selected
-     box-shadow, ties this rule on specificity and wins on order, which drew a bright
-     outline right round the inner strip and put a line straight down the join. Its
-     text treatments (white bold name) are wanted and are left alone. */
-  .voicepair > .strip,
-  .voicepair > .strip.selected,
-  .voicepair > #voiceedit { background: none; border: none; border-radius: 0;
-                            box-shadow: none; height: auto; }
-  /* The divider starts BELOW the head band, so the band — its wash and its coloured
-     rule — runs unbroken across the pair and reads as one header over one object.
-     Carried by the strip's body and foot rather than by the strip, because together
-     they are exactly everything under the header; the negative margin pushes the line
-     back out to the strip's true edge, past its padding. */
-  .voicepair > .strip .stripbody,
-  .voicepair > .strip .stripfoot { border-right: 1px solid var(--line);
-                                   margin-right: -7px; padding-right: 7px; }
-  /* The head bands meet and have to read as one, so they are the same height to the
-     pixel and their INNER corners are squared: two 5px radii facing each other put a
-     notch in the middle of what is meant to be one continuous band, which was the one
-     thing still giving the join away. */
-  /* -7px, not the -8px a lone strip uses: that extra pixel is there to cover the
-     strip's own 1px border, and inside the pair there is no border to cover — so it
-     overshot into the panel and left a hairline down the middle of the head band. */
-  .voicepair > .strip .striphead { margin: -6px -7px 5px; border-radius: 5px 0 0 0; }
-  .voicepair > #voiceedit .vehead { border-radius: 0 5px 0 0; }
-  /* And the » goes away while the panel is out: it is the button that reveals this
-     editor, and the editor is already here — with the « that puts it away sitting on
-     the same line a few hundred pixels to the right. Written past
-     `.striphead:hover .stripedit` on purpose, which would otherwise bring it back on
-     hover; the strip inside a pair is the only one this can match. */
-  .voicepair > .strip .striphead:hover .stripedit,
-  .voicepair > .strip .stripedit { display: none; }
-  /* The expanded pair has one channel identity, centred over both halves. The strip
-     supplies it; the editor's own title is kept only for its floating/library homes,
-     where it is not beside a channel that already names the sound. */
-  .voicepairhead { position: absolute; z-index: 3; top: 1px; left: 0; right: 0;
-                   display: flex; flex-direction: column; align-items: center;
-                   padding: 6px 0 4px; pointer-events: none; }
-  .voicepairhead .voicepairtitle { width: calc(100% - 68px); margin: 0;
-                                   font-size: 11.5px; line-height: normal;
-                                   text-align: center; letter-spacing: .04em;
-                                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-                                   color: var(--ink); font-weight: 400; text-transform: capitalize;
-                                   pointer-events: auto; }
-  .voicepairhead .voicepairtitle:focus { outline: 1px solid var(--accent); outline-offset: 1px; }
-  .voicepairhead .voicepairtype { font-size: 8.5px; line-height: 1;
-                                  letter-spacing: .07em; text-transform: uppercase;
-                                  color: var(--lane, var(--dim)); opacity: .95; margin: 3px 0 3px; }
-  /* This line is a CLONE of the strip's own caption, so it arrives carrying the same
-     `.stripsynth` child and needs the same two rules — the pair head is a different
-     parent, and `.strip .stripsub .stripsynth` above stops matching the moment the
-     clone is renamed. */
-  .voicepairhead .voicepairtype .stripsynth { opacity: .62; }
-  .voicepairhead .voicepairtype .stripsynth::before { content: '·'; margin: 0 .34em; opacity: .7; }
-  .voicepair > .strip .striphead > h3,
-  .voicepair > .strip .striphead > .stripsub,
-  .voicepair > #voiceedit .vehead > .vetitle,
-  .voicepair > #voiceedit .vehead > .vetag { visibility: hidden; }
-  .voicepair > #voiceedit .veclose { z-index: 4; }
+     The pair was the more expensive of the two. The editor is three strips across, so
+     opening one shoved the rest of the rack sideways; it wore --striph, so the shrink
+     ladder's bottom rung squashed a full synth into the height of a bare strip and had
+     to close it on the way past; and it sat in the rack, which is the bottom of the
+     screen. The editor is a plain window now — see `#voiceedit.vefloat`, placed at the
+     click that asked for it — and the way to it is the strip's right-click menu. */
 
   /* The editor itself — inserted directly after the channel being edited, so the sound
      and its controls are side by side and the thing you are shaping is the thing you
@@ -2975,9 +2885,15 @@
                         justify-content: center; padding: 24px; text-align: center;
                         color: var(--dim); font-size: 10px; line-height: 1.45; }
   /* Borderless, like every other ✕ on the desk — it was the one button here wearing a
-     box, which made it read as a control rather than as a way out. */
-  #voiceedit .veclose { position: absolute; top: 4px; right: 5px; width: auto; padding: 1px 4px;
-                        font-size: 11px; line-height: 1; color: var(--dim);
+     box, which made it read as a control rather than as a way out.
+
+     WHERE it sits, only. The SIZE belongs to `.popclose` and `.vefold`, both of which
+     have to be written with `.veclose` beside them further down to get past this rule's
+     ID — see the note on `.veclose.vefold`. Left to itself this rule was quietly handing
+     the window's close an 11px × in a box sized to the glyph, which is precisely the
+     drift `.popclose` was written to end. */
+  #voiceedit .veclose { position: absolute; top: 4px; right: 5px;
+                        line-height: 1; color: var(--dim);
                         background: none; border: none; }
   #voiceedit .veclose:hover { color: var(--hot); background: none; }
   #voiceedit .veclose::after { content: none; }
@@ -3194,6 +3110,25 @@
                           line-height: 1.15; white-space: nowrap; overflow: hidden;
                           text-overflow: ellipsis; }
   :is(#voiceedit, #synthfull) .segrow .seg { flex: none; min-width: 0; }
+  /* WAVE TABLE is a ROW, not a name over a control: the label at the card's left edge and
+     the menu filling the width to its right. It is the one control on an oscillator card
+     that is a NAME rather than a number, so it takes the full width and reads on one line
+     — and because both edges are the card's own, the menu's right edge lands on the last
+     pot column's and Osc A's row sits exactly above Osc B's. Full window only; the strip's
+     card is one column wide, where a label over its control is still the right shape. */
+  #synthfull .devgrid .segrow.vedroprow { grid-column: 1 / -1; flex-direction: row;
+                                          align-items: center; gap: 9px; }
+  #synthfull .devgrid .segrow.vedroprow > .k { flex: none; }
+  #synthfull .devgrid .segrow.vedroprow > .vedrop { flex: 1 1 auto; min-width: 0; }
+  /* 12px, up from the 10 every other control on the panel uses. This is a NAME rather
+     than a number — sixteen of them, several words long — and it is the one line on the
+     card that says what the oscillator is, so it is set to be read at a glance rather
+     than to match the pot labels around it. */
+  #synthfull .devgrid .segrow.vedroprow > .vedrop > summary { width: 100%;
+                                                              box-sizing: border-box;
+                                                              font-size: 12px;
+                                                              padding: 4px 20px 4px 8px; }
+  #synthfull .devgrid .segrow.vedroprow .vedropoption { font-size: 12px; padding: 5px 8px; }
   :is(#voiceedit, #synthfull) .seg { display: flex; gap: 2px; padding: 2px; background: var(--input);
                     border: 1px solid var(--line); border-radius: 6px; }
   :is(#voiceedit, #synthfull) .segbtn { flex: 1; width: auto; margin: 0; padding: 2px 1px; font-size: 8.5px;
@@ -3453,7 +3388,14 @@
      no backdrop, no dimming, nothing made inert. The ✕ is the way out. */
   #synthfullback { display: none; }
   #synthfull { position: fixed; z-index: 17; left: 50%; top: 50%;
-               width: min(1600px, calc(100vw - 24px));
+               /* SIZED TO ITS CONTENT when the band inside fixes its own column width —
+                  `--sf-winw` is set by the renderer from that band, and is the cards plus
+                  the body's 6px of padding and the window's 1px border, with nothing over.
+                  A band that divides the window into fractions never sets it and keeps the
+                  width it always had. `--sf-winpad` is those two paddings and two borders
+                  named once, so the number cannot drift from the rule that spends it. */
+               --sf-winpad: 14px;
+               width: var(--sf-winw, min(1600px, calc(100vw - 24px)));
                /* As tall as the bands need and no taller, capped at the screen. It was a
                   flat 900px, which meant the last band was stretched to fill whatever the
                   content did not use — and once the pots hang from the bottom of a card,
@@ -3479,10 +3421,21 @@
   @media (prefers-reduced-motion: reduce) {
     #synthfullback, #synthfull { transition: none; }
   }
-  /* The title bar: what is being edited, and the way out. */
+  /* Being dragged: the window is under a hand, so it goes where the hand goes and nowhere
+     else. The transition above is the open/close slide, and while it is live every left/top
+     the drag writes is chased rather than taken — worse, the first grab swaps `transform`
+     from centred to none and the window spent 220ms gliding out from under the cursor. */
+  #synthfull.sfdrag { transition: none; }
+  /* The title bar: what is being edited, the way out, and the handle the window moves by —
+     which it has to SAY, hence the hand. Its own text must not select under the drag; the
+     controls sitting in it keep their own cursors, because `cursor` inherits. */
   #synthfull .sfhead { flex: none; display: flex; align-items: center; gap: 10px;
-                       height: 44px; padding: 0 14px;
+                       height: 44px; padding: 0 14px; cursor: grab;
+                       user-select: none; -webkit-user-select: none;
                        background: var(--panel); border-bottom: 1px solid var(--line); }
+  #synthfull.sfdrag, #synthfull.sfdrag .sfhead, #synthfull.sfdrag .sfhead * { cursor: grabbing; }
+  #synthfull .sfhead :is(button, summary, select) { cursor: pointer; }
+  #synthfull .sfhead input { cursor: text; user-select: text; -webkit-user-select: text; }
   #synthfull .sfsynth { font-size: 12px; letter-spacing: .16em; color: var(--accent); }
   #synthfull .sfpreset { font-size: 12px; padding: 4px 11px; white-space: nowrap;
                          background: var(--input); border: 1px solid var(--line);
@@ -3523,11 +3476,16 @@
   #synthfull .sfsolo { font-size: 11px; letter-spacing: .06em; color: var(--solo);
                        white-space: nowrap; }
   #synthfull .sfspace { margin-left: auto; }
-  #synthfull .sfshut { font: inherit; font-size: 11px; letter-spacing: .06em;
-                       padding: 5px 11px; white-space: nowrap; cursor: pointer;
-                       color: var(--ink); background: var(--primary);
-                       border: 1px solid var(--accent-line); border-radius: 4px; }
-  #synthfull .sfshut:hover { border-color: var(--accent); }
+  /* The full window's way out is the desk's standard close too — see `.popclose`. It was
+     a bordered pill reading ✕ at the end of a row of bordered pills, which made the one
+     control that leaves look like the ones that change something.
+
+     Nothing here but the optical inset: `.popclose` is a 19px mark in a 28px square, so
+     it carries ~4px of its own air on each side, and against the header's 14px padding
+     the ✕ otherwise sits visibly further in than the bordered controls beside it. What
+     the mark IS, `.popclose` says — this rule is deliberately not allowed to say it
+     again, which is the whole point of there being one class for it. */
+  #synthfull .sfshut { margin-right: -5px; }
   #synthfull .sfundo { font: inherit; font-size: 10px; letter-spacing: .06em;
                        padding: 4px 8px; white-space: nowrap; cursor: pointer;
                        color: var(--ink); background: var(--input);
@@ -3546,7 +3504,17 @@
                        scrollbar-width: none; -ms-overflow-style: none;
                        display: flex; flex-direction: column; gap: 6px; padding: 6px; }
   #synthfull .sfbody::-webkit-scrollbar { width: 0; height: 0; display: none; }
-  #synthfull .sfkeyboard { flex: none; min-height: 116px; padding: 5px 8px 8px;
+  /* The board is centred and no wider than the widest band above it, so the window reads
+     as one object rather than a set of cards with a keyboard running past them on both
+     sides. `--sf-boardw` is set by the renderer from the band's own track width; a band
+     that divides the window into fractions never sets it, and 100vw leaves the board the
+     full width it always had. The 16px is the board's own padding, so the outer edge of a
+     white key lands on the outer edge of a card: the board's 6px of side padding is the
+     body's own, so the keys and the cards share one inset. */
+  #synthfull { --sf-bandgap: 6px; --sf-boardw: 100vw; }
+  #synthfull .sfkeyboard { flex: none; min-height: 116px; padding: 5px 6px 8px;
+                           width: 100%; max-width: calc(var(--sf-boardw) + 12px);
+                           margin-inline: auto; box-sizing: border-box;
                            background: var(--panel); border-top: 1px solid var(--line); }
   #synthfull .sfkhead { height: 24px; display: flex; align-items: center; gap: 6px; }
   #synthfull .sfkspacer { flex: 1; min-width: 10px; }
@@ -3577,7 +3545,22 @@
   #synthfull .sfkname { font-size: 8px; line-height: 9px; pointer-events: none; }
   #synthfull .sfkblack .sfkname { display: none; }
   #synthfull .sfband { display: grid; grid-template-columns: repeat(var(--sf-cols, 6), 1fr);
-                       grid-template-rows: minmax(0, 1fr); gap: 6px; min-height: 0; }
+                       grid-template-rows: minmax(0, 1fr);
+                       gap: var(--sf-bandgap, 6px); min-height: 0; }
+  /* TNGR-2's band is as wide as its CARDS, not as wide as the window.
+     Every other band divides the width it is given into equal fractions, which on a
+     full-screen window stretched a four-pot envelope across a quarter of it — the knobs
+     are a fixed 46px, so all the extra went into air between them and the labels were the
+     only thing that grew. A fixed track instead, ONE POT WIDE, and the band takes the room
+     it needs and gives the rest back — which also means every knob on the window sits on
+     the same pitch, whichever card it is in. `minmax(0, …)` so a window too narrow to seat
+     the whole band shrinks the tracks rather than overflowing and clipping a card. */
+  #synthfull .sfband-tngr2 { justify-content: center;
+                             grid-template-columns:
+                               repeat(var(--sf-cols, 17), minmax(0, var(--sf-track, 70px))); }
+  /* The band is centred in a body that still spans the window, so the keyboard centring
+     under it lines the two up without either needing to know the other's margin. */
+  #synthfull .sfbody { align-items: stretch; }
   /* `flex-shrink: 0` on all three: a band that squeezed would clip its cards, which is
      the one thing worse than scrolling — a control gone with nothing to say it is there.
      The body scrolls instead, once, and only when the window is genuinely too short. */
@@ -3614,6 +3597,39 @@
      do not shrink either: a squeezed band clips a card, and a clipped control is a control
      gone with nothing on screen to say it was ever there. */
   #synthfull .sfband-chain { flex: 0 0 auto; }
+  /* TNGR-2's one band, on the same terms as the KLNG8's: the cards decide the height and
+     the band never shrinks, or the card carrying the envelope graph is the one that gets
+     clipped. It had no rule at all, so it collapsed to whatever its content asked for. */
+  #synthfull .sfband-tngr2 { flex: 0 0 auto; }
+  /* A long pick as a dropdown — see `dropRow`. Deliberately the preset picker's own
+     shapes and colours: one dropdown on this desk, not two that resemble each other. */
+  .vedroprow { align-items: center; }
+  .vedrop { position: relative; flex: 1 1 auto; min-width: 0; }
+  .vedrop > summary { display: block; box-sizing: border-box; width: 100%; overflow: hidden;
+                      text-overflow: ellipsis; white-space: nowrap; list-style: none;
+                      cursor: pointer; font: inherit; font-size: 10px; letter-spacing: .04em;
+                      padding: 3px 20px 3px 7px; color: var(--accent); background: var(--input);
+                      border: 1px solid var(--line); border-radius: 4px; }
+  .vedrop > summary::-webkit-details-marker { display: none; }
+  .vedrop > summary::after { content: '▾'; position: absolute; right: 7px; top: 3px;
+                             color: var(--dim); pointer-events: none; }
+  .vedrop[open] > summary, .vedrop > summary:focus { border-color: var(--accent); outline: none; }
+  .vedropmenu { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0;
+                min-width: 100%; max-height: min(46vh, 320px); overflow: auto; padding: 5px;
+                background: var(--panel); border: 1px solid var(--accent-line);
+                border-radius: 5px; box-shadow: 0 12px 30px #0009; }
+  .vedropoption { display: block; width: 100%; padding: 4px 7px; text-align: left;
+                  white-space: nowrap; color: var(--ink); background: transparent;
+                  border: 1px solid transparent; border-radius: 3px; font: inherit;
+                  font-size: 10px; cursor: pointer; }
+  .vedropoption:hover, .vedropoption.on { color: var(--accent); background: var(--primary);
+                                          border-color: var(--accent-line); }
+  /* A stacked cell: short cards sharing one column, and sharing it EQUALLY. `1fr` rows
+     rather than `auto`, so the pair divides the column between them and reaches the
+     bottom of the band — the same height the oscillator columns beside them are. Content
+     sized rows left the second card ending halfway down with the rest of the column as
+     air, which is the thing stacking them was meant to fix. */
+  #synthfull .sfcell.sfstack { grid-auto-rows: 1fr; gap: 6px; }
   #synthfull .sfcell { min-width: 0; min-height: 0; display: grid; }
   /* A card fills its cell and never scrolls INSIDE itself. Seven independent scrollbars
      is not a layout, it is seven places to lose a control; when the window cannot hold
@@ -3853,7 +3869,11 @@
   #synthfull .sfread .v { font-size: 10.5px; color: var(--ctl-hi); white-space: nowrap;
                           overflow: hidden; text-overflow: ellipsis;
                           font-variant-numeric: tabular-nums; }
-  #synthfull .sffader { flex: none; display: flex; align-items: center; gap: 8px; }
+  /* A floor under the fader. The grid below it bottom-aligns, so on a card with slack the
+     two are already far apart — but on a full one they met, and LEVEL sitting directly on
+     the WAVE TABLE row read as one control with two halves. */
+  #synthfull .sffader { flex: none; display: flex; align-items: center; gap: 8px;
+                        margin-bottom: 9px; }
   #synthfull .sffadertrack { flex: 1; height: 14px; min-width: 0; position: relative;
                              cursor: ew-resize; touch-action: none; overflow: hidden;
                              background: var(--input); border: 1px solid var(--line);
@@ -3952,7 +3972,10 @@
      SECOND GRIP on controls that already exist — every handle is bound to a row, reads
      through it and writes through it — so there is no parameter here that the pots below
      do not also have. See tools/mixer-synth-graphs.js. */
-  #synthfull .sfgraph { flex: none; height: 96px; overflow: hidden; margin-bottom: 7px;
+  /* No height here. The widget draws at whatever height its layout asked for and sets
+     the box to match — a fixed 96 clipped the bottom off any graph drawn taller, which
+     is a curve that reads as if it stopped rather than one that was cut. */
+  #synthfull .sfgraph { flex: none; overflow: hidden; margin-bottom: 7px;
                         background: var(--input); border: 1px solid var(--line);
                         border-radius: 4px; cursor: crosshair; }
   #synthfull .sfgraph svg { display: block; touch-action: none; }
@@ -4028,11 +4051,11 @@
   #voiceedit .veopen::after { content: none; }
 
   /* ---- The editor as a WINDOW -------------------------------------------------
-     Opened from the library there is no strip to sit beside, so it floats: the same
-     panel, the same controls, in the keyboard's clothes rather than the rack's. It
-     gives back the rack geometry it borrows from `.voicepair` — a fixed height tied to
-     `--striph` is a height that belongs to a row of strips — and takes a window's
-     frame, shadow and its own scroll. */
+     Its normal state, from a channel and from the library alike: the same panel, the
+     same controls, in the keyboard's clothes rather than the rack's. It gives back the
+     rack geometry the base rule still carries for the library's docked column — a fixed
+     height tied to `--striph` is a height that belongs to a row of strips — and takes a
+     window's frame, shadow and its own scroll. */
   #voiceedit.vefloat { position: fixed; z-index: 14; left: 0; top: 0;
                        height: auto;
                        min-width: 240px; min-height: 220px;
@@ -4047,9 +4070,9 @@
   #voiceedit.vefloat .vetag { color: var(--dim); }
 
   /* ---- and docked in the preset library ---------------------------------------
-     Its third home. Beside a strip it is a rack item with the rack's height; floating
-     it is a window; here it is a column of the library's own layout, so it gives up
-     the frame and the shadow and takes its height from the band it sits in. */
+     Its other home. Floating it is a window; here it is a column of the library's own
+     layout, so it gives up the frame and the shadow and takes its height from the band
+     it sits in. */
   #voiceedit.vedocked { position: static; height: auto; align-self: stretch;
                         min-height: 0; width: calc(var(--stripw) * 3 + 12px);
                         background: none; border: none; border-radius: 0;
@@ -4078,6 +4101,14 @@
   #voiceedit .veclose.vefold { width: 28px; height: 28px; padding: 0; right: 2px;
                                line-height: 0; display: inline-grid; place-items: center; }
   #voiceedit .vefold:hover { color: var(--accent); }
+  /* And the window's own ✕, in that same box at that same size — the desk's standard
+     close, which is a 19px mark in a 28px square. Written with both classes for the
+     reason above: `#voiceedit .veclose` is an ID in front of a class and beats a bare
+     `.popclose`, so without this line the one window you open twenty times a session is
+     the one wearing a close half the size of every other. */
+  #voiceedit .veclose.popclose { width: 28px; height: 28px; padding: 0; right: 2px;
+                                 font-size: 19px; line-height: 1;
+                                 display: inline-grid; place-items: center; }
 
   /* ---- The step grid -------------------------------------------------------------
      One row per drum lane, sixteen squares a bar. A window like the library and the
@@ -5572,10 +5603,6 @@
   .foldicon.fold-left { transform: rotate(180deg); }
   .foldicon.fold-down { transform: rotate(90deg); }
   .foldicon.fold-up { transform: rotate(-90deg); }
-  /* On the strip header, where the pencil was. A ✎ says "edit something"; this says
-     "the editor opens, over there" — which is the thing the button actually does, and
-     it is the same mark that closes it again. */
-  .stripedit .foldicon { width: 13px; height: 13px; stroke-width: 2.6; }
   /* No heights here any more, for either board. A key is a shape — KEY_W by KEY_H, with
      the black one inside it — and the builder scales that whole set by whatever width the
      band gave it, so both boards are the same instrument at two sizes. Two hard-coded
@@ -6099,9 +6126,6 @@
     50% { outline-color: color-mix(in srgb, var(--accent) 38%, transparent); }
   }
   @media (prefers-reduced-motion: reduce) { .tut-target { animation: none; } }
-  /* Hold a hover-only control visible for the length of the card that points at it —
-     the » on a strip head, which is display:none until the head is hovered. */
-  .tut-reveal .stripedit { display: grid !important; }
   /* Effects panel: sits at the bottom with its selected height. Border and background
      are on the panel itself since there's no wrapper row. */
   /* Same indent and same gap as every other panel header: the folds run down one

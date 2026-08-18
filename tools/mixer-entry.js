@@ -1568,7 +1568,16 @@ function pasteEffects(key) {
  * left two routes to the same six buttons and no way to guess which one you were about
  * to take. One place each is the whole point.
  *
- * A send return and the master are not tracks, and always had exactly this list.
+ * THE ONE EXCEPTION IS THE PRESET EDITOR, and it is here because the strip's head had to
+ * give it up. Opening the synthesiser used to be a » that appeared on hover in the corner
+ * of the head, drawn over the tail of the preset's own name because there is nowhere else
+ * on a 132px column for it to go — a hidden button, on top of a label, on the one part of
+ * the strip that is also a drag handle. A menu item costs a right-click and costs the
+ * head nothing, and it lands beside **Preset**, which is the other half of the same
+ * question: which sound, and then what that sound does.
+ *
+ * A send return and the master are not tracks, have no preset, and get exactly the list
+ * they always had.
  */
 function stripMenu(el, key, kind) {
   el.addEventListener('contextmenu', (ev) => {
@@ -1581,7 +1590,26 @@ function stripMenu(el, key, kind) {
     // built from, or this one list would be the only place reading "Copy channel".
     const Kind = kind[0].toUpperCase() + kind.slice(1);
     const fx = (clipboard?.data?.effects || []).length;
+    // The sound this channel is playing, if it is one the editor can draw. Note the lane
+    // preset rather than `laneVoiceId`: a lane still on the sound its BANK names gets the
+    // items too, because `editVoice` forks that into the song's own copy — which is what
+    // the » on the head used to do from exactly this state.
+    const preset = kind === 'channel' ? editablePresetFor(key) : null;
+    // Where the right-click was, held for the editor. The menu is gone by the time `run`
+    // fires — `openMenu` closes it first — so the pointer has to be captured here or the
+    // window has nothing to open beside.
+    const at = { x: ev.clientX, y: ev.clientY };
     openMenu(ev.clientX, ev.clientY, targetLabel(key), [
+      preset && { label: 'Preset', run: () => openVoicePickerFor(key, at) },
+      // Explicit on both, as in the track menu: one button cannot offer a choice, so
+      // each of these says in its name which surface it opens.
+      preset && { label: 'Edit Preset', run: () => editVoice(key, { advanced: false, at }) },
+      // Only the families that HAVE a second surface — KLNG8, MRDR-3, TNGR-2. Absent
+      // rather than disabled elsewhere: a button that can never light on this channel is
+      // a promise of a screen that does not exist.
+      preset && isQuickVoice(preset) && {
+        label: 'Edit Advanced', run: () => editVoice(key, { advanced: true, at }),
+      },
       { label: `Copy ${Kind}`, run: () => copyStrip(key, kind) },
       clipboard && clipboard.kind === kind && {
         label: `Paste ${Kind} from ${clipboard.from}`, run: () => pasteStrip(key, kind),
@@ -2766,6 +2794,20 @@ function presetForLane(laneKey) {
       : defaultVoiceOf(track?.bank, laneKey));
 }
 
+/**
+ * The preset on a lane that the editor can actually draw, or null.
+ *
+ * An ENGINE preset is a bundle of bank keys the hand-written voice reads rather than a
+ * synth, so there is no panel behind it — `open` in the editor refuses one, and every
+ * door to the editor asks this before offering itself. One function, because there are
+ * three of those doors now (the channel menu, the track menu and the tour) and three
+ * copies of the same two conditions is how they drift.
+ */
+function editablePresetFor(laneKey) {
+  const preset = presetForLane(laneKey);
+  return preset && preset.kind !== 'engine' ? preset : null;
+}
+
 function presetHeadingFor(laneKey) {
   const preset = presetForLane(laneKey);
   return {
@@ -2802,6 +2844,7 @@ function synthesizerLabelFor(preset) {
 const SYNTH_ABBR = {
   'KLNG8': 'KL8',
   'MRDR-3': 'MR3',
+  'TNGR-2': 'TN2',
   'Game Engine': 'ENG',
   'MonoSynth': 'MNO',
   'FMSynth': 'FMS',
@@ -3424,10 +3467,9 @@ function duplicateLane(key) {
   // the next thing you were going to open anyway, and opening it says so more plainly
   // than a toast about a strip you have not looked at yet.
   toast(`${targetLabel(newKey)} added — choose the voice it plays`);
-  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(newKey)}"] .strippreset`)
-    || document.querySelector(`.strip[data-lane="${CSS.escape(newKey)}"] .striphead`);
-  const r = strip?.getBoundingClientRect();
-  openVoicePicker(r ? r.left : innerWidth / 2, r ? r.bottom + 4 : 120, newKey);
+  // Under the new track's own row, which is where the gesture that made it was. See
+  // `laneAnchor`: the strip is the fallback, not the first answer.
+  openVoicePickerFor(newKey);
 }
 
 /** Commit the staged Add Track once the user has chosen its first preset. */
@@ -3712,9 +3754,7 @@ async function deleteLane(key) {
   if (mixRemoved) {
     for (const laneKey of drop) {
       document.querySelector(`.arrrow[data-lane="${CSS.escape(laneKey)}"]`)?.remove();
-      const strip = document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"]`);
-      const pair = strip?.closest('.voicepair');
-      if (pair) pair.remove(); else strip?.remove();
+      document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"]`)?.remove();
     }
   }
   const warning = arrangementError || refreshError ? ' — refresh warning; reload if audio stopped' : '';
@@ -4169,18 +4209,49 @@ function openBarEffectsEditor(x, y, key, { from, to, chain: restoredChain = null
 }
 
 /**
- * Open the preset picker from the arrangement track menu.
+ * Where a window about a lane opens from: the track's NAME in the arrangement.
  *
- * The menu belongs to the arrangement track, not the mixer channel strip. A menu item
- * has no pointer location of its own, so anchor the picker to the row's asset area and
- * put it just to that area's right, where the user is already working.
+ * A track is one thing with two faces on this desk, and only one of them is where the
+ * work is. The arrangement row is up top, it is what you point at to choose a preset,
+ * and it is beside the empty half of the screen a preset window needs. The channel
+ * strip is at the bottom of the desk, is about a hundred pixels wide, and anchoring a
+ * window to it puts that window in the bottom of the screen every time — under the
+ * pointer that asked for it in the arrangement, and nowhere near enough room.
+ *
+ * So: the row's name area first, the strip only where the arrangement cannot answer —
+ * folded away, or a lane it does not draw. Measured rather than merely found, because
+ * a folded arrangement leaves its rows in the document at no size at all, and a
+ * zero-height anchor puts the window in the top-left corner.
  */
-function openVoicePickerFor(laneKey) {
-  const row = document.querySelector(`#arrgrid .arrrow[data-lane="${CSS.escape(laneKey)}"]`);
-  const assetArea = row?.querySelector('.arrbars') || row;
-  const r = assetArea?.getBoundingClientRect();
+function laneAnchor(laneKey) {
+  const id = CSS.escape(laneKey);
+  const shown = (el) => (el && el.getBoundingClientRect().height > 0 ? el : null);
+  return shown(document.querySelector(`#arrgrid .arrrow[data-lane="${id}"] .arrtrack-top`))
+    || shown(document.querySelector(`#arrgrid .arrrow[data-lane="${id}"]`))
+    || shown(document.querySelector(`.strip[data-lane="${id}"] .strippreset`))
+    || shown(document.querySelector(`.strip[data-lane="${id}"] .striphead`))
+    || shown(document.querySelector(`.strip[data-lane="${id}"]`));
+}
+
+/**
+ * Open the preset picker on a lane, from a menu rather than from the name itself.
+ *
+ * WHERE IT LANDS IS WHERE YOU CLICKED, when there is a click to go on — `at` is the
+ * pointer that opened the menu the item was chosen from, and the picker drops from it
+ * exactly as it drops from the strip's own name. That is the same rule the preset EDITOR
+ * follows; the two are one gesture split in half — which sound, then what that sound
+ * does — and they should not answer from two different corners of the desk.
+ *
+ * The "this new track has no sound yet" prompts have no pointer behind them: a track
+ * arrives by paste, by import or by a toast, and there is nothing to hang the picker off.
+ * Those fall back to the track's own name — see `laneAnchor` — which is the thing the
+ * offer is about.
+ */
+function openVoicePickerFor(laneKey, at = null) {
   selectLane(laneKey);
-  openVoicePicker(r ? r.right + 6 : innerWidth / 2, r ? r.top : 120, laneKey);
+  if (at && at.x != null && at.y != null) { openVoicePicker(at.x, at.y, laneKey); return; }
+  const r = laneAnchor(laneKey)?.getBoundingClientRect();
+  openVoicePicker(r ? r.left : innerWidth / 2, r ? r.bottom + 6 : 120, laneKey);
 }
 
 /**
@@ -4206,10 +4277,12 @@ const voiceEditor = createVoiceEditor({
   // rack, so a rack repaint never touches them.
   createFull: ({ kit }) => createSynthFull({
     kit, el: $('synthfull'), backdrop: $('synthfullback'),
-    // Keep the Song Mixer editor's compact keyboard as a real performance range too.
-    // Seven octaves fit the full-width board with the shared narrow-key styling, and C2
-    // is the highest safe base for MIDI 0–127, so the complete board stays playable.
-    keyboard: { octaves: 7, initialOctave: 2 },
+    // FIVE octaves, C2 up. Seven fit the board, but the board is no longer the width of
+    // the window — the cards below it are as wide as they need to be and no wider, and a
+    // keyboard that kept spanning the screen under them was the widest thing on a panel
+    // that had just been narrowed. Five octaves is the range a preset is auditioned over,
+    // and the octave shift reaches the rest.
+    keyboard: { octaves: 5, initialOctave: 2 },
   }),
   // Not `rebank`. A re-bank restarts the sequencer with a deliberate half-second gap,
   // which on a slider drag is half a second of silence per pixel — see
@@ -4271,13 +4344,15 @@ const voiceEditor = createVoiceEditor({
   // alone. See pinPresetInSongs — it writes songs the desk is not on, which is the one
   // place anything here does.
   onDirty: markVoiceDirty,
-  // Detached, not just hidden: it is a rack item now, and a hidden one still sitting
-  // between two strips would leave a gap in the row.
+  // Detached, not just hidden, so a closed editor is off the document entirely.
   //
   // Docked in the preset library it FOLDS instead. There the ✕ is on a panel you are
   // living in rather than one you opened for a moment, and tearing it down would lose
   // which preset it was on — so the same button means "put this away" and the panel
   // comes back exactly as it was. See setCollapsed.
+  //
+  // The rack repaint is still owed: a strip's heading is the preset's name, and closing
+  // is the moment a rename or a category change that has not repainted yet gets one.
   close: () => {
     if (voiceLibrary.slots && !voiceEditor.laneKey) { voiceLibrary.collapse('edit', true); return; }
     dismissVoiceEditor();
@@ -4313,8 +4388,10 @@ function dismissVoiceEditor() {
 
 // ---- the editor as a window -------------------------------------------------
 //
-// Opened from the preset library there is no lane and no strip, so the panel cannot be
-// a rack item: it floats, with the keyboard's manners. See placeVoiceEditor.
+// It is ALWAYS a window now — opened from a channel's menu as much as from the preset
+// library. It used to be a rack item beside the strip that opened it, and that is the
+// thing the strip has given up: see `stripMenu`, and `placeVoiceEditor` for what
+// replaced the pair.
 
 const VE_POS_KEY = 'mash-mixer-voiceedit-pos';
 
@@ -4330,12 +4407,55 @@ function placeFloatingEditor(x, y) {
     x = pos?.x ?? Math.max(4, innerWidth - r.width - 40);
     y = pos?.y ?? 120;
   }
+  const { left, top } = clampFloatingEditor(x, y);
+  localStorage.setItem(VE_POS_KEY, JSON.stringify({ x: left, y: top }));
+}
+
+/**
+ * Put the window at x/y, pulled back on screen — and remember NOTHING.
+ *
+ * The split from `placeFloatingEditor` is which positions count as a choice. Dragging
+ * the header is a choice and is remembered; being re-placed by a repaint, or centred on
+ * open, is the desk moving its own furniture, and writing either of those to `VE_POS_KEY`
+ * would quietly overwrite where the user last put it.
+ */
+function clampFloatingEditor(x, y) {
+  const el = voiceEditEl;
   const r = el.getBoundingClientRect();
   const left = clamp(x, 4, Math.max(4, innerWidth - r.width - 4));
   const top = clamp(y, 4, Math.max(4, innerHeight - r.height - 4));
   el.style.left = `${left}px`;
   el.style.top = `${top}px`;
-  localStorage.setItem(VE_POS_KEY, JSON.stringify({ x: left, y: top }));
+  return { left, top };
+}
+
+/**
+ * Open the window where the click that asked for it was.
+ *
+ * It used to be hung off an ELEMENT — the channel strip, and then the arrangement row —
+ * and neither reads as "here": the strip is a hundred-pixel column at the bottom of the
+ * desk, the row's name is at the far left, and a window placed against either one lands
+ * a long way from the hand that asked for it. The pointer is the honest answer, and it is
+ * the same answer for every door into the editor: a right-click on a strip puts the panel
+ * beside that strip because that is where you clicked, and the track panel's own buttons
+ * put it beside the track panel for the same reason.
+ *
+ * Just off the pointer, flipped to its other side where the window will not fit, and
+ * clamped from there — so a strip clicked at the bottom of the screen gets a panel that
+ * rides up to fit rather than one hanging off the edge. `x`/`y` missing means nobody
+ * clicked: the tour and a restored session both arrive that way, and the middle of the
+ * screen is the only honest answer to "where did this come from".
+ */
+const EDITOR_POINTER_GAP = 12;
+function placeEditorAtPointer(at) {
+  const r = voiceEditEl.getBoundingClientRect();
+  if (!at || at.x == null || at.y == null) {
+    clampFloatingEditor((innerWidth - r.width) / 2, (innerHeight - r.height) / 2);
+    return;
+  }
+  const right = at.x + EDITOR_POINTER_GAP;
+  const left = right + r.width <= innerWidth ? right : at.x - EDITOR_POINTER_GAP - r.width;
+  clampFloatingEditor(left, at.y);
 }
 
 // Dragged by its header, like every other window here. Delegated from the panel rather
@@ -4435,116 +4555,49 @@ function syncVoiceEditorToLane(laneKey, { autoCopy = true } = {}) {
 }
 
 /**
- * Put the editor back beside the strip it belongs to.
+ * Keep the editor on screen, wherever the desk repaints around it.
  *
- * The panel is a rack item, not a window: `buildRack` empties the rack on every
- * repaint, which detaches it, and a save or a rename repaints. Holding the element in
- * a variable means it survives being detached with its inputs and their focus intact —
- * so this is a re-insert, not a rebuild, and typing into the name field while the rack
- * repaints does not lose the caret.
+ * IT IS A WINDOW, NOT A RACK ITEM. It used to be one: the panel was inserted into the
+ * rack beside the strip that opened it, the two wrapped in a `.voicepair` that took the
+ * border and drew one shared header over both halves, so an edited channel simply got
+ * wider. That is gone with the strip's » — a channel is about a hundred pixels wide and
+ * the editor is three of them, so opening one shoved the rest of the rack sideways, tied
+ * the panel's height to whatever rung the shrink ladder was standing on, and put the
+ * controls at the bottom of the screen because that is where the rack is. Centred, it is
+ * in the same place every time and the rack does not move at all.
  *
- * A lane that has gone (deleted, or filtered out of the view) leaves the editor with
- * nowhere to sit, so it closes rather than reappearing at the end of the rack attached
- * to nothing.
+ * What survives from the rack-item days is why the ELEMENT is held in a variable rather
+ * than rebuilt: `buildRack` used to detach it on every repaint, and keeping the node
+ * meant keeping its inputs and their focus. It is parked on the body now, so a repaint
+ * cannot touch it — but a save or a rename still calls through here, and re-placing
+ * rather than rebuilding is still what keeps the caret in the name field.
+ *
+ * A lane that has gone — deleted, or filtered out of the view — leaves the editor
+ * describing a channel that is not there, so it closes.
  */
 function placeVoiceEditor() {
   const el = voiceEditEl;
   const laneKey = voiceEditor.laneKey;
   if (!voiceEditor.isOpen()) { el.remove(); return; }
-  // Opened from the library there is no strip to sit beside, so it is a window instead
-  // of a rack item: parked on the body, out of the rack entirely, where a repaint
-  // cannot detach it. Returning here rather than falling through is the whole of it —
-  // everything below is about finding a strip and becoming one object with it.
-  if (!laneKey) {
-    // Inside the library, if it is open: that window has a slot down its right side
-    // and the three panels are one workspace. Floating is the fallback for a
-    // lane-free editor with no library behind it, which nothing opens today.
-    if (voiceLibrary.slots) { dockIntoLibrary(); return; }
-    if (el.parentElement !== document.body) document.body.append(el);
-    el.classList.remove('vedocked');
-    el.classList.add('vefloat');
-    placeFloatingEditor();
-    return;
-  }
-  el.classList.remove('vefloat', 'vedocked');
-  const strip = document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"]`);
+  // Inside the library, if it is open: that window has a slot down its right side and
+  // the three panels are one workspace. Only ever a lane-free editor — the library is
+  // where you browse the catalogue, and a channel's preset is a song's own copy.
+  if (!laneKey && voiceLibrary.slots) { dockIntoLibrary(); return; }
   // Not `close()`: this runs FROM buildRack, and close rebuilds the rack. Tearing the
   // panel down without asking for another repaint is the whole difference between
   // closing an editor and re-entering the function that is already running.
-  if (!strip) { dismissVoiceEditor(); return; }
-
-  // The strip and its editor become ONE object in the rack, not two next to each
-  // other: a wrapper takes the border, the radius, the background and the selected
-  // outline, and both children give theirs up. Faking it — butting two bordered boxes
-  // together and hiding the facing edges — cannot survive `.strip.selected`, which
-  // draws a box-shadow right round the perimeter and would put a seam down the join.
-  //
-  // Nothing else in the desk cares that the strip is a level deeper: `fitStrips` finds
-  // strips with a descendant query, and the rack's only other direct child is the send
-  // slot, which is held across the rebuild by reference.
-  //
-  // Reused where there is one, never nested. This runs on every rack repaint AND on
-  // every open, and an open does not repaint — so wrapping unconditionally put the new
-  // wrapper INSIDE the old one, a fresh border per click of the ✎.
-  const existing = strip.parentElement?.classList.contains('voicepair')
-    ? strip.parentElement : null;
-  const pair = existing || document.createElement('div');
-  if (!existing) {
-    pair.className = 'voicepair';
-    strip.replaceWith(pair);
-    pair.append(strip);
+  if (laneKey && !document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"]`)) {
+    dismissVoiceEditor();
+    return;
   }
-  // The strip's own colour, so the wrapper's header band wears the lane's wash and its
-  // rule the lane's hue — one header across one container.
-  const cs = getComputedStyle(strip);
-  pair.style.setProperty('--lane', cs.getPropertyValue('--lane') || '');
-  pair.style.setProperty('--lanedim', cs.getPropertyValue('--lanedim') || '');
-  // Carried onto the wrapper, because the wrapper is what draws it now.
-  pair.classList.toggle('selected', strip.classList.contains('selected'));
-  // `append` MOVES a node it already holds, so this is also the re-place.
-  pair.append(el);
-
-  // An expanded channel is one object, so it gets one identity. The strip already
-  // owns the authoritative name and type; copying those into a shared header prevents
-  // the editor's library label from disagreeing with the channel beside it. The editor
-  // keeps its own header data for its floating/library homes, where there is no strip.
-  let pairHead = [...pair.children].find((child) => child.classList.contains('voicepairhead'));
-  if (!pairHead) {
-    pairHead = document.createElement('div');
-    pairHead.className = 'voicepairhead';
-    pair.append(pairHead);
-  }
-  pairHead.textContent = '';
-  const stripTitle = strip.querySelector('.striphead h3');
-  const sharedTitle = document.createElement('h3');
-  sharedTitle.className = 'voicepairtitle strippreset';
-  sharedTitle.textContent = stripTitle?.textContent || targetLabel(laneKey);
-  sharedTitle.title = stripTitle?.title || `Change the preset for ${targetLabel(laneKey)}`;
-  sharedTitle.setAttribute('role', 'button');
-  sharedTitle.tabIndex = 0;
-  // Same two-step as the strip's own name: select first, change the preset second.
-  const choosePreset = (ev) => {
-    ev.stopPropagation();
-    if (!presetArmed(laneKey)) { selectLane(laneKey); armPreset(laneKey); return; }
-    openVoicePicker(ev.clientX, ev.clientY, laneKey);
-  };
-  sharedTitle.addEventListener('click', choosePreset);
-  sharedTitle.addEventListener('keydown', (ev) => {
-    if (ev.key !== 'Enter' && ev.key !== ' ') return;
-    ev.preventDefault();
-    const r = sharedTitle.getBoundingClientRect();
-    choosePreset({ clientX: r.left, clientY: r.bottom, stopPropagation() {} });
-  });
-  pairHead.append(sharedTitle);
-  const stripType = strip.querySelector('.striphead .stripsub');
-  if (stripType) {
-    // Cloned rather than copied as text: the caption is a category with an optional
-    // `.stripsynth` beside it, and the separator between them is drawn by the stylesheet,
-    // so `textContent` would hand this line "ORCHMR3" with the space and the dot gone.
-    const sharedType = stripType.cloneNode(true);
-    sharedType.className = 'voicepairtype';
-    pairHead.append(sharedType);
-  }
+  if (el.parentElement !== document.body) document.body.append(el);
+  el.classList.remove('vedocked');
+  el.classList.add('vefloat');
+  // Where it already is, clamped back on screen — not re-placed. This runs on every
+  // repaint, and a window that jumped back to the last pointer position each time a fader
+  // moved would be unusable. `placeEditorAtPointer` is called once, by whatever opened it.
+  const r = el.getBoundingClientRect();
+  if (laneKey) clampFloatingEditor(r.left, r.top); else placeFloatingEditor();
 }
 
 /**
@@ -4556,21 +4609,24 @@ function placeVoiceEditor() {
  * so the option had no caller left and is gone rather than left as a branch nothing
  * takes. The editor's own `state.isNew` is unaffected: that is what its Save as new sets.
  *
- * WHICH SURFACE IT LANDS ON. Two presets have both — the KLNG8 and MRDR-3 — and
+ * WHICH SURFACE IT LANDS ON. Three preset families have both — KLNG8, MRDR-3 and TNGR-2 — and
  * `advanced` says which one was asked for:
  *
- *   undefined  the caller has no opinion, so the preset decides. This is the strip's ✎,
- *              which is one button and cannot offer a choice: a drum goes to the full
+ *   undefined  the caller has no opinion, so the preset decides: a drum goes to the full
  *              window, because its Quick surface is eight pots of a kit that has
- *              hundreds, and everything else docks beside the strip.
- *   true       the full window, standalone — nothing docked behind it.
- *   false      the docked Quick panel, on a drum as much as on anything else.
+ *              hundreds, and everything else gets the small panel. The tour is the last
+ *              caller that asks this way.
+ *   true       the full window, standalone — nothing behind it.
+ *   false      the small Quick panel, on a drum as much as on anything else.
  *
- * The track panel passes it explicitly on both of its buttons, so **Edit Preset** and
- * **Edit Advanced** each do exactly what they are called there. A preset with only one
- * surface ignores it; there is nothing else to open.
+ * The track panel and the channel menu pass it explicitly on both of their items, so
+ * **Edit Preset** and **Edit Advanced** each do exactly what they are called. A preset
+ * with only one surface ignores it; there is nothing else to open.
+ *
+ * Either way the window opens at the POINTER — `at` is the click that asked for it, and
+ * `placeEditorAtPointer` is where it lands.
  */
-function editVoice(laneKey, { advanced } = {}) {
+function editVoice(laneKey, { advanced, at = null } = {}) {
   let chosen = laneVoiceId(laneKey);
   // A GENERATED SONG NAMES ITS INSTRUMENTS IN THE BANK, NOT IN THE MIX.
   //
@@ -4629,9 +4685,14 @@ function editVoice(laneKey, { advanced } = {}) {
   // that panel rather than nothing.
   const hasAdvanced = isQuickVoice(VOICES[chosen]);
   const strip = document.querySelector(`.strip[data-lane="${CSS.escape(laneKey)}"]`);
-  // Already open on this very preset: bring it into view and stop. Re-opening would
-  // call `open` again, which takes the CURRENT sound as the baseline — so a second
-  // click on the ✎ would quietly make your unsaved edits the thing Revert goes back to.
+  // BOTH WINDOWS OPEN AT THE POINTER, not against an element. `at` is where the click
+  // that asked for them was — see `placeEditorAtPointer`, and the `at` branch of the full
+  // window's own `open`. Every caller that has a pointer hands it over; the ones that do
+  // not (the tour, a restored session) get the middle of the screen.
+  //
+  // Already open on this very preset: leave it where it is and stop. Re-opening would
+  // call `open` again, which takes the CURRENT sound as the baseline — so a second ask
+  // for the editor would quietly make your unsaved edits the thing Revert goes back to.
   if (voiceEditor.isOpen() && voiceEditor.laneKey === laneKey
       && voiceEditor.editing === chosen) {
     // Except when the full window is what was asked for and it is not up yet — then the
@@ -4639,10 +4700,9 @@ function editVoice(laneKey, { advanced } = {}) {
     // panel behind this one, it was there first, and closing the window should reveal it
     // rather than put the preset down.
     if (advanced && hasAdvanced && !voiceEditor.fullOpen) {
-      voiceEditor.openFull(1, { anchor: strip, avoidTransport: true });
+      voiceEditor.openFull(1, { at, avoidTransport: true });
       return;
     }
-    voiceEditEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
     return;
   }
   if (!voiceEditor.open(chosen, { laneKey, laneLabel: targetLabel(laneKey) })) return;
@@ -4653,24 +4713,11 @@ function editVoice(laneKey, { advanced } = {}) {
   // `advanced` above — and `advanced: false` is the one thing that overrules it.
   if (strip && ((fullEngine === 'drum' && advanced !== false) || (advanced && hasAdvanced))) {
     voiceEditEl.classList.remove('show');
-    voiceEditor.openFull(1, { standalone: true, anchor: strip, avoidTransport: true });
-    return;
-  }
-  if (strip) {
-    const trackNameArea = document.querySelector(
-      `.arrrow[data-lane="${CSS.escape(laneKey)}"] .arrtrack-top`,
-    ) || strip;
-    const r = trackNameArea.getBoundingClientRect();
-    if (voiceEditEl.parentElement !== document.body) document.body.append(voiceEditEl);
-    voiceEditEl.classList.remove('vedocked');
-    voiceEditEl.classList.add('vefloat');
-    placeFloatingEditor(r.right + 10, r.top);
+    voiceEditor.openFull(1, { standalone: true, at, avoidTransport: true });
     return;
   }
   placeVoiceEditor();
-  // Into view, because the rack scrolls: opening a panel you cannot see reads as a
-  // button that did nothing.
-  voiceEditEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  placeEditorAtPointer(at);
 }
 
 // ---- the preset library -----------------------------------------------------
@@ -4739,7 +4786,6 @@ const voiceLibrary = createVoiceLibrary({
 function editLibraryVoice(id) {
   if (voiceEditor.isOpen() && !voiceEditor.laneKey
     && (voiceEditor.editing === id || voiceEditor.librarySource === id)) return voiceEditor.editing;
-  const wasDocked = voiceEditor.isOpen() && voiceEditor.laneKey;
   // Marked BEFORE it is opened, not after it is placed. `open` builds the panel, and
   // the panel reads this class to decide whether its ✕ is a close or a fold — so
   // setting it on the way past would leave the first build wearing the wrong one.
@@ -4753,13 +4799,12 @@ function editLibraryVoice(id) {
     isNew: !!source?.factory && !updateLibrary,
     allowLibraryUpdate: updateLibrary,
   })) return false;
-  // A repaint rather than a re-place when the panel was docked to a strip. `.voicepair`
-  // is a wrapper `placeVoiceEditor` builds around the two of them, and only emptying
-  // the rack takes it away again — so floating the panel out of it on its own leaves
-  // that wrapper behind, drawing its border and its radius around a lone strip that has
-  // nothing beside it any more. buildRack rebuilds the strips and then calls
-  // placeVoiceEditor itself, which is what floats it.
-  if (wasDocked) buildRack(); else placeVoiceEditor();
+  // A re-place is all it takes now: the panel is a window wherever it was opened from,
+  // so moving it from a channel to the library is a change of home rather than of kind
+  // — nothing has to be rebuilt for it to leave. It used to be a rack item beside its
+  // strip, wrapped with it, and floating it out on its own left that wrapper drawing a
+  // border round a lone strip, so this asked for a whole rack repaint instead.
+  placeVoiceEditor();
   return voiceEditor.editing;
 }
 
@@ -5216,11 +5261,11 @@ $('addtrackbtn').onclick = (ev) => {
  * the lead is a lead, and the only entries a lane hides are the few engine ones that
  * are genuinely bass-only code paths.
  *
- * `Engine default` sits on the head row beside the search rather than in the columns:
- * it is a real choice — putting a lane back writes nothing at all to the mix file —
- * but it is the way out of the library, not an entry in it, and as a category of one
- * it cost a whole column to say one word.
+ * The head row carries the lane, kind/engine filters and search. Existing tracks keep
+ * their lane kind fixed; the plus picker is the only route where kind is a choice.
  */
+let voicePickerQuery = '';
+
 function openVoicePicker(x, y, laneKey) {
   closeMenu();
   restorablePopup = { kind: 'voicePicker', laneKey };
@@ -5286,6 +5331,12 @@ function openVoicePicker(x, y, laneKey) {
     return btn;
   };
 
+  const engineOf = (v) => v?.kind === 'drum' ? 'drum' : v?.synth || null;
+  const engineLabel = (id) => id === 'drum' ? 'KLNG8' : id;
+  const selectedPreset = VOICES[chosen]
+    || (independent ? VOICES[defaultAddedVoice(laneKey)] : defaultVoiceOf(track?.bank, laneKey));
+  const selectedEngine = engineOf(selectedPreset);
+
   // The search box. A hundred presets in sixteen columns is quick to scan when you
   // know roughly where you are going and slow when you only know the word — so
   // typing filters the lot, across labels AND the descriptions, which is where words
@@ -5294,16 +5345,11 @@ function openVoicePicker(x, y, laneKey) {
   search.className = 'voicesearch';
   search.type = 'search';
   search.placeholder = 'Search presets…';
+  search.value = voicePickerQuery;
   search.setAttribute('aria-label', 'Search presets');
 
   // The head row: what you are choosing for, how to find it, and the way back.
   //
-  // `Engine default` used to head the columns as a category of its own, which spent a
-  // 150px column on one word and read as a column with its entries missing. It is not
-  // an entry in the library — it is the way OUT of it, the same way the search box is
-  // not a preset — so it belongs in the chrome beside the search, and the panel is a
-  // column narrower for it. It stays a real, clickable choice with the same `on` state
-  // it had in the list.
   const head = document.createElement('div');
   head.className = 'voicehead';
   const who = document.createElement('span');
@@ -5337,10 +5383,16 @@ function openVoicePicker(x, y, laneKey) {
   // another Tom. Existing lanes still open on their useful lane-specific family.
   let kind = drumsOnly ? 'drums' : pending ? 'all'
     : PERCUSSION_LANES.includes(baseLane(laneKey)) ? 'drums' : 'pitched';
+  let engine = 'all';
   const keepOf = (id) => (KINDS.find((k) => k.id === id) || KINDS[0]).keep;
   // A lane whose own kind is empty opens on everything rather than on nothing. Nothing
   // in the catalogue does that today; a preset library one edit from now might.
   if (!drumsOnly && !offeredVoices(laneKey, offer).some(keepOf(kind))) kind = 'all';
+  const enginesForKind = (kindId) => [...new Set(offeredVoices(laneKey, offer)
+    .filter(keepOf(kindId)).map(engineOf).filter(Boolean))]
+    .sort((a, b) => engineLabel(a).localeCompare(engineLabel(b)));
+  const initialEngines = enginesForKind(kind);
+  if (!pending && selectedEngine && initialEngines.includes(selectedEngine)) engine = selectedEngine;
   const chips = document.createElement('div');
   chips.className = 'voicekinds';
   const chipFor = (k) => {
@@ -5353,16 +5405,42 @@ function openVoicePicker(x, y, laneKey) {
     c.onclick = () => {
       kind = k.id;
       for (const other of chips.children) other.classList.toggle('on', other === c);
+      refreshEngineOptions();
       draw(search.value);
     };
     return c;
   };
-  // One chip is not a choice: a drums-only picker says so by holding nothing else.
-  if (!drumsOnly) for (const k of KINDS) chips.append(chipFor(k));
-  head.append(who, chips, search);
+  // Existing tracks cannot change between melodic and drum lanes, so those filters
+  // are useful only while the plus picker is deciding what kind of track to create.
+  if (pending && !drumsOnly) for (const k of KINDS) chips.append(chipFor(k));
+  const engineSelect = document.createElement('select');
+  engineSelect.className = 'fxsel voiceengine';
+  const refreshEngineOptions = () => {
+    const availableEngines = enginesForKind(kind);
+    if (engine !== 'all' && !availableEngines.includes(engine)) engine = 'all';
+    engineSelect.textContent = '';
+    const allEngines = document.createElement('option');
+    allEngines.value = 'all'; allEngines.textContent = 'All engines';
+    allEngines.selected = engine === 'all';
+    engineSelect.append(allEngines);
+    for (const id of availableEngines) {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = engineLabel(id);
+      option.selected = id === engine;
+      engineSelect.append(option);
+    }
+    engineSelect.hidden = availableEngines.length < 2;
+  };
+  refreshEngineOptions();
+  engineSelect.title = 'Show presets for the current engine, or all engines';
+  engineSelect.onchange = () => { engine = engineSelect.value; draw(search.value); };
+  head.append(who, chips);
+  head.append(engineSelect);
+  head.append(search);
   if (layer) {
-    // A layer has no engine default to go back to — see the strip preset name. The space says what
-    // the lane IS instead of offering a choice that silences it.
+    // A layer carries the identity of the part it copies, so its explanatory note stays
+    // in the header rather than adding another filter control.
     const why = document.createElement('span');
     why.className = 'voicewhy';
     // The lane it actually copies, which is not always the engine lane it is named
@@ -5377,19 +5455,6 @@ function openVoicePicker(x, y, laneKey) {
     why.className = 'voicewhy';
     why.textContent = 'Choose a preset for this new track';
     head.append(why);
-  } else {
-    // The name goes in the `kind` slot rather than replacing the label: the button has
-    // to keep saying what it DOES — put the lane back and write nothing — while saying
-    // what that sounds like. A lane whose bank is tuned past every preset has no name
-    // to show and reads `built in`, as it always did.
-    const named = independent ? VOICES[defaultAddedVoice(laneKey)]
-      : defaultVoiceOf(track?.bank, laneKey);
-    const def = entry(null, 'Engine default', named ? named.label : 'Built in',
-      `What ${targetLabel(laneKey)} plays with nothing set — the hand-written voice the`
-      + ' songs were composed on. Choosing it writes nothing to the mix file.'
-      + (named ? `\n\nOn this song that is ${named.label} — ${named.note}` : ''));
-    def.classList.add('voicedefault');
-    head.append(def);
   }
 
   // Keep the picker’s way out in the same place and style as the other desk
@@ -5416,10 +5481,11 @@ function openVoicePicker(x, y, laneKey) {
     const q = query.trim().toLowerCase();
     const hit = (v) => !q || `${v.label} ${v.category} ${v.note} ${v.kind}`.toLowerCase().includes(q);
     const keep = keepOf(kind);
+    const keepEngine = (v) => engine === 'all' || engineOf(v) === engine;
 
     let shown = 0;
     for (const [category, list] of offeredByCategory(laneKey, offer)) {
-      const matches = list.filter((v) => keep(v) && hit(v));
+      const matches = list.filter((v) => keep(v) && keepEngine(v) && hit(v));
       if (!matches.length) continue;
       shown += matches.length;
       const g = document.createElement('div');
@@ -5443,7 +5509,8 @@ function openVoicePicker(x, y, laneKey) {
     if (q && !shown) {
       const none = document.createElement('div');
       none.className = 'fxgroup voicesearch-none';
-      const elsewhere = kind === 'all' ? 0 : offeredVoices(laneKey, offer).filter(hit).length;
+      const elsewhere = kind === 'all'
+        ? 0 : offeredVoices(laneKey, offer).filter((v) => keepEngine(v) && hit(v)).length;
       none.textContent = `Nothing matches “${query.trim()}” in ${kind}`;
       if (elsewhere) {
         const more = document.createElement('button');
@@ -5462,13 +5529,20 @@ function openVoicePicker(x, y, laneKey) {
     }
   };
 
-  search.addEventListener('input', () => draw(search.value));
+  search.addEventListener('input', () => {
+    voicePickerQuery = search.value;
+    draw(search.value);
+  });
   // Escape clears the filter first and closes the panel only when it is already
   // empty — one key, and it never throws away a search you were still reading.
   search.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape') return;
     ev.stopPropagation();
-    if (search.value) { search.value = ''; draw(''); } else closeMenu();
+    if (search.value) {
+      voicePickerQuery = '';
+      search.value = '';
+      draw('');
+    } else closeMenu();
   });
   el.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape' || ev.target === search) return;
@@ -5477,7 +5551,7 @@ function openVoicePicker(x, y, laneKey) {
     closeMenu();
   });
 
-  draw('');
+  draw(search.value);
   el.append(head, results);
 
   el.style.left = `${x}px`;
@@ -5544,16 +5618,12 @@ function channelStrip(lane, mix, slotRows, number) {
     });
   }
 
-  // Into the preset editor from the header, on hover. Choosing a different preset is
-  // the name itself; this small mark remains only for editing the selected preset.
-  if (preset && preset.kind !== 'engine') {
-    const pen = document.createElement('button');
-    pen.className = 'stripedit';
-    pen.append(foldIcon('right'));   // same fold mark as the docked editor
-    pen.title = `Edit ${preset.label} — its parameters, beside this strip`;
-    pen.onclick = (ev) => { ev.stopPropagation(); editVoice(key); };
-    head.append(pen);
-  }
+  // NO EDIT BUTTON ON THE HEAD. There used to be a » here that opened the preset editor
+  // docked beside the strip. It is gone, and so is the docked editor: a strip head is
+  // about a hundred pixels wide and already carries the number, the name, the caption
+  // and — while you hover — a button drawn over the tail of that name. Editing the sound
+  // is on the strip's right-click menu now, under SOUND, next to the picker that chooses
+  // one. See stripMenu.
 
   const setEq = (band) => (x) => {
     editMix((m) => {
@@ -6107,8 +6177,8 @@ const shedClass = (id) => STRIP_PARTS.find((p) => p.id === id).cls.replace('no-'
  * function of its own last answer — which is a latch, and a short window once meant a
  * short window forever.
  *
- * `measuring` also lifts --striph off .strip and .voicepair and --bodyh off .stripbody,
- * all of which are given a height explicitly and would otherwise answer the question
+ * `measuring` also lifts --striph off .strip and --bodyh off .stripbody,
+ * both of which are given a height explicitly and would otherwise answer the question
  * with the previous answer — the body worst of all, since a body held at last rung's
  * height reports that height back and --bodyh would only ever climb. The fader is
  * pinned for the same reason: left live, a strip measures taller on a tall window than
@@ -6420,19 +6490,13 @@ function sizeStrips(strips) {
   const chrome = stripChromeAt(shed);
   const gone = SHED_ORDER.slice(0, shed);
 
-  const wasBare = wrap.classList.contains(shedClass(SHED_ORDER[SHED_ORDER.length - 1]));
   for (const id of SHED_ORDER) wrap.classList.toggle(shedClass(id), gone.includes(id));
   markShedParts(gone);
 
-  // The docked preset editor is given --striph too, so on the bottom rung it would be
-  // a full editor squashed into the height of a bare strip. Send it away rather than
-  // shrink it: the » on the strip head reopens it as soon as there is room.
-  if (!wasBare && shed === SHED_ORDER.length
-      && voiceEditEl.classList.contains('show')
-      && !voiceEditEl.classList.contains('vefloat')) {
-    dismissVoiceEditor();
-    toast('Preset editor closed — the rack is too short to hold it');
-  }
+  // Nothing here about the preset editor any more. It used to be a rack item wearing
+  // --striph, so the bottom rung squashed a full editor into the height of a bare strip
+  // and the ladder had to close it on the way past. It is a window over the desk now:
+  // the rack can shed every block it has without the editor noticing.
 
   // The band between the head and the foot, the same on every strip: the tallest body
   // at this rung. Written here with --faderh and --striph and for the same reason —
@@ -12049,22 +12113,15 @@ function selectLane(key) {
     el.classList.toggle('selected', selected);
     el.setAttribute('aria-selected', selected ? 'true' : 'false');
   }
-  // The editor's wrapper draws the selected outline for the strip inside it, so it has
-  // to follow the selection too — set once when the pair was built, it stayed lit after
-  // the selection moved on.
   const chosenStrip = document.querySelector('.strip[data-lane].selected');
-  for (const pair of document.querySelectorAll('.voicepair')) {
-    pair.classList.toggle('selected', !!chosenStrip && pair.contains(chosenStrip));
-  }
   // The arrangement can select a channel whose strip is outside the horizontally
   // scrolled rack. When the Mixer is the available lower workspace, reveal the strip
   // by the smallest amount so the visible highlight and the selected row cannot
   // disagree. Roll and Pattern preserve the rack's scroll position while it is hidden.
   if (chosenStrip && $('desk').dataset.lowerView === 'mixer' && $('rack').contains(chosenStrip)) {
     const rack = $('rack');
-    const target = chosenStrip.closest('.voicepair') || chosenStrip;
     const rr = rack.getBoundingClientRect();
-    const tr = target.getBoundingClientRect();
+    const tr = chosenStrip.getBoundingClientRect();
     if (tr.left < rr.left) rack.scrollLeft -= rr.left - tr.left + 6;
     else if (tr.right > rr.right) rack.scrollLeft += tr.right - rr.right + 6;
   }
@@ -12308,12 +12365,7 @@ function pasteTrack() {
   toast(`${targetLabel(newKey)} pasted as a new track from ${sourceName}`
     + (dropped ? ` — ${dropped} bar${dropped === 1 ? '' : 's'} past the end was not pasted` : '')
     + (noVoice ? ' — choose a preset for its sound' : ' — full notes, edits and channel settings copied'), 6000);
-  if (noVoice) {
-    const strip = document.querySelector(`.strip[data-lane="${CSS.escape(newKey)}"] .strippreset`)
-      || document.querySelector(`.strip[data-lane="${CSS.escape(newKey)}"] .striphead`);
-    const r = strip?.getBoundingClientRect();
-    openVoicePicker(r ? r.left : innerWidth / 2, r ? r.bottom + 4 : 120, newKey);
-  }
+  if (noVoice) openVoicePickerFor(newKey);
 }
 
 /** Add several complete tracks from another song as one independent, undoable edit. */
@@ -12391,13 +12443,7 @@ function importTracksFromSong(sourceId, sourceKeys) {
     + (extension ? ` — extended this song by ${extension} bar${extension === 1 ? '' : 's'}` : '')
     + (missingVoices.length ? ` — choose presets for ${missingVoices.join(', ')}`
       : ' — notes, edits and channel settings copied'), 7000);
-  if (missingVoiceImports.length) {
-    const lane = missingVoiceImports[0].newKey;
-    const strip = document.querySelector(`.strip[data-lane="${CSS.escape(lane)}"] .strippreset`)
-      || document.querySelector(`.strip[data-lane="${CSS.escape(lane)}"] .striphead`);
-    const r = strip?.getBoundingClientRect();
-    openVoicePicker(r ? r.left : innerWidth / 2, r ? r.bottom + 4 : 120, lane);
-  }
+  if (missingVoiceImports.length) openVoicePickerFor(missingVoiceImports[0].newKey);
 }
 
 /** Hamburger -> Import Tracks -> Select Song -> Pick Tracks. */
@@ -13664,6 +13710,7 @@ const noteFxRateLabel = (rate) => (NOTE_FX_RATE_LABELS
   || `${rate} steps`);
 const effectDisplayName = (effect) => EFFECT_BY_ID[effect?.id]?.short
   || EFFECT_BY_ID[effect?.id]?.name || effect?.id || 'Unknown effect';
+const hasActiveNoteFx = (fx) => Boolean(fx?.strum?.enabled || fx?.arp?.enabled);
 
 /**
  * What a bar's Note FX override is worth printing in the grid.
@@ -13677,11 +13724,10 @@ const effectDisplayName = (effect) => EFFECT_BY_ID[effect?.id]?.short
 function noteFxBadge(barPlanEntry, key, trackNoteFx) {
   const override = barPlanEntry?.noteFx?.[key];
   if (!override || override.mode === 'inherit') return '';
-  const armed = (fx) => Boolean(fx?.strum?.enabled || fx?.arp?.enabled);
   // NFX OFF earns its badge by saying the bar departs from the track. A track with no
   // Note FX to switch off gives it nothing to report.
-  if (override.mode === 'off') return armed(trackNoteFx) ? 'NFX OFF' : '';
-  return armed(resolveNoteFx(trackNoteFx, barPlanEntry, key)) ? 'NFX' : '';
+  if (override.mode === 'off') return hasActiveNoteFx(trackNoteFx) ? 'NFX OFF' : '';
+  return hasActiveNoteFx(resolveNoteFx(trackNoteFx, barPlanEntry, key)) ? 'NFX' : '';
 }
 
 /**
@@ -14016,13 +14062,13 @@ function openRegionEditor(x, y, {
       // something and decided to keep it rather than before you have opened the panel.
       actionSection('Sound', [
         { label: 'Preset', title: `Choose what plays ${laneLabel}`,
-          run: () => openVoicePickerFor(laneKey) },
+          run: () => openVoicePickerFor(laneKey, { x, y }) },
         // An engine preset is a bundle of bank keys rather than a synth, so there is
         // nothing for the editor to show.
         trackPreset && trackPreset.kind !== 'engine' && {
           label: 'Edit Preset', title: `Open ${trackPreset.label} in the preset editor`,
-          run: () => editVoice(laneKey, { advanced: false }) },
-        // The KLNG8 and MRDR-3 are the two with a second, wider surface, and until
+          run: () => editVoice(laneKey, { advanced: false, at: { x, y } }) },
+        // KLNG8, MRDR-3 and TNGR-2 are the families with a second, wider surface, and until
         // now the only door to it was the ADVANCED button inside the panel — so getting
         // to it meant opening the small one first and then leaving it. This is the same
         // door, from the same panel that offers the small one, one click either way.
@@ -14032,7 +14078,7 @@ function openRegionEditor(x, y, {
         trackPreset && isQuickVoice(trackPreset) && {
           label: 'Edit Advanced',
           title: `Open ${trackPreset.label} in the full-window editor — every control on one screen`,
-          run: () => editVoice(laneKey, { advanced: true }) },
+          run: () => editVoice(laneKey, { advanced: true, at: { x, y } }) },
       ],
       // Which synth these two buttons would open. The title already names the PRESET
       // ("Track 7. Round Bass"); this is the other half of that identity, and it is the
@@ -14600,6 +14646,27 @@ function buildArrangement() {
     const bottom = document.createElement('div');
     bottom.className = 'arrtrack-bottom';
     top.append(name);
+    if (hasActiveNoteFx(laneNoteFx)) {
+      const noteFx = document.createElement('span');
+      noteFx.className = 'arrtrack-notefx';
+      noteFx.textContent = 'NFX';
+      noteFx.title = 'Track Note FX enabled';
+      noteFx.setAttribute('aria-label', 'Track Note FX enabled');
+      noteFx.setAttribute('role', 'button');
+      noteFx.tabIndex = 0;
+      const openTrackNoteFx = (ev) => {
+        ev.stopPropagation();
+        const r = noteFx.getBoundingClientRect();
+        openNoteFxEditor(r.left, r.bottom + 4, row.key);
+      };
+      noteFx.addEventListener('click', openTrackNoteFx);
+      noteFx.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+        ev.preventDefault();
+        openTrackNoteFx(ev);
+      });
+      top.append(noteFx);
+    }
     if (frozen) top.append(freezeMark('arrfreeze', '❄'));
     top.append(category);
     bottom.append(btns);
@@ -16124,6 +16191,10 @@ const DEAD_TIER_1 = 3 * 1000 / HEALTH_TICK_MS;    // name the fault, rebuild wha
 const DEAD_TIER_2 = 6 * 1000 / HEALTH_TICK_MS;    // rebuild every chain the mix holds
 const DEAD_TIER_3 = 9 * 1000 / HEALTH_TICK_MS;    // suspend/resume the context
 const DEAD_TIER_4 = 12 * 1000 / HEALTH_TICK_MS;   // give up and say so
+// How many (wall, clock) pairs the ratio ring holds — one second of observation at the
+// tick above. A full ring is also what the latching per-song minimum waits for, so it
+// never records the moment before the output device started; see checkAudioHealth.
+const CLOCK_RING = 4;
 
 // The longest main-thread task of the last watchdog window. The scheduler runs on
 // that thread with a quarter-second queued in front of it, so this is the number
@@ -16233,16 +16304,34 @@ function checkAudioHealth() {
   // failing would put the desk back to crying wolf. Summing the pair before dividing
   // is what averages the jitter out rather than averaging two noisy ratios.
   health.samples.push({ dt, advance });
-  if (health.samples.length > 4) health.samples.shift();
+  if (health.samples.length > CLOCK_RING) health.samples.shift();
   const over = (n) => {
     const use = health.samples.slice(-n);
+    // Fewer samples than asked for is not the average that was asked for. The ring is
+    // emptied on every Play press and on every tick the context is not running, so
+    // without this the sample straight after a clear was judged ALONE as if it were a
+    // pair — the one late timer the pair exists to average out.
+    if (use.length < n) return NaN;
     const w = use.reduce((s, x) => s + x.dt, 0);
     const a = use.reduce((s, x) => s + x.advance, 0);
     return w > 0 ? a / w : 1;
   };
   const ratio = over(2);
   health.ratio = ratio;
-  if (playing && Number.isFinite(ratio)) {
+  // The MINIMUM is a different claim from the alarm above it, and needs a stricter
+  // sample. It latches for the life of the song, so one bad reading is not a dip that
+  // passes — it is what the toolbar says about this song until the next one loads.
+  //
+  // The reading it must not latch is the START of playback. `resume()` resolves and
+  // `ctx.state` reads 'running' before the output device has produced its first render
+  // quantum, so `currentTime` is still frozen for a tick or two while everything is
+  // working exactly as intended — and that reads 0.000, which then sat in the toolbar
+  // all session claiming the song had once rendered no audio at all.
+  //
+  // So the min waits for a FULL ring: one unbroken second of a running context since
+  // the last clear. The alarm keeps the two-sample ratio, because it has its own
+  // sustained-shortfall window and is allowed to be quick.
+  if (playing && health.samples.length >= CLOCK_RING && Number.isFinite(ratio)) {
     health.songRatioMin = Math.min(health.songRatioMin, ratio);
     loopHealthWindow.ratioMin = Math.min(loopHealthWindow.ratioMin, ratio);
   }
@@ -19740,9 +19829,16 @@ function cancelStartPreparation() {
   return true;
 }
 
-function startPreparedTransport(message = '', fromStep = preparationFromStep) {
+async function startPreparedTransport(message = '', fromStep = preparationFromStep) {
   Audio.setNoteCachePreparationHeld(true);
   showStartPreparation(false);
+  // Cache preparation finishes in an async callback, so this handoff is no longer
+  // necessarily inside the click that unlocked Web Audio. Resume before the bank is
+  // scheduled; otherwise the desk can say it is playing while a suspended context
+  // holds every cached source silent.
+  if (Audio.ctx?.state === 'suspended' && typeof Audio.ctx.resume === 'function') {
+    try { await Audio.ctx.resume(); } catch { /* the next user gesture can retry */ }
+  }
   setPlaying(true, fromStep);
   // `bank` now keeps preparation paused. Releasing the explicit hold here means the
   // next ordinary Stop/Pause can warm whatever this pass discovers.
@@ -19753,7 +19849,7 @@ function startPreparedTransport(message = '', fromStep = preparationFromStep) {
 async function prepareAndStart({ fromStep = 0, range = null, control = 'start' } = {}) {
   if (preparingFromStart) {
     startPreparationToken++;
-    startPreparedTransport('Starting now');
+    await startPreparedTransport('Starting now');
     return;
   }
 
@@ -19772,7 +19868,7 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
   // counter, which never returns to zero, so every Play after the session's first
   // cache miss paid the whole budget and then waited out a render as well.
   if (!initial?.enabled || (!initial.queued && !initial.rendering)) {
-    startPreparedTransport(initial?.buffers
+    await startPreparedTransport(initial?.buffers
       ? `Playing ${range ? 'loop' : 'from beginning'} · ${initial.buffers} cached note${initial.buffers === 1 ? '' : 's'}`
       : '');
     return;
@@ -19801,7 +19897,7 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
 
   if (token !== startPreparationToken) return;
   const health = Audio.noteCacheHealth?.();
-  startPreparedTransport(health?.buffers
+  await startPreparedTransport(health?.buffers
     ? `Playing ${range ? 'loop' : 'from beginning'} · ${health.buffers} cached note${health.buffers === 1 ? '' : 's'}`
     : `Playing ${range ? 'loop' : 'from beginning'}`);
 }
@@ -20027,12 +20123,15 @@ const tutorial = createTutorial({
     const strips = [...document.querySelectorAll('#rack .strip[data-lane]')]
       .filter((s) => !s.classList.contains('master') && !s.classList.contains('send'));
     const melodic = (s) => LANES.find((l) => l.key === baseLane(s.dataset.lane))?.group === 'melodic';
-    const withPreset = strips.filter((s) => s.querySelector('.stripedit'));
+    const withPreset = strips.filter((s) => editablePresetFor(s.dataset.lane));
     return (withPreset.find(melodic) || withPreset[0] || strips[0])?.dataset.lane || null;
   },
   selectLane: (key) => { if (key) selectLane(key); },
   openPicker,
   editVoice: (key) => { if (key) editVoice(key); },
+  // Two cards open the synth editor, and both leave themselves out on a channel that
+  // has nothing to open — see editablePresetFor.
+  hasPreset: (key) => !!key && !!editablePresetFor(key),
   // Not `openDrawer`, which toggles: three consecutive cards live in the drawer and the
   // second of them would shut it.
   showDrawer: () => { if (!$('navdrawer').classList.contains('show')) openDrawer(); },

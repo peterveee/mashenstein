@@ -35,6 +35,9 @@ import { heavyUi } from './lib/heavy-ui.js';
 // The fold mark, shared with the keyboard's, so the two put-away buttons on the
 // library's workspace are provably one control rather than two that look alike.
 import { foldIcon } from './mixer-voice-library.js';
+// The families' display names, so the table dropdown reads 'Vowel Glass' rather than the
+// stored id — the same names the catalogue states them in.
+import { tngr2TableName } from '../src/engine/tngr2/families.js';
 import { createUndoHistory } from './mixer-undo.js';
 
 const userTableFor = (kind) => kind === 'noise' ? 'USER_NOISE'
@@ -64,7 +67,7 @@ const isUserPreset = (voice) => !!voice?.user && !voice?.songLocal;
  * make that unreachable.
  */
 export const EDITABLE_SYNTHS = [
-  'GameSynth', 'AdditiveSynth', 'MRDR-3',
+  'GameSynth', 'AdditiveSynth', 'MRDR-3', 'TNGR-2',
   'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth',
 ];
 
@@ -72,7 +75,7 @@ export const EDITABLE_SYNTHS = [
 // they have in common that the panel cares about: their modulators are built per note-on,
 // so a key measured from the start of a note — `vibrato.delay` — means something on these
 // and nothing on the others, whose LFO free-runs in the pool.
-const NATIVE_SYNTHS = ['GameSynth', 'AdditiveSynth', 'MRDR-3'];
+const NATIVE_SYNTHS = ['GameSynth', 'AdditiveSynth', 'MRDR-3', 'TNGR-2'];
 
 // ---- measuring, in the page -------------------------------------------------
 
@@ -669,6 +672,103 @@ const monoFilterRows = (prefix = '') => [
   n(`${prefix}filterEnvelope.octaves`, 'ENV AMOUNT', -ENV_OCT_MAX, ENV_OCT_MAX, 0.1,
     semis, 0, 'oct', null, { origin: 0, scale: ENV_OCT_SCALE }),
 ];
+
+const TNGR2_TABLE_IDS = ['basic', 'warmHarmonics', 'hollowPulse', 'sawForm', 'vowelAEIOU',
+  'vowelGlass', 'choirBreath', 'crystal', 'alloy', 'bellFold', 'reedWire', 'organShift',
+  'spectralPWM', 'octaveCascade', 'digitalSteps', 'darkToAir'];
+
+/**
+ * One TNGR-2 oscillator, in the order you reach for it rather than the order the preset
+ * stores it: what it plays, where it is tuned, how wide it is, then what moves it.
+ *
+ * Written once because it was written twice — Osc A and Osc B are the same twelve
+ * controls, and the pair had already drifted to different LEVEL defaults for no reason
+ * other than which one a preset usually leans on. That difference is the one argument.
+ *
+ * `startRow` at the head of each group is what makes those groups visible: the strip
+ * grid is four columns wide and a TABLE pick spans two, so without it TUNE and UNISON
+ * run into each other's rows and the card reads as twelve unrelated knobs.
+ */
+/**
+ * The three stage curves, as the trio MRDR-3's `adsr` builds — same labels, same two
+ * options, same defaults, and behind the same door in the window. Three pills that are
+ * set once and then never touched should not cost a full row on every envelope card.
+ */
+const tngrCurves = (path) => [
+  pick(`${path}.attackCurve`, 'ATK', ENV_CURVES, 'linear', null, { trio: 'curve' }),
+  pick(`${path}.decayCurve`, 'DEC', ENV_CURVES, 'exponential', null, { trio: 'curve' }),
+  pick(`${path}.releaseCurve`, 'REL', ENV_CURVES, 'exponential', null, { trio: 'curve' }),
+];
+
+const tngrOsc = (key, level) => {
+  const at = (leaf) => `$tngr2.${key}.${leaf}`;
+  const stacked = (v) => (getAt(v, at('unison')) ?? 1) > 1;
+  return [
+    // Sixteen families: a dropdown rather than five wrapped lines of pills. The names
+    // are Title Case in the menu, where there is room to read them.
+    // The table has a line to itself: it is the one control that says what this
+    // oscillator IS, and it is a name rather than a number.
+    pick(at('table'), 'WAVE TABLE', TNGR2_TABLE_IDS, 'basic', null, {
+      dropdown: true, optionLabel: tngr2TableName, startRow: true,
+    }),
+    // LEVEL is pulled out of the grid in the full window and laid along the top of the
+    // card as a fader — see `fader` in mixer-synth-full.js. It stays an ordinary pot on
+    // the strip, which has no room to lie one down.
+    n(at('level'), 'LEVEL', 0, 1.5, 0.01, fixed(2), level, '', null, { startRow: true }),
+    // MRDR-3's pair, under MRDR-3's names: where this oscillator sits against the note,
+    // and the cents either side of it. INTERVAL rather than TRANSPOSE — TRANSPOSE is on
+    // the Settings card and moves the whole preset, and two pots on one panel cannot both
+    // be called it.
+    n(at('interval'), 'INTERVAL', -24, 24, 1, semiSteps, 0, 'semi', null, {
+      origin: 0, startRow: true,
+      tip: 'Where this oscillator sits against the note — -12 is a sub an octave down,'
+        + ' +7 a fifth above, +12 a doubling octave',
+    }),
+    n(at('detune'), 'DETUNE', -50, 50, 1, fixed(0), 0, 'ct', null, { origin: 0 }),
+    // THE STACK: how many copies of this oscillator there are, how far apart they are
+    // tuned, and how wide they sit. Two of the three are dead at UNISON 1, so they read as
+    // one idea and are greyed as one.
+    n(at('unison'), 'UNISON', 1, 4, 1, fixed(0), 1, '', null, { startRow: true }),
+    n(at('spread'), 'SPREAD', 0, 50, 1, fixed(0), 12, 'ct', stacked),
+    n(at('stereo'), 'STEREO', 0, 1, 0.01, fixed(2), 0, '', stacked),
+    // AND THE MOVEMENT, LAST. Where in the table this oscillator starts, and how far it
+    // travels from there: the envelope's amount and the LFO's. Those three are one idea —
+    // a starting point and its journey — and reading them together is the whole of what
+    // makes this a wavetable oscillator rather than one with a wavetable in it. At the
+    // foot of the card because they are what you reach for once the sound is chosen, and
+    // because a row of three under two rows of tuning is a card that reads downwards.
+    //
+    // No PHASE MODE and no PHASE: where in the cycle a note starts is always SEEDED from
+    // the note's own identity — a chord does not comb-filter itself and a stem matches
+    // its mix — which is what every preset in the bank used anyway.
+    n(at('position'), 'POSITION', 0, 1, 0.01, fixed(2), 0, '', null, { startRow: true }),
+    n(at('envAmount'), 'ENV MOVE', -1, 1, 0.01, fixed(2), 0),
+    n(at('lfoAmount'), 'LFO MOVE', -1, 1, 0.01, fixed(2), 0),
+  ];
+};
+
+/**
+ * One TNGR-2 position LFO. Both are the same five controls, and the pair had drifted:
+ * LFO 1's division pill was labelled SYNC — the same word as its own free/tempo switch
+ * two pots away — while LFO 2's said DIV.
+ *
+ * RATE and DIVISION are the same control in two units, so each is greyed out when the
+ * other is the one in use rather than left standing at a number nothing reads.
+ */
+const tngrLfo = (key, label, rate) => {
+  const at = (leaf) => `$tngr2.${key}.${leaf}`;
+  return [
+    // What the LFO is, then how much and how fast. No DELAY and no RETRIGGER: nothing
+    // used either, and an LFO that starts with the note is what a player expects.
+    pick(at('shape'), `${label} WAVE`, ['sine', 'triangle', 'saw', 'square', 'samplehold'],
+      'sine', null, { startRow: true }),
+    n(at('amount'), `${label} AMT`, 0, 1, 0.01, fixed(2), 0, '', null, { startRow: true }),
+    // No tempo sync: this LFO moves table POSITION, which is a timbre, and a timbre
+    // snapped to the beat is a rhythm the sequencer already owns.
+    n(at('rate'), `${label} RATE`, 0.01, 8, 0.01, fixed(2), rate, 'Hz'),
+  ];
+};
+
 
 /**
  * What each synth class offers, grouped the way you would reach for it: what makes
@@ -1470,6 +1570,82 @@ const SYNTH_GROUPS = {
     ] },
     { title: 'Envelope', rows: adsr('envelope', { sustain: false }) },
   ],
+  'TNGR-2': [
+    { key: 'oscA', title: 'Osc A · Wave Table', rows: tngrOsc('oscA', 0.8) },
+    { key: 'oscB', title: 'Osc B · Wave Table', optional: 'tngr2.oscB', onTip: 'Add the second wavetable oscillator', offTip: 'Take Osc B out of the mix', rows: tngrOsc('oscB', 0.3) },
+    { key: 'motion', title: 'Motion', rows: [
+      // An ordinary ADSR. There was a HOLD stage — the position walk sitting at the top
+      // of its travel before falling back — and it went: no preset in the bank used it,
+      // and it was the only hold on any melodic engine, so it was a stage to explain
+      // rather than a shape anyone wanted.
+      envTime('$tngr2.positionEnv.attack', 'ATTACK', 0, secs, 0.01, 's', null, { startRow: true }),
+      envTime('$tngr2.positionEnv.decay', 'DECAY', 0, secs, 1),
+      sustainPct('$tngr2.positionEnv.sustain', 0),
+      envTime('$tngr2.positionEnv.release', 'RELEASE', 0, secs, 0.3),
+      ...tngrCurves('$tngr2.positionEnv'),
+      ...tngrLfo('lfo1', 'LFO', 0.2),
+    ] },
+    { key: 'filter', title: 'Filter', rows: [
+      pick('$tngr2.filter.type', 'TYPE', ['lowpass', 'highpass', 'bandpass', 'notch'], 'lowpass'),
+      // The desk's three slopes, in MRDR-3's position and with its options: -12 is one
+      // filter stage, -24 two in series, -48 four. Resonance stays on the first stage
+      // alone, or a cascade turns its peak into a whistle.
+      pick('$tngr2.filter.slope', 'SLOPE', SLOPES, -24),
+      cutoffHz('$tngr2.filter.cutoff', 'CUTOFF', 9000),
+      resQ('$tngr2.filter.resonance', 2.4),
+      // MRDR-3's order, and MRDR-3's words: the range the envelope moves the cutoff
+      // across belongs beside the cutoff, and KEY FOLLOW after it. Same label, same
+      // bipolar octaves, same taper and tooltip — one control across the two panels
+      // rather than two that resemble each other.
+      //
+      // There is no DRIVE here any more either: the shaper is on the Effects card with a
+      // PLACE pill saying whether it sits before this filter or after it, which is one
+      // control saying one thing instead of two that could disagree.
+      // No `startRow`: the four pots flow as ONE row, the way MRDR-3's filter card reads.
+      n('$tngr2.filterEnv.amount', 'ENV AMOUNT', -ENV_OCT_MAX, ENV_OCT_MAX, 0.1, semis, 0,
+        'oct', null, {
+          origin: 0,
+          scale: ENV_OCT_SCALE,
+          tip: 'How far the envelope moves the cutoff, in octaves — up or down',
+        }),
+      n('$tngr2.filter.keyTrack', 'KEY FOLLOW', 0, 1, 0.01, fixed(2), 0),
+    ] },
+    // MRDR-3's split, exactly: the RANGE on the Filter card, the four times on their own
+    // card beside it. An envelope is scheduling rather than nodes, so there is nothing
+    // for a switch to save and ENV AMOUNT at zero already is one.
+    { key: 'filterenv', title: 'Filter Env', rows: [
+      envTime('$tngr2.filterEnv.attack', 'ATTACK', 0, secs, 0.01, 's', null, { startRow: true }),
+      envTime('$tngr2.filterEnv.decay', 'DECAY', 0, secs, 1),
+      // Live at every DECAY, as on the amp envelope: the cutoff settles at
+      // ENV AMOUNT x SUSTAIN rather than returning all the way to the cutoff.
+      sustainPct('$tngr2.filterEnv.sustain', 0),
+      envTime('$tngr2.filterEnv.release', 'RELEASE', 0, secs, 0.015),
+      ...tngrCurves('$tngr2.filterEnv'),
+    ] },
+    { key: 'amp', title: 'Amp / Voice', rows: [
+      envTime('$tngr2.amp.attack', 'ATTACK', 0, secs, 0.01, 's', null, { startRow: true }),
+      envTime('$tngr2.amp.decay', 'DECAY', 0, secs, 1),
+      sustainPct('$tngr2.amp.sustain', 0.8),
+      envTime('$tngr2.amp.release', 'RELEASE', 0, secs, 0.25),
+      ...tngrCurves('$tngr2.amp'),
+    ] },
+    // The same card MRDR-3 and the drum panel carry, on the same voice-level keys — so
+    // SHAPE, DRIVE and TONE are provably one control across the three panels rather than
+    // three that look alike. PLACE means what it means on MRDR-3: where the shaper sits
+    // relative to the filter. Here that filter is inside the voice, so the shaper is too;
+    // the chorus is a lane effect and is built after the lane's node.
+    { key: 'effects', title: 'Effects', rows: [
+      pick('$shape', 'SHAPE', DRIVE_SHAPES, 'soft'),
+      pick('$drivePlace', 'PLACE', DRIVE_PLACES, 'post', drivenTone, { startRow: true }),
+      n('$drive', 'DRIVE', 0, 1, 0.01, fixed(2), 0),
+      toneRow('$tone.freq', 'TONE'),
+      n('$chorus.mix', 'CHORUS', 0, 1, 0.01, fixed(2), 0, '', null, { startRow: true }),
+      n('$chorus.rate', 'RATE', 0.05, 8, 0.01, fixed(2), CHORUS_DEFAULTS.rate, 'Hz', chorused,
+        { scale: SLOW_LFO_RATE_SCALE }),
+      n('$chorus.depth', 'DEPTH', 0, 1, 0.01, fixed(2), CHORUS_DEFAULTS.depth, '', chorused),
+      n('$chorus.width', 'WIDTH', 0, 1, 0.01, fixed(2), CHORUS_DEFAULTS.width, '', chorused),
+    ] },
+  ],
 };
 
 /**
@@ -1821,6 +1997,13 @@ const SECTION_DEFAULTS = {
   // release, and full sustain. The engine can still be given a real envelope immediately
   // after that, but merely enabling the card must not colour the sound.
   'global.vca': { attack: 0, decay: 0, sustain: 1, release: 0 },
+  // TNGR-2's second oscillator. It needs an entry for the same reason `global.vca` does,
+  // one step worse: with none, switching Osc B on wrote an empty object, and the engine's
+  // fallback level for the SECOND oscillator is zero — so the card appeared, every pot
+  // read a plausible number, and nothing could be heard until LEVEL was touched. A switch
+  // that does nothing visible is a switch that reads as broken. These are the row
+  // defaults, so the card and the sound agree the moment it comes on.
+  'tngr2.oscB': { table: 'basic', position: 0, level: 0.3, unison: 1 },
 };
 
 // ---- optional sections -------------------------------------------------------
@@ -2146,12 +2329,19 @@ const commonRows = (voice = {}) => noteOrder(withParts([
       n('$vibrato.rate', 'VIB RATE', 0.1, 60, 0.1, fixed(1), 5, 'Hz',
         vibratoOn, { scale: SLOW_END_SCALE }),
       // The third of the three, beside the two it belongs with rather than stranded on one
-      // synth's own card. Every NATIVE path measures the onset from its own note-on and so
-      // honours it; the Tone path's LFO lives in the pool and free-runs across notes, with
-      // no note-on for a delay to be measured from — hence the `when`, which greys it there
-      // rather than offering a control that would silently do nothing.
-      envTime('$vibrato.delay', 'VIB DELAY', 0, secs, 0, 's',
-        (v) => vibratoOn(v) && NATIVE_SYNTHS.includes(v?.synth)),
+      // synth's own card — and ONLY on the paths that have one.
+      //
+      // Every native path ramps the vibrato depth up from nothing over this, measured from
+      // its own note-on. The Tone path cannot: its LFO is a `Tone.Vibrato` living in the
+      // pool, free-running across notes, with no note-on for a delay to be measured from
+      // and no fade parameter to write one into. It was greyed there for a while, which is
+      // what this window does with a control that is momentarily inapplicable — but greyed
+      // says "turn something else on and this comes alive", and on a Tone synth nothing
+      // ever will. So it is not built at all: the row is absent from the panel rather than
+      // present and permanently dead.
+      ...(NATIVE_SYNTHS.includes(voice?.synth)
+        ? [envTime('$vibrato.delay', 'VIB DELAY', 0, secs, 0, 's', vibratoOn)]
+        : []),
       // The ensemble control. At zero every unison voice wobbles at one rate in one phase,
       // which is one singer through a chorus however many oscillators are running; wound up,
       // each voice takes its own rate and its own starting phase and the stack becomes a
@@ -2183,7 +2373,7 @@ const commonRows = (voice = {}) => noteOrder(withParts([
   // the one NATIVE path where they work: `_playLayer` keeps a glide origin per
   // (lane, voice) and chokes the note still ringing, which is exactly what the pills
   // promise. See `isPooled`.
-  ...(isPooled(voice) || voice?.synth === 'MRDR-3' ? [
+  ...(isPooled(voice) || voice?.synth === 'MRDR-3' || voice?.synth === 'TNGR-2' ? [
     // KEY MODE, not VOICING: the Tone oscillator cards already spend VOICING on
     // single/fat/am/fm, which is a different question from how many notes sound at once.
     pick('$mode', 'KEY MODE', KEY_MODES, 'poly', null, {
@@ -2312,7 +2502,7 @@ export function panelSpec(voice = {}) {
 
 // ---- the pilot Quick surfaces ----------------------------------------------
 
-const QUICK_SYNTHS = new Set(['MRDR-3', 'drum']);
+const QUICK_SYNTHS = new Set(['MRDR-3', 'TNGR-2', 'drum']);
 /**
  * The presets built for a Quick surface — which are exactly the presets that have a
  * full window behind it. One set, because the two go together: a Quick surface is only
@@ -2770,6 +2960,48 @@ export const quickRows = (voice) => {
     return rows;
   }
 
+  if (voice.synth === 'TNGR-2') {
+    return [
+      n('$trim', 'LEVEL', -6, 6, 0.1, fixed(1), 0, 'dB'),
+      n('$tngr2.quick.position', 'POSITION', 0, 1, 0.01, fixed(2), 0, '', null, {
+        read: (_raw, v) => Number(v.tngr2?.oscA?.position ?? 0),
+        write: (x, v) => {
+          v.tngr2 ||= {}; v.tngr2.oscA ||= {}; v.tngr2.oscB ||= {};
+          const a = Number(v.tngr2.oscA.position ?? 0);
+          const b = Number(v.tngr2.oscB.position ?? a);
+          const delta = Number(x) - a;
+          v.tngr2.oscA.position = Number(x);
+          v.tngr2.oscB.position = Math.min(1, Math.max(0, b + delta));
+          return SKIP_WRITE;
+        },
+      }),
+      n('$tngr2.quick.motion', 'MOTION', 0, 1, 0.01, fixed(2), 0, '', null, {
+        read: (_raw, v) => Math.max(Math.abs(Number(v.tngr2?.oscA?.envAmount ?? 0)), Math.abs(Number(v.tngr2?.oscA?.lfoAmount ?? 0))),
+        write: (x, v) => {
+          v.tngr2 ||= {}; v.tngr2.oscA ||= {};
+          const env = Number(v.tngr2.oscA.envAmount ?? 0);
+          const lfo = Number(v.tngr2.oscA.lfoAmount ?? 0);
+          const current = Math.max(Math.abs(env), Math.abs(lfo));
+          const target = Math.max(0, Math.min(1, Number(x) || 0));
+          if (current < 0.0001) {
+            // An Init patch has no motion to scale. Give the first positive move a
+            // deterministic ENV destination rather than multiplying zero by a ratio.
+            v.tngr2.oscA.envAmount = target;
+            v.tngr2.oscA.lfoAmount = 0;
+          } else {
+            const ratio = target / current;
+            v.tngr2.oscA.envAmount = Math.max(-1, Math.min(1, env * ratio));
+            v.tngr2.oscA.lfoAmount = Math.max(-1, Math.min(1, lfo * ratio));
+          }
+          return SKIP_WRITE;
+        },
+      }),
+      n('$tngr2.filter.cutoff', 'BRIGHTNESS', 20, 18000, 1, hz, 8000, 'Hz'),
+      envTime('$tngr2.amp.attack', 'ATTACK', 0, secs, 0.01),
+      envTime('$tngr2.amp.release', 'RELEASE', 0, secs, 0.25),
+    ];
+  }
+
   return [
     n('$trim', 'LEVEL', -6, 6, 0.1, fixed(1), 0, 'dB'),
     collectiveRow('$quick.attack', 'ATTACK', 'attack', mrdrStagePaths,
@@ -3059,8 +3291,128 @@ export function checkFullLayout(voice = {}) {
   return problems;
 }
 
+// TNGR-2 has two oscillator cards plus motion, filter and amp/voice. Keep this layout
+// deliberately data-driven: panelSpec is the ownership list, and this walk makes every
+// control appear exactly once in the full-window surface.
+function buildTngr2FullLayout(voice, problems) {
+  const { common, groups } = panelSpec(voice);
+  const placed = new Map();
+  const seen = new Set([...common.rows, ...groups.flatMap((g) => g.rows || [])].map((r) => r.path));
+  const take = (group, key) => {
+    const rows = group.rows || [];
+    for (const row of rows) placed.set(row.path, [...(placed.get(row.path) || []), key]);
+    return { key, title: group.title || key, group, rows };
+  };
+  // The three cards whose whole job is a shape get that shape drawn: MOTION and AMP are
+  // envelopes, FILTER is a response curve. Same widgets MRDR-3 uses, bound to these rows.
+  // MOTION's envelope has no release stage — the position walk holds where its decay
+  // leaves it — and the FILTER card has no SLOPE pill, because a native biquad has one
+  // slope. Both are declined cleanly by `byLabel`; see `mixer-synth-full.js`.
+  const GRAPHS = { motion: 'env', filter: 'filter', filterenv: 'env', amp: 'env' };
+  /*
+   * THREE ROWS, NOT EIGHT COLUMNS.
+   *
+   * A card in its own column is as tall as the tallest card in the band and as narrow as
+   * an eighth of the window — which on eight cards meant eight thin strips of mostly air,
+   * each with its four pots stacked in a single file down the bottom. The cards go in
+   * rows instead: wider, so a card's own grid fits more pots across and needs fewer lines
+   * to hold them, and shorter, because a band is only as tall as its own contents.
+   *
+   * Grouped by what you reach for together — the two oscillators, then what moves and
+   * shapes them, then how they come out and how the note behaves.
+   */
+  const byKey = new Map(groups.map((group) => [group.key || group.title, group]));
+  // Graphs at the default height — the one MRDR-3 draws at. Bigger was tried and is too
+  // much: a curve twice the height of the pots under it stops being a readout of the
+  // card and starts being the card.
+  // The two oscillator cards lay their LEVEL along the top as a fader, the way MRDR-3's
+  // layers do — the same pot, lying down, with the width to be aimed.
+  const FADERS = { oscA: 'LEVEL', oscB: 'LEVEL' };
+  // The three envelope cards put their stage curves behind a door, as MRDR-3 does.
+  const CURVED = new Set(['motion', 'filterenv', 'amp']);
+  // A COLUMN IS AS WIDE AS THE ROW IT HAS TO FIT, AND NO WIDER.
+  //
+  // The band's track is ONE POT WIDE and fixed, and a cell spans as many tracks as its
+  // widest row has knobs. So every pot on the window sits on the same pitch whichever card
+  // it is in, and the window is the sum of those tracks and nothing else.
+  //
+  // FOUR ACROSS EVERYWHERE. The oscillators used to want five, which made them a column
+  // wider than anything else; broken into three rows — tuning, stack, movement — their
+  // longest line is four as well, which is what an ADSR is. Four equal columns, and the
+  // window came in by a further pot.
+  const potsFor = () => 4;
+  const cell = (key, group) => ({
+    kind: 'card',
+    span: potsFor(),
+    graph: GRAPHS[key] || null,
+    fader: FADERS[key] || null,
+    curves: CURVED.has(key),
+    // Card WIDTH, in pots to a row: the oscillators take five, so INTERVAL, DETUNE,
+    // POSITION and the two MOVE amounts read as one line; everything else takes four,
+    // which is what an ADSR is. A card that fits its own longest row exactly is one
+    // that never wraps a control onto a line of its own.
+    // The oscillators bottom-align their grid like every other card on the band, so their
+    // last pot row lands on the same line as the filter's CUTOFF and the envelopes' ATTACK.
+    // They were hung from the top for a while, back when they were a full-height column
+    // and bottom-aligning banked the whole of that spare height in one gap under the
+    // fader. Three pot rows instead of five, in a card half the height, and the slack is
+    // now the breathing room the fader wanted anyway.
+    card: { ...take(group, key), pots: potsFor() },
+  });
+  // SETTINGS is titled from FULL_TITLES like every other window card, so it says the same
+  // word here as it does on MRDR-3 rather than the strip's 'Note' — this card is
+  // everything about how the preset is PLAYED.
+  const settings = {
+    kind: 'card',
+    span: 4,
+    card: { ...take(common, 'note'), title: FULL_TITLES.note, pots: 4 },
+  };
+  /*
+   * ONE ROW OF FOUR COLUMNS, EVERY ONE OF THEM A PAIR.
+   *
+   * The oscillators used to take a full-height column each, on the belief that they would
+   * fill it. Measured, they do not: an oscillator card is about the same height as one
+   * envelope card, so a column of its own was a card and an equal amount of air, and the
+   * band was as tall as the PAIRS beside it either way.
+   *
+   * So they pair with each other, like everything else: four columns, each a thing and
+   * the thing that shapes it. The columns are NOT equal and the band does NOT fill the
+   * window — see `potsFor` and `.sfband-tngr2`. Sixteen fixed tracks of one pot each, four
+   * to a column; the band takes the width it needs and gives the remainder of the screen
+   * back.
+   */
+  const stack = (...keys) => ({
+    kind: 'stack',
+    span: potsFor(),
+    cards: keys.map((key) => (key === 'note' ? settings : cell(key, byKey.get(key)))),
+  });
+  const cells = [
+    stack('oscA', 'oscB'),
+    // FILTER over MOTION, so the filter and its envelope sit side by side on the top row
+    // and are read as the one thing they are. What moves the table is underneath it, the
+    // amp envelope under the filter's, and how the preset is played beside what is done
+    // to it after.
+    stack('filter', 'motion'),
+    stack('filterenv', 'amp'),
+    stack('note', 'effects'),
+  ];
+  // ONE POT WIDE, and the number lives here rather than in the stylesheet because the
+  // keyboard under the band is sized from it too — see `--sf-boardw` in `createSynthFull`.
+  const bands = [{
+    name: 'tngr2', track: 70, cols: cells.reduce((n, c) => n + c.span, 0), cells,
+  }];
+  for (const path of seen) {
+    if (!placed.has(path)) problems.push(`UNPLACED ${path}`);
+  }
+  for (const [path, where] of placed) {
+    if (where.length > 1) problems.push(`PLACED ${where.length}× ${path}`);
+  }
+  return { synth: 'TNGR-2', total: seen.size, bands };
+}
+
 function buildFullLayout(voice, layer, problems) {
   if (voice.kind === 'drum') return buildDrumFullLayout(voice, problems);
+  if (voice.synth === 'TNGR-2') return buildTngr2FullLayout(voice, problems);
   if (voice.synth !== 'MRDR-3') return null;
   const { common, groups } = panelSpec(voice);
   const byKey = new Map(groups.map((g) => [g.key, g]));
@@ -3882,7 +4234,68 @@ export function createVoiceEditor({
     return seg;
   };
 
+  /**
+   * A pick with too many options to be pills: a dropdown instead.
+   *
+   * Sixteen wavetable families laid out as pills is five wrapped lines of shouting
+   * capitals — a third of the card spent saying what it could be, to show one thing it
+   * IS. A closed dropdown says the current value in one line and puts the rest a click
+   * away, which is the right trade the moment a list stops being scannable at a glance.
+   *
+   * Built on `details`/`summary` so it opens, closes and takes the keyboard without any
+   * of that being written here, and styled as the preset picker in the window header is —
+   * one dropdown in this desk, not two that resemble each other.
+   */
+  const dropRow = (row, guards = rowGuards, onChange = null) => {
+    const cur = row.read ? row.read(state.voice) : (getAt(state.voice, row.path) ?? row.def);
+    const wrap = document.createElement('div');
+    wrap.className = 'row segrow vedroprow'
+      + (row.wide === false ? '' : ' segwide')
+      + (row.startRow ? ' rowstart' : '');
+    if (row.tip) wrap.title = row.tip;
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = row.label;
+    const drop = document.createElement('details');
+    drop.className = 'vedrop';
+    const summary = document.createElement('summary');
+    const label = (option) => (row.optionLabel ? row.optionLabel(option) : String(option));
+    summary.textContent = label(cur);
+    drop.append(summary);
+    const menu = document.createElement('div');
+    menu.className = 'vedropmenu';
+    for (const option of row.options) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'vedropoption' + (option === cur ? ' on' : '');
+      item.textContent = label(option);
+      item.onclick = () => {
+        drop.open = false;
+        if (option === cur) return;
+        kit.pickWrite(row, option);
+        // The whole panel repaints on a pick, as it does for pills: a table change can
+        // grey other rows out. See `pickWrite`.
+        onChange?.();
+      };
+      menu.append(item);
+    }
+    drop.append(menu);
+    // Click anywhere else closes it — a details left open under a card that has since
+    // repainted is a menu floating over controls it no longer belongs to.
+    drop.addEventListener('toggle', () => {
+      if (!drop.open) return;
+      const shut = (e) => {
+        if (drop.contains(e.target)) return;
+        drop.open = false;
+        document.removeEventListener('pointerdown', shut, true);
+      };
+      document.addEventListener('pointerdown', shut, true);
+    });
+    wrap.append(k, drop);
+    if (row.when) guards.push(wrap, row.when);
+    return { wrap, row };
+  };
+
   const pickRow = (row, guards = rowGuards, onChange = null) => {
+    if (row.dropdown) return dropRow(row, guards, onChange);
     // `read`/`write` let two controls share one stored property. The oscillator needs
     // it: Tone spells voicing as a prefix on the type (`fatsawtooth`), so SHAPE and
     // VOICING are two pills over one string, and each has to change its own half
@@ -3951,6 +4364,33 @@ export function createVoiceEditor({
   function syncRows() {
     if (!state) return;
     for (const set of guardSets) set.sync();
+  }
+
+  // Every pot the strip is currently drawing, so the other surface can move them.
+  const stripPots = [];
+
+  /**
+   * Re-read the strip's pots from the voice.
+   *
+   * The two surfaces share one `state.voice` and one write path, but not one set of
+   * needles: a knob only moves when something tells it to, and the full window tells its
+   * own. So an edit made in the window left the strip showing the values it was built
+   * with — and because the Quick surface is macros OVER the advanced values (BRIGHTNESS
+   * IS the filter cutoff), the whole panel read as though it were still on the preset you
+   * opened rather than the one you are editing.
+   *
+   * Display only: this never writes, so there is no loop between the surfaces. A derived
+   * row is re-read through its own `read`, which is what makes a macro follow the four
+   * advanced controls underneath it.
+   */
+  function syncValues() {
+    if (!state) return;
+    for (const { row, set } of stripPots) {
+      if (!set) continue;
+      const raw = getAt(state.voice, row.path);
+      const shown = row.read ? row.read(raw, state.voice) : raw;
+      set(shown === undefined ? row.def : shown);
+    }
   }
 
   /**
@@ -4645,6 +5085,11 @@ export function createVoiceEditor({
   function build({ keepScroll = true } = {}) {
     const wasAt = keepScroll ? el.querySelector('.verack')?.scrollTop || 0 : 0;
     el.textContent = '';
+    // The strip's own pots, by the row that draws them. Collected because the OTHER
+    // surface can move the same value: the full window writes straight into
+    // `state.voice`, and without this the strip keeps drawing what it drew — which reads
+    // as the panel being stuck on the preset you opened. See `syncValues`.
+    stripPots.length = 0;
     foot = null;
     if (state?.blank) {
       const head = document.createElement('div'); head.className = 'vehead';
@@ -4688,19 +5133,25 @@ export function createVoiceEditor({
     tag.className = 'vetag';
     const libraryOwner = !!state.librarySource || !!state.libraryNew
       || isLibraryPreset(v) || v.songOrigin === 'library';
-    tag.textContent = `${v.category || ''}${v.category ? ' ' : ''}`
+    // WHICH CHANNEL, back on the caption. It was dropped while the panel lived docked
+    // against its strip — the strip's own head was six pixels away and said it — and the
+    // panel is a free window again, so the only thing on it naming the channel is this
+    // line. Without it a desk with eight tracks on one preset family gives you a window
+    // called "Round Bass" and no way to tell which of them you are about to change.
+    tag.textContent = `${state.laneLabel ? `${state.laneLabel} · ` : ''}`
+      + `${v.category || ''}${v.category ? ' ' : ''}`
       + `(${libraryOwner ? 'Library' : 'User'})`;
     head.append(title, tag);
 
     if (v.kind === 'tone') {
-      // Against a channel strip the class is a FACT, not a control.
+      // Opened from a CHANNEL the class is a FACT, not a control.
       //
       // Changing it throws every card below the head away and seeds that class's
       // defaults — a different sound in the lane, from a dropdown sitting one row under
       // the preset's name. That is a library act: pick the construction when you build
-      // the preset. On the desk the strip is playing this preset in this song, and the
-      // panel there is for shaping what is already there. So beside a strip the class
-      // reads as the badge the drum kind already wears.
+      // the preset. On the desk the channel is playing this preset in this song, and the
+      // panel there is for shaping what is already there. So on a lane the class reads
+      // as the badge the drum kind already wears.
       if (state.laneKey) {
         const kind = document.createElement('span');
         kind.className = 'vesynth veclass';
@@ -4737,11 +5188,10 @@ export function createVoiceEditor({
       // The way into the full window, on the SYNTH row rather than in the header.
       //
       // The header is `display: block` with two centred lines and an absolutely
-      // positioned ✕ in its one free corner — and beside a strip both lines are
-      // `visibility: hidden` under the shared `.voicepairhead`, so anything put there is
-      // either invisible or fighting the close button. `.vesub` is a real flex row, it
-      // renders for every `kind: 'tone'` preset, and it is hidden in none of the three
-      // homes. It is also already the row that says what builds this sound.
+      // positioned ✕ in its one free corner, so anything put there is either squeezed
+      // between the lines or fighting the close button. `.vesub` is a real flex row, it
+      // renders for every `kind: 'tone'` preset, and it is hidden in neither home. It is
+      // also already the row that says what builds this sound.
       if (createFull && isQuickVoice(v) && fullLayout(v)) {
         const open = document.createElement('button');
         open.className = 'devlink veopen';
@@ -4768,34 +5218,24 @@ export function createVoiceEditor({
     // pinned to a strip's width, and the cards below already say what the sound is made
     // of. The SYNTH row survives only where it is a CONTROL: the class dropdown.
 
-    // No lane badge. It named the strip this was opened from, which was worth saying
-    // when the panel floated over the desk — and is one label too many now that it is
-    // sitting against that strip with its header lined up against it.
-
     // Closed, or folded away — two different acts, so two different marks.
     //
-    // DOCKED, the panel does not go anywhere. Beside a strip it collapses back into the
-    // strip it belongs to, which reopens it from the same `»` on its header; in the
-    // library it folds to a rail and comes back on the preset it was already on. A ✕ in
-    // either place is the button lying about what it does, and a ✕ is something you
-    // hesitate over when you have work in the panel behind it. A chevron pointing the
-    // way it collapses says put-away, and says which way.
+    // ONLY THE LIBRARY'S DOCK FOLDS. There it collapses to a rail and comes back on the
+    // preset it was already on, so a ✕ would be the button lying about what it does —
+    // and a ✕ is something you hesitate over with work in the panel behind it. A chevron
+    // pointing the way it collapses says put-away, and says which way.
     //
-    // A lane key means it is sitting against that lane's strip — see placeVoiceEditor,
-    // which docks it there or dismisses it, so there is no third state. `vedocked` is
-    // the library's dock. Only the floating window, which has neither, actually closes.
+    // A channel's editor used to fold too, back into the strip it was docked against,
+    // with the `»` on that strip's header to bring it out again. Both are gone: it is a
+    // free window over the desk, nothing on the strip reopens it, and the honest mark
+    // for a window with no home to return to is the desk's standard ✕.
     const shut = document.createElement('button');
-    const folds = el.classList.contains('vedocked') || !!state.laneKey;
+    const folds = el.classList.contains('vedocked');
     shut.className = folds ? 'veclose vefold' : 'veclose popclose';
-    // `«` — the mirror of the `»` that opened it. One pair, one meaning: this mark
-    // reveals the editor, that one puts it away. Closing outright is a different act
-    // and keeps the desk's standard ✕.
     if (folds) shut.append(foldIcon('left')); else shut.textContent = '✕';
-    shut.title = state.laneKey
-      ? 'Put the editor away — the » on the strip’s header brings it back'
-      : folds
-        ? 'Hide the editor — the rail down the side brings it back'
-        : 'Close the editor — unsaved changes stay on the sound until you revert';
+    shut.title = folds
+      ? 'Hide the editor — the rail down the side brings it back'
+      : 'Close the editor — unsaved changes stay on the sound until you revert';
     shut.onclick = () => closePanel();
     head.append(shut);
     el.append(head);
@@ -4822,7 +5262,7 @@ export function createVoiceEditor({
     }
     for (const g of surface.groups) {
       if (g.when && !g.when(v)) continue;
-      rack.append(groupCard(g));
+      rack.append(groupCard(g, { onRow: (h) => { if (h.set) stripPots.push(h); } }));
     }
     syncRows();
     el.append(rack);
@@ -5807,6 +6247,7 @@ export function createVoiceEditor({
       row.after?.(x, state.voice, raw);
       touched();
       syncRows();
+      syncValues();
     },
     /** A pick's write, which takes its arguments the other way round — see `buildSeg`. */
     pickWrite: (row, option) => {
@@ -5815,6 +6256,7 @@ export function createVoiceEditor({
       touched();
       if (row.path?.endsWith('.vca')) onSectionChange(row.path);
       syncRows();
+      syncValues();
       undoHistory.end();
     },
     /**
@@ -5833,6 +6275,7 @@ export function createVoiceEditor({
       });
       touched();
       syncRows();
+      syncValues();
     },
 
     // ---- widgets — the SAME builders the strip draws -------------------------
@@ -5841,7 +6284,7 @@ export function createVoiceEditor({
     // was pressed describes a different number of hits. It takes the repaint that suits
     // the surface asking — the strip rebuilds its panel, the window's door redraws only
     // the popover body, so pressing + does not shut the panel it was pressed in.
-    knob, numRow, pickRow, trioRow, groupCard, tapsGroup, short: SHORT,
+    knob, numRow, pickRow, dropRow, trioRow, groupCard, tapsGroup, short: SHORT,
     tapCount: () => tapCount(state?.voice || {}),
     tapsDoorLabel: () => tapsDoorLabel(state?.voice || {}),
     guards: guardSet,

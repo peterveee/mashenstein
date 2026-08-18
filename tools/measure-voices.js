@@ -50,6 +50,18 @@ import { writeSongFile } from './lib/song-file.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FILE = join(ROOT, 'src/data/voices.js');
 const DRY = process.argv.includes('--dry');
+/*
+ * `--fill`: measure everything and report it, but only WRITE the presets that have no
+ * measurement yet.
+ *
+ * A preset's level is what `voiceGain` divides by, so rewriting one changes how loud it
+ * plays in every song that uses it. A full re-measure is therefore a mix change, and the
+ * right thing when the presets have moved — but the wrong thing when what is actually
+ * wanted is to fill in presets that were added without ever being measured, and which
+ * currently carry the placeholder `level: 0` (silent) and `peak: 1`. This mode does only
+ * that, so a gap can be closed without touching a balance somebody has already set by ear.
+ */
+const FILL = process.argv.includes('--fill');
 
 // Noise and KLNG8 presets are measured too: they are built from native nodes
 // rather than a Tone class, but their level is derived exactly the same way.
@@ -197,8 +209,29 @@ if (DRY) {
 } else {
   // Rewritten in place. The blocks are machine-owned and say so; everything around
   // them is hand-written and is not touched.
-  const block = table('PEAKS', peaks);
-  const lblock = table('LEVELS', levels, 6);
+  // In fill mode the stored number wins wherever there IS one — see FILL above.
+  const keep = (measured, stored) => {
+    if (!FILL) return measured;
+    const out = {};
+    for (const [id, value] of Object.entries(measured)) {
+      const was = stored[id];
+      out[id] = Number(was) > 0 && Number(was) !== 1 ? Number(was) : value;
+    }
+    return out;
+  };
+  const storedLevels = {};
+  const storedPeaks = {};
+  for (const v of tone) {
+    if (v.level !== undefined) storedLevels[v.id] = v.level;
+    if (v.peak !== undefined) storedPeaks[v.id] = v.peak;
+  }
+  const block = table('PEAKS', keep(peaks, storedPeaks));
+  const lblock = table('LEVELS', keep(levels, storedLevels), 6);
+  if (FILL) {
+    const filled = Object.keys(levels).filter((id) => !(Number(storedLevels[id]) > 0));
+    console.log(`\n--fill: writing ${filled.length} preset(s) that had no measurement: `
+      + `${filled.join(', ') || 'none'}`);
+  }
 
   // A lane target is two numbers, so it gets a line each rather than a wrapped run.
   const tblock = `const LANE_TARGETS = {\n${Object.entries(targets).map(

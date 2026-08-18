@@ -285,11 +285,27 @@ const legacyActivity = (bank, repeat = 1, cellsPerBar = 4) => {
   });
 };
 
+// `songBlocks` deliberately retains the bank's shared arrays and `sections` table on
+// every shallowly merged block, exactly as the legacy scheduler did. JSON-stringifying
+// that shape expands the whole section table once PER block: a 145-section imported
+// score becomes more than 380 MB for one pass and exceeds V8's maximum string length at
+// repeat 2. Compare the shallow records the contract actually promises instead. This is
+// stricter about the old sharing behaviour too — an accidental deep clone no longer
+// looks equivalent merely because its serialized values happen to match.
+const sameBlocks = (actual, expected) => actual.length === expected.length
+  && actual.every((block, i) => {
+    const other = expected[i];
+    const keys = Object.keys(block);
+    const otherKeys = Object.keys(other);
+    return keys.length === otherKeys.length
+      && keys.every((key, k) => key === otherKeys[k] && Object.is(block[key], other[key]));
+  });
+
 let blocksSame = 0, activitySame = 0, echoSame = 0, barsSame = 0;
 for (const t of legacyTracks) {
   const bank = t.bank;
   for (const repeat of [1, 2]) {
-    if (json(songBlocks(bank, repeat)) === json(legacyBlocks(bank, repeat))) blocksSame++;
+    if (sameBlocks(songBlocks(bank, repeat), legacyBlocks(bank, repeat))) blocksSame++;
   }
   if (json(laneActivity(bank, 1, 4)) === json(legacyActivity(bank, 1, 4))) activitySame++;
   // The one cell size the desk uses for a long song, as well as the default.

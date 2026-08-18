@@ -60,27 +60,34 @@ export function envShape({ rows, read, w, h }) {
   // Time → a fraction of this stage's span. `row.max` is the pot's own ceiling, so a
   // stage whose range is changed here follows without this file being told.
   const at = (row) => Math.sqrt(clamp((read(row) ?? row.def) / row.max, 0, 1));
+  // An envelope with no RELEASE row is a three-stage envelope, not a four-stage one
+  // missing a control: TNGR-2's POSITION walk holds where its decay leaves it for as
+  // long as the note lasts. The release span goes to the sustain leg so the curve still
+  // fills its box, and the third handle is not drawn.
+  const held = !rows.release;
   const A = ENV_SPANS.attack * w;
   const D = ENV_SPANS.decay * w;
-  const S = ENV_SPANS.hold * w;
-  const R = ENV_SPANS.release * w;
+  const S = (ENV_SPANS.hold + (held ? ENV_SPANS.release : 0)) * w;
+  const R = held ? 0 : ENV_SPANS.release * w;
   const sus = clamp((read(rows.sustain) ?? rows.sustain.def) / rows.sustain.max, 0, 1);
   const xa = A * at(rows.attack);
   const xd = xa + D * at(rows.decay);
   const xs = xd + S;
-  const xr = xs + R * at(rows.release);
+  const xr = held ? xs : xs + R * at(rows.release);
   const path = `M0,${y(0).toFixed(1)} L${xa.toFixed(1)},${y(1).toFixed(1)}`
     + ` L${xd.toFixed(1)},${y(sus).toFixed(1)} L${xs.toFixed(1)},${y(sus).toFixed(1)}`
-    + ` L${xr.toFixed(1)},${y(0).toFixed(1)}`;
+    + (held ? '' : ` L${xr.toFixed(1)},${y(0).toFixed(1)}`);
+  const endY = held ? y(sus) : y(0);
   return {
     path,
     fill: `${path} L${xr.toFixed(1)},${bot} L0,${bot} Z`,
     grid: `M0,${y(0.5).toFixed(1)} H${w} M${A.toFixed(1)},0 V${h}`
-      + ` M${(A + D).toFixed(1)},0 V${h} M${(A + D + S).toFixed(1)},0 V${h}`,
+      + ` M${(A + D).toFixed(1)},0 V${h}`
+      + (held ? '' : ` M${(A + D + S).toFixed(1)},0 V${h}`),
     handles: [
       { key: 'attack', x: xa, y: y(1) },
       { key: 'decay', x: xd, y: y(sus) },
-      { key: 'release', x: xr, y: y(0) },
+      ...(held ? [] : [{ key: 'release', x: xr, y: endY }]),
     ],
     spans: { A, D, S, R, xa, xd, xs, top, bot },
   };
@@ -97,12 +104,16 @@ export function envShape({ rows, read, w, h }) {
 export function envelopeGraph({ rows, read, writeMany, onLive, onStart, onEnd, h = 94 }) {
   const box = document.createElement('div');
   box.className = 'sfgraph';
+  // The box is exactly as tall as the drawing. The shape is computed against `h`, so a
+  // container fixed at some other height clips the bottom of the curve — and a clipped
+  // envelope reads as one that stops early rather than one that has been cut off.
+  box.style.height = `${h}px`;
   const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
   const grid = el('path', { class: 'sfgrid', d: '' });
   const fill = el('path', { class: 'sffill', d: '' });
   const line = el('path', { class: 'sfline', d: '' });
   svg.append(grid, fill, line);
-  const dots = [0, 1, 2].map(() => {
+  const dots = (rows.release ? [0, 1, 2] : [0, 1]).map(() => {
     const c = el('circle', { class: 'sfhandle', r: 4.5, cx: -10, cy: -10 });
     svg.append(c);
     return c;
@@ -142,7 +153,7 @@ export function envelopeGraph({ rows, read, writeMany, onLive, onStart, onEnd, h
         const f = clamp((bot - py) / (bot - top), 0, 1);
         pairs.push([rows.sustain, quantise(rows.sustain, f * rows.sustain.max)]);
       }
-      if (i === 2) pairs.push([rows.release, timeAt((px - xs) / R, rows.release)]);
+      if (i === 2 && rows.release) pairs.push([rows.release, timeAt((px - xs) / R, rows.release)]);
       writeMany(pairs);
       onLive?.(pairs);
       draw();
@@ -199,6 +210,7 @@ export function magnitudeDb(f, { cutoff, Q, type, slope }) {
 export function responseGraph({ rows, read, writeMany, onLive, onStart, onEnd, h = 94 }) {
   const box = document.createElement('div');
   box.className = 'sfgraph';
+  box.style.height = `${h}px`;
   const svg = el('svg', { width: '100%', height: h, preserveAspectRatio: 'none' });
   const grid = el('path', { class: 'sfgrid', d: '' });
   const fill = el('path', { class: 'sffill', d: '' });
@@ -209,10 +221,13 @@ export function responseGraph({ rows, read, writeMany, onLive, onStart, onEnd, h
   box.title = 'Drag to move the cutoff and its resonance together';
 
   const yd = (db) => (h - 4) * (1 - (db + 42) / 66) + 2;
+  // A log axis needs a non-zero bottom, and a RESONANCE row is allowed to start at zero.
+  // Its own step is the smallest number that row can mean, so that is the floor.
+  const qMin = Math.max(rows.Q.min, rows.Q.step || 0.01);
   // Resonance rides a log axis up the box, the same shape its pot's taper has.
-  const qy = (q) => (h - 8) * (1 - Math.log(clamp(q, rows.Q.min, rows.Q.max) / rows.Q.min)
-    / Math.log(rows.Q.max / rows.Q.min)) + 4;
-  const qAt = (y) => rows.Q.min * ((rows.Q.max / rows.Q.min)
+  const qy = (q) => (h - 8) * (1 - Math.log(clamp(q, qMin, rows.Q.max) / qMin)
+    / Math.log(rows.Q.max / qMin)) + 4;
+  const qAt = (y) => qMin * ((rows.Q.max / qMin)
     ** clamp(1 - (y - 4) / (h - 8), 0, 1));
 
   let w = 200;
@@ -222,7 +237,9 @@ export function responseGraph({ rows, read, writeMany, onLive, onStart, onEnd, h
       cutoff: read(rows.freq) ?? rows.freq.def,
       Q: read(rows.Q) ?? rows.Q.def,
       type: read(rows.type) ?? rows.type.def,
-      slope: Number(read(rows.slope) ?? rows.slope.def),
+      // No SLOPE row means the card has no slope to choose: one native biquad stage,
+      // which is -12 dB per octave.
+      slope: rows.slope ? Number(read(rows.slope) ?? rows.slope.def) : -12,
     };
     let d = '';
     for (let i = 0; i <= 60; i++) {

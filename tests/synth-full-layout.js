@@ -216,6 +216,96 @@ try {
 }
 if (!failed) ok('KLNG8 builds one complete band of six narrow cards');
 
+// ---- TNGR-2 -----------------------------------------------------------------
+//
+// The wavetable synth was in the full window with no test behind it. `pot-coverage` only
+// sees its ROOT key — every one of its sixty-odd paths counts as `tngr2` there — so this
+// is the only place a control that went missing, or got placed twice, would be caught.
+const TNGR = { synth: 'TNGR-2' };
+const tngrProblems = checkFullLayout(TNGR);
+if (tngrProblems.length) {
+  for (const p of tngrProblems) fail(`TNGR-2: ${p}`);
+} else {
+  const { common, groups } = panelSpec(TNGR);
+  const rows = common.rows.length + groups.reduce((n, g) => n + (g.rows || []).length, 0);
+  ok(`TNGR-2 — ${rows} controls, every one placed exactly once`);
+}
+try {
+  const Lt = fullLayout(TNGR);
+  for (const b of Lt.bands) {
+    const span = b.cells.reduce((n, c) => n + (c.span || 1), 0);
+    if (span !== b.cols) fail(`TNGR-2: band '${b.name}' spans ${span}, not ${b.cols}`);
+  }
+  // One row of six columns, two of which hold a STACKED pair — a card alone in a column
+  // is as tall as the tallest card beside it, so the short ones pair up rather than
+  // standing in their own air. See `buildTngr2FullLayout`.
+  const cells = Lt.bands.flatMap((b) => b.cells);
+  const cards = cells.flatMap((c) => (c.kind === 'stack' ? c.cards : [c]));
+  if (Lt.bands.length !== 1) fail(`TNGR-2: expected 1 row, got ${Lt.bands.length}`);
+  if (cells.length !== 4) fail(`TNGR-2: expected 4 columns, got ${cells.length}`);
+  // The band's track is one POT wide, so a cell spans as many tracks as its widest row
+  // has knobs and every pot on the window sits on the same pitch. See `potsFor`.
+  const spans = cells.map((c) => c.span);
+  if (JSON.stringify(spans) !== JSON.stringify([4, 4, 4, 4])) {
+    fail(`TNGR-2: column widths are ${spans.join('/')} tracks, not 4/4/4/4`);
+  }
+  if (Lt.bands[0].cols !== 16) fail(`TNGR-2: band is ${Lt.bands[0].cols} tracks, not 16`);
+  for (const [i, c] of cells.entries()) {
+    if (c.span !== c.cards[0].card.pots) {
+      fail(`TNGR-2: column ${i} spans ${c.span} tracks but its cards put ${c.cards[0].card.pots} pots on a line`);
+    }
+  }
+  // FILTER and FILTER ENV read as one thing, so they sit side by side on the top row.
+  const topRow = cells.map((c) => c.cards[0].card.key);
+  if (JSON.stringify(topRow) !== JSON.stringify(['oscA', 'filter', 'filterenv', 'note'])) {
+    fail(`TNGR-2: the top row is ${topRow.join(', ')}, not oscA/filter/filterenv/note`);
+  }
+  if (cards.length !== 8) fail(`TNGR-2: expected 8 cards, got ${cards.length}`);
+  // Every column is a PAIR — the oscillators included. An oscillator card is about the
+  // height of one envelope card, so a column of its own was a card and an equal amount of
+  // air, and the band was as tall as the pairs beside it either way.
+  if (cells.filter((c) => c.kind === 'stack').length !== 4) {
+    fail('TNGR-2: expected every column to be a stacked pair');
+  }
+  if (cells.filter((c) => c.kind === 'stack').some((c) => c.cards.length !== 2)) {
+    fail('TNGR-2: a stacked column does not hold exactly two cards');
+  }
+  // The four cards whose subject is a SHAPE draw it. Motion, Filter Env and Amp are
+  // envelopes, Filter is a response curve; the oscillators, Settings and Effects are not.
+  // Sorted, because WHICH cards carry a graph is the contract here and where they sit in
+  // the band is the layout's business — see the top-row check above for that.
+  const graphed = cards.filter((c) => c.graph).map((c) => `${c.card?.key}:${c.graph}`).sort();
+  if (!isDeepStrictEqual(graphed, ['amp:env', 'filter:filter', 'filterenv:env', 'motion:env'])) {
+    fail(`TNGR-2: graphs are on ${JSON.stringify(graphed)}, not motion/filter/filterenv/amp`);
+  }
+  // Graphs at the shared default height, which is what MRDR-3 draws at — a TNGR-2 graph
+  // that asked for its own size would be the same control at two sizes across the panels.
+  const odd = cards.filter((c) => c.graph && c.graphHeight);
+  if (odd.length) {
+    fail(`TNGR-2: ${odd.map((c) => c.card.key).join(', ')} ask for a non-default graph height`);
+  }
+} catch (err) {
+  fail(`TNGR-2: fullLayout threw — ${err.message}`);
+}
+
+// Every envelope on the panel begins a fresh row. The strip grid is four columns and a
+// pick spans two, so without `startRow` an ADSR block starts wherever the control above
+// it happened to stop — the filter envelope used to begin in column 2 and wrap, which
+// reads as four unrelated pots rather than as one envelope.
+for (const group of panelSpec(TNGR).groups) {
+  const rows = group.rows || [];
+  const heads = rows.filter((r) => r.label === 'ATTACK');
+  for (const head of heads) {
+    if (!head.startRow) fail(`TNGR-2: ${group.key}'s ATTACK does not start a new row`);
+  }
+  // A stage that follows its own ATTACK must NOT start one, or the block breaks up again.
+  for (const label of ['DECAY', 'SUSTAIN', 'RELEASE']) {
+    const row = rows.find((r) => r.label === label);
+    if (row?.startRow) fail(`TNGR-2: ${group.key}'s ${label} breaks its envelope onto a new row`);
+  }
+}
+if (!failed) ok('TNGR-2 builds four paired columns of eight cards with its envelopes on their own rows');
+
 // Quick is data too: its collective rows must preserve envelope ratios and its Taps row
 // must never flatten authored tap spacing just to change the count.
 const byLabel = (rows, label) => rows.find((r) => r.label === label);
