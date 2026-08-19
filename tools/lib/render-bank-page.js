@@ -72,7 +72,7 @@ function yieldToEventLoop() {
 export async function renderBankPage({
   bank, blocks, steps: stepsIn, loop, tail, seed, sampleRate, mix, trackId, arrangement, warp,
   upfront = false, rawLane = false, startStep = null, prerollSeconds = 0,
-  fineLaneSkip = true, rearrangement,
+  fineLaneSkip = true, rearrangement, mrdrQuality = 'full', lazyStrips = false,
 }, { onProgress } = {}) {
   // The bank arrives carrying the tempo it is PLAYED at — resolved by the caller,
   // where a track id still means something, so a song the desk has retuned renders at
@@ -99,8 +99,14 @@ export async function renderBankPage({
   // Off only for the A/B that proves the half-step skips change nothing; every
   // ordinary render leaves this at its default.
   Audio.setFineLaneSkip?.(fineLaneSkip);
+  // A bounce is Full unless something deliberately asks otherwise, which is what the
+  // default here says: the only caller that passes anything else is the A/B that exists
+  // to let MRDR-3's Performance mode be judged by ear against the sound it replaces.
+  Audio.setMrdrQuality?.(mrdrQuality);
   Audio.setCaptureEnabled(false);   // the rewind recorder is realtime-only
   Audio.setNoiseSeed(seed);
+  // Before ensure(), which is where the mixer and its strips are built.
+  Audio.setLazyStrips?.(lazyStrips);
   Audio.ensure(ctx);
   if (rawLane) Audio.setVolumes({ master: 1, music: 1, sfx: 1 });
 

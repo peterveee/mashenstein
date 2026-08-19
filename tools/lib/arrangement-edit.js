@@ -391,6 +391,129 @@ export function normaliseArrangementResolution(bank, entry) {
 }
 
 /**
+ * Blank the half of every section the plan never reads.
+ *
+ * Not to be confused with `compactSections` further down, which runs inside `entryOf` on
+ * every edit and drops whole sections and whole keys. This works INSIDE a lane, on the
+ * bar the plan cannot reach, and runs only on the way to the file.
+ *
+ * A section is TWO BARS wide — the importer slices that way and the lane format has no
+ * other shape — but the desk edits ONE bar at a time. `forkBar` answers a per-bar edit
+ * with a delta over what the bar already played, and the first write into any lane of
+ * that fork has to materialise the whole two-bar array, copying the bar nobody asked
+ * about along with the one that changed. Nothing ever reads that copy again: the fork is
+ * named by a single `{ s, bars: 1, from }` entry, and `planToOrder` can never fold the
+ * pair back together once the two bars have different `sec`, so the entry stays one bar
+ * wide for good.
+ *
+ * The residue is not merely wasted bytes, which is why this runs beside
+ * `normaliseArrangementResolution` rather than in some tidy-up nobody calls. That
+ * function refuses to demote a song while any lane holds a note off the coarser grid,
+ * and it cannot tell a note the song plays from a note stranded in an unreachable bar —
+ * so ONE dead bar pins the whole song fine, and every scheduler tick that costs, for as
+ * long as the file exists. Compact first, then narrow, and the narrowing sees the music.
+ *
+ * Lengths are kept per SLOT rather than per half. `bassLen[i]` is read only where
+ * `bass[i]` holds a note, so a length whose note has moved away — which is what a
+ * quantise leaves behind whenever a fork overrides a note lane and not the length lane
+ * beside it — is inert data that still counts as "written on an odd slot".
+ *
+ * Deliberately NOT run on a live draft, for the reason `normaliseArrangementResolution`
+ * gives about itself: a draft round-trips through `entryOf` on every edit, and reshaping
+ * one mid-session would invalidate the undo snapshots beside it. A save is the moment the
+ * question is settled.
+ */
+export function blankUnplayedBars(sections, order) {
+  if (!sections?.length || !order?.length) return sections;
+  const isLaneArray = (v) => Array.isArray(v) && RESOLUTIONS.includes(v.length / 2);
+  const laneEntries = (sec) => Object.entries(sec).filter(([, v]) => isLaneArray(v));
+  const isLenKey = (k) => /Len$/.test(k);
+
+  const chainOf = (s) => {
+    const out = []; const seen = new Set(); let cur = s;
+    while (cur != null && !seen.has(cur) && cur >= 0 && cur < sections.length) {
+      seen.add(cur); out.push(cur); cur = sections[cur].base;
+    }
+    return out;
+  };
+
+  // Halves per (section, lane), slots per (section, lengths lane).
+  const needed = new Map();
+  const keptLen = new Map();
+  const mark = (store, idx, key, at) => {
+    if (!store.has(idx)) store.set(idx, new Map());
+    const m = store.get(idx);
+    if (!m.has(key)) m.set(key, new Set());
+    m.get(key).add(at);
+  };
+
+  for (const bar of expandOrder(order, true)) {
+    if (bar.sec == null) continue;
+    const chain = chainOf(bar.sec);
+    if (!chain.length) continue;
+    const resolved = resolveSection({ sections }, bar.sec);
+    const keys = new Set();
+    for (const idx of chain) for (const [k] of laneEntries(sections[idx])) keys.add(k);
+    for (const key of keys) {
+      // A lane is supplied by the FIRST section in the chain that has it — that is what
+      // the `{...base, ...child}` merge means — so it is needed there and nowhere else.
+      // A lane the child overrides leaves the base's copy dead, which is most of them.
+      const provider = chain.find((idx) => sections[idx][key] !== undefined);
+      if (provider == null) continue;
+      if (!isLenKey(key)) { mark(needed, provider, key, bar.half); continue; }
+      const arr = sections[provider][key];
+      const notes = resolved?.[key.slice(0, -3)];
+      // With no note lane to check against there is nothing to call orphaned, so the
+      // whole half is kept: the answer that cannot lose data.
+      if (!Array.isArray(notes) || notes.length !== arr.length) {
+        mark(needed, provider, key, bar.half);
+        continue;
+      }
+      const perBar = arr.length / 2;
+      for (let i = bar.half * perBar; i < (bar.half + 1) * perBar; i++) {
+        if (arr[i] != null && notes[i] != null) mark(keptLen, provider, key, i);
+      }
+    }
+  }
+
+  return sections.map((sec, idx) => {
+    let touched = false;
+    const out = { ...sec };
+    for (const [key, arr] of laneEntries(sec)) {
+      const next = [...arr];
+      const perSlot = isLenKey(key) && !needed.get(idx)?.has(key);
+      const keep = perSlot ? keptLen.get(idx)?.get(key) : null;
+      const halves = needed.get(idx)?.get(key);
+      const perBar = arr.length / 2;
+      for (let i = 0; i < next.length; i++) {
+        if (next[i] == null) continue;
+        const live = perSlot ? keep?.has(i) : halves?.has(Math.floor(i / perBar));
+        if (!live) { next[i] = null; touched = true; }
+      }
+      if (touched) out[key] = next;
+    }
+    return touched ? out : sec;
+  });
+}
+
+/**
+ * The arrangement layer with its unreachable bars emptied — the save-time half of
+ * `blankUnplayedBars`.
+ *
+ * Only the LAYER is taken back. The composition above the desk marker is never
+ * rewritten, the same rule `normaliseArrangementResolution` keeps for the same reason:
+ * the desk does not own it, and a save that quietly reshaped it would be editing music
+ * nobody asked it to touch.
+ */
+export function compactArrangement(bank, entry) {
+  if (!entry?.sections?.length || !entry.order?.length) return entry;
+  const base = bank?.sections || [];
+  const merged = [...base, ...entry.sections];
+  const next = blankUnplayedBars(merged, entry.order).slice(base.length);
+  return next.every((sec, i) => sec === entry.sections[i]) ? entry : { ...entry, sections: next };
+}
+
+/**
  * Play this song at `bpm` — or, with null, at the tempo it was composed at.
  *
  * An arrangement edit like any other, so it lands in the same draft, undoes with the

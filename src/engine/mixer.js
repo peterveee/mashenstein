@@ -414,6 +414,7 @@ export const DELAY_DIVISIONS = TEMPO_DIVISIONS;
 
 export function createMixer(ctx, {
   musicBus, echoBus, master, destination = ctx.destination, songTrim, delayLp,
+  eagerLanes = true,
 }) {
   Tone.setContext(ctx);
 
@@ -932,7 +933,19 @@ export function createMixer(ctx, {
     return strip;
   };
 
-  for (const { key } of LANES) makeStrip(key);
+  // Every canonical lane, whether or not the song has one.
+  //
+  // A strip is ~27 nodes in the pulled path and nothing ever culls one, so on a song that
+  // uses four of the twenty-two the other eighteen are a standing cost paid for silence
+  // — measured at 39% of this song's strips. `laneList(bank)` already ensures a strip for
+  // every lane a song actually carries (see applyMix in audio.js), and `ensureLane`
+  // builds one on demand, so the eager pass is a convenience rather than a requirement.
+  //
+  // Kept ON by default all the same: the game builds its mixer once and plays banks that
+  // do use most of these, and a strip that appears mid-song is a strip whose settings
+  // arrive after the notes it was meant to shape. Only the desk and the render path opt
+  // out, where the song is known before a note is scheduled.
+  if (eagerLanes) for (const { key } of LANES) makeStrip(key);
 
   // Master limiter — OFF by default, and deliberately so.
   //

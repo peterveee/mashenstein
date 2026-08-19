@@ -29,11 +29,17 @@ import { isDefaultMasterChain, EFFECT_BY_ID, paramRange } from '../src/engine/ef
 import { renderArrangementsFile } from './lib/arrangements-source.js';
 import { bpmOf, arrangementIssues } from '../src/data/arrangements.js';
 import { writeSongFile, writableSongPath, snapshotSongFile, notesImport } from './lib/song-file.js';
-// Applied on the way to disk, not while editing: a song promoted to the 1/32 grid by the
-// piano roll's quantise picker and never actually written on stays promoted forever
-// otherwise, and the flag costs the sequencer its whole-tick fast path for the whole
-// song. See normaliseArrangementResolution.
-import { normaliseArrangementResolution } from './lib/arrangement-edit.js';
+// Both applied on the way to disk, not while editing, and in this order.
+//
+// `compactArrangement` empties the bar of each forked section the plan cannot reach — a
+// per-bar edit materialises a whole two-bar lane and only one bar of it is ever read —
+// and `normaliseArrangementResolution` then asks how fine the surviving music really is.
+// That order is the point: the second refuses to demote while ANY lane holds a note off
+// the coarser grid and cannot tell a played note from a stranded one, so a song promoted
+// to a fine grid by the quantise picker stays promoted forever on the strength of bars
+// nothing plays — and the flag costs the sequencer its whole-tick fast path for the
+// whole song. Compact first and it sees only the music.
+import { normaliseArrangementResolution, compactArrangement } from './lib/arrangement-edit.js';
 // The same builder scratch songs are born through — an alternate is a song file like
 // any other, so it is written by the one function that knows that shape.
 import { songFile } from './lib/song-source.js';
@@ -809,7 +815,7 @@ const server = createServer(async (req, res) => {
         group: 'copy',
         bank: source.bank,
         mix,
-        arrangement: normaliseArrangementResolution(source.bank, arrangement),
+        arrangement: normaliseArrangementResolution(source.bank, compactArrangement(source.bank, arrangement)),
         variants,
         note: `A copy of ${source.title} (${sourceId}), taken from the Song Mixer.\n`
           + `Everything below is that song as the desk had it at the moment of the copy.\n`
@@ -902,7 +908,7 @@ const server = createServer(async (req, res) => {
         alternateOf: parentId,
         bank: parent.bank,
         mix,
-        arrangement: normaliseArrangementResolution(parent.bank, arrangement),
+        arrangement: normaliseArrangementResolution(parent.bank, compactArrangement(parent.bank, arrangement)),
         variants,
         note: `An alternate of ${parent.title} (${parentId}), saved from the Song Mixer.\n`
           + `The music below is ${parent.title}'s, copied as it stood. The game can play\n`
@@ -980,7 +986,7 @@ const server = createServer(async (req, res) => {
       const snap = snapshotSongFile(ROOT, parentId, HISTORY_DIR, stamp());
       writeSongFile(ROOT, parentId, {
         mix,
-        arrangement: normaliseArrangementResolution(parent?.bank, arrangement),
+        arrangement: normaliseArrangementResolution(parent?.bank, compactArrangement(parent?.bank, arrangement)),
         variants,
       });
       writeSongsIndex(join(ROOT, 'src/data/songs'));
@@ -1071,7 +1077,7 @@ const server = createServer(async (req, res) => {
         if (snap) snaps.push(snap);
         writeSongFile(ROOT, id, {
           mix,
-          arrangement: normaliseArrangementResolution(track?.bank, arrangement),
+          arrangement: normaliseArrangementResolution(track?.bank, compactArrangement(track?.bank, arrangement)),
           variants,
           m8trx,
         });

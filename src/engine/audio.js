@@ -9,7 +9,7 @@ import {
 } from './lanes.js';
 import {
   VoiceRack, pulseTable, createNoteCacheState, setNoteCachePlaybackActive,
-  clearNoteCacheState, invalidateNoteCacheState,
+  clearNoteCacheState, invalidateNoteCacheState, MRDR_QUALITY,
 } from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
 import { VOICE_LANES, PERCUSSION_LANES, voiceOf, voiceGain, laneTrim, engineBankKeys, registerSongVoice, seamFor, baseLane } from '../data/voices.js';
@@ -607,6 +607,15 @@ class AudioSys {
     // Live-only MRDR tail reclaim is measured and opt-in. Offline and game racks keep
     // the exact authored tail unless the Song Mixer explicitly enables this switch.
     this.mrdrTailCulling = false;
+    // Build a channel strip only for the lanes a song actually carries, instead of all
+    // 22 canonical lanes up front. OFF by default and never set by the game: a strip
+    // built mid-song is one whose settings arrive after the notes it was meant to shape.
+    // See createMixer's eager pass.
+    this.lazyStrips = false;
+    // MRDR-3's realtime quality. Full is the authored sound and the only thing the game
+    // or an offline bounce ever sees; the Song Mixer is the one caller that turns it
+    // down, and it survives a rack rebuild the same way the switch above does.
+    this.mrdrQuality = MRDR_QUALITY.FULL;
     // Skip building notes for lanes the mix has silenced — muted, or losing a
     // channel solo. OFF by default and never set by the game: a cabinet treatment
     // may ramp a lane the mix keeps muted back up at an audio time, and a skipped
@@ -800,6 +809,9 @@ class AudioSys {
       // The original echo's return leg: the mixer splices its EQ and level in
       // between these two, so Delay 1 gets the same controls as the new auxes.
       songTrim: this.songTrim, delayLp: this.delayLp,
+      // Opt-in, and only where the song is known before a note is scheduled — see the
+      // note at the eager pass in createMixer.
+      eagerLanes: !this.lazyStrips,
     });
     // Offline renders seed the noise so a lane rendered on its own gets exactly the
     // noise it had inside the full mix — that is what lets stems sum back to the
@@ -1634,6 +1646,17 @@ class AudioSys {
   }
 
   /**
+   * Build channel strips only for the lanes a song carries.
+   *
+   * Must be set BEFORE `ensure()` builds the mixer — after that the strips already
+   * exist and nothing culls them. Returns whether it took effect for that reason.
+   */
+  setLazyStrips(on) {
+    this.lazyStrips = !!on;
+    return !this.mixer;
+  }
+
+  /**
    * Play pooled Tone voices from RENDERED NOTES where that is safe — see the note
    * cache in voices.js for which notes qualify and why the rest cannot.
    *
@@ -1660,6 +1683,21 @@ class AudioSys {
   setMrdrTailCulling(on) {
     this.mrdrTailCulling = !!on;
     this.voices?.setMrdrTailCulling(this.mrdrTailCulling);
+  }
+
+  /**
+   * Song Mixer only: MRDR-3's realtime quality — see MRDR_QUALITY in voices.js.
+   *
+   * Changing it does not disturb anything already sounding, and it does not touch the
+   * stored preset: this is a playback decision about how many nodes to build, not an edit.
+   * The note cache keys on the mode, so flipping it leaves the other mode's buffers in the
+   * cache rather than invalidating them — flipping back finds them warm.
+   */
+  setMrdrQuality(mode) {
+    this.mrdrQuality = mode === MRDR_QUALITY.PERFORMANCE
+      ? MRDR_QUALITY.PERFORMANCE : MRDR_QUALITY.FULL;
+    this.voices?.setMrdrQuality(this.mrdrQuality);
+    return this.mrdrQuality;
   }
 
   // The rack-less mirror of VoiceRack.noteCacheHealth — same field names, same
@@ -1699,6 +1737,7 @@ class AudioSys {
       this.voices.soloLayers = this.soloLayers;
       this.voices.noteCache = true;
       this.voices.setMrdrTailCulling(this.mrdrTailCulling);
+      this.voices.setMrdrQuality(this.mrdrQuality);
       this.voices.setNoteCacheState(this.noteCacheState);
     }
     const rack = this.voices;
@@ -3415,7 +3454,10 @@ class AudioSys {
           if (patch.effects) this.mixer.setAuxEffects(id, patch.effects, bank?.bpm || this.bpm);
         }
         for (const [key, raw] of Object.entries(entry.lanes || {})) {
-          const strip = this.mixer.lane(key);
+          // ensureLane, not lane: with lazy strips a lane named only by the MIX — one
+          // the bank's own lane list does not carry — would otherwise be skipped here
+          // and silently lose its gain, pan, width, mute, EQ and sends.
+          const strip = this.mixer.ensureLane(key);
           if (!strip) continue;
           const s = laneSettings(raw);
           strip.setGain(s.gain);
@@ -4132,6 +4174,7 @@ class AudioSys {
         // ...and the desk's note cache, which outlives racks the same way.
         this.voices.noteCache = !!this.noteCache;
         this.voices.setMrdrTailCulling(this.mrdrTailCulling);
+        this.voices.setMrdrQuality(this.mrdrQuality);
         this.voices.setNoteCachePlaybackActive(!!this.bank);
       }
       this._schedWork.voicePlays++;

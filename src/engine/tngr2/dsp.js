@@ -346,10 +346,13 @@ Tngr2Svf.prototype.tick = function tick(input) {
   // otherwise stay in the state for the life of the note. §7.4 requires finite output at
   // maximum modulation and resonance, and this is what makes that true by construction.
   if (!(this.ic1 === this.ic1) || !(this.ic2 === this.ic2)) { this.ic1 = 0; this.ic2 = 0; return 0; }
+  // Lowpass first because lowpass is what the catalogue is: forty of the forty-three
+  // presets, and it used to be the one tap that fell through all three comparisons to
+  // reach its return. The mode cannot change while a note is sounding.
+  if (this.mode === 0) return v2;
   if (this.mode === 1) return input - this.k * v1 - v2;
   if (this.mode === 2) return v1;
-  if (this.mode === 3) return input - this.k * v1;
-  return v2;
+  return input - this.k * v1;
 };
 
 var TNGR2_FILTER_MODES = { lowpass: 0, highpass: 1, bandpass: 2, notch: 3 };
@@ -366,7 +369,7 @@ var TNGR2_SHAPES = { soft: TNGR2_SHAPE_SOFT, fold: TNGR2_SHAPE_FOLD, crush: TNGR
  * rather than removing them; CRUSH quantises the level, which is a different kind of
  * dirt again. SOFT is the saturator below.
  */
-function tngr2Shape(x, amount, shape) {
+function tngr2Shape(x, amount, shape, steps) {
   if (shape === TNGR2_SHAPE_FOLD) {
     // Reflect repeatedly about +-1 so a hot signal folds rather than clipping.
     var d = x * (1 + amount * 6);
@@ -378,8 +381,10 @@ function tngr2Shape(x, amount, shape) {
     return d;
   }
   if (shape === TNGR2_SHAPE_CRUSH) {
-    // Level quantisation: from 16 steps down to 2 as the amount climbs.
-    var steps = Math.max(2, Math.round(16 - amount * 14));
+    // Level quantisation: from 16 steps down to 2 as the amount climbs. The step COUNT is
+    // a property of the patch, not of the sample, so the compiler works it out once and
+    // hands it in — this used to be two Math.rounds per channel per sample to arrive at
+    // the same number the note started with.
     var q = Math.round(x * steps) / steps;
     return q > 1 ? 1 : (q < -1 ? -1 : q);
   }
@@ -498,6 +503,9 @@ function tngr2CompilePatch(patch) {
     sources: [],
     lfos: []
   };
+  // CRUSH's step count: constant for the life of the patch, so it is worked out here
+  // rather than twice per sample inside the shaper. See tngr2Shape.
+  out.drive.steps = Math.max(2, Math.round(16 - out.drive.amount * 14));
   var lfoSpecs = [p.lfo1];
   for (var li = 0; li < 1; li++) {
     var l = lfoSpecs[li] || {};
@@ -732,6 +740,12 @@ function Tngr2Voice(rate) {
   this.glideStep = 1;
   this.glideLeft = 0;
   this.pitchMul = 1;
+  // The drive tone filter's state. Declared HERE rather than at the first note-on that
+  // needs it: a field that appears later changes the object's shape, and every voice in
+  // the pool was paying that transition on its first note.
+  this.toneL = 0;
+  this.toneR = 0;
+  this.toneCoeff = 0;
   // Position/filter envelopes become constant at sustain. These flags carry their last
   // change to the next control-grid frame, then let a held note stop recomputing the
   // exact same table positions and SVF coefficients thousands of times per second.
@@ -964,11 +978,46 @@ Tngr2Voice.prototype.tick = function tick(frame, tables) {
   }
   var l = 0;
   var r = 0;
-  for (s = 0; s < this.count; s++) {
-    src = this.sources[s];
-    var raw = src.read();
-    src.phase += src.inc;
-    if (src.phase >= 1) src.phase -= 1;
+  // Tngr2Source.read, inlined. It is the same arithmetic in the same order — see the
+  // method, which is kept beside it as the readable statement of what this is — but it
+  // runs up to eight times per voice per sample, and at that rate the property loads and
+  // the call itself are a measurable share of the whole engine.
+  var sources = this.sources;
+  var count = this.count;
+  for (s = 0; s < count; s++) {
+    src = sources[s];
+    var raw;
+    if (!src.family) raw = 0;
+    else {
+      var rphase = src.phase;
+      var rframeMix = src.frameMix;
+      var rx = rphase * src.lengthLow;
+      var ri = rx | 0;
+      var rfrac = rx - ri;
+      var rdata = src.dataLow;
+      var ra = src.baseLowA + ri;
+      var rb = src.baseLowB + ri;
+      var rlow = rdata[ra] + (rdata[ra + 1] - rdata[ra]) * rfrac;
+      var rhigh = rdata[rb] + (rdata[rb + 1] - rdata[rb]) * rfrac;
+      raw = rlow + (rhigh - rlow) * rframeMix;
+      // Crossfaded rather than switched: a glide across a level boundary must not step.
+      var rmip = src.mipMix;
+      if (rmip > 0) {
+        rx = rphase * src.lengthHigh;
+        ri = rx | 0;
+        rfrac = rx - ri;
+        rdata = src.dataHigh;
+        ra = src.baseHighA + ri;
+        rb = src.baseHighB + ri;
+        rlow = rdata[ra] + (rdata[ra + 1] - rdata[ra]) * rfrac;
+        rhigh = rdata[rb] + (rdata[rb + 1] - rdata[rb]) * rfrac;
+        var rupper = rlow + (rhigh - rlow) * rframeMix;
+        raw += (rupper - raw) * rmip;
+      }
+    }
+    var nextPhase = src.phase + src.inc;
+    if (nextPhase >= 1) nextPhase -= 1;
+    src.phase = nextPhase;
     l += raw * src.gainL;
     r += raw * src.gainR;
   }
@@ -977,8 +1026,8 @@ Tngr2Voice.prototype.tick = function tick(frame, tables) {
   // drives the filtered signal, which is the brighter, more obvious one of the two.
   var drive = patch.drive;
   if (patch.usesDrive && drive.pre) {
-    l = tngr2Shape(l, drive.amount, drive.shape);
-    r = tngr2Shape(r, drive.amount, drive.shape);
+    l = tngr2Shape(l, drive.amount, drive.shape, drive.steps);
+    r = tngr2Shape(r, drive.amount, drive.shape, drive.steps);
     this.toneL += this.toneCoeff * (l - this.toneL); l = this.toneL;
     this.toneR += this.toneCoeff * (r - this.toneR); r = this.toneR;
   }
@@ -987,8 +1036,8 @@ Tngr2Voice.prototype.tick = function tick(frame, tables) {
     r = this.svfR[s].tick(r);
   }
   if (patch.usesDrive && !drive.pre) {
-    l = tngr2Shape(l, drive.amount, drive.shape);
-    r = tngr2Shape(r, drive.amount, drive.shape);
+    l = tngr2Shape(l, drive.amount, drive.shape, drive.steps);
+    r = tngr2Shape(r, drive.amount, drive.shape, drive.steps);
     this.toneL += this.toneCoeff * (l - this.toneL); l = this.toneL;
     this.toneR += this.toneCoeff * (r - this.toneR); r = this.toneR;
   }
@@ -1084,6 +1133,30 @@ Tngr2Core.prototype.familyFor = function familyFor(id) {
   return at === undefined ? null : this.tables.families[at];
 };
 
+/*
+ * One queued event, always the same five fields in the same order.
+ *
+ * The copy exists because the caller's object came over a port and may be reused; the
+ * FIXED SHAPE exists because a for-in copy built a differently-shaped object for every
+ * message that happened to carry a different key, and those objects are then read on the
+ * audio thread, sample by sample, at the moment a chord lands.
+ *
+ * This is the whole list of fields the core reads — see apply() and Tngr2Voice.start.
+ * transportGeneration rides along unread, because the controller stamps it and a reader
+ * added later should find it here rather than silently getting undefined. Anything NEW an
+ * event needs to carry has to be added here too, or it will not survive the queue.
+ */
+function tngr2QueuedEvent(event, frame) {
+  return {
+    type: event.type,
+    frame: frame,
+    hz: event.hz,
+    velocity: event.velocity,
+    eventId: event.eventId,
+    transportGeneration: event.transportGeneration
+  };
+}
+
 /** Queue one event, keeping the queue sorted by frame rather than by arrival. */
 Tngr2Core.prototype.schedule = function schedule(event) {
   // Reclaim consumed live-event storage away from the per-sample loop. Most batches empty
@@ -1098,10 +1171,7 @@ Tngr2Core.prototype.schedule = function schedule(event) {
   var frame = Math.max(0, Math.round(event.frame || 0));
   var at = this.pending.length;
   while (at > this.pendingHead && this.pending[at - 1].frame > frame) at--;
-  var copy = {};
-  for (var key in event) if (Object.prototype.hasOwnProperty.call(event, key)) copy[key] = event[key];
-  copy.frame = frame;
-  this.pending.splice(at, 0, copy);
+  this.pending.splice(at, 0, tngr2QueuedEvent(event, frame));
 };
 
 Tngr2Core.prototype.scheduleAll = function scheduleAll(events) {
@@ -1113,10 +1183,7 @@ Tngr2Core.prototype.scheduleAll = function scheduleAll(events) {
   }
   for (var i = 0; i < events.length; i++) {
     var event = events[i];
-    var copy = {};
-    for (var key in event) if (Object.prototype.hasOwnProperty.call(event, key)) copy[key] = event[key];
-    copy.frame = Math.max(0, Math.round(event.frame || 0));
-    this.pending.push(copy);
+    this.pending.push(tngr2QueuedEvent(event, Math.max(0, Math.round(event.frame || 0))));
   }
   this.pending.sort(function (a, b) { return a.frame - b.frame; });
 };
@@ -1231,23 +1298,41 @@ Tngr2Core.prototype.process = function process(channels, startFrame, count, offs
     if (right) right.fill(0, out, out + count);
     return;
   }
+  // When the next event lands, held as a number. Reaching for it through the queue on
+  // every sample was three property loads and two compares to be told "not yet" tens of
+  // thousands of times a second; the answer only moves when an event actually fires.
+  var pending = this.pending;
+  var nextEventFrame = this.pendingHead < pending.length
+    ? pending[this.pendingHead].frame : Infinity;
   for (var i = 0; i < count; i++) {
     var frame = startFrame + i;
-    while (this.pendingHead < this.pending.length && this.pending[this.pendingHead].frame <= frame) {
-      var event = this.pending[this.pendingHead++];
-      if (event.frame < startFrame) {
-        this.late++;
-        var lateBy = startFrame - event.frame;
-        if (lateBy > this.worstLate) this.worstLate = lateBy;
+    // Whether anything happened that could make the rest of this block silent. Only an
+    // event or a voice dropping out can, so the idle test below is asked on those samples
+    // instead of on all of them.
+    var changed = false;
+    if (frame >= nextEventFrame) {
+      while (this.pendingHead < pending.length && pending[this.pendingHead].frame <= frame) {
+        var event = pending[this.pendingHead++];
+        if (event.frame < startFrame) {
+          this.late++;
+          var lateBy = startFrame - event.frame;
+          if (lateBy > this.worstLate) this.worstLate = lateBy;
+        }
+        this.apply(event, frame);
       }
-      this.apply(event, frame);
+      // Applying an event can replace the queue outright — a panic clears it — so the
+      // cursor and the array are both re-read here rather than carried across.
+      pending = this.pending;
+      nextEventFrame = this.pendingHead < pending.length
+        ? pending[this.pendingHead].frame : Infinity;
+      changed = true;
     }
     var l = 0;
     var r = 0;
     for (var v = 0; v < this.liveCount;) {
       var voice = this.live[v];
       voice.tick(frame, tables);
-      if (!voice.active) { this.removeLive(v); continue; }
+      if (!voice.active) { this.removeLive(v); changed = true; continue; }
       l += voice.l;
       r += voice.r;
       v++;
@@ -1259,8 +1344,7 @@ Tngr2Core.prototype.process = function process(channels, startFrame, count, offs
     if (!(r === r)) { r = 0; this.nonFinite++; }
     left[out + i] = l;
     if (right) right[out + i] = r;
-    if (this.liveCount === 0
-        && (this.pendingHead >= this.pending.length || this.pending[this.pendingHead].frame >= endFrame)) {
+    if (changed && this.liveCount === 0 && nextEventFrame >= endFrame) {
       left.fill(0, out + i + 1, out + count);
       if (right) right.fill(0, out + i + 1, out + count);
       return;

@@ -24,7 +24,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const ENTRY = `
 import {
-  tngr2Lane, tngr2LaneNow, tngr2NoteOn, tngr2NoteOff, tngr2Param, tngr2Panic,
+  tngr2Lane, tngr2LaneNow, tngr2NoteOn, tngr2NoteOff, tngr2Panic,
   releaseTngr2Lane, releaseTngr2Context, tngr2ControllerHealth, renderTngr2Lane,
   prepareTngr2Patch, familiesOf, frameAt, tngr2RangePlan,
 } from ${JSON.stringify(join(ROOT, 'src/engine/tngr2/controller.js'))};
@@ -84,7 +84,6 @@ window.__lifecycle = async ({ stored }) => {
     // Live scheduling: these go over the port, which is correct for a running context.
     first.node.connect(ctx.destination);
     tngr2NoteOn(first, { at: ctx.currentTime + 0.02, hz: 110, velocity: 1, eventId: 1 });
-    tngr2Param(first, { at: ctx.currentTime + 0.02, path: 'modWheel', value: 0.5 });
     tngr2NoteOff(first, { at: ctx.currentTime + 0.2, eventId: 1 });
     tngr2Panic(first, { at: ctx.currentTime + 0.25, transportGeneration: 2 });
     out.generation = first.generation;

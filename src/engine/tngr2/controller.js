@@ -255,13 +255,14 @@ export function tngr2NoteOff(lane, { at, eventId }) {
   });
 }
 
-/** A continuous controller — §7.3's mod wheel/automation source. */
-export function tngr2Param(lane, { at, path, value }) {
-  if (!lane) return;
-  lane.node.port.postMessage({
-    type: 'param', frame: frameAt(at, lane.ctx.sampleRate), path, value,
-  });
-}
+/*
+ * §7.3's continuous controller used to be posted from here as {type:'param'}. It is gone
+ * rather than kept warm: Tngr2Core.apply handles noteOn, noteOff and panic and nothing
+ * else, so every param message was copied, insertion-sorted into the queue, carried
+ * through the per-sample loop and dropped without ever being read. A mod wheel is a
+ * feature to be built with a destination on the other end, not a transport to leave
+ * running into the floor.
+ */
 
 /**
  * Stop everything on a lane, now.

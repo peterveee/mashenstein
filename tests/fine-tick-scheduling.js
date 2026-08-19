@@ -26,7 +26,9 @@ import { sequenceValue } from '../src/engine/lanes.js';
 import {
   applyArrangement, RESOLUTIONS, promoteResolution,
 } from '../src/data/arrangements.js';
-import { normaliseArrangementResolution } from '../tools/lib/arrangement-edit.js';
+import {
+  normaliseArrangementResolution, compactArrangement, blankUnplayedBars,
+} from '../tools/lib/arrangement-edit.js';
 
 let failed = false;
 const assert = (ok, message) => {
@@ -466,6 +468,72 @@ const plan = (bank, mix) => {
   const percBack = evalLane(laneSource(perc));
   assert(percBack.length === 96 && percBack.every((v, i) => v === perc[i]),
     'and so does a 96-slot percussion lane, as booleans');
+}
+
+// ---- the bar nothing plays, and what it was costing ---------------------------------
+//
+// A section is two bars and the desk edits one, so a fork materialises a whole two-bar
+// lane and the plan names only half of it. The other half keeps whatever was there —
+// and `normaliseArrangementResolution` cannot tell that note from a played one, so a
+// song stays pinned to a fine grid by music it is incapable of playing. That is the
+// whole reason `compactArrangement` runs FIRST on the way to disk.
+{
+  // 64 slots: two bars of thirty-seconds. Odd slots are the ones only a fine grid holds.
+  const wide = (at) => Array.from({ length: 64 },
+    (_, i) => (Object.prototype.hasOwnProperty.call(at, i) ? at[i] : null));
+  const bank = { bpm: 120, sections: [{ lead: sixteen() }], order: [0] };
+  // The layer section is merged index 1, and the plan names its FIRST bar only.
+  const entry = () => ({
+    order: [{ s: 1, bars: 1, from: 0 }],
+    resolution: 32,
+    // slot 0  — played, on the sixteenth grid
+    // slot 33 — the unplayed bar, and on an odd slot, so it is what pins the song at 32
+    sections: [{ base: 0, lead: wide({ 0: n('C4'), 33: n('E4') }), leadLen: wide({ 0: 2, 33: 2 }) }],
+  });
+
+  assert(normaliseArrangementResolution(bank, entry()).resolution === 32,
+    'a note in a bar nothing plays still pins the whole song to the fine grid');
+
+  const tidy = compactArrangement(bank, entry());
+  assert(tidy.sections[0].lead[0] === n('C4'), 'compacting leaves the played bar alone');
+  assert(tidy.sections[0].lead[33] === null, 'and empties the bar the plan never reaches');
+  assert(tidy.sections[0].base === 0, 'while carrying through everything that is not a lane');
+
+  const demoted = normaliseArrangementResolution(bank, tidy);
+  assert(demoted.resolution === undefined, 'and THEN the song demotes off the fine grid');
+  assert(demoted.sections[0].lead.length === 32, 'narrowing its lanes as it goes');
+  assert(demoted.sections[0].lead[0] === n('C4'), 'with the played note still on beat one');
+
+  // A length is read only where its note is. A quantise that moves a note but leaves the
+  // length behind writes exactly this, and one stranded number is enough to pin a song.
+  const orphan = {
+    order: [{ s: 1, bars: 1, from: 0 }],
+    resolution: 32,
+    sections: [{ base: 0, lead: wide({ 0: n('C4') }), leadLen: wide({ 0: 2, 7: 4 }) }],
+  };
+  assert(normaliseArrangementResolution(bank, orphan).resolution === 32,
+    'a length stranded on an odd slot pins the song exactly as a note does');
+  const tidyLen = compactArrangement(bank, orphan);
+  assert(tidyLen.sections[0].leadLen[0] === 2, 'compacting keeps the length its note reads');
+  assert(tidyLen.sections[0].leadLen[7] === null, 'and drops the one no note reaches');
+  assert(normaliseArrangementResolution(bank, tidyLen).resolution === undefined,
+    'which lets the song demote');
+
+  // Nothing to do must mean nothing changed — this runs on every save.
+  const clean = { order: [{ s: 1, bars: 1, from: 0 }], sections: [{ base: 0, lead: sixteen() }] };
+  assert(compactArrangement(bank, clean) === clean,
+    'a song with no unreachable data comes back as the very same object');
+  assert(compactArrangement(bank, tidy) === tidy, 'and compacting twice changes nothing further');
+
+  // The bank is not the desk's to rewrite, the same rule normaliseArrangementResolution keeps.
+  const bankResidue = [{ lead: wide({ 0: n('C4'), 33: n('E4') }) }];
+  const untouched = blankUnplayedBars([...bankResidue], [{ s: 0, bars: 1, from: 0 }]);
+  assert(untouched[0].lead[33] === null,
+    'blankUnplayedBars itself will empty a bank section — the tool asks it to');
+  assert(compactArrangement({ sections: bankResidue, bpm: 120 },
+    { order: [{ s: 0, bars: 1, from: 0 }], sections: [{ base: 0 }] }).sections[0].base === 0,
+    'but a save leaves the composition above the marker exactly as it found it');
+  assert(bankResidue[0].lead[33] === n('E4'), 'and does not mutate the bank in passing');
 }
 
 console.log(failed ? 'FINE TICK SCHEDULING: FAILED' : 'FINE TICK SCHEDULING: PASSED');

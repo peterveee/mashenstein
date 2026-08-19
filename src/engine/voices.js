@@ -79,6 +79,24 @@ import {
  */
 export const MAX_UNISON = 4;
 
+/**
+ * MRDR-3's two realtime quality modes — work/local/mrdr3-realtime-performance-plan.md §7.
+ *
+ * MRDR-3 is native Web Audio nodes, so there is no precision flag to turn down: the only
+ * honest way to make it cheaper is to build FEWER NODES, and the only honest way to offer
+ * that is to say so. `full` is the authored sound and the default everywhere, including
+ * every offline bounce — a fresh rack starts here, so a render is Full unless something
+ * deliberately says otherwise. `performance` is the trade, and it is opt-in from the desk.
+ *
+ * What performance changes, and nothing else: unison stacks cap at three real voices, and
+ * a -48 dB filter is built as two stages rather than four. Layers are never dropped, PWM
+ * is never disabled, envelopes are never altered and no note is ever skipped — those would
+ * be a different preset, not a cheaper rendering of this one.
+ */
+export const MRDR_QUALITY = Object.freeze({ FULL: 'full', PERFORMANCE: 'performance' });
+const PERFORMANCE_UNISON = 3;
+const PERFORMANCE_MAX_FILTER_STAGES = 2;
+
 const clampUnison = (n, dflt = 1) => Math.max(1, Math.min(MAX_UNISON, Math.round(Number(n) || dflt)));
 
 const VOICING_WORDS = ['single', 'fat', 'am', 'fm'];
@@ -235,6 +253,11 @@ export function pulseTable(ctx, duty = 0.5, { harmonics = 64, sine = false } = {
  * the first note rather than on every note in a song.
  */
 const syncTables = new WeakMap();
+// Bounded like the phase-wave cache further down, but larger: each of these costs 1024
+// samples by 96 harmonics to rebuild, so a miss here is worth avoiding in a way a phase
+// rotation is not. Oldest out first, which is insertion order because that is what a Map
+// keeps. The cap bounds memory only — the same key rebuilds the same wave.
+const SYNC_TABLE_CACHE = 512;
 export function hardSyncTable(ctx, type, ratio, width = 0.5, harmonics = 96) {
   const kind = type === 'pulse' ? 'pulse' : nativeWave(type, 'square');
   const r = Math.max(0.01, ratio);
@@ -275,6 +298,10 @@ export function hardSyncTable(ctx, type, ratio, width = 0.5, harmonics = 96) {
     imag[n] *= scale;
   }
   const wave = ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  // Bounded like the phase-wave cache below, and for a sharper reason: a syncBend note
+  // asks for a new ratio every 32 ms grain, so a single held bend mints dozens of these
+  // and every distinct note LENGTH mints a fresh set. Uncapped, the map only ever grew.
+  if (perCtx.size >= SYNC_TABLE_CACHE) perCtx.delete(perCtx.keys().next().value);
   perCtx.set(key, wave);
   return wave;
 }
@@ -301,6 +328,9 @@ export function hardSyncTable(ctx, type, ratio, width = 0.5, harmonics = 96) {
  * way, so nothing renders differently for having been evicted.
  */
 const PHASE_WAVE_CACHE = 256;
+// Drive transfer curves, keyed by shape and the pot rounded to a percent. A hundred per
+// shape is the whole dial, so this only ever bites when several shapes have been swept.
+const DRIVE_CURVE_CACHE = 64;
 const phaseWaves = new WeakMap();
 function phasedWave(ctx, type, phase) {
   const kind = nativeWave(type, 'sine');
@@ -1195,6 +1225,11 @@ const CHORUS_SWING_S = 0.004;
 // How far past the last envelope the modulator has to keep running for the delay lines to
 // drain under a still-moving LFO rather than a frozen one.
 const CHORUS_TAIL_S = 0.1;
+// How long a retired MRDR lane stage stays connected after the last note booked through
+// it was due to end. The stage only routes — the sources stop themselves — so this needs
+// to cover the longest release still travelling through it, not the note itself. See
+// `prune`, which is the one place a stage is taken out of service while the song plays.
+const MRDR_STAGE_DRAIN_MS = 4000;
 
 function rampParam(param, value, at, seconds = 0.015) {
   if (!param) return;
@@ -1466,6 +1501,9 @@ export class VoiceRack {
     // Tail cleanup is a live Mixer optimisation and is opt-in. Offline racks, cache
     // render racks and game playback remain exact by default.
     this.allowMrdrTailCulling = false;
+    // Full unless the desk says otherwise, which is what makes every bounce Full by
+    // construction: a render builds a fresh rack and never touches this. See MRDR_QUALITY.
+    this.mrdrQuality = MRDR_QUALITY.FULL;
     this._mrdrTailStats = {
       eligible: 0, skipped: 0, culled: 0, potentialSeconds: 0, baselineSeconds: 0, savedSeconds: 0,
       skipReasons: Object.create(null),
@@ -1667,6 +1705,37 @@ export class VoiceRack {
 
   setMrdrTailCulling(enabled) {
     this.allowMrdrTailCulling = !!enabled;
+  }
+
+  /**
+   * Choose MRDR-3's realtime quality — see MRDR_QUALITY.
+   *
+   * Takes effect on the NEXT note-on. A note already sounding finishes under the mode it
+   * was built in, because the alternative is replacing a live graph mid-note, which is a
+   * click for the sake of a saving that arrives a beat later anyway.
+   *
+   * The note cache follows the mode rather than overriding it: a cached note costs the
+   * same to replay whichever way it was rendered, so rendering it Full would be free CPU —
+   * but it would also make the same preset sound one way from the cache and another way
+   * live, which is worse than either mode consistently. The key carries the mode so the
+   * two never mix.
+   */
+  setMrdrQuality(mode) {
+    const next = mode === MRDR_QUALITY.PERFORMANCE
+      ? MRDR_QUALITY.PERFORMANCE : MRDR_QUALITY.FULL;
+    if (next === this.mrdrQuality) return this.mrdrQuality;
+    this.mrdrQuality = next;
+    return next;
+  }
+
+  /** How many unison voices a layer may build under the current mode. */
+  _unisonCap() {
+    return this.mrdrQuality === MRDR_QUALITY.PERFORMANCE ? PERFORMANCE_UNISON : MAX_UNISON;
+  }
+
+  /** How many biquads a MRDR-3 filter slope may become under the current mode. */
+  _filterStageCap() {
+    return this.mrdrQuality === MRDR_QUALITY.PERFORMANCE ? PERFORMANCE_MAX_FILTER_STAGES : 4;
   }
 
   _recordMrdrTailOpportunity(v, { notes, dur, time, preview, hold, mode }) {
@@ -2659,7 +2728,10 @@ export class VoiceRack {
     if (!sounded) return null;
     const rev = this._specRev?.get(voiceId) || 0;
     return {
-      key: `L|${voiceId}|${rev}|${parts.join(',')}|${this.ctx.sampleRate}`,
+      // The quality mode is part of the key, not a detail of the render: a note rendered
+      // under Full and replayed under Performance would be the one place the two modes
+      // mixed inside a single song. See MRDR_QUALITY.
+      key: `L|${voiceId}|${rev}|${parts.join(',')}|${this.ctx.sampleRate}|${this.mrdrQuality}`,
       notes: list, dur, detune, longest,
       eventCost: estimateMrdrEventCost(v, list, dur),
       estimatedBytes: Math.ceil(layerNoteSeconds(v, longest, { includeChorus: false })
@@ -3117,6 +3189,10 @@ export class VoiceRack {
         const seconds = Math.min(30, layerNoteSeconds(v, longest, { includeChorus: false }));
         const ctx = new OAC(2, Math.ceil(seconds * sr), sr);
         const rack = new VoiceRack(ctx);
+        // The render rack is a fresh one, so it starts at Full. The cache has to render
+        // what the DESK is playing, or a cached note and a live note of the same preset
+        // would be two different sounds — see the key, which carries the mode.
+        rack.setMrdrQuality(this.mrdrQuality);
         const out = ctx.createGain();
         out.connect(ctx.destination);
         // The song warp folded in and the preset's own transpose left alone, because
@@ -3340,9 +3416,12 @@ export class VoiceRack {
    * `mul` is the per-hit cutoff ratio: per-tap tone and humanise, applied here so a
    * sweep's destination moves with its origin rather than snapping back.
    */
-  _filterChain(spec, t, mul = 1, dfltType = 'bandpass', dfltFreq = 2600) {
+  _filterChain(spec, t, mul = 1, dfltType = 'bandpass', dfltFreq = 2600, maxStages = 4) {
     const ctx = this.ctx;
-    const stages = spec.slope === -48 ? 4 : spec.slope === -24 ? 2 : 1;
+    // `maxStages` is how MRDR-3's Performance mode buys back a filter: only its two
+    // callers pass it, so a drum's -48 dB highpass keeps all four biquads whatever the
+    // mode says. Default 4 leaves every other caller exactly as it was.
+    const stages = Math.min(maxStages, spec.slope === -48 ? 4 : spec.slope === -24 ? 2 : 1);
     const type = spec.type || dfltType;
     // Every number that will reach an AudioParam, checked once here.
     //
@@ -4564,7 +4643,7 @@ export class VoiceRack {
             const track = gf.track > 0 ? (base / 110) ** Math.min(1, gf.track) : 1;
             const chain = this._filterChain(
               { type: gf.type, slope: gf.slope, freq: gf.freq, Q: gf.Q },
-              t, track * toneMul, 'lowpass', 1150,
+              t, track * toneMul, 'lowpass', 1150, this._filterStageCap(),
             );
             chain.tail.connect(head);
             // One target, every filter in the patch — the layers' and this one. A third
@@ -4725,7 +4804,7 @@ export class VoiceRack {
             // the same exponential trajectory _filterChain used to schedule).
             const chain = this._filterChain(
               { type: fl.type, slope: fl.slope, freq: fl.freq, Q: fl.Q },
-              lt, track * toneMul, 'lowpass', 1150,
+              lt, track * toneMul, 'lowpass', 1150, this._filterStageCap(),
             );
             chain.tail.connect(g);
             if (lfoSpec && lfoSpec.target === 'filter') {
@@ -4750,7 +4829,12 @@ export class VoiceRack {
           // Unison: free at 1 — no extra nodes, no detune arithmetic. Above 1 the
           // voices sit symmetrically across `spread` cents on `.detune`, scaled by
           // 1/√count so a stack arrives at the level one voice did.
-          const count = clampUnison(spec.unison);
+          // The unison stack, capped by the quality mode as well as by MAX_UNISON. The
+          // spread and the stereo placement below are computed from THIS count, so a
+          // capped stack still reaches both outer positions and the centre — it thins the
+          // stack rather than narrowing it, which is the difference between a smaller
+          // ensemble and a mono one. See MRDR_QUALITY.
+          const count = Math.min(clampUnison(spec.unison), this._unisonCap());
           const norm = count > 1 ? 1 / Math.sqrt(count) : 1;
           // The bandwidth makeup `_playGame` derives: a bandpass keeps only its
           // slice of the noise, the slice narrows with the note, and the level goes
@@ -5147,6 +5231,13 @@ export class VoiceRack {
         curve[i] = Math.tanh(k * x) / norm;
       }
     }
+    // Bounded, because the key is the pot's position rounded to a percent and a drag
+    // across the dial mints a hundred of these per shape — each a 1025-point Float32Array
+    // that nothing ever evicted. A miss costs one pass over the table and lands on the
+    // identical curve, so forgetting the far end of a sweep is free.
+    if (this._driveCurves.size >= DRIVE_CURVE_CACHE) {
+      this._driveCurves.delete(this._driveCurves.keys().next().value);
+    }
     this._driveCurves.set(key, curve);
     return curve;
   }
@@ -5344,6 +5435,38 @@ export class VoiceRack {
       // you pick its new one, and the point of choosing a preset over a playing song
       // is that the song goes on playing. See `_retire`.
       this._retire(key, pool);
+    }
+    // MRDR-3's lane stage is the same question asked of a different cache.
+    //
+    // The stage is per (scope, lane) and holds three gains plus, when the preset has a
+    // chorus, a whole wet leg — an oscillator, two delays, four gains and two panners.
+    // Nothing pruned it: `dispose` cleared the map and `refresh` updated the stages it
+    // found, so a lane moved off MRDR-3 left its stage standing, still connected to the
+    // strip, for the life of the context. Preset-hopping on a long session is exactly
+    // how a desk accumulates them, and `runtimeHealth().mrdrLaneStages` is where it shows.
+    //
+    // Same bargain as the pools above: out of the map at once, so the next note builds a
+    // fresh one, and disconnected only after what was booked through it has rung out.
+    for (const [key, stage] of [...this._mrdrLaneStages]) {
+      // Previews have their own lifecycle and no lane in the arrangement to ask about.
+      if (stage.scope !== 'song') continue;
+      const current = voiceIdFor(stage.laneKey);
+      // `undefined` is "this caller does not know that lane", which is not the same
+      // answer as "that lane no longer plays this voice" and must not retire anything.
+      if (current === undefined || current === stage.voiceId) continue;
+      this._mrdrLaneStages.delete(key);
+      const at = Number.isFinite(this.ctx?.currentTime) ? this.ctx.currentTime : 0;
+      this._retireMrdrChorus(stage, at);
+      const drop = () => {
+        for (const node of [stage.input, stage.direct, stage.output]) {
+          try { node?.disconnect(); } catch { /* context already gone */ }
+        }
+        stage.disposed = true;
+      };
+      // An offline render never edits a preset mid-play and its clock does not run at
+      // wall speed, so a timer would fire in the wrong place if it fired at all.
+      if (typeof this.ctx.startRendering === 'function') drop();
+      else setTimeout(drop, Math.max(0, (stage.lastTime - at) * 1000) + MRDR_STAGE_DRAIN_MS);
     }
   }
 
