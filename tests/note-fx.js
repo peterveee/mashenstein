@@ -1,5 +1,5 @@
-import { createNoteFxProcessor, orderedTones, resolveNoteFx, noteFxRange, foldTonesToRange }
-  from '../src/engine/note-fx.js';
+import { createNoteFxProcessor, orderedTones, resolveNoteFx, noteFxRange, foldTonesToRange,
+  noteFxLimit, NOTE_FX_LIMIT_MAX } from '../src/engine/note-fx.js';
 
 let failed = false;
 function assert(cond, msg) {
@@ -7,6 +7,10 @@ function assert(cond, msg) {
   else console.log('ok:', msg);
 }
 const json = (value) => JSON.stringify(value);
+
+// MIDI note numbers in the file's spelling: 48 is C3, an octave below the desk's C3.
+const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
+const midiOf = (freq) => Math.round(12 * Math.log2(freq / 440) + 69);
 
 const chord = [440, 220, 330];
 assert(json(orderedTones(chord, 'up')) === '[220,330,440]', 'up orders low to high');
@@ -72,6 +76,59 @@ const retriggered = oneShot.process({ laneKey: 'lead', value: 330, len: 0.5,
 assert(retriggered[0]?.freq === 330,
   'the next chord retriggers a completed one-shot even in continuous mode');
 
+// ---- the note limit ---------------------------------------------------------------------
+//
+// Octaves says how tall the stack is; the limit says where to stop climbing it. The whole
+// point is the shapes BETWEEN the octave counts — five notes of a two-octave seventh is
+// neither one octave nor two.
+assert(noteFxLimit({}) === 0 && noteFxLimit({ limit: 0 }) === 0 && noteFxLimit({ limit: -3 }) === 0,
+  'no limit unless a positive count is set');
+assert(noteFxLimit({ limit: 5 }) === 5 && noteFxLimit({ limit: 999 }) === NOTE_FX_LIMIT_MAX,
+  'a limit is a whole count of notes, capped where the stack itself runs out');
+
+const capped = createNoteFxProcessor();
+const cappedFx = { arp: { enabled: true, direction: 'up', rate: 0.5, octaves: 2,
+  limit: 5, repeat: false, gate: 80, retrigger: 'chord', latch: false } };
+const cappedEvents = [];
+for (let step = 0; step <= 3.5; step += 0.5) {
+  cappedEvents.push(...capped.process({ laneKey: 'chords',
+    value: step === 0 ? [220, 275, 330, 415] : null,
+    len: 0.5, step, spb: 0.1, barIndex: 0, config: cappedFx }));
+}
+assert(json(cappedEvents.map((e) => e.freq)) === '[220,275,330,415,440]',
+  'a seventh over two octaves cut to five plays the chord and then its root an octave up');
+
+const cyclic = createNoteFxProcessor();
+const cyclicEvents = [];
+for (let step = 0; step <= 3; step += 0.5) {
+  cyclicEvents.push(...cyclic.process({ laneKey: 'chords',
+    value: step === 0 ? [220, 330] : null, len: 4, step, spb: 0.1, barIndex: 0,
+    config: { arp: { ...cappedFx.arp, limit: 3, repeat: true } } }));
+}
+assert(json(cyclicEvents.map((e) => e.freq)) === '[220,330,440,220,330,440,220]',
+  'a repeating arpeggiator cycles the limited notes rather than stopping at them');
+
+const foldedLimit = createNoteFxProcessor();
+const foldedEvents = [];
+for (let step = 0; step <= 1.5; step += 0.5) {
+  foldedEvents.push(...foldedLimit.process({ laneKey: 'chords',
+    value: step === 0 ? [hz(60), hz(64), hz(67)] : null, len: 0.5, step, spb: 0.1, barIndex: 0,
+    config: { arp: { enabled: true, direction: 'up', rate: 0.5, octaves: 4, limit: 4,
+      repeat: false, gate: 80, retrigger: 'chord', latch: false,
+      rangeLimit: true, rangeLo: 60, rangeHi: 72 } } }));
+}
+assert(json(foldedEvents.map((e) => midiOf(e.freq))) === '[60,64,67,72]',
+  'the limit is counted after the fold, so duplicates the window removed do not eat into it');
+const downLimited = createNoteFxProcessor();
+const downEvents = [];
+for (let step = 0; step <= 1; step += 0.5) {
+  downEvents.push(...downLimited.process({ laneKey: 'chords',
+    value: step === 0 ? [220, 330] : null, len: 0.5, step, spb: 0.1, barIndex: 0,
+    config: { arp: { ...cappedFx.arp, direction: 'down', limit: 3 } } }));
+}
+assert(json(downEvents.map((e) => e.freq)) === '[440,330,220]',
+  'the limit trims the top of the stack whichever direction the pattern then runs');
+
 p.reset();
 const latched = { arp: { enabled: true, direction: 'down', rate: 1, octaves: 1,
   gate: 100, retrigger: 'continuous', latch: true } };
@@ -86,9 +143,6 @@ assert(first[0]?.freq === 440 && later[0]?.freq === 220,
 //
 // The point of a range is that the SOURCE stops deciding the register. These read in MIDI
 // note numbers, the file's spelling: 48 is C3, an octave below the desk's C3.
-const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
-const midiOf = (freq) => Math.round(12 * Math.log2(freq / 440) + 69);
-
 assert(json(foldTonesToRange([hz(84), hz(88), hz(91)], 48, 72).map(midiOf)) === '[72,64,67]',
   'a chord written above the window folds down into it by whole octaves');
 assert(json(foldTonesToRange([hz(24), hz(28)], 48, 72).map(midiOf)) === '[48,52]',

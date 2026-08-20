@@ -545,7 +545,7 @@ assert(PATTERN_GATE.min === 50 && PATTERN_GATE.max === 150 && PATTERN_GATE.defau
   // state on its own. Three things downstream have an opinion about a note's length and
   // any of them would quietly win: `soloBank` strips the per-note lengths (a preview
   // happens at no step of the song, so there is nothing for one to be the length OF),
-  // `legacyLaneLength` falls back to the preset's own `dur` when the bank names none,
+  // `legacyLaneLength` falls back to the LANE's legacy length when the bank names none,
   // and a preset carrying `fixedLength` overrides every one of them in seconds.
   //
   // So the claim is the ratio rather than the number: at 100% a note lasts exactly its
@@ -558,6 +558,36 @@ assert(PATTERN_GATE.min === 50 && PATTERN_GATE.max === 150 && PATTERN_GATE.defau
     assert(Math.abs(reaching - rate.steps) < 1e-9,
       `a 100% gate at 1/${rate.id} reaches the rack as the whole interval`
       + ` (${rate.steps} sixteenths), not the preset’s own dur`);
+  }
+
+  // And the same sentence for a note nobody has measured: how long it is belongs to the
+  // MUSIC, so it must not move when the lane is pointed at a different sound.
+  //
+  // `legacyLaneLength` used to answer with the preset's own `dur`, which made every
+  // lengthless note on a lane change length with the preset. On a chords lane carrying a
+  // pad that is the difference between a sixteenth and a half note with a three-second
+  // tail — they overlap into a drone that never stops, and swapping to a preset with a
+  // short `dur` appears to cure it, which is what made it look like one bad patch. The
+  // roll had already refused to read the patch for the same reason; this is the engine
+  // agreeing with what it draws.
+  {
+    const bare = (voiceId) => {
+      const bank = benchBank(voiceId, 120, 1);
+      // Whatever the bench states, take the LENGTHS off: this is the note nobody has
+      // measured, which is what the fallback is for.
+      delete bank.bassLen;
+      delete bank.bassDur;
+      return effectiveStepLen(bank, 'bass', 1);
+    };
+    // Two presets whose own `dur` values are far apart — 8 steps against 1.2.
+    const pad = bare('tngrBurntHorizon');
+    const lead = bare('tngrPlainSaw');
+    assert(pad === lead,
+      `a note with no length of its own is the same length under any preset`
+      + ` (${pad} against ${lead}) — it is the lane's answer, not the patch's`);
+    assert(pad !== VOICES.tngrBurntHorizon.dur,
+      `and it is not the preset's dur (${pad}, where the patch asks for`
+      + ` ${VOICES.tngrBurntHorizon.dur})`);
   }
   assert(!VOICES.roundMono.fixedLength,
     'and no bench preset may carry fixedLength, which would override the gate in seconds');

@@ -895,7 +895,7 @@ assert(/if \(gesturing\) editDeferred = true;\s*else onEdit/.test(touchedBody)
   'a slider keeps the live voice moving but persists its song-owned preset once per gesture');
 
 assert(/const armBarOverride = \(\) => \{\s*if \(mode\) mode\.value = 'on';\s*\};/.test(entry)
-  && /\[strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves,\s*rangeOn, rangeLo, rangeHi,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(entry),
+  && /\[strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,\s*rangeOn, rangeLo, rangeHi,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(entry),
   'editing any bar Note FX control automatically enables that bar override');
 {
   const noteFxEditor = entry.slice(entry.indexOf('function openNoteFxEditor'),
@@ -912,6 +912,14 @@ assert(/const repeat = check\('Repeat pattern', current\.arp\?\.repeat !== false
 // The window is two ends of one setting, so the panel may not offer a pick the fold
 // cannot honour: Lowest stops an octave short of the top of the span, Highest starts an
 // octave above its bottom, and moving either one carries the other with it.
+// Octaves and the note limit are one gesture in two pots: the stack is built, then the
+// climb is stopped partway up it. The pot may not be a decoration, so the saved key and
+// the engine's cap are pinned together with it.
+assert(/const limit = number\('Note limit', 0, NOTE_FX_LIMIT_MAX, 1, current\.arp\?\.limit \?\? 0,/.test(entry)
+  && /limit: clamp\(Math\.round\(Number\(limit\.value\) \|\| 0\), 0, NOTE_FX_LIMIT_MAX\)/.test(entry)
+  && /noteFxLimit\(resolved\.arp\)/.test(entry),
+  'the Arpeggiator exposes a saved note limit beside Octaves, and the bar card names it');
+
 assert(/const rangeOn = check\('Keep notes inside a range', current\.arp\?\.rangeLimit\)/.test(entry)
   && /rangeLimit: rangeOn\.checked/.test(entry)
   && /rangeLo: clamp\([\s\S]{0,120}?NOTE_FX_RANGE_MAX - 12\)/.test(entry)
@@ -4012,6 +4020,9 @@ assert(/const hasActiveNoteFx = \(fx\) => Boolean\(fx\?\.strum\?\.enabled \|\| f
   && /const openTrackNoteFx = \(ev\)[\s\S]*?openNoteFxEditor\(r\.left, r\.bottom \+ 4, row\.key\)[\s\S]*?noteFx\.addEventListener\('click', openTrackNoteFx\)/.test(entry)
   && /\.arrtrack-notefx \{/.test(shell),
   'a track with active Note FX shows the compact NFX marker in its header');
+assert(/function setTrackNoteFx\(key, next\) \{[\s\S]*?buildRack\(\);\s*\n(?:\s*\/\/[^\n]*\n)*\s*buildArrangement\(\);\s*\n\}/.test(entry)
+  && /if \(noteFxSig\(\) !== fxBefore\) buildArrangement\(\);/.test(entry),
+  'applying, clearing or undoing track Note FX repaints the arrangement, so the NFX marker follows the setting');
 assert(/tip\.classList\.toggle\('bartip', el\.dataset\.tipkind === 'bar'\)/.test(entry)
   && /tip\.classList\.toggle\('tracktip', el\.dataset\.tipkind === 'track'\)/.test(entry)
   && /JSON\.parse\(el\.dataset\.tipgroups\)/.test(entry)

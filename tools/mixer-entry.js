@@ -4,8 +4,8 @@
 import { Audio } from '../src/engine/audio.js';
 import { createVisualiser, VISUALISER_NAMES, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS }
   from '../src/engine/visualisers.js';
-import { resolveNoteFx, noteFxRange, NOTE_FX_RANGE_MIN, NOTE_FX_RANGE_MAX }
-  from '../src/engine/note-fx.js';
+import { resolveNoteFx, noteFxRange, noteFxLimit, NOTE_FX_RANGE_MIN, NOTE_FX_RANGE_MAX,
+  NOTE_FX_LIMIT_MAX } from '../src/engine/note-fx.js';
 // The boundary logic for handing a cabinet mix over to a level's, so 'Hear the change'
 // auditions exactly what the game does rather than a second implementation of it.
 import { MusicDirector } from '../src/engine/music-director.js';
@@ -1039,7 +1039,16 @@ function undo() {
     const m = mixFor(trackId);
     return JSON.stringify([m.voice || null, m.layers || null, m.off || null, m.order || null]);
   };
+  // Track Note FX are mix state, but the arrangement draws them: the row's NFX marker
+  // and the bar badges. The plain branch below rebuilds the rack alone, which undid the
+  // setting and left the marker showing it.
+  const noteFxSig = () => {
+    const lanes = mixFor(trackId).lanes || {};
+    return JSON.stringify(Object.keys(lanes).sort()
+      .map((k) => [k, lanes[k].noteFx || null]));
+  };
   const before = bankSig();
+  const fxBefore = noteFxSig();
   const arrBefore = JSON.stringify(arrFor(step.trackId) || null);
   if (step.mix === null) delete draft[step.trackId];
   else draft[step.trackId] = step.mix;
@@ -1072,6 +1081,7 @@ function undo() {
     updateStatus();
   } else {
     buildRack(); applyToEngine(mixFor(trackId)); updateStatus();
+    if (noteFxSig() !== fxBefore) buildArrangement();
   }
   toast('undone');
 }
@@ -3789,6 +3799,9 @@ function setTrackNoteFx(key, next) {
   });
   applyToEngine(mixFor(trackId));
   buildRack();
+  // The row's NFX marker and its bar badges are both drawn from the track Note FX,
+  // so a grid built before this edit is still showing the setting it replaced.
+  buildArrangement();
 }
 
 /**
@@ -3884,12 +3897,16 @@ function openNoteFxEditor(x, y, key, scope = null) {
     }
     row.append(name, select); form.append(row); return select;
   };
-  const number = (label, min, max, step, value, suffix) => {
+  const number = (label, min, max, step, value, suffix, tip = null) => {
     const row = document.createElement('label'); row.className = 'regcontrol';
     const name = document.createElement('span'); name.textContent = label;
     const input = document.createElement('input'); input.type = 'number';
     input.min = min; input.max = max; input.step = step; input.value = value;
     const read = document.createElement('div'); read.className = 'regread'; read.textContent = suffix;
+    if (tip) {
+      row.dataset.tip = tip.name;
+      row.dataset.tipsays = tip.says;
+    }
     row.append(name, input, read); form.append(row); return input;
   };
 
@@ -3916,6 +3933,14 @@ function openNoteFxEditor(x, y, key, scope = null) {
     [1, '1/16'], [2 / 3, '1/16T'], [0.5, '1/32'], [1 / 3, '1/32T']],
     current.arp?.rate ?? 1);
   const octaves = number('Octaves', 1, 4, 1, current.arp?.octaves ?? 1, 'octaves');
+  // Octaves builds the stack; this stops the climb partway up it. Two controls because
+  // the useful shape is between the octave counts — a seventh over two octaves cut to
+  // five notes is not one octave and not two, and no octave count can spell it.
+  const limit = number('Note limit', 0, NOTE_FX_LIMIT_MAX, 1, current.arp?.limit ?? 0,
+    'notes · 0 plays the whole stack', {
+      name: 'Arpeggiator note limit',
+      says: 'Stops the pattern after this many notes, counted up the stack Octaves built — set Octaves to 2 and this to 5 and a seventh plays its four notes plus the lowest one again an octave up. Counted after the range folds, so the number here is the number you hear. Without Repeat the pattern stops there; with Repeat it cycles those notes instead.',
+    });
   const rangeTip = {
     name: 'Arpeggiator range',
     says: 'Folds every arpeggiated note by whole octaves until it lands between these two, so the pattern plays in the same register whatever octave the chord was written in. Notes already inside keep their octave. The window is at least an octave tall — moving one end pushes the other — and an octave stack taller than the window folds back into it rather than sounding above it.',
@@ -3949,7 +3974,7 @@ function openNoteFxEditor(x, y, key, scope = null) {
   const armBarOverride = () => {
     if (mode) mode.value = 'on';
   };
-  for (const control of [strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves,
+  for (const control of [strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,
     rangeOn, rangeLo, rangeHi,
     repeat, gate, retrigger, latch]) control.addEventListener('input', armBarOverride);
   panel.append(form);
@@ -3966,6 +3991,7 @@ function openNoteFxEditor(x, y, key, scope = null) {
     arp: { enabled: arpOn.checked, direction: arpDir.value,
       rate: clamp(Number(arpRate.value) || 1, 1 / 3, 4),
       octaves: clamp(Math.round(Number(octaves.value) || 1), 1, 4),
+      limit: clamp(Math.round(Number(limit.value) || 0), 0, NOTE_FX_LIMIT_MAX),
       rangeLimit: rangeOn.checked,
       rangeLo: clamp(Math.round(Number(rangeLo.value) || NOTE_FX_RANGE_DEFAULT_LO),
         NOTE_FX_RANGE_MIN, NOTE_FX_RANGE_MAX - 12),
@@ -13884,8 +13910,12 @@ function barOperationGroups(barPlanEntry, key, { frozen = false } = {}) {
     // is otherwise unexplained. Printed resolved, so a window the engine had to widen
     // to an octave says the octave it will use.
     const window = noteFxRange(resolved.arp);
+    // A limit is worth the same line for the same reason: it is the difference between
+    // the octaves the card names and the notes the bar plays.
+    const limit = noteFxLimit(resolved.arp);
     noteItems.push({
       text: `Arp · ${NOTE_FX_DIRECTION_LABELS[resolved.arp.direction] || 'Up'} · ${noteFxRateLabel(resolved.arp.rate ?? 1)} · ${resolved.arp.octaves ?? 1} oct`
+        + (limit ? ` · ${limit} notes` : '')
         + (window ? ` · ${deskNoteName(window.lo, { fancy: true })}–${deskNoteName(window.hi, { fancy: true })}` : ''),
       tone: 'active',
     });

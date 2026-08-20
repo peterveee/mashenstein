@@ -531,6 +531,79 @@ assert(late.late === 1 && late.worstLate === 256,
   assert(Math.abs(carried - rms(legatoPluck.channels, 0.25, 0.29, RATE)) < carried,
     'legato leaves the envelope where it was rather than restarting it');
 
+  // A restrike is the same strike at EVERY sustain — §7.1's "choke/retrigger".
+  //
+  // The test above measures a pluck, and a pluck is the easy case: the envelope has
+  // already fallen, so simply re-gating it leaps back to full and sounds struck. That is
+  // what hid this for so long. Re-gating alone runs the attack from wherever the envelope
+  // stands, so on a high sustain there is nothing above it to rise to and the note is not
+  // restruck at all — the pitch changes and nothing else does, which is exactly what
+  // "MONO does not reliably retrigger" sounded like. The choke is what makes it reliable:
+  // whatever the patch, the note comes down to silence first and starts again from zero.
+  for (const sustain of [0.08, 0.5, 1]) {
+    const amp = { attack: 0.005, decay: 0.15, sustain, release: 0.1 };
+    const struck = renderTngr2({ tables, sampleRate: RATE, seconds: 1,
+      patch: patchWith({ mode: 'mono', amp }), events: two });
+    // Just before the second note lands, and in the choke that starts it.
+    const held = rms(struck.channels, 0.28, 0.30, RATE);
+    const choke = rms(struck.channels, 0.3015, 0.3025, RATE);
+    const after = rms(struck.channels, 0.31, 0.33, RATE);
+    assert(choke < held * 0.5 && choke < after * 0.5,
+      `a mono restrike at sustain ${sustain} falls to silence before it strikes again`
+      + ` (held ${held.toFixed(4)} → choke ${choke.toFixed(4)} → struck ${after.toFixed(4)})`);
+  }
+
+  // And it is the NEW note's strike, so it is played at the new note's velocity. Carrying
+  // the first note's velocity through a whole mono part is a part with no dynamics in it.
+  const quiet = [
+    noteOn(1, 0.02, 220, RATE, { velocity: 1 }),
+    noteOn(2, 0.30, 220, RATE, { velocity: 0.2 }),
+    noteOff(2, 0.8, RATE),
+  ];
+  const dyn = renderTngr2({ tables, sampleRate: RATE, seconds: 1,
+    patch: patchWith({ mode: 'mono', amp: { attack: 0.005, decay: 0.01, sustain: 1, release: 0.1 } }),
+    events: quiet });
+  const loudPart = rms(dyn.channels, 0.15, 0.25, RATE);
+  const quietPart = rms(dyn.channels, 0.45, 0.55, RATE);
+  assert(quietPart < loudPart * 0.4,
+    `a mono restrike takes the new note's velocity (${loudPart.toFixed(4)} → ${quietPart.toFixed(4)})`);
+
+  // Two notes sharing one event id must both be let go.
+  //
+  // The desk builds a note's identity out of its time and its pitch, so a lane CAN be
+  // handed two notes with the same one — a part that plays the same note twice at once,
+  // or two notes whose hashes collide. A voice stays active through its whole release, so
+  // both note-offs used to find the first of the two voices and release it twice, leaving
+  // the second sitting at its sustain for the rest of the session. That is the drone: on
+  // a square-gate pad — no attack, no decay, no release, sustain well up — it is a tone
+  // that simply never stops, and turning the release down does not touch it.
+  const held = { attack: 0, decay: 0, sustain: 0.66, release: 0.036 };
+  for (const mode of ['poly', 'mono']) {
+    const shared = renderTngr2({ tables, sampleRate: RATE, seconds: 3,
+      patch: patchWith({ mode, amp: held }),
+      events: [
+        noteOn(42, 0.10, 220, RATE), noteOn(42, 0.15, 130.81, RATE),
+        noteOff(42, 0.50, RATE), noteOff(42, 0.501, RATE),
+      ] });
+    assert(rms(shared.channels, 2.5, 3, RATE) < 1e-4,
+      `${mode}: two notes sharing an event id are both released, not one of them twice`);
+  }
+
+  // A note-off that arrives in FRONT of the note it ends must not hang it.
+  //
+  // The desk schedules a previewed note 20ms ahead and its note-off when the key comes
+  // up, so a key tapped faster than that used to reach the queue in the wrong order: the
+  // note-off found no voice, and the note-on behind it sounded for ever. An on-screen
+  // keyboard taps that fast easily. The controller now carries the note-on's lead across
+  // to the release; this is the core refusing to hang even if something does not.
+  for (const mode of ['mono', 'poly']) {
+    const early = renderTngr2({ tables, sampleRate: RATE, seconds: 2,
+      patch: patchWith({ mode, amp: { attack: 0.005, decay: 0.1, sustain: 0.8, release: 0.05 } }),
+      events: [noteOn(7, 0.12, 220, RATE), noteOff(7, 0.11, RATE)] });
+    assert(rms(early.channels, 1.5, 2, RATE) < 1e-4,
+      `${mode}: a note-off stamped before its own note-on does not leave the note sounding`);
+  }
+
   // Glide takes the pitch there over time rather than stepping.
   const glided = renderTngr2({ tables, sampleRate: RATE, seconds: 1,
     patch: patchWith({ mode: 'legato', glide: 0.2, filter: { cutoff: 18000 },

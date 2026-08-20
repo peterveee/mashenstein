@@ -11,6 +11,7 @@
  * Browserless on purpose: the bug is in the RACK's bookkeeping, not in the worklet, and a
  * test that needed an AudioWorklet to prove it would not run in the default suite.
  */
+import { readFileSync } from 'node:fs';
 import { VoiceRack } from '../src/engine/voices.js';
 
 let failed = 0;
@@ -118,6 +119,31 @@ const note = (freq, hold) => ({ freq, time: 0, dur: 0.5, gain: 0.8, hold });
   assert(!second.some((id) => first.includes(id)),
     `the second stretch takes fresh event ids (${first.join(',')} then ${second.join(',')}) —`
     + ' a repeated id sends a note-off to a note that is still sounding');
+}
+
+// ---- and the same promise on the LIVE path -----------------------------------
+//
+// The offline drone above had a twin. Live notes took an id hashed from the note's time
+// and pitch — `ms * 131 + round(hz) * 17 + index` — which is a LINEAR combination, so any
+// two notes with 131*dms == 17*dhz wore the same name. A C4 and a C3 seventeen
+// milliseconds apart is the smallest case; a part that plays the same note twice at once
+// collided exactly. Either way both note-offs went to whichever voice `findVoice` reached
+// first and the other note was never released at all.
+//
+// `_playTngr2Node` needs a real lane to spy on, so this pins the source instead: what
+// matters is that the identity cannot be computed from the note, because two notes can be
+// the same note.
+{
+  const source = readFileSync(new URL('../src/engine/voices.js', import.meta.url), 'utf8');
+  assert(!/Math\.round\(time \* 1000\) \* 131/.test(source),
+    'the live event id is not a linear hash of the note time and pitch any more');
+  assert(source.includes('const eventId = (lane.nextEventId = (lane.nextEventId || 0) + 1);'),
+    'a live note takes its identity from a per-lane counter, which cannot collide');
+  // A held note is the only kind with no ending of its own, and every way of ending one —
+  // a key coming up, a cancelled pointer, a hidden tab, a MIDI note-off — can fail to
+  // arrive. The backstop is booked with the note so nothing has to remember it later.
+  assert(source.includes('tngr2NoteOff(lane, { at: time + HOLD_SECONDS, eventId });'),
+    'every held TNGR-2 note books a HOLD_SECONDS release it cannot outlive');
 }
 
 console.log(failed ? `\nTNGR-2 QUEUE: ${failed} FAILED` : '\nTNGR-2 QUEUE: PASSED');

@@ -127,7 +127,9 @@ const PER_NOTE_LENGTH_BASES = new Set([
 export const perNoteLengthLane = (laneKey) => PER_NOTE_LENGTH_BASES.has(baseLane(laneKey));
 
 // The old defaults, still read as compatibility for notes that have never been given an
-// explicit length of their own.
+// explicit length of their own. Per LANE, and that is the point: a length belongs to the
+// music, so the answer for a note nobody has measured must not change when the lane is
+// pointed at a different sound. See legacyLaneLength.
 const LEGACY_LANE_DUR = {
   bass: 1.8,
   lead: 1.2,
@@ -153,7 +155,26 @@ export function legacyLaneLength(view, laneKey, voice = voiceOf(view, laneKey)) 
   const bankDur = seam ? view?.[seam.durKey] : null;
   if (validLen(bankDur)) return bankDur;
   if (base === 'leadHarm' && validLen(view?.leadDur)) return view.leadDur;
-  if (validLen(voice?.dur)) return voice.dur;
+  // NOT the preset's own `dur`, which is where this used to end up.
+  //
+  // A note with no length of its own is a note nobody has measured yet, and the answer to
+  // "how long is it" cannot be a property of the SOUND: reading the patch made every such
+  // note change length the moment the lane was pointed somewhere else. On a pad that is
+  // not subtle — Burnt Horizon asks for 8 steps and rings for another 3.2 seconds, so a
+  // chords lane whose notes had never been given lengths played half notes with a long
+  // tail where the roll was drawing sixteenths, and they overlapped into a drone that
+  // never stopped. Swapping in a preset with a short `dur` "fixed" it, which is what made
+  // it look like one patch misbehaving.
+  //
+  // The roll reached this conclusion first and says so where it draws a lengthless note:
+  // "not a request to display the current synth patch's dur ... Those patch values are
+  // precisely what changing presets changes." It drew one step while the engine played
+  // the patch. This is the other half of that, so the two now agree about what a note
+  // with nothing said about it is.
+  //
+  // A preset's `dur` still decides the trigger lanes — vox, gliss, sweeps, drums — which
+  // carry no per-note lengths and where the length IS sound design. That fallback lives
+  // in `noteSeconds`, which this never reaches for them.
   return LEGACY_LANE_DUR[base] ?? 1;
 }
 

@@ -2409,27 +2409,66 @@ export class VoiceRack {
    * makes MIX the switch and why the three pots behind it grey out.
    */
   _tngr2Output(lane, v, time) {
-    const spec = v.chorus || {};
-    const mix = Math.min(1, Math.max(0, Number(spec.mix) || 0));
-    if (!(mix > 0)) return lane.node;
-    const stage = { input: this.ctx.createGain(), direct: this.ctx.createGain(), output: this.ctx.createGain() };
+    const spec = v.chorus;
+    // No CHORUS control on this voice at all: the lane's node IS its output, and it costs
+    // nothing. A voice that HAS the control gets the stage whether or not it is turned
+    // up, so winding MIX off zero is a value moving rather than a chain being rebuilt.
+    if (!spec || typeof spec !== 'object') return lane.node;
+    const stage = {
+      input: this.ctx.createGain(), direct: this.ctx.createGain(), output: this.ctx.createGain(),
+    };
     lane.node.connect(stage.input);
     stage.input.connect(stage.direct);
     stage.direct.connect(stage.output);
-    const leg = buildChorusLeg(this.ctx, spec, time, stage);
+    lane.stage = stage;
+    this._updateTngr2Chorus(lane, spec, time);
+    return stage.output;
+  }
+
+  /**
+   * Move a lane's CHORUS to new settings without rebuilding anything.
+   *
+   * This is _updateMrdrLaneStage for TNGR-2, deliberately the same shape: they are the
+   * same four controls off the same shared Effects card, and MRDR-3 has always ramped
+   * them where they stand.
+   *
+   * TNGR-2 used to rebuild instead — the chain was keyed on a JSON of the whole chorus
+   * block, so ANY of the four moving tore the lane's node off its output at the next
+   * note-on and built a fresh stage, fresh delay lines and a fresh LFO. Dragging a knob
+   * therefore cost that on every note: a click as the node was unrouted, an LFO phase
+   * jump, the delay lines' contents thrown away — and a chorus leg left running for each
+   * one, because only the output gain was ever disconnected. Ramping is inaudible, and
+   * the leg the lane already has is the one that keeps playing.
+   *
+   * Equal power between dry and wet, the same law the layer stage uses, so winding MIX up
+   * moves the sound rather than making it louder.
+   */
+  _updateTngr2Chorus(lane, spec, time) {
+    const stage = lane?.stage;
+    if (!stage) return;
+    const mix = Math.min(1, Math.max(0, Number(spec?.mix) || 0));
+    if (!(mix > 0)) {
+      // All dry. The leg stays built and silent rather than being torn down: it is one
+      // oscillator and two delays, and keeping it is what lets MIX come back up without
+      // a rebuild — which is the whole point of this method.
+      rampParam(stage.direct.gain, 1, time);
+      for (const side of lane.chorus?.sides || []) rampParam(side.level.gain, 0, time);
+      return;
+    }
+    const leg = lane.chorus && !lane.chorus.stopped
+      ? lane.chorus : (lane.chorus = buildChorusLeg(this.ctx, spec, time, stage));
+    const rate = Math.min(8, Math.max(0.05, spec.rate ?? 0.8));
     const depth = Math.min(1, Math.max(0, spec.depth ?? 0.5));
     const width = Math.min(1, Math.max(0, spec.width ?? 1));
-    // Equal power between dry and wet, the same law the layer stage uses, so winding MIX
-    // up moves the sound rather than making it louder.
     const wetLevel = Math.sin((mix * Math.PI) / 2) / Math.SQRT2;
-    stage.direct.gain.setValueAtTime(Math.cos((mix * Math.PI) / 2), time);
+    rampParam(stage.direct.gain, Math.cos((mix * Math.PI) / 2), time);
     for (const side of leg.sides || []) {
-      side.level.gain.setValueAtTime(wetLevel, time);
-      side.swing.gain.setValueAtTime(side.side * depth * CHORUS_SWING_S, time);
-      if (side.pan) side.pan.pan.setValueAtTime(side.side * width, time);
+      rampParam(side.level.gain, wetLevel, time);
+      rampParam(side.swing.gain, side.side * depth * CHORUS_SWING_S, time);
+      if (side.pan) rampParam(side.pan.pan, side.side * width, time);
     }
-    lane.chorus = leg;
-    return stage.output;
+    rampParam(leg.osc.frequency, rate, time);
+    leg.spec = { ...spec };
   }
 
   /**
@@ -2525,17 +2564,29 @@ export class VoiceRack {
     // alone, turning the chorus up did nothing at all until the song was reloaded —
     // the one effect that is native nodes rather than a number in the patch.
     const chorusKey = JSON.stringify(v.chorus || null);
-    if (!lane.connected || lane.chorusKey !== chorusKey) {
-      if (lane.connected) {
-        try { lane.node.disconnect(); } catch { /* nothing attached yet */ }
-        try { lane.out?.disconnect(); } catch { /* ditto */ }
-      }
+    if (!lane.connected) {
       const out = this._tngr2Output(lane, v, time);
       if (dry) out.connect(dry);
       if (echo && wet) out.connect(wet);
       lane.out = out;
       lane.chorusKey = chorusKey;
       lane.connected = true;
+    } else if (lane.chorusKey !== chorusKey) {
+      if (lane.stage) {
+        // Values, ramped where they stand — see _updateTngr2Chorus.
+        this._updateTngr2Chorus(lane, v.chorus || {}, time);
+      } else {
+        // The lane was connected straight through because the voice had no CHORUS block
+        // when it was built, and now it has one. That is a chain that has to exist rather
+        // than a value that has to move, so it is built once, here, and never again.
+        try { lane.node.disconnect(); } catch { /* nothing attached yet */ }
+        try { lane.out?.disconnect(); } catch { /* ditto */ }
+        const out = this._tngr2Output(lane, v, time);
+        if (dry) out.connect(dry);
+        if (echo && wet) out.connect(wet);
+        lane.out = out;
+      }
+      lane.chorusKey = chorusKey;
     }
     const durationAt = (index) => {
       const raw = Array.isArray(dur) ? (dur[index] ?? dur[0]) : dur;
@@ -2546,10 +2597,21 @@ export class VoiceRack {
       if (!(note > 0)) return;
       const hz = note * shift;
       if (!Number.isFinite(hz) || !(hz > 0)) return;
-      // The event id is the note's identity: it is what a note-off refers to and what
-      // seeds the phase, so it has to be stable between a stem and the mix it belongs to
-      // — hence derived from the lane, the pitch and the time rather than from a counter.
-      const eventId = (Math.round(time * 1000) * 131 + Math.round(hz) * 17 + index) | 0;
+      // The event id is the note's identity: it is what a note-off refers to, and TWO
+      // NOTES ON A LANE MAY NEVER SHARE ONE. A note-off releases a voice carrying its id,
+      // so a shared id means one note-off releasing a voice that was already let go while
+      // the other note is never released at all — a tone that sustains until the desk is
+      // reloaded. It does not need to be an unlikely accident either: the id used to be
+      // `ms * 131 + round(hz) * 17 + index`, a LINEAR combination, so any two notes with
+      // 131*dms == 17*dhz shared one — a C4 and a C3 seventeen milliseconds apart, among
+      // others — and a part that plays the same note twice at once shared one exactly.
+      //
+      // A counter cannot collide at all, which is the only guarantee worth having here,
+      // and it is what the offline path has always used — see `_collectTngr2`. The id was
+      // hashed from time and pitch to keep a stem and its mix identical; a per-lane
+      // counter keeps that too, because soloing a lane does not change which notes that
+      // lane plays or the order it plays them in.
+      const eventId = (lane.nextEventId = (lane.nextEventId || 0) + 1);
       tngr2NoteOn(lane, { at: time, hz, velocity: Math.min(1, amp), eventId });
       if (!hold) {
         tngr2NoteOff(lane, { at: time + durationAt(index), eventId });
@@ -2561,7 +2623,26 @@ export class VoiceRack {
         // books to release and a swept keyboard leaves a note sounding for ever.
         const noteKey = `${laneKey}|${note.toFixed(2)}`;
         this._releasePreview(noteKey);
-        this._heldNative.set(noteKey, { tngr2: { lane, eventId } });
+        // WHEN this note-on lands, and how far ahead of now that was.
+        //
+        // A preview is scheduled AHEAD: `previewNote` stamps it at currentTime + 0.02 so
+        // it lands clear of whatever the sequencer has already queued. The note-off has
+        // to be given the SAME lead, or a key held for less than it — which an on-screen
+        // keyboard does easily — sends a note-off stamped BEFORE the note-on it ends. The
+        // core applies events in frame order, so that one finds no voice to release and
+        // the note-on behind it sounds for ever. Carrying the lead across also makes the
+        // note as long as the key was actually down, rather than clamping a fast tap to
+        // nothing. See `_releasePreview` and `stopPreview`.
+        const lead = Math.max(0, time - this.ctx.currentTime);
+        this._heldNative.set(noteKey, { tngr2: { lane, eventId, at: time, lead } });
+        // The backstop, booked NOW so that nothing has to remember to book it later: a
+        // held note is the one kind that has no ending of its own, and every way of
+        // ending it — a key coming up, a pointer cancelled, the tab hidden, a MIDI
+        // note-off — is something that can fail to arrive. This is the same
+        // HOLD_SECONDS the rack's own held voices stop at, and it costs one queued
+        // event. Whichever note-off lands first releases the note; the other finds
+        // nothing and does nothing.
+        tngr2NoteOff(lane, { at: time + HOLD_SECONDS, eventId });
       }
       made = true;
     });
@@ -5995,7 +6076,9 @@ export class VoiceRack {
     // reaches straight for `held.params`.
     for (const [noteKey, held] of [...this._heldNative]) {
       if (!held?.tngr2) continue;
-      tngr2NoteOff(held.tngr2.lane, { at: now, eventId: held.tngr2.eventId });
+      tngr2NoteOff(held.tngr2.lane, {
+        at: Math.max(now, held.tngr2.at || 0), eventId: held.tngr2.eventId,
+      });
       this._heldNative.delete(noteKey);
     }
     for (const held of this._heldNative.values()) {
@@ -6101,7 +6184,14 @@ export class VoiceRack {
     // A TNGR-2 note is not nodes, it is an event id inside a lane's processor, so it is
     // released by saying so rather than by ramping a gain and stopping a source.
     if (held?.tngr2) {
-      tngr2NoteOff(held.tngr2.lane, { at, eventId: held.tngr2.eventId });
+      // The key came up `at`; the note sounds one lead later, exactly as its note-on
+      // did. The floor is the note-on's own frame, which is the shortest a note can be
+      // and still never overtakes it — a frame's events are applied in the order they
+      // were posted, so the note-on there still starts the voice and this finds it.
+      tngr2NoteOff(held.tngr2.lane, {
+        at: Math.max(at + (held.tngr2.lead || 0), held.tngr2.at || 0),
+        eventId: held.tngr2.eventId,
+      });
       this._heldNative.delete(noteKey);
       return;
     }

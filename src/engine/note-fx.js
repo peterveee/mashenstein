@@ -36,6 +36,33 @@ export const NOTE_FX_RANGE_MIN = 21;
 export const NOTE_FX_RANGE_MAX = 108;
 
 /**
+ * The longest pattern a note limit may ask for. Four octaves of a seven-note chord is
+ * twenty-eight, so thirty-two is past the top of anything the stack can hold — the cap
+ * is here to keep a mistyped number out of the scheduler, not to shorten a pattern
+ * somebody meant.
+ */
+export const NOTE_FX_LIMIT_MAX = 32;
+
+/**
+ * How many notes of the stack the pattern plays, or 0 for all of it.
+ *
+ * Octaves says how tall the stack is built; this says where to stop climbing it. The
+ * two are halves of one gesture — "up to two octaves, but cut it off at five notes" —
+ * which is why the limit trims the built stack rather than pretending to be a fractional
+ * octave count: five notes of a seventh is the chord plus its root an octave up, five of
+ * a triad is the triad plus two, and neither is a number of octaves you could have
+ * asked for.
+ *
+ * It applies whether or not the pattern repeats. A one-shot stops after the notes it is
+ * allowed; a repeating one cycles them, which is a shorter ostinato rather than a
+ * truncation — the same setting, read by a mode that comes back round.
+ */
+export function noteFxLimit(arp = {}) {
+  const limit = Math.round(Number(arp?.limit) || 0);
+  return limit > 0 ? Math.min(limit, NOTE_FX_LIMIT_MAX) : 0;
+}
+
+/**
  * The pitch window an arpeggiator is confined to, or null when it is free.
  *
  * A window narrower than an octave has nowhere to put a chromatic set — some pitch class
@@ -139,7 +166,13 @@ export function createNoteFxProcessor() {
         // those duplicates go — set a four-octave stack inside a one-octave window and
         // you get the one octave, not the same four notes four times.
         const range = noteFxRange(arp);
-        const stack = range ? foldTonesToRange(expanded, range.lo, range.hi) : expanded;
+        const folded = range ? foldTonesToRange(expanded, range.lo, range.hi) : expanded;
+        // The count is counted last, so the number on the panel is the number you hear.
+        // Folding drops duplicates, and a limit taken before it would spend part of its
+        // five notes on tones the fold was about to remove. A limit longer than the
+        // stack is not padded out — it is simply never reached.
+        const limit = noteFxLimit(arp);
+        const stack = limit ? folded.slice(0, limit) : folded;
         const duration = Array.isArray(len)
           ? Math.max(rate, ...len.filter(Number.isFinite)) : Math.max(rate, Number(len) || rate);
         const passLength = orderedTones(stack, arp.direction || 'up').length;

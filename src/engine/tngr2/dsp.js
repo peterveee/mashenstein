@@ -74,6 +74,12 @@ var TNGR2_STAGE_ATTACK = 1;
 var TNGR2_STAGE_DECAY = 2;
 var TNGR2_STAGE_SUSTAIN = 3;
 var TNGR2_STAGE_RELEASE = 4;
+// MONO's choke: on the way down to zero before the attack that follows it. See restrike().
+var TNGR2_STAGE_RESTRIKE = 5;
+
+// Below this a jump straight to zero is inaudible — about -80 dB — so the choke that
+// covers the step is not worth the four milliseconds it would cost the strike.
+var TNGR2_SILENT = 1e-4;
 
 /*
  * The two envelope curves the desk offers, as a shaping of a stage's PROGRESS.
@@ -109,6 +115,7 @@ function Tngr2Env(rate) {
   this.attackStep = 1;
   this.decayStep = 1;
   this.releaseStep = 1;
+  this.chokeStep = 1;
   // How far through the current stage, 0 to 1, before the curve is applied.
   this.p = 0;
   this.from = 0;
@@ -155,6 +162,29 @@ Tngr2Env.prototype.choke = function choke(seconds) {
   this.stage = TNGR2_STAGE_RELEASE;
 };
 
+/**
+ * MONO's restrike: fall to silence over the anti-click fade, then run from zero.
+ *
+ * §7.1 asks MONO to "choke/retrigger", and the choke is the half that makes the retrigger
+ * reliable. Re-gating alone starts the attack from wherever the envelope happens to stand,
+ * so how much of a strike you hear depends entirely on how far the last note had fallen:
+ * a pluck already down at a sustain of 0.08 leaps back to full and sounds struck, while a
+ * pad sitting at a sustain of 1 has nothing above it to rise to and is not restruck at all
+ * — the pitch changes and nothing else does. Coming down to zero first makes every
+ * restrike the same strike, whatever the patch and whatever the note before it was doing.
+ *
+ * Unlike choke(), which is how a stolen voice dies, this one ends in ATTACK: the voice
+ * plays on into the new note instead of being retired.
+ */
+Tngr2Env.prototype.restrike = function restrike(spec, seconds) {
+  // The new note's ADSR is loaded first, so the attack that follows the fall is already
+  // the one this note asked for.
+  this.gate(spec);
+  if (this.from <= TNGR2_SILENT) return;
+  this.chokeStep = seconds > 0 ? Math.min(1, 1 / (seconds * this.rate)) : 1;
+  this.stage = TNGR2_STAGE_RESTRIKE;
+};
+
 Tngr2Env.prototype.tick = function tick() {
   var stage = this.stage;
   if (stage === TNGR2_STAGE_OFF) return 0;
@@ -188,6 +218,20 @@ Tngr2Env.prototype.tick = function tick() {
     } else {
       var rp = this.releaseCurve ? tngr2Fall(this.p) : this.p;
       this.value = this.from * (1 - rp);
+    }
+  } else if (stage === TNGR2_STAGE_RESTRIKE) {
+    this.p += this.chokeStep;
+    if (this.p >= 1) {
+      // Silent — and the attack takes it from here, from zero, which is the whole point
+      // of having come down. The stage never touches OFF, so the voice is never dropped
+      // in the middle of its own restrike.
+      this.p = 0;
+      this.value = 0;
+      this.from = 0;
+      this.stage = TNGR2_STAGE_ATTACK;
+    } else {
+      // Linear, like choke(): a curve buys nothing across four milliseconds.
+      this.value = this.from * (1 - this.p);
     }
   }
   return this.value;
@@ -734,6 +778,9 @@ function Tngr2Voice(rate) {
   this.hz = 0;
   this.level = 0;
   this.velocity = 1;
+  // A MONO restrike's level, waiting for the sample the choke reaches silence. -1 is
+  // "nothing waiting", which a velocity can never be.
+  this.pendingLevel = -1;
   this.keyTrack = 0;
   this.patch = null;
   this.gliding = false;
@@ -768,6 +815,7 @@ Tngr2Voice.prototype.start = function start(note, age, patch, tables, core, star
   this.hz = Math.max(0, Number(note.hz) || 0);
   this.velocity = Math.min(1, Math.max(0, note.velocity != null ? Number(note.velocity) : 1));
   this.level = this.velocity;
+  this.pendingLevel = -1;
   // Key tracking, in octaves from middle C: what §7.4's filter keyTrack scales, and a
   // modulation source in its own right.
   this.keyTrack = Math.log2(Math.max(1e-6, this.hz) / 261.6255653005986);
@@ -826,16 +874,64 @@ Tngr2Voice.prototype.start = function start(note, age, patch, tables, core, star
 };
 
 /**
+ * Take the patch the lane holds NOW.
+ *
+ * A voice binds to the patch it was born with, which is right for a note that is still
+ * the note it started as. A MONO restrike is not: it is a new strike on a voice that
+ * happens to be reused, and in MONO one voice can carry a whole part, so without this a
+ * lane went on sounding like the patch that was loaded when its first note landed. Half
+ * of it did move — retarget reads glide, source ratios and the envelopes off the current
+ * patch — which is worse than neither, and it is why editing the panel over a playing
+ * MONO lane only half worked. The liveness flags are the sharpest case: a position or
+ * filter envelope switched on after the first note was gated and then never ticked,
+ * because tick() asks the voice's own patch whether the patch uses one.
+ *
+ * Phase, filter and drive state are deliberately left alone: they are where the voice IS,
+ * not what the patch says, and resetting them under a sounding note is a click. Only the
+ * filter stages this patch newly brings into use are cleared, since those hold whatever
+ * an earlier note left in them.
+ */
+Tngr2Voice.prototype.rebind = function rebind(patch, tables, core) {
+  var was = this.stages;
+  this.patch = patch;
+  this.stages = patch.stages;
+  this.toneCoeff = patch.drive.toneCoeff;
+  for (var r = was; r < this.stages; r++) { this.svfL[r].reset(); this.svfR[r].reset(); }
+  var specs = patch.sources;
+  var span = tables ? tables.frames - 1 : 0;
+  this.count = Math.min(TNGR2_MAX_SOURCES, specs.length);
+  for (var s = 0; s < this.count; s++) {
+    var spec = specs[s];
+    var src = this.sources[s];
+    src.gainL = spec.gainL * spec.level;
+    src.gainR = spec.gainR * spec.level;
+    src.envAmount = spec.envAmount;
+    src.lfoAmount = spec.lfoAmount;
+    src.basePosition = spec.position;
+    src.family = core.familyFor(spec.table);
+    src.lengths = tables ? tables.lengths : null;
+    src.strides = tables ? tables.strides : null;
+    if (tables) {
+      src.setPosition(spec.position, span);
+      src.retune(this.rate, tables.harmonics, tables.levels);
+    }
+  }
+};
+
+/**
  * Send a sounding voice to a new pitch.
  *
  * The regate flag is the whole difference between MONO and LEGATO: mono restarts the
  * envelopes on every new note, legato leaves them alone and only moves the pitch — §7.1.
  */
-Tngr2Voice.prototype.retarget = function retarget(hz, patch, regate, tables) {
-  var target = Math.max(1e-6, Number(hz) || 0);
+Tngr2Voice.prototype.retarget = function retarget(note, patch, regate, tables, core, fade) {
+  var target = Math.max(1e-6, Number(note.hz) || 0);
   var from = Math.max(1e-6, this.hz);
   this.hz = target;
   this.keyTrack = Math.log2(target / 261.6255653005986);
+  // Only when the lane has actually been given a different patch — which never happens
+  // inside a render, so a bounce is sample-for-sample what it was.
+  if (regate && this.patch !== patch) this.rebind(patch, tables, core);
   var samples = Math.round(patch.glide * this.rate);
   if (samples > 0 && Math.abs(Math.log2(target / from)) > 1e-9) {
     // One multiply per source per sample, which is an exponential — a glide that is
@@ -851,11 +947,21 @@ Tngr2Voice.prototype.retarget = function retarget(hz, patch, regate, tables) {
     }
   }
   if (regate) {
-    this.env.gate(patch.amp);
-    this.posEnv.gate(patch.positionEnv);
-    this.filterEnv.gate(patch.filterEnv);
+    // All three together, over the same fade, so they start the new note in step: an
+    // amp that fell to zero while the filter envelope carried on sweeping would open the
+    // strike into a filter already halfway through the last note's sweep.
+    this.env.restrike(patch.amp, fade);
+    this.posEnv.restrike(patch.positionEnv, fade);
+    this.filterEnv.restrike(patch.filterEnv, fade);
     this.posDirty = patch.usesPosEnv;
     this.filterDirty = patch.usesFilterEnv;
+    // The strike belongs to the new note, so it is struck at the new note's velocity —
+    // but a gain swapped under a sounding envelope is a click, so it waits for the sample
+    // the choke reaches silence. See tick(). Nothing to cover means nothing to wait for.
+    this.velocity = Math.min(1, Math.max(0,
+      note.velocity != null ? Number(note.velocity) : 1));
+    if (this.env.stage === TNGR2_STAGE_RESTRIKE) this.pendingLevel = this.velocity;
+    else { this.level = this.velocity; this.pendingLevel = -1; }
   }
 };
 
@@ -934,6 +1040,10 @@ Tngr2Voice.prototype.applyMod = function applyMod(frame, tables, force) {
 Tngr2Voice.prototype.tick = function tick(frame, tables) {
   var amp = this.env.tick();
   if (this.env.done()) { this.active = false; this.l = 0; this.r = 0; return; }
+  if (this.pendingLevel >= 0 && this.env.stage !== TNGR2_STAGE_RESTRIKE) {
+    this.level = this.pendingLevel;
+    this.pendingLevel = -1;
+  }
   var patch = this.patch;
   var s;
   var src;
@@ -1141,6 +1251,9 @@ Tngr2Core.prototype.familyFor = function familyFor(id) {
  * message that happened to carry a different key, and those objects are then read on the
  * audio thread, sample by sample, at the moment a chord lands.
  *
+ * releaseAtStart is set by a note-off that arrived in FRONT of this note-on rather than
+ * behind it — see markEarlyOff. It is the only field written after the copy is made.
+ *
  * This is the whole list of fields the core reads — see apply() and Tngr2Voice.start.
  * transportGeneration rides along unread, because the controller stamps it and a reader
  * added later should find it here rather than silently getting undefined. Anything NEW an
@@ -1153,9 +1266,15 @@ function tngr2QueuedEvent(event, frame) {
     hz: event.hz,
     velocity: event.velocity,
     eventId: event.eventId,
-    transportGeneration: event.transportGeneration
+    transportGeneration: event.transportGeneration,
+    releaseAtStart: false
   };
 }
+
+// How far ahead markEarlyOff looks. Only the LIVE path can deliver a note-off in front of
+// its note-on, and it holds a lookahead of events rather than a song — where an offline
+// schedule holds tens of thousands and this runs on the audio thread.
+var TNGR2_EARLY_OFF_SCAN = 64;
 
 /** Queue one event, keeping the queue sorted by frame rather than by arrival. */
 Tngr2Core.prototype.schedule = function schedule(event) {
@@ -1209,9 +1328,60 @@ Tngr2Core.prototype.removeLive = function removeLive(at) {
   this.live[this.liveCount] = null;
 };
 
+/** Let a voice go: all three envelopes together, which is what a note-off means. */
+Tngr2Core.prototype.releaseVoice = function releaseVoice(voice) {
+  voice.env.release();
+  voice.posEnv.release();
+  voice.filterEnv.release();
+};
+
+/**
+ * A note-off that arrived in front of the note it ends.
+ *
+ * The desk schedules a previewed note AHEAD — previewNote stamps it at currentTime plus
+ * 20ms — and a key held for less than that sends its note-off first. Applied as it stands
+ * that note-off finds nothing to release, and the note-on behind it then sounds for ever:
+ * the one failure a synth may not have. So the note-on is marked instead, and starts and
+ * ends on its own frame.
+ *
+ * The desk no longer sends them — a held preview carries its note-on's lead across to the
+ * release, see _releasePreview — and this stays because a hung note is not something to
+ * leave resting on one caller getting its arithmetic right.
+ *
+ * A note-off matching nothing queued is left alone: that is the ORDINARY case in MONO,
+ * where a restrike takes the previous note's identity with it, and nothing is waiting.
+ */
+Tngr2Core.prototype.markEarlyOff = function markEarlyOff(eventId) {
+  var pending = this.pending;
+  var limit = Math.min(pending.length, this.pendingHead + TNGR2_EARLY_OFF_SCAN);
+  for (var i = this.pendingHead; i < limit; i++) {
+    var queued = pending[i];
+    if (queued.eventId === eventId && queued.type === 'noteOn') {
+      queued.releaseAtStart = true;
+      return;
+    }
+  }
+};
+
+/**
+ * The voice a note-off is for: one carrying this identity that has not been let go yet.
+ *
+ * The RELEASE test is what stops a drone. Two notes on a lane can share an event id — the
+ * desk builds one out of the note's time and pitch, so a part that plays the same note
+ * twice at once has two, and even distinct notes can collide — and a voice stays active
+ * through its whole release. Without the test, both note-offs found the FIRST of the two
+ * and released it twice, and the second voice was never let go at all: it sat at its
+ * sustain for the rest of the session. Skipping the ones already released hands the
+ * second note-off the second voice, which is the one still waiting for it.
+ *
+ * Releasing a releasing voice was never right anyway — release() restarts the fall from
+ * where it stands, so a repeated note-off lengthened the tail it was asking to end.
+ */
 Tngr2Core.prototype.findVoice = function findVoice(eventId) {
   for (var i = 0; i < this.voices.length; i++) {
-    if (this.voices[i].active && this.voices[i].eventId === eventId) return this.voices[i];
+    var voice = this.voices[i];
+    if (voice.active && voice.eventId === eventId
+        && voice.env.stage !== TNGR2_STAGE_RELEASE) return voice;
   }
   return null;
 };
@@ -1248,22 +1418,22 @@ Tngr2Core.prototype.apply = function apply(event, frame) {
     if (mode !== 'poly' && sounding) {
       // MONO re-gates the envelopes, LEGATO does not — the note is taken over rather than
       // struck again, which is the whole of the difference (§7.1).
-      held.retarget(event.hz, patch, mode === 'mono', this.tables);
+      held.retarget(event, patch, mode === 'mono', this.tables, this, this.stealFade);
       held.eventId = event.eventId;
       held.age = ++this.age;
+      if (event.releaseAtStart) this.releaseVoice(held);
       return;
     }
     var voice = this.take();
     voice.start(event, ++this.age, patch, this.tables, this, frame);
     this.markLive(voice);
     if (mode !== 'poly') this.lastVoice = voice;
+    // The key was already up before this note was due — see markEarlyOff.
+    if (event.releaseAtStart) this.releaseVoice(voice);
   } else if (event.type === 'noteOff') {
     var target = this.findVoice(event.eventId);
-    if (target) {
-      target.env.release();
-      target.posEnv.release();
-      target.filterEnv.release();
-    }
+    if (target) this.releaseVoice(target);
+    else this.markEarlyOff(event.eventId);
   } else if (event.type === 'panic') {
     for (i = 0; i < this.voices.length; i++) {
       if (this.voices[i].active) this.voices[i].env.choke(this.stealFade);
