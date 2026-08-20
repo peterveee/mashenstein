@@ -1,22 +1,21 @@
-// Put the Doubler on the bench: does it actually detune, and by how much.
+// Put the Doubler on the bench: is it transparent when off, and wide when on.
 //
-// A doubler is judged by ear and diagnosed by spectrum. Its whole claim is that the
-// second voice is a genuine varispeed pitch shift rather than a modulated delay wearing
-// one — and the two sound similar enough on a mix that only a measurement can tell them
-// apart. Six ways it can be quietly wrong:
+// The effect used to be a varispeed pitch shifter, and this bench used to prove the
+// shift was genuine rather than a modulated delay wearing its coat. That claim is gone:
+// the Doubler is now two short delays, one panned left and one right, each with a slow
+// wander on it, which is what widening a mono part actually needs. So the DETUNE and
+// HANDOVER sections went with the machinery they measured — there is no slide to read
+// and no crossfade to pump.
+//
+// What is left is what the effect still claims, and every one of these can still break
+// quietly:
 //
 //   TRANSPARENCY  at WET 0 the effect has to be free, sample for sample. Two delay
-//                 lines and six looping tables are running whether or not you can hear
+//                 lines and two looping tables are running whether or not you can hear
 //                 them, so "off" must mean exactly off.
-//   DETUNE        a tone in, and where each side comes back. This is the number the
-//                 whole effect exists for, and the one a modulated-delay fake cannot
-//                 hold: an LFO's pitch shift averages to zero over its cycle, a real
-//                 slide does not. Measured off an interpolated FFT peak, per channel.
-//   HANDOVER      the two taps crossfade forever; if their gains do not sum to 1 the
-//                 level pumps at the grain rate. Read as the envelope ripple of a
-//                 steady tone over a whole window cycle.
 //   STEREO        a MONO tone in has to come out as two different signals, or WIDTH is
-//                 a label on nothing. Read as the correlation between the channels.
+//                 a label on nothing. This is now the effect's whole purpose rather
+//                 than a side effect of it, so it is the headline measurement.
 //   REPEATABLE    two renders of the same settings, sample for sample. Anything in the
 //                 catalogue that generates a buffer has to be checked for this — see
 //                 the note above makeReverb about what Tone.Reverb's Math.random did to
@@ -36,8 +35,8 @@ const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SR = 44100;
 
-// Long enough that the analysis window sits well clear of the oscillator's start and a
-// slow grain cycle has come round at least once at the detunes measured below.
+// Long enough that the analysis window sits well clear of the oscillator's start and
+// the slowest wander has come round at least once.
 const SECONDS = 4;
 
 const ENTRY = `
@@ -82,104 +81,6 @@ window.__bench = async ({ sampleRate, seconds, tones, level, id, params, reps, c
 `;
 
 // ---------------------------------------------------------------- analysis
-
-// In-place iterative radix-2 FFT — the same one tools/measure-exciter.js analyses with.
-function fft(re, im) {
-  const n = re.length;
-  for (let i = 1, j = 0; i < n; i++) {
-    let bit = n >> 1;
-    for (; j & bit; bit >>= 1) j ^= bit;
-    j ^= bit;
-    if (i < j) {
-      const tr = re[i]; re[i] = re[j]; re[j] = tr;
-      const ti = im[i]; im[i] = im[j]; im[j] = ti;
-    }
-  }
-  for (let len = 2; len <= n; len <<= 1) {
-    const ang = (-2 * Math.PI) / len;
-    const wr = Math.cos(ang);
-    const wi = Math.sin(ang);
-    const half = len >> 1;
-    for (let i = 0; i < n; i += len) {
-      let cr = 1;
-      let ci = 0;
-      for (let k = 0; k < half; k++) {
-        const ur = re[i + k];
-        const ui = im[i + k];
-        const xr = re[i + k + half];
-        const xi = im[i + k + half];
-        const vr = xr * cr - xi * ci;
-        const vi = xr * ci + xi * cr;
-        re[i + k] = ur + vr; im[i + k] = ui + vi;
-        re[i + k + half] = ur - vr; im[i + k + half] = ui - vi;
-        const ncr = cr * wr - ci * wi;
-        ci = cr * wi + ci * wr;
-        cr = ncr;
-      }
-    }
-  }
-}
-
-// 65536 bins is 0.67Hz of resolution before interpolation, which matters here: a 9-cent
-// shift of a 1kHz tone moves it 5.2Hz, and the peak has to be resolved rather than
-// inferred. 1.5 seconds of audio, so the render has to be longer than that.
-const FFT_SIZE = 65536;
-
-/** Amplitude spectrum of a steady window taken from the middle of the render. */
-function spectrum(data) {
-  const start = Math.floor((data.length - FFT_SIZE) / 2);
-  const re = new Float64Array(FFT_SIZE);
-  const im = new Float64Array(FFT_SIZE);
-  for (let i = 0; i < FFT_SIZE; i++) {
-    const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / FFT_SIZE);   // Hann
-    re[i] = (data[start + i] || 0) * w;
-  }
-  fft(re, im);
-  const mag = new Float64Array(FFT_SIZE / 2);
-  for (let k = 0; k < mag.length; k++) mag[k] = Math.hypot(re[k], im[k]) * (4 / FFT_SIZE);
-  return mag;
-}
-
-/**
- * The frequency of the tallest component, to a fraction of a bin.
- *
- * A bin is 0.67Hz and the shifts being measured are a few Hz, so the nearest bin is not
- * good enough. Quadratic interpolation over the peak and its neighbours in dB is the
- * standard fix and is accurate to a few hundredths of a bin on a Hann window.
- */
-function peakHz(mag) {
-  let k = 1;
-  for (let i = 1; i < mag.length - 1; i++) if (mag[i] > mag[k]) k = i;
-  const l = Math.log(Math.max(mag[k - 1], 1e-30));
-  const c = Math.log(Math.max(mag[k], 1e-30));
-  const r = Math.log(Math.max(mag[k + 1], 1e-30));
-  const d = (0.5 * (l - r)) / (l - 2 * c + r || 1e-30);
-  return ((k + d) / FFT_SIZE) * SR;
-}
-
-const cents = (f, ref) => 1200 * Math.log2(f / ref);
-
-/**
- * Peak-to-peak swing of the level, in dB — a pump the crossfade let through.
- *
- * Block RMS rather than block peak, over 50ms: long enough that the beating between
- * the test tones averages out, short enough to resolve a handover that lasts about
- * 130ms at the detune this is measured at.
- */
-function envelopeRipple(data) {
-  const block = Math.round(SR * 0.05);
-  const skip = Math.round(SR * 0.25);          // past the first fade-in
-  let lo = Infinity;
-  let hi = 0;
-  for (let i = skip; i + block < data.length - skip; i += block) {
-    let energy = 0;
-    for (let j = 0; j < block; j++) energy += data[i + j] * data[i + j];
-    const rms = Math.sqrt(energy / block);
-    if (rms > hi) hi = rms;
-    if (rms < lo) lo = rms;
-  }
-  return 20 * Math.log10(hi / Math.max(lo, 1e-12));
-}
 
 /** Pearson correlation between two channels — 1 is the same signal, 0 is two of them. */
 function correlation(a, b) {
@@ -244,55 +145,7 @@ console.log('\nTRANSPARENCY  — the effect in circuit at wet 0 against no effec
   check(worst < 5e-6, `wet 0 is transparent — worst sample difference ${worst.toExponential(2)} (tolerance 5e-6)`);
 }
 
-// -- 2. the detune, per side -------------------------------------------------
-console.log('\nDETUNE        — 960Hz in, wet 1, hard width, no modulation. Left is the down voice, right the up');
-{
-  // 960 and not a round 1000, for a reason about the measurement rather than the
-  // effect: the two taps sit exactly half a window — 12.5ms — apart, so they comb with
-  // nulls every 80Hz, and a tone sitting in one comes back amplitude-modulated at the
-  // grain rate. The sidebands that puts either side of the peak are a fraction of a bin
-  // away at these detunes and drag an interpolated peak off with them. 960 is a multiple
-  // of 80, so the taps are in phase, the level is flat, and what is left to read is the
-  // pitch. (The same run on 1000Hz reads 2 cents out at 50ct — the tone is wrong there,
-  // not the detune.)
-  const f = 960;
-  for (const want of [0, 5, 9, 20, 50]) {
-    const r = await bench({
-      tones: [f],
-      params: { detune: want, width: 1, depth: 0, wet: 1, delayMs: 18 },
-    });
-    const lo = cents(peakHz(spectrum(r.data[0])), f);
-    const hi = cents(peakHz(spectrum(r.data[1])), f);
-    const err = Math.max(Math.abs(lo + want), Math.abs(hi - want));
-    console.log(`  detune ${String(want).padStart(2)}ct   left ${fmt(lo)}ct   right ${fmt(hi)}ct`
-      + `   worst error ${err.toFixed(2)}ct`);
-    // A cent is the resolution of the control itself; half of one is under the
-    // just-noticeable difference for a held tone, let alone a mix.
-    check(err < 0.5, `both voices land within ${err.toFixed(2)} cents of the dial`);
-  }
-}
-
-// -- 3. the crossfade hands over without pumping -----------------------------
-console.log('\nHANDOVER      — a spread of tones through several grain cycles at full detune, one voice only');
-{
-  // Broadband on purpose, and worth being explicit about why: where the two taps
-  // overlap they are the same signal half a window apart, so they COMB — and a single
-  // held tone can sit exactly in a notch and read as a total null that says nothing
-  // about the level. Every time-domain shifter does this, including Tone.PitchShift.
-  // Across a spread of inharmonic tones the notches land in different places at
-  // different moments and the SUM is the thing a listener hears.
-  //
-  // Width 1 puts the up voice alone in the right channel, so this reads ONE detuner's
-  // crossfade rather than two voices beating against each other. 50 cents brings the
-  // grain round about once a second, so a 4s render covers several handovers.
-  const tones = [311, 440, 587, 831, 1109, 1523, 2093, 2794];
-  const r = await bench({ tones, params: { detune: 50, width: 1, depth: 0, wet: 1 } });
-  const ripple = envelopeRipple(r.data[1]);
-  console.log(`  level moves ${ripple.toFixed(2)}dB peak to peak across the render`);
-  check(ripple < 1.5, 'the two taps sum flat through the handover (want under 1.5dB)');
-}
-
-// -- 4. mono in, stereo out --------------------------------------------------
+// -- 2. mono in, stereo out --------------------------------------------------
 console.log('\nSTEREO        — one mono tone in: how much of the two output channels is the same signal');
 {
   for (const width of [0, 0.5, 1]) {
@@ -303,7 +156,7 @@ console.log('\nSTEREO        — one mono tone in: how much of the two output ch
   }
 }
 
-// -- 5. dry and wet go where they are put ------------------------------------
+// -- 3. dry and wet go where they are put ------------------------------------
 console.log('\nPLACEMENT     — dry hard left against the doubles hard right: the oldest trick in the book');
 {
   const params = { dryPan: -1, wetPan: 1, width: 0, wet: 0.5 };
@@ -325,7 +178,7 @@ console.log('\nPLACEMENT     — dry hard left against the doubles hard right: t
   check(Math.sqrt(wetEnergy / bare.data[0].length) > 0.05, 'and the doubles are all in the right');
 }
 
-// -- 6. two renders are one file ---------------------------------------------
+// -- 4. two renders are one file ---------------------------------------------
 console.log('\nREPEATABLE    — the same settings rendered twice');
 {
   // Split by mechanism, so a failure says WHICH part drifted rather than that
@@ -334,9 +187,9 @@ console.log('\nREPEATABLE    — the same settings rendered twice');
   // the whole effect at its defaults.
   const cases = [
     ['bare oscillator     ', { id: null }],
-    ['tables frozen       ', { params: { detune: 0, depth: 0 } }],
-    ['detune only         ', { params: { depth: 0 } }],
-    ['drift only          ', { params: { detune: 0 } }],
+    ['tables frozen       ', { params: { depth: 0 } }],
+    ['drift only          ', { params: { depth: 0.6 } }],
+    ['drift, wide         ', { params: { depth: 0.6, width: 1 } }],
     ['everything moving   ', { params: {} }],
   ];
   for (const [label, opts] of cases) {
@@ -370,7 +223,7 @@ console.log('\nREPEATABLE    — the same settings rendered twice');
   console.log(`  renders 2-4 against render 1: ${spread.join('  ')}`);
 }
 
-// -- 7. cost -----------------------------------------------------------------
+// -- 5. cost -----------------------------------------------------------------
 console.log('\nCOST          — render time as a percentage of realtime, best of three');
 {
   const base = await bench({ tones: [1000], id: null, reps: 3 });

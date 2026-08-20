@@ -263,7 +263,7 @@ export const mix = {
     chords3: { gain: -31.4, pan: 0.417, eq: { high: 7.4 }, noteFx: {"strum":{"enabled":true,"direction":"up","gapMs":18},"arp":{"enabled":false,"direction":"up","rate":1,"octaves":1,"gate":80,"retrigger":"chord","latch":false}} },
     organChords: { gain: -1.6, pan: -0.43, send: { reverb: 0.363 }, eq: { low: -2.8, mid: -5.1, high: 6.5 }, effects: [{ id: "rhythmgate", bypass: true, params: { attack: 0.002, decay: 0.065 } }, { id: "widener", bypass: true }, { id: "gain", bypass: true, params: { gain: 10 } }], noteFx: {"strum":{"enabled":false,"direction":"random","gapMs":18},"arp":{"enabled":true,"direction":"updown","rate":1,"octaves":3,"gate":80,"retrigger":"chord","latch":false}} },
     chords2: { gain: -28, pan: 0.392, eq: { high: 6.5 }, noteFx: {"strum":{"enabled":true,"direction":"up","gapMs":19},"arp":{"enabled":false,"direction":"up","rate":1,"octaves":1,"repeat":true,"gate":80,"retrigger":"chord","latch":false}} },
-    lead3: { gain: 3.4, send: { delay: 0.008, reverb: 0.196 }, effects: [{ id: "doubler" }, { id: "mbComp" }] },
+    lead3: { gain: 3.4, send: { delay: 0.008, reverb: 0.196 }, effects: [{ id: "doubler" }, { id: "mbCompN" }] },
     leadHarm: { gain: 1.392, pan: -0.206, send: { reverb: 1.064 } },
     chords: { gain: -0.32, pan: 0.154, send: { reverb: 0.554 } },
     lead: { gain: 1, eq: { mid: 1.6 } },

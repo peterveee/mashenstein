@@ -1273,6 +1273,11 @@ export function createBarGrid({
     // After `slots`, because the snap is asked in slots of the grid just chosen.
     cols = displayCols(slots, snapSize());
     colStride = slots / cols;
+    // One storage slot, as a fraction of the column that holds it. The roll has no use
+    // for it — its notes carry their own `--len` — but a drum cell IS its note, with no
+    // pseudo-element to draw a narrower mark with, so a hit written between two columns
+    // is sized from this. See `.ssqinset` in mixer-shell.html.
+    el.style.setProperty('--slotw', String(1 / colStride));
     barViews = new Map();
     plan = d.plan;
     if (wholeSong) {
@@ -2141,14 +2146,41 @@ export function createBarGrid({
   const cellFrom = (t) => (t && t.closest ? t.closest('.ssqcell') : null);
   const rowOf = (cell) => rowIndex.get(cell?.dataset.row);
 
+  /**
+   * Does the lane really hold a note where this cell stands?
+   *
+   * The MODEL, not the class list: a paint drag draws its preview by putting `on` on
+   * cells nothing has been written to yet, so the picture runs ahead of the song for as
+   * long as a gesture lasts.
+   */
+  const cellHasNote = (cell, row) => isOn(row,
+    readBar(Number(cell.dataset.bar), row.lane)[Number(cell.dataset.step)] ?? null);
+
+  /**
+   * ---- what a press is aimed at ------------------------------------------------------
+   *
+   * On blank field, the SNAP DIVISION nearest the column it landed in. That is what the
+   * picker is for, and the drawn grid can be finer than the snap — see `displayCols`.
+   *
+   * On a NOTE, that note, wherever it happens to be written. A song holds sixteenths and
+   * triplets at once, so a note is routinely off the division being drawn on, and
+   * rounding there handed the gesture to the slot next door: on a 1/16 snap a triplet
+   * could not be picked out, moved or rubbed out, because every press went to the
+   * sixteenth beside it — and on a 1/16T snap the plain sixteenths went the same way. In
+   * both editors, with the note plainly under the pointer the whole time. Nothing about
+   * a note needs rounding to: `cellAt` has already found the one you are pointing at.
+   */
+  const aimedAt = (cell, row) => (cellHasNote(cell, row) ? cell
+    : cellFor(row.key, Number(cell.dataset.bar), snappedStep(Number(cell.dataset.step))) || cell);
+
   function hit(cell) {
     if (!cell) return;
     let row = rowOf(cell);
     if (!row) return;
-    const b = Number(cell.dataset.bar);
-    const i = snappedStep(Number(cell.dataset.step));
-    cell = cellFor(row.key, b, i) || cell;
+    cell = aimedAt(cell, row);
     row = rowOf(cell) || row;
+    const b = Number(cell.dataset.bar);
+    const i = Number(cell.dataset.step);
     const value = readBar(b, row.lane)[i] ?? null;
     // The length picker describes a NOTE BEING ADDED. A filled cell is either being
     // erased or painted over as part of an existing note, so its stored phrasing must
@@ -2180,11 +2212,9 @@ export function createBarGrid({
   function begin(cell, force = null) {
     let row = rowOf(cell);
     if (!row) return false;
-    const b = Number(cell.dataset.bar);
-    const i = snappedStep(Number(cell.dataset.step));
-    cell = cellFor(row.key, b, i) || cell;
+    cell = aimedAt(cell, row);
     row = rowOf(cell) || row;
-    paint = force != null ? force : !isOn(row, readBar(b, row.lane)[i] ?? null);
+    paint = force != null ? force : !cellHasNote(cell, row);
     hit(cell);
     return true;
   }
@@ -2305,9 +2335,14 @@ export function createBarGrid({
    */
   function atRightEnd(cell, clientX) {
     const r = cell.getBoundingClientRect();
-    const right = r.left + r.width * spanOf(cell);
-    const edge = Math.min(EDGE_PX, r.width / 3);
-    return right - clientX <= edge && clientX <= right;
+    // The NOTE's width, both times. A note drawn shorter than one column — a triplet
+    // shown on a 1/16 grid is two thirds of one, and clipped against its neighbour it
+    // can be less — took a third of the COLUMN as its grab zone, which was the whole
+    // rectangle and then some: the note could be resized and never moved, because there
+    // was nowhere left on it to take hold of.
+    const width = r.width * spanOf(cell);
+    const edge = Math.min(EDGE_PX, width / 3);
+    return r.left + width - clientX <= edge && clientX <= r.left + width;
   }
 
   /** What this press does, given the tool, the modifiers and where it landed. */
@@ -2319,7 +2354,7 @@ export function createBarGrid({
     meta: selectable && (ev.metaKey || ev.ctrlKey),
     shift: selectable && ev.shiftKey,
     secondary: isSecondary(ev),
-    on: isOn(row, readBar(Number(cell.dataset.bar), row.lane)[Number(cell.dataset.step)] ?? null),
+    on: cellHasNote(cell, row),
     edge: atRightEnd(cell, ev.clientX),
     sizeable: resizable(row),
   });
@@ -3025,8 +3060,9 @@ export function createBarGrid({
     ev.preventDefault();
     let row = rowOf(cell);
     if (!row) return;
-    const snapped = snappedStep(Number(cell.dataset.step));
-    cell = cellFor(row.key, Number(cell.dataset.bar), snapped) || cell;
+    // The note under the pointer, or the snap division nearest an empty column — see
+    // `aimedAt`, which is the same rule the paint drag and the keyboard follow.
+    cell = aimedAt(cell, row);
     row = rowOf(cell) || row;
     // What this press means is one lookup — see `gestureFor`, which is the whole table.
     const g = gestureAt(cell, row, ev);

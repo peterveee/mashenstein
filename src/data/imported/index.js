@@ -29,6 +29,7 @@ import * as BARBER_3 from './barber-3.js';
 import * as BARBER_4 from './barber-4.js';
 import * as BARBER_5 from './barber-5.js';
 import * as BARBER_6 from './barber-6.js';
+import * as BARBER_7_COPY from './barber-7-copy.js';
 import * as BARBER_7 from './barber-7.js';
 import * as BARBER_96_16TH from './barber-96-16th.js';
 import * as BARBER_96_SIMPLE from './barber-96-simple.js';
@@ -188,6 +189,7 @@ export const IMPORTED_BY_ID = {
   "barber-4": { bank: BARBER_4.bank, title: BARBER_4.title, group: "imported", writable: true },
   "barber-5": { bank: BARBER_5.bank, title: BARBER_5.title, group: "imported", writable: true },
   "barber-6": { bank: BARBER_6.bank, title: BARBER_6.title, group: "imported", writable: true },
+  "barber-7-copy": { bank: BARBER_7_COPY.bank, title: BARBER_7_COPY.title, group: "copy", writable: true },
   "barber-7": { bank: BARBER_7.bank, title: BARBER_7.title, group: "imported", writable: true },
   "barber-96-16th": { bank: BARBER_96_16TH.bank, title: BARBER_96_16TH.title, group: "copy", writable: true },
   "barber-96-simple": { bank: BARBER_96_SIMPLE.bank, title: BARBER_96_SIMPLE.title, group: "copy", writable: true },

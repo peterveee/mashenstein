@@ -9,6 +9,7 @@ import {
 } from './lanes.js';
 import {
   VoiceRack, pulseTable, createNoteCacheState, setNoteCachePlaybackActive,
+  setNoteCacheTransportRunning,
   clearNoteCacheState, invalidateNoteCacheState, MRDR_QUALITY,
 } from './voices.js';
 import { MIX, laneSettings } from '../data/mix.js';
@@ -607,11 +608,6 @@ class AudioSys {
     // Live-only MRDR tail reclaim is measured and opt-in. Offline and game racks keep
     // the exact authored tail unless the Song Mixer explicitly enables this switch.
     this.mrdrTailCulling = false;
-    // Build a channel strip only for the lanes a song actually carries, instead of all
-    // 22 canonical lanes up front. OFF by default and never set by the game: a strip
-    // built mid-song is one whose settings arrive after the notes it was meant to shape.
-    // See createMixer's eager pass.
-    this.lazyStrips = false;
     // MRDR-3's realtime quality. Full is the authored sound and the only thing the game
     // or an offline bounce ever sees; the Song Mixer is the one caller that turns it
     // down, and it survives a rack rebuild the same way the switch above does.
@@ -741,7 +737,17 @@ class AudioSys {
     // hears the procedural song (including its echo) but none of the UI/SFX
     // bus. Keeping it pre-fader also means a muted jukebox can still animate
     // its screensaver rather than freezing on a black frame.
-    if (this.ctx.createAnalyser) {
+    // The visualisers' analyser, and it sits IN the music path rather than tapping it —
+    // songTrim -> songAnalyser -> musicGain, so every sample of every song goes through
+    // it. Live that is what the toasters and the spectrum bars are made of.
+    //
+    // Offline it is dead weight: nothing calls musicAnalysis() during a render, and the
+    // video renderer builds its own analysis from the finished PCM (tools/render-video.js
+    // via lib/song-analysis.js) precisely so a bounce does not have to be watched to be
+    // analysed. An AnalyserNode still does its per-block work whether or not anyone reads
+    // it, so offline the song goes straight to the bus instead. See the same reasoning
+    // applied to the mixer's meters in createMixer.
+    if (this.ctx.createAnalyser && !this.offline) {
       this.songAnalyser = this.ctx.createAnalyser();
       this.songAnalyser.fftSize = 256;
       this.songAnalyser.smoothingTimeConstant = 0.72;
@@ -809,9 +815,6 @@ class AudioSys {
       // The original echo's return leg: the mixer splices its EQ and level in
       // between these two, so Delay 1 gets the same controls as the new auxes.
       songTrim: this.songTrim, delayLp: this.delayLp,
-      // Opt-in, and only where the song is known before a note is scheduled — see the
-      // note at the eager pass in createMixer.
-      eagerLanes: !this.lazyStrips,
     });
     // Offline renders seed the noise so a lane rendered on its own gets exactly the
     // noise it had inside the full mix — that is what lets stems sum back to the
@@ -1645,16 +1648,6 @@ class AudioSys {
     this.silentLaneSkip = !!on;
   }
 
-  /**
-   * Build channel strips only for the lanes a song carries.
-   *
-   * Must be set BEFORE `ensure()` builds the mixer — after that the strips already
-   * exist and nothing culls them. Returns whether it took effect for that reason.
-   */
-  setLazyStrips(on) {
-    this.lazyStrips = !!on;
-    return !this.mixer;
-  }
 
   /**
    * Play pooled Tone voices from RENDERED NOTES where that is safe — see the note
@@ -1678,6 +1671,11 @@ class AudioSys {
       this.voices.noteCache = this.noteCache;
       if (this.noteCacheState) this.voices.setNoteCacheState(this.noteCacheState);
     }
+  }
+
+  /** The desk's play/pause, told to the note cache — see setNoteCacheTransportRunning. */
+  setNoteCacheTransport(running) {
+    setNoteCacheTransportRunning(this.noteCacheState, running);
   }
 
   setMrdrTailCulling(on) {
@@ -3454,10 +3452,7 @@ class AudioSys {
           if (patch.effects) this.mixer.setAuxEffects(id, patch.effects, bank?.bpm || this.bpm);
         }
         for (const [key, raw] of Object.entries(entry.lanes || {})) {
-          // ensureLane, not lane: with lazy strips a lane named only by the MIX — one
-          // the bank's own lane list does not carry — would otherwise be skipped here
-          // and silently lose its gain, pan, width, mute, EQ and sends.
-          const strip = this.mixer.ensureLane(key);
+          const strip = this.mixer.lane(key);
           if (!strip) continue;
           const s = laneSettings(raw);
           strip.setGain(s.gain);

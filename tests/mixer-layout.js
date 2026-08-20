@@ -1391,7 +1391,11 @@ assert(/health\.audioBehind \? 'AUDIO OVERLOADED'/.test(entry)
   && /health\.uiStalled \? 'MACHINE BUSY'/.test(entry)
   && /THE AUDIO IS FINE BUT THE BROWSER IS BUSY/.test(entry),
   'the readout names which of the two causes it is, because they need opposite responses');
-assert(/el\.classList\.toggle\('dirty', !!trouble\)/.test(entry),
+// The lamp moved with the verdict to the footer's fixed slot (Peter, 2026-08-20): the
+// toolbar keeps the plain estimate, and the invariant this pins is unchanged — the
+// ESTIMATE never lights anything; only the watchdog's verdict does, wherever it lives.
+assert(/\$\('audiohealth'\)\?\.classList\.toggle\('dirty', !!trouble\)/.test(entry)
+  && !/el\.textContent = trouble \|\| estimate/.test(entry),
   'and the estimate never lights the lamp — it is a guess about one machine');
 // Silence the desk ASKED for is not a fault. Without this the watchdog would rebuild
 // the graph because the transport is stopped, which is the desk repairing obedience.
@@ -1523,7 +1527,11 @@ assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
   && /Audio\.prepareNoteCache\?\.\(engineBank\(\), range/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)[\s\S]{0,100}?if \(playing\) setPlaying\(false\)/.test(entry)
   && /Audio\.setNoteCachePreparationHeld\(true\)/.test(entry)
-  && /const NOTE_CACHE_START_BUDGET_MS = 1200/.test(entry)
+  // 1200ms once, and "briefly" was the design — until the string section made plans
+  // hundreds of renders deep and a 1.2s budget meant Start ALWAYS began cold, with the
+  // warm-up audible over the first laps. The deadline is now a stuck-render backstop;
+  // the button's second press ("Start now") is how a human skips the wait.
+  && /const NOTE_CACHE_START_BUDGET_MS = 180000/.test(entry)
   && /const initialPending = initial\?\.plan\?\.pending \|\| 0/.test(entry)
   && /if \(preparationFailed \|\| !initial\?\.enabled \|\| \(!initialPending && !initial\.rendering\)\)/.test(entry)
   && /Audio\.ensure\?\.\(\)/.test(entry)
@@ -1531,7 +1539,7 @@ assert(/setNoteCachePreparationHeld\(held\)/.test(audio)
   && !/press \$\{control === 'play' \? 'Play' : 'Start from beginning'\} again to play now/.test(entry)
   && /async function startPreparedTransport[\s\S]*?Audio\.ctx\?\.state === 'suspended'[\s\S]*?await Audio\.ctx\.resume\(\)/.test(entry)
   && /\$\('playstart'\)\.onclick = playFromBeginning/.test(entry),
-  'Start from beginning primes audio, warms the selected cache briefly, and starts automatically');
+  'Start from beginning primes audio, warms the selected cache to completion (second press skips), and starts automatically');
 // The two halves of the backlog fix. `queued` is the live queue and the lifetime
 // counter is named apart from it, and — the part that keeps it fixed — the stats are
 // spread FIRST in both health builders, so a counter can never overwrite a live
@@ -1688,11 +1696,14 @@ assert(/_forgetRenderedNotes\(voiceId\)/.test(audio)
     else if (voicesSrc[j] === '}' && --depth === 0) { end = j; break; }
   }
   const body = voicesSrc.slice(open, end);
-  const sites = [...body.matchAll(/(?:hitRandom|vary)\(/g)].length;
+  const sites = [...body.matchAll(/(?:hitRandom|vary|ensembleVary)\(/g)].length;
   // Ten, and each one is accounted for in `layerVariesWithTime`'s comment: the vibrato
   // rate and phase (spread), the sample-and-hold seed and its per-step draws, the
   // legato retarget bend, the note's own gain/pitch/filter humanise, and the unison
   // entry stagger. A new one is not necessarily wrong — it needs a key here.
+  // `ensembleVary` counts as a site: it is `vary` behind the MRDR_ENSEMBLE_JITTER
+  // switch, exactly 1 while the jitter is off — and `layerVariesWithTime` is gated on
+  // the same switch, so the predicate and the sites stay in step in both positions.
   assert(sites === 10,
     `_playLayer has ${sites} randomness call sites, not the 10 layerVariesWithTime`
     + ' accounts for. ADDED one? Give it a preset key, teach layerVariesWithTime to'
@@ -3080,6 +3091,30 @@ assert(/insets\.push\(\{ at: k \/ colStride, step: i \+ k, value, len: pair\.len
   && /#pianoroll \.ssqcell\.ssqinset::before \{[^}]*pointer-events:\s*auto/s.test(shell)
   && /#pianoroll \.ssqcell\.on > \.ssqinset \{[^}]*transform:\s*none/s.test(shell),
   'a note between two columns is drawn where it really is, as a cell like any other');
+// The drum grid draws the same note with no pseudo-element to draw it WITH — the cell's
+// own background is the hit — so there the box has to be the mark, one storage slot wide
+// at its true offset. Unstyled, it stayed in flow at the column's left edge and a triplet
+// hat was drawn exactly on top of the sixteenth beside it: two hits, one rectangle.
+assert(/el\.style\.setProperty\('--slotw', String\(1 \/ colStride\)\);/.test(barGrid)
+  && /:is\(#stepseq,#kitroll\) \.ssqcell\.ssqinset \{[^}]*position:\s*absolute/s.test(shell)
+  && /:is\(#stepseq,#kitroll\) \.ssqcell\.ssqinset \{[^}]*left:\s*calc\(var\(--at, 0\) \* 100%\)/s.test(shell)
+  && /:is\(#stepseq,#kitroll\) \.ssqcell\.ssqinset \{[^}]*width:\s*calc\(var\(--slotw, 1\) \* 100%\)/s.test(shell),
+  'an off-grid drum hit is drawn a slot wide where it falls, not on the column line');
+// ---- a press means the note under it, whatever grid that note is on -------------------
+//
+// The snap rounds a press on BLANK FIELD to the division being drawn on; it must not
+// round a press on a NOTE, because a song holds sixteenths and triplets at once and a
+// note is routinely off the division showing. Rounding handed every such press to the
+// slot next door: on a 1/16 snap the triplets could not be picked out, moved or rubbed
+// out, and on 1/16T the plain sixteenths went the same way — in both editors, with the
+// note plainly under the pointer. One rule, and all three ways in go through it.
+assert(/const aimedAt = \(cell, row\) => \(cellHasNote\(cell, row\) \? cell\s*\n\s*: cellFor\(row\.key, Number\(cell\.dataset\.bar\), snappedStep\(Number\(cell\.dataset\.step\)\)\) \|\| cell\);/.test(barGrid)
+  && /const cellHasNote = \(cell, row\) => isOn\(row,\s*\n\s*readBar\(Number\(cell\.dataset\.bar\), row\.lane\)\[Number\(cell\.dataset\.step\)\] \?\? null\);/.test(barGrid)
+  // The press, the paint drag and the toggle underneath both of them.
+  && (barGrid.match(/cell = aimedAt\(cell, row\);/g) || []).length === 3
+  // And nothing else rounds a step behind their backs: `aimedAt` is the only caller.
+  && (barGrid.match(/snappedStep\(/g) || []).length === 1,
+  'the snap rounds a press on empty field and never one that landed on a note');
 // The kit's controls go in the panel's own header row, beside its name — the row a region
 // already has, rather than a second row of chrome under it eating the field. They are
 // built only when there are any, so the roll gets no bar and no gap where one would be,
@@ -3186,10 +3221,17 @@ assert(/<span class="loopsel">\s*\n\s*<button id="looptoggle"/.test(shell)
 // The note editors are drawn from the bar list, so an edit to the SHAPE has to reach
 // them — repeating bars used to repaint the arrangement and leave the editor below it
 // drawing the bars the song no longer had.
+//
+// And from the RESOLUTION, for exactly the same reason: promoting a song onto 48 so it
+// can hold a triplet leaves the plan alone, so neither editor was told, and both went on
+// drawing sixteen columns a bar under a snap picker that said 1/16T — a division you
+// cannot see, aim at or draw on until something else happens to repaint them.
 assert(/const planBefore = render \? JSON\.stringify\(arrDraftOf\(\)\?\.plan \?\? null\) : null;/.test(entry)
-  && /if \(JSON\.stringify\(next\?\.plan \?\? null\) !== planBefore\) \{\s*\n\s*stepSeq\.refresh\(\);\s*\n\s*pianoRoll\.refresh\(\);\s*\n\s*kitRoll\.refresh\(\);/.test(entry),
-  'a change to the bars themselves repaints the note editors, and a note edit does not —'
-  + ' the panel that made it has already redrawn, and a whole-song field is not cheap');
+  && /const resolutionBefore = render \? \(arrDraftOf\(\)\?\.resolution \?\? null\) : null;/.test(entry)
+  && /if \(JSON\.stringify\(next\?\.plan \?\? null\) !== planBefore\s*\n\s*\|\| \(entry\?\.resolution \?\? null\) !== resolutionBefore\) \{\s*\n\s*stepSeq\.refresh\(\);\s*\n\s*pianoRoll\.refresh\(\);\s*\n\s*kitRoll\.refresh\(\);/.test(entry),
+  'a change to the bars themselves or to the grid they are stored on repaints the note'
+  + ' editors, and a plain note edit does not — the panel that made it has already'
+  + ' redrawn, and a whole-song field is not cheap');
 assert(/const SCOPES = \[\s*\n\s*\['bar', 'the bar being played'\]/.test(seq)
   && /let figureScope = readStored\(SCOPE_KEY/.test(seq)
   && /let figureAdds = readStored\(MODE_KEY/.test(seq)

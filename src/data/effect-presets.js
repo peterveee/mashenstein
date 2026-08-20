@@ -202,7 +202,6 @@ export const EFFECT_PRESETS = {
         "frequency": 0.65,
         "delayMs": 16,
         "depth": 0.55,
-        "density": 0.75,
         "width": 1,
         "feedback": 0.12,
         "tone": 9000,
@@ -241,6 +240,7 @@ export const EFFECT_PRESETS = {
         "frequency": 0.5,
         "octaves": 3,
         "baseFrequency": 350,
+        "feedback": 0.2,
         "wet": 0.5
       },
       "presets": {}
@@ -360,7 +360,6 @@ export const EFFECT_PRESETS = {
     },
     "doubler": {
       "default": {
-        "detune": 10,
         "delayMs": 11,
         "frequency": 0.91,
         "depth": 0.4,

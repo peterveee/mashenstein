@@ -157,7 +157,6 @@ const PARAM_RANGES = {
   gain: { min: -24, max: 24, step: 0.5, unit: 'dB' },
   bits: { min: 2, max: 16, step: 1 },
   bias: { min: -1, max: 1, step: 0.01 },
-  density: { min: 0, max: 1, step: 0.01 },
   gateLength: { min: 0.05, max: 0.95, step: 0.01 },
   wow: { min: 0, max: 1, step: 0.01 },
   flutter: { min: 0, max: 1, step: 0.01 },
@@ -983,63 +982,19 @@ function makeLimiter(ctx, params) {
   return node;
 }
 
-/**
- * How far a voice's delay slides before it jumps back — the grain, in seconds.
- *
- * Everything about the detuner is a compromise around this one number, because the
- * pitch shift IS the slide: a delay line whose delay falls by 5ms every second plays
- * back 0.5% fast, and there is no other way to hold a constant detune without an
- * AudioWorklet. The delay therefore wanders while it works, the second tap that hides
- * the jump sits half a window behind, and the jump comes round every
- * WINDOW/|1-ratio| seconds.
- *
- * Long is smooth and smears the timing; short is tight and grains audibly. 25ms holds
- * the wander to ±8ms around whatever TIME says, which is inside what two takes of the
- * same part differ by anyway, and even at the top of the DETUNE range only comes round
- * about once a second.
- */
-const DOUBLER_WINDOW = 0.025;
-
-/**
- * What fraction of a grain the two taps spend crossfading.
- *
- * The obvious window is a raised cosine over the whole cycle — both taps always live,
- * always moving. It measured badly, and for a reason worth writing down: the taps are
- * the same signal half a window apart, so wherever they overlap they COMB, and at the
- * midpoint where both sit at 0.5 the notches are total. On a held tone that is a 58dB
- * hole every grain.
- *
- * So they only overlap when they have to. 15% each side leaves one tap alone and clean
- * for 70% of the cycle, and confines the comb to the handover — which is also the only
- * place it buys anything. Shorter would be cleaner still and starts to click; this is
- * the knee.
- */
-const DOUBLER_FADE = 0.15;
-
-/**
- * Where a tap's audible weight sits within its grain, as a fraction of the window.
- *
- * The shape below is symmetric about this point, so it is both the centroid of the
- * crossfade and the delay the voice is heard at on average. TIME is offset by it in
- * both directions — an up-shift's delay falls through the window and a down-shift's
- * rises — so the two voices are heard at the SAME average delay rather than 8ms apart,
- * and the control means what it says. It is also why TIME cannot start at zero: a voice
- * that wanders this far cannot average less than this far out.
- */
-const DOUBLER_CENTRE = 0.25 + DOUBLER_FADE / 2;
 
 /**
  * Modulation depth at 1.0, in seconds of delay swing.
  *
- * A doubler's LFO is not a vibrato — it is there so the detune does not sit perfectly
- * still, which is the giveaway that a second voice is a copy. Delay and pitch move
- * together because they are the same thing (see above): 2.5ms at the default rate
- * works out at about 4 cents of drift riding on top of the detune, which is the order
- * a real second take moves by.
+ * A doubler's LFO is not a vibrato — it is there so a copy never sits perfectly still
+ * against the original, which is the giveaway that it IS a copy, and what stops the two
+ * comb-filtering at a fixed set of frequencies. Delay and pitch move together because
+ * they are the same thing: 2.5ms at the default rate works out at about 4 cents of
+ * drift, which is the order a real second take moves by.
  */
 const DOUBLER_MOD = 0.0025;
 
-// Allocated once, at a size that covers TIME plus a window plus the modulation. Fixed,
+// Allocated once, at a size that covers TIME plus the modulation. Fixed,
 // because Chrome does not render two DelayNodes identically when they were built at
 // different maxDelayTime even at the same delay — see the note in tests/null-test.js.
 const DOUBLER_MAX_DELAY = 0.25;
@@ -1137,102 +1092,60 @@ function makeDoubler(ctx, params) {
   merge.connect(dry); dry.connect(output);
   wet.connect(output);
 
-  // One ramp, one window and one sine, shared by every tap and both voices: what makes
-  // a reader different is the offset it starts at and the speed it runs at, not the
-  // table.
-  const rampBuf = ctx.createBuffer(1, DOUBLER_TABLE, ctx.sampleRate);
-  const winBuf = ctx.createBuffer(1, DOUBLER_TABLE, ctx.sampleRate);
+  // One sine table, shared by both voices: what makes a reader different is the offset
+  // it starts at and the speed it runs at, not the table. Read from a buffer rather
+  // than an OscillatorNode because a buffer source can be STARTED at a phase, which is
+  // how the second voice gets its quarter-cycle head start for free — an oscillator has
+  // no phase control and would need a custom PeriodicWave to begin anywhere but zero.
+  // It is also what makes two renders of the same song the same file.
   const lfoBuf = ctx.createBuffer(1, DOUBLER_TABLE, ctx.sampleRate);
-  const ramp = rampBuf.getChannelData(0);
-  const win = winBuf.getChannelData(0);
   const lfo = lfoBuf.getChannelData(0);
-  for (let i = 0; i < DOUBLER_TABLE; i++) {
-    const x = i / DOUBLER_TABLE;
-    ramp[i] = x;
-    lfo[i] = Math.sin(2 * Math.PI * x);
-    // A tap is silent where its own ramp jumps, up for the half-cycle after its
-    // handover, and down for the half before the next one.
-    //
-    // Sine and cosine edges, so the two taps are POWER-complementary: g(x)² +
-    // g(x+1/2) = 1 rather than g(x) + g(x+1/2) = 1. Gains that sum to one look like the
-    // obvious answer and measured 3dB down through every handover, which is the right
-    // answer to the wrong question — the two taps are the same signal half a window
-    // apart, so their phase relationship is a different one at every frequency, and
-    // what has to hold across a real signal is POWER, not amplitude. Measured over a
-    // spread of tones: 2.0dB of pump with the amplitude pair, 0.85dB with this one.
-    win[i] = x < DOUBLER_FADE ? Math.sin((Math.PI * x) / (2 * DOUBLER_FADE))
-      : x < 0.5 ? 1
-      : x < 0.5 + DOUBLER_FADE ? Math.cos((Math.PI * (x - 0.5)) / (2 * DOUBLER_FADE))
-      : 0;
-  }
+  for (let i = 0; i < DOUBLER_TABLE; i++) lfo[i] = Math.sin((2 * Math.PI * i) / DOUBLER_TABLE);
   const tableSeconds = DOUBLER_TABLE / ctx.sampleRate;
   const running = [];
-  const loop = (buf, phase) => {
-    const s = ctx.createBufferSource();
-    s.buffer = buf;
-    s.loop = true;
-    // Started here rather than on a first note: the graph is built at currentTime 0 in
-    // an offline render, so every table read begins at a known phase and two renders of
-    // the same song are the same file.
-    s.start(0, (((phase % 1) + 1) % 1) * tableSeconds);
-    running.push(s);
-    return s;
-  };
 
+  /*
+   * What this effect is, and what it deliberately is NOT.
+   *
+   * Two voices, one left and one right, each a short delay with a slow wander on it.
+   * That is the whole of it: the delays put the copies where a second take would sit,
+   * the wander keeps them from ever being exactly parallel with the original, and the
+   * pan puts them at the edges. A mono part comes out wide, and nothing comb-filters
+   * against itself because nothing stays at a fixed offset.
+   *
+   * It used to detune as well, +-100 cents, and that is where all the machinery went: a
+   * delay line pitch-shifts if you slide its delay time continuously, but the slide has
+   * to wrap, so each voice needed a duplicate tap and a power-complementary crossfade to
+   * hide the wrap — two ramp readers and two window readers per voice, five looping
+   * sources in all where the modulation itself needs one.
+   *
+   * Measured, four inserts of it (two Doublers, two Chorus 2s) were 28% of barber-96's
+   * entire standing graph, because a looping AudioBufferSourceNode GENERATES signal and
+   * so can never be short-circuited the way a silent gain chain is. Ten sources per
+   * instance for a pitch shift nobody asked for. The shift is gone; the wander stays.
+   */
   const voices = DOUBLER_VOICES.map((v) => {
-    const rampA = loop(rampBuf, v.phase);
-    const rampB = loop(rampBuf, v.phase + 0.5);
-    // One window read per tap, half a cycle apart, each driving its own gain outright.
-    // The amplitude pair could share a read as 0.5 ± 0.5·w; a power pair cannot, and
-    // the extra table source is what it costs.
-    const winA = loop(winBuf, v.phase);
-    const winB = loop(winBuf, v.phase + 0.5);
-    // Scaled here rather than baked into the table so both directions can read the same
-    // ramp: an up-shift wants the delay falling, a down-shift wants it rising.
-    const slideA = ctx.createGain(); slideA.gain.value = -v.dir * DOUBLER_WINDOW;
-    const slideB = ctx.createGain(); slideB.gain.value = -v.dir * DOUBLER_WINDOW;
-    // The drift reads a table too. Not for determinism — an OscillatorNode on this
-    // delay line measures bit-identical run to run, which was worth checking and is not
-    // where the repeatability bug turned out to live (see the summing note below). It
-    // is because the second voice's quarter-cycle head start comes free with the read
-    // offset, where an oscillator has no phase control at all and has to be handed a
-    // custom PeriodicWave to be started anywhere but zero.
-    const mod = loop(lfoBuf, v.phase);
+    const mod = ctx.createBufferSource();
+    mod.buffer = lfoBuf;
+    mod.loop = true;
+    // Started here rather than on a first note: the graph is built at currentTime 0 in
+    // an offline render, so every table read begins at a known phase.
+    mod.start(0, (((v.phase % 1) + 1) % 1) * tableSeconds);
+    running.push(mod);
     const depth = ctx.createGain(); depth.gain.value = 0;
-    const sumA = ctx.createGain();
-    const sumB = ctx.createGain();
-    const tapA = ctx.createDelay(DOUBLER_MAX_DELAY);
-    const tapB = ctx.createDelay(DOUBLER_MAX_DELAY);
-    // Zero, not 0.5: the window table IS the gain, so the only thing a base value could
-    // do here is add a constant leak of the tap that is supposed to be silent.
-    const gainA = ctx.createGain(); gainA.gain.value = 0;
-    const gainB = ctx.createGain(); gainB.gain.value = 0;
+    const tap = ctx.createDelay(DOUBLER_MAX_DELAY);
     const pan = ctx.createStereoPanner();
-
-    // The slide and the drift are summed in a GainNode and the SUM is what reaches
-    // delayTime — the param never sees more than one connection. That is not tidiness,
-    // it is the fix for a measured bug: two connections on one AudioParam is the only
-    // graph shape in this effect that Chrome does not render identically twice, at
-    // 6e-5 between runs against a null-test tolerance of 5e-6. Summed in a gain node
-    // first, byte-identical. Probed shape by shape; a delay line with one modulator is
-    // exact whether that modulator is a table, an oscillator, fast, slow, or deep.
-    rampA.connect(slideA); slideA.connect(sumA);
-    rampB.connect(slideB); slideB.connect(sumB);
-    mod.connect(depth); depth.connect(sumA); depth.connect(sumB);
-    sumA.connect(tapA.delayTime);
-    sumB.connect(tapB.delayTime);
-    winA.connect(gainA.gain);
-    winB.connect(gainB.gain);
-    input.connect(tapA); tapA.connect(gainA); gainA.connect(pan);
-    input.connect(tapB); tapB.connect(gainB); gainB.connect(pan);
-    pan.connect(wet);
-
-    return { v, rampA, rampB, winA, winB, slideA, slideB, mod, depth, sumA, sumB,
-      tapA, tapB, gainA, gainB, pan };
+    // ONE modulator on the delayTime, which is the shape Chrome renders identically
+    // twice. Two connections on one AudioParam is the one graph shape in this effect
+    // that it does not: measured at 6e-5 between runs against a null-test tolerance of
+    // 5e-6. With the pitch slide gone there is only ever this one.
+    mod.connect(depth); depth.connect(tap.delayTime);
+    input.connect(tap); tap.connect(pan); pan.connect(wet);
+    return { v, mod, depth, tap, pan };
   });
 
   const state = {
-    detune: 9, delayMs: 18, frequency: 0.35, depth: 0.35,
+    delayMs: 18, frequency: 0.35, depth: 0.35,
     width: 0.85, dryPan: 0, wetPan: 0, wet: 0.45, ...params,
   };
 
@@ -1246,29 +1159,17 @@ function makeDoubler(ctx, params) {
 
   const node = { input, output, _custom: true };
   node.applyState = () => {
-    const cents = Math.max(0, Math.min(200, state.detune ?? 0));
     const base = Math.max(0, Math.min(0.1, (state.delayMs ?? 0) / 1000));
     const width = Math.max(0, Math.min(1, state.width ?? 0));
     const centre = Math.max(-1, Math.min(1, state.wetPan ?? 0));
     const swing = Math.max(0, Math.min(1, state.depth ?? 0)) * DOUBLER_MOD;
     for (const q of voices) {
-      // A delay line whose delay changes at d' plays back at (1 - d'), so a ratio r
-      // asks for a slide of exactly 1 - r. The table holds one window; crossing it at
-      // that rate is the speed to read it at.
-      const ratio = 2 ** ((q.v.dir * cents) / 1200);
-      const rate = (tableSeconds * Math.abs(1 - ratio)) / DOUBLER_WINDOW;
-      for (const s of [q.rampA, q.rampB, q.winA, q.winB]) set(s.playbackRate, rate, 0.02);
-      // An up-shift's delay FALLS through the window and a down-shift's RISES, so left
-      // alone the two voices would be heard a third of a window apart with TIME reading
-      // the same for both. Offsetting each by the window's centroid in its own direction
-      // puts both averages back on TIME — which is what makes the control mean something
-      // rather than being the start of a slide.
-      const d = base * q.v.delay + q.v.dir * DOUBLER_CENTRE * DOUBLER_WINDOW
-        + (q.v.dir > 0 ? DOUBLER_WINDOW : 0);
-      set(q.tapA.delayTime, Math.max(0, d));
-      set(q.tapB.delayTime, Math.max(0, d));
-      // A rate rather than a frequency now the drift is a table read: one cycle of the
-      // table per 1/f seconds is tableSeconds·f of it per second.
+      // TIME is the offset the nearer voice sits at; the other rides at its own ratio so
+      // the two are never the same distance out. No centroid correction any more — the
+      // delay no longer slides, so what is set is what is heard.
+      set(q.tap.delayTime, Math.max(0, base * q.v.delay));
+      // One cycle of the table per 1/f seconds is tableSeconds*f of it per second. The
+      // per-voice rate keeps the two wanders from locking together.
       set(q.mod.playbackRate, tableSeconds * Math.max(0, state.frequency ?? 0) * q.v.rate, 0.05);
       set(q.depth.gain, swing, 0.05);
       // WIDTH spreads the pair, WET BALANCE moves the pair. Both at +1 is what puts
@@ -1294,8 +1195,7 @@ function makeDoubler(ctx, params) {
     node.disconnect();
     for (const s of running) { try { s.stop(); } catch { /* never started */ } }
     for (const q of voices) {
-      for (const n of [q.rampA, q.rampB, q.winA, q.winB, q.slideA, q.slideB,
-        q.mod, q.depth, q.sumA, q.sumB, q.tapA, q.tapB, q.gainA, q.gainB, q.pan]) {
+      for (const n of [q.mod, q.depth, q.tap, q.pan]) {
         try { n.disconnect(); } catch { /* fine */ }
       }
     }
@@ -1303,6 +1203,112 @@ function makeDoubler(ctx, params) {
       try { n.disconnect(); } catch { /* fine */ }
     }
   };
+  return node;
+}
+
+/**
+ * Phaser — the classic one, from four allpass stages and a single LFO.
+ *
+ * A phaser is a swept notch, and the notch comes from adding a signal to a phase-shifted
+ * copy of itself: where the shift reaches 180 degrees the two cancel. An allpass filter
+ * shifts phase without touching level, so a cascade of them and a dry path is the whole
+ * effect. Four stages give two notches — the MXR Phase 90's arrangement, and what people
+ * mean when they say a phaser sounds like a phaser.
+ *
+ * REPLACING Tone.Phaser, and the reason is not subtlety. Tone builds TEN stages per
+ * channel, twenty Tone.Filters in all, and every Tone.Filter creates four
+ * ConstantSourceNodes to drive its params — about eighty permanently-running generators.
+ * Measured on a real master bus it cost 20.6 ms per audio second, the most expensive
+ * entry in the catalogue by double, and it cost that IDLE: the same with the song
+ * playing as with it silent, because a generator cannot be short-circuited by silence.
+ * Ten stages is five notches, which is further into flanger territory than phaser
+ * anyway. This is eleven nodes and one source.
+ *
+ * The LFO is a looping buffer read rather than an OscillatorNode for the same reason the
+ * Doubler's is: a buffer source can be STARTED at a phase, so two renders of a song are
+ * the same file, and an oscillator cannot be started anywhere but zero without a custom
+ * PeriodicWave.
+ *
+ * FEEDBACK returns the last stage to the first, which sharpens the notches into the
+ * resonant whistle a Small Stone has and a Phase 90 does not. Zero is the plain sweep.
+ */
+const PHASER_STAGES = 4;
+
+function makePhaser(ctx, params = {}) {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  // The allpass cascade. A BiquadFilterNode does allpass natively and handles both
+  // channels itself, so there is no need to split the signal or build the chain twice.
+  const stages = [];
+  for (let i = 0; i < PHASER_STAGES; i++) {
+    const ap = ctx.createBiquadFilter();
+    ap.type = 'allpass';
+    ap.Q.value = 0.7071;
+    stages.push(ap);
+  }
+  const feedback = ctx.createGain();
+  feedback.gain.value = 0;
+  const table = modulationTable(ctx, 'sine');
+  const lfo = modulationSource(ctx, table, 0);
+  const depth = ctx.createGain();
+  depth.gain.value = 0;
+
+  input.connect(dry); dry.connect(output);
+  input.connect(stages[0]);
+  for (let i = 1; i < stages.length; i++) stages[i - 1].connect(stages[i]);
+  const last = stages[stages.length - 1];
+  last.connect(wet); wet.connect(output);
+  // The resonant path. A cycle, so Chrome splits the graph here — which is the cost of
+  // the sound and is why FEEDBACK defaults to a modest amount rather than none.
+  last.connect(feedback); feedback.connect(stages[0]);
+  // ONE connection per AudioParam: the base corner is the param's value and the sweep is
+  // this single edge. Two writers on one param is the shape that renders differently
+  // between runs — see the note in makeDoubler.
+  lfo.connect(depth);
+  for (const ap of stages) depth.connect(ap.frequency);
+
+  const state = {
+    rateSync: 0, rateDivision: 4, frequency: 0.5, octaves: 3,
+    baseFrequency: 350, feedback: 0.2, wet: 0.5, ...params,
+  };
+  let running = false;
+  const set = (p, v, tc = 0.03) => setAudioParam(ctx, p, v, running, tc);
+
+  const node = { input, output, _custom: true };
+  const apply = (bpm = 120) => {
+    const rate = rateHz(state, bpm);
+    const base = Math.max(20, Math.min(8000, state.baseFrequency ?? 350));
+    const octaves = Math.max(0, Math.min(6, state.octaves ?? 3));
+    // The sweep is symmetric in OCTAVES about the base corner, which is how the ear
+    // hears a phaser move — linear Hz would crawl at the bottom and race at the top.
+    // The LFO table is +-1, so half the span per side lands the extremes on
+    // base*2^-octaves/2 and base*2^+octaves/2.
+    const top = base * (2 ** (octaves / 2));
+    const bottom = base / (2 ** (octaves / 2));
+    for (const ap of stages) set(ap.frequency, Math.sqrt(top * bottom));
+    set(depth.gain, (top - bottom) / 2, 0.05);
+    set(lfo.playbackRate, table.duration * Math.max(0, rate), 0.05);
+    set(feedback.gain, Math.max(0, Math.min(0.7, state.feedback ?? 0)), 0.03);
+    // Equal power, as every other wet/dry in this file.
+    const w = Math.max(0, Math.min(1, state.wet ?? 0));
+    set(wet.gain, Math.sin((w * Math.PI) / 2));
+    set(dry.gain, Math.cos((w * Math.PI) / 2));
+    running = true;
+  };
+  node.applyState = apply;
+  node.setState = (patch, bpm) => { Object.assign(state, patch); apply(bpm); };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    node.disconnect();
+    try { lfo.stop(); } catch { /* never started */ }
+    for (const n of [input, dry, wet, output, feedback, depth, lfo, ...stages]) {
+      try { n.disconnect(); } catch { /* fine */ }
+    }
+  };
+  apply();
   return node;
 }
 
@@ -1369,9 +1375,25 @@ function makeModulatedDelay(ctx, params = {}, kind = 'chorus') {
   input.connect(wetBus); wetBus.connect(tone); tone.connect(wet); wet.connect(output);
 
   const chorus = kind === 'chorus';
-  const count = chorus ? 4 : 2;
-  const phases = chorus ? [0, 0.25, 0.5, 0.75] : [0, 0.5];
-  const panShape = chorus ? [-1, -0.33, 0.33, 1] : [-1, 1];
+  /*
+   * TWO taps, one left and one right, for both kinds.
+   *
+   * Chorus used to run four, at pan -1, -0.33, +0.33, +1, with a DENSITY control that
+   * weighted them [1, 1, density, density]. That is only symmetric at density 1: below
+   * it the two right-hand taps faded while the two left stayed up, so turning the
+   * control down walked the image to the left. Nobody asked for that and it is not what
+   * the pot said it did.
+   *
+   * The reason to have four was width, and two hard-panned taps are already as wide as
+   * the field goes — the inner pair mostly thickened the middle, which is the part a
+   * chorus is trying to get OUT of the middle. What they also did was cost: each tap
+   * carries a looping AudioBufferSourceNode, and a source GENERATES signal, so unlike a
+   * silent gain chain it can never be short-circuited. Four inserts of this family (two
+   * Chorus 2, two Doublers) measured at 28% of barber-96's entire standing graph.
+   */
+  const count = 2;
+  const phases = [0, 0.5];
+  const panShape = [-1, 1];
   const table = modulationTable(ctx, 'sine');
   const taps = [];
   for (let i = 0; i < count; i++) {
@@ -1391,7 +1413,7 @@ function makeModulatedDelay(ctx, params = {}, kind = 'chorus') {
 
   const state = chorus
     ? { rateSync: 0, rateDivision: 2, frequency: 0.65, delayMs: 16, depth: 0.55,
-      density: 0.75, width: 1, feedback: 0.12, tone: 9000, wet: 0.5, ...params }
+      width: 1, feedback: 0.12, tone: 9000, wet: 0.5, ...params }
     : { rateSync: 0, rateDivision: 2, frequency: 0.25, delayMs: 2, depth: 0.7,
       feedback: 0.45, spread: 180, tone: 8000, wet: 0.5, ...params };
   let running = false;
@@ -1405,16 +1427,16 @@ function makeModulatedDelay(ctx, params = {}, kind = 'chorus') {
       : Math.max(0, Math.min(1, (state.spread ?? 180) / 180));
     const feedback = Math.max(0, Math.min(chorus ? 0.6 : 0.85, state.feedback || 0));
     const cutoff = Math.max(200, Math.min(20000, state.tone || 8000));
-    const density = chorus ? Math.max(0, Math.min(1, state.density ?? 0)) : 1;
-    const weights = chorus ? [1, 1, density, density] : [1, 1];
-    const norm = Math.sqrt(weights.reduce((sum, x) => sum + x * x, 0));
+    // Equal weight, so the pair is symmetric by construction. DENSITY is gone with the
+    // taps it used to fade — see the note at the tap layout.
+    const norm = Math.SQRT2;
     taps.forEach((q, i) => {
       setParam(q.source.playbackRate, table.duration * rate, 0.04);
       setParam(q.delay.delayTime, base, 0.03);
       setParam(q.modDepth.gain, swing, 0.03);
       setParam(q.feedback.gain, feedback, 0.03);
       setParam(q.lp.frequency, cutoff, 0.04);
-      setParam(q.level.gain, (weights[i] / norm) * (1 / Math.SQRT2), 0.03);
+      setParam(q.level.gain, (1 / norm) * (1 / Math.SQRT2), 0.03);
       setParam(q.panner.pan, panShape[i] * width, 0.03);
     });
     const w = Math.max(0, Math.min(1, state.wet || 0));
@@ -2269,10 +2291,32 @@ function makeTape(ctx, params = {}) {
   const wow = modulationSource(ctx, modulationTable(ctx, 'sine'), 0, 0.45);
   const flutter = modulationSource(ctx, modulationTable(ctx, 'sine'), 0.17, 6);
   input.connect(dry); dry.connect(output);
-  input.connect(delay); delay.connect(pre); pre.connect(shapers[0]); pre.connect(shapers[1]);
+  input.connect(delay); delay.connect(pre);
+  /*
+   * ONE shaper in circuit, not two.
+   *
+   * There are two because a tape curve cannot be swapped under a signal without a click,
+   * so DRIVE and BIAS crossfade from the old curve to a new one on the spare. But a
+   * WaveShaper at oversample '4x' resamples to 176.4kHz, shapes, and filters back down —
+   * it is the most expensive node in this effect by a distance, and the spare was doing
+   * all of that permanently to be ready for a knob that most renders never touch.
+   *
+   * So the spare is left DISCONNECTED until a curve change actually needs it, and the
+   * one it replaces is dropped once the crossfade is over. An offline render sets its
+   * parameters once before anything sounds, so it never connects a second shaper at all.
+   */
+  pre.connect(shapers[0]);
   shapers[0].connect(fades[0]); shapers[1].connect(fades[1]); fades[0].connect(sum); fades[1].connect(sum);
   sum.connect(post); post.connect(hp); hp.connect(lp); lp.connect(wet); wet.connect(output);
   wow.connect(wowDepth); flutter.connect(flutterDepth); wowDepth.connect(delay.delayTime); flutterDepth.connect(delay.delayTime);
+  // 4x stays, and it was measured rather than assumed. Dropping to 2x halves this
+  // effect's cost (9.8 -> 4.7 ms per audio second), which is a lot to leave on the table
+  // — but the oversampler carries GROUP DELAY, and changing it moves the shaped signal
+  // in time. Rendered at wet 1 the three settings produce an identical peak (0.618) and
+  // still differ by 90% rms: the same audio, arriving a few samples apart. Against the
+  // dry path that is a comb filter, and against the rest of the mix it is every phase
+  // relationship the song was balanced on. A cheaper tape is not worth a tape that
+  // sounds different in a way nobody can point at.
   shapers.forEach((s) => { s.oversample = '4x'; });
   const state = { drive: 6, bias: 0.1, tone: 10000, wow: 0.12, flutter: 0.05, wet: 0.65, ...params };
   let active = 0; let running = false;
@@ -2288,8 +2332,27 @@ function makeTape(ctx, params = {}) {
     const shape = `${drive}|${Math.max(-1, Math.min(1, state.bias || 0))}`;
     if (shape !== lastShape) {
       const next = 1 - active; shapers[next].curve = tapeCurve(drive, state.bias);
-      if (!running) { shapers[active].curve = shapers[next].curve; fades[0].gain.value = 1; fades[1].gain.value = 0; }
-      else { fades[active].gain.setTargetAtTime(0, ctx.currentTime, 0.0012); fades[next].gain.setTargetAtTime(1, ctx.currentTime, 0.0012); active = next; }
+      if (!running) {
+        // Before anything has sounded the curve can simply be set — no crossfade, and
+        // the spare stays out of circuit. This is the path every offline render takes.
+        shapers[active].curve = shapers[next].curve;
+        fades[active].gain.value = 1; fades[1 - active].gain.value = 0;
+      } else {
+        const outgoing = active;
+        try { pre.connect(shapers[next]); } catch { /* already in circuit */ }
+        fades[outgoing].gain.setTargetAtTime(0, ctx.currentTime, 0.0012);
+        fades[next].gain.setTargetAtTime(1, ctx.currentTime, 0.0012);
+        active = next;
+        // Out of circuit once it is inaudible. The time constant above is 1.2ms, so 60ms
+        // is far past silent; live only, because an offline render's clock is not wall
+        // time and a timer would fire in the wrong place if it fired at all.
+        if (typeof ctx.startRendering !== 'function') {
+          setTimeout(() => {
+            if (active === outgoing) return;          // changed again; it is live now
+            try { pre.disconnect(shapers[outgoing]); } catch { /* already gone */ }
+          }, 60);
+        }
+      }
       lastShape = shape;
     }
     const w = Math.max(0, Math.min(1, state.wet || 0));
@@ -2319,12 +2382,12 @@ export const EFFECTS = [
   // `short` is what an insert slot shows: a 118px strip cannot hold "Multiband
   // Compressor", and a name cut off mid-word is worse than an abbreviation someone
   // chose. The full name stays everywhere there is room for it.
-  { id: 'peq', name: 'Parametric EQ', short: 'Param EQ', cost: 0.15, custom: makeParametricEq,
+  { id: 'peq', name: 'Parametric EQ', short: 'Param EQ', cost: 0.43, custom: makeParametricEq,
     params: ['f1', 'g1', 'f2', 'g2', 'q2', 'f3', 'g3', 'q3', 'f4', 'g4'],
     defaults: { f1: 120, g1: 0, f2: 500, g2: 0, q2: 1, f3: 2000, g3: 0, q3: 1, f4: 6000, g4: 0 } },
   // Measured with the native formant graph, excitation front-end and scheduler hook in
   // tools/measure-new-effects.js: 0.80% default, 0.94% dramatic mode on this bench.
-  { id: 'vowel', name: 'Vowel Filter', short: 'Vowel', cost: 0.80, custom: makeVowelFilter,
+  { id: 'vowel', name: 'Vowel Filter', short: 'Vowel', cost: 0.94, custom: makeVowelFilter,
     params: ['voice', 'stack', 'rateSync', 'rateDivision', 'frequency',
       'waveform', 'depth', 'glide', 'articulation', 'reso', 'spread', 'tilt',
       'intensity', 'excite', 'breath', 'body', 'air', 'wet'],
@@ -2359,16 +2422,16 @@ export const EFFECTS = [
       body: 'BODY', air: 'AIR', tilt: 'TILT', intensity: 'INTENSITY',
       excite: 'EXCITE', breath: 'BREATH',
     } },
-  { id: 'chandelay', name: 'Advanced Delay', short: 'Adv. Delay', cost: 0.15, custom: makeChannelDelay, timed: true,
+  { id: 'chandelay', name: 'Advanced Delay', short: 'Adv. Delay', cost: 0.19, custom: makeChannelDelay, timed: true,
     params: ['sync', 'division', 'delayMs', 'feedback', 'tone', 'pan', 'mix'],
     defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, tone: 4000, pan: 0, mix: 0.35 } },
-  { id: 'pingpong', name: 'Ping-Pong Delay', short: 'Ping-Pong', cost: 0.19, tone: 'PingPongDelay', timed: true,
+  { id: 'pingpong', name: 'Ping-Pong Delay', short: 'Ping-Pong', cost: 0.44, tone: 'PingPongDelay', timed: true,
     params: ['sync', 'division', 'delayMs', 'feedback', 'wet'],
     defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, wet: 0.35 } },
-  { id: 'delay', name: 'Delay', cost: 0.09, tone: 'FeedbackDelay', timed: true,
+  { id: 'delay', name: 'Delay', cost: 0.19, tone: 'FeedbackDelay', timed: true,
     params: ['sync', 'division', 'delayMs', 'feedback', 'wet'],
     defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, wet: 0.35 } },
-  { id: 'chorus', name: 'Chorus', cost: 0.28, tone: 'Chorus',
+  { id: 'chorus', name: 'Chorus', cost: 0.55, tone: 'Chorus',
     params: ['rateSync', 'rateDivision', 'frequency', 'delayTime', 'depth', 'feedback', 'spread', 'type', 'wet'],
     defaults: { rateSync: 0, rateDivision: 1, frequency: 1.5, delayTime: 3.5, depth: 0.7, feedback: 0, spread: 180, type: 'sine', wet: 0.5 },
     ranges: {
@@ -2378,9 +2441,9 @@ export const EFFECTS = [
       type: { options: ['sine', 'triangle', 'square', 'sawtooth'] },
     },
     labels: { delayTime: 'DELAY', feedback: 'FEEDBACK', spread: 'SPREAD', type: 'WAVEFORM' } },
-  { id: 'chorus2', name: 'Chorus 2', short: 'Chorus 2', cost: 0.60, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'chorus'),
-    params: ['rateSync', 'rateDivision', 'frequency', 'delayMs', 'depth', 'density', 'width', 'feedback', 'tone', 'wet'],
-    defaults: { rateSync: 0, rateDivision: 2, frequency: 0.65, delayMs: 16, depth: 0.55, density: 0.75, width: 1, feedback: 0.12, tone: 9000, wet: 0.5 },
+  { id: 'chorus2', name: 'Chorus 2', short: 'Chorus 2', cost: 0.44, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'chorus'),
+    params: ['rateSync', 'rateDivision', 'frequency', 'delayMs', 'depth', 'width', 'feedback', 'tone', 'wet'],
+    defaults: { rateSync: 0, rateDivision: 2, frequency: 0.65, delayMs: 16, depth: 0.55, width: 1, feedback: 0.12, tone: 9000, wet: 0.5 },
     // RATE is log-tapered for the same reason MRDR-3's own chorus pot is cubed: the two
     // speeds a chorus actually has are the Juno's 0.5 and 0.86 Hz, and linear on a dial
     // that runs to eight they sat inside the first tenth of the travel. Position only —
@@ -2388,7 +2451,7 @@ export const EFFECTS = [
     ranges: { frequency: { min: 0.05, max: 8, step: 0.01, unit: 'Hz', log: true }, delayMs: { min: 6, max: 30, step: 0.1, unit: 'ms' },
       feedback: { min: 0, max: 0.6, step: 0.01 }, tone: { min: 800, max: 20000, step: 100, unit: 'Hz', log: true } },
     labels: { delayMs: 'DELAY', tone: 'DAMPING' } },
-  { id: 'rhythmgate', name: 'Rhythmic Gate', short: 'Rhythm Gate', cost: 0.02, custom: makeRhythmicGate,
+  { id: 'rhythmgate', name: 'Rhythmic Gate', short: 'Rhythm Gate', cost: 0.12, custom: makeRhythmicGate,
     params: ['division', 'gateLength', 'attack', 'decay', 'depth'],
     defaults: { division: 0.5, gateLength: 0.5, attack: 0.003, decay: 0.035, depth: 1 },
     // DECAY starts where the gate's own envelope starts — `makeRhythmicGate` floors it
@@ -2396,85 +2459,91 @@ export const EFFECTS = [
     // the short end is dialable at all: a gate's decay is the whole character of it.
     ranges: { gateLength: { min: 0.01, max: 1, step: 0.01 }, attack: { min: 0.001, max: 0.25, step: 0.001, unit: 's', log: true }, decay: { min: 0.001, max: 1, step: 0.001, unit: 's', log: true } },
     labels: { division: 'RATE', gateLength: 'GATE LENGTH', attack: 'ATTACK', decay: 'DECAY', depth: 'DEPTH' } },
-  { id: 'flanger', name: 'Flanger', cost: 0.32, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'flanger'),
+  { id: 'flanger', name: 'Flanger', cost: 0.54, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'flanger'),
     params: ['rateSync', 'rateDivision', 'frequency', 'delayMs', 'depth', 'feedback', 'spread', 'tone', 'wet'],
     defaults: { rateSync: 0, rateDivision: 2, frequency: 0.25, delayMs: 2, depth: 0.7, feedback: 0.45, spread: 180, tone: 8000, wet: 0.5 },
     ranges: { frequency: { min: 0.05, max: 5, step: 0.01, unit: 'Hz' }, delayMs: { min: 0.2, max: 10, step: 0.1, unit: 'ms' },
       spread: { min: 0, max: 180, step: 5, unit: '°' },
       feedback: { min: 0, max: 0.85, step: 0.01 }, tone: { min: 800, max: 20000, step: 100, unit: 'Hz', log: true } },
     labels: { delayMs: 'DELAY', spread: 'SPREAD', tone: 'DAMPING' } },
-  { id: 'phaser', name: 'Phaser', cost: 2.06, tone: 'Phaser',
-    params: ['rateSync', 'rateDivision', 'frequency', 'octaves', 'baseFrequency', 'wet'], defaults: { rateSync: 0, rateDivision: 4, frequency: 0.5, octaves: 3, baseFrequency: 350, wet: 0.5 } },
-  { id: 'tremolo', name: 'Tremolo', cost: 0.45, tone: 'Tremolo',
+  { id: 'phaser', name: 'Phaser', cost: 0.6, custom: makePhaser,
+    params: ['rateSync', 'rateDivision', 'frequency', 'octaves', 'baseFrequency', 'feedback', 'wet'],
+    defaults: { rateSync: 0, rateDivision: 4, frequency: 0.5, octaves: 3, baseFrequency: 350, feedback: 0.2, wet: 0.5 },
+    ranges: { frequency: { min: 0.05, max: 8, step: 0.01, unit: 'Hz', log: true },
+      octaves: { min: 0.5, max: 6, step: 0.1, unit: 'oct' },
+      baseFrequency: { min: 60, max: 4000, step: 10, unit: 'Hz', log: true },
+      feedback: { min: 0, max: 0.7, step: 0.01 } } },
+  { id: 'tremolo', name: 'Tremolo', cost: 0.68, tone: 'Tremolo',
     params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'spread', 'wet'], defaults: { rateSync: 0, rateDivision: 0.5, frequency: 9, depth: 0.7, spread: 180, wet: 1 }, start: true },
-  { id: 'vibrato', name: 'Vibrato', cost: 0.25, tone: 'Vibrato',
+  { id: 'vibrato', name: 'Vibrato', cost: 0.37, tone: 'Vibrato',
     params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'wet'], defaults: { rateSync: 0, rateDivision: 1, frequency: 5, depth: 0.1, wet: 1 } },
-  { id: 'autofilter', name: 'Auto Filter', cost: 0.4, tone: 'AutoFilter',
+  { id: 'autofilter', name: 'Auto Filter', cost: 0.58, tone: 'AutoFilter',
     params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'baseFrequency', 'octaves', 'wet'], defaults: { rateSync: 0, rateDivision: 2, frequency: 1, depth: 1, baseFrequency: 200, octaves: 2.6, wet: 1 }, start: true },
-  { id: 'autowah', name: 'Auto Wah', cost: 0.68, tone: 'AutoWah',
+  { id: 'autowah', name: 'Auto Wah', cost: 0.86, tone: 'AutoWah',
     params: ['baseFrequency', 'octaves', 'sensitivity', 'Q', 'wet'], defaults: { baseFrequency: 100, octaves: 6, sensitivity: 0, Q: 2, wet: 1 } },
-  { id: 'autopanner', name: 'Auto Panner', cost: 0.32, tone: 'AutoPanner',
+  { id: 'autopanner', name: 'Auto Panner', cost: 0.46, tone: 'AutoPanner',
     params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'wet'], defaults: { rateSync: 0, rateDivision: 2, frequency: 1, depth: 1, wet: 1 }, start: true },
-  { id: 'distortion', name: 'Distortion', cost: 0.08, tone: 'Distortion',
+  { id: 'distortion', name: 'Distortion', cost: 0.25, tone: 'Distortion',
     params: ['distortion', 'wet'], defaults: { distortion: 0.4, wet: 0.5 } },
-  { id: 'bitcrusher', name: 'Bit Crusher', short: 'Bit Crush', cost: 0.09, custom: makeBitCrusher,
+  { id: 'bitcrusher', name: 'Bit Crusher', short: 'Bit Crush', cost: 0.12, custom: makeBitCrusher,
     params: ['bits', 'drive', 'tone', 'wet'], defaults: { bits: 8, drive: 6, tone: 12000, wet: 0.65 },
     ranges: { drive: { min: 0, max: 24, step: 0.5, unit: 'dB' }, tone: { min: 500, max: 20000, step: 100, unit: 'Hz', log: true } },
     labels: { bits: 'BITS', drive: 'DRIVE', tone: 'TONE' } },
-  { id: 'tape', name: 'Tape Saturation', short: 'Tape', cost: 0.72, custom: makeTape,
+  { id: 'tape', name: 'Tape Saturation', short: 'Tape', cost: 0.98, custom: makeTape,
     params: ['drive', 'bias', 'tone', 'wow', 'flutter', 'wet'], defaults: { drive: 6, bias: 0.1, tone: 10000, wow: 0.12, flutter: 0.05, wet: 0.65 },
     ranges: { drive: { min: 0, max: 24, step: 0.5, unit: 'dB' }, tone: { min: 1000, max: 20000, step: 100, unit: 'Hz', log: true } },
     labels: { drive: 'DRIVE', bias: 'BIAS', tone: 'TONE', wow: 'WOW', flutter: 'FLUTTER' } },
-  { id: 'ringmod', name: 'Ring Modulator', short: 'Ring Mod', cost: 0.08, custom: makeRingMod,
+  { id: 'ringmod', name: 'Ring Modulator', short: 'Ring Mod', cost: 0.36, custom: makeRingMod,
     params: ['rateSync', 'rateDivision', 'frequency', 'waveform', 'wet'], defaults: { rateSync: 0, rateDivision: 0.5, frequency: 30, waveform: 'sine', wet: 0.5 },
     ranges: { frequency: { min: 0.1, max: 2000, step: 0.1, unit: 'Hz', log: true } },
     labels: { frequency: 'RATE', waveform: 'WAVEFORM' } },
-  { id: 'chebyshev', name: 'Chebyshev', cost: 0.09, tone: 'Chebyshev',
+  { id: 'chebyshev', name: 'Chebyshev', cost: 0.19, tone: 'Chebyshev',
     params: ['order', 'wet'], defaults: { order: 12, wet: 0.4 } },
   // The other two in this group shape the whole signal; this one only ever adds to the
   // top of it. `mix` rather than `wet` because the dry leg is untouched and the wet is
   // summed on top — there is nothing here to crossfade between. See makeExciter.
-  { id: 'exciter', name: 'Exciter', cost: 0.35, custom: makeExciter,
+  { id: 'exciter', name: 'Exciter', cost: 0.95, custom: makeExciter,
     params: ['tune', 'drive', 'timbre', 'mix'],
     defaults: { tune: 3000, drive: 0.35, timbre: 0.5, mix: 0.3 } },
-  { id: 'widener', name: 'Stereo Widener', short: 'Widener', cost: 0.28, tone: 'StereoWidener',
+  { id: 'widener', name: 'Stereo Widener', short: 'Widener', cost: 0.39, tone: 'StereoWidener',
     params: ['width', 'wet'], defaults: { width: 0.7, wet: 1 } },
   // Ours, and the only effect here built out of a pitch shifter that nothing in the
   // catalogue exposes: see makeDoubler. Deliberately NOT tempo-syncable, unlike every
   // other modulation in the list — a drift that lands on the beat is a rhythm part, and
   // the whole claim of the effect is that the second voice is not counting.
-  { id: 'doubler', name: 'Doubler', cost: 0.6, custom: makeDoubler,
-    params: ['detune', 'delayMs', 'frequency', 'depth', 'width', 'dryPan', 'wetPan', 'wet'],
+  { id: 'doubler', name: 'Doubler', cost: 0.33, custom: makeDoubler,
+    params: ['delayMs', 'frequency', 'depth', 'width', 'dryPan', 'wetPan', 'wet'],
     defaults: {
-      detune: 9, delayMs: 18, frequency: 0.35, depth: 0.35,
+      delayMs: 18, frequency: 0.35, depth: 0.35,
       width: 0.85, dryPan: 0, wetPan: 0, wet: 0.45,
     },
     // TIME is the offset between two takes, not an echo, so it stops where doubling
-    // stops — and it starts at 11ms because the detuner's own wander is ±8ms and a
-    // voice cannot average less than that far out (see DOUBLER_CENTRE). RATE is slower
+    // stops. It used to start at 11ms, because the detuner's grain wandered ±8ms and a
+    // voice could not average less than that far out; the detuner is gone, so a genuinely
+    // small offset is available again — which is what widening a mono part wants. RATE is slower
     // than the shared LFO range for the same reason a doubler is not a chorus: 20Hz of
     // drift is a ring modulator, and the interesting half of this knob is under 1Hz.
     ranges: {
-      delayMs: { min: 11, max: 60, step: 0.5, unit: 'ms' },
+      delayMs: { min: 1, max: 60, step: 0.5, unit: 'ms' },
       frequency: { min: 0.02, max: 6, step: 0.01, unit: 'Hz' },
     } },
-  { id: 'shifter', name: 'Frequency Shifter', short: 'Freq Shift', cost: 0.52, tone: 'FrequencyShifter',
+  { id: 'shifter', name: 'Frequency Shifter', short: 'Freq Shift', cost: 0.97, tone: 'FrequencyShifter',
     params: ['frequency', 'wet'], defaults: { frequency: 0, wet: 1 },
     // Also a frequency that is not a rate: how far the whole spectrum is moved.
     ranges: { frequency: { min: -1200, max: 1200, step: 5, unit: 'Hz' } } },
-  { id: 'pitch', name: 'Pitch Shift', cost: 0.75, tone: 'PitchShift',
+  { id: 'pitch', name: 'Pitch Shift', cost: 1.05, tone: 'PitchShift',
     params: ['pitch', 'windowSize', 'feedback', 'wet'], defaults: { pitch: 0, windowSize: 0.1, feedback: 0, wet: 1 } },
   // Ours, not Tone's — Tone.Reverb fills its impulse response from Math.random, so
   // every render of every song carrying one was a different file. See makeReverb.
-  { id: 'reverb', name: 'Reverb', cost: 0.73, custom: makeReverb,
+  { id: 'reverb', name: 'Reverb', cost: 0.75, custom: makeReverb,
     params: ['decay', 'preDelay', 'wet'], defaults: { decay: 2, preDelay: 0.01, wet: 0.4 } },
-  { id: 'compressor', name: 'Compressor', cost: 0.14, tone: 'Compressor',
+  { id: 'compressor', name: 'Compressor', cost: 0.19, tone: 'Compressor',
     params: ['threshold', 'ratio', 'attack', 'release'], defaults: { threshold: -18, ratio: 4, attack: 0.01, release: 0.15 } },
   // Threshold stops at -30 rather than the shared -60: the make-up is (ceiling -
   // threshold) and applied for you, so -60 here is not "limit everything", it is
   // +60dB of gain on the way through and a lane that has been destroyed by one drag.
   // -30 is where the real thing stops, for the same reason.
-  { id: 'l7', name: 'L7 Limiter', short: 'L7', cost: 0.54, custom: makeLimiter,
+  { id: 'l7', name: 'L7 Limiter', short: 'L7', cost: 0.66, custom: makeLimiter,
     params: ['threshold', 'ceiling', 'release', 'lookahead', 'arc'],
     defaults: { threshold: 0, ceiling: -0.3, release: 0.06, lookahead: 3, arc: 1 },
     // RELEASE keeps the ten-millisecond floor the shared range has left behind, because
@@ -2488,14 +2557,14 @@ export const EFFECTS = [
   // names here; applyParams walks them and paramRange falls back to the leaf, so all
   // six thresholds share one range. Both are plain ToneAudioNodes rather than
   // Effects, which is why neither has a `wet`: they are always fully in circuit.
-  { id: 'msComp', name: 'Mid/Side Compressor', short: 'M/S Comp', cost: 0.45, tone: 'MidSideCompressor',
+  { id: 'msComp', name: 'Mid/Side Compressor', short: 'M/S Comp', cost: 0.53, tone: 'MidSideCompressor',
     params: ['mid.threshold', 'mid.ratio', 'mid.attack', 'mid.release', 'mid.knee',
       'side.threshold', 'side.ratio', 'side.attack', 'side.release', 'side.knee'],
     defaults: {
       'mid.threshold': -24, 'mid.ratio': 3, 'mid.attack': 0.02, 'mid.release': 0.03, 'mid.knee': 16,
       'side.threshold': -30, 'side.ratio': 6, 'side.attack': 0.03, 'side.release': 0.25, 'side.knee': 10,
     } },
-  { id: 'mbComp', name: 'Multiband Compressor', short: 'Multi Comp', cost: 0.87, tone: 'MultibandCompressor',
+  { id: 'mbComp', name: 'Multiband Compressor', short: 'Multi Comp', cost: 0.95, tone: 'MultibandCompressor',
     params: ['lowFrequency', 'highFrequency',
       'low.threshold', 'low.ratio', 'low.attack', 'low.release', 'low.knee',
       'mid.threshold', 'mid.ratio', 'mid.attack', 'mid.release', 'mid.knee',
@@ -2512,7 +2581,7 @@ export const EFFECTS = [
   // controls: a desk where two inserts spell one idea two ways is the thing this
   // codebase spends its comments avoiding. A/B them on the master and keep one.
   { id: 'mbCompN', name: 'Multiband Compressor (Native)', short: 'Multi Comp N',
-    cost: 0.87, custom: makeMultibandCompN,
+    cost: 0.74, custom: makeMultibandCompN,
     params: ['lowFrequency', 'highFrequency',
       'low.threshold', 'low.ratio', 'low.attack', 'low.release', 'low.knee',
       'mid.threshold', 'mid.ratio', 'mid.attack', 'mid.release', 'mid.knee',
@@ -2525,7 +2594,7 @@ export const EFFECTS = [
     } },
   // `frequency` here is a CUTOFF, not an LFO rate, so it carries its own range —
   // the shared one tops out at 20Hz and turning the knob simply muted the channel.
-  { id: 'filter', name: 'Filter', cost: 0.15, tone: 'Filter',
+  { id: 'filter', name: 'Filter', cost: 0.2, tone: 'Filter',
     params: ['type', 'frequency', 'Q'], defaults: { type: 'lowpass', frequency: 1000, Q: 1 },
     ranges: { frequency: { min: 20, max: 18000, step: 10, unit: 'Hz', log: true } } },
 ];
@@ -2556,6 +2625,52 @@ export const MAX_EFFECTS = 6;
 //
 // The engine itself is about 10% on the same measure, which is the number to keep
 // in mind when reading the desk's estimate.
+/*
+ * EVERY cost below was re-measured on 2026-08-19, in a real mix, and almost every one of
+ * them went UP — most by about double, several by three to six times.
+ *
+ * The old numbers came from tools/measure-new-effects.js: one effect, alone, fed a single
+ * mono 220Hz oscillator, against a bare-oscillator baseline. That is a fine way to rank
+ * two effects and a poor way to predict a mix. It is mono, where a real strip is forced
+ * to explicit stereo and most nodes therefore do twice the work. It prices the effect
+ * rather than the effect inside a graph — and what this engine turned out to care about
+ * is whether a node can be SHORT-CIRCUITED by silence, which is a property of the graph
+ * around it. And several entries were never measured at all: mbCompN carried a number
+ * copied from Tone's mbComp.
+ *
+ * The new method (work/local/effect-cost-bench.mjs, results in
+ * work/local/effect-costs-2026-08-19.txt): each effect inserted on the master bus of a
+ * real song, best of three, round robin, fresh page per render, measured twice — with the
+ * song silent and with it playing. The number kept is the larger of the two, because the
+ * question a cost table answers is "what would adding this cost me".
+ *
+ * The gap between the two columns is the interesting part. An effect that is cheap idle
+ * and dear playing is honest. One that costs the same IDLE is charging you for existing,
+ * and that is a node that generates or holds signal — a looping LFO source, a convolver
+ * tail, a compressor envelope, or Tone's habit of giving every filter param its own
+ * ConstantSourceNode. Almost everything here is in the second category, which is why
+ * rewriting the Doubler, Chorus 2 and Phaser natively paid and why trimming the channel
+ * strip did not.
+ *
+ * A note on the two multiband compressors, measured 2026-08-19.
+ *
+ * mbComp (Tone) and mbCompN (native) both carried cost 0.87 — and mbCompN's was copied
+ * from Tone's rather than measured, which is the sort of thing that makes a cost table
+ * decorative. Measured in situ on a real song's stereo master bus (barber-96, standing
+ * graph only, best of three, work/local/master-comp-ab.mjs): Tone 10.1 ms per audio
+ * second, native 6.7. The native one is 34% cheaper for the same three bands.
+ *
+ * The reason is the rule this engine's whole performance story turned on: a silent gain
+ * chain costs nothing, but a node that GENERATES signal can never be short-circuited.
+ * Tone's MultibandSplit is four Tone.Filters, and every Tone.Filter creates four
+ * ConstantSourceNodes to drive its params — eighteen permanently-running generators
+ * around three compressors. makeMultibandCompN is two gains, four biquads and the same
+ * three compressors, and starts nothing.
+ *
+ * These two numbers are therefore measured DIFFERENTLY from the rest of the table (in a
+ * real mix rather than against a bare oscillator), and are the more honest for a master
+ * effect, which is always on a stereo bus with a whole song going through it.
+ */
 export const ENGINE_BASE_COST = 10;
 
 /**

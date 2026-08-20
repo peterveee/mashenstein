@@ -414,9 +414,34 @@ export const DELAY_DIVISIONS = TEMPO_DIVISIONS;
 
 export function createMixer(ctx, {
   musicBus, echoBus, master, destination = ctx.destination, songTrim, delayLp,
-  eagerLanes = true,
 }) {
   Tone.setContext(ctx);
+
+  /*
+   * Meters are for eyes, and an offline render has none.
+   *
+   * Every strip, every aux and the master carry a Tone.Meter — a Gain, a
+   * ChannelSplitter and an AnalyserNode each — plus a zero-gain sink wired to
+   * ctx.destination purely to guarantee the analyser is PULLED (a terminal analyser is
+   * not). On this song that is a hundred analysers doing real per-block work for a
+   * value that, in a bounce, nothing ever calls getValue() on: the only readers are the
+   * desk's own UI in tools/mixer-entry.js.
+   *
+   * So offline they are not built at all, and the readers return 0. Nothing else in the
+   * engine consults them, and a gain-0 contribution sums to the same float either way,
+   * so the render is unchanged — which tests/null-test.js is the proof of.
+   */
+  const metered = typeof ctx.startRendering !== 'function';
+  const makeMeter = (source, opts) => {
+    if (!metered) return null;
+    const m = new Tone.Meter({ normalRange: true, smoothing: 0.6, ...opts });
+    Tone.connect(source, m);
+    const sink = ctx.createGain();
+    sink.gain.value = 0;
+    Tone.connect(m, sink);
+    sink.connect(ctx.destination);
+    return m;
+  };
 
   // Every aux returns to songTrim, not musicBus, so a return is scaled by the
   // song's own musicTrim exactly as the original echo always was. Returning some
@@ -476,12 +501,7 @@ export function createMixer(ctx, {
     // would keep the convolver alive against pruneAuxes below — a meter is only
     // pulled if it has a path to the destination, and that path would drag the
     // reverb along with it. Nothing downstream of `input` is pulled by this.
-    const meter = new Tone.Meter({ normalRange: true, smoothing: 0.6 });
-    Tone.connect(input, meter);
-    const meterSink = ctx.createGain();
-    meterSink.gain.value = 0;
-    Tone.connect(meter, meterSink);
-    meterSink.connect(ctx.destination);
+    const meter = makeMeter(input);
 
     auxes.set(def.id, {
       def, input, eq, level, panner, monitor, engine, reverb, meter,
@@ -648,12 +668,7 @@ export function createMixer(ctx, {
     // destination: a terminal analyser is not guaranteed to be pulled by the graph,
     // and a meter that only sometimes moves is worse than none.
 
-    const meter = new Tone.Meter({ normalRange: true, smoothing: 0.6 });
-    Tone.connect(widthNode.output, meter);
-    const meterSink = ctx.createGain();
-    meterSink.gain.value = 0;
-    Tone.connect(meter, meterSink);
-    meterSink.connect(ctx.destination);
+    const meter = makeMeter(widthNode.output);
 
     const state = {
       ...DEFAULTS,
@@ -913,7 +928,7 @@ export function createMixer(ctx, {
         }
       },
 
-      level: () => meter.getValue(),
+      level: () => (meter ? meter.getValue() : 0),
       _slot: slot,
       // The gate and the fader, reachable so a test can prove which of them monitoring
       // writes to. That split is the whole reason a transition survives you hitting
@@ -935,17 +950,18 @@ export function createMixer(ctx, {
 
   // Every canonical lane, whether or not the song has one.
   //
-  // A strip is ~27 nodes in the pulled path and nothing ever culls one, so on a song that
-  // uses four of the twenty-two the other eighteen are a standing cost paid for silence
-  // — measured at 39% of this song's strips. `laneList(bank)` already ensures a strip for
-  // every lane a song actually carries (see applyMix in audio.js), and `ensureLane`
-  // builds one on demand, so the eager pass is a convenience rather than a requirement.
+  // This looks like waste — a strip is ~27 nodes and on a song using four of the
+  // twenty-two the rest stand idle — and it was tried as one: building strips only for
+  // the lanes a song carries cut 18 of 46 here and changed the render cost by NOTHING
+  // (199.7 -> 201.6 ms/audio-s, inside the noise). Chromium short-circuits a silent gain
+  // chain, so an idle strip is genuinely close to free, and lanes are cheap in exactly
+  // the way node-count arithmetic says they should not be.
   //
-  // Kept ON by default all the same: the game builds its mixer once and plays banks that
-  // do use most of these, and a strip that appears mid-song is a strip whose settings
-  // arrive after the notes it was meant to shape. Only the desk and the render path opt
-  // out, where the song is known before a note is scheduled.
-  if (eagerLanes) for (const { key } of LANES) makeStrip(key);
+  // It also broke playback: a lane whose strip does not exist yet is skipped by the
+  // voice path, so a song lost audio on the lanes that arrived late. Measured at zero
+  // benefit and a real regression, the lazy version is gone. See
+  // work/local/standing-graph-findings.md.
+  for (const { key } of LANES) makeStrip(key);
 
   // Master limiter — OFF by default, and deliberately so.
   //
@@ -1037,12 +1053,7 @@ export function createMixer(ctx, {
   // connections wireMaster() never tears down (see the masterOut note above). So the
   // pair shows the imbalance the channels are making, not the master balance you have
   // dialled on top of it.
-  const masterMeter = new Tone.Meter({ normalRange: true, smoothing: 0.6, channelCount: 2 });
-  Tone.connect(masterTrim, masterMeter);
-  const masterMeterSink = ctx.createGain();
-  masterMeterSink.gain.value = 0;
-  Tone.connect(masterMeter, masterMeterSink);
-  masterMeterSink.connect(ctx.destination);
+  const masterMeter = makeMeter(masterTrim, { channelCount: 2 });
 
   return {
     lanes: LANES.map((l) => l.key),
@@ -1082,11 +1093,13 @@ export function createMixer(ctx, {
      * a peak readout are asking about. Callers that want the pair use masterLevels().
      */
     masterLevel: () => {
+      if (!masterMeter) return 0;
       const v = masterMeter.getValue();
       return Array.isArray(v) ? Math.max(v[0] || 0, v[1] || 0) : v;
     },
     /** [left, right], 0..1. */
     masterLevels: () => {
+      if (!masterMeter) return [0, 0];
       const v = masterMeter.getValue();
       return Array.isArray(v) ? [v[0] || 0, v[1] || 0] : [v || 0, v || 0];
     },
@@ -1103,7 +1116,7 @@ export function createMixer(ctx, {
     },
     auxEffects: (id) => auxes.get(id)?.slot.chain || [],
     /** How much is being sent into one aux, 0..1 — the send strip's meter. */
-    auxLevel: (id) => auxes.get(id)?.meter.getValue() ?? 0,
+    auxLevel: (id) => auxes.get(id)?.meter?.getValue() ?? 0,
     /**
      * Solo a send: the returns you soloed, and nothing else — no dry channels, no
      * other returns, but the channels still feeding their sends so there is

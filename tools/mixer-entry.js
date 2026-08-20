@@ -12831,6 +12831,12 @@ function applyArrangementEdit(next, what, {
   // set, and that used to repaint the arrangement alone: the grid above showed eight bars
   // where there had been four while the editor below it went on drawing four.
   const planBefore = render ? JSON.stringify(arrDraftOf()?.plan ?? null) : null;
+  // And the grid the song is STORED on, for the same reason. Promoting a song onto 48 so
+  // it can hold a triplet leaves the plan untouched, so the editors below were never told
+  // — and both went on drawing sixteen columns a bar under a picker that said 1/16T,
+  // which is a snap you cannot see, aim at or draw on until something else happens to
+  // repaint them.
+  const resolutionBefore = render ? (arrDraftOf()?.resolution ?? null) : null;
   // `null` never coalesces, which is right for a gesture that ends — a drawn note, a
   // pasted clip. A performance has no ending, so recording tags its writes and the run
   // of them collapses into the one snapshot `pushUndo` already knows how to make.
@@ -12868,7 +12874,8 @@ function applyArrangementEdit(next, what, {
       // Only when the bars themselves moved. A note edit leaves the plan alone and the
       // panel that made it has already redrawn itself — repainting here as well would
       // rebuild a whole-song field twice for every step of a paint drag.
-      if (JSON.stringify(next?.plan ?? null) !== planBefore) {
+      if (JSON.stringify(next?.plan ?? null) !== planBefore
+        || (entry?.resolution ?? null) !== resolutionBefore) {
         stepSeq.refresh();
         pianoRoll.refresh();
         kitRoll.refresh();
@@ -15546,10 +15553,24 @@ function tick() {
   writeGridInfo();
   const peakText = peakSeen > 0
     ? `Master peak ${(20 * Math.log10(peakSeen)).toFixed(1)} dBFS${peakSeen >= 1 ? '  ** CLIPPING **' : ''}` : '';
-  // The watchdog's verdict outranks the peak readout: a desk that is starving or
-  // silent has one thing to say, and it is not the peak.
-  $('peakinfo').textContent = health.text
-    ? `** ${health.text} **${peakText ? '  —  ' + peakText : ''}` : peakText;
+  $('peakinfo').textContent = peakText;
+  // The watchdog's verdict lives in its own FIXED footer slot, and it lingers: a
+  // message that vanishes the instant the trouble passes is a message nobody finishes
+  // reading — the desk glitches, you look down, and the evidence is already gone.
+  // Live trouble shows at full strength; a cleared verdict stays for a while, dimmed
+  // and saying so, then leaves.
+  const nowMs = performance.now();
+  if (health.text) { lastHealthText = health.text; lastHealthAt = nowMs; }
+  const healthLive = !!health.text;
+  const lingering = !healthLive && lastHealthText
+    && nowMs - lastHealthAt < HEALTH_LINGER_MS;
+  const ah = $('audiohealth');
+  if (ah) {
+    ah.textContent = healthLive ? health.text
+      : lingering ? `${lastHealthText} · cleared` : '';
+    ah.style.opacity = healthLive ? '1' : '0.55';
+    ah.classList.toggle('trouble', healthLive);
+  }
   requestAnimationFrame(tick);
 }
 
@@ -15668,7 +15689,12 @@ function updateCpu() {
   const trouble = health.audioBehind ? 'AUDIO OVERLOADED'
     : health.audioStruggling ? 'AUDIO STRUGGLING'
       : health.uiStalled ? 'MACHINE BUSY' : '';
-  el.textContent = trouble || estimate;
+  // The verdict does NOT ride the CPU readout any more (Peter: a toolbar number that
+  // turns into words and back is a readout you stop trusting). The toolbar keeps the
+  // resting estimate; the words live in the footer's own fixed slot — see the
+  // audiohealth line in the tick loop, which also keeps a cleared verdict visible for
+  // a while instead of vanishing the instant the trouble passes.
+  el.textContent = estimate;
   if (clockMin) {
     clockMin.textContent = Number.isFinite(health.songRatioMin)
       ? `${health.songRatioMin.toFixed(3)}×` : '—';
@@ -15694,7 +15720,10 @@ function updateCpu() {
     ? `\nNote cache: ${cache.buffers} buffers / ${(cache.bytes / (1024 * 1024)).toFixed(1)} MB; `
       + `${cache.queued} still to render, ${cache.rendering} rendering; ${cache.hits} hits, `
       + `${cache.misses} misses, ${cache.stale} stale discarded`
-      + (cache.playbackActive ? '; preparation paused during playback.' : '.') : '';
+      // Preparation no longer pauses for playback — it trickles: one render per idle
+      // slice, held only while the audio clock sits in the borderline band. See the
+      // trickle notes above pumpCache in voices.js.
+      + (cache.playbackActive ? '; preparation trickling during playback.' : '.') : '';
   el.title = (health.audioBehind || health.audioStruggling
     ? (health.audioBehind
       ? 'THE AUDIO THREAD CANNOT RENDER THIS MIX IN REALTIME on this machine'
@@ -15731,7 +15760,9 @@ function updateCpu() {
         + ' requires muting, soloing, simplifying, or bouncing work.' : '');
   // Coloured only for measured trouble. An estimate never lights the lamp: it is a
   // guess about this machine, and a guess is not a reason to alarm anybody.
-  el.classList.toggle('dirty', !!trouble);
+  // The lamp follows the verdict to its footer slot; the toolbar estimate stays a
+  // plain number that never lights anything — it is a guess about one machine.
+  $('audiohealth')?.classList.toggle('dirty', !!trouble);
 }
 
 // ---- audio health watchdog --------------------------------------------------
@@ -16795,9 +16826,18 @@ function checkAudioHealth() {
   }
   // The transport line stays for genuine trouble only, and says the same thing the
   // readout does rather than a second vocabulary for it.
-  health.text = health.audioBehind ? 'AUDIO OVERLOADED — the mix is too heavy to play here'
-    : health.audioStruggling ? 'AUDIO STRUGGLING — this mix is at the edge of what this machine can play'
-      : health.uiStalled ? 'PLAYBACK INTERRUPTED — the browser was busy' : '';
+  // When the mix is too heavy AND the cache still has a backlog, the banner says the
+  // way out instead of only naming the problem: pausing now catches up at full speed
+  // (see setNoteCacheTransportRunning), so the honest instruction is to use it. Only
+  // when there is nothing left to prepare does the message fall back to the plain
+  // verdict — at that point the mix genuinely costs more than the machine has.
+  const cacheBacklog = (Audio.noteCacheHealth?.()?.queued || 0);
+  health.text = health.audioBehind
+    ? (cacheBacklog > 25
+      ? `OVERLOADED — pause to catch up (${cacheBacklog} left)`
+      : 'OVERLOADED — mix too heavy')
+    : health.audioStruggling ? 'STRUGGLING — near the limit'
+      : health.uiStalled ? 'INTERRUPTED — browser busy' : '';
   // The readout shows what was just measured, so the thing that measures refreshes
   // it — nothing else calls `updateCpu` while a song merely plays. Only when the
   // VERDICT changes, though: this runs four times a second now, and rebuilding a
@@ -19901,6 +19941,13 @@ function panicAll() {
  *  When `fromStep` is 0 and loop is on with locators set, the loop is armed
  *  WITHOUT jumping — the song plays from the start and begins looping only
  *  when it reaches the locator region naturally. */
+// The footer verdict's linger: how long a cleared verdict stays readable. Long enough
+// to look down after a glitch and still find the words; short enough that old trouble
+// does not haunt a healthy desk.
+const HEALTH_LINGER_MS = 12000;
+let lastHealthText = '';
+let lastHealthAt = 0;
+
 function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
   // Before `playing` changes, so `recording()` is still true and the take can measure
   // the keys that are still down against the position the music actually stopped at.
@@ -19908,6 +19955,10 @@ function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
   // carries straight on recording.
   if (!on && recArmed) endTake('stopped');
   playing = on;
+  // The note cache pumps at full speed the moment the transport is not rolling — a
+  // pause is precisely the "let it catch up" gesture, and it used to build at trickle
+  // pace and read as useless. See setNoteCacheTransportRunning in the engine.
+  Audio.setNoteCacheTransport?.(playing);
   $('play').classList.toggle('on', playing);
   $('pause').disabled = !playing;
   // The bench's play button says whether it would join the song or start beside it, and
@@ -19969,7 +20020,21 @@ function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
  * for sound: waiting forever for an OfflineAudioContext is worse than letting the first
  * notes use the live rack and warming the rest for the next pass.
  */
-const NOTE_CACHE_START_BUDGET_MS = 1200;
+/*
+ * How long "play from top" will hold the transport while the note cache prepares.
+ *
+ * 1200ms was right when a plan was tens of renders — the pooled pluck lanes. The day
+ * the string section became cacheable a plan grew to hundreds, and a 1.2s budget
+ * prepared five notes, expired, and started cold every time — which is why nobody had
+ * ever actually seen the "Preparing MRDR-3 n / m" state the button carries: it was
+ * gone inside a second, and the first laps played through the audible warm-up instead.
+ *
+ * The button is its own escape hatch — pressing it again during preparation means
+ * "start now" — so the deadline's only job is to stop a stuck render from holding the
+ * transport hostage forever. Three minutes covers the largest plan the desk has
+ * produced (about 500 renders) with room; nobody has to wait it out, ever.
+ */
+const NOTE_CACHE_START_BUDGET_MS = 180000;
 let preparingFromStart = false;
 let startPreparationToken = 0;
 let preparationControl = 'start';
@@ -23364,6 +23429,17 @@ Audio.setSilentLaneSkip(true);
 // localStorage to A/B it by ear against the pool. DEV exposes the same preference as
 // a drawer toggle so a listening comparison does not require the console.
 Audio.setNoteCache(noteCacheEnabled);
+
+// Idle-pool reaping, on the same desk-only footing as the two switches above. Pools
+// are grown and never shrunk during a song — the right rule mid-phrase, the wrong one
+// across a session, where every preset ever auditioned keeps its Tone synths (and
+// their always-running ConstantSources) for the life of the context. A sweep every
+// ten seconds retires pools that have been silent for thirty, through the ordinary
+// retire path, so even the reaped only dispose once provably quiet. The next note on
+// an abandoned lane rebuilds its pool and pays one slot build at note time — the
+// trade a half-minute of silence has earned. `runtimeHealth().poolSlots` is the
+// number this stops from climbing forever.
+setInterval(() => { try { Audio.voices?.reapIdlePools?.(30); } catch { /* rack between songs */ } }, 10000);
 
 // The engine, reachable from the console. Everything on this desk is a module, so
 // there has never been a way to ask the running graph a question — which turns every

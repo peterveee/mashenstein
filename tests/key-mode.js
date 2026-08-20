@@ -62,7 +62,7 @@ assert(source.includes('const fingered = mono && slot.gateKey != null;')
 // sources at the nominal length is what made LEGATO on the keyboard cut out mid-key.
 assert(/if \(hold\) \{\s*\n\s*prev\.freq = base;\s*\n\s*prev\.gateUntil = Infinity;\s*\n\s*prev\.stopAt = Infinity;\s*\n\s*return;/.test(source),
   'a held legato handover moves the pitch and nothing else — no release, no source stop');
-assert(source.includes('_retargetLayerLegato(prev, f * shift * vary((v.humanize || {}).pitch, time, 16), time, noteDur, v, hold);')
+assert(source.includes('_retargetLayerLegato(prev, f * shift * ensembleVary((v.humanize || {}).pitch, time, 16), time, noteDur, v, hold);')
   && source.includes('if (hold) this._rekeyHeldNote(prev, `${laneKey}|${f.toFixed(2)}`);'),
   'and the note-off passes to the key that took the gate — last note priority');
 // The pooled legato branch stays on the sequencer's gate for the opposite reason: it

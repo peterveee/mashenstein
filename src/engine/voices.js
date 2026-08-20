@@ -109,6 +109,33 @@ function scrubOscTypes(node) {
   }
 }
 
+/*
+ * Floor every amp envelope's SUSTAIN at -120dB, because zero is a denormal trap.
+ *
+ * A Tone envelope releasing toward literal 0 approaches it asymptotically, and once the
+ * gain passes below ~1e-38 every multiply downstream of it — the oscillator through the
+ * gain, the filter after that — is denormal arithmetic, which stalls the render thread.
+ * Measured on tpPizz (sustain 0, the pluck shape): 21.7 ms per audio second for a line
+ * that costs 5.6 with any nonzero floor — a 4x tax for the last, silent approach to
+ * zero. Thirty-five pooled presets carry the shape, including every MembraneSynth.
+ *
+ * 1e-6 is -120dB: below anything a limiter, a meter or an ear will ever see (the null
+ * test's own tolerance sits 40dB above it), and thirty-two orders of magnitude above
+ * where denormals begin. Recursive for DuoSynth's nested voice0/voice1. The FILTER
+ * envelope is left alone — its sustain scales a frequency, and frequencies do not
+ * denormal.
+ */
+function floorEnvelopeSustain(node) {
+  if (!node || typeof node !== 'object') return;
+  for (const [k, val] of Object.entries(node)) {
+    if (k === 'envelope' && val && typeof val === 'object'
+      && typeof val.sustain === 'number' && val.sustain < 1e-6) {
+      val.sustain = 1e-6;
+    }
+    if (val && typeof val === 'object') floorEnvelopeSustain(val);
+  }
+}
+
 /**
  * Bring a Tone preset's unison down to `MAX_UNISON`.
  *
@@ -400,6 +427,40 @@ function hitRandom(time, salt) {
 /** `amount` either side of 1, deterministically. Zero — the default — is exactly 1. */
 const vary = (amount, time, salt) => (amount > 0 ? 1 + (hitRandom(time, salt) - 0.5) * 2 * amount : 1);
 
+/*
+ * MRDR-3's ensemble jitter — humanize (entry/gain/pitch/filter) and vibrato SPREAD —
+ * is OFF, engine-wide, as of 2026-08-19. Peter's call, and the reasoning is worth
+ * keeping with the switch:
+ *
+ * The jitter itself costs almost nothing to compute. What it costs is CACHEABILITY:
+ * a note whose sound depends on WHEN it is scheduled cannot be rendered once and
+ * replayed, so every note on a humanised preset is synthesised live, every time —
+ * measured on barber-96, its three string lanes were the dearest voices on the song
+ * for exactly this reason. Spread vibrato also defeats the PeriodicWave cache (every
+ * unison voice of every note minted its own phase-rotated wave). "Not sure that the
+ * minor difference in quality would ever be worth it" — so it is a switch, not a
+ * deletion: preset data is untouched, drums and taps keep their own humanise (theirs
+ * costs nothing — the drum path is never cached), and one line brings it back.
+ *
+ * What OFF removes is only the PER-OCCURRENCE variation — the part that priced every
+ * note as a fresh render. The ensemble texture inside a note SURVIVES: the unison
+ * entry stagger and the scattered vibrato phases are re-seeded from a fixed time
+ * instead of the note's time, so every occurrence is the same section, not a solo.
+ * (Zeroing the spread outright was tried first and measured: unison voices summed
+ * coherently and barber-96's peak jumped 0.594 -> 0.861 — a different instrument, not
+ * a smaller nuance.) The whole-note gain/pitch/filter wobbles ARE the per-occurrence
+ * variation and read as exactly 1.
+ *
+ * Every render — desk, bounce, game — agrees, which keeps stems summing to the mix
+ * and the null test meaningful.
+ */
+let MRDR_ENSEMBLE_JITTER = false;
+export function setMrdrEnsembleJitter(on) { MRDR_ENSEMBLE_JITTER = !!on; }
+/** `vary`, but exactly 1 while the ensemble jitter is off. */
+const ensembleVary = (amount, time, salt) => (MRDR_ENSEMBLE_JITTER ? vary(amount, time, salt) : 1);
+// The seed the frozen ensemble draws from: any fixed value works; zero reads best.
+const ENSEMBLE_FIXED_TIME = 0;
+
 /**
  * Does WHEN an MRDR-3 note is scheduled change WHAT it is?
  *
@@ -428,12 +489,18 @@ const vary = (amount, time, salt) => (amount > 0 ? 1 + (hitRandom(time, salt) - 
  * is absent or zero" and "the note does not vary" are the same statement.
  */
 export function layerVariesWithTime(v) {
-  const hum = v?.humanize || {};
+  // With the ensemble jitter off (see MRDR_ENSEMBLE_JITTER) the humanize block and the
+  // vibrato spread are never read, so a preset carrying them no longer varies with
+  // time — which is what makes the string section cacheable.
+  const hum = (MRDR_ENSEMBLE_JITTER && v?.humanize) || {};
   if ((hum.gain ?? 0) > 0 || (hum.pitch ?? 0) > 0
     || (hum.filter ?? 0) > 0 || (hum.entry ?? 0) > 0) return true;
+  // (With jitter off, entry stagger and spread phases are seeded from a fixed time —
+  // present in the sound, identical per occurrence, so they do not vary.)
   // Spread is what scatters the ensemble; a vibrato without it is one locked LFO
   // started at phase zero on the note, which is the same wobble every time.
-  if ((v?.vibrato?.depth ?? 0) > 0 && (v.vibrato.spread ?? 0) > 0) return true;
+  if (MRDR_ENSEMBLE_JITTER
+    && (v?.vibrato?.depth ?? 0) > 0 && (v.vibrato.spread ?? 0) > 0) return true;
   const lfo = v?.layer?.lfo;
   if (lfo && (lfo.depth ?? 0) > 0 && lfo.type === 'samplehold') return true;
   return false;
@@ -897,13 +964,29 @@ const CACHE_TAIL_GUARD_S = 0.01;
 // ~130KB a desk note averaged in that measurement, 64MB binds first at about 490
 // entries and this number is never reached; at the ~10KB of a closed hat, 2048 entries
 // is 20MB and the LRU still means something.
-const NOTE_CACHE_ENTRIES = 2048;
-const NOTE_CACHE_BYTES = 64 * 1024 * 1024;
+/*
+ * Re-sized 2026-08-19, the day the string section became cacheable and the old caps
+ * were caught THRASHING live. 64MB was measured against a library whose expensive
+ * presets could not cache at all; barber-96's newly-eligible strings are stereo
+ * buffers averaging ~136KB, its full key space wants ~250MB, and the desk hit the old
+ * cap on lap 3 and treadmilled from there — every render evicting an older buffer,
+ * every evicted key re-missing and re-queueing (the Loop CSV shows misses +1,450 and
+ * stale +1,200 per lap from lap 3 onward, with the queue pinned at ~1,375). A cache at
+ * its cap is not a smaller cache, it is a machine for converting renders into
+ * evictions. 320MB of Float32 buffers is real memory, but it is the desk's memory on a
+ * desk machine, spent on exactly the thing the desk exists to do; entries rise with it
+ * so the byte cap is the one that binds.
+ */
+const NOTE_CACHE_ENTRIES = 4096;
+const NOTE_CACHE_BYTES = 320 * 1024 * 1024;
 // A render creates a complete throwaway graph and asks the browser to run it. One at a
 // time is deliberate: the live AudioContext and an OfflineAudioContext are both asking
 // the same device for work, so two background renders are a poor trade for a cache hit.
 const NOTE_RENDER_JOBS = 1;
-const NOTE_CACHE_PLAN_BYTES = 48 * 1024 * 1024;
+// Raised with the cache caps above and for the same reason: the plan pre-selects the
+// heavy repeats, and a plan budget under a fifth of the cache would leave the strings
+// it now exists to cover to the opportunistic path.
+const NOTE_CACHE_PLAN_BYTES = 192 * 1024 * 1024;
 const MRDR_PLAN_HEAVY = 12;
 const MRDR_PLAN_REPEAT = 12;
 const MRDR_PLAN_DENSE_BAR = 24;
@@ -969,11 +1052,98 @@ function estimateMrdrEventCost(v, notes, dur) {
  */
 function whenIdle(fn) {
   if (typeof requestIdleCallback === 'function') {
-    const id = requestIdleCallback(() => fn(), { timeout: 400 });
+    // The deadline is handed through: the trickle below only works during playback
+    // when the browser says there is real headroom in this frame.
+    const id = requestIdleCallback((deadline) => fn(deadline), { timeout: 400 });
     return () => { try { cancelIdleCallback(id); } catch { /* browser owns it */ } };
   }
-  const id = setTimeout(fn, 0);
+  const id = setTimeout(() => fn(null), 0);
   return () => clearTimeout(id);
+}
+
+/*
+ * The preparation TRICKLE — how the cache warms while the song plays.
+ *
+ * "Never during playback" was the original rule, and it was right when plans were
+ * small: pre-warm covered a song in seconds and the gate kept every OfflineAudioContext
+ * render away from the live audio thread. It stopped being right the day the string
+ * section became cacheable: a plan can now be a hundred renders deep, playback pauses
+ * preparation COMPLETELY, and a looping song therefore never warms — measured live,
+ * barber-96 looped six laps at AUDIO STRUGGLING with its plan frozen at 6 of 122 and
+ * its 92 warm buffers replaying beautifully while everything else re-synthesised
+ * every lap. Stopping to let it drain did not survive either: the desk rebuilds its
+ * context, and the cache is context-bound.
+ *
+ * So playback still wins — it just no longer wins by forbidding work, it wins by three
+ * independent brakes any one of which halts the trickle:
+ *
+ *   HEADROOM  a render is launched only from an idle callback whose deadline still
+ *             carries TRICKLE_MIN_IDLE_MS — the browser saying this frame has room.
+ *   COOLDOWN  at most one render per TRICKLE_GAP_MS, one in flight ever, and nothing
+ *             for the first TRICKLE_WARMUP_MS after the transport starts.
+ *   THE CLOCK the probe this project always reaches for first: ctx.currentTime against
+ *             the wall clock. The moment the audio thread runs the loop slower than
+ *             TRICKLE_MIN_CLOCK realtime, the trickle holds until it recovers — an
+ *             offline render thread competes with the realtime one for cores, and the
+ *             clock is the honest report of who is losing.
+ */
+const TRICKLE_GAP_MS = 600;
+const TRICKLE_MIN_IDLE_MS = 10;
+const TRICKLE_WARMUP_MS = 3000;
+const TRICKLE_MIN_CLOCK = 0.98;
+/*
+ * The drowning threshold — the fix for a deadlock the first live session found.
+ *
+ * The clock brake as first shipped held the trickle whenever the loop ran under 0.98x
+ * realtime. Measured on the desk, a COLD barber-96 runs at ~0.7x: the song could not
+ * warm because it was struggling, and it struggled because it was cold — lap 1 managed
+ * eight renders in six minutes, all in the seconds the clock briefly recovered.
+ *
+ * Protecting audio that is already failing by withholding the only cure is the brake
+ * pressed to the floor of a car that is already in the ditch. So the hold applies only
+ * in the borderline band, where audio is genuinely at risk of being tipped: healthy
+ * (>= MIN) renders, drowning (< DROWNING) renders — because it cannot get meaningfully
+ * worse and warming is the way out — and only the band between them holds.
+ */
+const TRICKLE_DROWNING_CLOCK = 0.9;
+const TRICKLE_PROBE_MS = 250;
+
+function trickleAllowed(state, deadline) {
+  // A paused transport has no audible playback to protect: every brake below exists
+  // for the sake of sound that is currently not sounding. Full speed (still one render
+  // at a time, still launched from idle callbacks so the UI breathes).
+  if (state.transportRunning === false) return true;
+  const now = performance.now();
+  if (now - (state.playbackSince || 0) < TRICKLE_WARMUP_MS) return false;
+  if (now - (state.lastRenderDone || 0) < TRICKLE_GAP_MS) return false;
+  // Headroom, honestly assessed. A quiet page hands idle callbacks real deadlines and
+  // the threshold means something. The DESK never does: it draws meters at 60fps, so
+  // the callback almost always arrives via its 400ms timeout with timeRemaining() at
+  // zero — and requiring 10ms of genuine idle meant the trickle starved on exactly the
+  // machine it was built for (measured: nine renders in a whole session, all from
+  // before play). A timed-out callback is still the scheduler saying "now is as quiet
+  // as it gets", so it is accepted; the COOLDOWN and the CLOCK below are the guards
+  // that actually defend playback, and construction is a few milliseconds per 600.
+  const idleOk = deadline && (deadline.didTimeout === true
+    || (typeof deadline.timeRemaining === 'function'
+      && deadline.timeRemaining() >= TRICKLE_MIN_IDLE_MS));
+  if (!idleOk) return false;
+  // The clock probe. Sampled across idle callbacks; the verdict holds between samples.
+  // A MISSING clock fails OPEN: the cooldown still throttles to one render per 600ms,
+  // and the measured cost of failing closed was a desk that could never warm at all.
+  const ctx = state.liveCtx;
+  if (!ctx || !Number.isFinite(ctx.currentTime)) return true;
+  const probe = state.clockProbe;
+  if (!probe) {
+    state.clockProbe = { at: now, ctxTime: ctx.currentTime };
+    return false;                       // no baseline yet — measure first, render later
+  }
+  if (now - probe.at >= TRICKLE_PROBE_MS) {
+    const ratio = (ctx.currentTime - probe.ctxTime) / ((now - probe.at) / 1000);
+    state.clockOk = ratio >= TRICKLE_MIN_CLOCK || ratio < TRICKLE_DROWNING_CLOCK;
+    state.clockProbe = { at: now, ctxTime: ctx.currentTime };
+  }
+  return !!state.clockOk;
 }
 
 /** Shared desk-only state for rendered notes. It deliberately outlives VoiceRack. */
@@ -1033,15 +1203,19 @@ export function invalidateNoteCacheState(state, voiceId) {
 }
 
 function pumpCache(state) {
-  if (!state || state.playbackActive || state.rendering >= NOTE_RENDER_JOBS
+  if (!state || state.rendering >= NOTE_RENDER_JOBS
     || state.idlePending || !state.queue.length) return;
   state.idlePending = true;
-  state.cancelIdle = whenIdle(() => {
+  state.cancelIdle = whenIdle((deadline) => {
     state.idlePending = false;
     state.cancelIdle = null;
-    // Play may have started while the callback was waiting. Leave the job queued so
-    // no new OfflineAudioContext render can begin during transport playback.
-    if (state.playbackActive) return;
+    // During playback the trickle's three brakes decide; refused is not cancelled —
+    // the retry keeps the queue moving toward the next idle slice with headroom.
+    if (state.playbackActive && !trickleAllowed(state, deadline)) {
+      clearTimeout(state.trickleRetry);
+      state.trickleRetry = setTimeout(() => pumpCache(state), TRICKLE_GAP_MS);
+      return;
+    }
     let job = null;
     while (state.queue.length && !job) {
       const candidate = state.queue.shift();
@@ -1061,15 +1235,42 @@ function pumpCache(state) {
         state.plan.pending = Math.max(0, state.plan.pending - 1);
       }
       state.rendering = Math.max(0, state.rendering - 1);
+      state.lastRenderDone = performance.now();
+      if (state.playbackActive) state.stats.trickled = (state.stats.trickled || 0) + 1;
       pumpCache(state);
     });
   });
 }
 
+/*
+ * Whether the TRANSPORT is actually rolling — a different fact from playbackActive,
+ * which means "a bank is loaded" and stays true on pause. The distinction earns its
+ * keep in one specific moment: a song too heavy to play cold, where the user does the
+ * obviously right thing and PAUSES to let the cache catch up. With only the trickle's
+ * cadence available that pause built ~1.7 renders a second against a 400-note backlog —
+ * it never caught up, and the pause read as useless (measured live, smw, 2026-08-20).
+ * With the transport known to be stopped, the pump runs at full speed instead: the
+ * cooldown and the clock brake exist to protect AUDIBLE playback, and a paused
+ * transport has none to protect.
+ */
+export function setNoteCacheTransportRunning(state, running) {
+  if (!state) return;
+  const was = state.transportRunning;
+  state.transportRunning = !!running;
+  if (was && !state.transportRunning) pumpCache(state);   // pausing = start catching up
+}
+
 export function setNoteCachePlaybackActive(state, active) {
   if (!state) return;
+  const was = state.playbackActive;
   state.playbackActive = !!active;
-  if (!state.playbackActive) pumpCache(state);
+  if (state.playbackActive && !was) {
+    state.playbackSince = performance.now();
+    state.clockProbe = null;
+    state.clockOk = false;
+  }
+  // Either direction pumps now: stopping drains freely, starting arms the trickle.
+  pumpCache(state);
 }
 
 export function clearNoteCacheState(state) {
@@ -1475,6 +1676,14 @@ export class VoiceRack {
     // A throwaway offline rack gets its own state and never enables the cache.
     this.noteCache = false;
     this._cacheState = noteCacheState || createNoteCacheState();
+    // The trickle's clock probe needs the LIVE context, and it must not depend on WHICH
+    // code path built the rack: the desk's rack is created by prepareNoteCache on the
+    // prep flow but by scheduleStep on a plain press of play, and only the former ever
+    // called setNoteCacheState — so whether a session could warm while playing was a
+    // coin-flip on how it started (measured: one session trickled 250 renders a lap,
+    // the next, byte-identical code, trickled three). Set here, at the one place every
+    // rack passes through.
+    if (typeof ctx?.startRendering !== 'function') this._cacheState.liveCtx = ctx;
     this._noteCache = this._cacheState.entries;
     this._specRev = this._cacheState.revisions;
     Object.defineProperty(this, '_noteCacheBytes', {
@@ -1545,6 +1754,7 @@ export class VoiceRack {
     const opts = v.options ? JSON.parse(JSON.stringify(v.options)) : {};
     scrubOscTypes(opts);
     clampFatCount(opts);
+    floorEnvelopeSustain(opts);
     // Glide is a constructor option on every Tone synth. It only becomes audible in a
     // non-poly key mode because those modes keep one note on one instance.
     if (v.portamento) opts.portamento = v.portamento;
@@ -2673,8 +2883,15 @@ export class VoiceRack {
     if (layerVariesWithTime(v)) return false;
     const lfo = v.layer.lfo;
     if (lfo && (lfo.depth ?? 0) > 0 && lfo.sync === 'tempo') return false;
-    for (const key of ['osc1', 'osc2', 'osc3']) {
-      if (v.layer[key] && v.layer[key].type === 'noise') return false;
+    // Noise layers cache like any other now that `_renderLayerNote` hands the render
+    // rack the live rack's seeded buffers — the render produces the same samples the
+    // live path would, which the determinism probe proves. The refusal survives only
+    // for a rack built without buffers (tests, bare tools), where a noise layer would
+    // render as silence and the cache would faithfully replay nothing.
+    if (!this.noiseBuf) {
+      for (const key of ['osc1', 'osc2', 'osc3']) {
+        if (v.layer[key] && v.layer[key].type === 'noise') return false;
+      }
     }
     // A hard-synced slave with a PITCH ENVELOPE is not one oscillator: `_playLayer`
     // refreshes its sync table in 32ms grains, each grain a fresh oscillator started at
@@ -3188,7 +3405,12 @@ export class VoiceRack {
           ? dur.reduce((m, d) => Math.max(m, Number.isFinite(d) ? d : 0), 0) : dur;
         const seconds = Math.min(30, layerNoteSeconds(v, longest, { includeChorus: false }));
         const ctx = new OAC(2, Math.ceil(seconds * sr), sr);
-        const rack = new VoiceRack(ctx);
+        // The LIVE rack's seeded noise buffers, handed to the render rack. They are what
+        // lets a noise layer be cached at all: the render must produce the same samples
+        // the live path would, and the live path's noise is the seeded buffer, not a
+        // fresh random one. Same-context AudioBuffers are readable by any context at the
+        // same sample rate, and this render is at the live rate by construction.
+        const rack = new VoiceRack(ctx, this.noiseBuf, this.longBuf);
         // The render rack is a fresh one, so it starts at Full. The cache has to render
         // what the DESK is playing, or a cached note and a live note of the same preset
         // would be two different sounds — see the key, which carries the mode.
@@ -4334,6 +4556,10 @@ export class VoiceRack {
     // voice coming apart. The note's own time is in the seed too, so a second note is a
     // slightly different section rather than a copy of the first.
     const vibSpread = Math.min(1, Math.max(0, vib?.spread ?? 0));
+    // The ensemble's seed: the note's own time when jitter is on (a different section
+    // every occurrence), a fixed time when it is off (the same section every time —
+    // which is what lets the note cache take these presets at all).
+    const ensembleTime = MRDR_ENSEMBLE_JITTER ? time : ENSEMBLE_FIXED_TIME;
     const vibOscs = [];
     // The modulators shared by every note in this note-on — the vibrato LFOs and the
     // routable one. A chord registers one held record PER TONE, so these cannot simply
@@ -4354,8 +4580,8 @@ export class VoiceRack {
       if (vibSpread > 0) {
         // ±10% of rate at full spread — the range a real section actually covers. Wider
         // stops being an ensemble and starts being out of tune with itself.
-        lfo.frequency.setValueAtTime(rate * vary(vibSpread * 0.1, time, 911 + key), time);
-        lfo.setPeriodicWave(phasedWave(ctx, vib.type, hitRandom(time, 977 + key) * 2 * Math.PI * vibSpread));
+        lfo.frequency.setValueAtTime(rate * vary(vibSpread * 0.1, ensembleTime, 911 + key), time);
+        lfo.setPeriodicWave(phasedWave(ctx, vib.type, hitRandom(ensembleTime, 977 + key) * 2 * Math.PI * vibSpread));
       } else {
         lfo.type = nativeWave(vib.type, 'sine');
         lfo.frequency.setValueAtTime(rate, time);
@@ -4433,7 +4659,7 @@ export class VoiceRack {
       const f = notes[0];
       const di = monoLast ? all.lastIndexOf(f) : 0;
       const noteDur = Array.isArray(dur) ? (dur[di] ?? dur[0]) : dur;
-      this._retargetLayerLegato(prev, f * shift * vary((v.humanize || {}).pitch, time, 16), time, noteDur, v, hold);
+      this._retargetLayerLegato(prev, f * shift * ensembleVary((v.humanize || {}).pitch, time, 16), time, noteDur, v, hold);
       // The new key owns the note now — LAST NOTE PRIORITY, which is what a mono synth
       // does and what the retarget already did to the pitch. Without the hand-over the
       // release record stayed under the FIRST key: letting go of the key you are actually
@@ -4490,9 +4716,9 @@ export class VoiceRack {
       // catalogue that uses one is a clap or a roll. On a melodic voice the slapback
       // it would give you belongs on the strip's delay insert, which is exactly why
       // the finale and walking basses had their written-in `bassRepeat` removed.
-      const fade = vary(hum.gain, time, 0);
-      const bend = vary(hum.pitch, time, 16);
-      const toneMul = vary(hum.filter, time, 32);
+      const fade = ensembleVary(hum.gain, time, 0);
+      const bend = ensembleVary(hum.pitch, time, 16);
+      const toneMul = ensembleVary(hum.filter, time, 32);
       // Seconds, not a multiplier: how far apart the unison voices come in.
       const entry = Math.max(0, Math.min(0.08, hum.entry ?? 0));
 
@@ -5119,7 +5345,8 @@ export class VoiceRack {
             // unison voice is the cheapest human thing in the whole path — and it is the
             // same seed as the vibrato, so voice 2 is late in every layer at once rather
             // than smearing one singer's formants apart in time.
-            const late = entry > 0 ? hitRandom(t, 1013 + u) * entry : 0;
+            const late = entry > 0
+              ? hitRandom(MRDR_ENSEMBLE_JITTER ? t : ENSEMBLE_FIXED_TIME, 1013 + u) * entry : 0;
             for (const src of sources) {
               const ownStart = sourceStarts.get(src);
               src.start(ownStart ?? (lt + late));
@@ -5276,6 +5503,71 @@ export class VoiceRack {
       this._disposePool(pool);
     }, Math.ceil((quiet - now) * 1000));
     this._retired.set(timer, pool);
+  }
+
+  /**
+   * Retire pools that have been silent long enough that keeping them is only cost.
+   *
+   * "Grown, never shrunk" is the right rule DURING a song — tearing down a slot
+   * mid-phrase cuts whatever rings on it. It is the wrong rule across a session:
+   * every lane × voice × echo combination ever played keeps its slots for the life
+   * of the context, each idle Tone synth holding its Signal ConstantSources (about
+   * 0.026 cores per pool, measured in bench-tone-pool), and `poolSlots` in
+   * runtimeHealth only ever climbs. A desk session that wanders through a dozen
+   * presets is carrying every one of them by evening.
+   *
+   * So: a pool whose last booked note ended more than IDLE_POOL_SECONDS ago — tail
+   * included, the same predicate retirement has always used — is retired through the
+   * ordinary `_retire` path (which disposes only after quiet, so even this is
+   * belt-and-braces). The next note on that lane rebuilds via `_pool`, paying one
+   * `_addSlot` at note time; the interval is chosen so that only a lane genuinely
+   * ABANDONED for half a minute pays it. Previews and held gates are never reaped:
+   * a finger on a key books no `until`, and a preview pool is its own lifecycle.
+   *
+   * Desk-opt-in (the silentLaneSkip pattern): the game and offline renders never
+   * call this, so their behaviour is byte-identical by construction.
+   */
+  reapIdlePools(idleSeconds = 30) {
+    if (typeof this.ctx?.startRendering === 'function') return 0;
+    const now = this.ctx.currentTime;
+    let reaped = 0;
+    for (const [key, pool] of [...this.pools]) {
+      if (pool.preview) continue;
+      if (pool.slots.some((s) => s.gateKey != null)) continue;
+      if (!(pool.until > 0)) continue;   // never played — cheap, and about to be used
+      const quiet = pool.until + VoiceRack.tailOf(pool.spec);
+      if (now - quiet < idleSeconds) continue;
+      this._retire(key, pool);
+      reaped++;
+    }
+    return reaped;
+  }
+
+  /**
+   * Dispose retired offline pools whose booked notes and tails have all ended.
+   *
+   * Offline, `_retire` sets pools aside instead of disposing (see above) — but "let
+   * ring until the context dies" made a long bounce carry every GENERATION of a lane's
+   * pool, still connected: a lane with per-bar gain trims retires a pool per trim, and
+   * each retired DuoSynth slot keeps a free-running vibrato LFO — a generator, the one
+   * node class silence cannot short-circuit — rendering for the rest of the file.
+   *
+   * Called from the JIT render walk at its suspend checkpoints with the render-head
+   * time. The predicate is the same one live retirement waits on — the last booked
+   * note's end plus the preset's tail — so by construction it cannot cut sound: a
+   * pool is only torn down once everything it was asked to play has finished ringing.
+   */
+  sweepRetiredPools(renderTime) {
+    if (!this._retiredOffline.length || !Number.isFinite(renderTime)) return 0;
+    let swept = 0;
+    this._retiredOffline = this._retiredOffline.filter((pool) => {
+      const quiet = pool.until + VoiceRack.tailOf(pool.spec);
+      if (quiet >= renderTime) return true;
+      this._disposePool(pool);
+      swept++;
+      return false;
+    });
+    return swept;
   }
 
   /**
@@ -5590,7 +5882,12 @@ export class VoiceRack {
   }
 
   setNoteCacheState(state) {
-    if (!state || state === this._cacheState) return;
+    if (!state) return;
+    // The trickle's clock probe reads the LIVE context through the state (the state
+    // deliberately outlives racks, so the reference is refreshed on every handover —
+    // a rebuilt context must not leave the probe reading a dead clock).
+    state.liveCtx = typeof this.ctx?.startRendering === 'function' ? state.liveCtx : this.ctx;
+    if (state === this._cacheState) return;
     this._cacheState = state;
     this._noteCache = state.entries;
     this._specRev = state.revisions;

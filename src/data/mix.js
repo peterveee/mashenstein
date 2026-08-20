@@ -299,9 +299,9 @@ const LEGACY_MIX = {
     voice: {"clapVoice":"clapRoom","rimVoice":"taiko"},
     fx: { reverb: { decay: 1.5 } },
     lanes: {
-      lead: { gain: -10.4, send: { delay: 1, reverb: 0.575 }, eq: { high: 7.8 }, effects: [{ id: "doubler", bypass: true, params: { delayMs: 11, dryPan: -1, wetPan: 1, frequency: 0.48, depth: 0.26, width: 0.2, detune: 7 } }] },
+      lead: { gain: -10.4, send: { delay: 1, reverb: 0.575 }, eq: { high: 7.8 }, effects: [{ id: "doubler", bypass: true, params: { delayMs: 11, dryPan: -1, wetPan: 1, frequency: 0.48, depth: 0.26, width: 0.2 } }] },
       leadHarm: { gain: -3.1, send: { delay: 1 } },
-      chords: { gain: -18.7, send: { delay: 0.64, reverb: 0.265 }, eq: { low: -1.7, mid: 5.1, high: 9.4 }, effects: [{ id: "doubler", params: { dryPan: -1, wetPan: 1, delayMs: 11, wet: 0.44, width: 1, frequency: 0.27, depth: 0.2, detune: 6 } }] },
+      chords: { gain: -18.7, send: { delay: 0.64, reverb: 0.265 }, eq: { low: -1.7, mid: 5.1, high: 9.4 }, effects: [{ id: "doubler", params: { dryPan: -1, wetPan: 1, delayMs: 11, wet: 0.44, width: 1, frequency: 0.27, depth: 0.2 } }] },
       organSwoop: { gain: -9.5, send: { delay: 1 } },
       keyGliss: { gain: -8.1, send: { delay: 1 }, eq: { high: 2.3 }, effects: [{ id: "exciter", params: { drive: 0.57, timbre: 0.66, mix: 0.47 } }, { id: "pingpong" }] },
       gliss: { gain: -14.2, send: { delay: 0.69, reverb: 0.59 } },

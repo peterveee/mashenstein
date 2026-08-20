@@ -2891,7 +2891,7 @@ export const bank = {
 // Rewritten whole by the mixing desk. Nothing below this line is hand-edited.
 
 export const mix = {
-  masterEffects: [{ id: "mbComp" }],
+  masterEffects: [{ id: "mbCompN" }],
   layers: [{ key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "bass2", from: "bass", independent: true }],
   labels: {"lead":"Flute","leadHarm":"Oboe","twinkle":"Clarinet","bass":"Bassoon","chords":"French Horn","organChords":"Trumpet","lead2":"Violin 1","lead3":"Violin 2","lead4":"Viola","lead5":"Cello","bass2":"Contrabass"},
   voice: {"bassVoice":"simpleSawtooth","bass2Voice":"simpleSawtooth","lead2Voice":"tngrBlueCathedral","lead3Voice":"simpleSquare","lead4Voice":"synthStrings","lead5Voice":"tpElectricCello","leadHarmVoice":"reedLead","twinkleVoice":"roundMono2","chordsVoice":"simpleSquare","organChordsVoice":"simpleSquare"},

@@ -72,7 +72,7 @@ function yieldToEventLoop() {
 export async function renderBankPage({
   bank, blocks, steps: stepsIn, loop, tail, seed, sampleRate, mix, trackId, arrangement, warp,
   upfront = false, rawLane = false, startStep = null, prerollSeconds = 0,
-  fineLaneSkip = true, rearrangement, mrdrQuality = 'full', lazyStrips = false,
+  fineLaneSkip = true, rearrangement, mrdrQuality = 'full',
 }, { onProgress } = {}) {
   // The bank arrives carrying the tempo it is PLAYED at — resolved by the caller,
   // where a track id still means something, so a song the desk has retuned renders at
@@ -105,8 +105,6 @@ export async function renderBankPage({
   Audio.setMrdrQuality?.(mrdrQuality);
   Audio.setCaptureEnabled(false);   // the rewind recorder is realtime-only
   Audio.setNoiseSeed(seed);
-  // Before ensure(), which is where the mixer and its strips are built.
-  Audio.setLazyStrips?.(lazyStrips);
   Audio.ensure(ctx);
   if (rawLane) Audio.setVolumes({ master: 1, music: 1, sfx: 1 });
 
@@ -316,6 +314,12 @@ export async function renderBankPage({
             // The stretch just walked, handed to TNGR-2 before the render reaches it.
             // Its lanes are built once and fed after that — see `flushTngr2Offline`.
             tngr2Lanes += (await Audio.voices?.flushTngr2Offline?.()) || 0;
+            // Retired pool generations whose booked notes have all rung out by the
+            // render head are torn down here rather than carried to the end of the
+            // file — each retired slot with a vibrato or a DuoSynth is a running
+            // generator otherwise. The predicate is the render-head time, which a
+            // reached suspend is proof of, so nothing still sounding can be cut.
+            Audio.voices?.sweepRetiredPools?.(frame / sampleRate);
             reportRender(frame / N);
           } catch (e) {
             walkError = walkError || e;

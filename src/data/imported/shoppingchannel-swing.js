@@ -83,7 +83,7 @@ export const bank = {
 
 export const mix = {
   master: -1.3,
-  masterEffects: [{ id: "mbComp" }],
+  masterEffects: [{ id: "mbCompN" }],
   layers: [{ key: "chords2", from: "chords" }, { key: "chords4", from: "chords2", independent: true }, { key: "chords3", from: "chords", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead2", independent: true }, { key: "lead4", from: "lead3", independent: true }, { key: "snare2", from: "snare", independent: true }, { key: "bass2", from: "bass", independent: true }, { key: "bass3", from: "bass", independent: true }, { key: "rim3", from: "rim", independent: true }, { key: "rim2", from: "rim", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "twinkle2", from: "twinkle", independent: true }, { key: "organChords2", from: "organChords", independent: true }],
   order: ["kick","snare2","hats","rim","rim3","rim2","bass","bass2","chords","lead2","lead3","lead4","lead5","lead6","bass3","lead7","twinkle2","chords2","chords4","chords3","organChords2"],
   labels: {"twinkle2":"NEW Electric Piano","bass3":"NEW Shop Organ"},
