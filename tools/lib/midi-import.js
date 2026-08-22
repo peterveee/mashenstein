@@ -127,7 +127,7 @@ const isChordal = (lane) => CHORD_BASES.has(baseLane(lane));
 // ---- what an imported pitched lane arrives sounding like --------------------
 //
 // A MonoSynth starter, not the engine's game square. `defaultAddedVoice` answers this
-// for a lane added anywhere else and its answer is `toneSquare` — a GameSynth, fixed
+// for a lane added anywhere else and its answer is `toneSquare` — a KNDO-5, fixed
 // length, no filter, the arcade's own oscillator. That is the right neutral for a lane
 // added to a MASHENSTEIN song by hand, and the wrong one for a MIDI file: an import is
 // somebody's arrangement arriving from a DAW, usually orchestral or at least played,

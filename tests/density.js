@@ -32,6 +32,25 @@ const PHONE = { locationSearch: '?renderer=2d', innerWidth: 852, innerHeight: 39
 // seed at 3x (index 2), leaving the 4x rung above them to climb into.
 const LADDER = [4.36875, 4, 3, 2.5, 2, 1.5, 1];
 
+// A live desktop resize must not rebuild the audio-adjacent render surfaces on
+// every drag frame. The first resize is held until the viewport has been quiet
+// for the renderer's settle window, then one final rebuild is allowed through.
+{
+  const dom = installDom(PHONE);
+  const r = await import('../src/engine/renderer.js?d-resize-settle');
+  r.initRenderer({ isIphone: true });
+  const before = dom.chromeCanvas.width;
+  window.innerWidth = 960;
+  window.innerHeight = 500;
+  dom.fire('win:resize');
+  for (let i = 0; i < 7; i++) dom.frame(16.7);
+  assert(dom.chromeCanvas.width === before,
+    'a live resize does not rebuild the render surface before the viewport settles');
+  dom.frame(16.7);
+  assert(dom.chromeCanvas.width !== before,
+    'the settled resize performs one final render-surface rebuild');
+}
+
 function webglStub() {
   let id = 0;
   const calls = { draws: 0, textureUpdates: 0 };

@@ -24,9 +24,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const VOICES_PATH = join(ROOT, 'src/data/voices.js');
 
 /** The built-in tables. ENGINE is bank keys the engine reads — see below. */
-export const TABLES = { tone: 'TONE', noise: 'NOISE', drum: 'DRUM' };
+// No `noise` row: the burst presets folded into DRUM when `body` became `osc` and the
+// noise play path was retired, so a one-shot has exactly one table to be saved into.
+export const TABLES = { tone: 'TONE', drum: 'DRUM' };
 /** The editable user tables, kept separate from the read-only library tables. */
-export const USER_TABLES = { tone: 'USER_TONE', noise: 'USER_NOISE', drum: 'USER_DRUM' };
+export const USER_TABLES = { tone: 'USER_TONE', drum: 'USER_DRUM' };
 const ALL_TABLES = [...Object.values(TABLES), ...Object.values(USER_TABLES)];
 
 // ---- scanning ---------------------------------------------------------------
@@ -195,7 +197,7 @@ const HEAD = ['label', 'category', 'kind', 'lanes', 'homeLane', 'synth', 'dur'];
 // Everything that gets a line of its own, in the order it is worth reading: what the
 // sound is for, where it came from, then how it is built. `taps` and `tapFalloff`
 // share a line — they are two halves of one idea and both are short.
-const BODY = ['note', 'origin', 'options', 'additive', 'sync', 'layer', 'global', 'osc', 'knock', 'noise', 'ring', 'metal', 'body',
+const BODY = ['note', 'origin', 'options', 'additive', 'sync', 'layer', 'global', 'osc', 'osc2', 'knock', 'noise', 'ring', 'metal',
   'drive', 'shape', 'tone', 'humanize', 'taps', 'tapFalloff', 'tapDetune', 'tapTone', 'tapGains', 'tapDecays',
   'bypassed'];
 
@@ -238,11 +240,13 @@ export function emitEntry(id, preset, { derived = ['id', 'kind', 'level', 'peak'
   // the signal takes and the order the panel states it in.
   if (has('global')) lines.push(`    global: ${optionsBlock(v.global)},`);
   if (has('osc')) lines.push(`    osc: ${flat(v.osc)},`);
+  // Its own line directly under the first, because they are the same section twice and
+  // read as a pair — the two tuned bodies an 808 snare or a Simmons tom is made of.
+  if (has('osc2')) lines.push(`    osc2: ${flat(v.osc2)},`);
   if (has('knock')) lines.push(`    knock: ${flat(v.knock)},`);
   if (has('noise')) lines.push(`    noise: ${flat(v.noise)},`);
   if (has('ring')) lines.push(`    ring: ${flat(v.ring)},`);
   if (has('metal')) lines.push(`    metal: ${flat(v.metal)},`);
-  if (has('body')) lines.push(`    body: ${flat(v.body)},`);
   // Drive, its shape and the filter after it are one idea — how hard the summed
   // sections are pushed and what is left standing afterwards — and all three are short.
   const shaped = ['drive', 'shape'].filter(has).map((k) => `${k}: ${flat(v[k])}`);

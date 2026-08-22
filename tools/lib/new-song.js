@@ -9,6 +9,7 @@ import { songFile } from './song-source.js';
 import { slugFor } from './imported-index.js';
 import { newSongPlan } from './new-song-plan.js';
 import { styleSummary } from './song-styles.js';
+import { MIXER_BRAND } from '../mixer-brand.js';
 
 // Re-export everything from the plan module so existing callers are unaffected.
 export {
@@ -43,7 +44,7 @@ export function newScratchSong({
     arrangement: null,
     seed,
     ...(notesPath ? { notesPath } : {}),
-    note: `Created in the Song Mixer as a ${spec.template} starter.\n`
+    note: `Created in the ${MIXER_BRAND} as a ${spec.template} starter.\n`
       + styleSummary(style, root, spec.bpm),
   });
   return {

@@ -71,10 +71,18 @@ export const MIX = MIX_BY_ID;
 //   }
 //
 // A patch may move faders, pans, widths, mutes, EQ, sends, aux return level/pan/EQ,
-// the master trim and pan, and the PARAMETERS of an effect both sides already have. It
-// may not add or remove an effect, change a reverb's decay, retune the shared delay,
-// switch the limiter, or touch `layers`/`off`/`voice` — those are graph or bank changes,
-// and there is no audio time you can schedule one for. See Audio.rampMix.
+// the master trim and pan, and both the PARAMETERS and the MUTE of an effect both sides
+// already have. It may not add or remove an effect, bypass one, change a reverb's decay,
+// retune the shared delay, switch the limiter, or touch `layers`/`off`/`voice` — those
+// are graph or bank changes, and there is no audio time you can schedule one for.
+//
+// The mute is how a screen carries an effect the level does not want. Both chains hold
+// the same links in the same order; the level keeps its phaser muted and the cabinet
+// screen unmutes it, and the change is a pair of gains crossfading on the bar line. It
+// costs the effect's CPU in the level even while silent — the alternative, `treatment`
+// below, costs a duplicate of the whole master path instead but nothing in the level.
+// Bypass is neither: it unwires the link, which no bar line can be aimed at.
+// See Audio.rampMix and mixer.setMute.
 export const VARIANTS = VARIANTS_BY_ID;
 /* Legacy aggregate snapshot retained as a comment for recovery; the generated
    per-song files above are now authoritative. */
@@ -296,7 +304,7 @@ const LEGACY_MIX = {
   },
   "megamix": {
     master: 1.9,
-    voice: {"clapVoice":"clapRoom","rimVoice":"taiko"},
+    voice: {"clapVoice":"clapRoom","rimVoice":"blipZap"},
     fx: { reverb: { decay: 1.5 } },
     lanes: {
       lead: { gain: -10.4, send: { delay: 1, reverb: 0.575 }, eq: { high: 7.8 }, effects: [{ id: "doubler", bypass: true, params: { delayMs: 11, dryPan: -1, wetPan: 1, frequency: 0.48, depth: 0.26, width: 0.2 } }] },

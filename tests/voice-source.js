@@ -42,13 +42,13 @@ const load = async (src) => {
 // ---- finding entries --------------------------------------------------------
 
 const tone = entriesIn(SRC, 'TONE');
-const noise = entriesIn(SRC, 'NOISE');
 const drums = entriesIn(SRC, 'DRUM');
 const userTone = entriesIn(SRC, 'USER_TONE');
-const userNoise = entriesIn(SRC, 'USER_NOISE');
 const userDrums = entriesIn(SRC, 'USER_DRUM');
 const allTone = [...tone, ...userTone];
-const allNoise = [...noise, ...userNoise];
+// No NOISE table any more. The burst presets — snares, claps, hats — folded into DRUM
+// when `body` became `osc` and the noise play path was retired into `_playDrum`; there
+// is one one-shot kind now, so there is one pair of tables holding it.
 const allDrums = [...drums, ...userDrums];
 // The source-backed catalogue. A frozen starter carries a kind like anything else — it
 // has to, since STARTER holds all three — but it does not live in one of the writable
@@ -57,13 +57,10 @@ const allDrums = [...drums, ...userDrums];
 // that the thing the editor cannot reach is reachable.
 const editable = Object.values(VOICES).filter((v) => !v.starter);
 const wantTone = editable.filter((v) => v.kind === 'tone');
-const wantNoise = editable.filter((v) => v.kind === 'noise');
 const wantDrum = editable.filter((v) => v.kind === 'drum');
 
 assert(allTone.length === wantTone.length,
   `TONE and USER_TONE: every entry is found (${allTone.length} of ${wantTone.length})`);
-assert(allNoise.length === wantNoise.length,
-  `NOISE and USER_NOISE: every entry is found (${allNoise.length} of ${wantNoise.length})`);
 assert(allDrums.length === wantDrum.length,
   `DRUM and USER_DRUM: every entry is found (${allDrums.length} of ${wantDrum.length})`);
 // The failure mode this guards is a scanner counting `oscillator: {` as an entry.
@@ -71,24 +68,19 @@ assert(allDrums.length === wantDrum.length,
 // in it as there are, and then replaces the wrong span.
 assert(tone.every((e) => VOICES[e.id]?.kind === 'tone'),
   'TONE: nothing nested inside a preset is mistaken for one');
-assert(noise.every((e) => VOICES[e.id]?.kind === 'noise'),
-  'NOISE: nothing nested inside a preset is mistaken for one');
 assert(drums.every((e) => VOICES[e.id]?.kind === 'drum'),
   'DRUM: nothing nested inside a preset is mistaken for one');
 assert(userTone.every((e) => VOICES[e.id]?.kind === 'tone' && VOICES[e.id]?.user),
   'USER_TONE: every entry is a user preset');
-assert(userNoise.every((e) => VOICES[e.id]?.kind === 'noise' && VOICES[e.id]?.user),
-  'USER_NOISE: every entry is a user preset');
 assert(userDrums.every((e) => VOICES[e.id]?.kind === 'drum' && VOICES[e.id]?.user),
   'USER_DRUM: every entry is a user preset');
-assert(tableOf(SRC, 'roundMono') === 'TONE' && tableOf(SRC, 'clap808') === 'NOISE'
+assert(tableOf(SRC, 'roundMono') === 'TONE' && tableOf(SRC, 'clap808') === 'DRUM'
   && tableOf(SRC, 'dsKick') === 'DRUM',
 'a preset is found in the table it lives in');
 assert(tableOf(SRC, 'engFilteredSaw') === null,
   'an ENGINE preset is in neither editable table — it is bank keys, not a synth');
 assert(tableOf(SRC, 'neverExisted') === null, 'an unknown id is not claimed by a table');
-assert(SRC.includes('const USER_TONE = {') && SRC.includes('const USER_NOISE = {')
-  && SRC.includes('const USER_DRUM = {'),
+assert(SRC.includes('const USER_TONE = {') && SRC.includes('const USER_DRUM = {'),
   'the editable user tables exist separately from the read-only library tables');
 
 // ---- the round trip ---------------------------------------------------------
@@ -97,7 +89,7 @@ assert(SRC.includes('const USER_TONE = {') && SRC.includes('const USER_NOISE = {
 // the emitter drops a key, quotes a number, or breaks a note across lines in a way
 // that welds two words together, this is where it shows.
 let rt = SRC;
-for (const e of [...allTone, ...allNoise, ...allDrums]) {
+for (const e of [...allTone, ...allDrums]) {
   const { id, kind, level, peak, ...rest } = VOICES[e.id];
   rt = upsertPreset(rt, e.id, rest);
 }
@@ -110,10 +102,8 @@ assert(!changed.length,
   `all ${Object.keys(VOICES).length} presets survive being written and read back`
   + (changed.length ? ` — ${changed.slice(0, 5).join(', ')} did not` : ''));
 assert(entriesIn(rt, 'TONE').length === tone.length
-  && entriesIn(rt, 'NOISE').length === noise.length
   && entriesIn(rt, 'DRUM').length === drums.length
   && entriesIn(rt, 'USER_TONE').length === userTone.length
-  && entriesIn(rt, 'USER_NOISE').length === userNoise.length
   && entriesIn(rt, 'USER_DRUM').length === userDrums.length,
 'and rewriting every entry adds and loses none');
 
@@ -132,6 +122,9 @@ const NEW_TONE = {
     envelope: { attack: 0.30000000000000004, decay: 0.2, sustain: 0.7, release: 0.25 },
   },
 };
+// A burst preset — what used to be its own NOISE kind. It goes into DRUM like any
+// other one-shot now, which is the property worth asserting: a clap with no pitched
+// section at all is still a KLNG8 entry.
 const NEW_NOISE = {
   label: 'Test Clap', category: 'Clap', dur: 1, note: 'A clap the test made up.',
   noise: { type: 'bandpass', freq: 1900, Q: 1.4, decay: 0.11 },
@@ -148,7 +141,7 @@ const NEW_DRUM = {
 // round trip that turned the list into `{ '3': 0.2 }` would load as a preset with no bars,
 // which is silence rather than a wrong sound.
 const NEW_ADDITIVE = {
-  label: 'Test Organ', category: 'Organ', synth: 'AdditiveSynth',
+  label: 'Test Organ', category: 'Organ', synth: 'WNDR-9',
   homeLane: 'organChords', dur: 6,
   note: 'An additive stack the test made up.',
   additive: {
@@ -195,7 +188,7 @@ const NEW_LAYER = {
 
 let added = upsertPreset(SRC, 'testWobble', NEW_TONE, 'TONE');
 added = setMeasured(added, 'testWobble', { level: 0.0876543, peak: 0.876543 });
-added = upsertPreset(added, 'testClap', NEW_NOISE, 'NOISE');
+added = upsertPreset(added, 'testClap', NEW_NOISE, 'DRUM');
 added = setMeasured(added, 'testClap', { level: 0.02, peak: 0.2 });
 added = upsertPreset(added, 'testThump', NEW_DRUM, 'DRUM');
 added = setMeasured(added, 'testThump', { level: 0.05, peak: 0.5 });
@@ -205,7 +198,7 @@ added = upsertPreset(added, 'testStack', NEW_LAYER, 'TONE');
 added = setMeasured(added, 'testStack', { level: 0.06, peak: 0.6 });
 const grown = await load(added);
 
-assert(grown.VOICES.testWobble?.kind === 'tone' && grown.VOICES.testClap?.kind === 'noise'
+assert(grown.VOICES.testWobble?.kind === 'tone' && grown.VOICES.testClap?.kind === 'drum'
   && grown.VOICES.testThump?.kind === 'drum',
 'a new preset in each table loads with the right kind');
 assert(grown.VOICES.testThump?.osc.from === 180 && grown.VOICES.testThump?.drive === 0.3

@@ -76,6 +76,33 @@ async function main() {
       const TREATMENT = { lanes: { lead: { mute: true }, bass: { send: { reverb: 0.7 } } } };
       // The level: the song's own mix, which for this bank says nothing at all.
       const LEVEL = null;
+      // THE THIRD ANSWER, and the one that needs no second leg: one master chain, on
+      // both screens, differing only in whether its filter is MUTED. The treatment leg
+      // above is a whole duplicate of the master path that has to be faded away and torn
+      // down; this is two gains around one link (see mixer.setMute), so the level can
+      // simply carry the effect turned off.
+      //
+      // The SAME lane patch on both sides, deliberately. The filter case measures a low
+      // band to tell "the filter came off" from "it got louder"; here the two sides play
+      // identical notes at identical levels, so the only thing that can move the bottom
+      // end is the mute under test. The lead sits out of both so the band being measured
+      // is the bass and not the tune's low partials.
+      const HP = { type: 'highpass', frequency: 520, Q: 0.9 };
+      const QUIET_LEAD = { lead: { mute: true } };
+      const CAB_MUTE = { lanes: QUIET_LEAD, masterEffects: [{ id: 'filter', params: HP }] };
+      const LEVEL_MUTE = { lanes: QUIET_LEAD, masterEffects: [{ id: 'filter', mute: true, params: HP }] };
+      const muteMode = m === 'mute' || m === 'muteHeld';
+      // AND THE FOURTH: an effect the level's chain does not contain AT ALL — the desk's
+      // "add a chorus to the cabinet mix". The two chains are then a different SHAPE, which
+      // no ramp can cross, so MusicDirector._fire rebuilds them through applyMix instead.
+      // That path only exists when there is no crossfade to protect, which is why this
+      // renders with `seconds` 0 and the mute case above does not.
+      //
+      // This is the claim the desk now leans on when it stops refusing a shape change, so
+      // it is measured here rather than assumed: the level has to actually lose the filter.
+      const CAB_SHAPE = { lanes: QUIET_LEAD, masterEffects: [{ id: 'filter', params: HP }] };
+      const LEVEL_SHAPE = { lanes: QUIET_LEAD };
+      const shapeMode = m === 'shape' || m === 'shapeHeld';
 
       const ctx = new OfflineAudioContext(2, SR * SECONDS, SR);
       Audio.setCaptureEnabled(false);
@@ -90,7 +117,7 @@ async function main() {
         Audio.mixer.setTreatment([{ id: 'filter', params: { type: 'highpass', frequency: 520, Q: 0.9 } }], BANK.bpm);
         Audio.mixer.rampTreatment(1, 0, 0);
       }
-      Audio.setBank(BANK, TREATMENT);
+      Audio.setBank(BANK, shapeMode ? CAB_SHAPE : muteMode ? CAB_MUTE : TREATMENT);
       if (m === 'filter' || m === 'filterHeld') {
         // setBank resets the desk, the treatment leg with it — so re-arm after.
         Audio.mixer.setTreatment([{ id: 'filter', params: { type: 'highpass', frequency: 520, Q: 0.9 } }], BANK.bpm);
@@ -105,7 +132,7 @@ async function main() {
       for (let t = 0; t < SECONDS; t += spb) Audio.scheduleStep();
 
       let buf;
-      if (m === 'control' || m === 'filterHeld') {
+      if (m === 'control' || m === 'filterHeld' || m === 'muteHeld' || m === 'shapeHeld') {
         buf = await ctx.startRendering();
       } else {
         const reached = ctx.suspend(AT);
@@ -116,7 +143,23 @@ async function main() {
         // Half a bar, not a whole one: a bar at 120bpm is two seconds, which would still
         // be fading when this four-second render ran out and leave nothing settled to
         // measure. The length under test is that it takes time and arrives, not the number.
-        Audio.rampMix(LEVEL, ctx.currentTime, m === 'crossfade' ? 1.0 * (60 / BANK.bpm) : 0);
+        // A mute is a mix field, so it rides the ordinary ramp — no second call, and no
+        // teardown afterwards. If rampMix rejected the pair this would throw, which is
+        // itself half the claim: the two chains agree on their SHAPE and differ only in
+        // what is heard.
+        // The shape case goes through the SAME call the game makes, and that call throws —
+        // deliberately, because the chains disagree. MusicDirector catches it and rebuilds;
+        // reproduced here so the test exercises the real recovery rather than a happy path.
+        if (shapeMode) {
+          try {
+            Audio.rampMix(LEVEL_SHAPE, ctx.currentTime, 0);
+          } catch {
+            Audio.bank = Audio.applyMix(BANK, LEVEL_SHAPE);
+          }
+        } else {
+          Audio.rampMix(muteMode ? LEVEL_MUTE : LEVEL, ctx.currentTime,
+            (m === 'crossfade' || m === 'mute') ? 1.0 * (60 / BANK.bpm) : 0);
+        }
         // The filter opens INTO the level rather than being switched off it.
         if (m === 'filter') Audio.mixer.rampTreatment(0, ctx.currentTime, 0.5);
         ctx.resume();
@@ -184,6 +227,10 @@ async function main() {
   const filtHeld = await render('filterHeld');
   const snap = await render('snap');
   const fade = await render('crossfade');
+  const muted = await render('mute');
+  const mutedHeld = await render('muteHeld');
+  const shaped = await render('shape');
+  const shapedHeld = await render('shapeHeld');
   await browser.close();
 
   for (const error of errors) assert(false, `page error — ${error}`);
@@ -219,6 +266,33 @@ async function main() {
     `and fading away from it brings the bottom back `
     + `(low-band rms ${filtHeld.lowAfter.toFixed(5)} held -> ${filt.lowAfter.toFixed(5)} opened)`);
   assert(Math.abs(filt.lowBefore - filtHeld.lowBefore) / filtHeld.lowBefore < 0.01,
+    'and nothing moved before the boundary — the two renders are the same until then');
+
+  // The same three claims as the treatment leg, made about the cheaper mechanism. If
+  // these pass and the filter ones do too, a cabinet screen has two ways to carry an
+  // effect the level does not — one that costs a duplicate master path and one that
+  // costs the effect's own CPU while it is silent.
+  assert(mutedHeld.lowAfter < mutedHeld.lowBefore * 1.6,
+    `a MUTED-for-the-level filter is fully up while the cabinet screen holds it `
+    + `(low-band rms ${mutedHeld.lowBefore.toFixed(5)} -> ${mutedHeld.lowAfter.toFixed(5)})`);
+  assert(muted.lowAfter > mutedHeld.lowAfter * 3,
+    `and muting it at the handover brings the bottom back, with no treatment leg `
+    + `(low-band rms ${mutedHeld.lowAfter.toFixed(5)} held -> ${muted.lowAfter.toFixed(5)} muted)`);
+  assert(Math.abs(muted.lowBefore - mutedHeld.lowBefore) / mutedHeld.lowBefore < 0.01,
+    'and nothing moved before the boundary — the two renders are the same until then');
+  assert(muted.boundaryJump < muted.settledJump * 2.5,
+    `and it does not click: the biggest sample step at the boundary (${muted.boundaryJump.toExponential(2)}) `
+    + `is in line with the settled signal (${muted.settledJump.toExponential(2)})`);
+
+  // The third way, and the one that lets the desk stop saying no: an effect that exists
+  // only in the cabinet mix, on a chain the level does not share the shape of.
+  assert(shapedHeld.lowAfter < shapedHeld.lowBefore * 1.6,
+    `an effect only the cabinet mix has holds the bottom out while it plays `
+    + `(low-band rms ${shapedHeld.lowBefore.toFixed(5)} -> ${shapedHeld.lowAfter.toFixed(5)})`);
+  assert(shaped.lowAfter > shapedHeld.lowAfter * 3,
+    `and the level takes it off at the handover, chains rebuilt rather than ramped `
+    + `(low-band rms ${shapedHeld.lowAfter.toFixed(5)} held -> ${shaped.lowAfter.toFixed(5)} gone)`);
+  assert(Math.abs(shaped.lowBefore - shapedHeld.lowBefore) / shapedHeld.lowBefore < 0.01,
     'and nothing moved before the boundary — the two renders are the same until then');
 
   console.log(failed ? 'MUSIC VARIANT RENDER: FAILED' : 'MUSIC VARIANT RENDER: PASSED');

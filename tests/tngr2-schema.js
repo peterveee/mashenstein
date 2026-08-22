@@ -60,7 +60,7 @@ const assert = (cond, msg) => (cond ? ok(msg) : fail(msg));
   assert(wild.oscA.level === 0, 'a negative level is clamped to silence, not to its default');
   assert(wild.filter.type === 'lowpass' && wild.filter.cutoff === 18000
     && wild.filter.resonance === 24, 'the filter is clamped to its documented range');
-  assert(wild.filterEnv.amount === 8, 'the filter envelope amount is clamped to +-8 octaves');
+  assert(wild.filterEnv.amount === 10, 'the filter envelope amount is clamped to +-10 octaves');
   assert(wild.lfo1.shape === 'sine' && wild.lfo1.rate === 64,
     'an unknown LFO shape falls back and its rate is clamped');
   assert(problems.some((p) => p.includes('nonesuch')), 'the bad table is reported');
@@ -121,6 +121,11 @@ const assert = (cond, msg) => (cond ? ok(msg) : fail(msg));
   assert(v1.oscA.octave === undefined && v1.oscA.semitone === undefined
     && v1.oscA.fine === undefined, 'and the three keys they replaced do not survive');
   assert(v1.oscA.lfoAmount === 0.1, 'the oscillator keeps its own LFO amount');
+  // ...and the LFO's own global amount does not survive to compete with it. A patch that
+  // routes its oscillators has already said how far each one moves, and a depth laid on
+  // top of a depth is a multiplication nobody authored.
+  assert(v1.lfo1.amount === undefined && v1.oscB.lfoAmount === 0.25,
+    'a routed patch drops the LFO global amount and keeps what each oscillator says');
   assert(v1.oscA.lfo2Amount === undefined && v1.lfo2 === undefined,
     'the prototype second LFO is dropped rather than migrated into machinery nothing uses');
   assert(v1.mod === undefined, 'and there is no mod matrix to migrate it into');
@@ -130,6 +135,45 @@ const assert = (cond, msg) => (cond ? ok(msg) : fail(msg));
   // Idempotent: migrating a v1 patch changes nothing.
   const twice = migrateTngr2(v1);
   assert(JSON.stringify(twice) === JSON.stringify(v1), 'migrating a v1 patch is a no-op');
+}
+
+// ---- the depth an UNROUTED prototype stored on the LFO itself -----------------
+//
+// `lfo1.amount` was the only place a depth could live before the per-oscillator amounts
+// existed, and `validateLfo` returns three keys and dropped it on the way past without
+// saying so. That is why tngrGlassChoir, tngrDreamCircuit and tngrScannerSweep sat
+// perfectly still with a wobble authored on them: the pot moved, the number saved, and
+// nothing read it. It now lands on every oscillator the patch carries, which is the one
+// reading of "the LFO moves the position this far" that such a patch can have.
+{
+  const stray = migrateTngr2({
+    oscA: { table: 'basic', position: 0.3, level: 0.7 },
+    oscB: { table: 'crystal', position: 0.6, level: 0.3 },
+    lfo1: { shape: 'sine', rate: 0.08, amount: 0.18 },
+  });
+  assert(stray.oscA.lfoAmount === 0.18 && stray.oscB.lfoAmount === 0.18,
+    'an LFO depth with no oscillator routing reaches every oscillator the patch has');
+  assert(stray.lfo1.amount === undefined,
+    'and the key it was stored under does not survive the migration');
+  const solo = migrateTngr2({
+    oscA: { table: 'basic', position: 0.3, level: 0.7 },
+    lfo1: { shape: 'sine', rate: 0.08, amount: 0.4 },
+  });
+  assert(solo.oscA.lfoAmount === 0.4 && solo.oscB.lfoAmount === 0,
+    'a one-oscillator patch moves only the oscillator it has');
+}
+
+// ---- the filter envelope reaches as far as its pot ---------------------------
+//
+// The pot is bipolar to ten octaves (`ENV_OCT_MAX`), because opening a filter from the
+// 20 Hz floor to the 18 kHz ceiling is log2(18000/20) — nine and four fifths. The schema
+// used to clamp at eight, so the top of a dial the desk drew was a setting this quietly
+// threw away, and the identical-looking pot on MRDR-3 honoured what this one did not.
+{
+  assert(validateTngr2({ filterEnv: { amount: 9.5 } }).filterEnv.amount === 9.5,
+    'a filter envelope reaches the ten octaves its pot offers');
+  assert(validateTngr2({ filterEnv: { amount: -9.5 } }).filterEnv.amount === -9.5,
+    'and the same closing from above');
 }
 
 // ---- every shipped preset migrates -------------------------------------------

@@ -23,6 +23,7 @@ import * as AUDITION_MARCH from './audition-march.js';
 import * as AUDITION_MOTORIK from './audition-motorik.js';
 import * as AUDITION_SURF from './audition-surf.js';
 import * as AUDITION_TECHNO from './audition-techno.js';
+import * as BABY_PORTABLE_ROCK_4_COPY from './baby-portable-rock-4-copy.js';
 import { BABY_PORTABLE_ROCK_4 } from './baby-portable-rock-4.js';
 import * as BARBER_2 from './barber-2.js';
 import * as BARBER_3 from './barber-3.js';
@@ -32,6 +33,7 @@ import * as BARBER_6 from './barber-6.js';
 import * as BARBER_7_COPY from './barber-7-copy.js';
 import * as BARBER_7 from './barber-7.js';
 import * as BARBER_96_16TH from './barber-96-16th.js';
+import * as BARBER_96_SIMPLE_TNGR2_VERSION from './barber-96-simple-tngr2-version.js';
 import * as BARBER_96_SIMPLE from './barber-96-simple.js';
 import * as BARBER_96 from './barber-96.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE_2 from './barber-of-seville-ouverture-2.js';
@@ -88,6 +90,7 @@ import * as HUNGRY_CANYON from '../../../work/scratch/hungry-canyon.js';
 import * as HUNGRY_LADDER from '../../../work/scratch/hungry-ladder.js';
 import * as JOLLY_ORBIT from '../../../work/scratch/jolly-orbit.js';
 import * as JOLLY_SIREN from '../../../work/scratch/jolly-siren.js';
+import * as LAZY_HARBOUR from '../../../work/scratch/lazy-harbour.js';
 import * as LUCKY_CACTUS from '../../../work/scratch/lucky-cactus.js';
 import * as LUCKY_PYLON from '../../../work/scratch/lucky-pylon.js';
 import * as MARBLE_ROCKET from '../../../work/scratch/marble-rocket.js';
@@ -107,6 +110,7 @@ import * as NEW_THE_FOOD_COURT from './new-the-food-court.js';
 import * as PAPER_CAROUSEL from '../../../work/scratch/paper-carousel.js';
 import * as PAPER_TIGER from '../../../work/scratch/paper-tiger.js';
 import * as PINK_ENGINE from '../../../work/scratch/pink-engine.js';
+import * as PINK_LANTERN from '../../../work/scratch/pink-lantern.js';
 import * as PINK_MIRROR from '../../../work/scratch/pink-mirror.js';
 import * as PINK_ORBIT from '../../../work/scratch/pink-orbit.js';
 import * as PLASTIC_OWL from '../../../work/scratch/plastic-owl.js';
@@ -133,7 +137,9 @@ import * as SHOPPINGCHANNEL_SWING from './shoppingchannel-swing.js';
 import * as SHOPPINGCHANNEL_WVE from './shoppingchannel-wve.js';
 import * as SHOPPINGCHANNEL from './shoppingchannel.js';
 import * as SILENT_BEETLE from '../../../work/scratch/silent-beetle.js';
+import * as SILENT_DIVER from '../../../work/scratch/silent-diver.js';
 import * as SILENT_ROCKET from '../../../work/scratch/silent-rocket.js';
+import * as SILENT_SCOOTER from '../../../work/scratch/silent-scooter.js';
 import * as SILENT_VOLCANO from '../../../work/scratch/silent-volcano.js';
 import * as SILVER_PYLON from '../../../work/scratch/silver-pylon.js';
 import * as SLEEPY_FALCON from '../../../work/scratch/sleepy-falcon.js';
@@ -144,9 +150,12 @@ import * as SMW_OVERWORLD from './smw-overworld.js';
 import * as SMW_TITLE_2 from './smw-title-2.js';
 import * as SMWGOOD from './smwgood.js';
 import * as SPECIAL_STAGE_1 from './special-stage-1.js';
+import * as SPEED_ZONE_ALT_2 from './speed-zone-alt-2.js';
+import * as SPEED_ZONE_ALT from './speed-zone-alt.js';
 import * as SUGAR_DIVER from '../../../work/scratch/sugar-diver.js';
 import * as SUGAR_KITTEN from '../../../work/scratch/sugar-kitten.js';
 import * as SUNKEN_CACTUS from '../../../work/scratch/sunken-cactus.js';
+import * as SUNKEN_GARDEN from '../../../work/scratch/sunken-garden.js';
 import * as SUNKEN_PARADE from '../../../work/scratch/sunken-parade.js';
 import * as SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2 from './super-mario-3d-world-bowser-castle2.js';
 import * as THE_FOOD_COURT_ALT_2 from './the-food-court-alt-2.js';
@@ -183,6 +192,7 @@ export const IMPORTED_BY_ID = {
   "audition-motorik": { bank: AUDITION_MOTORIK.bank, title: AUDITION_MOTORIK.title, group: "styleAudition", writable: true },
   "audition-surf": { bank: AUDITION_SURF.bank, title: AUDITION_SURF.title, group: "styleAudition", writable: true },
   "audition-techno": { bank: AUDITION_TECHNO.bank, title: AUDITION_TECHNO.title, group: "styleAudition", writable: true },
+  "baby-portable-rock-4-copy": { bank: BABY_PORTABLE_ROCK_4_COPY.bank, title: BABY_PORTABLE_ROCK_4_COPY.title, group: "copy", writable: true },
   "baby-portable-rock-4": { bank: BABY_PORTABLE_ROCK_4, title: "BABY PORTABLE ROCK 4", group: "imported", writable: false },
   "barber-2": { bank: BARBER_2.bank, title: BARBER_2.title, group: "imported", writable: true },
   "barber-3": { bank: BARBER_3.bank, title: BARBER_3.title, group: "imported", writable: true },
@@ -192,6 +202,7 @@ export const IMPORTED_BY_ID = {
   "barber-7-copy": { bank: BARBER_7_COPY.bank, title: BARBER_7_COPY.title, group: "copy", writable: true },
   "barber-7": { bank: BARBER_7.bank, title: BARBER_7.title, group: "imported", writable: true },
   "barber-96-16th": { bank: BARBER_96_16TH.bank, title: BARBER_96_16TH.title, group: "copy", writable: true },
+  "barber-96-simple-tngr2-version": { bank: BARBER_96_SIMPLE_TNGR2_VERSION.bank, title: BARBER_96_SIMPLE_TNGR2_VERSION.title, group: "copy", writable: true },
   "barber-96-simple": { bank: BARBER_96_SIMPLE.bank, title: BARBER_96_SIMPLE.title, group: "copy", writable: true },
   "barber-96": { bank: BARBER_96.bank, title: BARBER_96.title, group: "copy", writable: true },
   "barber-of-seville-ouverture-2": { bank: BARBER_OF_SEVILLE_OUVERTURE_2.bank, title: BARBER_OF_SEVILLE_OUVERTURE_2.title, group: "copy", writable: true },
@@ -248,6 +259,7 @@ export const IMPORTED_BY_ID = {
   "hungry-ladder": { bank: HUNGRY_LADDER.bank, title: HUNGRY_LADDER.title, group: "scratch", writable: true },
   "jolly-orbit": { bank: JOLLY_ORBIT.bank, title: JOLLY_ORBIT.title, group: "scratch", writable: true },
   "jolly-siren": { bank: JOLLY_SIREN.bank, title: JOLLY_SIREN.title, group: "scratch", writable: true },
+  "lazy-harbour": { bank: LAZY_HARBOUR.bank, title: LAZY_HARBOUR.title, group: "scratch", writable: true },
   "lucky-cactus": { bank: LUCKY_CACTUS.bank, title: LUCKY_CACTUS.title, group: "scratch", writable: true },
   "lucky-pylon": { bank: LUCKY_PYLON.bank, title: LUCKY_PYLON.title, group: "scratch", writable: true },
   "marble-rocket": { bank: MARBLE_ROCKET.bank, title: MARBLE_ROCKET.title, group: "scratch", writable: true },
@@ -267,6 +279,7 @@ export const IMPORTED_BY_ID = {
   "paper-carousel": { bank: PAPER_CAROUSEL.bank, title: PAPER_CAROUSEL.title, group: "scratch", writable: true },
   "paper-tiger": { bank: PAPER_TIGER.bank, title: PAPER_TIGER.title, group: "scratch", writable: true },
   "pink-engine": { bank: PINK_ENGINE.bank, title: PINK_ENGINE.title, group: "scratch", writable: true },
+  "pink-lantern": { bank: PINK_LANTERN.bank, title: PINK_LANTERN.title, group: "scratch", writable: true },
   "pink-mirror": { bank: PINK_MIRROR.bank, title: PINK_MIRROR.title, group: "scratch", writable: true },
   "pink-orbit": { bank: PINK_ORBIT.bank, title: PINK_ORBIT.title, group: "scratch", writable: true },
   "plastic-owl": { bank: PLASTIC_OWL.bank, title: PLASTIC_OWL.title, group: "scratch", writable: true },
@@ -293,7 +306,9 @@ export const IMPORTED_BY_ID = {
   "shoppingchannel-wve": { bank: SHOPPINGCHANNEL_WVE.bank, title: SHOPPINGCHANNEL_WVE.title, group: "copy", writable: true },
   "shoppingchannel": { bank: SHOPPINGCHANNEL.bank, title: SHOPPINGCHANNEL.title, group: "copy", writable: true },
   "silent-beetle": { bank: SILENT_BEETLE.bank, title: SILENT_BEETLE.title, group: "scratch", writable: true },
+  "silent-diver": { bank: SILENT_DIVER.bank, title: SILENT_DIVER.title, group: "scratch", writable: true },
   "silent-rocket": { bank: SILENT_ROCKET.bank, title: SILENT_ROCKET.title, group: "scratch", writable: true },
+  "silent-scooter": { bank: SILENT_SCOOTER.bank, title: SILENT_SCOOTER.title, group: "scratch", writable: true },
   "silent-volcano": { bank: SILENT_VOLCANO.bank, title: SILENT_VOLCANO.title, group: "scratch", writable: true },
   "silver-pylon": { bank: SILVER_PYLON.bank, title: SILVER_PYLON.title, group: "scratch", writable: true },
   "sleepy-falcon": { bank: SLEEPY_FALCON.bank, title: SLEEPY_FALCON.title, group: "scratch", writable: true },
@@ -304,9 +319,12 @@ export const IMPORTED_BY_ID = {
   "smw-title-2": { bank: SMW_TITLE_2.bank, title: SMW_TITLE_2.title, group: "imported", writable: true },
   "smwgood": { bank: SMWGOOD.bank, title: SMWGOOD.title, group: "imported", writable: true },
   "special-stage-1": { bank: SPECIAL_STAGE_1.bank, title: SPECIAL_STAGE_1.title, group: "imported", writable: true },
+  "speed-zone-alt-2": { bank: SPEED_ZONE_ALT_2.bank, title: SPEED_ZONE_ALT_2.title, group: "alternate", writable: true, alternateOf: "speed" },
+  "speed-zone-alt": { bank: SPEED_ZONE_ALT.bank, title: SPEED_ZONE_ALT.title, group: "alternate", writable: true, alternateOf: "speed" },
   "sugar-diver": { bank: SUGAR_DIVER.bank, title: SUGAR_DIVER.title, group: "scratch", writable: true },
   "sugar-kitten": { bank: SUGAR_KITTEN.bank, title: SUGAR_KITTEN.title, group: "scratch", writable: true },
   "sunken-cactus": { bank: SUNKEN_CACTUS.bank, title: SUNKEN_CACTUS.title, group: "scratch", writable: true },
+  "sunken-garden": { bank: SUNKEN_GARDEN.bank, title: SUNKEN_GARDEN.title, group: "scratch", writable: true },
   "sunken-parade": { bank: SUNKEN_PARADE.bank, title: SUNKEN_PARADE.title, group: "scratch", writable: true },
   "super-mario-3d-world-bowser-castle2": { bank: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.bank, title: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.title, group: "imported", writable: true },
   "the-food-court-alt-2": { bank: THE_FOOD_COURT_ALT_2.bank, title: THE_FOOD_COURT_ALT_2.title, group: "alternate", writable: true, alternateOf: "hub" },

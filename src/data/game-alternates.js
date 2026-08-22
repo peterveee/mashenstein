@@ -6,6 +6,8 @@ import * as GAME_ALT_ARCADE_THEME from './imported/arcade-theme.js';
 import * as GAME_ALT_MONSTER_MEGAMIX_ALT from './imported/monster-megamix-alt.js';
 import * as GAME_ALT_NEW_THE_FOOD_COURT from './imported/new-the-food-court.js';
 import * as GAME_ALT_PLUMBER_PANIC_ALT from './imported/plumber-panic-alt.js';
+import * as GAME_ALT_SPEED_ZONE_ALT_2 from './imported/speed-zone-alt-2.js';
+import * as GAME_ALT_SPEED_ZONE_ALT from './imported/speed-zone-alt.js';
 import * as GAME_ALT_THE_FOOD_COURT_ALT_2 from './imported/the-food-court-alt-2.js';
 import * as GAME_ALT_THE_FOOD_COURT_ALT from './imported/the-food-court-alt.js';
 
@@ -14,6 +16,8 @@ export const GAME_ALTERNATES = Object.fromEntries([
   GAME_ALT_MONSTER_MEGAMIX_ALT,
   GAME_ALT_NEW_THE_FOOD_COURT,
   GAME_ALT_PLUMBER_PANIC_ALT,
+  GAME_ALT_SPEED_ZONE_ALT_2,
+  GAME_ALT_SPEED_ZONE_ALT,
   GAME_ALT_THE_FOOD_COURT_ALT_2,
   GAME_ALT_THE_FOOD_COURT_ALT,
 ].map((song) => [song.id, song]));

@@ -16,6 +16,7 @@
 //     sections: [ { base: 1, lead: [...] } ],   // appended AFTER the bank's own
 //     bpm: 104,                                 // the tempo it is played at
 //     swing: 62,                                // how far off the grid it is played
+//     choke: { hats: 'ohats' },                 // one pair sharing a voice — see below
 //     loop: { startBar: 5, fromBar: 8, toBar: 12 },   // where it starts and repeats
 //   }
 //
@@ -36,6 +37,27 @@
 // It is a delay on the note and never on the clock: the sequencer still counts steps at
 // a flat tempo, and the loop wrap, the bar plan and the desk's playhead go on counting
 // with it. See the swing block in `scheduleStep`, src/engine/audio.js.
+//
+// `choke` pairs two percussion tracks so they share a single voice: a hit on either
+// releases whatever the other left ringing. That is what a hi-hat pedal is — the closed
+// hat shutting the open one — and it is the whole of what this does.
+//
+// ONE partner per track, not a group, and stored one way: `{ hats: 'ohats' }` is the
+// entire statement, keyed by whichever lane name sorts first. A second entry pointing
+// back would be the same fact written twice, and two copies of a fact are two copies
+// that can disagree. Absent is every song that has not asked.
+//
+// One setting per track rather than per bar, and here rather than on the preset, and
+// both are the same decision: which sounds cut each other off is a property of how a KIT
+// is wired, not of what a hi-hat is. The same open hat rings out in one song and gets
+// cut off in the next, so a preset cannot answer it; and a kit does not re-wire itself
+// halfway through a chorus, so a bar would be four hundred places to look for the answer
+// to "why is my open hat being cut off".
+//
+// A preset may still carry its own `monoGroup` — that is how a kit built to have one
+// percussion channel arrives that way without every song repeating it. This wins where
+// both speak: it is the song's own statement about its own tracks. See `play` in
+// src/engine/voices.js.
 //
 // `loop` is optional and is the song's INTRO AND REPEAT, in bars, counted from 1 and
 // inclusive at both ends — the same way the desk's timeline counts and the same way

@@ -42,7 +42,7 @@ const VARIANTS = [
     file: '02-bitcrush-console.wav',
     title: 'Low-bit console colour',
     effects: [
-      { id: 'bitcrusher', params: { bits: 6, drive: 0, tone: 10000, wet: 0.62 } },
+      { id: 'bitcrusher', params: { bits: 6, downsample: 8, wet: 0.62 } },
     ],
   },
   {
@@ -65,7 +65,7 @@ const VARIANTS = [
         rateSync: true, rateDivision: 2, delayMs: 16, depth: 0.58,
         density: 0.8, width: 1.2, feedback: 0.06, tone: 7800, wet: 0.48,
       } },
-      { id: 'bitcrusher', params: { bits: 7, drive: 0, tone: 9500, wet: 0.48 } },
+      { id: 'bitcrusher', params: { bits: 7, downsample: 6, wet: 0.48 } },
     ],
   },
   {
@@ -78,7 +78,7 @@ const VARIANTS = [
         reso: 1.4, spread: 0.8, tilt: 0.3, intensity: 0.1,
         excite: 0.04, breath: 0, body: 0.75, air: 0.4, wet: 0.8,
       } },
-      { id: 'bitcrusher', params: { bits: 7, drive: 0, tone: 10000, wet: 0.42 } },
+      { id: 'bitcrusher', params: { bits: 7, downsample: 6, wet: 0.42 } },
     ],
   },
 ];

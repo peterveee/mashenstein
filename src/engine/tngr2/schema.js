@@ -40,7 +40,14 @@ const clamp = (value, lo, hi, fallback) => {
 
 export const TNGR2_LFO_SHAPES = ['sine', 'triangle', 'saw', 'square', 'samplehold'];
 export const TNGR2_FILTER_TYPES = ['lowpass', 'highpass', 'bandpass', 'notch'];
-/** -12 is one filter stage, -24 two in series, -48 four. The desk's three slopes. */
+/**
+ * -12 is one filter stage, -24 two in series, -48 four.
+ *
+ * The desk offers the first two only — see `SLOPES` in tools/mixer-voice-editor.js for
+ * why -48 came off. This list stays WIDER than the panel on purpose: it is what a patch
+ * is allowed to CARRY, and a stored patch written while -48 was still offered should
+ * keep sounding the way it was saved rather than snapping to the default.
+ */
 export const TNGR2_SLOPES = [-12, -24, -48];
 export const TNGR2_MODES = ['poly', 'mono', 'legato'];
 /** The desk's two envelope curves. Attack defaults linear, decay and release curved. */
@@ -167,7 +174,13 @@ export function validateTngr2(raw, { problems = [] } = {}) {
     },
     filterEnv: {
       ...validateEnv(patch.filterEnv, d.filterEnv),
-      amount: clamp(patch.filterEnv && patch.filterEnv.amount, -8, 8, d.filterEnv.amount),
+      // TEN, matching the desk's ENV AMOUNT pot (`ENV_OCT_MAX`) rather than the eight this
+      // used to say. Opening a filter from the 20 Hz floor to the 18 kHz ceiling is
+      // log2(18000/20) — nine and four fifths of an octave — so at eight the top of the
+      // dial was a setting the schema quietly threw away, and the identical-looking pot on
+      // MRDR-3 honoured what this one did not. The resulting cutoff is clamped to
+      // [20, nyquist] in the core either way, so the range costs nothing to widen.
+      amount: clamp(patch.filterEnv && patch.filterEnv.amount, -10, 10, d.filterEnv.amount),
     },
     lfo1: validateLfo(patch.lfo1, d.lfo1),
   };
@@ -231,6 +244,35 @@ export function migrateTngr2(raw, { problems = [] } = {}) {
       interval: Math.round((Number(octave) || 0) * 12 + (Number(semitone) || 0)),
       detune: Number(fine) || 0,
     };
+  }
+  // THE POSITION LFO'S DEPTH moved onto the oscillators, and this is where it lands.
+  //
+  // `lfo1.amount` was one global depth. v1 states it per oscillator as LFO MOVE, which is
+  // what makes this a wavetable synth rather than a synth with a wavetable in it: Osc A
+  // can walk up its family while Osc B walks down. The core's LFO spec carries a shape, a
+  // rate and a phase and no depth at all — see `tngr2CoreParams`.
+  //
+  // A preset that routes NO oscillator wrote its depth in the only place it had, so it is
+  // copied onto every oscillator the patch carries. One that routes even one has already
+  // stated the newer model and keeps exactly what it says, because a global amount laid on
+  // top of a per-oscillator one would be a depth multiplied by a depth.
+  //
+  // This was silent before, and the silence had a cost: `validateLfo` returns three keys
+  // and dropped `amount` on the way past, so three presets in the bank — tngrGlassChoir,
+  // tngrDreamCircuit, tngrScannerSweep — carried an authored LFO depth that reached
+  // nothing and played perfectly still. Five others already routed their oscillators and
+  // are untouched by this.
+  if (next.lfo1 && next.lfo1.amount !== undefined) {
+    const depth = Number(next.lfo1.amount) || 0;
+    const routed = ['oscA', 'oscB'].some((key) => next[key] && Number(next[key].lfoAmount));
+    if (depth && !routed) {
+      for (const key of ['oscA', 'oscB']) {
+        if (next[key]) next[key] = { ...next[key], lfoAmount: depth };
+      }
+    }
+    const { amount, ...rest } = next.lfo1;
+    void amount;
+    next.lfo1 = rest;
   }
   // The prototype's tempo-synced LFO goes with it: what this LFO moves is table POSITION,
   // and a timbre snapped to the beat is a rhythm the sequencer already owns. A synced

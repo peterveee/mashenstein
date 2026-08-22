@@ -28,6 +28,24 @@ let resumeAuto = false;
 // below it has been reached.
 let irTimer = 0;
 let irPending = null;
+// The full-window keyboard gives us a source identity for every finger. Keep the
+// corresponding lane and frequency here rather than deriving them again at key-up:
+// a preset can change while a pointer is down, and a second editor surface can be
+// listening at the same time. Re-deriving from the current preset is how a release
+// becomes a no-op and the old preview sustains.
+const keyboardAuditions = new Map();
+
+function releaseKeyboardAudition(src) {
+  const held = src && keyboardAuditions.get(src);
+  if (!held) return false;
+  keyboardAuditions.delete(src);
+  if (Audio.ctx) Audio.releasePreviewNote(held.laneKey, held.freq);
+  return true;
+}
+
+function releaseAllKeyboardAuditions() {
+  for (const src of [...keyboardAuditions.keys()]) releaseKeyboardAudition(src);
+}
 
 function toast(message, ms = 2600) {
   const el = $('toast');
@@ -378,16 +396,27 @@ voiceEditor = createVoiceEditor({
   selectPreset: (id) => loadPreset(id),
   sharePreset: copyShareLink,
   midiAdapter: midi,
-  auditionNote: (midiNote) => {
+  auditionNote: (midiNote, { src = null } = {}) => {
     if (!ensurePreviewAudio()) return;
     const id = voiceEditor.editing;
     if (!id || !Audio.ctx) return;
-    benchPlay(Audio, id, 440 * 2 ** ((midiNote - 69) / 12));
+    const voice = VOICES[id];
+    if (!voice) return;
+    releaseKeyboardAudition(src);
+    const freq = 440 * 2 ** ((midiNote - 69) / 12);
+    if (benchPlay(Audio, id, freq)) {
+      if (src) keyboardAuditions.set(src, { laneKey: benchLane(voice), freq });
+    }
   },
-  releaseAudition: ({ midi: midiNote }) => {
+  releaseAudition: ({ midi: midiNote, src = null }) => {
+    if (releaseKeyboardAudition(src)) return;
+    // MIDI/older callers may not provide a source. Preserve that fallback, but only
+    // for the current preset; pointer and glide releases use the exact map above.
     const id = voiceEditor.editing;
     const voice = id && VOICES[id];
-    if (voice && Audio.ctx) Audio.releasePreviewNote(benchLane(voice), 440 * 2 ** ((midiNote - 69) / 12));
+    if (voice && Audio.ctx) {
+      Audio.releasePreviewNote(benchLane(voice), 440 * 2 ** ((midiNote - 69) / 12));
+    }
   },
   // Optional filter/VCA switches rebuild the native graph on the next note. Drop
   // already-scheduled audition nodes so that next note is an immediate, clear A/B of
@@ -403,7 +432,11 @@ voiceEditor = createVoiceEditor({
     // tail cannot make an OFF filter sound as though it is still active.
     if (previewFxState && Audio.ctx) applyPreviewEffects(previewFxState, { rebuild: true });
   },
-  panicAudition: () => { patternPlayer?.stop(); performancePanel?.setPlaying(false); Audio.voices?.stopPreview?.(); Audio.panic(); },
+  panicAudition: () => {
+    releaseAllKeyboardAuditions();
+    patternPlayer?.stop(); performancePanel?.setPlaying(false);
+    Audio.voices?.stopPreview?.(); Audio.panic();
+  },
   midiState: () => midi.state(),
   toggleMidi: (on) => midi.setEnabled(on),
   createFull: ({ kit }) => createSynthFull({

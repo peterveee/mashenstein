@@ -781,6 +781,8 @@ function Tngr2Voice(rate) {
   // A MONO restrike's level, waiting for the sample the choke reaches silence. -1 is
   // "nothing waiting", which a velocity can never be.
   this.pendingLevel = -1;
+  // ...and its PITCH, waiting for that same sample and for the same reason. See retarget.
+  this.pitchDirty = false;
   this.keyTrack = 0;
   this.patch = null;
   this.gliding = false;
@@ -816,6 +818,7 @@ Tngr2Voice.prototype.start = function start(note, age, patch, tables, core, star
   this.velocity = Math.min(1, Math.max(0, note.velocity != null ? Number(note.velocity) : 1));
   this.level = this.velocity;
   this.pendingLevel = -1;
+  this.pitchDirty = false;
   // Key tracking, in octaves from middle C: what §7.4's filter keyTrack scales, and a
   // modulation source in its own right.
   this.keyTrack = Math.log2(Math.max(1e-6, this.hz) / 261.6255653005986);
@@ -945,6 +948,14 @@ Tngr2Voice.prototype.retarget = function retarget(note, patch, regate, tables, c
     for (var s = 0; s < this.count; s++) {
       this.sources[s].baseInc = (target * patch.sources[s].ratio) / this.rate;
     }
+    // ...and it has to reach the oscillators THEMSELVES. baseInc is only the base; inc is
+    // what a source actually reads, and applyPitch is the one thing that copies one to
+    // the other. It runs on the grid for a GLIDE and for VIBRATO — and for neither of
+    // those when a note is retargeted with glide at zero. Without this a MONO or LEGATO
+    // lane with no glide never changed pitch at all: every note after the first played
+    // the FIRST note's, for as long as the voice stayed active. It also re-picks the mip
+    // level, which is the difference between the new pitch and the new pitch aliasing.
+    this.pitchDirty = true;
   }
   if (regate) {
     // All three together, over the same fade, so they start the new note in step: an
@@ -963,6 +974,25 @@ Tngr2Voice.prototype.retarget = function retarget(note, patch, regate, tables, c
     if (this.env.stage === TNGR2_STAGE_RESTRIKE) this.pendingLevel = this.velocity;
     else { this.level = this.velocity; this.pendingLevel = -1; }
   }
+  // WHEN the new pitch lands. LEGATO takes it at once — moving the pitch IS the note
+  // change, and there is nothing else happening for it to interrupt. A MONO restrike
+  // waits for the same sample the new LEVEL waits for: the one where the choke reaches
+  // silence. Changing pitch inside the fall would chirp the note being replaced on its
+  // way out, which is a sound in the middle of the choke that is there to have none.
+  this.settlePitch(tables);
+};
+
+/**
+ * Put a pending pitch on the oscillators, unless a choke is still running.
+ *
+ * Asked at the retarget and again on every tick, because whichever of the two the choke
+ * ends on is the one that must land it — a strike at the old pitch is the failure this
+ * exists to prevent, and so is a pitch that never arrives at all.
+ */
+Tngr2Voice.prototype.settlePitch = function settlePitch(tables) {
+  if (!this.pitchDirty || this.env.stage === TNGR2_STAGE_RESTRIKE) return;
+  this.applyPitch(tables);
+  this.pitchDirty = false;
 };
 
 /**
@@ -1044,6 +1074,7 @@ Tngr2Voice.prototype.tick = function tick(frame, tables) {
     this.level = this.pendingLevel;
     this.pendingLevel = -1;
   }
+  if (this.pitchDirty) this.settlePitch(tables);
   var patch = this.patch;
   var s;
   var src;
@@ -1267,6 +1298,7 @@ function tngr2QueuedEvent(event, frame) {
     velocity: event.velocity,
     eventId: event.eventId,
     transportGeneration: event.transportGeneration,
+    regate: event.regate,
     releaseAtStart: false
   };
 }
@@ -1418,7 +1450,13 @@ Tngr2Core.prototype.apply = function apply(event, frame) {
     if (mode !== 'poly' && sounding) {
       // MONO re-gates the envelopes, LEGATO does not — the note is taken over rather than
       // struck again, which is the whole of the difference (§7.1).
-      held.retarget(event, patch, mode === 'mono', this.tables, this, this.stealFade);
+      //
+      // regate:false overrides that, in the one case where the mode is not the question:
+      // a KEY COMING UP handing the note back to another key that is still down. Letting
+      // go never starts a note, so the pitch moves and the envelopes stay where they are
+      // whichever mode the lane is in. See _releasePreview in voices.js.
+      var regate = event.regate === false ? false : mode === 'mono';
+      held.retarget(event, patch, regate, this.tables, this, this.stealFade);
       held.eventId = event.eventId;
       held.age = ++this.age;
       if (event.releaseAtStart) this.releaseVoice(held);

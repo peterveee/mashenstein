@@ -18,6 +18,8 @@
 import { VOICES, VOICE_CATEGORIES, PERCUSSION_LANES, isKitVoice, seamFor } from '../src/data/voices.js';
 import { isVoiceUsed } from '../src/data/voices-used.js';
 import { deskNoteNameHz } from './mixer-note-names.js';
+import { synthDisplayName, synthShortName, synthChoiceLabel, synthStyleName } from './lib/synth-display.js';
+import { createCustomSelect } from './lib/custom-select.js';
 
 /**
  * The mark on a button that folds a panel away.
@@ -85,6 +87,12 @@ export function foldIcon(dir = 'right') {
  */
 const BENCH_LANES = {
   Kick: 'kick', Snare: 'snare', Hats: 'hats', Clap: 'clap', Tom: 'tom', Crash: 'crash', Perc: 'hats',
+  // The three that live on `rim` or `tom` rather than on a lane of their own. Every Rim
+  // preset is measured on `rim` and so are ten of the twelve Blips, so both bench on the
+  // dry `hats` stand-in for the same reason Perc does; every Sweep is measured on `tom`.
+  // A kit category missing from this table falls to `bass`, where a drum has no note key
+  // and does not sound at all — which is why tests/bench.js checks the table is total.
+  Rim: 'hats', Blip: 'hats', Sweep: 'tom',
 };
 export const benchLane = (voice) => {
   // Drum entries carry their measured home lane, while pitched entries fall through
@@ -795,11 +803,11 @@ export function createVoiceLibrary({
   // you were looking at. It also makes the catalogue legible as a whole — that there are
   // twenty-one FM presets and five DuoSynths is a fact about the library.
   //
-  // Noise and drum presets have no Tone class: they are the rack's own constructions.
-  // They answer with their kind, because "noise" is the same KIND of answer as
-  // "FMSynth" — it is what the thing is built out of.
+  // Drum presets have no Tone class: they are the rack's own constructions. They answer
+  // with their kind, because "drum" is the same KIND of answer as "FMSynth" — it is what
+  // the thing is built out of.
   const synthOf = (v) => v.synth || v.kind;
-  // `MembraneSynth` is thirteen characters in a 150px column beside a preset name that
+  // `WNDR-9` is thirteen characters in a 150px column beside a preset name that
   // also wants reading. The suffix is on every one of them and carries nothing.
   //
   // Except on Tone's base class, which is called `Synth` outright — stripping there
@@ -810,10 +818,11 @@ export function createVoiceLibrary({
   // `noise` and `drum` are written the way the data writes them and would otherwise be
   // the only lower-case entries in a column of FM, Mono and Membrane. The raw name stays
   // the option's value — this touches what is read, not what is filtered on.
-  const shortSynth = (name) => {
-    const s = name.replace(/Synth$/, '') || name;
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  };
+  const familyName = synthDisplayName;
+  // Both live in tools/lib/synth-display.js now: the rule above is presentation, and the
+  // filter here is not the only chooser that needs it — the lane's engine picker and the
+  // editor's ENGINE select draw the same pair, and three copies is three house styles.
+  const shortSynth = synthShortName;
   const synthLabel = (v) => shortSynth(synthOf(v));
 
   /** Every synth the catalogue actually uses, commonest first, with its tally. */
@@ -822,7 +831,8 @@ export function createVoiceLibrary({
     for (const v of Object.values(VOICES)) {
       if (v.kind === 'engine' || v.songLocal || v.draft) continue;
       const s = synthOf(v);
-      n[s] = (n[s] || 0) + 1;
+      const family = familyName(s);
+      n[family] = (n[family] || 0) + 1;
     }
     return Object.entries(n).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
@@ -847,8 +857,9 @@ export function createVoiceLibrary({
     // The synth is searchable as well as filterable: typing "fm" should find the FM
     // presets, which is what anyone who knows the catalogue would expect it to do.
     const hit = (v) => !q
-      || `${v.label} ${v.category} ${v.note || ''} ${synthOf(v)}`.toLowerCase().includes(q);
-    const bySynth = (v) => synth === 'any' || synthOf(v) === synth;
+      || `${v.label} ${v.category} ${v.note || ''} ${shortSynth(synthOf(v))}`
+        .toLowerCase().includes(q);
+    const bySynth = (v) => synth === 'any' || familyName(synthOf(v)) === synth;
     return VOICE_CATEGORIES
       .map((c) => [c, Object.values(VOICES).filter((v) => v.category === c
         && v.kind !== 'engine' && !v.songLocal && !v.draft && keep(v) && keepSource(v)
@@ -947,23 +958,28 @@ export function createVoiceLibrary({
     // What it is built from, as a filter. A dropdown rather than more chips: there are
     // nine of them and they are names rather than a spectrum, so a row of nine buttons
     // would be a row of nine buttons. Counted, because the tally is half the answer —
-    // "MetalSynth (15)" tells you the catalogue leans on it before you click.
-    const syn = document.createElement('select');
-    syn.className = 'fxsel vlsynth';
-    const anyOpt = document.createElement('option');
-    anyOpt.value = 'any'; anyOpt.textContent = 'Any synth';
-    syn.append(anyOpt);
-    for (const [name, n] of synthsPresent()) {
-      const o = document.createElement('option');
-      o.value = name;
-      o.textContent = `${shortSynth(name)} (${n})`;
-      if (name === synth) o.selected = true;
-      syn.append(o);
-    }
-    syn.title = 'Show only presets built from one Tone class — or the rack’s own noise'
-      + ' and drum constructions, which are not Tone classes at all.'
-      + '\n\nAn FM bell and a subtractive bell want completely different edits.';
-    syn.onchange = () => { synth = syn.value; drawList(); };
+    // "MonoSynth (15)" tells you the catalogue leans on it before you click.
+    // The desk's own dropdown rather than the OS one, for the reason the lane's engine
+    // picker uses it: the style belongs in a column of its own, and six opaque codes in
+    // a system popup is a memory test in a window that cannot be themed.
+    //
+    // The tally rides with the NAME rather than with the style. It is a fact about this
+    // catalogue, not about the engine, and hanging it off the description would put a
+    // number in the middle of the column the eye runs down.
+    const syn = createCustomSelect({
+      label: 'Synth family',
+      title: 'Show only presets built from one engine family — or the rack’s own noise'
+        + ' and drum constructions.'
+        + '\n\nAn FM bell and a CRLS-1 bell want completely different edits.',
+      idPrefix: 'voicelib-synth',
+      options: [['any', 'Any synth'],
+        ...synthsPresent().map(([name, n]) => [name, `${synthShortName(name)} (${n})`,
+          synthStyleName(name)])],
+      value: synth,
+      fieldClass: 'deskselect',
+    });
+    syn.classList.add('vlsynth');
+    syn.addEventListener('input', () => { synth = syn.value; drawList(); });
 
     const close = document.createElement('button');
     close.className = 'vlclose popclose';
@@ -1039,7 +1055,7 @@ export function createVoiceLibrary({
           k.className = 'vkind';
           k.textContent = synthLabel(v);
           btn.title = `${v.label}${v.note ? ` — ${v.note}` : ''}`
-            + `\n\nBuilt from: ${synthOf(v)}`
+            + `\n\nBuilt from: ${synthChoiceLabel(synthOf(v))}`
             + (v.user
               ? '\n\nClick to edit your preset.'
               : '\n\nLibrary preset — click to duplicate it before editing.')

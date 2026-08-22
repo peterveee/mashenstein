@@ -17,7 +17,8 @@
 import {
   noteCell, noteOn, pitchRows, laneSpan, autoRange, keyboardRange, keyGeometry,
   pianoRowHeight, pianoKeyPhase, pianoLayout, noteActiveAt,
-  midiFreq, freqMidi, rollEditable, noteDrawLength, ROLL_TOOLS, ROLL_TOOL_IDS, rollTool,
+  midiFreq, freqMidi, rollEditable, noteDrawLength, noteLength, noteSpan,
+  ROLL_TOOLS, ROLL_TOOL_IDS, rollTool,
   NOTE_LENGTH_OPTIONS,
 } from '../tools/mixer-piano-roll.js';
 import {
@@ -84,6 +85,15 @@ assert(Array.isArray(stacked) && stacked.length === 2 && stacked.includes(A2ROW.
   'a chord lane STACKS: drawing adds a note rather than replacing the chord');
 assert(stacked[0] < stacked[1],
   'and the array comes out sorted, so two routes to one chord write one file');
+const stackedLegacy = noteCell({ midi: freqMidi(third), freq: third, chord: true }, A2ROW.freq, true);
+assert(Array.isArray(stackedLegacy) && stackedLegacy.length === 2
+  && stackedLegacy.includes(A2ROW.freq) && stackedLegacy.includes(third),
+  'switching a mono lane to Poly keeps its existing scalar note when adding a second pitch');
+assert(noteSpan({ midi: freqMidi(A2), chord: true }, A2ROW.freq, 4) === 4,
+  'a legacy scalar note remains visible at its stored length in Poly');
+assert(JSON.stringify(noteLength({ midi: freqMidi(third), freq: third, chord: true }, A2ROW.freq, 4, true, 4))
+  === JSON.stringify([4, 4]),
+  'adding a Poly pitch preserves the legacy scalar note length');
 const unstacked = noteCell({ ...A2ROW, chord: true }, [A2ROW.freq, fifth], false);
 assert(Array.isArray(unstacked) && unstacked.length === 1 && unstacked[0] === fifth,
   'clearing takes only that note out of the chord');

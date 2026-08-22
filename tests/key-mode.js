@@ -47,7 +47,7 @@ assert(source.includes('const gated = mono && (slot.activeUntil || 0) > t;')
 assert(source.includes('const gated = !!prev && prev.gateUntil > time;')
   && source.includes('const glideFrom = overlap && glideTime(v) > 0 ? prev.freq : null;'),
   'and MRDR-3 tests the same overlap rather than gliding from any past note');
-assert(source.includes('entry.slot.gateKey === noteKey')
+assert(source.includes('slot.gateKey === noteKey')
   && source.includes('record.gateKey === noteKey'),
   'and a key coming up closes the gate, so a held note cannot glide into one played later');
 
@@ -62,9 +62,45 @@ assert(source.includes('const fingered = mono && slot.gateKey != null;')
 // sources at the nominal length is what made LEGATO on the keyboard cut out mid-key.
 assert(/if \(hold\) \{\s*\n\s*prev\.freq = base;\s*\n\s*prev\.gateUntil = Infinity;\s*\n\s*prev\.stopAt = Infinity;\s*\n\s*return;/.test(source),
   'a held legato handover moves the pitch and nothing else — no release, no source stop');
-assert(source.includes('_retargetLayerLegato(prev, f * shift * ensembleVary((v.humanize || {}).pitch, time, 16), time, noteDur, v, hold);')
-  && source.includes('if (hold) this._rekeyHeldNote(prev, `${laneKey}|${f.toFixed(2)}`);'),
+assert(source.includes('const base = f * shift * ensembleVary((v.humanize || {}).pitch, time, 16);')
+  && source.includes('this._retargetLayerLegato(prev, base, time, noteDur, v, hold);')
+  && source.includes('this._rekeyHeldNote(prev, key);'),
   'and the note-off passes to the key that took the gate — last note priority');
+
+// ---- ONE INSTRUMENT, SEVERAL FINGERS ----------------------------------------
+//
+// The other half of last note priority, and the half that was missing everywhere: a MONO
+// or LEGATO preset answers every key on the lane through ONE instrument, so a note-off
+// has to ask whether the key coming up is the one SPEAKING before it does anything at
+// all. It cost the FM classes the whole sound — hold a chord, let go of any one of the
+// three keys and the note stopped — and it cost MRDR-3 and TNGR-2 the top of it: letting
+// go of the key you were actually holding cut a note two fingers were still on.
+//
+// Pinned in the source because the failure is a live one. Nothing sequenced can reach it
+// — a played note has a length and no note-off — so no render, no bounce and no offline
+// test can see it, and it is only there under a finger.
+assert(source.includes('const fingerDown = (host, key, hz) => {')
+  && source.includes('const fingerUp = (host, key) => {'),
+  'the rack has ONE vocabulary for the keys still down on one instrument');
+assert((source.match(/fingerDown\(/g) || []).length === 4,
+  'and all three paths keep it: pooled, MRDR-3 native, TNGR-2 lane');
+assert(source.includes('const { next, wasOwner } = fingerUp(slot, noteKey);')
+  && source.includes('const { next } = fingerUp(record, noteKey);')
+  && source.includes('const { next, wasOwner } = fingerUp(fingers, noteKey);'),
+  'and all three ask the same question when a key comes up');
+// LETTING GO NEVER STARTS A NOTE. The fall-back moves the pitch and leaves the envelope
+// where it stands, in MONO as well as LEGATO — single trigger, which is what a mono synth
+// with a keyboard on it does. A second attack out of a gesture that was a release is the
+// thing this must never become.
+assert(source.includes('slot.synth.setNote(next.hz, at);')
+  && source.includes('this._retargetLayerPitch(record, next.hz, at, record.glide || 0);')
+  && source.includes("tngr2NoteOn(lane, { at: off, hz: next.hz, velocity: 1, eventId, regate: false });"),
+  'the fall-back moves the pitch on every path and re-strikes on none');
+// LEGATO under a finger is legato. The pooled classes reach a different branch from the
+// sequencer's, and without this the mode was MONO with another name on the pill.
+assert(source.includes('if (legato && slot.fingers?.length) {')
+  && source.includes('cancelToneEnvelopes(slot.synth, t);'),
+  'a pooled LEGATO key takes the note over rather than striking it again');
 // The pooled legato branch stays on the sequencer's gate for the opposite reason: it
 // schedules a release, which must never land on a key that is still down.
 assert(source.includes('} else if (legato && gated) {'),

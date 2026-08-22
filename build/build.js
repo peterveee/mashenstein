@@ -16,6 +16,7 @@ import { hostname, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 // Watch builds only — see the `plugins` line in `options` below.
 import { tunablePlugin } from '../tools/lib/tunable-plugin.js';
+import { MIXER_BRAND } from '../tools/mixer-brand.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -522,7 +523,7 @@ if (watch) {
     console.log(`dist/SongMixer/render-frame.html written (${mixer.frame} KB engine)`);
   } catch (err) {
     // The mixer is a dev tool; a broken mixer build does not block the game.
-    console.error('Song Mixer build failed (the game build is unaffected):');
+    console.error(`${MIXER_BRAND} build failed (the game build is unaffected):`);
     console.error(err.message || err);
   }
 

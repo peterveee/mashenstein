@@ -1,25 +1,24 @@
 # The Native Synths
 
 > How MASHENSTEIN's non-Tone.js, non-engine voice paths work — `_playGame`,
-> `_playAdditive`, `_playLayer`, `_playNoise` and `_playDrum` in `src/engine/voices.js`.
+> `_playAdditive`, `_playLayer` and `_playDrum` in `src/engine/voices.js`.
 
 ---
 
 ## 1. Architecture Overview
 
-The audio engine has **seven** voice paths, dispatched in `VoiceRack.play()`:
+The audio engine has **six** voice paths, dispatched in `VoiceRack.play()`:
 
 | Path | Play method | Sounds like | Uses Tone.js? | Pooled? |
 |--------|------------|-------------|---------------|---------|
 | `kind: 'engine'` | (hand-written in `scheduleStep`) | Bass, lead, organ, chords, engine percussion | No | No |
 | `kind: 'tone'` + Tone class | `VoiceRack.play()` → Tone pool | Full Tone.js synths (Synth, MonoSynth, FMSynth, etc.) | **Yes** | Yes |
-| `synth: 'GameSynth'` | `_playGame()` | One oscillator or pitched noise — the chip channel | **No** | No |
-| `synth: 'AdditiveSynth'` | `_playAdditive()` | Stacked sine partials — drawbar organs, bells, glass | **No** | No |
+| `synth: 'KNDO-5'` | `_playGame()` | One oscillator or pitched noise — the chip channel | **No** | No |
+| `synth: 'WNDR-9'` | `_playAdditive()` | Stacked sine partials — drawbar organs, bells, glass | **No** | No |
 | `synth: 'MRDR-3'` | `_playLayer()` | Up to three complete voices summed — the engine's own layered voices, editable | **No** | No |
-| `kind: 'noise'` | `_playNoise()` | Filtered noise bursts (snares, claps, hats, shakers) | **No** | No |
 | `kind: 'drum'` | `_playDrum()` | Multi-source KLNG8esis (kicks, toms, zaps, cymbals) | **No** | No |
 
-**This document covers the five native paths** — the ones built entirely from Web Audio
+**This document covers the four native paths** — the ones built entirely from Web Audio
 nodes that never touch `Tone.Synth` or its relatives. The native synths are dispatched
 **by name before** the Tone allowlist is consulted; `SYNTHS[]` knowing nothing about
 them would otherwise return `false`, which looks exactly like a preset doing nothing.
@@ -57,7 +56,7 @@ The **melodic** paths do not take these three. A pitch envelope is written in ce
 
 ---
 
-## 2. GameSynth (`_playGame`)
+## 2. KNDO-5 (`_playGame`)
 
 **File:** `src/engine/voices.js` lines ~280–300
 
@@ -95,7 +94,22 @@ A bare single-oscillator replacement for the engine's hand-written square/saw/tr
 - **Vibrato** (`vibrato.depth`, default `0` = none): one LFO per note-on. **One LFO for the whole chord** — per-note LFOs drift apart on rate rounding, and a chord whose notes wobble independently is a chorus. Built and stopped with the voices, unlike the Tone path's pool LFO which free-runs. Three stages, because the two waveform families need the same wobble in different units: the LFO stays at unit amplitude, `vibEnv` carries the onset, and the last gain scales it — **cents** into an oscillator's `detune` (shared), or **hertz** into the bandpass for noise, which depends on the note and so needs a gain per note (a semitone is 13 Hz at 220 and 105 Hz at 1760)
 - **Delayed vibrato** (`vibrato.delay`, default `0`): the depth grows from nothing to full over this many seconds from note-on — a chip lead holding a note and then leaning into it. A **fade, not a gate**: a wobble switching on at full depth mid-note reads as a fault. This is the one vibrato key the **Tone path cannot honour** — its LFO lives in the pool and free-runs across notes, so there is no note-on to measure an onset from
 - **Tone filter** (`filter`, default **absent** = none): an optional filter between the source and the AR gain, switched on as a section in the panel rather than dialled to a no-op. Absent, **not one node is built** and a preset written before it existed sounds identical — "no filter" and "a filter doing nothing" are different sounds. It is the **same `_filterChain`** the noise and drum voices use, so the keys mean the same thing: `type` and `slope` are the filter, `freq` is where it starts, and `to` over `sweep` is where it goes. That last pair is why it earns its place — a cutoff falling into a noise burst is an explosion and one climbing out of a square is a power-up, neither of which the pitch sweep alone can say. Resonance lands on the **first stage only**; the stages behind it carry the slope at `Q` 0.7071 and would multiply the peak if they resonated too. Built **per note**, because its sweep starts at note-on
-- **No drive** — past the filter the amplitude path is still gain and nothing else
+- **`drive`/`shape`/`tone`/`drivePlace`** — the Effects card MRDR-3, TNGR-2 and the
+  drawbar organ carry, on the same voice-level keys: one waveshaper with its tone filter
+  hanging off it, built only when `drive > 0`. **PLACE is here**, unlike the organ's,
+  because this synth has a stage for the shaper to be pre or post *of* — its own tone
+  filter and the AR gain. `post` (the default) puts the shaper after the envelope, so the
+  grit falls with the note, and the note's level moves **behind** the shaper, so a preset
+  drives the same however loud its lane is. `pre` puts it in front of the filter, hearing
+  the raw waveform — a fold there is a different waveform rather than the same one
+  dirtied
+- **`chorus`** `{mix, rate, depth, width}` — the same lane insert MRDR-3, TNGR-2 and the
+  drawbar organ run, off the same `buildChorusLeg` and the same `_ensureMrdrLaneStage`.
+  MIX is the switch. A preset with **no `chorus` block at all** never sees a node and
+  connects straight to the strip, as this path always has; a preset that has the block
+  gets the lane bus whether or not it is turned up, which is what lets a chorus edit
+  reach a note already sounding. The echo send is tapped **after** it, as on every other
+  synth that runs one — the bus hears the instrument, not its guts
 - **Polyphonic**: If `freq` is an array (a chord), one oscillator+gain pair is created per note. `dur` may be an array too, positionally aligned with `freq`, the way the Tone path reads it
 - **Never pooled** — native nodes created and torn down per hit
 - **Deterministic offline**: No randomness anywhere in the path. The LFO is a scheduled oscillator started at an absolute time, so its phase is a function of the note's position
@@ -114,17 +128,21 @@ A bare single-oscillator replacement for the engine's hand-written square/saw/tr
 | `pitch.release` | `0.015` | Seconds back to the written pitch after note-off |
 | `vibrato.depth` | `0` | Vibrato depth in **semitones**, `1` = ±100 cents. `0` builds no LFO. The panel runs to **12** — a full octave of wobble — and the native paths honour all of it; a **Tone** preset is capped at `1` because `Tone.Vibrato.depth` is a NormalRange and would reject more |
 | `vibrato.rate` | `5` | Vibrato rate in Hz. The panel runs to **60**: past about 20 it stops being a wobble and becomes frequency modulation, where the sidebands are the sound |
-| `vibrato.delay` | `0` | Seconds for the wobble to fade in from note-on. **GameSynth-only** — see above |
+| `vibrato.delay` | `0` | Seconds for the wobble to fade in from note-on. **KNDO-5-only** — see above |
 | `vibrato.type` | `'sine'` | LFO waveform (engine-only; no control on the panel) |
 | `filter.type` | `'lowpass'` | Tone-filter shape: `lowpass`, `highpass`, `bandpass`, `notch`. The whole `filter` key is **absent by default** — the panel's Filter section is a switch, and off means no node |
-| `filter.slope` | `-12` | dB per octave: `-12`, `-24` or `-48`, built as 1, 2 or 4 stages |
+| `filter.slope` | `-12` | dB per octave: `-12` or `-24`, built as 1 or 2 stages. `-48` (4 stages) is still read for stored presets but is no longer offered on the desk |
 | `filter.freq` | `4000` | Cutoff in Hz at note-on |
 | `filter.to` | — | Cutoff to arrive at. Equal to `freq` (or absent) is no sweep at all |
 | `filter.sweep` | `0.12` | Seconds to travel from `freq` to `to`, exponentially |
 | `filter.Q` | `0.7` | Resonance, up to 40. First stage only. A high `Q` can raise the peak several times over — measured at `Q` 20 on a square, three times the unfiltered peak — so it is a level change as well as a tone one |
-| `fixedLength` | `0` | An absolute note length in seconds that **overrides `dur` and the tempo both** — `noteSeconds` returns it verbatim and stops. `0` means not set. Not GameSynth's: it is read before the voice is dispatched, so it works on every path. The panel allows up to **4 s**, which is a sound-effect length rather than a note one — an explosion or a power-down runs past two |
+| `drive` / `shape` | `0` / `'soft'` | Waveshaper; `soft`, `fold`, `crush`. Zero builds nothing |
+| `drivePlace` | `'post'` | `post` after the filter and the AR gain, `pre` in front of both. Read only when `drive > 0` |
+| `tone.{freq,type,Q}` | 8000, lowpass, 0.7 | The drive's own tone filter — absent means no filter |
+| `chorus.{mix,rate,depth,width}` | 0, 0.8, 0.5, 1 | The lane chorus insert. MIX at zero is off; no `chorus` key at all is no lane bus |
+| `fixedLength` | `0` | An absolute note length in seconds that **overrides `dur` and the tempo both** — `noteSeconds` returns it verbatim and stops. `0` means not set. Not KNDO-5's: it is read before the voice is dispatched, so it works on every path. The panel allows up to **4 s**, which is a sound-effect length rather than a note one — an explosion or a power-down runs past two |
 
-**Declared but not read on this path:** `mono` and `portamento` appear on several GameSynth entries in `src/data/voices.js` and are ignored — `play()` dispatches to `_playGame` before the pool that implements them. Glide needs the voice to remember its last pitch, and that state is what a stem render does not carry.
+**Declared but not read on this path:** `mono` and `portamento` appear on several KNDO-5 entries in `src/data/voices.js` and are ignored — `play()` dispatches to `_playGame` before the pool that implements them. Glide needs the voice to remember its last pitch, and that state is what a stem render does not carry.
 
 **Not read anywhere:** `minLength` and `maxLength` were listed here as parameters and are read by no code and declared by no preset. There is no such clamp — `fixedLength` is the only absolute length control.
 
@@ -143,11 +161,11 @@ A bare single-oscillator replacement for the engine's hand-written square/saw/tr
 
 ### Why It Exists
 
-The engine's hand-written square/saw/triangle/sine voices are baked into `scheduleStep` — they can't be selected from the voice picker. GameSynth presets expose the same basic waveforms as choosable presets, so a lane can opt into "just a square wave" without writing engine code. They use native Web Audio nodes rather than Tone.js to stay lightweight and avoid the Tone synth pool overhead for the simplest possible sound.
+The engine's hand-written square/saw/triangle/sine voices are baked into `scheduleStep` — they can't be selected from the voice picker. KNDO-5 presets expose the same basic waveforms as choosable presets, so a lane can opt into "just a square wave" without writing engine code. They use native Web Audio nodes rather than Tone.js to stay lightweight and avoid the Tone synth pool overhead for the simplest possible sound.
 
 ---
 
-## 3. AdditiveSynth (`_playAdditive`)
+## 3. WNDR-9 (`_playAdditive`)
 
 ### Purpose
 
@@ -160,10 +178,15 @@ knobs that are each one control where the honest version is nine.
 
 ```
   per partial k with bars[k] > 0:
-  OscillatorNode ──→ GainNode (adsr, decay·r⁻ᵈᵃᵐᵖ) ──→ out ──→ dry (+ wet)
-   freq = note × ratio[k] × √(1 + stretch·r²)              │
-                                                            └─ perc partial → its own
-  [one vibrato LFO per note-on, cents into every .detune]      ALWAYS-DRY bus
+  OscillatorNode ──→ GainNode (adsr, decay·r⁻ᵈᵃᵐᵖ) ──→ [shaper → tone] ──→ out
+   freq = note × ratio[k] × √(1 + stretch·r²)                                 │
+                                                             [lane chorus] ←──┘
+                                                                   └──→ dry (+ wet)
+
+  perc partial ──→ [its own shaper → tone] ──→ ALWAYS-DRY bus ──→ dry
+                                               (no echo, and no chorus)
+
+  [one vibrato LFO per note-on, cents into every .detune]
 ```
 
 - **`bars`** — nine levels in **console order** (16′ 5⅓′ 8′ 4′ 2⅔′ 2′ 1⅗′ 1⅓′ 1′ =
@@ -181,6 +204,17 @@ knobs that are each one control where the honest version is nine.
 - **`perc`** — the Hammond percussion register: one louder partial, struck and gone,
   **always dry** so repeated off-beat stabs stay crisp. Its decay is in **seconds** —
   a circuit constant, fast or slow whatever the player holds — not steps.
+- **`drive`/`shape`/`tone`** — the Effects card MRDR-3 and TNGR-2 carry, on the same
+  voice-level keys: one waveshaper with its tone filter hanging off it, **before** the
+  note's level (a preset drives the same however loud its lane is). There is **no PLACE
+  pill** and no `drivePlace` read: pre or post is only a question where there is a filter
+  to be pre or post of, and a drawbar stack has none. The percussion register takes the
+  drive on its own bus — an organ through a driven amp drives all of it.
+- **`chorus`** `{mix, rate, depth, width}` — the same lane insert MRDR-3 and TNGR-2 run,
+  off the same `buildChorusLeg`, so a combo organ is a drawbar stack through a driven amp
+  and a chorus rather than the stack alone. MIX is the switch; at zero the lane bus is
+  three unity gains, which is what lets a chorus edit reach a note already sounding. The
+  percussion pip stays out of it, as it stays out of the echo.
 - Honours chords, per-tone `dur` arrays, `taps`/`tapFalloff`/`tapDetune`, `humanize`,
   and `$vibrato` (one LFO per note-on shared by every partial — nine independent LFOs
   would drift, and a stack wobbling out of step with itself is a chorus).
@@ -199,6 +233,9 @@ knobs that are each one control where the honest version is nine.
 | `additive.echo` | `true` | `false` keeps the stack off the wet send |
 | `additive.pitch.{from,to,sweep,curve}` | — | Registration bend, ratios of the note; `sweep` in seconds |
 | `additive.perc.{ratio,gain,attack,decay}` | ×3, 0.72 | The key-attack pip, always dry |
+| `drive` / `shape` | `0` / `'soft'` | Waveshaper before the note level; `soft`, `fold`, `crush` |
+| `tone.{freq,type,Q}` | 8000, lowpass, 0.7 | The drive's own tone filter — absent means no filter |
+| `chorus.{mix,rate,depth,width}` | 0, 0.8, 0.5, 1 | The lane chorus insert. MIX at zero is off |
 
 ### Presets (8)
 
@@ -335,85 +372,37 @@ the others into the shared drive. It is MRDR-3's alone: no other panel has one.
 
 The four core constructions — `layerBass80s`, `layerFilteredSaw`, `layerLeadBright`,
 `layerTwinkle` — then the songs' own voicings (`layerTitleBass`, `layerShopLead`,
-`layerFinaleStab`, …) minus the organs, which live on AdditiveSynth. The two that
+`layerFinaleStab`, …) minus the organs, which live on WNDR-9. The two that
 carried a written-in slapback are their base timbre; the strip's delay says it now.
 `layerDreamPad` demonstrates the two controls no engine recreation exercises: unison
 and the filter LFO.
 
 ---
 
-## 5. Noise Presets (`_playNoise`)
+## 5. Noise Presets — retired into KLNG8
 
-**File:** `src/engine/voices.js` lines ~390–430
+There was a seventh path, `_playNoise`, and a `kind: 'noise'` preset kind: filtered
+bursts of the seeded buffer with an optional pitched thump under them — snares, claps,
+hats, shakers. It is gone, and nothing was lost with it.
 
-### Purpose
-Filtered noise bursts with an optional pitched body — the snare, clap, hat, and shaker sounds where the sound is mostly air rather than pitch. Based on the same construction the engine's own snare uses.
+It was the drum path twice. The burst was the same `_bufFor` buffer through the same
+`_filterChain`; the thump was one oscillator with a pitch envelope, which is what `osc`
+already is. The only real difference was vocabulary: the noise path called that section
+`body` and swept its pitch over the amp decay, where `osc` states `sweep` separately.
 
-### Sound Generation
+So every preset moved into the DRUM tables with `body` rewritten as `osc` (the sweep
+takes the decay's number, so the sound is unchanged), and one-shots have one kind, one
+play path, one panel and one pair of source tables.
 
-```
-                     ┌─ Noise path ───────────────────────────┐
-                     │                                          │
-  seeded noiseBuf ──→ BiquadFilterNode ──→ GainNode ──→ dry    │
-                     (type, freq, Q)     (exp decay)     │     │
-                                                         wet   │
-                     ┌─ Body path (optional) ──────────────────┤
-                     │                                          │
-  OscillatorNode ────→ GainNode ───────────────────────→ dry   │
-  (type, from→to)    (exp decay)                        │     │
-                                                         wet   │
-                     ┌─ Taps ──────────────────────────────────┘
-                     Each tap at time + taps[i], gain × tapFalloff^i
-```
+**Songs are the exception, and they are handled at the door.** A song carries a complete
+copy of its presets rather than a reference (see `registerSongVoice`), so every mix saved
+before the merge still says `kind: 'noise'` and still has a `body` in it, for good.
+`noiseCopyAsDrum` in `src/data/voices.js` translates those copies as they enter the
+catalogue — a shim for data nobody can rewrite, rather than a branch left in the engine.
 
-- **Noise burst**: The engine's **seeded** `AudioSys.noiseBuf` → `BiquadFilterNode` → `GainNode` with exponential decay
-  - Filter: configurable `type`, `frequency`, `Q`
-  - Envelope: instant attack, exponential decay over `noise.decay` seconds
-- **Optional pitched body**: `OscillatorNode` with a pitch envelope (`from` → `to` Hz over `decay` seconds) — what tells a snare from a hiss
-- **Taps**: Optional repeats at millisecond offsets — a clap is one hit heard several times in a small room. Each tap is quieter by `tapFalloff^i`
-- **Never pooled** — one-shot native nodes per hit
-- **Deterministic offline**: Uses the engine's seeded noise buffer, never `Tone.Noise` or `Math.random()`
-
-### Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `noise.type` | `'bandpass'` | Filter type: `'bandpass'`, `'highpass'`, `'lowpass'` |
-| `noise.freq` | `2600` | Filter cutoff frequency in Hz |
-| `noise.Q` | `0.7` | Filter resonance |
-| `noise.decay` | `0.09` | Decay time in seconds |
-| `noise.gain` | `1` | Noise section level |
-| `noise.attack` | (instant) | Attack time |
-| `noise.color` | `'white'` | `pink`/`brown`/`blue`/`violet` — see §Colours |
-| `noise.slope` | `-12` | `-24` / `-48` cascade the filter |
-| `humanize.*` | `0` | Per-hit level/pitch/tone variation |
-| `tapDetune` / `tapTone` | `1` | Per-tap pitch and filter walks |
-| `body.type` | `'triangle'` | Body oscillator waveform |
-| `body.from` | `210` | Starting pitch in Hz |
-| `body.to` | `140` | Ending pitch in Hz |
-| `body.decay` | `0.06` | Body decay time |
-| `body.gain` | `0.375` | Body level |
-| `taps[]` | `[0]` | Tap offsets in seconds |
-| `tapFalloff` | `1` | Per-tap gain multiplier |
-
-### Presets (15 total)
-
-| ID | Label | Category | Key Feature |
-|----|-------|----------|-------------|
-| `snareCrisp` | Snare | Snare | Engine's own snare — bright band, short decay, triangle body |
-| `snareFat` | Fat Snare | Snare | Lower band, longer tail, more body |
-| `snareTight` | Tight Snare | Snare | Gated — cut off almost before it starts |
-| `snareBrush` | Brush | Snare | Highpassed sweep, no body |
-| `snareRim` | Rimshot | Snare | Narrow, high, instant — the stick not the skin |
-| `clap808` | Clap | Clap | 4 bursts, 11–36ms apart |
-| `clapTight` | Tight Clap | Clap | 3 closer, shorter bursts |
-| `clapRoom` | Big Room Clap | Clap | 5 bursts spread wider, long tail |
-| `hatClosed` | Closed Hat | Hats | Very short highpassed tick (28ms) |
-| `hatOpen` | Open Hat | Hats | Same band ringing for 330ms |
-| `hatPedal` | Pedal Hat | Hats | Duller, lower — foot-closing sound |
-| `shaker` | Shaker | Perc | Soft band, no attack |
-| `tambourine` | Tambourine | Perc | Bright with pitch body |
-| `noiseSweep` | Noise Hit | FX | Wide unfiltered burst, long fall |
+What the merge added, going the other way: a burst preset can now have a resonator, a
+metal cluster, a drive shaper, a two-stage `sag` and a `pitchCurve`, none of which the
+noise path could express.
 
 ---
 
@@ -422,14 +411,14 @@ Filtered noise bursts with an optional pitched body — the snare, clap, hat, an
 **File:** `src/engine/voices.js` lines ~444–550
 
 ### Purpose
-Full KLNG8esis in the "Microtonic" style — **four** independent sources (oscillator, noise, resonator, metal cluster), each with its own envelope, summed and optionally driven into a waveshaper. This is a drum designed from first principles rather than a filtered noise burst with a thump under it.
+Full KLNG8esis in the "Microtonic" style — **five** independent sources (two oscillators, noise, resonator, metal cluster), each with its own envelope, summed and optionally driven into a waveshaper. This is a drum designed from first principles rather than a filtered noise burst with a thump under it.
 
 The osc and noise sections are the original pair. The resonator and the cluster were added because filtered noise cannot make two sounds the kit needs: something **struck that then rings** (a rim, a clave, the shell of a snare) and something genuinely **metallic** (a hat, a cowbell, a cymbal). Every addition is default-off, and a preset that names none of the new keys renders sample-identically to how it did before they existed — verified by re-measuring the whole library.
 
 ### Sound Generation
 
 ```
-  ┌─ Osc section (optional) ───────────────────────────────┐
+  ┌─ Osc sections ×2 (both optional) ──────────────────────┐
   │  OscillatorNode ──→ GainNode ──┐                       │
   │  (type, from→to Hz)   (AHD env)│                       │
   │      ↑ [FM: modulator osc → gain(env) → .frequency]    │
@@ -456,9 +445,24 @@ The osc and noise sections are the original pair. The resonator and the cluster 
   Per-hit gain/pitch/filter jitter, seeded from the SCHEDULED TIME
 ```
 
-### The Four Sources
+### The Five Sources
 
-#### Osc Section (`v.osc`)
+#### Osc Sections (`v.osc`, `v.osc2`)
+
+**Two of them, and they are the same section twice.** `_playDrum` builds both from one
+`buildOsc` closure, so every key below reads identically on either — the panel draws the
+two cards from one `oscRows` builder for the same reason, and `tests/synth-full-layout.js`
+compares the two card shapes so a control cannot grow on one alone.
+
+Why a second one at all: three classic drums are a *pair* of tuned bodies and cannot be
+stated as one. The 808 snare is two bridged-T oscillators around 185 and 330 Hz under its
+noise; a Simmons tom is two detuned sines falling at *different rates*, and the drifting
+beat between them is the sound; a 909 kick is a body with a separately tuned click on
+top, not one oscillator with a fast front on it. `knock` covered exactly one of those
+cases with its shape welded shut — see below, where it stays.
+
+`osc2` is absent from every preset written before it, so the whole library renders
+sample-identically without it.
 - **Waveform**: `'sine'`, `'triangle'`, `'square'`, `'sawtooth'`
 - **Pitch envelope**: `from` Hz → `to` Hz over `sweep` seconds (e.g., a kick drops from 165→48 Hz), shaped by `pitchCurve` — see [Pitch curves](#pitch-curves)
 - **Amp envelope**: Attack (default instant) → optional Hold → Decay, with curve `'exp'` (struck) or `'lin'` (gated). `curve` is the **level**; `pitchCurve` is the **pitch**, and a kick usually wants a different shape for each
@@ -467,7 +471,7 @@ The osc and noise sections are the original pair. The resonator and the cluster 
 
 #### Noise Section (`v.noise`)
 - **Source**: The engine's seeded noise buffer, **looped**, optionally re-**coloured** (see §Noise Buffers)
-- **Filter**: 1, 2 or 4 cascaded `BiquadFilterNode`s — `slope: -12 | -24 | -48`. Resonance is applied to the **first stage only**; Q on every stage of a cascade multiplies into a howl
+- **Filter**: 1, 2 or 4 cascaded `BiquadFilterNode`s — `slope: -12 | -24`, with `-48` still read for stored presets. Resonance is applied to the **first stage only**; Q on every stage of a cascade multiplies into a howl (which is exactly what Tone's own `Filter` does, and why `-48` came off the desk)
 - **Filter sweep**: The cutoff can itself sweep — `freq` → `to` over `sweep` seconds
 - **Amp envelope**: Same AHD + curve as the osc section
 
@@ -479,7 +483,9 @@ The osc and noise sections are the original pair. The resonator and the cluster 
 #### Knock (`v.knock`) — a level, not a section
 The engine's kick is *three* layers: a sine body, a noise click, and between them a short triangle punch around 300 Hz — the band the bass mostly leaves open, which is what lets a kick read on a phone speaker where the sub is felt rather than heard. `scheduleStep` has always had it as `kickKnock`.
 
-It takes a level and nothing else. Its shape is the engine's — 300 → 180 Hz over 40 ms, up in 4 ms, gone in 50 — because it is the second oscillator a kick needs and the only one, and every parameter it could expose is one more control on a panel pinned to a strip's width. `0` builds nothing.
+It takes a level and nothing else. Its shape is the engine's — 300 → 180 Hz over 40 ms, up in 4 ms, gone in 50 — because it is the punch a *kick* wants, already voiced, and every parameter it could expose is one more control on a panel pinned to a strip's width. `0` builds nothing.
+
+`osc2` did not retire it and could not: 179 presets and every song's frozen copy of them carry `knock`, so it stays exactly what it was. What changed is the claim around it — it is no longer *the* second oscillator, it is a preset shortcut for one particular one. It is gated on `v.osc`, not on either oscillator: a preset with only an `osc2` has already reached for the general tool.
 
 #### Metal Section (`v.metal`) — the cluster
 - `count` (≤6) square oscillators at inharmonic `ratios` (default `[1, 1.342, 1.2312, 1.6532, 1.9523, 2.1523]` — the 808's) through a highpass. `spread` stretches the ratios around the fundamental: 0 collapses them onto one note, 2 is twice the 808's spacing
@@ -523,7 +529,7 @@ Reads `attack`, `hold`, `decay`, `curve`, `sag` and `sagAt` off the section itse
 
 ### Key Design Decisions
 
-1. **Either section can be omitted** — a tom is all osc, a clap (like `dsClap`) is all noise
+1. **Any section can be omitted** — a tom is all osc, a clap (like `dsClap`) is all noise
 2. **Level applied AFTER the shaper** — the shaper sees the preset's own levels and nothing else. If the shaper were after the lane's gain, the sound would change depending on how loud the lane happens to be
 3. **Taps work here too** — `dsClap` has 4 taps 10–33ms apart
 4. **Never pooled** — one-shot native nodes per hit, same as noise presets
@@ -542,6 +548,7 @@ Reads `attack`, `hold`, `decay`, `curve`, `sag` and `sagAt` off the section itse
 | `osc.decay` | `0.35` | Osc amp decay time |
 | `osc.curve` | `'exp'` | **Amp** envelope curve: `'exp'` or `'lin'` |
 | `osc.gain` | `1` | Osc section level |
+| `osc2.*` | (osc's) | **The second oscillator — every key above, read identically.** Both are built by one `buildOsc`, so `osc2.from` falls back to the same 190 Hz `osc.from` does. Absent by default |
 | `noise.type` | `'bandpass'` | Noise filter type |
 | `noise.freq` | `2600` | Filter cutoff in Hz |
 | `noise.to` | (none) | Filter cutoff sweep target |
@@ -562,7 +569,7 @@ Reads `attack`, `hold`, `decay`, `curve`, `sag` and `sagAt` off the section itse
 | `noise.color` | `'white'` | `white` \| `pink` \| `brown` \| `blue` \| `violet` |
 | `noise.long` / `ring.long` | (auto) | Force the 2.5s buffer; picked automatically past 0.5s |
 | `metal.to` / `metal.sweep` | (none) | The whole cluster sagging, each partial keeping its ratio |
-| `noise.slope` | `-12` | Filter slope: `-12` (1 biquad), `-24` (2), `-48` (4) |
+| `noise.slope` | `-12` | Filter slope: `-12` (1 biquad) or `-24` (2). `-48` (4) is read but not offered |
 | `ring.freq` | `400` | Resonance pitch in Hz |
 | `ring.to` / `ring.sweep` | (none) | Resonance sweep target and duration |
 | `ring.Q` | `40` | Narrowness — and so the ring time, `Q / (π·freq)` |
@@ -621,6 +628,14 @@ Reads `attack`, `hold`, `decay`, `curve`, `sag` and `sagAt` off the section itse
 | `clapHands` | = Hands Clap | Clap | **tapTone + humanise**: four hands, none of them identical |
 | `kickCrush` | = Crushed Kick | Kick | **crush + tone**: bit-crushed 808 with the top pulled off |
 
+**Using the second oscillator:**
+
+| ID | Label | Category | What it demonstrates |
+|----|-------|----------|----------------------|
+| `snareTwoBody` | = Two-Body Snare | Snare | The 808's construction: two tuned bodies at 185 and 330 Hz, each barely falling, with the noise outlasting both |
+| `tomSimmons` | = Simmons Tom | Tom | **Two pitch envelopes.** Two sines starting 6 Hz apart and falling at different *rates*, so the beat between them slows as the drum drops |
+| `kickClickTop` | = Click-Top Kick | Kick | **A separately tuned click.** 1.6 kHz → 320 Hz in four milliseconds over a body that has barely started to move — the 909's two circuits, not one oscillator with a fast front |
+
 **The engine's own kit, transcribed.** All eight hand-written drums in `scheduleStep`, stated as data. Not new sounds — the point is the claim: everything the engine's kit does, this construction can now say. Verified by rendering each lane twice, the engine's own voice and then the preset, and comparing band by band:
 
 | ID | Label | overall | low | mid | high |
@@ -662,10 +677,9 @@ scheduleStep()                       audio.js ~line 1997
   │     │
   │     └─ else → this.voices.play(key, v.id, freq, {...})
   │                │
-  │                ├─ kind === 'noise'  → _playNoise(v, {...})
   │                ├─ kind === 'drum'   → _playDrum(v, {...})
-  │                ├─ synth === 'GameSynth'     → _playGame(v, {...})
-  │                ├─ synth === 'AdditiveSynth' → _playAdditive(v, {...})
+  │                ├─ synth === 'KNDO-5'     → _playGame(v, {...})
+  │                ├─ synth === 'WNDR-9' → _playAdditive(v, {...})
   │                ├─ synth === 'MRDR-3'    → _playLayer(v, {...})
   │                └─ else → Tone pool (_pool() → triggerAttackRelease())
   │
@@ -699,7 +713,7 @@ Critical for deterministic offline rendering:
 
 - **Created in `AudioSys.ensure()`**: A 0.5s buffer filled with seeded `mulberry32` PRNG (offline) or `Math.random()` (live)
 - **Separate 2.5s `crashBuf`** for crash cymbals that outlast the main buffer
-- **All noise-based presets** (`_playNoise`, `_playDrum`) and engine percussion use these buffers — never `Tone.Noise`
+- **Every drum preset** (`_playDrum`) and all engine percussion use these buffers — never `Tone.Noise`
 - **This is what makes stems sum back to the mix** in offline renders — two renders of the same song produce identical PCM
 
 In `_playDrum`, the noise buffer is **looped** (`src.loop = true`) because a 0.5s buffer may be shorter than an open hat's envelope. The filter takes the edge off the loop seam.
@@ -738,27 +752,28 @@ native synth output ──→ wet (GainNode) → delay send → echoBus → ... 
 
 ---
 
-## 9. Comparison: GameSynth vs Noise vs Drum
+## 9. Comparison: KNDO-5 vs KLNG8
 
-| Aspect | GameSynth | Noise | KLNG8 |
-|--------|-----------|-------|------------|
-| **Purpose** | Simple pitched tones | Filtered noise percussion | Full KLNG8esis |
-| **Sound sources** | 1 oscillator, **or** noise through a note-tracking bandpass | 1 noise burst + optional pitched body | 4 independent sources (osc, noise, ring, metal), each optional |
-| **Pitch envelope** | `pitch.semitones` → the note, over its own A/D/S/R, in cents | Body: `from`→`to` Hz | Osc: `from`→`to` over `sweep`, shaped by `pitchCurve` (+ optional FM); Noise/ring/metal: filter sweeps |
-| **Filter** | One bandpass, on the `noise` waveform only, centred on the note | Biquad cascade on the burst (`slope`) | Biquad cascade per section, plus a tone filter after the shaper |
-| **Drive** | None | None | WaveShaper: `soft`, `fold` or `crush`, square-law scaled |
-| **Envelope** | AR only (attack, release) | Exponential decay only (instant attack) | Full AHD per section, `'exp'` or `'lin'` curve |
-| **Modulation** | Vibrato LFO shared by the chord, with an onset delay | None | None |
-| **Per-hit variation** | None | `humanize` + tap walks | `humanize` + tap walks |
-| **Taps** | No | Yes | Yes |
-| **Polyphony** | Yes (chord = multiple nodes) | No (one-shot) | No (one-shot) |
-| **Pooling** | Never | Never | Never |
-| **Preset count** | 4 | 15 | 13 |
-| **Location in `voices.js`** | `_playGame()` lines ~280 | `_playNoise()` lines ~390 | `_playDrum()` lines ~444 |
+| Aspect | KNDO-5 | KLNG8 |
+|--------|-----------|------------|
+| **Purpose** | Simple pitched tones | Every one-shot in the catalogue |
+| **Sound sources** | 1 oscillator, **or** noise through a note-tracking bandpass | 4 independent sources (osc, noise, ring, metal), each optional, plus the knock |
+| **Pitch envelope** | `pitch.semitones` → the note, over its own A/D/S/R, in cents | Osc: `from`→`to` over `sweep`, shaped by `pitchCurve` (+ optional FM); noise/ring/metal: filter sweeps |
+| **Filter** | One bandpass, on the `noise` waveform only, centred on the note | Biquad cascade per section, plus a tone filter after the shaper |
+| **Drive** | None | WaveShaper: `soft`, `fold` or `crush`, square-law scaled |
+| **Envelope** | AR only (attack, release) | Full AHD per section, `'exp'` or `'lin'` curve, two-stage `sag` |
+| **Modulation** | Vibrato LFO shared by the chord, with an onset delay | None |
+| **Per-hit variation** | None | `humanize` + tap walks |
+| **Taps** | No | Yes |
+| **Choke** | No | `monoGroup` — a hit releases whatever else in its group is ringing, across this path and the pooled one |
+| **Polyphony** | Yes (chord = multiple nodes) | No (one-shot) |
+| **Pooling** | Never | Never |
+| **Preset count** | 4 | 105 |
+| **Location in `voices.js`** | `_playGame()` | `_playDrum()` |
 
 ### The pitched natives, side by side
 
-| Aspect | GameSynth | AdditiveSynth | MRDR-3 |
+| Aspect | KNDO-5 | WNDR-9 | MRDR-3 |
 |--------|-----------|---------------|------------|
 | **Model** | one source | one stack of partials | up to three complete voices |
 | **The one thing it owns** | pitched noise + the arcade `sweep` | `stretch`/`damp` — organ to bell on two knobs | per-layer `len` — layers that outlive each other |
@@ -774,15 +789,13 @@ native synth output ──→ wet (GainNode) → delay send → echoBus → ... 
 
 ### When to Use Which
 
-- **GameSynth**: When you want a simple, lightweight waveform replacement for the engine's built-in square/saw/triangle/sine — no Tone.js overhead, just the source and an AR gain. Good for chip-style leads and basic tones, and — with `sweep`, `vibrato` and the `noise` waveform — the arcade-cabinet end of that: coins, lasers, power-ups, explosions, and the wobble a chip lead leans into a held note with.
+- **KNDO-5**: When you want a simple, lightweight waveform replacement for the engine's built-in square/saw/triangle/sine — no Tone.js overhead, just the source and an AR gain. Good for chip-style leads and basic tones, and — with `sweep`, `vibrato` and the `noise` waveform — the arcade-cabinet end of that: coins, lasers, power-ups, explosions, and the wobble a chip lead leans into a held note with.
 
   The line against the noise and drum tables is **whether the sound follows the melody**. A hat is a hat at whatever pitch the lane is playing, so it belongs in `NOISE` or `DRUM`; chip noise is a *part*, and its filter tracks the note.
 
-- **Noise**: When the sound is mostly air — snares, claps, hats, shakers. The pitched body (triangle knock) tells a snare from a hiss. Taps make claps. This is the engine's own snare construction, extracted into presets.
+- **KLNG8**: Every one-shot. A kick with a sine drop and a noise click, a snare with a triangle knock and a noise band, a tom that's all pitch, a clap that is all air and taps, a cymbal that is six inharmonic squares. The drive shaper adds warmth or crunch, and `monoGroup` makes two of them one channel. This is the Microtonic model: independent sources, each fully enveloped, summed and shaped — and since the noise path folded into it, the only place a drum is built.
 
-- **KLNG8**: When you want to design a drum from first principles — a kick with a sine drop and a noise click, a snare with a triangle knock and a noise band, a tom that's all pitch. The drive shaper adds warmth or crunch. This is the Microtonic model: two sources, each fully enveloped, summed and shaped.
-
-- **AdditiveSynth**: When the sound is a *spectrum you place by hand* — an organ
+- **WNDR-9**: When the sound is a *spectrum you place by hand* — an organ
   registration, a bell, glass. If you find yourself wanting a filter on it, you
   probably wanted a partial pushed in instead; that is the additive move.
 

@@ -46,7 +46,7 @@ await page.setContent('<!doctype html><meta charset="utf-8">'
 { waitUntil: 'load' });
 const effects = [
   ['chorus2', { rateSync: 0, frequency: 0.65 }],
-  ['bitcrusher', { bits: 8, drive: 6, tone: 12000 }],
+  ['bitcrusher', { bits: 8, downsample: 4 }],
   ['rhythmgate', { division: 0.5, gateLength: 0.5, attack: 0.003, decay: 0.035, depth: 1 }],
   ['flanger', { rateSync: 0, frequency: 0.25 }],
   ['ringmod', { rateSync: 0, frequency: 30, waveform: 'sine' }],

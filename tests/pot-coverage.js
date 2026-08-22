@@ -5,13 +5,13 @@
  * which keys on a preset actually do something. Nothing enforced that agreement, and it
  * drifted in both directions —
  *
- *   · every one of the eight GameSynth presets carried a `fixedLength` the panel hid, so
+ *   · every one of the eight KNDO-5 presets carried a `fixedLength` the panel hid, so
  *     the length that governed them in every song was invisible and unreachable;
- *   · five pooled presets (four MetalSynths and an FMSynth) carried `taps`/`tapFalloff`,
+ *   · five pooled presets (four Tone drums and an FMSynth) carried `taps`/`tapFalloff`,
  *     which `play` honours for any pooled class, with no Taps card on those panels;
  *   · `clapEngine`'s whole shape — `tapGains` and `tapDecays`, the two slaps and then the
  *     room — had no control anywhere;
- *   · the Taps card offered AdditiveSynth a TONE pot whose path never reads `tapTone`.
+ *   · the Taps card offered WNDR-9 a TONE pot whose path never reads `tapTone`.
  *
  * None of it is visible from inside either file. So this test reads the engine's own
  * `v.<key>` accesses out of src/engine/voices.js and src/engine/audio.js, asks the panel
@@ -28,7 +28,9 @@
  * two exception tables with a reason beside it, which is the outcome we want anyway.
  */
 import { readFileSync } from 'node:fs';
-import { panelKeys, EDITABLE_SYNTHS, CHORUS_DEFAULTS } from '../tools/mixer-voice-editor.js';
+import {
+  panelKeys, panelSpec, EDITABLE_SYNTHS, CHORUS_DEFAULTS,
+} from '../tools/mixer-voice-editor.js';
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
@@ -37,7 +39,7 @@ const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '
 //
 // A CALL does not: `v.map(...)` and `v.filter(...)` are a local list of frequencies being
 // mapped, not preset keys, and no preset key is ever invoked. Dropping the call form is
-// what lets `filter` stay a real key — a GameSynth's tone filter — while the array method
+// what lets `filter` stay a real key — a KNDO-5's tone filter — while the array method
 // of the same name in audio.js is ignored.
 const readsIn = (body) => {
   const keys = new Set();
@@ -109,7 +111,7 @@ const clean = (keys) => new Set([...keys].filter((k) => !BUILTIN.has(k) && !STRU
 // LENGTH and FIXED LENGTH into the note, and scheduleStep folds TRIM into its gain.
 const SHARED = clean(readsIn(read('src/engine/audio.js')));
 
-const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== 'AdditiveSynth'
+const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'KNDO-5' && s !== 'WNDR-9'
   && s !== 'MRDR-3' && s !== 'TNGR-2');
 
 /**
@@ -121,12 +123,10 @@ const POOLED = EDITABLE_SYNTHS.filter((s) => s !== 'GameSynth' && s !== 'Additiv
  * what `tapDecays` overrides.
  */
 const CASES = [
-  { name: 'noise', voice: { kind: 'noise', noise: {}, body: {}, taps: [0, 0.01] },
-    methods: ['_playNoise'], oneShot: true },
   { name: 'drum', voice: { kind: 'drum', noise: {}, osc: {}, taps: [0, 0.01] },
     methods: ['_playDrum'], oneShot: true },
-  { name: 'GameSynth', voice: { synth: 'GameSynth', filter: {} }, methods: ['_playGame'] },
-  { name: 'AdditiveSynth', voice: { synth: 'AdditiveSynth', additive: {} },
+  { name: 'KNDO-5', voice: { synth: 'KNDO-5', filter: {} }, methods: ['_playGame'] },
+  { name: 'WNDR-9', voice: { synth: 'WNDR-9', additive: {} },
     methods: ['_playAdditive'] },
   // No tap array: `_playLayer` has no tap loop, so there is no Taps card to gate into
   // existence and a tap array here would only describe a panel that does not exist.
@@ -160,12 +160,7 @@ const CASES = [
  * second, conflicting place to state note length.
  */
 const HIDDEN_OK = {
-  noise: ['dur', 'fixedLength'],
   drum: ['dur', 'fixedLength'],
-  // DuoSynth's built-in vibrato is its authoritative pitch LFO. The generic rack-wide
-  // `vibrato` read remains in the shared builder for legacy/imported shapes, but Duo's
-  // panel deliberately exposes only `vibratoAmount`/`vibratoRate` on its native card.
-  DuoSynth: ['vibrato'],
 };
 
 /**
@@ -173,11 +168,11 @@ const HIDDEN_OK = {
  *
  * `monoGroup` names a voice-stealing group that spans a whole KIT — "a new drum hit
  * releases the previous one whatever lane made it", which is how the Food Court gets the
- * single percussion channel a tiny console had. That makes it a property of how a kit was
- * authored, not a knob on one preset: a pot on one voice has nothing to say, because the
- * value only means anything when a SECOND voice names the same group. It is set in the
- * song file and read by the rack, which is the one shape "every key gets a pot" was never
- * about — see the note above, and `_monoGroups` in src/engine/voices.js.
+ * single percussion channel a tiny console had. It is drawn NOW, as CHOKE on the one-shot
+ * panels, because the hats every kit wants choked were otherwise only authorable by
+ * hand-editing a song file. It stays hidden on the POOLED classes: `play` reads it for
+ * any voice, but a choke group on a lead is a kit control on an instrument that is not
+ * part of a kit, and the arcade Tone drums that do use one are authored in source.
  *
  * `chorus` is the same kind of compatibility read for the pooled Tone families. The
  * user-facing chorus is a channel insert on MRDR-3 (the three MRDR chorus pots are still
@@ -194,7 +189,13 @@ const LEGACY_LENGTH_KEYS = new Set(['dur', 'fixedLength']);
 const DRAWN_OK = {
   // The nine drawbars and the two envelopes are `additive.*`, which `_playAdditive` picks
   // apart itself — the root key is what the extraction sees, and panelKeys agrees.
-  // Nothing here yet; kept as the place to state a reason rather than widen a set.
+  //
+  // CHOKE is read one frame out from the method this case names: `play` resolves
+  // `v.monoGroup` into a group key and hands it down, so `_playNoise`/`_playDrum` never
+  // mention the word. The extraction reads method bodies, so it cannot see that — and
+  // naming `play` in `methods` here would drag every pooled-path read onto the drum case
+  // instead. tests/drum-choke.js is what actually holds the behaviour.
+  drum: ['monoGroup'],
 };
 
 let failed = 0;
@@ -210,7 +211,7 @@ for (const c of CASES) {
   const allowHidden = new Set([
     ...HIDDEN_OK_EVERY,
     ...(HIDDEN_OK[c.name] || []),
-    ...((!c.oneShot && c.name !== 'noise' && c.name !== 'drum') ? LEGACY_LENGTH_KEYS : []),
+    ...((!c.oneShot && c.name !== 'drum') ? LEGACY_LENGTH_KEYS : []),
   ]);
   const allowDrawn = new Set(DRAWN_OK[c.name] || []);
 
@@ -221,6 +222,61 @@ for (const c of CASES) {
   if (dead.length) fail(`${c.name}: a pot with nothing behind it — ${dead.join(', ')}`);
   if (!hidden.length && !dead.length) {
     console.log(`ok: ${c.name} — ${panel.size} controls, all of them live`);
+  }
+}
+
+// Root-key coverage above cannot distinguish `vibrato.rate` from `vibrato.spread`, or
+// one supported humanize leaf from another. Assert the shared cards at their real path
+// granularity so a permanently false guard cannot make a dead control look covered.
+const leafRows = (voice) => {
+  const { common, groups } = panelSpec(voice);
+  return [...common.rows, ...groups.flatMap((group) => group.rows || [])];
+};
+const leafMap = (voice) => new Map(leafRows(voice).map((row) => [row.path, row]));
+const hasLeaf = (voice, path) => leafMap(voice).has(path);
+const expectLeaf = (voice, path, expected, why) => {
+  const actual = hasLeaf(voice, path);
+  if (actual !== expected) fail(`${voice.kind || voice.synth}: ${path} ${why}`);
+};
+
+const NON_MRDR_MELODIC = EDITABLE_SYNTHS
+  .filter((synth) => synth !== 'MRDR-3')
+  .map((synth) => ({ synth }));
+for (const voice of NON_MRDR_MELODIC) {
+  expectLeaf(voice, '$vibrato.spread', false,
+    'must be absent because this engine has no per-unison vibrato voices');
+}
+for (const voice of [{ kind: 'drum' }]) {
+  expectLeaf(voice, '$vibrato.depth', false, 'must be absent on an unpitched one-shot');
+  expectLeaf(voice, '$vibrato.spread', false, 'must be absent on an unpitched one-shot');
+  expectLeaf(voice, '$humanize.entry', false, 'must be absent without unison voices');
+}
+expectLeaf({ synth: 'WNDR-9' }, '$humanize.entry', false,
+  'must be absent without unison voices');
+expectLeaf({ synth: 'WNDR-9' }, '$humanize.filter', false,
+  'must be absent because the additive path never reads filter variation');
+
+const POOLED_GENERIC_VIBRATO = EDITABLE_SYNTHS.filter((synth) =>
+  !['KNDO-5', 'WNDR-9', 'MRDR-3', 'TNGR-2'].includes(synth));
+for (const synth of POOLED_GENERIC_VIBRATO) {
+  const row = leafMap({ synth }).get('$vibrato.depth');
+  if (!row || row.min !== 0 || row.max !== 1 || row.unit !== '') {
+    fail(`${synth}: VIB DEPTH must expose Tone.Vibrato's normalized 0-1 range without semitone units`);
+  }
+}
+
+// MRDR is deliberately frozen while its AudioWorklet backend is being built. These
+// assertions do not redefine its panel; they ensure this non-MRDR cleanup cannot remove
+// or rescale the controls already exposed by the native implementation.
+{
+  const mrdr = { synth: 'MRDR-3', layer: { osc1: { unison: 2 } } };
+  const rows = leafMap(mrdr);
+  const depth = rows.get('$vibrato.depth');
+  for (const path of ['$vibrato.delay', '$vibrato.spread', '$humanize.entry', '$portamento']) {
+    if (!rows.has(path)) fail(`MRDR-3 freeze: ${path} changed during the non-MRDR cleanup`);
+  }
+  if (!depth || depth.min !== 0 || depth.max !== 12 || depth.unit !== 'semi') {
+    fail('MRDR-3 freeze: native VIB DEPTH range or unit changed during the non-MRDR cleanup');
   }
 }
 
@@ -275,7 +331,8 @@ if (inert.size) {
 //     8000. A ding is a high thin body; that is the preset, not a typo.
 //   · the three VL-1 pipe voices store an attack of 0 — no ramp at all, which `env()`
 //     honours — under a floor of 1ms.
-//   · both CR-78/808 cowbells sweep in 4ms, under a floor of 5ms and off its 5ms grid.
+//   · legacy cowbell copies once stored 4ms pitch sweeps, under a floor of 5ms and off
+//     its 5ms grid — fixed-frequency 808 recipes now keep that path out entirely.
 //   · `tpAlienChorus` is ten detuned oscillators against a UNISON stop of 8.
 //
 // Each preset's OWN panel is asked — `panelSpec(v)` gives the rows that preset would
@@ -358,6 +415,98 @@ if (drifted.length) {
 } else {
   console.log(`\nok: ${Object.keys(CHORUS_DEFAULTS).length} chorus pots open on the value`
     + ' the engine would have used anyway');
+}
+
+// ---- THE SAME TWO DIRECTIONS, ONE LEVEL DOWN --------------------------------
+//
+// Everything above works at ROOT-key granularity: `v.metal` either has a card or it does
+// not. That is precisely where `metal.slope` hid — seven presets in the bank stored a
+// -24 dB slope on a section whose card had no SLOPE pot, and nothing complained, because
+// the Metal card exists and `metal` is therefore "drawn". The same blind spot held the
+// cluster's whole pitch sag (`metal.to`, `metal.sweep`), its amp CURVE, the HOLD stage on
+// two of the four sections, the ring's COLOUR and SWEEP TIME, and `sagAt` on all of them.
+//
+// So the drum sections get the same pair of checks their parents get.
+const VOICE_COUNT_DRUM = Object.values(VOICES).filter((v) => v.kind === 'drum').length;
+const DRUM_SECTIONS = ['osc', 'osc.fm', 'osc2', 'osc2.fm', 'noise', 'ring', 'metal'];
+const at = (obj, path) => path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
+
+/** Section keys a preset may carry with no pot, each with the reason it is not a bug. */
+const SECTION_HIDDEN_OK = {
+  // Six numbers naming where the cluster's partials sit against its fundamental. It is a
+  // LIST, and a list is not a knob: PARTIALS says how many of them sound and PARTIAL
+  // SPREAD pulls them apart, which is what a hand reaches for. Choosing the ratios
+  // themselves is a preset-level decision, the way `taps` and the drawbars are.
+  'metal.ratios': 'the partial ratio list is data, not a control',
+  'metal.floor': 'the exact one-shot VCA floor is part of the hardware recipe',
+  'metal.hardStop': 'the exact one-shot source stop is part of the hardware recipe',
+  'metal.resonator': 'the resonant tail is controlled by the Advanced switch, not separate pots',
+};
+
+{
+  const sectionMisses = new Map();
+  for (const [id, v] of Object.entries(VOICES)) {
+    if (v.kind !== 'drum') continue;
+    let drawn;
+    try {
+      const { common, groups } = panelSpec(v);
+      drawn = new Set([...common.rows, ...groups.flatMap((g) => g.rows || [])]
+        .map((r) => r.path.replace(/^\$/, '')));
+    } catch { continue; }
+    for (const sec of DRUM_SECTIONS) {
+      const obj = at(v, sec);
+      if (!obj || typeof obj !== 'object') continue;
+      for (const key of Object.keys(obj)) {
+        const full = `${sec}.${key}`;
+        // A nested SECTION is descended into on its own pass, not treated as a key of
+        // its parent — `osc.fm` has a card of its own.
+        if (DRUM_SECTIONS.includes(full) || drawn.has(full) || SECTION_HIDDEN_OK[full]) continue;
+        if (!sectionMisses.has(full)) sectionMisses.set(full, []);
+        sectionMisses.get(full).push(id);
+      }
+    }
+  }
+  if (sectionMisses.size) {
+    for (const [full, ids] of sectionMisses) {
+      failed++;
+      console.log(`FAIL: ${ids.length} preset(s) store ${full} and no pot edits it`
+        + ` — ${ids.slice(0, 3).join(', ')}${ids.length > 3 ? `, +${ids.length - 3} more` : ''}`);
+    }
+  } else {
+    console.log(`\nok: every key the ${VOICE_COUNT_DRUM} drum presets store on a section`
+      + ' has a pot that edits it');
+  }
+}
+
+// ...and the FORWARD direction for the one helper every section shares.
+//
+// `env()` shapes all five sources off the section object it is handed, so whatever it
+// reads there is a control on all five cards at once — which is how HOLD came to exist on
+// two of them and `sagAt` on none. Read out of the engine rather than listed here, so the
+// day a sixth stage is added the cards are required to grow it.
+{
+  const body = read('src/engine/voices.js').split('const env = (param, t, level, sec = {}')[1];
+  const envKeys = new Set();
+  if (body) {
+    for (const m of strip(body.slice(0, body.indexOf('\n    };')))
+      .matchAll(/\bsec\.([A-Za-z_$][\w$]*)/g)) envKeys.add(m[1]);
+  }
+  const shaped = ['osc', 'osc2', 'noise', 'ring', 'metal'];
+  const { common, groups } = panelSpec({ kind: 'drum' });
+  const drawn = new Set([...common.rows, ...groups.flatMap((g) => g.rows || [])]
+    .map((r) => r.path.replace(/^\$/, '')));
+  const gaps = [];
+  for (const sec of shaped) {
+    for (const key of envKeys) if (!drawn.has(`${sec}.${key}`)) gaps.push(`${sec}.${key}`);
+  }
+  if (!envKeys.size) { failed++; console.log('FAIL: could not read the drum envelope helper'); }
+  else if (gaps.length) {
+    failed += gaps.length;
+    for (const g of gaps) console.log(`FAIL: the drum envelope reads ${g} and no pot writes it`);
+  } else {
+    console.log(`ok: the drum envelope's ${envKeys.size} stages`
+      + ` (${[...envKeys].sort().join(', ')}) each have a pot on all ${shaped.length} sections`);
+  }
 }
 
 console.log(failed ? `\nPOT COVERAGE: ${failed} FAILED` : '\nPOT COVERAGE: PASSED');

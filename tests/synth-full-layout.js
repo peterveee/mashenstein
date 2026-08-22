@@ -25,12 +25,21 @@
 import { isDeepStrictEqual } from 'node:util';
 import {
   checkFullLayout, fullLayout, panelSpec, quickRows, stripPanelSpec,
-  copyLayerData,
+  copyLayerData, setCrls1Filter, setRmnd2Mode,
 } from '../tools/mixer-voice-editor.js';
+import { VOICES } from '../src/data/voices.js';
+import { VoiceRack } from '../src/engine/voices.js';
+import { WAVE_GLYPHS } from '../tools/lib/wave-glyphs.js';
+import { synthDisplayName } from '../tools/lib/synth-display.js';
 
 let failed = 0;
 const fail = (msg) => { failed++; console.log(`FAIL: ${msg}`); };
 const ok = (msg) => console.log(`ok: ${msg}`);
+
+for (const [stored, branded] of [['Synth', 'CRLS-1'], ['MonoSynth', 'CRLS-1'], ['drum', 'KLNG-8']]) {
+  if (synthDisplayName(stored) !== branded) fail(`${stored} is branded ${synthDisplayName(stored)}, not ${branded}`);
+}
+if (!failed) ok('legacy CRLS-1 aliases and the drum kind use their public UI brands');
 
 const VOICE = { synth: 'MRDR-3' };
 const DRUM = { kind: 'drum' };
@@ -54,64 +63,212 @@ if (JSON.stringify(copyVoice.layer.osc2) !== JSON.stringify(copyBefore.layer.osc
   fail('MRDR layer copy did not duplicate the live subtree and remap bypassed sections');
 } else ok('MRDR layer copy duplicates live and bypassed layer state exactly');
 
-// The strip surface must be resolved from the newly selected voice. In particular, a
-// GameSynth patch has no Quick macro surface and must not inherit MRDR-3's compact rack
-// when the lane changes presets while its editor is open.
-const mrdrStrip = stripPanelSpec({ kind: 'tone', synth: 'MRDR-3' });
-const gameStrip = stripPanelSpec({ kind: 'tone', synth: 'GameSynth' });
-if (mrdrStrip.mode !== 'quick' || mrdrStrip.groups[0]?.title !== 'Quick') {
-  fail('MRDR-3 strip did not select the Quick surface');
-} else if (gameStrip.mode !== 'detailed'
-  || !gameStrip.groups.some((g) => g.title === 'Game Synth')
-  || !gameStrip.groups.some((g) => g.title === 'Note')) {
-  fail('GameSynth strip did not select its detailed synth controls');
-} else {
-  ok('switching from MRDR-3 to GameSynth selects the correct strip surface');
-}
-
-// DuoSynth is the one pooled class that already has a vibrato LFO inside Tone.DuoSynth.
-// Its native amount/rate controls must not sit beside the rack-wide `$vibrato` controls,
-// or the editor presents two pitch modulators for one sound.
-const duoSpec = panelSpec({ kind: 'tone', synth: 'DuoSynth' });
-const duoCommonVibrato = duoSpec.common.rows.filter((r) => r.path?.startsWith('$vibrato'));
-const duoGroup = duoSpec.groups.find((g) => g.title === 'Duo');
-if (duoCommonVibrato.length || !duoGroup
-  || !duoGroup.rows.some((r) => r.path === 'vibratoAmount')
-  || !duoGroup.rows.some((r) => r.path === 'vibratoRate')) {
-  fail('DuoSynth exposes duplicate generic and native vibrato controls');
-} else {
-  ok('DuoSynth exposes one authoritative native vibrato pair');
-}
-const duoRatio = duoGroup?.rows.find((r) => r.path === 'harmonicity');
-if (!duoRatio || duoRatio.step !== 0.0001 || duoRatio.fmt(1.003) !== '1.0030' || duoRatio.scale !== 3) {
-  fail('DuoSynth ratio does not provide fine near-unison control');
-} else {
-  ok('DuoSynth ratio reaches 1.003 with a fine nonlinear control');
-}
-
-// Each DuoSynth voice is a Tone MonoSynth internally, so each needs its own filter
-// rather than inheriting one shared/hidden filter.  Keep this leaf-level check close to
-// the vibrato/ratio checks: a title-only assertion would let a card be present but empty.
-for (const [title, prefix] of [['Voice 1 Filter', 'voice0.'], ['Voice 2 Filter', 'voice1.']]) {
-  const filterGroup = duoSpec.groups.find((g) => g.title === title);
-  const paths = new Set((filterGroup?.rows || []).map((r) => r.path));
-  const expected = [
-    `${prefix}filter.type`,
-    `${prefix}filter.rolloff`,
-    `${prefix}filterEnvelope.baseFrequency`,
-    `${prefix}filter.Q`,
-    `${prefix}filterEnvelope.octaves`,
-    `${prefix}filterEnvelope.attack`,
-    `${prefix}filterEnvelope.decay`,
-    `${prefix}filterEnvelope.sustain`,
-    `${prefix}filterEnvelope.release`,
-  ];
-  const missing = expected.filter((path) => !paths.has(path));
-  if (!filterGroup || missing.length) {
-    fail(`${title} is missing exposed filter controls${missing.length ? `: ${missing.join(', ')}` : ''}`);
-  } else {
-    ok(`${title} exposes filter, cutoff, resonance and filter-envelope controls`);
+// Every supported family resolves its own Simple surface from the current voice. CRLS-1
+// is adaptive because the Synth/MonoSynth merge deliberately retains filterless presets.
+const SIMPLE_LABELS = {
+  'MRDR-3': ['LEVEL', 'TRANSPOSE', 'ATTACK', 'DECAY', 'RELEASE', 'CUTOFF', 'RESONANCE',
+    'ENV AMOUNT', 'VIBRATO'],
+  'TNGR-2': ['LEVEL', 'TRANSPOSE', 'POSITION', 'MOTION', 'CUTOFF', 'ATTACK', 'RELEASE', 'VIBRATO'],
+  'KNDO-5': ['WAVE', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'CUTOFF'],
+  'WNDR-9': ['LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'BRIGHTNESS', 'PERCUSSION'],
+  'CRLS-1': ['WAVE', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO'],
+  // The bare fixture carries no `modulationIndex`, which IS how a preset says amplitude
+  // modulation — so this is RMND-2's AM surface. The FM one is asserted just below.
+  'RMND-2': ['CARRIER', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'RATIO'],
+};
+for (const [synth, labels] of Object.entries(SIMPLE_LABELS)) {
+  const surface = stripPanelSpec({ kind: 'tone', synth });
+  const actual = surface.groups[0]?.rows.map((row) => row.label);
+  if (surface.mode !== 'quick' || surface.groups[0]?.title !== 'Simple'
+    || !isDeepStrictEqual(actual, labels)) {
+    fail(`${synth} Simple surface is ${JSON.stringify(actual)}, not ${JSON.stringify(labels)}`);
+  } else if (actual.includes('FINE')) {
+    fail(`${synth} Simple surface exposes FINE`);
+  } else if (['KNDO-5', 'CRLS-1', 'RMND-2'].includes(synth)) {
+    const graphical = surface.groups[0]?.rows.find((row) => row.graphical === 'wave');
+    const expectedLabel = synth === 'RMND-2' ? 'CARRIER' : 'WAVE';
+    if (actual[0] !== expectedLabel || !graphical
+      || !graphical.options.every((option) => WAVE_GLYPHS[option])) {
+      fail(`${synth} Simple waveform selector is not first and graphical`);
+    } else ok(`${synth} Simple starts with the shared graphical waveform selector`);
   }
+}
+if (!failed) ok('supported synths expose the exact Simple controls, with Fine reserved for Advanced');
+
+const crls1Filtered = {
+  kind: 'tone',
+  synth: 'CRLS-1',
+  options: {
+    oscillator: { type: 'sawtooth' },
+    envelope: { attack: 0.01, decay: 0.4, sustain: 0.8, release: 0.2 },
+    filter: { type: 'lowpass', Q: 1, rolloff: -24 },
+    filterEnvelope: {
+      attack: 0.01, decay: 0.3, sustain: 0.4, release: 0.2, baseFrequency: 220,
+    },
+  },
+};
+const crls1FilteredSimple = stripPanelSpec(crls1Filtered).groups[0]?.rows.map((row) => row.label);
+const crls1FilteredRows = stripPanelSpec(crls1Filtered).groups[0]?.rows || [];
+const crls1Vibrato = crls1FilteredRows.find((row) => row.label === 'VIBRATO');
+if (!isDeepStrictEqual(crls1FilteredSimple, [
+  'WAVE', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'CUTOFF', 'RESONANCE',
+]) || crls1FilteredRows.find((row) => row.label === 'ATTACK')?.startRow
+  || crls1Vibrato?.startRow || crls1Vibrato?.path !== '$vibrato.depth'
+  || crls1Vibrato?.max !== 1 || crls1Vibrato?.scale !== 3
+  || crls1FilteredRows.some((row) => row.label === 'UNISON')) {
+  fail(`CRLS-1 filtered Simple surface is ${JSON.stringify(crls1FilteredSimple)}`);
+} else if (!crls1FilteredSimple.includes('CUTOFF') || !crls1FilteredSimple.includes('RESONANCE')) {
+  fail('CRLS-1 filtered Simple surface omitted its filter controls');
+} else ok('CRLS-1 adds musical CUTOFF and RESONANCE only when the preset has a filter');
+
+const crls1FilterGroup = panelSpec({ synth: 'CRLS-1' }).groups.find((group) => group.key === 'filter');
+if (crls1FilterGroup?.optional !== 'options.filter'
+  || !crls1FilterGroup?.onTip?.includes('CRLS-1')
+  || !crls1FilterGroup?.offTip?.includes('CRLS-1')
+  || /Mono ?Synth|plain Synth/.test(`${crls1FilterGroup?.onTip} ${crls1FilterGroup?.offTip}`)) {
+  fail('CRLS-1 Filter card does not expose the Synth/Mono Synth engine toggle');
+} else ok('CRLS-1 Filter card exposes the engine-class toggle');
+const crls1FilterEnvGroup = panelSpec({ synth: 'CRLS-1' }).groups
+  .find((group) => group.key === 'filterEnvelope');
+if (crls1FilterEnvGroup?.when || typeof crls1FilterEnvGroup?.bodyWhen !== 'function') {
+  fail('CRLS-1 Filter Env is hidden rather than disabled when Filter is Off');
+} else ok('CRLS-1 Filter Env stays visible and disables with the Filter switch');
+
+const crls1ToggleVoice = {
+  kind: 'tone', synth: 'CRLS-1', options: {
+    oscillator: { type: 'square' },
+    envelope: { attack: 0.02, decay: 0.4, sustain: 0.7, release: 0.2 },
+    filter: { type: 'highpass', rolloff: -24, Q: 3.2 },
+    filterEnvelope: {
+      attack: 0.03, decay: 0.8, sustain: 0.35, release: 0.6,
+      baseFrequency: 720, octaves: 2.4,
+    },
+  },
+};
+const authoredFilter = structuredClone(crls1ToggleVoice.options);
+setCrls1Filter(crls1ToggleVoice, false);
+const heldFilter = crls1ToggleVoice.bypassed?.['options.filter'];
+if (crls1ToggleVoice.options.filter !== undefined
+  || crls1ToggleVoice.options.filterEnvelope !== undefined
+  || !heldFilter?.filter || !heldFilter?.filterEnvelope) {
+  fail('CRLS-1 Filter Off did not remove both MonoSynth option sections and hold them');
+} else if (fullLayout(crls1ToggleVoice).bands[0].cols !== 5) {
+  fail('CRLS-1 Filter Off changed the five-card Advanced board width');
+} else {
+  setCrls1Filter(crls1ToggleVoice, true);
+  if (!isDeepStrictEqual(crls1ToggleVoice.options, authoredFilter)
+    || fullLayout(crls1ToggleVoice).bands[0].cols !== 5) {
+    fail('CRLS-1 Filter On did not restore the authored filter and MonoSynth layout');
+  } else ok('CRLS-1 Filter Off/On switches engines and restores the authored filter');
+}
+
+// ---- RMND-2: one synth, two destinations ------------------------------------
+//
+// The merge's whole claim is that a player sees ONE instrument. So the two things that
+// could give it away are asserted here: Simple grows exactly one row in FM and nothing
+// else moves, and the MODE switch is lossless in both directions.
+
+const rmnd2Fm = {
+  kind: 'tone',
+  synth: 'RMND-2',
+  options: {
+    harmonicity: 3, modulationIndex: 8,
+    oscillator: { type: 'sine' }, modulation: { type: 'sine' },
+    envelope: { attack: 0.003, decay: 0.6, sustain: 0.05, release: 0.6 },
+    modulationEnvelope: { attack: 0.002, decay: 0.35, sustain: 0.02, release: 0.4 },
+  },
+};
+const rmnd2FmSimple = stripPanelSpec(rmnd2Fm).groups[0]?.rows.map((row) => row.label);
+const rmnd2FmRows = stripPanelSpec(rmnd2Fm).groups[0]?.rows || [];
+if (!isDeepStrictEqual(rmnd2FmSimple, [
+  'CARRIER', 'LEVEL', 'TRANSPOSE', 'ATTACK', 'RELEASE', 'VIBRATO', 'RATIO', 'FM DEPTH',
+]) || !isDeepStrictEqual(rmnd2FmSimple.slice(0, 7), SIMPLE_LABELS['RMND-2'])
+  || rmnd2FmRows.find((row) => row.label === 'ATTACK')?.startRow) {
+  fail(`RMND-2 FM Simple surface is ${JSON.stringify(rmnd2FmSimple)}`);
+} else ok('RMND-2 Simple adds FM DEPTH for a frequency-modulated preset and nothing else');
+
+// FM DEPTH is GREYED in Advanced rather than dropped, so the board never changes width —
+// the opposite policy to Simple, and deliberate: Advanced is where the switch lives, so
+// it is where a disabled control still has something to explain it.
+const rmnd2DepthRow = panelSpec(rmnd2Fm).groups
+  .find((group) => group.key === 'mod')?.rows.find((row) => row.label === 'FM DEPTH');
+const rmnd2ModeRowSpec = panelSpec(rmnd2Fm).groups
+  .find((group) => group.key === 'mod')?.rows.find((row) => row.label === 'MODE');
+if (typeof rmnd2DepthRow?.when !== 'function'
+  || rmnd2DepthRow.when(rmnd2Fm) !== true
+  || rmnd2DepthRow.when({ kind: 'tone', synth: 'RMND-2', options: {} }) !== false) {
+  fail('RMND-2 FM DEPTH is not guarded by the modulation destination');
+} else if (!rmnd2ModeRowSpec?.derived || rmnd2ModeRowSpec.path !== 'modulationIndex'
+  || !rmnd2ModeRowSpec.section) {
+  fail('RMND-2 MODE does not own the modulationIndex key as a derived, class-changing row');
+} else if (fullLayout(rmnd2Fm).bands[0].cols
+  !== fullLayout({ kind: 'tone', synth: 'RMND-2', options: {} }).bands[0].cols) {
+  fail('RMND-2 MODE changes the Advanced board width');
+} else ok('RMND-2 FM DEPTH greys with MODE and the Advanced board keeps its width');
+
+// Lossless both ways: AM has nowhere to keep a depth, so the switch has to, and a preset
+// that has never been FM must still open somewhere Tone would have put it.
+const rmnd2Toggle = structuredClone(rmnd2Fm);
+rmnd2Toggle.options.modulationIndex = 25;
+setRmnd2Mode(rmnd2Toggle, 'am');
+if (rmnd2Toggle.options.modulationIndex !== undefined
+  || rmnd2Toggle.bypassed?.['options.modulationIndex'] !== 25) {
+  fail('RMND-2 AM did not remove the modulation index and hold it');
+} else {
+  setRmnd2Mode(rmnd2Toggle, 'fm');
+  const restored = structuredClone(rmnd2Toggle);
+  delete restored.bypassed;
+  if (rmnd2Toggle.options.modulationIndex !== 25
+    || !isDeepStrictEqual(restored.options, { ...rmnd2Fm.options, modulationIndex: 25 })) {
+    fail('RMND-2 FM did not restore the authored modulation index exactly');
+  } else ok('RMND-2 MODE round-trips the authored FM depth through AM and back');
+}
+const rmnd2NeverFm = { kind: 'tone', synth: 'RMND-2', options: { harmonicity: 1 } };
+setRmnd2Mode(rmnd2NeverFm, 'fm');
+if (rmnd2NeverFm.options.modulationIndex !== 10) {
+  fail(`RMND-2 first switch to FM opened at ${rmnd2NeverFm.options.modulationIndex}, not Tone's 10`);
+} else ok('RMND-2 first switch to FM opens at Tone\u2019s own modulation index');
+
+// The engine picks the Tone class from that same structure, so the panel and the rack
+// cannot drift about which instrument a preset actually is.
+const rmnd2Class = (voice) => VoiceRack.buildSpec(voice);
+if (rmnd2Class(rmnd2Fm) && rmnd2Class({ kind: 'tone', synth: 'RMND-2', options: {} })) {
+  ok('RMND-2 builds a spec in both modes');
+}
+
+for (const [synth, isFm] of [['FMSynth', true], ['AMSynth', false]]) {
+  const voice = isFm ? { ...rmnd2Fm, synth } : {
+    kind: 'tone', synth,
+    options: {
+      harmonicity: 2,
+      oscillator: { type: 'square' }, modulation: { type: 'sine' },
+      envelope: { attack: 0.008, decay: 0.2, sustain: 0.6, release: 0.3 },
+      modulationEnvelope: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 0.3 },
+    },
+  };
+  const labels = stripPanelSpec(voice).groups[0]?.rows.map((row) => row.label);
+  const expected = isFm ? rmnd2FmSimple : SIMPLE_LABELS['RMND-2'];
+  if (stripPanelSpec(voice).mode !== 'quick' || !isDeepStrictEqual(labels, expected)
+    || !fullLayout(voice) || checkFullLayout(voice).length
+    || synthDisplayName(synth) !== 'RMND-2') {
+    fail(`${synth} legacy alias did not resolve to the matching RMND-2 editor`);
+  } else ok(`${synth} legacy alias resolves to the RMND-2 Simple/Advanced editor`);
+}
+
+for (const [synth, filtered] of [['Synth', false], ['MonoSynth', true]]) {
+  const voice = filtered ? { ...crls1Filtered, synth } : {
+    kind: 'tone', synth,
+    options: {
+      oscillator: { type: 'sawtooth' },
+      envelope: { attack: 0.01, decay: 0.4, sustain: 0.8, release: 0.2 },
+    },
+  };
+  const labels = stripPanelSpec(voice).groups[0]?.rows.map((row) => row.label);
+  const expected = filtered ? crls1FilteredSimple : SIMPLE_LABELS['CRLS-1'];
+  if (stripPanelSpec(voice).mode !== 'quick' || !isDeepStrictEqual(labels, expected)
+    || !fullLayout(voice) || checkFullLayout(voice).length) {
+    fail(`${synth} legacy alias did not resolve to the matching CRLS-1 editor`);
+  } else ok(`${synth} legacy alias resolves to the adaptive CRLS-1 Simple/Advanced editor`);
 }
 
 // ---- the invariant ----------------------------------------------------------
@@ -179,19 +336,57 @@ try {
     + panelSpec(DRUM).groups.reduce((n, g) => n + (g.rows || []).length, 0)) {
     fail(`KLNG8: layout total ${Ld.total} does not match panel rows`);
   }
-  // One band of six single-column cards: the drum window is read ACROSS the signal path,
+  // One band of six single-column cells: the drum window is read ACROSS the signal path,
   // and each card is narrow enough that its own rows read DOWN it. A card that grew back
   // to two columns would be one that had quietly gone wide again.
   if (Ld.bands.length !== 1) fail(`KLNG8: expected 1 band, got ${Ld.bands.length}`);
   const cells = Ld.bands[0]?.cells || [];
-  if (cells.length !== 6) fail(`KLNG8: expected 6 cards, got ${cells.length}`);
+  if (cells.length !== 6) fail(`KLNG8: expected 6 columns, got ${cells.length}`);
   if (cells.some((c) => (c.span || 1) !== 1)) fail('KLNG8: a card is wider than one column');
+  // The column is fixed at the width the four-pot grid was tuned against, so adding or
+  // dropping a column resizes the WINDOW rather than the cards. Without a track the band
+  // divides whatever width it is given and every card would move whenever one was added.
+  if (Ld.bands[0]?.track !== 259) {
+    fail(`KLNG8: the band's track is ${Ld.bands[0]?.track}, not a fixed 259px column`);
+  }
+  // FM is stacked under the oscillator it bends, in that oscillator's column — and it is
+  // still a CARD there, with its own header and switch, not a rule inside the OSC card.
+  const cards = cells.flatMap((c) => (c.kind === 'stack' ? c.cards : [c]));
+  if (cards.length !== 8) fail(`KLNG8: expected 8 cards, got ${cards.length}`);
+  // TWO stacked columns, and they must be the same shape: the two oscillators are one
+  // section built twice, so a modulator that stayed under only one of them would be the
+  // panel disagreeing with `_playDrum`'s single `buildOsc`.
+  const stacks = cells.filter((c) => c.kind === 'stack');
+  if (stacks.length !== 2) fail(`KLNG8: expected two stacked columns, got ${stacks.length}`);
+  const stackKeys = stacks.map((s) => (s.cards || []).map((c) => c.card?.key));
+  if (!isDeepStrictEqual(stackKeys, [['osc', 'osc.fm'], ['osc2', 'osc2.fm']])) {
+    fail(`KLNG8: the stacked columns are ${JSON.stringify(stackKeys)},`
+      + ' not each oscillator over its own modulator');
+  }
   // What Master absorbed: Drive and Humanise as rules under its own rows, Taps as a door
-  // in its header. Those three are what freed the columns the six signal sections need.
-  const cellFor = (key) => cells.find((c) => c.card?.key === key);
+  // in its header. Those three are what freed the columns the signal sections need.
+  const cellFor = (key) => cards.find((c) => c.card?.key === key);
   const subsOf = (key) => (cellFor(key)?.card?.sub || []).map((s) => s.rule);
+  // The four SOURCE levels lie along the top of their cards as faders, the way TNGR-2's
+  // two oscillators have theirs. Master is not a source and has no LEVEL to lay down.
+  const faders = cards.filter((c) => c.fader).map((c) => c.card?.key);
+  if (!isDeepStrictEqual(faders, ['osc', 'osc2', 'noise', 'ring', 'metal'])) {
+    fail(`KLNG8: LEVEL is a fader on ${JSON.stringify(faders)}, not the five sources`);
+  }
+  for (const key of faders) {
+    const row = (cellFor(key)?.card?.rows || []).find((r) => r.label === 'LEVEL');
+    if (!row) fail(`KLNG8: the ${key} card asks for a LEVEL fader with no LEVEL row to drive`);
+  }
   if (!isDeepStrictEqual(subsOf('note'), ['DRIVE', 'HUMANISE'])) {
     fail(`KLNG8: Master carries ${JSON.stringify(subsOf('note'))}, not Drive and Humanise`);
+  }
+  const resonatorGroup = panelSpec(DRUM).groups.find((g) => g.key === 'metal.resonator');
+  const metalSub = cellFor('metal')?.card?.sub?.find((s) => s.group?.key === 'metal.resonator');
+  if (resonatorGroup?.optional !== 'metal.resonator' || resonatorGroup.rows?.length
+    || metalSub?.group?.optional !== 'metal.resonator' || metalSub.rule !== 'RESONANT TAIL') {
+    fail('KLNG8: Metal does not expose the 808 Resonator as a user switch');
+  } else {
+    ok('KLNG8: Metal exposes a reversible Resonant Tail switch');
   }
   const doors = (cellFor('note')?.card?.panels || []);
   if (!doors.some((p) => p.taps)) fail('KLNG8: Taps is not a door on the Master card');
@@ -200,11 +395,37 @@ try {
   if ((cellFor('note')?.card?.sub || []).some((s) => !s.rows?.length)) {
     fail('KLNG8: a Master sub-section came through with no rows');
   }
+  // THE TWO OSCILLATORS ARE ONE SECTION, DRAWN TWICE. `_playDrum` builds them from a
+  // single `buildOsc`, so a control that means one thing on the first and another on the
+  // second is the panel disagreeing with the engine — and a row list copied for the
+  // second card would pass every other check here and still be exactly that drift. The
+  // labels and the order are compared with the section name factored out, which is what
+  // makes this a claim about the CONTROLS rather than about the paths.
+  //
+  // KNOCK is the one row the first card has that the second does not: a fixed 300 Hz
+  // punch that predates `osc2` and stays a pot — see the gate in `_playDrum`.
+  const allRows = (key) => {
+    const card = cellFor(key)?.card;
+    return [...(card?.rows || []), ...(card?.foot || [])];
+  };
+  const shapeOf = (key, sec) => allRows(key)
+    .map((r) => `${r.label}|${r.path.replace(sec, '<sec>')}`)
+    .filter((r) => !r.startsWith('KNOCK|'));
+  for (const [a, b, secA, secB] of [['osc', 'osc2', 'osc', 'osc2'],
+    ['osc.fm', 'osc2.fm', 'osc', 'osc2']]) {
+    const one = shapeOf(a, secA);
+    const two = shapeOf(b, secB);
+    if (!one.length || !isDeepStrictEqual(one, two)) {
+      fail(`KLNG8: ${b} does not draw the same controls as ${a}`
+        + ` (${JSON.stringify(one)} vs ${JSON.stringify(two)})`);
+    }
+  }
   // The curve door, on every card that has a curve to put behind it. Left in the grid,
   // CURVE and RATE CURVE cost a full-width row each on the three longest cards.
-  const withCurves = cells.filter((c) => c.curves).map((c) => c.card?.key);
-  if (!isDeepStrictEqual(withCurves, ['osc', 'noise', 'ring'])) {
-    fail(`KLNG8: the curve door is on ${JSON.stringify(withCurves)}, not osc/noise/ring`);
+  const withCurves = cards.filter((c) => c.curves).map((c) => c.card?.key);
+  if (!isDeepStrictEqual(withCurves, ['osc', 'osc2', 'noise', 'ring'])) {
+    fail(`KLNG8: the curve door is on ${JSON.stringify(withCurves)},`
+      + ' not osc/osc2/noise/ring');
   }
   for (const key of withCurves) {
     if (!(cellFor(key)?.card?.rows || []).some((r) => r.door === 'curve')) {
@@ -214,7 +435,7 @@ try {
 } catch (err) {
   fail(`KLNG8: fullLayout threw — ${err.message}`);
 }
-if (!failed) ok('KLNG8 builds one complete band of six narrow cards');
+if (!failed) ok('KLNG8 builds one complete band of five narrow columns');
 
 // ---- TNGR-2 -----------------------------------------------------------------
 //
@@ -363,6 +584,19 @@ drumDecay.write(0.6, drumQuick);
 if (!isDeepStrictEqual(drumQuick, beforeDecay)) {
   fail('Drum Quick Decay did not restore the authored envelope on a round trip');
 } else ok('Drum Quick Decay restores the authored envelope on a round trip');
+
+// A section's missing ATTACK must use the drum engine's short strike fallback, not the
+// same section's DECAY fallback. The shipped open hat has only METAL, so its Simple
+// values also provide a direct regression for the preset that exposed this mismatch.
+const openHatRows = quickRows(VOICES.ds808OpenHat);
+const openHatAttack = byLabel(openHatRows, 'ATTACK');
+const openHatDecay = byLabel(openHatRows, 'DECAY');
+if (openHatAttack.read(undefined, VOICES.ds808OpenHat) !== 0.001) {
+  fail(`KLNG-8 Simple open-hat ATTACK reads ${openHatAttack.read(undefined, VOICES.ds808OpenHat)}s, not the 1ms engine fallback`);
+} else if (openHatDecay.read(undefined, VOICES.ds808OpenHat) !== VOICES.ds808OpenHat.metal.decay) {
+  fail(`KLNG-8 Simple open-hat DECAY reads ${openHatDecay.read(undefined, VOICES.ds808OpenHat)}s, not the authored ${VOICES.ds808OpenHat.metal.decay}s`);
+} else ok('KLNG-8 Simple open-hat ATTACK and DECAY mirror the engine and authored preset');
+
 for (const label of ['ATTACK', 'DECAY']) {
   if (!sameAtZ(beforeDecay, label, 0.83, 0.47)) {
     fail(`Drum Quick ${label} changes sound at z depending on the route to z`);
@@ -382,6 +616,43 @@ const fourTapDrum = {
 if (!sameAtZ(fourTapDrum, 'TAPS', 2, 3)) {
   fail('Drum Quick Taps changes sound at z depending on the route to z');
 } else ok('Drum Quick Taps positions are independent of the route taken');
+
+// The new Simple projections must retain optional sections and paired-voice relationships
+// just as the established MRDR/KLNG8 macros do.
+const gameSimple = { synth: 'KNDO-5' };
+const gameBefore = structuredClone(gameSimple);
+const gameCutoff = byLabel(quickRows(gameSimple), 'CUTOFF');
+if (gameCutoff.read(undefined, gameSimple) !== 18000) {
+  fail('KNDO-5 raw waveform does not read as an open Simple CUTOFF');
+}
+gameCutoff.write(2400, gameSimple);
+if (gameSimple.filter?.freq !== 2400 || gameSimple.filter?.to !== 2400) {
+  fail('KNDO-5 Simple CUTOFF did not create a stationary optional filter');
+}
+gameCutoff.write(18000, gameSimple);
+if (!isDeepStrictEqual(gameSimple, gameBefore)) {
+  fail('KNDO-5 Simple CUTOFF did not restore the exact no-filter preset');
+} else ok('KNDO-5 Simple CUTOFF creates and exactly releases its optional filter seed');
+
+const additiveSimple = {
+  synth: 'WNDR-9', additive: { damp: 0.75, perc: { ratio: 3, gain: 0.72, decay: 0.08 } },
+};
+const additiveBefore = structuredClone(additiveSimple);
+const additiveRows = quickRows(additiveSimple);
+const additiveBrightness = byLabel(additiveRows, 'BRIGHTNESS');
+const additivePercussion = byLabel(additiveRows, 'PERCUSSION');
+if (additiveBrightness.read(undefined, additiveSimple) !== 75) {
+  fail('Additive Simple BRIGHTNESS does not read inverse DAMP');
+}
+additiveBrightness.write(50, additiveSimple);
+if (additiveSimple.additive.damp !== 1.5) fail('Additive Simple BRIGHTNESS did not write DAMP');
+additiveBrightness.write(75, additiveSimple);
+additivePercussion.write(0, additiveSimple);
+additivePercussion.write(0.72, additiveSimple);
+if (!isDeepStrictEqual(additiveSimple, additiveBefore)) {
+  fail('Additive Simple controls did not restore authored damping/percussion state');
+} else ok('Additive Simple Brightness and Percussion round-trip authored state');
+
 
 // Advanced Global Filter cutoff may lift, but never lowers, the independent final driven
 // low-pass ceiling. Quick CUTOFF is a collective view of the active filter frequencies,
@@ -550,6 +821,11 @@ const taperOf = (row, voice) =>
 const aliasVoices = [
   { synth: 'MRDR-3', drive: 0.5, vibrato: { depth: 0.1 }, layer: { osc1: { gain: 1 } } },
   { kind: 'drum', drive: 0.5, osc: { from: 190, to: 52 }, noise: { decay: 0.1 } },
+  { synth: 'TNGR-2' },
+  { synth: 'KNDO-5' },
+  { synth: 'WNDR-9' },
+  { synth: 'RMND-2' },
+  { synth: 'RMND-2', options: { modulationIndex: 8 } },
 ];
 let checkedAliases = 0;
 let taperDrift = 0;
@@ -558,7 +834,12 @@ for (const voice of aliasVoices) {
   for (const row of quickRows(voice)) {
     // A `$quick.*` path is a macro over several Advanced keys and has no single twin.
     if (row.path.startsWith('$quick.')) continue;
-    const twin = advanced.find((r) => r.path === row.path);
+    // Two Advanced rows can share one stored property — WAVE and VOICING over
+    // `oscillator.type`, MODE and FM DEPTH over `modulationIndex`. The twin is the one
+    // that OWNS the property, which is the one not marked `derived`; matching the other
+    // compares a pot's range against a row of pills that has none.
+    const sharing = advanced.filter((r) => r.path === row.path);
+    const twin = sharing.find((r) => !r.derived) || sharing[0];
     if (!twin) continue;                     // Quick-only, or absent on this voice
     checkedAliases++;
     const where = `${row.label} / ${twin.label} (${row.path})`;
@@ -606,11 +887,220 @@ if (!Number.isInteger(perLayer)) {
   ok(`${onScreen} controls on screen at once, ${perLayer} per hidden layer, ${L.total} in total`);
 }
 
-// ---- everything else is left alone ------------------------------------------
-for (const synth of ['MonoSynth', 'GameSynth', 'AdditiveSynth', 'FMSynth']) {
-  if (fullLayout({ synth }) !== null) fail(`${synth} should have no full-window layout yet`);
+// ---- the newly full-window families -------------------------------------------
+// KNDO-5 is 3: its Pitch Env, its filter response, and the Filter Env card that
+// replaced the SWEEP TO / SWEEP TIME pair when this panel took MRDR-3's filter model.
+const GRAPH_COUNTS = {
+  'KNDO-5': 3, 'WNDR-9': 1, 'CRLS-1': 3, 'RMND-2': 2,
+};
+for (const [synth, graphCount] of Object.entries(GRAPH_COUNTS)) {
+  const voice = { kind: 'tone', synth };
+  const problems = checkFullLayout(voice);
+  if (problems.length) {
+    for (const problem of problems) fail(`${synth}: ${problem}`);
+    continue;
+  }
+  const layout = fullLayout(voice);
+  const spec = panelSpec(voice);
+  const expectedRows = spec.common.rows.length
+    + spec.groups.reduce((total, group) => total + (group.rows || []).length, 0);
+  if (!layout || layout.total !== expectedRows) {
+    fail(`${synth}: layout total ${layout?.total} does not match ${expectedRows} panel rows`);
+    continue;
+  }
+  let graphs = 0;
+  for (const band of layout.bands) {
+    const span = band.cells.reduce((total, cell) => total + (cell.span || 1), 0);
+    if (span !== band.cols) fail(`${synth}: band ${band.name} spans ${span}, not ${band.cols}`);
+    for (const cell of band.cells) {
+      if (cell.graph) graphs++;
+      if (cell.kind === 'stack') graphs += cell.cards.filter((item) => item.graph).length;
+    }
+  }
+  if (graphs !== graphCount) {
+    fail(`${synth}: full editor has ${graphs} envelope/filter graphs, not ${graphCount}`);
+  }
 }
-if (!failed) ok('the other synth classes have no full-window layout and are untouched');
+const filteredCrlsLayout = fullLayout(crls1Filtered);
+const filteredCrlsGraphs = filteredCrlsLayout.bands[0].cells
+  .filter((cell) => cell.kind === 'card')
+  .reduce((count, cell) => count + (cell.graph ? 1 : 0), 0);
+const filteredCrlsPots = filteredCrlsLayout.bands[0].cells
+  .filter((cell) => cell.kind === 'card')
+  .map((cell) => cell.card?.pots);
+if (filteredCrlsGraphs !== 3 || filteredCrlsLayout.bands[0].cols !== 5
+  || filteredCrlsPots.some((pots) => pots !== 4)) {
+  fail(`CRLS-1 filtered Advanced has ${filteredCrlsGraphs} graphs and `
+    + `${filteredCrlsLayout.bands[0].cols} columns/${JSON.stringify(filteredCrlsPots)} pots, `
+    + `not 3 graphs, 5 columns and four pots per card`);
+} else ok('CRLS-1 filtered Advanced adds graphs and four-pot card columns');
+if (!failed) ok('supported families place every Advanced row and reuse all applicable graphs');
+
+// SETTINGS is the shared orientation anchor: it belongs at the right edge of each
+// pitched Advanced board, as it already does on the MRDR-3/TNGR-2 reference boards.
+const settingsBands = {
+  'MRDR-3': 'layer',
+  'TNGR-2': 'tngr2',
+  'KNDO-5': 'kndo-5',
+  'WNDR-9': 'wndr-9',
+  'CRLS-1': 'crls-1',
+  'RMND-2': 'rmnd-2',
+};
+const cellHasSettings = (cell) => cell?.kind === 'card'
+  ? cell.card?.title === 'Settings'
+  : cell?.kind === 'stack'
+    ? cell.cards.some((item) => item.card?.title === 'Settings')
+    : false;
+for (const [synth, bandName] of Object.entries(settingsBands)) {
+  const band = fullLayout({ synth }).bands.find((candidate) => candidate.name === bandName);
+  if (!band || !cellHasSettings(band.cells.at(-1))) {
+    fail(`${synth}: SETTINGS is not the rightmost card on ${bandName}`);
+  }
+}
+if (!failed) ok('pitched Advanced editors keep SETTINGS on the right edge');
+
+const additiveBand = fullLayout({ synth: 'WNDR-9' }).bands[0];
+const additiveStackTitles = additiveBand.cells.map((cell) => cell.kind === 'stack'
+  ? cell.cards.map((item) => item.card.title)
+  : [cell.card?.title]);
+const additiveShape = JSON.stringify(additiveStackTitles);
+if (additiveBand.cols !== 4
+  || additiveShape !== JSON.stringify([
+    ['Character', 'Drawbars'], ['Pitch Env', 'Percussion'],
+    ['Amp', 'Humanise'], ['Settings', 'Effects'],
+  ])) {
+  fail(`WNDR-9 Advanced columns are not Character/Drawbars, Pitch Env/Percussion, `
+    + `Envelope/Humanise, Settings/Effects: ${additiveShape}`);
+} else ok('WNDR-9 Advanced uses four normal-width columns with the requested stacks');
+// Every column a PAIR: a lone card in a stacked band holds half a column of air, which is
+// what PERCUSSION did before the Effects card gave SETTINGS its partner.
+if (additiveBand.cells.some((cell) => cell.kind !== 'stack' || cell.cards.length !== 2)) {
+  fail('WNDR-9 Advanced leaves a column unpaired');
+} else ok('WNDR-9 Advanced pairs all four columns');
+
+// RMND-2's board is the SAME BOARD in both modes — same cards, same order, same width.
+// That is the point of the merge: MODE greys one pot rather than rebuilding the window,
+// so a preset does not move under you when you change what its modulator reaches.
+for (const [mode, options] of [['am', {}], ['fm', { modulationIndex: 8 }]]) {
+  const voice = { synth: 'RMND-2', options };
+  const band = fullLayout(voice).bands[0];
+  const firstStack = band.cells[0]?.kind === 'stack'
+    ? band.cells[0].cards.map((item) => item.card?.title) : [];
+  const cardTitles = band.cells.filter((cell) => cell.kind === 'card')
+    .map((cell) => cell.card?.title);
+  const expectedStack = ['Osc', 'Mod'];
+  const expectedCards = ['Mod Env', 'Amp', 'Settings'];
+  if (JSON.stringify(firstStack) !== JSON.stringify(expectedStack)
+    || JSON.stringify(cardTitles) !== JSON.stringify(expectedCards)) {
+    fail(`RMND-2 ${mode} Advanced order is not OSC, MOD ENV, AMP, SETTINGS: `
+      + `${JSON.stringify({ firstStack, cardTitles })}`);
+  } else {
+    ok(`RMND-2 ${mode} Advanced puts OSCILLATORS on top and VCA after MODULATION ENV`);
+  }
+}
+
+/**
+ * EVERY SEAMED CARD IS SEAMED THE SAME WAY, AND ON EVERY BOARD THAT HAS IT.
+ *
+ * A card holding two unrelated things is split — the second block pinned to the card's
+ * floor, the spare height opening between them (`splitCard`). It is the one arrangement
+ * rule these boards share across eight engines, and it is exactly the kind of rule that
+ * gets applied to the board being worked on and forgotten on the other seven: a new family
+ * copies a neighbour's layout, misses the split, and its SETTINGS card is ten rows of one
+ * undifferentiated list while every other board's is two blocks.
+ *
+ * So it is checked here rather than trusted. For each board, the card is FOUND by title and
+ * then asserted three ways — hung from the top, spreading its slack, and carrying the named
+ * control at the head of its foot block. A board without the card is skipped; a board with
+ * it and no seam fails.
+ */
+const SEAMS = [
+  ['MRDR-3', 'layer', 'Settings', 'VIB DEPTH'],
+  ['MRDR-3', 'shared', 'Effects', 'CHORUS'],
+  ['TNGR-2', 'tngr2', 'Settings', 'VIB DEPTH'],
+  ['TNGR-2', 'tngr2', 'Effects', 'CHORUS'],
+  ['TNGR-2', 'tngr2', 'Motion', 'LFO WAVE'],
+  ['KNDO-5', 'kndo-5', 'Settings', 'VIB DEPTH'],
+  ['KNDO-5', 'kndo-5', 'Effects', 'CHORUS'],
+  ['KNDO-5', 'kndo-5', 'Osc', 'ATTACK'],
+  ['WNDR-9', 'wndr-9', 'Settings', 'VIB DEPTH'],
+  ['WNDR-9', 'wndr-9', 'Effects', 'CHORUS'],
+  ['WNDR-9', 'wndr-9', 'Percussion', 'ATTACK'],
+  ['RMND-2', 'rmnd-2', 'Settings', 'VIB DEPTH'],
+];
+const findCard = (band, title) => {
+  for (const cell of band?.cells || []) {
+    const cards = cell.kind === 'stack' ? cell.cards : [cell];
+    for (const one of cards) if (one.card?.title === title) return one.card;
+  }
+  return null;
+};
+let seamFails = 0;
+for (const [synth, bandName, title, head] of SEAMS) {
+  const band = fullLayout(synth === 'drum' ? { kind: 'drum' } : { synth })
+    .bands.find((candidate) => candidate.name === bandName);
+  const card = findCard(band, title);
+  if (!card) { seamFails++; fail(`${synth}: no '${title}' card on ${bandName} to seam`); continue; }
+  if (!card.top || !card.spread) {
+    seamFails++;
+    fail(`${synth} '${title}' is not hung from the top and spread (top=${!!card.top}, spread=${!!card.spread})`);
+  }
+  if (card.foot?.[0]?.label !== head) {
+    seamFails++;
+    fail(`${synth} '${title}' seams at ${JSON.stringify(card.foot?.[0]?.label ?? null)}, not '${head}'`);
+  }
+  if ((card.rows || []).some((row) => row.label === head)) {
+    seamFails++;
+    fail(`${synth} '${title}' left '${head}' above the seam as well as below it`);
+  }
+}
+// The KLNG8's source cards were the first to do this, before it was a rule; they seam
+// on `foot` set per ROW rather than by label, so they are checked for the shape only.
+const drumBand = fullLayout({ kind: 'drum' }).bands[0];
+for (const title of ['Osc 1', 'FM 1', 'Osc 2', 'FM 2', 'Noise', 'Ring', 'Metal']) {
+  const card = findCard(drumBand, title);
+  if (!card?.top || !card?.spread || card.foot?.[0]?.label !== 'ATTACK') {
+    seamFails++;
+    fail(`KLNG8 '${title}' no longer seams its envelope onto the card's floor`);
+  }
+}
+if (!seamFails) {
+  ok(`${SEAMS.length + 7} two-concept cards across eight boards seam the same way`);
+}
+
+// The old names are still valid persisted identities, but now route to CRLS-1. Retired
+// synths remain untouched and keep their detailed strip-only editor.
+for (const synth of ['Synth', 'MonoSynth']) {
+  if (fullLayout({ synth }) === null || stripPanelSpec({ kind: 'tone', synth }).mode !== 'quick') {
+    fail(`${synth} did not resolve to the CRLS-1 editor`);
+  }
+}
+// The same guarantee for the other rename. Ten song files carry `GameSynth` inside
+// serialised `voiceParams` and were deliberately not migrated, so the alias IS the
+// compatibility story: a preset stored under the old name has to reach the same two
+// surfaces the new name does, or the rename silently broke every one of those songs.
+for (const [stored, became] of [['GameSynth', 'KNDO-5'], ['AdditiveSynth', 'WNDR-9']]) {
+  if (fullLayout({ synth: stored }) === null
+    || stripPanelSpec({ kind: 'tone', synth: stored }).mode !== 'quick') {
+    fail(`${stored} did not resolve to the ${became} editor`);
+  }
+  if (!isDeepStrictEqual(
+    stripPanelSpec({ kind: 'tone', synth: stored }).groups[0]?.rows.map((r) => r.label),
+    SIMPLE_LABELS[became],
+  )) {
+    fail(`a stored ${stored} preset draws a different Simple surface than ${became}`);
+  }
+}
+
+for (const synth of ['MetalSynth', 'MembraneSynth']) {
+  if (fullLayout({ synth }) !== null || stripPanelSpec({ kind: 'tone', synth }).mode !== 'detailed') {
+    fail(`${synth} editor changed despite being outside the rollout`);
+  }
+}
+if (fullLayout({ kind: 'noise' }) !== null || stripPanelSpec({ kind: 'noise' }).mode !== 'detailed') {
+  fail('NoiseSynth editor changed despite being outside the rollout');
+}
+if (!failed) ok('every retired spelling resolves to the family it became, and retiring synth editors remain untouched');
 
 console.log(failed ? `\nSYNTH FULL LAYOUT: ${failed} FAILED` : '\nSYNTH FULL LAYOUT: PASSED');
 process.exit(failed ? 1 : 0);

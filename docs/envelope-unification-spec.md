@@ -325,7 +325,7 @@ One set of defaults, chosen so every existing preset renders identically:
    that file) already emit the same keys. The only changes needed are:
    - Add HOLD, SAG, SAG AT rows to the drum panel groups (they're already in the data,
      just not exposed).
-   - Add ATK CURVE pill to the GameSynth and Additive panels (currently only Tone panels
+   - Add ATK CURVE pill to the KNDO-5 and Additive panels (currently only Tone panels
      have it).
    - Possibly add HOLD to the pitched panels as an advanced row.
 

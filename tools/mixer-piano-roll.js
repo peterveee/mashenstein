@@ -268,7 +268,11 @@ export function noteCell({ chord, midi, freq }, value, on) {
   if (chord) {
     // A cell is one note OF the chord: stack, do not replace. Sorted so two ways of
     // arriving at the same chord write the same array and the file stops churning.
-    const had = Array.isArray(value) ? value.filter((f) => f > 0) : [];
+    // A lane can be switched to Poly after it already contains ordinary mono notes.
+    // Those legacy cells are scalar frequencies, but they are still the first member
+    // of the chord and must survive when a second pitch is added.
+    const had = (Array.isArray(value) ? value
+      : (typeof value === 'number' && value > 0 ? [value] : [])).filter((f) => f > 0);
     const without = had.filter((f) => freqMidi(f) !== midi);
     const next = on ? [...without, freq].sort((a, b) => a - b) : without;
     return next.length ? next : null;
@@ -315,7 +319,10 @@ export function noteOn({ midi }, value) {
 export function noteLength({ chord, midi, freq }, value, len, on, drawn = null) {
   const one = validLen(drawn) ? drawn : null;
   if (chord) {
-    const had = Array.isArray(value) ? value.filter((f) => f > 0) : [];
+    // The same compatibility rule as noteCell: a scalar is a one-note chord when a
+    // previously mono lane is switched to Poly.
+    const had = (Array.isArray(value) ? value
+      : (typeof value === 'number' && value > 0 ? [value] : [])).filter((f) => f > 0);
     // A scalar on a chord step is the whole chord's length — what a hand-written
     // `chordsLen: [4, …]` plainly means — so it spreads onto the tones that remain
     // rather than being lost the first time one of them is edited.
@@ -352,7 +359,9 @@ export function noteLength({ chord, midi, freq }, value, len, on, drawn = null) 
  */
 export function noteSpan({ chord, midi }, value, len) {
   if (chord) {
-    const i = Array.isArray(value) ? value.findIndex((f) => f > 0 && freqMidi(f) === midi) : -1;
+    const values = Array.isArray(value) ? value
+      : (typeof value === 'number' && value > 0 ? [value] : []);
+    const i = values.findIndex((f) => f > 0 && freqMidi(f) === midi);
     if (i < 0) return null;
     const one = Array.isArray(len) ? len[i] : len;
     return validLen(one) ? one : null;
@@ -429,7 +438,7 @@ export const noteDrawLength = (row, value, len) => {
   const tone = chord
     ? (Array.isArray(value)
       ? value.findIndex((f) => f > 0 && freqMidi(f) === row.midi)
-      : -1)
+      : (typeof value === 'number' && value > 0 && freqMidi(value) === row.midi ? 0 : -1))
     : (typeof value === 'number' && value > 0 && freqMidi(value) === row.midi ? 0 : -1);
   if (tone < 0) return null;
   return 1;
@@ -622,12 +631,10 @@ export function createPianoRoll({
   selectedBars = null, onSelectBars = null,
   selectedTime = null, onSelectTime = null,
   onAddRearrangeFavourite = null, rearrangeFavouriteState = null,
-  locators = null, onLoopTime = null,
-  locatorPositions = null,
-  onLocatorMove = null, onLocatorMoveEnd = null,
+  onLoopTime = null,
   onDoubleClickStep = null,
   onSelectTimeEnd = null,
-  menu = null, onClearLocator = null, onClearLocators = null, onEraseTime = null,
+  menu = null, onEraseTime = null,
   // Erasing is an explicit piano-roll action, not a global Delete shortcut: removing
   // song structure from a note-editing keystroke is too easy to do accidentally.
   eraseSelectedBars = null,
@@ -1458,17 +1465,6 @@ export function createPianoRoll({
       grid.clearSelection();
       toast('Note selection cleared');
     });
-    const locatorSelect = make('Select locators',
-      'Select notes whose attacks fall between the two timeline locators', () => {
-        const picked = locators?.() || null;
-        if (!picked) return;
-        const count = grid.selectTimeRange(picked.start, picked.end);
-        onSelectTime?.(picked);
-        onSelectTimeEnd?.(picked);
-        grid.redraw();
-        toast(count ? `${count} note${count === 1 ? '' : 's'} selected between locators`
-          : 'No notes between the locators');
-      });
     const loopRange = make('Loop range',
       'Loop the selected beat range from the piano roll', () => {
         const picked = selectedTime?.() || null;
@@ -1506,12 +1502,10 @@ export function createPianoRoll({
     syncActionState = () => {
       const selected = grid.selectedCount() > 0;
       const time = selectedTime?.() || null;
-      const pair = locators?.() || null;
       none.disabled = !selected;
       cut.disabled = !selected;
       copy.disabled = !selected;
       paste.disabled = !noteClipboard;
-      locatorSelect.disabled = !pair || pair.end <= pair.start;
       loopRange.disabled = !time || time.end <= time.start || !onLoopTime;
       favourite.disabled = !time || time.end <= time.start || !onAddRearrangeFavourite;
       const isFavourite = !!time && !!rearrangeFavouriteState?.(time);
@@ -1525,7 +1519,7 @@ export function createPianoRoll({
     return [bar];
   };
 
-  /** Right-click actions for the locator pins drawn on the piano-roll ruler. */
+  /** Right-click actions for the selected time range on the piano-roll ruler. */
   const timeContextMenu = (ev, picked) => {
     if (!menu || !picked || picked.end <= picked.start) return;
     menu(ev.clientX, ev.clientY, 'Piano roll · Selected range', [
@@ -1545,38 +1539,9 @@ export function createPianoRoll({
     ]);
   };
 
-  /** Right-click actions for the locator pins drawn on the piano-roll ruler. */
-  const locatorContextMenu = (ev, id) => {
-    const picked = locators?.() || null;
-    const items = [];
-    if (picked && picked.end > picked.start) {
-      items.push(
-        { label: 'Loop between locators', run: () => onLoopTime?.(picked) },
-        { label: 'Select notes between locators', run: () => {
-        const count = grid.selectTimeRange(picked.start, picked.end);
-        onSelectTime?.(picked);
-        onSelectTimeEnd?.(picked);
-        grid.redraw();
-          toast(count ? `${count} note${count === 1 ? '' : 's'} selected between locators`
-            : 'No notes between the locators');
-        } },
-        { label: 'Erase notes between locators', run: () => onEraseTime?.(picked) },
-      );
-    }
-    if (onClearLocator) items.push({ label: `Clear locator ${id}`, run: () => onClearLocator(id) });
-    if (picked && onClearLocators) {
-      items.push({ label: 'Clear both locators', run: () => onClearLocators() });
-    }
-    if (menu && items.length) menu(ev.clientX, ev.clientY, `Piano roll · Locator ${id}`, items);
-  };
-
   const grid = createBarGrid({
     el, Audio, bank, editBank, draft, sel, apply, engineBank, laneLabel,
     selectedBars, onSelectBars, selectedTime, onSelectTime,
-    locatorPositions: () => locatorPositions?.(),
-    onLocatorContextMenu: locatorContextMenu,
-    onLocatorMove,
-    onLocatorMoveEnd,
     onTimeContextMenu: timeContextMenu,
     onDoubleClickStep,
     onSelectTimeEnd,
@@ -1635,16 +1600,17 @@ export function createPianoRoll({
         };
         zoom.append(button);
       }
-      // CHANNEL first: it says what a note IS on this lane, and DRAW LENGTH says how long
-      // that note is. The two that follow are about the panel rather than the part.
-      return [fieldLabel('CHANNEL'), voicePicker(),
+      // Put the view-facing choices first: TOOL and NOTE NAMES explain how the roll is
+      // being read, then the note-writing choices follow. Chord controls are last so the
+      // common channel, quantise, length and zoom controls stay together at the top.
+      return [fieldLabel('TOOL'), toolPicker(),
+        fieldLabel('NOTE NAMES'), noteNamesToggle(),
+        fieldLabel('CHANNEL'), voicePicker(),
         fieldLabel('QUANTISE'), quantisePicker(),
-        fieldLabel('CHORD'), chordSelect('type'), chordSelect('voicing'),
-        chordSelect('inversion'), doubleRootToggle(), chordInputToggle(),
         fieldLabel('DRAW LENGTH'), lengthPicker(), fieldLabel('PITCH ZOOM'), zoom,
         fieldLabel('TIME ZOOM'), timeZoomPicker(),
-        fieldLabel('NOTE NAMES'), noteNamesToggle(),
-        fieldLabel('TOOL'), toolPicker()];
+        fieldLabel('CHORD'), chordSelect('type'), chordSelect('voicing'),
+        chordSelect('inversion'), doubleRootToggle(), chordInputToggle()];
     },
     // Where the roll's controls WOULD go — the NOTES panel's header rather than a second
     // row of its own. There are none left to put there: note length, zoom and mouse mode
@@ -1888,7 +1854,7 @@ export function createPianoRoll({
     clearSelectedKeys();
     if (!grid.isOpen()) return;
     const rows = new Set();
-    for (const cell of el.querySelectorAll('.ssqcell.on:is(.sel,.edited)')) {
+    for (const cell of el.querySelectorAll('.ssqcell.on.sel')) {
       rows.add(cell.dataset.row);
     }
     paintRowKeys(rows, 'selected', selectedKeys);
@@ -2004,11 +1970,14 @@ export function createPianoRoll({
     },
     isOpen: grid.isOpen,
     viewState: grid.viewState,
-    restoreViewState: grid.restoreViewState,
+    restoreViewState(state) {
+      grid.restoreViewState(state);
+      syncSelectedKeys();
+    },
     setPitchSize,
-    // The locator and context-menu callbacks occasionally need to repaint only the
-    // ruler/pins after a transport boundary changes. Keep this small redraw seam on
-    // the piano-roll wrapper rather than reaching through it to the private bar grid.
+    // Range and context-menu callbacks occasionally need to repaint only the ruler
+    // after a transport boundary changes. Keep this small redraw seam on the piano-roll
+    // wrapper rather than reaching through it to the private bar grid.
     redraw() {
       grid.redraw();
       syncSelectedKeys();
@@ -2017,6 +1986,8 @@ export function createPianoRoll({
     syncActions: () => syncActionState(),
     setFollow: grid.setFollow,
     followEnabled: grid.followEnabled,
+    armPendingPlayback: grid.armPendingPlayback,
+    clearPendingPlayback: grid.clearPendingPlayback,
     refresh() {
       clearPlayingKeys();
       grid.refresh();

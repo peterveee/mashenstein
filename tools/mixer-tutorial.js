@@ -108,7 +108,7 @@ export function createTutorial({
       says: 'Drag up or down, hold shift for a fifth of the speed, click the number to type '
         + 'an exact one, double-click to reset. The same on every knob, fader and readout '
         + 'on the page.\n\nThis EQ is fixed-frequency — 250, 1.2k and 4k, plus or minus '
-        + '18 dB. For anything else, insert a parametric.',
+        + '18 dB. For anything else, insert a Channel EQ.',
     },
     {
       id: 'sends',
@@ -143,7 +143,7 @@ export function createTutorial({
       id: 'catalogue',
       title: 'Grouped, and priced',
       anchor: () => $('fxpicker'),
-      says: 'Level & EQ, delay, modulation, drive, space & stereo, dynamics. Thirty-odd '
+      says: 'Tone & Filter, Delay & Echo, Modulation & Rhythm, Character & Lo-Fi, Space, Width & Pitch, and Dynamics. Thirty-odd '
         + 'effects, and each one shows what it costs — a percentage of one core, measured '
         + 'rather than guessed.\n\nMost are under a fifth of a percent. The phaser is two. '
         + 'Watch the CPU readout in the toolbar if you stack them.',

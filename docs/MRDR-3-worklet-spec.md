@@ -14,17 +14,32 @@ after a library change; the counts decide what gets built and in what order.
 
 ## 0. Handover status at the time of writing
 
-- **Implemented:** native `MRDR-3` in `src/engine/voices.js::_playLayer`; its editors,
-  presets, cache/performance machinery and live/offline hosts; the reusable TNGR-2
-  Worklet/controller/shared-core proof pattern.
-- **Measured:** the catalogue census and native anatomy figures cited here. The current
-  census is 68 presets and 181 distinct object paths; the 13 PWM, 5 sync, 7 noise, 28
-  unison-heavy, 2 chorus, 0 PRE-drive and 0 tempo-LFO counts were rechecked on 2026-08-20.
-- **Not implemented:** `src/engine/mrdr3/`, the `MRDR-3 AW` test identity, Phase 0
-  bench, comparison override/tooling, per-preset approval and every test named in this
-  document.
-- **Unverified:** that the complete AW DSP is materially cheaper, that Tier-A ports meet
-  their proposed tolerance, browser/device support, and all listening claims.
+*Updated 2026-08-20, end of Phase 2.*
+
+- **Implemented:** native `MRDR-3` in `src/engine/voices.js::_playLayer` and everything
+  around it. **Phases 0-2 of this document:** `src/engine/mrdr3/{identity,proof,params,
+  primitives,osc,tables,dsp,worklet,compile}.js`, the dev view in `src/dev/mrdr3-aw.js`,
+  and the suites `mrdr3-{worklet-proof,identity,primitives,params,osc,dsp-parity}.js`.
+  The core renders one layer through an optional global stage, with poly allocation and
+  group-aware stealing.
+- **Measured, and the numbers that matter:** Tier-A ports agree with the real nodes to
+  <=7e-8 (biquad/shaper/panner) and <=3e-7 (the automation timeline). Chromium rebuilds
+  biquad coefficients PER SAMPLE — per-block is 430,000x further from the node. The
+  worklet and the Node reference renderer are **sample-identical** at both rates,
+  including a lane pushed past its pool. Phase 0's cost proof is in
+  `work/local/mrdr3-phase0-verdict.md` with its contingency stated.
+- **Approved by ear (2026-08-20):** the 15 presets the core renders as authored, A/B'd
+  against `_playLayer` in `work/auditions/mrdr3-ab/` — "those sound totally fine across
+  the board". Pinned at both rates by `work/local/mrdr3-null-oracle.mjs`. This is a
+  Phase 2 smoke set, NOT one of §3.5's batches; those still require their own approval
+  with level re-measurement.
+- **Not implemented:** the other two layers, unison, PWM, noise, FM, hard sync, the LFOs,
+  vibrato, glide, mono/legato and drive (Phases 3-4); the lane controller and therefore
+  `setMrdrComparisonBackend`, which needs a dispatch path inside `VoiceRack`; the §3.2
+  refactor of the engine's envelope builders into shared host-neutral form.
+- **Unverified:** that the COMPLETE core is materially cheaper — Phase 0 benched a spike,
+  not this; browser/device support beyond headless Chromium; and every listening claim
+  about a preset outside the 15 above.
 
 This document is an implementation/acceptance specification, not evidence that an AW
 prototype exists or that the migration is complete.

@@ -12,7 +12,9 @@ const hash = (text) => {
 };
 
 export const NOTE_FX_DIRECTIONS = Object.freeze([
-  'up', 'down', 'updown', 'downup', 'random', 'asPlayed',
+  'up', 'down', 'updown', 'downup', 'updownHold', 'downupHold',
+  'up2', 'down2', 'converge', 'diverge', 'pedalLow', 'pedalHigh', 'cascade',
+  'random', 'asPlayed',
 ]);
 
 // A range is stored in MIDI note numbers, in the file's spelling — 60 is C4, the same
@@ -110,6 +112,92 @@ export function foldTonesToRange(list, lo, hi) {
   return out;
 }
 
+/**
+ * The shortest run of the pattern that says everything it has to say.
+ *
+ * The index recipes below are written the obvious way — walk the stack once, emit what
+ * each step is worth — and some of them come out saying the same thing twice. A triad
+ * climbed in thirds is C G E C G E: the second half is not a variation, it is the first
+ * half again. Nothing sounds different for the repetition when the pattern loops, but a
+ * one-shot would play six notes where three were meant, and the desk's Repeat switch is
+ * the difference between those two readings. So the recipe is folded down to its period
+ * here, once, and every mode downstream reads a pattern that ends where it stops being
+ * new.
+ */
+const shortestCycle = (seq) => {
+  for (let period = 1; period < seq.length; period++) {
+    if (seq.length % period) continue;
+    let matches = true;
+    for (let i = period; i < seq.length && matches; i++) matches = seq[i] === seq[i % period];
+    if (matches) return seq.slice(0, period);
+  }
+  return seq;
+};
+
+/**
+ * The index recipes, written against a stack already sorted low to high.
+ *
+ * Each returns positions into that stack rather than tones, so a pattern is a shape and
+ * not a chord — the same recipe reads a triad, a seventh and a four-octave stack, and
+ * the shape survives whatever Octaves, the range fold and the note limit left behind.
+ *
+ * Every one of them is total: it visits what it visits whatever the stack's length, and
+ * where a shape has no meaning below three notes — a skip of two on two notes is one
+ * note played twice — it says so by falling back to the plain climb rather than
+ * stuttering.
+ */
+const INDEX_PATTERNS = {
+  // Climb in thirds: every other note of the stack, wrapping round to pick up the ones
+  // it stepped over. On a triad this is the C G E C G E figure — the chord's own notes,
+  // in the order a hand rolls them rather than the order they stack.
+  up2: (k) => (k < 3 ? null
+    : shortestCycle(Array.from({ length: k * 2 }, (_, i) => (i % 2
+      ? (((i - 1) / 2) + 2) % k : i / 2)))),
+  // The mirror, including its fallback: a shape with no meaning on two notes still has
+  // a direction, and a mode called Down should never climb.
+  down2: (k) => (INDEX_PATTERNS.up2(k) ?? Array.from({ length: k }, (_, i) => i))
+    .map((i) => k - 1 - i),
+  // Outside in and inside out. Converge is the two hands walking towards each other —
+  // lowest, highest, second lowest, second highest — and diverge starts at the middle
+  // and opens outwards. Both keep the whole stack; only the route through it changes.
+  converge: (k) => {
+    const out = [];
+    for (let lo = 0, hi = k - 1; lo <= hi; lo++, hi--) {
+      out.push(lo);
+      if (hi !== lo) out.push(hi);
+    }
+    return out;
+  },
+  diverge: (k) => {
+    const out = [];
+    for (let lo = Math.floor((k - 1) / 2), hi = lo + 1; out.length < k; lo--, hi++) {
+      if (lo >= 0) out.push(lo);
+      if (hi < k && out.length < k) out.push(hi);
+    }
+    return out;
+  },
+  // Up / Down with the turns held rather than clipped. The plain updown skips the
+  // endpoints on the way back so the top note is not struck twice in a row; this one
+  // strikes it twice on purpose, which is the older and squarer feel of the two and
+  // lands the bottom note on the beat when the stack is odd.
+  updownHold: (k) => (k < 2 ? [0]
+    : [...Array.from({ length: k }, (_, i) => i),
+      ...Array.from({ length: k }, (_, i) => k - 1 - i)]),
+  downupHold: (k) => INDEX_PATTERNS.updownHold(k).map((i) => k - 1 - i),
+  // A pedal alternates one note of the stack against all the others — the thumb holding
+  // the root while the fingers climb, or the little finger ringing the top while the
+  // chord walks up under it. Two notes have nothing to alternate, so they simply climb.
+  pedalLow: (k) => (k < 3 ? null
+    : Array.from({ length: (k - 1) * 2 }, (_, i) => (i % 2 ? (i + 1) / 2 : 0))),
+  pedalHigh: (k) => (k < 3 ? null
+    : Array.from({ length: (k - 1) * 2 }, (_, i) => (i % 2 ? k - 1 : i / 2))),
+  // Three up, then back two and go again — the staircase that keeps climbing while
+  // sounding like it keeps falling. It runs the stack's whole rotation, so a triad
+  // takes nine notes to come home and a seventh takes twelve.
+  cascade: (k) => (k < 3 ? null
+    : shortestCycle(Array.from({ length: k * 3 }, (_, i) => (Math.floor(i / 3) + (i % 3)) % k))),
+};
+
 export function orderedTones(value, direction = 'up', seed = '') {
   const source = tones(value);
   const up = [...source].sort((a, b) => a - b);
@@ -124,6 +212,8 @@ export function orderedTones(value, direction = 'up', seed = '') {
     return up.map((tone, i) => ({ tone, rank: hash(`${seed}:${i}:${tone}`) }))
       .sort((a, b) => a.rank - b.rank).map((item) => item.tone);
   }
+  const pattern = up.length ? INDEX_PATTERNS[direction]?.(up.length) : null;
+  if (pattern) return pattern.map((i) => up[i]);
   return up;
 }
 

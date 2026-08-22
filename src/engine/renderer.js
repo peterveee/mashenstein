@@ -288,6 +288,21 @@ let settledFor = 0, settleReported = false, lastSettleValue = null;
 // chrome dirty-flag: repaint the touch overlay only when its signature changes
 let chromeWant = null, chromePaintedSig = null;
 
+// A browser can deliver one resize event per display frame while a desktop
+// window is being dragged. `resize()` is deliberately a complete surface
+// rebuild: assigning canvas.width/height clears the visible backing store,
+// resizes the WebGL drawing buffer, and can replace bloom targets. Doing that
+// on every drag frame can briefly compete with the realtime audio thread.
+// Keep the first resize synchronous, then wait for the viewport to settle so a
+// live drag produces one expensive rebuild instead of a stream of them.
+const RESIZE_SETTLE_MS = 120;
+const resizeNow = () => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+};
+
 // Optional title-profiler timing. It is dormant during normal play; when the
 // hidden diagnostics panel arms a title run, these counters separate Canvas2D
 // foreground painting from the renderer submission and expose the WebGL
@@ -560,16 +575,26 @@ export function initRenderer(platform = {}, persistence = {}) {
   // to the same orientation as #game.
   resize();
   const scheduleResize = () => {
+    resize.dueAt = resizeNow() + RESIZE_SETTLE_MS;
     if (resize.pending) return;
-    resize.pending = requestAnimationFrame(() => {
+    const settle = (frameNow) => {
       resize.pending = 0;
+      const now = Number.isFinite(frameNow) ? frameNow : resizeNow();
+      if (now < resize.dueAt) {
+        resize.pending = requestAnimationFrame(settle);
+        return;
+      }
       resize();
-    });
+    };
+    resize.pending = requestAnimationFrame(settle);
   };
   window.addEventListener('resize', scheduleResize);
   window.addEventListener('orientationchange', scheduleResize);
   window.visualViewport && window.visualViewport.addEventListener('resize', scheduleResize);
 }
+
+resize.pending = 0;
+resize.dueAt = 0;
 
 function resize() {
   const viewport = window.visualViewport;
@@ -634,8 +659,11 @@ function resize() {
   }
   const px = pinnedDensity != null ? Math.min(nativeDensity, pinnedDensity) : ladder[rung];
   const pxW = Math.round(W * px), pxH = Math.round(H * px);
-  canvas.width = pxW;
-  canvas.height = pxH;
+  // Setting a canvas dimension, even to the same value, clears its backing
+  // store and resets the drawing state. Avoid turning duplicate viewport
+  // notifications into needless surface churn.
+  if (canvas.width !== pxW) canvas.width = pxW;
+  if (canvas.height !== pxH) canvas.height = pxH;
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
   // Fullscreen visualisers use the viewport as a cover frame, preserving the
@@ -840,8 +868,10 @@ export function noteRendererFrame(now) {
 
 function resizeChrome(winW, winH, ox, oy, dpr) {
   if (chromeCanvas) {
-    chromeCanvas.width = Math.round(winW * dpr);
-    chromeCanvas.height = Math.round(winH * dpr);
+    const chromeW = Math.round(winW * dpr);
+    const chromeH = Math.round(winH * dpr);
+    if (chromeCanvas.width !== chromeW) chromeCanvas.width = chromeW;
+    if (chromeCanvas.height !== chromeH) chromeCanvas.height = chromeH;
     chromeCanvas.style.width = winW + 'px';
     chromeCanvas.style.height = winH + 'px';
     chromeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);

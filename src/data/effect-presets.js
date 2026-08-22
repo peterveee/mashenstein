@@ -8,7 +8,23 @@ export const EFFECT_PRESETS = {
         "balance": 0,
         "mono": 0
       },
-      "presets": {}
+      "presets": {
+        "Boost": {
+          "gain": 6,
+          "balance": 0,
+          "mono": 0
+        },
+        "Cut": {
+          "gain": -6,
+          "balance": 0,
+          "mono": 0
+        },
+        "Mono": {
+          "gain": 0,
+          "balance": 0,
+          "mono": 1
+        }
+      }
     },
     "peq": {
       "default": {
@@ -17,13 +33,231 @@ export const EFFECT_PRESETS = {
         "f2": 500,
         "g2": 0,
         "q2": 1,
+        "f5": 1000,
+        "g5": 0,
+        "q5": 1,
         "f3": 2000,
         "g3": 0,
         "q3": 1,
         "f4": 6000,
         "g4": 0
       },
-      "presets": {}
+      "presets": {
+        "Bass Boost": {
+          "f1": 90,
+          "g1": 6,
+          "f2": 500,
+          "g2": 0,
+          "q2": 1,
+          "f5": 1000,
+          "g5": 0,
+          "q5": 1,
+          "f3": 2000,
+          "g3": 0,
+          "q3": 1,
+          "f4": 6000,
+          "g4": -1
+        },
+        "Treble Boost": {
+          "f1": 120,
+          "g1": 0,
+          "f2": 500,
+          "g2": 0,
+          "q2": 1,
+          "f5": 1000,
+          "g5": 0,
+          "q5": 1,
+          "f3": 4000,
+          "g3": 2,
+          "q3": 0.8,
+          "f4": 8000,
+          "g4": 6
+        },
+        "Air Lift": {
+          "f1": 120,
+          "g1": 0,
+          "f2": 500,
+          "g2": 0,
+          "q2": 1,
+          "f5": 1000,
+          "g5": 0,
+          "q5": 1,
+          "f3": 2000,
+          "g3": 0,
+          "q3": 1,
+          "f4": 12000,
+          "g4": 5
+        },
+        "Smiley": {
+          "f1": 80,
+          "g1": 6,
+          "f2": 450,
+          "g2": -2,
+          "q2": 1,
+          "f5": 1000,
+          "g5": -4,
+          "q5": 0.9,
+          "f3": 2000,
+          "g3": 0,
+          "q3": 1,
+          "f4": 9000,
+          "g4": 5.5
+        },
+        "Mid Scoop": {
+          "f1": 120,
+          "g1": 0,
+          "f2": 400,
+          "g2": -4,
+          "q2": 0.8,
+          "f5": 1000,
+          "g5": -6,
+          "q5": 0.8,
+          "f3": 2000,
+          "g3": -3,
+          "q3": 0.9,
+          "f4": 6000,
+          "g4": 0
+        },
+        "Vocal Lift": {
+          "f1": 120,
+          "g1": -3,
+          "f2": 300,
+          "g2": -3,
+          "q2": 1.2,
+          "f5": 1000,
+          "g5": -2,
+          "q5": 1.4,
+          "f3": 3000,
+          "g3": 4,
+          "q3": 0.9,
+          "f4": 10000,
+          "g4": 3
+        },
+        "Drum Punch": {
+          "f1": 70,
+          "g1": 5,
+          "f2": 350,
+          "g2": -4,
+          "q2": 1.4,
+          "f5": 1000,
+          "g5": -2,
+          "q5": 1.2,
+          "f3": 3500,
+          "g3": 3,
+          "q3": 1.2,
+          "f4": 8000,
+          "g4": 3
+        },
+        "Warm & Round": {
+          "f1": 110,
+          "g1": 4,
+          "f2": 500,
+          "g2": 0,
+          "q2": 1,
+          "f5": 1000,
+          "g5": 0,
+          "q5": 1,
+          "f3": 3200,
+          "g3": -3,
+          "q3": 0.9,
+          "f4": 8000,
+          "g4": -5
+        },
+        "De-Harsh": {
+          "f1": 120,
+          "g1": 0,
+          "f2": 500,
+          "g2": 0,
+          "q2": 1,
+          "f5": 1000,
+          "g5": 0,
+          "q5": 1,
+          "f3": 3200,
+          "g3": -5.5,
+          "q3": 3,
+          "f4": 6000,
+          "g4": 0
+        },
+        "Telephone": {
+          "f1": 300,
+          "g1": -18,
+          "f2": 900,
+          "g2": 5,
+          "q2": 1.6,
+          "f5": 1200,
+          "g5": 4,
+          "q5": 2.2,
+          "f3": 2400,
+          "g3": 3,
+          "q3": 1.4,
+          "f4": 4500,
+          "g4": -18
+        },
+        "Honk Cut": {
+          "f1": 120,
+          "g1": 0,
+          "f2": 500,
+          "g2": 0,
+          "q2": 1,
+          "f5": 900,
+          "g5": -6,
+          "q5": 2.5,
+          "f3": 2000,
+          "g3": 0,
+          "q3": 1,
+          "f4": 6000,
+          "g4": 0
+        }
+      }
+    },
+    "bell": {
+      "default": {
+        "frequency": 1000,
+        "gain": 0,
+        "q": 1
+      },
+      "presets": {
+        "Sub Lift": {
+          "frequency": 45,
+          "gain": 5,
+          "q": 0.9
+        },
+        "Bass Boost": {
+          "frequency": 80,
+          "gain": 6,
+          "q": 0.7
+        },
+        "Mud Cut": {
+          "frequency": 300,
+          "gain": -5,
+          "q": 1.2
+        },
+        "Boxy Cut": {
+          "frequency": 450,
+          "gain": -6,
+          "q": 2
+        },
+        "Presence": {
+          "frequency": 3000,
+          "gain": 4,
+          "q": 1
+        },
+        "De-Harsh": {
+          "frequency": 3200,
+          "gain": -6,
+          "q": 3.5
+        },
+        "Treble Boost": {
+          "frequency": 8000,
+          "gain": 5,
+          "q": 0.7
+        },
+        "Air": {
+          "frequency": 12000,
+          "gain": 4,
+          "q": 0.8
+        }
+      }
     },
     "vowel": {
       "default": {
@@ -169,7 +403,22 @@ export const EFFECT_PRESETS = {
         "feedback": 0.3,
         "wet": 0.35
       },
-      "presets": {}
+      "presets": {
+        "Slapback": {
+          "sync": 0,
+          "division": 0.5,
+          "delayMs": 120,
+          "feedback": 0.2,
+          "wet": 0.25
+        },
+        "Wide Echo": {
+          "sync": 1,
+          "division": 0.5,
+          "delayMs": 250,
+          "feedback": 0.4,
+          "wet": 0.35
+        }
+      }
     },
     "delay": {
       "default": {
@@ -179,7 +428,29 @@ export const EFFECT_PRESETS = {
         "feedback": 0.3,
         "wet": 0.35
       },
-      "presets": {}
+      "presets": {
+        "Slapback": {
+          "sync": 0,
+          "division": 0.5,
+          "delayMs": 95,
+          "feedback": 0.12,
+          "wet": 0.25
+        },
+        "Echo": {
+          "sync": 1,
+          "division": 0.5,
+          "delayMs": 250,
+          "feedback": 0.35,
+          "wet": 0.35
+        },
+        "Long Echo": {
+          "sync": 1,
+          "division": 1,
+          "delayMs": 500,
+          "feedback": 0.45,
+          "wet": 0.3
+        }
+      }
     },
     "chorus": {
       "default": {
@@ -193,7 +464,41 @@ export const EFFECT_PRESETS = {
         "type": "sine",
         "wet": 0.5
       },
-      "presets": {}
+      "presets": {
+        "Subtle": {
+          "rateSync": 0,
+          "rateDivision": 1,
+          "frequency": 0.8,
+          "delayTime": 3,
+          "depth": 0.35,
+          "feedback": 0,
+          "spread": 120,
+          "type": "sine",
+          "wet": 0.3
+        },
+        "Wide": {
+          "rateSync": 0,
+          "rateDivision": 2,
+          "frequency": 0.55,
+          "delayTime": 8,
+          "depth": 0.65,
+          "feedback": 0.05,
+          "spread": 180,
+          "type": "sine",
+          "wet": 0.45
+        },
+        "Slow Ensemble": {
+          "rateSync": 1,
+          "rateDivision": 4,
+          "frequency": 1,
+          "delayTime": 12,
+          "depth": 0.75,
+          "feedback": 0,
+          "spread": 180,
+          "type": "triangle",
+          "wet": 0.5
+        }
+      }
     },
     "chorus2": {
       "default": {
@@ -207,7 +512,30 @@ export const EFFECT_PRESETS = {
         "tone": 9000,
         "wet": 0.5
       },
-      "presets": {}
+      "presets": {
+        "Subtle": {
+          "rateSync": 0,
+          "rateDivision": 2,
+          "frequency": 0.5,
+          "delayMs": 12,
+          "depth": 0.35,
+          "width": 0.7,
+          "feedback": 0.08,
+          "tone": 10000,
+          "wet": 0.35
+        },
+        "Wide": {
+          "rateSync": 1,
+          "rateDivision": 4,
+          "frequency": 0.65,
+          "delayMs": 18,
+          "depth": 0.6,
+          "width": 1,
+          "feedback": 0.1,
+          "tone": 9000,
+          "wet": 0.5
+        }
+      }
     },
     "rhythmgate": {
       "default": {
@@ -217,7 +545,22 @@ export const EFFECT_PRESETS = {
         "decay": 0.03367757428593863,
         "depth": 1
       },
-      "presets": {}
+      "presets": {
+        "Tight Pulse": {
+          "division": 0.25,
+          "gateLength": 0.18,
+          "attack": 0.003,
+          "decay": 0.025,
+          "depth": 1
+        },
+        "Chop": {
+          "division": 0.5,
+          "gateLength": 0.08,
+          "attack": 0.001,
+          "decay": 0.012,
+          "depth": 1
+        }
+      }
     },
     "flanger": {
       "default": {
@@ -231,7 +574,30 @@ export const EFFECT_PRESETS = {
         "tone": 5075.835653495983,
         "wet": 0.5
       },
-      "presets": {}
+      "presets": {
+        "Subtle Sweep": {
+          "rateSync": 0,
+          "rateDivision": 2,
+          "frequency": 0.2,
+          "delayMs": 1.5,
+          "depth": 0.35,
+          "feedback": 0.2,
+          "spread": 90,
+          "tone": 12000,
+          "wet": 0.35
+        },
+        "Jet": {
+          "rateSync": 0,
+          "rateDivision": 2,
+          "frequency": 0.08,
+          "delayMs": 4,
+          "depth": 0.8,
+          "feedback": 0.6,
+          "spread": 180,
+          "tone": 5000,
+          "wet": 0.5
+        }
+      }
     },
     "phaser": {
       "default": {
@@ -243,7 +609,26 @@ export const EFFECT_PRESETS = {
         "feedback": 0.2,
         "wet": 0.5
       },
-      "presets": {}
+      "presets": {
+        "Slow Sweep": {
+          "rateSync": 1,
+          "rateDivision": 4,
+          "frequency": 0.4,
+          "octaves": 2.5,
+          "baseFrequency": 300,
+          "feedback": 0.15,
+          "wet": 0.4
+        },
+        "Wide Phase": {
+          "rateSync": 0,
+          "rateDivision": 4,
+          "frequency": 0.25,
+          "octaves": 4,
+          "baseFrequency": 500,
+          "feedback": 0.35,
+          "wet": 0.5
+        }
+      }
     },
     "tremolo": {
       "default": {
@@ -254,7 +639,24 @@ export const EFFECT_PRESETS = {
         "spread": 180,
         "wet": 1
       },
-      "presets": {}
+      "presets": {
+        "Gentle Pulse": {
+          "rateSync": 1,
+          "rateDivision": 2,
+          "frequency": 4,
+          "depth": 0.35,
+          "spread": 0,
+          "wet": 1
+        },
+        "Hard Chop": {
+          "rateSync": 0,
+          "rateDivision": 0.5,
+          "frequency": 8,
+          "depth": 1,
+          "spread": 180,
+          "wet": 1
+        }
+      }
     },
     "vibrato": {
       "default": {
@@ -276,7 +678,26 @@ export const EFFECT_PRESETS = {
         "octaves": 2.6,
         "wet": 1
       },
-      "presets": {}
+      "presets": {
+        "Gentle Sweep": {
+          "rateSync": 0,
+          "rateDivision": 2,
+          "frequency": 0.25,
+          "depth": 0.55,
+          "baseFrequency": 400,
+          "octaves": 2,
+          "wet": 0.55
+        },
+        "Acid": {
+          "rateSync": 1,
+          "rateDivision": 0.25,
+          "frequency": 1,
+          "depth": 1,
+          "baseFrequency": 120,
+          "octaves": 4,
+          "wet": 0.8
+        }
+      }
     },
     "autowah": {
       "default": {
@@ -303,16 +724,40 @@ export const EFFECT_PRESETS = {
         "distortion": 0.4,
         "wet": 0.5
       },
-      "presets": {}
+      "presets": {
+        "Warm": {
+          "distortion": 0.22,
+          "wet": 0.32
+        },
+        "Crunch": {
+          "distortion": 0.6,
+          "wet": 0.45
+        }
+      }
     },
     "bitcrusher": {
       "default": {
-        "bits": 4,
-        "drive": 6,
-        "tone": 4573.050519273263,
-        "wet": 0.7
+        "bits": 8,
+        "downsample": 4,
+        "wet": 1
       },
-      "presets": {}
+      "presets": {
+        "Lo-Fi": {
+          "bits": 6,
+          "downsample": 12,
+          "wet": 1
+        },
+        "8-bit": {
+          "bits": 8,
+          "downsample": 6,
+          "wet": 1
+        },
+        "Console": {
+          "bits": 13,
+          "downsample": 9,
+          "wet": 1
+        }
+      }
     },
     "tape": {
       "default": {
@@ -323,7 +768,24 @@ export const EFFECT_PRESETS = {
         "flutter": 0.05,
         "wet": 0.65
       },
-      "presets": {}
+      "presets": {
+        "Warm": {
+          "drive": 4,
+          "bias": 0.05,
+          "tone": 9000,
+          "wow": 0.08,
+          "flutter": 0.03,
+          "wet": 0.45
+        },
+        "Worn": {
+          "drive": 10,
+          "bias": 0.25,
+          "tone": 6500,
+          "wow": 0.35,
+          "flutter": 0.18,
+          "wet": 0.7
+        }
+      }
     },
     "ringmod": {
       "default": {
@@ -333,7 +795,22 @@ export const EFFECT_PRESETS = {
         "waveform": "sine",
         "wet": 0.5
       },
-      "presets": {}
+      "presets": {
+        "Bell": {
+          "rateSync": 0,
+          "rateDivision": 0.5,
+          "frequency": 420,
+          "waveform": "sine",
+          "wet": 0.35
+        },
+        "Robot": {
+          "rateSync": 0,
+          "rateDivision": 0.5,
+          "frequency": 65,
+          "waveform": "square",
+          "wet": 0.55
+        }
+      }
     },
     "chebyshev": {
       "default": {
@@ -349,14 +826,36 @@ export const EFFECT_PRESETS = {
         "timbre": 0.06,
         "mix": 0.7
       },
-      "presets": {}
+      "presets": {
+        "Air": {
+          "tune": 6000,
+          "drive": 0.35,
+          "timbre": 0.7,
+          "mix": 0.25
+        },
+        "Presence": {
+          "tune": 2500,
+          "drive": 0.5,
+          "timbre": 0.4,
+          "mix": 0.3
+        }
+      }
     },
     "widener": {
       "default": {
         "width": 0.7,
         "wet": 1
       },
-      "presets": {}
+      "presets": {
+        "Subtle": {
+          "width": 0.35,
+          "wet": 1
+        },
+        "Wide": {
+          "width": 0.9,
+          "wet": 1
+        }
+      }
     },
     "doubler": {
       "default": {
@@ -368,14 +867,42 @@ export const EFFECT_PRESETS = {
         "wetPan": 1,
         "wet": 0.5
       },
-      "presets": {}
+      "presets": {
+        "Tight Double": {
+          "delayMs": 8,
+          "frequency": 0.45,
+          "depth": 0.2,
+          "width": 0.55,
+          "dryPan": 0,
+          "wetPan": 0,
+          "wet": 0.3
+        },
+        "Wide Double": {
+          "delayMs": 22,
+          "frequency": 0.35,
+          "depth": 0.5,
+          "width": 1,
+          "dryPan": -0.65,
+          "wetPan": 0.65,
+          "wet": 0.5
+        }
+      }
     },
     "shifter": {
       "default": {
         "frequency": 0,
         "wet": 1
       },
-      "presets": {}
+      "presets": {
+        "Subtle Shift": {
+          "frequency": 7,
+          "wet": 0.25
+        },
+        "Metallic": {
+          "frequency": 350,
+          "wet": 0.5
+        }
+      }
     },
     "pitch": {
       "default": {
@@ -384,24 +911,165 @@ export const EFFECT_PRESETS = {
         "feedback": 0,
         "wet": 1
       },
-      "presets": {}
+      "presets": {
+        "Octave Up": {
+          "pitch": 12,
+          "windowSize": 0.08,
+          "feedback": 0,
+          "wet": 0.5
+        },
+        "Octave Down": {
+          "pitch": -12,
+          "windowSize": 0.12,
+          "feedback": 0.05,
+          "wet": 0.5
+        }
+      }
+    },
+    "ambience": {
+      "default": {
+        "space": 0.5,
+        "damping": 0.55,
+        "wet": 0.38
+      },
+      "presets": {
+        "Small": {
+          "space": 0.18,
+          "damping": 0.7,
+          "wet": 0.32
+        },
+        "Dark": {
+          "space": 0.58,
+          "damping": 0.88,
+          "wet": 0.42
+        },
+        "Glass Room": {
+          "space": 0.42,
+          "damping": 0.12,
+          "wet": 0.3
+        },
+        "Deep Space": {
+          "space": 0.82,
+          "damping": 1.45,
+          "wet": 0.46
+        }
+      }
     },
     "reverb": {
       "default": {
         "decay": 3,
         "preDelay": 0.009916216226115456,
+        "low": 0,
+        "mid": 0,
+        "high": 0,
+        "width": 1,
         "wet": 0.4
       },
-      "presets": {}
+      "presets": {
+        "Small Room": {
+          "decay": 0.8,
+          "preDelay": 0.006,
+          "low": 0,
+          "mid": 0,
+          "high": 0,
+          "width": 1,
+          "wet": 0.25
+        },
+        "Plate": {
+          "decay": 1.8,
+          "preDelay": 0.012,
+          "low": 0,
+          "mid": 0,
+          "high": 0,
+          "width": 1,
+          "wet": 0.3
+        },
+        "Hall": {
+          "decay": 4.5,
+          "preDelay": 0.03,
+          "low": 0,
+          "mid": 0,
+          "high": 0,
+          "width": 1,
+          "wet": 0.35
+        },
+        "Dark Chamber": {
+          "decay": 1.2,
+          "preDelay": 0.008,
+          "low": 1.5,
+          "mid": -1,
+          "high": -8,
+          "width": 0.7,
+          "wet": 0.28
+        },
+        "Bright Plate": {
+          "decay": 2.2,
+          "preDelay": 0.018,
+          "low": -2,
+          "mid": 1.5,
+          "high": 5,
+          "width": 1.35,
+          "wet": 0.32
+        },
+        "Wide Hall": {
+          "decay": 5.5,
+          "preDelay": 0.04,
+          "low": -2,
+          "mid": 0,
+          "high": -2,
+          "width": 1.8,
+          "wet": 0.38
+        }
+      }
     },
     "compressor": {
       "default": {
+        "inputGain": 0,
         "threshold": -18,
         "ratio": 4,
         "attack": 0.01,
-        "release": 0.15
+        "release": 0.15,
+        "outputGain": 0
       },
-      "presets": {}
+      "presets": {
+        "Gentle": {
+          "threshold": -12,
+          "ratio": 2,
+          "attack": 0.025,
+          "release": 0.18
+        },
+        "Punch": {
+          "threshold": -24,
+          "ratio": 5,
+          "attack": 0.008,
+          "release": 0.12
+        },
+        "Vocal": {
+          "threshold": -18,
+          "ratio": 3,
+          "attack": 0.012,
+          "release": 0.08
+        }
+      }
+    },
+    "noisegate": {
+      "default": {
+        "threshold": -45,
+        "attack": 0.005,
+        "release": 0.12
+      },
+      "presets": {
+        "Gentle Gate": {
+          "threshold": -50,
+          "attack": 0.01,
+          "release": 0.25
+        },
+        "Gated Reverb": {
+          "threshold": -35,
+          "attack": 0.002,
+          "release": 0.18
+        }
+      }
     },
     "l7": {
       "default": {
@@ -424,9 +1092,89 @@ export const EFFECT_PRESETS = {
         "side.ratio": 6,
         "side.attack": 0.03,
         "side.release": 0.25,
-        "side.knee": 10
+        "side.knee": 10,
+        "pump": 0
       },
-      "presets": {}
+      "presets": {
+        "Glue": {
+          "mid.threshold": -18,
+          "mid.ratio": 2,
+          "mid.attack": 0.03,
+          "mid.release": 0.18,
+          "mid.knee": 24,
+          "side.threshold": -24,
+          "side.ratio": 2.5,
+          "side.attack": 0.04,
+          "side.release": 0.3,
+          "side.knee": 18,
+          "pump": 0.12
+        },
+        "Center Punch": {
+          "mid.threshold": -28,
+          "mid.ratio": 5,
+          "mid.attack": 0.012,
+          "mid.release": 0.09,
+          "mid.knee": 8,
+          "side.threshold": -36,
+          "side.ratio": 2.5,
+          "side.attack": 0.04,
+          "side.release": 0.28,
+          "side.knee": 16,
+          "pump": 0.32
+        },
+        "Wide & Open": {
+          "mid.threshold": -20,
+          "mid.ratio": 3,
+          "mid.attack": 0.025,
+          "mid.release": 0.12,
+          "mid.knee": 18,
+          "side.threshold": -18,
+          "side.ratio": 1.5,
+          "side.attack": 0.05,
+          "side.release": 0.4,
+          "side.knee": 30,
+          "pump": 0.08
+        },
+        "Stereo Tame": {
+          "mid.threshold": -18,
+          "mid.ratio": 2.5,
+          "mid.attack": 0.025,
+          "mid.release": 0.16,
+          "mid.knee": 20,
+          "side.threshold": -30,
+          "side.ratio": 6,
+          "side.attack": 0.018,
+          "side.release": 0.16,
+          "side.knee": 10,
+          "pump": 0.2
+        },
+        "Vocal Focus": {
+          "mid.threshold": -22,
+          "mid.ratio": 4,
+          "mid.attack": 0.008,
+          "mid.release": 0.1,
+          "mid.knee": 12,
+          "side.threshold": -26,
+          "side.ratio": 2,
+          "side.attack": 0.05,
+          "side.release": 0.35,
+          "side.knee": 24,
+          "pump": 0.16
+        },
+        "Techno Pump": {
+          "mid.threshold": -18,
+          "mid.ratio": 4,
+          "mid.attack": 0.006,
+          "mid.release": 0.12,
+          "mid.knee": 8,
+          "side.threshold": -24,
+          "side.ratio": 3,
+          "side.attack": 0.008,
+          "side.release": 0.18,
+          "side.knee": 10,
+          "pump": 0.9
+        }
+      }
     },
     "mbComp": {
       "default": {
@@ -470,7 +1218,103 @@ export const EFFECT_PRESETS = {
         "high.release": 0.03,
         "high.knee": 16
       },
-      "presets": {}
+      "presets": {
+        "Gentle Glue": {
+          "lowFrequency": 180,
+          "highFrequency": 2200,
+          "low.threshold": -24,
+          "low.ratio": 2.5,
+          "low.attack": 0.045,
+          "low.release": 0.3,
+          "low.knee": 12,
+          "mid.threshold": -20,
+          "mid.ratio": 2,
+          "mid.attack": 0.03,
+          "mid.release": 0.12,
+          "mid.knee": 18,
+          "high.threshold": -20,
+          "high.ratio": 2,
+          "high.attack": 0.015,
+          "high.release": 0.08,
+          "high.knee": 18
+        },
+        "Punchy Bus": {
+          "lowFrequency": 180,
+          "highFrequency": 1800,
+          "low.threshold": -26,
+          "low.ratio": 4,
+          "low.attack": 0.06,
+          "low.release": 0.22,
+          "low.knee": 8,
+          "mid.threshold": -22,
+          "mid.ratio": 3.5,
+          "mid.attack": 0.018,
+          "mid.release": 0.08,
+          "mid.knee": 12,
+          "high.threshold": -26,
+          "high.ratio": 2.5,
+          "high.attack": 0.01,
+          "high.release": 0.06,
+          "high.knee": 10
+        },
+        "Tight Low End": {
+          "lowFrequency": 120,
+          "highFrequency": 1600,
+          "low.threshold": -34,
+          "low.ratio": 8,
+          "low.attack": 0.015,
+          "low.release": 0.12,
+          "low.knee": 6,
+          "mid.threshold": -28,
+          "mid.ratio": 4,
+          "mid.attack": 0.01,
+          "mid.release": 0.06,
+          "mid.knee": 10,
+          "high.threshold": -24,
+          "high.ratio": 2.5,
+          "high.attack": 0.008,
+          "high.release": 0.04,
+          "high.knee": 12
+        },
+        "Vocal Focus": {
+          "lowFrequency": 160,
+          "highFrequency": 3200,
+          "low.threshold": -30,
+          "low.ratio": 3,
+          "low.attack": 0.035,
+          "low.release": 0.22,
+          "low.knee": 12,
+          "mid.threshold": -18,
+          "mid.ratio": 3.5,
+          "mid.attack": 0.012,
+          "mid.release": 0.09,
+          "mid.knee": 14,
+          "high.threshold": -28,
+          "high.ratio": 3,
+          "high.attack": 0.008,
+          "high.release": 0.07,
+          "high.knee": 16
+        },
+        "Polished Master": {
+          "lowFrequency": 250,
+          "highFrequency": 2400,
+          "low.threshold": -28,
+          "low.ratio": 2.5,
+          "low.attack": 0.05,
+          "low.release": 0.3,
+          "low.knee": 14,
+          "mid.threshold": -22,
+          "mid.ratio": 2.5,
+          "mid.attack": 0.025,
+          "mid.release": 0.16,
+          "mid.knee": 18,
+          "high.threshold": -24,
+          "high.ratio": 2,
+          "high.attack": 0.02,
+          "high.release": 0.12,
+          "high.knee": 18
+        }
+      }
     },
     "filter": {
       "default": {
@@ -478,7 +1322,18 @@ export const EFFECT_PRESETS = {
         "frequency": 1000,
         "Q": 1
       },
-      "presets": {}
+      "presets": {
+        "Low-pass Clean": {
+          "type": "lowpass",
+          "frequency": 8000,
+          "Q": 0.7
+        },
+        "High-pass Clean": {
+          "type": "highpass",
+          "frequency": 100,
+          "Q": 0.7
+        }
+      }
     }
   },
   "returns": {

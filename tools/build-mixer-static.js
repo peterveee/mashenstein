@@ -19,6 +19,7 @@ import esbuild from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { MIXER_BRAND } from './mixer-brand.js';
 
 const here = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -48,6 +49,7 @@ async function inlined(root, entry, shell, define) {
 export async function buildSongMixer(root = here) {
   const html = (await inlined(root, 'tools/mixer-entry.js', 'tools/mixer-shell.html',
     { __MASH_STATIC_MIXER__: 'true' }))
+    .replaceAll('/*__MIXER_BRAND__*/', () => MIXER_BRAND)
     .replace('/*__MIXER_DEV_USER__*/', 'false');
   const frame = await inlined(root, 'tools/mixer-render-entry.js', 'tools/mixer-render-shell.html');
 

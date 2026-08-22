@@ -259,7 +259,7 @@ assert(laneList(extra).find((l) => l.key === 'tom2')?.label === 'tom 2',
   'the added sound falls back to its stable engine lane identity');
 const chosenExtra = deskBank(bank, {
   layers: [{ key: 'tom2', from: 'tom', independent: true }],
-  voice: { tom2Voice: 'cowbell' },
+  voice: { tom2Voice: 'ds808Cowbell' },
 });
 assert(chosenExtra.tom2Voice == null,
   'the fallback stays out of the shaped bank when the mix names a voice that will be merged later');
@@ -529,7 +529,7 @@ assert(rt.lanes?.bass2?.gain === -4.5 && rt.lanes.bass2.send.reverb === 0.3,
 
 const extraRt = await roundTrip({
   layers: [{ key: 'tom2', from: 'tom', independent: true, label: 'Cowbell' }],
-  voice: { tom2Voice: 'cowbell' },
+  voice: { tom2Voice: 'ds808Cowbell' },
 });
 assert(extraRt.layers[0].independent === true && !extraRt.layers[0].label,
   'round-trip: an independent added sound keeps its mode without a stale display name');

@@ -156,16 +156,21 @@ try {
     const strum = root.querySelector('input[type="checkbox"]');
     strum.checked = true;
     strum.dispatchEvent(new Event('input', { bubbles: true }));
-    root.querySelector('.regapply')?.click();
+    root.querySelector('.notefxapply')?.click();
     return {
-      apply: root.querySelector('.regapply')?.textContent || '',
+      apply: root.querySelector('.notefxapply')?.textContent || '',
+      applyClose: root.querySelector('.regapply')?.textContent || '',
       help: root.querySelector('.notefxhelp')?.textContent || '',
       showing: root.classList.contains('show'),
       playing: document.querySelector('#play')?.classList.contains('on') || false,
     };
   });
+  // Two applies, and this is the one that auditions: it saves, plays the bars it was
+  // opened on, and stays up so the next tweak is one click away. The primary button
+  // beside it is the one that finishes.
   assert(barNote.apply === 'Apply + Play' && barNote.showing && barNote.playing
-    && barNote.help.includes('leaves this window open'),
+    && barNote.applyClose === 'Apply & Close'
+    && barNote.help.includes('leaving this window open'),
   'bar Note FX applies, starts playback, and leaves its editor open');
 
   await page.evaluate(() => {
@@ -182,17 +187,26 @@ try {
     const strum = root.querySelector('input[type="checkbox"]');
     strum.checked = true;
     strum.dispatchEvent(new Event('input', { bubbles: true }));
-    root.querySelector('.regapply')?.click();
+    root.querySelector('.notefxapply')?.click();
     return {
-      apply: root.querySelector('.regapply')?.textContent || '',
+      apply: root.querySelector('.notefxapply')?.textContent || '',
       help: root.querySelector('.notefxhelp')?.textContent || '',
       showing: root.classList.contains('show'),
       playing: document.querySelector('#play')?.classList.contains('on') || false,
     };
   });
   assert(trackNote.apply === 'Apply' && trackNote.showing && !trackNote.playing
-    && trackNote.help.includes('does not start playback'),
+    && trackNote.help.includes('leaves this window open'),
   'track Note FX applies without starting playback and leaves its editor open');
+
+  // The primary is the one that finishes: it saves and the window goes. Pressed here
+  // rather than described, because a staged editor that will not close is the failure
+  // this button exists to prevent.
+  const applyClosed = await page.evaluate(() => {
+    document.querySelector('#regionedit.notefxmodal .regapply')?.click();
+    return !document.querySelector('#regionedit.notefxmodal.show');
+  });
+  assert(applyClosed, 'Apply & Close saves the Note FX and closes the editor');
   assert(errors.length === 0,
     `the editable Bar Effects workflow raises no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 } catch (error) {

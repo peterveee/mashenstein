@@ -234,6 +234,16 @@ function pose(kind, t, extra = {}) {
     stomp: false, headless: false, facing: 1, ...extra,
   };
 }
+// What a held duck IS per hero, mirroring poseFromPlayer's own gate: playable
+// humanoid and ray rigs ship the POWER SLIDE, the other rigs keep their
+// crouch — and so do Gary and Dolores, who are cast-roll flavour with no run
+// to duck in. Every production duck tile draws through this so the gallery
+// cannot drift from the game.
+function duckExtra(id) {
+  const rig = TOON_SPECS[id]?.rig;
+  return HERO_BY_ID[id] && (rig === 'humanoid' || rig === 'ray')
+    ? { duckStyle: 'slide' } : {};
+}
 
 // What a real run actually shows the instant an ability fires: poseFromPlayer's
 // ability-specific pose fields plus drawPowerPose()'s overlay flourish where one
@@ -316,7 +326,9 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     + 'Power up is what a real run actually shows the instant their ability fires — poseFromPlayer\'s '
     + 'ability-specific pose fields (lean/roll/duck/headless/menuAction) plus drawPowerPose()\'s overlay '
     + 'flourish where one exists. World-space projectiles are not duplicated here, but Grumpos does lose '
-    + 'the axe from his back while it is in flight and Lorenzo shows the grounded wrench-smash body action.');
+    + 'the axe from his back while it is in flight and Lorenzo shows the grounded wrench-smash body action. '
+    + 'Duck is the shipped POWER SLIDE on the humanoid rigs, per-hero garments and all; B-33P, Mochi, '
+    + 'Chompo and Ray M\'n keep their crouch, exactly as poseFromPlayer serves it.');
   const HH = 60; // draw tall: these are vector toons, not pixel grids
   for (const id of ids) {
     for (const kind of ['idle', 'run', 'jump', 'duck', 'celebrate']) {
@@ -326,7 +338,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       // rides ~1.25 above his feet) isn't cropped at the tile's top edge.
       const th = kind === 'celebrate' ? HH * 1.62 : HH * 1.3;
       tile(grid, id, kind, HH * 0.9, th, (ctx, t) => {
-        drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
+        drawToon(ctx, id, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'duck' ? duckExtra(id) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
       }, { animated: true });
     }
     // Gary and Dolores are cast-roll flavour, not roster members — neither has
@@ -388,9 +400,26 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     // Mirrors the heroes section's own tile heights so a side-by-side glance
     // between the two sections compares like for like.
     const th = kind === 'celebrate' ? HH * 1.62 : HH * 1.3;
+    if (kind === 'duck') {
+      // The whole cast's duck in ONE row on one clock — the humanoid slides
+      // and the other rigs' crouches shoulder to shoulder, exactly the split
+      // poseFromPlayer serves. The per-hero tiles below stay for close study;
+      // this row is where an outlier jumps out.
+      const COL = 74, FEET = 48;
+      tile(grid, 'all duck — in a row', 'one clock, whole cast · humanoids slide, the other rigs keep their crouch',
+        COL * ids.length, 62, (ctx, t) => {
+          ids.forEach((hid, i) => {
+            drawToon(ctx, hid, pose('duck', t, duckExtra(hid)), COL * (i + 0.5), FEET, HH);
+            ctx.fillStyle = '#8a8a9e';
+            ctx.font = '7px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(hid, COL * (i + 0.5), 58);
+          });
+        }, { animated: true, wide: true, hires: 4 });
+    }
     for (const hid of ids) {
       tile(grid, hid, kind, HH * 0.9, th, (ctx, t) => {
-        drawToon(ctx, hid, pose(kind, t, kind === 'celebrate' ? { menu: true } : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
+        drawToon(ctx, hid, pose(kind, t, kind === 'celebrate' ? { menu: true } : kind === 'duck' ? duckExtra(hid) : {}), (HH * 0.9) / 2, th - HH * 0.05, HH);
       }, { animated: true });
     }
   }
@@ -3438,6 +3467,19 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // three stub sets — because each was a second copy of a path that the winner's
 // construction would now have to be maintained alongside. docs/notes/kiko-persona.md
 // is the record of what they were and why they lost.
+
+// The duck-replacement bake-off used to sit here — four candidates for
+// Lorenzo (the shipped crouch, a tuck roll, the power slide, a belly dive),
+// then the winning POWER SLIDE mocked across five builds with per-hero
+// garments. It is settled and SHIPPED: poseFromPlayer sets duckStyle 'slide'
+// on every humanoid rig's duck, the tip-back arrival rides the 0.14s duck
+// blend, and the production sections above draw it wherever a duck appears
+// (see duckExtra). The slide painter (drawDuckSlide + duckTorsoCapsule) lives
+// in toons.js; the tuck-roll and belly-dive painters stay there too, out of
+// the running. Still open, and why a lab section may return: the non-humanoid
+// rigs (B-33P, Mochi, Chompo, Ray M'n) keep the crouch and need their own
+// treatment, and hero gear (Fernwick's shield, Gnash's tail) is not in the
+// slide yet.
 
 // ---------------------------------------------------------------- driver
 // Only visible tiles animate; static tiles paint once. Keeps ~200 canvases cheap.

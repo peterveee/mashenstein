@@ -31,6 +31,12 @@ const fmtParams = (params = {}) => Object.entries(params)
 const fmtEffects = (list = []) => `[${list.map((e) => {
   const bits = [`id: ${JSON.stringify(e.id)}`];
   if (e.bypass) bits.push('bypass: true');
+  // Both flags, and for different reasons. `bypass` takes the link out of the wiring;
+  // `mute` leaves it wired and turns it down, which is the one a cabinet screen can
+  // move at a bar line. A song holding a muted phaser for the level and an unmuted one
+  // for the screen is expressing that difference HERE, so dropping it on save would
+  // silently put the effect back in the level — see the round-trip case in tests/mix.js.
+  if (e.mute) bits.push('mute: true');
   const p = fmtParams(e.params);
   if (p) bits.push(`params: { ${p} }`);
   return `{ ${bits.join(', ')} }`;
@@ -322,7 +328,18 @@ export function variantsSource(variants, indent = '') {
     body += `${i2}${fmtKey(name)}: [\n`;
     for (const t of list) {
       const bits = [`${i4}when: ${JSON.stringify(t.when ?? 'always')},\n`];
-      if (t.loop) bits.push(`${i4}loop: { fromBar: ${t.loop.fromBar}, toBar: ${t.loop.toBar} },\n`);
+      // `startBar` and all — the same shape as a song's own markers, because a cabinet
+      // screen may come in somewhere the level does not and then loop bars that sit after
+      // it. Written only when it says something: 1 is what every reader already assumes,
+      // and a treatment may name a way in WITHOUT a loop, which is a `loop` of just that.
+      if (t.loop) {
+        const marks = [];
+        if (t.loop.startBar != null && t.loop.startBar > 1) marks.push(`startBar: ${t.loop.startBar}`);
+        if (t.loop.fromBar != null && t.loop.toBar != null) {
+          marks.push(`fromBar: ${t.loop.fromBar}`, `toBar: ${t.loop.toBar}`);
+        }
+        if (marks.length) bits.push(`${i4}loop: { ${marks.join(', ')} },\n`);
+      }
       if (t.treatment?.length) bits.push(`${i4}treatment: ${fmtEffects(t.treatment)},\n`);
       if (t.gap != null) bits.push(`${i4}gap: ${round(t.gap)},\n`);
       if (t.patch) bits.push(`${i4}patch: ${patchSource(t.patch, i4)},\n`);

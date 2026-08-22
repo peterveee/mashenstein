@@ -21,6 +21,17 @@ assert(drum.length > 0 && drum.every((voice) => voice.kind === 'drum'));
 assert(!drum.some((voice) => voice.synth === 'MRDR-3'));
 ok('the Drum selector cannot cross into MRDR-3 presets');
 
+// CRLS-1 keeps accepting songs and user copies written before Synth/MonoSynth were
+// merged.  The Advanced picker asks with the current preset's stored class name, while
+// the library rows now carry CRLS-1; both spellings must therefore expose the same rows.
+const crls = offeredByEngine('CRLS-1').map((voice) => voice.id).sort();
+const legacyMono = offeredByEngine('MonoSynth').map((voice) => voice.id).sort();
+const legacySynth = offeredByEngine('Synth').map((voice) => voice.id).sort();
+assert(crls.length > 0);
+assert.deepEqual(crls, legacyMono);
+assert.deepEqual(crls, legacySynth);
+ok('the CRLS-1 picker includes library presets for legacy MonoSynth voices');
+
 const source = VOICES.bestVowelPad;
 const snapshot = JSON.parse(JSON.stringify({
   ...source,
@@ -61,6 +72,11 @@ const mixerEntry = readFileSync(new URL('../tools/mixer-entry.js', import.meta.u
 const performance = readFileSync(new URL('../tools/mrdr3-performance.js', import.meta.url), 'utf8');
 const editor = readFileSync(new URL('../tools/mixer-voice-editor.js', import.meta.url), 'utf8');
 const voicesEngine = readFileSync(new URL('../src/engine/voices.js', import.meta.url), 'utf8');
+// The gate's arithmetic lives here now rather than in voices.js: `gateAdsr` is a thin
+// wrapper over `mrdr3GateAdsrEvents`, so the native path and the worklet share ONE
+// definition of the attack shape (docs/MRDR-3-worklet-spec.md §3.2). Pinning it here is
+// pinning it for both.
+const gateEnv = readFileSync(new URL('../src/engine/mrdr3/env.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../tools/mixer-shell.html', import.meta.url), 'utf8');
 const mixerServer = readFileSync(new URL('../tools/mixer.js', import.meta.url), 'utf8');
 assert(/sfpresetselect/.test(full) && /sfpresetpicker/.test(full)
@@ -196,13 +212,15 @@ assert(/const gf = held\('global\.filter', v\.global\?\.filter\) \? null : \(v\.
 // note can be without clicking" rather than "instant" — and it is measured in cycles
 // rather than milliseconds, because that is what decides whether a gate is audible.
 assert(/'global\.vca': \{ attack: 0, decay: 0, sustain: 1, release: 0 \}/.test(editor)
-  && /const GATE_MIN_ATTACK = 0\.001/.test(voicesEngine)
-  && /const gateFloor = \(freq\) => \(freq > 0/.test(voicesEngine)
-  && /Math\.min\(GATE_MAX_ATTACK_FLOOR, Math\.max\(GATE_MIN_ATTACK, 0\.25 \/ freq\)\)/.test(voicesEngine)
-  && /const minAttack = gateFloor\(freq\)/.test(voicesEngine)
-  && /const attack = Math\.max\(minAttack, e\.attack \?\? 0\.01\)/.test(voicesEngine)
-  && /param\.setValueAtTime\(0, t\);\s*\n\s*if \(attackLin\) \{\s*\n\s*for \(const u of RAISED_COS\) param\.linearRampToValueAtTime\(level \* cosAt\(u\), t \+ attack \* u\);/.test(voicesEngine)
-  && /const cosAt = \(u\) => 0\.5 \* \(1 - Math\.cos\(Math\.PI \* Math\.min\(1, Math\.max\(0, u\)\)\)\)/.test(voicesEngine),
+  && /GATE_MIN_ATTACK = 0\.001/.test(gateEnv)
+  && /Math\.min\(GATE_MAX_ATTACK_FLOOR, Math\.max\(GATE_MIN_ATTACK, 0\.25 \/ freq\)\)/.test(gateEnv)
+  && /minAttack = mrdr3GateFloor\(freq\)/.test(gateEnv)
+  && /attack = Math\.max\(minAttack, e\.attack == null \? 0\.01 : e\.attack\)/.test(gateEnv)
+  && /events\.push\(\{ k: 'set', v: 0, t: t \}\)/.test(gateEnv)
+  && /v: level \* cosAt\(RAISED_COS\[i\]\), t: t \+ attack \* RAISED_COS\[i\]/.test(gateEnv)
+  && /0\.5 \* \(1 - Math\.cos\(Math\.PI \* Math\.min\(1, Math\.max\(0, u\)\)\)\)/.test(gateEnv)
+  // ...and the native path still goes through that one builder rather than a copy of it.
+  && /const built = mrdr3GateAdsrEvents\(t, end, peak, e, sustaining, freq\)/.test(voicesEngine),
   'MRDR-3 envelope bypass is neutral: no decay/release, full sustain, and an attack floored'
   + ' at a quarter of the note’s own period so a zero-attack gate is a slope, not a step');
 // ...and every gate that opens on a note knows which note it is, or the floor above has
@@ -327,7 +345,13 @@ ok('voiceGain leans exactly halfway between energy and peak, and keeps both fall
   const spread = (a) => Math.max(...a) - Math.min(...a);
   const before = spread(rows.map((r) => r.before));
   const after = spread(rows.map((r) => r.after));
-  assert(before > 17 && before < 18, `MRDR-3 crest spread was ${before.toFixed(1)} dB`);
+  // A FLOOR, not a window. What this line is for is that the halving below means
+  // something: halving a spread that was already tight would be a claim about nothing.
+  // The exact figure is a property of whichever presets happen to be in the library, so
+  // pinning it to the tenth of a dB pins the catalogue instead of the levelling — and it
+  // broke, as that always does, the first time a preset was added at a new extreme.
+  assert(before > 12, `MRDR-3 crest spread was only ${before.toFixed(1)} dB — too tight for`
+    + ' halving it to be a meaningful claim');
   assert(Math.abs(after - before / 2) < 1e-6, `spread should halve, got ${after.toFixed(1)} dB`);
   // Every preset moves toward parity, never away from it.
   for (const r of rows) assert(Math.abs(r.after) <= Math.abs(r.before) + 1e-9);

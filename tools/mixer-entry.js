@@ -2,6 +2,8 @@
 // the same channel strip the game will use, and the same one the offline renderer
 // runs when it writes a WAV. Nothing here reimplements audio.
 import { Audio } from '../src/engine/audio.js';
+import { setMrdrComparisonBackend, mrdrComparisonBackend } from '../src/engine/mrdr3/identity.js';
+import { mrdr3ControllerHealth, mrdr3LaneReport, warmMrdr3Tables } from '../src/engine/mrdr3/controller.js';
 import { createVisualiser, VISUALISER_NAMES, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS }
   from '../src/engine/visualisers.js';
 import { resolveNoteFx, noteFxRange, noteFxLimit, NOTE_FX_RANGE_MIN, NOTE_FX_RANGE_MAX,
@@ -9,7 +11,7 @@ import { resolveNoteFx, noteFxRange, noteFxLimit, NOTE_FX_RANGE_MIN, NOTE_FX_RAN
 // The boundary logic for handing a cabinet mix over to a level's, so 'Hear the change'
 // auditions exactly what the game does rather than a second implementation of it.
 import { MusicDirector } from '../src/engine/music-director.js';
-import { LANES, deskLanes as engineDeskLanes, laneActivity, deskBank, songBlocks, barPlan, LANE_KEYS } from '../src/engine/lanes.js';
+import { LANES, deskLanes as engineDeskLanes, laneActivity, deskBank, songBlocks, barPlan, LANE_KEYS, lenKey } from '../src/engine/lanes.js';
 // The arrangement layer: what plays when, as opposed to what it sounds like. The
 // desk edits it in bars (`arrangement-edit`), the engine reads it back as an order.
 import {
@@ -26,6 +28,10 @@ import {
   decodeMashFreezeBundle, writeMashFreezeBundle,
 } from './lib/mash-freeze.js';
 import { createCustomSelect } from './lib/custom-select.js';
+// Every `<select>` on the desk becomes one of the desk's own dropdowns — see
+// tools/mixer-select.js for why that is a sweep over the document rather than a list of
+// call sites, and why the native control stays where it is.
+import { watchDeskSelects, syncDeskSelects } from './mixer-select.js';
 // Heavy UI builds hold the thread the sequencer runs on: `heavyUi` queues audio past
 // the stall and records what it was for, so the watchdog can name it. See lib/heavy-ui.js.
 import { heavyUi, lastHeavyBuild } from './lib/heavy-ui.js';
@@ -40,7 +46,7 @@ import {
 import { buildRearrangeProfile, detectKey } from './lib/rearrange-profile.js';
 import { midiBuffer } from './lib/render-midi-bank.js';
 import {
-  draftOf, entryOf, setLanesOff, setLanesDeleted, deleteBars, duplicateBars,
+  draftOf, entryOf, setLanesOff, setLanesDeleted, setChokePartner, chokePartner, deleteBars, duplicateBars,
   transposeBars, offsetBars, gainBars, panBars, copyBars, pasteBars,
   insertSilence, copyLaneBars, copyLaneTrack, pasteLaneTrack, moveLaneBars, duplicateLaneContent, writeBarNotes, writeBarNotesShared, patternStarts,
   barCount, removeLanes, setTempo, setSwing, setSongLoop, setBarNoteFx, setBarEffects,
@@ -67,6 +73,8 @@ import '../src/data/imported/index.js';
 import { MIX, VARIANTS, laneSettings, LANE_DEFAULTS } from '../src/data/mix.js';
 import { VOICES, VOICE_LANES, seamFor, isLayer, baseLane, defaultVoiceOf, voiceOf, registerSongVoice, songVoiceKey, isKitVoice, PERCUSSION_LANES, defaultAddedVoice, polyLane } from '../src/data/voices.js';
 import { createVoiceEditor, isQuickVoice } from './mixer-voice-editor.js';
+import { synthDisplayName, synthShortName, synthStyleName } from './lib/synth-display.js';
+import { responseGraph } from './mixer-synth-graphs.js';
 // The same preset, in a window instead of a column. A layout over the editor's own
 // controls, not a second editor — see the note at the top of the file.
 import { createSynthFull } from './mixer-synth-full.js';
@@ -115,11 +123,25 @@ import { mixChanged } from './lib/mix-signature.js';
 import { DELAY_DIVISIONS, AUXES, AUX_DEFAULTS, gainToDb, dbToGain } from '../src/engine/mixer.js';
 import {
   EFFECTS, EFFECT_BY_ID, paramRange, visibleParams, SYNC_DIVISIONS, RATE_DIVISIONS,
+  AUTOPANNER_RATE_DIVISIONS,
   MAX_EFFECTS, ENGINE_BASE_COST, syncSeconds, DEFAULT_MASTER_CHAIN,
   effectPresetNames, resolveEffectPreset, resolveEffectSnapshot, matchEffectPreset,
+  PEQ_BANDS, peqResponse,
 } from '../src/engine/effects.js';
+import { MIXER_BRAND } from './mixer-brand.js';
 
 const $ = (id) => document.getElementById(id);
+document.title = MIXER_BRAND;
+const MIXER_MIN_WIDTH = 1200;
+const MIXER_MIN_HEIGHT = 700;
+const syncMixerMinimum = () => {
+  const tooSmall = innerWidth < MIXER_MIN_WIDTH || innerHeight < MIXER_MIN_HEIGHT;
+  document.documentElement.classList.toggle('mixer-too-small', tooSmall);
+  const gate = $('mixer-min-size');
+  if (gate) gate.setAttribute('aria-hidden', String(!tooSmall));
+};
+addEventListener('resize', syncMixerMinimum, { passive: true });
+syncMixerMinimum();
 // The deployed desk at /SongMixer/ has no server behind it: nothing can be written to
 // or read back off the repo's disk. It ships ONE song — THE FOOD COURT — so a tester
 // has something real to mix rather than a blank sketch, and everything that would
@@ -299,6 +321,22 @@ try { draft = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch { draft 
 // draft stops being on loan: re-captured, discarded, or undone back to the level.
 const cabOnDesk = {};
 
+// The LEVEL's draft, held aside for as long as its cabinet mix is on the faders.
+//
+// `draft[trackId]` is the one slot the whole desk reads through `mixFor`, so putting a
+// cabinet mix on the faders means putting it THERE — there is nowhere else the strips,
+// the meters and the engine would look. What was wrong before was not that; it was that
+// the level's own draft was simply overwritten, so the only way back was undo, and Save
+// could not tell which of the two mixes it was about to write.
+//
+// So the level's draft moves here on the way in and comes back on the way out, and the
+// two saves are told apart by which mix is on the desk rather than by the person at it:
+// Save writes the level, Update writes the cabinet screen, and while a cabinet mix is up
+// the first turns into the second. `undefined` and "stashed nothing" are different
+// states — a song whose level matches its file has no draft, and restoring one for it
+// would invent an edit — so presence is tested with `in`, never with a truthy check.
+const cabStash = {};
+
 // The arrangement layer, kept exactly as the mix is: what the file holds, and what
 // has been edited on top of it. Stored in the FILE's shape (`{order, sections}`)
 // rather than the editor's bar list, because that is the compact form — a song's
@@ -445,6 +483,22 @@ let arrPlayingAt = null;
 const arrEchoCells = new Set();
 const arrEchoTimers = new Map();
 const ARR_ECHO_DURATION = 720;
+
+// Layout motion and playback pictures share the browser's main thread. Keep the audio
+// scheduler's turn clear while a workspace is being dragged, the window is settling, or
+// a short view transition is in flight. The transport still runs; only nonessential
+// DOM animation, meter painting, and follow-up editor decoration stand down briefly.
+let playbackVisualHoldCount = 0;
+function beginPlaybackVisualHold() {
+  if (playbackVisualHoldCount++ === 0) {
+    try { Audio.prefill(1); } catch { /* audio may not have started yet */ }
+    clearArrangementPlayback();
+  }
+}
+function endPlaybackVisualHold() {
+  playbackVisualHoldCount = Math.max(0, playbackVisualHoldCount - 1);
+}
+const playbackVisualsHeld = () => playbackVisualHoldCount > 0;
 // Add Track is a two-step gesture: hold the new lane here while its preset picker is
 // open, and only write it into the song after the user chooses what it plays. Closing
 // the picker therefore cannot leave an empty channel behind.
@@ -1073,7 +1127,7 @@ function undo() {
     pushSwing();
     buildTimeline();
   }
-  if (step.trackId !== trackId) { selectSong(step.trackId); }
+  if (step.trackId !== trackId) { void selectSong(step.trackId); }
   else if (bankSig() !== before || arrMoved) {
     // The lane list may have changed under it, so the arrangement is rebuilt too —
     // a row for a track that is no longer there is a row that plays nothing.
@@ -1124,9 +1178,36 @@ function powerIcon() {
 }
 
 /**
- * Remove. A drawn multiplication cross — two even diagonals at the same angle —
- * rather than the letter x, which leans and has a different weight in every
- * typeface. Chunkier than the power mark: it is the destructive one.
+ * Remove, on a plugin card. A bin rather than the cross beside it: on a card the top
+ * right corner is where a window's close lives, and a cross there reads as "put this
+ * panel away" — which is what the panel's own mark, two inches above it, actually does.
+ * A bin cannot be read as anything but throwing the effect out of the chain.
+ *
+ * Same 12-unit box and same stroke as the power mark it sits opposite, so the pair
+ * still weighs the same on the title bar.
+ */
+function trashIcon() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 12 12');
+  svg.setAttribute('class', 'pwr trash');
+  for (const d of [
+    'M2.3 3.5h7.4',                 // the lid, wider than the can
+    'M4.8 3.5V2.4h2.4v1.1',         // the handle
+    'M3.6 3.5 4 9.7h4l.4-6.2',      // the can, tapering the way a bin does
+  ]) {
+    const stroke = document.createElementNS(NS, 'path');
+    stroke.setAttribute('d', d);
+    svg.append(stroke);
+  }
+  return svg;
+}
+
+/**
+ * Remove, in an insert slot. A drawn multiplication cross — two even diagonals at the
+ * same angle — rather than the letter x, which leans and has a different weight in
+ * every typeface. Chunkier than the power mark: it is the destructive one. The slot is
+ * 23px tall and holds a name as well as both marks, which is no room for a drawn bin.
  */
 function closeIcon() {
   const NS = 'http://www.w3.org/2000/svg';
@@ -1215,19 +1296,19 @@ function insertSlots(key, label, rows) {
   list.forEach((e, i) => {
     const def = EFFECT_BY_ID[e.id];
     const btn = document.createElement('button');
-    btn.className = e.bypass ? '' : 'on';
+    // Lit or grey. On or off. Which of the two mechanisms is behind it is not something
+    // the slot says, because it is not something you choose — see effectOff / offKind.
+    btn.className = effectOff(e) ? '' : 'on';
     // The power mark toggles the effect; the name opens it. Two targets in one slot,
     // the way an insert slot works everywhere else.
     const power = document.createElement('span');
     power.className = 'pwrhit';
     power.append(powerIcon());
-    power.title = `${e.bypass ? 'Enable' : 'Bypass'} ${def?.name || e.id}`;
+    power.title = `Turn ${def?.name || e.id} ${effectOff(e) ? 'on' : 'off'}`;
     const toggle = () => {
-      const next = list.map((x, j) => (j === i ? { ...x, bypass: !x.bypass } : x));
-      editMix((m) => storeEffects(m, key, next), null);
-      bypassOn(key, i, !e.bypass);
+      const next = setEffectOff(key, list, i, !effectOff(e));
       buildRack();
-      toast(`${def?.name || e.id} ${next[i].bypass ? 'bypassed' : 'on'} — ${label}`);
+      toast(`${def?.name || e.id} ${effectOff(next[i]) ? 'off' : 'on'} — ${label}`);
     };
     power.onclick = (ev) => { ev.stopPropagation(); toggle(); };
     const name = document.createElement('span');
@@ -1246,7 +1327,7 @@ function insertSlots(key, label, rows) {
     };
     btn.append(power, name, remove);
     btn.title = `${def?.name || e.id} — click to open it below`
-      + `\nThe power mark ${e.bypass ? 'enables' : 'bypasses'} it without leaving the fader`;
+      + `\nThe power mark turns it ${effectOff(e) ? 'on' : 'off'} without leaving the fader`;
     btn.onclick = (ev) => {
       ev.stopPropagation();
       if (ev.altKey) { toggle(); return; }        // ⌥-click still works from anywhere
@@ -1306,7 +1387,7 @@ function insertSlots(key, label, rows) {
       };
       openMenu(ev.clientX, ev.clientY, `${nm} · ${targetLabel(key)}`, [
         { label: 'Open below', run: () => { selectLane(key); focusDevice(i); } },
-        { label: e.bypass ? 'Enable' : 'Bypass', run: toggle },
+        { label: effectOff(e) ? 'Turn on' : 'Turn off', run: toggle },
         { label: 'Copy settings', run: () => {
           fxClipboard = { id: e.id, name: nm, params: { ...(e.params || {}) } };
           toast(`${nm} settings copied`);
@@ -1331,7 +1412,9 @@ function insertSlots(key, label, rows) {
         i > 0 && { label: 'Move up', run: () => reorder(i - 1) },
         i < cur.length - 1 && { label: 'Move down', run: () => reorder(i + 1) },
         Object.keys(e.params || {}).length && { label: 'Reset to defaults', run: () => {
-          setEffects(key, cur.map((x, j) => (j === i ? { id: x.id, ...(x.bypass ? { bypass: true } : {}) } : x)));
+          setEffects(key, cur.map((x, j) => (j === i
+            ? { id: x.id, ...(x.bypass ? { bypass: true } : {}), ...(x.mute ? { mute: true } : {}) }
+            : x)));   // off stays off, however it was written
           toast(`${nm} back to defaults`);
         } },
         { label: 'Remove', run: () => {
@@ -1613,8 +1696,8 @@ function stripMenu(el, key, kind) {
       preset && { label: 'Preset', run: () => openVoicePickerFor(key, at) },
       // Explicit on both, as in the track menu: one button cannot offer a choice, so
       // each of these says in its name which surface it opens.
-      preset && { label: 'Edit Preset', run: () => editVoice(key, { advanced: false, at }) },
-      // Only the families that HAVE a second surface — KLNG8, MRDR-3, TNGR-2. Absent
+      preset && { label: 'Edit Simple', run: () => editVoice(key, { advanced: false, at }) },
+      // Only the families that HAVE a second surface — KLNG-8, MRDR-3, TNGR-2. Absent
       // rather than disabled elsewhere: a button that can never light on this channel is
       // a promise of a screen that does not exist.
       preset && isQuickVoice(preset) && {
@@ -1701,8 +1784,9 @@ addEventListener('pointerdown', (e) => {
   // The tour card counts as inside every one of these: three of its cards point AT the
   // drawer or the effect catalogue, and a Next button that closed the thing it is
   // describing would be a tour that cannot get past card 9.
-  const customMenu = e.target.closest && e.target.closest('.regcustommenu');
-  const inside = customMenu || [menu(), $('regionedit'), $('fxpicker'), $('navdrawer'),
+  const customSurface = e.target.closest
+    && e.target.closest('.rolltool-menu, .deskselect[role="combobox"]');
+  const inside = customSurface || [menu(), $('regionedit'), $('fxpicker'), $('navdrawer'),
     $('voicepicker'), $('perfdiag'), $('tut')]
     .some((el) => el.contains(e.target));
   const opener = [$('navbtn')].some((el) => el.contains(e.target))
@@ -1730,8 +1814,10 @@ function focusDevice(index) {
     if (!card) return;
     card.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
     card.classList.remove('flash');
-    void card.offsetWidth;                 // restart the animation on a repeat click
-    card.classList.add('flash');
+    // Restart on the next frame instead of forcing a synchronous layout while the song
+    // is running. The flash is decorative; making the audio thread wait for its reflow
+    // is not a useful trade.
+    requestAnimationFrame(() => { if (card.isConnected) card.classList.add('flash'); });
   });
   scheduleDeskFit();
 }
@@ -1945,7 +2031,39 @@ function editFx(id, patch, tag) {
   }
 }
 
+function nextPaint() {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== 'function') { setTimeout(resolve, 0); return; }
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
+function setLoadProgress(stage, fraction = null, title = null) {
+  const panel = $('loadprogress');
+  if (!panel) return;
+  if (title) $('loadprogresstitle').textContent = title;
+  $('loadprogressstatus').textContent = stage;
+  const fill = $('loadprogressbar')?.firstElementChild;
+  if (fill) fill.style.width = fraction == null ? '24%' : `${Math.max(0, Math.min(1, fraction)) * 100}%`;
+}
+
+function showLoadProgress(title = MIXER_BRAND) {
+  const panel = $('loadprogress');
+  if (!panel) return;
+  $('loadprogresstitle').textContent = title;
+  panel.hidden = false;
+  setLoadProgress('Preparing the desk…', 0.06, title);
+}
+
+function hideLoadProgress() {
+  const panel = $('loadprogress');
+  if (panel) panel.hidden = true;
+}
+
 function loadTrack(id) {
+  const report = arguments[1] || (() => {});
+  return (async () => {
+  report('Preparing the song…', 0.08);
   pendingAddTrack = null;
   if (rearrangeActive()) clearRearrangement({ announce: false });
   rearrangeSelectedOperations.clear();
@@ -1992,9 +2110,15 @@ function loadTrack(id) {
   // the editor following its lane, by another route. Before buildRack, which is what
   // puts the panel back beside the strip once it knows which preset it is on.
   syncVoiceEditorToLane(voiceEditor.laneKey);
+  report('Building the mixer…', 0.24);
+  await nextPaint();
   buildRack();
   syncMasterControls(mixFor(id).master || 0);
+  report('Drawing the timeline…', 0.46);
+  await nextPaint();
   buildTimeline();
+  report('Drawing the arrangement…', 0.67);
+  await nextPaint();
   buildArrangement();
   // buildRack selected the restored piano-roll lane before the arrangement rows
   // existed. They exist now, so reveal that track in the finished arrangement.
@@ -2005,6 +2129,8 @@ function loadTrack(id) {
   // The piano roll is visible whenever the notes panel is open on a channel that has
   // one. Make sure it renders its content on initial load and after song switches —
   // and that the header names the new song's preset, which is rarely the old one's.
+  report('Connecting the editors…', 0.82);
+  await nextPaint();
   syncNotesPanel();
   if (notesRollUp()) pianoRoll.open(true);
   if (notesKitUp()) kitRoll.open(true);
@@ -2044,6 +2170,9 @@ function loadTrack(id) {
   rememberSongLayout(id);
   updateStatus();
   if (freezeRestoreReady) queueFrozenRestorePrompt(id);
+  report('Ready', 1);
+  return true;
+  })();
 }
 
 // ---- UI --------------------------------------------------------------------
@@ -2119,6 +2248,10 @@ function slider({ min, max, step, value, fmt, onInput, reset, curve, display }) 
   v.classList.add('typable');
   v.title = 'Drag to change · click to type a value';
   const curveVal = () => hasCurve ? fromPos(+input.value) : +input.value;
+  const sync = (raw) => {
+    input.value = clamp(Number(raw), rMin, rMax);
+    v.textContent = show(curveVal());
+  };
   const openEditor = () => {
     if (v.querySelector('input')) return;
     const box = document.createElement('input');
@@ -2165,7 +2298,7 @@ function slider({ min, max, step, value, fmt, onInput, reset, curve, display }) 
   k.addEventListener('click', doReset);
   input.addEventListener('dblclick', doReset);
   wrap.append(head, input);
-  return { wrap, label: k, input, readout: v, reset: doReset };
+  return { wrap, label: k, input, readout: v, reset: doReset, sync };
 }
 
 const meters = [];
@@ -2243,32 +2376,31 @@ function applyStripParts() {
 }
 
 function buildPartFilter() {
-  const wrap = $('partfilter');
-  wrap.textContent = '';
-  for (const p of STRIP_PARTS) {
-    const b = document.createElement('button');
-    const name = document.createElement('span');
-    name.className = 'lbl';        // what the struck-through `shed` state marks
-    name.textContent = p.label;
-    b.dataset.part = p.id;         // how markShedParts finds it again
-    b.append(partIcon(p.id), name);
-    const shown = !hiddenParts.has(p.id);
-    b.classList.toggle('off', !shown);
-    b.title = `${shown ? 'Hide' : 'Show'} ${p.what} on every strip`
-      + ' — this changes what the MIXER shows; nothing is bypassed, reset or muted';
-    b.onclick = () => {
-      if (hiddenParts.has(p.id)) hiddenParts.delete(p.id); else hiddenParts.add(p.id);
-      localStorage.setItem(PARTS_KEY, JSON.stringify([...hiddenParts]));
-      buildPartFilter();
-      applyStripParts();
-    };
-    wrap.append(b);
+  for (const wrap of document.querySelectorAll('[data-mixer-part-filter]')) {
+    wrap.textContent = '';
+    for (const p of STRIP_PARTS) {
+      const b = document.createElement('button');
+      const name = document.createElement('span');
+      name.className = 'lbl';        // what the struck-through `shed` state marks
+      name.textContent = p.label;
+      b.dataset.part = p.id;         // how markShedParts finds it again
+      b.append(partIcon(p.id), name);
+      const shown = !hiddenParts.has(p.id);
+      b.classList.toggle('off', !shown);
+      b.title = `${shown ? 'Hide' : 'Show'} ${p.what} on every strip`
+        + ' — this changes what the MIXER shows; nothing is bypassed, reset or muted';
+      b.onclick = () => {
+        if (hiddenParts.has(p.id)) hiddenParts.delete(p.id); else hiddenParts.add(p.id);
+        localStorage.setItem(PARTS_KEY, JSON.stringify([...hiddenParts]));
+        buildPartFilter();
+        applyStripParts();
+      };
+      wrap.append(b);
+    }
   }
 }
 
 function buildLaneFilter(all) {
-  const wrap = $('lanefilter');
-  wrap.textContent = '';
   // Only the families this song actually has: a Vocal button on a song with no vocal
   // lane is a control that does nothing, which is worse than one that is missing.
   const counts = new Map();
@@ -2281,26 +2413,29 @@ function buildLaneFilter(all) {
   // No All button: the switches stay where they are when they are off, so putting a
   // family back is the same click that took it away — a second control for that is a
   // second thing to look at for nothing.
-  for (const [group, n] of counts) {
-    const b = document.createElement('button');
-    const name = document.createElement('span');
-    name.textContent = group;
-    const count = document.createElement('span');
-    count.className = 'n';
-    count.textContent = String(n);
-    b.append(groupIcon(group), name, count);
-    const shown = !hiddenGroups.has(group);
-    b.classList.toggle('off', !shown);
-    b.title = `${shown ? 'Hide' : 'Show'} the ${n} ${group} track${n === 1 ? '' : 's'}`
-      + ' — this changes what the MIXER shows; the arrangement keeps every lane and'
-      + ' nothing is muted';
-    b.onclick = () => {
-      if (hiddenGroups.has(group)) hiddenGroups.delete(group); else hiddenGroups.add(group);
-      // Hiding the last one would leave an empty desk, which is not a view of anything.
-      if (hiddenGroups.size >= counts.size) hiddenGroups.delete(group);
-      redraw();
-    };
-    wrap.append(b);
+  for (const wrap of document.querySelectorAll('[data-mixer-lane-filter]')) {
+    wrap.textContent = '';
+    for (const [group, n] of counts) {
+      const b = document.createElement('button');
+      const name = document.createElement('span');
+      name.textContent = group;
+      const count = document.createElement('span');
+      count.className = 'n';
+      count.textContent = String(n);
+      b.append(groupIcon(group), name, count);
+      const shown = !hiddenGroups.has(group);
+      b.classList.toggle('off', !shown);
+      b.title = `${shown ? 'Hide' : 'Show'} the ${n} ${group} track${n === 1 ? '' : 's'}`
+        + ' — this changes what the MIXER shows; the arrangement keeps every lane and'
+        + ' nothing is muted';
+      b.onclick = () => {
+        if (hiddenGroups.has(group)) hiddenGroups.delete(group); else hiddenGroups.add(group);
+        // Hiding the last one would leave an empty desk, which is not a view of anything.
+        if (hiddenGroups.size >= counts.size) hiddenGroups.delete(group);
+        redraw();
+      };
+      wrap.append(b);
+    }
   }
 }
 
@@ -2353,6 +2488,18 @@ function buildRack() {
   const slot = $('masterslot');
   slot.textContent = '';
   slot.append(masterStrip(mix, slotRows));
+  const masterFilters = document.createElement('div');
+  masterFilters.id = 'masterfilters';
+  const masterParts = document.createElement('div');
+  masterParts.dataset.mixerPartFilter = '';
+  masterParts.setAttribute('role', 'group');
+  masterParts.setAttribute('aria-label', 'Master mixer section filters');
+  const masterLanes = document.createElement('div');
+  masterLanes.dataset.mixerLaneFilter = '';
+  masterLanes.setAttribute('role', 'group');
+  masterLanes.setAttribute('aria-label', 'Master mixer family filters');
+  masterFilters.append(masterParts, masterLanes);
+  slot.append(masterFilters);
   if (masterToolbarControl) {
     meters.push({ key: '__master-toolbar', master: true, horizontal: true,
       chans: masterToolbarControl.chans, meter: masterToolbarControl.meter });
@@ -2369,7 +2516,10 @@ function buildRack() {
 
   const special = selectedLane === '__master' || (selectedLane || '').startsWith('__aux:');
   if (selectedLane && !special && !lanes.some((l) => l.key === selectedLane)) selectedLane = null;
-  requestAnimationFrame(fitStrips);
+  requestAnimationFrame(() => {
+    syncMixerScroll();
+    fitStrips();
+  });
 
   // Never nothing: the device panel is the biggest surface on the desk, and opening
   // it empty wastes it. The master is the one strip every song has, and the one you
@@ -2654,6 +2804,24 @@ function setLaneSolo(key, on) {
   Audio.mixer?.lane(key)?.setSolo(on);
   syncLaneButtons(key);
   updateSoloLight();
+  syncEffectSoloButton();
+  refreshOsk();
+}
+
+function syncAuxSoloButtons(id) {
+  const lane = `__aux:${id}`;
+  const selector = `.strip.send[data-lane="${CSS.escape(lane)}"] .solobtn`;
+  for (const button of document.querySelectorAll(selector)) {
+    button.classList.toggle('on', soloedAux.has(id));
+  }
+}
+
+function setAuxSolo(id, on) {
+  if (on) soloedAux.add(id); else soloedAux.delete(id);
+  Audio.mixer?.setAuxSolo(id, on);
+  syncAuxSoloButtons(id);
+  updateSoloLight();
+  syncEffectSoloButton();
   refreshOsk();
 }
 
@@ -2687,6 +2855,7 @@ function dropSolo() {
   refreshOsk();
   for (const b of document.querySelectorAll('.strip.send .solobtn')) b.classList.remove('on');
   updateSoloLight();
+  syncEffectSoloButton();
 }
 
 function clearAllSolo() {
@@ -2720,6 +2889,7 @@ function reapplySolo() {
   for (const key of gone) { soloed.delete(key); syncLaneButtons(key); }
   for (const id of soloedAux) Audio.mixer.setAuxSolo(id, true);
   updateSoloLight();
+  syncEffectSoloButton();
 }
 
 /** Light both copies of a lane's M and S — the strip's and the arrangement row's. */
@@ -2822,16 +2992,16 @@ function presetHeadingFor(laneKey) {
   const preset = presetForLane(laneKey);
   return {
     name: customTrackLabel(laneKey) || preset?.label || targetLabel(laneKey),
-    type: preset?.category ? String(preset.category).toUpperCase() : null,
   };
 }
 
 /** The actual voice family behind a preset, for the track/region inspector. */
 function synthesizerLabelFor(preset) {
   if (!preset) return null;
-  if (preset.synth) return String(preset.synth);
-  if (preset.kind === 'noise') return 'Noise Synth';
-  if (preset.kind === 'drum') return 'KLNG8';
+  if (preset.synth) {
+    return synthDisplayName(String(preset.synth));
+  }
+  if (preset.kind === 'drum') return synthDisplayName('drum');
   if (preset.kind === 'engine') return 'Game Engine';
   return preset.kind ? cap(preset.kind) : null;
 }
@@ -2847,25 +3017,44 @@ function synthesizerLabelFor(preset) {
  * to decode, so the padding costs nothing to read.
  *
  * The named instruments keep their number (`MR3`, `KL8`) rather than being truncated to
- * letters, which is what stops four M-words — MRDR-3, MonoSynth, MembraneSynth,
- * MetalSynth — collapsing into each other at 8.5px. Two more that would collide are
- * split on purpose: `GME` is the GameSynth preset class, `ENG` is the game's own voice.
+ * letters, which is what kept MRDR-3 and MonoSynth apart at 8.5px back when the two Tone
+ * drums were M-words too. The chip channel used to need the same care — `GME` against
+ * `ENG` for the game's own voice — and the rename settled it: `KN5` carries its number
+ * like its siblings, and `ENG` is the only thing left that says game.
  */
 const SYNTH_ABBR = {
-  'KLNG8': 'KL8',
+  'KLNG-8': 'KL8',
   'MRDR-3': 'MR3',
   'TNGR-2': 'TN2',
   'Game Engine': 'ENG',
-  'MonoSynth': 'MNO',
-  'FMSynth': 'FMS',
-  'Noise Synth': 'NSE',
-  'MembraneSynth': 'MBR',
-  'MetalSynth': 'MTL',
-  'Synth': 'SYN',
-  'DuoSynth': 'DUO',
-  'AMSynth': 'AMS',
-  'AdditiveSynth': 'ADD',
-  'GameSynth': 'GME',
+  // The three names of one engine: CRLS-1 and the two it merged. A song written before
+  // the merge still says Synth or MonoSynth, and it is the same instrument, so it gets
+  // the same three letters rather than a tag that says the merge never happened.
+  'CRLS-1': 'CR1',
+  'MonoSynth': 'CR1',
+  'Synth': 'CR1',
+  // DuoSynth is retired into MRDR-3 and reaches MR3 through `synthDisplayName`; listed
+  // here anyway, as the other retired spellings are, so this map reads as the whole
+  // history rather than as a gap someone has to go and look up.
+  'DuoSynth': 'MR3',
+  // WNDR-9 and the name it was renamed from — `AdditiveSynth` reaches here through
+  // `synthDisplayName` already, and is listed anyway for the same reason the others are:
+  // this map is read once and grepped often, and a name missing from it reads as an
+  // engine that has no tag rather than one that is spelled somewhere else.
+  'WNDR-9': 'WN9',
+  'AdditiveSynth': 'WN9',
+  // RMND-2 and the two it merged, on one tag for the same reason: a song written before
+  // the merge says FMSynth or AMSynth and is playing the same instrument. Which of the
+  // two destinations it uses is a control on the panel now, not a different engine, so it
+  // is not something the strip's three letters have to say.
+  'RMND-2': 'RM2',
+  'FMSynth': 'RM2',
+  'AMSynth': 'RM2',
+  // KNDO-5 and the name it was renamed from, on the same three letters for the same
+  // reason the CRLS-1 trio share theirs: a song written before the rename is playing the
+  // same instrument.
+  'KNDO-5': 'KN5',
+  'GameSynth': 'KN5',
 };
 
 /**
@@ -2928,12 +3117,6 @@ function renderPresetHeading(el, laneKey) {
   name.className = 'panelpreset';
   name.textContent = heading.name;
   el.append(name);
-  if (heading.type) {
-    const type = document.createElement('span');
-    type.className = 'paneltype';
-    type.textContent = heading.type;
-    el.append(type);
-  }
 }
 
 /**
@@ -3850,8 +4033,56 @@ const NOTE_FX_RANGE_HI_OPTIONS = NOTE_FX_RANGE_BOUNDS
 const NOTE_FX_RANGE_DEFAULT_LO = 48;
 const NOTE_FX_RANGE_DEFAULT_HI = 72;
 
+/**
+ * What an unset Note FX reads as on the panel — the value each control is BUILT with,
+ * and the value Reset writes back into it. One object rather than two lists of `?? 80`
+ * fallbacks, because a default that lives in the constructor and again in the reset is
+ * a default that will eventually disagree with itself.
+ */
+const NOTE_FX_BLANK = Object.freeze({
+  strum: Object.freeze({ enabled: false, direction: 'up', gapMs: 18 }),
+  arp: Object.freeze({ enabled: false, direction: 'up', rate: 1, octaves: 1, limit: 0,
+    rangeLimit: false, rangeLo: NOTE_FX_RANGE_DEFAULT_LO, rangeHi: NOTE_FX_RANGE_DEFAULT_HI,
+    repeat: true, gate: 80, retrigger: 'chord', latch: false }),
+});
+
+/**
+ * A saved Note FX as the panel shows it.
+ *
+ * Strum and Arpeggiator are one choice, not two: the processor hands an arpeggiated lane
+ * ONE tone per tick, and a strum needs two to have anything to spread, so a lane with
+ * both switched on has only ever played the arpeggio. The panel says so — the strum
+ * reads off next to a live arp — which makes a setting that was always dead visible
+ * rather than merely ineffective.
+ */
+const shownNoteFx = (fx = {}) => {
+  const arp = { ...NOTE_FX_BLANK.arp, ...(fx?.arp || {}) };
+  const strum = { ...NOTE_FX_BLANK.strum, ...(fx?.strum || {}) };
+  return { arp, strum: { ...strum, enabled: strum.enabled && !arp.enabled } };
+};
+
+/**
+ * Open the Note FX panel — and queue past building it.
+ *
+ * The panel is a few hundred DOM nodes and a dozen custom selects, built synchronously
+ * on the thread the sequencer runs on. That is the same shape as the whole-song piano
+ * roll heavy-ui.js was written for, and it arrived as the same report: the desk crackled
+ * on OPENING this window, with nothing applied and nothing changed. Unwrapped it held
+ * the thread across the queue and the hole was audible; the diagnostics could only call
+ * it `unattributed`, because a PerformanceObserver knows a task was long and only the
+ * call site knows what it was.
+ *
+ * Wrapped at the DEFINITION rather than at the five call sites — a context menu, a row
+ * header, a bar scope, a popup restore and the panel reopening itself after a render —
+ * because they are all one gesture and none of them should have to remember.
+ */
 function openNoteFxEditor(x, y, key, scope = null) {
   if (regionPanelBusy()) return;
+  heavyUi('open note fx', () => buildNoteFxEditor(x, y, key, scope));
+}
+
+/** The panel itself. Every line of it is DOM — see the caller for why that is wrapped. */
+function buildNoteFxEditor(x, y, key, scope) {
   closeMenu();
   restorablePopup = { kind: 'noteFx', laneKey: key,
     scope: scope ? { from: scope.from, to: scope.to } : null };
@@ -3863,6 +4094,7 @@ function openNoteFxEditor(x, y, key, scope = null) {
       strum: { ...(trackDefault.strum || {}), ...(firstOverride.strum || {}) },
       arp: { ...(trackDefault.arp || {}), ...(firstOverride.arp || {}) } }
     : trackDefault;
+  const view = shownNoteFx(current);
   const head = document.createElement('div'); head.className = 'reghead';
   const title = document.createElement('div'); title.className = 'regtitle';
   title.textContent = `Note FX · ${targetLabel(key)}${scope ? ` · bars ${scope.from + 1}–${scope.to + 1}` : ''}`;
@@ -3874,13 +4106,32 @@ function openNoteFxEditor(x, y, key, scope = null) {
   const form = document.createElement('div'); form.className = 'regcontrols notefxcontrols';
   const help = document.createElement('div'); help.className = 'notefxhelp';
   help.textContent = scope
-    ? `Apply + Play saves these settings, starts at bar ${scope.from + 1}, and leaves this window open.`
-    : 'Apply saves the track Note FX and leaves this window open; it does not start playback.';
+    ? `Apply + Play saves and plays from bar ${scope.from + 1}, leaving this window open. Reset stages these bars back to the track setting.`
+    : 'Apply saves the track Note FX and leaves this window open. Reset empties every setting here. Nothing changes until you apply.';
   form.append(help);
+  // Where the next control lands. Two pots that are one decision — a pattern and its
+  // rate, an octave count and where to stop climbing it, the two ends of a window —
+  // share a line, so the panel spends its size on width rather than on height. The
+  // checkboxes head their sections and stay full width.
+  let host = form;
+  const pairRow = () => {
+    host = document.createElement('div'); host.className = 'notefxpair'; form.append(host);
+  };
+  const fullRow = () => { host = form; };
+  const setCheck = (input, value) => {
+    input.checked = !!value;
+    input.nextElementSibling?.classList.toggle('on', input.checked);
+  };
   const check = (label, value) => {
-    const row = document.createElement('label'); row.className = 'regcheck';
+    const row = document.createElement('label'); row.className = 'regcheck checkrow';
     const input = document.createElement('input'); input.type = 'checkbox'; input.checked = !!value;
-    row.append(input, document.createTextNode(label)); form.append(row); return input;
+    const sw = document.createElement('span');
+    sw.className = `fxswitch${input.checked ? ' on' : ''}`;
+    sw.setAttribute('aria-hidden', 'true');
+    sw.append(document.createElement('i'));
+    input.addEventListener('change', () => setCheck(input, input.checked));
+    const text = document.createElement('span'); text.textContent = label;
+    row.append(input, sw, text); host.append(row); return input;
   };
   const field = (label, options, value, tip = null) => {
     const row = document.createElement('label'); row.className = 'regcontrol';
@@ -3895,7 +4146,7 @@ function openNoteFxEditor(x, y, key, scope = null) {
       select.dataset.tip = tip.name;
       select.dataset.tipsays = tip.says;
     }
-    row.append(name, select); form.append(row); return select;
+    row.append(name, select); host.append(row); return select;
   };
   const number = (label, min, max, step, value, suffix, tip = null) => {
     const row = document.createElement('label'); row.className = 'regcontrol';
@@ -3907,7 +4158,7 @@ function openNoteFxEditor(x, y, key, scope = null) {
       row.dataset.tip = tip.name;
       row.dataset.tipsays = tip.says;
     }
-    row.append(name, input, read); form.append(row); return input;
+    row.append(name, input, read); host.append(row); return input;
   };
 
   const mode = scope ? field('Bar override', [['inherit', 'Inherit track'], ['off', 'Off in these bars'],
@@ -3916,14 +4167,30 @@ function openNoteFxEditor(x, y, key, scope = null) {
       says: 'Bars inherit the track Note FX by default. Use these settings merges this bar’s settings over the track defaults; Off disables the track Note FX in these bars. The two effects are not automatically exclusive, so disable an unwanted Strum or Arpeggiator explicitly.'
     }) : null;
 
-  const strumOn = check('Strum', current.strum?.enabled);
+  const strumOn = check('Strum', view.strum.enabled);
+  pairRow();
+  // Short entries, because a combobox as wide as its longest sentence sets the width of
+  // the whole panel. What the words gave up — that Random is seeded rather than fresh
+  // every bar — the hover card keeps.
   const strumDir = field('Direction', [['up', 'Up · low to high'], ['down', 'Down · high to low'],
-    ['random', 'Random · deterministic']], current.strum?.direction || 'up');
-  const gap = number('Gap', 0, 250, 1, current.strum?.gapMs ?? 18, 'milliseconds between notes');
-  const arpOn = check('Arpeggiator', current.arp?.enabled);
+    ['random', 'Random']], view.strum.direction, {
+      name: 'Strum direction',
+      says: 'The order the chord’s notes are spread in. Random is seeded from the lane and the position in the song, so the same bar strums the same way every play and every render — a shuffle, not a dice roll.',
+    });
+  const gap = number('Gap', 0, 250, 1, view.strum.gapMs, 'milliseconds between notes');
+  fullRow();
+  const arpOn = check('Arpeggiator', view.arp.enabled);
+  pairRow();
   const arpDir = field('Pattern', [['up', 'Up'], ['down', 'Down'], ['updown', 'Up / Down'],
-    ['downup', 'Down / Up'], ['random', 'Random'], ['asPlayed', 'As played / stored']],
-  current.arp?.direction || 'up');
+    ['downup', 'Down / Up'], ['updownHold', 'Up / Down · held'],
+    ['downupHold', 'Down / Up · held'], ['up2', 'Up · thirds'], ['down2', 'Down · thirds'],
+    ['converge', 'Outside in'], ['diverge', 'Inside out'], ['pedalLow', 'Pedal · low'],
+    ['pedalHigh', 'Pedal · high'], ['cascade', 'Cascade'],
+    ['random', 'Random'], ['asPlayed', 'As played']],
+  view.arp.direction, {
+    name: 'Arpeggiator pattern',
+    says: 'The order the stack is climbed in. Up / Down turns without striking the top and bottom twice; the held pair strikes them twice on purpose. Thirds takes every other note and wraps back for the ones it skipped — a triad comes out C G E. Outside in walks the two ends towards each other and Inside out opens from the middle. A Pedal alternates the lowest or the highest note against all the rest. Cascade climbs three and steps back two. As played keeps the order the notes are stored in the bar rather than sorting them by pitch. Random is seeded from the lane and the position in the song, so it plays the same way every time. Shapes that need three notes fall back to a plain climb on two.',
+  });
   // Triplet rates, now that the transport can hold them. The arp fires on integral phase
   // (`(step - started) / rate`), which used to make a third impossible however it was
   // spelled — `step` only ever moved in 1s and 0.5s, so `rate: 2/3` fired every TWO
@@ -3931,25 +4198,27 @@ function openNoteFxEditor(x, y, key, scope = null) {
   // and 96 now, so these land. Same labels and order as the roll's snap menu.
   const arpRate = field('Rate', [[4, '1/4'], [8 / 3, '1/4T'], [2, '1/8'], [4 / 3, '1/8T'],
     [1, '1/16'], [2 / 3, '1/16T'], [0.5, '1/32'], [1 / 3, '1/32T']],
-    current.arp?.rate ?? 1);
-  const octaves = number('Octaves', 1, 4, 1, current.arp?.octaves ?? 1, 'octaves');
+    view.arp.rate);
+  pairRow();
+  const octaves = number('Octaves', 1, 4, 1, view.arp.octaves, 'octaves');
   // Octaves builds the stack; this stops the climb partway up it. Two controls because
   // the useful shape is between the octave counts — a seventh over two octaves cut to
   // five notes is not one octave and not two, and no octave count can spell it.
-  const limit = number('Note limit', 0, NOTE_FX_LIMIT_MAX, 1, current.arp?.limit ?? 0,
-    'notes · 0 plays the whole stack', {
+  const limit = number('Note limit', 0, NOTE_FX_LIMIT_MAX, 1, view.arp.limit,
+    'notes · 0 plays them all', {
       name: 'Arpeggiator note limit',
       says: 'Stops the pattern after this many notes, counted up the stack Octaves built — set Octaves to 2 and this to 5 and a seventh plays its four notes plus the lowest one again an octave up. Counted after the range folds, so the number here is the number you hear. Without Repeat the pattern stops there; with Repeat it cycles those notes instead.',
     });
+  fullRow();
   const rangeTip = {
     name: 'Arpeggiator range',
     says: 'Folds every arpeggiated note by whole octaves until it lands between these two, so the pattern plays in the same register whatever octave the chord was written in. Notes already inside keep their octave. The window is at least an octave tall — moving one end pushes the other — and an octave stack taller than the window folds back into it rather than sounding above it.',
   };
-  const rangeOn = check('Keep notes inside a range', current.arp?.rangeLimit);
-  const rangeLo = field('Lowest', NOTE_FX_RANGE_LO_OPTIONS,
-    current.arp?.rangeLo ?? NOTE_FX_RANGE_DEFAULT_LO, rangeTip);
-  const rangeHi = field('Highest', NOTE_FX_RANGE_HI_OPTIONS,
-    current.arp?.rangeHi ?? NOTE_FX_RANGE_DEFAULT_HI, rangeTip);
+  const rangeOn = check('Keep notes inside a range', view.arp.rangeLimit);
+  pairRow();
+  const rangeLo = field('Lowest', NOTE_FX_RANGE_LO_OPTIONS, view.arp.rangeLo, rangeTip);
+  const rangeHi = field('Highest', NOTE_FX_RANGE_HI_OPTIONS, view.arp.rangeHi, rangeTip);
+  fullRow();
   // The fold needs a whole octave to work in — in anything shorter some pitch class has
   // nowhere to land. Rather than take a narrower window and quietly play a wider one,
   // the two ends push each other apart on screen, so the panel reads as it sounds.
@@ -3962,11 +4231,31 @@ function openNoteFxEditor(x, y, key, scope = null) {
   };
   rangeLo.addEventListener('input', () => keepAnOctave(rangeLo));
   rangeHi.addEventListener('input', () => keepAnOctave(rangeHi));
-  const repeat = check('Repeat pattern', current.arp?.repeat !== false);
-  const gate = number('Gate', 1, 150, 1, current.arp?.gate ?? 80, 'percent of rate');
+  const repeat = check('Repeat pattern', view.arp.repeat !== false);
+  pairRow();
+  const gate = number('Gate', 1, 150, 1, view.arp.gate, 'percent of rate');
   const retrigger = field('Retrigger', [['chord', 'Each chord'], ['bar', 'Each bar'],
-    ['continuous', 'Continuous']], current.arp?.retrigger || 'chord');
-  const latch = check('Latch until the next chord', current.arp?.latch);
+    ['continuous', 'Continuous']], view.arp.retrigger);
+  fullRow();
+  const latch = check('Latch until the next chord', view.arp.latch);
+
+  // Render belongs to the arpeggiator, not to the panel's own actions. Everything in the
+  // footer decides what happens to this window; this one reaches past it and writes notes
+  // into the song, and it only means anything while there is an arpeggiator to consume.
+  // Down there it read as a fourth way of leaving, and took a whole line to do it.
+  const renderButton = document.createElement('button');
+  renderButton.className = 'notefxrender';
+  renderButton.textContent = 'Render Arp to Notes';
+  renderButton.title = scope
+    ? `Write ${targetLabel(key)}'s arpeggiator as ordinary notes in these bars`
+    : `Write ${targetLabel(key)}'s arpeggiator as ordinary notes across the song`;
+  // The SAVED arpeggiator, not the staged one: this writes the notes the song plays
+  // today, so an arp that exists only as an unapplied tick in this window has nothing
+  // for it to render.
+  renderButton.disabled = !resolveNoteFx(trackDefault,
+    scope ? arrDraftOf().plan?.[scope.from] : null, key)?.arp?.enabled;
+  form.append(renderButton);
+
   // A bar editor opens in Inherit mode so merely opening and applying it cannot create
   // an empty override. Once somebody actually edits a Note FX control, however, that
   // edit is necessarily meant for these bars; leaving it on Inherit silently threw the
@@ -3977,7 +4266,54 @@ function openNoteFxEditor(x, y, key, scope = null) {
   for (const control of [strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,
     rangeOn, rangeLo, rangeHi,
     repeat, gate, retrigger, latch]) control.addEventListener('input', armBarOverride);
+
+  // Strum and Arpeggiator are one choice — see `shownNoteFx`, and the processor it
+  // describes. Switching either on switches the other off rather than leaving a tick on
+  // screen the engine was always going to ignore, and whichever effect is off greys the
+  // controls that belong to it, so the panel shows one live effect at a time.
+  const setLive = (control, live) => {
+    control.disabled = !live;
+    control.closest('.regcontrol, .regcheck')?.classList.toggle('notefxoff', !live);
+  };
+  const syncEnabled = () => {
+    for (const control of [strumDir, gap]) setLive(control, strumOn.checked);
+    for (const control of [arpDir, arpRate, octaves, limit, rangeOn, repeat, gate,
+      retrigger, latch]) setLive(control, arpOn.checked);
+    // The two ends of the window answer to the tick above them as well as to the arp.
+    for (const control of [rangeLo, rangeHi]) setLive(control, arpOn.checked && rangeOn.checked);
+  };
+  strumOn.addEventListener('input', () => {
+    if (strumOn.checked) arpOn.checked = false;
+    syncEnabled();
+  });
+  arpOn.addEventListener('input', () => {
+    if (arpOn.checked) strumOn.checked = false;
+    syncEnabled();
+  });
+  rangeOn.addEventListener('input', syncEnabled);
+  syncEnabled();
   panel.append(form);
+
+  /** Put a saved Note FX back into the controls, without arming the bar override. */
+  const writeFields = (fx) => {
+    const next = shownNoteFx(fx);
+    setCheck(strumOn, next.strum.enabled);
+    strumDir.value = next.strum.direction;
+    gap.value = next.strum.gapMs;
+    setCheck(arpOn, next.arp.enabled);
+    arpDir.value = next.arp.direction;
+    arpRate.value = next.arp.rate;
+    octaves.value = next.arp.octaves;
+    limit.value = next.arp.limit;
+    setCheck(rangeOn, next.arp.rangeLimit);
+    rangeLo.value = next.arp.rangeLo;
+    rangeHi.value = next.arp.rangeHi;
+    setCheck(repeat, next.arp.repeat !== false);
+    gate.value = next.arp.gate;
+    retrigger.value = next.arp.retrigger;
+    setCheck(latch, next.arp.latch);
+    syncEnabled();
+  };
 
   const playBarScope = () => {
     if (!scope) return;
@@ -4001,30 +4337,42 @@ function openNoteFxEditor(x, y, key, scope = null) {
       gate: clamp(Number(gate.value) || 80, 1, 150), retrigger: retrigger.value,
       latch: latch.checked },
   });
-  const applyNoteFx = () => {
+  /** Save what the panel says. Answers whether it took, so Apply & Close can refuse. */
+  const applyNoteFx = ({ play = true } = {}) => {
     const next = collect();
     if (scope) {
       const override = mode.value === 'inherit' ? null
         : mode.value === 'off' ? { mode: 'off' } : { mode: 'on', ...next };
-      const ok = applyArrangementEdit(setBarNoteFx(arrDraftOf(), scope.from, scope.to, key, override), '');
-      if (!ok) return;
-      playBarScope();
-      toast(`Playing ${targetLabel(key)} from bar ${scope.from + 1} with Note FX — ⌘Z to undo`);
+      // ---- QUEUE PAST THIS, BUT NOT WHEN IT ENDS IN A SEEK ---------------------
+      //
+      // Applying Note FX rebuilds the rack and repaints the whole arrangement grid —
+      // the DOM-projection class of stall heavy-ui.js exists for, and the one the desk
+      // reported as "crackling when changing Note FX". Unwrapped, it held the main
+      // thread across the sequencer's whole queue and the hole was audible.
+      //
+      // The prefill is skipped on the branch that PLAYS, and that is not caution, it is
+      // the opposite failure: `playBarScope` seeks, a seek only moves `nextTime`, and
+      // notes already booked into the graph still sound. Queueing two seconds ahead of
+      // the old position and then jumping would play both. A seek is already a
+      // discontinuity, so it is the one gesture that does not need covering.
+      const edit = () => applyArrangementEdit(
+        setBarNoteFx(arrDraftOf(), scope.from, scope.to, key, override), '');
+      const ok = play ? edit() : heavyUi('note fx bars', edit);
+      if (!ok) return false;
+      if (play) {
+        playBarScope();
+        toast(`Playing ${targetLabel(key)} from bar ${scope.from + 1} with Note FX — ⌘Z to undo`);
+      } else {
+        toast(`${targetLabel(key)} Note FX applied to bars ${scope.from + 1}–${scope.to + 1} — ⌘Z to undo`);
+      }
     } else {
-      setTrackNoteFx(key, next);
+      // Nothing seeks on this branch, so it takes the armour in full — see above.
+      heavyUi('note fx track', () => setTrackNoteFx(key, next));
       toast(`${targetLabel(key)} Note FX applied — ⌘Z to undo`);
     }
+    return true;
   };
 
-  const foot = document.createElement('div'); foot.className = 'regfoot notefxfoot';
-  const renderButton = document.createElement('button');
-  renderButton.className = 'notefxrender';
-  renderButton.textContent = 'Render Arp to Notes';
-  renderButton.title = scope
-    ? `Write ${targetLabel(key)}'s arpeggiator as ordinary notes in these bars`
-    : `Write ${targetLabel(key)}'s arpeggiator as ordinary notes across the song`;
-  renderButton.disabled = !resolveNoteFx(trackDefault,
-    scope ? arrDraftOf().plan?.[scope.from] : null, key)?.arp?.enabled;
   renderButton.onclick = () => {
     const draft = arrDraftOf();
     const from = scope?.from ?? 0;
@@ -4034,9 +4382,15 @@ function openNoteFxEditor(x, y, key, scope = null) {
     // lets it leave the bars unmarked instead of stamping an arp-off override on
     // every one of them.
     const retireTrackArp = !scope && Boolean(trackDefault.arp?.enabled);
-    const ok = applyArrangementEdit(
+    // Writing an arpeggiator out as notes rewrites every bar it covers and then rebuilds
+    // the editors from the result — the heaviest thing this panel can be asked to do. The
+    // prefill covers the whole task that follows it, not merely the call it wraps, so
+    // `clearTrackArp`'s own rebuild below rides the same queued audio. Skipped on the
+    // scoped branch for the reason given in `applyNoteFx`: it ends in a seek.
+    const render = () => applyArrangementEdit(
       renderArpToNotes(editBank(), draft, from, to, key, trackDefault,
         { trackArpCleared: retireTrackArp }), '');
+    const ok = scope ? render() : heavyUi('note fx render', render);
     if (!ok) return;
     if (retireTrackArp) clearTrackArp(key);
     if (scope) {
@@ -4051,39 +4405,56 @@ function openNoteFxEditor(x, y, key, scope = null) {
       openNoteFxEditor(x, y, key, scope);
     }
   };
-  const clear = document.createElement('button'); clear.textContent = scope ? 'Inherit Track' : 'Clear Note FX';
-  clear.onclick = () => {
-    if (scope) {
-      const ok = applyArrangementEdit(setBarNoteFx(arrDraftOf(), scope.from, scope.to, key, null), '');
-      if (!ok) return;
-      playBarScope();
-      toast(`Playing ${targetLabel(key)} from bar ${scope.from + 1} with track Note FX — ⌘Z to undo`);
-    } else {
-      setTrackNoteFx(key, {});
-      toast(`${targetLabel(key)} Note FX cleared — ⌘Z to undo`);
-    }
+
+  // Four actions, and only two of them touch the song. Cancel and Reset are both ways of
+  // undoing this window — one by leaving, one by staying — and Reset is where Clear Note
+  // FX went: it used to wipe the setting the instant it was pressed, which made it the
+  // one control here that did not wait for an Apply. Now it empties the panel and the
+  // Apply beside it is what commits that.
+  const foot = document.createElement('div'); foot.className = 'regfoot notefxfoot';
+  const cancelButton = document.createElement('button'); cancelButton.textContent = 'Cancel';
+  cancelButton.title = 'Close without applying these staged Note FX changes';
+  cancelButton.setAttribute('aria-label', cancelButton.title);
+  cancelButton.onclick = closeMenu;
+  const resetButton = document.createElement('button'); resetButton.textContent = 'Reset';
+  resetButton.title = scope
+    ? `Stage these bars back to ${targetLabel(key)}'s track Note FX — Apply to commit it`
+    : `Empty every Note FX setting for ${targetLabel(key)} — Apply to commit it`;
+  resetButton.setAttribute('aria-label', resetButton.title);
+  resetButton.onclick = () => {
+    writeFields(scope ? trackDefault : {});
+    if (mode) mode.value = 'inherit';
   };
-  const closeButton = document.createElement('button'); closeButton.textContent = 'Close';
-  closeButton.title = 'Close without applying these staged Note FX changes';
-  closeButton.setAttribute('aria-label', closeButton.title);
-  closeButton.onclick = closeMenu;
   const applyButton = document.createElement('button');
-  applyButton.className = `regapply${scope ? ' notefxplay' : ''}`;
+  applyButton.className = `notefxapply${scope ? ' notefxplay' : ''}`;
   applyButton.textContent = scope ? 'Apply + Play' : 'Apply';
   applyButton.title = scope
     ? `Save these Note FX settings and play ${targetLabel(key)} from bar ${scope.from + 1}`
     : `Save ${targetLabel(key)}'s track Note FX without starting playback`;
   applyButton.setAttribute('aria-label', applyButton.title);
-  applyButton.onclick = applyNoteFx;
-  foot.append(renderButton, clear, closeButton, applyButton); panel.append(foot);
+  applyButton.onclick = () => applyNoteFx();
+  const applyCloseButton = document.createElement('button');
+  applyCloseButton.className = 'regapply';
+  applyCloseButton.textContent = 'Apply & Close';
+  applyCloseButton.title = `Save ${targetLabel(key)}'s Note FX and close this window`;
+  applyCloseButton.setAttribute('aria-label', applyCloseButton.title);
+  applyCloseButton.onclick = () => {
+    if (applyNoteFx({ play: false })) closeMenu();
+  };
+  foot.append(cancelButton, resetButton, applyButton, applyCloseButton); panel.append(foot);
   panel.style.left = `${x}px`; panel.style.top = `${y}px`; panel.classList.add('show');
   const rect = panel.getBoundingClientRect();
   panel.style.left = `${Math.max(6, Math.min(x, innerWidth - rect.width - 6))}px`;
   panel.style.top = `${Math.max(6, Math.min(y, innerHeight - rect.height - 6))}px`;
 }
 
-function openBarEffectsEditor(x, y, key, { from, to, chain: restoredChain = null }) {
-  if (regionPanelBusy()) return;
+/** The Note FX panel's sibling in the same window, and the same build cost. */
+function openBarEffectsEditor(x, y, key, scope) {
+  if (regionPanelBusy()) return undefined;
+  return heavyUi('open bar effects', () => buildBarEffectsEditor(x, y, key, scope));
+}
+
+function buildBarEffectsEditor(x, y, key, { from, to, chain: restoredChain = null }) {
   closeMenu();
   const panel = $('regionedit'); panel.textContent = ''; panel.classList.add('barfxmodal');
   let chain = JSON.parse(JSON.stringify(restoredChain
@@ -4151,7 +4522,7 @@ function openBarEffectsEditor(x, y, key, { from, to, chain: restoredChain = null
         [chain[index], chain[index + 1]] = [chain[index + 1], chain[index]]; draw();
       };
       const remove = document.createElement('button'); remove.className = 'devclose';
-      remove.append(closeIcon());
+      remove.append(trashIcon());
       remove.title = `Remove ${name} from this bar effect snapshot`;
       remove.setAttribute('aria-label', remove.title);
       remove.onclick = () => { chain.splice(index, 1); draw(); };
@@ -4323,6 +4694,11 @@ const voiceEditor = createVoiceEditor({
     if (!id) Audio.clearLayerSolo();
     else Audio.setLayerSolo(id, key, on);
   },
+  // The desk's own channel solo, lent to the editor's toolbar so isolating the sound you
+  // are shaping does not mean going back down to its strip to find the S. One state, one
+  // set of buttons: `setLaneSolo` lights the strip and the solo lamp on the way through.
+  setLaneSolo,
+  laneSoloOn: (key) => soloed.has(key),
   // A filter/VCA bypass changes the native graph, not just a parameter. Clear only
   // audition notes already queued on the bench so the next hit is the unmistakable
   // bypassed sound; the song's own playback continues through its normal scheduler.
@@ -4575,7 +4951,7 @@ function syncVoiceEditorToLane(laneKey, { autoCopy = true } = {}) {
   // library sound the copy above could not make song-local because the lane has no seam
   // to hold one, an entry that has gone from the catalogue between the choice and here.
   // Refused, the panel would keep drawing the preset you LEFT: MRDR-3's Quick macros on
-  // a strip now playing a GameSynth, an ADVANCED button onto a window with no layout
+  // a strip now playing a KNDO-5, an ADVANCED button onto a window with no layout
   // behind it, and every pot aimed at a sound nothing is making. There is no surface to
   // fall back to in that case, so the editor comes off the desk instead — and `forget`
   // takes the full window with it. The caller repaints, which is what the `true` says.
@@ -4641,7 +5017,7 @@ function placeVoiceEditor() {
  * so the option had no caller left and is gone rather than left as a branch nothing
  * takes. The editor's own `state.isNew` is unaffected: that is what its Save as new sets.
  *
- * WHICH SURFACE IT LANDS ON. Three preset families have both — KLNG8, MRDR-3 and TNGR-2 — and
+ * WHICH SURFACE IT LANDS ON. Every family accepted by `isQuickVoice` has both, and
  * `advanced` says which one was asked for:
  *
  *   undefined  the caller has no opinion, so the preset decides: a drum goes to the full
@@ -4649,10 +5025,10 @@ function placeVoiceEditor() {
  *              hundreds, and everything else gets the small panel. The tour is the last
  *              caller that asks this way.
  *   true       the full window, standalone — nothing behind it.
- *   false      the small Quick panel, on a drum as much as on anything else.
+ *   false      the small Simple panel, on a drum as much as on anything else.
  *
  * The track panel and the channel menu pass it explicitly on both of their items, so
- * **Edit Preset** and **Edit Advanced** each do exactly what they are called. A preset
+ * **Edit Simple** and **Edit Advanced** each do exactly what they are called. A preset
  * with only one surface ignores it; there is nothing else to open.
  *
  * Either way the window opens at the POINTER — `at` is the click that asked for it, and
@@ -5298,7 +5674,19 @@ $('addtrackbtn').onclick = (ev) => {
  */
 let voicePickerQuery = '';
 
+/**
+ * The voice picker — the longest list the desk builds, one row per offered preset.
+ *
+ * Same armour as the Note FX panel and for the same reason: it is a synchronous DOM
+ * build on the sequencer's thread, and choosing a sound is something you do WHILE the
+ * song plays. A picker that clicks the music on the way open is the one moment you are
+ * listening hardest.
+ */
 function openVoicePicker(x, y, laneKey) {
+  return heavyUi('open voice picker', () => buildVoicePicker(x, y, laneKey));
+}
+
+function buildVoicePicker(x, y, laneKey) {
   closeMenu();
   restorablePopup = { kind: 'voicePicker', laneKey };
   const seam = seamFor(laneKey);
@@ -5367,7 +5755,10 @@ function openVoicePicker(x, y, laneKey) {
   };
 
   const engineOf = (v) => v?.kind === 'drum' ? 'drum' : v?.synth || null;
-  const engineLabel = (id) => id === 'drum' ? 'KLNG8' : id;
+  // Through the shared map rather than the one hard-coded drum case this used to carry:
+  // a second place spelling a family's name is a second place to get it wrong, and the
+  // renames mean there are now four of them to keep straight.
+  const engineLabel = (id) => synthDisplayName(id);
   const selectedPreset = VOICES[chosen]
     || (independent ? VOICES[defaultAddedVoice(laneKey)] : defaultVoiceOf(track?.bank, laneKey));
   const selectedEngine = engineOf(selectedPreset);
@@ -5509,28 +5900,42 @@ function openVoicePicker(x, y, laneKey) {
   // Existing tracks cannot change between melodic and drum lanes, so those filters
   // are useful only while the plus picker is deciding what kind of track to create.
   if (pending && !drumsOnly) for (const k of KINDS) chips.append(chipFor(k));
-  const engineSelect = document.createElement('select');
-  engineSelect.className = 'fxsel voiceengine';
+  // THE DESK'S OWN DROPDOWN, not the operating system's.
+  //
+  // A native <select> can draw one run of text per row, so the engine and what it does
+  // had to be one string — `MRDR-3 · Layered analogue` — and eight of those stack into
+  // eight names and eight descriptions with nothing lining up. The custom control gives
+  // the description its own column, which is what it always was. It also brings the list
+  // inside the desk's palette; a macOS popup over a dark desk is the one surface here
+  // that could never be themed.
+  //
+  // Rebuilt rather than repopulated: the options are fixed at construction, and the list
+  // changes when the kind chips do. The replacement carries the same classes and the
+  // same `engine` value, so the only thing the chips see is a different element.
+  let engineSelect = null;
   const refreshEngineOptions = () => {
     const availableEngines = enginesForKind(kind);
     if (engine !== 'all' && !availableEngines.includes(engine)) engine = 'all';
-    engineSelect.textContent = '';
-    const allEngines = document.createElement('option');
-    allEngines.value = 'all'; allEngines.textContent = 'All engines';
-    allEngines.selected = engine === 'all';
-    engineSelect.append(allEngines);
-    for (const id of availableEngines) {
-      const option = document.createElement('option');
-      option.value = id;
-      option.textContent = engineLabel(id);
-      option.selected = id === engine;
-      engineSelect.append(option);
-    }
-    engineSelect.hidden = availableEngines.length < 2;
+    const next = createCustomSelect({
+      label: 'Engine',
+      title: 'Show presets for the current engine, or all engines',
+      idPrefix: 'voicepicker-engine',
+      // The two halves separately rather than the joined label: the columns ARE the
+      // join, made by the layout instead of by a separator. Short name, the same one the
+      // library's filter draws — `DuoSynth` in one list and `Duo` in the other is two
+      // names for one engine, which is the thing this whole pass is undoing.
+      options: [['all', 'All engines'],
+        ...availableEngines.map((id) => [id, synthShortName(id), synthStyleName(id)])],
+      value: engine,
+      fieldClass: 'deskselect',
+    });
+    next.classList.add('voiceengine');
+    next.hidden = availableEngines.length < 2;
+    next.addEventListener('input', () => { engine = next.value; draw(search.value); });
+    if (engineSelect) engineSelect.replaceWith(next);
+    engineSelect = next;
   };
   refreshEngineOptions();
-  engineSelect.title = 'Show presets for the current engine, or all engines';
-  engineSelect.onchange = () => { engine = engineSelect.value; draw(search.value); };
   head.append(who);
   if (now) head.append(now);
   head.append(chips);
@@ -5852,10 +6257,8 @@ function channelStrip(lane, mix, slotRows, number) {
 function sendStrip(def, mix, slotRows) {
   const key = `__aux:${def.id}`;
   const cur = fxOf(mix)[def.id];
-  const hue = def.type === 'delay' ? 196 : 268;
   const { el, body, foot } = stripShell(key, {
     label: def.name.toUpperCase(), tag: 'send', cls: 'send',
-    colour: hueColour(hue), tint: hueTint(hue),
   });
 
   // Values only, in the order the card lists them — a 132px strip has room for the
@@ -5916,11 +6319,7 @@ function sendStrip(def, mix, slotRows) {
   solo.title = `Solo the ${def.name} return — monitoring only, never saved`;
   solo.onclick = (ev) => {
     ev.stopPropagation();
-    const on = !solo.classList.contains('on');
-    solo.classList.toggle('on', on);
-    if (on) soloedAux.add(def.id); else soloedAux.delete(def.id);
-    Audio.mixer?.setAuxSolo(def.id, on);
-    updateSoloLight();
+    setAuxSolo(def.id, !solo.classList.contains('on'));
   };
   foot.append(insertSlots(key, def.name, slotRows), faderRow(fb.col), panRow(pan.el),
     btnRow(mute, solo));
@@ -5932,13 +6331,14 @@ function sendStrip(def, mix, slotRows) {
 /**
  * The master bus. No EQ rows: there is no EQ node on the master path — a parametric
  * EQ in the insert slots is how you do it, and it is a better EQ than three fixed
- * bands anyway. The limiter is the last slot in the insert block, where the rest of
- * the chain is: it is the LIMITER button under the fader, on the line the channels
- * keep their M and S on. There used to be a summary line up here saying "limiter off"
- * in words, and a checkbox on a card called "Master" in the panel below.
+ * bands anyway. The master insert block lives in its otherwise empty upper body,
+ * rather than competing with the fader in the foot. The limiter is the last slot in
+ * the master path, but it remains the LIMITER button under the fader, on the line the
+ * channels keep their M and S on. There used to be a summary line up here saying
+ * "limiter off" in words, and a checkbox on a card called "Master" in the panel below.
  */
 function masterStrip(mix, slotRows) {
-  const { el, foot } = stripShell('__master', { label: 'MASTER', tag: 'bus', cls: 'master' });
+  const { el, body, foot } = stripShell('__master', { label: 'MASTER', tag: 'bus', cls: 'master' });
   const setMaster = (x) => setMasterControlValue(x, 'master');
   const fb = faderBlock({
     // The same fader as every channel, which it did not used to be: this one ran
@@ -5966,11 +6366,17 @@ function masterStrip(mix, slotRows) {
       Audio.mixer?.setMasterPan(x);
     },
   });
+  // The master has no EQ or sends to occupy its upper body, so its insert chain gets
+  // that room even when the channel strips have had their insert blocks shed. A
+  // master-specific class lets the CSS preserve this one useful exception without
+  // changing what the Effects part switch means for ordinary strips.
+  const masterFx = insertSlots('__master', 'master', slotRows);
+  masterFx.classList.add('master-fxbtns');
+  body.append(masterFx);
   // Where a channel keeps M and S, the master keeps its limiter — under the fader and
   // out of the insert block, which is the honest place for it. It is not in the chain
   // and cannot be moved within it: it is the last thing before the speakers, always.
-  foot.append(insertSlots('__master', 'master', slotRows), faderRow(fb.col), panRow(pan.el),
-    btnRow(limiterButton(!!mix.limiter)));
+  foot.append(faderRow(fb.col), panRow(pan.el), btnRow(limiterButton(!!mix.limiter)));
   stripMenu(el, '__master', 'master');
   meters.push({ key: '__master', chans: fb.chans, meter: fb.meter });
   return el;
@@ -6033,7 +6439,8 @@ function rackPad() {
   const rack = $('rack');
   if (!rack) return 20;
   return px(rack, 'paddingTop') + px(rack, 'paddingBottom')
-    + (rack.offsetHeight - rack.clientHeight);
+    + (rack.offsetHeight - rack.clientHeight)
+    + h($('mixscroll')) + px($('mixscroll'), 'marginTop');
 }
 
 const h = (el) => (el ? el.getBoundingClientRect().height : 0);
@@ -6097,6 +6504,12 @@ const FX_KEY = 'mash-mixer-fxh';
 const storedFxH = Number(localStorage.getItem(FX_KEY));
 let userFxH = restoredDeskH(storedFxH, DEV_MIN_EXTRA);
 
+// The FX inspector is a piece of desk furniture rather than song state. Keep its side
+// beside its remembered height, so reopening the mixer does not make the hand hunt for
+// a control that was deliberately moved to the other edge.
+const FX_SIDE_KEY = 'mash-mixer-fxside';
+let fxDockSide = localStorage.getItem(FX_SIDE_KEY) === 'left' ? 'left' : 'right';
+
 /**
  * Write the three dragged panel heights and the window they belong to.
  *
@@ -6124,7 +6537,13 @@ function rememberDeskHeights() {
 //
 // The gap belongs to the stack: leaving it out makes the last visible row spill below
 // a snapped height. There is no trailing gap, so N rows carry N-1 of them.
-const laneRowHeight = () => h(document.querySelector('.arrrow')) || 26;
+const laneRowHeight = () => {
+  const row = document.querySelector('.arrrow');
+  if (row) return h(row);
+  const arrange = $('arrange');
+  const css = arrange ? Number.parseFloat(getComputedStyle(arrange).getPropertyValue('--arrrow')) : NaN;
+  return Number.isFinite(css) ? css : 0;
+};
 const laneRowGap = () => px($('arrgrid'), 'rowGap');
 const laneStackHeight = (count) => count * laneRowHeight()
   + Math.max(0, count - 1) * laneRowGap();
@@ -6419,11 +6838,8 @@ const WANT = {
 
 // The height the effect cards themselves ask for, measured by reserveDevices().
 let autoDevH = 0;
-/** Effects panel height — its content by default, or the user's dragged height. */
-const effectsNaturalHeight = () => {
-  if ($('devices').classList.contains('collapsed')) return 0;
-  return h($('devhead')) + (userFxH != null ? userFxH : (autoDevH || DEV_MIN_EXTRA));
-};
+/** FX is a right-side column, so it does not consume vertical desk height. */
+const effectsNaturalHeight = () => 0;
 
 /** Maximum effects room while leaving the other open panels at their floors. */
 function effectsRoom() {
@@ -6627,7 +7043,7 @@ function sizeStrips(strips) {
  * rests on: the reason it is allowed to hide a block at all is that it says it has.
  */
 function markShedParts(gone) {
-  for (const b of $('partfilter').querySelectorAll('button[data-part]')) {
+  for (const b of document.querySelectorAll('[data-mixer-part-filter] button[data-part]')) {
     const off = hiddenParts.has(b.dataset.part);
     const shed = !off && gone.includes(b.dataset.part);
     b.classList.toggle('shed', shed);
@@ -6732,7 +7148,7 @@ const clampWorkRatio = (value) => Math.max(0.24, Math.min(0.76,
   Number.isFinite(Number(value)) ? Number(value) : 0.44));
 const restoredWorkRatio = Number.parseFloat(localStorage.getItem(UPPER_WORK_KEY));
 let upperWorkRatio = clampWorkRatio(Number.isFinite(restoredWorkRatio) ? restoredWorkRatio : 0.44);
-const writeWorkRatio = (value, remember = true) => {
+const writeWorkRatio = (value, remember = true, fit = true) => {
   upperWorkRatio = clampWorkRatio(value);
   document.documentElement.style.setProperty('--upper-work-height', `${upperWorkRatio * 100}%`);
   $('worksplitter').setAttribute('aria-valuemin', '24');
@@ -6740,21 +7156,27 @@ const writeWorkRatio = (value, remember = true) => {
   $('worksplitter').setAttribute('aria-valuenow', String(Math.round(upperWorkRatio * 100)));
   if (remember) localStorage.setItem(UPPER_WORK_KEY, String(upperWorkRatio));
   keepLanePending = true;
-  scheduleDeskFit();
+  if (fit) scheduleDeskFit();
 };
 writeWorkRatio(upperWorkRatio, false);
 
 (() => {
   const splitter = $('worksplitter');
   let dragging = false;
+  let dragDesk = null;
   const setFromPointer = (event) => {
-    const desk = $('desk').getBoundingClientRect();
+    const desk = dragDesk || $('desk').getBoundingClientRect();
     if (!(desk.height > 0)) return;
-    writeWorkRatio((event.clientY - desk.top) / desk.height, false);
+    // The CSS variable is the cheap live part of the gesture. Defer the rack sizing
+    // and editor fit until release; doing that full measure/write pass on every pointer
+    // move is exactly the main-thread work that can steal a scheduler turn.
+    writeWorkRatio((event.clientY - desk.top) / desk.height, false, false);
   };
   splitter.addEventListener('pointerdown', (event) => {
     if (event.button != null && event.button !== 0) return;
     dragging = true;
+    dragDesk = $('desk').getBoundingClientRect();
+    beginPlaybackVisualHold();
     pianoRoll.setResizeDeferred(true);
     splitter.classList.add('dragging');
     try { splitter.setPointerCapture(event.pointerId); } catch { /* synthetic pointer */ }
@@ -6765,10 +7187,16 @@ writeWorkRatio(upperWorkRatio, false);
   const stop = () => {
     if (!dragging) return;
     dragging = false;
+    dragDesk = null;
     splitter.classList.remove('dragging');
     localStorage.setItem(UPPER_WORK_KEY, String(upperWorkRatio));
-    requestAnimationFrame(() => pianoRoll.setResizeDeferred(false));
     scheduleDeskFit(true);
+    requestAnimationFrame(() => {
+      pianoRoll.setResizeDeferred(false);
+      // Let the settled fit and the roll's deferred row pass land before restoring
+      // decorative playback work.
+      requestAnimationFrame(endPlaybackVisualHold);
+    });
   };
   splitter.addEventListener('pointerup', stop);
   splitter.addEventListener('pointercancel', stop);
@@ -6848,10 +7276,10 @@ writeWorkRatio(upperWorkRatio, false);
   });
 })();
 
-// Coalesced to one fit a frame. A drag on the window edge fires this continuously,
-// and a fit now measures every strip in the rack to find the tallest chrome — on a
-// twenty-channel song that is twenty forced reflows, which is not a thing to do
-// several times between two paints.
+// A drag on the window edge fires this continuously, and a fit measures every strip in
+// the rack to find the tallest chrome. Wait for the viewport to settle before paying
+// that forced-reflow cost; flex/CSS keeps the desk visually responsive in the meantime.
+const MIXER_RESIZE_SETTLE_MS = 120;
 let fitPending = 0;
 // PLAYBACK WINS, AND A HIDDEN RACK IS NOT WORTH MEASURING. M8TRX's panel covers the desk
 // edge to edge, so every strip this fit measures while it is open is a forced reflow for
@@ -6860,14 +7288,40 @@ let fitPending = 0;
 // skipped, it is DEFERRED: the debt is remembered and paid the moment the panel closes,
 // because the rack still has to be right when it comes back.
 let deskFitOwed = false;
-addEventListener('resize', () => {
-  cancelAnimationFrame(fitPending);
-  fitPending = requestAnimationFrame(() => {
-    if (rearrangePanelOpen) { deskFitOwed = true; return; }
-    scheduleDeskFit(true);
-    updateArrangementNoteScale();
-  });
-});
+let deskResizeSettleTimer = 0;
+let deskResizeVisualHeld = false;
+const scheduleDeskResize = () => {
+  // Every width the arrangement scroller was measured against has just changed.
+  forgetArrangementGeometry();
+  if (!deskResizeVisualHeld) {
+    deskResizeVisualHeld = true;
+    beginPlaybackVisualHold();
+  }
+  clearTimeout(deskResizeSettleTimer);
+  deskResizeSettleTimer = setTimeout(() => {
+    deskResizeSettleTimer = 0;
+    cancelAnimationFrame(fitPending);
+    fitPending = requestAnimationFrame(() => {
+      fitPending = 0;
+      if (rearrangePanelOpen) deskFitOwed = true;
+      else {
+        scheduleDeskFit(true);
+        syncMixerScroll();
+        updateArrangementNoteScale();
+        forgetArrangementGeometry();
+      }
+      // The fit is itself coalesced into the next frame. Hold one more frame so the
+      // scheduler is not competing with the final layout write or deferred row pass.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (!deskResizeVisualHeld) return;
+        deskResizeVisualHeld = false;
+        endPlaybackVisualHold();
+      }));
+    });
+  }, MIXER_RESIZE_SETTLE_MS);
+};
+addEventListener('resize', scheduleDeskResize);
+window.visualViewport?.addEventListener('resize', scheduleDeskResize);
 
 // The second resize edge is the top border of the Mixer header, which is Notes'
 // BOTTOM edge: moving it DOWN gives Notes more room, moving it UP gives Notes less.
@@ -7070,11 +7524,9 @@ const themeHueColour = (hue) => {
   return palette[Math.floor((hue / 360) * palette.length) % palette.length];
 };
 const themeTrackColour = (key) => themeHueColour(laneHue(key));
-/* The send returns are coloured by hue rather than by lane — they are not lanes — but
- * they have to go through the same two doors as everything else, or they keep their
- * raw teal and purple in a theme that has neither. */
+/* Track colours belong to musical lanes. Returns are shared buses, so they stay neutral
+ * like the master rather than acquiring a delay-blue or reverb-purple identity. */
 const hueColour = (hue, l = 55) => themeHueColour(hue) || `hsl(${hue} 62% ${l}%)`;
-const hueTint = (hue) => `color-mix(in srgb, ${hueColour(hue)} 24%, transparent)`;
 const laneColour = (key, l = 55) => hueColour(laneHue(key), l);
 /** The same hue, quiet enough to sit behind a name without shouting over it.
  *
@@ -10048,7 +10500,7 @@ async function loadRearrangeJson(file) {
           `<p>This Rearrange recipe belongs to <b>${escapeHtml(raw.source.title || sourceSong)}</b>.</p>`
           + '<p>Open that song before loading the recipe?</p>', 'Open song');
         if (!switchIt) return;
-        selectSong(sourceSong);
+        await selectSong(sourceSong);
       } else {
         throw new Error(`The source song ${sourceSong} is not available`);
       }
@@ -10171,6 +10623,44 @@ function sourceHeardStepNow() {
   const output = heardStepNow();
   if (output == null) return null;
   return Audio.rearrangementPosition(output)?.sourceStep ?? output;
+}
+
+/**
+ * The visual position during a discontinuous transport move.
+ *
+ * `Audio.step` has already moved when the scheduler queues the destination note, while
+ * `songBeat()` deliberately backs off the lookahead. That subtraction would make a
+ * jump paint the bars before its destination. Hold the last frame until the scheduled
+ * note has crossed the output boundary, then return to the normal heard clock.
+ */
+function visualHeardStepNow() {
+  const heard = heardStepNow();
+  if (heard == null) return null;
+  if (visualSeekHold) {
+    const ctx = Audio.ctx;
+    const outputNow = ctx
+      ? ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0)
+      : Infinity;
+    if (outputNow < visualSeekHold.when) return visualSeekHold.before;
+    visualSeekHold = null;
+  }
+  lastVisualStep = heard;
+  return heard;
+}
+
+function sourceVisualHeardStepNow(heard = visualHeardStepNow()) {
+  if (heard == null) return null;
+  return Audio.rearrangementPosition(heard)?.sourceStep ?? heard;
+}
+
+function syncVisualSeek() {
+  const seek = Audio.takeVisualSeek?.();
+  if (!seek || !playing) return;
+  visualSeekHold = {
+    step: seek.step,
+    when: Number(seek.when),
+    before: Number.isFinite(lastVisualStep) ? lastVisualStep : parkedAt,
+  };
 }
 
 // The arrangement marks need a small amount of paint lead so the mark is on the glass
@@ -10299,6 +10789,13 @@ let pianoRollLoopRange = null;
 let loopAnchor = 0;
 let pendingLoopAnchor = null;
 let pendingSeekStep = null;
+let pendingPlaybackFlash = null;
+// A seek changes the scheduler's integer step before its first destination note reaches
+// the speakers. Keep the visual cursor on the last heard position during that gap; the
+// ordinary `heardStepNow()` lookahead is right for continuous playback but would paint
+// several steps before a newly selected bar.
+let visualSeekHold = null;
+let lastVisualStep = 0;
 let parkedAt = 0;
 
 /**
@@ -10417,7 +10914,37 @@ function syncLoopAnchor() {
 function syncPendingSeek() {
   if (pendingSeekStep == null || Audio.pendingStep != null) return;
   pendingSeekStep = null;
+  if (!pendingPlaybackFlash) $('selregion').classList.remove('pending');
+}
+
+function clearPendingPlaybackFlash() {
+  pendingPlaybackFlash = null;
   $('selregion').classList.remove('pending');
+  pianoRoll?.clearPendingPlayback?.();
+  stepSeq?.clearPendingPlayback?.();
+  kitRoll?.clearPendingPlayback?.();
+}
+
+function armPendingPlaybackFlash(start, end) {
+  const total = Math.max(1, songShape().totalSteps);
+  const from = clamp(Math.round(Number(start) || 0), 0, total);
+  const to = clamp(Math.round(Number(end) || from), from, total);
+  if (to <= from) return false;
+  pendingPlaybackFlash = { start: from, end: to };
+  $('selregion').classList.add('pending');
+  pianoRoll?.armPendingPlayback?.(from, pendingPlaybackFlash);
+  stepSeq?.armPendingPlayback?.(from, pendingPlaybackFlash);
+  kitRoll?.armPendingPlayback?.(from, pendingPlaybackFlash);
+  return true;
+}
+
+function syncPendingPlaybackFlash() {
+  if (!pendingPlaybackFlash || Audio.pendingStep != null || Audio.pendingLoop != null) return;
+  const heard = heardStepNow();
+  if (heard == null) return;
+  if (heard >= pendingPlaybackFlash.start && heard < pendingPlaybackFlash.end) {
+    clearPendingPlaybackFlash();
+  }
 }
 
 /** Arm the highlighted range, or the two song-relative locators. */
@@ -10431,7 +10958,7 @@ function applyLoop(atStep = null) {
   const bounds = currentLoopBounds();
   pendingLoopAnchor = null;
   pendingSeekStep = null;
-  $('selregion').classList.remove('pending');
+  if (!pendingPlaybackFlash) $('selregion').classList.remove('pending');
   $('loopregion').classList.remove('pending');
   syncLoopButton();
   if (!loopOn || !bounds) {
@@ -10466,7 +10993,7 @@ function armPianoRollLoop(range, { announce = true } = {}) {
   const bounds = currentLoopBounds();
   if (playing && bounds && Audio.loopStart != null && Audio.loopEnd != null) {
     pendingSeekStep = null;
-    $('selregion').classList.remove('pending');
+    if (!pendingPlaybackFlash) $('selregion').classList.remove('pending');
     Audio.setLoopAtBoundary(bounds.start, bounds.end);
     pendingLoopAnchor = { start: bounds.start, end: bounds.end };
     $('loopregion').classList.add('pending');
@@ -10497,16 +11024,13 @@ function showLoopUi(start, end, totalSteps) {
   showLocatorUi(totalSteps);
 }
 
-// Locator placement is independent of whether the loop is armed. Hiding the pins when
-// Loop was off made Alt-click appear to do nothing and made it impossible to check the
-// two positions before enabling playback.
+// Old sessions may still carry locator positions, and currentLoopBounds can still use
+// them as a compatibility fallback. They are deliberately not rendered: the visible
+// timeline range is now the selected bar/range, so there is only one loop affordance.
 function showLocatorUi(totalSteps = songShape().totalSteps) {
-  const span = Math.max(1, totalSteps);
-  for (const [id, step] of [['locatorA', locA], ['locatorB', locB]]) {
-    const pin = $(id);
-    pin.style.display = step == null ? 'none' : 'block';
-    if (step != null) pin.style.left = (step / span * 100) + '%';
-  }
+  // Keep this call for session/loop refresh compatibility; `.locator` is permanently
+  // hidden in the shell stylesheet and must not become a second editing surface.
+  void totalSteps;
 }
 
 /** Place or clear a locator at the given step. Returns which locator changed. */
@@ -10545,7 +11069,7 @@ function applyLoopNoJump() {
   const bounds = currentLoopBounds();
   pendingLoopAnchor = null;
   pendingSeekStep = null;
-  $('selregion').classList.remove('pending');
+  if (!pendingPlaybackFlash) $('selregion').classList.remove('pending');
   $('loopregion').classList.remove('pending');
   if (!loopOn || !bounds) {
     Audio.setLoop();
@@ -10707,7 +11231,7 @@ $('looptoggle').onclick = () => {
   if (loopOn) {
     const bounds = currentLoopBounds();
     if (!bounds) {
-      toast('Loop on — select a bar range, or Alt-click the timeline to place locators');
+      toast('Loop on — select a bar range');
     } else {
       toast(`Loop on — bars ${barOf(bounds.start)} to ${barOf(bounds.end - 1)}`);
     }
@@ -10748,7 +11272,10 @@ function jumpTo(step, { start = false, immediate = false } = {}) {
   followArrangementScroll(within / totalSteps);
   if (!playing) {
     parkedAt = within;                              // Play resumes on this step
-    if (start) { setPlaying(true, within); return; }
+    if (start) {
+      setPlaying(true, within);
+      return;
+    }
     // Nothing is running to move the playhead, so put it where the click was.
     applyLoop(within);
     $('playhead').style.left = `${(within / totalSteps) * 100}%`;
@@ -10764,7 +11291,7 @@ function jumpTo(step, { start = false, immediate = false } = {}) {
     // `Audio.step` leaves those loop notes audible before the restart. Re-enter the
     // transport so setBank cuts that queue, resets the song, and then arms the loop
     // without jumping into it.
-    setPlaying(false);
+    setPlaying(false, null, { preservePendingPlayback: true });
     setPlaying(true, 0);
     return;
   }
@@ -10780,7 +11307,7 @@ function jumpTo(step, { start = false, immediate = false } = {}) {
   }
   Audio.setLoop();                       // explicit transport actions move immediately
   pendingSeekStep = null;
-  $('selregion').classList.remove('pending');
+  if (!pendingPlaybackFlash) $('selregion').classList.remove('pending');
   Audio.step = within;
   Audio.nextTime = Audio.ctx.currentTime + 0.03;
   applyLoop(within);
@@ -11023,23 +11550,16 @@ $('timeline').onclick = (e) => {
   if (e.target.closest('#tlhead')) return;
   const at = timelineStep(e);
   if (timelineClickSuppress) { timelineClickSuppress = false; return; }
-  // Alt-click (or option-click) places/clears a locator instead of seeking.
-  if (e.altKey) {
-    const which = toggleLocator(at);
-    if (which === 'A-cleared' || which === 'B-cleared') {
-      toast(`Locator cleared`);
-    } else {
-      toast(`Locator ${which} set at bar ${barOf(at)}`);
-    }
-    return;
-  }
   const bar = timelineBar(e);
   markBar(null, bar);
   // While a loop is playing, choosing a different bar is a loop edit, not a seek.
   // Seeking here tears down the live scheduler just as the boundary handoff is being
   // queued, which can leave playback silent until the transport is restarted.
   const target = bar * 16;
-  if (!(playing && loopOn)) jumpTo(playing ? target : at);
+  if (!(playing && loopOn)) {
+    if (playing) armPendingPlaybackFlash(target, Math.min(songShape().totalSteps, target + 16));
+    jumpTo(playing ? target : at);
+  }
   const looping = loopOn && locA != null && locB != null;
   toast(!playing ? `Parked at bar ${barOf(at)} — double-click to play from here`
     : looping ? `Looping bars ${barOf(Math.min(locA, locB))} to ${barOf(Math.max(locA, locB))}`
@@ -11050,9 +11570,11 @@ $('timeline').onclick = (e) => {
 // hunting back to the bar you wanted was the long way round to hear one bar.
 $('timeline').ondblclick = (e) => {
   if (e.target.closest('#tlhead')) return;
-  const at = timelineStep(e);
-  jumpTo(at, { start: true });
-  toast(`Playing from bar ${barOf(at)}`);
+  const bar = timelineBar(e);
+  const target = bar * 16;
+  armPendingPlaybackFlash(target, Math.min(songShape().totalSteps, target + 16));
+  jumpTo(target, { start: true });
+  toast(`Playing from bar ${barOf(target)}`);
 };
 
 // A lane in by the second bar counts as being in from the top: it starts with the
@@ -11108,8 +11630,9 @@ function playFromLaneStart(key) {
 // The selected channel's effect chain, along the bottom. Strips carry only a
 // one-line summary; a 132px column cannot hold four parameters legibly, and most
 // channels have no effects at all.
-// Readable names for parameters whose internal keys are terse — the parametric EQ's
-// bands especially, where f2/g2/q2 says nothing about what it does.
+// Readable names for parameters whose internal keys are terse. The Channel EQ's bands
+// keep their entries even though the EQ now draws its own labels — a bar-effects
+// summary line and the preset diff still name parameters through this table.
 const PARAM_LABELS = {
   f1: 'LOW FREQ', g1: 'LOW GAIN',
   f2: 'LOW-MID FREQ', g2: 'LOW-MID GAIN', q2: 'LOW-MID Q',
@@ -11133,6 +11656,8 @@ const PARAM_LABELS = {
   wow: 'WOW', flutter: 'FLUTTER', waveform: 'WAVEFORM',
   lowFrequency: 'LOW X-OVER', highFrequency: 'HIGH X-OVER',
   ceiling: 'OUT CEILING', lookahead: 'LOOKAHEAD', arc: 'Auto Release (ARC)',
+  inputGain: 'INPUT', outputGain: 'OUTPUT',
+  pump: 'PUMP',
 };
 
 /**
@@ -11495,18 +12020,24 @@ function knob({ min, max, step, value, fmt, onInput, reset, scale = 1, origin = 
   return { wrap, label: k, set: (x) => { val = clamp(x, min, max); position = positionAt(val); draw(); } };
 }
 
-/** A one-line labelled checkbox — a whole row plus a full-width button was three
- *  lines of card height to say one boolean. */
+/** A one-line labelled switch, using the synth editor's capsule around a real checkbox. */
 function checkRow(label, checked, onChange) {
   const row = document.createElement('label');
   row.className = 'checkrow';
   const box = document.createElement('input');
   box.type = 'checkbox';
   box.checked = !!checked;
-  box.onchange = () => onChange(box.checked);
+  const sw = document.createElement('span');
+  sw.className = `fxswitch${box.checked ? ' on' : ''}`;
+  sw.setAttribute('aria-hidden', 'true');
+  sw.append(document.createElement('i'));
+  box.onchange = () => {
+    sw.classList.toggle('on', box.checked);
+    onChange(box.checked);
+  };
   const t = document.createElement('span');
   t.textContent = label;
-  row.append(box, t);
+  row.append(box, sw, t);
   return row;
 }
 
@@ -11531,6 +12062,56 @@ function bypassOn(key, i, on) {
   if (key === '__master') Audio.mixer?.setMasterEffectBypass(i, on);
   else if (key && key.startsWith('__aux:')) Audio.mixer?.setAuxEffectBypass(key.slice(6), i, on);
   else Audio.mixer?.lane(key)?.setEffectBypass(i, on);
+}
+
+/**
+ * MUTE, the other way to turn an effect off — and the only one a cabinet screen can
+ * carry, because it is a gain rather than a disconnect. See mixer.setMute.
+ *
+ * BYPASS takes the link out of the graph: free, and the right control for A/B-ing what
+ * an effect is doing. MUTE leaves it running into silence, so it costs what it always
+ * cost — and in exchange the level and the cabinet screen may disagree about it, which
+ * bypass can never let them do.
+ */
+/**
+ * IS THIS EFFECT OFF? One question, whichever way it was switched off.
+ *
+ * There are two mechanisms underneath and they are not interchangeable — a bypass
+ * unwires the link and costs nothing, a mute leaves it running into a closed gain and
+ * can therefore differ between a level and its cabinet screen. That is a fact about
+ * Web Audio, not a decision anybody at the desk should have to make. So the desk has
+ * ONE control, this is what it reads, and `offKind` below decides which mechanism it
+ * writes. Nothing in the UI ever names the difference.
+ */
+const effectOff = (e) => !!(e?.bypass || e?.mute);
+
+/**
+ * Which mechanism "off" should be written as for the song on the desk.
+ *
+ * A song with a cabinet screen gets mutes: its two presentations may want to disagree
+ * about any effect, and only a mute can carry that across the handover. A song with no
+ * cabinet screen gets bypasses, which are free. Songs move between the two states, and
+ * cabUpdate silently converts whatever is left on the wrong side — so this only has to
+ * be right often, not always.
+ */
+const offKind = () => (variantFor(trackId) || inCabMode() ? 'mute' : 'bypass');
+
+/** Switch one effect on or off, in whichever way this song can carry. */
+function setEffectOff(key, list, i, off) {
+  const kind = offKind();
+  const next = list.map((x, j) => (j === i
+    ? { ...x, bypass: off && kind === 'bypass', mute: off && kind === 'mute' }
+    : x));
+  editMix((m) => storeEffects(m, key, next), null);
+  bypassOn(key, i, !!next[i].bypass);
+  muteOn(key, i, !!next[i].mute);
+  return next;
+}
+
+function muteOn(key, i, on) {
+  if (key === '__master') Audio.mixer?.setMasterEffectMute(i, on);
+  else if (key && key.startsWith('__aux:')) Audio.mixer?.setAuxEffectMute(key.slice(6), i, on);
+  else Audio.mixer?.lane(key)?.setEffectMute(i, on);
 }
 
 function targetLabel(key) {
@@ -11559,6 +12140,11 @@ function setEffects(key, list) {
   // Rebuild the rack, not just the summary line: the per-effect bypass buttons live
   // on the strip and have to appear and disappear with the chain.
   buildRack();
+  // Arrangement rows carry their own FX shortcut, so a chain gaining or losing its
+  // last insert must repaint the row header immediately. The selected inspector also
+  // owns a separate rack; refresh it here when this edit came from that panel.
+  if (key && key !== '__master' && !key.startsWith('__aux:')) buildArrangement();
+  if (key === selectedLane && $('devices')?.classList.contains('fxwindow-open')) buildDevices();
 }
 
 /**
@@ -11580,7 +12166,7 @@ const optionLabel = (s) => String(s).replace(/\b[a-z]/g, (c) => c.toUpperCase())
  * useful Hz/seconds readout.
  */
 function divisionRow(label, divisions, value, fmt, onChange) {
-  const row = document.createElement('div'); row.className = 'row';
+  const row = document.createElement('div'); row.className = 'row fxselectrow';
   const hd = document.createElement('div'); hd.className = 'head';
   const k = document.createElement('span'); k.className = 'k'; k.textContent = label;
   const v = document.createElement('span'); v.className = 'v';
@@ -11599,16 +12185,23 @@ function divisionRow(label, divisions, value, fmt, onChange) {
   return row;
 }
 
-/** A named choice — a filter's shape, anything else that is a list not a range. */
-function optionRow(label, options, value, onChange) {
-  const row = document.createElement('div'); row.className = 'row';
+/**
+ * A named choice — a filter's shape, anything else that is a list not a range.
+ *
+ * `texts` renames an entry without renaming the VALUE behind it, which the PRESET row
+ * is the one caller of: `Default` is the word for the state a card starts in, and the
+ * EQs would rather call theirs `Flat`, which is what it sounds like. The stored value
+ * stays `Default` — it is what `matchEffectPreset` returns and what the row is set to.
+ */
+function optionRow(label, options, value, onChange, texts = null) {
+  const row = document.createElement('div'); row.className = 'row fxselectrow';
   const hd = document.createElement('div'); hd.className = 'head';
   const k = document.createElement('span'); k.className = 'k'; k.textContent = label;
   hd.append(k);
   const sel = document.createElement('select'); sel.className = 'fxsel';
   for (const o of options) {
     const opt = document.createElement('option');
-    opt.value = o; opt.textContent = optionLabel(o);
+    opt.value = o; opt.textContent = texts?.[o] ?? optionLabel(o);
     if (o === value) opt.selected = true;
     sel.append(opt);
   }
@@ -11616,6 +12209,546 @@ function optionRow(label, options, value, onChange) {
   row.select = sel;
   row.append(hd, sel);
   return row;
+}
+
+/** A visible mutually-exclusive choice, matching the preset editor's segmented radio row. */
+function radioRow(label, options, value, onChange) {
+  const row = document.createElement('div'); row.className = 'row fxradio';
+  const k = document.createElement('span'); k.className = 'k'; k.textContent = label;
+  const seg = document.createElement('div'); seg.className = 'seg';
+  const offered = options.some((option) => String(option) === String(value))
+    ? options : [value, ...options];
+  for (const option of offered) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `segbtn${String(option) === String(value) ? ' on' : ''}`;
+    button.textContent = optionLabel(option);
+    button.onclick = () => {
+      if (String(option) === String(value)) return;
+      value = option;
+      for (const other of seg.children) {
+        other.classList.toggle('on', other === button);
+      }
+      onChange(option);
+    };
+    seg.append(button);
+  }
+  row.append(k, seg);
+  return row;
+}
+
+// ---- Channel EQ ------------------------------------------------------------
+/**
+ * The Channel EQ has a surface of its own rather than ten sliders.
+ *
+ * Ten sliders is what the generic control builder makes of it, and it was the widest
+ * card in the rack — three columns of f/g/q with nothing to say which of them was the
+ * dip you had just put in the low mids. An EQ is the one effect whose settings ARE a
+ * shape, so the shape is the control: the curve is what the four biquads actually do,
+ * and the four handles on it are the frequency and gain of each band.
+ *
+ * The numbers stay underneath, draggable and typable, because a graph cannot be read
+ * to a decimal place and Q has no second axis to live on. Every parameter the engine
+ * reads still has a control here — the graph is a faster way to reach eight of them,
+ * not a replacement for two.
+ */
+const EQ_MIN_HZ = 20;
+const EQ_MAX_HZ = 20000;
+const EQ_MAX_DB = 20;                 // the graph's vertical extent; the bands stop at ±18
+const EQ_DECADES = Math.log(EQ_MAX_HZ / EQ_MIN_HZ);
+// Lines where a mixing engineer expects them, labelled only at the decades — a label
+// on every line is nine numbers across 320 pixels and reads as texture, not as a scale.
+const EQ_GRID_HZ = [30, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
+const EQ_LABEL_HZ = { 100: '100', 1000: '1k', 10000: '10k' };
+const EQ_GRID_DB = [-12, -6, 6, 12];
+const EQ_GRAB_PX = 26;                // how near a handle a press has to land to take it
+
+// Every graph currently on screen. The curve is painted into a canvas, so it is the
+// one part of the desk a theme switch cannot restyle — CSS reaches the card, the band
+// boxes and the graph's background, and stops at the pixels. Cards come and go with
+// every rebuild of the rack, so the set is swept for canvases that have left the
+// document rather than each panel having to remember to unregister itself.
+const eqGraphs = new Set();
+function sweepEqGraphs() {
+  for (const g of eqGraphs) if (!g.canvas.isConnected) eqGraphs.delete(g);
+}
+// Swept as each new card registers as well as on the way past, so the set stays the
+// size of what is on screen rather than the size of everything that ever was.
+function registerEqGraph(entry) { sweepEqGraphs(); eqGraphs.add(entry); }
+function repaintEqGraphs() {
+  sweepEqGraphs();
+  for (const g of eqGraphs) g.draw();
+}
+
+/** Where a frequency sits across the graph, and back again. Log, as an EQ is read. */
+const eqX = (f, w) => (Math.log(clamp(f, EQ_MIN_HZ, EQ_MAX_HZ) / EQ_MIN_HZ) / EQ_DECADES) * w;
+const eqFreq = (x, w) => EQ_MIN_HZ * Math.exp((clamp(x, 0, w) / w) * EQ_DECADES);
+const eqY = (db, h) => (h / 2) * (1 - clamp(db, -EQ_MAX_DB, EQ_MAX_DB) / EQ_MAX_DB);
+const eqDb = (y, h) => clamp((1 - (y / (h / 2))) * EQ_MAX_DB, -EQ_MAX_DB, EQ_MAX_DB);
+
+/** A frequency as the readouts write it: 120 Hz, 2.4 kHz. */
+const eqHz = (f) => (f >= 10000 ? `${(f / 1000).toFixed(1)} kHz`
+  : f >= 1000 ? `${(f / 1000).toFixed(2)} kHz`
+    : `${Math.round(f)} Hz`);
+const eqDbText = (g) => `${g > 0 ? '+' : ''}${g.toFixed(1)} dB`;
+
+/**
+ * A number under the graph: drag it to change it, click it to type it, click its
+ * label to put it back. The same three gestures a slider's readout has — see
+ * `slider` — because this IS that readout, without a slider above it.
+ */
+function eqNumber(el, { get, set, rng, fmt, parse }) {
+  el.classList.add('typable');
+  const openEditor = () => {
+    if (el.querySelector('input')) return;
+    const box = document.createElement('input');
+    box.type = 'text'; box.className = 'typein';
+    box.value = fmt(get());
+    el.textContent = '';
+    el.append(box);
+    box.focus(); box.select();
+    const done = (commit) => {
+      const n = commit ? parse(box.value) : null;
+      if (n != null) set(clamp(n, rng.min, rng.max));
+      el.textContent = fmt(get());
+    };
+    box.addEventListener('keydown', (ev) => {
+      ev.stopPropagation();
+      if (ev.key === 'Enter') done(true);
+      else if (ev.key === 'Escape') done(false);
+    });
+    box.addEventListener('blur', () => done(true));
+  };
+  dragNumber(el, {
+    value: get,
+    set: (x) => set(clamp(x, rng.min, rng.max)),
+    range: rng.max - rng.min,
+    step: rng.step,
+    onClick: openEditor,
+  });
+}
+
+/**
+ * Build the Channel EQ's graph and its four band readouts.
+ *
+ * `params` is the live settings object the caller keeps up to date, and `apply` is
+ * how a change reaches the node and the mix — the same pair every other control in
+ * `fillEffectControls` is given, so the graph works identically on a channel insert
+ * and on a staged bar effect with no live node behind it at all.
+ */
+function eqGraphPanel({ params, apply }) {
+  const panel = document.createElement('div');
+  panel.className = 'eqpanel';
+  const canvas = document.createElement('canvas');
+  canvas.className = 'eqcurve';
+  canvas.title = 'Drag a band to move it · shift for gain only, alt for frequency only'
+    + ' · wheel over a peak for its Q · double-click to reset the band';
+  const strip = document.createElement('div');
+  strip.className = 'eqbands';
+  // The band count reaches the stylesheet from the catalogue rather than being written
+  // out twice — a fifth band was added to PEQ_BANDS and a `repeat(4, …)` left behind
+  // would have squeezed five boxes into four columns and wrapped the last one.
+  strip.style.setProperty('--eqbands', String(PEQ_BANDS.length));
+  panel.append(canvas, strip);
+
+  const sampleRate = () => Audio.ctx?.sampleRate || 44100;
+  const rangeOf = (key) => paramRange(key, EFFECT_BY_ID.peq);
+  const val = (key) => params[key] ?? EFFECT_BY_ID.peq.defaults[key];
+  const put = (patch, part) => { apply(patch, part); refresh(); };
+
+  // One box per band, in the order they sit across the graph. The box is the legend:
+  // there is no room for a readable digit inside a 6px handle, and a colour key would
+  // be four more colours to tell apart on five themes.
+  const boxes = PEQ_BANDS.map((b) => {
+    const box = document.createElement('div');
+    box.className = 'eqband';
+    const name = document.createElement('span');
+    name.className = 'eqbandname resettable';
+    name.textContent = b.label;
+    name.title = `Reset the ${b.label.toLowerCase()} band`;
+    name.addEventListener('click', () => resetBand(b));
+    const fEl = document.createElement('span'); fEl.className = 'eqnum';
+    const gEl = document.createElement('span'); gEl.className = 'eqnum eqgain';
+    const qEl = document.createElement('span'); qEl.className = 'eqnum eqq';
+    eqNumber(fEl, {
+      get: () => val(`f${b.n}`), rng: rangeOf(`f${b.n}`), fmt: eqHz,
+      parse: eqParseHz, set: (x) => put({ [`f${b.n}`]: x }, `eq${b.n}`),
+    });
+    eqNumber(gEl, {
+      get: () => val(`g${b.n}`), rng: rangeOf(`g${b.n}`), fmt: eqDbText,
+      parse: eqParseNumber, set: (x) => put({ [`g${b.n}`]: x }, `eq${b.n}`),
+    });
+    box.append(name, fEl, gEl, qEl);
+    if (b.type === 'peaking') {
+      eqNumber(qEl, {
+        get: () => val(`q${b.n}`), rng: rangeOf(`q${b.n}`), fmt: (q) => `Q ${q.toFixed(1)}`,
+        parse: eqParseNumber, set: (x) => put({ [`q${b.n}`]: x }, `eq${b.n}`),
+      });
+    } else {
+      // A shelf's Q is not a control — a BiquadFilterNode shelf ignores it — so the
+      // slot says so rather than standing empty and leaving the four boxes ragged.
+      qEl.classList.add('eqnone');
+      qEl.textContent = 'SHELF';
+      qEl.title = 'A shelf has no Q — its slope is fixed, as a console shelf’s is';
+    }
+    strip.append(box);
+    return { band: b, box, fEl, gEl, qEl };
+  });
+
+  function resetBand(b) {
+    const d = EFFECT_BY_ID.peq.defaults;
+    const patch = { [`f${b.n}`]: d[`f${b.n}`], [`g${b.n}`]: d[`g${b.n}`] };
+    if (b.type === 'peaking') patch[`q${b.n}`] = d[`q${b.n}`];
+    put(patch, null);
+  }
+
+  // ---- the curve ----------------------------------------------------------
+  let hot = null;                      // the band being dragged, or hovered
+  let freqs = new Float64Array(0);     // one frequency per pixel column, cached by width
+  let ink = {};
+
+  const readInk = () => {
+    const cs = getComputedStyle(canvas);
+    const v = (n) => cs.getPropertyValue(n).trim();
+    ink = {
+      line: v('--line'), dim: v('--dim'), accent: v('--accent'),
+      ctl: v('--ctl'), inkc: v('--ink'), input: v('--input'),
+    };
+  };
+
+  function draw() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+    }
+    if (freqs.length !== w) {
+      freqs = new Float64Array(w);
+      for (let x = 0; x < w; x++) freqs[x] = eqFreq(x + 0.5, w);
+    }
+    readInk();
+    const g = canvas.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+
+    // The grid. Frequencies first, then the dB lines over them, then the zero line
+    // last and brighter: it is the one line the curve is read against.
+    g.lineWidth = 1;
+    g.strokeStyle = ink.line;
+    g.beginPath();
+    for (const f of EQ_GRID_HZ) {
+      const x = Math.round(eqX(f, w)) + 0.5;
+      g.moveTo(x, 0); g.lineTo(x, h);
+    }
+    for (const db of EQ_GRID_DB) {
+      const y = Math.round(eqY(db, h)) + 0.5;
+      g.moveTo(0, y); g.lineTo(w, y);
+    }
+    g.stroke();
+    g.strokeStyle = ink.dim;
+    g.beginPath();
+    const zero = Math.round(eqY(0, h)) + 0.5;
+    g.moveTo(0, zero); g.lineTo(w, zero);
+    g.stroke();
+
+    // The scale. Each label is painted on a chip of the graph's own background: the
+    // grid runs behind it, and on the light themes a line through a 8px numeral is
+    // the difference between reading "100" and reading a smudge.
+    g.font = '8px system-ui, sans-serif';
+    g.textBaseline = 'middle';
+    const chip = (text, cx, cy, align) => {
+      g.textAlign = align;
+      const tw = g.measureText(text).width;
+      const left = align === 'center' ? cx - tw / 2 : cx;
+      g.fillStyle = ink.input;
+      g.fillRect(left - 2, cy - 5, tw + 4, 10);
+      g.fillStyle = ink.dim;
+      g.fillText(text, cx, cy);
+    };
+    for (const f of EQ_GRID_HZ) {
+      if (EQ_LABEL_HZ[f]) chip(EQ_LABEL_HZ[f], eqX(f, w), h - 7, 'center');
+    }
+    chip('+12', 3, eqY(12, h), 'left');
+    chip('\u221212', 3, eqY(-12, h), 'left');
+
+    // The band being touched, drawn on its own behind the total: with five bands
+    // overlapping, the curve alone does not say which of them a handle owns.
+    if (hot) {
+      const solo = peqResponse(params, freqs, sampleRate(), hot.n);
+      g.strokeStyle = ink.ctl;
+      g.lineWidth = 1;
+      g.beginPath();
+      for (let x = 0; x < w; x++) {
+        const y = eqY(solo[x], h);
+        if (x) g.lineTo(x + 0.5, y); else g.moveTo(x + 0.5, y);
+      }
+      g.stroke();
+    }
+
+    // The total: what the four biquads in the chain actually do to the channel.
+    const resp = peqResponse(params, freqs, sampleRate());
+    g.beginPath();
+    for (let x = 0; x < w; x++) {
+      const y = eqY(resp[x], h);
+      if (x) g.lineTo(x + 0.5, y); else g.moveTo(x + 0.5, y);
+    }
+    g.lineWidth = 2;
+    g.strokeStyle = ink.accent;
+    g.stroke();
+    // Filled back to the zero line, which is what makes a boost read as a boost at a
+    // glance. Faint: the fill is a hint about direction, and the curve is the reading.
+    g.lineTo(w, zero); g.lineTo(0, zero); g.closePath();
+    g.globalAlpha = 0.14;
+    g.fillStyle = ink.accent;
+    g.fill();
+    g.globalAlpha = 1;
+
+    // The handles.
+    for (const b of PEQ_BANDS) {
+      const x = eqX(val(`f${b.n}`), w);
+      const y = eqY(val(`g${b.n}`), h);
+      const live = hot?.n === b.n;
+      g.beginPath();
+      g.arc(x, y, live ? 6 : 4.5, 0, Math.PI * 2);
+      g.fillStyle = live ? ink.accent : ink.input;
+      g.fill();
+      g.lineWidth = 2;
+      g.strokeStyle = live ? ink.inkc : ink.accent;
+      g.stroke();
+    }
+  }
+
+  function refresh() {
+    for (const s of boxes) {
+      if (!s.fEl.querySelector('input')) s.fEl.textContent = eqHz(val(`f${s.band.n}`));
+      if (!s.gEl.querySelector('input')) s.gEl.textContent = eqDbText(val(`g${s.band.n}`));
+      if (s.band.type === 'peaking' && !s.qEl.querySelector('input')) {
+        s.qEl.textContent = `Q ${val(`q${s.band.n}`).toFixed(1)}`;
+      }
+      s.box.classList.toggle('hot', hot?.n === s.band.n);
+      // A band at 0dB is doing nothing, and saying so is the fastest read on the card.
+      s.box.classList.toggle('flat', !val(`g${s.band.n}`));
+    }
+    draw();
+  }
+
+  /**
+   * The band under the pointer — near enough to a handle to be meant.
+   *
+   * Nothing when the press lands in open graph, deliberately: a press that grabbed
+   * whichever band was nearest would move a band by an octave on a click that only
+   * wandered a pixel, and a graph you cannot click without editing is one you stop
+   * clicking. The handles are the controls; 26px of slack is what makes them easy to
+   * hit without making the rest of the graph live.
+   */
+  function pick(px, py) {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    let best = null, bestD = Infinity;
+    for (const b of PEQ_BANDS) {
+      const d = Math.hypot(eqX(val(`f${b.n}`), w) - px, eqY(val(`g${b.n}`), h) - py);
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    return bestD <= EQ_GRAB_PX ? best : null;
+  }
+
+  /** The peak a wheel belongs to: the nearer of the two, by frequency alone. */
+  function nearestPeak(px) {
+    const w = canvas.clientWidth;
+    let best = null, bestD = Infinity;
+    for (const b of PEQ_BANDS) {
+      if (b.type !== 'peaking') continue;
+      const d = Math.abs(eqX(val(`f${b.n}`), w) - px);
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    return best;
+  }
+
+  const at = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+
+  let dragging = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    const { x, y } = at(e);
+    dragging = pick(x, y);
+    hot = dragging;
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    refresh();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const { x, y } = at(e);
+    if (!dragging) {
+      const near = pick(x, y);
+      if (near?.n !== hot?.n) { hot = near; refresh(); }
+      canvas.style.cursor = near ? 'grab' : 'default';
+      return;
+    }
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const fr = rangeOf(`f${dragging.n}`), gr = rangeOf(`g${dragging.n}`);
+    const patch = {};
+    // Shift keeps the frequency, alt keeps the gain: an EQ move is usually one of the
+    // two and a mouse is not steady enough to promise the other stayed where it was.
+    if (!e.shiftKey) {
+      patch[`f${dragging.n}`] = clamp(Math.round(eqFreq(x, w) / fr.step) * fr.step,
+        fr.min, fr.max);
+    }
+    if (!e.altKey) {
+      patch[`g${dragging.n}`] = clamp(Math.round(eqDb(y, h) / gr.step) * gr.step,
+        gr.min, gr.max);
+    }
+    put(patch, `eq${dragging.n}`);
+  });
+  const release = (e) => {
+    if (!dragging) return;
+    dragging = null;
+    try { canvas.releasePointerCapture(e.pointerId); } catch { /* already gone */ }
+    refresh();
+  };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('pointerleave', () => {
+    if (dragging || !hot) return;
+    hot = null; refresh();
+  });
+  canvas.addEventListener('dblclick', (e) => {
+    const { x, y } = at(e);
+    const b = pick(x, y);
+    if (b) resetBand(b);
+  });
+  // Q on the wheel, which is the axis the graph has no room for. Peaks only: a shelf
+  // has none, and rolling over one silently doing nothing is worse than not reacting.
+  canvas.addEventListener('wheel', (e) => {
+    const b = nearestPeak(at(e).x);
+    if (!b) return;
+    e.preventDefault();
+    const qr = rangeOf(`q${b.n}`);
+    const step = qr.step * (e.shiftKey ? 1 : 3);
+    const next = clamp(val(`q${b.n}`) - Math.sign(e.deltaY) * step, qr.min, qr.max);
+    hot = b;
+    put({ [`q${b.n}`]: Math.round(next / qr.step) * qr.step }, `eq${b.n}`);
+  }, { passive: false });
+
+  // The card is a fixed width in the rack and a fluid one in the Bar Effects sheet,
+  // so the curve is redrawn off the box rather than off a number written down here.
+  if (typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => draw()).observe(canvas);
+  }
+  registerEqGraph({ canvas, draw });
+  requestAnimationFrame(refresh);
+  return { el: panel, refresh };
+}
+
+/** "2.4 kHz", "2400", "2k4" — anything a mixing engineer would type into a frequency. */
+function eqParseHz(text) {
+  const s = String(text).trim().toLowerCase().replace(/\s+/g, '');
+  const k = /^([0-9]*\.?[0-9]+)k/.exec(s);
+  if (k) return parseFloat(k[1]) * 1000;
+  const n = parseFloat(s.replace(/[^0-9.\-+eE]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function eqParseNumber(text) {
+  const n = parseFloat(String(text).replace(/[^0-9.\-+eE]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * The Filter effect's response curve is the same second grip used by the synth editors.
+ * Its two controls remain sliders below the graph — the graph makes the relationship
+ * visible, while the sliders keep the effect card's ordinary precise control surface.
+ */
+function filterGraphPanel({ def, params, apply }) {
+  const frequency = paramRange('frequency', def);
+  const resonance = paramRange('Q', def);
+  const rows = {
+    freq: { path: 'frequency', min: frequency.min, max: frequency.max,
+      step: frequency.step, def: def.defaults.frequency },
+    Q: { path: 'Q', min: resonance.min, max: resonance.max,
+      step: resonance.step, def: def.defaults.Q },
+    type: { path: 'type', def: def.defaults.type },
+  };
+  let graph = null;
+  const writeGraph = (pairs) => {
+    apply(Object.fromEntries(pairs.map(([row, value]) => [row.path, value])), 'filter-graph');
+    graph?.draw();
+  };
+  graph = responseGraph({
+    rows,
+    read: (row) => params[row.path] ?? row.def,
+    writeMany: writeGraph,
+  });
+  graph.box.classList.add('fxfiltergraph');
+  return graph;
+}
+
+/**
+ * The multiband compressor is easier to mix as three small compressors than as a
+ * seventeen-row list. Keep the engine's dotted parameter names, but give the card a
+ * surface that follows the signal: crossover points first, then LOW/MID/HIGH bands.
+ */
+function multibandControls({ def, entryParams, applyPatch }) {
+  const panel = document.createElement('div');
+  panel.className = 'mbpanel';
+
+  const numberRow = (pname, label) => {
+    const rng = paramRange(pname, def);
+    const value = entryParams[pname] ?? rng.min;
+    const useLog = rng.log && rng.min > 0;
+    const logToPos = (v) => Math.log(v / rng.min) / Math.log(rng.max / rng.min);
+    const logFromPos = (p) => rng.min * Math.pow(rng.max / rng.min, p);
+    const unitFmt = (x) => (rng.unit === 'Hz' && x >= 1000 ? (x / 1000).toFixed(1) + 'k'
+      : rng.unit === 's' ? (x * 1000).toFixed(0) + 'ms'
+      : x.toFixed(rng.step >= 1 ? 0 : 2)) + (rng.unit && rng.unit !== 's' ? ' ' + rng.unit : '');
+    const row = slider({
+      min: useLog ? 0 : rng.min,
+      max: useLog ? 1 : rng.max,
+      step: useLog ? 0.001 : rng.step,
+      value: useLog ? logToPos(value) : value,
+      reset: useLog ? logToPos(def.defaults[pname] ?? rng.min) : (def.defaults[pname] ?? rng.min),
+      fmt: (x) => unitFmt(useLog ? logFromPos(x) : x),
+      display: useLog ? {
+        format: (pos) => unitFmt(logFromPos(pos)),
+        parse: (s) => {
+          const n = parseFloat(String(s).replace(/[^0-9.\-+eE]/g, ''));
+          return Number.isFinite(n) ? clamp(logToPos(n), 0, 1) : null;
+        },
+      } : undefined,
+      onInput: (x) => applyPatch({ [pname]: useLog ? logFromPos(x) : x }, pname),
+    });
+    row.label.textContent = label;
+    return row.wrap;
+  };
+
+  const crossovers = document.createElement('section');
+  crossovers.className = 'mbsection mbcrossovers';
+  const crossoverTitle = document.createElement('h5');
+  crossoverTitle.textContent = 'CROSSOVERS';
+  crossovers.append(crossoverTitle,
+    numberRow('lowFrequency', 'LOW / MID'),
+    numberRow('highFrequency', 'MID / HIGH'));
+  panel.append(crossovers);
+
+  const bands = document.createElement('div');
+  bands.className = 'mbbands';
+  for (const [id, label] of [['low', 'LOW BAND'], ['mid', 'MID BAND'], ['high', 'HIGH BAND']]) {
+    const band = document.createElement('section');
+    band.className = `mbsection mbband mbband-${id}`;
+    const title = document.createElement('h5');
+    title.textContent = label;
+    band.append(title,
+      numberRow(`${id}.threshold`, 'THRESH'),
+      numberRow(`${id}.ratio`, 'RATIO'),
+      numberRow(`${id}.attack`, 'ATTACK'),
+      numberRow(`${id}.release`, 'RELEASE'),
+      numberRow(`${id}.knee`, 'KNEE'));
+    bands.append(band);
+  }
+  panel.append(bands);
+  return panel;
 }
 
 /**
@@ -11634,6 +12767,8 @@ function fillEffectControls({
 }) {
   if (!def) return;
   const entryParams = { ...(def.defaults || {}), ...(entry.params || {}) };
+  let filterGraph = null;
+  const controlSyncs = new Map();
   let presetSelect = null;
   const syncPreset = () => {
     if (presetSelect) {
@@ -11643,7 +12778,9 @@ function fillEffectControls({
   const applyPatch = (next, part = null) => {
     patch(next, tag(part));
     Object.assign(entryParams, next);
+    for (const [pname, value] of Object.entries(next)) controlSyncs.get(pname)?.(value);
     syncPreset();
+    filterGraph?.draw();
   };
   const applySnapshot = (snapshot, part = null) => {
     const resolved = resolveEffectSnapshot(def.id, snapshot);
@@ -11651,21 +12788,54 @@ function fillEffectControls({
     replaceParams(resolved, tag(part));
     for (const key of Object.keys(entryParams)) delete entryParams[key];
     Object.assign(entryParams, def.defaults || {}, resolved);
+    for (const [pname, sync] of controlSyncs) {
+      if (Object.prototype.hasOwnProperty.call(entryParams, pname)) sync(entryParams[pname]);
+    }
     syncPreset();
+    filterGraph?.draw();
     return true;
   };
 
   const presetNames = effectPresetNames(def.id, presetScope);
-  if (presetNames.length) {
+  // Every effect gets a reset path, even before it has named creative presets. The
+  // catalogue default is the safe way back from a hand-tuned card; removing and
+  // re-adding an insert should never be necessary just to recover its starting sound.
+  if ((def.params || []).length) {
     const currentPreset = matchEffectPreset(def.id, entryParams, presetScope) || 'Custom';
     const row = optionRow('PRESET', ['Custom', 'Default', ...presetNames], currentPreset, (name) => {
       if (name === 'Custom') return;
       const resolved = resolveEffectPreset(def.id, name, presetScope);
       if (!resolved || !applySnapshot(resolved, 'preset')) return;
       rebuild();
-    });
+    }, def.defaultPresetName ? { Default: def.defaultPresetName } : null);
     presetSelect = row.select;
+    // FIRST, and the full width of the card, on every card that has one. A preset is not
+    // one parameter among the others — it sets all of them — so it does not belong in the
+    // left-hand column of a two-column grid with a pot beside it, where it reads as the
+    // first control rather than as the thing that decides what the controls say. Appended
+    // before anything else here; `.fxpresetrow` is what makes it span. */
+    row.classList.add('fxpresetrow');
     grid.append(row);
+  }
+
+  // The Channel EQ draws itself: a response graph with the bands on it, in place of
+  // the ten sliders this builder would otherwise make of f/g/q times four. It still
+  // takes the PRESET row above it, which is why it is placed here and not earlier.
+  if (def.id === 'peq') {
+    const eq = eqGraphPanel({ params: entryParams, apply: applyPatch });
+    grid.append(eq.el);
+    return;
+  }
+
+  if (def.id === 'filter') {
+    filterGraph = filterGraphPanel({ def, params: entryParams, apply: applyPatch });
+    grid.append(filterGraph.box);
+    requestAnimationFrame(() => filterGraph.draw());
+  }
+
+  if (def.id === 'mbComp' || def.id === 'mbCompN') {
+    grid.append(multibandControls({ def, entryParams, applyPatch }));
+    return;
   }
 
   // Delay time is either a note division or free milliseconds, and a modulation rate
@@ -11675,21 +12845,26 @@ function fillEffectControls({
   for (const pname of visibleParams(def, entryParams)) {
     const rateSynced = (entryParams.rateSync ?? 0) >= 0.5;
     if (pname === 'rateSync') {
-      grid.append(checkRow('Tempo Mode', rateSynced, (on) => {
+      const tempoMode = checkRow('Tempo Mode', rateSynced, (on) => {
         applyPatch({ rateSync: on ? 1 : 0 }); rebuild();
-      }));
+      });
+      tempoMode.classList.add('tempo-mode-toggle');
+      grid.append(tempoMode);
       continue;
     }
     if (pname === 'rateDivision') {
-      grid.append(divisionRow('RATE', RATE_DIVISIONS, entryParams.rateDivision ?? 1,
+      const divisions = def.id === 'autopanner' ? AUTOPANNER_RATE_DIVISIONS : RATE_DIVISIONS;
+      grid.append(divisionRow('RATE', divisions, entryParams.rateDivision ?? 1,
         (beats) => `${(deskTempo() / (60 * beats)).toFixed(2)}Hz`,
         (beats) => applyPatch({ rateDivision: beats }, 'rate')));
       continue;
     }
     if (pname === 'sync') {
-      grid.append(checkRow('Tempo Mode', synced, (on) => {
+      const tempoMode = checkRow('Tempo Mode', synced, (on) => {
         applyPatch({ sync: on ? 1 : 0 }); rebuild();
-      }));
+      });
+      tempoMode.classList.add('tempo-mode-toggle');
+      grid.append(tempoMode);
       continue;
     }
     if (pname === 'division') {
@@ -11701,15 +12876,23 @@ function fillEffectControls({
 
     const rng = paramRange(pname, def);
     if (rng.toggle) {
-      grid.append(checkRow(paramLabel(pname, def),
+      const toggle = checkRow(paramLabel(pname, def),
         (entryParams[pname] ?? def.defaults?.[pname] ?? 0) >= 0.5,
-        (on) => applyPatch({ [pname]: on ? 1 : 0 })));
+        (on) => applyPatch({ [pname]: on ? 1 : 0 }));
+      if (def.id === 'l7') {
+        toggle.classList.add('l7control');
+        toggle.dataset.l7Param = pname;
+      }
+      grid.append(toggle);
       continue;
     }
     if (rng.options) {
-      grid.append(optionRow(paramLabel(pname, def), rng.options,
-        entryParams[pname] ?? rng.options[0],
-        (value) => applyPatch({ [pname]: value })));
+      const value = entryParams[pname] ?? rng.options[0];
+      grid.append(def.id === 'filter' && pname === 'type'
+        ? radioRow(paramLabel(pname, def), rng.options, value,
+          (next) => applyPatch({ [pname]: next }))
+        : optionRow(paramLabel(pname, def), rng.options, value,
+          (next) => applyPatch({ [pname]: next })));
       continue;
     }
 
@@ -11737,7 +12920,111 @@ function fillEffectControls({
       onInput: (x) => applyPatch({ [pname]: useLog ? logFromPos(x) : x }, pname),
     });
     row.label.textContent = paramLabel(pname, def);
+    controlSyncs.set(pname, (next) => row.sync(useLog ? logToPos(next) : next));
+    if (def.id === 'l7') {
+      row.wrap.classList.add('l7control');
+      row.wrap.dataset.l7Param = pname;
+      // On the two level controls the mono meter is the slider groove. The input
+      // remains above it and owns every pointer event; the moving colour underneath
+      // is only a reading, in the same visual language as the mixer faders.
+      if (pname === 'threshold' || pname === 'ceiling') {
+        const rail = document.createElement('span'); rail.className = 'l7sliderrail';
+        const level = document.createElement('i'); level.className = 'l7sliderlevel';
+        row.input.replaceWith(rail);
+        rail.append(level, row.input);
+      }
+    }
+    if (def.id === 'compressor') {
+      row.wrap.classList.add('compressorcontrol');
+      row.wrap.dataset.compressorParam = pname;
+      // INPUT and OUTPUT share their slider grooves with the live levels, just like
+      // the L7's threshold and ceiling. The handles remain the editable layer.
+      if (pname === 'inputGain' || pname === 'outputGain') {
+        const rail = document.createElement('span'); rail.className = 'l7sliderrail';
+        const level = document.createElement('i'); level.className = 'l7sliderlevel';
+        row.input.replaceWith(rail);
+        rail.append(level, row.input);
+      }
+    }
     grid.append(row.wrap);
+  }
+}
+
+const l7LevelPosition = (linear) => clamp((20 * Math.log10(Math.max(1e-6, linear)) + 48) / 48 * 100, 0, 100);
+
+/** Put the L7's mono input/output readings in its rails; keep attenuation separate. */
+function l7MeterPanel(grid, linkFor) {
+  const el = document.createElement('div');
+  el.className = 'l7meter l7atten';
+  el.title = 'Live gain reduction from the L7 detector';
+  const head = document.createElement('span'); head.className = 'l7attenname'; head.textContent = 'ATTENUATION';
+  const track = document.createElement('span'); track.className = 'l7attentrack';
+  const reduction = document.createElement('i'); track.append(reduction);
+  el.append(head, track);
+  const rows = {
+    input: { fill: grid.querySelector('[data-l7-param="threshold"] .l7sliderlevel'), shown: 0 },
+    output: { fill: grid.querySelector('[data-l7-param="ceiling"] .l7sliderlevel'), shown: 0 },
+    reduction: { fill: reduction, shown: 0 },
+  };
+  // The desk draws before its AudioContext is allowed to start. The main meter pass
+  // reads this state after Play has made the node, so the card never needs rebuilding
+  // merely to start measuring. Kept on the element because the DOM is the authority on
+  // which one of several rapidly rebuilt inspector cards is actually connected.
+  el.__l7Meter = { linkFor, link: null, probe: null, rows };
+  return el;
+}
+
+/** The standard compressor gets the same live readings as the L7 surface. */
+function compressorMeterPanel(grid, linkFor) {
+  const el = document.createElement('div');
+  el.className = 'l7meter compressor-meter';
+  el.title = 'Live compressor input, output, and gain reduction';
+  const slot = (label) => {
+    const row = document.createElement('div'); row.className = 'l7atten';
+    const name = document.createElement('span'); name.className = 'l7attenname'; name.textContent = label;
+    const track = document.createElement('span'); track.className = 'l7attentrack';
+    const fill = document.createElement('i'); track.append(fill);
+    row.append(name, track);
+    return { row, fill, shown: 0 };
+  };
+  const input = { fill: grid.querySelector('[data-compressor-param="inputGain"] .l7sliderlevel'), shown: 0 };
+  const output = { fill: grid.querySelector('[data-compressor-param="outputGain"] .l7sliderlevel'), shown: 0 };
+  const reduction = slot('ATTENUATION');
+  el.append(reduction.row);
+  el.__l7Meter = {
+    linkFor, link: null, probe: null,
+    rows: { input, output, reduction },
+  };
+  return el;
+}
+
+function disposeL7Meters(root) {
+  for (const el of root.querySelectorAll('.l7meter')) el.__l7Meter?.probe?.dispose();
+}
+
+function updateL7Meters(dt) {
+  for (const el of document.querySelectorAll('.l7meter')) {
+    const meter = el.__l7Meter;
+    if (!meter) continue;
+    const current = meter.linkFor();
+    if (current !== meter.link) {
+      meter.probe?.dispose();
+      meter.link = current;
+      meter.probe = current?.node?.createMeter?.() || null;
+    }
+    if (!meter.probe) continue;
+    const reading = meter.probe.read();
+    for (const key of ['input', 'output']) {
+      const row = meter.rows[key];
+      if (!row?.fill) continue;
+      const pos = l7LevelPosition(reading[key]);
+      row.shown = Math.max(pos, row.shown - METER_FALL * dt);
+      row.fill.style.width = `${row.shown}%`;
+    }
+    const gr = Math.max(0, Math.min(60, reading.reduction));
+    const row = meter.rows.reduction;
+    row.shown = Math.max(gr, row.shown - 18 * dt);
+    row.fill.style.width = `${Math.min(100, row.shown / 24 * 100)}%`;
   }
 }
 
@@ -11839,12 +13126,77 @@ function pinnedCard(key) {
 /** Keep the Effects panel header in sync with the selected channel. Notes names a
  *  preset too, but its own one — see syncNotesPanel: Effects is always the selected
  *  strip, the roll is not. */
+function effectTargetEntries() {
+  const entries = [];
+  const add = (key, label, effects, always = false) => {
+    if (!always && !effects.length) return;
+    entries.push({ key, label, effects });
+  };
+  const effectsOfForPicker = (chain) => chain.map((effect) => ({
+    text: EFFECT_BY_ID[effect.id]?.short || EFFECT_BY_ID[effect.id]?.name || effect.id,
+    off: effectOff(effect),
+  }));
+  for (const lane of deskLanes(viewBank(), 1)) {
+    const number = laneNumbers.get(lane.key);
+    const label = number ? `${number} · ${targetLabel(lane.key)}` : targetLabel(lane.key);
+    add(lane.key, label, effectsOfForPicker(effectsOf(lane.key)));
+  }
+  // Returns always have their built-in delay/reverb card, even when they have no
+  // additional insert, so they are valid effect targets too.
+  for (const aux of AUXES) {
+    add(`__aux:${aux.id}`, targetLabel(`__aux:${aux.id}`).toUpperCase(), [
+      { text: aux.name, off: false },
+      ...effectsOfForPicker(effectsOf(`__aux:${aux.id}`)),
+    ]);
+  }
+  // MASTER is the one useful destination even with an empty chain: keeping it visible
+  // makes the picker a reliable route to the master bus when the Mixer is hidden.
+  add('__master', 'MASTER', effectsOfForPicker(effectsOf('__master')), true);
+  return entries;
+}
+
+function syncEffectTargetPicker() {
+  const select = $('devtarget');
+  if (!select) return;
+  const entries = effectTargetEntries();
+  const options = entries.map(({ key, label, effects }) => {
+    const target = new Option(label, key);
+    target.dataset.note = effects.map(({ text }) => text).join(' + ');
+    target.dataset.fxparts = JSON.stringify(effects);
+    return target;
+  });
+  select.replaceChildren(...options);
+  select.value = entries.some(({ key }) => key === selectedLane) ? selectedLane : '';
+}
+
 function updatePanelTitles() {
   renderPresetHeading($('devtitle'), selectedLane);
+  syncEffectTargetPicker();
+  syncEffectSoloButton();
+}
+
+function syncEffectSoloButton() {
+  const button = $('devsolo');
+  if (!button) return;
+  const key = selectedLane;
+  const applicable = !!key && key !== '__master';
+  const isAux = !!key && key.startsWith('__aux:');
+  const id = isAux ? key.slice(6) : null;
+  const on = applicable && (isAux ? soloedAux.has(id) : soloed.has(key));
+  button.hidden = !applicable;
+  button.classList.toggle('on', on);
+  button.setAttribute('aria-pressed', on ? 'true' : 'false');
+  // This sync also runs while a song is being replaced, before its arrangement has
+  // been installed. Keep the title independent of targetLabel(), which needs that
+  // arrangement to resolve a human-readable name.
+  button.title = isAux
+    ? `Solo the selected return — monitoring only, never saved`
+    : `Solo the selected track — monitoring only, never saved`;
 }
 
 function buildDevices() {
   const rack = $('devrack');
+  disposeL7Meters(rack);
   rack.textContent = '';
   updatePanelTitles();
   if (!selectedLane) {
@@ -11871,7 +13223,7 @@ function buildDevices() {
   list.forEach((entry, i) => {
     const def = EFFECT_BY_ID[entry.id];
     const card = document.createElement('div');
-    card.className = 'device' + (entry.bypass ? ' bypassed' : '');
+    card.className = 'device' + (effectOff(entry) ? ' bypassed' : '');
     // Draggable only while the pointer went down on the title bar. With the whole
     // card draggable, dragging a slider inside it started a card drag instead —
     // the control and the container were fighting for the same gesture.
@@ -11881,20 +13233,18 @@ function buildDevices() {
     const bar = document.createElement('div');
     bar.className = 'devbar';
     const byp = document.createElement('button');
-    byp.className = 'devtoggle' + (entry.bypass ? '' : ' on');
+    byp.className = 'devtoggle' + (effectOff(entry) ? '' : ' on');
     byp.append(powerIcon());
-    byp.title = entry.bypass ? 'Enable this effect' : 'Bypass this effect';
+    byp.title = effectOff(entry) ? 'Turn this effect on' : 'Turn this effect off';
     byp.onclick = () => {
-      const next = list.map((e, j) => (j === i ? { ...e, bypass: !e.bypass } : e));
-      editMix((m) => storeEffects(m, selectedLane, next), null);
-      bypassOn(selectedLane, i, !entry.bypass);
+      setEffectOff(selectedLane, list, i, !effectOff(entry));
       buildRack();
     };
     const h = document.createElement('h4');
     h.textContent = def ? def.name : entry.id;
     const close = document.createElement('button');
     close.className = 'devclose';
-    close.append(closeIcon());
+    close.append(trashIcon());
     close.title = `Remove ${def ? def.name : entry.id} from this chain`;
     close.onclick = () => {
       setEffects(selectedLane, list.filter((_, j) => j !== i));
@@ -11966,6 +13316,18 @@ function buildDevices() {
       grid, def, entry, patch, replaceParams, rebuild: buildDevices,
       tag: (part) => part ? `fx:${selectedLane}:${i}:${part}` : null,
     });
+    if (def?.id === 'l7') {
+      const meter = l7MeterPanel(grid, () => liveChain(selectedLane)?.[i]);
+      if (meter) {
+        // AUTO RELEASE is the final decision on the limiter surface. The attenuation
+        // reading belongs with the four continuous controls above it, before that switch.
+        const autoRelease = grid.querySelector('[data-l7-param="arc"]');
+        if (autoRelease) autoRelease.before(meter); else grid.append(meter);
+      }
+    }
+    if (def?.id === 'compressor') {
+      grid.append(compressorMeterPanel(grid, () => liveChain(selectedLane)?.[i]));
+    }
 
     rack.append(card);
   });
@@ -12054,17 +13416,27 @@ function fitDevices() {
   });
 }
 
-// The catalogue, grouped for the picker. Anything a future effect adds that is not
-// listed here still shows up, under Other — a new effect appearing nowhere would be
-// a worse bug than one appearing in the wrong column.
-const EFFECT_GROUPS = [
-  ['Level & EQ', ['gain', 'peq', 'vowel', 'filter']],
-  ['Delay', ['chandelay', 'delay', 'pingpong']],
-  ['Modulation', ['chorus', 'chorus2', 'rhythmgate', 'flanger', 'ringmod', 'phaser', 'tremolo', 'vibrato', 'autofilter', 'autowah', 'autopanner']],
-  ['Drive', ['exciter', 'distortion', 'bitcrusher', 'tape', 'chebyshev']],
-  ['Space & stereo', ['reverb', 'doubler', 'widener', 'shifter', 'pitch']],
-  ['Dynamics', ['l7', 'compressor', 'msComp', 'mbComp']],
+// The catalogue, grouped by what an effect is used for rather than how it is
+// implemented. Each pair is intentional: the picker is a two-column grid, so keeping
+// the row structure here prevents a small group from being stranded beside a much
+// larger one just because another effect was inserted earlier in this list. Anything
+// a future effect adds that is not listed still shows up under Other — a new effect
+// appearing nowhere would be a worse bug than one appearing in the wrong column.
+const EFFECT_GROUP_ROWS = [
+  [
+    ['Tone & Filter', ['gain', 'peq', 'bell', 'vowel', 'filter', 'autofilter', 'autowah']],
+    ['Delay & Echo', ['chandelay', 'delay', 'pingpong']],
+  ],
+  [
+    ['Modulation & Rhythm', ['chorus', 'chorus2', 'flanger', 'phaser', 'tremolo', 'vibrato', 'autopanner', 'rhythmgate']],
+    ['Character & Lo-Fi', ['exciter', 'distortion', 'tape', 'chebyshev', 'bitcrusher', 'ringmod']],
+  ],
+  [
+    ['Dynamics', ['l7', 'compressor', 'noisegate', 'msComp', 'mbComp', 'mbCompN']],
+    ['Space, Width & Pitch', ['reverb', 'ambience', 'doubler', 'widener', 'shifter', 'pitch']],
+  ],
 ];
+const EFFECT_GROUPS = EFFECT_GROUP_ROWS.flat();
 
 function addEffect(id, at = null) {
   if (!id || !selectedLane) return;
@@ -12081,12 +13453,17 @@ function addEffect(id, at = null) {
 }
 
 // One effect's settings, for copying onto another of the same kind. Separate from
-// the strip clipboard: a Parametric EQ you have dialled in is worth moving on its
+// the strip clipboard: a Channel EQ you have dialled in is worth moving on its
 // own, without the channel it happens to sit on.
 let fxClipboard = null;
 
 /** The effect catalogue as a panel: grouped, and priced with its measured cost. */
-function openPicker({ at = null, anchor = null, x = null, y = null } = {}) {
+/** And the effect picker, which walks the whole catalogue to build its columns. */
+function openPicker(options = {}) {
+  return heavyUi('open effect picker', () => buildPicker(options));
+}
+
+function buildPicker({ at = null, anchor = null, x = null, y = null } = {}) {
   restorablePopup = { kind: 'effectPicker', at };
   const el = $('fxpicker');
   el.textContent = '';
@@ -12177,17 +13554,87 @@ function syncPanelResizeEdges() {
 // The former bottom shelf is a modeless right-side inspector. Keep the compatibility function name
 // because effect-slot and tutorial paths already call `setDevicesFolded(false)` to
 // reveal it; `on` now simply means closed.
+//
+// The panel PUSHES: `fxdock-open` on the body is what takes the width out of the desk,
+// and the CSS animates the padding and the panel's slide together. Everything the desk
+// measures against its own width — the arrangement scroller, the bar grid, the strips —
+// was measured against the width the desk had a moment ago, so the same refit a window
+// drag does is run once when the slide has landed rather than on every frame of it.
+function applyFxDockSide() {
+  const onLeft = fxDockSide === 'left';
+  document.body.classList.toggle('fxdock-left', onLeft);
+  const move = $('devmove');
+  if (!move) return;
+  const next = onLeft ? 'right' : 'left';
+  move.querySelector('path')?.setAttribute('d', onLeft
+    ? 'M4 12h16M13 5l7 7-7 7'
+    : 'M20 12H4M11 5 4 12l7 7');
+  move.title = `Move Effects panel to the ${next}`;
+  move.setAttribute('aria-label', `Move Effects panel to the ${next}`);
+}
+
+function setFxDockSide(side, refit = true) {
+  fxDockSide = side === 'left' ? 'left' : 'right';
+  localStorage.setItem(FX_SIDE_KEY, fxDockSide);
+  applyFxDockSide();
+  if (!refit) return;
+  scheduleDeskFit(true);
+  // The panel remains open while its side changes; use the same settled resize path as
+  // open/close so the desk's cached geometry is refreshed once the margin has landed.
+  afterDock(false);
+}
+
 function setDevicesFolded(on, refit = true) {
   $('devices').classList.remove('collapsed');
   $('devices').classList.toggle('fxwindow-open', !on);
   $('devices').setAttribute('aria-hidden', on ? 'true' : 'false');
+  document.body.classList.toggle('fxdock-open', !on);
+  // The toolbar toggle is the panel's switch, so it says what the panel is doing.
+  $('fxbtn')?.classList.toggle('on', !on);
+  $('fxbtn')?.setAttribute('aria-pressed', on ? 'false' : 'true');
+  // Opening: the chain has to be laid out before it can be seen sliding in. Closing:
+  // it goes back to costing nothing, but only once it is off screen — see afterDock.
+  $('devices').classList.remove('fxdock-idle');
   $('devfold').classList.remove('folded');
   $('devfold').title = 'Close Effects';
   $('devfold').setAttribute('aria-label', 'Close Effects');
-  if (refit) scheduleDeskFit(true);
+  if (!refit) { if (on) $('devices').classList.add('fxdock-idle'); return; }
+  scheduleDeskFit(true);
+  afterDock(on);
 }
 
+/**
+ * What happens when the slide has landed, timed off the same token the CSS animates on
+ * rather than a duration written down twice. Two things, both of which need the settled
+ * width: the desk's own resize path, and — on the way out — parking the panel's chain so
+ * a closed inspector costs no layout, the way `display: none` used to make it free.
+ *
+ * One pending settle at a time, so opening and closing the panel quickly costs one
+ * measurement rather than four.
+ */
+let dockSettle = 0;
+function afterDock(closed) {
+  clearTimeout(dockSettle);
+  const token = getComputedStyle(document.documentElement)
+    .getPropertyValue('--fxdock-anim').trim();
+  const ms = token.endsWith('ms') ? parseFloat(token)
+    : token.endsWith('s') ? parseFloat(token) * 1000 : 200;
+  dockSettle = setTimeout(() => {
+    dockSettle = 0;
+    if (closed) $('devices').classList.add('fxdock-idle');
+    // The desk's own resize path: it forgets the arrangement's cached geometry, refits
+    // the strips and rescales the notes, which is exactly what a narrower desk needs.
+    dispatchEvent(new Event('resize'));
+  }, (Number.isFinite(ms) ? ms : 200) + 30);
+}
+
+applyFxDockSide();
+$('devmove').onclick = () => setFxDockSide(fxDockSide === 'left' ? 'right' : 'left');
 $('devfold').onclick = () => setDevicesFolded(true);
+// A toggle, not an opener: the arrow in the panel's own header does the same job from
+// the other end, and one of the two has to be reachable when the panel is shut.
+const devicesOpen = () => $('devices').classList.contains('fxwindow-open');
+$('fxbtn').onclick = () => setDevicesFolded(devicesOpen());
 setDevicesFolded(true, false);
 
 /** Select one track and reveal the modeless inspector for its channel inserts. */
@@ -12196,6 +13643,24 @@ function openChannelEffects(key) {
   selectLane(key);
   setDevicesFolded(false);
 }
+
+/** Switch the inspector target without requiring the Mixer view to be visible. */
+function openEffectTarget(key) {
+  if (!key) return;
+  selectLane(key);
+  setDevicesFolded(false);
+}
+
+$('devtarget').onchange = () => openEffectTarget($('devtarget').value);
+$('devsolo').onclick = () => {
+  if (!selectedLane || selectedLane === '__master') return;
+  if (selectedLane.startsWith('__aux:')) {
+    const id = selectedLane.slice(6);
+    setAuxSolo(id, !soloedAux.has(id));
+  } else {
+    setLaneSolo(selectedLane, !soloed.has(selectedLane));
+  }
+};
 
 
 
@@ -12705,7 +14170,7 @@ function markBar(key, from, to = from, { focus = true, deferEditors = false } = 
       // at the next bar line, so selecting bars mid-playback never cuts a bar in half
       // or jumps into the middle of the newly selected range.
       pendingSeekStep = null;
-      $('selregion').classList.remove('pending');
+      armPendingPlaybackFlash(bounds.start, bounds.end);
       Audio.setLoopAtBoundary(bounds.start, bounds.end);
       pendingLoopAnchor = { start: bounds.start, end: bounds.end };
       $('loopregion').classList.add('pending');
@@ -12955,6 +14420,13 @@ const stepSeq = createStepSeq({
   laneLabel: (key) => presetHeadingFor(key).name,
   addInstrument: (anchor) => addBlankTrack(anchor, { drumsOnly: true }),
   applyKit: (name, voices) => applyKit(name, voices),
+  onDoubleClickStep: (step, range) => {
+    const start = range?.start ?? step;
+    const end = range?.end ?? (start + 4);
+    armPendingPlaybackFlash(start, end);
+    jumpTo(start, { start: true });
+    toast(`Playing from bar ${barOf(start)}, beat ${(Math.floor(start % 16 / 4) + 1)}`);
+  },
   menu: (x, y, title, items) => { closeMenu(); openMenu(x, y, title, items); },
   // Closed from its own × as well as from the button, so the button is told rather
   // than assumed — the same reason `showOsk` sets the class instead of toggling it.
@@ -13066,55 +14538,24 @@ const pianoRoll = createPianoRoll({
     armPianoRollLoop(range, { announce: false });
     toast('Loop range updated from the piano roll');
   },
-  locators: () => (locA != null && locB != null
-    ? { start: Math.min(locA, locB), end: Math.max(locA, locB) } : null),
-  locatorPositions: () => ({ A: locA, B: locB }),
-  onLocatorMove: (which, value) => {
-    if (which === 'A') locA = value;
-    if (which === 'B') locB = value;
-  },
-  onLocatorMoveEnd: (which, value) => {
-    if (which === 'A') locA = value;
-    if (which === 'B') locB = value;
-    const pair = locA != null && locB != null
-      ? { start: Math.min(locA, locB), end: Math.max(locA, locB) } : null;
-    if (loopOn && pair && pair.end > pair.start) armPianoRollLoop(pair);
-    else {
-      pianoRollLoopRange = null;
-      applyLoop();
-    }
-    pianoRoll.redraw();
-    toast(`Locator ${which} moved`);
-  },
-  onDoubleClickStep: (step) => {
-    jumpTo(step, { start: true });
-    toast(`Playing from bar ${barOf(step)}, beat ${(Math.floor(step % 16 / 4) + 1)}`);
+  onDoubleClickStep: (step, range) => {
+    const start = range?.start ?? step;
+    const end = range?.end ?? (start + 4);
+    armPendingPlaybackFlash(start, end);
+    jumpTo(start, { start: true });
+    toast(`Playing from bar ${barOf(start)}, beat ${(Math.floor(start % 16 / 4) + 1)}`);
   },
   onLoopTime: (range) => armPianoRollLoop(range),
   menu: (x, y, title, items) => { closeMenu(); openMenu(x, y, title, items); },
-  onClearLocator: (which) => {
-    if (which === 'A') locA = null;
-    if (which === 'B') locB = null;
-    applyLoop();
-    pianoRoll.redraw();
-    toast(`Locator ${which} cleared`);
-  },
-  onClearLocators: () => {
-    locA = null;
-    locB = null;
-    applyLoop();
-    pianoRoll.redraw();
-    toast('Both locators cleared');
-  },
   onEraseTime: async (range) => {
     const count = pianoRoll.countTimeRange(range.start, range.end);
-    if (!count) { toast('No notes between the locators'); return; }
+    if (!count) { toast('No notes in the selected range'); return; }
     const ok = await ask(`Erase ${count} note${count === 1 ? '' : 's'}?`,
-      '<p>This removes the notes between the piano-roll locators from the selected instrument.</p>',
+      '<p>This removes the notes in the selected piano-roll range from the selected instrument.</p>',
       'Erase notes');
     if (!ok) return;
     const erased = pianoRoll.eraseTimeRange(range.start, range.end);
-    toast(`${erased} note${erased === 1 ? '' : 's'} erased between locators`);
+    toast(`${erased} note${erased === 1 ? '' : 's'} erased in the selected range`);
   },
   eraseSelectedBars: ({ from, to }) => {
     const laneKey = rollShownLane();
@@ -13224,6 +14665,13 @@ const kitRoll = createStepSeq({
     openVoicePicker(r ? r.left : innerWidth / 2, r ? r.bottom + 6 : 120, lane);
   },
   currentLane: () => selectedLane,
+  onDoubleClickStep: (step, range) => {
+    const start = range?.start ?? step;
+    const end = range?.end ?? (start + 4);
+    armPendingPlaybackFlash(start, end);
+    jumpTo(start, { start: true });
+    toast(`Playing from bar ${barOf(start)}, beat ${(Math.floor(start % 16 / 4) + 1)}`);
+  },
   onClose: () => rememberSongLayout(),
 });
 
@@ -13414,6 +14862,7 @@ noteLengthMenuButton.onclick = (ev) => {
  */
 function syncNotesPanel() {
   const workspaceView = $('desk').dataset.lowerView;
+  if (workspaceView === 'none') return;
   const kind = workspaceView === 'pattern' ? 'kit'
     : workspaceView === 'roll' ? 'roll' : editorFor(selectedLane);
   const rollChanged = $('notes').classList.contains('rollless') !== (kind !== 'roll');
@@ -13537,7 +14986,7 @@ $('notefold').onclick = () => {
 };
 
 function showStepSeq(on) {
-  setLowerView(on ? 'pattern' : 'mixer');
+  setLowerView(on ? 'pattern' : 'none');
 }
 
 let stepSeqWanted = false;
@@ -13558,7 +15007,7 @@ function scheduleStepSeqOpen() {
 }
 
 function showPianoRoll(on) {
-  setLowerView(on ? 'roll' : 'mixer');
+  setLowerView(on ? 'roll' : 'none');
   // Unfolding a panel with nothing to put in it would be a button doing nothing. The
   // fold still happens — it is remembered for the next channel that has an editor — but
   // say why nothing arrived. Only a gesture lane: a drum channel gets the kit now.
@@ -13570,12 +15019,70 @@ function showPianoRoll(on) {
 }
 
 // The lower half is one workspace, not three panels. Mixer is the stable home view;
-// the two editors keep their own DOM and scroll state while hidden, so switching is a
-// display operation rather than a rebuild or a song edit.
+// the two editors keep their own DOM and scroll state while hidden, and `none` gives
+// the arrangement the whole desk. Switching is a display operation rather than a
+// rebuild or a song edit.
 const LOWER_VIEW_KEY = 'mash-mixer-lower-view';
-const LOWER_VIEWS = new Set(['mixer', 'roll', 'pattern']);
+const LOWER_VIEWS = new Set(['none', 'mixer', 'roll', 'pattern']);
 let lowerView = LOWER_VIEWS.has(localStorage.getItem(LOWER_VIEW_KEY))
   ? localStorage.getItem(LOWER_VIEW_KEY) : 'mixer';
+
+let lowerViewTransitionTimer = 0;
+let lowerViewTransitionToken = 0;
+let lowerViewMotionHeld = false;
+function workspaceMotionMs() {
+  const token = getComputedStyle(document.documentElement)
+    .getPropertyValue('--workspace-anim').trim();
+  const ms = token.endsWith('ms') ? parseFloat(token)
+    : token.endsWith('s') ? parseFloat(token) * 1000 : 220;
+  return Number.isFinite(ms) ? ms : 220;
+}
+
+function animateLowerView(from, to, enabled) {
+  const desk = $('desk');
+  const alreadyTransitioning = desk.classList.contains('workspace-transitioning');
+  // Song/session restoration can re-apply the already-selected view after the first
+  // paint. It is not a new navigation and must not tear down a transition the user has
+  // just started; a genuinely different target still gets a fresh token below.
+  if (alreadyTransitioning && from === to) return;
+  if (lowerViewMotionHeld) {
+    lowerViewMotionHeld = false;
+    endPlaybackVisualHold();
+  }
+  const token = ++lowerViewTransitionToken;
+  clearTimeout(lowerViewTransitionTimer);
+  desk.classList.remove('workspace-transitioning', 'workspace-entering', 'workspace-leaving');
+  desk.removeAttribute('data-lower-view-from');
+  if (!enabled || from === to || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  lowerViewMotionHeld = true;
+  beginPlaybackVisualHold();
+  desk.dataset.lowerViewFrom = from;
+  desk.classList.add('workspace-transitioning');
+  if (to !== 'none') desk.classList.add('workspace-entering');
+  // The first frame paints the new surface in its starting state. A single rAF is
+  // too early here: its callback runs before that frame is painted, so adding and
+  // removing `workspace-entering` in one callback collapses the transition into a
+  // single final layout. Wait for the next frame before releasing the start state.
+  requestAnimationFrame(() => {
+    if (token !== lowerViewTransitionToken) return;
+    requestAnimationFrame(() => {
+      if (token !== lowerViewTransitionToken) return;
+      if (to === 'none') desk.classList.add('workspace-leaving');
+      else desk.classList.remove('workspace-entering');
+      lowerViewTransitionTimer = setTimeout(() => {
+        if (token !== lowerViewTransitionToken) return;
+        lowerViewTransitionTimer = 0;
+        desk.classList.remove('workspace-transitioning', 'workspace-entering', 'workspace-leaving');
+        desk.removeAttribute('data-lower-view-from');
+        if (lowerViewMotionHeld) {
+          lowerViewMotionHeld = false;
+          endPlaybackVisualHold();
+        }
+      }, workspaceMotionMs() + 40);
+    });
+  });
+}
 
 /**
  * The real channel a note-editor workspace should own.
@@ -13594,8 +15101,10 @@ function laneForLowerView(view) {
   return current?.key || lanes.find((lane) => editorFor(lane.key) === wanted)?.key || null;
 }
 
-function setLowerView(next, { remember = true } = {}) {
+function setLowerView(next, { remember = true, animate = true } = {}) {
   const view = LOWER_VIEWS.has(next) ? next : 'mixer';
+  const desk = $('desk');
+  const from = desk.dataset.lowerView || lowerView;
   arrangementKeyboardActive = false;
   const viewLane = laneForLowerView(view);
   lowerView = view;
@@ -13619,7 +15128,7 @@ function setLowerView(next, { remember = true } = {}) {
   // resolving the remembered lane would ask viewBank/deskLanes for a bank that does
   // not exist yet. loadTrack calls syncNotesPanel after the bank, rack and arrangement
   // have all been installed, so defer every song-dependent part until that boundary.
-  if (track) {
+  if (track && view !== 'none') {
     // Select after installing the view state. selectLane then refreshes the editor that
     // is coming ON screen rather than the one we just hid, and reveals the same lane in
     // the arrangement immediately. Reselecting is avoided, but a view switch still
@@ -13646,13 +15155,15 @@ function setLowerView(next, { remember = true } = {}) {
   if (stepSeq.isOpen()) stepSeq.open(false);
   stepSeqWanted = false;
   if (remember) localStorage.setItem(LOWER_VIEW_KEY, view);
+  animateLowerView(from, view, animate);
   scheduleDeskFit(true);
 }
 
-$('mixviewbtn').onclick = () => setLowerView('mixer');
-$('rollbtn').onclick = () => setLowerView('roll');
-$('seqbtn').onclick = () => setLowerView('pattern');
-setLowerView(lowerView, { remember: false });
+const toggleLowerView = (view) => setLowerView(lowerView === view ? 'none' : view);
+$('mixviewbtn').onclick = () => toggleLowerView('mixer');
+$('rollbtn').onclick = () => toggleLowerView('roll');
+$('seqbtn').onclick = () => toggleLowerView('pattern');
+setLowerView(lowerView, { remember: false, animate: false });
 
 /**
  * Open whichever note editor the lane actually has.
@@ -13806,6 +15317,217 @@ const rangeHasEveryFlag = (draft, from, to, field, lanes) => {
   return true;
 };
 
+/**
+ * Everything one lane does in one bar, as a single comparable value.
+ *
+ * The notes, the lengths that go with them — see copyLaneBars on why those are never
+ * left behind — and the bar-level decisions the desk calls EDITS: the mute, the absent
+ * flag, the transpose/timing/gain/pan offsets, the Note FX override and the insert
+ * snapshot. A bar is all of it. Copying the notes alone would land a figure on
+ * whatever mute and arpeggiator the destination happened to be carrying, which plays
+ * as neither bar.
+ *
+ * Read through `readBarLane`, so it is what the bar PLAYS — resolved through the
+ * section chain and the bank under it — at the grid the draft is on.
+ */
+const laneBarPart = (bank, draft, bar, lane) => {
+  const entry = draft.plan[bar] || null;
+  return {
+    notes: readBarLane(bank, draft, bar, lane),
+    lengths: readBarLane(bank, draft, bar, lenKey(lane)),
+    edits: {
+      off: (entry?.off || []).includes(lane),
+      delete: (entry?.delete || []).includes(lane),
+      transpose: barFieldValue(entry, 'transpose', lane),
+      offset: barFieldValue(entry, 'offset', lane),
+      gain: barFieldValue(entry, 'gain', lane),
+      pan: barFieldValue(entry, 'pan', lane),
+      noteFx: entry?.noteFx?.[lane] ?? null,
+      inlineFx: entry?.inlineFx?.[lane] ?? null,
+    },
+  };
+};
+
+/** Two bars of one lane, compared as values — chords and length arrays included. */
+const sameLaneBarPart = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Is there anything here to lose?
+ *
+ * A rest is `null` on a pitched lane and `false` on a percussion one, and an empty
+ * chord array is a step nobody drew on. Anything else is a note. An edit counts too:
+ * a bar muted on this track is a decision somebody made, and replacing it is worth
+ * being told about even where there are no notes underneath.
+ */
+const laneBarHasContent = (part) => part.notes.some((v) => v != null && v !== false
+  && !(Array.isArray(v) && !v.length))
+  || Object.values(part.edits).some(Boolean);
+
+/**
+ * Put a lane's bar down somewhere else, notes and edits together.
+ *
+ * `current` is what the destination holds now, and it is an optimisation with teeth:
+ * every one of these writers copies the WHOLE draft, and the longest song in the game
+ * is 290 bars carrying a hundred and forty sections to copy with it. Running all nine
+ * per bar when eight of them write the value that is already there cost a fifth of a
+ * second of held main thread on that song — which on this desk is a hole in the music,
+ * not a slow button. Skip what already agrees; without `current`, write everything.
+ */
+const writeLaneBarPart = (bank, draft, bar, lane, part, current = null) => {
+  const was = current?.edits;
+  const now = part.edits;
+  const same = (field) => was && JSON.stringify(was[field]) === JSON.stringify(now[field]);
+  // Forked, never shared: the bar is written for itself, so laying a figure over bar 9
+  // cannot reach back through a shared section into bar 1 — which is behind the
+  // selection and explicitly not being replicated over.
+  let out = current && JSON.stringify(current.notes) === JSON.stringify(part.notes)
+    && JSON.stringify(current.lengths) === JSON.stringify(part.lengths)
+    ? draft : writeBarNotes(bank, draft, bar, lane, part.notes, part.lengths);
+  if (!same('off')) out = setLanesOff(out, bar, bar, [lane], now.off);
+  if (!same('delete')) out = setLanesDeleted(out, bar, bar, [lane], now.delete);
+  if (!same('transpose')) out = transposeBars(out, bar, bar, [lane], now.transpose);
+  if (!same('offset')) out = offsetBars(out, bar, bar, [lane], now.offset);
+  if (!same('gain')) out = gainBars(out, bar, bar, [lane], now.gain);
+  if (!same('pan')) out = panBars(out, bar, bar, [lane], now.pan);
+  if (!same('noteFx')) out = setBarNoteFx(out, bar, bar, lane, now.noteFx);
+  if (!same('inlineFx')) out = setBarEffects(out, bar, bar, lane, now.inlineFx);
+  return out;
+};
+
+/** Bar numbers as a sentence, with a tail rather than a paragraph of them. */
+const barListText = (bars) => {
+  const shown = bars.slice(0, 8).map((bar) => bar + 1).join(', ');
+  return bars.length > 8
+    ? `bars ${shown} and ${bars.length - 8} more`
+    : `bar${bars.length === 1 ? '' : 's'} ${shown}`;
+};
+
+/**
+ * Where a replicate stops: the first bar after the selection that already has
+ * something on this lane, or the end of the song if it never hits one.
+ *
+ * This is the whole idea of the button. A track is not a blank page — it is a part
+ * with holes in it, and the hole is what you are pointing at when you ask for a figure
+ * to carry on. Bar 3 to bar 20, with bar 20 already written, means bars 4 to 19: the
+ * empty run, and not one bar further. What the track does from 20 on was decided by
+ * whoever wrote bar 20, and a fill that ran over it would be answering a question
+ * nobody asked.
+ *
+ * The corollary is that the ordinary case has nothing to warn about. There is only one
+ * bar of doubt in the whole gesture — the one immediately after the selection — and
+ * `replicateLaneBars` is the only thing that ever asks about it.
+ */
+const replicationStop = (bank, draft, lane, to) => {
+  for (let bar = to + 1; bar < barCount(draft); bar++) {
+    if (laneBarHasContent(laneBarPart(bank, draft, bar, lane))) return bar;
+  }
+  return barCount(draft);
+};
+
+/**
+ * Which bars a replicate would write, up to `until`, and which of them hold something.
+ *
+ * The source bars repeat end to end and IN PHASE from `to + 1`: a two-bar selection
+ * lands 3, 4, 3, 4 and never 3, 4, 4, 3, however far it runs. A destination already
+ * playing exactly what it would be given is left out entirely — that is what makes a
+ * replicate you ask for twice a no-op rather than a second edit.
+ *
+ * `clobbered` is only ever non-empty on the overwrite path: the fill stops before the
+ * first bar with anything on it, so there is nothing there to count.
+ */
+const replicationTargets = (bank, draft, lane, from, to, until) => {
+  const n = to - from + 1;
+  const start = to + 1;
+  const source = Array.from({ length: n }, (_, i) => laneBarPart(bank, draft, from + i, lane));
+  const targets = [];
+  const clobbered = [];
+  for (let bar = start; bar < Math.min(until, barCount(draft)); bar++) {
+    const part = source[(bar - start) % n];
+    const current = laneBarPart(bank, draft, bar, lane);
+    if (sameLaneBarPart(current, part)) continue;
+    targets.push({ bar, part, current });
+    if (laneBarHasContent(current)) clobbered.push(bar);
+  }
+  return { targets, clobbered };
+};
+
+/**
+ * Carry the selected bars on through the empty run after them.
+ *
+ * The gesture is "this figure carries on from here": one bar, or four, laid down end
+ * to end from the selection until the track has something to say for itself again. Bar
+ * 3 replicated on a track whose next written bar is 20 fills bars 4 to 19 and stops —
+ * silently, because there was nothing in the way. A four-bar selection repeats in
+ * phase for as far as the run goes, ending part-way through the figure if the hole is
+ * not a whole number of them; the hole is the shape being filled, not the figure.
+ *
+ * Only this lane, only bars after the selection, and the song does not get longer —
+ * which is what separates Replicate from Repeat on the timeline. The bars you pointed
+ * at are the source and are never written.
+ *
+ * There is exactly one question this can raise, and it is the case where the next bar
+ * is already written: there is no run to fill, so filling one has to mean covering
+ * something. That is the only time it asks, it names every bar it would cover, and the
+ * answer it offers is the whole song — the one thing "replicate" could still mean once
+ * the gap it was aiming at turns out not to be there.
+ */
+async function replicateLaneBars(laneKey, laneLabel, from, to) {
+  const bank = editBank();
+  const draft = arrDraftOf();
+  const total = barCount(draft);
+  const start = to + 1;
+  const n = to - from + 1;
+  const span = n === 1 ? `bar ${from + 1}` : `bars ${from + 1}–${to + 1}`;
+  if (start >= total) {
+    toast(`Nothing after ${span} to replicate into — it is the end of the song`);
+    return;
+  }
+  const stop = replicationStop(bank, draft, laneKey, to);
+  let until = stop;
+  let { targets, clobbered } = replicationTargets(bank, draft, laneKey, from, to, stop);
+  if (stop === start) {
+    // No run to fill. Everything from here on is somebody's writing, so the only thing
+    // left to offer is the whole song — asked for once, with every bar it covers named.
+    const over = replicationTargets(bank, draft, laneKey, from, to, total);
+    if (!over.targets.length) {
+      toast(`${laneLabel} already plays ${span} through to the end of the song`);
+      return;
+    }
+    const ok = await ask(
+      `Replicate ${escapeHtml(laneLabel)} over the rest of ${escapeHtml(track.title)}?`,
+      `<p>Bar ${start + 1} already has <b>${escapeHtml(laneLabel)}</b> on it, so there is no `
+      + `empty run after ${escapeHtml(span)} to fill.</p>`
+      + `<p>Replicating anyway lays <b>${escapeHtml(span)}</b> over bars ${start + 1}–${total}, `
+      + `replacing what is on <b>${over.clobbered.length} `
+      + `bar${over.clobbered.length === 1 ? '' : 's'}</b> — `
+      + `${escapeHtml(barListText(over.clobbered))}.</p>`
+      + '<p>No other track is touched, the song stays the same length, and ⌘Z puts it back.</p>',
+      'Replicate anyway',
+    );
+    if (!ok) return;
+    ({ targets, clobbered } = over);
+    until = total;
+  }
+  if (!targets.length) {
+    toast(`${laneLabel} already plays ${span} through to bar ${until}`);
+    return;
+  }
+  // Long enough to be worth queueing the music past, on a song long enough to matter:
+  // the write is one draft copy per bar and the repaint behind it is the whole timeline.
+  heavyUi(`replicate ${laneLabel}`, () => {
+    let next = draft;
+    for (const { bar, part, current } of targets) {
+      next = writeLaneBarPart(bank, next, bar, laneKey, part, current);
+    }
+    const filled = `${laneLabel} replicated over bar${until - start === 1 ? '' : 's'} ${start + 1}${until - start === 1 ? '' : `–${until}`}`;
+    applyArrangementEdit(next, clobbered.length
+      ? `${filled} — ${clobbered.length} bar${clobbered.length === 1 ? '' : 's'} replaced`
+      : until < total
+        ? `${filled} — bar ${until + 1} is already written, so it stops there`
+        : filled);
+  });
+}
+
 const signed = (value) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value)}`;
 /**
  * A timing nudge, as the note value it actually is.
@@ -13833,6 +15555,10 @@ const timingBadge = (units) => (units
 
 const NOTE_FX_DIRECTION_LABELS = {
   up: 'Up', down: 'Down', updown: 'Up / Down', downup: 'Down / Up',
+  updownHold: 'Up / Down · held', downupHold: 'Down / Up · held',
+  up2: 'Up · thirds', down2: 'Down · thirds',
+  converge: 'Outside in', diverge: 'Inside out',
+  pedalLow: 'Pedal · low', pedalHigh: 'Pedal · high', cascade: 'Cascade',
   random: 'Random', asPlayed: 'As played',
 };
 const NOTE_FX_RATE_LABELS = [[4, '1/4'], [8 / 3, '1/4T'], [2, '1/8'], [4 / 3, '1/8T'],
@@ -13931,8 +15657,8 @@ function barOperationGroups(barPlanEntry, key, { frozen = false } = {}) {
   const barChain = barPlanEntry?.inlineFx?.[key];
   const insertChain = Array.isArray(barChain) && barChain.length ? barChain : (laneMix.effects || []);
   const insertItems = insertChain.map((effect) => ({
-    text: `${effectDisplayName(effect)}${effect.bypass ? ' · bypassed' : ''}`,
-    tone: effect.bypass ? 'bypassed' : 'active',
+    text: `${effectDisplayName(effect)}${effectOff(effect) ? ' · off' : ''}`,
+    tone: effectOff(effect) ? 'bypassed' : 'active',
   }));
   if (!insertItems.length) insertItems.push({ text: 'No inserts', tone: 'quiet' });
 
@@ -14048,6 +15774,28 @@ function openRegionEditor(x, y, {
     wrap.append(grid);
   };
 
+  /**
+   * A caption and one drop-down. The panel is otherwise a grid of buttons, which is
+   * right for verbs — but this is a CHOICE of one thing from a list, and a row of
+   * buttons where exactly one is on is a drop-down drawn the long way.
+   */
+  const pickSection = (caption, options, value, onPick, note = null) => {
+    const wrap = section(caption, note);
+    const sel = document.createElement('select');
+    sel.className = 'fxsel';
+    for (const option of options) {
+      const el2 = document.createElement('option');
+      // `text`, not `label`: a button carries a label — a Title-Cased verb, which
+      // tests/mixer-layout.js checks every one of — and an option carries a sentence.
+      // Sharing the key would put these in front of a rule written about buttons.
+      el2.value = option.value; el2.textContent = option.text;
+      if (option.value === value) el2.selected = true;
+      sel.append(el2);
+    }
+    sel.onchange = () => { const next = sel.value; closeMenu(); onPick(next); };
+    wrap.append(sel);
+  };
+
   const controls = [];
   let applyButton = null;
   let nameChanged = false;
@@ -14145,6 +15893,11 @@ function openRegionEditor(x, y, {
       .find((segment) => freezeScopeId(segment.scope) === freezeScopeId(selectedFreezeScope));
     const exactFrozen = !!exactFrozenSegment;
     const wholeFrozen = freezeLaneState(trackId, laneKey) === 'full';
+    // Where a Replicate would stop, worked out now so the button can say it rather than
+    // have it discovered by pressing it. It is a scan to the first written bar, so on
+    // every song it is a handful of bars long.
+    const replicateTo = to + 1 < barCount(draft)
+      ? replicationStop(editBank(), draft, laneKey, to) : to + 1;
     // Every label here is already scoped by the heading, so they stay short: this
     // panel cannot touch anything but this track in these bars.
     // No Edit notes… here either, for the reason the track panel does not have one: both
@@ -14178,6 +15931,21 @@ function openRegionEditor(x, y, {
         disabled: arrangementClipboard?.kind !== 'lane',
         run: () => applyArrangementEdit(pasteLane(arrDraftOf(), from, laneKey, arrangementClipboard),
           pasteLaneMessage(arrDraftOf(), from, laneLabel, arrangementClipboard)) },
+      // The one verb here that reaches OUTSIDE the bars in the heading, and the only one
+      // whose reach is not fixed — so the title says where it will stop before it is
+      // pressed. It fills the empty run after the selection and no further; nothing
+      // before the selection can be touched and the song does not change length.
+      { label: 'Replicate',
+        title: replicateTo <= to + 1
+          ? (to + 1 >= barCount(draft)
+            ? `${span} is the last of the song — there are no bars after it to replicate into`
+            : `Bar ${to + 2} already has ${laneLabel} on it, so there is no empty run to fill — Replicate will ask first`)
+          : `Fill bar${replicateTo - to > 2 ? 's' : ''} ${to + 2}${replicateTo - to > 2 ? `–${replicateTo}` : ''} of ${laneLabel} with ${span.toLowerCase()}`
+            + (replicateTo < barCount(draft)
+              ? `, stopping at bar ${replicateTo + 1} where ${laneLabel} starts again`
+              : ' — the rest of the song'),
+        disabled: to + 1 >= barCount(draft),
+        run: () => replicateLaneBars(laneKey, laneLabel, from, to) },
       { label: 'Erase Notes', danger: true,
         title: `Empty ${laneLabel} in ${span.toLowerCase()}, leaving the other tracks and the rest of this one alone (⌘Z restores it)`,
         run: () => clearLaneBars(laneKey, from, to, `${laneLabel} erased in ${span.toLowerCase()}`) },
@@ -14202,9 +15970,9 @@ function openRegionEditor(x, y, {
         // An engine preset is a bundle of bank keys rather than a synth, so there is
         // nothing for the editor to show.
         trackPreset && trackPreset.kind !== 'engine' && {
-          label: 'Edit Preset', title: `Open ${trackPreset.label} in the preset editor`,
+          label: 'Edit Simple', title: `Open ${trackPreset.label} in the simple preset editor`,
           run: () => editVoice(laneKey, { advanced: false, at: { x, y } }) },
-        // KLNG8, MRDR-3 and TNGR-2 are the families with a second, wider surface, and until
+        // KLNG-8, MRDR-3 and TNGR-2 are the families with a second, wider surface, and until
         // now the only door to it was the ADVANCED button inside the panel — so getting
         // to it meant opening the small one first and then leaving it. This is the same
         // door, from the same panel that offers the small one, one click either way.
@@ -14218,16 +15986,40 @@ function openRegionEditor(x, y, {
       ],
       // Which synth these two buttons would open. The title already names the PRESET
       // ("Track 7. Round Bass"); this is the other half of that identity, and it is the
-      // half that says what the editor behind Edit Preset will actually look like —
-      // KLNG8's six source cards and MonoSynth's filter page are not the same screen.
+      // half that says what the editor behind Edit Simple will actually look like —
+      // KLNG-8's six source cards and CRLS-1's filter page are not the same screen.
       // In full, not the strip's three letters: this is where there is room for the word,
       // and seeing MNO on the channel and MonoSynth here is how the abbreviation is
       // learned. Null on a lane with no preset, which drops the note and leaves SOUND.
       synthesizerLabelFor(trackPreset));
     }
+    // The kit's wiring: the one other percussion track this one shares a voice with.
+    //
+    // Kit tracks only, and only offered on one — a choke between a hat and a bassline is
+    // a bug somebody would have to undo, and the gesture means nothing on a track that
+    // holds notes rather than hits.
+    const chokeMates = PERCUSSION_LANES.includes(baseLane(laneKey))
+      ? deskLanes(viewBank(), 1).map((l) => l.key)
+        .filter((k) => k !== laneKey && PERCUSSION_LANES.includes(baseLane(k)))
+      : [];
+    if (chokeMates.length) {
+      const partner = chokePartner(draft, laneKey);
+      pickSection('Chokes with',
+        [{ value: '', text: 'Nothing — rings freely' },
+          ...chokeMates.map((k) => ({ value: k, text: presetHeadingFor(k).name }))],
+        partner || '',
+        (next) => {
+          const chosen = next || null;
+          if ((chokePartner(arrDraftOf(), laneKey) || null) === chosen) return;
+          applyArrangementEdit(setChokePartner(arrDraftOf(), laneKey, chosen), chosen
+            ? `${laneLabel} chokes with ${presetHeadingFor(chosen).name}`
+            : `${laneLabel} chokes with nothing`);
+        },
+        partner
+          ? `A hit on either cuts the other off — ${presetHeadingFor(partner).name} does the same`
+          : 'Pick one and the two share a voice, the way a hi-hat pedal does');
+    }
     actionSection('Track', [
-      { label: 'Rename Track…', title: `Rename ${laneLabel}`,
-        run: () => openTrackEditor(x, y, laneKey, { focusName: true }) },
       { label: 'Note FX…', title: `Add strum or arpeggiator to ${laneLabel}`,
         run: () => openNoteFxEditor(x, y, laneKey) },
       { label: 'Channel Effects', title: `Open ${laneLabel}'s channel effects`,
@@ -14712,8 +16504,12 @@ function buildArrangement() {
     const btns = document.createElement('div');
     btns.className = 'arrbtns';
     btns.append(...muteSoloPair(row.key, displayLabel));
-    const icon = groupIcon(row.group);
-    icon.classList.add('arrtrack-icon');
+    // A frozen track is no longer playing the live instrument, so the frozen mark takes
+    // over the instrument slot rather than appearing as a second badge beside the name.
+    const icon = frozen
+      ? freezeMark('arrtrack-icon arrfreeze', '❄')
+      : groupIcon(row.group);
+    if (!frozen) icon.classList.add('arrtrack-icon');
     const top = document.createElement('div');
     top.className = 'arrtrack-top';
     const category = document.createElement('span');
@@ -14722,6 +16518,19 @@ function buildArrangement() {
     const name = document.createElement('div');
     name.className = 'arrname';
     name.textContent = displayLabel;
+    let fx = null;
+    if (effectsOf(row.key).length) {
+      fx = document.createElement('button');
+      fx.type = 'button';
+      fx.className = 'arrfxdot';
+      fx.textContent = 'FX';
+      fx.title = `Open effects for ${displayLabel}`;
+      fx.setAttribute('aria-label', `Open effects for ${displayLabel}`);
+      fx.onclick = (ev) => {
+        ev.stopPropagation();
+        openChannelEffects(row.key);
+      };
+    }
     const trackNumber = laneNumbers.get(row.key);
     name.dataset.tip = displayLabel;
     name.dataset.tipkind = 'track';
@@ -14781,7 +16590,7 @@ function buildArrangement() {
     laneDragHandle(el, header, row.key, '.arrbtns, .arrgain, .arrname');
     const bottom = document.createElement('div');
     bottom.className = 'arrtrack-bottom';
-    top.append(name);
+    top.prepend(name);
     if (hasActiveNoteFx(laneNoteFx)) {
       const noteFx = document.createElement('span');
       noteFx.className = 'arrtrack-notefx';
@@ -14803,8 +16612,8 @@ function buildArrangement() {
       });
       top.append(noteFx);
     }
-    if (frozen) top.append(freezeMark('arrfreeze', '❄'));
     top.append(category);
+    if (fx) bottom.append(fx);
     bottom.append(btns);
     header.append(num, icon, top, bottom);
     const bars = document.createElement('div');
@@ -15001,34 +16810,39 @@ function buildArrangement() {
         meta.textContent = badge;
         box.append(meta);
       }
-      // Bars use the desk's structured card. Deliberately omit `title`: the browser's
-      // old, unformatted note dump would otherwise appear over this popup later.
-      box.dataset.tip = displayLabel;
-      box.dataset.tipkind = 'bar';
-      box.dataset.tipkey = trackNumber ? `Track ${trackNumber}` : 'Track';
-      box.dataset.tipcontext = `Bar ${bar + 1}`;
-      box.dataset.tipgroups = JSON.stringify([
-        { label: 'Synthesiser', items: [{
-          text: synthesizerLabelFor(preset) || 'Unknown',
-          tone: synthesizerLabelFor(preset) ? 'active' : 'quiet',
-        }] },
-        ...barOperationGroups(plan[bar], row.key, { frozen: barFrozen }),
-      ]);
-      box.dataset.tiphints = JSON.stringify([
-        { key: 'Click', text: 'Select' },
-        { key: 'Drag', text: 'Move' },
-        { key: '⌘ Drag', text: 'Copy' },
-        { key: 'Right-click', text: 'Edit' },
-        { key: 'Double-click', text: 'Notes' },
-        { key: '▶', text: 'Play' },
-      ]);
+      // Only note-bearing bars get the structured hover card. Empty time is still a
+      // selectable/editable destination, but there is nothing useful to summarize and
+      // opening a large card over it makes the arrangement feel noisy.
+      if (playing) {
+        box.dataset.tip = displayLabel;
+        box.dataset.tipkind = 'bar';
+        box.dataset.tipkey = trackNumber ? `Track ${trackNumber}` : 'Track';
+        box.dataset.tipcontext = `Bar ${bar + 1}`;
+        box.dataset.tipgroups = JSON.stringify([
+          { label: 'Synthesiser', items: [{
+            text: synthesizerLabelFor(preset) || 'Unknown',
+            tone: synthesizerLabelFor(preset) ? 'active' : 'quiet',
+          }] },
+          ...barOperationGroups(plan[bar], row.key, { frozen: barFrozen }),
+        ]);
+        box.dataset.tiphints = JSON.stringify([
+          { key: 'Click', text: 'Select' },
+          { key: 'Drag', text: 'Move' },
+          { key: '⌘ Drag', text: 'Copy' },
+          { key: 'Right-click', text: 'Edit' },
+          { key: 'Double-click', text: 'Notes' },
+          { key: '▶', text: 'Play' },
+        ]);
+      }
       const at = bar * 16;
       const playButton = document.createElement('button');
       playButton.type = 'button';
       playButton.className = 'arrbarplay';
       playButton.textContent = '▶';
-      playButton.dataset.tip = `Play bar ${bar + 1}`;
-      playButton.dataset.tipsays = `Start playback immediately from ${displayLabel} at bar ${bar + 1}.`;
+      if (playing) {
+        playButton.dataset.tip = `Play bar ${bar + 1}`;
+        playButton.dataset.tipsays = `Start playback immediately from ${displayLabel} at bar ${bar + 1}.`;
+      }
       playButton.setAttribute('aria-label', `Play ${displayLabel} from bar ${bar + 1}`);
       playButton.onpointerdown = (ev) => ev.stopPropagation();
       playButton.ondblclick = (ev) => ev.stopPropagation();
@@ -15167,6 +16981,8 @@ function buildArrangement() {
   redrawSelection();            // the rows are new; the selection is not
   updateArrangementNoteScale();
   syncArrangementScroll();
+  // The rows are new, so everything measured off the old ones is wrong.
+  forgetArrangementGeometry();
 }
 
 /**
@@ -15193,35 +17009,131 @@ function buildArrangement() {
  * A tenth of a screen of lead-in, so the playhead lands just inside the new view rather
  * than on its very edge with nothing in front of it.
  */
+// The arrangement scroller's geometry, measured rather than re-measured.
+//
+// `followArrangementScroll` runs every animation frame, and every one of the numbers it
+// wants — the scroller's width, the row's width, where the pinned name column ends — is a
+// LAYOUT READ. Six of them, plus a querySelector, immediately after the meters have
+// finished writing styles: that is a forced synchronous layout, once a frame, for numbers
+// that only change when the grid is rebuilt or the window resizes.
+//
+// So they are measured once and kept. `scrollLeft` is deliberately NOT cached — it is the
+// one value the user can change without either of those happening, and it is also the
+// cheapest of them to read.
+// A TTL as well as explicit invalidation, because the failure modes are not symmetric.
+// A stale geometry does not throw or look broken — it makes the playhead follow the wrong
+// place, quietly, until something rebuilds the grid. Every route that changes the layout
+// is supposed to call `forgetArrangementGeometry`, and one that is added later and forgets
+// to is a bug nobody will connect to this cache. Half a second of staleness costs one
+// layout read every half second instead of six every frame, and bounds that bug.
+const ARR_GEOM_TTL_MS = 500;
+let arrGeom = null;
+function forgetArrangementGeometry() { arrGeom = null; }
+
+function measureArrangementGeometry(grid) {
+  const bars = grid.querySelector('.arrrow .arrbars');
+  return {
+    span: grid.scrollWidth - grid.clientWidth,
+    clientWidth: grid.clientWidth,
+    width: bars ? bars.scrollWidth : grid.scrollWidth,
+    inset: bars ? bars.offsetLeft : 0,
+  };
+}
+
 function followArrangementScroll(frac) {
   const grid = $('arrgrid');
   const upper = $('upperwork');
   if (!grid || upper?.dataset.arrscroll !== '1') return;
-  const span = grid.scrollWidth - grid.clientWidth;
+  const nowMs = performance.now();
+  if (!arrGeom || nowMs - arrGeom.at > ARR_GEOM_TTL_MS) {
+    arrGeom = measureArrangementGeometry(grid);
+    arrGeom.at = nowMs;
+  }
+  const { span, clientWidth, width, inset } = arrGeom;
+  // Nothing to scroll — a song that fits. KEEP the measurement rather than dropping it:
+  // clearing here would re-measure on the very next frame and every frame after, which is
+  // exactly the per-frame layout read this cache exists to remove, for the one case where
+  // there is no work to do at all. The TTL re-checks soon enough if the grid grows.
   if (span <= 0) return;
-  const bars = grid.querySelector('.arrrow .arrbars');
-  const width = bars ? bars.scrollWidth : grid.scrollWidth;
   // The playhead's x in the SCROLLER's coordinates, which start at the row's left edge —
   // so the pinned name column counts. Measuring from the first bar instead put the
   // playhead a column further left than it really was, and the view sat still while it
   // walked off the right-hand side.
-  const inset = bars ? bars.offsetLeft : 0;
   const x = inset + Math.max(0, Math.min(1, frac)) * width;
   // And the names are painted OVER the bars they cover, so the visible span starts after
   // them: a playhead behind that edge is on screen and unreadable, which is off screen.
-  const left = grid.scrollLeft + inset;
-  const right = grid.scrollLeft + grid.clientWidth;
+  const scrolled = grid.scrollLeft;
+  const left = scrolled + inset;
+  const right = scrolled + clientWidth;
   // Behind the view as well as ahead of it: a loop that jumps back to the top should
   // take the window with it rather than leave you looking at the bars it just left.
   if (x >= left && x < right - 4) return;
-  const lead = grid.clientWidth * 0.1;
+  const lead = clientWidth * 0.1;
   grid.scrollLeft = Math.max(0, Math.min(span, x - inset - lead));
+}
+
+function mixerScrollSnapLeft(rack, left) {
+  const strips = rack.querySelectorAll('.strip');
+  if (!strips.length) return Math.max(0, left);
+  const rackRect = rack.getBoundingClientRect();
+  const firstRect = strips[0].getBoundingClientRect();
+  const firstStart = firstRect.left - rackRect.left + rack.scrollLeft;
+  const step = strips.length > 1
+    ? strips[1].getBoundingClientRect().left - firstRect.left
+    : (parseFloat(getComputedStyle(strips[0]).width) || 0)
+      + (parseFloat(getComputedStyle(rack).columnGap) || 0);
+  if (!(step > 0)) return Math.max(0, left);
+  const max = Math.max(0, rack.scrollWidth - rack.clientWidth);
+  const target = firstStart + Math.round((left - firstStart) / step) * step;
+  return Math.max(0, Math.min(max, Math.round(target)));
+}
+
+function snapMixerScroll() {
+  const rack = $('rack');
+  const rail = $('mixscroll');
+  if (!rack || !rail) return;
+  const target = mixerScrollSnapLeft(rack, rack.scrollLeft);
+  if (Math.abs(rack.scrollLeft - target) > 0.5) {
+    rack.scrollTo({ left: target, behavior: 'smooth' });
+  }
+  if (Math.abs(rail.scrollLeft - target) > 0.5) rail.scrollLeft = target;
+}
+
+function syncMixerScroll() {
+  const rack = $('rack');
+  const rail = $('mixscroll');
+  const railContent = $('mixscroll-content');
+  if (!rack || !rail || !railContent) return;
+  const styles = getComputedStyle(rack);
+  const leftPad = Number.parseFloat(styles.paddingLeft) || 0;
+  const rightPad = Number.parseFloat(styles.paddingRight) || 0;
+  const width = Math.max(1, Math.round(rack.scrollWidth - leftPad - rightPad));
+  railContent.style.width = `${width}px`;
+  rail.scrollLeft = Math.max(0, rack.scrollLeft);
+  if (rack.dataset.scrollBound !== '1') {
+    rack.dataset.scrollBound = '1';
+    rack.addEventListener('scroll', () => {
+      const x = Math.max(0, rack.scrollLeft);
+      if (Math.abs(rail.scrollLeft - x) > 0.5) rail.scrollLeft = x;
+    }, { passive: true });
+    rack.addEventListener('scrollend', snapMixerScroll, { passive: true });
+  }
+  if (rail.dataset.scrollBound === '1') return;
+  rail.dataset.scrollBound = '1';
+  rail.addEventListener('scroll', () => {
+    if (Math.abs(rack.scrollLeft - rail.scrollLeft) > 0.5) {
+      rack.scrollLeft = rail.scrollLeft;
+    }
+  }, { passive: true });
+  rail.addEventListener('scrollend', snapMixerScroll, { passive: true });
 }
 
 function syncArrangementScroll() {
   const grid = $('arrgrid');
   const upper = $('upperwork');
-  if (!grid || !upper) return;
+  const rail = $('arrscroll');
+  const railContent = $('arrscroll-content');
+  if (!grid || !upper || !rail || !railContent) return;
   const bars = grid.querySelector('.arrrow .arrbars');
   const width = bars ? Math.round(bars.scrollWidth) : 0;
   // Only when the rows genuinely want more than they have. A song that fits keeps the
@@ -15229,12 +17141,24 @@ function syncArrangementScroll() {
   const scrolls = width > 0 && grid.scrollWidth > grid.clientWidth + 1;
   upper.dataset.arrscroll = scrolls ? '1' : '0';
   upper.style.setProperty('--arr-content-w', `${width}px`);
+  railContent.style.width = `${Math.max(1, width)}px`;
+  rail.scrollLeft = Math.max(0, grid.scrollLeft);
   if (!scrolls) upper.style.setProperty('--arr-scroll', '0px');
   else upper.style.setProperty('--arr-scroll', `${Math.round(grid.scrollLeft)}px`);
-  if (grid.dataset.scrollBound === '1') return;
-  grid.dataset.scrollBound = '1';
-  grid.addEventListener('scroll', () => {
-    upper.style.setProperty('--arr-scroll', `${Math.round(grid.scrollLeft)}px`);
+  if (grid.dataset.scrollBound !== '1') {
+    grid.dataset.scrollBound = '1';
+    grid.addEventListener('scroll', () => {
+      const x = Math.max(0, grid.scrollLeft);
+      if (Math.abs(rail.scrollLeft - x) > 0.5) rail.scrollLeft = x;
+      upper.style.setProperty('--arr-scroll', `${Math.round(x)}px`);
+    }, { passive: true });
+  }
+  if (rail.dataset.scrollBound === '1') return;
+  rail.dataset.scrollBound = '1';
+  rail.addEventListener('scroll', () => {
+    if (Math.abs(grid.scrollLeft - rail.scrollLeft) > 0.5) {
+      grid.scrollLeft = rail.scrollLeft;
+    }
   }, { passive: true });
 }
 
@@ -15264,8 +17188,9 @@ function startArrangementEcho(cell) {
   if (!cell || noteVisualMode !== 'trail' || !noteAnimation) return;
   stopArrangementEcho(cell);
   cell.classList.remove('playing');
-  // Restart the CSS fade if this mark was echoed again before its previous tail died.
-  void cell.offsetWidth;
+  // Do not force layout to restart a decorative fade. If an echo is retriggered while
+  // its old tail is still alive, keeping the current compositor animation is preferable
+  // to making the audio scheduler synchronously flush the whole arrangement.
   cell.classList.add('echoing');
   arrEchoCells.add(cell);
   arrEchoTimers.set(cell, setTimeout(() => stopArrangementEcho(cell), ARR_ECHO_DURATION));
@@ -15332,7 +17257,6 @@ function followArrangementVisual(step) {
   // ringing, so the step has to be part of the comparison as well as the set.
   if (same && at === arrPlayingAt) return;
   const nextSet = new Set(next);
-  const rehit = next.some((cell) => arrPlayingCells.includes(cell));
   for (const cell of arrPlayingCells) {
     cell.classList.remove('playing');
     if (!nextSet.has(cell)) startArrangementEcho(cell);
@@ -15340,9 +17264,10 @@ function followArrangementVisual(step) {
   for (const cell of arrEchoCells) {
     if (nextSet.has(cell)) stopArrangementEcho(cell);
   }
-  // Removing and re-adding the class in one frame does not restart a CSS animation
-  // on its own. Only pay for the reflow when a mark is actually struck twice running.
-  if (rehit) void $('arrange').offsetWidth;
+  // Removing and re-adding the class in one frame does not restart a CSS animation. Do
+  // not force a synchronous reflow to make a decorative pulse restart: the active mark
+  // is already visible, and the next attack will naturally start a fresh animation once
+  // the class has been removed for a frame.
   for (const cell of next) cell.classList.add('playing');
   arrPlayingCells = next;
   arrPlayingAt = at;
@@ -15403,6 +17328,42 @@ $('arrfold').onclick = () => {
 };
 setArrangeCollapsed($('upperwork') ? false : localStorage.getItem(ARR_FOLD_KEY) === '1');
 
+const ARR_COMPACT_KEY = 'mash-mixer-arr-compact';
+function setArrangeCompact(on, refit = true) {
+  const arrange = $('arrange');
+  const grid = $('arrgrid');
+  const oldStep = laneRowHeight() + laneRowGap();
+  const firstVisible = grid && oldStep > 0 ? Math.floor(grid.scrollTop / oldStep) : 0;
+  const changed = arrange.classList.contains('compact') !== on;
+  arrange.classList.toggle('compact', on);
+  const density = $('arrdensity');
+  if (density) density.value = on ? '1' : '0';
+  if (!changed) return;
+  localStorage.setItem(ARR_COMPACT_KEY, on ? '1' : '0');
+  forgetArrangementGeometry();
+  if (refit) {
+    scheduleDeskFit(true);
+    // A density change changes the meaning of the existing pixel scrollTop. Wait for
+    // both the class reflow and the desk's settling fit, then put the same first lane
+    // back at the top instead of landing halfway through a different track.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const nextStep = laneRowHeight() + laneRowGap();
+      if (!grid || !(nextStep > 0)) return;
+      const max = Math.max(0, grid.scrollHeight - grid.clientHeight);
+      grid.scrollTop = Math.min(max, Math.max(0, firstVisible * nextStep));
+    }));
+  }
+}
+
+setArrangeCompact(localStorage.getItem(ARR_COMPACT_KEY) === '1', false);
+
+const densitySel = $('arrdensity');
+if (densitySel) densitySel.onchange = () => {
+  const compact = densitySel.value === '1';
+  setArrangeCompact(compact);
+  toast(compact ? 'Arrangement rows: 0.5× compact' : 'Arrangement rows: 1× full-height');
+};
+
 // The mixer folds like the panels above and below it. The family switches stay in
 // the header while it is folded — they are what you are about to unfold it for.
 const MIXER_KEY = 'mash-mixer-rack-folded';
@@ -15431,23 +17392,175 @@ let peakSeen = 0;
 const METER_FALL = 55;        // percent of the scale per second
 const PEAK_HOLD = 1400;       // ms the line sits before it starts sliding down
 const PEAK_FALL = 30;         // percent per second once it does
+// How often the meters may redraw, at most. The animation frame runs at the display's
+// rate — 60 Hz, and 120 on this machine — and a meter is a bar a few dozen pixels long
+// whose ballistics are already a slow fall. Thirty a second is past the point where the
+// eye can tell, and it halves a cost that scales with how many LANES a song carries.
+// Measured on this desk's own diagnostics: 'meters' was the heaviest named section of the
+// frame in 205 of the 227 rows that attributed one.
+const METER_INTERVAL_MS = 33;
+// And how often they may redraw while relief is on.
+//
+// SLOWED, NOT STOPPED. Pausing them outright was the first attempt and it was wrong for
+// the reason `setMetersOff` already gives about freezing: a bar holding the last level it
+// saw is a bar that is lying, and relief can stay on for as long as the machine stays
+// busy — which on a heavy song is most of it. What you get is a desk whose meters have
+// stopped, which reads as a desk that has crashed at exactly the moment it is under load
+// and you most want to know what it is doing.
+//
+// Four a second still falls, still tracks and still shows a clip; it just looks chunky.
+// And it is 87% of the saving, because the cost was never one pass — it was thirty of
+// them a second.
+const METER_RELIEF_INTERVAL_MS = 250;
+// How far a bar has to move before it is worth writing. The scale is a percentage of a
+// bar that is at most a couple of hundred pixels, so a tenth of a percent is a fifth of a
+// pixel: a write nobody can see, which still costs a string, a style invalidation and the
+// recalc that follows it. The meters fall by METER_FALL percent a second, so a resting
+// bar crosses this every few milliseconds and keeps animating; what stops is the traffic
+// from a bar sitting still.
+const METER_EPSILON = 0.4;
+
+// ---- WHICH METERS ARE WORTH DRAWING -------------------------------------------------
+//
+// A rack of two dozen strips does not fit on a screen, and neither does a long song's
+// arrangement. The meters that are scrolled out of sight cost exactly what the visible
+// ones cost — a 256-float analyser read and an RMS per channel, then the style traffic —
+// and buy nothing, because nobody can see them.
+//
+// An IntersectionObserver rather than a per-frame `getBoundingClientRect`: asking the
+// layout where something is, from inside the animation frame, is the forced synchronous
+// layout this whole exercise is about avoiding. The observer answers off the critical
+// path and leaves a boolean behind. Clipping by the rack's own scroller is accounted for,
+// so a strip scrolled out of the rack reads as hidden even though the rack is on screen.
+//
+// The margin keeps a screen's worth of meters warm either side, so scrolling reveals a
+// live bar rather than one catching up.
+const METER_VIS_MARGIN = '96px';
+let meterVisibility = null;
+// A dev-only OFF switch, for measurement rather than for taste. A soak or a bench run
+// wants the main thread as quiet as it can be and has nobody watching the bars, and the
+// difference between "the meters are cheap now" and "the meters cost nothing" is the only
+// way to keep the first claim honest. Not a user preference: the automatic relief already
+// pauses the meters when it matters, and a switch somebody left off is a desk whose
+// meters are broken.
+let metersOff = false;
+
+/** Forget what a meter was showing, so it rebuilds from the engine when it returns. */
+function resetMeterDrawState(entry) {
+  entry.drawnClip = undefined;
+  for (const ch of entry.chans || []) {
+    ch.shown = 0; ch.held = 0; ch.heldAt = 0;
+    ch.drawnFill = undefined; ch.drawnPeak = undefined; ch.drawnLit = undefined;
+  }
+  if (entry.fill) {
+    entry.shown = 0; entry.held = 0; entry.heldAt = 0;
+    entry.drawnFill = undefined; entry.drawnPeak = undefined; entry.drawnLit = undefined;
+  }
+}
+
+/**
+ * Turn the meters off, or back on. Dev only.
+ *
+ * OFF PARKS THEM AT ZERO rather than freezing them where they were. A bar left holding
+ * the last level it saw is a bar that is lying, and the whole reason to have this switch
+ * is to trust a measurement taken with it on.
+ */
+function setMetersOff(off) {
+  metersOff = !!off;
+  const park = (entry) => {
+    resetMeterDrawState(entry);
+    for (const ch of entry.chans || []) {
+      if (ch.fill) { ch.fill.style.width = '0%'; ch.fill.style.height = '0%'; }
+      if (ch.peak) ch.peak.style.opacity = '0';
+    }
+    if (entry.fill) entry.fill.style.width = '0%';
+    if (entry.peak) entry.peak.style.opacity = '0';
+    entry.meter?.classList.remove('clip');
+  };
+  if (metersOff) {
+    for (const mt of meters) park(mt);
+    for (const readout of arrangementMeters.values()) park(readout);
+  } else {
+    // Coming back, throw the history away for the same reason a meter scrolling into
+    // view does: the levels it last held are older than the ballistics can explain.
+    for (const mt of meters) resetMeterDrawState(mt);
+    for (const readout of arrangementMeters.values()) resetMeterDrawState(readout);
+  }
+  return metersOff;
+}
+
+/**
+ * Watch one meter's element, once. Called from the draw loop rather than from the four
+ * places a meter is created, so a strip built by any route is covered without those
+ * routes having to remember.
+ *
+ * A meter starts VISIBLE. The observer reports asynchronously, so assuming hidden would
+ * blank every meter on the frame a song loads and un-blank them a moment later.
+ */
+function watchMeter(entry) {
+  if (entry.watched) return;
+  // Visible until told otherwise, and set BEFORE any early return below: a meter whose
+  // visibility nothing ever reports must draw, not vanish.
+  entry.visible = true;
+  if (!entry.meter) return;
+  entry.watched = true;
+  if (!meterVisibility) {
+    if (typeof IntersectionObserver !== 'function') return;
+    meterVisibility = new IntersectionObserver((entries) => {
+      for (const record of entries) {
+        const meter = record.target.__meterEntry;
+        if (!meter) continue;
+        const wasVisible = meter.visible;
+        meter.visible = record.isIntersecting;
+        // Coming BACK needs its history thrown away. The ballistics below are per-second
+        // rates applied to the time since the last time the METERS drew, which is a frame
+        // ago whatever this one was doing — so a bar hidden for ten seconds would return
+        // holding a ten-second-old level and fall from it over the next second, which
+        // reads as the desk showing something that is not happening. Starting from zero
+        // lets it jump straight to the live level on the first frame instead.
+        if (meter.visible && !wasVisible) resetMeterDrawState(meter);
+      }
+    }, { rootMargin: METER_VIS_MARGIN });
+  }
+  if (!meterVisibility) return;
+  entry.meter.__meterEntry = entry;
+  meterVisibility.observe(entry.meter);
+}
 let meterAt = 0;
+let lastMeterMixerVisibility = null;
 
 function updateArrangementMeter(readout, lin, now, dt) {
   const value = typeof lin === 'number' ? lin : 0;
   const db = 20 * Math.log10(Math.max(1e-6, value));
   const pos = clamp((db + 48) / 48 * 100, 0, 100);
   readout.shown = Math.max(pos, (readout.shown ?? 0) - METER_FALL * dt);
-  readout.fill.style.width = `${readout.shown}%`;
+  // Written only when it would move — the same argument as the strip meters, and it
+  // matters more here: an arrangement VU exists for every row of a long song.
+  if (Math.abs(readout.shown - (readout.drawnFill ?? -1)) >= METER_EPSILON) {
+    readout.drawnFill = readout.shown;
+    readout.fill.style.width = `${readout.shown}%`;
+  }
   if (pos >= (readout.held ?? 0)) {
     readout.held = pos;
     readout.heldAt = now;
   } else if (now - (readout.heldAt || 0) > PEAK_HOLD) {
     readout.held = Math.max(readout.shown, readout.held - PEAK_FALL * dt);
   }
-  readout.peak.style.left = `${readout.held || 0}%`;
-  readout.peak.style.opacity = readout.held > 0.5 ? '1' : '0';
-  readout.meter.classList.toggle('clip', value >= 1);
+  const held = readout.held || 0;
+  if (Math.abs(held - (readout.drawnPeak ?? -1)) >= METER_EPSILON) {
+    readout.drawnPeak = held;
+    readout.peak.style.left = `${held}%`;
+  }
+  const lit = held > 0.5;
+  if (lit !== readout.drawnLit) {
+    readout.drawnLit = lit;
+    readout.peak.style.opacity = lit ? '1' : '0';
+  }
+  const clipped = value >= 1;
+  if (clipped !== readout.drawnClip) {
+    readout.drawnClip = clipped;
+    readout.meter.classList.toggle('clip', clipped);
+  }
 }
 
 /**
@@ -15476,10 +17589,10 @@ function updateArrangementMeter(readout, lin, now, dt) {
  */
 function tick() {
   const now = performance.now();
-  const dt = meterAt ? Math.min(0.25, (now - meterAt) / 1000) : 0;
-  meterAt = now;
+  syncVisualSeek();
   syncLoopAnchor();
   syncPendingSeek();
+  syncPendingPlaybackFlash();
   if (typeof document !== 'undefined' && !document.hasFocus()) {
     requestAnimationFrame(tick);
     return;
@@ -15491,10 +17604,70 @@ function tick() {
     requestAnimationFrame(tick);
     return;
   }
+  // A dropdown whose value was assigned in code rather than chosen by hand. There is no
+  // mutation to observe for that — `select.value = x` is a property — so it is read here,
+  // where the desk is already repainting, and only while the window is being looked at.
+  syncDeskSelects(now);
   let spanAt = now;
-  if (Audio.mixer) {
+  // ---- WHEN THE DESK MAY DRAW ITS METERS ------------------------------------
+  //
+  // Two gates, and the second is the one that finally does something with a decision
+  // this desk has been logging and ignoring for weeks.
+  //
+  // RELIEF IS NO LONGER A SHADOW. `reliefTransition` decides whether the main thread is
+  // implicated in a dropout, and its verdict has been written into every diagnostics row
+  // while changing nothing — deliberately, so the thresholds could be argued from real
+  // sessions rather than guessed. They now have that evidence: it fired on 37 real
+  // events, and in the same rows the scheduler's margin was negative 175 times out of
+  // 250. So when it says the main thread is the problem, the meters stop drawing until
+  // it says otherwise. Nothing else in the frame is touched: the playhead, the
+  // arrangement and the keyboard are how you know the song is still running, and a desk
+  // that freezes those to save itself looks exactly like a desk that has crashed.
+  //
+  // The meters resume from the engine rather than from anything they cached, so there is
+  // no stale state to unwind — the bars simply catch up on the first frame after.
+  // `metersOff` is the only thing that stops them, and it parks them at zero when it does.
+  // Relief lengthens the interval instead — see METER_RELIEF_INTERVAL_MS.
+  const meterEvery = reliefState.active ? METER_RELIEF_INTERVAL_MS : METER_INTERVAL_MS;
+  const meterDue = !metersOff && now - (meterAt || 0) >= meterEvery;
+  if (Audio.mixer && meterDue && !playbackVisualsHeld()) {
+    // Time since the last time the METERS drew, not since the last frame: the ballistics
+    // below are per-second rates, so skipping frames has to lengthen the step rather than
+    // slow the fall.
+    const dt = meterAt ? Math.min(0.25, (now - meterAt) / 1000) : 0;
+    meterAt = now;
     const laneLevels = new Map();
+    const mixerViewVisible = lowerView === 'mixer';
+    if (mixerViewVisible !== lastMeterMixerVisibility) {
+      // Do not let a hidden Mixer return with stale peak/ballistic state. Arrangement
+      // meters remain live in the upper workspace; only the hidden rack is reset here.
+      if (mixerViewVisible) for (const mt of meters) resetMeterDrawState(mt);
+      lastMeterMixerVisibility = mixerViewVisible;
+    }
+    // A lower-view toggle removes the Mixer from layout. Keep the arrangement VUs below
+    // live, and keep the toolbar's master VU live too — it remains visible in the header.
+    // Stop reading or writing only the rack meters while that view cannot be seen.
     for (const mt of meters) {
+      watchMeter(mt);
+      if (!mixerViewVisible && mt.key !== '__master-toolbar') continue;
+      // Out of sight: no read, no writes, and — deliberately — NO ENTRY IN laneLevels.
+      // The arrangement VUs below use that map as a cache of what the strips already
+      // read, so writing a zero here would blank a visible arrangement meter because a
+      // strip nobody can see was skipped. Leaving the key absent makes that VU do its
+      // own lookup, which is what it did before the cache existed.
+      //
+      // THE MASTER IS NEVER CULLED. Its loudest side is what `peakSeen` accumulates, and
+      // that is the session's clipping record — a measurement rather than a decoration.
+      // Skipping it because the rack happened to be scrolled past it would mean the peak
+      // readout quietly depended on where the user left the scrollbar, which is the kind
+      // of instrument that is worse than none.
+      //
+      // `=== false` rather than a falsy test: `visible` is only ever set by watchMeter or
+      // the observer, and anything that stops those running — a meter entry with no
+      // element, a browser with no IntersectionObserver — would otherwise leave it
+      // undefined and cull the meter for ever. Unknown means DRAW IT; the cull is an
+      // optimisation and has to fail towards working.
+      if (mt.visible === false && !mt.master && mt.key !== '__master') continue;
       // One number for a mono meter, [L, R] for the master's pair. Everything below is
       // per-channel and reads the same either way; the clip light and the session peak
       // take the louder side, which is the side that clipped.
@@ -15523,42 +17696,85 @@ function tick() {
         const db = 20 * Math.log10(Math.max(1e-6, lin));
         const pos = clamp((db + 48) / 48 * 100, 0, 100);
         ch.shown = Math.max(pos, (ch.shown ?? 0) - METER_FALL * dt);
-        if (mt.horizontal) ch.fill.style.width = `${ch.shown}%`;
-        else ch.fill.style.height = `${ch.shown}%`;
+        // Only when it would MOVE. The bar's position is already tracked in `ch.shown`,
+        // so the style is a rendering of a number this loop owns — and writing the same
+        // rendering again is a template string, a style invalidation and the recalc that
+        // follows, for a bar in the same place. See METER_EPSILON.
+        if (Math.abs(ch.shown - (ch.drawnFill ?? -1)) >= METER_EPSILON) {
+          ch.drawnFill = ch.shown;
+          if (mt.horizontal) ch.fill.style.width = `${ch.shown}%`;
+          else ch.fill.style.height = `${ch.shown}%`;
+        }
         if (pos >= (ch.held ?? 0)) { ch.held = pos; ch.heldAt = now; }
         else if (now - (ch.heldAt || 0) > PEAK_HOLD) {
           ch.held = Math.max(ch.shown, ch.held - PEAK_FALL * dt);
         }
-        if (mt.horizontal) ch.peak.style.left = `${ch.held || 0}%`;
-        else ch.peak.style.bottom = `${ch.held || 0}%`;
-        ch.peak.style.opacity = ch.held > 0.5 ? '1' : '0';
+        const held = ch.held || 0;
+        if (Math.abs(held - (ch.drawnPeak ?? -1)) >= METER_EPSILON) {
+          ch.drawnPeak = held;
+          if (mt.horizontal) ch.peak.style.left = `${held}%`;
+          else ch.peak.style.bottom = `${held}%`;
+        }
+        // A one-or-zero opacity is a boolean wearing a number: compare the boolean.
+        const lit = held > 0.5;
+        if (lit !== ch.drawnLit) {
+          ch.drawnLit = lit;
+          ch.peak.style.opacity = lit ? '1' : '0';
+        }
       });
       laneLevels.set(mt.key, loudest);
-      mt.meter.classList.toggle('clip', loudest >= 1);
+      const clipped = loudest >= 1;
+      if (clipped !== mt.drawnClip) {
+        mt.drawnClip = clipped;
+        mt.meter.classList.toggle('clip', clipped);
+      }
       if (mt.key === '__master' && loudest > peakSeen) peakSeen = loudest;
     }
     // Use the already-read channel level where the rack has a strip; only filtered
     // lanes need a second lookup, so every arrangement VU still follows the same
     // engine meter source without doubling normal visible-lane reads.
+    // MEASURED AT ZERO. Taking these away entirely — the whole loop, reads included —
+    // made no difference to the desk under load, which puts them with the six ablations
+    // in work/local/standing-graph-findings.md that also returned nothing. They are not
+    // free, but they are not what is costing anything either.
     for (const [key, readout] of arrangementMeters) {
+      watchMeter(readout);
+      if (readout.visible === false) continue;
       const lin = laneLevels.has(key) ? laneLevels.get(key) : Audio.mixer.lane(key)?.level();
       updateArrangementMeter(readout, lin, now, dt);
     }
+    updateL7Meters(dt);
     spanAt = frameSpan('meters', spanAt);
   }
   const beat = Audio.songBeat();
   if (beat != null && track) {
     const { spb, totalSteps, loopSecs } = songShape();
-    const outputHeard = heardStepNow() ?? 0;
-    const heardStep = heardStepNow() ?? 0;
-    const sourceStep = sourceHeardStepNow() ?? heardStep;
+    const outputHeard = visualHeardStepNow() ?? 0;
+    const heardStep = outputHeard;
+    const sourceStep = sourceVisualHeardStepNow(outputHeard) ?? heardStep;
+    lastVisualStep = heardStep;
     const frac = sourceStep / totalSteps;
     $('playhead').style.left = (frac * 100) + '%';
     $('tnow').textContent = `${fmtTime(outputHeard * spb)}/${fmtTime(loopSecs)}`;
     $('barnow').textContent = `${Math.floor(outputHeard / 16) + 1}/${totalSteps / 16}`;
     const visualStep = arrangementVisualStep(heardStep);
+    if (playbackVisualsHeld()) {
+      // Keep the transport clock and playhead current, but defer the DOM-heavy follow
+      // passes until layout motion has settled. Audio scheduling is independent of this
+      // picture and continues on its normal look-ahead.
+      $('playhead').style.left = (frac * 100) + '%';
+    } else {
+    // Split so the diagnostics can tell these two apart. 'arrangement' became the
+    // heaviest named section of the frame the moment the meters stopped being it, and
+    // the two halves fail in completely different ways: one queries the DOM per row per
+    // frame, the other READS LAYOUT per frame — six times — immediately after the meters
+    // have written styles, which is a forced synchronous layout every frame. Naming them
+    // separately is what turns "arrangement is expensive" into something to go and fix.
+    spanAt = frameSpan('arr-lead-in', spanAt);
     followArrangementVisual(visualStep);
+    spanAt = frameSpan('arr-visual', spanAt);
     followArrangementScroll(frac);
+    spanAt = frameSpan('arr-scroll', spanAt);
     if (rearrangeActive()) followArrangementVisual(arrangementVisualStep(sourceStep));
     spanAt = frameSpan('arrangement', spanAt);
     oskFollow(sourceStep);
@@ -15572,13 +17788,16 @@ function tick() {
     recordFollow(heardStep);
     syncRearrangeProgress(outputHeard);
     spanAt = frameSpan('rearrange', spanAt);
+    }
   } else {
-    followArrangementVisual(null);
-    oskFollow(null);
-    stepSeq.follow(null);
-    pianoRoll.follow(null);
-    kitRoll.follow(null);
-    syncRearrangeProgress(null);
+    if (!playbackVisualsHeld()) {
+      followArrangementVisual(null);
+      oskFollow(null);
+      stepSeq.follow(null);
+      pianoRoll.follow(null);
+      kitRoll.follow(null);
+      syncRearrangeProgress(null);
+    }
   }
   writeGridInfo();
   const peakText = peakSeen > 0
@@ -15806,9 +18025,9 @@ function updateCpu() {
 //    settles it (the same probe that settled it by hand) and puts it on the
 //    transport while it is true.
 //
-//  * DEAD OUTPUT. Meters moving, mix silent, only a reload helps. The master meter
-//    taps masterTrim BEFORE the master chain (see mixer.js) — so that state is,
-//    precisely, signal alive at the trim and nothing after the chain. A stuck
+//  * DEAD OUTPUT. Meters moving, mix silent, only the developer watchdog's input tap
+//    is alive before the master chain (see mixer.js) — so that state is, precisely,
+//    signal alive at the trim and nothing after the chain. A stuck
 //    DynamicsCompressor is the standing suspect (fed one NaN it holds it forever),
 //    but the recovery below does not need the culprit's name: rebuild the master
 //    chain from the mix, and if the output stays dead, cycle the context so the
@@ -15845,6 +18064,11 @@ const perfDiagMetricEls = new Map(
 const health = {
   text: '', lastWall: 0, lastCt: 0, deadRuns: 0,
   analyser: null, buf: null, longTask: 0,
+  // The last peaks measured leaving the desk and arriving at the master trim. Null
+  // until the first health tick, which is not the same as zero: one means "not yet
+  // measured" and the other means silence, and a diagnostic that confuses them is how
+  // an unmeasured output reads as a dead one.
+  peakPost: null, peakPre: null,
   // Why silence was EXPECTED, last time it was. Logged once per spell rather than
   // every second, so a paused desk does not narrate itself.
   quietWhy: '',
@@ -15892,6 +18116,20 @@ function resetSongClockMinimum() {
 // four-per-second observations until that boundary reaches the speakers.
 const loopHealthWindow = {
   ratioMin: Infinity, marginMin: Infinity, longTaskMax: 0,
+  // ---- WHAT CAME OUT, not just whether anything did ---------------------------
+  //
+  // The health tick already measures the peak leaving the desk and the peak arriving
+  // at the master trim, four times a second, and until now it threw both away unless a
+  // fault was being diagnosed: `preMasterPeak` and `postMasterPeak` have been columns
+  // in this CSV from the start and blank in every ordinary row of it.
+  //
+  // They are here because "the crackling could damage speakers" is a question about
+  // LEVEL, and it cannot be answered by a log that only records timing. A dropout is an
+  // interruption — its click can be no louder than the music either side of it — where
+  // a converter being driven past full scale is a square edge that was never in the
+  // music at all. Those are different faults with the same word for them, and this is
+  // the column that tells them apart.
+  peakPost: 0, peakPre: 0, clipTicks: 0,
   struggling: false, overloaded: false, machineBusy: false,
   // Scheduler WORK, drained per lap rather than per tick. Starvation says the queue
   // ran dry; this says what each pass cost and how much of it went on ticks between
@@ -15927,7 +18165,8 @@ const PERF_POS_KEY = 'mash-mixer-perfdiag-pos';
 
 const LOOP_LOG_COLUMNS = [
   'time', 'session', 'song', 'lap', 'loopStart', 'loopEnd', 'recordType', 'status',
-  'detail', 'audioState', 'preMasterPeak', 'postMasterPeak', 'deadRuns', 'recoveryTier',
+  'detail', 'audioState', 'preMasterPeak', 'postMasterPeak', 'masterClipTicks',
+  'deadRuns', 'recoveryTier',
   'stallSource', 'stallSourceMs',
   'clockMin', 'schedulerMarginMinMs', 'longTaskMaxMs', 'dropoutsDelta', 'dropoutsTotal',
   // Priority 0 telemetry — measurement only, no behaviour behind any of it yet.
@@ -15948,6 +18187,35 @@ const LOOP_LOG_COLUMNS = [
   'liveNotes', 'heldNative', 'cachedSources', 'mrdrLaneStages', 'mrdrChorusLegs',
   'mrdrTailEligible', 'mrdrTailCulled', 'mrdrTailSkipped', 'mrdrTailPotentialMs',
   'mrdrTailSavedMs', 'mrdrTailRatio', 'jsHeapMB',
+  // ---- what an EDIT costs ------------------------------------------------------
+  //
+  // "It plays smoothly under ideal conditions where nothing changes, but the second I
+  // tweak something it falls apart." These four columns are what turns that sentence into
+  // a measurement. `editMsMax` is the dearest single `VoiceRack.refresh` in the window —
+  // a pot move lands there. `cacheRenderMsMax` is the dearest single note-cache render,
+  // which is the work an edit CREATES: a tweak purges that voice's buffers and the desk
+  // re-renders them while the song is playing. Peaks per window, not totals since load.
+  'edits', 'editMsMax', 'cacheRenderMsMax', 'cacheRenderMsTotal',
+  // ---- and whether the repair actually ran --------------------------------------
+  //
+  // An edit purges its voice's buffers, so its notes play live until they are re-rendered.
+  // The desk now repairs the window the playhead is about to reach first. THREE counters
+  // rather than one boolean, because they fail differently: queued but never started is
+  // the idle gate or the clock brake refusing; started but never completing is a render
+  // slower than the window; and `cacheQueued` alone cannot tell the repair's work apart
+  // from ordinary background warming.
+  'cacheUrgent', 'cacheUrgentQueued', 'cacheUrgentStarted', 'cacheUrgentCompleted',
+  // ---- the MRDR-3 WORKLET's own account of itself ------------------------------
+  //
+  // An AW lane fills silence when its DSP throws rather than taking the song down with
+  // it, which is the right behaviour and which makes the failure invisible: the lane
+  // stops sounding and nothing else changes. These columns are the processor's own
+  // counters, polled once a second while the worklet backend is on. `awFaults` above
+  // zero means a lane HAS been filling silence; `awUnresponsive` means a processor did
+  // not answer at all, which is the one that means dead. `awQueued` climbing while
+  // `awGroups` sits at zero is the other shape — the schedule stopped firing.
+  'awBackend', 'awLanes', 'awGroups', 'awQueued', 'awLate', 'awSteals', 'awFaults',
+  'awUnresponsive', 'awDetached', 'awDropped',
   'operationDurationMs', 'operationBytes', 'operationSegments', 'heapBeforeMB', 'heapAfterMB',
   'profileTrack', 'profilePreset', 'profileBars', 'profileAudioSeconds',
   'profileFullMs', 'profileDryMs', 'profileLoadPct', 'profileFxDeltaMs',
@@ -15962,6 +18230,9 @@ function resetLoopHealthWindow() {
   loopHealthWindow.ratioMin = Infinity;
   loopHealthWindow.marginMin = Infinity;
   loopHealthWindow.longTaskMax = 0;
+  loopHealthWindow.peakPost = 0;
+  loopHealthWindow.peakPre = 0;
+  loopHealthWindow.clipTicks = 0;
   loopHealthWindow.struggling = false;
   loopHealthWindow.overloaded = false;
   loopHealthWindow.machineBusy = false;
@@ -15971,6 +18242,9 @@ function resetLoopHealthWindow() {
   loopHealthWindow.reliefVerdict = '';
   frameSpans.clear();
   auxDuty.clear();
+  // The edit and render peaks are per-window too, or the first bad one would be the
+  // answer for the rest of the session.
+  Audio.voices?.resetEditStats?.();
   lastLoggedDropouts = health.dropouts;
 }
 
@@ -16054,7 +18328,7 @@ function schedulerWorkFields() {
  * that field partway through its own pass and a shadow reading taken after the reset
  * would report a clean main thread on exactly the ticks that were not.
  */
-function updateReliefShadow(wall, { dropouts, marginMin, longTaskMs, ratio }) {
+function updateRelief(wall, { dropouts, marginMin, longTaskMs, ratio }) {
   const { state, event, verdict } = reliefTransition(reliefState, {
     wall, playing, ratio, dropouts, marginMin, longTaskMs,
     struggling: health.audioStruggling, behind: health.audioBehind,
@@ -16067,8 +18341,8 @@ function updateReliefShadow(wall, { dropouts, marginMin, longTaskMs, ratio }) {
   if (!event) return;
   if (event.type === 'on') {
     loopHealthWindow.reliefEnters++;
-    appendDiagnosticEvent('PERFORMANCE RELIEF ON (shadow)',
-      `would throttle drawing: ${event.reason}`, {
+    appendDiagnosticEvent('PERFORMANCE RELIEF ON',
+      `meters slowed to ${Math.round(1000 / METER_RELIEF_INTERVAL_MS)}/s: ${event.reason}`, {
         schedulerMarginMinMs: Number.isFinite(event.marginMin)
           ? Math.round(event.marginMin * 1000) : '',
         longTaskMaxMs: Math.round(event.longTaskMs || 0),
@@ -16076,8 +18350,8 @@ function updateReliefShadow(wall, { dropouts, marginMin, longTaskMs, ratio }) {
         reliefVerdict: event.reason,
       });
   } else {
-    appendDiagnosticEvent('PERFORMANCE RELIEF OFF (shadow)',
-      `would restore drawing after ${Math.round(event.durationMs)}ms of ${event.reason}`,
+    appendDiagnosticEvent('PERFORMANCE RELIEF OFF',
+      `meters back to full rate after ${Math.round(event.durationMs)}ms of ${event.reason}`,
       { reliefMs: Math.round(event.durationMs), reliefVerdict: event.reason });
   }
 }
@@ -16189,6 +18463,15 @@ function diagnosticRuntimeFields() {
     mrdrTailSavedMs: tail.savedSeconds == null ? '' : Math.round(tail.savedSeconds * 1000),
     mrdrTailRatio: tail.potentialRatio == null ? '' : +Number(tail.potentialRatio).toFixed(4),
     jsHeapMB: Number.isFinite(memory) ? +(memory / (1024 * 1024)).toFixed(1) : '',
+    edits: runtime.edits ?? 0,
+    editMsMax: runtime.editMsMax ?? 0,
+    cacheRenderMsMax: cache.renderMsMax == null ? '' : Math.round(cache.renderMsMax),
+    cacheRenderMsTotal: cache.renderMsTotal == null ? '' : Math.round(cache.renderMsTotal),
+    cacheUrgent: cache.urgent ? 1 : 0,
+    cacheUrgentQueued: cache.urgentQueued ?? 0,
+    cacheUrgentStarted: cache.urgentStarted ?? 0,
+    cacheUrgentCompleted: cache.urgentCompleted ?? 0,
+    ...mrdr3DiagnosticFields(),
   };
 }
 
@@ -16307,6 +18590,12 @@ function recordPerfDiag(kind, status, detail, snapshot = null) {
 }
 
 function samplePerfDiag(force = false) {
+  // Kicked from here so it shares the heartbeat rather than owning a timer of its own;
+  // it rate-limits itself and returns immediately when the worklet backend is off.
+  pollMrdr3Diagnostics();
+  // And the one that notices the log is about to go quiet, which is the moment nothing
+  // else in this file is watching for.
+  watchSilentTransport();
   if (!DEV_USER || (!playing && !force)) return;
   const now = performance.now();
   if (!force && now - perfDiagLastSampleAt < PERF_DIAG_SAMPLE_MS) return;
@@ -16322,6 +18611,316 @@ function samplePerfDiag(force = false) {
   recordPerfDiag('sample', snapshot.status, perfDiagDetail(snapshot), snapshot);
 }
 
+// ---- THE MRDR-3 WORKLET WATCHER ----------------------------------------------------
+//
+// Why this is polled rather than pushed: an AW lane that stops working does not raise
+// anything. Its processor catches its own exception, fills the block with silence and
+// carries on, which is deliberate — a lane that has stopped is better than a song that
+// has stopped — and it means the only outward sign is that a part went quiet. That is
+// indistinguishable from a part with nothing to play, which is how "it just cut out
+// after a while" becomes a report nobody can act on.
+//
+// So once a second, while the worklet backend is on, every lane is asked for its own
+// counters and the answer is written into the row like everything else. Two states also
+// raise an EVENT row the moment they appear, because a heartbeat sampled once a second
+// can miss the transition and the transition is the whole question: a lane whose DSP has
+// thrown, and a lane whose processor no longer answers at all.
+//
+// Asynchronous and fire-and-forget: `mrdr3LaneReport` is a port round trip per lane, and
+// the diagnostics row is built synchronously. The row therefore carries the LAST answer
+// rather than a fresh one, which is what a once-a-second counter is worth anyway.
+let mrdr3DiagSnapshot = null;
+let mrdr3DiagPending = false;
+let mrdr3DiagLastAt = 0;
+let mrdr3DiagReported = '';
+const MRDR3_DIAG_POLL_MS = 1000;
+
+function mrdr3DiagnosticFields() {
+  const snap = mrdr3DiagSnapshot;
+  if (!snap) return { awBackend: mrdrComparisonBackend() || '' };
+  return {
+    awBackend: snap.backend, awLanes: snap.lanes, awGroups: snap.groups,
+    awQueued: snap.queued, awLate: snap.late, awSteals: snap.steals,
+    awFaults: snap.faults, awUnresponsive: snap.unresponsive,
+    awDetached: snap.detached, awDropped: snap.dropped,
+  };
+}
+
+function pollMrdr3Diagnostics() {
+  const backend = mrdrComparisonBackend();
+  if (!DEV_USER || backend !== 'worklet' || !Audio.ctx) { mrdr3DiagSnapshot = null; return; }
+  const now = performance.now();
+  if (mrdr3DiagPending || now - mrdr3DiagLastAt < MRDR3_DIAG_POLL_MS) return;
+  mrdr3DiagPending = true;
+  mrdr3DiagLastAt = now;
+  mrdr3LaneReport(Audio.ctx).then((lanes) => {
+    mrdr3DiagPending = false;
+    if (!lanes.length) { mrdr3DiagSnapshot = null; return; }
+    const sum = (key) => lanes.reduce((n, l) => n + (Number(l[key]) || 0), 0);
+    const dead = lanes.filter((l) => l.unresponsive);
+    // A lane the engine never attached to a destination. A disconnected AudioWorkletNode
+    // is not rendered — nothing pulls it, so `process()` is never called — and the shape
+    // that leaves in the other columns is a queue climbing without bound while `late`,
+    // `steals` and `groups` sit perfectly still. That took an afternoon to read the first
+    // time; it should take a glance the next.
+    const detached = lanes.filter((l) => l.connected === false);
+    const faulted = lanes.filter((l) => (Number(l.faults) || 0) > 0);
+    mrdr3DiagSnapshot = {
+      backend, lanes: lanes.length, groups: sum('groups'), queued: sum('queued'),
+      late: sum('late'), steals: sum('steals'), faults: sum('faults'),
+      // Note-ons the core refused because they were owed to a moment that had gone. It
+      // reads as the AFTERMATH of a strand rather than a fault of its own: a lane that
+      // stopped being pulled, went on being fed, and then threw the backlog away instead
+      // of playing it as a chord. Non-zero here with `awQueued` back at a handful is the
+      // signature of a lane that recovered — see tests/mrdr3-stale.js.
+      dropped: sum('dropped'),
+      unresponsive: dead.length, detached: detached.length,
+    };
+    // One row per transition, not one per poll: the counters only ever climb, so a lane
+    // that threw once would otherwise write an identical event every second for the rest
+    // of the session and bury the moment it happened.
+    const key = `${dead.map((l) => l.lane).join(',')}|${faulted.map((l) => `${l.lane}:${l.faults}`).join(',')}`
+      + `|${detached.map((l) => l.lane).join(',')}`;
+    if (key === mrdr3DiagReported) return;
+    mrdr3DiagReported = key;
+    if (dead.length) {
+      appendDiagnosticEvent('MRDR-3 AW LANE DEAD',
+        `${dead.map((l) => l.lane).join(', ')} did not answer — the processor is gone and `
+        + 'this lane is silent until the song is reloaded');
+    }
+    if (detached.length) {
+      appendDiagnosticEvent('MRDR-3 AW LANE DETACHED',
+        `${detached.map((l) => l.lane).join(', ')} is attached to nothing — a worklet node`
+        + ' with no destination is never rendered, so this lane is silent and its queue'
+        + ' will climb without bound');
+    }
+    if (faulted.length) {
+      appendDiagnosticEvent('MRDR-3 AW DSP THREW',
+        faulted.map((l) => `${l.lane} threw ${l.faults}x (${l.groups} sounding, `
+          + `${l.queued} queued)`).join('; ')
+        + ' — the lane is filling silence, see the console for the stack');
+    }
+  }).catch(() => { mrdr3DiagPending = false; });
+}
+
+// ---- PLAYING, AND SILENT ------------------------------------------------------------
+//
+// The gap this closes: the desk's silence watchdog only calls silence a fault while output
+// is EXPECTED — `Audio.outputExpected()`, which is the sequencer saying it has just booked
+// a note. That is the right rule for a graph that has died underneath a playing song, and
+// it is blind to the opposite failure, where the sequencer stops booking anything at all.
+// Then nothing is expected, so silence is correct, so no fault is raised — and because
+// diagnostics rows are written on events and laps, the log simply STOPS. A session that
+// went quiet after a few edits ended with a row saying OK and nothing after it.
+//
+// So: if the transport says it is playing and nothing has been scheduled for long enough
+// that no plausible rest explains it, that is a row. It carries the scheduler's own
+// counters, because "the transport is running but the scheduler is doing nothing" and
+// "the scheduler is working but its notes are silent" are different bugs and these
+// numbers tell them apart.
+const SILENT_TRANSPORT_MS = 2500;
+let silentSince = 0;
+let silentReported = false;
+
+function watchSilentTransport() {
+  if (!DEV_USER) return;
+  const expecting = !!Audio.outputExpected?.();
+  if (!playing || expecting) {
+    if (silentReported && playing) {
+      appendDiagnosticEvent('TRANSPORT SOUNDING AGAIN',
+        `notes are being scheduled again after ${Math.round((performance.now() - silentSince) / 100) / 10}s`);
+    }
+    silentSince = 0;
+    silentReported = false;
+    return;
+  }
+  const now = performance.now();
+  if (!silentSince) { silentSince = now; return; }
+  if (silentReported || now - silentSince < SILENT_TRANSPORT_MS) return;
+  silentReported = true;
+  const work = loopHealthWindow.work;
+  appendDiagnosticEvent('TRANSPORT RUNNING, NOTHING SCHEDULED',
+    `${Math.round((now - silentSince) / 100) / 10}s with the transport playing and no note`
+    + ` booked. Scheduler this window: ${work?.ticks ?? 0} ticks, ${work?.laneReads ?? 0}`
+    + ` lane reads. ${(work?.ticks ?? 0) === 0
+      ? 'The scheduler is not running at all.'
+      : 'The scheduler is running and finding nothing to play.'}`);
+}
+
+// ---- THE OVERLOAD NOTICE -------------------------------------------------------------
+//
+// Why this is not in the footer any more. Everything else the footer carries is a STATUS:
+// the clock, the peak, the watchdog's verdict. You read them after you have noticed
+// something and gone looking. This one is different — it is the only message on the desk
+// that asks the user to do something, and it is raised in the one condition where the
+// problem does not announce itself as a problem. An overloaded desk sounds like the music
+// stuttering, which reads as a bad arrangement or a bad preset, and the footer is exactly
+// where you do not look when you think the music is wrong.
+//
+// So it is overlaid and it stays until it is dismissed. Deliberately NOT a modal: the way
+// out is to press pause, and a notice that has to be dismissed before the transport can be
+// reached is a notice that gets in the way of its own advice.
+//
+// DISMISSED MEANS DISMISSED, for this stretch of trouble. It comes back only after the
+// desk has been healthy again for a while — otherwise a user who has decided to play
+// through the stutter is told about it every second for as long as they keep playing,
+// which teaches them to ignore the one message worth reading.
+const OVERLOAD_REARM_MS = 30000;
+let overloadDismissedAt = 0;
+let overloadShown = false;
+let overloadHealthySince = 0;
+
+// ---- AND WHEN IT IS BAD ENOUGH FOR LONG ENOUGH, STOP ---------------------------------
+//
+// Telling somebody to press pause is worse than pressing it, once it is this clear. An
+// audio clock this far behind is not a stutter to play through: the output is already
+// breaking up, the notes being scheduled are not the notes being heard, and every extra
+// second spent rolling makes the backlog that caused it larger. Meanwhile the ONE action
+// that fixes it — stopping — is the action the desk can take itself, and stopping is not
+// destructive: the playhead parks where it is and play resumes from there.
+//
+// The bar is deliberately high. This takes the transport out of the user's hands, so it
+// must never fire on a glitch, a seek, a song load or a machine that hiccuped. Four
+// consecutive quarter-second verdicts of OVERLOADED — a full second of the desk being
+// certain, not one bad sample — and only while actually playing.
+//
+// ONCE PER STRETCH. If the user presses play again into the same trouble, that is their
+// decision and the desk does not overrule it twice; the notice stays up and says so. The
+// arm resets when the desk has been healthy again, the same clock the notice uses.
+const AUTOSTOP_TICKS = 4;
+let autostopRuns = 0;
+let autostopArmed = true;
+let autostopFired = false;
+
+function syncOverloadNotice(behind, backlog) {
+  const el = $('overload');
+  if (!el) return;
+  const now = performance.now();
+  // ---- the automatic stop ------------------------------------------------------
+  // ---- NOT WHILE THE PAGE IS HIDDEN --------------------------------------------
+  //
+  // A backgrounded tab has its timers throttled, so the 250ms health tick that counts
+  // these verdicts is no longer 250ms — four "consecutive" ticks can span many seconds,
+  // and a clock that dips and recovers looks like a sustained overload. Measured: the
+  // desk stopped itself at clock 0.940 with an empty cache queue, no edits and a
+  // scheduler margin of 1481ms. Nothing was wrong; the instrument was.
+  //
+  // And the action is worst exactly here. Someone playing the desk in the background is
+  // LISTENING to it — they cannot see the notice explaining what happened, and the one
+  // thing they would notice is the music stopping. A measurement we cannot trust is not
+  // grounds for taking the transport away from someone who is using it.
+  //
+  // The audio thread is not throttled, so genuine trouble is still audible and still
+  // theirs to act on. The readout, the diagnostics row and the relief all carry on; only
+  // the destructive step waits until the desk can see what it is doing.
+  //
+  // `hidden` OR unfocused, which is the same test `AudioSys.lookahead` already settled
+  // for the same reason: switch to another app and the window is usually still sitting
+  // in plain sight, so `hidden` stays false while the process has already been demoted
+  // and its timers with it. Gating on `hidden` alone would fix the tab nobody listens
+  // through and miss the one you work in — which is the one this fired in.
+  const visible = typeof document === 'undefined'
+    || (!document.hidden && document.hasFocus());
+  autostopRuns = behind && playing && visible ? autostopRuns + 1 : 0;
+  if (autostopRuns >= AUTOSTOP_TICKS && autostopArmed && playing && visible) {
+    autostopArmed = false;
+    autostopFired = true;
+    autostopRuns = 0;
+    // The notice is about to say why, so this does not also toast: two messages about
+    // one event is how a desk teaches you to read neither.
+    appendDiagnosticEvent('TRANSPORT STOPPED — OVERLOADED',
+      `the audio clock stayed below the limit for ${AUTOSTOP_TICKS} consecutive checks`
+      + ` with ${backlog} notes still to prepare; the desk stopped the transport so`
+      + ' preparation can run at full speed');
+    console.warn('[audio-health] transport stopped automatically — the audio clock was too'
+      + ' far behind to keep playing. Preparation now runs at full speed.');
+    setPlaying(false);
+    // The queue at this moment holds the WHOLE SONG — measured at 1535 entries — and it is
+    // sorted late-first, which is right for warming from the top and exactly wrong here.
+    // What decides whether Play can be pressed again is the couple of bars under the
+    // parked playhead, so those go to the head of the queue. The rest keeps warming
+    // behind them.
+    Audio.prepareFromPlayhead?.();
+    // Fall through: the notice below is what explains it, and it must be raised even
+    // though `behind` is about to stop being true now that nothing is playing.
+    overloadDismissedAt = 0;
+    overloadHealthySince = 0;
+    const body0 = $('overloadbody');
+    if (body0) {
+      body0.innerHTML = '<b>The desk stopped the transport.</b> The audio was too far'
+        + ' behind to keep playing, so it stopped rather than break up — the playhead is'
+        + ' parked where it was and <b>Play</b> carries on from there.'
+        + (backlog > 0
+          ? ` <b class="ocount">${backlog}</b> notes are being prepared now, at full speed.`
+          : ' Nothing is left to prepare, so the mix itself is heavier than this machine'
+            + ' can render live: freeze or simplify a lane before starting again.');
+    }
+    overloadShown = true;
+    el.classList.add('show');
+    return;
+  }
+  // ---- while the notice from an automatic stop is up, KEEP IT CURRENT ----------
+  //
+  // The complaint this answers: "I pressed pause and the sound was still cut off." Of
+  // course it was — the backlog that caused the stop takes ten seconds or more to drain,
+  // and nothing on screen said so. A notice that names a number once and then freezes is
+  // telling you to wait without telling you what for or how long.
+  //
+  // So while it is up and the transport is stopped, the count comes down in front of you
+  // and the message changes when there is nothing left to wait for. That is the whole
+  // difference between "the desk stopped and I do not know why" and "the desk is doing
+  // something and I can see it finish".
+  if (autostopFired && overloadShown && !playing) {
+    const body = $('overloadbody');
+    if (body) {
+      body.innerHTML = backlog > 0
+        ? '<b>The desk stopped the transport.</b> The audio was too far behind to keep'
+          + ' playing. Preparing the bars under the playhead, at full speed —'
+          + ` <b class="ocount">${backlog}</b> to go. <b>Wait for this to reach zero</b>`
+          + ' before pressing Play. The rest of the song keeps warming behind it.'
+        : '<b>Ready to play from here.</b> The bars under the playhead are prepared —'
+          + ' press <b>Play</b>. The rest of the song is still warming, so a later section'
+          + ' may need a moment when you reach it.';
+    }
+    return;
+  }
+  if (!behind) {
+    // Healthy. Take the notice down, and start the clock that re-arms it.
+    if (!overloadHealthySince) overloadHealthySince = now;
+    // The notice raised BY an automatic stop stays up until it is dismissed: the desk
+    // took an action on the user's behalf and "it went away by itself" is not an
+    // acceptable account of that.
+    // Sticky while STOPPED, because the desk took an action and owes an account of it.
+    // Once the transport is rolling again the account has been read — pressing Play is
+    // the acknowledgement — so a healthy desk takes it down like any other notice.
+    if (playing) autostopFired = false;
+    if (overloadShown && !autostopFired) { overloadShown = false; el.classList.remove('show'); }
+    if (now - overloadHealthySince > OVERLOAD_REARM_MS) {
+      overloadDismissedAt = 0;
+      autostopArmed = true;
+    }
+    return;
+  }
+  overloadHealthySince = 0;
+  if (overloadDismissedAt) return;
+  // The backlog is the reason WAITING works rather than reloading: pausing lets the cache
+  // finish at full speed, so the honest instruction is the one that names the number
+  // coming down. With nothing left to prepare, waiting fixes nothing and saying so is
+  // more use than a hopeful message.
+  const body = $('overloadbody');
+  if (body) {
+    body.innerHTML = backlog > 25
+      ? 'The mix is heavier than this machine can render live, and there are '
+        + `<b class="ocount">${backlog}</b> notes still being prepared. <b>Press pause</b> —`
+        + ' preparation runs at full speed while the transport is stopped, and playback'
+        + ' should be clean when you start again.'
+      : 'The mix is heavier than this machine can render live, and there is nothing left'
+        + ' to prepare — waiting will not help. Freeze or simplify a lane, or turn off an'
+        + ' effect, to get back under the limit.';
+  }
+  if (!overloadShown) { overloadShown = true; el.classList.add('show'); }
+}
+
 /** Persist a fault or recovery now; unlike a lap row, this does not wait for audio. */
 function appendDiagnosticEvent(status, detail, fields = {}) {
   if (!DEV_USER) return;
@@ -16330,6 +18929,9 @@ function appendDiagnosticEvent(status, detail, fields = {}) {
     time: new Date().toISOString(), session: loopLogSession, song: trackId,
     lap: '', loopStart: Audio.loopStart ?? '', loopEnd: Audio.loopEnd ?? '',
     recordType: 'event', status, detail, audioState: Audio.ctx?.state || '',
+    preMasterPeak: health.peakPre == null ? '' : diagnosticPeak(health.peakPre),
+    postMasterPeak: health.peakPost == null ? '' : diagnosticPeak(health.peakPost),
+    masterClipTicks: loopHealthWindow.clipTicks,
     clockMin: Number.isFinite(health.ratio) ? health.ratio.toFixed(3) : '',
     schedulerMarginMinMs: health.marginMin == null ? '' : Math.round(health.marginMin * 1000),
     longTaskMaxMs: Math.round(health.longTask || 0), dropoutsDelta: fields.dropoutsDelta ?? 0,
@@ -16394,7 +18996,11 @@ function appendLoopLog({ start, end }) {
   const record = {
     time: new Date().toISOString(), session: loopLogSession, song: trackId, lap,
     loopStart: start, loopEnd: end, recordType: 'loop', status, detail: '',
-    audioState: ctx.state, preMasterPeak: '', postMasterPeak: '', deadRuns: health.deadRuns,
+    audioState: ctx.state,
+    preMasterPeak: diagnosticPeak(loopHealthWindow.peakPre),
+    postMasterPeak: diagnosticPeak(loopHealthWindow.peakPost),
+    masterClipTicks: loopHealthWindow.clipTicks,
+    deadRuns: health.deadRuns,
     recoveryTier: '', stallSource: '', stallSourceMs: '',
     clockMin: Number.isFinite(loopHealthWindow.ratioMin) ? loopHealthWindow.ratioMin.toFixed(3) : '',
     schedulerMarginMinMs: Number.isFinite(loopHealthWindow.marginMin)
@@ -16581,12 +19187,29 @@ function checkAudioHealth() {
       if (a > post) post = a;
     }
   }
-  const preLR = Audio.mixer ? Audio.mixer.masterLevels() : [0, 0];
+  const preLR = Audio.mixer ? Audio.mixer.masterInputLevels() : [0, 0];
   // Do not let `NaN || 0` launder a poisoned pre-master meter into silence. Its
   // non-finiteness is exactly the evidence needed to name an upstream fault.
   const preValues = [preLR[0] ?? 0, preLR[1] ?? 0];
   const preNonFinite = preValues.some((value) => !Number.isFinite(value));
   const pre = preNonFinite ? NaN : Math.max(preValues[0], preValues[1]);
+  // Both peaks kept as a window MAX, and full-scale ticks counted separately.
+  //
+  // A max alone cannot distinguish one transient touching the ceiling from a passage
+  // sitting on it, and only the second is the thing that squares off a waveform into a
+  // tweeter. 0.999 rather than 1: the converter clamps at 1.0, so anything that arrives
+  // there has already lost its top, and the reading is a floor on how far past it went.
+  if (Number.isFinite(post)) {
+    if (post > loopHealthWindow.peakPost) loopHealthWindow.peakPost = post;
+    if (post >= 0.999) loopHealthWindow.clipTicks++;
+  }
+  if (Number.isFinite(pre) && pre > loopHealthWindow.peakPre) loopHealthWindow.peakPre = pre;
+  // And the LAST reading, for event rows. A lap row answers "how loud did this pass
+  // get"; an event row is written at the moment something went wrong and should say how
+  // loud it was THEN — the two questions a dropout raises are what interrupted the music
+  // and what level the interruption happened at.
+  health.peakPost = post;
+  health.peakPre = pre;
 
   // Is output EXPECTED right now? Silence is the correct answer to a stopped
   // transport, a muted desk, a level at zero or a panic, and repairing the graph
@@ -16868,17 +19491,24 @@ function checkAudioHealth() {
       : 'OVERLOADED — mix too heavy')
     : health.audioStruggling ? 'STRUGGLING — near the limit'
       : health.uiStalled ? 'INTERRUPTED — browser busy' : '';
+  // The footer keeps the live status. The INSTRUCTION goes somewhere it cannot be missed.
+  // The number that decides whether Play can be pressed, which is NOT the queue length:
+  // the queue holds the whole song and drains in minutes, while what blocks resuming is
+  // the handful of notes around the playhead. See `prepareFromPlayhead`.
+  syncOverloadNotice(health.audioBehind, Audio.noteCacheHealth?.()?.urgentPending ?? 0);
   // The readout shows what was just measured, so the thing that measures refreshes
   // it — nothing else calls `updateCpu` while a song merely plays. Only when the
   // VERDICT changes, though: this runs four times a second now, and rebuilding a
   // tooltip that nobody is hovering, sixty times a bar, is exactly the sort of idle
   // main-thread work the rest of this file exists to remove. The once-a-second pass
   // keeps the numbers inside the tooltip fresh for whoever is reading them.
-  // SHADOW ONLY. This decides whether the desk would reduce its drawing, and logs the
-  // decision; it does not reduce anything. Running it now — before any UI hangs off
-  // it — is what makes the thresholds arguable from real sessions rather than from a
-  // guess, and it is where the flapping risk near 0.95x will show up if it exists.
-  updateReliefShadow(wall, {
+  // NO LONGER A SHADOW. This ran for weeks deciding whether the desk should reduce its
+  // drawing and then not reducing anything, which was the right way round: the
+  // thresholds are now argued from real sessions rather than guessed. The evidence they
+  // were waiting for arrived — it fired on 37 real events, and across the same
+  // diagnostics the scheduler's margin was negative in 175 rows of 250 — so its verdict
+  // now pauses the meters. See the gate in `tick`.
+  updateRelief(wall, {
     dropouts: sched?.late || 0, marginMin: health.marginMin, longTaskMs, ratio,
   });
   const verdict = `${health.audioBehind}|${health.audioStruggling}|${health.uiStalled}`;
@@ -16949,6 +19579,7 @@ function placePerfDiag(x = null, y = null) {
 
 function openPerfDiag() {
   if (!DEV_USER || !perfDiag) return;
+  if (audioSettingsDialog?.open) closeAudioSettings();
   perfDiag.hidden = false;
   perfDiagOpen?.setAttribute('aria-expanded', 'true');
   placePerfDiag();
@@ -17026,6 +19657,7 @@ addEventListener('resize', () => {
 refreshPerfDiagUi();
 
 function openLoopLog() {
+  if (audioSettingsDialog?.open) closeAudioSettings();
   refreshLoopLogUi();
   if (typeof loopLogDialog.showModal === 'function') loopLogDialog.showModal();
   else loopLogDialog.setAttribute('open', '');
@@ -17104,17 +19736,26 @@ function updateStatus() {
   // On the deployed desk a save is a copy in this browser, not a file, and the button
   // has to say which of the two it is — "Saved" against a mix that is one cleared
   // browser from gone is the one reading nobody should have to guess at.
+  const cabUp = inCabMode();
+  const cabD = cabDeskDirty();
   save.textContent = !writable ? 'Read-only MIDI import'
-    : STATIC ? (d ? 'Save my mix' : 'Saved — matches your copy')
-      : d ? 'Save song' : 'Saved — matches the file';
-  save.disabled = !writable || !d;
+    : cabUp ? (cabD ? 'Update cabinet mix' : 'Cabinet mix — matches the file')
+      : STATIC ? (d ? 'Save my mix' : 'Saved — matches your copy')
+        : d ? 'Save song' : 'Saved — matches the file';
+  save.disabled = !writable || (cabUp ? !cabD : !d);
   save.title = !writable ? 'This legacy MIDI import has no desk-owned file section to save'
     : STATIC ? (d ? `Keep ${halves.join(' and ')} as your copy of this song, in this browser only`
       : `${track.title} matches the copy you saved in this browser`)
       : d ? `Write ${halves.join(' and ')} into src/data/songs/${trackId}.js`
-      + (cabOnDesk[trackId] ? `\n\nWARNING: the desk is showing the "${cabOnDesk[trackId]}" cabinet`
-        + ' mix, not the level mix. Capture it back to the cabinet screen first.' : '')
       : `${track.title} already matches its file`;
+  // In cabinet mode the button is a different button, so it gets a different sentence
+  // rather than a warning bolted onto the level's one.
+  if (writable && cabUp) {
+    save.title = cabD
+      ? `Write the "${cabOnDesk[trackId]}" cabinet mix for ${track.title}. The level mix is not touched.`
+      : `The "${cabOnDesk[trackId]}" cabinet mix already matches the file. Close the bar to get back to the level.`;
+  }
+  syncCabBar();
   // Save As, and it is offered on everything with a bank — including a read-only MIDI
   // import, where it is the only way to keep an edit at all, and including a copy of a
   // copy, which is just the next snapshot. Nothing is written but the new file, so
@@ -17218,6 +19859,11 @@ function openDrawer() {
 }
 
 $('navbtn').onclick = (ev) => { ev.stopPropagation(); openDrawer(); };
+$('settingsmenu').onclick = (ev) => {
+  ev.stopPropagation();
+  closeMenu();
+  openAudioSettings();
+};
 $('drawerclose').onclick = closeMenu;
 $('drawerbackdrop').onclick = closeMenu;
 addEventListener('keydown', (ev) => {
@@ -17338,6 +19984,9 @@ const refreshThemeColours = () => {
   // so the inline values follow the new finite palette immediately.
   buildRack();
   buildArrangement();
+  // …and the one surface CSS cannot reach: a Channel EQ's curve is canvas pixels,
+  // painted in the palette that was current when it was last drawn.
+  repaintEqGraphs();
 };
 applyTheme();
 themeSel.onchange = () => {
@@ -19629,23 +22278,42 @@ function forgetRecent(id) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(recentSongIds().filter((x) => x !== id)));
 }
 
+let songLoadRequest = 0;
+let pendingSongLoad = null;
+
 function selectSong(id) {
-  cancelStartPreparation();
-  peakSeen = 0;
-  // The dropout count is about the song in front of you, like the peak reading beside
-  // it — carrying the last song's holes over would make a clean mix look faulty.
-  health.dropouts = 0;
-  health.uiStalled = false;
-  health.audioBehind = false;
-  health.behindSince = 0;
-  health.audioStruggling = false;
-  loadTrack(id);
-  $('nowsong').textContent = track.title;
-  localStorage.setItem(SONG_KEY, id);
-  rememberRecent(id);
-  // Whatever this song has stored for its cabinet screen, shown rather than assumed.
-  if (typeof cabSyncControls === 'function') cabSyncControls();
-  if ($('navdrawer')?.classList.contains('show')) renderSongBrowser();
+  if (pendingSongLoad?.id === id) return pendingSongLoad.promise;
+  const request = ++songLoadRequest;
+  const promise = (async () => {
+    cancelStartPreparation();
+    peakSeen = 0;
+    // The dropout count is about the song in front of you, like the peak reading beside
+    // it — carrying the last song's holes over would make a clean mix look faulty.
+    health.dropouts = 0;
+    health.uiStalled = false;
+    health.audioBehind = false;
+    health.behindSince = 0;
+    health.audioStruggling = false;
+    showLoadProgress(MIXER_BRAND);
+    await nextPaint();
+    if (request !== songLoadRequest) return false;
+    try {
+      await loadTrack(id, (stage, fraction) => setLoadProgress(stage, fraction, MIXER_BRAND));
+      if (request !== songLoadRequest) return false;
+      $('nowsong').textContent = track.title;
+      localStorage.setItem(SONG_KEY, id);
+      rememberRecent(id);
+      // Whatever this song has stored for its cabinet screen, shown rather than assumed.
+      if (typeof cabSyncControls === 'function') cabSyncControls();
+      if ($('navdrawer')?.classList.contains('show')) renderSongBrowser();
+      return true;
+    } finally {
+      if (request === songLoadRequest) hideLoadProgress();
+      if (pendingSongLoad?.promise === promise) pendingSongLoad = null;
+    }
+  })();
+  pendingSongLoad = { id, promise };
+  return promise;
 }
 
 function songButton(t, { recent = false } = {}) {
@@ -19655,7 +22323,11 @@ function songButton(t, { recent = false } = {}) {
   const id = document.createElement('span'); id.className = 'songid'; id.textContent = t.id;
   b.append(name, id);
   b.title = `${t.title} — ${t.id}` + (recent ? ' · recently opened' : '');
-  b.onclick = () => { closeMenu(); selectSong(t.id); toast(`Loaded ${t.title}`); };
+  b.onclick = async () => {
+    closeMenu();
+    await selectSong(t.id);
+    toast(`Loaded ${t.title}`);
+  };
   return b;
 }
 
@@ -19742,7 +22414,8 @@ async function createNewSong() {
     + SONG_STYLES.map((s) => `<option value="${s.id}"${sel(prefs.style, s.id)}>${escapeHtml(s.label)} · ${s.bpm} BPM</option>`).join('')
     + '</select></label>'
     + '<label class="askfield">Tempo<input id="newsongbpm" type="number" min="40" max="240" step="1"></label>'
-    + `<label class="askcheck" id="newsongtempofield"><input id="newsongstyletempo" type="checkbox"${prefs.styleTempo ? ' checked' : ''}>Use the template’s own tempo</label>`
+    + `<label class="askcheck askcheck-toggle" id="newsongtempofield"><input id="newsongstyletempo" type="checkbox"${prefs.styleTempo ? ' checked' : ''}>`
+    + `<span class="fxswitch${prefs.styleTempo ? ' on' : ''}" aria-hidden="true"><i></i></span><span>Use the template’s own tempo</span></label>`
     + `<label class="askfield">Bars<input id="newsongbars" type="number" min="1" max="64" step="1" value="${prefs.bars}"></label>`,
     'Create');
   const title = $('newsongtitle');
@@ -19752,6 +22425,7 @@ async function createNewSong() {
   const styleField = $('newsongstylefield');
   const tempoField = $('newsongtempofield');
   const styleTempo = $('newsongstyletempo');
+  const tempoSwitch = tempoField.querySelector('.fxswitch');
   const bpmField = $('newsongbpm');
   // The tempo box is either yours to type in or the template's to report. Left as an
   // empty box with a placeholder, it was a field that looked unanswered and a number
@@ -19777,7 +22451,10 @@ async function createNewSong() {
   };
   templateSelect.onchange = paint;
   styleSelect.onchange = paint;
-  styleTempo.onchange = paint;
+  styleTempo.onchange = () => {
+    tempoSwitch.classList.toggle('on', styleTempo.checked);
+    paint();
+  };
   paint();
   if (!await answered) { $('navbtn').focus(); return; }
   const blank = templateSelect.value === 'blank';
@@ -19835,7 +22512,7 @@ async function createNewSong() {
       saved[id] = null;
       savedArr[id] = null;
       persistLocalSongs();
-      selectSong(id);
+      await selectSong(id);
       if (playing) setPlaying(true, 0);
       toast(`Created ${track.title} — ${plan.style.label}, ${plan.key}, ${plan.spec.bpm} BPM`
         + ' · kept in this browser', 5000);
@@ -19850,7 +22527,7 @@ async function createNewSong() {
   registerTrack(out.track);
   saved[out.track.id] = null;
   savedArr[out.track.id] = null;
-  selectSong(out.track.id);
+  await selectSong(out.track.id);
   if (playing) setPlaying(true, 0);
   // What it came out as, because with Auto the style is the interesting part of the
   // answer and the alternative is guessing it from the sound.
@@ -19909,7 +22586,7 @@ async function deleteScratchSong() {
   saveSongLayouts();
   undoStack.length = 0;
   lastEditTag = null;
-  if (fallback) selectSong(fallback.id);
+  if (fallback) await selectSong(fallback.id);
   renderSongBrowser();
   toast(`${title} deleted`);
 }
@@ -19978,17 +22655,23 @@ const HEALTH_LINGER_MS = 12000;
 let lastHealthText = '';
 let lastHealthAt = 0;
 
-function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
+function setPlaying(on, fromStep = null, { countIn = 0, preservePendingPlayback = false } = {}) {
   // Before `playing` changes, so `recording()` is still true and the take can measure
   // the keys that are still down against the position the music actually stopped at.
   // The transport stopping is the take ending; the arm stays on, so hitting play again
   // carries straight on recording.
+  if (!on && !preservePendingPlayback) clearPendingPlaybackFlash();
   if (!on && recArmed) endTake('stopped');
   playing = on;
   // The note cache pumps at full speed the moment the transport is not rolling — a
   // pause is precisely the "let it catch up" gesture, and it used to build at trickle
   // pace and read as useless. See setNoteCacheTransportRunning in the engine.
   Audio.setNoteCacheTransport?.(playing);
+  // A worklet lane's queue outlives a pause, where a native voice's nodes freeze with the
+  // context. Clearing it on every transport change is what stops a resumed song firing
+  // notes whose moment has gone — the symptom being a lane that goes quiet and stays
+  // quiet. See VoiceRack.panicMrdr3Aw.
+  if (!playing) Audio.voices?.panicMrdr3Aw?.();
   $('play').classList.toggle('on', playing);
   $('pause').disabled = !playing;
   // The bench's play button says whether it would join the song or start beside it, and
@@ -20021,7 +22704,12 @@ function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
     // crossing rather than a flush measured against a stale `-1`.
     recLastBeat = Math.floor((at % Math.max(1, songShape().totalSteps)) / 4);
     recLastHeard = at;
+    // `setBank` schedules the first destination note after its clean start gap. The
+    // visual cursor must meet that note, not the scheduler's ahead-of-time `step`.
+    Audio.markVisualSeek?.(at);
   } else {
+    visualSeekHold = null;
+    Audio.takeVisualSeek?.();
     // Exactly where the playhead is, so Play carries on from here; the loop region
     // still snaps to the bar that contains it.
     const { totalSteps } = songShape();
@@ -20053,18 +22741,26 @@ function setPlaying(on, fromStep = null, { countIn = 0 } = {}) {
 /*
  * How long "play from top" will hold the transport while the note cache prepares.
  *
- * 1200ms was right when a plan was tens of renders — the pooled pluck lanes. The day
- * the string section became cacheable a plan grew to hundreds, and a 1.2s budget
- * prepared five notes, expired, and started cold every time — which is why nobody had
- * ever actually seen the "Preparing MRDR-3 n / m" state the button carries: it was
- * gone inside a second, and the first laps played through the audible warm-up instead.
+ * THREE SECONDS, and the number is a judgement about waiting rather than about renders.
  *
- * The button is its own escape hatch — pressing it again during preparation means
- * "start now" — so the deadline's only job is to stop a stuck render from holding the
- * transport hostage forever. Three minutes covers the largest plan the desk has
- * produced (about 500 renders) with room; nobody has to wait it out, ever.
+ * It has been both extremes. 1200ms was right when a plan was tens of renders — the
+ * pooled pluck lanes — and wrong the day the string section became cacheable: a plan grew
+ * to hundreds, the budget prepared five notes, expired, and started cold every time. The
+ * fix ran the other way and made the deadline three MINUTES, on the reasoning that the
+ * button is its own escape hatch and nobody has to wait it out. That reasoning was
+ * sound and the result was still wrong, because the escape hatch is a tooltip: what
+ * pressing Play actually does, on a heavy song, is nothing you can hear for a long time.
+ *
+ * Nobody wants to wait to hear their own track. So the wait is capped at something short
+ * enough not to read as a hang, and everything unprepared at that point is simply warmed
+ * by the TRICKLE during playback, which is the machinery that already exists for exactly
+ * this. A song that prepares inside three seconds still starts fully warm; a song that
+ * cannot is playing, which is the thing that was actually being asked for.
+ *
+ * The remaining job of the deadline is unchanged: stop a stuck render from holding the
+ * transport hostage. It just no longer holds a working one hostage either.
  */
-const NOTE_CACHE_START_BUDGET_MS = 180000;
+const NOTE_CACHE_START_BUDGET_MS = 3000;
 let preparingFromStart = false;
 let startPreparationToken = 0;
 let preparationControl = 'start';
@@ -20192,7 +22888,11 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
   Audio.setNoteCachePreparationHeld(false);
   const selected = initial.plan?.selected || 0;
   const planned = initial.plan?.candidates || 0;
-  toast(`Preparing ${range ? 'loop' : 'audio'}… ${selected || initialPending} sound${(selected || initialPending) === 1 ? '' : 's'} selected${planned ? ` of ${planned}` : ''}`, 3000);
+  // Say how long this lasts and that it ends by itself — a progress count with no
+  // horizon reads as "wait", and the whole point of the short budget is that you do not.
+  const warming = selected || initialPending;
+  toast(`Warming ${warming} sound${warming === 1 ? '' : 's'} for up to 3s, then playing`
+    + ` — the rest warms as it plays`, 2500);
   const deadline = performance.now() + NOTE_CACHE_START_BUDGET_MS;
   let budgetExpired = false;
   while (token === startPreparationToken) {
@@ -20214,9 +22914,14 @@ async function prepareAndStart({ fromStep = 0, range = null, control = 'start' }
 
   if (token !== startPreparationToken) return;
   const health = Audio.noteCacheHealth?.();
+  // `budgetExpired` is now the ORDINARY outcome on a heavy song rather than a fault, so
+  // it says what is happening instead of naming a budget nobody set: the song is playing
+  // and the trickle is still filling in behind it.
+  const where = range ? 'loop' : 'from beginning';
   await startPreparedTransport(health?.buffers
-    ? `Playing ${range ? 'loop' : 'from beginning'} · ${health.buffers} cached note${health.buffers === 1 ? '' : 's'}`
-    : `Playing ${range ? 'loop' : 'from beginning'}${budgetExpired ? ' · live warm-up' : ''}`);
+    ? `Playing ${where} · ${health.buffers} cached note${health.buffers === 1 ? '' : 's'}`
+      + `${budgetExpired ? ', warming as it plays' : ''}`
+    : `Playing ${where}${budgetExpired ? ' · warming as it plays' : ''}`);
 }
 
 async function playFromBeginning() {
@@ -20407,6 +23112,92 @@ $('rearrangefile').onchange = async () => {
   await loadRearrangeJson(file);
 };
 $('clearsolo').onclick = clearAllSolo;
+
+// ---- the MRDR-3 AW switch (§9.2) ----------------------------------------------------
+//
+// A bench control, not a feature. It forces every MRDR-3 lane through one backend or the
+// other so the two can be heard against each other on real material, and it is SESSION
+// ONLY — a reload comes back native, because a flag that survives a reload is one power
+// cycle away from being a scaffold that shipped.
+//
+// The tip carries what §9.3 says this cannot honestly do, because a control whose caveats
+// live in a document is a control whose caveats nobody reads:
+//
+//   · it takes effect at the NEXT note-on, so a pad already sounding finishes on the old
+//     backend and the two overlap for a bar — correct, and it looks like a bug
+//   · presets the core cannot yet render AS AUTHORED go SILENT rather than wrong, which
+//     is the honest failure but means a song can come back with holes in it
+function syncMrdr3AwButton() {
+  const btn = $('mrdr3aw');
+  if (!btn) return;
+  const on = mrdrComparisonBackend() === 'worklet';
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.dataset.tip = on
+    ? 'MRDR-3 AW: the worklet backend, and the DEFAULT. Every MRDR-3 lane renders'
+      + ' per-sample in the audio thread and uses no note cache at all. Takes effect on'
+      + ' the next note. Click for the native backend.'
+    : 'MRDR-3 is on the NATIVE backend — the old engine, which builds nodes per note and'
+      + ' leans on the note cache. Click to go back to the worklet, which is the default.';
+  btn.title = btn.dataset.tip;
+}
+// Dismissing is a decision about THIS stretch of trouble, not a preference — see the note
+// on `syncOverloadNotice`. It records when, so the notice can re-arm once the desk has
+// been healthy for a while.
+$('overloaddismiss')?.addEventListener('click', () => {
+  overloadDismissedAt = performance.now();
+  overloadShown = false;
+  // The auto-stop notice is sticky until acknowledged — this is the acknowledgement.
+  autostopFired = false;
+  $('overload')?.classList.remove('show');
+});
+
+/** Build the worklet's tables when the browser next has a moment, and only once. */
+function warmMrdr3Idle() {
+  const run = () => { try { warmMrdr3Tables(VOICES); } catch { /* no worklet here */ } };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 3000 });
+  else setTimeout(run, 0);
+}
+
+$('mrdr3aw').onclick = () => {
+  // 'native' rather than null: null means "whatever the preset says", which is now the
+  // worklet, so clearing it would not switch anything. The button has to name the other
+  // backend explicitly to be a toggle at all.
+  setMrdrComparisonBackend(mrdrComparisonBackend() === 'worklet' ? 'native' : 'worklet');
+  syncMrdr3AwButton();
+  if (mrdrComparisonBackend() === 'worklet') warmMrdr3Idle();
+  toast(mrdrComparisonBackend() === 'worklet'
+    ? 'MRDR-3 AW — worklet backend, from the next note'
+    : 'MRDR-3 — native backend, from the next note', 2200);
+};
+// ---- THE WORKLET IS THE DEFAULT ------------------------------------------------------
+//
+// It was a bench control that reset to native on every reload, on the argument that a
+// flag surviving a reload is one power cycle away from being a scaffold that shipped.
+// That argument was right while the two backends were being compared. They have been, all
+// day, on real songs — and the reason for the switch is no longer a comparison:
+//
+//   * the worklet is about 3x cheaper on dense material (measured, work/local/
+//     mrdr3-core-bench.mjs: 2.99x geometric mean over four presets on a busy line);
+//   * it uses NO NOTE CACHE, by construction. Every cliff this desk fell off today came
+//     from a cold cache — a song start, or an edit throwing a voice's buffers away — and
+//     a backend that never needs one cannot fall off it. The 1535-entry backlog that
+//     stopped the transport simply does not exist for an MRDR-3 lane under the worklet;
+//   * all 80 MRDR-3 presets compile and render as authored — none goes silent.
+//
+// Still a session value rather than a preset field, and still one click from native, so
+// the comparison remains available and nothing in the data has been promoted. What has
+// changed is which way round the default sits.
+setMrdrComparisonBackend('worklet');
+syncMrdr3AwButton();
+// ---- AND ITS ONE EXPENSIVE ASSET IS BUILT WHILE NOTHING IS WAITING -------------------
+//
+// A lane needs the band-limited table pyramid, and building it is 407 ms of main thread.
+// Built on the first note it is a stall with the transport already running, and a stalled
+// main thread does not make a lane quiet — it starves the note scheduler, which is a
+// crack. Built here, on the way to idle, it is time nobody is using. It is shared by every
+// lane and every context, so this is the only time it is ever paid.
+warmMrdr3Idle();
 $('oskbtn').onclick = () => showOsk(!oskShown());
 // The header's pair. Same two functions the keyboard's own buttons call, so there is one
 // switch behind each and nothing to keep in step by hand.
@@ -20421,9 +23212,9 @@ $('recbtn').onclick = () => setRecord(!recArmed);
 // on a click inside the region too, which is a gesture you have to know about; this is the
 // one that is simply there.
 $('selclear').onclick = (ev) => { ev.stopPropagation(); markBar(null, null); };
-$('mixviewbtn').onclick = () => setLowerView('mixer');
-$('seqbtn').onclick = () => setLowerView('pattern');
-$('rollbtn').onclick = () => setLowerView('roll');
+$('mixviewbtn').onclick = () => toggleLowerView('mixer');
+$('seqbtn').onclick = () => toggleLowerView('pattern');
+$('rollbtn').onclick = () => toggleLowerView('roll');
 $('pause').disabled = true;
 
 /**
@@ -20536,7 +23327,10 @@ $('revert').onclick = async () => {
   if (!isDirty(trackId)) { toast('Nothing to discard — this song already matches its file'); return; }
   pushUndo(null);
   discardSongDraft(draft, arrDraft, trackId);
+  // The stash goes with the mode. It holds the LEVEL's draft, which this has just
+  // discarded too — keeping it would put a discarded edit back on the next Close.
   delete cabOnDesk[trackId];
+  delete cabStash[trackId];
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
   reloadSongState();
@@ -20565,6 +23359,7 @@ $('resetoriginal').onclick = async () => {
   discardSongDraft(draft, arrDraft, trackId);
   delete variantDraft[trackId];
   delete cabOnDesk[trackId];
+  delete cabStash[trackId];
   persistLocalSave();
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   localStorage.setItem(ARRANGE_KEY, JSON.stringify(arrDraft));
@@ -20639,6 +23434,7 @@ addEventListener('keydown', (e) => {
   if (key === 'l') { $('looptoggle').click(); return; }
   if (key === 'g') { $('seqbtn').click(); return; }   // g for grid — the kit's window
   if (key === 'n') { $('rollbtn').click(); return; }  // n for notes — this channel's part
+  if (key === 'e') { $('fxbtn').click(); return; }    // e for effects — this channel's chain
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();
     const { totalSteps } = songShape();
@@ -21461,12 +24257,14 @@ function syncFrozenLaneUi(lane) {
   for (const bar of row.querySelectorAll('.arrbar[data-bar]')) {
     bar.classList.toggle('frozen', freezeCoversBar(trackId, lane, Number(bar.dataset.bar)));
   }
-  const top = row.querySelector('.arrtrack-top');
-  const icon = top?.querySelector('.arrfreeze');
-  if (frozen && !icon) {
-    const category = top.querySelector('.arrpresetcat');
-    top.insertBefore(freezeMark('arrfreeze', '❄'), category || null);
-  } else if (!frozen) icon?.remove();
+  const icon = row.querySelector('.arrtrack-icon');
+  if (frozen && !icon?.classList.contains('arrfreeze')) {
+    icon?.replaceWith(freezeMark('arrtrack-icon arrfreeze', '❄'));
+  } else if (!frozen && icon?.classList.contains('arrfreeze')) {
+    const liveIcon = groupIcon(row.dataset.group || '');
+    liveIcon.classList.add('arrtrack-icon');
+    icon.replaceWith(liveIcon);
+  }
 }
 
 /** Only source-side decisions: track order and live fader/pan/EQ/inserts/sends omitted. */
@@ -22276,7 +25074,7 @@ $('midifile').onchange = async () => {
   // this the desk would switch to the song and show five fewer strips than it has, then
   // find them on the next reload, which reads as the import having lost them.
   saved[out.track.id] = out.mix ?? null;
-  selectSong(out.track.id);
+  await selectSong(out.track.id);
   if (playing) setPlaying(true, 0);     // straight into the new song, from the top
 
   const layerKeys = new Set((out.layers || []).map((l) => l.key));
@@ -22653,6 +25451,12 @@ $('save').onclick = async () => {
   // Shut the drawer before the dialog, not after it: confirm() blocks, and the menu
   // would otherwise sit open behind it for as long as you took to read it.
   closeMenu();
+  // Save means "write what I am looking at", and while a cabinet mix is on the faders
+  // that is the cabinet mix. It used to mean the level either way, so the one press
+  // everybody reaches for by reflex was the press that wrote a stage-select screen's
+  // mix over the thing the level plays. Now the two cannot be confused, because there
+  // is only ever one of them available at a time.
+  if (inCabMode()) { await cabUpdate(); return; }
   if (!isDirty(trackId)) { toast(`${track.title} already matches the file`); return; }
   // Only this song. What the other songs are holding is their business — the desk
   // saves one song at a time, so listing them was answering a question nobody asked
@@ -22675,12 +25479,7 @@ $('save').onclick = async () => {
       : '<p><b>Discard unsaved changes</b> comes back to this copy.</p>'),
   ) : await ask(
     `Save ${track.title}?`,
-    (cabOnDesk[trackId]
-      ? `<p class="warn">The desk is showing the <b>${escapeHtml(cabOnDesk[trackId])}</b> cabinet mix, `
-        + 'loaded onto the faders — not the level mix. Saving now writes it as the thing the '
-        + '<b>level</b> plays. Capture it back to the cabinet screen instead.</p>'
-      : '')
-    + `<p>Writes <b>${halves.join('</b>, <b>')}</b>.</p>`
+    `<p>Writes <b>${halves.join('</b>, <b>')}</b>.</p>`
     + (isDeskSong(track)
       ? `<b>This ${deskSongKind(track)} stays `
         + `outside the game catalogue.</b><br>`
@@ -22797,7 +25596,7 @@ async function saveCopy() {
     savedArr[copy.id] = out.arrangement;
     variantSaved[copy.id] = out.variants;
   }
-  selectSong(copy.id);
+  await selectSong(copy.id);
   toast(`Saved ${copy.title} — a complete copy of ${source.title}, which is unchanged.`
     // The draft that became this copy is still sitting on the song it was taken from.
     // Said out loud, because it is the one thing about this that surprises: the copy is
@@ -22874,7 +25673,7 @@ async function saveAlternate() {
   saved[out.track.id] = out.mix;
   savedArr[out.track.id] = out.arrangement;
   variantSaved[out.track.id] = out.variants;
-  selectSong(out.track.id);
+  await selectSong(out.track.id);
   toast(`Saved ${out.track.title} — an alternate of ${parent.title}, which is unchanged.`
     // The draft that became this alternate is still sitting on the parent. Said out
     // loud, because it is the one thing about this that surprises: the alternate is
@@ -23017,10 +25816,35 @@ function cabExitFromControls() {
  * chain changing SHAPE, a reverb's decay, the limiter, a duplicated or deleted lane, a
  * voice swap — cannot be carried and is reported rather than dropped quietly.
  */
-function cabDiff(cur, base) {
+function cabDiff(cur, base, { rebuildOk = false } = {}) {
   const patch = {};
   const refused = [];
   const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  // Chains whose ONLY disagreement is a bypass — the same links, in the same order, with
+  // the same numbers, one side switched out. Kept apart from `refused` because it is the
+  // one refusal with an answer: the person wants this effect on one screen and not the
+  // other, reached for the control that has always meant "off", and got the one control
+  // that cannot move at a bar line. cabUpdate offers to turn them into mutes, which can.
+  const bypassOnly = [];
+  // Chains carried WHOLE because the handover has no crossfade to protect.
+  //
+  // A chain's shape is frozen across a ramp — a link added, removed or reordered disposes
+  // the slot, and no bar line can be aimed at a graph edit. But a handover with no
+  // crossfade is not a ramp: MusicDirector._fire rebuilds every chain from scratch
+  // through applyMix, keeping the clock and costing only the reverb tails, which behind a
+  // closed shutter is nothing. So the desk stops refusing what the engine can already do.
+  // Named here so the summary can say what it will cost.
+  const rebuilds = [];
+  const scanBypass = (target, label, a, b) => {
+    if (a.length !== b.length || !a.every((e, i) => e.id === b[i].id)) return false;
+    const flips = a.map((e, i) => (!e.bypass !== !b[i].bypass ? i : -1)).filter((i) => i >= 0);
+    if (!flips.length) return false;
+    for (const i of flips) {
+      bypassOnly.push({ target, label, index: i, id: a[i].id,
+        name: EFFECT_BY_ID[a[i].id]?.name || a[i].id, cabBypass: !!a[i].bypass });
+    }
+    return true;
+  };
 
   for (const k of ['master', 'masterPan']) {
     if ((cur[k] || 0) !== (base[k] || 0)) patch[k] = cur[k] || 0;
@@ -23053,8 +25877,15 @@ function cabDiff(cur, base) {
     if (!same(ca, cb)) {
       if (ca.length === cb.length && ca.every((e, i) => e.id === cb[i].id && !e.bypass === !cb[i].bypass)) {
         L.effects = JSON.parse(JSON.stringify(ca));
+      } else if (scanBypass(key, targetLabel(key), ca, cb)) {
+        // Named by scanBypass, answered by cabUpdate. Not pushed to `refused`, which is
+        // the list of things nothing can be done about.
+      } else if (rebuildOk) {
+        L.effects = JSON.parse(JSON.stringify(ca));
+        rebuilds.push(targetLabel(key));
       } else {
-        refused.push(`${key}'s effect chain (a chain can be re-tuned at a bar line, not rebuilt)`);
+        refused.push(`${key}'s effect chain — a chain can only be REBUILT on a handover `
+          + 'with no crossfade. Set "Band arrives" to 0 bars and it will carry.');
       }
     }
     if (Object.keys(L).length) lanes[key] = L;
@@ -23075,37 +25906,114 @@ function cabDiff(cur, base) {
   }
   if (Object.keys(fx).length) patch.fx = fx;
 
-  // Master-chain effects become the TREATMENT — its own leg of the music, faded away
-  // from rather than switched out, which is the only way an effect can come off a
-  // running song without a click. Added to the end of whatever the level already has,
-  // because that is the one shape whose meaning is unambiguous.
+  // The master chain has the two answers a lane chain has, and for the same reasons.
+  //
+  // An effect the level does not have at all becomes the TREATMENT — its own leg of the
+  // music, faded away from rather than switched out, which is the only way an effect can
+  // come OFF a running song without a click. Added to the end of what the level already
+  // has, because that is the one shape whose meaning is unambiguous.
+  //
+  // An effect BOTH sides have is re-tuned in place instead, exactly as a lane's chain is:
+  // same effects, same order, same bypass, only the numbers differing. That is a ramp on
+  // an AudioParam, which Audio.rampMix schedules for the bar line along with every fader
+  // (it walks `__master` in the same list as every strip). It is the cheaper answer where
+  // it fits — no second leg carrying a duplicate of the whole master path — and it is how
+  // you keep a phaser on the bus at `wet: 0` for the level and open it for the screen.
+  //
+  // Bypass is in neither. It re-wires the graph, and a disconnect takes no audio time —
+  // there is no bar line you can schedule one for. rampMix refuses it by name.
   const ma = cur.masterEffects || [];
   const mb = base.masterEffects || [];
   let treatment = null;
   if (!same(ma, mb)) {
     if (ma.length > mb.length && mb.every((e, i) => same(e, ma[i]))) {
       treatment = JSON.parse(JSON.stringify(ma.slice(mb.length)));
+    } else if (ma.length === mb.length
+      && ma.every((e, i) => e.id === mb[i].id && !e.bypass === !mb[i].bypass)) {
+      patch.masterEffects = JSON.parse(JSON.stringify(ma));
+    } else if (scanBypass('__master', 'MASTER', ma, mb)) {
+      // Answerable. See bypassOnly above.
+    } else if (rebuildOk) {
+      patch.masterEffects = JSON.parse(JSON.stringify(ma));
+      rebuilds.push('MASTER');
     } else {
-      refused.push('the master chain (add effects to the end of it — do not reorder or remove)');
+      refused.push('the master chain — an effect added anywhere but the END can only be '
+        + 'carried on a handover with no crossfade. Set "Band arrives" to 0 bars.');
     }
   }
-  return { patch, refused, treatment };
+  return { patch, refused, treatment, bypassOnly, rebuilds };
 }
 
-const cabSummary = ({ patch, refused, treatment }, loop, when) => {
+/**
+ * Turn the bypasses cabDiff could not carry into mutes, on BOTH sides.
+ *
+ * A bypass unwires a link, and no bar line can be aimed at a disconnect — so a level and
+ * its cabinet screen can never disagree about one, and every attempt to make them was
+ * silently dropped. A mute is two gains around the same link, which a transition CAN
+ * schedule, so the same intention expressed that way simply works.
+ *
+ * Both sides, because the flag has to leave the chain entirely: leaving `bypass` on the
+ * level and adding `mute` to the screen would still be a bypass difference, and would
+ * still be refused. So each flagged link comes out of bypass on both sides and goes into
+ * mute on whichever side had it switched off.
+ *
+ * Returns the two rewritten mixes. THE LEVEL IS CHANGED — the effect stops being unwired
+ * and starts being wired-and-silent, which costs its CPU in the level. That is the price
+ * of the screen being able to differ at all, and cabUpdate says so before doing it.
+ */
+function cabConvertBypasses(cur, base, flips) {
+  const nextCur = JSON.parse(JSON.stringify(cur));
+  const nextBase = JSON.parse(JSON.stringify(base));
+  const chainOf = (mix, target) => (target === '__master'
+    ? (mix.masterEffects || (mix.masterEffects = []))
+    : (mix.lanes?.[target]?.effects || []));
+  for (const f of flips) {
+    for (const mix of [nextCur, nextBase]) {
+      const link = chainOf(mix, f.target)[f.index];
+      if (!link || link.id !== f.id) continue;
+      const off = !!link.bypass;
+      delete link.bypass;
+      if (off) link.mute = true; else delete link.mute;
+    }
+  }
+  return { cur: nextCur, base: nextBase };
+}
+
+const cabSummary = ({ patch, refused, treatment, rebuilds = [] }, loop, when) => {
   const bits = [];
   const laneNames = Object.keys(patch.lanes || {});
   if (laneNames.length) bits.push(`<b>${laneNames.length}</b> channel${laneNames.length === 1 ? '' : 's'}: ${escapeHtml(laneNames.join(', '))}`);
   if (patch.fx) bits.push(`the ${escapeHtml(Object.keys(patch.fx).join(' and '))} return${Object.keys(patch.fx).length === 1 ? '' : 's'}`);
   if (patch.master != null || patch.masterPan != null) bits.push('the master trim');
+  // Named rather than counted, because the whole chain is carried whether or not every
+  // effect on it moved — the same as a lane's chain — and which effects those are is the
+  // thing worth reading back before agreeing to it.
+  if (patch.masterEffects) {
+    // With each one's MUTE, because that is the field most likely to be the entire
+    // point of the capture — a phaser the level holds muted and this screen opens —
+    // and a bare list of names would read as "nothing has changed here".
+    const names = patch.masterEffects.map((e) => {
+      const n = EFFECT_BY_ID[e.id]?.name || e.id;
+      return e.mute ? `${n} (muted)` : n;
+    });
+    bits.push(`the master chain re-tuned — ${escapeHtml(names.join(', '))} — moving on the boundary with the faders`);
+  }
   if (treatment?.length) bits.push(`<b>${treatment.length}</b> effect${treatment.length === 1 ? '' : 's'} across the whole mix, lifted on the way into the level`);
   if (loop?.startBar > 1) bits.push(`a way in on bar <b>${loop.startBar}</b>`);
   if (loop?.fromBar) bits.push(`a loop of bars <b>${loop.fromBar}–${loop.toBar}</b>`);
   return `<p>Plays <b>${escapeHtml(CAB_WHENS.find(([v]) => v === when)?.[1] || when)}</b>, carrying ${
     bits.length ? bits.join(', ') : 'nothing — the draft matches the saved mix'}.</p>`
+    // Said out loud because it is the one carry with a cost attached. An effect ADDED or
+    // taken off cannot be ramped, so the level rebuilds those chains on the boundary
+    // instead — seamless on the clock, but any reverb still ringing is cut with them.
+    + (rebuilds.length
+      ? `<p>The effect chains on <b>${escapeHtml([...new Set(rebuilds)].join('</b>, <b>'))}</b> `
+        + 'are a different shape from the level\'s, so they are <b>rebuilt</b> as the level starts '
+        + 'rather than faded. The clock does not move; anything still ringing is cut. Behind the '
+        + 'shutter that is inaudible — which is why it only works with no crossfade.</p>'
+      : '')
     + (refused.length
-      ? `<p class="warn">Not carried, because a running song cannot change them without a gap:<br>${
-        refused.map(escapeHtml).join('<br>')}</p>` : '');
+      ? `<p class="warn">Not carried:<br>${refused.map(escapeHtml).join('<br>')}</p>` : '');
 };
 
 /** The stored treatment for whichever condition the dropdown is showing. */
@@ -23138,8 +26046,30 @@ function cabSyncControls() {
     const whens = list.map((t) => t.when ?? 'always');
     head.textContent = whens.length ? `Cabinet screen — ${whens.join(', ')}` : 'Cabinet screen';
   }
+  // Frozen while a mix is open, and forced to the condition that was opened. Moving it
+  // mid-edit used to retarget where Update wrote without saying so, which is how one
+  // idea ended up split across two conditions.
+  const whenSel = $('cabwhen');
+  if (whenSel) {
+    if (inCabMode()) { whenSel.value = cabOnDesk[trackId]; whenSel.disabled = true; } else whenSel.disabled = false;
+  }
+  // The drawer's two buttons say which of the two jobs they are for, and only one of
+  // them is ever the one you want: with a cabinet mix up you are editing it, and with
+  // the level up you are either opening one or making one.
   const load = $('loadcab');
-  if (load) load.disabled = !e;
+  const cabUp = inCabMode();
+  if (load) {
+    load.disabled = !e || cabUp;
+    load.textContent = cabUp ? 'Cabinet mix is open' : 'Open the cabinet mix…';
+  }
+  const apply = $('applytocab');
+  if (apply) {
+    apply.textContent = cabUp ? 'Update cabinet mix' : 'Make this the cabinet mix…';
+    apply.title = cabUp
+      ? 'Write what is on the faders into this song’s cabinet mix. The faders do not move.'
+      : 'Take the mix and loop you are listening to now and make them the cabinet mix. The '
+        + 'level goes back to what it plays, and the desk stays on the cabinet mix.';
+  }
 }
 
 function cabSelectsInit() {
@@ -23161,13 +26091,85 @@ cabSelectsInit();
  * Into the draft rather than straight onto the engine, deliberately: the desk's faders
  * have to show what is playing, and a treatment you cannot see is one you cannot adjust.
  */
-$('loadcab').onclick = () => {
-  const e = cabEntry();
-  if (!e) { toast('No cabinet mix stored for that condition'); return; }
+// A declaration, not a const arrow: `updateStatus` runs long before this line during
+// boot, and a const in the temporal dead zone would take the whole desk down with it.
+/** True while this song's cabinet mix is the thing on the faders. */
+function inCabMode(id = trackId) { return cabOnDesk[id] != null; }
+
+/**
+ * Has the cabinet mix on the faders moved away from the one in the file?
+ *
+ * Not `variantDirty`, which is the question one step later: moving a fader writes the
+ * LEVEL's draft slot (that is where a cabinet mix lives while it is open — see cabStash)
+ * and touches no variant at all, so variantDirty stays false through the entire edit and
+ * only flips once Update has already run. A bar reading "matches the file" over an hour
+ * of work is worse than no bar.
+ *
+ * So this asks the question the person is actually asking: is what I can hear the same as
+ * what is stored? Resolved the way the game resolves it, and OR'd with variantDirty to
+ * cover a capture made but not yet written.
+ */
+function cabStoredMix(e = cabEntry()) {
   const base = saved[trackId] || emptyMix();
-  const next = mergeCabMix(base, e.patch);
-  if (e.treatment?.length) next.masterEffects = [...(base.masterEffects || []), ...e.treatment];
+  const out = e ? mergeCabMix(base, e.patch) : JSON.parse(JSON.stringify(base));
+  if (e?.treatment?.length) out.masterEffects = [...(base.masterEffects || []), ...e.treatment];
+  return out;
+}
+
+function cabDeskDirty() {
+  if (!inCabMode()) return false;
+  if (variantDirty(trackId)) return true;
+  return mixChanged(mixFor(trackId), cabStoredMix());
+}
+
+/**
+ * The bar across the top, and the two buttons that only mean anything while it is up.
+ * Called from updateStatus, so every path that changes the desk keeps it honest.
+ */
+function syncCabBar() {
+  const bar = $('cabbar');
+  if (!bar) return;
+  const when = cabOnDesk[trackId];
+  bar.hidden = when == null;
+  if (when == null) return;
+  const label = CAB_WHENS.find(([v]) => v === when)?.[1] || when;
+  $('cabbarwhen').textContent = `${track.title} · plays ${label}`;
+  $('cabbarnote').textContent = cabDeskDirty()
+    ? 'Changed — Update writes it to the file.'
+    : 'Matches the file.';
+  $('cabbarupdate').disabled = !cabDeskDirty();
+}
+
+/**
+ * Open a stored cabinet mix ONTO the faders, and stay there.
+ *
+ * The workflow this exists to make obvious, in the order it is done: save the song, open
+ * the cabinet mix, change what you like, Update. The desk stays in the cabinet mix the
+ * whole time — it used to snap back to the level the moment you captured, which read as
+ * the edits having been thrown away — and Close is the only thing that leaves.
+ *
+ * The level has to be SAVED first, and that is not a formality: a cabinet mix is stored
+ * as the difference from the level's saved mix, so an unsaved level makes every
+ * difference measured here a difference from something that is not what the game plays.
+ * The old desk allowed it and produced patches nobody could account for.
+ */
+async function cabOpen() {
+  const e = cabEntry();
+  if (!e) { toast('No cabinet mix stored for that condition — use “Make this the cabinet mix”'); return; }
+  if (inCabMode()) { toast('The cabinet mix is already on the desk'); return; }
+  if (draft[trackId] != null && mixChanged(draft[trackId], saved[trackId])) {
+    const go = await ask('Save the song first?',
+      `<p><b>${escapeHtml(track.title)}</b> has level edits that are not in its file.</p>`
+      + '<p>A cabinet mix is stored as <b>the difference from the saved level mix</b>, so opening '
+      + 'one now would measure every change against a level the game is not playing.</p>',
+      'Save the song, then open it');
+    if (!go) { toast('Cabinet mix not opened'); return; }
+    if (!await saveMix(trackId)) return;
+  }
+  const next = cabStoredMix(e);
   pushUndo('loadcab');
+  // Held aside rather than overwritten. See cabStash.
+  if (trackId in draft) cabStash[trackId] = draft[trackId]; else delete cabStash[trackId];
   draft[trackId] = next;
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   if (e.loop) {
@@ -23181,15 +26183,85 @@ $('loadcab').onclick = () => {
   cabOnDesk[trackId] = e.when ?? 'always';
   applyToEngine(mixFor(trackId));
   rebuildForShape();
+  cabSyncControls();
   updateStatus();
-  toast('Cabinet mix on the desk — this is the DRAFT, so Discard puts the level back. '
-    + 'Capture it again when you are done; do not Save it as the song.');
-};
+  toast(`Cabinet mix open — ${track.title}. Change what you like, then Update.`);
+}
 
-$('applytocab').onclick = async () => {
-  const cur = mixFor(trackId);
-  const base = saved[trackId] || emptyMix();
-  const diff = cabDiff(cur, base);
+/**
+ * Put the level back on the faders. The cabinet mix on the desk is DISCARDED unless it
+ * has been through Update, which is the same rule every other draft on this desk lives
+ * by and the reason the bar says whether it has.
+ */
+async function cabClose({ ask: confirmFirst = true } = {}) {
+  if (!inCabMode()) return true;
+  if (confirmFirst && cabDeskDirty()) {
+    const go = await ask('Close without updating?',
+      '<p>The cabinet mix on the faders has changes that are not in the file.</p>'
+      + '<p><b>Update cabinet mix</b> writes them. Closing now leaves the file as it was.</p>',
+      'Close and lose them');
+    if (!go) return false;
+  }
+  pushUndo('closecab');
+  if (trackId in cabStash) draft[trackId] = cabStash[trackId]; else delete draft[trackId];
+  delete cabStash[trackId];
+  delete cabOnDesk[trackId];
+  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  applyToEngine(mixFor(trackId));
+  rebuildForShape();
+  cabSyncControls();
+  updateStatus();
+  toast(`Level mix back on the desk — ${track.title}`);
+  return true;
+}
+
+/**
+ * Write what is on the faders into this song's cabinet mix — and, on a real desk, into
+ * the file, in the same press.
+ *
+ * ONE action, because "capture it" and "save it" were two and nobody could see the join:
+ * the first moved the edits off the faders, the second wrote a file, and between them sat
+ * a desk showing the level mix with a toast claiming the cabinet screen had been set. If
+ * a save is refused the capture is rolled back with it, so the two never disagree.
+ *
+ * Two ways in, and they differ only in where the desk ends up:
+ *
+ *   FROM CABINET MODE (`Update cabinet mix`) — the faders already ARE the cabinet mix, so
+ *   they stay exactly as they are and you can keep working. This is the ordinary loop.
+ *
+ *   FROM THE LEVEL (`Make this the cabinet mix`) — the faders are the level with edits on
+ *   them, and those edits MOVE: the level goes back to what it plays and the desk enters
+ *   cabinet mode holding them, so the thing you just made is still the thing in front of
+ *   you. It used to leave you on the level, which read as the work having been discarded.
+ */
+async function cabUpdate() {
+  const promoting = !inCabMode();
+  let cur = JSON.parse(JSON.stringify(mixFor(trackId)));
+  let base = saved[trackId] || emptyMix();
+  // Read before the diff, not after: whether a chain can be carried WHOLE depends on
+  // whether this handover has a crossfade to protect. See `rebuilds` in cabDiff.
+  const exit = cabExitFromControls();
+  const rebuildOk = !(exit.crossfadeBars > 0);
+  let diff = cabDiff(cur, base, { rebuildOk });
+  // AN EFFECT SWITCHED OFF ON ONE SCREEN AND NOT THE OTHER — made to work, not queried.
+  //
+  // Underneath there are two ways an effect can be off, and only one of them can differ
+  // between a level and its cabinet screen: a bypass unwires the link, and no bar line
+  // can be aimed at a disconnect. That is a fact about Web Audio, not a decision anybody
+  // at a mixing desk should be asked to make — so when the two sides disagree about a
+  // bypass, the desk rewrites both of them as mutes and carries on. No question, no
+  // vocabulary to learn: the effect is on for the screen and off for the level, which is
+  // the only thing anybody was trying to say.
+  //
+  // The cost, for the record rather than for the dialog: the level now pays that effect's
+  // CPU while hearing nothing. Effects switched off on BOTH sides are left as bypasses,
+  // which are free, so this only ever touches links that actually needed it.
+  let convertLevel = false;
+  if (diff.bypassOnly.length) {
+    ({ cur, base } = cabConvertBypasses(cur, base, diff.bypassOnly));
+    convertLevel = true;
+    diff = cabDiff(cur, base, { rebuildOk });
+  }
   const bounds = currentLoopBounds();
   // The bar this screen comes in on, typed rather than captured: it is by definition
   // somewhere the loop region is not, so there is nothing on the timeline to read it
@@ -23202,22 +26274,28 @@ $('applytocab').onclick = async () => {
   const loop = bounds
     ? { ...(startBar && startBar > 1 ? { startBar } : {}), fromBar: bounds.start / 16 + 1, toBar: Math.ceil(bounds.end / 16) }
     : (startBar && startBar > 1 ? { startBar } : null);
-  const when = $('cabwhen').value;
-  const exit = cabExitFromControls();
+  // In cabinet mode the condition is the one you OPENED, not whatever the dropdown says.
+  // Moving the dropdown while a mix is up used to silently retarget the write and leave
+  // two conditions holding halves of one idea.
+  const when = promoting ? $('cabwhen').value : cabOnDesk[trackId];
 
   if (!Object.keys(diff.patch).length && !diff.treatment && !loop) {
-    await tell('Nothing to capture',
-      '<p>The draft matches the saved mix and no loop is selected, so there is nothing for the '
-      + 'cabinet screen to sound like that the level does not already.</p>');
-    return;
+    await tell('Nothing for the cabinet screen to do',
+      '<p>The faders match the saved level mix and no loop is selected, so this screen would '
+      + 'sound exactly like the level.</p>'
+      + (promoting ? '' : '<p>Its stored mix is left alone. <b>Clear cabinet mix</b> is how you '
+        + 'take one off a song.</p>'));
+    return false;
   }
-  const ok = await ask('Use this mix on the cabinet screen?',
+  const ok = await ask(promoting ? 'Make this the cabinet mix?' : 'Update the cabinet mix?',
     cabSummary(diff, loop, when)
-    + '<p>These edits <b>move</b>: they come off the desk and onto the cabinet screen, so the '
-    + 'faders go back to the level mix and the level keeps playing exactly what it plays now. '
-    + '⌘Z brings them back if you want another pass.</p>',
-    'Use it');
-  if (!ok) return;
+    + (promoting
+      ? '<p>These edits <b>move</b>: the level goes back to what it plays now, and the desk stays '
+        + 'on the cabinet mix so you can keep working on it. <b>Close</b> puts the level back.</p>'
+      : '<p>The faders do not move — you stay on the cabinet mix.</p>')
+    + (STATIC ? '' : `<p>Written into <b>src/data/songs/${escapeHtml(trackId)}.js</b>.</p>`),
+    promoting ? 'Make it the cabinet mix' : 'Update it');
+  if (!ok) return false;
 
   const list = (variantFor(trackId)?.select || []).filter((t) => (t.when ?? 'always') !== when);
   list.push({
@@ -23230,33 +26308,107 @@ $('applytocab').onclick = async () => {
   // `always` matches anything, so anything after it can never play. Kept last here
   // rather than explained in an error later.
   list.sort((a, b) => ((a.when ?? 'always') === 'always' ? 1 : 0) - ((b.when ?? 'always') === 'always' ? 1 : 0));
+  const rollback = variantDraft[trackId];
+  const hadRollback = trackId in variantDraft;
   variantDraft[trackId] = { ...(variantFor(trackId) || {}), select: list };
 
-  // The edits have MOVED. They belong to the cabinet screen now, so they come off the
-  // song — otherwise the draft still holds them, `mixDirty` is still true, and the next
-  // Save writes the cabinet mix over the level as well as into the treatment. That is
-  // what happened to SPEED ZONE: six lanes muted and a chebyshev on the master, saved as
-  // the thing the level plays, with the treatment then stored as a diff against itself.
+  pushUndo(promoting ? 'applytocab' : 'updatecab');
+  if (promoting) {
+    // The edits belong to the cabinet screen now, so they come off the LEVEL — otherwise
+    // the level's draft still holds them and the next Save writes the cabinet mix as the
+    // thing the level plays. That is what happened to SPEED ZONE: six lanes muted and a
+    // chebyshev on the master, saved as the level, with the treatment then stored as a
+    // diff against itself.
+    //
+    // Only the fields that were CARRIED are put back. A refused edit — a new layer, a
+    // voice swap — was never in the patch, so it is not the cabinet screen's and stays on
+    // the level as an ordinary unsaved song edit.
+    const reverted = cabRevert(cur, base, diff);
+    if (mixChanged(reverted, saved[trackId])) cabStash[trackId] = reverted;
+    else delete cabStash[trackId];
+    cabOnDesk[trackId] = when;
+    // The desk keeps showing what was just captured, which for a promotion means the
+    // faders are already right: `cur` is the cabinet mix.
+    draft[trackId] = cur;
+    localStorage.setItem(LS_KEY, JSON.stringify(draft));
+  }
+
+  // THE FILE, in the same press — and ONLY the cabinet screen's half of it.
   //
-  // Only the fields that were CARRIED are put back. A refused edit — a new layer, a voice
-  // swap — was never in the patch, so it is not the cabinet screen's and stays on the desk
-  // as an ordinary unsaved song edit. `pushUndo` above the change, so ⌘Z brings the whole
-  // cabinet mix back onto the faders if you want another pass at it.
-  pushUndo('applytocab');
-  delete cabOnDesk[trackId];
-  const reverted = cabRevert(cur, base, diff);
-  if (mixChanged(reverted, saved[trackId])) draft[trackId] = reverted;
-  else delete draft[trackId];
+  // saveMix writes `draft[trackId]` as the LEVEL mix, and while a cabinet mix is on the
+  // faders that is the wrong object entirely. So the level's draft is taken out of its
+  // reach for the duration of the write: with no draft there is no mix half, saveMix
+  // sends the variants alone, and the level file is not touched.
+  //
+  // Taken out rather than swapped for the stash, which is the subtler half. Promoting a
+  // mix leaves behind whatever cabDiff REFUSED to carry — a new layer, a voice swap —
+  // and those are unsaved LEVEL edits, exactly as they were before this button existed.
+  // Handing them to saveMix here would write them to the level as a side effect of a
+  // press whose dialog promised the level would not move.
+  //
+  // Nothing is heard across any of this: no fader moves and the engine is never
+  // re-applied in between.
+  const onDesk = cur;
+  if (convertLevel) {
+    // The one case where Update DOES write the level: the bypasses just became mutes, and
+    // half that change lives on the level's own chain. Leaving it out would write a
+    // cabinet screen whose patch unmutes a link the level still has bypassed — which is
+    // the same dropped difference, one step further along.
+    // Whatever the level is going to be. Promoting has already put `cabRevert`'s answer
+    // in the stash — the converted chain plus any refused edit it could not carry — and
+    // that is a better level than `base` alone. Updating from cabinet mode required a
+    // clean level at open, so there is nothing in the stash and `base` is the whole of it.
+    const levelMix = (trackId in cabStash) ? cabStash[trackId] : base;
+    cabStash[trackId] = levelMix;
+    draft[trackId] = levelMix;
+  } else {
+    delete draft[trackId];
+  }
+  const wrote = await saveMix(trackId);
+  draft[trackId] = onDesk;
+  localStorage.setItem(LS_KEY, JSON.stringify(draft));
+
+  if (!wrote) {
+    // Refused by the server. Put the capture back rather than leaving a desk that says
+    // it saved something it did not.
+    if (hadRollback) variantDraft[trackId] = rollback; else delete variantDraft[trackId];
+    cabSyncControls();
+    updateStatus();
+    return false;
+  }
+
+  // RE-DERIVE THE FADERS FROM WHAT WAS JUST STORED.
+  //
+  // Not cosmetic. `saveMix` replaces `saved` wholesale with the server's re-read of the
+  // files, so the base every cabinet mix is a difference FROM has just moved under the
+  // desk. Leave the faders holding the object they were built from and they no longer
+  // resolve to the stored mix — the bar reads "Changed" the instant after a successful
+  // write, which is the same class of lie this whole section was rewritten to stop.
+  //
+  // Rebuilt through cabStoredMix, the one builder cabOpen also uses, so "what is on the
+  // desk" and "what is in the file" are the same expression and cannot drift. Anything
+  // cabDiff REFUSED is not in the stored mix and therefore goes: that is what refused
+  // means, and the dialog above named every one of them before this ran.
+  draft[trackId] = cabStoredMix();
   localStorage.setItem(LS_KEY, JSON.stringify(draft));
   applyToEngine(mixFor(trackId));
   rebuildForShape();
-
   cabSyncControls();
   updateStatus();
-  const left = isDirty(trackId) && draft[trackId] != null;
-  toast(`Cabinet screen set for ${track.title} — the desk is back on the level mix.`
-    + (left ? ' What it could not carry is still an unsaved song edit.' : ' Save song to write it.'));
-};
+  // Anything refused is still sitting on the level, unsaved, and saying so is the whole
+  // difference between "it did not carry that" and "where did that go".
+  const leftOnLevel = (trackId in cabStash) && mixChanged(cabStash[trackId], saved[trackId]);
+  toast((promoting
+    ? `Cabinet mix made and saved — the desk is on it now, ${track.title}`
+    : `Cabinet mix updated and saved — ${track.title}`)
+    + (leftOnLevel ? ' What it could not carry is still an unsaved level edit — Close, then Save song.' : ''));
+  return true;
+}
+
+$('applytocab').onclick = cabUpdate;
+$('loadcab').onclick = cabOpen;
+$('cabbarupdate').onclick = cabUpdate;
+$('cabbarclose').onclick = () => cabClose();
 
 /**
  * The capture, undone: `cur` with every field the cabinet patch took put back to `base`.
@@ -23298,14 +26450,19 @@ function cabRevert(cur, base, { patch, treatment }) {
   }
   if (out.fx && !Object.keys(out.fx).length) delete out.fx;
 
-  // The treatment is the tail of the master chain past what the level already had, so the
-  // level's chain is exactly what `base` held — including holding nothing.
-  if (treatment?.length) put(out, 'masterEffects', base);
+  // Either way the level's chain is exactly what `base` held — including holding nothing.
+  // The treatment is the tail past what the level already had; a re-tune carries the whole
+  // chain, so the level's own numbers have to come back with it or the cabinet's settings
+  // stay on the bus as an unsaved song edit.
+  if (treatment?.length || patch.masterEffects) put(out, 'masterEffects', base);
   return out;
 }
 
 $('clearcab').onclick = async () => {
   if (!variantFor(trackId)) { toast('This song has no cabinet mix'); return; }
+  // You cannot be left looking at a mix that no longer exists. Close first — without the
+  // are-you-sure, because the question underneath it is the one being asked here.
+  if (inCabMode()) await cabClose({ ask: false });
   const ok = await ask('Clear the cabinet mix?',
     '<p>Its stage-select screen goes back to playing the saved mix, like every other cabinet.</p>',
     'Clear it');
@@ -23320,14 +26477,19 @@ $('auditioncab').onclick = () => {
   const entry = (variantFor(trackId)?.select || [])
     .find((t) => (t.when ?? 'always') === $('cabwhen').value)
     || (variantFor(trackId)?.select || []).find((t) => (t.when ?? 'always') === 'always');
-  if (!entry) { toast('Capture a cabinet mix first'); return; }
+  if (!entry) { toast('Make a cabinet mix first'); return; }
   const bounds = entry.loop
     ? { start: (entry.loop.fromBar - 1) * 16, end: entry.loop.toBar * 16 }
     : currentLoopBounds();
   if (!playing) setPlaying(true, bounds ? bounds.start : 0);
   // The desk holds the draft, so it arms the treatment itself; the director is only
   // asked for the boundary, which is the part not worth writing twice.
-  applyToEngine(mergeCabMix(saved[trackId] || emptyMix(), entry.patch));
+  //
+  // WHAT IS ON THE FADERS while a cabinet mix is open, not what is in the file. This is
+  // the button you press to check an edit before writing it, and playing the stored
+  // version instead answered a question nobody asked — the desk would demonstrate a mix
+  // that was not the one in front of you and give no sign it had substituted it.
+  applyToEngine(inCabMode() ? mixFor(trackId) : mergeCabMix(saved[trackId] || emptyMix(), entry.patch));
   if (bounds) Audio.setLoop(bounds.start, bounds.end);
   if (entry.treatment?.length && Audio.mixer) {
     Audio.mixer.setTreatment(entry.treatment, Audio.bpm);
@@ -23340,9 +26502,11 @@ $('auditioncab').onclick = () => {
   // the file, which is the normal way round to use this: capture, discard, listen. Said
   // out loud when it is not, because a desk quietly playing something other than what
   // its faders show is the worst kind of wrong.
-  toast(isDirty(trackId)
-    ? 'Cabinet mix — the level arrives at the next boundary. Ends on the SAVED mix, not your draft.'
-    : 'Cabinet mix — the level arrives at the next boundary');
+  toast(inCabMode()
+    ? 'Hearing the faders — the level arrives at the next boundary'
+    : isDirty(trackId)
+      ? 'Cabinet mix — the level arrives at the next boundary. Ends on the SAVED mix, not your draft.'
+      : 'Cabinet mix — the level arrives at the next boundary');
 };
 
 /** The same field-by-field merge the game does, so the desk auditions what it will play. */
@@ -23483,6 +26647,58 @@ setInterval(() => { try { Audio.voices?.reapIdlePools?.(30); } catch { /* rack b
 // tester who can be asked to paste `Audio.ctx.state` is a tester who can be helped.
 globalThis.Audio = Audio;
 
+// ---- MRDR-3 AW: the comparison switch, on the same handle ---------------------------
+//
+// docs/MRDR-3-worklet-spec.md §9.2. The worklet backend is a scaffold and has no
+// player-facing control by design, so this is the only way to reach it — deliberately a
+// console handle beside `Audio` rather than a pill on a panel, because a pill is a
+// feature and this is a bench instrument that gets deleted when the project ends.
+//
+//   mrdr3.worklet()   every MRDR-3 lane renders through the new core
+//   mrdr3.native()    back to _playLayer
+//   mrdr3.off()       honour whatever each lane is saved as (the default)
+//   mrdr3.now()       what is currently forced, or null
+//   mrdr3.health()    lanes standing on this context, from the controller
+//
+// It takes effect at the NEXT note-on, not the current one: a sounding native note cannot
+// be handed to a processor mid-flight, so on a pad with a long release the two backends
+// overlap for a bar. That is correct and it looks like a bug, which is why it is written
+// down here (§9.3).
+// Dev handle for the meters. `meters.off()` for a soak or a bench run where the main
+// thread should be as quiet as it can be and nobody is watching the bars; `meters.state()`
+// to see whether a reading was taken with them off. Not a user preference — the automatic
+// relief already pauses them when it matters (see `updateRelief`), and this exists so the
+// claim that the meters are cheap can be checked rather than asserted.
+if (DEV_USER) globalThis.meters = {
+  off: () => setMetersOff(true),
+  on: () => setMetersOff(false),
+  state: () => ({
+    off: metersOff,
+    strips: meters.length,
+    visibleStrips: meters.filter((m) => m.visible !== false).length,
+    arrangement: arrangementMeters.size,
+    visibleArrangement: [...arrangementMeters.values()].filter((m) => m.visible !== false).length,
+    intervalMs: METER_INTERVAL_MS,
+    reliefPaused: reliefState.active,
+  }),
+};
+
+globalThis.mrdr3 = {
+  worklet: () => setMrdrComparisonBackend('worklet'),
+  native: () => setMrdrComparisonBackend('native'),
+  off: () => setMrdrComparisonBackend(null),
+  now: () => mrdrComparisonBackend(),
+  health: () => (Audio.ctx ? mrdr3ControllerHealth(Audio.ctx) : null),
+  // WHEN A LANE GOES QUIET, ask it why. Each entry carries the processor's own counters:
+  // `faults` is how many times its DSP threw (anything above zero means that lane has
+  // been filling silence), `queued` is how many events it is still holding, `late` is
+  // events that arrived after their frame, and `steals` is voices taken from other notes.
+  // `unresponsive: true` means the processor did not answer at all, which is the one that
+  // means it is dead.
+  report: () => (Audio.ctx ? mrdr3LaneReport(Audio.ctx).then((r) => { console.table(r); return r; }) : null),
+  panic: () => Audio.voices?.panicMrdr3Aw?.(),
+};
+
 // What the browser actually gave us, once, after the first real `ensure()`.
 //
 // Every number here is a REQUEST answered by the device: a latency hint is advice, a
@@ -23531,6 +26747,11 @@ addEventListener('pointerdown', unlockAudio, { capture: true, once: true });
 addEventListener('keydown', unlockAudio, { capture: true, once: true });
 
 void (async () => {
+  showLoadProgress(MIXER_BRAND);
+  setLoadProgress('Loading saved songs…', 0.05, MIXER_BRAND);
+  // Before anything builds a panel: the shell's own nineteen dropdowns are in the
+  // document already, and the observer this leaves behind takes every one built after.
+  watchDeskSelects();
   Audio.ensure();
   activeLatencyPreference = latencyPreference;
   syncAudioSettingsStatus();
@@ -23550,7 +26771,15 @@ void (async () => {
     else if (!mine(trackId)) trackId = 'hub';
     applyLocalSave();
   }
+  // The FX dock changes the desk width, so its session state must be in place before
+  // selectSong builds the arrangement. restoreDeskSession() still restores the full
+  // workspace later, but waiting until then makes an open dock resize an arranger that
+  // was already drawn at the closed width.
+  const initialDeskSessionMatches = savedDeskSession?.version === 1
+    && savedDeskSession.song === trackId;
+  setDevicesFolded(!(initialDeskSessionMatches && savedDeskSession.effectsOpen === true), false);
   selectSong(trackId);
+  await selectSong(trackId);
   // If the preset library was open last session, open it again.
   const sessionMatches = savedDeskSession?.version === 1 && savedDeskSession.song === trackId;
   const libraryReopened = sessionMatches

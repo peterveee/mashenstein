@@ -45,6 +45,13 @@ the pointer. The same kit exposes `UNDO`: the history is held by the shared edit
 and continuous pot/graph drags are coalesced into one transaction. `Ctrl/Cmd+Z` and the
 Advanced header button use that same path.
 
+The title bar also carries **SOLO** — the *desk's* solo, on the channel this preset is
+playing, not the `S` on the cards, which isolates a layer inside the sound. It is the
+strip's own button reached from here (`laneSoloAvailable/laneSoloOn/toggleLaneSolo` on the
+kit, wired to the desk's `setLaneSolo`), so it lights the strip and the desk's solo lamp
+too, and it is left standing when the editor closes — monitoring the desk can still see.
+A preset opened from the library has no channel to isolate, so the button is absent there.
+
 `writeMany` exists because a graph handle moves two parameters per gesture frame, and
 `touched()` re-banks the voice, tells the song, marks the desk dirty and schedules a
 measurement — doing all four twice a frame stutters the drag.
@@ -92,7 +99,7 @@ the window is up — the two share the value, not the DOM — so `onFullClosed()
 | Those cards fold instead | On the STRIP only, to their one lead control (`DEPTH` / `LEVEL VAR`) — the switch used to be the way back, so folding cannot hide everything. |
 | Curve popovers | **Amp envelopes only.** `centsEnv` is linear-only, so pitch/filter env curves would be dead pots the coverage test cannot see. |
 | Window | **Non-modal.** Slides down, no backdrop, nothing dimmed or inert, ✕ to close. The desk stays live underneath. |
-| Size | Fluid `min(1600px, 100vw−24px)` × `min(900px, 100vh−24px)`. The spec's fixed 1600×900 does not fit a 1440×900 laptop. |
+| Size | Fluid `min(1600px, 100vw−24px)` × `min(900px, 100vh−24px)`. The spec's fixed 1600×900 does not fit a 1440×900 laptop. A board whose band fixes its own column width (`track`) overrides the width with `--sf-winw` and is exactly as wide as its cards — TNGR-2, KLNG8 (1598px with its second oscillator, capped at the viewport on a narrower screen) and the scoped families. |
 | Pot geometry | The desk's, not the prototype's — 290° sweep, 150px travel, click-the-readout to type. Only the size changed (42→46px, CSS only). |
 | A/B, COPY→, INIT | Deferred. |
 
@@ -142,13 +149,41 @@ Counts today: **167 controls, 97 on screen at once, 35 per hidden layer.** (Prin
 running it.)
 
 KLNG8 uses the same renderer without MRDR's layer mixer, and now in **one band of six
-single-column cards** — OSCILLATOR, FM, NOISE, RING, METAL and MASTER (with DRIVE and
-HUMANISE as sub-sections, and TAPS behind a door in its header). It was nine cards on three bands, each
-two columns wide; at 525px a card seats eight pot columns, so every section drew its source
-pots and its envelope on one undifferentiated line. Halved in width and roughly doubled in
-height, the same pots are two rows of four with the envelope on its own — see `startRow` on
-every drum ATTACK. Its Advanced layout currently contains 60 live controls, including Master
-Tune and Ring/Metal Attack.
+single-column cells** — OSC 1 and OSC 2, *each with its own FM stacked under it*, then NOISE,
+RING, METAL and MASTER (with DRIVE and HUMANISE as sub-sections, and TAPS behind a door in
+its header). The second oscillator took the sixth column when it arrived, and the window
+grew by one track rather than the cards shrinking — which is what fixing the track buys, and
+is true in both directions. It was nine
+cards on three bands, each two columns wide; at 525px a card seats eight pot columns, so
+every section drew its source pots and its envelope on one undifferentiated line. Halved in
+width and roughly doubled in height, the same pots are two rows of four with the envelope on
+its own — see `startRow` on every drum ATTACK. Its Advanced layout currently places **90**
+controls, including Master Tune and Ring/Metal Attack — 73 of them before the second
+oscillator, which brought its own twelve and its modulator's five.
+
+**FM shares its oscillator's column** rather than standing in one of its own. It is the
+modulator of that one source and nothing else — the pairing TNGR-2's board makes four times
+over — and a column is as wide as every other column and as tall as the tallest card in the
+band, so three pots and a two-stage envelope alone in a fifth of the window was mostly air
+while the window itself was a whole column wider than the instrument needed. Stacked, FM
+keeps its own header, its own switch and its own envelope: a stacked column is two *cards*,
+not one card with a rule in it. The column is **not** an equal pair the way TNGR-2's are —
+`.sfband-chain .sfcell.sfstack` gives it `grid-template-rows: auto 1fr`, so the oscillator
+takes what it needs and FM takes the rest, which also brings FM's envelope down onto the same
+floor line as NOISE, RING and METAL's.
+
+**The band fixes its own column width** (`track: 259`) rather than dividing the window into
+fractions, exactly as TNGR-2's and the scoped boards' do: the renderer sizes `--sf-boardw`
+and `--sf-winw` from it, so dropping a column makes the *window* 259px narrower instead of
+making the cards thinner. 259px is what a sixth of the old 1600px window came to, which is
+the width the four-pot grid was tuned against.
+
+**The five source LEVELs are faders**, not pots — `fader: 'LEVEL'` on the OSC 1, OSC 2,
+NOISE, RING and METAL cells, drawn by the same `fader()` that lays TNGR-2's two oscillator
+levels along the top of their cards. Same row, same range, same write path: a pot lying down.
+What it buys is that the five levels read off the top of the band as one line — which is the
+balance of the drum — and that the pot grid below now starts at the controls saying what the
+source *is*. MASTER keeps its pots: TRIM DB is a trim, not a mix.
 
 **Drum cards SPREAD** (`top`, `flowSub`, `spread` → `.sfspread`), where MRDR's hang
 everything from the bottom. Three ways to fill a card, and this is the third: bottom-aligning
@@ -161,20 +196,73 @@ floor. **That is also what lines the envelopes up.** `foot` on every drum ATTACK
 envelope off the end of its card's rows (`splitFoot`) and it is drawn as a block of its own;
 being last on all five source cards, and one row of pots on each, the five come to rest on
 one line across the band — the alignment `startRow` gives the block inside a card, given to
-the band. MRDR needs none of this: bottom-aligned already, its ADSR blocks share a baseline
-by construction.
+the band. MRDR's envelopes need none of this: bottom-aligned already, its ADSR blocks share
+a baseline by construction. Its SETTINGS and EFFECTS cards *are* spread, because they are
+two concepts in one frame rather than a stack of blocks — see **Seamed cards** below, which
+is the same mechanism generalised to every board.
 
 **Taps is a door, not a column** (`tapsDoor`), and the count rides on the button — `TAPS` at
 one hit, `TAPS 3` at three, so what the door hides is the detail and never the fact. It is
 the one section that is not part of the signal path, and the one most presets have nothing
-in: fifteen drums in the catalogue use taps and every other one is a single hit. Freeing
-that column is what let FM out of the oscillator card and onto its own, next to the wave it
-bends. Inside, the taps are a **table — a row per hit, a column per number** (TIME, LEVEL,
+in: fifteen drums in the catalogue use taps and every other one is a single hit. Inside, the
+taps are a **table — a row per hit, a column per number** (TIME, LEVEL,
 DECAY; which columns exist is per path, see `TAP_KEYS`), with FALLOFF/PITCH/TONE under a
 rule of their own because they are ratios *between* hits rather than values on one. The
 panel **redraws its own body** rather than calling `kit.repaint()`: the stepper inside it
 changes how many controls the panel has, and a window repaint would take the popover down
 with the card it hangs off, on the first press of a button that lives inside it.
+
+## Seamed cards — one frame, two concepts
+
+Several cards on these boards are two unrelated things sharing a frame. SETTINGS is how a
+preset is tuned and played *and then* its vibrato; EFFECTS is what the drive is *and then*
+its chorus; TNGR-2's MOTION is an envelope *and then* an LFO; KNDO-5's own card is a
+waveform *and then* the amp envelope over it. Run together as one list they read as one
+list, and the reader has to find the seam.
+
+So the card is **hung from the top and its second block pinned to the floor**, and the
+card's spare height opens up between them as the rule. `splitCard(card, label)` in
+`mixer-voice-editor.js` does it in one call: it cuts the rows at a LABEL, puts the tail in
+`foot`, and stamps `SEAMED` — `top` (`.sftop`, so the first block sits under the header
+instead of bottom-aligning) and `spread` (`.sfspread`, so the slack goes to the block after
+the first). The renderer draws `foot` as a grid of its own, `.devgrid.sfenv`.
+
+**The seam has a floor.** `margin-top: auto` gives the pinned block whatever the card had
+spare, which on a board whose tallest card is only a little taller than this one is a few
+pixels — and a seam you have to look for is not a seam. `.sfenv` carries a 14px minimum, so
+a card with slack opens by all of it and a card with none grows by that much instead of
+closing up. Cards get a little taller; two concepts read as two.
+
+**By label, and only in the window layout.** It is this board's *arrangement*, not a
+property of the rows — the strip shows the same controls as one list and is right to. A
+label the card does not carry leaves it whole, so a seam named for a control an engine
+lacks costs nothing. `CARD_SEAM` names the two seams every pitched family shares
+(`note` → `VIB DEPTH`/`VIBRATO`, `effects` → `CHORUS`) so they cannot drift apart between
+boards; per-engine seams are named at their own call site.
+
+**The floor is also a baseline.** A pinned block lands on the card's floor, which is where
+every bottom-aligned card beside it puts its last pot row — so seaming a card does not cost
+the band its one row of knobs across. TNGR-2's SETTINGS vibrato, its EFFECTS chorus and its
+MOTION LFO all sit on the line the filter's CUTOFF and the two envelopes' ATTACK sit on.
+
+Where the seams are, across all eight boards — checked by `tests/synth-full-layout.js`,
+which asserts `top`, `spread`, and the control at the head of `foot` for every one:
+
+| Board | Card | Seams at |
+| --- | --- | --- |
+| MRDR-3 | SETTINGS, Effects | VIB DEPTH, CHORUS |
+| TNGR-2 | SETTINGS, Effects, Motion | VIB DEPTH, CHORUS, LFO WAVE |
+| KNDO-5 | SETTINGS, Effects, Game Synth | VIB DEPTH, CHORUS, ATTACK |
+| WNDR-9 | SETTINGS, Effects, Percussion | VIB DEPTH, CHORUS, ATTACK |
+| RMND-2 | SETTINGS | VIB DEPTH |
+| KLNG8 | Osc 1, FM 1, Osc 2, FM 2, Noise, Ring, Metal | ATTACK (per-row `foot`, see below) |
+
+One of these is composed by hand rather than through `splitCard`, because the rows to pin
+are not in the card's own list to cut. (DuoSynth was the other, pinning its native
+VIBRATO/VIB RATE pair out of the Duo group; it is retired into MRDR-3.) **KLNG8's source
+cards** were the first to do this, before it was a rule: they mark `foot` per ROW
+(`splitFoot`) rather than by label, which is what lands envelopes of different lengths
+on one line across the band.
 
 **Choice rows pair up.** Two adjacent word choices in the same grid share one line, half the
 card each (`pairChoices`) — TYPE|SLOPE, CURVE|RATE CURVE, COLOUR|SLOPE. Drawn rows (WAVE),

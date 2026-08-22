@@ -14,7 +14,11 @@
 // triggered once, and the rendered peak measured:
 //
 //   Synth 0.989 · MonoSynth 0.917 · DuoSynth 1.557 · FMSynth 0.316 · AMSynth 0.193
-//   MembraneSynth 0.991 · MetalSynth 0.442 · NoiseSynth 0.974      — all fine
+//   MembraneSynth 0.991 · MetalSynth 0.442 · NoiseSynth 0.974      — all fine, and all
+//                     three RETIRED since: the two drum classes are KLNG8's `osc` and
+//                     `metal` sections stated by Tone, and NoiseSynth was never offered
+//                     (see below). Kept in the sweep because the next person to reach
+//                     for one should know it was measured, not overlooked.
 //   PluckSynth        SILENT — built on LowpassCombFilter, an AudioWorklet, which
 //                     also needs a secure context. Same failure as Freeverb and
 //                     JCReverb in effects.js.
@@ -31,8 +35,17 @@
 // stems-sum-to-the-mix property offline renders rely on — that needs a seeded
 // buffer, the way AudioSys.noiseBuf already is, before NoiseSynth can be offered.
 import * as Tone from 'tone';
+import * as FAMILY from './synth-families.js';
 import { VOICES } from '../data/voices.js';
 import { isTngr2Table } from './tngr2/families.js';
+import {
+  isMrdrVoice, MRDR3_NATIVE, MRDR3_AW, mrdrComparisonVoice,
+} from './mrdr3/identity.js';
+import {
+  mrdr3Lane, mrdr3LaneNow, mrdr3NoteOn, mrdr3NoteOff, syncMrdr3Patch, canHostMrdr3,
+  mrdr3PanicAll, releaseIdleMrdr3Lanes,
+} from './mrdr3/controller.js';
+import { mrdr3GateAdsrEvents } from './mrdr3/env.js';
 import {
   tngr2Lane, tngr2LaneNow, tngr2NoteOn, tngr2NoteOff, releaseTngr2Context,
   tngr2ControllerHealth, canHostTngr2, renderTngr2Lane, tngr2PatchForVoice, tngr2VibratoOf,
@@ -44,9 +57,12 @@ import {
  * an unknown or blacklisted name is a voice that does not build rather than a
  * `Tone[whatever]` that might be anything.
  *
- * Everything listed has been measured rendering offline (see the sweep above). Only
- * the pitched ones appear in the catalogue today; MembraneSynth and MetalSynth are
- * here so a percussion lane can take one later without a second sweep.
+ * Everything listed has been measured rendering offline (see the sweep above), and
+ * everything listed is pitched. The two Tone drum classes were here too, and are not
+ * any more: a MembraneSynth is one oscillator swept down into a body and a MetalSynth
+ * is six squares at inharmonic ratios, which are `osc` and `metal` on a KLNG8 preset —
+ * the same two circuits with their numbers exposed instead of welded shut. Keeping both
+ * was two ways to build one drum, and the Tone way could not follow a note anyway.
  */
 /**
  * Drop an oscillator type that names a VOICING rather than a waveform.
@@ -117,11 +133,11 @@ function scrubOscTypes(node) {
  * gain, the filter after that — is denormal arithmetic, which stalls the render thread.
  * Measured on tpPizz (sustain 0, the pluck shape): 21.7 ms per audio second for a line
  * that costs 5.6 with any nonzero floor — a 4x tax for the last, silent approach to
- * zero. Thirty-five pooled presets carry the shape, including every MembraneSynth.
+ * zero. Thirty-five pooled presets carried the shape when this was measured.
  *
  * 1e-6 is -120dB: below anything a limiter, a meter or an ear will ever see (the null
  * test's own tolerance sits 40dB above it), and thirty-two orders of magnitude above
- * where denormals begin. Recursive for DuoSynth's nested voice0/voice1. The FILTER
+ * where denormals begin. Recursive, for any class that nests its options. The FILTER
  * envelope is left alone — its sustain scales a frequency, and frequencies do not
  * denormal.
  */
@@ -145,7 +161,7 @@ function floorEnvelopeSustain(node) {
  * native paths have `count`s of their own that mean something else entirely (a metal
  * hat's inharmonic partials, an organ's drawbars) and none of them lives in `options`.
  *
- * Recursive because DuoSynth keeps its two oscillators under `voice0`/`voice1`.
+ * Recursive, for a class that nests its options one level down.
  */
 function clampFatCount(node) {
   if (!node || typeof node !== 'object') return;
@@ -163,8 +179,8 @@ function clampFatCount(node) {
  * Its hats and cymbals are six square oscillators at these intervals through a
  * highpass, and the ratios are the whole trick: they are close enough together to beat
  * and far enough from whole numbers that the ear hears METAL rather than a chord. Tone's
- * MetalSynth uses the same set and hides it — a preset here can override it, which is
- * the difference between one cymbal and a family of them.
+ * MetalSynth used the same set and hid it, which is most of why it is gone: a preset
+ * here can override them, and that is the difference between one cymbal and a family.
  */
 const METAL_RATIOS = [1, 1.342, 1.2312, 1.6532, 1.9523, 2.1523];
 
@@ -396,7 +412,7 @@ function hashSeed(text) {
 
 const NOISE_Q = 2;
 
-// Where GameSynth's fall across the note LANDS, as a fraction of that note's own peak —
+// Where KNDO-5's fall across the note LANDS, as a fraction of that note's own peak —
 // the level a note-off finds, and therefore the level its RELEASE gets to work on. See
 // the long note at the envelope itself in `_playGame`; this is the one number to turn.
 const GAME_NOTE_OFF_LEVEL = 0.1;       // -20 dB
@@ -619,7 +635,7 @@ function adsr(param, t, end, peak, e = {}, sustaining = false) {
  * schedules a complete note-shaped fall and then a release after the written note length.
  * That is useful for one-shots, but it is not a standard synthesiser VCA: if a short note
  * ends during attack or decay, its release must begin at the level the envelope has reached
- * at note-off. MRDR-3 and AdditiveSynth are melodic instruments, so their note length is
+ * at note-off. MRDR-3 and WNDR-9 are melodic instruments, so their note length is
  * the gate, not an instruction to finish the decay before releasing.
  *
  * `sustaining` is the live-preview form. The gate is held at `end` as a safety horizon and
@@ -663,107 +679,47 @@ const GATE_MAX_LIN_ATTACK = 0.015;
 const gateLinUnder = (freq) => (freq > 0
   ? Math.min(GATE_MAX_LIN_ATTACK, Math.max(GATE_LIN_ATTACK, 1 / freq))
   : GATE_LIN_ATTACK);
+/**
+ * Apply a built envelope to an AudioParam.
+ *
+ * The whole of the native adapter §3.2 asks for. The SHAPE now lives once, in
+ * src/engine/mrdr3/env.js, and both backends run it: this writes the events to an
+ * AudioParam in seconds, and the worklet core writes the identical events to a
+ * ParamTimeline in frames. Neither owns the arithmetic, so envelope shape cannot become a
+ * difference between them — which is what takes it off the ear-approval list.
+ */
+function applyEnvelopeEvents(param, events) {
+  for (const ev of events) {
+    if (ev.k === 'set') param.setValueAtTime(ev.v, ev.t);
+    else if (ev.k === 'lin') param.linearRampToValueAtTime(ev.v, ev.t);
+    else if (ev.k === 'exp') param.exponentialRampToValueAtTime(ev.v, ev.t);
+    else if (ev.k === 'cancel') param.cancelScheduledValues(ev.t);
+  }
+}
+
 function gateAdsr(param, t, end, peak, e = {}, sustaining = false, freq = 0) {
+  const built = mrdr3GateAdsrEvents(t, end, peak, e, sustaining, freq);
   // An AudioParam throws on a non-finite value, and this runs inside the scheduling
   // pass — one bad number from a malformed preset would kill not just this note but
   // every note after it, for as long as the song is up. Skipping the envelope leaves
   // the note silent (its gain never leaves zero) and the song playing, which is the
-  // right way round. Off the hot path: four compares per note-on.
+  // right way round.
+  //
   // Zero, not `t`: the return is an absolute END TIME that callers feed to
   // `Math.max(lastOff, …)` and then to `stop()`, so handing back the bad number
   // would carry it straight into the next throw. Zero is the sentinel those callers
   // already test for (`if (lastOff)`), so a skipped envelope reads as "nothing was
   // scheduled", which is exactly what happened.
-  if (!Number.isFinite(t) || !Number.isFinite(end) || !Number.isFinite(peak)) {
+  //
+  // The BUILDER returns null rather than warning, because the two hosts want different
+  // things from a bad number — a worklet has no console worth shouting at and no
+  // AudioParam to protect.
+  if (!built) {
     console.warn('[voices] skipping an envelope with non-finite numbers', { t, end, peak });
     return 0;
   }
-  const level = Math.max(1e-4, peak);
-  // Floored, never zero: see gateFloor. An authored 0 still means "as immediate as this
-  // note can be" — a quarter of its own cycle — rather than a scheduler-imposed fade-in.
-  const minAttack = gateFloor(freq);
-  const attack = Math.max(minAttack, e.attack ?? 0.01);
-  const decay = Math.max(0, e.decay ?? 0);
-  const release = Math.max(0, e.release ?? 0.015);
-  const sustain = Math.min(1, Math.max(0, e.sustain ?? 0));
-  const held = Math.max(1e-4, level * sustain);
-  const attackEnd = t + attack;
-  const decayEnd = attackEnd + decay;
-
-  // An attack this short has no audible curve to it, so give it the one that cannot click —
-  // including an attack that is only this long because the floor made it so.
-  const attackLin = e.attackCurve === 'lin' || attack <= Math.max(gateLinUnder(freq), minAttack);
-  // Where the authored exponential has itself reached after the lift. Handing over at its
-  // own value keeps the curve EXACTLY the authored one — an exponential ramp between two
-  // points of an exponential is that same exponential — and only replaces the crawl along
-  // the bottom, which is the part no one authored and everyone hears.
-  const expAt = (u) => 1e-4 * Math.pow(level / 1e-4, u);
-  const liftLevel = expAt(minAttack / attack);
-  // A straight ramp out of silence has no step in it, but it does have a CORNER at each
-  // end — the slope goes from nothing to everything in one sample — and a corner is a
-  // discontinuity in the first derivative, which is broadband too, just quieter. A raised
-  // cosine leaves under the note, arrives under it, and has no corner anywhere; four
-  // linear segments approximate it closely enough that the residue drops to the noise.
-  // Segments rather than `setValueCurveAtTime`, which owns its whole window exclusively
-  // and throws when a release lands inside it — which a short note's does.
-  const RAISED_COS = [0.25, 0.5, 0.75, 1];
-  const cosAt = (u) => 0.5 * (1 - Math.cos(Math.PI * Math.min(1, Math.max(0, u))));
-
-  const levelAt = (at) => {
-    const dt = Math.max(0, at - t);
-    if (dt < attack) {
-      const u = dt / attack;
-      if (attackLin) return level * cosAt(u);
-      if (dt < minAttack) return liftLevel * cosAt(dt / minAttack);
-      return expAt(u);
-    }
-    if (decay > 0 && dt < attack + decay) {
-      const u = (dt - attack) / decay;
-      if (e.curve === 'lin') return level + (held - level) * u;
-      return level * Math.pow(held / level, u);
-    }
-    return held;
-  };
-
-  // From actual zero, not 1e-4: the param starts where silence is.
-  param.setValueAtTime(0, t);
-  if (attackLin) {
-    for (const u of RAISED_COS) param.linearRampToValueAtTime(level * cosAt(u), t + attack * u);
-  } else {
-    for (const u of RAISED_COS) {
-      param.linearRampToValueAtTime(liftLevel * cosAt(u), t + minAttack * u);
-    }
-    param.exponentialRampToValueAtTime(level, attackEnd);
-  }
-  if (decay > 0) {
-    if (e.curve === 'lin') param.linearRampToValueAtTime(held, decayEnd);
-    else param.exponentialRampToValueAtTime(held, decayEnd);
-  } else {
-    param.setValueAtTime(held, attackEnd);
-  }
-
-  if (sustaining) {
-    if (decayEnd < end) param.setValueAtTime(held, end);
-    return end + release + 0.005;
-  }
-
-  // Note-off may arrive before the attack or decay automation has reached its endpoint.
-  // Cancel those future events and pin the exact level at the gate edge before starting
-  // Release. Without this, a short note either releases from silence or leaves a future
-  // decay ramp fighting the release ramp.
-  const offAt = Math.max(t, end);
-  // Floored: the attack now starts from a true zero, and an exponential release ramp out
-  // of exactly zero is not a ramp — it is a no-op that ends in a step.
-  const current = Math.max(1e-4, levelAt(offAt));
-  param.cancelScheduledValues(offAt);
-  param.setValueAtTime(current, offAt);
-  const off = offAt + release;
-  if (release > 0) {
-    if (e.releaseCurve === 'lin') param.linearRampToValueAtTime(1e-4, off);
-    else param.exponentialRampToValueAtTime(1e-4, off);
-  }
-  param.linearRampToValueAtTime(0, off + 0.005);
-  return off + 0.005;
+  applyEnvelopeEvents(param, built.events);
+  return built.off;
 }
 
 /**
@@ -783,6 +739,39 @@ function gateAdsr(param, t, end, peak, e = {}, sustaining = false, freq = 0) {
  * must move identically; two copies of this arithmetic would drift the first time one of
  * them was tuned.
  */
+/**
+ * One stage of a CENTS envelope, in one of two shapes.
+ *
+ * `lin` is a straight line in cents, which is the shape this envelope has always had and
+ * stays the default — every preset written before curves existed reads back unchanged.
+ * Straight in cents is a constant number of semitones per second, so a fall is even all
+ * the way down: the siren, the arcade swoop, the glide.
+ *
+ * `exp` is the other one the ear knows: fastest at the start, settling into the target.
+ * It is written with `setTargetAtTime` rather than an exponential RAMP because a cents
+ * envelope PASSES THROUGH ZERO — the note's own pitch is 0 cents — and
+ * `exponentialRampToValueAtTime` can neither reach zero nor leave it. `setTargetAtTime`
+ * approaches asymptotically, so the value is pinned at the stage's end with an explicit
+ * `setValueAtTime`; without that pin the next stage would start from wherever the
+ * approach happened to have got to.
+ *
+ * This IS the drum's `snap` — same call, same quarter-of-the-span time constant (see
+ * `pitchRamp`) — which is the analogue drum machine's pitch fall and the difference
+ * between a kick that clicks and one that goes boing. `pitchRamp` needs three names
+ * because it writes HERTZ, where an exponential ramp and a set-target are genuinely
+ * different curves; on cents they are the same one, so there are two here and not three.
+ *
+ * A caution worth knowing when reading both panels: linear in cents is EXPONENTIAL in
+ * hertz, so this function's `lin` draws the same trajectory KLNG8's RATE CURVE calls
+ * `exp`. The words are opposite because the two controls measure different quantities.
+ */
+function centsRamp(param, to, from, at, shape) {
+  if (shape === 'exp' && at > from) {
+    param.setTargetAtTime(to, from, Math.max(0.0005, (at - from) / 4));
+    param.setValueAtTime(to, at);
+  } else param.linearRampToValueAtTime(to, at);
+}
+
 function centsEnv(params, cents, e = {}, t, end, { base = 0, dfltAttack = 0.01 } = {}) {
   if (!cents) return;
   const a = Math.max(0, e.attack ?? dfltAttack);
@@ -798,11 +787,11 @@ function centsEnv(params, cents, e = {}, t, end, { base = 0, dfltAttack = 0.01 }
     // something — a layer's static DETUNE, its unison spread. Scheduling from zero would
     // silently cancel it: automation events on an AudioParam replace its value outright,
     // where a connected node (vibrato) sums with them.
-    if (a > 0) { p.setValueAtTime(base, t); p.linearRampToValueAtTime(base + cents, peakAt); }
+    if (a > 0) { p.setValueAtTime(base, t); centsRamp(p, base + cents, t, peakAt, e.attackCurve); }
     else p.setValueAtTime(base + cents, t);
-    p.linearRampToValueAtTime(base + cents * s, decayEnd);
+    centsRamp(p, base + cents * s, peakAt, decayEnd, e.decayCurve);
     if (decayEnd < end) p.setValueAtTime(base + cents * s, end);
-    p.linearRampToValueAtTime(base, end + Math.max(0.001, e.release ?? 0.015));
+    centsRamp(p, base, end, end + Math.max(0.001, e.release ?? 0.015), e.releaseCurve);
   }
 }
 
@@ -993,7 +982,9 @@ const MRDR_PLAN_DENSE_BAR = 24;
 
 /** Heuristic topology cost used only to rank cache candidates, never as a sound value. */
 function estimateMrdrEventCost(v, notes, dur) {
-  if (!v || v.synth !== 'MRDR-3') return 0;
+  // NATIVE ONLY (§10): the planner prices building a node graph per note, which is
+  // exactly what an AW lane does not do. It must never be asked about one.
+  if (!v || v.synth !== MRDR3_NATIVE) return 0;
   const L = v.layer || {};
   const solo = null; // preparation runs against resolved voice data; live solo invalidates separately
   const active = ['osc1', 'osc2', 'osc3'].filter((key) => {
@@ -1061,6 +1052,35 @@ function whenIdle(fn) {
   return () => clearTimeout(id);
 }
 
+/**
+ * The same, for work that cannot wait for a gap.
+ *
+ * ---- why the idle callback is skipped rather than trusted ---------------------------
+ *
+ * `requestIdleCallback` is the right instrument for BACKGROUND warming, where a render
+ * postponed costs nothing. Measured on this desk it is close to useless for a repair: the
+ * desk draws every frame, so the callback almost always arrives via its own 400ms
+ * timeout — which `trickleAllowed` then accepts, because a timed-out callback is still
+ * the scheduler saying "now is as quiet as it gets". The gate therefore contributes
+ * almost no filtering and 400ms of latency per job.
+ *
+ * That is affordable at one job per 600ms. It is not affordable for an edit repair:
+ * measured, an edit queued 113 urgent jobs and only 38 ever started, and another queued
+ * 29 and started 6 — roughly two and a half opportunities a second against a backlog that
+ * needs tens. The notes that never got a buffer were played live, which is the load that
+ * overloaded the audio thread in the first place.
+ *
+ * So urgent work asks immediately and lets the CLOCK BRAKE do the filtering. That is the
+ * guard that was always doing the real work (see `trickleAllowed`), it is measured rather
+ * than advisory, and it still refuses every job while the audio thread is in trouble.
+ * The synthesised deadline says `didTimeout` because that is exactly what this is: the
+ * same verdict the browser's own callback hands over, without the wait for it.
+ */
+function whenSoon(fn) {
+  const id = setTimeout(() => fn({ didTimeout: true }), 0);
+  return () => clearTimeout(id);
+}
+
 /*
  * The preparation TRICKLE — how the cache warms while the song plays.
  *
@@ -1104,18 +1124,69 @@ const TRICKLE_MIN_CLOCK = 0.98;
  * in the borderline band, where audio is genuinely at risk of being tipped: healthy
  * (>= MIN) renders, drowning (< DROWNING) renders — because it cannot get meaningfully
  * worse and warming is the way out — and only the band between them holds.
+ *
+ * ---- AND WHY IT IS NOW GATED ON `everHealthy` --------------------------------------
+ *
+ * "It cannot get meaningfully worse" was measured on a song that had NEVER been warm,
+ * and for that case it is right: the machine has not yet shown it can play this song, so
+ * the only way to find out is to warm it.
+ *
+ * It is wrong for the opposite case, which a later session measured. A song that has been
+ * playing cleanly and is then EDITED has its buffers purged mid-flight: the cache goes
+ * cold while the transport is running, the backlog jumps to a hundred notes, and the
+ * offline renders that drain it compete with live playback for the same CPU. The clock
+ * falls into the drowning band, the escape lets the trickle keep going, and the clock
+ * falls further — measured at 0.698 then 0.650, ending in silence. It can get worse, and
+ * it did.
+ *
+ * The two cases are told apart by one fact: has this playback ever seen a healthy clock?
+ * If it has, the machine has already proved it can render this song live, so a collapse
+ * is load rather than coldness — and the cure is to stop adding load, not to add more.
+ * If it has not, the deadlock above is real and the escape stands.
  */
 const TRICKLE_DROWNING_CLOCK = 0.9;
 const TRICKLE_PROBE_MS = 250;
+// How soon a REFUSED pump re-asks while the urgent window is open. See the note in
+// pumpCache: the refusal reasons are unchanged, only how long the queue waits to put the
+// question again.
+const TRICKLE_URGENT_RETRY_MS = 100;
+// How long an edit's recovery stays urgent. A deadline rather than a flag, so however the
+// edits arrive the window closes on its own and the desk returns to ordinary trickle
+// behaviour. Long enough to cover the measured render times (24-138ms a job) for a couple
+// of bars of one voice; short enough that a drag does not hold the brakes off for ever.
+const URGENT_CACHE_WINDOW_MS = 4000;
+// And how much each COMPLETED urgent job extends it by, while urgent work remains. Short,
+// because it is renewed by progress rather than granted up front: a repair that stalls
+// stops extending within a second and the desk returns to ordinary trickle behaviour.
+const URGENT_CACHE_EXTEND_MS = 1000;
 
-function trickleAllowed(state, deadline) {
+export function trickleAllowed(state, deadline) {
   // A paused transport has no audible playback to protect: every brake below exists
   // for the sake of sound that is currently not sounding. Full speed (still one render
   // at a time, still launched from idle callbacks so the UI breathes).
   if (state.transportRunning === false) return true;
   const now = performance.now();
-  if (now - (state.playbackSince || 0) < TRICKLE_WARMUP_MS) return false;
-  if (now - (state.lastRenderDone || 0) < TRICKLE_GAP_MS) return false;
+  // ---- THE URGENT WINDOW -------------------------------------------------------
+  //
+  // An edit purges the buffers of the voice being edited, and every distinct note of it
+  // then plays LIVE until its render lands. That is how an edit is heard immediately, and
+  // it is also how a warm song becomes a cold one without stopping — measured at 139
+  // outstanding keys and an audio clock of 0.204 while the main thread sat idle.
+  //
+  // So for a few seconds after an edit the two COOLDOWN brakes come off: the warm-up
+  // grace, which exists to let a song settle after pressing play, and the one-render-per-
+  // 600ms gap, which exists to keep background warming out of the way. Neither is about
+  // the danger here, and both are what let the backlog outrun the repair.
+  //
+  // What does NOT come off is the idle gate or the clock brake below. If the audio thread
+  // is already collapsing, rendering harder is what made it collapse (see the everHealthy
+  // note above), and the answer is the auto-stop rather than more work. Urgency reorders
+  // and unblocks; it never overrules the measurement.
+  const urgent = now < (state.urgentUntil || 0);
+  if (!urgent) {
+    if (now - (state.playbackSince || 0) < TRICKLE_WARMUP_MS) return false;
+    if (now - (state.lastRenderDone || 0) < TRICKLE_GAP_MS) return false;
+  }
   // Headroom, honestly assessed. A quiet page hands idle callbacks real deadlines and
   // the threshold means something. The DESK never does: it draws meters at 60fps, so
   // the callback almost always arrives via its 400ms timeout with timeRemaining() at
@@ -1140,7 +1211,11 @@ function trickleAllowed(state, deadline) {
   }
   if (now - probe.at >= TRICKLE_PROBE_MS) {
     const ratio = (ctx.currentTime - probe.ctxTime) / ((now - probe.at) / 1000);
-    state.clockOk = ratio >= TRICKLE_MIN_CLOCK || ratio < TRICKLE_DROWNING_CLOCK;
+    const healthy = ratio >= TRICKLE_MIN_CLOCK;
+    if (healthy) state.everHealthy = true;
+    // The escape is for a song that has never played cleanly. Once one has, a later
+    // collapse is load, and rendering through it is what made it a collapse.
+    state.clockOk = healthy || (!state.everHealthy && ratio < TRICKLE_DROWNING_CLOCK);
     state.clockProbe = { at: now, ctxTime: ctx.currentTime };
   }
   return !!state.clockOk;
@@ -1155,6 +1230,18 @@ export function createNoteCacheState() {
     queue: [],
     rendering: 0,
     playbackActive: false,
+    // Has the clock been at full speed at any point in THIS playback? See the drowning
+    // note above — it is what separates "never warmed" from "was fine until it wasn't".
+    everHealthy: false,
+    // ---- the edit-recovery window ------------------------------------------------
+    //
+    // `urgentUntil` is a wall-clock deadline, not a flag: it expires on its own, so a
+    // burst can never become a permanent mode however the edits arrive. `urgentTagging`
+    // is set only for the duration of the urgent WALK, so the jobs it creates can be
+    // told apart from the ordinary scheduler misses that happen to land in the same
+    // window — otherwise the counters would credit the repair with work it did not do.
+    urgentUntil: 0,
+    urgentTagging: false,
     idlePending: false,
     cancelIdle: null,
     generation: 0,
@@ -1171,6 +1258,11 @@ export function createNoteCacheState() {
     // drained-yet? test was the casualty.
     stats: {
       hits: 0, misses: 0, queuedTotal: 0, started: 0, completed: 0,
+      // Queued, started and finished BY THE URGENT WALK. Three numbers rather than one
+      // because they fail differently: queued but never started is the idle gate or the
+      // clock brake refusing, started but never finishing is a render too slow for the
+      // window, and neither is visible in a single "urgent happened" boolean.
+      urgentQueued: 0, urgentStarted: 0, urgentCompleted: 0,
       failed: 0, stale: 0,
     },
   };
@@ -1205,15 +1297,24 @@ export function invalidateNoteCacheState(state, voiceId) {
 function pumpCache(state) {
   if (!state || state.rendering >= NOTE_RENDER_JOBS
     || state.idlePending || !state.queue.length) return;
+  // Urgent work does not queue behind a gap that may be 400ms away — see `whenSoon`.
+  const wait = performance.now() < (state.urgentUntil || 0) ? whenSoon : whenIdle;
   state.idlePending = true;
-  state.cancelIdle = whenIdle((deadline) => {
+  state.cancelIdle = wait((deadline) => {
     state.idlePending = false;
     state.cancelIdle = null;
     // During playback the trickle's three brakes decide; refused is not cancelled —
     // the retry keeps the queue moving toward the next idle slice with headroom.
     if (state.playbackActive && !trickleAllowed(state, deadline)) {
       clearTimeout(state.trickleRetry);
-      state.trickleRetry = setTimeout(() => pumpCache(state), TRICKLE_GAP_MS);
+      // A refusal during the urgent window re-asks QUICKLY. The reasons for refusing are
+      // unchanged — the idle gate and the clock brake still decide — but waiting a full
+      // 600ms before asking again wastes most of a window that only lasts a few seconds.
+      // Measured: idle callbacks on this desk mostly arrive via their own 400ms timeout,
+      // so the re-ask cadence is a real share of the throughput rather than a detail.
+      const wait = performance.now() < (state.urgentUntil || 0)
+        ? TRICKLE_URGENT_RETRY_MS : TRICKLE_GAP_MS;
+      state.trickleRetry = setTimeout(() => pumpCache(state), wait);
       return;
     }
     let job = null;
@@ -1225,6 +1326,20 @@ function pumpCache(state) {
     if (!job) { pumpCache(state); return; }
     state.rendering++;
     state.stats.started++;
+    if (job.urgent) state.stats.urgentStarted++;
+    // ---- HOW LONG ONE CACHE RENDER ACTUALLY BLOCKS -------------------------------
+    //
+    // `startRendering()` runs the DSP off the main thread, so the assumption has always
+    // been that a render is cheap here. What is NOT off the main thread is building the
+    // node graph for the note first — every oscillator, filter and envelope of a preset
+    // that may carry three layers of four unison voices — and neither is trimming and
+    // keeping the buffer afterwards. Both happen in this task.
+    //
+    // Worth measuring rather than assuming, because it is the one piece of work an EDIT
+    // creates: a tweak purges that voice's buffers, and the desk re-renders them while
+    // the song is playing. "It plays smoothly until I touch something" is exactly the
+    // shape that would have.
+    const jobStart = performance.now();
     Promise.resolve().then(() => job.run()).catch((error) => {
       state.stats.failed++;
       console.warn('[voices] note cache job failed', error?.message || error);
@@ -1234,8 +1349,31 @@ function pumpCache(state) {
         if (job.entry?.failed) state.plan.failed++;
         state.plan.pending = Math.max(0, state.plan.pending - 1);
       }
+      if (job.urgent) {
+        state.stats.urgentCompleted++;
+        // ---- THE WINDOW LASTS AS LONG AS THE REPAIR --------------------------------
+        //
+        // A fixed four seconds was a guess, and the counters said what it was worth:
+        // 113 urgent jobs queued and 38 started, 29 queued and 6 started. The window
+        // expired with most of the repair undone, and every note it did not reach was
+        // played live — which is the load that overloaded the audio thread to begin
+        // with.
+        //
+        // So progress extends it. Each urgent job that FINISHES buys the next one its
+        // window, and the moment there is no urgent work left the extension stops and
+        // the window closes on its own. It cannot become a permanent mode: it is
+        // bounded by the queue emptying, and every job still has to pass the clock
+        // brake, which refuses the lot while the audio thread is in trouble.
+        if (state.queue.some((queued) => queued.urgent)) {
+          state.urgentUntil = Math.max(state.urgentUntil || 0,
+            performance.now() + URGENT_CACHE_EXTEND_MS);
+        }
+      }
       state.rendering = Math.max(0, state.rendering - 1);
       state.lastRenderDone = performance.now();
+      const jobMs = state.lastRenderDone - jobStart;
+      state.stats.renderMsMax = Math.max(state.stats.renderMsMax || 0, jobMs);
+      state.stats.renderMsTotal = (state.stats.renderMsTotal || 0) + jobMs;
       if (state.playbackActive) state.stats.trickled = (state.stats.trickled || 0) + 1;
       pumpCache(state);
     });
@@ -1268,6 +1406,9 @@ export function setNoteCachePlaybackActive(state, active) {
     state.playbackSince = performance.now();
     state.clockProbe = null;
     state.clockOk = false;
+    // Each playback earns its own verdict: a song that played cleanly yesterday says
+    // nothing about a machine that is busy now.
+    state.everHealthy = false;
   }
   // Either direction pumps now: stopping drains freely, starting arms the trickle.
   pumpCache(state);
@@ -1394,6 +1535,18 @@ function layerNoteSeconds(v, dur, { includeChorus = true } = {}) {
 const HOLD_SECONDS = 30;
 
 /**
+ * How long an MRDR-3 AW lane may go unplayed before a rack teardown really releases it.
+ *
+ * A lane is a persistent worklet node, and building one clones the table pyramid and the
+ * noise set into the processor — so a lane kept is a crack avoided and a lane kept for
+ * ever is a node idling on a one-core budget. Thirty seconds separates them cleanly: the
+ * desk re-banks on a stop, a voice change or an apply, and none of those takes half a
+ * minute, so a lane the song is still using is never this old. See
+ * `releaseIdleMrdr3Lanes`.
+ */
+const MRDR3_LANE_IDLE_SECONDS = 30;
+
+/**
  * The fade a preview gets when it is STOPPED rather than released.
  *
  * Twelve milliseconds is under a frame and over a cycle of anything above 80 Hz, which
@@ -1487,7 +1640,8 @@ function disconnectChorusLeg(leg) {
 }
 
 function mrdrDryFingerprint(v) {
-  if (!v || v.synth !== 'MRDR-3') return '';
+  // NATIVE ONLY (§10): a cache fingerprint for a lane that never caches.
+  if (!v || v.synth !== MRDR3_NATIVE) return '';
   return JSON.stringify(v, (key, value) => key === 'chorus' ? undefined : value);
 }
 
@@ -1540,16 +1694,14 @@ const SMOOTH_PARAMS = [
   ['vibratoAmount'], ['vibratoRate'],
   ['filter', 'Q'], ['filter', 'frequency'],
   ['oscillator', 'detune'], ['modulation', 'detune'],
-  // DuoSynth keeps two whole MonoSynths under `voice0`/`voice1`, and their options
-  // nest the same way their objects do.
-  ['voice0', 'detune'], ['voice0', 'filter', 'Q'], ['voice0', 'filter', 'frequency'],
-  ['voice1', 'detune'], ['voice1', 'filter', 'Q'], ['voice1', 'filter', 'frequency'],
 ];
 
 const atPath = (root, path) => path.reduce((node, k) => (node == null ? node : node[k]), root);
 
 /** A Tone `Param`/`Signal` — the thing that can be ramped, as opposed to a number. */
 const isParam = (x) => !!x && typeof x.rampTo === 'function' && typeof x.value === 'number';
+
+
 
 /**
  * Take every live param out of an options bag, so `set` cannot step it.
@@ -1575,14 +1727,150 @@ function liftSmoothParams(synth, bag) {
   return lifted;
 }
 
+/**
+ * The pooled Tone classes, keyed by the name a preset can still be stored under.
+ *
+ * Nothing here is reached by NAME any more. All four are the two halves of two merged
+ * engines — `CRLS-1` picks between `Synth` and `MonoSynth`, `RMND-2` between `FMSynth`
+ * and `AMSynth` — and `synthClassFor` chooses from the preset's own structure before this
+ * table is consulted. They stay listed because this is the allowlist: a class that is not
+ * here is one the offline render was never swept for. See the note at the top of this
+ * file about `PluckSynth` and `PolySynth` rendering silence.
+ */
 const SYNTHS = {
   Synth: Tone.Synth,
   MonoSynth: Tone.MonoSynth,
   FMSynth: Tone.FMSynth,
   AMSynth: Tone.AMSynth,
-  DuoSynth: Tone.DuoSynth,
-  MembraneSynth: Tone.MembraneSynth,
-  MetalSynth: Tone.MetalSynth,
+};
+
+/**
+ * CRLS-1 — the single-oscillator subtractive engine, which Tone happens to ship as two.
+ *
+ * `Tone.Synth` is an oscillator into an amplitude envelope. `Tone.MonoSynth` is the SAME
+ * oscillator into the SAME envelope with a filter and a filter envelope between them —
+ * the same `OmniOscillator`, the same `AmplitudeEnvelope`, the same chain order. So with
+ * the filter taken out they are not merely similar, they are identical, and one engine
+ * with a filter switch is an honest description rather than a simplification: nothing
+ * changes its sound crossing the seam, because in the audio there is no seam.
+ *
+ * Keeping both classes is what makes the switch worth having. A MonoSynth is TWICE a
+ * Synth measured on matched presets, and up to 3.7x with a steep slope
+ * (work/local/bench-synth-classes.mjs) — the filter is nowhere near free, so a preset
+ * that does not sweep must not pay for a filter it never moves.
+ *
+ * ---- the switch is the preset's own STRUCTURE, not a flag beside it ---------
+ *
+ * A preset that carries a filter has one; a preset that does not, does not. The
+ * catalogue was already written that way — every MonoSynth preset carries `filter` AND
+ * `filterEnvelope`, every Synth preset carries neither, with nothing in between — so the
+ * merge renames and changes nothing else. No new key means no way for a preset to
+ * disagree with itself about whether its own filter is there.
+ *
+ * `Synth` and `MonoSynth` stay readable forever: songs and user presets carry them by
+ * the hundred, and a name is not worth a migration. `keyMode` still reads the `mono`
+ * boolean it replaced for the same reason.
+ */
+export const CRLS1 = FAMILY.CRLS1;
+
+/**
+ * KNDO-5 — the chip channel, named for Koji Kondo.
+ *
+ * Same engine `GameSynth` always was: one oscillator, or the seeded buffer through a
+ * bandpass that tracks the note, into an AR gain. The `-5` is the four `NATIVE_WAVES`
+ * plus that noise channel, which is also what the NES APU had — measured first, nod
+ * second. See docs/synth-naming.md for why this name and not the alternatives.
+ *
+ * `GameSynth` stays readable forever, exactly as `Synth` and `MonoSynth` do: ten song
+ * files carry it inside serialised `voiceParams`, user presets carry it in local
+ * storage, and a name is not worth a migration.
+ */
+export const KNDO5 = FAMILY.KNDO5;
+
+/**
+ * RMND-2 — the modulation engine, named for Raymond Scott.
+ *
+ * A carrier and one modulator, differing only in WHICH parameter of the carrier the
+ * modulator reaches: its frequency (`Tone.FMSynth`) or its amplitude (`Tone.AMSynth`).
+ * Everything else is the same object — the same two oscillators, the same amplitude
+ * envelope, the same modulation envelope shaping the modulator on its way in. So this is
+ * the `CRLS-1` argument again with the destination as the switch rather than the filter,
+ * and the `-2` survives it untouched: a carrier plus a modulator is two whichever
+ * parameter it lands on. See docs/synth-naming.md.
+ *
+ * ---- the switch is the preset's own STRUCTURE, not a flag beside it ---------
+ *
+ * `modulationIndex` is how far the modulator bends the carrier's FREQUENCY, in multiples
+ * of that frequency. Amplitude modulation has no such number — Tone.AMSynth does not read
+ * one and could not use it — so a preset carrying an index is bending frequency and a
+ * preset without one is bending amplitude. The catalogue was already written that way:
+ * all 32 FM presets carry a top-level `modulationIndex`, all 10 AM presets carry none,
+ * with nothing in between. No new key means no way for a preset to disagree with itself
+ * about which kind of modulation it is.
+ *
+ * Read at the TOP level of `options` on purpose. `oscillator.modulationIndex` is a
+ * different number that belongs to Tone's `fm*`/`am*` oscillator types, and a CRLS-1
+ * preset built on `fmsquare5` carries one — see `tpBassGuitar` in src/data/voices.js. A
+ * looser check would read that preset as an FM carrier it is not.
+ *
+ * `FMSynth` and `AMSynth` stay readable forever, exactly as `Synth`, `MonoSynth` and
+ * `GameSynth` do: song files carry them inside serialised `voiceParams` and user presets
+ * carry them in local storage. A name is not worth a migration.
+ */
+export const RMND2 = FAMILY.RMND2;
+
+/**
+ * WNDR-9 — the drawbar organ, named for Klaus Wunderlich.
+ *
+ * Nine drawbars, which is the number, and the reason for the name: Wunderlich's art was
+ * registration — building orchestral voices out of a drawbar stack and multitracking
+ * them — so the man and the architecture are the same fact. `stretch` and `damp` are
+ * what stop it being only an organ: an inharmonic stack that decays from the top is a
+ * bell, a gong, a struck bar. See docs/synth-naming.md.
+ *
+ * `AdditiveSynth` stays readable forever, as every retired spelling does — ten song
+ * files carry it inside serialised `voiceParams`, and a name is not worth a migration.
+ */
+export const WNDR9 = FAMILY.WNDR9;
+
+/**
+ * The renamed engines live in `./synth-families.js`, a module with no imports of its own.
+ *
+ * They moved there because THREE files need the map and only one of them can afford to
+ * load the rack to get it: this file builds Tone classes from it, src/data/voices-in-play
+ * filters the preset picker by it, and tools/lib/synth-display prints from it. Written
+ * out three times, the copies drifted — the picker's knew about CRLS-1 and not about
+ * KNDO-5 or RMND-2, so a lane still carrying `GameSynth` or `FMSynth` was offered no
+ * preset to switch to, because every preset in the catalogue had been renamed out from
+ * under a comparison made on the raw string.
+ *
+ * Re-exported here so callers still ask this file about an engine. Anything comparing a
+ * preset's `synth` against a family goes through `synthFamily`, so a stored preset
+ * written under the old name is the same instrument rather than an unknown one — which
+ * is what would otherwise reach `SYNTHS[]`, come back undefined, and look exactly like a
+ * preset doing nothing.
+ */
+export const synthFamily = FAMILY.synthFamily;
+
+/**
+ * Which Tone class a preset actually builds, or undefined if it is not a pooled one.
+ *
+ * Takes the options rather than the voice because the two callers hold different shapes
+ * of the same thing: `play` and the live-edit walk hold a catalogue entry, `_addSlot`
+ * holds the built spec. One reader, so a pool can never be built from a different class
+ * than the gate that let it through.
+ */
+const synthClassFor = (synth, options) => {
+  const family = synthFamily(synth);
+  if (family === CRLS1) {
+    return options && (options.filter || options.filterEnvelope) ? Tone.MonoSynth : Tone.Synth;
+  }
+  // Top-level only — `oscillator.modulationIndex` is Tone's oscillator-level number and
+  // means something else entirely. See the note on RMND-2.
+  if (family === RMND2) {
+    return options && options.modulationIndex !== undefined ? Tone.FMSynth : Tone.AMSynth;
+  }
+  return SYNTHS[synth];
 };
 
 /**
@@ -1608,6 +1896,79 @@ const glideTime = (v) => {
   const p = v?.portamento ?? v?.options?.portamento ?? 0;
   return Number.isFinite(p) && p > 0 ? p : 0;
 };
+
+/**
+ * THE KEYS STILL DOWN on one sounding instrument, oldest first.
+ *
+ * A held note is the one kind the rack does not know the length of, and a MONO or LEGATO
+ * preset answers several of them with ONE instrument. Which note that instrument plays is
+ * LAST NOTE PRIORITY — the key pressed most recently — and the two consequences are the
+ * whole of why this list exists:
+ *
+ *   · a key that is not the one speaking comes up in SILENCE. Nothing is released,
+ *     because the note it opened belongs to somebody else now. Without this, letting go
+ *     of the first of three fingers stopped the sound the other two were holding.
+ *   · the key that IS speaking hands the note back rather than ending it. Letting go
+ *     never STARTS a note, so the hand-over moves the pitch and leaves the envelope
+ *     where it stands — which is what every mono synth with a keyboard on it does.
+ *
+ * Kept on the thing that sounds — a pooled slot, a native glide record — so both
+ * synthesis paths say it once rather than each inventing its own answer.
+ */
+const fingerDown = (host, key, hz) => {
+  const fingers = (host.fingers ||= []);
+  // The same key pressed again is one finger, not two. A channelised MIDI controller and
+  // the on-screen keys can both be holding it, and only one of them may have to let go.
+  const already = fingers.findIndex((x) => x.key === key);
+  if (already >= 0) fingers.splice(already, 1);
+  fingers.push({ key, hz });
+};
+
+/**
+ * A key came up. Says who owns the instrument NOW and whether the key that left was the
+ * one speaking — the two facts a note-off has to have before it can decide to do nothing.
+ *
+ * A host with no list at all is a note nobody is tracking: it answers "you were the last
+ * one", which is the behaviour every caller had before this existed.
+ */
+const fingerUp = (host, key) => {
+  const fingers = host?.fingers;
+  if (!fingers || !fingers.length) return { next: null, wasOwner: true };
+  const at = fingers.findIndex((x) => x.key === key);
+  if (at >= 0) fingers.splice(at, 1);
+  return { next: fingers[fingers.length - 1] || null, wasOwner: at === fingers.length };
+};
+
+/**
+ * Take the release Tone has already booked off an envelope, keeping the level it has
+ * reached. The LEGATO contract in one call — a note taken over must not be closed by the
+ * note-off the note before it scheduled.
+ *
+ * Every branch of every class it is asked about: `envelope`/`filterEnvelope` on the
+ * Monophonic classes, which own theirs.
+ */
+const cancelToneEnvelopes = (synth, t) => {
+  const cancel = (node) => {
+    if (node?.cancel) node.cancel(t);
+    else if (node?.gain?.cancel) node.gain.cancel(t);
+  };
+  cancel(synth?.envelope);
+  cancel(synth?.filterEnvelope);
+  cancel(synth?.voice0?.envelope);
+  cancel(synth?.voice0?.filterEnvelope);
+  cancel(synth?.voice1?.envelope);
+  cancel(synth?.voice1?.filterEnvelope);
+};
+
+/**
+ * How many instruments one preview pool may grow to.
+ *
+ * A HELD note does not give its slot back when the next key goes down — the finger is
+ * still on it — so a keyboard needs a slot per key where a sequencer can share a couple
+ * round robin. Ten fingers and a sustain pedal is the shape to fit; past it the round
+ * robin takes the oldest slot back, which is the answer a real synth gives too.
+ */
+const HELD_VOICES = 16;
 
 // MRDR-3 optional sections have historically appeared in equivalent forms:
 // the editor's flat `bypassed['global.filter']` hold, a `$`-prefixed hold, and (for
@@ -1705,6 +2066,9 @@ export class VoiceRack {
     // MRDR's preset-internal chorus is a lane insert, not a note effect. The stage is
     // deliberately owned here rather than by Mixer: the preset chooses its settings,
     // while the ordinary channel strip remains downstream and reusable by every voice.
+    // WNDR-9 uses the same map and the same stage — it is the one insert this
+    // family of native paths shares, and it keeps its MRDR name because that is where it
+    // was built and what `runtimeHealth` has always called it.
     this._mrdrLaneStages = new Map();
     this._mrdrDryFingerprints = new Map();
     // Tail cleanup is a live Mixer optimisation and is opt-in. Offline racks, cache
@@ -1755,22 +2119,26 @@ export class VoiceRack {
     scrubOscTypes(opts);
     clampFatCount(opts);
     floorEnvelopeSustain(opts);
+    // Each Duo oscillator card owns where that voice sits — INTERVAL in whole semitones
+    // and DETUNE in cents, the same pair every other oscillator card on the desk carries.
+    // Neither is a Tone option; both are translated into the shared detune and the
+    // harmonicity ratio here, at the engine boundary, and leave no editor-only key
+    // behind for Tone to see. There is no Ratio control any more: the ratio IS the
+    // interval between the two voices, and stating it twice was how the panel ended up
+    // with a pot that fought the pitch pots it sat above.
     // Glide is a constructor option on every Tone synth. It only becomes audible in a
     // non-poly key mode because those modes keep one note on one instance.
     if (v.portamento) opts.portamento = v.portamento;
     return {
       synth: v.synth,
       opts,
-      // DuoSynth already has Tone's own vibrato LFO wired across both internal voices
-      // (`vibratoAmount`/`vibratoRate`). Do not add the rack-wide Tone.Vibrato wrapper as
-      // well: that was a second, unrelated pitch modulator exposed by the shared Note
-      // card. The native paths carry the shared `$vibrato`; DuoSynth keeps one authority.
-      //
-      // For the other Tone classes, depth is capped at 1 on THIS path alone, and it is
-      // Tone's cap rather than ours: `Tone.Vibrato.depth` is a NormalRange param, so a
-      // 0–12 setting from the pot would be rejected outright and take the note with it.
-      vibrato: v.synth === 'DuoSynth' ? null
-        : v.vibrato && v.vibrato.depth > 0
+      // Depth is capped at 1 on THIS path alone, and it is Tone's cap rather than ours:
+      // `Tone.Vibrato.depth` is a NormalRange param, so a 0–12 setting from the pot would
+      // be rejected outright and take the note with it. DuoSynth used to be excluded here
+      // because it carried Tone's own LFO across its two internal voices and a second
+      // modulator on the same pitch was one authority too many; it is retired, and the
+      // rack-wide wrapper is now the only answer every pooled class gets.
+      vibrato: v.vibrato && v.vibrato.depth > 0
           ? {
             rate: v.vibrato.rate ?? 5,
             depth: Math.min(1, v.vibrato.depth),
@@ -1783,7 +2151,7 @@ export class VoiceRack {
   /**
    * How long after its last note a pool built from this spec is actually silent.
    *
-   * The longest release anywhere in the options bag — a DuoSynth has two envelopes and
+   * The longest release anywhere in the options bag — a nested class has two envelopes and
    * a MonoSynth's filter has one of its own, and a retired pool must outlive the
    * slowest of them or holding it back would have bought nothing. A release written in
    * Tone's note notation ('8n') is not a number of seconds and is not read; the one
@@ -2009,16 +2377,59 @@ export class VoiceRack {
    */
   play(laneKey, voiceId, freq, {
     time, dur, gain, detune = 1, dry, wet, echo = true, preview = false,
-    hold = preview, spb = null, laneEffects = true,
+    hold = preview, spb = null, laneEffects = true, choke = null,
   }) {
-    const v = VOICES[voiceId];
-    const monoGroup = v?.monoGroup
-      ? `${v.monoGroup}|${preview ? 'preview' : 'live'}` : null;
-    if (v && v.kind === 'noise') {
-      return this._playNoise(v, { time, gain, dry, wet, echo, monoGroup });
+    // The comparison override, in front of dispatch and nowhere else (§9.2). With nothing
+    // forced this returns the voice unchanged, which is the shipping path.
+    //
+    // ---- AND IT IS A LIVE CONTROL, ON A LIVE CONTEXT ONLY ----------------------
+    //
+    // MRDR-3 AW has no offline path: notes go to a lane's port, and port delivery is not
+    // ordered against `startRendering()` — the reason TNGR-2 collects its offline notes
+    // instead (see `_collectTngr2`). So on an OfflineAudioContext the override cannot
+    // produce a rendering of the AW instrument. It produces SILENCE, and everything
+    // downstream believes it.
+    //
+    // The note cache is where that was expensive. It renders eligible notes on a throwaway
+    // OfflineAudioContext per note; the entries are gated on the NATIVE identity in
+    // `prepareNoteCache`, but the render itself comes through here, so with the desk in AW
+    // mode every one of those renders asked for a worklet lane on a context that would
+    // never see a second note. That built the 407 ms table pyramid on the MAIN THREAD, per
+    // cached note, and the buffer it cached was silence nothing would ever play — AW
+    // playback does not consult the cache at all. The audible result is not a quiet lane:
+    // it is the note scheduler starved for a quarter of a second while the transport runs,
+    // which is a crack. `dropoutsDelta 1` with `clockMin 1.00` in the desk's diagnostics.
+    //
+    // So an offline render is the NATIVE instrument, and it is not silent about it: the
+    // A/B this override exists for happens live, where the comparison is real, and a
+    // bounce taken in AW mode renders `_playLayer` rather than a gap. Until §6's offline
+    // lane is wired into the rack, those are the only two honest options and this is the
+    // one that makes a sound.
+    const offline = typeof this.ctx?.startRendering === 'function';
+    const v = offline ? VOICES[voiceId] : mrdrComparisonVoice(VOICES[voiceId]);
+    // Which voices steal from each other, and who gets to say so.
+    //
+    // `choke` is the ARRANGEMENT's answer — a channel number the song put this LANE on
+    // for this bar (see BAR_MAPS in src/data/arrangements.js). It wins, because it is
+    // the specific statement: somebody decided, in this song, at this bar, that these
+    // lanes share a voice.
+    //
+    // `v.monoGroup` is the KIT's answer, written into a preset so a kit built to have
+    // one percussion channel arrives that way without every song that uses it having to
+    // say so. The arcade Game Boy kit is the one in the tree.
+    //
+    // Both end up as a key into the same map, so a group can span the drum path and the
+    // pooled Tone path, and either kind can release the other. The `preview` suffix
+    // keeps the desk's audition bench out of the song's groups: a hat previewed on the
+    // keyboard must not cut the hat the transport is playing.
+    const group = choke ? `lane:${choke}` : (v?.monoGroup ? `kit:${v.monoGroup}` : null);
+    const monoGroup = group ? `${group}|${preview ? 'preview' : 'live'}` : null;
+    if (v && v.kind === 'drum') {
+      return this._playDrum(v, {
+        time, gain, dry, wet, echo, monoGroup, laneKey, voiceId, preview,
+      });
     }
-    if (v && v.kind === 'drum') return this._playDrum(v, { time, gain, dry, wet, echo });
-    if (v && v.synth === 'GameSynth') {
+    if (v && synthFamily(v.synth) === KNDO5) {
       // A HELD note plays the full one-shot envelope — the decay needs room to
       // reach silence, and the preset's `dur` is a sequencer default, not a
       // sound-design parameter. 4 s is enough for any exponential ramp to hit -80 dB.
@@ -2028,8 +2439,10 @@ export class VoiceRack {
     // Before the allowlist, not after: `SYNTHS` holds Tone classes, so a native synth that
     // reached that line would find nothing under its name and return false, which looks
     // exactly like a preset that does nothing.
-    if (v && v.synth === 'AdditiveSynth') {
-      return this._playAdditive(v, { freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold });
+    if (v && synthFamily(v.synth) === WNDR9) {
+      return this._playAdditive(v, {
+        freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, laneEffects,
+      });
     }
     if (v && v.synth === 'TNGR-2') {
       // TNGR-2 is its AudioWorklet and nothing else. Live, notes go to the lane's
@@ -2040,7 +2453,10 @@ export class VoiceRack {
         freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, spb,
       });
     }
-    if (v && v.synth === 'MRDR-3') {
+    // RENDERER DISPATCH — the one deliberate exact-identity branch (§9.1). Which
+    // backend plays is written in the lane; there is no `auto` whose answer could
+    // change under a library update.
+    if (v && v.synth === MRDR3_NATIVE) {
       // Rendered once, replayed after that — when this preset is the kind that can be.
       // The gate and the replay both refuse everything they are unsure of, and then
       // this is the line it always was. See `_cacheableLayer`.
@@ -2054,7 +2470,16 @@ export class VoiceRack {
         freq, time, dur, gain, detune, dry, wet, echo, laneKey, preview, hold, spb, laneEffects,
       });
     }
-    if (!v || !SYNTHS[v.synth]) return false;
+    if (v && v.synth === MRDR3_AW) {
+      // The OTHER exact-identity branch (§9.1). MRDR-3 AW is its worklet and nothing
+      // else: no cache to consult, and no second synthesis path to fall back to — which
+      // is the point. See `_playMrdr3Aw` for a lane with no node yet, and
+      // `warmMrdr3Lane` for the warning when it cannot have one.
+      return this._playMrdr3Aw(v, {
+        freq, time, dur, gain, detune, dry, wet, echo, laneKey, hold,
+      });
+    }
+    if (!v || !synthClassFor(v.synth, v.options)) return false;
     const notes = Array.isArray(freq) ? freq : [freq];
     // Polyphony is not a property of the preset — the same sound is one voice on a
     // bass lane and five on a chord lane, and a preset that had to declare which
@@ -2084,6 +2509,17 @@ export class VoiceRack {
     const pool = this._pool(laneKey, voiceId, dry, wet, echo,
       mono ? 1 : notes.length + 1, preview);
     if (!pool) return false;
+    // A POLY pool sized for a chord is sized for a SEQUENCER, where every note has a
+    // length and a slot comes back a beat later. A keyboard hands them out and never
+    // returns them: the third key pressed used to land on the first key's slot and take
+    // the note out from under a finger that was still down — and then letting go of that
+    // finger released the key that had stolen it. Grown to the fingers actually down
+    // instead, so a chord under three fingers is three notes. See HELD_VOICES.
+    if (hold && !mono) {
+      const down = pool.slots.reduce((n, s) => n + (s.fingers?.length ? 1 : 0), 0);
+      const want = Math.min(HELD_VOICES, down + notes.length);
+      while (pool.slots.length < want) this._addSlot(pool, dry, wet, echo);
+    }
     // A chord arrives as an array of frequencies; a melody as one number. Nulls are
     // rests, and a bank writes plenty of them.
     //
@@ -2099,8 +2535,7 @@ export class VoiceRack {
         // A non-poly mode holds slot 0 rather than advancing. A chord handed to it
         // therefore sounds its last note, which is the only meaningful answer for one
         // sounding voice.
-        const slot = mono ? pool.slots[0] : pool.slots[pool.next % pool.slots.length];
-        if (!mono) pool.next++;
+        const slot = mono ? pool.slots[0] : this._slotFor(pool, hold);
         const t = time;
         const monoGroup = v?.monoGroup
           ? `${v.monoGroup}|${preview ? 'preview' : 'live'}` : null;
@@ -2153,9 +2588,8 @@ export class VoiceRack {
         //
         // Said by LENDING the instance a portamento for the length of one call rather
         // than by writing `frequency` here: `setNote` reads the property synchronously
-        // while it schedules, and the classes own their own pitch writers — MembraneSynth
-        // ramps `frequency` down by octaves for its pitch decay — so a second writer on
-        // that param is a fight. Restored in the `finally`, which is what keeps the pool's
+        // while it schedules, and the classes own their own pitch writers — so a second
+        // writer on that param is a fight. Restored in the `finally`, which keeps the pool's
         // record of itself matching what its synths hold (see `refresh`, and the glide
         // assertion in tests/voice-edit.js).
         //
@@ -2180,6 +2614,7 @@ export class VoiceRack {
         const overlap = gated || fingered;
         const glide = glideTime(v);
         const noteKey = hold ? `${laneKey}|${f.toFixed(2)}` : null;
+        const hz = f * detune * VoiceRack.pitchShift(v);
         const carriesGlide = typeof slot.synth.portamento === 'number';
         if (carriesGlide) slot.synth.portamento = overlap ? glide : 0;
         try {
@@ -2188,8 +2623,22 @@ export class VoiceRack {
             // Release any previous note at this (lane, freq) first — the same key
             // pressed again restarts rather than stacking.
             this._releasePreview(noteKey);
-            slot.synth.triggerAttack(f * detune * VoiceRack.pitchShift(v), t, 1);
-            this._activePreviews.set(noteKey, { slot });
+            // LEGATO UNDER A FINGER is the same sentence as LEGATO under the sequencer,
+            // and it has to be said twice because a keyboard reaches this branch and the
+            // one below it never sees a held note: a key pressed while another is still
+            // DOWN takes the note over rather than striking it again. Without it LEGATO
+            // on the keys was MONO with a different name on the pill — which is the one
+            // place a player can actually hear the difference between them.
+            if (legato && slot.fingers?.length) {
+              cancelToneEnvelopes(slot.synth, t);
+              slot.synth.setNote(hz, t);
+            } else {
+              slot.synth.triggerAttack(hz, t, 1);
+            }
+            this._activePreviews.set(noteKey, { slot, at: t });
+            // Which keys are down on this one instrument, so that a note-off can tell
+            // whether it is the one speaking. See `fingerDown`.
+            fingerDown(slot, noteKey, hz);
             // `gated` rather than `overlap`: this branch re-arms a release at the new
             // note's end, and doing that to a note whose KEY IS STILL DOWN would stop a
             // sound the finger is still asking for. A held predecessor is handled by the
@@ -2199,20 +2648,11 @@ export class VoiceRack {
             // release before moving the pitch, otherwise the old note-off would close
             // the new note halfway through it. Tone's envelope cancel leaves its
             // current level in place, which is the legato contract.
-            const cancel = (node) => {
-              if (node?.cancel) node.cancel(t);
-              else if (node?.gain?.cancel) node.gain.cancel(t);
-            };
-            cancel(slot.synth.envelope);
-            cancel(slot.synth.filterEnvelope);
-            cancel(slot.synth.voice0?.envelope);
-            cancel(slot.synth.voice0?.filterEnvelope);
-            cancel(slot.synth.voice1?.envelope);
-            cancel(slot.synth.voice1?.filterEnvelope);
-            slot.synth.setNote(f * detune * VoiceRack.pitchShift(v), t);
+            cancelToneEnvelopes(slot.synth, t);
+            slot.synth.setNote(hz, t);
             slot.synth.triggerRelease(t + noteDur);
           } else {
-            slot.synth.triggerAttackRelease(f * detune * VoiceRack.pitchShift(v), noteDur, t);
+            slot.synth.triggerAttackRelease(hz, noteDur, t);
           }
           if (mono) {
             slot.activeUntil = t + Math.max(0.001, noteDur || 0.001);
@@ -2231,6 +2671,18 @@ export class VoiceRack {
       }
     });
     return true;
+  }
+
+  /**
+   * The keys still down on one TNGR-2 lane, kept per LANE because that is what a
+   * non-poly lane's single voice belongs to. One object shared by every held note on it,
+   * so a note-off can ask the question without having to take the lane key apart again.
+   */
+  _tngr2Fingers(laneKey) {
+    this._tngr2Held ||= new Map();
+    let host = this._tngr2Held.get(laneKey);
+    if (!host) { host = { fingers: [] }; this._tngr2Held.set(laneKey, host); }
+    return host;
   }
 
   /**
@@ -2401,14 +2853,16 @@ export class VoiceRack {
    * What a lane sends to the mix: its node, or its node through a chorus.
    *
    * CHORUS is a lane effect, not a voice one — one stereo pair for everything the lane
-   * plays, exactly as MRDR-3 builds it, and from the same `buildChorusLeg` so the two
-   * synths are provably running one chorus rather than two that resemble each other. The
+   * plays, and from the same `buildChorusLeg` the native MRDR path uses, so all three are
+   * provably running ONE chorus rather than several that resemble each other. Named for
+   * the job rather than for TNGR-2 because MRDR-3 AW now calls it too, which is what §7
+   * means by keeping the chorus outside the core and shared between backends. The
    * drive is NOT here: it lives in the core, because PLACE is about the voice filter.
    *
    * At mix zero there is no chorus at all — the engine builds nothing, which is what
    * makes MIX the switch and why the three pots behind it grey out.
    */
-  _tngr2Output(lane, v, time) {
+  _workletChorusOutput(lane, v, time) {
     const spec = v.chorus;
     // No CHORUS control on this voice at all: the lane's node IS its output, and it costs
     // nothing. A voice that HAS the control gets the stage whether or not it is turned
@@ -2504,7 +2958,7 @@ export class VoiceRack {
         if (!(one > 0)) continue;
         const noteKey = `${laneKey}|${one.toFixed(2)}`;
         this._releasePreview(noteKey);
-        this._heldNative.set(noteKey, { tngr2Queued: note });
+        this._heldNative.set(noteKey, { tngr2Queued: note, at: note.time });
       }
     }
     if (pending.building) return true;
@@ -2564,29 +3018,36 @@ export class VoiceRack {
     // alone, turning the chorus up did nothing at all until the song was reloaded —
     // the one effect that is native nodes rather than a number in the patch.
     const chorusKey = JSON.stringify(v.chorus || null);
-    if (!lane.connected) {
-      const out = this._tngr2Output(lane, v, time);
+    // Nothing to attach to means nothing is decided — see the long note on the MRDR-3
+    // lane below. A worklet node connected to nothing is not rendered at all, and marking
+    // the lane connected anyway is what makes that permanent.
+    const canAttach = !!dry || !!(echo && wet);
+    if (canAttach && !lane.connected) {
+      const out = this._workletChorusOutput(lane, v, time);
       if (dry) out.connect(dry);
       if (echo && wet) out.connect(wet);
       lane.out = out;
       lane.chorusKey = chorusKey;
       lane.connected = true;
-    } else if (lane.chorusKey !== chorusKey) {
+    } else if (lane.connected && lane.chorusKey !== chorusKey) {
       if (lane.stage) {
         // Values, ramped where they stand — see _updateTngr2Chorus.
         this._updateTngr2Chorus(lane, v.chorus || {}, time);
-      } else {
+        lane.chorusKey = chorusKey;
+      } else if (canAttach) {
         // The lane was connected straight through because the voice had no CHORUS block
         // when it was built, and now it has one. That is a chain that has to exist rather
         // than a value that has to move, so it is built once, here, and never again.
         try { lane.node.disconnect(); } catch { /* nothing attached yet */ }
         try { lane.out?.disconnect(); } catch { /* ditto */ }
-        const out = this._tngr2Output(lane, v, time);
+        const out = this._workletChorusOutput(lane, v, time);
         if (dry) out.connect(dry);
         if (echo && wet) out.connect(wet);
         lane.out = out;
+        lane.chorusKey = chorusKey;
       }
-      lane.chorusKey = chorusKey;
+      // No destination and no stage: leave the key UNCHANGED so the rebuild is retried
+      // on the next note rather than skipped for ever.
     }
     const durationAt = (index) => {
       const raw = Array.isArray(dur) ? (dur[index] ?? dur[0]) : dur;
@@ -2634,7 +3095,14 @@ export class VoiceRack {
         // note as long as the key was actually down, rather than clamping a fast tap to
         // nothing. See `_releasePreview` and `stopPreview`.
         const lead = Math.max(0, time - this.ctx.currentTime);
-        this._heldNative.set(noteKey, { tngr2: { lane, eventId, at: time, lead } });
+        // ONE INSTRUMENT, SEVERAL FINGERS — see `fingerDown`. A non-poly lane answers
+        // every key on it through ONE voice inside the processor, so the same last-note
+        // priority the pooled and native paths keep has to be kept here too, or letting
+        // go of the key that is speaking ends a note two other fingers are still on. In
+        // POLY every key has a voice of its own and its note-off is simply its own.
+        const fingers = (v?.mode || keyMode(v)) !== 'poly' ? this._tngr2Fingers(laneKey) : null;
+        this._heldNative.set(noteKey, { tngr2: { lane, eventId, at: time, lead, fingers } });
+        if (fingers) fingerDown(fingers, noteKey, hz);
         // The backstop, booked NOW so that nothing has to remember to book it later: a
         // held note is the one kind that has no ending of its own, and every way of
         // ending it — a key coming up, a pointer cancelled, the tab hidden, a MIDI
@@ -2647,6 +3115,162 @@ export class VoiceRack {
       made = true;
     });
     return made;
+  }
+
+  /**
+   * MRDR-3 AW: notes to a lane's persistent node.
+   *
+   * Mirrors `_playTngr2Node`, because the problem is the same one and was solved once. A
+   * lane is keyed on the LANE alone — a lane is a lane whatever preset sits on it — and
+   * keying on the preset as well would strand the old node, still connected, every time
+   * the sound changed.
+   */
+  _playMrdr3Aw(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', hold = false }) {
+    const lane = mrdr3LaneNow(this.ctx, laneKey);
+    // A lane that has not been built yet builds itself, and this note waits for it.
+    //
+    // Registering a worklet module is asynchronous and a scheduling pass is not, so the
+    // first note on a lane cannot have a node to talk to. It is not dropped: notes are
+    // scheduled a quarter-second ahead and carry absolute times, so arriving late costs
+    // nothing. Without this the first note of every lane would be silent.
+    if (!lane) return this._queueMrdr3(v, laneKey, { freq, time, dur, gain, detune, dry, wet, echo, hold });
+    // The preset as it is NOW — an edit or a preset change since the node was built.
+    syncMrdr3Patch(lane, v);
+    const notes = Array.isArray(freq) ? freq : [freq];
+    const shift = VoiceRack.pitchShift(v) * detune;
+    const amp = Math.max(0, Number(gain) || 0);
+    if (!(amp > 0) || !notes.some((n) => n > 0)) return false;
+    // The lane's output chain, rebuilt only when its CHORUS changes — the one effect that
+    // is native nodes rather than a number in the patch (§7).
+    const chorusKey = JSON.stringify(v.chorus || null);
+    // ---- A LANE IS NOT "CONNECTED" IF NOTHING RECEIVED IT ------------------------
+    //
+    // This block used to tear the lane down first and then set `connected = true`
+    // whether or not `dry` or `wet` turned out to exist. One note booked while its
+    // destination was momentarily absent therefore left the node wired to NOTHING and
+    // the lane marked as wired, so this branch never ran again — `connected` was true
+    // and the chorus key matched — and the lane was silent for the rest of the session.
+    //
+    // A DISCONNECTED AudioWorkletNode IS NOT RENDERED. Nothing pulls it, so `process()`
+    // stops being called, which is why the failure has the signature it does rather than
+    // looking like a crash: the port still answers, so health reports arrive and say
+    // nothing is wrong; `schedule()` still queues, so the backlog climbs without bound;
+    // and `late`, `steals` and `groups` freeze at whatever they were, because `applyDue`
+    // only runs inside `process`. Measured on barber-7-copy: queued 122 -> 599 over two
+    // minutes with late stuck at 38, steals at 55 and groups at 4, faults zero.
+    //
+    // So: do not rebuild at all unless there is somewhere to attach to. A lane that is
+    // already playing keeps its working connection, and one that is not tries again on
+    // the next note instead of being marked done.
+    // ---- AND "CONNECTED" HAS TO SAY WHAT IT IS CONNECTED TO ---------------------
+    //
+    // A boolean cannot: the lane's destination is not fixed for the session. A gate is
+    // cut and rebuilt when the song is re-banked, a strip is replaced when the desk
+    // heals a dead output, and a lane wired to the node that USED to be there is wired
+    // to nothing at all — which, for a worklet, is not quiet, it is unrendered. So the
+    // pair is written down and compared, the same rule `_pool` already follows: a
+    // different dry/wet is a different graph.
+    //
+    // Re-pointing is not the same as rebuilding. The chorus leg is delay lines and an
+    // LFO with a phase, so when only the destination has moved the existing output is
+    // moved with it and the stage is left alone.
+    const wetDest = echo && wet ? wet : null;
+    const dryDest = dry || null;
+    const canAttach = !!dryDest || !!wetDest;
+    if (canAttach && (!lane.connected || lane.chorusKey !== chorusKey)) {
+      if (lane.connected) {
+        try { lane.node.disconnect(); } catch { /* nothing attached yet */ }
+        try { lane.out?.disconnect(); } catch { /* ditto */ }
+      }
+      const out = this._workletChorusOutput(lane, v, time);
+      if (dryDest) out.connect(dryDest);
+      if (wetDest) out.connect(wetDest);
+      lane.out = out;
+      lane.chorusKey = chorusKey;
+      lane.connected = true;
+      lane.dryDest = dryDest;
+      lane.wetDest = wetDest;
+    } else if (canAttach && lane.connected
+      && (lane.dryDest !== dryDest || lane.wetDest !== wetDest)) {
+      // Whatever piled up while nothing was pulling this node is owed to a moment that
+      // has been and gone, and the core drops it on its own — see the stale-event note
+      // in `applyDue`. It is NOT panicked from here: a panic clears the whole queue at
+      // the frame it lands on, including the note this call is about to book behind it,
+      // so recovering the lane that way would cost the note that proved it recovered.
+      try { lane.out?.disconnect(); } catch { /* the old destination may be gone */ }
+      if (dryDest) lane.out.connect(dryDest);
+      if (wetDest) lane.out.connect(wetDest);
+      lane.dryDest = dryDest;
+      lane.wetDest = wetDest;
+    }
+    const hzs = notes.filter((n) => n > 0).map((n) => n * shift).filter((n) => Number.isFinite(n) && n > 0);
+    if (!hzs.length) return false;
+    const durOf = (i) => {
+      const raw = Array.isArray(dur) ? (dur[i] ?? dur[0]) : dur;
+      return Math.max(0.001, Number(raw) || 0.001);
+    };
+    // A CHORD IS ONE EVENT with one id — that is how its tones reach the same shaper.
+    //
+    // A PER-LANE COUNTER, for the reason TNGR-2 already learned the hard way: an id
+    // hashed from the time and the pitch is a linear combination, so two notes can wear
+    // the same name, and then one note-off releases a voice that was already let go
+    // while the other note is never released at all. See the note in the TNGR-2 booking
+    // above, and tests/tngr2-queue.js, which greps this file for the old expression.
+    // The hash was there to keep a stem and its mix identical; a counter keeps that too,
+    // because soloing a lane changes neither which notes it plays nor their order.
+    const eventId = (lane.nextEventId = (lane.nextEventId || 0) + 1);
+    mrdr3NoteOn(lane, {
+      at: time, hz: hzs, velocity: Math.min(1, amp), eventId,
+      durSeconds: hold ? HOLD_SECONDS : hzs.map((_, i) => durOf(i)),
+    });
+    if (hold) {
+      // A HELD note has no note-off of its own — a key is down. Written down under the
+      // same key `_releasePreview` looks under, or a swept keyboard leaves a note sounding.
+      const noteKey = `${laneKey}|${notes[0].toFixed(2)}`;
+      this._releasePreview(noteKey);
+      this._heldNative.set(noteKey, { mrdr3: { lane, eventId }, at: time });
+    }
+    return true;
+  }
+
+  /** Build a lane for a voice, and say plainly when the context cannot host one. */
+  async warmMrdr3Lane(v, laneKey) {
+    if (!v || v.synth !== MRDR3_AW) return false;
+    if (!canHostMrdr3(this.ctx)) {
+      // Almost always an insecure origin: AudioWorklet needs https or localhost, so the
+      // LAN dev URL and file:// have no `audioWorklet` at all. The deployed game is https.
+      if (!this._mrdrAwWarned) {
+        this._mrdrAwWarned = true;
+        console.error('MRDR-3 AW cannot play: AudioWorklet needs a secure context '
+          + `(https or localhost). This page is ${globalThis.location?.origin || '?'} — `
+          + 'AW lanes will be silent here.');
+      }
+      return false;
+    }
+    try {
+      const lane = await mrdr3Lane(this.ctx, laneKey, { voice: v, voices: VOICES });
+      return !!lane;
+    } catch (err) {
+      console.warn(`MRDR-3 AW: lane ${laneKey} could not be built — ${err?.message || err}`);
+      return false;
+    }
+  }
+
+  /** Hold a note until its lane exists, then play it. One build per key, not per note. */
+  _queueMrdr3(v, laneKey, note) {
+    this._mrdrAwQueue ||= new Map();
+    let queue = this._mrdrAwQueue.get(laneKey);
+    if (queue) { queue.notes.push(note); return true; }
+    queue = { notes: [note], voice: v };
+    this._mrdrAwQueue.set(laneKey, queue);
+    this.warmMrdr3Lane(v, laneKey).then((ok) => {
+      this._mrdrAwQueue.delete(laneKey);
+      if (!ok) return;                      // warmMrdr3Lane has already said why
+      for (const queued of queue.notes) {
+        this._playMrdr3Aw(v, { ...queued, laneKey });
+      }
+    });
+    return true;
   }
 
   _playGame(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false, hold = preview }) {
@@ -2695,7 +3319,7 @@ export class VoiceRack {
     //
     // The seeded buffer, never `Math.random`, so two renders still match and stems
     // still sum. A rack built without one falls back to the engine's own voice rather
-    // than playing silence — the same answer `_playNoise` gives.
+    // than playing silence — the same answer `_playDrum` gives.
     const isNoise = (v.waveform || 'square') === 'noise';
     if (isNoise && !this.noiseBuf) return false;
     // ONE LFO for the whole chord. Per-note LFOs would start at the same phase and then
@@ -2724,7 +3348,7 @@ export class VoiceRack {
       //
       // This is the one vibrato key the Tone path does NOT read: its LFO lives in the
       // pool and free-runs across notes, so there is no note-on for an onset to be
-      // measured from. Stated in the panel as a GameSynth row for that reason.
+      // measured from. Stated in the panel as a KNDO-5 row for that reason.
       const delay = Math.max(0.001, v.vibrato.delay || 0.001);
       vibEnv.gain.setValueAtTime(0, time);
       vibEnv.gain.linearRampToValueAtTime(1, time + delay);
@@ -2735,6 +3359,68 @@ export class VoiceRack {
         vibEnv.connect(centsGain);
       }
     }
+    // ---- DRIVE, and where it sits ---------------------------------------------
+    //
+    // The card MRDR-3, TNGR-2, the drawbar organ and the drum panel already carry, on the
+    // same three keys: SHAPE picks the curve, DRIVE is how hard, and TONE is the drive's
+    // own tone control — the filter that tames the fizz the shaper just added, and the
+    // reason both nodes hang off `v.drive` together and neither is built without it. A
+    // tone filter left standing alone would be a whole-voice EQ wearing the drive's
+    // label, and this panel already has a Filter card for a voice's brightness.
+    //
+    // PLACE means here what it means on the other two: which side of the voice's own
+    // filter and VCA the shaper is on.
+    //
+    //   POST  osc → [filter] → [amp env] → shaper → [tone] → out     (the default)
+    //   PRE   osc → shaper → [tone] → [filter] → [amp env] → out
+    //
+    // POST is a shaper hearing the envelope, so the grit follows the note down; PRE is a
+    // shaper hearing the raw waveform, so the filter cleans up after it. A square through
+    // a fold at PRE is a whole other waveform, which is the reason to have the pill.
+    //
+    // At zero DRIVE nothing at all is built, so a preset that does not name it renders
+    // the samples it always did.
+    const drivePre = v.drive > 0 && v.drivePlace === 'pre';
+    const drivePost = v.drive > 0 && !drivePre;
+    const driveInto = (dest) => {
+      let into = dest;
+      if (v.tone) {
+        const tf = this.ctx.createBiquadFilter();
+        tf.type = v.tone.type || 'lowpass';
+        tf.frequency.value = Math.max(20, v.tone.freq ?? 8000);
+        tf.Q.value = v.tone.Q ?? 0.7;
+        tf.connect(into); into = tf;
+      }
+      const shaper = this.ctx.createWaveShaper();
+      shaper.curve = this._driveCurve(v.drive, v.shape);
+      shaper.connect(into);
+      return shaper;
+    };
+
+    // ---- CHORUS 2 --------------------------------------------------------------
+    //
+    // A LANE effect, not a note one: one stereo pair for everything the lane plays, built
+    // by the same `_ensureMrdrLaneStage` MRDR-3 and the drawbar organ use, and therefore
+    // the same `buildChorusLeg` TNGR-2 builds its own stage from — four synths running
+    // ONE chorus rather than four that resemble each other. It is the last box the
+    // finished voice goes through, so the echo send is tapped after it, exactly as
+    // `_playLayer` taps its own.
+    //
+    // A voice that HAS the control gets the stage whether or not it is turned up, so
+    // winding MIX off zero is a value ramping rather than a chain being rebuilt — the
+    // rule `_tngr2Output` states. A voice with no `chorus` block at all never sees a
+    // node: the notes connect straight to the strip, as they always have.
+    const laneStage = v.chorus && typeof v.chorus === 'object'
+      ? this._ensureMrdrLaneStage(laneKey, v.id,
+        sectionBypassed(v, 'chorus', v.chorus) ? { ...v, chorus: null } : v, {
+          dry, wet, echo, time, preview, scope: preview ? 'preview' : 'song',
+        }) : null;
+    /** Where a finished note goes: the lane's chorus stage, or the strip itself. */
+    const sendTo = (node) => {
+      if (laneStage) { node.connect(laneStage.input); return; }
+      node.connect(dry);
+      if (echo && wet) node.connect(wet);
+    };
     // `dur` matches `freq`: one length for the whole chord, or one PER NOTE, the way
     // the Tone path reads it — a piano roll drawing a rectangle per chord tone says
     // the tones are different lengths, and this path was reading past that.
@@ -2752,15 +3438,44 @@ export class VoiceRack {
       // deal VIB DEPTH 0 makes, and the reason every preset that shipped before this
       // sounds identical.
       //
-      // `_filterChain` rather than a filter written out here, so this is the same
-      // filter the noise and drum voices already have — same keys, same slopes, same
-      // `to`-over-`sweep` ramp — instead of a second one that drifts from it. It is
-      // built PER NOTE because its sweep starts at note-on: a chord's notes are struck
-      // together, but a filter shared between them would be re-triggered by whichever
-      // note was scheduled last.
-      const chain = v.filter ? this._filterChain(v.filter, t, 1, 'lowpass', 4000) : null;
-      if (chain) chain.tail.connect(g);
-      const into = (node) => node.connect(chain ? chain.head : g);
+      // `_filterChain` rather than a filter written out here, so this is the same cascade
+      // the noise and drum voices already have — same keys, same slopes, one resonant
+      // stage and Butterworth behind it — instead of a second one that drifts from it.
+      // What this panel no longer writes is that chain's `to`/`sweep` pair: KLNG8 still
+      // speaks it, and here the envelope below says the same thing with a sustain and a
+      // release. It is built PER NOTE because the envelope starts at note-on, and because
+      // KEY FOLLOW has to read this note's own frequency: a chord's tones are struck
+      // together, but one filter shared between them would be retriggered by whichever
+      // was scheduled last and tuned to whichever was scheduled first.
+      //
+      // KEY FOLLOW is MRDR-3's own arithmetic, referenced to A2 so a patch voiced at the
+      // bottom of the keyboard stays where it was put. `_filterChain` takes it as the
+      // per-hit cutoff RATIO — the slot a drum's per-tap tone goes into — so one
+      // multiplier carries it and the sweep's destination would move with its origin.
+      const fspec = v.filter;
+      const track = fspec && fspec.track > 0
+        ? ((f * shift) / 110) ** Math.min(1, fspec.track) : 1;
+      const chain = fspec ? this._filterChain(fspec, t, track, 'lowpass', 4000) : null;
+      if (chain) {
+        chain.tail.connect(g);
+        // ENV AMOUNT octaves across the cascade, over its own ADSR — the same `filterEnv`
+        // the layers and the global stage call, on the same `filter.env` key, so a cutoff
+        // envelope means one thing on this panel and on MRDR-3's.
+        //
+        // This card used to say SWEEP TO and SWEEP TIME: one ramp that arrived and stayed,
+        // with no sustain and no release and a second name for a filter envelope. Zero
+        // octaves — and an absent `env` — schedule nothing at all, which is why there is
+        // no switch on the Filter Env card and why every preset that predates it is
+        // untouched.
+        filterEnv(chain.stages, fspec.env, t, end);
+      }
+      // At PRE the shaper and its tone filter go in FRONT of all of that, so the source
+      // arrives at them rather than at the filter — see `driveInto`. Built per note like
+      // everything else on this path: a chord's tones each get their own, which is what
+      // makes them distort as three notes rather than as one summed waveform.
+      const head = chain ? chain.head : g;
+      const source = drivePre ? driveInto(head) : head;
+      const into = (node) => node.connect(source);
       // The source and the thing that carries its PITCH are the only difference between
       // the two waveform families: an oscillator's `frequency`, or the centre of a
       // bandpass the noise runs through. Both are frequencies in hertz, so the sweep,
@@ -2844,7 +3559,17 @@ export class VoiceRack {
       // a note that barely falls at all. -20 dB is a tenth of the amplitude — an
       // unmistakable decay across the note, and still plainly audible in a mix, which is
       // what a release needs in order to be heard ending.
-      const peak = gain * makeup;
+      //
+      // WITH A POST DRIVE the note's own level comes off this envelope and is applied
+      // AFTER the shaper instead — the same split `_playDrum` and `_playLayer` make, and
+      // for the same reason: a waveshaper is a curve over amplitude, so a quiet note
+      // fed into it distorts less than a loud one and the lane fader would double as a
+      // drive control. The envelope then runs at the voice's own level (`makeup`, which
+      // is the noise waveform's bandwidth compensation and nothing to do with the mix),
+      // the shaper always hears the same amplitude, and `out` restores the note gain
+      // behind it. Undriven — every preset that predates this card — there is no second
+      // node and the envelope carries the gain exactly as it always did.
+      const peak = (drivePost ? 1 : gain) * makeup;
       const off = end + release;
       g.gain.setValueAtTime(0.0001, t);
       g.gain.exponentialRampToValueAtTime(peak, peakAt);
@@ -2860,16 +3585,26 @@ export class VoiceRack {
       if (hold) {
         const noteKey = `${laneKey}|${f.toFixed(2)}`;
         this._releasePreview(noteKey);
-        this._heldNative.set(noteKey, {
-          params: [{ param: g.gain, e: { release } }], sources: [o],
-        });
+          this._heldNative.set(noteKey, {
+            at: t,
+            params: [{ param: g.gain, e: { release } }], sources: [o],
+          });
       }
       // The source is already wired into `g` by the branch above — through the bandpass
       // for noise, directly for an oscillator, and through the tone filter when the
       // preset has one. Connecting it again here would put raw unfiltered noise beside
       // the filtered copy.
-      g.connect(dry);
-      if (echo && wet) g.connect(wet);
+      //
+      // A POST drive hangs between the envelope and the strip, with the note's own gain
+      // on the far side of it — see `peak` above. Everything else goes straight out,
+      // which is `sendTo`: the lane's chorus stage when the preset has one, and the
+      // channel strip itself when it does not.
+      if (drivePost) {
+        const out = this.ctx.createGain();
+        out.gain.setValueAtTime(gain, t);
+        sendTo(out);
+        g.connect(driveInto(out));
+      } else sendTo(g);
       o.start(t); o.stop(off + 0.01);
       lastOff = Math.max(lastOff, off + 0.01);
     });
@@ -2917,7 +3652,7 @@ export class VoiceRack {
     return !!v && v.kind !== 'drum' && v.kind !== 'noise'
       && !preview && !hold
       && mode === 'poly'
-      && !!SYNTHS[v.synth]
+      && !!synthClassFor(v.synth, v.options)
       && !(v.vibrato && v.vibrato.depth > 0)
       && !v.portamento;
   }
@@ -2958,7 +3693,10 @@ export class VoiceRack {
    *   · previews and held notes, as above: a finger decides the length.
    */
   _cacheableLayer(v, mode, preview, hold) {
-    if (!v || v.synth !== 'MRDR-3' || !v.layer) return false;
+    // NATIVE ONLY (§10): the cache gate. An AW lane is refused here by identity
+    // rather than by any of the conditions below, which is what makes the bypass
+    // structural instead of incidental.
+    if (!v || v.synth !== MRDR3_NATIVE || !v.layer) return false;
     if (preview || hold) return false;
     if (mode !== 'poly' || v.portamento) return false;
     if (layerVariesWithTime(v)) return false;
@@ -3197,7 +3935,15 @@ export class VoiceRack {
     const mark = (entry) => {
       if (entry) entry.preparePriority = Math.max(entry.preparePriority || 0, priority);
     };
-    if (v.synth === 'MRDR-3') {
+    // ---- AND NOT AT ALL WHILE THE WORKLET IS THE BACKEND -----------------------
+    //
+    // An AW lane uses no note cache, by construction: `play` dispatches on the identity
+    // and the AW branch never consults one. So an entry prepared for an MRDR-3 voice
+    // while the switch is on worklet is a render whose buffer nothing can ever read —
+    // which the desk's diagnostics showed as 102 misses against zero hits, the whole
+    // trickle working for nothing beside a song that was not using it.
+    if (v.synth === MRDR3_NATIVE && mrdrComparisonVoice(v)?.synth === MRDR3_AW) return 0;
+    if (v.synth === MRDR3_NATIVE) {   // NATIVE ONLY (§10) — cache entry
       if (!this._cacheableLayer(v, v.mode || keyMode(v), false, false)) return 0;
       const notes = Array.isArray(freq) ? freq : [freq];
       if (this._preparedPlan) return this._recordPreparedMrdr(v, voiceId, notes, dur, detune, priority);
@@ -3293,6 +4039,14 @@ export class VoiceRack {
    */
   _queueRender(job) {
     const state = this._cacheState;
+    // Tagged only while the URGENT WALK is running, which is a synchronous loop — so
+    // this credits the repair with the jobs it actually created, and not with the
+    // ordinary scheduler misses that happen to land in the same few seconds. Both render
+    // paths reach the queue here, so one place is enough.
+    if (state.urgentTagging) {
+      job.urgent = true;
+      state.stats.urgentQueued++;
+    }
     state.queue.push(job);
     state.stats.queuedTotal++;
     pumpCache(state);
@@ -3574,9 +4328,30 @@ export class VoiceRack {
     return pool;
   }
 
+  /**
+   * Which instance of a POLY pool plays the next note.
+   *
+   * Round robin for a sequenced note, which is what it has always been: notes have
+   * lengths, slots come free, and sharing a couple of them is why a pool is a pool.
+   *
+   * A HELD note asks a different question. Its slot is not free until a finger says so,
+   * so a key looks for one nobody is holding first and only falls back to the robin when
+   * every slot in the pool is under a finger — the polyphony cap, where the oldest note
+   * is the one that gives way.
+   */
+  _slotFor(pool, hold) {
+    if (hold) {
+      const free = pool.slots.find((s) => !s.fingers?.length);
+      if (free) return free;
+    }
+    const slot = pool.slots[pool.next % pool.slots.length];
+    pool.next++;
+    return slot;
+  }
+
   /** One more instance of this pool's preset, wired to the same strip. */
   _addSlot(pool, dry, wet, echo) {
-    const Ctor = SYNTHS[pool.spec.synth];
+    const Ctor = synthClassFor(pool.spec.synth, pool.spec.opts);
     {
       const { opts, vibrato } = pool.spec;
       const synth = new Ctor(Object.keys(opts).length
@@ -3586,14 +4361,14 @@ export class VoiceRack {
         : undefined);
       const out = this.ctx.createGain();
       // Silent until a note sets its level at that note's time. A slot that has
-      // never played must not pass the synth's own idle output — a DuoSynth's
-      // vibrato LFO, for one, runs whether or not anything triggered it.
+      // never played must not pass the synth's own idle output — a modulator that
+      // free-runs in the pool does so whether or not anything triggered it.
       out.gain.value = 0;
       // Per-voice vibrato, when the preset asks for one. The desk already has a
       // vibrato INSERT, and that is the right tool for "this channel wobbles" — this
       // is for when the wobble belongs to the sound itself and should follow the
-      // preset onto any lane and into any song. DuoSynth is the only Tone class with
-      // one built in, which is why it was the only one that could have it.
+      // preset onto any lane and into any song. It reaches every pooled class now:
+      // DuoSynth carried Tone's own LFO and was the one exception, and it is retired.
       //
       // Tone.Vibrato rather than a hand-rolled delay: it is already in the effects
       // catalogue, and that catalogue is gated on a measured offline sweep, so this
@@ -3785,106 +4560,17 @@ export class VoiceRack {
   }
 
   /**
-   * A noise-based one-shot: snares, claps, hats, shakers — the sounds that are mostly
-   * air rather than pitch, and the reason the drum half of the library was thin.
-   *
-   * Built from native nodes on the shared seeded buffer, the same construction the
-   * engine's own snare uses: a filtered burst of noise, optionally a pitched body
-   * under it, optionally repeated a few milliseconds apart (which is all a clap is —
-   * one hit heard four times in a small room).
-   *
-   * Not pooled. These are one-shots with no sustain and nothing to retrigger, so a
-   * node per hit is what the engine has always done and it costs less than keeping
-   * them alive between beats.
-   */
-  _playNoise(v, { time, gain, dry, wet, echo, monoGroup = null }) {
-    if (!this.noiseBuf) return false;
-    const ctx = this.ctx;
-    const n = v.noise || {};
-    const previous = monoGroup ? this._monoGroups.get(monoGroup) : null;
-    if (previous) {
-      if (previous.release) previous.release(time);
-      else if (previous.slot && previous.pool && !previous.pool.gone) {
-        try { previous.slot.synth.triggerRelease(time); } catch { /* already quiet */ }
-      }
-    }
-    const level = gain * (n.gain ?? 1);
-    const taps = v.taps || [0];
-    const hum = v.humanize || {};
-    const buf = this._bufFor(n, 0.09);
-    const sources = [];
-    const gains = [];
-    for (let i = 0; i < taps.length; i++) {
-      const t = time + taps[i];
-      // Each tap is quieter than the one before it — a burst repeated at one level is
-      // a stutter, where a clap is one hit heard several times in a small room.
-      //
-      // `tapGains` states them outright where a falloff cannot. The engine's own clap
-      // is the case that needs it: three bursts at 0.16, 0.16 and 0.26, the LAST the
-      // loudest and four times the length — the two slaps and then the room. No curve
-      // through those points is a falloff, so a preset that has to be exact gets to
-      // list them, and `tapDecays` does the same for the lengths.
-      const fade = (v.tapGains?.[i] ?? (v.tapFalloff ?? 1) ** i)
-        * vary(hum.gain, time, i);
-      const tone = (v.tapTone ?? 1) ** i * vary(hum.filter, time, i + 16);
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      const chain = this._filterChain(n, t, tone, 'bandpass', 2600);
-      const g = ctx.createGain();
-      const decay = v.tapDecays?.[i] ?? n.decay ?? 0.09;
-      g.gain.setValueAtTime(Math.max(1e-4, level * fade), t);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
-      src.connect(chain.head); chain.tail.connect(g); g.connect(dry);
-      if (echo && wet) g.connect(wet);
-      src.start(t); src.stop(t + decay + 0.02);
-      sources.push(src); gains.push(g);
-    }
-    // The body: a short pitched thump under the noise, which is what tells a snare
-    // from a hiss and a kick from a click.
-    const body = v.body;
-    if (body) {
-      const t = time;
-      const bend = vary(hum.pitch, time, 32);
-      const o = ctx.createOscillator();
-      const og = ctx.createGain();
-      o.type = body.type || 'triangle';
-      o.frequency.setValueAtTime((body.from ?? 210) * bend, t);
-      o.frequency.exponentialRampToValueAtTime((body.to ?? 140) * bend, t + (body.decay ?? 0.06));
-      og.gain.setValueAtTime(Math.max(1e-4, gain * (body.gain ?? 0.375) * vary(hum.gain, time, 0)), t);
-      og.gain.exponentialRampToValueAtTime(0.0001, t + (body.decay ?? 0.06));
-      o.connect(og); og.connect(dry);
-      if (echo && wet) og.connect(wet);
-      o.start(t); o.stop(t + (body.decay ?? 0.06) + 0.02);
-      sources.push(o); gains.push(og);
-    }
-    if (monoGroup) {
-      this._monoGroups.set(monoGroup, {
-        release: (at) => {
-          for (const g of gains) {
-            try {
-              if (g.gain.cancelAndHoldAtTime) g.gain.cancelAndHoldAtTime(at);
-              else g.gain.cancelScheduledValues(at);
-              g.gain.setTargetAtTime(0, at, 0.002);
-            } catch { /* already quiet */ }
-          }
-          for (const src of sources) {
-            try { src.stop(at + 0.01); } catch { /* already stopped */ }
-          }
-        },
-      });
-    }
-    return true;
-  }
-
-  /**
    * A KLNG8 voice: the Microtonic construction — one oscillator and one noise
    * generator, each with its own envelope, summed and optionally driven into a
-   * waveshaper. `_playNoise` grew from the engine's snare and stops at "a burst with
-   * a thump under it"; this is the other way round, a drum designed as two sources:
+   * waveshaper. It absorbed the old noise path, which grew from the engine's snare and
+   * stopped at "a burst with a thump under it" — the same construction stated in fewer
+   * words. This is the general form of it, a drum designed as independent sources:
    *
    *   osc    a pitched section: waveform, a pitch envelope (`from` falling to `to`
    *          over `sweep` seconds, in the shape `pitchCurve` names — see `pitchRamp`),
    *          and an amp envelope of its own
+   *   osc2   a second one, the same section in every key — the two tuned oscillators
+   *          an 808 snare is, the detuned pair a Simmons tom is
    *   noise  the seeded buffer through a filter whose cutoff can itself sweep
    *          (`freq` to `to`), with its own amp envelope
    *   drive  0–1: the summed sections through a tanh shaper — an 808 kick pushed
@@ -3899,21 +4585,60 @@ export class VoiceRack {
    * how loud the lane happens to be, and a preset would audition differently from
    * how it renders. In here, the shaper sees the preset's own levels and nothing else.
    *
-   * Like `_playNoise`: one-shots, native nodes, never pooled, deterministic offline
-   * because the only noise in it is the seeded buffer.
+   * One-shots: native nodes, never pooled, deterministic offline because the only
+   * noise in it is the seeded buffer.
    */
-  _playDrum(v, { time, gain, dry, wet, echo }) {
+  _playDrum(v, {
+    time, gain, dry, wet, echo, monoGroup = null, laneKey = '', voiceId = '', preview = false,
+  }) {
     const ctx = this.ctx;
     const o = v.osc;
+    // THE SECOND BODY. An 808 snare is two tuned oscillators under its noise, a Simmons
+    // tom is two detuned sines with different sweeps, and a 909 kick is a body plus a
+    // separately tuned click — none of which one oscillator and a fixed `knock` can say.
+    // It is the SAME section as `osc`, every key and every default, built by the same
+    // closure: a control that means one thing on the first oscillator cannot mean
+    // another on the second. Absent by default, so every preset written before it
+    // renders sample-identically.
+    const o2 = v.osc2;
     const n = v.noise;
     const r = v.ring;
     const m = v.metal;
+    // The CHOKE, and the reason a closed hat can shut an open one: whatever this group
+    // is still ringing gets released at the instant this hit starts. The map is the
+    // rack's and is shared with the pooled Tone path, so a group can span both — which
+    // is what the arcade kit needs, its snare here and its crash a Tone voice.
+    // Drums are polyphonic one-shots by default: each hit builds its own native graph.
+    // MONO is an opt-in voice setting, scoped to this lane and preset so turning it on
+    // for a long open hat does not make an unrelated lane disappear. Arrangement/KIT
+    // choke groups arrive already resolved in `monoGroup` and retain precedence.
+    const drumMode = v?.mode === 'mono' ? 'mono' : 'poly';
+    const ownGroup = drumMode === 'mono'
+      ? `voice:${laneKey || voiceId}:${voiceId}|${preview ? 'preview' : 'live'}` : null;
+    const groupKey = monoGroup || ownGroup;
+    const previous = groupKey ? this._monoGroups.get(groupKey) : null;
+    if (previous) {
+      if (previous.release) previous.release(time);
+      else if (previous.slot && previous.pool && !previous.pool.gone) {
+        try { previous.slot.synth.triggerRelease(time); } catch { /* already quiet */ }
+      }
+    }
+    // What a later hit in this group will fade and stop. `outs` is the per-tap SUMMING
+    // node — everything this voice builds passes through one of them, after the shaper —
+    // so the choke is a handful of gains rather than a walk over every section. Fading
+    // there and not in front of the shaper matters: a fade the waveshaper then sees is a
+    // tail that distorts on its way out.
+    const outs = [];
+    // Stopped as well as faded. A choked crash otherwise leaves its six metal partials
+    // running to whatever stop time they were scheduled for, which is CPU spent on
+    // silence — and on a 6-second cymbal that is most of the hit.
+    const sources = [];
     // A KLNG8 tune is a master pitch offset, not another pitch envelope.  Keep it
     // outside the tap bend so +12 semitones doubles every pitched source while each tap
     // still keeps its authored detune relationship.  Zero is deliberately neutral for
     // every existing preset, which predates this optional key.
     const tune = 2 ** ((v.tune ?? 0) / 12);
-    if (!o && !n && !r && !m && !(v.knock > 0)) return false;
+    if (!o && !o2 && !n && !r && !m && !(v.knock > 0)) return false;
     if ((n || r) && !this.noiseBuf) return false;
     const taps = v.taps || [0];
     const hum = v.humanize || {};
@@ -3961,6 +4686,31 @@ export class VoiceRack {
       return attack + hold + decay;
     };
 
+    // The 808 cowbell is the one native drum recipe with a specified VCA floor and
+    // exact source lifetime. Keep this separate from `env`, whose ordinary -80 dB
+    // tail and scheduling pad are still the right semantics for the rest of KLNG8.
+    const hardwareEnv = (param, t, level, spec, dflt = 0.2) => {
+      const attack = spec.attack ?? 0;
+      const decay = spec.decay ?? dflt;
+      const hold = spec.hold ?? 0;
+      const floor = Math.max(1e-6, spec.floor ?? 0.001);
+      const lvl = Math.max(floor, level);
+      const from = t + attack + hold;
+      const end = from + decay;
+      if (attack === 0) param.setValueAtTime(lvl, t);
+      else {
+        param.setValueAtTime(floor, t);
+        param.linearRampToValueAtTime(lvl, from);
+      }
+      if (hold > 0) param.setValueAtTime(lvl, t + attack + hold);
+      // Leave one sample for the authored floor, then cut to absolute zero at the
+      // exact envelope end. The oscillator is stopped at the same instant below.
+      const floorAt = Math.max(from, end - 1 / ctx.sampleRate);
+      if (floorAt > from) param.exponentialRampToValueAtTime(floor, floorAt);
+      param.linearRampToValueAtTime(0, end);
+      return attack + hold + decay;
+    };
+
     for (let i = 0; i < taps.length; i++) {
       const t = time + taps[i];
       const fade = (v.tapGains?.[i] ?? (v.tapFalloff ?? 1) ** i) * vary(hum.gain, time, i);
@@ -3980,6 +4730,7 @@ export class VoiceRack {
       // exactly what it used to be, and what it sounded like with DRIVE at zero.
       const out = ctx.createGain();
       out.gain.value = gain * fade;
+      outs.push(out);
       out.connect(dry);
       if (echo && wet) out.connect(wet);
       let into = out;
@@ -3998,19 +4749,30 @@ export class VoiceRack {
         into = shaper;
       }
 
-      let len = 0;
-      if (o) {
+      // ---- a pitched body ---------------------------------------------------
+      //
+      // ONE closure for BOTH oscillators, and that is the point of it rather than a
+      // saving: `osc` and `osc2` are the same section, so FREQUENCY, AMOUNT, RATE CURVE,
+      // SAG and the modulator have to mean exactly the same thing on each. Two blocks
+      // that started identical are two blocks that drift, and the first key one of them
+      // grew alone would be a pot on one card that does nothing on the card beside it.
+      //
+      // Returns its OWN length rather than reading the running `len`: the modulator is
+      // stopped against the oscillator it bends, and against the running maximum the
+      // second oscillator's modulator would be held open for as long as the first
+      // oscillator's tail — audible as nothing, and paid for on every hit.
+      const buildOsc = (spec) => {
         const osc = ctx.createOscillator();
-        osc.type = o.type || 'sine';
-        const from = (o.from ?? 190) * tune * bend;
-        const to = (o.to ?? 52) * tune * bend;
+        osc.type = spec.type || 'sine';
+        const from = (spec.from ?? 190) * tune * bend;
+        const to = (spec.to ?? 52) * tune * bend;
         osc.frequency.setValueAtTime(from, t);
         // `pitchCurve`, not `curve` — `curve` on this section is its AMP envelope's, and
         // the two are genuinely separate choices: a kick can snap in pitch while its
         // level falls exponentially, which is most kicks.
-        if (to !== from) pitchRamp(osc.frequency, to, t, o.sweep ?? 0.07, o.pitchCurve);
+        if (to !== from) pitchRamp(osc.frequency, to, t, spec.sweep ?? 0.07, spec.pitchCurve);
         const g = ctx.createGain();
-        len = Math.max(len, env(g.gain, t, o.gain ?? 1, o, 0.35));
+        const oscLen = env(g.gain, t, spec.gain ?? 1, spec, 0.35);
         // The one modulator, and the reason a single oscillator can be a cowbell. Its
         // pitch is fixed at the carrier's STARTING frequency rather than tracking the
         // sweep: the ratio drifting through a kick's octave-and-a-half drop is what
@@ -4021,21 +4783,28 @@ export class VoiceRack {
         // an oscillator and a gain node per tap, swinging the carrier by a ten-thousandth
         // of a hertz. Identical output, built anyway — and it made "wind INDEX down"
         // mean something different here from what it means one synth over.
-        if (o.fm && (o.fm.index ?? 1) > 0) {
+        if (spec.fm && (spec.fm.index ?? 1) > 0) {
           const mod = ctx.createOscillator();
-          mod.type = o.fm.type || 'sine';
-          mod.frequency.value = from * (o.fm.ratio ?? 1.4);
+          mod.type = spec.fm.type || 'sine';
+          mod.frequency.value = from * (spec.fm.ratio ?? 1.4);
           const mg = ctx.createGain();
           // Depth in HERTZ, stated as a multiple of the carrier: at an index of 1 the
           // modulator swings the carrier by its own starting frequency either way, so
           // the number means the same thing on a 50 Hz kick and a 2 kHz rim.
-          env(mg.gain, t, from * (o.fm.index ?? 1), o.fm, o.decay ?? 0.35);
+          env(mg.gain, t, from * (spec.fm.index ?? 1), spec.fm, spec.decay ?? 0.35);
           mod.connect(mg); mg.connect(osc.frequency);
-          mod.start(t); mod.stop(t + len + 0.03);
+          mod.start(t); mod.stop(t + oscLen + 0.03);
+          sources.push(mod);
         }
         osc.connect(g); g.connect(into);
-        osc.start(t); osc.stop(t + len + 0.03);
-      }
+        osc.start(t); osc.stop(t + oscLen + 0.03);
+        sources.push(osc);
+        return oscLen;
+      };
+
+      let len = 0;
+      if (o) len = Math.max(len, buildOsc(o));
+      if (o2) len = Math.max(len, buildOsc(o2));
       // ---- the knock --------------------------------------------------------
       //
       // The engine's own kick is three layers, not two: a sine body, a noise click, and
@@ -4052,6 +4821,9 @@ export class VoiceRack {
       // Gated on the oscillator section being present: the knock is the oscillator's
       // midrange punch layer. When the oscillator is switched off there is nothing for
       // the knock to sit under, and it fires alone as an orphaned thwack.
+      // Gated on the FIRST oscillator, not on either: the knock is a fixed 300 Hz
+      // punch under a body, and `osc2` is a body you can put wherever you want one —
+      // a preset with only a second oscillator has already chosen the better tool.
       if (o && v.knock > 0) {
         const k = ctx.createOscillator();
         const kg = ctx.createGain();
@@ -4067,6 +4839,7 @@ export class VoiceRack {
         len = Math.max(len, klen);
         k.connect(kg); kg.connect(into);
         k.start(t); k.stop(t + klen + 0.03);
+        sources.push(k);
       }
       if (n) {
         const src = ctx.createBufferSource();
@@ -4083,6 +4856,7 @@ export class VoiceRack {
         len = Math.max(len, nlen);
         src.connect(chain.head); chain.tail.connect(g); g.connect(into);
         src.start(t); src.stop(t + nlen + 0.03);
+        sources.push(src);
       }
       // ---- the resonator ----------------------------------------------------
       //
@@ -4129,14 +4903,15 @@ export class VoiceRack {
         len = Math.max(len, rlen);
         src.connect(hit); hit.connect(f); f.connect(g); g.connect(into);
         src.start(t); src.stop(t + rlen + 0.03);
+        sources.push(src);
       }
       // ---- the metal cluster ------------------------------------------------
       //
       // Six squares at inharmonic ratios through a highpass: the 808's cymbal circuit,
       // and the only thing here that makes a sound filtered noise cannot. Tone's
-      // MetalSynth is the same idea with the ratios welded shut and an FM operator per
+      // MetalSynth was the same idea with the ratios welded shut and an FM operator per
       // oscillator; this is cheaper per hit and the ratios are a preset's to choose,
-      // which is what turns one cymbal into a family of them.
+      // which is what turns one cymbal into a family of them — and what retired it.
       if (m) {
         const ratios = (Array.isArray(m.ratios) && m.ratios.length ? m.ratios : METAL_RATIOS)
           .slice(0, m.count ?? 6);
@@ -4152,8 +4927,51 @@ export class VoiceRack {
           attack: m.attack, decay: m.decay,
         }, t, tone, 'highpass', 3000);
         const g = ctx.createGain();
-        const mlen = env(g.gain, t, m.gain ?? 1, m, 0.2);
+        const mlen = m.hardStop
+          ? hardwareEnv(g.gain, t, m.gain ?? 1, m, 0.2)
+          : env(g.gain, t, m.gain ?? 1, m, 0.2);
         len = Math.max(len, mlen);
+        const resonator = m.resonator;
+        let metalOut = chain.tail;
+        if (resonator) {
+          // The extra tail is a short, controlled feedback loop around the bandpass,
+          // not a room effect. One-sample delay makes the Web Audio graph
+          // legal; near-unity return supplies the slight under-damping that a bare
+          // BiquadFilterNode cannot provide on its own.
+          const sat = ctx.createWaveShaper();
+          const drive = Math.max(1, resonator.drive ?? 1.4);
+          const curve = new Float32Array(1025);
+          for (let k = 0; k < curve.length; k++) {
+            const x = (k / (curve.length - 1)) * 2 - 1;
+            curve[k] = Math.tanh(x * drive);
+          }
+          sat.curve = curve;
+          chain.tail.connect(sat);
+
+          const delay = ctx.createDelay(0.05);
+          delay.delayTime.setValueAtTime(1 / ctx.sampleRate, t);
+          const feedback = ctx.createGain();
+          const amount = Math.min(0.995, Math.max(0, resonator.feedback ?? 0.96));
+          feedback.gain.setValueAtTime(amount, t);
+          feedback.gain.linearRampToValueAtTime(0, t + mlen);
+          sat.connect(delay); delay.connect(feedback); feedback.connect(chain.head);
+          metalOut = sat;
+
+          // Leakage is the seeded rack noise, so the analog air is present without
+          // making WAV/stem exports nondeterministic. It is stopped with the authored
+          // one-shot lifecycle and remains deliberately below the resonator signal.
+          const leak = resonator.leak ?? 0.0005;
+          if (leak > 0 && this.noiseBuf) {
+            const src = ctx.createBufferSource();
+            src.buffer = this._noise(resonator.color, false);
+            src.loop = true;
+            const ng = ctx.createGain();
+            ng.gain.setValueAtTime(leak, t);
+            src.connect(ng); ng.connect(chain.head);
+            src.start(t); src.stop(t + mlen);
+            sources.push(src);
+          }
+        }
         for (const ratio of ratios) {
           const osc = ctx.createOscillator();
           osc.type = m.wave || 'square';
@@ -4164,14 +4982,41 @@ export class VoiceRack {
           // and what stops a struck metal sounding like a held chord.
           if (m.to != null && m.to !== (m.freq ?? 800)) {
             osc.frequency.exponentialRampToValueAtTime(
-              Math.max(20, m.to * tune * bend * at), t + (m.sweep ?? mlen),
+              Math.max(20, m.to * tune * bend * at), t + (m.sweep ?? 0.07),
             );
           }
           osc.connect(chain.head);
-          osc.start(t); osc.stop(t + mlen + 0.03);
+          // Ordinary metal sources get a small scheduling pad so their final sample is
+          // not cut during a normal exponential tail. A specified one-shot lifecycle
+          // owns its exact stop time instead — the 808 cowbell ends at T0 + 200ms.
+          osc.start(t); osc.stop(t + mlen + (m.hardStop ? 0 : 0.03));
+          sources.push(osc);
         }
-        chain.tail.connect(g); g.connect(into);
+        metalOut.connect(g); g.connect(into);
       }
+    }
+    // Leave the handle the NEXT hit in this group will pull. Same shape the pooled path
+    // registers, so a group can span both and neither has to know which built the other.
+    if (groupKey) {
+      this._monoGroups.set(groupKey, {
+        release: (at) => {
+          for (const g of outs) {
+            try {
+              // Hold whatever the level had reached before ramping off it. Without the
+              // hold, cancelling would restore the value the last event set and the
+              // choke would start from a jump.
+              if (g.gain.cancelAndHoldAtTime) g.gain.cancelAndHoldAtTime(at);
+              else g.gain.cancelScheduledValues(at);
+              // Two milliseconds: fast enough to read as a stop, long enough to have
+              // no edge in it. A hard gate here is a click.
+              g.gain.setTargetAtTime(0, at, 0.002);
+            } catch { /* already quiet */ }
+          }
+          for (const src of sources) {
+            try { src.stop(at + 0.01); } catch { /* already stopped */ }
+          }
+        },
+      });
     }
     return true;
   }
@@ -4197,10 +5042,13 @@ export class VoiceRack {
    *            an organ does and what nothing struck does. A bell needs BOTH — an
    *            inharmonic stack with no damping is a siren, not a bell.
    *
-   * Like `_playNoise` and `_playDrum`: native nodes, one-shot, never pooled. More
-   * deterministic than either, in fact, because there is no noise in it at all.
+   * Like `_playDrum`: native nodes, one-shot, never pooled. More deterministic than it,
+   * in fact, because there is no noise in it at all.
    */
-  _playAdditive(v, { freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '', preview = false, hold = preview }) {
+  _playAdditive(v, {
+    freq, time, dur, gain, detune = 1, dry, wet, echo = true, laneKey = '',
+    preview = false, hold = preview, laneEffects = true,
+  }) {
     const ctx = this.ctx;
     const a = v.additive;
     if (!a) return false;
@@ -4221,6 +5069,56 @@ export class VoiceRack {
     // frequency that was never in the chord. Nine bars reach the eighth harmonic, so the
     // top of the stack crosses it two octaves before the fundamental does.
     const nyquist = ctx.sampleRate * 0.5;
+
+    // ---- the drive, and the lane's chorus ------------------------------------
+    //
+    // MRDR-3's Effects card on MRDR-3's keys, because it is MRDR-3's stage: SHAPE, DRIVE
+    // and TONE build one shaper with one tone filter hanging off it — the same pair
+    // `driveInto` builds in `_playLayer` and `_playDrum`, so the three panels are
+    // provably one control rather than three that look alike — and CHORUS is the same
+    // lane insert, off the same `buildChorusLeg`, as MRDR-3 and TNGR-2 run. A combo organ
+    // is a drawbar stack through a driven amp and a chorus, and this path could say the
+    // stack and neither of the other two.
+    //
+    // NO PLACE PILL AND NO `drivePlace` READ. Pre or post is only a question where there
+    // is a filter to be pre or post OF: MRDR-3 has its Global Filter, TNGR-2 has its
+    // voice filter, and a drawbar stack has neither. The shaper sits between the partials
+    // and the note's level, which is the one place it can be — see `stackIn` below for
+    // why that order and not the other.
+    //
+    // TONE takes no humanise multiplier, unlike `_playLayer`'s: this synth's Humanise card
+    // is LEVEL and PITCH (see `ADDITIVE_HUMANISE_GROUP`), and a variation read here would
+    // be a control that exists in the engine and nowhere on screen.
+    const driveInto = (dest) => {
+      if (!(v.drive > 0)) return dest;
+      let into = dest;
+      if (v.tone) {
+        const tf = ctx.createBiquadFilter();
+        tf.type = v.tone.type || 'lowpass';
+        tf.frequency.value = Math.max(20, v.tone.freq ?? 8000);
+        tf.Q.value = v.tone.Q ?? 0.7;
+        tf.connect(into); into = tf;
+      }
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = this._driveCurve(v.drive, v.shape);
+      shaper.connect(into); into = shaper;
+      return into;
+    };
+    // The lane bus, kept standing even at MIX zero: three unity gains, so winding the
+    // chorus up reaches notes that are ALREADY SOUNDING through the route that is already
+    // there rather than at the next note-on — the bargain `_playLayer` makes for the same
+    // reason, and why `refresh` can ramp a standing stage. A section switched OFF in the
+    // editor is authoritative over any value retained beside it.
+    //
+    // `laneEffects: false` is the offline/cache caller asking for the pre-chorus signal;
+    // it gets the direct dry/wet routing this path has always had, byte for byte.
+    const laneStage = laneEffects
+      ? this._ensureMrdrLaneStage(laneKey, v.id,
+        sectionBypassed(v, 'chorus', v.chorus) ? { ...v, chorus: null } : v, {
+          dry, wet, echo: echo && a.echo !== false, time, preview,
+          scope: preview ? 'preview' : 'song',
+        })
+      : null;
 
     // ONE LFO for the whole note-on, built exactly as `_playGame` builds its own: the
     // same `vibrato` key, the same 0–1 depth, the same ±100 cents at full travel and the
@@ -4269,21 +5167,39 @@ export class VoiceRack {
       const bend = vary(hum.pitch, time, 16);
 
       // One summing point per hit: it carries the note's level, and it is the only thing
-      // that decides whether this hit reaches the echo. Every partial lands inside it.
+      // that decides whether this hit reaches the echo. Every partial lands inside it —
+      // through the DRIVE, when the preset has one, which is why `stackIn` and not `out`
+      // is what a partial connects to. A shaper is not linear, so the note's level has to
+      // sit AFTER it: in front, how hard a preset drives would depend on how loud the note
+      // was asked to play, and the same patch would distort differently on every lane.
+      // The same ordering `_playDrum` and `_playLayer` use, for the same reason.
       const out = ctx.createGain();
       out.gain.value = gain * fade;
-      out.connect(dry);
-      if (echo && wet && a.echo !== false) out.connect(wet);
+      if (laneStage) out.connect(laneStage.input);
+      else {
+        out.connect(dry);
+        if (echo && wet && a.echo !== false) out.connect(wet);
+      }
+      const stackIn = driveInto(out);
       // The percussion register is always dry, so it needs a bus of its own — built only
-      // if a preset actually pulls it. See below for why it is kept out of the echo.
+      // if a preset actually pulls it. See below for why it is kept out of the echo; it
+      // stays out of the CHORUS with it, and for the same reason. The pip is the dry stab
+      // this synth keeps crisp, and a box the finished voice goes through is not one the
+      // pip goes through on its way round.
+      //
+      // It does take the drive: an organ through a driven amp drives all of it. Its own
+      // shaper rather than the stack's, because by the time the pip exists it is on its
+      // own bus — same curve, same tone filter, one signal each.
       let perc = null;
+      let percIn = null;
       const percBus = () => {
         if (!perc) {
           perc = ctx.createGain();
           perc.gain.value = gain * fade;
           perc.connect(dry);
+          percIn = driveInto(perc);
         }
-        return perc;
+        return percIn;
       };
 
       notes.forEach((f, n) => {
@@ -4300,6 +5216,10 @@ export class VoiceRack {
         // register below is deliberately NOT held: a Hammond's percussion is a circuit
         // constant that strikes once and is gone however long the key is down.
         const stackHolds = hold;
+        // The pitch envelope's span, which is the AMP gate's span — see `gateAdsr` below.
+        // A held note bends over the same thirty seconds its level does, so a finger on
+        // the key does not leave the registration halfway into its swoop.
+        const pEnd = stackHolds ? t + HOLD_SECONDS : end;
         const heldParams = [];
         const heldSources = [];
 
@@ -4313,15 +5233,23 @@ export class VoiceRack {
           if (!(partial > 0) || partial >= nyquist) continue;
           const o = ctx.createOscillator();
           o.type = wave;
-          o.frequency.setValueAtTime(partial * (p ? (p.from ?? 1) : 1), t);
+          o.frequency.setValueAtTime(partial, t);
           // The whole registration bends together, each partial keeping its ratio — which
           // is what `organSwoop` is, and what stops a glide sounding like a chord sliding
-          // apart. Through `pitchRamp`, so the bend speaks the same curve vocabulary as
-          // every other pitch move in the rack — exp glide, lin whip, snap thud.
-          if (p && (p.to ?? 1) !== (p.from ?? 1)) {
-            pitchRamp(o.frequency, Math.max(1, partial * (p.to ?? 1)), t,
-              p.sweep, p.curve);
-          }
+          // apart.
+          //
+          // MRDR-3's and KNDO-5's pitch envelope, on their key names, because it is the
+          // same idea: how far from the written note the stack starts, and how it gets
+          // there. This card used to say FROM 0.7492x and TO 1x over a SWEEP TIME, which
+          // is an envelope written as two multipliers and a time — the exact form MRDR-3's
+          // own card was converted away from, and the one place on the desk still stating
+          // pitch as a ratio.
+          //
+          // On `.detune` in cents rather than on `.frequency`, so it SUMS with the vibrato
+          // connected to the same param a few lines down instead of fighting it for the
+          // one automation slot. Linear in cents is exponential in hertz, so the travel is
+          // the same curve `pitchRamp`'s default already drew.
+          if (p) pitchEnv([o.detune], p, t, pEnd);
           const g = ctx.createGain();
           // `damp` tilts the decay across the stack. Ratios BELOW one — the sub-octave
           // bars — come out longer, which is what a real one does too.
@@ -4337,7 +5265,7 @@ export class VoiceRack {
             level, shape, stackHolds, partial);
           if (stackHolds) { heldParams.push({ param: g.gain, e: shape }); heldSources.push(o); }
           if (vibCents) vibCents.connect(o.detune);
-          o.connect(g); g.connect(out);
+          o.connect(g); g.connect(stackIn);
           o.start(t); o.stop(off + 0.01);
           lastOff = Math.max(lastOff, off + 0.01);
         }
@@ -4345,7 +5273,9 @@ export class VoiceRack {
           const noteKey = `${laneKey}|${f.toFixed(2)}`;
           this._releasePreview(noteKey);
           sharedMods.holds += 1;
-          this._heldNative.set(noteKey, { params: heldParams, sources: heldSources, shared: sharedMods });
+          this._heldNative.set(noteKey, {
+            at: t, params: heldParams, sources: heldSources, shared: sharedMods,
+          });
         }
 
         // Hammond percussion: one louder partial struck on the key attack and gone long
@@ -4385,7 +5315,7 @@ export class VoiceRack {
    * A layered voice: up to three oscillator sections, each a COMPLETE voice — its own
    * ratio, level, note-length multiplier, envelope, filter, pitch envelope, FM operator
    * and unison — summed into the drum path's drive/tone. A section's waveform may also
-   * be `noise`: GameSynth's pitched noise, built in the unison loop below. This is what the hand-written
+   * be `noise`: KNDO-5's pitched noise, built in the unison loop below. This is what the hand-written
    * melodic voices in scheduleStep are (a square, a sine an octave down, a triangle an
    * octave up, each at its own level and its own length), and the one shape no Tone
    * class in the allowlist can say.
@@ -4438,18 +5368,7 @@ export class VoiceRack {
       .filter(Number.isFinite);
     const release = Math.max(0, ...releaseValues, ...gateValues);
     const finalStop = stopAt + release + 0.01;
-    const glide = Math.max(0.001, v.portamento || 0.001);
-    for (const { pitches, ratio } of prev.pitchSets || []) {
-      const target = base * ratio;
-      for (const pitch of pitches) {
-        try {
-          if (pitch.cancelAndHoldAtTime) pitch.cancelAndHoldAtTime(time);
-          else pitch.cancelScheduledValues(time);
-          if (v.portamento > 0) pitchRamp(pitch, target, time, glide);
-          else pitch.setValueAtTime(target, time);
-        } catch { /* the old graph may already have ended */ }
-      }
-    }
+    this._retargetLayerPitch(prev, base, time, v.portamento || 0);
     // ---- a HELD note stops here -------------------------------------------------
     //
     // The pitch moved and that is the whole of the handover: a key press has no length,
@@ -4498,6 +5417,31 @@ export class VoiceRack {
     prev.freq = base;
     prev.gateUntil = stopAt;
     prev.stopAt = finalStop;
+  }
+
+  /**
+   * Move a sounding native graph to a different note, and nothing else.
+   *
+   * The pitch half of the LEGATO hand-over, on its own because it is also the whole of
+   * what a note-off does when it gives the note back to a key that is still down — there
+   * the envelopes must be left alone, not re-armed at some new note's end.
+   *
+   * Every unison voice and every layer at once, each keeping its own `ratio`, which is
+   * what stops a detuned stack sliding apart on the way.
+   */
+  _retargetLayerPitch(record, base, time, glide = 0) {
+    for (const { pitches, ratio } of record.pitchSets || []) {
+      const target = base * ratio;
+      for (const pitch of pitches) {
+        try {
+          if (pitch.cancelAndHoldAtTime) pitch.cancelAndHoldAtTime(time);
+          else pitch.cancelScheduledValues(time);
+          if (glide > 0) pitchRamp(pitch, target, time, Math.max(0.001, glide));
+          else pitch.setValueAtTime(target, time);
+        } catch { /* the old graph may already have ended */ }
+      }
+    }
+    record.freq = base;
   }
 
   /**
@@ -4740,12 +5684,20 @@ export class VoiceRack {
       const f = notes[0];
       const di = monoLast ? all.lastIndexOf(f) : 0;
       const noteDur = Array.isArray(dur) ? (dur[di] ?? dur[0]) : dur;
-      this._retargetLayerLegato(prev, f * shift * ensembleVary((v.humanize || {}).pitch, time, 16), time, noteDur, v, hold);
+      const base = f * shift * ensembleVary((v.humanize || {}).pitch, time, 16);
+      this._retargetLayerLegato(prev, base, time, noteDur, v, hold);
       // The new key owns the note now — LAST NOTE PRIORITY, which is what a mono synth
       // does and what the retarget already did to the pitch. Without the hand-over the
       // release record stayed under the FIRST key: letting go of the key you are actually
       // holding did nothing, and letting go of the one you had left behind cut the note.
-      if (hold) this._rekeyHeldNote(prev, `${laneKey}|${f.toFixed(2)}`);
+      if (hold) {
+        const key = `${laneKey}|${f.toFixed(2)}`;
+        this._rekeyHeldNote(prev, key);
+        // ...and the keys UNDER the one holding it, so that letting this one go gives the
+        // note back to them instead of ending it. See `fingerDown`.
+        prev.glide = glideTime(v);
+        fingerDown(prev, key, base);
+      }
       return true;
     }
     // The choke: a hardware mono synth cuts the note still ringing. On the OLD note's own
@@ -4985,6 +5937,7 @@ export class VoiceRack {
             sharedMods.holds += 1;
             gateKey = noteKey;
             this._heldNative.set(noteKey, {
+              at: t,
               params: heldParams, sources: heldSources, shared: sharedMods,
               live: heldLive, voiceId: v.id, glideKey,
             });
@@ -5029,7 +5982,7 @@ export class VoiceRack {
           const ratio = spec.ratio ?? 1;
           const target = base * ratio;
           if (!(target > 0) || target >= nyquist) continue;
-          // `noise` is a waveform here exactly as it is on GameSynth: the seeded
+          // `noise` is a waveform here exactly as it is on KNDO-5: the seeded
           // buffer through a bandpass that follows the note. Every pot still means
           // something — RATIO, DETUNE, the pitch envelope, glide and FM all drive the
           // band's centre the way they drive an oscillator's frequency — so a noise
@@ -5280,7 +6233,13 @@ export class VoiceRack {
               // while staying native and OfflineAudioContext-renderable.
               const syncBend = hardSynced && spec.pitch
                 && (spec.pitch.semitones ?? 0) !== 0;
-              const masterRatio = Math.max(0.01, syncMaster.ratio ?? 1);
+              // OPTIONAL, because `syncMaster` is `L.osc1` and a layer stack need not have
+              // one. Every other read of it sits behind `hardSynced`, which already
+              // requires it — this one did not, so a voice built from osc2 and osc3 alone
+              // threw inside the SCHEDULING PASS, which does not just lose the note: it
+              // takes every note after it on that lane for as long as the song is up.
+              // Found while rendering one layer of a preset in isolation.
+              const masterRatio = Math.max(0.01, syncMaster?.ratio ?? 1);
               const slaveCents = (spec.detune ?? 0)
                 + (count > 1 ? (spec.spread ?? 20) * (u / (count - 1) - 0.5) : 0);
               if (syncBend) {
@@ -5451,10 +6410,17 @@ export class VoiceRack {
     // `adsr` returns ABSOLUTE times, so these are used as they are — adding `time`
     // would double-count and leave modulator nodes running seconds past the note.
     if (mono && lastBase > 0) {
-      this._last.set(glideKey, {
+      const record = {
         freq: lastBase, outs: allOuts, pitchSets, envelopes: legatoEnvelopes,
         gates: legatoGates, sources: legatoSources, gateUntil, gateKey, stopAt: lastOff,
-      });
+        // MONO builds a NEW graph per note and this record replaces the one before it,
+        // but the fingers do not belong to the graph — they belong to the lane, and the
+        // keys still down when this note was struck are still down after it. Carried
+        // across, or the fall-back would only ever find the note it was leaving.
+        fingers: prev?.fingers || [], glide: glideTime(v),
+      };
+      if (hold && gateKey) fingerDown(record, gateKey, lastBase);
+      this._last.set(glideKey, record);
     }
     if (lastOff) for (const l of vibOscs) { l.start(time); l.stop(lastOff + 0.01); }
     if (lfoOsc && lastOff) {
@@ -5869,21 +6835,48 @@ export class VoiceRack {
    *   retire     a different class or a vibrato appearing: build again, and let the
    *              old pool play out what it was given rather than cutting it
    *
-   * Noise presets never reach here. `_playNoise` builds native nodes per hit and
-   * caches nothing, so it is showing the current numbers already.
+   * Drum presets never reach here. `_playDrum` builds native nodes per hit and caches
+   * nothing, so it is showing the current numbers already.
    */
   refresh(voiceId) {
+    const editStart = performance.now();
+    const out = this._refresh(voiceId);
+    // A pot move lands here. If an edit is what turns a smooth song into a stuttering
+    // one, this is where the cost is, and it has never been on the record.
+    const ms = performance.now() - editStart;
+    this._editMsMax = Math.max(this._editMsMax || 0, ms);
+    this._editCount = (this._editCount || 0) + 1;
+    return out;
+  }
+
+  _refresh(voiceId) {
     const v = VOICES[voiceId];
     this._specRev ||= new Map();
     // MRDR cache buffers stop before the lane chorus. Chorus-only edits update standing
     // stages but retain useful dry buffers; all other MRDR edits retain the conservative
     // revision/purge behaviour used by the rest of the rack.
     let invalidate = true;
-    if (v?.synth === 'MRDR-3') {
+    // The cache half is NATIVE ONLY (§10) — an AW lane has no rendered buffers to keep
+    // or throw away, so it has no fingerprint either.
+    if (v?.synth === MRDR3_NATIVE) {
       const nextDry = mrdrDryFingerprint(v);
       const previousDry = this._mrdrDryFingerprints.get(voiceId);
       this._mrdrDryFingerprints.set(voiceId, nextDry);
       invalidate = previousDry == null || previousDry !== nextDry;
+    }
+    // The lane chorus half is the FAMILY's: §7 keeps the chorus outside the core and
+    // built by the same `buildChorusLeg` for both backends, so an edit has to reach a
+    // standing stage whichever one is rendering it.
+    //
+    // WNDR-9 rides the same insert — same stage, same leg, same four controls off
+    // the shared Effects card — so a chorus edit on a drawbar preset has to reach the
+    // standing stage too, or the pot would move and nothing would happen until the next
+    // note-on. See the Effects note in `_playAdditive`.
+    // KNDO-5 rides it too, on the same terms — a chip voice through a chorus is a
+    // shipped arcade sound, and the pot is the same pot. Its stage exists only for a
+    // preset that carries a `chorus` block (see `_playGame`), so this loop finds nothing
+    // to ramp until one does, and then ramps it where it stands.
+    if (isMrdrVoice(v) || synthFamily(v?.synth) === WNDR9 || synthFamily(v?.synth) === KNDO5) {
       for (const stage of this._mrdrLaneStages.values()) {
         if (stage.voiceId === voiceId) {
           const chorus = sectionBypassed(v, 'chorus', v.chorus) ? null : v.chorus;
@@ -5925,7 +6918,7 @@ export class VoiceRack {
     }
     for (const [key, pool] of [...this.pools]) {
       if (pool.voiceId !== voiceId) continue;
-      if (!v || !SYNTHS[v.synth]) { this._retire(key, pool); continue; }
+      if (!v || !synthClassFor(v.synth, v.options)) { this._retire(key, pool); continue; }
       const spec = VoiceRack.buildSpec(v);
       // Nothing that is built into a synth moved, so there is nothing to do — and on
       // this panel that is MOST of the controls. LENGTH, TRANSPOSE, FINE,
@@ -5939,10 +6932,47 @@ export class VoiceRack {
       // every envelope, every filter, every waveform, every ratio — goes straight
       // onto the synths that are playing, so the note you are listening to changes
       // under your hand instead of stopping.
-      const rewires = pool.spec.synth !== spec.synth || !pool.spec.vibrato !== !spec.vibrato;
+      // CRLS-1 wears ONE name across both of Tone's classes, so the name alone no longer
+      // answers "is this still the same class". Switching a preset's filter on or off is a
+      // class change under an unchanged `synth`, and a pool that did not rewire for it
+      // would go on playing the old one — the filter you just added would do nothing.
+      const rewires = pool.spec.synth !== spec.synth
+        || synthClassFor(pool.spec.synth, pool.spec.opts)
+          !== synthClassFor(spec.synth, spec.opts)
+        || !pool.spec.vibrato !== !spec.vibrato;
       if (!rewires && this._applyLive(pool, spec)) { pool.spec = spec; continue; }
       this._retire(key, pool);
     }
+    // WHETHER THE CACHE WAS PURGED, which is the only thing a caller needs from here:
+    // a purge is what makes the next notes of this voice play live, and therefore the
+    // only edit worth scheduling a recovery for. A chorus-only tweak keeps its buffers
+    // and needs nothing. No caller read this return value before today.
+    return invalidate;
+  }
+
+  /**
+   * Open the edit-recovery window: for the next few seconds the trickle's two COOLDOWN
+   * brakes come off, so the notes an edit just invalidated are re-rendered while the
+   * playhead is still approaching them rather than a minute later.
+   *
+   * The idle gate and the clock brake are untouched — see `trickleAllowed`. This makes
+   * the repair urgent; it does not make it exempt from the measurement that says whether
+   * the machine can afford it.
+   */
+  urgentNoteCacheBoost(ms = URGENT_CACHE_WINDOW_MS) {
+    const state = this._cacheState;
+    if (!state) return 0;
+    state.urgentUntil = performance.now() + Math.max(0, Number(ms) || 0);
+    pumpCache(state);
+    return state.urgentUntil;
+  }
+
+  /** Run `fn` with the render queue tagging everything it creates as urgent work. */
+  withUrgentTagging(fn) {
+    const state = this._cacheState;
+    if (!state) return fn();
+    state.urgentTagging = true;
+    try { return fn(); } finally { state.urgentTagging = false; }
   }
 
   /** Remove queued and completed cache work for one changed voice. */
@@ -5997,8 +7027,30 @@ export class VoiceRack {
       bytes: state.bytes,
       queued: state.queue.length,
       rendering: state.rendering,
+      // The edit-recovery window, and whether it is doing anything. `urgent` alone only
+      // says the window is open; the three counters in `state.stats` (spread above) say
+      // whether work was queued, started and finished inside it.
+      urgent: (state.urgentUntil || 0) > performance.now(),
+      // OUTSTANDING urgent work, which is a different question from `queued`. The queue
+      // holds the whole song's inventory — measured at 1535 entries — and draining all of
+      // it is a minute or more. What decides whether playback can resume HERE is the
+      // handful of notes around the playhead, and this is that handful.
+      urgentPending: state.queue.reduce((n, job) => n + (job.urgent ? 1 : 0), 0),
       plan: { ...(state.plan || {}) },
     };
+  }
+
+  /** Clear the per-window peaks the diagnostics report. Called when a lap window resets. */
+  resetEditStats() {
+    this._editMsMax = 0;
+    this._editCount = 0;
+    if (this._cacheState?.stats) {
+      this._cacheState.stats.renderMsMax = 0;
+      this._cacheState.stats.renderMsTotal = 0;
+      this._cacheState.stats.urgentQueued = 0;
+      this._cacheState.stats.urgentStarted = 0;
+      this._cacheState.stats.urgentCompleted = 0;
+    }
   }
 
   runtimeHealth() {
@@ -6015,6 +7067,11 @@ export class VoiceRack {
       mrdrChorusLegs: chorusLegs,
       liveNotes: this._liveNotes.length,
       heldNative: this._heldNative.size,
+      // The two numbers that decide whether "it falls apart when I tweak something" is
+      // the EDIT or the desk. Peaks, and reset with the lap window, so a row reports the
+      // worst of that window rather than the worst ever.
+      editMsMax: Math.round(this._editMsMax || 0),
+      edits: this._editCount || 0,
       tngr2: this._tngr2Health(),
       activePreviews: this._activePreviews.size,
       cachedSources: this._cachedPlayback.size,
@@ -6044,6 +7101,19 @@ export class VoiceRack {
    * somebody compared two sounds, so preview pools carry their own flag and are
    * the only ones this operation touches.
    */
+  /**
+   * The transport stopped, paused or seeked — clear every AW lane's queue.
+   *
+   * A native voice is nodes and freezes with the context; a worklet lane is a QUEUE of
+   * absolutely-stamped events, and that queue outlives a pause. Without this, resuming
+   * fires notes whose moment has been and gone and then posts new ones behind the queue's
+   * own cursor. See `mrdr3PanicAll`.
+   */
+  panicMrdr3Aw() {
+    if (!this.ctx) return 0;
+    try { return mrdr3PanicAll(this.ctx, { at: this.ctx.currentTime }); } catch { return 0; }
+  }
+
   stopPreview() {
     // Out of the books at once — nothing may find these again — but taken down
     // GENTLY: a Tone synth disposed mid-note has its nodes pulled out from under a
@@ -6075,11 +7145,19 @@ export class VoiceRack {
     // TNGR-2's held notes first: they are events rather than nodes, and the loop below
     // reaches straight for `held.params`.
     for (const [noteKey, held] of [...this._heldNative]) {
-      if (!held?.tngr2) continue;
-      tngr2NoteOff(held.tngr2.lane, {
-        at: Math.max(now, held.tngr2.at || 0), eventId: held.tngr2.eventId,
-      });
-      this._heldNative.delete(noteKey);
+      if (held?.tngr2) {
+        tngr2NoteOff(held.tngr2.lane, {
+          at: Math.max(now, held.tngr2.at || 0), eventId: held.tngr2.eventId,
+        });
+        this._heldNative.delete(noteKey);
+        continue;
+      }
+      // MRDR-3 AW's held notes are the same kind of thing for the same reason: an event
+      // id inside a lane's processor rather than a set of nodes, so a stop is a message.
+      if (held?.mrdr3) {
+        mrdr3NoteOff(held.mrdr3.lane, { at: now, eventId: held.mrdr3.eventId });
+        this._heldNative.delete(noteKey);
+      }
     }
     for (const held of this._heldNative.values()) {
       for (const h of held.params) {
@@ -6104,7 +7182,12 @@ export class VoiceRack {
     for (const record of this._last?.values() || []) {
       record.gateKey = null;
       record.gateUntil = Math.min(record.gateUntil, now);
+      record.fingers = [];
     }
+    // ...and the keys down on a TNGR-2 lane, which are kept per lane rather than on a
+    // record. A stop that left one behind would hand the next key's note-off a finger
+    // that is not on the keyboard any more.
+    for (const host of this._tngr2Held?.values() || []) host.fingers = [];
     // The gated notes end by themselves and are fading with the pools above; what goes
     // here is only the RECORD of them, so a stopped bench cannot leave a later edit
     // walking filters on nodes already on their way out.
@@ -6167,32 +7250,92 @@ export class VoiceRack {
   }
 
   _releasePreview(noteKey) {
-    const at = this.ctx.currentTime;
+    const now = this.ctx.currentTime;
     const entry = this._activePreviews.get(noteKey);
+    // Preview note-ons are deliberately scheduled a few milliseconds ahead so they
+    // clear the song scheduler's lookahead. A very quick click can therefore arrive
+    // before the attack time. Releasing at raw `currentTime` in that case puts the
+    // note-off before its note-on; Tone and the worklet quite correctly cannot match
+    // it, and the note survives as an orphan until its long safety stop. Carry the
+    // booked attack time with the preview and release at the later of the two clocks.
+    const at = Math.max(now, entry?.at || 0);
     if (entry) {
-      try { entry.slot.synth.triggerRelease(at); } catch { /* ignore */ }
-      // A KEY COMING UP ENDS THE GATE, which is the whole of what the fingered glide test
-      // reads: press C, let go, press E after a pause, and the E starts on its own pitch
-      // rather than sliding out of a note nobody is holding. Without this a held note's
-      // gate ran its nominal length into the future whether or not a finger was still
-      // down. Only the key that opened the gate can close it, so a trill played with two
-      // keys overlapping keeps gliding.
-      if (entry.slot.gateKey === noteKey) { entry.slot.activeUntil = at; entry.slot.gateKey = null; }
       this._activePreviews.delete(noteKey);
+      const { slot } = entry;
+      // ONE INSTRUMENT, SEVERAL FINGERS — see `fingerDown`. A MONO or LEGATO pool has a
+      // single slot and every key on the lane is holding it, so `triggerRelease` here was
+      // the first finger to come up ending a note the other two were still asking for.
+      // A POLY pool reaches the same edge at its polyphony cap, where a later key has
+      // taken a slot over. Either way the rule is the same: only the key that is SPEAKING
+      // can end the note, and even it hands over rather than ending while a finger is
+      // still down.
+      const { next, wasOwner } = fingerUp(slot, noteKey);
+      if (next) {
+        // LETTING GO NEVER STARTS A NOTE. The pitch moves to whichever key is still down
+        // and the envelope is left exactly where it stands — no second attack out of a
+        // gesture that was a release. That is single-trigger fall-back, which is what a
+        // mono synth with a keyboard on it does, and it is the same answer in MONO and
+        // LEGATO because in both of them the note was never let go of.
+        if (wasOwner) {
+          try { slot.synth.setNote(next.hz, at); } catch { /* ignore */ }
+          // The gate goes with the note. `gateKey` is null on a POLY slot and stays null.
+          if (slot.gateKey != null) slot.gateKey = next.key;
+        }
+      } else {
+        try { slot.synth.triggerRelease(at); } catch { /* ignore */ }
+        // A KEY COMING UP ENDS THE GATE, which is the whole of what the fingered glide test
+        // reads: press C, let go, press E after a pause, and the E starts on its own pitch
+        // rather than sliding out of a note nobody is holding. Without this a held note's
+        // gate ran its nominal length into the future whether or not a finger was still
+        // down. Only the key that opened the gate can close it, so a trill played with two
+        // keys overlapping keeps gliding.
+        if (slot.gateKey === noteKey) { slot.activeUntil = at; slot.gateKey = null; }
+      }
     }
     const held = this._heldNative.get(noteKey);
+    const heldAt = held?.at ?? held?.tngr2?.at ?? held?.tngr2Queued?.time ?? 0;
+    const releaseAt = Math.max(now, heldAt);
+    // Native and worklet previews use the same absolute timing rule as the pooled
+    // path above. `at` remains the pooled slot's release time; the held branches below
+    // use `releaseAt`, which also covers a note waiting for an async worklet lane.
     // A TNGR-2 note is not nodes, it is an event id inside a lane's processor, so it is
     // released by saying so rather than by ramping a gain and stopping a source.
+    // An AW note, likewise: released by saying so rather than by ramping a gain and
+    // stopping a source. Before the TNGR-2 branch because both read `held.<engine>` and a
+    // held record only ever carries one of them.
+    if (held?.mrdr3) {
+      mrdr3NoteOff(held.mrdr3.lane, { at: releaseAt, eventId: held.mrdr3.eventId });
+      this._heldNative.delete(noteKey);
+      return true;
+    }
     if (held?.tngr2) {
+      const { lane, fingers } = held.tngr2;
       // The key came up `at`; the note sounds one lead later, exactly as its note-on
       // did. The floor is the note-on's own frame, which is the shortest a note can be
       // and still never overtakes it — a frame's events are applied in the order they
       // were posted, so the note-on there still starts the voice and this finds it.
-      tngr2NoteOff(held.tngr2.lane, {
-        at: Math.max(at + (held.tngr2.lead || 0), held.tngr2.at || 0),
-        eventId: held.tngr2.eventId,
-      });
+      const off = Math.max(releaseAt + (held.tngr2.lead || 0), held.tngr2.at || 0);
       this._heldNative.delete(noteKey);
+      // ONE INSTRUMENT, SEVERAL FINGERS, on the lane rather than on a slot or a graph.
+      const { next, wasOwner } = fingerUp(fingers, noteKey);
+      if (next) {
+        // Not the key that is speaking: it comes up in silence. Its event id was rebound
+        // to a later note the moment that note arrived, so the note-off it would send is
+        // one the core could only ignore.
+        if (!wasOwner) return;
+        // The key that IS speaking, handing the note back rather than ending it —
+        // `regate: false`, so the pitch moves and the envelopes stay where they are in
+        // MONO as well as in LEGATO. The voice keeps this new id, so the key now holding
+        // it is the one whose note-off can end it, and it gets the same HOLD_SECONDS
+        // backstop every held note books.
+        const eventId = (lane.nextEventId = (lane.nextEventId || 0) + 1);
+        tngr2NoteOn(lane, { at: off, hz: next.hz, velocity: 1, eventId, regate: false });
+        tngr2NoteOff(lane, { at: off + HOLD_SECONDS, eventId });
+        const back = this._heldNative.get(next.key);
+        if (back?.tngr2) { back.tngr2.eventId = eventId; back.tngr2.at = off; back.tngr2.lead = 0; }
+        return;
+      }
+      tngr2NoteOff(lane, { at: off, eventId: held.tngr2.eventId });
       return;
     }
     // Still waiting for its lane — see `_queueTngr2`. There is nothing to tell to stop, so
@@ -6206,24 +7349,69 @@ export class VoiceRack {
       // The same close, on the native path's own record of the gate.
       const record = held.glideKey ? this._last?.get(held.glideKey) : null;
       if (record && record.gateKey === noteKey) {
-        record.gateUntil = Math.min(record.gateUntil, at);
+        // ONE INSTRUMENT, SEVERAL FINGERS, said on this path too — see `fingerDown`. The
+        // key that is SPEAKING is coming up while others are still down, so the note is
+        // handed back rather than ended: the pitch moves, the envelopes are left exactly
+        // where they stand, and the release record goes with it so that the key now
+        // holding the note is the one that can end it.
+        //
+        // MRDR-3 already ignored a note-off from a key it had left behind — `_rekeyHeldNote`
+        // takes the record away from it — so this is the other half of the same rule, and
+        // the half that was missing: letting go of the key you were actually holding cut
+        // a chord two fingers were still on.
+        const { next } = fingerUp(record, noteKey);
+        if (next) {
+          // MONO struck a new graph per key and choked the one before it, so the key
+          // getting the note back may still own a set of silenced nodes. Let them go
+          // here — nothing is coming for them otherwise, and the note it is being given
+          // is this one.
+          const stale = this._heldNative.get(next.key);
+          this._heldNative.delete(noteKey);
+          if (stale && stale !== held) {
+            this._heldNative.delete(next.key);
+            this._letGoNative(stale, releaseAt);
+          }
+          this._retargetLayerPitch(record, next.hz, releaseAt, record.glide || 0);
+          record.gateKey = next.key;
+          this._heldNative.set(next.key, held);
+          return;
+        }
+        record.gateUntil = Math.min(record.gateUntil, releaseAt);
         record.gateKey = null;
-      }
-      let stopAt = at;
-      for (const h of held.params) {
-        try { stopAt = Math.max(stopAt, releaseNow(h.param, at, h.e)); } catch { /* ignore */ }
-      }
-      // Re-scheduled, not stopped twice: the last `stop()` before a source has ended is
-      // the one that takes effect, so this pulls the far-future stop back to the tail.
-      for (const src of held.sources) { try { src.stop(stopAt + 0.01); } catch { /* ignore */ } }
-      if (held.polyRecord) held.polyRecord.stopAt = stopAt + 0.01;
-      // The note-on's shared modulators go when its LAST tone does — a chord releases
-      // one key at a time and the rest are still wobbling.
-      const shared = held.shared;
-      if (shared && (shared.holds -= 1) <= 0) {
-        for (const m of shared.oscs) { try { m.stop(stopAt + 0.01); } catch { /* ignore */ } }
+      } else if (record) {
+        // Not the key that is speaking. Its own nodes still have to be let go — in MONO
+        // every key built its own graph — but the note sounding is somebody else's and
+        // is not touched.
+        fingerUp(record, noteKey);
       }
       this._heldNative.delete(noteKey);
+      this._letGoNative(held, releaseAt);
+    }
+  }
+
+  /**
+   * Take one held native note down: release what it holds open, and pull the far-future
+   * stops back to the end of that tail.
+   *
+   * Its own method because a note-off is not the only thing that ends a held note. A key
+   * handing the note back to a finger still down leaves the nodes IT was holding with
+   * nothing left to release them, and they would otherwise run silently to the 30-second
+   * safety stop `HOLD_SECONDS` books.
+   */
+  _letGoNative(held, at) {
+    let stopAt = at;
+    for (const h of held.params) {
+      try { stopAt = Math.max(stopAt, releaseNow(h.param, at, h.e)); } catch { /* ignore */ }
+    }
+    // Re-scheduled, not stopped twice: the last `stop()` before a source has ended is
+    // the one that takes effect, so this pulls the far-future stop back to the tail.
+    for (const src of held.sources) { try { src.stop(stopAt + 0.01); } catch { /* ignore */ } }
+    if (held.polyRecord) held.polyRecord.stopAt = stopAt + 0.01;
+    // The note-on's shared modulators go when its LAST tone does — a chord releases
+    // one key at a time and the rest are still wobbling.
+    const shared = held.shared;
+    if (shared && (shared.holds -= 1) <= 0) {
+      for (const m of shared.oscs) { try { m.stop(stopAt + 0.01); } catch { /* ignore */ } }
     }
   }
 
@@ -6236,6 +7424,7 @@ export class VoiceRack {
     this.pools.clear();
     this._monoGroups.clear();
     this._activePreviews.clear();
+    this._tngr2Held?.clear();
     for (const active of this._cachedPlayback) {
       try { active.src.stop(); } catch { /* already stopped */ }
       try { active.src.disconnect(); } catch { /* context may already be gone */ }
@@ -6243,9 +7432,51 @@ export class VoiceRack {
     }
     this._cachedPlayback.clear();
     this._heldNative.clear();
-    // The worklet lanes go with the context too: a persistent node per lane is exactly the
-    // thing that would otherwise outlive the rack that made it.
-    if (this.ctx) { try { releaseTngr2Context(this.ctx); } catch { /* context already gone */ } }
+    // ---- THE WORKLET LANES GO WITH THE RACK -----------------------------------
+    //
+    // A persistent node per lane is exactly the thing that would otherwise outlive the
+    // rack that made it, and BOTH worklet instruments own one. MRDR-3 was missing from
+    // this line, and the failure that left was permanent silence on the desk:
+    //
+    //   - the lane book is keyed on the CONTEXT, not on the rack, so a new rack on the
+    //     same context inherits the old rack's lanes rather than building its own;
+    //   - `Audio.setBank` disposes the rack and then calls `_cutLaneGates`, which
+    //     disconnects every lane gate — the node an AW lane's output is wired to;
+    //   - the inherited lane still says `connected: true` with the same chorus key, so
+    //     `_playMrdr3Aw` never rebuilds its output and the node stays wired to a gate
+    //     that reaches nothing.
+    //
+    // A DISCONNECTED AudioWorkletNode IS NOT RENDERED. Nothing pulls it, so `process()`
+    // is never called again: no note sounds, no fault is raised, the port still answers
+    // a health probe, and the event queue climbs without bound while `groups`, `late`
+    // and `steals` sit perfectly still. That is the shape in the desk's own diagnostics
+    // — `awQueued` at 1300 across 11 lanes with `awGroups` at 2 and `awDetached` at 0.
+    //
+    // And the desk re-banks often: a voice change comes back through `setBank` while
+    // the song keeps playing. So this was one preset change away at all times, and it
+    // reads as "the instrument never came back" because that is exactly what happened.
+    //
+    // ---- WHICH IS NOT THE SAME AS TEARING THEM DOWN ---------------------------
+    //
+    // MRDR-3 keeps its nodes. Building a lane structured-clones the table pyramid and the
+    // noise set into the processor, and releasing ten of them on a re-bank only to build
+    // ten more on the next bar charges that clone, ten times over, to an audio thread
+    // that is already rendering — which is audible as a crack rather than as a cost. The
+    // desk re-banks on a stop, on a voice change, on an apply; the song is usually still
+    // the song.
+    //
+    // What a dispose actually owes is that no lane goes on OWING THE LAST RACK: the queue
+    // is cleared here, the patch is re-synced on the next note-on, and the output is
+    // re-pointed by `_playMrdr3Aw` when it finds the gate has moved. All three are
+    // messages. Only lanes nothing has played for a while are really released —
+    // `releaseIdleMrdr3Lanes` — so an abandoned lane cannot accumulate either.
+    if (this.ctx) {
+      try { releaseTngr2Context(this.ctx); } catch { /* context already gone */ }
+      try {
+        mrdr3PanicAll(this.ctx, { at: 0 });
+        releaseIdleMrdr3Lanes(this.ctx, { idleSeconds: MRDR3_LANE_IDLE_SECONDS });
+      } catch { /* ditto */ }
+    }
     this._liveNotes = [];
     for (const stage of this._mrdrLaneStages.values()) {
       this._retireMrdrChorus(stage, Number.isFinite(this.ctx?.currentTime) ? this.ctx.currentTime : 0);

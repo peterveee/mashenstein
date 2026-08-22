@@ -33,6 +33,98 @@ import {
 // quarter-second of queued audio gives those unavoidable UI tasks room to finish
 // without reaching the audible edge; scheduled timestamps do not move, and preview
 // notes use their separate path below.
+/**
+ * The choke group a lane belongs to, as a stable key, or null.
+ *
+ * `{ hats: 'ohats' }` is one pairing written once. Either lane resolves to the same
+ * `hats+ohats`, because the group is the two names sorted — so it does not matter which
+ * side of the pair the song happened to write down, or which of them is playing.
+ */
+const chokePairOf = (map, lane) => {
+  if (!map || !lane) return null;
+  const partner = typeof map[lane] === 'string' ? map[lane]
+    : Object.keys(map).find((k) => map[k] === lane);
+  return partner ? [lane, partner].sort().join('+') : null;
+};
+
+/*
+ * ---- EDIT RECOVERY: the constants, and the debounce that drives it ------------------
+ *
+ * The failure this repairs, measured rather than reasoned: editing a voice while it
+ * plays purges its rendered buffers, every distinct note of it then plays LIVE, and the
+ * live cost of a heavy preset is several times what the machine can render in real time.
+ * One session reached 139 outstanding cache keys and an audio clock at 0.204 while the
+ * main thread sat idle with a healthy scheduler margin.
+ *
+ * The repair is to re-render the notes the playhead is ABOUT TO REACH, before it reaches
+ * them, instead of letting the whole backlog drain at background pace in song order.
+ */
+
+// How far ahead to repair. Two bars: far enough that the render has somewhere to land
+// before the playhead arrives, near enough that the window is a handful of notes per lane
+// rather than a whole section.
+const URGENT_WINDOW_STEPS = 32;
+
+// The band urgent priorities live in. It must clear every song step — the ordinary walk
+// uses the step itself as the priority and sorts descending — so that "nearest to the
+// playhead" always outranks "latest in the song". A form is thousands of steps at most.
+const URGENT_PRIORITY_BASE = 1e6;
+
+// A pot DRAG is a stream of refreshes, not one. Waiting for the hand to stop coalesces
+// them into a single walk; the maximum wait is what stops a long continuous drag from
+// deferring the repair until the drag ends, which on a slow sweep is the whole problem.
+const EDIT_RECOVERY_DELAY_MS = 250;
+const EDIT_RECOVERY_MAX_WAIT_MS = 1000;
+
+/**
+ * A trailing debounce with a ceiling, and an accumulating set of what changed.
+ *
+ * Extracted and injectable because its bugs are all TIMING bugs — fires twice, never
+ * fires, fires after the song changed — and none of those can be caught by reading it.
+ * `tests/note-cache-urgent.js` drives it with a fake clock.
+ */
+export function makeEditRecovery({
+  delayMs = EDIT_RECOVERY_DELAY_MS,
+  maxWaitMs = EDIT_RECOVERY_MAX_WAIT_MS,
+  now = () => performance.now(),
+  setT = setTimeout,
+  clearT = clearTimeout,
+  fire,
+} = {}) {
+  const edited = new Set();
+  let timer = null;
+  let firstAt = 0;
+  const run = () => {
+    timer = null;
+    firstAt = 0;
+    if (!edited.size) return;
+    const batch = new Set(edited);
+    edited.clear();
+    fire?.(batch);
+  };
+  return {
+    edited,
+    /** Note an edit. The walk happens once the hand stops, or at the ceiling. */
+    schedule() {
+      const at = now();
+      if (!firstAt) firstAt = at;
+      if (timer != null) clearT(timer);
+      // Never later than `maxWaitMs` after the FIRST edit of this burst: a slow sweep
+      // that never pauses would otherwise never reach its own repair.
+      const wait = Math.max(0, Math.min(delayMs, firstAt + maxWaitMs - at));
+      timer = setT(run, wait);
+    },
+    /** Drop a pending walk — the song, the context or the cache is being replaced. */
+    cancel() {
+      if (timer != null) clearT(timer);
+      timer = null;
+      firstAt = 0;
+      edited.clear();
+    },
+    pending() { return timer != null; },
+  };
+}
+
 const SEQUENCER_LOOKAHEAD = 0.25;
 const SEQUENCER_LOOKAHEAD_OPTIONS = Object.freeze([0.25, 0.5, 1]);
 /**
@@ -112,7 +204,7 @@ const noteSeconds = (len, fallback, spb, durScale = 1, fixedLength = 0) => {
     // lengths, so by the time `len` reaches here the preset's choice is inside it —
     // and a note the piano roll gave a length of its own has replaced it, which is the
     // entire point of drawing one. Short-circuiting on it a second time beat that drawn
-    // length, and eight GameSynth presets carry one: every note on them sounded for
+    // length, and eight KNDO-5 presets carry one: every note on them sounded for
     // 63-463ms however long the roll said, which is a lane whose resize handle does
     // nothing. See work/local/game-synth-envelope-probe.mjs for the measurement.
     //
@@ -408,6 +500,12 @@ class AudioSys {
     // 2800Hz damping. How MUCH of a channel reaches it is the channel's send and
     // nothing else — see the echo bus in ensure().
     // Loop region, in absolute 16th-steps. null = play the whole song form.
+    // The edit-recovery debounce. Built once and kept: it holds the accumulating set of
+    // edited voices between a drag's many refreshes.
+    this._editRecovery = makeEditRecovery({
+      fire: (ids) => this._runEditRecovery(ids, this._editRecoveryAt || {}),
+    });
+    this._editRecoveryAt = null;
     this.loopStart = null;
     this.loopEnd = null;
     this.pendingLoop = null;
@@ -554,6 +652,11 @@ class AudioSys {
     // the new song is held back at its exact output downbeat.
     this._countInSources = [];
     this.nextTime = 0;
+    // A discontinuous seek has a different visual clock from ordinary playback. The
+    // scheduler can switch `step` to the destination before that destination reaches the
+    // speakers, so the desk consumes this one-shot marker to hold its line until the
+    // exact first-note time. Continuous playback still uses songBeat() unchanged.
+    this._visualSeek = null;
     this.timer = null;
     // Foreground scheduler safety margin. The game leaves this at the responsive
     // quarter-second default; the Mixer may widen it while a user is willing to
@@ -1277,11 +1380,28 @@ class AudioSys {
     };
   }
 
+  /** Record a transport start for consumers whose cursor must meet the first note. */
+  markVisualSeek(step, when = this.nextTime) {
+    const target = Math.max(0, Math.floor(Number(step) || 0));
+    const at = Number(when);
+    this._visualSeek = { step: target, when: Number.isFinite(at) ? at : this.nextTime };
+  }
+
+  /** Consume the latest discontinuous transport marker once per visual frame. */
+  takeVisualSeek() {
+    const seek = this._visualSeek;
+    this._visualSeek = null;
+    return seek;
+  }
+
   applyPendingStep() {
     if (!this.pendingStep || this.step < this.pendingStep.boundary) return false;
     this.step = this.pendingStep.step;
     this.pendingStep = null;
     this.loopHasWrapped = false;
+    // `nextTime` is the exact time the first note at the new step is scheduled. Do not
+    // let a visual consumer infer that time from the lookahead after it has advanced.
+    this.markVisualSeek(this.step, this.nextTime);
     return true;
   }
 
@@ -1728,7 +1848,10 @@ class AudioSys {
    * bounded LRU; the rack then sorts their render jobs latest-first, aimed at the dense
    * ending that motivated preparation in the first place.
    */
-  prepareNoteCache(bank, { startStep = 0, endStep = null } = {}) {
+  prepareNoteCache(bank, {
+    startStep = 0, endStep = null, urgent = false, onlyVoiceIds = null,
+    priorityDistanceOffset = 0,
+  } = {}) {
     if (!this.noteCache || !this.noteCacheState || !this.ctx || !bank) return this.noteCacheHealth();
     if (!this.voices) {
       this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf, this.noteCacheState);
@@ -1739,7 +1862,26 @@ class AudioSys {
       this.voices.setNoteCacheState(this.noteCacheState);
     }
     const rack = this.voices;
-    rack.beginPreparedNotePlan?.();
+    // ---- WHOLE-SONG WARMING vs EDIT RECOVERY ------------------------------------
+    //
+    // The plan is a COST-TIERED selection: `commitPreparedNotePlan` keeps the notes worth
+    // the bytes and drops the cheap ones (`rank === 99 -> skippedCheap`). That is right
+    // when warming a whole song into a fixed budget, and wrong when repairing the window
+    // the playhead is about to reach — there, every note that is missing is a note that
+    // will be synthesised live, and cheap ones are missing just as loudly as dear ones.
+    //
+    // So the urgent walk opens NO plan. `rack.prepareNoteCache`'s non-plan branch goes
+    // straight to the cache entry, which queues the render immediately.
+    if (!urgent) rack.beginPreparedNotePlan?.();
+    // PRIORITIES LIVE IN TWO BANDS. The ordinary walk uses the song step, sorted
+    // descending, so a late dense section warms before the opening bars — deliberate, and
+    // the reason an urgent priority cannot simply be "a bigger step". It sits above every
+    // song step instead, and counts DOWN with distance from the playhead so the nearest
+    // note is rendered first. The offset carries distance across a loop wrap, where a
+    // second walk starts again at a low step number but is further away in playing time.
+    const priorityFor = (step) => (urgent
+      ? URGENT_PRIORITY_BASE - (priorityDistanceOffset + (step - from))
+      : step);
     const plan = barPlan(bank);
     const resolution = resolutionOf(bank);
     const tick = 16 / resolution;
@@ -1758,6 +1900,7 @@ class AudioSys {
     // `step += tick` is exact at 1 and 0.5 and drifts at a third, and this walk is the
     // note cache — a step that has drifted reads the slot next door and caches the
     // wrong note for the rest of the render.
+    const walk = () => {
     for (let t = Math.floor(from / tick); t * tick < to; t++) {
       const step = t * tick;
       if (step < from) continue;
@@ -1793,30 +1936,46 @@ class AudioSys {
         const seam = seamFor(key);
         const voice = seam && voiceOf(b, key);
         if (!voice || voice.kind === 'engine') continue;
+        // EDIT RECOVERY IS SCOPED TO WHAT WAS EDITED. Every other lane's entries are
+        // either already warm (in which case this would only bump a priority) or cold for
+        // reasons that have nothing to do with the edit — and a cold note of an untouched
+        // voice creating a render here would spend the window's capacity on the wrong
+        // lane. Ordinary warming still walks everything.
+        if (onlyVoiceIds && !onlyVoiceIds.has(voice.id)) continue;
         const written = sequenceValue(b, key, s, resolution);
         if (written == null || written === false || written === 0) continue;
         const freq = written === true ? (b[seam.noteKey] ?? seam.note) : written;
         const len = effectiveStepLen(b, key, s, resolution);
         const duration = (scale = 1) => noteSeconds(
           len, b[seam.durKey] ?? voice.dur, spb, scale, voice.fixedLength);
-        rack.prepareNoteCache(voice.id, freq, duration(), { detune: this.detune, priority: step });
+        rack.prepareNoteCache(voice.id, freq, duration(),
+          { detune: this.detune, priority: priorityFor(step) });
 
         // These are additional calls to playVoice in scheduleStep rather than separate
         // lanes, so inventory their distinct cache keys here as well.
         if (key === 'bass' && b.bassRepeat) {
           rack.prepareNoteCache(voice.id, freq, duration(b.bassRepeatDur ?? 0.8),
-            { detune: this.detune, priority: step });
+            { detune: this.detune, priority: priorityFor(step) });
         }
         if (key === 'keyGliss' || key === 'organGliss') {
           for (const semi of [-12, -10, -9, -7, -5, -4, -2]) {
             rack.prepareNoteCache(voice.id, shift(freq, semi), duration(),
-              { detune: this.detune, priority: step });
+              { detune: this.detune, priority: priorityFor(step) });
           }
         }
       }
     }
-    rack.commitPreparedNotePlan?.();
+    };
+    // Tagged so the counters can tell the repair's own jobs apart from the ordinary
+    // scheduler misses landing in the same seconds. The walk is a plain synchronous loop,
+    // and `withUrgentTagging` clears the flag in a `finally`, so a throw cannot leak it.
+    if (urgent && rack.withUrgentTagging) rack.withUrgentTagging(walk);
+    else walk();
+    if (!urgent) rack.commitPreparedNotePlan?.();
     rack.prioritisePreparedNotes();
+    // The window opens AFTER the walk, so the boost's pump finds the queue already
+    // sorted with the nearest note at its head.
+    if (urgent) rack.urgentNoteCacheBoost?.();
     return this.noteCacheHealth();
   }
 
@@ -2729,6 +2888,16 @@ class AudioSys {
       case 'launch': this.playLaunch(opt.hero, pitch); break;
       case 'die': [330, 262, 220, 165].forEach((f, i) => this.osc('triangle', f, f, 0.14, 0.18, i * 0.15)); break;
       case 'dash': this.noise(0.3, 0.18, 'bandpass', 1800); break;
+      // Sliding in: the seat hitting the deck and grinding along it. A LOW
+      // scrape — 'dash' whooshes air up at 1800; this is ground contact, so
+      // the noise sits at 700 with a soft thump at the front and a lick of
+      // grit on top.
+      case 'slide':
+        this.osc('sine', 160, 70, 0.09, 0.3);             // seat thump
+        this.noise(0.28, 0.52, 'lowpass', 750);           // the grind
+        this.noise(0.24, 0.3, 'bandpass', 1300, 0.01);    // presence over the music
+        this.noise(0.12, 0.2, 'bandpass', 2800, 0.02);    // grit on top
+        break;
       case 'boost': this.boostWhoosh(); break;
       case 'boostTick': this.boostTick(pitch); break;
       case 'portal': this.portalSwoosh(opt.shape); break;
@@ -3116,6 +3285,10 @@ class AudioSys {
     // the saved voice overrides merged, and comparing against that copy would make
     // every re-selection look like a change.
     if (this.sourceBank === bank && mixOverride === undefined && arrangementOverride === undefined) return;
+    // A pending edit repair belongs to the song being replaced. The fire-time checks
+    // would drop it anyway; cancelling here means it does not sit on a timer holding a
+    // reference to a bank nobody is playing.
+    this._editRecovery?.cancel();
     this.resumeAfterPanic();
     this.stopPreview();
     this._clearCountIn();
@@ -3125,6 +3298,7 @@ class AudioSys {
     // the desk's draft is what should be heard when the music comes back.
     if (this.pendingRearrangement) this.setRearrangement(this.pendingRearrangement.recipe);
     this.sourceBank = bank;
+    this._visualSeek = null;
     const noteCacheState = this.noteCacheState;
     // A new song has its own arrangement, or none. `undefined` means the ordinary
     // game path should read the arrangement file; the desk passes its draft (or an
@@ -3674,6 +3848,12 @@ class AudioSys {
    * anything moves, so a refused transition leaves the desk exactly as it was rather
    * than half-applied.
    *
+   * `mute` counts as a number, not as shape. It is a pair of gains around the link
+   * rather than a disconnect (see mixer.setMute), so the two sides may disagree about
+   * whether an effect is HEARD while still agreeing about what is in the chain — which
+   * is how a cabinet screen carries a phaser the level does not, without a second leg
+   * of the whole mix. `bypass` is the one that genuinely re-wires, and stays refused.
+   *
    * `mix` must be a whole resolved mix, not a patch. `mixEntry` is what setArrangement
    * re-shapes the song's sections through, and `deskBank`/`withVoices` read `layers`,
    * `off` and `voice` off it; a partial handed in here would quietly delete a duplicated
@@ -3745,6 +3925,11 @@ class AudioSys {
     for (const [target, , want] of chains) {
       for (let i = 0; i < want.length; i++) {
         if (want[i].params) this.mixer.rampEffectParams(target, i, want[i].params, when, seconds, bpm);
+        // Unconditionally, unlike the params above: `mute` absent means UNMUTED, and a
+        // link the target says nothing about has to come back on. Skipping the falsy
+        // case would make a mute one-way — on for the cabinet screen and still on for
+        // the level, which is the bug this whole mechanism exists to fix.
+        this.mixer.rampEffectMute(target, i, !!want[i].mute, when, seconds);
       }
     }
 
@@ -4120,8 +4305,105 @@ class AudioSys {
    * half a second of silence between every pixel when what you are doing is dragging
    * a filter. See `VoiceRack.refresh`.
    */
+  /**
+   * An edit landed on a voice. Repair its cache from the playhead if it is playing.
+   *
+   * This is the single choke point every editor pot-move already goes through, which is
+   * why the hook belongs here rather than in the panel: the desk gets the repair whether
+   * the edit came from a knob, a pill, an undo or a shared link.
+   *
+   * Gated on the PURGE, not on the edit. `refresh` returns whether it actually threw
+   * buffers away — a chorus-only tweak keeps them and needs nothing — so an edit that
+   * costs the cache nothing costs the recovery nothing either.
+   *
+   * And gated on `transportRunning`, not `playbackActive`: the latter stays true while
+   * the transport is paused, and a paused desk already drains its queue at full speed
+   * (see `trickleAllowed`). Urgency is only meaningful against a moving playhead.
+   */
   refreshVoice(voiceId) {
-    this.voices?.refresh(voiceId);
+    const invalidated = this.voices?.refresh(voiceId);
+    if (!invalidated || !voiceId) return;
+    if (!this.noteCache || !this.noteCacheState?.transportRunning) return;
+    // What the world looked like when this burst began. Compared again at fire time —
+    // see `_runEditRecovery`. Only the FIRST edit of a burst records it, so a drag that
+    // spans a song change is caught rather than quietly re-based onto the new song.
+    if (!this._editRecovery.pending()) {
+      this._editRecoveryAt = { bank: this.bank, generation: this.noteCacheState.generation };
+    }
+    this._editRecovery.edited.add(voiceId);
+    this._editRecovery.schedule();
+  }
+
+  /**
+   * Put the notes AROUND THE PLAYHEAD at the head of the queue, for every voice.
+   *
+   * Called when the desk stops itself. The queue at that moment holds the whole song —
+   * measured at 1535 entries — sorted LATE-FIRST, which is right when warming a song from
+   * the top and exactly wrong here: what decides whether playback can resume from where
+   * the playhead is parked is the next couple of bars, and those were at the back.
+   *
+   * No `onlyVoiceIds`: this is not an edit repair, it is "make it possible to press Play
+   * again", and every lane sounding at that point is part of the answer.
+   */
+  prepareFromPlayhead() {
+    if (!this.noteCache || !this.noteCacheState || !this.bank) return this.noteCacheHealth();
+    const plan = barPlan(this.bank);
+    const formSteps = plan.length * 16;
+    if (!formSteps) return this.noteCacheHealth();
+    const from = Math.max(0, Math.min(formSteps, Math.floor(this.step) || 0));
+    return this.prepareNoteCache(this.bank, {
+      urgent: true,
+      startStep: from,
+      endStep: Math.min(formSteps, from + URGENT_WINDOW_STEPS),
+    });
+  }
+
+  /**
+   * Re-inventory the next couple of bars for the voices that were just edited.
+   *
+   * Everything here is checked at FIRE time rather than captured at schedule time,
+   * because the whole point of a debounce is that the world may have moved on: the song
+   * can be replaced, the transport stopped, the context rebuilt or the cache disabled in
+   * the quarter second this waited. The cache GENERATION is the one that covers the
+   * cases with no obvious hook — `setBank`, a panic, a teardown all bump it.
+   */
+  _runEditRecovery(voiceIds, { bank, generation }) {
+    if (!voiceIds?.size) return;
+    if (!this.noteCache || !this.noteCacheState) return;
+    if (!this.noteCacheState.transportRunning) return;
+    if (this.bank !== bank) return;
+    if (this.noteCacheState.generation !== generation) return;
+    const plan = barPlan(bank);
+    const formSteps = plan.length * 16;
+    if (!formSteps) return;
+    // THE SCHEDULING CURSOR, not the audible playhead. `this.step` is the next step the
+    // sequencer will book, which runs a lookahead ahead of what is being heard — and
+    // that is exactly the right anchor here, because what needs a buffer is what is
+    // about to be SCHEDULED.
+    const from = Math.max(0, Math.min(formSteps, Math.floor(this.step) || 0));
+    const opts = { urgent: true, onlyVoiceIds: voiceIds };
+    // A loop is armed and the window runs off its end: repair to the end, then continue
+    // from the top of the loop — with the distance carried across, so the first note
+    // after the wrap ranks just behind the last note before it rather than tying with
+    // the nearest note of all.
+    const loopEnd = Number.isFinite(this.loopEnd) ? this.loopEnd : null;
+    const loopStart = Number.isFinite(this.loopStart) ? this.loopStart : null;
+    const wraps = loopEnd != null && loopStart != null
+      && from < loopEnd && from + URGENT_WINDOW_STEPS > loopEnd;
+    if (wraps) {
+      const head = loopEnd - from;
+      this.prepareNoteCache(bank, { ...opts, startStep: from, endStep: loopEnd });
+      this.prepareNoteCache(bank, {
+        ...opts,
+        startStep: loopStart,
+        endStep: Math.min(loopEnd, loopStart + (URGENT_WINDOW_STEPS - head)),
+        priorityDistanceOffset: head,
+      });
+      return;
+    }
+    this.prepareNoteCache(bank, {
+      ...opts, startStep: from, endStep: Math.min(formSteps, from + URGENT_WINDOW_STEPS),
+    });
   }
 
   /**
@@ -4175,6 +4457,15 @@ class AudioSys {
       this._schedWork.voicePlays++;
       this.voices.play(key, v.id, freq, {
         time: this.nextTime + delay,
+        // The track this one is paired with, if the song paired it — see `choke` in
+        // src/data/arrangements.js. Which sounds cut each other off is a thing a song
+        // decides about its own kit, not a thing a hi-hat is, so it is read off the
+        // arrangement rather than off the preset or the bar.
+        //
+        // The pair is stored one way, so look both ways; the two names SORTED are the
+        // group, which is what makes the hats and the open hats resolve to the same one
+        // whichever of them is being played.
+        choke: chokePairOf(this.arrangement?.choke, key),
         // A bank's own length key still wins over the preset's — a song that has been
         // dialled in keeps its numbers when it changes voice — and a note that was
         // drawn a length in the roll wins over both, because that is the most specific

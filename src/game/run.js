@@ -1877,6 +1877,25 @@ export class RunState {
     if (this.player.grounded && Math.floor(this.player.anim) % 4 === 0 && this.fxRng.chance(0.1)) {
       spawn(this.camX + PLAYER_X, this.playerGroundY() - 1, -30, -10, 0.4, '#c8b898', 1, 30);
     }
+    // The power slide grinds: a steady dust trail off the ground contact for
+    // as long as the hero is down, and the scrape cue on the frame the slide
+    // starts. Same dust the footsteps and landings throw — one material.
+    {
+      const sliding = this.player.grounded && this.player.duckAmount > 0.5;
+      if (sliding && !this.wasSliding) Audio.sfx('slide');
+      this.wasSliding = sliding;
+      if (sliding && !this.save.settings.reducedMotion) {
+        this.slideDustT = (this.slideDustT || 0) - wdt;
+        if (this.slideDustT <= 0) {
+          this.slideDustT = 0.05;
+          const r = () => this.fxRng.float();
+          // off the trailing edge — the heel and the dragging hand — kicked
+          // up and back; world-space, so it trails behind on its own
+          spawn(this.camX + PLAYER_X - 8 - r() * 6, this.playerGroundY() - 1 - r() * 2,
+            -26 - r() * 30, -14 - r() * 22, 0.3 + r() * 0.2, '#c8b898', 1 + r() * 0.5, 26);
+        }
+      }
+    }
 
     // Systems.
     this.relay.update(wdt);
@@ -4197,6 +4216,22 @@ export class RunState {
         this.player.rollT = 0;
         this.player.stumbleT = 0.3;
         this.floatText('SHIELD BASH. EARS RINGING.', '#a8e6ff');
+        continue;
+      }
+      // The power slide is a plow — for BOXES only. A crate is furniture in
+      // the way; a cactus is a hazard, and sliding through hazards for free
+      // would beggar the jump. It spends the timed duck window to do it, so
+      // it is a commit rather than free invincibility — airborne or
+      // half-risen contact still hurts like it always did.
+      if (this.player.grounded && this.player.duckAmount > 0.6
+          && (ob.type === 'crate' || ob.type === 'qcrate')) {
+        // The full smash flourish, not just the box quietly dying: the same
+        // impact crash the stomp stamps on a crate, on top of breakObstacle's
+        // own crunch, burst and debris.
+        this.projectileImpact({ type: 'spanner' }, ob.x + ob.w / 2,
+          this.entityGroundY(ob) - ob.alt - ob.h / 2);
+        this.breakObstacle(ob);
+        shake(1.5, 0.1);
         continue;
       }
       // Targets and switches are objectives, not hazards: contact breaks them.

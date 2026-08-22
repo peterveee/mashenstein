@@ -3647,6 +3647,15 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
 // ---------------------------------------------------------------- rigs
 function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   if (pose.kind === 'duck' && pose.roll) return drawRoll(ctx, spec, p, pose, u, ow);
+  if (pose.kind === 'duck' && DUCK_STYLE_DRAWS[pose.duckStyle]) {
+    ctx.save();
+    // The slide owns its arrival (a tip-back onto the grounded hip); the
+    // other styles take the generic height blend.
+    if (pose.duckStyle !== 'slide') duckStyleEntry(ctx, pose);
+    DUCK_STYLE_DRAWS[pose.duckStyle](ctx, id, spec, p, pose, u, ow, lod);
+    ctx.restore();
+    return;
+  }
   const heavy = !!spec.heavy;
   // This hero's limb style, or null for the shipped painter. Resolved up here
   // rather than beside the gait because legL reads it, and legL is a body
@@ -6974,6 +6983,533 @@ function drawRoll(ctx, spec, p, pose, u, ow) {
   ctx.globalAlpha /= 0.45;
 }
 
+// ------------------------------------------- duck replacement candidates (lab)
+// GALLERY ONLY. The duck is the one pose the hero HOLDS while the world streams
+// past, and a front-on crouch gliding sideways is the read the bake-off exists
+// to fix. `pose.duckStyle` names a candidate below; no production pose sets it,
+// so the shipped crouch (and every duck test) is untouched. The winner wires
+// into poseFromPlayer and this table comes out — see the gallery section.
+//
+// All three draw feet-at-origin facing +x (travel), inside the duck's own
+// height envelope: the shipped crouch crowns at ~0.66u, and the gallery draws
+// its clearance bar there.
+const DUCK_ROLL_R = 0.30;   // tuck ball radius, in u
+const DUCK_ROLL_SPIN = 13;  // rad/s — ~2 rev/s; rim speed 3.9u/s, see gallery
+
+// The shipped crouch folds a standing figure by scaling 1.7 -> 1.0 over the
+// 0.14s duckAmount blend. The candidates own their whole geometry, so they
+// take the same trick at the dispatch: taller and slightly narrower while
+// still folding, settled at 1:1.
+function duckStyleEntry(ctx, pose) {
+  const raw = pose.duckAmount == null ? 1
+    : Math.max(0, Math.min(1, Number(pose.duckAmount) || 0));
+  const e = raw * raw * (3 - 2 * raw);
+  if (e < 1) ctx.scale(0.92 + 0.08 * e, 1.55 - 0.55 * e);
+}
+
+// A reclined torso capsule dressed the way the STANDING rig dresses it: shirt
+// colour dominant, trouser colour only below a belt near the hip end, the
+// brown belt riding the colour seam and thin suspender straps over the shirt
+// (spec.straps). The slide and the dive both recline the torso, and both got
+// this wrong twice by inventing a dressing instead of quoting the rig's own.
+// Hand treatment for the slide's arm ends, quoting the rig's handDeco
+// branches: Grumpos's gold gauntlets, the plumber glove, Kiko's bracers,
+// fingerless gloves, bare p.hand hands — and NOTHING for the heroes whose
+// walking arms end in a plain limb cap. Inventing skin circles for those gave
+// Gnash hands he has never had.
+function slideHand(ctx, id, spec, p, u, ow, armW, x, y, lod) {
+  if (id === 'grumpos') {
+    outlined(ctx, p.g, hair(0.5, ow * 0.55), (c) => c.arc(x, y, 0.058 * u, 0, Math.PI * 2));
+    dot(ctx, x, y, 0.028 * u, p.s);
+  } else if (spec.plumber) {
+    outlined(ctx, p.w, hair(0.5, ow * 0.6), (c) => c.arc(x, y, 0.052 * u, 0, Math.PI * 2));
+  } else if (spec.bracers) {
+    const br = armW * 0.95;
+    if (!lod) {
+      ctx.fillStyle = p.a;
+      for (const a of [-0.9, 0, 0.9]) {
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * br, y + Math.sin(a) * br);
+        ctx.lineTo(x + Math.cos(a - 0.3) * br * 0.8, y + Math.sin(a - 0.3) * br * 0.8);
+        ctx.lineTo(x + Math.cos(a + 0.3) * br * 0.8, y + Math.sin(a + 0.3) * br * 0.8);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    outlined(ctx, p.ribbon || p.w, hair(0.5, ow * 0.6), (c) => c.arc(x, y, br, 0, Math.PI * 2));
+    outlined(ctx, p.hand || p.s, hair(0.45, ow * 0.5), (c) => c.arc(x, y, armW * 0.5, 0, Math.PI * 2));
+  } else if (spec.gloves) {
+    outlined(ctx, p.w, hair(0.5, ow * 0.6), (c) => c.arc(x, y, armW * 0.8, 0, Math.PI * 2));
+    outlined(ctx, p.hand || p.s, hair(0.45, ow * 0.5), (c) => c.arc(x, y, armW * 0.56, 0, Math.PI * 2));
+  } else if (spec.hands) {
+    outlined(ctx, p.hand || p.s, hair(0.5, ow * 0.6), (c) => c.arc(x, y, armW * 0.62, 0, Math.PI * 2));
+  }
+}
+
+function duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w) {
+  const ax = shX - hipX, ay = shY - hipY;
+  const L = Math.hypot(ax, ay) || 1;
+  ctx.save();
+  ctx.translate(hipX, hipY);
+  ctx.rotate(Math.atan2(ay, ax));
+  // The capsule as a real PATH, not a fat stroke: the seat below needs a clip
+  // to end square at the belt. Drawn as a stroke, the trouser colour's round
+  // line-cap bulged half a torso-width past the belt line — an oval hanging
+  // off the belt, not trousers ending at one.
+  // `taper` narrows the hip end the way the standing rig narrows the waist —
+  // Grumpos is broad at the shoulders and 0.58 of that at the belt, and a
+  // constant-width tube read as a different body entirely.
+  const taper = spec.taper || 1;
+  const rHip = (w / 2) * taper, rSh = w / 2;
+  const capsule = taper === 1
+    ? (c) => roundRectPath(c, -w / 2, -w / 2, L + w, w, w / 2)
+    : (c) => {
+      c.arc(0, 0, rHip, Math.PI / 2, Math.PI * 1.5);
+      c.lineTo(L, -rSh);
+      c.arc(L, 0, rSh, -Math.PI / 2, Math.PI / 2);
+      c.closePath();
+    };
+  outlined(ctx, p.b, ow, capsule);
+  // trouser seat: everything hipward of the belt, clipped to the capsule —
+  // paint with a straight edge at the seam, exactly like the standing rig's
+  // below-the-belt fill
+  const beltX = L * 0.24;
+  ctx.save();
+  ctx.beginPath(); capsule(ctx); ctx.clip();
+  ctx.fillStyle = p.p;
+  ctx.fillRect(-w, -w, beltX + w, w * 2);
+  ctx.restore();
+  if (spec.tatSide) {
+    // Grumpos's war paint, clipped to the body like the standing stripe: a
+    // red sweep off the shoulder-side chest down toward the belt.
+    ctx.save();
+    ctx.beginPath(); capsule(ctx); ctx.clip();
+    ctx.strokeStyle = p.a;
+    ctx.lineWidth = 0.075 * u;
+    ctx.beginPath();
+    ctx.moveTo(L * 0.98, -w * 0.3);
+    ctx.quadraticCurveTo(L * 0.58, -w * 0.02, L * 0.34, w * 0.3);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (id === 'b33p') {
+    // The chest screen with its alternating status lights and the hull seam
+    // at the waist — the plating details that make the torso a machine.
+    outlined(ctx, p.s, hair(0.5, ow * 0.55), (c) =>
+      roundRectPath(c, L * 0.56, -w * 0.27, 0.105 * u, w * 0.54, 0.02 * u));
+    const beat = Math.sin((t || 0) * 5) > 0;
+    dot(ctx, L * 0.61, -w * 0.125, 0.018 * u, beat ? p.a : p.w);
+    dot(ctx, L * 0.61, w * 0.125, 0.018 * u, beat ? p.w : p.a);
+    ctx.strokeStyle = p.p;
+    ctx.lineWidth = hair(0.6, ow * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(beltX + 0.03 * u, -w * 0.42);
+    ctx.lineTo(beltX + 0.03 * u, w * 0.42);
+    ctx.stroke();
+  }
+  if (spec.straps) {
+    // suspenders angling gently inward toward the shoulders, then the belt on
+    // the seam with its brass buckle — same colours, same weights as standing.
+    // The belt stroke takes BUTT caps: round ones bulged half a stroke past
+    // each end of the band, a belt hanging out past the waist.
+    ctx.strokeStyle = p.p;
+    ctx.lineWidth = 0.045 * u;
+    ctx.beginPath();
+    for (const s of [-1, 1]) {
+      ctx.moveTo(beltX, s * 0.08 * u);
+      ctx.lineTo(L, s * 0.05 * u);
+    }
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = p.m;
+    ctx.lineWidth = 0.05 * u;
+    ctx.beginPath();
+    ctx.moveTo(beltX, -w * 0.47);
+    ctx.lineTo(beltX, w * 0.47);
+    ctx.stroke();
+    ctx.lineCap = 'round';
+    outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) => c.arc(beltX, 0, 0.03 * u, 0, Math.PI * 2));
+  }
+  ctx.restore();
+}
+
+// B — TUCK ROLL: a somersault, not Fernwick's ability ball. The hero stays a
+// FIGURE — cap, mustache, boots — curled and tumbling, so the cast's identity
+// survives the pose the way it does not in drawRoll's striped sphere.
+function drawDuckTuckRoll(ctx, id, spec, p, pose, u, ow, lod) {
+  const t = pose.time || 0;
+  const R = DUCK_ROLL_R * u;
+  const headPose = { kind: 'duck', roll: true, time: t };
+  // speed arcs trailing behind, in ground space
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = hair(1, ow * 0.6);
+  ctx.globalAlpha *= 0.4;
+  ctx.beginPath(); ctx.arc(-R * 1.6, -R, R * 0.5, -0.6, 0.6); ctx.stroke();
+  ctx.beginPath(); ctx.arc(-R * 2.0, -R, R * 0.34, -0.6, 0.6); ctx.stroke();
+  ctx.globalAlpha /= 0.4;
+  ctx.save();
+  ctx.translate(0, -R - 0.01 * u);
+  ctx.rotate(t * DUCK_ROLL_SPIN); // travelling +x, so the tumble is clockwise
+  // ONE clean circle is the whole read at speed: earlier cuts that let the
+  // head or legs break the circle read as tumbling laundry, not a roll. The
+  // ball shows his BACK — shirt colour, like the standing torso — and the
+  // trouser blue arrives only as the folded legs across the front, painted
+  // under a clip so the silhouette never moves (the standing rig's own
+  // below-the-belt bargain).
+  outlined(ctx, p.b, ow, (c) => c.arc(0, 0, R, 0, Math.PI * 2));
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = p.p;
+  ctx.beginPath(); ctx.ellipse(0.16 * u, 0.11 * u, 0.23 * u, 0.20 * u, -0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // re-ink the rim over the paint seam
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = ow;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+  // teal shirt arms hugging the ball across its front-bottom
+  for (const [pad, col] of [[ow * 2, OUTLINE], [0, p.b]]) {
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 0.095 * u + pad;
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.70, 0.5, 1.8); ctx.stroke();
+  }
+  // boots tucked at the front rim just past the grip — inside the ball they
+  // are brown on dark blue and simply vanish
+  outlined(ctx, p.f, hair(0.6, ow * 0.8), (c) =>
+    c.ellipse(0.235 * u, 0.015 * u, 0.07 * u, 0.05 * u, 1.25, 0, Math.PI * 2));
+  outlined(ctx, p.f, hair(0.6, ow * 0.8), (c) =>
+    c.ellipse(0.225 * u, 0.115 * u, 0.07 * u, 0.05 * u, 1.05, 0, Math.PI * 2));
+  // ...and the hand gripping the shins, over the boot it holds
+  outlined(ctx, p.s, hair(0.5, ow * 0.7), (c) =>
+    c.arc(Math.cos(0.55) * R * 0.68, Math.sin(0.55) * R * 0.68, 0.048 * u, 0, Math.PI * 2));
+  // the head, small and tucked chin-down inside the circle — cap and face
+  // carry the identity; sized any bigger they carry the whole ball away
+  ctx.save();
+  ctx.translate(0.085 * u, -0.125 * u);
+  ctx.rotate(0.6);
+  drawHead(ctx, id, spec, p, u * 0.62, ow, 0, 0, lod, headPose);
+  ctx.restore();
+  ctx.restore();
+}
+
+// C — POWER SLIDE: the runner-genre answer to "under, while moving" — leaned
+// back on the grounded hip, near leg bent in front, trailing arm up off the
+// deck. The head stays upright and camera-facing, which is what the crouch
+// never manages: this pose only makes sense IN motion.
+function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
+  const t = pose.time || 0;
+  const jig = Math.sin(t * 34) * 0.006 * u; // ground rumble through the pose
+  // The held slide stays ALIVE: the feet work back and forth along the ground
+  // on two slow, out-of-phase clocks, the trailing arm rides its own, and the
+  // balance fist corrects on a third. The knees are not animated directly —
+  // the feet move and the two-bone IK flexes each knee to reach them, which
+  // is what keeps the bends looking loaded rather than waggled.
+  const swayA = Math.sin(t * 3.1), swayB = Math.sin(t * 4.3 + 1.7);
+  const footRearX = 0.11 * u + 0.02 * u * swayB;
+  const footNearX = 0.30 * u + 0.025 * u * swayA;
+  // The rear (far) arm holds its balance fist forward-up — that one was
+  // always right. The NEAR arm is the one that hangs: relaxed off the
+  // reclined shoulder, hand swinging just clear of the deck. Raised it read
+  // as jazz hands; planted it read as an arm too long. Gravity is the pose.
+  const fistX = 0.10 * u + 0.022 * u * Math.sin(t * 2.6 + 0.8);
+  const fistY = -0.40 * u + 0.016 * u * Math.sin(t * 3.7 + 2.1);
+  const trailX = -0.33 * u + 0.02 * u * swayB;
+  const trailY = -0.09 * u - 0.015 * u * swayA;
+  // One skeleton, every build: widths and colours quote the rig's own
+  // formulas — a heavy or slim hero slides with their own limbs, B-33P with
+  // his gold arm segments and machine hands, not Lorenzo's teal and skin.
+  const heavy = !!spec.heavy;
+  const legW = (heavy ? 0.11 : spec.slim ? 0.082 : 0.09) * u * (spec.legWidth || 1);
+  const armW = (heavy ? 0.118 : spec.slim ? 0.068 : 0.075) * u * (spec.armWidth || 1);
+  const armFill = p.arm || (spec.bareArms ? p.s : p.b);
+  const footFill = id === 'grumpos' ? p.w : p.f;
+  const torsoW = (heavy ? 0.37 : spec.slim ? 0.26 : 0.30) * u;
+  // No pose.roll in the head's pose: the effort expression it forces owns the
+  // mouth slot, and it cost B-33P his grille and Gnash his smirk. The duck
+  // kind alone keeps the focused eyes.
+  const headPose = { kind: 'duck', time: t };
+  ctx.save();
+  ctx.translate(0, jig);
+  // Arrival: instead of the generic height blend, the slide TIPS BACK onto
+  // the grounded hip over the duck blend — at duckAmount 0 the figure is
+  // rotated up near standing, and it falls into the recline as the blend
+  // completes, pivoting on the buttock that never leaves the ground.
+  const raw = pose.duckAmount == null ? 1
+    : Math.max(0, Math.min(1, Number(pose.duckAmount) || 0));
+  const e = raw * raw * (3 - 2 * raw);
+  if (e < 1) {
+    // Upright is PLUS rotation here (the first cut tipped him flatter), and
+    // the figure rides higher while upright so the extended foot stays on the
+    // ground instead of swinging through it.
+    ctx.translate(0, -0.18 * u * (1 - e));
+    ctx.translate(-0.05 * u, -0.04 * u);
+    ctx.rotate(0.5 * (1 - e));
+    ctx.translate(0.05 * u, 0.04 * u);
+  }
+  // The tallest walker stays the biggest slider: the heavy rig follows its
+  // own crouch rule — fold by a fraction of YOUR height, never to a shared
+  // line — so the whole slide scales up instead of folding him to size.
+  if (heavy) ctx.scale(1.08, 1.08);
+  const hipX = -0.02 * u, hipY = -0.15 * u;
+  // The heavy torso is genuinely LONGER, not only wider (torsoTop -0.768u vs
+  // -0.56u standing): the shoulder rides farther up the recline, and the head
+  // follows it, or he slides as a bearded ball with no chest.
+  const stretch = heavy ? 1.28 : 1;
+  const shX = hipX - 0.22 * u * stretch, shY = hipY - 0.23 * u * stretch;
+  if (spec.rig === 'ray') {
+    // Ray M'n slides the way he does everything: in pieces. Same skeleton,
+    // no limbs — his shoes float where the feet go, his gloves where the
+    // hands go, and the scarf streams off the recline.
+    ctx.save();
+    ctx.translate(-0.115 * u, -0.245 * u);
+    ctx.rotate(-0.76); // torso slab laid along the slide axis
+    // scarf pennant streaming up and back off the collar
+    ctx.fillStyle = p.m;
+    ctx.beginPath();
+    ctx.moveTo(-0.13 * u, -0.23 * u);
+    ctx.quadraticCurveTo(-0.32 * u, -0.29 * u + swayB * 0.02 * u, -0.42 * u, -0.2 * u + swayA * 0.02 * u);
+    ctx.lineTo(-0.13 * u, -0.12 * u);
+    ctx.fill();
+    outlined(ctx, p.b, ow, (c) => roundRectPath(c, -0.15 * u, -0.19 * u, 0.3 * u, 0.38 * u, 0.09 * u));
+    outlined(ctx, p.m, ow, (c) => roundRectPath(c, -0.18 * u, -0.215 * u, 0.36 * u, 0.065 * u, 0.028 * u));
+    ctx.restore();
+    // floating shoes at the planted feet, his own two-ellipse build
+    for (const [fx, tilt] of [[footRearX, 0.3], [footNearX + 0.03 * u, -0.08]]) {
+      outlined(ctx, p.f, ow, (c) => c.ellipse(fx, -0.063 * u, 0.125 * u, 0.063 * u, tilt, 0, Math.PI * 2));
+      outlined(ctx, p.w, hair(0.5, ow * 0.55), (c) => c.ellipse(fx - 0.015 * u, -0.103 * u, 0.07 * u, 0.04 * u, tilt, 0, Math.PI * 2));
+    }
+    // floating gloves: balance fist forward, trailing glove back and up
+    outlined(ctx, p.w, ow, (c) => c.arc(fistX, fistY, 0.068 * u, 0, Math.PI * 2));
+    outlined(ctx, p.w, ow, (c) => c.arc(trailX, trailY - 0.04 * u, 0.068 * u, 0, Math.PI * 2));
+    // his own head painter — at absolute coordinates, same lighting rule as
+    // the humanoid head: a translated frame lands the face in the ramp's
+    // shadow end
+    drawRayHead(ctx, id, p, headPose, u, ow, -0.24 * u, -0.5 * u, lod, false);
+    ctx.restore();
+    duckDust(ctx, u, ow, t, -0.26 * u, -0.02 * u);
+    return;
+  }
+  // Puffed sleeve over an arm root (spec.puffs): bells across the limb, gold
+  // cuff on the elbow side — seated on the socket the way the standing sleeve
+  // is, travelling with whichever way this arm points.
+  const slidePuff = (hx2, hy2, along = 0.09 * u) => {
+    if (!spec.puffs) return;
+    const ang = Math.atan2(hy2 - shY, hx2 - shX);
+    // Seated farther down the arm than standing: the reclined head overlaps
+    // the shoulder socket, and a sleeve on it lands on the chin — the near
+    // sleeve rides lowest, clear of the face entirely.
+    const pcx = shX + Math.cos(ang) * along, pcy = shY + Math.sin(ang) * along;
+    const pr = torsoW * 0.28;
+    outlined(ctx, p.b, ow * 0.85, (c) => c.ellipse(pcx, pcy, pr * 0.86, pr, ang, 0, Math.PI * 2));
+    if (!lod) {
+      ctx.strokeStyle = p.a;
+      ctx.lineWidth = hair(0.45, ow * 0.9);
+      ctx.beginPath();
+      ctx.ellipse(pcx, pcy, pr * 0.7, pr * 0.84, ang, -Math.PI * 0.42, Math.PI * 0.42);
+      ctx.stroke();
+    }
+  };
+  // far (balance) arm first, behind the torso — held forward for balance, the
+  // elbow only slightly soft so the fist reads as the end of an arm.
+  limb2(ctx, shX, shY, fistX, fistY, 0.185 * u, -1, armW * 0.95, armFill, ow, armW * 0.88, true);
+  slidePuff(fistX, fistY);
+  slideHand(ctx, id, spec, p, u, ow, armW, fistX, fistY, lod);
+  // far leg: folded under, BEHIND the body — knee dropped well clear of the
+  // torso; folded any tighter the blue thigh lies along the blue bib and
+  // reads as trousers riding up the chest
+  limb2(ctx, hipX, hipY, footRearX, -0.045 * u, 0.17 * u, 1, legW, p.p, ow, legW * 0.94);
+  outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) =>
+    c.ellipse(footRearX + 0.03 * u, -0.055 * u, 0.08 * u, 0.05 * u, 0.35, 0, Math.PI * 2));
+  // torso reclined hip -> shoulder, dressed exactly like the standing rig
+  duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, torsoW);
+  // near leg: bent like the rear one — knee up, foot planted ahead — and OVER
+  // the body: a slide crosses the near leg in front of the reclined torso, so
+  // its thigh paints on top of the seat. The root is the GROUNDED hip: he is
+  // sliding on the left buttock, so the thigh leaves from the seat's lower
+  // edge down by the ground line. The depth is measured from THIS hero's
+  // seat, not Lorenzo's: on a slim capsule a fixed offset put the root cap
+  // outside the body.
+  const rootD = torsoW / 2 - legW * 0.55;
+  limb2(ctx, hipX - 0.263 * rootD, hipY + 0.965 * rootD, footNearX, -0.05 * u, 0.24 * u, 1, legW, p.p, ow, legW * 0.94);
+  outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) =>
+    c.ellipse(footNearX + 0.03 * u, -0.06 * u, 0.085 * u, 0.055 * u, -0.1, 0, Math.PI * 2));
+  // Garments that hang over the thighs come WITH the hero — drawn after the
+  // legs, exactly the layering the standing rig uses for all of them.
+  if (spec.tunic || spec.dress || id === 'grumpos') {
+    const ax = shX - hipX, ay = shY - hipY;
+    const aL = Math.hypot(ax, ay) || 1;
+    ctx.save();
+    ctx.translate(hipX, hipY);
+    ctx.rotate(Math.atan2(ay, ax));
+    const beltX = aL * 0.24;
+    // Past the seat, over the thigh roots — scaled back on the heavy rig,
+    // where the same margins over a 0.37u capsule came out as one
+    // knee-to-chest board of leather.
+    const hemX = -torsoW * 0.5 - (heavy ? 0.01 : 0.05) * u;
+    // Waist bands and panel roots measure the body AT THE WAIST, which on a
+    // tapered build is far inside the shoulder width — a belt sized off the
+    // full torso overhung Grumpos's narrow middle on both sides.
+    const taper = spec.taper || 1;
+    const waistHalf = torsoW * 0.5 * (taper + (1 - taper) * 0.24);
+    const wTop = waistHalf * 1.05, wHem = wTop * (heavy ? 1.25 : 1.33);
+    const segs = id === 'grumpos' ? 4 : spec.dress === 'split' ? 3 : 0;
+    if (segs) {
+      // Hanging PANELS, never one board: Grumpos's pteruges and Kiko's split
+      // qipao are segmented garments when they walk, so they stay segmented
+      // sliding — each panel its own quad, pinned at the waist, free at the
+      // hem, with the gaps between them doing the talking.
+      const fill = id === 'grumpos' ? p.w : p.b;
+      for (let i = 0; i < segs; i++) {
+        const f = -1 + (2 * i + 1) / segs;
+        const halfT = (wTop / segs) * 0.96, halfH = (wHem / segs) * 1.02;
+        // Each panel is pinned at the waist and FREE at the hem, and each hem
+        // rides its own clock: the ground-side panels inherit the near leg's
+        // sway, the far side the rear leg's — the way the standing pteruges
+        // inherit the leg beneath them — plus a flutter of their own, so the
+        // stack never moves as one board.
+        const legSway = f > 0 ? swayA : swayB;
+        const flap = (Math.sin(t * 4.6 + i * 1.9) * 0.55 + legSway * 0.45) * 0.022 * u;
+        const hx = hemX - Math.abs(flap) * 0.4;
+        outlined(ctx, fill, hair(0.6, ow * 0.8), (c) => {
+          c.moveTo(beltX, f * wTop - halfT);
+          c.lineTo(beltX, f * wTop + halfT);
+          c.lineTo(hx, f * wHem + halfH + flap);
+          c.lineTo(hx, f * wHem - halfH + flap);
+          c.closePath();
+        });
+        if (!lod && spec.dress) {
+          // the qipao's gold piping, on every panel hem, riding its flap
+          ctx.strokeStyle = p.a;
+          ctx.lineWidth = hair(0.5, 0.02 * u);
+          ctx.beginPath();
+          ctx.moveTo(hx, f * wHem - halfH + flap);
+          ctx.lineTo(hx, f * wHem + halfH + flap);
+          ctx.stroke();
+        }
+      }
+    } else if (spec.tunic) {
+      // the tunic: one flared panel, the way it hangs standing
+      outlined(ctx, p.b, ow, (c) => {
+        c.moveTo(beltX, -wTop);
+        c.lineTo(beltX, wTop);
+        c.lineTo(hemX, wHem);
+        c.quadraticCurveTo(hemX - 0.045 * u, 0, hemX, -wHem);
+        c.closePath();
+      });
+    }
+    // Waist bands end ON the waist: BUTT caps, because the round default
+    // bulged half a stroke past each edge and every belt hung out past the
+    // body.
+    if (spec.dress) {
+      // the sash in its own colour, with the off-centre knot and tail the
+      // standing qipao ties
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = p.sash || p.p;
+      ctx.lineWidth = 0.06 * u;
+      ctx.beginPath(); ctx.moveTo(beltX, -wTop * 0.94); ctx.lineTo(beltX, wTop * 0.94); ctx.stroke();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = p.sash || p.p;
+      ctx.lineWidth = 0.03 * u;
+      ctx.beginPath();
+      ctx.moveTo(beltX, wTop * 0.42);
+      ctx.lineTo(beltX - 0.055 * u, wTop * 0.6);
+      ctx.stroke();
+      outlined(ctx, p.sash || p.p, hair(0.4, ow * 0.5), (c) => c.arc(beltX, wTop * 0.4, 0.032 * u, 0, Math.PI * 2));
+    }
+    if (id === 'grumpos') {
+      // his belt is the GOLD band with the pale disc buckle, same as standing
+      // — dark leather on dark leather was an invisible belt
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = p.g;
+      ctx.lineWidth = 0.065 * u;
+      ctx.beginPath(); ctx.moveTo(beltX, -wTop * 0.98); ctx.lineTo(beltX, wTop * 0.98); ctx.stroke();
+      ctx.lineCap = 'round';
+      dot(ctx, beltX, 0, 0.034 * u, p.w);
+    }
+    if (spec.tunic) {
+      // the tunic's own belt riding the skirt's top seam, gold buckle on it
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = p.p;
+      ctx.lineWidth = 0.055 * u;
+      ctx.beginPath(); ctx.moveTo(beltX, -wTop * 0.96); ctx.lineTo(beltX, wTop * 0.96); ctx.stroke();
+      ctx.lineCap = 'round';
+      outlined(ctx, p.a, hair(0.5, ow * 0.5), (c) => c.arc(beltX, 0, 0.028 * u, 0, Math.PI * 2));
+    }
+    ctx.restore();
+  }
+  // near arm: hangs down off the shoulder, hand trailing just clear of the
+  // ground, elbow soft and back
+  limb2(ctx, shX, shY, trailX, trailY, 0.19 * u, -1, armW, armFill, ow, armW * 0.93, true);
+  slideHand(ctx, id, spec, p, u, ow, armW, trailX, trailY, lod);
+  // head up and back, riding the shoulder wherever the build put it. Drawn at
+  // ABSOLUTE figure coordinates, untilted: the light field's gradients
+  // resolve against the transform in force when they are painted, so a head
+  // drawn inside a translated frame was shaded as if it sat at the FEET —
+  // the shadow end of the ramp, and the dark face every slider wore.
+  drawHead(ctx, id, spec, p, u, ow, shX - 0.02 * u, shY - 0.12 * u, lod, headPose);
+  // the near sleeve last: the reclined head owns the shoulder region, and a
+  // puff drawn before it was a sleeve she appeared not to have — seated low
+  // enough on the arm that it sits beside the jaw, never on the face
+  slidePuff(trailX, trailY, 0.17 * u);
+  ctx.restore();
+  // dust ground off the SEAT — that is what touches the deck now
+  duckDust(ctx, u, ow, t, -0.24 * u, -0.02 * u);
+}
+
+// D — BELLY DIVE: prone, arms ahead, chin up — the lowest silhouette of the
+// three, with a light flutter kick so the held pose stays alive.
+function drawDuckDive(ctx, id, spec, p, pose, u, ow, lod) {
+  const t = pose.time || 0;
+  const flut = Math.sin(t * 9) * 0.025 * u;
+  const chestX = 0.16 * u, chestY = -0.17 * u;
+  const hipX = -0.14 * u, hipY = -0.15 * u;
+  // far arm and far leg first, behind the body
+  limb2(ctx, chestX + 0.03 * u, chestY - 0.03 * u, 0.52 * u, -0.09 * u, 0.22 * u, -1, 0.065 * u, recede(p.b, 0.3), ow, 0.06 * u, true);
+  outlined(ctx, recede(p.s, 0.3), hair(0.5, ow * 0.7), (c) => c.arc(0.52 * u, -0.09 * u, 0.04 * u, 0, Math.PI * 2));
+  limb2(ctx, hipX, hipY, -0.44 * u, -0.10 * u - flut * 0.8, 0.24 * u, -1, 0.08 * u, recede(p.p, 0.3), ow, 0.075 * u);
+  outlined(ctx, recede(p.f, 0.3), hair(0.6, ow * 0.8), (c) =>
+    c.ellipse(-0.47 * u, -0.105 * u - flut * 0.8, 0.075 * u, 0.05 * u, 0.25, 0, Math.PI * 2));
+  // torso: near-horizontal capsule chest -> hips, dressed like the standing rig
+  duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, chestX, chestY, 0.28 * u);
+  // near leg trailing, knee soft, boot toe pointed back
+  limb2(ctx, hipX, hipY - 0.01 * u, -0.50 * u, -0.07 * u + flut, 0.24 * u, -1, 0.09 * u, p.p, ow, 0.085 * u);
+  outlined(ctx, p.f, hair(0.6, ow * 0.8), (c) =>
+    c.ellipse(-0.53 * u, -0.075 * u + flut, 0.08 * u, 0.05 * u, 0.2, 0, Math.PI * 2));
+  // near arm reaching ahead, palm skimming the ground
+  limb2(ctx, chestX, chestY, 0.56 * u, -0.055 * u, 0.24 * u, -1, 0.075 * u, p.b, ow, 0.07 * u, true);
+  outlined(ctx, p.s, hair(0.5, ow * 0.7), (c) => c.arc(0.56 * u, -0.055 * u, 0.045 * u, 0, Math.PI * 2));
+  // head at the front, chin held up off the deck
+  ctx.save();
+  ctx.translate(0.33 * u, -0.29 * u);
+  ctx.rotate(-0.24);
+  drawHead(ctx, id, spec, p, u * 0.92, ow, 0, 0, lod, { kind: 'duck', roll: true, time: t });
+  ctx.restore();
+  // dust off the chest contact
+  duckDust(ctx, u, ow, t, -0.30 * u, -0.04 * u);
+}
+
+// Two little contact puffs, pulsing on their own clock so a held slide keeps
+// visibly grinding. Drawn in ground space, always behind the figure.
+function duckDust(ctx, u, ow, t, x, y) {
+  const q = (t * 7) % 1;
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = hair(0.8, ow * 0.5);
+  ctx.globalAlpha *= 0.35 * (1 - q * 0.6);
+  ctx.beginPath(); ctx.arc(x - q * 0.10 * u, y - 0.03 * u - q * 0.05 * u, (0.035 + q * 0.03) * u, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x - 0.09 * u - q * 0.14 * u, y - 0.015 * u - q * 0.03 * u, (0.024 + q * 0.02) * u, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha /= 0.35 * (1 - q * 0.6);
+}
+
+const DUCK_STYLE_DRAWS = {
+  tuck: drawDuckTuckRoll, slide: drawDuckSlide, dive: drawDuckDive,
+};
+
+// What the gallery bake-off enumerates. Ids are pose.duckStyle values.
+export const DUCK_STYLE_CANDIDATES = [
+  { id: 'tuck', name: 'B — TUCK ROLL' },
+  { id: 'slide', name: 'C — POWER SLIDE' },
+  { id: 'dive', name: 'D — BELLY DIVE' },
+];
+
 function drawBlob(ctx, id, p, pose, u, ow, lod) {
   const t = pose.time || 0;
   const ph = (pose.phase || 0) * Math.PI * 2;
@@ -7704,6 +8240,16 @@ function drawRayHead(ctx, id, p, pose, u, ow, hx, hy, lod, run) {
 }
 
 function drawRay(ctx, id, p, pose, u, ow, lod) {
+  // The ray rig ducks with the same POWER SLIDE the humanoids ship — the
+  // slide painter has a floating-limb branch for him. Ability rolls do not
+  // exist on this rig, so the duckStyle check is the whole dispatch.
+  if (pose.kind === 'duck' && DUCK_STYLE_DRAWS[pose.duckStyle]) {
+    ctx.save();
+    if (pose.duckStyle !== 'slide') duckStyleEntry(ctx, pose);
+    DUCK_STYLE_DRAWS[pose.duckStyle](ctx, id, TOON_SPECS[id] || {}, p, pose, u, ow, lod);
+    ctx.restore();
+    return;
+  }
   const ph = (pose.phase || 0) * Math.PI * 2;
   const run = pose.kind === 'run';
   const duck = pose.kind === 'duck';
@@ -7938,7 +8484,8 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
       sx = 1 - 0.6 * st;
     }
   }
-  if (pose.kind === 'duck' && usesEnhancedLocomotion(pose) && !pose.roll) {
+  if (pose.kind === 'duck' && usesEnhancedLocomotion(pose) && !pose.roll
+    && !DUCK_STYLE_DRAWS[pose.duckStyle]) {
     const raw = pose.duckAmount == null ? 1
       : Math.max(0, Math.min(1, Number(pose.duckAmount) || 0));
     let crouch = raw * raw * (3 - 2 * raw);
@@ -8362,6 +8909,12 @@ export function poseFromPlayer(player, t) {
     // Ordinary input uses the controller's entry/exit blend.
     duckAmount: forcedDuck ? 1 : Math.max(0, Math.min(1, player.duckAmount || 0)),
     duckDirection: forcedDuck ? 0 : (player.duckDirection || 0),
+    // The shipped duck on the humanoid and ray rigs is the POWER SLIDE
+    // (bake-off, 2026-08). Ability rolls keep priority — drawHumanoid checks
+    // pose.roll first — and the blob/pika/disc rigs never read duckStyle, so
+    // they keep their crouch and its whole-figure squash.
+    duckStyle: kind === 'duck' && !player.rolling
+      && ['humanoid', 'ray'].includes(TOON_SPECS[hero.id]?.rig) ? 'slide' : undefined,
     squash: Math.max(0, Math.min(1, (player.landedT || 0) / SQUASH_T)),
     // Whichever is stronger. A dash is a hard 0.26; a boost pad is a shallower
     // 0.17 that holds a beat longer, so the two do not read as the same move.

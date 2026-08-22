@@ -289,6 +289,14 @@ export function createSynthKeyboard({
   });
   board.addEventListener('pointerup', (event) => noteOff(`p:${event.pointerId}`));
   board.addEventListener('pointercancel', (event) => noteOff(`p:${event.pointerId}`));
+  // Pointer capture normally routes these to the board, but it can be lost when the
+  // editor is rebuilt, another surface takes the gesture, or the browser cancels a
+  // native control. Keep the board handler for the ordinary path and add a window
+  // backstop so a short click cannot leave a held preview with no note-off.
+  const releasePointer = (event) => noteOff(`p:${event.pointerId}`);
+  addEventListener('pointerup', releasePointer);
+  addEventListener('pointercancel', releasePointer);
+  board.addEventListener('lostpointercapture', releasePointer);
 
   const onKeyDown = (event) => {
     if (!active || !capture || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -359,6 +367,8 @@ export function createSynthKeyboard({
       removeEventListener('keydown', onKeyDown);
       removeEventListener('keyup', onKeyUp);
       removeEventListener('blur', loseFocus);
+      removeEventListener('pointerup', releasePointer);
+      removeEventListener('pointercancel', releasePointer);
       root.remove();
     },
   };

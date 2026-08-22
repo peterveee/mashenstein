@@ -44,7 +44,7 @@ import { Player } from '../player.js';
 // chip stab instead of a four-note pad, which is the main Game Boy-sized reduction in
 // polyphony.
 const gameBoyTone = (label, waveform, decay, category = 'Lead', trim = 0, transpose = 0) => ({
-  label, category, kind: 'tone', synth: 'Synth', mode: 'mono', dur: 0.5, trim,
+  label, category, kind: 'tone', synth: 'CRLS-1', mode: 'mono', dur: 0.5, trim,
   ...(transpose ? { transpose } : {}),
   options: {
     oscillator: { type: waveform },
@@ -57,13 +57,25 @@ const gameBoyDrum = (label, waveform, decay, category, trim = 0) => ({
   ...gameBoyTone(label, waveform, decay, category, trim),
   // Unlike ordinary MONO, this group spans the whole kit: the tiny console has one
   // percussion channel, so a new drum hit releases the previous drum whatever lane made it.
-  monoGroup: 'arcadeDrums',
+  monoGroup: '1',
 });
 
+// KLNG8 rather than a `kind: 'noise'` voice, which is the same construction one path
+// over: the burst is the identical seeded buffer through the identical filter chain,
+// and `osc` is what `body` was — a short pitched thump under the noise, its fall stated
+// as a `sweep` instead of borrowing the amp decay's number. This was the last voice in
+// the game still built on the old noise path, which is now retired into `_playDrum`.
+//
+// The `monoGroup` is declared even though `_playDrum` does not yet read it: the value
+// only means anything once a second voice names the same group, and every gameBoyDrum
+// beside it does. It starts choking the moment the drum path learns to.
 const gameBoyNoiseDrum = (label, decay, category, trim = 0) => ({
-  label, category, kind: 'noise', dur: 0.5, trim, monoGroup: 'arcadeDrums',
+  label, category, kind: 'drum', dur: 0.5, trim, monoGroup: '1',
   noise: { type: 'bandpass', freq: 2500, Q: 0.7, decay },
-  body: { type: 'triangle', from: 190, to: 120, decay: Math.min(0.06, decay), gain: 0.24 },
+  osc: {
+    type: 'triangle', from: 190, to: 120, gain: 0.24,
+    sweep: Math.min(0.06, decay), decay: Math.min(0.06, decay),
+  },
 });
 
 // The Food Court bass lands once per beat. Arcade adds an eighth-note one octave above
@@ -125,14 +137,15 @@ const ARCADE_GAMEBOY_VOICES = {
   mainLead: gameBoyTone('Game Boy Main Lead', 'triangle', 0.065, 'Lead', 0, 12),
   chord: gameBoyTone('Game Boy Chord Blip', 'triangle', 0.045, 'Keys'),
   fx: gameBoyTone('Game Boy FX Blip', 'triangle', 0.038, 'FX'),
-  // One simple pitched voice per drum colour. No noise/MetalSynth tails: the shared
-  // monoGroup below makes this a single Game Boy-style percussion channel.
+  // One simple pitched voice per drum colour, and the snare a short burst beside them.
+  // No long metallic tails on any of it: the shared monoGroup makes this a single Game
+  // Boy-style percussion channel, and a channel can only hold one sound at a time.
   kick: gameBoyDrum('Game Boy Kick', 'square', 0.085, 'Kick'),
   snare: gameBoyNoiseDrum('Game Boy Noise Snare', 0.075, 'Snare', 3),
   clap: gameBoyDrum('Game Boy Clap', 'sawtooth', 0.04, 'Clap'),
   hat: gameBoyDrum('Game Boy Hat', 'square', 0.022, 'Hats'),
   openHat: gameBoyDrum('Game Boy Open Hat', 'sawtooth', 0.04, 'Hats'),
-  rim: gameBoyDrum('Game Boy Rim', 'sawtooth', 0.03, 'Perc'),
+  rim: gameBoyDrum('Game Boy Rim', 'sawtooth', 0.03, 'Rim'),
   tom: gameBoyDrum('Game Boy Tom', 'triangle', 0.06, 'Tom'),
   crash: gameBoyDrum('Game Boy Crash', 'sawtooth', 0.065, 'Crash'),
 };

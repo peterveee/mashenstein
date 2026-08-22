@@ -69,6 +69,8 @@ const state = () => page.evaluate(() => {
     popup: popup?.querySelector('.regtitle')?.textContent || '',
     popupLeft: Number.parseFloat(popup?.style.left) || 0,
     popupTop: Number.parseFloat(popup?.style.top) || 0,
+    popupHeight: popup?.getBoundingClientRect().height || 0,
+    viewHeight: innerHeight,
     arpOn: field('Arpeggiator')?.checked,
     repeat: field('Repeat pattern')?.checked,
     gap: field('Gap')?.value,
@@ -92,8 +94,13 @@ try {
   assert(first.view === 'roll' && first.effects, 'the lower workspace and Effects inspector return');
   assert(first.popup.includes('Note FX') && first.popup.includes('bars 2–3'),
     'the staged bar Note FX popup returns at its original scope');
-  assert(first.popupLeft === 300 && first.popupTop === 180,
-    'the popup returns to its saved position');
+  // Where it was saved, unless the panel has since grown taller than the room under
+  // that point: a restored window is pulled back onto the screen rather than left
+  // hanging off the bottom of it, which is the same clamp opening one applies. Pinning
+  // the raw 180 instead made the assertion a height budget for the Note FX panel.
+  const restoredTop = Math.min(180, first.viewHeight - first.popupHeight - 6);
+  assert(first.popupLeft === 300 && Math.abs(first.popupTop - restoredTop) < 1,
+    'the popup returns to its saved position, pulled on screen if it no longer fits');
   assert(!first.playing, 'reload restores position without autoplaying audio');
   assert(first.playhead > 0, 'the parked playhead returns away from the song start');
   assert(first.rollTop > 0, 'the piano-roll pitch viewport returns');

@@ -31,6 +31,13 @@ export const ICE_SLIDE_T = 0.35;
 // recovery via hitH's duckAmount threshold.
 export const DUCK_IN_T = 0.14;
 export const DUCK_OUT_T = 0.1;
+// How long a slide can be HELD before the hero stands back up. The duck is a
+// move to get under one obstacle, not a stance: every duck pattern in
+// cabinets.js places a single drone or paperwork (never a corridor), and at
+// BASE_SPEED the actual pass-under lasts ~0.2s — the second is anticipation
+// room for ducking early. Releasing re-arms instantly; the cost of overstaying
+// is having to re-press with the hazard already overhead.
+export const DUCK_MAX_T = 1.0;
 // The walk cycle is driven by scroll speed, not by wall time, so the stride
 // stays planted as the run accelerates: anim advances at world.speed / this.
 // Lower means faster legs at the same speed.
@@ -82,6 +89,8 @@ export class Player {
     this.ducking = false;
     this.duckAmount = 0; // visual crouch blend: 0 standing, 1 fully planted
     this.duckDirection = 0;
+    this.duckHoldT = 0;      // how long the current slide has been held
+    this.duckSpent = false;  // window used up; release to re-arm
     this.floating = false;
     this.iframes = 0;
     this.anim = 0;
@@ -147,6 +156,8 @@ export class Player {
     this.ducking = false;
     this.duckAmount = 0;
     this.duckDirection = 0;
+    this.duckHoldT = 0;
+    this.duckSpent = false;
     // relayCharge deliberately survives: an unspent charge follows the player
     // to the next hero rather than evaporating at the portal.
   }
@@ -171,6 +182,24 @@ export class Player {
   }
   get rolling() { return this.rollT > 0; }
   get invincible() { return this.iframes > 0 || this.dashT > 0; }
+
+  // The timed duck window. Holding past DUCK_MAX_T stands the hero up under a
+  // held key; the key must come up before another slide arms. Ability ducks
+  // (rollT / compressT) bypass this — they carry their own timers.
+  duckWindow(holdDuck, dt) {
+    if (!holdDuck) {
+      this.duckHoldT = 0;
+      this.duckSpent = false;
+      return false;
+    }
+    if (this.duckSpent) return false;
+    this.duckHoldT += dt;
+    if (this.duckHoldT >= DUCK_MAX_T) {
+      this.duckSpent = true;
+      return false;
+    }
+    return true;
+  }
 
   updateDuckBlend(dt, target) {
     const before = this.duckAmount;
@@ -285,13 +314,13 @@ export class Player {
         this.vy = 0;
         this.landedT = LANDED_T;
         if (world && world.ice) this.slideT = ICE_SLIDE_T;
-        this.ducking = holdDuck && this.rollT <= 0;
+        this.ducking = this.duckWindow(holdDuck, dt) && this.rollT <= 0;
         this.updateDuckBlend(dt, this.ducking);
         return { landed: true, stompLand: wasStomp };
       }
       this.updateDuckBlend(dt, false);
     } else {
-      this.ducking = holdDuck && this.rollT <= 0;
+      this.ducking = this.duckWindow(holdDuck, dt) && this.rollT <= 0;
       this.updateDuckBlend(dt, this.ducking);
     }
     return { landed: false, stompLand: false };

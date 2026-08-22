@@ -8,8 +8,9 @@
 //
 // Measured silent offline, and therefore deliberately absent from the Tone-backed
 // catalogue: JCReverb and Freeverb. The Bit Crusher is implemented below with native
-// WaveShaperNodes so it remains renderable in OfflineAudioContext and on the LAN dev
-// server; it intentionally does not expose sample-rate reduction.
+// Web Audio nodes plus a small ScriptProcessorNode so it remains renderable in
+// OfflineAudioContext and on the LAN dev server; it exposes the two actual lo-fi controls:
+// bit resolution and sample-rate reduction.
 //
 // Rendering is not the only bar an effect has to clear: it also has to render the
 // SAME every time. Tone.Reverb did not — it fills its impulse response from
@@ -37,6 +38,12 @@ export const TEMPO_DIVISIONS = {
 };
 export const SYNC_DIVISIONS = TEMPO_DIVISIONS;
 export const RATE_DIVISIONS = TEMPO_DIVISIONS;
+// Auto Panner can move on phrase-length cycles without asking delay-based effects
+// to allocate or advertise divisions beyond their useful eight-bar window.
+export const AUTOPANNER_RATE_DIVISIONS = {
+  '16 bars': 64, '8 bars': 32, '4 bars': 16, '3 bars': 12,
+  ...TEMPO_DIVISIONS,
+};
 
 /**
  * How long a delay line can be. A DelayNode's buffer is allocated at construction
@@ -148,6 +155,10 @@ const PARAM_RANGES = {
   ceiling: { min: -12, max: 0, step: 0.1, unit: 'dB' },
   lookahead: { min: 0.2, max: 10, step: 0.1, unit: 'ms' },
   arc: { min: 0, max: 1, step: 1, toggle: true },
+  // Extra full-band ducking after the M/S stage. Zero keeps legacy M/S compressor
+  // settings unchanged; higher values increase the
+  // short-release compressor's ratio and bring its threshold up into the signal.
+  pump: { min: 0, max: 1, step: 0.01 },
   // The multiband's crossovers. Named in full because they are the effect's own
   // properties, unlike its bands, which are reached as `low.threshold` and friends.
   lowFrequency: { min: 40, max: 1000, step: 10, unit: 'Hz', log: true },
@@ -155,7 +166,10 @@ const PARAM_RANGES = {
   spread: { min: 0, max: 360, step: 5 },
   sensitivity: { min: -40, max: 0, step: 1, unit: 'dB' },
   gain: { min: -24, max: 24, step: 0.5, unit: 'dB' },
-  bits: { min: 2, max: 16, step: 1 },
+  inputGain: { min: -24, max: 24, step: 0.1, unit: 'dB' },
+  outputGain: { min: -24, max: 24, step: 0.1, unit: 'dB' },
+  bits: { min: 1, max: 24, step: 1 },
+  downsample: { min: 1, max: 40, step: 1 },
   bias: { min: -1, max: 1, step: 0.01 },
   gateLength: { min: 0.05, max: 0.95, step: 0.01 },
   wow: { min: 0, max: 1, step: 0.01 },
@@ -164,13 +178,21 @@ const PARAM_RANGES = {
   f1: { min: 20, max: 500, step: 5, unit: 'Hz', log: true },
   f2: { min: 80, max: 2000, step: 10, unit: 'Hz', log: true },
   f3: { min: 400, max: 8000, step: 20, unit: 'Hz', log: true },
+  // The middle band. 250..4000 is geometrically centred on its own 1kHz default, and it
+  // overlaps both neighbours by design — the point of a parametric mid is that it can be
+  // taken to where the problem is rather than to the edge of its allowance.
+  f5: { min: 250, max: 4000, step: 10, unit: 'Hz', log: true },
   f4: { min: 2000, max: 16000, step: 100, unit: 'Hz', log: true },
   g1: { min: -18, max: 18, step: 0.5, unit: 'dB' },
   g2: { min: -18, max: 18, step: 0.5, unit: 'dB' },
   g3: { min: -18, max: 18, step: 0.5, unit: 'dB' },
   g4: { min: -18, max: 18, step: 0.5, unit: 'dB' },
+  g5: { min: -18, max: 18, step: 0.5, unit: 'dB' },
   q2: { min: 0.2, max: 10, step: 0.1 },
+  // The Bell EQ's single band reads the same Q range its peaking siblings do.
+  q: { min: 0.2, max: 10, step: 0.1 },
   q3: { min: 0.2, max: 10, step: 0.1 },
+  q5: { min: 0.2, max: 10, step: 0.1 },
   // The channel strip's three EQ gains — NOT the like-named bands of the multiband
   // compressor, which are whole compressors addressed as `low.threshold`.
   low: { min: -24, max: 24, step: 0.5, unit: 'dB' },
@@ -288,7 +310,7 @@ function reverbImpulse(ctx, decay, preDelay) {
  * desk has to await mid-note. `ready` is kept, resolved, for the callers that do.
  */
 export function makeReverb(ctx, params) {
-  const state = { decay: 2, preDelay: 0.01, wet: 0.4, ...params };
+  const state = { decay: 2, preDelay: 0.01, low: 0, mid: 0, high: 0, width: 1, wet: 0.4, ...params };
   const input = ctx.createGain();
   const output = ctx.createGain();
   const conv = ctx.createConvolver();
@@ -297,9 +319,45 @@ export function makeReverb(ctx, params) {
   conv.normalize = true;
   const wetGain = ctx.createGain();
   const dryGain = ctx.createGain();
+  // EQ the tail, not the dry input. This is deliberately the same broad three-band
+  // shape as the channel/return EQ: useful room tone controls without another effect
+  // card or a second convolution. At 0dB these filters are exactly transparent.
+  const low = ctx.createBiquadFilter();
+  low.type = 'lowshelf'; low.frequency.value = 250; low.gain.value = 0;
+  const mid = ctx.createBiquadFilter();
+  mid.type = 'peaking'; mid.frequency.value = 1200; mid.Q.value = 0.9; mid.gain.value = 0;
+  const high = ctx.createBiquadFilter();
+  high.type = 'highshelf'; high.frequency.value = 4000; high.gain.value = 0;
+  low.connect(mid); mid.connect(high);
 
-  input.connect(dryGain); dryGain.connect(output);
-  input.connect(conv); conv.connect(wetGain); wetGain.connect(output);
+  // Mid/side width on the wet tail only. Width 1 is transparent, 0 collapses the room
+  // to mono, and 2 pushes the sides out. Native gains keep the graph deterministic and
+  // avoid adding a Tone stereo processor to every inline reverb.
+  const widthInput = ctx.createGain();
+  widthInput.channelCount = 2;
+  widthInput.channelCountMode = 'explicit';
+  widthInput.channelInterpretation = 'speakers';
+  const widthSplit = ctx.createChannelSplitter(2);
+  const widthMerge = ctx.createChannelMerger(2);
+  const widthMid = ctx.createGain();
+  const widthSide = ctx.createGain();
+  const leftToMid = ctx.createGain(); leftToMid.gain.value = 0.5;
+  const rightToMid = ctx.createGain(); rightToMid.gain.value = 0.5;
+  const leftToSide = ctx.createGain(); leftToSide.gain.value = 0.5;
+  const rightToSide = ctx.createGain(); rightToSide.gain.value = -0.5;
+  const sideLeft = ctx.createGain();
+  const sideRight = ctx.createGain();
+  widthInput.connect(widthSplit);
+  widthSplit.connect(leftToMid, 0); widthSplit.connect(rightToMid, 1);
+  widthSplit.connect(leftToSide, 0); widthSplit.connect(rightToSide, 1);
+  leftToMid.connect(widthMid); rightToMid.connect(widthMid);
+  leftToSide.connect(widthSide); rightToSide.connect(widthSide);
+  widthMid.connect(widthMerge, 0, 0); widthSide.connect(sideLeft); sideLeft.connect(widthMerge, 0, 0);
+  widthMid.connect(widthMerge, 0, 1); widthSide.connect(sideRight); sideRight.connect(widthMerge, 0, 1);
+  high.connect(widthInput); widthMerge.connect(wetGain);
+
+  input.connect(dryGain); dryGain.connect(output); wetGain.connect(output);
+  input.connect(conv); conv.connect(low);
 
   let built = null;                       // what the current buffer was built for
   const rebuild = () => {
@@ -315,10 +373,24 @@ export function makeReverb(ctx, params) {
     wetGain.gain.value = Math.sin((w * Math.PI) / 2);
     dryGain.gain.value = Math.cos((w * Math.PI) / 2);
   };
-  rebuild(); mix();
+  const setEq = () => {
+    const db = (value) => Number.isFinite(Number(value))
+      ? Math.max(-18, Math.min(18, Number(value))) : 0;
+    low.gain.value = db(state.low);
+    mid.gain.value = db(state.mid);
+    high.gain.value = db(state.high);
+  };
+  const setWidth = () => {
+    const width = Number.isFinite(Number(state.width))
+      ? Math.max(0, Math.min(2, Number(state.width))) : 1;
+    widthSide.gain.value = width;
+    sideLeft.gain.value = 1;
+    sideRight.gain.value = -1;
+  };
+  rebuild(); mix(); setEq(); setWidth();
 
   const node = { input, output, _custom: true, ready: Promise.resolve() };
-  node.applyState = () => { rebuild(); mix(); };
+  node.applyState = () => { rebuild(); mix(); setEq(); setWidth(); };
   node.setState = (patch) => { Object.assign(state, patch); node.applyState(); };
   // Tone.Reverb takes decay and preDelay as properties, and the aux rack sets them
   // that way. Kept, so this drops in where that stood.
@@ -333,26 +405,165 @@ export function makeReverb(ctx, params) {
   Object.defineProperty(node, 'wet', { get: () => state.wet, set: (v) => { state.wet = v; mix(); } });
   node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
   node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
-  node.dispose = () => { node.disconnect(); try { conv.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    node.disconnect();
+    try { conv.disconnect(); } catch { /* fine */ }
+    try {
+      low.disconnect(); mid.disconnect(); high.disconnect(); widthInput.disconnect();
+      widthSplit.disconnect(); widthMerge.disconnect(); widthMid.disconnect(); widthSide.disconnect();
+      leftToMid.disconnect(); rightToMid.disconnect(); leftToSide.disconnect(); rightToSide.disconnect();
+      sideLeft.disconnect(); sideRight.disconnect();
+    } catch { /* fine */ }
+  };
   return node;
 }
 
 /**
- * A four-band parametric EQ. Tone has no such component — Tone.Filter is one band
- * and Tone.EQ3 is a fixed crossover — and the channel strip's own EQ is pinned at
- * 250/1200/4000Hz, so this is the one to reach for when a specific frequency is the
- * problem. Native biquads, and exactly transparent with every band at 0dB.
+ * A compact native spring/ambience approximation.
  *
- * Band 1 is a low shelf, bands 2 and 3 are peaks, band 4 is a high shelf: the usual
- * console layout, and the one that covers the most ground with the fewest controls.
+ * This is deliberately an insert rather than a second shared return. Two short,
+ * slightly different stereo delay lines recirculate through a pair of all-pass
+ * sections and a damping filter. The unequal lines keep a mono source from remaining
+ * perfectly correlated, while the all-pass sections spread the repeats into a tail
+ * instead of a row of audible echoes. No oscillator, worklet, or generated source is
+ * involved, so an unused or bypassed instance can be short-circuited by makeChainSlot
+ * and an OfflineAudioContext renders the same samples every time.
+ *
+ * `space` controls line length and feedback, `damping` controls the low-pass corner,
+ * and `wet` is an equal-power dry/wet mix. The graph is fixed after construction;
+ * later edits move AudioParams with the same smoothing helper used by the other native
+ * effects. Feedback is bounded below 0.8, leaving a stable margin at every setting.
+ */
+function makeAmbience(ctx, params = {}) {
+  const state = { space: 0.5, damping: 0.55, wet: 0.38, ...params };
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  const split = ctx.createChannelSplitter(2);
+  const merge = ctx.createChannelMerger(2);
+  input.channelCount = 2;
+  input.channelCountMode = 'explicit';
+  input.channelInterpretation = 'speakers';
+  output.channelCount = 2;
+  output.channelCountMode = 'explicit';
+  output.channelInterpretation = 'speakers';
+
+  input.connect(dry); dry.connect(output);
+  input.connect(split);
+
+  const lines = [];
+  for (let channel = 0; channel < 2; channel++) {
+    const delay = ctx.createDelay(0.3);
+    const allpassA = ctx.createBiquadFilter();
+    const allpassB = ctx.createBiquadFilter();
+    const damping = ctx.createBiquadFilter();
+    const feedback = ctx.createGain();
+    allpassA.type = 'allpass';
+    allpassB.type = 'allpass';
+    damping.type = 'lowpass';
+    allpassA.Q.value = 0.7071;
+    allpassB.Q.value = 0.7071;
+    split.connect(delay, channel);
+    delay.connect(allpassA);
+    allpassA.connect(allpassB);
+    allpassB.connect(damping);
+    damping.connect(feedback);
+    feedback.connect(delay);
+    damping.connect(merge, 0, channel);
+    lines.push({ delay, allpassA, allpassB, damping, feedback });
+  }
+  merge.connect(wet);
+  wet.connect(output);
+
+  const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  let running = false;
+  const set = (param, value, seconds = 0.03) => setAudioParam(ctx, param, value, running, seconds);
+  const apply = () => {
+    const space = Math.max(0, Math.min(1, number(state.space, 0.5)));
+    const damping = Math.max(0, Math.min(2, number(state.damping, 0.55)));
+    const mix = Math.max(0, Math.min(1, number(state.wet, 0.38)));
+    const baseDelay = 0.028 + space * 0.14;
+    const feedback = 0.26 + space * 0.53;
+    // Keep the original 0..1 response intact. The extra 1..2 half continues below
+    // 2.2kHz on an exponential curve, reaching a dark-but-useful 260Hz floor instead
+    // of flattening at the old maximum damping setting.
+    const cutoff = damping <= 1
+      ? 2200 + (1 - damping) * 14800
+      : 2200 * Math.pow(260 / 2200, damping - 1);
+    const allpassA = 520 + space * 1100;
+    const allpassB = 1100 + space * 2300;
+    lines.forEach((line, channel) => {
+      set(line.delay.delayTime, baseDelay * (channel ? 1.037 : 0.963));
+      set(line.allpassA.frequency, allpassA * (channel ? 1.09 : 0.93));
+      set(line.allpassB.frequency, allpassB * (channel ? 0.91 : 1.07));
+      set(line.damping.frequency, cutoff);
+      set(line.feedback.gain, feedback);
+    });
+    set(wet.gain, Math.sin((mix * Math.PI) / 2));
+    set(dry.gain, Math.cos((mix * Math.PI) / 2));
+    running = true;
+  };
+  const node = { input, output, _custom: true };
+  node.applyState = apply;
+  node.setState = (patch) => { Object.assign(state, patch); apply(); };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    node.disconnect();
+    for (const line of lines) {
+      for (const n of Object.values(line)) { try { n.disconnect(); } catch { /* fine */ } }
+    }
+    for (const n of [input, output, dry, wet, split, merge]) {
+      try { n.disconnect(); } catch { /* fine */ }
+    }
+  };
+  return node;
+}
+
+/**
+ * The five bands of the Channel EQ, low to high. Exported because the desk draws them:
+ * the response curve, the handle it drags and the readout under it all have to agree
+ * with the nodes this builds, and three copies of "band 2 is a peak at 500" is three
+ * places for them to stop agreeing.
+ *
+ * A shelf at each end and three peaks between them: the usual console layout, and the
+ * one that covers the most ground with the fewest controls. The middle peak sits at
+ * 1kHz, geometrically halfway between the two either side of it, and it is the band
+ * every four-band EQ makes you borrow one of its neighbours for — presence, honk, the
+ * body of a snare and the fundamental of most vocals all live within an octave of it.
+ *
+ * `n` IS AN IDENTITY, NOT A POSITION. The middle band is band FIVE, sitting third: its
+ * parameters are `f5/g5/q5` because it was added to a card whose four bands were already
+ * `f1..f4` in every saved mix on disk, and renumbering to put it third would have moved
+ * three bands' settings on every song that carries a Channel EQ. So this array is in the
+ * order the card READS in, and everything that touches a band's parameters keys off
+ * `b.n`. Nothing may key off the array index — see makeParametricEq, which used to.
+ */
+export const PEQ_BANDS = [
+  { n: 1, type: 'lowshelf', f: 120, label: 'LOW' },
+  { n: 2, type: 'peaking', f: 500, label: 'LOW-MID' },
+  { n: 5, type: 'peaking', f: 1000, label: 'MID' },
+  { n: 3, type: 'peaking', f: 2000, label: 'HIGH-MID' },
+  { n: 4, type: 'highshelf', f: 6000, label: 'HIGH' },
+];
+
+/**
+ * A five-band parametric EQ — Channel EQ on the card.
+ *
+ * NATIVE BiquadFilterNodes, not Tone: Tone has no such component — Tone.Filter is one
+ * band and Tone.EQ3 is a fixed three-way crossover — and every Tone.Filter would also
+ * bring four ConstantSourceNodes with it to drive its parameters, which is twenty
+ * permanently-running generators for five filters that need none. The channel strip's
+ * own EQ is pinned at 250/1200/4000Hz, so this is the one to reach for when a specific
+ * frequency is the problem. Exactly transparent with every band at 0dB.
+ *
+ * The bands run in series in the order PEQ_BANDS lists them, which is low to high. That
+ * order is for reading, not for sound: biquads in series commute, so a cut at 300 before
+ * a boost at 3k is the same signal as the other way round.
  */
 function makeParametricEq(ctx, params) {
-  const shape = [
-    { type: 'lowshelf', f: 120 },
-    { type: 'peaking', f: 500 },
-    { type: 'peaking', f: 2000 },
-    { type: 'highshelf', f: 6000 },
-  ];
+  const shape = PEQ_BANDS;
   const bands = shape.map((b) => {
     const n = ctx.createBiquadFilter();
     n.type = b.type; n.frequency.value = b.f; n.gain.value = 0; n.Q.value = 1;
@@ -360,20 +571,25 @@ function makeParametricEq(ctx, params) {
   });
   for (let i = 0; i < bands.length - 1; i++) bands[i].connect(bands[i + 1]);
 
+  // Keyed by `b.n` and never by the array index. Those were the same four numbers while
+  // the card had four bands in ascending order, and the day a band was inserted in the
+  // middle they stopped being: `peqResponse` and the desk's handles have always read
+  // `f${b.n}`, so an index here would have drawn one curve and rendered another.
   const state = {};
-  shape.forEach((b, i) => {
-    state[`f${i + 1}`] = b.f; state[`g${i + 1}`] = 0; state[`q${i + 1}`] = 1;
-  });
+  for (const b of shape) {
+    state[`f${b.n}`] = b.f; state[`g${b.n}`] = 0; state[`q${b.n}`] = 1;
+  }
   Object.assign(state, params);
 
   const node = { input: bands[0], output: bands[bands.length - 1], _custom: true };
   node.applyState = () => {
     const t = ctx.currentTime;
     bands.forEach((n, i) => {
-      n.frequency.setTargetAtTime(Math.max(20, Math.min(18000, state[`f${i + 1}`])), t, 0.02);
-      n.gain.setTargetAtTime(state[`g${i + 1}`], t, 0.02);
+      const { n: id } = shape[i];
+      n.frequency.setTargetAtTime(Math.max(20, Math.min(18000, state[`f${id}`])), t, 0.02);
+      n.gain.setTargetAtTime(state[`g${id}`], t, 0.02);
       // Shelves ignore Q in the peaking sense; leave theirs alone.
-      if (n.type === 'peaking') n.Q.setTargetAtTime(Math.max(0.1, state[`q${i + 1}`]), t, 0.02);
+      if (n.type === 'peaking') n.Q.setTargetAtTime(Math.max(0.1, state[`q${id}`]), t, 0.02);
     });
   };
   node.setState = (patch) => { Object.assign(state, patch); node.applyState(); };
@@ -382,6 +598,129 @@ function makeParametricEq(ctx, params) {
   node.dispose = () => node.disconnect();
   node.applyState();
   return node;
+}
+
+/**
+ * One parametric band — Bell EQ on the card. Frequency, gain, Q, and nothing else.
+ *
+ * The Channel EQ above is five bands and a graph, which is the right tool when the
+ * question is "what shape does this channel want". It is the wrong tool when the
+ * question is "there is a ring at 800Hz": you open a ten-parameter card, find the band
+ * whose range covers 800, and leave three bands you did not touch sitting in the saved
+ * mix. This is the surgical one — one bell, three numbers, and a slot in the chain of
+ * its own, so two of them on a strip are two problems solved rather than one card's
+ * bands fought over.
+ *
+ * A peaking filter, not a switchable shape. A bell at Q 0.4 is already a broad tilt and
+ * a bell at Q 8 is already a notch, so the two ends of the Q pot cover what a shelf and
+ * a cut would have added a dropdown for — and the whole point of this card is that
+ * there is no dropdown to read. Transparent at 0dB, exactly: a peaking biquad at unity
+ * gain has identical numerator and denominator, so an inserted-and-untouched Bell EQ
+ * renders the samples it always did and the null test does not move.
+ */
+function makeBellEq(ctx, params) {
+  const band = ctx.createBiquadFilter();
+  band.type = 'peaking';
+  band.frequency.value = 1000; band.gain.value = 0; band.Q.value = 1;
+  const state = { frequency: 1000, gain: 0, q: 1, ...params };
+  const node = { input: band, output: band, _custom: true };
+  node.applyState = () => {
+    const t = ctx.currentTime;
+    band.frequency.setTargetAtTime(Math.max(20, Math.min(18000, state.frequency)), t, 0.02);
+    band.gain.setTargetAtTime(state.gain, t, 0.02);
+    band.Q.setTargetAtTime(Math.max(0.1, state.q), t, 0.02);
+  };
+  node.setState = (patch) => { Object.assign(state, patch); node.applyState(); };
+  node.connect = (dest) => (dest && dest.input ? band.connect(dest.input) : band.connect(dest));
+  node.disconnect = () => { try { band.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => node.disconnect();
+  node.applyState();
+  return node;
+}
+
+/**
+ * One biquad's coefficients, by the same formulas the Web Audio spec gives for
+ * BiquadFilterNode. The desk draws its curve from these rather than from
+ * `getFrequencyResponse`, because the graph has to show a setting BEFORE it is
+ * committed — the Bar Effects sheet edits a staged array with no live node behind it
+ * at all — and because an offline node per repaint during a drag is a node per frame.
+ *
+ * Shelves take S = 1, which is what a BiquadFilterNode uses and why they ignore Q.
+ */
+function biquadCoefficients(type, freq, gainDb, q, sampleRate) {
+  const w0 = 2 * Math.PI * Math.max(1, Math.min(freq, sampleRate / 2 - 1)) / sampleRate;
+  const cos = Math.cos(w0);
+  const sin = Math.sin(w0);
+  const A = Math.pow(10, gainDb / 40);
+  if (type === 'peaking') {
+    const alpha = sin / (2 * Math.max(0.0001, q));
+    return [1 + alpha * A, -2 * cos, 1 - alpha * A, 1 + alpha / A, -2 * cos, 1 - alpha / A];
+  }
+  const alpha = (sin / 2) * Math.SQRT2;
+  const twoSqrtAlpha = 2 * Math.sqrt(A) * alpha;
+  if (type === 'lowshelf') {
+    return [
+      A * ((A + 1) - (A - 1) * cos + twoSqrtAlpha),
+      2 * A * ((A - 1) - (A + 1) * cos),
+      A * ((A + 1) - (A - 1) * cos - twoSqrtAlpha),
+      (A + 1) + (A - 1) * cos + twoSqrtAlpha,
+      -2 * ((A - 1) + (A + 1) * cos),
+      (A + 1) + (A - 1) * cos - twoSqrtAlpha,
+    ];
+  }
+  return [
+    A * ((A + 1) + (A - 1) * cos + twoSqrtAlpha),
+    -2 * A * ((A - 1) + (A + 1) * cos),
+    A * ((A + 1) + (A - 1) * cos - twoSqrtAlpha),
+    (A + 1) - (A - 1) * cos + twoSqrtAlpha,
+    2 * ((A - 1) - (A + 1) * cos),
+    (A + 1) - (A - 1) * cos - twoSqrtAlpha,
+  ];
+}
+
+/** One band's magnitude, in dB, at each of `freqs`. */
+function bandResponseDb(type, freq, gainDb, q, freqs, sampleRate, out) {
+  const [b0, b1, b2, a0, a1, a2] = biquadCoefficients(type, freq, gainDb, q, sampleRate);
+  const n0 = b0 / a0, n1 = b1 / a0, n2 = b2 / a0, d1 = a1 / a0, d2 = a2 / a0;
+  for (let i = 0; i < freqs.length; i++) {
+    const w = 2 * Math.PI * freqs[i] / sampleRate;
+    const c1 = Math.cos(w), s1 = Math.sin(w);
+    const c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+    const nr = n0 + n1 * c1 + n2 * c2, ni = -(n1 * s1 + n2 * s2);
+    const dr = 1 + d1 * c1 + d2 * c2, di = -(d1 * s1 + d2 * s2);
+    const mag = Math.sqrt((nr * nr + ni * ni) / Math.max(1e-20, dr * dr + di * di));
+    out[i] += 20 * Math.log10(Math.max(1e-10, mag));
+  }
+  return out;
+}
+
+/**
+ * The Channel EQ's response — the five bands summed, in dB, at each of `freqs`.
+ *
+ * `band` picks one band out of the five instead; the graph draws each band's own
+ * curve faintly behind the total so a handle you are dragging can be told apart from
+ * what the four you are not are doing.
+ */
+export function peqResponse(params = {}, freqs = [], sampleRate = 44100, band = null) {
+  const p = { ...EFFECT_BY_ID.peq?.defaults, ...params };
+  const out = new Float64Array(freqs.length);
+  for (const b of PEQ_BANDS) {
+    if (band != null && band !== b.n) continue;
+    bandResponseDb(b.type, p[`f${b.n}`], p[`g${b.n}`] || 0, p[`q${b.n}`] ?? 1,
+      freqs, sampleRate, out);
+  }
+  return out;
+}
+
+/**
+ * The Bell EQ's response, in dB at each of `freqs` — the same reading `peqResponse`
+ * gives the five-band card, so anything that wants to draw or check this one band is
+ * reading the same maths the node runs.
+ */
+export function bellResponse(params = {}, freqs = [], sampleRate = 44100) {
+  const p = { ...EFFECT_BY_ID.bell?.defaults, ...params };
+  return bandResponseDb('peaking', p.frequency, p.gain || 0, p.q ?? 1,
+    freqs, sampleRate, new Float64Array(freqs.length));
 }
 
 /**
@@ -910,6 +1249,73 @@ function makeLimiter(ctx, params) {
   };
 
   const node = { input, output, _custom: true };
+  /**
+   * A meter tap is made only while an open L7 card asks for one. Five analysers sound
+   * extravagant until the alternative is named: keeping them on every L7 in every
+   * song, including the ones nobody is looking at. Two per stereo signal avoid the
+   * mono down-mix hiding an anti-phase or hard-panned peak; the fifth reads the actual
+   * reduction control, so GR is not guessed by subtracting two unrelated levels after
+   * make-up gain and the ceiling have changed them.
+   *
+   * The output tap hangs from `clip`, not `output`. The mixer is allowed to disconnect
+   * an effect's public output whenever it rewires a chain; an internal tap must survive
+   * that without the card silently going dead.
+   */
+  node.createMeter = () => {
+    const inputSplit = ctx.createChannelSplitter(2);
+    const outputSplit = ctx.createChannelSplitter(2);
+    const inputAnalysers = [ctx.createAnalyser(), ctx.createAnalyser()];
+    const outputAnalysers = [ctx.createAnalyser(), ctx.createAnalyser()];
+    const reductionAnalyser = ctx.createAnalyser();
+    const analysers = [...inputAnalysers, ...outputAnalysers, reductionAnalyser];
+    for (const analyser of analysers) {
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0;
+    }
+    input.connect(inputSplit);
+    clip.connect(outputSplit);
+    inputSplit.connect(inputAnalysers[0], 0);
+    inputSplit.connect(inputAnalysers[1], 1);
+    outputSplit.connect(outputAnalysers[0], 0);
+    outputSplit.connect(outputAnalysers[1], 1);
+    smooth.connect(reductionAnalyser);
+
+    const samples = analysers.map(() => new Float32Array(256));
+    let disposed = false;
+    const stereoPeak = (pair, offset) => {
+      let peak = 0;
+      for (let channel = 0; channel < 2; channel++) {
+        pair[channel].getFloatTimeDomainData(samples[offset + channel]);
+        for (const sample of samples[offset + channel]) peak = Math.max(peak, Math.abs(sample));
+      }
+      return peak;
+    };
+    return {
+      read() {
+        if (disposed) return { input: 0, output: 0, reduction: 0 };
+        const inputPeak = stereoPeak(inputAnalysers, 0);
+        const outputPeak = stereoPeak(outputAnalysers, 2);
+        reductionAnalyser.getFloatTimeDomainData(samples[4]);
+        let minimumGain = 1;
+        for (const sample of samples[4]) minimumGain = Math.min(minimumGain, Math.max(0, sample));
+        // The control filter starts cold at zero while the lookahead delay is empty.
+        // Silence must read as no work, not as an alarming 120dB of imaginary GR.
+        const reduction = inputPeak > 1e-6
+          ? Math.max(0, -20 * Math.log10(Math.max(1e-6, minimumGain))) : 0;
+        return { input: inputPeak, output: outputPeak, reduction };
+      },
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        try { input.disconnect(inputSplit); } catch { /* already disconnected */ }
+        try { clip.disconnect(outputSplit); } catch { /* already disconnected */ }
+        try { smooth.disconnect(reductionAnalyser); } catch { /* already disconnected */ }
+        for (const analyser of analysers) { try { analyser.disconnect(); } catch { /* fine */ } }
+        try { inputSplit.disconnect(); } catch { /* fine */ }
+        try { outputSplit.disconnect(); } catch { /* fine */ }
+      },
+    };
+  };
   node.applyState = () => {
     const thr = Math.max(-30, Math.min(0, state.threshold));
     const ceil = Math.max(-12, Math.min(0, state.ceiling));
@@ -1465,75 +1871,51 @@ function makeModulatedDelay(ctx, params = {}, kind = 'chorus') {
   return node;
 }
 
-const QUANT_CURVE_SIZE = 65537;
-function bitCrusherCurve(bits) {
-  // Use a zero-centred (midtread) quantizer. Mapping the bipolar range into an
-  // even number of bins puts x=0 on the boundary between two bins; the old
-  // `((x + 1) / 2)` curve therefore turned silence into a small positive DC
-  // value at every even bit depth. That DC was visible on the channel meter but
-  // inaudible, which made a quiet lane appear to be playing. `steps` keeps a
-  // genuine zero code while retaining full-scale endpoints and progressively
-  // finer resolution as the bit depth rises.
-  const steps = 2 ** (Math.max(2, Math.min(16, Math.round(bits))) - 1);
-  const curve = new Float32Array(QUANT_CURVE_SIZE);
-  for (let i = 0; i < curve.length; i++) {
-    const x = (i / (curve.length - 1)) * 2 - 1;
-    curve[i] = Math.round(x * steps) / steps;
-  }
-  return curve;
-}
-
 function makeBitCrusher(ctx, params = {}) {
   const input = ctx.createGain();
   const output = ctx.createGain();
   const dry = ctx.createGain();
-  const pre = ctx.createGain();
-  const post = ctx.createGain();
-  const shapers = [ctx.createWaveShaper(), ctx.createWaveShaper()];
-  const fades = [ctx.createGain(), ctx.createGain()];
-  const sum = ctx.createGain();
-  const tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.Q.value = 0.7071;
   const wet = ctx.createGain();
+  // ScriptProcessorNode is deprecated for new application code, but it is the one
+  // processor Chromium runs in both live AudioContexts and OfflineAudioContexts here.
+  // A 256-frame block keeps the live latency bounded while preserving the export path;
+  // the held sample and its phase live across blocks, so a downsample factor does not
+  // restart at every callback.
+  const processor = ctx.createScriptProcessor(256, 2, 2);
   input.connect(dry); dry.connect(output);
-  input.connect(pre);
-  pre.connect(shapers[0]); pre.connect(shapers[1]);
-  shapers[0].connect(fades[0]); shapers[1].connect(fades[1]);
-  fades[0].connect(sum); fades[1].connect(sum);
-  sum.connect(post); post.connect(tone); tone.connect(wet); wet.connect(output);
-  shapers.forEach((s) => { s.oversample = 'none'; });
-  const state = { bits: 8, drive: 6, tone: 12000, wet: 0.65, ...params };
-  let active = 0;
+  input.connect(processor); processor.connect(wet); wet.connect(output);
+  const state = { bits: 8, downsample: 4, wet: 1, ...params };
+  const held = [0, 0];
+  let samplesUntilNext = 0;
   let running = false;
-  let lastBits = null;
   const setParam = (p, value, tc = 0.03) => setAudioParam(ctx, p, value, running, tc);
-  const reshape = (bits, crossfade) => {
-    const normalized = Math.max(2, Math.min(16, Math.round(bits)));
-    if (lastBits === normalized) return;
-    lastBits = normalized;
-    const next = 1 - active;
-    shapers[next].curve = bitCrusherCurve(normalized);
-    if (!crossfade) {
-      shapers[active].curve = shapers[next].curve;
-      fades[0].gain.value = active === 0 ? 1 : 0;
-      fades[1].gain.value = active === 1 ? 1 : 0;
-      return;
+  processor.onaudioprocess = (event) => {
+    const source = event.inputBuffer;
+    const destination = event.outputBuffer;
+    const channels = destination.numberOfChannels;
+    const sourceChannels = source.numberOfChannels;
+    const sourceData = Array.from({ length: sourceChannels }, (_, c) => source.getChannelData(c));
+    const destinationData = Array.from({ length: channels }, (_, c) => destination.getChannelData(c));
+    const bits = Math.max(1, Math.min(24, Math.round(Number(state.bits) || 8)));
+    const steps = 2 ** (bits - 1);
+    const factor = Math.max(1, Math.min(40, Math.round(Number(state.downsample) || 1)));
+    for (let i = 0; i < destination.length; i++) {
+      if (samplesUntilNext <= 0) {
+        for (let c = 0; c < channels; c++) {
+          const inputChannel = sourceChannels ? Math.min(c, sourceChannels - 1) : -1;
+          const sample = inputChannel < 0 ? 0 : sourceData[inputChannel][i];
+          held[c] = Math.round(sample * steps) / steps;
+        }
+        samplesUntilNext = factor;
+      }
+      for (let c = 0; c < channels; c++) destinationData[c][i] = held[c] || 0;
+      samplesUntilNext--;
     }
-    const t = ctx.currentTime;
-    fades[active].gain.cancelScheduledValues(t);
-    fades[next].gain.cancelScheduledValues(t);
-    fades[active].gain.setTargetAtTime(0, t, 0.0012);
-    fades[next].gain.setTargetAtTime(1, t, 0.0012);
-    active = next;
   };
   const apply = () => {
-    const drive = Math.max(0, Math.min(24, state.drive || 0));
-    setParam(pre.gain, 10 ** (drive / 20), 0.03);
-    setParam(post.gain, 10 ** (-drive / 20), 0.03);
-    setParam(tone.frequency, Math.max(500, Math.min(20000, state.tone || 12000)), 0.04);
     const w = Math.max(0, Math.min(1, state.wet || 0));
     setParam(wet.gain, Math.sin((w * Math.PI) / 2), 0.03);
     setParam(dry.gain, Math.cos((w * Math.PI) / 2), 0.03);
-    reshape(state.bits, running);
     running = true;
   };
   const node = { input, output, _custom: true };
@@ -1543,9 +1925,72 @@ function makeBitCrusher(ctx, params = {}) {
   node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
   node.dispose = () => {
     node.disconnect();
-    for (const n of [input, dry, pre, post, ...shapers, ...fades, sum, tone, wet, output]) {
+    processor.onaudioprocess = null;
+    for (const n of [input, dry, processor, wet, output]) {
       try { n.disconnect(); } catch { /* fine */ }
     }
+  };
+  return node;
+}
+
+/**
+ * A level-sensitive noise gate. The detector is stereo-linked so a quiet channel
+ * cannot pull the image apart, and the same attack/release ballistics are applied to
+ * the gain control so closing the gate is a fade rather than a click. A
+ * ScriptProcessorNode is used here for the per-sample envelope: it is deprecated for
+ * new browser work, but is the native processor this project can render in both live
+ * and OfflineAudioContexts. There is no dry leg — below THRESHOLD means silence.
+ */
+function makeNoiseGate(ctx, params = {}) {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const processor = ctx.createScriptProcessor(256, 2, 2);
+  const state = { threshold: -45, attack: 0.005, release: 0.12, ...params };
+  const sampleRate = ctx.sampleRate;
+  let envelope = 0;
+  let gateGain = 0;
+
+  input.connect(processor);
+  processor.connect(output);
+  processor.onaudioprocess = (event) => {
+    const source = event.inputBuffer;
+    const destination = event.outputBuffer;
+    const sourceChannels = source.numberOfChannels;
+    const channels = destination.numberOfChannels;
+    const sourceData = Array.from({ length: sourceChannels }, (_, c) => source.getChannelData(c));
+    const destinationData = Array.from({ length: channels }, (_, c) => destination.getChannelData(c));
+    const numberOr = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+    const threshold = 10 ** (Math.max(-80, Math.min(0, numberOr(state.threshold, -45))) / 20);
+    const attack = Math.max(0.001, Math.min(0.5, numberOr(state.attack, 0.005)));
+    const release = Math.max(0.01, Math.min(2, numberOr(state.release, 0.12)));
+    const attackCoef = Math.exp(-1 / (attack * sampleRate));
+    const releaseCoef = Math.exp(-1 / (release * sampleRate));
+
+    for (let i = 0; i < destination.length; i++) {
+      let level = 0;
+      for (let c = 0; c < sourceChannels; c++) level = Math.max(level, Math.abs(sourceData[c][i] || 0));
+      const envelopeCoef = level > envelope ? attackCoef : releaseCoef;
+      envelope = level + (envelope - level) * envelopeCoef;
+      const target = envelope >= threshold ? 1 : 0;
+      const gainCoef = target > gateGain ? attackCoef : releaseCoef;
+      gateGain = target + (gateGain - target) * gainCoef;
+      if (gateGain < 1e-5) gateGain = 0;
+      for (let c = 0; c < channels; c++) {
+        const inputChannel = sourceChannels ? Math.min(c, sourceChannels - 1) : -1;
+        destinationData[c][i] = inputChannel < 0 ? 0 : sourceData[inputChannel][i] * gateGain;
+      }
+    }
+  };
+
+  const node = { input, output, _custom: true };
+  node.applyState = () => {};
+  node.setState = (patch = {}) => { Object.assign(state, patch); };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    node.disconnect();
+    processor.onaudioprocess = null;
+    for (const n of [input, processor, output]) { try { n.disconnect(); } catch { /* fine */ } }
   };
   return node;
 }
@@ -2372,7 +2817,7 @@ function makeTape(ctx, params = {}) {
 export const EFFECTS = [
   // 0.03 rather than the 0.02 it cost as a lone GainNode: BALANCE is a splitter, two
   // gains and a merger behind it. Re-measured by the same hand method as the rest of
-  // these, on a bench that reads the Parametric EQ at 0.148 against its listed 0.15.
+  // these, on a bench that reads the Channel EQ at 0.148 against its listed 0.15.
   // MONO belongs here rather than on the Stereo Widener because it is a routing
   // decision, not a width setting: the widener's own 0 collapses the image AND brings
   // the result back 6dB hot, so reaching for it to make something mono costs you a
@@ -2382,9 +2827,62 @@ export const EFFECTS = [
   // `short` is what an insert slot shows: a 118px strip cannot hold "Multiband
   // Compressor", and a name cut off mid-word is worse than an abbreviation someone
   // chose. The full name stays everywhere there is room for it.
-  { id: 'peq', name: 'Parametric EQ', short: 'Param EQ', cost: 0.43, custom: makeParametricEq,
-    params: ['f1', 'g1', 'f2', 'g2', 'q2', 'f3', 'g3', 'q3', 'f4', 'g4'],
-    defaults: { f1: 120, g1: 0, f2: 500, g2: 0, q2: 1, f3: 2000, g3: 0, q3: 1, f4: 6000, g4: 0 } },
+  // Channel EQ, not "Parametric EQ": the name on the card should say where it goes and
+  // what it is for, and every strip that reaches for it is reaching for the same thing —
+  // the proper EQ for this channel, in place of the three fixed bands on the strip. The
+  // id stays `peq`, because that is what every saved mix holds.
+  // 0.54 — the 0.43 this carried with four bands, scaled by the fifth.
+  //
+  // NOT re-measured in a mix, because the in-mix bench cannot resolve one biquad: three
+  // runs of it read the Bell EQ at 0.08, 0.12 and 0.15 with identical code, and read this
+  // card at 0.39, 0.38 and 0.34 either side of the band being added. A spread of ±0.05 on
+  // a question worth a tenth of that, so "the five-band card measured the same" would
+  // have been a statement about the bench.
+  //
+  // Measured where it is decidable instead (work/local/peq-band-cost.mjs, results in
+  // work/local/peq-fifth-band-cost-2026-08-22.txt): six chains of four bands against six
+  // of five, interleaved, in one offline context with nothing else in it. The filter work
+  // goes up by 1.25, which is what four biquads to five has to be, and the fixed render
+  // overhead the ratio of the TOTALS would have included is 4.6% and cancels out of a
+  // cost that was already a delta against no effect. 0.43 x 1.25 = 0.5375.
+  //
+  // `params` is in the order the card READS in, which puts the middle band's three between
+  // band 2's and band 3's even though it is numbered 5. See PEQ_BANDS.
+  { id: 'peq', name: 'Channel EQ', short: 'Ch EQ', cost: 0.54, custom: makeParametricEq,
+    params: ['f1', 'g1', 'f2', 'g2', 'q2', 'f5', 'g5', 'q5', 'f3', 'g3', 'q3', 'f4', 'g4'],
+    defaults: { f1: 120, g1: 0, f2: 500, g2: 0, q2: 1, f5: 1000, g5: 0, q5: 1,
+      f3: 2000, g3: 0, q3: 1, f4: 6000, g4: 0 },
+    // What the PRESET row calls this card's untouched state. Four bands at 0dB is FLAT
+    // on every desk ever built, and "Default" is the word for where a card starts, not
+    // for what it sounds like — the one entry everybody reaches for is the reset, so it
+    // says what it does. Same word on the Bell EQ below, because it is the same idea.
+    defaultPresetName: 'Flat' },
+  // 0.08 — a fifth of the Channel EQ's, which is one biquad against four. Measured by
+  // the same in-a-real-mix method as the rest of the table (work/local/bell-eq-cost.mjs,
+  // results in work/local/bell-eq-cost-2026-08-22.txt): six copies on the master bus of
+  // barber-96 against no master effect, best of five, idle and playing, divided by six.
+  // Six rather than one because one of either EQ moves this bench by about a millisecond
+  // per audio second and that is inside its own noise — measured singly, the Bell EQ
+  // came back DEARER than the Channel EQ, and one biquad cannot cost more than four. The
+  // same run read the Channel EQ at 0.39 against the 0.43 it already carried, which is
+  // what makes this number comparable rather than merely plausible.
+  { id: 'bell', name: 'Bell EQ', short: 'Bell EQ', cost: 0.08, custom: makeBellEq,
+    params: ['frequency', 'gain', 'q'],
+    defaults: { frequency: 1000, gain: 0, q: 1 },
+    defaultPresetName: 'Flat',
+    ranges: {
+      // A cutoff, not an LFO rate — the shared `frequency` range stops at 20Hz. The
+      // span and the taper are the Channel EQ's graph's, so a bell parked at 800Hz
+      // reads 800Hz on either card.
+      frequency: { min: 20, max: 18000, step: 1, unit: 'Hz', log: true },
+      // +/-18dB and 0.5dB steps, matching the Channel EQ's bands rather than GAIN's
+      // +/-24: this is an EQ band and a band on one card must not have more range than
+      // the same band on the other.
+      gain: { min: -18, max: 18, step: 0.5, unit: 'dB' },
+      // Q needs no override: it is the same control as the Channel EQ's peaks and
+      // reads its range from PARAM_RANGES, which is where a shared name belongs.
+    },
+    labels: { frequency: 'FREQ', gain: 'GAIN', q: 'Q' } },
   // Measured with the native formant graph, excitation front-end and scheduler hook in
   // tools/measure-new-effects.js: 0.80% default, 0.94% dramatic mode on this bench.
   { id: 'vowel', name: 'Vowel Filter', short: 'Vowel', cost: 0.94, custom: makeVowelFilter,
@@ -2416,7 +2914,7 @@ export const EFFECTS = [
       intensity: { min: 0, max: 1, step: 0.01 },
     },
     labels: {
-      voice: 'VOICE', stack: 'VOWEL STACK', rateDivision: 'RATE',
+      voice: 'VOICE', stack: 'VOWELS', rateDivision: 'RATE',
       frequency: 'RATE', waveform: 'WAVE SHAPE', depth: 'DEPTH', glide: 'GLIDE',
       articulation: 'ARTICULATION', reso: 'RESO', spread: 'SPREAD',
       body: 'BODY', air: 'AIR', tilt: 'TILT', intensity: 'INTENSITY',
@@ -2486,9 +2984,8 @@ export const EFFECTS = [
   { id: 'distortion', name: 'Distortion', cost: 0.25, tone: 'Distortion',
     params: ['distortion', 'wet'], defaults: { distortion: 0.4, wet: 0.5 } },
   { id: 'bitcrusher', name: 'Bit Crusher', short: 'Bit Crush', cost: 0.12, custom: makeBitCrusher,
-    params: ['bits', 'drive', 'tone', 'wet'], defaults: { bits: 8, drive: 6, tone: 12000, wet: 0.65 },
-    ranges: { drive: { min: 0, max: 24, step: 0.5, unit: 'dB' }, tone: { min: 500, max: 20000, step: 100, unit: 'Hz', log: true } },
-    labels: { bits: 'BITS', drive: 'DRIVE', tone: 'TONE' } },
+    params: ['bits', 'downsample', 'wet'], defaults: { bits: 8, downsample: 4, wet: 1 },
+    labels: { bits: 'BITS', downsample: 'DOWNSAMPLE', wet: 'MIX' } },
   { id: 'tape', name: 'Tape Saturation', short: 'Tape', cost: 0.98, custom: makeTape,
     params: ['drive', 'bias', 'tone', 'wow', 'flutter', 'wet'], defaults: { drive: 6, bias: 0.1, tone: 10000, wow: 0.12, flutter: 0.05, wet: 0.65 },
     ranges: { drive: { min: 0, max: 24, step: 0.5, unit: 'dB' }, tone: { min: 1000, max: 20000, step: 100, unit: 'Hz', log: true } },
@@ -2533,12 +3030,42 @@ export const EFFECTS = [
     ranges: { frequency: { min: -1200, max: 1200, step: 5, unit: 'Hz' } } },
   { id: 'pitch', name: 'Pitch Shift', cost: 1.05, tone: 'PitchShift',
     params: ['pitch', 'windowSize', 'feedback', 'wet'], defaults: { pitch: 0, windowSize: 0.1, feedback: 0, wet: 1 } },
+  // A low-CPU native space effect. It is intentionally separate from the shared
+  // convolution Reverb: use this when a channel needs a small, diffuse tail without
+  // paying for the longer impulse response. The real-song benchmark measured 0.22% of
+  // one core (the larger of idle and playing), below the 0.35% shipping gate.
+  { id: 'ambience', name: 'Ambience', short: 'Ambience', cost: 0.22, custom: makeAmbience,
+    params: ['space', 'damping', 'wet'],
+    defaults: { space: 0.5, damping: 0.55, wet: 0.38 },
+    ranges: {
+      space: { min: 0, max: 1, step: 0.01 },
+      damping: { min: 0, max: 2, step: 0.01 },
+    },
+    labels: { space: 'SPACE', damping: 'DAMPING', wet: 'MIX' } },
   // Ours, not Tone's — Tone.Reverb fills its impulse response from Math.random, so
   // every render of every song carrying one was a different file. See makeReverb.
   { id: 'reverb', name: 'Reverb', cost: 0.75, custom: makeReverb,
-    params: ['decay', 'preDelay', 'wet'], defaults: { decay: 2, preDelay: 0.01, wet: 0.4 } },
+    params: ['decay', 'preDelay', 'low', 'mid', 'high', 'width', 'wet'],
+    defaults: { decay: 2, preDelay: 0.01, low: 0, mid: 0, high: 0, width: 1, wet: 0.4 },
+    ranges: {
+      low: { min: -18, max: 18, step: 0.5, unit: 'dB' },
+      mid: { min: -18, max: 18, step: 0.5, unit: 'dB' },
+      high: { min: -18, max: 18, step: 0.5, unit: 'dB' },
+      width: { min: 0, max: 2, step: 0.01 },
+    },
+    labels: { low: 'LOW', mid: 'MID', high: 'HIGH', width: 'WIDTH', wet: 'MIX' } },
   { id: 'compressor', name: 'Compressor', cost: 0.19, tone: 'Compressor',
-    params: ['threshold', 'ratio', 'attack', 'release'], defaults: { threshold: -18, ratio: 4, attack: 0.01, release: 0.15 } },
+    params: ['inputGain', 'threshold', 'ratio', 'attack', 'release', 'outputGain'],
+    defaults: { inputGain: 0, threshold: -18, ratio: 4, attack: 0.01, release: 0.15, outputGain: 0 } },
+  { id: 'noisegate', name: 'Noise Gate', short: 'Gate', cost: 0.16, custom: makeNoiseGate,
+    params: ['threshold', 'attack', 'release'],
+    defaults: { threshold: -45, attack: 0.005, release: 0.12 },
+    ranges: {
+      threshold: { min: -80, max: 0, step: 0.5, unit: 'dB' },
+      attack: { min: 0.001, max: 0.5, step: 0.001, unit: 's', log: true },
+      release: { min: 0.01, max: 2, step: 0.001, unit: 's', log: true },
+    },
+    labels: { threshold: 'THRESHOLD', attack: 'ATTACK', release: 'RELEASE' } },
   // Threshold stops at -30 rather than the shared -60: the make-up is (ceiling -
   // threshold) and applied for you, so -60 here is not "limit everything", it is
   // +60dB of gain on the way through and a lane that has been destroyed by one drag.
@@ -2557,12 +3084,16 @@ export const EFFECTS = [
   // names here; applyParams walks them and paramRange falls back to the leaf, so all
   // six thresholds share one range. Both are plain ToneAudioNodes rather than
   // Effects, which is why neither has a `wet`: they are always fully in circuit.
+  // PUMP is a deliberately separate post-M/S envelope: it gives the compressor a
+  // musical swell-back without changing the saved mid/side attack and release values.
+  // It defaults to zero so older mixes and presets retain their previous sound.
   { id: 'msComp', name: 'Mid/Side Compressor', short: 'M/S Comp', cost: 0.53, tone: 'MidSideCompressor',
     params: ['mid.threshold', 'mid.ratio', 'mid.attack', 'mid.release', 'mid.knee',
-      'side.threshold', 'side.ratio', 'side.attack', 'side.release', 'side.knee'],
+      'side.threshold', 'side.ratio', 'side.attack', 'side.release', 'side.knee', 'pump'],
     defaults: {
       'mid.threshold': -24, 'mid.ratio': 3, 'mid.attack': 0.02, 'mid.release': 0.03, 'mid.knee': 16,
       'side.threshold': -30, 'side.ratio': 6, 'side.attack': 0.03, 'side.release': 0.25, 'side.knee': 10,
+      pump: 0,
     } },
   { id: 'mbComp', name: 'Multiband Compressor', short: 'Multi Comp', cost: 0.95, tone: 'MultibandCompressor',
     params: ['lowFrequency', 'highFrequency',
@@ -2596,6 +3127,7 @@ export const EFFECTS = [
   // the shared one tops out at 20Hz and turning the knob simply muted the channel.
   { id: 'filter', name: 'Filter', cost: 0.2, tone: 'Filter',
     params: ['type', 'frequency', 'Q'], defaults: { type: 'lowpass', frequency: 1000, Q: 1 },
+    labels: { frequency: 'CUTOFF', Q: 'RESONANCE' },
     ranges: { frequency: { min: 20, max: 18000, step: 10, unit: 'Hz', log: true } } },
 ];
 
@@ -2703,7 +3235,7 @@ export function isDefaultMasterChain(list = []) {
   if (!Array.isArray(list) || list.length !== seed.length) return false;
   return list.every((e, i) => {
     const s = seed[i];
-    if (e.id !== s.id || !e.bypass !== !s.bypass) return false;
+    if (e.id !== s.id || !e.bypass !== !s.bypass || !e.mute !== !s.mute) return false;
     const keys = new Set([...Object.keys(e.params || {}), ...Object.keys(s.params || {})]);
     return [...keys].every((k) => (e.params?.[k] ?? null) === (s.params?.[k] ?? null));
   });
@@ -2833,6 +3365,191 @@ export function visibleParams(def, params = {}) {
 }
 
 /**
+ * The standard Tone compressor already exposes trustworthy gain reduction. Add only
+ * the input/output taps needed by the open inspector card; unlike the L7's custom
+ * sidechain, the compressor's reduction value is the engine's own reading.
+ */
+function createCompressorMeter(node, ctx) {
+  const input = node._meterInput || node.input || node;
+  const output = node._meterOutput || node.output || node;
+  const reductionNode = node._meterReduction || node;
+  const inputSplit = ctx.createChannelSplitter(2);
+  const outputSplit = ctx.createChannelSplitter(2);
+  const inputAnalysers = [ctx.createAnalyser(), ctx.createAnalyser()];
+  const outputAnalysers = [ctx.createAnalyser(), ctx.createAnalyser()];
+  for (const analyser of [...inputAnalysers, ...outputAnalysers]) {
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0;
+  }
+  Tone.connect(input, inputSplit);
+  Tone.connect(output, outputSplit);
+  inputSplit.connect(inputAnalysers[0], 0);
+  inputSplit.connect(inputAnalysers[1], 1);
+  outputSplit.connect(outputAnalysers[0], 0);
+  outputSplit.connect(outputAnalysers[1], 1);
+
+  const samples = [...inputAnalysers, ...outputAnalysers].map(() => new Float32Array(256));
+  let disposed = false;
+  const stereoPeak = (analysers, offset) => {
+    let peak = 0;
+    for (let channel = 0; channel < analysers.length; channel++) {
+      analysers[channel].getFloatTimeDomainData(samples[offset + channel]);
+      for (const sample of samples[offset + channel]) peak = Math.max(peak, Math.abs(sample));
+    }
+    return peak;
+  };
+  return {
+    read() {
+      if (disposed) return { input: 0, output: 0, reduction: 0 };
+      return {
+        input: stereoPeak(inputAnalysers, 0),
+        output: stereoPeak(outputAnalysers, 2),
+        reduction: Math.max(0, -Number(reductionNode.reduction) || 0),
+      };
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      try { input.disconnect(inputSplit); } catch { /* already disconnected */ }
+      try { output.disconnect(outputSplit); } catch { /* already disconnected */ }
+      try { inputSplit.disconnect(); } catch { /* already disconnected */ }
+      try { outputSplit.disconnect(); } catch { /* already disconnected */ }
+    },
+  };
+}
+
+/**
+ * The standard compressor's two trims are real gain stages, not display-only controls.
+ * Keeping them outside Tone.Compressor makes INPUT affect the detector and OUTPUT act as
+ * makeup gain, while the meter taps can report the signal at the two useful boundaries.
+ */
+function makeCompressor(ctx, def, params = {}) {
+  const values = { ...def.defaults, ...params };
+  const coreParams = Object.fromEntries(Object.entries(values)
+    .filter(([key]) => key !== 'inputGain' && key !== 'outputGain'));
+  const inputGain = ctx.createGain();
+  const compressor = new Tone.Compressor(coreParams);
+  const outputGain = ctx.createGain();
+  // The input trim is a native GainNode while Tone.Compressor is a ToneAudioNode;
+  // use Tone's adapter at that boundary rather than native AudioNode.connect(),
+  // which rejects a Tone wrapper and causes createEffect() to fail closed.
+  Tone.connect(inputGain, compressor);
+  Tone.connect(compressor, outputGain);
+
+  const dbToGain = (db) => Math.pow(10, (Number.isFinite(Number(db)) ? Number(db) : 0) / 20);
+  const setTrim = (param, value) => { param.gain.value = dbToGain(value); };
+  setTrim(inputGain, values.inputGain);
+  setTrim(outputGain, values.outputGain);
+
+  const setState = (patch = {}) => {
+    const corePatch = {};
+    for (const [key, value] of Object.entries(patch)) {
+      values[key] = value;
+      if (key === 'inputGain') setTrim(inputGain, value);
+      else if (key === 'outputGain') setTrim(outputGain, value);
+      else corePatch[key] = value;
+    }
+    applyParams(compressor, corePatch);
+  };
+
+  const rampState = (patch = {}, when, seconds) => {
+    const corePatch = {};
+    for (const [key, value] of Object.entries(patch)) {
+      values[key] = value;
+      if (key === 'inputGain') rampParam(ctx, inputGain.gain, dbToGain(value), when, seconds, { log: true });
+      else if (key === 'outputGain') rampParam(ctx, outputGain.gain, dbToGain(value), when, seconds, { log: true });
+      else corePatch[key] = value;
+    }
+    rampParams(ctx, compressor, corePatch, when, seconds);
+  };
+
+  const node = {
+    input: inputGain,
+    output: outputGain,
+    compressor,
+    _meterInput: inputGain,
+    _meterOutput: outputGain,
+    _meterReduction: compressor,
+    applyState: setState,
+    rampState,
+    dispose() {
+      try { inputGain.disconnect(); } catch { /* already disconnected */ }
+      try { outputGain.disconnect(); } catch { /* already disconnected */ }
+      try { compressor.dispose(); } catch { /* already disposed */ }
+    },
+  };
+  node.createMeter = () => createCompressorMeter(node, ctx);
+  return node;
+}
+
+/**
+ * The M/S compressor's optional PUMP stage. Tone's MidSideCompressor does not expose
+ * a sidechain/envelope output, so the cleanest stable implementation is a second,
+ * stereo-linked compressor after the M/S merge. At zero its ratio is 1:1; as PUMP rises
+ * its threshold moves into the signal and its release lets the level swell back out.
+ */
+function makeMidSideCompressor(ctx, def, params = {}) {
+  const values = { ...def.defaults, ...params };
+  const msParams = Object.fromEntries(Object.entries(values).filter(([key]) => key !== 'pump'));
+  const midSide = new Tone.MidSideCompressor(expandDotted(msParams));
+  const pump = new Tone.Compressor({
+    threshold: -60,
+    ratio: 1,
+    attack: 0.003,
+    release: 0.25,
+    knee: 0,
+  });
+  const output = ctx.createGain();
+  midSide.connect(pump);
+  pump.connect(output);
+
+  const setPump = (value) => {
+    const amount = Math.min(1, Math.max(0, Number(value) || 0));
+    // Keep zero truly transparent. The ratio and threshold then move together so the
+    // control stays useful across normal mix levels instead of only catching peaks.
+    pump.threshold.value = -60 + (36 * amount);
+    pump.ratio.value = 1 + (19 * amount);
+  };
+  setPump(values.pump);
+
+  const setState = (patch = {}) => {
+    const msPatch = {};
+    for (const [key, value] of Object.entries(patch)) {
+      values[key] = value;
+      if (key !== 'pump') msPatch[key] = value;
+    }
+    applyParams(midSide, msPatch);
+    if (Object.prototype.hasOwnProperty.call(patch, 'pump')) setPump(patch.pump);
+  };
+
+  const rampState = (patch = {}, when, seconds) => {
+    const msPatch = {};
+    for (const [key, value] of Object.entries(patch)) {
+      values[key] = value;
+      if (key !== 'pump') msPatch[key] = value;
+    }
+    rampParams(ctx, midSide, msPatch, when, seconds);
+    if (Object.prototype.hasOwnProperty.call(patch, 'pump')) {
+      const amount = Math.min(1, Math.max(0, Number(patch.pump) || 0));
+      rampParam(ctx, pump.threshold, -60 + (36 * amount), when, seconds);
+      rampParam(ctx, pump.ratio, 1 + (19 * amount), when, seconds);
+    }
+  };
+
+  return {
+    input: midSide.input,
+    output,
+    applyState: setState,
+    rampState,
+    dispose() {
+      try { midSide.dispose(); } catch { /* already disposed */ }
+      try { pump.dispose(); } catch { /* already disposed */ }
+      try { output.disconnect(); } catch { /* already disconnected */ }
+    },
+  };
+}
+
+/**
  * Build one effect. Returns null for an unknown id rather than throwing, so a mix
  * file naming an effect that has since been removed degrades to "no effect" instead
  * of taking the whole song down.
@@ -2840,6 +3557,30 @@ export function visibleParams(def, params = {}) {
 export function createEffect(id, params = {}, ctx = null, bpm = 120) {
   const def = EFFECT_BY_ID[id];
   if (!def) return null;
+  if (def.id === 'compressor') {
+    if (!ctx) return null;
+    try {
+      const node = makeCompressor(ctx, def, params);
+      return {
+        def,
+        node,
+        set: (patch) => node.applyState(patch),
+        setAt: (patch, when, seconds = 0) => node.rampState(patch, when, seconds),
+      };
+    } catch { return null; }
+  }
+  if (def.id === 'msComp') {
+    if (!ctx) return null;
+    try {
+      const node = makeMidSideCompressor(ctx, def, params);
+      return {
+        def,
+        node,
+        set: (patch) => node.applyState(patch),
+        setAt: (patch, when, seconds = 0) => node.rampState(patch, when, seconds),
+      };
+    } catch { return null; }
+  }
   if (def.custom) {
     if (!ctx) return null;
     const node = def.custom(ctx, params);
@@ -2975,6 +3716,18 @@ export function rampParams(ctx, node, patch = {}, when = 0, seconds = 0) {
     const leaf = path[path.length - 1];
     const cur = obj[leaf];
     if (!(cur && typeof cur === 'object' && 'value' in cur)) {
+      // Unless it is not actually MOVING. A chain is handed to a transition whole —
+      // every link, every parameter, changed or not — so a filter sitting on the master
+      // bus made every handover throw on its `type`, which both sides had always agreed
+      // about. The refusal below is about a param CHANGING at a time it cannot change
+      // at; a value already equal to the target asks for nothing and gets nothing.
+      //
+      // Without this, any song whose master or channel chain contained a filter, a
+      // ringmod or a Chebyshev could not hand a cabinet screen over to its level at all:
+      // the first such link threw, rampMix refused before it moved anything, and the
+      // screen's whole mix stayed up. See the fallback in MusicDirector._fire, which is
+      // what quietly caught it.
+      if (cur === v) continue;
       throw new Error(`effects: "${k}" is not automatable — it cannot be moved at an audio time`);
     }
     rampParam(c, cur, v, when, seconds, { log: LOG_PARAMS.has(leaf) });

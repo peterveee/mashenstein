@@ -113,7 +113,7 @@ export const mix = {
     lead: { send: { delay: 0.125, reverb: 0.044 }, eq: { low: -3.5, mid: -4.4, high: 1.5 } },
     leadHarm: { gain: -2.4, send: { delay: 0.104, reverb: 0.127 }, effects: [{ id: "widener" }] },
     chords: { gain: -5.6, send: { delay: 0.094, reverb: 0.051 }, eq: { high: 3.1 }, effects: [{ id: "doubler", params: { delayMs: 11, depth: 0.11, dryPan: -0.72, wetPan: 0.52, wet: 0.33 } }, { id: "reverb", params: { wet: 0.19 } }] },
-    keyGliss: { gain: -12.7, send: { delay: 0.03, reverb: 0.454 }, eq: { low: -1.8, high: 3.3 }, effects: [{ id: "bitcrusher", params: { bits: 4, drive: 4, tone: 3945.696, wet: 0.55 } }, { id: "autopanner", params: { rateSync: 1, depth: 0.71, rateDivision: 0.5 } }, { id: "pingpong", params: { wet: 0.34, feedback: 0.21 } }] },
+    keyGliss: { gain: -12.7, send: { delay: 0.03, reverb: 0.454 }, eq: { low: -1.8, high: 3.3 }, effects: [{ id: "bitcrusher", params: { bits: 4, downsample: 12, wet: 0.55 } }, { id: "autopanner", params: { rateSync: 1, depth: 0.71, rateDivision: 0.5 } }, { id: "pingpong", params: { wet: 0.34, feedback: 0.21 } }] },
     gliss: { gain: -5.8, send: { delay: 0.28, reverb: 0.044 }, effects: [{ id: "autopanner", params: { rateSync: 1, rateDivision: 8, depth: 0.66, wet: 0.87 } }] },
     vox: { gain: -2.9, pan: -0.256, send: { delay: 0.057, reverb: 0.512 } },
     shout: { pan: 0.25, send: { delay: 0.28 }, effects: [{ id: "pingpong", params: { division: 1 } }] },

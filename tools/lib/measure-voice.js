@@ -33,10 +33,33 @@ const CHORD_LANES = ['chords', 'organChords'];
  * the whole render, so two of these are comparable only while the window is the same
  * length. Nothing may vary the bpm, the step count or the tail.
  */
-export const oneNote = (lane) => {
+export const oneNote = (lane, voice = null) => {
   const value = PERCUSSION_LANES.includes(lane) ? true
     : CHORD_LANES.includes(lane) ? [A2] : A2;
   const rest = PERCUSSION_LANES.includes(lane) ? false : null;
+  const seam = VOICE_LANES[lane];
+  // ---- the measured note takes the PRESET's own length -------------------------
+  //
+  // Third case, and the one `legacyLaneLength` does not cover. Its rule is right for
+  // music: a note nobody has drawn a length for must not change length when the lane is
+  // pointed at another sound, or swapping a pad for a pluck rewrites the rhythm. But a
+  // measurement is not music. Here there IS no music — one note, alone, so the catalogue
+  // can write down how loud this preset is — and the only length that means anything is
+  // the one the preset was designed around.
+  //
+  // Without this the lane's legacy default arrives instead: 1.2 STEPS on lead and
+  // leadHarm, which is 150 ms at this bench's 120bpm. A pad whose amp envelope opens
+  // over 2.2 seconds is then measured somewhere in the first tenth of its attack, and it
+  // measures as silence — `bestPwmDrift` came out at 0.0001 against a catalogue value of
+  // 0.0747, which reads as a broken preset rather than as a bench asking the wrong
+  // question.
+  //
+  // Stated on the bank's own dur seam rather than by special-casing the engine, so the
+  // engine's rule is untouched and this is simply a bench that says what it wants. It
+  // also restores the exact length every stored `level`/`peak` in the library was
+  // originally measured at, which is why this changes no number in the catalogue.
+  const dur = seam?.durKey && Number.isFinite(voice?.dur) && voice.dur > 0
+    ? { [seam.durKey]: voice.dur } : null;
   return {
     bpm: 120,
     // The melodic lanes reach the delay by default (see ECHO_OPT_IN in lanes.js), and an
@@ -44,6 +67,7 @@ export const oneNote = (lane) => {
     // calibration are measured dry, so the send cancels rather than being divided into
     // somebody's level.
     echoLevel: 0,
+    ...(dur || {}),
     [lane]: Array.from({ length: 32 }, (_, i) => (i === 0 ? value : rest)),
   };
 };
@@ -69,7 +93,12 @@ export const oneNote = (lane) => {
  */
 export const HOME_LANES = {
   Kick: 'kick', Snare: 'snare', Clap: 'clap', Hats: 'hats', Tom: 'tom', Crash: 'crash',
-  Perc: 'rim',
+  // The four the old `Perc` became. Three of them measure on `rim` because that is where
+  // a stick, a clave and a blip are struck; `Sweep` measures on `tom`, because a Synare
+  // falling an octave and a half is levelled against the wrong thing on a rim lane's
+  // 420 Hz. Every preset in all four also carries an explicit `homeLane`, so these are
+  // the fallback for a NEW preset rather than something an existing level depends on.
+  Rim: 'rim', Perc: 'rim', Blip: 'rim', Sweep: 'tom',
 };
 export const homeLane = (v) => {
   // `dsZap` has a special crash audition render, but remains FX rather than a drum.
@@ -118,7 +147,7 @@ export async function measureVoiceAt(render, voice, lane = homeLane(voice), { mi
   if (!(applied > 0)) {
     throw new Error(`${voice.id || voice.label || 'this preset'}: the engine would play it at ${applied}`);
   }
-  const bank = mix ? oneNote(lane) : { ...oneNote(lane), [VOICE_LANES[lane].voiceKey]: voice.id };
+  const bank = mix ? oneNote(lane, voice) : { ...oneNote(lane, voice), [VOICE_LANES[lane].voiceKey]: voice.id };
   const out = await render(bank, { repeat: 1, mix, trackId: null });
   return {
     level: noteLevel([out.outL, out.outR]) / applied,

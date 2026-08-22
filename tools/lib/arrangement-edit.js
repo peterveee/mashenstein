@@ -125,6 +125,10 @@ export function draftOf(bank, entry = null) {
     // means "as composed" — straight, for every song in the game so far — rather than 50,
     // so `entryOf` can tell a song nobody has swung from one dragged back to straight.
     swing: entry?.swing ?? null,
+    // The kit's choke channels, lane -> channel. One setting per track for the whole
+    // song, so it sits here with the tempo and the swing rather than on a bar: a kit
+    // does not re-wire itself halfway through a chorus.
+    choke: entry?.choke ? { ...entry.choke } : null,
     // Where the song starts and what it repeats. Carried through untouched rather than
     // edited here: no bar operation in this file has an opinion about it, and this
     // draft is round-tripped through `entryOf` on EVERY edit — so anything not carried
@@ -214,6 +218,12 @@ export function entryOf(bank, draft) {
   const swing = draft.swing != null && draft.swing !== composedSwing ? draft.swing : null;
   const same = JSON.stringify(order) === JSON.stringify(orderOf(bank));
   const loop = draft.loop || null;
+  // Zeroes are dropped rather than written: "not choked" is the absence of the key, so a
+  // song whose last pairing was undone compacts back to no choke map at all — and, if
+  // that was the only thing done to it, back to no entry at all.
+  const chokeMap = Object.fromEntries(Object.entries(draft.choke || {})
+    .filter(([k, v]) => typeof v === 'string' && v && v !== k));
+  const choke = Object.keys(chokeMap).length ? chokeMap : null;
   // Only when it DIFFERS from the composition, exactly as `bpm` and `swing` above are.
   // A bank that declares its own grid already says so in the half of the file the desk
   // never rewrites; echoing it into the arrangement would give every such song a spurious
@@ -229,10 +239,11 @@ export function entryOf(bank, draft) {
   // and the commonest one of all: shuffling a song is usually the ONLY thing done to it,
   // and `{ swing: 62 }` has to be a whole entry or the drag would not survive a save.
   if (same && !compacted.sections.length) {
-    if (bpm == null && swing == null && !loop && resolution == null) return null;
+    if (bpm == null && swing == null && !loop && resolution == null && !choke) return null;
     return {
       ...(bpm == null ? {} : { bpm }),
       ...(swing == null ? {} : { swing }),
+      ...(choke ? { choke } : {}),
       ...(loop ? { loop } : {}),
       ...(resolution == null ? {} : { resolution }),
     };
@@ -241,6 +252,7 @@ export function entryOf(bank, draft) {
   if (compacted.sections.length) out.sections = compacted.sections;
   if (bpm != null) out.bpm = bpm;
   if (swing != null) out.swing = swing;
+  if (choke) out.choke = choke;
   if (loop) out.loop = loop;
   if (resolution != null) out.resolution = resolution;
   return out;
@@ -628,9 +640,13 @@ export function planToOrder(plan) {
 // edit. That means anything genuinely part of a draft has to be named here as well as in
 // `draftOf`, or it survives being read and not being edited: set a loop, move a bar, and
 // the loop is gone.
+// Every field a draft has, named. A field left out here is not merely ignored: this
+// runs on every edit, so the next thing anyone does to a bar DELETES it — which is the
+// warning `loop` carries in `draftOf`, and the reason `choke` is spelled out too.
 const copy = (draft) => ({
   plan: draft.plan.map(copyBar), sections: clone(draft.sections), bpm: draft.bpm ?? null,
   swing: draft.swing ?? null, loop: clone(draft.loop ?? null),
+  choke: clone(draft.choke ?? null),
   resolution: fineOr(draft.resolution),
 });
 const range = (draft, from, to) => {
@@ -771,6 +787,18 @@ export function removeLanes(draft, keys) {
   const drop = new Set([...(keys || [])].filter(Boolean));
   if (!drop.size) return draft;
   const out = copy(draft);
+  // The choke map is keyed by lane like everything below, but lives on the DRAFT rather
+  // than on a bar — one setting for the whole track. A deleted track left in it would
+  // hold a channel open for a lane nobody can see, and the next track to take that name
+  // would silently inherit a pairing it never asked for.
+  if (out.choke) {
+    // Either side: the map is stored one way, so a deleted track is as likely to be the
+    // value as the key, and a half-erased pair would point at a track nobody can see.
+    for (const key of Object.keys(out.choke)) {
+      if (drop.has(key) || drop.has(out.choke[key])) delete out.choke[key];
+    }
+    if (!Object.keys(out.choke).length) out.choke = null;
+  }
   for (const section of out.sections) {
     // The lengths go with the lane, or deleting a track and adding it back gives the
     // new one the old one's note lengths — for notes that are not there any more.
@@ -857,7 +885,52 @@ export const panBars = (draft, from, to, keys, units) =>
   mapEdit(draft, from, to, keys, 'pan',
     Number.isFinite(+units) ? Math.max(-100, Math.min(100, Math.round(+units))) : 0);
 
-/** Copy a complete structural bar range, including any song-owned note sections. */
+/**
+ * The one track this one chokes with, or null.
+ *
+ * Stored ONE WAY, keyed by whichever lane name sorts first — `{ hats: 'ohats' }` is the
+ * whole of "the hats and the open hats share a voice". A second entry pointing back
+ * would be a fact written twice, and two copies of a fact are two copies that can
+ * disagree; a pairing that reads as mutual from one side and broken from the other is
+ * exactly the bug nobody would think to look for.
+ */
+export function chokePartner(draft, lane) {
+  const map = draft?.choke;
+  if (!map || !lane) return null;
+  if (typeof map[lane] === 'string') return map[lane];
+  const back = Object.keys(map).find((k) => map[k] === lane);
+  return back || null;
+}
+
+/**
+ * Pair a track with one other, or pass null to unpair it.
+ *
+ * ONE partner, not a group: a hi-hat pair is what this is for, and a picker offering
+ * every combination of six drums would be six drop-downs' worth of state to hold in
+ * your head for a feature whose whole job is "the closed hat shuts the open one".
+ *
+ * Both tracks are freed from whatever they were paired with first, so choosing is
+ * always a complete answer — pick the crash on a track already choking the open hat and
+ * you get what you picked, rather than a third thing depending on what was there.
+ */
+export function setChokePartner(draft, lane, partner) {
+  if (!lane || lane === partner) return draft;
+  const out = copy(draft);
+  const map = { ...(out.choke || {}) };
+  // Out with the old, on both sides, before anything is written.
+  for (const who of [lane, partner].filter(Boolean)) {
+    delete map[who];
+    for (const k of Object.keys(map)) if (map[k] === who) delete map[k];
+  }
+  if (partner) {
+    const [a, b] = [lane, partner].sort();
+    map[a] = b;
+  }
+  out.choke = Object.keys(map).length ? map : null;
+  return out;
+}
+
+/** Copy a complete structural bar range, including any song-owned note sections. *//** Copy a complete structural bar range, including any song-owned note sections. */
 export function copyBars(bank, draft, from, to) {
   const [a, b] = range(draft, from, to);
   const base = bank.sections?.length || 0;

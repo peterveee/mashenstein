@@ -18,7 +18,15 @@
 // to a temp directory and import it back to prove the edit parses (tests/voice-source.js).
 // This module is the one that knows both halves — the catalogue and the song registry.
 import { VOICES, VOICE_LANES, defaultVoiceOf, voicesFor, voicesByCategory } from './voices.js';
+import { synthFamily as engineFamily } from '../engine/synth-families.js';
 import { listTracks, resolveTrack } from './tracks.js';
+
+// Preset selection is a FAMILY choice, not a request to rewrite the stored voice, so
+// compare both sides through the engine's own rename map and leave the persisted identity
+// untouched. This used to be a local one-liner that knew about CRLS-1 and nothing else,
+// which meant a lane still carrying `GameSynth` or `FMSynth` was offered no presets at
+// all: every preset in the catalogue had been renamed out from under a raw-string
+// comparison. See src/engine/synth-families.js — one map, so it cannot drift again.
 
 /**
  * IN THE GAME means a cabinet's music or a game theme, and nothing else.
@@ -106,13 +114,14 @@ export function offeredByCategory(laneKey, { keep = null } = {}) {
  * no engine bundles, starters, drafts, private song copies, or parked quotations.
  */
 export function offeredByEngine(engine, { laneKey = null, keep = null } = {}) {
+  const wanted = engineFamily(engine);
   const list = laneKey
     ? offeredVoices(laneKey, { keep })
     : Object.values(VOICES).filter((v) =>
       !v.songLocal && !v.nameOnly && !v.starter && !v.draft && v.kind !== 'engine'
       && (!v.quoted || v.id === keep || quotesInPlay().has(v.id)));
   return list.filter((v) => {
-    const key = v.kind === 'drum' ? 'drum' : v.synth;
-    return key === engine;
+    const key = v.kind === 'drum' ? 'drum' : engineFamily(v.synth);
+    return key === wanted;
   });
 }

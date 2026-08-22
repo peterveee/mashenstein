@@ -10,7 +10,7 @@
 // identity across sections and across lane keys, and `order` reuses sections, so a
 // naive write to "bar 3" changes bar 1 as well — and, in `shop`, changes five other
 // lanes with it.
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { listTracks, resolveTrack } from '../tools/lib/tracks.js';
@@ -36,7 +36,7 @@ import {
 import { VOICES, isKitVoice, baseLane } from '../src/data/voices.js';
 import {
   LANE_KEYS, songBlocks, songBars, barPlan, activeLanes, laneActivity, laneUsesEcho, deskBank,
-  isLenKey,
+  isLenKey, lenKey,
 } from '../src/engine/lanes.js';
 
 let failed = false;
@@ -232,14 +232,16 @@ assert(masked[0].off !== masked[1].off,
   const bank = { bpm: 120, bass: new Array(32).fill(null) };
   const chain = [
     { id: 'delay', params: { sync: 0, delayMs: 615, feedback: 0.42, wet: 0.8 } },
+    { id: 'ambience', params: { space: 0.65, damping: 0.7, wet: 0.4 } },
     { id: 'filter', bypass: true, params: { type: 'highpass', frequency: 740, Q: 2.5 } },
   ];
   const edited = setBarEffects(draftOf(bank), 0, 0, 'bass', chain);
   chain[0].params.delayMs = 1;
   const expanded = expandOrder(entryOf(bank, edited).order, false);
   assert(expanded[0].inlineFx.bass[0].params.delayMs === 615
-    && expanded[0].inlineFx.bass[1].bypass === true
-    && expanded[0].inlineFx.bass[1].params.type === 'highpass',
+    && expanded[0].inlineFx.bass[1].params.space === 0.65
+    && expanded[0].inlineFx.bass[2].bypass === true
+    && expanded[0].inlineFx.bass[2].params.type === 'highpass',
   'editable Bar Effects preserve parameter values, bypass and chain order');
 }
 
@@ -1411,6 +1413,106 @@ assert(barPlan(Audio.applyMix(liveSong, { lanes: {} })).length === barPlan(liveS
 Audio.arrangement = undefined;
 assert(barPlan(Audio.applyMix(liveSong, { lanes: {} })).length === barPlan(liveSong).length,
   'and no opinion at all falls back to the file');
+
+// ---- Replicate: a figure carried on through the hole after it -------------------
+//
+// The desk's own code, lifted out of `mixer-entry.js` and run here — the module itself
+// reaches for `document` on load, and these six functions are the whole of the
+// decision. What they must get right is arithmetic nobody can see on screen: where the
+// fill STOPS — the first bar the track is written in again — and that a multi-bar
+// selection repeats in PHASE from the bar after it, so 3,4 lands 3,4,3,4 and never
+// 3,4,4,3 however far the hole runs.
+const entrySource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
+const liftEntry = (re, what) => {
+  const m = re.exec(entrySource);
+  if (!m) throw new Error(`arrangement: could not lift ${what} out of the desk source`);
+  return m[0];
+};
+const replicate = new Function('deps', `
+  const { readBarLane, lenKey, barCount, writeBarNotes, setLanesOff, setLanesDeleted,
+    transposeBars, offsetBars, gainBars, panBars, setBarNoteFx, setBarEffects } = deps;
+  ${liftEntry(/const barFieldValue = \(bar, field, lane\) => \{[\s\S]*?\n\};/, 'barFieldValue')}
+  ${liftEntry(/const laneBarPart = \(bank, draft, bar, lane\) => \{[\s\S]*?\n\};/, 'laneBarPart')}
+  ${liftEntry(/const sameLaneBarPart = [^\n]*/, 'sameLaneBarPart')}
+  ${liftEntry(/const laneBarHasContent = \(part\) =>[\s\S]*?\.some\(Boolean\);/, 'laneBarHasContent')}
+  ${liftEntry(/const writeLaneBarPart = \(bank, draft, bar, lane, part, current = null\) => \{[\s\S]*?\n\};/, 'writeLaneBarPart')}
+  ${liftEntry(/const replicationStop = \(bank, draft, lane, to\) => \{[\s\S]*?\n\};/, 'replicationStop')}
+  ${liftEntry(/const replicationTargets = \(bank, draft, lane, from, to, until\) => \{[\s\S]*?\n\};/, 'replicationTargets')}
+  return { laneBarPart, replicationStop, replicationTargets, writeLaneBarPart };
+`)({
+  readBarLane, lenKey, barCount, writeBarNotes, setLanesOff, setLanesDeleted,
+  transposeBars, offsetBars, gainBars, panBars, setBarNoteFx, setBarEffects,
+});
+
+{
+  const bank = banks.speed;
+  const bars = barCount(draftOf(bank, null));
+  const notesOf = (draft, bar) => json(readBarLane(bank, draft, bar, 'lead'));
+  const rest = new Array(16).fill(null);
+  // The shape the button is FOR: a written figure, a hole, and a written bar at the far
+  // side of it. SPEED ZONE's lead plays in every bar, so the hole is made here — bars 3
+  // to 12 emptied, bar 13 onwards left exactly as composed.
+  let holed = draftOf(bank, null);
+  for (let bar = 2; bar < 12; bar++) holed = writeBarNotes(bank, holed, bar, 'lead', rest, rest);
+  const before = holed;
+
+  assert(replicate.replicationStop(bank, before, 'lead', 1) === 12,
+    'a replicate stops at the first bar the track is written in again, not at the end of the song');
+  const { targets, clobbered } = replicate.replicationTargets(bank, before, 'lead', 0, 1, 12);
+  assert(targets.length === 10 && clobbered.length === 0,
+    'the run it fills is empty by definition, so an ordinary replicate has nothing to warn about');
+
+  let after = before;
+  for (const t of targets) after = replicate.writeLaneBarPart(bank, after, t.bar, 'lead', t.part, t.current);
+  assert(barCount(after) === bars,
+    'Replicate fills the bars the song already has and never lengthens it');
+  assert(notesOf(after, 0) === notesOf(before, 0) && notesOf(after, 1) === notesOf(before, 1),
+    'the selected bars are the source and come out of it untouched');
+  let inPhase = 0;
+  for (let bar = 2; bar < 12; bar++) if (notesOf(after, bar) === notesOf(before, bar % 2)) inPhase++;
+  assert(inPhase === 10, `the two-bar selection repeats in phase across the hole (${inPhase}/10)`);
+  // The far side of the hole is somebody's writing and the whole point is that it stays.
+  let kept = 0;
+  for (let bar = 12; bar < bars; bar++) if (notesOf(after, bar) === notesOf(before, bar)) kept++;
+  assert(kept === bars - 12, 'everything from the stopping bar on is left exactly as it was');
+  // Only the lane it was asked about. The bass under those bars is somebody else's part.
+  let bassKept = 0;
+  for (let bar = 0; bar < bars; bar++) {
+    if (json(readBarLane(bank, after, bar, 'bass')) === json(readBarLane(bank, before, bar, 'bass'))) bassKept++;
+  }
+  assert(bassKept === bars, 'no other track is touched');
+  // An odd hole ends part-way through the figure: the hole is the shape being filled.
+  let odd = draftOf(bank, null);
+  for (let bar = 2; bar < 7; bar++) odd = writeBarNotes(bank, odd, bar, 'lead', rest, rest);
+  const oddRun = replicate.replicationTargets(bank, odd, 'lead', 0, 1, replicate.replicationStop(bank, odd, 'lead', 1));
+  assert(oddRun.targets.length === 5 && oddRun.targets[4].bar === 6,
+    'a five-bar hole under a two-bar figure is filled to its last bar, not to the last whole repetition');
+
+  // Ask the same thing again and the hole is gone: the stop is the very next bar, which
+  // is the one case the desk puts a question in front of.
+  assert(replicate.replicationStop(bank, after, 'lead', 1) === 2,
+    'with the run filled, a second replicate has nowhere to go without covering something');
+  const over = replicate.replicationTargets(bank, after, 'lead', 0, 1, bars);
+  assert(over.targets.length > 0 && over.clobbered.length === over.targets.length
+    && over.clobbered.every((bar) => bar >= 12),
+    'the overwrite the dialog offers covers only what it names, and only bars after the selection');
+  // And a bar already playing exactly the figure is not a target at all, so the answer
+  // to "replicate what is already there" is nothing rather than a forked section per bar.
+  assert(replicate.replicationTargets(bank, after, 'lead', 0, 1, 12).targets.length === 0,
+    'replicating a figure that is already there is a no-op rather than a rewrite');
+
+  // The bar goes whole. A transpose on the source bar arrives with the notes; without it
+  // the copy would play the pitches of one bar at the transpose of whatever it landed on.
+  const tweaked = setBarNoteFx(transposeBars(before, 1, 1, ['lead'], 5), 1, 1, 'lead',
+    { mode: 'set', arp: { enabled: true, rate: 1 } });
+  const spread = replicate.replicationTargets(bank, tweaked, 'lead', 1, 1,
+    replicate.replicationStop(bank, tweaked, 'lead', 1));
+  let carried = tweaked;
+  for (const t of spread.targets) carried = replicate.writeLaneBarPart(bank, carried, t.bar, 'lead', t.part, t.current);
+  const landed = replicate.laneBarPart(bank, carried, 11, 'lead');
+  assert(landed.edits.transpose === 5 && landed.edits.noteFx?.arp?.enabled === true,
+    'the bar-level edits ride along with the notes, so a replicated bar sounds like its source');
+}
 
 // ---- the validator -----------------------------------------------------------
 

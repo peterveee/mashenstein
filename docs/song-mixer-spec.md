@@ -159,7 +159,7 @@ mute/solo, insert slots. Device summary at top (e.g. `375ms · 0.35 · 2.8k`) is
 button opening that return's settings.
 
 **Master strip**: trim on top of the bank's `musicTrim`, limiter toggle, 6 insert
-slots. Same fader range as channels (−60…+6). No fixed EQ bands (use a Parametric EQ
+slots. Same fader range as channels (−60…+6). No fixed EQ bands (use a Channel EQ
 insert instead).
 
 ### 7. Effects panel
@@ -176,7 +176,7 @@ up/down, reset, remove).
 
 | Group | Effects |
 | --- | --- |
-| Level & EQ | Gain, Parametric EQ, Filter |
+| Level & EQ | Gain, Channel EQ, Filter |
 | Delay | Advanced Delay, Delay, Ping-Pong Delay |
 | Modulation | Chorus, Phaser, Tremolo, Vibrato, Auto Filter, Auto Wah, Auto Panner |
 | Drive | Exciter, Distortion, Chebyshev |
@@ -371,9 +371,11 @@ musicBus → [songTrim] → [Master inserts (0–6)] → [Master trim]
 
 ### Constraints
 
-- **All effects must render in an `OfflineAudioContext`**. Effects that use
-  `AudioWorklet` (BitCrusher, JCReverb, Freeverb) are deliberately excluded — they
-  render silent offline and would vanish from every WAV, stem, and video export.
+- **All effects must render in an `OfflineAudioContext`**. JCReverb and Freeverb are
+  deliberately excluded because their AudioWorklet implementations render silent
+  offline. Bit Crusher uses the native offline-safe implementation and exposes only
+  bit resolution, sample-rate reduction, and mix; its Drive/Tone controls were removed
+  so it does not duplicate the separate Distortion effect.
 - **All effects must render deterministically**. Anything using `Math.random` for
   buffer generation (like Tone.Reverb) breaks the null test — two renders of the
   same song must be bit-identical.

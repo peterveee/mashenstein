@@ -19,7 +19,7 @@
 //
 // It also proves the thing nothing else catches: that the effect renders offline AT ALL.
 // A worklet-based effect renders silent here and sounds fine in the browser, which is
-// why BitCrusher and friends are not in the catalogue.
+// why this bench uses the native effects path rather than Tone's worklet catalogue.
 //
 // Usage: node tools/measure-exciter.js
 import { createRequire } from 'module';

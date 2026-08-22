@@ -250,18 +250,28 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     try { sleeper?.disconnect(to); } catch { /* not wired */ }
     for (const link of chain) {
       try { (link.node.output || link.node).disconnect(); } catch { /* fine */ }
+      try { link.muteDry.disconnect(); } catch { /* fine */ }
+      try { link.muteWet.disconnect(); } catch { /* fine */ }
     }
     // A bypassed effect is skipped in the wiring, not turned down: one with a tail
     // would keep ringing and you would be comparing against its leftovers.
     const live = liveLinks();
     if (!live.length) { from.connect(to); return; }
     from.connect(inGain);
-    let prev = inGain;
+    // Every live link is spliced in TWICE — once through the effect, once around it —
+    // and its mute pair decides which of the two is audible. See setMute for why a
+    // mute is a pair of gains where a bypass is a disconnect. The pair sums into
+    // whatever comes next exactly as treatDry/treatWet sum into the master trim, so
+    // no merge node is needed and an unmuted link is `x * 1 + x * 0`: bit-exact, and
+    // the null test says so.
+    let prev = [inGain];
     for (const link of live) {
-      Tone.connect(prev, link.node.input || link.node);
-      prev = link.node.output || link.node;
+      const dst = link.node.input || link.node;
+      for (const p of prev) { Tone.connect(p, dst); Tone.connect(p, link.muteDry); }
+      Tone.connect(link.node.output || link.node, link.muteWet);
+      prev = [link.muteWet, link.muteDry];
     }
-    Tone.connect(prev, outGain);
+    for (const p of prev) Tone.connect(p, outGain);
     if (!sleeper) outGain.connect(to);
     else if (awake) sleeper.connect(to);
   };
@@ -272,12 +282,23 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     get chain() { return chain; },
     set(list = [], bpm = 120) {
       clearSleepTimer();
-      for (const link of chain) { try { link.node.dispose(); } catch { /* fine */ } }
+      for (const link of chain) {
+        try { link.node.dispose(); } catch { /* fine */ }
+        try { link.muteDry.disconnect(); } catch { /* fine */ }
+        try { link.muteWet.disconnect(); } catch { /* fine */ }
+      }
       sourceList = list;
       sourceBpm = bpm;
       chain = list.map((e) => {
         const link = createEffect(e.id, e.params, ctx, bpm);
-        if (link) link.bypassed = !!e.bypass;
+        if (link) {
+          link.bypassed = !!e.bypass;
+          link.muted = !!e.mute;
+          link.muteDry = ctx.createGain();
+          link.muteWet = ctx.createGain();
+          link.muteDry.gain.value = link.muted ? 1 : 0;
+          link.muteWet.gain.value = link.muted ? 0 : 1;
+        }
         return link;
       }).filter(Boolean);
       awake = true;
@@ -294,6 +315,45 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
       if (liveLinks().length) connectOutput();
       rewire();
       watchForSilence();
+    },
+    /**
+     * MUTE, which is not bypass.
+     *
+     * Bypass unwires the link: free, instant, and impossible to schedule — a
+     * `disconnect()` happens at whatever moment the main thread reaches it, and takes
+     * any tail with it. That is the right control for A/B-ing on the desk and the wrong
+     * one for a transition, which is why rampMix refuses a bypass change by name.
+     *
+     * A mute leaves the link wired and cross-fades between the effect and the dry signal
+     * running around it. So it costs what the effect costs even while silent — the trade
+     * for being a pair of AudioParams, which CAN be aimed at a bar line a quarter of a
+     * second from now. That is what lets a cabinet screen carry a phaser the level does
+     * not, on the master or on any channel, without a second leg of the whole mix.
+     *
+     * Equal gain rather than equal power, for the reason rampTreatment gives: the two
+     * routes are the same music, so they add arithmetically.
+     */
+    setMute(i, on, when = null, seconds = 0) {
+      const link = chain[i];
+      if (!link) return;
+      link.muted = !!on;
+      const wet = link.muted ? 0 : 1;
+      if (when == null) {
+        link.muteWet.gain.setTargetAtTime(wet, ctx.currentTime, 0.01);
+        link.muteDry.gain.setTargetAtTime(1 - wet, ctx.currentTime, 0.01);
+      } else {
+        rampParam(ctx, link.muteWet.gain, wet, when, seconds);
+        rampParam(ctx, link.muteDry.gain, 1 - wet, when, seconds);
+      }
+      // Unmuting has to have somewhere to arrive: a slept branch is disconnected from
+      // the destination, and the ramp would open onto nothing. Same urgency, and same
+      // direction-only reasoning, as a send raised off zero — see wakeAux.
+      if (!link.muted) {
+        connectOutput();
+        holdUntil = Math.max(holdUntil, (when ?? ctx.currentTime) + seconds + EFFECT_SLEEP_SETTLE_S);
+        quietSince = null;
+        watchForSilence();
+      }
     },
     /** Pull a dormant graph back into the render tree before scheduled audio reaches it. */
     wake(until = ctx.currentTime) {
@@ -315,7 +375,11 @@ function makeChainSlot(ctx, from, to, { sleepWhenSilent = false } = {}) {
     dispose() {
       disposed = true;
       clearSleepTimer();
-      for (const link of chain) { try { link.node.dispose(); } catch { /* fine */ } }
+      for (const link of chain) {
+        try { link.node.dispose(); } catch { /* fine */ }
+        try { link.muteDry.disconnect(); } catch { /* fine */ }
+        try { link.muteWet.disconnect(); } catch { /* fine */ }
+      }
       chain = [];
       try { from.disconnect(inGain); } catch { /* not wired */ }
       try { from.disconnect(to); } catch { /* not wired */ }
@@ -823,6 +887,8 @@ export function createMixer(ctx, {
       get effectsAwake() { return slot.awake; },
       /** Temporarily take one effect out of the chain, without losing its settings. */
       setEffectBypass(index, on) { slot.setBypass(index, on); },
+      /** Turn one effect down to nothing, keeping it wired so the move can be scheduled. */
+      setEffectMute(index, on) { slot.setMute(index, on); },
 
       /** Pre-create every bar-effect route before the scheduler needs to select it. */
       prepareBarEffects(chains = [], bpm = 120) {
@@ -996,18 +1062,30 @@ export function createMixer(ctx, {
   masterPan.channelCountMode = 'explicit';
   masterPan.channelInterpretation = 'speakers';
   masterPan.pan.value = 0;
+  let masterMeter = null;
+  let masterInputMeter = null;
+  let masterMeterSource = null;
 
   const wireMaster = () => {
     if (!master) return;
+    if (masterMeter && masterMeterSource) {
+      try { Tone.disconnect(masterMeterSource, masterMeter); } catch { /* already detached */ }
+      masterMeterSource = null;
+    }
     masterOut.disconnect();
     masterPan.disconnect();
     masterOut.connect(masterPan);
+    let finalSource = masterPan;
     if (limiterOn) {
       Tone.connect(masterPan, limiter);
-      Tone.connect(limiter, destination);
+      finalSource = limiter;
     } else {
       limiter.disconnect();
-      masterPan.connect(destination);
+    }
+    Tone.connect(finalSource, destination);
+    if (masterMeter) {
+      Tone.connect(finalSource, masterMeter);
+      masterMeterSource = finalSource;
     }
   };
   // The TREATMENT path: a second way through the music, for effects that only one
@@ -1040,20 +1118,37 @@ export function createMixer(ctx, {
     // the last thing to touch the mix — which is where a bus compressor or a final
     // EQ belongs.
     masterSlot = makeChainSlot(ctx, masterTrim, masterOut);
-    wireMaster();
   }
 
-  // Same muted-sink treatment as the lane meters: without a path to the
-  // destination the analyser is not pulled and the master meter sits dead while
-  // every channel meter moves.
-  // Two channels on the master alone, so the desk can show a stereo pair where every
-  // other strip shows one bar: the master is the one place a lopsided mix is worth
-  // seeing, and everywhere else the pan pot already tells you where the signal is.
-  // Tapped at the trim, which is BEFORE masterPan — the only node on the bus whose
-  // connections wireMaster() never tears down (see the masterOut note above). So the
-  // pair shows the imbalance the channels are making, not the master balance you have
-  // dialled on top of it.
-  const masterMeter = makeMeter(masterTrim, { channelCount: 2 });
+  // Keep the pre-chain tap for the developer watchdog, which uses it to distinguish
+  // "the song reached the master chain" from "the final output died downstream".
+  masterInputMeter = makeMeter(masterTrim, { channelCount: 2 });
+  // The displayed master meter is the actual output meter: post master inserts, post
+  // master pan, and post limiter when the limiter is enabled. It is a monitoring branch,
+  // not an inline node, so it cannot alter the rendered signal or the bypass path.
+  if (metered) {
+    masterMeter = new Tone.Meter({ normalRange: true, smoothing: 0.6, channelCount: 2 });
+    const sink = ctx.createGain();
+    sink.gain.value = 0;
+    Tone.connect(masterMeter, sink);
+    sink.connect(ctx.destination);
+  }
+  // The first wire happens after both meter branches exist; setLimiter() reuses this
+  // same path when it switches the final source between masterPan and limiter.
+  if (master) wireMaster();
+
+  const readMeterLevels = (meter) => {
+    if (!meter) return [0, 0];
+    const v = meter.getValue();
+    return Array.isArray(v) ? [v[0] || 0, v[1] || 0] : [v || 0, v || 0];
+  };
+
+  // The one place a chain TARGET — what Audio.rampMix calls `__master`, `__aux:<id>` or
+  // a plain lane key — becomes the slot holding it. Written once because the two scheduled
+  // per-link moves, params and mute, must never disagree about where a target points.
+  const slotFor = (target) => (target === '__master' ? masterSlot
+    : target.startsWith('__aux:') ? auxes.get(target.slice(6))?.slot
+      : strips.get(target)?._slot);
 
   return {
     lanes: LANES.map((l) => l.key),
@@ -1088,26 +1183,21 @@ export function createMixer(ctx, {
       if (!s) return false;
       return !!s.state.mute || (soloed.size > 0 && !soloed.has(key));
     },
-    /**
-     * The master level as one number — the louder side, which is what a clip light and
-     * a peak readout are asking about. Callers that want the pair use masterLevels().
-     */
+    /** The final master output level as one number, after master processing. */
     masterLevel: () => {
-      if (!masterMeter) return 0;
-      const v = masterMeter.getValue();
-      return Array.isArray(v) ? Math.max(v[0] || 0, v[1] || 0) : v;
+      const v = readMeterLevels(masterMeter);
+      return Math.max(v[0], v[1]);
     },
-    /** [left, right], 0..1. */
-    masterLevels: () => {
-      if (!masterMeter) return [0, 0];
-      const v = masterMeter.getValue();
-      return Array.isArray(v) ? [v[0] || 0, v[1] || 0] : [v || 0, v || 0];
-    },
+    /** [left, right], 0..1, from the final master output. */
+    masterLevels: () => readMeterLevels(masterMeter),
+    /** [left, right], 0..1, before the master insert chain, for diagnostics only. */
+    masterInputLevels: () => readMeterLevels(masterInputMeter),
 
     /** Effects on the master bus, after the trim and before the limiter. */
     setMasterEffects(list = [], bpm = 120) { return masterSlot ? masterSlot.set(list, bpm) : 0; },
     get masterEffects() { return masterSlot ? masterSlot.chain : []; },
     setMasterEffectBypass(i, on) { masterSlot?.setBypass(i, on); },
+    setMasterEffectMute(i, on) { masterSlot?.setMute(i, on); },
 
     /** Effects on one send's return. */
     setAuxEffects(id, list = [], bpm = 120) {
@@ -1128,6 +1218,7 @@ export function createMixer(ctx, {
     },
     clearAuxSolo() { soloedAux.clear(); applyMonitoring(); },
     setAuxEffectBypass(id, i, on) { auxes.get(id)?.slot.setBypass(i, on); },
+    setAuxEffectMute(id, i, on) { auxes.get(id)?.slot.setMute(i, on); },
     masterTrim,
 
     // ---- shared FX rack ------------------------------------------------------
@@ -1245,12 +1336,26 @@ export function createMixer(ctx, {
      * they differ.
      */
     rampEffectParams(target, index, params, when, seconds = 0, bpm = 120) {
-      const slot = target === '__master' ? masterSlot
-        : target.startsWith('__aux:') ? auxes.get(target.slice(6))?.slot
-          : strips.get(target)?._slot;
-      const link = slot?.chain?.[index];
+      const link = slotFor(target)?.chain?.[index];
       if (!link) throw new Error(`mixer: no effect at ${target}[${index}] to ramp`);
       link.setAt(params, when, seconds, bpm);
+    },
+
+    /**
+     * One link's MUTE, at an audio time — the half of a chain change that a transition
+     * is allowed to make.
+     *
+     * The shape of a chain is frozen across a boundary: adding, removing, reordering or
+     * bypassing a link is a graph edit with no time you can aim it at. Whether a link is
+     * HEARD is not, because a mute is two gains (see makeChainSlot.setMute). So the two
+     * sides of a transition may disagree about it freely, and Audio.rampMix walks this
+     * beside rampEffectParams for every chain it moves — which is how a cabinet screen
+     * gets an effect the level does not have, on the master or on any channel.
+     */
+    rampEffectMute(target, index, muted, when, seconds = 0) {
+      const slot = slotFor(target);
+      if (!slot?.chain?.[index]) throw new Error(`mixer: no effect at ${target}[${index}] to mute`);
+      slot.setMute(index, muted, when, seconds);
     },
 
     /**

@@ -93,12 +93,14 @@ const arcadeDrumKeys = ['kickVoice', 'snareVoice', 'clapVoice', 'hatsVoice', 'oh
 const arcadeToneDrumKeys = arcadeDrumKeys.filter((key) => key !== 'snareVoice');
 assert(arcadeToneDrumKeys.every((key) => {
   const voice = variant.patch.voiceParams[key];
-  return voice?.kind === 'tone' && voice.synth === 'Synth'
-    && voice.mode === 'mono' && voice.monoGroup === 'arcadeDrums'
+  return voice?.kind === 'tone' && voice.synth === 'CRLS-1'
+    && voice.mode === 'mono' && voice.monoGroup === '1'
     && ['square', 'sawtooth', 'triangle'].includes(voice.options?.oscillator?.type);
 }), 'the arcade non-snare drums are simple one-channel square/saw/triangle voices');
-assert(variant.patch.voiceParams.snareVoice?.kind === 'noise'
-  && variant.patch.voiceParams.snareVoice.monoGroup === 'arcadeDrums'
+// KLNG8 rather than the retired `kind: 'noise'` path — same construction, same seeded
+// buffer, `osc` where `body` was. The choke group is what makes the kit one channel.
+assert(variant.patch.voiceParams.snareVoice?.kind === 'drum'
+  && variant.patch.voiceParams.snareVoice.monoGroup === '1'
   && variant.patch.voiceParams.snareVoice.noise?.type === 'bandpass'
   && variant.patch.voiceParams.snareVoice.trim === 3
   && variant.patch.voiceParams.snareVoice.noise.decay >= 0.075,

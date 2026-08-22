@@ -1,3 +1,4 @@
+import { isMrdrVoice } from '../src/engine/mrdr3/identity.js';
 // Versioned, URL-safe snapshots for the standalone MRDR-3 playground.
 
 export const PATCH_VERSION = 1;
@@ -19,7 +20,7 @@ const base64ToBytes = (text) => {
 };
 
 export function encodePatch(voice) {
-  if (!voice || voice.synth !== 'MRDR-3') throw new Error('Only MRDR-3 sounds can be shared');
+  if (!isMrdrVoice(voice)) throw new Error('Only MRDR-3 sounds can be shared');
   const snapshot = Object.fromEntries(Object.entries(voice)
     .filter(([key]) => !RUNTIME_OR_CATALOGUE_KEYS.has(key)));
   const payload = JSON.stringify({ v: PATCH_VERSION, engine: 'MRDR-3', voice: snapshot });
@@ -31,7 +32,7 @@ export function decodePatch(encoded) {
   try {
     const data = JSON.parse(new TextDecoder().decode(base64ToBytes(encoded)));
     if (data?.v !== PATCH_VERSION || data.engine !== 'MRDR-3' || !data.voice
-      || data.voice.synth !== 'MRDR-3' || typeof data.voice !== 'object'
+      || !isMrdrVoice(data.voice) || typeof data.voice !== 'object'
       || Array.isArray(data.voice)) return null;
     if ([...RUNTIME_OR_CATALOGUE_KEYS].some((key) =>
       Object.prototype.hasOwnProperty.call(data.voice, key))) return null;

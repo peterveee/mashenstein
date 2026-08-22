@@ -33,11 +33,13 @@ const assert = (cond, msg) => {
 // The allowlist lives in the engine module, which imports Tone and so cannot be
 // loaded in Node. It is short and it is the thing the catalogue must agree with, so
 // it is restated here — if they drift, the render half of this suite fails anyway.
-// GameSynth and AdditiveSynth are not Tone classes: they are native Web Audio, dispatched
+// KNDO-5 and WNDR-9 are not Tone classes: they are native Web Audio, dispatched
 // by name in `play()` before the Tone allowlist is reached, and they read `$` keys off the
 // entry rather than an `options` bag. They are in the same list because it is the same
 // question — what may a preset's `synth` say.
-const ALLOWED = ['GameSynth', 'AdditiveSynth', 'MRDR-3', 'TNGR-2', 'Synth', 'MonoSynth', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
+// 'Synth' and 'MonoSynth' are the retired names CRLS-1 merged; they stay legal because
+// songs and user presets still carry them, and the engine resolves them onto CRLS-1.
+const ALLOWED = ['KNDO-5', 'GameSynth', 'WNDR-9', 'AdditiveSynth', 'MRDR-3', 'TNGR-2', 'CRLS-1', 'Synth', 'MonoSynth', 'RMND-2', 'FMSynth', 'AMSynth', 'DuoSynth', 'MembraneSynth', 'MetalSynth'];
 // The waveforms an OscillatorNode will take. `pwm` and `pulse` are Tone's and throw on a
 // native oscillator — see NATIVE_WAVES in src/engine/voices.js.
 const NATIVE_WAVES = ['sine', 'square', 'sawtooth', 'triangle'];
@@ -59,7 +61,7 @@ const DRAWBARS = 9;
 // three spellings, one number.
 const MAX_UNISON = 4;
 
-/** Every Tone `oscillator` bag in an options tree — DuoSynth keeps two, under voice0/voice1. */
+/** Every Tone `oscillator` bag in an options tree, however deeply a class nests them. */
 const fatOscillators = (node, found = []) => {
   if (!node || typeof node !== 'object') return found;
   for (const [k, val] of Object.entries(node)) {
@@ -74,9 +76,10 @@ const fatOscillators = (node, found = []) => {
 const all = Object.values(VOICES);
 const tone = all.filter((v) => v.kind === 'tone');
 const engine = all.filter((v) => v.kind === 'engine');
-const noise = all.filter((v) => v.kind === 'noise');
 const drum = all.filter((v) => v.kind === 'drum');
-const KIT = ['Kick', 'Snare', 'Hats', 'Clap', 'Tom', 'Crash', 'Perc'];
+const KIT = ['Kick', 'Snare', 'Hats', 'Clap', 'Tom', 'Crash',
+  // The four the old catch-all `Perc` split into — see VOICE_CATEGORIES for why.
+  'Rim', 'Perc', 'Blip', 'Sweep'];
 const OLD_CATEGORIES = [
   'Basses', 'Leads', 'Pads', 'Organs', 'Bells & Mallets', 'Plucks',
   'Brass & Strings', 'Rough & Electric', 'Kicks', 'Snares', 'Claps',
@@ -84,9 +87,12 @@ const OLD_CATEGORIES = [
 ];
 
 // ---- shape -----------------------------------------------------------------
-assert(tone.length > 0 && engine.length > 0 && noise.length > 0 && drum.length > 0,
-  `the library holds all four kinds (${engine.length} engine, ${tone.length} tone,`
-  + ` ${noise.length} noise, ${drum.length} drum)`);
+// Three kinds, not four. `noise` was the burst-with-a-thump one-shot and is gone —
+// `body` became `osc` and the play path folded into `_playDrum`, so every one-shot in
+// the catalogue is a KLNG8 preset.
+assert(tone.length > 0 && engine.length > 0 && drum.length > 0,
+  `the library holds all three kinds (${engine.length} engine, ${tone.length} tone,`
+  + ` ${drum.length} drum)`);
 // The snares, claps and hats. Their absence was the library's biggest hole: the
 // engine has exactly one of each with no parameters, so they cannot come from
 // harvesting — only from a preset built on the seeded noise buffer.
@@ -97,9 +103,11 @@ for (const c of KIT) {
 }
 // Snares, claps and hats were the library's biggest hole: the engine has exactly one
 // of each with no parameters, so they cannot come from harvesting — only from a
-// preset built on the seeded noise buffer.
+// preset built on the seeded noise buffer. Which they still are; they are drums now
+// because the path that plays them is, not because the construction changed.
 for (const c of ['Snare', 'Clap', 'Hats']) {
-  assert(noise.some((v) => v.category === c), `${c}: is covered by noise presets`);
+  assert(drum.some((v) => v.category === c && v.noise),
+    `${c}: is covered by presets with a noise section`);
 }
 assert(!all.some((v) => OLD_CATEGORIES.includes(v.category)),
   'no loaded preset remains in an old or internal category');
@@ -162,7 +170,7 @@ for (const v of tone) {
   assert(v.level > 0, `${v.id}: carries a measured level (${v.level}), not the placeholder`);
   assert(v.peak > 0 && v.peak !== 1,
     `${v.id}: carries a measured peak (${v.peak}), not the placeholder`);
-  assert(v.synth === 'GameSynth' || v.synth === 'AdditiveSynth' || v.synth === 'MRDR-3'
+  assert(v.synth === 'KNDO-5' || v.synth === 'WNDR-9' || v.synth === 'MRDR-3'
     || v.synth === 'TNGR-2'
     || (v.options && typeof v.options === 'object'),
     `${v.id}: has constructor options or native synth parameters`);
@@ -335,7 +343,7 @@ for (const v of tone.filter((x) => x.synth === 'MRDR-3')) {
 // The game synth's pitch envelope — the same keys and the same units as a layer's, which
 // is the point of the rename. `sweep`/`sweepTime`/`sweepCurve` are read by nothing now, so
 // a preset still carrying one would be a bend that silently stopped happening.
-for (const v of tone.filter((x) => x.synth === 'GameSynth')) {
+for (const v of tone.filter((x) => x.synth === 'KNDO-5')) {
   assert(!('sweep' in v) && !('sweepTime' in v) && !('sweepCurve' in v),
     `${v.id}: states its bend as a pitch envelope, not as the old sweep trio`);
   if (v.pitch) {
@@ -348,7 +356,7 @@ for (const v of tone.filter((x) => x.synth === 'GameSynth')) {
 // which is why they are asserted rather than left to the render half to notice: a stack
 // with no bars pulled out builds no oscillators at all, and `_playAdditive` returns false
 // without a word.
-for (const v of tone.filter((x) => x.synth === 'AdditiveSynth')) {
+for (const v of tone.filter((x) => x.synth === 'WNDR-9')) {
   const a = v.additive;
   assert(a && typeof a === 'object', `${v.id}: has an additive stack to build`);
   assert(Array.isArray(a.bars) && a.bars.length === DRAWBARS,
@@ -374,19 +382,6 @@ for (const v of tone.filter((x) => x.synth === 'AdditiveSynth')) {
   if (a.perc) assert(a.perc.ratio > 0, `${v.id}: strikes a partial above the fundamental`);
 }
 
-for (const v of noise) {
-  assert(v.noise && typeof v.noise === 'object', `${v.id}: has a noise burst to build`);
-  assert(v.noise.decay > 0 && v.noise.decay < 3, `${v.id}: decays in a plausible time`);
-  assert(v.level > 0, `${v.id}: carries a measured level (${v.level}), not the placeholder`);
-  assert(v.peak > 0 && v.peak !== 1,
-    `${v.id}: carries a measured peak (${v.peak}), not the placeholder`);
-  assert(!v.synth, `${v.id}: is native nodes on the engine's seeded buffer, not a Tone class`);
-  if (v.taps) {
-    assert(Array.isArray(v.taps) && v.taps.length > 1 && v.taps[0] === 0,
-      `${v.id}: taps start at the hit and repeat after it`);
-  }
-}
-
 // The KLNG8: four optional sources, so the shape rule is "at least one".
 for (const v of drum) {
   assert(v.osc || v.noise || v.ring || v.metal || v.knock > 0,
@@ -405,6 +400,12 @@ for (const v of drum) {
   assert(v.level > 0, `${v.id}: carries a measured level (${v.level}), not the placeholder`);
   assert(v.peak > 0 && v.peak !== 1,
     `${v.id}: carries a measured peak (${v.peak}), not the placeholder`);
+  // A clap is one hit heard several times, so the first tap IS the hit — a list that
+  // starts anywhere else is a drum that arrives late.
+  if (v.taps) {
+    assert(Array.isArray(v.taps) && v.taps.length > 1 && v.taps[0] === 0,
+      `${v.id}: taps start at the hit and repeat after it`);
+  }
   if (v.osc) {
     assert(v.osc.from > 0 && v.osc.to > 0,
       `${v.id}: pitch sweeps between real frequencies (${v.osc.from} → ${v.osc.to})`);
@@ -430,7 +431,11 @@ for (const v of drum) {
   }
   assert(v.drive === undefined || (v.drive >= 0 && v.drive <= 1),
     `${v.id}: drive stays on the knob's 0–1 range`);
-  assert(!v.shape || ['tanh', 'fold', 'crush'].includes(v.shape),
+  // `soft`, not `tanh`: the soft shaper IS a tanh and was called that once, but the
+  // name the engine defaults to and the panel offers is `soft`, and this list was the
+  // last place the old one survived — so every preset saved with the pill's own value
+  // failed a test that agreed with nothing.
+  assert(!v.shape || ['soft', 'fold', 'crush'].includes(v.shape),
     `${v.id}: names a shaper the engine builds`);
   assert(!v.noise?.color || ['white', 'pink', 'brown', 'blue', 'violet'].includes(v.noise.color),
     `${v.id}: names a noise colour the engine mixes`);
@@ -446,14 +451,71 @@ assert(drum.some((v) => v.osc && v.noise) && drum.some((v) => v.osc && !v.noise)
   && drum.some((v) => !v.osc && v.noise),
 'the drum table exercises both sources together and each on its own');
 
+// The KLNG8 percussion additions are intentionally a small family rather than one
+// canonical answer per request. Keep their lane/category metadata and the construction
+// that makes each family distinctive pinned, so a future catalogue cleanup cannot leave
+// the picker with labels that sound interchangeable or put a tom/conga on the wrong row.
+const requestedPercussion = {
+  cowbells: ['tr808CowbellClassic', 'tr808CowbellLow', 'tr808CowbellHard'],
+  openHats: ['ohatSustainMetal', 'ohatSustainAir', 'ohatSustainWash'],
+  rimshots: ['rimshot808', 'rimshotWood', 'rimshotLaser'],
+  congas: ['congaHigh', 'congaMid', 'congaLow', 'congaSlap'],
+};
+// Stated per family rather than derived, because the answer stopped being "Perc unless
+// it is a hat" when Perc split: a rimshot is a stick and files under Rim, while cowbells
+// and congas are struck instruments and stay.
+const FAMILY_CATEGORY = {
+  cowbells: 'Perc', openHats: 'Hats', rimshots: 'Rim', congas: 'Perc',
+};
+for (const [family, ids] of Object.entries(requestedPercussion)) {
+  const category = FAMILY_CATEGORY[family];
+  assert(ids.every((id) => VOICES[id]?.kind === 'drum'),
+    `KLNG8 ${family}: every requested variant is in the drum bank`);
+  assert(ids.every((id) => VOICES[id]?.category === category),
+    `KLNG8 ${family}: every variant is grouped as ${category}`);
+}
+const is808Cowbell = (id) => {
+  const m = VOICES[id]?.metal;
+  return VOICES[id]?.homeLane === 'tom' && m?.wave === 'square'
+    && m.freq === 540 && m.count === 2 && m.spread === 1
+    && Array.isArray(m.ratios) && m.ratios.length === 2
+    // 0.001 Hz, not 1e-9. The ratio is 800/540, which is 1.481481481… — and
+    // `emitEntry` writes every number as `Number(n.toFixed(6))`, so the file can only
+    // ever hold 1.481481 and a preset storing the full float does not survive being
+    // saved from the desk. Six decimals put the second oscillator at 799.99974 Hz;
+    // the claim worth pinning is that it is 800 and not 805, and a thousandth of a
+    // hertz is four orders of magnitude tighter than anything audible.
+    && Math.abs(m.freq * m.ratios[1] - 800) < 1e-3
+    && m.filter === 'bandpass' && m.hp === 1300 && m.Q >= 3.5 && m.Q <= 5
+    && (m.slope === -12 || m.slope === -24) && m.attack === 0 && m.decay === 0.2
+    && m.floor === 0.001 && m.hardStop === true
+    && m.resonator?.feedback >= 0.9 && m.resonator?.feedback < 1
+    && m.resonator?.drive === 1.4 && m.resonator?.leak === 0.0005;
+};
+assert(['ds808Cowbell', ...requestedPercussion.cowbells].every(is808Cowbell),
+  '808 cowbells: two fixed square oscillators (540/800 Hz) feed the specified bandpass and VCA');
+assert(requestedPercussion.openHats.every((id) => VOICES[id].homeLane === 'ohats'
+  && (VOICES[id].metal?.decay ?? VOICES[id].noise?.decay ?? 0) >= 0.68),
+'KLNG8 open hats: every variant has a genuinely sustained tail');
+assert(requestedPercussion.rimshots.every((id) => VOICES[id].homeLane === 'rim'
+  && VOICES[id].ring?.Q >= 60 && VOICES[id].noise),
+'KLNG8 rimshots: every variant has a narrow ring and a stick/noise crack');
+assert(requestedPercussion.congas.every((id) => VOICES[id].homeLane === 'tom'
+  && VOICES[id].osc?.from > VOICES[id].osc?.to),
+'KLNG8 congas: every variant is a tuned falling body on the tom lane');
+
 // The VL-1 trio is deliberately plain: these are the hardware's three little rhythm
 // syllables, not modern kit variations. Keep the recipes pinned here so a later editor
 // change cannot quietly turn Pi/Po into a generic rim or Sha into an unfiltered hat.
 const vl1Pi = VOICES.vl1Pi;
 const vl1Po = VOICES.vl1Po;
 const vl1Sha = VOICES.vl1Sha;
-assert(vl1Pi?.category === 'Perc' && vl1Po?.category === 'Perc' && vl1Sha?.category === 'Perc',
-  'VL-1 Pi, Po and Sha are grouped as percussion');
+// Blip, not Perc: these are a rhythm machine's own syllables with no acoustic instrument
+// behind them, which is exactly the line Blip draws. They stay together as a set — Sha is
+// a noise shhh and the other two are ticks, but splitting a named family by texture is
+// the mistake the Perc split exists to avoid.
+assert(vl1Pi?.category === 'Blip' && vl1Po?.category === 'Blip' && vl1Sha?.category === 'Blip',
+  'VL-1 Pi, Po and Sha are grouped as Blip');
 assert(vl1Pi?.osc?.type === 'square' && vl1Pi.osc.from === 1000 && vl1Pi.osc.to === 1000
   && vl1Pi.osc.decay === 0.02 && vl1Pi.tone?.type === 'highpass'
   && vl1Pi.tone.freq === 800,
@@ -682,10 +744,21 @@ assert(JSON.stringify(Object.keys(untouched)) === before,
 // ---- does it sound? --------------------------------------------------------
 const A2 = 110;
 const CHORD_LANES = ['chords', 'organChords'];
-const oneNote = (lane) => {
+// The bench's own one-note bank — the same shape tools/lib/measure-voice.js uses, and
+// carrying the same third-case rule: a preset being MEASURED takes its own length.
+// `legacyLaneLength` is right to keep music's lengths off the patch, but there is no
+// music here, and a lane's 1.2-step legacy default measures a slow pad inside its own
+// attack. See the note beside `oneNote` in tools/lib/measure-voice.js.
+const oneNote = (lane, voice = null) => {
   const v = PERCUSSION_LANES.includes(lane) ? true : CHORD_LANES.includes(lane) ? [A2] : A2;
   const rest = PERCUSSION_LANES.includes(lane) ? false : null;
-  return { bpm: 120, [lane]: Array.from({ length: 32 }, (_, i) => (i % 8 === 0 ? v : rest)) };
+  const durKey = VOICE_LANES[lane]?.durKey;
+  const dur = durKey && Number.isFinite(voice?.dur) && voice.dur > 0 ? { [durKey]: voice.dur } : null;
+  return {
+    bpm: 120,
+    ...(dur || {}),
+    [lane]: Array.from({ length: 32 }, (_, i) => (i % 8 === 0 ? v : rest)),
+  };
 };
 
 // Spread the presets over the lanes so every preset renders once and every lane is
@@ -721,7 +794,7 @@ try {
       if (!v.starter) continue;
     }
     const lane = usable.length ? usable[i++ % usable.length] : homeLane(v);
-    const bank = { ...oneNote(lane), [VOICE_LANES[lane].voiceKey]: v.id };
+    const bank = { ...oneNote(lane, v), [VOICE_LANES[lane].voiceKey]: v.id };
     const { peak } = await renderer.render(bank, { repeat: 1, mix: null, trackId: null });
     // What the catalogue SAYS this preset peaks at on this lane: its measured peak,
     // scaled by the gain the engine will play it at. Compared against that rather than
@@ -988,8 +1061,14 @@ try {
   // CHORD, so the drive shaper sitting after the summed global VCA — one shaper for
   // every tone at once — is otherwise never exercised at all. `bestVowelPad` is the
   // heaviest preset in the library; five notes of it measure 1.23× one note.
+  // The length is STATED, because this fixture is auditioning a sound rather than
+  // playing music: `bestVowelPad` opens over 1.2s and the chords lane's legacy default is
+  // 2.6 steps — 325ms at this tempo — which measures the pad inside its own attack and
+  // says nothing about what the drive does to a summed chord. `legacyLaneLength` is right
+  // to keep music's lengths off the patch; a bench has to ask for what it wants.
   const padChord = (notes) => ({
     bpm: 120,
+    chordDur: 8,
     chords: Array.from({ length: 32 }, (_, i) => (i % 8 === 0 ? notes : null)),
     chordsVoice: 'bestVowelPad',
   });
@@ -1038,7 +1117,7 @@ try {
   assert(diffOf(whiteNoise, brownNoise) > 1e-4,
     `and asking for brown gets a different buffer (max diff ${diffOf(whiteNoise, brownNoise).toExponential(2)})`);
 
-  // MRDR-3 and AdditiveSynth are gate-driven melodic instruments. A short note that ends
+  // MRDR-3 and WNDR-9 are gate-driven melodic instruments. A short note that ends
   // during a long Attack/Decay must leave an audible Release tail from the level reached at
   // note-off; the old fixed-duration helper had already forced both voices to silence first.
   const shortGateVoice = (synth, release) => synth === 'MRDR-3'
@@ -1065,7 +1144,7 @@ try {
     }
     return count ? Math.sqrt(sum / count) : 0;
   };
-  for (const synth of ['MRDR-3', 'AdditiveSynth']) {
+  for (const synth of ['MRDR-3', 'WNDR-9']) {
     const [noTail, withTail] = [await gateTake(synth, 0), await gateTake(synth, 0.5)];
     const dryTail = tailRms(noTail, 0.16, 0.25);
     const wetTail = tailRms(withTail, 0.16, 0.25);
@@ -1090,8 +1169,11 @@ try {
     global: { vca: { attack: 0.005, decay: 0.05, sustain: 1, release: 0.05 } },
     level: 0.2, peak: 1,
   });
+  // `leadDur` stated for the same reason as `padChord` above: the layer under test
+  // enters 0.2s in, and the lead lane's legacy default is 1.2 steps — 150ms — so without
+  // it the note has finished before the DELAY this asserts on has done anything.
   const delayTake = async (delay) => (await renderer.render(
-    { bpm: 120, lead: Array.from({ length: 16 }, (_, i) => (i === 0 ? 220 : null)) },
+    { bpm: 120, leadDur: 8, lead: Array.from({ length: 16 }, (_, i) => (i === 0 ? 220 : null)) },
     { repeat: 1, mix: { voiceParams: { leadVoice: twoLayer(delay) } }, trackId: 'layerdelay' })).outL;
   const together = await delayTake(0);
   const late = await delayTake(0.2);
@@ -1136,7 +1218,16 @@ try {
   const leap = (fromHz) => ({
     bpm: 120,
     bass: Array.from({ length: 32 }, (_, i) => (i === 0 ? fromHz : i === 4 ? 55 : null)),
-    bassLen: [4.05],
+    // BOTH notes state their length. The first slurs 0.05 past the second's start (see
+    // above); the second used to take its length from the patch, which is the fallback
+    // `legacyLaneLength` deliberately removed — a note nobody has measured must not change
+    // length when the lane is pointed at another sound. It now takes the bass lane's
+    // 1.8-step default instead of this patch's 1.6, and a fifth of a step is enough to
+    // move the release tail this asserts on: the settled window sits 250ms after note-on,
+    // well past a note that is 200ms long either way, so what it measures is where the
+    // decay has got to. Stated outright, because a bench auditioning a GLIDE has no
+    // business inheriting its note length from anywhere.
+    bassLen: [4.05, null, null, null, 1.6],
     bassVoice: 'bestPwmGrowlBass',
   });
   const fromOctave = (await renderer.render(leap(110), { repeat: 1, mix: null, trackId: null })).outL;

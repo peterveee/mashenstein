@@ -124,6 +124,50 @@ const suites = [
   // an AudioWorkletProcessor live AND in the OfflineAudioContext its stems come out of.
   // Kept as a permanent regression now that it passes — see docs/TNGR-2-completion-spec.md §3.
   'tests/tngr2-worklet-proof.js',
+  // The same gate, asked again for MRDR-3 — and worth asking twice rather than inheriting,
+  // because MRDR-3 puts one thing in front of the mechanism that TNGR-2 never did: a CHORD
+  // is ONE event whose tones sum into one shaper (docs/MRDR-3-worklet-spec.md §5.1), so the
+  // unit that has to survive a stem, a panic and a teardown is the GROUP, not the note.
+  'tests/mrdr3-worklet-proof.js',
+  // The rule about a STRING that nothing else would enforce: two dispatch identities
+  // exist during the worklet project and only one may ever be seen by a player, and the
+  // native-only cache machinery must stay unreachable from the family predicate — which
+  // is what makes "an AW lane never caches" a fact rather than an intention (§1.1, §10).
+  // Browserless: every claim is about the catalogue or about source text.
+  'tests/mrdr3-identity.js',
+  // The Tier-A claim, node by node: the fidelity strategy says most of MRDR-3's path is
+  // built from nodes the spec DEFINES, so porting them is transcription rather than
+  // redesign — and that assertion is worth exactly what this suite measures. It is also
+  // where the a-rate coefficient question was settled by measurement rather than
+  // assumption (docs/MRDR-3-worklet-spec.md §3.1, §13).
+  'tests/mrdr3-primitives.js',
+  // And the fourth Tier-A port, which is the one the migration's SIZE depends on: if the
+  // timeline evaluates automation the way an AudioParam does, the engine's envelope
+  // builders can be shared rather than re-derived, and envelope shape drops off the
+  // ear-approval list entirely (docs/MRDR-3-worklet-spec.md §3.2).
+  'tests/mrdr3-params.js',
+  // The one primitive the spec does NOT define, so the one that cannot be a
+  // transcription: the band-limited oscillator. Browserless, because what can be settled
+  // without the ear is whether it is band-limited at all, whether it steps at a mip
+  // boundary, and whether it is deterministic — which are the three ways a wavetable
+  // oscillator goes wrong (docs/MRDR-3-worklet-spec.md §3.3).
+  'tests/mrdr3-osc.js',
+  'tests/mrdr3-finite.js',
+  // What the core does with a backlog when the pull comes back. Its own suite because the
+  // strand it describes is invisible from every other angle — the port answers, no fault
+  // is raised, and the counters that would show it only move inside `process`.
+  'tests/mrdr3-stale.js',
+  'tests/note-cache-urgent.js',
+  // The rule the whole project depends on, made checkable: ONE core string, two hosts,
+  // compared at ZERO tolerance. The moment the live path and the render path compute
+  // anything differently, a stem stops matching the mix it came from and every baseline
+  // becomes a guess. Carries the purity scan, block-size invariance and the stray-backtick
+  // guard with it, because they are the same claim (docs/MRDR-3-worklet-spec.md §11).
+  'tests/mrdr3-dsp-parity.js',
+  // Lifecycle: one persistent node per lane, notes as messages, a patch edit reaching a
+  // standing lane without rebuilding it, and the two delivery paths that TNGR-2's proof
+  // gate showed are not interchangeable (docs/MRDR-3-worklet-spec.md §6).
+  'tests/mrdr3-controller.js',
   // The DSP core on its own, in Node — browserless, which is itself the claim: the core
   // takes its rate as an argument and is handed its frame, so it reaches for no worklet
   // global and the same source runs in both hosts.
@@ -153,10 +197,20 @@ const suites = [
   // And the third thing a preset file has to be true about: that every key in it has a
   // control, and every control has a key behind it. Reads the engine's own `v.<key>`
   // accesses and the panel's row definitions and requires the two to agree per play path —
-  // the drift it was written for had hidden eight GameSynth lengths, five tap arrays and
+  // the drift it was written for had hidden eight KNDO-5 lengths, five tap arrays and
   // the whole shape of `clapEngine`. Source reading, so it also runs in a blink.
   'tests/pot-coverage.js',
+  // The choke: a hit releasing whatever else in its group is still ringing, across the
+  // drum path and the pooled one. Runs on a stub context, because what it asserts is
+  // which automation gets written and when, not what it sounds like.
+  'tests/drum-choke.js',
   'tests/key-mode.js',
+  // The other half of KEY MODE, and the half nothing sequenced can reach: three keys
+  // DOWN and one let go. A note with a length has no note-off, so the whole of last-note
+  // priority under a finger — who is speaking, who comes up in silence, and what the note
+  // falls back to — lives only here. Every path that can sound a held note is in it,
+  // because each of them had a different half of it wrong.
+  'tests/held-keys.js',
   'tests/lfo.js',
   'tests/osc-sync.js',
   // And the half of that claim pot-coverage cannot make. It agrees at ROOT-key
@@ -167,6 +221,10 @@ const suites = [
   // The graphs are a second grip on those controls: graph gestures move the pots, and pot
   // gestures redraw the graphs without rebuilding the card under the pointer.
   'tests/synth-graphs.js',
+  // And the control that is neither pot nor pill: the long-list dropdown WAVE TABLE is
+  // drawn as. It has to redraw ITSELF on a pick — nothing on either surface repaints the
+  // card for it — or it names the wrong family and then refuses the click back.
+  'tests/synth-dropdown.js',
   // Undo uses one snapshot per completed edit, with continuous pot/graph drags coalesced
   // into one step rather than filling the stack with pointermove frames.
   'tests/mixer-undo.js',
@@ -200,6 +258,12 @@ const suites = [
   // notes and counts their zero crossings, so it is a browser suite that finishes in
   // about a second.
   'tests/pitch-curve.js',
+  // And the same rig again for the game synth's Effects card, which is the newest thing
+  // in the rack that a stub could not judge: a WaveShaper curve and a delay-line chorus.
+  // Six renders of one preset, and the check that matters most is the cheapest one: a
+  // preset naming the new keys at zero comes back bit-for-bit identical to what this
+  // path rendered before the card existed.
+  'tests/game-synth-effects.js',
   'tests/shop-themes.js',
   'tests/shop-menu.js',
   'tests/trophy-workshop.js',
@@ -288,15 +352,23 @@ const suites = [
 // `npx playwright install chromium` fails all of them at the launch rather than at an
 // assertion; that is the second reason not to fire them off unasked.
 const browserSuites = new Set([
+  'tests/held-keys.js',
   'tests/tngr2-audio.js',
   'tests/tngr2-jit-bounce.js',
   'tests/tngr2-worklet-proof.js',
+  'tests/mrdr3-worklet-proof.js',
+  'tests/mrdr3-primitives.js',
+  'tests/mrdr3-params.js',
+  'tests/mrdr3-dsp-parity.js',
+  'tests/mrdr3-controller.js',
   'tests/tngr2-dsp-parity.js',
   'tests/beat-detect-audio.js',
   'tests/mixer-loop.js',
   'tests/song-loop.js',
   'tests/voice-edit.js',
+  'tests/synth-dropdown.js',
   'tests/pitch-curve.js',
+  'tests/game-synth-effects.js',
   'tests/sfx-routing.js',
   'tests/note-duration.js',
   'tests/song-switch.js',
@@ -346,9 +418,10 @@ const soundSuites = [
   'tests/arrangement.js', 'tests/fine-tick-scheduling.js', 'tests/swing.js',
   'tests/piano-roll.js', 'tests/note-recorder.js',
   'tests/song-processing.js',
-  'tests/preview.js', 'tests/key-mode.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
+  'tests/preview.js', 'tests/key-mode.js', 'tests/held-keys.js', 'tests/layers.js', 'tests/track-order.js', 'tests/lfo.js',
   'tests/formants.js', 'tests/osc-sync.js', 'tests/mrdr3-playground.js', 'tests/tngr2-audio.js',
-  'tests/tngr2-worklet-proof.js', 'tests/tngr2-dsp.js', 'tests/tngr2-dsp-parity.js',
+  'tests/tngr2-worklet-proof.js', 'tests/mrdr3-worklet-proof.js', 'tests/mrdr3-primitives.js', 'tests/mrdr3-params.js', 'tests/mrdr3-dsp-parity.js', 'tests/mrdr3-controller.js',
+  'tests/tngr2-dsp.js', 'tests/tngr2-dsp-parity.js',
   'tests/tngr2-tables.js', 'tests/tngr2-schema.js', 'tests/tngr2-controller.js',
   // The preset schema: defaults, validation, and the migration that has to carry all 43
   // prototype-shaped presets into v1 without changing what any of them was measured at.
@@ -356,9 +429,10 @@ const soundSuites = [
   // Lifecycle and exports: one node per lane, stems summing to their mix, and a range
   // render matching the same range inside a full one.
   'tests/tngr2-controller.js',
-  'tests/synth-full-layout.js', 'tests/synth-graphs.js', 'tests/pot-coverage.js',
+  'tests/synth-full-layout.js', 'tests/synth-graphs.js', 'tests/synth-dropdown.js',
+  'tests/pot-coverage.js',
   'tests/effect-presets.js', 'tests/voice-edit.js', 'tests/voice-source.js',
-  'tests/sfx-routing.js', 'tests/pitch-curve.js',
+  'tests/sfx-routing.js', 'tests/pitch-curve.js', 'tests/game-synth-effects.js',
   'tests/note-duration.js', 'tests/song-switch.js', 'tests/bar-gain.js', 'tests/music-variant.js',
   'tests/music-variant-render.js', 'tests/null-test.js', 'tests/render-length.js',
   'tests/new-effects.js',

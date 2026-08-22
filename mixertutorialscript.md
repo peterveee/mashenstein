@@ -114,7 +114,7 @@ in: cards 5 to 13 all use it as their subject.*
 > page.
 >
 > This EQ is fixed-frequency — 250, 1.2k and 4k, plus or minus 18 dB. For anything else,
-> insert a parametric.
+> insert a Channel EQ.
 
 ### 6 — the sends
 

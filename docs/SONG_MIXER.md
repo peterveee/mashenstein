@@ -61,6 +61,27 @@ for every panel's minimum scrolls the desk rather than pushing them off the scre
 
 ---
 
+### Dropdowns
+
+Every dropdown on the desk is the desk's own — the closed field and the open list both.
+
+A native `<select>` can be styled down to its border and no further: the list it opens
+belongs to the operating system, its font included, and no CSS property reaches inside
+it. On a desk with nine themes that made every dropdown a slab of Aqua dropped over the
+mix the moment it was opened, and the one control here that could not be read at the size
+everything else is read at. Fields and lists are now **12px** across the whole desk,
+whatever column they sit in.
+
+They behave the way the closed field says they do: click or `Enter` opens, arrows walk
+the list (stepping past any row that is closed), `Enter` takes the row under them, `Esc`
+and `Tab` shut it, and a list with no room below it opens upwards with its chevron turned
+over. A list inside a dialog opens **in front** of the dialog.
+
+Under the hood the native control is still there, out of the layout, holding the value —
+which is why every panel's existing wiring works unchanged. See `tools/mixer-select.js`;
+new dropdowns need no registration, because the sweep watches the document rather than a
+list of call sites.
+
 ## Header
 
 ### Song
@@ -1213,7 +1234,7 @@ Master trim on top of the bank's own `musicTrim`, the limiter as a
 built-in card, and six insert slots. Its fader is the same fader as every channel's —
 same −60…+6 range, same taper. It used to run −24…+12, which made it the one strip
 that could be pushed somewhere none of the channels feeding it could follow. No EQ rows: there is no EQ node on the master
-path, and a Parametric EQ in an insert slot is a better EQ than three fixed bands.
+path, and a Channel EQ in an insert slot is a better EQ than three fixed bands.
 
 ---
 
@@ -1258,7 +1279,7 @@ Grouped, and **priced** with each effect's measured cost as a percentage of one 
 
 | Group | Effects |
 | --- | --- |
-| Level & EQ | Gain, Parametric EQ, Vowel Filter, Filter |
+| Level & EQ | Gain, Channel EQ, Bell EQ, Vowel Filter, Filter |
 | Delay | Advanced Delay, Delay, Ping-Pong Delay |
 | Modulation | Chorus, Phaser, Tremolo, Vibrato, Auto Filter, Auto Wah, Auto Panner |
 | Drive | Exciter, Distortion, Chebyshev |
@@ -1328,6 +1349,91 @@ Advanced Delay's, the Doubler's two. One word for one gesture, so there is nothi
 learn per effect. (The saved parameter behind it still reads `pan`, `dryPan` or `wetPan`
 on the older three: the keys are what mixes on disk hold, and renaming those would read
 as a reset of every song carrying one.)
+
+#### Channel EQ
+
+Five bands, and the card is the curve rather than thirteen sliders.
+
+| Band | | Default | Range |
+| --- | --- | --- | --- |
+| **LOW** | low shelf | 120 Hz | 20 Hz – 500 Hz |
+| **LOW-MID** | peak | 500 Hz | 80 Hz – 2 kHz |
+| **MID** | peak | 1 kHz | 250 Hz – 4 kHz |
+| **HIGH-MID** | peak | 2 kHz | 400 Hz – 8 kHz |
+| **HIGH** | high shelf | 6 kHz | 2 kHz – 16 kHz |
+
+Gains are ±18 dB; the three peaks take a Q of 0.2–10, and the shelves say `SHELF` where
+their Q would be, because a `BiquadFilterNode` shelf ignores it and a control the effect
+will not read is worse than no control.
+
+The middle band is the one a four-band EQ makes you borrow a neighbour for. Presence,
+honk, the body of a snare and the fundamental of most vocals all sit within an octave of
+1 kHz, and reaching it used to mean dragging LOW-MID up from 500 or HIGH-MID down from
+2 k and then having nowhere left to put the band you had moved.
+
+**Drag** a handle to move a band; **shift** for gain only, **alt** for frequency only,
+**wheel** over a peak for its Q, **double-click** to reset that band. The numbers under
+the graph are draggable and typable too — `2.4k`, `2400` and `2k4` all mean the same
+thing — and clicking a band's name resets it.
+
+The band being touched is drawn faintly on its own behind the total, so a dip you are
+making can be told apart from what the four you are not are doing. A band sitting at 0 dB
+greys its own gain readout: it is not doing anything, and it says so before you read it.
+
+*Behind the card:* five native `BiquadFilterNode`s in series, and nothing from Tone —
+Tone.Filter is one band, Tone.EQ3 is a fixed three-way crossover, and each Tone.Filter
+would bring four `ConstantSourceNode`s along to drive its parameters, which is twenty
+permanently-running generators for five filters that need none. The order they run in is
+for reading, not for sound: biquads in series commute. With every band at 0 dB the card
+is exactly transparent.
+
+#### Bell EQ
+
+One parametric band — **FREQ**, **GAIN**, **Q** — and nothing else.
+
+The Channel EQ next to it is five bands and a graph, and it is the right card when the
+question is *what shape does this channel want*. It is the wrong card when the question
+is *there is a ring at 800Hz*: you open a thirteen-parameter surface, work out which
+band's range covers 800, and leave four bands you never touched sitting in the saved mix.
+This is the surgical one. Two of them in a chain are two problems fixed, in the order you
+fixed them, each on its own slot you can bypass on its own.
+
+A peaking bell, with no shape dropdown: at Q 0.4 it is already a broad tilt and at Q 8
+it is already a notch, so the ends of the Q pot cover what a shelf and a cut would have
+needed a menu for. FREQ spans 20Hz–18kHz on the same log taper the Channel EQ's graph
+uses, and GAIN stops at ±18dB — the Channel EQ's band range, not the Gain card's ±24,
+because the same control must not have more travel on one card than on the other.
+
+At 0dB it is exactly transparent: a peaking biquad at unity gain has an identical
+numerator and denominator, so a Bell EQ you inserted and did not touch renders the
+samples the strip always did.
+
+#### EQ presets
+
+Both EQ cards carry a **PRESET** row, the same one the Vowel Filter has, and both call
+their untouched state **Flat** rather than Default — it is the entry you reach for to
+reset the card, so it says what it does. Picking a preset writes every one of the card's
+parameters, so what you hear is the whole preset and not the preset over whatever was
+there before; changing anything afterwards drops the row to **Custom**.
+
+| Bell EQ | | Channel EQ | |
+| --- | --- | --- | --- |
+| **Flat** | the reset | **Flat** | the reset |
+| **Sub Lift** | 45Hz, +5, wide | **Bass Boost** | low shelf up, a touch off the top |
+| **Bass Boost** | 80Hz, +6, wide | **Treble Boost** | high shelf up with the upper mids behind it |
+| **Mud Cut** | 300Hz, −5 | **Air Lift** | 12kHz shelf only — top without brightness |
+| **Boxy Cut** | 450Hz, −6, tight | **Smiley** | loudness curve: lows and highs up, mids dipped |
+| **Presence** | 3kHz, +4 | **Mid Scoop** | the dip on its own, no shelves |
+| **De-Harsh** | 3.2kHz, −6, narrow | **Vocal Lift** | lows and mud down, presence and air up |
+| **Treble Boost** | 8kHz, +5, wide | **Drum Punch** | thump up, box out, attack and air up |
+| **Air** | 12kHz, +4 | **Warm & Round** | weight up, top rolled off |
+| | | **De-Harsh** | one narrow cut at 3.2kHz |
+| | | **Honk Cut** | the middle band alone, −6 at 900Hz |
+| | | **Telephone** | both shelves buried, the mids left standing |
+
+The rule the boosts and cuts follow is the one an engineer works by: **boost wide, cut
+narrow**. A boost is shaping and wants to sound like nothing in particular; a cut is
+fixing one thing and wants to leave everything either side of it alone.
 
 #### Gain
 
@@ -1447,9 +1553,10 @@ out of it spread. And at WET 0 it is sample-exact transparent, dry balance inclu
 costs nothing but CPU when it is turned down.
 
 Everything here has been verified to render in an offline context, because WAVs, stems
-and videos are produced by rendering the engine offline. BitCrusher, JCReverb and
-Freeverb are deliberately absent: they measure silent offline, so they would sound
-right while you mixed them and then vanish from everything you exported.
+and videos are produced by rendering the engine offline. JCReverb and Freeverb remain
+deliberately absent because their AudioWorklet versions measure silent offline. Bit
+Crusher is native and offline-safe; its card is intentionally limited to BITS,
+DOWNSAMPLE, and MIX, leaving distortion to the separate Distortion effect.
 
 ### Cards
 

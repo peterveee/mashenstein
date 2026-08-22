@@ -22,6 +22,7 @@ import { midiBuffer } from './lib/render-midi-bank.js';
 import { bankFromMidi } from './lib/midi-import.js';
 import { writeImportedIndex, importId, slugFor, IMPORTED_DIR, SCRATCH_DIR, SONG_DIRS, songFileIn } from './lib/imported-index.js';
 import { buildVisualiserHtml } from './build-visualiser.js';
+import { MIXER_BRAND } from './mixer-brand.js';
 // Through lib/tracks.js, not src/data/tracks.js: that is what registers the songs in
 // src/data/imported/ as tracks, so an import is renderable without a restart.
 import { resolveTrack, listTracks, registerTrack, unregisterTrack } from './lib/tracks.js';
@@ -104,6 +105,7 @@ async function buildPage() {
   const js = out.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
   const shell = readFileSync(join(ROOT, 'tools/mixer-shell.html'), 'utf8');
   return shell
+    .replaceAll('/*__MIXER_BRAND__*/', () => MIXER_BRAND)
     .replace('/*__MIXER_DEV_USER__*/', () => String(DEV_USER))
     .replace('/*__BUNDLE__*/', () => js);
 }
@@ -817,7 +819,7 @@ const server = createServer(async (req, res) => {
         mix,
         arrangement: normaliseArrangementResolution(source.bank, compactArrangement(source.bank, arrangement)),
         variants,
-        note: `A copy of ${source.title} (${sourceId}), taken from the Song Mixer.\n`
+        note: `A copy of ${source.title} (${sourceId}), taken from the ${MIXER_BRAND}.\n`
           + `Everything below is that song as the desk had it at the moment of the copy.\n`
           + `It is a snapshot and nothing more: the game does not play this file, no\n`
           + `cabinet can select it, and ${source.title} is untouched by anything done here.`,
@@ -910,7 +912,7 @@ const server = createServer(async (req, res) => {
         mix,
         arrangement: normaliseArrangementResolution(parent.bank, compactArrangement(parent.bank, arrangement)),
         variants,
-        note: `An alternate of ${parent.title} (${parentId}), saved from the Song Mixer.\n`
+        note: `An alternate of ${parent.title} (${parentId}), saved from the ${MIXER_BRAND}.\n`
           + `The music below is ${parent.title}'s, copied as it stood. The game can play\n`
           + `this file when the alternate is selected; "Save over ${parent.title}" in the desk\n`
           + `is still the separate operation that replaces the parent song.`,
@@ -1684,7 +1686,7 @@ server.on('error', (err) => {
 // song file, say) must not take the port.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   server.listen(PORT, HOST, () => {
-    console.log(`song mixer: http://${HOST}:${PORT}/`);
+    console.log(`${MIXER_BRAND}: http://${HOST}:${PORT}/`);
     // Named as the folder rather than as one file: a save rewrites the song you are
     // on, below its own desk marker. Saying src/data/mix.js was true when every mix
     // lived in one file and stopped being true the moment they did not — and a

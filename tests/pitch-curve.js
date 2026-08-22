@@ -132,7 +132,7 @@ async function main() {
         // +36 semitones is three octaves above the written note, so the note starts at
         // FROM and arrives at TO — the same interval as the drum case, stated the way a
         // melodic preset states it now: an envelope, in semitones, on `.detune`.
-        { synth: 'GameSynth',
+        { synth: 'KNDO-5',
           waveform: 'sine',
           attack: 0.002,
           release: 0.05,

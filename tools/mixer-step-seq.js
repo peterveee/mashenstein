@@ -65,6 +65,7 @@ const BACKBEAT = '....x.......x...';       // megamix's HOUSE_BACKBEAT
 const OFFBEAT = '..x...x...x...x.';        // HOUSE_HATS — `seq('. . C1 .')` cycled
 const AND = '......x.......x.';            // HOUSE_OHATS
 const RIM_OFF = '...x......x.....';        // HOUSE_RIM_OFF
+const NO_OFFBEAT = 'xx.xxx.xxx.xxx.x';     // sixteenths with OFFBEAT's steps taken out
 const OFF16 = '................';
 
 /**
@@ -96,6 +97,7 @@ const OFF16 = '................';
  */
 const FIGURES = [
   ['Sixteenths', 'xxxxxxxxxxxxxxxx'],
+  ['16th-Offbeat', NO_OFFBEAT],
   ['Eighths', 'x.x.x.x.x.x.x.x.'],
   ['Offbeat', OFFBEAT],
   ['Four on the floor', FOUR],
@@ -185,13 +187,25 @@ const GROOVES = [
  * programmed must not wipe it, and the groove is the next button along.
  */
 export const KITS = [
+  // `ds808Hat`, `ds909Hat` and `hatClosed` were the closed hats these three kits named
+  // until they were dropped from the library, which left the lane falling back rather
+  // than erroring — see the kit-voice check in tests/arrangement.js. The open partners
+  // survived, so each kit is re-paired below with the nearest closed hat still offered.
+  //
+  // 808: the deleted one was a metal cluster clipped to a tick, and no metallic closed
+  // hat is left at all. `hatGrit` is the only survivor with drive on it — a square
+  // sitting in a resonant band, pushed hard — so it keeps the electronic edge the 808
+  // hat is for, at the cost of being darker than the original.
   ['808', {
     kick: 'ds808Kick', snare: 'ds808Snare', clap: 'ds808Clap',
-    hats: 'ds808Hat', ohats: 'ds808OpenHat', tom: 'ds808Tom',
+    hats: 'hatGrit', ohats: 'ds808OpenHat', tom: 'ds808Tom',
   }],
+  // 909: the closest match left, and close on the numbers rather than by name — highpass
+  // 7.8k against the deleted one's 7.2k, decay 0.032 against 0.035. Its Q is 1.2, which
+  // is `ds909OpenHat`'s Q exactly, so the closed and open pair still read as one hat.
   ['909', {
     kick: 'ds909Kick', snare: 'ds909Snare', clap: 'ds909Clap', rim: 'ds909Rim',
-    hats: 'ds909Hat', ohats: 'ds909OpenHat', tom: 'ds909Tom', crash: 'ds909Crash',
+    hats: 'dsHatClosed', ohats: 'ds909OpenHat', tom: 'ds909Tom', crash: 'ds909Crash',
   }],
   ['CR-78', {
     kick: 'dsCr78Kick', snare: 'dsCr78Snare', clap: 'dsCr78Clap',
@@ -201,9 +215,14 @@ export const KITS = [
     kick: 'dsKick', snare: 'dsSnare', clap: 'dsClap', rim: 'dsRim',
     hats: 'dsHatClosed', ohats: 'dsHatOpen', tom: 'dsTom',
   }],
+  // The kick, tom and crash here were the Tone drum classes and are KLNG8 now — the same
+  // three sounds, built the way everything else in the kit already was.
+  // Studio: this kit is the game's own drums as presets — `snareCrisp` is the engine
+  // snare, and `hatEngine` is the engine's closed hat, exactly. The deleted `hatClosed`
+  // was the plain tick standing in for it, so this is the sound the kit was reaching for.
   ['Studio', {
-    kick: 'kickPunch', snare: 'snareCrisp', clap: 'clap808', rim: 'rimWood',
-    hats: 'hatClosed', ohats: 'hatOpen', tom: 'tom', crash: 'metalCrash',
+    kick: 'ds909KickPunch', snare: 'snareCrisp', clap: 'clap808', rim: 'rimWood',
+    hats: 'hatEngine', ohats: 'hatOpen', tom: 'ds909Tom', crash: 'ds909Crash',
   }],
 ];
 
@@ -291,6 +310,7 @@ export function createStepSeq({
   // selects the channel, and the mute moves into the row's own menu where it can say
   // which bars it means.
   onPickLane = null, currentLane = () => null,
+  onDoubleClickStep = null,
 }) {
   // The rows as last drawn. Reset when the panel closes, when the song changes, and
   // when the desk says the lane set really has changed — see `forgetRows`.
@@ -334,6 +354,7 @@ export function createStepSeq({
     // the panel's header row survives a fold and these must not, and a column of track
     // names has no blank half to hold them the way the roll's keyboard does.
     docked, wholeSong, scopeToggle, headerHost, selectedBars, onSelectBars,
+    onDoubleClickStep,
     // Follows the song's grid. The pattern editor can RENDER any of them — the shared
     // grid engine is generic — but has no picker of its own yet, so it cannot promote a
     // song onto one. Drawing a triplet still starts in the roll; see the plan.
@@ -415,7 +436,7 @@ export function createStepSeq({
       // click is on the whole row, so it works from the cells too.
       const pick = document.createElement('button');
       pick.className = 'ssqpick';
-      pick.textContent = '▾';
+      pick.textContent = '+';
       pick.title = `Rhythms for ${row.label} — laid down across ${c.actionSpan}`;
       pick.onclick = (ev) => laneMenu(ev, row.lane);
       return [num, led, name, pick];
@@ -572,6 +593,8 @@ export function createStepSeq({
     restoreViewState: grid.restoreViewState,
     refresh: grid.refresh,
     follow: grid.follow,
+    armPendingPlayback: grid.armPendingPlayback,
+    clearPendingPlayback: grid.clearPendingPlayback,
     focusRange: grid.focusRange,
     armFollow: grid.armFollow,
     songChanged() { kitOrder = null; grid.songChanged(); },

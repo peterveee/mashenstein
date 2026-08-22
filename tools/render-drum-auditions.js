@@ -1,4 +1,4 @@
-// Render the KLNG8 presets so they can be heard rather than read.
+// Render the KLNG-8 presets so they can be heard rather than read.
 //
 // One WAV per DRUM preset, four hits on the lane the preset naturally belongs to,
 // through the real engine — the same offline render every WAV, stem and video uses,
@@ -20,7 +20,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, 'work', 'auditions', 'klng8');
 mkdirSync(outDir, { recursive: true });
 
-// Where each preset is most at home. The sound is the same anywhere — a KLNG8
+// Where each preset is most at home. The sound is the same anywhere — a KLNG-8
 // preset carries its own tuning — but each lane has its own measured level target,
 // and auditioning on the lane it will actually be chosen on auditions that too.
 const LANE_OVERRIDE = { dsHatOpen: 'ohats', dsZap: 'crash' };
@@ -63,4 +63,4 @@ try {
 } finally {
   await renderer.close();
 }
-console.log(`\n${drums.length} KLNG8 presets auditioned — dist/klng8-auditions/`);
+console.log(`\n${drums.length} KLNG-8 presets auditioned — dist/klng8-auditions/`);

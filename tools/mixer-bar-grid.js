@@ -159,6 +159,23 @@ const OVERSCAN = 6;
 const BAR_OVERSCAN = 1;
 
 /**
+ * How a scrolling roll follows the transport — three fractions of the visible strip.
+ *
+ * `LEAD` is where the playhead LANDS after the view moves: close to the left edge, so
+ * everything behind it on screen is music still to come. `TRAIL` is how near the right
+ * edge it has to get before the view moves at all — the roll pages rather than creeps,
+ * because a field that slides under a note you are reading is harder to read than one
+ * that jumps once a screen. `REARM_FROM`/`REARM_TO` are the band where a hand that
+ * scrolled away hands the time axis back: narrower than the trigger on purpose, so
+ * the handover happens where the playhead can sit for a while rather than at the edge
+ * it is about to leave.
+ */
+const FOLLOW_LEAD = 0.08;
+const FOLLOW_TRAIL = 0.04;
+const FOLLOW_REARM_FROM = 0.05;
+const FOLLOW_REARM_TO = 0.8;
+
+/**
  * The arrows, as a step and a row.
  *
  * Rows run highest-first, so UP is a row less — the one place in this file where the
@@ -487,8 +504,6 @@ export function createBarGrid({
   // and is deliberately a separate callback so a beat drag never changes the
   // arrangement's selected bars underneath the editor.
   selectedTime = null, onSelectTime = null,
-  locatorPositions = null, onLocatorContextMenu = null,
-  onLocatorMove = null, onLocatorMoveEnd = null,
   onTimeContextMenu = null,
   onDoubleClickStep = null,
   onSelectTimeEnd = null,
@@ -549,6 +564,10 @@ export function createBarGrid({
   let range = { from: 0, to: 0 };
   let colCells = new Map();  // `${bar}:${slot of a column's start}` -> the cells in it
   let lit = [];             // the column the playhead is standing on
+  // A ruler double-click is a request to hear a place, not an instantaneous claim that
+  // the place is already sounding. Keep the requested bar lit until the heard playhead
+  // arrives there; this is the roll's counterpart to the timeline's pending region.
+  let pendingPlaybackRange = null;
   let paint = null;         // the value a drag is painting, decided by its first cell
   let autoBar = null;       // first bar of the two-bar page being heard
   let rulerLabel = '';      // the ruler's own corner, named by the panel
@@ -579,8 +598,7 @@ export function createBarGrid({
   // it travels sideways on the same `--roll-scroll-x` the ruler's own cells do.
   let selBand = null;
   let timeBand = null;
-  let locatorClip = null;
-  let locatorDrag = null;
+  let pendingBand = null;
   // The bars strip's own cell container, held rather than looked up: it is the time axis
   // as MEASURED, and both the playhead and the bar window read it — see `rulerCells`.
   let barCellsEl = null;
@@ -981,68 +999,6 @@ export function createBarGrid({
     timeBand.style.width = `${Math.max(0, right + stepWidth() - left)}px`;
   }
 
-  /** Position the piano-roll's locator pins in the same measured field as the notes. */
-  function placeLocatorPins() {
-    if (!locatorClip) return;
-    locatorClip.replaceChildren();
-    const positions = locatorPositions?.() || null;
-    if (!positions) return;
-    const unit = slotUnit();
-    for (const [id, value] of Object.entries(positions)) {
-      if (!Number.isFinite(Number(value))) continue;
-      const rendered = Math.max(0, Number(value) / unit);
-      const bar = Math.floor(rendered / slots);
-      const step = Math.max(0, Math.min(slots - 1, Math.round(rendered - bar * slots)));
-      const left = fieldXFine(bar, step);
-      if (left == null) continue;
-      const pin = document.createElement('button');
-      pin.type = 'button';
-      pin.className = `ssqlocator locator-${String(id).toLowerCase()}`;
-      pin.dataset.locator = id;
-      pin.style.left = `${left}px`;
-      pin.setAttribute('aria-label', `Locator ${id}`);
-      pin.dataset.tip = `Locator ${id}`;
-      pin.dataset.tipsays = 'Right-click for loop, note selection, erase and locator actions';
-      pin.addEventListener('pointerdown', (ev) => {
-        if (ev.button !== 0) return;
-        ev.preventDefault();
-        ev.stopPropagation();
-        locatorDrag = { id, pin, value: Number(value) };
-        pin.classList.add('dragging');
-        const move = (e) => {
-          if (!locatorDrag || !(e.buttons & 1)) return;
-          const step = stepUnder(e);
-          if (step == null) return;
-          const next = Math.max(0, Math.round(step * unit));
-          locatorDrag.value = next;
-          onLocatorMove?.(id, next);
-          const nextBar = Math.floor(step / slots);
-          const nextStep = step % slots;
-          const nextLeft = fieldXFine(nextBar, nextStep);
-          if (nextLeft != null) pin.style.left = `${nextLeft}px`;
-        };
-        const stop = () => {
-          removeEventListener('pointermove', move);
-          removeEventListener('pointerup', stop);
-          removeEventListener('pointercancel', stop);
-          const done = locatorDrag;
-          locatorDrag = null;
-          pin.classList.remove('dragging');
-          if (done) onLocatorMoveEnd?.(done.id, done.value);
-        };
-        addEventListener('pointermove', move);
-        addEventListener('pointerup', stop);
-        addEventListener('pointercancel', stop);
-      });
-      pin.addEventListener('contextmenu', (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        onLocatorContextMenu?.(ev, id, Number(value));
-      });
-      locatorClip.append(pin);
-    }
-  }
-
   // ---- drawing ---------------------------------------------------------------------
 
   /**
@@ -1204,11 +1160,15 @@ export function createBarGrid({
       if (!ev.target?.closest?.('.ssqruler')) return;
       const step = stepUnder(ev);
       if (step == null) return;
-      const beat = Math.max(0, Math.floor(step / Math.max(1, slots / 4))
-        * Math.max(1, slots / 4));
+      const barRow = !!ev.target.closest('.ssqbars');
+      const beatColumns = Math.max(1, slots / 4);
+      const spanColumns = barRow ? slots : beatColumns;
+      const startColumn = Math.max(0, Math.floor(step / spanColumns) * spanColumns);
+      const start = startColumn * slotUnit();
+      const end = start + spanColumns * slotUnit();
       ev.preventDefault();
       ev.stopPropagation();
-      onDoubleClickStep(beat * slotUnit());
+      onDoubleClickStep(start, { start, end, kind: barRow ? 'bar' : 'beat' });
     });
   }
 
@@ -1443,7 +1403,7 @@ export function createBarGrid({
     // the barline by a word that the corner already said.
     selBand = null;
     timeBand = null;
-    locatorClip = null;
+    pendingBand = null;
     strip('ssqbars', rulerLabel, (b, i) => (i === 0 ? (rulerLabel ? `${b + 1}` : `Bar ${b + 1}`) : null));
     // Four numbers to a bar, whatever it is drawn in. Counted off the columns rather
     // than every fourth cell, which said 1-8 on a 32-slot song and would have said 1-12
@@ -1479,7 +1439,7 @@ export function createBarGrid({
     scroll.append(body);
     if (docked) {
       rulerEl = ruler;
-      if (selectedBars || selectedTime) {
+      if (selectedBars || selectedTime || onDoubleClickStep) {
         const clip = document.createElement('div');
         clip.className = 'ssqselclip';
         if (selectedBars) {
@@ -1492,12 +1452,12 @@ export function createBarGrid({
           timeBand.className = 'ssqtimeband';
           clip.append(timeBand);
         }
+        if (onDoubleClickStep) {
+          pendingBand = document.createElement('div');
+          pendingBand.className = 'ssqpendingband';
+          clip.append(pendingBand);
+        }
         ruler.append(clip);
-      }
-      if (locatorPositions) {
-        locatorClip = document.createElement('div');
-        locatorClip.className = 'ssqlocatorclip';
-        ruler.append(locatorClip);
       }
       const surface = document.createElement('div');
       surface.className = 'ssqdock';
@@ -1508,8 +1468,11 @@ export function createBarGrid({
       const zoom = document.createElement('div');
       zoom.className = 'rollzoom-panel';
       zoom.append(...rulerHeader(c));
-      keys.append(zoom, fixedBodyEl);
-      surface.append(keys, scroll);
+      // The controls deliberately reach left of the keyboard column to line up with
+      // arrangement track numbers. Keep them on the dock, not inside `.ssqkeys`, whose
+      // overflow clipping is needed for the vertically scrolling keyboard faces.
+      keys.append(fixedBodyEl);
+      surface.append(keys, scroll, zoom);
       // Rulers and the keyboard are pinned siblings of the only scroll viewport.
       el.append(ruler, surface);
     } else {
@@ -1526,11 +1489,12 @@ export function createBarGrid({
     // worth keeping: `build` runs on every commit, and an edit that moved the field
     // under your hand would make working in the middle of a part impossible.
     renderRows(c);
+    paintPendingPlayback();
     // After the rows: the ruler is measured for this, and a ruler in a panel with no
     // layout yet measures nothing.
     placeSelBand();
     placeTimeBand();
-    placeLocatorPins();
+    placePendingBand();
     scroll.scrollTop = scrollAt.top;
     scroll.scrollLeft = scrollAt.left;
     scrollAt = { top: scroll.scrollTop, left: scroll.scrollLeft };
@@ -1538,9 +1502,10 @@ export function createBarGrid({
     // And once more if the clamp moved it — a shorter song, or a panel that has just
     // been resized, can leave the remembered position past the end.
     renderRows(c);
+    paintPendingPlayback();
     placeSelBand();
     placeTimeBand();
-    placeLocatorPins();
+    placePendingBand();
     scroll.addEventListener('scroll', () => {
       noteScroll(scroll);
       syncDockedChrome(scroll);
@@ -1923,6 +1888,38 @@ export function createBarGrid({
    */
   const rulerCells = () => barCells;
 
+  const rulerPendingCells = () => el.querySelectorAll('.ssqbars .ssqbarnum, .ssqnums .ssqbarnum');
+  const paintPendingPlayback = () => {
+    for (const cell of rulerPendingCells()) cell.classList.remove('pending-playback');
+    if (!pendingPlaybackRange || docked) return;
+    const start = pendingPlaybackRange.start;
+    const end = pendingPlaybackRange.end;
+    for (const cell of rulerPendingCells()) {
+      const at = Number(cell.dataset.bar) * 16 + Number(cell.dataset.step) * slotUnit();
+      if (at >= start && at < end) cell.classList.add('pending-playback');
+    }
+  };
+
+  const placePendingBand = () => {
+    if (!pendingBand) return;
+    const picked = pendingPlaybackRange;
+    const unit = slotUnit();
+    const start = picked ? Math.max(range.from * 16, Number(picked.start) || 0) : null;
+    const end = picked ? Math.min((range.to + 1) * 16, Number(picked.end) || 0) : null;
+    if (start == null || end == null || end <= start) {
+      pendingBand.classList.remove('show');
+      return;
+    }
+    const first = Math.max(0, Math.floor(start / unit));
+    const last = Math.max(first, Math.ceil(end / unit) - 1);
+    const left = fieldX(Math.floor(first / slots), first % slots);
+    const right = fieldX(Math.floor(last / slots), last % slots);
+    if (left == null || right == null) { pendingBand.classList.remove('show'); return; }
+    pendingBand.classList.add('show');
+    pendingBand.style.left = `${left}px`;
+    pendingBand.style.width = `${Math.max(0, right + stepWidth() - left)}px`;
+  };
+
   /**
    * Where a column stands in the field, in body coordinates. Null before there is one.
    *
@@ -1950,7 +1947,7 @@ export function createBarGrid({
    * The same x, but honest about where INSIDE a column a slot falls.
    *
    * `fieldX` answers in whole columns, which is what a band or a bar edge wants. The
-   * playhead and the locator pins want the real position: on a grid drawn coarser than
+   * playhead wants the real position: on a grid drawn coarser than
    * the song is stored on, a third of the way across a cell is a place a note can be,
    * and a cursor that waits at the column line until the next one is a cursor that has
    * stopped telling you where the music is.
@@ -3357,7 +3354,6 @@ export function createBarGrid({
      */
     viewState: () => ({
       top: scrollAt.top, left: scrollAt.left, followX, followEnabled,
-      selection: [...selection], editedKey,
     }),
     restoreViewState(state) {
       if (!state || typeof state !== 'object') return;
@@ -3367,8 +3363,13 @@ export function createBarGrid({
       };
       followEnabled = state.followEnabled !== false;
       followX = followEnabled && state.followX !== false;
-      if (Array.isArray(state.selection)) selection = new Set(state.selection.map(String));
-      editedKey = typeof state.editedKey === 'string' ? state.editedKey : null;
+      // Note selection and the last-edited marker are interaction state, not viewport
+      // state. Do not resurrect either one from a previous desk session on load.
+      selection = new Set();
+      editedKey = null;
+      for (const cell of el.querySelectorAll('.ssqcell.sel, .ssqcell.edited')) {
+        cell.classList.remove('sel', 'edited');
+      }
       autoLeftAt = null;
       const scroll = el.querySelector('.ssqscroll');
       if (!scroll) return; // the next build reads scrollAt
@@ -3380,7 +3381,7 @@ export function createBarGrid({
       syncDockedChrome(scroll);
       placeSelBand();
       placeTimeBand();
-      placeLocatorPins();
+      placePendingBand();
       if (virtual) renderRows(ctx());
     },
     /** Repaint: the selection moved, or the song changed under us. */
@@ -3395,7 +3396,7 @@ export function createBarGrid({
       syncDockedChrome(scroll);
       placeSelBand();
       placeTimeBand();
-      placeLocatorPins();
+      placePendingBand();
       if (virtual) renderRows(ctx());
     },
     setResizeDeferred,
@@ -3483,6 +3484,9 @@ export function createBarGrid({
       range = { from: 0, to: 0 };
       colCells = new Map();
       lit = [];
+      pendingPlaybackRange = null;
+      paintPendingPlayback();
+      pendingBand?.classList.remove('show');
       autoBar = null;
       editedKey = null;
       editScope = null;
@@ -3525,15 +3529,25 @@ export function createBarGrid({
         }
         const scroll = el.querySelector('.ssqscroll');
         if (scroll && x != null) {
-          const pad = scroll.clientWidth * 0.25;
-          const off = x < scroll.scrollLeft + pad
-            || x > scroll.scrollLeft + scroll.clientWidth - pad;
-          // In the comfortable middle of the strip the roll is following whether it
-          // moved or not, so this is also where a hand that scrolled away and then came
-          // back hands the time axis over again.
-          if (!off) followX = true;
-          else if (followEnabled && followX) {
-            scroll.scrollLeft = Math.max(0, x - pad);
+          // PAGE, don't creep. The trigger and the landing are two different distances
+          // on purpose: the view holds still until the playhead is nearly off the right
+          // edge, then jumps it back close to the left, so what you are looking at is
+          // almost a whole strip of music you have not heard yet. Making them the same
+          // number is what gave the roll its old habit — it re-centred a quarter of the
+          // way in and scrolled again a quarter from the end, so the view was moving
+          // most of the time and never showed more than half a screen ahead.
+          const view = scroll.clientWidth;
+          const off = x < scroll.scrollLeft + view * FOLLOW_LEAD
+            || x > scroll.scrollLeft + view * (1 - FOLLOW_TRAIL);
+          // Handing the axis back is a THIRD distance, and the narrowest: a hand that
+          // scrolled away gets the time axis back once the playhead is somewhere it can
+          // sit for a while, not the instant it clips the edge of the strip on its way
+          // out. Between this band and the trigger the follow simply does nothing, which
+          // is the point — a still view is the normal state.
+          if (x > scroll.scrollLeft + view * FOLLOW_REARM_FROM
+            && x < scroll.scrollLeft + view * FOLLOW_REARM_TO) followX = true;
+          else if (off && followEnabled && followX) {
+            scroll.scrollLeft = Math.max(0, x - view * FOLLOW_LEAD);
             // The position as it landed, not as it was asked for: a scroller near the
             // end of the song clamps, and the difference would read as a hand.
             autoLeftAt = scroll.scrollLeft;
@@ -3580,6 +3594,21 @@ export function createBarGrid({
     /** And the bars an action reaches, for a menu that has to name them — see `scope`. */
     actionSpan,
     setRulerLabel(label) { rulerLabel = label; },
+    armPendingPlayback(step, range = null) {
+      const target = Number(step);
+      const start = Number(range?.start ?? target);
+      const end = Number(range?.end ?? (start + 4));
+      pendingPlaybackRange = Number.isFinite(start) && Number.isFinite(end) && end > start
+        ? { start: Math.max(0, start), end: Math.max(0, end) }
+        : null;
+      paintPendingPlayback();
+      placePendingBand();
+    },
+    clearPendingPlayback() {
+      pendingPlaybackRange = null;
+      paintPendingPlayback();
+      pendingBand?.classList.remove('show');
+    },
     /** The grid the song is STORED on, and the one it is DRAWN in — see `displayCols`. */
     slotsPerBar: () => slots,
     colsPerBar: () => cols,

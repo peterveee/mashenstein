@@ -1,4 +1,4 @@
-// The full-window synth editor: MRDR-3, TNGR-2 and KLNG8's Advanced controls on one screen.
+// The full-window synth editor: MRDR-3, TNGR-2 and KLNG-8's Advanced controls on one screen.
 //
 // The strip panel is 366px wide — three channel strips — and everything about it is a
 // concession to that: 42px pots, 9.5px labels, four grid columns, and one long scroll.
@@ -26,10 +26,18 @@
 // works at root-key granularity and cannot see a missing leaf.
 
 import { envelopeGraph, responseGraph } from './mixer-synth-graphs.js';
+import { isMrdrSynth } from '../src/engine/mrdr3/identity.js';
 import { createSynthKeyboard } from './mixer-synth-keyboard.js';
+import { WAVE_GLYPHS } from './lib/wave-glyphs.js';
+import { synthDisplayName } from './lib/synth-display.js';
 
-/** The synth classes that have a full-window layout. The rest open the strip panel only. */
-export const FULL_EDITORS = ['MRDR-3', 'TNGR-2', 'drum'];
+/** The synth families that have a full-window layout. Legacy identifiers — Synth,
+ * MonoSynth, GameSynth, FMSynth, AMSynth — resolve onto their current family in the
+ * layout selector while this list names the family itself. */
+export const FULL_EDITORS = [
+  'MRDR-3', 'TNGR-2', 'drum', 'CRLS-1',
+  'KNDO-5', 'WNDR-9', 'RMND-2',
+];
 
 /**
  * Find a card's rows by the label they carry, which is the name the desk calls them.
@@ -66,25 +74,7 @@ const FILTER_OPTIONAL = ['slope'];
  * Paths are in a 24 × 14 viewBox, drawn at 26 × 15.
  */
 const GLYPH = {
-  sine: 'M1,7 C3,0.5 6,0.5 8,7 C10,13.5 13,13.5 15,7 C17,0.5 20,0.5 22,7',
-  square: 'M1,12 L1,2.5 L8,2.5 L8,12 L15,12 L15,2.5 L22,2.5 L22,12',
-  sawtooth: 'M1,12 L7,2.5 L7,12 L13,2.5 L13,12 L19,2.5 L19,12 L23,9',
-  triangle: 'M1,12 L6,2.5 L11,12 L16,2.5 L21,12',
-  pulse: 'M1,12 L1,2.5 L5,2.5 L5,12 L12,12 L12,2.5 L16,2.5 L16,12 L22,12',
-  // A pulse whose duty is MOVING — three cycles, each wider than the last. Drawn as the
-  // difference from `pulse` above it, because that is the only difference there is: same
-  // two levels, same edges, a width that will not sit still. Without it the drum panels
-  // fell back to words for the whole row, since a row draws only when EVERY option can.
-  pwm: 'M1,12 L1,2.5 L3,2.5 L3,12 L8,12 L8,2.5 L12,2.5 L12,12 L16,12 L16,2.5 L22,2.5 L22,12 L23,12',
-  noise: 'M1,7 L3,3 L5,11 L7,4.5 L9,12 L11,3.5 L13,9 L15,2.5 L17,10.5 L19,5 L21,11.5 L23,6.5',
-  // TNGR-2 spells its LFO shapes short. `saw` is the same ramp `sawtooth` draws above, and
-  // a row draws only when EVERY option can — one missing name put the whole LFO row back
-  // to words.
-  saw: 'M1,12 L7,2.5 L7,12 L13,2.5 L13,12 L19,2.5 L19,12 L23,9',
-  // SAMPLE AND HOLD: a level taken and then held flat until the next one. The steps are
-  // uneven on purpose — an even staircase is a ramp, and this is the one shape whose whole
-  // character is that you cannot tell where it goes next.
-  samplehold: 'M1,9 L5,9 L5,4 L9,4 L9,11.5 L13,11.5 L13,6 L17,6 L17,2.5 L21,2.5 L21,8.5 L23,8.5',
+  ...WAVE_GLYPHS,
   // The LFO's three destinations, as what they DO: a corner coming down, a swell, and a bend.
   filter: 'M1,4 L10,4 C15,4 16,11 22,11',
   level: 'M1,11 C5,11 6,4 11,4 C16,4 17,11 22,11',
@@ -151,7 +141,7 @@ export function createSynthFull({
     choices.sort((a, b) => String(a.category || '').localeCompare(String(b.category || ''))
       || String(a.label || a.id).localeCompare(String(b.label || b.id)));
     bar.append(
-      span('sfsynth', v?.synth || (v?.kind === 'drum' ? 'KLNG8' : '')),
+      span('sfsynth', synthDisplayName(v?.synth || (v?.kind === 'drum' ? 'drum' : ''))),
     );
     if (choices.length) {
       // A native select is compact, but it cannot search a catalogue of several
@@ -246,7 +236,34 @@ export function createSynthFull({
     bar.append(undo, span('sfspace'));
     const extra = headExtra?.();
     if (extra) bar.append(extra);
-    if (kit.shareEnabled?.() && kit.engine?.() === 'MRDR-3') {
+    // SOLO — the desk's, on the channel this preset is playing.
+    //
+    // The S on the cards below isolates a LAYER inside the sound; this isolates the
+    // whole sound inside the song, which is the thing you want every time you are
+    // shaping a preset against a mix you cannot hear past. Same box and the same lit
+    // token as those, because a solo that looks like something else one window in is a
+    // second thing that looks like solo — see `.sfsolo`.
+    //
+    // It repaints itself rather than the window: a header rebuild would shut the preset
+    // menu and lose the keyboard's held notes for a monitoring toggle.
+    if (kit.laneSoloAvailable?.()) {
+      const solo = document.createElement('button');
+      solo.type = 'button';
+      const paintSolo = () => {
+        const on = kit.laneSoloOn();
+        const lane = kit.laneSoloLabel() || 'this channel';
+        solo.className = `sfsolo sflanesolo${on ? ' on' : ''}`;
+        solo.textContent = 'S';
+        solo.setAttribute('aria-pressed', on ? 'true' : 'false');
+        solo.title = on
+          ? `Stop soloing ${lane} — the rest of the song comes back`
+          : `Solo ${lane} on the desk — hear this preset alone. Monitoring only, never saved`;
+      };
+      paintSolo();
+      solo.onclick = () => { kit.toggleLaneSolo(); paintSolo(); };
+      bar.append(solo);
+    }
+    if (kit.shareEnabled?.() && isMrdrSynth(kit.engine?.())) {
       const share = document.createElement('button');
       share.className = 'sfshare';
       share.type = 'button';
@@ -287,7 +304,7 @@ export function createSynthFull({
     //
     // Two ways in. `trio: 'curve'` is MRDR-3's, where the three stages are also a trio on
     // the strip; `door: 'curve'` is for a curve that is an ordinary row on the strip and
-    // only wants the door HERE — the KLNG8's CURVE and RATE CURVE, which are one and
+    // only wants the door HERE — the KLNG-8's CURVE and RATE CURVE, which are one and
     // two per card rather than a trio, and have no business being a trio anywhere.
     const behindDoor = (r) => r.trio === 'curve' || r.door === 'curve';
     const curveRows = curves ? spec.rows.filter(behindDoor) : [];
@@ -335,8 +352,12 @@ export function createSynthFull({
     // so their tuning-and-position row is one line; an envelope wants four, which is
     // what an ADSR is.
     if (spec.pots > 0) {
-      const grid = c.querySelector('.devgrid');
-      if (grid) grid.style.gridTemplateColumns = `repeat(${spec.pots}, minmax(0, 1fr))`;
+      // EVERY grid on the card, not just the first — a seamed card has two (`splitCard`),
+      // and the pinned one falling back to auto-fill was the block below the seam sitting
+      // on a different pitch from the block above it the moment the window narrowed.
+      for (const grid of c.querySelectorAll('.devgrid')) {
+        grid.style.gridTemplateColumns = `repeat(${spec.pots}, minmax(0, 1fr))`;
+      }
     }
     // Blocks divide the slack rather than banking it under the header — see `spread` in
     // `fullLayout`.
@@ -433,7 +454,7 @@ export function createSynthFull({
     // It is still ABSENT rather than greyed when it does not apply — PWM on anything but a
     // pulse has no width to move — and nothing above it moves when it goes.
     //
-    // `flowSub` is the other case, and it is the KLNG8's: a sub-section whose length
+    // `flowSub` is the other case, and it is the KLNG-8's: a sub-section whose length
     // never changes, on a card standing in a band of cards half its height. Pinned, the
     // slack would open INSIDE the card — a rule floating two hundred pixels below the rows
     // it belongs to — where the honest place for it is under everything, at the foot of a
@@ -620,11 +641,15 @@ export function createSynthFull({
    * ATK / DEC / REL choose between an exponential and a linear ramp, and the honest way
    * to show the difference between two ramps is to draw them. Each toggle draws its own
    * CURRENT shape and says which it is, so the panel reads at a glance and a click moves
-   * one stage on. On MRDR-3 it is the two amp envelopes — `adsr()` reads those keys and
-   * `centsEnv`, which runs the pitch and filter envelopes, does not, so a curve panel
-   * there would be three controls that move no sample.
+   * one stage on.
    *
-   * The KLNG8's CURVE and RATE CURVE come here too, which is what generalised it:
+   * Every envelope with curve ROWS comes here, and only those: the amp envelopes, and now
+   * the PITCH envelope on MRDR-3, KNDO-5 and WNDR-9 — `centsEnv` grew the two
+   * shapes a cents envelope can have (see `centsRamp`). The filter envelope runs through
+   * that same function and has no curve rows, so its card gets no door; a panel there
+   * would be three controls that move no sample.
+   *
+   * The KLNG-8's CURVE and RATE CURVE come here too, which is what generalised it:
    * they are the same question (what SHAPE does this envelope have) asked with one and
    * two controls instead of three, and RATE CURVE has a third answer. So a button cycles
    * its row's options rather than swapping two, and the drawing is looked up by the value
@@ -1283,7 +1308,8 @@ export function createSynthFull({
       band.cells.forEach((cell, i) => {
         const slot = div('sfcell');
         slot.style.gridColumn = `span ${cell.span || 1}`;
-        if (cell.kind === 'mixer') slot.append(mixCell(cell));
+        if (cell.kind === 'spacer') slot.classList.add('sfspacer');
+        else if (cell.kind === 'mixer') slot.append(mixCell(cell));
         else if (cell.kind === 'tabs') slot.append(tabbed(cell, `${band.name}:${i}`));
         // A STACK is two or more short cards sharing one column, one above the other.
         // The alternative is a column each, and a column is as tall as the tallest card

@@ -46,7 +46,7 @@ across every synth type and drum section:
 | **`RESONANCE`** | Every filter Q knob | RESONANCE / PEAKING |
 | **`ENV AMOUNT`** | Every filter-envelope depth knob, in octaves, bipolar | ENV AMOUNT / EG INT |
 | **`TYPE`** | Every filter mode selector (LP/HP/BP/NOTCH) + drive shaper | TYPE / MODE |
-| **`SLOPE`** | Filter rolloff (-12/-24/-48 dB/oct) | SLOPE |
+| **`SLOPE`** | Filter rolloff (-12/-24 dB/oct) | SLOPE |
 | **`SWEEP TO`** | Every sweep destination frequency | (unified from FALLS TO / SWEEPS TO) |
 | **`TONE`** | Post-drive LPF frequency | TONE (TR-808/909 convention) |
 | **`PLACE`** | Where a drive sits relative to the filter/amp it shares a panel with | (descriptive — hardware spells this PRE/POST) |
@@ -65,15 +65,15 @@ across every synth type and drum section:
 | `FIXED LENGTH` | `$fixedLength` | — | — | — | — | Pill toggle |
 | `TRANSPOSE` | `$transpose` | -24 | 24 | 0 | st | Semitones |
 | `FINE` | `$fine` | -50 | 50 | 0 | ct | Cents |
-| `VIB DEPTH` | `$vibrato.depth` | 0 | 12 | 0 | — | 0–12 (1 unit = 100 cents on GameSynth) |
+| `VIB DEPTH` | `$vibrato.depth` | 0 | 12 | 0 | — | 0–12 (1 unit = 100 cents on KNDO-5) |
 | `VIB RATE` | `$vibrato.rate` | 0.1 | 20 | 5 | Hz | |
-| `VIB DELAY` | `$vibrato.delay` | 0 | 10 | 0 | s | GameSynth only |
+| `VIB DELAY` | `$vibrato.delay` | 0 | 10 | 0 | s | KNDO-5 only |
 | `KEY MODE` | `$mode` | — | — | POLY | — | POLY / LEGATO / MONO pill; legacy `$mono` opens as MONO |
 | `GLIDE` | `$portamento` | 0 | 0.5 | 0 | s | Portamento time; available in LEGATO and MONO |
 
 ---
 
-### GameSynth (`src/engine/voices.js` `_playGame`)
+### KNDO-5 (`src/engine/voices.js` `_playGame`)
 
 The native game oscillator — no Tone.js ADSR, direct Web Audio nodes.
 
@@ -98,6 +98,23 @@ The native game oscillator — no Tone.js ADSR, direct Web Audio nodes.
 | `RESONANCE` | `$filter.Q` | 0.1 | 40 | 0.7 | — | ✅ Standard |
 | `SWEEP TO` | `$filter.to` | 20 | 18000 | 4000 | Hz |
 | `SWEEP TIME` | `$filter.sweep` | 0.001 | 10 | 0.12 | s | |
+
+#### Effects
+The same card MRDR-3, TNGR-2 and WNDR-9 carry, on the same voice-level keys — one
+waveshaper with its own tone filter, and the lane chorus insert built by the shared
+`buildChorusLeg`. `PLACE` is honoured here (unlike on WNDR-9) because this synth
+has a stage for the shaper to sit before or after: its tone filter and its AR gain.
+
+| Label | Path | Min | Max | Default | Unit | Notes |
+|---|---|---|---|---|---|---|
+| `SHAPE` | `$shape` | — | — | soft | — | soft / fold / crush |
+| `PLACE` | `$drivePlace` | — | — | post | — | `post` after the filter and the AR gain, `pre` in front of both. Greyed at DRIVE 0 |
+| `DRIVE` | `$drive` | 0 | 1 | 0 | — | **This is the switch** — at zero no shaper and no tone filter are built |
+| `TONE` | `$tone.freq` | 200 | 16000 | 16000 | Hz | The drive's own tone control; greyed at DRIVE 0 |
+| `CHORUS` | `$chorus.mix` | 0 | 1 | 0 | — | Dry/wet, equal power. **This is the switch** — at zero the wet leg is retired |
+| `RATE` | `$chorus.rate` | 0.05 | 8 | 0.8 | Hz | Cubic taper, as on every other panel that carries this row |
+| `DEPTH` | `$chorus.depth` | 0 | 1 | 0.5 | — | Modulation swing, to ±4 ms |
+| `WIDTH` | `$chorus.width` | 0 | 1 | 1 | — | Stereo spread of the two delay lines |
 
 ---
 
@@ -136,33 +153,51 @@ The native game oscillator — no Tone.js ADSR, direct Web Audio nodes.
 
 ---
 
-### FMSynth (Tone.FMSynth)
+### RMND-2 (Tone.FMSynth / Tone.AMSynth)
+
+One engine over both of Tone's modulation classes, the way CRLS-1 is one engine over
+`Tone.Synth` and `Tone.MonoSynth`. `MODE` chooses which parameter of the carrier the
+modulator reaches, and the engine picks the class from the preset's own structure: a
+top-level `modulationIndex` means frequency modulation, no index means amplitude
+modulation. There is no second key, so a preset cannot disagree with itself.
 
 | Label | Path | Min | Max | Default | Unit |
 |---|---|---|---|---|---|
-| `RATIO` | `harmonicity` | 0.1 | 12 | 1 | — |
-| `INDEX` | `modulationIndex` | 0 | 32 | 5 | — |
+| `MODE` | `modulationIndex` (present / absent) | — | — | fm | — |
+| `RATIO` | `harmonicity` | 0.25 | 12 | 1 | — |
+| `FM DEPTH` | `modulationIndex` | 0 | 40 | 10 | — |
 | `CARRIER` | `oscillator.type` | — | — | sine | — |
-| `MODULATOR` | `modulation.type` | — | — | sine | — |
+| `MODULATOR` | `modulation.type` | — | — | square | — |
 | `ATTACK`/`DECAY`/`SUSTAIN`/`RELEASE` + curves | `envelope.*` | | | | |
 | `ATTACK`/`DECAY`/`SUSTAIN`/`RELEASE` + curves | `modulationEnvelope.*` | | | | |
 
+`MODE` and `FM DEPTH` share one stored key: the pill ADDS or REMOVES it, holding the
+authored number in `bypassed` so a trip through AM and back returns the same depth. In
+AM the pot greys rather than disappearing, and the board keeps its width. `FM DEPTH` is
+the same control MRDR-3's `Osc N · FM` and KLNG-8's `FM` card carry under the same name.
+
+Legacy `FMSynth` and `AMSynth` stay readable forever and resolve onto `RMND-2` through
+`synthFamily` (`src/engine/synth-families.js`).
+
 ---
 
-### AMSynth (Tone.AMSynth)
+### DuoSynth — retired 2026-08-21, into MRDR-3
 
-Same layout as FMSynth: `RATIO`, `CARRIER`, `MODULATOR`, two envelopes.
+Two Tone MonoSynths under a shared vibrato is two MRDR-3 layers, so the eleven presets are
+now two-layer patches and the class is out of the allowlist. A stored preset still loads:
+`RENAMED` maps the name and `duoCopyAsLayer` (src/data/voices.js) moves the parameters,
+which is what makes this rename different from the others —
 
----
+| Was | Becomes |
+|---|---|
+| `harmonicity` | `layer.osc2.detune`, as `1200 * log2(h)` cents |
+| `vibratoAmount` | `vibrato.depth`, halved — Tone's LFO runs ±50 cents, MRDR-3 reads semitones |
+| `voice0` / `voice1` | `layer.osc1` / `layer.osc2`, oscillator type and envelope each |
+| *(nothing — it was Tone's default)* | `global.filter`, a 12 dB lowpass parked at 1600 Hz |
 
-### DuoSynth (Tone.DuoSynth)
-
-| Label | Path | Notes |
-|---|---|---|
-| `DETUNE` | `harmonicity` | Frequency ratio between voices |
-| `VIBRATO` | `vibratoAmount` | Built-in vibrato depth (0–1) |
-| `VIB RATE` | `vibratoRate` | Built-in vibrato rate |
-| Voice 1 / Voice 2 | `voice0.*`, `voice1.*` | Independent oscillator + envelope per voice |
+That last row is the one nobody wrote down: Tone's DuoSynth overrides MonoSynth's filter
+envelope to sustain 1, so every Duo preset had a fixed 1600 Hz lowpass it never asked for.
+Dropping it would have made all eleven brighter.
 
 ---
 
@@ -189,7 +224,7 @@ Same layout as FMSynth: `RATIO`, `CARRIER`, `MODULATOR`, two envelopes.
 
 ---
 
-### AdditiveSynth (Drawbar Organ — native path `_playAdditive`)
+### WNDR-9 (Drawbar Organ — native path `_playAdditive`)
 
 | Label | Path | Notes |
 |---|---|---|
@@ -235,14 +270,23 @@ Same layout as FMSynth: `RATIO`, `CARRIER`, `MODULATOR`, two envelopes.
 
 ### KLNG8 Presets (native `_playDrum` path)
 
-#### Oscillator Section (optional)
+#### Oscillator Sections ×2 (`osc`, `osc2` — both optional)
+
+**Two cards, one row builder.** `osc2` takes every control below with the same label,
+the same range and the same default — `_playDrum` builds both oscillators from one
+`buildOsc` closure and the panel draws both cards from one `oscRows(sec)`, so the paths
+in this table read `$osc2.…` on the second card and nothing else differs. `KNOCK` is the
+sole exception and sits on the first card only: it is a fixed 300 Hz punch that predates
+the second oscillator, and a preset with only an `osc2` has already reached for the
+general tool.
+
 | Label | Path | Min | Max | Default | Unit |
 |---|---|---|---|---|---|
 | `WAVE` | `$osc.type` | — | — | sine | — |
 | `CURVE` | `$osc.curve` | — | — | exp | — |
 | `RATE CURVE` | `$osc.pitchCurve` | — | — | exp | — |
 | `LEVEL` | `$osc.gain` | 0 | 2 | 1 | — |
-| `KNOCK` | `$knock` | 0 | 1 | 0 | — |
+| `KNOCK` | `$knock` | 0 | 1 | 0 | — | *(first card only)* |
 | `FREQUENCY` | `$osc.from` | 20 | 10000 | 190 | Hz |
 | `AMOUNT` | `$osc.to` | -96 | +96 | 0 | semi |
 | `RATE` | `$osc.sweep` | 0 | 10 | 0.07 | s |
@@ -262,7 +306,10 @@ from the lower tunings.
 `FREQUENCY` uses the non-linear knob response (a cubic, close to the envelope times'
 `log2(10)`): 25% of the travel is ~175 Hz, 50% ~1.3 kHz, 75% ~4.2 kHz.
 
-#### FM Section (optional, nested under oscillator)
+#### FM Sections ×2 (`osc.fm`, `osc2.fm` — optional, nested under each oscillator)
+
+Each oscillator carries its own modulator, on the same five rows.
+
 | Label | Path | Min | Max | Default | Unit |
 |---|---|---|---|---|---|
 | `WAVE` | `$osc.fm.type` | — | — | sine | — |
@@ -425,7 +472,12 @@ humanize: { gain, pitch, filter }
 
 ### Tone preset data shape (`TONE` table)
 ```
-synth: 'Synth'|'MonoSynth'|'FMSynth'|'AMSynth'|'DuoSynth'|'MembraneSynth'|'MetalSynth'
+synth: 'CRLS-1'|'RMND-2'                 // legacy spellings still load:
+                                         // Synth, MonoSynth -> CRLS-1
+                                         // FMSynth, AMSynth -> RMND-2
+                                         // GameSynth        -> KNDO-5
+                                         // AdditiveSynth    -> WNDR-9
+                                         // DuoSynth         -> MRDR-3 (params too)
 options: { oscillator, envelope, filter, filterEnvelope, modulation, modulationEnvelope,
            harmonicity, modulationIndex, vibratoAmount, vibratoRate, portamento, ... }
 ```

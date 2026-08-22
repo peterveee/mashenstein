@@ -17,7 +17,7 @@ import {
 // `bankSource`. `renderMixFile` wrote all thirty-four songs into src/data/mix.js and
 // is gone with it — but the risk it carried is the same one, so the round-trip below
 // is unchanged in intent: a field nobody thought to emit is silently dropped.
-import { mixEntrySource } from '../tools/lib/mix-source.js';
+import { mixEntrySource, variantsSource, validateVariants } from '../tools/lib/mix-source.js';
 
 // One song's mix, as the file would hold it. `renderMixFile` wrote all thirty-four
 // into src/data/mix.js and is gone with it; the rules it carried moved here.
@@ -143,6 +143,20 @@ for (const def of Object.values(EFFECT_BY_ID)) {
 // uppercased, so a new effect declaring `pan` and no label draws a control reading PAN
 // beside three that read BALANCE, and nothing but a screenshot would say so.
 const deskSource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
+const effectSource = readFileSync(new URL('../src/engine/effects.js', import.meta.url), 'utf8');
+const limiterSource = effectSource.slice(effectSource.indexOf('function makeLimiter('),
+  effectSource.indexOf('const DOUBLER_MOD'));
+assert(/node\.createMeter = \(\) => \{[\s\S]*?inputAnalysers[\s\S]*?outputAnalysers[\s\S]*?reductionAnalyser/.test(limiterSource),
+  'L7 exposes stereo input/output peaks and its actual reduction control to a live card');
+assert(/pname === 'threshold' \|\| pname === 'ceiling'[\s\S]*?l7sliderlevel/.test(deskSource)
+  && /function l7MeterPanel\(grid, linkFor\)[\s\S]*?textContent = 'ATTENUATION'[\s\S]*?data-l7-param="threshold"[\s\S]*?data-l7-param="ceiling"/.test(deskSource)
+  && /if \(def\?\.id === 'l7'\)[\s\S]*?l7MeterPanel\(grid, \(\) => liveChain\(selectedLane\)\?\.\[i\]\)/.test(deskSource),
+  'an open L7 card overlays mono input/output meters on full-width controls and shows attenuation without fast numbers');
+assert(/function checkRow\(label, checked, onChange\)[\s\S]*?className = `fxswitch\$\{box\.checked \? ' on' : ''\}`[\s\S]*?box\.onchange[\s\S]*?sw\.classList\.toggle\('on', box\.checked\)/.test(deskSource),
+  'effect booleans use the synth-editor-style capsule while retaining a native checkbox');
+assert(/toggle\.dataset\.l7Param = pname/.test(deskSource)
+  && /const autoRelease = grid\.querySelector\('\[data-l7-param="arc"\]'\);[\s\S]*?autoRelease\.before\(meter\)/.test(deskSource),
+  'L7 places its Auto Release switch last, after the attenuation meter');
 const labels = deskSource.slice(deskSource.indexOf('const PARAM_LABELS = {'));
 const labelBlock = labels.slice(0, labels.indexOf('};'));
 for (const def of Object.values(EFFECT_BY_ID)) {
@@ -158,16 +172,24 @@ for (const def of Object.values(EFFECT_BY_ID)) {
 // New cards must be reachable from the picker as well as from the catalogue. Read
 // the browser-side grouping source here because the picker is deliberately not a
 // Node-importable module.
-const groupBlock = deskSource.slice(deskSource.indexOf('const EFFECT_GROUPS = ['), deskSource.indexOf('function addEffect('));
-for (const id of ['vowel', 'chorus2', 'rhythmgate', 'flanger', 'ringmod', 'bitcrusher', 'tape']) {
+const groupBlock = deskSource.slice(deskSource.indexOf('const EFFECT_GROUP_ROWS = ['), deskSource.indexOf('function addEffect('));
+for (const id of ['vowel', 'bell', 'chorus2', 'rhythmgate', 'flanger', 'ringmod', 'bitcrusher', 'tape', 'ambience', 'noisegate']) {
   assert(groupBlock.includes(`'${id}'`), `${id}: appears in an effect-picker group`);
 }
-assert(/\['Level & EQ',[\s\S]*'peq'[\s\S]*'vowel'[\s\S]*'filter'/.test(groupBlock),
-  'vowel is grouped under Level & EQ');
-assert(/\['Modulation',[\s\S]*'chorus2'[\s\S]*'rhythmgate'[\s\S]*'flanger'[\s\S]*'ringmod'/.test(groupBlock),
-  'new modulation effects are grouped under Modulation');
-assert(/\['Drive',[\s\S]*'bitcrusher'[\s\S]*'tape'/.test(groupBlock),
-  'new drive effects are grouped under Drive');
+assert(/\['Tone & Filter',[\s\S]*'peq'[\s\S]*'bell'[\s\S]*'vowel'[\s\S]*'filter'[\s\S]*'autofilter'[\s\S]*'autowah'/.test(groupBlock),
+  'tone-shaping effects are grouped under Tone & Filter');
+assert(/\['Modulation & Rhythm',[\s\S]*'chorus2'[\s\S]*'flanger'[\s\S]*'phaser'[\s\S]*'rhythmgate'/.test(groupBlock),
+  'cyclic and rhythmic effects are grouped under Modulation & Rhythm');
+assert(/\['Character & Lo-Fi',[\s\S]*'distortion'[\s\S]*'tape'[\s\S]*'bitcrusher'[\s\S]*'ringmod'/.test(groupBlock),
+  'colour and lo-fi effects are grouped under Character & Lo-Fi');
+assert(JSON.stringify(EFFECT_BY_ID.bitcrusher.params) === JSON.stringify(['bits', 'downsample', 'wet'])
+  && !('drive' in EFFECT_BY_ID.bitcrusher.defaults) && !('tone' in EFFECT_BY_ID.bitcrusher.defaults),
+  'bit crusher exposes resolution, downsampling, and mix without drive or tone');
+assert(/\['Space, Width & Pitch',[\s\S]*'reverb'[\s\S]*'ambience'[\s\S]*'widener'[\s\S]*'shifter'[\s\S]*'pitch'/.test(groupBlock),
+  'spatial, width, and pitch effects are grouped together');
+assert(/\['Tone & Filter',[\s\S]*\],\n\s+\['Delay & Echo'/.test(groupBlock)
+  && /\['Dynamics',[\s\S]*\],\n\s+\['Space, Width & Pitch'/.test(groupBlock),
+  'picker groups retain deliberate two-column row pairings');
 
 // The shared editor needs a meaningful range for every new non-default control;
 // otherwise its generic 0..1 fallback makes Hz, dB, and integer controls unusable.
@@ -176,12 +198,20 @@ for (const [id, checks] of Object.entries({
   vowel: { frequency: [0.05, 8], glide: [0, 1], articulation: [0, 1], excite: [0, 1],
     breath: [0, 1], reso: [0.3, 3], spread: [0, 1], body: [0, 1], air: [0, 1] },
   chorus2: { feedback: [0, 0.6], tone: [800, 20000] },
-  bitcrusher: { bits: [2, 16], drive: [0, 24] },
+  bitcrusher: { bits: [1, 24], downsample: [1, 40] },
   // ATTACK and DECAY start at the millisecond floor `makeRhythmicGate` itself uses.
   rhythmgate: { gateLength: [0.01, 1], attack: [0.001, 0.25], decay: [0.001, 1] },
   flanger: { feedback: [0, 0.85], delayMs: [0.2, 10] },
   ringmod: { frequency: [0.1, 2000] },
   tape: { bias: [-1, 1], wow: [0, 1], flutter: [0, 1] },
+  ambience: { space: [0, 1], damping: [0, 2] },
+  compressor: { inputGain: [-24, 24], outputGain: [-24, 24] },
+  noisegate: { threshold: [-80, 0], attack: [0.001, 0.5], release: [0.01, 2] },
+  msComp: { pump: [0, 1] },
+  // The Bell EQ's band is the Channel EQ's band: a cutoff over the audible span, not
+  // the shared LFO `frequency` that stops at 20Hz, and the +/-18dB the five-band card's
+  // gains have rather than the Gain card's +/-24.
+  bell: { frequency: [20, 18000], gain: [-18, 18], q: [0.2, 10] },
 })) {
   const def = EFFECT_BY_ID[id];
   for (const [name, [min, max]] of Object.entries(checks)) {
@@ -214,7 +244,8 @@ assert(vowelDefaults.wet >= 0.85 && vowelDefaults.reso >= 2 && vowelDefaults.gli
 assert(vowelDefaults.body >= 0.35 && vowelDefaults.air > 0,
   'vowel defaults keep a voiced body and an open top rather than three isolated bands');
 for (const label of ['DELAY', 'FEEDBACK', 'SPREAD', 'GATE LENGTH', 'BITS', 'BIAS', 'WAVEFORM',
-  'WAVE SHAPE', 'ARTICULATION', 'EXCITE', 'BREATH', 'VOICE', 'VOWEL STACK', 'RESO', 'BODY', 'AIR']) {
+  'WAVE SHAPE', 'ARTICULATION', 'EXCITE', 'BREATH', 'VOICE', 'VOWELS', 'RESO', 'BODY', 'AIR',
+  'SPACE', 'DAMPING', 'MIX', 'FREQ']) {
   assert(Object.values(EFFECT_BY_ID).some((def) => Object.values(def.labels || {}).includes(label)),
     `catalogue has the local ${label} label`);
 }
@@ -233,7 +264,14 @@ const sample = {
     limiter: true,
     voice: { bassType: 'sawtooth' },
     voiceParams: { bass: { attack: 0.02, release: 0.4 } },
-    masterEffects: [{ id: 'compressor', params: { threshold: -12, ratio: 3 } }],
+    // Both ways of turning an effect off, on the one chain. `bypass` unwires the link
+    // and `mute` turns it down, and only the second can differ between a level and its
+    // cabinet screen — so only the second is ever the whole content of a cabinet mix,
+    // and a serialiser that drops it silently puts the effect back in the level.
+    masterEffects: [
+      { id: 'compressor', params: { threshold: -12, ratio: 3 } },
+      { id: 'phaser', mute: true, params: { frequency: 0.15, octaves: 4.4, wet: 0.6 } },
+    ],
     fx: {
       delay: {
         division: 0.5, feedback: 0.4, tone: 3200, level: 0.8, pan: -0.3, mute: true,
@@ -264,6 +302,7 @@ const sample = {
         effects: [
           { id: 'peq', params: { f1: 90, g1: 3 } },
           { id: 'filter', bypass: true, params: { type: 'lowpass', frequency: 4200 } },
+          { id: 'tremolo', mute: true, params: { frequency: 6, depth: 0.5 } },
           // Dotted parameter names, which the nested compressors use to address the
           // bands inside them. They are emitted as SOURCE, so an unquoted dot here is
           // a syntax error in the file the whole game reads — the one failure mode
@@ -277,7 +316,7 @@ const sample = {
         gain: 1,
         effects: [
           { id: 'chorus2', params: { rateSync: 0, frequency: 0.65, density: 0.75 } },
-          { id: 'bitcrusher', params: { bits: 8, drive: 6 } },
+          { id: 'bitcrusher', params: { bits: 8, downsample: 4 } },
           { id: 'rhythmgate', bypass: true, params: { division: 0.5, attack: 0.003, decay: 0.035 } },
           { id: 'flanger', params: { rateSync: 1, rateDivision: 0.5, feedback: 0.45 } },
           { id: 'ringmod', params: { rateSync: 0, frequency: 30, waveform: 'triangle' } },
@@ -309,6 +348,10 @@ assert(JSON.stringify(wrote.voiceParams) === JSON.stringify(sent.voiceParams),
   'round-trip: song-owned voice parameters survive');
 assert(JSON.stringify(wrote.masterEffects) === JSON.stringify(sent.masterEffects),
   'round-trip: the master effect chain survives');
+assert(wrote.masterEffects?.[1]?.mute === true,
+  'round-trip: an effect MUTED on the master bus comes back muted, not back on');
+assert(wrote.lanes.bass.effects.some((e) => e.id === 'tremolo' && e.mute === true),
+  'round-trip: an effect muted on a channel comes back muted');
 assert(JSON.stringify(wrote.lanes.bass.effects) === JSON.stringify(sent.lanes.bass.effects),
   'round-trip: a channel effect chain survives, bypass flags and string params included');
 assert(JSON.stringify(wrote.lanes.bass.noteFx) === JSON.stringify(sent.lanes.bass.noteFx),
@@ -488,6 +531,10 @@ const CHANGES = [
   ['an effect taken off a channel', (m) => { m.lanes.bass.effects = []; }],
   ['an effect parameter', (m) => { m.lanes.bass.effects[0].params.g1 = 5; }],
   ['an effect bypassed', (m) => { m.lanes.bass.effects[0].bypass = true; }],
+  // The one that changes nothing on any fader, so nothing else in the desk notices it.
+  // A signature blind to this leaves Save disabled over the entire content of some
+  // songs' cabinet mixes — see chainSig.
+  ['an effect muted', (m) => { m.lanes.bass.effects[0].mute = true; }],
   ['a channel added to the mix', (m) => { m.lanes.hats = { gain: -1 }; }],
   ['the master trim', (m) => { m.master = -2; }],
   ['the master pan', (m) => { m.masterPan = 0.3; }],
@@ -497,6 +544,9 @@ const CHANGES = [
   }],
   ['that master compressor bypassed', (m) => {
     m.masterEffects = [{ id: 'compressor', bypass: true, params: { threshold: -12, ratio: 2 } }];
+  }],
+  ['that master compressor muted instead', (m) => {
+    m.masterEffects = [{ id: 'compressor', mute: true, params: { threshold: -12, ratio: 2 } }];
   }],
   ['a duplicated track', (m) => { m.layers = [{ key: 'bass2', from: 'bass' }]; }],
   ['an independent percussion sound', (m) => {
@@ -601,6 +651,71 @@ assert(JSON.stringify(reads) === '[1,2,3,4]',
 const mixerSrc = readFileSync(new URL('../tools/mixer.js', import.meta.url), 'utf8');
 assert((mixerSrc.match(/\?v=\$\{/g) || []).length === 1,
   'tools/mixer.js busts the module cache in exactly one place — new readers use freshImport');
+
+// ---- a cabinet treatment, round-tripped ------------------------------------------
+//
+// The same thesis as the mix above, aimed at the other serialiser. `variantsSource`
+// emits a treatment field by field, so a field nobody thought to emit is dropped on
+// save — silently, and only noticed in the game, a screen away from the desk that
+// wrote it. `startBar` was exactly that: the "Comes in on" control filled the draft,
+// passed validation, and then never reached the file.
+//
+// Key order is not the claim here, so both sides are compared through a stable sort.
+const stable = (v) => (v === null || typeof v !== 'object' ? JSON.stringify(v)
+  : Array.isArray(v) ? `[${v.map(stable).join(',')}]`
+    : `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(',')}}`);
+
+const cabinet = {
+  select: [
+    {
+      when: 'always',
+      // A way in that is not where the loop is: bars 3 and 4 are heard once, on arrival.
+      loop: { startBar: 3, fromBar: 5, toBar: 8 },
+      treatment: [{ id: 'filter', params: { type: 'highpass', frequency: 520, Q: 0.9 } }],
+      gap: 0.15,
+      patch: {
+        master: -2.5,
+        // The master chain RE-TUNED rather than added to: both sides carry the phaser
+        // and only its numbers differ, which is a ramp rather than a re-wire. The
+        // treatment above is the other answer — an effect the level does not have at
+        // all. See cabDiff in tools/mixer-entry.js, and rampMix in src/engine/audio.js.
+        // …and the phaser the LEVEL carries is muted, so the same chain is heard on
+        // one screen and not the other. `mute` is the field that makes this a mix
+        // difference rather than a graph edit; without it the only way to keep an
+        // effect off the level was to leave it out of the level's chain entirely and
+        // pay for a second leg of the whole master path.
+        masterEffects: [{ id: 'phaser', params: { frequency: 0.154, octaves: 4.4, wet: 0.5 } }],
+        fx: { reverb: { level: 1.4 } },
+        lanes: { lead: { mute: true }, bass: { gain: -3, send: { reverb: 0.32 } } },
+      },
+      exit: { quantize: 'beat', crossfadeBars: 0, loopRelease: 'atTransition', treatBars: 1.5 },
+    },
+  ],
+};
+const cabErrs = validateVariants(cabinet);
+assert(!cabErrs.length, `the treatment under test is one the desk would accept${cabErrs.length ? `: ${cabErrs.join('; ')}` : ''}`);
+
+const varPath = join(dir, 'variants.js');
+writeFileSync(varPath, `export const variants = ${variantsSource(cabinet, '')};\n`);
+const varBack = (await freshImport(varPath)).variants;
+assert(stable(varBack) === stable(cabinet),
+  'a cabinet treatment survives being written and read back, every field of it');
+assert(varBack?.select?.[0]?.loop?.startBar === 3,
+  'the bar a cabinet screen comes in on reaches the file');
+assert(varBack?.select?.[0]?.patch?.masterEffects?.[0]?.params?.wet === 0.5,
+  'a master chain re-tuned for the cabinet screen reaches the file');
+assert(varBack?.select?.[0]?.patch?.masterEffects?.[0]?.mute === undefined,
+  'the cabinet screen UNMUTES what the level mutes — an absent flag, not a false one');
+
+// A way in with no loop under it is a treatment that starts late and then plays the
+// whole form — `loop` carrying nothing but `startBar`. It has to survive as that, and
+// not as a pair of undefined bars.
+const startOnly = { select: [{ when: 'always', loop: { startBar: 5 }, patch: { master: -1 } }] };
+const startPath = join(dir, 'variants-start.js');
+writeFileSync(startPath, `export const variants = ${variantsSource(startOnly, '')};\n`);
+const startBack = (await freshImport(startPath)).variants;
+assert(stable(startBack) === stable(startOnly),
+  'a treatment that names a way in and no loop round-trips as exactly that');
 
 console.log(failed ? '\nMIX: FAILED' : '\nMIX: PASSED');
 process.exit(failed ? 1 : 0);

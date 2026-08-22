@@ -48,6 +48,10 @@ for (const c of VOICE_CATEGORIES.filter((x) => !KIT_CATEGORIES.includes(x))) {
 const KIT_EXPECT = {
   Kick: 'kick', Snare: 'snare', Hats: 'hats', Clap: 'clap',
   Tom: 'tom', Crash: 'crash', Perc: 'hats',
+  // Rim and Blip are measured on `rim` — all twelve Rims and ten of the twelve Blips —
+  // so both bench on `hats`, which is the dry stand-in the rim lane cannot be. Sweep is
+  // measured on `tom` to a preset, and benches there.
+  Rim: 'hats', Blip: 'hats', Sweep: 'tom',
 };
 for (const [cat, lane] of Object.entries(KIT_EXPECT)) {
   assert(benchLane({ category: cat }) === lane, `${cat} is heard on the ${lane} lane`);
@@ -77,8 +81,8 @@ assert(!('bassDur' in bank), 'no length override — the preset’s own dur stan
 // Nothing of any song is in it. This is the claim that makes the bench a bench.
 assert(Object.keys(bank).length === 2, `the bank holds the tempo and the preset and nothing else (got ${Object.keys(bank).join(', ')})`);
 
-const kickBank = benchBank('kickDeep', 120);
-assert(kickBank.kickVoice === 'kickDeep', 'a drum preset is named on its own lane’s voice key');
+const kickBank = benchBank('dsKick', 120);
+assert(kickBank.kickVoice === 'dsKick', 'a drum preset is named on its own lane’s voice key');
 
 // ...except for the one thing the PATTERN PLAYER knows and a finger does not: how long
 // the note lasts. A figure's note lasts one step of its rate, and a rate is already
@@ -102,12 +106,12 @@ for (const lane of new Set(['bass', ...Object.values(KIT_EXPECT)])) {
 // ---- the note it opens on ----------------------------------------------------
 assert(BENCH_NOTE === 110, 'the bench opens at A2 — the note tools/mixer.js measures at');
 assert(benchRoot(voice('roundMono')) === 110, 'a pitched preset is struck at A2');
-assert(benchRoot(voice('kickDeep')) === seamFor('kick').note,
+assert(benchRoot(voice('dsKick')) === seamFor('kick').note,
   'a drum is struck at its lane’s own note — the answer to “what does this kick sound like” is the kick');
 assert(benchRoot(null) === 110, 'and nothing at all still gives a note rather than NaN');
-assert(benchIsKit(voice('kickDeep')) && !benchIsKit(voice('roundMono')),
+assert(benchIsKit(voice('dsKick')) && !benchIsKit(voice('roundMono')),
   'kit and pitched are told apart by category, which is what the bench lane is chosen from');
-assert(benchLane(voice('tom')) === 'tom' && benchLane(voice('crashEngine')) === 'crash',
+assert(benchLane(voice('ds909Tom')) === 'tom' && benchLane(voice('crashEngine')) === 'crash',
   'actual Tom and Crash presets bench on their own lanes');
 assert(benchIsKit(voice('ds808Cowbell')) && benchLane(voice('ds808Cowbell')) === 'tom',
   'Perc cowbell remains a kit preset on its technical tom lane');
@@ -309,9 +313,9 @@ assert(PATTERN_GATE.min === 50 && PATTERN_GATE.max === 150 && PATTERN_GATE.defau
   // above stopped the player once per figure. What is being counted is what SETVOICE
   // does, so the count starts where that question does.
   previewCuts = 0;
-  player.setVoice('kickDeep');
+  player.setVoice('dsKick');
   assert(previewCuts === 1, 'switching an active audition cuts the old preset once');
-  player.setVoice('kickDeep');
+  player.setVoice('dsKick');
   assert(previewCuts === 1, 'pointing at the already-playing preset does not cut it again');
   player.stop();
 
@@ -487,7 +491,7 @@ assert(PATTERN_GATE.min === 50 && PATTERN_GATE.max === 150 && PATTERN_GATE.defau
   player.start('roundMono');
   await runFor(120);
   now = 900;
-  benchPlay(fakeAudio, 'kickDeep', 55, { at: 0.02 });
+  benchPlay(fakeAudio, 'dsKick', 55, { at: 0.02 });
   assert(Math.abs(times[times.length - 1] - 900.02) < 1e-6,
     'another preset starts clean — its pool has nothing queued on it');
   player.stop();

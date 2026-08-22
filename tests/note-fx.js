@@ -19,6 +19,36 @@ assert(json(orderedTones(chord, 'updown')) === '[220,330,440,330]', 'up/down avo
 assert(json(orderedTones(chord, 'random', 'same')) === json(orderedTones(chord, 'random', 'same')),
   'random order is deterministic for the same song position');
 
+// The pattern shapes, read on a triad and a seventh. Spelled as degrees of the sorted
+// stack rather than frequencies, because a pattern is a shape and that is what breaks.
+const shape = (list, direction) => {
+  const up = [...list].sort((a, b) => a - b);
+  return orderedTones(list, direction).map((tone) => up.indexOf(tone)).join('');
+};
+const seventh = [440, 220, 330, 550];
+assert(shape(chord, 'up2') === '021', 'thirds plays a triad as C G E');
+assert(shape(seventh, 'up2') === '02132031', 'thirds wraps back for the notes it skipped');
+assert(shape(chord, 'down2') === '201', 'thirds down mirrors thirds up');
+assert(shape([220, 330], 'down2') === '10', 'a two-note thirds-down still descends');
+assert(shape(seventh, 'converge') === '0312', 'outside in walks the ends towards each other');
+assert(shape(seventh, 'diverge') === '1203', 'inside out opens from the middle');
+assert(shape(chord, 'updownHold') === '012210', 'the held turn strikes both endpoints twice');
+assert(shape(chord, 'downupHold') === '210012', 'the held turn mirrors');
+assert(shape(seventh, 'pedalLow') === '010203', 'a low pedal alternates the bottom note');
+assert(shape(seventh, 'pedalHigh') === '031323', 'a high pedal alternates the top note');
+assert(shape(chord, 'cascade') === '012120201', 'cascade climbs three and steps back two');
+for (const direction of ['up2', 'down2', 'converge', 'diverge', 'updownHold', 'downupHold',
+  'pedalLow', 'pedalHigh', 'cascade']) {
+  const single = orderedTones([330], direction);
+  const empty = orderedTones([], direction);
+  const pair = orderedTones([220, 330], direction);
+  const full = orderedTones(seventh, direction);
+  assert(json(single) === '[330]' && json(empty) === '[]' && pair.length >= 2
+    && pair.every((tone) => tone === 220 || tone === 330)
+    && full.length >= 4 && full.every((tone) => seventh.includes(tone)),
+  `${direction} is total and stays inside the stack`);
+}
+
 const inherited = { strum: { enabled: true, gapMs: 12 }, arp: { enabled: false } };
 assert(resolveNoteFx(inherited, { noteFx: { chords: { mode: 'inherit' } } }, 'chords') === inherited,
   'inherit uses the track Note FX unchanged');

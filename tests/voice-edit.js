@@ -388,9 +388,15 @@ async function main() {
       say(monoRecord() !== first, 'a second key on MONO starts a new graph, as MONO means');
       say(monoRecord().gateKey === noteKey(330) && Math.abs(monoRecord().freq - 330) < 1,
         '...and the gate and the glide origin move to it');
+      // ...and 220 IS STILL DOWN. One instrument, several fingers: the key that is
+      // speaking hands the note back rather than ending it, and only the LAST key up
+      // closes the gate. See tests/held-keys.js, which measures what that sounds like.
       rack.releasePreview('lead', 330);
+      say(monoRecord().gateKey === noteKey(220) && Math.abs(monoRecord().freq - 220) < 1,
+        'the key that is speaking coming up gives the note back to the key still down');
+      rack.releasePreview('lead', 220);
       say(monoRecord().gateKey === null && monoRecord().gateUntil <= ctx.currentTime + 0.001,
-        'and the key coming up closes the gate rather than leaving a stale glide origin');
+        '...and the last key coming up closes the gate rather than leaving a stale glide origin');
 
       // LEGATO: one note under two fingers. The graph is handed over, not restarted, and
       // nothing about its end is re-armed — a held handover that stopped its own sources
@@ -410,8 +416,12 @@ async function main() {
       say(rack._heldNative.has(noteKey(330)) && !rack._heldNative.has(noteKey(220)),
         '...so exactly one key can release it, and it is the one being held');
       rack.releasePreview('lead', 330);
+      say(legatoRecord().gateKey === noteKey(220)
+        && rack._heldNative.has(noteKey(220)) && !rack._heldNative.has(noteKey(330)),
+        '...and letting that key go hands the note down to the finger still on it');
+      rack.releasePreview('lead', 220);
       say(legatoRecord().gateKey === null,
-        '...and letting that key go is what ends the note');
+        '...and letting the LAST key go is what ends the note');
     }
 
     // ---- 9. nothing survives the rack ------------------------------------------

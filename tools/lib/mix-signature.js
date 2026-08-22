@@ -33,16 +33,28 @@ function paramsSig(params) {
 }
 
 /**
- * An effect chain as the file holds it: no empty `params` object, no `bypass: false`.
+ * An effect chain as the file holds it: no empty `params` object, no `bypass: false`,
+ * no `mute: false`.
  *
  * One function because a chain hangs off three different things — a channel, a send
  * and the master — and all three are written out the same way.
+ *
+ * BOTH flags, in the order the serialiser emits them. `mute` was the newer of the two
+ * and is the easier to forget here, because it changes nothing you can see on a fader:
+ * muting a master phaser for the level is the whole of some songs' cabinet mix, and a
+ * signature blind to it leaves Save reading "matches the file" over the one edit the
+ * screen exists for. See fmtEffects in mix-source.js — these two must agree.
  */
 export function chainSig(list) {
   if (!list?.length) return undefined;
   return list.map((e) => {
     const params = paramsSig(e.params);
-    return { id: e.id, ...(e.bypass ? { bypass: true } : {}), ...(params ? { params } : {}) };
+    return {
+      id: e.id,
+      ...(e.bypass ? { bypass: true } : {}),
+      ...(e.mute ? { mute: true } : {}),
+      ...(params ? { params } : {}),
+    };
   });
 }
 

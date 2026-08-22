@@ -240,11 +240,16 @@ export const tngr2LaneNow = (ctx, laneKey) => stateFor(ctx).lanes.get(laneKey) |
  * `at` is audio time, converted to a frame here. `eventId` is the note's identity and is
  * what a note-off refers to — and what seeds its phase, so it must be stable between a
  * stem and the mix it belongs to.
+ *
+ * `regate` is for one caller and says one thing: this note-on is a note being HANDED
+ * BACK, not a key going down. A key coming up while another is still held moves the
+ * pitch and leaves the envelopes alone whatever the lane's mode is — see
+ * `_releasePreview`. Left undefined, the lane's own mode decides, as it always has.
  */
-export function tngr2NoteOn(lane, { at, hz, velocity = 1, eventId }) {
+export function tngr2NoteOn(lane, { at, hz, velocity = 1, eventId, regate }) {
   if (!lane) return;
   lane.node.port.postMessage({
-    type: 'noteOn', frame: frameAt(at, lane.ctx.sampleRate), hz, velocity, eventId,
+    type: 'noteOn', frame: frameAt(at, lane.ctx.sampleRate), hz, velocity, eventId, regate,
   });
 }
 

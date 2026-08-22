@@ -5,7 +5,7 @@
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EFFECT_BY_ID } from '../src/engine/effects.js';
+import { EFFECT_BY_ID, paramRange, peqResponse } from '../src/engine/effects.js';
 import { EFFECT_PRESETS } from '../src/data/effect-presets.js';
 
 const require = createRequire(import.meta.url);
@@ -14,7 +14,7 @@ const ENTRY = `
 import * as Tone from 'tone';
 import { createEffect } from ${JSON.stringify(join(ROOT, 'src/engine/effects.js'))};
 window.__renderEffect = async ({ id, params = {}, seconds = 1.2, wet0 = false,
-  gate = false, inputGain = 0.35, source = 'tone', swing = 50 }) => {
+  gate = false, inputGain = 0.35, source = 'tone', swing = 50, impulseAt = 0 }) => {
   const SR = 44100;
   const N = Math.ceil(seconds * SR);
   const ctx = new OfflineAudioContext(2, N, SR);
@@ -24,7 +24,21 @@ window.__renderEffect = async ({ id, params = {}, seconds = 1.2, wet0 = false,
   let harmonics = null;
   if (source === 'impulse') {
     const buffer = ctx.createBuffer(1, N, SR);
-    buffer.getChannelData(0)[0] = 1;
+    // impulseAt exists for the effects that RAMP to their settings. Every custom node
+    // in the catalogue writes its parameters with setTargetAtTime and a 20ms constant, so
+    // an impulse at sample zero is measuring the filter the constructor built rather than
+    // the one the caller asked for — for the Channel EQ that came out 8.5dB from the
+    // curve the desk draws, and the node was correct. Land it after the ramp instead.
+    buffer.getChannelData(0)[Math.round(impulseAt * SR)] = 1;
+    src = ctx.createBufferSource(); src.buffer = buffer; src.connect(sum);
+  } else if (source === 'gate') {
+    const buffer = ctx.createBuffer(1, N, SR);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < N; i++) {
+      const t = i / SR;
+      const loud = t < 0.25 || t >= 0.65;
+      data[i] = (loud ? 0.35 : 0.001) * Math.sin(2 * Math.PI * 220 * t);
+    }
     src = ctx.createBufferSource(); src.buffer = buffer; src.connect(sum);
   } else {
     src = ctx.createOscillator();
@@ -70,10 +84,10 @@ await page.setContent('<!doctype html><meta charset="utf-8">'
   + `<script>${built.outputFiles[0].text.replace(/<\/script>/gi, '<\\/script>')}<\/script>`,
 { waitUntil: 'load' });
 
-const ids = ['chorus2', 'bitcrusher', 'rhythmgate', 'flanger', 'ringmod', 'tape', 'vowel'];
+const ids = ['chorus2', 'bitcrusher', 'rhythmgate', 'flanger', 'ringmod', 'tape', 'vowel', 'ambience', 'reverb'];
 const params = {
   chorus2: { rateSync: 0, frequency: 0.65 },
-  bitcrusher: { bits: 8, drive: 6, tone: 12000 },
+  bitcrusher: { bits: 8, downsample: 4 },
   rhythmgate: { division: 0.5, gateLength: 0.5, attack: 0.003, decay: 0.035, depth: 1 },
   flanger: { rateSync: 0, frequency: 0.25 },
   ringmod: { rateSync: 0, frequency: 30, waveform: 'sine' },
@@ -81,6 +95,8 @@ const params = {
   vowel: { voice: 'alto', stack: 'a e i o u', rateSync: 1, rateDivision: 0.25,
     frequency: 0.5, waveform: 'step', depth: 1, glide: 0.08, articulation: 0,
     reso: 2, spread: 0.9, intensity: 0, excite: 0, breath: 0, wet: 0.9 },
+  ambience: { space: 0.5, damping: 0.55, wet: 0.38 },
+  reverb: { decay: 2, preDelay: 0.01, low: 0, mid: 0, high: 0, width: 1, wet: 0.4 },
 };
 const assert = (ok, msg) => { if (!ok) throw new Error(msg); console.log(`ok: ${msg}`); };
 const finite = (x) => Number.isFinite(x);
@@ -169,6 +185,39 @@ for (const id of ids) {
   assert(diff(dry, transparent) < 5e-6, `${id} is transparent at wet 0`);
 }
 
+// Ambience is a tail effect, not merely a stereo colour. An impulse must still be
+// present after the first recirculating line, and the deliberately unequal left/right
+// lines must separate a mono source without relying on a running LFO.
+const ambienceImpulse = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'ambience', source: 'impulse', seconds: 1.5,
+  params: { space: 0.5, damping: 0.55, wet: 1 },
+});
+const tailStart = Math.floor(0.09 * 44100);
+assert(Math.max(...ambienceImpulse[0].slice(tailStart)) > 1e-5
+  && Math.max(...ambienceImpulse[1].slice(tailStart)) > 1e-5,
+  'ambience leaves an audible post-input tail');
+assert(stereoDelta(ambienceImpulse) > 1e-4, 'ambience decorrelates the stereo tail');
+const reverbImpulse = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'reverb', source: 'impulse', seconds: 2.5,
+  params: { ...params.reverb, wet: 1 }, inputGain: 1,
+});
+const reverbTailStart = Math.floor(0.05 * 44100);
+assert(Math.max(...reverbImpulse[0].slice(reverbTailStart)) > 1e-5
+  && Math.max(...reverbImpulse[1].slice(reverbTailStart)) > 1e-5,
+  'reverb leaves an audible wet tail after the dry impulse');
+for (const values of [
+  { space: 0, damping: 0, wet: 1 },
+  { space: 0.5, damping: 0.55, wet: 0.38 },
+  { space: 1, damping: 1, wet: 1 },
+  { space: 0.82, damping: 2, wet: 1 },
+]) {
+  const extreme = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'ambience', source: 'impulse', seconds: 1.5, params: values,
+  });
+  assert(extreme.every((ch) => ch.every(finite)) && peak(extreme) < 8,
+    `ambience remains finite and bounded at space ${values.space}, damping ${values.damping}`);
+}
+
 // The original Tone Chorus remains a supported saved effect; this covers the four
 // newly exposed public Tone parameters without changing its id or old defaults.
 const chorusParams = {
@@ -186,13 +235,27 @@ const chorusVariant = await page.evaluate((x) => window.__renderEffect(x), {
 assert(diff(originalChorus, chorusVariant) > 1e-4,
   'original chorus waveform and feedback controls change the render');
 
-const lowBits = await page.evaluate((x) => window.__renderEffect(x), { id: 'bitcrusher', params: { bits: 2, drive: 0, tone: 20000 } });
-const highBits = await page.evaluate((x) => window.__renderEffect(x), { id: 'bitcrusher', params: { bits: 16, drive: 0, tone: 20000 } });
+const lowBits = await page.evaluate((x) => window.__renderEffect(x), { id: 'bitcrusher', params: { bits: 2, downsample: 1 } });
+const highBits = await page.evaluate((x) => window.__renderEffect(x), { id: 'bitcrusher', params: { bits: 24, downsample: 1 } });
 assert(diff(lowBits, highBits) > 1e-3, 'bit depth changes the quantized signal');
+const fullRate = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'bitcrusher', params: { bits: 24, downsample: 1 }, seconds: 1.2,
+});
+const reducedRate = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'bitcrusher', params: { bits: 24, downsample: 12 }, seconds: 1.2,
+});
+assert(diff(fullRate, reducedRate) > 1e-3, 'sample-rate reduction changes the held signal');
 const crushedSilence = await page.evaluate((x) => window.__renderEffect(x), {
-  id: 'bitcrusher', params: { bits: 4, drive: 4, tone: 3945.696, wet: 0.55 }, inputGain: 0,
+  id: 'bitcrusher', params: { bits: 4, downsample: 12, wet: 1 }, inputGain: 0,
 });
 assert(peak(crushedSilence) < 1e-7, 'bit crusher keeps silence at zero instead of creating meter-only DC');
+for (const [name, preset] of Object.entries(EFFECT_PRESETS.inserts.bitcrusher.presets)) {
+  const rendered = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'bitcrusher', params: preset, seconds: 1.2,
+  });
+  assert(rendered.every((ch) => ch.every(finite)) && peak(rendered) > 1e-5,
+    `bit crusher preset ${name} renders finite audible output`);
+}
 
 const wideChorus = await page.evaluate((x) => window.__renderEffect(x), {
   id: 'chorus2', params: { rateSync: 0, frequency: 0.65, density: 1, width: 1, wet: 1 },
@@ -267,6 +330,31 @@ for (const [id, fxParams] of [
 const gateOpen = await page.evaluate((x) => window.__renderEffect(x), { id: 'rhythmgate', params: { division: 0.5, gateLength: 0.5, attack: 0.003, decay: 0.035, depth: 1 }, gate: true });
 const gatePeak = gateOpen[0].reduce((m, v) => Math.max(m, Math.abs(v)), 0);
 assert(gatePeak > 0.05, 'rhythmic gate opens on the song grid');
+
+const noiseGateParams = { threshold: -45, attack: 0.003, release: 0.04 };
+const gatedBurst = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'noisegate', source: 'gate', seconds: 1, inputGain: 1, params: noiseGateParams,
+});
+const gateOpenRms = rms(gatedBurst[0], 0.1 * 44100, 0.2 * 44100);
+const gateClosedRms = rms(gatedBurst[0], 0.45 * 44100, 0.55 * 44100);
+assert(gateOpenRms > 0.05, 'noise gate passes a signal above threshold');
+assert(gateClosedRms < gateOpenRms * 0.02, 'noise gate cuts a signal below threshold after release');
+const gateLoud = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'noisegate', params: noiseGateParams, inputGain: 0.35, seconds: 0.8,
+});
+const gateQuiet = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'noisegate', params: noiseGateParams, inputGain: 0.001, seconds: 0.8,
+});
+assert(peak(gateLoud) > 0.05 && peak(gateQuiet) < 1e-6,
+  'noise gate threshold separates a full-level tone from low-level noise');
+const zeroThreshold = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'noisegate', params: { ...noiseGateParams, threshold: 0 }, inputGain: 0.35, seconds: 0.8,
+});
+assert(peak(zeroThreshold) < 1e-7, 'noise gate honours a 0dB threshold without defaulting');
+const gateRepeat = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'noisegate', params: noiseGateParams, inputGain: 0.35, seconds: 0.8,
+});
+assert(diff(gateLoud, gateRepeat) < 5e-6, 'noise gate renders deterministically');
 
 const staticImpulse = await page.evaluate((x) => window.__renderEffect(x), {
   id: 'vowel', source: 'impulse', seconds: 1.2,
@@ -359,6 +447,119 @@ const rmsDiff = (a, b) => {
   }
   return Math.sqrt(sum / Math.max(1, n));
 };
+for (const name of ['space', 'damping', 'wet']) {
+  const range = EFFECT_BY_ID.ambience.ranges?.[name] || { min: 0, max: 1 };
+  const lo = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'ambience', params: { ...params.ambience, [name]: range.min }, seconds: 1.5,
+  });
+  const hi = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'ambience', params: { ...params.ambience, [name]: range.max }, seconds: 1.5,
+  });
+  assert(rmsDiff(lo, hi) > 1e-4, `ambience ${name} is a live control, not a dead knob`);
+}
+for (const name of ['low', 'mid', 'high']) {
+  const range = EFFECT_BY_ID.reverb.ranges[name];
+  const lo = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'reverb', params: { ...params.reverb, [name]: range.min }, seconds: 2.5,
+  });
+  const hi = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'reverb', params: { ...params.reverb, [name]: range.max }, seconds: 2.5,
+  });
+  assert(rmsDiff(lo, hi) > 1e-4, `reverb ${name} is a live tail EQ control`);
+}
+{
+  const lo = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'reverb', source: 'impulse', params: { ...params.reverb, width: 0 }, seconds: 2.5,
+  });
+  const wide = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'reverb', source: 'impulse', params: { ...params.reverb, width: 2 }, seconds: 2.5,
+  });
+  assert(stereoDelta(lo) < 1e-5, 'reverb width 0 collapses the wet tail to mono');
+  assert(stereoDelta(wide) > 1e-4, 'reverb width 2 expands the wet tail stereo image');
+}
+// ---- THE CHANNEL EQ'S FIVE BANDS AGREE WITH THE CURVE THE DESK DRAWS ---------------
+//
+// The card grew a middle band, and `n` is an identity rather than a position: the new one
+// is band 5 and it sits THIRD, because renumbering to put it third would have moved three
+// bands' settings on every song already carrying a Channel EQ. Everything that touches a
+// band therefore has to key off `b.n`, and `makeParametricEq` used to key off the array
+// index — the same four numbers until the day they weren't.
+//
+// Nothing about that fails loudly. The graph would draw one curve and the filters would
+// render another, and the only way to catch it is to measure what came out and hold it
+// against what `peqResponse` promised. So: an impulse through the real nodes, its
+// magnitude read at eight frequencies, against the desk's own prediction.
+{
+  const peqDef = EFFECT_BY_ID.peq;
+  // One band up, one down, both away from their defaults, and Q's that are not 1 — a
+  // setting where every band's identity matters and no two are interchangeable.
+  const setting = { ...peqDef.defaults,
+    g1: 6, f2: 300, g2: -5, q2: 2, f5: 1200, g5: 9, q5: 3,
+    f3: 3000, g3: -4, q3: 1.5, f4: 9000, g4: 5 };
+  const [impulse] = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'peq', params: setting, seconds: 1.5, source: 'impulse', inputGain: 1,
+    impulseAt: 0.25,
+  });
+  const [bare] = await page.evaluate((x) => window.__renderEffect(x), {
+    id: null, seconds: 1.5, source: 'impulse', inputGain: 1, impulseAt: 0.25,
+  });
+  // A Goertzel at one frequency over the impulse response IS that frequency's magnitude.
+  const mag = (samples, hz) => {
+    const w = 2 * Math.PI * hz / 44100;
+    const c = 2 * Math.cos(w);
+    let s1 = 0, s2 = 0;
+    for (let i = 0; i < samples.length; i++) { const t = samples[i] + c * s1 - s2; s2 = s1; s1 = t; }
+    return Math.sqrt(Math.abs(s1 * s1 + s2 * s2 - c * s1 * s2));
+  };
+  const probe = [60, 120, 300, 700, 1200, 3000, 6000, 12000];
+  const predicted = peqResponse(setting, probe, 44100);
+  const rendered = probe.map((hz) => 20 * Math.log10(mag(impulse, hz) / mag(bare, hz)));
+  const worst = Math.max(...rendered.map((db, i) => Math.abs(db - predicted[i])));
+  assert(worst < 0.2,
+    `the five rendered bands match the curve the desk draws, worst case ${worst.toFixed(3)}dB`);
+  // And the middle band specifically, because it is the one whose number and position
+  // differ: move ONLY band 5 and 1.2kHz has to move with it while 120Hz and 6kHz do not.
+  const [midOnly] = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'peq', params: { ...peqDef.defaults, f5: 1200, g5: 12, q5: 3 },
+    seconds: 1.5, source: 'impulse', inputGain: 1, impulseAt: 0.25,
+  });
+  const at = (hz) => 20 * Math.log10(mag(midOnly, hz) / mag(bare, hz));
+  assert(at(1200) > 11 && Math.abs(at(120)) < 0.3 && Math.abs(at(6000)) < 0.3,
+    'a boost on band 5 alone lands at 1.2kHz and leaves the shelves where they were');
+}
+
+// The Bell EQ's three, swept the same way — with the WHOLE POINT that FREQ and Q are
+// swept at a boost and not at the default. A peaking biquad at 0dB is exactly
+// transparent, which is the property that lets one sit unused in a chain; it also means
+// a sweep of frequency or Q against the flat default renders no difference at all and
+// would report two live controls as dead. So the gain sweep runs from the card's own
+// default and the other two run from a +12 bell, which is the state anybody who is
+// touching FREQ is in.
+{
+  const bellDef = EFFECT_BY_ID.bell;
+  const bellRange = (name) => bellDef.ranges?.[name] || paramRange(name, bellDef);
+  for (const name of bellDef.params) {
+    const range = bellRange(name);
+    const base = name === 'gain' ? bellDef.defaults : { ...bellDef.defaults, gain: 12 };
+    const a = await page.evaluate((x) => window.__renderEffect(x), {
+      id: 'bell', params: { ...base, [name]: range.min }, seconds: 1.5,
+    });
+    const b = await page.evaluate((x) => window.__renderEffect(x), {
+      id: 'bell', params: { ...base, [name]: range.max }, seconds: 1.5,
+    });
+    assert(rmsDiff(a, b) > 1e-4, `bell ${name} is a live control, not a dead knob`);
+  }
+  // And the claim the card is built on: at 0dB it is not merely quiet, it is the input.
+  const flat = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'bell', params: bellDef.defaults, seconds: 1.5,
+  });
+  // `id: null` is the harness's no-node-at-all render — the same reference the wet-0
+  // transparency checks above use.
+  const none = await page.evaluate((x) => window.__renderEffect(x), { id: null, seconds: 1.5 });
+  assert(rmsDiff(flat, none) === 0,
+    'a Bell EQ at 0dB is bit-for-bit the signal that went into it');
+}
+
 for (const name of vowelDef.params) {
   const [lo, hi] = sweepEnds(name);
   const mode = name === 'frequency' ? { rateSync: 0 } : {};
