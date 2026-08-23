@@ -60,8 +60,9 @@ detune — it is now what it was always used as: two short delays panned hard le
 right with a slow wander (10 permanently-looping sources → 2 per instance). Chorus 2
 went from four taps to two hard-panned ones, which also fixed DENSITY silently walking
 the image left. The Phaser is native now — four allpass stages and one LFO in place of
-Tone's ten-stages-per-channel (~80 always-running ConstantSources). Every `mbComp` in
-the library became the native `mbCompN` (identical parameters, 34% cheaper). The
+Tone's ten-stages-per-channel (~80 always-running ConstantSources). The multiband
+compressor in the library is the native `mbCompN` (identical parameters, 34% cheaper).
+The former Tone entry was migrated out of the song data. The
 tape's spare 4×-oversampled shaper only joins the graph during a curve crossfade;
 dropping the oversampling itself was measured and **rejected** — the oversampler
 carries group delay, and cheaper-but-phase-shifted is a different sound.

@@ -122,6 +122,18 @@ for (const name of ambiencePresetNames) {
     `ambience preset ${name} matches its resolved snapshot`);
 }
 
+const springPresetNames = effectPresetNames('spring');
+assert(springPresetNames.includes('Splash') && springPresetNames.includes('Classic')
+  && springPresetNames.includes('Dark Tank') && springPresetNames.includes('Boing'),
+  'spring reverb ships distinct spring-character presets');
+for (const name of springPresetNames) {
+  const resolved = resolveEffectPreset('spring', name);
+  assert(resolved && EFFECT_BY_ID.spring.params.every((key) => Object.hasOwn(resolved, key)),
+    `spring preset ${name} resolves every declared parameter`);
+  assert(matchEffectPreset('spring', resolved) === name,
+    `spring preset ${name} matches its resolved snapshot`);
+}
+
 // Common cards have a small starter library as well as the universal Default reset.
 // Keep these source-backed and complete so selecting one never inherits a value from a
 // previous hand-tuned state.
@@ -134,6 +146,7 @@ const commonPresetExpectations = {
   distortion: ['Warm', 'Crunch'],
   widener: ['Subtle', 'Wide'],
   reverb: ['Small Room', 'Plate', 'Hall', 'Dark Chamber', 'Bright Plate', 'Wide Hall'],
+  spring: ['Splash', 'Classic', 'Dark Tank', 'Boing'],
   compressor: ['Gentle', 'Punch', 'Vocal'],
   noisegate: ['Gentle Gate', 'Gated Reverb'],
   msComp: ['Glue', 'Center Punch', 'Wide & Open', 'Stereo Tame', 'Vocal Focus', 'Techno Pump'],
@@ -191,12 +204,13 @@ for (const name of nativeMultibandPresetNames) {
   assert(matchEffectPreset('mbCompN', resolved) === name,
     `native multiband preset ${name} matches its resolved snapshot`);
 }
-assert(effectPresetNames('mbComp').length === 0,
-  'Tone multiband keeps its separate no-preset A/B surface');
 assert(mixerSource.includes('function multibandControls')
   && mixerSource.includes("def.id === 'mbCompN'")
-  && mixerSource.includes("def.id === 'mbComp'"),
-  'both multiband cards use the grouped control surface');
+  && !mixerSource.includes("def.id === 'mbComp'"),
+  'the native multiband card uses the grouped control surface');
+assert(EFFECT_BY_ID.mbComp === EFFECT_BY_ID.mbCompN
+  && !Object.keys(EFFECT_BY_ID).includes('mbComp'),
+  'old mbComp drafts resolve through a hidden native compatibility alias');
 
 const normalized = normalizeKnownDefaults({ wet: 0.25, removed: 99 }, ['wet', 'tone'], { wet: 0.5, tone: 12000 });
 assert(JSON.stringify(normalized) === JSON.stringify({ wet: 0.25, tone: 12000 }),

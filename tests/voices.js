@@ -146,7 +146,7 @@ assert(VOICES[legacySongVoice]?.category === 'Tom',
 delete VOICES[legacySongVoice];
 assert(!isKitVoice(VOICES.dsZap) && homeLane(VOICES.dsZap) === 'bass',
   'FX zap remains non-drum outside its special crash audition render');
-for (const [id, lane] of [['tom', 'tom'], ['crashEngine', 'crash'], ['ds808Cowbell', 'tom']]) {
+for (const [id, lane] of [['engTom', 'tom'], ['crashEngine', 'crash'], ['ds808Cowbell', 'tom']]) {
   assert(homeLane(VOICES[id]) === lane, `${id}: measures on its correct home lane`);
 }
 
@@ -376,8 +376,8 @@ for (const v of tone.filter((x) => x.synth === 'WNDR-9')) {
   assert((a.decay ?? 0) >= 0 && (a.attack ?? 0) >= 0 && (a.release ?? 0) >= 0,
     `${v.id}: has no negative envelope stage`);
   if (a.pitch) {
-    assert(a.pitch.from > 0 && a.pitch.to > 0,
-      `${v.id}: bends between two real pitches — an exponential ramp cannot reach zero`);
+    assert(Number.isFinite(a.pitch.semitones),
+      `${v.id}: states a finite pitch bend in semitones`);
   }
   if (a.perc) assert(a.perc.ratio > 0, `${v.id}: strikes a partial above the fundamental`);
 }

@@ -701,6 +701,8 @@ export const EFFECT_PRESETS = {
     },
     "autowah": {
       "default": {
+        "rateSync": 0,
+        "rateDivision": 2,
         "baseFrequency": 100,
         "octaves": 6,
         "sensitivity": 0,
@@ -955,6 +957,40 @@ export const EFFECT_PRESETS = {
         }
       }
     },
+    "spring": {
+      "default": {
+        "tension": 0.5,
+        "damping": 0.35,
+        "drip": 0.42,
+        "wet": 0.34
+      },
+      "presets": {
+        "Splash": {
+          "tension": 0.28,
+          "damping": 0.18,
+          "drip": 0.82,
+          "wet": 0.3
+        },
+        "Classic": {
+          "tension": 0.52,
+          "damping": 0.38,
+          "drip": 0.4,
+          "wet": 0.34
+        },
+        "Dark Tank": {
+          "tension": 0.68,
+          "damping": 0.78,
+          "drip": 0.22,
+          "wet": 0.38
+        },
+        "Boing": {
+          "tension": 0.88,
+          "damping": 0.2,
+          "drip": 1,
+          "wet": 0.42
+        }
+      }
+    },
     "reverb": {
       "default": {
         "decay": 3,
@@ -1175,28 +1211,6 @@ export const EFFECT_PRESETS = {
           "pump": 0.9
         }
       }
-    },
-    "mbComp": {
-      "default": {
-        "lowFrequency": 250,
-        "highFrequency": 2000,
-        "low.threshold": -30,
-        "low.ratio": 6,
-        "low.attack": 0.03,
-        "low.release": 0.25,
-        "low.knee": 10,
-        "mid.threshold": -24,
-        "mid.ratio": 3,
-        "mid.attack": 0.02,
-        "mid.release": 0.03,
-        "mid.knee": 16,
-        "high.threshold": -24,
-        "high.ratio": 3,
-        "high.attack": 0.02,
-        "high.release": 0.03,
-        "high.knee": 16
-      },
-      "presets": {}
     },
     "mbCompN": {
       "default": {

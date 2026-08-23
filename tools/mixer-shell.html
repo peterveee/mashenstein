@@ -289,9 +289,19 @@
   }
   /* One duration and one curve for the effects dock: the panel slides in as the desk
      squeezes, and a mismatch between the two would show up as a seam. */
+  /* Workspace motion is a PAIR of durations, not one. A surface that is leaving has
+     nothing left to say, so it goes quickly and accelerates away; the surface arriving
+     is the thing you asked for, so it takes a little longer and decelerates into place.
+     One duration for both is what makes a hand-off read as a wipe rather than as a
+     switch. Both are short enough that a view change still feels like a button press —
+     the old .34s was long enough to feel like waiting for the desk. */
   :root {
     --fxdock-anim: .2s; --fxdock-ease: cubic-bezier(.22, .61, .36, 1);
-    --workspace-anim: .22s; --workspace-ease: cubic-bezier(.22, .61, .36, 1);
+    --workspace-in: .19s; --workspace-out: .12s;
+    --workspace-ease: cubic-bezier(.16, .84, .44, 1);
+    --workspace-ease-out: cubic-bezier(.4, 0, .9, .6);
+    --workspace-rise: 10px;
+    --switch-anim: .13s;
     --mixer-min-width: 1200px; --mixer-min-height: 700px;
   }
   * { box-sizing: border-box; }
@@ -386,6 +396,30 @@
      button after another lower view is selected. Keep its icon and surface explicit
      so no inactive-state rule can collapse both into the dark panel. */
   #mixviewbtn:not(.on) { color: var(--ink); background: var(--panel2); border-color: var(--line); }
+  /* Mixer, Piano Roll and Pattern are one three-position switch, so they light the same
+     way and take the same time doing it. The lit surface FADES: a hard jump to the
+     accent is what made choosing a view read as a flash rather than as a switch being
+     thrown, and it also left the toolbar changing faster than the workspace under it.
+     The icon of the one you just chose then gives a single short press-and-settle, so
+     the eye is told which of the three took the click without having to compare all
+     three. `justlit` is put on by setLowerView and only on a real change of view — a
+     button that was already up does not re-animate, and neither does the one the shell
+     paints lit before any script has run. */
+  header .lowerviewbtn {
+    transition: background var(--switch-anim) var(--workspace-ease),
+                color var(--switch-anim) var(--workspace-ease),
+                border-color var(--switch-anim) var(--workspace-ease);
+  }
+  header .lowerviewbtn.justlit > svg { animation: viewSwitchLit .24s var(--workspace-ease) 1; }
+  @keyframes viewSwitchLit {
+    0% { transform: scale(.8); }
+    55% { transform: scale(1.07); }
+    100% { transform: scale(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    header .lowerviewbtn { transition: none; }
+    header .lowerviewbtn.justlit > svg { animation: none; }
+  }
   /* A hairline between one kind of thing and the next: the row was a dozen controls
      of equal weight, which reads as a list rather than as groups. */
   header .hdiv { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--line); }
@@ -2064,12 +2098,22 @@
      takes --bar-gut. The zero also keeps the channel strip and part-filter origins equal. */
   #rackfield { flex: 1 1 auto; min-width: 0; min-height: 0; align-self: stretch;
                display: flex; flex-direction: column; }
+  /* STRETCH, not flex-start: a strip's bottom is the rack's bottom at all times. The
+     height fitStrips works out is a floor on the strip (see .strip's min-height), not
+     its height — so any pixel the rack has and the sum has not accounted for goes into
+     the fader instead of standing as a band of empty desk under the strips, and a fit
+     that has not run yet, or ran against a rack that has since grown, cannot leave a
+     hole. The measurement passes turn this off again — see #rackwrap.measuring. */
   #rack { flex: 1 1 auto; min-height: 0; display: flex; gap: var(--stripgap);
           padding: 5px var(--bar-gut) 4px 0;
-          overflow-x: scroll; overflow-y: hidden; align-items: flex-start;
+          overflow-x: scroll; overflow-y: hidden; align-items: stretch;
           scroll-snap-type: x mandatory; }
   #rack::-webkit-scrollbar:horizontal { height: 0; }
   #rack .strip { scroll-snap-align: start; scroll-snap-stop: always; }
+  /* Once the rack overflows, leave calculated air after the final send. The script makes
+     the resulting maximum an exact strip snap point instead of letting the scrollbar's
+     raw end sit a couple of pixels past it and fight the snap while held. */
+  #rack.snap-tail { padding-right: var(--mixer-tail-pad, var(--stripw)); }
   #mixscroll { flex: none; height: var(--bar-scroll-h); min-height: var(--bar-scroll-h);
                margin: 0 var(--bar-gut) 0 0;
                overflow-x: scroll; overflow-y: hidden; scrollbar-gutter: auto; }
@@ -2083,10 +2127,15 @@
   /* MASTER now sits at the right edge of its reserved slot, immediately before the
      ordinary channel rack. The slot stays --contentx wide so the first channel strip
      keeps its field origin; the right inset is the same gap used between channels. */
+  /* Stretched top and bottom for the same reason #rack is, and standing on the same
+     floor: the slot is a sibling of #rackfield, so the horizontal scroll rail under the
+     channels is not under MASTER, and stretching to the slot's own bottom would put its
+     fader, pan and buttons a rail's height below everyone else's. The rail is reserved
+     here as padding instead — the same room, on the same line. */
   #masterslot { width: var(--contentx);
-                padding: 5px var(--stripgap) 4px 0;
+                padding: 5px var(--stripgap) calc(4px + var(--bar-scroll-h)) 0;
                 display: flex; justify-content: flex-end; flex: none;
-                align-items: flex-start; }
+                align-self: stretch; align-items: stretch; }
   /* The full-width filter rail belongs above the channel strips. Keep this generated
      MASTER-side copy out of the layout now that those controls have one home. */
   #masterfilters { flex: 0 0 var(--stripw); width: var(--stripw); min-width: 0;
@@ -2180,9 +2229,33 @@
   #rackwrap.shed-fx .fxbtns { display: none; }
   /* MASTER has no EQ or send rows, so its upper body is spare room rather than a
      reason to remove the insert chain. Preserve that chain even when the ordinary
-     strips have their Effects part switched off or the shared ladder has shed it. */
+     strips have their Effects part switched off or the shared ladder has shed it.
+
+     SPARE room, and no more than that. The block is normally as tall as the longest
+     chain in the rack plus its empty slot, so the slots land on one line on every
+     strip — but once every other strip's block is hidden there is nothing left to line
+     up with, and that reservation turns into an empty band. It is not the master's own
+     band either: --bodyh is the tallest body in the rack held on every strip, so a
+     song whose busiest channel carried six inserts put 170px of nothing over every
+     fader on the desk for the sake of the master's two, and the ladder's shedding
+     bought the faders nothing. Kept alone, the chain is as tall as the master's own
+     chain — see --fxownh in insertSlots. */
   #rackwrap.no-fx #masterslot .master-fxbtns,
   #rackwrap.shed-fx #masterslot .master-fxbtns { display: flex; }
+  /* And ALWAYS its own height, not the rack's reservation. That reservation is what
+     makes the slots land on one line across the strips — and this block is in the body
+     while every other one is in the foot, so it has never lined up with any of them.
+     All it did there was carry the busiest channel's chain length into the master's
+     body, and --bodyh is the tallest body in the rack held on EVERY strip: one channel
+     with six inserts put 199px of reserved nothing over every fader on the desk. */
+  #masterslot .master-fxbtns { height: var(--fxownh, auto); }
+  /* Whole, or not at all. MASTER is out of the --bodyh measurement (see measureRungAt),
+     so the band is what the channels and the returns NEED — and its own chain is then a
+     guest in that band. Where the band cannot hold it, sizeStrips says so with this
+     class and the chain goes rather than half of it showing over a hidden scrollbar,
+     which is the silent version of shedding that the ladder exists to avoid. Courtesy
+     copy: the master's chain is on the Effects panel whatever the rack is doing. */
+  #rackwrap.shed-masterfx #masterslot .master-fxbtns { display: none; }
   /* A channel body used to collapse outright once all three optional blocks were
      hidden, so it would not reserve an empty band above the fader. It does not any
      more: --bodyh is that band, and it is the same band on every strip. With the body
@@ -2193,7 +2266,11 @@
   /* Measuring a rung for real rather than adding its parts up — see stripChromeAt().
      All three of these are given a height explicitly (--striph, --bodyh), which is
      what the measurement is trying to produce. */
-  #rackwrap.measuring .strip { height: auto; }
+  /* Both of the heights the measurement is trying to produce, and the stretch that
+     would answer with the rack's height instead of the strip's own. */
+  #rackwrap.measuring .strip { height: auto; min-height: 0; }
+  #rackwrap.measuring #rack,
+  #rackwrap.measuring #masterslot { align-items: flex-start; }
   #rackwrap.measuring .stripbody { height: auto; }
   /* All: lit when nothing is hidden, which makes it the state as well as the switch. */
   #lanefilter button.all.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
@@ -2331,18 +2408,27 @@
      No rule down their left edge: the strips are already boxes with their own
      borders, and a full-height line beside them drew a division the desk does not
      have — the sends are strips in the same rack, not a separate panel. */
-  #sendslot { display: flex; gap: 6px; flex: none; align-items: flex-start;
+  /* Stretched, like #rack and #masterslot. Left top-aligned, the return strips were the
+     one group in the rack with no definite height — and every `height: 100%` inside a
+     strip (the fader, the meter and its bars) resolves against it. Against an auto
+     height they resolve against nothing, fall back to their content, and a return stood
+     1225px tall in a 400px rack with a 900px fader. */
+  #sendslot { display: flex; gap: 6px; flex: none; align-items: stretch;
               margin-left: auto; }
   /* Three zones: a pinned name, a scrolling control area, and a pinned fader.
      The strips outgrew short windows once channel delay was added, and what got
      clipped was the instrument name at the top — the one thing you always need. */
-  /* Height comes from fitStrips: exactly what this song's strip needs, so a tall
-     window leaves its slack as a band under the rack rather than as a hole in the
-     middle of every strip between the send rows and the pan pot. */
+  /* A FLOOR from fitStrips, and the rack's own height above it. --striph is exactly
+     what this song's strip needs at the rung it is standing on, so nothing between the
+     send rows and the pan pot is ever squeezed; the strip then stretches to the rack,
+     and the slack a tall window leaves goes down the fader — which is the control it
+     was always meant to go to — instead of standing as a band under the strips. It
+     used to be the strip's HEIGHT, which made every gap under the rack a question of
+     when the last fit ran. */
   .strip {
     background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
     width: var(--stripw); flex: none; padding: 6px 7px; display: flex; flex-direction: column;
-    min-height: 0; height: var(--striph, auto);
+    min-height: var(--striph, auto);
   }
   .strip .striphead { flex: none; }
   /* One height for every body in the rack: the tallest body's, measured per rung of
@@ -7061,7 +7147,11 @@
   /* Top-aligned: a chain grows downwards from the first slot, so the first slot is
      on the same line on every strip — with the block bottom-aligned, a channel with
      one effect put it level with another channel's third. */
+  /* The reserved height is the rack's, written as a variable by insertSlots so a rule
+     can still override it — see the #masterslot chain, which is re-sized to its own
+     chain once it is the only block left showing. */
   .fxbtns { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px;
+            height: var(--fxrowsh, auto);
             box-sizing: content-box; margin: 0 0 8px; position: relative; }
   /* Two pixels down: a 23px button in a 27px slot was hard against the top of it, and
      beside a strip whose slot is still an empty outline the two read as different
@@ -7268,12 +7358,14 @@
                background: var(--panel); }
   #upperwork #timeline { flex: none; }
   #upperwork #arrange { flex: 1 1 auto; min-height: 0; max-height: none !important;
-                        padding-bottom: var(--arrgrid-pad); }
+                        padding-bottom: var(--arrgrid-pad); border-bottom: 0; }
   #upperwork #arrgrid { min-height: 0; overflow-y: auto; }
   #worksplitter { position: relative; height: 7px; flex: none; z-index: 12;
                   cursor: ns-resize; touch-action: none; background: var(--panel); }
   #worksplitter::after { content: ''; position: absolute; left: 0; right: 0;
-                         top: 3px; height: 1px; background: var(--line2); }
+                         top: 3px; height: 1px;
+                         background: color-mix(in srgb, var(--line2) 68%, transparent);
+                         box-shadow: 0 3px 10px -7px #000b; }
   #worksplitter:hover,
   #worksplitter.dragging,
   #worksplitter:focus-visible {
@@ -7305,52 +7397,64 @@
   #desk[data-lower-view="none"] #lowerwork { display: none; }
   #desk[data-lower-view="none"] #upperwork { height: auto; flex: 1 1 auto; min-height: 0; }
 
-  /* Workspace switches are display changes at rest, but during the short hand-off keep
-     the old surface in the DOM long enough for the new one to arrive with a little air.
-     The JS owns the two-frame start and cleanup; these rules own only the visual motion,
-     so no editor rebuild, audio change or scroll reset is tied to the animation. */
-  #desk.workspace-transitioning #lowerwork { display: flex; }
-  #desk.workspace-transitioning[data-lower-view="none"] #worksplitter { display: block; }
-  #desk.workspace-transitioning[data-lower-view="none"][data-lower-view-from="mixer"] #mixerview { display: flex; }
-  #desk.workspace-transitioning[data-lower-view="none"][data-lower-view-from="mixer"] #notes,
-  #desk.workspace-transitioning[data-lower-view="none"][data-lower-view-from="roll"] #mixerview,
-  #desk.workspace-transitioning[data-lower-view="none"][data-lower-view-from="pattern"] #mixerview { display: none; }
-  #desk.workspace-transitioning[data-lower-view="none"][data-lower-view-from="roll"] #notes,
-  #desk.workspace-transitioning[data-lower-view="none"][data-lower-view-from="pattern"] #notes { display: flex; }
-  #desk.workspace-transitioning[data-lower-view="none"][data-lower-view-from="roll"] #pianoroll { display: flex !important; }
-  #desk.workspace-transitioning[data-lower-view="none"][data-lower-view-from="roll"] #kitroll,
-  #desk.workspace-transitioning[data-lower-view="none"][data-lower-view-from="pattern"] #pianoroll { display: none !important; }
-  #desk.workspace-transitioning[data-lower-view="none"][data-lower-view-from="pattern"] #kitroll { display: flex !important; }
-  #desk.workspace-transitioning #lowerwork,
-  #desk.workspace-transitioning :is(#mixerview, #notes) {
-    transition: opacity var(--workspace-anim) var(--workspace-ease),
-                transform var(--workspace-anim) var(--workspace-ease);
+  /* ---- Workspace motion ------------------------------------------------------
+     A view switch is a display change and nothing more: the editors keep their DOM,
+     their scroll and their selection, and no bank, rack or audio graph is rebuilt. The
+     motion exists for one reason — to say which surface just replaced which — so it is
+     built out of two jobs and no others.
+
+     LEAVING IS PINNED. Before the view attribute flips, the JS measures the outgoing
+     surface once and hands its box down as --ws-x/y/w/h; the rule below lifts it out of
+     flow at exactly that rectangle. That is what makes a real cross-fade possible: the
+     arriving surface lays out in the whole workspace on its own, in a single pass,
+     instead of the two fighting over one flex line. Without the pin the outgoing view
+     is display:none in the same frame the new one appears, which is a pop-out followed
+     by a slide-in — two events where there should be one.
+
+     ONE ELEMENT PER SURFACE MOVES. The earlier rules animated #lowerwork and the
+     surface inside it together: nested opacity multiplies and nested transforms add, so
+     the entrance actually travelled twice as far on a squared fade. A single moving
+     element is why this reads as crisp at .19s where the old pair read as slow at .34s.
+
+     Only opacity and transform are touched, on at most two elements, so neither half of
+     the hand-off costs a relayout while the audio scheduler needs the thread. */
+  /* The pin is FIXED, at the box the surface held in the window. Absolute would have
+     meant giving #desk and #lowerwork a position, and that would quietly re-home every
+     other absolutely-positioned thing inside them onto a new containing block — a large
+     change to buy a small one. Fixed also survives the cramped desk's own scroll, and
+     the header, status bar and Effects inspector all carry higher z-indices, so a
+     surface on its way out can never cover the chrome.
+
+     It has to beat `display: none !important` on the two editors that share the Notes
+     deck, so the id inside :is() carries the specificity rather than a second
+     !important arms race. */
+  #desk.wsanim :is(#lowerwork, #mixerview, #notes, #pianoroll, #kitroll).ws-leave {
+    display: flex !important;
+    position: fixed; margin: 0; z-index: 3; pointer-events: none; overflow: hidden;
+    left: var(--ws-x, 0px); top: var(--ws-y, 0px);
+    width: var(--ws-w, 100%); height: var(--ws-h, 100%);
+    opacity: 1; transition: opacity var(--workspace-out) var(--workspace-ease-out);
   }
-  #desk.workspace-transitioning #lowerwork,
-  #desk.workspace-transitioning :is(#mixerview, #notes) { opacity: 1; transform: none; }
-  #desk.workspace-transitioning.workspace-entering #lowerwork,
-  #desk.workspace-transitioning.workspace-entering :is(#mixerview, #notes) {
-    opacity: 0; transform: translateY(10px);
+  #desk.wsanim.ws-run :is(#lowerwork, #mixerview, #notes, #pianoroll, #kitroll).ws-leave {
+    opacity: 0;
   }
-  #desk.workspace-transitioning.workspace-leaving[data-lower-view="none"] #lowerwork {
-    opacity: 0; transform: translateY(10px);
+  /* The arriving surface rises a little. Ten pixels, not the old twenty-four: these
+     panels are edge-anchored and hundreds of pixels tall, and a long travel on one of
+     them does not read as arriving, it reads as the contents being loose in the frame. */
+  #desk.wsanim .ws-enter {
+    opacity: 0; transform: translateY(var(--workspace-rise));
+    transition: opacity var(--workspace-in) var(--workspace-ease),
+                transform var(--workspace-in) var(--workspace-ease);
   }
-  /* Mixer and Notes are different surfaces, so the workspace transition above is
-     enough when either one enters. Roll and Pattern, however, share #notes: their
-     parent stays in place while the editor inside it changes from display:none to
-     display:flex. Give that inner hand-off its own entrance so switching between the
-     two editors does not look like an instantaneous replacement. */
-  #desk.workspace-transitioning :is(#pianoroll, #kitroll) {
-    transition: opacity var(--workspace-anim) var(--workspace-ease),
-                transform var(--workspace-anim) var(--workspace-ease);
-  }
-  #desk.workspace-transitioning.workspace-entering[data-lower-view="roll"][data-lower-view-from="pattern"] #pianoroll,
-  #desk.workspace-transitioning.workspace-entering[data-lower-view="pattern"][data-lower-view-from="roll"] #kitroll {
-    opacity: 0; transform: translateY(10px);
-  }
+  #desk.wsanim.ws-run .ws-enter { opacity: 1; transform: none; }
+  /* Collapsing to the full-height arrangement pins the whole lower deck rather than one
+     surface, so #upperwork takes the freed height in a single relayout underneath the
+     panel fading off it instead of jumping after it. The splitter goes at once — seven
+     flat pixels whose absence across .12s is not something anyone can see. */
+  #desk.wsanim[data-lower-view="none"] #worksplitter { display: none; }
   @media (prefers-reduced-motion: reduce) {
-    #desk.workspace-transitioning #lowerwork,
-    #desk.workspace-transitioning :is(#mixerview, #notes, #pianoroll, #kitroll) { transition: none; }
+    #desk.wsanim :is(#lowerwork, #mixerview, #notes, #pianoroll, #kitroll).ws-leave,
+    #desk.wsanim .ws-enter { transition: none; }
   }
 
   /* There are no main-panel folds in this layout. Keep the old buttons in the DOM
@@ -7434,7 +7538,7 @@
     body.fxdock-open { --fxdock: 0px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    body, #devices { transition: none; }
+    body, #devices, #devices .deskselect-caret { transition: none; }
   }
   /* The toolbar owns the first 46px. The FX header is its right-hand counterpart to
      Timeline, so it starts below that toolbar, spends exactly the Timeline row's 30px,
@@ -7475,12 +7579,14 @@
                                          border-color: transparent; font-size: 0 !important; }
   #devices button.deskselect.devtarget > .deskselect-value { display: none; }
   #devices button.deskselect.devtarget::after { content: none; }
-  #devices button.deskselect.devtarget .deskselect-caret { position: absolute; right: 1px;
-                                                           top: 50%; width: 24px; height: 24px;
+  #devices button.deskselect.devtarget .deskselect-caret { position: absolute; right: 2px;
+                                                           top: 50%; width: 22px; height: 22px;
                                                            transform: translateY(-50%);
                                                            fill: none; stroke: currentColor;
                                                            stroke-width: 2; stroke-linecap: round;
-                                                           stroke-linejoin: round; pointer-events: none; }
+                                                           stroke-linejoin: round; pointer-events: none;
+                                                           transform-origin: center;
+                                                           transition: transform .18s cubic-bezier(.22, .61, .36, 1); }
   #devices button.deskselect.devtarget[aria-expanded="true"] .deskselect-caret {
     transform: translateY(-50%) rotate(180deg); }
   #devices button.deskselect.devtarget:hover,
@@ -7784,7 +7890,7 @@
         <path class="body" d="M1.2 5.2h3.6v2H1.2zm5 3.5h3.6v2H6.2zm5-4.8h3.6v2h-3.6z"/>
       </svg>
     </button>
-    <button id="rollbtn" class="iconbtn" aria-label="Piano roll"
+    <button id="rollbtn" class="iconbtn lowerviewbtn" aria-label="Piano roll"
             data-tip="Piano roll" data-tipkey="N"
             data-tipsays="What the SELECTED CHANNEL plays, as notes against bars. Click again to return to the full-height arrangement.">
       <svg viewBox="0 0 16 16" class="rollicon">
@@ -7795,7 +7901,7 @@
         <rect class="body" x="9" y="11.8" width="5.6" height="2" rx=".9"/>
       </svg>
     </button>
-    <button id="seqbtn" class="iconbtn" aria-label="Step grid"
+    <button id="seqbtn" class="iconbtn lowerviewbtn" aria-label="Step grid"
             data-tip="Step grid" data-tipkey="G"
             data-tipsays="What the KIT plays, sixteen squares a bar. Click again to return to the full-height arrangement.">
       <svg viewBox="0 0 16 16" class="seqicon">

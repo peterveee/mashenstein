@@ -173,7 +173,7 @@ for (const def of Object.values(EFFECT_BY_ID)) {
 // the browser-side grouping source here because the picker is deliberately not a
 // Node-importable module.
 const groupBlock = deskSource.slice(deskSource.indexOf('const EFFECT_GROUP_ROWS = ['), deskSource.indexOf('function addEffect('));
-for (const id of ['vowel', 'bell', 'chorus2', 'rhythmgate', 'flanger', 'ringmod', 'bitcrusher', 'tape', 'ambience', 'noisegate']) {
+for (const id of ['vowel', 'bell', 'chorus2', 'rhythmgate', 'flanger', 'ringmod', 'bitcrusher', 'tape', 'ambience', 'spring', 'noisegate']) {
   assert(groupBlock.includes(`'${id}'`), `${id}: appears in an effect-picker group`);
 }
 assert(/\['Tone & Filter',[\s\S]*'peq'[\s\S]*'bell'[\s\S]*'vowel'[\s\S]*'filter'[\s\S]*'autofilter'[\s\S]*'autowah'/.test(groupBlock),
@@ -185,7 +185,7 @@ assert(/\['Character & Lo-Fi',[\s\S]*'distortion'[\s\S]*'tape'[\s\S]*'bitcrusher
 assert(JSON.stringify(EFFECT_BY_ID.bitcrusher.params) === JSON.stringify(['bits', 'downsample', 'wet'])
   && !('drive' in EFFECT_BY_ID.bitcrusher.defaults) && !('tone' in EFFECT_BY_ID.bitcrusher.defaults),
   'bit crusher exposes resolution, downsampling, and mix without drive or tone');
-assert(/\['Space, Width & Pitch',[\s\S]*'reverb'[\s\S]*'ambience'[\s\S]*'widener'[\s\S]*'shifter'[\s\S]*'pitch'/.test(groupBlock),
+assert(/\['Space, Width & Pitch',[\s\S]*'reverb'[\s\S]*'ambience'[\s\S]*'spring'[\s\S]*'widener'[\s\S]*'shifter'[\s\S]*'pitch'/.test(groupBlock),
   'spatial, width, and pitch effects are grouped together');
 assert(/\['Tone & Filter',[\s\S]*\],\n\s+\['Delay & Echo'/.test(groupBlock)
   && /\['Dynamics',[\s\S]*\],\n\s+\['Space, Width & Pitch'/.test(groupBlock),
@@ -205,6 +205,9 @@ for (const [id, checks] of Object.entries({
   ringmod: { frequency: [0.1, 2000] },
   tape: { bias: [-1, 1], wow: [0, 1], flutter: [0, 1] },
   ambience: { space: [0, 1], damping: [0, 2] },
+  spring: { tension: [0, 1], damping: [0, 1], drip: [0, 1] },
+  autowah: { baseFrequency: [40, 2000], octaves: [0.5, 8],
+    sensitivity: [-40, 0], Q: [0.2, 10] },
   compressor: { inputGain: [-24, 24], outputGain: [-24, 24] },
   noisegate: { threshold: [-80, 0], attack: [0.001, 0.5], release: [0.01, 2] },
   msComp: { pump: [0, 1] },
@@ -226,7 +229,7 @@ for (const [id, checks] of Object.entries({
 // clamps there: a pot must not offer travel the effect will ignore.
 for (const [id, name, min, step] of [
   ['compressor', 'attack', 0.001, 0.001], ['compressor', 'release', 0.001, 0.001],
-  ['msComp', 'mid.release', 0.001, 0.001], ['mbComp', 'low.release', 0.001, 0.001],
+  ['msComp', 'mid.release', 0.001, 0.001],
   ['mbCompN', 'high.attack', 0.001, 0.001], ['rhythmgate', 'decay', 0.001, 0.001],
   ['l7', 'release', 0.01, 0.001],
 ]) {
@@ -307,7 +310,7 @@ const sample = {
           // bands inside them. They are emitted as SOURCE, so an unquoted dot here is
           // a syntax error in the file the whole game reads — the one failure mode
           // that takes everything down rather than losing one setting.
-          { id: 'mbComp', params: { lowFrequency: 180, 'low.threshold': -26, 'high.knee': 8 } },
+          { id: 'mbCompN', params: { lowFrequency: 180, 'low.threshold': -26, 'high.knee': 8 } },
         ],
       },
       // Keep all six new ids in one saved channel fixture so the source serializer

@@ -522,6 +522,128 @@ function makeAmbience(ctx, params = {}) {
 }
 
 /**
+ * A CPU-conscious spring reverb.
+ *
+ * This is a spring tank rather than a room reverb: a mono excitation is sent through
+ * two short, unequal recirculating modes, each with a dispersive all-pass stage and
+ * a damping filter. The modes' slightly inharmonic delays make the characteristic
+ * metallic bounce; the post-tank resonator is the adjustable drip. A pair of tiny output
+ * offsets restores a stereo image without duplicating the whole tank for left and right.
+ *
+ * It deliberately has no oscillator, worklet, convolution buffer, or per-sample JS. The
+ * graph is six filters, two short tank delay lines, and one output delay, all of
+ * which are native Web Audio primitives. Feedback is capped at 0.77, so even the longest
+ * tension setting remains bounded and can be put to sleep by makeChainSlot when silent.
+ */
+function makeSpringReverb(ctx, params = {}) {
+  const state = { tension: 0.5, damping: 0.35, drip: 0.42, wet: 0.34, ...params };
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  const split = ctx.createChannelSplitter(2);
+  const mono = ctx.createGain();
+  const leftMono = ctx.createGain();
+  const rightMono = ctx.createGain();
+  const pre = ctx.createBiquadFilter();
+  pre.type = 'highpass'; pre.frequency.value = 110; pre.Q.value = 0.7071;
+  const tank = ctx.createGain();
+  const post = ctx.createGain();
+  const dripFilter = ctx.createBiquadFilter();
+  dripFilter.type = 'bandpass';
+  const dripGain = ctx.createGain();
+  const rightDelay = ctx.createDelay(0.02);
+  const leftLevel = ctx.createGain();
+  const rightLevel = ctx.createGain();
+  const merge = ctx.createChannelMerger(2);
+
+  input.channelCount = 2;
+  input.channelCountMode = 'explicit';
+  input.channelInterpretation = 'speakers';
+  output.channelCount = 2;
+  output.channelCountMode = 'explicit';
+  output.channelInterpretation = 'speakers';
+
+  input.connect(dry); dry.connect(output);
+  input.connect(split);
+  split.connect(leftMono, 0); split.connect(rightMono, 1);
+  leftMono.gain.value = 0.5; rightMono.gain.value = 0.5;
+  leftMono.connect(mono); rightMono.connect(mono);
+  mono.connect(pre);
+
+  const modes = [0.83, 1.21].map((ratio, index) => {
+    const delay = ctx.createDelay(0.15);
+    const allpass = ctx.createBiquadFilter(); allpass.type = 'allpass'; allpass.Q.value = 0.7071;
+    const damping = ctx.createBiquadFilter(); damping.type = 'lowpass'; damping.Q.value = 0.55;
+    const feedback = ctx.createGain();
+    pre.connect(delay);
+    delay.connect(allpass); allpass.connect(damping);
+    damping.connect(feedback); feedback.connect(delay);
+    damping.connect(tank);
+    return { ratio, index, delay, allpass, damping, feedback };
+  });
+
+  // The drip follows the tank, so it rings with the spring instead of becoming a dry
+  // resonant EQ. Its gain is zero at the knob's minimum: the default is not forced bright.
+  tank.connect(post);
+  tank.connect(dripFilter); dripFilter.connect(dripGain); dripGain.connect(post);
+  post.connect(leftLevel); leftLevel.connect(merge, 0, 0);
+  rightDelay.connect(rightLevel); rightLevel.connect(merge, 0, 1);
+  post.connect(rightDelay);
+  merge.connect(wet); wet.connect(output);
+
+  const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  let running = false;
+  const set = (param, value, seconds = 0.03) => setAudioParam(ctx, param, value, running, seconds);
+  const apply = () => {
+    const tension = Math.max(0, Math.min(1, number(state.tension, 0.5)));
+    const damping = Math.max(0, Math.min(1, number(state.damping, 0.35)));
+    const drip = Math.max(0, Math.min(1, number(state.drip, 0.42)));
+    const mix = Math.max(0, Math.min(1, number(state.wet, 0.34)));
+    const baseDelay = 0.021 + tension * 0.057;
+    const feedback = 0.43 + tension * 0.34;
+    const cutoff = 16000 * Math.pow(0.1, damping);
+    const modeBase = [760, 1420];
+    const modeSpread = [1.08, 0.94];
+    modes.forEach((mode) => {
+      set(mode.delay.delayTime, Math.min(0.14, baseDelay * mode.ratio));
+      set(mode.allpass.frequency, modeBase[mode.index] * modeSpread[mode.index] * (0.9 + tension * 0.35));
+      set(mode.damping.frequency, Math.max(700, cutoff));
+      set(mode.feedback.gain, Math.min(0.77, feedback - mode.index * 0.035));
+    });
+    set(dripFilter.frequency, 1300 + tension * 2600);
+    set(dripFilter.Q, 0.8 + drip * 7.2);
+    set(dripGain.gain, drip * 0.42);
+    set(post.gain, 1.15);
+    set(rightDelay.delayTime, 0.0038 + tension * 0.0015);
+    set(leftLevel.gain, 0.98);
+    set(rightLevel.gain, 1.02);
+    set(wet.gain, Math.sin((mix * Math.PI) / 2));
+    set(dry.gain, Math.cos((mix * Math.PI) / 2));
+    running = true;
+  };
+
+  const node = { input, output, _custom: true };
+  node.applyState = apply;
+  node.setState = (patch) => { Object.assign(state, patch); apply(); };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    node.disconnect();
+    for (const n of [input, output, dry, wet, split, mono, leftMono, rightMono, pre, tank,
+      post, dripFilter, dripGain, rightDelay, leftLevel, rightLevel, merge]) {
+      try { n.disconnect(); } catch { /* fine */ }
+    }
+    for (const mode of modes) {
+      for (const n of Object.values(mode)) {
+        if (n && typeof n.disconnect === 'function') { try { n.disconnect(); } catch { /* fine */ } }
+      }
+    }
+  };
+  return node;
+}
+
+/**
  * The five bands of the Channel EQ, low to high. Exported because the desk draws them:
  * the response curve, the handle it drags and the readout under it all have to agree
  * with the nodes this builds, and three copies of "band 2 is a peak at 500" is three
@@ -1769,6 +1891,136 @@ function setAudioParam(ctx, param, value, running, seconds = 0.03) {
   }
 }
 
+// Auto Wah's free mode is an envelope follower, not an LFO. Keep that sound as the
+// default and add a second, genuinely cyclic path for Tempo Mode. The two paths are
+// selected before the single frequency-control bus, so each filter AudioParam has one
+// writer and the mode switch cannot leave two independent modulators fighting there.
+const AUTO_WAH_ABS_CURVE = (() => {
+  const curve = new Float32Array(2049);
+  for (let i = 0; i < curve.length; i++) curve[i] = Math.abs((i * 2) / (curve.length - 1) - 1);
+  return curve;
+})();
+
+function autoWahFrequencyCurve(base, octaves, tempo, nyquist) {
+  const curve = new Float32Array(2049);
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i * 2) / (curve.length - 1) - 1;
+    // The follower is unipolar, so the negative half of its waveshaper domain is a
+    // harmless floor. The LFO is bipolar and uses the complete domain.
+    const position = tempo ? (x + 1) / 2 : Math.max(0, x);
+    curve[i] = Math.min(nyquist, base * (2 ** (octaves * position)));
+  }
+  return curve;
+}
+
+function makeAutoWah(ctx, params = {}) {
+  const input = ctx.createGain();
+  const output = ctx.createGain();
+  const dry = ctx.createGain();
+  const wet = ctx.createGain();
+  const inputBoost = ctx.createGain();
+  const absolute = ctx.createWaveShaper();
+  absolute.curve = AUTO_WAH_ABS_CURVE;
+  absolute.oversample = 'none';
+  const follower = ctx.createBiquadFilter();
+  follower.type = 'lowpass';
+  follower.Q.value = 0.7071;
+  follower.frequency.value = 5; // Tone.AutoWah's default 200ms follower smoothing.
+
+  const envelopeMap = ctx.createWaveShaper();
+  const tempoMap = ctx.createWaveShaper();
+  envelopeMap.oversample = 'none';
+  tempoMap.oversample = 'none';
+  const envelopeSelect = ctx.createGain();
+  const tempoSelect = ctx.createGain();
+  const frequencyBus = ctx.createGain();
+  const bandpass = ctx.createBiquadFilter();
+  bandpass.type = 'bandpass';
+  const peak = ctx.createBiquadFilter();
+  peak.type = 'peaking';
+  peak.gain.value = 2;
+  peak.Q.value = 0.7071;
+
+  const table = modulationTable(ctx, 'sine');
+  let lfo = null;
+  const ensureLfo = (rate) => {
+    if (lfo) return;
+    lfo = ctx.createBufferSource();
+    lfo.buffer = table;
+    lfo.loop = true;
+    lfo.loopStart = 0;
+    lfo.loopEnd = table.duration;
+    lfo.playbackRate.value = table.duration * rate;
+    lfo.connect(tempoMap);
+    // Starting only when Tempo Mode is selected keeps the default envelope mode free
+    // of a permanently-running generator. This also supports a live mode toggle.
+    lfo.start(Math.max(0, ctx.currentTime));
+  };
+  const stopLfo = () => {
+    if (!lfo) return;
+    try { lfo.disconnect(tempoMap); } catch { /* already disconnected */ }
+    try { lfo.stop(); } catch { /* already stopped */ }
+    lfo = null;
+  };
+
+  input.connect(dry); dry.connect(output);
+  input.connect(inputBoost); inputBoost.connect(absolute); absolute.connect(follower);
+  follower.connect(envelopeMap); envelopeMap.connect(envelopeSelect); envelopeSelect.connect(frequencyBus);
+  tempoMap.connect(tempoSelect); tempoSelect.connect(frequencyBus);
+  frequencyBus.connect(bandpass.frequency); frequencyBus.connect(peak.frequency);
+  input.connect(bandpass); bandpass.connect(peak); peak.connect(wet); wet.connect(output);
+
+  const state = {
+    rateSync: 0, rateDivision: 2,
+    baseFrequency: 100, octaves: 6, sensitivity: 0, Q: 2, wet: 1, ...params,
+  };
+  let running = false;
+  const set = (param, value, seconds = 0.03) => setAudioParam(ctx, param, value, running, seconds);
+  const apply = (bpm = 120) => {
+    const base = Math.max(20, Math.min(8000, state.baseFrequency ?? 100));
+    const octaves = Math.max(0, Math.min(8, state.octaves ?? 6));
+    const nyquist = Math.max(1000, ctx.sampleRate / 2 - 1);
+    envelopeMap.curve = autoWahFrequencyCurve(base, octaves, false, nyquist);
+    tempoMap.curve = autoWahFrequencyCurve(base, octaves, true, nyquist);
+
+    // Tone's sensitivity is an input boost in dB: negative values make quiet playing
+    // open the wah further, while the default 0dB leaves the input untouched.
+    const sensitivity = Math.max(-40, Math.min(0, state.sensitivity ?? 0));
+    set(inputBoost.gain, 10 ** (-sensitivity / 20));
+    set(bandpass.Q, Math.max(0.1, Math.min(20, state.Q ?? 2)));
+
+    const synced = (state.rateSync ?? 0) >= 0.5;
+    if (synced) {
+      ensureLfo(rateHz(state, bpm));
+      set(lfo.playbackRate, table.duration * rateHz(state, bpm), 0.05);
+    } else {
+      stopLfo();
+    }
+    set(envelopeSelect.gain, synced ? 0 : 1, 0.025);
+    set(tempoSelect.gain, synced ? 1 : 0, 0.025);
+
+    const w = Math.max(0, Math.min(1, state.wet ?? 0));
+    set(wet.gain, Math.sin((w * Math.PI) / 2));
+    set(dry.gain, Math.cos((w * Math.PI) / 2));
+    running = true;
+  };
+  const node = { input, output, _custom: true };
+  node.applyState = apply;
+  node.setState = (patch, bpm) => { Object.assign(state, patch); apply(bpm); };
+  node.connect = (dest) => (dest && dest.input ? output.connect(dest.input) : output.connect(dest));
+  node.disconnect = () => { try { output.disconnect(); } catch { /* fine */ } };
+  node.dispose = () => {
+    node.disconnect();
+    stopLfo();
+    for (const n of [input, output, dry, wet, inputBoost, absolute, follower,
+      envelopeMap, tempoMap, envelopeSelect, tempoSelect, frequencyBus, bandpass, peak]) {
+      try { n.disconnect(); } catch { /* fine */ }
+    }
+  };
+  apply();
+  return node;
+}
+
 function makeModulatedDelay(ctx, params = {}, kind = 'chorus') {
   const input = ctx.createGain();
   const output = ctx.createGain();
@@ -2626,11 +2878,10 @@ function makeRingMod(ctx, params = {}) {
  * → lowpass(fHigh)`, `high = highpass(fHigh)`, each a single 12dB/oct biquad, summed
  * after three Compressors — this is that, node for node.
  *
- * NOT a null-test substitute for `mbComp`, and it does not pretend to be: a
- * DynamicsCompressorNode is fed by a slightly different graph and the sum of three
- * bands through three compressors is chaotic enough that "nearly the same" is the
- * most anyone can promise. It is offered ALONGSIDE the Tone one so the two can be
- * A/B'd on the master by ear, which is the only test that settles a compressor.
+ * It is not sample-identical to the former Tone graph: a DynamicsCompressorNode is fed
+ * by a slightly different graph and the sum of three bands through three compressors
+ * is chaotic enough that "nearly the same" is the most anyone can promise. It is now
+ * the single multiband implementation, so every song gets the cheaper native path.
  */
 function makeMultibandCompN(ctx, params = {}) {
   const input = ctx.createGain();
@@ -2929,7 +3180,7 @@ export const EFFECTS = [
   { id: 'delay', name: 'Delay', cost: 0.19, tone: 'FeedbackDelay', timed: true,
     params: ['sync', 'division', 'delayMs', 'feedback', 'wet'],
     defaults: { sync: 1, division: 0.5, delayMs: 250, feedback: 0.3, wet: 0.35 } },
-  { id: 'chorus', name: 'Chorus', cost: 0.55, tone: 'Chorus',
+  { id: 'chorus', name: 'Chorus', short: 'Chorus', cost: 0.55, tone: 'Chorus',
     params: ['rateSync', 'rateDivision', 'frequency', 'delayTime', 'depth', 'feedback', 'spread', 'type', 'wet'],
     defaults: { rateSync: 0, rateDivision: 1, frequency: 1.5, delayTime: 3.5, depth: 0.7, feedback: 0, spread: 180, type: 'sine', wet: 0.5 },
     ranges: {
@@ -2939,7 +3190,7 @@ export const EFFECTS = [
       type: { options: ['sine', 'triangle', 'square', 'sawtooth'] },
     },
     labels: { delayTime: 'DELAY', feedback: 'FEEDBACK', spread: 'SPREAD', type: 'WAVEFORM' } },
-  { id: 'chorus2', name: 'Chorus 2', short: 'Chorus 2', cost: 0.44, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'chorus'),
+  { id: 'chorus2', name: 'Stereo Chorus', short: 'S Chorus', cost: 0.44, custom: (ctx, p) => makeModulatedDelay(ctx, p, 'chorus'),
     params: ['rateSync', 'rateDivision', 'frequency', 'delayMs', 'depth', 'width', 'feedback', 'tone', 'wet'],
     defaults: { rateSync: 0, rateDivision: 2, frequency: 0.65, delayMs: 16, depth: 0.55, width: 1, feedback: 0.12, tone: 9000, wet: 0.5 },
     // RATE is log-tapered for the same reason MRDR-3's own chorus pot is cubed: the two
@@ -2977,8 +3228,16 @@ export const EFFECTS = [
     params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'wet'], defaults: { rateSync: 0, rateDivision: 1, frequency: 5, depth: 0.1, wet: 1 } },
   { id: 'autofilter', name: 'Auto Filter', cost: 0.58, tone: 'AutoFilter',
     params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'baseFrequency', 'octaves', 'wet'], defaults: { rateSync: 0, rateDivision: 2, frequency: 1, depth: 1, baseFrequency: 200, octaves: 2.6, wet: 1 }, start: true },
-  { id: 'autowah', name: 'Auto Wah', cost: 0.86, tone: 'AutoWah',
-    params: ['baseFrequency', 'octaves', 'sensitivity', 'Q', 'wet'], defaults: { baseFrequency: 100, octaves: 6, sensitivity: 0, Q: 2, wet: 1 } },
+  { id: 'autowah', name: 'Auto Wah', cost: 0.86, custom: makeAutoWah,
+    params: ['rateSync', 'rateDivision', 'baseFrequency', 'octaves', 'sensitivity', 'Q', 'wet'],
+    defaults: { rateSync: 0, rateDivision: 2, baseFrequency: 100, octaves: 6, sensitivity: 0, Q: 2, wet: 1 },
+    ranges: {
+      baseFrequency: { min: 40, max: 2000, step: 10, unit: 'Hz', log: true },
+      octaves: { min: 0.5, max: 8, step: 0.1, unit: 'oct' },
+      sensitivity: { min: -40, max: 0, step: 1, unit: 'dB' },
+      Q: { min: 0.2, max: 10, step: 0.1 },
+    },
+    labels: { baseFrequency: 'BASE FREQ', octaves: 'OCTAVES', sensitivity: 'SENSITIVITY' } },
   { id: 'autopanner', name: 'Auto Panner', cost: 0.46, tone: 'AutoPanner',
     params: ['rateSync', 'rateDivision', 'frequency', 'depth', 'wet'], defaults: { rateSync: 0, rateDivision: 2, frequency: 1, depth: 1, wet: 1 }, start: true },
   { id: 'distortion', name: 'Distortion', cost: 0.25, tone: 'Distortion',
@@ -3042,6 +3301,15 @@ export const EFFECTS = [
       damping: { min: 0, max: 2, step: 0.01 },
     },
     labels: { space: 'SPACE', damping: 'DAMPING', wet: 'MIX' } },
+  // A real spring tank, kept separate from Ambience's diffuse room approximation. The
+  // native graph is mono in the expensive feedback section and only fans out at the
+  // output, which is why it can offer the spring's resonant modes for less than a
+  // stereo convolution. The real-song master-bus bench measured 0.43% of one core
+  // (playing, one-round confirmation) on 2026-08-23.
+  { id: 'spring', name: 'Spring Reverb', short: 'Spring', cost: 0.43, custom: makeSpringReverb,
+    params: ['tension', 'damping', 'drip', 'wet'],
+    defaults: { tension: 0.5, damping: 0.35, drip: 0.42, wet: 0.34 },
+    labels: { tension: 'TENSION', damping: 'DAMPING', drip: 'DRIP', wet: 'MIX' } },
   // Ours, not Tone's — Tone.Reverb fills its impulse response from Math.random, so
   // every render of every song carrying one was a different file. See makeReverb.
   { id: 'reverb', name: 'Reverb', cost: 0.75, custom: makeReverb,
@@ -3095,23 +3363,9 @@ export const EFFECTS = [
       'side.threshold': -30, 'side.ratio': 6, 'side.attack': 0.03, 'side.release': 0.25, 'side.knee': 10,
       pump: 0,
     } },
-  { id: 'mbComp', name: 'Multiband Compressor', short: 'Multi Comp', cost: 0.95, tone: 'MultibandCompressor',
-    params: ['lowFrequency', 'highFrequency',
-      'low.threshold', 'low.ratio', 'low.attack', 'low.release', 'low.knee',
-      'mid.threshold', 'mid.ratio', 'mid.attack', 'mid.release', 'mid.knee',
-      'high.threshold', 'high.ratio', 'high.attack', 'high.release', 'high.knee'],
-    defaults: {
-      lowFrequency: 250, highFrequency: 2000,
-      'low.threshold': -30, 'low.ratio': 6, 'low.attack': 0.03, 'low.release': 0.25, 'low.knee': 10,
-      'mid.threshold': -24, 'mid.ratio': 3, 'mid.attack': 0.02, 'mid.release': 0.03, 'mid.knee': 16,
-      'high.threshold': -24, 'high.ratio': 3, 'high.attack': 0.02, 'high.release': 0.03, 'high.knee': 16,
-    } },
-  // The same compressor, without Tone's parameter plumbing — see makeMultibandCompN
-  // for what that plumbing costs and why this is a second entry rather than a
-  // replacement. Identical controls in identical order, because they are the same
-  // controls: a desk where two inserts spell one idea two ways is the thing this
-  // codebase spends its comments avoiding. A/B them on the master and keep one.
-  { id: 'mbCompN', name: 'Multiband Compressor (Native)', short: 'Multi Comp N',
+  // The one multiband compressor. The native graph avoids Tone's permanently-running
+  // parameter ConstantSources and is the implementation used by every saved mix.
+  { id: 'mbCompN', name: 'Multiband Compressor', short: 'Multi Comp',
     cost: 0.74, custom: makeMultibandCompN,
     params: ['lowFrequency', 'highFrequency',
       'low.threshold', 'low.ratio', 'low.attack', 'low.release', 'low.knee',
@@ -3242,6 +3496,13 @@ export function isDefaultMasterChain(list = []) {
 }
 
 export const EFFECT_BY_ID = Object.fromEntries(EFFECTS.map((e) => [e.id, e]));
+// Old local drafts may still contain the former Tone id. Keep that data audible while
+// making the native entry the only enumerable catalogue item and the only picker item.
+Object.defineProperty(EFFECT_BY_ID, 'mbComp', {
+  value: EFFECT_BY_ID.mbCompN,
+  enumerable: false,
+  configurable: false,
+});
 
 const presetNumber = (value, fallback, range) => {
   const n = Number(value);

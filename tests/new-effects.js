@@ -84,7 +84,7 @@ await page.setContent('<!doctype html><meta charset="utf-8">'
   + `<script>${built.outputFiles[0].text.replace(/<\/script>/gi, '<\\/script>')}<\/script>`,
 { waitUntil: 'load' });
 
-const ids = ['chorus2', 'bitcrusher', 'rhythmgate', 'flanger', 'ringmod', 'tape', 'vowel', 'ambience', 'reverb'];
+const ids = ['chorus2', 'bitcrusher', 'rhythmgate', 'flanger', 'ringmod', 'tape', 'vowel', 'autowah', 'ambience', 'spring', 'reverb'];
 const params = {
   chorus2: { rateSync: 0, frequency: 0.65 },
   bitcrusher: { bits: 8, downsample: 4 },
@@ -95,7 +95,10 @@ const params = {
   vowel: { voice: 'alto', stack: 'a e i o u', rateSync: 1, rateDivision: 0.25,
     frequency: 0.5, waveform: 'step', depth: 1, glide: 0.08, articulation: 0,
     reso: 2, spread: 0.9, intensity: 0, excite: 0, breath: 0, wet: 0.9 },
+  autowah: { rateSync: 0, rateDivision: 2, baseFrequency: 100,
+    octaves: 6, sensitivity: 0, Q: 2, wet: 1 },
   ambience: { space: 0.5, damping: 0.55, wet: 0.38 },
+  spring: { tension: 0.5, damping: 0.35, drip: 0.42, wet: 0.34 },
   reverb: { decay: 2, preDelay: 0.01, low: 0, mid: 0, high: 0, width: 1, wet: 0.4 },
 };
 const assert = (ok, msg) => { if (!ok) throw new Error(msg); console.log(`ok: ${msg}`); };
@@ -185,6 +188,30 @@ for (const id of ids) {
   assert(diff(dry, transparent) < 5e-6, `${id} is transparent at wet 0`);
 }
 
+// Auto Wah remains an input-following filter in Free mode, while Tempo Mode is an
+// alternate cyclic sweep. Both paths must render and the switch must change the sound.
+const autowahFree = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'autowah', params: params.autowah, seconds: 1.2,
+});
+const autowahTempo = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'autowah', params: { ...params.autowah, rateSync: 1, rateDivision: 0.5 }, seconds: 1.2,
+});
+assert(autowahFree.every((ch) => ch.every(finite)) && autowahTempo.every((ch) => ch.every(finite)),
+  'autowah free and tempo modes render finite samples');
+assert(diff(autowahFree, autowahTempo) > 1e-4,
+  'autowah Tempo Mode produces a cyclic sweep distinct from envelope mode');
+
+// A pre-migration local draft may still name the old Tone entry. It must resolve to
+// the native graph without changing the rendered result or appearing as a second card.
+const nativeMultiband = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'mbCompN', params: {}, seconds: 1.2,
+});
+const legacyMultiband = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'mbComp', params: {}, seconds: 1.2,
+});
+assert(diff(nativeMultiband, legacyMultiband) < 5e-6,
+  'legacy mbComp drafts resolve bit-for-bit to the native multiband graph');
+
 // Ambience is a tail effect, not merely a stereo colour. An impulse must still be
 // present after the first recirculating line, and the deliberately unequal left/right
 // lines must separate a mono source without relying on a running LFO.
@@ -205,6 +232,20 @@ const reverbTailStart = Math.floor(0.05 * 44100);
 assert(Math.max(...reverbImpulse[0].slice(reverbTailStart)) > 1e-5
   && Math.max(...reverbImpulse[1].slice(reverbTailStart)) > 1e-5,
   'reverb leaves an audible wet tail after the dry impulse');
+const springImpulse = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'spring', source: 'impulse', seconds: 1.5,
+  params: { ...params.spring, wet: 1 }, inputGain: 1,
+});
+assert(Math.max(...springImpulse[0].slice(Math.floor(0.08 * 44100))) > 1e-5
+  && Math.max(...springImpulse[1].slice(Math.floor(0.08 * 44100))) > 1e-5,
+  'spring reverb leaves a post-input tank tail');
+assert(stereoDelta(springImpulse) > 1e-4, 'spring reverb decorrelates its stereo output');
+const springDripOff = await page.evaluate((x) => window.__renderEffect(x), {
+  id: 'spring', source: 'impulse', seconds: 1.5,
+  params: { ...params.spring, drip: 0, wet: 1 }, inputGain: 1,
+});
+assert(diff(springImpulse, springDripOff) > 1e-4,
+  'spring DRIP changes the resonant tank colour');
 for (const values of [
   { space: 0, damping: 0, wet: 1 },
   { space: 0.5, damping: 0.55, wet: 0.38 },
@@ -216,6 +257,17 @@ for (const values of [
   });
   assert(extreme.every((ch) => ch.every(finite)) && peak(extreme) < 8,
     `ambience remains finite and bounded at space ${values.space}, damping ${values.damping}`);
+}
+for (const values of [
+  { tension: 0, damping: 0, drip: 0, wet: 1 },
+  { tension: 0.5, damping: 0.35, drip: 0.42, wet: 0.34 },
+  { tension: 1, damping: 1, drip: 1, wet: 1 },
+]) {
+  const extreme = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'spring', source: 'impulse', seconds: 1.5, params: values,
+  });
+  assert(extreme.every((ch) => ch.every(finite)) && peak(extreme) < 8,
+    `spring remains finite and bounded at tension ${values.tension}, damping ${values.damping}`);
 }
 
 // The original Tone Chorus remains a supported saved effect; this covers the four
@@ -456,6 +508,16 @@ for (const name of ['space', 'damping', 'wet']) {
     id: 'ambience', params: { ...params.ambience, [name]: range.max }, seconds: 1.5,
   });
   assert(rmsDiff(lo, hi) > 1e-4, `ambience ${name} is a live control, not a dead knob`);
+}
+for (const name of ['tension', 'damping', 'drip', 'wet']) {
+  const range = EFFECT_BY_ID.spring.ranges?.[name] || paramRange(name, EFFECT_BY_ID.spring);
+  const lo = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'spring', params: { ...params.spring, [name]: range.min }, seconds: 1.5,
+  });
+  const hi = await page.evaluate((x) => window.__renderEffect(x), {
+    id: 'spring', params: { ...params.spring, [name]: range.max }, seconds: 1.5,
+  });
+  assert(rmsDiff(lo, hi) > 1e-4, `spring ${name} is a live control, not a dead knob`);
 }
 for (const name of ['low', 'mid', 'high']) {
   const range = EFFECT_BY_ID.reverb.ranges[name];

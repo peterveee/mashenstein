@@ -402,7 +402,7 @@ try {
   // The lane went on shuffling and the identical lane with a preset on it played dead
   // straight — invisible unless you had assigned a voice, which on hats everybody has.
   const HATS = () => new Array(32).fill(true);
-  const hatPreset = voicesFor('hats').find((v) => v.kind === 'noise');
+  const hatPreset = voicesFor('hats').find((v) => v.kind === 'drum' && v.category === 'Hats');
   const straightPlain = await play({ hats: HATS() });
   const swungPlain = await play({ hats: HATS(), swing: 200 / 3 });
   assert(!same(straightPlain, swungPlain),

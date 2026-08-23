@@ -58,6 +58,7 @@ const effects = [
     rateDivision: 0.25, frequency: 0.5, waveform: 'sine', depth: 1, glide: 0.35,
     articulation: 0.7, reso: 2.8, spread: 0.8, intensity: 1, excite: 1,
     breath: 0.5, body: 0.35, air: 0.12, wet: 1 }],
+  ['spring', { tension: 0.5, damping: 0.35, drip: 0.42, wet: 0.34 }],
 ];
 const base = await page.evaluate((x) => window.__bench(x), { id: null, params: {}, seconds: 1, reps: 3 });
 console.log(`bare oscillator: ${base.ms.toFixed(2)}ms over ${base.seconds.toFixed(2)}s`);

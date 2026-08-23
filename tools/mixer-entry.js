@@ -1292,7 +1292,18 @@ function insertSlots(key, label, rows) {
   el.addEventListener('contextmenu', openHere);
   const list = effectsOf(key);
   const slots = rows ?? Math.max(1, list.length);
-  el.style.height = `${slots * SLOT_ROW - 4}px`;      // no gap hanging off the last line
+  // Custom properties rather than an inline height: the master's block is re-sized by
+  // a stylesheet rule when it is the last one showing, and an inline height would win
+  // over it. `- 4`: no gap hanging off the last line.
+  el.style.setProperty('--fxrowsh', `${slots * SLOT_ROW - 4}px`);
+  // And what this one block would be on its own. The reserved height above exists so
+  // the slots land on one line ACROSS the rack; the master's block is the one that
+  // outlives the others — it keeps its chain when the ladder or a switch has taken
+  // every other strip's away — and with nothing left to line up with, the rack's
+  // reservation stops being alignment and becomes an empty band every strip pays for.
+  // A song whose busiest channel carries six inserts held 170px of nothing over every
+  // fader on the desk for the sake of the master's two. See the #masterslot rules.
+  el.style.setProperty('--fxownh', `${Math.max(1, list.length + 1) * SLOT_ROW - 4}px`);
   list.forEach((e, i) => {
     const def = EFFECT_BY_ID[e.id];
     const btn = document.createElement('button');
@@ -1711,6 +1722,8 @@ function stripMenu(el, key, kind) {
         label: `Paste ${fx} Effect${fx === 1 ? '' : 's'} from ${clipboard.from}`,
         run: () => pasteEffects(key),
       },
+      { label: 'Channel Effects', title: `Open ${Kind.toLowerCase()} effects`,
+        run: () => openChannelEffects(key) },
       list.length && {
         label: anyOn ? 'Bypass All Effects' : 'Enable All Effects',
         run: () => {
@@ -6398,16 +6411,24 @@ function masterStrip(mix, slotRows) {
 // rather than a band of empty desk under short ones.
 //
 // A comfortable height rather than a floor: this is the fader the rack ASKS for when
-// it is deciding how much of the window to want (see rackWant). What it will actually
-// settle for is FADER_FLOOR below.
+// it is deciding how much of the window to want (see rackWant), and it is also the
+// number the shrink ladder BARGAINS with — a rung is worth standing on only if the
+// fader and its meter come out of it at a height you can still read and still grab.
 const FADER_MIN = 48;
-// And how far it will compress to keep one more BLOCK on screen. Two numbers rather
-// than one, because with only the comfortable minimum to bargain with the ladder shed
-// far too eagerly: five pixels short of fitting the EQ, it would drop the EQ and the
-// sends together and then hand the ninety pixels that freed straight back to the
-// fader — a strip that was nearly all fader, with the rows you were reaching for
-// gone. A fader is still a fader at this height; three EQ bands you cannot see are
-// not an EQ.
+// Two numbers rather than one, because the last rung has nothing left to shed: with
+// the inserts, the sends and the EQ all gone there is no block left to trade, so the
+// fader takes the rest of the squeeze itself and this is where it stops. Only that
+// rung ever sees it — every rung above it hands a block back instead, which is the
+// whole point of the ladder. A fader is still a fader at this height.
+//
+// It used to be what the ladder bargained with too, on the argument that compressing
+// the fader another fourteen pixels was worth one more block. It is not: it bought a
+// wide band of every window height where the strip showed three EQ bands, two sends
+// and the insert slots over a fader and a meter squeezed to nothing — which is the
+// one control on the strip you are actually holding while you mix. The cliff at each
+// rung (shed a block, hand the freed height straight to the fader) is the same size
+// either way, because the rungs are cumulative; all the lower number changed was how
+// small the fader got before the cliff.
 const FADER_FLOOR = 34;
 // The arrangement's automatic answer. Eight lanes is enough to read a song's shape
 // and the rest is a scroll. It is a TARGET, not a floor: the floor is one lane, and
@@ -6435,12 +6456,30 @@ const DEV_MIN_ROLL = 8 * 29;
  * pixels unaccounted for, which was enough to put a vertical scrollbar down the rack
  * and cut the padding under the strips.
  */
+/**
+ * The room the strips actually stand in: #rack's content box. Everything the rack's
+ * own chrome takes — its padding, the horizontal scroll rail below it, the wrapper's
+ * border — is already off it by construction, which is what rackPad() has to
+ * reconstruct from the outside.
+ */
+function rackInner() {
+  const rack = $('rack');
+  if (!rack) return 0;
+  return Math.max(0, rack.clientHeight - px(rack, 'paddingTop') - px(rack, 'paddingBottom'));
+}
+
 function rackPad() {
   const rack = $('rack');
   if (!rack) return 20;
+  const wrap = $('rackwrap');
   return px(rack, 'paddingTop') + px(rack, 'paddingBottom')
     + (rack.offsetHeight - rack.clientHeight)
-    + h($('mixscroll')) + px($('mixscroll'), 'marginTop');
+    + h($('mixscroll')) + px($('mixscroll'), 'marginTop')
+    // And the wrapper's own border, which is the one piece of the rack's chrome that is
+    // not inside it. A pixel, and it was the pixel between "the strip fills the rack"
+    // and "the strip is one taller than the rack it is in" — see rackInner(), which has
+    // to reconstruct none of this.
+    + (wrap ? wrap.offsetHeight - wrap.clientHeight : 0);
 }
 
 const h = (el) => (el ? el.getBoundingClientRect().height : 0);
@@ -6684,6 +6723,14 @@ function naturalHeight(body) {
  * the window back restores exactly what is ticked and nothing more.
  */
 const SHED_ORDER = ['effects', 'sends', 'eq'];
+/**
+ * And the one block outside that order: the master's insert chain, which the three
+ * above leave alone on purpose — it is the copy that outlives every other strip's.
+ * It is not a rung, because shedding it saves nobody but the master any height; it is
+ * hidden only when the band the channels need cannot hold it, so that it is never
+ * half-shown behind a hidden scrollbar. See the #masterslot rules.
+ */
+const MASTER_FX_SHED = 'shed-masterfx';
 // One id space with the switches, and the class derived from theirs rather than
 // spelled again: the insert block is `effects` to a switch and `fx` to a stylesheet,
 // and writing that mapping down twice is how the two sets drift apart.
@@ -6705,15 +6752,19 @@ const shedClass = (id) => STRIP_PARTS.find((p) => p.id === id).cls.replace('no-'
  */
 function atShed(n, fn) {
   const wrap = $('rackwrap');
-  const had = SHED_ORDER.map(shedClass).filter((c) => wrap.classList.contains(c));
-  wrap.classList.remove(...SHED_ORDER.map(shedClass));
+  // MASTER_FX_SHED with them: the question this pass answers is how tall the master's
+  // chain is, and asking it with the chain already hidden answers zero — which puts it
+  // back, which hides it again on the next pass.
+  const had = [...SHED_ORDER.map(shedClass), MASTER_FX_SHED]
+    .filter((c) => wrap.classList.contains(c));
+  wrap.classList.remove(...SHED_ORDER.map(shedClass), MASTER_FX_SHED);
   wrap.classList.add(...SHED_ORDER.slice(0, n).map(shedClass), 'measuring');
   wrap.style.setProperty('--faderh', `${FADER_FLOOR}px`);
   try {
     return fn();
   } finally {
     wrap.style.removeProperty('--faderh');
-    wrap.classList.remove('measuring', ...SHED_ORDER.map(shedClass));
+    wrap.classList.remove('measuring', ...SHED_ORDER.map(shedClass), MASTER_FX_SHED);
     wrap.classList.add(...had);
   }
 }
@@ -6739,18 +6790,26 @@ function atShed(n, fn) {
  */
 function measureRungAt(n) {
   return atShed(n, () => {
-    let body = 0, rest = 0;
+    let body = 0, rest = 0, master = 0;
     for (const s of document.querySelectorAll('.strip')) {
       const b = s.querySelector('.stripbody');
       if (!b) continue;
-      body = Math.max(body, naturalHeight(b));
+      // Every body but the MASTER's. The band is what the channels and the returns
+      // NEED — rows they are showing — and the master's body holds one thing nobody
+      // else has: the insert chain that outlives theirs. Counted in, it stopped being
+      // "the tallest body" and became a floor under the whole rack, so a master with a
+      // chain longer than anyone's rows put an empty band over every fader on the desk
+      // and the ladder's shedding bought the faders nothing. It still gets the band
+      // like every other strip — it just no longer sets it. See #masterslot .stripbody.
+      if (s.classList.contains('master')) master = naturalHeight(b);
+      else body = Math.max(body, naturalHeight(b));
       // Each strip's own fader comes out of its own total — that is the part this is
       // solving for, and a strip without one has none to subtract.
       rest = Math.max(rest, px(s, 'paddingTop') + px(s, 'paddingBottom')
         + h(s.querySelector('.striphead'))
         + h(s.querySelector('.stripfoot')) - h(s.querySelector('.faderwrap')));
     }
-    return { body: Math.ceil(body), chrome: Math.ceil(body + rest) + 2 };
+    return { body: Math.ceil(body), master: Math.ceil(master), chrome: Math.ceil(body + rest) + 2 };
   });
 }
 
@@ -6773,7 +6832,7 @@ function stripRungAt(n) {
     // No body number to guess at: nothing is on screen for --bodyh to hold level, and
     // the first real fit writes it before a strip exists to read it.
     if (!document.querySelector('.strip[data-lane]')) {
-      return { chrome: [230, 190, 150, 110][n], body: 0 };
+      return { chrome: [230, 190, 150, 110][n], body: 0, master: 0 };
     }
     chromeRungs = SHED_ORDER.map((_, i) => measureRungAt(i));
     chromeRungs.push(measureRungAt(SHED_ORDER.length));
@@ -6980,11 +7039,14 @@ function applyDesk({ arrOpen, rackOpen, notesOpen, arrH, notesH, fxH, chrome, ra
  *
  * The fader goes first and goes furthest: it is the shock absorber, uncapped upwards
  * so a tall window ends up with long faders rather than a band of empty desk, and
- * squeezed all the way to FADER_FLOOR before any block is touched. When even that is not
- * enough the desk starts shedding whole BLOCKS, in SHED_ORDER — inserts, then sends,
- * then EQ — until a strip fits. It never scrolls a strip body: a row half out of
- * sight is a row you cannot read and cannot click, and it goes without saying that it
- * has gone. A hidden block says so on its header switch instead.
+ * squeezed to FADER_MIN before any block is touched. Past that the desk starts shedding
+ * whole BLOCKS, in SHED_ORDER — inserts, then sends, then EQ — until a strip fits, so
+ * the fader and its meter stay a control you can read and hold at every rung. Only the
+ * last rung, with nothing left to shed, lets it down to FADER_FLOOR.
+ *
+ * It never scrolls a strip body: a row half out of sight is a row you cannot read and
+ * cannot click, and it goes without saying that it has gone. A hidden block says so on
+ * its header switch instead.
  *
  * The rung is a state of the whole rack rather than of one strip. --striph, --bodyh
  * and --faderh are root variables, the measurement takes its MAX across every strip
@@ -7001,13 +7063,23 @@ function sizeStrips(strips) {
 
   // The fewest blocks that make a strip fit. Fewest, so the desk gives up as little
   // as it has to and hands each block back at the same height it took it away at.
+  //
+  // FADER_MIN, not FADER_FLOOR: a rung only counts as fitting if the fader and its
+  // meter come out of it usable. Bargaining with the floor instead left a wide band of
+  // window heights showing every block over a 34px fader — see FADER_FLOOR. The floor
+  // is still what gets APPLIED below, and it is never larger than the number bargained
+  // with here, so no strip is ever handed more content than height.
   let shed = 0;
-  while (shed < SHED_ORDER.length && strips < stripChromeAt(shed) + FADER_FLOOR) shed++;
+  while (shed < SHED_ORDER.length && strips < stripChromeAt(shed) + FADER_MIN) shed++;
   const chrome = stripChromeAt(shed);
   const gone = SHED_ORDER.slice(0, shed);
 
   for (const id of SHED_ORDER) wrap.classList.toggle(shedClass(id), gone.includes(id));
   markShedParts(gone);
+  // Whole, or not at all — the master's chain is a guest in the band, and half a chain
+  // over a hidden scrollbar is the silent shedding the ladder exists to avoid.
+  const rung = stripRungAt(shed);
+  wrap.classList.toggle(MASTER_FX_SHED, rung.master > rung.body);
 
   // Nothing here about the preset editor any more. It used to be a rack item wearing
   // --striph, so the bottom rung squashed a full editor into the height of a bare strip
@@ -7019,12 +7091,13 @@ function sizeStrips(strips) {
   // the three of them are one layout, and a rung that changed how long the fader is
   // without fixing where it starts would put the master's back off its neighbours'
   // line. The rows a strip does not have are this band, not extra fader.
-  root.setProperty('--bodyh', `${stripRungAt(shed).body}px`);
-  // FADER_FLOOR, and the same number the shed loop above bargains with. They have to
-  // be the one number: floored at FADER_MIN while the loop was letting the strip down
-  // to chrome + FADER_FLOOR, a strip could be given fourteen pixels more content than
-  // height — and a strip body that overflows scrolls, silently, which is the one
-  // thing this whole ladder exists to avoid.
+  root.setProperty('--bodyh', `${rung.body}px`);
+  // FADER_FLOOR, which is never LARGER than the number the shed loop above bargains
+  // with — that is the invariant, not that the two are equal. Floored above what the
+  // loop settled for, a strip would be given more content than height, and a strip body
+  // that overflows scrolls, silently, which is the one thing this whole ladder exists to
+  // avoid. Below it, as here, the rung the loop chose simply has fader to spare, and
+  // only the last rung — nothing left to shed — ever comes down this far.
   const fader = Math.max(FADER_FLOOR, strips - chrome);
   root.setProperty('--faderh', `${Math.round(fader)}px`);
   // Sized to the rack, never past it: there is no vertical scrollbar on the rack, so
@@ -7053,6 +7126,32 @@ function markShedParts(gone) {
   }
 }
 
+/**
+ * The rack alone, from the room it has this instant.
+ *
+ * Split out of fitStrips because it has to run in places the full fit deliberately does
+ * not: a splitter drag defers the fit to the release, and a window resize waits out its
+ * settle timer. GROWING survives that wait — the strips stretch to the rack on their own
+ * (see .strip) — but SHRINKING does not: --striph is a floor, so until the ladder has
+ * run the strips stand taller than the rack they are in and their feet are cut off at
+ * the bottom. This is the cheap half of the fit — one layout read and three custom
+ * properties, with the rung heights already measured and cached — so it can run on every
+ * pointer move, and the expensive half (lane visibility, clipped names, the editors)
+ * still waits for the gesture to end.
+ */
+function fitRack() {
+  if ($('desk').dataset.lowerView !== 'mixer') return;
+  // The splitter's bound first, since it is what stops the rack being handed less than a
+  // bare strip in the first place — and a window being dragged shorter moves that bound
+  // without anyone touching the splitter. Two property writes; the fit re-applies it for
+  // the other lower views, which have no rack to size.
+  applyWorkRatio();
+  // #rack's own content box, not the wrapper's height less a reconstructed pad: the
+  // strips stand in that box, and rebuilding it from the outside missed #rackwrap's
+  // bottom border and handed every strip a pixel more than the room it had.
+  sizeStrips(Math.floor(Math.max(rackFloor() - rackPad(), rackInner())));
+}
+
 /** Size the desk to the window. */
 function fitStrips() {
   // The unified workspace lets flex resolve exactly two rooms. The old four-panel
@@ -7061,10 +7160,14 @@ function fitStrips() {
   // regions. The rack still needs its shrink ladder, so size it from the lower room it
   // actually owns and retain the common post-layout housekeeping below.
   if ($('upperwork') && $('lowerwork')) {
-    if ($('desk').dataset.lowerView === 'mixer') {
-      const available = Math.max(rackFloor() - rackPad(), h($('rackwrap')) - rackPad());
-      sizeStrips(Math.floor(available));
-    }
+    // The splitter's bound moves with the rack's floor, with the window and with which
+    // view is in the lower workspace, and all three move without anyone touching the
+    // splitter — a shorter window, a font change, a song whose busiest channel is taller,
+    // a switch to the roll. Re-applied here, where every one of those already arrives,
+    // rather than only at the drag. The ASK is untouched, so this is a bound and not an
+    // edit: give the room back and the split comes back with it.
+    applyWorkRatio();
+    fitRack();
     if (keepLanePending) {
       keepLanePending = false;
       keepSelectedLaneVisible();
@@ -7144,16 +7247,55 @@ function markClipped(root = document) {
 // One resizer between the permanent upper and lower workspaces. Store a ratio rather
 // than pixels so the same choice survives moving between monitors or rotating a tablet.
 const UPPER_WORK_KEY = 'mash-mixer-upper-work-ratio';
-const clampWorkRatio = (value) => Math.max(0.24, Math.min(0.76,
-  Number.isFinite(Number(value)) ? Number(value) : 0.44));
+/**
+ * The least the lower workspace may be while the MIXER is the view in it: the rack's
+ * own floor — a strip with every sheddable block gone, its fader at FADER_FLOOR and the
+ * rack's padding — plus the Mixer header above it.
+ *
+ * Without this the splitter could hand the rack less height than the bare strip it is
+ * already standing on, and a rack that overflows is clipped rather than scrolled: the
+ * bottom of every strip — pan, mute and solo — simply left the screen with nothing
+ * saying it had. The ladder's whole promise is that a block goes away visibly or not at
+ * all, and past two thirds of the splitter's travel it was quietly breaking it.
+ *
+ * The roll and the pattern grid have their own scrollers and are happy at any height,
+ * so this bound is the mixer's alone.
+ */
+const lowerWorkFloor = () => (document.querySelector('.strip[data-lane]')
+  ? h($('mixhead')) + rackFloor() : 0);
+const clampWorkRatio = (value) => {
+  const want = Number.isFinite(Number(value)) ? Number(value) : 0.44;
+  const desk = h($('desk'));
+  // Measured rather than written down: the splitter is 7px of desk that belongs to
+  // neither workspace, and a ratio that forgot it would be 7px optimistic every time.
+  const room = desk - h($('worksplitter'));
+  let most = 0.76;
+  if (room > 0 && $('desk')?.dataset.lowerView === 'mixer') {
+    most = Math.min(most, Math.max(0.24, (room - lowerWorkFloor()) / desk));
+  }
+  return Math.max(0.24, Math.min(most, want));
+};
 const restoredWorkRatio = Number.parseFloat(localStorage.getItem(UPPER_WORK_KEY));
-let upperWorkRatio = clampWorkRatio(Number.isFinite(restoredWorkRatio) ? restoredWorkRatio : 0.44);
-const writeWorkRatio = (value, remember = true, fit = true) => {
-  upperWorkRatio = clampWorkRatio(value);
-  document.documentElement.style.setProperty('--upper-work-height', `${upperWorkRatio * 100}%`);
+// The split you ASKED for, which is a different number from the one on screen whenever
+// the rack's floor is holding the splitter back. Storing the ask rather than the bound
+// is what lets a temporary squeeze — a shorter window, a busier song — end: shrink the
+// window and the splitter rides up to keep the mixer whole, grow it again and the split
+// you chose is still there. Stored bounded, the squeeze would be permanent and every
+// resize would eat a little more of a choice nobody withdrew.
+let upperWorkRatio = Math.max(0.24, Math.min(0.76,
+  Number.isFinite(restoredWorkRatio) ? restoredWorkRatio : 0.44));
+/** The ask, put on screen through whatever bound is in force right now. */
+const applyWorkRatio = () => {
+  const shown = clampWorkRatio(upperWorkRatio);
+  document.documentElement.style.setProperty('--upper-work-height', `${shown * 100}%`);
   $('worksplitter').setAttribute('aria-valuemin', '24');
-  $('worksplitter').setAttribute('aria-valuemax', '76');
-  $('worksplitter').setAttribute('aria-valuenow', String(Math.round(upperWorkRatio * 100)));
+  $('worksplitter').setAttribute('aria-valuemax', String(Math.round(clampWorkRatio(0.76) * 100)));
+  $('worksplitter').setAttribute('aria-valuenow', String(Math.round(shown * 100)));
+};
+const writeWorkRatio = (value, remember = true, fit = true) => {
+  upperWorkRatio = Math.max(0.24, Math.min(0.76,
+    Number.isFinite(Number(value)) ? Number(value) : 0.44));
+  applyWorkRatio();
   if (remember) localStorage.setItem(UPPER_WORK_KEY, String(upperWorkRatio));
   keepLanePending = true;
   if (fit) scheduleDeskFit();
@@ -7167,10 +7309,15 @@ writeWorkRatio(upperWorkRatio, false);
   const setFromPointer = (event) => {
     const desk = dragDesk || $('desk').getBoundingClientRect();
     if (!(desk.height > 0)) return;
-    // The CSS variable is the cheap live part of the gesture. Defer the rack sizing
-    // and editor fit until release; doing that full measure/write pass on every pointer
-    // move is exactly the main-thread work that can steal a scheduler turn.
+    // The CSS variable is the cheap live part of the gesture. Defer the EDITOR fit until
+    // release; doing that full measure/write pass on every pointer move is exactly the
+    // main-thread work that can steal a scheduler turn.
     writeWorkRatio((event.clientY - desk.top) / desk.height, false, false);
+    // The rack is not deferrable, though — dragging the splitter DOWN takes room away
+    // from strips whose floor is still the old rung's, and a floor taller than the rack
+    // is a foot cut off at the bottom for the whole length of the drag. This is the
+    // cheap half: the rungs are already measured, so it is a read and three properties.
+    fitRack();
   };
   splitter.addEventListener('pointerdown', (event) => {
     if (event.button != null && event.button !== 0) return;
@@ -7293,6 +7440,11 @@ let deskResizeVisualHeld = false;
 const scheduleDeskResize = () => {
   // Every width the arrangement scroller was measured against has just changed.
   forgetArrangementGeometry();
+  // The rack goes now rather than after the settle timer, for the same reason it goes on
+  // every pointer move of the splitter: a window being dragged shorter takes the room out
+  // from under strips whose floor is still the old rung's, and they spend the whole
+  // gesture with their feet cut off. Everything expensive still waits below.
+  fitRack();
   if (!deskResizeVisualHeld) {
     deskResizeVisualHeld = true;
     beginPlaybackVisualHold();
@@ -12833,7 +12985,7 @@ function fillEffectControls({
     requestAnimationFrame(() => filterGraph.draw());
   }
 
-  if (def.id === 'mbComp' || def.id === 'mbCompN') {
+  if (def.id === 'mbCompN') {
     grid.append(multibandControls({ def, entryParams, applyPatch }));
     return;
   }
@@ -13432,8 +13584,8 @@ const EFFECT_GROUP_ROWS = [
     ['Character & Lo-Fi', ['exciter', 'distortion', 'tape', 'chebyshev', 'bitcrusher', 'ringmod']],
   ],
   [
-    ['Dynamics', ['l7', 'compressor', 'noisegate', 'msComp', 'mbComp', 'mbCompN']],
-    ['Space, Width & Pitch', ['reverb', 'ambience', 'doubler', 'widener', 'shifter', 'pitch']],
+    ['Dynamics', ['l7', 'compressor', 'noisegate', 'msComp', 'mbCompN']],
+    ['Space, Width & Pitch', ['reverb', 'ambience', 'spring', 'doubler', 'widener', 'shifter', 'pitch']],
   ],
 ];
 const EFFECT_GROUPS = EFFECT_GROUP_ROWS.flat();
@@ -15030,55 +15182,121 @@ let lowerView = LOWER_VIEWS.has(localStorage.getItem(LOWER_VIEW_KEY))
 let lowerViewTransitionTimer = 0;
 let lowerViewTransitionToken = 0;
 let lowerViewMotionHeld = false;
+let lowerViewMotionEls = [];
+
+/** The longer of the two workspace durations, in ms, read from the shell's own tokens. */
 function workspaceMotionMs() {
-  const token = getComputedStyle(document.documentElement)
-    .getPropertyValue('--workspace-anim').trim();
-  const ms = token.endsWith('ms') ? parseFloat(token)
-    : token.endsWith('s') ? parseFloat(token) * 1000 : 220;
-  return Number.isFinite(ms) ? ms : 220;
+  const css = getComputedStyle(document.documentElement);
+  const ms = (name) => {
+    const token = css.getPropertyValue(name).trim();
+    const n = token.endsWith('ms') ? parseFloat(token)
+      : token.endsWith('s') ? parseFloat(token) * 1000 : NaN;
+    return Number.isFinite(n) ? n : 200;
+  };
+  return Math.max(ms('--workspace-in'), ms('--workspace-out'));
 }
 
-function animateLowerView(from, to, enabled) {
-  const desk = $('desk');
-  const alreadyTransitioning = desk.classList.contains('workspace-transitioning');
-  // Song/session restoration can re-apply the already-selected view after the first
-  // paint. It is not a new navigation and must not tear down a transition the user has
-  // just started; a genuinely different target still gets a fresh token below.
-  if (alreadyTransitioning && from === to) return;
+/**
+ * The two elements a view is actually made of.
+ *
+ * `deck` is the surface that occupies the lower workspace; `editor` is the thing inside
+ * it when that deck holds more than one. Roll and Pattern share the Notes deck, so a
+ * switch between those two changes only the editor while every other switch changes the
+ * deck. Naming both is what lets the hand-off animate whichever one genuinely changed
+ * and leave the other alone — animating a surface and its own child together multiplies
+ * the fade and doubles the travel.
+ */
+function workspaceSurfaces(view) {
+  if (view === 'mixer') return { deck: $('mixerview'), editor: null };
+  if (view === 'roll') return { deck: $('notes'), editor: $('pianoroll') };
+  if (view === 'pattern') return { deck: $('notes'), editor: $('kitroll') };
+  return { deck: null, editor: null };
+}
+
+/**
+ * Pin an element at the box it occupies right now.
+ *
+ * Window coordinates, because the rule that reads them pins with `position: fixed` —
+ * see the shell. The same call therefore works for a deck inside #lowerwork, an editor
+ * inside #notes and the whole lower deck inside #desk, without any of the three needing
+ * to become a containing block. This is the one forced layout read in a switch, and it
+ * is spent before anything has moved: a moment later the outgoing surface is
+ * display:none and has no box left to pin it at.
+ */
+function pinWorkspaceLeaver(el) {
+  const box = el.getBoundingClientRect();
+  el.style.setProperty('--ws-x', `${Math.round(box.left)}px`);
+  el.style.setProperty('--ws-y', `${Math.round(box.top)}px`);
+  el.style.setProperty('--ws-w', `${Math.round(box.width)}px`);
+  el.style.setProperty('--ws-h', `${Math.round(box.height)}px`);
+  el.classList.add('ws-leave');
+}
+
+/** Put the desk back in its resting state, whether the motion finished or was overtaken. */
+function endLowerViewMotion() {
+  clearTimeout(lowerViewTransitionTimer);
+  lowerViewTransitionTimer = 0;
+  $('desk').classList.remove('wsanim', 'ws-run');
+  for (const el of lowerViewMotionEls) {
+    el.classList.remove('ws-leave', 'ws-enter');
+    for (const prop of ['--ws-x', '--ws-y', '--ws-w', '--ws-h']) el.style.removeProperty(prop);
+  }
+  lowerViewMotionEls = [];
   if (lowerViewMotionHeld) {
     lowerViewMotionHeld = false;
     endPlaybackVisualHold();
   }
-  const token = ++lowerViewTransitionToken;
-  clearTimeout(lowerViewTransitionTimer);
-  desk.classList.remove('workspace-transitioning', 'workspace-entering', 'workspace-leaving');
-  desk.removeAttribute('data-lower-view-from');
-  if (!enabled || from === to || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+}
 
+/**
+ * Stage a workspace hand-off. Called BEFORE the view attribute flips, because pinning
+ * the outgoing surface is a measurement and there is only one frame in which it can be
+ * taken. Returns the token runLowerViewMotion needs, or 0 when nothing should move.
+ */
+function beginLowerViewMotion(from, to, enabled) {
+  // Song and session restoration re-applies the view that is already up. That is not a
+  // navigation and must not tear down a hand-off the user has just started.
+  if (from === to) return 0;
+  endLowerViewMotion();
+  if (!enabled || matchMedia('(prefers-reduced-motion: reduce)').matches) return 0;
+
+  const before = workspaceSurfaces(from);
+  const after = workspaceSurfaces(to);
+  const sameDeck = before.deck !== null && before.deck === after.deck;
+  // Collapsing to the full-height arrangement, or coming back from it, hands over the
+  // whole lower half rather than one surface within it.
+  const leaveEl = to === 'none' ? $('lowerwork') : sameDeck ? before.editor : before.deck;
+  const enterEl = from === 'none' ? $('lowerwork') : sameDeck ? after.editor : after.deck;
+  if (!leaveEl && !enterEl) return 0;
+
+  const token = ++lowerViewTransitionToken;
+  // Layout motion and playback pictures share one thread, and the desk's whole audio
+  // graph has to fit a single core. Stand the meters and note decoration down for the
+  // couple of hundred milliseconds the hand-off owns.
   lowerViewMotionHeld = true;
   beginPlaybackVisualHold();
-  desk.dataset.lowerViewFrom = from;
-  desk.classList.add('workspace-transitioning');
-  if (to !== 'none') desk.classList.add('workspace-entering');
-  // The first frame paints the new surface in its starting state. A single rAF is
-  // too early here: its callback runs before that frame is painted, so adding and
-  // removing `workspace-entering` in one callback collapses the transition into a
-  // single final layout. Wait for the next frame before releasing the start state.
+  $('desk').classList.add('wsanim');
+  if (leaveEl) { pinWorkspaceLeaver(leaveEl); lowerViewMotionEls.push(leaveEl); }
+  // The starting state goes on now, while the switch is still one synchronous block, so
+  // the first frame after it paints the arriving surface already down and transparent.
+  if (enterEl) { enterEl.classList.add('ws-enter'); lowerViewMotionEls.push(enterEl); }
+  return token;
+}
+
+/** Release the staged hand-off and let both halves run. */
+function runLowerViewMotion(token) {
+  if (!token || token !== lowerViewTransitionToken) return;
+  // A single rAF is too early: its callback runs before that frame is painted, so
+  // releasing there collapses the whole transition into one final layout. Wait for the
+  // frame after the starting state has actually been drawn.
   requestAnimationFrame(() => {
     if (token !== lowerViewTransitionToken) return;
     requestAnimationFrame(() => {
       if (token !== lowerViewTransitionToken) return;
-      if (to === 'none') desk.classList.add('workspace-leaving');
-      else desk.classList.remove('workspace-entering');
+      $('desk').classList.add('ws-run');
       lowerViewTransitionTimer = setTimeout(() => {
         if (token !== lowerViewTransitionToken) return;
-        lowerViewTransitionTimer = 0;
-        desk.classList.remove('workspace-transitioning', 'workspace-entering', 'workspace-leaving');
-        desk.removeAttribute('data-lower-view-from');
-        if (lowerViewMotionHeld) {
-          lowerViewMotionHeld = false;
-          endPlaybackVisualHold();
-        }
+        endLowerViewMotion();
       }, workspaceMotionMs() + 40);
     });
   });
@@ -15107,13 +15325,21 @@ function setLowerView(next, { remember = true, animate = true } = {}) {
   const from = desk.dataset.lowerView || lowerView;
   arrangementKeyboardActive = false;
   const viewLane = laneForLowerView(view);
+  // Stage the hand-off before anything moves: pinning the surface that is leaving is a
+  // measurement, and the line below is the last moment it still has a box to measure.
+  const motionToken = beginLowerViewMotion(from, view, animate);
   lowerView = view;
   $('desk').dataset.lowerView = view;
-  $('mixviewbtn').classList.toggle('on', view === 'mixer');
-  $('rollbtn').classList.toggle('on', view === 'roll');
-  $('seqbtn').classList.toggle('on', view === 'pattern');
+  // One three-position switch, so all three are set in one place. `justlit` drives the
+  // chosen icon's press and is keyed on a real CHANGE of view rather than on the class
+  // being present, so the button that was already up does not re-animate.
   for (const [id, on] of [['mixviewbtn', view === 'mixer'], ['rollbtn', view === 'roll'], ['seqbtn', view === 'pattern']]) {
-    $(id).setAttribute('aria-pressed', on ? 'true' : 'false');
+    const btn = $(id);
+    const wasOn = btn.classList.contains('on');
+    btn.classList.toggle('on', on);
+    btn.classList.remove('justlit');
+    if (on && !wasOn && motionToken) btn.classList.add('justlit');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 
   // Old saved folds cannot make a selected view empty. The fold functions remain as
@@ -15155,7 +15381,7 @@ function setLowerView(next, { remember = true, animate = true } = {}) {
   if (stepSeq.isOpen()) stepSeq.open(false);
   stepSeqWanted = false;
   if (remember) localStorage.setItem(LOWER_VIEW_KEY, view);
-  animateLowerView(from, view, animate);
+  runLowerViewMotion(motionToken);
   scheduleDeskFit(true);
 }
 
@@ -17072,9 +17298,9 @@ function followArrangementScroll(frac) {
   grid.scrollLeft = Math.max(0, Math.min(span, x - inset - lead));
 }
 
-function mixerScrollSnapLeft(rack, left) {
+function mixerStripGeometry(rack) {
   const strips = rack.querySelectorAll('.strip');
-  if (!strips.length) return Math.max(0, left);
+  if (!strips.length) return null;
   const rackRect = rack.getBoundingClientRect();
   const firstRect = strips[0].getBoundingClientRect();
   const firstStart = firstRect.left - rackRect.left + rack.scrollLeft;
@@ -17082,9 +17308,15 @@ function mixerScrollSnapLeft(rack, left) {
     ? strips[1].getBoundingClientRect().left - firstRect.left
     : (parseFloat(getComputedStyle(strips[0]).width) || 0)
       + (parseFloat(getComputedStyle(rack).columnGap) || 0);
-  if (!(step > 0)) return Math.max(0, left);
+  return step > 0 ? { firstStart, step } : null;
+}
+
+function mixerScrollSnapLeft(rack, left) {
+  const geometry = mixerStripGeometry(rack);
+  if (!geometry) return Math.max(0, left);
   const max = Math.max(0, rack.scrollWidth - rack.clientWidth);
-  const target = firstStart + Math.round((left - firstStart) / step) * step;
+  const target = geometry.firstStart
+    + Math.round((left - geometry.firstStart) / geometry.step) * geometry.step;
   return Math.max(0, Math.min(max, Math.round(target)));
 }
 
@@ -17094,7 +17326,7 @@ function snapMixerScroll() {
   if (!rack || !rail) return;
   const target = mixerScrollSnapLeft(rack, rack.scrollLeft);
   if (Math.abs(rack.scrollLeft - target) > 0.5) {
-    rack.scrollTo({ left: target, behavior: 'smooth' });
+    rack.scrollTo({ left: target, behavior: 'auto' });
   }
   if (Math.abs(rail.scrollLeft - target) > 0.5) rail.scrollLeft = target;
 }
@@ -17104,10 +17336,36 @@ function syncMixerScroll() {
   const rail = $('mixscroll');
   const railContent = $('mixscroll-content');
   if (!rack || !rail || !railContent) return;
+  const previousLeft = Math.max(0, rack.scrollLeft);
+  // The final send needs a trailing strip-width of content when channels overflow:
+  // without it the nearest snap point can still leave the last strip a few pixels
+  // outside the viewport. Remove the class before measuring so a resize that makes the
+  // rack fit can give that space back immediately.
+  rack.style.removeProperty('--mixer-tail-pad');
+  rack.classList.remove('snap-tail');
+  const naturalMax = Math.max(0, rack.scrollWidth - rack.clientWidth);
+  if (naturalMax > 1) {
+    const geometry = mixerStripGeometry(rack);
+    if (geometry) {
+      const snapMax = geometry.firstStart
+        + Math.ceil(Math.max(0, naturalMax - geometry.firstStart) / geometry.step)
+          * geometry.step;
+      const baseRight = Number.parseFloat(getComputedStyle(rack).paddingRight) || 0;
+      rack.style.setProperty('--mixer-tail-pad', `${Math.round(
+        baseRight + Math.max(0, snapMax - naturalMax),
+      )}px`);
+    }
+    rack.classList.add('snap-tail');
+  }
+  rack.scrollLeft = Math.min(previousLeft, Math.max(0, rack.scrollWidth - rack.clientWidth));
   const styles = getComputedStyle(rack);
   const leftPad = Number.parseFloat(styles.paddingLeft) || 0;
-  const rightPad = Number.parseFloat(styles.paddingRight) || 0;
-  const width = Math.max(1, Math.round(rack.scrollWidth - leftPad - rightPad));
+  // The visible rail is a separate scroller with a slightly smaller viewport than the
+  // hidden rack. Match MAX scroll positions directly so any conditional rack tail is
+  // represented in the rail as well, rather than subtracting the rack's current padding
+  // and silently losing the new end space.
+  const width = Math.max(1, Math.round(rack.scrollWidth - leftPad
+    - rack.clientWidth + rail.clientWidth));
   railContent.style.width = `${width}px`;
   rail.scrollLeft = Math.max(0, rack.scrollLeft);
   if (rack.dataset.scrollBound !== '1') {
@@ -22707,6 +22965,11 @@ function setPlaying(on, fromStep = null, { countIn = 0, preservePendingPlayback 
     // `setBank` schedules the first destination note after its clean start gap. The
     // visual cursor must meet that note, not the scheduler's ahead-of-time `step`.
     Audio.markVisualSeek?.(at);
+    // Build the pooled voices used by the opening bars before the scheduler's first
+    // lookahead can reach them. The pools are still lazy during ordinary playback;
+    // this short stopped-state pass prevents a first-use Tone graph from landing on
+    // a dense bar boundary and consuming the audible queue.
+    Audio.prepareRealtimeVoices?.({ startStep: at, windowSteps: 128 });
   } else {
     visualSeekHold = null;
     Audio.takeVisualSeek?.();

@@ -93,7 +93,7 @@ assert(source.includes('const { next, wasOwner } = fingerUp(slot, noteKey);')
 // with a keyboard on it does. A second attack out of a gesture that was a release is the
 // thing this must never become.
 assert(source.includes('slot.synth.setNote(next.hz, at);')
-  && source.includes('this._retargetLayerPitch(record, next.hz, at, record.glide || 0);')
+  && source.includes('this._retargetLayerPitch(record, next.hz, releaseAt, record.glide || 0);')
   && source.includes("tngr2NoteOn(lane, { at: off, hz: next.hz, velocity: 1, eventId, regate: false });"),
   'the fall-back moves the pitch on every path and re-strikes on none');
 // LEGATO under a finger is legato. The pooled classes reach a different branch from the

@@ -165,6 +165,10 @@ function effectSilenceGap(list = [], bpm = 120) {
       seconds += delaySeconds(p, bpm);
     } else if (effect.id === 'reverb') {
       seconds += Math.max(0, Number(p.preDelay ?? 0.01) || 0);
+    } else if (effect.id === 'spring') {
+      // The longest spring mode is just under 80ms; leave a full mode gap before
+      // deciding a quiet tank has stopped so a late bounce is never cut by sleeping.
+      seconds += 0.1;
     } else if (effect.id === 'chorus') {
       seconds += Math.max(0, Number(p.delayTime ?? 3.5) || 0) / 1000;
     } else if (effect.id === 'chorus2' || effect.id === 'flanger' || effect.id === 'doubler') {

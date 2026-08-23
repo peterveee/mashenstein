@@ -113,7 +113,7 @@ export function upgradeSelect(select) {
     caret.setAttribute('viewBox', '0 0 24 24');
     caret.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS(NS, 'path');
-    path.setAttribute('d', 'M4 7.5l8 8 8-8');
+    path.setAttribute('d', 'M5 8.5l7 7 7-7');
     caret.append(path);
     field.append(caret);
   }

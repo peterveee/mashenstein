@@ -4329,6 +4329,28 @@ export class VoiceRack {
   }
 
   /**
+   * Build a realtime pool before the scheduler reaches its first note.
+   *
+   * The ordinary Tone voices are intentionally lazy during normal playback, but the
+   * first construction can be large enough to consume the scheduler's lookahead. A
+   * stopped-state warm-up calls this for the opening bars, so the first audible pass
+   * does not pay that one-time graph cost at a bar boundary. Per-note voices are left
+   * alone: they have no reusable pool to build here and their own warm-up paths are
+   * asynchronous or note-specific.
+   */
+  prepareRealtimeVoice(laneKey, voiceId, dry, wet, echo = true, want = 1) {
+    const v = mrdrComparisonVoice(VOICES[voiceId]);
+    if (!v || v.kind === 'drum' || v.synth === 'TNGR-2'
+      || isMrdrVoice(v) || synthFamily(v.synth) === KNDO5
+      || synthFamily(v.synth) === WNDR9) return false;
+    if (!synthClassFor(v.synth, v.options)) return false;
+    const mode = v.mode || keyMode(v);
+    this._pool(laneKey, voiceId, dry, wet, echo,
+      mode === 'poly' ? Math.max(1, want) : 1, false);
+    return true;
+  }
+
+  /**
    * Which instance of a POLY pool plays the next note.
    *
    * Round robin for a sequenced note, which is what it has always been: notes have
@@ -7376,7 +7398,11 @@ export class VoiceRack {
           this._heldNative.set(next.key, held);
           return;
         }
-        record.gateUntil = Math.min(record.gateUntil, releaseAt);
+        // The audio release may have to wait for a preview whose attack was booked
+        // slightly ahead of the current clock, but the logical gate ends when the
+        // player actually releases the key. Keeping the future booking here makes a
+        // just-pressed-and-released note look fingered until its scheduled attack.
+        record.gateUntil = Math.min(record.gateUntil, now);
         record.gateKey = null;
       } else if (record) {
         // Not the key that is speaking. Its own nodes still have to be let go — in MONO

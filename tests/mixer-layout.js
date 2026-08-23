@@ -29,6 +29,12 @@ const touchedBody = /const touched = \(\) => \{[\s\S]*?\n  \};/.exec(editor)?.[0
 // does this any more" — a note explaining what was REMOVED must not read as the thing.
 const bareEntry = entry.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
+let failed = false;
+function assert(cond, msg) {
+  if (!cond) { console.error('FAIL:', msg); failed = true; }
+  else console.log('ok:', msg);
+}
+
 assert(/id="rearrangebtn"/.test(shell)
   && /data-tip="M8TRX"[^>]*>M8TRX<\/button>/.test(shell)
   && /id="rearrangepanel"/.test(shell)
@@ -886,12 +892,6 @@ assert(/queueRearrangement\(recipe = null\)/.test(audio)
   && /function applyRearrangeEdit/.test(entry)
   && /classList\.toggle\('pending', rearrangePending\)/.test(entry),
   'Rearrange edits install at the next output bar without restarting playback');
-
-let failed = false;
-function assert(cond, msg) {
-  if (!cond) { console.error('FAIL:', msg); failed = true; }
-  else console.log('ok:', msg);
-}
 
 assert(!/schedulePreview|previewNote/.test(touchedBody)
   && !/let previewTimer|const schedulePreview/.test(editor),
@@ -1817,13 +1817,13 @@ assert(/_forgetRenderedNotes\(voiceId\)/.test(audio)
 
 // ---- the native multiband compressor ----------------------------------------
 const fx = readFileSync(new URL('../src/engine/effects.js', import.meta.url), 'utf8');
-assert(/id: 'mbCompN'/.test(fx) && /id: 'mbComp'/.test(fx),
-  'the native multiband compressor is a SECOND entry — the Tone one stays, so the two can be A/B’d');
+assert(/id: 'mbCompN'/.test(fx) && !/id: 'mbComp'/.test(fx),
+  'the native multiband compressor is the single catalogue entry');
 {
   const params = (id) => fx.match(new RegExp(`id: '${id}'[\\s\\S]*?params: \\[([\\s\\S]*?)\\]`))?.[1]
     .replace(/\s+/g, ' ').trim();
-  assert(params('mbComp') === params('mbCompN'),
-    'with identical controls in identical order — the same idea spelled one way');
+  assert(params('mbCompN'),
+    'keeps the complete grouped multiband control list');
 }
 assert(/const strip = this\.mixer && this\.mixer\.lane\(key\);/.test(audio)
   && /this\._previewing && !strip/.test(audio)
@@ -2116,13 +2116,13 @@ assert(/<button id="devmove"[^>]*aria-label="Move Effects panel to the left"[^>]
   && /#devices \.devtarget \{[^}]*order:\s*2/s.test(shell)
   && /#devices #devmove \{[^}]*order:\s*5/s.test(shell)
   && /#devices #devmove svg \{[^}]*stroke-width:\s*2/s.test(shell)
-  && /#devices button\.deskselect\.devtarget \.deskselect-caret \{[^}]*stroke-width:\s*2/s.test(shell)
+  && /#devices button\.deskselect\.devtarget \.deskselect-caret \{[^}]*stroke-width:\s*2[^}]*transition:\s*transform \.18s/s.test(shell)
   && /const FX_SIDE_KEY = 'mash-mixer-fxside'/.test(entry)
   && /let fxDockSide = localStorage\.getItem\(FX_SIDE_KEY\) === 'left' \? 'left' : 'right';/.test(entry)
   && /function applyFxDockSide\(\)[\s\S]*?classList\.toggle\('fxdock-left', onLeft\)[\s\S]*?querySelector\('path'\)\?\.setAttribute\('d', onLeft[\s\S]*?\? 'M4 12h16M13 5l7 7-7 7'[\s\S]*?: 'M20 12H4M11 5 4 12l7 7'/.test(entry)
   && /function setFxDockSide\(side, refit = true\)[\s\S]*?localStorage\.setItem\(FX_SIDE_KEY, fxDockSide\)[\s\S]*?afterDock\(false\)/.test(entry)
   && /\$\('devmove'\)\.onclick = \(\) => setFxDockSide\(fxDockSide === 'left' \? 'right' : 'left'\)/.test(entry)
-  && /select\.id === 'devtarget'[\s\S]*?deskselect-caret[\s\S]*?M4 7\.5l8 8 8-8/.test(deskSelect),
+  && /select\.id === 'devtarget'[\s\S]*?deskselect-caret[\s\S]*?M5 8\.5l7 7 7-7/.test(deskSelect),
   'the Effects header arrow moves the dock to the opposite edge, updates its direction, and remembers the choice');
 // The cards sit centred in the panel at any chain length — the scrollbar comes out of
 // both margins, not out of the right-hand one alone — and one number sets every gap in
@@ -2290,7 +2290,10 @@ assert(/#lowerwork \{[^}]*flex:\s*1 1 auto[^}]*min-height:\s*132px/s.test(shell)
 assert(shell.includes('#deskslack { display: none; }')
   && /#deskslack\.greedy \{[^}]*background: var\(--panel\)/s.test(shell),
   'the empty band is desk-coloured and exists only while it is the elastic one');
-assert(/function fitStrips\(\)[\s\S]*?if \(\$\('upperwork'\) && \$\('lowerwork'\)\)[\s\S]*?dataset\.lowerView === 'mixer'[\s\S]*?sizeStrips/.test(entry)
+assert(/function fitStrips\(\)[\s\S]*?if \(\$\('upperwork'\) && \$\('lowerwork'\)\)[\s\S]*?fitRack\(\);/.test(entry)
+  // The mixer check went with the sizing when fitRack was split out — it has to run in
+  // places the full fit does not. See 'the rack tracks a shrink live' below.
+  && /function fitRack\(\) \{\s*if \(\$\('desk'\)\.dataset\.lowerView !== 'mixer'\) return;/.test(entry)
   && /function setLowerView\(next[\s\S]*?\$\('desk'\)\.dataset\.lowerView = view/.test(entry),
   'every fit reapplies the selected lower workspace before fitting its mixer or editor');
 const lowerViewSetter = entry.slice(entry.indexOf('function setLowerView(next'),
@@ -2379,8 +2382,37 @@ assert(/\.strip\.send \{[^}]*background:\s*var\(--panel\)[^}]*border-color:\s*va
   && !/\.strip\.master\s*\{/.test(shell),
   'the master and send returns use the neutral strip surface');
 assert(/function masterStrip\(mix, slotRows\)[\s\S]*?const \{ el, body, foot \} = stripShell\('__master'[\s\S]*?const masterFx = insertSlots\('__master', 'master', slotRows\);[\s\S]*?masterFx\.classList\.add\('master-fxbtns'\)[\s\S]*?body\.append\(masterFx\)[\s\S]*?foot\.append\(faderRow/.test(entry)
-  && /#rackwrap\.no-fx #masterslot \.master-fxbtns,[\s\S]*?#rackwrap\.shed-fx #masterslot \.master-fxbtns \{ display: flex; \}/.test(shell),
+  && /#rackwrap\.no-fx #masterslot \.master-fxbtns,\s*#rackwrap\.shed-fx #masterslot \.master-fxbtns \{ display: flex; \}/.test(shell),
   'the master keeps its insert chain in its spare upper body even when ordinary strips shed or hide Effects');
+// SPARE room, and no more. The block is normally as tall as the longest chain in the
+// rack so the slots line up across strips; kept alone there is nothing to line up with,
+// and --bodyh is held on EVERY strip — so a song whose busiest channel carried six
+// inserts put 170px of nothing over every fader for the sake of the master's two, and
+// the ladder's shedding bought the faders nothing at all.
+assert(/el\.style\.setProperty\('--fxrowsh', `\$\{slots \* SLOT_ROW - 4\}px`\)/.test(entry)
+  && /el\.style\.setProperty\('--fxownh', `\$\{Math\.max\(1, list\.length \+ 1\) \* SLOT_ROW - 4\}px`\)/.test(entry)
+  && /\.fxbtns \{[^}]*height: var\(--fxrowsh, auto\)/s.test(shell)
+  // ALWAYS its own height: the block is in the body while every other one is in the
+  // foot, so the rack's reservation never aligned it with anything — it only carried
+  // the busiest channel's chain length into --bodyh, which is held on every strip.
+  && /#masterslot \.master-fxbtns \{ height: var\(--fxownh, auto\); \}/.test(shell),
+  'the master chain is sized to its own chain, never to the rack’s slot reservation');
+// --bodyh is what the CHANNELS and the returns need. The master's body holds the one
+// thing nobody else has — the chain that outlives theirs — and counted in, it stopped
+// being the tallest body and became a floor under the whole rack: hide the EQ by hand
+// and every strip still carried a band the size of the master's inserts.
+assert(/if \(s\.classList\.contains\('master'\)\) master = naturalHeight\(b\);\s*else body = Math\.max\(body, naturalHeight\(b\)\);/.test(entry)
+  && /return \{ body: Math\.ceil\(body\), master: Math\.ceil\(master\), chrome: Math\.ceil\(body \+ rest\) \+ 2 \}/.test(entry)
+  // Whole, or not at all — half a chain behind a hidden scrollbar is the silent
+  // shedding the ladder exists to avoid.
+  && /const MASTER_FX_SHED = 'shed-masterfx';/.test(entry)
+  && /wrap\.classList\.toggle\(MASTER_FX_SHED, rung\.master > rung\.body\)/.test(entry)
+  && /#rackwrap\.shed-masterfx #masterslot \.master-fxbtns \{ display: none; \}/.test(shell)
+  // Measured with the chain SHOWING, or the pass answers zero, puts it back, and hides
+  // it again on the next one.
+  && /const had = \[\.\.\.SHED_ORDER\.map\(shedClass\), MASTER_FX_SHED\]/.test(entry)
+  && /wrap\.classList\.remove\(\.\.\.SHED_ORDER\.map\(shedClass\), MASTER_FX_SHED\)/.test(entry),
+  'the master takes the band, never sets it, and its chain goes whole when it will not fit');
 // No strip collapses its body on its own any more. A channel body that vanished while
 // a send return still carried its device summary put those two faders on different
 // lines, which is the one thing --bodyh exists to prevent: the band is the same band on
@@ -2399,21 +2431,34 @@ assert(entry.includes('function markShedParts(gone)')
   && /#partfilter button\.shed \.lbl \{ text-decoration: line-through; \}/.test(shell)
   && /b\.dataset\.part = p\.id/.test(entry),
   'a block the desk hid is struck through on its own switch, distinct from one you turned off');
-// Two fader numbers, not one. With only the comfortable minimum to bargain with, the
-// ladder shed two blocks to save five pixels and handed the freed height to the fader.
+// Two fader numbers, not one — and the ladder bargains with the COMFORTABLE one. Set to
+// the floor instead, a wide band of window heights showed three EQ bands, two sends and
+// the insert slots over a fader and meter squeezed to 34px, which is the one control on
+// the strip you are holding while you mix. Only the last rung, with no block left to
+// trade, ever comes down to the floor.
 assert(entry.includes('const FADER_MIN = 48')
   && entry.includes('const FADER_FLOOR = 34')
-  && /while \(shed < SHED_ORDER\.length && strips < stripChromeAt\(shed\) \+ FADER_FLOOR\) shed\+\+/.test(entry)
+  && /while \(shed < SHED_ORDER\.length && strips < stripChromeAt\(shed\) \+ FADER_MIN\) shed\+\+/.test(entry)
   && /const fader = Math\.max\(FADER_FLOOR, strips - chrome\)/.test(entry)
-  // The applied floor and the one the shed loop bargains with have to be the SAME
-  // number, or a strip is handed more content than height and its body scrolls.
+  // The applied floor must never be LARGER than the one the shed loop settled for, or a
+  // strip is handed more content than height and its body scrolls.
   && /rackWant = [\s\S]{0,400}?chrome \+ FADER_MIN \+ rackPad\(\)/.test(entry),
-  'the fader compresses past its comfortable minimum to keep one more block on screen');
+  'the ladder sheds a block rather than squeeze the fader below a height you can hold');
+// The splitter may not hand the rack less than a fully shed strip. A rack that overflows
+// is CLIPPED, not scrolled, so past two thirds of the splitter's travel the bottom of
+// every strip — pan, mute, solo — left the screen with nothing saying it had.
+assert(/const lowerWorkFloor = \(\) => \(document\.querySelector\('\.strip\[data-lane\]'\)\s*\? h\(\$\('mixhead'\)\) \+ rackFloor\(\) : 0\)/.test(entry)
+  && /const clampWorkRatio = [\s\S]{0,600}?dataset\.lowerView === 'mixer'[\s\S]{0,200}?\(room - lowerWorkFloor\(\)\) \/ desk/.test(entry)
+  // The ask is stored unbounded, so a temporary squeeze ends: shrink the window and the
+  // splitter rides up to keep the mixer whole, grow it back and the split returns.
+  && /const applyWorkRatio = \(\) => \{\s*const shown = clampWorkRatio\(upperWorkRatio\);/.test(entry)
+  && /function fitStrips\(\)[\s\S]{0,1200}?applyWorkRatio\(\);/.test(entry),
+  'the splitter stops where the mixer would start being cut off, and only bounds the ask');
 // Every number the ladder is steered by is measured at a NAMED rung rather than at
 // whichever one the rack is standing on, or the fit becomes a function of its own last
 // answer — a latch, where a short window once meant a short window forever.
 const atShedFn = /function atShed\(n, fn\)[^]*?\n\}/.exec(entry)?.[0] || '';
-assert(atShedFn.includes('wrap.classList.remove(...SHED_ORDER.map(shedClass))')
+assert(atShedFn.includes('wrap.classList.remove(...SHED_ORDER.map(shedClass), MASTER_FX_SHED)')
   && atShedFn.includes("wrap.classList.add(...SHED_ORDER.slice(0, n).map(shedClass), 'measuring')")
   && atShedFn.includes("wrap.style.setProperty('--faderh'")
   && atShedFn.includes('finally'),
@@ -2422,18 +2467,56 @@ assert(/function measureRungAt\(n\) \{\s*return atShed\(n,/.test(entry)
   && /chromeRungs = SHED_ORDER\.map\(\(_, i\) => measureRungAt\(i\)\)/.test(entry)
   && /const stripChromeAt = \(n\) => stripRungAt\(n\)\.chrome;/.test(entry)
   && /function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(entry)
-  && shell.includes('#rackwrap.measuring .strip { height: auto; }'),
+  && shell.includes('#rackwrap.measuring .strip { height: auto; min-height: 0; }'),
   'one chrome height per rung, measured off the ladder, and the floor is the last of them');
+// The strip's bottom IS the rack's bottom, at all times. --striph is a floor on the
+// strip and the rack's own height is what it stands at, so slack the sum did not
+// account for — and a fit that has not run yet, or ran against a rack that has since
+// grown — goes down the fader instead of standing as a hole under the strips.
+assert(/\.strip \{[^}]*min-height: var\(--striph, auto\)/s.test(shell)
+  // A bare `height:`, not the `min-height:` above it — that is the whole difference.
+  && !/\.strip \{[^}]*[;\s]height: var\(--striph/s.test(shell)
+  && /#rack \{[^}]*align-items: stretch/s.test(shell)
+  && /#masterslot \{[^}]*align-self: stretch; align-items: stretch/s.test(shell)
+  // MASTER's slot is a sibling of the field, so the channels' scroll rail is not under
+  // it; reserved as padding, or its foot stands a rail lower than everyone else's.
+  && /#masterslot \{[^}]*padding: 5px var\(--stripgap\) calc\(4px \+ var\(--bar-scroll-h\)\) 0/s.test(shell)
+  // …and the measurement wants the strip's own height, not the rack's.
+  && /#rackwrap\.measuring #rack,\s*#rackwrap\.measuring #masterslot \{ align-items: flex-start; \}/.test(shell)
+  // The room the strips actually stand in, rather than the wrapper's height less a
+  // reconstructed pad — which missed #rackwrap's bottom border by a pixel.
+  && /function rackInner\(\)[\s\S]*?rack\.clientHeight - px\(rack, 'paddingTop'\) - px\(rack, 'paddingBottom'\)/.test(entry)
+  && /sizeStrips\(Math\.floor\(Math\.max\(rackFloor\(\) - rackPad\(\), rackInner\(\)\)\)\)/.test(entry)
+  // The one piece of the rack's chrome that is not inside #rack, and the pixel between
+  // "the strip fills the rack" and "the strip is one taller than the rack it is in".
+  && /function rackPad\(\)[\s\S]*?wrap\.offsetHeight - wrap\.clientHeight/.test(entry),
+  'the strips stretch to the rack, so the fader takes the slack and the bottom never floats');
+// The returns were the one group in the rack with no definite height, and every
+// `height: 100%` inside a strip — the fader, the meter, its bars — resolves against it:
+// against an auto height a return stood 1225px tall in a 400px rack.
+assert(/#sendslot \{[^}]*align-items: stretch/s.test(shell),
+  'the send returns stretch like every other strip, so what is inside them can be sized');
+// Growing survives a deferred fit on its own — the strips stretch. SHRINKING does not:
+// --striph is a floor, so until the ladder has run the strips stand taller than the rack
+// and their feet are cut off. So the cheap half of the fit runs on every pointer move of
+// the splitter and on the leading edge of a window resize, and only the expensive half —
+// lane visibility, clipped names, the editors — waits for the gesture to end.
+assert(/function fitRack\(\) \{[\s\S]*?applyWorkRatio\(\);[\s\S]*?sizeStrips\(/.test(entry)
+  && /writeWorkRatio\(\(event\.clientY - desk\.top\) \/ desk\.height, false, false\);\s*(\/\/[^\n]*\n\s*)*fitRack\(\);/.test(entry)
+  && /const scheduleDeskResize = \(\) => \{[\s\S]{0,600}?fitRack\(\);/.test(entry),
+  'the rack tracks a shrink live; only the expensive half of the fit waits for the gesture');
 // ---- one line for every fader ------------------------------------------------------
 // The foot is bottom-anchored, so pan, mute/solo and the limiter always landed
 // together; the fader between them is the strip's shock absorber, so a master with an
 // empty body was handed the height the channels' send rows had already spent and its
-// fader stood taller than theirs. --bodyh is the tallest body in the rack, held on
-// every strip: same top, same length, same bottom.
+// fader stood taller than theirs. --bodyh is the tallest body in the rack — the
+// master's excepted, see below — held on every strip: same top, same length, same
+// bottom.
 assert(/\.strip \.stripbody \{[^}]*height:\s*var\(--bodyh, auto\)/s.test(shell)
-  && /root\.setProperty\('--bodyh', `\$\{stripRungAt\(shed\)\.body\}px`\)/.test(entry)
-  && /body = Math\.max\(body, naturalHeight\(b\)\)/.test(entry)
-  && /return \{ body: Math\.ceil\(body\), chrome: Math\.ceil\(body \+ rest\) \+ 2 \}/.test(entry),
+  && /const rung = stripRungAt\(shed\);/.test(entry)
+  && /root\.setProperty\('--bodyh', `\$\{rung\.body\}px`\)/.test(entry)
+  && /else body = Math\.max\(body, naturalHeight\(b\)\)/.test(entry)
+  && /return \{ body: Math\.ceil\(body\), master: Math\.ceil\(master\), chrome: Math\.ceil\(body \+ rest\) \+ 2 \}/.test(entry),
   'every strip reserves the tallest body in the rack, so every fader starts on one line');
 // A body held at the last rung's height would report that height back and --bodyh would
 // only ever climb — the same latch --faderh is pinned to avoid.
@@ -2445,7 +2528,7 @@ assert(shell.includes('#rackwrap.measuring .stripbody { height: auto; }'),
 assert(/\.strip \.stripsub \{[^}]*line-height:\s*1;[^}]*margin:\s*3px 0 3px/s.test(shell)
   && /\.strip \.grp-tag \{[^}]*line-height:\s*1;[^}]*margin:\s*3px 0 3px/s.test(shell),
   'the group tag and the preset category are the same box, so every strip head is one height');
-assert(entry.includes('return { chrome: [230, 190, 150, 110][n], body: 0 };')
+assert(entry.includes('return { chrome: [230, 190, 150, 110][n], body: 0, master: 0 };')
   && !entry.includes('return [260, 220, 180, 140][n]')
   && !entry.includes('body.append(voiceRow(key))'),
   'the pre-build strip sizing estimate matches the selector-free channel layout');
@@ -2960,14 +3043,15 @@ assert(/function openTrackEditor\(x, y, key, options = \{\}\)[\s\S]*?wholeTrack:
   && !entry.includes('trackMenuItems')
   && !/label: 'Adjust entire track…'/.test(entry),
 'the arrangement row opens the track panel and the strip no longer does');
-// The strip gets what the master and the sends have always had: five items about the
-// signal path, built by the one function all three share.
+// The strip gets what the master and the sends have always had: the signal-path actions,
+// plus a direct door to the selected channel's Effects inspector.
 assert(/function stripMenu\(el, key, kind\)[\s\S]*?label: `Copy \$\{Kind\}`[\s\S]*?label: `Reset \$\{Kind\}`/.test(entry)
   && /const Kind = kind\[0\]\.toUpperCase\(\) \+ kind\.slice\(1\)/.test(entry)
   && /stripMenu\(el, key, 'channel'\)/.test(entry)
   && /stripMenu\(el, key, 'send'\)/.test(entry)
-  && /stripMenu\(el, '__master', 'master'\)/.test(entry),
-'a channel strip gets the same channel menu as the master and the send returns');
+  && /stripMenu\(el, '__master', 'master'\)/.test(entry)
+  && /label: 'Channel Effects'[\s\S]*?openChannelEffects\(key\)[\s\S]*?label: anyOn \? 'Bypass All Effects' : 'Enable All Effects'/.test(entry),
+'a channel strip gets the shared signal menu and opens its Effects inspector before bypass');
 // The two editor buttons each name a surface and each ASK for it. `advanced` is not
 // left to default here, because the default is the preset's own opinion — a drum
 // jumps to the full window from the strip's one ✎, which is right when there is one
@@ -3683,18 +3767,65 @@ assert(/\$\('rollbtn'\)\.onclick = \(\) => toggleLowerView\('roll'\)/.test(entry
 assert(/\$\('mixviewbtn'\)\.onclick = \(\) => toggleLowerView\('mixer'\)/.test(entry)
   && /for \(const \[id, on\] of \[\['mixviewbtn',[\s\S]*?\['rollbtn',[\s\S]*?\['seqbtn'/.test(entry),
   'the three toolbar buttons are one mutually exclusive lower-workspace switch');
-assert(/--workspace-anim:\s*\.22s/.test(shell)
-  && /function animateLowerView\(from, to, enabled\)[\s\S]*?workspace-transitioning/.test(entry)
-  && /animateLowerView\(from, view, animate\)/.test(entry)
-  && /#desk\.workspace-transitioning #lowerwork/.test(shell)
-  && /workspace-leaving\[data-lower-view="none"\]/.test(shell),
-  'lower-workspace toggles and Mixer/Roll/Pattern swaps animate without rebuilding the editors');
-assert(/#desk\.workspace-transitioning :is\(#pianoroll, #kitroll\)/.test(shell)
-  && /data-lower-view="roll"\]\[data-lower-view-from="pattern"\][\s\S]*?#pianoroll/.test(shell)
-  && /data-lower-view="pattern"\]\[data-lower-view-from="roll"\][\s\S]*?#kitroll/.test(shell),
-  'switching between Piano Roll and Pattern animates the editor that shares the Notes surface');
-assert(/function animateLowerView\(from, to, enabled\)[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?requestAnimationFrame\(\(\) => \{/.test(entry),
-  'the workspace transition paints its starting state before releasing the entering class');
+// A surface that is leaving has nothing left to say and a surface arriving is the thing
+// you asked for, so the two get different clocks and opposite curves. One duration for
+// both reads as a wipe rather than as a switch.
+assert(/--workspace-in:\s*\.19s; --workspace-out:\s*\.12s;/.test(shell)
+  && /--workspace-ease:\s*cubic-bezier/.test(shell)
+  && /--workspace-ease-out:\s*cubic-bezier/.test(shell)
+  && !/--workspace-anim/.test(shell)
+  && !/--workspace-anim/.test(entry),
+  'the workspace hand-off times its arrival and its departure separately');
+// The hand-off is a real cross-fade, which needs the outgoing surface to stay painted
+// while the incoming one lays out. It is pinned at its measured box, out of flow, so the
+// arriving surface gets the whole workspace in one pass instead of the two sharing a
+// flex line — and the pin is measured before the view attribute flips, because a moment
+// later the outgoing surface is display:none and has no box left.
+assert(/function beginLowerViewMotion\(from, to, enabled\)/.test(entry)
+  && /const motionToken = beginLowerViewMotion\(from, view, animate\);[\s\S]*?\$\('desk'\)\.dataset\.lowerView = view;/.test(entry)
+  && /runLowerViewMotion\(motionToken\);/.test(entry)
+  && /function pinWorkspaceLeaver\(el\)[\s\S]*?getBoundingClientRect\(\)[\s\S]*?'--ws-x'[\s\S]*?classList\.add\('ws-leave'\)/.test(entry)
+  && !/parentElement\.getBoundingClientRect/.test(entry)
+  && /#desk\.wsanim :is\(#lowerwork, #mixerview, #notes, #pianoroll, #kitroll\)\.ws-leave \{[^}]*display: flex !important;[^}]*position: fixed/s.test(shell)
+  && /#desk\.wsanim\.ws-run :is\(#lowerwork, #mixerview, #notes, #pianoroll, #kitroll\)\.ws-leave \{\s*\n?\s*opacity: 0;/.test(shell),
+  'the surface being replaced is pinned at its own box so the swap is a cross-fade, not a pop-out');
+// Exactly one element per surface moves. Animating a panel and its own child together
+// multiplies the opacity and doubles the travel, which is what made the old hand-off
+// read as slow and loose.
+assert(/function workspaceSurfaces\(view\)[\s\S]*?view === 'roll'[\s\S]*?deck: \$\('notes'\), editor: \$\('pianoroll'\)[\s\S]*?view === 'pattern'[\s\S]*?deck: \$\('notes'\), editor: \$\('kitroll'\)/.test(entry)
+  && /const sameDeck = before\.deck !== null && before\.deck === after\.deck;/.test(entry)
+  && /const leaveEl = to === 'none' \? \$\('lowerwork'\) : sameDeck \? before\.editor : before\.deck;/.test(entry)
+  && /const enterEl = from === 'none' \? \$\('lowerwork'\) : sameDeck \? after\.editor : after\.deck;/.test(entry),
+  'Roll and Pattern share the Notes deck, so that swap animates the editor and every other swap the deck');
+assert(/#desk\.wsanim \.ws-enter \{[^}]*opacity: 0; transform: translateY\(var\(--workspace-rise\)\)/s.test(shell)
+  && /--workspace-rise:\s*10px/.test(shell)
+  && /#desk\.wsanim\.ws-run \.ws-enter \{ opacity: 1; transform: none; \}/.test(shell)
+  && !/translateY\(24px\)/.test(shell),
+  'the arriving surface rises a short distance, not a loose one');
+// Collapsing hands over the whole lower half, so #upperwork takes the freed height in
+// one relayout underneath the panel fading off it rather than jumping after it.
+assert(/#desk\.wsanim\[data-lower-view="none"\] #worksplitter \{ display: none; \}/.test(shell)
+  && /const leaveEl = to === 'none' \? \$\('lowerwork'\)/.test(entry),
+  'a collapse to the full-height arrangement pins the lower deck instead of one surface');
+assert(/function runLowerViewMotion\(token\)[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?classList\.add\('ws-run'\)/.test(entry)
+  && /function endLowerViewMotion\(\)[\s\S]*?classList\.remove\('wsanim', 'ws-run'\)[\s\S]*?removeProperty\(prop\)[\s\S]*?endPlaybackVisualHold\(\)/.test(entry)
+  && /function beginLowerViewMotion\([\s\S]*?if \(from === to\) return 0;\s*\n\s*endLowerViewMotion\(\);/.test(entry),
+  'the transition paints its starting state before releasing it, and a switch that overtakes another cleans up after it');
+// The three switches are one control, so they light on one clock, and the icon of the
+// one that took the click gives a single press. Keyed on a real change of view, so the
+// button already up does not re-animate and the shell's pre-script `on` never fires it.
+assert(/class="iconbtn lowerviewbtn on" aria-label="Mixer view"/.test(shell)
+  && /class="iconbtn lowerviewbtn" aria-label="Piano roll"/.test(shell)
+  && /class="iconbtn lowerviewbtn" aria-label="Step grid"/.test(shell)
+  && /header \.lowerviewbtn \{[^}]*transition: background var\(--switch-anim\)[^}]*color var\(--switch-anim\)[^}]*border-color var\(--switch-anim\)/s.test(shell)
+  && /header \.lowerviewbtn\.justlit > svg \{ animation: viewSwitchLit/.test(shell)
+  && /@keyframes viewSwitchLit/.test(shell)
+  && /const wasOn = btn\.classList\.contains\('on'\);[\s\S]*?btn\.classList\.remove\('justlit'\);[\s\S]*?if \(on && !wasOn && motionToken\) btn\.classList\.add\('justlit'\);/.test(entry),
+  'the workspace switch lights on the same clock as the workspace and presses only the icon that was chosen');
+assert(/@media \(prefers-reduced-motion: reduce\) \{\s*\n\s*#desk\.wsanim :is\(#lowerwork, #mixerview, #notes, #pianoroll, #kitroll\)\.ws-leave,\s*\n\s*#desk\.wsanim \.ws-enter \{ transition: none; \}/.test(shell)
+  && /header \.lowerviewbtn\.justlit > svg \{ animation: none; \}/.test(shell)
+  && /matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches\) return 0;/.test(entry),
+  'every part of the workspace hand-off stands down under reduced motion');
 assert(/function setNotesFolded[\s\S]*?needsBuild = !on && !pianoRoll\.isOpen\(\)/.test(entry)
   && /function schedulePianoRollOpen\([\s\S]*?pianoRoll\.open\(true\)/.test(entry),
   'opening Notes after a folded startup initializes the roll after the layout task');

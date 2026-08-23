@@ -3376,7 +3376,10 @@ class AudioSys {
     // Unconditional, unlike the tempo above: a song with no swing has to REPLACE the
     // swing of whatever was playing before it, and `0` would fail a truthiness guard and
     // leave the shuffle on. Nothing tempo-synced follows it, so there is nothing to rebuild.
-    this.swing = bank?.swing || 0;
+    // 50% is the authored spelling of straight, but the scheduler/effect graph uses
+    // zero as its canonical no-offset value so omitted and explicit straight renders
+    // remain sample-identical.
+    this.swing = bank?.swing === SWING_STRAIGHT ? 0 : (bank?.swing || 0);
     // A groove change belongs to the song that asked for it. Left standing, a swing
     // queued in the last bar of one song would land on the downbeat of the next.
     this.pendingSwing = null;
@@ -3510,7 +3513,10 @@ class AudioSys {
     // are untouched, so a drag across the range re-feels the music without a seam in it.
     const swing = patch?.swing ?? source.swing ?? 0;
     if (swing) next.swing = swing; else delete next.swing;
-    this.swing = swing;
+    // Keep the internal straight value canonical. A stored 50% swing and an omitted
+    // swing are musically identical; using 50 here nevertheless sends a different
+    // numeric value through rhythm effects and can produce tiny render differences.
+    this.swing = swing === SWING_STRAIGHT ? 0 : swing;
     // The desk setting a swing outright is an answer to the same question a queued one
     // was asked, and it arrives later — so it wins, rather than being overwritten a bar
     // afterwards by a change nothing on screen still refers to.
@@ -4421,6 +4427,86 @@ class AudioSys {
    * length in a bank. `delay`, `durScale` and `gainScale` exist for the written-in
    * repeats (bassRepeat), which are a second, softer statement of the same note.
    */
+  _ensureVoiceRack() {
+    if (!this.voices) {
+      this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf, this.noteCacheState);
+      // The map, by reference — so a rack rebuilt after a context teardown comes back
+      // agreeing with the buttons the desk is still showing.
+      this.voices.soloLayers = this.soloLayers;
+      // ...and the desk's note cache, which outlives racks the same way.
+      this.voices.noteCache = !!this.noteCache;
+      this.voices.setMrdrTailCulling(this.mrdrTailCulling);
+      this.voices.setMrdrQuality(this.mrdrQuality);
+      this.voices.setNoteCachePlaybackActive(!!this.bank);
+    }
+    return this.voices;
+  }
+
+  /**
+   * Construct pooled realtime voices used near the transport start.
+   *
+   * This is deliberately a short, synchronous walk. It runs immediately after the
+   * desk installs a bank, while the transport's first lookahead is still protected by
+   * the current task, and it uses the same stable lane gates as scheduleStep. The
+   * first pass therefore does not discover a new Tone graph in the middle of a bar.
+   */
+  prepareRealtimeVoices({ startStep = 0, windowSteps = 128 } = {}) {
+    if (this.offline || !this.ctx || !this.bank || !(windowSteps > 0)) return 0;
+    const plan = barPlan(this.bank);
+    if (!plan.length) return 0;
+    const resolution = this.transportResolution || resolutionOf(this.bank);
+    const formSteps = plan.length * 16;
+    const count = Math.min(Math.ceil(windowSteps), formSteps);
+    const start = ((Number(startStep) || 0) % formSteps + formSteps) % formSteps;
+    let rack = this.voices;
+    const prepared = new Set();
+    let warmed = 0;
+
+    for (let offset = 0; offset < count; offset++) {
+      const formStep = (start + offset) % formSteps;
+      const bar = plan[Math.floor(formStep / 16)];
+      let b = this.bank;
+      if (b.sections && b.sections.length && bar.sec != null) {
+        const sec = resolveSection(b, bar.sec % b.sections.length);
+        if (sec) b = { ...b, ...sec };
+      }
+      if (bar.off || bar.delete) {
+        b = { ...b };
+        for (const key of [...(bar.off || []), ...(bar.delete || [])]) b[key] = null;
+      }
+      const slot = formStep % 16;
+      const s = Math.round(slot * resolution / 16) + bar.half * resolution;
+      for (const lane of laneList(b)) {
+        const key = lane.key;
+        const voice = voiceOf(b, key);
+        if (!voice || voice.kind === 'engine') continue;
+        const value = sequenceValue(b, key, s, resolution);
+        const notes = Array.isArray(value)
+          ? value.flat(Infinity).filter((note) => Number.isFinite(note) && note > 0)
+          : (Number.isFinite(value) && value > 0) || value === true ? [value] : [];
+        if (!notes.length) continue;
+        const strip = this.mixer?.lane(key);
+        const gate = this._laneGate(key, strip ? strip.dry : this.musicBus,
+          strip ? strip.wet : this.echoBus);
+        const dry = gate ? gate.dry : (strip ? strip.dry : this.musicBus);
+        const wet = gate ? gate.wet : (strip ? strip.wet : this.echoBus);
+        const primaryEcho = key === 'keyGliss' || key === 'organGliss'
+          ? false
+          : key === 'organChords' ? b.organEcho !== false : laneEchoesIn(b, key);
+        const echoes = key === 'bass' && b.bassRepeat
+          ? [primaryEcho, false] : [primaryEcho];
+        for (const echo of new Set(echoes)) {
+          const poolKey = `${key}|${voice.id}|${echo ? 1 : 0}`;
+          if (prepared.has(poolKey)) continue;
+          prepared.add(poolKey);
+          rack ||= this._ensureVoiceRack();
+          if (rack.prepareRealtimeVoice(key, voice.id, dry, wet, echo, notes.length + 1)) warmed++;
+        }
+      }
+    }
+    return warmed;
+  }
+
   playVoice(key, b, value, { spb, dry, wet, echo = true, delay = 0, durScale = 1, gainScale = 1, len = null }) {
     const seam = seamFor(key);
     const v = seam && voiceOf(b, key);
@@ -4443,17 +4529,7 @@ class AudioSys {
       // written repeats). Wake a sparse lane's insert graph through the actual attack,
       // not merely through the step on which the generated event was discovered.
       this.mixer?.lane(key)?.wakeEffects?.(this.nextTime + delay + 0.1);
-      if (!this.voices) {
-        this.voices = new VoiceRack(this.ctx, this.noiseBuf, this.crashBuf, this.noteCacheState);
-        // The map, by reference — so a rack rebuilt after a context teardown comes back
-        // agreeing with the buttons the desk is still showing.
-        this.voices.soloLayers = this.soloLayers;
-        // ...and the desk's note cache, which outlives racks the same way.
-        this.voices.noteCache = !!this.noteCache;
-        this.voices.setMrdrTailCulling(this.mrdrTailCulling);
-        this.voices.setMrdrQuality(this.mrdrQuality);
-        this.voices.setNoteCachePlaybackActive(!!this.bank);
-      }
+      this._ensureVoiceRack();
       this._schedWork.voicePlays++;
       this.voices.play(key, v.id, freq, {
         time: this.nextTime + delay,
