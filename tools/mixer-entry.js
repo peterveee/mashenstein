@@ -70,6 +70,11 @@ import { offeredVoices, offeredByCategory, offeredByEngine } from '../src/data/v
 // which is what puts an imported .mid in the song picker. The game does not import
 // it, so nothing in that folder ships.
 import '../src/data/imported/index.js';
+// And the scratch drawer's own index, which is generated beside its banks rather than
+// named from the tracked one: `work/` is gitignored, so an import written into
+// src/data/imported/index.js would resolve here and nowhere else. Always present by the
+// time this bundles — buildPage() reindexes immediately before esbuild runs.
+import '../work/scratch/index.js';
 import { MIX, VARIANTS, laneSettings, LANE_DEFAULTS } from '../src/data/mix.js';
 import { VOICES, VOICE_LANES, seamFor, isLayer, baseLane, defaultVoiceOf, voiceOf, registerSongVoice, songVoiceKey, isKitVoice, PERCUSSION_LANES, defaultAddedVoice, polyLane } from '../src/data/voices.js';
 import { createVoiceEditor, isQuickVoice } from './mixer-voice-editor.js';

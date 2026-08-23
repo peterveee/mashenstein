@@ -201,43 +201,5 @@ assert(json(rangedEvents.map((e) => midiOf(e.freq))) === '[64,67,72,64]',
 assert(rangedEvents.every((e) => midiOf(e.freq) >= 48 && midiOf(e.freq) <= 72),
   'no arpeggiated note sounds outside the window');
 
-// ---- and the scheduler survives it ------------------------------------------------------
-//
-// Everything above is the processor in isolation. This is the shape that took the desk
-// down: an arpeggiator hands `at()` ONE event per tick, `at()` collapses a one-event
-// plan to a bare frequency, and the hand-written chord bodies were written for arrays.
-// With no voice preset on the lane — the default — the rack declines the note and the
-// fallback body is exactly what runs. Rendered through the real engine because no
-// processor-level assertion can see which body the frequency lands in; a regression
-// here throws inside scheduleStep and the render rejects.
-{
-  const { openRenderer } = await import('../tools/lib/render-bank-browser.js');
-  const rest = new Array(31).fill(null);
-  const bank = {
-    bpm: 120,
-    sections: [{ chords: [[220, 277, 330], ...rest], organChords: [[220, 330], ...rest] }],
-    order: [{
-      s: 0,
-      noteFx: {
-        chords: { mode: 'on', arp: { enabled: true, rate: 0.5, direction: 'up',
-          retrigger: 'chord', gate: 80, octaves: 1 } },
-        organChords: { mode: 'on', arp: { enabled: true, rate: 0.5, direction: 'up',
-          retrigger: 'chord', gate: 80, octaves: 1 } },
-      },
-    }],
-  };
-  const renderer = await openRenderer();
-  try {
-    const r = await renderer.render(bank, { repeat: 1, mix: null, trackId: null });
-    assert(r.peak > 0.001,
-      'an arpeggiated chord lane with no voice preset renders sound through the'
-      + ` hand-written bodies (peak ${r.peak.toFixed(4)})`);
-  } catch (err) {
-    assert(false, `an arpeggiated chord lane must not kill the scheduler: ${err.message}`);
-  } finally {
-    await renderer.close();
-  }
-}
-
 console.log(failed ? '\nNOTE FX: FAILED' : '\nNOTE FX: PASSED');
 process.exit(failed ? 1 : 0);

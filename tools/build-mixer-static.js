@@ -20,6 +20,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { MIXER_BRAND } from './mixer-brand.js';
+import { writeImportedIndex } from './lib/imported-index.js';
 
 const here = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -47,6 +48,12 @@ async function inlined(root, entry, shell, define) {
  * @returns {Promise<{index: number, frame: number}>} the two sizes, in KB
  */
 export async function buildSongMixer(root = here) {
+  // The song list first, for the reason tools/mixer.js's buildPage() does it: the two
+  // generated indexes are a directory scan, and the bundle imports them by name. On a
+  // fresh clone work/scratch/index.js does not exist at all until this writes the empty
+  // one, and esbuild cannot resolve an import to a file that is not there — which is a
+  // production build failing over the disposable drawer's contents.
+  writeImportedIndex(root);
   const html = (await inlined(root, 'tools/mixer-entry.js', 'tools/mixer-shell.html',
     { __MASH_STATIC_MIXER__: 'true' }))
     .replaceAll('/*__MIXER_BRAND__*/', () => MIXER_BRAND)

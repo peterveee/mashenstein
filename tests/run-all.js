@@ -92,6 +92,7 @@ const suites = [
   // Musical note processors are nondestructive and shared by live game playback and
   // offline export. Keep their ordering and duration arithmetic browserless and exact.
   'tests/note-fx.js',
+  'tests/note-fx-render.js',
   // Freeze is a ranged render: sparse tracks walk only their active bars, while Note
   // FX and written gates can extend the end into what will actually sound.
   'tests/freeze-span.js',
@@ -381,6 +382,11 @@ const browserSuites = new Set([
   'tests/render-length.js',
   'tests/new-effects.js',
   'tests/song-processing.js',
+  // Both open a browser and neither said so, which is how a push-triggered deploy came
+  // to run them on a runner with no chromium installed: `npm ci` fetches the playwright
+  // package, not its browsers. A suite that launches one belongs in this set.
+  'tests/note-fx-render.js',
+  'tests/tngr2-controller.js',
 ]);
 
 // A browser suite renamed out of the list above would quietly rejoin the fast gate and

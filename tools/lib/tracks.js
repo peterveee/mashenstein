@@ -23,6 +23,19 @@ try {
   console.error('  fix or remove the bank, then: node tools/import-midi.js --reindex');
 }
 
+// The scratch drawer, separately and quietly. `work/` is gitignored, so a fresh clone
+// simply has no scratch songs — that is the drawer working as designed, not a fault to
+// report. Only a drawer that exists and will not load is worth a word.
+try {
+  await import('../../work/scratch/index.js');
+} catch (err) {
+  if (err?.code !== 'ERR_MODULE_NOT_FOUND' || !/work\/scratch\/index\.js/.test(String(err.message))) {
+    console.error('work/scratch is not loading, so scratch songs are unavailable:');
+    console.error(`  ${err.message || err}`);
+    console.error('  fix or remove the bank, then: node tools/import-midi.js --reindex');
+  }
+}
+
 export function resolveOrExit(trackId) {
   const track = resolveTrack(trackId);
   if (!track) {
