@@ -44,7 +44,10 @@ const { worstJumpApex } = await import('../src/game/spawner.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { GRAVITY, BASE_JUMP_V } = await import('../src/game/player.js');
 
-const MAX_RISE = Math.floor(worstJumpApex() * 0.8);
+// Imported rather than recomputed. It was a second copy of the arithmetic in
+// routes.js, and a second copy of a constant is a constant that can disagree
+// with itself — which is exactly what happened the day the factor moved.
+const { MAX_ISLAND_RISE: MAX_RISE } = await import('../src/game/routes.js');
 const apexOf = (h) => {
   const v = BASE_JUMP_V * h.jumpMult;
   return (v * v) / (2 * (h.heavy ? GRAVITY * 1.25 : GRAVITY));
@@ -607,8 +610,16 @@ run.spawnRouteEntries();
 const cuts = run.obstacles.filter((o) => o.live && o.def && o.def.isGap && o.tunnel === tunnel);
 // A RAMPED entrance is not cut out of the lane at all — the ground peels away
 // downward and the lane runs over the top of it — so the only gaps a ramped
-// tunnel owns are its mid-span holes.
-const wants = (tunnel.ramp ? 0 : 1) + (tunnel.holes || []).length;
+// tunnel owns are its mid-span holes and the far end of the road above it.
+//
+// `roofGap` is that far end. The road above a tunnel stops while there is still
+// air under it, or the last of the climb is spent under it with nowhere to go —
+// and where it stops the lane is open, so running along the top and off the end
+// drops you into the dip and you come up the ramp. Counted here with everything
+// else because it is cut by the same machinery and caught by the same route
+// code; the one thing it must never be is a member of `holes`, which means a
+// stride-wide second chance punched through the middle of a span.
+const wants = (tunnel.ramp ? 0 : 1) + (tunnel.holes || []).length + (tunnel.roofGap ? 1 : 0);
 assert(cuts.length === wants,
   `every opening is cut into the lane and nothing else is (${cuts.length}/${wants}, ramp=${!!tunnel.ramp})`);
 const hole = cuts[0];

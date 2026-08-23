@@ -188,9 +188,16 @@ assert(T.tuningAvailable(), 'a plugin-built bundle registers its tunables');
 
 // --------------------------------------------------------- the camera budget
 // The readout the strip exists for. framingFor spends the crane to its limit
-// before it touches zoom, so pan === PAN_MAX is the altitude above which every
-// jump starts pulling the whole frame back — a change you feel on every jump in
-// the game and cannot see by watching one.
+// before it touches zoom, so pan === PAN_MAX is the altitude above which a jump
+// starts pulling the whole frame back — a change you feel on every jump in the
+// game and cannot see by watching one.
+//
+// That limit used to sit at 101px, under a double jump, and the strip existed
+// to warn you when a jump-power nudge crossed it. The crane is sized off the
+// tallest jump anyone can make now, so the limit sits ABOVE the whole cast and
+// the zoom never opens in play. The number is still worth watching for exactly
+// the same reason, and the assertions below are the same question asked the
+// other way round: how much room is there before the zoom comes back.
 {
   T.revertTuning();
   const { framingFor, PAN_MAX, GROUND_Y, ZOOM } = await import('../src/engine/camera.js');
@@ -201,7 +208,11 @@ assert(T.tuningAvailable(), 'a plugin-built bundle registers its tunables');
   // limit from framingFor itself rather than restating them here.
   let limit = 0;
   while (framingFor(limit).pan < PAN_MAX && limit < 400) limit += 0.1;
-  assert(Math.abs(limit - 101) < 0.5, `the crane runs out at ~101px of altitude (${limit.toFixed(1)})`);
+  // The tallest thing anyone in the cast can do: a 1.10 jumpMult, doubled, with
+  // the air-jump power-up on top.
+  const TALLEST = 168;
+  assert(limit >= TALLEST,
+    `the crane holds the tallest jump in the game before the zoom is touched (${limit.toFixed(1)}px vs ${TALLEST}px)`);
 
   const mochi = HERO_BY_ID.mochi;
   assert(mochi.maxJumps === 2, 'mochi is the double-jump hero the budget is measured against');
@@ -212,17 +223,17 @@ assert(T.tuningAvailable(), 'a plugin-built bundle registers its tunables');
   assert(Math.abs(dbl - 98.0) < 0.2, `an apex-timed double jump peaks at 98px (${dbl.toFixed(1)})`);
   assert(f.zoom === ZOOM && f.pan < PAN_MAX,
     `and still fits the crane without touching zoom (pan ${f.pan.toFixed(1)}/${PAN_MAX})`);
-  // The headroom is small enough that a routine nudge crosses it, which is the
-  // whole argument for putting this number on screen.
-  assert(PAN_MAX - f.pan < 8,
-    `with under 8px to spare (${(PAN_MAX - f.pan).toFixed(1)}) — a 5% jump raise saturates it`);
+  // And with room to spare, which is the point of the new budget: a routine
+  // nudge to jump power no longer brings the zoom back on every double jump.
+  assert(PAN_MAX - f.pan > 40,
+    `with real headroom left (${(PAN_MAX - f.pan).toFixed(1)}px of ${PAN_MAX})`);
 
   T.applyTuning({ BASE_JUMP_V: 336 });
   const single2 = jumpHeightFor(mochi);
   const v2b = 336 * mochi.jumpMult * AIR_JUMP_SCALE;
   const dbl2 = single2 + (v2b * v2b) / (2 * GRAVITY);
-  assert(framingFor(dbl2).pan >= PAN_MAX,
-    'raising BASE_JUMP_V 320 -> 336 saturates the crane on every double jump');
+  assert(framingFor(dbl2).zoom === ZOOM,
+    `raising BASE_JUMP_V 320 -> 336 no longer opens the zoom on a double jump (${dbl2.toFixed(1)}px)`);
   T.revertTuning();
 }
 

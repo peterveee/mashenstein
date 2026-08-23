@@ -35,7 +35,7 @@ const PLX = ZOOM;
 // quantizes to its segment pitch because a segment display cannot scroll
 // smoothly, and the half-pixel strokeRect offsets exist to keep a 1px line
 // crisp rather than to position anything.
-function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody) {
+function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhangs = []) {
   // A gap is drawn by NOT drawing, rather than by painting a black rectangle
   // over ground that has already been laid.
   //
@@ -57,12 +57,35 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody) {
     open = Math.max(open, b);
   }
   if (open < W) runs.push([open, W]);
+  // `overhangs` are WORLD-x spans with a second area running under them. The
+  // apron below the line is 38px of body colour painted clean across the frame
+  // with no idea of that, so over a chamber it is left hanging in mid-air with
+  // a flat bottom edge — the one shape in the picture that cannot be ground.
+  // The lane's lit surface still gets drawn there: you run along it. What stops
+  // is the fill UNDER it, which belongs to the tunnel's roof slab instead.
+  const cut = (overhangs || []).map((sp) => [sp.x - camX, sp.x + sp.w - camX]);
   for (const [a, b] of runs) {
     if (b <= a) continue;
-    ctx.fillStyle = colBody;
-    ctx.fillRect(a, GROUND_Y, b - a, H - GROUND_Y);
+    let body = [[a, b]];
+    for (const [ca, cb] of cut) {
+      const next = [];
+      for (const [p, q] of body) {
+        if (ca > p) next.push([p, Math.min(q, ca)]);
+        if (cb < q) next.push([Math.max(p, cb), q]);
+      }
+      body = next.filter(([p, q]) => q > p);
+    }
+    // The cap goes with the body. It is drawn at the FLAT groundline while the
+    // terrain rolls above it, so over a chamber — where the body it belongs to
+    // has been cut away — it is left as a green bar hanging in the air under
+    // the island. What the lane's surface is up there is the island's own cap.
     ctx.fillStyle = colTop;
-    ctx.fillRect(a, GROUND_Y, b - a, 3);
+    for (const [p, q] of body) {
+      ctx.fillStyle = colBody;
+      ctx.fillRect(p, GROUND_Y, q - p, H - GROUND_Y);
+      ctx.fillStyle = colTop;
+      ctx.fillRect(p, GROUND_Y, q - p, 3);
+    }
   }
 }
 
@@ -1069,11 +1092,17 @@ function pixelPack(settings) {
       parallaxHills(ctx, camX, cab.hills, GROUND_Y, 34, 50, 0.35,
         cab.id === 'plumber' ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30' } } : null);
     },
-    ground(ctx, camX, cab, obstacles) {
-      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark);
-      // scrolling ground ticks
+    ground(ctx, camX, cab, obstacles, overhangs) {
+      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs);
+      // Scrolling ground ticks — a texture ON the apron, so they stop where the
+      // apron does. Left to run they hang in open air under a road that has a
+      // chamber below it.
       ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      for (let x = -(camX % 24); x < W; x += 24) ctx.fillRect(x, GROUND_Y + 8, 10, 2);
+      const skip = (overhangs || []).map((sp) => [sp.x - camX, sp.x + sp.w - camX]);
+      for (let x = -(camX % 24); x < W; x += 24) {
+        if (skip.some(([a, b]) => x + 10 > a && x < b)) continue;
+        ctx.fillRect(x, GROUND_Y + 8, 10, 2);
+      }
     },
     post() {},
   };

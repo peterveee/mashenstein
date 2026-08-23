@@ -187,9 +187,27 @@ assert(JSON.stringify(EFFECT_BY_ID.bitcrusher.params) === JSON.stringify(['bits'
   'bit crusher exposes resolution, downsampling, and mix without drive or tone');
 assert(/\['Space, Width & Pitch',[\s\S]*'reverb'[\s\S]*'ambience'[\s\S]*'spring'[\s\S]*'widener'[\s\S]*'shifter'[\s\S]*'pitch'/.test(groupBlock),
   'spatial, width, and pitch effects are grouped together');
-assert(/\['Tone & Filter',[\s\S]*\],\n\s+\['Delay & Echo'/.test(groupBlock)
-  && /\['Dynamics',[\s\S]*\],\n\s+\['Space, Width & Pitch'/.test(groupBlock),
-  'picker groups retain deliberate two-column row pairings');
+// THE ROWS ARE THE LAYOUT. The picker draws two groups across, and which two share a row
+// is a decision about where the eye goes next, not an accident of declaration order: what
+// a sound is made of on the left of a row, what happens to it in space on the right.
+// Tone & Filter with Delay & Echo, Modulation & Rhythm with Space, Width & Pitch,
+// Dynamics with Character & Lo-Fi.
+//
+// Read as structure rather than as a pair of greedy regexes over the whole block — those
+// matched a name in one row against a name three rows later and called it a pairing, so
+// the arrangement could be reshuffled under them without a word.
+{
+  const rows = [...groupBlock.matchAll(/\n {2}\[\n((?: {4}\['[^']+',[^\n]*\n)+) {2}\],/g)]
+    .map((row) => [...row[1].matchAll(/\['([^']+)',\s*\[/g)].map((g) => g[1]));
+  const want = [
+    ['Tone & Filter', 'Delay & Echo'],
+    ['Modulation & Rhythm', 'Space, Width & Pitch'],
+    ['Dynamics', 'Character & Lo-Fi'],
+  ];
+  assert(JSON.stringify(rows) === JSON.stringify(want),
+    'the picker groups keep their two-column rows, in order — got '
+    + JSON.stringify(rows));
+}
 
 // The shared editor needs a meaningful range for every new non-default control;
 // otherwise its generic 0..1 fallback makes Hz, dB, and integer controls unusable.

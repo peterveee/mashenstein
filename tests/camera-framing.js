@@ -75,11 +75,14 @@ assert(runwayLoss < 0.12,
 // zoom. Both are cheap here and it is worth keeping them cheap: the numbers
 // below are what stop a future `rise` bump from quietly pulling the picture
 // back every time somebody hops onto a slab.
-const { framingFor, setRestingZoom } = await import('../src/engine/camera.js');
-const { worstJumpApex } = await import('../src/game/spawner.js');
-const RISE = Math.floor(worstJumpApex() * 0.8);
+const { framingFor, setRestingZoom, PAN_MAX } = await import('../src/engine/camera.js');
+const { MAX_ISLAND_RISE } = await import('../src/game/routes.js');
+const RISE = MAX_ISLAND_RISE;
 const JUMP = 57;          // an ordinary hero's apex
 const DOUBLE = 98;        // Mochi, or anyone wearing the cape
+// The highest anyone in the cast reaches: a 1.10 jumpMult, doubled, with the
+// air-jump power-up on top. The crane budget is sized off exactly this.
+const TALLEST = 168;
 
 setRestingZoom(TABLET);
 const standing = framingFor(0, RISE);
@@ -88,15 +91,24 @@ assert(standing.zoom === TABLET && standing.pan === 0,
   'standing on a slab costs the frame nothing at all');
 assert(hop.zoom === TABLET,
   `and an ordinary jump from one still does not open the zoom (pan ${hop.pan})`);
-assert(hop.pan > 0 && hop.pan <= 38,
+assert(hop.pan > 0 && hop.pan <= PAN_MAX,
   `it is paid for out of the crane instead (${hop.pan}px of pan)`);
 
-// The one case that does move the picture, named so it is a decision rather
-// than a surprise: a double jump taken FROM a slab.
+// THE ZOOM DOES NOT MOVE. Not for a double jump off a slab, and not for the
+// tallest thing anybody in the game can do.
+//
+// It used to: the crane was the ground apron, 38px, and everything past 135px
+// of altitude came out of the zoom — so the biggest jumps changed the scale of
+// the world on the way up and changed it back on the way down, which is the one
+// camera move that reads as the picture lurching. The crane is sized off the
+// jump now and the zoom is a backstop nothing reaches. These two are what stop
+// it quietly coming back.
 const dbl = framingFor(DOUBLE, RISE);
-assert(dbl.zoom < TABLET, `a double jump from a slab does open the frame (${dbl.zoom.toFixed(2)})`);
-assert(dbl.zoom > 1.6,
-  `but by less than a sixth, not a lurch (${(1 - dbl.zoom / TABLET) * 100 | 0}%)`);
+assert(dbl.zoom === TABLET,
+  `a double jump from a slab still costs no zoom (pan ${dbl.pan.toFixed(0)})`);
+const top = framingFor(TALLEST);
+assert(top.zoom === TABLET,
+  `nor does the tallest jump in the cast (${TALLEST}px, pan ${top.pan.toFixed(0)}/${PAN_MAX})`);
 
 // Desktop has the headroom to not care at all.
 setRestingZoom(DESKTOP);

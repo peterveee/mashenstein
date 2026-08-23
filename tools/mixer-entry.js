@@ -1303,7 +1303,11 @@ function insertSlots(key, label, rows) {
   // reservation stops being alignment and becomes an empty band every strip pays for.
   // A song whose busiest channel carries six inserts held 170px of nothing over every
   // fader on the desk for the sake of the master's two. See the #masterslot rules.
-  el.style.setProperty('--fxownh', `${Math.max(1, list.length + 1) * SLOT_ROW - 4}px`);
+  // Capped at MAX_EFFECTS like the rack's reservation, and for the same reason: the spare
+  // line is where the + goes, and a full chain has no + to put on it — reserved anyway it
+  // is a row of nothing under the last insert.
+  el.style.setProperty('--fxownh',
+    `${Math.min(MAX_EFFECTS, Math.max(1, list.length + 1)) * SLOT_ROW - 4}px`);
   list.forEach((e, i) => {
     const def = EFFECT_BY_ID[e.id];
     const btn = document.createElement('button');
@@ -2473,14 +2477,20 @@ function buildRack() {
   // time you change the view.
   laneNumbers = new Map(all.map((l, i) => [l.key, i + 1]));
   const lanes = all.filter((l) => !hiddenGroups.has(l.group));
-  // One reserved insert block for the whole rack — sends and master included — so
-  // the slots land on the same pixel on every strip rather than wandering up and
-  // down with each strip's own count.
+  // One reserved insert block for the whole rack — channels and returns — so the slots
+  // land on the same pixel on every strip rather than wandering up and down with each
+  // strip's own count.
+  //
+  // NOT the master. Its block is sized by --fxownh, its own chain and nothing else (see
+  // the #masterslot rules), so it has never stood on the line this reservation draws —
+  // and counting it in bought every other strip a row that only the master would have
+  // used. A single compressor across the mix bus is the ordinary case, and it was
+  // putting an empty 29px row under the chain of every channel on the desk and pushing
+  // every fader down by it.
   const maxChain = Math.max(
     0,
     ...lanes.map((l) => effectsOf(l.key).length),
     ...AUXES.map((a) => effectsOf(`__aux:${a.id}`).length),
-    effectsOf('__master').length,
   );
   // The longest chain and one line more: the spare is the empty slot at the end of
   // the selected strip's chain, and reserving it for the whole rack means selecting
@@ -2500,7 +2510,7 @@ function buildRack() {
   // inserts and somewhere to send.
   const slot = $('masterslot');
   slot.textContent = '';
-  slot.append(masterStrip(mix, slotRows));
+  slot.append(masterStrip(mix));
   const masterFilters = document.createElement('div');
   masterFilters.id = 'masterfilters';
   const masterParts = document.createElement('div');
@@ -6360,7 +6370,7 @@ function sendStrip(def, mix, slotRows) {
  * channels keep their M and S on. There used to be a summary line up here saying
  * "limiter off" in words, and a checkbox on a card called "Master" in the panel below.
  */
-function masterStrip(mix, slotRows) {
+function masterStrip(mix) {
   const { el, body, foot } = stripShell('__master', { label: 'MASTER', tag: 'bus', cls: 'master' });
   const setMaster = (x) => setMasterControlValue(x, 'master');
   const fb = faderBlock({
@@ -6393,7 +6403,15 @@ function masterStrip(mix, slotRows) {
   // that room even when the channel strips have had their insert blocks shed. A
   // master-specific class lets the CSS preserve this one useful exception without
   // changing what the Effects part switch means for ordinary strips.
-  const masterFx = insertSlots('__master', 'master', slotRows);
+  //
+  // ITS OWN ROWS, not the rack's. The block is drawn at --fxownh — its chain and one
+  // spare — so the rack's reservation says nothing about how much room this block has,
+  // and the empty slot the + sits on is the spare line of the block you can SEE. Handed
+  // the rack's count it lost that slot whenever the master carried as much as the
+  // busiest channel, which is most of the time: two inserts on the mix bus, a plain
+  // channel rack, and a strip with obvious room in it and no way to add to it.
+  const masterFx = insertSlots('__master', 'master',
+    Math.min(MAX_EFFECTS, effectsOf('__master').length + 1));
   masterFx.classList.add('master-fxbtns');
   body.append(masterFx);
   // Where a channel keeps M and S, the master keeps its limiter — under the fader and
@@ -6424,7 +6442,18 @@ function masterStrip(mix, slotRows) {
 // it is deciding how much of the window to want (see rackWant), and it is also the
 // number the shrink ladder BARGAINS with — a rung is worth standing on only if the
 // fader and its meter come out of it at a height you can still read and still grab.
-const FADER_MIN = 48;
+//
+// STRICT, because this number is what the ladder is FOR. At 48 a rung counted as
+// fitting whenever the fader could still be hit with a mouse, which is a much lower bar
+// than being able to mix on it: a laptop window sat for a wide band of heights showing
+// three EQ bands and two sends over a fader with 80px of travel and a meter to match —
+// every row on the strip legible except the one control being held. The rows are read;
+// the fader is used. So the bar is what a fader needs to be worth having, and a rung
+// that cannot pay it hands back a block instead — the sends are 44px, the EQ 66, the
+// inserts a reserved row each, and any of them buys back more travel than it costs to
+// read. Only the last rung, with nothing left to trade, goes below this. See
+// FADER_FLOOR.
+const FADER_MIN = 120;
 // Two numbers rather than one, because the last rung has nothing left to shed: with
 // the inserts, the sends and the EQ all gone there is no block left to trade, so the
 // fader takes the rest of the squeeze itself and this is where it stops. Only that
@@ -6737,8 +6766,9 @@ const SHED_ORDER = ['effects', 'sends', 'eq'];
  * And the one block outside that order: the master's insert chain, which the three
  * above leave alone on purpose — it is the copy that outlives every other strip's.
  * It is not a rung, because shedding it saves nobody but the master any height; it is
- * hidden only when the band the channels need cannot hold it, so that it is never
- * half-shown behind a hidden scrollbar. See the #masterslot rules.
+ * the last thing on the desk to go, once the ladder has shed every block it has and the
+ * window still cannot pay for it — and then whole, so that it is never half-shown behind
+ * a hidden scrollbar. See the #masterslot rules and sizeStrips.
  */
 const MASTER_FX_SHED = 'shed-masterfx';
 // One id space with the switches, and the class derived from theirs rather than
@@ -6800,18 +6830,25 @@ function atShed(n, fn) {
  */
 function measureRungAt(n) {
   return atShed(n, () => {
-    let body = 0, rest = 0, master = 0;
+    let body = 0, rest = 0, master = 0, send = 0;
     for (const s of document.querySelectorAll('.strip')) {
       const b = s.querySelector('.stripbody');
       if (!b) continue;
-      // Every body but the MASTER's. The band is what the channels and the returns
-      // NEED — rows they are showing — and the master's body holds one thing nobody
-      // else has: the insert chain that outlives theirs. Counted in, it stopped being
-      // "the tallest body" and became a floor under the whole rack, so a master with a
-      // chain longer than anyone's rows put an empty band over every fader on the desk
-      // and the ladder's shedding bought the faders nothing. It still gets the band
-      // like every other strip — it just no longer sets it. See #masterslot .stripbody.
+      // The master's body is measured APART from the others, and it is not folded back
+      // in anywhere: the master strip sizes itself. The band is what the CHANNELS and
+      // the returns need for the rows they are showing, and the master's number is what
+      // its own strip needs for its own chain — two independent questions, answered
+      // separately below. Its body is `height: auto` in the stylesheet, so what it does
+      // not spend on its chain goes to its own fader rather than standing as a band.
       if (s.classList.contains('master')) master = naturalHeight(b);
+      // A RETURN IS THE SAME EXCEPTION AS THE MASTER, for the same reason: it carries a
+      // thing no channel has — the device summary that says what the return IS — and
+      // with the send rows switched off that made the two returns the tallest bodies on
+      // the desk. The band is held on every strip, so sixteen channels each carried an
+      // empty row the size of the returns' summary between their chain and their fader.
+      // The band is what a CHANNEL needs; a strip carrying more than that keeps its own
+      // body and pays for it out of its own fader.
+      else if (s.classList.contains('send')) send = Math.max(send, naturalHeight(b));
       else body = Math.max(body, naturalHeight(b));
       // Each strip's own fader comes out of its own total — that is the part this is
       // solving for, and a strip without one has none to subtract.
@@ -6819,7 +6856,20 @@ function measureRungAt(n) {
         + h(s.querySelector('.striphead'))
         + h(s.querySelector('.stripfoot')) - h(s.querySelector('.faderwrap')));
     }
-    return { body: Math.ceil(body), master: Math.ceil(master), chrome: Math.ceil(body + rest) + 2 };
+    return {
+      // The band: what a channel strip needs for the rows it is showing.
+      body: Math.ceil(body),
+      master: Math.ceil(master),
+      // What the ladder bargains with — the TALLEST strip that has to keep a fader worth
+      // having, which is the returns whenever their summary row outweighs the send rows a
+      // channel is showing. Bargaining with the band alone would leave a return's fader
+      // short by exactly the difference; nothing about it is sheddable, so the room has to
+      // be found before the rung is chosen rather than after.
+      chrome: Math.ceil(Math.max(body, send) + rest) + 2,
+      // And what the MASTER strip needs around its own, which is a different number
+      // because its body holds a different thing. Its chain IS sheddable — see masterShed.
+      masterChrome: Math.ceil(master + rest) + 2,
+    };
   });
 }
 
@@ -6842,17 +6892,24 @@ function stripRungAt(n) {
     // No body number to guess at: nothing is on screen for --bodyh to hold level, and
     // the first real fit writes it before a strip exists to read it.
     if (!document.querySelector('.strip[data-lane]')) {
-      return { chrome: [230, 190, 150, 110][n], body: 0, master: 0 };
+      const guess = [230, 190, 150, 110][n];
+      return { chrome: guess, masterChrome: guess, body: 0, master: 0, send: 0 };
     }
     chromeRungs = SHED_ORDER.map((_, i) => measureRungAt(i));
     chromeRungs.push(measureRungAt(SHED_ORDER.length));
   }
   return chromeRungs[n];
 }
+// What a CHANNEL strip needs at rung `n`. The master is not in it: it sizes itself, so
+// its chain is never a reason to take a block off sixteen other strips.
 const stripChromeAt = (n) => stripRungAt(n).chrome;
 
 /** What a full strip needs, and what the last one standing needs. */
 const stripChrome = () => stripChromeAt(0);
+// The bottom of everything: last rung, and the master's chain gone with the rest. The
+// rack's floor has to be this rather than the band with the chain in it, or a mix bus
+// carrying six inserts would raise the desk's minimum mixer height by two hundred
+// pixels and take them out of the arrangement above it.
 const bareChrome = () => stripChromeAt(SHED_ORDER.length);
 
 /**
@@ -7081,15 +7138,23 @@ function sizeStrips(strips) {
   // with here, so no strip is ever handed more content than height.
   let shed = 0;
   while (shed < SHED_ORDER.length && strips < stripChromeAt(shed) + FADER_MIN) shed++;
-  const chrome = stripChromeAt(shed);
   const gone = SHED_ORDER.slice(0, shed);
 
   for (const id of SHED_ORDER) wrap.classList.toggle(shedClass(id), gone.includes(id));
   markShedParts(gone);
-  // Whole, or not at all — the master's chain is a guest in the band, and half a chain
-  // over a hidden scrollbar is the silent shedding the ladder exists to avoid.
+  // THE MASTER IS ASKED ABOUT ITS OWN STRIP, AND ONLY ITS OWN. Its chain goes when the
+  // rack cannot hold that chain over a fader worth having — nothing to do with what the
+  // channels are carrying. Comparing the two is what used to hide it: a mix bus generally
+  // carries more than any single channel, so "taller than the busiest channel's body" was
+  // the ordinary case, and with EQ and Sends off a channel body IS its chain. Four
+  // effects across the mix, a desk with room for all of them, and none of them shown.
+  //
+  // Whole when it goes, never half a chain over a hidden scrollbar — the silent shedding
+  // the ladder exists to avoid — and its copy on the Effects panel is unaffected either
+  // way.
   const rung = stripRungAt(shed);
-  wrap.classList.toggle(MASTER_FX_SHED, rung.master > rung.body);
+  const masterShed = strips < rung.masterChrome + FADER_MIN;
+  wrap.classList.toggle(MASTER_FX_SHED, masterShed);
 
   // Nothing here about the preset editor any more. It used to be a rack item wearing
   // --striph, so the bottom rung squashed a full editor into the height of a bare strip
@@ -7101,6 +7166,7 @@ function sizeStrips(strips) {
   // the three of them are one layout, and a rung that changed how long the fader is
   // without fixing where it starts would put the master's back off its neighbours'
   // line. The rows a strip does not have are this band, not extra fader.
+  const chrome = rung.chrome;
   root.setProperty('--bodyh', `${rung.body}px`);
   // FADER_FLOOR, which is never LARGER than the number the shed loop above bargains
   // with — that is the invariant, not that the two are equal. Floored above what the
@@ -13591,11 +13657,11 @@ const EFFECT_GROUP_ROWS = [
   ],
   [
     ['Modulation & Rhythm', ['chorus', 'chorus2', 'flanger', 'phaser', 'tremolo', 'vibrato', 'autopanner', 'rhythmgate']],
-    ['Character & Lo-Fi', ['exciter', 'distortion', 'tape', 'chebyshev', 'bitcrusher', 'ringmod']],
+    ['Space, Width & Pitch', ['reverb', 'ambience', 'spring', 'doubler', 'widener', 'shifter', 'pitch']],
   ],
   [
     ['Dynamics', ['l7', 'compressor', 'noisegate', 'msComp', 'mbCompN']],
-    ['Space, Width & Pitch', ['reverb', 'ambience', 'spring', 'doubler', 'widener', 'shifter', 'pitch']],
+    ['Character & Lo-Fi', ['exciter', 'distortion', 'tape', 'chebyshev', 'bitcrusher', 'ringmod']],
   ],
 ];
 const EFFECT_GROUPS = EFFECT_GROUP_ROWS.flat();

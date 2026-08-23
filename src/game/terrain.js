@@ -1,7 +1,8 @@
 // Broad, deterministic foreground hills for selected cabinets. Heights stay
 // modest so obstacle spacing and jump timing remain familiar.
 import { W } from '../engine/renderer.js';
-import { roadAt } from '../game/routes.js';
+import { roadAt, routeRise, tunnelRoofEnd, tunnelOpenings } from '../game/routes.js';
+import { PLAYER_H } from '../game/player.js';
 
 const PROFILES = {
   plumber:   { amp: 16, period: 430, phase: 0 },
@@ -46,6 +47,148 @@ export function terrainGroundY(cabinet, worldX, baseY = 232) {
  */
 export const ISLAND_THICKNESS = 9;
 
+// ---------------------------------------------------------------- bake-off seam
+/**
+ * WHICH TUNNEL ENTRANCE. A dev seam, not a feature.
+ *
+ * Two faults are being looked at, and both are structural rather than taste:
+ *
+ *  - the lane's below-line band FLIPS from grass to layered earth a whole
+ *    screen before the mouth, because drawSubsoil is switched on by a tunnel
+ *    coming within a frame width. The ground visibly changes colour somewhere
+ *    there is nothing to see.
+ *  - under the roof slab a HARD GREEN BLOCK hangs in the air with a dead flat
+ *    bottom edge at world y 270. That is the style pack's 38px apron: it is
+ *    painted GROUND_Y..H across the whole frame with no idea a tunnel is
+ *    underneath, the overhang then declines to cover it with earth, and the
+ *    slab is only 26px thick — so the remainder is left hanging over the
+ *    chamber.
+ *
+ * `current` is today's rendering to the pixel, so a bake-off tile can be
+ * trusted as the before. Every other look fixes the apron the same way and
+ * differs only in how the entrance itself reads. When one wins it becomes the
+ * only behaviour and this seam comes out.
+ */
+export let TUNNEL_LOOK = 'island';
+// The looks that treat the low road as the PATH — one surface that dips and
+// comes back — rather than as a hole cut in a lane.
+function foldLook() {
+  return TUNNEL_LOOK.startsWith('keepgrass') || TUNNEL_LOOK === 'island';
+}
+export function setTunnelLook(id) { TUNNEL_LOOK = id || 'current'; }
+
+/**
+ * The stretch of lane that has AIR under it rather than earth.
+ *
+ * `openSpan` — where the two levels are more than a slab's thickness apart — is
+ * the honest answer in the middle of a tunnel and the wrong one at its MOUTH.
+ * The hole is cut at r.x, the span does not open until the slide has carried
+ * the floor 34px down, and between those two the earth is filled to the bottom
+ * of the frame: a vertical brown wall standing in the entrance, from the lip
+ * straight down past the floor. It reads as a tunnel with something in the way.
+ *
+ * So the overhang starts at the HOLE, and the slab's own adaptive thickness
+ * (see underAt) does the rest — it thins to the air available and the wedge
+ * closes onto the slide instead of ending in a cut.
+ */
+// How close the path may come back to the lane before the honest picture is one
+// piece of ground again. `openSpan` uses 34, which is a slab's thickness and was
+// the right number when the roof WAS a slab — but it leaves the last 34px of the
+// climb buried in solid earth, so the way out is a wedge of ground with the path
+// rising through it instead of the reverse of the way in. Against an island it
+// only has to clear the island's own body.
+// Where the ISLAND has to stop: the hero runs up the climb and out, so it stops
+// while there is still a hero's worth of air under it. Anything less and the
+// last thing the low road does is bang your head on the high one.
+// How thick the island over a tunnel is at its thickest and at its two ends.
+// It is the longest slab in the game by an order of magnitude, and an even bar
+// that long is a plank; swelling in the middle and thinning at the ends is what
+// makes it read as ground with a path cut out from under it.
+const ISLAND_FAT = 16;
+const ISLAND_THIN = 4;
+// Where the island has to stop on the way out. The hero runs UP the climb and
+// out from under it, so it ends while there is still twice his standing height
+// of air below it — measured against the thickest the island ever gets, not
+// against the thin end it actually presents there, so the number stays honest
+// if the taper changes.
+const ISLAND_CLEAR = ISLAND_FAT + 3 + PLAYER_H * 2;
+// Where the LANE'S own body has to stop: at the merge exactly, and not a pixel
+// before it. These were one number as the island's clearance and that was the
+// bug — the last thirty pixels of the climb ended up buried in solid ground.
+// Held at 3 they were nearly right and still wrong in the way that shows: the
+// lane resumed while the path was three pixels under it, so the climb finished
+// against a little upstanding flap of turf with a cut edge instead of running
+// smoothly back into the ground. Zero is the only value that merges.
+const MERGE = 0;
+
+// Where the climb has all but arrived. Scanned rather than solved — the profile
+// has four segments and the answer is a place, not a root.
+function mergeX(r, clear) {
+  for (let t = 1; t >= 0; t -= 0.002) {
+    const wx = r.x + r.w * t;
+    if (-routeRise(wx, r) >= clear) return wx;
+  }
+  return r.openSpan.x + r.openSpan.w;
+}
+
+// The ISLAND: what is drawn over the top of the path. It begins where the way in
+// ENDS, so the gap is the seam between the lane and the island and neither has
+// to be cut to meet the other.
+function overhangSpan(r) {
+  if (!r.openSpan) return null;
+  if (TUNNEL_LOOK === 'current') return r.openSpan;
+  const a = r.ramp ? r.openSpan.x : r.x + r.mouthW;
+  return { x: a, w: Math.max(0, (r.roofEnd || tunnelRoofEnd(r)) - a) };
+}
+
+// Where the LANE'S OWN body stops, which is not the same place. The lane's
+// surface ends at the mouth — the ground turns down there — so its fill has to
+// end there too, or a sliver of it is left standing in the gap above the slope.
+function laneCutSpan(r) {
+  if (!r.openSpan) return null;
+  if (TUNNEL_LOOK === 'current') return r.openSpan;
+  const a = r.ramp ? r.openSpan.x : r.x;
+  return { x: a, w: Math.max(0, mergeX(r, MERGE) - a) };
+}
+
+/**
+ * Where the LANE'S OWN below-line fill has to stop.
+ *
+ * The style pack paints its 38px apron from GROUND_Y to H across the whole
+ * frame and drawTerrain fills its columns to baseY + 4, and neither has ever
+ * been told a tunnel runs underneath. Over a chamber the apron is simply left
+ * hanging — a hard green block in mid-air with a dead flat bottom edge at world
+ * y 270, which is the one thing in the picture that could not be ground.
+ *
+ * Handing both painters the overhang spans is the whole fix. It cannot be done
+ * downstream: by the time drawTunnel runs the green is already over the hills,
+ * and there is nothing to paint it back to.
+ */
+export function tunnelOverhangs(routes) {
+  const out = [];
+  for (const r of routes || []) {
+    if (r.kind !== 'tunnel') continue;
+    const sp = laneCutSpan(r);
+    if (sp) out.push(sp);
+  }
+  return out;
+}
+
+// Runs of [from,to] with `cuts` (world-x spans) taken out of them.
+function minusSpans(runs, cuts) {
+  if (!cuts || !cuts.length) return runs;
+  let out = runs;
+  for (const c of [...cuts].sort((a, b) => a.x - b.x)) {
+    const next = [];
+    for (const [a, b] of out) {
+      if (c.x > a) next.push([a, Math.min(b, c.x)]);
+      if (c.x + c.w < b) next.push([Math.max(a, c.x + c.w), b]);
+    }
+    out = next.filter(([a, b]) => b > a);
+  }
+  return out;
+}
+
 /**
  * Floating islands: flat slabs hanging over the lane.
  *
@@ -83,7 +226,7 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
     // ground: a vertical green streak at the end of every sky road, at whatever
     // camera x happened to make the arithmetic come out whole.
     const to = Math.min(right, Math.ceil(sx + r.w) - 1);
-    if (r.kind === 'tunnel') { drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY); continue; }
+    if (r.kind === 'tunnel') { drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY, opts.hillDepth ?? 0); continue; }
     // A sky road stops being made of ground somewhere on the way up. Which
     // columns have crossed over is decided per COLUMN rather than per road,
     // because the road climbs through the transition — the same slab is dirt at
@@ -117,11 +260,55 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
  * are rounded on an island (it is an object) and left square on a road (it is
  * a stretch of ground that happens to be up here).
  */
-function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud) {
+function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null) {
   const soil = soilOf(cabinet);
   const island = r.kind === 'island';
   const CAP = 3;                              // turf
   const BODY = island ? ISLAND_THICKNESS : 8; // soil under it
+  // How thick the soil is at a given WORLD x. Constant for every slab in the
+  // game bar one: the island over a tunnel is nearly two thousand pixels long,
+  // and a bar of even thickness at that length is a plank. `bodyAt` lets it
+  // swell in the middle and thin out at both ends, which is what stops it
+  // reading as a manufactured thing and starts it reading as a piece of ground
+  // that the path was cut out from under.
+  const bodyOf = bodyAt || (() => BODY);
+  // ISLANDS TAPER IN AT EVERY EDGE.
+  //
+  // A slab that stops at full thickness is a brick, and the only thing saying
+  // "edge" was a tongue of turf curled down over it — one more mark, at the one
+  // place the silhouette should be doing the work. Thinning the body into each
+  // end says it with the shape itself, and it says it at a break in the middle
+  // of a road as readily as at the two ends, because both are just the ends of
+  // a solid run. Roads keep their square ends: a road's end is the mouth of
+  // something, not the edge of a thing.
+  const TAPER = 13;
+  const TIP = 2;
+  // Measured against the slab's REAL edges, in world x.
+  //
+  // The obvious place to take it from is the run being drawn, and that is a
+  // trap: the runs below are clipped to the viewport, so a slab whose end is
+  // off-screen tapers at the edge of the SCREEN instead — a wedge that slides
+  // along with the camera and thins the road under a hero standing still. The
+  // ends of a slab are a property of the slab.
+  const solidRuns = [];
+  {
+    let open = r.x;
+    for (const g of [...(r.gaps || [])].sort((p, q) => p.x - q.x)) {
+      if (g.x > open) solidRuns.push([open, g.x]);
+      open = Math.max(open, g.x + g.w);
+    }
+    if (open < r.x + r.w) solidRuns.push([open, r.x + r.w]);
+  }
+  const taperAt = (wx) => {
+    for (const [p, q] of solidRuns) {
+      if (wx < p - 1 || wx > q + 1) continue;
+      const reach = Math.min(TAPER, (q - p) / 2);
+      if (reach <= 0) return 1;
+      const k = Math.max(0, Math.min(1, Math.min(wx - p, q - wx) / reach));
+      return k * k * (3 - 2 * k);
+    }
+    return 1;
+  };
   const lip = island ? 2 : 0;                 // the turf's overhang at the ends
   // A break in the road ends a run exactly as a switch to cloud does — there is
   // nothing there either way, and the run-splitting below already knows how to
@@ -139,6 +326,11 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud) {
   for (const [a, b] of runs) {
     if (b - a < 1) continue;
     const y = (x) => topAt(camX + x, r);
+    // A hole punched through the middle of a slab gets the same two tapered
+    // edges its outer ends get — both are just the ends of a solid run.
+    const body = island
+      ? (wx) => TIP + (bodyOf(wx) - TIP) * taperAt(wx)
+      : bodyOf;
     // ---- soil body, with the scalloped underside ---------------------------
     ctx.beginPath();
     ctx.moveTo(a, y(a));
@@ -154,16 +346,17 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud) {
     // The two corners are added explicitly at zero bite so the path closes on
     // the slab's real edges whatever the grid happens to land on.
     const BITE = 4;
-    ctx.lineTo(b, y(b) + BODY);
+    ctx.lineTo(b, y(b) + body(camX + b));
     for (let wx = Math.floor((camX + b) / BITE) * BITE; wx > camX + a; wx -= BITE) {
       const x = wx - camX;
       if (x <= a || x >= b) continue;
-      ctx.lineTo(x, y(x) + BODY
+      ctx.lineTo(x, y(x) + body(wx)
         + 1.2 + Math.sin(wx * 0.55) * 0.8 + Math.sin(wx * 0.21) * 1.1);
     }
-    ctx.lineTo(a, y(a) + BODY);
+    ctx.lineTo(a, y(a) + body(camX + a));
     ctx.closePath();
-    const g = ctx.createLinearGradient(0, y(a) + CAP, 0, y(a) + BODY + 3);
+    const mid = (a + b) / 2;
+    const g = ctx.createLinearGradient(0, y(a) + CAP, 0, y(a) + body(camX + mid) + 3);
     g.addColorStop(0, soil);
     g.addColorStop(1, darken(soil, 0.55));
     ctx.fillStyle = g;
@@ -179,7 +372,7 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud) {
     // most slots skipped, so a frame holds two or three rather than a row, and
     // each one keeps its place as the camera carries it past.
     drawStones(ctx, camX, soil, a + 4, b - 4,
-      (x) => y(x) + CAP + 1, (x) => y(x) + BODY - 0.5, SLAB_STONE_STRIDE, island ? 0.68 : 0.62);
+      (x) => y(x) + CAP + 1, (x) => y(x) + body(camX + x) - 0.5, SLAB_STONE_STRIDE, island ? 0.68 : 0.62);
     // NO fossil here. It was on the slab and it was wrong: a skeleton buried in
     // a floating island is a skeleton hanging in mid-air, which is a joke about
     // geology rather than a piece of one. The mark exists to say "this was here
@@ -618,7 +811,7 @@ function drawBoulders(ctx, camX, soil, fromX, toX, surfaceY, bottomY) {
  * which is how an overhang gets open air under it instead of a hundred pixels
  * of packed brown.
  */
-function drawEarth(ctx, cabinet, camX, runs, surfaceY, bottomY) {
+function drawEarth(ctx, cabinet, camX, runs, surfaceY, bottomY, seamFrom = null) {
   const soil = soilOf(cabinet);
   const dark = cabinet.groundDark || '#2a7038';
   const STEP = 4;
@@ -649,8 +842,20 @@ function drawEarth(ctx, cabinet, camX, runs, surfaceY, bottomY) {
     band(from, to, () => TURF + 5, soil, bottomY);
     // Two bedding seams, wobbling, measured down from the surface so they ride
     // the terrain instead of cutting across it.
-    band(from, to, (wx) => SOIL_SEAM_1 + seamWobble(wx), darken(soil, 0.78), bottomY);
-    band(from, to, (wx) => SOIL_SEAM_2 + seamWobble(wx), darken(soil, 0.58), bottomY);
+    //
+    // `seamFrom` measures them from a DIFFERENT surface, and the tunnel floor is
+    // the reason it exists. Strata are a property of the place, not of whatever
+    // was most recently dug out of it: measured from the floor, every band steps
+    // down by the depth of the hole exactly where the hole starts, and the
+    // entrance gets a hard vertical line ruled through the whole earth. Measured
+    // from the LANE they run straight past the mouth and the tunnel is cut
+    // THROUGH them, which is both what a cutting looks like and the thing that
+    // says the floor down here is deeper rather than merely elsewhere.
+    const seam = seamFrom
+      ? (wx, d) => Math.max(TURF + 6, seamFrom(wx) - surfaceY(wx) + d)
+      : (wx, d) => d;
+    band(from, to, (wx) => seam(wx, SOIL_SEAM_1) + seamWobble(wx), darken(soil, 0.78), bottomY);
+    band(from, to, (wx) => seam(wx, SOIL_SEAM_2) + seamWobble(wx), darken(soil, 0.58), bottomY);
     // Pebbles and the odd boulder through the lot.
     drawStones(ctx, camX, soil, from - camX, to - camX,
       (x) => surfaceY(camX + x) + TURF + 8, (x) => surfaceY(camX + x) + SUBSOIL_DEPTH,
@@ -668,7 +873,7 @@ function drawEarth(ctx, cabinet, camX, runs, surfaceY, bottomY) {
  * difference between a level with a high road and a low road and a level with a
  * cave in it, and it is entirely a question of what you decline to draw.
  */
-export function drawSubsoil(ctx, cabinet, right, bottomY, camX = 0, overhangs = []) {
+export function drawSubsoil(ctx, cabinet, right, bottomY, camX = 0, overhangs = [], hillDepth = 0) {
   const runs = [];
   let open = camX - 8;
   for (const sp of [...overhangs].sort((a, b) => a.x - b.x)) {
@@ -684,7 +889,55 @@ export function drawSubsoil(ctx, cabinet, right, bottomY, camX = 0, overhangs = 
   // surface in the picture. It read as the ground being upside down, because in
   // effect it was: the layers were ignoring the shape of the thing they were
   // layers OF.
+  if (foldLook() && hillDepth > 0) {
+    const groundAt = (wx) => terrainGroundY(cabinet, wx);
+    // From where the pack's apron stops, so everything visible at the resting
+    // camera is untouched — the ground ticks eight pixels under the line
+    // included.
+    drawHillside(ctx, cabinet, camX, runs, () => GROUND_BASE + APRON - 1,
+      (wx) => groundAt(wx) + hillDepth, bottomY, groundAt);
+    return;
+  }
   drawEarth(ctx, cabinet, camX, runs, (wx) => terrainGroundY(cabinet, wx), bottomY);
+}
+
+/**
+ * The lane as a GRASSY HILL the tunnel is bored through.
+ *
+ * The other answer to the material flip, and the one that leaves the stage
+ * looking like itself: the band under the lane stays the flat green it is
+ * everywhere else, and the only earth on screen is earth something has actually
+ * been cut out of. What it cannot do is stop dead — the pack's apron ends at a
+ * fixed world line 38px down, and the moment the camera follows a hero into a
+ * tunnel that line becomes a slab of green hanging in the air over the hills.
+ *
+ * So the green carries on down, and the soil under it starts at exactly the
+ * level the TUNNEL'S floor sits at. That is the whole trick: below `hillDepth`
+ * this hands the job to the same drawEarth call the chamber floor uses, with
+ * the same virtual surface and the same seam datum, so the thin band of dirt at
+ * the bottom of the hill and the dirt under the tunnel are not two things drawn
+ * to match — they are one band drawn once.
+ */
+function drawHillside(ctx, cabinet, camX, runs, surfaceY, dirtY, bottomY, seamFrom) {
+  ctx.fillStyle = cabinet.groundDark || '#2a7038';
+  const STEP = 4;
+  for (const [from, to] of runs) {
+    if (to <= from) continue;
+    ctx.beginPath();
+    ctx.moveTo(from - camX, surfaceY(from));
+    for (let wx = Math.ceil(from / STEP) * STEP; wx < to; wx += STEP) {
+      ctx.lineTo(wx - camX, surfaceY(wx));
+    }
+    ctx.lineTo(to - camX, surfaceY(to));
+    ctx.lineTo(to - camX, bottomY);
+    ctx.lineTo(from - camX, bottomY);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // And the floor of the hill, which is the floor of the tunnel: the same
+  // painter, the same datum. The thin band of dirt under the grass and the dirt
+  // under the chamber are one band drawn once, not two drawn to match.
+  drawEarth(ctx, cabinet, camX, runs, dirtY, bottomY, seamFrom);
 }
 
 // Walk a profile as a PATH rather than as a column of rects.
@@ -756,6 +1009,34 @@ function drawOpeningLips(ctx, camX, cabinet, spans, groundAt) {
 }
 
 /**
+ * The cut earth immediately under a tunnel floor.
+ *
+ * Thin on purpose: what it is for is separating the surface you run on from the
+ * mass of hill under it, and a deep band of soil under a grass hillside is just
+ * the old picture with a different silhouette. Stops at the datum, so where the
+ * chamber already stands on dirt it adds nothing.
+ */
+const FLOOR_SKIN = 15;
+function drawFloorSkin(ctx, cabinet, camX, a, b, floorAt, datum) {
+  const soil = soilOf(cabinet);
+  const STEP = 4;
+  const band = (offTop, offBot, colour) => {
+    ctx.beginPath();
+    ctx.moveTo(a - camX, floorAt(a) + offTop);
+    for (let wx = a; wx <= b; wx += STEP) ctx.lineTo(wx - camX, floorAt(wx) + offTop);
+    ctx.lineTo(b - camX, floorAt(b) + offTop);
+    for (let wx = b; wx >= a; wx -= STEP) {
+      ctx.lineTo(wx - camX, Math.min(floorAt(wx) + offBot, datum(wx)));
+    }
+    ctx.closePath();
+    ctx.fillStyle = colour;
+    ctx.fill();
+  };
+  band(TURF, TURF + 5, soil);
+  band(TURF + 5, FLOOR_SKIN, darken(soil, 0.78));
+}
+
+/**
  * A tunnel: the low road, running under the lane.
  *
  * The earth is already there — `drawSubsoil` laid it across the frame — so all
@@ -769,10 +1050,29 @@ function drawOpeningLips(ctx, camX, cabinet, spans, groundAt) {
  * Both edges then get a lit rim, and both are strokes along the same path the
  * fill used, so neither can step away from the other.
  */
-function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY) {
+function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY, hillDepth = 0) {
   const soil = soilOf(cabinet);
-  const floorAt = (wx) => topAt(wx, r);
-  const openings = [...(r.ramp ? [] : [{ x: r.x, w: r.mouthW }]), ...(r.holes || [])];
+  const trueFloorAt = (wx) => topAt(wx, r);
+  const openings = tunnelOpenings(r);
+  // THE SURFACE, AS DRAWN.
+  //
+  // `entry` puts a notch in the lane so there is a hole to aim at, and the
+  // profile therefore STEPS by that much at r.x: the road is at lane level one
+  // pixel left of the mouth and eighteen below it one pixel right. Drawn
+  // literally that is a sudden drop with a short vertical face, and what it
+  // reads as is a hole with a slope at the bottom of it.
+  //
+  // Eased over the mouth, it reads as what it is meant to be: the ground
+  // turning DOWNWARD and going under, one continuous surface from the lane into
+  // the slide. Drawing only — `routeGroundY` is what the hero stands on and it
+  // does not move, exactly as the turf lips have always been drawing only.
+  const fold = foldLook() && !r.ramp;
+  const floorAt = fold ? (wx) => {
+    const t = Math.max(0, Math.min(1, (wx - r.x) / r.mouthW));
+    const e = t * t * (3 - 2 * t);
+    const g = groundAt(wx);
+    return g + (trueFloorAt(wx) - g) * e;
+  } : trueFloorAt;
   const a = camX + from;
   const b = camX + to;
   // Runs of INTACT lane over the top of the route — everything but the ways in.
@@ -812,13 +1112,37 @@ function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY) {
   // the honest picture is one piece of ground, not two touching.
   const airAt = (wx) => floorAt(wx) - groundAt(wx);
   const underAt = (wx) => groundAt(wx) + Math.min(UNDER, airAt(wx) - MIN_AIR);
-  // Clipped to the stretch the route itself says is deep enough to be a second
-  // level at all.
-  const open = r.openSpan;
+  // Clipped to the stretch that has air under it. `current` stops at openSpan
+  // and leaves a wall of earth standing in the mouth; every other look starts
+  // the slab AT the hole and lets its thickness taper into the slide.
+  const open = overhangSpan(r);
   const lit = open
     ? lane.map(([f, t]) => [Math.max(f, open.x), Math.min(t, open.x + open.w)])
     : lane;
-  for (const [f, t] of lit) {
+  // ---- the road above, as an ISLAND ---------------------------------------
+  //
+  // The cleanest way to think about the whole thing: the PATH goes down, runs
+  // along the bottom and comes back up, and what is over the top of it is a long
+  // island. Drawn that way it needs no special cross-section of its own — it is
+  // an island, and the game already knows exactly what one of those looks like
+  // edge-on. It also stops the roof pretending to be a lane with a hole in it,
+  // which is the reading every fault in the entrance came out of.
+  if (TUNNEL_LOOK === 'island' && open) {
+    const roof = { kind: 'island', x: open.x, w: open.w, gaps: r.holes || [] };
+    const f2 = Math.max(from, Math.ceil(open.x - camX));
+    const t2 = Math.min(to, Math.floor(open.x + open.w - camX));
+    // Thin at both ends, thickest in the middle. A plain sine spends most of
+    // its length on the way up or down; the fractional power gives it a long
+    // fat middle and puts the taper where it is meant to be, in the last stretch
+    // at either end — which is also where the hero is nearest to the underside.
+    const bodyAt = (wx) => {
+      const t = Math.max(0, Math.min(1, (wx - open.x) / open.w));
+      const bump = Math.pow(Math.sin(Math.PI * t), 0.55);
+      return ISLAND_THIN + (ISLAND_FAT - ISLAND_THIN) * bump;
+    };
+    if (t2 > f2) drawSlab(ctx, camX, cabinet, roof, (wx) => groundAt(wx), f2, t2, () => 0, bodyAt);
+  }
+  for (const [f, t] of (TUNNEL_LOOK === 'island' ? [] : lit)) {
     if (t <= f) continue;
     ctx.beginPath();
     ctx.moveTo(f - camX, groundAt(f));
@@ -846,7 +1170,27 @@ function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY) {
   }
 
   // ---- the area below, which is just more ground --------------------------
-  drawEarth(ctx, cabinet, camX, [[a, b]], floorAt, bottomY);
+  //
+  // On `keepgrass` the floor is treated exactly as the lane is: grass down to
+  // the one dirt datum the whole stage shares, then earth. At full depth the
+  // floor IS that datum, so the chamber stands straight on dirt; at the mouth
+  // there is eighty pixels of hill under the slide, and the band runs level out
+  // of the picture instead of stepping at the cut.
+  const datum = (wx) => Math.max(floorAt(wx), groundAt(wx) + hillDepth);
+  if ((TUNNEL_LOOK === 'keepgrass-thru' || TUNNEL_LOOK === 'island') && hillDepth > 0) {
+    // Nothing under the floor but hill, down to the one datum the stage shares.
+    drawHillside(ctx, cabinet, camX, [[a - 2, b + 2]], floorAt, datum, bottomY, groundAt);
+  } else if (TUNNEL_LOOK === 'keepgrass-skin' && hillDepth > 0) {
+    // A SKIN of cut earth hugging the floor, hill under it, the datum below
+    // that. The tunnel is a cut through a grassy hill and the only dirt it
+    // shows is the dirt it has just been cut out of, which is also the one
+    // reading that keeps the floor you run on distinct from the mass under it.
+    drawHillside(ctx, cabinet, camX, [[a, b]], floorAt, datum, bottomY, groundAt);
+    drawFloorSkin(ctx, cabinet, camX, a, b, floorAt, datum);
+  } else {
+    drawEarth(ctx, cabinet, camX, [[a, b]], floorAt, bottomY,
+      TUNNEL_LOOK === 'current' ? null : groundAt);
+  }
   // ---- and the shade the lane casts over it -------------------------------
   //
   // Without this the air under the slab shows bright parallax hills at exactly
@@ -855,22 +1199,28 @@ function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY) {
   // overhead, and the thing directly under a shelf is shadow. Strongest against
   // the underside and gone within thirty pixels, so it separates the two levels
   // without darkening the one you are playing on.
-  if (open) {
+  if (open && TUNNEL_LOOK !== 'island') {
     const f = Math.max(a, open.x);
     const t2 = Math.min(b, open.x + open.w);
     if (t2 > f) {
       const mid = (f + t2) / 2;
-      const top = groundAt(mid) + UNDER;
+      // The slab's OWN underside. At the mouth it is only a few px thick, and a
+      // shade drawn at a flat 26 hangs below the thing casting it.
+      const top = TUNNEL_LOOK === 'island' ? groundAt(mid) + ISLAND_FAT + 3
+        : TUNNEL_LOOK === 'current' ? groundAt(mid) + UNDER : underAt(mid);
       const sh = ctx.createLinearGradient(0, top, 0, top + 34);
       sh.addColorStop(0, 'rgba(24,16,8,0.34)');
       sh.addColorStop(1, 'rgba(24,16,8,0)');
       ctx.fillStyle = sh;
+      const lidAt = TUNNEL_LOOK === 'island' ? (wx) => groundAt(wx) + ISLAND_FAT + 3
+        : TUNNEL_LOOK === 'current' ? (wx) => groundAt(wx) + UNDER
+          : (wx) => underAt(wx);
       ctx.beginPath();
-      ctx.moveTo(f - camX, groundAt(f) + UNDER);
-      for (let wx = f; wx <= t2; wx += 5) ctx.lineTo(wx - camX, groundAt(wx) + UNDER);
-      ctx.lineTo(t2 - camX, groundAt(t2) + UNDER);
+      ctx.moveTo(f - camX, lidAt(f));
+      for (let wx = f; wx <= t2; wx += 5) ctx.lineTo(wx - camX, lidAt(wx));
+      ctx.lineTo(t2 - camX, lidAt(t2));
       for (let wx = t2; wx >= f; wx -= 5) {
-        ctx.lineTo(wx - camX, Math.min(floorAt(wx), groundAt(wx) + UNDER + 34));
+        ctx.lineTo(wx - camX, Math.min(floorAt(wx), lidAt(wx) + 34));
       }
       ctx.closePath();
       ctx.fill();
@@ -896,10 +1246,132 @@ function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY) {
   }
 
   // Last, over the edges: the turf rolling over every way in.
-  drawOpeningLips(ctx, camX, cabinet, openings, groundAt);
+  //
+  // Not on an island. The tongue exists to put a silhouette where a hole cut in
+  // flat ground has none — but a slab seen edge-on already has one, and now
+  // that it tapers into every edge it has a better one than the tongue was.
+  // Two marks doing one job, and the curl was the weaker of them.
+  if (TUNNEL_LOOK !== 'island') {
+    drawOpeningLips(ctx, camX, cabinet, fold ? (r.holes || []) : openings, groundAt);
+  }
+  if (!r.ramp && TUNNEL_LOOK !== 'current' && TUNNEL_LOOK !== 'plain') {
+    drawEntrance(ctx, camX, cabinet, r, groundAt, floorAt, underAt);
+  }
 }
 
-export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232, viewW = W) {
+/**
+ * THE WAY IN, as a thing rather than as an absence.
+ *
+ * A hole cut in a lane is legible — the rolled lips see to that — but it is not
+ * yet an ENTRANCE: nothing about it says the place under it is somewhere to go.
+ * These are the candidates for saying so. Each one is drawn over a mouth that
+ * is already correct underneath, so what is being compared is only the reading.
+ */
+function drawEntrance(ctx, camX, cabinet, r, groundAt, floorAt, underAt) {
+  const soil = soilOf(cabinet);
+  const x0 = r.x;
+  const x1 = r.x + r.mouthW;
+  const look = TUNNEL_LOOK;
+
+  // ---- a torn BROW over the way in ---------------------------------------
+  // The roof does not begin with a clean corner. Earth that has fallen away
+  // leaves a ragged edge with roots in it, and a rim where the light coming up
+  // off the floor catches the underside — which is also the cue that says there
+  // is a ceiling here and therefore a room.
+  if (look === 'brow') {
+    const to = x1 + 70;
+    // The SAME bitten line the slab's fill ends on. Stroking a plain underAt
+    // draws a ruled edge a pixel above the teeth, which is worse than no rim at
+    // all: it turns a torn underside into a machined one.
+    const lip = (wx) => underAt(wx) + 1.4 + Math.sin(wx * 0.5) * 1.1 + Math.sin(wx * 0.19) * 1.5;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(x1 - camX, lip(x1));
+    for (let wx = x1; wx <= to; wx += 3) ctx.lineTo(wx - camX, lip(wx));
+    ctx.strokeStyle = lighten(soil, 0.2);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+    // Roots, off the fresh edge only, and thin: what is being drawn is a few
+    // hairs of root left hanging, not a fringe.
+    ctx.strokeStyle = darken(soil, 0.5);
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < 4; i++) {
+      const wx = x1 + 7 + i * 16 + ((i * 11) % 6);
+      const y = lip(wx) - 0.5;
+      const len = 3 + ((i * 13) % 5);
+      ctx.beginPath();
+      ctx.moveTo(wx - camX, y);
+      ctx.quadraticCurveTo(wx - camX + 1.2, y + len * 0.6, wx - camX - 0.6, y + len);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1;
+  }
+
+  // ---- a PIPE, which is what this cabinet is named after -------------------
+  // The mouth stops being a hole in the floor and becomes a fitting set into
+  // it: a rim proud of the lane, a bore going down, and a lit top face. It is
+  // the oldest way in in the genre and it is already this stage's vocabulary.
+  if (look === 'pipe') {
+    const gy = groundAt;
+    const PROUD = 5;   // how far the collar stands above the lane
+    const DOWN = 14;   // how far the wall of it goes into the hole
+    const WALL = 7;    // its thickness, seen edge-on
+    const TAB = 4;     // how far the flange overhangs it
+    const body = cabinet.groundDark;
+    const lip = cabinet.ground;
+    // Two JAMBS and nothing between them. The hole stays a hole — anything
+    // filled across it hides the slide, which is the one thing the player is
+    // trying to read from up here.
+    for (const [ex, dir] of [[x0, -1], [x1, 1]]) {
+      const a = ex - camX;
+      const b = a + WALL * dir;
+      ctx.fillStyle = body;
+      ctx.beginPath();
+      ctx.moveTo(a, gy(ex) - PROUD);
+      ctx.lineTo(b, gy(ex) - PROUD);
+      ctx.lineTo(b, gy(ex) + DOWN);
+      ctx.lineTo(a, gy(ex) + DOWN);
+      ctx.closePath();
+      ctx.fill();
+      // The flange: the rim of the fitting, overhanging its own wall on the
+      // outside — which is the whole silhouette of a pipe and the only part of
+      // one you can see when it is pointing down.
+      const fx = Math.min(a, b) - (dir < 0 ? TAB : 0);
+      ctx.fillStyle = body;
+      ctx.fillRect(fx, gy(ex) - PROUD, WALL + TAB, 4);
+      ctx.fillStyle = lip;
+      ctx.fillRect(fx, gy(ex) - PROUD, WALL + TAB, 2);
+    }
+  }
+
+  // ---- a grassy CHUTE ------------------------------------------------------
+  // The route data already describes a slide rather than a drop — 18px of notch
+  // and then a fast run down to full depth. This draws it: the lane's own turf
+  // carries over the near lip and down the slide, so what you can see from the
+  // approach is where you are going rather than a dark notch.
+  if (look === 'chute') {
+    const to = x1 + 120;
+    const CAP = 4;
+    ctx.beginPath();
+    ctx.moveTo(x0 - camX, floorAt(x0) - 1);
+    for (let wx = x0; wx <= to; wx += 4) ctx.lineTo(wx - camX, floorAt(wx) - 1);
+    for (let wx = to; wx >= x0; wx -= 4) ctx.lineTo(wx - camX, floorAt(wx) + CAP);
+    ctx.closePath();
+    ctx.fillStyle = cabinet.ground;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x0 - camX, floorAt(x0) + CAP);
+    for (let wx = x0; wx <= to; wx += 4) ctx.lineTo(wx - camX, floorAt(wx) + CAP);
+    for (let wx = to; wx >= x0; wx -= 4) ctx.lineTo(wx - camX, floorAt(wx) + CAP + 4);
+    ctx.closePath();
+    ctx.fillStyle = cabinet.groundDark;
+    ctx.fill();
+  }
+}
+
+export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232, viewW = W, overhangs = []) {
   if (!PROFILES[cabinet && cabinet.id]) return;
   // Overscan one step so the line's last segment still leaves the frame rather
   // than stopping visibly short of it.
@@ -939,8 +1411,11 @@ export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232, viewW = 
   }
   if (open < last + STEP) runs.push([open, last + STEP]);
 
+  // The BODY only. A run over a chamber still has its lit surface line — you
+  // run along it — but nothing under it: what is down there is the slab, and
+  // the slab is drawTunnel's to draw.
   ctx.fillStyle = cabinet.groundDark;
-  for (const [a, b] of runs) {
+  for (const [a, b] of minusSpans(runs, overhangs)) {
     if (b <= a) continue;
     for (let wx = Math.max(first, Math.floor(a / STEP) * STEP); wx <= b; wx += STEP) {
       const cx = Math.max(a, Math.min(b, wx));
@@ -954,7 +1429,7 @@ export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232, viewW = 
   ctx.strokeStyle = cabinet.ground;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  for (const [a, b] of runs) {
+  for (const [a, b] of minusSpans(runs, overhangs)) {
     if (b <= a) continue;
     ctx.moveTo(a - camX, terrainGroundY(cabinet, a, baseY));
     for (let wx = Math.ceil(a / STEP) * STEP; wx < b; wx += STEP) {

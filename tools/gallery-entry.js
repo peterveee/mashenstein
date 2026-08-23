@@ -60,7 +60,7 @@ import { PLAYER_X } from '../src/game/player.js';
 // reference for — which is the one thing a gallery may never be.
 import { buildRoutes, routeRise } from '../src/game/routes.js';
 import {
-  drawRoutes, drawSubsoil, terrainGroundY, soilOf, ISLAND_THICKNESS,
+  drawRoutes, drawSubsoil, drawTerrain, tunnelOverhangs, terrainGroundY, soilOf, ISLAND_THICKNESS,
 } from '../src/game/terrain.js';
 // Cast candidates — proposals with no entry in any production registry. See the
 // raider bake-off at the bottom of this file, and src/dev/hero-candidates.js.
@@ -987,6 +987,26 @@ function propNominalSize(name) {
   // looking at things the run's camera never frames the same way twice — a
   // chamber roof, a cut face, the last column of a road — and "put this bit in
   // the middle" is the only instruction that serves all of them.
+  // The lane's own fill stops where a tunnel runs under it, and the hill is
+  // grass down to the depth of the deepest road. Both are the run's numbers,
+  // read from the run's own helpers — a tile that skipped them would show a
+  // picture the game never draws, which is the one thing this page may not do.
+  const laneCuts = tunnelOverhangs(routes);
+  const hillDepth = routes.reduce((d, r) => (r.kind === 'tunnel' ? Math.max(d, r.rise) : d), 0);
+  // A tunnel's mouth is a gap obstacle in the lane, exactly as spawnRouteEntries
+  // lays it, and both terrain renderers carve it from that. Without it the tiles
+  // draw an entrance with no way in.
+  const laneHoles = [];
+  for (const r of routes) {
+    if (r.kind !== 'tunnel') continue;
+    for (const sp of [...(r.ramp ? [] : [{ x: r.x, w: r.mouthW }]), ...(r.holes || [])]) {
+      const hole = makeObstacle('gap', sp.x, {});
+      hole.w = sp.w;
+      hole.tunnel = r;
+      laneHoles.push(hole);
+    }
+  }
+
   const routeTile = (grid, name, sub, cx, ww, midY, opts = {}) => {
     const wh = ww * (H / W);
     tile(grid, name, sub, ww * WORLD_Z, wh * WORLD_Z, (ctx) => {
@@ -1003,10 +1023,12 @@ function propNominalSize(name) {
       ctx.save();
       ctx.scale(WORLD_Z, WORLD_Z);
       ctx.translate(0, -topY);
-      if (style.ground) style.ground(ctx, camX, cab, opts.obstacles || []);
-      drawSubsoil(ctx, cab, ww, topY + wh, camX);
+      const obs = [...laneHoles, ...(opts.obstacles || [])];
+      if (style.ground) style.ground(ctx, camX, cab, obs, laneCuts);
+      drawTerrain(ctx, camX, cab, obs, GROUND_Y, ww, laneCuts);
+      drawSubsoil(ctx, cab, ww, topY + wh, camX, laneCuts, hillDepth);
       drawRoutes(ctx, camX, cab, routes, topAt, ww,
-        { groundAt, cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO, bottomY: topY + wh });
+        { groundAt, cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO, bottomY: topY + wh, hillDepth });
       ctx.restore();
     }, { animated: false, hires: 2, wide: ww > 200 });
   };

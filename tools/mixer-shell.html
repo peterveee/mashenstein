@@ -2248,6 +2248,32 @@
      every other strip's away, and with nothing left to line up with, a reservation cut
      for the busiest channel's chain is an empty band the master pays for alone. */
   #masterslot .master-fxbtns { height: var(--fxownh, auto); }
+  /* THE MASTER TAKES THE BAND AS A FLOOR, NOT AS A CEILING. Held to it exactly, a chain
+     longer than the band was hidden outright — and for a mix bus "longer than the busiest
+     channel's body" is the ordinary case. Freed from it entirely, a master with less in
+     its body than the channels have in theirs started its fader ABOVE theirs, which is
+     the one direction a master fader should never go: it is the strip everything else is
+     read against.
+
+     So: at least the band, so it lines up wherever it can, and taller than the band only
+     when its own chain needs the room — which shortens ITS fader and nobody else's. */
+  #masterslot .stripbody,
+  .strip.send .stripbody { height: auto; min-height: var(--bodyh, auto); }
+  /* And the shorter fader is the master's OWN. --faderh is the length the channels' rack
+     works out for itself, and it is a floor on every fader — so a master body taller than
+     the band could not shorten its fader and grew the whole strip downwards instead, out
+     of the rack and past the row it is supposed to line up with. Here it is only a
+     starting length: the master's fader is what its strip has left. It cannot fall away
+     to nothing — the chain is dropped before that (see masterShed in sizeStrips), which
+     puts the body back to the band and the fader back on the channels' line. */
+  #masterslot .faderrow,
+  #masterslot .faderrow .faderwrap,
+  #masterslot .faderrow .fader,
+  #masterslot .faderrow .meter,
+  .strip.send .faderrow,
+  .strip.send .faderrow .faderwrap,
+  .strip.send .faderrow .fader,
+  .strip.send .faderrow .meter { min-height: 0; }
   /* Whole, or not at all. MASTER is out of the --bodyh measurement (see measureRungAt),
      so the band is what the channels and the returns NEED — and its own chain is then a
      guest in that band. Where the band cannot hold it, sizeStrips says so with this
@@ -2665,7 +2691,13 @@
      they are the same two controls, so they should not be two different shapes.
      Keep the channel-strip hitboxes square; the wider master limiter is the one
      deliberate exception below. */
-  .ctlbtns { display: flex; gap: 4px; margin-top: 5px; justify-content: center; }
+  /* Fixed height whether it holds M and S or the master's limiter, for the same reason
+     .panrow above is: the row below the fader is the same row on every strip, and a
+     limiter three pixels shorter than a mute button handed the master three pixels of
+     extra fader — the one fader that must not be longer than the ones it is read
+     against. The button keeps its own size inside the row. */
+  .ctlbtns { display: flex; gap: 4px; margin-top: 5px; justify-content: center;
+             flex: none; height: 24px; align-items: center; }
   .ctlbtns button { flex: none; width: 24px; height: 24px; padding: 0; font-size: 10.5px;
                     line-height: 1; border-radius: 4px; color: var(--dim); }
   /* The master has nothing to mute, and every strip's foot ends on one line. */

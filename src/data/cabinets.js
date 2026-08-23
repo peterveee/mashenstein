@@ -101,8 +101,8 @@ export const CABINETS = [
       // slab as long as a high one is a road running a few pixels above the
       // ground, which is neither a platform nor a lane — the bottom step is a
       // stride, and the reward is two steps up.
-      { at: 0.07, dwell: 1.8, steps: 2, rise: 29, step: 27, topPrize: 'capShield' },
-      { at: 0.45, dwell: 4.0, steps: 4, rise: 29, step: 27, topPrize: 'capMagnet' },
+      { at: 0.07, dwell: 1.8, steps: 2, rise: 29, step: 33, topPrize: 'capShield' },
+      { at: 0.45, dwell: 4.0, steps: 4, rise: 29, step: 33, topPrize: 'capMagnet' },
     ],
     // Converging forks: a road that leaves the lane, runs somewhere else for a
     // while, and eases back down to meet it. `prize` rides the high road and
@@ -180,7 +180,7 @@ export const CABINETS = [
         // visible way to refuse. `entry: 18` puts a real notch in the lane, and
         // a short `climb` runs it down to full depth fast enough to feel like a
         // slide and slow enough not to be a fall.
-        at: 0.18, dwell: 12, depth: 96, entry: 18, lip: 0.012, climb: 0.06, hold: 0.88,
+        at: 0.18, dwell: 12, depth: 96, entry: 18, lip: 0.012, climb: 0.16, hold: 0.88,
         // Plumber's own furniture, minus the cactus — a desert plant is the one
         // thing in the set that cannot be underground. The pipe earns its place
         // twice over: it is tall enough to be a real jump and it is the thing

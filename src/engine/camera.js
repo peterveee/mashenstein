@@ -44,12 +44,37 @@ export const ZOOM_MIN = 1.3;
 // alone, and a scale change mid-jump is the thing that reads as disconcerting,
 // so the crane is spent first and the zoom only covers what is left.
 //
-// The budget is not a taste number either: it is exactly the ground apron, the
-// H - GROUND_Y px of dirt drawn BELOW the groundline. At full crane the
-// groundline lands on the bottom edge and never leaves the frame — you can
-// always see what you are about to land on — and the apron, which is the only
-// thing that was ever down there, is what pays for it.
-export const PAN_MAX = H - GROUND_Y;
+// The budget used to be exactly the ground apron, the H - GROUND_Y px of dirt
+// drawn BELOW the groundline: at full crane the groundline landed on the bottom
+// edge and never left the frame — you could always see what you were about to
+// land on — and the apron, the only thing that was ever down there, was what
+// paid for it. Tidy, and it bought 135px of hero altitude at the resting zoom.
+// Every pixel past that came out of the ZOOM instead, so the tallest jumps in
+// the game changed the scale of the world on the way up and changed it back on
+// the way down.
+//
+// It is sized off the JUMP now. The highest anyone gets is 168px — a 1.10
+// jumpMult, doubled, with the air-jump power-up on top — and holding that at
+// the resting zoom takes (168 + HERO_HEIGHT + HEAD_MARGIN) * ZOOM - GROUND_Y =
+// 92px of crane. So the crane covers everything anyone can actually jump and
+// the zoom becomes a backstop ordinary play never reaches.
+//
+// What it costs is the old promise: past 135px of altitude the groundline now
+// leaves the bottom of the frame, so at the top of a triple you cannot see what
+// you are coming down onto. At that height it was a long way off anyway.
+// Nothing moves for an ordinary jump either way — the crane does not start
+// until 111px of altitude, which is past a double on most of the cast.
+// Headroom the dolly keeps above the hero's crown before it starts pulling back.
+const HEAD_MARGIN = 10;
+// Drawn hero height (draw.js HERO_DRAW_H). Duplicated rather than imported so
+// the engine layer does not reach up into game code for one number.
+const HERO_HEIGHT = 24;
+// The highest a hero ever gets: a 1.10 jumpMult, doubled, with the air-jump
+// power-up on top. Everything above is arithmetic off this one number.
+const MAX_HERO_ALT = 168;
+// Enough crane to hold that at a given magnification, and not a pixel of zoom.
+const craneFor = (z) => Math.ceil((MAX_HERO_ALT + HERO_HEIGHT + HEAD_MARGIN) * z - GROUND_Y);
+export let PAN_MAX = craneFor(ZOOM);
 // The world the frame shows at rest: 240 x 135 at ZOOM 2, 300 x 168.75 at 1.6.
 export let VIEW_W = W / ZOOM;
 export let VIEW_H = H / ZOOM;
@@ -73,13 +98,14 @@ export function setRestingZoom(z) {
   ZOOM = z;
   VIEW_W = W / z;
   VIEW_H = H / z;
+  // The crane budget is a SCREEN distance and the thing it has to buy is a
+  // WORLD one, so it moves with the magnification or the promise only holds on
+  // the machine it was measured on. A phone frames closer, so the same 168px of
+  // hero costs it more crane — which is the honest price of not zooming there
+  // either, and it is only ever paid at the top of the tallest jump in the game.
+  PAN_MAX = craneFor(z);
 }
 
-// Headroom the dolly keeps above the hero's crown before it starts pulling back.
-const HEAD_MARGIN = 10;
-// Drawn hero height (draw.js HERO_DRAW_H). Duplicated rather than imported so
-// the engine layer does not reach up into game code for one number.
-const HERO_HEIGHT = 24;
 
 // The world y at the top of the frame at pan 0. Solving z * (floorY - camY)
 // = GROUND_Y is what pins the ANCHOR LINE to screen y GROUND_Y for EVERY z —

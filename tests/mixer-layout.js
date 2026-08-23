@@ -2383,38 +2383,84 @@ assert(/#rackwrap\.no-eq \.eqrow,\s*#rackwrap\.shed-eq \.eqrow,\s*#rackwrap\.no-
 assert(/\.strip\.send \{[^}]*background:\s*var\(--panel\)[^}]*border-color:\s*var\(--line\)/.test(shell)
   && !/\.strip\.master\s*\{/.test(shell),
   'the master and send returns use the neutral strip surface');
-assert(/function masterStrip\(mix, slotRows\)[\s\S]*?const \{ el, body, foot \} = stripShell\('__master'[\s\S]*?const masterFx = insertSlots\('__master', 'master', slotRows\);[\s\S]*?masterFx\.classList\.add\('master-fxbtns'\)[\s\S]*?body\.append\(masterFx\)[\s\S]*?foot\.append\(faderRow/.test(entry)
+assert(/function masterStrip\(mix\)[\s\S]*?const \{ el, body, foot \} = stripShell\('__master'[\s\S]*?const masterFx = insertSlots\('__master', 'master',\s*\n\s*Math\.min\(MAX_EFFECTS, effectsOf\('__master'\)\.length \+ 1\)\);[\s\S]*?masterFx\.classList\.add\('master-fxbtns'\)[\s\S]*?body\.append\(masterFx\)[\s\S]*?foot\.append\(faderRow/.test(entry)
   && /#rackwrap\.no-fx #masterslot \.master-fxbtns,\s*#rackwrap\.shed-fx #masterslot \.master-fxbtns \{ display: flex; \}/.test(shell),
   'the master keeps its insert chain in its spare upper body even when ordinary strips shed or hide Effects');
+// AND ITS OWN ROW COUNT, because that count is what the empty slot at the end of the
+// chain is drawn from — the block only shows a + while it has a line spare. The master's
+// block is drawn at --fxownh, so handed the RACK's reservation it lost its + the moment
+// it carried as much as the busiest channel: two inserts on the mix bus, a plain channel
+// rack, and a strip with obvious room in it and no way to add anything to it.
+assert(/const masterFx = insertSlots\('__master', 'master',\s*\n\s*Math\.min\(MAX_EFFECTS, effectsOf\('__master'\)\.length \+ 1\)\);/.test(entry)
+  && /slot\.append\(masterStrip\(mix\)\);/.test(entry)
+  && /if \(list\.length < slots && list\.length < MAX_EFFECTS\) \{[\s\S]{0,200}?add\.className = 'addslot';/.test(entry),
+  'the + is the spare line of the block a strip actually draws, so the master keeps its'
+  + ' own — the rack’s reservation says nothing about how much room that block has');
 // SPARE room, and no more. The block is normally as tall as the longest chain in the
 // rack so the slots line up across strips; kept alone there is nothing to line up with,
 // and --bodyh is held on EVERY strip — so a song whose busiest channel carried six
 // inserts put 170px of nothing over every fader for the sake of the master's two, and
 // the ladder's shedding bought the faders nothing at all.
+// The reservation is the CHANNELS' and the RETURNS', because they are the strips that
+// stand on the line it draws. The master's block is sized by --fxownh whatever else is
+// on the desk, so counting its chain in only bought every other strip a row that only
+// the master would have used — one compressor across the mix bus, which is the ordinary
+// case, put an empty row under every channel's chain and pushed every fader down by it.
+assert(/const maxChain = Math\.max\(\s*0,\s*\.\.\.lanes\.map\(\(l\) => effectsOf\(l\.key\)\.length\),\s*\.\.\.AUXES\.map\(\(a\) => effectsOf\(`__aux:\$\{a\.id\}`\)\.length\),\s*\);/.test(entry)
+  && !/const maxChain = Math\.max\([\s\S]*?effectsOf\('__master'\)\.length,[\s\S]*?\);/.test(entry),
+  'the rack reserves for the strips that share the line — the master sizes its own block');
 assert(/el\.style\.setProperty\('--fxrowsh', `\$\{slots \* SLOT_ROW - 4\}px`\)/.test(entry)
-  && /el\.style\.setProperty\('--fxownh', `\$\{Math\.max\(1, list\.length \+ 1\) \* SLOT_ROW - 4\}px`\)/.test(entry)
+  // Capped like the rack's reservation: the spare line is where the + goes, and a chain
+  // at the limit has no + to put on it — reserved anyway it is a row of nothing.
+  && /el\.style\.setProperty\('--fxownh',\s*\n\s*`\$\{Math\.min\(MAX_EFFECTS, Math\.max\(1, list\.length \+ 1\)\) \* SLOT_ROW - 4\}px`\)/.test(entry)
   && /\.fxbtns \{[^}]*height: var\(--fxrowsh, auto\)/s.test(shell)
   // ALWAYS its own height: the master's chain is the one that outlives the others, and
   // once it is the only block left there is nothing for the rack's reservation to line
   // it up with — only an empty band carried into --bodyh, which is held on every strip.
   && /#masterslot \.master-fxbtns \{ height: var\(--fxownh, auto\); \}/.test(shell),
   'the master chain is sized to its own chain, never to the rack’s slot reservation');
-// --bodyh is what the CHANNELS and the returns need. The master's body holds the one
-// thing nobody else has — the chain that outlives theirs — and counted in, it stopped
-// being the tallest body and became a floor under the whole rack: hide the EQ by hand
-// and every strip still carried a band the size of the master's inserts.
-assert(/if \(s\.classList\.contains\('master'\)\) master = naturalHeight\(b\);\s*else body = Math\.max\(body, naturalHeight\(b\)\);/.test(entry)
-  && /return \{ body: Math\.ceil\(body\), master: Math\.ceil\(master\), chrome: Math\.ceil\(body \+ rest\) \+ 2 \}/.test(entry)
-  // Whole, or not at all — half a chain behind a hidden scrollbar is the silent
-  // shedding the ladder exists to avoid.
-  && /const MASTER_FX_SHED = 'shed-masterfx';/.test(entry)
-  && /wrap\.classList\.toggle\(MASTER_FX_SHED, rung\.master > rung\.body\)/.test(entry)
+// ONE RULE FOR THE WHOLE DESK: --bodyh is the band a CHANNEL needs for the rows it is
+// showing, every strip stands on it, and a strip carrying something no channel has keeps
+// its own body and pays for it out of its own fader. Two strips carry such a thing — the
+// master its chain, a return the summary that says what the return IS — and holding the
+// band to the tallest of all three put their extra row on every channel on the desk:
+// switch the send rows off and sixteen strips each carried an empty band the size of the
+// returns' summary between their chain and their fader.
+//
+// Held to their band it went wrong in both directions: a chain longer than the band was
+// hidden outright — and "longer than the busiest channel's body" is the ordinary case for
+// a mix bus, every time with EQ and Sends off, where a channel body IS its chain — while a
+// chain shorter than the band left the master a stripe of empty desk that belonged to rows
+// it does not have.
+assert(/if \(s\.classList\.contains\('master'\)\) master = naturalHeight\(b\);[\s\S]*?else if \(s\.classList\.contains\('send'\)\) send = Math\.max\(send, naturalHeight\(b\)\);\s*else body = Math\.max\(body, naturalHeight\(b\)\);/.test(entry)
+  && /chrome: Math\.ceil\(Math\.max\(body, send\) \+ rest\) \+ 2,/.test(entry)
+  && /masterChrome: Math\.ceil\(master \+ rest\) \+ 2,/.test(entry)
+  && /root\.setProperty\('--bodyh', `\$\{rung\.body\}px`\)/.test(entry)
+  && /#masterslot \.stripbody,\s*\.strip\.send \.stripbody \{ height: auto; min-height: var\(--bodyh, auto\); \}/.test(shell)
+  // A floor, so it lines up; and its own fader is what gives when its chain wants more
+  // than the band. --faderh is a floor on every OTHER fader — left on the master's, a
+  // body taller than the band could not shorten it and grew the whole strip downwards,
+  // out of the rack and past the line it is supposed to stand on.
+  && /#masterslot \.faderrow,\s*#masterslot \.faderrow \.faderwrap,\s*#masterslot \.faderrow \.fader,\s*#masterslot \.faderrow \.meter,\s*\.strip\.send \.faderrow,\s*\.strip\.send \.faderrow \.faderwrap,\s*\.strip\.send \.faderrow \.fader,\s*\.strip\.send \.faderrow \.meter \{ min-height: 0; \}/.test(shell)
+  // And the row under the fader is the same row on every strip, whether it holds M and S
+  // or the master's limiter — a shorter button there handed the master extra fader.
+  && /\.ctlbtns \{[^}]*flex: none; height: 24px; align-items: center; \}/s.test(shell),
+  'the band is the channels’ and the returns’, and the master takes it as a floor — it'
+  + ' lines up with them wherever it can, and only its own chain can push it shorter');
+// So the question about the master's chain is about the MASTER'S strip and nothing else:
+// can the rack hold that chain over a fader worth having. Never a comparison with what the
+// channels happen to be carrying, and never a reason to shed a block on sixteen other
+// strips. Whole when it goes, rather than half a chain behind a hidden scrollbar.
+assert(/const MASTER_FX_SHED = 'shed-masterfx';/.test(entry)
+  && /const masterShed = strips < rung\.masterChrome \+ FADER_MIN;/.test(entry)
+  && /wrap\.classList\.toggle\(MASTER_FX_SHED, masterShed\)/.test(entry)
+  && /while \(shed < SHED_ORDER\.length && strips < stripChromeAt\(shed\) \+ FADER_MIN\) shed\+\+;/.test(entry)
   && /#rackwrap\.shed-masterfx #masterslot \.master-fxbtns \{ display: none; \}/.test(shell)
   // Measured with the chain SHOWING, or the pass answers zero, puts it back, and hides
   // it again on the next one.
   && /const had = \[\.\.\.SHED_ORDER\.map\(shedClass\), MASTER_FX_SHED\]/.test(entry)
   && /wrap\.classList\.remove\(\.\.\.SHED_ORDER\.map\(shedClass\), MASTER_FX_SHED\)/.test(entry),
-  'the master takes the band, never sets it, and its chain goes whole when it will not fit');
+  'the master’s chain goes only when its own strip cannot hold it, and goes whole');
 // No strip collapses its body on its own any more. A channel body that vanished while
 // a send return still carried its device summary put those two faders on different
 // lines, which is the one thing --bodyh exists to prevent: the band is the same band on
@@ -2438,7 +2484,14 @@ assert(entry.includes('function markShedParts(gone)')
 // the insert slots over a fader and meter squeezed to 34px, which is the one control on
 // the strip you are holding while you mix. Only the last rung, with no block left to
 // trade, ever comes down to the floor.
-assert(entry.includes('const FADER_MIN = 48')
+//
+// And the comfortable one is STRICT: 48px was a fader you could still hit rather than one
+// you could mix on, so a laptop window sat for a wide band of heights showing every row
+// on the strip over 80px of fader travel. Measured on the shipped song at 120: nothing
+// shed above ~1120px of window with a 175px fader, then inserts (190px fader), then the
+// sends (145px), then the EQ (140px) — each rung hands back more travel than the block
+// it drops costs to read.
+assert(entry.includes('const FADER_MIN = 120')
   && entry.includes('const FADER_FLOOR = 34')
   && /while \(shed < SHED_ORDER\.length && strips < stripChromeAt\(shed\) \+ FADER_MIN\) shed\+\+/.test(entry)
   && /const fader = Math\.max\(FADER_FLOOR, strips - chrome\)/.test(entry)
@@ -2511,14 +2564,19 @@ assert(/function fitRack\(\) \{[\s\S]*?applyWorkRatio\(\);[\s\S]*?sizeStrips\(/.
 // The foot is bottom-anchored, so pan, mute/solo and the limiter always landed
 // together; the fader between them is the strip's shock absorber, so a master with an
 // empty body was handed the height the channels' send rows had already spent and its
-// fader stood taller than theirs. --bodyh is the tallest body in the rack — the
-// master's excepted, see below — held on every strip: same top, same length, same
-// bottom.
+// fader stood taller than theirs. --bodyh is what a CHANNEL body needs — the master's own
+// and the returns' excepted, see below — held on every strip: same top, same length, same
+// bottom. Those two hold it as a FLOOR rather than as a height, which keeps them on that
+// line without letting the band decide what their own extra row is allowed to be.
 assert(/\.strip \.stripbody \{[^}]*height:\s*var\(--bodyh, auto\)/s.test(shell)
+  && /#masterslot \.stripbody,\s*\.strip\.send \.stripbody \{ height: auto; min-height: var\(--bodyh, auto\); \}/.test(shell)
   && /const rung = stripRungAt\(shed\);/.test(entry)
   && /root\.setProperty\('--bodyh', `\$\{rung\.body\}px`\)/.test(entry)
   && /else body = Math\.max\(body, naturalHeight\(b\)\)/.test(entry)
-  && /return \{ body: Math\.ceil\(body\), master: Math\.ceil\(master\), chrome: Math\.ceil\(body \+ rest\) \+ 2 \}/.test(entry),
+  && /body: Math\.ceil\(body\),\s*\n\s*master: Math\.ceil\(master\),/.test(entry)
+  // The ladder bargains with the tallest strip, so a return whose summary row outweighs
+  // the send rows still keeps a fader worth having; the BAND stays the channels'.
+  && /chrome: Math\.ceil\(Math\.max\(body, send\) \+ rest\) \+ 2,/.test(entry),
   'every strip reserves the tallest body in the rack, so every fader starts on one line');
 // A body held at the last rung's height would report that height back and --bodyh would
 // only ever climb — the same latch --faderh is pinned to avoid.
@@ -2530,7 +2588,7 @@ assert(shell.includes('#rackwrap.measuring .stripbody { height: auto; }'),
 assert(/\.strip \.stripsub \{[^}]*line-height:\s*1;[^}]*margin:\s*3px 0 3px/s.test(shell)
   && /\.strip \.grp-tag \{[^}]*line-height:\s*1;[^}]*margin:\s*3px 0 3px/s.test(shell),
   'the group tag and the preset category are the same box, so every strip head is one height');
-assert(entry.includes('return { chrome: [230, 190, 150, 110][n], body: 0, master: 0 };')
+assert(/const guess = \[230, 190, 150, 110\]\[n\];\s*\n\s*return \{ chrome: guess, masterChrome: guess, body: 0, master: 0, send: 0 \};/.test(entry)
   && !entry.includes('return [260, 220, 180, 140][n]')
   && !entry.includes('body.append(voiceRow(key))'),
   'the pre-build strip sizing estimate matches the selector-free channel layout');

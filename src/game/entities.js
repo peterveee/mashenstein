@@ -11,7 +11,7 @@ export const OBSTACLES = {
   barrel:     { w: 13, h: 13, sprite: 'barrel', ground: true, breakable: true, action: 'jump', vx: -40, roll: true },
   // Two bodies, one drone: the rotor workhorse and the watching eye. See `skin`
   // in makeObstacle — it is a look, not a variant hazard.
-  drone:      { w: 12, h: 7,  sprite: 'drone', alt: 11, armored: true, action: 'duck', bob: true, airDrift: { amp: 4, speed: 0.72 }, skins: ['drone', 'droneEye'] },
+  drone:      { w: 12, h: 7,  sprite: 'drone', alt: 13, armored: true, action: 'duck', bob: true, airDrift: { amp: 4, speed: 0.72 }, skins: ['drone', 'droneEye'] },
   // Buzzbirds use the shared gentle vertical hover, plus a modest world-space
   // approach toward the player. There is no independent side-to-side wobble.
   buzzbird:   { w: 12, h: 7,  sprite: 'buzzbird', alt: 34, armored: false, action: 'none', bob: true, airVx: -28 },
@@ -35,7 +35,7 @@ export const OBSTACLES = {
   cardboardMonster: { w: 12, h: 9, sprite: 'cardboardMonster', ground: true, breakable: true, action: 'jump' },
   chair:      { w: 12, h: 10, sprite: 'chair', ground: true, breakable: true, action: 'jump', vx: -34, roll: true },
   printer:    { w: 12, h: 7,  sprite: 'printer', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true },
-  paperwork:  { w: 8, h: 6,   sprite: null, alt: 12, armored: false, action: 'duck', paper: true, bob: true, airDrift: { amp: 5, speed: 0.9 } },
+  paperwork:  { w: 8, h: 6,   sprite: null, alt: 13, armored: false, action: 'duck', paper: true, bob: true, airDrift: { amp: 5, speed: 0.9 } },
   trafficCone:{ w: 10, h: 13, sprite: 'trafficCone', ground: true, breakable: true, action: 'jump' },
 };
 

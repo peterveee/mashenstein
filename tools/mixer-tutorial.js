@@ -143,7 +143,7 @@ export function createTutorial({
       id: 'catalogue',
       title: 'Grouped, and priced',
       anchor: () => $('fxpicker'),
-      says: 'Tone & Filter, Delay & Echo, Modulation & Rhythm, Character & Lo-Fi, Space, Width & Pitch, and Dynamics. Thirty-odd '
+      says: 'Tone & Filter, Delay & Echo, Modulation & Rhythm, Space, Width & Pitch, Dynamics, and Character & Lo-Fi. Thirty-odd '
         + 'effects, and each one shows what it costs — a percentage of one core, measured '
         + 'rather than guessed.\n\nMost are under a fifth of a percent. The phaser is two. '
         + 'Watch the CPU readout in the toolbar if you stack them.',

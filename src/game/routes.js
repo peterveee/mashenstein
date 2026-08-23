@@ -5,7 +5,7 @@
 // SAME painters, or the page that is supposed to be the reference for this art
 // is quietly its own second implementation. Nothing here touches run state; it
 // is a pure function of a cabinet's data and one stage's length and speed.
-import { PLAYER_W } from './player.js';
+import { PLAYER_W, PLAYER_H } from './player.js';
 import { worstJumpApex } from './spawner.js';
 
 // How high a floating island may sit, in px above the ground under it.
@@ -14,7 +14,16 @@ import { worstJumpApex } from './spawner.js';
 // worst hero (and 45.5 for the real one, Grumpos), and a slab you can only just
 // touch at the very top of a perfect jump is one you miss constantly. 80% of
 // that leaves the margin the landing actually needs.
-export const MAX_ISLAND_RISE = Math.floor(worstJumpApex() * 0.8);
+// worstJumpApex() assumes a hero who is BOTH the weakest jumper and the heavy
+// one, and no such hero exists — Grumpos is heavy at jumpMult 1 (apex 45) and
+// Chompo is 0.9 at normal gravity (apex 46), so the real floor across the cast
+// is 45 rather than the 37 that pair would give. At 0.8 of the imaginary hero
+// the cap came out at 29, and 29 is the number that made a two-step stack
+// pointless: the first step at 29 and the second at 29 + 27 = 56 put the SECOND
+// one at 56 against a standard hero's 57px apex, so the climb could be skipped
+// in one hop from the lane. 0.9 puts the cap at 33, which still leaves the real
+// worst jumper a quarter of his apex in hand on any single step.
+export const MAX_ISLAND_RISE = Math.floor(worstJumpApex() * 0.9);
 
 // How wide a tunnel's two kinds of opening are, both in hero-widths.
 //
@@ -28,7 +37,29 @@ export const MAX_ISLAND_RISE = Math.floor(worstJumpApex() * 0.8);
 // lip. Six is 48px against a 114px jump at the slowest stage — you have to mean
 // it, and it is never close to impossible. (It started life at a ninth of the
 // whole span, 155px, which is not a hole, it is a missing lane.)
-export const TUNNEL_MOUTH_W = PLAYER_W * 7;
+// Nine hero-widths. Sized off the HERO rather than off the span, so it is the
+// same hole in world 1 and on UNPLUGGED — but wider than the seven it was,
+// because the mouth is also the seam the island above starts at: a narrower one
+// puts the island's end over ground that has barely begun to drop, and the hero
+// runs down the slide into its underside. Eighty pixels is still only 0.7 of a
+// single jump, so clearing it on purpose is as easy as it ever was.
+export const TUNNEL_MOUTH_W = PLAYER_W * 9;
+// How much air is left under the road ABOVE a tunnel where that road ends.
+//
+// The hero runs up the climb and out from under it, so it stops while there is
+// still twice his standing height below — anything less and the last thing the
+// low road does is bang his head on the high one. It is a level fact rather
+// than an art one, because the road above ending is also a HOLE in the lane:
+// run along the top and off the end of it and you drop into the dip and come up
+// the ramp, which is the way out from up there.
+export const TUNNEL_ROOF_CLEAR = PLAYER_H * 2 + 19;
+export function tunnelRoofEnd(r) {
+  for (let t = 1; t >= 0; t -= 0.002) {
+    const wx = r.x + r.w * t;
+    if (-routeRise(wx, r) >= TUNNEL_ROOF_CLEAR) return wx;
+  }
+  return r.x + r.w;
+}
 export const TUNNEL_HOLE_W = PLAYER_W * 6;
 
 // Clear lane between one road ending and the next beginning, in SECONDS — the
@@ -107,6 +138,17 @@ export function routeRise(worldX, f) {
  * `groundYAt` is passed in rather than imported because an island's flat top is
  * fixed from the terrain under its middle, and the terrain is the run's to know.
  */
+// Every way the lane is open over a tunnel: the mouth you choose at, the
+// mid-span second chances, and the far end of the road above. One list, because
+// every renderer and every collision test wants exactly the same answer.
+export function tunnelOpenings(r) {
+  return [
+    ...(r.ramp ? [] : [{ x: r.x, w: r.mouthW }]),
+    ...(r.holes || []),
+    ...(r.roofGap ? [r.roofGap] : []),
+  ];
+}
+
 export function buildRoutes(cabinet, { totalDist, speed, groundYAt }) {
   const mk = (kind) => (d) => {
     const x = d.at * totalDist;
@@ -238,6 +280,15 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt }) {
         ? [{ x: x + w * (0.44 + ((d.holeAt ?? 0.5) - 0.5) * 0.3),
           w: d.holeW ? d.holeW * w : TUNNEL_HOLE_W }]
         : [],
+      // Filled in below: the road above stops before the climb reaches it, and
+      // where it stops the lane is open. Needs the finished route to scan.
+      //
+      // Kept OUT of `holes`, which means something else: a hole is a second
+      // chance at the low road, a stride wide, punched through the middle of a
+      // span you are running past. This is the far end of the road above, it is
+      // as wide as the last of the climb, and it is the way OUT from up there.
+      roofEnd: 0,
+      roofGap: null,
       // Sky roads are drawn as cloud where they get high enough, and the
       // hero's own dust and landings go white up there with them.
       sky: !!d.sky,
@@ -316,6 +367,21 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt }) {
     const clear = prev && prev.stack && prev.stack === r.stack ? 0 : ROUTE_CLEAR * speed;
     if (prev && r.x < prev.x + prev.w + clear) continue;
     laid.push(r);
+  }
+  // THE WAY OUT FROM THE TOP.
+  //
+  // The road above a tunnel stops before the climb reaches it, or the last of
+  // that climb is spent under it with nowhere to go. Where it stops, the lane is
+  // OPEN: run along the top, off the end, and you drop the last stretch into the
+  // dip and come up the ramp. It is an ordinary hole, carved by the same
+  // renderers and caught by the same route code as the mouth — without it the
+  // stretch past the road's end is lane you can stand on and nothing draws,
+  // which is a hero walking on air.
+  for (const r of laid) {
+    if (r.kind !== 'tunnel' || r.ramp) continue;
+    r.roofEnd = tunnelRoofEnd(r);
+    const w = r.x + r.w - r.roofEnd;
+    if (w > 2) r.roofGap = { x: r.roofEnd, w };
   }
   return laid;
 }

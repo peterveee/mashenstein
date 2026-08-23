@@ -8895,9 +8895,23 @@ export function poseFromPlayer(player, t) {
   const smashing = (firing && player.powerType === 'stomp' && player.grounded) || flurrying;
   const forcedDuck = player.rolling || player.compressT > 0;
   const recoveringDuck = player.grounded && (player.duckAmount || 0) > 0;
-  const kind = (player.ducking || forcedDuck || recoveringDuck) ? 'duck' : (!player.grounded ? 'jump' : 'run');
+  // AIRBORNE IS NOT THE SAME AS JUMPING.
+  //
+  // `kind` was `!grounded ? 'jump' : 'run'`, so the instant you stepped off the
+  // end of an island you were drawn tucked with your arms up — the silhouette of
+  // someone who has just launched. It reads as a hop, and players reported it as
+  // one; there is no hop, the pose was the whole of it.
+  //
+  // A hero who has spent no jump and was not thrown by a spring did not jump: he
+  // ran off an edge. Until there is a falling animation to give him he keeps the
+  // run cycle, which is at least the truth — he is still running, the ground has
+  // just stopped. `fell` is passed through so a rig can do better later.
+  const fell = !player.grounded && (player.jumps || 0) === 0 && !player.launched;
+  const kind = (player.ducking || forcedDuck || recoveringDuck) ? 'duck'
+    : (!player.grounded && !fell) ? 'jump' : 'run';
   return {
     kind,
+    fell,
     phase: player.anim % 1,
     // The bite's clock has to start at 0 the instant the ability fires, not
     // wherever the run's absolute clock happens to be, or biteWave() opens
