@@ -1024,13 +1024,14 @@ export const bank = {
 export const mix = {
   master: 1.9,
   limiter: true,
-  masterEffects: [{ id: "mbCompN" }],
-  layers: [{ key: "tom2", from: "tom" }],
-  voice: {"clapVoice":"bigClap","rimVoice":"blipZap","tom2Voice":"snareTap","kickVoice":"kickMegamix","snareVoice":"snareEngine","hatsVoice":"hatEngine","ohatsVoice":"ohatEngine","crashVoice":"crashEngine","bassVoice":"engMegamixBass"},
-  voiceParams: {"kickVoice":{"label":"= Megamix Kick","category":"Kick","homeLane":"kick","dur":1,"note":"The hardest front of the three and the shortest tail — it has to cut through every other cabinet playing at once.","osc":{"type":"sine","from":165,"to":48,"sweep":0.05,"attack":0.006,"decay":0.1982,"curve":"exp","gain":1},"knock":0.227,"noise":{"type":"highpass","freq":1900,"Q":1,"decay":0.0198,"gain":0.31},"trim":-1.15,"id":"kickMegamix","kind":"drum","factory":true,"level":0.0292,"peak":0.709},"snareVoice":{"label":"= Engine Snare","category":"Snare","homeLane":"snare","dur":1,"note":"The game’s own snare: a 2.6 kHz band of noise with a triangle body falling 210 to 140 Hz under it. The backbeat every song was balanced against.","osc":{"type":"triangle","from":210,"to":140,"sweep":0.05,"decay":0.1031,"curve":"exp","gain":0.375},"noise":{"type":"bandpass","freq":3865,"Q":0.45,"decay":0.39,"gain":1.41,"sag":0.38,"hold":0.002},"starter":false,"knock":0.77,"metal":{"wave":"sine","freq":7553,"spread":1,"count":6,"hp":3000,"Q":0.7,"attack":0.001,"decay":0.008,"gain":1.62},"bypassed":{"ring":{"type":"lowpass","freq":1142,"Q":9,"hit":0.022,"attack":0.001,"decay":0.25,"curve":"exp","gain":2,"to":1015}},"kind":"drum","level":0.0642,"peak":4.1553,"songOrigin":"library","songSourceId":"snareVoice"},"hatsVoice":{"label":"= Engine Hat","category":"Hats","homeLane":"hats","dur":0.5,"note":"The game’s own closed hat, exactly: noise above 5.2 kHz, gone in fifty milliseconds. The tick under two thirds of the soundtrack.","noise":{"type":"highpass","freq":5200,"Q":1,"decay":0.0932,"gain":1},"id":"hatEngine","kind":"drum","factory":true,"level":0.0266,"peak":0.8382},"ohatsVoice":{"label":"= Engine Open Hat","category":"Hats","homeLane":"ohats","dur":2,"note":"The game’s own open hat: the same noise a thousand hertz lower, left to sizzle for a fifth of a second.","noise":{"type":"highpass","freq":4200,"Q":1,"decay":0.4232,"gain":1},"id":"ohatEngine","kind":"drum","factory":true,"level":0.0566,"peak":0.9765},"crashVoice":{"label":"= Engine Crash","category":"Crash","homeLane":"crash","dur":5,"note":"The game’s own crash: bright on the transient and darkening as it falls, a lowpass closing from 9 kHz to 1.1 over the whole hit. Long enough that it plays off the 2.5-second buffer rather than looping the short one.","noise":{"type":"lowpass","freq":9000,"to":1100,"sweep":1.25,"Q":0.7,"attack":0.005,"decay":1.5743,"gain":1},"tone":{"type":"highpass","freq":1200,"Q":1},"id":"crashEngine","kind":"drum","factory":true,"level":0.0749,"peak":0.8242},"clapVoice":{"label":"Big Clap","category":"Clap","homeLane":"clap","dur":1,"note":"A wide 808-style clap with a low, roomy burst and four taps that spread into a soft machine-room tail.","noise":{"type":"bandpass","freq":1540,"to":950,"sweep":0.16,"Q":1,"decay":0.653,"gain":1},"taps":[0,0.0184,0.0404,0.0692,0.098],"tapFalloff":0.82,"starter":false,"drive":0.1,"tapDetune":0.96,"tapTone":0.96,"id":"bigClap","kind":"drum","level":0.0384,"peak":0.5198,"user":true},"rimVoice":{"label":"Blip Zap","category":"FX","homeLane":"tom","dur":2,"note":"Blippy Zappy highly percussive","drive":0.22,"starter":false,"knock":0.79,"bypassed":{"osc.fm":{"type":"sawtooth","ratio":7.14,"index":7,"decay":0.35}},"noise":{"type":"bandpass","freq":2680,"Q":0.65,"decay":0.119,"gain":2,"color":"blue","to":2460},"trim":3.4,"osc":{"type":"sine","from":215,"to":16363.49,"sweep":0.04,"decay":0.514,"curve":"exp","gain":0.88},"id":"blipZap","kind":"drum","level":0.1008,"peak":0.7,"user":true},"tom2Voice":{"label":"Snare Tap","category":"Snare","dur":1,"note":"Tight and driven.. quick little tap","osc":{"type":"square","from":255,"to":200,"sweep":0.025,"decay":0.05,"curve":"exp","gain":0.55},"noise":{"type":"highpass","freq":4300,"Q":0.8,"decay":0.112,"gain":1,"to":3710},"drive":0.31,"starter":false,"shape":"soft","tone":{"type":"lowpass","Q":0.7,"freq":6230},"trim":0.5,"taps":[0,0.012],"tapFalloff":0.52,"id":"snareTap","kind":"drum","level":0.042884,"peak":0.9184,"user":true}},
+  masterEffects: [{ id: "peq", params: { f1: 90, g1: 6, f2: 500, g2: 0, q2: 1, f5: 1000, g5: 0, q5: 1, f3: 2000, g3: 0, q3: 1, f4: 6000, g4: -1 } }, { id: "mbComp", params: { lowFrequency: 250, highFrequency: 2400, "low.threshold": -28, "low.ratio": 2.5, "low.attack": 0.05, "low.release": 0.3, "low.knee": 14, "mid.threshold": -22, "mid.ratio": 2.5, "mid.attack": 0.025, "mid.release": 0.16, "mid.knee": 18, "high.threshold": -24, "high.ratio": 2, "high.attack": 0.02, "high.release": 0.12, "high.knee": 18 } }],
+  layers: [{ key: "tom2", from: "tom" }, { key: "bass2", from: "bass", independent: true }],
+  labels: {"kick":"Megamix Kick"},
+  voice: {"clapVoice":"bigClap","rimVoice":"blipZap","tom2Voice":"snareTap","kickVoice":"kickMegamix","snareVoice":"snareEngine","hatsVoice":"hatEngine","ohatsVoice":"ohatEngine","crashVoice":"crashEngine","bassVoice":"roundBass","bass2Voice":"squareTone2"},
+  voiceParams: {"kickVoice":{"label":"= Megamix Kick","category":"Kick","homeLane":"kick","dur":1,"note":"The hardest front of the three and the shortest tail — it has to cut through every other cabinet playing at once.","osc":{"type":"sine","from":165,"to":48,"sweep":0.05,"attack":0.006,"decay":0.1982,"curve":"exp","gain":1},"knock":0.227,"noise":{"type":"highpass","freq":1900,"Q":1,"decay":0.0198,"gain":0.31},"trim":-1.15,"id":"kickMegamix","kind":"drum","factory":true,"level":0.0292,"peak":0.709},"snareVoice":{"label":"= Engine Snare","category":"Snare","homeLane":"snare","dur":1,"note":"The game’s own snare: a 2.6 kHz band of noise with a triangle body falling 210 to 140 Hz under it. The backbeat every song was balanced against.","osc":{"type":"triangle","from":210,"to":140,"sweep":0.05,"decay":0.1504202564102564,"curve":"exp","gain":0.375},"noise":{"type":"bandpass","freq":3703.9583333333335,"Q":0.45,"decay":0.569,"gain":1.41,"sag":0.38,"hold":0.002},"starter":false,"knock":0.62,"metal":{"wave":"sine","freq":7553,"spread":1,"count":6,"hp":2875,"Q":0.7,"attack":0.001,"decay":0.011671794871794872,"gain":1.62},"bypassed":{"ring":{"type":"lowpass","freq":1142,"Q":9,"hit":0.022,"attack":0.001,"decay":0.25,"curve":"exp","gain":2,"to":1015}},"drive":0.03,"trim":0,"kind":"drum","level":0.0545277534677765,"peak":3.0760693007025193,"songOrigin":"library","songSourceId":"snareVoice"},"hatsVoice":{"label":"= Engine Hat","category":"Hats","homeLane":"hats","dur":0.5,"note":"The game’s own closed hat, exactly: noise above 5.2 kHz, gone in fifty milliseconds. The tick under two thirds of the soundtrack.","noise":{"type":"highpass","freq":5200,"Q":1,"decay":0.0932,"gain":1},"id":"hatEngine","kind":"drum","factory":true,"level":0.0266,"peak":0.8382},"ohatsVoice":{"label":"= Engine Open Hat","category":"Hats","homeLane":"ohats","dur":2,"note":"The game’s own open hat: the same noise a thousand hertz lower, left to sizzle for a fifth of a second.","noise":{"type":"highpass","freq":4200,"Q":1,"decay":0.4232,"gain":1},"id":"ohatEngine","kind":"drum","factory":true,"level":0.0566,"peak":0.9765},"crashVoice":{"label":"= Engine Crash","category":"Crash","homeLane":"crash","dur":5,"note":"The game’s own crash: bright on the transient and darkening as it falls, a lowpass closing from 9 kHz to 1.1 over the whole hit. Long enough that it plays off the 2.5-second buffer rather than looping the short one.","noise":{"type":"lowpass","freq":9000,"to":1100,"sweep":1.25,"Q":0.7,"attack":0.005,"decay":1.5743,"gain":1},"tone":{"type":"highpass","freq":1200,"Q":1},"id":"crashEngine","kind":"drum","factory":true,"level":0.0749,"peak":0.8242},"clapVoice":{"label":"Big Clap","category":"Clap","homeLane":"clap","dur":1,"note":"A wide 808-style clap with a low, roomy burst and four taps that spread into a soft machine-room tail.","noise":{"type":"bandpass","freq":1540,"to":950,"sweep":0.16,"Q":1,"decay":0.653,"gain":1},"taps":[0,0.0184,0.0404,0.0692,0.098],"tapFalloff":0.82,"starter":false,"drive":0.1,"tapDetune":0.96,"tapTone":0.96,"id":"bigClap","kind":"drum","level":0.038429,"peak":0.5198,"user":true},"rimVoice":{"label":"Blip Zap","category":"FX","homeLane":"tom","dur":2,"note":"Blippy Zappy highly percussive","drive":0.22,"starter":false,"knock":0.79,"bypassed":{"osc.fm":{"type":"sawtooth","ratio":7.14,"index":7,"decay":0.35}},"noise":{"type":"bandpass","freq":2680,"Q":0.65,"decay":0.119,"gain":2,"color":"blue","to":2460},"trim":3.4,"osc":{"type":"sine","from":215,"to":16363.49,"sweep":0.04,"decay":0.514,"curve":"exp","gain":0.88},"id":"blipZap","kind":"drum","level":0.100808,"peak":0.7,"user":true},"tom2Voice":{"label":"Snare Tap","category":"Snare","dur":1,"note":"Tight and driven.. quick little tap","osc":{"type":"square","from":255,"to":200,"sweep":0.025,"decay":0.05,"curve":"exp","gain":0.55},"noise":{"type":"highpass","freq":4300,"Q":0.8,"decay":0.112,"gain":1,"to":3710},"drive":0.31,"starter":false,"shape":"soft","tone":{"type":"lowpass","Q":0.7,"freq":6230},"trim":0.5,"taps":[0,0.012],"tapFalloff":0.52,"id":"snareTap","kind":"drum","level":0.042884,"peak":0.9184,"user":true},"bass2Voice":{"label":"Square Tone","category":"Lead","synth":"KNDO-5","dur":1,"note":"A direct single-oscillator square-wave replacement for the engine voice.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0,"sustain":1,"release":0.01,"attackCurve":"exponential"}},"fixedLength":0.132,"waveform":"sawtooth","attack":0.001,"release":0.011,"trim":0,"vibrato":{"depth":0,"rate":10.9},"mono":false,"portamento":0,"starter":false,"transpose":-12,"drive":0.16,"drivePlace":"post","tone":{"type":"lowpass","Q":0.7,"freq":10115},"filter":{"type":"lowpass","slope":-12,"freq":850,"to":4000,"Q":1.25,"sweep":0.12,"env":{"octaves":1.4}},"kind":"tone","level":0.053305,"peak":0.6435,"songOrigin":"library","songSourceId":"bass2Voice"},"bassVoice":{"label":"Round Bass","category":"Bass","synth":"CRLS-1","dur":1.8,"note":"Saw through a lowpass that closes as the note decays — the classic synth bass.","options":{"oscillator":{"type":"sawtooth"},"envelope":{"attack":0.001,"decay":1.24,"sustain":0.29,"release":0.8},"filter":{"type":"lowpass","Q":2.9,"rolloff":-24},"filterEnvelope":{"attack":0.001,"decay":1.22,"sustain":0.13,"release":0.3,"baseFrequency":110,"octaves":3.9}},"starter":false,"id":"roundBass","kind":"tone","user":true,"level":0.075557,"peak":1.183}},
   fx: { reverb: { decay: 1.5 } },
   lanes: {
-    lead: { gain: -11.9, send: { delay: 0.18, reverb: 0.575 }, eq: { high: 7.8 }, effects: [{ id: "doubler", bypass: true, params: { delayMs: 11, dryPan: -1, wetPan: 1, frequency: 0.48, depth: 0.26, width: 0.2, detune: 7 } }, { id: "compressor" }] },
+    lead: { gain: -9.8, send: { delay: 0.18, reverb: 0.575 }, eq: { high: 7.8 }, effects: [{ id: "doubler", bypass: true, params: { delayMs: 11, dryPan: -1, wetPan: 1, frequency: 0.48, depth: 0.26, width: 0.2, detune: 7 } }, { id: "compressor" }] },
     leadHarm: { gain: -3.1, send: { delay: 0.18 } },
     chords: { gain: -18.7, send: { delay: 0.115, reverb: 0.265 }, eq: { low: -1.7, mid: 5.1, high: 9.4 }, effects: [{ id: "doubler", params: { dryPan: -1, wetPan: 1, delayMs: 11, wet: 0.44, width: 1, frequency: 0.27, depth: 0.2, detune: 6 } }, { id: "autopanner", params: { rateSync: 1, rateDivision: 8, depth: 0.64 } }] },
     organSwoop: { gain: -9.5, send: { delay: 0.18 } },
@@ -1038,19 +1039,20 @@ export const mix = {
     gliss: { gain: -17.1, send: { delay: 0.125, reverb: 0.59 } },
     electroFx: { gain: 2.9, send: { delay: 1.145 }, effects: [{ id: "pingpong" }] },
     sweeps: { gain: -1.3, send: { delay: 0.18, reverb: 2.251 } },
-    rim: { gain: -15.2, pan: 0.248, send: { delay: 0.054, reverb: 0.38 }, effects: [{ id: "delay", params: { sync: 1, division: 0.5, feedback: 0.08, wet: 0.2 } }] },
+    rim: { gain: -13.8, pan: 0.248, send: { delay: 0.054, reverb: 0.38 }, effects: [{ id: "delay", params: { sync: 1, division: 0.5, feedback: 0.08, wet: 0.2 } }] },
     hats: { gain: -3, pan: -0.313, effects: [{ id: "exciter" }, { id: "delay", params: { division: 0.25 } }] },
     kick: { gain: -1.2, send: { reverb: 0.11 }, eq: { low: -0.9 } },
-    snare: { gain: -0.6, send: { delay: 0.004, reverb: 1.529 }, eq: { low: 4.7, mid: 1.9, high: 2.6 } },
+    snare: { gain: -0.8, send: { delay: 0.004, reverb: 1.529 }, eq: { low: 4.7, mid: 1.9, high: 1.9 } },
     ohats: { gain: -6.2, pan: -0.318, eq: { high: 3.5 } },
     clap: { gain: 3.2, pan: 0.159, send: { delay: 0.04 }, effects: [{ id: "reverb" }] },
     tom2: { gain: -10.1, send: { reverb: 0.865 }, eq: { low: -14.6 }, effects: [{ id: "pingpong", params: { wet: 0.41 } }] },
-    bass: { gain: 3, eq: { low: 1.9 } },
+    bass: { gain: -9.7, eq: { low: 2.6 } },
+    bass2: { gain: -22.2 },
   },
 };
 
 export const arrangement = {
-  order: [{"s":33,"bars":1},{"s":32,"bars":1,"from":1},{"s":34,"bars":1},{"s":35,"bars":1,"from":1},2,{"s":3,"bars":1},{"s":38,"bars":1,"from":1},4,5,6,7,8,9,10,{"s":36,"bars":1},{"s":37,"bars":1,"from":1},12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,{"s":31,"bars":1},{"s":31,"bars":1,"from":1,"off":["organSwoop"]}],
+  order: [{"s":33,"bars":1},{"s":32,"bars":1,"from":1},{"s":34,"bars":1},{"s":35,"bars":1,"from":1},39,{"s":40,"bars":1},{"s":38,"bars":1,"from":1},41,42,43,44,45,46,47,{"s":36,"bars":1},{"s":37,"bars":1,"from":1},48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,{"s":67,"bars":1},{"s":67,"bars":1,"from":1,"off":["organSwoop"]}],
   sections: [
     {
       base: 0,
@@ -1077,17 +1079,136 @@ export const arrangement = {
     {
       base: 11,
       hats: seq('. . C1 . . . . . . . C1 . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | . . . . . . . . . . . . . . . .'),
     },
     {
       base: 11,
       hats: seq('. . . . . . . . . . . . . . . . | . . C1 . . . C1 . . . C1 . . . C1 .').map((v) => !!v),
       snare: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       tom2: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . C1 C1 C1 C1').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
     },
     {
       base: 3,
       clap: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . C1 . . C1 .').map((v) => !!v),
       rim: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . C1 C1').map((v) => !!v),
+      bass2: seq('. . . . . . . . . . . . . . . . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 2,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 3,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | . . . . . . . . . . . . . . . .'),
+    },
+    {
+      base: 4,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 5,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 6,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 7,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 8,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 9,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 10,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 12,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 13,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 14,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 15,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 16,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 17,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 18,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 19,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 20,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 21,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 22,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 23,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 24,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 25,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 26,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 27,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 28,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 29,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 30,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
+    },
+    {
+      base: 31,
+      bass2: seq('A2 . . A2 . E2 G2 . C3 . . C3 . G2 A2 . | G2 . . G2 . D2 E2 . F2 . . F2 . C3 E2 .'),
     },
   ],
 };

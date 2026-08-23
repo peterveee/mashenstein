@@ -137,6 +137,77 @@ drawWorldEntity(motionCtx, makeObstacle('crate', 200), 100.25, 0,
 assert(motionCalls.some((args) => Number.isFinite(args[1]) && args[1] % 1 !== 0),
   'tutorial world props retain fractional horizontal positions');
 
+// The cannon reaches the duck band. Every flier that asks to be ducked sits at
+// alt 13 now, and the pellet leaves at the hero's own height — without the
+// upward reach in updatePellets the shot passes a pixel under the drone the
+// shoot section exists to teach, and the section can never be completed.
+const cannon = new TutorialState({ onDone: () => {} });
+cannon.enter();
+cannon.startStep(8);
+const droneTarget = cannon.obstacles[0];
+assert(droneTarget && droneTarget.type === 'drone' && droneTarget.alt === 13,
+  'the shoot section still puts a drone in the duck band');
+cannon.player.abilityCd = 0;
+cannon.useAbility();
+for (let i = 0; i < 600 && !cannon.sawShotDown && cannon.pellets.length; i++) {
+  cannon.pellets[0].x += 4;
+  cannon.updatePellets(1 / 60);
+}
+assert(cannon.sawShotDown && !droneTarget.live, 'a standing shot connects with a drone at alt 13');
+
+// The climb is the part you see: by the time the shot arrives it is at the
+// drone's middle, not skimming its belly on an invisibly tall hitbox.
+const climb = new TutorialState({ onDone: () => {} });
+climb.enter();
+climb.startStep(8);
+climb.obstacles = [];
+climb.player.abilityCd = 0;
+climb.useAbility();
+const shot = climb.pellets[0];
+const launchAlt = shot.alt;
+const climbTarget = makeObstacle('drone', shot.x + 180);
+climb.obstacles = [climbTarget];
+let altAtImpact = launchAlt;
+for (let i = 0; i < 600 && shot.live; i++) {
+  climb.updatePellets(1 / 60);
+  if (shot.live) altAtImpact = shot.alt;
+}
+assert(!climbTarget.live, 'the climbing shot still connects');
+assert(altAtImpact > launchAlt + 6,
+  'the pellet climbs to meet a drone instead of passing under it');
+assert(Math.abs(altAtImpact - (climbTarget.alt + climbTarget.h / 2)) < 1.5,
+  'the climb finishes at the drone\'s middle before the shot arrives');
+
+// Nothing pulls a shot DOWN: a crate on the floor is not an aim target, so the
+// lemon flies level into it rather than dipping toward the ground first.
+const level = new TutorialState({ onDone: () => {} });
+level.enter();
+level.startStep(8);
+level.player.abilityCd = 0;
+level.useAbility();
+const levelShot = level.pellets[0];
+const levelAlt = levelShot.alt;
+level.obstacles = [makeObstacle('crate', levelShot.x + 200)];
+for (let i = 0; i < 20; i++) level.updatePellets(1 / 60);
+assert(levelShot.alt === levelAlt, 'a ground prop never drags the shot down toward it');
+level.exit();
+climb.exit();
+
+// The reach is a band, not a ceiling lift: a buzzbird at its own default is
+// still a jump-and-shoot, which is what keeps the gallery pinning it down.
+cannon.sawShotDown = false;
+const highBird = makeObstacle('buzzbird', cannon.playerWorldX() + 200);
+cannon.obstacles = [highBird];
+cannon.player.abilityCd = 0;
+cannon.useAbility();
+for (let i = 0; i < 600 && cannon.pellets.length; i++) {
+  cannon.pellets[0].x += 4;
+  cannon.updatePellets(1 / 60);
+}
+assert(!cannon.sawShotDown && highBird.live,
+  'a standing shot still misses a buzzbird at its default height');
+cannon.exit();
+
 tutorial.exit();
 console.log(failed ? 'TUTORIAL: FAILED' : 'TUTORIAL: PASSED');
 process.exit(failed ? 1 : 0);

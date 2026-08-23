@@ -63,3 +63,4 @@ Do not edit by hand.
 | 2026-08-14 | `9eac645` | [2026-08-14-9eac645.html](2026-08-14-9eac645.html) | feat(mixer): implement future state management for audio parameters during transitions |
 | 2026-08-16 | `c680f60` | [2026-08-16-c680f60.html](2026-08-16-c680f60.html) | Archive published build 414ae37 |
 | 2026-08-20 | `4db943a` | [2026-08-20-4db943a.html](2026-08-20-4db943a.html) | Refactor TNGR-2 Chorus Handling and Improve Note FX Logic |
+| 2026-08-24 | `1c2f7a7` | [2026-08-24-1c2f7a7.html](2026-08-24-1c2f7a7.html) | Refactor note-fx tests and enhance song index generation |

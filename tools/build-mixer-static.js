@@ -1,7 +1,7 @@
 // Build the Song Mixer as a standalone static HTML page for deployment.
 //
 // Mirrors build-gallery.js: bundles tools/mixer-entry.js and inlines it into
-// tools/mixer-shell.html, producing dist/SongMixer/index.html. Called from
+// tools/mixer-shell.html, producing dist/TRK24/index.html. Called from
 // build/build.js during production builds so the mixer ships alongside the game
 // on GitHub Pages.
 //
@@ -43,7 +43,7 @@ async function inlined(root, entry, shell, define) {
 }
 
 /**
- * Write dist/SongMixer/ — the desk and its render frame.
+ * Write dist/TRK24/ — the desk and its render frame.
  *
  * @returns {Promise<{index: number, frame: number}>} the two sizes, in KB
  */
@@ -60,7 +60,7 @@ export async function buildSongMixer(root = here) {
     .replace('/*__MIXER_DEV_USER__*/', 'false');
   const frame = await inlined(root, 'tools/mixer-render-entry.js', 'tools/mixer-render-shell.html');
 
-  const outDir = join(root, 'dist', 'SongMixer');
+  const outDir = join(root, 'dist', 'TRK24');
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, 'index.html'), html);
   writeFileSync(join(outDir, 'render-frame.html'), frame);
@@ -71,6 +71,6 @@ export async function buildSongMixer(root = here) {
 // function instead, so the two cannot emit different things.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { index, frame } = await buildSongMixer();
-  console.log(`dist/SongMixer/index.html written (${index} KB mixer)`);
-  console.log(`dist/SongMixer/render-frame.html written (${frame} KB engine)`);
+  console.log(`dist/TRK24/index.html written (${index} KB mixer)`);
+  console.log(`dist/TRK24/render-frame.html written (${frame} KB engine)`);
 }

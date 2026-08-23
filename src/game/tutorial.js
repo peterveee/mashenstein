@@ -120,6 +120,14 @@ const CONCEDE_AFTER = 3;
 // grantChargeGrace. A screen-and-a-bit of warning, so the refund lands while the
 // drone is visible and reachable rather than as a surprise off-frame.
 const CHARGE_GRACE_RANGE = 150;
+// How far above the muzzle the cannon still connects — see updatePellets. The
+// lemon climbs to meet anything inside that band once it is LOCK_RANGE away,
+// at HOME_RATE: 140px is about 0.38s of lane at training speed, which the rate
+// closes to under a pixel — the climb is visible and it is finished before the
+// shot arrives, rather than the pellet still drifting up through the target.
+const PELLET_REACH = 12;
+const PELLET_LOCK_RANGE = 140;
+const PELLET_HOME_RATE = 7;
 const CLAW_DEATH_PAUSE = 0.5;
 
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
@@ -475,11 +483,12 @@ const STEPS = [
       // or above 7 to let someone who does duck through. 13 keeps a standing hit
       // by a single pixel and clears the crouch by six.
       //
-      // It stays local to this section rather than moving the default, because a
-      // pellet only ever meets a prop below alt 12 (it leaves at the hero's own
-      // height with an 8px box) — so a drone at 13 cannot be shot, and the
-      // section that teaches the cannon needs one that can. Raising the default
-      // means raising the pellet with it, across every cabinet.
+      // It is now the default too — every duck-band flier moved up with the art —
+      // and the cannon was raised to meet it rather than the drone lowered back
+      // down: the pellet reaches PELLET_REACH above the muzzle, so the section
+      // that teaches shooting still gets a drone it can hit. Set explicitly all
+      // the same, because this section's window is 13 exactly and a later change
+      // to the default must not silently move it.
       drone.alt = 13;
       // 13 is the ceiling for the BOX and it is still not enough for the eye:
       // Lorenzo's crouched art is taller than his crouched box, so a clean duck
@@ -1356,10 +1365,9 @@ export class TutorialState {
     // a gallery; it reads as a cannon that is broken.
     //
     // Worse, most of them were out of reach even with a full charge. A pellet
-    // leaves at the hero's own height (player.y + 8) and its box spans 8px, so
-    // against entityBox it only ever meets a prop at alt < 12. A drone sits at
-    // 11 — which is why the section's own drone works — but a buzzbird defaults
-    // to 34 and a target to 40, so both wanted a jump-and-shoot the module never
+    // leaves at the hero's own height and reaches PELLET_REACH above that, which
+    // covers the duck band a drone sits in (13) — but a buzzbird defaults to 34
+    // and a target to 40, so both wanted a jump-and-shoot the module never
     // teaches. The row of things you could not hit was doing the confusing.
     //
     // So: one drone, one buzzbird pinned down to the same band, 170px apart —
@@ -1369,7 +1377,8 @@ export class TutorialState {
     // height the cannon can reach it is a thing you run into rather than shoot,
     // which teaches the opposite of the section.
     const GAP = 170;
-    const SHOOTABLE_ALT = 11;
+    // The drone's own altitude, so the two targets share one band and one aim.
+    const SHOOTABLE_ALT = 13;
     const drone = makeObstacle('drone', x0 + 60);           // what the section just taught
     const bird = makeObstacle('buzzbird', x0 + 60 + GAP);   // unarmoured, different pop
     bird.alt = SHOOTABLE_ALT;
@@ -1946,12 +1955,58 @@ export class TutorialState {
     }
   }
 
+  // What the pellet is climbing toward, if anything: the nearest prop ahead of
+  // it whose middle sits inside the cannon's reach. Null the rest of the time,
+  // which is most of the time — the lane is empty between targets.
+  //
+  // Upward only, and only inside PELLET_REACH. That is what keeps this an aim
+  // assist rather than a homing missile: a drone or a sheet of paperwork in the
+  // duck band gets met, a buzzbird at its default 34 does not, and nothing on
+  // the ground pulls the shot down into it.
+  pelletAim(pr) {
+    let best = null;
+    for (const ob of this.obstacles) {
+      if (!ob.live) continue;
+      if (ob.x + ob.w <= pr.x) continue;                       // already behind the shot
+      const dx = ob.x - pr.x;
+      if (dx > PELLET_LOCK_RANGE) continue;
+      const mid = ob.alt + ob.h / 2;
+      if (mid <= pr.alt || mid - pr.alt > PELLET_REACH) continue;
+      if (!best || dx < best.dx) best = { dx, mid };
+    }
+    return best && best.mid;
+  }
+
   updatePellets(dt) {
     for (const pr of this.pellets) {
       if (!pr.live) continue;
       pr.x += (this.speed + 260) * dt;
       if (pr.x > this.worldX + VIEW_W + 40) { pr.live = false; continue; }
-      const pbox = { x: pr.x, y: GROUND_Y - pr.alt - 4, w: 8, h: 8 };
+      // The pellet leaves at the hero's own height (player.y + 8) with an 8px
+      // box, so left flat it only ever meets a prop below alt 12. Every flier
+      // that asks to be ducked now sits at 13 — the drone and the paperwork both
+      // moved up when the flier art grew — which put the whole duck band one
+      // pixel out of the cannon's reach: a shot that visibly passed under its
+      // target and did nothing.
+      //
+      // Two things fix it, and they do different jobs. This is the one you SEE:
+      // once a target is inside PELLET_LOCK_RANGE the lemon eases up to meet its
+      // middle, so the shot arrives THROUGH the drone rather than under it. It
+      // is a small climb — 8px onto a drone — and it is only ever a climb, so a
+      // ground prop can never drag a shot down into itself.
+      const aim = this.pelletAim(pr);
+      if (aim != null) pr.alt += (aim - pr.alt) * Math.min(1, dt * PELLET_HOME_RATE);
+      // And the one you do not see: the box still grows upward by PELLET_REACH,
+      // which covers the shot fired so late that there is no lane left to climb
+      // in. Upward only, so it can only add hits with things already above the
+      // shot, never with ground props the pellet is flying over. 12 tops out at
+      // alt 24 — a drone (13-20) and the paperwork (13-19) are in, a buzzbird at
+      // its default 34 stays a thing you jump to reach.
+      //
+      // The burst is drawn at the PROP, not at the pellet (see iy below), so a
+      // late shot that connects at the top of the reach still reads as a hit on
+      // the drone rather than a puff of nothing under it.
+      const pbox = { x: pr.x, y: GROUND_Y - pr.alt - 4 - PELLET_REACH, w: 8, h: 8 + PELLET_REACH };
       for (const ob of this.obstacles) {
         if (!ob.live) continue;
         if (!overlaps(entityBox(ob, GROUND_Y), pbox)) continue;

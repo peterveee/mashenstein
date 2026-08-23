@@ -39,6 +39,7 @@ import * as BARBER_96_16TH from './barber-96-16th.js';
 import * as BARBER_96_SIMPLE_TNGR2_VERSION from './barber-96-simple-tngr2-version.js';
 import * as BARBER_96_SIMPLE from './barber-96-simple.js';
 import * as BARBER_96 from './barber-96.js';
+import * as BARBER_OF_S from './barber-of-s.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE_2 from './barber-of-seville-ouverture-2.js';
 import * as BARBER_OF_SEVILLE_OUVERTURE from './barber-of-seville-ouverture.js';
 import * as BARBER_OF_SEVILLE from './barber-of-seville.js';
@@ -72,6 +73,7 @@ import * as SPECIAL_STAGE_1 from './special-stage-1.js';
 import * as SPEED_ZONE_ALT_2 from './speed-zone-alt-2.js';
 import * as SPEED_ZONE_ALT from './speed-zone-alt.js';
 import * as SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2 from './super-mario-3d-world-bowser-castle2.js';
+import * as SUPER_MARIO_WORLD from './super-mario-world.js';
 import * as THE_FOOD_COURT_ALT_2 from './the-food-court-alt-2.js';
 import * as THE_FOOD_COURT_ALT from './the-food-court-alt.js';
 import { WII_SHOP_CHANNEL } from './wii-shop-channel.js';
@@ -105,6 +107,7 @@ export const IMPORTED_BY_ID = {
   "barber-96-simple-tngr2-version": { bank: BARBER_96_SIMPLE_TNGR2_VERSION.bank, title: BARBER_96_SIMPLE_TNGR2_VERSION.title, group: "copy", writable: true },
   "barber-96-simple": { bank: BARBER_96_SIMPLE.bank, title: BARBER_96_SIMPLE.title, group: "copy", writable: true },
   "barber-96": { bank: BARBER_96.bank, title: BARBER_96.title, group: "copy", writable: true },
+  "barber-of-s": { bank: BARBER_OF_S.bank, title: BARBER_OF_S.title, group: "copy", writable: true },
   "barber-of-seville-ouverture-2": { bank: BARBER_OF_SEVILLE_OUVERTURE_2.bank, title: BARBER_OF_SEVILLE_OUVERTURE_2.title, group: "copy", writable: true },
   "barber-of-seville-ouverture": { bank: BARBER_OF_SEVILLE_OUVERTURE.bank, title: BARBER_OF_SEVILLE_OUVERTURE.title, group: "imported", writable: true },
   "barber-of-seville": { bank: BARBER_OF_SEVILLE.bank, title: BARBER_OF_SEVILLE.title, group: "imported", writable: true },
@@ -138,6 +141,7 @@ export const IMPORTED_BY_ID = {
   "speed-zone-alt-2": { bank: SPEED_ZONE_ALT_2.bank, title: SPEED_ZONE_ALT_2.title, group: "alternate", writable: true, alternateOf: "speed" },
   "speed-zone-alt": { bank: SPEED_ZONE_ALT.bank, title: SPEED_ZONE_ALT.title, group: "alternate", writable: true, alternateOf: "speed" },
   "super-mario-3d-world-bowser-castle2": { bank: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.bank, title: SUPER_MARIO_3D_WORLD_BOWSER_CASTLE2.title, group: "imported", writable: true },
+  "super-mario-world": { bank: SUPER_MARIO_WORLD.bank, title: SUPER_MARIO_WORLD.title, group: "copy", writable: true },
   "the-food-court-alt-2": { bank: THE_FOOD_COURT_ALT_2.bank, title: THE_FOOD_COURT_ALT_2.title, group: "alternate", writable: true, alternateOf: "hub" },
   "the-food-court-alt": { bank: THE_FOOD_COURT_ALT.bank, title: THE_FOOD_COURT_ALT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "wii-shop-channel": { bank: WII_SHOP_CHANNEL, title: "WII SHOP CHANNEL", group: "imported", writable: false },

@@ -331,6 +331,10 @@
   }
   header::-webkit-scrollbar { display: none; }
   header .grp { display: flex; gap: 6px; align-items: center; }
+  /* Given a display above, so it needs its own [hidden] rule or the attribute does
+     nothing — see the note by #rearrangeform[hidden]. The deployed desk hides the
+     M8TRX group this way. */
+  header .grp[hidden] { display: none; }
   header > .grp:not(#mastertoolbar), header > .hdiv, header > .readouts { flex: 0 0 auto; }
   /* The action cluster is the part of the desk you need to reach after a resize. Keep
      it pinned to the right edge of the one-line rail, so a long run of transport and
@@ -6846,7 +6850,13 @@
     color: rgba(255,255,255,.92); font: 600 var(--popup-action-size)/1.5 var(--deskfont, ui-monospace, monospace);
     letter-spacing: .08em; cursor: pointer; }
   #viscontrols .visact:hover { background: rgba(255,255,255,.22); }
-  #tut { position: fixed; z-index: 55; left: 0; top: 0; width: 392px; max-width: calc(100vw - 16px);
+  /* ABOVE EVERYTHING THE TOUR OPENS. Half a dozen cards show you a panel by opening the
+     real one — the drawer, the effect catalogue, the preset picker, the synth editor —
+     and every one of those sits at 69-72. At 55 the card describing them went behind
+     them, with its own Back and Next, and the drawer's backdrop faded it on the way
+     past. Above those and below the toast and the min-size takeover, which have to be
+     able to cover the tour in turn. */
+  #tut { position: fixed; z-index: 80; left: 0; top: 0; width: 392px; max-width: calc(100vw - 16px);
          padding: 14px 17px 12px;
          background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
          box-shadow: 0 18px 44px color-mix(in srgb, var(--deep) 62%, transparent); }

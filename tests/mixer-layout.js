@@ -1901,8 +1901,8 @@ assert(/const isLibraryPreset = \(voice\) =>/.test(editor)
   && /const DEV_USER = true/.test(server)
   && /allowLibraryUpdate/.test(entry)
   && shell.includes('window.__MASH_MIXER_DEV_USER__ = /*__MIXER_DEV_USER__*/;')
-  && /const _urlDev = new URLSearchParams\(location\.search\)\.get\('dev'\)/.test(entry)
-  && /const DEV_USER = _urlDev === '0' \? false : globalThis\.__MASH_MIXER_DEV_USER__ === true/.test(entry)
+  && /const _urlDev = _params\.get\('dev'\)/.test(entry)
+  && /const DEV_USER = _urlDev === '0' \|\| STATIC \? false : globalThis\.__MASH_MIXER_DEV_USER__ === true/.test(entry)
   // The deployed desk is a USER desk. That substitution used to be written out in
   // build/build.js as well as in the mixer's own builder; the production build now
   // calls the builder rather than repeating it, so the guarantee is checked where it
@@ -1913,7 +1913,7 @@ assert(/const isLibraryPreset = \(voice\) =>/.test(editor)
   'library presets use one hidden editor draft, role-specific save/delete rules, and deletes use the desk dialog');
 assert(shell.indexOf('<span id="songrole"') > shell.indexOf('<span id="nowsong"')
   && /const role = \$\('songrole'\)/.test(entry)
-  && /role\.textContent = DEV_USER \? 'DEV' : 'USER'/.test(entry),
+  && /role\.textContent = STATIC_EMULATED \? 'USER · STATIC' : DEV_USER \? 'DEV' : 'USER'/.test(entry),
   'the footer identifies the current mixer role after the song name');
 assert(/id="clockmin"/.test(shell)
   && /class="stat stat-cpu"[^>]*>\s*<span class="label">CPU<\/span>\s*<span id="cpu"/.test(shell)
@@ -4324,10 +4324,20 @@ assert(/function showTip\(el\)[\s\S]*?tip\.classList\.add\('show'\);\s*\n\s*plac
 // Beside, not over: a tour card stays up while four lines of it are read, and below a
 // channel strip it lies straight across the thing it is pointing at.
 assert(/prefer = 'below'/.test(entry)
-  && /if \(prefer === 'side'\)/.test(entry)
+  && /const trySide = \(\) => \{/.test(entry)
+  && /if \(prefer === 'side' && trySide\(\)\) return true;/.test(entry)
   && /#tut \.tutarrow\.beside \{/.test(shell)
   && /#tut \.tutarrow\.beside\.after \{/.test(shell),
   'the tour card can sit beside its anchor instead of under it, and the arrow follows');
+// A TALL ANCHOR HAS NO ABOVE AND NO BELOW. The effect catalogue is most of the window
+// high, and the vertical placement answered that by putting the card off the top of the
+// screen — which took Back and Next with it, so the tour could not be advanced past the
+// card describing the catalogue. Two guarantees, because either alone leaves a hole: ask
+// for the flank when neither end fits, and clamp the axis that was never clamped.
+assert(/const above = r\.top - gap - box\.height >= edge;/.test(entry)
+  && /if \(!below && !above && prefer !== 'side' && trySide\(\)\) return true;/.test(entry)
+  && /const top = clamp\(below \? r\.bottom \+ gap : r\.top - gap - box\.height,\s*\n?\s*edge, Math\.max\(edge, innerHeight - box\.height - edge\)\);/.test(entry),
+  'a card with room neither above nor below its anchor goes beside it, and never off the window');
 assert(/addEventListener\('pointerdown', hideTip, true\)/.test(entry)
   && /addEventListener\('scroll', hideTip, true\)/.test(entry)
   && /addEventListener\('focusin'[\s\S]*?:focus-visible[\s\S]*?showTip\(el\)/.test(entry),

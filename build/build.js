@@ -508,7 +508,7 @@ if (watch) {
   const result = await esbuild.build(options);
   emit(result);
 
-  // The Song Mixer, as a standalone static page at /SongMixer/ — the desk plus the
+  // The Song Mixer, as a standalone static page at /TRK24/ — the desk plus the
   // render frame it bounces WAVs through. Only in production builds; watch mode skips
   // it for speed.
   //
@@ -519,8 +519,8 @@ if (watch) {
   try {
     const { buildSongMixer } = await import('../tools/build-mixer-static.js');
     const mixer = await buildSongMixer(root);
-    console.log(`dist/SongMixer/index.html written (${mixer.index} KB mixer)`);
-    console.log(`dist/SongMixer/render-frame.html written (${mixer.frame} KB engine)`);
+    console.log(`dist/TRK24/index.html written (${mixer.index} KB mixer)`);
+    console.log(`dist/TRK24/render-frame.html written (${mixer.frame} KB engine)`);
   } catch (err) {
     // The mixer is a dev tool; a broken mixer build does not block the game.
     console.error(`${MIXER_BRAND} build failed (the game build is unaffected):`);

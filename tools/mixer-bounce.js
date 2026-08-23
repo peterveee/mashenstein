@@ -4,7 +4,7 @@
 // rendered there. That worked, and it meant the one thing the desk is for — hearing
 // the mix, then keeping it — was the one thing the deployed desk could not do. Web
 // Audio is Web Audio: the render was already running in a browser, just not in
-// THIS one. So it runs here, and `npm run mixer` and the static build at /SongMixer/
+// THIS one. So it runs here, and `npm run mixer` and the static build at /TRK24/
 // now bounce through exactly the same path.
 //
 // What this module is, precisely: the Node half of render-bank-browser.js — the

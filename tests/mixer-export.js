@@ -5,7 +5,7 @@
 // That property is invisible at the call site and easy to lose. `Buffer` is in scope
 // in Node and nowhere else, so a `Buffer.concat` added to the WAV or MIDI writer keeps
 // every command-line tool and every test passing while silently breaking the one build
-// that has no Node behind it — the deployed desk at /SongMixer/, where the failure is
+// that has no Node behind it — the deployed desk at /TRK24/, where the failure is
 // a tester pressing Export MIDI and getting nothing. Same for the render walk: the
 // moment there are two copies of it, one of them is the stale one.
 //
@@ -137,8 +137,12 @@ assert(/import \{ midiBuffer \} from '\.\/lib\/render-midi-bank\.js'/.test(entry
   'Export MIDI builds the file in this browser');
 assert(!/fetch\(`?\/midi/.test(entry) && !/renderJob\(\$\('renderwav'\)/.test(entry),
   'neither one asks a server for the bytes any more');
-assert(/const RENDER_FRAME_URL = STATIC \? 'render-frame\.html' : '\/render-frame'/.test(entry),
-  'the render frame is addressed per build — a file when deployed, a route in development');
+// STATIC_BUILD, not STATIC: `?static=1` makes a local desk WEAR the deployed desk's
+// shape, and a tab doing that still has a server behind it. Addressing the frame off
+// the shape would send it after a sibling file the local server does not serve, and
+// Render WAV would 404 in the one mode somebody is using to check the shipped desk.
+assert(/const RENDER_FRAME_URL = STATIC_BUILD \? 'render-frame\.html' : '\/render-frame'/.test(entry),
+  'the render frame is addressed per BUILD, not per shape — a file when deployed, a route in development');
 
 // A bounce is a snapshot of the desk at the click, not a reference to it. `mixFor` and
 // `arrFor` hand back the live objects the faders write into, and the frame does not

@@ -21,7 +21,7 @@ import {
 // The two exports the desk used to ask a server for. Both run here now — the WAV
 // through the game's engine in a hidden iframe, the MIDI straight out of the bank —
 // so Bounce and Export MIDI work the same on `npm run mixer` and on the deployed
-// desk at /SongMixer/, which has no server behind it at all.
+// desk at /TRK24/, which has no server behind it at all.
 import { bounceWav } from './mixer-bounce.js';
 import { freezeRenderSpan } from './lib/freeze-span.js';
 import {
@@ -147,7 +147,7 @@ const syncMixerMinimum = () => {
 };
 addEventListener('resize', syncMixerMinimum, { passive: true });
 syncMixerMinimum();
-// The deployed desk at /SongMixer/ has no server behind it: nothing can be written to
+// The deployed desk at /TRK24/ has no server behind it: nothing can be written to
 // or read back off the repo's disk. It ships ONE song — THE FOOD COURT — so a tester
 // has something real to mix rather than a blank sketch, and everything that would
 // need a server, or that is not theirs to touch, is taken off the drawer below.
@@ -159,16 +159,34 @@ syncMixerMinimum();
 // that is nothing BUT a browser was the one that could not bounce. It renders its own
 // now (mixer-bounce.js), and builds its own MIDI, and both come down as downloads.
 // What a tester makes here can leave here; only the repo is out of reach.
-const STATIC = typeof __MASH_STATIC_MIXER__ !== 'undefined';
-const SHIPPED_SONG_IDS = new Set(['hub']);
+//
+// `?static=1` makes THIS desk pretend to be that one. It is the only way to see what a
+// stranger sees without building and serving dist/TRK24, and `?dev=0` is not a
+// substitute: that switch changes the ROLE only, while the song list, the hidden
+// panels and the save-to-browser path all hang off STATIC. Emulation carries the role
+// with it — the deployed desk is a user desk, and a DEV/static hybrid is a screen
+// nobody is ever handed.
+//
+// STATIC_BUILD stays separate from STATIC for the one thing that is infrastructure
+// rather than shape: the deployed desk loads its render frame as a sibling FILE, and
+// this one has a server route for it. Emulating the shape must not break Render WAV.
+const STATIC_BUILD = typeof __MASH_STATIC_MIXER__ !== 'undefined';
+const _params = new URLSearchParams(location.search);
+const STATIC = STATIC_BUILD || _params.get('static') === '1';
+const STATIC_EMULATED = STATIC && !STATIC_BUILD;
+// The songs the deployed desk carries. Named one by one rather than taken from a group,
+// because this list is what a stranger gets handed: every id here has to be a song
+// somebody chose to show, and it has to be TRACKED — `work/` never reaches a build, so
+// a scratch id would resolve locally and be missing for everybody else.
+const SHIPPED_SONG_IDS = new Set(['hub', 'megamix', 'barber-of-s', 'super-mario-world']);
 const deskSongIds = new Set();      // made here, restored from localStorage on boot
 const localSongIds = () => [...SHIPPED_SONG_IDS, ...deskSongIds];
 // Dev mode: the local server is DEV by default. Only an explicit `?dev=0` makes
 // this tab a regular user session; static builds emit a false server flag and stay
 // USER even if somebody adds an unrelated query parameter.
-const _urlDev = new URLSearchParams(location.search).get('dev');
-const DEV_USER = _urlDev === '0' ? false : globalThis.__MASH_MIXER_DEV_USER__ === true;
-const DEV_OVERRIDDEN = _urlDev === '0';
+const _urlDev = _params.get('dev');
+const DEV_USER = _urlDev === '0' || STATIC ? false : globalThis.__MASH_MIXER_DEV_USER__ === true;
+const DEV_OVERRIDDEN = _urlDev === '0' || STATIC_EMULATED;
 // The earlier versions are the DESK's paper trail — snapshots it took of a file before
 // overwriting it, kept in work/mix-history/ on the machine that did the overwriting.
 // Not a user's business in either sense: there is no such history behind a mix that was
@@ -177,10 +195,16 @@ if (!DEV_USER) { const historyButton = $('history'); if (historyButton) historyB
 
 const role = $('songrole');
 if (role) {
-  role.textContent = DEV_USER ? 'DEV' : 'USER';
+  // Emulation says so in the footer. A desk that has quietly dropped most of its songs
+  // and half its buttons is a bug until you remember which URL you are on, and the one
+  // place already answering "which desk is this" is the role.
+  role.textContent = STATIC_EMULATED ? 'USER · STATIC' : DEV_USER ? 'DEV' : 'USER';
   role.title = DEV_USER
     ? `Developer mode${DEV_OVERRIDDEN ? ' (forced by ?dev=1)' : ''} — library presets can be updated in place`
-    : `Regular user mode${DEV_OVERRIDDEN ? ' (forced by ?dev=0)' : ''} — library presets can be saved as new user presets`;
+    : STATIC_EMULATED
+      ? 'Emulating the deployed desk (?static=1) — the shipped songs only, and nothing'
+        + ' that needs the server. Drop the parameter to come back.'
+      : `Regular user mode${DEV_OVERRIDDEN ? ' (forced by ?dev=0)' : ''} — library presets can be saved as new user presets`;
 }
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const LS_KEY = 'mash-mixer-draft';
@@ -897,7 +921,11 @@ function placeCard(card, el, arrow, { gap = 9, edge = 6, inset = 11, prefer = 'b
   const box = card.getBoundingClientRect();
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
 
-  if (prefer === 'side') {
+  // Beside the anchor, on whichever flank it fits. Pulled out of the `prefer` branch
+  // because it is also the ANSWER TO A TALL ANCHOR: the effect catalogue is most of the
+  // window high, so neither above nor below it fits, and the vertical placement below
+  // would have run off the top of the screen with the card on it.
+  const trySide = () => {
     const right = r.right + gap;
     const leftSide = r.left - gap - box.width;
     const at = right + box.width <= innerWidth - edge ? right
@@ -920,12 +948,24 @@ function placeCard(card, el, arrow, { gap = 9, edge = 6, inset = 11, prefer = 'b
       }
       return true;
     }
-  }
+    return false;
+  };
+
+  if (prefer === 'side' && trySide()) return true;
 
   const below = r.bottom + gap + box.height <= innerHeight - edge;
+  const above = r.top - gap - box.height >= edge;
+  // Neither end of the anchor has room for the card. Beside it is a real answer and
+  // off the top of the window is not, so ask for the flank before falling through.
+  if (!below && !above && prefer !== 'side' && trySide()) return true;
   const left = clamp(r.left + r.width / 2 - box.width / 2, edge, innerWidth - box.width - edge);
+  // Clamped for the same reason `left` always was, and it was the one axis that was not:
+  // a card whose top went negative did not merely overhang, it took its Back and Next
+  // buttons off the screen with it and the tour could not be advanced.
+  const top = clamp(below ? r.bottom + gap : r.top - gap - box.height,
+    edge, Math.max(edge, innerHeight - box.height - edge));
   card.style.left = `${Math.round(left)}px`;
-  card.style.top = `${Math.round(below ? r.bottom + gap : r.top - gap - box.height)}px`;
+  card.style.top = `${Math.round(top)}px`;
   if (!arrow) return below;
   arrow.classList.remove('beside', 'after');
   arrow.style.top = '';
@@ -22591,6 +22631,12 @@ if (STATIC) {
   // this build does not have.
   $('auditionwav')?.setAttribute('hidden', '');
   $('importmidi')?.setAttribute('hidden', '');
+  // M8TRX goes too, and not because it cannot work here — it runs entirely in the
+  // browser and would. It is a composer's tool for pulling a song apart into a
+  // collage, and the deployed desk is for hearing and mixing the songs it ships with;
+  // a panel that rewrites the arrangement is a second, larger thing to explain before
+  // the first one has been. The whole group, or the header keeps its gap.
+  $('rearrangebtn')?.closest('.grp')?.setAttribute('hidden', '');
   document.getElementById('opensectionhead')?.replaceChildren('Songs');
   // Save keeps a copy in this browser instead of writing a file, so the way back to the
   // shipped song is its own button — Discard now only reaches your copy. updateStatus
@@ -22825,7 +22871,7 @@ async function createNewSong() {
   // which is a perfectly successful fetch carrying somebody else's HTML, and that
   // used to arrive in front of the tester as the error dialog.
   let res = null;
-  if (typeof __MASH_STATIC_MIXER__ === 'undefined') {
+  if (!STATIC) {
     try {
       res = await fetch('/new-song', {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -23594,29 +23640,60 @@ const tutorial = createTutorial({
   selectLane: (key) => { if (key) selectLane(key); },
   openPicker,
   editVoice: (key) => { if (key) editVoice(key); },
+  // The synth editor is a WINDOW, and the card that opens it said so — but nothing shut
+  // it again, so it stayed up over the four cards after it and the whole end of the tour
+  // was read through a full-height panel. Closed only if the tour is what opened it.
+  voiceEditorOpen: () => voiceEditor.isOpen() || voiceEditor.fullOpen,
+  closeVoiceEditor: () => { voiceEditor.closeFull(); voiceEditor.close(); },
   // Two cards open the synth editor, and both leave themselves out on a channel that
   // has nothing to open — see editablePresetFor.
   hasPreset: (key) => !!key && !!editablePresetFor(key),
   // Not `openDrawer`, which toggles: three consecutive cards live in the drawer and the
-  // second of them would shut it.
-  showDrawer: () => { if (!$('navdrawer').classList.contains('show')) openDrawer(); },
+  // second of them would shut it. And the focus it puts in the song search has to come
+  // straight back out — the tour's own → and ← are given up whenever the visitor is
+  // typing into something, so a focused search box left the three drawer cards with no
+  // keyboard at all and handed Escape to the drawer instead of to the tour.
+  showDrawer: () => {
+    if (!$('navdrawer').classList.contains('show')) openDrawer();
+    requestAnimationFrame(() => {
+      if (document.activeElement === $('songsearch')) $('songsearch').blur();
+    });
+  },
   closePopups: closeMenu,
-  // Half the tour is about a channel strip, and on a desk with all its panels open the
-  // shrink ladder has usually taken the EQ, the sends and the insert slots off the
-  // strips before the visitor ever gets there — so those cards would be pointing at
-  // nothing and would leave themselves out. Folding the notes panel is what a person
-  // would do to get them back, it is one click, and card 2 has just said every header
-  // folds. `setNotesFolded` rather than `showPianoRoll`: no toast about a lane with no
-  // grid, and nothing written into the song's remembered layout for a fold the tour is
-  // going to undo.
+  // The Effects panel ships closed, and its card points INSIDE it — so without this the
+  // card left itself out of every tour that ran on a desk nobody had opened it on, which
+  // is most of them. Opened on the way in and put back the way it was found on the way
+  // out, exactly as the effect catalogue's card already does.
+  showDevices: (on) => setDevicesFolded(!on),
+  devicesOpen,
+  // Half the tour is about a channel strip, and two things can put the strips out of
+  // reach before the visitor ever gets there. Both are undone here and put back on close,
+  // because a card pointing at nothing leaves itself out — and ten of them leaving
+  // themselves out is not a shorter tour, it is a different one.
+  //
+  //   1. The lower half is showing a note editor instead of the mixer, so there is no
+  //      rack on screen at all. `remember: false` so the tour's own switch is not written
+  //      into what the desk opens with next time.
+  //   2. The rack is up but the shrink ladder has taken the EQ, the sends or the insert
+  //      slots off the strips to fit them. Pushing the splitter up is what a person would
+  //      do to get them back, and card 2 has just said the bar between the halves is
+  //      draggable. `remember: false` again: the ask the visitor chose is still theirs.
   makeRoomForStrips: () => {
+    const before = { view: lowerView, ratio: null };
+    if (lowerView !== 'mixer') setLowerView('mixer', { remember: false });
     const shedding = ['shed-eq', 'shed-sends', 'shed-fx']
       .some((c) => $('rackwrap').classList.contains(c));
-    if (!shedding || $('notes').classList.contains('collapsed')) return false;
-    setNotesFolded(true);
-    return true;
+    if (shedding && upperWorkRatio > 0.24) {
+      before.ratio = upperWorkRatio;
+      writeWorkRatio(0.24, false);
+    }
+    return before.view === 'mixer' && before.ratio == null ? false : before;
   },
-  restoreRoom: () => setNotesFolded(false),
+  restoreRoom: (before) => {
+    if (!before) return;
+    if (before.ratio != null) writeWorkRatio(before.ratio, false);
+    if (before.view !== 'mixer') setLowerView(before.view, { remember: false });
+  },
 });
 // The third control the desk lends M8TRX, after Undo and the loop toggle: while the panel
 // is up, ? explains the panel rather than the desk behind it. A desk tour opened from on top
@@ -23951,7 +24028,7 @@ function saveBlob(name, blob) {
 // Where the second copy of the engine lives — see tools/mixer-render-entry.js. Two
 // documents for one job: the deployed build ships index.html and render-frame.html
 // side by side, the dev server builds the same pair per request.
-const RENDER_FRAME_URL = STATIC ? 'render-frame.html' : '/render-frame';
+const RENDER_FRAME_URL = STATIC_BUILD ? 'render-frame.html' : '/render-frame';
 
 let trackProfileController = null;
 
@@ -25505,7 +25582,7 @@ function freezeVoices(mix, trackId) {
 }
 
 // ---- the deployed desk's idea of a saved file ------------------------------
-// There is no server behind /SongMixer/, so a tester's Save cannot write anything.
+// There is no server behind /TRK24/, so a tester's Save cannot write anything.
 // What it can do is keep their copy in the browser and make the desk believe it: it
 // becomes `saved`, which is what Discard goes back to, what A/B compares against and
 // what the dot on the menu is measured from. The song that SHIPPED is still in the
@@ -26994,7 +27071,7 @@ setInterval(() => { try { Audio.voices?.reapIdlePools?.(30); } catch { /* rack b
 // `AudioSys`, not a copy and not a read-only view. Everything on it can be called and
 // every field can be written from the console, which is precisely what makes it
 // useful for diagnosis and what makes it a foot-gun to lean on — `Audio.step = 0`
-// really does move the playhead. It ships to /SongMixer/ as well, deliberately: a
+// really does move the playhead. It ships to /TRK24/ as well, deliberately: a
 // tester who can be asked to paste `Audio.ctx.state` is a tester who can be helped.
 globalThis.Audio = Audio;
 

@@ -306,7 +306,7 @@ node tools/build-mixer-static.js
 ```
 
 Peter's desk runs on **8010** — never start or kill a server there; rebuild and he refreshes.
-For driving it here, serve `dist/SongMixer/` on a scratch port and kill it afterwards.
+For driving it here, serve `dist/TRK24/` on a scratch port and kill it afterwards.
 
 **Test with real pointer events.** Both of the bugs above survived synthetic `.click()`
 testing and died on the first real drag and the first open/close cycle.

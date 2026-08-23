@@ -18,6 +18,9 @@
  *      effects, sends and EQ rows on a short window, and an arrow aimed at nothing is
  *      worse than a tour one card shorter — so the plan is worked out when the tour
  *      opens, from what is actually on screen, and the counter is honest about it.
+ *      `makeRoomForStrips` runs FIRST, because the bottom half of the desk holds the
+ *      mixer or a note editor and not both: opened over the piano roll, a plan drawn up
+ *      before the switch would have written off every card about a channel strip.
  *
  * The audience already mixes. Nothing here explains what a fader is; the words go on
  * what is peculiar to this desk — live synths instead of samples, an instrument you can
@@ -37,12 +40,18 @@ const SEEN_KEY = 'mash-mixer-tutorial-seen';
  * @param {Function} deps.hasPreset          (laneKey) => is there a preset to edit at all
  * @param {Function} deps.showDrawer         () => void, idempotent unlike openDrawer
  * @param {Function} deps.closePopups        closeMenu — drawer, pickers, context menus
- * @param {Function} deps.makeRoomForStrips  () => did it fold something to fit the rack
- * @param {Function} deps.restoreRoom        () => put that back
+ * @param {Function} deps.showDevices        (on) => void, the Effects panel's own switch
+ * @param {Function} deps.devicesOpen        () => is that panel on screen right now
+ * @param {Function} deps.voiceEditorOpen    () => is the synth editor up right now
+ * @param {Function} deps.closeVoiceEditor   () => put it away, both surfaces
+ * @param {Function} deps.makeRoomForStrips  () => false, or a token naming what it moved
+ * @param {Function} deps.restoreRoom        (token) => put that back
  */
 export function createTutorial({
   el, placeCard, tourLane, selectLane, openPicker, editVoice, showDrawer, closePopups,
   hasPreset = () => false,
+  showDevices = () => {}, devicesOpen = () => true,
+  voiceEditorOpen = () => true, closeVoiceEditor = () => {},
   makeRoomForStrips = () => false, restoreRoom = () => {},
 }) {
   const $ = (id) => document.getElementById(id);
@@ -66,87 +75,71 @@ export function createTutorial({
       title: 'A synth workstation, not a tape machine',
       says: 'There are no audio files here. Every channel is a synthesiser rendered live, '
         + 'so changing the bass sound means opening the bass and editing it, not swapping '
-        + 'a sample.\n\nTwenty-odd cards. The desk stays live behind them — click anything '
+        + 'a sample.\n\nFifteen cards. The desk stays live behind them — click anything '
         + 'at any point.',
       start: true,
     },
     {
       id: 'layout',
-      title: 'Four regions',
-      says: 'TIMELINE across the top. ARRANGEMENT — one row per track, one cell per bar. '
-        + 'NOTES — piano roll or kit grid for whichever track is selected. RACK — the '
-        + 'channel strips. EFFECTS — the parameters for whatever is selected above.'
-        + '\n\nEvery header folds. Drag the seams between them.',
+      title: 'Two halves and a panel',
+      says: 'TIMELINE and ARRANGEMENT fill the top half — one row per track, one cell per '
+        + 'bar. The bottom half holds one of three, and the toolbar switches between them: '
+        + 'MIXER, the channel strips; PIANO ROLL; STEP GRID.'
+        + '\n\nEFFECTS is a panel down the right-hand edge, and it pushes the desk over '
+        + 'rather than covering it. Drag the bar between the halves to give one of them '
+        + 'more room.',
     },
     {
       id: 'transport',
       title: 'Transport',
       key: 'Space',
       anchor: () => $('play'),
-      says: 'Space plays and pauses. Stop returns to where playback started; pause holds. '
-        + 'Click the timeline to park the playhead, double-click to play from there.'
-        + '\n\nDrag across the timeline to pick out bars, then Loop to cycle them.',
+      says: 'Space plays and pauses. Stop returns to where playback started, pause holds '
+        + 'where you are, and the button before them plays from the top of the song.'
+        + '\n\nClick the timeline to park the playhead, double-click to play from there. '
+        + 'Drag across it to pick out bars, then Loop to cycle them.',
     },
     {
       id: 'strip',
-      title: 'Signal path, top to bottom',
+      title: 'The channel strip',
       anchor: () => strip()?.querySelector('.striphead') || null,
       prefer: 'side',
-      says: 'Voice, three-band EQ, up to six inserts, fader and pan, mute, bus. The name at '
-        + 'the top is the instrument; everything under it is what has been done to it.'
-        + '\n\nClick a strip to select it — the effects panel and the note editor both '
-        + 'follow the selection. ↑ and ↓ walk the rack.',
-      // Every card from here to 13 is about this one strip, so it is selected once, here,
-      // rather than by each of them.
+      says: 'Voice, three-band EQ, two sends, up to six inserts, then fader, pan, mute and '
+        + 'solo. Click a strip to select it — the Effects panel and the note editors follow '
+        + 'the selection, and ↑ and ↓ walk the rack.'
+        + '\n\nEvery number on the page is a control: drag it, hold shift for a fifth of the '
+        + 'speed, click it to type an exact one, double-click to reset. The EQ is fixed at '
+        + '250, 1.2k and 4k, plus or minus 18 dB — for anything else, insert a Channel EQ.',
+      // Every card from here to the synth editor is about this one strip, so it is
+      // selected once, here, rather than by each of them.
       setup: () => selectLane(lane),
     },
     {
-      id: 'gesture',
-      title: 'Every number is a control',
-      anchor: onStrip('.eqrow'),
-      prefer: 'side',
-      says: 'Drag up or down, hold shift for a fifth of the speed, click the number to type '
-        + 'an exact one, double-click to reset. The same on every knob, fader and readout '
-        + 'on the page.\n\nThis EQ is fixed-frequency — 250, 1.2k and 4k, plus or minus '
-        + '18 dB. For anything else, insert a Channel EQ.',
-    },
-    {
-      id: 'sends',
-      title: 'Two buses, and they are absolute',
-      anchor: onStrip('.sendrow'),
-      prefer: 'side',
-      says: 'Delay and reverb, with their own return strips pinned to the right of the rack.'
-        + '\n\nUnlike the fader and the EQ these are not relative trims: 1.00 sends the same '
-        + 'amount of the kick as it does of the lead, in every bar. Melodic tracks tap the '
-        + 'delay pre-fader; everything else is post.',
-    },
-    {
-      id: 'fader',
-      title: 'Level',
+      id: 'levels',
+      title: 'Levels, and two buses',
       anchor: onStrip('.fadercol'),
+      also: () => [strip()?.querySelector('.sendrow')],
       prefer: 'side',
-      says: 'The taper is a console law, not a straight line: the bottom of the travel is '
-        + 'silence, three-quarters up is unity, and the top quarter is the only gain there '
-        + 'is. Double-click to put it back to unity.\n\nThe meter holds its peak for a '
-        + 'second and a half. A red border means it clipped.',
+      says: 'The fader taper is a console law, not a straight line: the bottom of the travel '
+        + 'is silence, three-quarters up is unity, and the top quarter is the only gain '
+        + 'there is. The meter’s peak line sits where the loudest moment was; a red border '
+        + 'means it clipped.'
+        + '\n\nDelay and reverb have their own return strips at the right of the rack. Both '
+        + 'read in dB and tap the channel AFTER its fader, and both are absolute rather than '
+        + 'relative trims — the same reading sends the same amount of the kick as it does of '
+        + 'the lead, in every bar.',
     },
     {
-      id: 'insert',
+      id: 'inserts',
       title: 'Six slots per channel',
-      anchor: onStrip('.addslot'),
-      prefer: 'side',
-      says: 'The dashed outline at the bottom of a strip is an empty insert. Click it — or '
-        + 'right-click anywhere in the block — for the catalogue.\n\nOrder is the signal '
-        + 'path. Drag one slot onto another to reorder the chain.',
-    },
-    {
-      id: 'catalogue',
-      title: 'Grouped, and priced',
       anchor: () => $('fxpicker'),
-      says: 'Tone & Filter, Delay & Echo, Modulation & Rhythm, Space, Width & Pitch, Dynamics, and Character & Lo-Fi. Thirty-odd '
-        + 'effects, and each one shows what it costs — a percentage of one core, measured '
-        + 'rather than guessed.\n\nMost are under a fifth of a percent. The phaser is two. '
-        + 'Watch the CPU readout in the toolbar if you stack them.',
+      says: 'The dashed outline on a strip, under the sends, is an empty insert — click it, '
+        + 'or right-click anywhere in the block, for this catalogue. Order is the signal '
+        + 'path, and dragging one slot onto another reorders the chain.'
+        + '\n\nSix groups, thirty-odd effects, and each one shows what it costs: a '
+        + 'percentage of one core, measured rather than guessed. Most are under a fifth of a '
+        + 'percent, the phaser is two — watch the CPU readout in the toolbar if you stack '
+        + 'them.',
       // Shown by opening the real picker rather than by faking a click on the slot, so the
       // catalogue the visitor is reading is the catalogue they will get.
       setup: () => {
@@ -160,48 +153,61 @@ export function createTutorial({
       available: () => !!strip()?.querySelector('.addslot'),
     },
     {
-      id: 'devices',
+      id: 'chain',
       title: 'Where the parameters live',
       anchor: () => $('devrack'),
-      says: 'One card per insert, for the selected channel, in chain order. Drag the title '
-        + 'bar to reorder — dragging the body would fight the sliders. The power mark '
-        + 'bypasses, the ✕ removes.\n\nTempo Mode on a delay or an LFO swaps free time for '
-        + 'a note division, dotted and triplet included, and the readout says what that is '
-        + 'in ms or Hz at this tempo.',
-    },
-    {
-      id: 'chain',
-      title: 'Managing it from the strip',
-      anchor: onStrip('.fxbtns'),
-      prefer: 'side',
-      says: 'Hover a slot: the power mark on the left bypasses, the cross on the right '
-        + 'removes. ⌥-click anywhere on it bypasses. Click the name to jump to its card '
-        + 'below.\n\nRight-click for the rest — copy and paste settings between two of the '
-        + 'same effect, duplicate, insert before or after, reset to defaults.',
+      also: () => [strip()?.querySelector('.fxbtns')],
+      key: 'E',
+      says: 'One card per insert, for the selected channel, in chain order, down the '
+        + 'right-hand edge. Drag a title bar to reorder — dragging the body would fight the '
+        + 'sliders — and the power mark bypasses while the ✕ removes, on the card and on the '
+        + 'strip’s own slot alike.'
+        + '\n\nTempo Mode on a delay or an LFO swaps free time for a note division, dotted '
+        + 'and triplet included, and says what that is in ms or Hz at this tempo. '
+        + 'Right-click a slot for the rest — copy settings between two of the same effect, '
+        + 'duplicate, reset.',
+      // Shown by working the panel's own switch, so what the visitor reads is what E
+      // gives them. Put back on the way out only if the tour is what opened it: a
+      // visitor who was already mixing with it up does not want it shut behind them.
+      setup: () => { devicesWereOpen = devicesOpen(); showDevices(true); },
+      teardown: () => { if (!devicesWereOpen) showDevices(false); },
+      // Asked of the desk rather than of the DOM, for the same reason the catalogue's
+      // card is: `#devrack` is always in the document and off screen until the panel
+      // slides in, which only happens in setup — so the plan would read a closed panel
+      // as a card with nothing to point at and drop it before it ever ran. There is
+      // always an Effects panel to open, so this card always runs.
+      available: () => true,
     },
     {
       id: 'voice',
       title: 'Swap the voice',
       anchor: onStrip('.strippreset'),
       prefer: 'side',
-      says: 'Click the name at the top of a strip for the preset picker. Sixty-odd presets, '
-        + 'filed by what they sound like — bass, lead, pad, keys, pluck, organ, bells, '
-        + 'orch, FX and a kit set — rather than by which track they belong on. Search '
-        + 'covers the descriptions too, so "808" and "detune" find things.\n\nA voice is a '
-        + 'bank key rather than a live node, so choosing one restarts the sequencer: about '
-        + 'half a second of silence with the playhead held.',
+      says: 'Click the name at the top of a strip for the preset picker: four hundred and '
+        + 'fifty-odd presets, filed by what they SOUND like — bass, lead, pad, keys, organ, '
+        + 'bells, orch, FX and ten kit categories — rather than by which track they belong '
+        + 'on. Search covers the descriptions, so "808" and "detune" find things.'
+        + '\n\nA voice is a bank key rather than a live node, so choosing one restarts the '
+        + 'sequencer: about half a second of silence with the playhead held. The preset '
+        + 'library in the toolbar is the same catalogue with no song in front of it.',
     },
     {
-      id: 'openSynth',
-      title: 'Edit it',
-      anchor: onStrip('.striphead'),
-      prefer: 'side',
-      says: 'Right-click a strip for EDIT PRESET, which opens the synthesiser itself right '
-        + 'where you clicked. It is a window, not a dialogue: leave it open, drag it '
-        + 'wherever you want it, and work while the sound changes under your hands.'
-        + '\n\nEditing from a strip copies the preset into this song first, so you are '
-        + 'working on this song’s own version of it. Your edits ride the undo stack and '
-        + 'belong to the song.',
+      id: 'synth',
+      title: 'Open the instrument',
+      anchor: () => $('voiceedit'),
+      says: 'Right-click a strip for Edit Simple — or Edit Advanced, where that instrument '
+        + 'has a full window. It opens where you clicked and stays open, so you can work '
+        + 'while the sound changes under your hands, and the preset is copied into this song '
+        + 'first: your edits belong to the song and ride its undo stack.'
+        + '\n\nSYNTH at the top names which of six instruments builds a pitched preset — '
+        + 'KNDO-5, WNDR-9, MRDR-3, TNGR-2, CRLS-1, RMND-2 — and changing it rebuilds the '
+        + 'patch from the new one’s defaults rather than converting it. A drum preset names '
+        + 'none: it is the sections themselves, and each one switches off as a bypass rather '
+        + 'than a delete.',
+      setup: () => { voiceWasOpen = voiceEditorOpen(); editVoice(lane); },
+      // It is a window, and a window nobody closes covers the four cards after it. Left
+      // up if the visitor already had one open when the tour started.
+      teardown: () => { if (!voiceWasOpen) closeVoiceEditor(); },
       // A channel running the engine's own voice has no preset to open, and that is what
       // leaves this card out. Asked of the desk rather than of the strip's DOM: the »
       // that used to stand for "this one has something to edit" is gone with the menu
@@ -209,38 +215,16 @@ export function createTutorial({
       available: () => hasPreset(lane),
     },
     {
-      id: 'insideSynth',
-      title: 'What is in there',
-      anchor: () => $('voiceedit'),
-      says: 'A pitched preset opens with SYNTH at the top, picking the construction — game '
-        + 'synth, additive, mono, FM, AM, duo, membrane, metal — and changing it rebuilds '
-        + 'the patch from that class’s defaults, so it is a fresh start rather than a '
-        + 'conversion. A drum preset has no class: it is the sections themselves, from the '
-        + 'oscillator down through noise, ring and metal.\n\nOptional sections carry an '
-        + 'on/off switch in their bar, and off is a bypass rather than a delete — it keeps '
-        + 'what you had and puts it back exactly as you left it.',
-      setup: () => editVoice(lane),
-      // Same question as the card before it: the editor is only reachable from a channel
-      // that has a preset to edit.
-      available: () => hasPreset(lane),
-    },
-    {
-      id: 'library',
-      title: 'Every preset, with no song in front of it',
-      anchor: () => $('presetbtn'),
-      says: 'A browsing bench. Filter by pitched or drums, filter by which synth class a '
-        + 'preset is built from — an FM bell and an additive bell want completely different '
-        + 'edits — and audition anything on the keyboard beside it.\n\nUse it to find a '
-        + 'sound. Do the editing back on the strip, where it belongs to a song. Use the onscreen keyboard to play, a midi keyboard or your computer keyboard keys.',
-    },
-    {
       id: 'master',
       title: 'The master strip',
       anchor: () => q('#masterslot .strip') || $('masterslot'),
       prefer: 'side',
-      says: 'Left of the rack, with its own six inserts and a limiter that has no controls.'
-        + '\n\nThe limiter costs 6 ms of latency, which means it changes what gets rendered '
-        + 'as well as what you hear. It is a seatbelt, not a mastering chain.',
+      says: 'Left of the rack, with its own six inserts, its own balance, and a LIMITER '
+        + 'button on the line where a channel keeps M and S.'
+        + '\n\nIt is off, and deliberately: the limiter is a compressor node, and Web Audio '
+        + 'gives that 6 ms of lookahead that cannot be switched off — so merely having it in '
+        + 'the path delays everything and changes what gets rendered as well as what you '
+        + 'hear. A seatbelt at −1 dB, not a mastering chain.',
     },
     {
       id: 'ab',
@@ -266,58 +250,38 @@ export function createTutorial({
       title: 'Roll one',
       anchor: () => $('newsong'),
       prefer: 'side',
-      says: 'New song generates a whole arrangement from a style pack. Eleven of them: '
-        + 'electropop, half-time dirge, surf spy, boom bap, motorik driver, bell box, '
-        + 'parade march, dub chamber, house, techno, electro.\n\nLeave Style on AUTO and it '
-        + 'picks one. A seed then chooses the key, the mode, the chord progression, the '
-        + 'harmonic rhythm, the kick, snare and hat patterns, the bass figure, and each '
-        + 'melody’s rhythm and shape.',
-      setup: () => showDrawer(),
-    },
-    {
-      id: 'starters',
-      title: 'The three starters',
-      anchor: () => $('newsong'),
-      prefer: 'side',
-      says: 'Full Song gives you kit, bass, chords and lead, playable the moment it appears. '
-        + 'Beats Only gives you the kit. Blank gives you one silent track to write into.'
-        + '\n\nBars sets the length, and the tempo comes from the pack unless you untick '
-        + 'it. Every track arrives at unity with no effects — the mix is yours to make. '
-        + 'There is no re-roll; if you do not like what came out, make another.',
+      says: 'New song generates a whole arrangement from a style pack — eleven of them, from '
+        + 'electropop to dub chamber. Leave Style on AUTO and a seed picks the key, the mode, '
+        + 'the chord progression, the kick, snare and hat patterns, the bass figure and each '
+        + 'melody’s shape.'
+        + '\n\nFull Song gives you kit, bass, chords and lead, playable the moment it '
+        + 'appears; Beats Only gives you the kit; Blank gives you one silent track to write '
+        + 'into. Every track arrives at unity with no effects — the mix is yours to make, '
+        + 'and there is no re-roll.',
       setup: () => showDrawer(),
       teardown: () => closePopups(),
     },
     {
       id: 'notes',
-      title: 'Two ways in',
+      title: 'Drawing and playing',
       anchor: () => $('rollbtn'),
-      also: () => [$('seqbtn')],
-      says: 'The piano roll is the melodic view of whichever track is selected — drum tracks '
-        + 'get a kit grid instead. The step grid is the same notes as a pattern, steps you '
-        + 'toggle.\n\nBoth are windows: leave them open and they follow the selection while '
-        + 'the song runs. Note starts land on sixteenths, but the piano roll can draw '
-        + 'fractional note lengths; use Length when you want durations quantised again.',
-    },
-    {
-      id: 'record',
-      title: 'Record',
-      key: '⇧R',
-      anchor: () => $('recbtn'),
-      also: () => [$('midibtn'), $('oskbtn')],
-      says: 'Turn on MIDI and the desk listens to your controller. Without one, the keyboard '
-        + 'button puts two octaves on screen — or the song’s own kit on a drum track — '
-        + 'and the computer keys play it.\n\nRecord writes what you play into the selected '
-        + 'track, with starts and held lengths quantised to sixteenths, and copies it '
-        + 'everywhere that part repeats. It only '
-        + 'ever adds. ⌘Z takes back a phrase; Esc silences everything and drops whatever '
-        + 'has not landed yet.',
+      also: () => [$('seqbtn'), $('recbtn')],
+      key: 'N · G',
+      says: 'N puts the piano roll in the bottom half of the desk, where the rack was — what '
+        + 'the SELECTED CHANNEL plays, as notes against bars. G puts the step grid there — '
+        + 'what the KIT plays, sixteen squares a bar. The mixer button beside them brings '
+        + 'the strips back.'
+        + '\n\nRecord — ⇧R — writes what you play into the selected track, from MIDI, the '
+        + 'on-screen keys or the computer keyboard, quantised to sixteenths and copied '
+        + 'everywhere that part repeats. It only ever adds; ⌘Z takes back a phrase, and Esc '
+        + 'silences everything and drops whatever has not landed.',
     },
     {
       id: 'done',
       title: 'That’s the desk',
       says: 'Right-click is worth exploring — strips, track rows, effect slots and bars all '
-        + 'have their own menus. Hover anything to find out what it is.\n\nThe ? brings this '
-        + 'back.',
+        + 'have their own menus. Hover anything to find out what it is, and the gear beside '
+        + 'this ? holds appearance, playback and diagnostics.\n\nThe ? brings this back.',
       end: true,
     },
   ];
@@ -327,7 +291,9 @@ export function createTutorial({
   let raf = 0;
   let rung = [];          // elements currently wearing the ring, so they can be cleaned
   let revealed = null;
-  let roomMade = false;   // did the tour fold a panel to fit the rack, and owe it back
+  let roomMade = false;   // what the tour moved to fit the rack, and owes back on close
+  let devicesWereOpen = true;   // was the Effects panel up before its card opened it
+  let voiceWasOpen = true;      // and the same question for the synth editor
 
   // A fold is animated and the rack is re-measured after it, so the strips are not their
   // final height on the next frame. Long enough to be sure, short enough that the tour
@@ -479,7 +445,20 @@ export function createTutorial({
     // strip's own rows back on the desk, and a plan worked out first would have already
     // written those cards off.
     roomMade = makeRoomForStrips();
-    if (roomMade) await settle();
+    if (roomMade) {
+      await settle();
+      // A SECOND PASS, and it is not belt and braces. Switching the lower half back to
+      // the mixer is asynchronous — the rack is laid out and refitted a frame or two
+      // later — so the first pass asked whether the shrink ladder was eating the strips
+      // at a moment when there was no rack on screen to eat, and always heard no. The
+      // answer is only available once the switch has landed, which is here.
+      const more = makeRoomForStrips();
+      if (more) {
+        // The FIRST pass holds the view to go back to; either may hold the splitter.
+        roomMade = { view: roomMade.view, ratio: roomMade.ratio ?? more.ratio };
+        await settle();
+      }
+    }
     lane = tourLane();
     // Worked out once, up front, so the counter can be honest. A card whose subject is
     // not on this desk right now — the sends row on a short window, the pen on a channel
@@ -507,7 +486,7 @@ export function createTutorial({
     el.hidden = true;
     el.textContent = '';
     // Give back whatever was folded to make room. The desk is left as it was found.
-    if (roomMade) { restoreRoom(); roomMade = false; }
+    if (roomMade) { restoreRoom(roomMade); roomMade = false; }
     try { localStorage.setItem(SEEN_KEY, '1'); } catch { /* private window; ask again */ }
   }
 
