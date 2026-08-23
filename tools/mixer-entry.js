@@ -6443,17 +6443,23 @@ function masterStrip(mix) {
 // number the shrink ladder BARGAINS with — a rung is worth standing on only if the
 // fader and its meter come out of it at a height you can still read and still grab.
 //
-// STRICT, because this number is what the ladder is FOR. At 48 a rung counted as
-// fitting whenever the fader could still be hit with a mouse, which is a much lower bar
-// than being able to mix on it: a laptop window sat for a wide band of heights showing
-// three EQ bands and two sends over a fader with 80px of travel and a meter to match —
-// every row on the strip legible except the one control being held. The rows are read;
-// the fader is used. So the bar is what a fader needs to be worth having, and a rung
-// that cannot pay it hands back a block instead — the sends are 44px, the EQ 66, the
-// inserts a reserved row each, and any of them buys back more travel than it costs to
-// read. Only the last rung, with nothing left to trade, goes below this. See
-// FADER_FLOOR.
-const FADER_MIN = 120;
+// This number is what the ladder is FOR, and it is a bar with a cliff under it: a rung
+// that misses it by a pixel loses a whole block, and the block it loses hands back thirty
+// to sixty pixels of fader at once. So it wants to sit where a fader stops being worth
+// having, and NOT a pixel higher — every pixel above that is a block shed for a fader
+// that was already long enough.
+//
+// Both edges of that have been walked into. At 48 a rung counted as fitting whenever the
+// fader could still be hit with a mouse, and a laptop window sat for a wide band of
+// heights showing three EQ bands and two sends over 80px of travel — every row legible
+// except the one control being held. At 120 the desk shed the sends off a rack whose
+// next rung down was 115px, five short of the bar, and paid for it with a 179px fader
+// nobody asked for. A hundred is under the first and over the second: a fader you can
+// still ride, with the blocks kept until it genuinely is not one.
+//
+// The rows are read; the fader is used. Only the last rung, with nothing left to trade,
+// goes below this — see FADER_FLOOR.
+const FADER_MIN = 100;
 // Two numbers rather than one, because the last rung has nothing left to shed: with
 // the inserts, the sends and the EQ all gone there is no block left to trade, so the
 // fader takes the rest of the squeeze itself and this is where it stops. Only that

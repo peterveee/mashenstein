@@ -290,14 +290,28 @@ assert(duckTransition.duckAmount === 0 && poseFromPlayer(duckTransition, 0).kind
 for (const hero of HEROES) {
   const player = new Player(hero.id);
   const running = poseFromPlayer(player, 0);
+  // AIRBORNE IS NOT THE SAME AS JUMPING, so a jump has to be built as one: a
+  // hero who has spent no jump and is not falling fast has stepped off a ledge,
+  // and he keeps the run cycle rather than being drawn tucked with his arms up.
   player.grounded = false;
+  player.jumps = 1;
   const jumping = poseFromPlayer(player, 0);
+  player.jumps = 0;
+  const stepped = poseFromPlayer(player, 0);
+  // Fast enough to be a real fall — off a cloud, or off the top of a stack.
+  player.vy = -420;
+  const falling = poseFromPlayer(player, 0);
+  player.vy = 0;
   player.grounded = true;
   player.ducking = true;
   const ducking = poseFromPlayer(player, 0);
   assert(running.headTurn === RUN_HEAD_TURN, `${hero.id} gets the production treatment while running`);
   assert(jumping.headTurn === 0 && ducking.headTurn === 0,
     `${hero.id} keeps non-run poses front-facing`);
+  assert(stepped.kind === 'run' && stepped.headTurn === RUN_HEAD_TURN,
+    `${hero.id} keeps running off a short ledge, head and all — the snap to front-facing at the edge was the tell`);
+  assert(falling.kind === 'jump' && falling.headTurn === 0,
+    `${hero.id} does read as falling once the drop is a real one`);
 }
 
 const lorenzo = new Player('lorenzo');

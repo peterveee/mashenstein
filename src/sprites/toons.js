@@ -8903,15 +8903,32 @@ export function poseFromPlayer(player, t) {
   // one; there is no hop, the pose was the whole of it.
   //
   // A hero who has spent no jump and was not thrown by a spring did not jump: he
-  // ran off an edge. Until there is a falling animation to give him he keeps the
-  // run cycle, which is at least the truth — he is still running, the ground has
-  // just stopped. `fell` is passed through so a rig can do better later.
+  // ran off an edge. `fell` is that, and it is passed through so a rig can do
+  // better with it later.
   const fell = !player.grounded && (player.jumps || 0) === 0 && !player.launched;
+  // HOW BIG THE FALL IS DECIDES THE POSE, and how fast he is going is how the
+  // pose finds out.
+  //
+  // Stepping off the end of the road above a tunnel is a 47px drop and stepping
+  // off an island is 33; drawn tucked with his arms up, either one reads as a
+  // hop he never took, which is what got reported as a bug. Falling off the top
+  // of a four-step stack is 128px and coming off the end of the sky road is 96,
+  // and there the running legs are the wrong picture — that IS a fall.
+  //
+  // Speed is the measure because it is the one the pose already has, and
+  // because it is self-correcting: a short drop never builds any, so he runs the
+  // whole way down and lands still running. A long one builds it as he goes, so
+  // he runs off the edge and the fall catches up with him a beat later — which
+  // is both the truth and the funnier picture. -340 is 64px of fall: clear of
+  // the 47 above a tunnel and clear of the 96 off a cloud.
+  const FALL_POSE_VY = -340;
+  const bigFall = fell && (Number(player.vy) || 0) < FALL_POSE_VY;
   const kind = (player.ducking || forcedDuck || recoveringDuck) ? 'duck'
-    : (!player.grounded && !fell) ? 'jump' : 'run';
+    : (!player.grounded && (!fell || bigFall)) ? 'jump' : 'run';
   return {
     kind,
     fell,
+    bigFall,
     phase: player.anim % 1,
     // The bite's clock has to start at 0 the instant the ability fires, not
     // wherever the run's absolute clock happens to be, or biteWave() opens

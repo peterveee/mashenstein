@@ -2485,13 +2485,16 @@ assert(entry.includes('function markShedParts(gone)')
 // the strip you are holding while you mix. Only the last rung, with no block left to
 // trade, ever comes down to the floor.
 //
-// And the comfortable one is STRICT: 48px was a fader you could still hit rather than one
-// you could mix on, so a laptop window sat for a wide band of heights showing every row
-// on the strip over 80px of fader travel. Measured on the shipped song at 120: nothing
-// shed above ~1120px of window with a 175px fader, then inserts (190px fader), then the
-// sends (145px), then the EQ (140px) — each rung hands back more travel than the block
-// it drops costs to read.
-assert(entry.includes('const FADER_MIN = 120')
+// And there is a CLIFF under that number: a rung that misses it by a pixel loses a whole
+// block, and the block hands back thirty to sixty pixels of fader at once. So it belongs
+// exactly where a fader stops being worth having and not a pixel above — both edges have
+// been walked into. At 48 a laptop window sat for a wide band of heights showing every row
+// on the strip over 80px of travel. At 120 the desk shed the send rows off a rack whose
+// next rung down measured 115px — five short — and paid for it with a 179px fader nobody
+// asked for. Measured on the shipped song at 100: a 611px rack shows everything over a
+// 202px fader, a 451px rack drops the chain and keeps EQ and sends over 106px, and a 290px
+// rack is down to the fader at 101px.
+assert(entry.includes('const FADER_MIN = 100')
   && entry.includes('const FADER_FLOOR = 34')
   && /while \(shed < SHED_ORDER\.length && strips < stripChromeAt\(shed\) \+ FADER_MIN\) shed\+\+/.test(entry)
   && /const fader = Math\.max\(FADER_FLOOR, strips - chrome\)/.test(entry)
