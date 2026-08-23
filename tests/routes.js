@@ -471,9 +471,17 @@ assert(overGap.length === 0, `nothing hangs over a break (${overGap.length})`);
 // Re-pinned each tick rather than set once. The run's seed comes from
 // `Date.now()`, so how fast the world is moving under him — and therefore where
 // one frame leaves him — is different every time this file runs.
+//
+// The retry walks him EARLIER into the break rather than dropping him on the same
+// spot three times. The seed is fixed for the whole file, so the same position at
+// the same speed is the same frame and the same answer: a fast world carried him
+// out through the far edge before the ground was sampled, and repeating it just
+// carried him out again. Starting nearer the leading edge leaves more break in
+// front of him, which is the thing that has to outlast one frame's travel.
 let leftAtBreak = false;
-for (let i = 0; i < 3 && !leftAtBreak; i++) {
-  standAt(sky.gaps[0].x + sky.gaps[0].w * 0.35);
+for (const into of [0.35, 0.15, 0.05]) {
+  if (leftAtBreak) break;
+  standAt(sky.gaps[0].x + sky.gaps[0].w * into);
   run.route = sky;
   run.player.y = 0;
   run.player.grounded = true;

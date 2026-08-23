@@ -177,12 +177,28 @@ const maxAdjacentStep = (samples) => {
   return max;
 };
 
+// Bit-exact is the rule, and nine of the eleven meet it exactly — two renders of the
+// same graph come back with `diff` at 0. The exceptions are the two effects that ask
+// Chromium to OVERSAMPLE: a WaveShaper at '2x'/'4x' resamples up, shapes, and filters
+// back down, and that resampler is not bit-reproducible between renders. `tape` (4x)
+// drifts by ~3e-6 and `vowel` (2x) by ~7e-8 — in the last few digits of every sample
+// after the first 50ms, with the signal itself unchanged — and it is intermittent, so
+// a threshold pinned just above the drift passes here and fails on a CI runner, which
+// is exactly how this arrived.
+//
+// The allowance is still three orders of magnitude under what the assertion is for.
+// What it catches is an effect seeded from `Math.random` — the reason Reverb is ours
+// rather than Tone's — and that differs by the size of the SIGNAL, ~1e-1, never by the
+// size of a rounding error.
+const OVERSAMPLED = new Set(['tape', 'vowel']);
+const determinism = (id) => (OVERSAMPLED.has(id) ? 1e-4 : 5e-6);
+
 for (const id of ids) {
   const a = await page.evaluate((x) => window.__renderEffect(x), { id, params: params[id], gate: id === 'rhythmgate' });
   const b = await page.evaluate((x) => window.__renderEffect(x), { id, params: params[id], gate: id === 'rhythmgate' });
   assert(a.every((ch) => ch.every(finite)), `${id} renders finite samples`);
   assert(peak(a) > 1e-5, `${id} renders audible output`);
-  assert(diff(a, b) < 5e-6, `${id} renders deterministically`);
+  assert(diff(a, b) < determinism(id), `${id} renders deterministically`);
   const dry = await page.evaluate((x) => window.__renderEffect(x), { id: null });
   const transparent = await page.evaluate((x) => window.__renderEffect(x), { id, params: params[id], wet0: true, gate: false });
   assert(diff(dry, transparent) < 5e-6, `${id} is transparent at wet 0`);

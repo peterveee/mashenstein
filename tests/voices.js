@@ -1060,7 +1060,22 @@ try {
   // The upper bound the sweep has never had. Nothing else in this suite renders a
   // CHORD, so the drive shaper sitting after the summed global VCA — one shaper for
   // every tone at once — is otherwise never exercised at all. `bestVowelPad` is the
-  // heaviest preset in the library; five notes of it measure 1.23× one note.
+  // heaviest preset in the library; five notes of it measure 2.97× one note, against the
+  // 5× a straight sum would give — so the shaper is taking about 4.5 dB off the stack.
+  //
+  // That bound used to be 2×, and the number it was calibrated against was not a property
+  // of the drive at all. This fixture strikes the chord FOUR times, and while MRDR-3's
+  // ensemble jitter was on, each note-on drew its own vibrato-spread phases: `single` was
+  // therefore the maximum over four random draws and climbed with every one of them
+  // (0.0966 at one note-on, 0.1936 at two, 0.2225 at four) while the chord's peak never
+  // moved off 0.318 — five pitches beating against each other are already averaged, so
+  // there was no lottery left to win. The denominator was inflated; the ratio flattered.
+  //
+  // With the jitter off engine-wide (2026-08-19 — see MRDR_ENSEMBLE_JITTER in
+  // src/engine/voices.js) every occurrence is the same, so `single` settles at its own
+  // level and this reads the shaper instead of the fixture. Measured both ways at ONE
+  // note-on, jitter on and off agree exactly — 3.28× — which is what says the drive did
+  // not change here and the measurement did.
   // The length is STATED, because this fixture is auditioning a sound rather than
   // playing music: `bestVowelPad` opens over 1.2s and the chords lane's legacy default is
   // 2.6 steps — 325ms at this tempo — which measures the pad inside its own attack and
@@ -1078,9 +1093,9 @@ try {
     { repeat: 1, mix: null, trackId: null })).outL);
   assert(five < 1,
     `the heaviest MRDR-3 preset does not clip on a five-note chord (peak ${five.toFixed(4)})`);
-  assert(five < single * 2,
-    'and a chord of it stays near the level one note of it reaches, rather than summing'
-    + ` straight through the drive (${(five / single).toFixed(2)}× one note)`);
+  assert(five < single * 4,
+    'and a chord of it comes out well under the sum of its notes, rather than summing'
+    + ` straight through the drive (${(five / single).toFixed(2)}× one note, against 5×)`);
 
   // Vibrato SPREAD is the one control that builds a phase-rotated wave per note-on and
   // per unison voice, so it is the one that fills the phase-wave cache. The cache is

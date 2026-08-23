@@ -2242,12 +2242,11 @@
      chain — see --fxownh in insertSlots. */
   #rackwrap.no-fx #masterslot .master-fxbtns,
   #rackwrap.shed-fx #masterslot .master-fxbtns { display: flex; }
-  /* And ALWAYS its own height, not the rack's reservation. That reservation is what
-     makes the slots land on one line across the strips — and this block is in the body
-     while every other one is in the foot, so it has never lined up with any of them.
-     All it did there was carry the busiest channel's chain length into the master's
-     body, and --bodyh is the tallest body in the rack held on EVERY strip: one channel
-     with six inserts put 199px of reserved nothing over every fader on the desk. */
+  /* And ALWAYS its own height, not the rack's reservation. Every strip's block is an
+     upper-body block now, so the reservation does line them up — but the master's is the
+     one that OUTLIVES the others: it is kept when the switch or the ladder has taken
+     every other strip's away, and with nothing left to line up with, a reservation cut
+     for the busiest channel's chain is an empty band the master pays for alone. */
   #masterslot .master-fxbtns { height: var(--fxownh, auto); }
   /* Whole, or not at all. MASTER is out of the --bodyh measurement (see measureRungAt),
      so the band is what the channels and the returns NEED — and its own chain is then a
@@ -3150,6 +3149,16 @@
                                           column-gap: 12px; }
   .mixersettingsgroup.settings-playback > h3 { grid-column: 1 / -1; }
   .mixersettingsgroup.settings-playback .audiochoice + .audiochoice { margin-top: 0; padding-top: 0; border-top: 0; }
+  /* The backend switch spans both columns under the two selects: it is a third question
+     about playback, not a third of a row. */
+  .mixersettingsgroup.settings-playback > .audioswitchchoice { grid-column: 1 / -1; margin-top: 10px;
+                                          padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent); }
+  /* The whole head is the label, so the name toggles the switch as well as the track —
+     the same gesture the Appearance switch already answers to. */
+  .mixersettingsgroup .audioswitchhead { display: flex; align-items: center; gap: 12px;
+                                         justify-content: space-between; margin: 0; cursor: pointer; }
+  .mixersettingsgroup .audioswitchhead > span:first-child { color: var(--dim); font-size: 10px;
+                                         font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   .mixersettingsgroup.settings-cache { display: grid; grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(0, 1fr));
                                       column-gap: 8px; align-items: center; }
   .mixersettingsgroup.settings-cache > h3 { grid-column: 1; grid-row: 1; margin-bottom: 0; }
@@ -3195,12 +3204,20 @@
   .preseticon { fill: none; stroke: currentColor; stroke-width: 1.2;
                 stroke-linecap: round; stroke-linejoin: round; }
   .preseticon .knob { fill: currentColor; stroke: none; }
-  /* 19px, the size the big close draws its ✕ at, and the same size the fold arrows now
-     take: the three borderless marks on the desk are one set, and at 22 this one was the
-     only member drawn a size up. */
   #addtrackbtn { width: 24px; height: 24px; padding: 0; border: 0; display: grid; place-items: center;
-                 color: var(--ctl-hi); background: none; font: 400 19px/1 Arial, sans-serif; }
+                 color: var(--ctl-hi); background: none; }
+  /* The mark is a stroked path, so the stroke has to be said out loud: a two-line plus
+     encloses nothing, and on the SVG defaults of fill-black/stroke-none it drew nothing
+     at all while still taking the click.
+     19px, the size the big close draws its ✕ at and the size the fold arrows take: the
+     three borderless marks on the desk are one set, and at 22 this one was the only
+     member drawn a size up. stroke-width 1.35 on a 16 viewBox is the chevrons' 2 on a
+     24, so the marks weigh the same on screen as well as measure the same. */
+  #addtrackbtn svg { width: 19px; height: 19px; fill: none; stroke: currentColor;
+                     stroke-width: 1.35; stroke-linecap: round; }
   #addtrackbtn:hover { color: var(--accent); background: none; }
+  /* No plate to ring, same as the fold buttons. */
+  #addtrackbtn:focus-visible { outline: none; color: var(--accent); }
   #deletesong { color: var(--hot); }
   #deletesong:hover { color: #fff; background: var(--hot-wash); }
   /* The effect catalogue, grouped and priced. It was a 22-line dropdown, which
@@ -3645,12 +3662,15 @@
   /* Simple waveform picks use the same little silhouettes as Advanced. Keep the
      label beside the selector and the buttons compact, so the row leads the Simple
      panel without becoming a wall of abbreviated text. */
-  #voiceedit .devgrid .segrow.vewavegraph { grid-column: 1 / -1; flex-direction: row;
+  :is(#voiceedit, #synthfull) .devgrid .segrow.vewavegraph { grid-column: 1 / -1;
+                                             flex-direction: row;
                                              align-items: center; gap: 8px; }
-  #voiceedit .devgrid .segrow.vewavegraph > .k { flex: none; width: auto; }
-  #voiceedit .devgrid .segrow.vewavegraph .vewaveopts { flex: 1 1 auto; justify-content: flex-start;
+  :is(#voiceedit, #synthfull) .devgrid .segrow.vewavegraph > .k { flex: none; width: auto; }
+  :is(#voiceedit, #synthfull) .devgrid .segrow.vewavegraph .vewaveopts { flex: 1 1 auto;
+                                                        justify-content: flex-start;
                                                         gap: 3px; min-width: 0; }
-  #voiceedit .devgrid .segrow.vewavegraph .vewavebtn { flex: 1 1 0; min-width: 0; max-width: 38px;
+  :is(#voiceedit, #synthfull) .devgrid .segrow.vewavegraph .vewavebtn { flex: 1 1 0;
+                                                      min-width: 0; max-width: 38px;
                                                       display: flex; justify-content: center;
                                                       align-items: center; padding: 3px 2px; }
   #voiceedit .vewavepath { display: block; width: 100%; min-width: 0; max-width: 26px;
@@ -7150,9 +7170,22 @@
   /* The reserved height is the rack's, written as a variable by insertSlots so a rule
      can still override it — see the #masterslot chain, which is re-sized to its own
      chain once it is the only block left showing. */
+  /* `flex: none` IS the reservation. The block is a flex item in the strip's body, and
+     a height on a shrinkable item is a suggestion: every strip whose chain was shorter
+     than the rack's longest had its block squeezed back to its own contents, which is
+     the exact wandering the reserved height exists to stop — six strips with six
+     different fader tops and six different fader lengths, on a desk whose whole layout
+     is built to keep them level. */
   .fxbtns { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px;
-            height: var(--fxrowsh, auto);
-            box-sizing: content-box; margin: 0 0 8px; position: relative; }
+            flex: none; height: var(--fxrowsh, auto);
+            box-sizing: content-box; margin: 8px 0 0; position: relative; }
+  /* The air above it belongs to the block now that the block is in the body: it is the
+     gap between the rows and the chain, so it goes when there are no rows — with EQ and
+     Sends both off, by hand or by the ladder, the chain is the top of the strip and
+     starts where the rows would have. The master's chain is its body's first child and
+     has never had anything above it. */
+  #rackwrap:is(.no-eq, .shed-eq):is(.no-sends, .shed-sends) .fxbtns,
+  .stripbody > .fxbtns:first-child { margin-top: 0; }
   /* Two pixels down: a 23px button in a 27px slot was hard against the top of it, and
      beside a strip whose slot is still an empty outline the two read as different
      heights. With the margin the stack sits centred in the block it is reserved. */
@@ -7357,23 +7390,28 @@
                display: flex; flex-direction: column; overflow: hidden;
                background: var(--panel); }
   #upperwork #timeline { flex: none; }
+  /* The workspace splitter now supplies the visual separation below Arrangement, so
+     its horizontal rail can sit flush against the Arrangement edge. Keep the old
+     landing for other layouts that do not have the shared splitter. */
   #upperwork #arrange { flex: 1 1 auto; min-height: 0; max-height: none !important;
-                        padding-bottom: var(--arrgrid-pad); border-bottom: 0; }
+                        padding-bottom: 0; border-bottom: 0; }
   #upperwork #arrgrid { min-height: 0; overflow-y: auto; }
-  #worksplitter { position: relative; height: 7px; flex: none; z-index: 12;
-                  cursor: ns-resize; touch-action: none; background: var(--panel); }
+  #worksplitter { position: relative; height: 7px;
+                  flex: none; z-index: 12;
+                  cursor: ns-resize; touch-action: none; background: transparent; }
   #worksplitter::after { content: ''; position: absolute; left: 0; right: 0;
-                         top: 3px; height: 1px;
+                         top: 0; height: 1px;
                          background: color-mix(in srgb, var(--line2) 68%, transparent);
-                         box-shadow: 0 3px 10px -7px #000b; }
+                         box-shadow: none; }
   #worksplitter:hover,
   #worksplitter.dragging,
   #worksplitter:focus-visible {
-    background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+    background: transparent;
   }
   #worksplitter:hover::after,
   #worksplitter.dragging::after,
-  #worksplitter:focus-visible::after { height: 2px; background: var(--accent); }
+  #worksplitter:focus-visible::after { top: 1px; height: calc(100% - 2px);
+                                       background: var(--accent); box-shadow: none; }
   #lowerwork { flex: 1 1 auto; min-height: 132px; display: flex; overflow: hidden;
                background: var(--panel); }
   #mixerview, #lowerwork #notes { flex: 1 1 auto; min-width: 0; min-height: 0; }
@@ -7650,7 +7688,7 @@
   /* The panel now uses the desk's standard close mark. It belongs in the compact right
      control cluster beside the caret, so it keeps its hit target without adding a second
      margin between the controls. */
-  #devices #devfold.popclose { width: 26px; height: 26px; margin-left: 0; order: 4;
+  #devices #devfold.popclose { width: 28px; height: 28px; margin-left: 0; order: 4;
                                padding: 0; display: inline-grid; place-items: center;
                                font-size: 19px !important; line-height: 1; }
   #devices #devfold.popclose span { font-size: inherit; line-height: 1; }
@@ -7810,16 +7848,6 @@
 
   <div class="grp">
     <button id="clearsolo" class="iconbtn" title="Nothing is soloed">S</button>
-  </div>
-
-  <!-- MRDR-3's worklet backend, as a switch you can reach — docs/MRDR-3-worklet-spec.md §9.2.
-       A BENCH CONTROL and labelled as one: the AW backend is scaffolding that gets deleted
-       when the project ends, so this is not a feature pill and must never read as one. It
-       lives on the desk because the desk is the bench; nothing player-facing offers it,
-       and no song can be saved carrying it. -->
-  <div class="grp">
-    <button id="mrdr3aw" class="iconbtn" aria-pressed="false"
-      title="MRDR-3 renders natively. Click to switch every MRDR-3 lane to the AudioWorklet backend.">AW</button>
   </div>
 
 
@@ -8727,6 +8755,22 @@
             <option value="1">Maximum · 1 second</option>
           </select>
           <p class="audioexplain"><strong>Scheduling stage.</strong> More read-ahead protects against busy-browser stalls; larger values make edits and loops take longer to be heard.</p>
+        </div>
+        <!-- MRDR-3's worklet backend, as a switch you can reach — docs/MRDR-3-worklet-spec.md §9.2.
+             It sits here rather than on the toolbar because it answers the same question the
+             two controls above it answer — why is this song struggling — and because a pill on
+             the toolbar reads as a feature, which this is not: it is session-only scaffolding
+             that gets deleted when the project ends, and no song can be saved carrying it.
+             The caveats are in the copy, because a control whose caveats live in a document is
+             a control whose caveats nobody reads. -->
+        <div class="audiochoice audioswitchchoice">
+          <label class="audioswitchhead" for="mrdr3aw"><span>MRDR-3 worklet voices</span>
+            <span class="settings-switch">
+              <input id="mrdr3aw" type="checkbox" checked>
+              <span class="settings-switch-track" aria-hidden="true"></span>
+            </span>
+          </label>
+          <p class="audioexplain"><strong>Synthesis stage.</strong> On, every MRDR-3 lane is rendered per sample on the audio thread — about three times cheaper on dense material, and it uses no note cache at all, so a cold cache cannot stall the transport. Off, those lanes go back to the older native engine, which builds nodes per note and leans on the cache. Either way the change is heard from the <em>next</em> note: anything already sounding finishes on the backend it started on. This is a bench switch, not a song setting — it never leaves this session and is never saved.</p>
         </div>
       </section>
       <section class="mixersettingsgroup settings-cache" aria-labelledby="settingscachehead">

@@ -6255,7 +6255,16 @@ function channelStrip(lane, mix, slotRows, number) {
   });
   fader = fb.fader;
 
-  foot.append(insertSlots(key, lane.label, slotRows), faderRow(fb.col), panRow(pan.el), btns);
+  // THE INSERT BLOCK IS AN UPPER-BODY BLOCK, like the EQ and the sends — the third of
+  // the three parts the header switches turn on and off, and it stacks with them rather
+  // than sitting under them in the foot. In the foot it was a fixed block below a band
+  // that stayed the same height whether or not the band had anything in it, so turning
+  // EQ and Sends off left the chain floating in the middle of the strip with the room
+  // they gave up above it. In the body it packs against whatever is still shown, so with
+  // both of them off the chain IS the top of the strip. The band still holds every strip
+  // level — see --bodyh — and the fader still takes everything the blocks do not.
+  body.append(insertSlots(key, lane.label, slotRows));
+  foot.append(faderRow(fb.col), panRow(pan.el), btns);
   stripMenu(el, key, 'channel');
   meters.push({ key, chans: fb.chans, meter: fb.meter });
   return el;
@@ -6334,8 +6343,9 @@ function sendStrip(def, mix, slotRows) {
     ev.stopPropagation();
     setAuxSolo(def.id, !solo.classList.contains('on'));
   };
-  foot.append(insertSlots(key, def.name, slotRows), faderRow(fb.col), panRow(pan.el),
-    btnRow(mute, solo));
+  // Same stack as a channel's, under this return's own device link and EQ.
+  body.append(insertSlots(key, def.name, slotRows));
+  foot.append(faderRow(fb.col), panRow(pan.el), btnRow(mute, solo));
   stripMenu(el, key, 'send');
   meters.push({ key, chans: fb.chans, meter: fb.meter });
   return el;
@@ -23380,29 +23390,29 @@ $('clearsolo').onclick = clearAllSolo;
 //
 // A bench control, not a feature. It forces every MRDR-3 lane through one backend or the
 // other so the two can be heard against each other on real material, and it is SESSION
-// ONLY — a reload comes back native, because a flag that survives a reload is one power
-// cycle away from being a scaffold that shipped.
+// ONLY — a reload comes back to the default, because a flag that survives a reload is one
+// power cycle away from being a scaffold that shipped.
 //
-// The tip carries what §9.3 says this cannot honestly do, because a control whose caveats
-// live in a document is a control whose caveats nobody reads:
+// It lives in Mixer settings under Playback safety rather than on the toolbar: it answers
+// the same question the buffer and read-ahead controls answer, and a pill on the toolbar
+// reads as a feature, which this is not. The switch's own copy in mixer-shell.html carries
+// what §9.3 says this cannot honestly do, because a control whose caveats live in a
+// document is a control whose caveats nobody reads:
 //
 //   · it takes effect at the NEXT note-on, so a pad already sounding finishes on the old
 //     backend and the two overlap for a bar — correct, and it looks like a bug
 //   · presets the core cannot yet render AS AUTHORED go SILENT rather than wrong, which
 //     is the honest failure but means a song can come back with holes in it
 function syncMrdr3AwButton() {
-  const btn = $('mrdr3aw');
-  if (!btn) return;
+  const box = $('mrdr3aw');
+  if (!box) return;
   const on = mrdrComparisonBackend() === 'worklet';
-  btn.classList.toggle('on', on);
-  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  btn.dataset.tip = on
-    ? 'MRDR-3 AW: the worklet backend, and the DEFAULT. Every MRDR-3 lane renders'
-      + ' per-sample in the audio thread and uses no note cache at all. Takes effect on'
-      + ' the next note. Click for the native backend.'
-    : 'MRDR-3 is on the NATIVE backend — the old engine, which builds nodes per note and'
-      + ' leans on the note cache. Click to go back to the worklet, which is the default.';
-  btn.title = btn.dataset.tip;
+  box.checked = on;
+  box.title = on
+    ? 'On: the worklet backend, and the DEFAULT. Every MRDR-3 lane renders per-sample in'
+      + ' the audio thread and uses no note cache at all. Takes effect on the next note.'
+    : 'Off: MRDR-3 is on the NATIVE backend — the old engine, which builds nodes per note'
+      + ' and leans on the note cache. Switch back on for the default worklet backend.';
 }
 // Dismissing is a decision about THIS stretch of trouble, not a preference — see the note
 // on `syncOverloadNotice`. It records when, so the notice can re-arm once the desk has
@@ -23422,11 +23432,12 @@ function warmMrdr3Idle() {
   else setTimeout(run, 0);
 }
 
-$('mrdr3aw').onclick = () => {
+$('mrdr3aw').onchange = () => {
   // 'native' rather than null: null means "whatever the preset says", which is now the
-  // worklet, so clearing it would not switch anything. The button has to name the other
-  // backend explicitly to be a toggle at all.
-  setMrdrComparisonBackend(mrdrComparisonBackend() === 'worklet' ? 'native' : 'worklet');
+  // worklet, so clearing it would not switch anything. The switch has to name the other
+  // backend explicitly to be a toggle at all — and it reads the checkbox rather than the
+  // current backend, so the state on screen is always the state that was asked for.
+  setMrdrComparisonBackend($('mrdr3aw').checked ? 'worklet' : 'native');
   syncMrdr3AwButton();
   if (mrdrComparisonBackend() === 'worklet') warmMrdr3Idle();
   toast(mrdrComparisonBackend() === 'worklet'

@@ -42,6 +42,7 @@ import * as BARBER_OF_SEVILLE from './barber-of-seville.js';
 import * as BARBER_Q from './barber-q.js';
 import * as BARBER from './barber.js';
 import * as BITTER_MARKET from '../../../work/scratch/bitter-market.js';
+import * as BITTER_PYLON from '../../../work/scratch/bitter-pylon.js';
 import * as BRAVE_COMET from '../../../work/scratch/brave-comet.js';
 import * as BRAVE_DIVER from '../../../work/scratch/brave-diver.js';
 import * as BRAVE_SIREN from '../../../work/scratch/brave-siren.js';
@@ -211,6 +212,7 @@ export const IMPORTED_BY_ID = {
   "barber-q": { bank: BARBER_Q.bank, title: BARBER_Q.title, group: "imported", writable: true },
   "barber": { bank: BARBER.bank, title: BARBER.title, group: "imported", writable: true },
   "bitter-market": { bank: BITTER_MARKET.bank, title: BITTER_MARKET.title, group: "scratch", writable: true },
+  "bitter-pylon": { bank: BITTER_PYLON.bank, title: BITTER_PYLON.title, group: "scratch", writable: true },
   "brave-comet": { bank: BRAVE_COMET.bank, title: BRAVE_COMET.title, group: "scratch", writable: true },
   "brave-diver": { bank: BRAVE_DIVER.bank, title: BRAVE_DIVER.title, group: "scratch", writable: true },
   "brave-siren": { bank: BRAVE_SIREN.bank, title: BRAVE_SIREN.title, group: "scratch", writable: true },
