@@ -109,6 +109,28 @@ export function roadAt(worldX, f) {
   return true;
 }
 
+/**
+ * The same question asked of a hero's FEET rather than of a column.
+ *
+ * A runner is eight pixels wide and the lip of a slab is one, so "is there
+ * road at x" is not the question the physics wanted — it is the question that
+ * made a hero with both feet planted on the far lip of a hole drop through it,
+ * because the one column being sampled was still inside the opening. There is
+ * ground under you if there is ground under ANY part of you: that is the rule
+ * every platformer has, and it is the rule on both sides of the lip, so a toe
+ * on the edge catches the slab and a heel on the edge keeps you out of the
+ * hole.
+ *
+ * `[x0, x1]` is the hero's drawn footprint — see RunState.playerFootprint.
+ */
+export function roadUnderFeet(x0, x1, f) {
+  if (x1 < f.x || x0 > f.x + f.w) return false;
+  for (const g of f.gaps || []) {
+    if (x0 >= g.x && x1 <= g.x + g.w) return false;   // wholly inside one break
+  }
+  return true;
+}
+
 export function routeRise(worldX, f) {
   const t = (worldX - f.x) / f.w;
   // `t < 0`, not `t <= 0`: the mouth itself is already at entry height.

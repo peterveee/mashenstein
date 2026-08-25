@@ -724,6 +724,70 @@ frames(1);
 assert(run.route === null && Math.abs(run.player.y) < 1.5,
   'so riding it out returns the hero to the lane still running');
 
+// ---- the lip is judged against the HERO, not against one column -------------
+//
+// The bug this pins: a hero landing at the very edge of an island over a cave
+// fell through it. Every surface test sampled `playerWorldX`, which is the
+// LEFT column of a twelve-pixel runner, so the question being asked was "is
+// there ground under his left ear" — wrong at both lips and wrong in opposite
+// directions. Over a hole it swallowed a hero standing entirely past the far
+// edge; at a slab's near lip it refused one with most of his weight already on
+// it. The rule now is the one every platformer has: any part of him over the
+// surface is standing on it.
+const { PLAYER_SPRITE_W } = await import('../src/game/player.js');
+const { tunnelOpenings } = await import('../src/game/routes.js');
+
+// A landing, resolved in one swept step at a chosen x, with no camera drift.
+function catchesSlabAt(worldX, slab) {
+  run.camX = worldX - PLAYER_X;
+  run.route = null;
+  run.player.grounded = false;
+  run.player.vy = -300;
+  run.player.stomping = false;
+  const g = run.groundYAt(worldX);
+  run.player.y = g - slab.topY - 4;             // feet 4px BELOW the top now
+  return !!run.updateRoute(slab.topY - 4);      // and 4px above it before the step
+}
+// Standing on the lane at x, with nothing else in the world: does the ground
+// hold, or does an opening claim him?
+function laneHoldsAt(worldX) {
+  run.camX = worldX - PLAYER_X;
+  run.route = null;
+  run.player.y = 0;
+  run.player.vy = 0;
+  run.player.grounded = true;
+  run.obstacles.length = 0;
+  run.updateRoute(run.groundYAt(worldX));
+  return run.route === null;
+}
+
+const slabEnd = island.x + island.w;
+assert(catchesSlabAt(island.x - PLAYER_SPRITE_W + 1, island),
+  'a toe on the near lip catches the slab');
+assert(!catchesSlabAt(island.x - PLAYER_SPRITE_W - 1, island),
+  'and a hero still short of it does not');
+assert(catchesSlabAt(slabEnd - 1, island),
+  'a heel on the far lip catches it too — the two lips are the same rule');
+assert(!catchesSlabAt(slabEnd + 1, island),
+  'and past the end there is nothing to catch');
+
+// The reported fall-through, at every opening a tunnel has. A hero whose body
+// is clear of the hole has ground under him and must keep it.
+for (const [i, h] of tunnelOpenings(tunnel).entries()) {
+  const far = h.x + h.w;
+  assert(laneHoldsAt(far),
+    `opening ${i}: landing with a heel on the far lip stays on the top path`);
+  assert(laneHoldsAt(h.x - 1),
+    `opening ${i}: and a toe on the near lip does too`);
+  // Still a hole, though — forgiveness at the lips is not a bridge across it.
+  assert(!laneHoldsAt(h.x + (h.w - PLAYER_SPRITE_W) / 2),
+    `opening ${i}: with nothing under him in the middle of it`);
+  assert(h.w > PLAYER_SPRITE_W + 8,
+    `opening ${i}: and it is wide enough that the forgiveness cannot span it `
+    + `(${Math.round(h.w)}px against a ${PLAYER_SPRITE_W}px hero)`);
+}
+run.obstacles.length = 0;
+
 // ---- the camera re-pins, or none of the above is playable -------------------
 // A road 210px up cannot be framed by craning (38px of apron) or by zooming
 // (the whole game would shrink to hold a groundline the player has left). The

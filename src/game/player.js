@@ -38,6 +38,12 @@ export const DUCK_OUT_T = 0.1;
 // room for ducking early. Releasing re-arms instantly; the cost of overstaying
 // is having to re-press with the hazard already overhead.
 export const DUCK_MAX_T = 1.0;
+// The contact kick's whole life, in seconds: the leg snaps out over the first
+// ~45% of it, holds extended while the crate comes apart, then recovers. The
+// hold is what the bake-off picked ('held', 0.22s out) over a faster jab and a
+// slower shove — a jab was gone before the debris, and a shove read as a push
+// rather than a strike.
+export const SLIDE_KICK_T = 0.34;
 // The walk cycle is driven by scroll speed, not by wall time, so the stride
 // stays planted as the run accelerates: anim advances at world.speed / this.
 // Lower means faster legs at the same speed.
@@ -64,6 +70,16 @@ export const PLAYER_X = 56;      // fixed world offset from camX
 export const PLAYER_W = 8;       // hitbox (12px sprite, 2px inset)
 export const PLAYER_H = 14;
 export const DUCK_H = 7;
+// How wide the hero is DRAWN. The hitbox is inset inside it — 2px of shoulder
+// and elbow either side that hazards are allowed to pass through, because being
+// clipped by a crate your sleeve overlapped is not a hit anyone accepts.
+//
+// It is a separate number from PLAYER_W because the two answer different
+// questions. What may HURT you is judged against the hitbox, which is mean on
+// purpose. What may HOLD YOU UP is judged against this, which is generous on
+// purpose: the player aims the landing with the sprite, so the sprite is what
+// has to be over the ledge. See RunState.playerFootprint.
+export const PLAYER_SPRITE_W = 12;
 
 export function jumpHeightFor(hero) {
   const v = BASE_JUMP_V * hero.jumpMult;
@@ -90,6 +106,12 @@ export class Player {
     this.duckAmount = 0; // visual crouch blend: 0 standing, 1 fully planted
     this.duckDirection = 0;
     this.duckHoldT = 0;      // how long the current slide has been held
+    // The contact kick. Counts DOWN from SLIDE_KICK_T on the frame a slide
+    // plows a crate; poseFromPlayer turns it into the front leg's extension.
+    // A timer rather than a flag because the pose is a snap out and a slower
+    // recovery, and the leg has to be somewhere definite on every frame in
+    // between.
+    this.slideKickT = 0;
     this.duckSpent = false;  // window used up; release to re-arm
     this.floating = false;
     this.iframes = 0;
@@ -156,6 +178,7 @@ export class Player {
     this.ducking = false;
     this.duckAmount = 0;
     this.duckDirection = 0;
+    this.slideKickT = 0;
     this.duckHoldT = 0;
     this.duckSpent = false;
     // relayCharge deliberately survives: an unspent charge follows the player
@@ -199,6 +222,28 @@ export class Player {
       return false;
     }
     return true;
+  }
+
+  // The kick runs down on its own clock, not the duck's: the leg has to finish
+  // its swing even if the slide ends or the hero stands up mid-recovery, or a
+  // crate broken on the last frame of a slide leaves the leg snapped out and
+  // then teleports it home.
+  tickSlideKick(dt) {
+    if (this.slideKickT > 0) this.slideKickT = Math.max(0, this.slideKickT - dt);
+  }
+
+  // The kick as a 0..1 extension, shaped here rather than in the painter: the
+  // timer is this class's, and a sprite that had to divide by SLIDE_KICK_T
+  // would be reaching into the run to find out how long a kick is.
+  //
+  // Fast OUT, slower home — the snap takes the first 45% of the timer and the
+  // recovery the rest. A symmetric curve reads as the leg waving rather than
+  // striking, which is the whole difference between a kick and a kick-shaped
+  // wobble.
+  get slideKick() {
+    if (this.slideKickT <= 0) return 0;
+    const age = 1 - this.slideKickT / SLIDE_KICK_T;
+    return age < 0.45 ? age / 0.45 : Math.max(0, 1 - (age - 0.45) / 0.55);
   }
 
   updateDuckBlend(dt, target) {
@@ -254,6 +299,7 @@ export class Player {
     }
     if (this.dashT > 0) this.dashT -= dt;
     if (this.boostT > 0) this.boostT -= dt;
+    this.tickSlideKick(dt);
     if (this.rollT > 0) {
       this.rollT -= dt;
       // A charged roll ends clean: no ringing ears.
@@ -343,6 +389,6 @@ export class Player {
   box(camX, groundY, screenX = PLAYER_X) {
     const x = camX + screenX;
     const bottom = groundY - this.y;
-    return { x: x + (12 - this.hitW) / 2, y: bottom - this.hitH, w: this.hitW, h: this.hitH };
+    return { x: x + (PLAYER_SPRITE_W - this.hitW) / 2, y: bottom - this.hitH, w: this.hitW, h: this.hitH };
   }
 }

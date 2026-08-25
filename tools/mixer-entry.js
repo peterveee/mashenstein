@@ -193,6 +193,17 @@ const DEV_OVERRIDDEN = _urlDev === '0' || STATIC_EMULATED;
 // never written to a file, and the versions it lists are somebody else's afternoons.
 if (!DEV_USER) { const historyButton = $('history'); if (historyButton) historyButton.hidden = true; }
 
+// A/B is a DEV control now. It works perfectly well on a user desk — a static save keeps
+// its own `saved` copy, so hold-to-compare answers against the last save rather than
+// against the shipped file — but it is a mixing-against-a-previous-take habit that the
+// desk does not otherwise ask for, and the guided tour stopped teaching it. Undo, next
+// to it, is the control a user reaches for instead.
+//
+// Hidden rather than removed: `abDown`/`abUp` still bind to it, `#ab` is still the thing
+// the dev desk shows, and a hidden button raises no pointer events — so there is nothing
+// to guard at the other end.
+if (!DEV_USER) { const abButton = $('ab'); if (abButton) abButton.hidden = true; }
+
 const role = $('songrole');
 if (role) {
   // Emulation says so in the footer. A desk that has quietly dropped most of its songs

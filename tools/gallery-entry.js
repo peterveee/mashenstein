@@ -3503,6 +3503,101 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // treatment, and hero gear (Fernwick's shield, Gnash's tail) is not in the
 // slide yet.
 
+// The slide head-tilt bake-off used to sit here — 0.00, 0.28, 0.38 and 0.50
+// rad against the shipped 0.18, on four skulls. Settled and SHIPPED at 0.28:
+// drawDuckSlide rotates the head that far about its own centre and counters
+// with a gaze that holds the pupils level, so the hero lies back and keeps
+// watching the track. The pose.slideHeadTilt seam it read is gone with it —
+// the angle has one home now, which is the point.
+//
+// What the far end taught, and why it lost: past ~0.4 rad the skull is fine
+// but the trailing gear is not. Kiko's ribbons and B-33P's aerial swing wide
+// of a rotation the face barely registers, so the gear caps the angle rather
+// than the head does.
+
+// The slide kick-reaction bake-off used to sit here — look, brace, face, and
+// two stacks of them, each against the shipped leg-only head. Settled and
+// SHIPPED at LOOK + BRACE: drawDuckSlide brings the chin down 0.09 rad and
+// puts the eyes on the crate, both riding the leg's own `kick` 0..1. The
+// pose.kickFace seam is gone with it.
+//
+// `face` lost, and on cost rather than taste: a contact expression has to ride
+// browRaise/faceSurprised, and those open Gnash's smirk into a surprise mouth
+// and re-shape B-33P's visor — the same tax the drawDuckSlide note records
+// pose.roll charging when the head was handed it.
+//
+// Two things this cost elsewhere, both kept: drawEyes now CLAMPS the pupil
+// inside its own white (the counter-gaze was already 0.001u past the rim at
+// the shipped tilt, in production, before any kick), and the counter-gaze
+// coefficient came back from -0.10 to -0.07 so the flick has somewhere to go.
+
+// --------------------------------------------- slide contact-kick bake-off
+// LAB — gallery only, and speculative: NOTHING in the run drives this. No
+// obstacle is broken by a slide today (dash, stomp, roll and the spanner
+// flurry are the four things that shatter a breakable), so this is the pose
+// question asked BEFORE the gameplay one — if the front leg kicked out on
+// contact, would it read as a kick at this size, or as the leg glitching?
+//
+// pose.slideKick (0..1) is the seam. It moves three things at once, because a
+// kick is not a longer leg: the foot travels forward, it lifts off the deck as
+// the shin swings through, and the bone ratio opens so the knee locks instead
+// of the thigh stretching. The tiles pulse it against a crate so you see the
+// snap land rather than judging a held frame.
+{
+  const grid = section('slide-contact-kick', 'Power slide — front-leg kick on contact',
+    'GALLERY ONLY, AND UNWIRED — no obstacle is broken by a slide in the game; this asks '
+    + 'only whether the pose would read. Each tile pulses the kick on a 1.6s loop against a '
+    + 'crate at the foot, so you are judging the SNAP, not a held frame. The crate flashes '
+    + 'white on the frame the kick peaks. Left of the divider is the shipped tucked leg at '
+    + 'the same instant, for the silhouette you would be trading away.');
+  // The pulse: a fast snap out and a slower recovery, which is what a kick is.
+  // A symmetric sine reads as a leg waving.
+  const KICK_PERIOD = 1.6;
+  const kickAt = (t, hold) => {
+    const k = (t % KICK_PERIOD) / KICK_PERIOD;
+    if (k < 0.42) return 0;
+    if (k < 0.42 + hold) return Math.min(1, (k - 0.42) / (hold * 0.45));
+    return Math.max(0, 1 - (k - 0.42 - hold) / 0.22);
+  };
+  const CANDIDATES = [
+    { key: 'snap', label: 'fast snap — 0.10s out, quick recovery', hold: 0.10 },
+    { key: 'held', label: 'held — 0.22s out, the leg stays extended through the break', hold: 0.22 },
+    { key: 'heavy', label: 'heavy — 0.34s out, a shove rather than a jab', hold: 0.34 },
+  ];
+  const IDS = ['lorenzo', 'kiko', 'grumpos'];
+  const HH = 74, WIDE = 216, FEET = 86;
+  for (const cand of CANDIDATES) {
+    tile(grid, `slide kick — ${cand.key}`, cand.label, WIDE, 112, (ctx, t) => {
+      const k = kickAt(t, cand.hold);
+      IDS.forEach((id, i) => {
+        const x = 22 + i * 68;
+        drawToon(ctx, id, pose('duck', t, { duckStyle: 'slide' }), x, FEET - 34, HH * 0.42);
+        drawToon(ctx, id, pose('duck', t, { duckStyle: 'slide', slideKick: k }), x, FEET, HH * 0.42);
+        // the crate the foot is aimed at, flashing on the frame the kick peaks
+        const cw = 9;
+        ctx.fillStyle = k > 0.85 ? '#fff' : '#8a5a32';
+        ctx.fillRect(x + 30, FEET - cw, cw, cw);
+        ctx.strokeStyle = '#3a2416';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(x + 30.4, FEET - cw + 0.4, cw - 0.8, cw - 0.8);
+      });
+      ctx.fillStyle = '#8a8a9e';
+      ctx.font = '6px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('SHIPPED (tucked)', 4, 12);
+      ctx.fillText(`KICK  k=${k.toFixed(2)}`, 4, 96);
+    }, { animated: true, wide: true, hires: 4 });
+  }
+}
+
+// The kiko slide-arm bake-off used to sit here — four candidates against the
+// shipped reach, each with her jump beside it as the control. Settled and
+// SHIPPED: drawDuckSlide gives her armReach 0.74 and upperBias 0.85, the
+// shortest of the four. The pose.slideArm seam it read is gone with it; a
+// second way to set those numbers is exactly the kind of thing that drifts
+// from the one the game uses. Slide-only remains the point — her aim and
+// jump reach is untouched, and shortening it there is a separate question.
+
 // ---------------------------------------------------------------- driver
 // Only visible tiles animate; static tiles paint once. Keeps ~200 canvases cheap.
 const io = new IntersectionObserver((entries) => {

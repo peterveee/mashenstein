@@ -13,7 +13,7 @@ import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
 import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
-import { Player, PLAYER_X, PLAYER_W, GRAVITY, jumpHeightFor } from './player.js';
+import { Player, PLAYER_X, PLAYER_W, PLAYER_SPRITE_W, GRAVITY, SLIDE_KICK_T, jumpHeightFor } from './player.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstJumpApex, COIN_GAP, COIN_FLOOR } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
@@ -32,7 +32,7 @@ import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF } from './draw.js';
 import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
-import { routeRise, roadAt, buildRoutes, tunnelOpenings, MAX_ISLAND_RISE } from './routes.js';
+import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
 import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
@@ -825,7 +825,24 @@ export class RunState {
 
   /** Where the player's own feet rest right now. */
   playerGroundY() {
-    return this.routeGroundY(this.playerWorldX(), this.route);
+    return this.routeGroundY(this.routeSampleX(), this.route);
+  }
+
+  /**
+   * Which COLUMN of the current road the hero's height is read from.
+   *
+   * The feet are a span and the road is a profile, so once standing on a lip
+   * counts (roadUnderFeet) the reference point can be a few pixels off the end
+   * of the road that is holding him up — where `routeRise` correctly reports
+   * zero, and the hero would drop to lane height while still standing on the
+   * slab. Clamping into the span is what makes a toe-hold read as the surface
+   * it is standing on rather than as the ground below it.
+   */
+  routeSampleX() {
+    const x = this.playerWorldX();
+    const r = this.route;
+    if (!r) return x;
+    return Math.min(Math.max(x, r.x), r.x + r.w);
   }
 
   /**
@@ -835,10 +852,10 @@ export class RunState {
    * with the lane running over the top of it, so the only way in is the mouth
    * (tunnelMouthAt) and the only thing above it is the ground you are on.
    */
-  routeAt(worldX) {
+  routeAt(x0, x1) {
     for (const r of this.routes) {
       if (r.kind === 'tunnel') continue;
-      if (worldX >= r.x && worldX <= r.x + r.w && roadAt(worldX, r)) return r;
+      if (roadUnderFeet(x0, x1, r)) return r;
     }
     return null;
   }
@@ -852,7 +869,7 @@ export class RunState {
    * clears the hole has to stay cleared, and it would not if the tunnel went on
    * claiming the lane behind its own entrance.
    */
-  tunnelMouthAt(worldX) {
+  tunnelMouthAt(x0, x1) {
     for (const r of this.routes) {
       if (r.kind !== 'tunnel') continue;
       // Every opening counts as a mouth — the entrance, the mid-span holes, and
@@ -860,8 +877,12 @@ export class RunState {
       // whether the lane is open under the hero, so an opening the renderer
       // carves and the spawner puts a gap in but this does not know about would
       // be a hole you can see, fall past the edge of, and land on solid air.
+      // Wholly inside, feet and all. A hero with one heel still on the lip has
+      // ground under him, and taking it away was the fall-through: the column
+      // being sampled sat 2px left of his hitbox, so he could be standing
+      // entirely past the far edge of a hole and be dropped into it anyway.
       for (const h of tunnelOpenings(r)) {
-        if (worldX >= h.x && worldX <= h.x + h.w) return r;
+        if (x0 >= h.x && x1 <= h.x + h.w) return r;
       }
     }
     return null;
@@ -899,8 +920,11 @@ export class RunState {
    */
   updateRoute(prevFeetY) {
     const x = this.playerWorldX();
+    // Every test below asks about the hero's FEET, not about the one column
+    // his anchor happens to sit in. See playerFeetSpan and roadUnderFeet.
+    const { x0, x1 } = this.playerFootprint();
     if (this.route) {
-      const onRoad = x >= this.route.x && x <= this.route.x + this.route.w;
+      const onRoad = x1 >= this.route.x && x0 <= this.route.x + this.route.w;
       // Over a BREAK, but only once he is down at the surface. A hero in the
       // air above a gap has not left the road — he is jumping it, which is the
       // entire point of putting one there — and taking the road away under him
@@ -921,9 +945,9 @@ export class RunState {
       // sweep uses, and only where there IS a lane to catch him: over the mouth
       // or a hole the thing above is sky.
       if (this.route.kind === 'tunnel' && onRoad && this.player.vy <= 0
-        && !this.tunnelMouthAt(x)) {
+        && !this.tunnelMouthAt(x0, x1)) {
         const lane = this.groundYAt(x);
-        const feet = this.routeGroundY(x, this.route) - this.player.y;
+        const feet = this.routeGroundY(this.routeSampleX(), this.route) - this.player.y;
         if (prevFeetY <= lane && feet >= lane) {
           this.route = null;
           this.player.y = 0;
@@ -934,7 +958,7 @@ export class RunState {
           return true;
         }
       }
-      const overGap = onRoad && !roadAt(x, this.route);
+      const overGap = onRoad && !roadUnderFeet(x0, x1, this.route);
       if (onRoad && !(overGap && this.player.y <= 0.01)) return false;
       // Off the end, or down into a break — the same thing as far as the
       // arithmetic is concerned, since either way there is no longer a road
@@ -949,7 +973,7 @@ export class RunState {
     }
     // Down the hole. Checked before the landing sweep because a hero at ground
     // level is not descending onto anything and the sweep would never see him.
-    const hole = this.tunnelMouthAt(x);
+    const hole = this.tunnelMouthAt(x0, x1);
     if (hole && this.player.y <= 0.01 && this.player.grounded) {
       this.route = hole;
       const fall = this.routeGroundY(x, hole) - this.groundYAt(x);
@@ -972,9 +996,12 @@ export class RunState {
       return false;
     }
     if (this.player.vy > 0) return false;       // rising: pass through from below
-    const is = this.routeAt(x);
+    const is = this.routeAt(x0, x1);
     if (!is) return false;
-    const top = this.routeGroundY(x, is);
+    // Read at the column he actually caught, not at an anchor that may still be
+    // short of the lip — off the end of the profile `routeRise` is zero, and a
+    // toe-hold would be resolved against the lane instead of against the slab.
+    const top = this.routeGroundY(Math.min(Math.max(x, is.x), is.x + is.w), is);
     const feetY = this.groundYAt(x) - this.player.y;
     if (prevFeetY > top || feetY < top) return false;   // did not cross downward
     this.route = is;
@@ -1916,7 +1943,7 @@ export class RunState {
     // Where the feet were BEFORE the step, for the island sweep below. Taken
     // against the base ground on purpose: it is the frame of reference both
     // sides of the test share, whichever route the hero is on.
-    const prevFeetY = this.routeGroundY(this.playerWorldX(), this.route) - this.player.y;
+    const prevFeetY = this.routeGroundY(this.routeSampleX(), this.route) - this.player.y;
     const res = this.player.update(wdt, Input, {
       speed: sp, ice: this.cabinet.mechanic === 'ice', gravityScale: this.powerups.gravityMultiplier(),
     });
@@ -2062,6 +2089,25 @@ export class RunState {
   playerWorldX() { return this.camX + this.heroScreenX(); }
   playerBox() {
     return this.player.box(this.camX, this.playerGroundY(), this.heroScreenX());
+  }
+
+  /**
+   * What the hero is STANDING ON, as a world-x span rather than a point.
+   *
+   * The drawn width, not the hitbox: what may hurt him is judged meanly (that
+   * is `playerBox`) and what may hold him up is judged generously, because the
+   * sprite is what the player aims the landing with. See PLAYER_SPRITE_W.
+   *
+   * Every surface test used to be a POINT — `playerWorldX`, which is this
+   * span's left column — and that is the whole bug behind falling through the
+   * edge of a slab. One column is right at neither lip: it made the near lip
+   * miss (a hero with most of his weight on the slab was not on it) and, over a
+   * hole, it made the far lip swallow him (a hero standing entirely past the
+   * opening was still sampled inside it).
+   */
+  playerFootprint() {
+    const x0 = this.playerWorldX();
+    return { x0, x1: x0 + PLAYER_SPRITE_W };
   }
 
   // The two-button card, held between the ACT card and the entrance. Nothing
@@ -4296,6 +4342,12 @@ export class RunState {
       // half-risen contact still hurts like it always did.
       if (this.player.grounded && this.player.duckAmount > 0.6
           && (ob.type === 'crate' || ob.type === 'qcrate')) {
+        // The front leg does the breaking. Until now the box simply died on
+        // contact and the hero slid through it with his leg still tucked —
+        // the plow read as the crate giving up rather than as him hitting it.
+        // The kick is a pose timer, not a state: it outlives this frame, and
+        // the leg finishes its swing even if the slide window closes.
+        this.player.slideKickT = SLIDE_KICK_T;
         // The full smash flourish, not just the box quietly dying: the same
         // impact crash the stomp stamps on a crate, on top of breakObstacle's
         // own crunch, burst and debris.

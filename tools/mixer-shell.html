@@ -390,6 +390,10 @@
      Loop Off and Undo sit at subtly different heights. */
   header button:not(.iconbtn) { display: inline-flex; align-items: center; justify-content: center;
                                 line-height: 1.4; padding-block: 0; }
+  /* Given a display above, so it needs its own [hidden] rule or the attribute does
+     nothing — the same trap `header .grp[hidden]` is for. A/B is hidden this way on a
+     user desk. Equal specificity to the rule it is undoing, and after it, so it wins. */
+  header button[hidden] { display: none; }
   /* Effects is the one toolbar action whose name matters more than its picture: the
      panel itself is already a stack of cards, so a bold two-letter mark gets there
      faster than another cabinet glyph. */

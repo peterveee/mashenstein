@@ -4286,6 +4286,13 @@ for (const id of ['fxbtn', 'oskbtn', 'seqbtn', 'rollbtn', 'presetbtn', 'ab', 'un
     && !/\btitle=/.test(tag),
     `${id} explains itself in the tooltip, and carries no second one from the browser`);
 }
+// A/B IS A DEV CONTROL. Hidden on a user desk beside the earlier-versions button, and
+// hidden needs saying twice: `header button:not(.iconbtn)` hands every text button in the
+// toolbar a display, so the attribute alone is inert — the same trap `header .grp[hidden]`
+// exists for. Both halves asserted, because either one alone leaves the button on screen.
+assert(/if \(!DEV_USER\) \{ const abButton = \$\('ab'\); if \(abButton\) abButton\.hidden = true; \}/.test(entry)
+  && /header button\[hidden\] \{ display: none; \}/.test(shell),
+  'A/B is hidden for a regular user, and by a rule strong enough to actually hide it');
 assert(/data-tipkey="G"/.test(header) && /data-tipkey="N"/.test(header)
   && /data-tipkey="E"/.test(header) && /data-tipkey="⌘Z"/.test(header),
   'the tooltips carry the keys as chips rather than as more sentence');

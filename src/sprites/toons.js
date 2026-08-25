@@ -1865,7 +1865,25 @@ function drawEyes(ctx, p, u, cx, cy, lod, ex = {}) {
     // queue — and level rather than down.
     const lookX = ((ex.calling ? 0.026 : ex.focus ? 0.012 : rollUp ? 0.018 : 0) + (ex.glanceX || 0)) * u + turnYaw * 0.032 * u;
     const lookY = ex.surprise || ex.cheer || ex.calling ? -0.005 * u : rollUp ? -0.03 * u : ex.annoyed ? 0 : (0.012 + (ex.glanceY || 0)) * u;
-    dot(ctx, eyeX(sx) + lookX, cy + lookY, 0.026 * u, p.e);
+    // A pupil stays IN its eye. The offsets above stack — a base look, a
+    // glance, and a whole-body turn's yaw — and nothing was stopping the sum
+    // walking the pupil off the white: the power slide's counter-gaze alone
+    // put it 0.001u past the lower rim, and a kick reaction on top of that
+    // hung it in mid-air outside the eye entirely.
+    //
+    // Clamped as a VECTOR against the white's own ellipse, inset by the
+    // pupil's radius and a hair of margin, so a look that would overshoot is
+    // shortened along the direction it was already pointing rather than
+    // squared off against one axis. Every caller is protected, including ones
+    // that do not exist yet — this is a mark that must never leave its shape,
+    // like a button on a coat.
+    const pupR = 0.026 * u, rim = 0.004 * u;
+    const maxX = Math.max(0, 0.055 * u - pupR - rim);
+    const maxY = Math.max(0, eyeRy - pupR - rim);
+    const over = maxX > 0 && maxY > 0
+      ? Math.hypot(lookX / maxX, lookY / maxY) : 0;
+    const fit = over > 1 ? 1 / over : 1;
+    dot(ctx, eyeX(sx) + lookX * fit, cy + lookY * fit, pupR, p.e);
   }
   // `brow` opts a face out of the shipped hairlines: 'none' draws nothing,
   // 'bushy' means drawHead paints hair brows over the top instead.
@@ -7046,7 +7064,7 @@ function slideHand(ctx, id, spec, p, u, ow, armW, x, y, lod) {
   }
 }
 
-function duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w) {
+function duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w, flatSh = false) {
   const ax = shX - hipX, ay = shY - hipY;
   const L = Math.hypot(ax, ay) || 1;
   ctx.save();
@@ -7066,7 +7084,8 @@ function duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w) {
     : (c) => {
       c.arc(0, 0, rHip, Math.PI / 2, Math.PI * 1.5);
       c.lineTo(L, -rSh);
-      c.arc(L, 0, rSh, -Math.PI / 2, Math.PI / 2);
+      if (flatSh) c.lineTo(L, rSh);
+      else c.arc(L, 0, rSh, -Math.PI / 2, Math.PI / 2);
       c.closePath();
     };
   outlined(ctx, p.b, ow, capsule);
@@ -7112,12 +7131,16 @@ function duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, w) {
     // the seam with its brass buckle — same colours, same weights as standing.
     // The belt stroke takes BUTT caps: round ones bulged half a stroke past
     // each end of the band, a belt hanging out past the waist.
+    // The shipped offsets, in u. Measuring them off the torso and splaying
+    // them outward toward the shoulder — which is what the standing pair do —
+    // was tried and reads worse here: on a body seen end-on the splay throws
+    // the far strap under the near thigh and leaves one lonely diagonal.
     ctx.strokeStyle = p.p;
     ctx.lineWidth = 0.045 * u;
     ctx.beginPath();
-    for (const s of [-1, 1]) {
-      ctx.moveTo(beltX, s * 0.08 * u);
-      ctx.lineTo(L, s * 0.05 * u);
+    for (const sgn of [-1, 1]) {
+      ctx.moveTo(beltX, sgn * 0.08 * u);
+      ctx.lineTo(L, sgn * 0.05 * u);
     }
     ctx.stroke();
     ctx.lineCap = 'butt';
@@ -7212,8 +7235,14 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   // as jazz hands; planted it read as an arm too long. Gravity is the pose.
   const fistX = 0.10 * u + 0.022 * u * Math.sin(t * 2.6 + 0.8);
   const fistY = -0.40 * u + 0.016 * u * Math.sin(t * 3.7 + 2.1);
-  const trailX = -0.33 * u + 0.02 * u * swayB;
-  const trailY = -0.09 * u - 0.015 * u * swayA;
+  // Further out and lower than the first cut (-0.33u, -0.09u). The near arm
+  // is nearly at full reach here, so the elbow only softens instead of
+  // cranking into the hard angle a shorter reach forced — and the hand rides
+  // just off the deck, which is the whole point of a trailing arm. Checked
+  // against the ground line at the low end of its sway, on every build: the
+  // heavy gauntlet is the closest and still clears.
+  const trailX = -0.37 * u + 0.02 * u * swayB;
+  const trailY = -0.055 * u - 0.015 * u * swayA;
   // One skeleton, every build: widths and colours quote the rig's own
   // formulas — a heavy or slim hero slides with their own limbs, B-33P with
   // his gold arm segments and machine hands, not Lorenzo's teal and skin.
@@ -7221,8 +7250,52 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   const legW = (heavy ? 0.11 : spec.slim ? 0.082 : 0.09) * u * (spec.legWidth || 1);
   const armW = (heavy ? 0.118 : spec.slim ? 0.068 : 0.075) * u * (spec.armWidth || 1);
   const armFill = p.arm || (spec.bareArms ? p.s : p.b);
+  // limb2's `seg` is the UPPER bone; the forearm is whatever reach is left
+  // over to the hand. Lengthening the upper bone therefore shortens the
+  // forearm without moving the hand or the shoulder — which is the only dial
+  // here that shortens a forearm and leaves the pose alone. Kiko's bare
+  // forearms run visibly long against her sleeved upper arm in the recline;
+  // she is the only build that reads that way, and this is slide-only, so her
+  // aim pose keeps the reach it was drawn for.
+  // Kiko's arms run long in the recline — both bones, not just the forearm,
+  // which is why biasing the upper bone alone only moved the elbow and left
+  // the reach where it was. `armReach` pulls the HAND targets in toward the
+  // socket, which shortens the whole limb; `upperBias` then trims the upper
+  // bone inside that shorter reach. Slide-only: her aim pose is drawn to a
+  // reach of its own and must not move.
+  // Kiko's arms run long in the recline — both bones, which is why biasing the
+  // upper bone alone only moved the elbow and left the reach where it was.
+  // `armReach` pulls the HAND targets in toward the socket, shortening the
+  // whole limb without moving the shoulder or the pose; `upperBias` then
+  // trims the upper bone inside that shorter reach, sliding the elbow out.
+  // 0.74 / 0.85 won the bake-off (2026-08) over three shorter-limb candidates.
+  //
+  // Slide-only, deliberately: `armLength` on her spec would shorten the arm
+  // she AIMS with, and her jump and shooting poses are drawn to that reach.
+  const armReach = id === 'kiko' ? 0.74 : 1;
+  const upperBias = id === 'kiko' ? 0.85 : 1;
   const footFill = id === 'grumpos' ? p.w : p.f;
-  const torsoW = (heavy ? 0.37 : spec.slim ? 0.26 : 0.30) * u;
+  // The chest is the standing chest, quoted from drawHumanoid's own formula
+  // rather than invented here. The slide used to carry three flat numbers
+  // (0.37 heavy / 0.26 slim / 0.30) that ignored `shoulders`, `stout` and
+  // `torsoWidth` — so Grumpos, whose spec buys him 0.23u of half-torso and
+  // another 8% of shoulders on top, slid narrower than he stands and read as
+  // a slim rectangle instead of a broad chest tapering to the belt.
+  //
+  // 0.88 of it, though, and that is not a fudge: a standing torso has both
+  // its edges half-covered by the arms hanging beside it, while a reclined
+  // one turns its full barrel to camera. Matched number for number the slide
+  // reads fatter than the same hero standing. The factor is also what keeps
+  // this honest against what shipped — it lands the plain and slim builds
+  // back on their shipped 0.30u and 0.26u exactly, and spends the whole
+  // change on the specs that were being ignored.
+  // The heavy build divides its `shoulders` back out: the slide already
+  // scales his whole figure by 1.08 (the heavy crouch rule above), and the
+  // standing formula multiplies the same 1.08 in as `shoulders` — quoted
+  // straight, he slid 8% wider than he actually stands and the barrel
+  // swallowed the recline.
+  const torsoW = 2 * (heavy ? 0.23 : spec.stout ? 0.2 : spec.slim ? 0.148 : 0.17)
+    * u * ((spec.shoulders || 1) / (heavy ? 1.08 : 1)) * (spec.torsoWidth || 1) * 0.88;
   // No pose.roll in the head's pose: the effort expression it forces owns the
   // mouth slot, and it cost B-33P his grille and Gnash his smirk. The duck
   // kind alone keeps the focused eyes.
@@ -7252,8 +7325,16 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   const hipX = -0.02 * u, hipY = -0.15 * u;
   // The heavy torso is genuinely LONGER, not only wider (torsoTop -0.768u vs
   // -0.56u standing): the shoulder rides farther up the recline, and the head
-  // follows it, or he slides as a bearded ball with no chest.
-  const stretch = heavy ? 1.28 : 1;
+  // follows it, or he slides as a bearded ball with no chest. 1.18, not the
+  // full standing ratio — paired with the head lift below it sets his slide
+  // crown; see that comment.
+  const stretch = heavy ? 1.18 : 1;
+  // The balance fist is an ABSOLUTE height, and the heavy rig's shoulder is
+  // not: `stretch` lifts his socket by 0.23u * 0.28 that nobody else gets, so
+  // the fist everyone else holds just above their shoulder hung below
+  // Grumpos's — a balance arm drooping instead of held. Give it back exactly
+  // the height the stretch took, and it reads the same on both builds.
+  const fistLift = (stretch - 1) * 0.23 * u;
   const shX = hipX - 0.22 * u * stretch, shY = hipY - 0.23 * u * stretch;
   if (spec.rig === 'ray') {
     // Ray M'n slides the way he does everything: in pieces. Same skeleton,
@@ -7288,16 +7369,44 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
     duckDust(ctx, u, ow, t, -0.26 * u, -0.02 * u);
     return;
   }
+  // Kiko's arms leave from LOWER on the recline than everyone else's. The
+  // reclined head covers the shoulder socket the whole cast shares — fine for
+  // a bare shoulder, which just reads as an arm coming out from behind a jaw,
+  // and fatal for a sleeved one: the puff belongs ON the socket, and that
+  // socket is inside the skull. So the socket moves instead of the head.
+  //
+  // This is the slide's version of `armOut`, which the standing rig already
+  // spends on her for the same reason — a puffed sleeve is about twice the
+  // arm's width, so it needs its root further out than a bare limb does.
+  // Here "out" is DOWN THE SPINE, by 0.10u — the distance that carries the
+  // joint past the skull's edge, so the puff seats on the socket in the open
+  // and the arm visibly leaves the puff. Perpendicular was tried instead and
+  // is wrong: it walks the sleeve onto her chest. Everyone else keeps the
+  // shipped socket exactly; the test is spec.puffs, which is Kiko alone.
+  let armX = shX, armY = shY;
+  if (spec.puffs) {
+    const sL = Math.hypot(shX - hipX, shY - hipY) || 1;
+    const upX = (shX - hipX) / sL, upY = (shY - hipY) / sL;
+    armX = shX - upX * 0.10 * u;
+    armY = shY - upY * 0.10 * u;
+  }
   // Puffed sleeve over an arm root (spec.puffs): bells across the limb, gold
   // cuff on the elbow side — seated on the socket the way the standing sleeve
   // is, travelling with whichever way this arm points.
-  const slidePuff = (hx2, hy2, along = 0.09 * u) => {
+  const slidePuff = (hx2, hy2, along = 0.11 * u, ox = 0, oy = 0) => {
     if (!spec.puffs) return;
-    const ang = Math.atan2(hy2 - shY, hx2 - shX);
-    // Seated farther down the arm than standing: the reclined head overlaps
-    // the shoulder socket, and a sleeve on it lands on the chin — the near
-    // sleeve rides lowest, clear of the face entirely.
-    const pcx = shX + Math.cos(ang) * along, pcy = shY + Math.sin(ang) * along;
+    const ang = Math.atan2(hy2 - armY, hx2 - armX);
+    // Seated ON the socket, the way the standing sleeve is — which the dropped
+    // arm root above is what makes possible. Ridden down the limb instead, as
+    // the first cut of this did to dodge the head, it stops being a shoulder
+    // at all: it reads as a ball strapped to her chest.
+    //
+    // The default is the FAR arm's seat, and that one cannot sit on its
+    // socket: the far arm passes BEHIND the torso capsule, whose cap covers
+    // everything within torsoW/2 of the root, so a sleeve any closer in is
+    // painted and then buried. 0.11u is where the gold cuff clears the dress
+    // and caps the arm root instead of vanishing under it.
+    const pcx = armX + Math.cos(ang) * along + ox, pcy = armY + Math.sin(ang) * along + oy;
     const pr = torsoW * 0.28;
     outlined(ctx, p.b, ow * 0.85, (c) => c.ellipse(pcx, pcy, pr * 0.86, pr, ang, 0, Math.PI * 2));
     if (!lod) {
@@ -7310,9 +7419,11 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   };
   // far (balance) arm first, behind the torso — held forward for balance, the
   // elbow only slightly soft so the fist reads as the end of an arm.
-  limb2(ctx, shX, shY, fistX, fistY, 0.185 * u, -1, armW * 0.95, armFill, ow, armW * 0.88, true);
-  slidePuff(fistX, fistY);
-  slideHand(ctx, id, spec, p, u, ow, armW, fistX, fistY, lod);
+  const fx = armX + (fistX - armX) * armReach;
+  const fy2 = armY + (fistY - fistLift - armY) * armReach;
+  limb2(ctx, armX, armY, fx, fy2, 0.185 * u * upperBias, -1, armW * 0.95, armFill, ow, armW * 0.88, true);
+  slidePuff(fx, fy2);
+  slideHand(ctx, id, spec, p, u, ow, armW, fx, fy2, lod);
   // far leg: folded under, BEHIND the body — knee dropped well clear of the
   // torso; folded any tighter the blue thigh lies along the blue bib and
   // reads as trousers riding up the chest
@@ -7320,7 +7431,23 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) =>
     c.ellipse(footRearX + 0.03 * u, -0.055 * u, 0.08 * u, 0.05 * u, 0.35, 0, Math.PI * 2));
   // torso reclined hip -> shoulder, dressed exactly like the standing rig
-  duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY, shX, shY, torsoW);
+  // The capsule stops a third of a torso-width SHORT of the shoulder. Its top
+  // is a round cap of torsoW/2, which the head used to cover completely; with
+  // the head moved forward that cap stood proud behind the near shoulder as a
+  // smooth shirt-coloured lump — the hump. Ending the capsule early tucks it
+  // back under the jaw. Measured in torso widths, not in u, because the cap
+  // that has to disappear IS a torso width: a flat number left the broad
+  // builds humped and the slim ones over-trimmed. The arms still root at the
+  // true shoulder above it, and their own root caps close the join.
+  //
+  // The HEAVY build cannot solve it with distance: his head rides 0.24u off
+  // the shoulder, so no trim tucks a 0.21u-radius arc behind the beard — the
+  // hump just slid down the spine. He gets a FLAT shoulder end instead (the
+  // flatSh flag below) and a short 0.16 trim to pull the cut edge under the
+  // jaw, which keeps his chest long where the big shared trim collapsed it.
+  const capL = Math.hypot(shX - hipX, shY - hipY) || 1;
+  duckTorsoCapsule(ctx, id, spec, p, t, u, ow, hipX, hipY,
+    shX - (shX - hipX) / capL * (heavy ? 0.16 : 0.33) * torsoW, shY - (shY - hipY) / capL * (heavy ? 0.16 : 0.33) * torsoW, torsoW, heavy);
   // near leg: bent like the rear one — knee up, foot planted ahead — and OVER
   // the body: a slide crosses the near leg in front of the reclined torso, so
   // its thigh paints on top of the seat. The root is the GROUNDED hip: he is
@@ -7328,10 +7455,32 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   // edge down by the ground line. The depth is measured from THIS hero's
   // seat, not Lorenzo's: on a slim capsule a fixed offset put the root cap
   // outside the body.
-  const rootD = torsoW / 2 - legW * 0.55;
-  limb2(ctx, hipX - 0.263 * rootD, hipY + 0.965 * rootD, footNearX, -0.05 * u, 0.24 * u, 1, legW, p.p, ow, legW * 0.94);
+  //
+  // And the seat is the WAIST, not the shoulders. This measured torsoW/2 —
+  // the chest — while duckTorsoCapsule tapers its hip end to spec.taper of
+  // that. On Grumpos, whose taper is 0.58, the two disagree by most of a
+  // thigh: his leg rooted below the bottom of his own seat and hung there
+  // attached to nothing, which is the same 0.58 the standing rig spends on
+  // making him broad. Quote the tapered end and the root is back inside the
+  // body on every build.
+  const rootD = (torsoW / 2) * (spec.taper || 1) - legW * 0.55;
+  // `pose.slideKick` (0..1) drives the near leg from its tucked slide into a
+  // KICK: the foot leaves along the deck, rises off it, and the knee
+  // straightens as the upper bone lengthens toward the reach. Gallery-only —
+  // nothing in the run sets it, and no obstacle asks for it yet.
+  //
+  // Three terms, because a kick is not just a longer leg. The foot travels
+  // (0.22u), it lifts (the sole comes up off the deck as the shin swings
+  // through), and the bone ratio opens so the knee reads as locking rather
+  // than the thigh simply stretching. Drop any one and it reads as the leg
+  // being pulled on a string.
+  const kick = Math.max(0, Math.min(1, Number(pose.slideKick) || 0));
+  const kickX = footNearX + 0.22 * u * kick;
+  const kickY = -0.05 * u - 0.085 * u * kick;
+  limb2(ctx, hipX - 0.263 * rootD, hipY + 0.965 * rootD, kickX, kickY,
+    (0.24 + 0.07 * kick) * u, 1, legW, p.p, ow, legW * 0.94);
   outlined(ctx, footFill, hair(0.6, ow * 0.8), (c) =>
-    c.ellipse(footNearX + 0.03 * u, -0.06 * u, 0.085 * u, 0.055 * u, -0.1, 0, Math.PI * 2));
+    c.ellipse(kickX + 0.03 * u, kickY - 0.01 * u, 0.085 * u, 0.055 * u, -0.1 - 0.5 * kick, 0, Math.PI * 2));
   // Garments that hang over the thighs come WITH the hero — drawn after the
   // legs, exactly the layering the standing rig uses for all of them.
   if (spec.tunic || spec.dress || id === 'grumpos') {
@@ -7344,7 +7493,21 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
     // Past the seat, over the thigh roots — scaled back on the heavy rig,
     // where the same margins over a 0.37u capsule came out as one
     // knee-to-chest board of leather.
-    const hemX = -torsoW * 0.5 - (heavy ? 0.01 : 0.05) * u;
+    // Garment LENGTH is not the chest's business. It used to be measured off
+    // torsoW, so widening the chest to the standing build lengthened every
+    // skirt with it — Grumpos's pteruges grew far enough down the recline to
+    // blanket his own legs. This is the width the hem was tuned against,
+    // before the chest went its own way.
+    // How far the garment hangs PAST THE BELT, per garment, matched to the
+    // drop each one has standing. It used to be measured off torsoW, which is
+    // the chest — so widening the chest to the standing build lengthened every
+    // skirt with it, and Grumpos's pteruges grew far enough down the recline
+    // to blanket his own legs. A hem is not the chest's business, and these
+    // are the standing silhouettes: Fernwick's tunic is upper-thigh short.
+    // The two SEGMENTED garments run longer than their standing drop on
+    // purpose — the straps are the thing you look at on those two, and short
+    // ones read as a frill. They stop where the legs start to matter.
+    const hemX = beltX - (spec.tunic ? 0.16 : spec.dress ? 0.26 : 0.27) * u;
     // Waist bands and panel roots measure the body AT THE WAIST, which on a
     // tapered build is far inside the shoulder width — a belt sized off the
     // full torso overhung Grumpos's narrow middle on both sides.
@@ -7358,6 +7521,45 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
       // sliding — each panel its own quad, pinned at the waist, free at the
       // hem, with the gaps between them doing the talking.
       const fill = id === 'grumpos' ? p.w : p.b;
+      // Each strap ends where the DECK is, not where the others end. Every
+      // panel used to stop at the same local hemX, and a constant x in a frame
+      // raked over at the recline angle is a straight diagonal cut across all
+      // four — the boxy edge, hanging through the ground on the low side
+      // because nothing in the frame knew where the ground was.
+      //
+      // Now the ground comes back into the frame: world y = 0 (less the jig
+      // this figure is riding) solved for the local LATERAL offset a strap's
+      // tip may reach at its own length. A tip below that is swung up to it,
+      // and the straps stack along the deck instead of through it.
+      // The deck, back in this raked frame. A strap is pinned at the waist and
+      // free at the tip, so when the tip would go through the floor the strap
+      // SWINGS on its pin — it does not get sawn off. Cutting the length was
+      // the first fix and it left the ground-side strap (leftmost on screen,
+      // lying lowest) a stub beside three long ones; swinging keeps every
+      // strap its full length and lays the low ones along the deck, which is
+      // what leather does when the man wearing it is sliding on his hip.
+      //
+      // The swing angle is solved, not searched: with the tip at (tx, ty) off
+      // its pin, world y is A·cosφ + B·sinφ + py, so the φ that puts the tip
+      // exactly on the deck falls out of one atan2 and one acos. No solution
+      // means the pin itself is at or under the deck — nothing to swing to —
+      // and the strap is left where it is.
+      const cosT = ax / aL, sinT = ay / aL;
+      const deck = -0.02 * u - jig;
+      const swingToDeck = (px, py, tx, ty) => {
+        const wy = (py + tx * sinT + ty * cosT);
+        if (wy <= deck) return 0;
+        const A = tx * sinT + ty * cosT;
+        const B = tx * cosT - ty * sinT;
+        const C = deck - py;
+        const r = Math.hypot(A, B);
+        if (r < 1e-6 || Math.abs(C) > r) return 0;
+        const base = Math.atan2(B, A), off = Math.acos(C / r);
+        const c1 = base + off, c2 = base - off;
+        const norm = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+        const n1 = norm(c1), n2 = norm(c2);
+        return Math.abs(n1) < Math.abs(n2) ? n1 : n2;
+      };
       for (let i = 0; i < segs; i++) {
         const f = -1 + (2 * i + 1) / segs;
         const halfT = (wTop / segs) * 0.96, halfH = (wHem / segs) * 1.02;
@@ -7369,22 +7571,59 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
         const legSway = f > 0 ? swayA : swayB;
         const flap = (Math.sin(t * 4.6 + i * 1.9) * 0.55 + legSway * 0.45) * 0.022 * u;
         const hx = hemX - Math.abs(flap) * 0.4;
+        const yA = f * wHem - halfH + flap, yB = f * wHem + halfH + flap;
+        // A leather strap has a rounded tongue, not a mitre. Cheap to add now
+        // the hem is per-strap, and it is what stops four quads reading as one
+        // sawn board.
+        const pinY = f * wTop;
+        // Swing, but only a little. A strap free to rotate all the way to the
+        // deck lifts so far it lies on top of its neighbours and the fan
+        // collapses into one bundle; capped, the low straps rake along the
+        // ground and the fan survives. Whatever the cap does not fix, the
+        // length clamp below finishes.
+        const SWING_CAP = 0.2;
+        const swing = Math.max(-SWING_CAP, Math.min(SWING_CAP,
+          swingToDeck(beltX, hipY + beltX * sinT + pinY * cosT,
+            hx - beltX, Math.max(yA, yB) - pinY)));
+        // Length clamp, measured on the SWUNG strap: rotate the tip by the
+        // swing and ask the deck where it may reach.
+        const cs = Math.cos(swing), sn = Math.sin(swing);
+        const reach = (lx, ly) => {
+          const rx = beltX + (lx - beltX) * cs - (ly - pinY) * sn;
+          const ry = pinY + (lx - beltX) * sn + (ly - pinY) * cs;
+          return hipY + rx * sinT + ry * cosT;
+        };
+        let cut = 0;
+        for (const ly of [yA, yB]) {
+          while (reach(hx + cut, ly) > deck && cut < beltX - hx) cut += 0.004 * u;
+        }
+        const hxc = hx + cut;
+        const tip = Math.min(halfH * 0.45, (beltX - hxc) * 0.45);
+        ctx.save();
+        ctx.translate(beltX, pinY);
+        ctx.rotate(swing);
+        ctx.translate(-beltX, -pinY);
         outlined(ctx, fill, hair(0.6, ow * 0.8), (c) => {
-          c.moveTo(beltX, f * wTop - halfT);
-          c.lineTo(beltX, f * wTop + halfT);
-          c.lineTo(hx, f * wHem + halfH + flap);
-          c.lineTo(hx, f * wHem - halfH + flap);
+          c.moveTo(beltX, pinY - halfT);
+          c.lineTo(beltX, pinY + halfT);
+          c.lineTo(hxc + tip, yB);
+          c.quadraticCurveTo(hxc, yB, hxc, (yA + yB) / 2);
+          c.quadraticCurveTo(hxc, yA, hxc + tip, yA);
           c.closePath();
         });
         if (!lod && spec.dress) {
-          // the qipao's gold piping, on every panel hem, riding its flap
+          // the qipao's gold piping, on every panel hem, riding its flap —
+          // traced along the SAME rounded tongue the panel is cut to, or it
+          // hangs off the corners as a pair of gold whiskers past the cloth
           ctx.strokeStyle = p.a;
           ctx.lineWidth = hair(0.5, 0.02 * u);
           ctx.beginPath();
-          ctx.moveTo(hx, f * wHem - halfH + flap);
-          ctx.lineTo(hx, f * wHem + halfH + flap);
+          ctx.moveTo(hxc + tip, yA);
+          ctx.quadraticCurveTo(hxc, yA, hxc, (yA + yB) / 2);
+          ctx.quadraticCurveTo(hxc, yB, hxc + tip, yB);
           ctx.stroke();
         }
+        ctx.restore();
       }
     } else if (spec.tunic) {
       // the tunic: one flared panel, the way it hangs standing
@@ -7395,6 +7634,21 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
         c.quadraticCurveTo(hemX - 0.045 * u, 0, hemX, -wHem);
         c.closePath();
       });
+      if (!lod) {
+        // The centre seam the standing tunic has, and for the same reason:
+        // one flat green panel is a bib, and the seam is what makes it cloth
+        // hanging in two folds. Same faint ink and the same inset off both
+        // ends as the standing draw.
+        ctx.save();
+        ctx.globalAlpha *= 0.45;
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = hair(0.5, ow * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(beltX - 0.03 * u, 0);
+        ctx.lineTo(hemX + 0.01 * u, 0);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
     // Waist bands end ON the waist: BUTT caps, because the round default
     // bulged half a stroke past each edge and every belt hung out past the
@@ -7437,19 +7691,109 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
     ctx.restore();
   }
   // near arm: hangs down off the shoulder, hand trailing just clear of the
-  // ground, elbow soft and back
-  limb2(ctx, shX, shY, trailX, trailY, 0.19 * u, -1, armW, armFill, ow, armW * 0.93, true);
-  slideHand(ctx, id, spec, p, u, ow, armW, trailX, trailY, lod);
+  // ground, elbow soft and back.
+  //
+  // A SLEEVED near shoulder sits up and left of the shared socket — 0.08u out
+  // and 0.06u up, plus 0.05u down the limb — which is where the puff has to
+  // be to read as a shoulder rather than a ball under her chin, on a figure
+  // leaning back this far. The ARM roots there too, not at the shared socket:
+  // seated apart, the limb's own round root cap stood proud of the sleeve and
+  // the top of her arm poked through it. Rooted together, the arm starts
+  // inside the puff and the puff is the only thing you see of the joint.
+  let nearX = armX, nearY = armY;
+  if (spec.puffs) {
+    const na = Math.atan2(trailY - armY, trailX - armX);
+    nearX = armX + Math.cos(na) * 0.05 * u - 0.08 * u;
+    nearY = armY + Math.sin(na) * 0.05 * u - 0.06 * u;
+  }
+  const tx2 = nearX + (trailX - nearX) * armReach;
+  const ty2 = nearY + (trailY - nearY) * armReach;
+  limb2(ctx, nearX, nearY, tx2, ty2, 0.19 * u * upperBias, -1, armW, armFill, ow, armW * 0.93, true);
+  // The sleeve goes on over it — under the hand, and UNDER the head that
+  // follows, so the jaw crops whatever of it still laps behind her. It was
+  // drawn dead last, after the head, which is how a sleeve ends up painted
+  // across a face.
+  slidePuff(tx2, ty2, 0.05 * u, -0.08 * u, -0.06 * u);
+  slideHand(ctx, id, spec, p, u, ow, armW, tx2, ty2, lod);
   // head up and back, riding the shoulder wherever the build put it. Drawn at
   // ABSOLUTE figure coordinates, untilted: the light field's gradients
   // resolve against the transform in force when they are painted, so a head
   // drawn inside a translated frame was shaded as if it sat at the FEET —
   // the shadow end of the ramp, and the dark face every slider wore.
-  drawHead(ctx, id, spec, p, u, ow, shX - 0.02 * u, shY - 0.12 * u, lod, headPose);
-  // the near sleeve last: the reclined head owns the shoulder region, and a
-  // puff drawn before it was a sleeve she appeared not to have — seated low
-  // enough on the arm that it sits beside the jaw, never on the face
-  slidePuff(trailX, trailY, 0.17 * u);
+  // The head rides the shoulder wherever the build put it, 0.10u further
+  // along the recline than it used to (it was -0.02u): forward over the chest
+  // rather than back over the shoulder, which is where a slider's head goes
+  // and which uncovers the shoulder region behind it — far enough that Kiko's
+  // sleeve, seated on the socket below, clears her chin.
+  //
+  // The HEAVY rig lifts a little further off the shoulder — his skull is the
+  // biggest on the roster, and at the shared 0.12u the beard sank into his
+  // own chest. 0.15u, WITH the stretch relaxed to 1.18 above, clears the sash
+  // while landing his crown at 0.89u — the shipped slide's own height, a head
+  // over the cast the way his standing sprite is. The first cut fixed the
+  // beard with lift alone (0.24u) and sent him sliding at 1.01u, taller than
+  // half the cast stands.
+  //
+  // Moving it the other way was tried and is much worse — a neck up the spine
+  // lifts every crown, and laying it back parks the head on the near shoulder.
+  const hxx = shX + 0.08 * u, hyy = shY - (heavy ? 0.15 : 0.12) * u;
+  // Canted back into the slide. Rotated about the head's OWN centre, so it
+  // costs no height and no reach — the crown lays back the way a slider's
+  // does instead of sitting bolt upright on a reclined body. About the
+  // centre also keeps the light field honest: the ramps resolve against the
+  // transform at paint time, and a rotation around the thing being lit turns
+  // the key with the face rather than sliding the face down the ramp.
+  // The whole skull tips BACK, and the eyes do not go with it. Rotating the
+  // head alone points the face at the sky, which is not what a slider does —
+  // he lies back and keeps watching the track. So the rotation is paired with
+  // a counter-gaze: the pupils ride forward and down inside the eye by the
+  // same angle the skull gave up, and the hero stays looking where he is
+  // going however far the head is laid back.
+  //
+  // -0.10 and -0.04 per radian are measured, not derived: they are what put
+  // Lorenzo's pupils back on the level at the 0.34 rad end of the sweep. The
+  // gaze dial is in u, so they hold at every draw size.
+  //
+  // 0.28 rad, picked in the bake-off (2026-08) over 0.18, 0.38 and 0.50 and a
+  // no-cant control. The counter-gaze above is what makes this angle spendable
+  // at all: laid this far back without it he is looking at the ceiling.
+  //
+  // The head reacts to the kick — EYES AND CHIN, picked in the bake-off
+  // (2026-08) over eyes alone, chin alone, and both plus a contact expression.
+  // The expression lost on cost: it rides browRaise/faceSurprised, and those
+  // open Gnash's smirk into a surprise mouth and re-shape B-33P's visor, which
+  // is the same tax the note above records pose.roll charging.
+  //
+  // Both ride the leg's own `kick` 0..1, so nothing here has a clock of its
+  // own and the face cannot drift out of step with the swing. The chin comes
+  // down 0.09 rad off the cant as he commits; the eyes go onto the crate below.
+  const headTilt = -0.28 + 0.09 * kick;
+  headPose.gazeAmt = 1;
+  // The counter-gaze, plus the kick's own glance ON TOP of it: the pupils go
+  // forward and further down, onto the box the foot is about to reach. It adds
+  // rather than replaces, or the eyes would snap back to the tilt's neutral
+  // mid-swing and read as a flinch away from the thing he is kicking.
+  //
+  // -0.07 per radian, not the -0.10 the tilt shipped with. That figure put the
+  // resting pupil 0.001u PAST the lower rim of its own eye — drawEyes clamps
+  // that now, but a look pinned against the clamp is a look that cannot move,
+  // and the kick's whole job here is to move it. -0.07 still reads level (it
+  // was swept against the un-countered eye) and leaves the headroom the flick
+  // is spent from. The adds are sized to that headroom at the braced angle.
+  headPose.gazeX = headTilt * -0.07 + 0.009 * kick;
+  headPose.gazeY = headTilt * -0.07 + 0.012 * kick;
+  ctx.save();
+  ctx.translate(hxx, hyy);
+  ctx.rotate(headTilt);
+  ctx.translate(-hxx, -hyy);
+  // The heavy skull draws at 0.88 of the figure's u. Everything else in this
+  // pose is inside his 1.08 figure scale, which is right for a body and wrong
+  // for a head that is already the roster's biggest at 0.22u — and it got
+  // worse when the stretch came back to 1.18 and shortened the torso under
+  // it. 0.88 cancels that scale and a little more, landing him just above
+  // Lorenzo's head-to-body ratio, which is where the big hero belongs.
+  drawHead(ctx, id, spec, p, u * (heavy ? 0.88 : 1), ow, hxx, hyy, lod, headPose);
+  ctx.restore();
   ctx.restore();
   // dust ground off the SEAT — that is what touches the deck now
   duckDust(ctx, u, ow, t, -0.24 * u, -0.02 * u);
@@ -8946,6 +9290,10 @@ export function poseFromPlayer(player, t) {
     // they keep their crouch and its whole-figure squash.
     duckStyle: kind === 'duck' && !player.rolling
       && ['humanoid', 'ray'].includes(TOON_SPECS[hero.id]?.rig) ? 'slide' : undefined,
+    // The contact kick, already shaped into the 0..1 the painter poses from.
+    // The player owns the timer and its curve; this side only reads it, the
+    // same bargain every other term here keeps.
+    slideKick: Math.max(0, Math.min(1, Number(player.slideKick) || 0)),
     squash: Math.max(0, Math.min(1, (player.landedT || 0) / SQUASH_T)),
     // Whichever is stronger. A dash is a hard 0.26; a boost pad is a shallower
     // 0.17 that holds a beat longer, so the two do not read as the same move.
