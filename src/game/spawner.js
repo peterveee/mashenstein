@@ -4,6 +4,12 @@ import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from './entities.js';
 import { GRAVITY, BASE_JUMP_V } from './player.js';
 import { randomPowerPickup } from './powerups.js';
 
+// How much extra room a puntable prop buys the obstacle behind it, in seconds
+// of travel. A punt hangs for roughly a second (see PUNT in punt.js), and this
+// covers most of it, so the juggle jump is over before the next thing needs
+// jumping. Seconds rather than pixels because the whole gap budget is in
+// seconds and the run keeps accelerating.
+const PUNT_CLEARANCE_T = 0.75;
 export const REACT_FLOOR = 0.25;      // seconds of reaction after previous action
 export const REACT_FLOOR_MAX = 0.2;   // at highest tiers / UNPLUGGED
 
@@ -43,14 +49,30 @@ export class Spawner {
     this.lastPatternIdx = -1;
     this.lastActionX = -9999;
     this.lastActionKind = 'none';
+    // Whether the last action cell was something a slide can punt. Kept apart
+    // from `lastActionKind` because it is not an action CLASS — a cone is
+    // still jumped like anything else. What it changes is the space AFTER.
+    this.lastWasPunt = false;
   }
 
   // Minimum world-px between an action obstacle and the next one, at speed px/s.
-  fairGap(speed, prevKind, nextKind) {
+  //
+  // `prevPunt` buys room after a puntable prop, and it is about READABILITY
+  // rather than fairness. A punted cone hangs for about a second and the
+  // player jumps to juggle it; with the ordinary gap the next obstacle arrived
+  // inside that hang, so the juggle jump was the same jump he had to make
+  // anyway. The trick landed as an accident rather than a decision. Pushing
+  // the next obstacle past the cone's flight makes going up for it a choice
+  // that costs something.
+  //
+  // Added on top of the fairness floor, never instead of it: this only ever
+  // makes gaps larger, so the sim's own assertion is untouched.
+  fairGap(speed, prevKind, nextKind, prevPunt = false) {
     const air = worstAirtime();
     let t = this.react;
     if (prevKind === 'jump') t += air;               // must land first
     if (prevKind === 'jump' && nextKind === 'duck') t += 0.15; // can't duck mid-air
+    if (prevPunt) t += PUNT_CLEARANCE_T;
     return speed * t + this.iceSlide;
   }
 
@@ -85,6 +107,7 @@ export class Spawner {
       // The fairness cursors move as cells are placed and must not be left
       // advanced by a pattern that gets thrown away.
       const actionX = this.lastActionX, actionKind = this.lastActionKind;
+      const wasPunt = this.lastWasPunt;
       for (const cell of pat.cells) {
         if (cell.t === 'coins') {
           lastX = Math.max(lastX, baseX + cell.dx + this.spawnCoins(baseX + cell.dx, cell, picks, jumpHeightFn));
@@ -96,10 +119,12 @@ export class Spawner {
         const cellW = cell.t === 'gap' ? (cell.w || def.w) : def.w;
         // Fairness: enforce spacing from the previous action-required cell.
         if (def.action !== 'none') {
-          const minX = this.lastActionX + this.fairGap(speed, this.lastActionKind, def.action);
+          const minX = this.lastActionX
+            + this.fairGap(speed, this.lastActionKind, def.action, this.lastWasPunt);
           if (x < minX) x = minX;
           this.lastActionX = x + cellW;
           this.lastActionKind = def.action;
+          this.lastWasPunt = !!def.punt;
         }
         const ob = makeObstacle(cell.t, x, { n: cell.n });
         if (cell.t === 'gap') ob.w = cellW;
@@ -113,6 +138,7 @@ export class Spawner {
       if (right > stopX) {
         this.lastActionX = actionX;
         this.lastActionKind = actionKind;
+        this.lastWasPunt = wasPunt;
         this.nextX = stopX;      // the lane is closed from here to the marker
         return;
       }
@@ -121,7 +147,7 @@ export class Spawner {
       // Gap to the next pattern: random but never below the fairness floor.
       // The next pattern may open with a duck obstacle, so budget for the worst case.
       const roll = this.rng.range(90, 220);
-      const fair = this.fairGap(speed, this.lastActionKind, 'duck');
+      const fair = this.fairGap(speed, this.lastActionKind, 'duck', this.lastWasPunt);
       this.nextX = Math.max(lastX, this.lastActionX) + Math.max(roll, fair);
     }
   }

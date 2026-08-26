@@ -13,7 +13,8 @@ import { Rng } from '../engine/rng.js';
 import { setState } from '../engine/states.js';
 import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
 import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
-import { Player, PLAYER_X, PLAYER_W, PLAYER_SPRITE_W, GRAVITY, SLIDE_KICK_T, jumpHeightFor } from './player.js';
+import { Player, PLAYER_X, PLAYER_W, PLAYER_SPRITE_W, GRAVITY, SLIDE_KICK_T, STAND_AFTER_PLOW_T, jumpHeightFor } from './player.js';
+import { PUNT, puntPower, startPunt, stepPunt, juggle } from './punt.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstJumpApex, COIN_GAP, COIN_FLOOR } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
@@ -25,7 +26,7 @@ import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
-import { drawHud, drawSpeech, drawActBanner, drawFloatie, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY } from './hud.js';
+import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
@@ -130,6 +131,22 @@ const OPENING_CLEAR = 26;
 // about leaving the ground in the first place.
 const CLOUD_FROM = 108;
 const CLOUD_TO = 168;
+// How much lower than the floor he left the hero has to be, in px, before he
+// wears the face of someone who did not plan this.
+//
+// Small, because the measurement it guards is already exact: the drop is taken
+// against the LANE'S OWN descent (see updateFallFace), so rolling terrain
+// contributes nothing to it and this is covering float error rather than a
+// hill. Six pixels is about a tenth of a second of falling — enough that he
+// runs off the edge and the fall catches up with him a beat later, which is
+// both the truth and the funnier picture. Same instinct as poseFromPlayer's
+// FALL_POSE_VY, one beat earlier.
+const FALL_FACE_DEPTH = 6;
+// How long a queued line waits for the hero to put his feet down before it goes
+// up anyway. Long enough to cover any single jump in the cast (the longest
+// airtime is under a second) with room for a bounced landing, short enough that
+// a line never reads as answering something that has scrolled off.
+const SPEECH_PATIENCE = 4;
 // Jump faces: expressionFor's `jf` lookup (toons.js) — 0 surprised, 1 excited,
 // 2 determined, 3 startled.
 const JUMP_FACE_COUNT = 4;
@@ -302,6 +319,21 @@ export function floatBaseY() {
   return Math.max(FLOAT_BASE_MIN,
     Math.min(FLOAT_BASE_MAX, Math.round(GROUND_Y - FLOAT_AIR_TOP * ZOOM - 8)));
 }
+/**
+ * How the popup stack's duck moves — see floatieShift and the call in updateRun.
+ *
+ * Asymmetric, and that is the whole design. GETTING OUT OF THE WAY is urgent:
+ * the hero is rising into the row and every frame spent easing is a frame with
+ * a card across him, so it goes at nearly the speed of a cut without being one.
+ * COMING BACK is not urgent at all — the row is empty above him and nothing is
+ * waiting for it — so it drifts, and a landing does not fire a card back up the
+ * screen. Same shape as the camera's own easePan, three times as sharp on the
+ * way out.
+ */
+function easeFloatDuck(current, target, dt) {
+  const k = target > current ? 34 : 7;
+  return current + (target - current) * (1 - Math.exp(-k * dt));
+}
 // How fast a card drifts up, px/s. Trimmed from 18 when the row rose: the drift
 // is what carries a card out of the way, and against a higher start the old
 // speed pushed the oldest cards into the speech bubble's band rather than
@@ -354,6 +386,23 @@ const PAUSE_BUTTONS = [
 ];
 
 const BASE_SPEED = 160;
+// Semitones above the root for each juggle in a chain — root, third, fifth,
+// sixth, OCTAVE. The fifth touch is the one that pays out (PUNT.juggleReward),
+// and it is the octave on purpose: a completed chain is a phrase that lands
+// somewhere rather than a run of blips that stops. Miss on the fourth and you
+// hear the phrase left hanging, which is its own feedback.
+const JUGGLE_ARPEGGIO = [0, 4, 7, 9, 12, 16, 19];
+// Punt physics for the finale hold: the same arc with the AIR BRAKE OFF.
+// During the run the drag is what brings a punted cone back into reach, and it
+// works because the camera is chasing the hero — the cone only looks like it
+// is leaving because he is. On the hold the camera stops, so drag would bleed
+// the cone's speed to nothing and park it in the middle of the celebration.
+// Undragged it keeps its launch speed. The bounce keeps its speed too, and
+// nothing lets it settle — so if it lands before it clears the frame it skids
+// off down the road instead of stopping dead in shot. Both matter: with the
+// bounce damped as it is during play, a cone punted at base speed came down
+// after a second and then crawled, still on screen when the results arrived.
+const FINALE_PUNT = { ...PUNT, drag: 0, bounceVx: 1, restVy: 0 };
 // The run accelerates on a square root, so the early seconds gain quickly and
 // the late ones barely move — a stage feels like it is building without ever
 // outrunning the reaction runway the spawner guarantees. The cap is what the
@@ -983,6 +1032,11 @@ export class RunState {
       // taking his jump away there would read as a stumble.
       if (fall > 0.01) {
         this.player.grounded = false;
+        // The floor he is heading for is the tunnel's, and he aimed at it. Left
+        // against the lane he would wear the missed-a-jump face all the way
+        // down a road he chose at the mouth — see updateFallFace.
+        this.player.fallRefX = x;
+        this.player.fallRefY = this.routeGroundY(x, hole);
         // Falling through a hole IS walking off a ledge, and it is treated as
         // one: `jumps` at 0 lets jumpPressed take its own ledge branch, which
         // hands out a single air-scaled hop rather than a free full jump. It
@@ -1015,6 +1069,50 @@ export class RunState {
     // it, so a fast fall crosses both), and the caller would then play `land`
     // twice for one landing. One landing, one caller, one sound.
     return true;
+  }
+
+  /**
+   * THE FALL FACE. Whether the hero is currently going somewhere lower than he
+   * meant to, which is the one thing the surprised face is for.
+   *
+   * Falling is not the test — jumping is falling for half its length, and a hop
+   * over a crate is not a surprise. GOING BELOW THE FLOOR YOU LEFT is the test,
+   * and it separates the cases on its own, without a list of them:
+   *
+   *  - runs clear off the end of an island: below it within a few pixels, face.
+   *  - misses the jump to the next step of a stack: he leaves step two, sails
+   *    past step three and drops past the height he took off from, face.
+   *  - MAKES that jump: he only ever rises above the floor he left, no face.
+   *  - an ordinary hop on the lane: he comes back to exactly the height he
+   *    started at, no face, however fast he is going when he lands.
+   *  - a ramp deliberately going lower — the sky road's descent, a tunnel's
+   *    slide — never registers at all, because he is GROUNDED the whole way
+   *    down and the reference walks down with him. That is the exception, and
+   *    it costs no code: a floor moving under his feet is not a fall.
+   *
+   * Measured against the LANE'S OWN drop between the two points rather than
+   * against a flat line, so rolling terrain is not mistaken for a ledge. Jump
+   * downhill on the plumber's hills and the ground falls ~14px across the arc;
+   * without this subtraction that is a surprised face on every third jump.
+   *
+   * A stomp and a float are exempt for the reason they always are: both are
+   * descents the player ASKED for.
+   */
+  updateFallFace() {
+    const p = this.player;
+    const x = this.playerWorldX();
+    const feetY = this.playerGroundY() - p.y;   // world y; larger is lower
+    if (p.grounded) {
+      p.fallRefX = x;
+      p.fallRefY = feetY;
+      p.fallFace = false;
+      return;
+    }
+    // However far the LANE has fallen away between there and here. Subtracting
+    // it is what makes the test about the ledge rather than about the hill.
+    const laneDrop = this.groundYAt(x) - this.groundYAt(p.fallRefX);
+    const depth = (feetY - p.fallRefY) - laneDrop;
+    p.fallFace = depth > FALL_FACE_DEPTH && p.vy < 0 && !p.stomping && !p.floating;
   }
 
   // The dolly. Camera Y never TRACKS the hero — both numbers come out of
@@ -1227,6 +1325,7 @@ export class RunState {
     this.projectiles = [];
     this.chompBites = [];        // eaten obstacle snapshots flying into Chompo's mouth
     this.floaties = [];
+    this.floatDuck = 0;         // eased shift keeping the popup stack off the hero
     this.goalToasts = [];       // {text, t, t0} — one plug landing, announced once
     // Purchased bench upgrades announce themselves the same way a banked plug
     // does: gold pills sliding in under the health bar, one after another, in
@@ -1245,6 +1344,7 @@ export class RunState {
     this.portal = null;         // active portal entity
     this.speech = null;         // {text, t, who}
     this.speechQueue = [];      // follow-up bubbles (relay banter, boss subtitles)
+    this.speechWaitT = 0;       // how long the head of that queue has been held
     // Stage openers, once per RunState instance: an ACT card gets a full-screen
     // banner over a frozen world, an authored intro rides the speech bubble, and
     // a stage may carry both (plumber-1 opens the campaign with the act card,
@@ -1748,6 +1848,13 @@ export class RunState {
         this.player.y = this.plungerSeat(Math.min(1, this.flip.t / FLIP_THROW));
       }
       this.updateFlipCoins(dt);
+      // Anything punted on the last stride is still in the air. The finale
+      // does not run updateEntities — there is nothing left to simulate — so a
+      // cone caught by the tape hung frozen in the sky beside the celebration,
+      // which reads as the game having crashed rather than having finished.
+      // Its own velocity carries it off the right of the frame in well under a
+      // second; nothing else about the hold changes.
+      for (const ob of this.obstacles) if (ob.punted && ob.live !== false) stepPunt(ob, dt, FINALE_PUNT);
       updateParticles(dt);
       for (const f of this.floaties) { f.t -= dt; f.y -= FLOAT_RISE * dt; }
       if (this.finaleT <= 0) this.endRun(true);
@@ -1948,6 +2055,7 @@ export class RunState {
       speed: sp, ice: this.cabinet.mechanic === 'ice', gravityScale: this.powerups.gravityMultiplier(),
     });
     const tookIsland = this.routes.length ? this.updateRoute(prevFeetY) : false;
+    this.updateFallFace();
     if (res.landed || tookIsland) {
       Audio.sfx('land');
       burst(this.camX + PLAYER_X + 6, this.playerGroundY(), 5, 30, 0.3, '#c8b898', 1, 40, () => this.fxRng.float());
@@ -2010,12 +2118,20 @@ export class RunState {
     if (this.coinComboT > 0) { this.coinComboT -= dt; if (this.coinComboT <= 0) this.coinCombo = 0; }
     for (const f of this.floaties) { f.t -= dt; f.y -= FLOAT_RISE * dt; }
     this.floaties = this.floaties.filter((f) => f.t > 0);
+    // The popup stack getting out of the hero's way. Measured off his STANDING
+    // box, so it is the road that moves the cards and never a jump — see
+    // heroScreenRect. Eased rather than switched: the swap from above him to
+    // below him is 60-odd pixels however it is computed — there is no continuous
+    // path from one side of a hero to the other — and a card that teleports as
+    // he steps onto a platform reads as a glitch. Same easing the camera uses
+    // for the same reason.
+    this.floatDuck = easeFloatDuck(this.floatDuck, floatieShift(this.floaties, this.heroRestRect()), dt);
     this.updateChompBites(dt);
     if (this.goalToasts.length) {
       this.goalToasts[0].t -= dt;
       if (this.goalToasts[0].t <= 0) this.goalToasts.shift();
     }
-    if (this.speech && (this.speech.t -= dt) <= 0) this.speech = this.speechQueue.shift() || null;
+    this.updateSpeech(dt);
 
     updateParticles(dt);
     updateShake(dt, () => this.fxRng.float());
@@ -2087,6 +2203,47 @@ export class RunState {
     return PLAYER_X;
   }
   playerWorldX() { return this.camX + this.heroScreenX(); }
+
+  /**
+   * The hero's drawn box in the OVERLAY's coordinates — the unscaled 480x270
+   * frame the floaties, the speech card and the HUD all live in.
+   *
+   * The overlay is the one layer that has to know where the hero ended up
+   * rather than where he is in the world: it draws outside the world transform,
+   * so nothing in it moves with him unless it is told to. Two callers want the
+   * same answer — the popup stack, which rides his column and has to get out of
+   * his way, and the speech card — and a second copy of this arithmetic is a
+   * second copy that can disagree with the first.
+   *
+   * `playerGroundY`, not `groundYAt`: `player.y` is altitude above whatever
+   * floor he is on, and on the sky road that floor is 168px over the lane.
+   * Measured against the base ground he would read as standing inside it.
+   *
+   * `standing` drops `player.y` and answers where he would be with his feet on
+   * that floor. That is the box the overlay's dodges ask about, and asking it
+   * this way is the difference between the two ways a hero gets high. A JUMP is
+   * a passing thing — half a second, back where he started, and the frame cranes
+   * to hold him anyway — so a card that moves for one is a card that moves every
+   * few seconds all stage, which reads as the HUD twitching rather than as
+   * anything getting out of the way. A PLATFORM is where he now LIVES: the
+   * camera cranes once, he stays up there, and a card printing across him stays
+   * across him. So terrain moves the cards and jumping never does.
+   */
+  heroScreenRect(z = this.camZoom, pan = this.camPan, floorY = this.camFloorY, standing = false) {
+    const heroX = this.heroScreenX() * z;
+    const feetY = screenYFor(this.playerGroundY() - (standing ? 0 : this.player.y), z, pan, floorY);
+    // Mirror flips the overlay's anchor by hand, exactly as drawFloatie does.
+    const left = this.mirror ? W - heroX - PLAYER_SPRITE_W * z : heroX;
+    return {
+      x0: left - 2 * z, x1: left + (PLAYER_SPRITE_W + 2) * z,
+      y0: feetY - HERO_DRAW_H * z, y1: feetY,
+    };
+  }
+  /** heroScreenRect with his feet on the floor he is bound to — the box the
+   *  overlay dodges. See heroScreenRect for why a jump is not allowed to count. */
+  heroRestRect(z = this.camZoom, pan = this.camPan, floorY = this.camFloorY) {
+    return this.heroScreenRect(z, pan, floorY, true);
+  }
   playerBox() {
     return this.player.box(this.camX, this.playerGroundY(), this.heroScreenX());
   }
@@ -2224,6 +2381,7 @@ export class RunState {
     this.portal = null;
     this.copter = null;
     this.floaties = [];
+    this.floatDuck = 0;
   }
 
   updateFinish(dt) {
@@ -2283,7 +2441,9 @@ export class RunState {
       // on it.
       this.speech = null;
       this.speechQueue = [];
+      this.speechWaitT = 0;
       this.floaties = [];
+      this.floatDuck = 0;
       this.resolveFlip();
       // The slide. resolveFlip has already graded the CATCH — it reads
       // player.y, so it must run before anything here moves the hero — and from
@@ -2757,6 +2917,66 @@ export class RunState {
     this.chompBites = this.chompBites.filter((bite) => bite.t < bite.duration);
   }
 
+  // Keepy-uppies. Touching a punted prop that is still airborne knocks it back
+  // up instead of passing through it, which is what running into a thing you
+  // just launched ought to do.
+  //
+  // Deliberately NOT gated on the kick, a jump, or any particular pose: the
+  // player found this by jumping at a cone in mid-flight, and the reward for
+  // trying something is that it works. The cone is harmless throughout, so a
+  // failed juggle costs nothing but the chance.
+  //
+  // A one-frame lockout, because an overlap lasts several frames at 60Hz and
+  // without it a single touch re-launches the cone on every one of them —
+  // which reads as the cone sticking to you rather than being hit.
+  jugglePunt(ob) {
+    const n = juggle(ob, this.speed);
+    const cx = ob.x + ob.w / 2;
+    const cy = this.entityGroundY(ob) - ob.alt - ob.h / 2;
+    // The chain pays out at the top. The cone has taken four boots by now and
+    // is entitled to come apart — so this is the one path where a punted prop
+    // DOES break, and the coins fan out ahead the way a !-box's do, landing
+    // where the hero is about to be rather than where he was.
+    if (n >= PUNT.juggleReward) {
+      Audio.sfx('blockBreak');
+      this.debris(ob, cx, cy);
+      this.tossCoins(cx, 8, Math.max(14, ob.alt));
+      this.floatText(`CONE CHAIN x${n} — HAZARD RESOLVED`, '#f6d33c');
+      shake(1.6, 0.12);
+      ob.live = false;
+      return;
+    }
+    // The chain is counted BY EAR, not on the HUD. A floater per bounce read
+    // as one clump: touches land ~0.7s apart and floatText holds a card for
+    // 1.6s minimum, so x3 and x4 sat on screen together and the count looked
+    // simultaneous rather than sequential.
+    //
+    // An arpeggio does the job the text was failing at. Each touch is the next
+    // note of a major triad — root, third, fifth, octave, and on up — so the
+    // chain has a shape you can hear climbing and you know how far in you are
+    // without reading anything. The combo ladder built into sfx() is chromatic
+    // (1.06 a step), which climbs but does not resolve; a triad arrives
+    // somewhere.
+    // `popSmall`, not `coin` — a cone is not money, and the coin blip was lost
+    // among the actual coins the run is full of. popSmall is a noise transient
+    // over a falling triangle, so it reads as something being STRUCK, and it
+    // takes the arpeggio's pitch cleanly because both of its voices scale.
+    // Pushed hard: this is the loudest thing in the chain and it has to cut
+    // through the music. 3.0 against the cue's own 0.95 trim puts the noise
+    // transient at 0.63 and the triangle at 0.26 — 0.88 if they peak together
+    // on the attack, which they do. 3.4 was tried and lands that sum at
+    // exactly 1.00, which clips the moment a coin or a drum is under it.
+    //
+    // This is the ceiling for THIS cue: more level now needs a second, lower
+    // voice underneath rather than more gain. popSmall has no other caller in
+    // the game, so none of this disturbs anything else.
+    const step = JUGGLE_ARPEGGIO[Math.min(n - 1, JUGGLE_ARPEGGIO.length - 1)];
+    Audio.sfx('popSmall', { pitch: Math.pow(2, step / 12), gain: 3.0 });
+    if (!this.save.settings.reducedMotion) {
+      burst(cx, cy, 5, 60, 0.24, '#f8a030', 1, 200, () => this.fxRng.float());
+    }
+  }
+
   breakObstacle(ob, silent) {
     ob.live = false;
     const cx = ob.x + ob.w / 2;
@@ -2921,7 +3141,7 @@ export class RunState {
     // hitching, not as the game talking — and the bubble is legible at full
     // speed anyway. The prompt gets attention by being the only thing on
     // screen that is words, not by braking the world.
-    this.speech = { text, t: 2.8, who: null };
+    this.say({ text, t: 2.8, who: null });
   }
 
   // What a spent portal throws, and the reason it is thrown at the PORTAL
@@ -2974,13 +3194,15 @@ export class RunState {
     // turning into a conversation you read instead of playing. (Only one voice
     // per swap — see EXIT_LINES.)
     const exit = !this.demo && !this.exitSpoken.has(result.from) && EXIT_LINES[result.from];
+    this.speech = null;
+    this.speechQueue = [];
+    this.speechWaitT = 0;
     if (exit) {
       this.exitSpoken.add(result.from);
-      this.speech = { text: this.speechRng.pick(exit), t: 1.8, who: result.from };
-    } else {
-      this.speech = null;
+      // Through say(): a portal can be taken mid-air, and the parting shot is
+      // worth a beat's wait rather than printing over a hero still falling.
+      this.say({ text: this.speechRng.pick(exit), t: 1.8, who: result.from });
     }
-    this.speechQueue = [];
     this.tutor('firstAbility', `EVERY HERO HAS A POWER. PRESS ${btn}.`);
   }
 
@@ -3038,7 +3260,15 @@ export class RunState {
       } else if (moving && ob.def.airVx) {
         ob.x += ob.def.airVx * dt;
       }
-      if (moving && ob.vx) ob.x += ob.vx * dt;
+      // A punted prop owns its own x: stepPunt integrates vx AND the drag that
+      // bleeds it off. Letting this line run as well applied the launch twice
+      // a frame, which is how a cone that should lead by 25px ended up a
+      // screen-width down the road.
+      if (moving && ob.vx && !ob.punted) ob.x += ob.vx * dt;
+      // A punted cone is in the air on its own account. Before the `falls`
+      // branch because that one owns `alt` for icicles and the two must never
+      // both be steering it.
+      if (ob.punted) stepPunt(ob, dt);
       if (ob.def.falls && !ob.fell) {
         // Telegraph, then drop when the player approaches.
         if (ob.x - this.playerWorldX() < sp * (ob.fallT + 0.35)) {
@@ -3335,6 +3565,52 @@ export class RunState {
     }
   }
 
+  /**
+   * Whether now is a moment to START talking.
+   *
+   * A line fired mid-jump lands in the band the hero is travelling through, and
+   * at the top of a tall one the camera has craned him into the card's own
+   * anchor. The card does not move for a jump — it is half a second, and a HUD
+   * that flinches every hop is worse than one card crossed for a moment — so
+   * the timing is where this is solved instead: a line that has not started yet
+   * costs nothing to hold. Chatter waits for his feet.
+   *
+   * `landedT` as well as `grounded`: the frame he touches down he is still in
+   * the squash, and a card appearing on it reads as part of the impact.
+   */
+  speechSettled() {
+    return this.player.grounded && this.player.landedT <= 0;
+  }
+
+  /**
+   * The bubble's clock: expire what is up, start what is waiting.
+   *
+   * Nothing is ever DROPPED for being badly timed — a taunt that fires over a
+   * jump goes to the back of the queue and plays when he lands, which is a beat
+   * later and reads as no different. `SPEECH_PATIENCE` is the backstop: a hero
+   * who somehow never settles (an ice stage, a long ride) would otherwise hold
+   * a line forever, and a line that never plays was dropped after all. Past it
+   * the card goes up regardless and takes its chances with him.
+   */
+  updateSpeech(dt) {
+    if (this.speech) {
+      if ((this.speech.t -= dt) > 0) return;
+      this.speech = null;
+      this.speechWaitT = 0;
+    }
+    if (!this.speechQueue.length) return;
+    this.speechWaitT = (this.speechWaitT || 0) + dt;
+    if (!this.speechSettled() && this.speechWaitT < SPEECH_PATIENCE) return;
+    this.speech = this.speechQueue.shift();
+    this.speechWaitT = 0;
+  }
+
+  /** Say a line, or queue it behind the one already up. See updateSpeech. */
+  say(line) {
+    if (this.speech || !this.speechSettled()) this.speechQueue.push(line);
+    else this.speech = line;
+  }
+
   updateTaunts(dt) {
     if (this.overtime) return;
     this.tauntT -= dt;
@@ -3342,7 +3618,7 @@ export class RunState {
       this.tauntT = 55 + this.fxRng.range(0, 20);
       // In-run taunts are ambient texture only. The cabinet's authored line is
       // not played here — the stage-1 briefing already delivers it, expanded.
-      this.speech = { text: this.fxRng.pick(EGGSHELL_TAUNTS), t: 3.2, who: 'eggshell' };
+      this.say({ text: this.fxRng.pick(EGGSHELL_TAUNTS), t: 3.2, who: 'eggshell' });
     }
     if (this.narrateT > 0) {
       this.narrateT -= dt;
@@ -3350,7 +3626,7 @@ export class RunState {
         this.narrateT = 18 + this.fxRng.range(0, 10);
         // Narration is Eggshell speaking, so it comes out of his mouth — the
         // speech bubble — not the feedback stack, where it read as a game event.
-        this.speech = { text: this.fxRng.pick(EGGSHELL_NARRATION), t: 3.2, who: 'eggshell' };
+        this.say({ text: this.fxRng.pick(EGGSHELL_NARRATION), t: 3.2, who: 'eggshell' });
       }
     }
   }
@@ -3936,6 +4212,7 @@ export class RunState {
     this.dead = false;
     this.player.iframes = 0.75;
     this.speechQueue = []; // pre-death banter does not survive the respawn
+    this.speechWaitT = 0;
     clearParticles();
     this.resetRenderInterpolation();
   }
@@ -4001,6 +4278,7 @@ export class RunState {
     ps.headless = p.headless; ps.assemblyGraceUsed = p.assemblyGraceUsed;
     ps.hazardEaten = p.hazardEaten; ps.grounded = p.grounded;
     ps.slideT = p.slideT; ps.landedT = p.landedT;
+    ps.fallRefX = p.fallRefX; ps.fallRefY = p.fallRefY; ps.fallFace = p.fallFace;
     ps.abilityCooldowns = assignInto(p.abilityCooldowns, ps.abilityCooldowns || {});
     ps.abilityCd = p.abilityCd;
     ps.rollContactIds = copySetInto(p.rollContactIds, ps.rollContactIds);
@@ -4109,6 +4387,9 @@ export class RunState {
     p.headless = ps.headless; p.assemblyGraceUsed = ps.assemblyGraceUsed;
     p.hazardEaten = ps.hazardEaten; p.grounded = ps.grounded;
     p.slideT = ps.slideT; p.landedT = ps.landedT;
+    p.fallRefX = ps.fallRefX ?? this.playerWorldX();
+    p.fallRefY = ps.fallRefY ?? (this.playerGroundY() - p.y);
+    p.fallFace = !!ps.fallFace;
     p.abilityCooldowns = { ...ps.abilityCooldowns };
     if (ps.rollContactIds != null) p.rollContactIds = new Set(ps.rollContactIds);
 
@@ -4188,8 +4469,10 @@ export class RunState {
 
     // Clear transient visuals.
     this.floaties = [];
+    this.floatDuck = 0;
     this.speech = null;
     this.speechQueue = [];
+    this.speechWaitT = 0;
     this.goalToasts = [];
     clearParticles();
     // On touch, rebuild the button set since the hero may have changed.
@@ -4260,6 +4543,42 @@ export class RunState {
       // Once a descending player has made a clean top contact, keep that crate
       // harmless until it passes behind them instead of turning the next frame
       // of the same landing into a side hit.
+      // Punted: still drawn, still tumbling, no longer a hazard. This is the
+      // landedOn bargain — an obstacle the draw loop knows nothing about and
+      // the collision loop steps over. `ob.live = false` cannot express it,
+      // since that erases the drawing and the entity with the collision.
+      // A punted prop never hurts you. But it is not NOTHING either: catch it
+      // in the air and you knock it back up.
+      //
+      // You have to be AIRBORNE to do it, and that gate is the whole skill.
+      // Without it the juggle was automatic — the hero cannot steer in an
+      // auto-runner, so the only thing he can change is his height, and a
+      // cone descending anywhere near his lane clipped his 14px standing box
+      // on the way past whether the player did anything or not. It was
+      // difficult NOT to juggle. Requiring the jump turns the same contact
+      // into a thing you have to read the arc for and commit to, and it is
+      // also the move the player reached for unprompted.
+      //
+      // A cone lying on the road is inert whatever you do — landed, it has
+      // alt 0 and is furniture.
+      // ONE juggle per jump. The time lockout that was here counted wrong and
+      // the reason is the pacing: a juggled cone travels at exactly the hero's
+      // speed, so it is horizontally overlapping him for the WHOLE hop, not
+      // for an instant. A 0.12s lock therefore did not gate a touch, it gated
+      // a rate — the cone re-fired every seven frames for as long as the boxes
+      // met, and three real punts counted as five.
+      //
+      // A jump is the honest unit: `airJuggled` is cleared the moment he is
+      // grounded, so each touch costs a jump and the number on screen is the
+      // number of times the player actually went and got it.
+      if (ob.punted) {
+        if (ob.alt > 0 && !this.player.grounded && !this.player.airJuggled
+            && overlaps(pbox, box)) {
+          this.player.airJuggled = true;
+          this.jugglePunt(ob);
+        }
+        continue;
+      }
       if (ob.landedOn) {
         if (pbox.x > box.x + box.w) ob.landedOn = false;
         else continue;
@@ -4283,7 +4602,16 @@ export class RunState {
       }
       // Rolling under a duck-flyer, jumping over: geometric, nothing to do here.
       if (this.player.rolling && ob.def.action === 'duck') continue; // roll always clears duckables
-      if (this.player.invincible || this.powerups.isInvincible()) {
+      // I-frames make him unhittable, not incapable. The slide kick below is an
+      // ACTION — the player pressed for it, and the boot connecting is the only
+      // feedback that the press landed — so it has to survive being invulnerable.
+      // Without this exception a hit stole the next second and a half of kicks:
+      // crates and cones passed clean through the flashing hero, and the input
+      // read as dropped rather than as protected.
+      const sliding = this.player.grounded && this.player.duckAmount > 0.6;
+      const slideKick = sliding && ((ob.type === 'crate' || ob.type === 'qcrate')
+        || (ob.def.punt && puntPower(this.player.duckHoldT) > 0));
+      if (!slideKick && (this.player.invincible || this.powerups.isInvincible())) {
         // Targets and switches are objectives, not hazards. Post-hit i-frames
         // must not make a !-crate temporarily unusable.
         if (ob.def.isTarget || ob.def.isSwitch) {
@@ -4340,14 +4668,26 @@ export class RunState {
       // would beggar the jump. It spends the timed duck window to do it, so
       // it is a commit rather than free invincibility — airborne or
       // half-risen contact still hurts like it always did.
-      if (this.player.grounded && this.player.duckAmount > 0.6
-          && (ob.type === 'crate' || ob.type === 'qcrate')) {
+      if (sliding && (ob.type === 'crate' || ob.type === 'qcrate')) {
         // The front leg does the breaking. Until now the box simply died on
         // contact and the hero slid through it with his leg still tucked —
         // the plow read as the crate giving up rather than as him hitting it.
         // The kick is a pose timer, not a state: it outlives this frame, and
         // the leg finishes its swing even if the slide window closes.
         this.player.slideKickT = SLIDE_KICK_T;
+        // He gets UP. The box is gone, so the reason to be down there is gone
+        // with it, and riding the slide through the debris read as sliding
+        // past a thing he had already dealt with.
+        //
+        // A short timer, NOT duckSpent. duckSpent was the first attempt and it
+        // demands the key come up before another slide arms — which stranded
+        // anyone holding duck through a run of hazards: it stood them up into
+        // the next duckable with no way back down, and then into the one after
+        // that. The timer stands him up and gives the slide straight back.
+        //
+        // The cone punt deliberately does NOT do this: cones come in rows of
+        // three, and standing up after the first would cost you the next two.
+        this.player.standT = STAND_AFTER_PLOW_T;
         // The full smash flourish, not just the box quietly dying: the same
         // impact crash the stomp stamps on a crate, on top of breakObstacle's
         // own crunch, burst and debris.
@@ -4356,6 +4696,32 @@ export class RunState {
         this.breakObstacle(ob);
         shake(1.5, 0.1);
         continue;
+      }
+      // Light props LEAVE rather than shatter. Same commitment as the crate
+      // plow above — grounded, mid-slide — with a timing read on top: the
+      // punt is spent from the front of the duck window, so a slide committed
+      // late launches the cone and one you coasted in on does not. Miss the
+      // window and nothing here fires; the cone falls through to takeHit
+      // below, exactly as it does today.
+      if (sliding && ob.def.punt) {
+        const power = puntPower(this.player.duckHoldT);
+        if (power > 0) {
+          this.player.slideKickT = SLIDE_KICK_T;
+          startPunt(ob, this.speed);
+          // No breakObstacle — the whole point is that it does not come apart,
+          // so no crunch and no debris. And no projectileImpact either: that
+          // is the WEAPON crash, Lorenzo's wrench sound and its gold burst
+          // rings, and it read as a special connecting rather than a boot
+          // meeting a bit of plastic. What is left is the launch cue and a few
+          // orange scuffs in the cone's own colours.
+          Audio.sfx('launch', { pitch: 1.15 });
+          if (!this.save.settings.reducedMotion) {
+            burst(ob.x + ob.w / 2, this.entityGroundY(ob) - ob.h * 0.3,
+              6, 70, 0.28, '#e86020', 1, 220, () => this.fxRng.float());
+          }
+          shake(0.9, 0.07);
+          continue;
+        }
       }
       // Targets and switches are objectives, not hazards: contact breaks them.
       // (Without this, jumping into a !-crate dealt damage and the
@@ -5158,15 +5524,28 @@ export class RunState {
       const keepLeftOf = markerX != null && !this.mirror && markerX - PLAYER_X < 560
         ? (markerX - 4) * z
         : null;
+      // Built against the RENDER camera, not the update's — this layer is drawn
+      // with the interpolated frame, and a box measured against the other one
+      // sits a pixel or two off the hero on a smoothed frame.
+      // His STANDING box, not where he is this frame: a hero up on an island or
+      // a fork is somewhere the overlay has to work around, a hero mid-jump is
+      // not. See heroScreenRect.
+      const heroRect = this.heroRestRect(z, pan, floorY);
+      // The popup stack rides the hero's own column, so a jump carries him up
+      // into it. One shift for the whole stack keeps their 19px slotting, and it
+      // is the EASED one — see updateRun.
+      const floatShift = Math.round(this.floatDuck);
       for (const f of this.floaties) {
         drawFloatie(d, f, {
           heroX,
           mirror: this.mirror,
           alpha: Math.max(0, Math.min(1, f.t / 0.25)),
           keepLeftOf,
+          shiftY: floatShift,
+          avoid: heroRect,
         });
       }
-      if (this.speech) drawSpeech(d, this.speech);
+      if (this.speech) drawSpeech(d, this.speech, { avoid: heroRect });
       drawHud(d, this);
       this.drawAbilityName(d);
       if (this.introFreeze > 0 && this.introText) {

@@ -542,7 +542,15 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   } else if (e.roll || (e.def.roll)) {
     ctx.save();
     ctx.translate(x + e.w / 2, y + e.h / 2);
-    ctx.rotate(-t * 6);
+    // A barrel has been rolling since the level loaded, so it takes its angle
+    // from the world clock and every barrel on screen spins in step — which is
+    // fine, because they all started the same way.
+    //
+    // A punted prop did not. It began tumbling on one exact frame, and reading
+    // the shared clock would snap it to whatever phase that clock happened to
+    // be at — a cone that jumps a third of a turn on the frame it is kicked.
+    // `e.spin` is its own angle, carried by whatever launched it.
+    ctx.rotate(e.spin != null ? -e.spin : -t * 6);
     draw1(-bw / 2, -bh / 2, 'center');
     ctx.restore();
   } else {

@@ -755,9 +755,84 @@ export function roundButtonOpts(run, b) {
 // is exactly how Dolores shipped her first afternoon.
 const EXTRA_SPEAKERS = { gary: { short: 'GARY' }, dolores: { short: 'DOLORES' } };
 
+/**
+ * How far the whole popup stack has to move to get out of the hero's way.
+ *
+ * The cards ride the hero's own COLUMN — that is what makes them his and not
+ * the game's — in a row chosen to clear his head while he is standing on the
+ * lane. A road that climbs takes him up through it: on an island or a low fork
+ * the camera cranes and holds, so he now LIVES with his crown above the row and
+ * the stack printing across his chest for as long as he stays up there.
+ *
+ * So the row goes UNDER him. One displacement for the whole stack rather than
+ * a clamp per card, because the cards are slotted 19px apart on purpose and a
+ * per-card clamp would pile simultaneous popups on the same line. Zero the rest
+ * of the time, which is nearly always.
+ *
+ * `hero` is the hero's STANDING box — the caller drops his jump height before
+ * asking, so an ordinary hop never moves a card. Both it and the return are in
+ * the overlay's own unscaled screen space.
+ */
+export function floatieShift(floaties, hero) {
+  if (!floaties.length || !hero) return 0;
+  let top = Infinity, bottom = -Infinity;
+  for (const f of floaties) {
+    top = Math.min(top, f.y);
+    bottom = Math.max(bottom, f.y + FLOAT_CARD_H);
+  }
+  top = Math.max(38, Math.round(top));
+  if (bottom <= hero.y0 || top >= hero.y1) return 0;   // already clear of him
+  return Math.max(0, Math.round(hero.y1 + FLOAT_DUCK_GAP - top));
+}
+
+// One slotted card's height — the pitch floatText stacks them at. Only ever
+// used to ask whether the stack and the hero are in the same band.
+const FLOAT_CARD_H = 19;
+// Air between the hero's feet and the stack once it has ducked under him.
+const FLOAT_DUCK_GAP = 6;
+// What a card fades to on the frames it is unavoidably over the hero. Low
+// enough that he reads through it, high enough that the card is still there —
+// blinking a popup out mid-word is its own kind of distracting.
+const FLOAT_CROSS_FADE = 0.3;
+
 // Speech plates lay out on a taller row than the popup cards do — the bubble is
 // read standing still, the barks are read in motion.
 const SPEECH_ROW = 11;
+// Air left between the hero and a card that has ducked under him. Enough that
+// the two read as separate things rather than as a card he is wearing.
+const SPEECH_DUCK_GAP = 6;
+
+/**
+ * Where the card actually lands, given something on screen it must not cover.
+ *
+ * The default anchor is high in the frame and that is right nearly always: the
+ * card belongs to a character standing at the BOTTOM of it. The exception is
+ * the hero himself LIVING up there — an island or a climbing fork puts his
+ * crown near the top edge and leaves it there, and the card prints across him
+ * for the whole stretch.
+ *
+ * So it ducks UNDER him rather than moving him or fading out: the line is still
+ * readable, it is still in the same place relative to the speaker, and nothing
+ * changes at all for the running that is most of a stage. `avoid` is a screen
+ * rect in the overlay's own unscaled space; without one this is a no-op, which
+ * is what every caller outside a run gets.
+ *
+ * If there is no room below — the hero filling the frame, or the touch shelf
+ * taking the bottom of it — the card stays where it was. Shuffling it a few
+ * pixels buys nothing, and a card half off the bottom edge is worse than a card
+ * over a hero.
+ */
+function placeSpeechCard(baseY, cardX, cardW, cardH, avoid) {
+  if (!avoid) return baseY;
+  const top = baseY - 4;                       // the PLATE's top; baseY is its first row
+  if (cardX + cardW <= avoid.x0 || cardX >= avoid.x1) return baseY;
+  if (top + cardH <= avoid.y0 || top >= avoid.y1) return baseY;
+  // The lowest the plate's top may sit. On touch the power-up shelf owns the
+  // bottom of the frame and the card may not reach into it.
+  const topLimit = (Input.usingTouch ? TOUCH_SHELF_CY - 6 : H - 8) - cardH;
+  const ducked = avoid.y1 + SPEECH_DUCK_GAP;
+  return ducked <= topLimit ? ducked + 4 : baseY;
+}
 
 // `opts.light` swaps the card to a pale, opaque plate with dark ink.
 //
@@ -765,6 +840,11 @@ const SPEECH_ROW = 11;
 // park Gary well above the lane: his card is up for most of the module rather
 // than for a line or two, so at the default y it spent nine sections sitting in
 // the band a held jump actually travels through.
+//
+// `opts.avoid` is a screen rect the card must keep off — the run passes the
+// hero's own STANDING box, so a card fired while he is up on a platform ducks
+// under him instead of printing across him, and a jump — which is over in half
+// a second — never moves it at all. See placeSpeechCard.
 //
 // `opts.maxWidth` narrows the wrap, and with it the measured panel. The card is
 // centred on W/2 and grows symmetrically off its longest line, so a screen with
@@ -805,7 +885,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
   const panel = (px, py, pw, ph) => (plate
     ? drawPanel(ctx, px, py, pw, ph, 4, plate, plateOpts)
     : drawPanel(ctx, px, py, pw, ph, 3));
-  const y = opts.y ?? 46;
+  const baseY = opts.y ?? 46;
   const s = opts.scale ?? 1;
   // A null who is the game itself talking (tutorials, station notes): a plain
   // centered plate, no portrait.
@@ -817,7 +897,13 @@ export function drawSpeech(ctx, speech, opts = {}) {
     // Three lines, not two: Eggshell's longest grievances need the room.
     const lines = wrapText(speech.text, Math.min(opts.maxWidth ?? W, W - 56 * s), s, 3);
     const tw = Math.max(...lines.map((line) => textWidth(line, s)));
-    panel(W / 2 - tw / 2 - 6 * s, y - 4, tw + 12 * s, 8 * s + lines.length * SPEECH_ROW * s);
+    // Measured before it is placed: the card can only get out of the hero's way
+    // once it knows how tall it is.
+    const cardX = W / 2 - tw / 2 - 6 * s;
+    const cardW = tw + 12 * s;
+    const cardH = 8 * s + lines.length * SPEECH_ROW * s;
+    const y = placeSpeechCard(baseY, cardX, cardW, cardH, opts.avoid);
+    panel(cardX, y - 4, cardW, cardH);
     // Through textY, like every other panel in this file. The plate's 4 units
     // of top padding put the first ROW at y; the ink then has to be centred on
     // that row rather than having its 12-unit glyph box hung off the top of it,
@@ -841,6 +927,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
   const h = Math.max(FACE_H + 6 * s, textH + 8 * s);
   const w = PAD + FACE_W + GAP + tw + PAD;
   const x = Math.round(W / 2 - w / 2);
+  const y = placeSpeechCard(baseY, x, w, h, opts.avoid);
   panel(x, y - 4, w, h);
   const faceY = Math.round(y - 4 + (h - FACE_H) / 2);
   // Eggshell has no toon rig — his prop painter plays the portrait.
@@ -1080,7 +1167,11 @@ export function drawFailBanner(ctx, text) {
 // `heroX` is the hero's column in SCREEN space, already through the zoom —
 // this layer is unscaled, so a world offset here would leave every card
 // trailing behind the hero.
-export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeftOf = null } = {}) {
+// One card of the popup stack. Its whole life is 19px of slot and a slow drift
+// upward, and both of those are measured from FLOAT_BASE — a row chosen to
+// clear a STANDING hero's head. `shiftY` is what happens when the hero is not
+// standing: see floatieShift.
+export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeftOf = null, shiftY = 0, avoid = null } = {}) {
   // Impact words (PEW, BOY.) center over the hero's head; anything longer
   // shares one left edge at the hero column and rags rightward into the
   // direction of travel — centering long lines on a hero this near the screen
@@ -1090,7 +1181,7 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
   let edgeX = mirror ? W - heroX : heroX;
   const short = f.text.length <= 5;
   const lines = wrapText(f.text, short ? W - 32 : W - heroX - 8, 1, 2);
-  const topY = Math.max(38, Math.min(H - 48 - lines.length * LINE_H, Math.round(f.y)));
+  const topY = Math.max(38, Math.min(H - 48 - lines.length * LINE_H, Math.round(f.y) + shiftY));
   // Each floatie rides its own HUD panel — the bare text plate washed out over
   // light packs.
   const tw = Math.max(...lines.map((line) => textWidth(line)));
@@ -1107,9 +1198,18 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
     const dx = Math.min(0, keepLeftOf - (bx + tw + PADX * 2));
     bx += dx; floatX += dx; edgeX += dx;
   }
+  // The crossing. A hero passing through the row has to share it with the cards
+  // for a few frames however fast the duck moves — there is no continuous path
+  // from one side of him to the other — so for those frames the card goes
+  // translucent and he reads through it. It is the same idea as the duck, at
+  // the one scale the duck cannot fix.
+  const cardH = lines.length * LINE_H + 8;
+  const onHero = avoid
+    && bx + tw + PADX * 2 > avoid.x0 && bx < avoid.x1
+    && topY - 4 + cardH > avoid.y0 && topY - 4 < avoid.y1;
   ctx.save();
-  ctx.globalAlpha = alpha;
-  drawPanel(ctx, Math.round(bx), topY - 4, tw + PADX * 2, lines.length * LINE_H + 8, 4,
+  ctx.globalAlpha = alpha * (onHero ? FLOAT_CROSS_FADE : 1);
+  drawPanel(ctx, Math.round(bx), topY - 4, tw + PADX * 2, cardH, 4,
     f.solid ? HAZARD_PANEL : FLOAT_PANEL,
     f.solid ? HAZARD_BORDER : { border: FLOAT_BORDER, shadow: true });
   // Through textY, like every other panel in this file. The glyph box is 12

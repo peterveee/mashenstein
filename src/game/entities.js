@@ -36,7 +36,13 @@ export const OBSTACLES = {
   chair:      { w: 12, h: 10, sprite: 'chair', ground: true, breakable: true, action: 'jump', vx: -34, roll: true },
   printer:    { w: 12, h: 7,  sprite: 'printer', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true },
   paperwork:  { w: 8, h: 6,   sprite: null, alt: 13, armored: false, action: 'duck', paper: true, bob: true, airDrift: { amp: 5, speed: 0.9 } },
-  trafficCone:{ w: 10, h: 13, sprite: 'trafficCone', ground: true, breakable: true, action: 'jump' },
+  // `punt`: light enough that a boot sends it somewhere rather than through a
+  // debris cloud. It stays `action: 'jump'` — jumping is still the answer the
+  // spawner and the fairness sim budget for, and the punt is an ALTERNATIVE a
+  // slide can take, never the required clear. Declaring it 'duck' would make it
+  // the first ground-standing duckable in the game and would falsify the
+  // "roll always clears duckables" shortcut in RunState.collide.
+  trafficCone:{ w: 10, h: 13, sprite: 'trafficCone', ground: true, breakable: true, action: 'jump', punt: true },
 };
 
 // What a thing is made of, for when it stops being a thing. Colours are pulled

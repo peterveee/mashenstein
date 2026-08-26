@@ -127,21 +127,36 @@ export const CABINETS = [
       // THE HIGH ROAD. `spring` puts a pad on the ground before the mouth and
       // that pad is the only way up — 96px is three times a jump — so taking it
       // is a decision made once, on the approach, by NOT jumping over the pad.
-      // Then it climbs to 210 and you are in the clouds with the hills below
+      // Then it climbs to 168 and you are in the clouds with the hills below
       // you, and there is no coming back to the lane until the road brings you
       // back. That is the whole point of the numbers: at the old 29px the two
       // roads were one hop apart, so missing the turn cost nothing and taking
       // it committed you to nothing.
       //
-      // It comes down to 96 and stops there — the height the spring threw you
-      // to. You leave the road exactly as far above the lane as you were when
-      // you joined it, and you get there the same way you would have without
-      // the pad: by falling. The descent is short (`hold` at 0.82) so the last
-      // stretch is a drop off the end of the clouds rather than a long ramp
-      // walked back down to where you started.
+      // 168 is CLOUD_TO (run.js) exactly, which is the height the road stops
+      // being drawn as dirt held up in the air and starts being weather. It
+      // used to climb to 210, and the extra forty pixels bought no more cloud —
+      // it was all paid for on the way down. Missing one of the breaks up here
+      // dropped you a screen and a half, and a fall you cannot see the bottom
+      // of is a fall you do not get to place.
+      //
+      // AND THEN IT RIDES BACK DOWN. `hold` at 0.70 gives the descent the last
+      // thirty per cent of the span — about 120px of height over 360px of
+      // travel, which is a slope you walk rather than a lip you step off. It
+      // used to hold full height to 0.82 and stop dead at 96, so the ending was
+      // a 96px plunge with no warning in the geometry that it was coming.
+      //
+      // `end: 48` is what is left to fall, a third of a frame, and it is not
+      // zero on purpose: a road that eases all the way onto the lane has no
+      // ending and the whole excursion finishes with a shrug. It is not smaller
+      // than 48 either, and that is `clearRouteHazards` talking rather than
+      // taste — it retires anything on the lane whose top reaches within 12px
+      // of this road's underside, so a road that comes down to 24 sweeps every
+      // cactus, barrel and drone out of the lane beneath the merge. At 48 only
+      // the flyers that would genuinely be inside the road go.
       {
         at: 0.58, dwell: 7.5, spring: true, sky: true,
-        entry: 96, peak: 210, lip: 0.2, climb: 0.34, hold: 0.82, end: 96,
+        entry: 96, peak: 168, lip: 0.2, climb: 0.34, hold: 0.70, end: 48,
         // Breaks in the road, so being up here asks something of you between
         // the two ends of it. Fractions along the span; `gapSec` is their width
         // in SECONDS, which is a third of a jump at any speed — clearable

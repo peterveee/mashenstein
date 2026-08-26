@@ -1617,7 +1617,12 @@ function expressionFor(id, pose = {}, spec = null) {
   // never blinks in eerie unison. Action faces override the idle blink.
   const blinkGap = pose.menu ? 1.8 + seed * 0.08 : 3.6 + seed * 0.11;
   const blinkPhase = (t + seed) % blinkGap;
-  const active = pose.kind === 'jump' || pose.kind === 'duck' || pose.kind === 'celebrate' || pose.stomp || pose.roll || pose.float;
+  // `faceSurprised` counts as an action face: a hero who has just run off a
+  // ledge is drawn RUNNING until the fall catches up with him (poseFromPlayer's
+  // bigFall), so without it the idle blink can shut his eyes on the one beat
+  // they are meant to be wide open.
+  const active = pose.kind === 'jump' || pose.kind === 'duck' || pose.kind === 'celebrate'
+    || pose.stomp || pose.roll || pose.float || !!pose.faceSurprised;
   // The pole ride is the moment the stage is WON, and the face is the only part
   // of the hero that can say so — the body is busy holding on. It borrows the
   // JUMP pose to hang off, though, and an ordinary jump wears one of a handful
@@ -1633,21 +1638,25 @@ function expressionFor(id, pose = {}, spec = null) {
   // player has just missed, where a grin reads as the hero enjoying their
   // mistake.
   //
-  // Two thresholds, not one flag, because "going down" and "going down badly"
-  // want different faces. Past -60 (the variable-jump cut, so the same speed the
-  // engine already treats as the end of a hop's rise) the hero is properly on
-  // the way down and the excited face simply drops out — the smile going is
-  // enough, and anything stronger would fire on the descent of every ordinary
-  // hop, which is most of the time anyone spends in the air. Past -240 — three
-  // quarters of BASE_JUMP_V, which a jump cannot reach coming down from its own
-  // apex and only a fall from higher than you jumped gets to — it becomes
-  // alarm, which is the missed-jump case.
+  // Past -60 (the variable-jump cut, so the same speed the engine already treats
+  // as the end of a hop's rise) the hero is properly on the way down and the
+  // excited face simply drops out — the smile going is enough, and anything
+  // stronger would fire on the descent of every ordinary hop, which is most of
+  // the time anyone spends in the air.
+  //
+  // ALARM is not a speed. It used to be a second threshold here, -240, on the
+  // reasoning that a jump could not reach it coming back down from its own
+  // apex — but it can, and does: launch at BASE_JUMP_V 320 and you cross the
+  // takeoff line at exactly -320, so the last four frames of every held jump
+  // wore the startled face on the way into a landing the player had judged
+  // perfectly. Speed cannot tell a fall from the end of a hop, because the end
+  // of a hop IS a fall. Only the geometry can — how far below the floor he left
+  // he has got to — and RunState.updateFallFace is where that is measured.
   //
   // A stomp is exempt and so is a float: both are descents the player ASKED
   // for, and `effort` already owns the stomp's face.
   const dropping = pose.kind === 'jump' && !pose.stomp && !pose.float && !clinging;
   const falling = dropping && (pose.vy || 0) < -60;
-  const plunging = dropping && (pose.vy || 0) < -240;
   // Face-only moods let a running cameo react without switching its body into
   // a celebration animation. Production poses do not set these flags.
   // jumpFace 1 ("excited") also lands here — see the `jf` variant lookup below.
@@ -1742,7 +1751,7 @@ function expressionFor(id, pose = {}, spec = null) {
     // BROW_L_SCALE is the one that needs it.
     id,
     focus: pose.kind === 'run' || pose.kind === 'duck' || pose.roll || jf === 2,
-    surprise: !clinging && (jf === 0 || jf === 3 || plunging || !!pose.faceSurprised),
+    surprise: !clinging && (jf === 0 || jf === 3 || !!pose.faceSurprised),
     // Startled brow: opt-in via pose.browRaise (a cameo can force it), or the
     // jump face rolled the startled variant; see the branch it unlocks in
     // drawEyes for why the surprise face needed its own shape.
@@ -9250,6 +9259,11 @@ export function poseFromPlayer(player, t) {
   // ran off an edge. `fell` is that, and it is passed through so a rig can do
   // better with it later.
   const fell = !player.grounded && (player.jumps || 0) === 0 && !player.launched;
+  // THE FACE OF SOMEONE WHO DID NOT PLAN THIS. Not derived here — it is a
+  // question about where the FLOOR is, and the floor is the run's to know. See
+  // RunState.updateFallFace for what it is and what it deliberately excludes
+  // (a ramp going down under his feet, a hole he aimed at, a stomp).
+  const fallFace = !!player.fallFace;
   // HOW BIG THE FALL IS DECIDES THE POSE, and how fast he is going is how the
   // pose finds out.
   //
@@ -9273,6 +9287,7 @@ export function poseFromPlayer(player, t) {
     kind,
     fell,
     bigFall,
+    faceSurprised: fallFace,
     phase: player.anim % 1,
     // The bite's clock has to start at 0 the instant the ability fires, not
     // wherever the run's absolute clock happens to be, or biteWave() opens

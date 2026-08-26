@@ -44,6 +44,10 @@ export const DUCK_MAX_T = 1.0;
 // slower shove — a jab was gone before the debris, and a shove read as a push
 // rather than a strike.
 export const SLIDE_KICK_T = 0.34;
+// How long the hero is held standing after a slide plows a box. Just past the
+// kick's own 0.34s, so the leg finishes its swing on the way up and the stand
+// reads as the follow-through rather than as the slide being cancelled.
+export const STAND_AFTER_PLOW_T = 0.38;
 // The walk cycle is driven by scroll speed, not by wall time, so the stride
 // stays planted as the run accelerates: anim advances at world.speed / this.
 // Lower means faster legs at the same speed.
@@ -112,6 +116,16 @@ export class Player {
     // recovery, and the leg has to be somewhere definite on every frame in
     // between.
     this.slideKickT = 0;
+    // A short, forced stand — set when a slide finishes something off, so the
+    // hero gets up rather than riding the slide through the debris. Counts
+    // down on its own and does NOT touch duckSpent: holding the key through it
+    // resumes the slide the moment it expires.
+    this.standT = 0;
+    // One cone juggle per trip through the air. Cleared on landing, so the
+    // count on screen is the number of jumps the player spent rather than the
+    // number of frames two boxes happened to overlap for.
+    this.airJuggled = false;
+    this.airJuggled = false;
     this.duckSpent = false;  // window used up; release to re-arm
     this.floating = false;
     this.iframes = 0;
@@ -144,6 +158,18 @@ export class Player {
     this.grounded = true;
     // Airborne because something threw him, not because he jumped. See launch().
     this.launched = false;
+    // THE FALL FACE, and where it is measured from.
+    //
+    // `fallRef*` is the surface he last had his feet on — a WORLD point, x as
+    // well as y, because the lane rolls and the x is what lets the drop be
+    // measured against the ground's own descent rather than against a flat
+    // line. RunState owns both (it is the only thing that knows where a floor
+    // is); they live here so the rewind's field-by-field snapshot has one place
+    // to find them, and so nothing about the player is state kept off to one
+    // side. See RunState.updateFallFace.
+    this.fallRefX = 0;
+    this.fallRefY = 0;
+    this.fallFace = false;
     this.slideT = 0;      // ice landing slide (visual/control feel)
     this.landedT = 0;     // landing squash timer (visual only)
     // The incoming hero's arrival, set by whoever ran them through a portal.
@@ -210,12 +236,19 @@ export class Player {
   // held key; the key must come up before another slide arms. Ability ducks
   // (rollT / compressT) bypass this — they carry their own timers.
   duckWindow(holdDuck, dt) {
+    if (this.standT > 0) this.standT = Math.max(0, this.standT - dt);
     if (!holdDuck) {
       this.duckHoldT = 0;
       this.duckSpent = false;
       return false;
     }
     if (this.duckSpent) return false;
+    // Getting up after a plow. Deliberately NOT duckSpent, which would demand
+    // the key come up before another slide armed — that stranded anyone who
+    // holds duck through a run of hazards, standing them up into the next one
+    // with no way to get back down. A timer stands him up and hands the slide
+    // straight back.
+    if (this.standT > 0) return false;
     this.duckHoldT += dt;
     if (this.duckHoldT >= DUCK_MAX_T) {
       this.duckSpent = true;
@@ -354,6 +387,8 @@ export class Player {
         this.y = 0;
         this.grounded = true;
         this.jumps = 0;
+        // Back on the ground: the next juggle costs a fresh jump.
+        this.airJuggled = false;
         this.launched = false;
         const wasStomp = this.stomping;
         this.stomping = false;

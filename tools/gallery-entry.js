@@ -19,6 +19,7 @@ import {
   HERO_DRAW_W, HERO_DRAW_H,
 } from '../src/game/draw.js';
 import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from '../src/game/entities.js';
+import { PUNT, puntPower, startPunt, stepPunt } from '../src/game/punt.js';
 import { HERO_BY_ID } from '../src/data/heroes.js';
 import {
   PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, PORTAL_SPRITE,
@@ -3530,6 +3531,101 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // inside its own white (the counter-gaze was already 0.001u past the rim at
 // the shipped tilt, in production, before any kick), and the counter-gaze
 // coefficient came back from -0.10 to -0.07 so the flick has somewhere to go.
+
+// -------------------------------------------------- cone punt bake-off
+// LAB — gallery only, and the physics here is the SHIPPED physics: these tiles
+// import startPunt/stepPunt from src/game/punt.js and integrate them per
+// frame. A bake-off that judged a reimplementation of the arc would be judging
+// the wrong thing — the whole reason the module exists apart from run.js.
+//
+// What ships today: a slide committed inside the punt window sends a traffic
+// cone up and over the hero instead of shattering it, and it lands behind him
+// as harmless scenery. Miss the window and the cone hurts you exactly as it
+// does now — the feature is additive, which is why the cone keeps
+// `action: 'jump'` and the fairness sim never had to move.
+//
+// The one hard constraint is drawn, not asserted: the dashed line is the
+// hero's crown. An arc that dips under it is a cone through the face on the
+// way past, which reads as a collision bug rather than a weak hit. That is
+// why the launch has a floor (see startPunt) and why the weakest candidate
+// here still clears.
+{
+  const grid = section('cone-punt', 'Power slide — cone punt arc',
+    'GALLERY ONLY for the tuning; the punt itself ships. Each tile runs the REAL '
+    + 'startPunt/stepPunt at 60Hz on a loop, with a cone launched off the hero\'s boot. '
+    + 'Plotted in the hero\'s frame, so what you see is what the camera sees: the cone is '
+    + 'punted out in FRONT, air-brakes, and he passes underneath it near the top of the arc '
+    + 'before it lands behind him. The dashed line is his crown. The pass-under lands at the '
+    + 'same instant of the flight at every run speed — only the lead grows with speed.');
+  const CANDIDATES = [
+    { key: 'shipped', label: 'shipped — vy 340, launched at 2x the run, drag 2.0', tune: {} },
+    { key: 'lower', label: 'lower — vy 260, less hang; watch him catch it early', tune: { launchVy: 260 } },
+    { key: 'harder', label: 'harder — punted at 2.6x, a bigger lead out front', tune: { launchBoost: 2.6 } },
+    { key: 'floatier', label: 'floatier — drag 1.2, it keeps its forward carry longer', tune: { drag: 1.2 } },
+    { key: 'spinnier', label: 'spinnier — 16 rad/s, end over end', tune: { spinRate: 16 } },
+  ];
+  const PERIOD = 2.4, DT = 1 / 60;
+  // Base run speed. The arc is plotted against it, and the pass-under lands at
+  // the same point in the flight at every speed the game reaches — see the
+  // closingRate note in punt.js.
+  const RUN = 160;
+  const HH = 74, WIDE = 216, FEET = 150;
+  // Crown of the slide, in draw-height units off the feet — measured, not
+  // guessed: the same 0.86u the punt module sizes its launch floor against.
+  const CROWN = 0.86;
+  for (const cand of CANDIDATES) {
+    tile(grid, `cone punt — ${cand.key}`, cand.label, WIDE, 172, (ctx, t) => {
+      const tune = { ...PUNT, ...cand.tune };
+      // Re-integrate from the top of each loop rather than carrying state:
+      // tiles repaint only while visible, so a cone that accumulated across
+      // frames would drift the moment you scrolled away and back.
+      const ph = t % PERIOD;
+      const heroX = RUN * Math.min(ph, 2.2);
+      // Starts about a boot ahead of him, where a cone being kicked actually is.
+      const ob = { x: 0, alt: 0 };
+      startPunt(ob, RUN, tune);
+      for (let s2 = 0; s2 < ph && s2 < 2.2; s2 += DT) stepPunt(ob, DT, tune);
+      const k = ph < 0.34 ? (ph < 0.153 ? ph / 0.153 : Math.max(0, 1 - (ph - 0.153) / 0.187)) : 0;
+      // hero, at the left, mid-kick
+      drawToon(ctx, 'lorenzo', pose('duck', t, { duckStyle: 'slide', slideKick: k }), 60, FEET, HH);
+      // his crown, and the deck
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = '#8a8a9e';
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(6, FEET - CROWN * HH); ctx.lineTo(210, FEET - CROWN * HH); ctx.stroke();
+      ctx.restore();
+      ctx.strokeStyle = '#4a4a58';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(6, FEET + 0.3); ctx.lineTo(210, FEET + 0.3); ctx.stroke();
+      // The cone, on its arc.
+      //
+      // The arc is in WORLD px — the game's 24px hero — while the tile draws
+      // him at HH. Everything the cone does has to come through that one
+      // ratio or the two are in different worlds: a 50px apex plotted at 1:1
+      // against a 74px hero is a cone that barely leaves the floor, and the
+      // crown line stops meaning anything.
+      const Z = HH / 24;
+      const CW = 10 * Z, CH = 13 * Z;
+      // Plotted in the HERO's frame, which is the camera's frame: subtract the
+      // ground he covers while the cone is up. In world x the cone only ever
+      // moves forward and the tile would show it drifting off to the right,
+      // which is true and tells you nothing about what you would see.
+      const cx = 104 + (ob.x - heroX) * Z;
+      const cy = FEET - ob.alt * Z;
+      ctx.save();
+      ctx.translate(cx, cy - CH / 2);
+      ctx.rotate(-(ob.spin || 0));
+      drawProp(ctx, 'trafficCone', -CW / 2, -CH / 2, CW, CH, 0);
+      ctx.restore();
+      ctx.fillStyle = '#8a8a9e';
+      ctx.font = '6px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`apex-to-date ${(ob.alt * Z).toFixed(0)}px  crown ${(CROWN * HH).toFixed(0)}px`, 6, 10);
+      ctx.fillText(ob.alt > CROWN * HH ? 'OVER' : '', 6, 18);
+    }, { animated: true, wide: true, hires: 4 });
+  }
+}
 
 // --------------------------------------------- slide contact-kick bake-off
 // LAB — gallery only, and speculative: NOTHING in the run drives this. No

@@ -65,3 +65,4 @@ Do not edit by hand.
 | 2026-08-20 | `4db943a` | [2026-08-20-4db943a.html](2026-08-20-4db943a.html) | Refactor TNGR-2 Chorus Handling and Improve Note FX Logic |
 | 2026-08-24 | `1c2f7a7` | [2026-08-24-1c2f7a7.html](2026-08-24-1c2f7a7.html) | Refactor note-fx tests and enhance song index generation |
 | 2026-08-24 | `6b9c6a3` | [2026-08-24-6b9c6a3.html](2026-08-24-6b9c6a3.html) | Refactor code structure for improved readability and maintainability |
+| 2026-08-25 | `701e61e` | [2026-08-25-701e61e.html](2026-08-25-701e61e.html) | Refactor mixer layout and tutorial; enhance platformer collision detection |

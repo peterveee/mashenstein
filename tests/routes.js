@@ -432,12 +432,33 @@ assert(sky.peak > bestApex * 2,
 // that there is no WINDOW anywhere past the lip where the ground and the road
 // are a jump apart. A road that dipped back into reach in the middle would be
 // exactly as unbinding as the 29px one was.
+//
+// Swept to `hold` — the climb and the plateau, which is the whole stretch the
+// choice is binding over — and not a fixed fraction of the span. Past `hold`
+// the road is on its final descent and CONVERGES, which is what a fork is: the
+// last of it comes back within a jump of the lane on purpose, exactly as the
+// tunnel's own climb does at its far end. Joining it there buys nothing — the
+// prizes are on the plateau and the road is about to run out — so the sweep
+// has no business forbidding it. It was a hard 0.9 while the road stopped dead
+// at height, and the number happened to sit just before the descent got low;
+// it was the sample bound holding the line rather than the rule.
 let reachable = 0;
-for (let t = 0.28; t < 0.9; t += 0.02) {
+for (let t = 0.28; t < sky.hold; t += 0.02) {
   if (run.routeRise(sky.x + sky.w * t, sky) <= bestApex) reachable++;
 }
 assert(reachable === 0,
-  `and never dips back into reach along its length (${reachable} reachable samples)`);
+  `and never dips back into reach while the choice is binding (${reachable} reachable samples)`);
+// And once it starts coming down it keeps coming down. A road that sagged back
+// into reach and then climbed away again would be a second mouth halfway along
+// — the same unbinding the sweep above forbids, hidden in the ending.
+let bobbed = 0;
+let prevRise = run.routeRise(sky.x + sky.w * sky.hold, sky);
+for (let t = sky.hold; t <= 1; t += 0.01) {
+  const rise = run.routeRise(sky.x + sky.w * Math.min(t, 0.9999), sky);
+  if (rise > prevRise + 0.001) bobbed++;
+  prevRise = rise;
+}
+assert(bobbed === 0, `and the descent only ever descends (${bobbed} samples rose)`);
 // The double jump is the obvious way round a rule like this, so it gets its own
 // check: even two full jumps, stacked, do not reach the road.
 const doubleApex = bestApex * (1 + 0.85 * 0.85);
@@ -786,6 +807,82 @@ for (const [i, h] of tunnelOpenings(tunnel).entries()) {
     `opening ${i}: and it is wide enough that the forgiveness cannot span it `
     + `(${Math.round(h.w)}px against a ${PLAYER_SPRITE_W}px hero)`);
 }
+run.obstacles.length = 0;
+
+// ---- the face of someone who did not plan this ------------------------------
+//
+// The surprised face used to be a SPEED — anything past -240px/s. Speed cannot
+// tell a fall from the end of a hop, because the end of a hop is a fall: a
+// standard jump crosses its own takeoff line at exactly -320, so the last few
+// frames before a perfectly judged landing wore the startled face. It is a
+// question about the FLOOR instead — how far below the one he left he has got
+// to (RunState.updateFallFace) — and these are the cases that separates.
+function fallFaceOver(n, setup) {
+  setup();
+  let on = 0;
+  for (let i = 0; i < n; i++) {
+    run.obstacles.length = 0;
+    frames(1);
+    run.obstacles.length = 0;
+    if (run.player.fallFace) on++;
+  }
+  return on;
+}
+const skyRoad = run.routes.find((r) => r.sky);
+const tunnelRoad = run.routes.find((r) => r.kind === 'tunnel');
+const steps = run.routes.filter((r) => r.stack);
+const plant = (worldX, route = null) => () => {
+  run.camX = worldX - PLAYER_X; run.route = route;
+  run.player.y = 0; run.player.vy = 0; run.player.grounded = true;
+  run.player.stomping = false; run.player.jumps = 0; run.player.launched = false;
+  run.obstacles.length = 0;
+};
+
+// IT FIRES where the ground has genuinely gone.
+assert(fallFaceOver(20, plant(island.x + island.w - 12, island)) > 0,
+  'running clear off the end of a slab wears the fall face');
+assert(fallFaceOver(20, plant(skyRoad.x + skyRoad.w - 6, skyRoad)) > 0,
+  "and stepping off the sky road's lip");
+if (steps.length >= 2) {
+  assert(fallFaceOver(24, plant(steps[0].x + steps[0].w - 4, steps[0])) > 0,
+    'and falling off a staircase step to the lane below');
+}
+
+// IT DOES NOT on a landing the player judged perfectly — which is the whole
+// reason the speed test had to go.
+assert(fallFaceOver(48, () => { plant(1000)(); dom.keyDown('Space'); }) === 0,
+  'an ordinary held jump never wears it, however fast the landing');
+dom.keyUp('Space');
+frames(30);
+// Nor on rolling terrain, where the ground itself falls away under the arc. The
+// drop is measured against the LANE's own descent, so a hill is not a ledge.
+let downhillX = 1000;
+for (let x = 400; x < 3000; x += 10) {
+  if (run.groundYAt(x + 120) - run.groundYAt(x) > 10) { downhillX = x; break; }
+}
+const laneFall = run.groundYAt(downhillX + 120) - run.groundYAt(downhillX);
+assert(laneFall > 8, `the stage has a downhill worth testing against (${laneFall.toFixed(0)}px across a jump)`);
+assert(fallFaceOver(48, () => { plant(downhillX)(); dom.keyDown('Space'); }) === 0,
+  'nor the same jump taken downhill — a hill is not a ledge');
+dom.keyUp('Space');
+frames(30);
+
+// AND NOT on the two descents the player CHOSE. A ramp going down under his
+// feet never registers at all: he is grounded the whole way, so the reference
+// walks down with him and there is nothing to measure. A tunnel mouth is a hole
+// he aimed at, and updateRoute rebases the reference onto the floor he is
+// heading for as it claims him.
+let onRamp = 0;
+for (let i = 0; i < 40; i++) {
+  run.camX = skyRoad.x + skyRoad.w * 0.85 - PLAYER_X;
+  run.route = skyRoad; run.player.y = 0; run.player.grounded = true;
+  run.obstacles.length = 0;
+  frames(1);
+  if (run.player.fallFace) onRamp++;
+}
+assert(onRamp === 0, `riding a ramp deliberately going lower is not a fall (${onRamp}/40 frames)`);
+assert(fallFaceOver(40, plant(tunnelRoad.x - 30)) === 0,
+  'and neither is dropping into a mouth he ran at on purpose');
 run.obstacles.length = 0;
 
 // ---- the camera re-pins, or none of the above is playable -------------------
