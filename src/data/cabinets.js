@@ -32,6 +32,27 @@ const coinLine = (dx, n = 6) => ({ t: 'coins', shape: 'line', dx, n });
 const coinStair = (dx, n = 5) => ({ t: 'coins', shape: 'stair', dx, n });
 const PERC_OFF = seq('.').map((v) => !!v); // silent percussion lane (section override)
 
+// ONE BANANA PEEL, AT MOST, PER RUN — `once`, honoured by Spawner.pickPattern.
+//
+// One cell replacing one obstacle, and the cap IS the design rather than a
+// limitation of it: the peel's whole joke is that you did not expect it, and a
+// gag stops being one the third time it happens. Left in the ordinary rotation
+// it turned up every few hundred metres and became just another thing to jump.
+//
+// A single shared object referenced by every cabinet that wants one, not a copy
+// per cabinet. The Surge's bank is the union of all the others', so two separate
+// peel patterns would give a Surge stage two peels — one from Plumber's entry
+// and one from Speed's. Sharing the object means the spawner's `usedOnce` sees
+// the same pattern whichever cabinet's list it came from, and spends it once.
+//
+// Tier 1 rather than 0: Plumber's floor traps are that cabinet's TAUGHT floor
+// hazard, introduced alone on clear ground, and the peel needs no such lesson —
+// by the time it appears the player has learned to look down. In Speed Zone it
+// lands on the argument the cone rows make: they are a standing invitation to
+// hold the slide and punt through, and the peel is the one thing that punishes
+// it. Once per run, so that argument is made exactly once.
+const PEEL_ONCE = P(1, [{ t: 'bananaPeel', dx: 0 }], { once: true });
+
 const BASE_PATTERNS = [
   P(0, [{ t: 'cactus', dx: 0 }]),
   P(0, [{ t: 'cactus', dx: 0 }, coinArc(60)]),
@@ -72,6 +93,13 @@ export const CABINETS = [
     mechanic: 'qcrates', // breakable !-crates, pipes as secret routes
     sky: ['#78c8f0', '#a8e0f8'], ground: '#3a9c48', groundDark: '#2a7038',
     far: '#5ab060', hills: '#48a050',
+    // WHAT IS AT THE BOTTOM OF ITS HOLES. The break itself is drawn by not
+    // drawing (engine/stylePacks), so a pit on any cabinet already shows the
+    // hills through it; this names the material lying on the floor of one.
+    // Tar because the cabinet is a plumbing disaster and because tar is the
+    // one fill on the bake-off sheet that costs no light — plumber's sky is
+    // bright and a luminous pit would have to out-shout it.
+    pitFill: 'tar',
     // What the ground is made of UNDER the turf — the cutaway you see inside a
     // tunnel and along the underside of every raised road. A real brown rather
     // than the green taken down a few stops: soil is not grass with the lights
@@ -219,6 +247,46 @@ export const CABINETS = [
       P(1, [{ t: 'qcrate', dx: 0, y: 54 }, { t: 'qcrate', dx: 16, y: 54 }, { t: 'cactus', dx: 90 }]),
       P(2, [{ t: 'pipe', dx: 0 }, coinArc(60)]),
       P(2, [{ t: 'qcrate', dx: 0, y: 70 }, { t: 'qcrate', dx: 16, y: 70 }, { t: 'qcrate', dx: 32, y: 70 }]),
+      // THE PEEL IS BENCHED. Everything below used to be the banana peel lane —
+      // eight patterns across two cabinets, built to give Plumber a hazard you
+      // read by looking DOWN at the road. The peel itself is untouched: the
+      // prop, the entity, the slip and the gallery bake-off all still exist, and
+      // putting it back is re-adding these cells. It is out of the spawn bag
+      // while its shape is still an open question.
+      //
+      // What replaces it here is the other half of that same argument. Plumber's
+      // ground game was a cactus and a box — two silhouettes that stand UP — and
+      // these are the platformer's own answer to that: a trap in the floor and a
+      // blade in the floor, neither of which can be broken, punted or slid past.
+      //
+      // Tier 0, alone, on clear ground: a plate of teeth is a thing you have to
+      // be taught to see once, exactly as the peel was.
+      P(0, [{ t: 'popSpikes', dx: 0 }]),
+      // The coins are the instruction. A seven-coin hump laid down first and the
+      // plate under its crest: the player jumps for the arc and clears the
+      // spikes as a by-product, which is how this reads as a rule and not a hit.
+      P(0, [coinArc(0), { t: 'popSpikes', dx: 42 }]),
+      // Up then down, a beat apart: the crate is a silhouette to clear and the
+      // plate is a mark on the floor. Two different LOOKS at the same lane is
+      // the whole reason for putting a floor hazard in this cabinet.
+      P(1, [{ t: 'crate', dx: 0 }, { t: 'popSpikes', dx: 56 }]),
+      P(1, [{ t: 'floorSaw', dx: 0 }]),
+      P(1, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
+      // The pipe is tall enough to hide what is behind it until you are on it,
+      // and the saw is in the floor. Tier 2 for that reason: it is a read you
+      // can only make early, and early is a skill.
+      P(2, [{ t: 'pipe', dx: 0 }, { t: 'floorSaw', dx: 60 }]),
+      // Prize box overhead, teeth underfoot. Jumping for the !-crate is what
+      // carries you over the plate — take the prize and the hazard is free.
+      P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'qcrate', dx: 0, y: 54 }]),
+      P(2, [{ t: 'floorSaw', dx: 0 }, { t: 'popSpikes', dx: 70 }]),
+      // Plumber's ground furniture was two props deep, and both of them were
+      // things that stand up. The barrel rolls AT you and the double stack is a
+      // wall — the cabinet already owned both through BASE_PATTERNS, at tier 2
+      // only, which is late enough that most of a first run never met them.
+      P(1, [{ t: 'barrel', dx: 0 }, coinArc(90)]),
+      P(1, [{ t: 'pipe', dx: 0 }]),
+      PEEL_ONCE,
     ],
     taunt: 'MY IQ IS 300 AND YOURS IS A HIGH SCORE.',
   },
@@ -252,6 +320,19 @@ export const CABINETS = [
       P(2, [{ t: 'boostPad', dx: 0 }, { t: 'gap', dx: 90, w: 72 }, coinArc(100)]),
       P(2, [{ t: 'barrel', dx: 0 }, { t: 'barrel', dx: 140 }]),
       P(2, [{ t: 'trafficCone', dx: 0 }, { t: 'trafficCone', dx: 30 }, { t: 'trafficCone', dx: 60 }]),
+      PEEL_ONCE,
+      // The peel is benched here too (see Plumber). What is left is the cone
+      // rows above, which are the game's standing invitation to hold the slide
+      // and punt your way through — so the drum fire is the counter-argument:
+      // a roadside barrel that is already burning, cannot be booted, and only
+      // goes away if you shoot it.
+      P(1, [{ t: 'fireBarrel', dx: 0 }]),
+      P(1, [{ t: 'trafficCone', dx: 0 }, { t: 'fireBarrel', dx: 50 }]),
+      P(2, [{ t: 'trafficCone', dx: 0 }, { t: 'trafficCone', dx: 30 }, { t: 'fireBarrel', dx: 76 }]),
+      // Off a boost pad. The barrel does not move, but you are arriving at it a
+      // third faster, and it is the one thing on this stage that a punt cannot
+      // clear out of the way first.
+      P(2, [{ t: 'boostPad', dx: 0 }, { t: 'fireBarrel', dx: 120 }]),
     ],
     taunt: 'I INVENTED SPEED. IN 1987. NO ONE THANKED ME.',
   },
@@ -305,6 +386,22 @@ export const CABINETS = [
       P(1, [{ t: 'zombie', dx: 0 }, { t: 'tombstone', dx: 80 }]),
       P(2, [{ t: 'zombie', dx: 0 }, { t: 'zombie', dx: 40 }, coinArc(110)]),
       P(2, [{ t: 'tombstone', dx: 0 }, { t: 'drone', dx: 90, y: 26 }]),
+      // FIRE IN THE DARK CABINET. Crypt's mechanic is a light radius, which
+      // makes it the one stage where a burning hazard pays you something back:
+      // the brazier is lit before you can see the lane it stands in, so it
+      // doubles as the only landmark in the pattern it belongs to.
+      //
+      // Tier 0 alone, then earning company — the same introduction the
+      // tombstone gets, because a chest-height fire is a new shape here.
+      P(0, [{ t: 'brazier', dx: 0 }]),
+      P(0, [{ t: 'campfire', dx: 0 }, coinArc(60)]),
+      P(1, [{ t: 'brazier', dx: 0 }, { t: 'tombstone', dx: 80 }]),
+      // A dungeon trap under a grave marker. The tombstone is the silhouette
+      // that hides it: at this light radius the plate is inside the stone's
+      // shadow until you are nearly on it.
+      P(1, [{ t: 'tombstone', dx: 0 }, { t: 'popSpikes', dx: 62 }]),
+      P(1, [{ t: 'campfire', dx: 0 }, { t: 'zombie', dx: 84 }]),
+      P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'brazier', dx: 88 }, coinArc(140)]),
     ],
     taunt: 'THE DARKNESS IS A COST-SAVING MEASURE. THE SPOOKINESS IS FREE.',
   },
@@ -356,6 +453,10 @@ export const CABINETS = [
       P(1, [{ t: 'paperwork', dx: 0, y: 40 }]),
       P(2, [{ t: 'printer', dx: 0 }, { t: 'paperwork', dx: 90, y: 50 }, coinArc(140)]),
       P(2, [{ t: 'chair', dx: 0 }, { t: 'chair', dx: 120 }]),
+      // A bin fire in the office, which is the joke and also the read: Corporate
+      // Kombat's lane is all pale greys, and this is the only warm thing in it.
+      P(1, [{ t: 'fireBarrel', dx: 0 }]),
+      P(2, [{ t: 'fireBarrel', dx: 0 }, { t: 'paperwork', dx: 90, y: 50 }]),
     ],
     taunt: 'THIS MEETING COULD HAVE BEEN AN EMAIL. THE EMAIL IS ALSO A TRAP.',
   },
@@ -454,8 +555,13 @@ export const CABINET_BY_ID = Object.fromEntries(CABINETS.map((c) => [c.id, c]));
 // patterns (BASE_PATTERNS included once, not nine times). Without this the
 // bank stays empty and surge stages spawn no obstacles and no coins at all,
 // which makes its coin challenge impossible.
-CABINET_BY_ID.surge.patterns = [
+// Deduped by IDENTITY, not just against BASE_PATTERNS. Cabinets may share a
+// pattern object deliberately — PEEL_ONCE is shared precisely so its once-per-run
+// cap holds everywhere — and without this the union would carry one copy per
+// cabinet that references it, handing a Surge stage as many "once" hazards as
+// there are cabinets carrying them.
+CABINET_BY_ID.surge.patterns = [...new Set([
   ...BASE_PATTERNS,
   ...CABINETS.filter((c) => c.id !== 'surge')
     .flatMap((c) => c.patterns.filter((p) => !BASE_PATTERNS.includes(p))),
-];
+])];

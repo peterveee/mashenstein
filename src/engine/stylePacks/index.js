@@ -13,6 +13,9 @@
 import { W, H, bakeSS } from '../renderer.js';
 import { GROUND_Y, ZOOM, PAN_MAX } from '../camera.js';
 import { glowSprite } from '../../sprites/props.js';
+// What lies at the bottom of a hole, when the cabinet names one. A pack draws a
+// gap by not drawing; the fill is the other half of that bargain.
+import { drawPitFill } from '../../game/pitFill.js';
 
 // Every layer back here scrolls a FRACTION of the foreground, and the camera now
 // magnifies that foreground — so each parallax factor is scaled by the same
@@ -35,16 +38,11 @@ const PLX = ZOOM;
 // quantizes to its segment pitch because a segment display cannot scroll
 // smoothly, and the half-pixel strokeRect offsets exist to keep a 1px line
 // crisp rather than to position anything.
-function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhangs = []) {
-  // A gap is drawn by NOT drawing, rather than by painting a black rectangle
-  // over ground that has already been laid.
-  //
-  // The old way put `#08060c` down every hole in the game, which is a colour
-  // that belongs to nothing else on screen — and once a lower route existed it
-  // was actively wrong, because looking down a hole should show you what is
-  // under it: the sky, the hills, and the ground of the area below. A hole you
-  // can see through is the whole difference between a level with two heights in
-  // it and a level with a black rectangle in it.
+// The solid stretches of road on screen, in SCREEN x, with every gap taken out
+// of them. Two packs need this and they draw their ground nothing like each
+// other — one lays a flat apron, one lays a five-row checkered perspective road
+// — so what they share is the arithmetic of where the road ISN'T.
+function solidRuns(camX, obstacles) {
   const cuts = [];
   for (const ob of obstacles || []) {
     if (ob.live && ob.def && ob.def.isGap) cuts.push([ob.x - camX, ob.x - camX + ob.w]);
@@ -57,6 +55,20 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhan
     open = Math.max(open, b);
   }
   if (open < W) runs.push([open, W]);
+  return runs.filter(([a, b]) => b > a);
+}
+
+function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhangs = [], t = 0) {
+  // A gap is drawn by NOT drawing, rather than by painting a black rectangle
+  // over ground that has already been laid.
+  //
+  // The old way put `#08060c` down every hole in the game, which is a colour
+  // that belongs to nothing else on screen — and once a lower route existed it
+  // was actively wrong, because looking down a hole should show you what is
+  // under it: the sky, the hills, and the ground of the area below. A hole you
+  // can see through is the whole difference between a level with two heights in
+  // it and a level with a black rectangle in it.
+  const runs = solidRuns(camX, obstacles);
   // `overhangs` are WORLD-x spans with a second area running under them. The
   // apron below the line is 38px of body colour painted clean across the frame
   // with no idea of that, so over a chamber it is left hanging in mid-air with
@@ -86,6 +98,25 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhan
       ctx.fillStyle = colTop;
       ctx.fillRect(p, GROUND_Y, q - p, 3);
     }
+  }
+  // ...and what is in the holes. After the ground, because the fill is clipped
+  // to its own break and would otherwise be painted over by the apron either
+  // side of it. Nothing is drawn if the cabinet names no material: an open
+  // break is a legitimate answer and it is what eight of the nine still use.
+  drawPitFills(ctx, camX, cab, obstacles, t);
+}
+
+// One material per cabinet, in every hole on it. Split out so the packs that
+// draw their ground some other way — the checkered road, the neon grid — can
+// call it without also inheriting drawGapsAwareGround's idea of what a road is.
+export function drawPitFills(ctx, camX, cab, obstacles, t = 0) {
+  if (!cab || !cab.pitFill) return;
+  for (const ob of obstacles || []) {
+    if (!ob.live || !ob.def || !ob.def.isGap || ob.tunnel) continue;
+    const x = ob.x - camX;
+    if (x + ob.w < -4 || x > W + 4) continue;
+    // Phased off world x so two pits on one screen never bubble in step.
+    drawPitFill(ctx, cab.pitFill, x, GROUND_Y, ob.w, H - GROUND_Y, t, ob.x * 0.013);
   }
 }
 
@@ -138,10 +169,83 @@ const VOLCANO_PLX = 0.09 * PLX;
 // frame.
 const HILL_UNDERFILL = 220;
 
+// The ridge line itself, factored out of the tile bake so that anything which
+// has to STAND on a crest reads the same curve the tile was cut from.
+//
+// This existed twice for one afternoon — once here and once in the caller that
+// puts cacti on the desert ridge — and the copy was wrong in a way that only
+// showed up after a few thousand pixels of scroll. `period` is ROUNDED to a
+// whole pixel (163 where pi*wl is 163.363), so a caller that reconstructs the
+// phase from raw camX drifts against the baked tile by a third of a pixel per
+// period and the cacti slowly lift off the hills. Sampling the same function
+// through the same modulo is the only version of this that cannot drift.
+function ridgeProfile(px, yBase, amp, wl, period, peak, mesa, dunes) {
+  if (!peak && !mesa && !dunes) return yBase - Math.abs(Math.sin(px / wl)) * amp;
+  const u = (((px % period) + period) % period) / period; // px may go negative
+  if (dunes) {
+    // A plain |sin| ridge makes every hill exactly the same height, and a row
+    // of identical humps reads as a pattern rather than as country. Dunes are
+    // three humps of stated width and height inside one period — varied, and
+    // still seamless because the variation IS the period.
+    // Read from DESERT_DUNES so the cacti can be planted on the peaks by name
+    // rather than by guessing at an x — see the note there.
+    let top = 0;
+    for (const d of DESERT_DUNES) {
+      const dist = Math.abs(((u - d.at + 1.5) % 1) - 0.5);   // wrapped distance
+      const half = d.w / 2;
+      if (dist >= half) continue;
+      top = Math.max(top, d.h * (0.5 + 0.5 * Math.cos((dist / half) * Math.PI)));
+    }
+    return yBase - top * amp;
+  }
+  const main = 1 - Math.abs(u * 2 - 1);               // /\ centered in the tile
+  const v = (u * 2 + 0.5) % 1;
+  const side = (1 - Math.abs(v * 2 - 1)) * 0.55;      // smaller shoulder peaks
+  if (!mesa) return yBase - Math.max(main, side) * amp;
+  // A MESA is a trapezoid: steep sides, a dead-flat cap, and FLAT GROUND
+  // between one and the next. A rounded sine ridge could be any landscape on
+  // earth; a cut-off cap can only be desert.
+  //
+  // The first cut got this by clamping a triangle — min(1, main * 2.2) — and
+  // it was wrong in a way that only showed once the near ridge and the haze
+  // were drawn under it. Clamping ties the cap width to the slope angle: the
+  // multiplier that made the sides steep also made the flat top 55% of the
+  // period, so at the far layer's 110 wavelength the ridge became one
+  // continuous plateau running the width of the screen — a wall, not a
+  // country. Stating the two independently is the whole fix.
+  const shelf = (centre, width, slope, height) => {
+    const d = Math.abs(((u - centre + 1.5) % 1) - 0.5);   // wrapped distance
+    const half = width / 2;
+    if (d <= half) return height;
+    if (d >= half + slope) return 0;
+    return height * (1 - (d - half) / slope);
+  };
+  // A big one and a smaller sibling at a distance that is not half a period,
+  // so the tile reads as country rather than as an obvious repeat.
+  return yBase - Math.max(
+    shelf(0.5, 0.24, 0.085, 1),
+    shelf(0.08, 0.13, 0.06, 0.56),
+  ) * amp;
+}
+
+// Screen y of a hill layer's crest at screen x, for the same (amp, wl, factor)
+// that layer was drawn with. This is how you plant something on a ridge: the
+// offset is reconstructed exactly as the blit loop below computes it, so the
+// answer is the pixel the tile actually put there.
+export function ridgeYAt(screenX, camX, yBase, amp, wl, factor, opts) {
+  const period = Math.max(16, Math.round(Math.PI * wl));
+  const off = ((camX * factor * PLX) % period + period) % period;
+  const px = ((screenX + off) % period + period) % period;
+  return ridgeProfile(px, yBase, amp, wl, period,
+    !!(opts && opts.peak), !!(opts && opts.mesa), !!(opts && opts.dunes));
+}
+
 function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   const period = Math.max(16, Math.round(Math.PI * wl));
   const top = yBase - amp;
   const peak = !!(opts && opts.peak);
+  const mesa = !!(opts && opts.mesa);
+  const dunes = !!(opts && opts.dunes);
   const snow = (opts && opts.snow) || null;
   const rock = (opts && opts.rock) || null;
   const trees = (opts && opts.trees) || null;
@@ -149,7 +253,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
   // above the tile and get sliced flat by the canvas edge. Give the tile that
   // much headroom and blit from there.
   const tileTop = top - (trees ? TREE_MAX : 0);
-  const key = `${color}|${yBase}|${amp}|${wl}|${peak ? 1 : 0}|${rock || ''}|${snow || ''}|`
+  const key = `${color}|${yBase}|${amp}|${wl}|${peak ? 1 : 0}|${mesa ? 1 : 0}|${dunes ? 1 : 0}|${rock || ''}|${snow || ''}|`
     + (trees ? trees.leaf + trees.trunk : '');
   const SS = bakeSS();
   if (SS !== hillCacheSS) { hillCache.clear(); hillCacheSS = SS; }
@@ -161,14 +265,7 @@ function parallaxHills(ctx, camX, color, yBase, amp, wl, factor, opts) {
     const x = tile.getContext('2d');
     x.scale(SS, SS);
     x.translate(MARGIN, -tileTop); // tile-local 0 is ridge x 0; the margin sits left of it
-    const ridge = (px) => {
-      if (!peak) return yBase - Math.abs(Math.sin(px / wl)) * amp;
-      const u = (((px % period) + period) % period) / period; // px may go negative
-      const main = 1 - Math.abs(u * 2 - 1);               // /\ centered in the tile
-      const v = (u * 2 + 0.5) % 1;
-      const side = (1 - Math.abs(v * 2 - 1)) * 0.55;      // smaller shoulder peaks
-      return yBase - Math.max(main, side) * amp;
-    };
+    const ridge = (px) => ridgeProfile(px, yBase, amp, wl, period, peak, mesa, dunes);
     const ridgePath = () => {
       x.beginPath();
       x.moveTo(-OVER, H + HILL_UNDERFILL);
@@ -1023,6 +1120,442 @@ function drawCloudPal(ctx, t, reduced) {
   ctx.restore();
 }
 
+// ------------------------------------------------------------- SPEED ZONE
+//
+// The desert cabinet's background. It was the plainest in the game and the
+// reason was measurable rather than a matter of taste: faux3d drew a sky, a
+// fixed sun blob, ONE ridge and two loop wireframes, it never touched `t` — the
+// only pack whose background had no motion of its own — and it never drew
+// `cab.hills`, a colour the cabinet defines and paid for.
+//
+// Everything below is gated on `cab.id === 'speed'` at the call site, exactly
+// as the plumber cabinet's sun, volcano and clouds are: faux3d is not
+// SPEED ZONE's alone. THE SURGE cycles all eight packs, and the hub cabinet
+// screens, the gallery and the social renderers all instantiate it too.
+
+// Nearest silhouettes and their hazed cousins. Warm browns, never neutral or
+// black — the sky is #f08048 to #f8c060 and a black bird against that is a
+// hole punched in it rather than a bird.
+const TAU_BG = Math.PI * 2;
+const DESERT_INK = '#4a2a1c';
+const DESERT_INK_FAR = '#7a4a32';
+const DESERT_ROCK = '#a8683a';
+const DESERT_ROCK_LIT = '#c88a52';
+const DESERT_ROCK_DARK = '#7c4526';
+// The near ridge's own numbers, in one place because THREE things read them:
+// the layer itself, the cacti standing on its crest, and the haze that has to
+// know where the horizon is.
+// THREE ranges, not two. Far mesas, a middle range, then the dune line the
+// cacti stand on. The middle one is what turns two bands into distance: with
+// only a far and a near layer the eye reads a backdrop and a foreground, and
+// there is nothing in between for them to be far from.
+//
+// `dunes` on the two nearer ranges so the hills vary in size — a plain |sin|
+// ridge makes every hump identical, which is the thing that reads as wallpaper.
+//
+// Raised about half again from the amplitudes they were first cut at (50 / 42
+// / 34). The ground line sits at 232 of a 270 frame, so at those numbers the
+// tallest thing on the horizon reached a fifth of the way up the sky and the
+// whole country hugged the road — the layers were there, and the picture was
+// still mostly empty orange. The RATIO between the three is what carries the
+// depth, so all three go up together and the far range stays the tallest.
+// Sized against PLUMBER PANIC, which is the cabinet that gets this right: its
+// far range runs amp 96 at wl 90, so the mountains fill a good third of the
+// frame and the near hills sit low in front of them. The desert was drawing
+// everything much flatter and reading as a strip of country along the bottom.
+// SHALLOW. The heights are roughly where they were, but the wavelengths are
+// nearly doubled, and that ratio is the whole look: a hump 88 tall over 150px
+// of ground is a cone, and the same hump over 350px is a hill. Plumber's near
+// range runs amp 34 at wl 50 — its slopes are gentle, and the desert's were
+// climbing about twice as steeply for the same reason its hills read as
+// pointy. Height alone was never the problem.
+const DESERT_FAR = { amp: 100, wl: 230, factor: 0.12 };
+const DESERT_MID = { amp: 78, wl: 200, factor: 0.22, color: '#c0884c' };
+const DESERT_RIDGE = { amp: 52, wl: 150, factor: 0.35 };
+
+// Where the dunes are, as fractions of one tile. `ridgeProfile`'s dune mode
+// builds each ridge from exactly these three humps, so anything that needs to
+// stand ON a dune — the cacti — can be placed at a peak rather than dropped at
+// an arbitrary x and left wherever the curve happens to be. That was the bug
+// in the first cut: fixed x positions land in a TROUGH about as often as on a
+// crest, and a cactus standing in a valley between two dunes reads as floating
+// in front of the hills rather than growing out of them.
+// The widths OVERLAP — they sum to well over one period — and that is the
+// whole difference between a range of hills and a row of cones. Cut narrow
+// (0.36 / 0.25 / 0.30) each hump stood alone with flat ground either side, so
+// every one ran up to a point and down again; widened until neighbours meet,
+// the max() between them fills the troughs and what is left is a rolling ridge
+// with rounded tops.
+//
+// Each summit still clears its neighbours' reach, so a peak is a real peak and
+// the cacti planted on them are not standing on the shoulder of a bigger hump.
+const DESERT_DUNES = [
+  { at: 0.17, w: 0.56, h: 1 },
+  { at: 0.52, w: 0.40, h: 0.6 },
+  { at: 0.81, w: 0.48, h: 0.84 },
+];
+
+// One vulture, wingspan `s`, centred on the origin.
+//
+// The silhouette has one requirement above looking nice: it must not read as a
+// HAZARD. The lane already teaches that a thing in the sky is a buzzbird or a
+// drone — something to duck — and buzzbird is drawn in hazard orange with a
+// fast six-frame flap. So this is its opposite on every axis carrying that
+// meaning: warm dark with no hazard colour anywhere, wings in the flat
+// dihedral V of a soaring bird, and a flap that is mostly absent.
+function drawVulture(ctx, s, flap, ink) {
+  const half = s / 2;
+  // The V. Even at rest the tips sit above the body, and that dihedral is the
+  // single most recognisable thing about a vulture at distance — drawn with
+  // flat wings it reads as a gull.
+  const rise = s * (0.13 + flap * 0.1);
+  const tail = s * 0.055;
+  ctx.fillStyle = ink;
+  ctx.beginPath();
+  ctx.moveTo(-half, -rise);
+  ctx.quadraticCurveTo(-half * 0.42, -s * 0.055, -s * 0.05, -s * 0.012);
+  ctx.lineTo(s * 0.05, -s * 0.012);
+  ctx.quadraticCurveTo(half * 0.42, -s * 0.055, half, -rise);
+  ctx.quadraticCurveTo(half * 0.46, tail * 0.6, s * 0.06, tail);
+  ctx.lineTo(-s * 0.06, tail);
+  ctx.quadraticCurveTo(-half * 0.46, tail * 0.6, -half, -rise);
+  ctx.closePath();
+  ctx.fill();
+  // Head and tail nubs — two or three pixels each, and what stops the shape
+  // reading as a boomerang.
+  ctx.fillRect(-s * 0.03, -s * 0.075, s * 0.06, s * 0.06);
+  ctx.fillRect(-s * 0.045, tail * 0.7, s * 0.09, s * 0.06);
+}
+
+// Thermals, not flight paths. A bird crossing the lane horizontally is exactly
+// what a flyer hazard does; one going round a slow circle cannot be mistaken
+// for one, and it is also what vultures actually do.
+//
+// The ellipse is a circle in perspective — wide in x, shallow in y — and each
+// bird scales with its phase so the near side is bigger, which is what sells
+// it as a ring in the air rather than an oval on the glass.
+const DESERT_THERMALS = [
+  { x: 118, y: 60, rx: 48, ry: 11, n: 3, s: 21, rate: 0.40, plx: 0.17, ink: DESERT_INK },
+  { x: 352, y: 40, rx: 31, ry: 7, n: 2, s: 13, rate: 0.55, plx: 0.09, ink: DESERT_INK_FAR },
+];
+
+function drawVultures(ctx, t, camX, reduced) {
+  const span = W + 160;
+  for (const th of DESERT_THERMALS) {
+    for (let i = 0; i < th.n; i++) {
+      // Reduced motion freezes the wheel rather than emptying the sky — the
+      // volcano plume's rule: a frozen cloud is not a motion trigger, and an
+      // empty sky reads as wrong rather than as calm.
+      const a = (reduced ? 0 : t * th.rate) + (i * TAU_BG) / th.n;
+      const drift = camX * th.plx * PLX;
+      const x = ((th.x + Math.cos(a) * th.rx - drift) % span + span) % span - 80;
+      const y = th.y + Math.sin(a) * th.ry;
+      // Nearer on the front of the circle. The size difference is small on
+      // purpose: enough to give the ring depth, not enough to read as a bird
+      // approaching the camera, which would be a hazard again.
+      const depth = 0.84 + 0.16 * (0.5 + 0.5 * Math.sin(a));
+      // Mostly zero. The subtraction clips the sine so a flap is a brief event
+      // between long glides — the cadence that separates soaring from
+      // flapping, where buzzbird runs a continuous six-frame cycle at 16fps.
+      const flap = reduced ? 0 : Math.max(0, Math.sin(t * 1.7 + i * 2.3) - 0.8) * 4.4;
+      // Banking into the turn: cos(a) is the x velocity, so the roll follows
+      // the direction of travel and the bird leans the way it is going.
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-Math.sin(a) * 0.22);
+      drawVulture(ctx, th.s * depth, flap, th.ink);
+      ctx.restore();
+    }
+  }
+}
+
+// Saguaros standing on the near ridge — the pixel pack's trees-on-crests idea
+// in desert form, drawn as their own pass rather than through parallaxHills'
+// `trees` option because a saguaro is not a tree shape and that option bakes
+// one crown.
+//
+// FEW and BIG. A first pass put eight 9-to-20px cacti up there and produced
+// eight little glyphs: at that size an arm is three pixels of elbow and the
+// whole thing reads as a digit rather than a plant.
+//
+// The arms are STROKED CURVES, and that is the whole difference between a
+// cactus and a numeral. Built from rectangles — out along a bar, then up a
+// column — every arm meets the trunk at a hard right angle, and a vertical
+// stem with a right-angled arm at half height is a drawn 4. Nothing about the
+// colour or the size fixes that; the corner has to go. A quadratic whose
+// control point sits AT the corner sweeps the elbow into the arc a saguaro
+// actually grows, and round caps finish the tips without a separate dome.
+//
+// Nothing in the set is a bare vertical either, for the same reason: an
+// armless column is a line, and a line on a hill is a fence post. Every entry
+// has at least one arm, and variety comes from HEIGHT, arm count and which
+// side the arm is on rather than from different species. Two other species
+// were tried at this size and both failed: a barrel cactus is a squat ellipse,
+// which at eleven pixels is a dark egg sitting on a hill, and a prickly pear's
+// pads collapse into a paw print. A silhouette that has to be explained is
+// worse than a fourth saguaro.
+function drawSaguaros(ctx, camX) {
+  const { amp, wl, factor } = DESERT_RIDGE;
+  const period = Math.max(16, Math.round(Math.PI * wl));
+  const off = ((camX * factor * PLX) % period + period) % period;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Tinted toward the layer it stands on rather than drawn in the nearest ink.
+  // At full DESERT_INK they read as foreground objects that happen to overlap a
+  // hill; a step back toward the ridge's own value puts them IN that layer.
+  ctx.strokeStyle = '#5e361f';
+  // One cactus per DUNE, planted on the peak, rather than five at fixed x
+  // offsets. Fixed offsets land in a trough as often as on a crest, and a
+  // cactus in a valley reads as floating in front of the hills — which is
+  // exactly what it was doing.
+  //
+  // Size follows the dune's own height, so the tall dune gets the tall cactus
+  // and the low one gets a short one. That is the relationship a real skyline
+  // has and it is free here, since the profile already states both.
+  // Height is a FRACTION OF THE DUNE, not a fixed number. Stated absolutely it
+  // has to be re-tuned every time the ranges move, and it was wrong in both
+  // directions within a day: too small against a 34-amplitude ridge, then 46px
+  // tall on a 58px dune — a saguaro four-fifths the height of the hill it grows
+  // on, which is why it read as HUGE and could not look planted whatever the
+  // burial. Nothing on a horizon is anywhere near the size of the land under
+  // it. Tied to the dune, the relationship survives the next resize.
+  const PLANT = [{ arms: 2 }, { arms: 1 }, { arms: 1 }];
+  // Smaller again. Against a shallow ridge a cactus at 0.42 of the dune reads
+  // as a landmark rather than as vegetation — these are meant to be distant
+  // plants, not the subject of the frame.
+  const CACTUS_OF_DUNE = 0.3;
+  // Which ABSOLUTE tile the loop starts from. This is the whole fix for the
+  // cacti popping in and out mid-screen.
+  //
+  // `k` is a loop counter measured from the current scroll offset, so the same
+  // physical dune is k one frame and k+1 the frame after `off` wraps past the
+  // period. Every decision keyed off k therefore flipped as you drove: the
+  // every-third-bare rule turned a cactus on and off, and the mirror flipped it
+  // left-to-right, both in the middle of the screen where you cannot miss it.
+  // `tile` is derived from the scroll distance itself, so it names the same
+  // dune for as long as that dune exists and every choice below is stable.
+  const base = Math.floor((camX * factor * PLX) / period);
+  const first = Math.floor((-off - period) / period);
+  const last = Math.ceil((W + period) / period);
+  for (let k = first; k <= last; k++) {
+    const tile = base + k;
+    for (let i = 0; i < DESERT_DUNES.length; i++) {
+      // Every third dune is left bare. A cactus on every peak is an orchard;
+      // the gaps are what make it desert.
+      if (((tile + i) % 3 + 3) % 3 === 2) continue;
+      const dune = DESERT_DUNES[i];
+      const spec = PLANT[i];
+      const parity = (((tile + i) % 2) + 2) % 2;
+      // Slightly off the summit — dead centre on every peak is a pattern.
+      // Nudge measured in PIXELS, not as a fraction of the dune. As a fraction
+      // it scaled with the dune's width, so widening the humps slid every
+      // cactus further down the slope away from its summit — which is a good
+      // part of why they read as stuck on rather than planted.
+      const nudge = (parity ? 3 : -4) / period;
+      const x = k * period - off + (dune.at + nudge) * period;
+      // Margin covers the widest a cactus can reach from its trunk, so one
+      // never blinks into existence at the frame edge either.
+      if (x < -70 || x > W + 70) continue;
+      const h = Math.max(12, dune.h * amp * CACTUS_OF_DUNE);
+      const flip = parity ? 1 : -1;
+      // The crest under this cactus, sampled from the same function the tile
+      // was cut from — see ridgeProfile — so it cannot drift as the stage
+      // scrolls. BURIED a third of its height, not balanced on top: a
+      // silhouette whose base exactly meets the ridge always leaves a hairline
+      // of sky where the two curves disagree, and the eye reads that hairline
+      // as "in front of" rather than "on".
+      const crest = ridgeYAt(x, camX, GROUND_Y, amp, wl, factor, { dunes: true });
+      // Buried nearly HALF its height, up from a third. The base is drawn over
+      // the hill's own body, so the deeper it sits the more the plant reads as
+      // emerging from the ground rather than resting on the line of it — and
+      // a shallow ridge curves away slowly enough that a deep base still sits
+      // under the summit rather than out on the face.
+      const y = crest + h * 0.46;
+      const wdt = Math.max(3, h * 0.19);
+      ctx.lineWidth = wdt;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y - h + wdt * 0.5);
+      ctx.stroke();
+      // Out, then up, in one sweep. The control point is the corner an earlier
+      // version drew literally — as rectangles it met the trunk at a right
+      // angle and the whole thing read as a drawn 4. As a quadratic the corner
+      // becomes the bend a saguaro actually grows.
+      const arm = (dir, atFrac, reach, rise) => {
+        const ay = y - h * atFrac;
+        ctx.lineWidth = wdt * 0.82;
+        ctx.beginPath();
+        ctx.moveTo(x, ay);
+        ctx.quadraticCurveTo(x + dir * reach, ay, x + dir * reach, ay - rise);
+        ctx.stroke();
+      };
+      arm(-flip, 0.56, h * 0.28, h * 0.42);
+      if (spec.arms > 1) arm(flip, 0.38, h * 0.24, h * 0.34);
+    }
+  }
+  ctx.restore();
+}
+
+// Dust devils: thin ochre columns wandering the middle distance.
+//
+// Peter asked about tornadoes and these are the desert version of that idea,
+// deliberately. A tornado implies a STORM — dark base, heavy sky, something
+// arriving — and this cabinet is a clear orange sunset that would be arguing
+// with it. It also implies threat, which is the trap the vultures had: anything
+// that looks like weather coming for you is something the player expects to
+// matter. A dust devil is the opposite on both counts. It is small, dry,
+// harmless, and it is what actually happens on a hot flat afternoon.
+//
+// Ochre, never grey — grey is storm colour and would punch a hole in the
+// palette the same way a black bird would.
+//
+// They live on the MIDDLE range's parallax and are drawn behind the near ridge,
+// so they can never be mistaken for something standing in the lane.
+// Tall enough to CLEAR the near ridge, which is the whole trick. The foot
+// stands on the middle distance and is hidden behind the near dunes — correct,
+// and what puts them out on the plain rather than in the lane — so everything
+// the player actually sees is the upper column. Cut at the height they were
+// first drawn (54) the entire devil sat below the near crest and the effect was
+// invisible on every frame.
+const DUST_DEVILS = [
+  // `lean` roughly halved. At 0.16 over a 172px column the top ended up some
+  // 27px downwind of the foot, and a pale streak at that angle stops reading as
+  // a column of dust and starts reading as a shaft of light. Near-upright with
+  // just enough tilt to say the air is moving.
+  { x: 90, h: 172, w: 12, rate: 0.55, drift: 5.5, plx: 0.19, lean: 0.08, alpha: 0.72 },
+  { x: 760, h: 132, w: 9, rate: 0.8, drift: 3.5, plx: 0.15, lean: -0.1, alpha: 0.6 },
+];
+
+function drawDustDevils(ctx, t, camX, reduced) {
+  // A wrap span far wider than the screen, so most of the time you are looking
+  // at one devil or none. At W + 220 both were on screen almost always, which
+  // turned a thing you notice into weather — and a plain with a dust devil on
+  // it every few seconds is not a still afternoon.
+  const span = W * 4;
+  ctx.save();
+  // LIGHTER than the country behind it. The first cut used #c99a63, which is
+  // within a few points of the middle range's own #c0884c — a dust column the
+  // same value as the hills it stands on is invisible however well it is
+  // shaped. Dust catches the light; it reads pale against the ground and only
+  // gets subtle where it thins out against the bright sky, which is exactly
+  // where it should be disappearing anyway.
+  ctx.fillStyle = '#e9c894';
+  for (const d of DUST_DEVILS) {
+    // Its OWN drift on top of the parallax, so it crosses the plain even when
+    // the camera is still — the cloud flock's trick. Frozen under reduced
+    // motion rather than removed: the column is still a thing standing there.
+    const wander = reduced ? 0 : t * d.drift;
+    const x = ((d.x - camX * d.plx * PLX - wander) % span + span) % span - 110;
+    if (x < -60 || x > W + 60) continue;
+    // Base sits on the middle range's ground line, not on the frame's — a
+    // column whose foot floats above the country is a smudge on the glass.
+    const base = GROUND_Y - 4;
+    // A STACK OF PUFFS, not a polygon. The first cut drew the funnel as one
+    // filled path and it read as a flat translucent slab leaning over the
+    // hills — hard edges, one flat alpha, and a taper too gradual to be a
+    // funnel at all. Dust has no outline. Overlapping ellipses that widen and
+    // thin out as they rise give the soft edge and the density falloff for
+    // free, which between them are most of what says "dust" rather than
+    // "shape".
+    // Dense enough that consecutive puffs OVERLAP everywhere. At 16 the
+    // spacing exceeded the radius down at the foot, where the column is
+    // narrowest, and the whole thing read as a string of beads rather than as
+    // dust. Per-puff alpha comes down as the count goes up so the accumulated
+    // density stays where it was.
+    const N = 34;
+    for (let i = 0; i < N; i++) {
+      const u = i / (N - 1);
+      // The lean grows with the square of the height, so the column bends
+      // rather than tilting — and the waver is what says air instead of
+      // object. A dust devil that held its shape would be a traffic cone.
+      const wob = reduced ? 0 : Math.sin(t * d.rate * 1.7 + u * 4.2 + d.x) * u * 3.4;
+      const cx = x + d.lean * d.h * u * u + wob;
+      const cy = base - d.h * u;
+      const r = d.w * (0.44 + u * 0.9);
+      // Thinning out toward the top, where it is losing its grip on the dust.
+      ctx.globalAlpha = d.alpha * (1 - u * 0.72) * 0.34;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r, r * 0.7, 0, 0, TAU_BG);
+      ctx.fill();
+    }
+    // No scuff at the foot any more. It was drawn when these sat in front of
+    // the middle range and their feet showed; behind it the foot is buried, and
+    // a scuff would be a smear of dust hanging on the hillside with nothing
+    // under it.
+  }
+  ctx.restore();
+}
+
+// A landmark pinned to a WORLD position, the way the plumber cabinet's volcano
+// is. It parallaxes slower than the far ridge (0.09 against 0.12) so it drifts
+// behind it and reads as genuinely distant rather than as another hill.
+//
+// The point of a landmark is not decoration: it is that the run acquires a
+// destination. A stage with one thing on the horizon that slowly gets closer is
+// a journey; a stage with a repeating ridge is a treadmill.
+function drawButte(ctx, camX, atCam) {
+  const cx = W / 2 + (atCam - camX) * 0.09 * PLX;
+  const halfW = 74;
+  if (cx + halfW + 70 < -40 || cx - halfW > W + 40) return;
+  const baseY = GROUND_Y - 4;
+  // Raised with the ranges. The landmark only works if it stands clearly over
+  // the far mesas, and at the old 96 it was level with them once they went up.
+  const capY = baseY - 128;
+  ctx.save();
+  ctx.translate(cx, 0);
+  // Talus slope out to a flat cap: steep sides, dead-flat top, the same
+  // silhouette logic as the mesa ridge at a size that can carry strata.
+  const body = (c) => {
+    c.beginPath();
+    c.moveTo(-halfW, baseY);
+    c.lineTo(-halfW * 0.62, capY + 14);
+    c.lineTo(-halfW * 0.52, capY);
+    c.lineTo(halfW * 0.5, capY);
+    c.lineTo(halfW * 0.6, capY + 12);
+    c.lineTo(halfW, baseY);
+    c.closePath();
+  };
+  // The smaller sibling goes down FIRST and to the left, so the main butte
+  // overlaps it. One butte on an empty horizon reads as a prop; two at
+  // different distances read as country.
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = DESERT_ROCK_DARK;
+  ctx.beginPath();
+  ctx.moveTo(-halfW - 66, baseY);
+  ctx.lineTo(-halfW - 44, capY + 52);
+  ctx.lineTo(-halfW - 12, capY + 52);
+  ctx.lineTo(-halfW - 2, baseY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  body(ctx);
+  ctx.fillStyle = DESERT_ROCK;
+  ctx.fill();
+  // Strata, clipped to the silhouette so the bands stop at the cut faces
+  // rather than running out into the sky.
+  ctx.save();
+  body(ctx);
+  ctx.clip();
+  for (const [y, h, col] of [
+    [capY, 7, DESERT_ROCK_LIT], [capY + 22, 5, DESERT_ROCK_DARK],
+    [capY + 44, 9, DESERT_ROCK_DARK], [capY + 68, 6, DESERT_ROCK_LIT],
+  ]) {
+    ctx.fillStyle = col;
+    ctx.fillRect(-halfW, y, halfW * 2, h);
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
+// Heat haze at the horizon lived here and has been cut. It was auditioned on
+// its own, where it read as heat, and it survived one round at reduced
+// strength — but with three hill ranges under it the softest version that did
+// anything was still the first thing your eye went to, and a background whose
+// most noticeable element is a wash over the horizon is a background arguing
+// with the road. The depth it was faking is now done properly by the middle
+// range instead.
+
 // ---------------------------------------------------------------------------
 function pixelPack(settings) {
   return {
@@ -1092,8 +1625,8 @@ function pixelPack(settings) {
       parallaxHills(ctx, camX, cab.hills, GROUND_Y, 34, 50, 0.35,
         cab.id === 'plumber' ? { trees: { leaf: '#3c8c4c', trunk: '#6b4a30' } } : null);
     },
-    ground(ctx, camX, cab, obstacles, overhangs) {
-      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs);
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0) {
+      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs, t);
       // Scrolling ground ticks — a texture ON the apron, so they stop where the
       // apron does. Left to run they hang in open air under a road that has a
       // chamber below it.
@@ -1111,13 +1644,55 @@ function pixelPack(settings) {
 function faux3dPack(settings) {
   return {
     name: 'faux3d',
-    bg(ctx, t, camX, cab) {
+    bg(ctx, t, camX, cab, totalDist) {
+      // Read through at draw time rather than captured when the pack is built,
+      // so a mid-session toggle takes effect — the pixelPack idiom, not
+      // cardboardPack's.
+      const reduced = !!(settings && settings.reducedMotion);
+      // SPEED ZONE only. faux3d also renders in THE SURGE's cycle, the hub
+      // cabinet screens, the gallery and the social renderers, and none of
+      // those are the desert.
+      const desert = cab.id === 'speed';
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       // chunky "pre-rendered" sun with gradient shading
       const g = ctx.createRadialGradient(380, 60, 6, 380, 60, 30);
       g.addColorStop(0, '#fff0c0'); g.addColorStop(1, 'rgba(248,192,96,0)');
       ctx.fillStyle = g; ctx.fillRect(340, 20, 80, 80);
-      parallaxHills(ctx, camX, cab.far, GROUND_Y, 50, 110, 0.12);
+      // Draw order is depth order. The butte goes down BEFORE the far range so
+      // those crests overlap its flanks and it sits behind them — the same
+      // reason the volcano precedes plumber's hills. Overtime has no midpoint
+      // (totalDist is Infinity), so it gets no landmark, exactly as plumber
+      // gets no volcano there.
+      if (desert && Number.isFinite(totalDist) && totalDist > 0) {
+        drawButte(ctx, camX, totalDist * 0.55);
+      }
+      // Mesas rather than rounded sine hills on the desert: a cut-off cap is
+      // the one silhouette that can only be desert.
+      parallaxHills(ctx, camX, cab.far, GROUND_Y,
+        desert ? DESERT_FAR.amp : 50, desert ? DESERT_FAR.wl : 110,
+        desert ? DESERT_FAR.factor : 0.12,
+        desert ? { mesa: true } : null);
+      // Birds after the far range and before the near one: they fly in front
+      // of the distance and behind anything close.
+      if (desert) drawVultures(ctx, t, camX, reduced);
+      if (desert) {
+        // The middle range — the layer that makes the other two read as far
+        // and near rather than as backdrop and foreground.
+        // Dust devils go BEHIND the middle range, not in front of it. Drawn
+        // after it, their feet stood on the frame's ground line and you could
+        // see the bottom of a column that is supposed to be miles away — which
+        // is exactly what gives a distant object away as a sticker. Behind, the
+        // middle hills cut the foot off and each devil rises out of the country
+        // rather than standing on top of it. The base still sits at the ground
+        // line; it is simply never visible, which is the point.
+        drawDustDevils(ctx, t, camX, reduced);
+        const m = DESERT_MID;
+        parallaxHills(ctx, camX, m.color, GROUND_Y, m.amp, m.wl, m.factor, { dunes: true });
+        // The layer the cabinet always defined and this pack never drew.
+        const { amp, wl, factor } = DESERT_RIDGE;
+        parallaxHills(ctx, camX, cab.hills, GROUND_Y, amp, wl, factor, { dunes: true });
+        drawSaguaros(ctx, camX);
+      }
       // loop-de-loop background props
       ctx.strokeStyle = 'rgba(160,104,48,0.5)';
       ctx.lineWidth = 4;
@@ -1127,27 +1702,38 @@ function faux3dPack(settings) {
       }
       ctx.lineWidth = 1;
     },
-    ground(ctx, camX, cab, obstacles) {
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0) {
       // pseudo-3D checkered road
-      ctx.fillStyle = cab.groundDark;
-      ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
-      for (let row = 0; row < 5; row++) {
-        const y = GROUND_Y + row * 8;
-        const size = 16 + row * 8;
-        const off = (camX * (1 + row * 0.25)) % (size * 2);
-        for (let x = -off; x < W; x += size * 2) {
-          ctx.fillStyle = row % 2 === 0 ? cab.ground : cab.groundDark;
-          ctx.fillRect(x, y, size, 8);
+      // A HOLE IS DRAWN BY NOT DRAWING, here as everywhere else. This pack used
+      // to lay the whole checkered road and then punch `#08060c` down every gap
+      // in it — a colour belonging to nothing else on screen, and a lie besides:
+      // looking down a hole should show you what is under it. So the road is
+      // clipped to the solid runs instead, and what shows through the break is
+      // the sky and the mesas the background painter already put there.
+      const runs = solidRuns(camX, obstacles);
+      for (const [ra, rb] of runs) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(ra, GROUND_Y, rb - ra, H - GROUND_Y);
+        ctx.clip();
+        ctx.fillStyle = cab.groundDark;
+        ctx.fillRect(ra, GROUND_Y, rb - ra, H - GROUND_Y);
+        for (let row = 0; row < 5; row++) {
+          const y = GROUND_Y + row * 8;
+          const size = 16 + row * 8;
+          const off = (camX * (1 + row * 0.25)) % (size * 2);
+          for (let x = -off; x < W; x += size * 2) {
+            ctx.fillStyle = row % 2 === 0 ? cab.ground : cab.groundDark;
+            ctx.fillRect(x, y, size, 8);
+          }
         }
+        // The lane's yellow edge stops at the lip with everything else. Run
+        // across the break it is a tightrope drawn over a hole.
+        ctx.fillStyle = '#f6d33c';
+        ctx.fillRect(ra, GROUND_Y, rb - ra, 2);
+        ctx.restore();
       }
-      for (const ob of obstacles || []) {
-        if (ob.live && ob.def && ob.def.isGap) {
-          ctx.fillStyle = '#08060c';
-          ctx.fillRect(ob.x - camX, GROUND_Y, ob.w, H - GROUND_Y);
-        }
-      }
-      ctx.fillStyle = '#f6d33c';
-      ctx.fillRect(0, GROUND_Y, W, 2);
+      drawPitFills(ctx, camX, cab, obstacles, t);
     },
     post(ctx, t) {
       // soft vertical sheen, very "rendered in 1994"
@@ -1257,9 +1843,9 @@ function watercolorPack(settings) {
         ctx.globalAlpha = 1;
       }
     },
-    ground(ctx, camX, cab, obstacles) {
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0) {
       ctx.globalAlpha = 0.85;
-      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark);
+      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs, t);
       ctx.globalAlpha = 1;
     },
     post(ctx, t) {
@@ -1288,8 +1874,8 @@ function vhsPack(settings) {
       ctx.fillStyle = 'rgba(140,120,160,0.12)';
       ctx.fillRect(0, GROUND_Y - 40, W, 40);
     },
-    ground(ctx, camX, cab, obstacles) {
-      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark);
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0) {
+      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs, t);
     },
     post(ctx, t) {
       // scanlines (tiled pattern — one fill)
@@ -1450,8 +2036,8 @@ function cardboardPack(settings) {
       ctx.fillStyle = '#8a6a4a';
       ctx.fillRect(cx + 11, GROUND_Y - 20, 3, 20); // the visible stick
     },
-    ground(ctx, camX, cab, obstacles) {
-      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark);
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0) {
+      drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs, t);
       ctx.fillStyle = 'rgba(90,64,32,0.4)';
       for (let x = -(camX % 10); x < W; x += 10) ctx.fillRect(x, GROUND_Y + 4, 2, 5);
     },
@@ -1617,7 +2203,7 @@ function surgePack(settings) {
     // backgrounds are screen furniture and must stay put while it is on them.
     get bgPan() { return pick(this._t || 0).bgPan ?? 1; },
     bg(ctx, t, camX, cab, totalDist) { pick(t).bg(ctx, t, camX, cab, totalDist); },
-    ground(ctx, camX, cab, obstacles) { pick(this._t || 0).ground(ctx, camX, cab, obstacles); },
+    ground(ctx, camX, cab, obstacles, overhangs, t = 0) { pick(this._t || 0).ground(ctx, camX, cab, obstacles, overhangs, t); },
     post(ctx, t) {
       this._t = t;
       pick(t).post(ctx, t);

@@ -394,6 +394,14 @@ const SFX_TRIM = {
   contact: ATTACK_MASTER_TRIM, launch: 0.92 * ATTACK_MASTER_TRIM,
   shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
+  // Six noise layers plus the crash buffer sum far hotter than the two-layer
+  // 'crunch' it replaces at the plow: untrimmed it peaked -6.7 dBFS, which is
+  // over 'boom' and 3.5dB over 'blockBreak', and a break cue has no business
+  // being the loudest thing in the game. 0.42 lands it at -9.8 peak / -30.0
+  // RMS — level with 'blockBreak', 6.4dB up on 'crunch', and running 0.48s
+  // where 'crunch' runs 0.11. It reads as bigger because it IS longer and
+  // broader, not because it is jumping the mix.
+  boxKick: 0.42,
   // A latch clack plus a bell on inharmonic partials sums hotter at the strike
   // than the clean chime this replaced; trim it back into the coin/purchase
   // family instead of letting the clang jump the mix.
@@ -2214,6 +2222,53 @@ class AudioSys {
     this.osc('sine', 145 * pitch, 38 * pitch, 0.3, 0.34);
   }
 
+  // A boot going THROUGH a crate at a run. The slide plow needed its own cue:
+  // it was borrowing the weapon crash ('impact'/'contact'), which is a bright
+  // metal ring over a pitched sine, and against the music that read as a small
+  // bonk landing near the box rather than as the box giving way. Nothing in it
+  // said "wood", and the pitched layer is what made it polite.
+  //
+  // This is the opposite balance. It is almost all NOISE and deliberately
+  // broadband — the boot arriving, the crate letting go across the whole
+  // spectrum, then the splinters clattering down behind it — with only enough
+  // low sine to carry the weight of the leg on a laptop speaker.
+  boxKick() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    // The boot. Short and dull: a running leg hitting a slat is a slap, not a
+    // click, so the noise sits low and the sine falls away almost at once.
+    this.noise(0.05, 0.36, 'lowpass', 300);
+    this.osc('sine', 112, 30, 0.19, 0.34);
+    // The crate coming apart — the body of the cue, and the reason this exists.
+    // The long crash buffer swept bright-to-dark runs 0.55s, where 'crunch's
+    // entire noise layer is 0.1s: the tail is what makes it sound like a thing
+    // in pieces rather than a thing being tapped.
+    if (this.crashBuf) {
+      const src = this.ctx.createBufferSource(); src.buffer = this.crashBuf;
+      // Highpass well above the boot thump so the two layers stack instead of
+      // fighting over the same bottom octave.
+      const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 130;
+      const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.6;
+      lp.frequency.setValueAtTime(5400, t);
+      lp.frequency.exponentialRampToValueAtTime(340, t + 0.5);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.58 * this.cueGain, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.24 * this.cueGain, t + 0.13);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+      g.gain.linearRampToValueAtTime(0, t + 0.6 - 0.005);
+      src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(this.sfxGain);
+      src.start(t); src.stop(t + 0.6);
+    }
+    // The crack of the slat itself, on the same frame as the boot. Bright and
+    // gone in three frames — this is the layer that survives a phone speaker.
+    this.noise(0.035, 0.42, 'highpass', 3400);
+    // Splinters landing. Uneven spacing for the same reason 'debris' uses it:
+    // evenly spaced ticks read as a machine rather than as rubble.
+    [[0.055, 1400, 0.15], [0.1, 1000, 0.12], [0.155, 700, 0.09], [0.23, 480, 0.06]]
+      .forEach(([when, freq, gain]) => this.noise(0.06, gain, 'bandpass', freq, when));
+  }
+
   playContact(hero, pitch = 1) {
     const buffer = this.contactBuffers[hero];
     if (!buffer) { this.impactCrash(pitch); return; }
@@ -2658,8 +2713,193 @@ class AudioSys {
     // Trimmed about 3dB off that pass. The length is what made it audible, so
     // the length stays and only the level comes down — a run of seven or eight
     // of these was sitting on top of the music rather than under it.
-    this.osc('square', 1500 * pitch, 1500 * pitch, 0.06, 0.14);
-    this.osc('sine', 750 * pitch, 750 * pitch, 0.085, 0.11);
+    //
+    // Fifth pass gives about half of that back (+2.5dB), on the strength of two
+    // changes since. The run is SHORTER than the one that trim was measured
+    // against — three ticks on the approach at running speed, not seven or eight
+    // — so there is less of it to pile up. And it is now snapped to the song's
+    // key (see keyedTickPitch in run.js), which is what makes the extra level
+    // affordable: the earlier version was fighting the music harmonically as
+    // well as in level, and the cure for a cue that clashes is not to hide it.
+    this.osc('square', 1500 * pitch, 1500 * pitch, 0.06, 0.185);
+    this.osc('sine', 750 * pitch, 750 * pitch, 0.085, 0.146);
+  }
+
+  /**
+   * One rung of the loop-de-loop's climb.
+   *
+   * The ride is the longest single thing that happens to the hero without him
+   * touching a button, and silence through it made the whole set piece feel like
+   * a cutscene. What it wanted was not a cue but a RUN — a figure that is still
+   * arriving while he is still going round, so the ending is heard coming.
+   *
+   * Built as a stepped arpeggio rather than one long riser for two reasons. The
+   * game already says "something is building" this way — the boost pad's tick
+   * run, the cone chain's arpeggio — so the vocabulary is learned. And a run of
+   * one-shots survives a ride that ends early: bail out of the loop and the
+   * figure simply stops partway up, which is exactly the right sound for having
+   * let go of something. A sustained voice would have to be chased down and
+   * silenced from three different exits.
+   *
+   * `swell` is how far round he is, 0..1, and it is the difference between an
+   * arpeggio and a climb: the note keeps its shape while the air behind it opens
+   * up, so the last rungs are wider and brighter than the first without ever
+   * getting louder in a way that fights the music.
+   *
+   * NOTHING IN HERE IS A SHORT BRIGHT SQUARE, and that is the whole of the
+   * second pass. The first one led with a square blip that reached up past 2kHz
+   * on the high rungs — which is precisely the coin: 'coin' is two square pings
+   * at 988 and 1319. The ride collects eight coins while this is playing, so the
+   * two cues were not merely similar, they were interleaved, in the same band,
+   * on the same waveform. No amount of level would have separated them.
+   *
+   * So the climb takes the octave BELOW the coin and keeps it: a sawtooth root
+   * at 175Hz, and even the top rung of the run lands under 800 — clear of where
+   * the coin starts. The onset is a filtered chuff rather than a tonal blip, so
+   * a rung starting and a coin landing do not sound like the same event, and the
+   * notes are long enough to overlap into each other. That overlap is the point.
+   * The scale is pentatonic (see LOOP_ARPEGGIO), so three or four notes ringing
+   * together are consonant by construction — the figure thickens into a chord as
+   * he goes round instead of ticking past as separate pings, which is what
+   * "builds" actually sounds like.
+   *
+   * `when` is here for the same reason 'die' and 'debris' carry one: the cue is
+   * a SEQUENCE, and a sequence cannot be auditioned one blip at a time. The game
+   * always fires it at zero — the run schedules the rungs itself, off the angle
+   * he has covered — but a renderer has to lay the whole figure out in one
+   * offline context to hear whether it actually builds.
+   */
+  loopRun(pitch = 1, swell = 0, when = 0) {
+    if (!this.ctx) return;
+    const s = Math.max(0, Math.min(1, swell));
+    // LEVEL, third pass. The figure measured loud and sounded quiet, which is
+    // the signature of a cue living too low to be heard at its own peak: nearly
+    // all of its energy is at 87-175Hz, where the ear needs far more of it for
+    // the same loudness, so it was reading -6.5 dBFS on a meter — the hottest
+    // cue in the game — while sitting under the music.
+    //
+    // Raising the gains alone would only have made that worse, because the peak
+    // was not the note, it was the ATTACK: all four layers started on the same
+    // sample and their onsets summed. Staggering the body and the air by a few
+    // milliseconds decorrelates that stack, which both buys the headroom the
+    // extra gain needs and is the more honest shape anyway — a body that swells
+    // in behind its own onset rather than arriving with it.
+    //
+    // The two upper layers take the larger share of the increase for the same
+    // equal-loudness reason: gain spent at 900-2000Hz buys more audible cue per
+    // dB of peak than gain spent on the octave below middle C.
+    // Each rung is itself a small rise. A flat note repeated up a scale reads as
+    // a xylophone being played; one that lifts inside its own length reads as
+    // acceleration, which is what is happening to him.
+    //
+    // LONG, and held rather than left to decay. osc's default envelope runs
+    // exponentially to silence across the whole duration, which is 13dB down a
+    // fifth of the way in — so simply asking for a longer note buys almost
+    // nothing audible. `hold` is what makes the tail actually last, and the tail
+    // is what carries one rung into the next.
+    this.osc('sawtooth', 175 * pitch, 190 * pitch, 0.26, 0.075 + 0.03 * s, when, null, 0.42);
+    // Body an octave down, in from the start now rather than arriving late: at
+    // this register it is the weight that separates the figure from everything
+    // else in the mix, so it is not a garnish to add later.
+    this.osc('triangle', 87 * pitch, 95 * pitch, 0.3, 0.085 + 0.045 * s, when + 0.012, null, 0.45);
+    // The onset. A chuff of filtered air rather than a tonal tick, because a
+    // tonal tick at the front of each note is the thing that read as a coin.
+    this.noise(0.045, 0.075 + 0.035 * s, 'bandpass', 900 + 500 * s, when);
+    // Air, opening as he goes round — the layer doing the actual building. Kept
+    // under 2kHz even at full swell so the top of the climb never crowds the
+    // coins landing on top of it.
+    this.noise(0.16 + 0.14 * s, 0.055 + 0.06 * s, 'bandpass', 1100 + 900 * s, when + 0.008, 0.45);
+  }
+
+  // The MISS: a slide whistle going down. One whomp.
+  //
+  // Three versions lost before this one, and each failure is worth keeping:
+  //
+  //   the approach tick replayed at falling pitch. Five discrete blips in 0.18s
+  //   are a SEQUENCE the ear has to assemble into a fall, and there is no time
+  //   to assemble it. Raising the level fixed the audibility and left the shape
+  //   wrong; it still arrived as five things.
+  //   two separate whistles 0.2s apart. Closer, but it read as two falls. The
+  //   gap was never the culprit — the RE-ATTACK was. An envelope that returns
+  //   to silence and rises again is a NEW NOTE however tight behind the last
+  //   one it sits, so no amount of closing the gap would have fused them.
+  //
+  // So: one envelope, one attack, and a pitch that never stops moving. The tone
+  // comes up once and falls all the way to the floor without ever being
+  // re-struck, which is the only construction the ear takes as a single gesture.
+  //
+  // The fall ACCELERATES rather than gliding at a constant rate — 43 semitones
+  // per second down to 820Hz, then 66 the rest of the way. That is a slide
+  // whistle being yanked rather than drawn, and it is where the comedy lives:
+  // a constant-rate glissando is a test tone. Two segments, but the pitch is
+  // continuous across the seam, so it is one whomp with a bend in it and not
+  // two of anything.
+  //
+  // What makes it a WHISTLE rather than a falling sine:
+  //
+  //   the octave. A slide whistle's fipple gives it a hard second partial, and
+  //   without it the tone is a synth sweep.
+  //   the breath. Noise through a bandpass that follows the slide down. A tone
+  //   with no air in it is the single biggest tell, and a STATIC band is nearly
+  //   as bad — the air has to move with the pitch.
+  //   the level RISING as it descends. Equal loudness means a flat gain fades
+  //   as the pitch drops, so the envelope climbs through the fall and the
+  //   bottom of it lands rather than evaporates. This is the same correction
+  //   the tick version needed, done continuously.
+  boostFall() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const q = this.cueGain;
+    // [seconds, from, to] segments, run back to back on ONE oscillator pair.
+    // The seam carries the previous segment's value, so the pitch is continuous
+    // across it — no step, no re-attack, no second note.
+    const segs = [[0.2, 1350, 820], [0.32, 820, 240]];
+    const total = segs.reduce((s, seg) => s + seg[0], 0);
+    const end = t + total;
+
+    // ONE envelope for the whole cue. Everything hangs off this, which is what
+    // makes the whole cue one event.
+    const g = this.ctx.createGain();
+    const peak = 0.092;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak * q, t + 0.014);
+    g.gain.exponentialRampToValueAtTime(peak * 1.55 * q, t + total * 0.9);  // the lift
+    g.gain.exponentialRampToValueAtTime(0.0001, end + 0.08);
+    g.gain.linearRampToValueAtTime(0, end + 0.1);
+    g.connect(this.sfxGain);
+
+    const schedule = (param, mul) => {
+      param.setValueAtTime(segs[0][1] * mul, t);
+      let at = t;
+      for (const [dur, , to] of segs) {
+        param.exponentialRampToValueAtTime(to * mul, at + dur);
+        at += dur;
+      }
+    };
+
+    const tone = (type, mul, amp) => {
+      const o = this.ctx.createOscillator();
+      o.type = type;
+      schedule(o.frequency, mul);
+      const a = this.ctx.createGain(); a.gain.value = amp;
+      o.connect(a); a.connect(g);
+      o.start(t); o.stop(end + 0.11);
+    };
+    tone('sine', 1, 1);
+    tone('triangle', 2, 0.26);   // the fipple's octave
+
+    // The air, tracking the slide. noise() takes a fixed frequency and so cannot
+    // do this; a swept filter is the point.
+    if (this.noiseBuf) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noiseBuf; src.loop = true;
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.Q.value = 3.5;
+      schedule(bp.frequency, 1);
+      const a = this.ctx.createGain(); a.gain.value = 0.5;
+      src.connect(bp); bp.connect(a); a.connect(g);
+      src.start(t); src.stop(end + 0.11);
+    }
   }
 
   portalSwoosh({
@@ -2900,10 +3140,15 @@ class AudioSys {
         break;
       case 'boost': this.boostWhoosh(); break;
       case 'boostTick': this.boostTick(pitch); break;
+      case 'loopRun': this.loopRun(pitch, opt.swell, opt.when); break;
+      case 'boostFall': this.boostFall(); break;
       case 'portal': this.portalSwoosh(opt.shape); break;
       case 'shoot': this.osc('square', 900, 500, 0.08, 0.14); break;
       case 'axe': this.noise(0.25, 0.12, 'bandpass', 900); this.osc('square', 300, 500, 0.2, 0.08); break;
       case 'crunch': this.noise(0.1, 0.22, 'lowpass', 600); this.osc('sine', 150, 60, 0.12, 0.2); break;
+      // The slide plow. See boxKick — a noisier, longer relative of 'crunch',
+      // for the one break the player went out of their way to cause.
+      case 'boxKick': this.boxKick(); break;
       // The chunks landing, a beat after the thing came apart. Deliberately a
       // separate cue from the break itself: it starts ~0.1s late (roughly the
       // shards' flight time) and thins out, so a break reads as impact-then-
@@ -6191,6 +6436,108 @@ class AudioSys {
       heardStep = this.loopStart + ((heardStep - this.loopStart) % span + span) % span;
     }
     return heardStep / 4;
+  }
+
+  /**
+   * What the song is playing in, right now — its tonic and the notes it is using.
+   *
+   * For cues that have to sit IN the music rather than beside it. The loop-de-loop's
+   * climb is the first: it is a twelve-note figure running for a whole second over
+   * the top of whatever is on, and a rising run in the wrong key does not read as a
+   * wrong note, it reads as a broken sound effect.
+   *
+   * DERIVED FROM THE NOTES, not from a key signature. Nothing in the song data
+   * declares a key and nothing should have to — a declared key is a second copy of
+   * a fact the notes already state, and the moment someone transposes a section by
+   * ear the two disagree with no way to tell which is lying. What comes back here
+   * is the set of pitch classes the section's melodic lanes actually contain, which
+   * cannot drift out of step with the music because it IS the music.
+   *
+   * It also follows a modulation for free, which this cabinet needs: SPEED ZONE
+   * walks the same lap through E minor, A minor and B minor, so "the key of the
+   * song" is not one answer and a cue pinned to the first one would be wrong for
+   * half the track.
+   *
+   * `root` is the section's opening bass note, which is where a section written by
+   * a human puts its tonic. `classes` is the scale, as semitones from that root,
+   * ascending. Null when there is no song, so callers keep their own fallback.
+   */
+  songKey() {
+    if (!this.bank) return null;
+    const plan = barPlan(this.bank);
+    if (!plan?.length) return null;
+    const bar = plan[Math.floor(this.step / 16) % plan.length];
+    // Memoised on the bank and the section, because the callers are cues: the
+    // boost pad fires ten ticks in under a second and every one of them asks.
+    // Scanning eight lanes of a section to answer the same question ten times
+    // running is exactly the kind of work that does not show up in a profile
+    // until there are four pads on screen. The identity of what comes back is
+    // part of the contract — callers cache their own ladders against it.
+    const secIdx = this.bank.sections?.length && bar?.sec != null
+      ? bar.sec % this.bank.sections.length : -1;
+    const memo = this._songKeyMemo;
+    if (memo && memo.bank === this.bank && memo.sec === secIdx) return memo.key;
+    let b = this.bank;
+    if (secIdx >= 0) {
+      const sec = resolveSection(b, secIdx);
+      if (sec) b = { ...this.bank, ...sec };
+    }
+    // Lane values are frequencies; a rest is 0 or null. The melodic lanes only —
+    // percussion is written at C1 as a trigger and would drag a phantom root in.
+    const freqs = [];
+    for (const lane of ['bass', 'lead', 'chords', 'arp', 'pad', 'lead2', 'lead3', 'bass2']) {
+      const seqn = b[lane];
+      if (!Array.isArray(seqn)) continue;
+      for (const v of seqn) {
+        if (Array.isArray(v)) { for (const n of v) if (n > 0) freqs.push(n); }
+        else if (typeof v === 'number' && v > 0) freqs.push(v);
+      }
+    }
+    if (!freqs.length) return null;
+    // The opening bass note — the one a section is written to land on.
+    const bass = Array.isArray(b.bass) ? b.bass : null;
+    let root = null;
+    if (bass) {
+      for (const v of bass) {
+        const n = Array.isArray(v) ? v.find((x) => x > 0) : v;
+        if (typeof n === 'number' && n > 0) { root = n; break; }
+      }
+    }
+    if (root == null) root = Math.min(...freqs);
+    const semisFrom = (f) => Math.round(12 * Math.log2(f / root));
+    const classes = [...new Set(freqs.map((f) => ((semisFrom(f) % 12) + 12) % 12))].sort((x, y) => x - y);
+    const key = { root, classes };
+    this._songKeyMemo = { bank: this.bank, sec: secIdx, key };
+    return key;
+  }
+
+  /**
+   * A rising ladder of the song's own notes, covering `lo`..`hi` in Hz.
+   *
+   * The shape every keyed cue needs, and it lives here so that "which notes may
+   * I use" is answered once rather than reimplemented at each call site with its
+   * own rounding. Cached against the key object's identity, which songKey holds
+   * stable for as long as the section does — so a cue firing ten times in a
+   * second builds this once.
+   */
+  songLadder(lo, hi) {
+    const key = this.songKey();
+    if (!key) return null;
+    const memo = this._songLadderMemo;
+    if (memo && memo.key === key && memo.lo === lo && memo.hi === hi) return memo.notes;
+    let root = key.root;
+    while (root < lo) root *= 2;
+    while (root / 2 >= lo) root /= 2;
+    const notes = [];
+    for (let i = 0; i < 64; i++) {
+      const semis = key.classes[i % key.classes.length] + 12 * Math.floor(i / key.classes.length);
+      const f = root * Math.pow(2, semis / 12);
+      if (f > hi) break;
+      if (f >= lo) notes.push(f);
+    }
+    if (!notes.length) return null;
+    this._songLadderMemo = { key, lo, hi, notes };
+    return notes;
   }
 
   // Beat phase for rhythm cabinet: 0..1 within the current beat.

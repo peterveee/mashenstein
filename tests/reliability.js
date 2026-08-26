@@ -5,7 +5,7 @@ installDom();
 const { Input } = await import('../src/engine/input.js');
 const { Audio } = await import('../src/engine/audio.js');
 const { setState, updateState } = await import('../src/engine/states.js');
-const { RunState, FINISH_CLEAR } = await import('../src/game/run.js');
+const { RunState, FINISH_CLEAR, PIT_SURFACE_Y } = await import('../src/game/run.js');
 const { BossState } = await import('../src/game/boss.js');
 const { MinigameState } = await import('../src/game/minigames/index.js');
 const { HubState } = await import('../src/game/hub/index.js');
@@ -668,12 +668,145 @@ run.player.grounded = false; run.player.vy = 0;
 run.player.update(1 / 60, { held: (a) => a === 'duck' }, { speed: 160 });
 assert(!run.player.stomping, 'Down no longer triggers Lorenzo air stomp');
 
-// Gravity bypasses dash and power-up invulnerability.
+// Gravity bypasses dash and power-up invulnerability — and a pit is fatal, so
+// what it bypasses them for is a death rather than a cell. Full battery on the
+// way in, so this only passes if the fall skipped the battery entirely.
 run.player.grounded = true; run.player.y = 0; run.player.dashT = 0.4; run.player.iframes = 0;
 run.powerups.shieldStack = 0; run.powerups.active.unpeel = { t: 10, t0: 10, level: 1 };
 run.obstacles = [makeObstacle('gap', run.camX + PLAYER_X - 10)];
 const pitCells = run.battery; run.collide();
-assert(run.battery === pitCells - 1, 'pit damages through dash and UNPEELABLE');
+assert(pitCells > 1 && run.dead && run.battery === 0,
+  `pit is fatal through dash and UNPEELABLE (dead=${run.dead}, ${run.battery}/${pitCells})`);
+
+// ...and the death lands the run back at the last checkpoint rather than ending
+// it. The snapshot is the only thing standing between a fatal pit and a restart
+// from the top, so it is worth an assertion of its own.
+run = makeRun(); run.enter();
+run.distance = run.checkpoints[0] + 1;
+run.checkCheckpoints();
+const pitSnap = run.snapshot;
+assert(pitSnap, 'crossing a checkpoint takes a snapshot to fall back to');
+run.player.grounded = true; run.player.y = 0; run.player.iframes = 0;
+run.powerups.shieldStack = 0;
+run.obstacles = [makeObstacle('gap', run.camX + PLAYER_X - 10)];
+run.collide();
+assert(run.dead, 'falling in kills the run');
+// The sink is a beat, not a frame: fall, go under, then an empty hole. Long
+// enough that a fixed frame count would either miss the restore or overshoot
+// it, so stop on the frame it lands — the run resumes immediately and the
+// camera starts moving again.
+let pitFrames = 0;
+for (; pitFrames < 240 && run.dead; pitFrames++) run.update(1 / 60);
+assert(pitFrames / 60 > 1.2,
+  `the death holds long enough to watch (${(pitFrames / 60).toFixed(2)}s)`);
+assert(!run.dead && Math.abs(run.camX - pitSnap.camX) < 8 && run.battery === pitSnap.battery,
+  `a pit death restores the last checkpoint (camX ${run.camX}/${pitSnap.camX}, cells ${run.battery})`);
+
+// ...and what happens during that beat: he goes over the edge with the fall
+// face on, stops at the material rather than falling through the world, and
+// keeps sinking from there.
+run = makeRun(); run.enter();
+run.player.grounded = true; run.player.y = 0; run.player.iframes = 0;
+run.powerups.shieldStack = 0;
+run.obstacles = [makeObstacle('gap', run.camX + PLAYER_X - 10)];
+run.collide();
+assert(run.pitDeath && run.player.fallFace, 'the fall into a pit wears the surprised face');
+for (let i = 0; i < 40 && !run.pitDeath.in; i++) run.update(1 / 60);
+assert(run.pitDeath.in && run.player.y === PIT_SURFACE_Y,
+  `he stops at the material rather than falling through it (y ${run.player.y})`);
+const sunkFrom = run.player.y;
+for (let i = 0; i < 20; i++) run.update(1 / 60);
+assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunkFrom})`);
+
+// SCRIPTED PITS. Plumber 3 guarantees three of them at fixed fractions, which
+// a pattern list cannot do — the spawner shuffles patterns, so a gap added
+// there turns up wherever the dice fall and might not turn up at all.
+{
+  const { STAGES } = await import('../src/data/stages.js');
+  const plumber3 = STAGES.find((st) => st.id === 'plumber-3');
+  assert(plumber3 && plumber3.pits && plumber3.pits.length === 3,
+    'plumber 3 carries a three-pit plan');
+  assert(plumber3.pits[0].at < 0.2, 'the first one lands early, while the run is still being learned');
+  const pitRun = new RunState({ stage: plumber3, save, seed: 7, difficulty: 1, skipRunIn: true, onEnd: () => {} });
+  pitRun.enter();
+  assert(pitRun.pitPlan.length === 3, 'the plan resolves to world positions on enter');
+  // Walk the camera up to the first one and let the lazy placer run.
+  const first = pitRun.pitPlan[0];
+  pitRun.camX = first.x - 400;
+  pitRun.distance = pitRun.camX;
+  pitRun.spawnScriptedPits();
+  const planted = pitRun.obstacles.filter((o) => o.live && o.def.isGap);
+  assert(planted.length === 1 && Math.abs(planted[0].x - first.x) < 1,
+    `the first pit is planted where the stage asked for it (${planted.length})`);
+  assert(planted[0].w === plumber3.pits[0].w, 'at the width the stage asked for');
+  // Its approach and its landing are swept: a hole the spawner never budgeted
+  // for has to clear its own run-up or it is a death nobody could avoid.
+  const crowd = pitRun.obstacles.filter((o) => o.live && !o.def.isGap
+    && o.x + o.w > first.x - 100 && o.x < first.x + first.w + 100);
+  assert(crowd.length === 0, `the pit clears its own approach and landing (${crowd.length} left)`);
+  pitRun.spawnScriptedPits();
+  assert(pitRun.obstacles.filter((o) => o.live && o.def.isGap).length === 1,
+    'and it is planted once, however often the placer runs');
+  // ...and it is planted far enough out that its own hint still fits off
+  // screen. A scripted pit that appears 520px away can never be signed: the
+  // sign stands 65 short of the lip, which is already inside the frame.
+  {
+    const signRun = new RunState({ stage: plumber3, save, seed: 9, difficulty: 1, skipRunIn: true, onEnd: () => {} });
+    signRun.enter();
+    signRun.pitFails = 2;
+    const target = signRun.pitPlan[1];
+    signRun.camX = target.x - 780;
+    signRun.distance = signRun.camX;
+    for (let i = 0; i < 40 && !signRun.obstacles.some((o) => o.type === 'jumpSign'); i++) {
+      signRun.camX += 8;
+      signRun.spawnScriptedPits();
+      signRun.signPits();
+    }
+    assert(signRun.obstacles.some((o) => o.type === 'jumpSign'),
+      'a scripted pit gets its JUMP sign like any other');
+  }
+  // The plan rides the checkpoint snapshot, or a death in the last pit comes
+  // back to a stage that no longer has one.
+  const snap = pitRun.makeSnapshot();
+  assert(snap.pitsDone && snap.pitsDone.length === 3, 'the snapshot records which pits are down');
+}
+
+// THE JUMP SIGN. Two failures, not one: one is a mistimed jump, two is a
+// pattern. Below the threshold nothing appears, however many pits go past.
+run = makeRun(); run.enter();
+run.pitFails = 1;
+run.obstacles = [makeObstacle('gap', run.camX + 900)];
+run.signPits();
+assert(!run.obstacles.some((o) => o.type === 'jumpSign'), 'one pit failure earns no hint');
+run.pitFails = 2;
+run.signPits();
+const sign = run.obstacles.find((o) => o.type === 'jumpSign');
+assert(sign, 'the second failure puts a JUMP sign in the lane');
+// The hint has to reach the player who needs it, and that player is the one
+// dying in a pit BEFORE the first checkpoint — whose every death restarts the
+// stage through enter(). A counter zeroed there can never reach two.
+{
+  const restarted = makeRun(); restarted.enter();
+  restarted.pitFails = 2;
+  restarted.enter();
+  assert(restarted.pitFails === 2, 'the failure count survives a stage restart');
+}
+const signedGap = run.obstacles.find((o) => o.def.isGap);
+assert(sign.x + sign.w < signedGap.x && signedGap.x - (sign.x + sign.w) >= 40,
+  `the sign stands clear of the lip with a run-up left (${signedGap.x - (sign.x + sign.w)}px)`);
+run.signPits();
+assert(run.obstacles.filter((o) => o.type === 'jumpSign').length === 1,
+  'and only one sign per pit, however often the spawner runs');
+
+// It is a word, not a wall: walking into it costs nothing and knocks it over.
+run = makeRun(); run.enter();
+const lonelySign = makeObstacle('jumpSign', run.camX + PLAYER_X);
+run.obstacles = [lonelySign];
+run.player.grounded = true; run.player.y = 0; run.player.iframes = 0;
+const signCells = run.battery;
+run.collide();
+assert(!lonelySign.live && run.battery === signCells && !run.dead,
+  `running through the sign breaks it for free (${run.battery}/${signCells})`);
 
 // Crates are hazards from the side, but a clean descending top contact is safe.
 run = makeRun(); run.enter();

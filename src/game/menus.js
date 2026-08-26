@@ -27,6 +27,10 @@ const GUIDE_ICON_SIZES = {
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
   capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
+  // Standing hazards. Each is its def box times PROP_TALL, rounded — the guide
+  // has to show the art the lane shows, and for these the art is mostly the
+  // part that is not the hitbox.
+  popSpikes: [15, 11], campfire: [14, 13], fireBarrel: [13, 22], brazier: [12, 22], floorSaw: [15, 12],
 };
 import {
   DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, FINALE_CODA, RANK_LINES,
@@ -3304,6 +3308,11 @@ const GUIDE_PAGES = [
       { s: '_gap', name: 'PIT', desc: 'A HOLE WHERE FLOOR SHOULD BE. JUMP IT.' },
       { s: 'tombstone', name: 'TOMBSTONE', desc: 'JUMP IT. RESPECTFULLY.' },
       { s: 'zombieWalk', name: 'ZOMBIE', desc: 'SHAMBLES TOWARD YOU. JUMP IT.' },
+      { s: 'popSpikes', name: 'SPIKE PLATE', desc: 'IN THE FLOOR. JUMP IT. NOTHING BREAKS IT.' },
+      { s: 'floorSaw', name: 'FLOOR SAW', desc: 'ALSO IN THE FLOOR. ALSO UNBREAKABLE. JUMP IT.' },
+      { s: 'campfire', name: 'CAMPFIRE', desc: 'IT JUST SITS THERE BURNING. JUMP IT.' },
+      { s: 'fireBarrel', name: 'BURNING BARREL', desc: 'STANDS STILL. SHOOT IT OR JUMP IT. NO KICKING.' },
+      { s: 'brazier', name: 'BRAZIER', desc: 'LIGHTS THE CRYPT. SHOOT IT OR JUMP IT. NO KICKING.' },
     ],
   },
   {

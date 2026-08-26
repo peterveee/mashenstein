@@ -31,6 +31,11 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   intro: opts.intro || null,
   introBy: opts.introBy || null,   // speaker id for the intro bubble; null = narrator
   speedMult: opts.speedMult ?? 1,  // per-stage speed override (1 = 100% of cabinet speed)
+  // Scripted pits: [{at, w}], `at` a fraction of stage distance the way
+  // applianceAt is. The spawner may still lay a gap of its own from the
+  // cabinet's pattern list; these are the ones a stage GUARANTEES, in the order
+  // and the places its author chose. See RunState.spawnScriptedPits.
+  pits: opts.pits || null,
 });
 
 export const STAGES = [
@@ -45,10 +50,23 @@ export const STAGES = [
     { type: 'targets', n: 6, targetType: 'qcrate', desc: 'BREAK 6 !-CRATES. THE ! MEANS HIT IT.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
     { speedMult: 0.95 }),
+  // THREE TAR PITS, at fixed fractions of the stage. `pits` is a scripted
+  // placement, not a pattern: a cabinet's pattern list is shuffled by the
+  // spawner, so a gap added there turns up wherever the dice fall and might
+  // never turn up at all — and the first one has to be EARLY, before the fuse
+  // run has settled into a rhythm, or it is not teaching anything.
+  //
+  // 0.12 / 0.45 / 0.78 puts one in each third and straddles both checkpoints
+  // (1/3 and 2/3), so a player who dies in the second or third pit does not
+  // replay the first. The last sits well clear of the finishing straight.
+  //
+  // Stage 3 and not 1 or 2 for the ordinary reason act I ramps: this is the
+  // stage that already carries the fuse, and a fatal hazard belongs on the run
+  // that is already asking you to be careful.
   S('plumber', 3,
     { type: 'fuse', desc: 'CARRY THE FRAGILE FUSE. IT IS VERY FRAGILE. IT KNOWS.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
-    { speedMult: 1.0 }),
+    { speedMult: 1.0, pits: [{ at: 0.12, w: 52 }, { at: 0.45, w: 58 }, { at: 0.78, w: 64 }] }),
   S('speed', 1,
     { type: 'reach', desc: 'REACH THE EXIT BEFORE THE ROAD FILES FOR COLLAPSE.' },
     { type: 'boosts', n: 4, desc: 'HIT 4 BOOST PADS' },

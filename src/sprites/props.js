@@ -174,6 +174,167 @@ const TROPHY_HANDLE_WEIGHT = 0.07;
 // The eye drone's strip length. Declared up here because both the painter and
 // PROP_FRAMES need it and they must never disagree — a painter that cycles on a
 // different count from the table it is rasterized against jumps at the seam.
+
+// ---------------------------------------------- standing-hazard primitives
+// Shared by the six props ported out of the gallery's hazard bake-off. They
+// are kept apart from the older helpers above for one reason: every one of
+// them is authored on a NORMALIZED PHASE rather than on a clock. A prop is
+// rasterized into PROP_FRAMES fixed canvases, so a wobble that is not an
+// integer multiple of the ring's period lands frame N-1 somewhere frame 0 is
+// not, and the loop visibly ticks once a cycle.
+//
+// `hzPhase` is the whole convention: it turns a frame index into 0..TAU across
+// the ring, and everything downstream multiplies it by whole numbers only.
+const HZ_TAU = Math.PI * 2;
+const HZ_INK = '#171522';
+// Outer, mid, core, edge-ink. Three nested tongues rather than a gradient: at
+// 13px a gradient is a beige smudge, and separate value steps still read.
+const HZ_FIRE = ['#f2621d', '#ffb02e', '#ffef9e', '#6d2410'];
+
+function hzPhase(frame, frames) { return ((frame % frames) + frames) % frames / frames * HZ_TAU; }
+
+function hzPath(ctx, fill, stroke, width, fn) {
+  ctx.beginPath();
+  fn(ctx);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) {
+    ctx.strokeStyle = stroke; ctx.lineWidth = width;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+}
+function hzRR(c, x, y, w, h, r) {
+  const q = Math.min(r, w / 2, h / 2);
+  c.moveTo(x + q, y);
+  c.lineTo(x + w - q, y); c.quadraticCurveTo(x + w, y, x + w, y + q);
+  c.lineTo(x + w, y + h - q); c.quadraticCurveTo(x + w, y + h, x + w - q, y + h);
+  c.lineTo(x + q, y + h); c.quadraticCurveTo(x, y + h, x, y + h - q);
+  c.lineTo(x, y + q); c.quadraticCurveTo(x, y, x + q, y); c.closePath();
+}
+function hzBox(ctx, x, y, w, h, r, fill, ink = HZ_INK, width = 0.6) {
+  hzPath(ctx, fill, ink, width, (c) => hzRR(c, x, y, w, h, r));
+}
+function hzLine(ctx, color, width, fn) { hzPath(ctx, null, color, width, fn); }
+function hzDot(ctx, x, y, r, fill, ink = null, width = 0.5) {
+  hzPath(ctx, fill, ink, width, (c) => c.arc(x, y, Math.max(0.05, r), 0, HZ_TAU));
+}
+function hzTri(ctx, x, y, halfW, height, fill, ink = HZ_INK, width = 0.5) {
+  hzPath(ctx, fill, ink, width, (c) => {
+    c.moveTo(x - halfW, y); c.lineTo(x, y - height); c.lineTo(x + halfW, y); c.closePath();
+  });
+}
+// The warm pool a fire throws on the ground. Without it the flame floats: it is
+// the brightest thing in the tile and nothing else on screen acknowledges it.
+function hzGlow(ctx, x, y, rx, ry, color, alpha) {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color;
+  ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, HZ_TAU); ctx.fill(); ctx.restore();
+}
+// One tongue, three layers, each licking on its own INTEGER harmonic of p.
+function hzFlame(ctx, x, base, w, h, p, seed = 0, pal = HZ_FIRE) {
+  // Three tongues, and the important part is that they are NOT concentric. The
+  // first pass nested them on one axis with a symmetric quadratic tip, and at
+  // lane size that draws a pointed dome — a rocket nose, not a fire. Each layer
+  // now sits on its own side bias and leans on its own harmonic, so the shape
+  // is asymmetric in every frame and the inner core is visible off-centre
+  // rather than as a smaller copy of the outline around it.
+  for (let layer = 0; layer < 3; layer++) {
+    const k = 1 - layer * 0.36;         // width falls off faster than height
+    const hk = 1 - layer * 0.26;
+    const cx = x + (layer === 1 ? -0.16 : layer === 2 ? 0.12 : 0) * w;
+    const lean = Math.sin(p * 2 + seed + layer * 2.4) * w * (layer ? 0.2 : 0.12);
+    const tip = base - h * hk * (0.86 + 0.16 * Math.sin(p * 3 + seed + layer));
+    hzPath(ctx, pal[layer], layer === 0 ? pal[3] : null, Math.max(0.16, w * 0.05), (c) => {
+      c.moveTo(cx - w * 0.5 * k, base);
+      c.bezierCurveTo(cx - w * 0.66 * k, base - h * hk * 0.34,
+        cx - w * 0.26 * k + lean, base - h * hk * 0.62, cx + lean, tip);
+      c.bezierCurveTo(cx + w * 0.34 * k + lean, base - h * hk * 0.56,
+        cx + w * 0.66 * k, base - h * hk * 0.3, cx + w * 0.5 * k, base);
+      c.closePath();
+    });
+  }
+}
+function hzEmbers(ctx, x, base, w, h, p, n, seed = 0, color = '#ffca55') {
+  for (let i = 0; i < n; i++) {
+    const rise = (p / HZ_TAU + i / n + seed * 0.31) % 1;
+    const ex = x + Math.sin(seed + i * 2.1 + rise * HZ_TAU) * w * 0.45;
+    ctx.save(); ctx.globalAlpha = Math.max(0, 1 - rise) * 0.9;
+    hzDot(ctx, ex, base - rise * h, Math.max(0.14, w * 0.05 * (1 - rise * 0.55)), color);
+    ctx.restore();
+  }
+}
+// Hazard chevrons on plate steel. `phase` slides the bands; pass an integer
+// multiple of the frame index so the slide wraps with the ring.
+function hzStripe(ctx, x, y, w, h, phase = 0) {
+  ctx.save();
+  ctx.beginPath(); hzRR(ctx, x, y, w, h, Math.min(h * 0.3, 0.6)); ctx.clip();
+  ctx.fillStyle = '#f2c53c'; ctx.fillRect(x, y, w, h);
+  const band = h * 1.1;
+  for (let bx = -h * 2 + (phase % (band * 2)); bx < w + h * 2; bx += band * 2) {
+    hzPath(ctx, '#1d1c26', null, 0, (c) => {
+      c.moveTo(x + bx, y + h); c.lineTo(x + bx + h, y);
+      c.lineTo(x + bx + h + band, y); c.lineTo(x + bx + band, y + h); c.closePath();
+    });
+  }
+  ctx.restore();
+}
+// Circular blade. `rot` is absolute so the caller owns the seam.
+function hzBlade(ctx, x, y, r, rot, teeth) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  hzPath(ctx, '#c9d3de', '#2b323c', Math.max(0.14, r * 0.07), (c) => {
+    for (let i = 0; i < teeth; i++) {
+      const a = i * HZ_TAU / teeth, a2 = (i + 0.5) * HZ_TAU / teeth;
+      if (i === 0) c.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      else c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      c.lineTo(Math.cos(a2) * r * 0.82, Math.sin(a2) * r * 0.82);
+    }
+    c.closePath();
+  });
+  hzDot(ctx, 0, 0, r * 0.6, '#98a3b1', '#2b323c', Math.max(0.12, r * 0.06));
+  for (let i = 0; i < 3; i++) {
+    const a = i * HZ_TAU / 3 + 0.4;
+    hzDot(ctx, Math.cos(a) * r * 0.36, Math.sin(a) * r * 0.36, r * 0.13, '#4a535e');
+  }
+  ctx.restore();
+}
+function hzSparks(ctx, x, y, r, frame, frames, seed, n) {
+  for (let i = 0; i < n; i++) {
+    const k = ((frame / frames) * 2 + i / n + seed * 0.37) % 1;
+    const a = -1.9 + Math.sin(seed + i * 3.1) * 0.9;
+    ctx.save(); ctx.globalAlpha = 1 - k;
+    hzLine(ctx, i % 2 ? '#fff0b0' : '#ffb03a', Math.max(0.16, r * 0.13), (c) => {
+      c.moveTo(x + Math.cos(a) * r * k * 2.2, y + Math.sin(a) * r * k * 2.2 + k * k * r * 1.6);
+      c.lineTo(x + Math.cos(a) * r * k * 2.6, y + Math.sin(a) * r * k * 2.6 + k * k * r * 2);
+    });
+    ctx.restore();
+  }
+}
+// A drum: body, shaded side, three bands. Shared so the fire barrel and any
+// later variant are the same object rather than two drawings of one.
+function hzBarrel(ctx, x, y, bw, bh, fill, dark, bandCol = '#4a5460') {
+  // TWO bands, thin, and a waist rather than a rectangle. Three fat bands with
+  // a shaded right edge drew a chest of drawers at lane size — the bands were
+  // reading as drawer fronts and the fire's glow holes as their handles.
+  hzPath(ctx, fill, HZ_INK, Math.max(0.2, bw * 0.05), (c) => {
+    c.moveTo(x + bw * 0.06, y);
+    c.lineTo(x + bw * 0.94, y);
+    c.quadraticCurveTo(x + bw * 1.04, y + bh * 0.5, x + bw * 0.94, y + bh);
+    c.lineTo(x + bw * 0.06, y + bh);
+    c.quadraticCurveTo(x - bw * 0.04, y + bh * 0.5, x + bw * 0.06, y);
+    c.closePath();
+  });
+  hzPath(ctx, dark, null, 0, (c) => {
+    c.moveTo(x + bw * 0.74, y + bh * 0.02);
+    c.lineTo(x + bw * 0.93, y + bh * 0.02);
+    c.quadraticCurveTo(x + bw * 1.02, y + bh * 0.5, x + bw * 0.93, y + bh * 0.98);
+    c.lineTo(x + bw * 0.74, y + bh * 0.98);
+    c.closePath();
+  });
+  for (const f of [0.3, 0.72]) {
+    hzBox(ctx, x - bw * 0.02, y + bh * f - bh * 0.03, bw * 1.04, bh * 0.06, bh * 0.015,
+      bandCol, HZ_INK, Math.max(0.12, bw * 0.02));
+  }
+}
+
 const DRONE_EYE_FRAMES = 16;
 
 export const PROP_PAINTERS = {
@@ -249,6 +410,235 @@ export const PROP_PAINTERS = {
     plain(ctx, '#8a2018', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.34, h * 0.04, 0, 0, Math.PI * 2));
   },
   cactusBig(ctx, w, h, frame = 0) { PROP_PAINTERS.cactus(ctx, w, h, frame); },
+  // --- standing hazards, ported from the ten-family bake-off ------------
+  // These six came out of the hazard sheet in the gallery (see the section
+  // "Stationary hazards"). What changed on the way in is the ANIMATION, not the
+  // drawing: the gallery painters run on a wall clock and are free to have a
+  // safe window, and a shipped prop is rasterized into a fixed ring of frames
+  // and has to be dangerous in every one of them.
+  //
+  // So each cycle here is authored on a normalized phase — `p` runs 0..TAU
+  // across PROP_FRAMES — and every wobble inside it is an INTEGER multiple of
+  // that phase. Anything else lands the last frame somewhere the first frame is
+  // not, and the loop point ticks. See hzFlame/hzEmbers for the pattern.
+  //
+  // The pop-up spikes are the one place where a look had to be traded against
+  // the hitbox: the bake-off version drops fully out of sight for two thirds of
+  // its cycle, which is a timing puzzle the spawner has no way to budget for
+  // (`action: 'jump'` means "dangerous now"). Shipped, they never fully retract
+  // — they ride between two-thirds and full extension — so the mechanism still
+  // reads as live and the box never lies.
+  //
+  // It is a plate SET INTO the road, and it used to be drawn as two slabs
+  // stacked on top of it: a frame that stopped short of the bottom of the box
+  // and a second, wider plinth under that. Two visible bottom edges and two
+  // ink lines is the picture of something parked on the grass. Now the frame
+  // runs past the bottom of the box and is cut flat by the ground line and the
+  // plinth is gone, so the plate has no visible foot at all. The dirt that laps
+  // back over its lower corners is drawn by the RENDERER, not here (see
+  // `bedded` in draw.js): it has to be the cabinet's own ground colour, and a
+  // painter has no idea which cabinet it is standing in.
+  popSpikes(ctx, w, h, frame = 0) {
+    const f = ((frame % 8) + 8) % 8;
+    const p = hzPhase(frame, 8);
+    // 0.62..1 rather than 0..1. Always out, always lethal, still moving.
+    const up = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(p));
+    // Was 0.62. Sitting the plate two points lower is what buys the room for
+    // the berm without pushing the chevron under it — the teeth keep their
+    // full travel because they are measured from the plate, not from the box.
+    const plateY = h * 0.6;
+    const n = 5;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, -h, w, plateY + h);
+    ctx.clip();
+    for (let i = 0; i < n; i++) {
+      const x = w * (0.15 + i * 0.7 / (n - 1));
+      hzTri(ctx, x, plateY + h * 0.05, w * 0.06, h * (0.1 + 0.54 * up),
+        i % 2 ? '#e4eaf1' : '#b9c4d0', '#232a34', Math.max(0.12, w * 0.018));
+    }
+    ctx.restore();
+    // 0.46 tall from 0.6 reaches h * 1.06 — deliberately past the bottom of the
+    // canvas, so the rounded corners and the ink line at the foot are cut off
+    // rather than drawn. A shape with no visible bottom edge continues.
+    hzBox(ctx, w * 0.03, plateY, w * 0.94, h * 0.46, h * 0.06, '#454f5c', HZ_INK, Math.max(0.14, w * 0.02));
+    for (let i = 0; i < n; i++) {
+      const x = w * (0.15 + i * 0.7 / (n - 1));
+      hzBox(ctx, x - w * 0.065, plateY + h * 0.035, w * 0.13, h * 0.06, h * 0.02,
+        '#12161d', '#2b323c', Math.max(0.1, w * 0.014));
+    }
+    // The chevron chase slides with the FRAME, not with the spike height. Tied
+    // to the height it inherited the sine's mirror symmetry, and a plate whose
+    // frames 1 and 3 are the same picture is a four-frame animation wearing an
+    // eight-frame cache.
+    hzStripe(ctx, w * 0.06, plateY + h * 0.15, w * 0.88, h * 0.07, f * h * 0.028);
+  },
+
+  // A settled campfire: crossed logs with the flame sitting INSIDE the pile
+  // rather than balanced on top of it, which is the difference between a fire
+  // and a bonfire-shaped sticker.
+  campfire(ctx, w, h, frame = 0) {
+    const p = hzPhase(frame, 8);
+    hzGlow(ctx, w * 0.5, h * 0.96, w * 0.52, h * 0.07, '#ff8a2c', 0.34);
+    for (const [x0, y0, x1, y1, col] of [
+      [0.12, 0.96, 0.7, 0.8, '#8a5a35'], [0.88, 0.96, 0.3, 0.8, '#5b3a22'], [0.22, 0.88, 0.8, 0.92, '#7a4c2c'],
+    ]) {
+      hzLine(ctx, '#2c1a10', Math.max(0.34, w * 0.15), (c) => { c.moveTo(w * x0, h * y0); c.lineTo(w * x1, h * y1); });
+      hzLine(ctx, col, Math.max(0.24, w * 0.11), (c) => { c.moveTo(w * x0, h * y0); c.lineTo(w * x1, h * y1); });
+    }
+    hzFlame(ctx, w * 0.5, h * 0.88, w * 0.52, h * 0.66, p, 0);
+    hzFlame(ctx, w * 0.3, h * 0.92, w * 0.26, h * 0.32, p, 2);
+    hzFlame(ctx, w * 0.69, h * 0.92, w * 0.23, h * 0.28, p, 4);
+    hzEmbers(ctx, w * 0.5, h * 0.52, w, h * 0.5, p, 5, 1);
+  },
+
+  // The drum fire. Rust-through holes lit from inside are the detail that says
+  // the fire is IN the barrel rather than sitting on the rim — worth the two
+  // extra dots, because at 13px the flame itself is most of the drawing.
+  fireBarrel(ctx, w, h, frame = 0) {
+    const p = hzPhase(frame, 8);
+    hzGlow(ctx, w * 0.5, h * 0.98, w * 0.55, h * 0.035, '#ff8a2c', 0.3);
+    const bx = w * 0.17, by = h * 0.42, bw = w * 0.66, bh = h * 0.57;
+    hzBarrel(ctx, bx, by, bw, bh, '#a4603a', '#7c4526');
+    // Rust-through, as torn SLITS between the bands rather than as round holes.
+    // Round and centred, they read as handles on the thing the bands had
+    // already made look like a cabinet.
+    for (const [fx, fy, rw, rh] of [[0.3, 0.52, 0.1, 0.05], [0.6, 0.86, 0.07, 0.04], [0.46, 0.16, 0.06, 0.035]]) {
+      hzPath(ctx, '#ffb03a', '#5e2f16', Math.max(0.12, w * 0.016), (c) => {
+        c.ellipse(bx + bw * fx, by + bh * fy, bw * rw, bh * rh, 0.25, 0, HZ_TAU);
+      });
+    }
+    hzPath(ctx, '#2a1a12', '#120c09', Math.max(0.18, w * 0.024), (c) => {
+      c.ellipse(bx + bw * 0.5, by, bw * 0.5, bh * 0.1, 0, 0, HZ_TAU);
+    });
+    hzFlame(ctx, w * 0.5, by + h * 0.02, w * 0.58, h * 0.4, p, 0);
+    hzFlame(ctx, w * 0.35, by + h * 0.02, w * 0.24, h * 0.19, p, 2);
+    hzFlame(ctx, w * 0.65, by + h * 0.01, w * 0.22, h * 0.22, p, 4);
+    hzEmbers(ctx, w * 0.5, by - h * 0.05, w * 0.8, h * 0.32, p, 4, 1);
+  },
+
+  // Chest-height fire on three legs. This is the Crypt's one lit object, so the
+  // bowl of coals under the flame matters: it keeps something warm on screen in
+  // the frames where the flame licks short.
+  brazier(ctx, w, h, frame = 0) {
+    const p = hzPhase(frame, 8);
+    hzGlow(ctx, w * 0.5, h * 0.97, w * 0.5, h * 0.04, '#ff9a3c', 0.28);
+    const bowlY = h * 0.52;
+    for (const s of [-1, 0.15, 1]) {
+      hzLine(ctx, '#333b46', Math.max(0.28, w * 0.09), (c) => {
+        c.moveTo(w * (0.5 + s * 0.15), bowlY + h * 0.07);
+        c.lineTo(w * (0.5 + s * 0.34), h * 0.98);
+      });
+    }
+    hzLine(ctx, '#5d6774', Math.max(0.2, w * 0.05), (c) => {
+      c.moveTo(w * 0.22, h * 0.78); c.lineTo(w * 0.78, h * 0.78);
+    });
+    hzPath(ctx, '#4d4038', '#231b16', Math.max(0.2, w * 0.045), (c) => {
+      c.moveTo(w * 0.18, bowlY); c.lineTo(w * 0.82, bowlY);
+      c.quadraticCurveTo(w * 0.72, bowlY + h * 0.2, w * 0.5, bowlY + h * 0.21);
+      c.quadraticCurveTo(w * 0.28, bowlY + h * 0.2, w * 0.18, bowlY);
+      c.closePath();
+    });
+    hzPath(ctx, '#6a5a4c', '#231b16', Math.max(0.16, w * 0.035), (c) => {
+      c.ellipse(w * 0.5, bowlY, w * 0.32, h * 0.05, 0, 0, HZ_TAU);
+    });
+    for (let i = 0; i < 4; i++) {
+      const heat = 0.5 + 0.5 * Math.sin(p * 2 + i * 1.6);
+      hzDot(ctx, w * (0.33 + i * 0.113), bowlY + h * 0.005, w * 0.055, heat > 0.6 ? '#ffbe4c' : '#d3491a');
+    }
+    hzFlame(ctx, w * 0.5, bowlY - h * 0.005, w * 0.46, h * 0.44, p, 0);
+    hzFlame(ctx, w * 0.36, bowlY, w * 0.2, h * 0.2, p, 3);
+    hzFlame(ctx, w * 0.64, bowlY, w * 0.18, h * 0.22, p, 5);
+    hzEmbers(ctx, w * 0.5, bowlY - h * 0.09, w * 0.7, h * 0.34, p, 4, 1);
+  },
+
+  // Half-buried blade in a slotted plate. The 8-frame ring turns the disc by
+  // exactly one tooth, so the loop point is invisible and the spin never
+  // strobes backwards the way an arbitrary frame count does.
+  floorSaw(ctx, w, h, frame = 0) {
+    const f = ((frame % 8) + 8) % 8;
+    // Was 0.66, with the plate stopping exactly on the bottom of the box: two
+    // rounded corners and an ink line at the floor, which is a slab standing on
+    // the road. Same fix as the spike plate — sit it lower, run it past the
+    // bottom edge so the foot is cut rather than drawn, and bed the corners.
+    const slotY = h * 0.62;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, -h, w, slotY + h);
+    ctx.clip();
+    // Centred just below the slot with a big radius, so roughly the top half of
+    // the disc stands above the plate. The first pass sank it: 4px of white
+    // bump over a yellow-and-black plinth is a lump, not a blade.
+    hzBlade(ctx, w * 0.5, slotY + h * 0.12, Math.min(w * 0.42, h * 0.62), (f / 8) * (HZ_TAU / 12), 12);
+    ctx.restore();
+    hzBox(ctx, w * 0.02, slotY, w * 0.96, h * 0.44, h * 0.06, '#454f5c', HZ_INK, Math.max(0.14, w * 0.02));
+    hzBox(ctx, w * 0.2, slotY + h * 0.03, w * 0.6, h * 0.08, h * 0.025, '#10141a', '#2b323c', Math.max(0.1, w * 0.014));
+    hzStripe(ctx, w * 0.05, slotY + h * 0.14, w * 0.9, h * 0.09, f * 1.6);
+    hzSparks(ctx, w * 0.28, slotY, Math.min(w, h) * 0.16, f, 8, 1, 3);
+    hzSparks(ctx, w * 0.72, slotY, Math.min(w, h) * 0.16, f, 8, 4, 3);
+  },
+
+  // The green cactus from the bake-off's THORNS row, as an occasional skin on
+  // the red one (see `skins` on OBSTACLES.cactus).
+  //
+  // The red cactus's own note argues green is unshippable because plumber turf
+  // is #3a9c48 and a green plant disappears into it. That objection is real and
+  // it is answered here rather than ignored: this body is a full value step
+  // darker than the turf, its contour is heavy, it is the one cactus that does
+  // NOT self-outline (so the shared two-pass hazard rim lands around it), and
+  // the magenta flower on top is a colour that appears nowhere in any cabinet's
+  // ground. The red one still carries the rule; this is the exception that
+  // proves a lane can hold both.
+  cactusGreen(ctx, w, h, frame = 0) {
+    const p = hzPhase(frame, 6);
+    const base = h * 0.995;
+    const k = 0.04 * Math.sin(p);
+    ctx.save();
+    ctx.transform(1, 0, -k, 1, k * base, 0);
+    const armBobL = h * 0.02 * Math.sin(p + 1.1);
+    const armBobR = h * 0.02 * Math.sin(p + 3.9);
+    const ink = '#16331d';
+    const lineW = Math.max(0.3, w * 0.05);
+    hzPath(ctx, '#2f7a3c', ink, lineW, (c) => {
+      hzRR(c, w * 0.38, h * 0.1, w * 0.24, h * 0.9, w * 0.12);
+    });
+    for (const [s, y0, rise, bob] of [[-1, 0.5, 0.2, armBobL], [1, 0.4, 0.26, armBobR]]) {
+      const bx = w * (0.5 + s * 0.11), by = h * (y0 + bob / h);
+      hzPath(ctx, '#2f7a3c', ink, lineW, (c) => {
+        c.moveTo(bx, by);
+        c.lineTo(bx + s * w * 0.16, by);
+        c.quadraticCurveTo(bx + s * w * 0.28, by, bx + s * w * 0.28, by - h * 0.08);
+        c.lineTo(bx + s * w * 0.28, by - h * rise);
+        c.quadraticCurveTo(bx + s * w * 0.28, by - h * (rise + 0.09), bx + s * w * 0.19, by - h * (rise + 0.09));
+        c.quadraticCurveTo(bx + s * w * 0.11, by - h * (rise + 0.09), bx + s * w * 0.11, by - h * rise);
+        c.lineTo(bx + s * w * 0.11, by - h * 0.09);
+        c.quadraticCurveTo(bx + s * w * 0.11, by - h * 0.01, bx, by - h * 0.05);
+        c.closePath();
+      });
+    }
+    hzLine(ctx, '#4e9c53', Math.max(0.25, w * 0.035), (c) => {
+      c.moveTo(w * 0.44, h * 0.18); c.lineTo(w * 0.44, h * 0.94);
+      c.moveTo(w * 0.56, h * 0.18); c.lineTo(w * 0.56, h * 0.94);
+    });
+    // Paired spines every rib. Without them this is a friendly green plant, and
+    // a friendly-looking hazard is the failure mode the red one exists to avoid.
+    hzLine(ctx, '#f2e8c6', Math.max(0.28, w * 0.038), (c) => {
+      for (let i = 0; i < 7; i++) {
+        const y = h * (0.2 + i * 0.11);
+        c.moveTo(w * 0.38, y); c.lineTo(w * 0.3, y - h * 0.03);
+        c.moveTo(w * 0.62, y); c.lineTo(w * 0.7, y - h * 0.03);
+      }
+      for (let i = 0; i < 3; i++) {
+        c.moveTo(w * 0.21, h * (0.34 + i * 0.08)); c.lineTo(w * 0.13, h * (0.32 + i * 0.08));
+        c.moveTo(w * 0.79, h * (0.24 + i * 0.08)); c.lineTo(w * 0.87, h * (0.22 + i * 0.08));
+      }
+    });
+    hzDot(ctx, w * 0.5, h * 0.09, w * 0.1, '#e8557f', '#7a2340', Math.max(0.2, w * 0.03));
+    hzDot(ctx, w * 0.5, h * 0.09, w * 0.038, '#ffe07a');
+    ctx.restore();
+    plain(ctx, '#1d4a26', (c) => c.ellipse(w * 0.5, h * 0.985, w * 0.34, h * 0.04, 0, 0, Math.PI * 2));
+  },
+
   // Frost Fortress swaps the desert hazard for this hostile little snowman.
   // It keeps the cactus hitbox and red "avoid" read, but belongs to the ice
   // cabinet: blue-shadowed snow, coal eyes, carrot nose, and a broad red scarf.
@@ -513,6 +903,85 @@ export const PROP_PAINTERS = {
       c.moveTo(w * 0.2, h * 0.34); c.lineTo(w * 0.2, h * 0.62);
     });
   },
+  // THE JUMP SIGN. Not scenery and not a hazard: a hint the run puts in the
+  // lane after the player has gone into the same kind of hole twice, and the
+  // only prop in the game whose job is to be read as a WORD.
+  //
+  // The word is drawn as strokes rather than set in the pixel font. The font is
+  // a 5px grid and "JUMP" in it is 24px wide at scale 1 — wider than the whole
+  // sign — and scaling a pixel grid down blurs it into four grey smudges.
+  // Four hand-cut glyphs on a 19px board give roughly 3.5 world px a letter,
+  // which is 7 screen px at the run's zoom: short, expected, all-caps, and
+  // therefore readable at a size no font would survive.
+  //
+  // It leans. A sign hammered in straight reads as signage the level shipped
+  // with; a couple of degrees off vertical reads as something somebody stuck
+  // there in a hurry, which is what this is.
+  jumpSign(ctx, w, h) {
+    const u = Math.max(w, h);
+    // EVERYTHING INSIDE 0..h. The first pass hung the board off a translate at
+    // h*0.3 and drew it upward from there, which put its top edge — and the tops
+    // of the letters with it — at negative y, outside the box the painter is
+    // rasterized into. The raster clipped them flat, so the word arrived in the
+    // lane with its ascenders sliced off. A prop painter has no canvas outside
+    // its own box; the box is the whole world.
+    const tilt = -0.035;
+    const postX = w * 0.455, postW = w * 0.085;
+    const bx = w * 0.05, by = h * 0.04, bw = w * 0.9, bh = h * 0.4;
+    const cy = by + bh / 2;
+    shape(ctx, '#7a5230', u, (c) => rr(c, postX, by + bh * 0.5, postW, h - by - bh * 0.5, postW * 0.3));
+    plain(ctx, 'rgba(40,24,12,0.35)', (c) => rr(c, postX + postW * 0.58, by + bh * 0.6, postW * 0.42, h - by - bh * 0.62, postW * 0.2));
+    ctx.save();
+    ctx.translate(postX + postW / 2, cy);
+    ctx.rotate(tilt);
+    const lx = bx - (postX + postW / 2), ly = by - cy;
+    shape(ctx, '#f2c53c', u, (c) => rr(c, lx, ly, bw, bh, bh * 0.2));
+    plain(ctx, '#c99a1e', (c) => rr(c, lx + bw * 0.04, ly + bh * 0.8, bw * 0.92, bh * 0.12, bh * 0.05));
+    // J U M P, as strokes. The pixel font is a 5px grid and "JUMP" in it is
+    // 24px wide at scale 1 — wider than the whole sign — and scaling a grid
+    // down blurs it into four grey smudges. Four hand-cut glyphs on an 18px
+    // board give about 3.5 world px a letter, which is 7 screen px at the run's
+    // zoom: short, expected, all-caps, and readable at a size no font survives.
+    //
+    // FINE strokes. At bh*0.15 the letters were fat enough to close their own
+    // counters — the U filled in, the P's bowl became a blob — and a word that
+    // has lost its holes is a row of marks.
+    const lw = Math.max(0.4, bh * 0.11);
+    const top = ly + bh * 0.24, bot = ly + bh * 0.68;
+    const cellW = bw * 0.185, gap = bw * 0.05;
+    let gx = lx + bw * 0.5 - (cellW * 4 + gap * 3) / 2;
+    const letter = (fn) => { stroke(ctx, '#2a1e0e', lw, fn); gx += cellW + gap; };
+    // J — stem down the right, hooking left at the foot.
+    letter((c) => {
+      c.moveTo(gx + cellW * 0.72, top);
+      c.lineTo(gx + cellW * 0.72, bot - cellW * 0.26);
+      c.quadraticCurveTo(gx + cellW * 0.72, bot, gx + cellW * 0.2, bot - cellW * 0.06);
+    });
+    // U — down, across, up.
+    letter((c) => {
+      c.moveTo(gx + cellW * 0.16, top);
+      c.lineTo(gx + cellW * 0.16, bot - cellW * 0.22);
+      c.quadraticCurveTo(gx + cellW * 0.5, bot + cellW * 0.1, gx + cellW * 0.84, bot - cellW * 0.22);
+      c.lineTo(gx + cellW * 0.84, top);
+    });
+    // M — two stems and a shallow V. A deep V closes up at this size.
+    letter((c) => {
+      c.moveTo(gx + cellW * 0.12, bot);
+      c.lineTo(gx + cellW * 0.12, top);
+      c.lineTo(gx + cellW * 0.5, top + (bot - top) * 0.5);
+      c.lineTo(gx + cellW * 0.88, top);
+      c.lineTo(gx + cellW * 0.88, bot);
+    });
+    // P — stem and a bowl on the top half only.
+    letter((c) => {
+      c.moveTo(gx + cellW * 0.16, bot);
+      c.lineTo(gx + cellW * 0.16, top);
+      c.lineTo(gx + cellW * 0.56, top);
+      c.quadraticCurveTo(gx + cellW * 0.92, top + (bot - top) * 0.25, gx + cellW * 0.56, top + (bot - top) * 0.5);
+      c.lineTo(gx + cellW * 0.16, top + (bot - top) * 0.5);
+    });
+    ctx.restore();
+  },
   tombstone(ctx, w, h) {
     const u = Math.max(w, h);
     shape(ctx, '#9a9ab0', u, (c) => {
@@ -606,6 +1075,180 @@ export const PROP_PAINTERS = {
       c.lineTo(w * 0.45, h * 0.12);
       c.lineTo(w * 0.24, h * 0.78);
       c.closePath();
+    });
+  },
+  // THE BANANA PEEL, drawn from the flat-vector reference Peter brought in.
+  //
+  // It is a peel LYING on the road with one skin risen out of the pile carrying
+  // the stalk — not the Mario Kart item standing on its base, which is what the
+  // first three passes drew. That earlier shape read (it has a real silhouette)
+  // and it was never right, and the bake-off in src/dev/banana-candidates.js is
+  // where seven of them were put side by side to find out why. Three things
+  // separate this one from all of those, and each is deliberate:
+  //
+  //   NO CONTOUR — or as near as this game can afford. Every other prop here is
+  //     outlined; this one separates its parts by TONE, four warm values from
+  //     cream to deep orange, and the absence of the dark hairline is most of
+  //     why it reads clean rather than busy. What survives is a whisper of warm
+  //     contour, kept for one specific reason: Speed Zone's road is #c88848 and
+  //     Frost's is near-white, and an unoutlined warm prop disappears into the
+  //     first and floats on the second. At 0.014 it is a separation, not a
+  //     border — an eighth the weight the cactus carries.
+  //   WARM, NOT LEMON. Golds and oranges instead of the #f2e42c the earlier
+  //     passes used. It separates from turf better and it stops the prop reading
+  //     as the same yellow as a coin, which at lane size was a real confusion.
+  //   ONE TALL ARC. Not a fan of equal skins around a stub. A single sweeping
+  //     skin rises out of the pile and carries the stalk at its top, everything
+  //     else lies down around it. That is what buys a silhouette while keeping
+  //     the prop low — a peak without a tower.
+  //
+  // The stalk is a chunky dark block rather than a taper, and it is doing more
+  // work than its size suggests: it is the only non-warm mark in the drawing and
+  // it sits at the top of the silhouette, which is where the eye lands.
+  bananaPeel(ctx, w, h) {
+    const gy = h * 0.97;
+    // THE CONTOUR, and it is a real decision rather than a default.
+    //
+    // The reference has no outline at all, and drawn that way the peel loses its
+    // lower edge into Speed Zone's road — #c88848 is close enough to the peel's
+    // own yellow that the skins resting on the ground simply merge with it. The
+    // first attempt at a fix went the other way and was so faint that the
+    // OVERLAPS stopped reading: four skins on top of each other became one
+    // silhouette with a stalk. The house dark (rgba(26,16,40,.34), what the
+    // cactus and crate wear) works but goes grey against this much yellow, and
+    // anything heavier turns the prop into a sticker with a brown border.
+    //
+    // Warm, mid-weight, is the one that does both jobs: it separates the peel
+    // from every ground in the game AND separates the skins from each other,
+    // while still reading as flat vector art rather than as an outlined sprite.
+    const INK = 'rgba(122,80,10,0.55)';
+    const P = {
+      lit: '#ffe14a',    // the arc's lit face
+      main: '#fcd420',   // the two skins reaching left — the colour of the thing
+      deep: '#f0c008',   // the lobe lying behind and right
+      tip: '#7a5a1e',    // stalk, and the point on each outer end
+    };
+
+    // A SKIN: a centreline offset along its own normal, which is the only way
+    // that reliably gives a long strip a point on the end. Hand-placed edge
+    // curves were tried against both references and every one came out a
+    // rounded lump — two curves do not hold their relationship as a path bends,
+    // and this drawing is nothing BUT long thin strips with points on them.
+    //
+    // `floor` holds the strip open at both ends instead of closing to a point.
+    // The two reaching skins want the point; the arc, which has the stalk
+    // balanced on its top, wants a band.
+    const skin = (rx, ry, kx, ky, tx, ty, halfMax, rootF = 0.9, tipF = 0) => {
+      const N = 16;
+      const top = [], bot = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N, mt = 1 - t;
+        const x = mt * mt * rx + 2 * mt * t * kx + t * t * tx;
+        const y = mt * mt * ry + 2 * mt * t * ky + t * t * ty;
+        const dx = 2 * mt * (kx - rx) + 2 * t * (tx - kx);
+        const dy = 2 * mt * (ky - ry) + 2 * t * (ty - ky);
+        const len = Math.hypot(dx, dy) || 1;
+        // Widest nearer the root than the middle: a peeled skin is broadest
+        // where it is still attached and narrows the whole way out.
+        //
+        // The two floors are what hold the strip OPEN at each end, and `rootF`
+        // in particular is not cosmetic. A plain sine closes both ends to a
+        // point, and a peel built that way has no pile in the middle — every
+        // strip meets its neighbours at a needle, so the arc's own blunt foot
+        // had nothing covering it and stuck out below the drawing. A fat root
+        // is what makes the centre a mass the arc can grow out of.
+        const floor = rootF * (1 - t) + tipF * t;
+        const half = halfMax * Math.max(floor, Math.sin(Math.PI * Math.pow(t, 0.62)));
+        top.push([x - dy / len * half, y + dx / len * half]);
+        bot.push([x + dy / len * half, y - dx / len * half]);
+      }
+      // The root end is ROUNDED rather than closed with a straight line across
+      // the two edges. A flat cut there is a hard vertical edge in the middle of
+      // the pile — it reads as a strip that has been guillotined, which is the
+      // one thing none of the references has. The nose bulges out along the
+      // reverse tangent by about its own half-width.
+      const nx = rx - kx, ny = ry - ky;
+      const nl = Math.hypot(nx, ny) || 1;
+      const nose = halfMax * rootF * 0.9;
+      const path = (c) => {
+        c.moveTo(top[0][0], top[0][1]);
+        for (const [x, y] of top) c.lineTo(x, y);
+        for (let i = bot.length - 1; i >= 0; i--) c.lineTo(bot[i][0], bot[i][1]);
+        c.quadraticCurveTo(rx + nx / nl * nose, ry + ny / nl * nose, top[0][0], top[0][1]);
+        c.closePath();
+      };
+      // The browned point on the outer end, cut back along the strip so it is a
+      // wedge continuing the taper rather than a bead stuck on the tip.
+      const cap = (c) => {
+        // An eighth of the strip, not a fifth. At N-3 the browned end ran a
+        // fifth of the way back down the skin and read as a dagger blade; in
+        // both references it is a short dark nick on the very point.
+        const m = N - 2;
+        c.moveTo(tx, ty);
+        c.lineTo(top[m][0], top[m][1]);
+        c.quadraticCurveTo((top[m][0] + bot[m][0]) / 2, (top[m][1] + bot[m][1]) / 2,
+          bot[m][0], bot[m][1]);
+        c.closePath();
+      };
+      return { path, cap };
+    };
+
+    // Contact smear, so the peel sits ON the road rather than above it.
+    plain(ctx, 'rgba(8,6,12,0.15)', (c) => {
+      c.ellipse(w * 0.48, gy - h * 0.005, w * 0.42, h * 0.03, 0, 0, Math.PI * 2);
+    });
+
+    // THE FOUR PARTS, back to front. `k` below is height above the road as a
+    // fraction of the box, and the parts that sit HIGH are the ones lying
+    // further away — the reference is drawn at a shallow plan angle, and that
+    // is the only depth cue in it. Nothing here is floating.
+    const K = (k) => gy - h * k;
+    // ORDER MATTERS, and it is the fix for the arc's foot. A strip built from a
+    // centreline has a blunt end, and the arc's belongs INSIDE the pile — drawn
+    // last it stood proud of everything and its flat foot read as a separate
+    // slab dropped into the middle of the drawing. So the arc goes down third
+    // and the lower reaching skin goes over it, exactly as in the reference,
+    // where that skin passes in front of the arc's base.
+    const parts = [
+      // The lobe lying behind and to the right. Deeper yellow, which is what
+      // pushes it back — and FLAT: fattened it becomes a teardrop sitting beside
+      // the peel instead of a skin tucked behind it.
+      { s: skin(w * 0.530, K(0.24), w * 0.780, K(0.36), w * 0.985, K(0.20), h * 0.092), col: P.deep, cap: true },
+      // The upper skin reaching LEFT. The thinnest thing in the drawing — this
+      // is the strip that, with the arc's inner edge, encloses the open lens of
+      // background that the reference is really built around. Fatten it and the
+      // gap closes and the whole peel becomes one solid mass.
+      { s: skin(w * 0.570, K(0.54), w * 0.34, K(0.70), w * 0.020, K(0.47), h * 0.056, 0.7), col: P.main, cap: true },
+      // THE ARC. Rises out of the pile and carries the stalk, LEANING right the
+      // whole way rather than going up straight and kinking over at the top —
+      // the control point sits right of the chord, which is what turns a hook
+      // into the smooth cant the reference has.
+      // Rooted DEEP and narrow at the foot: a fat root here pushes its rounded
+      // nose out from under the skin that is meant to be covering it, and the
+      // bulge reads as a notch in the middle of the pile.
+      { s: skin(w * 0.500, K(0.215), w * 0.552, K(0.56), w * 0.655, K(0.865), w * 0.052, 0.72, 0.44), col: P.lit },
+      // The lower skin reaching left, thicker and resting on the road. Last, so
+      // it covers the arc's foot.
+      { s: skin(w * 0.580, K(0.19), w * 0.36, K(0.24), w * 0.070, K(0.11), h * 0.098, 0.95), col: P.main, cap: true },
+    ];
+    for (const { s: sk, col, cap } of parts) {
+      fineShape(ctx, col, Math.max(w, h), sk.path, INK, 0.020);
+      if (cap) plain(ctx, P.tip, sk.cap);
+    }
+
+    // The stalk: a short dark NUB tilted off the top of the arc. In both
+    // references it is barely a tenth of the height and it does its work by
+    // being the only dark mark in an otherwise entirely yellow drawing — drawn
+    // longer it stops being part of the peel and becomes a brown peg leaning
+    // against it.
+    // It continues the arc's own lean rather than setting off at its own angle,
+    // which is what made it read as a peg propped against the peel.
+    // Started BELOW the arc's point so the two overlap. Begun at the point
+    // itself, the round cap left a hairline of background between stalk and
+    // peel, and the nub read as a brown capsule hovering over the tip.
+    stroke(ctx, P.tip, Math.max(0.45, w * 0.034), (c) => {
+      c.moveTo(w * 0.646, K(0.815));
+      c.lineTo(w * 0.674, K(0.930));
     });
   },
   zombieWalk(ctx, w, h) {
@@ -2522,6 +3165,13 @@ export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 export const PROP_FRAMES = {
   cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96,
   buzzbird: 6,
+  // Standing hazards. Eight is the ring these were authored against — see
+  // hzPhase — and the saw's eight turn the disc by exactly one tooth, so the
+  // seam between the last frame and the first is the same seam as every other
+  // frame boundary. The green cactus takes the red one's six, because it is a
+  // skin of it and the two sway together in a row.
+  popSpikes: 8, campfire: 8, fireBarrel: 8, brazier: 8, floorSaw: 8,
+  cactusGreen: 6,
   drone: 6, shooterDrone: 6, droneEye: DRONE_EYE_FRAMES,
   // Bake-off candidates. Eight frames for the ramps and flags — one chevron
   // cell and one cloth cycle respectively, so the loop point is the art's own
@@ -2547,6 +3197,11 @@ export const PROP_FRAMES = {
 // turns folded inside it.
 const PROP_FPS = {
   qcrate: 12, appliance: 24, buzzbird: 16,
+  // Fire is fast or it looks like jelly; the spike plate is slow because it is
+  // a machine breathing, not a machine cycling. The saw is the fastest thing in
+  // the table: below ~20 the eight tooth-steps read as a wobble rather than a
+  // spin, which is the same failure the rotors had at 11.
+  popSpikes: 9, campfire: 14, fireBarrel: 14, brazier: 12, floorSaw: 22,
   drone: 24, shooterDrone: 24, droneEye: 12,
   // Bake-off candidates. The ramps run fast: a chevron chase reads as speed
   // only when it outruns the lane scroll. Cloth is the opposite — a flag
@@ -2564,6 +3219,18 @@ const PROP_FPS = {
 // 1.33x their box — bigger art is generous, never unfair).
 export const PROP_TALL = {
   cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4,
+  // Standing hazards, over UNCHANGED boxes. Every one of these buys its
+  // presence upward, the same trade the boost pad makes, and every one of them
+  // buys it with something that cannot hurt you: flame above a barrel, flame
+  // above a bowl, teeth above a plate. The box is the metal.
+  //
+  // The two fires take the most because a fire is mostly the part of it that is
+  // not solid — 1.7 over a 13x13 barrel is 22px of art, of which the drum is 13.
+  popSpikes: 1.5, campfire: 1.3, fireBarrel: 1.7, brazier: 1.55, floorSaw: 1.45,
+  // A sign is mostly post. 1.5 over the 13x9 box puts the board at head height
+  // where a sign belongs, and leaves the box around the part you walk into.
+  jumpSign: 1.5,
+  cactusGreen: 1.55,
   // Speed ramp candidates over the unchanged 14x4 boostPad box. This is the
   // entire proposal for three of the four: the pad cannot get wider without
   // lying about where the boost starts, so everything it gains it gains
@@ -2591,12 +3258,22 @@ export function propTall(name) { return PROP_TALL[name] || 1; }
 // size and gameplay hitbox do not change.
 const PROP_DETAIL_SCALE = {
   cactus: 2, cactusBig: 2,
+  // Standing hazards. All six ship between 7 and 22px, which is exactly the
+  // range this table exists for: a spike's point, a barrel band and a spine are
+  // all sub-pixel marks at single detail and survive as tone at double.
+  popSpikes: 2, campfire: 2, fireBarrel: 2, brazier: 2, floorSaw: 2, cactusGreen: 2,
   snowman: 2, snowmanBig: 2,
   crate: 2, qcrate: 2, pipe: 2, switch: 2,
   zombieWalk: 2, icicle: 2,
   buzzbird: 2, drone: 2, shooterDrone: 2, droneEye: 2,
   printer: 2, chair: 2,
   trafficCone: 2,
+  // Four overlapping skins, a stalk nub and two browned points inside a box SIX
+  // pixels tall. Three rather than the usual two: at 2x the arc's neck and the
+  // lens of background between it and the upper skin — the two marks the whole
+  // drawing is built on — both close up when rasterized this small, and the peel
+  // collapses into one yellow smear with a dark speck on it.
+  bananaPeel: 3,
   coin: 2, battery: 2,
   capShield: 2, capMagnet: 2, capStar: 2, capAirJump: 2,
   capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRelay: 2,
@@ -2684,8 +3361,23 @@ export function maxPropVisualScale() {
 // undoing the lighter authored contour.
 const SELF_OUTLINED_PROPS = new Set([
   'cactus', 'cactusBig', 'snowman', 'snowmanBig',
+  // The five standing hazards author heavy INK contours of their own. The
+  // shared rim outside those would ring a flame in dark paint, which is the one
+  // thing fire must never have.
+  //
+  // cactusGreen is deliberately NOT here. It is the only prop in the game whose
+  // body colour is a near match for a cabinet's turf (plumber's #3a9c48), and
+  // the two-pass hazard rim is exactly the tool for that: it puts a dark inner
+  // and a pulsing light outer edge around the silhouette, which is what buys
+  // the separation the red cactus gets for free from being red.
+  'popSpikes', 'campfire', 'fireBarrel', 'brazier', 'floorSaw',
   'crate', 'pipe', 'zombieWalk', 'icicle',
   'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair', 'trafficCone',
+  // The peel is drawn flat, with a whisper of warm contour and no dark one at
+  // all — the absence of a hard border is most of what makes it read clean. The
+  // shared two-pass hazard rim is a broad dark border around the whole box and
+  // would undo exactly that, as well as closing the gaps between the skins.
+  'bananaPeel',
 ]);
 export function propHazardRim(name) {
   return !SELF_OUTLINED_PROPS.has(name);

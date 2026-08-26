@@ -199,6 +199,28 @@ function mrdr3WriteGate(param, startFrame, gateEnd, level, rate) {
   return gateEnd + fade;
 }
 
+/*
+ * The pitch envelope, written into a timeline. Its own builder, and its own writer
+ * because it speaks a third event kind ('target') the gain envelope never uses.
+ *
+ * Split out of Mrdr3Layer.start for the same reason mrdr3WriteEnvelope is a function: a
+ * note-off REWRITES a note's envelopes for the length it turned out to have, and two
+ * copies of this loop would be two chances for the released note to bend differently
+ * from the one that ran its length. See Mrdr3Layer.release.
+ */
+function mrdr3WriteCentsEnv(param, startFrame, durSeconds, spec, rate) {
+  param.reset(0);
+  var built = mrdr3CentsEnvEvents(spec.pitchCents, spec.pitchEnv, 0, durSeconds, 0, 0);
+  if (!built) return;
+  for (var i = 0; i < built.events.length; i++) {
+    var ev = built.events[i];
+    var at = startFrame + ev.t * rate;
+    if (ev.k === 'set') param.setValueAtTime(ev.v, at);
+    else if (ev.k === 'lin') param.linearRampToValueAtTime(ev.v, at);
+    else if (ev.k === 'target') param.setTargetAtTime(ev.v, at, ev.tau * rate);
+  }
+}
+
 /**
  * A note's starting phase.
  *
@@ -262,6 +284,13 @@ function Mrdr3Layer(rate) {
   this.stages = 0;
   this.spec = null;
   this.off = 0;
+  // WHERE THE NOTE BEGAN, and where its drawn length ends. A held note is booked for the
+  // longest it could possibly last and ended by a note-off, and ending it means writing
+  // the envelopes again for the length the note turned out to have — which cannot be done
+  // from the release frame alone, because every one of those curves is drawn from the
+  // note's own start. See release().
+  this.startFrame = 0;
+  this.endFrame = 0;
   this.hz = 440;
   this.track = 1;
   this.active = false;
@@ -350,6 +379,8 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
   // layer live and die inside another.
   var span = (endFrame - frame) * (spec.len > 0 ? spec.len : 1);
   var layerEnd = frame + (span > 1 ? span : 1);
+  this.startFrame = frame;
+  this.endFrame = layerEnd;
   // The layer's own note length in SECONDS, which is the builder's domain.
   var layerSeconds = (layerEnd - frame) / rate;
   this.off = spec.through
@@ -373,19 +404,7 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
   }
   // ---- the pitch envelope, in cents on top of the layer's own detune --------
   this.pitchOn = !!spec.pitchCents && !!spec.pitchEnv;
-  if (this.pitchOn) {
-    this.pitchParam.reset(0);
-    var pev = mrdr3CentsEnvEvents(spec.pitchCents, spec.pitchEnv, 0, layerSeconds, 0, 0);
-    if (pev) {
-      for (var pi = 0; pi < pev.events.length; pi++) {
-        var pe = pev.events[pi];
-        var pat = frame + pe.t * rate;
-        if (pe.k === 'set') this.pitchParam.setValueAtTime(pe.v, pat);
-        else if (pe.k === 'lin') this.pitchParam.linearRampToValueAtTime(pe.v, pat);
-        else if (pe.k === 'target') this.pitchParam.setTargetAtTime(pe.v, pat, pe.tau * rate);
-      }
-    }
-  }
+  if (this.pitchOn) mrdr3WriteCentsEnv(this.pitchParam, frame, layerSeconds, spec, rate);
   // ---- the FM operator: pitch fixed at the carrier's STARTING frequency ------
   //
   // Depth in hertz as a multiple of it, with its own envelope through the same builder —
@@ -408,6 +427,45 @@ Mrdr3Layer.prototype.start = function (spec, hz, frame, endFrame, rate, entryDel
     }
   }
   return this.off;
+};
+
+/**
+ * END THIS LAYER NOW — the key came up.
+ *
+ * A held note is booked for HOLD_SECONDS because nobody can know how long a finger will
+ * stay down, and the envelopes are drawn ONCE at note-on across that whole length. So a
+ * note-off cannot simply flip a flag: the automation it would have to interrupt is
+ * already written, and the release it wants is at the far end of it.
+ *
+ * The envelopes are DRAWN AGAIN, for the length the note turned out to have. That is
+ * exact rather than approximate, and it is the reason this is a rewrite rather than a
+ * cancel-and-ramp: mrdr3GateAdsrEvents draws attack and decay from the note's own start,
+ * so every event before the release is the same number it already was — nothing that has
+ * already been rendered moves — and the release itself is the builder's own, with its
+ * pinned gate edge and its authored curve, rather than a second dialect of release
+ * invented here. §3.2's whole point is that there is one envelope shape in this project.
+ *
+ * A layer whose own 'len' ran out first is left alone: its release is already scheduled,
+ * and a shorter note may cut a layer short but never lengthen it.
+ */
+Mrdr3Layer.prototype.release = function (frame, rate) {
+  if (!this.active || !this.spec) return;
+  var at = frame > this.startFrame ? frame : this.startFrame;
+  if (at >= this.endFrame) return;
+  this.endFrame = at;
+  var spec = this.spec;
+  var seconds = (at - this.startFrame) / rate;
+  this.off = spec.through
+    ? mrdr3WriteGate(this.gain, this.startFrame, at, spec.gain, rate)
+    : mrdr3WriteEnvelope(this.gain, this.startFrame, seconds, spec.gain, spec.env, this.hz, rate);
+  if (this.pitchOn) mrdr3WriteCentsEnv(this.pitchParam, this.startFrame, seconds, spec, rate);
+  if (this.fmOn) {
+    mrdr3WriteEnvelope(this.fmParam, this.startFrame, seconds, 1, spec.fmEnv, this.hz, rate);
+  }
+  if (this.stages) {
+    mrdr3WriteEnvelope(this.filterEnv, this.startFrame, seconds, 1, spec.filterEnvShape,
+      this.hz, rate);
+  }
 };
 
 // ---- one sounding chord tone -----------------------------------------------------------
@@ -435,12 +493,21 @@ function Mrdr3Tone(rate) {
   this.oct = 0;
   this.hz = 440;
   this.active = false;
+  // The same three a layer keeps, and for the same reason — a note-off draws the global
+  // VCA and filter envelopes again for the length the note turned out to have, and both
+  // shapes live on the patch. See Mrdr3Layer.release.
+  this.patch = null;
+  this.startFrame = 0;
+  this.endFrame = 0;
 }
 
 Mrdr3Tone.prototype.start = function (patch, hz, frame, endFrame, rate, noise, glide) {
   this.active = true;
   this.lastGfq = NaN;
   this.hz = hz;
+  this.patch = patch;
+  this.startFrame = frame;
+  this.endFrame = endFrame;
   this.used = patch.layers.length < 3 ? patch.layers.length : 3;
   for (var i = 0; i < this.used; i++) {
     var lay = this.layers[i];
@@ -482,6 +549,23 @@ Mrdr3Tone.prototype.start = function (patch, hz, frame, endFrame, rate, noise, g
       this.filters[k].kind = patch.filterKind;
       this.filters[k].reset();
     }
+  }
+};
+
+/** END THIS TONE NOW — its layers, then the global pair. See Mrdr3Layer.release. */
+Mrdr3Tone.prototype.release = function (frame, rate) {
+  if (!this.active || !this.patch) return;
+  var at = frame > this.startFrame ? frame : this.startFrame;
+  if (at >= this.endFrame) return;
+  this.endFrame = at;
+  var seconds = (at - this.startFrame) / rate;
+  for (var i = 0; i < this.used; i++) this.layers[i].release(at, rate);
+  if (this.hasVca) {
+    mrdr3WriteEnvelope(this.vca, this.startFrame, seconds, 1, this.patch.vca, this.hz, rate);
+  }
+  if (this.stages) {
+    mrdr3WriteEnvelope(this.filterEnv, this.startFrame, seconds, 1,
+      this.patch.filterEnvShape, this.hz, rate);
   }
 };
 
@@ -825,6 +909,24 @@ Mrdr3Group.prototype.start = function (patch, event, frame, rate, noise, glide) 
   return this;
 };
 
+/**
+ * The key came up: release every tone, and remember that it happened.
+ *
+ * ONCE. A second note-off for the same event id — two fingers on one key, a stop behind a
+ * note-off, a mono choke landing on a note already let go — would draw the envelopes for
+ * a note shorter still, which restarts the fall from further along and is heard as the
+ * release stuttering. The flag is also what §5.2 steals against, so it is set either way.
+ */
+Mrdr3Group.prototype.release = function (frame, rate) {
+  if (!this.active) return false;
+  if (this.released) return false;
+  this.released = true;
+  for (var i = 0; i < this.tones.length; i++) {
+    if (this.tones[i].active) this.tones[i].release(frame, rate);
+  }
+  return true;
+};
+
 // ---- the core ---------------------------------------------------------------------------
 function Mrdr3Core(opts) {
   this.rate = opts.rate;
@@ -969,9 +1071,13 @@ Mrdr3Core.prototype.applyDue = function (frame) {
       continue;
     }
     if (e.type === 'noteOff') {
+      // AT 'frame', NOT AT 'e.frame'. A note-off may be stale — it is never dropped, on
+      // purpose — and drawing a release that finished in the past would step the note to
+      // silence instead of fading it. The current sample is the earliest moment a release
+      // can still be a release.
       for (var k = 0; k < this.groups.length; k++) {
         if (this.groups[k].active && this.groups[k].eventId === (e.eventId | 0)) {
-          this.groups[k].released = true;
+          this.groups[k].release(frame, this.rate);
         }
       }
       continue;
@@ -991,7 +1097,9 @@ Mrdr3Core.prototype.applyDue = function (frame) {
       // THE CHOKE: a hardware mono synth cuts the note still ringing. Released rather
       // than stopped dead, so its own release fades it under the note replacing it —
       // which is what stops the two arriving as one click.
-      if (gated && this.last.group && this.last.group.active) this.last.group.released = true;
+      if (gated && this.last.group && this.last.group.active) {
+        this.last.group.release(frame, this.rate);
+      }
     }
     var slot = this.claim();
     if (!slot) continue;

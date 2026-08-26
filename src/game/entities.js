@@ -3,12 +3,29 @@
 // Action classes drive fairness: 'jump' | 'duck' | 'none' (avoidable by running).
 
 export const OBSTACLES = {
-  cactus:      { w: 13, h: 12, sprite: 'cactus', ground: true, breakable: true, action: 'jump' },
+  // `skins`: three reds to one green, so a green one is an occasional visitor
+  // rather than half the desert. Skin is picked off the spawn position (see
+  // makeObstacle), so the mix is stable per instance and identical on a replay.
+  // Purely cosmetic — same box, same debris, same jump.
+  cactus:      { w: 13, h: 12, sprite: 'cactus', ground: true, breakable: true, action: 'jump', skins: ['cactus', 'cactus', 'cactusGreen', 'cactus'] },
   cactusBig:   { w: 17, h: 14, sprite: 'cactusBig', ground: true, breakable: true, action: 'jump' },
   snowman:     { w: 13, h: 12, sprite: 'snowman', ground: true, breakable: true, action: 'jump' },
   snowmanBig:  { w: 17, h: 14, sprite: 'snowmanBig', ground: true, breakable: true, action: 'jump' },
   crate:      { w: 12, h: 11, sprite: 'crate', ground: true, breakable: true, action: 'jump', stack: true },
-  barrel:     { w: 13, h: 13, sprite: 'barrel', ground: true, breakable: true, action: 'jump', vx: -40, roll: true },
+  // KICKABLE, and heavily — see `punt` on trafficCone below for the contract,
+  // and HEAVY_PUNT in punt.js for why a barrel does not fly like a cone. The
+  // barrel is the one puntable prop that is already MOVING when the boot
+  // arrives: it rolls at the hero rather than waiting for him, so the timing
+  // read the punt window asks for is against a closing target.
+  //
+  // And the boot REVERSES it. Where a cone is punted up and comes back down
+  // into the player's world to be juggled, a barrel goes up, comes down facing
+  // the other way and rolls out of the frame faster than the hero can run (see
+  // HEAVY_PUNT). It is not destroyed and not resolved — the thing that was
+  // coming at you is now leaving, which is what kicking a heavy rolling object
+  // actually does. `punt` does not change what the spawner budgets: the barrel
+  // is still `action: 'jump'`, and the slide is still the ALTERNATIVE.
+  barrel:     { w: 13, h: 13, sprite: 'barrel', ground: true, breakable: true, action: 'jump', vx: -40, roll: true, punt: 'heavy', puntLabel: 'BARREL' },
   // Two bodies, one drone: the rotor workhorse and the watching eye. See `skin`
   // in makeObstacle — it is a look, not a variant hazard.
   drone:      { w: 12, h: 7,  sprite: 'drone', alt: 13, armored: true, action: 'duck', bob: true, airDrift: { amp: 4, speed: 0.72 }, skins: ['drone', 'droneEye'] },
@@ -21,6 +38,17 @@ export const OBSTACLES = {
   qcrate:     { w: 12, h: 11, sprite: 'crate', alt: 40, breakable: true, action: 'none', bonusCoins: 3, isTarget: true, qbox: true, prizeChance: 0.25 },
   pipe:       { w: 14, h: 18, sprite: 'crate', ground: true, breakable: false, action: 'jump', tall: true },
   gap:        { w: 56, h: 20, sprite: null, ground: true, isGap: true, action: 'jump' },
+  // A HINT, not an obstacle. Placed by the run rather than by a cabinet's
+  // pattern list (see RunState.signPits): it appears in front of a pit only
+  // once the player has gone into two of them, and it is the only entity in
+  // the game that exists because of something the player DID.
+  //
+  // `action: 'none'` is the literal truth and it matters twice over — the
+  // fairness sim budgets reaction time for things that have to be avoided, and
+  // this does not have to be avoided by anybody. Running into it breaks it and
+  // costs nothing (see the `sign` branch in RunState.collide); the point is
+  // that the hint gets out of the way of the jump it is asking for.
+  jumpSign:   { w: 13, h: 9, sprite: 'jumpSign', ground: true, breakable: true, action: 'none', sign: true },
   boostPad:   { w: 14, h: 4,  sprite: 'boostPad', ground: true, isBoost: true, action: 'none' },
   // The boost pad's vertical cousin. Same contract — run over it and it pays
   // out, jump it and it does not — pointed up instead of forward, because what
@@ -28,6 +56,16 @@ export const OBSTACLES = {
   // literal truth: nothing about it has to be avoided, and jumping it is a
   // choice rather than a save.
   springPad:  { w: 16, h: 6,  sprite: 'springPad', ground: true, isSpring: true, action: 'none' },
+  // The pad at the foot of a loop-de-loop, and — because the ring is drawn from
+  // it — the loop itself. One entity rather than two: the ring has no box, no
+  // contact and no state of its own, so a second entity would be an object that
+  // exists only to be drawn somewhere relative to the first one.
+  //
+  // Same contract as its two cousins, which is what makes all three learnable
+  // as one thing: run over it and it pays out, jump it and it never sees you.
+  // `action: 'none'` because a loop is not something to be avoided — sailing
+  // over the pad costs you the ride and the coins on it, and nothing else.
+  loopPad:    { w: 18, h: 4,  sprite: 'boostPad', ground: true, isLoop: true, action: 'none' },
   switch:     { w: 8, h: 8,   sprite: 'battery', alt: 46, breakable: true, action: 'none', isSwitch: true, bob: true },
   tombstone:  { w: 11, h: 8,  sprite: 'tombstone', ground: true, breakable: true, action: 'jump' },
   zombie:     { w: 10, h: 14, sprite: 'zombieWalk', ground: true, breakable: true, action: 'jump', vx: -14, shamble: true },
@@ -42,7 +80,92 @@ export const OBSTACLES = {
   // slide can take, never the required clear. Declaring it 'duck' would make it
   // the first ground-standing duckable in the game and would falsify the
   // "roll always clears duckables" shortcut in RunState.collide.
-  trafficCone:{ w: 10, h: 13, sprite: 'trafficCone', ground: true, breakable: true, action: 'jump', punt: true },
+  //
+  // `true` is the light arc. A heavier prop names its own — see barrel above.
+  // `puntLabel` is what the juggle chain calls it on screen: the readout used
+  // to say CONE because the cone was the only thing that could be kicked.
+  trafficCone:{ w: 10, h: 13, sprite: 'trafficCone', ground: true, breakable: true, action: 'jump', punt: true, puntLabel: 'CONE' },
+  // THE BANANA PEEL, straight out of a kart racer, and the only hazard in the
+  // game whose answer is *only* the jump.
+  //
+  // `slip: true` is the whole of what makes it different. Every other ground
+  // hazard has a second answer — a crate is plowed, a cone is punted, a cactus
+  // is shot or rolled past by Fernwick — and the peel has none of them:
+  //
+  //   `breakable: false`  no weapon, stomp, roll or shockwave removes it. It is
+  //     a floppy bag of fruit skin: there is nothing in it to break, and no
+  //     debris entry either, so it has no scatter to give. Making it breakable
+  //     would have put the game's one jump-only hazard back in the pile that
+  //     half the cast shoots from a distance.
+  //   not puntable        a boot going in low meets the floor, not the prop.
+  //   not duckable        `action: 'jump'`, and sliding into it still slips —
+  //     which is deliberate: it is the one hazard that punishes the slide, so
+  //     holding duck through a row of cones stops being free.
+  //
+  // What it costs is a battery cell like anything else, plus the slip itself:
+  // his feet go out, he is slowed and he cannot jump for a beat (RunState.slip).
+  // The slide-whistle gag is the point — this is a pratfall, not a wound.
+  //
+  // 10x6 — SIXTY PER CENT of the size it was, measured against the hero rather
+  // than against the other props. At 16x10 the peel was two thirds of Lorenzo's
+  // height and read as furniture he had to get over; a dropped banana skin is a
+  // small thing on a big road, and the joke only works if it looks like one.
+  //
+  // Wider than tall throughout, because the peel LIES on the road with one skin
+  // risen out of it carrying the stalk: the width is the pile, the height is
+  // that one arc. Earlier passes went 12x5 (flat, and unreadable — five pixels
+  // is no silhouette, and a hazard with no silhouette is scenery) and then 14x12
+  // (the kart item standing on its base, which read and still looked wrong).
+  // Well under `worstJumpApex`, so the whole cast clears it in one jump.
+  bananaPeel: { w: 10, h: 6, sprite: 'bananaPeel', ground: true, breakable: false, action: 'jump', slip: true },
+
+  // --- STANDING HAZARDS ------------------------------------------------
+  // Five props out of the gallery's hazard bake-off, chosen off that sheet.
+  // What they have in common is what the sheet was testing: they do not
+  // approach, they do not telegraph, and they are dangerous in every frame.
+  // The lane already owned things that roll at you (barrel, chair, zombie) and
+  // things that fall on you (icicle); it owned almost nothing that is simply
+  // THERE and has to be read off its silhouette on the approach.
+  //
+  // NONE of them is puntable. `punt` is opt-in — see trafficCone — so leaving
+  // it off is the whole of "not kickable": a boot going in low meets a spike
+  // plate, a fire or a spinning blade, and the honest outcome of that is not a
+  // prop sailing over the hero's head.
+  //
+  // Three of them are not breakable either. A fire and a saw have nothing in
+  // them to break, and a spike plate is the floor. `breakable: false` also
+  // means no debris entry is needed, and the peel's note above spells out the
+  // rest of what the flag turns off: no weapon, stomp, roll or shockwave.
+  //
+  // Every box is the SOLID part only. The flame over a barrel, the flame over a
+  // brazier's bowl and the teeth over a spike plate are all art bought upward
+  // through PROP_TALL, and none of it can hit you — the same direction of slack
+  // every hazard in this file already errs in.
+
+  // A trap plate that never fully retracts (see the painter): the spikes ride
+  // between two thirds and full extension, so the mechanism reads as live while
+  // the box stays true. A retracting version would be a timing puzzle, and
+  // `action: 'jump'` has no way to say "dangerous only sometimes".
+  //
+  // `bedded`: the art has no foot — the painter runs the plate past the bottom
+  // of the box so the ground line cuts it — and the renderer drops the contact
+  // ellipse under it. The two floor plates are the only things in the lane that
+  // claim to be part of the road, and an oval shadow around one is the mark
+  // that gives it away.
+  popSpikes:  { w: 15, h: 7,  sprite: 'popSpikes', ground: true, breakable: false, action: 'jump', bedded: true },
+  // Low and wide, and the second-flattest hazard in the game after the peel.
+  campfire:   { w: 14, h: 10, sprite: 'campfire', ground: true, breakable: false, action: 'jump' },
+  // SHOOTABLE, not kickable. Same 13x13 box as the wooden barrel it stands
+  // beside, so a player who has learned one jump has learned both — the
+  // difference is that the wooden one rolls at you and can be booted, and this
+  // one stands still and can only be shot or smashed through.
+  fireBarrel: { w: 13, h: 13, sprite: 'fireBarrel', ground: true, breakable: true, action: 'jump' },
+  // SHOOTABLE, not kickable. Crypt's mechanic is DARKNESS, so this is the one
+  // hazard in the game that is also a light source: it is worth having in the
+  // lane for what it shows you as much as for what it costs you.
+  brazier:    { w: 12, h: 14, sprite: 'brazier', ground: true, breakable: true, action: 'jump' },
+  // The floor blade. Not breakable and not puntable for the obvious reason.
+  floorSaw:   { w: 15, h: 8,  sprite: 'floorSaw', ground: true, breakable: false, action: 'jump', bedded: true },
 };
 
 // What a thing is made of, for when it stops being a thing. Colours are pulled
@@ -57,6 +180,8 @@ export const DEBRIS = {
   qcrate:      { colors: ['#f6d33c', '#c89858', '#8a6432'], size: 3, mat: 'gold' },
   barrel:      { colors: ['#b07840', '#7a4c22', '#d09858'], size: 3.2, mat: 'wood' },
   tombstone:   { colors: ['#9a9ab0', '#6a6a80'], size: 3, mat: 'stone' },
+  // Board and post: the sign's own two colours plus the ink of the lettering.
+  jumpSign:    { colors: ['#f2c53c', '#7a5230', '#2a1e0e'], size: 2.6, mat: 'wood' },
   cardboardMonster: { colors: ['#c8a068', '#8a6a3a', '#fff'], size: 3, mat: 'soft' },
   chair:       { colors: ['#4a5a6c', '#3a4a5a', '#2a3542'], size: 2.8, mat: 'wood' },
   printer:     { colors: ['#b0b0c0', '#fff', '#48e0c8'], size: 2.6, mat: 'metal' },
@@ -69,6 +194,11 @@ export const DEBRIS = {
   switch:      { colors: ['#48e0c8', '#f6d33c', '#3a4a5a'], size: 2.4, mat: 'metal' },
   paperwork:   { colors: ['#fff', '#e8e8f0'], size: 3, grav: 60, count: 10, mat: 'soft' },
   trafficCone: { colors: ['#e86020', '#f8a030', '#fff'], size: 2.8, mat: 'soft' },
+  // The two shootable standing hazards. Both scatter METAL — a drum band and a
+  // brazier bowl are the parts with mass — with an ember colour in the mix and
+  // a spark, so a shot that opens one throws fire as well as scrap.
+  fireBarrel:  { colors: ['#a4603a', '#7c4526', '#ffb02e'], size: 3, spark: '#ffef9e', mat: 'metal' },
+  brazier:     { colors: ['#4d4038', '#6a5a4c', '#ff8a2c'], size: 2.8, spark: '#ffef9e', mat: 'metal' },
 };
 
 export const DEBRIS_DEFAULT = { colors: ['#c8a068', '#8a6432'], size: 2.8, mat: 'wood' };

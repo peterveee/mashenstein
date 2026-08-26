@@ -158,6 +158,12 @@ const suites = [
   // strand it describes is invisible from every other angle — the port answers, no fault
   // is raised, and the counters that would show it only move inside `process`.
   'tests/mrdr3-stale.js',
+  // A KEY THAT COMES UP ENDS THE NOTE. Beside the stale suite because it is the same kind
+  // of invisible: a held note is the one kind nothing sequenced can reach, so no render,
+  // no bounce and no baseline can see a note-off that does nothing — and MRDR-3's did
+  // nothing at all, leaving every preset in the catalogue ringing for its thirty-second
+  // backstop after the finger came up.
+  'tests/mrdr3-release.js',
   'tests/note-cache-urgent.js',
   // The rule the whole project depends on, made checkable: ONE core string, two hosts,
   // compared at ZERO tolerance. The moment the live path and the render path compute
@@ -270,6 +276,14 @@ const suites = [
   'tests/trophy-workshop.js',
   'tests/breaker-bonus.js',
   'tests/props.js',
+  // The peel: a hazard defined by the escape hatches it does NOT have, which is
+  // the kind of fact a later tidy-up quietly grants it. Beside the prop suites
+  // because half of what it pins is the 5px drawing.
+  'tests/banana-peel.js',
+  // The five standing hazards. Same reason as the peel beside it: most of what
+  // they are is what they are NOT — not puntable, mostly not breakable — and
+  // those facts live in absent registry keys that a tidy-up would supply.
+  'tests/standing-hazards.js',
   'tests/debris.js',
   'tests/star-power.js',
   'tests/character-rendering.js',
@@ -279,6 +293,7 @@ const suites = [
   'tests/frame-health.js',
   'tests/camera-framing.js',
   'tests/routes.js',
+  'tests/loop.js',
   'tests/rewind-pooling.js',
   'tests/art-warmup.js',
   'tests/title-sign.js',

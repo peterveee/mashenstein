@@ -299,6 +299,22 @@ const survivors = run.obstacles.filter((o) => o.live && o.def && o.def.action !=
 assert(survivors.length === 0,
   `nothing you must react to is left in the landing zone (${survivors.length} left)`);
 
+// ---- and the run-up to the mouth is kept clear too ---------------------------
+// A hazard a jump's length in front of a ledge takes the choice away twice: not
+// jumping is a hit, and the jump that clears it lands on the slab. The player
+// ends up on the high road because an obstacle put him there.
+const { worstAirtime } = await import('../src/game/spawner.js');
+const entryFrom = island.x - worstAirtime() * run.speed;
+const nearMouth = makeObstacle(hazardType, island.x - 12, {});
+const wellBack = makeObstacle(hazardType, entryFrom - 40, {});
+run.obstacles.push(nearMouth, wellBack);
+run.camX = island.x - 300;
+run.clearRouteHazards();
+assert(!nearMouth.live,
+  'a hazard in the run-up to the mouth is cleared — the high road stays a choice');
+assert(wellBack.live,
+  'and one a full jump further back stands: it is cleared on the lane, choice intact');
+
 // ---- and the sweep KEEPS clearing ------------------------------------------
 // It used to fire once, gated on the route's far END coming within lookahead.
 // That is fine for a 74px island and badly wrong for a 1920px tunnel: the camera
@@ -866,6 +882,32 @@ assert(fallFaceOver(48, () => { plant(downhillX)(); dom.keyDown('Space'); }) ===
   'nor the same jump taken downhill — a hill is not a ledge');
 dom.keyUp('Space');
 frames(30);
+
+// AND SURPRISE IS EXCLUSIVELY THIS. The jump roll used to deal four faces, two
+// of which — 0 surprised and 3 startled — set the same `surprise` the fall face
+// does, 0 with identical flags. Half of every hop in the game therefore wore the
+// face that is supposed to mean the hero did not choose this. Jumps now roll
+// only the two faces of somebody who did.
+{
+  const rolled = new Set();
+  let jumps = 0;
+  for (let i = 0; i < 300 && jumps < 40; i++) {
+    run.obstacles.length = 0;
+    frames(1);
+    if (!run.player.grounded) continue;
+    const before = run.player.jumps;
+    dom.keyDown('Space');
+    frames(2);
+    dom.keyUp('Space');
+    if (run.player.jumps > before) { jumps++; rolled.add(run.player.jumpFace); }
+    frames(4);
+  }
+  assert(jumps >= 20, `enough real jumps to see the spread (${jumps})`);
+  assert(![...rolled].some((f) => f === 0 || f === 3),
+    `a jump never rolls a surprise face (saw ${[...rolled].sort().join(', ')})`);
+  assert(rolled.size >= 2, `and still deals more than one (${rolled.size} distinct)`);
+}
+frames(20);
 
 // AND NOT on the two descents the player CHOSE. A ramp going down under his
 // feet never registers at all: he is grounded the whole way, so the reference

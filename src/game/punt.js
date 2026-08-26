@@ -100,6 +100,83 @@ export const PUNT = {
 };
 
 /**
+ * The same punt, thrown at something that WEIGHS something — and, unlike the
+ * cone, thrown AWAY.
+ *
+ * The cone's arc is a boomerang. It is launched out in front, the air brake
+ * hands it back, the hero passes underneath it and it lands behind him: three
+ * beats, all of them about the cone STAYING in the player's world so it can be
+ * juggled. Everything in PUNT above is tuned to that.
+ *
+ * A barrel does the opposite, and the opposite is the whole idea. It arrives
+ * rolling right-to-left, the boot REVERSES it, and from that moment it is
+ * travelling left-to-right faster than the hero can run — so it pulls away, it
+ * keeps pulling away, and it leaves the frame. The hazard is not destroyed and
+ * not resolved; it is SENT SOMEWHERE ELSE, which is a boot's honest answer to a
+ * heavy rolling thing and reads as one from the seat.
+ *
+ * That single sentence is where every number below comes from:
+ *
+ *   drag 0          the air brake is what brings the cone back, so a prop that
+ *                   must never come back cannot have it. `vx` holds at the
+ *                   launch speed for the whole flight and the whole roll-out.
+ *   launchBoost 1.7 the departure rate. 0.7x the run in relative terms, so it
+ *                   clears a 240px frame in about 1.7 seconds — long enough to
+ *                   watch it bound away, short enough that it is gone before
+ *                   the next thing needs looking at.
+ *   bounceVx 1      the bounce keeps its speed. At 0.6 two touchdowns dropped
+ *                   it to 1.02x the run, which is a barrel pacing the hero to
+ *                   the horizon instead of leaving him.
+ *   launchVy 270    52px of apex, and 0.77s of hang. It has to LEAVE THE
+ *                   GROUND — "kick it and it rolls off" is a nudge, not a boot
+ *                   — and 52 + the barrel's own 13 is what keeps it under the
+ *                   96px roof of the tunnel it may be punted inside.
+ *   spinRate -6     NEGATIVE, because it is now rolling the other way. draw.js
+ *                   turns a roller by `-spin`, so a leftward roll is a positive
+ *                   rate and a rightward one is this. 6 rad/s against a 6.5px
+ *                   radius is the rate a barrel rolls at 40px/s — the speed it
+ *                   arrived at — so the flight leaves at exactly the tumble it
+ *                   came in with, and only the DIRECTION has flipped.
+ *   rollOut         what happens when the bouncing stops: it does not stop.
+ *                   See stepPunt — the prop settles onto the road and keeps its
+ *                   forward speed, rolling out of the frame under its own
+ *                   steam.
+ *   rollSpinMax 14  and the roll-out spins at its actual travel rate, capped.
+ *                   Uncapped, 340px/s over a 6.5px radius is 52 rad/s: fifty
+ *                   degrees a frame, which strobes and smears the bands the
+ *                   barrel is read by. 14 is fast enough to read as fleeing.
+ *
+ * `windowT` is deliberately not here. The timing read is the SKILL and it is
+ * the same skill on both props: a boot that has to be fresher for a barrel than
+ * for a cone is a skill nobody can carry between the two.
+ *
+ * One thing that is NOT in here, because it is not physics: a heavy prop does
+ * not juggle. There is nothing to juggle — it is gone. `juggleApex` and
+ * `juggleCarry` above are the cone's numbers and only the cone's; they are
+ * inherited by the spread and never read on this path.
+ */
+export const HEAVY_PUNT = {
+  ...PUNT,
+  launchVy: 270,
+  launchBoost: 1.7,
+  drag: 0,
+  bounceVx: 1,
+  spinRate: -6,
+  rollOut: true,
+  rollSpinMax: 14,
+};
+
+/**
+ * Which arc an obstacle leaves on. `def.punt` carries it: `true` is the cone's,
+ * and any other truthy value names a heavier one — so the def reads as what the
+ * thing IS ("punt: 'heavy'") rather than as a second parallel flag that can
+ * disagree with the first.
+ */
+export function puntTuneFor(ob) {
+  return ob && ob.def && ob.def.punt === 'heavy' ? HEAVY_PUNT : PUNT;
+}
+
+/**
  * How hard a contact at `heldT` into the slide punts, 0..1.
  *
  * Linear, and deliberately not eased: this is a skill readout, and a curve
@@ -195,10 +272,32 @@ export function stepPunt(ob, dt, tune = PUNT) {
     ob.vx *= tune.bounceVx;
     ob.spinV *= 0.5;
     if (ob.vy < tune.restVy) {
+      ob.vy = 0;
+      if (tune.rollOut) {
+        // IT DOES NOT STOP. The bouncing is over, but a barrel that has been
+        // kicked the other way down the road is still a barrel rolling down the
+        // road — it settles onto the ground and carries on out of the frame at
+        // the speed the boot gave it. `vx` survives untouched (there is no drag
+        // on this tune, and the bounce kept its speed), so the departure rate
+        // the launch set is the departure rate for good.
+        //
+        // The spin stops being a tumble and becomes a ROLL, so it is taken from
+        // the travel rather than from what is left of the launch: the bounces
+        // have halved `spinV` twice by now, and a barrel sliding down the road
+        // barely turning is the one thing that would read as ice. Capped, or a
+        // prop moving this fast strobes — see rollSpinMax.
+        const radius = Math.max(1, (ob.w || 13) / 2);
+        const rate = Math.min(tune.rollSpinMax || Math.abs(tune.spinRate),
+          Math.abs(ob.vx) / radius);
+        ob.spinV = ob.vx >= 0 ? -rate : rate;
+        // Whoever is integrating this prop must keep doing so — see the
+        // `rolledOut` flag its owner sets off this return value.
+        ob.rolledOut = true;
+        return true;
+      }
       // Down for good. `punted` STAYS true — it is what keeps the cone
       // harmless, and a cone that turned back into a hazard the moment it
       // stopped rolling would punish you for the thing you just did well.
-      ob.vy = 0;
       ob.vx = 0;
       ob.spinV = 0;
       return false;

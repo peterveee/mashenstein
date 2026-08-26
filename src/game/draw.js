@@ -5,6 +5,7 @@ import { ZOOM, applyWorld } from '../engine/camera.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite, toonEffectEllipse } from '../sprites/toons.js';
+import { LOOP } from './loop.js';
 import {
   hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall,
   propVisualScale, propHazardRim, propBoxCentred, glowSprite, sparkSprite, drawProp,
@@ -25,7 +26,7 @@ const POWER_GLOW = {
 const HEAL_GLOW = 'rgba(96,232,104,0.45)';
 import { drawBoostFx } from './boostFx.js';
 import { GROUND_Y } from './run.js';
-import { PLAYER_X } from './player.js';
+import { PLAYER_X, SLIP_T } from './player.js';
 
 export const HERO_DRAW_W = 18;
 export const HERO_DRAW_H = 24;
@@ -239,7 +240,34 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   const ghosts = player.dashT > 0;
   const shield = opts.shield || 0;
   const reducedMotion = !!(opts.settings && opts.settings.reducedMotion);
-  const paint = (c) => {
+  // THE PRATFALL, and why it lives here rather than in a pose.
+  //
+  // Every hero in this game is a different rig — humanoid, ray, blob, pika,
+  // disc — and a "feet fly out" pose would have to be authored five times and
+  // then judged five times. A rotation of the whole figure about his heels is
+  // rig-independent by construction: whatever the toon is, it goes over
+  // backwards, and the run cycle carrying on underneath is exactly the picture
+  // of legs still going while the rest of him is no longer above them.
+  //
+  // Rotated about the FEET, not the middle: a pivot at the waist swings the
+  // boots up through the floor, and the floor is the one thing in the shot the
+  // player is using to read where he is.
+  //
+  // The curve is a single arc out and back — sin over the whole clock — so he
+  // is upright again on the frame control returns. A tumble that was still
+  // unwinding after the stumble cleared read as lag rather than as a fall.
+  const slipQ = SLIP_T > 0 ? Math.max(0, Math.min(1, (player.slipT || 0) / SLIP_T)) : 0;
+  // Backwards, and not all the way over: at a full quarter turn he is lying on
+  // the floor and the whole silhouette stops reading as the hero. This is the
+  // moment his heels went out, held long enough to be seen.
+  // Reduced motion keeps a lean rather than losing the beat entirely — the
+  // damage flash and the floatie are still saying what happened, and a hero
+  // who does not react at all to a hazard named after falling over is worse
+  // than a small one.
+  const slipAngle = slipQ > 0
+    ? Math.sin(slipQ * Math.PI) * (reducedMotion ? 0.16 : 0.62)
+    : 0;
+  const paintFigure = (c) => {
     let starFade = 1;
     // A boost variant paints the hero itself (ordering is the whole point of
     // the effect), so the ordinary draw below stands down when one is running.
@@ -320,6 +348,15 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       drawPowerPose(c, cx, feetY, player.powerType, reduced ? 0.8 : Math.min(1, player.powerPoseT * 5));
     }
   };
+  // No slip, no transform at all: the ordinary frame pays nothing for this.
+  const paint = slipAngle === 0 ? paintFigure : (c) => {
+    c.save();
+    c.translate(cx, feetY);
+    c.rotate(-slipAngle);
+    c.translate(-cx, -feetY);
+    paintFigure(c);
+    c.restore();
+  };
   if (opts.flat) paint(ctx);
   else {
     // The overlay is a SEPARATE canvas with its own context, so it never sees
@@ -343,7 +380,11 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
 export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   const smoothMotion = !!(style && style.smoothMotion) || !!(settings && settings.smoothMotion);
   const x = smoothMotion ? e.x - camX : Math.round(e.x - camX);
-  if (x < -40 || x > 520) return;
+  // The loop pad's ring stands a radius clear of its box on both sides, so it is
+  // still putting ink on screen long after the pad itself has left. Everything
+  // else draws inside a few px of its own box.
+  const reach = e.def && e.def.isLoop ? LOOP.r + 8 : 40;
+  if (x < -reach || x > 480 + reach) return;
   const bottom = GROUND_Y - e.alt;
   // `artLift` raises the DRAWING without touching the box, for the case where a
   // hazard's legal altitude and its readable altitude are not the same number.
@@ -367,9 +408,18 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // The boost pad opts out: it is a hole in the floor, and a hole casts no
   // contact shadow and takes no red danger tick. That ellipse under it was the
   // one mark left saying "object sitting on the ground".
-  if (e.kind === 'obstacle' && e.def.ground && !e.def.isBoost) {
+  //
+  // `bedded` props opt out of the ELLIPSE for the same reason and keep the tick,
+  // which they still need — they are lethal, the pad is not. Their painters cut
+  // the floor's own material back over their lower corners (see hzBed), so the
+  // ellipse would be seen THROUGH that hole, as a grey smear in the dirt in
+  // front of a plate that is supposed to be buried in it.
+  if (e.kind === 'obstacle' && e.def.ground && !e.def.isBoost && !e.def.isLoop && !e.def.bedded) {
     ctx.fillStyle = 'rgba(8,6,12,0.28)';
     ctx.beginPath(); ctx.ellipse(x + e.w / 2, GROUND_Y - 1, Math.max(4, e.w * 0.55), 2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(224,72,72,0.32)';
+    ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
+  } else if (e.kind === 'obstacle' && e.def.bedded) {
     ctx.fillStyle = 'rgba(224,72,72,0.32)';
     ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
   }
@@ -423,7 +473,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // never unfair — ringed by a dark inner outline plus a pulsing light outer
   // one so they pop against both light and dark terrain. Things you WANT
   // (targets/pads/switches) stay clean.
-  const danger = e.kind === 'obstacle' && !e.def.isTarget && !e.def.isBoost && !e.def.isSwitch;
+  const danger = e.kind === 'obstacle' && !e.def.isTarget && !e.def.isBoost && !e.def.isLoop && !e.def.isSwitch;
   const bw = propName ? e.def.w : spr.width;
   const bh = propName ? e.def.h : spr.height;
   const src = propName ? null : (danger ? (scaled2x(sprName) || spr) : spr);
@@ -435,7 +485,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // A boost pad chases faster the nearer the hero gets — up to 2.6x by the
   // time they are on it. It is the same eight frames either way, so the whole
   // reaction costs one multiply and no extra cache.
-  const fps = propName ? propFps(propName) * (e.def && e.def.isBoost ? 1 + 1.6 * (e.arm || 0) : 1) : 0;
+  const fps = propName ? propFps(propName) * (e.def && (e.def.isBoost || e.def.isLoop) ? 1 + 1.6 * (e.arm || 0) : 1) : 0;
   const frame = frameCount > 1 && !settings.reducedMotion
     ? Math.floor(t * fps + e.bobPhase * 4) % frameCount
     : 0;
@@ -562,6 +612,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // is the difference between a confirmation and a decoration. Reduced motion
   // keeps the fill and drops the throw.
   if (e.def.isBoost && !settings.reducedMotion) drawBoostReaction(ctx, e, x, t, propName);
+  if (e.def.isLoop) drawLoopRing(ctx, e, x, t, settings);
   if (style && style.decorate) style.decorate(ctx, e, x, y);
 }
 
@@ -640,6 +691,197 @@ function drawBoostReaction(ctx, e, x, t, propName) {
   ctx.fillStyle = '#fff6d0';
   ctx.fillRect(bx, GROUND_Y - bh - tick, 1, tick);
   ctx.fillRect(bx + bw - 1, GROUND_Y - bh - tick, 1, tick);
+  ctx.restore();
+}
+
+// The loop-de-loop's ring, drawn from its pad.
+//
+// It is scenery with no box and no state — the ride is entirely the pad's doing
+// (see game/loop.js) — which is exactly why it has to look like structure rather
+// than like a marking. What sells it as a piece of road standing on its end is
+// the section: a dark under-side, a lit running surface a couple of pixels
+// inside it, and the same gold rail the faux3d ground already paints along the
+// top of the lane. The SPEED ZONE's backdrop has been drawing little brown loops
+// on the horizon since it was written; this is that shape brought down onto the
+// road at full size.
+//
+// Drawn behind the hero for free: obstacles paint to the backbuffer and the hero
+// queues to the full-resolution overlay, so he rides in front of the whole ring.
+// A near wall passing over him would want a second pass ordered after his, which
+// is more machinery than the read is short of.
+function drawLoopRing(ctx, e, x, t, settings = {}) {
+  const r = LOOP.r;
+  // Centred on the line the hero VISUALLY travels, not on the pad's box. The
+  // ride pins his sprite's left edge to the circle, so the middle of him — and
+  // the ring of coins, which is placed to meet the middle of him — runs half a
+  // sprite to the right of it. Drawing the track on the box instead leaves the
+  // art six pixels adrift of the hero and the coins riding its right-hand rim.
+  // Same offset, same reason, as the finish seat: see HERO_CENTER_OFF.
+  const cx = x + e.w / 2 + HERO_CENTER_OFF;
+  const cy = GROUND_Y - r;
+  const arm = e.arm || 0;
+  const fired = e.firedT || 0;
+  ctx.save();
+
+  // THE TRACK LIES OUTSIDE THE RIDE LINE.
+  //
+  // `r` is the circle the hero's FEET travel — the ride drives him along it
+  // exactly (game/loop.js) — so it is the running surface, not the middle of the
+  // structure. Centring the band on it instead buries his feet up to the ankle
+  // in the track and leaves half the boot sticking out through the far side,
+  // which is what the first cut did: at the top of the ring he was threaded
+  // through the rail rather than standing on it. The body of the track hangs
+  // OFF the surface, outward, the way the underside of a road hangs below it.
+  const T = 7;                 // how thick the track reads
+  // A hair of daylight between the running line and the structure. `r` is where
+  // the hero's feet are PLANTED, but a drawn boot is a few pixels of art around
+  // that point and some of the cast wear loose ones — Ray M'N's are detached
+  // ellipses that float. Butting the band straight up against `r` put those
+  // through the rail. Clearance here rather than a nudge in the toon painter,
+  // which is shared by the whole cast and would be a one-hero fix applied to
+  // eight of them.
+  const CLEAR = 2;
+  const inner = r + CLEAR;     // the face he runs on
+  const mid = inner + T / 2;   // so the band spans inner .. inner + T
+  // The track is OPEN at the bottom, and that is not decoration. A closed circle
+  // lays a rail straight across the lane at ankle height: it reads as a barrier
+  // the hero is about to run into, and it hides the pad — the one thing he has
+  // to actually hit — underneath itself. Real loops flare into the road at both
+  // ends, so the ring does too, and the gap is where the ride begins and ends.
+  const gap = 0.34;
+  const a0 = Math.PI / 2 + gap;
+  const a1 = Math.PI / 2 - gap + Math.PI * 2;
+  const band = (rad, width, color) => {
+    ctx.strokeStyle = color; ctx.lineWidth = width;
+    ctx.beginPath(); ctx.arc(cx, cy, rad, a0, a1); ctx.stroke();
+  };
+
+  // Where the two ends of the track meet the road, and the fairing that takes
+  // them into it. Without this the track stops dead at the ground line: two cut
+  // ends resting on a surface they have no relationship with. A loop is BUILT
+  // there, so each end swells into a haunch that spreads along the road, and the
+  // road takes a shadow off it.
+  const foot = (sign) => {
+    const a = sign < 0 ? a0 : a1;
+    const ex = cx + Math.cos(a) * mid;
+    const ey = cy + Math.sin(a) * mid;
+    // Pooled shade first, wider than the haunch, so the road looks pressed on.
+    ctx.fillStyle = 'rgba(8,6,12,0.20)';
+    ctx.beginPath();
+    ctx.ellipse(ex + sign * 6, GROUND_Y - 0.5, 22, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // The haunch: from the outer face of the track end, curving out and down to
+    // die into the road a couple of dozen pixels away.
+    ctx.fillStyle = '#6a4420';
+    ctx.beginPath();
+    ctx.moveTo(ex + sign * (T / 2), ey - 6);
+    ctx.quadraticCurveTo(ex + sign * (T / 2 + 6), GROUND_Y - 6, ex + sign * 30, GROUND_Y);
+    ctx.lineTo(ex - sign * 2, GROUND_Y);
+    ctx.closePath();
+    ctx.fill();
+    // A lighter face on it, inset, so the haunch has a top and a side rather
+    // than reading as a flat brown triangle.
+    ctx.fillStyle = '#a06830';
+    ctx.beginPath();
+    ctx.moveTo(ex + sign * (T / 2 - 1), ey - 5);
+    ctx.quadraticCurveTo(ex + sign * (T / 2 + 4), GROUND_Y - 5, ex + sign * 24, GROUND_Y - 1.5);
+    ctx.lineTo(ex - sign * 1, GROUND_Y - 1.5);
+    ctx.closePath();
+    ctx.fill();
+  };
+  foot(-1);
+  foot(1);
+
+  ctx.lineCap = 'round';
+  // Under-side first, a fraction wide of the running surface, so the surface
+  // sits on top of a dark edge the whole way round rather than being outlined.
+  band(mid, T + 2, '#6a4420');
+  band(mid, T, '#a06830');
+  // The running surface: the face the hero actually travels on, so it is the one
+  // that catches the light.
+  band(inner + 1.5, 2, '#c88848');
+  // The lane's own gold rail, carried up and round, right on the running line.
+  // This is what ties the ring to the road it is standing on.
+  band(inner + 0.5, 1, '#f6d33c');
+
+  // Chevrons chasing along the track's own face, at the pad's own rate — `arm`
+  // drives both, so the ring winds up as the hero closes and falls away with the
+  // pad when the chance is missed. Reduced motion keeps them and stops them
+  // moving. On the band rather than floating inside it: they are markings on the
+  // road surface, and the pad at the bottom wears the same ones.
+  const n = 12;
+  const chase = settings.reducedMotion ? 0 : t * (0.9 + 2.6 * arm);
+  ctx.fillStyle = '#fff6d0';
+  for (let i = 0; i < n; i++) {
+    const a = chase + (i / n) * Math.PI * 2;
+    // Nothing in the mouth: a chevron floating in the gap belongs to no surface.
+    const fromBottom = Math.abs(((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) - Math.PI);
+    if (fromBottom < gap + 0.12) continue;
+    const rr = mid;
+    const px = cx + Math.sin(a) * rr;
+    const py = cy - Math.cos(a) * rr;
+    // Alpha falls away behind the leader so the run reads as travelling rather
+    // than as a ring of dots that happens to rotate.
+    ctx.globalAlpha = (0.18 + 0.5 * arm) * (0.35 + 0.65 * ((i / n + 0.5) % 1));
+    ctx.save();
+    ctx.translate(px, py);
+    // Pointing the way the ride goes: the tangent, which is the angle itself.
+    ctx.rotate(a);
+    ctx.beginPath();
+    ctx.moveTo(0, -2.2);
+    ctx.lineTo(1.8, 0);
+    ctx.lineTo(0, 2.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+
+  // THE ROAD CLOSES OVER THE FEET.
+  //
+  // Drawn last, over the finished track, because burying is what it does: a low
+  // berm of the lane's own material swells at each foot and takes the cut end of
+  // the tube under it. Without it the ring sits ON the road — two sawn-off ends
+  // resting on a surface they have nothing to do with — and no amount of shadow
+  // underneath fixes that, because the problem is not that they float, it is
+  // that you can see where they stop.
+  //
+  // Only the OUTER side of each foot. The mouth between them is where the pad
+  // lives and where the ride begins, and filling that in would hide the one
+  // thing the player actually has to run over.
+  const berm = (sign) => {
+    const a = sign < 0 ? a0 : a1;
+    const ex = cx + Math.cos(a) * mid;
+    ctx.fillStyle = e.groundCol || '#c88848';
+    ctx.beginPath();
+    ctx.moveTo(ex - sign * 3, GROUND_Y + 5);
+    ctx.quadraticCurveTo(ex + sign * 4, GROUND_Y - 7, ex + sign * 17, GROUND_Y - 3.5);
+    ctx.quadraticCurveTo(ex + sign * 30, GROUND_Y - 1, ex + sign * 40, GROUND_Y + 5);
+    ctx.closePath();
+    ctx.fill();
+    // A darker lip along its crest — the same line the lane wears where its
+    // surface meets its side — so the berm reads as road rather than as a blob.
+    ctx.strokeStyle = e.groundDark || '#a06830';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(ex - sign * 3, GROUND_Y + 4);
+    ctx.quadraticCurveTo(ex + sign * 4, GROUND_Y - 8, ex + sign * 17, GROUND_Y - 4.5);
+    ctx.quadraticCurveTo(ex + sign * 30, GROUND_Y - 2, ex + sign * 40, GROUND_Y + 4);
+    ctx.stroke();
+  };
+  berm(-1);
+  berm(1);
+
+  // Contact: the whole ring lights, once, and fades. It is the same beat the pad
+  // plays in its trench, said at the scale of the thing the pad just handed you.
+  if (fired > 0 && !settings.reducedMotion) {
+    const q = Math.max(0, Math.min(1, fired / 0.3));
+    ctx.globalAlpha = q * 0.85;
+    ctx.strokeStyle = '#fff6d0';
+    ctx.lineWidth = 2 + q * 2;
+    ctx.beginPath(); ctx.arc(cx, cy, mid, a0, a1); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
   ctx.restore();
 }
 

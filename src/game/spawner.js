@@ -1,6 +1,7 @@
 // Seeded pattern spawner with COMPUTED fairness. DOM-free so the headless
 // fairness sim can import it directly.
 import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from './entities.js';
+import { PUNT, HEAVY_PUNT } from './punt.js';
 import { GRAVITY, BASE_JUMP_V } from './player.js';
 import { randomPowerPickup } from './powerups.js';
 
@@ -10,6 +11,24 @@ import { randomPowerPickup } from './powerups.js';
 // jumping. Seconds rather than pixels because the whole gap budget is in
 // seconds and the run keeps accelerating.
 const PUNT_CLEARANCE_T = 0.75;
+// Read against the CONE, which is what the number above was measured on, and
+// scaled to whatever the prop in hand actually hangs for. A barrel is down a
+// fifth sooner (HEAVY_PUNT is a lower arc), so it buys a fifth less room — and
+// that matters because barrels are in the base pattern set where cones are in
+// one cabinet: a flat cone-sized clearance would have quietly thinned the
+// tier-2 lane of every stage in the game to pay for an arc that is not in the
+// air that long.
+//
+// The barrel's clearance is bought for a different reason than the cone's, and
+// it is the readability half of the argument above rather than the juggle. A
+// punted barrel does not come back to be jumped for — it goes up and leaves —
+// but on the way out it crosses the lane ahead at head height for the best part
+// of a second, through exactly the strip where the next obstacle appears. Room
+// enough for it to be gone is room enough to read what comes next.
+const hangOf = (tune) => (2 * tune.launchVy) / tune.gravity;
+const puntClearanceT = (def) => (def && def.punt
+  ? PUNT_CLEARANCE_T * (hangOf(def.punt === 'heavy' ? HEAVY_PUNT : PUNT) / hangOf(PUNT))
+  : 0);
 export const REACT_FLOOR = 0.25;      // seconds of reaction after previous action
 export const REACT_FLOOR_MAX = 0.2;   // at highest tiers / UNPLUGGED
 
@@ -52,7 +71,14 @@ export class Spawner {
     // Whether the last action cell was something a slide can punt. Kept apart
     // from `lastActionKind` because it is not an action CLASS — a cone is
     // still jumped like anything else. What it changes is the space AFTER.
-    this.lastWasPunt = false;
+    this.lastWasPunt = 0;
+    // Patterns marked `once` that this run has already laid down, held by
+    // OBJECT rather than by index. Index was the first attempt and it is fragile
+    // in exactly the case that matters: The Surge's bank is the union of every
+    // other cabinet's patterns, so a shared pattern object appears in it twice,
+    // and two indices for one pattern is two chances to place a "once" hazard.
+    // Identity cannot be fooled that way.
+    this.usedOnce = new Set();
   }
 
   // Minimum world-px between an action obstacle and the next one, at speed px/s.
@@ -67,17 +93,35 @@ export class Spawner {
   //
   // Added on top of the fairness floor, never instead of it: this only ever
   // makes gaps larger, so the sim's own assertion is untouched.
-  fairGap(speed, prevKind, nextKind, prevPunt = false) {
+  fairGap(speed, prevKind, nextKind, prevPunt = 0) {
     const air = worstAirtime();
     let t = this.react;
     if (prevKind === 'jump') t += air;               // must land first
     if (prevKind === 'jump' && nextKind === 'duck') t += 0.15; // can't duck mid-air
-    if (prevPunt) t += PUNT_CLEARANCE_T;
+    // Seconds of hang the previous prop bought, from puntClearanceT — a number
+    // now rather than a flag, since two puntable props with different arcs owe
+    // different amounts of room. `true` from an older caller still reads as a
+    // second, which is the cone's arc to within a rounding error.
+    if (prevPunt) t += (prevPunt === true ? PUNT_CLEARANCE_T : prevPunt);
     return speed * t + this.iceSlide;
   }
 
+  // ONCE-PER-RUN PATTERNS. `once: true` on a pattern means the lane may show it
+  // at most one time in a stage, however long the stage runs.
+  //
+  // It exists for the banana peel, and the reason it is a pattern flag rather
+  // than anything peel-specific is that the constraint is about RARITY, not
+  // about bananas: a hazard whose whole joke is that you did not expect it stops
+  // being funny the third time, and any future prop with that property wants the
+  // same treatment. Nothing else in the cabinets uses it today.
+  //
+  // Filtered out of the pool rather than rolled and rejected, so the seeded
+  // stream is not disturbed by a pattern that was never going to be placed —
+  // and marked used only once fill() COMMITS it, since a pattern that runs into
+  // the finish wall is abandoned whole and has not been shown to anybody.
   pickPattern() {
-    const pats = this.cabinet.patterns.filter((p) => p.tier <= this.tierMax);
+    const pats = this.cabinet.patterns.filter((p) => p.tier <= this.tierMax
+      && !(p.once && this.usedOnce.has(p)));
     if (!pats.length) return null;
     let idx = this.rng.int(0, pats.length - 1);
     if (idx === this.lastPatternIdx && pats.length > 1) idx = (idx + 1) % pats.length;
@@ -124,7 +168,7 @@ export class Spawner {
           if (x < minX) x = minX;
           this.lastActionX = x + cellW;
           this.lastActionKind = def.action;
-          this.lastWasPunt = !!def.punt;
+          this.lastWasPunt = puntClearanceT(def);
         }
         const ob = makeObstacle(cell.t, x, { n: cell.n });
         if (cell.t === 'gap') ob.w = cellW;
@@ -144,6 +188,9 @@ export class Spawner {
       }
       for (const ob of obs) obstacles.push(ob);
       for (const p of picks) pickups.push(p);
+      // Committed, so a `once` pattern is now spent for this run. Above the
+      // stopX bail-out on purpose — see pickPattern.
+      if (pat.once) this.usedOnce.add(pat);
       // Gap to the next pattern: random but never below the fairness floor.
       // The next pattern may open with a duck obstacle, so budget for the worst case.
       const roll = this.rng.range(90, 220);

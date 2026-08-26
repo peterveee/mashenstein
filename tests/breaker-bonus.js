@@ -128,7 +128,8 @@ assert(run.battery === cells, 'unpeel deflects a normal hit (no battery loss)');
 run.player.iframes = 0;
 run.powerups.shieldStack = 0; // isolate the pit hit from shield absorbs
 run.takeHit('TEST PIT', true);
-assert(run.battery === cells - 1, `pit still costs a cell under unpeel (${run.battery}/${cells})`);
+assert(run.dead && run.battery === 0,
+  `a pit is fatal under unpeel, not a cell (dead=${run.dead}, ${run.battery}/${cells})`);
 
 // --- UNPEELABLE also drips mid-stage, rarer than the staples ---------------
 assert(PICKUPS.capUnpeel && PICKUPS.capUnpeel.power === 'unpeel', 'capUnpeel pickup grants unpeel');

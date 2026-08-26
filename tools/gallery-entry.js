@@ -19,7 +19,7 @@ import {
   HERO_DRAW_W, HERO_DRAW_H,
 } from '../src/game/draw.js';
 import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from '../src/game/entities.js';
-import { PUNT, puntPower, startPunt, stepPunt } from '../src/game/punt.js';
+import { PUNT, HEAVY_PUNT, puntPower, startPunt, stepPunt } from '../src/game/punt.js';
 import { HERO_BY_ID } from '../src/data/heroes.js';
 import {
   PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, PORTAL_SPRITE,
@@ -66,6 +66,17 @@ import {
 // Cast candidates — proposals with no entry in any production registry. See the
 // raider bake-off at the bottom of this file, and src/dev/hero-candidates.js.
 import { RAIDER_CANDIDATES } from '../src/dev/hero-candidates.js';
+import {
+  OBSTACLE_CANDIDATES, drawObstacleCandidate,
+} from '../src/dev/obstacle-candidates.js';
+import {
+  ANIMAL_OBSTACLE_CANDIDATES, DOG_OBSTACLE_VARIATIONS, drawAnimalObstacle,
+} from '../src/dev/animal-obstacle-candidates.js';
+import { BANANA_CANDIDATES, drawBananaCandidate } from '../src/dev/banana-candidates.js';
+import {
+  HAZARD_CANDIDATES, HAZARD_FAMILIES, drawHazardCandidate,
+} from '../src/dev/hazard-candidates.js';
+import { PIT_CANDIDATES, drawPitCandidate } from '../src/dev/pit-candidates.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -75,6 +86,30 @@ buildAllSprites();
 const root = document.getElementById('root');
 const nav = document.getElementById('nav');
 const tiles = []; // {el, canvas, ctx, draw, animated, visible}
+// Lab sections that have been retired from the chooser remain in source for
+// reference, but are intentionally omitted from the rendered gallery.
+const HIDDEN_GALLERY_SECTIONS = new Set([
+  'dolores-girth',
+  'brow-bakeoff',
+  'barrel-punt',
+  'slide-contact-kick',
+  'finish-marker',
+  'speed-ramp-bakeoff',
+  'grumpos-walk',
+  'special-move-follower',
+  'body-shapes',
+  'trophy-handle-spread',
+  'plug-frame-colour',
+  'plug-frame-softness',
+  'cone-punt',
+  'celebrate-arms',
+  'credits-handoff',
+  'relay-portal-bakeoff',
+  'portal-read-test',
+  'portal-aftermath',
+  'boost-fx-bakeoff',
+  'finish-cling',
+]);
 // SCREEN SCALE: screen px per logical frame px. The game is never presented at
 // 1:1 — renderer.js fits the 480x270 frame to the viewport at
 // min(winW/480, winH/270), which on any desktop is between about 3.1 (maximised
@@ -110,11 +145,12 @@ const smoothPreviewScale = (name) => name === 'dustdevil' || name === 'coin' ? 5
 const WORLD_Z = ZOOM;
 
 function section(id, title, note) {
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  if (HIDDEN_GALLERY_SECTIONS.has(id)) return grid;
   const s = document.createElement('section');
   s.id = id;
   s.innerHTML = `<h2 id="h-${id}">${title}</h2>` + (note ? `<p class="note">${note}</p>` : '');
-  const grid = document.createElement('div');
-  grid.className = 'grid';
   s.appendChild(grid);
   root.appendChild(s);
   const a = document.createElement('a');
@@ -853,6 +889,35 @@ function propNominalSize(name) {
       ? `${def.w}x${def.h} · no art — cut by ground()`
       : `${def.w}x${def.h} · ${def.action}${def.breakable ? ' · breakable' : ''}`;
     entityTile(grid, type, sub, e, style);
+  }
+}
+
+// ------------------------------------------------- 5a. the cactus's two skins
+// One hitbox, two bodies, exactly as the drone carries two. makeObstacle picks
+// between them off the spawn position, so a desert is mixed rather than one
+// sticker repeated — and the mix is three reds to one green, which is what
+// makes the green one an event.
+//
+// The green one exists over an objection worth keeping in front of you: the red
+// cactus is red BECAUSE plumber turf is #3a9c48 and a green plant disappears
+// into the ground it stands on. Both skins are shown here against that turf,
+// through the real drawWorldEntity path, so the rim treatment that answers it
+// is visible rather than argued about. The green is the only ground hazard in
+// the game that does NOT self-outline: it takes the shared two-pass hazard rim,
+// which is what buys back the separation being red gives the other one.
+{
+  const grid = section('cactus-skins', 'Cactus — two skins, one hitbox',
+    'The 13x12 cactus wears one of two bodies per instance, picked off its spawn X the way a drone\'s is. '
+    + 'Both are drawn here through drawWorldEntity over plumber\'s own turf, which is the background the '
+    + 'green one has to survive. Three reds to one green in the bag.');
+  const style = getStylePack('pixel', {});
+  for (const [skin, label, note] of [
+    ['cactus', 'cactus — red', 'The rule: RED = AVOID, and the reason the slot was never green. Self-outlined.'],
+    ['cactusGreen', 'cactus — green', 'The exception, one spawn in four. Darker than the turf, heavy contour, magenta flower, and the only ground hazard taking the shared hazard rim.'],
+  ]) {
+    const e = makeObstacle('cactus', 100);
+    e.skin = skin;
+    entityTile(grid, label, `13x12 · jump · breakable<br>${note}`, e, style);
   }
 }
 
@@ -2587,29 +2652,39 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   }
 }
 
-// --------------------------------------------- Facial expressions (lab only)
-// Every hop currently wears the exact same surprised O-mouth — expressionFor's
-// `jf` lookup (toons.js) can now vary that per jump, but nothing in run.js
-// rolls a random one yet. This is the review gate before that gets wired up:
-// the whole cast across all 4 candidate jump faces, side by side, so a bad one
-// (or a hero it doesn't suit) shows up before it's live in a real run. A 5th,
-// neutral, was cut after review for reading too close to determined.
+// ------------------------------------------------------ Facial expressions
+// The four faces expressionFor's `jf` lookup (toons.js) can draw, and which of
+// them the game actually deals. This started as the review gate before the roll
+// was wired up — all four side by side across the cast, so a bad one (or a hero
+// it doesn't suit) showed up before it went live — and the roll has shipped, so
+// what it documents now is the DIVISION between them.
+//
+// Surprise is not a jump face. 0 and 3 both set `surprise`, and 0 is the same
+// face, flags and all, that a hero wears when he is going somewhere lower than
+// he meant to (RunState.updateFallFace). Dealt one in four each they were half
+// of every hop in the game — held for the whole hang time, since the roll
+// happens once at launch — so the face that means "I did not choose this" was a
+// coin flip on jumps the player had judged perfectly. A jump now rolls only the
+// two faces of somebody who decided to jump.
+//
+// A 5th, neutral, was cut after review for reading too close to determined.
 {
   const ids = Object.keys(TOON_SPECS);
   const VARIANTS = [
-    ['Surprised', 0, "today's only jump face — the O-mouth"],
-    ['Excited', 1, 'happy-arc eyes + a modest grin — reuses the joy face'],
-    ['Determined', 2, 'brows-down, forward-look eyes — the same face heroes already wear mid-run'],
-    ['Startled', 3, 'O-mouth + lifted brows — the combo the Gary title cameo already ships'],
+    ['Surprised', 0, 'FALLING ONLY — the O-mouth, worn when the floor he left is above him'],
+    ['Excited', 1, 'ROLLED ON JUMPS — happy-arc eyes + a modest grin; reuses the joy face'],
+    ['Determined', 2, 'ROLLED ON JUMPS — brows-down, forward-look eyes; the face heroes wear mid-run'],
+    ['Startled', 3, 'NOT DEALT — O-mouth + lifted brows; reachable only via pose.browRaise, which the title cameo and the promo tools use'],
   ];
   const secId = 'facial-expressions';
   const title = 'Facial expressions';
   const s = document.createElement('section');
   s.id = secId;
   s.innerHTML = `<h2 id="h-${secId}">${title}</h2>`
-    + `<p class="note">GALLERY ONLY — pose.jumpFace is not yet rolled by run.js; this drives it `
-    + 'directly to preview all 4 candidates before the random pick goes live. Frozen at the jump\'s '
-    + 'first frame (t=0) so blink/cheer timing doesn\'t add noise to the comparison.</p>';
+    + '<p class="note">All four faces the rig can draw, with what each is for. Only Excited and '
+    + 'Determined are rolled per hop; Surprised belongs to falling and Startled is not dealt at all. '
+    + 'pose.jumpFace is driven directly here to show the ones the run will not give you. Frozen at '
+    + 'the jump\'s first frame (t=0) so blink/cheer timing doesn\'t add noise to the comparison.</p>';
   root.appendChild(s);
   const navLink = document.createElement('a');
   navLink.href = `#h-${secId}`;
@@ -2866,6 +2941,365 @@ function laneStrip(ctx, w, h, groundY) {
   ctx.fillRect(0, groundY, w, 2);
   ctx.fillStyle = '#17202d';
   ctx.fillRect(0, groundY + 2, w, h - groundY - 2);
+}
+
+// ------------------------------------- proposed obstacle vocabulary (lab only)
+// One card answers both questions a concept has to survive before it earns a
+// gameplay contract: does it read beside a 24u hero at lane scale, and does the
+// authored drawing hold up when inspected large? The right-hand study is not a
+// different illustration — it calls the same vector painter with a larger box.
+// Each card is pinned to a 6x backing store, producing a 1056x528 PNG when
+// clicked while keeping the live sheet light enough to animate all 27 studies.
+{
+  const grid = section('obstacle-concepts', 'Obstacle concepts — high-resolution bake-off',
+    'OPEN — 27 gallery-only vector studies: three per cabinet. Left: a provisional lane read beside '
+    + 'Lorenzo at his real 24u height. Right: the identical painter enlarged for silhouette, material '
+    + 'and animation inspection. The pale dashed box is an art envelope, not a decided hitbox; collision '
+    + 'dimensions stay uncommitted until a look and behaviour are chosen. Every card is rendered at 6x '
+    + 'backing resolution and can be clicked to save its individual 1056x528 PNG.');
+
+  const TW = 176, TH = 88, GY = 74;
+  const cabById = Object.fromEntries(CABINETS.map((cab) => [cab.id, cab]));
+  for (const candidate of OBSTACLE_CANDIDATES) {
+    const cab = cabById[candidate.cabinet];
+    tile(grid, `${candidate.cabinet.toUpperCase()} ${candidate.letter} — ${candidate.name}`,
+      `${candidate.id} · ${candidate.action}<br>${candidate.note}`,
+      TW, TH, (ctx, t) => {
+        const sky0 = cab?.sky?.[0] || '#202838';
+        const sky1 = cab?.sky?.[1] || '#303848';
+        const ground = cab?.ground || '#485064';
+        const dark = cab?.groundDark || '#282d3b';
+        ctx.fillStyle = sky0; ctx.fillRect(0, 0, TW, GY);
+        ctx.fillStyle = sky1; ctx.fillRect(0, GY * .52, TW, GY * .48);
+        // A quiet distant band is enough cabinet context to expose contrast
+        // failures without competing with the candidate as full scenery would.
+        ctx.fillStyle = cab?.far || 'rgba(80,90,110,.45)';
+        ctx.beginPath(); ctx.moveTo(0, GY * .64);
+        ctx.quadraticCurveTo(TW * .18, GY * .42, TW * .35, GY * .65);
+        ctx.quadraticCurveTo(TW * .55, GY * .46, TW * .72, GY * .66);
+        ctx.quadraticCurveTo(TW * .88, GY * .5, TW, GY * .62);
+        ctx.lineTo(TW, GY); ctx.lineTo(0, GY); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = ground; ctx.fillRect(0, GY, TW, 3);
+        ctx.fillStyle = dark; ctx.fillRect(0, GY + 3, TW, TH - GY - 3);
+
+        // Lane read: conservative 18x24 art envelope beside the actual hero.
+        drawToon(ctx, 'lorenzo', pose('run', t), 22, GY, 24);
+        // Candidate painters use a local 0..w box, so place by translation.
+        ctx.save(); ctx.translate(54, GY - 24);
+        drawObstacleCandidate(ctx, candidate.id, 18, 24, t);
+        ctx.strokeStyle = 'rgba(255,255,255,.42)'; ctx.lineWidth = .45;
+        ctx.setLineDash([1.5, 1.5]); ctx.strokeRect(0, 0, 18, 24); ctx.restore();
+
+        // Large study: same normalized painter, about three times the lane
+        // read. A divider keeps it from masquerading as another world object.
+        ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = .5;
+        ctx.beginPath(); ctx.moveTo(82, 8); ctx.lineTo(82, TH - 8); ctx.stroke();
+        ctx.save(); ctx.translate(99, 8);
+        drawObstacleCandidate(ctx, candidate.id, 60, 64, t);
+        ctx.strokeStyle = 'rgba(255,255,255,.32)'; ctx.lineWidth = .45;
+        ctx.setLineDash([2, 2]); ctx.strokeRect(0, 0, 60, 64); ctx.restore();
+
+        ctx.fillStyle = 'rgba(255,255,255,.65)';
+        ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+        ctx.fillText('LANE READ', 48, 8); ctx.fillText('DETAIL', 99, 6);
+      }, { animated: true, hires: 6, wide: true, world: true });
+  }
+}
+
+// -------------------------------- animated animal obstacle bake-off (lab only)
+// Six different animal silhouettes, all judged at honest lane size before any
+// one of them earns an entity definition. Unlike the neutral-prop obstacle
+// studies above, these get no external warning burst: teeth, horns, quills,
+// attack posture and movement have to carry the entire "stay away" read.
+{
+  const grid = section('animal-obstacle-bakeoff', 'Animal obstacles — animated bake-off',
+    'OPEN — six gallery-only animated animal hazards. Each attacks toward the right-running hero. '
+    + 'Left is the proposed lane footprint beside Lorenzo at his real 24u height; right is the exact '
+    + 'same painter enlarged for silhouette and motion inspection. These deliberately use no warning '
+    + 'icons or danger frames: the teeth, tusks, fangs, quills and attack pose must make the threat '
+    + 'obvious on their own. Dashed boxes are provisional art envelopes, not committed hitboxes. '
+    + 'Every card renders at 6x and can be clicked to save a 1248x600 PNG.');
+
+  const TW = 208, TH = 100, GY = 78;
+  const DX = 112, DY = 7, DW = 88, DH = 72;
+  const cabById = Object.fromEntries(CABINETS.map((cab) => [cab.id, cab]));
+  for (const candidate of ANIMAL_OBSTACLE_CANDIDATES) {
+    const cab = cabById[candidate.cabinet];
+    const [bw, bh] = candidate.box;
+    const ds = Math.min(DW / bw, DH / bh);
+    const dw = bw * ds, dh = bh * ds;
+    tile(grid, `${candidate.letter} — ${candidate.name}`,
+      `${candidate.id} · ${bw}x${bh}u · ${candidate.action}<br>${candidate.note}`,
+      TW, TH, (ctx, t) => {
+        const sky0 = cab?.sky?.[0] || '#202838';
+        const sky1 = cab?.sky?.[1] || '#303848';
+        ctx.fillStyle = sky0; ctx.fillRect(0, 0, TW, GY);
+        ctx.fillStyle = sky1; ctx.fillRect(0, GY * .5, TW, GY * .5);
+        ctx.fillStyle = cab?.far || 'rgba(80,90,110,.45)';
+        ctx.beginPath(); ctx.moveTo(0, GY * .67);
+        ctx.quadraticCurveTo(TW * .18, GY * .43, TW * .36, GY * .66);
+        ctx.quadraticCurveTo(TW * .55, GY * .48, TW * .73, GY * .68);
+        ctx.quadraticCurveTo(TW * .88, GY * .52, TW, GY * .64);
+        ctx.lineTo(TW, GY); ctx.lineTo(0, GY); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = cab?.ground || '#485064'; ctx.fillRect(0, GY, TW, 3);
+        ctx.fillStyle = cab?.groundDark || '#282d3b'; ctx.fillRect(0, GY + 3, TW, TH - GY - 3);
+
+        drawToon(ctx, 'lorenzo', pose('run', t), 20, GY, 24);
+        const laneY = GY - bh - candidate.elevation;
+        ctx.save(); ctx.translate(49, laneY);
+        drawAnimalObstacle(ctx, candidate.id, bw, bh, t);
+        ctx.strokeStyle = 'rgba(255,255,255,.42)'; ctx.lineWidth = .45;
+        ctx.setLineDash([1.5, 1.5]); ctx.strokeRect(0, 0, bw, bh); ctx.restore();
+
+        ctx.setLineDash([]); ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = .5;
+        ctx.beginPath(); ctx.moveTo(104, 8); ctx.lineTo(104, TH - 8); ctx.stroke();
+        ctx.save(); ctx.translate(DX + (DW - dw) / 2, DY + (DH - dh));
+        drawAnimalObstacle(ctx, candidate.id, dw, dh, t);
+        ctx.strokeStyle = 'rgba(255,255,255,.32)'; ctx.lineWidth = .45;
+        ctx.setLineDash([2, 2]); ctx.strokeRect(0, 0, dw, dh); ctx.restore();
+
+        ctx.fillStyle = 'rgba(255,255,255,.66)';
+        ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+        ctx.fillText('LANE', 45, 7); ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
+      }, { animated: true, hires: 6, wide: true, world: true });
+  }
+}
+
+// -------------------------------- vicious dog silhouette bake-off (lab only)
+// All six occupy the same proposed 22x16 envelope and run on the same Speed
+// cabinet strip. The current hound is A; the other five deliberately push body
+// type and theme so the winner is a silhouette choice rather than a colourway.
+{
+  const grid = section('dog-obstacle-bakeoff', 'Vicious dog — six-way silhouette bake-off',
+    'OPEN — six animated approaches to the incoming dog obstacle. Every candidate attacks toward '
+    + 'Lorenzo, uses the same 22x16u art envelope, the same Speed background and the same lane/detail '
+    + 'layout. A is the current animal-sheet dog. B–D explore natural body shapes; E and F test themed '
+    + 'directions for Crypt and Neon/Surge. No candidate is registered in gameplay. Each card renders '
+    + 'at 6x and can be clicked to save a 1248x600 PNG.');
+
+  const TW = 208, TH = 100, GY = 78, BW = 22, BH = 16;
+  const DX = 112, DY = 7, DW = 88, DH = 72;
+  const ds = Math.min(DW / BW, DH / BH);
+  const dw = BW * ds, dh = BH * ds;
+  const cab = CABINETS.find((candidate) => candidate.id === 'speed');
+  for (const candidate of DOG_OBSTACLE_VARIATIONS) {
+    tile(grid, `${candidate.letter} — ${candidate.name}`,
+      `${candidate.id} · 22x16u · jump<br>${candidate.note}`,
+      TW, TH, (ctx, t) => {
+        const sky0 = cab?.sky?.[0] || '#f27c44';
+        const sky1 = cab?.sky?.[1] || '#f6c45d';
+        ctx.fillStyle = sky0; ctx.fillRect(0, 0, TW, GY);
+        ctx.fillStyle = sky1; ctx.fillRect(0, GY * .5, TW, GY * .5);
+        ctx.fillStyle = cab?.far || '#cb9557';
+        ctx.beginPath(); ctx.moveTo(0, GY * .67);
+        ctx.quadraticCurveTo(TW * .18, GY * .43, TW * .36, GY * .66);
+        ctx.quadraticCurveTo(TW * .55, GY * .48, TW * .73, GY * .68);
+        ctx.quadraticCurveTo(TW * .88, GY * .52, TW, GY * .64);
+        ctx.lineTo(TW, GY); ctx.lineTo(0, GY); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = cab?.ground || '#a4662f'; ctx.fillRect(0, GY, TW, 3);
+        ctx.fillStyle = cab?.groundDark || '#6f4026'; ctx.fillRect(0, GY + 3, TW, TH - GY - 3);
+
+        drawToon(ctx, 'lorenzo', pose('run', t), 20, GY, 24);
+        ctx.save(); ctx.translate(49, GY - BH);
+        drawAnimalObstacle(ctx, candidate.id, BW, BH, t);
+        ctx.strokeStyle = 'rgba(255,255,255,.42)'; ctx.lineWidth = .45;
+        ctx.setLineDash([1.5, 1.5]); ctx.strokeRect(0, 0, BW, BH); ctx.restore();
+
+        ctx.setLineDash([]); ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = .5;
+        ctx.beginPath(); ctx.moveTo(104, 8); ctx.lineTo(104, TH - 8); ctx.stroke();
+        ctx.save(); ctx.translate(DX + (DW - dw) / 2, DY + (DH - dh));
+        drawAnimalObstacle(ctx, candidate.id, dw, dh, t);
+        ctx.strokeStyle = 'rgba(255,255,255,.32)'; ctx.lineWidth = .45;
+        ctx.setLineDash([2, 2]); ctx.strokeRect(0, 0, dw, dh); ctx.restore();
+
+        ctx.fillStyle = 'rgba(255,255,255,.66)';
+        ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+        ctx.fillText('LANE', 45, 7); ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
+      }, { animated: true, hires: 6, wide: true, world: true });
+  }
+}
+
+// ------------------------------------- stationary hazard bake-off (lab only)
+// TEN FAMILIES, THIRTY STUDIES. Spikes, small fires, a burning barrel, and the
+// rest of the vocabulary a lane needs when the hazard is simply THERE.
+//
+// The obstacle sheet above asks what a cabinet can throw at you. This one asks
+// the opposite question — what can stand in the lane and still be dangerous —
+// and it is a harder brief than it looks. A hazard that moves toward you gets a
+// free reading: motion draws the eye and classifies the object before the shape
+// has to. A hazard that stands still has one asset, its silhouette, and it has
+// to work in the sixth of a second the runner gives it.
+//
+// So each family is three answers to one question, and each card puts them in
+// front of the only two tests that matter:
+//
+//   LANE — the candidate at its proposed art envelope, on the floor line, with
+//   Lorenzo beside it at his real 24u. Nothing here is scaled up to flatter
+//   itself; this is the size a player sees, on the background of a cabinet it
+//   would plausibly belong to.
+//   DETAIL — the identical painter given a bigger box. Not a second drawing:
+//   if the enlargement shows something the lane read does not, that difference
+//   is the finding.
+//
+// The MOTION word on every label is a claim being tested, not decoration. The
+// brief was "mostly stationary, could potentially have some movement", so a
+// candidate marked `swings` or `spins` is carrying an argument that its motion
+// earns its cost — and a candidate marked `still` is claiming it does not need
+// any. Read the still ones first: if a spike strip only reads once the glint
+// travels, the shape has failed and no amount of animation will fix it.
+//
+// None of these carry the red spike-frame the obstacle sheet paints behind its
+// candidates. That marker exists to make neutral props declare themselves
+// dangerous; borrowing it here would hide exactly the failure this sheet is
+// looking for. Teeth and fire either say it themselves or they do not.
+//
+// Every card renders at 6x backing resolution — click one to save its PNG.
+// Delete this section, and src/dev/hazard-candidates.js with it, once winners
+// are ported into sprites/props.js. A settled bake-off leaves the gallery.
+{
+  const secId = 'hazard-bakeoff';
+  const title = 'Stationary hazards — ten-family bake-off';
+  const s = document.createElement('section');
+  s.id = secId;
+  s.innerHTML = `<h2 id="h-${secId}">${title}</h2>`
+    + '<p class="note">OPEN — 30 gallery-only vector studies: ten families of standing hazard, three '
+    + 'variations each. Spikes, small fires, a burning barrel, raised fire, blades, electrics, floor '
+    + 'pits, thorns, wreckage and traps that close. Left of each card is the LANE read — the candidate '
+    + 'at its proposed art envelope, on the floor, beside Lorenzo at his real 24u, over a cabinet sky. '
+    + 'Right is the same painter enlarged for silhouette and material. The dashed box is an art '
+    + 'envelope, not a decided hitbox. The MOTION word on each label states how much movement the '
+    + 'concept needs to work: the brief is mostly-stationary, so <b>still</b> is the strongest claim on '
+    + 'the sheet and the one to be sceptical of. Nothing here is registered in any gameplay registry.</p>';
+  root.appendChild(s);
+  const navLink = document.createElement('a');
+  navLink.href = `#h-${secId}`;
+  navLink.dataset.target = secId;
+  navLink.textContent = title;
+  nav.appendChild(navLink);
+
+  const TW = 208, TH = 100, GY = 78;
+  const DX = 112, DY = 6, DW = 90, DH = 88; // the detail study's box, in world units
+  // Cabinet skies rotate through the families so no candidate is only ever
+  // judged against one backdrop — a pale thorn silhouette that survives the
+  // crypt can still disappear on frost.
+  const cabOrder = ['plumber', 'speed', 'neon', 'frost', 'crypt', 'rhythm', 'cardboard', 'office', 'surge', 'speed'];
+  const cabById = Object.fromEntries(CABINETS.map((cab) => [cab.id, cab]));
+
+  for (let fi = 0; fi < HAZARD_FAMILIES.length; fi++) {
+    const [famId, famName, famNote] = HAZARD_FAMILIES[fi];
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = `${fi + 1}. ${famName}`;
+    s.appendChild(h3);
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = famNote;
+    s.appendChild(p);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+
+    const cab = cabById[cabOrder[fi]];
+    for (const cand of HAZARD_CANDIDATES.filter((h) => h.family === famId)) {
+      const [bw, bh] = cand.box;
+      // The detail study keeps the candidate's aspect: stretching a 24x6 pit
+      // into a square box would be inspecting a drawing the painter never made.
+      const ds = Math.min(DW / bw, DH / bh);
+      const dw = bw * ds, dh = bh * ds;
+      tile(grid, `${cand.letter} — ${cand.name}`,
+        `${cand.id} · ${bw}x${bh}u envelope · ${cand.motion}<br>${cand.note}`,
+        TW, TH, (ctx, t) => {
+          const sky0 = cab?.sky?.[0] || '#202838';
+          const sky1 = cab?.sky?.[1] || '#303848';
+          ctx.fillStyle = sky0; ctx.fillRect(0, 0, TW, GY);
+          ctx.fillStyle = sky1; ctx.fillRect(0, GY * 0.52, TW, GY * 0.48);
+          ctx.fillStyle = cab?.far || 'rgba(80,90,110,.45)';
+          ctx.beginPath(); ctx.moveTo(0, GY * 0.66);
+          ctx.quadraticCurveTo(TW * 0.16, GY * 0.44, TW * 0.34, GY * 0.67);
+          ctx.quadraticCurveTo(TW * 0.54, GY * 0.48, TW * 0.72, GY * 0.68);
+          ctx.quadraticCurveTo(TW * 0.88, GY * 0.52, TW, GY * 0.64);
+          ctx.lineTo(TW, GY); ctx.lineTo(0, GY); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = cab?.ground || '#485064'; ctx.fillRect(0, GY, TW, 3);
+          ctx.fillStyle = cab?.groundDark || '#282d3b'; ctx.fillRect(0, GY + 3, TW, TH - GY - 3);
+
+          drawToon(ctx, 'lorenzo', pose('run', t), 20, GY, 24);
+          // Painters use a local 0..w box with the ground at y = h, so a lane
+          // placement is a translation — the same one a world entity gets.
+          ctx.save(); ctx.translate(52, GY - bh);
+          drawHazardCandidate(ctx, cand.id, bw, bh, t);
+          ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 0.45;
+          ctx.setLineDash([1.5, 1.5]); ctx.strokeRect(0, 0, bw, bh); ctx.restore();
+
+          ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = 0.5;
+          ctx.setLineDash([]);
+          ctx.beginPath(); ctx.moveTo(104, 8); ctx.lineTo(104, TH - 8); ctx.stroke();
+
+          ctx.save(); ctx.translate(DX + (DW - dw) / 2, DY + (DH - dh));
+          drawHazardCandidate(ctx, cand.id, dw, dh, t);
+          ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 0.45;
+          ctx.setLineDash([2, 2]); ctx.strokeRect(0, 0, dw, dh); ctx.restore();
+          ctx.setLineDash([]);
+
+          ctx.fillStyle = 'rgba(255,255,255,.62)';
+          ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+          ctx.fillText('LANE', 46, 7);
+          ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
+        }, { animated: true, hires: 6, wide: true, world: true });
+    }
+  }
+}
+
+// --------------------------------------------- banana peel bake-off (lab only)
+// SIX BANANAS, one question: what shape should the slip hazard be.
+//
+// The shipped prop (candidate A) follows the Mario Kart 8 item closely and it
+// reads — and it was still not right, which is what this section exists to
+// settle. The question is not fidelity to the reference; it is which honest
+// banana holds up as a 14x12 hazard in a lane being read at speed. So the field
+// splits along the two axes that actually change the answer: STANDING or LYING
+// (a silhouette above the ground line is what makes a thing jumpable at a
+// glance), and FRUIT or PEEL (a whole banana is the most legible yellow shape
+// there is and is not, strictly, the hazard). Candidate E ignores both and is
+// drawn the way the crate and the cone are, for legibility over fidelity.
+//
+// No 1x rung. The game runs at ZOOM 2 on a 2x display, so the DESKTOP column is
+// the smallest any of these is ever really seen at, and it is the column that
+// decides this.
+//
+// Delete this section — and src/dev/banana-candidates.js with it — the moment a
+// winner is ported into props.js. A settled bake-off leaves the gallery.
+{
+  const grid = section('banana-bakeoff', 'Banana peel — shape bake-off',
+    'OPEN — six gallery-only studies of the slip hazard, each drawn to the same painter seam the '
+    + 'shipped prop uses. A is the prop currently in the game. Every card shows the candidate at its '
+    + 'own art envelope beside Lorenzo at his real 24u height, at the smallest size a desktop ever '
+    + 'shows it and again enlarged; the envelope is a proposal, not a decided hitbox — the registry '
+    + 'follows whichever shape wins. Ported by copying one painter body into sprites/props.js.');
+
+  const TW = 190, TH = 84, GY = 66;
+  for (const cand of BANANA_CANDIDATES) {
+    const [bw, bh] = cand.box;
+    tile(grid, `${cand.letter} — ${cand.name}`, `${bw}x${bh}u envelope<br>${cand.note}`,
+      TW, TH, (ctx) => {
+        ctx.fillStyle = '#78c8f0'; ctx.fillRect(0, 0, TW, GY);
+        ctx.fillStyle = '#3a9c48'; ctx.fillRect(0, GY, TW, 5);
+        ctx.fillStyle = '#2a7038'; ctx.fillRect(0, GY + 5, TW, TH - GY - 5);
+        drawToon(ctx, 'lorenzo', pose('run', 0.35), 8, GY, 24);
+        // Two rungs, both at or above the real desktop presentation size, so a
+        // candidate cannot flatter itself at a scale nobody plays at.
+        let x = 40;
+        for (const s of [1, 2.4]) {
+          const dw = Math.round(bw * 4 / 3 * s), dh = Math.round(bh * 4 / 3 * s);
+          ctx.save(); ctx.translate(x, GY - dh);
+          drawBananaCandidate(ctx, cand.id, dw, dh);
+          ctx.restore();
+          x += dw + 14;
+        }
+        ctx.fillStyle = 'rgba(16,16,24,.6)';
+        ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+        ctx.fillText('LANE', 40, GY + 4); ctx.fillText('ENLARGED', 40 + Math.round(bw * 4 / 3) + 14, GY + 4);
+      }, { animated: false, hires: 6, wide: true, world: true });
+  }
 }
 
 // The size drawWorldEntity would actually paint a prop at: the 4/3 inflation
@@ -3627,6 +4061,104 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
+// ------------------------------------------------ barrel punt departure rate
+// LAB — gallery only for the TUNING; the barrel punt itself ships. Same rig as
+// the cone above and the same shipped module, pointed at the other puntable
+// prop and at the opposite question.
+//
+// The cone's arc is a BOOMERANG and every number in PUNT is tuned to keep it in
+// the player's world: out in front, air-braked, passed underneath, landing
+// behind him to be juggled. The barrel is the reverse. It arrives rolling
+// right-to-left, the boot flips it, and from that frame it is leaving — faster
+// than the hero can run, and it never comes back. So what these tiles are
+// judging is not the shape of a return trip. It is whether the thing reads as
+// GONE.
+//
+// Which is also why the barrel leaves the tile and the cone does not. At hero
+// scale a tile holds about seventy world px of road, so a prop travelling at
+// 1.7x the run is off the right-hand side inside half a second — that exit IS
+// the feature, and the numbers printed in the corner say what happens after it.
+// The cone tile is the control: watch it come back in, which is exactly what a
+// barrel must never do.
+//
+// The dotted line at 96 is a TUNNEL ROOF, and it is the one hard constraint
+// left: barrels are the only puntable prop that turns up underground (plumber's
+// low road is furnished with them), so an arc taller than the road is deep
+// sends a punt through the ceiling. The dashed crown line is kept for scale —
+// it stopped being a constraint when the barrel stopped passing overhead.
+{
+  const grid = section('barrel-punt', 'Power slide — barrel punt departure',
+    'GALLERY ONLY for the tuning; the barrel punt itself ships. Each tile runs the REAL '
+    + 'startPunt/stepPunt at 60Hz with a barrel launched off the hero\'s boot, plotted in his '
+    + 'frame — so what you see is what the camera sees. The boot REVERSES it: it arrives '
+    + 'rolling toward you and leaves rolling away, faster than you run, and it never comes '
+    + 'back. Leaving the tile is the point; the corner readout says how fast it goes and how '
+    + 'long the real 240px frame takes to be rid of it. Dotted line is the roof of a 96px '
+    + 'tunnel, which a punt inside one must stay under; dashed line is the hero\'s crown, for '
+    + 'scale. The cone tile is the control — watch it get handed back by the air brake, which '
+    + 'is what a barrel must never do.');
+  const CANDIDATES = [
+    { key: 'shipped', label: 'shipped — vy 270, leaves at 1.7x the run, no air brake (HEAVY_PUNT)', tune: {} },
+    { key: 'cone arc', label: 'control — the CONE\'s tune: the air brake hands it straight back', tune: { ...PUNT } },
+    { key: 'brisk', label: 'brisk — 2.2x the run: gone almost before you have seen it go', tune: { launchBoost: 2.2 } },
+    { key: 'lazy', label: 'lazy — 1.25x the run: it leaves, but it takes its time about it', tune: { launchBoost: 1.25 } },
+  ];
+  // A SHORT loop, and shorter than the cone's 2.4s: this prop is off the
+  // right-hand side of the tile inside half a second and never returns, so a
+  // long period is three-quarters empty road. 1.5s shows the kick, the arc, the
+  // first bounce and the exit, and then goes again.
+  const PERIOD = 1.5, DT = 1 / 60;
+  const RUN = 160;
+  const HH = 74, WIDE = 216, FEET = 150;
+  const CROWN = 0.86;
+  // World px of tunnel depth (cabinets.js: plumber's tunnel is 96 deep).
+  const ROOF = 96;
+  for (const cand of CANDIDATES) {
+    tile(grid, `barrel punt — ${cand.key}`, cand.label, WIDE, 172, (ctx, t) => {
+      const tune = { ...HEAVY_PUNT, ...cand.tune };
+      const ph = t % PERIOD;
+      const heroX = RUN * ph;
+      const ob = { x: 0, alt: 0, w: OBSTACLES.barrel.w, def: OBSTACLES.barrel };
+      startPunt(ob, RUN, tune);
+      for (let s2 = 0; s2 < ph; s2 += DT) stepPunt(ob, DT, tune);
+      const k = ph < 0.34 ? (ph < 0.153 ? ph / 0.153 : Math.max(0, 1 - (ph - 0.153) / 0.187)) : 0;
+      drawToon(ctx, 'lorenzo', pose('duck', t, { duckStyle: 'slide', slideKick: k }), 60, FEET, HH);
+      const Z = HH / 24;
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = '#8a8a9e';
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(6, FEET - CROWN * HH); ctx.lineTo(210, FEET - CROWN * HH); ctx.stroke();
+      ctx.setLineDash([1, 3]);
+      ctx.strokeStyle = '#6b4426';
+      ctx.beginPath(); ctx.moveTo(6, FEET - ROOF * Z); ctx.lineTo(210, FEET - ROOF * Z); ctx.stroke();
+      ctx.restore();
+      ctx.strokeStyle = '#4a4a58';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(6, FEET + 0.3); ctx.lineTo(210, FEET + 0.3); ctx.stroke();
+      const BW = 13 * Z, BH = 13 * Z;
+      const cx = 104 + (ob.x - heroX) * Z;
+      const cy = FEET - ob.alt * Z;
+      ctx.save();
+      ctx.translate(cx, cy - BH / 2);
+      ctx.rotate(-(ob.spin || 0));
+      drawProp(ctx, 'barrel', -BW / 2, -BH / 2, BW, BH, 0);
+      ctx.restore();
+      ctx.fillStyle = '#8a8a9e';
+      ctx.font = '6px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      const apex = (tune.launchVy * tune.launchVy) / (2 * tune.gravity);
+      // What it is doing RIGHT NOW relative to the hero, which is the whole
+      // judgement: positive and it is leaving, negative and it is coming back.
+      const rel = ob.vx - RUN;
+      const clears = rel > 1 ? `${(240 / rel).toFixed(1)}s to clear frame` : 'NEVER LEAVES';
+      ctx.fillText(`apex ${apex.toFixed(0)}px  roof ${ROOF}px`, 6, 10);
+      ctx.fillText(`${rel >= 0 ? '+' : ''}${rel.toFixed(0)}px/s on the hero — ${clears}`, 6, 18);
+      ctx.fillText(apex + 13 > ROOF ? 'THROUGH THE ROOF' : '', 6, 26);
+    }, { animated: true, wide: true, hires: 4 });
+  }
+}
+
 // --------------------------------------------- slide contact-kick bake-off
 // LAB — gallery only, and speculative: NOTHING in the run drives this. No
 // obstacle is broken by a slide today (dash, stomp, roll and the spanner
@@ -3693,6 +4225,169 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // second way to set those numbers is exactly the kind of thing that drifts
 // from the one the game uses. Slide-only remains the point — her aim and
 // jump reach is untouched, and shortening it there is a separate question.
+
+// ------------------------------------------------ fatal pit bake-off (lab only)
+// EIGHT FILLS for the one hole in the floor, now that falling in one ends the
+// run at the last checkpoint rather than costing a cell.
+//
+// The rest of this cluster asks what a prop should look like. This section asks
+// something harder, because a pit is not a prop — it is the ABSENCE of one. The
+// `gap` obstacle carves the ground away and every style pack fills the hole it
+// leaves with flat black, and that is the entire art. It was proportionate
+// while a pit was a slow obstacle. It is not proportionate now that it is the
+// most expensive thing in the lane, because the punishment went up and the
+// warning did not.
+//
+// THE HOLE IS OPEN, AND IT IS A TOTAL SIDE-ON VIEW. That is the rule the whole
+// sheet is built on. A gap is a BREAK IN THE FLOOR — the ground is a slab seen
+// edge-on, the gap a straight notch out of it — so the background shows
+// straight through it at full strength, with no wall and no perspective
+// anywhere, and the deadly material lies on the FLOOR of the break. The flat black fill has
+// this backwards: it plugs the hole with the darkest value in the frame, which
+// turns a hole into an object and hides the one thing that makes a drop read as
+// a drop — being able to see past the road you are standing on.
+//
+// A hole has no silhouette either. Not a small one — none: there is not one
+// pixel of it above the floor line, and the floor line is where a runner is
+// looking. So each candidate is first an answer to "what can a hole put above
+// the floor line", and the fill is downstream of that answer. The three devices
+// are named on every card as the READ:
+//
+//   LIP — furniture at the edges, on the road rather than in the hole. Free,
+//   works at any speed, invisible until you are nearly on it.
+//   SPILL — light thrown up out of the pit onto the ground either side. The only
+//   device that reads before the mouth is on screen; needs a luminous fill, and
+//   the open break is what gives that light the depth to climb.
+//   BREACH — something that crosses the floor line. Strongest read, most
+//   expensive frame, and much harder to earn now that the material it comes off
+//   is at the bottom of the shaft rather than up in the lane.
+//
+// The geometry is the constraint and it is tighter than it looks. A gap is 56
+// world px wide (72 off a boost pad) against a 24u hero, and the apron below the
+// groundline is 38 — of which the camera at rest shows the top 19. That is the
+// dashed REST line, and it falls ABOVE every material band on this sheet: a
+// player standing on the road sees the hills through the break and nothing else,
+// and
+// the lava is a glow before it is lava. Judging these means judging the light
+// and the lip first and the surface second. The DEEP study on the right of each
+// card is where the whole break gets inspected.
+//
+// Candidate A is the open hole with nothing in it, drawn as the control. It
+// costs nothing, so anything that beats it has to beat it by more than it
+// costs — and the cost of each is stated on the card rather than left for the
+// profiler.
+//
+// Nothing here is registered in any gameplay registry and no fill is wired to a
+// cabinet; `cabinets` on each card is a proposal about where it belongs. Port a
+// winner into the gap branch of engine/stylePacks/index.js and delete this
+// section, and src/dev/pit-candidates.js with it. A settled bake-off leaves the
+// gallery.
+{
+  const grid = section('pit-bakeoff', 'Fatal pits — fill bake-off',
+    'OPEN — eight gallery-only treatments for the hole a <code>gap</code> obstacle leaves, drawn at the '
+    + 'real 56u width against Lorenzo at his real 24u. The shaft is OPEN in all eight: the background '
+    + 'shows through the top the way it would through any hole in a road, and the deadly material lies '
+    + 'on the floor of it. A is that hole with nothing in it, the control. Left of each card is the LANE '
+    + 'read, a runner three strides out, with the dashed REST line marking how much of the break the '
+    + 'camera shows a player standing on the road — 19 of the apron\'s 38u, which is above every material '
+    + 'band here. Right is the DEEP study, the same painter over the whole shaft at 1.4x, for material '
+    + 'only. The READ line names what the treatment puts ABOVE the floor line, which is the only thing a '
+    + 'pit can be seen coming by; COST says what it asks of the frame. Sky, ground and the cut face at '
+    + 'each lip are the proposed cabinet\'s own colours.');
+
+  const TW = 252, TH = 94;   // GY + APRON exactly: the apron runs to the bottom edge, as it does in the run
+  const GY = 56;                  // the floor line
+  const APRON = 38;               // world px of ground drawn below it (H - GROUND_Y)
+  const REST = 19;                // ...of which this much is on screen at rest zoom
+  const PW = 56;                  // the standard gap width
+  const PX = 66;                  // where the mouth starts in the lane read
+  const DX = 158, DS = 1.4;       // the deep study: origin and scale
+  const cabById = Object.fromEntries(CABINETS.map((cab) => [cab.id, cab]));
+
+  for (const cand of PIT_CANDIDATES) {
+    const cab = cabById[cand.cabinets[0]] || cabById.speed;
+    tile(grid, `${cand.letter} — ${cand.name}`,
+      `${cand.id} · ${cand.motion} · ${cand.cabinets.join(' / ')}<br>`
+      + `READ: ${cand.read}<br>COST: ${cand.cost}<br>${cand.note}`,
+      TW, TH, (ctx, t) => {
+        const sky0 = cab?.sky?.[0] || '#202838';
+        const sky1 = cab?.sky?.[1] || '#303848';
+        // THE BACKGROUND RUNS PAST THE GROUND LINE. A break in the floor is
+        // only a break if there is a world behind it, so the sky and the hills
+        // are painted over the WHOLE tile and the ground band goes on top of
+        // them afterwards. In the run the packs anchor their parallax at
+        // GROUND_Y and stop, which is why a gap branch that simply skipped its
+        // black fill would reveal nothing; carrying the background down behind
+        // the apron is what a ported treatment has to do.
+        ctx.fillStyle = sky0; ctx.fillRect(0, 0, TW, TH);
+        ctx.fillStyle = sky1; ctx.fillRect(0, GY * 0.5, TW, TH - GY * 0.5);
+        ctx.fillStyle = cab?.far || 'rgba(80,90,110,.45)';
+        ctx.beginPath(); ctx.moveTo(0, GY * 0.7);
+        ctx.quadraticCurveTo(TW * 0.14, GY * 0.46, TW * 0.3, GY * 0.72);
+        ctx.quadraticCurveTo(TW * 0.5, GY * 0.5, TW * 0.68, GY * 0.71);
+        ctx.quadraticCurveTo(TW * 0.86, GY * 0.54, TW, GY * 0.66);
+        ctx.lineTo(TW, TH); ctx.lineTo(0, TH); ctx.closePath(); ctx.fill();
+
+        // The ground, carved exactly the way drawTerrain carves it: solid runs
+        // either side of the mouth and nothing at all between them. The fill is
+        // then drawn INTO the hole, not over the ground, which is the whole
+        // reason a lip treatment can be seen at all.
+        const runs = [[0, PX], [PX + PW, 150]];
+        for (const [a, b] of runs) {
+          ctx.fillStyle = cab?.groundDark || '#282d3b';
+          ctx.fillRect(a, GY, b - a, APRON);
+          ctx.fillStyle = cab?.ground || '#485064';
+          ctx.fillRect(a, GY, b - a, 2);
+        }
+
+        ctx.save(); ctx.translate(PX, GY);
+        ctx.beginPath(); ctx.rect(-PX, -GY, 150, GY + APRON); ctx.clip();
+        drawPitCandidate(ctx, cand.id, PW, APRON, t);
+        ctx.restore();
+
+        drawToon(ctx, 'lorenzo', pose('run', t), 22, GY, 24);
+
+        // What the camera actually shows a player standing on the floor. Below
+        // this line is jump-only territory.
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 0.4;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath(); ctx.moveTo(PX - 6, GY + REST); ctx.lineTo(PX + PW + 6, GY + REST); ctx.stroke();
+        ctx.restore();
+
+        // A real gutter between the two halves. Both are now painted in the same
+        // cabinet colours, so a hairline divider was not enough to stop the lane
+        // read and the deep study reading as one continuous scene.
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#0e0f16'; ctx.fillRect(150, 0, 5, TH);
+
+        // DEEP: the same painter, same aspect, over the whole shaft. Neutral
+        // ground either side so material is judged without a cabinet's help.
+        const dw = PW * DS, dd = APRON * DS;
+        const dy = TH - 8 - dd;
+        ctx.save(); ctx.translate(DX, dy);
+        ctx.beginPath(); ctx.rect(-10, -12, dw + 24, dd + 12); ctx.clip();
+        // The same scene, the same carve, 1.4x. Ground either side in the
+        // cabinet's own colours rather than a neutral frame: a grey surround
+        // put a value edge around the mouth, which is exactly the mark this
+        // sheet is trying not to have anywhere near a pit.
+        ctx.fillStyle = cab?.far || 'rgba(80,90,110,.45)';
+        ctx.fillRect(-10, -12, dw + 24, dd + 12);
+        ctx.fillStyle = cab?.groundDark || '#282d3b';
+        ctx.fillRect(-10, 0, 10, dd); ctx.fillRect(dw, 0, 14, dd);
+        ctx.fillStyle = cab?.ground || '#485064';
+        ctx.fillRect(-10, 0, 10, 2.4); ctx.fillRect(dw, 0, 14, 2.4);
+        drawPitCandidate(ctx, cand.id, dw, dd, t);
+        ctx.restore();
+
+        ctx.fillStyle = 'rgba(255,255,255,.62)';
+        ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+        ctx.fillText(`LANE  ${PW}x${APRON}u`, 4, 7);
+        ctx.fillText('REST', PX + PW + 8, GY + REST + 1.5);
+        ctx.fillText(`DEEP ${DS}x`, DX, dy - 4);
+      }, { animated: true, hires: 6, wide: true, world: true });
+  }
+}
 
 // ---------------------------------------------------------------- driver
 // Only visible tiles animate; static tiles paint once. Keeps ~200 canvases cheap.

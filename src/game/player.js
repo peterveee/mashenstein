@@ -48,6 +48,21 @@ export const SLIDE_KICK_T = 0.34;
 // kick's own 0.34s, so the leg finishes its swing on the way up and the stand
 // reads as the follow-through rather than as the slide being cancelled.
 export const STAND_AFTER_PLOW_T = 0.38;
+// HOW LONG THE BANANA-PEEL PRATFALL LASTS — both the tumble the hero is drawn
+// in and the stumble that slows him and holds his jump.
+//
+// 0.55s, read against the two clocks either side of it. The hit's own i-frames
+// are 1.4s, so the slip is comfortably inside the mercy it comes with: he is
+// never handed control back into a hazard he cannot yet be hurt by and then
+// hurt by the next one. And the spawner's reaction floor is 0.25s of clear
+// ground after any action cell, which at run speed is well short of this — so
+// the peel is deliberately NOT placed as the first cell of a pair. See the
+// patterns in data/cabinets.js, which give it a lane of its own.
+//
+// Longer was tried and it is the difference between a gag and a punishment:
+// at 0.9s the player has time to press jump, watch nothing happen, and press
+// it again, which reads as the controls having been taken away.
+export const SLIP_T = 0.55;
 // The walk cycle is driven by scroll speed, not by wall time, so the stride
 // stays planted as the run accelerates: anim advances at world.speed / this.
 // Lower means faster legs at the same speed.
@@ -104,7 +119,13 @@ export class Player {
     this.jumps = 0;
     // Which jump face to wear while airborne (toons.js expressionFor's `jf`
     // lookup) — rolled fresh per hop by run.js's rollJumpFace, not here.
-    this.jumpFace = 0;
+    //
+    // 2 (determined) rather than 0, and it has to be a face rollJumpFace could
+    // actually have picked: a spring throws the hero without rolling anything,
+    // so whatever is sitting here is what he wears on the way up. At 0 that was
+    // the surprised face — the one reserved for falling — on the first launch
+    // of every run.
+    this.jumpFace = 2;
     this.powerJumpBonus = 0;
     this.ducking = false;
     this.duckAmount = 0; // visual crouch blend: 0 standing, 1 fully planted
@@ -139,6 +160,12 @@ export class Player {
     this.rollT = 0;
     this.compressT = 0;
     this.stumbleT = 0;
+    // The banana-peel pratfall. Separate from stumbleT, which is the CONTROL
+    // penalty (slower, no jump) and is also spent by the shield-bash roll — this
+    // is the ART, and only a peel ever sets it. Kept as its own clock so the
+    // tumble can outlast or undercut the penalty later without either one
+    // having to explain itself to the other. See RunState.slip and drawHeroSprite.
+    this.slipT = 0;
     this.rollBashed = false;
     this.rollDeflectUsed = false;
     this.rollPlows = false;
@@ -190,6 +217,7 @@ export class Player {
     this.rollT = 0;
     this.compressT = 0;
     this.stumbleT = 0;
+    this.slipT = 0;
     this.rollBashed = false;
     this.rollDeflectUsed = false;
     this.rollPlows = false;
@@ -309,7 +337,7 @@ export class Player {
   }
 
   jumpPressed(audio) {
-    if (this.rollT > 0 || this.stumbleT > 0) return false;
+    if (this.rollT > 0 || this.stumbleT > 0 || this.slipT > 0) return false;
     if (this.grounded || this.jumps < this.maxJumps) {
       if (!this.grounded && this.jumps === 0) this.jumps = 1; // walked off a ledge
       this.vy = BASE_JUMP_V * (this.jumpScale || 1) * this.hero.jumpMult * (this.jumps > 0 ? AIR_JUMP_SCALE : 1);
@@ -341,6 +369,7 @@ export class Player {
     }
     if (this.compressT > 0) this.compressT -= dt;
     if (this.stumbleT > 0) this.stumbleT -= dt;
+    if (this.slipT > 0) this.slipT -= dt;
     if (this.chargeFlashT > 0) this.chargeFlashT -= dt;
     if (this.deflectFlashT > 0) this.deflectFlashT -= dt;
     if (this.tagFlashT > 0) this.tagFlashT -= dt;

@@ -630,7 +630,15 @@ function dustDevilPass(visit, act) {
     // ceiling gag lands because it is the exception.
     onCeiling: act > 1 && (h >>> 3) % 3 === 0,
     dir: (h & 1) ? 1 : -1,           // which way it crosses
-    depth: (h >>> 5) % 11,           // px in front of the floor line; the floor runs well past it
+    // px in front of the floor line. This was 0..10, which was the same
+    // mistake the counter staff made in the other axis: with no perspective in
+    // the scene, drawing a prop LOWER does not read as "nearer the camera", it
+    // reads as sunk into the floor — and on a 32px machine, 10px is a third of
+    // it below the line every hero's boots end on. Held to 0..2 so the brush
+    // stays inside the skirting band the cast's own feet occupy (the floor
+    // painter's 6px trim at floorY-2), which is as much jitter as a flat side
+    // view can carry.
+    depth: (h >>> 5) % 3,
   };
 }
 

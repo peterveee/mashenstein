@@ -3260,13 +3260,35 @@ export class VoiceRack {
   _queueMrdr3(v, laneKey, note) {
     this._mrdrAwQueue ||= new Map();
     let queue = this._mrdrAwQueue.get(laneKey);
-    if (queue) { queue.notes.push(note); return true; }
-    queue = { notes: [note], voice: v };
-    this._mrdrAwQueue.set(laneKey, queue);
+    if (queue) queue.notes.push(note);
+    else {
+      queue = { notes: [note], voice: v };
+      this._mrdrAwQueue.set(laneKey, queue);
+    }
+    // A KEY IS DOWN ON A LANE THAT DOES NOT EXIST YET — the same book-keeping
+    // `_queueTngr2` does, for the same failure. A held note has no note-off of its own,
+    // and a queued note has neither a lane nor an event id for one to name, so what goes
+    // in the books is the QUEUED NOTE ITSELF: lifting the key marks it cancelled and the
+    // flush below drops it. Without this the first key pressed on a lane came back
+    // sounding when the worklet finished registering, with no finger on it and nothing
+    // left that could release it — it ran the full HOLD_SECONDS backstop.
+    if (note.hold) {
+      for (const one of (Array.isArray(note.freq) ? note.freq : [note.freq])) {
+        if (!(one > 0)) continue;
+        const noteKey = `${laneKey}|${one.toFixed(2)}`;
+        this._releasePreview(noteKey);
+        this._heldNative.set(noteKey, { mrdr3Queued: note, at: note.time });
+      }
+    }
+    if (queue.building) return true;
+    queue.building = true;
     this.warmMrdr3Lane(v, laneKey).then((ok) => {
       this._mrdrAwQueue.delete(laneKey);
       if (!ok) return;                      // warmMrdr3Lane has already said why
       for (const queued of queue.notes) {
+        // A cancelled note is one whose key came up before the lane arrived. Playing it
+        // now would be a note nobody is holding, at a time that has already passed.
+        if (queued.cancelled) continue;
         this._playMrdr3Aw(v, { ...queued, laneKey });
       }
     });
@@ -7179,6 +7201,14 @@ export class VoiceRack {
       if (held?.mrdr3) {
         mrdr3NoteOff(held.mrdr3.lane, { at: now, eventId: held.mrdr3.eventId });
         this._heldNative.delete(noteKey);
+        continue;
+      }
+      // A note still waiting for its lane to be built has nothing to be told. It is
+      // struck off instead, or the stop is followed by the note it was meant to stop —
+      // and the loop below would reach for `held.params`, which a queued note has none of.
+      if (held?.mrdr3Queued || held?.tngr2Queued) {
+        (held.mrdr3Queued || held.tngr2Queued).cancelled = true;
+        this._heldNative.delete(noteKey);
       }
     }
     for (const held of this._heldNative.values()) {
@@ -7315,7 +7345,8 @@ export class VoiceRack {
       }
     }
     const held = this._heldNative.get(noteKey);
-    const heldAt = held?.at ?? held?.tngr2?.at ?? held?.tngr2Queued?.time ?? 0;
+    const heldAt = held?.at ?? held?.tngr2?.at ?? held?.tngr2Queued?.time
+      ?? held?.mrdr3Queued?.time ?? 0;
     const releaseAt = Math.max(now, heldAt);
     // Native and worklet previews use the same absolute timing rule as the pooled
     // path above. `at` remains the pooled slot's release time; the held branches below
@@ -7359,6 +7390,12 @@ export class VoiceRack {
       }
       tngr2NoteOff(lane, { at: off, eventId: held.tngr2.eventId });
       return;
+    }
+    // Still waiting for its lane — see `_queueMrdr3`. Nothing to tell to stop.
+    if (held?.mrdr3Queued) {
+      held.mrdr3Queued.cancelled = true;
+      this._heldNative.delete(noteKey);
+      return true;
     }
     // Still waiting for its lane — see `_queueTngr2`. There is nothing to tell to stop, so
     // the note is struck off before it is ever played.
