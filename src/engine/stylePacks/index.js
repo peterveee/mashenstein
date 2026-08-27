@@ -1628,12 +1628,18 @@ function pixelPack(settings) {
     ground(ctx, camX, cab, obstacles, overhangs, t = 0) {
       drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs, t);
       // Scrolling ground ticks — a texture ON the apron, so they stop where the
-      // apron does. Left to run they hang in open air under a road that has a
-      // chamber below it.
+      // apron does. Left to run they hang in open air: under a road that has a
+      // chamber below it, and — until now — straight across every hole in the
+      // floor, where a row of dashes marching over the void was the one mark on
+      // screen insisting there was still ground there.
       ctx.fillStyle = 'rgba(0,0,0,0.15)';
       const skip = (overhangs || []).map((sp) => [sp.x - camX, sp.x + sp.w - camX]);
+      const solid = solidRuns(camX, obstacles);
       for (let x = -(camX % 24); x < W; x += 24) {
         if (skip.some(([a, b]) => x + 10 > a && x < b)) continue;
+        // Whole ticks only. Clipping one to a lip would leave a two-pixel stub
+        // hanging off the edge, which reads as debris rather than as texture.
+        if (!solid.some(([a, b]) => x >= a && x + 10 <= b)) continue;
         ctx.fillRect(x, GROUND_Y + 8, 10, 2);
       }
     },
@@ -2038,8 +2044,15 @@ function cardboardPack(settings) {
     },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0) {
       drawGapsAwareGround(ctx, camX, cab, obstacles, cab.ground, cab.groundDark, overhangs, t);
+      // Corrugation ON the apron, and only where there is apron — the same rule
+      // the pixel pack's ticks follow. Cardboard has pits from its first stage,
+      // so a run of ticks across a hole is not a hypothetical here.
       ctx.fillStyle = 'rgba(90,64,32,0.4)';
-      for (let x = -(camX % 10); x < W; x += 10) ctx.fillRect(x, GROUND_Y + 4, 2, 5);
+      const solid = solidRuns(camX, obstacles);
+      for (let x = -(camX % 10); x < W; x += 10) {
+        if (!solid.some(([a, b]) => x >= a && x + 2 <= b)) continue;
+        ctx.fillRect(x, GROUND_Y + 4, 2, 5);
+      }
     },
     post(ctx, t) {
       ctx.fillStyle = 'rgba(200,160,104,0.05)';

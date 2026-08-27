@@ -13,6 +13,26 @@ export const FAIL_MESSAGES = [
   'THE ARCADE REGRETS THIS OUTCOME',
 ];
 
+// Falling in a hole gets its own pool. The general list is written for "you
+// were hit by something" — a barrel winning an argument is not what happened
+// when the floor simply stopped — and a fatal pit is the death a player sees
+// most often on the stages that have them, so it is the one that most needs
+// more than one line to say.
+//
+// Deadpan, and never a taunt: the player already knows they missed the jump.
+// Every one of these is the ARCADE observing the outcome, which is the register
+// the rest of the game's failure text is in.
+export const PIT_FAIL_MESSAGES = [
+  'GRAVITY REMAINS UNDEFEATED',
+  'THE FLOOR WAS NOT THERE. IT HAD NEVER BEEN THERE.',
+  'DOWN IS THE ONE DIRECTION THAT ALWAYS WORKS',
+  'A HOLE. WORKING EXACTLY AS INTENDED.',
+  'THE TAR ACCEPTS ALL APPLICANTS',
+  'PLUMBING FAILURE. YOURS.',
+  'THAT WAS A GAP. IT REMAINS A GAP.',
+  'NO NOTES. TEXTBOOK DESCENT.',
+];
+
 export const RANK_LINES = {
   C: 'C. A RANK. TECHNICALLY.',
   B: 'B. THE ARCADE NODS SLOWLY.',

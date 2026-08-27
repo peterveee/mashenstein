@@ -11,7 +11,7 @@ const { MinigameState } = await import('../src/game/minigames/index.js');
 const { HubState } = await import('../src/game/hub/index.js');
 const { TitleState, SettingsState } = await import('../src/game/menus.js');
 const { makeObstacle, makePickup, PICKUPS } = await import('../src/game/entities.js');
-const { DripSpawner } = await import('../src/game/spawner.js');
+const { Spawner, DripSpawner } = await import('../src/game/spawner.js');
 const { Rng } = await import('../src/engine/rng.js');
 const { PLAYER_X } = await import('../src/game/player.js');
 const { VIEW_W } = await import('../src/engine/camera.js');
@@ -711,6 +711,11 @@ run.powerups.shieldStack = 0;
 run.obstacles = [makeObstacle('gap', run.camX + PLAYER_X - 10)];
 run.collide();
 assert(run.pitDeath && run.player.fallFace, 'the fall into a pit wears the surprised face');
+// He carries forward into it. The world stops scrolling the frame he dies, so
+// without this he drops down the near wall like a lift.
+for (let i = 0; i < 8; i++) run.update(1 / 60);
+assert(run.pitDeath.dx > 4 && run.heroScreenX() > PLAYER_X,
+  `momentum carries him out over the hole (${run.pitDeath.dx.toFixed(1)}px)`);
 for (let i = 0; i < 40 && !run.pitDeath.in; i++) run.update(1 / 60);
 assert(run.pitDeath.in && run.player.y === PIT_SURFACE_Y,
   `he stops at the material rather than falling through it (y ${run.player.y})`);
@@ -753,7 +758,7 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
   {
     const signRun = new RunState({ stage: plumber3, save, seed: 9, difficulty: 1, skipRunIn: true, onEnd: () => {} });
     signRun.enter();
-    signRun.pitFails = 2;
+    signRun.pitFails = 1;
     const target = signRun.pitPlan[1];
     signRun.camX = target.x - 780;
     signRun.distance = signRun.camX;
@@ -771,32 +776,136 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
   assert(snap.pitsDone && snap.pitsDone.length === 3, 'the snapshot records which pits are down');
 }
 
+// NO COIN OVER A HOLE, AND NONE ON EITHER LIP.
+//
+// A pit's lips are the two places the player chooses nothing — the near one is
+// where the jump has to leave and the far one is where it comes down — so a
+// coin standing on either is a lure toward a hole, and a coin over the break
+// is one hanging in mid air. Both used to happen, from two different
+// directions: the lane's own `boostPad + gap + arc` pattern drew its arc
+// straight across the break, and a scripted pit cut the middle out of an arc
+// that was already laid, leaving the tail of it floating at the lip.
+//
+// Driven through whole stages rather than asserted on the pattern table: the
+// second case only exists because `spawnScriptedPits` runs against a lane the
+// spawner has already filled.
+{
+  const { STAGES } = await import('../src/data/stages.js');
+  const offenders = [];
+  for (const st of STAGES) {
+    for (let seed = 1; seed <= 6; seed++) {
+      let r;
+      try {
+        r = new RunState({ stage: st, save, seed, difficulty: 1, skipRunIn: true, onEnd: () => {} });
+        r.enter();
+      } catch { continue; }
+      for (let f = 0; f < 60 * 70 && !r.dead && !r.finished; f++) {
+        r.update(1 / 60);
+        for (const g of r.obstacles) {
+          // A tunnel mouth is a hole you are MEANT to go down, and the line of
+          // coins diving into it is the only thing that says so.
+          if (!g.live || !g.def.isGap || g.tunnel) continue;
+          // The FLOOR of the window, not the window this frame: the clearance
+          // is bought at the speed the lane was laid at and the run keeps
+          // accelerating, so a coin placed exactly on the lip of a slower
+          // stage's window would fail a check made later at a faster one.
+          // 120 is the number every stage is guaranteed, and it is where the
+          // fragments used to sit. Half a pixel of slack because a run pushed
+          // to exactly the far edge of the window is on the right side of it.
+          const pad = 120 - 0.5;
+          for (const pk of r.pickups) {
+            if (!pk.live || pk.following || !pk.def.coin) continue;
+            if (pk.x + pk.w > g.x - pad && pk.x < g.x + g.w + pad) {
+              offenders.push(`${st.id}/${seed}: coin ${Math.round(pk.x - g.x)}px into a ${g.w}px pit at alt ${Math.round(pk.alt)}`);
+            }
+          }
+        }
+        if (offenders.length) break;
+      }
+      if (offenders.length) break;
+    }
+    if (offenders.length) break;
+  }
+  assert(offenders.length === 0,
+    `no coin is laid over a pit or on its lips (${offenders[0] || 'clean'})`);
+}
+
+// And the formation goes WHOLE. Clearing by position alone is what left the
+// fragments: an arc is 84px wide against a window measured from the lip, so the
+// far end of the run survived with the rest of its shape gone.
+{
+  const arc = [];
+  const spawner = new Spawner({ cabinet: { patterns: [] }, rng: new Rng(3) });
+  spawner.spawnCoins(1000, { shape: 'arc', n: 7 }, arc, () => 45);
+  assert(arc.length === 7 && new Set(arc.map((c) => c.formation)).size === 1,
+    'every coin in a run is stamped with the run it belongs to');
+  const other = [];
+  spawner.spawnCoins(2000, { shape: 'arc', n: 7 }, other, () => 45);
+  assert(other[0].formation !== arc[0].formation, 'and two runs are two stamps');
+}
+
+// NOTHING SAVES YOU FROM A HOLE. Three separate defences used to, and each one
+// taught the player that the floor is optional.
+{
+  // i-frames: a hit grants 1.4s of mercy, which was a licence to walk on air.
+  const hurtRun = makeRun(); hurtRun.enter();
+  hurtRun.player.grounded = true; hurtRun.player.y = 0;
+  hurtRun.player.iframes = 1.2;
+  hurtRun.powerups.shieldStack = 0;
+  hurtRun.obstacles = [makeObstacle('gap', hurtRun.camX + PLAYER_X - 10)];
+  hurtRun.collide();
+  assert(hurtRun.dead, 'a hero mid-mercy-window still falls in');
+
+  // The shield: not spent, and not a ladder.
+  const shieldRun = makeRun(); shieldRun.enter();
+  shieldRun.player.grounded = true; shieldRun.player.y = 0; shieldRun.player.iframes = 0;
+  shieldRun.powerups.shieldStack = 2;
+  shieldRun.obstacles = [makeObstacle('gap', shieldRun.camX + PLAYER_X - 10)];
+  shieldRun.collide();
+  assert(shieldRun.dead, 'a shield does not stop a fall');
+  assert(shieldRun.powerups.shieldStack === 2,
+    `and is not consumed by one either (${shieldRun.powerups.shieldStack})`);
+
+  // Ray M'N's reassembly grace goes the same way: it is a defence against a
+  // fatal HIT, and a hole is not a hit.
+  const rayRun = makeRun(); rayRun.enter();
+  rayRun.relay.current = 'raymn'; rayRun.player.setHero('raymn');
+  rayRun.player.grounded = true; rayRun.player.y = 0; rayRun.player.iframes = 0;
+  rayRun.powerups.shieldStack = 0;
+  rayRun.battery = 1;
+  rayRun.obstacles = [makeObstacle('gap', rayRun.camX + PLAYER_X - 10)];
+  rayRun.collide();
+  assert(rayRun.dead, "Ray M'N does not reassemble out of a pit");
+}
+
 // THE JUMP SIGN. Two failures, not one: one is a mistimed jump, two is a
 // pattern. Below the threshold nothing appears, however many pits go past.
 run = makeRun(); run.enter();
-run.pitFails = 1;
+run.pitFails = 0;
 run.obstacles = [makeObstacle('gap', run.camX + 900)];
 run.signPits();
-assert(!run.obstacles.some((o) => o.type === 'jumpSign'), 'one pit failure earns no hint');
-run.pitFails = 2;
+assert(!run.obstacles.some((o) => o.type === 'jumpSign'), 'a clean run earns no hint');
+run.pitFails = 1;
 run.signPits();
 const sign = run.obstacles.find((o) => o.type === 'jumpSign');
-assert(sign, 'the second failure puts a JUMP sign in the lane');
+assert(sign, 'the first failure puts a JUMP sign in the lane');
 // The hint has to reach the player who needs it, and that player is the one
 // dying in a pit BEFORE the first checkpoint — whose every death restarts the
 // stage through enter(). A counter zeroed there can never reach two.
 {
   const restarted = makeRun(); restarted.enter();
-  restarted.pitFails = 2;
+  restarted.pitFails = 1;
   restarted.enter();
-  assert(restarted.pitFails === 2, 'the failure count survives a stage restart');
+  assert(restarted.pitFails === 1, 'the failure count survives a stage restart');
 }
 const signedGap = run.obstacles.find((o) => o.def.isGap);
-assert(sign.x + sign.w < signedGap.x && signedGap.x - (sign.x + sign.w) >= 40,
-  `the sign stands clear of the lip with a run-up left (${signedGap.x - (sign.x + sign.w)}px)`);
+assert(sign.x + sign.w < signedGap.x && signedGap.x - (sign.x + sign.w) <= 4,
+  `the sign stands right at the lip, so one jump clears both (${signedGap.x - (sign.x + sign.w)}px short)`);
+// ONE per attempt, not one per hole: a hint in front of every pit is a handrail.
+run.obstacles.push(makeObstacle('gap', run.camX + 2600));
 run.signPits();
 assert(run.obstacles.filter((o) => o.type === 'jumpSign').length === 1,
-  'and only one sign per pit, however often the spawner runs');
+  'and it is said once, not in front of every pit in the level');
 
 // It is a word, not a wall: walking into it costs nothing and knocks it over.
 run = makeRun(); run.enter();

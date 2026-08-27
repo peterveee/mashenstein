@@ -128,6 +128,38 @@ for (const pat of plumber.patterns) {
 assert(tier0Ground.size >= 3,
   `Plumber introduces at least three ground props at tier 0 (${[...tier0Ground].sort().join(', ')})`);
 
+// --- the cap, proved by running the spawner ---------------------------------
+// The pattern data can say `once` and the cap can still be broken by the code
+// that reads it, so this drives the real Spawner over stages far longer than any
+// the game ships and counts what comes out. Across seeds, because the pattern
+// pick is seeded and one lucky seed proves nothing.
+{
+  const { Spawner } = await import('../src/game/spawner.js');
+  const { Rng } = await import('../src/engine/rng.js');
+  const { CABINET_BY_ID } = await import('../src/data/cabinets.js');
+  let worst = 0, sawOne = 0, runs = 0;
+  for (const id of ['plumber', 'speed', 'surge']) {
+    for (let seed = 1; seed <= 40; seed++) {
+      const sp = new Spawner({ cabinet: CABINET_BY_ID[id], rng: new Rng(seed), tierMax: 2 });
+      const obstacles = [], pickups = [];
+      // ~24000px is several times a real stage, at the speed the lane runs.
+      for (let x = 0; x < 24000; x += 240) sp.fill(x, 260, obstacles, pickups, () => 45);
+      const n = obstacles.filter((o) => o.type === 'bananaPeel').length;
+      assert(n <= 1, `${id} seed ${seed}: at most one peel in a run (${n})`);
+      worst = Math.max(worst, n);
+      if (n === 1) sawOne++;
+      runs++;
+    }
+  }
+  assert(worst === 1, `the cap is one, and one does get placed (worst seen ${worst})`);
+  // The other half of "very occasional": it must actually turn up, or the whole
+  // thing is a prop nobody meets. Not every run — that is what makes it a
+  // surprise — but often enough to exist.
+  assert(sawOne > runs * 0.3,
+    `a peel shows up in a healthy share of runs (${sawOne}/${runs})`);
+  console.log(`ok: peel appeared in ${sawOne}/${runs} long runs, never twice`);
+}
+
 // --- the slip itself -------------------------------------------------------
 save.load();
 save.newSlot(0, 0);

@@ -38,6 +38,35 @@ export const REACT_FLOOR_MAX = 0.2;   // at highest tiers / UNPLUGGED
 export const COIN_GAP = 14;
 export const COIN_FLOOR = 8;
 
+// HOW FAR A HOLE OWNS THE LANE EITHER SIDE OF ITSELF.
+//
+// A pit is the one hazard whose fairness is not about reaction time but about
+// RUN-UP and LANDING: the near lip is where the jump has to be taken and the
+// far lip is where it comes down, and neither is a place the player gets to
+// choose anything. Anything standing in that window — a crate, and equally a
+// COIN — takes the choice away, because a coin at the lip is a lure toward the
+// hole and a coin over it is a lure into one.
+//
+// Two and a bit reaction runways, floored so the slowest stage still gets a
+// real window. Shared rather than restated: `spawnScriptedPits` cuts holes into
+// a lane the spawner has already laid, and a hole that clears its approach by a
+// different number than the spawner keeps clear of one is two rules for a
+// single picture.
+export const pitClearance = (react, speed) => Math.max(120, react * speed * 2.4);
+
+// A coin formation's width, known before any coin is placed so the run can be
+// tested against a hole and moved WHOLE. Half a formation is the same fairness
+// hole a half pattern is — worse here, because what is left of an amputated arc
+// is a fragment hanging in the air with nothing to say why.
+export function coinSpan(cell) {
+  switch (cell.shape || 'arc') {
+    case 'block': return ((cell.cols || 3) - 1) * COIN_GAP;
+    case 'line':  return ((cell.n || 6) - 1) * COIN_GAP;
+    case 'stair': return ((cell.n || 5) - 1) * COIN_GAP;
+    default:      return ((cell.n || 7) - 1) * COIN_GAP;
+  }
+}
+
 // Worst-case airtime among heroes: heavy Grumpos (gravity ×1.25).
 export function worstAirtime() { return (2 * BASE_JUMP_V * 0.9) / (GRAVITY * 1.25); }
 
@@ -56,6 +85,61 @@ export function worstJumpApex() {
   const v = BASE_JUMP_V * 0.9;
   return (v * v) / (2 * GRAVITY * 1.25);
 }
+
+/**
+ * Slide a run of width `w` starting at `x0` out from under every hole, landing
+ * side. Repeated rather than done once: pushing clear of one hole can walk the
+ * run into the next, and a lane may carry two.
+ */
+/**
+ * Take away every coin whose FORMATION reaches into a hole's clearance window.
+ *
+ * The other half of the rule `clearOfHoles` enforces, for coins that are
+ * already in the world when the hole appears: a pattern's own gap is laid after
+ * the previous pattern's coin run, and `spawnScriptedPits` cuts holes into a
+ * lane the spawner filled seconds ago. Both leave coins standing on a lip that
+ * did not exist when they were placed.
+ *
+ * By formation, never by position. An arc is 84px wide against a window
+ * measured from the lip, so a positional cut takes the middle of a run and
+ * leaves its far end hanging in the air with nothing to say why it stopped.
+ */
+export function sweepCoinsAroundHole(pickups, hx, hw, clear, keepFrom = -Infinity) {
+  const doomed = new Set();
+  for (const p of pickups) {
+    if (!p.live || p.following || p.formation == null || !p.def.coin) continue;
+    if (p.x + p.w > hx - clear && p.x < hx + hw + clear) doomed.add(p.formation);
+  }
+  if (!doomed.size) return;
+  // NOTHING VANISHES IN PLAIN VIEW. A tunnel's mouths are cut into a lane that
+  // is still being filled ahead of the camera, so this runs continuously — and
+  // a run of coins winking out while the player is looking at it is a worse
+  // picture than the one being fixed. A formation with any coin at or behind
+  // the near edge of the frame is left alone; the lane fills 200px further out
+  // than the view reaches, so in practice everything is caught before it
+  // arrives. Route coins are untouched whatever happens: the line diving into a
+  // mouth and the run along the road below carry no formation, because they are
+  // not formations — they are the road saying where it goes.
+  for (const p of pickups) {
+    if (p.formation != null && doomed.has(p.formation) && p.x < keepFrom) return;
+  }
+  for (const p of pickups) if (p.formation != null && doomed.has(p.formation)) p.live = false;
+}
+
+function clearOfHoles(x0, w, holes, clear) {
+  if (!holes.length) return x0;
+  let x = x0;
+  for (let pass = 0; pass < holes.length + 1; pass++) {
+    let moved = false;
+    for (const h of holes) {
+      if (x + w > h.x - clear && x < h.x + h.w + clear) { x = h.x + h.w + clear; moved = true; }
+    }
+    if (!moved) break;
+  }
+  return x;
+}
+
+let nextFormationId = 1;
 
 export class Spawner {
   constructor({ cabinet, rng, tierMax = 2, react = REACT_FLOOR, iceSlide = 0 }) {
@@ -152,11 +236,14 @@ export class Spawner {
       // advanced by a pattern that gets thrown away.
       const actionX = this.lastActionX, actionKind = this.lastActionKind;
       const wasPunt = this.lastWasPunt;
+      // Coins are laid AFTER the obstacles, not in cell order, because where a
+      // formation may go depends on where the holes ended up — and a gap moves:
+      // `fairGap` can push it right of the dx the pattern asked for, so a coin
+      // run placed on the way past would be measured against a hole that is not
+      // there yet.
+      const coinCells = [];
       for (const cell of pat.cells) {
-        if (cell.t === 'coins') {
-          lastX = Math.max(lastX, baseX + cell.dx + this.spawnCoins(baseX + cell.dx, cell, picks, jumpHeightFn));
-          continue;
-        }
+        if (cell.t === 'coins') { coinCells.push(cell); continue; }
         const def = OBSTACLES[cell.t];
         if (!def) continue;
         let x = baseX + cell.dx;
@@ -176,6 +263,18 @@ export class Spawner {
         obs.push(ob);
         lastX = Math.max(lastX, x + ob.w);
       }
+      // NO COIN OVER A HOLE, AND NONE ON EITHER LIP.
+      //
+      // Moved rather than trimmed: a run pushed past the landing is still the
+      // shape the pattern drew, and it is now somewhere the player arrives with
+      // a jump in hand. Trimming leaves the tail of an arc floating over the
+      // pit — which is the picture this rule exists to delete.
+      const holes = obs.filter((o) => o.def.isGap).map((o) => ({ x: o.x, w: o.w }));
+      for (const cell of coinCells) {
+        const x = clearOfHoles(baseX + cell.dx, coinSpan(cell) + PICKUPS.coin.w,
+          holes, pitClearance(this.react, speed));
+        lastX = Math.max(lastX, x + this.spawnCoins(x, cell, picks, jumpHeightFn));
+      }
       // The far edge of everything this pattern laid down, coins included.
       let right = lastX;
       for (const p of picks) right = Math.max(right, p.x + (p.w || 8));
@@ -188,6 +287,12 @@ export class Spawner {
       }
       for (const ob of obs) obstacles.push(ob);
       for (const p of picks) pickups.push(p);
+      // A hole clears its APPROACH as well as its landing, and the approach was
+      // laid by the pattern before this one — which knew nothing about a gap
+      // that had not been chosen yet. `clearOfHoles` can only move what this
+      // pattern is placing; this takes back what is already down.
+      const clear = pitClearance(this.react, speed);
+      for (const h of holes) sweepCoinsAroundHole(pickups, h.x, h.w, clear, worldX);
       // Committed, so a `once` pattern is now spent for this run. Above the
       // stopX bail-out on purpose — see pickPattern.
       if (pat.once) this.usedOnce.add(pat);
@@ -205,7 +310,17 @@ export class Spawner {
   // Returns the formation's width in px so fill() can advance past it.
   spawnCoins(x0, cell, pickups, jumpHeightFn) {
     const hMax = (jumpHeightFn ? jumpHeightFn() : 45) * 0.85;
-    const put = (dx, alt) => pickups.push(makePickup('coin', x0 + dx, COIN_FLOOR + alt));
+    // Every coin carries the id of the run it belongs to, so a formation can be
+    // taken away whole later. `spawnScriptedPits` cuts holes into a lane that is
+    // already laid, and without this it could only sweep by position — which is
+    // how an arc came to be left as a fragment hanging at the lip of a pit. A
+    // formation is one thing; anything that removes part of it removes all of it.
+    const fid = nextFormationId++;
+    const put = (dx, alt) => {
+      const c = makePickup('coin', x0 + dx, COIN_FLOOR + alt);
+      c.formation = fid;
+      pickups.push(c);
+    };
     switch (cell.shape || 'arc') {
       // The jump parabola itself. n IS the shape: four coins sample the hump
       // coarsely enough to read as a triangle, seven or more as a curve.

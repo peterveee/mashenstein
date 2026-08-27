@@ -299,6 +299,23 @@ const survivors = run.obstacles.filter((o) => o.live && o.def && o.def.action !=
 assert(survivors.length === 0,
   `nothing you must react to is left in the landing zone (${survivors.length} left)`);
 
+// ---- and NOTHING to jump stands under a low slab -----------------------------
+// An island tops out at MAX_ISLAND_RISE, which leaves ~20px of air under it
+// against a 14px hero: a cactus down there fits, so the old intersection test
+// kept it, and the jump it asks for is a jump into the soil. The rule is the
+// room the ANSWER takes, not the room the body takes.
+const { PLAYER_H: HERO_H } = await import('../src/game/player.js');
+const midSlab = island.x + island.w / 2;
+const squat = makeObstacle(hazardType, midSlab, {});
+run.obstacles.push(squat);
+run.camX = island.x - 200;
+run.clearRouteHazards();
+const room = run.groundYAt(midSlab) - (run.routeGroundY(midSlab, island) + 9 + 3);
+assert(room < squat.h + HERO_H,
+  `the slab is low enough that the jump has no room (${room.toFixed(1)}px for ${squat.h}+${HERO_H})`);
+assert(!squat.live,
+  'so a hazard under a low slab is cleared even though it fits beneath it');
+
 // ---- and the run-up to the mouth is kept clear too ---------------------------
 // A hazard a jump's length in front of a ledge takes the choice away twice: not
 // jumping is a hit, and the jump that clears it lands on the slab. The player

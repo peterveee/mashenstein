@@ -948,38 +948,63 @@ export const PROP_PAINTERS = {
     // has lost its holes is a row of marks.
     const lw = Math.max(0.4, bh * 0.11);
     const top = ly + bh * 0.24, bot = ly + bh * 0.68;
-    const cellW = bw * 0.185, gap = bw * 0.05;
-    let gx = lx + bw * 0.5 - (cellW * 4 + gap * 3) / 2;
-    const letter = (fn) => { stroke(ctx, '#2a1e0e', lw, fn); gx += cellW + gap; };
+    // Per-glyph widths rather than one cell size for all five. The M needs more
+    // room than the P and the bang needs almost none — given equal cells the M
+    // closes up and the bang floats in the middle of a hole the width of a
+    // letter, which reads as a full stop that has come loose.
+    const WIDTHS = [1, 1, 1.15, 1, 0.42];
+    const gap = bw * 0.045;
+    const unit = (bw * 0.86 - gap * (WIDTHS.length - 1))
+      / WIDTHS.reduce((acc, k) => acc + k, 0);
+    let gx = lx + bw * 0.5
+      - (unit * WIDTHS.reduce((acc, k) => acc + k, 0) + gap * (WIDTHS.length - 1)) / 2;
+    let gi = 0;
+    const letter = (fn) => {
+      const cw = unit * WIDTHS[gi];
+      stroke(ctx, '#2a1e0e', lw, (c) => fn(c, gx, cw));
+      gx += cw + gap;
+      gi++;
+    };
     // J — stem down the right, hooking left at the foot.
-    letter((c) => {
-      c.moveTo(gx + cellW * 0.72, top);
-      c.lineTo(gx + cellW * 0.72, bot - cellW * 0.26);
-      c.quadraticCurveTo(gx + cellW * 0.72, bot, gx + cellW * 0.2, bot - cellW * 0.06);
+    letter((c, x, cw) => {
+      c.moveTo(x + cw * 0.72, top);
+      c.lineTo(x + cw * 0.72, bot - cw * 0.26);
+      c.quadraticCurveTo(x + cw * 0.72, bot, x + cw * 0.2, bot - cw * 0.06);
     });
     // U — down, across, up.
-    letter((c) => {
-      c.moveTo(gx + cellW * 0.16, top);
-      c.lineTo(gx + cellW * 0.16, bot - cellW * 0.22);
-      c.quadraticCurveTo(gx + cellW * 0.5, bot + cellW * 0.1, gx + cellW * 0.84, bot - cellW * 0.22);
-      c.lineTo(gx + cellW * 0.84, top);
+    letter((c, x, cw) => {
+      c.moveTo(x + cw * 0.16, top);
+      c.lineTo(x + cw * 0.16, bot - cw * 0.22);
+      c.quadraticCurveTo(x + cw * 0.5, bot + cw * 0.1, x + cw * 0.84, bot - cw * 0.22);
+      c.lineTo(x + cw * 0.84, top);
     });
     // M — two stems and a shallow V. A deep V closes up at this size.
-    letter((c) => {
-      c.moveTo(gx + cellW * 0.12, bot);
-      c.lineTo(gx + cellW * 0.12, top);
-      c.lineTo(gx + cellW * 0.5, top + (bot - top) * 0.5);
-      c.lineTo(gx + cellW * 0.88, top);
-      c.lineTo(gx + cellW * 0.88, bot);
+    letter((c, x, cw) => {
+      c.moveTo(x + cw * 0.12, bot);
+      c.lineTo(x + cw * 0.12, top);
+      c.lineTo(x + cw * 0.5, top + (bot - top) * 0.5);
+      c.lineTo(x + cw * 0.88, top);
+      c.lineTo(x + cw * 0.88, bot);
     });
     // P — stem and a bowl on the top half only.
-    letter((c) => {
-      c.moveTo(gx + cellW * 0.16, bot);
-      c.lineTo(gx + cellW * 0.16, top);
-      c.lineTo(gx + cellW * 0.56, top);
-      c.quadraticCurveTo(gx + cellW * 0.92, top + (bot - top) * 0.25, gx + cellW * 0.56, top + (bot - top) * 0.5);
-      c.lineTo(gx + cellW * 0.16, top + (bot - top) * 0.5);
+    letter((c, x, cw) => {
+      c.moveTo(x + cw * 0.16, bot);
+      c.lineTo(x + cw * 0.16, top);
+      c.lineTo(x + cw * 0.56, top);
+      c.quadraticCurveTo(x + cw * 0.92, top + (bot - top) * 0.25, x + cw * 0.56, top + (bot - top) * 0.5);
+      c.lineTo(x + cw * 0.16, top + (bot - top) * 0.5);
     });
+    // ! — the stem strokes with the letters; the dot is its own filled disc.
+    // Drawn as a stub of the same stroke it came out a horizontal dash: a
+    // segment shorter than its own line width is all end-cap, and two round
+    // caps meeting draw a lozenge lying the wrong way. A circle is one path and
+    // it is the shape actually wanted.
+    const bangX = gx + unit * WIDTHS[gi] * 0.5;
+    letter((c, x, cw) => {
+      c.moveTo(x + cw * 0.5, top);
+      c.lineTo(x + cw * 0.5, top + (bot - top) * 0.62);
+    });
+    plain(ctx, '#2a1e0e', (c) => c.arc(bangX, bot - lw * 0.2, lw * 0.62, 0, Math.PI * 2));
     ctx.restore();
   },
   tombstone(ctx, w, h) {

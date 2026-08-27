@@ -17,7 +17,7 @@ import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JU
 import { PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
-import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR } from './spawner.js';
+import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 import { entityBox, overlaps, makePickup, makeObstacle, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { PIT_FLOOR } from './pitFill.js';
@@ -26,7 +26,7 @@ import { HERO_SPRITES } from '../sprites/heroes.js';
 import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
-import { FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
+import { FAIL_MESSAGES, PIT_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY } from './hud.js';
 import { goalsDone } from './plugs.js';
@@ -161,17 +161,22 @@ export const PIT_SURFACE_Y = -Math.round(PIT_FLOOR * 38);
 // A fifth of the speed he arrived at. Slow enough to be a sinking rather than
 // a second fall.
 const PIT_SINK_RATE = 15;
+// How much of the fall survives the surface. Capped so a hero who came in off a
+// spring does not fire through the material and out of the frame.
+const PIT_PLUNGE_MAX = 90;
 // Fall, sink, then an empty hole. The empty hole is the half of it that says he
 // is not coming back out; without it the restore lands on top of the sink and
 // the beat reads as a stutter rather than as an ending.
 const PIT_DEATH_HOLD = 1.75;
-// ...and the fail banner waits, because it dims the whole frame and the frame
-// is the only place the death is happening.
-const PIT_BANNER_DELAY = 1.15;
-// How far short of the lip the JUMP sign stands. Roughly a jump's run-up: far
-// enough back to be read and acted on, close enough that it is plainly about
-// THAT hole and not about the lane in general.
-const SIGN_LEAD = 52;
+// How far short of the lip the JUMP sign stands. Touching it, near enough.
+//
+// It went 52 -> 12 -> 2. At a run-up back it read as roadside furniture
+// somewhere in the lane and the player had to work out which hazard it meant.
+// At the lip there is nothing to work out — the sign and the hole are one
+// object — and, more usefully, ONE JUMP CLEARS BOTH. That is the whole reason
+// for putting it here rather than merely near: the hint occupies no ground the
+// player needs, so acting on it is never punished by the thing that told them.
+const SIGN_LEAD = 2;
 // How long a queued line waits for the hero to put his feet down before it goes
 // up anyway. Long enough to cover any single jump in the cast (the longest
 // airtime is under a second) with room for a bounced landing, short enough that
@@ -1470,6 +1475,10 @@ export class RunState {
     // A fresh RunState (leaving to the map and coming back) does start again,
     // and should: the counter is about one sitting with one hole.
     this.pitFails = this.pitFails || 0;
+    // Reset per ATTEMPT while the count above is not. One hint each time you
+    // start the stage over: the player who is still failing has still not been
+    // told this run, and the player who has been told does not need it twice.
+    this.signShown = false;
     this.finished = false;
     this.finaleT = null;        // finish-line hold timer; null = not crossed yet
     this.flipSlide = null;      // pole ride between the catch and the plunger
@@ -4628,6 +4637,36 @@ export class RunState {
       const exitTo = fall <= 0.01 ? exitFrom
         : exitFrom + Math.sqrt((2 * fall) / GRAVITY) * this.speed
           + this.spawner.react * this.speed;
+      // NO LANE COIN RUN ACROSS A MOUTH OR ONTO ITS LIP.
+      //
+      // The rule `populateRoute` already states for hazards — nothing under an
+      // opening, and nothing in the run-up to one, because a hole is a CHOICE
+      // and something sitting in it makes the choice for you — applies with
+      // more force to a coin, which is not a thing you dodge but a thing you
+      // steer toward. The lane's arcs know nothing about a mouth: they are laid
+      // by the spawner, and the mouth is cut later into ground the spawner had
+      // already filled. So an arc's last coin came to rest at ground level a
+      // pixel short of the lip, hanging over the hole, and going for it dropped
+      // you down it.
+      //
+      // The route's OWN coins are untouched. The line diving into a mouth and
+      // the run along the road below carry no formation id, and that is exactly
+      // what marks them as the road's furniture rather than the lane's — they
+      // are the only thing on the surface that says the hole is a way in.
+      //
+      // Run every frame the route is in range rather than once at the cut,
+      // because the lane keeps filling ahead of this sweep for as long as the
+      // route lasts: a run laid after the mouth existed would float over it.
+      {
+        const clear = pitClearance(this.spawner.react, this.speed);
+        const keepFrom = this.camX;
+        const holes = is.kind === 'tunnel'
+          ? [{ x: is.x, w: is.mouthW }, ...(is.holes || [])]
+          : [];
+        for (const h of holes) {
+          sweepCoinsAroundHole(this.pickups, h.x, h.w, clear, keepFrom);
+        }
+      }
       for (const ob of this.obstacles) {
         // A spring pad and a tunnel's own mouth are ROUTE FURNITURE, not lane
         // clutter. Sweeping the mouth is exactly right for everything standing
@@ -4677,9 +4716,30 @@ export class RunState {
         // thing on screen, and a sweep measuring a slab thinner than the one
         // drawn leaves hazards standing through the platform.
         const underside = this.routeGroundY(ob.x, is) + ISLAND_THICKNESS + 3;
+        // A LOW SLAB OWNS THE LANE UNDER IT.
+        //
+        // The test used to be intersection — clear the hazard only if it pokes
+        // up INTO the soil — and that is not the question. The question is
+        // whether the thing can still be dealt with down here, and under a slab
+        // that is close to the ground it cannot: an island tops out at
+        // MAX_ISLAND_RISE, which leaves about twenty pixels of air beneath it,
+        // and a hero is fourteen of them. A cactus in that slot fits with a few
+        // pixels to spare and is drawn jammed against the underside, and the
+        // jump it asks for is a jump into the soil. It reads as a mistake and it
+        // plays as one.
+        //
+        // So a prop needs the room its OWN answer takes, not the room its body
+        // takes. Something to jump needs its own height plus a hero's above it —
+        // that is where his feet are at the moment he clears it, and his head is
+        // a full body higher — while something to duck or simply pass needs only
+        // to fit, with a little air so it is not scraping the ceiling. Under any
+        // island a jumpable prop fails that by a wide margin, which is the rule
+        // Peter asked for; a road that has climbed well clear, or a sprung one
+        // that starts above jump range, still keeps its underpass.
+        const headroom = this.groundYAt(ob.x) - underside;
+        const needs = ob.alt + ob.h + (ob.def.action === 'jump' ? PLAYER_H + 3 : 3);
         const inExit = ob.x + ob.w >= exitFrom && ob.x <= exitTo && ob.def.action !== 'none';
-        const underSlab = ob.x + ob.w >= is.x && ob.x <= exitFrom
-          && this.groundYAt(ob.x) - ob.alt - ob.h < underside;
+        const underSlab = ob.x + ob.w >= is.x && ob.x <= exitFrom && headroom < needs;
         const inEntry = entryFrom != null && ob.def.action !== 'none'
           && ob.x + ob.w >= entryFrom && ob.x <= is.x;
         if (underSlab) ob.live = false;
@@ -4752,11 +4812,32 @@ export class RunState {
       // Never in the finishing straight, and never so late that the run ends
       // with the player in a hole they had no room to read.
       if (plan.x + plan.w + 200 > this.finishWorldX()) continue;
-      const clear = Math.max(120, this.spawner.react * this.speed * 2.4);
+      const clear = pitClearance(this.spawner.react, this.speed);
       for (const ob of this.obstacles) {
         if (!ob.live || ob.route) continue;
         if (ob.x + ob.w > plan.x - clear && ob.x < plan.x + plan.w + clear) ob.live = false;
       }
+      // AND THE SAME WINDOW FOR PICKUPS, not just the hole itself.
+      //
+      // This used to clear only what was directly over the break, and clearing
+      // the middle of a coin arc is the worst of the three options: what was
+      // left was the tail of a formation ending in mid-air at the lip, with
+      // nothing under it and nothing to say why it stopped. A coin there is
+      // also unfair on its own terms — the lips are the two places the player
+      // does not choose anything, and a coin on one is a lure toward a hole.
+      //
+      // Mission furniture is exempt from the wide window and keeps the narrow
+      // one. The appliance is one per stage and placed by its own hazard-aware
+      // search; sweeping it for landing near a scripted pit costs the player
+      // the objective rather than a few coins.
+      // Coin runs go whole, through the same sweep the spawner uses when a
+      // pattern's own gap lands behind one — one rule, one window, whichever
+      // end of the game cut the hole.
+      sweepCoinsAroundHole(this.pickups, plan.x, plan.w, clear);
+      // Everything else keeps the narrow rule: over the break and no wider. A
+      // capsule near a lip is a gift rather than a lure, and the appliance is
+      // one per stage — sweeping it for landing beside a scripted pit costs the
+      // player the objective rather than a few coins.
       this.pickups = this.pickups.filter((pk) => !pk.live || pk.following
         || pk.x + 6 < plan.x - 4 || pk.x > plan.x + plan.w + 4);
       const hole = makeObstacle('gap', plan.x, {});
@@ -4788,7 +4869,12 @@ export class RunState {
   // for nothing, and it is placed a clear run-up short of the lip so the thing
   // it is asking for is still available after you have read it.
   signPits() {
-    if (this.pitFails < 2) return;
+    // ONE failure, not two. Two was the cautious number — one is a mistimed
+    // jump, two is a pattern — and it is the wrong one for a hazard this
+    // expensive: the second failure has already cost the player a checkpoint's
+    // worth of run, and a hint that arrives after that is arriving to comment
+    // rather than to help. Say it the first time the floor wins.
+    if (this.pitFails < 1 || this.signShown) return;
     for (const ob of this.obstacles) {
       if (!ob.live || !ob.def || !ob.def.isGap || ob.signed || ob.tunnel) continue;
       // Far enough ahead that the SIGN — not just the pit — is still off screen.
@@ -4800,8 +4886,16 @@ export class RunState {
       ob.signed = true;
       // Never on top of anything. The sign is the one entity the player is
       // meant to be READING, and a sign half behind a cone is not readable.
+      // Never on top of anything — but a HOLE is not a thing it can be on top
+      // of, and the six-pixel breathing room every prop gets was, at this
+      // distance, the hole itself vetoing its own sign. Gaps are tested for
+      // literal overlap and nothing more: standing on the very lip is the whole
+      // idea, and the ground the sign occupies is ground, not void.
+      const sw = OBSTACLES.jumpSign.w;
       const clear = this.obstacles.every((o) => !o.live
-        || o.x + o.w + 6 < x || o.x > x + OBSTACLES.jumpSign.w + 6);
+        || (o.def.isGap
+          ? o.x + o.w <= x || o.x >= x + sw
+          : o.x + o.w + 6 < x || o.x > x + sw + 6));
       // `signed` rides on the gap, and a rewind restores obstacles as fresh
       // objects without it — so the emptiness of the ground is what actually
       // guarantees one sign per hole, and the flag is only the fast path.
@@ -4810,6 +4904,12 @@ export class RunState {
       // Same road as the hole it is about, or it is a sign on a different floor.
       sign.route = ob.route;
       this.obstacles.push(sign);
+      // ONE. A hint in front of every hole for the rest of the stage is not a
+      // hint, it is a handrail — it stops reading as the game noticing you
+      // struggled and starts reading as how this level is decorated. Say it
+      // once, at the next hole, and let the player carry it.
+      this.signShown = true;
+      return;
     }
   }
 
@@ -4867,6 +4967,7 @@ export class RunState {
       // taken at the checkpoint, so what it restores is the state BEFORE the
       // pit that killed them was ever laid.
       pitsDone: this.pitPlan.map((pp) => pp.done),
+      signShown: this.signShown,
       escapeWall: this.escapeWall,
       copterCaught: this.copter ? this.copter.caught : 0,
       // Which road the hero is on, as an INDEX rather than the island object:
@@ -4912,6 +5013,7 @@ export class RunState {
     this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot;
     this.loopSpawned = !!s.loopSpawned;
     if (s.pitsDone) for (let i = 0; i < this.pitPlan.length; i++) this.pitPlan[i].done = !!s.pitsDone[i];
+    this.signShown = !!s.signShown;
     this.escapeWall = s.escapeWall != null ? s.camX - 140 : null;
     if (this.copter) { this.copter.caught = s.copterCaught; this.copter.cooldown = 2; }
     // Checkpoints all sit short of the breaker, so a restore that happened to
@@ -4974,6 +5076,7 @@ export class RunState {
     // stored by reference, for the same reason the player's fields are.
     s.loopSpawned = this.loopSpawned;
     s.pitsDone = copyArrayInto(this.pitPlan.map((pp) => pp.done), s.pitsDone);
+    s.signShown = this.signShown;
     if (this.loop) {
       const ls = s.loop || (s.loop = {});
       ls.obId = this.loop.obId; ls.cx = this.loop.cx; ls.r = this.loop.r;
@@ -5196,6 +5299,7 @@ export class RunState {
     this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot;
     this.loopSpawned = s.loopSpawned;
     for (let i = 0; i < this.pitPlan.length; i++) this.pitPlan[i].done = !!(s.pitsDone && s.pitsDone[i]);
+    this.signShown = !!s.signShown;
     // Rewinding INTO a lap has to put the ride back, or the tape runs the world
     // backward round the ring while the hero stands upright in the air beside
     // it. Copied field by field like everything else here — the pooled slot is
@@ -5282,7 +5386,7 @@ export class RunState {
         // Pit: if player is over the gap at ground level, fall in.
         const over = pbox.x + pbox.w / 2 > ob.x && pbox.x + pbox.w / 2 < ob.x + ob.w;
         if (over && this.player.grounded && this.player.y <= 0) {
-          this.takeHit('GRAVITY REMAINS UNDEFEATED', true, null, ob);
+          this.takeHit(this.fxRng.pick(PIT_FAIL_MESSAGES), true, null, ob);
         }
         continue;
       }
@@ -5712,7 +5816,12 @@ export class RunState {
   }
 
   takeHit(msg, isPit = false, src = null, pit = null) {
-    if (this.player.iframes > 0) return;
+    // NOTHING IN THIS GAME SAVES YOU FROM A HOLE, and the mercy window is the
+    // first thing that was. A hit grants 1.4 seconds of i-frames, and this
+    // guard turned those seconds into a licence to WALK ON AIR: clip a crate,
+    // then stroll over the next pit without touching it. The floor is not a
+    // hazard you are briefly immune to; it is the floor, and it was not there.
+    if (!isPit && this.player.iframes > 0) return;
     // Anything that reaches him mid-lap — a drone's shot is the only thing that
     // can — ends the ride first. Knocking a hero about while the run is still
     // writing his position from a circle would fight over the same field and the
@@ -5725,6 +5834,61 @@ export class RunState {
       this.player.grounded = false;
     }
     if (this.devInvuln) this.devHits.push({ type: src || (isPit ? 'pit' : 'hazard'), worldX: Math.floor(this.playerWorldX()) });
+    // A PIT IS FATAL, and it is fatal FIRST — above the shield, above Ray M'N's
+    // reassembly, above everything below this line that can turn a hit into a
+    // survivable one. Falling is not damage arriving that a defence can be
+    // spent on: it is the hero at the bottom of a hole, and no item in the game
+    // is a ladder. The shield is not even consumed — losing an orb to a mistake
+    // it could never have prevented is worse than losing nothing.
+    //
+    // It is not a difficulty change so much as an honesty one. A hole was the
+    // one hazard you could beat by walking into it: take the cell, get hopped
+    // out the far side, keep going — which taught the player that the floor is
+    // optional, and made every carve the terrain does mean less than the props
+    // standing on it. Falling has to mean falling.
+    //
+    // Crash test still walks out, the way it walks out of everything else: it
+    // is for watching hazards fire, and a sweep that ended at the first gap
+    // would never reach the second one.
+    if (isPit && !this.devInvuln) {
+      this.damageTaken++;
+      if (this.challenge && this.challenge.type === 'noDamage' && !this.challenge.failed) {
+        this.challenge.failed = true;
+        this.bonusT = BONUS_HOLD;
+      }
+      // No `hit` cue and no hitstop: the death cue is the event, and stacking a
+      // hit on top of it reads as two things happening. The shake is bigger
+      // than a hit's because the consequence is.
+      shake(7, 0.4);
+      this.pitFails++;
+      // HE DOES NOT STOP DEAD OVER THE LIP. The run freezes the world the frame
+      // it dies — updateDead skips the scroll — so without this the hero drops
+      // vertically off the near edge like a lift, which is the one thing a
+      // runner never does. He was moving; he keeps moving.
+      //
+      // Carried as a screen offset rather than by letting the world scroll on:
+      // scrolling would advance the camera into ground the spawner has not
+      // filled and would move a lane the player has no control over, for a
+      // second and a half, after the run is already decided.
+      //
+      // Half the hole's width. Far enough that the arc is plainly an arc and he
+      // lands in the middle of the thing rather than scraping its wall; short
+      // enough that a missed jump never looks like it nearly cleared.
+      this.pitDeath = {
+        in: false,
+        dx: 0,
+        vx: this.speed,
+        carry: (pit ? pit.w : OBSTACLES.gap.w) * 0.5,
+        plunge: 0,
+      };
+      this.player.fallFace = true;
+      this.player.vy = Math.min(this.player.vy, 0);
+      // Zeroed rather than decremented so the HUD is not showing cells in hand
+      // through the death. The restore hands the checkpoint's battery back.
+      this.battery = 0;
+      this.die(msg);
+      return;
+    }
     // UNPEELABLE deflects hits; gravity remains undefeated (pits still hurt).
     if (!isPit && this.powerups.isInvincible()) {
       this.player.iframes = 0.35;   // debounce repeated same-frame contact
@@ -5760,63 +5924,6 @@ export class RunState {
       Audio.sfx('plop');
       this.floatText("RAY M'N SCATTERED. REASSEMBLY IS IN PROGRESS.", '#48e0c8');
       if (isPit) this.hopOutOfPit();
-      return;
-    }
-    // A PIT IS FATAL. Everything above this line can still save you — the
-    // shield eats it, Ray M'N reassembles out of it, and both of those hop him
-    // back onto the floor — but nothing that reaches here climbs out of a hole
-    // in the ground with one cell docked and a bounce. The run goes back to the
-    // last checkpoint, which updateDead already does for any death.
-    //
-    // It is not a difficulty change so much as an honesty one. A hole was the
-    // one hazard in the game you could beat by walking into it: take the cell,
-    // get hopped out the far side, keep going — which taught the player that
-    // the floor is optional, and made every carve the terrain does mean less
-    // than the props standing on it. Falling has to mean falling.
-    //
-    // Everything below still runs for a non-pit hit, and devInvuln still walks
-    // out of a pit the way it walks out of everything else: crash test is for
-    // watching hazards fire, and a crash test that ended at the first gap would
-    // never reach the second one.
-    if (isPit && !this.devInvuln) {
-      this.damageTaken++;
-      if (this.challenge && this.challenge.type === 'noDamage' && !this.challenge.failed) {
-        this.challenge.failed = true;
-        this.bonusT = BONUS_HOLD;
-      }
-      // No `hit` cue and no hitstop: the death cue is the event, and stacking a
-      // hit on top of it reads as two things happening. The shake is bigger
-      // than a hit's because the consequence is.
-      shake(7, 0.4);
-      // Hand the death over to updatePitSink, and put the face on now rather
-      // than on the first dead frame — the hero is airborne and surprised from
-      // the moment the floor stops being there.
-      this.pitFails++;
-      // HE DOES NOT STOP DEAD OVER THE LIP. The run freezes the world the frame
-      // it dies — updateDead skips the scroll — so without this the hero drops
-      // vertically off the near edge like a lift, which is the one thing a
-      // runner never does. He was moving; he keeps moving.
-      //
-      // Carried as a screen offset rather than by letting the world scroll on:
-      // scrolling would advance the camera into ground the spawner has not
-      // filled and would move a lane the player has no control over, for a
-      // second and a half, after the run is already decided.
-      //
-      // Half the hole's width. Far enough that the arc is plainly an arc and he
-      // lands in the middle of the thing rather than scraping its wall; short
-      // enough that a missed jump never looks like it nearly cleared.
-      this.pitDeath = {
-        in: false,
-        dx: 0,
-        vx: this.speed,
-        carry: (pit ? pit.w : OBSTACLES.gap.w) * 0.5,
-      };
-      this.player.fallFace = true;
-      this.player.vy = Math.min(this.player.vy, 0);
-      // Zeroed rather than decremented so the HUD is not showing cells in hand
-      // through the death pop. The restore hands the checkpoint's battery back.
-      this.battery = 0;
-      this.die(msg);
       return;
     }
     // Crash test absorbs the consequence only. Everything below — sfx, shake,
@@ -5941,29 +6048,37 @@ export class RunState {
   // between "you were hit" and "you are gone".
   updatePitSink(dt) {
     const p = this.player;
+    const d = this.pitDeath;
     // Held every frame: the face is derived from this in poseFromPlayer, and
     // updateFallFace — which normally sets it — does not run while dead.
     p.fallFace = true;
     p.grounded = false;
-    if (!this.pitDeath.in && this.pitDeath.dx < this.pitDeath.carry) {
-      // Momentum, with drag on it. Not a constant glide: he is falling, so the
-      // forward travel has to be dying away while the drop is speeding up, or
-      // the arc reads as a step off a diving board.
-      this.pitDeath.vx *= Math.pow(0.22, dt);
-      this.pitDeath.dx = Math.min(this.pitDeath.carry, this.pitDeath.dx + this.pitDeath.vx * dt);
+    // Momentum, with drag on it, and only while he is still in the air. Not a
+    // constant glide: he is falling, so the forward travel has to be dying away
+    // while the drop is speeding up, or the arc reads as a step off a diving
+    // board rather than as a runner who ran out of floor.
+    if (!d.in && d.dx < d.carry) {
+      d.vx *= Math.pow(0.22, dt);
+      d.dx = Math.min(d.carry, d.dx + d.vx * dt);
     }
-    if (!this.pitDeath.in) {
+    if (!d.in) {
       p.vy -= this.gravityForDeath() * dt;
       p.y += p.vy * dt;
       if (p.y <= PIT_SURFACE_Y) {
         p.y = PIT_SURFACE_Y;
+        d.in = true;
+        // HE BREAKS THE SURFACE, he does not land on it. Zeroing the fall here
+        // stopped him dead on the tar like a man stepping onto a floor, which
+        // is the one thing the material must not look like — the whole reason
+        // it is there is that it is not a floor. Most of the fall is taken out
+        // of him and the rest carries him under.
+        d.plunge = Math.min(PIT_PLUNGE_MAX, Math.abs(p.vy) * 0.4);
         p.vy = 0;
-        this.pitDeath.in = true;
         Audio.sfx('plop');
         shake(3, 0.22);
-        // Whatever he went into, coming back up. Colourless on purpose: no fill
-        // is wired to a cabinet yet, and a burst that guessed orange would be
-        // lying about the pit on seven of the nine.
+        // Whatever he went into, coming back up. Colourless on purpose: eight
+        // of the nine cabinets name no fill, and a burst that guessed orange
+        // would be lying about the pit on all of them.
         if (!this.save.settings.reducedMotion) {
           burst(this.playerWorldX() + 6, this.playerGroundY() - p.y, 12, 70, 0.5,
             '#8a8496', 1.5, 90, () => this.fxRng.float());
@@ -5971,10 +6086,11 @@ export class RunState {
       }
       return;
     }
-    // Under he goes, at a fifth of the speed he arrived at. Slow is the whole
-    // point: a fast sink is another fall, and what this beat is for is the
-    // hero being visibly TAKEN rather than dropped.
-    p.y -= PIT_SINK_RATE * dt;
+    // The plunge dies away into a sink, and the sink is what the beat is for:
+    // slow is the point, because a fast one is just a second fall and what this
+    // wants to show is the hero being visibly TAKEN rather than dropped.
+    d.plunge *= Math.pow(0.05, dt);
+    p.y -= Math.max(PIT_SINK_RATE, d.plunge) * dt;
   }
 
   // How long the death holds before the checkpoint takes the run back. A pit
@@ -6694,10 +6810,13 @@ export class RunState {
     // dim and the fail message landed UNDER the whole HUD layer, so the status
     // pill, the objectives, any floatie still on screen and the touch buttons
     // all sat on top of the screen that was supposed to be covering them.
-    // The fail banner dims the whole frame, and on a pit death the frame is the
-    // only place anything is happening — so it waits for the hero to be most of
-    // the way under before it covers him up.
-    if (this.dead && (!this.pitDeath || this.deadT > PIT_BANNER_DELAY)) {
+    // No delay, on a pit death or any other. The banner used to wait out the
+    // sink so as not to dim the one thing worth watching — but the player knows
+    // the run is over the instant their feet leave the lip, and a screen that
+    // withholds the verdict for a second and a quarter after they know it reads
+    // as the game thinking about it. It says so immediately; the sink plays on
+    // underneath, which is what the dim is for.
+    if (this.dead) {
       const drawFail = (d) => drawFailBanner(d, this.failMsg || 'UNPLUGGED');
       if (!pushOverlayDraw(drawFail)) drawFail(ctx);
     }
