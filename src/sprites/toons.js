@@ -9287,7 +9287,13 @@ export function poseFromPlayer(player, t) {
     kind,
     fell,
     bigFall,
+    // An unplanned fall owns the full startled face, not just its wide eyes
+    // and open mouth. `expressionFor` already treats faceSurprised as an
+    // action face; the raised brow is the extra beat that makes the alarm read
+    // clearly while a pit carries the hero down through a dark, busy opening.
+    // Rigs without brows still use their own surprise eyes/mouth treatment.
     faceSurprised: fallFace,
+    browRaise: fallFace,
     phase: player.anim % 1,
     // The bite's clock has to start at 0 the instant the ability fires, not
     // wherever the run's absolute clock happens to be, or biteWave() opens

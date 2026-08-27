@@ -173,16 +173,16 @@ const TOE_CATCH = 10;
 // A cabinet that names no fill has nothing to land in, and the same beat plays
 // with the hero falling straight past — which is what an open break should do.
 export const PIT_SURFACE_Y = -Math.round(PIT_FLOOR * 38);
-// A fifth of the speed he arrived at. Slow enough to be a sinking rather than
-// a second fall.
-const PIT_SINK_RATE = 15;
+// A little under a fifth of the speed he arrived at. Slow enough to linger as
+// a visible sinking rather than reading as a second fall.
+const PIT_SINK_RATE = 12;
 // How much of the fall survives the surface. Capped so a hero who came in off a
 // spring does not fire through the material and out of the frame.
 const PIT_PLUNGE_MAX = 90;
 // Fall, sink, then an empty hole. The empty hole is the half of it that says he
 // is not coming back out; without it the restore lands on top of the sink and
 // the beat reads as a stutter rather than as an ending.
-const PIT_DEATH_HOLD = 1.75;
+const PIT_DEATH_HOLD = 2.25;
 // How far short of the lip the JUMP sign stands. Touching it, near enough.
 //
 // It went 52 -> 12 -> 2. At a run-up back it read as roadside furniture

@@ -697,7 +697,7 @@ assert(run.dead, 'falling in kills the run');
 // camera starts moving again.
 let pitFrames = 0;
 for (; pitFrames < 240 && run.dead; pitFrames++) run.update(1 / 60);
-assert(pitFrames / 60 > 1.2,
+assert(pitFrames / 60 > 2,
   `the death holds long enough to watch (${(pitFrames / 60).toFixed(2)}s)`);
 assert(!run.dead && Math.abs(run.camX - pitSnap.camX) < 8 && run.battery === pitSnap.battery,
   `a pit death restores the last checkpoint (camX ${run.camX}/${pitSnap.camX}, cells ${run.battery})`);

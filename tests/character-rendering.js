@@ -301,7 +301,10 @@ for (const hero of HEROES) {
   // Fast enough to be a real fall — off a cloud, or off the top of a stack.
   player.vy = -420;
   const falling = poseFromPlayer(player, 0);
+  player.fallFace = true;
+  const startledFall = poseFromPlayer(player, 0);
   player.vy = 0;
+  player.fallFace = false;
   player.grounded = true;
   player.ducking = true;
   const ducking = poseFromPlayer(player, 0);
@@ -312,6 +315,8 @@ for (const hero of HEROES) {
     `${hero.id} keeps running off a short ledge, head and all — the snap to front-facing at the edge was the tell`);
   assert(falling.kind === 'jump' && falling.headTurn === 0,
     `${hero.id} does read as falling once the drop is a real one`);
+  assert(startledFall.faceSurprised && startledFall.browRaise,
+    `${hero.id} wears the full startled face during an unplanned fall`);
 }
 
 const lorenzo = new Player('lorenzo');
