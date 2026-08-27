@@ -166,6 +166,22 @@ export const OBSTACLES = {
   brazier:    { w: 12, h: 14, sprite: 'brazier', ground: true, breakable: true, action: 'jump' },
   // The floor blade. Not breakable and not puntable for the obvious reason.
   floorSaw:   { w: 15, h: 8,  sprite: 'floorSaw', ground: true, breakable: false, action: 'jump', bedded: true },
+
+  // --- the animal hazards (art: sprites/animals.js) -------------------------
+  // The only ground hazards that CLOSE on the hero rather than waiting for him.
+  // `vx` is world-space and negative is toward him, so the closing speed is the
+  // run's own scroll plus this — which is why none of them is set anywhere near
+  // the zombie's shamble (-14) and none is set fast enough to eat the reaction
+  // runway the spawner guarantees. Speed is the whole characterisation: the
+  // bruiser is the one you can out-think, the cat is the one you cannot.
+  //
+  // Keys match the painter names in sprites/animals.js on purpose — drawWorldEntity
+  // resolves art off the entity TYPE first (hasProp(e.type)), so naming them the
+  // same is what wires the animation up with no draw-path change at all.
+  dogSnarler: { w: 16, h: 11, sprite: 'dogSnarler', ground: true, breakable: true, action: 'jump', vx: -62 },
+  dogBruiser: { w: 15, h: 10, sprite: 'dogBruiser', ground: true, breakable: true, action: 'jump', vx: -38 },
+  dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: true, action: 'jump', vx: -68 },
+  catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: true, action: 'jump', vx: -78 },
 };
 
 // What a thing is made of, for when it stops being a thing. Colours are pulled
@@ -199,6 +215,13 @@ export const DEBRIS = {
   // a spark, so a shot that opens one throws fire as well as scrap.
   fireBarrel:  { colors: ['#a4603a', '#7c4526', '#ffb02e'], size: 3, spark: '#ffef9e', mat: 'metal' },
   brazier:     { colors: ['#4d4038', '#6a5a4c', '#ff8a2c'], size: 2.8, spark: '#ffef9e', mat: 'metal' },
+  // Coat, shadow and the one bright note each animal carries — the tan points,
+  // the pale belly, a tooth. Pulled from the palettes in sprites/animals.js so
+  // the scatter reads as pieces of the thing that just left.
+  dogSnarler: { colors: ['#3a3446', '#26212f', '#b07840'], size: 2.4, count: 12, mat: 'soft' },
+  dogBruiser: { colors: ['#c08a4a', '#95622f', '#ecd6b2'], size: 2.8, count: 12, mat: 'soft' },
+  dogFeral:   { colors: ['#6a6a74', '#45454f', '#a09a94'], size: 2.4, count: 13, mat: 'soft' },
+  catFury:    { colors: ['#332f3f', '#201d2a', '#8a86a0'], size: 2.2, count: 10, mat: 'soft' },
 };
 
 export const DEBRIS_DEFAULT = { colors: ['#c8a068', '#8a6432'], size: 2.8, mat: 'wood' };

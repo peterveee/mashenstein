@@ -5,7 +5,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const {
-  propFrames, propFps, propDetailScale, propVisualScale, propSprite, propTinted,
+  propFrames, propFps, propDetailScale, propVisualScale, propTall, propSprite, propTinted,
   propRimPair, propHazardRim, PROP_FRAMES, PROP_PAINTERS,
 } = await import('../src/sprites/props.js');
 const { OBSTACLES, PICKUPS } = await import('../src/game/entities.js');
@@ -103,6 +103,47 @@ for (const f of [0, 9, 18, 27]) {
   assert(q.includes(qDot) && q.lastIndexOf('restore()') < q.lastIndexOf(qDot),
     `qcrate frame ${f}: the dot stays fixed outside the swinging stem transform`);
 }
+
+// --- the animal hazards (sprites/animals.js) ---------------------------------
+// They register into props.js by spreading six tables into it, so what is worth
+// pinning is that every one of those spreads actually landed — a table left out
+// fails silently as a prop that draws but never animates, or animates but wears
+// the shared blurry halo over its own hairline.
+//
+// The generic loops above already cover their frames: because they are in
+// PROP_FRAMES, each is checked for per-frame canvases, wrapping indices and
+// genuinely distinct poses across the cycle.
+const ANIMALS = ['dogSnarler', 'dogBruiser', 'dogFeral', 'catFury'];
+assert(ANIMALS.every((n) => typeof PROP_PAINTERS[n] === 'function'),
+  'all four animals register a vector painter through the ANIMAL_PAINTERS spread');
+assert(ANIMALS.every((n) => propFrames(n) === 8),
+  'every animal gallops over the same eight frames');
+assert(ANIMALS.every((n) => propFps(n) >= 15 && propFps(n) <= 20),
+  'animal cycle rates sit in the gallop band, faster than the 11fps default');
+assert(propFps('dogBruiser') > propFps('dogFeral'),
+  'the short-legged bruiser takes MORE steps to keep up, not fewer');
+assert(ANIMALS.every((n) => propDetailScale(n) === 2),
+  'animals rasterize at the same double internal detail as every other refined prop');
+assert(ANIMALS.every((n) => !propHazardRim(n)),
+  'animals carry their own hairline and skip the shared blurry hazard halo');
+assert(ANIMALS.every((n) => propVisualScale(n) > 1 && propVisualScale(n) < 1.35),
+  'animals draw a little over their box for legibility, but under the drones — they are the ones that close on you');
+assert(ANIMALS.every((n) => propTall(n) >= 1),
+  'animal art is never drawn shorter than its own hitbox');
+// Behaviour, not art: these are the only ground hazards that come to the hero.
+assert(ANIMALS.every((n) => OBSTACLES[n] && OBSTACLES[n].vx < 0 && OBSTACLES[n].ground && OBSTACLES[n].action === 'jump'),
+  'every animal is a ground hazard that closes on the hero and is cleared by jumping');
+assert(OBSTACLES.catFury.vx < OBSTACLES.dogBruiser.vx,
+  'the cat closes faster than the bruiser, which is the whole difference between them');
+// Art keys off the entity TYPE (hasProp(e.type) in drawWorldEntity), so the
+// obstacle key and the painter name must not drift apart.
+assert(ANIMALS.every((n) => OBSTACLES[n].sprite === n),
+  'animal obstacle keys match their painter names, which is what wires the animation up');
+const animalCabinets = CABINETS.filter((cab) =>
+  cab.patterns.some((pat) => pat.cells.some((cell) => ANIMALS.includes(cell.t))));
+assert(animalCabinets.length >= 3,
+  `animals are spawned by at least three cabinets (got ${animalCabinets.map((c) => c.id).join(', ')})`);
+
 
 console.log(failed ? 'PROPS: FAILED' : 'PROPS: PASSED');
 process.exit(failed ? 1 : 0);

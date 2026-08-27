@@ -4,6 +4,15 @@
 // so art is resolution independent; painters are rasterized once into
 // supersampled offscreen canvases and drawn smoothly at any size.
 
+// The four animal hazards live in their own module and register through the
+// five spreads below — one line per table. Nothing else in this file knows
+// about them, which is what keeps art work on the animals off this file's
+// diff. animals.js imports nothing back, so there is no cycle.
+import {
+  ANIMAL_PAINTERS, ANIMAL_NAMES, ANIMAL_FRAMES, ANIMAL_FPS, ANIMAL_TALL, ANIMAL_DETAIL,
+  ANIMAL_VISUAL,
+} from './animals.js';
+
 export const OUTLINE = 'rgba(26,16,40,0.34)';
 
 // ------------------------------------------------------------- helpers
@@ -338,6 +347,7 @@ function hzBarrel(ctx, x, y, bw, bh, fill, dark, bandCol = '#4a5460') {
 const DRONE_EYE_FRAMES = 16;
 
 export const PROP_PAINTERS = {
+  ...ANIMAL_PAINTERS,
   // --- ground hazards ---------------------------------------------------
   // A thorn cactus: saguaro silhouette — fat trunk, two arms elbowing upward —
   // bristling with pale spines. This slot cycled through shrub drawings and a
@@ -3188,6 +3198,7 @@ export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 // an animated prop costs one canvas per frame per size and still draws with a
 // single drawImage — no per-frame vector work in the hot loop.
 export const PROP_FRAMES = {
+  ...ANIMAL_FRAMES,
   cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96,
   buzzbird: 6,
   // Standing hazards. Eight is the ring these were authored against — see
@@ -3221,6 +3232,7 @@ export const PROP_FRAMES = {
 // so sixteen frames at 12fps is one unhurried 1.3s scan with the rotor's five
 // turns folded inside it.
 const PROP_FPS = {
+  ...ANIMAL_FPS,
   qcrate: 12, appliance: 24, buzzbird: 16,
   // Fire is fast or it looks like jelly; the spike plate is slow because it is
   // a machine breathing, not a machine cycling. The saw is the fastest thing in
@@ -3243,6 +3255,7 @@ const PROP_FPS = {
 // the art gains stature without touching the hitbox (hazards already render
 // 1.33x their box — bigger art is generous, never unfair).
 export const PROP_TALL = {
+  ...ANIMAL_TALL,
   cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4,
   // Standing hazards, over UNCHANGED boxes. Every one of these buys its
   // presence upward, the same trade the boost pad makes, and every one of them
@@ -3282,6 +3295,7 @@ export function propTall(name) { return PROP_TALL[name] || 1; }
 // Their painters receive at least a 2x box before supersampling; the world draw
 // size and gameplay hitbox do not change.
 const PROP_DETAIL_SCALE = {
+  ...ANIMAL_DETAIL,
   cactus: 2, cactusBig: 2,
   // Standing hazards. All six ship between 7 and 22px, which is exactly the
   // range this table exists for: a spike's point, a barrel band and a spine are
@@ -3354,6 +3368,7 @@ export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
 // art — but a hazard that looks bigger than it bites is still a hazard you
 // misjudge.
 const PROP_VISUAL_SCALE = {
+  ...ANIMAL_VISUAL,
   // The battery keeps the HUD's 25:13 proportions inside a square 8x8 def box,
   // so its art only fills about half the box's height. Without this it reads as
   // a smaller pickup than the coin it spawns beside, which is backwards — it is
@@ -3385,6 +3400,7 @@ export function maxPropVisualScale() {
 // hazard rim would sit outside it as a second broad border at desktop scale,
 // undoing the lighter authored contour.
 const SELF_OUTLINED_PROPS = new Set([
+  ...ANIMAL_NAMES,
   'cactus', 'cactusBig', 'snowman', 'snowmanBig',
   // The five standing hazards author heavy INK contours of their own. The
   // shared rim outside those would ring a flame in dark paint, which is the one
