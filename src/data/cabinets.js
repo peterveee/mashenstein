@@ -32,6 +32,39 @@ const coinLine = (dx, n = 6) => ({ t: 'coins', shape: 'line', dx, n });
 const coinStair = (dx, n = 5) => ({ t: 'coins', shape: 'stair', dx, n });
 const PERC_OFF = seq('.').map((v) => !!v); // silent percussion lane (section override)
 
+// The animal hazards, grouped by the cabinet each belongs to. Gathered here
+// rather than scattered through the cabinet list so the whole feature is one
+// block to read and one line to spread per cabinet — see sprites/animals.js for
+// the art and game/entities.js for the boxes and closing speeds.
+//
+// These are the only ground hazards that come TO you, so they are paced apart
+// from whatever shares their pattern: a dog spawned on top of a second jump is
+// two jumps in the runway of one. Each is given its lane and a coin arc to jump
+// through, or a companion far enough away to be a separate decision.
+const ANIMALS = {
+  // The bruiser leads, in act 1, because it is the slow one: it teaches that
+  // some hazards close on you while the closing is still gentle enough to read.
+  plumber: [
+    P(0, [{ t: 'dogBruiser', dx: 0 }]),
+    P(1, [{ t: 'dogBruiser', dx: 0 }, coinArc(96)]),
+    P(2, [{ t: 'dogBruiser', dx: 0 }, { t: 'crate', dx: 132 }]),
+  ],
+  // Feral and cat together: a lean starving thing and the cat that is not
+  // fleeing it. The cat is the fastest closer in the game and the smallest box,
+  // so it is a tier-2 spawn everywhere it appears.
+  crypt: [
+    P(1, [{ t: 'dogFeral', dx: 0 }]),
+    P(2, [{ t: 'dogFeral', dx: 0 }, coinArc(120)]),
+    P(2, [{ t: 'catFury', dx: 0 }, { t: 'tombstone', dx: 140 }]),
+  ],
+  // Corporate security, on four legs and wearing a collar someone expensed.
+  office: [
+    P(1, [{ t: 'dogSnarler', dx: 0 }]),
+    P(2, [{ t: 'dogSnarler', dx: 0 }, { t: 'chair', dx: 145 }]),
+    P(2, [{ t: 'catFury', dx: 0 }, coinArc(110)]),
+  ],
+};
+
 const BASE_PATTERNS = [
   P(0, [{ t: 'cactus', dx: 0 }]),
   P(0, [{ t: 'cactus', dx: 0 }, coinArc(60)]),
@@ -197,6 +230,7 @@ export const CABINETS = [
     // the wrap drops back to the lone melody.
     music: PLUMBER.bank,
     patterns: [
+      ...ANIMALS.plumber,
       ...BASE_PATTERNS,
       P(0, [{ t: 'qcrate', dx: 0, y: 54 }]),
       P(0, [{ t: 'crate', dx: 0, n: 2 }, { t: 'qcrate', dx: 0, y: 54 }]), // stack as a stepping stone to the prize
@@ -283,6 +317,7 @@ export const CABINETS = [
     far: '#302040', hills: '#282038',
     music: CRYPT.bank,
     patterns: [
+      ...ANIMALS.crypt,
       ...BASE_PATTERNS.filter((p) => p.tier > 0),
       P(0, [{ t: 'tombstone', dx: 0 }]),
       P(0, [{ t: 'tombstone', dx: 0 }, coinArc(60)]),
@@ -334,6 +369,7 @@ export const CABINETS = [
     far: '#c8c8d8', hills: '#b8b8c8',
     music: OFFICE.bank,
     patterns: [
+      ...ANIMALS.office,
       ...BASE_PATTERNS.filter((p) => p.tier > 0),
       P(0, [{ t: 'chair', dx: 0 }]),
       P(0, [{ t: 'printer', dx: 0 }]),
