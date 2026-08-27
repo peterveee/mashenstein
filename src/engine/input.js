@@ -111,6 +111,20 @@ class InputSys {
       const p = clientToLogical(e.clientX, e.clientY);
       this.pointer = { x: p.x, y: p.y, down: true };
       this.press('pointer');
+      // Middle mouse is the run's Down control: duck on the ground and the
+      // same downward kick/stomp the keyboard gets in the air. Give it
+      // priority over canvas/chrome button hit-testing so it remains a stable
+      // mouse shortcut wherever the cursor happens to be. Like every other
+      // gameplay mouse mapping it stays disabled in menus and while paused.
+      if (this.context === 'run' && !this.menuKeys
+        && e.pointerType === 'mouse' && e.button === 1) {
+        this.touches.set(e.pointerId, {
+          x0: p.x, y0: p.y, t0: performance.now(), action: 'duck', isButton: true,
+        });
+        this.press('duck');
+        e.preventDefault();
+        return;
+      }
       const btn = this.buttonAt(p.x, p.y);
       // A chrome button is allowed to sit close enough to the game rect that
       // its outer sliver overlaps it (run.js) — a tap landing on that sliver

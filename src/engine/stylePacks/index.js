@@ -110,13 +110,20 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhan
 // draw their ground some other way — the checkered road, the neon grid — can
 // call it without also inheriting drawGapsAwareGround's idea of what a road is.
 export function drawPitFills(ctx, camX, cab, obstacles, t = 0) {
-  if (!cab || !cab.pitFill) return;
+  if (!cab) return;
+  // TAR EVERYWHERE, until a cabinet says otherwise. An empty break is a
+  // legitimate picture and it is the wrong DEFAULT: a pit is fatal now, and the
+  // one thing every hole has to do is look like it will kill you. `pitFill` is
+  // the per-cabinet override the bake-off exists to fill in — 'none' opts a
+  // cabinet back out to open air.
+  const id = cab.pitFill || 'tar';
+  if (id === 'none') return;
   for (const ob of obstacles || []) {
     if (!ob.live || !ob.def || !ob.def.isGap || ob.tunnel) continue;
     const x = ob.x - camX;
     if (x + ob.w < -4 || x > W + 4) continue;
     // Phased off world x so two pits on one screen never bubble in step.
-    drawPitFill(ctx, cab.pitFill, x, GROUND_Y, ob.w, H - GROUND_Y, t, ob.x * 0.013);
+    drawPitFill(ctx, id, x, GROUND_Y, ob.w, H - GROUND_Y, t, ob.x * 0.013);
   }
 }
 

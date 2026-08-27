@@ -150,10 +150,20 @@ assert(Input.pressed('ability') && Input.held('ability'), 'right mouse press rem
 dom.fire('canvas:pointerup', right);
 assert(Input.released('ability') && !Input.held('ability'), 'right mouse release ends the attack hold');
 
+frame();
+const middle = pointer(1, 15, 240);
+dom.fire('canvas:pointerdown', middle);
+assert(Input.pressed('duck') && Input.held('duck'),
+  'middle mouse press uses the same held duck/kick action as Down Arrow');
+dom.fire('canvas:pointerup', middle);
+assert(Input.released('duck') && !Input.held('duck'), 'middle mouse release ends the duck/kick hold');
+
 Input.setContext('menu');
 dom.fire('canvas:pointerdown', pointer(0, 10));
 dom.fire('canvas:pointerdown', pointer(2, 11));
-assert(!Input.pressed('jump') && !Input.pressed('ability'), 'mouse gameplay controls stay inactive outside levels');
+dom.fire('canvas:pointerdown', pointer(1, 16));
+assert(!Input.pressed('jump') && !Input.pressed('ability') && !Input.pressed('duck'),
+  'mouse gameplay controls stay inactive outside levels');
 Input.endFrame();
 const menuSwipe = pointer(0, 14, 240, 'touch');
 dom.fire('canvas:pointerdown', menuSwipe);
@@ -166,7 +176,9 @@ Input.setContext('run');
 Input.setMenuKeys(true);
 dom.fire('canvas:pointerdown', pointer(0, 12));
 dom.fire('canvas:pointerdown', pointer(2, 13));
-assert(!Input.pressed('jump') && !Input.pressed('ability'), 'mouse gameplay controls stay inactive while paused');
+dom.fire('canvas:pointerdown', pointer(1, 17));
+assert(!Input.pressed('jump') && !Input.pressed('ability') && !Input.pressed('duck'),
+  'mouse gameplay controls stay inactive while paused');
 
 Input.setContext('workshop');
 const workshopRight = pointer(2, 20);

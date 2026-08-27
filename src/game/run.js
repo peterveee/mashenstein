@@ -144,6 +144,20 @@ const CLOUD_TO = 168;
 // both the truth and the funnier picture. Same instinct as poseFromPlayer's
 // FALL_POSE_VY, one beat earlier.
 const FALL_FACE_DEPTH = 6;
+// How far below a slab's top the hero's feet may be, on the frame his toe first
+// crosses its lip, and still count as landing on it.
+//
+// The landing sweep is vertical and only runs once the footprint overlaps the
+// span — but a short jump's flat arc crosses the top PLANE a frame or two
+// before the toe reaches the lip, so by the first frame the sweep can look, the
+// feet are already a few pixels under the top and the downward crossing is
+// unseeable. There is no side collision to save it either: the hero passes
+// inside the slab and out of the bottom, which reads as falling through a
+// floor he visibly hit. Sized from the same arithmetic that causes it: up to
+// two frames of gap between plane-crossing and toe-arrival, at short-jump fall
+// speeds of four or five pixels a frame. Any deeper and he hit the FACE of the
+// slab, and gliding behind it is the rule the islands have always had.
+const TOE_CATCH = 10;
 
 // ------------------------------------------------------------- pit deaths
 // Where the material lies: PIT_FLOOR (game/pitFill.js) against the 38 world px
@@ -1121,7 +1135,7 @@ export class RunState {
    * claimed at ground level — clear the hole and you are over the top of it,
    * altitude above zero, and it never sees you.
    */
-  updateRoute(prevFeetY) {
+  updateRoute(prevFeetY, prevToeX) {
     const x = this.playerWorldX();
     // Every test below asks about the hero's FEET, not about the one column
     // his anchor happens to sit in. See playerFeetSpan and roadUnderFeet.
@@ -1211,7 +1225,14 @@ export class RunState {
     // toe-hold would be resolved against the lane instead of against the slab.
     const top = this.routeGroundY(Math.min(Math.max(x, is.x), is.x + is.w), is);
     const feetY = this.groundYAt(x) - this.player.y;
-    if (prevFeetY > top || feetY < top) return false;   // did not cross downward
+    // Crossed the top going down this frame — the ordinary landing — or clipped
+    // the lip CORNER: the toe arrived over the span this frame (it was short of
+    // the lip before the scroll) with the feet already just under the top,
+    // because the arc crossed the top plane in the air before the slab began.
+    // The vertical test alone cannot ever see that crossing — see TOE_CATCH.
+    const crossed = prevFeetY <= top && feetY >= top;
+    const toeCatch = !crossed && prevToeX < is.x && feetY > top && feetY - top <= TOE_CATCH;
+    if (!crossed && !toeCatch) return false;            // did not cross downward
     this.route = is;
     this.player.y = 0;
     this.player.vy = 0;
@@ -2226,6 +2247,16 @@ export class RunState {
 
     // Movement / camera.
     const sp = this.speed * this.rewindSpeedMul;
+    // Where the feet and the toe were BEFORE this frame moves anything, for the
+    // island sweep below. Taken here, ahead of the scroll, on purpose: computed
+    // after `camX` advances, last frame's altitude gets rebased against the NEW
+    // ground column, and on a lane that slopes down under a slab that skew
+    // raises prevFeetY by the slope per frame. A descent slower than the skew —
+    // a short jump is exactly that — then crosses the slab top without the
+    // sweep ever seeing a frame above it, and the hero falls through a floor he
+    // plainly hit. The feet last frame are where the feet actually were.
+    const prevFeetY = this.routeGroundY(this.routeSampleX(), this.route) - this.player.y;
+    const prevToeX = this.playerFootprint().x1;
     // A loop-de-loop drives the scroll instead of the scroll driving it. The
     // hero's screen column is pinned at PLAYER_X either way, so what changes is
     // only where the world is put: normally it slides past him at `sp`, and on
@@ -2324,10 +2355,6 @@ export class RunState {
 
     // Player physics. (jumpScale survives hero swaps)
     this.player.jumpScale = this.corrupted.includes('nojump') ? 0.6 : 1;
-    // Where the feet were BEFORE the step, for the island sweep below. Taken
-    // against the base ground on purpose: it is the frame of reference both
-    // sides of the test share, whichever route the hero is on.
-    const prevFeetY = this.routeGroundY(this.routeSampleX(), this.route) - this.player.y;
     // On the ring the run owns the hero's position outright, so the integrator
     // stays out of it — one step of gravity would drag him off the circle. It
     // also means nothing can catch him on a road mid-lap: `player.y` is telling
@@ -2336,7 +2363,7 @@ export class RunState {
     const res = riding ? { landed: false, stompLand: false } : this.player.update(wdt, Input, {
       speed: sp, ice: this.cabinet.mechanic === 'ice', gravityScale: this.powerups.gravityMultiplier(),
     });
-    const tookIsland = (!riding && this.routes.length) ? this.updateRoute(prevFeetY) : false;
+    const tookIsland = (!riding && this.routes.length) ? this.updateRoute(prevFeetY, prevToeX) : false;
     if (!riding) this.updateFallFace();
     if (res.landed || tookIsland) {
       Audio.sfx('land');
@@ -4659,12 +4686,16 @@ export class RunState {
       // route lasts: a run laid after the mouth existed would float over it.
       {
         const clear = pitClearance(this.spawner.react, this.speed);
-        const keepFrom = this.camX;
-        const holes = is.kind === 'tunnel'
-          ? [{ x: is.x, w: is.mouthW }, ...(is.holes || [])]
-          : [];
+        // The frame, at whatever zoom the camera is holding — the same span
+        // `retireExit` measures against, and for the same reason.
+        const view = { x: this.camX, w: W / this.camZoom };
+        // `tunnelOpenings`, not a hand-built list: it is the same function
+        // `spawnRouteEntries` cuts the holes from, so the sweep can never be
+        // measured against a mouth that was never opened — a RAMP entrance is
+        // not a hole at all, the lane runs over the top of it.
+        const holes = is.kind === 'tunnel' ? tunnelOpenings(is) : [];
         for (const h of holes) {
-          sweepCoinsAroundHole(this.pickups, h.x, h.w, clear, keepFrom);
+          sweepCoinsAroundHole(this.pickups, h.x, h.w, clear, view);
         }
       }
       for (const ob of this.obstacles) {

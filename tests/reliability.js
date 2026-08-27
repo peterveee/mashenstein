@@ -801,10 +801,14 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
       } catch { continue; }
       for (let f = 0; f < 60 * 70 && !r.dead && !r.finished; f++) {
         r.update(1 / 60);
+        // On screen only. A tunnel's mouths are cut about 40px before the
+        // sweep that clears them is allowed to run, so for a fifth of a second
+        // a hole exists with a coin run still standing on it — 200px past the
+        // right-hand edge of the frame, where nobody can see either.
+        const viewRight = r.camX + 480 / r.camZoom;
         for (const g of r.obstacles) {
-          // A tunnel mouth is a hole you are MEANT to go down, and the line of
-          // coins diving into it is the only thing that says so.
-          if (!g.live || !g.def.isGap || g.tunnel) continue;
+          if (!g.live || !g.def.isGap) continue;
+          if (g.x > viewRight || g.x + g.w < r.camX) continue;
           // The FLOOR of the window, not the window this frame: the clearance
           // is bought at the speed the lane was laid at and the run keeps
           // accelerating, so a coin placed exactly on the lip of a slower
@@ -815,8 +819,13 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
           const pad = 120 - 0.5;
           for (const pk of r.pickups) {
             if (!pk.live || pk.following || !pk.def.coin) continue;
+            // A ROUTE's own coins stay. The line diving into a mouth and the run
+            // along the road below are the only thing on the surface that says
+            // the hole is a way in, and they carry no formation id — which is
+            // exactly what tells the sweep they are the road's, not the lane's.
+            if (pk.formation == null) continue;
             if (pk.x + pk.w > g.x - pad && pk.x < g.x + g.w + pad) {
-              offenders.push(`${st.id}/${seed}: coin ${Math.round(pk.x - g.x)}px into a ${g.w}px pit at alt ${Math.round(pk.alt)}`);
+              offenders.push(`${st.id}/${seed}: lane coin ${Math.round(pk.x - g.x)}px into a ${g.w}px ${g.tunnel ? 'tunnel mouth' : 'pit'} at alt ${Math.round(pk.alt)}`);
             }
           }
         }
@@ -827,7 +836,7 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
     if (offenders.length) break;
   }
   assert(offenders.length === 0,
-    `no coin is laid over a pit or on its lips (${offenders[0] || 'clean'})`);
+    `no lane coin is left over a hole or on its lips (${offenders[0] || 'clean'})`);
 }
 
 // And the formation goes WHOLE. Clearing by position alone is what left the

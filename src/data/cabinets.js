@@ -45,13 +45,18 @@ const PERC_OFF = seq('.').map((v) => !!v); // silent percussion lane (section ov
 // and one from Speed's. Sharing the object means the spawner's `usedOnce` sees
 // the same pattern whichever cabinet's list it came from, and spends it once.
 //
-// Tier 1 rather than 0: Plumber's floor traps are that cabinet's TAUGHT floor
-// hazard, introduced alone on clear ground, and the peel needs no such lesson —
-// by the time it appears the player has learned to look down. In Speed Zone it
-// lands on the argument the cone rows make: they are a standing invitation to
-// hold the slide and punt through, and the peel is the one thing that punishes
-// it. Once per run, so that argument is made exactly once.
-const PEEL_ONCE = P(1, [{ t: 'bananaPeel', dx: 0 }], { once: true });
+// TIER 0, and that is not a difficulty judgement — it is the only tier that
+// makes the peel reachable at all in the stage most people play.
+//
+// `tierMax` is min(2, (stage.index - 1) + (act - 1)), so stage 1 of every act-1
+// cabinet runs at tierMax 0. Sitting at tier 1 the peel simply did not exist in
+// Plumber-1 or Speed-1 — the pattern was in the bank, the cap worked, the tests
+// passed, and no player on the first stage of either cabinet could ever meet
+// one. Tier 0 costs nothing: it is one jump cell, the fairness sim budgets it
+// like any other, and the `once` flag is what keeps it rare rather than the
+// tier. Rarity and reachability are different knobs and this is the wrong one to
+// spend on rarity.
+const PEEL_ONCE = P(0, [{ t: 'bananaPeel', dx: 0 }], { once: true });
 
 // The animal hazards, grouped by the cabinet each belongs to. Gathered here
 // rather than scattered through the cabinet list so the whole feature is one
@@ -119,6 +124,12 @@ const ICE_PATTERNS = BASE_PATTERNS.map((pattern) => ({
   }),
 }));
 
+// `pitFill` — what lies at the bottom of a hole on this cabinet. Nothing here
+// names one yet: every pit in the game is tar, which is the default in
+// engine/stylePacks (drawPitFills) and the cheapest fill on the bake-off sheet
+// (src/dev/pit-candidates.js — it throws no light, so it costs a bright cabinet
+// nothing). Name one per cabinet as the sheet is settled; 'none' opts a cabinet
+// back out to an open break.
 export const CABINETS = [
   {
     id: 'plumber', name: 'PLUMBER PANIC', act: 1, style: 'pixel',
@@ -126,13 +137,6 @@ export const CABINETS = [
     mechanic: 'qcrates', // breakable !-crates, pipes as secret routes
     sky: ['#78c8f0', '#a8e0f8'], ground: '#3a9c48', groundDark: '#2a7038',
     far: '#5ab060', hills: '#48a050',
-    // WHAT IS AT THE BOTTOM OF ITS HOLES. The break itself is drawn by not
-    // drawing (engine/stylePacks), so a pit on any cabinet already shows the
-    // hills through it; this names the material lying on the floor of one.
-    // Tar because the cabinet is a plumbing disaster and because tar is the
-    // one fill on the bake-off sheet that costs no light — plumber's sky is
-    // bright and a luminous pit would have to out-shout it.
-    pitFill: 'tar',
     // What the ground is made of UNDER the turf — the cutaway you see inside a
     // tunnel and along the underside of every raised road. A real brown rather
     // than the green taken down a few stops: soil is not grass with the lights

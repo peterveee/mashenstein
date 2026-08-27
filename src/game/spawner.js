@@ -104,7 +104,7 @@ export function worstJumpApex() {
  * measured from the lip, so a positional cut takes the middle of a run and
  * leaves its far end hanging in the air with nothing to say why it stopped.
  */
-export function sweepCoinsAroundHole(pickups, hx, hw, clear, keepFrom = -Infinity) {
+export function sweepCoinsAroundHole(pickups, hx, hw, clear, view = null) {
   const doomed = new Set();
   for (const p of pickups) {
     if (!p.live || p.following || p.formation == null || !p.def.coin) continue;
@@ -112,16 +112,25 @@ export function sweepCoinsAroundHole(pickups, hx, hw, clear, keepFrom = -Infinit
   }
   if (!doomed.size) return;
   // NOTHING VANISHES IN PLAIN VIEW. A tunnel's mouths are cut into a lane that
-  // is still being filled ahead of the camera, so this runs continuously — and
-  // a run of coins winking out while the player is looking at it is a worse
-  // picture than the one being fixed. A formation with any coin at or behind
-  // the near edge of the frame is left alone; the lane fills 200px further out
-  // than the view reaches, so in practice everything is caught before it
-  // arrives. Route coins are untouched whatever happens: the line diving into a
-  // mouth and the run along the road below carry no formation, because they are
-  // not formations — they are the road saying where it goes.
-  for (const p of pickups) {
-    if (p.formation != null && doomed.has(p.formation) && p.x < keepFrom) return;
+  // is still being filled ahead of the camera, so this runs continuously, and a
+  // run of coins winking out while the player is looking at it is a worse
+  // picture than the one being fixed. So a formation with any coin ON SCREEN is
+  // left where it is until it has gone by. The lane fills 200px further out
+  // than the view reaches, so in practice a run is caught before it arrives.
+  //
+  // The window is the VIEW, not everything ahead of the camera. Keying off the
+  // near edge alone meant a run whose first coin had already scrolled past was
+  // protected for the rest of the stage — permanently, since nothing behind the
+  // camera ever comes back — which is precisely the run standing on the lip.
+  //
+  // Route coins are untouched whatever happens: the line diving into a mouth
+  // and the run along the road below carry no formation, because they are not
+  // formations — they are the road saying where it goes.
+  if (view) {
+    for (const p of pickups) {
+      if (p.formation != null && doomed.has(p.formation)
+        && p.x + p.w > view.x && p.x < view.x + view.w) return;
+    }
   }
   for (const p of pickups) if (p.formation != null && doomed.has(p.formation)) p.live = false;
 }
@@ -292,7 +301,7 @@ export class Spawner {
       // that had not been chosen yet. `clearOfHoles` can only move what this
       // pattern is placing; this takes back what is already down.
       const clear = pitClearance(this.react, speed);
-      for (const h of holes) sweepCoinsAroundHole(pickups, h.x, h.w, clear, worldX);
+      for (const h of holes) sweepCoinsAroundHole(pickups, h.x, h.w, clear, { x: worldX, w: 480 });
       // Committed, so a `once` pattern is now spent for this run. Above the
       // stopX bail-out on purpose — see pickPattern.
       if (pat.once) this.usedOnce.add(pat);

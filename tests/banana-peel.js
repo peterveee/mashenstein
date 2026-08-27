@@ -128,36 +128,55 @@ for (const pat of plumber.patterns) {
 assert(tier0Ground.size >= 3,
   `Plumber introduces at least three ground props at tier 0 (${[...tier0Ground].sort().join(', ')})`);
 
-// --- the cap, proved by running the spawner ---------------------------------
-// The pattern data can say `once` and the cap can still be broken by the code
-// that reads it, so this drives the real Spawner over stages far longer than any
-// the game ships and counts what comes out. Across seeds, because the pattern
-// pick is seeded and one lucky seed proves nothing.
+// --- the cap, and REACHABILITY, proved by running the spawner ---------------
+// Two claims, and the second one is the one that was actually broken: a peel
+// pattern can be in the bank, marked `once`, with every structural test above
+// passing, and still be impossible to meet in the stage most people play.
+//
+// `tierMax` is min(2, (stage.index - 1) + (act - 1)), so stage 1 of every act-1
+// cabinet runs at tierMax 0. With the peel at tier 1 it existed in the data and
+// never once appeared in Plumber-1 or Speed-1. Rarity is the `once` flag's job;
+// the tier decides whether the thing is reachable at all, and those are not the
+// same knob.
+//
+// Distances here are REAL stage lengths — duration * baseSpeed * 1.05, which is
+// what RunState computes — not a long sweep. An earlier version of this test ran
+// 24000px and reported a healthy hit rate for a peel no first-stage player could
+// ever see.
 {
   const { Spawner } = await import('../src/game/spawner.js');
   const { Rng } = await import('../src/engine/rng.js');
   const { CABINET_BY_ID } = await import('../src/data/cabinets.js');
-  let worst = 0, sawOne = 0, runs = 0;
+  const BASE_SPEED = 160;
+  const DURATION = { plumber: 60, speed: 60, surge: 120 };
+  const SEEDS = 120;
+
   for (const id of ['plumber', 'speed', 'surge']) {
-    for (let seed = 1; seed <= 40; seed++) {
-      const sp = new Spawner({ cabinet: CABINET_BY_ID[id], rng: new Rng(seed), tierMax: 2 });
-      const obstacles = [], pickups = [];
-      // ~24000px is several times a real stage, at the speed the lane runs.
-      for (let x = 0; x < 24000; x += 240) sp.fill(x, 260, obstacles, pickups, () => 45);
-      const n = obstacles.filter((o) => o.type === 'bananaPeel').length;
-      assert(n <= 1, `${id} seed ${seed}: at most one peel in a run (${n})`);
-      worst = Math.max(worst, n);
-      if (n === 1) sawOne++;
-      runs++;
+    const cab = CABINET_BY_ID[id];
+    const base = BASE_SPEED * (1 + (cab.speedBonus || 0));
+    const total = DURATION[id] * base * 1.05;
+    for (let stage = 1; stage <= 3; stage++) {
+      const tierMax = Math.min(2, (stage - 1) + (cab.act - 1));
+      let hits = 0, worst = 0;
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const sp = new Spawner({ cabinet: cab, rng: new Rng(seed), tierMax });
+        const obstacles = [], pickups = [];
+        sp.nextX = 300;
+        for (let x = 0; x < total; x += 240) {
+          sp.fill(x, base * 1.3, obstacles, pickups, () => 45, total);
+        }
+        const n = obstacles.filter((o) => o.type === 'bananaPeel').length;
+        worst = Math.max(worst, n);
+        if (n) hits++;
+      }
+      // THE CAP: never two, on any seed, in any stage.
+      assert(worst <= 1, `${id}-${stage}: never more than one peel in a run (worst ${worst})`);
+      // THE REACHABILITY: it has to actually turn up, including at tierMax 0.
+      assert(hits > SEEDS * 0.4,
+        `${id}-${stage} (tierMax ${tierMax}): a peel is reachable and common enough to meet `
+        + `(${hits}/${SEEDS} runs)`);
     }
   }
-  assert(worst === 1, `the cap is one, and one does get placed (worst seen ${worst})`);
-  // The other half of "very occasional": it must actually turn up, or the whole
-  // thing is a prop nobody meets. Not every run — that is what makes it a
-  // surprise — but often enough to exist.
-  assert(sawOne > runs * 0.3,
-    `a peel shows up in a healthy share of runs (${sawOne}/${runs})`);
-  console.log(`ok: peel appeared in ${sawOne}/${runs} long runs, never twice`);
 }
 
 // --- the slip itself -------------------------------------------------------
