@@ -54,12 +54,16 @@ const PAUSE_BTN_Y = 43;
 // of what it is handed, and two screens now ask for these — a run and the
 // tutorial. Both are playable surfaces with the same three controls, so they
 // share the geometry rather than each keeping a copy that drifts.
-export function playButtons() {
-  return [
+export function playButtons(withRewind = false) {
+  const list = [
     { id: 'jump', x: 12, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'jump', label: 'JUMP', round: true },
     { id: 'ability', x: W - 56, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'USE', round: true },
     { id: 'pause', x: W - 56, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'escape', icon: 'pause', round: true },
   ];
+  // The one-shot rewind charge, while armed: above JUMP on the left, mirroring
+  // where PAUSE hangs on the right, so all four discs keep one geometry.
+  if (withRewind) list.push({ id: 'rewind', x: 12, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'rewind', label: 'RWD', round: true });
+  return list;
 }
 
 // How long the keyboard legend stays up at the start of a teaching stage, and

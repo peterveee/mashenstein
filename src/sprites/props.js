@@ -1583,6 +1583,19 @@ export const PROP_PAINTERS = {
     plain(ctx, '#ffd8e8', (c) => rr(c, w * 0.36, h * 0.24, w * 0.16, h * 0.34, w * 0.08));
     plain(ctx, '#f6d33c', (c) => star(c, w * 0.5, h * 0.78, w * 0.3, w * 0.12, 4));
   },
+  capRewind(ctx, w, h) {
+    // The ◀◀ scrub glyph, dark on a solid mint disc. Dark-on-light rather
+    // than a reel with a light glyph: at the native 8px a ring swallowed the
+    // triangles and the capsule read as a lifesaver. Two fat dark notches on
+    // an unbroken mint field survive the shrink, and mint alone already says
+    // "rewind" — no other capsule owns green.
+    const u = Math.max(w, h);
+    fineShape(ctx, '#7ce8a0', u, (c) => c.arc(w * 0.5, h * 0.5, w * 0.46, 0, Math.PI * 2));
+    plain(ctx, '#1c4834', (c) => {
+      c.moveTo(w * 0.84, h * 0.24); c.lineTo(w * 0.84, h * 0.76); c.lineTo(w * 0.52, h * 0.5); c.closePath();
+      c.moveTo(w * 0.48, h * 0.24); c.lineTo(w * 0.48, h * 0.76); c.lineTo(w * 0.16, h * 0.5); c.closePath();
+    });
+  },
   appliance(ctx, w, h, frame = 0, finish = null) {
     const u = Math.max(w, h);
     const fineShape = (fill, pathFn) => {
@@ -3315,7 +3328,7 @@ const PROP_DETAIL_SCALE = {
   bananaPeel: 3,
   coin: 2, battery: 2,
   capShield: 2, capMagnet: 2, capStar: 2, capAirJump: 2,
-  capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRelay: 2,
+  capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRelay: 2, capRewind: 2,
   appliance: 2, cord: 2, resident: 2, dustdevil: 2,
   // Plug-row icons. These ship at 5-10px, which is the range this table exists
   // for: the painter gets a 2x box before supersampling, so a rim band, a

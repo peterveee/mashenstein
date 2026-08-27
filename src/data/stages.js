@@ -36,6 +36,11 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   // cabinet's pattern list; these are the ones a stage GUARANTEES, in the order
   // and the places its author chose. See RunState.spawnScriptedPits.
   pits: opts.pits || null,
+  // Scripted rewind capsule, a fraction of stage distance like applianceAt.
+  // Touch-only at spawn time (run.js): players with free hold-Left rewind
+  // never see it. This is the power-up's guaranteed introduction — the drip
+  // can also deal one anywhere, but only the dice say when.
+  rewindAt: opts.rewindAt ?? null,
 });
 
 export const STAGES = [
@@ -46,10 +51,15 @@ export const STAGES = [
     { act: 'ACT I. THE ARCADE GOES DARK. THE EMERGENCY LIGHTING IS ALSO UNPLUGGED.',
       introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.',
       speedMult: 0.9 }),
+  // The rewind capsule's guaranteed introduction, and this stage on purpose:
+  // its challenge is TAKE NO DAMAGE, which is the run where undoing three
+  // seconds is worth the most and teaches itself. 0.15 is early — before the
+  // run settles into a rhythm, the same instinct as plumber-3's first pit at
+  // 0.12 — so the player meets it while nothing else is asking for attention.
   S('plumber', 2,
     { type: 'targets', n: 6, targetType: 'qcrate', desc: 'BREAK 6 !-CRATES. THE ! MEANS HIT IT.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { speedMult: 0.95 }),
+    { speedMult: 0.95, rewindAt: 0.15 }),
   // THREE TAR PITS, at fixed fractions of the stage. `pits` is a scripted
   // placement, not a pattern: a cabinet's pattern list is shuffled by the
   // spawner, so a gap added there turns up wherever the dice fall and might

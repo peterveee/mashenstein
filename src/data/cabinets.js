@@ -68,13 +68,10 @@ const PEEL_ONCE = P(0, [{ t: 'bananaPeel', dx: 0 }], { once: true });
 // two jumps in the runway of one. Each is given its lane and a coin arc to jump
 // through, or a companion far enough away to be a separate decision.
 const ANIMALS = {
-  // The bruiser leads, in act 1, because it is the slow one: it teaches that
-  // some hazards close on you while the closing is still gentle enough to read.
-  plumber: [
-    P(0, [{ t: 'dogBruiser', dx: 0 }]),
-    P(1, [{ t: 'dogBruiser', dx: 0 }, coinArc(96)]),
-    P(2, [{ t: 'dogBruiser', dx: 0 }, { t: 'crate', dx: 132 }]),
-  ],
+  // No plumber entry. Plumber's dog is not dealt from the bag at all: it is
+  // the scripted finish-line dog (see RunState.spawnFinishDog and the
+  // `finishDog` def in game/entities.js), so on that cabinet a dog appears
+  // exactly once, at the very end, guarding the tape.
   // Feral and cat together: a lean starving thing and the cat that is not
   // fleeing it. The cat is the fastest closer in the game and the smallest box,
   // so it is a tier-2 spawn everywhere it appears.
@@ -277,7 +274,6 @@ export const CABINETS = [
     // the wrap drops back to the lone melody.
     music: PLUMBER.bank,
     patterns: [
-      ...ANIMALS.plumber,
       ...BASE_PATTERNS,
       P(0, [{ t: 'qcrate', dx: 0, y: 54 }]),
       P(0, [{ t: 'crate', dx: 0, n: 2 }, { t: 'qcrate', dx: 0, y: 54 }]), // stack as a stepping stone to the prize

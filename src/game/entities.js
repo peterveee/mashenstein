@@ -182,6 +182,30 @@ export const OBSTACLES = {
   dogBruiser: { w: 15, h: 10, sprite: 'dogBruiser', ground: true, breakable: true, action: 'jump', vx: -38 },
   dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: true, action: 'jump', vx: -68 },
   catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: true, action: 'jump', vx: -78 },
+
+  // The finish-line dog. Scripted, never dealt from a pattern bag — see
+  // RunState.spawnFinishDog: on plumber stages one dog holds the tape, appears
+  // barking once the finish pole is in view and charges the hero right-to-left,
+  // off the screen's left edge. `breakable: false` is the whole of "cannot be
+  // killed" — no weapon, kick, stomp, roll or shockwave (the peel's note above
+  // spells out everything the flag turns off) — so the jump is the only answer,
+  // which is what `action: 'jump'` declares. Not puntable either: punt is
+  // opt-in, and a boot going in low meets a dog that has decided about you.
+  // `skins` wears one of the three dog rigs, picked off the spawn position as
+  // every skin is, so which dog guards a stage is stable and identical on a
+  // replay. No debris entry — nothing here ever breaks.
+  //
+  // 22x15: about 1.4x the pack dogs, and the biggest ground hazard box in the
+  // game — the art scales with the box, so it also DRAWS at that stature. It
+  // has a whole empty straight to itself and no company in its runway, which is
+  // what buys a box this size without cheating the reaction budget; 15 is
+  // still a third of the worst hero's jump apex, so the one required clear
+  // stays comfortable for the entire cast.
+  //
+  // `vx` here is only a fallback: spawnFinishDog overrides it with a fraction
+  // of the run's own scroll, so the charge reads equally fast on every stage
+  // and the two-jump finish geometry (see that method) holds at every speed.
+  finishDog:  { w: 22, h: 15, sprite: 'dogSnarler', ground: true, breakable: false, action: 'jump', vx: -70, skins: ['dogSnarler', 'dogBruiser', 'dogFeral'] },
 };
 
 // What a thing is made of, for when it stops being a thing. Colours are pulled
@@ -236,6 +260,9 @@ export const PICKUPS = {
   capSpeed:  { w: 8, h: 8, sprite: 'capSpeed', power: 'speed' },
   capLowGrav:{ w: 8, h: 8, sprite: 'capLowGrav', power: 'lowgrav' },
   capUnpeel: { w: 8, h: 8, sprite: 'capUnpeel', power: 'unpeel' },
+  // Touch-only (never dripped or placed where free rewind exists): arms the
+  // one-shot REWIND button. See docs/mobile-rewind-powerup.md.
+  capRewind: { w: 8, h: 8, sprite: 'capRewind', power: 'rewind' },
   // Not a timed power: banks one supercharged ability, so it carries its own
   // flag instead of a `power` the Powerups clock would try to run down.
   capRelay:  { w: 8, h: 8, sprite: 'capRelay', relayCharge: true },

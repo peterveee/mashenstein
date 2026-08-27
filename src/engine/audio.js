@@ -383,6 +383,12 @@ const PORTAL_VERB_SEND = 0.9;
 
 const SFX_TRIM = {
   blockBreak: 0.58, coinSpray: 0.7, hit: 0.74,
+  // Levelled against 'hit', its opposite number — and deliberately ABOVE it
+  // (~-31 RMS against hit's -33.9): the bark is the finish dog's whole threat,
+  // it is the loudest voice in the last stretch by design, and the per-firing
+  // fade in updateEntities is what brings it down as the dog passes. 0.9
+  // keeps the peak near -8 dBFS so the repeats never crowd clipping.
+  dogBark: 0.9,
   // 0.25, not the 1.08 this carried, which was a trap rather than a bug: nothing calls
   // `sfx('impact')`, so the number never ran. impactCrash is reached in play only as
   // playContact's fallback — gnash and mochi have no baked contact cue — and that path
@@ -3116,6 +3122,29 @@ class AudioSys {
       // ...and off: the same run walking back down, quieter.
       case 'starEnd': [1568, 1319, 1047, 784].forEach((f, i) => this.osc('triangle', f, f, 0.09, 0.1, i * 0.06)); break;
       case 'hit': this.osc('sawtooth', 200, 40, 0.4, 0.25); this.noise(0.15, 0.2, 'lowpass', 900); break;
+      // The finish-line dog (see RunState.spawnFinishDog): a growl tremor
+      // breaking into two hard barks. The growl is amplitude modulation the
+      // graph cannot do directly, so it is faked the cheap way — a run of
+      // short saw pulses, each one throb of the tremor — under a bed of low
+      // noise for chest. Each bark is the shape a real one has: a plosive
+      // noise front, a saw fundamental falling as the jaw opens, a square an
+      // octave under it for body, and a band of breath in the mouth range.
+      // The second bark sits lower and later — RUFF-ruff, a dog committing,
+      // not a doorbell repeating.
+      case 'dogBark': {
+        for (let i = 0; i < 6; i++) this.osc('sawtooth', 96 * pitch, 88 * pitch, 0.05, 0.16, i * 0.044);
+        this.noise(0.26, 0.12, 'lowpass', 280);
+        this.noise(0.24, 0.07, 'bandpass', 620); // rasp over the tremor — the snarl's teeth
+        const bark = (t, f) => {
+          this.noise(0.022, 0.22, 'highpass', 2600, t);            // plosive front
+          this.osc('sawtooth', f * pitch, f * 0.36 * pitch, 0.13, 0.3, t);
+          this.osc('square', f * 0.5 * pitch, f * 0.18 * pitch, 0.12, 0.14, t);
+          this.noise(0.07, 0.24, 'bandpass', 1050 * pitch, t);     // breath in the mouth
+        };
+        bark(0.28, 350);
+        bark(0.47, 305);
+        break;
+      }
       // Shared attack contact: a noisy crash, not a pitched little bonk. The
       // wide noise layers carry on small speakers; the low layer gives it the
       // physical hit; the bright transient makes the contact unmistakable.

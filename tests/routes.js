@@ -353,6 +353,36 @@ run.obstacles.push(latecomer);
 run.clearRouteHazards();
 assert(!latecomer.live, 'and so is one that arrives after the first sweep has run');
 
+// ---- and the ROOF GAP is an opening like any other --------------------------
+// The road above a tunnel stops before the span does, and past its end the lane
+// deliberately does not exist — that open stretch is the way out from the top.
+// The sweep's old hand-built list of openings (mouth + mid-span holes) did not
+// know it, so a hazard laid there stood on the lane line with nothing drawn
+// under it: a cactus in mid-air past the end of the roof.
+assert(!!tunnelEarly.roofGap, 'the tunnel has a roof gap to test against');
+const overExit = makeObstacle(hazardType,
+  tunnelEarly.roofGap.x + tunnelEarly.roofGap.w / 2, {});
+run.obstacles.push(overExit);
+run.clearRouteHazards();
+assert(!overExit.live,
+  'a hazard standing on the roof gap is cleared — nothing floats past the roof\'s end');
+
+// ---- and the LIP gets the same clearance the pits give theirs ---------------
+// A hazard a few pixels short of the roof's end asks for a jump the player
+// cannot separate from the drop off the edge — the "crate two pixels past the
+// far lip" unfairness, one opening over. Same window the coin sweep uses.
+// Something that asks for no action may stand there; it is scenery, not a trap.
+const { pitClearance } = await import('../src/game/spawner.js');
+const lipClear = pitClearance(run.spawner.react, run.speed);
+const nearLip = makeObstacle(hazardType, tunnelEarly.roofGap.x - lipClear / 2, {});
+const passive = makeObstacle('jumpSign', tunnelEarly.roofGap.x - lipClear / 2 - 20, {});
+run.obstacles.push(nearLip, passive);
+run.clearRouteHazards();
+assert(!nearLip.live,
+  'an action hazard just short of the lip is cleared — the jump and the drop are one move');
+assert(passive.live,
+  'while a passive prop in the same spot stands: it asks nothing of the player');
+
 // ---- the fork: a high road that CONVERGES rather than stopping --------------
 // The whole difference between the two kinds is the ending. An island stops and
 // you fall; a fork has already come back down to meet the ground by the time

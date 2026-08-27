@@ -377,6 +377,24 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
   if (carryingFuse) drawProp(ctx, 'fuse', cx + 6, feetY - HERO_DRAW_H - 2, 8, 6);
 }
 
+// How far a `bedded` plate's ART sinks below the ground line (the box never
+// moves) — and the sunk part is CLIPPED away at the line (see the bedded
+// branch below draw1), which is what makes the sink a burial: entities draw
+// after the ground, so an unclipped plate just paints its bottom on top of
+// the road band and reads as overlapping the road, not set into it.
+//
+// 4 was picked off a 2/4/6 sweep. At 4 the whole plate face, chevron stripe
+// included, is under the road: the saw is a half-buried blade, the spikes are
+// teeth rising from a low base — the same grammar as the boost pad's trench.
+// At 2 the plate is still a slab wearing a stripe; at 6 the teeth float free
+// of any base. The danger read the stripe carried moves to the teeth, the
+// shared rim pulse and the red ground tick.
+//
+// Berms and dirt mounds were tried here and rejected: anything drawn around
+// the plate against the backdrop reads as a pit or as foliage, not as the
+// lane closing over it.
+const BED_SINK = 4;
+
 export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   const smoothMotion = !!(style && style.smoothMotion) || !!(settings && settings.smoothMotion);
   const x = smoothMotion ? e.x - camX : Math.round(e.x - camX);
@@ -410,10 +428,11 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // one mark left saying "object sitting on the ground".
   //
   // `bedded` props opt out of the ELLIPSE for the same reason and keep the tick,
-  // which they still need — they are lethal, the pad is not. Their painters cut
-  // the floor's own material back over their lower corners (see hzBed), so the
-  // ellipse would be seen THROUGH that hole, as a grey smear in the dirt in
-  // front of a plate that is supposed to be buried in it.
+  // which they still need — they are lethal, the pad is not. Their painters run
+  // the plate past the bottom of the box for the ground line to cut, and the
+  // art sinks BED_SINK into the road band (see draw1's call below), so the
+  // ellipse would sit as a grey smear in front of a plate that is supposed to
+  // be set into the road.
   if (e.kind === 'obstacle' && e.def.ground && !e.def.isBoost && !e.def.isLoop && !e.def.bedded) {
     ctx.fillStyle = 'rgba(8,6,12,0.28)';
     ctx.beginPath(); ctx.ellipse(x + e.w / 2, GROUND_Y - 1, Math.max(4, e.w * 0.55), 2, 0, 0, Math.PI * 2); ctx.fill();
@@ -602,6 +621,19 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     // `e.spin` is its own angle, carried by whatever launched it.
     ctx.rotate(e.spin != null ? -e.spin : -t * 6);
     draw1(-bw / 2, -bh / 2, 'center');
+    ctx.restore();
+  } else if (e.def.bedded) {
+    // Bedded plates draw BED_SINK low — art only, the box never moves — and
+    // CLIPPED at the ground line, because entities draw after the ground:
+    // without the clip the sunk part just paints itself on top of the road
+    // band and the plate reads as overlapping the road, not buried in it.
+    // With it, the road genuinely swallows the bottom of the plate, which is
+    // the same picture the boost pad's trench draws for itself.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x - 20, GROUND_Y - 200, e.w + 40, 200);
+    ctx.clip();
+    draw1(x, y + BED_SINK);
     ctx.restore();
   } else {
     draw1(x, y, propName && propBoxCentred(propName) ? 'center' : 'bottom');

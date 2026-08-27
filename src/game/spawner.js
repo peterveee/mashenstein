@@ -384,9 +384,13 @@ export const POWER_MIN_GAP = 480;   // one screen of world px
 const DRIP_W = PICKUPS.battery.w;
 
 export class DripSpawner {
-  constructor(rng, benchLevels) {
+  constructor(rng, benchLevels, allowRewind = false) {
     this.rng = rng;
     this.bench = benchLevels;
+    // "This player has no free rewind" (touch, no pad) — the only pool that
+    // may deal capRewind. Constant per run, so the drip's RNG stream is
+    // byte-identical on desktop whether or not the flag is threaded.
+    this.allowRewind = allowRewind;
     this.capsuleTimer = this.rng.range(12, 18);
     this.batteryTimer = this.rng.range(20, 30);
     this.lastPowerX = -1e9;   // finite so it survives a snapshot round-trip
@@ -423,7 +427,7 @@ export class DripSpawner {
         this.capsuleTimer = 0.5;
       } else {
         this.capsuleTimer = this.rng.range(12, 18);
-        const type = randomPowerPickup(this.rng, this.lastPowerType);
+        const type = randomPowerPickup(this.rng, this.lastPowerType, this.allowRewind);
         pickups.push(makePickup(type, x, 34));
         this.notePower(x, type);
       }

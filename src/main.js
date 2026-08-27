@@ -436,7 +436,11 @@ const Flow = {
     save.slot.coins -= ARCADE_PLAY_COST;
     save.persist();
     const rr = new Rng(game + save.slot.stats.runs + save.slot.coins);
-    const reward = rr.pick(Object.keys(POWER_DEFS));
+    // Rewind stays out of the prize pool: Arcade Corner is shuttered on touch,
+    // so that pool can only ever hand rewind to a player who cannot use it.
+    // Filtering also keeps the pick list the length it was before rewind
+    // joined POWER_DEFS, so the seeded prize sequence is unchanged.
+    const reward = rr.pick(Object.keys(POWER_DEFS).filter((id) => id !== 'rewind'));
     setState(new MinigameState({
       game,
       seed: Date.now() & 0xffff,
