@@ -30,6 +30,18 @@ const OUTLINE = 'rgba(26,16,40,0.34)';
 // thins as the sprite is rasterized larger instead of turning into the broad
 // dark border a fixed width would give — the same trade the heroes' contour
 // makes (see CONTOUR_TAPER in sprites/toons.js).
+// A DARKER contour for the near pair of legs, which pass in front of the torso
+// in the same family of colour — fill separation alone leaves them reading as a
+// smear over the body rather than as a limb in front of it. Same job the heroes
+// give their contour (CONTOUR in sprites/toons.js): hold a figure off whatever
+// is behind it.
+//
+// Darker only, NOT wider. The contour width is a fraction of the RASTER (`u`)
+// while a bone's width is a fraction of the box, and on a leg this thin a
+// widened stroke is most of the limb — the first attempt at 0.026 turned every
+// near leg into a flat dark bar laid across the dog.
+const OUTLINE_NEAR = 'rgba(18,11,30,0.55)';
+
 function ink(ctx, fill, u, pathFn, color = OUTLINE, scale = 0.019) {
   ctx.beginPath();
   pathFn(ctx);
@@ -64,18 +76,39 @@ function line(ctx, col, w, pathFn) {
 // A limb segment: a round-capped taper from wide at the joint to narrow at the
 // end. Drawn as a filled quad with arc caps rather than a stroked line, because
 // a stroke cannot taper and an untapered dog leg reads as a pipe.
-function bone(ctx, u, ax, ay, bx, by, wa, wb, col) {
+//
+// `cap` says which ends get their contour drawn. Both ends are always FILLED —
+// the joint has to be solid or the limb shows a notch — but capping both with
+// ink stacks two contours everywhere two segments meet, and at the sizes these
+// actually draw that stack reads as a small ring bolted onto the leg. Passing
+// 'far' inks only the distal end, so an elbow, stifle or hock is a continuous
+// limb instead of a rivet.
+function bone(ctx, u, ax, ay, bx, by, wa, wb, col, cap = 'both', edge = OUTLINE, ew = 0.019) {
   const dx = bx - ax, dy = by - ay;
   const d = Math.hypot(dx, dy) || 1e-4;
   const nx = -dy / d, ny = dx / d;
-  ink(ctx, col, u, (c) => {
+  const path = (c) => {
     c.moveTo(ax + nx * wa, ay + ny * wa);
     c.lineTo(bx + nx * wb, by + ny * wb);
     c.arc(bx, by, wb, Math.atan2(ny, nx), Math.atan2(-ny, -nx), false);
     c.lineTo(ax - nx * wa, ay - ny * wa);
     c.arc(ax, ay, wa, Math.atan2(-ny, -nx), Math.atan2(ny, nx), false);
     c.closePath();
-  });
+  };
+  if (cap === 'both') { ink(ctx, col, u, path, edge, ew); return; }
+  // Fill the whole segment, then ink only the two long sides and the far cap —
+  // the near cap is inside the previous segment and its contour is the ring.
+  fill(ctx, col, path);
+  ctx.beginPath();
+  ctx.moveTo(ax + nx * wa, ay + ny * wa);
+  ctx.lineTo(bx + nx * wb, by + ny * wb);
+  ctx.arc(bx, by, wb, Math.atan2(ny, nx), Math.atan2(-ny, -nx), false);
+  ctx.lineTo(ax - nx * wa, ay - ny * wa);
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = Math.max(0.2, ew * u);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke();
 }
 
 // Two-bone IK: given the hip and where the foot has to land, find the joint.
@@ -181,6 +214,10 @@ const BREEDS = {
   // entire difference between a cat that is angry and a cat that is walking.
   catFury: {
     coat: '#332f3f', coatHi: '#413d50', coatLo: '#201d2a', belly: '#63607a', mark: '#8a86a0',
+    // The ridge reads ABOVE the coat, not below it. coatLo on this body is
+    // near-black on dark and resolves as one solid mass; fur has to catch
+    // light along its edge to be fur at all.
+    hackle: '#4d4860',
     ear: 'flat', tail: 'bottlebrush', hackles: 1, ribs: 0, collar: 'none',
     leg: 0.38, chest: 0.27, arch: 0.085, tuck: 0.085,
     shoulderX: 0.430, hipX: 0.780, headX: 0.235, headR: 0.118, headY: 0.345,
@@ -588,7 +625,7 @@ function quadruped(ctx, w, h, frame, P) {
   // the back line — the difference between an animal running and one hunting.
   // Irregular on purpose: an even row reads as a comb, not as fur.
   if (P.hackles) {
-    ink(ctx, P.coatLo, u, (c) => {
+    ink(ctx, P.hackle || P.coatLo, u, (c) => {
       const N = 9;
       const x0 = shX - w * 0.045, x1 = rumpX - w * 0.02;
       c.moveTo(x0, spineAt(0) + h * 0.03);
@@ -602,7 +639,7 @@ function quadruped(ctx, w, h, frame, P) {
         // Two beats of jitter rather than one, so no run of three spikes ever
         // repeats and the ridge reads as fur rather than as a comb.
         const jitter = 0.58 + 0.30 * Math.abs(Math.sin(i * 2.399)) + 0.16 * Math.abs(Math.cos(i * 1.117));
-        const tall = h * (0.078 - 0.030 * t) * jitter;
+        const tall = h * (0.070 - 0.028 * t) * jitter;
         // Leaning backward, as fur pushed by the animal's own speed.
         c.lineTo(bx + step * 0.60, spineAt(t) - tall);
         c.lineTo(bx + step * 0.95, spineAt(t) + h * 0.010);
@@ -673,8 +710,8 @@ function quadruped(ctx, w, h, frame, P) {
   head(ctx, w, h, u, P, hx, hy, headR, gape, tilt);
 
   // ---- near pair, in front of everything ----------------------------------
-  hindLeg(ctx, u, w, h, P, GAIT.hindNear, p0, hip, ground, P.coatHi, 1);
-  frontLeg(ctx, u, w, h, P, GAIT.frontNear, p0, shoulder, ground, P.coatHi, 1);
+  hindLeg(ctx, u, w, h, P, GAIT.hindNear, p0, hip, ground, P.coatHi, 1, true);
+  frontLeg(ctx, u, w, h, P, GAIT.frontNear, p0, shoulder, ground, P.coatHi, 1, true);
 
   // Dust scuffed up by whichever hind foot is planted. Cheap, and it is what
   // pins the animal to the floor instead of leaving it sliding above it.
@@ -690,12 +727,12 @@ function quadruped(ctx, w, h, frame, P) {
 // A paw, angled with whatever bone arrives at it, with two toe notches. Kept
 // small: an oversized paw is the fastest way to make a running animal read as a
 // plush toy.
-function paw(ctx, u, w, P, fx, fy, ang, col, shade) {
+function paw(ctx, u, w, P, fx, fy, ang, col, shade, edge = OUTLINE, ew = 0.019) {
   const pw = w * P.paw * shade;
   ink(ctx, col, u, (c) => {
     c.ellipse(fx - Math.cos(ang) * pw * 0.15, fy - Math.sin(ang) * pw * 0.15,
       pw, pw * 0.66, ang + Math.PI / 2, 0, TAU);
-  });
+  }, edge, ew);
   fill(ctx, 'rgba(21,16,30,0.26)', (c) => {
     c.ellipse(fx - pw * 0.34, fy + pw * 0.16, pw * 0.15, pw * 0.26, 0, 0, TAU);
     c.ellipse(fx + pw * 0.04, fy + pw * 0.20, pw * 0.15, pw * 0.26, 0, 0, TAU);
@@ -706,7 +743,8 @@ function paw(ctx, u, w, P, fx, fy, ang, col, shade) {
 // toward the tail, which with the art facing left means bend = -1. The wrist is
 // the short near-vertical section above the foot, and it is what lets the leg
 // fold under the animal on the gather instead of swinging like a pendulum.
-function frontLeg(ctx, u, w, h, P, phase, p0, root, ground, col, shade) {
+function frontLeg(ctx, u, w, h, P, phase, p0, root, ground, col, shade, near = false) {
+  const edge = near ? OUTLINE_NEAR : OUTLINE, ew = 0.019;
   const p = (p0 + phase) % 1;
   const f = footAt(p, root.x + w * 0.010, ground, w * P.reach, h * P.lift);
   const span = ground - root.y;
@@ -716,17 +754,18 @@ function frontLeg(ctx, u, w, h, P, phase, p0, root, ground, col, shade) {
   const l = (Math.hypot(wr.x - root.x, wr.y - root.y) + span * 0.85) / 2;
   const el = joint(root.x, root.y, wr.x, wr.y, l * 0.54, l * 0.54, -1);
   const wu = w * P.boneUp * shade, wl = w * P.boneLo * shade;
-  bone(ctx, u, root.x, root.y, el.x, el.y, wu, wl * 1.15, col);
-  bone(ctx, u, el.x, el.y, wr.x, wr.y, wl * 1.15, wl * 0.80, col);
-  bone(ctx, u, wr.x, wr.y, f.x, f.y, wl * 0.80, wl * 0.68, col);
-  paw(ctx, u, w, P, f.x, f.y, Math.atan2(f.y - wr.y, f.x - wr.x), col, shade);
+  bone(ctx, u, root.x, root.y, el.x, el.y, wu, wl * 1.15, col, 'far', edge, ew);
+  bone(ctx, u, el.x, el.y, wr.x, wr.y, wl * 1.15, wl * 0.80, col, 'far', edge, ew);
+  bone(ctx, u, wr.x, wr.y, f.x, f.y, wl * 0.80, wl * 0.68, col, 'far', edge, ew);
+  paw(ctx, u, w, P, f.x, f.y, Math.atan2(f.y - wr.y, f.x - wr.x), col, shade, edge, ew);
 }
 
 // A HIND leg: hip -> stifle -> hock -> paw, the Z every quadruped's back leg
 // makes. Solved in two passes because a single two-bone chain can only break
 // one way and this one breaks both: the stifle forward, the hock backward.
 // Getting that Z is most of what separates a dog from a coffee table.
-function hindLeg(ctx, u, w, h, P, phase, p0, root, ground, col, shade) {
+function hindLeg(ctx, u, w, h, P, phase, p0, root, ground, col, shade, near = false) {
+  const edge = near ? OUTLINE_NEAR : OUTLINE, ew = 0.019;
   const p = (p0 + phase) % 1;
   const f = footAt(p, root.x - w * 0.020, ground, w * P.reach, h * P.lift);
   const span = ground - root.y;
@@ -738,10 +777,10 @@ function hindLeg(ctx, u, w, h, P, phase, p0, root, ground, col, shade) {
   // Pass two: break the thigh and shank apart at the stifle, forward.
   const stifle = joint(root.x, root.y, hock.x, hock.y, span * 0.44, span * 0.44, 1);
   const wu = w * P.boneUp * shade, wl = w * P.boneLo * shade;
-  bone(ctx, u, root.x, root.y, stifle.x, stifle.y, wu * 1.25, wl * 1.20, col);
-  bone(ctx, u, stifle.x, stifle.y, hock.x, hock.y, wl * 1.20, wl * 0.90, col);
-  bone(ctx, u, hock.x, hock.y, f.x, f.y, wl * 0.90, wl * 0.66, col);
-  paw(ctx, u, w, P, f.x, f.y, Math.atan2(f.y - hock.y, f.x - hock.x), col, shade);
+  bone(ctx, u, root.x, root.y, stifle.x, stifle.y, wu * 1.25, wl * 1.20, col, 'far', edge, ew);
+  bone(ctx, u, stifle.x, stifle.y, hock.x, hock.y, wl * 1.20, wl * 0.90, col, 'far', edge, ew);
+  bone(ctx, u, hock.x, hock.y, f.x, f.y, wl * 0.90, wl * 0.66, col, 'far', edge, ew);
+  paw(ctx, u, w, P, f.x, f.y, Math.atan2(f.y - hock.y, f.x - hock.x), col, shade, edge, ew);
 }
 
 // ------------------------------------------------------------------- exports
@@ -774,11 +813,32 @@ export const ANIMAL_TALL = {
   dogSnarler: 1.05, dogBruiser: 1.0, dogFeral: 1.15, catFury: 1.12,
 };
 
-// Supersampling. These carry more small detail than any other prop — teeth,
-// claws, hackles, an eye highlight — inside boxes of 11 to 17px, and at 2x the
-// fangs alias into the lip. 3x is what keeps them as teeth.
+// Supersampling. This is NOT the only multiplier: rasterize() applies its own
+// SS (8, in sprites/props.js) on top, so the cached canvas is
+// def.w * detail * 8 pixels wide — 256 for the snarler at detail 2, not 32.
+//
+// What it has to clear is the DEVICE footprint, and three multipliers sit
+// between the def box and the screen:
+//
+//   the 4/3 hazard overdraw x propVisualScale   1.56x
+//   the camera, applyWorld's ctx.scale(z, z)    1.6x desktop / 2.0 tablet / 2.2 phone
+//   the adaptive backbuffer density             1x to 5x (STANDARD_RUNGS, renderer.js)
+//
+// So a 16-unit dog is 120 to 286 device pixels wide in play — never the 25 its
+// def box suggests. At detail 2 the 256px raster is downsampled at every rung
+// a player is realistically on, and magnified 1.06x only on a density-5 iPad
+// at its most zoomed, which is not a visible difference.
+//
+// 2, not the 3 this shipped at, and the reason is memory rather than looks:
+// because of the SS(8) above, each step costs more than it appears. 3 holds
+// 7.4MB resident for a cabinet's two animals against 3.3MB at 2, for headroom
+// on one rung nobody can see. 2 also matches every other refined prop in the
+// set (see tests/props.js), so there is one rule here rather than an exception.
+//
+// If ZOOM_PHONE (game/run.js) or the density ladder moves, re-derive against
+// that 286px worst case rather than adjusting this by eye.
 export const ANIMAL_DETAIL = {
-  dogSnarler: 3, dogBruiser: 3, dogFeral: 3, catFury: 3,
+  dogSnarler: 2, dogBruiser: 2, dogFeral: 2, catFury: 2,
 };
 
 // World-only visual size, on top of the standard 4/3 hazard overdraw. Same
