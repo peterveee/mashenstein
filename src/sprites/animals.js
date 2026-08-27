@@ -129,6 +129,77 @@ function joint(hx, hy, fx, fy, l1, l2, bend) {
 
 const TAU = Math.PI * 2;
 
+// ------------------------------------------------------------------- the fur
+// A run of fur along an edge: leaning, jittered spikes emitted from a
+// parametric curve and closed back along it, so the whole run is ONE filled
+// band rather than n loose triangles. Loose triangles at these sizes read as
+// confetti sitting near the animal; a band reads as a coat on it.
+//
+// This exists because the same loop was already written twice by hand — the
+// spine hackles and the cat's bottlebrush — and drifted apart in the writing.
+// A third and fourth copy for the ruff and the rump is how a set of four
+// animals ends up with four different ideas of what fur looks like.
+//
+// `at(t)` hands back a point AND its outward normal; see quadEdge below. Fur
+// leans along the edge's own tangent, taken by finite difference, so a caller
+// never has to supply a derivative.
+function furRun(ctx, u, col, { at, n = 9, len, lean = 0.55, seed = 0, sink = 0 }) {
+  const EPS = 0.004;
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+  ink(ctx, col, u, (c) => {
+    const start = at(0);
+    c.moveTo(start.x, start.y);
+    for (let i = 0; i < n; i++) {
+      // Pitch wanders as well as height. A row of varied-height spikes on an
+      // even pitch still reads as a saw blade; it is the uneven pitch that
+      // makes it fur.
+      const t = clamp01((i + 0.30 * Math.sin(i * 1.71 + seed)) / (n - 1));
+      const b = at(t);
+      const a2 = at(Math.min(1, t + EPS)), a1 = at(Math.max(0, t - EPS));
+      let tx = a2.x - a1.x, ty = a2.y - a1.y;
+      const tl = Math.hypot(tx, ty) || 1;
+      tx /= tl; ty /= tl;
+      // Two beats of jitter rather than one, so no run of three spikes ever
+      // repeats. `seed` offsets both, because without it every run on the same
+      // animal comes out identically patterned and the eye reads the spine,
+      // the ruff and the rump as three copies of one row.
+      const j = 0.38 + 0.44 * Math.abs(Math.sin(i * 2.399 + seed))
+        + 0.26 * Math.abs(Math.cos(i * 1.117 + seed * 0.7));
+      const L = len(t) * j;
+      // Lean wanders too. Height and pitch alone still leave every spike raked
+      // at the same angle, which on a fine run is enough to read as machined.
+      const lz = lean * (0.72 + 0.55 * Math.abs(Math.sin(i * 0.921 + seed * 1.3)));
+      c.lineTo(b.x + b.nx * L + tx * L * lz, b.y + b.ny * L + ty * L * lz);
+      const nb = at(clamp01((i + 1) / (n - 1)));
+      c.lineTo(nb.x, nb.y);
+    }
+    // Back along the edge, sunk INSIDE the body, so every root is buried under
+    // whatever is drawn over the run instead of showing as a seam beside it.
+    for (let i = 6; i >= 0; i--) {
+      const q = at(i / 6);
+      c.lineTo(q.x - q.nx * sink, q.y - q.ny * sink);
+    }
+    c.closePath();
+  });
+}
+
+// A quadratic edge with its outward normal, in the shape furRun walks. `side`
+// is +1 or -1 and picks which way "outward" is: a curve does not know which of
+// its two sides is the outside of the animal.
+function quadEdge(x0, y0, cx, cy, x2, y2, side = 1) {
+  return (t) => {
+    const mt = 1 - t;
+    const x = mt * mt * x0 + 2 * mt * t * cx + t * t * x2;
+    const y = mt * mt * y0 + 2 * mt * t * cy + t * t * y2;
+    let dx = 2 * mt * (cx - x0) + 2 * t * (x2 - cx);
+    let dy = 2 * mt * (cy - y0) + 2 * t * (y2 - cy);
+    const d = Math.hypot(dx, dy) || 1;
+    dx /= d; dy /= d;
+    return { x, y, nx: -dy * side, ny: dx * side };
+  };
+}
+
+
 // ------------------------------------------------------------------- the rig
 // Frame count is shared by every animal and by ANIMAL_FRAMES below. A painter
 // that cycles on a different count from the table it is rasterized against
@@ -173,7 +244,12 @@ const BREEDS = {
   // gameplay size because the legs are thin enough to see daylight between.
   dogSnarler: {
     coat: '#3a3446', coatHi: '#4a4258', coatLo: '#26212f', belly: '#a87a4c', mark: '#b07840',
-    ear: 'crop', tail: 'whip', hackles: 0, ribs: 0, collar: 'spiked',
+    ear: 'crop', tail: 'whip', ribs: 0, collar: 'spiked',
+    // Short coat: what a doberman raises is a narrow, sharp ridge, not a
+    // mane. Many fine spikes rather than few long ones is the whole
+    // difference, and it keeps the lean wedge this breed is built on.
+    pelt: 'short', hackle: '#4e465e',
+    fur: { spine: 0.62, ruff: 0.72, rump: 0.34 },
     leg: 0.44, chest: 0.33, arch: 0.02, tuck: 0.075,
     shoulderX: 0.430, hipX: 0.800, headX: 0.290, headR: 0.128, headY: 0.365,
     muzzle: 0.115, jawDrop: 0.55, neck: 0.26,
@@ -186,7 +262,13 @@ const BREEDS = {
   // rather than a lope, which is what makes it read as the heavy one.
   dogBruiser: {
     coat: '#c08a4a', coatHi: '#d09b5c', coatLo: '#95622f', belly: '#ecd6b2', mark: '#6a4420',
-    ear: 'flop', tail: 'stub', hackles: 0, ribs: 0, collar: 'spiked',
+    ear: 'flop', tail: 'stub', ribs: 0, collar: 'spiked',
+    // The ruff carries this one. On a neck already this thick a raised
+    // scruff reads as bulk AND anger at once, which is more than a spine
+    // ridge buys on a dog with barely any back to put one on. Fur runs
+    // DARKER here — on a light coat a lighter fur has nothing to read against.
+    pelt: 'short', hackle: '#8a5526',
+    fur: { spine: 0.55, ruff: 0.95, rump: 0.30 },
     leg: 0.33, chest: 0.42, arch: -0.015, tuck: 0.028,
     shoulderX: 0.430, hipX: 0.815, headX: 0.272, headR: 0.150, headY: 0.320,
     muzzle: 0.070, jawDrop: 0.70, neck: 0.15,
@@ -200,7 +282,10 @@ const BREEDS = {
   // the big one.
   dogFeral: {
     coat: '#6a6a74', coatHi: '#7c7c86', coatLo: '#45454f', belly: '#a09a94', mark: '#2e2e36',
-    ear: 'prick', tail: 'brush', hackles: 1, ribs: 1, collar: 'none',
+    ear: 'prick', tail: 'brush', ribs: 1, collar: 'none',
+    // The shaggy one: fewer, longer, clumpier spikes on every edge.
+    pelt: 'shaggy', hackle: '#4a4a56',
+    fur: { spine: 1.15, ruff: 1.05, rump: 0.85 },
     leg: 0.48, chest: 0.31, arch: 0.030, tuck: 0.095,
     shoulderX: 0.440, hipX: 0.805, headX: 0.305, headR: 0.126, headY: 0.360,
     muzzle: 0.130, jawDrop: 0.62, neck: 0.30,
@@ -218,7 +303,9 @@ const BREEDS = {
     // near-black on dark and resolves as one solid mass; fur has to catch
     // light along its edge to be fur at all.
     hackle: '#4d4860',
-    ear: 'flat', tail: 'bottlebrush', hackles: 1, ribs: 0, collar: 'none',
+    ear: 'flat', tail: 'bottlebrush', ribs: 0, collar: 'none',
+    pelt: 'shaggy',
+    fur: { spine: 1.05, ruff: 0.85, rump: 0.75 },
     leg: 0.38, chest: 0.27, arch: 0.085, tuck: 0.085,
     shoulderX: 0.430, hipX: 0.780, headX: 0.235, headR: 0.118, headY: 0.345,
     muzzle: 0.048, jawDrop: 0.62, neck: 0.14,
@@ -467,6 +554,32 @@ function quadruped(ctx, w, h, frame, P) {
     return mt * mt * a + 2 * mt * t * b + t * t * cc;
   };
 
+  // Fur, shared by all three runs below. Base length is a fraction of the box,
+  // so a breed's `fur` numbers are strengths rather than sizes.
+  //
+  // A short coat gets MORE and SHORTER spikes and a shaggy one FEWER and
+  // LONGER: bristle versus clumps is carried by the count as much as by the
+  // length, and it is what keeps the doberman from turning into the wolf.
+  const shortCoat = P.pelt === 'short';
+  const furCol = P.hackle || P.coatLo;
+  const FUR = h * 0.078;
+  const furN = shortCoat ? 11 : 9;
+  // Only the LEAN rides the stride. Re-rolling the jitter per frame would make
+  // the coat flicker rather than move — these cycle at 15-20fps and every frame
+  // is its own raster, so anything that reshuffles strobes.
+  const furLean = 0.85 + 0.30 * Math.sin(p0 * TAU);
+
+  // ---- rump fur, before the haunch and torso so both bury its roots -------
+  if (P.fur.rump > 0) {
+    furRun(ctx, u, furCol, {
+      at: quadEdge(hpX - w * 0.015, withersY + h * 0.012,
+        rumpX + w * 0.02, withersY + h * 0.075,
+        rumpX - w * 0.005, bellyY - h * 0.055, -1),
+      n: Math.round(furN * 0.7), lean: 0.30 * furLean, seed: 2.4, sink: h * 0.035,
+      len: (t) => FUR * P.fur.rump * (0.9 + 0.5 * Math.sin(t * Math.PI)),
+    });
+  }
+
   // ---- far pair, behind everything ---------------------------------------
   hindLeg(ctx, u, w, h, P, GAIT.hindFar, p0, hip, ground, P.coatLo, 0.9);
   frontLeg(ctx, u, w, h, P, GAIT.frontFar, p0, shoulder, ground, P.coatLo, 0.9);
@@ -621,31 +734,23 @@ function quadruped(ctx, w, h, frame, P) {
   });
   ctx.restore();
 
-  // Hackles: fur standing along the spine. Drawn as a run of leaning spikes off
-  // the back line — the difference between an animal running and one hunting.
-  // Irregular on purpose: an even row reads as a comb, not as fur.
-  if (P.hackles) {
-    ink(ctx, P.hackle || P.coatLo, u, (c) => {
-      const N = 9;
-      const x0 = shX - w * 0.045, x1 = rumpX - w * 0.02;
-      c.moveTo(x0, spineAt(0) + h * 0.03);
-      for (let i = 0; i < N; i++) {
-        // Spacing wanders as well as height. A row of varied-height spikes on
-        // an even pitch still reads as a saw blade; it is the uneven pitch that
-        // makes it fur.
-        const t = (i + 0.30 * Math.sin(i * 1.71)) / (N - 1);
-        const bx = x0 + (x1 - x0) * Math.max(0, Math.min(1, t));
-        const step = (x1 - x0) / N;
-        // Two beats of jitter rather than one, so no run of three spikes ever
-        // repeats and the ridge reads as fur rather than as a comb.
-        const jitter = 0.58 + 0.30 * Math.abs(Math.sin(i * 2.399)) + 0.16 * Math.abs(Math.cos(i * 1.117));
-        const tall = h * (0.070 - 0.028 * t) * jitter;
-        // Leaning backward, as fur pushed by the animal's own speed.
-        c.lineTo(bx + step * 0.60, spineAt(t) - tall);
-        c.lineTo(bx + step * 0.95, spineAt(t) + h * 0.010);
-      }
-      c.lineTo(x1, spineAt(1) + h * 0.05);
-      c.closePath();
+  // ---- spine hackles, on top of the finished torso ------------------------
+  // The ridge that says hunting rather than merely running. Roots are sunk
+  // below the back line so the run reads as fur growing OUT of the animal
+  // rather than as a comb laid on top of it.
+  if (P.fur.spine > 0) {
+    const sx0 = shX - w * 0.055, sx1 = rumpX - w * 0.02;
+    furRun(ctx, u, furCol, {
+      // Same three control values spineAt uses, so the ridge sits ON the back
+      // at every breed instead of floating over the arched ones. The x control
+      // is the midpoint, which makes x linear in t and y follow spineAt exactly.
+      at: quadEdge(sx0, withersY - h * P.arch * 0.55,
+        (sx0 + sx1) / 2, archCtrlY,
+        sx1, withersY + h * 0.012, -1),
+      n: furN, lean: 0.62 * furLean, seed: 0, sink: h * 0.035,
+      // Tallest over the shoulder, tapering to the croup: fur stands highest
+      // where the animal is heaviest.
+      len: (t) => FUR * P.fur.spine * (1 - 0.38 * t),
     });
   }
 
@@ -668,6 +773,31 @@ function quadruped(ctx, w, h, frame, P) {
     c.quadraticCurveTo(shX, bellyY - h * P.chest * 0.95, shX + w * 0.055, withersY - h * 0.012);
     c.closePath();
   });
+
+  // ---- ruff, the raised scruff --------------------------------------------
+  // The strongest single signal in the set, and the one none of them had. A
+  // dog that has decided about you raises the neck and shoulder first; the
+  // spine ridge is the continuation of it, not the start.
+  //
+  // Drawn AFTER the neck and BEFORE the head, so the skull sits in front of
+  // the ruff and the run's forward roots disappear under it — a ruff drawn
+  // last stands proud of the jaw and reads as a collar of spikes.
+  if (P.fur.ruff > 0) {
+    furRun(ctx, u, furCol, {
+      // From behind the skull, around the back of the neck, onto the shoulder.
+      // Behind the skull, over the crest of the neck, onto the shoulder. The
+      // control sits ABOVE both ends so the arc crests over the withers — with
+      // it below either end the normal at that end points forward instead of
+      // out, and the run piles onto the ear.
+      at: quadEdge(hx + headR * 0.78, hy - headR * 0.30,
+        shX - w * 0.035, withersY - h * 0.075,
+        shX + w * 0.115, withersY + h * 0.030, -1),
+      n: furN, lean: 0.42 * furLean, seed: 5.1, sink: h * 0.05,
+      // Fullest at the middle of the run, where the scruff actually is, rather
+      // than even along it — an even ruff reads as a hood.
+      len: (t) => FUR * P.fur.ruff * (0.55 + 0.85 * Math.sin(t * Math.PI)),
+    });
+  }
 
   // ---- collar -------------------------------------------------------------
   // A band ACROSS the neck, with short studs standing off its outer edge. The
