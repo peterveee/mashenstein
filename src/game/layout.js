@@ -174,9 +174,13 @@ function finishDogChanceFor(l, stage, cabinet) {
  * setting, corruptions), so run.js converts, and the editor converts with its
  * own forecast base — both from the same fractions.
  */
-export function resolveLayout(stage, cabinet) {
+export function resolveLayout(stage, cabinet, entry = undefined) {
   if (!stage) return null;
-  const l = STAGE_LAYOUTS[stage.id] || {};
+  // `entry` is the level editor resolving its own unsaved working copy: it
+  // holds an edited layout that is not in the imported module yet, and it has
+  // to be able to ask this function — the one the run asks — what that edit
+  // means. Everyone else omits it and gets the shipped file.
+  const l = entry ?? STAGE_LAYOUTS[stage.id] ?? {};
   return {
     durationSec: l.durationSec ?? stage.durationSec,
     speedMult: l.speedMult ?? stage.speedMult ?? 1,

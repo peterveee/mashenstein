@@ -15,6 +15,9 @@ const suites = [
   // And the file that system reads: schema, and the registry names a section
   // can quietly stop matching when an obstacle is renamed.
   'tests/stage-layouts.js',
+  // The tool that writes it: idempotent saves, the history snapshot, and the
+  // shapes the validator refuses before they can reach a level.
+  'tests/level-editor.js',
   'tests/story-beats.js',
   'tests/tutorial.js',
   'tests/hero-kits.js',
