@@ -1380,7 +1380,7 @@ class ArcadeArtGallery extends BaseVisualiser {
     // Gary and Dolores own the periodic floor cameo below; keeping them out of
     // this rotating reel lets their entrance read as an event, not another
     // spinning gallery card.
-    const heroIds = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'kiko', 'raymn', 'grumpos'];
+    const heroIds = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
     this.heroes = heroIds.map((heroId, i) => ({
       heroId,
       angle: i * TAU / heroIds.length + (this.rng.float() - 0.5) * 0.22,

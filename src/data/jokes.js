@@ -47,6 +47,7 @@ export const TAG_LINES = {
   fernwick: 'THE RECEIPT FORETOLD THIS.',
   b33p: 'LOW ON CYAN.',
   mochi: 'POYO.',
+  clara: 'SUDDENLY: CLARA VAULT.',
   kiko: 'THIS IS A CRIME SCENE.',
   raymn: 'HANDS OFF. LITERALLY.',
   grumpos: 'BOY.',
@@ -100,6 +101,11 @@ export const EXIT_LINES = {
     'POYO. (THE PIXELS WARP SLIGHTLY.)',
     'POYO.',
     'POYO? (IT IS A GOODBYE. PROBABLY.)',
+  ],
+  clara: [
+    'SHE LEFT THE WAY SHE ARRIVED: DRAMATICALLY, AND MID-SENTENCE.',
+    'TO BE CONTINUED.',
+    'OUR HEROINE VANISHED. THE CROWD GASPED. (THE CROWD WAS A VENDING MACHINE.)',
   ],
   kiko: [
     'THE FILE STAYS OPEN. SO DOES THE DOOR.',
@@ -212,6 +218,39 @@ export const HUB_LINES = {
     'POYO POYO.',
     'POYO. (MOCHI FLOATS. THE ROOM FEELS SLIGHTLY MORE BLESSED.)',
     'POYO?? POYO.',
+  ],
+  // CLARA. Her bit is NARRATION: she lives inside a pulp adventure serial and
+  // reads it out — breathless third person, past tense, chapter numbers — while
+  // standing in a food court doing nothing of the kind. The rule protecting it:
+  // the NARRATOR is always sincere. The gap between the prose and the premises
+  // is the joke, and the moment she winks at it the whole register collapses
+  // into sarcasm, which Gnash already owns. She is not a fourth-wall break:
+  // the serial is real to her, the way Fernwick's receipt is real to him.
+  //
+  // Register check: her vocabulary is EXPEDITION prose — chapter, temple,
+  // artifact, cursed, ancient, our heroine, to be continued. Swap her nouns
+  // for HR nouns and every line dies, which keeps her off Gary's turf; swap
+  // the narration frame away and the line should stop working, which keeps
+  // her off everyone else's.
+  //
+  // One line per joke type, in order: the ruin / the artifact / the peril /
+  // the leap / the pistol / the cliffhanger / the tense slipping / the
+  // guardian / the cursed treasure / the map / the franchise / the
+  // scholarship. Two pay rent on the kit — the cliffhanger jump and the
+  // pistol.
+  clara: [
+    'CHAPTER ONE: THE FOOD COURT. ANCIENT. ABANDONED. THE PRETZEL STAND WAS STILL WARM. SHE PRESSED ON.',
+    'SHE RAISED THE NAPKIN DISPENSER ALOFT. PRICELESS. MUSEUMS WOULD GO TO WAR FOR THIS. SHE KEPT IT.',
+    'THE FLOOR WAS FRESHLY MOPPED. A TRAP. SHE HAD TRAINED HER WHOLE LIFE FOR THIS.',
+    'ONE LEAP. IT WAS ALL SHE EVER NEEDED. SECOND JUMPS WERE FOR PEOPLE WITH DOUBTS.',
+    'SHE FIRED ONCE. THE BARREL UNDERSTOOD. THE OTHER BARRELS TOOK NOTES.',
+    'WOULD SHE SURVIVE THE LUNCH RUSH? FIND OUT IN THE NEXT CHAPTER. SHE WOULD. SHE ALWAYS DID.',
+    'SHE SAID NOTHING. SHE WAS SAYING IT OUT LOUD. SHE WOULD DEAL WITH THAT IN CHAPTER NINE.',
+    'THE GUARDIAN OF THE SERVING LINE SPOKE: "NEXT." A PROPHECY? A THREAT? SHE QUEUED, CAREFULLY.',
+    'THE COINS WERE OBVIOUSLY CURSED. SHE TOOK THEM ANYWAY. THAT WAS PAGE ONE OF THE JOB.',
+    'SHE CONSULTED THE MALL MAP. "YOU ARE HERE," IT SAID. THE MAP KNEW TOO MUCH.',
+    'HER LIFE WAS A TRILOGY. THIS WAS THE GRITTY MIDDLE INSTALLMENT, WHERE THE PRETZELS RAN OUT.',
+    'THE ANCIENTS BUILT THIS TEMPLE FOR RITUAL SNACKING. THE SIGNAGE CONFIRMED IT. SO DID THE GREASE.',
   ],
   // Her bit is JURISDICTION: a criminal investigation nobody authorised, in a
   // building where a badge means nothing, pursued with total seriousness. The

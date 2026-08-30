@@ -55,6 +55,16 @@ const SHAPES = {
   // rather than copied here — so a shape tuned in audio.js cannot silently drift out of
   // the tool that is supposed to audition it.
   wired:   null,
+
+  // The finish dog's bark (`dogBark:gruff`). Named rather than copied — these
+  // reach BARK_SHAPES in engine/audio.js through the dotted lookup below, so the
+  // sheet cannot drift from what the game fires.
+  woof:    'BARK_SHAPES.woof',
+  raw:     'BARK_SHAPES.raw',
+  huff:    'BARK_SHAPES.huff',
+  gruff:   'BARK_SHAPES.gruff',
+  yap:     'BARK_SHAPES.yap',
+
   wiredIn: 'PORTAL_RELAY_IN',
   wiredOut:'PORTAL_RELAY_OUT',
   wiredCred:'PORTAL_RELAY_CREDITS',
@@ -154,9 +164,17 @@ async function main() {
       Audio.songTrim.gain.setValueAtTime(1, 0);
       // `wired` comes through as null: take the engine's own shape and, when no gain was
       // asked for, its own gain too, so `portal:wired` is exactly what the game plays.
+      // A string shape names an engine export, so a shape tuned in audio.js cannot
+      // drift out of the tool auditioning it. A DOTTED string reaches one entry of an
+      // exported table — the bark keeps its five in `BARK_SHAPES` rather than as five
+      // separate exports.
+      const byName = (n) => n.split('.').reduce((o, k) => (o == null ? o : o[k]), window.__A);
       const useShape = shape === null ? window.__WIRED.shape
-        : (typeof shape === 'string' ? window.__A[shape] : shape);
-      const useGain = (shape === null || typeof shape === 'string') && g === 1
+        : (typeof shape === 'string' ? byName(shape) : shape);
+      // The wired GAIN is the portal's own firing strength, so it only belongs to the
+      // portal's wired shapes — inherited by any other cue named with a string shape,
+      // it silently auditioned the bark at the swoosh's level.
+      const useGain = cue === 'portal' && (shape === null || typeof shape === 'string') && g === 1
         ? window.__WIRED.gain : g;
       Audio.sfx(cue, { gain: useGain, shape: useShape });
       const buf = await ctx.startRendering();

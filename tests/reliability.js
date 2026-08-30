@@ -18,6 +18,7 @@ const { VIEW_W } = await import('../src/engine/camera.js');
 const { wrapText, textWidth } = await import('../src/engine/sprites.js');
 const { chrome } = await import('../src/engine/renderer.js');
 const { glfx } = await import('../src/engine/glfx.js');
+const { poseFromPlayer } = await import('../src/sprites/toons.js');
 const { save } = await import('../src/engine/save.js');
 const { Save, defaultSlot, defaultSettings } = await import('../src/engine/save.js');
 
@@ -711,6 +712,9 @@ run.powerups.shieldStack = 0;
 run.obstacles = [makeObstacle('gap', run.camX + PLAYER_X - 10)];
 run.collide();
 assert(run.pitDeath && run.player.fallFace, 'the fall into a pit wears the surprised face');
+const pitFace = poseFromPlayer(run.player, 0);
+assert(pitFace.faceSurprised && pitFace.browRaise,
+  'the pit fall promotes surprise to the full startled face');
 // He carries forward into it. The world stops scrolling the frame he dies, so
 // without this he drops down the near wall like a lift.
 for (let i = 0; i < 8; i++) run.update(1 / 60);

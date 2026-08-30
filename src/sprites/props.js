@@ -346,8 +346,27 @@ function hzBarrel(ctx, x, y, bw, bh, fill, dark, bandCol = '#4a5460') {
 
 const DRONE_EYE_FRAMES = 16;
 
+// The finish-line dog (the `finishDog` def in game/entities.js) wears the dog
+// rigs through these ALIASES rather than the pack names, for exactly one
+// reason: detail. Rasters cache per name and the detail scale keys off the
+// name, so the pack dogs' carefully-argued detail 2 (see ANIMAL_DETAIL in
+// sprites/animals.js) can't be raised for one showcase prop without paying for
+// it on every dog in every lane. The finish dog is the biggest hazard box in
+// the game and the star of the last three seconds of every plumber stage, so
+// its aliases take detail 3 — at its 22-unit box the detail-2 raster is
+// fractionally MAGNIFIED on the top density rung, which is the case the
+// pack dogs never hit and the whole reason the exception exists. Everything
+// else — painter, frames, gait rate, stature, overdraw, self-outline — is the
+// base dog's, read from the same tables so the two can never drift.
+const FINISH_DOG_ALIASES = {
+  finishSnarler: 'dogSnarler', finishBruiser: 'dogBruiser', finishFeral: 'dogFeral',
+};
+const finishDogTable = (src, override) => Object.fromEntries(
+  Object.entries(FINISH_DOG_ALIASES).map(([alias, base]) => [alias, override ?? src[base]]));
+
 export const PROP_PAINTERS = {
   ...ANIMAL_PAINTERS,
+  ...finishDogTable(ANIMAL_PAINTERS),
   // --- ground hazards ---------------------------------------------------
   // A thorn cactus: saguaro silhouette — fat trunk, two arms elbowing upward —
   // bristling with pale spines. This slot cycled through shrub drawings and a
@@ -444,18 +463,19 @@ export const PROP_PAINTERS = {
   // and a second, wider plinth under that. Two visible bottom edges and two
   // ink lines is the picture of something parked on the grass. Now the frame
   // runs past the bottom of the box and is cut flat by the ground line and the
-  // plinth is gone, so the plate has no visible foot at all. The dirt that laps
-  // back over its lower corners is drawn by the RENDERER, not here (see
-  // `bedded` in draw.js): it has to be the cabinet's own ground colour, and a
-  // painter has no idea which cabinet it is standing in.
+  // plinth is gone, so the plate has no visible foot at all. The BURYING is
+  // done by the RENDERER, not here (see BED_SINK and the `bedded` branch in
+  // draw.js): the art is seated 4px below the ground line and clipped at it,
+  // so only the top sliver of the plate face survives above the road — which
+  // is why the chevron stripe rides directly under the top edge below, not
+  // partway down the face where it was authored.
   popSpikes(ctx, w, h, frame = 0) {
     const f = ((frame % 8) + 8) % 8;
     const p = hzPhase(frame, 8);
     // 0.62..1 rather than 0..1. Always out, always lethal, still moving.
     const up = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(p));
-    // Was 0.62. Sitting the plate two points lower is what buys the room for
-    // the berm without pushing the chevron under it — the teeth keep their
-    // full travel because they are measured from the plate, not from the box.
+    // Was 0.62. The teeth keep their full travel wherever this sits, because
+    // they are measured from the plate, not from the box.
     const plateY = h * 0.6;
     const n = 5;
     ctx.save();
@@ -472,16 +492,25 @@ export const PROP_PAINTERS = {
     // canvas, so the rounded corners and the ink line at the foot are cut off
     // rather than drawn. A shape with no visible bottom edge continues.
     hzBox(ctx, w * 0.03, plateY, w * 0.94, h * 0.46, h * 0.06, '#454f5c', HZ_INK, Math.max(0.14, w * 0.02));
-    for (let i = 0; i < n; i++) {
-      const x = w * (0.15 + i * 0.7 / (n - 1));
-      hzBox(ctx, x - w * 0.065, plateY + h * 0.035, w * 0.13, h * 0.06, h * 0.02,
-        '#12161d', '#2b323c', Math.max(0.1, w * 0.014));
-    }
     // The chevron chase slides with the FRAME, not with the spike height. Tied
     // to the height it inherited the sine's mirror symmetry, and a plate whose
     // frames 1 and 3 are the same picture is a four-frame animation wearing an
     // eight-frame cache.
-    hzStripe(ctx, w * 0.06, plateY + h * 0.15, w * 0.88, h * 0.07, f * h * 0.028);
+    //
+    // Directly under the plate's top edge, with the tooth slots punched
+    // THROUGH it afterwards, because that top strip is all of the face the
+    // road leaves visible (see the burial note above). Where it used to sit —
+    // 0.15h down the face — is underground now, and a hazard stripe nobody
+    // can see marks nothing.
+    hzStripe(ctx, w * 0.06, plateY + h * 0.035, w * 0.88, h * 0.07, f * h * 0.028);
+    // Narrower than they were (0.13w): five slots at that width ate nearly
+    // the whole stripe and the band read as black with yellow flecks. 0.09
+    // still brackets each tooth and leaves the chevrons legible between them.
+    for (let i = 0; i < n; i++) {
+      const x = w * (0.15 + i * 0.7 / (n - 1));
+      hzBox(ctx, x - w * 0.045, plateY + h * 0.035, w * 0.09, h * 0.06, h * 0.02,
+        '#12161d', '#2b323c', Math.max(0.1, w * 0.014));
+    }
   },
 
   // A settled campfire: crossed logs with the flame sitting INSIDE the pile
@@ -582,10 +611,56 @@ export const PROP_PAINTERS = {
     hzBlade(ctx, w * 0.5, slotY + h * 0.12, Math.min(w * 0.42, h * 0.62), (f / 8) * (HZ_TAU / 12), 12);
     ctx.restore();
     hzBox(ctx, w * 0.02, slotY, w * 0.96, h * 0.44, h * 0.06, '#454f5c', HZ_INK, Math.max(0.14, w * 0.02));
+    // Stripe at the very top of the plate, blade slot punched through it —
+    // same reason as the spike plate's (see its burial note): the road leaves
+    // only the top sliver of the face visible, and the stripe's old berth
+    // 0.14h down the face is underground.
+    hzStripe(ctx, w * 0.05, slotY + h * 0.025, w * 0.9, h * 0.08, f * 1.6);
     hzBox(ctx, w * 0.2, slotY + h * 0.03, w * 0.6, h * 0.08, h * 0.025, '#10141a', '#2b323c', Math.max(0.1, w * 0.014));
-    hzStripe(ctx, w * 0.05, slotY + h * 0.14, w * 0.9, h * 0.09, f * 1.6);
     hzSparks(ctx, w * 0.28, slotY, Math.min(w, h) * 0.16, f, 8, 1, 3);
     hzSparks(ctx, w * 0.72, slotY, Math.min(w, h) * 0.16, f, 8, 4, 3);
+  },
+
+  // The boom barrier — Act I's ground-anchored duck (see OBSTACLES.boomBarrier).
+  // Authored FULL HEIGHT: the `overhang` branch in drawWorldEntity hands this
+  // painter the whole structure's box, post to beacon, and only the arm band
+  // (y 0.14h–0.41h of this drawing) is the hitbox. The post stands at the
+  // RIGHT edge — the arm reaches back over the lane toward the approaching
+  // hero, and the draw branch parks its contact ellipse under that edge.
+  // The 8-frame cycle is the beacon lamp breathing; the arm never moves —
+  // a rising gate would be a timing puzzle `action: 'duck'` cannot declare.
+  boomBarrier(ctx, w, h, frame = 0) {
+    const p = hzPhase(frame, 8);
+    const armTop = h * 0.14, armBot = h * 0.41;
+    const armH = armBot - armTop;
+    // Post: ground to arm, with a small foot so it stands rather than floats.
+    hzBox(ctx, w * 0.7, h * 0.9, w * 0.3, h * 0.1, h * 0.02, '#333b46', HZ_INK, Math.max(0.2, w * 0.03));
+    hzBox(ctx, w * 0.78, armTop + armH * 0.3, w * 0.15, h - armTop - armH * 0.3, w * 0.02, '#454f5c', HZ_INK, Math.max(0.2, w * 0.03));
+    hzLine(ctx, '#5d6774', Math.max(0.2, w * 0.03), (c) => {
+      c.moveTo(w * 0.815, armBot + h * 0.06); c.lineTo(w * 0.815, h * 0.88);
+    });
+    // Arm: the striped band IS the danger read, so it carries its own heavy
+    // ink contour (this prop self-outlines — no shared rim). Drawn in the TOP
+    // three quarters of the hitbox band, leaving the bottom quarter as air —
+    // the same direction of slack artLift buys a flyer: the hero's crouched
+    // ART is taller than his crouched box, and a stripe flush on the box's
+    // underside made a clean duck read as a graze.
+    const drawH = armH * 0.75;
+    hzStripe(ctx, 0, armTop, w * 0.9, drawH, 0);
+    hzPath(ctx, null, HZ_INK, Math.max(0.25, w * 0.035), (c) => {
+      hzRR(c, 0, armTop, w * 0.9, drawH, drawH * 0.3);
+    });
+    // Pivot hub where arm meets post.
+    hzDot(ctx, w * 0.845, armTop + armH * 0.5, w * 0.07, '#2b323c', HZ_INK, Math.max(0.2, w * 0.03));
+    // Beacon on the free tip — a ROTATING lamp, the way roadwork beacons turn:
+    // the gleam orbits the dome through the 8 frames, so every frame is its own
+    // pose and the loop point is the orbit's own period. The +3px of art over
+    // the box in the draw branch exists for this cap.
+    const bx = w * 0.14, by = armTop - h * 0.05;
+    const heat = 0.5 + 0.5 * Math.sin(p);
+    hzGlow(ctx, bx, by, w * 0.16, h * 0.09, '#ff5a3c', 0.18 + 0.22 * heat);
+    hzDot(ctx, bx, by, w * 0.06, heat > 0.4 ? '#ff5a3c' : '#8a2f22', HZ_INK, Math.max(0.2, w * 0.03));
+    hzDot(ctx, bx + Math.cos(p) * w * 0.028, by + Math.sin(p) * h * 0.014, w * 0.018, '#ffd9b0');
   },
 
   // The green cactus from the bake-off's THORNS row, as an occasional skin on
@@ -927,6 +1002,91 @@ export const PROP_PAINTERS = {
   // It leans. A sign hammered in straight reads as signage the level shipped
   // with; a couple of degrees off vertical reads as something somebody stuck
   // there in a hurry, which is what this is.
+  // BEWARE OF DOG, planted a screen before the finish on the stages that have
+  // a dog (see RunState.spawnFinishDog). Same board, post and tilt as jumpSign
+  // — they are the same object in the world's vocabulary and should not be two
+  // different objects on the eye — and the same contract in play: `sign`, so
+  // running through it breaks it for nothing.
+  //
+  // A PICTOGRAM, not words. jumpSign spends its whole board on four hand-cut
+  // letters because the pixel font dies at this size, and JUMP is four
+  // characters; BEWARE OF DOG is eleven, which is three times the word on the
+  // same 13x9 board. There is no version of that which is readable. A dog's
+  // head in silhouette is what an actual warning sign uses for the same
+  // reason, it survives being 7 screen pixels tall, and it says the one thing
+  // the player needs to know without depending on their reading English.
+  //
+  // RED board, not the jump sign's yellow. Yellow is this game's "here is a
+  // thing you do"; the guide teaches RED = AVOID, and every other red mark in
+  // the lane is a hazard. The dog is the only hazard the level announces
+  // ahead of time, so the announcement should be wearing the hazard colour.
+  dogSign(ctx, w, h) {
+    const u = Math.max(w, h);
+    // Everything inside 0..h — see the note on jumpSign: a painter has no
+    // canvas outside its own box, and that sign lost its ascenders to exactly
+    // this before it was caught.
+    const tilt = -0.035;
+    const postX = w * 0.455, postW = w * 0.085;
+    // A SQUARER board than its two siblings. Theirs are long and low because
+    // they carry a word; this one carries a head, and a head in a letterbox is
+    // a head drawn small with cream either side of it. Narrower and taller
+    // gives the pictogram a cell it can nearly fill, which is the whole
+    // difference between a dog and a dark smudge at world size.
+    const bw = w * 0.62, bh = h * 0.5;
+    const bx = postX + postW / 2 - bw / 2, by = h * 0.03;
+    const cy = by + bh / 2;
+    shape(ctx, '#7a5230', u, (c) => rr(c, postX, by + bh * 0.6, postW, h - by - bh * 0.6, postW * 0.3));
+    plain(ctx, 'rgba(40,24,12,0.35)', (c) => rr(c, postX + postW * 0.58, by + bh * 0.7, postW * 0.42, h - by - bh * 0.72, postW * 0.2));
+    ctx.save();
+    ctx.translate(postX + postW / 2, cy);
+    ctx.rotate(tilt);
+    const lx = bx - (postX + postW / 2), ly = by - cy;
+    shape(ctx, '#d83828', u, (c) => rr(c, lx, ly, bw, bh, bh * 0.16));
+    // The pale panel the head sits on. A dark silhouette needs something light
+    // behind it or it merges with the board's own contour at world size.
+    const px = lx + bw * 0.11, py = ly + bh * 0.12;
+    const pw = bw * 0.78, ph = bh * 0.7;
+    plain(ctx, '#f6e4c8', (c) => rr(c, px, py, pw, ph, bh * 0.08));
+    plain(ctx, 'rgba(40,10,6,0.3)', (c) => rr(c, lx + bw * 0.05, ly + bh * 0.86, bw * 0.9, bh * 0.1, bh * 0.04));
+
+    // The head, facing LEFT — the way the dog actually arrives, so the sign
+    // and the animal agree. Authored in unit coordinates across the panel so
+    // the drawing is a SHAPE rather than a pile of magic numbers, and so it
+    // fills whatever cell the board gives it.
+    //
+    // One closed path, not a head plus a muzzle plus ears: at seven screen
+    // pixels any gap between two parts closes into a blot, and a single
+    // silhouette stays legible all the way down. Everything in it is doing
+    // identification work — two pricked ears, a long snout and an open jaw are
+    // the whole difference between "dog", "bear" and "unreadable".
+    const X = (t) => px + ((t + 1) / 2) * pw;
+    const Y = (t) => py + ((t + 1) / 2) * ph;
+    plain(ctx, '#241a14', (c) => {
+      c.moveTo(X(-0.98), Y(0.02));            // nose
+      c.lineTo(X(-0.86), Y(-0.24));           // bridge of the snout
+      c.quadraticCurveTo(X(-0.52), Y(-0.42), X(-0.2), Y(-0.46)); // brow
+      c.lineTo(X(-0.08), Y(-1));              // front ear, up
+      c.lineTo(X(0.2), Y(-0.5));              // ...and down into the crown
+      c.lineTo(X(0.46), Y(-0.92));            // back ear, up
+      c.lineTo(X(0.72), Y(-0.3));             // ...and down the back of the skull
+      c.quadraticCurveTo(X(0.92), Y(0.1), X(0.86), Y(0.62)); // nape into the chest
+      c.lineTo(X(0.3), Y(0.86));
+      c.quadraticCurveTo(X(-0.1), Y(0.8), X(-0.34), Y(0.5)); // throat to the chin
+      // The open jaw: a wedge cut out of the muzzle. A closed mouth reads as a
+      // pet, and this sign is not about a pet.
+      c.lineTo(X(-0.98), Y(0.72));
+      c.lineTo(X(-0.72), Y(0.3));
+      c.lineTo(X(-0.98), Y(0.24));
+      c.closePath();
+    });
+    // The eye, punched back out of the silhouette. One pale notch turns a black
+    // shape into a face, and it is the cheapest mark on the board.
+    plain(ctx, '#f6e4c8', (c) => {
+      c.ellipse(X(-0.3), Y(-0.16), pw * 0.055, ph * 0.05, -0.3, 0, Math.PI * 2);
+    });
+    ctx.restore();
+  },
+
   jumpSign(ctx, w, h) {
     const u = Math.max(w, h);
     // EVERYTHING INSIDE 0..h. The first pass hung the board off a translate at
@@ -1015,6 +1175,43 @@ export const PROP_PAINTERS = {
       c.lineTo(x + cw * 0.5, top + (bot - top) * 0.62);
     });
     plain(ctx, '#2a1e0e', (c) => c.arc(bangX, bot - lw * 0.2, lw * 0.62, 0, Math.PI * 2));
+    ctx.restore();
+  },
+  // The jump sign's sibling for a hole you are meant to go INTO: same post,
+  // same hurriedly-leaning board, but a single filled arrow pointing at the
+  // floor instead of a word. One glyph rather than four because it stands in
+  // the crypt, where the light radius gives you less time to read anything —
+  // an arrow survives a squint that letters do not.
+  downSign(ctx, w, h) {
+    const u = Math.max(w, h);
+    const tilt = -0.035;
+    const postX = w * 0.455, postW = w * 0.085;
+    const bx = w * 0.05, by = h * 0.04, bw = w * 0.9, bh = h * 0.4;
+    const cy = by + bh / 2;
+    shape(ctx, '#7a5230', u, (c) => rr(c, postX, by + bh * 0.5, postW, h - by - bh * 0.5, postW * 0.3));
+    plain(ctx, 'rgba(40,24,12,0.35)', (c) => rr(c, postX + postW * 0.58, by + bh * 0.6, postW * 0.42, h - by - bh * 0.62, postW * 0.2));
+    ctx.save();
+    ctx.translate(postX + postW / 2, cy);
+    ctx.rotate(tilt);
+    const lx = bx - (postX + postW / 2), ly = by - cy;
+    shape(ctx, '#f2c53c', u, (c) => rr(c, lx, ly, bw, bh, bh * 0.2));
+    plain(ctx, '#c99a1e', (c) => rr(c, lx + bw * 0.04, ly + bh * 0.8, bw * 0.92, bh * 0.12, bh * 0.05));
+    // The arrow, filled: stem then head, drawn as one polygon so the ink never
+    // thins at the joint. Head takes over half the drop — at board size a
+    // slender arrow is a tadpole, and it is the head that says DOWN.
+    const ax = lx + bw * 0.5;
+    const top = ly + bh * 0.16, bot = ly + bh * 0.84;
+    const stemW = bw * 0.09, headW = bw * 0.22, headTop = top + (bot - top) * 0.42;
+    plain(ctx, '#2a1e0e', (c) => {
+      c.moveTo(ax - stemW, top);
+      c.lineTo(ax + stemW, top);
+      c.lineTo(ax + stemW, headTop);
+      c.lineTo(ax + headW, headTop);
+      c.lineTo(ax, bot);
+      c.lineTo(ax - headW, headTop);
+      c.lineTo(ax - stemW, headTop);
+      c.closePath();
+    });
     ctx.restore();
   },
   tombstone(ctx, w, h) {
@@ -1823,64 +2020,52 @@ export const PROP_PAINTERS = {
   // it stays honest, and this is the one line that ships it. The pre-bake-off
   // pad is kept as boostPadLegacy.
   boostPad(ctx, w, h, frame = 0) { PROP_PAINTERS.rampChevron(ctx, w, h, frame); },
-  // The spring. Sibling to the boost pad and drawn to be read as one: same
-  // black-and-gold, same chevrons, same "run over it and it pays out" contract.
-  // The one difference is the axis, and every mark here is about that axis —
-  // the coil, the chevrons and the plate all point UP, because what this thing
-  // sells is a road two hundred pixels above the one you are on, and a player
-  // has about a sixth of a second to decide whether they want it.
-  //
-  // Unlike the ramp it stands PROUD of the floor rather than sunk into it. A
-  // recess says "the floor does something here"; a spring is a machine bolted
-  // on top of the floor, and the silhouette is the only thing that will survive
-  // being seen at lane speed. PROP_TALL buys the height for it.
+  // Spring-pad bake-off winner C: the arcade plunger. One red button crown on
+  // one polished shaft is a stronger lane silhouette than the old stack of
+  // floating bars, and it belongs to the cabinet fiction without borrowing the
+  // boost pad's black-and-gold identity. The 16x6 gameplay box is unchanged;
+  // PROP_TALL only buys the visible machine above it.
   springPad(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
-    // The cycle is a WIND-UP, not a loop of equal frames. It compresses through
-    // most of it — accelerating, so the tension reads as building rather than
-    // as a bar sliding — and then fires, overshooting past its own rest height
-    // before settling. A plain sine would give it a bounce with no moment in
-    // it, and the moment is the whole reason a player looks at it twice.
     const p = (frame % 8) / 8;
-    const wind = Math.min(1, p / 0.62);
-    const open = p > 0.62 ? (p - 0.62) / 0.38 : 0;
-    const squash = p <= 0.62
-      ? 1 - 0.34 * wind * wind
-      : 0.66 + 0.34 * open + 0.22 * Math.sin(open * Math.PI);
-    // Base plate: the bit bolted to the floor, always at full width.
-    fineShape(ctx, '#171c2b', u, (c) => rr(c, 0, h * 0.82, w, h * 0.18, h * 0.03),
-      'rgba(6,6,14,0.65)', 0.018);
-    plain(ctx, 'rgba(120,132,164,0.35)', (c) => rr(c, w * 0.02, h * 0.82, w * 0.96, h * 0.04, h * 0.02));
-    // Coil. Three turns drawn as flat bars rather than a helix — at 16px wide a
-    // traced spiral is mush, and stacked bars that move together read as a
-    // spring the moment they compress.
-    const coilTop = h * (0.82 - 0.5 * squash), coilH = h * 0.82 - coilTop;
-    for (let i = 0; i < 3; i++) {
-      const y = coilTop + (coilH * (i + 0.15)) / 3;
-      plain(ctx, i % 2 ? '#8a6a12' : '#f6d33c',
-        (c) => rr(c, w * 0.28, y, w * 0.44, coilH * 0.2, coilH * 0.08));
+    const wind = Math.min(1, p / 0.625);
+    const release = p > 0.625 ? (p - 0.625) / 0.375 : 0;
+    const squash = p <= 0.625
+      ? 1 - 0.36 * wind * wind
+      : 0.64 + 0.36 * release + 0.18 * Math.sin(release * Math.PI);
+    const crownY = h * (0.72 - 0.43 * squash);
+
+    // Ground shadow and cream bolted housing. It stays still while the crown
+    // works, which makes the compression legible as motion rather than scale.
+    plain(ctx, 'rgba(5,7,12,.2)', (c) => c.ellipse(w / 2, h * 0.96, w * 0.47, h * 0.035, 0, 0, Math.PI * 2));
+    fineShape(ctx, '#f2d8a7', u, (c) => rr(c, w * 0.015, h * 0.82, w * 0.97, h * 0.16, h * 0.038),
+      'rgba(8,10,18,.72)', 0.025);
+    plain(ctx, 'rgba(255,255,255,.34)',
+      (c) => rr(c, w * 0.055, h * 0.839, w * 0.89, h * 0.029, h * 0.012));
+    for (const x of [0.12, 0.88]) {
+      fineShape(ctx, '#d8e1e8', u,
+        (c) => c.arc(w * x, h * 0.9, Math.max(0.45, w * 0.035), 0, Math.PI * 2),
+        '#29303d', 0.012);
     }
-    // The plate you actually hit, riding on top of the coil.
-    fineShape(ctx, '#171c2b', u, (c) => rr(c, w * 0.06, coilTop - h * 0.13, w * 0.88, h * 0.15, h * 0.04),
-      'rgba(6,6,14,0.65)', 0.018);
-    plain(ctx, '#f6d33c', (c) => rr(c, w * 0.1, coilTop - h * 0.115, w * 0.8, h * 0.05, h * 0.02));
-    // Two chevrons climbing off the plate, brightest at the moment it fires.
-    // 45 degrees exactly, same rule the ramp's chase follows.
-    const cw = w * 0.3, ct = h * 0.09;
-    for (let i = 0; i < 2; i++) {
-      const cy = coilTop - h * (0.2 + i * 0.16) - open * h * 0.1;
-      // They brighten as it winds and go white at the release, so the pad is
-      // saying "about to" for most of the cycle and "now" for the rest of it.
-      plain(ctx, open > 0 ? '#fff6d0' : `rgba(246,211,60,${(0.5 + 0.4 * wind - i * 0.3).toFixed(3)})`, (c) => {
-        c.moveTo(w / 2 - cw, cy);
-        c.lineTo(w / 2, cy - cw);
-        c.lineTo(w / 2 + cw, cy);
-        c.lineTo(w / 2 + cw - ct, cy);
-        c.lineTo(w / 2, cy - cw + ct);
-        c.lineTo(w / 2 - cw + ct, cy);
-        c.closePath();
-      });
-    }
+
+    // Polished centre shaft: one moving support instead of three abstract bars.
+    fineShape(ctx, '#aeb9c8', u,
+      (c) => rr(c, w * 0.43, crownY + h * 0.1, w * 0.14, h * 0.69 - crownY, w * 0.035),
+      '#343b49', 0.025);
+    plain(ctx, '#5d6877',
+      (c) => rr(c, w * 0.47, crownY + h * 0.12, w * 0.035, h * 0.64 - crownY, w * 0.015));
+
+    // Red arcade-button crown. It flashes cream on release, so the firing pose
+    // is visible without adding arrows or effects outside the machine.
+    fineShape(ctx, release ? '#ffefb5' : '#ee554d', u, (c) => {
+      c.moveTo(w * 0.14, crownY + h * 0.14);
+      c.quadraticCurveTo(w * 0.17, crownY, w * 0.31, crownY - h * 0.035);
+      c.quadraticCurveTo(w * 0.5, crownY - h * 0.1, w * 0.69, crownY - h * 0.035);
+      c.quadraticCurveTo(w * 0.83, crownY, w * 0.86, crownY + h * 0.14);
+      c.closePath();
+    }, '#49212c', 0.03);
+    plain(ctx, 'rgba(255,255,255,.5)',
+      (c) => c.ellipse(w * 0.43, crownY + h * 0.015, w * 0.2, h * 0.035, -0.08, 0, Math.PI * 2));
   },
   target(ctx, w, h) {
     const u = Math.max(w, h);
@@ -3212,6 +3397,7 @@ export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 // single drawImage — no per-frame vector work in the hot loop.
 export const PROP_FRAMES = {
   ...ANIMAL_FRAMES,
+  ...finishDogTable(ANIMAL_FRAMES),
   cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96,
   buzzbird: 6,
   // Standing hazards. Eight is the ring these were authored against — see
@@ -3220,6 +3406,7 @@ export const PROP_FRAMES = {
   // frame boundary. The green cactus takes the red one's six, because it is a
   // skin of it and the two sway together in a row.
   popSpikes: 8, campfire: 8, fireBarrel: 8, brazier: 8, floorSaw: 8,
+  boomBarrier: 8,
   cactusGreen: 6,
   drone: 6, shooterDrone: 6, droneEye: DRONE_EYE_FRAMES,
   // Bake-off candidates. Eight frames for the ramps and flags — one chevron
@@ -3246,12 +3433,15 @@ export const PROP_FRAMES = {
 // turns folded inside it.
 const PROP_FPS = {
   ...ANIMAL_FPS,
+  ...finishDogTable(ANIMAL_FPS),
   qcrate: 12, appliance: 24, buzzbird: 16,
   // Fire is fast or it looks like jelly; the spike plate is slow because it is
   // a machine breathing, not a machine cycling. The saw is the fastest thing in
   // the table: below ~20 the eight tooth-steps read as a wobble rather than a
   // spin, which is the same failure the rotors had at 11.
   popSpikes: 9, campfire: 14, fireBarrel: 14, brazier: 12, floorSaw: 22,
+  // The barrier's cycle is only its beacon breathing — spike-plate slow.
+  boomBarrier: 10,
   drone: 24, shooterDrone: 24, droneEye: 12,
   // Bake-off candidates. The ramps run fast: a chevron chase reads as speed
   // only when it outruns the lane scroll. Cloth is the opposite — a flag
@@ -3269,6 +3459,7 @@ const PROP_FPS = {
 // 1.33x their box — bigger art is generous, never unfair).
 export const PROP_TALL = {
   ...ANIMAL_TALL,
+  ...finishDogTable(ANIMAL_TALL),
   cactus: 1.55, cactusBig: 1.4, snowman: 1.55, snowmanBig: 1.4,
   // Standing hazards, over UNCHANGED boxes. Every one of these buys its
   // presence upward, the same trade the boost pad makes, and every one of them
@@ -3281,6 +3472,8 @@ export const PROP_TALL = {
   // A sign is mostly post. 1.5 over the 13x9 box puts the board at head height
   // where a sign belongs, and leaves the box around the part you walk into.
   jumpSign: 1.5,
+  downSign: 1.5,
+  dogSign: 1.5,
   cactusGreen: 1.55,
   // Speed ramp candidates over the unchanged 14x4 boostPad box. This is the
   // entire proposal for three of the four: the pad cannot get wider without
@@ -3296,10 +3489,9 @@ export const PROP_TALL = {
   // floor" — the depth is bought by making the whole mark flatter, not by
   // moving it down. The hitbox is still 14x4.
   boostPad: 1.15,
-  // A spring stands ON the floor rather than in it, and the whole point of the
-  // mark is the height it promises. 3.2 over the 16x6 hitbox gives it 19px of
-  // visible machine above a lane the hero is 14px tall in.
-  springPad: 3.2,
+  // Bake-off winner C is deliberately shorter than the old stacked bars:
+  // 2.5 over the unchanged 16x6 box produces a compact 21x20 world sprite.
+  springPad: 2.5,
   rampChevron: 1.15, rampWedge: 3, rampTurbine: 3.25, rampGate: 4.5,
 };
 export function propTall(name) { return PROP_TALL[name] || 1; }
@@ -3309,11 +3501,13 @@ export function propTall(name) { return PROP_TALL[name] || 1; }
 // size and gameplay hitbox do not change.
 const PROP_DETAIL_SCALE = {
   ...ANIMAL_DETAIL,
+  ...finishDogTable(null, 3), // the one detail-3 exception — see FINISH_DOG_ALIASES
   cactus: 2, cactusBig: 2,
   // Standing hazards. All six ship between 7 and 22px, which is exactly the
   // range this table exists for: a spike's point, a barrel band and a spine are
   // all sub-pixel marks at single detail and survive as tone at double.
   popSpikes: 2, campfire: 2, fireBarrel: 2, brazier: 2, floorSaw: 2, cactusGreen: 2,
+  boomBarrier: 2,
   snowman: 2, snowmanBig: 2,
   crate: 2, qcrate: 2, pipe: 2, switch: 2,
   zombieWalk: 2, icicle: 2,
@@ -3382,6 +3576,7 @@ export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
 // misjudge.
 const PROP_VISUAL_SCALE = {
   ...ANIMAL_VISUAL,
+  ...finishDogTable(ANIMAL_VISUAL),
   // The battery keeps the HUD's 25:13 proportions inside a square 8x8 def box,
   // so its art only fills about half the box's height. Without this it reads as
   // a smaller pickup than the coin it spawns beside, which is backwards — it is
@@ -3414,6 +3609,7 @@ export function maxPropVisualScale() {
 // undoing the lighter authored contour.
 const SELF_OUTLINED_PROPS = new Set([
   ...ANIMAL_NAMES,
+  ...Object.keys(FINISH_DOG_ALIASES),
   'cactus', 'cactusBig', 'snowman', 'snowmanBig',
   // The five standing hazards author heavy INK contours of their own. The
   // shared rim outside those would ring a flame in dark paint, which is the one
@@ -3425,6 +3621,9 @@ const SELF_OUTLINED_PROPS = new Set([
   // and a pulsing light outer edge around the silhouette, which is what buys
   // the separation the red cactus gets for free from being red.
   'popSpikes', 'campfire', 'fireBarrel', 'brazier', 'floorSaw',
+  // The barrier's stripe band carries its own heavy ink contour, and the
+  // overhang draw branch bypasses the shared rim path anyway.
+  'boomBarrier',
   'crate', 'pipe', 'zombieWalk', 'icicle',
   'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair', 'trafficCone',
   // The peel is drawn flat, with a whisper of warm contour and no dark one at

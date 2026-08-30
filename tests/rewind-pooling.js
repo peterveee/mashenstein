@@ -113,6 +113,7 @@ assert(ring.slots.length <= Math.max(poolBefore, ring.capacity),
 // record read. (The seed is `Date.now()`-derived, so every run lays a different
 // lane; that is why this reproduced roughly once in twenty-five rather than
 // never or always.)
+const realTakeHit = run.takeHit;
 run.takeHit = () => {};
 for (let i = 0; i < 240 && run.dead; i++) frames(1);
 assert(!run.dead, 'the hero is alive and the world is running before the record is read');
@@ -216,6 +217,50 @@ assert(!stillPooled, 'restore hands the world fresh objects, never the pooled re
 const afterRewind = ring.length;
 frames(120);
 assert(ring.length > afterRewind, 'recording resumes after the rewind releases');
+
+// --- the power-up rewind, desktop side --------------------------------------
+// The capsule is dealt on every device now (it is a banked one-shot beside the
+// free hold-Left scrub, not a touch substitute for it), so the desktop path
+// needs its own proof. This suite is the only one that boots a keyboard run,
+// which is why it lives here rather than in tests/rewind-powerup.js.
+assert(ring.capacity === 150, `desktop keeps the full 10-second ring (${ring.capacity})`);
+let armed = false;
+for (let i = 0; i < 400 && !armed; i++) {
+  frames(15);
+  armed = ring.length > 60 && !run.dead && run.rewindLockout <= 0
+    && !run.introRunning && !run.zoneCard;
+}
+assert(armed, `the run is rewindable again before the capsule test (buffer ${ring.length})`);
+run.powerups.grab('rewind');
+assert(!!run.powerups.active.rewind, 'a keyboard run can hold a rewind charge');
+const beforeCapX = run.camX;
+// The capsule has no button: it fires when a hit lands. God mode was installed
+// above by stubbing takeHit, so call the REAL one to stage the mistake.
+realTakeHit.call(run, 'TEST HIT');
+assert(run.rewindPlayFrames > 0, 'a hit with a charge banked starts the tape instead of landing');
+assert(!run.dead, 'and the hit did not kill the hero — it never happened');
+frames(46);   // 45 playback ticks + the fall-through release frame
+assert(run.camX < beforeCapX,
+  `the auto-rewind walks the camera back (${beforeCapX} -> ${run.camX})`);
+frames(10);
+assert(!run.powerups.active.rewind,
+  'and the charge is single-shot on desktop too — the replayed snapshots did not refund it');
+// Spent: a second hit is now an ordinary hit, not another free undo.
+// A restored snapshot may legitimately carry hero i-frames; clear that
+// unrelated protection so this assertion isolates the spent rewind charge.
+run.player.iframes = 0;
+const battBefore = run.battery;
+realTakeHit.call(run, 'TEST HIT 2');
+assert(run.rewindPlayFrames === 0 && (run.battery < battBefore || run.dead),
+  'a hit after the charge is spent lands normally');
+run.dead = false;
+// Constant recording is desktop's baseline and the capsule must not have
+// disturbed it: the tape refills on the far side without another charge.
+run.rewindFrames.reset();
+const afterCap = ring.length;
+frames(120);
+assert(ring.length > afterCap,
+  `desktop keeps recording after the capsule is spent (${afterCap} -> ${ring.length})`);
 
 console.log(failed ? 'REWIND POOLING: FAILED' : 'REWIND POOLING: PASSED');
 process.exit(failed ? 1 : 0);

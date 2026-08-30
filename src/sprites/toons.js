@@ -303,6 +303,19 @@ export const TOON_SPECS = {
   // docs/notes/kiko-persona.md records what each of those beat and why.
   kiko: { rig: 'humanoid', tall: 1.02, legLength: 1.06, headScale: 0.88, mouthLift: 0.014, eyeLift: 0.008, head: 'buns', mouth: 'smile', slim: true, taper: 0.8, armLift: 0.014, armOut: 0.03, armDepth: true, limbStyle: 'snap', bareArms: true, puffs: true, dress: 'split', waistRise: 0.035, bracers: true, boots: 0.52, kiblast: true, handsFront: true,
     hairCut: 'jaw', fringe: 'twin-pile', bunStubs: 'pair', bunJoin: 'band', ears: true, earStud: true },
+  // Clara Vault, straight off raider candidate A3 with the two-wisp hairline —
+  // the whole bake-off record is in docs/notes/clara-persona.md. Olive tank
+  // with a V throat, hip belt (`beltDrop`) opening a sliver of midriff under
+  // the cropped hem, waist taken in to `taper: 0.78`, khaki into boots, TWIN
+  // thigh rig with a pistol in each hand on the power move — the strongest
+  // single read the reference had, and the pair her double-tap shot (see
+  // `shotBurst` on the hero row) is drawn from. Her hair is the pulled-tight
+  // cut with the hairline swept back and one wisp escaping in front of each
+  // ear — the plait falls to her waist and bounds on the stride clock.
+  clara: { rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'braid', hairCut: 'pulled', fringe: 'swept-wisps', mouth: 'smile', slim: true, taper: 0.78,
+    armDepth: true, hands: true, limbStyle: 'snap', pants: true,
+    bareArms: true, tank: true, crop: 0.78, beltDrop: 0.035, gloves: true,
+    gearBelt: true, holster: 'thigh', boots: 0.5, pistol: 'twin' },
   gary: { rig: 'humanoid', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true, limbStyle: 'snap' },
   // The serving line's own staff. Stout and short-armed on purpose: she is only
   // ever seen from the deck up, framed by a sneeze guard, so the silhouette that
@@ -1073,7 +1086,7 @@ function locoFoot(p, stride, lift, L) {
 }
 
 // ---------------------------------------------------------------- faces
-const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7, kiko: 1.9 };
+const FACE_SEED = { lorenzo: 0.2, gnash: 1.1, fernwick: 2.4, b33p: 3.2, mochi: 4.1, chompo: 5.3, gary: 0.8, raymn: 2.9, grumpos: 4.7, dolores: 1.7, kiko: 1.9, clara: 2.7 };
 
 // ------------------------------------------------------ victory routines
 // The results screen holds for a while, so a single looping wiggle reads as a
@@ -1088,12 +1101,16 @@ const CELEBRATE_MOVE = {
   // that is a held posture rather than a wiggle, which is the whole reading:
   // everyone else is delighted and she is filing it.
   kiko: 'bow',
+  // Clara celebrates the way her serial would print it: the triumphant leap.
+  clara: 'hop',
 };
 // How high the signature bounce carries each hero. The light ones leave the
 // floor; Grumpos and the robot mostly rock in place.
 // (default 0.055). Kiko sits under it deliberately: she is athletic enough to
 // leave the floor and the point is that she does not.
-const CELEBRATE_BOUNCE = { mochi: 0.15, chompo: 0.11, lorenzo: 0.09, raymn: 0.07, grumpos: 0.03, b33p: 0.035, kiko: 0.04 };
+// Clara sits near the top on purpose: the cliffhanger jump is her whole
+// passive, so her victory bounce actually leaves the floor.
+const CELEBRATE_BOUNCE = { mochi: 0.15, chompo: 0.11, clara: 0.12, lorenzo: 0.09, raymn: 0.07, grumpos: 0.03, b33p: 0.035, kiko: 0.04 };
 const CEL_CYCLE = 2.6, CEL_SIG = 0.6; // seconds per loop; fraction on the signature
 // One-switch rollback for the shipped celebration redesign. Callers normally
 // omit celebrateStyle and inherit this value; the gallery's before column asks
@@ -1276,6 +1293,7 @@ export const TITLE_PARADE_ACTIONS = Object.freeze({
   raymn: 'rocket-fist toss',
   grumpos: 'menu flex',
   kiko: 'warning shot',
+  clara: 'pistol draw',
 });
 
 export function titleParadeAction(id, time, progress) {
@@ -1308,6 +1326,11 @@ export function titleParadeAction(id, time, progress) {
   // shallow squash and no feetLift, where B-33P's is 0.35 and Gnash leaves the
   // floor entirely.
   if (id === 'kiko') { patch.menuAction = 'aim'; patch.squash = lift * 0.1; }
+  // `aim` on a pistol spec draws the gun from the thigh rig (drawArms' pistol
+  // branch). A small hop under it: the pose her serial's cover would print —
+  // airborne, pistol out — at a fraction of Gnash's height so the beat reads
+  // as a draw with flair rather than a second jumping hero.
+  if (id === 'clara') { patch.menuAction = 'aim'; feetLift = lift * 4 / 26; }
   return { pose: patch, feetLift };
 }
 
@@ -1320,6 +1343,7 @@ export function transitionCameoAction(id) {
   if (id === 'chompo') patch.menuAction = 'chomp';
   if (id === 'grumpos') patch.menuAction = 'flex';
   if (id === 'kiko') patch.menuAction = 'aim';
+  if (id === 'clara') patch.menuAction = 'aim';
   return patch;
 }
 
@@ -2285,6 +2309,16 @@ const HAIR_CUTS = {
   // Cut level just above the jaw — KIKO. Nothing reaches the shoulder, so her
   // qipao keeps its collar and yoke, which is the whole reason the length moved.
   jaw: { fall: 0.6, flare: 0.9 },
+  // Pulled TIGHT to the skull — the raider. Worn with a plait or a tail, the
+  // full rim read as a second hairstyle: a bob at the sides AND a rope down the
+  // back. Gathered hair hugs the head, so the flare comes down hard (the
+  // proudness of the rim is exactly the "bob" part of the read) and the side
+  // falls stop at the cheek, behind the ears, instead of past the jaw — the
+  // length this head has to show lives entirely in what hangs off the back.
+  // First pass sat at 0.5/0.55 and still carried a hint of bob; it came in
+  // again. 0.35 flare is near the floor — below that the crescent outside the
+  // skull is too thin to say "hair" at all and the head reads shaved.
+  pulled: { fall: 0.42, flare: 0.35 },
 };
 
 // Short ribbon ends fanning out of each bun's wrap, as [angle°, length, width].
@@ -2355,6 +2389,19 @@ const FRINGES = {
   // the W cut into the hairline — a wide shallow front slope, a pointed middle
   // tooth on a 0.33R base against a 0.26R drop, and a fine stray behind it.
   'twin-pile': { shape: 'sweep', back: 0.15, tendrils: true, twin: true, pile: 0.09 },
+  // The raider. Hair gathered into a plait pulls the fringe with it, so the
+  // hairline sits back 0.16R off the brow and the forehead shows — a fringe
+  // down on the brow under a pulled-tight cut read as two decisions on one
+  // head. No pile: gathered hair is flat on the crown, not stacked.
+  'swept-back': { shape: 'sweep', back: 0.16 },
+  // swept-back with hair coming loose at the temples. The numeric tendril
+  // counts are wisps ONLY — the central forelock was tried on this head and
+  // cut ("don't like the forelock"), so the escape happens at the sides where
+  // gathered hair actually loses strands. 2 is one pair in front of the ears;
+  // 4 and 6 add inboard, shallower pairs — see WISP_PAIRS.
+  'swept-wisps': { shape: 'sweep', back: 0.16, tendrils: 2 },
+  'swept-wisps-4': { shape: 'sweep', back: 0.16, tendrils: 4 },
+  'swept-wisps-6': { shape: 'sweep', back: 0.16, tendrils: 6 },
 };
 
 // Head + hat + face, anchored at head center (hx, hy). Shared by the body
@@ -3365,14 +3412,36 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // fringe's silhouette, get the fringe's own fill and shading, and cannot come
     // adrift from it — the same construction as Lorenzo's cap tufts, which build
     // the band and all its locks in a single path for exactly this reason.
+    // The temple wisps, outermost pair FIRST. `tendrils: true` is the shipped
+    // read — one central lock plus the outer pair. A NUMBER instead asks for
+    // that many wisps (2/4/6 = one/two/three pairs) and no central lock at
+    // all: on a pulled-back head the wisps say "coming loose", and a lock in
+    // the middle of the forehead reads as a separate decision (it was tried,
+    // as the raider's forelock, and cut).
+    //
+    // Each pair steps INBOARD along the hairline and gets SHALLOWER as it
+    // goes, and the two move together for the same reason the W is wide where
+    // it is high: inboard of the temples the hairline runs over the brows
+    // (|x| = 0.14R..0.68R, top at -0.633R), so a lock there has to stay above
+    // them — only the outermost pair hangs in front of the ears, where there
+    // is no face underneath and a lock may fall past the eye.
+    const WISP_PAIRS = [
+      [[0.02, 0.2, 0.08, 0.42], [1.82, 1.99, -0.1, 0.46]],
+      [[0.26, 0.4, 0.05, 0.17], [1.56, 1.7, -0.06, 0.2]],
+      [[0.48, 0.6, 0.03, 0.11], [1.3, 1.42, -0.03, 0.13]],
+    ];
+    const wisps = typeof fr.tendrils === 'number'
+      ? WISP_PAIRS.slice(0, Math.max(1, Math.min(WISP_PAIRS.length, Math.round(fr.tendrils / 2))))
+      : WISP_PAIRS.slice(0, 1);
+    // LOCKS is consumed in hairline order, so: front wisps outboard-in, the
+    // central lock (or the W), then the back wisps inboard-out.
     const LOCKS = !fr.tendrils ? [] : [
-      // In front of the far ear, where the hairline is lowest and there is no face
-      // underneath: the only locks that may fall past the eye.
-      [0.02, 0.2, 0.08, 0.42],
-      ...(fr.twin
-        ? WTIPS.map(([bias, drop], k) => [WROOTS[k], WROOTS[k + 1], bias, drop])
-        : [[0.78, 1.12, 0.0, 0.32]]),
-      [1.82, 1.99, -0.1, 0.46],
+      ...wisps.map((pr) => pr[0]),
+      ...(typeof fr.tendrils === 'number' ? []
+        : fr.twin
+          ? WTIPS.map(([bias, drop], k) => [WROOTS[k], WROOTS[k + 1], bias, drop])
+          : [[0.78, 1.12, 0.0, 0.32]]),
+      ...wisps.map((pr) => pr[1]).reverse(),
     ];
     // Enough samples that the edge still reads as the curve it is; the locks are
     // spliced in at their exact roots rather than at sample boundaries.

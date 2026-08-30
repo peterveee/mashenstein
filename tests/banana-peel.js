@@ -72,35 +72,38 @@ const art = propSprite('bananaPeel', peel.w, peel.h);
 assert(art && art.width > 0 && art.height > 0, 'the peel rasterizes to a real canvas');
 
 // --- the cabinets that carry it, and the cap -------------------------------
-// AT MOST ONE PEEL PER RUN. The peel was benched for a while and is now back as
-// a single `once` pattern — one cell replacing one obstacle — and the cap is the
-// whole design: the gag is that you did not expect it, and a gag stops being one
-// the third time it happens.
-//
-// Every claim below is about that cap holding, because it is the kind of rule
-// that is broken by an edit somewhere else entirely: a second pattern added to
-// another cabinet, a copy made instead of a reference, or The Surge's union
-// picking a shared pattern up once per cabinet that carries it.
+// AT MOST ONE PEEL PER RUN. The peel is back in more than one SHAPE — the bare
+// shared cell plus authored contexts (Plumber's crate-plow, Speed's cone row)
+// — and the cap is the whole design: the gag is that you did not expect it,
+// and a gag stops being one the third time it happens. What holds the cap
+// across distinct pattern objects is `onceGroup: 'peel'` (Spawner.pickPattern
+// spends the whole group when any member lands), so every claim below is about
+// the group being worn correctly: a peel pattern added anywhere without it is
+// a second peel per run waiting to happen.
 const carries = (id) => {
   const cab = CABINETS.find((c) => c.id === id);
   return cab.patterns.filter((p) => p.cells.some((c) => c.t === 'bananaPeel'));
 };
 for (const cab of CABINETS) {
   const pats = cab.patterns.filter((p) => p.cells.some((c) => c.t === 'bananaPeel'));
-  assert(pats.length <= 1, `${cab.id} carries at most one peel pattern (${pats.length})`);
-  assert(pats.every((p) => p.once), `${cab.id}'s peel pattern is marked once`);
+  assert(pats.every((p) => p.once), `${cab.id}: every peel pattern is marked once`);
+  assert(pats.every((p) => p.onceGroup === 'peel'),
+    `${cab.id}: every peel pattern wears onceGroup 'peel' — the cap that survives distinct objects`);
   assert(pats.every((p) => p.cells.filter((c) => c.t === 'bananaPeel').length === 1),
-    `${cab.id}'s peel pattern places exactly one peel`);
+    `${cab.id}'s peel patterns each place exactly one peel`);
 }
-assert(carries('plumber').length === 1, 'Plumber carries one');
-assert(carries('speed').length === 1, 'Speed Zone carries one');
-// The Surge remixes every other cabinet's bank. It must not therefore inherit
-// one peel per cabinet — this is the assertion that fails if the shared pattern
-// object is ever copied instead of referenced.
-assert(carries('surge').length === 1,
-  `The Surge inherits exactly one peel pattern, not one per cabinet (${carries('surge').length})`);
-assert(carries('plumber')[0] === carries('speed')[0],
-  'every cabinet references the SAME peel pattern object, so one `once` covers them all');
+assert(carries('plumber').length === 2, 'Plumber carries the bare cell and the crate-plow context');
+assert(carries('speed').length === 2, 'Speed Zone carries the bare cell and the cone-row context');
+assert(carries('office').length === 1, 'Corporate carries the cafeteria context — the one Act III peel');
+// The Surge remixes every other cabinet's bank: identity dedup folds the shared
+// bare cell to one entry, and the three authored contexts ride in whole — four
+// pattern objects, one onceGroup, still one peel per run (proved by the spawner
+// sweep below).
+assert(carries('surge').length === 4,
+  `The Surge inherits the bare cell once plus every context (${carries('surge').length})`);
+const bareCell = (id) => carries(id).find((p) => p.cells.length === 1);
+assert(bareCell('plumber') === bareCell('speed'),
+  'the bare-cell pattern is the SAME object in every cabinet that carries it');
 
 // Plumber's variety complaint, stated as a number rather than a feeling. Its
 // own patterns (not the shared BASE_PATTERNS) must reach past cactus and crate.
@@ -293,7 +296,7 @@ function runIntoPeel(prepare) {
   // A relay swap mid-slip hands the next hero a clean start rather than
   // someone else's tumble.
   p.slipT = SLIP_T;
-  p.setHero('mochi');
+  p.setHero('clara');
   assert(p.slipT === 0, 'a hero arriving through a portal does not inherit a slip');
 }
 

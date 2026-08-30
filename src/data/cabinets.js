@@ -32,21 +32,25 @@ const coinLine = (dx, n = 6) => ({ t: 'coins', shape: 'line', dx, n });
 const coinStair = (dx, n = 5) => ({ t: 'coins', shape: 'stair', dx, n });
 const PERC_OFF = seq('.').map((v) => !!v); // silent percussion lane (section override)
 
-// ONE BANANA PEEL, AT MOST, PER RUN — `once`, honoured by Spawner.pickPattern.
+// ONE BANANA PEEL, AT MOST, PER RUN — `once` plus `onceGroup: 'peel'`, honoured
+// by Spawner.pickPattern.
 //
-// One cell replacing one obstacle, and the cap IS the design rather than a
-// limitation of it: the peel's whole joke is that you did not expect it, and a
-// gag stops being one the third time it happens. Left in the ordinary rotation
-// it turned up every few hundred metres and became just another thing to jump.
+// The cap IS the design rather than a limitation of it: the peel's whole joke
+// is that you did not expect it, and a gag stops being one the third time it
+// happens. Left in the ordinary rotation it turned up every few hundred metres
+// and became just another thing to jump.
 //
-// A single shared object referenced by every cabinet that wants one, not a copy
-// per cabinet. The Surge's bank is the union of all the others', so two separate
-// peel patterns would give a Surge stage two peels — one from Plumber's entry
-// and one from Speed's. Sharing the object means the spawner's `usedOnce` sees
-// the same pattern whichever cabinet's list it came from, and spends it once.
+// The peel is back in more than one SHAPE, though — a bare cell here, and two
+// authored contexts below (Plumber's crate-plow, Speed's cone row) that place
+// it exactly where the game has just invited a held slide, which is the one
+// habit the peel exists to punish. `onceGroup` is what lets the shapes coexist
+// with the cap: every peel pattern names the same group, so laying any one of
+// them down spends the peel for the whole run — Surge's union bank included,
+// which is also why the group key survives what object identity alone could
+// not (three distinct pattern objects would otherwise be three peels).
 //
-// TIER 0, and that is not a difficulty judgement — it is the only tier that
-// makes the peel reachable at all in the stage most people play.
+// TIER 0 on this bare cell, and that is not a difficulty judgement — it is the
+// only tier that makes the peel reachable at all in the stage most people play.
 //
 // `tierMax` is min(2, (stage.index - 1) + (act - 1)), so stage 1 of every act-1
 // cabinet runs at tierMax 0. Sitting at tier 1 the peel simply did not exist in
@@ -56,7 +60,7 @@ const PERC_OFF = seq('.').map((v) => !!v); // silent percussion lane (section ov
 // like any other, and the `once` flag is what keeps it rare rather than the
 // tier. Rarity and reachability are different knobs and this is the wrong one to
 // spend on rarity.
-const PEEL_ONCE = P(0, [{ t: 'bananaPeel', dx: 0 }], { once: true });
+const PEEL_ONCE = P(0, [{ t: 'bananaPeel', dx: 0 }], { once: true, onceGroup: 'peel' });
 
 // The animal hazards, grouped by the cabinet each belongs to. Gathered here
 // rather than scattered through the cabinet list so the whole feature is one
@@ -72,6 +76,25 @@ const ANIMALS = {
   // the scripted finish-line dog (see RunState.spawnFinishDog and the
   // `finishDog` def in game/entities.js), so on that cabinet a dog appears
   // exactly once, at the very end, guarding the tape.
+  //
+  // The bruiser is the slow closer — the one you can out-think — and at -38 he
+  // is milder than the barrel (-40) that already rolls through every cabinet's
+  // tier-2 lane, so even Act I speeds read him comfortably. Speed gets him from
+  // stage 2; Neon meets him once, at tier 2, where a cabinet about shooting
+  // finally deals a ground target that shoots back by closing; Cardboard's is
+  // the kingdom's guard dog, and the one animal in Act III that is not on
+  // Corporate's payroll.
+  speed: [
+    P(1, [{ t: 'dogBruiser', dx: 0 }]),
+    P(2, [{ t: 'dogBruiser', dx: 0 }, coinArc(130)]),
+  ],
+  neon: [
+    P(2, [{ t: 'dogBruiser', dx: 0 }, coinArc(120)]),
+  ],
+  cardboard: [
+    P(1, [{ t: 'dogBruiser', dx: 0 }]),
+    P(2, [{ t: 'dogBruiser', dx: 0 }, { t: 'cardboardMonster', dx: 150 }]),
+  ],
   // Feral and cat together: a lean starving thing and the cat that is not
   // fleeing it. The cat is the fastest closer in the game and the smallest box,
   // so it is a tier-2 spawn everywhere it appears.
@@ -99,12 +122,12 @@ const BASE_PATTERNS = [
   P(1, [{ t: 'cactus', dx: 0 }, { t: 'cactus', dx: 26 }]),
   P(1, [{ t: 'cactusBig', dx: 0 }]),
   P(1, [{ t: 'crate', dx: 0 }, { t: 'crate', dx: 40, n: 2 }]), // low then high: a two-beat read
-  P(1, [{ t: 'buzzbird', dx: 0, y: 60 }]),
-  P(1, [{ t: 'drone', dx: 0, y: 26 }]), // low flyer: duck under
+  P(1, [{ t: 'buzzbird', dx: 0 }]),
+  P(1, [{ t: 'drone', dx: 0 }]), // low flyer: duck under
   P(1, [{ t: 'cactus', dx: 0 }, coinBlock(64)]),                // punch up through the slab
   P(1, [coinStair(0), { t: 'crate', dx: 84 }]),                 // the ramp telegraphs the crate
   P(2, [{ t: 'crate', dx: 0, n: 2 }, coinArc(70)]),
-  P(2, [{ t: 'cactus', dx: 0 }, { t: 'drone', dx: 90, y: 26 }]),
+  P(2, [{ t: 'cactus', dx: 0 }, { t: 'drone', dx: 90 }]),
   P(2, [{ t: 'barrel', dx: 0 }]),
   P(2, [{ t: 'cactusBig', dx: 0 }, { t: 'cactus', dx: 100 }]),
 ];
@@ -189,18 +212,21 @@ export const CABINETS = [
       // THE HIGH ROAD. `spring` puts a pad on the ground before the mouth and
       // that pad is the only way up — 96px is three times a jump — so taking it
       // is a decision made once, on the approach, by NOT jumping over the pad.
-      // Then it climbs to 168 and you are in the clouds with the hills below
-      // you, and there is no coming back to the lane until the road brings you
-      // back. That is the whole point of the numbers: at the old 29px the two
-      // roads were one hop apart, so missing the turn cost nothing and taking
-      // it committed you to nothing.
+      // Then it climbs to 168 with the hills below you, and there is no coming
+      // back to the lane until the road brings you back. That is the whole
+      // point of the numbers: at the old 29px the two roads were one hop apart,
+      // so missing the turn cost nothing and taking it committed you to
+      // nothing.
       //
-      // 168 is CLOUD_TO (run.js) exactly, which is the height the road stops
-      // being drawn as dirt held up in the air and starts being weather. It
-      // used to climb to 210, and the extra forty pixels bought no more cloud —
-      // it was all paid for on the way down. Missing one of the breaks up here
-      // dropped you a screen and a half, and a fall you cannot see the bottom
-      // of is a fall you do not get to place.
+      // 168 was picked as CLOUD_TO (run.js), back when the top of the road was
+      // painted as weather. It is no longer — a high road is an island that
+      // climbs, drawn out of this cabinet's own ground the whole way — but the
+      // height stays, because what it buys is the separation from the lane, and
+      // that was always the part doing the work. It is not higher either: it
+      // used to climb to 210, and the extra forty pixels were all paid for on
+      // the way down. Missing one of the breaks up here dropped you a screen
+      // and a half, and a fall you cannot see the bottom of is a fall you do
+      // not get to place.
       //
       // AND THEN IT RIDES BACK DOWN. `hold` at 0.70 gives the descent the last
       // thirty per cent of the span — about 120px of height over 360px of
@@ -275,12 +301,12 @@ export const CABINETS = [
     music: PLUMBER.bank,
     patterns: [
       ...BASE_PATTERNS,
-      P(0, [{ t: 'qcrate', dx: 0, y: 54 }]),
-      P(0, [{ t: 'crate', dx: 0, n: 2 }, { t: 'qcrate', dx: 0, y: 54 }]), // stack as a stepping stone to the prize
+      P(0, [{ t: 'qcrate', dx: 0 }]),
+      P(0, [{ t: 'crate', dx: 0, n: 2 }, { t: 'qcrate', dx: 0 }]), // the stack under the prize makes the ram a two-step
       P(1, [{ t: 'crate', dx: 0, n: 2 }, coinArc(70)]),
-      P(1, [{ t: 'qcrate', dx: 0, y: 54 }, { t: 'qcrate', dx: 16, y: 54 }, { t: 'cactus', dx: 90 }]),
+      P(1, [{ t: 'qcrate', dx: 0 }, { t: 'qcrate', dx: 16 }, { t: 'cactus', dx: 90 }]),
       P(2, [{ t: 'pipe', dx: 0 }, coinArc(60)]),
-      P(2, [{ t: 'qcrate', dx: 0, y: 70 }, { t: 'qcrate', dx: 16, y: 70 }, { t: 'qcrate', dx: 32, y: 70 }]),
+      P(2, [{ t: 'qcrate', dx: 0 }, { t: 'qcrate', dx: 16 }, { t: 'qcrate', dx: 32 }]),
       // THE PEEL IS BENCHED. Everything below used to be the banana peel lane —
       // eight patterns across two cabinets, built to give Plumber a hazard you
       // read by looking DOWN at the road. The peel itself is untouched: the
@@ -312,7 +338,7 @@ export const CABINETS = [
       P(2, [{ t: 'pipe', dx: 0 }, { t: 'floorSaw', dx: 60 }]),
       // Prize box overhead, teeth underfoot. Jumping for the !-crate is what
       // carries you over the plate — take the prize and the hazard is free.
-      P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'qcrate', dx: 0, y: 54 }]),
+      P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'qcrate', dx: 0 }]),
       P(2, [{ t: 'floorSaw', dx: 0 }, { t: 'popSpikes', dx: 70 }]),
       // Plumber's ground furniture was two props deep, and both of them were
       // things that stand up. The barrel rolls AT you and the double stack is a
@@ -320,7 +346,23 @@ export const CABINETS = [
       // only, which is late enough that most of a first run never met them.
       P(1, [{ t: 'barrel', dx: 0 }, coinArc(90)]),
       P(1, [{ t: 'pipe', dx: 0 }]),
+      // Spread from Speed: the drum fire, unbootable and already burning, so
+      // Plumber's floor game is not the only thing here that refuses the punt.
+      P(1, [{ t: 'fireBarrel', dx: 0 }]),
+      // The buzzbird had exactly one berth in Act I (a lone BASE tier-1 cell).
+      // Behind a cactus it is a second read at a second height, far enough on
+      // to be its own decision.
+      P(2, [{ t: 'cactus', dx: 0 }, { t: 'buzzbird', dx: 80 }]),
+      // A bag-dealt pit. Only plumber-3 can draw it, and plumber-3 is the stage
+      // that teaches pits with three scripted ones — this is the pop quiz.
+      P(2, [{ t: 'gap', dx: 0, w: 56 }]),
+      P(2, [{ t: 'boomBarrier', dx: 0 }, coinArc(60)]),
       PEEL_ONCE,
+      // The peel in context (see PEEL_ONCE for the cap and the group): a crate
+      // invites the slide-plow, and the peel behind it is what riding the slide
+      // out costs. Same group, so a run meets one peel however it is dressed.
+      P(1, [{ t: 'crate', dx: 0 }, { t: 'bananaPeel', dx: 70 }, coinArc(130)],
+        { once: true, onceGroup: 'peel' }),
     ],
     taunt: 'MY IQ IS 300 AND YOURS IS A HIGH SCORE.',
   },
@@ -330,6 +372,11 @@ export const CABINETS = [
     mechanic: 'boost',
     sky: ['#f08048', '#f8c060'], ground: '#c88848', groundDark: '#a06830',
     far: '#d09858', hills: '#b07840',
+    // MOLTEN CHANNEL under the collapsing road (pitFill.js candidate B): the
+    // one fill that throws light, so a speed-zone pit announces itself by glow
+    // before the mouth is in frame — worth having on the cabinet where you
+    // have the least time to read anything.
+    pitFill: 'lava',
     // The original E-minor lap, unchanged note-for-note, played eight times —
     // then the same lap walked through a I-IV-V at the key level: two blocks
     // in A minor (IV), two in B minor (V), and the wrap resolves V back to I.
@@ -346,20 +393,30 @@ export const CABINETS = [
     music: SPEED.bank,
     patterns: [
       ...BASE_PATTERNS,
+      ...ANIMALS.speed,
       P(0, [{ t: 'boostPad', dx: 0 }, coinArc(60)]),
       P(0, [{ t: 'trafficCone', dx: 0 }]),
-      P(1, [{ t: 'boostPad', dx: 0 }, { t: 'cactus', dx: 120 }]),
+      // The buzzbird at tier 0: speed-1 was all silhouettes on the road, and
+      // this is the one thing on it the road never carried.
+      P(0, [{ t: 'buzzbird', dx: 0 }]),
+      // Cone rather than cactus after the pad — the cabinet's own furniture,
+      // and one fewer cactus sighting per stage (BASE already deals plenty).
+      P(1, [{ t: 'boostPad', dx: 0 }, { t: 'trafficCone', dx: 120 }]),
       P(1, [{ t: 'trafficCone', dx: 0 }, { t: 'trafficCone', dx: 40 }]),
       P(2, [{ t: 'gap', dx: 0, w: 56 }]),           // collapsing road: a pit
       P(2, [{ t: 'boostPad', dx: 0 }, { t: 'gap', dx: 90, w: 72 }, coinArc(100)]),
       P(2, [{ t: 'barrel', dx: 0 }, { t: 'barrel', dx: 140 }]),
       P(2, [{ t: 'trafficCone', dx: 0 }, { t: 'trafficCone', dx: 30 }, { t: 'trafficCone', dx: 60 }]),
       PEEL_ONCE,
-      // The peel is benched here too (see Plumber). What is left is the cone
-      // rows above, which are the game's standing invitation to hold the slide
-      // and punt your way through — so the drum fire is the counter-argument:
-      // a roadside barrel that is already burning, cannot be booted, and only
-      // goes away if you shoot it.
+      // The peel in context (see PEEL_ONCE): the cone rows are the game's
+      // standing invitation to hold the slide and punt through, and the peel at
+      // the end of one is the counter-argument — the one hazard a slide cannot
+      // take. Shares the peel group, so a run still meets at most one.
+      P(2, [{ t: 'trafficCone', dx: 0 }, { t: 'trafficCone', dx: 30 }, { t: 'bananaPeel', dx: 96 }],
+        { once: true, onceGroup: 'peel' }),
+      // The drum fire makes the same argument every frame: a roadside barrel
+      // that is already burning, cannot be booted, and only goes away if you
+      // shoot it.
       P(1, [{ t: 'fireBarrel', dx: 0 }]),
       P(1, [{ t: 'trafficCone', dx: 0 }, { t: 'fireBarrel', dx: 50 }]),
       P(2, [{ t: 'trafficCone', dx: 0 }, { t: 'trafficCone', dx: 30 }, { t: 'fireBarrel', dx: 76 }]),
@@ -367,6 +424,19 @@ export const CABINETS = [
       // third faster, and it is the one thing on this stage that a punt cannot
       // clear out of the way first.
       P(2, [{ t: 'boostPad', dx: 0 }, { t: 'fireBarrel', dx: 120 }]),
+      // Spread from Plumber: the two floor plates, so Speed's road can lie to
+      // you at ankle height too. The saw off a boost pad is the same argument
+      // as the fireBarrel above it — same hazard, a third less time to read it.
+      P(1, [{ t: 'popSpikes', dx: 0 }]),
+      P(2, [{ t: 'boostPad', dx: 0 }, { t: 'floorSaw', dx: 110 }]),
+      // The campfire's second home (it had exactly one berth in the game), and
+      // a barrel slot below tier 2 so the rolling read arrives before stage 3.
+      P(1, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
+      P(1, [{ t: 'barrel', dx: 0 }, coinArc(90)]),
+      // The boom barrier — roadwork on a racing stage, and the road's first
+      // ground-anchored duck (see OBSTACLES.boomBarrier).
+      P(1, [{ t: 'boomBarrier', dx: 0 }]),
+      P(2, [{ t: 'boomBarrier', dx: 0 }, { t: 'trafficCone', dx: 110 }]),
     ],
     taunt: 'I INVENTED SPEED. IN 1987. NO ONE THANKED ME.',
   },
@@ -378,13 +448,40 @@ export const CABINETS = [
     far: '#302868', hills: '#282050',
     music: NEON.bank,
     patterns: [
+      // Tier-0 BASE stays filtered out — no cactus-and-crate opener here; the
+      // cabinet's identity is the air. But identity is not a two-pattern bag:
+      // neon-1 used to hold ONLY the lone drone and the lone target, and the
+      // anti-repeat nudge in pickPattern turned its whole sixty seconds into a
+      // strict drone/target alternation. The tier-0 rows below are the fix —
+      // flyer-majority, one ground read, seven ways to open.
       ...BASE_PATTERNS.filter((p) => p.tier > 0),
-      P(0, [{ t: 'drone', dx: 0, y: 26 }]),
-      P(0, [{ t: 'target', dx: 0, y: 50 }, coinArc(40)]),
-      P(1, [{ t: 'shooterDrone', dx: 0, y: 60 }]),
-      P(1, [{ t: 'target', dx: 0, y: 50 }, { t: 'target', dx: 30, y: 70 }]),
-      P(2, [{ t: 'shooterDrone', dx: 0, y: 60 }, { t: 'drone', dx: 110, y: 26 }]),
-      P(2, [{ t: 'shooterDrone', dx: 0, y: 44 }, { t: 'cactus', dx: 130 }]),
+      ...ANIMALS.neon,
+      P(0, [{ t: 'drone', dx: 0 }]),
+      P(0, [{ t: 'target', dx: 0 }, coinArc(40)]),
+      P(0, [{ t: 'buzzbird', dx: 0 }]),
+      P(0, [{ t: 'drone', dx: 0 }, coinLine(60)]),
+      // Two targets far enough apart to be two shots, not one composite — this
+      // pair used to sit at tier 1 with dx 30, which was one decision wearing
+      // two sprites. Demoted respaced: it feeds neon-1's 5-target mission.
+      P(0, [{ t: 'target', dx: 0 }, { t: 'target', dx: 110 }]),
+      P(0, [{ t: 'target', dx: 0 }, coinStair(30)]),
+      // The one tier-0 ground read, taught solo on clear ground — the same
+      // convention Plumber opened the spike plate with.
+      P(0, [{ t: 'popSpikes', dx: 0 }]),
+      P(1, [{ t: 'shooterDrone', dx: 0 }]),
+      // The security gate: a cabinet about the air finally asks for the duck
+      // at ground level (see OBSTACLES.boomBarrier).
+      P(1, [{ t: 'boomBarrier', dx: 0 }, coinLine(40)]),
+      // Spread from Plumber/Speed: a glowing blade and a burning drum belong
+      // under this sky as much as any lane's.
+      P(1, [{ t: 'floorSaw', dx: 0 }]),
+      P(1, [{ t: 'fireBarrel', dx: 0 }, coinArc(70)]),
+      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'drone', dx: 110 }]),
+      // Was a cactus behind the shooter — the one desert prop in the bag's own
+      // rows. The drum fire keeps the ground threat and drops the sagebrush.
+      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'fireBarrel', dx: 130 }]),
+      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'boomBarrier', dx: 120 }]),
+      P(2, [{ t: 'gap', dx: 0, w: 56 }]),
     ],
     taunt: 'THOSE LASERS COST ME A FORTUNE. DODGE THEM RESPECTFULLY.',
   },
@@ -394,14 +491,54 @@ export const CABINETS = [
     mechanic: 'ice', // slidey landings + icicles + frozen switches
     sky: ['#b8d8f0', '#e0ecf8'], ground: '#c8e0f0', groundDark: '#98b8d8',
     far: '#a8c8e8', hills: '#88a8c8',
+    // Frozen till under the ice, not the default warm brown — the underside of
+    // a raised road and the walls of any cut have to read as the same cold
+    // world the surface does (see `soil` on plumber for what this field is).
+    soil: '#6f8fae',
+    // Black water with pale floes at the bottom of every break (pitFill.js,
+    // ported from the bake-off's candidate H). Frost is the cabinet whose gap
+    // patterns and scripted pits both existed with nothing at the bottom.
+    pitFill: 'slush',
+    // A berg staircase early, and one sky road: same grammar as plumber's
+    // routes (that entry carries the full field commentary), placed clear of
+    // frost-2's pit at 0.40 and frost-3's at 0.28/0.74, and of both
+    // checkpoints. The high road pays coins; the lane below it holds LOW GRAV,
+    // which on the slidey cabinet is the one capsule that changes how landing
+    // works — different KINDS up and down, per the fork rule.
+    islands: [
+      { at: 0.08, dwell: 1.8, steps: 2, rise: 29, step: 33, topPrize: 'capShield' },
+    ],
+    forks: [
+      {
+        at: 0.55, dwell: 6, spring: true, sky: true,
+        entry: 96, peak: 168, lip: 0.2, climb: 0.34, hold: 0.70, end: 48,
+        gaps: [0.5], gapSec: 0.3,
+        prize: 'coins', lowPrize: 'capLowGrav',
+      },
+    ],
     music: FROST.bank,
     patterns: [
       ...ICE_PATTERNS,
       P(0, [{ t: 'icicle', dx: 0 }]),
       P(1, [{ t: 'icicle', dx: 0 }, { t: 'icicle', dx: 60 }]),
-      P(1, [{ t: 'switch', dx: 0, y: 50 }, { t: 'gap', dx: 60, w: 60 }]), // hit switch -> bridge
+      P(1, [{ t: 'switch', dx: 0 }, { t: 'gap', dx: 60, w: 60 }]), // hit switch -> bridge
       P(2, [{ t: 'icicle', dx: 0 }, { t: 'snowman', dx: 70 }, coinArc(120)]),
       P(2, [{ t: 'gap', dx: 0, w: 64 }, { t: 'icicle', dx: 120 }]),
+      // The heating is unplugged (see the taunt), so the campfire is the one
+      // warm thing on the ice — same argument as Corporate's bin fire, and it
+      // breaks up a lane that was 60% snowman-or-crate at stage 1.
+      P(0, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
+      // Ice spikes and a ski gate: the floor read and the duck read, both of
+      // which this cabinet had none of (its whole duck game was one shared
+      // drone row).
+      P(1, [{ t: 'popSpikes', dx: 0 }]),
+      P(1, [{ t: 'boomBarrier', dx: 0 }]),
+      P(2, [{ t: 'snowmanBig', dx: 0 }, { t: 'icicle', dx: 90 }]),
+      P(2, [{ t: 'boomBarrier', dx: 0 }, { t: 'snowman', dx: 120 }]),
+      // The switch's second shape — the frozen-switch mechanic lived in exactly
+      // ONE pattern game-wide before this. A wider hole and an icicle past the
+      // far lip, so making the bridge is the start of the read, not the end.
+      P(2, [{ t: 'switch', dx: 0 }, { t: 'gap', dx: 60, w: 72 }, { t: 'icicle', dx: 190 }]),
     ],
     taunt: 'I UNPLUGGED THE HEATING TOO. FOR DRAMA.',
   },
@@ -411,6 +548,23 @@ export const CABINETS = [
     mechanic: 'darkness', // light radius; cursed shortcuts
     sky: ['#181020', '#281830'], ground: '#3a3048', groundDark: '#281c30',
     far: '#302040', hills: '#282038',
+    // The earth of a graveyard: near-black violet, so the catacomb's walls are
+    // darker than the lane above them rather than warmer.
+    soil: '#1f1628',
+    // The catacomb — the "cursed shortcuts" the mechanic line has always
+    // promised, and the one cabinet where going underground is the THEME
+    // rather than a route. Ten seconds under the graveyard, and the hazard
+    // list ends in the brazier on purpose: it is the game's only hazard that
+    // is also a light source, and down here in the brown-out it is the
+    // furniture you steer by. Placed clear of both checkpoints (a restore
+    // inside a tunnel would put the hero back underground); crypt has no
+    // scripted pits to dodge, by the blackout rule in stages.js.
+    tunnels: [
+      {
+        at: 0.40, dwell: 10, depth: 96, entry: 18, lip: 0.012, climb: 0.16, hold: 0.88,
+        hazards: ['tombstone', 'zombie', 'brazier'],
+      },
+    ],
     music: CRYPT.bank,
     patterns: [
       ...ANIMALS.crypt,
@@ -420,7 +574,7 @@ export const CABINETS = [
       P(1, [{ t: 'zombie', dx: 0 }]),
       P(1, [{ t: 'zombie', dx: 0 }, { t: 'tombstone', dx: 80 }]),
       P(2, [{ t: 'zombie', dx: 0 }, { t: 'zombie', dx: 40 }, coinArc(110)]),
-      P(2, [{ t: 'tombstone', dx: 0 }, { t: 'drone', dx: 90, y: 26 }]),
+      P(2, [{ t: 'tombstone', dx: 0 }, { t: 'drone', dx: 90 }]),
       // FIRE IN THE DARK CABINET. Crypt's mechanic is a light radius, which
       // makes it the one stage where a burning hazard pays you something back:
       // the brazier is lit before you can see the lane it stands in, so it
@@ -437,6 +591,10 @@ export const CABINETS = [
       P(1, [{ t: 'tombstone', dx: 0 }, { t: 'popSpikes', dx: 62 }]),
       P(1, [{ t: 'campfire', dx: 0 }, { t: 'zombie', dx: 84 }]),
       P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'brazier', dx: 88 }, coinArc(140)]),
+      // The dungeon's own blade. Crypt already owns the spike plate; the saw
+      // completes the trap-floor pair here the way it does in Plumber.
+      P(1, [{ t: 'floorSaw', dx: 0 }]),
+      P(2, [{ t: 'floorSaw', dx: 0 }, { t: 'tombstone', dx: 84 }]),
     ],
     taunt: 'THE DARKNESS IS A COST-SAVING MEASURE. THE SPOOKINESS IS FREE.',
   },
@@ -448,11 +606,31 @@ export const CABINETS = [
     far: '#404030', hills: '#383828',
     music: RHYTHM.bank,
     patterns: [
-      ...BASE_PATTERNS.filter((p) => p.tier < 2),
-      P(1, [{ t: 'beatBar', dx: 0 }]),
+      // Full BASE. This bank used to filter `tier < 2`, which quietly made
+      // Rhythm the only cabinet in the game that never dealt a barrel and left
+      // its stage-2→3 escalation at exactly three patterns. No comment ever
+      // defended the filter, and a rolling barrel is the most beat-readable
+      // hazard the shared set owns.
+      ...BASE_PATTERNS,
+      // The signature, taught at stage 1: rhythm-1 runs at tierMax 1, and the
+      // beat prop used to be one tier-1 pattern in a bag of thirteen — 69% of
+      // which was cactus-or-crate. Tier 0 solo first, then in company.
+      P(0, [{ t: 'beatBar', dx: 0 }]),
+      P(0, [{ t: 'beatBar', dx: 0 }, coinArc(60)]),
+      P(1, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 72 }]),
       P(2, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 90 }]),
-      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'drone', dx: 100, y: 26 }]),
+      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'drone', dx: 100 }]),
       P(2, [{ t: 'cactus', dx: 0 }, { t: 'beatBar', dx: 80 }, coinArc(140)]),
+      // Three pops in a row is the cabinet's thesis stated as a lane: the bars
+      // rise quantized to the song, so this reads as a drum fill you jump.
+      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 80 }, { t: 'beatBar', dx: 160 }]),
+      // Spread from Act I: the saw spins on its own clock against the bars'
+      // beat, the spikes are the off-beat floor read, and the crossing gate is
+      // this cabinet's first duck that is not the shared drone row.
+      P(1, [{ t: 'floorSaw', dx: 0 }]),
+      P(1, [{ t: 'boomBarrier', dx: 0 }]),
+      P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'beatBar', dx: 70 }]),
+      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'boomBarrier', dx: 110 }]),
     ],
     taunt: 'I OWN THE RIGHTS TO RHYTHM. YOU OWE ME ROYALTIES PER JUMP.',
   },
@@ -462,14 +640,43 @@ export const CABINETS = [
     mechanic: 'collapse', // scenery collapses behind; fake perspective props
     sky: ['#d8c8a8', '#e8dcc0'], ground: '#c8a068', groundDark: '#9a7848',
     far: '#b89058', hills: '#a88448',
+    // Corrugated brown, declared rather than defaulted, so the cut edge of a
+    // raised road reads as the inside of the cardboard it claims to be.
+    soil: '#7a5c34',
+    // OPEN AIR at the bottom of every hole (pitFill.js candidate A — free):
+    // a kingdom whose castle is four inches tall gets pits that are honestly
+    // just holes cut out of the set, with grit still crumbling off the edges.
+    pitFill: 'void',
+    // Stacked boxes to climb — the most box-shaped set piece the routes system
+    // makes, on the most box-shaped cabinet. Both stacks sit clear of every
+    // scripted pit on cardboard-2 (0.30/0.70) and -3 (0.25/0.55/0.80) and of
+    // both checkpoints; the second one tops out at AIR JUMP, which is the
+    // capsule that makes the next stack easier — the climb teaches its own
+    // reward.
+    islands: [
+      { at: 0.10, dwell: 1.8, steps: 2, rise: 29, step: 33, topPrize: 'capStar' },
+      { at: 0.62, dwell: 3.0, steps: 3, rise: 29, step: 33, topPrize: 'capAirJump' },
+    ],
     music: CARDBOARD.bank,
     patterns: [
       ...BASE_PATTERNS,
+      ...ANIMALS.cardboard,
       P(0, [{ t: 'cardboardMonster', dx: 0 }]),
       P(1, [{ t: 'cardboardMonster', dx: 0 }, coinArc(70)]),
       P(1, [{ t: 'gap', dx: 0, w: 56 }]),
       P(2, [{ t: 'cardboardMonster', dx: 0 }, { t: 'gap', dx: 90, w: 64 }]),
-      P(2, [{ t: 'cardboardMonster', dx: 0 }, { t: 'buzzbird', dx: 100, y: 60 }]),
+      P(2, [{ t: 'cardboardMonster', dx: 0 }, { t: 'buzzbird', dx: 100 }]),
+      // The kingdom's own cast, doubled up: before this, 81% of Cardboard was
+      // shared desert furniture and the cabinet's ONLY unique prop appeared in
+      // four patterns of twenty-one.
+      P(1, [{ t: 'cardboardMonster', dx: 0 }, { t: 'cardboardMonster', dx: 90 }]),
+      P(2, [{ t: 'cardboardMonster', dx: 0 }, { t: 'drone', dx: 100 }]),
+      // Spread from Act I, each one a cardboard joke that is also a real read:
+      // the box cutter in the floor, an open flame in a kingdom made of
+      // kindling, and a toll gate into the castle.
+      P(1, [{ t: 'floorSaw', dx: 0 }]),
+      P(1, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
+      P(2, [{ t: 'boomBarrier', dx: 0 }, coinArc(60)]),
     ],
     taunt: 'THAT CASTLE IS FOUR INCHES TALL. LIKE MY PATIENCE.',
   },
@@ -486,13 +693,26 @@ export const CABINETS = [
       P(0, [{ t: 'chair', dx: 0 }]),
       P(0, [{ t: 'printer', dx: 0 }]),
       P(1, [{ t: 'chair', dx: 0 }, { t: 'printer', dx: 110 }]),
-      P(1, [{ t: 'paperwork', dx: 0, y: 40 }]),
-      P(2, [{ t: 'printer', dx: 0 }, { t: 'paperwork', dx: 90, y: 50 }, coinArc(140)]),
+      P(1, [{ t: 'paperwork', dx: 0 }]),
+      P(2, [{ t: 'printer', dx: 0 }, { t: 'paperwork', dx: 90 }, coinArc(140)]),
       P(2, [{ t: 'chair', dx: 0 }, { t: 'chair', dx: 120 }]),
       // A bin fire in the office, which is the joke and also the read: Corporate
       // Kombat's lane is all pale greys, and this is the only warm thing in it.
       P(1, [{ t: 'fireBarrel', dx: 0 }]),
-      P(2, [{ t: 'fireBarrel', dx: 0 }, { t: 'paperwork', dx: 90, y: 50 }]),
+      P(2, [{ t: 'fireBarrel', dx: 0 }, { t: 'paperwork', dx: 90 }]),
+      // Printer supply: office-2's mission is DESTROY 5 PRINTERS, and it was
+      // running off a three-pattern stock. Two more berths keep the mission's
+      // clock honest without the spawner needing to know about it.
+      P(1, [{ t: 'printer', dx: 0 }, coinLine(50)]),
+      P(2, [{ t: 'printer', dx: 0 }, { t: 'printer', dx: 130 }]),
+      // The parking barrier — the office finally guards its own car park, and
+      // Act III gets the ground-anchored duck (see OBSTACLES.boomBarrier).
+      P(1, [{ t: 'boomBarrier', dx: 0 }]),
+      P(2, [{ t: 'boomBarrier', dx: 0 }, { t: 'chair', dx: 130 }]),
+      // The peel in the cafeteria (see PEEL_ONCE for the cap and the group):
+      // its one Act III shape, so the gag can land in the back third of the
+      // campaign without waiting for Surge's union.
+      P(1, [{ t: 'chair', dx: 0 }, { t: 'bananaPeel', dx: 76 }], { once: true, onceGroup: 'peel' }),
     ],
     taunt: 'THIS MEETING COULD HAVE BEEN AN EMAIL. THE EMAIL IS ALSO A TRAP.',
   },
@@ -595,7 +815,9 @@ export const CABINET_BY_ID = Object.fromEntries(CABINETS.map((c) => [c.id, c]));
 // pattern object deliberately — PEEL_ONCE is shared precisely so its once-per-run
 // cap holds everywhere — and without this the union would carry one copy per
 // cabinet that references it, handing a Surge stage as many "once" hazards as
-// there are cabinets carrying them.
+// there are cabinets carrying them. The peel's authored context patterns are
+// DISTINCT objects and identity cannot dedupe them; their `onceGroup: 'peel'`
+// is what keeps this union to one peel per run (see Spawner.pickPattern).
 CABINET_BY_ID.surge.patterns = [...new Set([
   ...BASE_PATTERNS,
   ...CABINETS.filter((c) => c.id !== 'surge')

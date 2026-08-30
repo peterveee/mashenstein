@@ -1,10 +1,21 @@
-# Rewind power-up for touch devices
+# The rewind power-up
 
-> **Status: designed, not built.** Parked for later. Nothing in `src/` has changed.
+> **Status: built and shipped on every device.** Two things changed from the design
+> below, which is otherwise still accurate about the *mechanism*:
+>
+> 1. **It is dealt to every device**, not just touch. On a keyboard it sits alongside
+>    the free hold-Left scrub rather than replacing it. See **Cross-platform**.
+> 2. **It has no button. It fires itself.** The design had the player press RWD/a key to
+>    spend the charge; playtesting killed that — see **Why it has no button**. Every
+>    reference below to a REWIND button, the `rewind` input action, `chrome.rewind` or
+>    `KeyZ` is HISTORY: none of it exists in the code.
 
 ## Context
 
-Rewind is currently **fully off** on mobile — not degraded, absent. Both halves of the
+*(As of the original design. The gate described here still governs COST — ring size,
+capture node, recording — but no longer governs who is dealt a capsule.)*
+
+Rewind was **fully off** on mobile — not degraded, absent. Both halves of the
 feature ask `Input.rewindAvailable()` (`src/engine/input.js:358`, which is
 `!isTouchDevice() || padConnected`) and both bail on a coarse-pointer device:
 
@@ -28,27 +39,97 @@ button is pressed. You cannot start recording at press time — the rewind rewin
 past. So "record for a short time" means "record for the armed window", not "record on
 demand".
 
+## Why it has no button
+
+The first build did what this document originally specified: the capsule banked a
+charge and the player spent it with a REWIND button (touch) or a key (desktop). The
+first time it was played, the report was *"I collected a rewind power up and nothing
+happened — I thought it would just automatically rewind."*
+
+That is the correct reading of the object, and the manual version was wrong for a
+reason no amount of signposting fixes. A rewind is useful at exactly one moment — the
+instant after a mistake — and that is the moment the player is least able to notice a
+banked resource and press something for it. Asking them to is asking for the hardest
+possible input at the worst possible time.
+
+So the trigger is the mistake itself. `RunState.autoRewindHit`, called from the top of
+`takeHit`, is now the ONLY way the capsule ever fires: take a hit with a charge armed
+and the hit is not applied at all — the tape runs back three seconds and the run
+continues from before it happened. Nothing to press, nothing to learn.
+
+What that bought, beyond the confusion going away:
+
+- **It undoes a PIT**, which nothing else in the game does. This deliberately overrules
+  both the "nothing saves you from a hole" rule in `takeHit` and this document's
+  original "No death undo" decision. The distinction that makes it legal: i-frames
+  claim you *survived* the fall, which a hole must never allow; a rewind means the fall
+  never happened. The pit is still there when the tape stops, three seconds upstream
+  and coming again — the player gets the approach back, not a pass.
+- **The whole touch-button apparatus is gone.** No `rewind` action in `DEFAULT_KEYS`, no
+  `chrome.rewind` slot in `resizeChrome`, no fourth disc in `playButtons`, no `RWD`
+  label in `chromeButtonArt`. The `### src/engine/input.js` and `### src/engine/renderer.js`
+  sections below describe work that was built and then removed.
+- **The messaging changed with it.** The grab floats `REWIND ARMED: YOUR NEXT MISTAKE
+  UNDOES ITSELF`, the firing floats `REWIND!` at the *start* of the tape so the player
+  knows why the world reversed while it is reversing, and the finish floats
+  `REWIND SPENT`.
+
+## Cross-platform
+
+The capsule does **the same thing everywhere**: it banks exactly one 3-second rewind.
+What differs by device is only what it sits *beside*, and what the recording costs:
+
+| | touch (no pad) | desktop / pad |
+| --- | --- | --- |
+| free hold-Left scrub | none | unchanged: unlimited, 10s tape |
+| the capsule | the ONLY rewind there is | one banked 3s shot beside the scrub |
+| snapshot ring | 45 records (3s), armed windows only | 150 records (10s), always |
+| audio capture node | created on grab, torn down on spend/expiry | boot-time, permanent |
+| how it is spent | automatically, on your next mistake | automatically, on your next mistake |
+
+`Input.rewindAvailable()` still gates every line in the cost column — the ring size, the
+capture node and the recording gate. It no longer gates *access*: nothing about who is
+handed a capsule depends on the device.
+
+Two consequences worth stating, because both were live decisions:
+
+- **The desktop capsule is a genuine convenience, not a downgrade.** Holding Left is a
+  scrub you steer; the capsule is a single button that undoes the last three seconds
+  without taking your hand off the run. They coexist, and firing the capsule arms the
+  ordinary `REWIND_LOCKOUT` so it cannot be chained with the scrub.
+- **Both platforms need to be TOLD.** The capsule does nothing visible when grabbed, so
+  it reads as a dud until it fires. The grab floats `REWIND ARMED: YOUR NEXT MISTAKE
+  UNDOES ITSELF` and the pause screen carries a matching chip; both are device-neutral,
+  since there is no control to name.
+
 ## Decisions taken
 
-- **Desktop is untouched.** Hold-Left / pad-A stays free and unlimited, with constant
-  recording and the 10-second ring exactly as today. The capsule is the touch-device
-  equivalent, and the two are mutually exclusive by construction (both keyed off
-  `Input.rewindAvailable()`).
-- **Tap fires a fixed ~3s rewind**, then hands off to the existing 0.55s deceleration
-  ramp and the 3s lockout. No hold semantics on the touch button.
-- **No death undo.** The rewind branch stays below the `if (this.dead)` early return
-  (`run.js:1844`); deaths remain the checkpoint system's job (`this.snapshot` /
-  `restoreSnapshot`, `run.js:4582`).
+- **Desktop's free rewind is untouched.** Hold-Left / pad-A stays free and unlimited,
+  with constant recording and the 10-second ring exactly as before.
+- **A hit fires a fixed ~3s rewind**, then hands off to the existing 0.55s
+  deceleration ramp and the 3s lockout.
+- ~~**No death undo.**~~ **Reversed** — see **Why it has no button**. The charge fires
+  from inside `takeHit`, before any death is staged, so it undoes fatal hits and pits
+  as well as ordinary damage. Deaths with no charge banked remain the checkpoint
+  system's job, unchanged.
 
 ## Design
 
-Grab a `capRewind` capsule → `powerups.active.rewind` arms for ~12s → for exactly that
-window the snapshot ring records and the audio capture node exists → a REWIND button
-appears in the touch chrome → tapping it runs the tape back 3 seconds and consumes the
-charge → recording and the capture node stop.
+Grab a `capRewind` capsule → `powerups.active.rewind` remains armed until the level ends
+→ the next hit runs the tape back 3 seconds instead, and consumes the charge. There is
+no countdown and no expiry. (The design originally had a button here; see **Why it has
+no button**.)
 
-Cost on mobile: ~45 pooled snapshot records instead of 150, alive for roughly 12s per
-capsule at a ~6% drip rate, rather than every frame of every run.
+On touch the armed lifetime is also the *recording* lifetime: from collection until the
+charge fires or the level ends, the snapshot ring records and the audio capture node
+exists. Cost there is ~45 pooled snapshot records instead of desktop's 150; a touch run
+still pays nothing before collecting the capsule or after spending it.
+
+On desktop none of that applies — the ring and the capture node are always live for the
+free hold-Left scrub — so arming and disarming are pure no-ops beyond showing the hint.
+`updateRewindArm` returns early on `Input.rewindAvailable()` for exactly this reason,
+and that early return is load-bearing: without it, a capsule expiring would reset the
+10-second ring and silently take the free scrub's tape with it.
 
 ## Changes
 
@@ -57,16 +138,11 @@ capsule at a ~6% drip rate, rather than every frame of every run.
   slot the capsule set has left; shield/airjump already own two blues and the tape FX
   itself is cold blue-white (`rewindFx.js`), so a third blue would read as one of them
   at 8px. Colour is a tuning call.
-- `durationFor`: `rewind: [0, 12, 15, 18, 20][level] || 12` — this is the **arm
-  window**, not the rewind length.
-- `rollPowerPickup(rng, allowRewind)`: carve rewind out of the rare UNPEELABLE band so
-  the desktop table stays byte-identical and the RNG stream consumes the same number of
-  floats either way:
-  ```js
-  if (roll < 0.18) return allowRewind && roll >= 0.12 ? 'capRewind' : 'capUnpeel';
-  ```
-  ≈6% on touch, 0% elsewhere. Thread `allowRewind` through `randomPowerPickup(rng,
-  avoid, allowRewind)`; the drip caller in `run.js` passes `!Input.rewindAvailable()`.
+- `grab('rewind')` stores `{ level, persistent: true }`; `Powerups.update` does not tick
+  persistent entries. The fixed rewind length still lives in `run.js`.
+- `rollPowerPickup(rng)`: see **Where it comes from** below. (The original plan carved
+  rewind out of unpeel's band behind an `allowRewind` flag; going cross-platform
+  retired both the carve and the flag.)
 
 ### `src/game/entities.js` + `src/sprites/props.js`
 - `PICKUPS.capRewind = { w: 8, h: 8, sprite: 'capRewind', power: 'rewind' }`.
@@ -76,12 +152,13 @@ capsule at a ~6% drip rate, rather than every frame of every run.
 - `art-warmup.js:81` already enumerates `PICKUPS`, so warm-up picks it up for free.
 
 ### `src/engine/input.js`
-- New action `'rewind'`. Bind it in `DEFAULT_KEYS` (`KeyR` is free) so headless tests and
-  a curious desktop player can reach it; leave `left` and `GAMEPAD_MAP` alone.
+**REMOVED — nothing here is in the code.** A `rewind` action was bound to `KeyZ` (not
+`KeyR` as first planned: R is reserved by the dev tuning strip, and `tests/tunables.js`
+rejects a game action that takes it). The auto-fire trigger left it with nothing to do.
 - No change to `rewindAvailable()` — it keeps meaning "this player has *free* rewind",
   which is exactly the predicate both the drip gate and the ring sizing want.
 
-### `src/engine/renderer.js` (`resizeChrome`, ~line 869)
+### `src/engine/renderer.js` (`resizeChrome`) — REMOVED, see **Why it has no button**
 - Add a `chrome.rewind` slot in both margin modes, mirroring how PAUSE shares a
   column with ABILITY:
   - `'side'`: at `{ x: jumpX, y: yTop }` (top of the JUMP column), zone
@@ -147,13 +224,48 @@ capsule at a ~6% drip rate, rather than every frame of every run.
 - Leave the boot-time `Audio.setCaptureEnabled(Input.rewindAvailable())` (`main.js:523`)
   exactly as it is — desktop keeps its permanent node, touch starts with none and
   run.js toggles it.
-- Exclude `rewind` from the Arcade Corner prize pool (`main.js:439`,
-  `rr.pick(Object.keys(POWER_DEFS))`). Arcade Corner is shuttered on touch, so that
-  pool can only ever hand rewind to a player who cannot use it.
+- The Arcade Corner prize pool (`main.js:439`, `rr.pick(Object.keys(POWER_DEFS))`)
+  includes `rewind` and needs no filter. The original plan excluded it because Arcade
+  Corner is shuttered on touch, so the pool could only reach a player who could not use
+  the prize — cross-platform removes exactly that objection.
 
 ### Not in scope for v1
 No Repair Bench upgrade track (`src/data/progression.js` `BENCH_UPGRADES` stays at
 three), so `levelOf('rewind')` is always 1 and the level tables above are headroom only.
+
+## Where it comes from
+
+Three sources, and a player meets them in this order:
+
+1. **The scripted introduction.** `rewindAt` on a stage (`src/data/stages.js`), a
+   fraction of stage distance exactly like `applianceAt`, planted by
+   `RunState.spawnScriptedRewindMaybe`. **PLUMBER PANIC 2 at 0.15** is the one that
+   exists: its challenge is TAKE NO DAMAGE, which is the run where undoing three
+   seconds is worth most, and 0.15 is early enough that the player meets the capsule
+   before the stage is asking for attention. It rides the drip's own spacing ledger
+   (`canPlacePower` / `notePower`), so it holds rather than skips when crowded.
+2. **The drip**, ~10% of capsules, on every device.
+3. **`!`-crate prizes and the Arcade Corner bonus**, which share the drip's table.
+
+### The drop table
+
+Rewind holds a **10% band of its own, taken from the staple tail** — it does *not* split
+unpeel's band, which is what the touch-only design did:
+
+```js
+if (roll < 0.08) return 'capRelay';    // 8%  — still the rarest thing in the game
+if (roll < 0.18) return 'capUnpeel';   // 10% — unchanged, as tuned
+if (roll < 0.28) return 'capRewind';   // 10% — its own band
+if (roll < 0.58) return [...traits];   // 30% — unchanged
+return rng.pick(['capShield', 'capMagnet']);  // 42%, down from 52%: the staples pay
+```
+
+The carve was wrong once rewind went cross-platform, and `tests/breaker-bonus.js` is
+what said so: halving unpeel to 6% took "rarest drop in the game" away from the relay
+charge, which is a free power and is supposed to hold it. Pricing rewind at unpeel's 10%
+says the true thing about it — the same *kind* of find, not a staple — and the staples
+absorb the cost without any of them falling near unpeel. Measured: relay 8.1%,
+unpeel 10.8%, rewind 10.6%, traits 10.4/10.0/10.6, staples 19.8/19.7.
 
 ## The single-shot guarantee
 
@@ -177,36 +289,55 @@ things enforce that, so no single mistake can leave the player in a loop:
    at `run.js:1871`, which arms `REWIND_LOCKOUT` (3s) exactly as the desktop path does.
 
 Grabbing a second capsule mid-window is the normal `Powerups.grab` path: it refreshes the
-arm window (and buys a temporary +1 level), it does not stack a second rewind.
+banked charge (and buys a temporary +1 level), it does not stack a second rewind.
 
 ## Verification
 
-- `node tests/run-all.js` — the whole suite must stay green. Watch in particular:
-  - `tests/rewind-pooling.js`, which drives real snapshot recording and asserts no
-    aliasing between recorded and live state; it runs desktop-side and pins that this
-    change did not disturb the existing path.
-  - `tests/difficulty-identity.js`, which is the guard on the drip table being unchanged
-    for keyboard players (headless = no coarse pointer = the desktop branch).
-  - `tests/breaker-bonus.js`, for the prize-pool exclusion.
-- **New `tests/rewind-powerup.js`**, modelled on `tests/rewind-pooling.js` for the boot
-  and stage-entry route, plus `tests/touch-smoke.js:11`'s
-  `window.matchMedia = (q) => ({ matches: q.includes('coarse') })` to simulate the
-  device. `setButtons` gates on `Input.usingTouch`, which only flips on a real touch
-  pointer event, so dispatch a `pointerdown` with `pointerType: 'touch'` on `#game`
-  first. Assert:
-  - ring length stays 0 through a stretch of normal play (no capsule, no recording);
-  - after force-granting the charge, the ring fills and caps at `POWER_REWIND_FRAMES`;
-  - a REWIND chrome button is registered while armed and gone once it is spent;
-  - firing walks `run.distance` backwards, and `powerups.active.rewind` is **absent**
-    once the rewind finishes (the refund gotcha above — this is the assertion that would
-    have caught it);
-  - the arm window expiring with the charge unused stops recording.
-- Real device pass via the `verify` skill (drives a browser and screenshots the canvas),
-  at a phone viewport: capsule is legible at 8px, the RWD button appears in the margin
-  without crowding JUMP, and a tap fires the tape effect.
-- Perf sanity: the gameplay profile HUD prints `REWIND x.xxms`
-  (`src/engine/gameplay-profile.js:193`) — confirm it reads 0 outside armed windows and
-  only rises inside them.
-- Audio: the capture node is a `ScriptProcessor` created mid-run on grab. Listen for a
-  glitch at that moment on a real phone — it lands under the `'power'` sting, which
-  should mask it, but this is the one thing here that could sound wrong.
+- `node tests/run-all.js` — the whole suite must stay green. It is green. Watch in
+  particular:
+  - `tests/rewind-pooling.js` — the desktop path. Pins that pooling is still
+    alias-free, and now also carries the **desktop half of the power-up**: it is the
+    only suite that boots a keyboard run, so a hit spending the charge, the camera
+    walking back, the single-shot guarantee and constant recording surviving the
+    capsule are all asserted there.
+  - `tests/rewind-powerup.js` — the touch path, where the mechanism is load-bearing
+    rather than a convenience. Also pins the **pit undo**, the one rule this feature
+    deliberately overrules. Boots on a simulated coarse-pointer device
+    (`tests/touch-smoke.js:11`'s `matchMedia` stub) and asserts: the ring is 45 and not
+    150; length stays 0 through normal play with no charge; a scripted `rewindAt` deals
+    exactly one capsule; an armed charge fills the tape and caps it; a hit fires the tape instead of landing; the run walks
+    backwards; `powerups.active.rewind` is **absent** afterwards (the
+    refund gotcha — the assertion that would have caught it); the lockout arms; and an
+    an unused charge remains armed and keeps a fresh 3-second tape through the level.
+  - `tests/breaker-bonus.js` — the drop table, including rewind's share and the
+    ordering that keeps the relay charge rarest. This is the suite that caught the
+    original band carve being wrong for cross-platform.
+  - `tests/difficulty-identity.js` — difficulty modes still resolve identically.
+- Note `tests/routes.js` is seed-flaky by design (`Date.now()` seed); rerun it several
+  times before attributing a failure there to this work.
+
+### Still outstanding
+
+- ~~**Real-device pass**~~ **DONE.** Driven in Chromium at a phone viewport (844x390)
+  through PLUMBER PANIC 2 via `work/local/verify-rewind.mjs`: the scripted capsule
+  spawns and is legible in the lane, the grab floatie and the mint REWIND timer both
+  read, a real `takeHit` fires the tape effect, the world walks backwards
+  (215 -> 181 distance), the battery is untouched (4 -> 4), the charge is spent, and
+  **the TAKE NO DAMAGE bonus is still showing OK** — the hit genuinely never happened,
+  which is the whole payoff for putting the capsule on this stage. No console errors.
+- **Perf sanity**: the gameplay profile HUD prints `REWIND x.xxms`
+  (`src/engine/gameplay-profile.js`) — on touch it should read 0 outside armed windows
+  and rise only inside them. Not yet measured on hardware.
+- **Audio**: on touch the capture node is a `ScriptProcessor` created mid-run on grab.
+  Listen for a glitch at that moment on a real phone — it lands under the `'power'`
+  sting, which should mask it, but it is the one thing here that could sound wrong.
+  Desktop is unaffected (its node is a boot-time fixture).
+
+## Known adjacent quirk (not fixed)
+
+The free hold-Left path never actually arms `REWIND_LOCKOUT`: the "Done. Reset." lines
+at the foot of the rewind block zero `rewindCooldown` on every idle frame, so the 0.55s
+deceleration ramp lasts one frame and the branch that would set the lockout is not
+reached. Pre-existing, unrelated to the capsule, and left alone deliberately — it is a
+live gameplay change that has not been asked for. The power-up path is unaffected: it
+arms its own lockout explicitly on the finish frame.

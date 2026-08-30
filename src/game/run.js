@@ -20,14 +20,14 @@ import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 import { entityBox, overlaps, makePickup, makeObstacle, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
-import { PIT_FLOOR } from './pitFill.js';
+import { PIT_FLOOR, SPIKE_TIPS } from './pitFill.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, PIT_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
-import { getStylePack, sunShock } from '../engine/stylePacks/index.js';
+import { getStylePack, sunShock, drawPitFills } from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
@@ -36,7 +36,7 @@ import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF } from './draw.js';
 import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
-import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, MAX_ISLAND_RISE } from './routes.js';
+import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, crossingLayout, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
 import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
@@ -124,10 +124,16 @@ const SPRING_LEAD = 12;
 // Lane kept clear either side of an opening, so nothing can crowd a hero into
 // one he did not choose.
 const OPENING_CLEAR = 26;
-// Rise above which a sky road is drawn as cloud rather than as dirt, and the
-// band over which it changes its mind. Below the first number it is a slab of
-// ground held up in the air; above the second it is weather.
-// Set above the sky road's own ENTRY height on purpose. The lip is where the
+// Rise above which a road is drawn as cloud rather than as dirt, and the band
+// over which it changes its mind. Below the first number it is a slab of ground
+// held up in the air; above the second it is weather.
+//
+// No route asks for this any more — cloud is off everywhere, because the puffs
+// beat the silhouette the hero reads the road's edges and gaps from (see
+// `cloud` in terrain.js). The band is kept, and kept at these numbers, so
+// turning it back on for one fork is a data key rather than a re-derivation.
+//
+// Set above a sky road's own ENTRY height on purpose. The lip is where the
 // spring puts you down and it wants to be honest ground under your feet — a
 // landing platform half dissolved into fog reads as neither one thing nor the
 // other. The changeover belongs to the climb, which is the stretch that is
@@ -176,6 +182,23 @@ export const PIT_SURFACE_Y = -Math.round(PIT_FLOOR * 38);
 // A little under a fifth of the speed he arrived at. Slow enough to linger as
 // a visible sinking rather than reading as a second fall.
 const PIT_SINK_RATE = 12;
+// WHERE A SPIKE BED STOPS HIM, and it is not where a liquid does.
+//
+// Tar takes him under and that is the point of it; teeth do not, so he settles
+// on the tips with most of him still above the lane line — which is the picture
+// a spike pit has always drawn and the reason it needs no sink at all. Kept in
+// step with SPIKE_TIPS in game/pitFill.js: the height the art's teeth reach and
+// the altitude the body stops at are one number, or he is impaled on air.
+export const SPIKE_SURFACE_Y = -Math.round(SPIKE_TIPS * 38);
+// The furthest a death may carry him forward, whatever the hole's width.
+//
+// Half the hole is the right arc for a hole you jump — he lands in the middle
+// of the thing rather than scraping its wall. A CROSSING is several jumps wide,
+// and half of one is a corpse sailing most of a screen past the lip he actually
+// missed, which reads as a stunt rather than as a fall. Sized off the widest
+// ordinary pit in the game (68px), so nothing that existed before this clamp
+// notices it.
+const PIT_CARRY_MAX = 40;
 // How much of the fall survives the surface. Capped so a hero who came in off a
 // spring does not fire through the material and out of the frame.
 const PIT_PLUNGE_MAX = 90;
@@ -774,16 +797,30 @@ const finishLineX = () => VIEW_W - 72;
 export const FINISH_CLEAR = 160;
 
 // The finish dog's voice (see the finishDog block in updateEntities).
-// BARK_LEAD is the growl the 'dogBark' cue plays before its first bark —
+// BARK_LEAD is how far ahead of its first bark the 'dogBark' cue is fired —
 // change the cue's shape in audio.js and this number moves with it, or the
 // jaw sync it exists for is barking at the wrong frame. FINISH_DOG_FADE is
 // how much road past the hero the bark takes to die away entirely.
-const BARK_LEAD = 0.28;
+const BARK_LEAD = 0.05;
 const FINISH_DOG_FADE = 240;
-// Release window (seconds of road to the tape) and charge speed (fraction of
-// the scroll) — the two-jump geometry in spawnFinishDog is derived from these.
-const FINISH_DOG_LEAD_S = 3.5;
-const FINISH_DOG_SPEED = 0.55;
+// The charge, all as fractions of the run's own scroll so the geometry holds
+// at every stage speed (see the derivation on spawnFinishDog): the release
+// window in seconds of road to the tape, the lope it sets off at, the
+// acceleration of the lunge, and the sprint it tops out at.
+// How often a plumber stage is guarded at all. Under half on purpose: the dog
+// has to be a thing that MIGHT be there, so the sign is worth reading and the
+// empty straights stay a relief rather than a formality.
+const FINISH_DOG_CHANCE = 0.45;
+// How much road before the tape the BEWARE OF DOG sign stands, as a multiple
+// of a screen. Two screens: far enough that the sign is read, gone, and
+// thought about before the post arrives, rather than being scenery beside the
+// thing it was supposed to warn about.
+const DOG_SIGN_SCREENS = 2;
+const FINISH_DOG_LAUNCH_S = 2.0; // charge release, in seconds of road to the tape
+const FINISH_DOG_INTRO_S = 0.45; // how long it is seen WAITING at the post first
+const FINISH_DOG_V0 = 0.5;
+const FINISH_DOG_ACCEL = 0.4;
+const FINISH_DOG_VMAX = 0.85;
 
 // How far outside the visible band an entity can still put ink on screen, and
 // therefore how far past the edges the render cull has to keep drawing.
@@ -984,7 +1021,7 @@ export class RunState {
     this.rewindCooldown = 0;
     this.rewindLockout = 0;
     this.rewindSpeedMul = 1;
-    this.rewindPlayFrames = 0;    // touch power-up playback counter
+    this.rewindPlayFrames = 0;    // capsule rewind: ticks of tape left to play
     this.rewindArmedPrev = false; // edge detector for the armed window
     this.rewindFx = new TapeRewindEffect();
     this.prevCamX = 0;
@@ -1669,7 +1706,7 @@ export class RunState {
       iceSlide: this.cabinet.mechanic === 'ice' ? 14 : 0,
     });
     this.spawner.nextX = 300;
-    this.drip = new DripSpawner(this.rng.stream('drip'), this.bench, !Input.rewindAvailable());
+    this.drip = new DripSpawner(this.rng.stream('drip'), this.bench);
 
     // ---- raised routes: islands and forks ----------------------------------
     //
@@ -1691,6 +1728,36 @@ export class RunState {
     // is broken on exactly one eighth of the relay bag. Same instinct as
     // spawner.js's worstAirtime().
     this.route = null;
+
+    // The stage's own pits, as world x. A fraction of the stage the way the
+    // appliance is placed, resolved once here so nothing downstream has to know
+    // how long the stage is. OVERTIME has no length to take a fraction of, so
+    // it gets none — its holes come from the cabinet's pattern list like
+    // everything else on it.
+    //
+    // AHEAD OF THE ROADS, and that is the whole reason this block sits here
+    // rather than beside the checkpoints below: a pit that declares `jumps` is a
+    // CROSSING, its stones are routes, and routes.js has to be handed them
+    // before it lays anything a cabinet declares — see the overlap guard there.
+    this.pitPlan = [];
+    this.crossings = [];
+    if (!this.overtime && Number.isFinite(this.totalDist) && this.stage && this.stage.pits) {
+      for (const p of this.stage.pits) {
+        const x = p.at * this.totalDist;
+        if (!p.jumps) {
+          this.pitPlan.push({ x, w: p.w || OBSTACLES.gap.w, crossing: null, done: false });
+          continue;
+        }
+        // Sized against the speed the lane will be running at THERE. A crossing
+        // is the one hole whose width is derived rather than authored, and
+        // deriving it off the stage's opening speed would lay a set piece for a
+        // run that has not started accelerating yet.
+        const c = crossingLayout(x, p.jumps, this.speedAt(p.at));
+        this.crossings.push(c);
+        this.pitPlan.push({ x, w: c.w, crossing: c, done: false });
+      }
+    }
+
     // Built by routes.js. It is pure geometry off the cabinet's data and this
     // stage's own length and speed, so the asset gallery can build the very
     // same roads the run does and draw them through the very same painters —
@@ -1701,6 +1768,7 @@ export class RunState {
         totalDist: this.totalDist,
         speed: this.baseSpeed(),
         groundYAt: (wx) => this.groundYAt(wx),
+        crossings: this.crossings,
       });
 
     // Mission setup.
@@ -1709,11 +1777,28 @@ export class RunState {
     this.applianceSpawned = false;
     this.applianceGot = false;
     this.finishDogSpawned = false;
+    this.dogSignSpawned = false;
+    // WHETHER THIS STAGE HAS A DOG AT ALL. Rolled once, here, from its own
+    // named stream so it is stable across a death, a rewind and a replay of
+    // the same seed — a guard that is at the tape on the attempt you died on
+    // and gone on the retry is a bug wearing a dice roll.
+    //
+    // Not every stage, deliberately. The dog is the last beat of a plumber
+    // level and it works by being an event; at the end of every single one it
+    // is furniture, and the finishing straight goes back to being a place
+    // where nothing happens because you already know what happens.
+    this.finishDogPlanned = this.cabinet.id === 'plumber'
+      && !this.overtime && Number.isFinite(this.totalDist)
+      && this.rng.stream('finishDog').float() < FINISH_DOG_CHANCE;
     this.fuseHeld = this.mission.type === 'fuse';
     this.missionTimers = { cord: 8, resident: 10, chaseNear: 0 };
     this.escapeWall = this.mission.type === 'escape' ? -140 : null;
     if (this.mission.type === 'chase') this.copter = { x: 380, alt: 60, caught: 0, cooldown: 0 };
     this.rewindCapSpawned = false;
+    // Irreversible within this attempt. Rewind snapshots deliberately do not
+    // own this flag: once the one-shot has fired, travelling into the recorded
+    // past must not resurrect its capsule or deal another one.
+    this.rewindUsed = false;
 
     // The one loop-de-loop of the run, if this cabinet has them. A SET PIECE
     // rather than a pattern: it is placed at a known point in the stage instead
@@ -1729,15 +1814,6 @@ export class RunState {
     this.loopAt = (this.cabinet.mechanic === 'boost' && !this.bossCab && !this.overtime
       && Number.isFinite(this.totalDist)) ? LOOP.at * this.totalDist : null;
     this.loopSpawned = false;
-
-    // The stage's own pits, as world x. A fraction of the stage the way the
-    // appliance is placed, resolved once here so nothing downstream has to know
-    // how long the stage is. OVERTIME has no length to take a fraction of, so
-    // it gets none — its holes come from the cabinet's pattern list like
-    // everything else on it.
-    this.pitPlan = (!this.overtime && Number.isFinite(this.totalDist) && this.stage && this.stage.pits)
-      ? this.stage.pits.map((p) => ({ x: p.at * this.totalDist, w: p.w || OBSTACLES.gap.w, done: false }))
-      : [];
 
     // Checkpoints at 1/3 and 2/3 (none on UNPLUGGED).
     this.checkpoints = (this.oneHit || this.overtime) ? [] : [1 / 3, 2 / 3].map((f) => f * this.totalDist);
@@ -1886,12 +1962,7 @@ export class RunState {
       Input.setButtons(chromeGeo.mode === 'side'
         ? [{ id: 'abilityName', x: W - 4 - 90, y: TOUCH_SHELF_CY - 9, w: 90, h: 18, action: 'ability' }]
         : []);
-      // REWIND is registered FIRST while its charge is armed: chromeButtonAt
-      // returns the first button whose zone contains the tap, and its zone
-      // overlaps the full-height JUMP column (renderer.js) — registered ahead
-      // it wins its corner, absent it leaves no dead strip.
       Input.setChromeButtons([
-        ...(this.powerups?.active.rewind ? [{ id: 'rewind', ...chromeGeo.rewind, action: 'rewind' }] : []),
         { id: 'jump', ...chromeGeo.jump, action: 'jump' },
         { id: 'ability', ...chromeGeo.ability, action: 'ability' },
         { id: 'pause', ...chromeGeo.pause, action: 'escape' },
@@ -1899,7 +1970,7 @@ export class RunState {
       return;
     }
     Input.setChromeButtons([]);
-    Input.setButtons(playButtons(!!this.powerups?.active.rewind));
+    Input.setButtons(playButtons());
   }
 
   // Everything that has to follow the pause flag, in one place. The plates
@@ -1936,7 +2007,6 @@ export class RunState {
   chromeButtonArt(id) {
     if (id === 'jump') return { label: 'JUMP' };
     if (id === 'ability') return { label: 'USE' };
-    if (id === 'rewind') return { label: 'RWD' };
     return { icon: 'pause' };
   }
 
@@ -2007,6 +2077,27 @@ export class RunState {
       (this.stage?.speedMult ?? 1) *
       (this.corrupted.includes('maxspeed') ? 1.35 : 1) *
       (this.save.settings.assistSpeed / 100);
+  }
+
+  /**
+   * How fast the lane will be moving when the run is `frac` of the way through
+   * this stage.
+   *
+   * The forecast half of `speed`: the same ramp, read forward off the clock
+   * instead of off the run. Anything the stage places by FRACTION and sizes in
+   * seconds needs it — a set piece laid at the opening speed is laid for a hero
+   * who is not the one who arrives.
+   *
+   * Approximate on purpose, and it may only ever be used for geometry that is
+   * generous either way: `tRun` at a given fraction is not exactly the
+   * fraction's share of the duration (the hero has been accelerating through
+   * it), and a death that sends the player back through the same stretch adds
+   * seconds the distance does not.
+   */
+  speedAt(frac) {
+    const dur = (this.stage && this.stage.durationSec) || 60;
+    const t = Math.max(0, frac) * dur;
+    return this.baseSpeed() * Math.min(SPEED_RAMP_CAP, 1 + SPEED_RAMP_K * Math.sqrt(t));
   }
 
   get speed() {
@@ -2222,19 +2313,11 @@ export class RunState {
     // ramps forward speed from ~0 back to normal so the character's walk
     // cycle starts slow and accelerates — in step with the tape-stop audio.
 
-    // Touch power-up rewind, ABOVE the hold branch so the two can never fight
-    // over the same tick: a tap plays the tape back a fixed 3 seconds, one
-    // snapshot per tick like the hold path, then falls into the same release
-    // edge / deceleration ramp / lockout below. No death undo — this sits
-    // below the `if (this.dead)` early return by construction.
-    if (Input.pressed('rewind') && this.powerups.active.rewind
-        && this.rewindPlayFrames <= 0 && this.rewindFrames.length > 0 && this.rewindLockout <= 0) {
-      this.rewindPlayFrames = Math.min(POWER_REWIND_FRAMES, this.rewindFrames.length);
-      Audio.setRewinding(true);
-      this.rewindFx.start();
-      this.rewinding = true;
-      this.rewindCooldown = 0;
-    }
+    // The rewind capsule PLAYING BACK. It is armed by takeHit (autoRewindHit),
+    // never by a button — see that method for why. Sits above the hold branch
+    // so the two can never fight over the same tick: one snapshot per tick,
+    // exactly as the hold path pops them, then it falls into the same release
+    // edge / deceleration ramp / lockout below.
     if (this.rewindPlayFrames > 0) {
       const snap = this.rewindFrames.pop();
       if (snap) this.restoreRewindSnapshot(snap);
@@ -2253,6 +2336,7 @@ export class RunState {
       // tape-stop audio and deceleration ramp.
       this.rewindPlayFrames = 0;
       delete this.powerups.active.rewind;
+      this.floatText('REWIND SPENT', '#7ce8a0');
       // Armed HERE, not left to the ramp's completion branch: the "Done.
       // Reset." lines below zero rewindCooldown every frame the hold path is
       // idle, so the ramp's own lockout assignment never actually runs (true
@@ -2495,13 +2579,14 @@ export class RunState {
       this.spawner.fill(this.camX, sp, this.obstacles, this.pickups, () => jumpHeightFor(hero),
         this.overtime ? Infinity : this.finishWorldX() - FINISH_CLEAR);
       this.drip.update(wdt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(),
-        this.overtime ? Infinity : this.finishWorldX() - FINISH_CLEAR);
+        this.overtime ? Infinity : this.finishWorldX() - FINISH_CLEAR, !this.rewindUsed);
       this.spawnScriptedPits();
       this.signPits();
       updateProfileAdd('spawnMs', spawnAt);
     }
     this.spawnApplianceMaybe();
     this.spawnScriptedRewindMaybe();
+    this.spawnDogSign();
     this.spawnFinishDog();
     this.spawnLoopSetPiece();
     this.clearLoopLane();
@@ -3099,21 +3184,35 @@ export class RunState {
       //
       // REASONABLE FORCE rides those same two fields, which is why they exist as
       // a pair: "wider but slower" is one trade expressed in numbers the
-      // projectile already carries, not a third special case.
+      // projectile already carries, not a third special case. SERIALIZED is
+      // the same pair traded the other way — Clara's shot, already the fastest
+      // and smallest, goes further in the direction it was built.
       const wide = this.modIds.includes('force');
-      const speedAdd = (hero.shotSpeed != null ? hero.shotSpeed : 260) * (wide ? 0.72 : 1);
-      const size = (hero.shotSize || 1) * (wide ? 1.5 : 1);
+      const lean = this.modIds.includes('serial');
+      const speedAdd = (hero.shotSpeed != null ? hero.shotSpeed : 260) * (wide ? 0.72 : lean ? 1.25 : 1);
+      const size = (hero.shotSize || 1) * (wide ? 1.5 : lean ? 0.75 : 1);
       Audio.sfx('launch', { hero: hero.id, pitch: hero.id === 'b33p' ? 1.08 : 0.98 });
       const px = this.playerWorldX() + 12;
       // Charged: a three-round spread, every pellet piercing.
       const alts = charged ? [this.player.y - 6, this.player.y + 8, this.player.y + 22] : [this.player.y + 8];
+      // `shotBurst` is Clara's twin pistols as gameplay: each trigger pull is
+      // that many rounds trailing at a fixed 16px gap. Same vx, so the gap
+      // holds in flight and the pair reads as a double-tap rather than two
+      // events. Data on the row, like shotSpeed/shotSize — nothing downstream
+      // knows who fired.
+      const burst = hero.shotBurst || 1;
       for (const alt of alts) {
-        // contactHero is what makes the IMPACT play her burst instead of his
-        // orb pop, and it is also what the renderer reads to colour the shot —
-        // scalars only, because projectiles are pooled through assignInto.
-        this.projectiles.push({ type: 'pellet', x: px, alt, vx: this.speed + speedAdd, size, contactHero: hero.id, live: true, pierce: charged || this.modIds.includes('charge'), hitIds: new Set() });
+        for (let i = 0; i < burst; i++) {
+          // contactHero is what makes the IMPACT play her burst instead of his
+          // orb pop, and it is also what the renderer reads to colour the shot —
+          // scalars only, because projectiles are pooled through assignInto.
+          this.projectiles.push({ type: 'pellet', x: px - i * 16, alt, vx: this.speed + speedAdd, size, contactHero: hero.id, live: true, pierce: charged || this.modIds.includes('charge'), hitIds: new Set() });
+        }
       }
       if (hero.id === 'kiko') this.floatText(charged ? 'FORMALLY WARNED' : 'WARNED', '#8fe4ff');
+      // Clara's narrator calls her own shots; two pistols means the ordinary
+      // pull is already a pair, and the prose keeps count.
+      else if (hero.id === 'clara') this.floatText(charged ? 'SHE FIRED. GENEROUSLY.' : 'SHE FIRED. TWICE.', '#ffd27a');
       else this.floatText(charged ? 'FULL CYAN' : 'PEW', '#f6d33c');
     } else if (type === 'compress') {
       this.player.compressT = charged ? 2.6 : 1;
@@ -3268,7 +3367,7 @@ export class RunState {
   // quiet: a screen-clear can pop several boxes on one frame, and one 'power'
   // sting per box stacks into noise.
   tossPrize(x, alt, quiet) {
-    const type = randomPowerPickup(this.fxRng, this.drip.lastPowerType);
+    const type = randomPowerPickup(this.fxRng, this.drip.lastPowerType, !this.rewindUsed);
     const p = makePickup(type, x, alt);
     p.toss = true;
     p.vx = this.speed * 1.45;
@@ -3758,6 +3857,21 @@ export class RunState {
       // Pitch wobbles off the dog's own position, so no two barks twin and a
       // replay barks identically.
       if (ob.type === 'finishDog') {
+        // Waiting at the post until the hero closes to the launch gap; then
+        // the lope, then the lunge toward the sprint cap (all fractions of
+        // the scroll — see spawnFinishDog). vx is negative, so accelerating
+        // is subtracting.
+        if (ob.waiting) {
+          if (this.finishWorldX() - this.camX - PLAYER_X <= this.finishDogLaunchGap()) {
+            const lsp = this.speed;
+            ob.waiting = false;
+            ob.vx = -lsp * FINISH_DOG_V0;
+            ob.chaseA = lsp * FINISH_DOG_ACCEL;
+            ob.chaseVmax = lsp * FINISH_DOG_VMAX;
+          }
+        } else if (ob.chaseA && -ob.vx < ob.chaseVmax) {
+          ob.vx = Math.max(-ob.chaseVmax, ob.vx - ob.chaseA * dt);
+        }
         ob.barkT = (ob.barkT ?? 0) - dt;
         const rel = ob.x + ob.w - this.playerWorldX();
         const fade = rel >= 0 ? 1 : Math.max(0, 1 + rel / FINISH_DOG_FADE);
@@ -3767,7 +3881,7 @@ export class RunState {
         ob.barkNext = tNext;
         if (ob.barkT <= 0 && fade > 0.04 && (snap || this.save.settings.reducedMotion)) {
           Audio.sfx('dogBark', { gain: fade, pitch: 0.94 + 0.12 * Math.abs(Math.sin(ob.x * 0.017)) });
-          ob.barkT = 0.8;
+          ob.barkT = 0.6;
         }
       }
       // A punted cone is in the air on its own account. Before the `falls`
@@ -4533,11 +4647,26 @@ export class RunState {
         // RAMP, which is not an opening at all: the lane runs over the top of it
         // and the route peels away downward underneath, so there is nothing to
         // cut and nothing to fall through.
+        let mouth = null;
         for (const span of tunnelOpenings(r)) {
           const hole = makeObstacle('gap', span.x, {});
           hole.w = span.w;
           hole.tunnel = r;
           this.obstacles.push(hole);
+          if (!mouth || hole.x < mouth.x) mouth = hole;
+        }
+        // AN ARROW AT THE LIP, on the darkness cabinet only. Everywhere else a
+        // tunnel mouth telegraphs itself the way every gap does; in the crypt
+        // the light radius reaches the lip about when the decision is due, so
+        // the mouth gets signed proactively — the jump sign's earned-by-falling
+        // rule is for teaching a control, and this is compensating for a light.
+        // Same lip placement as signPits (SIGN_LEAD's comment argues it), and
+        // `tunnel` set so no sweep — route, spring, scripted pit — takes the
+        // sign out from in front of the thing it is announcing.
+        if (mouth && this.cabinet.mechanic === 'darkness') {
+          const sign = makeObstacle('downSign', mouth.x - SIGN_LEAD - OBSTACLES.downSign.w, {});
+          sign.tunnel = r;
+          this.obstacles.push(sign);
         }
         this.populateRoute(r);
         continue;
@@ -4741,6 +4870,17 @@ export class RunState {
     const selfMoving = (ob) => !!(ob.vx || ob.def.airVx || ob.def.airDrift || ob.punted);
     const retireExit = (ob) => { if (!selfMoving(ob) || ob.x > viewRight) ob.live = false; };
     for (const is of this.routes) {
+      // A CROSSING'S STONE SWEEPS NOTHING.
+      //
+      // Every rule below is about a slab standing over a LANE: clear what the
+      // hero lands on, clear what reaches up into the platform, clear the
+      // run-up. Under a stone there is no lane — there is the crossing's own
+      // hole — and the underside rule would read that hole as a hazard buried
+      // in the slab and delete it, which takes the pit out of the set piece and
+      // leaves three platforms standing over solid ground. What clutter there
+      // is around a crossing was swept by `spawnScriptedPits` when it cut the
+      // break, against the same clearance every other pit uses.
+      if (is.crossing) continue;
       // In range if any part of the route is inside the lane's lookahead and
       // has not gone by. Bounded by the obstacle list, which is culled, and by
       // the handful of routes a stage carries.
@@ -4951,15 +5091,16 @@ export class RunState {
   // The stage's scripted rewind capsule — the power-up's guaranteed
   // introduction, placed by rewindAt the way applianceAt places the toaster
   // (plumber-2 at 0.15 — early, before the run settles into a rhythm, the same
-  // instinct as plumber-3's first pit). Touch-only by the same predicate as
-  // the drip: a player with free hold-Left rewind would be handed a capsule
-  // that arms a 3-second tape under the 10-second one they already have.
+  // instinct as plumber-3's first pit). Every device gets it: the capsule is
+  // the ONLY rewind a touch player has, and on desktop it is a banked one-shot
+  // beside the free hold-Left scrub — the same three seconds either way, so
+  // there is one thing to learn rather than two.
   // Riding the drip's spacing ledger (canPlacePower/notePower) keeps it a
   // screen clear of whatever the dice dealt, holding rather than skipping
   // when crowded, exactly as the drip itself does.
   spawnScriptedRewindMaybe() {
     if (this.overtime || !this.stage || this.stage.rewindAt == null) return;
-    if (this.rewindCapSpawned || Input.rewindAvailable()) return;
+    if (this.rewindCapSpawned || this.rewindUsed) return;
     const at = this.stage.rewindAt * this.totalDist;
     if (this.camX + W <= at) return;
     const x = Math.min(at + W, this.finishWorldX() - FINISH_CLEAR - PICKUPS.capRewind.w);
@@ -4979,26 +5120,93 @@ export class RunState {
   // motion line moves it, collide() charges for contact, and the left-edge
   // cull retires it once it has run past.
   //
-  // BOTH numbers are authored in the run's own speed, for the same reason the
-  // routes are authored in seconds: the contract is that clearing the dog and
-  // catching the pole are TWO jumps, never one, and a jump's length grows
-  // with the scroll. The dog passes the hero with
-  //     lead·vx/(sp+vx) = 3.5·0.55/1.55 ≈ 1.24·sp
-  // of road left, against a jump span of ~0.92·sp — so the hero lands off the
-  // dog-jump with ~0.3·sp of road still to cover at every stage speed, and
-  // the pole takes its own second jump: dog, land, LEAP. Fixed-pixel versions
-  // of these numbers held at stage-1 speed and put the dog-jump ON the tape
-  // at stage-3 speed, which is the one thing this is not allowed to do.
+  // The encounter is staged in two beats. First the dog is SEEN: it spawns
+  // standing at the post, scrolls into the frame with it, and barks there —
+  // dog and finish post in the same shot, which is what makes it a guard and
+  // not just one more hazard. Then it LAUNCHES: at the launch gap below it
+  // drops into a lope at 0.5·sp and lunges at 0.4·sp/s² up to a 0.85·sp
+  // sprint — a dog deciding, then committing, kept under the hero's own pace
+  // because a closing speed near 2·sp made the jump read as a coin flip.
+  //
+  // The launch numbers are authored in the run's own speed, for the same
+  // reason the routes are authored in seconds: the contract is that clearing
+  // the dog and catching the pole are TWO jumps, never one, and a jump's
+  // length grows with the scroll. Released at 2.0·sp of road, solving
+  //     sp·t + (0.5·sp·t + 0.2·sp·t²) = 2.0·sp
+  // the two meet with the dog having covered ~0.65·sp of road against a jump
+  // span of ~0.92·sp — with the jump taken a beat early, the hero lands
+  // SHORT of the tape and the pole takes its own second jump: dog, land,
+  // LEAP. The margin is deliberately thin — a few px at the fastest scrolls:
+  // this release is as late and this charge as gentle as the two-jump
+  // contract allows, because the encounter has to play out with the post in
+  // frame AND at a closing speed a person can time. Post-in-frame and easy
+  // jump both pull the meet toward the tape; the two-jump rule pulls it
+  // away; these numbers are where the three balance. The view-edge term in
+  // finishDogLaunchGap holds the launch until the dog is visibly standing at
+  // the post wherever the geometry has room.
+  //
   // Spawned 30px shy of the tape so startFinishRun's past-the-tape sweep and
   // the draw gate's finishX wall both leave it alone.
+  // How much road to the tape is left when the charge is allowed to start:
+  // never while the pole is still comfortably off screen (the dog and its post
+  // must share the frame — the whole point of it standing there), unless the
+  // two-jump geometry forces an earlier release (see the finishDog block in
+  // updateEntities): at high scroll a launch this late would put the dog-jump
+  // ON the tape, so seconds-of-road wins over the view edge when it is larger.
+  finishDogLaunchGap() {
+    // -60: the dog holds until it stands a clear stride INSIDE the right edge,
+    // so the player sees it AT the post before it moves, not a hazard that
+    // enters already running.
+    return Math.max(W / this.camZoom - 60, this.speed * FINISH_DOG_LAUNCH_S);
+  }
+
+  // The warning. Planted two screens short of the tape on a guarded stage, and
+  // only there — a sign on a stage with no dog behind it is the one thing that
+  // would teach players to stop reading them.
+  //
+  // Kept clear of whatever the spawner has already laid, by the same rule the
+  // pit hints use: a sign is the one entity in the lane the player is meant to
+  // READ, and one standing half behind a cone is not readable. If the ground
+  // is busy this frame it simply tries again on the next one — there are
+  // hundreds of pixels of runway to find a gap in, and the flag is only set on
+  // success, so "at most one" still holds.
+  spawnDogSign() {
+    if (this.dogSignSpawned || !this.finishDogPlanned || this.overtime) return;
+    const view = W / this.camZoom;
+    const x = this.finishWorldX() - view * DOG_SIGN_SCREENS;
+    // Placed while it is still off the right edge — a sign that appears inside
+    // the frame reads as scenery popping in — but placed as EARLY as that
+    // allows, because it costs nothing to stand there waiting and a narrow
+    // window is a window the clearance test below can miss entirely.
+    if (x > this.camX + view * 3) return;  // too far out to bother yet
+    if (x <= this.camX + view) {           // it would arrive already on screen
+      this.dogSignSpawned = true;
+      return;
+    }
+    // Wider breathing room than the pit hints take. Their six pixels are a
+    // BOX margin, and every prop in the lane draws a third again wider than
+    // its box — so six clears the hitboxes and still stands the sign's board
+    // inside a crate's shoulder, which is the one thing a sign may not do.
+    const sw = OBSTACLES.dogSign.w;
+    const clear = this.obstacles.every((o) => !o.live
+      || (o.def.isGap
+        ? o.x + o.w <= x || o.x >= x + sw
+        : o.x + o.w + 16 < x || o.x > x + sw + 16));
+    if (!clear) return;
+    this.dogSignSpawned = true;
+    this.obstacles.push(makeObstacle('dogSign', x));
+  }
+
   spawnFinishDog() {
-    if (this.finishDogSpawned || this.overtime || !Number.isFinite(this.totalDist)) return;
-    if (this.cabinet.id !== 'plumber') return;
+    if (this.finishDogSpawned || !this.finishDogPlanned) return;
     const sp = this.speed;
-    if (this.finishWorldX() - this.camX - PLAYER_X >= sp * FINISH_DOG_LEAD_S) return;
+    const gap = this.finishWorldX() - this.camX - PLAYER_X;
+    if (gap >= this.finishDogLaunchGap() + sp * FINISH_DOG_INTRO_S) return;
     this.finishDogSpawned = true;
     const dog = makeObstacle('finishDog', this.finishWorldX() - 30);
-    dog.vx = -Math.round(sp * FINISH_DOG_SPEED);
+    dog.vx = 0;
+    dog.waiting = true; // stands its ground at the post until the launch gap
+    dog.barkT = 0.2;    // first bark almost at once — the post announces itself
     this.obstacles.push(dog);
   }
 
@@ -5039,7 +5247,13 @@ export class RunState {
       if (plan.x + plan.w + 200 > this.finishWorldX()) continue;
       const clear = pitClearance(this.spawner.react, this.speed);
       for (const ob of this.obstacles) {
-        if (!ob.live || ob.route) continue;
+        // `tunnel` guarded alongside `route`, as every other sweep in this
+        // file does: a tunnel's mouth and roof-gap are gap obstacles, and
+        // sweeping one deletes the way in while drawTunnel keeps carving the
+        // chamber under it. Pit fractions should still be authored clear of a
+        // cabinet's tunnels — this guard makes a collision survivable, not
+        // good.
+        if (!ob.live || ob.route || ob.tunnel) continue;
         if (ob.x + ob.w > plan.x - clear && ob.x < plan.x + plan.w + clear) ob.live = false;
       }
       // AND THE SAME WINDOW FOR PICKUPS, not just the hole itself.
@@ -5067,6 +5281,19 @@ export class RunState {
         || pk.x + 6 < plan.x - 4 || pk.x > plan.x + plan.w + 4);
       const hole = makeObstacle('gap', plan.x, {});
       hole.w = plan.w;
+      // A CROSSING wears its own material, whatever the cabinet's is.
+      //
+      // Every other hole on a stage is filled by the cabinet — tar, lava, black
+      // slush — because the fill is the cabinet's idea of what is under its
+      // floor. A crossing is not the cabinet talking, it is the stage building
+      // one thing out of four jumps, and the thing under it has to say
+      // BEFOREHAND that a missed landing is the end. Spikes are the one fill in
+      // the set that reads as lethal at a glance and from the lane, standing
+      // still, without a bubble or a glow to explain it.
+      if (plan.crossing) {
+        hole.fill = 'spikes';
+        hole.crossing = plan.crossing;
+      }
       this.obstacles.push(hole);
       // The spawner lays from its own frontier; push it past the landing so the
       // next pattern starts on the far side rather than inside the clearance.
@@ -5179,7 +5406,7 @@ export class RunState {
       relayCharge: this.player.relayCharge,
       spawnerX: this.spawner.nextX,
       applianceSpawned: this.applianceSpawned, applianceGot: this.applianceGot,
-      finishDogSpawned: this.finishDogSpawned,
+      finishDogSpawned: this.finishDogSpawned, dogSignSpawned: this.dogSignSpawned,
       rewindCapSpawned: this.rewindCapSpawned,
       // Whether the run's one loop has been stood up yet. It is a one-shot, and
       // the restore rebuilds the entity lists from this snapshot — so a run that
@@ -5239,7 +5466,8 @@ export class RunState {
     this.portal = null;
     this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot;
     this.finishDogSpawned = !!s.finishDogSpawned;
-    this.rewindCapSpawned = !!s.rewindCapSpawned;
+    this.dogSignSpawned = !!s.dogSignSpawned;
+    this.rewindCapSpawned = this.rewindUsed || !!s.rewindCapSpawned;
     this.loopSpawned = !!s.loopSpawned;
     if (s.pitsDone) for (let i = 0; i < this.pitPlan.length; i++) this.pitPlan[i].done = !!s.pitsDone[i];
     this.signShown = !!s.signShown;
@@ -5265,7 +5493,7 @@ export class RunState {
 
   // ------------------------------------------------------------------ rewind
   // The armed/disarmed edge for the touch rewind capsule — the ONE place that
-  // handles grab, expiry and spend uniformly. Both effects are no-ops when the
+  // handles grab and spend uniformly. Both effects are no-ops when the
   // player has free rewind, so desktop's boot-time capture node and buttonless
   // margin are never touched from here.
   updateRewindArm() {
@@ -5280,21 +5508,66 @@ export class RunState {
     // stale: dropping it means the next capsule can never splice this window's
     // tape onto its own and teleport the player across the gap.
     if (!armed) this.rewindFrames.reset();
-    // The REWIND button appears and disappears with the charge.
-    // drawChromeButtons folds button ids into its dirty signature, so the
-    // margin repaint follows for free.
-    this.setButtons();
   }
 
   // Record a snapshot on the fixed cadence during normal forward play.
   // After recording, discard the oldest if the buffer is full.
+  /**
+   * Spend a banked rewind to undo the hit that is happening right now.
+   *
+   * Called from the top of takeHit, and it is the ONLY way the capsule ever
+   * fires — there is no button and no key. That is the whole design: a rewind
+   * is useful at exactly one moment, the moment after a mistake, and asking
+   * the player to recognise that moment and press something during it is
+   * asking them to do the hardest possible thing at the worst possible time.
+   * Firing it for them means the capsule reads the way it looks: you picked up
+   * a rewind, so the next thing that goes wrong un-happens.
+   *
+   * Returns true if it fired, and the caller must then apply NOTHING — no
+   * damage, no death, no challenge failure. Three seconds ago the hit had not
+   * happened, and that is the state the next few ticks restore.
+   *
+   * This deliberately overrules the "nothing saves you from a hole" rule above
+   * it. That rule is about i-frames, which is a claim that you SURVIVED the
+   * fall; this is not a ladder out of the pit, it is the pit never having been
+   * fallen into. The hazard is still there when the tape stops, three seconds
+   * upstream and coming again — the player gets the approach back, not a pass.
+   */
+  autoRewindHit() {
+    // Already running one: suppress every further hit this frame. The collide
+    // loop can reach takeHit more than once (two overlapping entities), and a
+    // second hit landing on a world that is about to be replaced would be
+    // applied to state the rewind is seconds away from discarding.
+    if (this.rewindPlayFrames > 0) return true;
+    if (!this.powerups.active.rewind || this.rewindUsed) return false;
+    // Crash test watches hazards fire; it must not have them undone.
+    if (this.devInvuln) return false;
+    // Nothing to play back, or the last rewind is still cooling off.
+    if (this.rewindLockout > 0 || this.rewindFrames.length === 0) return false;
+    // This edge is permanent for the attempt. Set it BEFORE the first snapshot
+    // is restored so even a frame recorded before collection cannot bring the
+    // capsule back. Future drip/box/scripted sources also consult this flag.
+    this.rewindUsed = true;
+    this.pickups = this.pickups.filter((p) => p.type !== 'capRewind');
+    this.rewindPlayFrames = Math.min(POWER_REWIND_FRAMES, this.rewindFrames.length);
+    Audio.setRewinding(true);
+    this.rewindFx.start();
+    this.rewinding = true;
+    this.rewindCooldown = 0;
+    // Said at the START of the tape rather than the end: the player needs to
+    // know WHY the world just reversed, while it is reversing.
+    this.floatText('REWIND!', '#7ce8a0');
+    return true;
+  }
+
   recordRewindFrame(dt) {
     // Asked every frame rather than once per run so a pad paired mid-run starts
     // recording. The ring allocates its records lazily, so a run that never
     // captures never pays for one — there is nothing to tear down here.
-    // Without free rewind the tape rolls only while a capsule's arm window is
-    // open: recording must PRECEDE the button press (a rewind rewinds the
-    // past), so "record on demand" necessarily means "record while armed".
+    // Without free rewind the tape rolls only while a capsule remains armed:
+    // recording must PRECEDE the mistake (a rewind rewinds the past), so
+    // "record on demand" necessarily means "record while armed". The charge
+    // no longer times out; this stays live until it fires or the level ends.
     if (REWIND_DISABLED) return;
     if (!Input.rewindAvailable() && !this.powerups.active.rewind) return;
     this.rewindCaptureT += dt;
@@ -5432,6 +5705,7 @@ export class RunState {
     s.challenge = this.challenge ? JSON.parse(JSON.stringify(this.challenge)) : null;
     s.applianceSpawned = this.applianceSpawned; s.applianceGot = this.applianceGot;
     s.finishDogSpawned = this.finishDogSpawned;
+    s.dogSignSpawned = this.dogSignSpawned;
     s.rewindCapSpawned = this.rewindCapSpawned;
     s.fuseHeld = this.fuseHeld;
     s.escapeWall = this.escapeWall;
@@ -5526,6 +5800,10 @@ export class RunState {
     };
     this.obstacles = restoreEntities(s.obstacles, s.obstacleCount, OBSTACLE_SETS);
     this.pickups = restoreEntities(s.pickups, s.pickupCount, EMPTY_SETS);
+    // `rewindUsed` lives outside the tape. A snapshot from before collection
+    // still contains the mint capsule as a live pickup; restoring everything
+    // except that spent one-shot prevents the rewind from refunding itself.
+    if (this.rewindUsed) this.pickups = this.pickups.filter((p) => p.type !== 'capRewind');
     this.projectiles = restoreEntities(s.projectiles, s.projectileCount, PROJECTILE_SETS);
     this.chompBites = restoreEntities(s.chompBites, s.chompBiteCount, EMPTY_SETS);
     this.portal = s.portal ? { ...s.portal } : null;
@@ -5555,7 +5833,8 @@ export class RunState {
     this.challenge = s.challenge ? JSON.parse(JSON.stringify(s.challenge)) : null;
     this.applianceSpawned = s.applianceSpawned; this.applianceGot = s.applianceGot;
     this.finishDogSpawned = !!s.finishDogSpawned;
-    this.rewindCapSpawned = !!s.rewindCapSpawned;
+    this.dogSignSpawned = !!s.dogSignSpawned;
+    this.rewindCapSpawned = this.rewindUsed || !!s.rewindCapSpawned;
     this.loopSpawned = s.loopSpawned;
     for (let i = 0; i < this.pitPlan.length; i++) this.pitPlan[i].done = !!(s.pitsDone && s.pitsDone[i]);
     this.signShown = !!s.signShown;
@@ -6007,8 +6286,16 @@ export class RunState {
       // the power row; overcharging is rare and the HUD states it only faintly.
       const res = this.powerups.grab(p.def.power);
       this.powerupsCollected++;
-      Audio.sfx('power');
-      if (res.overcharged) this.floatText('OVERCHARGED', '#f6d33c');
+      Audio.sfx(p.def.power === 'rewind' ? 'rewindPickup' : 'power');
+      // Rewind is the one capsule that does nothing when you grab it, so the
+      // grab has to say what it is FOR — otherwise it reads as a dud until the
+      // moment it fires, which is exactly the confusion this line exists to
+      // prevent. It outranks the OVERCHARGED note on the rare frame both
+      // apply: one floatie at a time, and a capsule nobody understands beats a
+      // capsule that lasts slightly longer.
+      if (p.def.power === 'rewind') {
+        this.floatText('REWIND ARMED: YOUR NEXT MISTAKE UNDOES ITSELF', '#7ce8a0');
+      } else if (res.overcharged) this.floatText('OVERCHARGED', '#f6d33c');
     } else if (p.def.appliance) {
       this.applianceGot = true;
       Audio.sfx('win');
@@ -6081,6 +6368,11 @@ export class RunState {
     // then stroll over the next pit without touching it. The floor is not a
     // hazard you are briefly immune to; it is the floor, and it was not there.
     if (!isPit && this.player.iframes > 0) return;
+    // A banked rewind undoes this hit instead of taking it. Above everything
+    // below — the shield, the pit's fatality, the challenge flag — because it
+    // does not survive the hit, it unmakes it: nothing that follows should run
+    // against a world the next few ticks are going to replace wholesale.
+    if (this.autoRewindHit()) return;
     // Anything that reaches him mid-lap — a drone's shot is the only thing that
     // can — ends the ride first. Knocking a hero about while the run is still
     // writing his position from a circle would fight over the same field and the
@@ -6137,8 +6429,12 @@ export class RunState {
         in: false,
         dx: 0,
         vx: this.speed,
-        carry: (pit ? pit.w : OBSTACLES.gap.w) * 0.5,
+        carry: Math.min((pit ? pit.w : OBSTACLES.gap.w) * 0.5, PIT_CARRY_MAX),
         plunge: 0,
+        // WHAT IS AT THE BOTTOM, as far as the beat is concerned: something that
+        // swallows him, or something that stops him. Read off the hole itself
+        // rather than off the cabinet, because a crossing carries its own fill.
+        spikes: !!(pit && pit.fill === 'spikes'),
       };
       this.player.fallFace = true;
       this.player.vy = Math.min(this.player.vy, 0);
@@ -6323,9 +6619,24 @@ export class RunState {
     if (!d.in) {
       p.vy -= this.gravityForDeath() * dt;
       p.y += p.vy * dt;
-      if (p.y <= PIT_SURFACE_Y) {
-        p.y = PIT_SURFACE_Y;
+      if (p.y <= (d.spikes ? SPIKE_SURFACE_Y : PIT_SURFACE_Y)) {
+        p.y = d.spikes ? SPIKE_SURFACE_Y : PIT_SURFACE_Y;
         d.in = true;
+        // TEETH STOP HIM DEAD. No plunge, no sink, no plop: he arrives on the
+        // tips and stays there for the rest of the hold, which is the whole
+        // difference between a material that takes you and one that catches
+        // you. The impact keeps the shake and gets the harder cue.
+        if (d.spikes) {
+          d.plunge = 0;
+          p.vy = 0;
+          Audio.sfx('crunch');
+          shake(4, 0.24);
+          if (!this.save.settings.reducedMotion) {
+            burst(this.playerWorldX() + 6, this.playerGroundY() - p.y, 10, 60, 0.45,
+              '#b9c4d0', 1.4, 90, () => this.fxRng.float());
+          }
+          return;
+        }
         // HE BREAKS THE SURFACE, he does not land on it. Zeroing the fall here
         // stopped him dead on the tar like a man stepping onto a floor, which
         // is the one thing the material must not look like — the whole reason
@@ -6348,6 +6659,8 @@ export class RunState {
     // The plunge dies away into a sink, and the sink is what the beat is for:
     // slow is the point, because a fast one is just a second fall and what this
     // wants to show is the hero being visibly TAKEN rather than dropped.
+    // Nothing to sink into. He is on the teeth where he landed.
+    if (d.spikes) return;
     d.plunge *= Math.pow(0.05, dt);
     p.y -= Math.max(PIT_SINK_RATE, d.plunge) * dt;
   }
@@ -6600,6 +6913,16 @@ export class RunState {
     const hillDepth = this.routes.reduce(
       (d, r) => (r.kind === 'tunnel' ? Math.max(d, r.rise) : d), 0);
     this.style.ground(ctx, cam, this.cabinet, this.obstacles, laneCuts, this.tRun);
+    // A HOLE THAT NAMES ITS OWN MATERIAL IS FILLED WHATEVER THE PACK IS.
+    //
+    // Six packs paint the cabinet's fill on their way past; the other three draw
+    // their ground their own way and never call drawPitFills at all. That is a
+    // defensible answer for a cabinet's own holes — a break in an LCD lane is a
+    // break in an LCD lane — and no answer at all for a CROSSING, whose spikes
+    // are the only thing that says the sequence is fatal before the first hop.
+    // So a self-declared fill is painted here, once, for every pack. The flag is
+    // what keeps the six from painting the same teeth twice.
+    drawPitFills(ctx, cam, this.cabinet, this.obstacles, this.tRun, true);
     if (!this.bossCab) drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, W / z, laneCuts);
     if (this.routes.length) {
       // The ground under the lane, which the packs only paint 38px of. Below
@@ -6946,7 +7269,10 @@ export class RunState {
       // nearly the whole frame and the mission would stop being a mission.
       const hsx = heroScreenX;   // follows the opening run-in, not the anchor
       const px = (hsx + 6) * z;
-      const py = screenYFor(this.groundYAt(cam + hsx) - this.player.y - 8, z, pan, floorY);
+      // ROUTE ground, not lane ground. Every other consumer of the hero's
+      // world y uses playerGroundY(); this was the one holdout, and it pinned
+      // the light 96px above a hero in a tunnel (or below one on an island).
+      const py = screenYFor(this.playerGroundY() - this.player.y - 8, z, pan, floorY);
       const r = 130;
       // Only the centre moves, so the ramp is built once in local space and
       // carried to the hero by the transform. Rebuilt in place it cost a
@@ -7130,6 +7456,7 @@ export class RunState {
       chips.push([`GOALS ${got}/3`, got ? '#f6d33c' : '#8a8a98']);
     }
     if (this.player.relayCharge) chips.push(['POWER CHARGED: SPEND IT', '#f890b8']);
+    if (this.powerups.active.rewind) chips.push(['REWIND ARMED: UNDOES YOUR NEXT MISTAKE', '#7ce8a0']);
     if (chips.length) {
       const CHIP_GAP = 12;
       const total = chips.reduce((a, [t]) => a + textWidth(t), 0) + CHIP_GAP * (chips.length - 1);
@@ -7140,8 +7467,8 @@ export class RunState {
     // themselves on screen, and the swipes are the half of the scheme nothing
     // else advertises.
     legend(Input.usingTouch
-      ? [['TAP', 'JUMP'], ['SWIPE DOWN', 'DUCK'], ['SWIPE RIGHT', 'POWER']]
-      : [['SPACE', 'JUMP'], ['DOWN', 'DUCK'], ['RIGHT/D', 'POWER']], 158,
+      ? [['TAP', 'JUMP'], ['SWIPE DOWN', 'SLIDE'], ['SWIPE RIGHT', 'POWER']]
+      : [['SPACE', 'JUMP'], ['DOWN', 'SLIDE'], ['RIGHT/D', 'POWER']], 158,
     { actionInk: '#c8c8d8' });
     // Only keyboard needs telling: the plates below say it for everyone else,
     // and printing a resume key under a button marked CONTINUE is the same

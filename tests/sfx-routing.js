@@ -60,7 +60,7 @@ async function measure(name, withMix) {
 
 try {
   assert(MIX.title.master < -10, 'the title fixture has a strongly negative song master trim');
-  for (const name of ['uiConfirm', 'coin']) {
+  for (const name of ['uiConfirm', 'coin', 'rewindPickup']) {
     const clean = await measure(name, false);
     const withMix = await measure(name, true);
     assert(clean > 0.001, `${name} renders an audible SFX signal`);

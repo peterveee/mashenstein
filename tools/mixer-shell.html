@@ -1,5 +1,9 @@
 <!doctype html>
 <meta charset="utf-8">
+<!-- The desk has one layout and it is 1200 wide. A phone told nothing lays out at 980
+     and then clips a desk that cannot reflow; told the real width, it scales the whole
+     thing to fit the screen and lets a finger pinch and pan around it. -->
+<meta name="viewport" content="width=1200">
 <title>/*__MIXER_BRAND__*/</title>
 <style>
   :root {
@@ -7411,7 +7415,8 @@
   /* A normal browser tab cannot clamp the outer browser window. Keep the desk at its
      working floor and block interaction when the viewport itself falls below it, so a
      resize cannot leave a playable-looking but unreachable set of controls behind a
-     cropped header or footer. */
+     cropped header or footer. Touch-only devices are exempt: there is no window to
+     enlarge on a phone, so they get the scaled full-size desk instead of a dead end. */
   #mixer-min-size { position: fixed; inset: 0; z-index: 100; display: none;
                     align-items: center; justify-content: center; padding: 24px;
                     background: color-mix(in srgb, var(--bg) 94%, #000); text-align: center; }

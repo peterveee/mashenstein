@@ -49,6 +49,22 @@ export const OBSTACLES = {
   // costs nothing (see the `sign` branch in RunState.collide); the point is
   // that the hint gets out of the way of the jump it is asking for.
   jumpSign:   { w: 13, h: 9, sprite: 'jumpSign', ground: true, breakable: true, action: 'none', sign: true },
+  // The jump sign's sibling, pointing the other way: an arrow at the floor,
+  // planted at the lip of a crypt tunnel mouth by spawnRouteEntries. The
+  // darkness cabinet is the one place a hole can honestly be missed — the
+  // light radius reaches the lip about when the decision is due — so its
+  // mouths are signed proactively rather than earned by falling (the jump
+  // sign's rule). Same contract otherwise: `action: 'none'`, breaks on
+  // contact for nothing, and going THROUGH it is the intended move, since
+  // through the sign is into the tunnel.
+  downSign:   { w: 13, h: 9, sprite: 'downSign', ground: true, breakable: true, action: 'none', sign: true },
+  // BEWARE OF DOG. The third sign, and the only one that warns about a hazard
+  // rather than about the floor: planted a couple of screens short of the tape
+  // on the stages that drew a finish dog (RunState.spawnDogSign), so the
+  // encounter is announced before it is seen. Same box and same `sign`
+  // contract as its two siblings — running through it breaks it and costs
+  // nothing, because a warning that can hurt you is a trap.
+  dogSign:    { w: 13, h: 9, sprite: 'dogSign', ground: true, breakable: true, action: 'none', sign: true },
   boostPad:   { w: 14, h: 4,  sprite: 'boostPad', ground: true, isBoost: true, action: 'none' },
   // The boost pad's vertical cousin. Same contract — run over it and it pays
   // out, jump it and it does not — pointed up instead of forward, because what
@@ -166,6 +182,17 @@ export const OBSTACLES = {
   brazier:    { w: 12, h: 14, sprite: 'brazier', ground: true, breakable: true, action: 'jump' },
   // The floor blade. Not breakable and not puntable for the obvious reason.
   floorSaw:   { w: 15, h: 8,  sprite: 'floorSaw', ground: true, breakable: false, action: 'jump', bedded: true },
+  // The boom barrier: Act I's ground-anchored duck. A striped arm across the
+  // lane at exactly the drone's underside (alt 13), so the duck that clears one
+  // clears the other — one read, two hazards. Fixed `alt` rather than
+  // `ground: true`, because a ground-standing duckable would falsify the
+  // "roll always clears duckables" shortcut in RunState.collide (the trap the
+  // trafficCone note warns about). Only the arm is the box; the post it hangs
+  // from is art, drawn ground-anchored through the `overhang` branch in
+  // drawWorldEntity, and cannot hit you. `armored` so pellets spark off it the
+  // way they do a drone; `breakable: false` because the duck must stay the only
+  // answer.
+  boomBarrier: { w: 16, h: 6, sprite: 'boomBarrier', alt: 13, armored: true, breakable: false, action: 'duck', overhang: true },
 
   // --- the animal hazards (art: sprites/animals.js) -------------------------
   // The only ground hazards that CLOSE on the hero rather than waiting for him.
@@ -191,9 +218,11 @@ export const OBSTACLES = {
   // spells out everything the flag turns off) — so the jump is the only answer,
   // which is what `action: 'jump'` declares. Not puntable either: punt is
   // opt-in, and a boot going in low meets a dog that has decided about you.
-  // `skins` wears one of the three dog rigs, picked off the spawn position as
-  // every skin is, so which dog guards a stage is stable and identical on a
-  // replay. No debris entry — nothing here ever breaks.
+  // `skins` wears one of the three dog rigs — through the finish* aliases in
+  // sprites/props.js, which are the same painters at a higher raster detail —
+  // picked off the spawn position as every skin is, so which dog guards a
+  // stage is stable and identical on a replay. No debris entry — nothing here
+  // ever breaks.
   //
   // 22x15: about 1.4x the pack dogs, and the biggest ground hazard box in the
   // game — the art scales with the box, so it also DRAWS at that stature. It
@@ -205,7 +234,7 @@ export const OBSTACLES = {
   // `vx` here is only a fallback: spawnFinishDog overrides it with a fraction
   // of the run's own scroll, so the charge reads equally fast on every stage
   // and the two-jump finish geometry (see that method) holds at every speed.
-  finishDog:  { w: 22, h: 15, sprite: 'dogSnarler', ground: true, breakable: false, action: 'jump', vx: -70, skins: ['dogSnarler', 'dogBruiser', 'dogFeral'] },
+  finishDog:  { w: 22, h: 15, sprite: 'dogSnarler', ground: true, breakable: false, action: 'jump', vx: -70, skins: ['finishSnarler', 'finishBruiser', 'finishFeral'] },
 };
 
 // What a thing is made of, for when it stops being a thing. Colours are pulled
@@ -222,6 +251,9 @@ export const DEBRIS = {
   tombstone:   { colors: ['#9a9ab0', '#6a6a80'], size: 3, mat: 'stone' },
   // Board and post: the sign's own two colours plus the ink of the lettering.
   jumpSign:    { colors: ['#f2c53c', '#7a5230', '#2a1e0e'], size: 2.6, mat: 'wood' },
+  downSign:    { colors: ['#f2c53c', '#7a5230', '#2a1e0e'], size: 2.6, mat: 'wood' },
+  // The red board, its post, and the pale panel the dog's head sits on.
+  dogSign:     { colors: ['#d83828', '#7a5230', '#f6e4c8'], size: 2.6, mat: 'wood' },
   cardboardMonster: { colors: ['#c8a068', '#8a6a3a', '#fff'], size: 3, mat: 'soft' },
   chair:       { colors: ['#4a5a6c', '#3a4a5a', '#2a3542'], size: 2.8, mat: 'wood' },
   printer:     { colors: ['#b0b0c0', '#fff', '#48e0c8'], size: 2.6, mat: 'metal' },
@@ -260,8 +292,9 @@ export const PICKUPS = {
   capSpeed:  { w: 8, h: 8, sprite: 'capSpeed', power: 'speed' },
   capLowGrav:{ w: 8, h: 8, sprite: 'capLowGrav', power: 'lowgrav' },
   capUnpeel: { w: 8, h: 8, sprite: 'capUnpeel', power: 'unpeel' },
-  // Touch-only (never dripped or placed where free rewind exists): arms the
-  // one-shot REWIND button. See docs/mobile-rewind-powerup.md.
+  // Arms one banked 3-second rewind — the touch player's only rewind, and a
+  // one-shot beside the free hold-Left scrub on desktop.
+  // See docs/mobile-rewind-powerup.md.
   capRewind: { w: 8, h: 8, sprite: 'capRewind', power: 'rewind' },
   // Not a timed power: banks one supercharged ability, so it carries its own
   // flag instead of a `power` the Powerups clock would try to run down.

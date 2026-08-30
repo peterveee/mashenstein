@@ -372,4 +372,28 @@ const kiko = {
   },
 };
 
-export const HERO_SPRITES = { lorenzo, gnash, fernwick, b33p, mochi, chompo, gary, raymn, grumpos, dolores, kiko };
+// Clara Vault — palette only, like Kiko, Ray M'n and Dolores. Straight off the
+// winning raider candidate (A3, two wisps): olive tank a whole hue away from
+// Lorenzo's teal, khaki trousers held a value above the boots, auburn hair,
+// brass hardware, leather in `w`. The pistol's steel and grip are the two keys
+// drawPistol reads directly.
+const clara = {
+  ...gary,
+  pal: {
+    s: '#f0c49a', e: '#1a1028', m: '#a8465c',
+    hair: '#8f4a22', hairDark: '#5a2c12', hand: '#f0c49a',
+    a: '#e0b24a',        // brass: buckle, plait tie, hardware
+    w: '#7a4f2c',        // leather: belt, holster, glove cuffs
+    b: '#6a7340',        // olive tank
+    p: '#a98757',        // khaki climbing trousers
+    f: '#5c3a22',        // brown boots
+    gunmetal: '#4c5360', // the pistol's steel — read by drawPistol
+    gunGrip: '#6b4324',  // and its wooden grip
+    // The muzzle flash and the slug. `ki` is what selects the coloured round in
+    // the projectile renderer (run.js reads pal.ki) — without it her shot would
+    // fall through to B-33P's default lemon. Brass-warm, off her own hardware.
+    ki: '#ffd27a',
+  },
+};
+
+export const HERO_SPRITES = { lorenzo, gnash, fernwick, b33p, mochi, chompo, gary, raymn, grumpos, dolores, kiko, clara };

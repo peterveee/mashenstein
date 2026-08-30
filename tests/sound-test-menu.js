@@ -7,6 +7,8 @@ const { Audio } = await import('../src/engine/audio.js');
 const { TITLE_THEME, HUB_THEME } = await import('../src/data/cabinets.js');
 const { COUNTER_DANCE_MIX_THEME } = await import('../src/data/shop-themes.js');
 const { MEGAMIX_THEME } = await import('../src/data/megamix.js');
+const { loopOf } = await import('../src/data/arrangements.js');
+const { trackIdOf } = await import('../src/data/tracks.js');
 const { SoundTestState, JUKEBOX } = await import('../src/game/menus.js');
 const { VISUALISER_NAMES } = await import('../src/engine/visualisers.js');
 const { portraitAllowedFor } = await import('../src/engine/lifecycle.js');
@@ -66,6 +68,8 @@ assert(sound.idx === 0 && sound.playing === 0 && Audio.sourceBank === TITLE_THEM
   'one stationary touch selects and plays a track');
 assert(Audio.pendingStartDelay === 0.5,
   'starting a jukebox track inserts a half-second silence before bar one');
+assert(Audio.step === 0,
+  'starting a jukebox track puts its playhead at the beginning');
 touchDown(firstY); touchUp();
 assert(sound.idx === 0 && sound.playing === -1 && Audio.sourceBank === null,
   'touching the playing track again stops it without losing selection');
@@ -91,6 +95,18 @@ assert(sound.playing === -1 && Audio.sourceBank === null,
   'keyboard confirmation uses the same stop toggle');
 Input.press('confirm'); sound.update(1 / 60); Input.release('confirm'); Input.endFrame();
 assert(sound.playing === 3, 'keyboard confirmation starts the selected track again');
+
+// Speed Zone normally enters at bar 5 for gameplay. The jukebox is the album-style
+// listening surface, so even that authored skip-in must begin at bar 1 while keeping
+// its later repeat region armed.
+const skipIn = JUKEBOX.findIndex((track) =>
+  (loopOf(track.bank, trackIdOf(track.bank))?.startBar ?? 1) > 1);
+assert(skipIn >= 0, 'the shipped jukebox includes a song with a later gameplay start marker');
+sound.openTrack(skipIn);
+assert(Audio.step === 0,
+  'a jukebox song with a later gameplay start marker still begins at bar one');
+assert(Audio.formLoopArmed && Audio.loopStart != null && Audio.loopEnd != null,
+  'starting at bar one preserves the song authored repeat region');
 
 const ctx = document.createElement('canvas').getContext('2d');
 sound.draw(ctx);

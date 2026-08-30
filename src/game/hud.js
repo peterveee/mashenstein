@@ -54,16 +54,12 @@ const PAUSE_BTN_Y = 43;
 // of what it is handed, and two screens now ask for these — a run and the
 // tutorial. Both are playable surfaces with the same three controls, so they
 // share the geometry rather than each keeping a copy that drifts.
-export function playButtons(withRewind = false) {
-  const list = [
+export function playButtons() {
+  return [
     { id: 'jump', x: 12, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'jump', label: 'JUMP', round: true },
     { id: 'ability', x: W - 56, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'USE', round: true },
     { id: 'pause', x: W - 56, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'escape', icon: 'pause', round: true },
   ];
-  // The one-shot rewind charge, while armed: above JUMP on the left, mirroring
-  // where PAUSE hangs on the right, so all four discs keep one geometry.
-  if (withRewind) list.push({ id: 'rewind', x: 12, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'rewind', label: 'RWD', round: true });
-  return list;
 }
 
 // How long the keyboard legend stays up at the start of a teaching stage, and
@@ -518,11 +514,12 @@ export function drawHud(ctx, run) {
   let px = GAUGE_X + (Input.usingTouch && !run.useChrome ? 52 : 0);
   for (const [id, a] of Object.entries(run.powerups.active)) {
     const def = POWER_DEFS[id];
-    const blink = a.t < 1.5 && Math.floor(a.t * 6) % 2 === 0;
+    const persistent = !!a.persistent;
+    const blink = !persistent && a.t < 1.5 && Math.floor(a.t * 6) % 2 === 0;
     const over = a.level > run.powerups.levelOf(id);
     // Blinking measures but does not draw, so the entry keeps its slot and the
     // rest of the row does not shuffle sideways twice a second.
-    const right = gauge(px, SHELF_CY, SHELF_R, 2.7, a.t / a.t0, def.color,
+    const right = gauge(px, SHELF_CY, SHELF_R, 2.7, persistent ? 1 : a.t / a.t0, def.color,
       `${def.name}${over ? '+' : ''}`, def.color, 0.8,
       over && { alpha: 0.5, color: def.color, width: 1, r: 7.5 }, !blink);
     px = right + 11;   // panel edge, a gap, then the next donut's radius
@@ -697,7 +694,7 @@ export function drawHud(ctx, run) {
   // cut: chrome that vanishes between frames reads as a glitch.
   if (!Input.usingTouch && run.hintT > 0) {
     const hero = HERO_BY_ID[run.relay.current];
-    const hints = [['SPC', 'JUMP'], ['DN', 'DUCK'], ['RT/D', hero.ability.label], ['LT/A', 'REWIND'], ['P', 'PAUSE']];
+    const hints = [['SPC', 'JUMP'], ['DN', 'SLIDE'], ['RT/D', hero.ability.label], ['LT/A', 'REWIND'], ['P', 'PAUSE']];
     const S = 0.85, HP = 6, HH = 12;
     const inner = keyLegendWidth(hints, S);
     const hx = W - 8 - (inner + HP * 2), hy = H - 17;
@@ -1091,7 +1088,7 @@ export function drawTouchZoneCard(ctx, { alpha = 1, scrim = 0, hint = null } = {
   // ANYWHERE is doing in the sentence. On the jump column's axis with the rest
   // of the full-width copy, and low enough to sit in the clear lane between the
   // two discs.
-  rawDrawTextCentered(ctx, 'SWIPE DOWN ANYWHERE TO DUCK', lx, 196, 'rgba(255,255,255,0.85)', 1.35, 'bold');
+  rawDrawTextCentered(ctx, 'SWIPE DOWN ANYWHERE TO SLIDE', lx, 196, 'rgba(255,255,255,0.85)', 1.35, 'bold');
   // Below the discs' midline, where nothing else on this card sits — a call to
   // action wants its own air, and at this size it no longer fits on the ACT
   // card's skip line.

@@ -343,6 +343,32 @@ export const CUES = [
     noise(b, SR, { seed: 136, duration: 0.2, gain: 0.34, cutoff: 2600, mode: 'highpass', attack: 0.002, release: 0.92 });
     osc(b, SR, { start: 0.01, duration: 0.14, f0: 2100, f1: 900, gain: 0.13, type: 'triangle', attack: 0.002 });
   }],
+  // CLARA'S PISTOLS. The third shooter's cue has to be the third weapon: B-33P
+  // is a 0.27s square blip from a mechanism, Kiko a wide noisy discharge with
+  // a burning tail. Hers is PEW PEW — she carries two guns and every trigger
+  // pull fires both (shotBurst on the hero row), so the cue is two classic
+  // arcade pews ~100ms apart, each a fast falling square sweep with a saw an
+  // octave under it and a tick of highpassed noise on the front. The second
+  // pew sits a hair lower in pitch: two guns, not one gun echoing.
+  ['37-clara-pistol-pew.wav', 0.32, (b, SR) => {
+    impulse(b, SR, 0.006, 0.3, 0.005);
+    osc(b, SR, { duration: 0.11, f0: 1900, f1: 320, gain: 0.5, type: 'square', attack: 0.002, release: 0.55 });
+    osc(b, SR, { duration: 0.11, f0: 950, f1: 160, gain: 0.28, type: 'saw', attack: 0.002, release: 0.55 });
+    noise(b, SR, { seed: 237, duration: 0.03, gain: 0.3, cutoff: 5200, mode: 'highpass', attack: 0.002, release: 0.8 });
+    impulse(b, SR, 0.108, 0.3, 0.005);
+    osc(b, SR, { start: 0.105, duration: 0.11, f0: 1740, f1: 300, gain: 0.5, type: 'square', attack: 0.002, release: 0.55 });
+    osc(b, SR, { start: 0.105, duration: 0.11, f0: 870, f1: 150, gain: 0.28, type: 'saw', attack: 0.002, release: 0.55 });
+    noise(b, SR, { seed: 437, start: 0.103, duration: 0.03, gain: 0.3, cutoff: 5200, mode: 'highpass', attack: 0.002, release: 0.8 });
+  }],
+  // Its contact is a RICOCHET — the slug glancing off, not energy giving way
+  // (that is Kiko's pair). The zing is one fast-falling sine whistle with a
+  // hard front tap and a sizzle that leaves with it.
+  ['38-contact-clara-ricochet.wav', 0.24, (b, SR) => {
+    impulse(b, SR, 0.008, 0.34, 0.007);
+    osc(b, SR, { duration: 0.2, f0: 2600, f1: 620, gain: 0.44, type: 'sine', attack: 0.002, release: 0.55, tremolo: 31 });
+    noise(b, SR, { seed: 238, duration: 0.12, gain: 0.3, cutoff: 3400, mode: 'highpass', attack: 0.002, release: 0.7 });
+    osc(b, SR, { duration: 0.1, f0: 420, f1: 110, gain: 0.3, type: 'triangle', attack: 0.003 });
+  }],
 ];
 
 // Hero -> cue name for the cues actually triggered in gameplay.
@@ -354,6 +380,7 @@ export const CONTACT_CUE = {
   fernwick: '29-contact-fernwick-shield-bonk.wav',
   chompo: '30-contact-miss-chomp-crunch.wav',
   kiko: '35-contact-kiko-ki-burst.wav',
+  clara: '38-contact-clara-ricochet.wav',
 };
 
 export const LAUNCH_CUE = {
@@ -363,6 +390,7 @@ export const LAUNCH_CUE = {
   // CRACK, chosen by ear. Surge measured louder and brighter, but the numbers
   // were only ever a proxy for "louder, with noise" — the pick is Peter's.
   kiko: '31-kiko-warning-shot-crack.wav',
+  clara: '37-clara-pistol-pew.wav',
 };
 
 const BY_NAME = new Map(CUES.map((cue) => [cue[0], cue]));

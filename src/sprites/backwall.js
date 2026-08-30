@@ -51,9 +51,13 @@ export function phoneDressing() {
 // Exported so the promo renders (tools/render-social.js) can put a cabinet's own
 // star on its attract screen without keeping a second copy of the casting, which
 // would quietly go stale the first time one of these changes.
+// Mochi's rhythm poster came down with her retirement, and the re-cast rides
+// the "obvious casting is the joke" rule: Clara fronts the CRYPT — the mall
+// raider on the tomb game is the plumber-fronts-the-plumber-game gag — which
+// bumps Grumpos from crypt to rhythm, where DAD OF BOY becomes BOY BAND.
 export const CABINET_STAR = {
   plumber: 'lorenzo', speed: 'gnash', neon: 'b33p', frost: 'fernwick',
-  crypt: 'grumpos', rhythm: 'mochi', cardboard: 'raymn', office: 'kiko',
+  crypt: 'clara', rhythm: 'grumpos', cardboard: 'raymn', office: 'kiko',
   surge: 'gary',
 };
 
@@ -62,15 +66,15 @@ export const CABINET_STAR = {
 // name as it appears on the cast list, and a second line of at most a dozen
 // characters. Every one of them is that hero's own running joke filed down to
 // a marquee: Fernwick is the HERO OF THYME, Ray M'n is APPENDAGE-OPTIONAL,
-// Mochi is EXTRA FULL OF AIR, Gary is LEGALLY DISTINCT. A poster promising
+// Clara is the MALL RAIDER, Gary is LEGALLY DISTINCT. A poster promising
 // nothing is just a rectangle; a poster promising BATTERY LOW is a joke.
 const POSTER_COPY = {
   plumber: ['LORENZO', 'UNLICENSED'],
   speed: ['GNASH', 'NEEDS A NAP'],
   neon: ['B-33P', 'BATTERY LOW'],
   frost: ['FERNWICK', 'MOSTLY HERB'],
-  crypt: ['GRUMPOS', 'DAD OF BOY'],
-  rhythm: ['MOCHI', 'ALL AIR'],
+  crypt: ['CLARA', 'MALL RAIDER'],
+  rhythm: ['GRUMPOS', 'BOY BAND'],
   cardboard: ["RAY M'N", 'NO ELBOWS'],
   office: ['KIKO', 'STILL ASKING'],
   surge: ['GARY', 'NOT A COPY'],

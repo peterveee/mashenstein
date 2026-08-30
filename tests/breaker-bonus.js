@@ -34,6 +34,11 @@ p = new Powerups(bench);
 p.grab('unpeel');
 assert(p.active.unpeel.t === 12, `capsule unpeel lasts 12s (${p.active.unpeel.t})`);
 
+p = new Powerups(bench);
+p.grab('rewind');
+p.update(120);
+assert(p.active.rewind?.persistent, 'rewind remains armed until it is used or the level ends');
+
 for (const [id, name] of [['airjump', 'AIR JUMP'], ['speed', 'SPEED BURST'], ['lowgrav', 'LOW GRAVITY']]) {
   assert(POWER_DEFS[id] && POWER_DEFS[id].name === name, `${name} is defined as a power-up`);
 }
@@ -52,12 +57,13 @@ p.grab('lowgrav');
 assert(p.gravityMultiplier() === 0.5 && p.active.lowgrav.t === 16, 'overcharged Low Gravity reduces gravity to 50%');
 
 const normalJumper = new Player('lorenzo');
-const mochiJumper = new Player('mochi');
+// Kiko is the roster's double-jump hero now that Mochi has retired.
+const doubleJumper = new Player('kiko');
 const capeJumper = new Player('lorenzo', ['cape']);
-const fullJumper = new Player('mochi', ['cape']);
-for (const jumper of [normalJumper, mochiJumper, capeJumper, fullJumper]) jumper.powerJumpBonus = 1;
-assert(normalJumper.maxJumps === 2 && mochiJumper.maxJumps === 3 && capeJumper.maxJumps === 3 && fullJumper.maxJumps === 4,
-  'Air Jump stacks once with Mochi and the Cape');
+const fullJumper = new Player('kiko', ['cape']);
+for (const jumper of [normalJumper, doubleJumper, capeJumper, fullJumper]) jumper.powerJumpBonus = 1;
+assert(normalJumper.maxJumps === 2 && doubleJumper.maxJumps === 3 && capeJumper.maxJumps === 3 && fullJumper.maxJumps === 4,
+  'Air Jump stacks once with Kiko and the Cape');
 normalJumper.grounded = false; normalJumper.y = 30; normalJumper.vy = 0; normalJumper.jumps = 2; normalJumper.powerJumpBonus = 0;
 normalJumper.update(1 / 60, { held: () => false }, { speed: 160 });
 assert(normalJumper.y > 0 && !normalJumper.grounded, 'Air Jump expiry never interrupts an airborne player');
@@ -115,7 +121,7 @@ const baseRunSpeed = run.speed;
 run.powerups.grab('speed');
 assert(Math.abs(run.speed - baseRunSpeed * 1.25) < 0.001, 'Speed Burst feeds the shared run speed used by spawning');
 run.powerups.grab('airjump');
-run.relay.current = 'mochi'; run.player.setHero('mochi');
+run.relay.current = 'kiko'; run.player.setHero('kiko');
 run.player.powerJumpBonus = run.powerups.bonusJumps();
 assert(run.player.maxJumps === 3, 'active Air Jump survives a hero portal swap');
 
@@ -161,9 +167,25 @@ assert(PICKUPS.capRelay && PICKUPS.capRelay.relayCharge === true, 'capRelay pick
 assert(hasProp('capRelay'), 'capRelay has capsule art');
 // The rarest thing in the table, and rarer than unpeel: it is a free power.
 assert(relayShare > 0.04 && relayShare < unpeelShare, `relay charge is the rarest drop (${(relayShare * 100).toFixed(1)}%)`);
-assert(staples.every((s) => s > unpeelShare), `every staple is more common than unpeel (${staples.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
+const rewindShare = (counts.rewind || 0) / total;
+assert(PICKUPS.capRewind && PICKUPS.capRewind.power === 'rewind', 'capRewind pickup grants rewind');
+assert(hasProp('capRewind'), 'capRewind has capsule art');
+// Dealt on every device (desktop banks it beside the free hold-Left scrub),
+// and priced like unpeel: the same kind of find, not a staple.
+assert(rewindShare > 0.05 && rewindShare < 0.2, `rewind drops sometimes (${(rewindShare * 100).toFixed(1)}%)`);
+assert(relayShare < rewindShare, 'the relay charge stays rarer than rewind');
+assert(staples.every((s) => s > unpeelShare && s > rewindShare), `every staple is more common than the two rare finds (${staples.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
 assert(traits.every((s) => s > 0.07 && s < 0.13), `each borrowed trait gets its 10% share (${traits.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
 assert(Math.abs(traits.reduce((a, b) => a + b, 0) - 0.30) < 0.04, 'borrowed traits occupy 30% of capsule drops');
+
+// Once the one-shot has fired, later capsule rolls must never deal another
+// rewind. The run passes this final flag as false after its irreversible
+// `rewindUsed` edge; exercise enough rolls that an accidental 10% band cannot
+// hide behind luck.
+const spentDrops = [];
+const spentDrip = new DripSpawner(new Rng(4242), bench);
+for (let i = 0; i < 6000; i++) spentDrip.update(1, i * 240, spentDrops, false, false, Infinity, false);
+assert(!spentDrops.some((d) => d.type === 'capRewind'), 'a spent run never deals another rewind capsule');
 
 // --- The drip respects the finish marker's clear lane ----------------------
 // It drops further ahead of the camera than the pattern lane does, so it was

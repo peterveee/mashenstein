@@ -212,9 +212,16 @@ export class Spawner {
   // stream is not disturbed by a pattern that was never going to be placed —
   // and marked used only once fill() COMMITS it, since a pattern that runs into
   // the finish wall is abandoned whole and has not been shown to anybody.
+  //
+  // `onceGroup` widens the key from one pattern to a named family: every peel
+  // pattern carries `onceGroup: 'peel'`, so laying ANY of them down spends the
+  // peel for the whole run — the cap stays "one peel per run" even though the
+  // peel now arrives in more than one shape. A pattern without a group still
+  // keys on its own identity, which is what keeps Surge's union bank honest
+  // (see the usedOnce note in reset()).
   pickPattern() {
     const pats = this.cabinet.patterns.filter((p) => p.tier <= this.tierMax
-      && !(p.once && this.usedOnce.has(p)));
+      && !(p.once && this.usedOnce.has(p.onceGroup || p)));
     if (!pats.length) return null;
     let idx = this.rng.int(0, pats.length - 1);
     if (idx === this.lastPatternIdx && pats.length > 1) idx = (idx + 1) % pats.length;
@@ -268,7 +275,22 @@ export class Spawner {
         }
         const ob = makeObstacle(cell.t, x, { n: cell.n });
         if (cell.t === 'gap') ob.w = cellW;
-        if (!def.ground && def.alt == null) ob.alt = cell.y || 12;
+        // Altitude. A def's `alt` is its home; a cell's `y` may override it,
+        // but ONLY for `action: 'none'` flyers — targets, prize crates, the
+        // shooter, the switch — where where-it-hangs is legitimate authored
+        // variety. A `duck` flyer's altitude IS its contract: the underside
+        // has to sit where the duck clears it and the stand does not, so a
+        // pattern cannot move it (a drone lifted to y 26 would sail over a
+        // standing hero and stop being an obstacle at all). For years every
+        // `y` here was dead — the guard was `def.alt == null` and every flyer
+        // declares an alt — so the pattern lists were authoring altitudes
+        // nothing read. Authors owe reachability on prize/target cells: keep
+        // the box's bottom under the worst hero's jump reach (see the
+        // authored-altitude block in tests/standing-hazards.js).
+        if (!def.ground) {
+          if (def.alt == null) ob.alt = cell.y || 12;
+          else if (cell.y != null && def.action === 'none') ob.alt = cell.y;
+        }
         obs.push(ob);
         lastX = Math.max(lastX, x + ob.w);
       }
@@ -302,9 +324,10 @@ export class Spawner {
       // pattern is placing; this takes back what is already down.
       const clear = pitClearance(this.react, speed);
       for (const h of holes) sweepCoinsAroundHole(pickups, h.x, h.w, clear, { x: worldX, w: 480 });
-      // Committed, so a `once` pattern is now spent for this run. Above the
-      // stopX bail-out on purpose — see pickPattern.
-      if (pat.once) this.usedOnce.add(pat);
+      // Committed, so a `once` pattern is now spent for this run — and with it
+      // its whole onceGroup, if it names one. Above the stopX bail-out on
+      // purpose — see pickPattern.
+      if (pat.once) this.usedOnce.add(pat.onceGroup || pat);
       // Gap to the next pattern: random but never below the fairness floor.
       // The next pattern may open with a duck obstacle, so budget for the worst case.
       const roll = this.rng.range(90, 220);
@@ -384,13 +407,9 @@ export const POWER_MIN_GAP = 480;   // one screen of world px
 const DRIP_W = PICKUPS.battery.w;
 
 export class DripSpawner {
-  constructor(rng, benchLevels, allowRewind = false) {
+  constructor(rng, benchLevels) {
     this.rng = rng;
     this.bench = benchLevels;
-    // "This player has no free rewind" (touch, no pad) — the only pool that
-    // may deal capRewind. Constant per run, so the drip's RNG stream is
-    // byte-identical on desktop whether or not the flag is threaded.
-    this.allowRewind = allowRewind;
     this.capsuleTimer = this.rng.range(12, 18);
     this.batteryTimer = this.rng.range(20, 30);
     this.lastPowerX = -1e9;   // finite so it survives a snapshot round-trip
@@ -415,7 +434,7 @@ export class DripSpawner {
   // deleted the moment the finish armed. Holding rather than skipping matches
   // the crowding rule below, and both tests are made before the type is rolled
   // so a hold cannot disturb the seeded order of prizes.
-  update(dt, worldX, pickups, oneHit, batteryFull = false, stopX = Infinity) {
+  update(dt, worldX, pickups, oneHit, batteryFull = false, stopX = Infinity, allowRewind = true) {
     this.capsuleTimer -= dt;
     this.batteryTimer -= dt;
     if (this.capsuleTimer <= 0) {
@@ -427,7 +446,7 @@ export class DripSpawner {
         this.capsuleTimer = 0.5;
       } else {
         this.capsuleTimer = this.rng.range(12, 18);
-        const type = randomPowerPickup(this.rng, this.lastPowerType, this.allowRewind);
+        const type = randomPowerPickup(this.rng, this.lastPowerType, allowRewind);
         pickups.push(makePickup(type, x, 34));
         this.notePower(x, type);
       }

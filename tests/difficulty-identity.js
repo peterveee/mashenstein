@@ -13,7 +13,7 @@ save.newSlot(0, 0);
 function configFor(difficulty) {
   let cfg = null;
   const run = new RunState({
-    stage: STAGES[0], team: ['lorenzo', 'gnash', 'mochi'], save,
+    stage: STAGES[0], team: ['lorenzo', 'gnash', 'clara'], save,
     seed: 42, difficulty, onEnd: () => {},
   });
   run.enter();

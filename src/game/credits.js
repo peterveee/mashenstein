@@ -557,9 +557,10 @@ const SCRIPT = [
   { k: 'role', role: 'Sound Design', name: 'Booker Lindholm' },
   { k: 'role', role: 'Additional Music Programming', name: 'Aksel Berg' },
   { k: 'gap', px: 14 },
-  // Mochi has to be the one ARRIVING here — the punchline is the incoming
-  // department's line, and hers is the only line she has.
-  { k: 'handoff', a: 'AUDIO', b: 'CAST', from: 'b33p', to: 'mochi', lineA: 'Your turn.', lineB: 'POYO.' },
+  // The punchline is the incoming department's line, and Clara arriving at the
+  // CAST banner narrating her own billing is the most on-the-nose place her
+  // bit can land. (Mochi held this beat with 'POYO.' before she retired.)
+  { k: 'handoff', a: 'AUDIO', b: 'CAST', from: 'b33p', to: 'clara', lineA: 'Your turn.', lineB: 'Chapter one: the credits.' },
   { k: 'gap', px: 16 },
 
   { k: 'header', text: 'STARRING', color: GOLD },
@@ -567,7 +568,7 @@ const SCRIPT = [
   { k: 'castRole', face: 'gnash', role: 'Gnash the Needlemouse', name: 'Credited as Already Left' },
   { k: 'castRole', face: 'fernwick', role: 'Fernwick, Hero of Thyme', name: 'A grocery receipt, itself' },
   { k: 'castRole', face: 'b33p', role: 'Unit B-33P "Blastbot"', name: 'Grievance filed on his behalf' },
-  { k: 'castRole', face: 'mochi', role: 'Mochi', name: '"POYO" performed by Mochi' },
+  { k: 'castRole', face: 'clara', role: 'Clara Vault, Mall Raider', name: 'Narration performed by herself' },
   { k: 'castRole', face: 'kiko', role: 'Kiko, Jurisdiction Pending', name: 'Warrant pending in this jurisdiction' },
   { k: 'castRole', face: 'raymn', role: "Ray M'n, Appendage-Optional", name: 'Limbs insured separately' },
   { k: 'castRole', face: 'grumpos', role: 'Grumpos, Dad of Boy', name: '"BOY" performed with range' },
@@ -583,6 +584,9 @@ const SCRIPT = [
   //   Miss Chomp — she is neither any more. Out of the relay and out of the food
   //     court, held for a cameo; billing her for a part she is not in is the one
   //     joke this list cannot make straight-faced.
+  //   Mochi — same standing as Miss Chomp now: out of the roster, held for a
+  //     cameo, nowhere in the building. Clara took her slot, her credits beat,
+  //     and her handoff row.
   { k: 'gap', px: 22 },
 
   { k: 'header', text: 'QUALITY ASSURANCE' },
@@ -635,7 +639,7 @@ const SCRIPT = [
   // the nouns for HR nouns and it must break): "person of interest" is criminal
   // procedure, and applying it to the studio's largest department, all of whom
   // are about to scroll past by name, is the scope joke she always makes.
-  { k: 'handoff', a: 'FACILITIES', b: 'HUMAN RESOURCES', from: 'mochi', to: 'kiko', lineA: 'Your turn.', lineB: 'Every one of them is a person of interest.' },
+  { k: 'handoff', a: 'FACILITIES', b: 'HUMAN RESOURCES', from: 'clara', to: 'kiko', lineA: 'Your turn.', lineB: 'Every one of them is a person of interest.' },
   { k: 'gap', px: 16 },
 
   // The longest department in the crawl, and deliberately so: forms, grievances

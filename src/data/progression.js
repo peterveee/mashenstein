@@ -34,8 +34,12 @@ export const MODS = [
   { id: 'tagspeed', name: 'MOMENTUM GUY', hero: 'gnash', source: 'mastery', desc: 'GNASH GAINS STACKING SPEED AFTER EVERY TAG.' },
   { id: 'bash', name: 'SHIELD BASH', hero: 'fernwick', source: 'mastery', desc: 'ROLL BREAKS ONE GROUND HAZARD BUT ENDS IN A BRIEF STUMBLE.' },
   { id: 'charge', name: 'CHARGE SHOT', hero: 'b33p', source: 'mastery', desc: 'PELLETS PIERCE GROUND AND FLYING OBSTACLES.' },
+  // Mochi is out of the roster (held for a cameo), so 'wide' is unreachable —
+  // mastery XP only accrues to playable heroes. The row stays so an old save
+  // that owns it keeps a name for what it owns.
   { id: 'wide', name: 'EXTRA FULL OF AIR', hero: 'mochi', source: 'mastery', desc: 'FLOATS MORE SLOWLY BUT BECOMES WIDER WHILE FLOATING.' },
   { id: 'force', name: 'REASONABLE FORCE', hero: 'kiko', source: 'mastery', desc: 'THE WARNING SHOT IS WIDER BUT TRAVELS SLOWER.' },
+  { id: 'serial', name: 'SERIALIZED', hero: 'clara', source: 'mastery', desc: 'THE SHOT IS FASTER BUT SMALLER. THE AUDIENCE GASPS.' },
   { id: 'head', name: 'FREELANCE FIST', hero: 'raymn', source: 'mastery', desc: 'THE ROCKET FIST COLLECTS COINS BEFORE RETURNING.' },
   { id: 'ricochet', name: 'RICOCHET AXE', hero: 'grumpos', source: 'mastery', desc: 'THE AXE CAN HIT A SECOND TARGET BEFORE RETURNING.' },
 ];

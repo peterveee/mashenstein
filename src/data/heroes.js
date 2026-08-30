@@ -61,18 +61,37 @@ export const HEROES = [
     ],
   },
   {
-    id: 'mochi', name: 'MOCHI', short: 'MOCHI',
-    tagline: 'PROBABLY NOT A COSMIC ENTITY.',
-    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.0, maxJumps: 2, canFloat: true,
+    // Clara takes Mochi's slot the way Kiko took Miss Chomp's: the roster
+    // stays at eight and EIGHT HEROES. ONE SOCKET. stays true. Mochi is not
+    // deleted — her rig, palette and lines all survive, held for a cameo —
+    // she is simply off every surface that enumerates this array. The double
+    // jump did NOT come across (Kiko already carries it, and hosts the
+    // tutorial lesson now); the float retired with her.
+    //
+    // The cliffhanger jump is Lorenzo's trade taken further — 1.15 against
+    // his 1.10 — and the difference lives in data the same way the three
+    // shooters differ by shotSpeed/shotSize rather than by id checks.
+    id: 'clara', name: 'CLARA VAULT, MALL RAIDER', short: 'CLARA', subtitle: 'MALL RAIDER',
+    tagline: 'CHAPTER ONE: SHE ARRIVED.',
+    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.15, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
-    ability: { type: 'compress', cooldown: 3.5, label: 'COSMIC SQUISH', callout: 'COSMIC SQUISH' }, stomp: false,
-    joke: 'ADORABLE. THE STARS BEND SLIGHTLY TOWARD MOCHI.',
-    skillLabel: 'COSMIC FLOAT',
-    skillDesc: 'JUMPS TWICE AND FLOATS',
-    powerDesc: 'SHRINKS AND FALLS SLOWLY',
-    abilityDesc: 'SHRINKS TEMPORARILY AND FALLS SLOWLY.',
+    // The third shooter, and not the same weapon as either of the others:
+    // B-33P is small and fast on a 1.35s recharge, Kiko fat and slow on 3.5s.
+    // Clara carries TWO pistols, and `shotBurst: 2` is that fact as gameplay:
+    // every trigger pull is a pair of slugs a short gap apart — the fastest
+    // and smallest rounds of the three shooters — on a middle cooldown.
+    ability: { type: 'shoot', cooldown: 3.0, label: 'PLOT HOLE', callout: 'PLOT HOLE' }, stomp: false,
+    shotSpeed: 340, shotSize: 0.85, shotBurst: 2,
+    joke: 'NARRATES HER OWN LUNCH. IN THE PAST TENSE.',
+    skillLabel: 'CLIFFHANGER',
+    skillDesc: 'JUMPS 15% HIGHER',
+    powerDesc: 'FIRES BOTH PISTOLS',
+    abilityDesc: 'FIRES A QUICK PAIR OF SLUGS THAT DESTROY GROUND OBSTACLES.',
     sidegrades: [
-      { id: 'wide', name: 'EXTRA FULL OF AIR', desc: 'FLOATS LONGER BUT BECOMES PHYSICALLY WIDER.' },
+      // NOT 'wide' or 'force' — sidegrade ids are one global namespace
+      // (modIds.includes). Rides the same shotSpeed/shotSize pair REASONABLE
+      // FORCE does, traded the other way.
+      { id: 'serial', name: 'SERIALIZED', desc: 'THE SHOT IS FASTER BUT SMALLER. THE AUDIENCE GASPS.' },
     ],
   },
   {

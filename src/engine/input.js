@@ -8,12 +8,6 @@ const DEFAULT_KEYS = {
   ability: ['KeyX', 'ShiftLeft', 'ShiftRight'],
   left: ['ArrowLeft', 'KeyA'],
   right: ['ArrowRight', 'KeyD'],
-  // The one-shot power-up rewind (touch chrome button). Bound to a key so
-  // headless tests and a curious desktop player can reach it; hold-Left free
-  // rewind is unchanged and the two never share a binding. KeyZ, not KeyR:
-  // R belongs to the dev tuning strip (tests/tunables.js reserves it), and Z
-  // already means "undo" to every hand on a keyboard.
-  rewind: ['KeyZ'],
   confirm: ['Enter', 'Space'],
   back: ['Backspace'],
   pause: ['KeyP'],

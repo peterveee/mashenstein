@@ -377,6 +377,12 @@ function render(name) {
     tone(out, 0, d, 'sine', 1500, 420, 0.17, 0.92);
     tone(out, 0, d, 'sine', 1508, 424, 0.11, 0.92);
     noiseBurst(out, 0, d, 0.05, 'bandpass', 1800);
+  } else if (name === 'rewindPickup') {
+    // Mirror of the live rewind pickup: a tiny transient, three backward
+    // chirps, then the positive confirmation rise.
+    noiseBurst(out, 0, 0.018, 0.08, 'highpass', 4200);
+    [1319, 988, 740].forEach((f, i) => tone(out, i * 0.035, 0.065, 'triangle', f, f * 0.72, 0.11));
+    tone(out, 0.105, 0.11, 'sine', 659, 988, 0.08);
   } else if (name === 'power') {
     [523, 659, 784, 1047].forEach((f, i) => tone(out, i * 0.07, 0.09, 'triangle', f, f, 0.15));
   } else if (name === 'waka') {
@@ -405,7 +411,7 @@ function render(name) {
 }
 
 mkdirSync(outDir, { recursive: true });
-for (const name of ['cash', 'power', 'coin', 'waka', 'pacDeath', 'portal', 'boost', 'boostApproach', 'boostMiss', 'slideWhistle', 'clickHard']) {
+for (const name of ['cash', 'power', 'rewindPickup', 'coin', 'waka', 'pacDeath', 'portal', 'boost', 'boostApproach', 'boostMiss', 'slideWhistle', 'clickHard']) {
   const path = join(outDir, `${name}.wav`);
   writeFileSync(path, render(name));
   console.log(path);

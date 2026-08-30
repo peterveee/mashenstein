@@ -208,16 +208,18 @@ assert(T.tuningAvailable(), 'a plugin-built bundle registers its tunables');
   // limit from framingFor itself rather than restating them here.
   let limit = 0;
   while (framingFor(limit).pan < PAN_MAX && limit < 400) limit += 0.1;
-  // The tallest thing anyone in the cast can do: a 1.10 jumpMult, doubled, with
-  // the air-jump power-up on top.
-  const TALLEST = 168;
+  // The tallest thing anyone in the cast can do: Clara's 1.15 jumpMult with
+  // two air jumps stacked on it (capsule plus cape) — measured at 184.0px.
+  const TALLEST = 185;
   assert(limit >= TALLEST,
     `the crane holds the tallest jump in the game before the zoom is touched (${limit.toFixed(1)}px vs ${TALLEST}px)`);
 
-  const mochi = HERO_BY_ID.mochi;
-  assert(mochi.maxJumps === 2, 'mochi is the double-jump hero the budget is measured against');
-  const single = jumpHeightFor(mochi);
-  const v2 = BASE_JUMP_V * mochi.jumpMult * AIR_JUMP_SCALE;
+  // Kiko carries the double jump now that Mochi has retired — same numbers
+  // (jumpMult 1.0, maxJumps 2), so the 98px budget is unchanged.
+  const kiko = HERO_BY_ID.kiko;
+  assert(kiko.maxJumps === 2, 'kiko is the double-jump hero the budget is measured against');
+  const single = jumpHeightFor(kiko);
+  const v2 = BASE_JUMP_V * kiko.jumpMult * AIR_JUMP_SCALE;
   const dbl = single + (v2 * v2) / (2 * GRAVITY);
   const f = framingFor(dbl);
   assert(Math.abs(dbl - 98.0) < 0.2, `an apex-timed double jump peaks at 98px (${dbl.toFixed(1)})`);
@@ -229,8 +231,8 @@ assert(T.tuningAvailable(), 'a plugin-built bundle registers its tunables');
     `with real headroom left (${(PAN_MAX - f.pan).toFixed(1)}px of ${PAN_MAX})`);
 
   T.applyTuning({ BASE_JUMP_V: 336 });
-  const single2 = jumpHeightFor(mochi);
-  const v2b = 336 * mochi.jumpMult * AIR_JUMP_SCALE;
+  const single2 = jumpHeightFor(kiko);
+  const v2b = 336 * kiko.jumpMult * AIR_JUMP_SCALE;
   const dbl2 = single2 + (v2b * v2b) / (2 * GRAVITY);
   assert(framingFor(dbl2).zoom === ZOOM,
     `raising BASE_JUMP_V 320 -> 336 no longer opens the zoom on a double jump (${dbl2.toFixed(1)}px)`);

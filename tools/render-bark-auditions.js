@@ -151,4 +151,61 @@ render('bark-f-chip', 0.55, (out) => {
   bark(out, 0.21, { dur: 0.12, f0: 620, f1: 150, wave: 'pulse', duty: 0.25, formant0: 750, formant1: 2200, fq: 1.4, breath: 0.12, plosive: 0.3 });
 });
 
+// ---- round 2: the shipped cue's own shape, five ways ----------------------
+//
+// The first set above asked "what kind of animal". That is settled — bark
+// only, no growl, pitched high enough to cut through a full mix without the
+// song moving — so this set asks the remaining question: WHICH high double
+// bark. Every one of these is the shipped engine cue (see 'dogBark' in
+// engine/audio.js) with its two pitches and its gap changed, so whichever
+// wins maps onto the two bark() lines there and nothing else.
+//
+// These deliberately go through the same synth as the set above rather than
+// through the engine — tools/render-cues.js already renders the REAL cue, and
+// what is wanted here is five variations sitting in one directory to be
+// compared by ear. Expect the winner to need a listen through render-cues.js
+// once it is wired, because the engine's filters are not these.
+const engineBark = (out, t, f, gain = 1) => bark(out, t, {
+  dur: 0.12, f0: f, f1: f * 0.38, wave: 'saw',
+  formant0: f * 1.6, formant1: f * 4.4, fq: 1.8,
+  breath: 0.3, breathHz: 2600, plosive: 0.5, gain,
+});
+
+// The cue as it stands today: 520 then 450, 190ms apart.
+render('v2-a-shipped', 0.45, (out) => {
+  engineBark(out, 0.02, 520);
+  engineBark(out, 0.21, 450);
+});
+
+// HIGHER still, and tighter. The most urgent of the five — a small furious
+// dog. Cuts through anything; the risk is that it reads as a yap.
+render('v2-b-higher', 0.4, (out) => {
+  engineBark(out, 0.02, 660);
+  engineBark(out, 0.18, 570);
+});
+
+// SNAPPIER: the shipped pitches with the gap closed to 130ms, so the two
+// barks land almost on top of each other. Reads as a lunge rather than as
+// two events.
+render('v2-c-snappy', 0.4, (out) => {
+  engineBark(out, 0.02, 530);
+  engineBark(out, 0.15, 440);
+});
+
+// BIGGER: down a third, and the second bark drops further — a heavier animal
+// that still sits above the music. The closest of the five to the old cue
+// without bringing the growl back.
+render('v2-d-bigger', 0.5, (out) => {
+  engineBark(out, 0.02, 430);
+  engineBark(out, 0.22, 340);
+});
+
+// THREE barks, not two: the same high register, a fast triplet. The most
+// aggressive reading of the same voice — a dog that will not stop.
+render('v2-e-triple', 0.6, (out) => {
+  engineBark(out, 0.02, 560, 0.95);
+  engineBark(out, 0.17, 500, 0.9);
+  engineBark(out, 0.32, 440);
+});
+
 console.log(`\n-> ${outDir}`);

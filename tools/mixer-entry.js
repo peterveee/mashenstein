@@ -4,8 +4,6 @@
 import { Audio } from '../src/engine/audio.js';
 import { setMrdrComparisonBackend, mrdrComparisonBackend } from '../src/engine/mrdr3/identity.js';
 import { mrdr3ControllerHealth, mrdr3LaneReport, warmMrdr3Tables } from '../src/engine/mrdr3/controller.js';
-import { createVisualiser, VISUALISER_NAMES, createHalfPipeLab, HALF_PIPE_CONTROLS, HALF_PIPE_DEFAULTS }
-  from '../src/engine/visualisers.js';
 import { resolveNoteFx, noteFxRange, noteFxLimit, NOTE_FX_RANGE_MIN, NOTE_FX_RANGE_MAX,
   NOTE_FX_LIMIT_MAX } from '../src/engine/note-fx.js';
 // The boundary logic for handing a cabinet mix over to a level's, so 'Hear the change'
@@ -32,6 +30,9 @@ import { createCustomSelect } from './lib/custom-select.js';
 // tools/mixer-select.js for why that is a sweep over the document rather than a list of
 // call sites, and why the native control stays where it is.
 import { watchDeskSelects, syncDeskSelects } from './mixer-select.js';
+import { installTooltips, placeCard } from './mixer-tooltips.js';
+import { createVisualiserPanel } from './mixer-visualiser.js';
+import { createPerfDiag } from './mixer-perf-diag.js';
 // Heavy UI builds hold the thread the sequencer runs on: `heavyUi` queues audio past
 // the stall and records what it was for, so the watchdog can name it. See lib/heavy-ui.js.
 import { heavyUi, lastHeavyBuild } from './lib/heavy-ui.js';
@@ -139,8 +140,15 @@ const $ = (id) => document.getElementById(id);
 document.title = MIXER_BRAND;
 const MIXER_MIN_WIDTH = 1200;
 const MIXER_MIN_HEIGHT = 700;
+// The floor is a WINDOW rule, and only a window can be resized. A phone or tablet has
+// no window to enlarge, so the gate there is a dead end rather than an instruction: it
+// would hand a stranger who opened /TRK24/ on their phone a box telling them to do the
+// one thing their device cannot do. Touch devices get the full-size desk instead — the
+// shell keeps its 1200x700 layout and the browser scales and pans it (see the shell's
+// `width=1200` viewport), which is a real, if fiddly, way to look at the desk.
+const TOUCH_ONLY = matchMedia('(pointer: coarse) and (hover: none)').matches;
 const syncMixerMinimum = () => {
-  const tooSmall = innerWidth < MIXER_MIN_WIDTH || innerHeight < MIXER_MIN_HEIGHT;
+  const tooSmall = !TOUCH_ONLY && (innerWidth < MIXER_MIN_WIDTH || innerHeight < MIXER_MIN_HEIGHT);
   document.documentElement.classList.toggle('mixer-too-small', tooSmall);
   const gate = $('mixer-min-size');
   if (gate) gate.setAttribute('aria-hidden', String(!tooSmall));
@@ -890,212 +898,8 @@ function editMix(mutate, tag, { undo = true } = {}) {
 
 // ---- tooltips ---------------------------------------------------------------------
 //
-// One card for the whole page, filled and moved on hover. Any element carrying
-// `data-tip` gets one: the name goes in bold, `data-tipkey` becomes the key chip beside
-// it, and `data-tipsays` is the sentence underneath — which is the only reason to have
-// built this rather than leave the browser's `title` doing it. A row of icon buttons is
-// exactly the case a one-line grey system tooltip cannot serve: the picture is the label,
-// so the tooltip has to carry both the name AND what the thing is for.
-//
-// Never both: an element with `data-tip` must not also have a `title`, or the OS draws
-// its own on top a second later.
-const TIP_DELAY = 340;         // long enough that crossing the row does not flash six cards
-let tipTimer = null;
-let tipTarget = null;
-
-function hideTip() {
-  clearTimeout(tipTimer);
-  tipTimer = null;
-  tipTarget = null;
-  $('tip').classList.remove('show', 'in');
-}
-
-/**
- * Put a floating card beside the thing it is about, and aim its arrow at that thing.
- *
- * Shared by the tooltip and the tour, because both have the same two problems and the
- * same two answers. The card is sized by its own sentence, so whether it fits below the
- * anchor cannot be known until it is in the page and measured — hence `show` before
- * place, never after. And the card is clamped to the window while the anchor is not, so
- * at the ends of a row the two stop agreeing about where the middle is: the arrow
- * follows the ANCHOR, because a point aimed at the centre of a card that had to move is
- * a point aimed at nothing.
- *
- * `prefer: 'side'` moves it out to the left or right instead. A tooltip never needs this
- * — it is two lines under a toolbar button and gone again — but a card that stays up
- * while you read four lines of it will lie straight over a channel strip, which is the
- * one thing on the desk it was pointing at. Beside, the strip is still readable. It
- * falls back to above/below when there is no room either side.
- */
-function placeCard(card, el, arrow, { gap = 9, edge = 6, inset = 11, prefer = 'below' } = {}) {
-  const r = el.getBoundingClientRect();
-  const box = card.getBoundingClientRect();
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
-
-  // Beside the anchor, on whichever flank it fits. Pulled out of the `prefer` branch
-  // because it is also the ANSWER TO A TALL ANCHOR: the effect catalogue is most of the
-  // window high, so neither above nor below it fits, and the vertical placement below
-  // would have run off the top of the screen with the card on it.
-  const trySide = () => {
-    const right = r.right + gap;
-    const leftSide = r.left - gap - box.width;
-    const at = right + box.width <= innerWidth - edge ? right
-      : leftSide >= edge ? leftSide
-        : null;
-    if (at !== null) {
-      const top = clamp(r.top + r.height / 2 - box.height / 2, edge,
-        innerHeight - box.height - edge);
-      card.style.left = `${Math.round(at)}px`;
-      card.style.top = `${Math.round(top)}px`;
-      if (arrow) {
-        // The side arrows are the same rotated square wearing a different pair of the
-        // card's borders — see the `.tutarrow.beside` rules.
-        arrow.classList.remove('under');
-        arrow.classList.add('beside');
-        arrow.classList.toggle('after', at === leftSide);
-        arrow.style.left = '';
-        arrow.style.top = `${Math.round(
-          clamp(r.top + r.height / 2 - top, inset, box.height - inset) - 4.5)}px`;
-      }
-      return true;
-    }
-    return false;
-  };
-
-  if (prefer === 'side' && trySide()) return true;
-
-  const below = r.bottom + gap + box.height <= innerHeight - edge;
-  const above = r.top - gap - box.height >= edge;
-  // Neither end of the anchor has room for the card. Beside it is a real answer and
-  // off the top of the window is not, so ask for the flank before falling through.
-  if (!below && !above && prefer !== 'side' && trySide()) return true;
-  const left = clamp(r.left + r.width / 2 - box.width / 2, edge, innerWidth - box.width - edge);
-  // Clamped for the same reason `left` always was, and it was the one axis that was not:
-  // a card whose top went negative did not merely overhang, it took its Back and Next
-  // buttons off the screen with it and the tour could not be advanced.
-  const top = clamp(below ? r.bottom + gap : r.top - gap - box.height,
-    edge, Math.max(edge, innerHeight - box.height - edge));
-  card.style.left = `${Math.round(left)}px`;
-  card.style.top = `${Math.round(top)}px`;
-  if (!arrow) return below;
-  arrow.classList.remove('beside', 'after');
-  arrow.style.top = '';
-  arrow.classList.toggle('under', !below);
-  const at = clamp(r.left + r.width / 2 - left, inset, box.width - inset);
-  arrow.style.left = `${Math.round(at - 4.5)}px`;
-  return below;
-}
-
-function showTip(el) {
-  const tip = $('tip');
-  tip.textContent = '';
-  tip.classList.toggle('bartip', el.dataset.tipkind === 'bar');
-  tip.classList.toggle('tracktip', el.dataset.tipkind === 'track');
-  const head = document.createElement('div');
-  head.className = 'tiphead';
-  const name = document.createElement('span');
-  name.className = 'tipname';
-  name.textContent = el.dataset.tip;
-  head.append(name);
-  if (el.dataset.tipkey) {
-    const key = document.createElement('kbd');
-    key.className = 'tipkey';
-    key.textContent = el.dataset.tipkey;
-    head.append(key);
-  }
-  tip.append(head);
-  if (el.dataset.tipcontext) {
-    const context = document.createElement('div');
-    context.className = 'tipcontext';
-    context.textContent = el.dataset.tipcontext;
-    tip.append(context);
-  }
-  if (el.dataset.tipsays) {
-    const says = document.createElement('div');
-    says.className = 'tipsays';
-    says.textContent = el.dataset.tipsays;
-    tip.append(says);
-  }
-  if (el.dataset.tipgroups) {
-    let groups = [];
-    try { groups = JSON.parse(el.dataset.tipgroups); } catch { groups = []; }
-    const body = document.createElement('div');
-    body.className = 'tipgroups';
-    for (const group of groups) {
-      const row = document.createElement('div');
-      row.className = 'tipgroup';
-      const label = document.createElement('div');
-      label.className = 'tipgroup-label';
-      label.textContent = group.label || '';
-      const values = document.createElement('div');
-      values.className = 'tipgroup-values';
-      if (group.context) {
-        const source = document.createElement('span');
-        source.className = 'tipgroup-context';
-        source.textContent = group.context;
-        values.append(source);
-      }
-      for (const item of group.items || []) {
-        const chip = document.createElement('span');
-        chip.className = `tipchip${item.tone ? ` ${item.tone}` : ''}`;
-        chip.textContent = item.text || '';
-        values.append(chip);
-      }
-      row.append(label, values);
-      body.append(row);
-    }
-    tip.append(body);
-  }
-  if (el.dataset.tiphints) {
-    const foot = document.createElement('div');
-    foot.className = 'tipfoot';
-    let hints = [];
-    try { hints = JSON.parse(el.dataset.tiphints); } catch { hints = []; }
-    for (const hint of hints) {
-      const item = document.createElement('span');
-      item.className = 'tiphint';
-      const key = document.createElement('kbd');
-      key.textContent = hint.key || '';
-      const action = document.createElement('span');
-      action.textContent = hint.text || '';
-      item.append(key, action);
-      foot.append(item);
-    }
-    tip.append(foot);
-  }
-  const arrow = document.createElement('span');
-  arrow.className = 'tiparrow';
-  tip.append(arrow);
-
-  // Shown first, then placed — see placeCard for why the order matters.
-  tip.classList.add('show');
-  placeCard(tip, el, arrow);
-  requestAnimationFrame(() => tip.classList.add('in'));
-}
-
-addEventListener('pointerover', (ev) => {
-  const el = ev.target.closest?.('[data-tip]') || null;
-  if (el === tipTarget) return;
-  hideTip();
-  if (!el) return;
-  tipTarget = el;
-  tipTimer = setTimeout(() => { if (tipTarget === el) showTip(el); }, TIP_DELAY);
-});
-// Reached by keyboard, the tip is the only label there is — the buttons are pictures — so
-// it comes up at once rather than after a delay meant to keep a moving pointer quiet.
-addEventListener('focusin', (ev) => {
-  const el = ev.target.closest?.('[data-tip]');
-  if (!el || !el.matches(':focus-visible')) return;
-  hideTip();
-  tipTarget = el;
-  showTip(el);
-});
-addEventListener('focusout', hideTip);
-// Capture, so the card is gone before the click it belongs to opens a panel underneath it.
-addEventListener('pointerdown', hideTip, true);
-addEventListener('keydown', hideTip, true);
-addEventListener('scroll', hideTip, true);
-addEventListener('blur', hideTip);
+// Moved out whole to tools/mixer-tooltips.js — it read nothing off the desk, so it took
+// nothing with it. `placeCard` comes back because the tour is placed by the same code.
 
 let toastTimer = null;
 /**
@@ -5506,233 +5310,18 @@ $('voicelibbtn').onclick = openPresetLibrary;
 $('presetbtn').onclick = openPresetLibrary;
 
 // ---- full screen visualiser -------------------------------------------------
-// The jukebox visuals, run against the desk's own playback. The song is already
-// going through Audio's song lane, and the analyser that feeds these presets is
-// tapped off it — so this needs no audio work at all, only a canvas and the
-// engine's own analysis object.
-//
-// What it DOES need is for the desk to stop drawing. A preset painting the whole
-// window at native density is real fill rate, and it is being asked for on a
-// machine whose one job is not to drop the song. The desk's own frame is a
-// picture of audio nobody can see while this is up, so tick() returns early the
-// same way it already does when the window loses focus — transport work above
-// that line still runs, so loops arm and seeks land while the visual is playing.
-let visPreset = null;
-let visFrame = 0;
-let visAt = 0;
-let visIdleTimer = 0;
-let visIndex = 0;
-let visualiserOpen = false;
-// The tunable half-pipe. It is not a member of the pack — it is the same preset
-// with its constants brought out where they can be turned, so it sits after the
-// list rather than inside it, the way every dev-only section in this project
-// sorts after the production ones. Its settings live for the session only: they
-// are a way to play with the picture, not a property of the song.
-const VIS_LAB = 'HALF-PIPE HORIZON — LAB';
-let visLabTune = HALF_PIPE_DEFAULTS();
-
-/** Backing store at the window's size, capped: this is fill rate, not detail. */
-function sizeVisualiser() {
-  const canvas = $('viscanvas');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.max(1, Math.round(innerWidth * dpr));
-  canvas.height = Math.max(1, Math.round(innerHeight * dpr));
-}
-
-function visualiserFrame() {
-  if (!visualiserOpen) return;
-  visFrame = requestAnimationFrame(visualiserFrame);
-  const canvas = $('viscanvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx || !visPreset) return;
-  const now = performance.now();
-  const dt = visAt ? Math.min(0.25, (now - visAt) / 1000) : 1 / 60;
-  visAt = now;
-  visPreset.update(dt, Audio.musicAnalysis());
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // Cover, not stretch. The presets are composed in a fixed 480x270 space and a
-  // non-uniform scale turns every ring in them into an ellipse; cropping the long
-  // edge is what the game's own full-screen visual mode does.
-  const fit = Math.max(canvas.width / 480, canvas.height / 270);
-  ctx.setTransform(fit, 0, 0, fit, (canvas.width - 480 * fit) / 2, (canvas.height - 270 * fit) / 2);
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  visPreset.draw(ctx);
-}
-
-/** Show the hint again, with a message, and start it fading out afresh. */
-function visHint(text) {
-  const panel = $('visualiser');
-  $('vishint').textContent = text;
-  panel.classList.remove('idle');
-  clearTimeout(visIdleTimer);
-  visIdleTimer = setTimeout(() => panel.classList.add('idle'), 2600);
-}
-
-/**
- * Build a preset and put it up. Seeded off the clock rather than fixed, so
- * arriving at the same preset twice deals a different palette and layout the way
- * the jukebox does rather than replaying one picture.
- */
-function startPreset(index) {
-  // The lab sits one past the end of the pack, so browsing with the arrows reaches
-  // it and wraps past it like anything else.
-  const total = VISUALISER_NAMES.length + 1;
-  visIndex = ((index % total) + total) % total;
-  const track = { bpm: Audio.bank?.bpm || appliedBank?.bpm || 120 };
-  const seed = ((Math.random() * 0xffffffff) ^ (visIndex * 0x9e3779b9)) >>> 0;
-  const lab = visIndex === VISUALISER_NAMES.length;
-  visPreset = lab ? createHalfPipeLab(seed, track, visLabTune) : createVisualiser(visIndex, seed, track);
-  // The drawer's picker is the same choice by another route, so it follows along
-  // and is already on the right preset when the desk comes back.
-  $('vispreset').value = lab ? VIS_LAB : VISUALISER_NAMES[visIndex];
-  $('visualiser').classList.toggle('lab', lab);
-  if (lab) renderVisKnobs();
-}
-
-/** One row of steppers, rebuilt from the preset's own control list. */
-function renderVisKnobs() {
-  const bar = $('viscontrols');
-  if (bar.childElementCount) { syncVisKnobs(); return; }
-  for (const control of HALF_PIPE_CONTROLS) {
-    const knob = document.createElement('div');
-    knob.className = 'visknob';
-    knob.dataset.key = control.key;
-    knob.innerHTML = '<span>' + control.label + '</span>'
-      + '<button type="button" data-step="-1" aria-label="less">−</button>'
-      + '<b></b>'
-      + '<button type="button" data-step="1" aria-label="more">+</button>';
-    bar.appendChild(knob);
-  }
-  for (const [label, act] of [['RANDOMISE', randomiseVisTune], ['RESET', resetVisTune]]) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'visact';
-    button.textContent = label;
-    button.onclick = act;
-    bar.appendChild(button);
-  }
-  syncVisKnobs();
-}
-
-/** AUTO and OFF are values, not absences — see nextHold() in visualisers.js. */
-function visKnobText(control, value) {
-  if (control.unit === 'beats') {
-    if (value < 0) return 'OFF';
-    if (value === 0) return 'AUTO';
-    return String(value);
-  }
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
-function syncVisKnobs() {
-  for (const knob of $('viscontrols').querySelectorAll('.visknob')) {
-    const control = HALF_PIPE_CONTROLS.find((c) => c.key === knob.dataset.key);
-    const value = visLabTune[control.key];
-    knob.querySelector('b').textContent = visKnobText(control, value);
-    knob.querySelector('[data-step="-1"]').disabled = value <= control.min;
-    knob.querySelector('[data-step="1"]').disabled = value >= control.max;
-  }
-}
-
-function setVisTune(next) {
-  visLabTune = { ...visLabTune, ...next };
-  // Straight onto the running preset. Rebuilding it would restart the ride every
-  // time a number moved, which is the opposite of what a knob is for.
-  if (visPreset?.applyTune) visPreset.applyTune(next);
-  syncVisKnobs();
-}
-
-function randomiseVisTune() {
-  const next = {};
-  for (const control of HALF_PIPE_CONTROLS) {
-    const steps = Math.round((control.max - control.min) / control.step);
-    next[control.key] = Number((control.min + Math.round(Math.random() * steps) * control.step)
-      .toFixed(2));
-  }
-  setVisTune(next);
-  visHint('RANDOMISED');
-}
-
-function resetVisTune() {
-  setVisTune(HALF_PIPE_DEFAULTS());
-  visHint('BACK TO THE SHIPPED SETTINGS');
-}
-
-function openVisualiser() {
-  if (visualiserOpen) return;
-  startPreset(VISUALISER_NAMES.indexOf($('vispreset').value));
-  visualiserOpen = true;
-  visAt = 0;
-  sizeVisualiser();
-  const panel = $('visualiser');
-  panel.classList.add('show');
-  panel.setAttribute('aria-hidden', 'false');
-  visHint('← → TO BROWSE · CLICK OR ESC TO RETURN TO THE DESK');
-  visFrame = requestAnimationFrame(visualiserFrame);
-}
-
-function closeVisualiser() {
-  if (!visualiserOpen) return;
-  visualiserOpen = false;
-  cancelAnimationFrame(visFrame);
-  clearTimeout(visIdleTimer);
-  visPreset = null;
-  const panel = $('visualiser');
-  panel.classList.remove('show', 'idle', 'lab');
-  panel.setAttribute('aria-hidden', 'true');
-  // The desk's frame accumulates meter falloff against a timestamp. Left alone it
-  // would come back to a dt of however long the visual was up and snap every meter
-  // to the floor in one frame.
-  meterAt = 0;
-}
-
-for (const name of VISUALISER_NAMES) {
-  const option = document.createElement('option');
-  option.value = name;
-  option.textContent = name;
-  $('vispreset').appendChild(option);
-}
-{
-  const lab = document.createElement('option');
-  lab.value = VIS_LAB;
-  lab.textContent = VIS_LAB;
-  $('vispreset').appendChild(lab);
-}
-$('vispreset').value = 'HALF-PIPE HORIZON';
-$('viscontrols').onclick = (ev) => {
-  // The bar sits on top of the panel whose own click is the way out.
-  ev.stopPropagation();
-  const button = ev.target.closest('button[data-step]');
-  if (!button) return;
-  const control = HALF_PIPE_CONTROLS.find((c) => c.key === button.closest('.visknob').dataset.key);
-  const step = Number(button.dataset.step) * control.step;
-  const value = Math.min(control.max, Math.max(control.min,
-    Number((visLabTune[control.key] + step).toFixed(2))));
-  setVisTune({ [control.key]: value });
-  visHint(control.label + '  ' + visKnobText(control, value));
-};
-$('visopen').onclick = () => { closeMenu(); openVisualiser(); };
-$('visualiser').onclick = closeVisualiser;
-addEventListener('resize', () => { if (visualiserOpen) sizeVisualiser(); });
-// Everything the keyboard does while the visual is up, and nothing reaches the
-// desk underneath: it is not on screen, and a keystroke aimed at a picture must
-// not move a fader. Ahead of the desk's panic handler on the same window, for the
-// same reason the drawer's Escape is — leaving is not a reason to cut the sound.
-const VIS_STEP = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 };
-addEventListener('keydown', (ev) => {
-  if (!visualiserOpen) return;
-  ev.preventDefault();
-  ev.stopImmediatePropagation();
-  const step = VIS_STEP[ev.key];
-  if (step) {
-    startPreset(visIndex + step);
-    visHint(VISUALISER_NAMES[visIndex]);
-    return;
-  }
-  closeVisualiser();
-}, true);
+// Moved out whole to tools/mixer-visualiser.js. It rides the engine's own analyser off
+// the song lane, so it took no desk state with it — three things it cannot know are
+// handed in, and the one thing the desk needs back is whether it is up: while it is,
+// tick() stops drawing meters nobody can see. See the panel's own header.
+const visualiserPanel = createVisualiserPanel({
+  closeMenu,
+  trackBpm: () => Audio.bank?.bpm || appliedBank?.bpm || 120,
+  // The desk's frame accumulates meter falloff against a timestamp. Left alone it would
+  // come back to a dt of however long the visual was up and snap every meter to the
+  // floor in one frame.
+  onClose: () => { meterAt = 0; },
+});
 $('addtrackbtn').onclick = (ev) => {
   ev.stopPropagation();
   closeMenu();
@@ -17996,7 +17585,7 @@ function tick() {
   // Same argument as focus, one step further: the full-screen visualiser is a
   // window where the desk is not merely unattended but not on screen at all, and
   // the preset painting over it wants every millisecond the meters were spending.
-  if (visualiserOpen) {
+  if (visualiserPanel.isOpen()) {
     requestAnimationFrame(tick);
     return;
   }
@@ -18442,21 +18031,6 @@ const loopLogClear = $('looplogclear');
 const profileTrackLoadButton = $('profiletrackload');
 const loopLogText = $('looplogtext');
 const loopLogStatus = $('looplogstatus');
-const perfDiagOpen = $('perfdiagopen');
-const perfDiag = $('perfdiag');
-const perfDiagHead = $('perfdiaghead');
-const perfDiagClose = $('perfdiagclose');
-const perfDiagDone = $('perfdiagdone');
-const perfDiagClear = $('perfdiagclear');
-const perfDiagPopout = $('perfdiagpopout');
-const perfDiagState = $('perfdiagstate');
-const perfDiagStatus = $('perfdiagstatus');
-const perfDiagLog = $('perfdiaglog');
-const perfDiagMetricEls = new Map(
-  [...document.querySelectorAll('#perfdiagmetrics .perfmetric')]
-    .map((el) => [el.dataset.perfmetric, el]),
-);
-
 const health = {
   text: '', lastWall: 0, lastCt: 0, deadRuns: 0,
   analyser: null, buf: null, longTask: 0,
@@ -18551,13 +18125,6 @@ let lastLoggedDropouts = 0;
 // the live window's readout. It is cheap to overwrite, never touches localStorage, and
 // gives a developer the sequence immediately before a dropout without turning the
 // diagnostics file into a telemetry firehose.
-const PERF_DIAG_LIMIT = 240;
-const PERF_DIAG_SAMPLE_MS = 1000;
-let perfDiagRecords = [];
-let perfDiagLastSampleAt = 0;
-let perfDiagLastKey = '';
-let perfDiagPopup = null;
-const PERF_POS_KEY = 'mash-mixer-perfdiag-pos';
 
 const LOOP_LOG_COLUMNS = [
   'time', 'session', 'song', 'lap', 'loopStart', 'loopEnd', 'recordType', 'status',
@@ -18871,142 +18438,22 @@ function diagnosticRuntimeFields() {
   };
 }
 
-function perfDiagSnapshot() {
-  const fields = diagnosticRuntimeFields();
-  const scheduler = schedulerWorkFields();
-  const hotspot = frameHotspotFields();
-  const ratio = Number.isFinite(health.ratio) ? +health.ratio.toFixed(3) : null;
-  const margin = Number.isFinite(health.marginMin) ? +(health.marginMin * 1000).toFixed(1) : null;
-  const status = health.audioBehind ? 'AUDIO OVERLOADED'
-    : health.audioStruggling ? 'AUDIO STRUGGLING'
-      : health.uiStalled ? 'PLAYBACK INTERRUPTED'
-        : playing ? (fields.cacheRendering ? 'CACHE RENDERING' : 'PLAYING') : 'STOPPED';
-  return {
-    ...fields, ...scheduler, ...hotspot, status, ratio, margin,
-    longTask: Math.round(Math.max(health.longTask || 0, loopHealthWindow.longTaskMax || 0)),
-    dropouts: health.dropouts || 0, audioState: Audio.ctx?.state || 'uninitialised',
-    playing: !!playing, time: new Date().toISOString(),
-  };
-}
-
-const perfNumber = (value, suffix = '') => value == null || value === '' || !Number.isFinite(Number(value))
-  ? '—' : `${value}${suffix}`;
-
-function perfDiagDetail(snapshot) {
-  const clock = perfNumber(snapshot.ratio, 'x');
-  const margin = perfNumber(snapshot.margin, ' ms');
-  const cache = `cache q${snapshot.cacheQueued}/r${snapshot.cacheRendering}`
-    + (snapshot.cachePlanCandidates ? ` · plan ${snapshot.cachePlanCompleted}/${snapshot.cachePlanSelected}` : '')
-    + ` · hits ${snapshot.cacheHits || 0}/misses ${snapshot.cacheMisses || 0}`;
-  const cpu = snapshot.frameHotspot
-    ? ` · hot ${snapshot.frameHotspot} ${snapshot.frameHotspotMs || 0}ms`
-    : '';
-  return `clock ${clock} · margin ${margin} · ${cache} · dropouts ${snapshot.dropouts}${cpu}`;
-}
-
-function perfDiagPayload() {
-  return {
-    current: perfDiagCurrent,
-    records: perfDiagRecords.slice(),
-  };
-}
-
-let perfDiagCurrent = null;
-
-function syncPerfDiagPopup() {
-  const popup = perfDiagPopup;
-  if (!popup || popup.closed) { perfDiagPopup = null; return; }
-  try {
-    const payload = perfDiagPayload();
-    const state = popup.document.getElementById('mash-perf-state');
-    const metrics = popup.document.getElementById('mash-perf-metrics');
-    const log = popup.document.getElementById('mash-perf-log');
-    if (!state || !metrics || !log) return;
-    const current = payload.current || {};
-    state.textContent = `${current.status || 'WAITING'} · ${current.time || ''}`;
-    metrics.textContent = current.status ? [
-      `AUDIO  ${current.status} · clock ${perfNumber(current.ratio, 'x')} · margin ${perfNumber(current.margin, ' ms')} · long task ${perfNumber(current.longTask, ' ms')} · dropouts ${current.dropouts} · ${current.frameHotspot ? `hot ${current.frameHotspot} ${current.frameHotspotMs || 0}ms` : 'no frame hotspot yet'}`,
-      `CACHE  ${current.cacheEnabled ? 'on' : 'off'} · ${current.cacheBuffers} buffers · ${current.cacheMB || 0} MB · queue ${current.cacheQueued} · rendering ${current.cacheRendering} · plan ${current.cachePlanCompleted || 0}/${current.cachePlanSelected || 0} · hits/misses/stale ${current.cacheHits || 0}/${current.cacheMisses || 0}/${current.cacheStale || 0}`,
-      `MRDR   ${current.mrdrLaneStages || 0} lane stages · ${current.mrdrChorusLegs || 0} wet legs · ${current.liveNotes || 0} live notes · ${current.cachedSources || 0} cached sources · tails ${current.mrdrTailCulled || 0} culled`,
-      `OUTPUT ${current.audioState || '—'} · ${current.bufferMode || '—'} · base ${perfNumber(current.baseLatencyMs, ' ms')} · read-ahead ${perfNumber(current.readAheadMs, ' ms')} · heap ${perfNumber(current.jsHeapMB, ' MB')}`,
-    ].join('\n') : 'Waiting for a sample…';
-    log.textContent = payload.records.map((record) => {
-      const time = record.time?.slice(11, 23) || '';
-      return `${time} ${String(record.status || '').padEnd(22)} ${record.detail || ''}`;
-    }).join('\n');
-    log.scrollTop = log.scrollHeight;
-  } catch {
-    perfDiagPopup = null;
-  }
-}
-
-function refreshPerfDiagUi() {
-  if (!perfDiagOpen || !perfDiag) return;
-  perfDiagOpen.hidden = !DEV_USER;
-  if (!DEV_USER) return;
-  const current = perfDiagCurrent || perfDiagSnapshot();
-  const metricText = {
-    audio: `${current.status || 'WAITING'}\nclock ${perfNumber(current.ratio, 'x')} · margin ${perfNumber(current.margin, ' ms')}\nlong task ${perfNumber(current.longTask, ' ms')} · dropouts ${current.dropouts || 0}\n${current.frameHotspot ? `hot ${current.frameHotspot} · ${current.frameHotspotMs || 0} ms` : 'no frame hotspot yet'}${current.schedTicks ? `\nscheduler ${current.schedTicks} ticks · fine ${current.schedFineTickPct || 0}% · lanes ${current.schedLaneReads || 0}` : ''}`,
-    cache: `${current.cacheEnabled ? 'ON' : 'OFF'} · ${current.cacheBuffers || 0} buffers · ${current.cacheMB || 0} MB\nqueue ${current.cacheQueued || 0} · rendering ${current.cacheRendering || 0}\nplan ${current.cachePlanCompleted || 0}/${current.cachePlanSelected || 0} · pending ${current.cachePlanPending || 0}\nhits ${current.cacheHits || 0} · misses ${current.cacheMisses || 0} · stale ${current.cacheStale || 0}`,
-    mrdr: `${current.mrdrLaneStages || 0} lane stages · ${current.mrdrChorusLegs || 0} wet legs\nlive ${current.liveNotes || 0} · cached ${current.cachedSources || 0}\ntails ${current.mrdrTailCulled || 0} culled · ${current.mrdrTailSkipped || 0} skipped`,
-    browser: `${current.audioState || '—'} · ${current.bufferMode || '—'}\nbase ${perfNumber(current.baseLatencyMs, ' ms')} · read-ahead ${perfNumber(current.readAheadMs, ' ms')}\nheap ${perfNumber(current.jsHeapMB, ' MB')} · pools ${current.pools || 0}`,
-  };
-  for (const [key, el] of perfDiagMetricEls) {
-    const p = el.querySelector('p');
-    if (p) p.textContent = metricText[key] || '—';
-    el.classList.toggle('bad', key === 'audio' && /OVERLOADED|STRUGGLING|INTERRUPTED/.test(current.status || ''));
-  }
-  if (perfDiagState) perfDiagState.textContent = current.status
-    ? `${current.status} · ${current.time?.slice(11, 23) || ''}` : 'Waiting for playback';
-  if (perfDiagStatus) perfDiagStatus.textContent = perfDiagRecords.length
-    ? `${perfDiagRecords.length} live message${perfDiagRecords.length === 1 ? '' : 's'} · latest: ${perfDiagRecords.at(-1).detail}`
-    : 'Open the song and press Play to begin live sampling.';
-  if (perfDiagLog) {
-    perfDiagLog.textContent = perfDiagRecords.map((record) => {
-      const time = record.time?.slice(11, 23) || '';
-      return `${time} ${String(record.status || '').padEnd(22)} ${record.detail || ''}`;
-    }).join('\n');
-    perfDiagLog.scrollTop = perfDiagLog.scrollHeight;
-  }
-  syncPerfDiagPopup();
-}
-
-function recordPerfDiag(kind, status, detail, snapshot = null) {
-  if (!DEV_USER) return;
-  const current = snapshot || perfDiagSnapshot();
-  perfDiagCurrent = current;
-  perfDiagRecords.push({
-    time: current.time, kind, status, detail,
-    ...current,
-  });
-  if (perfDiagRecords.length > PERF_DIAG_LIMIT) {
-    perfDiagRecords.splice(0, perfDiagRecords.length - PERF_DIAG_LIMIT);
-  }
-  refreshPerfDiagUi();
-}
-
-function samplePerfDiag(force = false) {
-  // Kicked from here so it shares the heartbeat rather than owning a timer of its own;
-  // it rate-limits itself and returns immediately when the worklet backend is off.
-  pollMrdr3Diagnostics();
-  // And the one that notices the log is about to go quiet, which is the moment nothing
-  // else in this file is watching for.
-  watchSilentTransport();
-  if (!DEV_USER || (!playing && !force)) return;
-  const now = performance.now();
-  if (!force && now - perfDiagLastSampleAt < PERF_DIAG_SAMPLE_MS) return;
-  const snapshot = perfDiagSnapshot();
-  const key = [snapshot.status, snapshot.ratio, snapshot.margin, snapshot.cacheQueued,
-    snapshot.cacheRendering, snapshot.cachePlanPending, snapshot.dropouts,
-    snapshot.mrdrLaneStages, snapshot.mrdrChorusLegs].join('|');
-  // Keep the once-a-second heartbeat while playing, but also retain immediate samples
-  // when a verdict or queue state changes so a dropout has a useful lead-in.
-  if (!force && key === perfDiagLastKey && now - perfDiagLastSampleAt < PERF_DIAG_SAMPLE_MS * 2) return;
-  perfDiagLastSampleAt = now;
-  perfDiagLastKey = key;
-  recordPerfDiag('sample', snapshot.status, perfDiagDetail(snapshot), snapshot);
-}
-
+// The live performance panel — the developer's window onto everything above. Moved out
+// to tools/mixer-perf-diag.js: it only ever READS the watchdog, so unlike the watchdog
+// itself it could be handed its sources rather than reaching for them.
+const perfDiag = createPerfDiag({
+  devUser: DEV_USER,
+  health,
+  loopHealthWindow,
+  isPlaying: () => playing,
+  fields: { diagnosticRuntimeFields, schedulerWorkFields, frameHotspotFields },
+  clamp,
+  toast,
+  closeMenu,
+  // Modal, and declared four hundred lines below this — so what the panel does to it
+  // is a thunk rather than a pair of names it would have to wait for.
+  yieldChrome: () => { if (audioSettingsDialog?.open) closeAudioSettings(); },
+});
 // ---- THE MRDR-3 WORKLET WATCHER ----------------------------------------------------
 //
 // Why this is polled rather than pushed: an AW lane that stops working does not raise
@@ -19320,7 +18767,7 @@ function syncOverloadNotice(behind, backlog) {
 /** Persist a fault or recovery now; unlike a lap row, this does not wait for audio. */
 function appendDiagnosticEvent(status, detail, fields = {}) {
   if (!DEV_USER) return;
-  recordPerfDiag('event', status, detail);
+  perfDiag.record('event', status, detail);
   persistLoopRecord({
     time: new Date().toISOString(), session: loopLogSession, song: trackId,
     lap: '', loopStart: Audio.loopStart ?? '', loopEnd: Audio.loopEnd ?? '',
@@ -19408,9 +18855,9 @@ function appendLoopLog({ start, end }) {
     reliefMs: loopHealthWindow.reliefMs, reliefEnters: loopHealthWindow.reliefEnters,
     reliefVerdict: loopHealthWindow.reliefVerdict, auxDuty: auxDutySummary(auxDuty),
   };
-  const liveSnapshot = perfDiagSnapshot();
-  recordPerfDiag('loop', status,
-    `lap ${lap} · ${perfDiagDetail(liveSnapshot)}`, liveSnapshot);
+  const liveSnapshot = perfDiag.snapshot();
+  perfDiag.record('loop', status,
+    `lap ${lap} · ${perfDiag.detail(liveSnapshot)}`, liveSnapshot);
   persistLoopRecord(record);
   resetLoopHealthWindow();
 }
@@ -19913,7 +19360,13 @@ function checkAudioHealth() {
     health.lastCpuAt = wall;
     updateCpu();
   }
-  samplePerfDiag();
+  // Two watchers that want the heartbeat rather than a timer each. They used to ride
+  // inside the performance panel's sampler, which is not where either of them belongs:
+  // one rate-limits itself and returns at once when the worklet backend is off, and the
+  // other notices the log going quiet, which nothing else in this file watches for.
+  pollMrdr3Diagnostics();
+  watchSilentTransport();
+  perfDiag.sample();
 }
 // Four times a second. The clock check is two subtractions and the analyser read is
 // 256 floats; what it buys is noticing a shortfall in half a second instead of three,
@@ -19956,101 +19409,6 @@ Audio.onLoop?.((loop) => {
     appendLoopLog(loop);
   }, wait);
 });
-
-function placePerfDiag(x = null, y = null) {
-  if (!perfDiag) return;
-  if (x == null || y == null) {
-    let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(PERF_POS_KEY) || 'null'); } catch { saved = null; }
-    x = saved?.x ?? Math.max(8, (innerWidth - perfDiag.offsetWidth) / 2);
-    y = saved?.y ?? 70;
-  }
-  const left = clamp(Number(x) || 8, 6, Math.max(6, innerWidth - perfDiag.offsetWidth - 6));
-  const top = clamp(Number(y) || 8, 6, Math.max(6, innerHeight - perfDiag.offsetHeight - 6));
-  perfDiag.style.left = `${left}px`;
-  perfDiag.style.top = `${top}px`;
-  perfDiag.style.transform = 'none';
-  try { localStorage.setItem(PERF_POS_KEY, JSON.stringify({ x: left, y: top })); } catch { /* optional preference */ }
-}
-
-function openPerfDiag() {
-  if (!DEV_USER || !perfDiag) return;
-  if (audioSettingsDialog?.open) closeAudioSettings();
-  perfDiag.hidden = false;
-  perfDiagOpen?.setAttribute('aria-expanded', 'true');
-  placePerfDiag();
-  samplePerfDiag(true);
-  perfDiagClose?.focus();
-}
-
-function closePerfDiag() {
-  if (!perfDiag) return;
-  perfDiag.hidden = true;
-  perfDiagOpen?.setAttribute('aria-expanded', 'false');
-  perfDiagOpen?.focus();
-}
-
-// The panel is intentionally not modal: a developer can drag it out of the way while
-// moving faders, and the song continues under it. Buttons in the title bar are excluded
-// so a click on Clear/Pop out never starts a move gesture.
-perfDiagHead?.addEventListener('pointerdown', (event) => {
-  if (perfDiag?.hidden || event.target.closest('button')) return;
-  event.preventDefault();
-  const rect = perfDiag.getBoundingClientRect();
-  const dx = event.clientX - rect.left;
-  const dy = event.clientY - rect.top;
-  const move = (next) => placePerfDiag(next.clientX - dx, next.clientY - dy);
-  const stop = () => {
-    perfDiagHead.classList.remove('dragging');
-    perfDiagHead.removeEventListener('pointermove', move);
-  };
-  perfDiagHead.classList.add('dragging');
-  try { perfDiagHead.setPointerCapture(event.pointerId); } catch { /* synthetic pointer */ }
-  perfDiagHead.addEventListener('pointermove', move);
-  perfDiagHead.addEventListener('pointerup', stop, { once: true });
-  perfDiagHead.addEventListener('pointercancel', stop, { once: true });
-});
-
-function openPerfDiagPopup() {
-  if (!DEV_USER) return;
-  const popup = window.open('', 'mash-mixer-performance',
-    'popup=yes,width=900,height=680,resizable=yes,scrollbars=yes');
-  if (!popup) { toast('Pop-out blocked — the in-page log is still available'); return; }
-  perfDiagPopup = popup;
-  popup.document.open();
-  popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>MASHENSTEIN live performance</title><style>
-    :root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:16px;background:#151820;color:#e8ebf2;font:12px/1.45 ui-monospace,monospace}
-    h1{margin:0 0 4px;color:#50d0ba;font:600 15px/1.2 ui-sans-serif,system-ui;letter-spacing:.08em}
-    #mash-perf-state{color:#a4acbb;font-size:10px}#mash-perf-metrics{margin:14px 0 10px;padding:10px;border:1px solid #303746;border-radius:6px;white-space:pre-wrap}
-    #mash-perf-log{margin:0;padding:10px;min-height:500px;max-height:calc(100vh - 100px);overflow:auto;border:1px solid #303746;border-radius:6px;background:#0e1117;white-space:pre-wrap}
-  </style></head><body><h1>LIVE PERFORMANCE</h1><div id="mash-perf-state">Waiting for playback</div><pre id="mash-perf-metrics">Waiting for a sample…</pre><pre id="mash-perf-log" tabindex="0"></pre></body></html>`);
-  popup.document.close();
-  popup.addEventListener('beforeunload', () => { if (perfDiagPopup === popup) perfDiagPopup = null; }, { once: true });
-  popup.focus();
-  syncPerfDiagPopup();
-}
-
-perfDiagOpen?.addEventListener('click', () => { closeMenu(); openPerfDiag(); });
-perfDiagClose?.addEventListener('click', closePerfDiag);
-perfDiagDone?.addEventListener('click', closePerfDiag);
-perfDiagClear?.addEventListener('click', () => {
-  perfDiagRecords = [];
-  perfDiagCurrent = null;
-  perfDiagLastKey = '';
-  refreshPerfDiagUi();
-  toast('Live performance log cleared');
-});
-perfDiagPopout?.addEventListener('click', openPerfDiagPopup);
-addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || perfDiag?.hidden) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  closePerfDiag();
-}, true);
-addEventListener('resize', () => {
-  if (!perfDiag?.hidden) placePerfDiag(perfDiag.offsetLeft, perfDiag.offsetTop);
-});
-refreshPerfDiagUi();
 
 function openLoopLog() {
   if (audioSettingsDialog?.open) closeAudioSettings();
@@ -27191,6 +26549,9 @@ void (async () => {
   // Before anything builds a panel: the shell's own nineteen dropdowns are in the
   // document already, and the observer this leaves behind takes every one built after.
   watchDeskSelects();
+  // The one hover card the whole page shares, on the document rather than on the
+  // elements, so panels built later are covered without being told. See mixer-tooltips.js.
+  installTooltips();
   Audio.ensure();
   activeLatencyPreference = latencyPreference;
   syncAudioSettingsStatus();

@@ -41,7 +41,8 @@ import {
   drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, drawKeyLegend,
   keyLegendWidth, drawRoundButton, UI_PANEL_BORDER,
 } from '../engine/sprites.js';
-import { Player, PLAYER_X, jumpHeightFor } from './player.js';
+import { Player, PLAYER_X, SLIDE_KICK_T, jumpHeightFor } from './player.js';
+import { puntPower, puntTuneFor, startPunt, stepPunt } from './punt.js';
 // The lane has to settle into the SAME resting frame a real stage does, or the
 // tutorial teaches a camera the game then changes. run.js owns that decision
 // because it owns the two framings; no cycle, run.js has never imported this.
@@ -364,10 +365,10 @@ function coinArc(x0, n, heroId) {
 // tutor() prompts make.
 //
 // `requires` is what makes this Gary's screen rather than a checklist: clearing
-// the obstacle is not the same as completing the section. Jump the drone
-// instead of ducking it and you are past the hazard but the section is still
-// open, because the section specifies ducking. He is not being difficult; he is
-// reading the form.
+// the obstacle is not the same as completing the section. Jump the cone
+// instead of kicking it and you are past the hazard but the section is still
+// open, because the section specifies the kick. He is not being difficult; he
+// is reading the form.
 const STEPS = [
   {
     id: 'jump',
@@ -457,59 +458,34 @@ const STEPS = [
     onPass(t) { t.spawnPlayground(); },
   },
   {
-    id: 'duck',
+    // The power slide, taught through its most satisfying read: the cone is a
+    // hazard with a second answer, and the slide kick IS the slide — the same
+    // input that carries a hero under a drone in a real run, learned here as a
+    // boot going through a traffic cone. The timing is the real game's timing
+    // (puntPower against the front of the slide window), because a tutorial
+    // that accepted a coasted-in slide would teach a kick the cabinets then
+    // refuse.
+    id: 'slide',
     hero: 'lorenzo',
-    label: 'DUCK',
-    legend: [['SPC', 'JUMP'], ['DN', 'DUCK']],
+    label: 'POWER SLIDE',
+    legend: [['SPC', 'JUMP'], ['DN', 'SLIDE']],
     brief: (touch) => (touch
-      ? 'DUCK. SWIPE DOWN AND HOLD. THE DRONE HAS RIGHT OF WAY, APPARENTLY.'
-      : 'DUCK. HOLD DOWN OR S. THE DRONE HAS RIGHT OF WAY, APPARENTLY.'),
-    again: () => 'INCOMPLETE. THE DRONE IS FILED UNDER DUCK.',
-    // Lorenzo clears the drone with an ordinary jump, so clearing it is not
+      ? 'POWER SLIDE. SWIPE DOWN AND HOLD, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING.'
+      : 'POWER SLIDE. HOLD DOWN OR S, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING.'),
+    // A late slide coasts in and eats the cone — the knock says INCOMPLETE and
+    // this line says why: the kick is spent from the front of the slide.
+    again: () => 'INCOMPLETE. SLIDE AT THE CONE, NOT BEFORE IT. THE BOOT EXPIRES.',
+    // Lorenzo clears the cone with an ordinary jump, so clearing it is not
     // what the section asks for.
-    requires: (t) => t.sawDuck,
-    wrongWay: () => 'OVER IT. THE SECTION SPECIFIES UNDER. I DO NOT MAKE THE SECTIONS.',
-    setup(t) {
-      const drone = makeObstacle('drone', t.spawnX());
-      // Two above the default 11. The fliers now draw at 1.35x over an unchanged
-      // box, and the art is bottom-anchored — all that extra size went UP, so the
-      // silhouette got much heavier while its lowest edge stayed put. At 11 the
-      // result is that a fully ducked Lorenzo has the drone drawn straight
-      // through his cap: a clean duck that looks like a collision.
-      //
-      // 13 is the top of the legal window and there is no more to be had. The
-      // hero's box is 14 standing and 7 ducked against the drone's 7, so the
-      // drone must sit below 14 to still catch someone who does not duck, and at
-      // or above 7 to let someone who does duck through. 13 keeps a standing hit
-      // by a single pixel and clears the crouch by six.
-      //
-      // It is now the default too — every duck-band flier moved up with the art —
-      // and the cannon was raised to meet it rather than the drone lowered back
-      // down: the pellet reaches PELLET_REACH above the muzzle, so the section
-      // that teaches shooting still gets a drone it can hit. Set explicitly all
-      // the same, because this section's window is 13 exactly and a later change
-      // to the default must not silently move it.
-      drone.alt = 13;
-      // 13 is the ceiling for the BOX and it is still not enough for the eye:
-      // Lorenzo's crouched art is taller than his crouched box, so a clean duck
-      // was passing with the drone's belly resting on his cap. The last few
-      // pixels are therefore art, not collision — see `artLift` in
-      // drawWorldEntity. Raising the box any further would mean a drone that a
-      // standing hero walks straight under.
-      //
-      // 3 rather than 5: five put clear daylight under it but had the drone
-      // reading as a separate object floating over the lane rather than a hazard
-      // the hero is passing beneath. Three is the smallest lift that stops the
-      // graze.
-      drone.artLift = 3;
-      t.obstacles = [drone];
-    },
+    requires: (t) => t.sawPunt,
+    wrongWay: () => 'OVER IT. THE SECTION SPECIFIES A KICK. I DO NOT MAKE THE SECTIONS.',
+    setup(t) { t.obstacles = [makeObstacle('trafficCone', t.spawnX())]; },
   },
   {
     id: 'shield',
     hero: 'lorenzo',
     label: 'SHIELD',
-    legend: [['SPC', 'JUMP'], ['DN', 'DUCK']],
+    legend: [['SPC', 'JUMP'], ['DN', 'SLIDE']],
     brief: () => 'SHIELD CAPSULE. TAKES ONE HIT FOR YOU. PROTECTIVE EQUIPMENT ARRIVES AFTER THE HAZARDS. THAT IS PROCUREMENT.',
     again: () => 'IT WENT PAST. I WILL REQUISITION ANOTHER. THAT IS A FORM. I HAVE ALREADY FILED IT.',
     setup(t) { t.pickups = [makePickup('capShield', t.spawnX(), 10)]; },
@@ -521,7 +497,7 @@ const STEPS = [
     id: 'toaster',
     hero: 'lorenzo',
     label: 'GOLDEN APPLIANCE',
-    legend: [['SPC', 'JUMP'], ['DN', 'DUCK']],
+    legend: [['SPC', 'JUMP'], ['DN', 'SLIDE']],
     brief: () => 'THAT IS A TOASTER. EVERY CABINET HAS ONE HIDDEN IN IT. IT IS OPTIONAL, SO IT IS NOT MY DEPARTMENT.',
     optional: true,
     done: (t) => t.sawToaster,
@@ -535,41 +511,45 @@ const STEPS = [
   {
     id: 'portal1',
     hero: 'lorenzo',
-    tagTo: 'mochi',
+    tagTo: 'kiko',
     label: 'PORTAL TAG',
-    legend: [['SPC', 'JUMP'], ['DN', 'DUCK']],
+    legend: [['SPC', 'JUMP'], ['DN', 'SLIDE']],
     brief: () => 'RUN THROUGH THE PORTAL. DO NOT JUMP IT. SOMEONE JUMPED ONE ONCE. THERE WAS PAPERWORK.',
     again: () => 'OVER IT IS NOT THROUGH IT. I AM REOPENING THE SECTION.',
     setup(t) {
-      t.portal = { x: t.worldX + PLAYER_X + 130, hero: 'mochi', hit: false };
+      t.portal = { x: t.worldX + PLAYER_X + 130, hero: 'kiko', hit: false };
     },
   },
   {
-    // Mochi is the only hero who jumps twice, and she jumps LOW — 57px against
-    // Lorenzo's 89. That is the whole reason the swap happens here: a stack
-    // this tall is one Lorenzo would have strolled over, so the section can
-    // only be completed by the thing it is teaching. Granting a borrowed air
-    // jump to a hero who did not need one taught nothing.
+    // Kiko is the only hero who jumps twice, and she jumps LOW — 57px against
+    // Lorenzo's 89 (Mochi's numbers exactly; the lesson moved to Kiko when
+    // Mochi retired from the roster). That is the whole reason the swap
+    // happens here: a stack this tall is one Lorenzo would have strolled over,
+    // so the section can only be completed by the thing it is teaching.
+    // Granting a borrowed air jump to a hero who did not need one taught
+    // nothing.
     //
     // The portal to B-33P used to be its own section. Merged here so clearing
     // the stack and swapping bodies are one beat: you earn the new body by
     // using the move that belongs to it, and the portal arrives as the reward
     // rather than as a separate task.
     id: 'doublejump',
-    hero: 'mochi',
+    hero: 'kiko',
     tagTo: 'b33p',
     label: 'DOUBLE JUMP',
     legend: [['SPC', 'JUMP x2']],
+    // "AND NOT VERY HIGH" came out of the brief with Mochi: it described a
+    // hero who FLOATS, and Kiko does not.
     brief: (touch) => (touch
-      ? 'MOCHI JUMPS TWICE, AND NOT VERY HIGH. TAP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'
-      : 'MOCHI JUMPS TWICE, AND NOT VERY HIGH. JUMP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'),
+      ? 'KIKO JUMPS TWICE. TAP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'
+      : 'KIKO JUMPS TWICE. JUMP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.'),
     again: () => 'INCOMPLETE. TWICE. IN THE AIR. THE FORM IS SPECIFIC.',
     requires: (t) => t.sawDoubleJump,
     wrongWay: () => 'YOU GOT OVER IT ON ONE. THE SECTION SPECIFIES TWO.',
     // Five crates, not six. Six (66px) was a wall a beginner had to time the
     // second jump well to get over; five (55px) leaves room to be sloppy with
     // it, which is what a section teaching a new input should allow. It sits a
-    // whisker under Mochi's 56.9px single-jump apex, so a frame-perfect single
+    // whisker under Kiko's 56.9px single-jump apex, so a frame-perfect single
     // is *just* possible — and the section says so out loud when it happens
     // ("YOU GOT OVER IT ON ONE"), which is the honest outcome rather than a
     // silent pass for the move it is not teaching.
@@ -815,7 +795,7 @@ export class TutorialState {
     // painter and by the pause path.
     this.useChrome = false;
     this.rng = new Rng(0x7a5c0de);
-    this.sawDuck = false;
+    this.sawPunt = false;
     this.sawDoubleJump = false;
     this.sawShotDown = false;
     this.sawQbox = false;
@@ -1093,11 +1073,11 @@ export class TutorialState {
   }
 
   // What the player was seen doing while the challenge was alongside them.
-  // Sampled continuously rather than tested at the moment it passes: a duck is
-  // released the instant the drone is clear, so reading the flag at pass time
-  // reads it a frame too late.
+  // Set at the moment of the act — the kick fires in tryPunt, the double jump
+  // and the shot on their own frames — and cleared here between attempts so an
+  // earlier try's evidence can never close a later one.
   clearWitness() {
-    this.sawDuck = false;
+    this.sawPunt = false;
     this.sawDoubleJump = false;
     this.sawShotDown = false;
     this.sawQbox = false;
@@ -1219,6 +1199,32 @@ export class TutorialState {
     Audio.sfx('hit');
     if (ob) this.breakObstacle(ob);
     this.floatText(label, '#e04848', true);
+  }
+
+  // The slide kick, exactly as RunState.collide reads it: grounded, mid-slide,
+  // and the slide FRESH — puntPower is spent from the front of the slide
+  // window, so a slide committed late launches the cone and one coasted in on
+  // falls through to the knock. The tutorial must not be more generous than
+  // the cabinets, or the timing it certifies is one the game then rejects.
+  tryPunt(ob) {
+    if (!ob.def.punt) return false;
+    const p = this.player;
+    if (!(p.grounded && p.duckAmount > 0.6)) return false;
+    if (puntPower(p.duckHoldT) <= 0) return false;
+    p.slideKickT = SLIDE_KICK_T;
+    startPunt(ob, this.speed, puntTuneFor(ob));
+    this.sawPunt = true;
+    // The launch cue and a few scuffs in the prop's own colours — run.js's
+    // exact flourish. No breakObstacle: the whole point is it does not come
+    // apart.
+    Audio.sfx('launch', { pitch: 1.15 });
+    shake(0.9, 0.07);
+    if (!this.settings.reducedMotion) {
+      const scuff = (DEBRIS[ob.type] && DEBRIS[ob.type].colors[0]) || '#e86020';
+      burst(ob.x + ob.w / 2, GROUND_Y - ob.h * 0.3, 6, 70, 0.28, scuff, 1, 220,
+        () => this.rng.float());
+    }
+    return true;
   }
 
   breakObstacle(ob) {
@@ -1607,6 +1613,8 @@ export class TutorialState {
     const pbox = this.playerBox();
     for (const ob of this.obstacles) {
       if (!ob.live) continue;
+      // A punted prop never hurts you — same contract as a run. It has left.
+      if (ob.punted) continue;
       if (overlaps(pbox, entityBox(ob, GROUND_Y))) return ob;
     }
     return null;
@@ -1697,7 +1705,6 @@ export class TutorialState {
     }
     if (Input.pressed('ability')) this.useAbility();
     this.player.update(dt, Input, { speed: this.speed, gravityScale: 1, ice: false });
-    if (this.player.duckAmount > 0.35) this.sawDuck = true;
     this.grantChargeGrace();
     this.updateCamera(dt);
 
@@ -2028,6 +2035,13 @@ export class TutorialState {
   }
 
   updateEntities(dt) {
+    // A punted cone owns its own flight — stepPunt integrates position, arc
+    // and tumble exactly as run.js does. Retired ones keep flying too: the
+    // section usually passes while the cone is still airborne (it resolves at
+    // the crossover, mid-arc), and a kick whose payoff froze at the moment of
+    // grading would be the module confiscating its own reward.
+    for (const ob of this.obstacles) if (ob.punted) stepPunt(ob, dt);
+    for (const ob of this.retiredObstacles) if (ob.punted) stepPunt(ob, dt);
     for (const pu of this.pickups) {
       if (!pu.live) continue;
       // Tossed coins arc out of a popped box and settle on the ground, exactly
@@ -2195,7 +2209,9 @@ export class TutorialState {
     if (hit) {
       // Targets are objectives, not hazards — running into one opens it.
       if (hit.def.isTarget) this.popQbox(hit);
-      else { this.knock(hit); this.reopenStep(false); return; }
+      // A puntable prop met mid-slide with the window still open LEAVES —
+      // that is the section, not a collision.
+      else if (!this.tryPunt(hit)) { this.knock(hit); this.reopenStep(false); return; }
     }
 
     if (this.portal) {

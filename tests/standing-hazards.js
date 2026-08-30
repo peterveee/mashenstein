@@ -97,10 +97,106 @@ assert(carries('plumber', 'popSpikes') && carries('plumber', 'floorSaw'),
 assert(carries('crypt', 'brazier'), 'Crypt gets the brazier: the dark cabinet gets the lit hazard');
 assert(carries('speed', 'fireBarrel'), 'Speed gets the drum fire, beside its puntable cones');
 assert(carries('office', 'fireBarrel'), 'Corporate gets the bin fire');
+// The Act I spread: the floor hazards stopped being one cabinet's private
+// vocabulary. Each line here is a variety decision — losing one narrows a
+// stage back down to the bag it had before the rebalance.
+assert(carries('speed', 'popSpikes') && carries('speed', 'floorSaw'),
+  'Speed carries both floor traps too — the road lies at ankle height on every Act I cabinet');
+assert(carries('speed', 'campfire'), 'Speed gives the campfire its second home');
+assert(carries('plumber', 'fireBarrel'), 'Plumber gets the drum fire back from Speed');
+assert(carries('neon', 'popSpikes') && carries('neon', 'floorSaw') && carries('neon', 'fireBarrel'),
+  'Neon owns ground reads of its own — its bag is not just the air');
+assert(carries('speed', 'dogBruiser') && carries('neon', 'dogBruiser') && carries('cardboard', 'dogBruiser'),
+  'the bruiser — the slow closer — finally appears in a pattern (Speed, Neon, Cardboard)');
+// The Act II/III spread: floor hazards stop being an Act I vocabulary. Frost
+// gets spikes and a campfire, Crypt and Rhythm and Cardboard each get the saw,
+// and Rhythm — which used to filter out every BASE tier-2 row — now deals a
+// barrel like everyone else.
+assert(carries('frost', 'popSpikes') && carries('frost', 'campfire'),
+  'Frost reads the road at ankle height and owns one warm thing');
+assert(carries('crypt', 'floorSaw') && carries('rhythm', 'floorSaw') && carries('cardboard', 'floorSaw'),
+  'the saw spins in the crypt, the LCD lane and the kingdom');
+assert(carries('rhythm', 'barrel'),
+  'Rhythm deals the barrel — it was the only cabinet in the game that never did');
+assert(carries('rhythm', 'beatBar')
+  && CABINETS.find((c) => c.id === 'rhythm').patterns.some((p) => p.tier === 0 && p.cells.some((c) => c.t === 'beatBar')),
+  'the beat prop is taught at tier 0 — the signature is not a stage-3 secret');
 // Each one is introduced somewhere a first run will actually meet it.
 for (const id of HAZARDS) {
   const early = CABINETS.some((cab) => cab.patterns.some((p) => p.tier <= 1 && p.cells.some((c) => c.t === id)));
   assert(early, `${id} appears at tier 1 or below somewhere, so a first run meets it`);
+}
+
+// --- the boom barrier ------------------------------------------------------
+// Act I's ground-anchored duck. Not one of the five standing hazards — its box
+// FLIES (fixed alt, no ground flag) even though its art stands on a post — so
+// it takes their contract with two clauses swapped: no propTall (the overhang
+// draw branch hands the painter the whole structure), and `action: 'duck'`.
+{
+  const bar = OBSTACLES.boomBarrier;
+  const drone = OBSTACLES.drone;
+  assert(!!bar, 'boomBarrier is a registered obstacle');
+  assert(bar.action === 'duck', 'the barrier is cleared by ducking');
+  assert(!bar.ground, 'the barrier\'s box is NOT a ground def — a ground-standing duckable '
+    + 'would falsify the "roll always clears duckables" shortcut in RunState.collide');
+  assert(bar.alt === drone.alt,
+    `the arm's underside sits exactly at the drone's (${bar.alt}) — one duck read, two hazards`);
+  assert(bar.overhang === true, 'the barrier declares the overhang draw branch');
+  assert(bar.armored === true, 'pellets spark off the arm the way they do a drone');
+  assert(bar.breakable === false, 'nothing removes a barrier: the duck is the only answer');
+  assert(!bar.punt && !bar.slip && !bar.roll && !bar.falls && !bar.shoots && !bar.bob,
+    'the barrier is a structure: it does not move, shoot, slip or bob');
+  assert(!DEBRIS.boomBarrier, 'no debris for a thing that never breaks');
+  assert(hasProp('boomBarrier'), 'the barrier has a vector painter');
+  assert(propDetailScale('boomBarrier') === 2, 'authored at double internal detail');
+  assert(propHazardRim('boomBarrier') === false,
+    'the barrier outlines itself — the overhang branch bypasses the shared rim anyway');
+  assert(propTall('boomBarrier') === 1,
+    'no propTall: the overhang branch already hands the painter the full structure height');
+  const n = propFrames('boomBarrier');
+  assert(n > 1, `the beacon breathes (${n} frames)`);
+  const artH = bar.alt + bar.h + 3; // the height the overhang branch draws at
+  const a = framePixels('boomBarrier', bar.w + 4, artH, 0);
+  const b = framePixels('boomBarrier', bar.w + 4, artH, n);
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
+  assert(diff === 0, `the barrier's ring closes: frame 0 and frame ${n} are identical`);
+  assert(carries('speed', 'boomBarrier') && carries('neon', 'boomBarrier')
+    && carries('plumber', 'boomBarrier'),
+    'all three Act I cabinets deal the barrier — the duck stops being drone-only');
+  assert(carries('frost', 'boomBarrier') && carries('rhythm', 'boomBarrier')
+    && carries('cardboard', 'boomBarrier') && carries('office', 'boomBarrier'),
+    'and the barrier travels on — ski gate, crossing gate, toll gate, car park');
+}
+
+// --- authored altitudes ----------------------------------------------------
+// `cell.y` is LIVE for `action: 'none'` flyers only (see the altitude note in
+// Spawner.fill). Two contracts follow, and both are the kind an edit elsewhere
+// breaks silently:
+//   1. a `duck` flyer's cell must not carry a y — its altitude is the duck
+//      contract, and for years dead y values on drones claimed otherwise;
+//   2. a prize/target cell's y must keep the box reachable: its bottom under
+//      the worst hero's head at apex, or the pattern deals a prize nobody can
+//      touch (the old triple-qcrate y:70 did exactly that, silently saved by
+//      the y being dead).
+{
+  const { PLAYER_H } = await import('../src/game/player.js');
+  const reach = worstJumpApex() + PLAYER_H;
+  for (const cab of CABINETS) {
+    for (const pat of cab.patterns) {
+      for (const cell of pat.cells) {
+        const def = OBSTACLES[cell.t];
+        if (!def || cell.y == null) continue;
+        assert(!def.ground, `${cab.id}: y on '${cell.t}' — a ground prop cannot carry an altitude`);
+        assert(def.action === 'none',
+          `${cab.id}: y on '${cell.t}' — a ${def.action} flyer's altitude is its contract, not authorable`);
+        if (def.isTarget || def.qbox) {
+          assert(cell.y < reach,
+            `${cab.id}: '${cell.t}' at y ${cell.y} stays under the worst hero's ${reach.toFixed(0)}px reach`);
+        }
+      }
+    }
+  }
 }
 
 // --- the green cactus ------------------------------------------------------

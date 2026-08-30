@@ -293,6 +293,12 @@ const suites = [
   'tests/frame-health.js',
   'tests/camera-framing.js',
   'tests/routes.js',
+  // The set piece built out of them: four jumps over a spiked break on three
+  // island stones. Beside the routes suite because the stones ARE routes — what
+  // it adds is the half no cabinet road has, which is a landing that can be
+  // overshot, and therefore a claim about every hero's arc rather than about
+  // the geometry alone.
+  'tests/spike-crossing.js',
   'tests/loop.js',
   'tests/rewind-pooling.js',
   'tests/art-warmup.js',

@@ -25,7 +25,7 @@ const GUIDE_ICON_SIZES = {
   tombstone: [11, 8], zombieWalk: [10, 14], resident: [10, 12], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
-  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7],
+  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], capRewind: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
   // Standing hazards. Each is its def box times PROP_TALL, rounded — the guide
   // has to show the art the lane shows, and for these the art is mostly the
@@ -114,6 +114,12 @@ function drawParadeAccent(ctx, id, x, feetY, p) {
     ctx.beginPath(); ctx.arc(x + 13, feetY - 18, 1.3, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#f2c14e';
     ctx.fillRect(x + 17, feetY - 23, 1, 1); ctx.fillRect(x + 16, feetY - 15, 1, 1);
+  } else if (id === 'clara') {
+    // The muzzle flash off her drawn pistol, in her own brass — a short flash
+    // bar and two sparks, pixel marks like the rest of the row.
+    ctx.fillStyle = '#ffd27a';
+    ctx.fillRect(x + 12, feetY - 18, 4, 1); ctx.fillRect(x + 14, feetY - 20, 1, 5);
+    ctx.fillRect(x + 18, feetY - 16, 1, 1);
   } else if (id === 'raymn') {
     ctx.strokeStyle = '#f6d33c'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(x + 14, feetY - 18, 5, -1.1, 0.8); ctx.stroke();
@@ -1312,7 +1318,7 @@ function titleScene(ctx, t, reduced, poke, frightStart, eaten, scatter, wispsDis
 // Shuffled each time we enter the title so the cast doesn't always cross in the
 // same order. Mutated in place (Fisher-Yates) so every reader that indexes into
 // it — the parade draw, heroX, the invader strike — stays in agreement.
-const HERO_PARADE = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'kiko', 'raymn', 'grumpos'];
+const HERO_PARADE = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
 function shuffleParade() {
   for (let i = HERO_PARADE.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -2506,13 +2512,15 @@ export class IntroState {
       // box gets them to 78 — three times the original, on the one screen whose
       // entire job is introducing them. A row also says "a line-up" in a way a
       // block of four-by-two does not, which is what these two panels are about.
-      const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'kiko', 'raymn', 'grumpos'];
+      const heroes = ['lorenzo', 'gnash', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos'];
       // Pitch comes from the LIVE frame width, so the line-up spreads as the
       // frame opens instead of sitting at a fixed spacing inside a moving box.
-      // 64 rather than 72: chompo's flame trail and mochi's ears are far wider
-      // than 0.6x their height, so the pair that touches is not the pair the
-      // pitch maths predicts. Eight units off every hero clears it without the
-      // row visibly shrinking.
+      // 64 rather than 72, tuned when this row held chompo's flame trail and
+      // mochi's ears — both far wider than 0.6x their height, so the pair that
+      // touched was not the pair the pitch maths predicted. Both have since
+      // left the row (Clara is no wider than the humanoids around her), so 64
+      // is now margin rather than necessity; kept, because eight units off
+      // every hero costs nothing visible.
       //
       // The 72 is the END INSET, and it is a silhouette measurement, not half a
       // hero box: it is the room the outermost hero's actual ink needs inside
@@ -3316,15 +3324,15 @@ const GUIDE_PAGES = [
     ],
   },
   {
-    title: 'HAZARDS: AIRBORNE + WEIRD', color: '#e04848', hint: 'RED = AVOID. DUCK OR DODGE THESE.',
+    title: 'HAZARDS: AIRBORNE + WEIRD', color: '#e04848', hint: 'RED = AVOID. SLIDE UNDER OR DODGE THESE.',
     rows: [
-      { s: 'drone', name: 'DRONE', desc: 'FLIES LOW. DUCK; FERNWICK CAN SHIELD-ROLL.' },
+      { s: 'drone', name: 'DRONE', desc: 'FLIES LOW. SLIDE; FERNWICK CAN SHIELD-ROLL.' },
       { s: 'drone', name: 'SHOOTER DRONE', desc: 'STAYS HIGH. DODGE ITS SHOTS INSTEAD.' },
       { s: '_shot', name: 'ENEMY SHOT', desc: 'RED MEANS DODGE. YELLOW MEANS ABOUT TO FIRE.' },
       { s: 'buzzbird', name: 'BUZZBIRD', desc: 'MID-AIR MENACE. DO NOT JUMP INTO IT.' },
       { s: 'icicle', name: 'ICICLE', desc: 'FALLS WHEN YOU GET CLOSE. WATCH ITS SHADOW.' },
       { s: '_beatBar', name: 'BEAT BAR', desc: 'POPS UP ON THE BEAT. JUMP ON TIME.' },
-      { s: '_paper', name: 'PAPERWORK', desc: 'FLIES LOW. DUCK. DO NOT SIGN IT.' },
+      { s: '_paper', name: 'PAPERWORK', desc: 'FLIES LOW. SLIDE. DO NOT SIGN IT.' },
       { s: 'cardboardMonster', name: 'BOX MONSTER', desc: 'CARDBOARD. STILL COUNTS. JUMP IT.' },
     ],
   },
@@ -3349,11 +3357,12 @@ const GUIDE_PAGES = [
       { s: 'capShield', name: 'SHIELD', desc: 'ABSORBS ONE HIT. POLITELY.' },
       { s: 'capMagnet', name: 'MAGNET', desc: 'PULLS NEARBY COINS TO YOU.' },
       { s: 'capStar', name: 'STAR', desc: 'SCORE MULTIPLIER. YES, IT LOOKS LIKE A TARGET.' },
-      { s: 'capAirJump', name: 'AIR JUMP', desc: 'ONE EXTRA AIR-JUMP. STACKS WITH MOCHI AND THE CAPE.' },
+      { s: 'capAirJump', name: 'AIR JUMP', desc: 'ONE EXTRA AIR-JUMP. STACKS WITH KIKO AND THE CAPE.' },
       { s: 'capSpeed', name: 'SPEED BURST', desc: 'RUNS FASTER. THE SCENERY OBJECTS.' },
       { s: 'capLowGrav', name: 'LOW GRAVITY', desc: 'YOUR JUMPS GET BIGGER. PHYSICS FILES A COMPLAINT.' },
       { s: 'capUnpeel', name: 'UNPEELABLE', desc: 'RARE. HITS BOUNCE OFF. PITS STILL DO NOT CARE.' },
       { s: 'capRelay', name: 'RELAY BATON', desc: 'VERY RARE. BANKS ONE SUPERCHARGED POWER. SPEND IT WELL.' },
+      { s: 'capRewind', name: 'REWIND', desc: 'RARE. YOUR NEXT MISTAKE UNDOES ITSELF. EVEN A PIT.' },
     ],
   },
   {
@@ -3743,7 +3752,10 @@ export class SoundTestState {
   openTrack(i) {
     const tr = this.tracks[i];
     if (!tr) { Audio.setBank(null); return; }
-    Audio.setBank(tr.bank, tr.mix, tr.arrangement);
+    // Sound Test is a listening surface: always play the first bar on the first pass,
+    // even when gameplay normally skips into a song at its authored start marker.
+    // Its repeat region stays armed, so only the initial entry differs.
+    Audio.setBank(tr.bank, tr.mix, tr.arrangement, { startAtBeginning: true });
   }
 
   maxListStart() { return Math.max(0, this.tracks.length - this.visibleRows); }
@@ -4113,10 +4125,13 @@ export class HowToPlayState {
     // A phone gets the gestures, a keyboard gets the keys, nobody gets both.
     const touch = Input.isTouchDevice();
     line('JUMP', touch ? 'TAP. HOLD FOR HIGHER.' : 'SPACE / W / UP. HOLD FOR HIGHER.');
-    line('DUCK', touch ? 'SWIPE DOWN AND HOLD.' : 'S / DOWN. HOLD IT.');
+    line('POWER SLIDE', touch ? 'SWIPE DOWN AND HOLD. KICKS CONES AND BARRELS.' : 'S / DOWN. HOLD IT. KICKS CONES AND BARRELS.');
     line('HERO POWER', touch ? 'THE PWR BUTTON, OR SWIPE RIGHT.' : 'RIGHT / D. X / SHIFT TOO.');
     line('PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8');
     line('RELAY BATON', 'VERY RARE CAPSULE. BANKS ONE SUPERCHARGED POWER.', '#48e0c8');
+    // No control row of its own, deliberately: there is nothing to press.
+    line('REWIND', touch ? 'RARE CAPSULE. YOUR NEXT MISTAKE UNDOES ITSELF.'
+      : 'RARE CAPSULE. YOUR NEXT MISTAKE UNDOES ITSELF. (HOLD LEFT / A TO SCRUB ANY TIME.)', '#48e0c8');
     y += 4;
     line('MISSION', 'FINISH IT TO WIN THE STAGE. EARNS A PLUG.', '#f890b8');
     line('CHALLENGE', 'OPTIONAL. ANOTHER PLUG. NO PRESSURE. SOME PRESSURE.', '#f890b8');
@@ -4128,7 +4143,7 @@ export class HowToPlayState {
     line('BREAKER BOX', `WIN IT: BONUS POWERUP. ${touch ? 'TAP SKIP' : 'ESC OR SKIP'} TO BAIL OUT.`, '#f890b8');
     y += 4;
     line('PAUSE / MUTE', touch ? 'THE PAUSE BUTTON. EXIT TO FOOD COURT QUITS.' : 'P OR ESC / M. ESC AGAIN QUITS.');
-    drawTextCentered(ctx, 'JUMP RED HAZARDS. DUCK THE DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
+    drawTextCentered(ctx, 'JUMP RED HAZARDS. SLIDE UNDER DRONES. MIND THE GAPS.', W / 2, y + 6, '#d84828');
     drawTextCentered(ctx, `${confirmVerb()}: BACK`, W / 2, H - 16, '#5a5a68');
   }
 }

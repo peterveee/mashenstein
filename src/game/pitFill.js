@@ -37,6 +37,17 @@
 // to be the same one, or he sinks into thin air.
 export const PIT_FLOOR = 0.32;
 
+// HOW HIGH THE TEETH REACH, as a fraction of the apron — measured from the
+// groundline down, so a SMALLER number is a taller spike.
+//
+// Just under the lip, and deliberately not level with it. Tips flush with the
+// road would be a line, and a line is what the broken edge of the ground
+// already draws; a hand's breadth of shadow above them is what says these are
+// standing IN a hole rather than lying on a floor. It is also the altitude a
+// falling hero stops at (SPIKE_SURFACE_Y in game/run.js), which is the other
+// reason it cannot drift: he lands on the tips the art draws, or on nothing.
+export const SPIKE_TIPS = 0.13;
+
 const TAU = Math.PI * 2;
 
 function ellipse(ctx, cx, cy, rx, ry, fill, alpha = 1) {
@@ -96,7 +107,198 @@ function tar(ctx, w, d, t) {
   }
 }
 
-const FILLS = { tar };
+// Shared bits for the ported bake-off painters. `poly` is the sheet's `path`
+// helper trimmed to what these three use; the glow and ember helpers keep the
+// sheet's shapes but everything above the groundline is gone — drawPitFill
+// clips at y = 0, so the sheet's SPILL device (light thrown onto the road)
+// cannot survive the port and is dropped rather than half-drawn.
+function poly(ctx, fill, stroke, width, fn) {
+  ctx.beginPath();
+  fn(ctx);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = width; ctx.stroke(); }
+}
+function glowUp(ctx, w, surf, span, color, alpha) {
+  const top = Math.max(0, surf - span);
+  if (surf <= top) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = alpha;
+  const g = ctx.createLinearGradient(0, surf, 0, top);
+  g.addColorStop(0, color);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, top, w, surf - top);
+  ctx.restore();
+}
+
+// OPEN AIR — candidate A, and free. Nothing but grit falling off the broken
+// edges: the minimum motion that says the hole is real and still coming apart.
+// Cardboard's pick on purpose — a kingdom whose castle is four inches tall gets
+// a hole that is honestly just a hole cut out of the set.
+function voidFill(ctx, w, d, t) {
+  for (let i = 0; i < 4; i++) {
+    const p = (t * 0.5 + i * 0.29) % 1;
+    const x = w * (i % 2 ? 0.08 : 0.9) + Math.sin(i * 3) * w * 0.02;
+    ctx.save();
+    ctx.globalAlpha = 0.55 * (1 - p * 0.7);
+    ctx.fillStyle = '#2a2c36';
+    ctx.fillRect(x, d * 0.05 + p * d * 0.9, Math.max(0.25, w * 0.012), Math.max(0.25, w * 0.022));
+    ctx.restore();
+  }
+}
+
+// MOLTEN CHANNEL — candidate B, ported for Speed's collapsing road. The one
+// fill that throws light: the glow climbs the break toward the groundline, so
+// the mouth reads hot even while the material sits below the fold. Two value
+// steps instead of a gradient (a gradient collapses into one beige band at
+// lane size), crust plates so it is a material and not a lamp. The sheet's
+// road-spill and haze do not survive the y=0 clip and are dropped.
+function lava(ctx, w, d, t) {
+  const surf = d * PIT_FLOOR;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, surf - d * 0.06, w, d - surf + d * 0.06); ctx.clip();
+  poly(ctx, '#f2621d', null, 0, (p) => {
+    p.moveTo(0, surf);
+    for (let i = 0; i <= 8; i++) p.lineTo(w * (i / 8), surf + Math.sin(t * 1.6 + i * 0.9) * d * 0.018);
+    p.lineTo(w, d); p.lineTo(0, d); p.closePath();
+  });
+  ctx.save(); ctx.globalAlpha = 0.8;
+  for (let i = 0; i < 4; i++) {
+    const k = 0.5 + 0.5 * Math.sin(t * 2.2 + i * 1.6);
+    ctx.fillStyle = k > 0.6 ? '#ffef9e' : '#ffb02e';
+    ctx.beginPath();
+    ctx.ellipse(w * (0.16 + i * 0.23), surf + d * (0.13 + 0.04 * k), w * 0.1, d * 0.055 * (0.6 + k), 0, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+  for (let i = 0; i < 3; i++) {
+    const x = ((t * 3.5 + i * w * 0.42) % (w * 1.3)) - w * 0.15;
+    poly(ctx, '#40201a', '#6d2410', Math.max(0.12, w * 0.008), (p) => {
+      p.moveTo(x, surf + d * 0.03); p.lineTo(x + w * 0.16, surf + d * 0.01);
+      p.lineTo(x + w * 0.2, surf + d * 0.09); p.lineTo(x + w * 0.03, surf + d * 0.1); p.closePath();
+    });
+  }
+  ctx.restore();
+  glowUp(ctx, w, surf, d * 0.38, 'rgba(255,120,30,1)', 0.34);
+  // Embers off the melt. They rise past the groundline and the clip eats them
+  // there, which is fine — they have faded to nearly nothing by then anyway.
+  for (let i = 0; i < 5; i++) {
+    const p = (t * 0.4 + i / 5) % 1;
+    const ex = w * (0.12 + ((i * 0.37) % 0.76)) + Math.sin(i * 2.1 + p * 4.6) * w * 0.05;
+    const er = w * 0.016 * (1 - p * 0.5);
+    ellipse(ctx, ex, d * 0.4 - p * d * 0.8, er, er, '#ffca55', Math.max(0, 1 - p) * 0.85);
+  }
+}
+
+// BLACK SLUSH — candidate H, Frost's. Black water, pale floes with dark
+// undersides at the waterline, and cold vapour that DRIFTS rather than rises —
+// the frost cabinet's whole idiom is slow, and a fast plume would read as
+// steam and therefore hot.
+function slush(ctx, w, d, t) {
+  const surf = d * PIT_FLOOR;
+  poly(ctx, '#0d2334', null, 0, (p) => {
+    p.moveTo(0, surf);
+    for (let i = 0; i <= 6; i++) p.lineTo(w * (i / 6), surf + Math.sin(t * 1.1 + i * 1.2) * d * 0.01);
+    p.lineTo(w, d); p.lineTo(0, d); p.closePath();
+  });
+  ellipse(ctx, w * 0.46, surf + d * 0.09, w * 0.28, d * 0.03, '#79b6d8', 0.22);
+  for (let i = 0; i < 3; i++) {
+    const x = ((t * 1.6 + i * w * 0.4) % (w * 1.2)) - w * 0.12;
+    poly(ctx, '#2b5b74', null, 0, (p) => {
+      p.moveTo(x, surf + d * 0.02); p.lineTo(x + w * 0.17, surf + d * 0.005);
+      p.lineTo(x + w * 0.15, surf + d * 0.07); p.lineTo(x + w * 0.02, surf + d * 0.075); p.closePath();
+    });
+    poly(ctx, '#cfe9f5', '#7ba8c0', Math.max(0.1, w * 0.007), (p) => {
+      p.moveTo(x, surf + d * 0.02); p.lineTo(x + w * 0.16, surf - d * 0.005);
+      p.lineTo(x + w * 0.17, surf + d * 0.005); p.lineTo(x + w * 0.005, surf + d * 0.03); p.closePath();
+    });
+  }
+  for (let i = 0; i < 3; i++) {
+    const p = (t * 0.22 + i * 0.34) % 1;
+    const vr = w * (0.05 + 0.1 * p);
+    ellipse(ctx, w * (0.25 + i * 0.26) + p * w * 0.1, Math.max(0, surf - p * d * 0.3),
+      vr, vr, '#cfe9f5', 0.2 * (1 - p));
+  }
+}
+
+// IRON TEETH — the crossing's material, and the only fill in the set that is
+// not a liquid.
+//
+// The other three are things you sink into, which is why they are painted as a
+// surface with weather on it. A spike bed has no surface: it is a row of
+// objects, and everything it has to say it says with silhouette — which is
+// lucky, because it says it at lane size, from the road, standing still, with
+// no glow and no animation to lean on. A player who has never seen this hole
+// before has to know from one glance that it is not a hole to land in.
+//
+// Fixed PITCH rather than a fixed count. A crossing is several hundred pixels
+// wide and an ordinary pit is sixty, and teeth that divided the width would be
+// railings on one and a comb on the other. Nine pixels puts a tooth roughly
+// every hero-width, so the bed reads the same in both.
+function spikes(ctx, w, d, t) {
+  const surf = d * PIT_FLOOR;
+  const tip = d * SPIKE_TIPS;
+  // The floor they are bolted to. Dark and DRY — a value or two above the tar,
+  // with none of its sheen, because the one thing this must not read as is
+  // liquid with something floating in it.
+  ctx.fillStyle = '#1a1820';
+  ctx.fillRect(0, surf - d * 0.02, w, d - surf + d * 0.02);
+  const pitch = 9;
+  const n = Math.max(2, Math.round(w / pitch));
+  const step = w / n;
+  const half = step * 0.42;
+  for (let i = 0; i < n; i++) {
+    const cx = step * (i + 0.5);
+    // Alternating heights, and the short ones are not decoration: a row of
+    // identical teeth reads as a texture and a ragged one reads as a thing that
+    // has been used. The long ones are the ones the eye measures the gap by.
+    const long = i % 2 === 0;
+    const top = long ? tip : tip + d * 0.09;
+    // Two facets, split down the spine: steel catches the light on one side of
+    // a point and is in its own shadow on the other, and drawing the pair is
+    // the whole of why these read as metal rather than as grey triangles.
+    ctx.fillStyle = '#96a3b1';
+    ctx.beginPath();
+    ctx.moveTo(cx, top);
+    ctx.lineTo(cx - half, surf + d * 0.02);
+    ctx.lineTo(cx, surf + d * 0.02);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#4a5460';
+    ctx.beginPath();
+    ctx.moveTo(cx, top);
+    ctx.lineTo(cx + half, surf + d * 0.02);
+    ctx.lineTo(cx, surf + d * 0.02);
+    ctx.closePath();
+    ctx.fill();
+    // The point itself, kept pale against both facets. At this size a tooth is
+    // four pixels of triangle and the tip is one of them, so it is drawn rather
+    // than left to the fill to imply.
+    ctx.fillStyle = '#e4eaf1';
+    ctx.beginPath();
+    ctx.moveTo(cx, top);
+    ctx.lineTo(cx - half * 0.3, top + d * 0.05);
+    ctx.lineTo(cx + half * 0.3, top + d * 0.05);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // ONE glint, travelling. The bed is otherwise still, and a hazard with no
+  // motion at all falls out of the eye's attention on a scrolling screen — but
+  // teeth do not bubble or flicker, so what moves is the LIGHT on them, once
+  // across the row, slowly, the way a highlight crosses a knife.
+  const p = (t * 0.22) % 1.6;
+  const gx = -w * 0.1 + p * w * 0.75;
+  if (gx > -w * 0.05 && gx < w * 1.05) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.5;
+    ellipse(ctx, gx, tip + d * 0.03, Math.max(0.5, w * 0.012), d * 0.05, '#ffffff');
+    ctx.restore();
+  }
+}
+
+const FILLS = { tar, void: voidFill, lava, slush, spikes };
 
 /**
  * Paint one pit's material. `x`/`y0` are the screen position of the break's

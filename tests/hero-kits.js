@@ -88,7 +88,7 @@ run.collide();
 assert(!crate.live && run.player.stumbleT > 0 && !run.player.rolling, 'Shield Bash breaks one ground hazard and ends in a stumble');
 
 // Every hero definition is now active and Tune-Up applies through shared cooldown setup.
-for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'mochi', 'kiko', 'raymn', 'grumpos']) {
+for (const id of ['lorenzo', 'gnash', 'fernwick', 'b33p', 'clara', 'kiko', 'raymn', 'grumpos']) {
   run.relay.current = id;
   run.player.setHero(id);
   assert(!!run.player.hero.ability, `${id} has an active power definition`);
@@ -117,17 +117,26 @@ assert(run.player.dashT > 0, 'Gnash power starts the spin dash');
 selectHero('b33p'); run.useAbility();
 assert(run.projectiles.some((p) => p.type === 'pellet'), 'B-33P power fires a pellet');
 
-selectHero('mochi'); run.useAbility();
-assert(run.player.compressT === 1 && run.player.hitH < 14, 'Mochi power compresses the hitbox');
-
 selectHero('kiko'); run.useAbility();
 const shot = run.projectiles.find((p) => p.type === 'pellet');
 assert(!!shot, 'Kiko power fires a warning shot');
-// The two shooters are told apart by DATA on the hero row, not by an id check
-// downstream: hers is slower and fatter than B-33P's, and it carries her id so
-// the impact plays her burst and the renderer finds her ki blue.
+// The three shooters are told apart by DATA on the hero row, not by an id
+// check downstream: Kiko's is slower and fatter than B-33P's, and it carries
+// her id so the impact plays her burst and the renderer finds her ki blue.
 assert(shot.size > 1 && shot.vx < run.speed + 260,
   "the warning shot is fatter and slower than B-33P's lemon");
+
+selectHero('clara'); run.useAbility();
+const slugs = run.projectiles.filter((p) => p.type === 'pellet');
+// Two pistols, so the ordinary pull is a PAIR: shotBurst on the row, a fixed
+// 16px stagger, same vx so the gap holds in flight.
+assert(slugs.length === 2 && slugs[0].x - slugs[1].x === 16 && slugs[0].vx === slugs[1].vx,
+  'Clara power fires a double-tap pair of slugs');
+// Same data seam, third weapon: the fastest and smallest of the three, and it
+// carries her id so the impact plays her ricochet and the renderer finds her
+// brass tracer.
+assert(slugs.every((s) => s.size < 1 && s.vx > run.speed + 260 && s.contactHero === 'clara'),
+  "the pistol slugs are smaller and faster than B-33P's lemon");
 assert(shot.contactHero === 'kiko', 'the warning shot knows who fired it');
 let shotDrawError = null;
 try { run.draw(document.createElement('canvas').getContext('2d')); } catch (err) { shotDrawError = err; }

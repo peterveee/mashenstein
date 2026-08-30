@@ -3,7 +3,7 @@
 // press/release, and never touches Input.activity — so attract mode can tell
 // the bot from a human.
 import { Input } from '../engine/input.js';
-import { PLAYER_X } from './player.js';
+import { PLAYER_X, airtimeFor } from './player.js';
 
 export class DemoBot {
   constructor(run) {
@@ -47,10 +47,44 @@ export class DemoBot {
     const copter = run.mission && run.mission.type === 'chase' ? run.copter : null;
     const chaseJump = copter && copter.cooldown <= 0 && (copter.x - px) < 70 && (copter.x - px) > -10;
 
+    // A STEPPING-STONE CROSSING, which the lane's own rule cannot play.
+    //
+    // Everywhere else "jump when the hazard is a third of a second away" is
+    // enough, because the landing is a lane: any arc that clears the thing is a
+    // good arc. On a crossing the landing is a stone, so an arc can be too LONG
+    // as easily as too short — and the cast's airtimes differ by half again, so
+    // there is no one moment to press at. The bot does what the player does:
+    // aims at the middle of the next stone, and takes off at the point its own
+    // arc lands there.
+    //
+    // It also has to override the lane rule rather than sit beside it. The
+    // break is a gap obstacle like any other, so the ordinary reaction window
+    // would fire at the lip — the one takeoff point that throws the longer
+    // jumpers clean over the first stone.
+    const stone = run.route && run.route.crossing ? run.route : null;
+    const ahead = stone ? null : run.obstacles.find((ob) => ob.live && ob.crossing
+      && ob.x + ob.w > px && ob.x - px < sp * 0.9);
+    const crossing = stone ? stone.crossing : (ahead ? ahead.crossing : null);
+    let crossJump = false;
+    if (crossing && run.player.grounded) {
+      const hero = run.player.hero;
+      const span = (hero ? airtimeFor(hero) : 0.55) * sp;
+      // The edge he leaves from: the far end of the stone he is on, or the near
+      // lip of the break he is running at.
+      const edge = stone ? stone.x + stone.w : crossing.x;
+      const next = crossing.stones.find((st) => st.x >= edge - 1);
+      // Past the last stone the landing is the lane again, and a little way
+      // onto it — the far lip is the one place on a crossing where landing
+      // short is landing in the hole.
+      const target = next ? next.x + next.w / 2 : crossing.x + crossing.w + 14;
+      crossJump = px + span >= target;
+    }
+
     // jump: speed-scaled reaction window, held through the arc
     if (!run.player.grounded) {
       // keep holding — releasing early cuts the jump short
-    } else if ((nearest && nearest.def.action === 'jump' && (nearest.x - px) < sp * 0.3 && (nearest.x - px) > -8) || grab || chaseJump) {
+    } else if (crossing ? crossJump
+      : ((nearest && nearest.def.action === 'jump' && (nearest.x - px) < sp * 0.3 && (nearest.x - px) > -8) || grab || chaseJump)) {
       if (!this.jumpHold) { Input.press('jump'); this.jumpHold = true; }
     } else if (this.jumpHold) {
       Input.release('jump');

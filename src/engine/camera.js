@@ -53,10 +53,10 @@ export const ZOOM_MIN = 1.3;
 // the game changed the scale of the world on the way up and changed it back on
 // the way down.
 //
-// It is sized off the JUMP now. The highest anyone gets is 168px — a 1.10
-// jumpMult, doubled, with the air-jump power-up on top — and holding that at
-// the resting zoom takes (168 + HERO_HEIGHT + HEAD_MARGIN) * ZOOM - GROUND_Y =
-// 92px of crane. So the crane covers everything anyone can actually jump and
+// It is sized off the JUMP now. The highest anyone gets is 185px — Clara's
+// 1.15 jumpMult with two air jumps stacked on top — and holding that at
+// the resting zoom takes (185 + HERO_HEIGHT + HEAD_MARGIN) * ZOOM - GROUND_Y
+// of crane. So the crane covers everything anyone can actually jump and
 // the zoom becomes a backstop ordinary play never reaches.
 //
 // What it costs is the old promise: past 135px of altitude the groundline now
@@ -69,9 +69,11 @@ const HEAD_MARGIN = 10;
 // Drawn hero height (draw.js HERO_DRAW_H). Duplicated rather than imported so
 // the engine layer does not reach up into game code for one number.
 const HERO_HEIGHT = 24;
-// The highest a hero ever gets: a 1.10 jumpMult, doubled, with the air-jump
-// power-up on top. Everything above is arithmetic off this one number.
-const MAX_HERO_ALT = 168;
+// The highest a hero ever gets: the roster's top jumpMult with two air jumps
+// stacked on it (capsule plus cape). Was 168 — Lorenzo's 1.10 — until Clara's
+// cliffhanger jump took the top slot at 1.15; her stack measures 184.0px.
+// Everything above is arithmetic off this one number.
+const MAX_HERO_ALT = 185;
 // Enough crane to hold that at a given magnification, and not a pixel of zoom.
 const craneFor = (z) => Math.ceil((MAX_HERO_ALT + HERO_HEIGHT + HEAD_MARGIN) * z - GROUND_Y);
 export let PAN_MAX = craneFor(ZOOM);

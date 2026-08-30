@@ -381,14 +381,58 @@ const PORTAL_VERB_DECAY = 1.6;
 // there, it just sits under the cue instead of beside it.
 const PORTAL_VERB_SEND = 0.9;
 
+// The finish dog's bark, as shapes rather than as one set of numbers — the
+// same device the portal swoosh uses, and for the same reason: they render
+// through tools/render-cues.js (`dogBark:gruff`) so what is auditioned is the
+// engine's own cue and not a second synth's impression of it. Whichever wins
+// is adopted by pointing the default at it.
+//
+// `formants` is the vocal tract: [[shut, open, shut], Q, level] per resonance,
+// travelling as the jaw works. That motion is what makes the cue read as an
+// animal — see dogWoof. Everything else is proportion: `fall` how far the
+// fundamental sags at the end (keep it near 1, a big fall is a drum), `gap`
+// and `drop` the spacing and pitch of the second bark.
+const BARK_FORMANTS = [
+  [[520, 1000, 700], 4, 1],       // F1 — the jaw opening and shutting
+  [[1400, 2050, 1500], 3.5, 0.9], // F2 — the tongue; most of the vowel
+  [[3100, 3300, 3000], 3, 0.5],   // F3 — the bite, and the top the ear finds first
+];
+export const BARK_SHAPES = {
+  // The default: a mid-size dog, mouth working, plenty of air in it.
+  woof:  { level: 2.48, f0: 300, drop: 0.82, gap: 0.23, dur: 0.16, fall: 0.62, attack: 0.004,
+    q: 1, voiced: 0.5, sub: 0.7, breath: 1, bright: 0.35, rough: 0.5, roughHz: 90, formants: BARK_FORMANTS },
+  // The roughest of the set: a torn, ragged voice. Least musical, most animal.
+  raw:   { level: 2.24, f0: 280, drop: 0.82, gap: 0.23, dur: 0.17, fall: 0.58, attack: 0.003,
+    q: 0.85, voiced: 0.55, sub: 0.9, breath: 1.1, bright: 0.4, rough: 0.72, roughHz: 72, formants: BARK_FORMANTS },
+  // Almost all air: a huffing, breathy bark with barely any pitch in it.
+  huff:  { level: 1.19, f0: 300, drop: 0.82, gap: 0.22, dur: 0.15, fall: 0.66, attack: 0.003,
+    q: 0.9, voiced: 0.22, sub: 0.6, breath: 1.35, bright: 0.6, rough: 0.45, roughHz: 95, formants: BARK_FORMANTS },
+  // Bigger animal: lower tract, longer, more throat and a slower tremor.
+  gruff: { level: 2.57, f0: 210, drop: 0.84, gap: 0.26, dur: 0.2, fall: 0.6, attack: 0.005,
+    q: 1, voiced: 0.55, sub: 1, breath: 1, bright: 0.25, rough: 0.6, roughHz: 58,
+    formants: [[[380, 760, 520], 4, 1], [[1050, 1650, 1150], 3.5, 0.9], [[2500, 2700, 2450], 3, 0.45]] },
+  // Small and furious: higher, shorter, snappier — a terrier at the gate.
+  yap:   { level: 1.8, f0: 430, drop: 0.8, gap: 0.17, dur: 0.11, fall: 0.6, attack: 0.003,
+    q: 1, voiced: 0.45, sub: 0.5, breath: 1, bright: 0.5, rough: 0.5, roughHz: 110,
+    formants: [[[700, 1300, 900], 4, 1], [[1800, 2600, 1900], 3.5, 0.9], [[3400, 3600, 3300], 3, 0.5]] },
+};
+
 const SFX_TRIM = {
   blockBreak: 0.58, coinSpray: 0.7, hit: 0.74,
-  // Levelled against 'hit', its opposite number — and deliberately ABOVE it
-  // (~-31 RMS against hit's -33.9): the bark is the finish dog's whole threat,
-  // it is the loudest voice in the last stretch by design, and the per-firing
-  // fade in updateEntities is what brings it down as the dog passes. 0.9
-  // keeps the peak near -8 dBFS so the repeats never crowd clipping.
-  dogBark: 0.9,
+  // Levelled against 'hit', its opposite number — and deliberately WELL above
+  // it (~-29 RMS against hit's -33.9): the bark is the finish dog's whole
+  // threat, it is the loudest voice in the last stretch by design and has to
+  // carry over the end-of-stage music, and the per-firing fade in
+  // updateEntities is what brings it down as the dog passes. The song is NOT
+  // ducked under it, by request — the cut-through comes from the cue's own
+  // register and its formants (see dogWoof) plus this trim.
+  //
+  // Levelled on RMS, not peak: the voiced cue SUSTAINS where the cue it
+  // replaced was a transient, so the same peak is a far bigger sound. 1.0
+  // lands it at ~-25 RMS, about 9dB over `hit` — still the loudest thing in
+  // the finishing straight, which is the point of it, with the peak near
+  // -8 dBFS so the repeats keep clear of clipping.
+  dogBark: 1.0,
   // 0.25, not the 1.08 this carried, which was a trap rather than a bug: nothing calls
   // `sfx('impact')`, so the number never ran. impactCrash is reached in play only as
   // playContact's fallback — gnash and mochi have no baked contact cue — and that path
@@ -398,7 +442,7 @@ const SFX_TRIM = {
   // path so the two ways into the same cue cannot disagree.
   impact: ATTACK_MASTER_TRIM,
   contact: ATTACK_MASTER_TRIM, launch: 0.92 * ATTACK_MASTER_TRIM,
-  shield: 0.78, star: 0.72, win: 0.76, power: 0.84,
+  shield: 0.78, star: 0.72, win: 0.76, power: 0.84, rewindPickup: 0.78,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
   // Six noise layers plus the crash buffer sum far hotter than the two-layer
   // 'crunch' it replaces at the plow: untrimmed it peaked -6.7 dBFS, which is
@@ -454,8 +498,12 @@ const WEAPON_AUDIO_GAIN = {
   // Kiko sits between B-33P and the physical weapons. Her cues carry no
   // impulse and no highpass noise, so they read quieter than their peak the
   // way his bright orb reads louder than its own — trimmed far less than he is.
-  contact: { b33p: 0.45, grumpos: 0.94, lorenzo: 0.95, raymn: 0.76, fernwick: 0.98, chompo: 0.9, kiko: 0.82 },
-  launch: { b33p: 0.42, raymn: 0.95, grumpos: 0.82, kiko: 0.78 },
+  // Clara's double pew is two bright square sweeps back to back — the same
+  // bright-reads-loud physics that has B-33P trimmed hardest, twice over — so
+  // she starts between him and Kiko on launch, a touch under Kiko on the
+  // ricochet zing.
+  contact: { b33p: 0.45, grumpos: 0.94, lorenzo: 0.95, raymn: 0.76, fernwick: 0.98, chompo: 0.9, kiko: 0.82, clara: 0.78 },
+  launch: { b33p: 0.42, raymn: 0.95, grumpos: 0.82, kiko: 0.78, clara: 0.62 },
 };
 
 // Timbres for the 'debris' cue — what the chunks sound like hitting the floor.
@@ -2446,6 +2494,132 @@ class AudioSys {
     o.start(t); o.stop(t + dur + 0.05);
   }
 
+  // ONE BARK.
+  //
+  // Two rewrites of this cue read as percussion and then as a synth note, and
+  // both failed for the same reason: they were CLEAN. A pitched oscillator
+  // through a filter is a musical instrument however its envelope and
+  // formants are drawn — fall the pitch and it is a tom, hold it and it is a
+  // filtered bass. A real bark is not a tone with some noise on it. It is a
+  // short, ROUGH, broadband blast of turbulent air, and the pitched part of
+  // it is the minority partner.
+  //
+  // So this is built the other way round, from the three things that actually
+  // identify one:
+  //
+  //   NOISE CARRIES IT. Aspiration is the loudest single source here (see
+  //     `breath`), not a garnish at five per cent. A dog's bark smears energy
+  //     from a couple of hundred Hz to well past 5k, which no sawtooth does.
+  //   IT IS ROUGH. Barks are chaotic: the folds slam irregularly and throw
+  //     subharmonics and biphonation, and that grit is most of what says
+  //     ANIMAL rather than instrument. Two things buy it — a half-frequency
+  //     detuned twin under the fundamental, and a fast amplitude tremor
+  //     across the whole voice (`rough`, `roughHz`).
+  //   THE MOUTH SHAPES IT. Everything, noise included, is played through one
+  //     moving vocal tract — three resonances that open and shut as the jaw
+  //     does. Filtered noise through a moving tract is a throat; unfiltered
+  //     it is a hi-hat.
+  //
+  // The envelope is the last part of the identity: a near-instant attack, the
+  // body gone inside a third of the length, then a tail as the mouth closes.
+  // Anything with a plateau in the middle sounds held, and nothing about a
+  // bark is held.
+  //
+  // `S` is a shape (see BARK_SHAPES) so the cue can be auditioned through
+  // tools/render-cues.js — `dogBark:gruff` — rather than through a second
+  // synth that only approximates it.
+  dogWoof(when, pitch, f0, gain, S) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + when;
+    const dur = S.dur;
+    const peak = gain * this.cueGain;
+    const stop = t + dur + 0.06;
+
+    // The bark envelope: hit, collapse, tail. No sustain anywhere in it.
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(peak, t + S.attack);
+    env.gain.exponentialRampToValueAtTime(peak * 0.28, t + dur * 0.3);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    env.gain.linearRampToValueAtTime(0, t + dur + 0.03);
+    env.connect(this.sfxGain);
+
+    // The tremor that makes the voice ragged rather than sung. Applied to the
+    // summed tract output so noise and buzz roughen together — modulating
+    // only the oscillator leaves a smooth hiss sitting behind a rough tone,
+    // which reads as two sounds instead of one animal.
+    const rough = ctx.createGain();
+    rough.gain.value = 1 - S.rough;
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sawtooth';
+    lfo.frequency.setValueAtTime(S.roughHz, t);
+    lfo.frequency.linearRampToValueAtTime(S.roughHz * 0.55, t + dur);
+    const lfoAmt = ctx.createGain();
+    lfoAmt.gain.value = S.rough;
+    lfo.connect(lfoAmt); lfoAmt.connect(rough.gain);
+    rough.connect(env);
+    lfo.start(t); lfo.stop(stop);
+
+    // ---- sources, all summed BEFORE the tract ----------------------------
+    const src = ctx.createGain();
+    src.gain.value = 1;
+
+    // Aspiration: the loudest thing in the cue.
+    const air = ctx.createBufferSource();
+    air.buffer = this.noiseBuf; air.loop = true;
+    const airG = ctx.createGain();
+    airG.gain.setValueAtTime(S.breath, t);
+    airG.gain.linearRampToValueAtTime(S.breath * 0.5, t + dur);
+    air.connect(airG); airG.connect(src);
+    air.start(t); air.stop(stop);
+
+    // The voiced pair. A bark's pitch snaps up at the onset and falls away
+    // through the body; the half-frequency twin is the subharmonic that makes
+    // it sound like it is tearing rather than playing.
+    const contour = (o, mult, detune) => {
+      o.type = 'sawtooth';
+      o.detune.value = detune;
+      o.frequency.setValueAtTime(f0 * mult * 0.82 * pitch, t);
+      o.frequency.linearRampToValueAtTime(f0 * mult * 1.04 * pitch, t + 0.012);
+      o.frequency.exponentialRampToValueAtTime(f0 * mult * S.fall * pitch, t + dur);
+      o.start(t); o.stop(stop);
+    };
+    const voice = ctx.createOscillator();
+    const sub = ctx.createOscillator();
+    contour(voice, 1, 0);
+    contour(sub, 0.5, 14);
+    const voiceG = ctx.createGain(); voiceG.gain.value = S.voiced;
+    const subG = ctx.createGain(); subG.gain.value = S.voiced * S.sub;
+    voice.connect(voiceG); voiceG.connect(src);
+    sub.connect(subG); subG.connect(src);
+
+    // ---- one vocal tract, everything through it --------------------------
+    // Scaled by the bark's own pitch, so a smaller dog gets a smaller mouth
+    // rather than the same mouth on a higher buzz.
+    const fs = f0 / 430;
+    for (const [path, q, amp] of S.formants) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.Q.value = q * S.q;
+      bp.frequency.setValueAtTime(path[0] * fs * pitch, t);
+      bp.frequency.linearRampToValueAtTime(path[1] * fs * pitch, t + dur * 0.2);
+      bp.frequency.linearRampToValueAtTime(path[2] * fs * pitch, t + dur);
+      const fg = ctx.createGain();
+      fg.gain.value = amp;
+      src.connect(bp); bp.connect(fg); fg.connect(rough);
+    }
+    // A little unfiltered air alongside the tract: real barks are not fully
+    // resonated, and the top octave is what carries the cue on a small
+    // speaker. Rolled off low so it cannot turn into a cymbal.
+    const bright = ctx.createBiquadFilter();
+    bright.type = 'highpass';
+    bright.frequency.value = 1800 * pitch;
+    const brightG = ctx.createGain();
+    brightG.gain.value = S.bright;
+    src.connect(bright); bright.connect(brightG); brightG.connect(rough);
+  }
+
   // One PAC-style bite: pitch and filter glide down as the mouth closes and
   // back up as it opens. The glide is what makes it read as "waka" rather
   // than a beep — a square through a resonant lowpass keeps the mouthy timbre.
@@ -3116,33 +3290,46 @@ class AudioSys {
         break;
       }
       case 'power': [523, 659, 784, 1047].forEach((f, i) => this.osc('triangle', f, f, 0.09, 0.15, i * 0.07)); break;
+      // A short time-snap for banking a rewind: three overlapping chirps run
+      // backward, then one clean rising tone confirms that the pickup was a
+      // benefit rather than damage. Kept under a quarter-second so it reads as
+      // a collect cue and does not compete with the longer rewind playback.
+      case 'rewindPickup':
+        this.noise(0.018, 0.08, 'highpass', 4200);
+        [1319, 988, 740].forEach((f, i) => this.osc('triangle', f, f * 0.72, 0.065, 0.11, i * 0.035));
+        this.osc('sine', 659, 988, 0.11, 0.08, 0.105);
+        break;
       case 'shield': this.noise(0.2, 0.2, 'highpass', 2000); this.osc('sawtooth', 220, 80, 0.25, 0.18); break;
       // Invincibility on: a fast rising run that lands on an octave shimmer.
       case 'star': [523, 659, 784, 1047, 1319, 1568, 2093].forEach((f, i) => this.osc('square', f, f, 0.07, 0.13, i * 0.045)); break;
       // ...and off: the same run walking back down, quieter.
       case 'starEnd': [1568, 1319, 1047, 784].forEach((f, i) => this.osc('triangle', f, f, 0.09, 0.1, i * 0.06)); break;
       case 'hit': this.osc('sawtooth', 200, 40, 0.4, 0.25); this.noise(0.15, 0.2, 'lowpass', 900); break;
-      // The finish-line dog (see RunState.spawnFinishDog): a growl tremor
-      // breaking into two hard barks. The growl is amplitude modulation the
-      // graph cannot do directly, so it is faked the cheap way — a run of
-      // short saw pulses, each one throb of the tremor — under a bed of low
-      // noise for chest. Each bark is the shape a real one has: a plosive
-      // noise front, a saw fundamental falling as the jaw opens, a square an
-      // octave under it for body, and a band of breath in the mouth range.
-      // The second bark sits lower and later — RUFF-ruff, a dog committing,
-      // not a doorbell repeating.
+      // The finish-line dog (see RunState.spawnFinishDog): two hard barks and
+      // nothing else — no growl lead-in, by request; the repeat cadence in the
+      // run is what carries the menace. Each bark is the shape a real one has:
+      // a plosive noise front, a saw fundamental falling as the jaw opens, a
+      // square under it for body, and a band of breath in the mouth range —
+      // all pitched HIGH, up around where the music thins out, so the cue
+      // cuts through the full song instead of asking the song to move. The
+      // second bark sits lower and later — RUFF-ruff, a dog committing, not a
+      // doorbell repeating.
+      // The finish-line dog. Two barks, voiced through dogWoof — see there for
+      // why this is formants rather than a pitch sweep. The register is
+      // "bigger" off the audition sheet: 430 then a fourth under it, which has
+      // some size to the animal while still sitting above where the plumber
+      // song lives, so the cue carries over a full mix without the song
+      // having to duck under it.
       case 'dogBark': {
-        for (let i = 0; i < 6; i++) this.osc('sawtooth', 96 * pitch, 88 * pitch, 0.05, 0.16, i * 0.044);
-        this.noise(0.26, 0.12, 'lowpass', 280);
-        this.noise(0.24, 0.07, 'bandpass', 620); // rasp over the tremor — the snarl's teeth
-        const bark = (t, f) => {
-          this.noise(0.022, 0.22, 'highpass', 2600, t);            // plosive front
-          this.osc('sawtooth', f * pitch, f * 0.36 * pitch, 0.13, 0.3, t);
-          this.osc('square', f * 0.5 * pitch, f * 0.18 * pitch, 0.12, 0.14, t);
-          this.noise(0.07, 0.24, 'bandpass', 1050 * pitch, t);     // breath in the mouth
-        };
-        bark(0.28, 350);
-        bark(0.47, 305);
+        // `level` per shape, because these differ in how much of their source
+        // survives the tract — an airy shape keeps far more than a tightly
+        // resonated one — and a sheet where the shapes are not matched is a
+        // sheet that gets picked by loudness instead of by character. Each
+        // one is measured, not guessed: see the RMS column in render-cues.
+        const S = opt.shape || BARK_SHAPES.woof;
+        const lv = 0.78 * (S.level ?? 1);
+        this.dogWoof(0.02, pitch, S.f0, lv, S);
+        this.dogWoof(0.02 + S.gap, pitch, S.f0 * S.drop, lv * 0.87, S);
         break;
       }
       // Shared attack contact: a noisy crash, not a pitched little bonk. The
@@ -3550,9 +3737,11 @@ class AudioSys {
   // new downbeat, short enough to read as a cut rather than a stop. It is a parameter
   // because the cabinet screen has a shutter closing over it — about 0.29s of it — and
   // whether the remainder is heard as a beat of silence or as a mistake is a thing to
-  // decide by ear rather than by argument. See MusicDirector.play.
+  // decide by ear rather than by argument. See MusicDirector.play. `startAtBeginning`
+  // is the jukebox exception: it still arms the song's authored repeat region, but lets
+  // a listener hear every bar before that region on the first pass.
   setBank(bank, mixOverride = undefined, arrangementOverride = undefined,
-    { gap = 0.5, formLoop = true, countIn = 0 } = {}) {
+    { gap = 0.5, formLoop = true, countIn = 0, startAtBeginning = false } = {}) {
     // Re-selecting the current bank is common when returning to a menu. Keep
     // its phase intact; only a real bank change should restart the sequencer.
     // Compared against the bank as PASSED IN: applyMix may hand back a copy with
@@ -3641,7 +3830,7 @@ class AudioSys {
     // MusicDirector alike — so arming it here is what makes an intro work everywhere
     // without a single call site knowing about it. `formLoop: false` is for the one
     // screen that must not loop: the credits roll and then end.
-    if (formLoop) this.armSongLoop({ seek: true });
+    if (formLoop) this.armSongLoop({ seek: !startAtBeginning });
     if (bank && bank.bpm) {
       this.bpm = bank.bpm;
       // follows delayDivision, and grows the line if this bpm makes it a long one

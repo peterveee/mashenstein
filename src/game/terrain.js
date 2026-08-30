@@ -227,14 +227,23 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
     // camera x happened to make the arithmetic come out whole.
     const to = Math.min(right, Math.ceil(sx + r.w) - 1);
     if (r.kind === 'tunnel') { drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY, opts.hillDepth ?? 0); continue; }
-    // A sky road stops being made of ground somewhere on the way up. Which
-    // columns have crossed over is decided per COLUMN rather than per road,
-    // because the road climbs through the transition — the same slab is dirt at
-    // its mouth and weather at its peak, and a single verdict for the whole
-    // span would have to be wrong at one end of it.
-    const asCloud = (wx) => (r.sky ? cloudMix(groundAt(wx) - topAt(wx, r), cloudFrom, cloudTo) : 0);
+    // A high road CAN stop being made of ground on the way up, and by default
+    // it does not — `cloud`, not `sky`, is what asks for that. The two used to
+    // be the same flag, and painting the top of every high road as weather beat
+    // the thing it was drawn over: up there the road is the platform the hero
+    // is reading, and a bank of puffs across it hides the one silhouette that
+    // tells him where the edges and the gaps are. So a high road is an island
+    // that climbs, drawn out of the cabinet's own ground the whole way up, and
+    // `sky` goes back to meaning only what the geometry and the camera use it
+    // for (run.js re-pins the anchor on one).
+    //
+    // Which columns have crossed over is decided per COLUMN rather than per
+    // road, because the road climbs through the transition — the same slab
+    // would be dirt at its mouth and weather at its peak, and a single verdict
+    // for the whole span would have to be wrong at one end of it.
+    const asCloud = (wx) => (r.cloud ? cloudMix(groundAt(wx) - topAt(wx, r), cloudFrom, cloudTo) : 0);
     drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud);
-    if (r.sky) drawCloudRoad(ctx, camX, r, topAt, groundAt, from, to, cloudFrom, cloudTo);
+    if (r.cloud) drawCloudRoad(ctx, camX, r, topAt, groundAt, from, to, cloudFrom, cloudTo);
   }
 }
 

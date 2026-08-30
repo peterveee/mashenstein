@@ -915,12 +915,6 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
     // than splitting it down the middle.
     const pauseZoneH = winH / 4;
     chrome.jump    = { x: jumpX, y: yBottom, r, zone: { x: 0,                              y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: winH } };
-    // REWIND mirrors PAUSE at the top of JUMP's column. JUMP's zone stays full
-    // height on purpose: chromeButtonAt returns the FIRST registered button
-    // whose zone contains the point, so a run registers REWIND ahead of JUMP
-    // while the charge is armed and the specific zone wins — and an
-    // unregistered REWIND leaves no dead strip in the margin.
-    chrome.rewind  = { x: jumpX, y: yTop,    r, zone: { x: 0,                              y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: pauseZoneH } };
     chrome.ability = { x: rightX, y: yBottom, r, zone: { x: winW - ox - CHROME_GAME_EDGE_BUF, y: pauseZoneH, w: ox + CHROME_GAME_EDGE_BUF, h: winH - pauseZoneH } };
     chrome.pause   = { x: rightX, y: yTop,    r, zone: { x: winW - ox - CHROME_GAME_EDGE_BUF, y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: pauseZoneH } };
   } else if (chrome.mode === 'topbottom') {
@@ -946,9 +940,6 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
     chrome.jump    = { x: jumpX,  y: bottomY, r, zone: { x: 0,        y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2, h: oy + CHROME_GAME_EDGE_BUF } };
     chrome.ability = { x: rightX, y: bottomY, r, zone: { x: winW / 2, y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2, h: oy + CHROME_GAME_EDGE_BUF } };
     chrome.pause   = { x: rightX, y: topY,    r, zone: { x: 0,        y: 0,                                w: winW,     h: oy + CHROME_GAME_EDGE_BUF } };
-    // Left half of the top bar; PAUSE keeps its full-width zone the way JUMP
-    // does in side mode, and the same register-first rule resolves the overlap.
-    chrome.rewind  = { x: jumpX,  y: topY,    r, zone: { x: 0,        y: 0,                                w: winW / 2, h: oy + CHROME_GAME_EDGE_BUF } };
   }
   // The backing store was just reassigned (blank): force the next commit to
   // repaint even if the button signature is unchanged.

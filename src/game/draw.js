@@ -451,6 +451,27 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     drawProp(ctx, 'paperwork', x - 1, py - 1, 10, 8);
     return;
   }
+  // Overhangs (boom barrier): the box is only the arm, but the STRUCTURE is
+  // ground-anchored — post, arm and beacon are authored as one drawing whose
+  // top band is the hitbox. Drawn here rather than through the generic path
+  // because that path bottom-anchors art at the box and could never paint the
+  // post between the arm and the road. Opting out of the shared rim/inflation
+  // means the painter carries its own contour (see SELF_OUTLINED_PROPS).
+  if (e.def && e.def.overhang) {
+    const ah = e.alt + e.h + 3; // +3: beacon cap over the arm, art only
+    const frames = propFrames(e.type);
+    const of = frames > 1 && !settings.reducedMotion
+      ? Math.floor(t * propFps(e.type) + e.bobPhase * 4) % frames
+      : 0;
+    // Its own contact marks: the generic ellipse only fires for ground defs,
+    // and the flyer anchor bar reads wrong under a thing with a post.
+    ctx.fillStyle = 'rgba(8,6,12,0.28)';
+    ctx.beginPath(); ctx.ellipse(x + e.w - 3, GROUND_Y - 1, 5, 2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(224,72,72,0.32)';
+    ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
+    drawProp(ctx, e.type, x - 2, GROUND_Y - ah, e.w + 4, ah, of);
+    return;
+  }
   // Coins spin like coins and some of them twinkle: the width oscillates as
   // if rotating on its vertical axis, with a white glint as it catches the
   // light (the WebGL bloom pass makes the glint genuinely gleam).

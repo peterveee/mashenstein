@@ -1,10 +1,14 @@
-// The touch rewind power-up (docs/mobile-rewind-powerup.md): on a device with
-// no free rewind, the snapshot ring is small, records ONLY while a capRewind
-// charge is armed, plays back a fixed 3 seconds on the 'rewind' action, and the
-// charge is single-shot — consumed after the final restore, never refunded by
-// the snapshots it replays (which were recorded while armed and so still carry
-// it). Boots the real bundle on a simulated coarse-pointer device, the same
-// route tests/rewind-pooling.js and tests/touch-smoke.js take.
+// The rewind power-up (docs/mobile-rewind-powerup.md). The capsule is dealt on
+// EVERY device and banks one fixed 3-second rewind, fired by the touch RWD
+// button or KeyZ. This suite drives the touch case, where the mechanism is
+// load-bearing rather than a convenience: with no free hold-Left rewind the
+// snapshot ring is small, records ONLY while a charge is armed, and the charge
+// is single-shot — consumed after the final restore, never refunded by the
+// snapshots it replays (which were recorded while armed and so still carry it).
+// Desktop keeps the full 10s ring and constant recording, so only the firing
+// and single-shot halves apply there; tests/rewind-pooling.js pins that path.
+// Boots the real bundle on a simulated coarse-pointer device, the same route
+// tests/rewind-pooling.js and tests/touch-smoke.js take.
 
 import esbuild from 'esbuild';
 import { installDom } from './dom-stub.js';
@@ -38,6 +42,7 @@ const frames = (n, dt = 16.7) => { for (let i = 0; i < n; i++) dom.frame(dt); };
 
 // The scripted introduction is stage data, checked without the bundle: the
 // second PLUMBER PANIC stage guarantees the capsule, early (see stages.js).
+// Device-independent — a keyboard player meets it in the same place.
 assert(STAGE_BY_ID['plumber-2'].rewindAt === 0.15, 'plumber-2 scripts the capsule at 0.15');
 assert(STAGE_BY_ID['plumber-1'].rewindAt == null, 'and no other Act I stage does');
 
@@ -65,7 +70,9 @@ assert(true, 'reached a live run on a coarse-pointer device');
 // God mode, as in the pooling test: a death re-enters the state and resets the
 // ring, which would fail every assertion below for reasons that have nothing
 // to do with the power-up. The drip is also silenced so a lucky 6% capsule
-// cannot arm recording during the stretches that assert it is off.
+// cannot arm recording during the stretches that assert it is off — the drip
+// deals rewind on every device now, so this matters more than it used to.
+const realTakeHit = run.takeHit;
 run.takeHit = () => {};
 run.drip.capsuleTimer = 1e9;
 // The settle also has to acknowledge the touch zone card — plumber-1 on a
@@ -104,16 +111,23 @@ assert(ring.length > 0, `an armed charge starts recording (${ring.length})`);
 frames(300);
 assert(ring.length === 45, `and the tape caps at the 3-second window (${ring.length})`);
 
-// --- firing is a 3-second rewind and a single shot ---------------------------
+// --- a hit fires it, and it is a single shot ---------------------------------
 settle();
 const beforeX = run.distance;
-dom.key('KeyZ');
+// No button and no key: the charge spends itself on the next hit. God mode is
+// a takeHit stub (above), so the real one is called to stage the mistake.
+realTakeHit.call(run, 'TEST HIT');
+assert(run.rewindPlayFrames > 0, 'a hit with a charge banked starts the tape instead of landing');
+assert(!run.dead, 'and the hero is not dead — the hit never happened');
+assert(run.rewindUsed, 'firing permanently spends the run\'s one rewind capsule');
 frames(46); // 45 playback ticks + the fall-through release frame
 assert(inRun(), 'the run survives a power-up rewind');
-assert(run.distance < beforeX, `firing walks the run backwards (${beforeX.toFixed(1)} -> ${run.distance.toFixed(1)})`);
+assert(run.distance < beforeX, `the auto-rewind walks the run backwards (${beforeX.toFixed(1)} -> ${run.distance.toFixed(1)})`);
 frames(10);
 assert(!run.powerups.active.rewind,
   'the charge is ABSENT once the rewind finishes — the replayed snapshots did not refund it');
+assert(!run.pickups.some((p) => p.live && p.type === 'capRewind'),
+  'rewinding past collection does not resurrect the spent capsule');
 // The lockout arms at the END of the 0.55s deceleration ramp, not at the
 // moment of finish — ride the ramp out before asking.
 frames(35);
@@ -121,16 +135,35 @@ assert(run.rewindLockout > 0, 'the ordinary lockout backstops the finish');
 frames(120);
 assert(ring.length === 0, `the spent tape stays drained with no charge armed (${ring.length})`);
 
-// --- an unused window expires clean ------------------------------------------
+// --- it undoes a PIT, which nothing else in the game does --------------------
 settle();
+run.rewindUsed = false; // a fresh isolated charge for this second behaviour check
+run.powerups.grab('rewind');
+frames(90);   // roll enough tape to have somewhere to go back to
+assert(ring.length > 0, `tape rolling before the pit test (${ring.length})`);
+const beforePit = run.distance;
+realTakeHit.call(run, 'TEST PIT', true);   // isPit — normally unsurvivable
+assert(run.rewindPlayFrames > 0, 'a banked rewind fires on a fatal pit');
+assert(!run.dead && !run.pitDeath, 'and the pit death is not staged — the fall never happened');
+frames(60);
+assert(run.distance < beforePit, 'the pit rewind walks the run backwards');
+assert(!run.powerups.active.rewind, 'and it spends the charge like any other save');
+
+// --- an unused charge stays armed for the rest of the level -----------------
+settle();
+run.rewindUsed = false; // persistence is tested independently from the spent examples
 run.powerups.grab('rewind');
 frames(120);
 const armedLen = ring.length;
 assert(armedLen > 0, `a fresh capsule records again (${armedLen})`);
-for (let i = 0; i < 1000 && run.powerups.active.rewind; i++) frames(1);
-assert(!run.powerups.active.rewind, 'the arm window expires with the charge unused');
+// Jump the power-up clock well beyond the old maximum arm duration. This
+// avoids advancing far enough to finish the level while still proving there
+// is no hidden timer attached to the charge.
+run.powerups.update(120);
+assert(run.powerups.active.rewind?.persistent,
+  'the unused charge remains armed beyond the old timer, until use or level end');
 frames(60);
-assert(ring.length === 0, `expiry stops recording and drops the stale tape (${ring.length})`);
+assert(ring.length === 45, `the armed charge keeps a full fresh tape available (${ring.length})`);
 
 console.log(failed ? 'REWIND POWERUP: FAILED' : 'REWIND POWERUP: PASSED');
 process.exit(failed ? 1 : 0);

@@ -45,8 +45,8 @@ he is working through, each section is a section of it, and a miss is an
 
 Nine sections. `requires` is what makes this Gary's screen rather than a
 checklist: clearing the obstacle is not the same as completing the section.
-Jump the drone instead of ducking it and you are past the hazard but the section
-is still open, because the section specifies ducking.
+Jump the cone instead of kicking it and you are past the hazard but the section
+is still open, because the section specifies the kick.
 
 ### 0 — opening (no section number)
 
@@ -120,14 +120,21 @@ into the next section as a *stray* — collectible, drawn and scrolling normally
 but excluded from every section's judgement, so an old coin can never reopen a
 later section. It is swept only once it is behind the hero and off the frame.
 
-### 4 — DUCK · Lorenzo · one drone
+### 4 — POWER SLIDE · Lorenzo · one traffic cone
 
-- **Brief:** DUCK. HOLD DOWN OR S. THE DRONE HAS RIGHT OF WAY, APPARENTLY.
-- **Touch:** DUCK. SWIPE DOWN AND HOLD. …
-- **Again:** INCOMPLETE. THE DRONE IS FILED UNDER DUCK.
-- **Wrong way:** OVER IT. THE SECTION SPECIFIES UNDER. I DO NOT MAKE THE SECTIONS.
-- **Requires:** a real duck. Lorenzo clears the drone with an ordinary jump, so
-  clearing it is not what the section asks for.
+- **Brief:** POWER SLIDE. HOLD DOWN OR S, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING.
+- **Touch:** POWER SLIDE. SWIPE DOWN AND HOLD, JUST BEFORE THE CONE. …
+- **Again:** INCOMPLETE. SLIDE AT THE CONE, NOT BEFORE IT. THE BOOT EXPIRES.
+- **Wrong way:** OVER IT. THE SECTION SPECIFIES A KICK. I DO NOT MAKE THE SECTIONS.
+- **Requires:** the cone actually punted. Lorenzo clears the cone with an
+  ordinary jump, so clearing it is not what the section asks for.
+- The slide is taught through the kick, not the drone: the input is the same one
+  that carries a hero under a drone in a real run, and the boot connecting is
+  feedback a clean pass-under never gives. The timing is the real game's timing
+  — `puntPower` against the front of the slide window — so a slide committed
+  late launches the cone and one coasted in on eats it (the knock, then the
+  *again* line explaining why). A tutorial more generous than the cabinets would
+  certify a kick the game then refuses.
 
 ### 5 — SHIELD · Lorenzo · one capsule
 
@@ -149,23 +156,27 @@ later section. It is swept only once it is behind the hero and off the frame.
   either joke landing worse. The settle here is 3.0 rather than 1.0 for the same
   reason: the line Gary has just said is the entire content of the section.
 
-### 7 — PORTAL TAG · Lorenzo → Mochi
+### 7 — PORTAL TAG · Lorenzo → Kiko
 
 - **Brief:** RUN THROUGH THE PORTAL. DO NOT JUMP IT. SOMEONE JUMPED ONE ONCE. THERE WAS PAPERWORK.
 - **Again:** OVER IT IS NOT THROUGH IT. I AM REOPENING THE SECTION.
+- Was Lorenzo → Mochi. Mochi retired from the roster (held for a cameo), and
+  the double-jump lesson moved to Kiko with her — see section 8.
 
-### 8 — DOUBLE JUMP · Mochi · a stack of five, then a portal to B-33P
+### 8 — DOUBLE JUMP · Kiko · a stack of five, then a portal to B-33P
 
-- **Brief:** MOCHI JUMPS TWICE, AND NOT VERY HIGH. JUMP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.
+- **Brief:** KIKO JUMPS TWICE. JUMP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.
 - **Touch:** … TAP AGAIN IN MID-AIR. THE FORM REQUIRES BOTH.
 - **Again:** INCOMPLETE. TWICE. IN THE AIR. THE FORM IS SPECIFIC.
 - **Wrong way:** YOU GOT OVER IT ON ONE. THE SECTION SPECIFIES TWO.
-- **Requires:** a second jump in the air. Mochi is here because she jumps LOW —
+- **Requires:** a second jump in the air. Kiko is here because she jumps LOW —
   56.9px against Lorenzo's 89 — so a stack this tall is one Lorenzo would have
-  strolled over.
+  strolled over. (Mochi's numbers exactly: jumpMult 1.0, maxJumps 2. "AND NOT
+  VERY HIGH" came out of the brief because it described a hero who *floats*,
+  and Kiko does not.)
 - **Five crates, not six.** Six (66px) was a wall a beginner had to time the
   second jump well to clear; five (55px) leaves room to be sloppy with it. That
-  sits a whisker under Mochi's 56.9px single-jump apex, so a frame-perfect
+  sits a whisker under Kiko's 56.9px single-jump apex, so a frame-perfect
   single is *just* possible — and the section says so out loud when it happens
   rather than passing silently for the move it is not teaching.
 - **On pass:** a portal to B-33P spawns just ahead in the lane. Gary's line

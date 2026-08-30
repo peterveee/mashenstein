@@ -22,6 +22,8 @@ const barGrid = readFileSync(new URL('../tools/mixer-bar-grid.js', import.meta.u
 const audio = readFileSync(new URL('../src/engine/audio.js', import.meta.url), 'utf8');
 const rearrange = readFileSync(new URL('../tools/lib/rearrange.js', import.meta.url), 'utf8');
 const deskSelect = readFileSync(new URL('../tools/mixer-select.js', import.meta.url), 'utf8');
+const tooltips = readFileSync(new URL('../tools/mixer-tooltips.js', import.meta.url), 'utf8');
+const perfDiag = readFileSync(new URL('../tools/mixer-perf-diag.js', import.meta.url), 'utf8');
 const customSelect = readFileSync(new URL('../tools/lib/custom-select.js', import.meta.url), 'utf8');
 const freezeSpanSource = readFileSync(new URL('../tools/lib/freeze-span.js', import.meta.url), 'utf8');
 const touchedBody = /const touched = \(\) => \{[\s\S]*?\n  \};/.exec(editor)?.[0] || '';
@@ -1546,12 +1548,12 @@ assert(/id="looplogopen"[^>]*aria-haspopup="dialog"[^>]*hidden/.test(shell)
 assert(/id="perfdiagopen"[^>]*aria-controls="perfdiag"[^>]*hidden/.test(shell)
   && /id="perfdiag"[^>]*aria-labelledby="perfdiagtitle"/.test(shell)
   && /id="perfdiaghead"/.test(shell) && /id="perfdiaglog"/.test(shell)
-  && /PERF_DIAG_LIMIT = 240/.test(entry)
-  && /function samplePerfDiag\(force = false\)/.test(entry)
-  && /function recordPerfDiag\(kind, status, detail/.test(entry)
-  && /function placePerfDiag\(/.test(entry)
-  && /window\.open\('', 'mash-mixer-performance'/.test(entry)
-  && /perfDiagHead\?\.addEventListener\('pointerdown'/.test(entry),
+  && /PERF_DIAG_LIMIT = 240/.test(perfDiag)
+  && /function samplePerfDiag\(force = false\)/.test(perfDiag)
+  && /function recordPerfDiag\(kind, status, detail/.test(perfDiag)
+  && /function placePerfDiag\(/.test(perfDiag)
+  && /window\.open\('', 'mash-mixer-performance'/.test(perfDiag)
+  && /perfDiagHead\?\.addEventListener\('pointerdown'/.test(perfDiag),
   'DEV exposes a draggable live cache/CPU log with an optional browser pop-out');
 assert(/runtimeHealth\(\)/.test(voicesSrc)
   && /cachedSources: this\._cachedPlayback\.size/.test(voicesSrc)
@@ -1949,6 +1951,10 @@ assert(/--mixer-min-width:\s*1200px/.test(shell)
   && /classList\.toggle\('mixer-too-small', tooSmall\)/.test(entry)
   && /addEventListener\('resize', syncMixerMinimum, \{ passive: true \}\)/.test(entry),
   'the mixer enforces a 1200x700 shell floor and blocks the desk below it');
+assert(/<meta name="viewport" content="width=1200">/.test(shell)
+  && /const TOUCH_ONLY = matchMedia\('\(pointer: coarse\) and \(hover: none\)'\)\.matches/.test(entry)
+  && /const tooSmall = !TOUCH_ONLY && \(innerWidth < MIXER_MIN_WIDTH/.test(entry),
+  'a touch-only device gets the scaled full-width desk rather than the too-small gate');
 assert(/export const MIXER_BRAND = 'TRK-24'/.test(brand)
   && /<title>\/\*__MIXER_BRAND__\*\//.test(shell)
   && /<div id="mixer-min-size-copy">\/\*__MIXER_BRAND__\*\//.test(shell)
@@ -4323,16 +4329,16 @@ assert(shell.includes('<div id="tip" role="tooltip"')
 // The measuring lives in `placeCard` now, shared with the tour: the two have the same
 // two problems — a card sized by its own sentence, and a card clamped to a window the
 // anchor is not — and one copy of the answer is enough.
-assert(/function showTip\(el\)[\s\S]*?tip\.classList\.add\('show'\);\s*\n\s*placeCard\(tip, el, arrow\)/.test(entry)
-  && /function placeCard\(card, el, arrow[\s\S]*?getBoundingClientRect/.test(entry)
-  && /const below = r\.bottom \+ gap \+ box\.height <= innerHeight - edge/.test(entry)
-  && /arrow\.style\.left/.test(entry),
+assert(/function showTip\(el\)[\s\S]*?tip\.classList\.add\('show'\);\s*\n\s*placeCard\(tip, el, arrow\)/.test(tooltips)
+  && /function placeCard\(card, el, arrow[\s\S]*?getBoundingClientRect/.test(tooltips)
+  && /const below = r\.bottom \+ gap \+ box\.height <= innerHeight - edge/.test(tooltips)
+  && /arrow\.style\.left/.test(tooltips),
   'the card is measured before it is placed, and the arrow tracks the button, not the card');
 // Beside, not over: a tour card stays up while four lines of it are read, and below a
 // channel strip it lies straight across the thing it is pointing at.
-assert(/prefer = 'below'/.test(entry)
-  && /const trySide = \(\) => \{/.test(entry)
-  && /if \(prefer === 'side' && trySide\(\)\) return true;/.test(entry)
+assert(/prefer = 'below'/.test(tooltips)
+  && /const trySide = \(\) => \{/.test(tooltips)
+  && /if \(prefer === 'side' && trySide\(\)\) return true;/.test(tooltips)
   && /#tut \.tutarrow\.beside \{/.test(shell)
   && /#tut \.tutarrow\.beside\.after \{/.test(shell),
   'the tour card can sit beside its anchor instead of under it, and the arrow follows');
@@ -4341,13 +4347,13 @@ assert(/prefer = 'below'/.test(entry)
 // screen — which took Back and Next with it, so the tour could not be advanced past the
 // card describing the catalogue. Two guarantees, because either alone leaves a hole: ask
 // for the flank when neither end fits, and clamp the axis that was never clamped.
-assert(/const above = r\.top - gap - box\.height >= edge;/.test(entry)
-  && /if \(!below && !above && prefer !== 'side' && trySide\(\)\) return true;/.test(entry)
-  && /const top = clamp\(below \? r\.bottom \+ gap : r\.top - gap - box\.height,\s*\n?\s*edge, Math\.max\(edge, innerHeight - box\.height - edge\)\);/.test(entry),
+assert(/const above = r\.top - gap - box\.height >= edge;/.test(tooltips)
+  && /if \(!below && !above && prefer !== 'side' && trySide\(\)\) return true;/.test(tooltips)
+  && /const top = clamp\(below \? r\.bottom \+ gap : r\.top - gap - box\.height,\s*\n?\s*edge, Math\.max\(edge, innerHeight - box\.height - edge\)\);/.test(tooltips),
   'a card with room neither above nor below its anchor goes beside it, and never off the window');
-assert(/addEventListener\('pointerdown', hideTip, true\)/.test(entry)
-  && /addEventListener\('scroll', hideTip, true\)/.test(entry)
-  && /addEventListener\('focusin'[\s\S]*?:focus-visible[\s\S]*?showTip\(el\)/.test(entry),
+assert(/addEventListener\('pointerdown', hideTip, true\)/.test(tooltips)
+  && /addEventListener\('scroll', hideTip, true\)/.test(tooltips)
+  && /addEventListener\('focusin'[\s\S]*?:focus-visible[\s\S]*?showTip\(el\)/.test(tooltips),
   'it goes away on the click it belongs to, and comes up for the keyboard too');
 
 // The strip-part switches. Three moving pieces that only work together: the rows have
@@ -4635,9 +4641,9 @@ assert(/const hasActiveNoteFx = \(fx\) => Boolean\(fx\?\.strum\?\.enabled \|\| f
 assert(/function setTrackNoteFx\(key, next\) \{[\s\S]*?buildRack\(\);\s*\n(?:\s*\/\/[^\n]*\n)*\s*buildArrangement\(\);\s*\n\}/.test(entry)
   && /if \(noteFxSig\(\) !== fxBefore\) buildArrangement\(\);/.test(entry),
   'applying, clearing or undoing track Note FX repaints the arrangement, so the NFX marker follows the setting');
-assert(/tip\.classList\.toggle\('bartip', el\.dataset\.tipkind === 'bar'\)/.test(entry)
-  && /tip\.classList\.toggle\('tracktip', el\.dataset\.tipkind === 'track'\)/.test(entry)
-  && /JSON\.parse\(el\.dataset\.tipgroups\)/.test(entry)
+assert(/tip\.classList\.toggle\('bartip', el\.dataset\.tipkind === 'bar'\)/.test(tooltips)
+  && /tip\.classList\.toggle\('tracktip', el\.dataset\.tipkind === 'track'\)/.test(tooltips)
+  && /JSON\.parse\(el\.dataset\.tipgroups\)/.test(tooltips)
   && /#tip\.bartip \{[^}]*max-width:\s*390px/s.test(shell)
   && /#tip\.tracktip \{[^}]*max-width:\s*340px/s.test(shell)
   && /#tip \.tipgroup \{[^}]*grid-template-columns:\s*82px minmax\(0, 1fr\)/s.test(shell)

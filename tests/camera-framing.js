@@ -79,10 +79,12 @@ const { framingFor, setRestingZoom, PAN_MAX } = await import('../src/engine/came
 const { MAX_ISLAND_RISE } = await import('../src/game/routes.js');
 const RISE = MAX_ISLAND_RISE;
 const JUMP = 57;          // an ordinary hero's apex
-const DOUBLE = 98;        // Mochi, or anyone wearing the cape
-// The highest anyone in the cast reaches: a 1.10 jumpMult, doubled, with the
-// air-jump power-up on top. The crane budget is sized off exactly this.
-const TALLEST = 168;
+const DOUBLE = 98;        // Kiko, or anyone wearing the cape
+// The highest anyone in the cast reaches: the top jumpMult with two air jumps
+// stacked on it (capsule plus cape). Was 168 — Lorenzo's 1.10 — until Clara's
+// cliffhanger jump took the top slot at 1.15, which scales the whole stack by
+// (1.15/1.10)^2: her measured stack is 184.0px.
+const TALLEST = 185;
 
 setRestingZoom(TABLET);
 const standing = framingFor(0, RISE);

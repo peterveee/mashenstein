@@ -230,7 +230,9 @@ assert(!read('tools/lib/mix-source.js').includes('mrdrComparison'),
   }
   assert(/function pollMrdr3Diagnostics\(/.test(entry)
     && /mrdr3LaneReport\(Audio\.ctx\)/.test(entry)
-    && /function samplePerfDiag\([\s\S]{0,400}?pollMrdr3Diagnostics\(\)/.test(entry),
+    && /pollMrdr3Diagnostics\(\);\s*\n\s*watchSilentTransport\(\);\s*\n\s*perfDiag\.sample\(\);/.test(entry)
+    && /const HEALTH_TICK_MS = 250/.test(entry)
+    && /setInterval\(checkAudioHealth, HEALTH_TICK_MS\)/.test(entry),
     'the desk polls every AW lane on the same heartbeat that samples everything else');
   // ---- the note cache must not render a struggling desk into silence ---------
   //
@@ -268,7 +270,8 @@ assert(!read('tools/lib/mix-source.js').includes('mrdrComparison'),
     && /appendDiagnosticEvent\('TRANSPORT RUNNING, NOTHING SCHEDULED'/.test(entry)
     && /Audio\.outputExpected\?\.\(\)/.test(entry),
     'a transport that is playing while nothing is scheduled writes a row saying so');
-  assert(/function samplePerfDiag\([\s\S]{0,600}?watchSilentTransport\(\)/.test(entry),
+  assert(/pollMrdr3Diagnostics\(\);\s*\n\s*watchSilentTransport\(\);/.test(entry)
+    && /setInterval\(checkAudioHealth, HEALTH_TICK_MS\)/.test(entry),
     'and it runs off the 250ms health timer, which does not stop when the scheduler does');
 
   assert(/appendDiagnosticEvent\('MRDR-3 AW LANE DEAD'/.test(entry)

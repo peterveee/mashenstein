@@ -26,7 +26,7 @@ All eight are available in every normal stage. Portals switch between them autom
 | 2 | **GNASH** | Gnash the Needlemouse | "ALREADY THERE. WAITING." | Speed Boost (15% faster) | SPIN DASH — invincible burst that smashes breakables |
 | 3 | **FERNWICK** | Fernwick, Hero of Thyme | "THE RECEIPT FORETOLD THIS." | Starting Shield | SHIELD ROLL — short, finite roll that breaks ground hazards |
 | 4 | **B-33P** | Unit B-33P "Blastbot" | "LOW ON CYAN." | Battery Efficient (25% faster recharge) | LEMON CANNON — fires a shot that destroys ground obstacles |
-| 5 | **MOCHI** | Mochi | "PROBABLY NOT A COSMIC ENTITY." | Cosmic Float (double jump + float) | COSMIC SQUISH — shrinks temporarily and falls slowly |
+| 5 | **CLARA** | Clara Vault, Mall Raider | "CHAPTER ONE: SHE ARRIVED." | Cliffhanger (jumps 15% higher) | PLOT HOLE — fires both pistols, a quick pair of slugs that destroy ground obstacles |
 | 6 | **KIKO** | Kiko, Jurisdiction Pending | "NOBODY REPORTED IT. I NOTICED." | Foot Pursuit (jumps twice) | WARNING SHOT — fires a slow ball of energy that destroys ground obstacles |
 | 7 | **RAY M'N** | Ray M'n, Appendage-Optional | "LIMBS WERE OUT OF BUDGET." | Loose Assembly (survives one fatal hit) | ROCKET FIST — throws a fist that returns |
 | 8 | **GRUMPOS** | Grumpos, Dad of Boy | "BOY." | Legendary Presence (+20% score) | RETURNING AXE — throws an axe; ground + air hazards |
@@ -36,7 +36,7 @@ All eight are available in every normal stage. Portals switch between them autom
 - GNASH: "FINALLY."
 - FERNWICK: "THE RECEIPT FORETOLD THIS."
 - B-33P: "LOW ON CYAN."
-- MOCHI: "POYO."
+- CLARA: "SUDDENLY: CLARA VAULT."
 - KIKO: "THIS IS A CRIME SCENE."
 - RAY M'N: "HANDS OFF. LITERALLY."
 - GRUMPOS: "BOY."
@@ -46,7 +46,7 @@ All eight are available in every normal stage. Portals switch between them autom
 - Gnash arrives too early and waits for reality to catch up.
 - Fernwick's sacred prophecy is printed on a faded supermarket receipt.
 - B-33P constantly reports low on cyan, regardless of context.
-- Mochi is adorable; the stars bend slightly toward her.
+- Clara narrates her own lunch. In the past tense.
 - Kiko maintains a case file on every object in this building.
 - Ray M'n's insurance form requires a limb count. He keeps writing "OPTIONAL."
 - Grumpos throws his axe majestically. Occasionally fails to catch it.
@@ -57,8 +57,8 @@ All eight are available in every normal stage. Portals switch between them autom
 | LORENZO → GNASH | "APPLYING INDUSTRIAL THREAD SEALANT." → "TOO SLOW. I ALREADY PASSED THE VALVE." |
 | GNASH → FERNWICK | "ALREADY AT THE NEXT CORNER. SPEED UP." → "THE RECEIPT EXPRESSLY FORBIDS RUNNING." |
 | FERNWICK → B-33P | "THE PROPHECY FORETOLD A METALLIC CHASSIS." → "CHASSIS OPERATIONAL. CYAN LEVEL: CRITICAL." |
-| B-33P → MOCHI | "PORTAL ENGAGED. SCANNING EXTRA-DIMENSIONAL SPECIMEN." → "POYO. (THE PIXELS WARP SLIGHTLY.)" |
-| MOCHI → KIKO | "POYO?" → "I WILL NEED THAT AS A STATEMENT." |
+| B-33P → CLARA | "PORTAL ENGAGED. SCANNING EXTRA-DIMENSIONAL SPECIMEN." → "SUDDENLY: CLARA VAULT." |
+| CLARA → KIKO | "TO BE CONTINUED." → "I WILL NEED THAT AS A STATEMENT." |
 | KIKO → RAY M'N | "I AM NOT LEAVING. I AM CANVASSING." → "CANVASS THE GLOVE. IT ACTS ALONE." |
 | RAY M'N → GRUMPOS | "HANDS OFF. LITERALLY. THEY ARE UNSECURED." → "BOY. FETCH THE SPARE APPENDAGES." |
 | GRUMPOS → LORENZO | "PREPARE FOR BALLISTIC DISPATCH, PLUMBER." → "STANDARD PROCEDURE. AIM FOR THE DUCTWORK." |
@@ -180,7 +180,7 @@ Each hero has a unique ability on a cooldown (1.8–3.5 seconds). An in-world ci
 
 - **Shield Roll** (Fernwick, 3s, starts stages with one shield): Short rolling dash that breaks ground hazards in contact and deflects one enemy shot. A charged Relay Blast version plows through without ringing his ears.
 
-- **Cosmic Squish** (Mochi, 3.5s, double jump + float): Shrinks temporarily and falls slowly — escape, not attack. A charged Relay Blast version extends the shrink duration considerably.
+- **Plot Hole** (Clara, 3.0s, jumps 15% higher): Fires both pistols — a double-tap pair of fast small slugs (shotBurst 2) that destroy ground obstacles. A charged Relay Blast version fires a piercing three-way spread, doubled. *(Cosmic Squish retired from the roster with Mochi, held for a cameo.)*
 
 - **Warning Shot** (Kiko, 3.5s): Fires a ball of energy that destroys ground obstacles. Ground-only and one-hit, like B-33P's Lemon Cannon — but slower and fatter, and on more than twice his cooldown, since his fast recharge is his whole skill. A charged Relay Blast version fires a three-round spread, every shot piercing.
 
@@ -227,7 +227,7 @@ Played when first opening each cabinet. All replayable at the Arcade Corner (50 
 
 - Base points for obstacles broken, coins collected, and stage clear (250).
 - Boss clear: 500. Challenge bonus: 100. Appliance bonus: 150.
-- Kiko jumps twice. She does NOT float — the second jump came across from Mochi's kit, the hover did not.
+- Kiko jumps twice. She does NOT float — the second jump came across from Mochi's kit, the hover did not. With Mochi retired from the roster, Kiko is the double-jump hero (and teaches it in the tutorial); the float has no owner.
 - Grumpos has a passive +20% to all score.
 
 ### 4.9 Obstacles & Objects
@@ -311,7 +311,7 @@ XP thresholds: 100, 300, 700, 1400 (levels 1–5). Each hero has one sidegrade w
 | Gnash | MOMENTUM GUY | Stacking speed after every tag |
 | Fernwick | SHIELD BASH | Roll breaks hazards, ends in brief stumble |
 | B-33P | CHARGE SHOT | Pellets pierce ground and flying obstacles |
-| Mochi | EXTRA FULL OF AIR | Floats longer but becomes wider |
+| Clara | SERIALIZED | The shot is faster but smaller |
 | Kiko | REASONABLE FORCE | The warning shot is wider but travels slower |
 | Ray M'n | FREELANCE FIST | Rocket fist collects coins before returning |
 | Grumpos | RICOCHET AXE | Axe hits a second target, harder to catch |

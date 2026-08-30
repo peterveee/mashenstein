@@ -109,17 +109,29 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhan
 // One material per cabinet, in every hole on it. Split out so the packs that
 // draw their ground some other way — the checkered road, the neon grid — can
 // call it without also inheriting drawGapsAwareGround's idea of what a road is.
-export function drawPitFills(ctx, camX, cab, obstacles, t = 0) {
+export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false) {
   if (!cab) return;
   // TAR EVERYWHERE, until a cabinet says otherwise. An empty break is a
   // legitimate picture and it is the wrong DEFAULT: a pit is fatal now, and the
   // one thing every hole has to do is look like it will kill you. `pitFill` is
   // the per-cabinet override the bake-off exists to fill in — 'none' opts a
   // cabinet back out to open air.
-  const id = cab.pitFill || 'tar';
-  if (id === 'none') return;
+  const cabId = cab.pitFill || 'tar';
   for (const ob of obstacles || []) {
     if (!ob.live || !ob.def || !ob.def.isGap || ob.tunnel) continue;
+    // A HOLE MAY NAME ITS OWN MATERIAL, and one does: a stepping-stone crossing
+    // is spiked whatever the cabinet is filled with, because the fill is the
+    // only thing that says the sequence is fatal before the first hop. Read off
+    // the obstacle first and the cabinet second — the cabinet is the default,
+    // not the authority.
+    // TWO PASSES, and every hole is painted by exactly one of them. A hole that
+    // names its own material is drawn by the run itself (see RunState.draw), so
+    // that a crossing's spikes do not depend on which of the nine packs happens
+    // to call this function — three of them draw their ground themselves and
+    // never do. Everything else is the cabinet's, and is drawn from here.
+    if (!!ob.fill !== ownOnly) continue;
+    const id = ob.fill || cabId;
+    if (id === 'none') continue;
     const x = ob.x - camX;
     if (x + ob.w < -4 || x > W + 4) continue;
     // Phased off world x so two pits on one screen never bubble in step.

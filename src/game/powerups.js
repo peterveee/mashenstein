@@ -10,11 +10,11 @@ export const POWER_DEFS = {
   lowgrav: { name: 'LOW GRAVITY', color: '#b888f0' },
   // Rarer than the regular staples in the drip; also the breaker-box bonus prize.
   unpeel:  { name: 'UNPEELABLE', color: '#e8e8f0' },
-  // Touch-only: arms a short recording window with a one-shot REWIND button.
-  // Desktop never sees the capsule — keyboard/pad players have free rewind on
-  // hold-Left. Mint green because shield/airjump already own two blues and the
-  // tape FX itself is cold blue-white; a third blue would read as one of them
-  // at 8px. See docs/mobile-rewind-powerup.md.
+  // Banks one automatic rewind until it fires or the level ends — the same
+  // three seconds on every device. Mint green because
+  // shield/airjump already own two blues and the tape FX itself is cold
+  // blue-white; a third blue would read as one of them at 8px.
+  // See docs/mobile-rewind-powerup.md.
   rewind:  { name: 'REWIND', color: '#7ce8a0' },
 };
 
@@ -27,23 +27,29 @@ export const POWER_DEFS = {
 // itself rather than as a find, and the second one only ever buys a temporary
 // +1 level. A *single* reroll, so the odds stay close to the table (a repeat is
 // still possible at p², which is all the overcharge path needs).
-export function randomPowerPickup(rng, avoid, allowRewind = false) {
+export function randomPowerPickup(rng, avoid, allowRewind = true) {
   const first = rollPowerPickup(rng, allowRewind);
   if (avoid && first === avoid) return rollPowerPickup(rng, allowRewind);
   return first;
 }
 
-function rollPowerPickup(rng, allowRewind = false) {
+function rollPowerPickup(rng, allowRewind) {
   const roll = rng.float();
   // The relay charge is deliberately the rarest thing in the table. Capsules
   // drip every 12-18s, so 8% works out to roughly one charge every three or
   // four stages: rare enough to feel like a find rather than a rotation.
   if (roll < 0.08) return 'capRelay';
-  // Rewind is carved out of the rare UNPEELABLE band rather than given a band
-  // of its own, so the desktop table stays byte-identical and the RNG stream
-  // consumes the same number of floats either way. ≈6% on touch, 0% elsewhere.
-  if (roll < 0.18) return allowRewind && roll >= 0.12 ? 'capRewind' : 'capUnpeel';
-  if (roll < 0.48) return ['capAirJump', 'capSpeed', 'capLowGrav'][Math.floor((roll - 0.18) / 0.10)];
+  if (roll < 0.18) return 'capUnpeel';
+  // Rewind takes a band of its OWN, out of the staple tail, rather than
+  // splitting unpeel's. Two things fall out of that and both are the point:
+  // the relay charge stays the rarest drop in the game (it is a free power,
+  // and nothing should be scarcer), and unpeel keeps the 10% it was tuned to.
+  // 10% here matches unpeel because rewind is the same KIND of find — a rare
+  // one you are pleased to see, not a staple you expect.
+  if (roll < 0.28) return allowRewind ? 'capRewind' : 'capUnpeel';
+  if (roll < 0.58) return ['capAirJump', 'capSpeed', 'capLowGrav'][Math.floor((roll - 0.28) / 0.10)];
+  // The staples pay for rewind's band: 42% between them, still comfortably the
+  // most common thing in the table and still each far commoner than unpeel.
   return rng.pick(['capShield', 'capMagnet']);
 }
 
@@ -69,6 +75,14 @@ export class Powerups {
     let level = this.levelOf(id);
     let overcharged = false;
     if (cur) { level = Math.min(this.levelOf(id) + 1, 4); overcharged = level > this.levelOf(id); }
+    // Rewind is a banked charge, not a timed effect. Keeping that distinction
+    // in the state instead of faking a very large duration gives the HUD and
+    // update loop one authoritative answer: it remains fully armed until the
+    // run consumes it or the RunState goes away at the end of the level.
+    if (id === 'rewind') {
+      this.active[id] = { level, persistent: true };
+      return { overcharged };
+    }
     let t = this.durationFor(id, level);
     if (opts.minDuration) t = Math.max(t, opts.minDuration);
     // t0 is what the HUD ring drains from: durations vary by power and level,
@@ -85,9 +99,6 @@ export class Powerups {
       speed: [0, 10, 13][level] || 10,
       lowgrav: [0, 12, 16][level] || 12,
       unpeel: [0, 12, 13, 14, 15][level] || 12,
-      // The ARM window — how long the tape rolls waiting for the button — not
-      // the rewind length, which is fixed (run.js POWER_REWIND_SECONDS).
-      rewind: [0, 12, 15, 18, 20][level] || 12,
     }[id] || 8;
     return base * this.durMult();
   }
@@ -146,6 +157,7 @@ export class Powerups {
 
   update(dt) {
     for (const id of Object.keys(this.active)) {
+      if (this.active[id].persistent) continue;
       this.active[id].t -= dt;
       if (this.active[id].t <= 0) delete this.active[id];
     }

@@ -63,9 +63,6 @@ import { buildRoutes, routeRise } from '../src/game/routes.js';
 import {
   drawRoutes, drawSubsoil, drawTerrain, tunnelOverhangs, terrainGroundY, soilOf, ISLAND_THICKNESS,
 } from '../src/game/terrain.js';
-// Cast candidates — proposals with no entry in any production registry. See the
-// raider bake-off at the bottom of this file, and src/dev/hero-candidates.js.
-import { RAIDER_CANDIDATES } from '../src/dev/hero-candidates.js';
 import {
   OBSTACLE_CANDIDATES, drawObstacleCandidate,
 } from '../src/dev/obstacle-candidates.js';
@@ -77,6 +74,9 @@ import {
   HAZARD_CANDIDATES, HAZARD_FAMILIES, drawHazardCandidate,
 } from '../src/dev/hazard-candidates.js';
 import { PIT_CANDIDATES, drawPitCandidate } from '../src/dev/pit-candidates.js';
+import {
+  SPRING_PAD_CANDIDATES, drawSpringPadCandidate,
+} from '../src/dev/spring-pad-candidates.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -109,6 +109,7 @@ const HIDDEN_GALLERY_SECTIONS = new Set([
   'portal-aftermath',
   'boost-fx-bakeoff',
   'finish-cling',
+  'spring-pad-bakeoff',
 ]);
 // SCREEN SCALE: screen px per logical frame px. The game is never presented at
 // 1:1 — renderer.js fits the 480x270 frame to the viewport at
@@ -3302,6 +3303,72 @@ function laneStrip(ctx, w, h, groundY) {
   }
 }
 
+// ----------------------------------------------- spring pad bake-off (lab only)
+// The 16x6 box is already a live mechanic, so unlike a new-obstacle study the
+// dashed rectangle here is not provisional: every candidate must preserve it.
+// Art may stand proud of that box, but it is centred and bottom-anchored by the
+// same geometry drawWorldEntity uses. C is now the live painter; the retired
+// chooser remains in source as the record of the decision.
+{
+  const grid = section('spring-pad-bakeoff', 'Spring pad — bake-off (C ships)',
+    'SETTLED — C, the arcade plunger, now ships as springPad. A is the former production painter; B and D–F remain gallery-only animated alternatives. '
+    + 'Every option keeps the live 16x6 gameplay box and the same one-shot launch mechanic. Left is an '
+    + 'honest lane read on the Plumber Panic palette beside Lorenzo at his real 24u height. Right is the '
+    + 'identical painter enlarged for silhouette, material and compression inspection. Art dimensions '
+    + 'are reported separately because a shorter design must be allowed to win on using less headroom. '
+    + 'Each card renders at 6x and can be clicked to save its 1248x600 PNG.');
+
+  const TW = 208, TH = 100, GY = 78;
+  const BOX_W = 16, BOX_H = 6;
+  const DX = 112, DY = 7, DW = 88, DH = 72;
+  const cab = CABINETS.find((candidate) => candidate.id === 'plumber');
+
+  for (const cand of SPRING_PAD_CANDIDATES) {
+    const [aw, ah] = cand.art;
+    const ds = Math.min(DW / aw, DH / ah);
+    const dw = aw * ds, dh = ah * ds;
+    tile(grid, `${cand.letter} — ${cand.name}`,
+      `${cand.id} · art ${aw}x${ah}u over the unchanged 16x6 box · 8f @ 16fps<br>${cand.note}`,
+      TW, TH, (ctx, t) => {
+        const sky0 = cab?.sky?.[0] || '#4ec9e8';
+        const sky1 = cab?.sky?.[1] || '#bcebf2';
+        ctx.fillStyle = sky0; ctx.fillRect(0, 0, TW, GY);
+        ctx.fillStyle = sky1; ctx.fillRect(0, GY * 0.5, TW, GY * 0.5);
+        ctx.fillStyle = cab?.far || 'rgba(62,112,137,.45)';
+        ctx.beginPath(); ctx.moveTo(0, GY * 0.68);
+        ctx.quadraticCurveTo(TW * 0.15, GY * 0.5, TW * 0.31, GY * 0.67);
+        ctx.quadraticCurveTo(TW * 0.48, GY * 0.52, TW * 0.64, GY * 0.69);
+        ctx.lineTo(TW, GY * 0.61); ctx.lineTo(TW, GY); ctx.lineTo(0, GY); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = cab?.ground || '#8d7563'; ctx.fillRect(0, GY, TW, 3);
+        ctx.fillStyle = cab?.groundDark || '#59483f'; ctx.fillRect(0, GY + 3, TW, TH - GY - 3);
+
+        drawToon(ctx, 'lorenzo', pose('run', t), 18, GY, 24);
+        // Real lane placement: art centred over the box and grounded, while
+        // the gold dashed box shows the collision/trigger area that stays put.
+        const boxX = 55;
+        ctx.save(); ctx.translate(boxX - (aw - BOX_W) / 2, GY - ah);
+        drawSpringPadCandidate(ctx, cand.id, aw, ah, t);
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(255,224,92,.72)'; ctx.lineWidth = 0.45;
+        ctx.setLineDash([1.5, 1.5]);
+        ctx.strokeRect(boxX, GY - BOX_H, BOX_W, BOX_H);
+
+        ctx.setLineDash([]); ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(104, 8); ctx.lineTo(104, TH - 8); ctx.stroke();
+        ctx.save(); ctx.translate(DX + (DW - dw) / 2, DY + (DH - dh));
+        drawSpringPadCandidate(ctx, cand.id, dw, dh, t);
+        ctx.strokeStyle = 'rgba(255,255,255,.32)'; ctx.lineWidth = 0.45;
+        ctx.setLineDash([2, 2]); ctx.strokeRect(0, 0, dw, dh); ctx.restore();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(18,22,32,.68)';
+        ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+        ctx.fillText('LANE + LIVE BOX', 45, 7);
+        ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
+      }, { animated: true, hires: 6, wide: true, world: true });
+  }
+}
+
 // The size drawWorldEntity would actually paint a prop at: the 4/3 inflation
 // every entity gets, times PROP_TALL, over the def box. Returned alongside the
 // box itself so a tile can report the overdraw honestly.
@@ -3783,132 +3850,15 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // The contour taper bake-off used to sit here. 0.5 shipped and the section
 // came out of the gallery; CONTOUR in toons.js still carries the exponent.
 
-// ------------------------------------------- new hero: raider bake-off (lab)
-// A cast CANDIDATE, not cast. Nothing here is registered in TOON_SPECS or
-// HERO_SPRITES — the specs and palettes live in src/dev/hero-candidates.js and
-// are handed to the shipped painter through drawToon's spec/pal seam, so a look
-// nobody has picked yet cannot leak into the roster every production section
-// above enumerates. Pick one and it moves the other way: into TOON_SPECS, into
-// HERO_SPRITES with a pixel grid, into HEROES — and this section comes out.
-{
-  const grid = section('raider-bakeoff', 'New hero — raider heroine, five cuts',
-    'GALLERY ONLY. One character, five treatments, on the SHIPPED humanoid rig: same gait, same ink, '
-    + 'same light, same two-bone limbs as Lorenzo and Gary. Everything that differs is a flag the rig '
-    + 'already reads plus the gear pieces added beside them (three long-hair cuts, bare arms, gloves, '
-    + 'belt, bandolier, crossed harness, open jacket, cropped top, shorts, thigh and hip holsters, boot '
-    + 'shafts, and one or two pistols in the hands). A look bake-off can only answer "which look" if the '
-    + 'answer is not also contaminated by "which rig". '
-    + '<br><br>Two groups. <b>A / B / C are the COVERED reads</b> — full-length trousers into tall boots. '
-    + '<b>D and E come from the references</b>: D is the 3D chibi figurine taken head-on (turquoise crop '
-    + 'tank, bare midriff, brown shorts, bare thigh, plait, twin holsters, big brass buckle) with squat '
-    + '<code>stout</code> proportions and TWIN pistols on the power move; E is the 2D vector Lara '
-    + '(charcoal sleeveless tank, crossed harness straps, wide belt, olive cargo trousers, knee-high '
-    + 'boots, streaming ponytail) — sleeveless but covered, the middle ground. '
-    + '<br><br>What to watch on the skin builds: at hero size a bare leg and a trouser leg differ by one '
-    + 'colour, so D has to earn its lower silhouette from the boot line and the shorts hem, and the '
-    + 'buckle has to be big enough to break the column of skin down the middle — that is why it is at '
-    + '1.35x and the crop hem carries its own line. And the <b>turquoise</b>: three heroes already own it '
-    + '(Lorenzo #2ea8a0, Ray M\'n #28a8a0, Dolores #6fa89c), so a fourth is a collision rather than a '
-    + 'homage. A takes it deep and cool, D at reference strength, B goes field olive, C oxblood, E '
-    + 'charcoal. The "beside the cast" tile below is where that gets settled. '
-    + '<br><br>What all five keep, because this is one character in five cuts and not five characters: '
-    + 'her face, her skin, her auburn hair, brass hardware, boots, and a gun on her hip.');
-
-  const CANDS = RAIDER_CANDIDATES;
-  const opts = (c) => ({ spec: c.spec, pal: c.pal });
-  // Shared with the fighter section below — same tiles, same clock, so the two
-  // proposals are looked at on identical terms.
-  window.__candidateTiles = { opts };
-  // The power move, through the same poseFromPlayer fields a run would hand the
-  // painter (powerupExtra), on useAbility's own 0.3s countdown — so this is
-  // what a run shows and not a pose sheet.
-  //
-  // The CLOCK is the one thing that differs from the production power-up tiles.
-  // Those run the real 1.4s cooldown, which spends 1.1s of every cycle back in
-  // a plain run — correct for an ability reference, useless for a tile whose
-  // entire question is whether the shot reads. This fires every 1.1s and holds
-  // the arm out between shots, so the pose is on screen almost all the time.
-  const RAIDER_SHOT = 1.1;
-  const raiderPose = (kind, t) => (kind === 'power'
-    ? pose('run', t, powerupExtra('shoot', Math.min(0.3, t % RAIDER_SHOT)))
-    : pose(kind, t, {}));
-
-  // One tile per POSE with all three candidates in it, rather than one tile per
-  // candidate: the comparison this section exists to make is A-against-B-against-C
-  // at the same instant, and that only works if they are adjacent and on the
-  // same clock.
-  const RH = 62, RCOL = 82, RFEET = 92;
-  for (const [kind, note] of [
-    ['idle', 'Standing. The read to check first — it is the hub, the stage select and every menu.'],
-    ['run', 'The pose she is in for 95% of a stage. Hair swings on the stride clock.'],
-    ['power', 'The shot: pistol out of the holster it was in a frame ago, muzzle flash on the frame it fires, recoil recovering over the same 0.3s the run gives the pose.'],
-    ['jump', 'Airborne. Watch the hair against the raised knee.'],
-    ['duck', 'Crouched. The plait tucks over her shoulder here — at its standing length the tie ends up through the floor.'],
-  ]) {
-    tile(grid, `raider — ${kind}`, note, RCOL * CANDS.length, RH * 1.62, (ctx, t) => {
-      CANDS.forEach((c, i) => {
-        drawToon(ctx, c.id, raiderPose(kind, t), RCOL * (i + 0.5), RFEET, RH, opts(c));
-        ctx.fillStyle = '#8a8a9e';
-        ctx.font = '6px ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(c.name, RCOL * (i + 0.5), RH * 1.55);
-      });
-    }, { animated: true, wide: true, hires: 4 });
-  }
-
-  // The HUD cell. Every hero owns one, it is the smallest thing their design has
-  // to survive, and a cut that only works at full height is not a cut.
-  tile(grid, 'raider — face crops', 'drawToonFace(), the size the HUD and the portal crop actually use.',
-    RCOL * CANDS.length, 54, (ctx) => {
-      CANDS.forEach((c, i) => {
-        drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
-        ctx.fillStyle = '#8a8a9e';
-        ctx.font = '6px ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(c.name, RCOL * (i + 0.5), 50);
-      });
-    }, { animated: false, wide: true, hires: 6 });
-
-  // The question no amount of studying her alone can answer: does she belong to
-  // this cast? Same size, same pose, same clock as four heroes who already
-  // shipped — which is also where a palette collision shows up, since the teal
-  // in A is one hero away from Lorenzo's here.
-  const CAST_ROW = ['lorenzo', 'gnash', 'fernwick', 'grumpos'];
-  tile(grid, 'raider — beside the cast', 'Four shipped heroes and every candidate, same size and pose. '
-    + 'Watch for a candidate that reads as a different game, and for A\'s teal against Lorenzo\'s.',
-    RCOL * (CAST_ROW.length + CANDS.length), RH * 1.62, (ctx, t) => {
-      const row = [
-        ...CAST_ROW.map((id) => [id, null, id]),
-        ...CANDS.map((c) => [c.id, c, c.name]),
-      ];
-      row.forEach(([id, cand, label], i) => {
-        drawToon(ctx, id, pose('idle', t), RCOL * (i + 0.5), RFEET, RH, cand ? opts(cand) : {});
-        ctx.fillStyle = cand ? '#c8b98a' : '#7a7a8e';
-        ctx.font = '6px ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(label, RCOL * (i + 0.5), RH * 1.55);
-      });
-    }, { animated: true, wide: true, hires: 4 });
-
-  // ...and the size she is actually PLAYED at. Everything above is a study;
-  // this is the tile that decides it. Real lane, real 24px hero, real camera
-  // magnification — a look that only reads on the study row does not read.
-  {
-    const LW = 24 + CANDS.length * 62 + 40, LH = 62, LGY = 46;
-    tile(grid, 'raider — in the lane, at size',
-      `Real ${HERO_DRAW_H}px hero through the run's own camera. Running and firing, side by side.`,
-      LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
-        ctx.scale(WORLD_Z, WORLD_Z);
-        laneStrip(ctx, LW, LH, LGY);
-        CANDS.forEach((c, i) => {
-          const x = 24 + i * 62;
-          drawToon(ctx, c.id, raiderPose('run', t), x, LGY, HERO_DRAW_H, opts(c));
-          drawToon(ctx, c.id, raiderPose('power', t), x + 26, LGY, HERO_DRAW_H, opts(c));
-        });
-      }, { animated: true, wide: true, world: true, hires: 5 });
-  }
-  window.__candidateTiles.raiderPose = raiderPose;
-}
+// The raider bake-off used to sit here — the whole road from five costume
+// cuts down to A3, then the hairline rounds (the pulled cut, the swept-back
+// fringe, the forelock that lost, the two wisps that won). Settled and
+// shipped as CLARA VAULT: TOON_SPECS.clara, HERO_SPRITES.clara, her HEROES
+// row in Mochi's old slot — so every production section above draws her and a
+// lab comparison would only be quoting decisions back. The record is in
+// docs/notes/clara-persona.md; the painter pieces (the pulled HAIR_CUT, the
+// swept fringes and numeric tendril counts, the pistol, the braid) stay live
+// in toons.js.
 
 // The martial-artist bake-offs used to sit here — first her LOOK, then her whole
 // HEAD. Both are settled and shipped: split skirt and blue, then jaw-length hair, a

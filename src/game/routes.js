@@ -67,6 +67,72 @@ export const TUNNEL_HOLE_W = PLAYER_W * 6;
 // with the stage's speed exactly as their spans do.
 export const ROUTE_CLEAR = 2.2;
 
+// ------------------------------------------------------- stepping-stone crossing
+/**
+ * A CROSSING: one long fatal break with stones standing in it.
+ *
+ * Every other hole in this game is a hole you jump — one decision, one arc,
+ * and the lane resumes. A crossing is the same hole made too wide to clear and
+ * then made crossable again, so what it asks for is a SEQUENCE: four jumps,
+ * three landings, and no ground under any of them.
+ *
+ * The stones are ordinary islands (`kind: 'island'`), which is the whole reason
+ * this is a small feature rather than a second platformer: the run already
+ * knows how to catch a descending hero on a slab, how to rebase his altitude
+ * when he runs off one, and how to kill him when the lane below is a break.
+ * Nothing here is new physics. It is a hole, and some floors inside it.
+ *
+ * THE TWO NUMBERS, and why they are the shape they are.
+ *
+ * Both are SECONDS of lane travel, like every other span in this file, so a
+ * crossing is the same crossing in world 1 and on UNPLUGGED. The hop is half a
+ * jump for the shortest-arced hero in the cast; the tread is longer than the
+ * hop, which looks generous on paper and is the only honest answer to the cast:
+ * airtime runs from Grumpos' 0.57s to Clara's 0.82s, and lane speed itself
+ * varies by hero, so ONE fixed pixel layout is being jumped by heroes whose
+ * arcs differ by half again. A short tread would be a stone that the long
+ * jumpers cannot help but overshoot — no timing solves it, because a hero
+ * without `variableJump` cannot make his jump any shorter than it is.
+ *
+ * So the tread is sized off the LONGEST arc (it has to catch it) and the hop
+ * off the SHORTEST (it has to be clearable), and the takeoff window that leaves
+ * is a quarter of a second or better for every hero in the bag. tests/spike-
+ * crossing.js is that claim, hero by hero, and it is the file to run before
+ * either number is touched.
+ */
+export const CROSSING_HOP = 0.30;
+export const CROSSING_TREAD = 0.42;
+/**
+ * How far a stone's top stands above the lane it interrupts.
+ *
+ * Small, and not zero. Zero would be a floor flush with the ground either side,
+ * which is a bridge — and a bridge is not a jump. Fourteen reads as a stone
+ * standing in the hole with its shoulders out of it, hands the landing sweep a
+ * surface plainly above the lane line, and is a third of even the worst hero's
+ * apex, so the height is never what the jump is about.
+ */
+export const CROSSING_RISE = 14;
+
+/**
+ * Resolve one crossing to pixels: the break, and the stones inside it.
+ *
+ * `speed` is the speed the lane will be MOVING when the hero arrives, not the
+ * stage's base speed — see RunState.speedAt. A crossing laid at base speed is
+ * laid for a run that has not started accelerating yet, and every stone in it
+ * is then a little short for the hero who actually meets it.
+ */
+export function crossingLayout(x, jumps, speed) {
+  const n = Math.max(2, Math.round(jumps));
+  const hop = CROSSING_HOP * speed;
+  const tread = CROSSING_TREAD * speed;
+  const stones = [];
+  // n jumps means n - 1 stones: the first hop leaves the near lip and the last
+  // one lands on the far one, and every stone between is both a landing and a
+  // takeoff.
+  for (let i = 0; i < n - 1; i++) stones.push({ x: x + (i + 1) * hop + i * tread, w: tread });
+  return { x, w: n * hop + (n - 1) * tread, jumps: n, hop, tread, stones };
+}
+
 /**
  * How far a road sits above the ground at this x. SIGNED: positive is a high
  * road, negative is a tunnel under the lane. One profile describes both.
@@ -171,7 +237,7 @@ export function tunnelOpenings(r) {
   ];
 }
 
-export function buildRoutes(cabinet, { totalDist, speed, groundYAt }) {
+export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = [] }) {
   const mk = (kind) => (d) => {
     const x = d.at * totalDist;
     const w = (d.dwell ?? 0.7) * speed;
@@ -311,13 +377,24 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt }) {
       // as wide as the last of the climb, and it is the way OUT from up there.
       roofEnd: 0,
       roofGap: null,
-      // Sky roads are drawn as cloud where they get high enough, and the
-      // hero's own dust and landings go white up there with them.
+      // A high road: high enough that the camera re-pins its anchor from the
+      // road's own height instead of craning (run.js), so riding one up does
+      // not zoom the frame out and back in on every jump taken on the way.
       sky: !!d.sky,
+      // Paint the top as cloud where it gets high enough, instead of as the
+      // cabinet's own ground. Off everywhere: the puffs sit on top of the one
+      // silhouette that says where the road's edges and gaps are. Kept as a
+      // key rather than deleted because the painter is still in terrain.js and
+      // one fork can ask for it back.
+      cloud: !!d.cloud,
       // A pad on the ground at the mouth, placed by spawnRouteEntries. Data
       // asks for one; where it goes is arithmetic, not authoring.
       spring: !!d.spring,
-      prize: d.prize || 'coins',
+      // `null` is a real answer and not a missing one — a crossing's stones pay
+      // nothing, because a coin on a stone is a coin standing in the one place
+      // the player has no attention to spare. `||` collapsed that back to a
+      // coin run, which is why this is written the long way round.
+      prize: d.prize === null ? null : (d.prize || 'coins'),
       lowPrize: d.lowPrize || null,
     };
   };
@@ -376,11 +453,44 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt }) {
       prize: k === n - 1 ? (d.topPrize ?? d.prize ?? 'coins') : (d.prize ?? 'coins'),
     }));
   };
+  // A CROSSING'S STONES ARE NOT NEGOTIABLE.
+  //
+  // The overlap guard below drops the LATER of two roads that collide, which is
+  // the right answer when both are scenery and the wrong one here: a crossing
+  // missing its second stone is not a thinner set piece, it is a fatal break
+  // with no way over it. So the stones are laid first and whatever a cabinet
+  // declares near them is what gives way — the guard runs against the crossing's
+  // full span plus the ordinary clear lane either side, so the player still gets
+  // a beat to read the hole before the first hop.
+  const stones = crossings.flatMap((c, i) => c.stones.map((s) => {
+    const r = mk('island')({
+      at: s.x / totalDist,
+      dwell: s.w / speed,
+      rise: CROSSING_RISE,
+      // Same exemption a staircase's steps take, and for the same reason: the
+      // reach that has to be capped is the one from the floor BELOW, and the
+      // floor below a stone is the stone before it.
+      stacked: true,
+      stack: `crossing${i}`,
+      prize: null,
+    });
+    // What marks a stone as part of a set piece rather than as scenery. The run
+    // reads it to leave the crossing's own hole alone (clearRouteHazards) and
+    // the demo bot reads it to know it is mid-sequence rather than mid-lane.
+    r.crossing = c;
+    return r;
+  }));
+  const guard = ROUTE_CLEAR * speed;
+  const overCrossing = (r) => crossings.some((c) =>
+    r.x < c.x + c.w + guard && r.x + r.w > c.x - guard);
   const laid = [];
   for (const r of [
-    ...(cabinet.islands || []).flatMap(stairs).map(mk('island')),
-    ...(cabinet.forks || []).map(mk('fork')),
-    ...(cabinet.tunnels || []).map(mk('tunnel')),
+    ...stones,
+    ...[
+      ...(cabinet.islands || []).flatMap(stairs).map(mk('island')),
+      ...(cabinet.forks || []).map(mk('fork')),
+      ...(cabinet.tunnels || []).map(mk('tunnel')),
+    ].filter((r) => !overCrossing(r)),
   ].sort((a, b) => a.x - b.x)) {
     const prev = laid[laid.length - 1];
     // Steps of the same staircase are meant to be close — that gap is the

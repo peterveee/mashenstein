@@ -25,7 +25,7 @@ function assert(cond, msg) {
 const TICK = 1 / 60;
 function makeRun(stage, onEnd = () => {}) {
   const run = new RunState({
-    stage, team: ['lorenzo', 'gnash', 'mochi'], save, seed: 12345, difficulty: 1, onEnd,
+    stage, team: ['lorenzo', 'gnash', 'clara'], save, seed: 12345, difficulty: 1, onEnd,
   });
   run.enter();
   return run;

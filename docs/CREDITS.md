@@ -129,7 +129,7 @@ CAST: *"POYO."*
 **Gnash the Needlemouse** ......................... credited as *Already Left*
 **Fernwick, Hero of Thyme** ....................... performed by a grocery receipt, itself
 **Unit B-33P "Blastbot"** ......................... voice grievance filed on his behalf
-**Mochi** ......................................... "POYO" performed by Mochi; dialect coach not required
+**Clara Vault, Mall Raider** ...................... narration performed by herself; no other narrator was consulted
 **Kiko, Jurisdiction Pending** .................... warrant pending in this jurisdiction
 **Ray M'n, Appendage-Optional** ................... limbs performed by stunt limbs, insured separately
 **Grumpos, Dad of Boy** ........................... "BOY" performed with range
@@ -191,7 +191,7 @@ IT Support / Power Infrastructure — *could not be reached following the unplug
 
 ---
 
-**[ RELAY HANDOFF: FACILITIES → HUMAN RESOURCES ]** — *Mochi hands off to Kiko*
+**[ RELAY HANDOFF: FACILITIES → HUMAN RESOURCES ]** — *Clara hands off to Kiko*
 *"Your turn."*
 *"Every one of them is a person of interest."*
 

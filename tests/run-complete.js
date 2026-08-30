@@ -22,7 +22,7 @@ const stage = {
 let result = null;
 const run = new RunState({
   stage,
-  team: ['lorenzo', 'gnash', 'mochi'],
+  team: ['lorenzo', 'gnash', 'clara'],
   save,
   seed: 12345,
   difficulty: 1,
