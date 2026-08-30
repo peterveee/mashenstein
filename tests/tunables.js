@@ -91,7 +91,7 @@ for (const row of TUNABLES) {
   ok(!new RegExp(`(?:^|\\n)[ \\t]*(?:export\\s+)?let\\s+${row.name}\\s*=`).test(mask),
     `${row.name} still ships as a const, not a let`);
 }
-for (const rel of ['src/game/player.js', 'src/game/run.js', 'src/sprites/toons.js', 'src/game/spawner.js']) {
+for (const rel of ['src/game/player.js', 'src/game/run.js', 'src/game/layout.js', 'src/sprites/toons.js', 'src/game/spawner.js']) {
   const src = read(rel);
   ok(!/__registerTunables/.test(src), `${rel} has no registration hook baked into it`);
   ok(!/from ['"].*dev\/tunables/.test(src), `${rel} does not import the dev registry`);

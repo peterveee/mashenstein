@@ -3,7 +3,8 @@
 import { OBSTACLES, PICKUPS, makeObstacle, makePickup } from './entities.js';
 import { PUNT, HEAVY_PUNT } from './punt.js';
 import { GRAVITY, BASE_JUMP_V } from './player.js';
-import { randomPowerPickup } from './powerups.js';
+import { randomPowerPickup, weightedPowerPickup } from './powerups.js';
+import { sectionAt, patternKey, DEFAULT_DRIP } from './layout.js';
 
 // How much extra room a puntable prop buys the obstacle behind it, in seconds
 // of travel. A punt hangs for roughly a second (see PUNT in punt.js), and this
@@ -151,12 +152,24 @@ function clearOfHoles(x0, w, holes, clear) {
 let nextFormationId = 1;
 
 export class Spawner {
-  constructor({ cabinet, rng, tierMax = 2, react = REACT_FLOOR, iceSlide = 0 }) {
+  constructor({ cabinet, rng, tierMax = 2, react = REACT_FLOOR, iceSlide = 0, sections = null, totalDist = null }) {
     this.cabinet = cabinet;
     this.rng = rng;
     this.tierMax = tierMax;
     this.react = react;
     this.iceSlide = iceSlide;      // extra px of gap for slidey landings
+    // The stage's layout sections, or null — and null is a CONTRACT rather
+    // than a shrug: with no sections every path below runs the code it always
+    // ran and draws the same rng in the same order, which is what lets
+    // tests/layout-parity.js hold an un-edited stage to its recording.
+    //
+    // Curation happens BEFORE the roll, never after. Filtering the bag and
+    // then picking costs the stream one draw whatever the bag holds; rolling
+    // and rejecting would spend a draw per rejection and walk every later
+    // pattern in the stage sideways. Same reasoning as the `once` filter.
+    this.sections = sections && totalDist ? sections : null;
+    this.totalDist = totalDist;
+    this.sectionBags = this.sections ? new Map() : null;
     this.nextX = 0;
     this.lastPatternIdx = -1;
     this.lastActionX = -9999;
@@ -219,8 +232,32 @@ export class Spawner {
   // peel now arrives in more than one shape. A pattern without a group still
   // keys on its own identity, which is what keeps Surge's union bank honest
   // (see the usedOnce note in reset()).
+  // Which section governs a world x, and the bag it has curated. The bag is
+  // cached per section: exclusions cannot change mid-run, and rebuilding it
+  // per pick would put patternKey in the hot path for every pattern dealt.
+  sectionFor(x) {
+    return this.sections ? sectionAt(this.sections, x / this.totalDist) : null;
+  }
+
+  sectionBank(section) {
+    let bank = this.sectionBags.get(section);
+    if (!bank) {
+      bank = this.cabinet.patterns.filter((p) => {
+        if (section.exclude && p.cells.some((c) => section.exclude.has(c.t))) return false;
+        if (section.excludePatterns && section.excludePatterns.has(patternKey(p))) return false;
+        return true;
+      });
+      this.sectionBags.set(section, bank);
+    }
+    return bank;
+  }
+
   pickPattern() {
-    const pats = this.cabinet.patterns.filter((p) => p.tier <= this.tierMax
+    const section = this.sectionFor(this.nextX);
+    const bank = section ? this.sectionBank(section) : this.cabinet.patterns;
+    const tierMax = section && section.tierCap != null
+      ? Math.min(this.tierMax, section.tierCap) : this.tierMax;
+    const pats = bank.filter((p) => p.tier <= tierMax
       && !(p.once && this.usedOnce.has(p.onceGroup || p)));
     if (!pats.length) return null;
     let idx = this.rng.int(0, pats.length - 1);
@@ -330,7 +367,14 @@ export class Spawner {
       if (pat.once) this.usedOnce.add(pat.onceGroup || pat);
       // Gap to the next pattern: random but never below the fairness floor.
       // The next pattern may open with a duck obstacle, so budget for the worst case.
-      const roll = this.rng.range(90, 220);
+      // A section's density DIVIDES the rolled gap — 2 packs the lane twice as
+      // tight, 0.5 opens it out — and it is applied to the roll's RESULT, never
+      // to its bounds, so the draw is identical and density 1 is exact
+      // identity. The fairness floor is deliberately not scaled: the Math.max
+      // below means a dense section can only ever spend the slack the roll had
+      // to give, and never the reaction runway underneath it.
+      const density = this.sectionFor(this.nextX)?.density ?? 1;
+      const roll = this.rng.range(90, 220) / density;
       const fair = this.fairGap(speed, this.lastActionKind, 'duck', this.lastWasPunt);
       this.nextX = Math.max(lastX, this.lastActionX) + Math.max(roll, fair);
     }
@@ -407,13 +451,31 @@ export const POWER_MIN_GAP = 480;   // one screen of world px
 const DRIP_W = PICKUPS.battery.w;
 
 export class DripSpawner {
-  constructor(rng, benchLevels) {
+  constructor(rng, benchLevels, { sections = null, totalDist = null } = {}) {
     this.rng = rng;
     this.bench = benchLevels;
-    this.capsuleTimer = this.rng.range(12, 18);
-    this.batteryTimer = this.rng.range(20, 30);
+    // Same null contract as the Spawner's above. DEFAULT_DRIP holds the
+    // windows this class shipped with, so "no sections" and "a section that
+    // says nothing about the drip" are the same numbers from the same table
+    // rather than two literals that can drift apart.
+    this.sections = sections && totalDist ? sections : null;
+    this.totalDist = totalDist;
+    this.capsuleTimer = this.rearm('capsule', 0);
+    this.batteryTimer = this.rearm('battery', 0);
     this.lastPowerX = -1e9;   // finite so it survives a snapshot round-trip
     this.lastPowerType = null;
+  }
+
+  sectionFor(x) {
+    return this.sections ? sectionAt(this.sections, x / this.totalDist) : null;
+  }
+
+  // The next wait for a capsule or a cell, from the governing section's window
+  // when it declares one. The same rng.range call either way, so a window
+  // authored equal to the default spends the identical draw.
+  rearm(kind, worldX) {
+    const range = this.sectionFor(worldX)?.drip?.[kind] || DEFAULT_DRIP[kind];
+    return this.rng.range(range[0], range[1]);
   }
 
   // Would a capsule placed here be at least a screen clear of the last one?
@@ -445,8 +507,14 @@ export class DripSpawner {
       if (!this.canPlacePower(x) || x + DRIP_W > stopX) {
         this.capsuleTimer = 0.5;
       } else {
-        this.capsuleTimer = this.rng.range(12, 18);
-        const type = randomPowerPickup(this.rng, this.lastPowerType, { allowRewind, banned });
+        this.capsuleTimer = this.rearm('capsule', x);
+        // A section that names its own capsule weights deals from those; one
+        // that does not goes through the shipped ladder untouched. The two are
+        // kept apart deliberately — see weightedPowerPickup in powerups.js.
+        const weights = this.sectionFor(x)?.drip?.weights;
+        const type = weights
+          ? weightedPowerPickup(this.rng, weights, this.lastPowerType, { allowRewind, banned })
+          : randomPowerPickup(this.rng, this.lastPowerType, { allowRewind, banned });
         pickups.push(makePickup(type, x, 34));
         this.notePower(x, type);
       }
@@ -456,7 +524,7 @@ export class DripSpawner {
       if (x + DRIP_W > stopX) {
         this.batteryTimer = 0.5;
       } else {
-        this.batteryTimer = this.rng.range(20, 30);
+        this.batteryTimer = this.rearm('battery', x);
         if (!batteryFull) pickups.push(makePickup('battery', x, 10));
       }
     }

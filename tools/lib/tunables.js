@@ -50,9 +50,9 @@ export const TUNABLES = [
   { file: 'src/game/player.js', name: 'ANIM_SPEED_DIVISOR', short: 'ANIM_DIV', group: PHYSICS, step: 1, coarse: 10, min: 5, max: 200, fmt: 0 },
 
   // ---- physics: the world -----------------------------------------------
-  { file: 'src/game/run.js', name: 'BASE_SPEED', short: 'BASE_SPEED', group: PHYSICS, step: 5, coarse: 20, min: 40, max: 500, fmt: 0 },
-  { file: 'src/game/run.js', name: 'SPEED_RAMP_K', short: 'RAMP_K', group: PHYSICS, step: 0.005, coarse: 0.02, min: 0, max: 0.2, fmt: 3 },
-  { file: 'src/game/run.js', name: 'SPEED_RAMP_CAP', short: 'RAMP_CAP', group: PHYSICS, step: 0.1, coarse: 0.5, min: 1, max: 4, fmt: 2 },
+  { file: 'src/game/layout.js', name: 'BASE_SPEED', short: 'BASE_SPEED', group: PHYSICS, step: 5, coarse: 20, min: 40, max: 500, fmt: 0 },
+  { file: 'src/game/layout.js', name: 'SPEED_RAMP_K', short: 'RAMP_K', group: PHYSICS, step: 0.005, coarse: 0.02, min: 0, max: 0.2, fmt: 3 },
+  { file: 'src/game/layout.js', name: 'SPEED_RAMP_CAP', short: 'RAMP_CAP', group: PHYSICS, step: 0.1, coarse: 0.5, min: 1, max: 4, fmt: 2 },
 
   // RunState.enter copies this into the spawner it builds, so the live stream
   // keeps its construction-time value unless we write both.

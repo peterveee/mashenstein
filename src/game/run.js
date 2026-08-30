@@ -20,6 +20,14 @@ import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
 import { BeatSpawner } from './beatchart.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
+// The pacing constants and the stage-layout resolver. They live in layout.js
+// so the level editor forecasts a stage with the same arithmetic the run
+// drives it with — one copy, or the two drift and the editor lies.
+// FINISH_CLEAR is re-exported below: its callers have always found it here.
+import {
+  BASE_SPEED, SPEED_RAMP_K, SPEED_RAMP_CAP, FINISH_CLEAR, resolveLayout,
+} from './layout.js';
+export { FINISH_CLEAR };
 import { entityBox, overlaps, makePickup, makeObstacle, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { PIT_FLOOR, fillSurface } from './pitFill.js';
 import { HERO_BY_ID } from '../data/heroes.js';
@@ -500,7 +508,6 @@ const PAUSE_BUTTONS = [
   { id: 'quit', x: W / 2 - PAUSE_MENU_W / 2, y: 228, w: PAUSE_MENU_W, h: PAUSE_MENU_H, action: 'escape', label: 'BACK' },
 ];
 
-const BASE_SPEED = 160;
 // Semitones above the root for each juggle in a chain — root, third, fifth,
 // sixth, OCTAVE. The fifth touch is the one that pays out (PUNT.juggleReward),
 // and it is the octave on purpose: a completed chain is a phrase that lands
@@ -617,12 +624,10 @@ const FINALE_PUNT = { ...PUNT, drag: 0, bounceVx: 1, restVy: 0 };
 // brings it back, so it only has to be gone — but it has to be gone OFF SCREEN,
 // which is the whole reason for a margin rather than a test against the edge.
 const PUNT_EXIT_MARGIN = 96;
-// The run accelerates on a square root, so the early seconds gain quickly and
-// the late ones barely move — a stage feels like it is building without ever
-// outrunning the reaction runway the spawner guarantees. The cap is what the
-// ramp is allowed to reach; overtime raises both.
-const SPEED_RAMP_K = 0.03;
-const SPEED_RAMP_CAP = 1.6;
+// SPEED_RAMP_K and SPEED_RAMP_CAP live in layout.js with the rest of the
+// pacing arithmetic — the run accelerates on a square root, so the early
+// seconds gain quickly and the late ones barely move. Overtime's steeper
+// variant stays inline in `get speed`, beside the mode that owns it.
 // The two resting framings, and which one a device gets.
 //
 // NORMAL pulls the camera back to 1.6. Two independent arguments land on that
@@ -810,14 +815,12 @@ const INTRO_RUN_EXP = 1.8;
 // extent is set by the readout box standing off at 34, not by the mast, and the
 // flag's cloth still ends a good 29px inside the box's far edge.
 const finishLineX = () => VIEW_W - 72;
-// The clear lane in front of the marker: how much empty ground the spawner has
-// to leave before the flagpole. An obstacle parked against the pole is a hazard
-// wearing the goal as camouflage, a coin behind it is bait the player has to
-// choose between and the flip, and anything PAST it is unreachable content
-// sitting in the one part of the frame the finale needs clean. 160 is a little
-// over one screen-second at cruising speed — enough that the last thing to
-// leave the frame before the pole arrives is ground.
-export const FINISH_CLEAR = 160;
+// FINISH_CLEAR — the clear lane in front of the marker — is defined in
+// layout.js and re-exported at the top of this file. An obstacle parked
+// against the pole is a hazard wearing the goal as camouflage, a coin behind
+// it is bait the player has to choose between and the flip, and anything PAST
+// it is unreachable content sitting in the one part of the frame the finale
+// needs clean; the editor validates against the same number.
 
 // The finish dog's voice (see the finishDog block in updateEntities).
 // BARK_LEAD is how far ahead of its first bark the 'dogBark' cue is fired —
@@ -830,12 +833,12 @@ const FINISH_DOG_FADE = 240;
 // at every stage speed (see the derivation on spawnFinishDog): the release
 // window in seconds of road to the tape, the lope it sets off at, the
 // acceleration of the lunge, and the sprint it tops out at.
-// How often a plumber stage is guarded at all — every stage BUT the first,
-// which always is (see finishDogPlanned). Under half on purpose: after the
-// stage that teaches it, the dog has to be a thing that MIGHT be there, so
-// the sign is worth reading and an empty straight stays a relief rather than
-// a formality.
-const FINISH_DOG_CHANCE = 0.45;
+// How often a stage is guarded at all is now the LAYOUT's answer
+// (finishDogChance, resolved in layout.js): every plumber stage but the first,
+// which always is, and nothing elsewhere unless a level says so. Under half on
+// purpose — after the stage that teaches it, the dog has to be a thing that
+// MIGHT be there, so the sign is worth reading and an empty straight stays a
+// relief rather than a formality.
 // How much road before the tape the BEWARE OF DOG sign stands, as a multiple
 // of a screen. Two screens: far enough that the sign is read, gone, and
 // thought about before the post arrives, rather than being scenery beside the
@@ -1587,6 +1590,14 @@ export class RunState {
     const rhythmRetry = this.beatLock && this.introDone;
     Input.setContext('run');
     const o = this.o;
+    // THE STAGE'S LAYOUT, resolved once and read by everything below: how long
+    // it runs, how fast, where its checkpoints and set pieces sit, and how its
+    // sections curate the spawner's bag. The level editor writes the file this
+    // comes from (src/data/stage-layouts.js) and the resolver fills in the
+    // fallbacks, so a stage nobody has edited answers exactly as it always did.
+    // Null for the runs that have no stage to lay out — overtime and bosses,
+    // which keep their own arithmetic below.
+    this.layout = resolveLayout(this.stage, this.cabinet);
     this.seed = o.seed ?? ((Math.floor(performance.now()) ^ 0x5eed) >>> 0);
     this.rng = new Rng(this.seed);
     this.fxRng = this.rng.stream('fx');
@@ -1764,7 +1775,7 @@ export class RunState {
     this.copter = null;         // chase mission / taunt flyby
     this.tauntT = 30;
 
-    const duration = this.overtime ? Infinity : (this.stage ? this.stage.durationSec : 330);
+    const duration = this.overtime ? Infinity : (this.layout ? this.layout.durationSec : 330);
     this.duration = duration;
     this.distance = 0;
     // Beat stages are exactly one fixed-speed duration; ordinary lanes retain
@@ -1810,10 +1821,15 @@ export class RunState {
         tierMax: this.overtime ? 2 : Math.min(2, (this.stage ? this.stage.index - 1 : 0) + (this.cabinet.act - 1)),
         react,
         iceSlide: this.cabinet.mechanic === 'ice' ? 14 : 0,
+        sections: this.layout?.sections || null,
+        totalDist: this.totalDist,
       });
     }
     this.spawner.nextX = 300;
-    this.drip = new DripSpawner(this.rng.stream('drip'), this.bench);
+    this.drip = new DripSpawner(this.rng.stream('drip'), this.bench, {
+      sections: this.layout?.sections || null,
+      totalDist: this.totalDist,
+    });
 
     // ---- raised routes: islands and forks ----------------------------------
     //
@@ -1846,8 +1862,8 @@ export class RunState {
     // rather than beside the checkpoints below: a pit that declares `jumps` is a
     // CROSSING, its stones are routes, and routes.js has to be handed them
     // before it lays anything a cabinet declares — see the overlap guard there.
-    if (!this.overtime && Number.isFinite(this.totalDist) && this.stage && this.stage.pits) {
-      for (const p of this.stage.pits) {
+    if (!this.overtime && Number.isFinite(this.totalDist) && this.layout && this.layout.pits) {
+      for (const p of this.layout.pits) {
         const x = p.at * this.totalDist;
         if (!p.jumps) {
           this.pitPlan.push({ x, w: p.w || OBSTACLES.gap.w, crossing: null,
@@ -1888,7 +1904,11 @@ export class RunState {
     // which is the only way that page can be trusted not to drift.
     this.routes = (this.bossCab || this.overtime || !Number.isFinite(this.totalDist))
       ? []
-      : buildRoutes(this.cabinet, {
+      // A stage that declares its own roads stops inheriting the cabinet's.
+      // Merged rather than passed through because buildRoutes reads only
+      // islands/forks/tunnels off this argument — everything else it needs
+      // still has to be the cabinet.
+      : buildRoutes(this.layout?.routes ? { ...this.cabinet, ...this.layout.routes } : this.cabinet, {
         totalDist: this.totalDist,
         speed: this.baseSpeed(),
         groundYAt: (wx) => this.groundYAt(wx),
@@ -1918,10 +1938,14 @@ export class RunState {
     // means all have to be TAUGHT there — a first encounter you might not
     // have is not a lesson. Every stage after it rolls, and by then the
     // player knows what a red sign with a head on it is promising.
-    this.finishDogPlanned = this.cabinet.id === 'plumber'
+    // The odds come from the layout now (plumber-1 certain, the rest of the
+    // cabinet rolled, elsewhere none, unless a level says otherwise). A
+    // certainty short-circuits rather than rolling and winning, which is what
+    // keeps plumber-1 from spending a draw it never spent.
+    const dogChance = this.layout?.finishDogChance || 0;
+    this.finishDogPlanned = dogChance > 0
       && !this.overtime && Number.isFinite(this.totalDist)
-      && (this.stage?.id === 'plumber-1'
-        || this.rng.stream('finishDog').float() < FINISH_DOG_CHANCE);
+      && (dogChance >= 1 || this.rng.stream('finishDog').float() < dogChance);
     this.fuseHeld = this.mission.type === 'fuse';
     this.missionTimers = { cord: 8, resident: 10, chaseNear: 0 };
     this.escapeWall = this.mission.type === 'escape' ? -140 : null;
@@ -1948,7 +1972,8 @@ export class RunState {
     this.loopSpawned = false;
 
     // Checkpoints at 1/3 and 2/3 (none on UNPLUGGED).
-    this.checkpoints = (this.oneHit || this.overtime) ? [] : [1 / 3, 2 / 3].map((f) => f * this.totalDist);
+    this.checkpoints = (this.oneHit || this.overtime) ? []
+      : (this.layout?.checkpoints || []).map((f) => f * this.totalDist);
     this.checkpointHit = [];
     this.snapshot = null;
 
@@ -2228,7 +2253,7 @@ export class RunState {
 
   baseSpeed() {
     return BASE_SPEED * (1 + (this.cabinet.speedBonus || 0)) *
-      (this.stage?.speedMult ?? 1) *
+      (this.layout?.speedMult ?? 1) *
       (this.corrupted.includes('maxspeed') ? 1.35 : 1) *
       (this.save.settings.assistSpeed / 100);
   }
@@ -2285,7 +2310,7 @@ export class RunState {
    */
   speedAt(frac) {
     if (this.beatLock) return this.baseSpeed();
-    const dur = (this.stage && this.stage.durationSec) || 60;
+    const dur = (this.layout && this.layout.durationSec) || 60;
     const t = Math.max(0, frac) * dur;
     return this.baseSpeed() * Math.min(SPEED_RAMP_CAP, 1 + SPEED_RAMP_K * Math.sqrt(t));
   }
@@ -5549,9 +5574,9 @@ export class RunState {
 
   spawnApplianceMaybe() {
     if (this.overtime || !this.stage || this.applianceSpawned) return;
-    const at = this.stage.applianceAt * this.totalDist;
+    const at = this.layout.appliance.at * this.totalDist;
     if (this.camX + W > at) {
-      const alt = this.stage.applianceHigh ? 52 : 44;
+      const alt = this.layout.appliance.high ? 52 : 44;
       // Same clearance the cords get. It rides high enough that most ground
       // hazards never touch the test, but the one appliance a stage offers is
       // the worst possible thing to strand behind a shooter drone.
@@ -5587,9 +5612,9 @@ export class RunState {
   // screen clear of whatever the dice dealt, holding rather than skipping
   // when crowded, exactly as the drip itself does.
   spawnScriptedRewindMaybe() {
-    if (this.beatLock || this.overtime || !this.stage || this.stage.rewindAt == null) return;
+    if (this.beatLock || this.overtime || !this.layout || this.layout.rewindAt == null) return;
     if (this.rewindCapSpawned || this.rewindUsed) return;
-    const at = this.stage.rewindAt * this.totalDist;
+    const at = this.layout.rewindAt * this.totalDist;
     if (this.camX + W <= at) return;
     const x = Math.min(at + W, this.laneWallX() - PICKUPS.capRewind.w);
     if (!this.drip.canPlacePower(x)) return; // crowded — retry next frame

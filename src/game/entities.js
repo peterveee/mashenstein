@@ -205,10 +205,15 @@ export const OBSTACLES = {
   // Keys match the painter names in sprites/animals.js on purpose — drawWorldEntity
   // resolves art off the entity TYPE first (hasProp(e.type)), so naming them the
   // same is what wires the animation up with no draw-path change at all.
-  dogSnarler: { w: 16, h: 11, sprite: 'dogSnarler', ground: true, breakable: true, action: 'jump', vx: -62 },
-  dogBruiser: { w: 15, h: 10, sprite: 'dogBruiser', ground: true, breakable: true, action: 'jump', vx: -38 },
-  dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: true, action: 'jump', vx: -68 },
-  catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: true, action: 'jump', vx: -78 },
+  // `animal` is the one thing about these that no other flag says. Everything
+  // else in the registry is legible from what it DOES — isGap, shoots, falls,
+  // punt — but a dog is a dog by being a dog, and the level editor groups its
+  // palette off these flags rather than off a list it would have to be told to
+  // update. A new animal declares it here and turns up there.
+  dogSnarler: { w: 16, h: 11, sprite: 'dogSnarler', ground: true, breakable: true, action: 'jump', vx: -62, animal: true },
+  dogBruiser: { w: 15, h: 10, sprite: 'dogBruiser', ground: true, breakable: true, action: 'jump', vx: -38, animal: true },
+  dogFeral:   { w: 17, h: 12, sprite: 'dogFeral', ground: true, breakable: true, action: 'jump', vx: -68, animal: true },
+  catFury:    { w: 11, h: 9,  sprite: 'catFury', ground: true, breakable: true, action: 'jump', vx: -78, animal: true },
 
   // The finish-line dog. Scripted, never dealt from a pattern bag — see
   // RunState.spawnFinishDog: on plumber stages one dog holds the tape, appears
@@ -234,7 +239,7 @@ export const OBSTACLES = {
   // `vx` here is only a fallback: spawnFinishDog overrides it with a fraction
   // of the run's own scroll, so the charge reads equally fast on every stage
   // and the two-jump finish geometry (see that method) holds at every speed.
-  finishDog:  { w: 22, h: 15, sprite: 'dogSnarler', ground: true, breakable: false, action: 'jump', vx: -70, skins: ['finishSnarler', 'finishBruiser', 'finishFeral'] },
+  finishDog:  { w: 22, h: 15, sprite: 'dogSnarler', ground: true, breakable: false, action: 'jump', vx: -70, animal: true, skins: ['finishSnarler', 'finishBruiser', 'finishFeral'] },
 };
 
 // What a thing is made of, for when it stops being a thing. Colours are pulled
