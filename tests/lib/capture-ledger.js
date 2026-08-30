@@ -76,18 +76,38 @@ const ledger = {
 // Every entity, at the tick it is first seen. Entity ids are one global
 // increasing counter (entities.js), so sorting by id at the end recovers
 // creation order even when obstacles and pickups arrive in the same frame.
+//
+// POSITION IS RECORDED ONLY FOR THINGS THAT STAY WHERE THEY WERE PUT.
+//
+// The ledger is meant to be a fingerprint of GENERATION, and a moving entity
+// makes it a fingerprint of play instead: a coin drifting toward a magnet, a
+// dog closing on the hero and a falling icicle are all somewhere slightly
+// different depending on which frame first saw them, so one physics change
+// three files away rewrites hundreds of rows that generation never touched.
+// That is a test which cries wolf, and a test which cries wolf gets its
+// baseline re-recorded until the day it was right.
+//
+// So a mover contributes its TYPE and its PLACE IN THE ORDER — which is the
+// half of it the spawner decides, and the half a curated bag or a moved pit
+// actually changes — and a static prop contributes its position too, because
+// for those the position IS the decision.
 const seen = new Set();
 const spawns = [];
+const moves = (def) => !!(def.coin || def.vx || def.airVx || def.falls || def.airDrift || def.bob);
 function collect() {
   for (const ob of run.obstacles) {
     if (seen.has(ob.id)) continue;
     seen.add(ob.id);
-    spawns.push([ob.id, 'o', ob.type, round1(ob.x), round1(ob.w)]);
+    spawns.push(moves(ob.def)
+      ? [ob.id, 'o', ob.type, null, round1(ob.w)]
+      : [ob.id, 'o', ob.type, round1(ob.x), round1(ob.w)]);
   }
   for (const p of run.pickups) {
     if (seen.has(p.id)) continue;
     seen.add(p.id);
-    spawns.push([p.id, 'p', p.type, round1(p.x), round1(p.alt)]);
+    spawns.push(moves(p.def)
+      ? [p.id, 'p', p.type, null, null]
+      : [p.id, 'p', p.type, round1(p.x), round1(p.alt)]);
   }
 }
 
