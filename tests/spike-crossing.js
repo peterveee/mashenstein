@@ -193,6 +193,28 @@ for (const hero of cast) {
     `${hero.id} crosses four jumps of spikes (${run.pitFails} falls, ${(ticks / 60).toFixed(1)}s)`);
 }
 
+// ---- the hole outlives its own near edge ---------------------------------------
+// The lane retires what is behind the camera, and it used to do it on an
+// obstacle's NEAR edge — true of everything a stride wide and false of a
+// crossing, which is several hundred pixels of gap. Retired 80px in, the second
+// half of the set piece became stones floating over ground you could stand on.
+{
+  const run = newRun('lorenzo', { startAt: CROSS_AT - 0.04 });
+  const bot = new DemoBot(run);
+  const cross = run.crossings[0];
+  let deepest = null;
+  for (let i = 0; i < 60 * 30 && run.camX + PLAYER_X < cross.x + cross.w - 20; i++) {
+    bot.update(TICK);
+    run.update(TICK);
+    if (run.camX > cross.x + cross.w * 0.6) {
+      deepest = run.obstacles.find((ob) => ob.live && ob.crossing);
+    }
+  }
+  bot.releaseAll();
+  Input.endFrame();
+  assert(!!deepest, 'the hole is still in the world two thirds of the way across it');
+}
+
 // ---- and missing one is a death ------------------------------------------------
 // The other half of the same claim: the stones are the ONLY way over. Dropped
 // between two of them, on the ground, the hero is in the hole.
@@ -204,7 +226,9 @@ for (const hero of cast) {
   for (let i = 0; i < 60 * 20 && !run.obstacles.some((ob) => ob.live && ob.crossing); i++) run.update(TICK);
   const gapOb = run.obstacles.find((ob) => ob.live && ob.crossing);
   assert(!!gapOb, 'the hole is in the world by the time the hero reaches it');
-  run.camX = cross.x + cross.hop * 0.5 - PLAYER_X;
+  // The LAST hop, not the first: deep enough in that the lane's retirement
+  // sweep has had every chance to throw the hole away behind the camera.
+  run.camX = cross.x + cross.w - cross.hop * 0.5 - PLAYER_X;
   run.route = null;
   run.player.y = 0;
   run.player.vy = 0;

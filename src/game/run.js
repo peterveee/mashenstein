@@ -3881,7 +3881,11 @@ export class RunState {
         ob.barkNext = tNext;
         if (ob.barkT <= 0 && fade > 0.04 && (snap || this.save.settings.reducedMotion)) {
           Audio.sfx('dogBark', { gain: fade, pitch: 0.94 + 0.12 * Math.abs(Math.sin(ob.x * 0.017)) });
-          ob.barkT = 0.6;
+          // Long enough to clear the volley the cue now fires (four barks,
+          // about 0.85s of it) plus a breath. Anything shorter starts the
+          // next volley on top of the last one, which stops being a dog and
+          // becomes a wall of noise.
+          ob.barkT = 1.35;
         }
       }
       // A punted cone is in the air on its own account. Before the `falls`
@@ -4002,7 +4006,17 @@ export class RunState {
         if (p.vy < 40) { p.vy = 0; p.vx = 0; p.toss = false; }
       }
     }
-    this.obstacles = this.obstacles.filter((ob) => ob.live !== false && ob.x > this.camX - 80);
+    // Retired on its FAR edge, not its near one.
+    //
+    // `ob.x > camX - 80` is the same rule for a crate and for a hole, and it is
+    // only true of the crate: everything in the lane is a stride wide, so where
+    // a thing starts and where it ends are the same place. A stepping-stone
+    // crossing is several hundred pixels of gap obstacle, and by its near edge
+    // it was retired 80px in — which took the spikes out of the drawing and,
+    // far worse, took the hole out of the collision test, so the second half of
+    // the crossing was a set of platforms floating over ground you could stand
+    // on. A thing is behind you when the whole of it is behind you.
+    this.obstacles = this.obstacles.filter((ob) => ob.live !== false && ob.x + ob.w > this.camX - 80);
     this.pickups = this.pickups.filter((p) => p.live && p.x > this.camX - 40);
 
     // Chase copter: swoops between far ahead and just in front of the player

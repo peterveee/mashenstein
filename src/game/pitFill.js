@@ -237,63 +237,73 @@ function slush(ctx, w, d, t) {
 // railings on one and a comb on the other. Nine pixels puts a tooth roughly
 // every hero-width, so the bed reads the same in both.
 function spikes(ctx, w, d, t) {
-  const surf = d * PIT_FLOOR;
   const tip = d * SPIKE_TIPS;
-  // The floor they are bolted to. Dark and DRY — a value or two above the tar,
-  // with none of its sheen, because the one thing this must not read as is
-  // liquid with something floating in it.
-  ctx.fillStyle = '#1a1820';
-  ctx.fillRect(0, surf - d * 0.02, w, d - surf + d * 0.02);
+  // The bed the teeth are set in — a little under half the apron, which is the
+  // whole of what the camera actually shows below the lane (see PIT_FLOOR).
+  const bed = d * 0.44;
+  // THE SHAFT IS PART OF THE FILL, and it is the one thing the other three
+  // materials do not have to draw.
+  //
+  // They are poured into holes the style packs have already cut: a pixel or a
+  // watercolour lane paints its own dark apron either side of the break, so tar
+  // only has to be the thing lying at the bottom of it. Three of the nine packs
+  // paint no apron at all — an LCD lane is a line and a hole in it is a lighter
+  // line — and a crossing is on the stage whatever the cabinet is. Teeth
+  // floating on the panel background read as scenery. A dark shaft under the
+  // lip reads as a hole, everywhere, for the price of one rectangle.
+  ctx.fillStyle = '#171620';
+  ctx.fillRect(0, 0, w, d);
+  ctx.fillStyle = '#211f2b';
+  ctx.fillRect(0, bed, w, d - bed);
   const pitch = 9;
   const n = Math.max(2, Math.round(w / pitch));
   const step = w / n;
-  const half = step * 0.42;
+  const half = step * 0.44;
   for (let i = 0; i < n; i++) {
     const cx = step * (i + 0.5);
     // Alternating heights, and the short ones are not decoration: a row of
     // identical teeth reads as a texture and a ragged one reads as a thing that
     // has been used. The long ones are the ones the eye measures the gap by.
-    const long = i % 2 === 0;
-    const top = long ? tip : tip + d * 0.09;
+    const top = i % 2 === 0 ? tip : tip + d * 0.1;
     // Two facets, split down the spine: steel catches the light on one side of
     // a point and is in its own shadow on the other, and drawing the pair is
     // the whole of why these read as metal rather than as grey triangles.
     ctx.fillStyle = '#96a3b1';
     ctx.beginPath();
     ctx.moveTo(cx, top);
-    ctx.lineTo(cx - half, surf + d * 0.02);
-    ctx.lineTo(cx, surf + d * 0.02);
+    ctx.lineTo(cx - half, bed + d * 0.02);
+    ctx.lineTo(cx, bed + d * 0.02);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = '#4a5460';
     ctx.beginPath();
     ctx.moveTo(cx, top);
-    ctx.lineTo(cx + half, surf + d * 0.02);
-    ctx.lineTo(cx, surf + d * 0.02);
+    ctx.lineTo(cx + half, bed + d * 0.02);
+    ctx.lineTo(cx, bed + d * 0.02);
     ctx.closePath();
     ctx.fill();
-    // The point itself, kept pale against both facets. At this size a tooth is
-    // four pixels of triangle and the tip is one of them, so it is drawn rather
-    // than left to the fill to imply.
+    // The point itself, kept pale against both facets. At lane size a tooth is
+    // a few pixels of triangle and the tip is one of them, so it is drawn
+    // rather than left to the fill to imply.
     ctx.fillStyle = '#e4eaf1';
     ctx.beginPath();
     ctx.moveTo(cx, top);
-    ctx.lineTo(cx - half * 0.3, top + d * 0.05);
-    ctx.lineTo(cx + half * 0.3, top + d * 0.05);
+    ctx.lineTo(cx - half * 0.34, top + d * 0.055);
+    ctx.lineTo(cx + half * 0.34, top + d * 0.055);
     ctx.closePath();
     ctx.fill();
   }
   // ONE glint, travelling. The bed is otherwise still, and a hazard with no
-  // motion at all falls out of the eye's attention on a scrolling screen — but
-  // teeth do not bubble or flicker, so what moves is the LIGHT on them, once
-  // across the row, slowly, the way a highlight crosses a knife.
+  // motion at all falls out of the eye on a scrolling screen — but teeth do not
+  // bubble or flicker, so what moves is the LIGHT on them: once across the row,
+  // slowly, the way a highlight crosses a knife.
   const p = (t * 0.22) % 1.6;
   const gx = -w * 0.1 + p * w * 0.75;
   if (gx > -w * 0.05 && gx < w * 1.05) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.5;
-    ellipse(ctx, gx, tip + d * 0.03, Math.max(0.5, w * 0.012), d * 0.05, '#ffffff');
+    ellipse(ctx, gx, tip + d * 0.04, Math.max(0.5, w * 0.012), d * 0.06, '#ffffff');
     ctx.restore();
   }
 }

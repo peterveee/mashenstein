@@ -408,7 +408,21 @@ export const BARK_SHAPES = {
   huff:  { level: 1.19, f0: 300, drop: 0.82, gap: 0.22, dur: 0.15, fall: 0.66, attack: 0.003,
     q: 0.9, voiced: 0.22, sub: 0.6, breath: 1.35, bright: 0.6, rough: 0.45, roughHz: 95, formants: BARK_FORMANTS },
   // Bigger animal: lower tract, longer, more throat and a slower tremor.
-  gruff: { level: 2.57, f0: 210, drop: 0.84, gap: 0.26, dur: 0.2, fall: 0.6, attack: 0.005,
+  // THE ONE THE GAME FIRES. Pitched up from the 210 it was auditioned at —
+  // the tract scales with the fundamental, so this lifts the whole animal
+  // rather than just its buzz, and it keeps the size while getting the cue up
+  // out of the plumber song's bass. Four barks, because one guard dog is not
+  // a two-bark problem.
+  // `gap` is set against `dur` deliberately: at 0.21 against a 0.2 bark the
+  // tails overlapped and the volley summed to -1.5 dBFS, which is a clip
+  // waiting for a loud song under it. Spaced so each bark has finished before
+  // the next lands, the same four barks peak a safe 5dB lower at the same RMS.
+  // `level` re-measured after the pitch went up: the tract passes more of a
+  // 268Hz source than of a 210Hz one, so the number that levelled this on the
+  // audition sheet now peaked at -1.6 dBFS, a clip waiting for a loud song
+  // under it. 1.85 puts the peak back near -5 with the RMS still comfortably
+  // over `hit` — and four barks carry further than a louder pair would.
+  gruff: { level: 1.85, count: 4, f0: 268, drop: 0.84, gap: 0.26, dur: 0.18, fall: 0.6, attack: 0.007,
     q: 1, voiced: 0.55, sub: 1, breath: 1, bright: 0.25, rough: 0.6, roughHz: 58,
     formants: [[[380, 760, 520], 4, 1], [[1050, 1650, 1150], 3.5, 0.9], [[2500, 2700, 2450], 3, 0.45]] },
   // Small and furious: higher, shorter, snappier — a terrier at the gate.
@@ -3326,10 +3340,26 @@ class AudioSys {
         // resonated one — and a sheet where the shapes are not matched is a
         // sheet that gets picked by loudness instead of by character. Each
         // one is measured, not guessed: see the RMS column in render-cues.
-        const S = opt.shape || BARK_SHAPES.woof;
+        // A VOLLEY, not a pair. A dog holding a gate does not bark twice and
+        // consider the matter closed — it goes off like an alarm — and the
+        // repeat is what turns the cue from a sound effect into an animal
+        // making a point. `count` per shape; the run fires the whole volley
+        // on its own slower clock (see the finishDog block in run.js).
+        //
+        // Three things keep a repeat from reading as a loop of one sample.
+        // Each bark sits a little lower and a little quieter than the last, as
+        // the air runs out; the pitch alternates between the shape's two notes
+        // rather than marching down; and the gaps alternate long and short, so
+        // the volley groups itself into ruff-ruff, ruff-ruff instead of
+        // arriving on a metronome.
+        const S = opt.shape || BARK_SHAPES.gruff;
         const lv = 0.78 * (S.level ?? 1);
-        this.dogWoof(0.02, pitch, S.f0, lv, S);
-        this.dogWoof(0.02 + S.gap, pitch, S.f0 * S.drop, lv * 0.87, S);
+        let at = 0.02;
+        for (let i = 0, n = S.count ?? 2; i < n; i++) {
+          this.dogWoof(at, pitch, S.f0 * (i % 2 ? S.drop : 1) * (1 - i * 0.025),
+            lv * (1 - i * 0.07), S);
+          at += S.gap * (i % 2 ? 1.15 : 0.9);
+        }
         break;
       }
       // Shared attack contact: a noisy crash, not a pitched little bonk. The

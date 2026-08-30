@@ -81,14 +81,24 @@ export class DemoBot {
     }
 
     // jump: speed-scaled reaction window, held through the arc
+    const wantJump = crossing ? crossJump
+      : ((nearest && nearest.def.action === 'jump' && (nearest.x - px) < sp * 0.3 && (nearest.x - px) > -8) || grab || chaseJump);
     if (!run.player.grounded) {
       // keep holding — releasing early cuts the jump short
-    } else if (crossing ? crossJump
-      : ((nearest && nearest.def.action === 'jump' && (nearest.x - px) < sp * 0.3 && (nearest.x - px) > -8) || grab || chaseJump)) {
-      if (!this.jumpHold) { Input.press('jump'); this.jumpHold = true; }
     } else if (this.jumpHold) {
+      // A LANDING ALWAYS LETS GO, even when the next jump is already wanted.
+      //
+      // The jump is an EDGE, not a level: holding the button through a landing
+      // presses nothing. Everywhere in the lane that never showed, because the
+      // reason to jump had always passed by the time he came down — and on a
+      // crossing it is the normal case, since the next stone is wanted from the
+      // moment he lands on this one. He ran off the end of the last stone with
+      // the button still held from the jump that got him there.
       Input.release('jump');
       this.jumpHold = false;
+    } else if (wantJump) {
+      Input.press('jump');
+      this.jumpHold = true;
     }
 
     // duck under low flyers (and stomp with stomp-heroes in boss fights)
