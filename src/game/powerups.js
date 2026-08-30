@@ -27,13 +27,16 @@ export const POWER_DEFS = {
 // itself rather than as a find, and the second one only ever buys a temporary
 // +1 level. A *single* reroll, so the odds stay close to the table (a repeat is
 // still possible at p², which is all the overcharge path needs).
-export function randomPowerPickup(rng, avoid, allowRewind = true) {
-  const first = rollPowerPickup(rng, allowRewind);
-  if (avoid && first === avoid) return rollPowerPickup(rng, allowRewind);
+export function randomPowerPickup(rng, avoid, allowRewind = true, banned = null) {
+  const opts = typeof allowRewind === 'object'
+    ? allowRewind
+    : { allowRewind, banned };
+  const first = rollPowerPickup(rng, opts);
+  if (avoid && first === avoid) return rollPowerPickup(rng, opts);
   return first;
 }
 
-function rollPowerPickup(rng, allowRewind) {
+function rollPowerPickup(rng, { allowRewind = true, banned = null } = {}) {
   const roll = rng.float();
   // The relay charge is deliberately the rarest thing in the table. Capsules
   // drip every 12-18s, so 8% works out to roughly one charge every three or
@@ -46,8 +49,18 @@ function rollPowerPickup(rng, allowRewind) {
   // and nothing should be scarcer), and unpeel keeps the 10% it was tuned to.
   // 10% here matches unpeel because rewind is the same KIND of find — a rare
   // one you are pleased to see, not a staple you expect.
-  if (roll < 0.28) return allowRewind ? 'capRewind' : 'capUnpeel';
-  if (roll < 0.58) return ['capAirJump', 'capSpeed', 'capLowGrav'][Math.floor((roll - 0.28) / 0.10)];
+  if (roll < 0.28) {
+    if (allowRewind && !banned?.has('capRewind')) return 'capRewind';
+    // Beat stages ban the whole timing-changing band, including rewind. Keep
+    // the replacement deterministic and consume no additional RNG read.
+    if (banned?.has('capRewind')) return (Math.floor(roll * 1000) & 1) ? 'capShield' : 'capMagnet';
+    return 'capUnpeel';
+  }
+  if (roll < 0.58) {
+    const type = ['capAirJump', 'capSpeed', 'capLowGrav'][Math.floor((roll - 0.28) / 0.10)];
+    if (banned?.has(type)) return (Math.floor(roll * 1000) & 1) ? 'capShield' : 'capMagnet';
+    return type;
+  }
   // The staples pay for rewind's band: 42% between them, still comfortably the
   // most common thing in the table and still each far commoner than unpeel.
   return rng.pick(['capShield', 'capMagnet']);

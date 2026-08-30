@@ -20,6 +20,10 @@ export const VARIABLE_JUMP_CUT = 60;
 export const TERMINAL_VY = -520;
 // A stomp is a commitment: the descent is faster than gravity earned.
 export const STOMP_GRAVITY_MULT = 2.2;
+// The ordinary slide-kick commits an aerial jump to the same decisive drop as
+// Lorenzo's stomp, but it is kept as its own state so it never inherits the
+// stomp's obstacle-breaking contract.
+export const SLIDE_SLAM_VY = -180;
 // Landing squash timer. toons.js drives the visual squash off this same
 // duration under the name SQUASH_T — they must agree or the squash outlives
 // its blend. Not imported: src/sprites must not reach into src/game.
@@ -152,6 +156,11 @@ export class Player {
     this.iframes = 0;
     this.anim = 0;
     this.stomping = false;
+    // Down pressed during a real jump: fast descent now, ordinary slide-kick
+    // on contact. Separate from `stomping`, which belongs to Lorenzo's power.
+    this.slideSlamming = false;
+    // A tap must still produce a readable grounded kick after the landing.
+    this.landingSlideT = 0;
     this.dashT = 0;
     // A boost pad's kick, for the ART only: it leans the runner into the
     // acceleration and streaks the floor past them. It is not dashT — a dash
@@ -209,6 +218,8 @@ export class Player {
     this.heroId = heroId;
     this.hero = HERO_BY_ID[heroId];
     this.stomping = false;
+    this.slideSlamming = false;
+    this.landingSlideT = 0;
     this.dashT = 0;
     // A boost pad's kick, for the ART only: it leans the runner into the
     // acceleration and streaks the floor past them. It is not dashT — a dash
@@ -233,6 +244,7 @@ export class Player {
     this.duckAmount = 0;
     this.duckDirection = 0;
     this.slideKickT = 0;
+    this.standT = 0;
     this.duckHoldT = 0;
     this.duckSpent = false;
     // relayCharge deliberately survives: an unspent charge follows the player
@@ -259,6 +271,48 @@ export class Player {
   }
   get rolling() { return this.rollT > 0; }
   get invincible() { return this.iframes > 0 || this.dashT > 0; }
+
+  /**
+   * Commit a player-initiated airborne jump to the universal slide-kick.
+   *
+   * A spring launch and a ledge fall deliberately do not qualify: `launched`
+   * distinguishes the former and `jumps === 0` the latter. The move only
+   * changes the descent; collision remains ordinary until the landing starts
+   * the grounded slide window.
+   */
+  slidePressed() {
+    if (this.grounded || this.launched || this.jumps <= 0 || this.slideSlamming
+      || this.stomping || this.rolling || this.compressT > 0
+      || this.stumbleT > 0 || this.slipT > 0) return false;
+    this.slideSlamming = true;
+    this.floating = false;
+    this.ducking = false;
+    this.duckAmount = 0;
+    this.duckDirection = -1;
+    this.vy = Math.min(this.vy, SLIDE_SLAM_VY);
+    return true;
+  }
+
+  // Start the short grounded follow-through. Kept on Player so ordinary
+  // ground catches (including route surfaces) and base-ground landings share
+  // exactly the same kick timing and hitbox state.
+  startLandingSlide() {
+    this.slideSlamming = false;
+    this.standT = 0;
+    this.slideKickT = SLIDE_KICK_T;
+    this.landingSlideT = SLIDE_KICK_T;
+    this.duckHoldT = 0;
+    this.duckSpent = false;
+    this.ducking = true;
+    this.duckDirection = 1;
+    this.duckAmount = 1;
+  }
+
+  clearSlideState() {
+    this.slideSlamming = false;
+    this.landingSlideT = 0;
+    this.slideKickT = 0;
+  }
 
   // The timed duck window. Holding past DUCK_MAX_T stands the hero up under a
   // held key; the key must come up before another slide arms. Ability ducks
@@ -302,6 +356,7 @@ export class Player {
   // striking, which is the whole difference between a kick and a kick-shaped
   // wobble.
   get slideKick() {
+    if (this.slideSlamming) return 1;
     if (this.slideKickT <= 0) return 0;
     const age = 1 - this.slideKickT / SLIDE_KICK_T;
     return age < 0.45 ? age / 0.45 : Math.max(0, 1 - (age - 0.45) / 0.55);
@@ -331,17 +386,21 @@ export class Player {
     this.grounded = false;
     this.launched = true;
     this.stomping = false;
+    this.clearSlideState();
+    this.standT = 0;
     this.ducking = false;
     this.duckDirection = -1;
     this.jumps = 1;
   }
 
   jumpPressed(audio) {
-    if (this.rollT > 0 || this.stumbleT > 0 || this.slipT > 0) return false;
+    if (this.rollT > 0 || this.stumbleT > 0 || this.slipT > 0 || this.slideSlamming) return false;
     if (this.grounded || this.jumps < this.maxJumps) {
       if (!this.grounded && this.jumps === 0) this.jumps = 1; // walked off a ledge
       this.vy = BASE_JUMP_V * (this.jumpScale || 1) * this.hero.jumpMult * (this.jumps > 0 ? AIR_JUMP_SCALE : 1);
       this.launched = false;
+      this.clearSlideState();
+      this.standT = 0;
       this.jumps++;
       this.grounded = false;
       this.ducking = false;
@@ -391,6 +450,7 @@ export class Player {
     }
     if (this.slideT > 0) this.slideT -= dt;
     if (this.landedT > 0) this.landedT -= dt;
+    if (this.landingSlideT > 0) this.landingSlideT = Math.max(0, this.landingSlideT - dt);
 
     const holdJump = input.held('jump');
     const holdDuck = input.held('duck');
@@ -406,10 +466,12 @@ export class Player {
     // Float (Mochi): hold jump while falling caps fall speed.
     const floatCap = this.mods.includes('wide') ? -45 : -60;
     this.floating = !this.grounded && holdJump && this.hero.canFloat && this.vy < 0;
-    const minVy = this.compressT > 0 ? -70 : (this.floating ? floatCap : TERMINAL_VY);
+    const minVy = this.slideSlamming ? TERMINAL_VY
+      : (this.compressT > 0 ? -70 : (this.floating ? floatCap : TERMINAL_VY));
 
     if (!this.grounded) {
-      this.vy -= this.gravity * (world?.gravityScale ?? 1) * dt * (this.stomping ? STOMP_GRAVITY_MULT : 1);
+      this.vy -= this.gravity * (world?.gravityScale ?? 1) * dt
+        * ((this.stomping || this.slideSlamming) ? STOMP_GRAVITY_MULT : 1);
       if (this.vy < minVy) this.vy = minVy;
       this.y += this.vy * dt;
       if (this.y <= 0) {
@@ -420,20 +482,35 @@ export class Player {
         this.airJuggled = false;
         this.launched = false;
         const wasStomp = this.stomping;
+        const wasSlideSlam = this.slideSlamming;
         this.stomping = false;
+        this.slideSlamming = false;
         this.vy = 0;
         this.landedT = LANDED_T;
         if (world && world.ice) this.slideT = ICE_SLIDE_T;
-        this.ducking = this.duckWindow(holdDuck, dt) && this.rollT <= 0;
-        this.updateDuckBlend(dt, this.ducking);
-        return { landed: true, stompLand: wasStomp };
+        if (wasSlideSlam) {
+          this.startLandingSlide();
+        } else {
+          this.ducking = this.duckWindow(holdDuck, dt) && this.rollT <= 0;
+          this.updateDuckBlend(dt, this.ducking);
+        }
+        return { landed: true, stompLand: wasStomp, slideKickLand: wasSlideSlam };
       }
       this.updateDuckBlend(dt, false);
     } else {
-      this.ducking = this.duckWindow(holdDuck, dt) && this.rollT <= 0;
+      const landingSlide = this.landingSlideT > 0 && this.standT <= 0 && this.rollT <= 0;
+      if (landingSlide) {
+        // A released Down still owns the short landing kick. Count this as a
+        // fresh slide for puntPower; a held Down naturally continues into the
+        // ordinary duck window after the guaranteed timer expires.
+        this.duckHoldT += dt;
+        this.ducking = true;
+      } else {
+        this.ducking = this.duckWindow(holdDuck, dt) && this.rollT <= 0;
+      }
       this.updateDuckBlend(dt, this.ducking);
     }
-    return { landed: false, stompLand: false };
+    return { landed: false, stompLand: false, slideKickLand: false };
   }
 
   // World-space hitbox (bottom at groundY - y).

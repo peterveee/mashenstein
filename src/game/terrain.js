@@ -267,15 +267,26 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
     // the span, where the road does not exist and its height reads as zero —
     // which draws a spike down to the ground at the mouth and again at the
     // merge, and the one at the mouth looks like a wall in the hero's path.
-    const from = Math.max(0, Math.ceil(sx));
-    // Strictly INSIDE the span at both ends. `Math.floor(sx + r.w)` can land
-    // exactly on the last column, where `camX + x` equals `r.x + r.w` — and
-    // there `routeRise` correctly reports nothing, because the road has ended.
-    // The path then draws a spike from the road's height straight down to the
-    // ground: a vertical green streak at the end of every sky road, at whatever
-    // camera x happened to make the arithmetic come out whole.
-    const to = Math.min(right, Math.ceil(sx + r.w) - 1);
-    if (r.kind === 'tunnel') { drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY, opts.hillDepth ?? 0); continue; }
+    // COVER THE WHOLE SPAN, and clamp the height sample instead.
+    //
+    // These are screen columns, so which ones cover the slab shifts as the
+    // camera moves — that much is ordinary. What was not ordinary is that the
+    // rounding went INWARD at both ends, so the drawn width oscillated between
+    // w and w-1 as the camera's fractional offset crossed each integer: the last
+    // column of every island and every tunnel roof blinked in and out, and up to
+    // a world pixel of solid ground went unpainted at each lip. At the zoom this
+    // game runs at, one world pixel is several on screen, and a hero standing on
+    // the unpainted sliver is standing on nothing you can see.
+    //
+    // Rounding outward is only safe with the sample clamped, which is what
+    // `topInside` below does — outside the span `routeRise` correctly reports
+    // nothing, and sampling there is what used to draw a spike from the road's
+    // height straight down to the ground.
+    const from = Math.max(0, Math.floor(sx));
+    const to = Math.min(right, Math.ceil(sx + r.w));
+    // The slab's own height, never sampled past its ends. See the rounding note.
+    const topInside = (wx, rr) => topAt(Math.min(Math.max(wx, rr.x), rr.x + rr.w - 0.001), rr);
+    if (r.kind === 'tunnel') { drawTunnel(ctx, camX, cabinet, r, topInside, groundAt, from, to, bottomY, opts.hillDepth ?? 0); continue; }
     // A high road CAN stop being made of ground on the way up, and by default
     // it does not — `cloud`, not `sky`, is what asks for that. The two used to
     // be the same flag, and painting the top of every high road as weather beat
@@ -290,9 +301,9 @@ export function drawRoutes(ctx, camX, cabinet, routes, topAt, viewW = W, opts = 
     // road, because the road climbs through the transition — the same slab
     // would be dirt at its mouth and weather at its peak, and a single verdict
     // for the whole span would have to be wrong at one end of it.
-    const asCloud = (wx) => (r.cloud ? cloudMix(groundAt(wx) - topAt(wx, r), cloudFrom, cloudTo) : 0);
-    drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud);
-    if (r.cloud) drawCloudRoad(ctx, camX, r, topAt, groundAt, from, to, cloudFrom, cloudTo);
+    const asCloud = (wx) => (r.cloud ? cloudMix(groundAt(wx) - topInside(wx, r), cloudFrom, cloudTo) : 0);
+    drawSlab(ctx, camX, cabinet, r, topInside, from, to, asCloud);
+    if (r.cloud) drawCloudRoad(ctx, camX, r, topInside, groundAt, from, to, cloudFrom, cloudTo);
   }
 }
 

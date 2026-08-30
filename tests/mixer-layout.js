@@ -25,12 +25,22 @@ const deskSelect = readFileSync(new URL('../tools/mixer-select.js', import.meta.
 const tooltips = readFileSync(new URL('../tools/mixer-tooltips.js', import.meta.url), 'utf8');
 const perfDiag = readFileSync(new URL('../tools/mixer-perf-diag.js', import.meta.url), 'utf8');
 const deskLayout = readFileSync(new URL('../tools/mixer-desk-layout.js', import.meta.url), 'utf8');
+const editorWindow = readFileSync(new URL('../tools/mixer-voice-editor-window.js', import.meta.url), 'utf8');
+const cabDiff = readFileSync(new URL('../tools/mixer-cab-diff.js', import.meta.url), 'utf8');
+const loopLog = readFileSync(new URL('../tools/mixer-loop-log.js', import.meta.url), 'utf8');
+const controls = readFileSync(new URL('../tools/mixer-controls.js', import.meta.url), 'utf8');
+const effectCards = readFileSync(new URL('../tools/mixer-effect-cards.js', import.meta.url), 'utf8');
+const scroll = readFileSync(new URL('../tools/mixer-scroll.js', import.meta.url), 'utf8');
+const noteFxEditors = readFileSync(new URL('../tools/mixer-note-fx-editors.js', import.meta.url), 'utf8');
+const barFields = readFileSync(new URL('../tools/mixer-bar-fields.js', import.meta.url), 'utf8');
+const voicePicker = readFileSync(new URL('../tools/mixer-voice-picker.js', import.meta.url), 'utf8');
 const customSelect = readFileSync(new URL('../tools/lib/custom-select.js', import.meta.url), 'utf8');
 const freezeSpanSource = readFileSync(new URL('../tools/lib/freeze-span.js', import.meta.url), 'utf8');
 const touchedBody = /const touched = \(\) => \{[\s\S]*?\n  \};/.exec(editor)?.[0] || '';
 // The desk entry with every comment taken out, for the assertions that mean "no code
 // does this any more" — a note explaining what was REMOVED must not read as the thing.
 const bareEntry = entry.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const bareEditorWindow = editorWindow.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 let failed = false;
 function assert(cond, msg) {
@@ -905,44 +915,44 @@ assert(/if \(gesturing\) editDeferred = true;\s*else onEdit/.test(touchedBody)
   && /if \(editDeferred\) \{\s*editDeferred = false;\s*onEdit\(state\.id, asSongPreset\(state\.voice\)\);\s*\}/.test(editor),
   'a slider keeps the live voice moving but persists its song-owned preset once per gesture');
 
-assert(/const armBarOverride = \(\) => \{\s*if \(mode\) mode\.value = 'on';\s*\};/.test(entry)
-  && /\[strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,\s*rangeOn, rangeLo, rangeHi,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(entry),
+assert(/const armBarOverride = \(\) => \{\s*if \(mode\) mode\.value = 'on';\s*\};/.test(noteFxEditors)
+  && /\[strumOn, strumDir, gap, arpOn, arpDir, arpRate, octaves, limit,\s*rangeOn, rangeLo, rangeHi,\s*repeat, gate, retrigger, latch\][\s\S]{0,100}?addEventListener\('input', armBarOverride\)/.test(noteFxEditors),
   'editing any bar Note FX control automatically enables that bar override');
 {
-  const noteFxEditor = entry.slice(entry.indexOf('function openNoteFxEditor'),
-    entry.indexOf('function openBarEffectsEditor'));
+  const noteFxEditor = noteFxEditors.slice(noteFxEditors.indexOf('function openNoteFxEditor'),
+    noteFxEditors.indexOf('function openBarEffectsEditor'));
   const regionEditor = entry.slice(entry.indexOf('function openRegionEditor'),
-    entry.indexOf('function openNoteFxEditor'));
+    noteFxEditors.indexOf('function openNoteFxEditor'));
   assert(/notefxrender[\s\S]*Render Arp to Notes[\s\S]*renderArpToNotes/.test(noteFxEditor)
     && !regionEditor.includes("label: 'Render Arp to Notes'"),
   'Render Arp to Notes lives inside the Note FX popup rather than the region menu');
 }
-assert(/const repeat = check\('Repeat pattern', view\.arp\.repeat !== false\)/.test(entry)
-  && /repeat: repeat\.checked/.test(entry),
+assert(/const repeat = check\('Repeat pattern', view\.arp\.repeat !== false\)/.test(noteFxEditors)
+  && /repeat: repeat\.checked/.test(noteFxEditors),
   'the Arpeggiator exposes a saved Repeat pattern option that defaults on');
 
 // One live effect at a time. The processor hands an arpeggiated lane one tone per tick
 // and a strum needs two, so a lane with both ticked has only ever played the arp — the
 // panel now says that rather than showing a setting the engine ignores.
-assert(/return \{ arp, strum: \{ \.\.\.strum, enabled: strum\.enabled && !arp\.enabled \} \};/.test(entry)
-  && /if \(strumOn\.checked\) arpOn\.checked = false;/.test(entry)
-  && /if \(arpOn\.checked\) strumOn\.checked = false;/.test(entry)
-  && /for \(const control of \[strumDir, gap\]\) setLive\(control, strumOn\.checked\);/.test(entry)
-  && /setLive\(control, arpOn\.checked && rangeOn\.checked\)/.test(entry)
-  && /control\.closest\('\.regcontrol, \.regcheck'\)\?\.classList\.toggle\('notefxoff', !live\)/.test(entry)
+assert(/return \{ arp, strum: \{ \.\.\.strum, enabled: strum\.enabled && !arp\.enabled \} \};/.test(noteFxEditors)
+  && /if \(strumOn\.checked\) arpOn\.checked = false;/.test(noteFxEditors)
+  && /if \(arpOn\.checked\) strumOn\.checked = false;/.test(noteFxEditors)
+  && /for \(const control of \[strumDir, gap\]\) setLive\(control, strumOn\.checked\);/.test(noteFxEditors)
+  && /setLive\(control, arpOn\.checked && rangeOn\.checked\)/.test(noteFxEditors)
+  && /control\.closest\('\.regcontrol, \.regcheck'\)\?\.classList\.toggle\('notefxoff', !live\)/.test(noteFxEditors)
   && /\.notefxoff > span,\s*#regionedit\.notefxmodal \.notefxcontrols \.notefxoff \.regread \{ opacity/.test(shell),
   'Strum and Arpeggiator are exclusive, and whichever is off greys the controls under it');
 
 // Every button in the footer decides what happens to this WINDOW; Render writes notes
 // into the song, so it lives with the arpeggiator it consumes instead.
-assert(/foot\.append\(cancelButton, resetButton, applyButton, applyCloseButton\)/.test(entry)
-  && /applyButton\.className = `notefxapply\$\{scope \? ' notefxplay' : ''\}`;/.test(entry)
-  && /applyCloseButton\.className = 'regapply';/.test(entry)
-  && /applyCloseButton\.textContent = 'Apply & Close';/.test(entry)
-  && /if \(applyNoteFx\(\{ play: false \}\)\) closeMenu\(\);/.test(entry)
-  && /resetButton\.onclick = \(\) => \{\s*writeFields\(scope \? trackDefault : \{\}\);\s*if \(mode\) mode\.value = 'inherit';/.test(entry)
+assert(/foot\.append\(cancelButton, resetButton, applyButton, applyCloseButton\)/.test(noteFxEditors)
+  && /applyButton\.className = `notefxapply\$\{scope \? ' notefxplay' : ''\}`;/.test(noteFxEditors)
+  && /applyCloseButton\.className = 'regapply';/.test(noteFxEditors)
+  && /applyCloseButton\.textContent = 'Apply & Close';/.test(noteFxEditors)
+  && /if \(applyNoteFx\(\{ play: false \}\)\) closeMenu\(\);/.test(noteFxEditors)
+  && /resetButton\.onclick = \(\) => \{\s*writeFields\(scope \? trackDefault : \{\}\);\s*if \(mode\) mode\.value = 'inherit';/.test(noteFxEditors)
   && !/Clear Note FX/.test(entry)
-  && /form\.append\(renderButton\);/.test(entry)
+  && /form\.append\(renderButton\);/.test(noteFxEditors)
   && !/\.notefxfoot \.notefxrender/.test(shell),
   'Note FX offers Cancel, Reset, Apply and Apply & Close, and Render sits with the '
   + 'arpeggiator rather than in the footer');
@@ -953,8 +963,8 @@ assert(/foot\.append\(cancelButton, resetButton, applyButton, applyCloseButton\)
 // two halves of one decision share a line. Pinned as the exact pairs, because a pair that
 // silently unpaired would give the panel its rows back without anything looking broken.
 {
-  const noteFxEditor = entry.slice(entry.indexOf('function openNoteFxEditor'),
-    entry.indexOf('function openBarEffectsEditor'));
+  const noteFxEditor = noteFxEditors.slice(noteFxEditors.indexOf('function openNoteFxEditor'),
+    noteFxEditors.indexOf('function openBarEffectsEditor'));
   const rows = noteFxEditor.split(/pairRow\(\);/).slice(1)
     .map((chunk) => chunk.split(/fullRow\(\);|pairRow\(\);/)[0])
     .map((chunk) => [...chunk.matchAll(/const (\w+) = (?:field|number)\(/g)].map((m) => m[1]));
@@ -970,17 +980,17 @@ assert(/foot\.append\(cancelButton, resetButton, applyButton, applyCloseButton\)
 // Octaves and the note limit are one gesture in two pots: the stack is built, then the
 // climb is stopped partway up it. The pot may not be a decoration, so the saved key and
 // the engine's cap are pinned together with it.
-assert(/const limit = number\('Note limit', 0, NOTE_FX_LIMIT_MAX, 1, view\.arp\.limit,/.test(entry)
-  && /limit: clamp\(Math\.round\(Number\(limit\.value\) \|\| 0\), 0, NOTE_FX_LIMIT_MAX\)/.test(entry)
+assert(/const limit = number\('Note limit', 0, NOTE_FX_LIMIT_MAX, 1, view\.arp\.limit,/.test(noteFxEditors)
+  && /limit: clamp\(Math\.round\(Number\(limit\.value\) \|\| 0\), 0, NOTE_FX_LIMIT_MAX\)/.test(noteFxEditors)
   && /noteFxLimit\(resolved\.arp\)/.test(entry),
   'the Arpeggiator exposes a saved note limit beside Octaves, and the bar card names it');
 
-assert(/const rangeOn = check\('Keep notes inside a range', view\.arp\.rangeLimit\)/.test(entry)
-  && /rangeLimit: rangeOn\.checked/.test(entry)
-  && /rangeLo: clamp\([\s\S]{0,120}?NOTE_FX_RANGE_MAX - 12\)/.test(entry)
-  && /NOTE_FX_RANGE_LO_OPTIONS = NOTE_FX_RANGE_BOUNDS\s*\.filter\(\(\[midi\]\) => midi <= NOTE_FX_RANGE_MAX - 12\)/.test(entry)
-  && /NOTE_FX_RANGE_HI_OPTIONS = NOTE_FX_RANGE_BOUNDS\s*\.filter\(\(\[midi\]\) => midi >= NOTE_FX_RANGE_MIN \+ 12\)/.test(entry)
-  && /if \(hi - lo >= 12\) return;/.test(entry),
+assert(/const rangeOn = check\('Keep notes inside a range', view\.arp\.rangeLimit\)/.test(noteFxEditors)
+  && /rangeLimit: rangeOn\.checked/.test(noteFxEditors)
+  && /rangeLo: clamp\([\s\S]{0,120}?NOTE_FX_RANGE_MAX - 12\)/.test(noteFxEditors)
+  && /NOTE_FX_RANGE_LO_OPTIONS = NOTE_FX_RANGE_BOUNDS\s*\.filter\(\(\[midi\]\) => midi <= NOTE_FX_RANGE_MAX - 12\)/.test(noteFxEditors)
+  && /NOTE_FX_RANGE_HI_OPTIONS = NOTE_FX_RANGE_BOUNDS\s*\.filter\(\(\[midi\]\) => midi >= NOTE_FX_RANGE_MIN \+ 12\)/.test(noteFxEditors)
+  && /if \(hi - lo >= 12\) return;/.test(noteFxEditors),
   'the Arpeggiator range is saved as two note bounds that can never be less than an octave apart');
 
 const envelopeTimeRows = editor.match(/envTime\(/g) || [];
@@ -1043,11 +1053,11 @@ assert(/id="importtracks"/.test(shell)
   && /independent: true/.test(entrySource),
   'Import Tracks opens a song picker, then a checked-track picker, grows the destination, and adds independent layers');
 assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1, origin = null,\s*taper = null, floor = 0, onStart = null, onEnd = null \}\)/
-  .test(entrySource)
-  && /const pos = clamp\(position, 0, 1\);/.test(entrySource)
-  && /return min \+ \(max - min\) \* Math\.pow\(pos, curve\);/.test(entrySource)
-  && /dragPos = clamp\(dragPos \+ \(px \/ 150\)/.test(entrySource)
-  && /setPosition\(dragPos\)/.test(entrySource)
+  .test(controls)
+  && /const pos = clamp\(position, 0, 1\);/.test(controls)
+  && /return min \+ \(max - min\) \* Math\.pow\(pos, curve\);/.test(controls)
+  && /dragPos = clamp\(dragPos \+ \(px \/ 150\)/.test(controls)
+  && /setPosition\(dragPos\)/.test(controls)
   // A row's `scale` may be a function of the voice — a taper that depends on what the
   // preset is — so what is pinned here is that whatever it resolves to is handed to the
   // shared knob beside the row's own origin, not the literal shape of the expression.
@@ -1055,10 +1065,10 @@ assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1,
   && /scale, origin: row\.origin, taper: row\.taper, floor: row\.floor/.test(editor)
   // The log branch, in the shared knob and in the standalone copy of it, so the two
   // surfaces cannot disagree about what a position means.
-  && /return pos <= 0 \? min : logLo \* Math\.exp\(logSpan \* pos\);/.test(entrySource)
+  && /return pos <= 0 \? min : logLo \* Math\.exp\(logSpan \* pos\);/.test(controls)
   && /return pos <= 0 \? min : logLo \* Math\.exp\(logSpan \* pos\);/.test(mrdrKnob)
   && /const logLo = logTaper \? Math\.max\(min, floor > 0 \? floor : step, 1e-6\) : 0;/
-    .test(entrySource)
+    .test(controls)
   && /const logLo = logTaper \? Math\.max\(min, floor > 0 \? floor : step, 1e-6\) : 0;/
     .test(mrdrKnob),
   'all envelope controls use the shared non-linear knob response');
@@ -1068,10 +1078,10 @@ assert(/function knob\(\{ min, max, step, value, fmt, onInput, reset, scale = 1,
 // curve 3 the middle of the travel reads -7.5 — which would make ENV AMOUNT's zero a
 // place you could not find by eye. Both halves taper, and only `scale` WITH `origin`
 // takes the branch: every pot that had one or neither keeps the arithmetic it had.
-assert(/const bipolar = Number\.isFinite\(origin\) && curve !== 1;/.test(entrySource)
-  && /const originFrac = /.test(entrySource)
-  && /return origin \+ \(max - origin\) \* Math\.pow\(f, curve\);/.test(entrySource)
-  && /return origin - \(origin - min\) \* Math\.pow\(f, curve\);/.test(entrySource)
+assert(/const bipolar = Number\.isFinite\(origin\) && curve !== 1;/.test(controls)
+  && /const originFrac = /.test(controls)
+  && /return origin \+ \(max - origin\) \* Math\.pow\(f, curve\);/.test(controls)
+  && /return origin - \(origin - min\) \* Math\.pow\(f, curve\);/.test(controls)
   && /const ENV_OCT_MAX = 10;/.test(editor)
   && /const ENV_OCT_SCALE = 2;/.test(editor)
   && /'ENV AMOUNT', -ENV_OCT_MAX, ENV_OCT_MAX/.test(editor)
@@ -1099,7 +1109,7 @@ assert(/const oscRows = \(sec\) => \[/.test(editor)
   && /drumAmount\(sec, 'from'/.test(editor)
   && /carryDestination\(sec,/.test(editor)
   && /envTime\(`\$\$\{sec\}\.sweep`, 'SWEEP TIME'/.test(editor)
-  && /arcPath\(originDeg, deg\)/.test(entrySource),
+  && /arcPath\(originDeg, deg\)/.test(controls),
   'the drum oscillator is FREQUENCY / AMOUNT (±96 semi, centred) / SWEEP TIME over the stored hertz');
 
 // ...and the METAL cluster says it the same way, on the same helper. Its three squares
@@ -1261,15 +1271,15 @@ assert(/head\.append\(title, sources,[^)]*search, close\)/.test(
   && !/const searchRow = document\.createElement\('div'\)/.test(
     librarySource),
   'the preset search sits in the top header immediately before the far-right close');
-assert(/let voicePickerQuery = '';[\s\S]*?search\.value = voicePickerQuery[\s\S]*?voicePickerQuery = search\.value[\s\S]*?draw\(search\.value\)/.test(entry),
+assert(/let voicePickerQuery = '';[\s\S]*?search\.value = voicePickerQuery[\s\S]*?voicePickerQuery = search\.value[\s\S]*?draw\(search\.value\)/.test(voicePicker),
   'the strip preset picker keeps its search when it is reopened');
-assert(/const engineOf = \(v\) => v\?\.kind === 'drum' \? 'drum' : v\?\.synth \|\| null/.test(entry)
-  && /const enginesForKind = \(kindId\) =>[\s\S]*?filter\(keepOf\(kindId\)\)/.test(entry)
-  && /if \(!pending && selectedEngine && initialEngines\.includes\(selectedEngine\)\) engine = selectedEngine/.test(entry)
-  && /next\.classList\.add\('voiceengine'\)/.test(entry)
-  && /keepEngine = \(v\) => engine === 'all' \|\| engineOf\(v\) === engine/.test(entry)
-  && /if \(q && !shown && engine !== 'all'\)[\s\S]*?engine = 'all';[\s\S]*?refreshEngineOptions\(\);[\s\S]*?draw\(query\);/.test(entry)
-  && /if \(pending && !drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(entry)
+assert(/const engineOf = \(v\) => v\?\.kind === 'drum' \? 'drum' : v\?\.synth \|\| null/.test(voicePicker)
+  && /const enginesForKind = \(kindId\) =>[\s\S]*?filter\(keepOf\(kindId\)\)/.test(voicePicker)
+  && /if \(!pending && selectedEngine && initialEngines\.includes\(selectedEngine\)\) engine = selectedEngine/.test(voicePicker)
+  && /next\.classList\.add\('voiceengine'\)/.test(voicePicker)
+  && /keepEngine = \(v\) => engine === 'all' \|\| engineOf\(v\) === engine/.test(voicePicker)
+  && /if \(q && !shown && engine !== 'all'\)[\s\S]*?engine = 'all';[\s\S]*?refreshEngineOptions\(\);[\s\S]*?draw\(query\);/.test(voicePicker)
+  && /if \(pending && !drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(voicePicker)
   && !/entry\(null, 'Engine default'/.test(entry)
   && /#voicepicker \.voiceengine \{[^}]*width: 132px[^}]*flex: 0 0 132px/s.test(shell),
   'the compact picker shows the selected engine, hides kind filters on existing tracks, and has no Engine default row');
@@ -1563,7 +1573,7 @@ assert(/runtimeHealth\(\)/.test(voicesSrc)
   && /loopHealthWindow\.overloaded/.test(entry)
   && /dropoutsDelta/.test(entry),
   'loop rows compare existing health and cache telemetry, including live cached sources');
-assert(/recordType', 'status'/.test(entry)
+assert(/recordType', 'status'/.test(loopLog)
   && /function appendDiagnosticEvent\(/.test(entry)
   && /AUDIO OUTPUT RECOVERED/.test(entry)
   && /recoveryTier: 'fresh context'/.test(entry)
@@ -2107,9 +2117,9 @@ assert(/#devices #devrack \{[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*scroll[^
 // remove is a bin (it throws the effect out), the panel's is a close mark, and the insert
 // slot — 23px tall, with a name in it — keeps the drawn cross.
 assert(/function trashIcon\(\) \{[\s\S]*?'M2\.3 3\.5h7\.4'[\s\S]*?\n\}/.test(entry)
-  && (entry.match(/close\.append\(trashIcon\(\)\);|remove\.append\(trashIcon\(\)\);/g) || []).length === 2
+  && ((entry + noteFxEditors).match(/close\.append\(trashIcon\(\)\);|remove\.append\(trashIcon\(\)\);/g) || []).length === 2
   && !/devclose[\s\S]{0,80}?append\(closeIcon\(\)\)/.test(entry)
-  && /remove\.className = 'rmhit'[\s\S]*?remove\.append\(closeIcon\(\)\)/.test(entry),
+  && /remove\.className = 'rmhit'[\s\S]*?remove\.append\(closeIcon\(\)\)/.test(entry + noteFxEditors),
   'a plugin card is thrown away with a bin, not with the cross that means "put the panel away"');
 assert(/<button id="devfold" class="foldbtn popclose" title="Close Effects"[\s\S]*?<span aria-hidden="true">✕<\/span>/.test(shell)
   && /#devices #devfold\.popclose \{[^}]*width:\s*28px[^}]*height:\s*28px[^}]*font-size:\s*19px !important/s.test(shell)
@@ -2192,7 +2202,7 @@ assert(/const splitter = \$\('worksplitter'\)/.test(deskLayout)
 assert(/const MIXER_RESIZE_SETTLE_MS = 120;/.test(deskLayout)
   && /const scheduleDeskResize = \(\) => \{[\s\S]*?clearTimeout\(deskResizeSettleTimer\)/.test(deskLayout)
   && /window\.visualViewport\?\.addEventListener\('resize', scheduleDeskResize\)/.test(deskLayout)
-  && /beginPlaybackVisualHold\(\);/.test(entry.slice(deskLayout.indexOf('const scheduleDeskResize'))),
+  && /beginPlaybackVisualHold\(\);/.test(deskLayout.slice(deskLayout.indexOf('const scheduleDeskResize'))),
   'window and visual-viewport resizing defer the final desk fit and protect playback visuals');
 const arrangementVisual = entry.slice(entry.indexOf('function followArrangementVisual('),
   entry.indexOf('/** Locate the visible arrangement cell', entry.indexOf('function followArrangementVisual(')));
@@ -2726,8 +2736,8 @@ assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\)/.
   && !entry.includes('openAddTrackPicker'),
   'the plus opens one new track and its preset selector without a choice menu — which'
   + ' sound it is IS the choice, and the library is where that is made');
-assert(/function openVoicePicker[\s\S]*?className = 'voiceclose popclose'[\s\S]*?closeMenu\(\)/.test(entry)
-  && /function openVoicePicker[\s\S]*?draw\(''\);[\s\S]*?el\.classList\.add\('show'\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(entry)
+assert(/function openVoicePicker[\s\S]*?className = 'voiceclose popclose'[\s\S]*?closeMenu\(\)/.test(voicePicker)
+  && /function openVoicePicker[\s\S]*?draw\(''\);[\s\S]*?el\.classList\.add\('show'\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(voicePicker)
   && /#voicepicker button\.voiceclose \{[^}]*width:\s*34px[^}]*height:\s*34px[^}]*font-size:\s*23px/s.test(shell),
   'the preset selector has the large close button and focuses Search presets');
 // The panel opens filtered, keeps the last search and wraps a hundred presets over
@@ -2735,14 +2745,14 @@ assert(/function openVoicePicker[\s\S]*?className = 'voiceclose popclose'[\s\S]*
 // happens to be on screen — and on a generated song, which names its sound in the bank
 // rather than in the mix, nothing is highlighted at all. The header says it in words,
 // and clicking it drops whatever filter is hiding the row and scrolls to it.
-assert(/const nowPreset = pending \? null : selectedPreset;/.test(entry)
-  && /const nowInList = !!nowPreset && offeredVoices\(laneKey, offer\)\.some\(\(v\) => v\.id === nowPreset\.id\)/.test(entry)
-  && /const now = pending \? null : document\.createElement\(nowInList \? 'button' : 'span'\)/.test(entry)
-  && /nowName\.textContent = nowPreset\?\.label \|\| 'the engine’s own voice'/.test(entry)
-  && /head\.append\(who\);\s*\n\s*if \(now\) head\.append\(now\);/.test(entry)
-  && /if \(id\) btn\.dataset\.voice = id;/.test(entry)
-  && /const currentRow = \(\)[\s\S]*?querySelector\(`button\[data-voice="\$\{CSS\.escape\(nowPreset\.id\)\}"\]`\)/.test(entry)
-  && /if \(now && nowInList\) now\.onclick = \(ev\) => \{ ev\.stopPropagation\(\); revealCurrent\(\); \}/.test(entry)
+assert(/const nowPreset = pending \? null : selectedPreset;/.test(voicePicker)
+  && /const nowInList = !!nowPreset && offeredVoices\(laneKey, offer\)\.some\(\(v\) => v\.id === nowPreset\.id\)/.test(voicePicker)
+  && /const now = pending \? null : document\.createElement\(nowInList \? 'button' : 'span'\)/.test(voicePicker)
+  && /nowName\.textContent = nowPreset\?\.label \|\| 'the engine’s own voice'/.test(voicePicker)
+  && /head\.append\(who\);\s*\n\s*if \(now\) head\.append\(now\);/.test(voicePicker)
+  && /if \(id\) btn\.dataset\.voice = id;/.test(voicePicker)
+  && /const currentRow = \(\)[\s\S]*?querySelector\(`button\[data-voice="\$\{CSS\.escape\(nowPreset\.id\)\}"\]`\)/.test(voicePicker)
+  && /if \(now && nowInList\) now\.onclick = \(ev\) => \{ ev\.stopPropagation\(\); revealCurrent\(\); \}/.test(voicePicker)
   && /#voicepicker \.voicenow \{[^}]*color: var\(--ink\)/s.test(shell),
   'the preset selector names the preset the lane is on now, and clicking it reveals that row');
 // Sticky rather than scrolling away with the columns: the negative margin cancels the
@@ -2752,7 +2762,7 @@ assert(/#voicepicker \.voicehead \{[^}]*position: sticky[^}]*top: 0[^}]*align-it
   && /#voicepicker button\.voiceclose \{[^}]*position: absolute[^}]*top: 3px[^}]*right: 3px/s.test(shell),
   'the selector head stays visible at the top and its close sits in the upper-right corner');
 // Opening ON the current sound rather than at the top of a list it is somewhere inside.
-assert(/requestAnimationFrame\(\(\) => \{[\s\S]*?if \(!el\.classList\.contains\('show'\)\) return;[\s\S]*?currentRow\(\)\?\.scrollIntoView\(\{ block: 'nearest', inline: 'nearest' \}\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(entry),
+assert(/requestAnimationFrame\(\(\) => \{[\s\S]*?if \(!el\.classList\.contains\('show'\)\) return;[\s\S]*?currentRow\(\)\?\.scrollIntoView\(\{ block: 'nearest', inline: 'nearest' \}\);[\s\S]*?search\.focus\(\{ preventScroll: true \}\)/.test(voicePicker),
   'the selector opens with the current preset already scrolled into view');
 assert(/id="font"[^>]*>[\s\S]*?<\/select>\s*<\/label>\s*<label[^>]*>\s*<span>Theme<\/span>\s*<select id="theme"/s.test(shell),
   'the colour theme selector sits beside the font selector in Desk settings');
@@ -2974,7 +2984,7 @@ assert(/pendingAddTrack = \{[\s\S]*?openVoicePicker\(x, y, newKey\)/.test(addTra
   && /const emptyLaneMix = \(\) =>/.test(entry)
   && /m\.lanes\[pending\.key\] = emptyLaneMix\(\)/.test(entry)
   && /function commitPendingAddTrack[\s\S]*?m\.layers[\s\S]*?m\.lanes\[pending\.key\][\s\S]*?voice\[seam\.voiceKey\]/.test(entry)
-  && /const pick = \(id\)[\s\S]*?commitPendingAddTrack\(laneKey, id\)[\s\S]*?closeMenu\(\)/.test(entry),
+  && /const pick = \(id\)[\s\S]*?commitPendingAddTrack\(laneKey, id\)[\s\S]*?closeMenu\(\)/.test(voicePicker),
   'Add Track waits for a preset before creating the independent lane');
 assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\)/.test(entry)
   && /const plusRect = anchor\?\.getBoundingClientRect/.test(entry),
@@ -2985,8 +2995,8 @@ assert(/\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\)/.
 assert(/const CATEGORY_LANE = \{[\s\S]*?Kick: 'kick'/.test(entry)
   && /function kitLaneOf\(voice\)[\s\S]*?if \(voice\.homeLane\) return voice\.homeLane;/.test(entry)
   && /voice\.category === 'Hats' && \/open\/i\.test/.test(entry)
-  && /const home = voice && isKitVoice\(voice\) \? kitLaneOf\(voice\) : 'lead';/.test(entry)
-  && /if \(voice && home && home !== pendingAddTrack\.from && !blocked\)/.test(entry),
+  && /const home = voice && isKitVoice\(voice\) \? kitLaneOf\(voice\) : 'lead';/.test(voicePicker)
+  && /if \(voice && home && home !== pendingAddTrack\(\)\.from && !blocked\)/.test(voicePicker),
   'an added track is re-keyed onto the lane its chosen preset belongs to — a clap staged'
   + ' as a tom would stay a tom playing a clap, offered tom figures');
 // Everything the PATTERN EDITOR's plus can make is a drum. The picker is where a new
@@ -2994,26 +3004,27 @@ assert(/const CATEGORY_LANE = \{[\s\S]*?Kick: 'kick'/.test(entry)
 // — a channel the grid it was added from cannot show a single note of.
 assert((entry.match(/addInstrument: \(anchor\) => addBlankTrack\(anchor, \{ drumsOnly: true \}\)/g) || []).length === 2
   && /\$\('addtrackbtn'\)\.onclick[\s\S]*?addBlankTrack\(ev\.currentTarget\);/.test(entry)
-  && /const drumsOnly = pending\s*\n\s*\? !!pendingAddTrack\?\.drumsOnly\s*\n\s*: PERCUSSION_LANES\.includes\(baseLane\(laneKey\)\)/.test(entry)
-  && /const KINDS = drumsOnly \? \[\{ id: 'drums', label: 'Drums', keep: isDrumChoice \}\]/.test(entry)
+  && /const drumsOnly = pending\s*\n\s*\? !!pendingAddTrack\(\)\?\.drumsOnly\s*\n\s*: PERCUSSION_LANES\.includes\(baseLane\(laneKey\)\)/.test(voicePicker)
+  && /const KINDS = drumsOnly \? \[\{ id: 'drums', label: 'Drums', keep: isDrumChoice \}\]/.test(voicePicker)
   // A drum lane is booleans: a step says a hit happens and carries no pitch, so a melodic
   // preset there is a synth struck at one note over and over. Every route into the picker
   // — the strip, the row menu, the drum editor — refuses it, in both directions of the
   // rule: the lane's own preset is still shown, or a drum would have no entry to be on.
-  && /const isDrumChoice = \(v\) => isKitVoice\(v\) \|\| \(chosen && v\?\.id === chosen\)/.test(entry)
-  && /if \(pending && !drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(entry)
-  && /const blocked = home === 'lead' && pendingAddTrack\.drumsOnly;/.test(entry),
+  && /const isDrumChoice = \(v\) => isKitVoice\(v\) \|\| \(chosen && v\?\.id === chosen\)/.test(voicePicker)
+  && /if \(pending && !drumsOnly\) for \(const k of KINDS\) chips\.append\(chipFor\(k\)\)/.test(voicePicker)
+  && /const blocked = home === 'lead' && pendingAddTrack\(\)\.drumsOnly;/.test(voicePicker),
   'both pattern editors can only add drums — the picker holds nothing but the kit and the'
   + ' re-key to a melodic lane is refused, while the arrangement plus stays neutral');
 // And the duplicate names the lane it actually copies. A copy of an added track or of
 // another duplicate is a copy of THAT part, not of the engine lane its key is named
 // after — see duplicateLane, which now records `from: key`.
-assert(/const isIndependentLane = \(key\)[\s\S]*?const layer = isLayer\(laneKey\) && !independent/.test(entry)
-  && /\?\.from\s*\n?\s*\|\| baseLane\(laneKey\);[\s\S]*?A duplicate of \$\{targetLabel\(source\)\}/.test(entry),
+assert(/const isIndependentLane = \(key\)/.test(entry)
+  && /const layer = isLayer\(laneKey\) && !independent/.test(voicePicker)
+  && /\?\.from\s*\n?\s*\|\| baseLane\(laneKey\);[\s\S]*?A duplicate of \$\{targetLabel\(source\)\}/.test(voicePicker),
   'independent tracks are not presented as duplicates of Tom in the voice picker');
 assert(/function duplicateLane\(key\)[\s\S]*?duplicateLaneContent\(editBank\(\), arr, key, newKey\)[\s\S]*?\{ key: newKey, from, independent: true/.test(entry),
   'Duplicate snapshots the source pattern and declares the new track independent');
-assert(/function openVoicePicker[\s\S]*?const pending = pendingAddTrack\?\.key === laneKey[\s\S]*?let kind = drumsOnly \? 'drums' : pending \? 'all'[\s\S]*?else if \(pending\)[\s\S]*?Choose a preset for this new track/.test(entry),
+assert(/function openVoicePicker[\s\S]*?const pending = pendingAddTrack\(\)\?\.key === laneKey[\s\S]*?let kind = drumsOnly \? 'drums' : pending \? 'all'[\s\S]*?else if \(pending\)[\s\S]*?Choose a preset for this new track/.test(voicePicker),
   'the plus picker starts on All without presenting the Tom engine default');
 assert(/async function deleteLane[\s\S]*?bankCache\.sig = null;[\s\S]*?localStorage\.removeItem\(LANE_KEY\)[\s\S]*?rebuildForShape\(\)/.test(entry)
   // Two words on the button, the track named in the confirmation — which is the step you
@@ -3061,8 +3072,8 @@ assert(regionFn && barBranch && trackBranch
 // empty bar is filled without a word, and a bar with a part or an edit on it is named
 // in a dialog that can still be answered no.
 const replicateFn = entry.match(/\nasync function replicateLaneBars\([\s\S]*?\n\}\n/)?.[0] || '';
-const replicateScan = entry.match(/\nconst replicationTargets = \([\s\S]*?\n\};\n/)?.[0] || '';
-const replicateStopFn = entry.match(/\nconst replicationStop = \([\s\S]*?\n\};\n/)?.[0] || '';
+const replicateScan = barFields.match(/\nconst replicationTargets = \([\s\S]*?\n\};\n/)?.[0] || '';
+const replicateStopFn = barFields.match(/\nconst replicationStop = \([\s\S]*?\n\};\n/)?.[0] || '';
 // Replicate carries a figure on through the HOLE after it and stops where the track is
 // written again — which is what makes the ordinary press silent: the run it fills was
 // empty, so there was never anything to warn about. The stop is worked out twice, and
@@ -3097,14 +3108,14 @@ assert(replicateFn
 // bars before the selection — which are the source and must not move.
 assert(replicateFn
   && !/insertSilence|duplicateBars|deleteBars|pasteBars|writeBarNotesShared/.test(replicateFn + replicateScan)
-  && /const laneBarPart = \(bank, draft, bar, lane\)[\s\S]*?notes: readBarLane\(bank, draft, bar, lane\)[\s\S]*?lengths: readBarLane\(bank, draft, bar, lenKey\(lane\)\)[\s\S]*?noteFx: entry\?\.noteFx\?\.\[lane\][\s\S]*?inlineFx: entry\?\.inlineFx\?\.\[lane\]/.test(entry)
-  && /const writeLaneBarPart = \(bank, draft, bar, lane, part, current = null\)[\s\S]*?writeBarNotes\(bank, draft, bar, lane, part\.notes, part\.lengths\)[\s\S]*?setLanesOff[\s\S]*?setLanesDeleted[\s\S]*?transposeBars[\s\S]*?offsetBars[\s\S]*?gainBars[\s\S]*?panBars[\s\S]*?setBarNoteFx[\s\S]*?setBarEffects/.test(entry)
+  && /const laneBarPart = \(bank, draft, bar, lane\)[\s\S]*?notes: readBarLane\(bank, draft, bar, lane\)[\s\S]*?lengths: readBarLane\(bank, draft, bar, lenKey\(lane\)\)[\s\S]*?noteFx: entry\?\.noteFx\?\.\[lane\][\s\S]*?inlineFx: entry\?\.inlineFx\?\.\[lane\]/.test(barFields)
+  && /const writeLaneBarPart = \(bank, draft, bar, lane, part, current = null\)[\s\S]*?writeBarNotes\(bank, draft, bar, lane, part\.notes, part\.lengths\)[\s\S]*?setLanesOff[\s\S]*?setLanesDeleted[\s\S]*?transposeBars[\s\S]*?offsetBars[\s\S]*?gainBars[\s\S]*?panBars[\s\S]*?setBarNoteFx[\s\S]*?setBarEffects/.test(barFields)
   // Every one of those writers copies the WHOLE draft, so a destination bar that already
   // agrees is skipped rather than written: laying a figure over the longest song in the
   // game is a fifth of a second of held main thread otherwise, which on this desk is a
   // hole in the music rather than a slow button. Same reason the write sits in `heavyUi`.
-  && /const same = \(field\) => was && JSON\.stringify\(was\[field\]\) === JSON\.stringify\(now\[field\]\)/.test(entry)
-  && /if \(!same\('off'\)\) out = setLanesOff/.test(entry),
+  && /const same = \(field\) => was && JSON\.stringify\(was\[field\]\) === JSON\.stringify\(now\[field\]\)/.test(barFields)
+  && /if \(!same\('off'\)\) out = setLanesOff/.test(barFields),
 'a replicated bar carries the whole bar — notes, lengths and edits — into bars that already exist');
 // Tracks do track things, channels do channel things, and WHERE you right-clicked is what
 // decides which — the arrangement row is the track, the mixer strip is its signal path.
@@ -3216,7 +3227,7 @@ assert(!/\.strip\[data-lane="\$\{CSS\.escape\((?:newKey|lane)\)\}"\] \.strippres
 // click on a channel strip puts it beside that strip because that is where the click was;
 // the track panel's own buttons put it beside the track panel for the same reason. Both
 // of its surfaces take the same `at`, and every caller that has a pointer hands one over.
-const editVoiceFn = entry.slice(entry.indexOf('function editVoice(laneKey'),
+const editVoiceFn = editorWindow.slice(editorWindow.indexOf('function editVoice(laneKey'),
   entry.indexOf('// ---- the preset library'));
 const editVoiceCode = editVoiceFn.replace(/^\s*\/\/.*$/gm, '');
 assert(/function editVoice\(laneKey, \{ advanced, at = null \} = \{\}\)/.test(editVoiceFn)
@@ -3236,8 +3247,8 @@ assert(/const at = \{ x: ev\.clientX, y: ev\.clientY \};/.test(stripMenuAt)
 assert(/editVoice\(laneKey, \{ advanced: false, at: \{ x, y \} \}\)/.test(entry)
   && /editVoice\(laneKey, \{ advanced: true, at: \{ x, y \} \}\)/.test(entry),
 'the track panel opens the editor beside the track panel');
-const pointerFn = entry.slice(entry.indexOf('function placeEditorAtPointer(at)'),
-  entry.indexOf('// Dragged by its header'));
+const pointerFn = editorWindow.slice(editorWindow.indexOf('function placeEditorAtPointer(at)'),
+  editorWindow.indexOf('function syncVoiceEditorToLane'));
 assert(/const right = at\.x \+ EDITOR_POINTER_GAP;/.test(pointerFn)
   && /right \+ r\.width <= innerWidth \? right : at\.x - EDITOR_POINTER_GAP - r\.width/.test(pointerFn)
   && /clampFloatingEditor\(left, at\.y\)/.test(pointerFn)
@@ -3246,7 +3257,7 @@ assert(/const right = at\.x \+ EDITOR_POINTER_GAP;/.test(pointerFn)
   // Placing is the desk moving its own furniture, so it must not overwrite the position
   // the user last dragged the window to.
   && !/localStorage/.test(pointerFn)
-  && /function clampFloatingEditor\(x, y\)[\s\S]*?return \{ left, top \};/.test(entry),
+  && /function clampFloatingEditor\(x, y\)[\s\S]*?return \{ left, top \};/.test(editorWindow),
 'the window flips to the other side of the pointer rather than hanging off the screen');
 const synthFull = readFileSync(new URL('../tools/mixer-synth-full.js', import.meta.url), 'utf8');
 const fullOpenFn = synthFull.slice(synthFull.indexOf('function open(n = 1'),
@@ -4488,13 +4499,13 @@ assert(channelStrip.includes('label: customTrackLabel(key) || preset?.label || l
   && !entry.includes('function stepVoice')
   && !shell.includes('.voicestep'),
   'channel strips show the current preset above its type and use that name to choose');
-assert(/function fillEffectControls\(\{[\s\S]*?visibleParams\(def, entryParams\)[\s\S]*?paramRange\(pname, def\)/.test(entry)
+assert(/function fillEffectControls\(\{[\s\S]*?visibleParams\(def, entryParams\)[\s\S]*?paramRange\(pname, def\)/.test(effectCards)
   && /function buildDevices\(\)[\s\S]*?fillEffectControls\(\{[\s\S]*?grid, def, entry, patch, replaceParams/.test(entry)
-  && /function openBarEffectsEditor[\s\S]*?card\.className = `device barfxdevice[\s\S]*?fillEffectControls\(\{[\s\S]*?patch: \(params\)[\s\S]*?replaceParams: \(params\)/.test(entry)
-  && /bypass\.onclick = \(\) => \{ chain\[index\] = \{ \.\.\.chain\[index\], bypass: !effect\.bypass \}; draw\(\); \}/.test(entry)
-  && /\[chain\[index - 1\], chain\[index\]\] = \[chain\[index\], chain\[index - 1\]\]/.test(entry)
-  && /foot\.append\(snapshot, clear, closeButton, applyPlay\);[\s\S]*?panel\.append\(guide, foot\)/.test(entry)
-  && /foot\.className = 'regfoot barfxfoot'/.test(entry)
+  && /function openBarEffectsEditor[\s\S]*?card\.className = `device barfxdevice[\s\S]*?fillEffectControls\(\{[\s\S]*?patch: \(params\)[\s\S]*?replaceParams: \(params\)/.test(noteFxEditors)
+  && /bypass\.onclick = \(\) => \{ chain\[index\] = \{ \.\.\.chain\[index\], bypass: !effect\.bypass \}; draw\(\); \}/.test(noteFxEditors)
+  && /\[chain\[index - 1\], chain\[index\]\] = \[chain\[index\], chain\[index - 1\]\]/.test(noteFxEditors)
+  && /foot\.append\(snapshot, clear, closeButton, applyPlay\);[\s\S]*?panel\.append\(guide, foot\)/.test(noteFxEditors)
+  && /foot\.className = 'regfoot barfxfoot'/.test(noteFxEditors)
   && /#regionedit\.barfxmodal \.barfxcontrols \{[^}]*gap:\s*8px[^}]*padding:\s*10px 12px 12px/s.test(shell)
   && /#regionedit\.barfxmodal \.barfxcontrols \.regcontrol > span \{ font-size:\s*var\(--microcopy-size\); \}/.test(shell)
   && /--popup-action-size:\s*12px/.test(shell)
@@ -4723,8 +4734,8 @@ assert(/function editablePresetFor\(laneKey\) \{\s*const preset = presetForLane\
 // The panel is a window wherever it was opened from, so a rack repaint re-places it on
 // the body rather than threading it back between two strips — and re-places it where it
 // already is, or a moved fader would fling the window back to the middle.
-const placeFn = bareEntry.slice(bareEntry.indexOf('function placeVoiceEditor()'),
-  bareEntry.indexOf('function editVoice(laneKey'));
+const placeFn = bareEditorWindow.slice(bareEditorWindow.indexOf('function placeVoiceEditor()'),
+  bareEditorWindow.indexOf('function editVoice(laneKey'));
 assert(/el\.classList\.add\('vefloat'\)/.test(placeFn)
   && /if \(laneKey\) clampFloatingEditor\(r\.left, r\.top\); else placeFloatingEditor\(\);/.test(placeFn)
   && !/centreFloatingEditor/.test(placeFn),
@@ -5376,8 +5387,8 @@ assert(/if \(state\.laneKey\) \{[\s\S]{0,600}?vesynth veclass[\s\S]{0,400}?\} el
 // the editor is on one engine leaves its cards over another engine's lane.
 assert(/get voice\(\) \{ return state\?\.voice \|\| null; \}/.test(editor),
   'the editor exposes the preset OBJECT it is drawing, not just its id');
-assert(/if \(chosen === voiceEditor\.editing && preset === voiceEditor\.voice\) return false;/.test(entry)
-  && /const choiceChanged = chosen !== voiceEditor\.editing \|\| preset !== voiceEditor\.voice;/.test(entry),
+assert(/if \(chosen === voiceEditor\.editing && preset === voiceEditor\.voice\) return false;/.test(editorWindow)
+  && /const choiceChanged = chosen !== voiceEditor\.editing \|\| preset !== voiceEditor\.voice;/.test(editorWindow),
   'the editor follows its lane by preset OBJECT — a song-local id stays put across a'
   + ' change of preset, so an id comparison reads a new synth as the old one');
 
@@ -5385,7 +5396,7 @@ assert(/if \(chosen === voiceEditor\.editing && preset === voiceEditor\.voice\) 
 // preset picker lives in that full window, so using only `isOpen()` here changes the lane
 // and then refuses to rebind the window: every subsequent control edits the abandoned
 // copy of the previous preset and appears to do nothing.
-assert(/\(!voiceEditor\.isOpen\(\) && !voiceEditor\.fullOpen\)/.test(entry),
+assert(/\(!voiceEditor\.isOpen\(\) && !voiceEditor\.fullOpen\)/.test(editorWindow),
   'lane following remains active while standalone Advanced is the only visible editor');
 assert(/if \(fullStandalone\) \{[\s\S]*?return;\s*\}[\s\S]{0,400}?el\.classList\.add\('show'\);\s*build\(\);/.test(editor),
   'closing Advanced restores the Simple editor that launched it, while standalone Advanced still dismisses');
@@ -5394,7 +5405,7 @@ assert(/if \(fullStandalone\) \{[\s\S]*?return;\s*\}[\s\S]{0,400}?el\.classList\
 // so the panel has to follow or go. A refused `open` leaves the OLD surface — MRDR-3's
 // Quick macros on a strip now playing a KNDO-5 — which is the state the badge above
 // makes unreachable from the panel and this makes unreachable from the lane.
-assert(/if \(!voiceEditor\.open\(chosen, \{ laneKey, laneLabel: targetLabel\(laneKey\) \}\)\) \{\s*\n\s*dismissVoiceEditor\(\);\s*\n\s*return true;/.test(entry),
+assert(/if \(!voiceEditor\.open\(chosen, \{ laneKey, laneLabel: targetLabel\(laneKey\) \}\)\) \{\s*\n\s*dismissVoiceEditor\(\);\s*\n\s*return true;/.test(editorWindow),
   'a lane whose preset the editor cannot open takes the panel down rather than leaving'
   + ' the previous preset\'s surface attached to it');
 
@@ -5409,9 +5420,9 @@ assert(/if \(!voiceEditor\.open\(chosen, \{ laneKey, laneLabel: targetLabel\(lan
 //
 // Asserted in two halves: the source takes the bank's name as the thing to fork, and the
 // fork really does produce an editable preset — a starter's copy is not a starter.
-assert(/const named = chosen \? null : defaultVoiceOf\(track\?\.bank, laneKey\);/.test(entry)
-  && /const source = chosen \? VOICES\[chosen\] : \(named\?\.kind === 'engine' \? null : named\);/.test(entry)
-  && /\[seam\.voiceKey\]: JSON\.parse\(JSON\.stringify\(source\)\)/.test(entry),
+assert(/const named = chosen \? null : defaultVoiceOf\(track\(\)\?\.bank, laneKey\);/.test(editorWindow)
+  && /const source = chosen \? VOICES\[chosen\] : \(named\?\.kind === 'engine' \? null : named\);/.test(editorWindow)
+  && /\[seam\.voiceKey\]: JSON\.parse\(JSON\.stringify\(source\)\)/.test(editorWindow),
   'the pen on a generated song forks the preset the BANK names, not only one the mix does');
 
 const { VOICES: CATALOGUE, defaultVoiceOf: defaultVoice, registerSongVoice: registerCopy } = await import('../src/data/voices.js');
@@ -5434,15 +5445,17 @@ delete CATALOGUE[copyId];
   assert(/req\.method === 'POST' && req\.url === '\/diagnostics-log'/.test(server)
     && /join\('work', 'local', 'mixer-diagnostics\.csv'\)/.test(server),
     'the dev server writes the posted diagnostics log to work/local/, the disposable drawer');
-  assert(/fetch\('\/diagnostics-log'/.test(entry) && /mirrorDiagnosticsLog\(\)/.test(entry),
+  assert(/fetch\('\/diagnostics-log'/.test(loopLog)
+    && /mirrorDiagnosticsLog\(loopLogRecords\)/.test(entry),
     'and the desk posts it there when a record lands');
-  const mirror = entry.slice(entry.indexOf('function mirrorDiagnosticsLog'),
+  const mirror = loopLog.slice(loopLog.indexOf('function mirrorDiagnosticsLog'),
     entry.indexOf('function persistLoopRecord'));
   assert(/setTimeout\(/.test(mirror) && /diagnosticsMirrorTimer != null\) return/.test(mirror),
     'debounced, so a lap row and a fault event in the same frame are one write, not two');
   assert(/diagnosticsMirrorOff = true/.test(mirror),
     'a desk not served by `npm run mixer` stops trying rather than warning on every record');
-  assert(/if \(!DEV_USER/.test(mirror),
+  assert(/if \(!devUser/.test(mirror)
+    && /installLoopLog\(\{ devUser: DEV_USER \}\)/.test(entry),
     'and a non-dev desk never posts its log anywhere at all');
 }
 
@@ -5630,8 +5643,8 @@ delete CATALOGUE[copyId];
   // meters had finished writing styles. Reading layout after writing styles forces a
   // synchronous layout, so this was doing that once per animation frame for numbers that
   // only change when the grid is rebuilt or the window resizes.
-  const follow = entry.slice(entry.indexOf('function followArrangementScroll('),
-    entry.indexOf('\n}', entry.indexOf('function followArrangementScroll(')));
+  const follow = scroll.slice(scroll.indexOf('function followArrangementScroll('),
+    scroll.indexOf('\n}', scroll.indexOf('function followArrangementScroll(')));
   assert(follow.length > 200 && !/querySelector/.test(follow)
     && !/\.scrollWidth|\.offsetLeft/.test(follow),
     'the per-frame path measures nothing — the scroller geometry is cached');
@@ -5641,11 +5654,11 @@ delete CATALOGUE[copyId];
   assert(!/arrGeom = null;/.test(follow),
     'and a song that FITS keeps its measurement rather than dropping it — clearing on the'
     + ' no-scroll path would re-measure every frame, for the case with no work to do');
-  assert(/const ARR_GEOM_TTL_MS = /.test(entry)
-    && /nowMs - arrGeom\.at > ARR_GEOM_TTL_MS/.test(entry),
+  assert(/const ARR_GEOM_TTL_MS = /.test(scroll)
+    && /nowMs - arrGeom\.at > ARR_GEOM_TTL_MS/.test(scroll),
     'the cache has a TTL as well as explicit invalidation, so a route added later that'
     + ' forgets to invalidate goes stale for half a second rather than for ever');
-  assert((entry.match(/forgetArrangementGeometry\(\)/g) || []).length >= 3,
+  assert(((entry + deskLayout).match(/forgetArrangementGeometry\(\)/g) || []).length >= 3,
     'and the rebuild and resize paths do invalidate it');
 
   // ---- the one message that asks for an action is not in the footer ------------
@@ -5761,7 +5774,7 @@ delete CATALOGUE[copyId];
     entry.indexOf('function accumulateSchedulerWork'));
   assert(reset.length > 100 && /frameSpans\.clear\(\)/.test(reset),
     'and the spans are a WINDOW, cleared where every other health figure is');
-  assert(/'frameHotspot', 'frameHotspotMs',/.test(entry),
+  assert(/'frameHotspot', 'frameHotspotMs',/.test(loopLog),
     'both columns are registered, or the CSV drops them silently');
   // The same rule the scheduler-work counters are held to, for the same reason.
   assert(!/if \([^)]*frameSpans/.test(entry),
@@ -5785,14 +5798,15 @@ delete CATALOGUE[copyId];
     ['open voice picker', 'buildVoicePicker'],
     ['open effect picker', 'buildPicker'],
   ]) {
-    assert(new RegExp(`heavyUi\\('${label}', \\(\\) => ${build}\\(`).test(entry),
+    assert(new RegExp(`heavyUi\\('${label}', \\(\\) => ${build}\\(`)
+      .test(entry + noteFxEditors + voicePicker),
       `opening ${label.replace('open ', '')} queues past its own DOM build`);
   }
   // The one gesture that must NOT be wrapped, and the reason is not caution. Prefilling
   // queues notes for the CURRENT position; a seek only moves `nextTime` and leaves what
   // is already booked to play. Cover a seek and you hear two seconds of where the song
   // used to be over the bar it jumped to.
-  assert(/const ok = play \? edit\(\) : heavyUi\('note fx bars', edit\);/.test(entry),
+  assert(/const ok = play \? edit\(\) : heavyUi\('note fx bars', edit\);/.test(noteFxEditors),
     'the Note FX apply that ends in a seek is left unarmoured, on purpose');
 }
 
@@ -5855,9 +5869,11 @@ delete CATALOGUE[copyId];
 
   for (const opener of ['openRegionEditor', 'openNoteFxEditor',
     'openBarEffectsEditor', 'openNoteLengthAdjust']) {
-    const start = entry.indexOf(`${opener} = (`) >= 0
-      ? entry.indexOf(`${opener} = (`) : entry.indexOf(`function ${opener}(`);
-    assert(start >= 0 && /regionPanelBusy\(\)/.test(entry.slice(start, start + 700)),
+    const src = entry.includes(`${opener} = (`) || entry.includes(`function ${opener}(`)
+      ? entry : noteFxEditors;
+    const start = src.indexOf(`${opener} = (`) >= 0
+      ? src.indexOf(`${opener} = (`) : src.indexOf(`function ${opener}(`);
+    assert(start >= 0 && /regionPanelBusy\(\)/.test(src.slice(start, start + 700)),
       `${opener} refuses to take the region panel while a freeze owns it`);
   }
 
@@ -5950,8 +5966,8 @@ delete CATALOGUE[copyId];
 // A preset writes every parameter on the card, so it is not one control among them: it
 // goes first and it takes the width, on every card that has one and in all three places
 // an effect card is drawn.
-assert(/row\.classList\.add\('fxpresetrow'\);/.test(entry)
-  && entry.indexOf("row.classList.add('fxpresetrow')") < entry.indexOf("if (def.id === 'peq')")
+assert(/row\.classList\.add\('fxpresetrow'\);/.test(effectCards)
+  && effectCards.indexOf("row.classList.add('fxpresetrow')") < effectCards.indexOf("if (def.id === 'peq')")
   && /\.devgrid > \.fxpresetrow \{ grid-column: 1 \/ -1; grid-row: 1; \}/.test(shell)
   && /#devices \.devgrid > \.fxpresetrow \{ grid-column: 1 \/ -1; \}/.test(shell),
   'the PRESET row is the first thing on an effect card and runs its full width');
@@ -5960,7 +5976,7 @@ assert(/row\.classList\.add\('fxpresetrow'\);/.test(entry)
 // the stylesheet. It was `repeat(4, …)` and the card grew a fifth band; a hardcoded count
 // left behind squeezes five boxes into four columns and wraps the last one, in a rule
 // nothing about adding a band would have sent anybody to look at.
-assert(/strip\.style\.setProperty\('--eqbands', String\(PEQ_BANDS\.length\)\);/.test(entry)
+assert(/strip\.style\.setProperty\('--eqbands', String\(PEQ_BANDS\.length\)\);/.test(effectCards)
   && /\.eqbands \{[^}]*repeat\(var\(--eqbands, 5\), minmax\(0, 1fr\)\)/s.test(shell)
   && !/\.eqbands \{[^}]*repeat\(4,/s.test(shell),
   'the EQ band strip takes its column count from PEQ_BANDS rather than from the stylesheet');

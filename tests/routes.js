@@ -292,12 +292,28 @@ const hazardType = Object.keys(OBSTACLES).find((t) => OBSTACLES[t].action === 'j
 assert(!!hazardType, `there is an action hazard to test with (${hazardType})`);
 run.obstacles.push(makeObstacle(hazardType, exitFrom + 10, 0));
 run.obstacles.push(makeObstacle(hazardType, exitFrom + 30, 0));
-run.camX = exitFrom - 100;
+// The camera sits far enough back that the landing zone is past the view's
+// right edge — which is the only place the fairness sweep is allowed to work.
+// In the live game that is also when it actually runs: the sweep is continuous
+// from the moment the route is a lookahead away, so the zone is settled long
+// before it scrolls in.
+run.camX = exitFrom - 500;
 run.clearRouteHazards();
 const survivors = run.obstacles.filter((o) => o.live && o.def && o.def.action !== 'none'
   && o.x >= exitFrom && o.x < exitFrom + 60);
 assert(survivors.length === 0,
   `nothing you must react to is left in the landing zone (${survivors.length} left)`);
+// And NOTHING VANISHES IN PLAIN VIEW: the same hazard standing in the zone
+// while the player can see it is spared. The windows are sized in `speed`,
+// which ramps, so a zone can widen over something already on screen — the
+// sweep must leave it standing rather than delete it mid-frame.
+const watched = makeObstacle(hazardType, exitFrom + 10, 0);
+run.obstacles.push(watched);
+run.camX = exitFrom - 100;   // zone in the middle of the picture
+run.clearRouteHazards();
+assert(watched.live,
+  'a hazard the player is looking at is never swept, even inside the window');
+watched.live = false;        // parked: not part of the assertions below
 
 // ---- and NOTHING to jump stands under a low slab -----------------------------
 // An island tops out at MAX_ISLAND_RISE, which leaves ~20px of air under it

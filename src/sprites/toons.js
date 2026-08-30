@@ -7444,7 +7444,7 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
     // shadow end
     drawRayHead(ctx, id, p, headPose, u, ow, -0.24 * u, -0.5 * u, lod, false);
     ctx.restore();
-    duckDust(ctx, u, ow, t, -0.26 * u, -0.02 * u);
+    if (pose.grounded) duckDust(ctx, u, ow, t, -0.26 * u, -0.02 * u);
     return;
   }
   // Kiko's arms leave from LOWER on the recline than everyone else's. The
@@ -7544,8 +7544,9 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   const rootD = (torsoW / 2) * (spec.taper || 1) - legW * 0.55;
   // `pose.slideKick` (0..1) drives the near leg from its tucked slide into a
   // KICK: the foot leaves along the deck, rises off it, and the knee
-  // straightens as the upper bone lengthens toward the reach. Gallery-only —
-  // nothing in the run sets it, and no obstacle asks for it yet.
+  // straightens as the upper bone lengthens toward the reach. Player owns the
+  // timer, so both a crate contact and the universal mid-air landing use the
+  // same leg arc.
   //
   // Three terms, because a kick is not just a longer leg. The foot travels
   // (0.22u), it lifts (the sole comes up off the deck as the shin swings
@@ -7874,7 +7875,7 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   ctx.restore();
   ctx.restore();
   // dust ground off the SEAT — that is what touches the deck now
-  duckDust(ctx, u, ow, t, -0.24 * u, -0.02 * u);
+  if (pose.grounded) duckDust(ctx, u, ow, t, -0.24 * u, -0.02 * u);
 }
 
 // D — BELLY DIVE: prone, arms ahead, chin up — the lowest silhouette of the
@@ -7906,7 +7907,7 @@ function drawDuckDive(ctx, id, spec, p, pose, u, ow, lod) {
   drawHead(ctx, id, spec, p, u * 0.92, ow, 0, 0, lod, { kind: 'duck', roll: true, time: t });
   ctx.restore();
   // dust off the chest contact
-  duckDust(ctx, u, ow, t, -0.30 * u, -0.04 * u);
+  if (pose.grounded) duckDust(ctx, u, ow, t, -0.30 * u, -0.04 * u);
 }
 
 // Two little contact puffs, pulsing on their own clock so a held slide keeps
@@ -9315,6 +9316,7 @@ export function poseFromPlayer(player, t) {
   const eating = firing && player.powerType === 'eat';
   const flurrying = (player.spannerFlurryT || 0) > 0;
   const smashing = (firing && player.powerType === 'stomp' && player.grounded) || flurrying;
+  const airSlideKick = !!player.slideSlamming;
   const forcedDuck = player.rolling || player.compressT > 0;
   const recoveringDuck = player.grounded && (player.duckAmount || 0) > 0;
   // AIRBORNE IS NOT THE SAME AS JUMPING.
@@ -9350,7 +9352,7 @@ export function poseFromPlayer(player, t) {
   // the 47 above a tunnel and clear of the 96 off a cloud.
   const FALL_POSE_VY = -340;
   const bigFall = fell && (Number(player.vy) || 0) < FALL_POSE_VY;
-  const kind = (player.ducking || forcedDuck || recoveringDuck) ? 'duck'
+  const kind = (airSlideKick || player.ducking || forcedDuck || recoveringDuck) ? 'duck'
     : (!player.grounded && (!fell || bigFall)) ? 'jump' : 'run';
   return {
     kind,
@@ -9361,8 +9363,8 @@ export function poseFromPlayer(player, t) {
     // action face; the raised brow is the extra beat that makes the alarm read
     // clearly while a pit carries the hero down through a dark, busy opening.
     // Rigs without brows still use their own surprise eyes/mouth treatment.
-    faceSurprised: fallFace,
-    browRaise: fallFace,
+    faceSurprised: fallFace && !airSlideKick,
+    browRaise: fallFace && !airSlideKick,
     phase: player.anim % 1,
     // The bite's clock has to start at 0 the instant the ability fires, not
     // wherever the run's absolute clock happens to be, or biteWave() opens
@@ -9372,7 +9374,10 @@ export function poseFromPlayer(player, t) {
     grounded: player.grounded,
     // Rolls and Mochi's compression remain immediate ability silhouettes.
     // Ordinary input uses the controller's entry/exit blend.
-    duckAmount: forcedDuck ? 1 : Math.max(0, Math.min(1, player.duckAmount || 0)),
+    // The aerial move is visual-only until contact: force the slide silhouette
+    // without changing Player.hitH, so an airborne hero keeps the standing
+    // collision box and cannot duck through a hazard for free.
+    duckAmount: airSlideKick || forcedDuck ? 1 : Math.max(0, Math.min(1, player.duckAmount || 0)),
     duckDirection: forcedDuck ? 0 : (player.duckDirection || 0),
     // The shipped duck on the humanoid and ray rigs is the POWER SLIDE
     // (bake-off, 2026-08). Ability rolls keep priority — drawHumanoid checks
@@ -9384,6 +9389,7 @@ export function poseFromPlayer(player, t) {
     // The player owns the timer and its curve; this side only reads it, the
     // same bargain every other term here keeps.
     slideKick: Math.max(0, Math.min(1, Number(player.slideKick) || 0)),
+    airSlideKick,
     squash: Math.max(0, Math.min(1, (player.landedT || 0) / SQUASH_T)),
     // Whichever is stronger. A dash is a hard 0.26; a boost pad is a shallower
     // 0.17 that holds a beat longer, so the two do not read as the same move.

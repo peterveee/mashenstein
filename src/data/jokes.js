@@ -27,11 +27,43 @@ export const PIT_FAIL_MESSAGES = [
   'THE FLOOR WAS NOT THERE. IT HAD NEVER BEEN THERE.',
   'DOWN IS THE ONE DIRECTION THAT ALWAYS WORKS',
   'A HOLE. WORKING EXACTLY AS INTENDED.',
-  'THE TAR ACCEPTS ALL APPLICANTS',
   'PLUMBING FAILURE. YOURS.',
   'THAT WAS A GAP. IT REMAINS A GAP.',
   'NO NOTES. TEXTBOOK DESCENT.',
 ];
+
+// WHAT WAS AT THE BOTTOM, said out loud.
+//
+// The pool above is about the FALL and works over anything, which is why the
+// tar line came out of it: a hole is filled by the cabinet now, and one of them
+// is a gearbox — "THE TAR ACCEPTS ALL APPLICANTS" over a bed of cogs is the
+// game describing a hazard the player is not looking at. A material that has
+// its own voice gets its own lines and everything else keeps the general ones.
+// Keyed by the fill id in game/pitFill.js.
+export const FILL_FAIL_MESSAGES = {
+  tar: [
+    'THE TAR ACCEPTS ALL APPLICANTS',
+    'THE TAR IS NOT A FLOOR. IT WAS NEVER A FLOOR.',
+  ],
+  lava: [
+    'THE FLOOR WAS WARMER THAN ADVERTISED',
+    'MOLTEN. BRIEFLY YOURS.',
+  ],
+  slush: [
+    'THE WATER WAS COLD AND UNIMPRESSED',
+    'BLACK ICE. NO NOTES.',
+  ],
+  spikes: [
+    'THE SPIKES WERE LOAD-BEARING. YOU WERE NOT.',
+    'EVERY TOOTH FOUND SOMETHING TO DO',
+    'THAT PLATE HAS BEEN WAITING ALL SHIFT',
+  ],
+  gears: [
+    'THE GEARBOX ACCEPTS ALL DEPOSITS',
+    'MAINTENANCE WILL NOTE THE OBSTRUCTION',
+    'THE MACHINE DID NOT NOTICE YOU',
+  ],
+};
 
 export const RANK_LINES = {
   C: 'C. A RANK. TECHNICALLY.',

@@ -6,7 +6,11 @@ duck on snares, coin accents where a full action is infeasible), a visible beat 
 pulses in time, and — deliberately — **tempo and world speed are locked constant** on those
 stages, because a lane that speeds up or slows down against the music is too tricky.
 
-This is a plan only; nothing here is implemented yet.
+**Status: implemented.** The sections below are kept as the design record — what was
+built and why. `src/game/beatchart.js` holds the chart and its spawner, `tests/beat-chart.js`
+pins the invariants, and the lane was verified in a browser on rhythm-1: speed pinned at
+232 px/s across dash and powerups, beat bars laid exactly 224.5 px (two beats) apart, and
+the telegraph ribbon scrolling its carets into the now-tick.
 
 ## Why: the current state
 

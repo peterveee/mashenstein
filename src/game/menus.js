@@ -31,6 +31,13 @@ const GUIDE_ICON_SIZES = {
   // has to show the art the lane shows, and for these the art is mostly the
   // part that is not the hitbox.
   popSpikes: [15, 11], campfire: [14, 13], fireBarrel: [13, 22], brazier: [12, 22], floorSaw: [15, 12],
+  // The peel, the four animals, and the pair at the finish. The animals are
+  // sized box x PROP_TALL x PROP_VISUAL_SCALE, because unlike the props above
+  // they draw over their boxes in the lane too — showing them at box size
+  // would make the guide's cat smaller than the one that catches you.
+  bananaPeel: [10, 6],
+  dogBruiser: [17, 12], dogSnarler: [19, 13], dogFeral: [20, 16], catFury: [14, 12],
+  finishSnarler: [26, 18], dogSign: [17, 18],
 };
 import {
   DIFFICULTIES, INTRO_PANELS, FINALE_BEATS, FINALE_CODA, RANK_LINES,
@@ -3303,6 +3310,12 @@ export class FinaleState {
 
 // FIELD GUIDE: every enemy, object, and pickup with its sprite and one line
 // of truth. Color legend: red = avoid, teal = touch it, gold = collect.
+// A page holds about ten rows. The ground-floor page had FOURTEEN and the last
+// three were drawn past the bottom of a 270px screen — the burning barrel and
+// the brazier were in the guide's source and had never once been on it, and the
+// campfire sat under the footer. So the ground floor is split by what a thing
+// DOES rather than padded out: things in the lane, things that stand still, and
+// things that come at you.
 const GUIDE_PAGES = [
   {
     title: 'HAZARDS: GROUND FLOOR', color: '#e04848', hint: 'RED = AVOID. JUMP THESE.',
@@ -3316,11 +3329,35 @@ const GUIDE_PAGES = [
       { s: '_gap', name: 'PIT', desc: 'A HOLE WHERE FLOOR SHOULD BE. JUMP IT.' },
       { s: 'tombstone', name: 'TOMBSTONE', desc: 'JUMP IT. RESPECTFULLY.' },
       { s: 'zombieWalk', name: 'ZOMBIE', desc: 'SHAMBLES TOWARD YOU. JUMP IT.' },
+      // The one hazard in the game whose ONLY answer is the jump: nothing
+      // breaks it, a boot meets the floor, and sliding into it still slips.
+      { s: 'bananaPeel', name: 'BANANA PEEL', desc: 'ONLY THE JUMP. NO SMASHING, NO SLIDING.' },
+    ],
+  },
+  {
+    title: 'HAZARDS: STANDING STILL', color: '#e04848', hint: 'RED = AVOID. THEY DO NOT MOVE. THEY DO NOT NEED TO.',
+    rows: [
       { s: 'popSpikes', name: 'SPIKE PLATE', desc: 'IN THE FLOOR. JUMP IT. NOTHING BREAKS IT.' },
       { s: 'floorSaw', name: 'FLOOR SAW', desc: 'ALSO IN THE FLOOR. ALSO UNBREAKABLE. JUMP IT.' },
       { s: 'campfire', name: 'CAMPFIRE', desc: 'IT JUST SITS THERE BURNING. JUMP IT.' },
       { s: 'fireBarrel', name: 'BURNING BARREL', desc: 'STANDS STILL. SHOOT IT OR JUMP IT. NO KICKING.' },
       { s: 'brazier', name: 'BRAZIER', desc: 'LIGHTS THE CRYPT. SHOOT IT OR JUMP IT. NO KICKING.' },
+    ],
+  },
+  {
+    // The animals were in the lane for a while before they were in the guide.
+    // They are the only ground hazards that CLOSE on the hero, which is the one
+    // fact the page has to teach — every line here is about speed.
+    title: 'HAZARDS: ANIMALS', color: '#e04848', hint: 'RED = AVOID. THESE ONES COME TO YOU.',
+    rows: [
+      { s: 'dogBruiser', name: 'BRUISER', desc: 'LOW AND SLOW. THE ONE YOU CAN OUT-THINK.' },
+      { s: 'dogSnarler', name: 'SNARLER', desc: 'CORPORATE SECURITY. WEARS A COLLAR. FASTER.' },
+      { s: 'dogFeral', name: 'FERAL DOG', desc: 'LEAN AND STARVING. FASTER AGAIN.' },
+      { s: 'catFury', name: 'FURY CAT', desc: 'SMALLEST AND FASTEST. IT IS NOT FLEEING ANYTHING.' },
+      // The set piece. Its whole identity is the two words UNBREAKABLE and
+      // JUMP, so the line says both and nothing else.
+      { s: 'finishSnarler', name: 'GUARD DOG', desc: 'HOLDS THE FINISH. NOTHING KILLS IT. JUMP IT.' },
+      { s: 'dogSign', name: 'BEWARE OF DOG', desc: 'A WARNING, NOT A HAZARD. RUN THROUGH IT.' },
     ],
   },
   {

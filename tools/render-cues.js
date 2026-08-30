@@ -56,14 +56,15 @@ const SHAPES = {
   // the tool that is supposed to audition it.
   wired:   null,
 
-  // The finish dog's bark (`dogBark:gruff`). Named rather than copied — these
+  // The finish dog's bark (`dogBark:finish`). Named rather than copied — these
   // reach BARK_SHAPES in engine/audio.js through the dotted lookup below, so the
   // sheet cannot drift from what the game fires.
-  woof:    'BARK_SHAPES.woof',
-  raw:     'BARK_SHAPES.raw',
-  huff:    'BARK_SHAPES.huff',
-  gruff:   'BARK_SHAPES.gruff',
-  yap:     'BARK_SHAPES.yap',
+  finish:  'BARK_SHAPES.finish',
+  large:   'BARK_SHAPES.large',
+  medium:  'BARK_SHAPES.medium',
+  small:   'BARK_SHAPES.small',
+  guard:   'BARK_SHAPES.guard',
+  yip:     'BARK_SHAPES.yip',
 
   wiredIn: 'PORTAL_RELAY_IN',
   wiredOut:'PORTAL_RELAY_OUT',

@@ -1,0 +1,202 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DOG BARK BENCH</title>
+<!--
+  The control bench for src/dev/dog-bark-synth.js. Serve the repo and open
+  /tools/dogbark-bench.html — the import below is a real ES module, so file:// will
+  not work. `node tools/render-dogbark.js --bench` writes a standalone copy with the
+  synth inlined to work/local/dogbark-bench.html, which does open from disk.
+
+  Desk palette and the desk's rules: everything readable, nothing decorative, and
+  every value the synth reads has a control here (and vice versa).
+-->
+<style>
+  :root {
+    --bg: #14161a; --panel: #1d2026; --panel2: #24282f; --line: #333944;
+    --ink: #e6e9ef; --dim: #8b93a3; --accent: #4ec9b0; --hot: #e5534b;
+    --font: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 13px/1.4 var(--font); padding: 18px;
+  }
+  h1 { font-size: 15px; letter-spacing: .16em; margin: 0 0 2px; }
+  .sub { color: var(--dim); font-size: 11.5px; margin-bottom: 16px; }
+  .wrap { display: grid; grid-template-columns: minmax(320px, 1fr) 260px; gap: 16px; align-items: start; max-width: 940px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; }
+  .panel h2 { font-size: 11px; letter-spacing: .14em; color: var(--dim); margin: 0 0 12px; font-weight: 600; }
+  .row { display: grid; grid-template-columns: 108px 1fr 62px; gap: 10px; align-items: center; margin-bottom: 9px; }
+  .row label { font-size: 11.5px; color: var(--ink); }
+  .row .val { text-align: right; color: var(--accent); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .row .unit { color: var(--dim); }
+  input[type=range] { width: 100%; height: 20px; accent-color: var(--accent); background: transparent; }
+  .presets { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; margin-bottom: 14px; }
+  button {
+    font: inherit; font-size: 11.5px; letter-spacing: .06em; color: var(--ink);
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 5px;
+    padding: 8px 6px; cursor: pointer;
+  }
+  button:hover { background: #313a47; border-color: #4a5361; }
+  button.on { background: #2f4a44; border-color: var(--accent); color: #fff; }
+  .pad {
+    width: 100%; padding: 26px 0; font-size: 14px; letter-spacing: .2em; margin-bottom: 8px;
+    background: #2f4a44; border-color: var(--accent);
+  }
+  .pad:active { background: var(--accent); color: #0b1a17; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .note { color: var(--dim); font-size: 11px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+  code { color: var(--accent); }
+  pre#dump { margin: 10px 0 0; padding: 10px; background: #14181d; border: 1px solid var(--line);
+    border-radius: 5px; color: var(--dim); font-size: 10.5px; white-space: pre-wrap; }
+</style>
+
+<h1>DOG BARK BENCH</h1>
+<div class="sub">src/dev/dog-bark-synth.js — candidate, not wired into the game</div>
+
+<div class="wrap">
+  <div class="panel">
+    <h2>VOICE</h2>
+    <div id="controls"></div>
+  </div>
+
+  <div>
+    <div class="panel" style="margin-bottom:14px">
+      <h2>PRESETS</h2>
+      <div class="presets" id="presets"></div>
+      <button class="pad" id="trigger">TRIGGER BARK</button>
+      <div class="pair">
+        <button id="double">DOUBLE</button>
+        <button id="volley">VOLLEY ×4</button>
+      </div>
+      <div class="pair" style="margin-top:7px">
+        <button id="stop">STOP</button>
+        <button id="copy">COPY OPTS</button>
+      </div>
+      <div class="note">Space triggers. 1–5 pick a preset.</div>
+    </div>
+    <div class="panel">
+      <h2>OPTIONS</h2>
+      <pre id="dump"></pre>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { DogBarkSynthesizer, DOG_PRESETS } from '../src/dev/dog-bark-synth.js';
+
+// label, key, min, max, step, unit — the whole parameter surface of play().
+// Every key here is read by the synth and every key it reads has a row here;
+// a hidden parameter is a parameter nobody can tune.
+const PARAMS = [
+  ['Pitch',        'pitch',       60,  1000, 1,    'Hz'],
+  ['Pitch drop',   'pitchDrop',   0,   30,   0.5,  'st'],
+  ['Duration',     'duration',    0.04, 0.5, 0.005, 's'],
+  ['Breathiness',  'breathiness', 0,   1.5,  0.01, ''],
+  ['Formant 1',    'formantFreq', 300, 1600, 10,   'Hz'],
+  ['Formant 2',    'formant2',    900, 3200, 10,   'Hz'],
+  ['Distortion',   'distortion',  0,   1,    0.01, ''],
+  ['Roughness',    'rough',       0,   0.95, 0.01, ''],
+  ['Rough rate',   'roughHz',     20,  180,  1,    'Hz'],
+  ['Subharmonic',  'sub',         0,   1.2,  0.01, ''],
+  ['Chest',        'chest',       0,   1,    0.01, ''],
+  ['Top air',      'bright',      0,   1,    0.01, ''],
+  ['Growl',        'growl',       0,   1,    0.01, ''],
+  ['Plosive',      'plosive',     0,   2,    0.01, ''],
+  ['Gain',         'gain',        0,   2,    0.01, ''],
+  ['Volley gap',   'gap',         0.08, 0.6, 0.01, 's'],
+];
+
+const KEYS = PARAMS.map((p) => p[1]);
+// The bench's own baseline. A preset says only what makes it that dog, so
+// anything it leaves out has to come from here — otherwise the guard dog's
+// growl follows you onto the terrier.
+const BASE = { pitch: 300, pitchDrop: 15, duration: 0.17, breathiness: 0.75,
+  formantFreq: 880, formant2: 2100, distortion: 0.45, rough: 0.46, roughHz: 84,
+  sub: 0.6, chest: 0.3, bright: 0.35, growl: 0, plosive: 1, gain: 1, gap: 0.26 };
+const state = { ...BASE };
+
+let ctx = null, dog = null;
+function synth() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    dog = new DogBarkSynthesizer(ctx);
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+  return dog;
+}
+
+const controls = document.getElementById('controls');
+const rows = {};
+for (const [label, key, min, max, step, unit] of PARAMS) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<label for="p-${key}">${label}</label>`
+    + `<input id="p-${key}" type="range" min="${min}" max="${max}" step="${step}">`
+    + `<span class="val"></span>`;
+  const input = row.querySelector('input');
+  const val = row.querySelector('.val');
+  input.addEventListener('input', () => { state[key] = Number(input.value); show(); });
+  controls.appendChild(row);
+  rows[key] = { input, val, unit, step };
+}
+
+function show() {
+  for (const key of KEYS) {
+    const r = rows[key];
+    const v = state[key] ?? 0;
+    r.input.value = v;
+    const dp = r.step >= 1 ? 0 : (r.step >= 0.1 ? 1 : (r.step >= 0.01 ? 2 : 3));
+    r.val.innerHTML = `${v.toFixed(dp)}<span class="unit">${r.unit ? ' ' + r.unit : ''}</span>`;
+  }
+  document.getElementById('dump').textContent = JSON.stringify(opts(), null, 2);
+}
+
+const presetBar = document.getElementById('presets');
+const names = Object.keys(DOG_PRESETS);
+const LABEL = { large: 'LARGE DOG', small: 'SMALL DOG', medium: 'MEDIUM DOG', guard: 'GUARD DOG', yip: 'YIP' };
+const buttons = {};
+for (const n of names) {
+  const b = document.createElement('button');
+  b.textContent = LABEL[n] || n.toUpperCase();
+  b.addEventListener('click', () => pick(n));
+  presetBar.appendChild(b);
+  buttons[n] = b;
+}
+function pick(n, play = true) {
+  Object.assign(state, BASE, DOG_PRESETS[n]);
+  for (const m of names) buttons[m].classList.toggle('on', m === n);
+  show();
+  // Not on the first paint: no user gesture has happened yet, so an AudioContext
+  // opened here would start suspended and the bark would be scheduled into a
+  // clock that is not running.
+  if (play) bark();
+}
+
+// `gap` belongs to the volley, not to a bark — everything else goes to play().
+function opts() {
+  const o = {};
+  for (const key of KEYS) if (key !== 'gap') o[key] = state[key];
+  return o;
+}
+const bark = () => synth().play(opts());
+document.getElementById('trigger').addEventListener('click', bark);
+document.getElementById('double').addEventListener('click',
+  () => synth().doubleBark({ ...opts(), count: 2, gap: state.gap }));
+document.getElementById('volley').addEventListener('click',
+  () => synth().doubleBark({ ...opts(), count: 4, gap: state.gap }));
+document.getElementById('stop').addEventListener('click', () => dog && dog.stop());
+document.getElementById('copy').addEventListener('click', async (e) => {
+  await navigator.clipboard.writeText(JSON.stringify(opts(), null, 2));
+  e.target.textContent = 'COPIED';
+  setTimeout(() => { e.target.textContent = 'COPY OPTS'; }, 900);
+});
+
+addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { e.preventDefault(); bark(); return; }
+  const i = Number(e.key) - 1;
+  if (i >= 0 && i < names.length) pick(names[i]);
+});
+
+pick('medium', false);
+</script>

@@ -434,7 +434,7 @@ export class DripSpawner {
   // deleted the moment the finish armed. Holding rather than skipping matches
   // the crowding rule below, and both tests are made before the type is rolled
   // so a hold cannot disturb the seeded order of prizes.
-  update(dt, worldX, pickups, oneHit, batteryFull = false, stopX = Infinity, allowRewind = true) {
+  update(dt, worldX, pickups, oneHit, batteryFull = false, stopX = Infinity, allowRewind = true, banned = null) {
     this.capsuleTimer -= dt;
     this.batteryTimer -= dt;
     if (this.capsuleTimer <= 0) {
@@ -446,7 +446,7 @@ export class DripSpawner {
         this.capsuleTimer = 0.5;
       } else {
         this.capsuleTimer = this.rng.range(12, 18);
-        const type = randomPowerPickup(this.rng, this.lastPowerType, allowRewind);
+        const type = randomPowerPickup(this.rng, this.lastPowerType, { allowRewind, banned });
         pickups.push(makePickup(type, x, 34));
         this.notePower(x, type);
       }

@@ -1,8 +1,9 @@
 // THE STEPPING-STONE CROSSING: a break too wide to jump, with stones in it.
 //
-// The set piece is four jumps and three landings over a spiked hole, and what
-// makes it worth a suite of its own is that it is the first hazard in the game
-// where an arc can be too LONG. Everywhere else the lane is the landing, so any
+// The set piece is four to six jumps over a hole with something in it — teeth on
+// three stages, a gear train on the plumber's — and what makes it worth a suite
+// of its own is that it is the first hazard in the game where an arc can be too
+// LONG. Everywhere else the lane is the landing, so any
 // jump that clears the thing is a good jump; here the landing is a stone the
 // width of half a second, and the cast's airtimes run from Grumpos' 0.57s to
 // Clara's 0.82s against ONE fixed layout in pixels. A hero without
@@ -17,14 +18,20 @@
 //   the STONES — a crossing lays every stone it declares. The overlap guard in
 //                routes.js drops roads silently, and a crossing missing its
 //                middle stone is not a thinner set piece, it is a death trap.
-//   the HOLE   — one gap, as wide as the layout says, filled with spikes rather
-//                than with the cabinet's own material, and still alive after the
-//                route sweeps have run over it. `clearRouteHazards` reads a hole
-//                under a slab as a hazard buried in it, and used to delete it.
+//   the HOLE   — one gap, as wide as the layout says, wearing its own material
+//                rather than the cabinet's, and still alive after the route
+//                sweeps have run over it. `clearRouteHazards` reads a hole under
+//                a slab as a hazard buried in it, and used to delete it.
+//   the PLACE  — every scripted pit in the game, crossing or not, sits a short
+//                run-up past a checkpoint. What a hole costs is the stretch you
+//                replay to reach it again.
 //   the RUN    — the demo bot takes every hero in the cast across a real one.
 //                The window arithmetic above is a model; this is the mechanism.
-//   the DEATH  — missing a stone is a pit death, and on spikes he stops on the
-//                tips instead of sinking through them.
+//   the DEATH  — missing a stone is a pit death: he stops on top of whatever is
+//                hard, the far wall keeps him inside the hole, and the verdict
+//                waits for the landing.
+//   the RETURN — a checkpoint restore rebuilds the world, so the hole has to be
+//                cut again or the stones stand over solid ground.
 import { installDom } from './dom-stub.js';
 const dom = installDom();
 
@@ -34,7 +41,7 @@ const { riseHeight } = await import('../src/game/terrain.js');
 const { save } = await import('../src/engine/save.js');
 const { Input } = await import('../src/engine/input.js');
 const { DemoBot } = await import('../src/game/bot.js');
-const { airtimeFor, PLAYER_X } = await import('../src/game/player.js');
+const { airtimeFor, PLAYER_X, PLAYER_SPRITE_W } = await import('../src/game/player.js');
 const { crossingLayout, CROSSING_HOP, CROSSING_TREAD, CROSSING_RISE, CROSSING_BOOST_CLEAR } = await import('../src/game/routes.js');
 const { makeObstacle } = await import('../src/game/entities.js');
 const { hasPitFill } = await import('../src/game/pitFill.js');
@@ -308,6 +315,12 @@ for (const hero of cast) {
   run.update(TICK);
   assert(run.dead && !!run.pitDeath, 'standing in the break between stones is a pit death');
   assert(run.pitDeath && run.pitDeath.hard, 'and it is a hard landing, not a sinking one');
+  // THE VERDICT IS NOT IN YET. A fall is a journey and the landing is its
+  // ending, so the fail banner and the death sting both wait for contact — see
+  // the draw gate on `pitDeath.in`. Announcing it at the lip put the sentence
+  // and the dim over the one moment the fill exists to show.
+  assert(run.pitDeath && !run.pitDeath.in,
+    'and the verdict is held back while he is still in the air');
   // Fall him onto the teeth: he stops on the tips rather than passing through
   // them, and then he stays there.
   for (let i = 0; i < 120 && !(run.pitDeath && run.pitDeath.in); i++) run.update(TICK);
@@ -326,6 +339,16 @@ for (const hero of cast) {
   // most of a screen.
   assert(run.pitDeath.carry <= 40,
     `the death carries him a fall's distance, not half the crossing (${run.pitDeath.carry.toFixed(0)}px)`);
+  // AND NOT PAST THE FAR WALL. The drift is a screen offset on a frozen world,
+  // so nothing else in the game stops it at the edge of the hole — miss the
+  // last hop, where only a stride of gap is left, and the body used to sail out
+  // of the pit and come to rest inside the solid lane beyond it. Checked on the
+  // sprite's width, which is what must not overlap the wall.
+  const holeOb = run.obstacles.find((ob) => ob.crossing);
+  assert(!!holeOb, 'the hole he fell into is still in the world');
+  const wall = holeOb.x + holeOb.w - PLAYER_SPRITE_W;
+  assert(run.playerWorldX() <= wall + 0.001,
+    `the far wall stops him inside the pit (${run.playerWorldX().toFixed(0)} <= ${wall.toFixed(0)})`);
 }
 
 // ---- and a crossing never eats a road ------------------------------------------
@@ -370,6 +393,35 @@ for (const hero of cast) {
   const stone = run.routes.find((r) => r.crossing);
   assert(stone.topY < GROUND_Y - CROSSING_RISE + 1,
     'and the stones sit on the raised line, not the flat one');
+}
+
+// ---- the hole survives a death ---------------------------------------------------
+// A checkpoint restore empties the world and lets the spawner refill it, but a
+// pit is a one-shot the RUN plants — and the flag saying it has been planted was
+// restored along with everything else. Any hole cut before the player reached
+// the checkpoint (which is every crossing, since they sit seconds past one) came
+// back as stepping stones standing over solid ground: the stones are geometry
+// and survive, the hole was an obstacle and did not.
+{
+  const run = newRun('lorenzo', { startAt: 0.6 });
+  run.devInvuln = true;                       // the run-in is not what is under test
+  const plan = run.pitPlan.find((pp) => pp.crossing);
+  // Both checkpoints banked — the second one is the snapshot a death here would
+  // restore, and it is taken after the crossing has already been cut.
+  for (let i = 0; i < 60 * 90 && run.checkpoints.length; i++) run.update(TICK);
+  assert(!run.checkpoints.length && !!run.snapshot, 'the run banks the checkpoint before the crossing');
+  assert(plan.done, 'and the crossing was already cut by the time it did — the case that broke');
+  assert(run.obstacles.some((ob) => ob.live && ob.crossing), 'the hole is in the world at the checkpoint');
+  run.restoreSnapshot(run.snapshot);
+  assert(!run.obstacles.some((ob) => ob.crossing), 'the restore empties the world, hole and all');
+  assert(!plan.done, 'so the plan is re-armed rather than left marked done');
+  for (let i = 0; i < 60 * 60 && !run.obstacles.some((ob) => ob.live && ob.crossing); i++) run.update(TICK);
+  const again = run.obstacles.find((ob) => ob.live && ob.crossing);
+  assert(!!again, 'and the hole is cut again on the way back to it');
+  assert(again && again.fill === 'spikes' && Math.abs(again.w - plan.w) < 0.001,
+    'the same hole, with the same material in it');
+  assert(run.obstacles.some((ob) => ob.live && ob.def && ob.def.sign && ob.crossing),
+    'and its sign comes back with it');
 }
 
 // ---- the works -----------------------------------------------------------------

@@ -70,3 +70,4 @@ Do not edit by hand.
 | 2026-08-27 | `ab62962` | [2026-08-27-ab62962.html](2026-08-27-ab62962.html) | Add tests for MRDR-3 release behavior and standing hazards |
 | 2026-08-27 | `f455f8b` | [2026-08-27-f455f8b.html](2026-08-27-f455f8b.html) | Integrate animal hazards into props module |
 | 2026-08-27 | `8df6c9b` | [2026-08-27-8df6c9b.html](2026-08-27-8df6c9b.html) | fix: adjust PIT_SINK_RATE and PIT_DEATH_HOLD for smoother fall mechanics; enhance startled face expression during unplanned falls |
+| 2026-08-30 | `8189ee2` | [2026-08-30-8189ee2.html](2026-08-30-8189ee2.html) | test: verify that all jukebox songs start at step zero |

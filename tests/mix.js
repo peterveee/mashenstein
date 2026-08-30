@@ -143,21 +143,26 @@ for (const def of Object.values(EFFECT_BY_ID)) {
 // uppercased, so a new effect declaring `pan` and no label draws a control reading PAN
 // beside three that read BALANCE, and nothing but a screenshot would say so.
 const deskSource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
+// The label table and the rows that read it moved out of the entry with the rest of the
+// control widgets — see tools/mixer-controls.js.
+const controlsSource = readFileSync(new URL('../tools/mixer-controls.js', import.meta.url), 'utf8');
+// The EQ surface and the effect-card builder moved out too — see tools/mixer-effect-cards.js.
+const cardsSource = readFileSync(new URL('../tools/mixer-effect-cards.js', import.meta.url), 'utf8');
 const effectSource = readFileSync(new URL('../src/engine/effects.js', import.meta.url), 'utf8');
 const limiterSource = effectSource.slice(effectSource.indexOf('function makeLimiter('),
   effectSource.indexOf('const DOUBLER_MOD'));
 assert(/node\.createMeter = \(\) => \{[\s\S]*?inputAnalysers[\s\S]*?outputAnalysers[\s\S]*?reductionAnalyser/.test(limiterSource),
   'L7 exposes stereo input/output peaks and its actual reduction control to a live card');
-assert(/pname === 'threshold' \|\| pname === 'ceiling'[\s\S]*?l7sliderlevel/.test(deskSource)
+assert(/pname === 'threshold' \|\| pname === 'ceiling'[\s\S]*?l7sliderlevel/.test(cardsSource)
   && /function l7MeterPanel\(grid, linkFor\)[\s\S]*?textContent = 'ATTENUATION'[\s\S]*?data-l7-param="threshold"[\s\S]*?data-l7-param="ceiling"/.test(deskSource)
   && /if \(def\?\.id === 'l7'\)[\s\S]*?l7MeterPanel\(grid, \(\) => liveChain\(selectedLane\)\?\.\[i\]\)/.test(deskSource),
   'an open L7 card overlays mono input/output meters on full-width controls and shows attenuation without fast numbers');
-assert(/function checkRow\(label, checked, onChange\)[\s\S]*?className = `fxswitch\$\{box\.checked \? ' on' : ''\}`[\s\S]*?box\.onchange[\s\S]*?sw\.classList\.toggle\('on', box\.checked\)/.test(deskSource),
+assert(/function checkRow\(label, checked, onChange\)[\s\S]*?className = `fxswitch\$\{box\.checked \? ' on' : ''\}`[\s\S]*?box\.onchange[\s\S]*?sw\.classList\.toggle\('on', box\.checked\)/.test(controlsSource),
   'effect booleans use the synth-editor-style capsule while retaining a native checkbox');
-assert(/toggle\.dataset\.l7Param = pname/.test(deskSource)
+assert(/toggle\.dataset\.l7Param = pname/.test(cardsSource)
   && /const autoRelease = grid\.querySelector\('\[data-l7-param="arc"\]'\);[\s\S]*?autoRelease\.before\(meter\)/.test(deskSource),
   'L7 places its Auto Release switch last, after the attenuation meter');
-const labels = deskSource.slice(deskSource.indexOf('const PARAM_LABELS = {'));
+const labels = controlsSource.slice(controlsSource.indexOf('const PARAM_LABELS = {'));
 const labelBlock = labels.slice(0, labels.indexOf('};'));
 for (const def of Object.values(EFFECT_BY_ID)) {
   for (const p of def.params) {

@@ -101,6 +101,12 @@ const finishCam = run.camX;
 for (let i = 0; i < 30; i++) run.update(1 / 60);
 assert(run.finishing && run.camX === finishCam && run.finishPlayerX > PLAYER_X && !airborneFinish,
   'finish locks the camera while the playable hero run-in crosses the screen');
+// Damage mercy remains meaningful across the hazardous final approach, but it
+// must not make the winner keep flashing once the tape is reached.
+run.player.iframes = 60;
+for (let i = 0; i < 900 && run.finaleT == null; i++) run.update(1 / 60);
+assert(run.finaleT != null && run.player.iframes === 0,
+  'reaching the finish clears the injury flash before the celebration');
 // Long enough for the whole finale, whatever length it currently is: the dash,
 // the pole ride, the payoff chain and the band's hold. This is a test that the
 // run RESOLVES, not a test of how long that takes — pinned at 240 ticks it
@@ -708,6 +714,9 @@ assert(!run.dead && Math.abs(run.camX - pitSnap.camX) < 8 && run.battery === pit
 // keeps sinking from there.
 run = makeRun(); run.enter();
 run.player.grounded = true; run.player.y = 0; run.player.iframes = 0;
+// Leave a landing squash active to prove pit contact clears the previous
+// grounded pose instead of carrying it into the death hold.
+run.player.landedT = 0.12;
 run.powerups.shieldStack = 0;
 run.obstacles = [makeObstacle('gap', run.camX + PLAYER_X - 10)];
 run.collide();
@@ -723,6 +732,9 @@ assert(run.pitDeath.dx > 4 && run.heroScreenX() > PLAYER_X,
 for (let i = 0; i < 40 && !run.pitDeath.in; i++) run.update(1 / 60);
 assert(run.pitDeath.in && run.player.y === PIT_SURFACE_Y,
   `he stops at the material rather than falling through it (y ${run.player.y})`);
+const pitSettledPose = poseFromPlayer(run.player, 0);
+assert(pitSettledPose.grounded && pitSettledPose.kind === 'run' && pitSettledPose.squash === 0,
+  'the pit landing settles into an upright pose instead of a mid-jump squash');
 const sunkFrom = run.player.y;
 for (let i = 0; i < 20; i++) run.update(1 / 60);
 assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunkFrom})`);

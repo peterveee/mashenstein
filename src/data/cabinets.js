@@ -611,6 +611,7 @@ export const CABINETS = [
     sky: ['#202018', '#383828'], ground: '#484838', groundDark: '#303024',
     far: '#404030', hills: '#383828',
     music: RHYTHM.bank,
+    beatCharts: RHYTHM.beatCharts,
     patterns: [
       // Full BASE. This bank used to filter `tier < 2`, which quietly made
       // Rhythm the only cabinet in the game that never dealt a barrel and left

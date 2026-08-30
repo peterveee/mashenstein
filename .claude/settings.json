@@ -23,7 +23,11 @@
       "Bash(node tests/rearrange.js)",
       "Bash(grep -n \"detail.title\\\\|reinspectinfo\\\\|Output \\\\${rearrangeStepLabel\\\\|slice.title\" tests/mixer-layout.js)",
       "Bash(timeout 400 node work/local/crossing/sim-all.mjs)",
-      "Bash(node work/local/crossing/sim-all.mjs)"
+      "Bash(node work/local/crossing/sim-all.mjs)",
+      "Bash(node tools/fairness-sim.js)",
+      "Bash(curl -s -o /dev/null -w \"dev server %{http_code}\\\\n\" http://localhost:8001/)",
+      "Bash(node work/local/crossing/respawn.mjs plumber-2 plumber 30)",
+      "Bash(node tests/effect-presets.js)"
     ]
   }
 }

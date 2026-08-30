@@ -224,9 +224,11 @@ assert(!read('tools/lib/mix-source.js').includes('mrdrComparison'),
     'a faulted lane panics ONCE to clear its state rather than filling silence for ever');
 
   // Polled and written down, because nobody is watching the console at the moment it goes.
+  // The column table moved out with the CSV it describes — see tools/mixer-loop-log.js.
+  const loopLog = read('tools/mixer-loop-log.js');
   for (const col of ['awBackend', 'awLanes', 'awGroups', 'awQueued', 'awFaults',
     'awUnresponsive', 'awDetached', 'awDropped']) {
-    assert(new RegExp(`'${col}'`).test(entry), `the diagnostics CSV carries ${col}`);
+    assert(new RegExp(`'${col}'`).test(loopLog), `the diagnostics CSV carries ${col}`);
   }
   assert(/function pollMrdr3Diagnostics\(/.test(entry)
     && /mrdr3LaneReport\(Audio\.ctx\)/.test(entry)

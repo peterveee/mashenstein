@@ -526,7 +526,7 @@ export const MusicDirector = {
   },
 };
 
-// One listener, for the life of the process. onBeat has no unsubscribe and needs none
+// One listener, for the life of the process. onBeat returns an unsubscribe, unused
 // here: registering per request would leak one per cabinet screen, and the director is
 // a singleton with at most one change in flight.
 Audio.onBeat((beatIdx, when, step) => MusicDirector._onBeat(beatIdx, when, step));

@@ -1703,6 +1703,7 @@ export class TutorialState {
       this.player.jumpPressed(Audio);
       if (this.player.jumps > 1) this.sawDoubleJump = true;
     }
+    if (Input.pressed('duck')) this.player.slidePressed();
     if (Input.pressed('ability')) this.useAbility();
     this.player.update(dt, Input, { speed: this.speed, gravityScale: 1, ice: false });
     this.grantChargeGrace();

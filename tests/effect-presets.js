@@ -39,10 +39,13 @@ for (const aux of AUXES) {
 }
 
 const mixerSource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
+// The card builder and the surfaces it chooses between moved out of the entry — see
+// tools/mixer-effect-cards.js.
+const cardsSource = readFileSync(new URL('../tools/mixer-effect-cards.js', import.meta.url), 'utf8');
 assert(mixerSource.includes("fetch('/effect-default-save'"), 'DEV card save posts to the effect-default route');
 assert(mixerSource.includes('Save new default settings for ${name}'), 'the dialog uses the requested title');
 assert(mixerSource.includes("scope: 'returns'"), 'pinned return cards use the return preset namespace');
-assert(mixerSource.includes("if ((def.params || []).length)"),
+assert(cardsSource.includes("if ((def.params || []).length)"),
   'every parameterized effect card exposes a Default reset row');
 
 const vowelPresetNames = effectPresetNames('vowel');
@@ -204,9 +207,9 @@ for (const name of nativeMultibandPresetNames) {
   assert(matchEffectPreset('mbCompN', resolved) === name,
     `native multiband preset ${name} matches its resolved snapshot`);
 }
-assert(mixerSource.includes('function multibandControls')
-  && mixerSource.includes("def.id === 'mbCompN'")
-  && !mixerSource.includes("def.id === 'mbComp'"),
+assert(cardsSource.includes('function multibandControls')
+  && cardsSource.includes("def.id === 'mbCompN'")
+  && !cardsSource.includes("def.id === 'mbComp'"),
   'the native multiband card uses the grouped control surface');
 assert(EFFECT_BY_ID.mbComp === EFFECT_BY_ID.mbCompN
   && !Object.keys(EFFECT_BY_ID).includes('mbComp'),

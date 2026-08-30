@@ -11,6 +11,8 @@ const suites = [
   'tests/story-beats.js',
   'tests/tutorial.js',
   'tests/hero-kits.js',
+  'tests/mid-air-slide-kick.js',
+  'tests/beat-chart.js',
   'tests/reliability.js',
   'tests/flyer-motion.js',
   'tests/mouse-controls.js',
@@ -284,6 +286,11 @@ const suites = [
   // they are is what they are NOT — not puntable, mostly not breakable — and
   // those facts live in absent registry keys that a tidy-up would supply.
   'tests/standing-hazards.js',
+  // The finish-line dog and its sign. Third in this little group for the same
+  // reason as the two above: the dog's identity is `breakable: false` and the
+  // sign's is `action: 'none'`, single registry lines holding up a jump-only
+  // hazard and a hint that must never be jumped.
+  'tests/finish-dog.js',
   'tests/debris.js',
   'tests/star-power.js',
   'tests/character-rendering.js',
@@ -299,6 +306,15 @@ const suites = [
   // overshot, and therefore a claim about every hero's arc rather than about
   // the geometry alone.
   'tests/spike-crossing.js',
+  // NOTHING VANISHES IN PLAIN VIEW, enforced over whole played stages: every
+  // sweep, cut and cull in the game may only remove what is off screen or what
+  // the player visibly destroyed. The rule several sweeps state locally,
+  // checked globally — this is the suite that catches the next sweep written
+  // without the guard.
+  'tests/no-visible-popout.js',
+  // A hole is fatal, and invulnerability makes the floor there rather than
+  // launching the hero back out of it.
+  'tests/unpressed-launches.js',
   'tests/loop.js',
   'tests/rewind-pooling.js',
   'tests/art-warmup.js',

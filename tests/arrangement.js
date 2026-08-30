@@ -1416,33 +1416,14 @@ assert(barPlan(Audio.applyMix(liveSong, { lanes: {} })).length === barPlan(liveS
 
 // ---- Replicate: a figure carried on through the hole after it -------------------
 //
-// The desk's own code, lifted out of `mixer-entry.js` and run here — the module itself
-// reaches for `document` on load, and these six functions are the whole of the
-// decision. What they must get right is arithmetic nobody can see on screen: where the
-// fill STOPS — the first bar the track is written in again — and that a multi-bar
-// selection repeats in PHASE from the bar after it, so 3,4 lands 3,4,3,4 and never
-// 3,4,4,3 however far the hole runs.
-const entrySource = readFileSync(new URL('../tools/mixer-entry.js', import.meta.url), 'utf8');
-const liftEntry = (re, what) => {
-  const m = re.exec(entrySource);
-  if (!m) throw new Error(`arrangement: could not lift ${what} out of the desk source`);
-  return m[0];
-};
-const replicate = new Function('deps', `
-  const { readBarLane, lenKey, barCount, writeBarNotes, setLanesOff, setLanesDeleted,
-    transposeBars, offsetBars, gainBars, panBars, setBarNoteFx, setBarEffects } = deps;
-  ${liftEntry(/const barFieldValue = \(bar, field, lane\) => \{[\s\S]*?\n\};/, 'barFieldValue')}
-  ${liftEntry(/const laneBarPart = \(bank, draft, bar, lane\) => \{[\s\S]*?\n\};/, 'laneBarPart')}
-  ${liftEntry(/const sameLaneBarPart = [^\n]*/, 'sameLaneBarPart')}
-  ${liftEntry(/const laneBarHasContent = \(part\) =>[\s\S]*?\.some\(Boolean\);/, 'laneBarHasContent')}
-  ${liftEntry(/const writeLaneBarPart = \(bank, draft, bar, lane, part, current = null\) => \{[\s\S]*?\n\};/, 'writeLaneBarPart')}
-  ${liftEntry(/const replicationStop = \(bank, draft, lane, to\) => \{[\s\S]*?\n\};/, 'replicationStop')}
-  ${liftEntry(/const replicationTargets = \(bank, draft, lane, from, to, until\) => \{[\s\S]*?\n\};/, 'replicationTargets')}
-  return { laneBarPart, replicationStop, replicationTargets, writeLaneBarPart };
-`)({
-  readBarLane, lenKey, barCount, writeBarNotes, setLanesOff, setLanesDeleted,
-  transposeBars, offsetBars, gainBars, panBars, setBarNoteFx, setBarEffects,
-});
+// The desk's own code, run here. What it must get right is arithmetic nobody can see on
+// screen: where the fill STOPS — the first bar the track is written in again — and that a
+// multi-bar selection repeats in PHASE from the bar after it, so 3,4 lands 3,4,3,4 and
+// never 3,4,4,3 however far the hole runs.
+// They live in tools/mixer-bar-fields.js now — ten pure functions over a bank and a
+// draft, with nothing of the desk in them — so this imports them instead of lifting them
+// out of a file that reaches for `document` on load and eval'ing the text.
+const replicate = await import('../tools/mixer-bar-fields.js');
 
 {
   const bank = banks.speed;

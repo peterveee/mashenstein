@@ -19,9 +19,82 @@ import { POWER_DEFS } from './powerups.js';
 import { specialMoveColor } from './draw.js';
 import { Input, TOUCH_JUMP_FRAC } from '../engine/input.js';
 import { formatCoins } from './progress.js';
+import { Audio } from '../engine/audio.js';
 
 // The one chrome. Passed to every drawPanel call in the HUD.
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
+
+function drawBeatRibbon(ctx, run) {
+  if (!run.beatLock || run.paused || run.dead || run.finishing || run.introRunning
+    || run.introFreeze > 0 || run.zoneCard || run.rhythmSyncPending) return;
+  const beat = run.rhythmBeatNow?.();
+  if (!Number.isFinite(beat)) return;
+  const bpm = run.cabinet.music?.bpm || 120;
+  const pxBeat = run.speed * 60 / bpm;
+  const playerX = run.playerWorldX();
+  const y = 44, h = 9, center = W / 2, beatPx = 26;
+  ctx.save();
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = '#10141c';
+  ctx.fillRect(0, y, W, h);
+  ctx.strokeStyle = 'rgba(72,224,200,0.18)';
+  ctx.lineWidth = 1;
+  for (let i = -8; i <= 8; i++) {
+    const x = Math.round(center + i * beatPx - ((beat % 1) * beatPx));
+    ctx.beginPath(); ctx.moveTo(x + 0.5, y + 2); ctx.lineTo(x + 0.5, y + h - 2); ctx.stroke();
+  }
+  const pulse = Audio.musicAnalysis?.()?.beatPulse || 0;
+  ctx.fillStyle = `rgba(246,211,60,${0.35 + pulse * 0.5})`;
+  ctx.fillRect(center - 1, y - 2, 3, h + 4);
+  const markers = [];
+  const markerKeys = new Set();
+  const addMarker = (action, actionX) => {
+    const key = `${action}:${Math.round(actionX)}`;
+    if (markerKeys.has(key)) return;
+    markerKeys.add(key);
+    markers.push({ action, actionX });
+  };
+  const entities = [...(run.obstacles || []), ...(run.pickups || [])];
+  for (const e of entities) {
+    if (!e.live || !e.chartAction || !Number.isFinite(e.actionX)) continue;
+    const slot = Number.isFinite(e.chartSlot) ? e.chartSlot : null;
+    const judgeId = slot == null ? null : `judge:${Math.round(e.actionBeat)}:${slot}`;
+    const setEvent = run.rhythmSetEvents?.find((s) => s.beat === e.actionBeat);
+    if ((judgeId && run.beatJudgeConsumed?.has(judgeId))
+      || (setEvent && run.beatJudgeConsumed?.has(setEvent.id))) continue;
+    addMarker(e.chartAction, e.actionX);
+  }
+  for (const e of run.spawner?.eventInstances || []) {
+    if (!e.live || e.chartAction !== 'ability' || !Number.isFinite(e.actionX)) continue;
+    if (e.chartEventId && run.beatJudgeConsumed?.has(`judge:${Math.round(e.actionBeat)}:${e.chartSlot}`)) continue;
+    addMarker('ability', e.actionX);
+  }
+  // Crossing actions are chart-owned even though their physical landing is a
+  // route stone rather than a normal obstacle entity.
+  for (const e of run.rhythmSetEvents || []) {
+    if (e.pit?.passed || run.beatJudgeConsumed?.has(e.id)) continue;
+    addMarker(e.action, playerX + (e.beat - beat) * pxBeat);
+  }
+  for (const marker of markers) {
+    const dx = (marker.actionX - playerX) / pxBeat * beatPx;
+    if (dx < -beatPx || dx > beatPx * 4) continue;
+    const x = Math.round(center + dx);
+    ctx.fillStyle = marker.action === 'jump' ? '#f6d33c'
+      : marker.action === 'duck' ? '#72d8f0'
+        : marker.action === 'ability' ? '#f890b8' : '#c8e0ff';
+    if (marker.action === 'jump') {
+      ctx.beginPath(); ctx.moveTo(x, y + 1); ctx.lineTo(x - 3, y + 6); ctx.lineTo(x + 3, y + 6); ctx.closePath(); ctx.fill();
+    } else if (marker.action === 'duck') {
+      ctx.fillRect(x - 3, y + 4, 7, 2);
+      ctx.fillRect(x + 2, y + 2, 2, 4);
+    } else if (marker.action === 'ability') {
+      ctx.beginPath(); ctx.arc(x, y + 4, 3, 0, Math.PI * 2); ctx.strokeStyle = '#f890b8'; ctx.stroke();
+    } else {
+      ctx.fillRect(x - 1, y + 3, 3, 3);
+    }
+  }
+  ctx.restore();
+}
 
 // The touch power-up shelf's midline (see drawHud below) — exported so run.js
 // can line the chrome ability-name label up against it exactly, not just land
@@ -408,6 +481,8 @@ export function drawHud(ctx, run) {
     ctx.fillRect(Math.min(W - 3, W * frac) - 1, 0, 3, 3);
   }
 
+  drawBeatRibbon(ctx, run);
+
   // Cells and coins, one pill, top-left. No shield row: the glass orb around
   // the hero already shows both that a shield is held and how many, one ring
   // per stack. No plug tally either — three framed squares of "what you might
@@ -513,7 +588,13 @@ export function drawHud(ctx, run) {
   // JUMP out into the margin, so the row no longer needs to duck it there.
   let px = GAUGE_X + (Input.usingTouch && !run.useChrome ? 52 : 0);
   for (const [id, a] of Object.entries(run.powerups.active)) {
+    // Beat-locked stages never expose timing-changing pickups.  Keep the HUD
+    // defensive as well: a stale developer/test state must not advertise a
+    // rewind, speed, or low-gravity effect that collection would discard.
+    if (run.beatLock && (id === 'capSpeed' || id === 'capLowGrav' || id === 'capRewind'
+      || id === 'speed' || id === 'lowGrav' || id === 'rewind')) continue;
     const def = POWER_DEFS[id];
+    if (!def) continue;
     const persistent = !!a.persistent;
     const blink = !persistent && a.t < 1.5 && Math.floor(a.t * 6) % 2 === 0;
     const over = a.level > run.powerups.levelOf(id);
@@ -692,7 +773,7 @@ export function drawHud(ctx, run) {
   // the timer on the opening stage, and the pause screen carries the same
   // legend for anyone who does forget. The last second is a fade rather than a
   // cut: chrome that vanishes between frames reads as a glitch.
-  if (!Input.usingTouch && run.hintT > 0) {
+  if (!Input.usingTouch && run.hintT > 0 && !run.beatLock) {
     const hero = HERO_BY_ID[run.relay.current];
     const hints = [['SPC', 'JUMP'], ['DN', 'SLIDE'], ['RT/D', hero.ability.label], ['LT/A', 'REWIND'], ['P', 'PAUSE']];
     const S = 0.85, HP = 6, HH = 12;
