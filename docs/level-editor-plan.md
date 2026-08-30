@@ -1,5 +1,10 @@
 # LEVEL EDITOR — stage layouts as source of truth
 
+> **BUILT.** `npm run levels` opens it on `127.0.0.1:8020`; run `npm run dev`
+> in another shell for the PLAY button to have a game to open. This document is
+> the plan it was built from, kept because it explains the reasoning; where the
+> two disagree the code wins. See `docs/level-editor.md` for how to use it.
+
 ## Why
 
 Levels are too randomised. A stage today deals from one uniform bag of patterns
@@ -83,7 +88,8 @@ export const STAGE_LAYOUTS = {
     durationSec: 60,
     speedMult: 1,
     checkpoints: [0.33, 0.67],   // fractions of stage distance; default [1/3, 2/3]
-    finishDog: 0.45,             // chance, or false; default: plumber-only roll
+    finishDog: 0.45,             // chance, true/false; default: plumber-1 always,
+                               // the rest of that cabinet rolled, elsewhere none
 
     // pinned events — `at` is a fraction of the stage, as applianceAt always was
     appliance: { at: 0.55, high: false },

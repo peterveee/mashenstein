@@ -36,6 +36,41 @@ export function randomPowerPickup(rng, avoid, allowRewind = true, banned = null)
   return first;
 }
 
+// The section-curated twin of randomPowerPickup, for stage layouts that name
+// their own capsule weights (see src/game/layout.js).
+//
+// It sits BESIDE the ladder below rather than replacing it, and the reason is
+// the seeded stream: rollPowerPickup spends one float — plus, on the staple
+// tail, an rng.pick — in a shape no weight table reproduces draw for draw.
+// Rebuilding the default path on weights would silently walk the 'drip' stream
+// of every stage nobody has edited, which is exactly what
+// tests/layout-parity.js exists to forbid. So the ladder keeps the default and
+// this runs only where an author has asked for something else.
+export function weightedPowerPickup(rng, weights, avoid, opts = {}) {
+  const first = rollWeightedPickup(rng, weights, opts);
+  if (avoid && first === avoid) return rollWeightedPickup(rng, weights, opts);
+  return first;
+}
+
+function rollWeightedPickup(rng, weights, { allowRewind = true, banned = null } = {}) {
+  // A banned type is dropped from the table rather than substituted after the
+  // fact: an author's weights describe the proportions they want among what
+  // CAN drop here, and a beat stage's ban should redistribute across the rest
+  // instead of quietly reassigning its share to one staple.
+  const entries = Object.entries(weights).filter(([type, w]) => w > 0
+    && !banned?.has(type)
+    && !(type === 'capRewind' && !allowRewind));
+  if (!entries.length) return 'capShield';
+  let total = 0;
+  for (const [, w] of entries) total += w;
+  let roll = rng.float() * total;
+  for (const [type, w] of entries) {
+    roll -= w;
+    if (roll < 0) return type;
+  }
+  return entries[entries.length - 1][0];
+}
+
 function rollPowerPickup(rng, { allowRewind = true, banned = null } = {}) {
   const roll = rng.float();
   // The relay charge is deliberately the rarest thing in the table. Capsules

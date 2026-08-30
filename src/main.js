@@ -73,6 +73,7 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 // and jumps directly to a surface, skipping the title screen entirely.
 // Extra params depend on the target:
 //   ?goto=stage&cab=plumber&stage=plumber-1   — launch a specific stage
+//   ?goto=stage&cab=plumber&stage=plumber-1&seed=7   — ...on a known seed
 //   ?goto=stage&cab=plumber                   — stage select for that cabinet
 //   ?goto=hub&hero=lorenzo                     — start hub as a specific hero
 //   ?goto=soundtest&audition                   — audition every megamix move
@@ -121,6 +122,14 @@ function routeDevUrl(goto, p) {
     const pct = parseFloat(params.get('startAt'));
     if (Number.isFinite(pct) && pct > 0 && pct < 100) return pct / 100;
     return finishFrom(params, stage);
+  };
+  // ?seed=N — launch with a known seed (dev builds only). A run is
+  // deterministic given one, which is what lets the level editor's forecast
+  // and the game it opens be the same deal rather than two of the same shape.
+  const seedFrom = (params) => {
+    if (!params.has('seed')) return undefined;
+    const n = Number.parseInt(params.get('seed'), 10);
+    return Number.isFinite(n) ? (n >>> 0) : undefined;
   };
   const alternateFrom = (params, parentId) => {
     const id = params.get('alt');
@@ -207,7 +216,7 @@ function routeDevUrl(goto, p) {
       if (stageId) {
         const stage = STAGE_BY_ID[stageId];
         if (stage && stage.cabinet === cabId) {
-          Flow.launchStage(cab, stage, [], undefined, heroFrom(p), true, invulnFrom(p), autoExitFrom(p),
+          Flow.launchStage(cab, stage, [], seedFrom(p), heroFrom(p), true, invulnFrom(p), autoExitFrom(p),
             timeFrom(p), startAtFrom(p, stage), p.has('finish'));
         } else {
           Flow.toTitle();
