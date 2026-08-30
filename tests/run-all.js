@@ -306,6 +306,10 @@ const suites = [
   // overshot, and therefore a claim about every hero's arc rather than about
   // the geometry alone.
   'tests/spike-crossing.js',
+  // How a run ENDS, as a picture. Beside the crossing suite because the pit is
+  // the death with the most to show and the one whose journey these poses have
+  // to leave intact: everything else settles the figure the instant it dies.
+  'tests/death-pose.js',
   // NOTHING VANISHES IN PLAIN VIEW, enforced over whole played stages: every
   // sweep, cut and cull in the game may only remove what is off screen or what
   // the player visibly destroyed. The rule several sweeps state locally,

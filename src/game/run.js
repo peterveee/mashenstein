@@ -1425,29 +1425,6 @@ export class RunState {
     applyFraming(this.renderSettings || this.save.settings);
     const heroX = this.playerWorldX();
     const floor = this.routeGroundY(heroX, this.route);
-    // THE FRAME PINS TO THE FLOOR HE HAS REACHED, not the one he has been given.
-    //
-    // A tunnel claims the hero at its mouth and rebases his altitude onto its
-    // floor on that very frame — correct for the physics, because that is the
-    // thing he is now falling towards. But he is still in the AIR above the lane
-    // for the whole length of that fall, and pinning the frame to a floor 26px
-    // below the lane drops the entire world on the frame he is claimed. The hero
-    // holds his screen position, the ground falls away beneath him, and he reads
-    // as hanging impossibly high over a path he has not left — with no jump, no
-    // launch, and nothing under his feet, because the lane is cut open right
-    // where he is standing.
-    //
-    // So for a road BELOW the lane the anchor follows his feet down: the lane
-    // while he is still above it, the road once he is past it, and the smooth
-    // handover in between. Roads ABOVE the lane keep the re-pinning below
-    // untouched — that ladder is tuned for climbing and this is not a climb.
-    const laneY = this.groundYAt(heroX);
-    const feetY = floor - this.player.y;
-    const framingFloor = floor > laneY ? Math.min(floor, Math.max(laneY, feetY)) : floor;
-    // His height above whatever the frame is pinned to. Identical to `player.y`
-    // everywhere except the descent above, where it is the honest answer: he is
-    // thirteen pixels over the lane, not forty over a floor he has not met.
-    const framingY = framingFloor - feetY;
     // ---- where the frame is pinned -----------------------------------------
     //
     // The crane and the zoom can hold a hero who is somewhere ELSE for a moment;
@@ -1471,7 +1448,7 @@ export class RunState {
     // under it — so once it has caught up, standing on a cloud costs the same
     // framing as standing on the ground, which is the entire reason for
     // re-pinning instead of craning.
-    const roadRise = laneY - framingFloor;
+    const roadRise = this.groundYAt(heroX) - floor;
     // A SKY ROAD hands the anchor over early, and that is what keeps the zoom
     // still up there.
     //
@@ -1497,7 +1474,7 @@ export class RunState {
     // dips the hero below GROUND_Y and has always been framed by the crane —
     // never reaches this at all.
     if (Math.abs(this.camFloorY - GROUND_Y) > 0.5) {
-      this.camFloorY = Math.max(this.camFloorY, feetY - CAM_FOOTROOM);
+      this.camFloorY = Math.max(this.camFloorY, floor - this.player.y - CAM_FOOTROOM);
     }
     // Rolling terrain owes headroom, and a road owes MORE of it: the hero is
     // already `rise` up before they jump at all. Measured against the anchor
@@ -1506,8 +1483,8 @@ export class RunState {
     // sky road costs exactly what a jump on the ground costs, which is the
     // point of re-pinning. Identical to the old `GROUND_Y - routeGroundY` for
     // as long as the anchor sits on the groundline, which is most of the game.
-    const lift = this.camFloorY - framingFloor;
-    const want = framingFor(framingY, lift);
+    const lift = this.camFloorY - floor;
+    const want = framingFor(this.player.y, lift);
     this.camPan = easePan(this.camPan, want.pan, dt);
     this.camZoom = easeZoom(this.camZoom, want.zoom, dt);
   }
@@ -2652,6 +2629,10 @@ export class RunState {
     // plainly hit. The feet last frame are where the feet actually were.
     const prevFeetY = this.routeGroundY(this.routeSampleX(), this.route) - this.player.y;
     const prevToeX = this.playerFootprint().x1;
+    // For the slope compensation below: the route and its floor as the frame
+    // begins, at the column the hero is actually over.
+    const slopeRoutePrev = this.route;
+    const slopeFloorPrev = this.routeGroundY(this.playerWorldX(), this.route);
     // A loop-de-loop drives the scroll instead of the scroll driving it. The
     // hero's screen column is pinned at PLAYER_X either way, so what changes is
     // only where the world is put: normally it slides past him at `sp`, and on
@@ -2770,6 +2751,30 @@ export class RunState {
       gravityScale: this.beatLock ? 1 : this.powerups.gravityMultiplier(),
     });
     const tookIsland = (!riding && this.routes.length) ? this.updateRoute(prevFeetY, prevToeX) : false;
+    // AN AIRBORNE HERO FALLS IN WORLD SPACE, even where the floor is a slope.
+    //
+    // `player.y` is altitude above the LOCAL floor, and while he is standing on
+    // it that is the whole point. While he is IN THE AIR over a route it is a
+    // trap: his world feet are floor(x) minus y, the scroll moves x every
+    // frame, and on a tunnel's exit ramp the floor under him climbs ~96px in
+    // 140 — faster, for the first beats of a fall, than gravity drops him. So a
+    // hero claimed at the roof's far opening rose 13px on the frame after,
+    // hung level over the open hole while "falling", and rode an invisible
+    // updraft to the lip — an uncommanded hop at the end of every high-path
+    // run, reported (correctly) as the game jumping on its own.
+    //
+    // The compensation rebases y by however much the floor moved under him this
+    // frame, which leaves gravity as the only thing writing his world altitude.
+    // Same-route airborne frames only: the frame a route claims or releases him
+    // already rebases y against the new floor, grounded frames must follow the
+    // floor (that is what standing on it means), and the bare lane keeps its
+    // long-standing hill-relative jumps — the fall face and the sweeps are
+    // built around them, and at amp 16 the hills bend an arc by pixels, not by
+    // a hero's height. Only routes have slopes steep enough to lie.
+    if (!riding && !this.player.grounded && this.route && this.route === slopeRoutePrev
+      && (this.route.kind === 'tunnel' || this.route.kind === 'fork')) {
+      this.player.y += this.routeGroundY(this.playerWorldX(), this.route) - slopeFloorPrev;
+    }
     // Route catches happen after Player.update(), so their universal landing
     // kick has no Player result object to carry the impact signal. The
     // landing timer is set only by startLandingSlide(), making this a narrow
@@ -7160,6 +7165,20 @@ export class RunState {
       };
       this.player.fallFace = true;
       this.player.vy = Math.min(this.player.vy, 0);
+      // HE IS FALLING, NOT JUMPING. Miss a hop into a hole and the jump that
+      // missed it was still on the books, so poseFromPlayer's `fell` came out
+      // false and he went down the shaft in the tucked launch silhouette with
+      // the air stretch of a hero on his way UP. Spending the jump here hands
+      // the descent to the fall poses, which is what it is.
+      this.player.jumps = 0;
+      this.player.launched = false;
+      this.player.clearSlideState();
+      this.player.ducking = false;
+      this.player.duckAmount = 0;
+      this.player.rollT = 0;
+      this.player.compressT = 0;
+      this.player.stomping = false;
+      this.player.floating = false;
       // Zeroed rather than decremented so the HUD is not showing cells in hand
       // through the death. The restore hands the checkpoint's battery back.
       this.battery = 0;
@@ -7291,6 +7310,42 @@ export class RunState {
   }
 
   /**
+   * THE LAST FRAME OF A RUN IS A PORTRAIT, so it is drawn standing.
+   *
+   * A death freezes the world and the player's own update stops running, so
+   * whatever silhouette the hero happened to be in on the killing frame is the
+   * one held for the entire death hold: a landing squash flattened mid-arrival,
+   * the tucked launch pose with air stretch on it, a duck, a roll, a stomp. The
+   * hero read as caught mid-move rather than as beaten, and the squash timer in
+   * particular kept counting against a clock nothing was advancing.
+   *
+   * Everything cleared here is visual only — nothing below is collision, and
+   * the run is already over. The vertical travel is deliberately NOT touched:
+   * updateDead still drops him, and updatePitSink still sinks him. Only the
+   * shape of the figure making the trip is settled.
+   */
+  settleDeathPose() {
+    const p = this.player;
+    p.grounded = true;
+    p.jumps = 0;
+    p.launched = false;
+    p.landedT = 0;
+    p.ducking = false;
+    p.duckAmount = 0;
+    p.duckDirection = 0;
+    p.duckHoldT = 0;
+    p.duckSpent = false;
+    p.stomping = false;
+    p.floating = false;
+    p.rollT = 0;
+    p.compressT = 0;
+    p.powerPoseT = 0;
+    p.spannerFlurryT = 0;
+    p.standT = 0;
+    p.clearSlideState();
+  }
+
+  /**
    * `cue` false holds the death sting back for the caller to play later. One
    * caller does: a pit death is a fall, and its ending is the contact with
    * whatever is at the bottom — see updatePitSink, which plays the material's
@@ -7298,8 +7353,11 @@ export class RunState {
    * lip announced the death a second before the thing that caused it.
    */
   die(msg, cue = true) {
-    this.player.clearSlideState();
-    this.player.standT = 0;
+    // A pit death is the one death with a journey in front of it, so it settles
+    // on arrival instead (updatePitSink) — but the stale landing squash has to
+    // go NOW, or he falls down the shaft flattened by a landing he already made.
+    if (this.pitDeath) this.player.landedT = 0;
+    else this.settleDeathPose();
     this.dead = true;
     this.deadT = 0;
     this.failMsg = msg || this.fxRng.pick(FAIL_MESSAGES);
@@ -7328,22 +7386,10 @@ export class RunState {
     const d = this.pitDeath;
     // Once the hero reaches the material, the death beat is no longer an
     // airborne pose. Keep the sink's vertical travel intact while giving the
-    // renderer a settled, upright snapshot so a stale landing squash or jump
-    // stretch cannot survive into the pit hold.
-    const settlePose = () => {
-      p.grounded = true;
-      p.jumps = 0;
-      p.launched = false;
-      p.landedT = 0;
-      p.ducking = false;
-      p.duckAmount = 0;
-      p.duckDirection = 0;
-      p.duckHoldT = 0;
-      p.duckSpent = false;
-      p.stomping = false;
-      p.floating = false;
-      p.clearSlideState();
-    };
+    // renderer the same settled, upright snapshot every other death gets — see
+    // settleDeathPose — so a stale squash or air stretch cannot survive into
+    // the pit hold.
+    const settlePose = () => this.settleDeathPose();
     // Held every frame: the face is derived from this in poseFromPlayer, and
     // updateFallFace — which normally sets it — does not run while dead.
     p.fallFace = true;
