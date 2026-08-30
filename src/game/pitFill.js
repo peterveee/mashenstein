@@ -251,7 +251,7 @@ function spikes(ctx, w, d, t) {
   // line — and a crossing is on the stage whatever the cabinet is. Teeth
   // floating on the panel background read as scenery. A dark shaft under the
   // lip reads as a hole, everywhere, for the price of one rectangle.
-  ctx.fillStyle = '#171620';
+  ctx.fillStyle = '#ff00ff';
   ctx.fillRect(0, 0, w, d);
   ctx.fillStyle = '#211f2b';
   ctx.fillRect(0, bed, w, d - bed);

@@ -87,7 +87,7 @@ export const STAGES = [
   S('plumber', 3,
     { type: 'fuse', desc: 'CARRY THE FRAGILE FUSE. IT IS VERY FRAGILE. IT KNOWS.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
-    { speedMult: 1.0, pits: [{ at: 0.12, w: 52 }, { at: 0.45, w: 58 }, { at: 0.78, w: 64 }] }),
+    { speedMult: 1.0, pits: [{ at: 0.12, w: 52 }, { at: 0.45, w: 58 }, { at: 0.70, jumps: 4 }] }),
   S('speed', 1,
     { type: 'reach', desc: 'REACH THE EXIT BEFORE THE ROAD FILES FOR COLLAPSE.' },
     { type: 'boosts', n: 4, desc: 'HIT 4 BOOST PADS' },
