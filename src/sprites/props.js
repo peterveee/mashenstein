@@ -1068,18 +1068,18 @@ export const PROP_PAINTERS = {
       c.moveTo(X(-0.98), Y(0.02));            // nose
       c.lineTo(X(-0.88), Y(-0.26));           // bridge of the snout
       c.quadraticCurveTo(X(-0.54), Y(-0.44), X(-0.24), Y(-0.46)); // brow
-      // The ears. Cut with a notch between them and a slight backward rake
-      // rather than as two plain triangles: a pricked ear is thicker at the
-      // base than at the tip, and the rake is what keeps the head from
-      // reading as a fox's.
-      c.lineTo(X(-0.16), Y(-0.72));
-      c.lineTo(X(-0.06), Y(-1));
-      c.lineTo(X(0.16), Y(-0.62));
-      c.lineTo(X(0.24), Y(-0.5));
-      c.lineTo(X(0.34), Y(-0.74));
-      c.lineTo(X(0.48), Y(-0.94));
-      c.lineTo(X(0.66), Y(-0.46));
-      c.lineTo(X(0.74), Y(-0.28));            // back of the skull
+      // The ears: two clean triangles with one notch dropped between them.
+      // An earlier pass sculpted them with extra points at the base and the
+      // rake, which at this size stopped reading as ears at all and became a
+      // row of spikes — a small silhouette wants fewer corners, not more.
+      c.lineTo(X(-0.18), Y(-0.54));
+      c.lineTo(X(-0.05), Y(-1));              // front ear, tip
+      c.lineTo(X(0.14), Y(-0.56));
+      c.lineTo(X(0.24), Y(-0.44));            // the notch between them
+      c.lineTo(X(0.31), Y(-0.60));
+      c.lineTo(X(0.46), Y(-0.92));            // back ear, tip
+      c.lineTo(X(0.68), Y(-0.42));
+      c.lineTo(X(0.76), Y(-0.26));            // back of the skull
       c.quadraticCurveTo(X(0.94), Y(0.12), X(0.86), Y(0.64)); // nape into the chest
       c.lineTo(X(0.3), Y(0.88));
       c.quadraticCurveTo(X(-0.12), Y(0.82), X(-0.36), Y(0.52)); // throat to the chin
