@@ -34,7 +34,8 @@ const { save } = await import('../src/engine/save.js');
 const { Input } = await import('../src/engine/input.js');
 const { DemoBot } = await import('../src/game/bot.js');
 const { airtimeFor, PLAYER_X } = await import('../src/game/player.js');
-const { crossingLayout, CROSSING_HOP, CROSSING_TREAD, CROSSING_RISE } = await import('../src/game/routes.js');
+const { crossingLayout, CROSSING_HOP, CROSSING_TREAD, CROSSING_RISE, CROSSING_BOOST_CLEAR } = await import('../src/game/routes.js');
+const { makeObstacle } = await import('../src/game/entities.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { STAGES } = await import('../src/data/stages.js');
 
@@ -78,6 +79,23 @@ for (const hero of cast) {
 // longest arc in the bag and the hop has to be clearable by the shortest. If a
 // later tune breaks either end, the assertions above go first — this one says
 // WHY in one line.
+// AND THE SAME QUESTION AT 1.4x, which is a SPEED power-up held at level 2.
+//
+// The stones do not move when the lane speeds up, so a power-up lengthens every
+// arc against a fixed layout — the one case where a hero can be too fast for a
+// hazard rather than too slow. It is allowed to be tight (the player chose to
+// hold a speed burst into a precision sequence) and it is not allowed to be
+// impossible, which is what it was at the tread this started with.
+const POWERUP_MULT = 1.4;
+for (const hero of cast) {
+  const span = airtimeFor(hero) * hero.speedMult * POWERUP_MULT;
+  const from = Math.max(-CROSSING_TREAD, CROSSING_HOP - span);
+  const to = Math.min(0, CROSSING_HOP + CROSSING_TREAD - span);
+  const window = (to - from) / (hero.speedMult * POWERUP_MULT);
+  assert(to > from,
+    `${hero.id} can still land on a stone with a level-2 SPEED burst up (${window.toFixed(3)}s)`);
+}
+
 const longest = cast.reduce((a, h) => (airtimeFor(h) * h.speedMult > airtimeFor(a) * a.speedMult ? h : a));
 const shortest = cast.reduce((a, h) => (airtimeFor(h) * h.speedMult < airtimeFor(a) * a.speedMult ? h : a));
 assert(airtimeFor(longest) * longest.speedMult <= CROSSING_HOP + 2 * CROSSING_TREAD,
@@ -166,6 +184,13 @@ assert(!!hole, 'the crossing cuts one hole in the lane');
 assert(hole && Math.abs(hole.w - plan.w) < 0.001, 'as wide as the whole crossing');
 assert(hole && hole.fill === 'spikes',
   'filled with spikes whatever the cabinet pours into its own holes');
+// Signed on sight rather than after a death: the instinct a crossing punishes
+// is the one every other hole in the game rewards.
+const sign = probe.obstacles.find((ob) => ob.live && ob.def && ob.def.sign && ob.crossing);
+assert(!!sign, 'a JUMP sign stands at the lip without anyone having to fall first');
+assert(sign && sign.x < hole.x && sign.x + sign.w > hole.x - 40,
+  'right at the lip, where one jump clears the sign and the hole together');
+assert(hole.signed, 'and the earned hint is not spent again on the same hole');
 // And the route sweeps leave it alone. This is the regression that motivated
 // `is.crossing` in clearRouteHazards: the underside rule reads a hole beneath a
 // slab as a hazard buried in it and deletes it, which leaves three platforms
@@ -173,6 +198,24 @@ assert(hole && hole.fill === 'spikes',
 probe.camX = plan.x - 100;
 probe.clearRouteHazards();
 assert(hole.live, 'and the route sweeps do not delete the hole the stones stand in');
+
+// ---- nothing that makes the jump longer stands in the run-up -------------------
+// A boost pad is the one thing a tread cannot be sized for: +0.5 speedBoost is a
+// 1.5x lane for the better part of a second, and at that speed every takeoff
+// point on a stone overshoots the next one. So the pads come out of the approach
+// rather than the geometry stretching to catch them.
+{
+  const run = newRun('gnash');
+  const cross = run.crossings[0];
+  const pad = makeObstacle('boostPad', cross.x - cross.hop * 2, {});
+  run.obstacles.push(pad);
+  const far = makeObstacle('boostPad', cross.x - CROSSING_BOOST_CLEAR * run.speed - 200, {});
+  run.obstacles.push(far);
+  run.camX = cross.x - 700;
+  run.spawnScriptedPits();
+  assert(!pad.live, 'a boost pad in the run-up to a crossing is swept');
+  assert(far.live, 'and one a boost-length further back is left where it was laid');
+}
 
 // ---- every hero crosses it ----------------------------------------------------
 const TICK = 1 / 60;

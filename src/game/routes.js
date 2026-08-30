@@ -96,12 +96,35 @@ export const ROUTE_CLEAR = 2.2;
  *
  * So the tread is sized off the LONGEST arc (it has to catch it) and the hop
  * off the SHORTEST (it has to be clearable), and the takeoff window that leaves
- * is a quarter of a second or better for every hero in the bag. tests/spike-
- * crossing.js is that claim, hero by hero, and it is the file to run before
- * either number is touched.
+ * is a quarter of a second or better for every hero in the bag.
+ *
+ * AND THE LONGEST ARC IS NOT THE FASTEST HERO. A SPEED power-up runs the lane
+ * at 1.4x with the stones exactly where they were, so the tread has to catch
+ * that too — which is the whole reason it is longer than it looks like it needs
+ * to be. It does not stretch to a BOOST PAD's 1.5x, and nothing sensible would:
+ * a tread that caught one would be a bridge. Pads are kept out of the run-up
+ * instead (CROSSING_BOOST_CLEAR). tests/spike-crossing.js is all of this, hero
+ * by hero, and it is the file to run before either number is touched.
  */
 export const CROSSING_HOP = 0.30;
-export const CROSSING_TREAD = 0.42;
+export const CROSSING_TREAD = 0.52;
+/**
+ * How much lane a crossing owns in FRONT of its near lip, in seconds.
+ *
+ * Only boost pads are swept out of it, and they are swept because a pad is the
+ * one thing in the game that can make a hero's jump longer than any stone can
+ * catch. +0.5 to `speedBoost` is a 1.5x lane for the better part of a second —
+ * a whole hop and a half — and at that speed the arc clears the stone it was
+ * aimed at and comes down in the teeth beyond it, from EVERY takeoff point on
+ * the stone before. There is no timing that saves it, which is what separates
+ * this from ordinary difficulty.
+ *
+ * A pad's boost decays at 0.6 a second, so half a boost is gone in under one;
+ * 1.4 seconds of run-up is that with margin. Everything else in the approach
+ * stays where it was laid — the crossing is signed, and the ordinary pit
+ * clearance already keeps the lip itself clear.
+ */
+export const CROSSING_BOOST_CLEAR = 1.4;
 /**
  * How far a stone's top stands above the lane it interrupts.
  *

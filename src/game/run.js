@@ -20,7 +20,7 @@ import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 import { entityBox, overlaps, makePickup, makeObstacle, OBSTACLES, PICKUPS, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
-import { PIT_FLOOR, SPIKE_TIPS } from './pitFill.js';
+import { PIT_FLOOR, fillSurface } from './pitFill.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { HERO_SPRITES } from '../sprites/heroes.js';
 import { BENCH_UPGRADES } from '../data/progression.js';
@@ -36,7 +36,7 @@ import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF } from './draw.js';
 import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
-import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, crossingLayout, MAX_ISLAND_RISE } from './routes.js';
+import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
 import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
@@ -182,14 +182,15 @@ export const PIT_SURFACE_Y = -Math.round(PIT_FLOOR * 38);
 // A little under a fifth of the speed he arrived at. Slow enough to linger as
 // a visible sinking rather than reading as a second fall.
 const PIT_SINK_RATE = 12;
-// WHERE A SPIKE BED STOPS HIM, and it is not where a liquid does.
+// WHERE A HARD FILL STOPS HIM, and it is not where a liquid does.
 //
-// Tar takes him under and that is the point of it; teeth do not, so he settles
-// on the tips with most of him still above the lane line — which is the picture
-// a spike pit has always drawn and the reason it needs no sink at all. Kept in
-// step with SPIKE_TIPS in game/pitFill.js: the height the art's teeth reach and
-// the altitude the body stops at are one number, or he is impaled on air.
-export const SPIKE_SURFACE_Y = -Math.round(SPIKE_TIPS * 38);
+// Tar takes him under and that is the point of it; teeth and cogs do not, so he
+// settles on top of them with most of him still above the lane line — which is
+// the picture a spike pit has always drawn and the reason it needs no sink at
+// all. Read out of game/pitFill.js's own table rather than restated here: the
+// height the art reaches and the altitude the body stops at are one number, or
+// he is impaled on air.
+export function fillSurfaceY(id) { return -Math.round(fillSurface(id).at * 38); }
 // The furthest a death may carry him forward, whatever the hole's width.
 //
 // Half the hole is the right arc for a hole you jump — he lands in the middle
@@ -5259,7 +5260,19 @@ export class RunState {
       // Never in the finishing straight, and never so late that the run ends
       // with the player in a hole they had no room to read.
       if (plan.x + plan.w + 200 > this.finishWorldX()) continue;
-      const clear = pitClearance(this.spawner.react, this.speed);
+      // A CROSSING OWNS A WHOLE AIRTIME OF LANE IN FRONT OF IT.
+      //
+      // The ordinary window is a reaction runway and a bit — enough that a
+      // hazard is never so close to a lip that dodging it drops you in. On a
+      // hole you can jump that is the whole story, because the jump you take to
+      // clear the hazard also clears the hole. Here it does not: the arc comes
+      // down ON the lip, which is a pixel from being over the break, and the
+      // hero has no frame in which to do anything about it. So the window is at
+      // least the longest jump in the cast, and nothing that asks for one — nor
+      // a coin run, which asks just as loudly — stands inside it.
+      const clear = plan.crossing
+        ? Math.max(pitClearance(this.spawner.react, this.speed), worstAirtime() * this.speed * 1.15)
+        : pitClearance(this.spawner.react, this.speed);
       for (const ob of this.obstacles) {
         // `tunnel` guarded alongside `route`, as every other sweep in this
         // file does: a tunnel's mouth and roof-gap are gap obstacles, and
@@ -5269,6 +5282,15 @@ export class RunState {
         // good.
         if (!ob.live || ob.route || ob.tunnel) continue;
         if (ob.x + ob.w > plan.x - clear && ob.x < plan.x + plan.w + clear) ob.live = false;
+        // AND NO BOOST PAD IN THE RUN-UP TO A CROSSING, which is a much wider
+        // window than the lip's own. See CROSSING_BOOST_CLEAR: a pad hands out
+        // a 1.5x lane for the better part of a second, and at that speed every
+        // arc overshoots the stone it was aimed at from every takeoff point on
+        // the stone before. The player has not misjudged anything — the jump
+        // they can make is longer than the gap they are allowed to cross.
+        else if (plan.crossing && ob.def && ob.def.isBoost
+          && ob.x + ob.w > plan.x - CROSSING_BOOST_CLEAR * this.speed
+          && ob.x < plan.x + plan.w) ob.live = false;
       }
       // AND THE SAME WINDOW FOR PICKUPS, not just the hole itself.
       //
@@ -5309,6 +5331,28 @@ export class RunState {
         hole.crossing = plan.crossing;
       }
       this.obstacles.push(hole);
+      // AND A CROSSING IS SIGNED ON SIGHT, which no other hole in the game is.
+      //
+      // The JUMP sign is otherwise a teaching aid the run earns you by dying
+      // (see signPits): a hole announces itself by being a hole, and the hint
+      // only turns up for a player the floor has already beaten. That argument
+      // holds because the correct answer to an ordinary pit is the instinct —
+      // jump it — so the sign is telling you WHEN, not what.
+      //
+      // Here the instinct is wrong. A break four jumps wide cannot be cleared,
+      // and the frame shows about one hop of it at a time, so a player reading
+      // the lane the way the rest of the game has taught them commits to a jump
+      // that lands in the teeth. The sign is not a hint about timing, it is the
+      // lip saying the ground stops here — so it stands whether or not anyone
+      // has fallen yet, and `signed` is set so signPits does not spend its one
+      // earned hint on a hole that already has one.
+      hole.signed = !!plan.crossing;
+      if (plan.crossing) {
+        const sx = hole.x - SIGN_LEAD - OBSTACLES.jumpSign.w;
+        const sign = makeObstacle('jumpSign', sx, {});
+        sign.crossing = plan.crossing;
+        this.obstacles.push(sign);
+      }
       // The spawner lays from its own frontier; push it past the landing so the
       // next pattern starts on the far side rather than inside the clearance.
       this.spawner.nextX = Math.max(this.spawner.nextX, plan.x + plan.w + clear);
@@ -6448,7 +6492,15 @@ export class RunState {
         // WHAT IS AT THE BOTTOM, as far as the beat is concerned: something that
         // swallows him, or something that stops him. Read off the hole itself
         // rather than off the cabinet, because a crossing carries its own fill.
-        spikes: !!(pit && pit.fill === 'spikes'),
+        hard: !!(pit && fillSurface(pit.fill).hard),
+        // The altitude he comes to rest at, in the hero's own units — which are
+        // relative to the LOCAL floor, and the local floor over a crossing is a
+        // raised one (see crossingRise). The material lies at a fixed depth
+        // below the flat groundline, so the hill has to come out of the number
+        // or he stops a hill's height above the teeth.
+        surfaceY: (pit && fillSurface(pit.fill).hard)
+          ? fillSurfaceY(pit.fill) - (GROUND_Y - this.groundYAt(this.playerWorldX()))
+          : PIT_SURFACE_Y,
       };
       this.player.fallFace = true;
       this.player.vy = Math.min(this.player.vy, 0);
@@ -6633,14 +6685,14 @@ export class RunState {
     if (!d.in) {
       p.vy -= this.gravityForDeath() * dt;
       p.y += p.vy * dt;
-      if (p.y <= (d.spikes ? SPIKE_SURFACE_Y : PIT_SURFACE_Y)) {
-        p.y = d.spikes ? SPIKE_SURFACE_Y : PIT_SURFACE_Y;
+      if (p.y <= d.surfaceY) {
+        p.y = d.surfaceY;
         d.in = true;
         // TEETH STOP HIM DEAD. No plunge, no sink, no plop: he arrives on the
         // tips and stays there for the rest of the hold, which is the whole
         // difference between a material that takes you and one that catches
         // you. The impact keeps the shake and gets the harder cue.
-        if (d.spikes) {
+        if (d.hard) {
           d.plunge = 0;
           p.vy = 0;
           Audio.sfx('crunch');
@@ -6674,7 +6726,7 @@ export class RunState {
     // slow is the point, because a fast one is just a second fall and what this
     // wants to show is the hero being visibly TAKEN rather than dropped.
     // Nothing to sink into. He is on the teeth where he landed.
-    if (d.spikes) return;
+    if (d.hard) return;
     d.plunge *= Math.pow(0.05, dt);
     p.y -= Math.max(PIT_SINK_RATE, d.plunge) * dt;
   }

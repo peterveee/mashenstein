@@ -87,7 +87,7 @@ export const STAGES = [
   S('plumber', 3,
     { type: 'fuse', desc: 'CARRY THE FRAGILE FUSE. IT IS VERY FRAGILE. IT KNOWS.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
-    { speedMult: 1.0, pits: [{ at: 0.12, w: 52 }, { at: 0.45, w: 58 }, { at: 0.70, jumps: 4 }] }),
+    { speedMult: 1.0, pits: [{ at: 0.12, w: 52 }, { at: 0.45, w: 58 }, { at: 0.78, w: 64 }] }),
   S('speed', 1,
     { type: 'reach', desc: 'REACH THE EXIT BEFORE THE ROAD FILES FOR COLLAPSE.' },
     { type: 'boosts', n: 4, desc: 'HIT 4 BOOST PADS' },
@@ -99,10 +99,19 @@ export const STAGES = [
     { type: 'chase', n: 2, desc: 'CATCH THE CLOWN-COPTER 2 TIMES. IT IS UNDERINSURED.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
     { pits: [{ at: 0.25, w: 52 }, { at: 0.72, w: 56 }] }),
+  // THE THIRD CROSSING, and the one the cabinet's own furniture argues for: a
+  // road that files for collapse should have a stretch where it has actually
+  // collapsed. At 0.70 it is clear of the loop-de-loop at 0.55 by 0.15 of the
+  // stage — the same distance the pit it replaces kept — and past the second
+  // checkpoint, like the other two.
+  //
+  // It REPLACES the 0.80 pit rather than joining it. That hole was doing the
+  // same job in the same third of the stage, and a 60-second lap carrying a
+  // loop, a crossing and two ordinary holes is a stage with no lane left in it.
   S('speed', 3,
     { type: 'reach', desc: 'FINISH THE LAP. GNASH HAS OPINIONS ABOUT YOUR PACE.' },
     { type: 'boosts', n: 5, desc: 'HIT 5 BOOST PADS' },
-    { pits: [{ at: 0.30, w: 60 }, { at: 0.80, w: 64 }] }),
+    { pits: [{ at: 0.30, w: 60 }, { at: 0.70, jumps: 4 }] }),
   S('neon', 1,
     { type: 'targets', n: 5, targetType: 'target', desc: 'DESTROY 5 TARGETS. THEY ARE VERY DESTROYABLE.' },
     { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },

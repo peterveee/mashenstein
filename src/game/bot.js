@@ -10,6 +10,10 @@ export class DemoBot {
     this.run = run;
     this.duckHold = false;
     this.jumpHold = false;
+    // Whether he has left the ground since the button went down. See the
+    // landing release below — it is what makes that release once per landing
+    // rather than once per frame.
+    this.wasAir = false;
     this.abilityT = 1.5;
     this.abHeld = false;
   }
@@ -73,32 +77,61 @@ export class DemoBot {
       // lip of the break he is running at.
       const edge = stone ? stone.x + stone.w : crossing.x;
       const next = crossing.stones.find((st) => st.x >= edge - 1);
+      // A fifth of the way onto the stone: the EARLIEST safe landing, not the
+      // middle of it. Aiming at the middle is what a long jumper does anyway,
+      // and it strands the short ones — Grumpos' arc does not reach the middle
+      // of a stone from the lane at all, so the press never came and he ran off
+      // the lip. Taking off as soon as the arc clears the near edge is the one
+      // rule that fits every hero: a longer arc simply lands further along the
+      // same stone.
+      //
       // Past the last stone the landing is the lane again, and a little way
       // onto it — the far lip is the one place on a crossing where landing
       // short is landing in the hole.
-      const target = next ? next.x + next.w / 2 : crossing.x + crossing.w + 14;
-      crossJump = px + span >= target;
+      const landFrom = next ? next.x + next.w * 0.22 : crossing.x + crossing.w + 14;
+      // The far end of the landing, so an arc that would sail over the stone
+      // waits instead of taking off early. Nothing bounds the last hop: past
+      // the crossing the landing is the lane, and there is no such thing as
+      // too far.
+      const landTo = next ? next.x + next.w * 0.92 : Infinity;
+      // AND A LAST CHANCE AT THE EDGE. A jump taken from the very lip is a bad
+      // jump for some heroes and it is a jump; running off the end is a fall
+      // for all of them. Only fires when the ground is about to run out, which
+      // is where the bot ends up if a lane obstacle held it in the air through
+      // its own window.
+      const edgeOut = edge - px;
+      crossJump = (px + span >= landFrom && px + span <= landTo) || edgeOut < span * 0.06;
     }
 
     // jump: speed-scaled reaction window, held through the arc
     const wantJump = crossing ? crossJump
       : ((nearest && nearest.def.action === 'jump' && (nearest.x - px) < sp * 0.3 && (nearest.x - px) > -8) || grab || chaseJump);
     if (!run.player.grounded) {
-      // keep holding — releasing early cuts the jump short
-    } else if (this.jumpHold) {
-      // A LANDING ALWAYS LETS GO, even when the next jump is already wanted.
+      // keep holding — releasing early cuts the jump short (VARIABLE_JUMP_CUT)
+      this.wasAir = true;
+    } else if (this.jumpHold && this.wasAir) {
+      // A LANDING LETS GO ONCE, even when the next jump is already wanted.
       //
       // The jump is an EDGE, not a level: holding the button through a landing
-      // presses nothing. Everywhere in the lane that never showed, because the
-      // reason to jump had always passed by the time he came down — and on a
-      // crossing it is the normal case, since the next stone is wanted from the
-      // moment he lands on this one. He ran off the end of the last stone with
-      // the button still held from the jump that got him there.
+      // presses nothing. In the lane that never showed, because the reason to
+      // jump had always passed by the time he came down — on a crossing it is
+      // the normal case, since the next stone is wanted from the moment he
+      // lands on this one, and he ran off the end of the last stone with the
+      // button still held from the jump that got him there.
+      //
+      // ONCE PER LANDING, gated on having actually been in the air. Releasing
+      // on every grounded frame the button is held turns a sustained press into
+      // a one-frame tap, and a tap is cut to VARIABLE_JUMP_CUT the same frame:
+      // the heroes with a variable jump hopped two pixels, over and over, all
+      // the way into the hole.
       Input.release('jump');
       this.jumpHold = false;
+      this.wasAir = false;
     } else if (wantJump) {
-      Input.press('jump');
-      this.jumpHold = true;
+      if (!this.jumpHold) { Input.press('jump'); this.jumpHold = true; }
+    } else if (this.jumpHold) {
+      Input.release('jump');
+      this.jumpHold = false;
     }
 
     // duck under low flyers (and stomp with stomp-heroes in boss fights)
@@ -115,7 +148,12 @@ export class DemoBot {
     this.abilityT -= dt;
     if (this.abHeld) { Input.release('ability'); this.abHeld = false; }
     const hero = run.player.hero;
-    if (hero && hero.ability && this.abilityT <= 0 && run.player.abilityCd <= 0) {
+    // NOT DURING A CROSSING. Fernwick's ability is a ROLL, and a roll refuses
+    // the jump button for half a second (see jumpPressed) — fired on the
+    // approach it eats the whole takeoff window and the run ends in the teeth
+    // with the button held down. Nothing on a crossing is worth shooting at
+    // anyway: the sweep has cleared the lane either side of it.
+    if (hero && hero.ability && !crossing && this.abilityT <= 0 && run.player.abilityCd <= 0) {
       const threat = run.bossCab || run.obstacles.some((ob) =>
         ob.live && (ob.def.shoots || ob.def.isTarget || (ob.def.breakable && ob.def.ground)) &&
         ob.x - px > 20 && ob.x - px < 180);
