@@ -107,6 +107,12 @@ assert(Audio.step === 0,
   'a jukebox song with a later gameplay start marker still begins at bar one');
 assert(Audio.formLoopArmed && Audio.loopStart != null && Audio.loopEnd != null,
   'starting at bar one preserves the song authored repeat region');
+const starts = JUKEBOX.map((track, i) => {
+  sound.openTrack(i);
+  return { name: track.name, step: Audio.step };
+});
+assert(starts.every(({ step }) => step === 0),
+  `every shipped jukebox song begins at step zero (${starts.map(({ name, step }) => `${name}: ${step}`).join(', ')})`);
 
 const ctx = document.createElement('canvas').getContext('2d');
 sound.draw(ctx);
