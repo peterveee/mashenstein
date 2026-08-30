@@ -109,7 +109,7 @@ function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhan
 // One material per cabinet, in every hole on it. Split out so the packs that
 // draw their ground some other way — the checkered road, the neon grid — can
 // call it without also inheriting drawGapsAwareGround's idea of what a road is.
-export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false) {
+export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false, liftOf = null) {
   if (!cab) return;
   // TAR EVERYWHERE, until a cabinet says otherwise. An empty break is a
   // legitimate picture and it is the wrong DEFAULT: a pit is fatal now, and the
@@ -135,7 +135,12 @@ export function drawPitFills(ctx, camX, cab, obstacles, t = 0, ownOnly = false) 
     const x = ob.x - camX;
     if (x + ob.w < -4 || x > W + 4) continue;
     // Phased off world x so two pits on one screen never bubble in step.
-    drawPitFill(ctx, id, x, GROUND_Y, ob.w, H - GROUND_Y, t, ob.x * 0.013);
+    // How far the ground stands above the flat line over this break, so a fill
+    // that draws a floor can reach up behind a raised lip instead of leaving a
+    // seam of sky under it. Only the run knows (the rise is its own), so it is
+    // handed in rather than looked up.
+    drawPitFill(ctx, id, x, GROUND_Y, ob.w, H - GROUND_Y, t, ob.x * 0.013,
+      liftOf ? liftOf(ob) : 0);
   }
 }
 

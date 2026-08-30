@@ -35,7 +35,7 @@ import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
 import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF } from './draw.js';
-import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
+import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
@@ -191,6 +191,20 @@ const PIT_SINK_RATE = 12;
 // height the art reaches and the altitude the body stops at are one number, or
 // he is impaled on air.
 export function fillSurfaceY(id) { return -Math.round(fillSurface(id).at * 38); }
+// HOW FAR THE ROAD CLIMBS OVER A CROSSING, and how long it takes to get there.
+//
+// 16px is the same height a cabinet's own hills reach (PROFILES in
+// game/terrain.js), which is the argument for it: it is a rise the game already
+// draws and the player has already run over, so it costs no new vocabulary. It
+// roughly doubles the visible depth of the break — the apron only shows about
+// nineteen world px below the lane before the frame runs out, and the teeth sit
+// five of them down.
+//
+// The ramp is nearly a second of lane either side. Long enough that nobody
+// notices climbing it, and long enough to be a TELL: the ground tilting up is
+// the oldest "something is coming" a side-scroller has.
+const CROSSING_ROAD_RISE = 16;
+const CROSSING_RISE_RAMP = 0.9;
 // The furthest a death may carry him forward, whatever the hole's width.
 //
 // Half the hole is the right arc for a hole you jump — he lands in the middle
@@ -808,15 +822,27 @@ const FINISH_DOG_FADE = 240;
 // at every stage speed (see the derivation on spawnFinishDog): the release
 // window in seconds of road to the tape, the lope it sets off at, the
 // acceleration of the lunge, and the sprint it tops out at.
-// How often a plumber stage is guarded at all. Under half on purpose: the dog
-// has to be a thing that MIGHT be there, so the sign is worth reading and the
-// empty straights stay a relief rather than a formality.
+// How often a plumber stage is guarded at all — every stage BUT the first,
+// which always is (see finishDogPlanned). Under half on purpose: after the
+// stage that teaches it, the dog has to be a thing that MIGHT be there, so
+// the sign is worth reading and an empty straight stays a relief rather than
+// a formality.
 const FINISH_DOG_CHANCE = 0.45;
 // How much road before the tape the BEWARE OF DOG sign stands, as a multiple
 // of a screen. Two screens: far enough that the sign is read, gone, and
 // thought about before the post arrives, rather than being scenery beside the
 // thing it was supposed to warn about.
-const DOG_SIGN_SCREENS = 2;
+// How far before the tape the BEWARE OF DOG sign stands. It is also, on a
+// guarded stage, where the LANE ENDS: laneWallX() stops the spawner and the
+// drip here instead of at FINISH_CLEAR, so the sign is the last thing dealt
+// before the animal and there is nothing between the warning and the thing it
+// warns about. Just over a screen, so the sign is read and gone before the
+// post arrives and the dog comes off it.
+const DOG_SIGN_LEAD = 330;
+// Clear ground either side of the sign's BOX. Generous, because it has to
+// cover art rather than hitboxes — a stacked crate is 12 wide and draws 16 —
+// and because a sign that cannot be read is worse than no sign at all.
+const DOG_SIGN_CLEAR = 26;
 const FINISH_DOG_LAUNCH_S = 2.0; // charge release, in seconds of road to the tape
 const FINISH_DOG_INTRO_S = 0.45; // how long it is seen WAITING at the post first
 const FINISH_DOG_V0 = 0.5;
@@ -1755,9 +1781,26 @@ export class RunState {
         // run that has not started accelerating yet.
         const c = crossingLayout(x, p.jumps, this.speedAt(p.at));
         this.crossings.push(c);
-        this.pitPlan.push({ x, w: c.w, crossing: c, done: false });
+        // WHAT IS IN IT, which is a stage's choice and not a cabinet's. Teeth
+        // are a trap somebody set; the works are machinery that was here first
+        // — see game/pitFill.js — so the fill is a tone as much as a hazard,
+        // and the plumber's crossing is cut through his own gearbox.
+        this.pitPlan.push({ x, w: c.w, crossing: c, fill: p.fill || 'spikes', done: false });
       }
     }
+
+    // AND THE ROAD RISES OVER EACH ONE. See setGroundRises: only the top half of
+    // any hole is ever on screen, so a crossing that is merely cut into the flat
+    // lane reads as a groove with something glinting in it. Lifting the lane
+    // instead buys real depth for nothing — and it has to be done HERE, before
+    // routes.js is asked to build anything, because a stone's flat top is fixed
+    // from the ground under its middle and that ground is about to move.
+    //
+    // Always called, empty list included: a stage with no crossing must not
+    // inherit the hills of the one before it.
+    setGroundRises(this.crossings.map((c) => ({
+      x: c.x, w: c.w, h: CROSSING_ROAD_RISE, ramp: CROSSING_RISE_RAMP * this.baseSpeed(),
+    })));
 
     // Built by routes.js. It is pure geometry off the cabinet's data and this
     // stage's own length and speed, so the asset gallery can build the very
@@ -1788,9 +1831,17 @@ export class RunState {
     // level and it works by being an event; at the end of every single one it
     // is furniture, and the finishing straight goes back to being a place
     // where nothing happens because you already know what happens.
+    //
+    // PLUMBER-1 ALWAYS HAS ONE, and it is the exception that makes the rule
+    // work. It is the stage every player meets first and the one the rest of
+    // the cabinet is read against, so the dog, the sign and what the sign
+    // means all have to be TAUGHT there — a first encounter you might not
+    // have is not a lesson. Every stage after it rolls, and by then the
+    // player knows what a red sign with a head on it is promising.
     this.finishDogPlanned = this.cabinet.id === 'plumber'
       && !this.overtime && Number.isFinite(this.totalDist)
-      && this.rng.stream('finishDog').float() < FINISH_DOG_CHANCE;
+      && (this.stage?.id === 'plumber-1'
+        || this.rng.stream('finishDog').float() < FINISH_DOG_CHANCE);
     this.fuseHeld = this.mission.type === 'fuse';
     this.missionTimers = { cord: 8, resident: 10, chaseNear: 0 };
     this.escapeWall = this.mission.type === 'escape' ? -140 : null;
@@ -1833,7 +1884,7 @@ export class RunState {
     if (this.devStartPercent > 0 && Number.isFinite(this.totalDist)) {
       const startSp = this.baseSpeed();
       const hero = HERO_BY_ID[this.relay.current];
-      const stopX = this.finishWorldX() - FINISH_CLEAR;
+      const stopX = this.laneWallX();
       this.spawner.nextX = Math.max(this.spawner.nextX, this.camX);
       this.spawner.fill(this.camX, startSp, this.obstacles, this.pickups, () => jumpHeightFor(hero), stopX);
       this.drip.update(0, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(), stopX);
@@ -2578,9 +2629,9 @@ export class RunState {
     if (this.overtime || this.camX + W + 200 < this.finishWorldX()) {
       const spawnAt = updateProfileMark();
       this.spawner.fill(this.camX, sp, this.obstacles, this.pickups, () => jumpHeightFor(hero),
-        this.overtime ? Infinity : this.finishWorldX() - FINISH_CLEAR);
+        this.overtime ? Infinity : this.laneWallX());
       this.drip.update(wdt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(),
-        this.overtime ? Infinity : this.finishWorldX() - FINISH_CLEAR, !this.rewindUsed);
+        this.overtime ? Infinity : this.laneWallX(), !this.rewindUsed);
       this.spawnScriptedPits();
       this.signPits();
       updateProfileAdd('spawnMs', spawnAt);
@@ -4326,7 +4377,7 @@ export class RunState {
   // or the lane placed it.
   spawnObjective(type, alt) {
     const def = PICKUPS[type];
-    const maxX = this.finishWorldX() - FINISH_CLEAR - def.w;
+    const maxX = this.laneWallX() - def.w;
     const x = this.clearOfHazards(Math.min(this.camX + W + 80, maxX), def.w, alt, def.h, maxX);
     if (x == null || x < this.camX + VIEW_W) return false;
     this.pickups.push(makePickup(type, x, alt));
@@ -5088,7 +5139,7 @@ export class RunState {
       // the tape entirely — where the draw gate refuses to paint it. It is a
       // bonus rather than a mission piece, so unlike spawnObjective it takes the
       // full clear lane rather than squeezing into the last slot before the pole.
-      const maxX = this.finishWorldX() - FINISH_CLEAR - PICKUPS.appliance.w;
+      const maxX = this.laneWallX() - PICKUPS.appliance.w;
       const x = this.clearOfHazards(Math.min(at + W, maxX), PICKUPS.appliance.w, alt, PICKUPS.appliance.h, maxX);
       // No legal spot this frame — a hazard is sitting on the last one. Try
       // again next frame rather than write the stage's only appliance off: the
@@ -5118,7 +5169,7 @@ export class RunState {
     if (this.rewindCapSpawned || this.rewindUsed) return;
     const at = this.stage.rewindAt * this.totalDist;
     if (this.camX + W <= at) return;
-    const x = Math.min(at + W, this.finishWorldX() - FINISH_CLEAR - PICKUPS.capRewind.w);
+    const x = Math.min(at + W, this.laneWallX() - PICKUPS.capRewind.w);
     if (!this.drip.canPlacePower(x)) return; // crowded — retry next frame
     this.rewindCapSpawned = true;
     this.pickups.push(makePickup('capRewind', x, 34));
@@ -5185,31 +5236,31 @@ export class RunState {
   // is busy this frame it simply tries again on the next one — there are
   // hundreds of pixels of runway to find a gap in, and the flag is only set on
   // success, so "at most one" still holds.
+  // Where the lane stops. Normally FINISH_CLEAR short of the tape; on a stage
+  // that drew a dog, short of the SIGN instead — nothing may be dealt between
+  // the warning and the animal, so the sign is the last obstacle the player
+  // meets and the run-up to the dog is bare road.
+  laneWallX() {
+    return this.finishWorldX()
+      - (this.finishDogPlanned ? DOG_SIGN_LEAD + DOG_SIGN_CLEAR : FINISH_CLEAR);
+  }
+
   spawnDogSign() {
     if (this.dogSignSpawned || !this.finishDogPlanned || this.overtime) return;
     const view = W / this.camZoom;
-    const x = this.finishWorldX() - view * DOG_SIGN_SCREENS;
-    // Placed while it is still off the right edge — a sign that appears inside
-    // the frame reads as scenery popping in — but placed as EARLY as that
-    // allows, because it costs nothing to stand there waiting and a narrow
-    // window is a window the clearance test below can miss entirely.
-    if (x > this.camX + view * 3) return;  // too far out to bother yet
-    if (x <= this.camX + view) {           // it would arrive already on screen
-      this.dogSignSpawned = true;
-      return;
-    }
-    // Wider breathing room than the pit hints take. Their six pixels are a
-    // BOX margin, and every prop in the lane draws a third again wider than
-    // its box — so six clears the hitboxes and still stands the sign's board
-    // inside a crate's shoulder, which is the one thing a sign may not do.
-    const sw = OBSTACLES.dogSign.w;
-    const clear = this.obstacles.every((o) => !o.live
-      || (o.def.isGap
-        ? o.x + o.w <= x || o.x >= x + sw
-        : o.x + o.w + 16 < x || o.x > x + sw + 16));
-    if (!clear) return;
+    const x = this.finishWorldX() - DOG_SIGN_LEAD;
+    // No clearance search any more, and no waiting for the spawner to settle:
+    // laneWallX() has already stopped the lane DOG_SIGN_CLEAR short of this
+    // spot, so the ground from here to the tape is bare by construction
+    // rather than by inspection. The first version of this checked the ground
+    // at placement time instead, two screens out — ahead of the spawner's
+    // reach — and the lane was then dealt straight over the sign.
+    //
+    // Placed while it is still off the right edge: a sign that appears inside
+    // the frame reads as scenery popping in.
+    if (x > this.camX + view * 2.5) return;
     this.dogSignSpawned = true;
-    this.obstacles.push(makeObstacle('dogSign', x));
+    if (x > this.camX + view) this.obstacles.push(makeObstacle('dogSign', x));
   }
 
   spawnFinishDog() {
@@ -5327,7 +5378,7 @@ export class RunState {
       // the set that reads as lethal at a glance and from the lane, standing
       // still, without a bubble or a glow to explain it.
       if (plan.crossing) {
-        hole.fill = 'spikes';
+        hole.fill = plan.fill;
         hole.crossing = plan.crossing;
       }
       this.obstacles.push(hole);
@@ -6988,7 +7039,8 @@ export class RunState {
     // are the only thing that says the sequence is fatal before the first hop.
     // So a self-declared fill is painted here, once, for every pack. The flag is
     // what keeps the six from painting the same teeth twice.
-    drawPitFills(ctx, cam, this.cabinet, this.obstacles, this.tRun, true);
+    drawPitFills(ctx, cam, this.cabinet, this.obstacles, this.tRun, true,
+      (ob) => riseHeight(ob.x + ob.w / 2));
     if (!this.bossCab) drawTerrain(ctx, cam, this.cabinet, this.obstacles, GROUND_Y, W / z, laneCuts);
     if (this.routes.length) {
       // The ground under the lane, which the packs only paint 38px of. Below

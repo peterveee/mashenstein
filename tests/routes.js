@@ -651,7 +651,22 @@ run.obstacles.length = 0;
 furnished.populated = false;
 run.populateRoute(furnished);
 const laid = run.obstacles.filter((o) => o.live && o.route === furnished);
-assert(laid.length >= 6, `and they are laid along it (${laid.length} of them)`);
+// A DENSITY, not a count. The floor used to be a flat six, which was really a
+// statement about how long the plumber tunnel happened to be — and the day that
+// road was shortened to make room for a crossing, a suite about furnishing
+// roads failed for a reason that had nothing to do with furnishing roads. What
+// the claim is actually about is that the branch is a SECTION: something to
+// deal with every couple of reaction runways, however long the road is.
+// Read off populateRoute's own rule rather than guessed: it steps from a
+// reaction-runway inset by `max(110, react * speed * 2.2)`, jittered up to 1.6x,
+// so the fewest a road of this length may honestly carry is its usable span
+// divided by the widest step.
+const runway = run.spawner.react * run.baseSpeed();
+const step = Math.max(110, runway * 2.2);
+const want = Math.max(3, Math.floor((furnished.w - step * 1.4) / (step * 1.6)));
+assert(laid.length >= want,
+  `and they are laid along it (${laid.length} of them, ${want} the least a `
+  + `${furnished.w.toFixed(0)}px road may carry)`);
 assert(laid.every((o) => o.x > furnished.x && o.x < furnished.x + furnished.w),
   'all of them inside the span');
 // Nothing at the way in or the way out: both are moments whose timing the

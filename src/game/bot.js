@@ -88,6 +88,15 @@ export class DemoBot {
       // Past the last stone the landing is the lane again, and a little way
       // onto it — the far lip is the one place on a crossing where landing
       // short is landing in the hole.
+      // WHERE IT WOULD LIKE TO LAND, and where it will settle for.
+      //
+      // Aiming at the near edge is enough arithmetic and not enough margin: the
+      // lane's speed can change while he is in the air — a SPEED burst running
+      // out mid-arc takes a fifth off the jump — and an arc aimed at the first
+      // fifth of a stone then comes down in front of it. So the bot aims at the
+      // middle when its arc reaches that far, and takes the earliest safe shot
+      // only when the ground is running out.
+      const aim = next ? next.x + next.w * 0.5 : crossing.x + crossing.w + 16;
       const landFrom = next ? next.x + next.w * 0.22 : crossing.x + crossing.w + 14;
       // The far end of the landing, so an arc that would sail over the stone
       // waits instead of taking off early. Nothing bounds the last hop: past
@@ -100,7 +109,9 @@ export class DemoBot {
       // is where the bot ends up if a lane obstacle held it in the air through
       // its own window.
       const edgeOut = edge - px;
-      crossJump = (px + span >= landFrom && px + span <= landTo) || edgeOut < span * 0.06;
+      crossJump = (px + span >= aim && px + span <= landTo)
+        || (px + span >= landFrom && edgeOut < span * 0.3)
+        || edgeOut < span * 0.06;
     }
 
     // jump: speed-scaled reaction window, held through the arc

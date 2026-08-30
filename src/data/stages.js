@@ -31,6 +31,28 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   intro: opts.intro || null,
   introBy: opts.introBy || null,   // speaker id for the intro bubble; null = narrator
   speedMult: opts.speedMult ?? 1,  // per-stage speed override (1 = 100% of cabinet speed)
+  // WHERE A FATAL HOLE MAY STAND, and it is the one rule every `pits` entry on
+  // this page obeys.
+  //
+  // A pit kills, and a death goes back to the last checkpoint — which is at a
+  // third and two thirds of the stage and nowhere else. So the real cost of a
+  // hole is not the hole, it is the stretch of level you replay to get back to
+  // it, and that stretch is `at` minus whichever checkpoint is behind it, in
+  // SECONDS of play. Twelve of these were authored on gut feel and the worst of
+  // them (cardboard-3 at 0.55) charged twenty-six seconds a death: you lose to
+  // a hole and then run a third of the level again to reach it.
+  //
+  //   at least 1.5s after the checkpoint — the restore drops you running, and a
+  //                 hole immediately in front of you is not a hazard you read,
+  //                 it is one you land in.
+  //   at most 10s after it — one honest run-up. Past that a death stops being a
+  //                 setback and starts being an errand.
+  //
+  // Holes before the FIRST checkpoint replay from the start of the stage, so
+  // their budget is measured from zero: 0.06 of a two-minute stage is seven
+  // seconds, and 0.25 of one is thirty. tests/spike-crossing.js checks all of
+  // this, every stage, every pit.
+  //
   // Scripted pits: [{at, w}], `at` a fraction of stage distance the way
   // applianceAt is. The spawner may still lay a gap of its own from the
   // cabinet's pattern list; these are the ones a stage GUARANTEES, in the order
@@ -40,10 +62,15 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   // clear, with stones standing in it, taken in that many jumps. Its width is
   // derived rather than authored — the hops and the stones are sized in seconds
   // of lane travel against the speed the run will be doing when it gets there
-  // (see crossingLayout in game/routes.js), so `{ at: 0.7, jumps: 4 }` is the
-  // same four jumps in world 1 and on UNPLUGGED, and there is no width here to
-  // fall out of step with the geometry. The fill is spikes whatever the cabinet
-  // pours into its ordinary holes.
+  // (see crossingLayout in game/routes.js), so `{ at: 0.7, jumps: 5 }` is the
+  // same five jumps in world 1 and on UNPLUGGED, and there is no width here to
+  // fall out of step with the geometry.
+  //
+  // `fill` names what is at the bottom of it — 'spikes' by default, 'gears' for
+  // the works — and it overrides the cabinet's own material either way, because
+  // the fill is the only thing that says the sequence is fatal before the first
+  // hop. The road rises over every crossing whatever is in it (see
+  // CROSSING_ROAD_RISE), so the break has real depth on screen.
   pits: opts.pits || null,
   // Scripted rewind capsule, a fraction of stage distance like applianceAt.
   // The power-up's guaranteed introduction on every device — the drip can
@@ -67,19 +94,39 @@ export const STAGES = [
   // Every device sees it, keyboard included: the banked one-shot is a
   // different move from holding Left, and the stage that teaches it should
   // not depend on what you are holding the game in.
+  // THE WORKS. Plumber's underground section used to run from 0.18 to 0.38 —
+  // twelve seconds of it — and half of that is now a crossing over the gearbox
+  // instead: the tunnel is cut to six seconds (see cabinets.js) and this takes
+  // the ground it gave up. The two read as one idea rather than two, which is
+  // the point of putting them back to back: you go UNDER the floor, come up,
+  // and then the floor is missing and you can see what was down there.
+  //
+  // At 0.36 rather than at the tunnel's own 0.18 for the reason every hole on
+  // this page is placed where it is: just past a checkpoint (1/3), so learning
+  // it costs a second and a half of replay rather than a third of the stage.
+  //
+  // FOUR jumps and not five, and the number is the cabinet's rather than a
+  // taste: plumber is a busy stage — a staircase at 0.45, a fork at 0.58, the
+  // tunnel in front of it — and a crossing owns a clear lane either side of
+  // itself. Five jumps here reached far enough to swallow the four-step
+  // staircase whole (see buildRoutes' overlap guard), which trades a set piece
+  // for a set piece. Four fits in the gap the tunnel gave up with both of its
+  // neighbours intact, and being the smallest crossing in the game suits the
+  // one in Act I.
   S('plumber', 2,
     { type: 'targets', n: 6, targetType: 'qcrate', desc: 'BREAK 6 !-CRATES. THE ! MEANS HIT IT.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { speedMult: 0.95, rewindAt: 0.15 }),
+    { speedMult: 0.95, rewindAt: 0.15, pits: [{ at: 0.36, jumps: 4, fill: 'gears' }] }),
   // THREE TAR PITS, at fixed fractions of the stage. `pits` is a scripted
   // placement, not a pattern: a cabinet's pattern list is shuffled by the
   // spawner, so a gap added there turns up wherever the dice fall and might
   // never turn up at all — and the first one has to be EARLY, before the fuse
   // run has settled into a rhythm, or it is not teaching anything.
   //
-  // 0.12 / 0.45 / 0.78 puts one in each third and straddles both checkpoints
-  // (1/3 and 2/3), so a player who dies in the second or third pit does not
-  // replay the first. The last sits well clear of the finishing straight.
+  // 0.12 / 0.45 / 0.78 puts one in each third, each of them a run-up past the
+  // checkpoint behind it — seven seconds of replay apiece, which is the budget
+  // the header above describes. These three were already inside it when that
+  // rule was written down; most of the game's holes were not.
   //
   // Stage 3 and not 1 or 2 for the ordinary reason act I ramps: this is the
   // stage that already carries the fuse, and a fatal hazard belongs on the run
@@ -92,18 +139,19 @@ export const STAGES = [
     { type: 'reach', desc: 'REACH THE EXIT BEFORE THE ROAD FILES FOR COLLAPSE.' },
     { type: 'boosts', n: 4, desc: 'HIT 4 BOOST PADS' },
     { introBy: 'gnash', intro: 'ALREADY FINISHED THIS ONE. I AM WAITING AT THE END. TAKE YOUR TIME.' }),
-  // The collapsing road finally collapses. Both holes sit ≥0.15 of the stage
-  // away from the loop set piece at 0.55 (see LOOP.at), which clears its guard
-  // lane by a wide margin, and neither lands on a checkpoint (1/3, 2/3).
+  // The collapsing road finally collapses. Both holes clear the loop set piece
+  // at 0.55 (see LOOP.at) by a third of the stage or more, so neither can be
+  // laid inside its guard lane — and 0.14 rather than the 0.25 this used to be,
+  // which charged fifteen seconds of replay for a hole in the opening third.
   S('speed', 2,
     { type: 'chase', n: 2, desc: 'CATCH THE CLOWN-COPTER 2 TIMES. IT IS UNDERINSURED.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
-    { pits: [{ at: 0.25, w: 52 }, { at: 0.72, w: 56 }] }),
+    { pits: [{ at: 0.14, w: 52 }, { at: 0.72, w: 56 }] }),
   // THE THIRD CROSSING, and the one the cabinet's own furniture argues for: a
   // road that files for collapse should have a stretch where it has actually
   // collapsed. At 0.70 it is clear of the loop-de-loop at 0.55 by 0.15 of the
-  // stage — the same distance the pit it replaces kept — and past the second
-  // checkpoint, like the other two.
+  // stage — the same distance the pit it replaces kept — and two seconds past
+  // the second checkpoint.
   //
   // It REPLACES the 0.80 pit rather than joining it. That hole was doing the
   // same job in the same third of the stage, and a 60-second lap carrying a
@@ -111,7 +159,7 @@ export const STAGES = [
   S('speed', 3,
     { type: 'reach', desc: 'FINISH THE LAP. GNASH HAS OPINIONS ABOUT YOUR PACE.' },
     { type: 'boosts', n: 5, desc: 'HIT 5 BOOST PADS' },
-    { pits: [{ at: 0.30, w: 60 }, { at: 0.70, jumps: 4 }] }),
+    { pits: [{ at: 0.38, w: 60 }, { at: 0.70, jumps: 5 }] }),
   S('neon', 1,
     { type: 'targets', n: 5, targetType: 'target', desc: 'DESTROY 5 TARGETS. THEY ARE VERY DESTROYABLE.' },
     { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },
@@ -119,12 +167,13 @@ export const STAGES = [
   S('neon', 2,
     { type: 'cords', n: 4, desc: 'RECOVER 4 EXTENSION CORD PIECES. THE CORD WAS SHREDDED. RUDELY.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
-  // Neon has no routes and no loop, so the only geometry these two dodge is
-  // the finishing straight — and 0.70 is well clear of it.
+  // Neon has no routes and no loop, so the only geometry these two dodge is the
+  // finishing straight — 0.70 is well clear of it. Both sit a couple of seconds
+  // past a checkpoint, which is where the replay budget wants them.
   S('neon', 3,
     { type: 'reach', desc: 'REACH THE END. SOMETHING ANGRY AND AIRBORNE AWAITS.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
-    { pits: [{ at: 0.35, w: 56 }, { at: 0.70, w: 60 }] }),
+    { pits: [{ at: 0.37, w: 56 }, { at: 0.70, w: 60 }] }),
   // ACT II --------------------------------------------------------------------
   S('frost', 1,
     { type: 'reach', desc: 'CROSS THE ICE. THE ICE IS NOT YOUR FRIEND. IT TOLD US.' },
@@ -144,7 +193,7 @@ export const STAGES = [
   S('frost', 3,
     { type: 'fuse', desc: 'CARRY THE FUSE ACROSS THE ICE. YES. THE SLIPPERY ICE.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { pits: [{ at: 0.28, w: 60 }, { at: 0.74, w: 64 }] }),
+    { pits: [{ at: 0.37, w: 60 }, { at: 0.74, w: 64 }] }),
   S('crypt', 1,
     { type: 'blackout', desc: 'SURVIVE THE BLACKOUT. THE DARK IS BUDGETARY.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
@@ -172,11 +221,11 @@ export const STAGES = [
   S('rhythm', 2,
     { type: 'reach', desc: 'SURVIVE THE CHORUS. THE BAND IS IN DEBT.' },
     { type: 'onbeat', n: 14, desc: '14 ON-BEAT ACTIONS' },
-    { pits: [{ at: 0.35, w: 56 }, { at: 0.70, jumps: 4 }] }),
+    { pits: [{ at: 0.37, w: 56 }, { at: 0.70, jumps: 5 }] }),
   S('rhythm', 3,
     { type: 'chase', n: 2, desc: 'CHASE THE COPTER. IT IS SOMEHOW ON BEAT.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { pits: [{ at: 0.30, w: 60 }, { at: 0.75, w: 64 }] }),
+    { pits: [{ at: 0.37, w: 60 }, { at: 0.75, w: 64 }] }),
   // ACT III -------------------------------------------------------------------
   S('cardboard', 1,
     { type: 'reach', desc: 'CROSS THE KINGDOM BEFORE IT FINISHES COLLAPSING.' },
@@ -184,19 +233,22 @@ export const STAGES = [
     { act: 'ACT III. THE OUTLET AT THE END OF EVERYTHING. THE CASTLE IS FOUR INCHES TALL.' }),
   // Act III's tierMax is 2 on every stage, so the bags cannot ramp — the pits
   // are the progression instead: none on cardboard-1, two on -2, three on -3.
+  // On a two-minute stage the replay budget is tight (a tenth of the stage is
+  // twelve seconds), which is why these sit at 0.06 / 0.40 / 0.72 rather than
+  // spread on feel: 0.55 used to cost twenty-six seconds a death.
   S('cardboard', 2,
     { type: 'escape', desc: 'ESCAPE THE FOLDING WAVE. DO NOT BECOME A FLAP.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
-    { pits: [{ at: 0.30, w: 56 }, { at: 0.70, w: 60 }] }),
+    { pits: [{ at: 0.37, w: 56 }, { at: 0.70, w: 60 }] }),
   S('cardboard', 3,
     { type: 'chase', n: 3, desc: 'CATCH THE COPTER. IT IS HELD UP BY A VISIBLE HAND.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
-    { pits: [{ at: 0.25, w: 60 }, { at: 0.55, w: 64 }, { at: 0.80, w: 68 }] }),
+    { pits: [{ at: 0.06, w: 60 }, { at: 0.40, w: 64 }, { at: 0.72, w: 68 }] }),
   S('office', 1,
     { type: 'reach', desc: 'GET THROUGH THE OFFICE. AVOID EYE CONTACT WITH MEETINGS.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
     { intro: 'THE PRINTERS SMELL FEAR. AND TONER. MOSTLY TONER.',
-      pits: [{ at: 0.45, w: 52 }] }),
+      pits: [{ at: 0.38, w: 52 }] }),
   S('office', 2,
     { type: 'targets', n: 5, targetType: 'printer', desc: 'DESTROY 5 HOSTILE PRINTERS. HR HAS APPROVED THIS.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
@@ -215,13 +267,13 @@ export const STAGES = [
   S('surge', 2,
     { type: 'cords', n: 6, desc: 'RECOVER THE FINAL 6 CORD PIECES. THE CORD IS ALMOST WHOLE.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { pits: [{ at: 0.45, w: 60 }, { at: 0.70, jumps: 4 }] }),
+    { pits: [{ at: 0.38, w: 60 }, { at: 0.70, jumps: 6 }] }),
   // The finale finally has ground that gives way under it — "everything at
   // once" was 116 patterns on a road with no holes.
   S('surge', 3,
     { type: 'escape', desc: 'OUTRUN THE UNPLUGGENING ITSELF. THE SOCKET IS CLOSE.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { pits: [{ at: 0.25, w: 60 }, { at: 0.60, w: 64 }, { at: 0.82, w: 68 }] }),
+    { pits: [{ at: 0.07, w: 60 }, { at: 0.40, w: 64 }, { at: 0.72, w: 68 }] }),
 ];
 
 export const STAGE_BY_ID = Object.fromEntries(STAGES.map((s) => [s.id, s]));

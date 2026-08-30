@@ -1054,35 +1054,65 @@ export const PROP_PAINTERS = {
     // the drawing is a SHAPE rather than a pile of magic numbers, and so it
     // fills whatever cell the board gives it.
     //
-    // One closed path, not a head plus a muzzle plus ears: at seven screen
-    // pixels any gap between two parts closes into a blot, and a single
-    // silhouette stays legible all the way down. Everything in it is doing
+    // One closed path, not a head plus a muzzle plus ears: at this size any
+    // gap between two parts closes into a blot, and a single silhouette stays
+    // legible all the way down. Everything in the outline is doing
     // identification work — two pricked ears, a long snout and an open jaw are
-    // the whole difference between "dog", "bear" and "unreadable".
+    // the whole difference between "dog", "bear" and "unreadable" — and the
+    // marks punched back OUT of it (eye, fangs, nostril) are what stop it
+    // being a black blob once there is room for them. They only survive
+    // because this sign rasterizes at triple detail; at double they filled in.
     const X = (t) => px + ((t + 1) / 2) * pw;
     const Y = (t) => py + ((t + 1) / 2) * ph;
     plain(ctx, '#241a14', (c) => {
       c.moveTo(X(-0.98), Y(0.02));            // nose
-      c.lineTo(X(-0.86), Y(-0.24));           // bridge of the snout
-      c.quadraticCurveTo(X(-0.52), Y(-0.42), X(-0.2), Y(-0.46)); // brow
-      c.lineTo(X(-0.08), Y(-1));              // front ear, up
-      c.lineTo(X(0.2), Y(-0.5));              // ...and down into the crown
-      c.lineTo(X(0.46), Y(-0.92));            // back ear, up
-      c.lineTo(X(0.72), Y(-0.3));             // ...and down the back of the skull
-      c.quadraticCurveTo(X(0.92), Y(0.1), X(0.86), Y(0.62)); // nape into the chest
-      c.lineTo(X(0.3), Y(0.86));
-      c.quadraticCurveTo(X(-0.1), Y(0.8), X(-0.34), Y(0.5)); // throat to the chin
-      // The open jaw: a wedge cut out of the muzzle. A closed mouth reads as a
-      // pet, and this sign is not about a pet.
-      c.lineTo(X(-0.98), Y(0.72));
-      c.lineTo(X(-0.72), Y(0.3));
-      c.lineTo(X(-0.98), Y(0.24));
+      c.lineTo(X(-0.88), Y(-0.26));           // bridge of the snout
+      c.quadraticCurveTo(X(-0.54), Y(-0.44), X(-0.24), Y(-0.46)); // brow
+      // The ears. Cut with a notch between them and a slight backward rake
+      // rather than as two plain triangles: a pricked ear is thicker at the
+      // base than at the tip, and the rake is what keeps the head from
+      // reading as a fox's.
+      c.lineTo(X(-0.16), Y(-0.72));
+      c.lineTo(X(-0.06), Y(-1));
+      c.lineTo(X(0.16), Y(-0.62));
+      c.lineTo(X(0.24), Y(-0.5));
+      c.lineTo(X(0.34), Y(-0.74));
+      c.lineTo(X(0.48), Y(-0.94));
+      c.lineTo(X(0.66), Y(-0.46));
+      c.lineTo(X(0.74), Y(-0.28));            // back of the skull
+      c.quadraticCurveTo(X(0.94), Y(0.12), X(0.86), Y(0.64)); // nape into the chest
+      c.lineTo(X(0.3), Y(0.88));
+      c.quadraticCurveTo(X(-0.12), Y(0.82), X(-0.36), Y(0.52)); // throat to the chin
+      // The open jaw: a wedge bitten out of the muzzle. A closed mouth reads
+      // as a pet, and this sign is not about a pet.
+      c.lineTo(X(-0.99), Y(0.74));
+      c.lineTo(X(-0.74), Y(0.30));
+      c.lineTo(X(-0.99), Y(0.24));
       c.closePath();
     });
-    // The eye, punched back out of the silhouette. One pale notch turns a black
-    // shape into a face, and it is the cheapest mark on the board.
-    plain(ctx, '#f6e4c8', (c) => {
-      c.ellipse(X(-0.3), Y(-0.16), pw * 0.055, ph * 0.05, -0.3, 0, Math.PI * 2);
+    // Everything below is punched back out in the panel's own cream, so the
+    // marks are holes in the silhouette rather than a second colour on top of
+    // it — a paler ink would grey the whole head down at world size.
+    const cut = '#f6e4c8';
+    // The eye: one notch, angled. It turns a black shape into a face and it is
+    // the cheapest mark on the board.
+    plain(ctx, cut, (c) => {
+      c.ellipse(X(-0.34), Y(-0.18), pw * 0.052, ph * 0.048, -0.3, 0, Math.PI * 2);
+    });
+    // Two fangs in the gape — upper and lower, offset so they read as a bite
+    // rather than as a gap in the paint.
+    plain(ctx, cut, (c) => {
+      c.moveTo(X(-0.90), Y(0.34)); c.lineTo(X(-0.78), Y(0.33)); c.lineTo(X(-0.845), Y(0.50)); c.closePath();
+      c.moveTo(X(-0.95), Y(0.66)); c.lineTo(X(-0.85), Y(0.65)); c.lineTo(X(-0.90), Y(0.50)); c.closePath();
+    });
+    // The nostril, and the crease where the muzzle wrinkles back off the
+    // teeth. Two marks, and between them they are the snarl.
+    plain(ctx, cut, (c) => {
+      c.ellipse(X(-0.90), Y(-0.06), pw * 0.026, ph * 0.026, 0, 0, Math.PI * 2);
+    });
+    stroke(ctx, cut, Math.max(0.18, pw * 0.022), (c) => {
+      c.moveTo(X(-0.72), Y(-0.16));
+      c.quadraticCurveTo(X(-0.62), Y(-0.05), X(-0.50), Y(-0.02));
     });
     ctx.restore();
   },
@@ -3502,6 +3532,10 @@ export function propTall(name) { return PROP_TALL[name] || 1; }
 const PROP_DETAIL_SCALE = {
   ...ANIMAL_DETAIL,
   ...finishDogTable(null, 3), // the one detail-3 exception — see FINISH_DOG_ALIASES
+  // The sign's head is the finest drawing in the lane per pixel: a silhouette
+  // with fangs and a nostril inside a board about 17px wide. At detail 2 the
+  // notches closed up into the black.
+  dogSign: 3,
   cactus: 2, cactusBig: 2,
   // Standing hazards. All six ship between 7 and 22px, which is exactly the
   // range this table exists for: a spike's point, a barrel band and a spine are
@@ -3577,6 +3611,13 @@ export function propDetailScale(name) { return PROP_DETAIL_SCALE[name] || 1; }
 const PROP_VISUAL_SCALE = {
   ...ANIMAL_VISUAL,
   ...finishDogTable(ANIMAL_VISUAL),
+  // The dog sign draws over its box, where its two siblings do not. They
+  // carry a word, which is legible or not at any size; this one carries a
+  // DRAWING, and a drawing needs room before its detail is worth having.
+  // The hitbox is untouched — it is a breakable sign, so the only thing the
+  // extra size costs is a slightly earlier break, and a warning you brush
+  // rather than walk into is the right way round.
+  dogSign: 1.3,
   // The battery keeps the HUD's 25:13 proportions inside a square 8x8 def box,
   // so its art only fills about half the box's height. Without this it reads as
   // a smaller pickup than the coin it spawns beside, which is backwards — it is

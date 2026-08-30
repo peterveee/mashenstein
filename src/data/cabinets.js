@@ -283,7 +283,13 @@ export const CABINETS = [
         // visible way to refuse. `entry: 18` puts a real notch in the lane, and
         // a short `climb` runs it down to full depth fast enough to feel like a
         // slide and slow enough not to be a fall.
-        at: 0.18, dwell: 12, depth: 96, entry: 18, lip: 0.012, climb: 0.16, hold: 0.88,
+        // EIGHT SECONDS, not twelve. The section used to run 0.18 to 0.38, and
+        // the ground it gives up is where plumber-2's stepping-stone crossing
+        // goes (see stages.js) — the same stretch of level, spent on seeing the
+        // machinery rather than on running past more of it. What is left is
+        // still a full chamber with hazards and a prize in it; it stops being a
+        // corridor a few seconds sooner.
+        at: 0.18, dwell: 8, depth: 96, entry: 18, lip: 0.012, climb: 0.16, hold: 0.88,
         // Plumber's own furniture, minus the cactus — a desert plant is the one
         // thing in the set that cannot be underground. The pipe earns its place
         // twice over: it is tall enough to be a real jump and it is the thing

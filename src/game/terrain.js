@@ -12,13 +12,62 @@ const PROFILES = {
   office:    { amp: 9, period: 620, phase: 310 },
 };
 
+// ------------------------------------------------------- crossing road rises
+/**
+ * EXTRA GROUND, laid over whatever a cabinet's own profile does.
+ *
+ * One customer so far: a stepping-stone crossing raises the lane it interrupts,
+ * and it does that for a reason the art could not solve on its own. The apron
+ * under the lane is 38 world px and the camera magnifies, so only the top half
+ * of any hole is ever on screen — a break with a bed of teeth at the bottom of
+ * it reads as a groove, because the part of the depth that would say PIT is off
+ * the bottom of the frame. Lifting the ROAD instead spends nothing: the lip
+ * climbs, the material stays where it lies, and the gap between them is depth
+ * you can see.
+ *
+ * Set by the run at enter() and set on EVERY enter, empty list included, so a
+ * stage that has none cannot inherit the last one's. It lives here rather than
+ * on the run because the ground line has exactly one definition — the packs,
+ * the terrain painter, the routes, the camera and the physics all read
+ * `terrainGroundY`, and a rise the drawing knew about and the collision did not
+ * would be a hill you fall through.
+ */
+let RISES = [];
+export function setGroundRises(list) { RISES = (list || []).slice(); }
+export function groundRises() { return RISES; }
+
+function smoothstep(k) {
+  const c = k < 0 ? 0 : k > 1 ? 1 : k;
+  return c * c * (3 - 2 * c);
+}
+
+/**
+ * How much extra ground stands at this x. Flat across the rise's own span and
+ * eased in and out over `ramp` either side — a step would be a wall, and the
+ * hero has to be able to run onto this at speed without noticing he climbed.
+ */
+export function riseHeight(worldX) {
+  let h = 0;
+  for (const r of RISES) {
+    const a = r.x - r.ramp;
+    const b = r.x + r.w + r.ramp;
+    if (worldX <= a || worldX >= b) continue;
+    const k = worldX < r.x ? smoothstep((worldX - a) / r.ramp)
+      : worldX > r.x + r.w ? smoothstep((b - worldX) / r.ramp)
+        : 1;
+    if (r.h * k > h) h = r.h * k;
+  }
+  return h;
+}
+
 export function terrainHeight(cabinet, worldX) {
   const p = cabinet && PROFILES[cabinet.id];
-  if (!p) return 0;
+  const rise = riseHeight(worldX);
+  if (!p) return rise;
   const wave = (Math.sin(((worldX + p.phase) / p.period) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
   const rounded = wave * wave * (3 - 2 * wave);
   const intro = Math.min(1, Math.max(0, worldX / 280));
-  return p.amp * rounded * intro;
+  return p.amp * rounded * intro + rise;
 }
 
 export function terrainGroundY(cabinet, worldX, baseY = 232) {
@@ -1381,7 +1430,15 @@ function drawEntrance(ctx, camX, cabinet, r, groundAt, floorAt, underAt) {
 }
 
 export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232, viewW = W, overhangs = []) {
-  if (!PROFILES[cabinet && cabinet.id]) return;
+  // A cabinet with no hills draws nothing — UNLESS a crossing has raised the
+  // road somewhere in view, which is ground that exists and has to be painted
+  // by somebody. `flat` is that case, and it is why the runs are clipped to the
+  // rises below: on a lane the packs already draw, this painter's own surface
+  // line and body across the whole frame would be a second lane drawn over the
+  // first one.
+  const profiled = !!PROFILES[cabinet && cabinet.id];
+  const rises = groundRises();
+  if (!profiled && !rises.length) return;
   // Overscan one step so the line's last segment still leaves the frame rather
   // than stopping visibly short of it.
   const right = Math.min(W, Math.ceil(viewW) + 2);
@@ -1419,6 +1476,21 @@ export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232, viewW = 
     open = Math.max(open, g.x + g.w);
   }
   if (open < last + STEP) runs.push([open, last + STEP]);
+  // On a flat cabinet, only the raised stretches are this painter's to draw.
+  if (!profiled) {
+    const spans = rises.map((r) => [r.x - r.ramp, r.x + r.w + r.ramp]);
+    const clipped = [];
+    for (const [a, b] of runs) {
+      for (const [c, e] of spans) {
+        const lo = Math.max(a, c);
+        const hi = Math.min(b, e);
+        if (hi > lo) clipped.push([lo, hi]);
+      }
+    }
+    runs.length = 0;
+    runs.push(...clipped);
+    if (!runs.length) return;
+  }
 
   // The BODY only. A run over a chamber still has its lit surface line — you
   // run along it — but nothing under it: what is down there is the slab, and

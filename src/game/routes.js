@@ -504,16 +504,27 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
     return r;
   }));
   const guard = ROUTE_CLEAR * speed;
-  const overCrossing = (r) => crossings.some((c) =>
+  const clashes = (r) => crossings.some((c) =>
     r.x < c.x + c.w + guard && r.x + r.w > c.x - guard);
+  // A STAIRCASE GOES WHOLE OR NOT AT ALL.
+  //
+  // Dropping the steps that clash and keeping the rest is worse than dropping
+  // all of them: a stack is a climb, so losing its bottom two treads leaves two
+  // slabs hanging in the air with no way onto them and the prize that was the
+  // reason for the climb sitting on top. Grouped by `stack`, which is the field
+  // that already says these are one object.
+  const doomedStacks = new Set();
+  const cabinetRoutes = [
+    ...(cabinet.islands || []).flatMap(stairs).map(mk('island')),
+    ...(cabinet.forks || []).map(mk('fork')),
+    ...(cabinet.tunnels || []).map(mk('tunnel')),
+  ];
+  for (const r of cabinetRoutes) if (r.stack && clashes(r)) doomedStacks.add(r.stack);
+  const overCrossing = (r) => clashes(r) || (r.stack && doomedStacks.has(r.stack));
   const laid = [];
   for (const r of [
     ...stones,
-    ...[
-      ...(cabinet.islands || []).flatMap(stairs).map(mk('island')),
-      ...(cabinet.forks || []).map(mk('fork')),
-      ...(cabinet.tunnels || []).map(mk('tunnel')),
-    ].filter((r) => !overCrossing(r)),
+    ...cabinetRoutes.filter((r) => !overCrossing(r)),
   ].sort((a, b) => a.x - b.x)) {
     const prev = laid[laid.length - 1];
     // Steps of the same staircase are meant to be close — that gap is the

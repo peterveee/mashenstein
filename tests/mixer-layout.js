@@ -24,6 +24,7 @@ const rearrange = readFileSync(new URL('../tools/lib/rearrange.js', import.meta.
 const deskSelect = readFileSync(new URL('../tools/mixer-select.js', import.meta.url), 'utf8');
 const tooltips = readFileSync(new URL('../tools/mixer-tooltips.js', import.meta.url), 'utf8');
 const perfDiag = readFileSync(new URL('../tools/mixer-perf-diag.js', import.meta.url), 'utf8');
+const deskLayout = readFileSync(new URL('../tools/mixer-desk-layout.js', import.meta.url), 'utf8');
 const customSelect = readFileSync(new URL('../tools/lib/custom-select.js', import.meta.url), 'utf8');
 const freezeSpanSource = readFileSync(new URL('../tools/lib/freeze-span.js', import.meta.url), 'utf8');
 const touchedBody = /const touched = \(\) => \{[\s\S]*?\n  \};/.exec(editor)?.[0] || '';
@@ -251,8 +252,9 @@ assert(/<div class="reband rearr">/.test(shell)
   && /function scheduleDeskEdges\(\)/.test(entry)
   && /new ResizeObserver\(\(\) => scheduleDeskEdges\(\)\)/.test(entry)
   && /if \(value !== deskHeadH\)/.test(entry)
-  && /if \(rearrangePanelOpen\) deskFitOwed = true;/.test(entry)
-  && /if \(deskFitOwed\) \{/.test(entry)
+  && /if \(rearrangePanelOpen\(\)\) deskFitOwed = true;/.test(deskLayout)
+  && /export function takeDeskFitDebt\(\)[\s\S]*?deskFitOwed = false;/.test(deskLayout)
+  && /if \(takeDeskFitDebt\(\)\) \{/.test(entry)
   && /#rearrangepanel\.norecipe #rereturn,/.test(shell)
   // THE WAY OUT IS ON THE FIRST ROW, past Advanced. In the Arrangement band it was below
   // the fold on a short window, so the control you reach for having changed your mind was
@@ -2040,8 +2042,8 @@ assert(/#arrgrid::-webkit-scrollbar \{ width: var\(--bar-gut\); height: var\(--b
 
 // The three heights are written together, through one function, or the window stamp
 // they are scaled by on the next load describes only whichever one was dragged last.
-const rememberHeights = /function rememberDeskHeights\(\)[\s\S]*?\n\}/.exec(entry)?.[0] || '';
-assert(entry.includes("const DEV_KEY = 'mash-mixer-devh'")
+const rememberHeights = /function rememberDeskHeights\(\)[\s\S]*?\n\}/.exec(deskLayout)?.[0] || '';
+assert(deskLayout.includes("const DEV_KEY = 'mash-mixer-devh'")
   && rememberHeights.includes('set(ARR_KEY, userArrH)')
   && rememberHeights.includes('set(DEV_KEY, userDevH)')
   && rememberHeights.includes('set(FX_KEY, userFxH)')
@@ -2051,11 +2053,11 @@ assert(entry.includes("const DEV_KEY = 'mash-mixer-devh'")
 // Absolute pixels, so the same screen gets the same desk back. A shorter window scales
 // them down rather than letting a desktop-sized Notes panel eat a laptop screen — and
 // only down, and only in memory: the stored numbers still describe the big screen.
-assert(/const deskScale = [\s\S]*?Math\.min\(1, innerHeight \/ storedDeskVh\)/.test(entry)
-  && /const restoredDeskH = \(value, floor\) =>[\s\S]*?value \* deskScale/.test(entry)
-  && entry.includes('let userArrH = restoredDeskH(storedArrH')
-  && entry.includes('let userDevH = restoredDeskH(storedDevH')
-  && entry.includes('let userFxH = restoredDeskH(storedFxH'),
+assert(/const deskScale = [\s\S]*?Math\.min\(1, innerHeight \/ storedDeskVh\)/.test(deskLayout)
+  && /const restoredDeskH = \(value, floor\) =>[\s\S]*?value \* deskScale/.test(deskLayout)
+  && deskLayout.includes('let userArrH = restoredDeskH(storedArrH')
+  && deskLayout.includes('let userDevH = restoredDeskH(storedDevH')
+  && deskLayout.includes('let userFxH = restoredDeskH(storedFxH'),
   'remembered heights come back at their own size, scaled down only when the window is shorter than the one they were set on');
 // Which panels you left shut is desk furniture, not song data: it is global, and it is
 // applied at load. Notes is the exception — it belongs to the song, and restoreSongLayout
@@ -2154,18 +2156,18 @@ for (const [fn, key] of []) {
   assert(/const changed = /.test(body) && guarded,
     `${fn} writes its fold only when the fold moved, not on every frame of a drag`);
 }
-assert(entry.includes("const edge = $('mixhead')")
-  && entry.includes("const edge = $('notes')")
-  && entry.includes("const edge = $('devices')")
+assert(deskLayout.includes("const edge = $('mixhead')")
+  && deskLayout.includes("const edge = $('notes')")
+  && deskLayout.includes("const edge = $('devices')")
   && !entry.includes("const edge = $('timeline')")
-  && (entry.match(/edge\.addEventListener\('pointerdown'/g) || []).length >= 3
-  && (entry.match(/edge\.addEventListener\('pointermove'/g) || []).length >= 3
-  && (entry.match(/edge\.addEventListener\('dblclick'/g) || []).length >= 2,
+  && (deskLayout.match(/edge\.addEventListener\('pointerdown'/g) || []).length >= 3
+  && (deskLayout.match(/edge\.addEventListener\('pointermove'/g) || []).length >= 3
+  && (deskLayout.match(/edge\.addEventListener\('dblclick'/g) || []).length >= 2,
   'the three legacy adjustable panel borders retain drag/reset gestures while the one-row Timeline has none');
 // Bounded to the function's own body. `[\s\S]*?` is lazy but unbounded, so a regex
 // anchored on `function notesRoom(` happily reaches unrelated layout code below and
 // passes however notesRoom is written.
-const notesRoomBody = /function notesRoom\([\s\S]*?\n\}/.exec(entry)?.[0] || '';
+const notesRoomBody = /function notesRoom\([\s\S]*?\n\}/.exec(deskLayout)?.[0] || '';
 assert(notesRoomBody.includes("h($('mixhead'))")
   && !notesRoomBody.includes("h($('arrsplit'))")
   && !notesRoomBody.includes("h($('devsplit'))"),
@@ -2179,26 +2181,26 @@ assert(entry.includes('function syncPanelResizeEdges()')
   && /function setMixerFolded[\s\S]*?syncPanelResizeEdges\(\)/.test(entry)
   && /function setArrangeCollapsed[\s\S]*?syncPanelResizeEdges\(\)/.test(entry),
   'resize hit areas follow the adjacent panels’ fold state');
-assert(/const splitter = \$\('worksplitter'\)/.test(entry)
-  && /splitter\.addEventListener\('pointerdown'/.test(entry)
-  && /splitter\.addEventListener\('pointermove'/.test(entry)
-  && /--upper-work-height/.test(entry)
-  && /writeWorkRatio\(\(event\.clientY - desk\.top\) \/ desk\.height, false, false\)/.test(entry)
+assert(/const splitter = \$\('worksplitter'\)/.test(deskLayout)
+  && /splitter\.addEventListener\('pointerdown'/.test(deskLayout)
+  && /splitter\.addEventListener\('pointermove'/.test(deskLayout)
+  && /--upper-work-height/.test(deskLayout)
+  && /writeWorkRatio\(\(event\.clientY - desk\.top\) \/ desk\.height, false, false\)/.test(deskLayout)
   && /beginPlaybackVisualHold\(\);/.test(entry)
   && /function setResizeDeferred\(on\)[\s\S]*?resizeDirty/.test(barGrid),
   'one upper/lower splitter resizes the permanent workspaces and the roll defers rebuilds while moving');
-assert(/const MIXER_RESIZE_SETTLE_MS = 120;/.test(entry)
-  && /const scheduleDeskResize = \(\) => \{[\s\S]*?clearTimeout\(deskResizeSettleTimer\)/.test(entry)
-  && /window\.visualViewport\?\.addEventListener\('resize', scheduleDeskResize\)/.test(entry)
-  && /beginPlaybackVisualHold\(\);/.test(entry.slice(entry.indexOf('const scheduleDeskResize'))),
+assert(/const MIXER_RESIZE_SETTLE_MS = 120;/.test(deskLayout)
+  && /const scheduleDeskResize = \(\) => \{[\s\S]*?clearTimeout\(deskResizeSettleTimer\)/.test(deskLayout)
+  && /window\.visualViewport\?\.addEventListener\('resize', scheduleDeskResize\)/.test(deskLayout)
+  && /beginPlaybackVisualHold\(\);/.test(entry.slice(deskLayout.indexOf('const scheduleDeskResize'))),
   'window and visual-viewport resizing defer the final desk fit and protect playback visuals');
 const arrangementVisual = entry.slice(entry.indexOf('function followArrangementVisual('),
   entry.indexOf('/** Locate the visible arrangement cell', entry.indexOf('function followArrangementVisual(')));
 assert(!/offsetWidth/.test(arrangementVisual)
   && /not force a synchronous reflow/.test(arrangementVisual),
   'playback accent animation never forces a synchronous arrangement reflow');
-assert(/function fitStrips\(\)[\s\S]*?scheduleMarkClipped\(\)/.test(entry)
-  && /function scheduleMarkClipped\(\)[\s\S]*?requestIdleCallback/.test(entry),
+assert(/function fitStrips\(\)[\s\S]*?scheduleMarkClipped\(\)/.test(deskLayout)
+  && /function scheduleMarkClipped\(\)[\s\S]*?requestIdleCallback/.test(deskLayout),
   'nonessential clipping reads are deferred out of the panel-fold task');
 assert(/function notesOpenInLayout\([\s\S]*?layout\.notes[\s\S]*?layout\.view/.test(entry)
   && /const hasSongLayout = !!songLayouts\[id\];[\s\S]*?notesOpenInLayout\(songLayouts\[id\]\) === false[\s\S]*?setNotesFolded\(true, false\)/.test(entry),
@@ -2211,7 +2213,7 @@ assert(/function showStepSeq\(on\)[\s\S]*?scheduleStepSeqOpen\(\)/.test(entry)
 // mirror of the old one: a downward drag grows it and opens it when folded, and it is
 // an UPWARD drag that hands room back to the Mixer underneath. Pinned because getting
 // a sign wrong here inverts a gesture without breaking anything that throws.
-const notesDrag = /const edge = \$\('mixhead'\)[\s\S]*?\n\}\)\(\);/.exec(entry)?.[0] || '';
+const notesDrag = /const edge = \$\('mixhead'\)[\s\S]*?\n\}\)\(\);/.exec(deskLayout)?.[0] || '';
 assert(notesDrag.includes("const panel = $('notes')")
   && /startH = h\(panel\)/.test(notesDrag)
   && /startCollapsed && dy > 0\s*\?\s*MIN\.notes\(\) \+ dy\s*:\s*startH \+ dy/.test(notesDrag)
@@ -2224,7 +2226,7 @@ assert(notesDrag.includes("const panel = $('notes')")
 // The Arrangement keeps its original sense — its border moved from the Mixer's top
 // edge to the Notes panel's, but it is the same physical boundary, so a downward drag
 // still grows it. What changed is which panel it reopens on the way up.
-const arrDrag = /const edge = \$\('notes'\)[\s\S]*?\n\}\)\(\);/.exec(entry)?.[0] || '';
+const arrDrag = /const edge = \$\('notes'\)[\s\S]*?\n\}\)\(\);/.exec(deskLayout)?.[0] || '';
 assert(/startH = h\(\$\('arrange'\)\)/.test(arrDrag)
   && /const asked = startH \+ dy/.test(arrDrag)
   && /lanesIn\(asked\) < 1[\s\S]*?setArrangeCollapsed\(true\)[\s\S]*?userArrH = null/.test(arrDrag)
@@ -2236,19 +2238,19 @@ assert(/startH = h\(\$\('arrange'\)\)/.test(arrDrag)
 // run inside the fit: applyDesk writes the height a frame after the drag asks for it.
 assert(/keepLanePending = true;\s*\n\s*scheduleDeskFit\(\);/.test(arrDrag)
   && /keepLanePending = true;\s*\n\s*scheduleDeskFit\(true\);/.test(arrDrag)
-  && /function fitStrips\(\)[\s\S]*?applyDesk\(planDesk\(\)\)[\s\S]*?if \(keepLanePending\) \{[\s\S]*?keepLanePending = false;[\s\S]*?keepSelectedLaneVisible\(\);/.test(entry),
+  && /function fitStrips\(\)[\s\S]*?applyDesk\(planDesk\(\)\)[\s\S]*?if \(keepLanePending\) \{[\s\S]*?keepLanePending = false;[\s\S]*?keepSelectedLaneVisible\(\);/.test(deskLayout),
   'resizing the Arrangement scrolls the selected lane back into view after the fit');
 // Index arithmetic, not a rect: .arrrow measures from #arrange, so a rect would carry
 // the header with it. Nothing but rows goes into the scroller, which is what makes the
 // index reliable — see buildArrangement.
-assert(/function keepSelectedLaneVisible\(\)[\s\S]*?classList\.contains\('collapsed'\)\) return;/.test(entry)
-  && /findIndex\(\(el\) => el\.classList\.contains\('sel'\)\)[\s\S]*?if \(index < 0\) return;/.test(entry)
-  && /const top = index \* \(row \+ laneRowGap\(\)\);/.test(entry)
-  && /if \(bottom > grid\.scrollTop \+ view\) grid\.scrollTop = Math\.min\(bottom - view, top\);/.test(entry)
-  && /else if \(top < grid\.scrollTop\) grid\.scrollTop = top;/.test(entry),
+assert(/function keepSelectedLaneVisible\(\)[\s\S]*?classList\.contains\('collapsed'\)\) return;/.test(deskLayout)
+  && /findIndex\(\(el\) => el\.classList\.contains\('sel'\)\)[\s\S]*?if \(index < 0\) return;/.test(deskLayout)
+  && /const top = index \* \(row \+ laneRowGap\(\)\);/.test(deskLayout)
+  && /if \(bottom > grid\.scrollTop \+ view\) grid\.scrollTop = Math\.min\(bottom - view, top\);/.test(deskLayout)
+  && /else if \(top < grid\.scrollTop\) grid\.scrollTop = top;/.test(deskLayout),
   'the lane is found by index off the same row height and gap the snap uses, and a '
   + 'window too short for a whole row shows the lane\'s top rather than its feet');
-assert(/function syncArrangementLaneSelection[\s\S]*?const selected = el\.dataset\.lane === selectedLane;[\s\S]*?classList\.toggle\('sel', selected\)[\s\S]*?if \(reveal\) keepSelectedLaneVisible\(\)/.test(entry)
+assert(/function syncArrangementLaneSelection[\s\S]*?const selected = el\.dataset\.lane === selectedLane\(\);[\s\S]*?classList\.toggle\('sel', selected\)[\s\S]*?if \(reveal\) keepSelectedLaneVisible\(\)/.test(deskLayout)
   && /function selectLane\(key\)[\s\S]*?syncArrangementLaneSelection\(\{ reveal: true \}\)/.test(entry)
   && /function loadTrack\(id\)[\s\S]*?buildArrangement\(\);[\s\S]{0,300}?syncArrangementLaneSelection\(\{ reveal: true \}\)/.test(entry)
   && /function buildArrangement\(\)[\s\S]*?syncArrangementLaneSelection\(\);\s*\n\s*redrawSelection\(\)/.test(entry),
@@ -2257,14 +2259,14 @@ assert(/function selectLane\(key\)[\s\S]*?classList\.toggle\('selected', selecte
   'selecting an arrangement track highlights and reveals its channel whenever the Mixer is visible');
 assert(/function selectLane\(key\)[\s\S]*?voiceEditor\.isOpen\(\)[\s\S]*?voiceEditor\.laneKey[\s\S]*?voiceEditor\.laneKey !== key[\s\S]*?dismissVoiceEditor\(\)/.test(entry),
   'changing channel strips dismisses the previous lane\'s preset controls');
-assert(entry.includes("const FX_KEY = 'mash-mixer-fxh'")
-  && /let userFxH =/.test(entry)
-  && /effectsNaturalHeight[\s\S]*?userFxH != null/.test(entry)
-  && /function fitDevices\([\s\S]*?if \(userFxH != null\) return/.test(entry)
-  && /const byHand = [\s\S]*?userFxH != null/.test(entry),
+assert(deskLayout.includes("const FX_KEY = 'mash-mixer-fxh'")
+  && /let userFxH =/.test(deskLayout)
+  && /effectsNaturalHeight[\s\S]*?userFxH != null/.test(deskLayout)
+  && /function fitDevices\([\s\S]*?if \(fxHeight\(\) != null\) return/.test(entry)
+  && /const byHand = [\s\S]*?userFxH != null/.test(deskLayout),
   'Effects remembers a dragged height and keeps automatic fitting from overwriting it');
-assert(/const edge = \$\('devices'\)[\s\S]*?startCollapsed && dy < 0[\s\S]*?setDevicesFolded\(false, false\)[\s\S]*?userFxH = clampEffectsH/.test(entry)
-  && /const edge = \$\('devices'\)[\s\S]*?asked <= MIN\.devices\(\)[\s\S]*?setDevicesFolded\(true, false\)[\s\S]*?userFxH = null/.test(entry),
+assert(/const edge = \$\('devices'\)[\s\S]*?startCollapsed && dy < 0[\s\S]*?setDevicesFolded\(false, false\)[\s\S]*?userFxH = clampEffectsH/.test(deskLayout)
+  && /const edge = \$\('devices'\)[\s\S]*?asked <= MIN\.devices\(\)[\s\S]*?setDevicesFolded\(true, false\)[\s\S]*?userFxH = null/.test(deskLayout),
   'dragging upward on folded Effects opens and grows it, while dragging to its floor folds it');
 assert(!shell.includes('id="blocks"')
   && !/#timeline\.sections|#blocks \.blk/.test(shell)
@@ -2298,10 +2300,10 @@ assert(/#lowerwork \{[^}]*flex:\s*1 1 auto[^}]*min-height:\s*132px/s.test(shell)
 assert(shell.includes('#deskslack { display: none; }')
   && /#deskslack\.greedy \{[^}]*background: var\(--panel\)/s.test(shell),
   'the empty band is desk-coloured and exists only while it is the elastic one');
-assert(/function fitStrips\(\)[\s\S]*?if \(\$\('upperwork'\) && \$\('lowerwork'\)\)[\s\S]*?fitRack\(\);/.test(entry)
+assert(/function fitStrips\(\)[\s\S]*?if \(\$\('upperwork'\) && \$\('lowerwork'\)\)[\s\S]*?fitRack\(\);/.test(deskLayout)
   // The mixer check went with the sizing when fitRack was split out — it has to run in
   // places the full fit does not. See 'the rack tracks a shrink live' below.
-  && /function fitRack\(\) \{\s*if \(\$\('desk'\)\.dataset\.lowerView !== 'mixer'\) return;/.test(entry)
+  && /function fitRack\(\) \{\s*if \(\$\('desk'\)\.dataset\.lowerView !== 'mixer'\) return;/.test(deskLayout)
   && /function setLowerView\(next[\s\S]*?\$\('desk'\)\.dataset\.lowerView = view/.test(entry),
   'every fit reapplies the selected lower workspace before fitting its mixer or editor');
 const lowerViewSetter = entry.slice(entry.indexOf('function setLowerView(next'),
@@ -2311,17 +2313,17 @@ assert(/function laneForLowerView\(view\) \{\s*\n\s*if \(!track/.test(entry)
   && lowerViewSetter.indexOf("if (track && view !== 'none')") < lowerViewSetter.indexOf('syncNotesPanel()'),
   'the shell may restore its lower view before the asynchronous first song exists');
 assert(/function laneForLowerView\(view\)[\s\S]*?const wanted = view === 'pattern' \? 'kit' : 'roll';[\s\S]*?lane\.key === selectedLane[\s\S]*?editorFor\(lane\.key\) === wanted[\s\S]*?lanes\.find\(\(lane\) => editorFor\(lane\.key\) === wanted\)/.test(entry)
-  && /const viewLane = laneForLowerView\(view\);[\s\S]*?\$\('desk'\)\.dataset\.lowerView = view;[\s\S]*?if \(viewLane && viewLane !== selectedLane\) selectLane\(viewLane\);[\s\S]*?syncArrangementLaneSelection\(\{ reveal: true \}\);[\s\S]*?keepLanePending = true;/.test(lowerViewSetter),
+  && /const viewLane = laneForLowerView\(view\);[\s\S]*?\$\('desk'\)\.dataset\.lowerView = view;[\s\S]*?if \(viewLane && viewLane !== selectedLane\) selectLane\(viewLane\);[\s\S]*?syncArrangementLaneSelection\(\{ reveal: true \}\);[\s\S]*?keepLaneAfterFit\(\);/.test(lowerViewSetter),
   'Piano Roll selects a real pitched track, Pattern selects a drum track, and either '
   + 'workspace switch reveals that track in the arrangement before and after fitting');
 // The arrangement is snapped to whole lanes, so it can never be the flex:1 one — and
 // what it cannot use has to pass DOWN the chain rather than stopping at the band. It
 // used to stop there, which boxed the piano roll into its own content height with a
 // slab of dead desk under it whenever the mixer was folded.
-assert(/DESK_CHAIN\s*\.filter\(\(id\) => id !== 'arrange'\)\s*\.find\(/.test(entry),
+assert(/DESK_CHAIN\s*\.filter\(\(id\) => id !== 'arrange'\)\s*\.find\(/.test(deskLayout),
   'the arrangement takes lanes, not slack, and passes the rest to the effects panel');
 assert(/#desk\.cramped \{[^}]*overflow-y: auto/s.test(shell)
-  && /classList\.toggle\('cramped', cramped\)/.test(entry),
+  && /classList\.toggle\('cramped', cramped\)/.test(deskLayout),
   'a window too short for every minimum scrolls the desk — the footer is never clipped');
 assert(/footer \{[^}]*margin-top: auto/s.test(shell)
   && /footer \{[^}]*white-space:\s*nowrap[^}]*overflow:\s*hidden/s.test(shell)
@@ -2337,8 +2339,8 @@ assert(!/id="(?:pos|section)"/.test(shell)
   'the footer keeps the master peak but omits live beat and selection readouts');
 
 // ---- one minimum table, not six constants in five functions ----------------------
-const minBody = /const MIN = \{[\s\S]*?\n\};/.exec(entry)?.[0] || '';
-const wantBody = /const WANT = \{[\s\S]*?\n\};/.exec(entry)?.[0] || '';
+const minBody = /const MIN = \{[\s\S]*?\n\};/.exec(deskLayout)?.[0] || '';
+const wantBody = /const WANT = \{[\s\S]*?\n\};/.exec(deskLayout)?.[0] || '';
 assert(['timeline', 'arrange', 'mixer', 'notes', 'devices']
   .every((k) => new RegExp(`^\\s*${k}:`, 'm').test(minBody))
   && ['arrange', 'notes'].every((k) => new RegExp(`^\\s*${k}:`, 'm').test(wantBody))
@@ -2346,7 +2348,7 @@ assert(['timeline', 'arrange', 'mixer', 'notes', 'devices']
   && !entry.includes('function arrangementFloor')
   && !entry.includes('function capDevices'),
   'every per-panel minimum lives in one table; the 140px floor and the eight-lane "floor" are gone');
-assert(entry.includes('const deskPool = () => innerHeight')
+assert(deskLayout.includes('const deskPool = () => innerHeight')
   && !entry.includes('const pageChrome')
   && !/const deskPool[\s\S]{0,300}?\$\('devices'\)/.test(entry),
   'the pool is the window less the four things outside the desk — the effects panel is not chrome');
@@ -2355,7 +2357,7 @@ assert(entry.includes('const deskPool = () => innerHeight')
 // deviceRoom() used to subtract a hypothetical one-lane arrangement while fitStrips
 // measured the ceiling against the effects panel's live height. Two different worlds,
 // and the reason dragging the effects handle shrank the arrangement instead.
-assert(/function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(entry)
+assert(/function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(deskLayout)
   && notesRoomBody.includes('MIN.mixer()')
   && !notesRoomBody.includes('FADER_MIN')
   && !notesRoomBody.includes('laneRowHeight()'),
@@ -2363,16 +2365,16 @@ assert(/function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPa
 // And it cannot reach it by construction, not just by not mentioning it: the arrangement
 // height arrives as an ARGUMENT, so the handle trades rack for notes and the arrangement
 // stays exactly where it is.
-assert(/function notesRoom\(arrH = plannedArrangeHeight\(\)\)/.test(entry)
-  && /const clampDeviceH = \(value, max = notesRoom\(\)\) => clamp\(value, MIN\.notes\(\), max\);/.test(entry),
+assert(/function notesRoom\(arrH = plannedArrangeHeight\(\)\)/.test(deskLayout)
+  && /const clampDeviceH = \(value, max = notesRoom\(\)\) => clamp\(value, MIN\.notes\(\), max\);/.test(deskLayout),
   'the notes height is clamped between its own minimum and that room, nothing else');
-assert(/function planDesk[\s\S]*?let rackH = room - arrH - notesH/.test(entry),
+assert(/function planDesk[\s\S]*?let rackH = room - arrH - notesH/.test(deskLayout),
   'the arrangement and the notes panel are sized independently and the rack takes the difference');
 // The effects panel is not in the elastic chain — it takes its natural height or a
 // remembered manual height, and the Mixer yields room for either one.
-assert(/function planDesk[\s\S]*?const fxH = effectsNaturalHeight\(\);/.test(entry)
-  && /effectsNaturalHeight[\s\S]*?userFxH/.test(entry)
-  && /const byHand = [\s\S]*?userFxH != null/.test(entry)
+assert(/function planDesk[\s\S]*?const fxH = effectsNaturalHeight\(\);/.test(deskLayout)
+  && /effectsNaturalHeight[\s\S]*?userFxH/.test(deskLayout)
+  && /const byHand = [\s\S]*?userFxH != null/.test(deskLayout)
   && !/const DESK_CHAIN = \[[^\]]*'devices'/.test(entry),
   'Effects has a natural or dragged height outside the elastic chain, with Mixer give-up space');
 
@@ -2381,8 +2383,8 @@ assert(/function planDesk[\s\S]*?const fxH = effectsNaturalHeight\(\);/.test(ent
 // that it has. It never scrolls a strip body: the old floor reserved a whole
 // uncompressed strip precisely because .stripbody scrolls with no scrollbar, so a row
 // that went out of sight went without saying so.
-assert(entry.includes("const SHED_ORDER = ['effects', 'sends', 'eq']")
-  && /const shedClass = \(id\) => STRIP_PARTS\.find\(\(p\) => p\.id === id\)\.cls\.replace\('no-', 'shed-'\)/.test(entry),
+assert(deskLayout.includes("const SHED_ORDER = ['effects', 'sends', 'eq']")
+  && /const shedClass = \(id\) => STRIP_PARTS\.find\(\(p\) => p\.id === id\)\.cls\.replace\('no-', 'shed-'\)/.test(deskLayout),
   'the ladder sheds inserts, then sends, then EQ — named once, in the switches own ids');
 assert(/#rackwrap\.no-eq \.eqrow,\s*#rackwrap\.shed-eq \.eqrow,\s*#rackwrap\.no-sends \.sendrow,\s*#rackwrap\.shed-sends \.sendrow,\s*#rackwrap\.no-fx \.fxbtns,\s*#rackwrap\.shed-fx \.fxbtns \{ display: none; \}/.test(shell),
   'shed-* hides exactly what no-* hides, as a separate set of classes');
@@ -2438,10 +2440,10 @@ assert(/el\.style\.setProperty\('--fxrowsh', `\$\{slots \* SLOT_ROW - 4\}px`\)/.
 // a mix bus, every time with EQ and Sends off, where a channel body IS its chain — while a
 // chain shorter than the band left the master a stripe of empty desk that belonged to rows
 // it does not have.
-assert(/if \(s\.classList\.contains\('master'\)\) master = naturalHeight\(b\);[\s\S]*?else if \(s\.classList\.contains\('send'\)\) send = Math\.max\(send, naturalHeight\(b\)\);\s*else body = Math\.max\(body, naturalHeight\(b\)\);/.test(entry)
-  && /chrome: Math\.ceil\(Math\.max\(body, send\) \+ rest\) \+ 2,/.test(entry)
-  && /masterChrome: Math\.ceil\(master \+ rest\) \+ 2,/.test(entry)
-  && /root\.setProperty\('--bodyh', `\$\{rung\.body\}px`\)/.test(entry)
+assert(/if \(s\.classList\.contains\('master'\)\) master = naturalHeight\(b\);[\s\S]*?else if \(s\.classList\.contains\('send'\)\) send = Math\.max\(send, naturalHeight\(b\)\);\s*else body = Math\.max\(body, naturalHeight\(b\)\);/.test(deskLayout)
+  && /chrome: Math\.ceil\(Math\.max\(body, send\) \+ rest\) \+ 2,/.test(deskLayout)
+  && /masterChrome: Math\.ceil\(master \+ rest\) \+ 2,/.test(deskLayout)
+  && /root\.setProperty\('--bodyh', `\$\{rung\.body\}px`\)/.test(deskLayout)
   && /#masterslot \.stripbody,\s*\.strip\.send \.stripbody \{ height: auto; min-height: var\(--bodyh, auto\); \}/.test(shell)
   // A floor, so it lines up; and its own fader is what gives when its chain wants more
   // than the band. --faderh is a floor on every OTHER fader — left on the master's, a
@@ -2457,15 +2459,15 @@ assert(/if \(s\.classList\.contains\('master'\)\) master = naturalHeight\(b\);[\
 // can the rack hold that chain over a fader worth having. Never a comparison with what the
 // channels happen to be carrying, and never a reason to shed a block on sixteen other
 // strips. Whole when it goes, rather than half a chain behind a hidden scrollbar.
-assert(/const MASTER_FX_SHED = 'shed-masterfx';/.test(entry)
-  && /const masterShed = strips < rung\.masterChrome \+ FADER_MIN;/.test(entry)
-  && /wrap\.classList\.toggle\(MASTER_FX_SHED, masterShed\)/.test(entry)
-  && /while \(shed < SHED_ORDER\.length && strips < stripChromeAt\(shed\) \+ FADER_MIN\) shed\+\+;/.test(entry)
+assert(/const MASTER_FX_SHED = 'shed-masterfx';/.test(deskLayout)
+  && /const masterShed = strips < rung\.masterChrome \+ FADER_MIN;/.test(deskLayout)
+  && /wrap\.classList\.toggle\(MASTER_FX_SHED, masterShed\)/.test(deskLayout)
+  && /while \(shed < SHED_ORDER\.length && strips < stripChromeAt\(shed\) \+ FADER_MIN\) shed\+\+;/.test(deskLayout)
   && /#rackwrap\.shed-masterfx #masterslot \.master-fxbtns \{ display: none; \}/.test(shell)
   // Measured with the chain SHOWING, or the pass answers zero, puts it back, and hides
   // it again on the next one.
-  && /const had = \[\.\.\.SHED_ORDER\.map\(shedClass\), MASTER_FX_SHED\]/.test(entry)
-  && /wrap\.classList\.remove\(\.\.\.SHED_ORDER\.map\(shedClass\), MASTER_FX_SHED\)/.test(entry),
+  && /const had = \[\.\.\.SHED_ORDER\.map\(shedClass\), MASTER_FX_SHED\]/.test(deskLayout)
+  && /wrap\.classList\.remove\(\.\.\.SHED_ORDER\.map\(shedClass\), MASTER_FX_SHED\)/.test(deskLayout),
   'the master’s chain goes only when its own strip cannot hold it, and goes whole');
 // No strip collapses its body on its own any more. A channel body that vanished while
 // a send return still carried its device summary put those two faders on different
@@ -2476,12 +2478,12 @@ assert(!/\.stripbody \{ display: none; \}/.test(shell),
 assert(!/#rackwrap\.(squeezed|compact)|\.stripsum/.test(shell)
   && !/compactStripHeight|summaryChip|paintSummary|openFullStrips|classList\.(add|toggle)\('squeezed'/.test(entry),
   'nothing scrolls and no summary chip: a shed block is hidden outright, not squeezed');
-assert(/classList\.toggle\(shedClass\(id\), gone\.includes\(id\)\)/.test(entry)
+assert(/classList\.toggle\(shedClass\(id\), gone\.includes\(id\)\)/.test(deskLayout)
   && !/\.strip\.shed-/.test(shell),
   'the rung is a state of the whole rack, so every fader in it stays on one line');
 // The affordance the whole ladder rests on: it may hide a block because it says so.
-assert(entry.includes('function markShedParts(gone)')
-  && /b\.classList\.toggle\('shed', shed\)/.test(entry)
+assert(deskLayout.includes('function markShedParts(gone)')
+  && /b\.classList\.toggle\('shed', shed\)/.test(deskLayout)
   && /\[data-mixer-part-filter\] button\.shed \.lbl \{ text-decoration: line-through; \}/.test(shell)
   && /b\.dataset\.part = p\.id/.test(entry),
   'a block the desk hid is struck through on its own switch, distinct from one you turned off');
@@ -2500,37 +2502,37 @@ assert(entry.includes('function markShedParts(gone)')
 // asked for. Measured on the shipped song at 100: a 611px rack shows everything over a
 // 202px fader, a 451px rack drops the chain and keeps EQ and sends over 106px, and a 290px
 // rack is down to the fader at 101px.
-assert(entry.includes('const FADER_MIN = 100')
-  && entry.includes('const FADER_FLOOR = 34')
-  && /while \(shed < SHED_ORDER\.length && strips < stripChromeAt\(shed\) \+ FADER_MIN\) shed\+\+/.test(entry)
-  && /const fader = Math\.max\(FADER_FLOOR, strips - chrome\)/.test(entry)
+assert(deskLayout.includes('const FADER_MIN = 100')
+  && deskLayout.includes('const FADER_FLOOR = 34')
+  && /while \(shed < SHED_ORDER\.length && strips < stripChromeAt\(shed\) \+ FADER_MIN\) shed\+\+/.test(deskLayout)
+  && /const fader = Math\.max\(FADER_FLOOR, strips - chrome\)/.test(deskLayout)
   // The applied floor must never be LARGER than the one the shed loop settled for, or a
   // strip is handed more content than height and its body scrolls.
-  && /rackWant = [\s\S]{0,400}?chrome \+ FADER_MIN \+ rackPad\(\)/.test(entry),
+  && /rackWant = [\s\S]{0,400}?chrome \+ FADER_MIN \+ rackPad\(\)/.test(deskLayout),
   'the ladder sheds a block rather than squeeze the fader below a height you can hold');
 // The splitter may not hand the rack less than a fully shed strip. A rack that overflows
 // is CLIPPED, not scrolled, so past two thirds of the splitter's travel the bottom of
 // every strip — pan, mute, solo — left the screen with nothing saying it had.
-assert(/const lowerWorkFloor = \(\) => \(document\.querySelector\('\.strip\[data-lane\]'\)\s*\? h\(\$\('mixhead'\)\) \+ rackFloor\(\) : 0\)/.test(entry)
-  && /const clampWorkRatio = [\s\S]{0,600}?dataset\.lowerView === 'mixer'[\s\S]{0,200}?\(room - lowerWorkFloor\(\)\) \/ desk/.test(entry)
+assert(/const lowerWorkFloor = \(\) => \(document\.querySelector\('\.strip\[data-lane\]'\)\s*\? h\(\$\('mixhead'\)\) \+ rackFloor\(\) : 0\)/.test(deskLayout)
+  && /const clampWorkRatio = [\s\S]{0,600}?dataset\.lowerView === 'mixer'[\s\S]{0,200}?\(room - lowerWorkFloor\(\)\) \/ desk/.test(deskLayout)
   // The ask is stored unbounded, so a temporary squeeze ends: shrink the window and the
   // splitter rides up to keep the mixer whole, grow it back and the split returns.
-  && /const applyWorkRatio = \(\) => \{\s*const shown = clampWorkRatio\(upperWorkRatio\);/.test(entry)
-  && /function fitStrips\(\)[\s\S]{0,1200}?applyWorkRatio\(\);/.test(entry),
+  && /const applyWorkRatio = \(\) => \{\s*const shown = clampWorkRatio\(upperWorkRatio\);/.test(deskLayout)
+  && /function fitStrips\(\)[\s\S]{0,1200}?applyWorkRatio\(\);/.test(deskLayout),
   'the splitter stops where the mixer would start being cut off, and only bounds the ask');
 // Every number the ladder is steered by is measured at a NAMED rung rather than at
 // whichever one the rack is standing on, or the fit becomes a function of its own last
 // answer — a latch, where a short window once meant a short window forever.
-const atShedFn = /function atShed\(n, fn\)[^]*?\n\}/.exec(entry)?.[0] || '';
+const atShedFn = /function atShed\(n, fn\)[^]*?\n\}/.exec(deskLayout)?.[0] || '';
 assert(atShedFn.includes('wrap.classList.remove(...SHED_ORDER.map(shedClass), MASTER_FX_SHED)')
   && atShedFn.includes("wrap.classList.add(...SHED_ORDER.slice(0, n).map(shedClass), 'measuring')")
   && atShedFn.includes("wrap.style.setProperty('--faderh'")
   && atShedFn.includes('finally'),
   'measurements name the rung they want and always put the real one back');
-assert(/function measureRungAt\(n\) \{\s*return atShed\(n,/.test(entry)
-  && /chromeRungs = SHED_ORDER\.map\(\(_, i\) => measureRungAt\(i\)\)/.test(entry)
-  && /const stripChromeAt = \(n\) => stripRungAt\(n\)\.chrome;/.test(entry)
-  && /function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(entry)
+assert(/function measureRungAt\(n\) \{\s*return atShed\(n,/.test(deskLayout)
+  && /chromeRungs = SHED_ORDER\.map\(\(_, i\) => measureRungAt\(i\)\)/.test(deskLayout)
+  && /const stripChromeAt = \(n\) => stripRungAt\(n\)\.chrome;/.test(deskLayout)
+  && /function rackFloor\(\) \{ return bareChrome\(\) \+ FADER_FLOOR \+ rackPad\(\); \}/.test(deskLayout)
   && shell.includes('#rackwrap.measuring .strip { height: auto; min-height: 0; }'),
   'one chrome height per rung, measured off the ladder, and the floor is the last of them');
 // The strip's bottom IS the rack's bottom, at all times. --striph is a floor on the
@@ -2549,11 +2551,11 @@ assert(/\.strip \{[^}]*min-height: var\(--striph, auto\)/s.test(shell)
   && /#rackwrap\.measuring #rack,\s*#rackwrap\.measuring #masterslot \{ align-items: flex-start; \}/.test(shell)
   // The room the strips actually stand in, rather than the wrapper's height less a
   // reconstructed pad — which missed #rackwrap's bottom border by a pixel.
-  && /function rackInner\(\)[\s\S]*?rack\.clientHeight - px\(rack, 'paddingTop'\) - px\(rack, 'paddingBottom'\)/.test(entry)
-  && /sizeStrips\(Math\.floor\(Math\.max\(rackFloor\(\) - rackPad\(\), rackInner\(\)\)\)\)/.test(entry)
+  && /function rackInner\(\)[\s\S]*?rack\.clientHeight - px\(rack, 'paddingTop'\) - px\(rack, 'paddingBottom'\)/.test(deskLayout)
+  && /sizeStrips\(Math\.floor\(Math\.max\(rackFloor\(\) - rackPad\(\), rackInner\(\)\)\)\)/.test(deskLayout)
   // The one piece of the rack's chrome that is not inside #rack, and the pixel between
   // "the strip fills the rack" and "the strip is one taller than the rack it is in".
-  && /function rackPad\(\)[\s\S]*?wrap\.offsetHeight - wrap\.clientHeight/.test(entry),
+  && /function rackPad\(\)[\s\S]*?wrap\.offsetHeight - wrap\.clientHeight/.test(deskLayout),
   'the strips stretch to the rack, so the fader takes the slack and the bottom never floats');
 // The returns were the one group in the rack with no definite height, and every
 // `height: 100%` inside a strip — the fader, the meter, its bars — resolves against it:
@@ -2565,9 +2567,9 @@ assert(/#sendslot \{[^}]*align-items: stretch/s.test(shell),
 // and their feet are cut off. So the cheap half of the fit runs on every pointer move of
 // the splitter and on the leading edge of a window resize, and only the expensive half —
 // lane visibility, clipped names, the editors — waits for the gesture to end.
-assert(/function fitRack\(\) \{[\s\S]*?applyWorkRatio\(\);[\s\S]*?sizeStrips\(/.test(entry)
-  && /writeWorkRatio\(\(event\.clientY - desk\.top\) \/ desk\.height, false, false\);\s*(\/\/[^\n]*\n\s*)*fitRack\(\);/.test(entry)
-  && /const scheduleDeskResize = \(\) => \{[\s\S]{0,600}?fitRack\(\);/.test(entry),
+assert(/function fitRack\(\) \{[\s\S]*?applyWorkRatio\(\);[\s\S]*?sizeStrips\(/.test(deskLayout)
+  && /writeWorkRatio\(\(event\.clientY - desk\.top\) \/ desk\.height, false, false\);\s*(\/\/[^\n]*\n\s*)*fitRack\(\);/.test(deskLayout)
+  && /const scheduleDeskResize = \(\) => \{[\s\S]{0,600}?fitRack\(\);/.test(deskLayout),
   'the rack tracks a shrink live; only the expensive half of the fit waits for the gesture');
 // ---- one line for every fader ------------------------------------------------------
 // The foot is bottom-anchored, so pan, mute/solo and the limiter always landed
@@ -2579,13 +2581,13 @@ assert(/function fitRack\(\) \{[\s\S]*?applyWorkRatio\(\);[\s\S]*?sizeStrips\(/.
 // line without letting the band decide what their own extra row is allowed to be.
 assert(/\.strip \.stripbody \{[^}]*height:\s*var\(--bodyh, auto\)/s.test(shell)
   && /#masterslot \.stripbody,\s*\.strip\.send \.stripbody \{ height: auto; min-height: var\(--bodyh, auto\); \}/.test(shell)
-  && /const rung = stripRungAt\(shed\);/.test(entry)
-  && /root\.setProperty\('--bodyh', `\$\{rung\.body\}px`\)/.test(entry)
-  && /else body = Math\.max\(body, naturalHeight\(b\)\)/.test(entry)
-  && /body: Math\.ceil\(body\),\s*\n\s*master: Math\.ceil\(master\),/.test(entry)
+  && /const rung = stripRungAt\(shed\);/.test(deskLayout)
+  && /root\.setProperty\('--bodyh', `\$\{rung\.body\}px`\)/.test(deskLayout)
+  && /else body = Math\.max\(body, naturalHeight\(b\)\)/.test(deskLayout)
+  && /body: Math\.ceil\(body\),\s*\n\s*master: Math\.ceil\(master\),/.test(deskLayout)
   // The ladder bargains with the tallest strip, so a return whose summary row outweighs
   // the send rows still keeps a fader worth having; the BAND stays the channels'.
-  && /chrome: Math\.ceil\(Math\.max\(body, send\) \+ rest\) \+ 2,/.test(entry),
+  && /chrome: Math\.ceil\(Math\.max\(body, send\) \+ rest\) \+ 2,/.test(deskLayout),
   'every strip reserves the tallest body in the rack, so every fader starts on one line');
 // A body held at the last rung's height would report that height back and --bodyh would
 // only ever climb — the same latch --faderh is pinned to avoid.
@@ -2597,7 +2599,7 @@ assert(shell.includes('#rackwrap.measuring .stripbody { height: auto; }'),
 assert(/\.strip \.stripsub \{[^}]*line-height:\s*1;[^}]*margin:\s*3px 0 3px/s.test(shell)
   && /\.strip \.grp-tag \{[^}]*line-height:\s*1;[^}]*margin:\s*3px 0 3px/s.test(shell),
   'the group tag and the preset category are the same box, so every strip head is one height');
-assert(/const guess = \[230, 190, 150, 110\]\[n\];\s*\n\s*return \{ chrome: guess, masterChrome: guess, body: 0, master: 0, send: 0 \};/.test(entry)
+assert(/const guess = \[230, 190, 150, 110\]\[n\];\s*\n\s*return \{ chrome: guess, masterChrome: guess, body: 0, master: 0, send: 0 \};/.test(deskLayout)
   && !entry.includes('return [260, 220, 180, 140][n]')
   && !entry.includes('body.append(voiceRow(key))'),
   'the pre-build strip sizing estimate matches the selector-free channel layout');
@@ -2654,14 +2656,14 @@ assert(/\.arrrow \{[^}]*flex-direction:\s*column[^}]*height:\s*var\(--arrrow\)[^
   && /header\.append\(num, icon, top, bottom\)/.test(entry)
   && /bottom\.append\(gainWrap\)/.test(entry),
   'arrangement track headers use Logic-style identity and control rows');
-assert(/const laneRowGap = \(\) => px\(\$\('arrgrid'\), 'rowGap'\);/.test(entry)
-  && /const laneStackHeight = \(count\) => count \* laneRowHeight\(\)[\s\S]*?Math\.max\(0, count - 1\) \* laneRowGap\(\)/.test(entry)
-  && /const laneLanding = \(\) => px\(\$\('arrange'\), 'paddingBottom'\);/.test(entry)
-  && /const arrangeChrome = \(\) => h\(\$\('arrhead'\)\) \+ laneLanding\(\)[\s\S]*?borderBottomWidth/.test(entry)
-  && /const lanesIn = \(px, round = Math\.round\) => \{[\s\S]*?const body = px - arrangeChrome\(\)[\s\S]*?return round\(\(body \+ gap\) \/ \(row \+ gap\) \+ 1e-6\)/.test(entry)
-  && /const arrangeSnap = \(px, round = Math\.round\) => arrangeChrome\(\)[\s\S]*?laneStackHeight\(/.test(entry)
-  && /arrangeChrome\(\) \+ laneStackHeight\(ARR_AUTO_LANES\(\)\)/.test(entry)
-  && /const lane = laneRowHeight\(\) \+ laneRowGap\(\)/.test(entry),
+assert(/const laneRowGap = \(\) => px\(\$\('arrgrid'\), 'rowGap'\);/.test(deskLayout)
+  && /const laneStackHeight = \(count\) => count \* laneRowHeight\(\)[\s\S]*?Math\.max\(0, count - 1\) \* laneRowGap\(\)/.test(deskLayout)
+  && /const laneLanding = \(\) => px\(\$\('arrange'\), 'paddingBottom'\);/.test(deskLayout)
+  && /const arrangeChrome = \(\) => h\(\$\('arrhead'\)\) \+ laneLanding\(\)[\s\S]*?borderBottomWidth/.test(deskLayout)
+  && /const lanesIn = \(px, round = Math\.round\) => \{[\s\S]*?const body = px - arrangeChrome\(\)[\s\S]*?return round\(\(body \+ gap\) \/ \(row \+ gap\) \+ 1e-6\)/.test(deskLayout)
+  && /const arrangeSnap = \(px, round = Math\.round\) => arrangeChrome\(\)[\s\S]*?laneStackHeight\(/.test(deskLayout)
+  && /arrangeChrome\(\) \+ laneStackHeight\(ARR_AUTO_LANES\(\)\)/.test(deskLayout)
+  && /const lane = laneRowHeight\(\) \+ laneRowGap\(\)/.test(deskLayout),
   'arrangement resizing snaps to the rendered row stack, including its inter-row gap')
 // The landing under the last row is the panel's padding, not the scroller's. Inside
 // #arrgrid it was scroll content, so a mid-scroll arrangement spent it on the gap and
@@ -2674,8 +2676,8 @@ assert(/#arrange \{[^}]*padding-bottom:\s*var\(--arrgrid-pad\)/s.test(shell)
   && /--arrhead-h:\s*calc\(var\(--ctlh\) \+ var\(--arrhead-pad\) \* 2\)/.test(shell)
   && /--arrmax-lanes:\s*8/.test(shell)
   && /#arrhead \{[^}]*padding:\s*var\(--arrhead-pad\) var\(--rgut\) var\(--arrhead-pad\) var\(--foldx\)/s.test(shell)
-  && /const ARR_AUTO_LANES = \(\) => \{[\s\S]*?getPropertyValue\('--arrmax-lanes'\)[\s\S]*?Number\.isFinite\(n\) && n >= 1 \? n : 8/.test(entry)
-  && /return arrangeChrome\(\) \+ \$\('arrgrid'\)\.scrollHeight;/.test(entry),
+  && /const ARR_AUTO_LANES = \(\) => \{[\s\S]*?getPropertyValue\('--arrmax-lanes'\)[\s\S]*?Number\.isFinite\(n\) && n >= 1 \? n : 8/.test(deskLayout)
+  && /return arrangeChrome\(\) \+ \$\('arrgrid'\)\.scrollHeight;/.test(deskLayout),
   'the arrangement landing is fixed panel chrome, so every scroll position shows whole lanes')
 // The track separator. A pseudo-element in the gap, not a border: a border would add
 // height and put the panel back off its lane boundaries. `+` so it never draws above
@@ -4474,8 +4476,8 @@ assert(/let pianoRollFocusPending = null;/.test(entry)
   'opening the piano roll from a bar spends its pitch-and-time focus only after the lazy first build');
 assert(/function schedulePianoRollOpen\([\s\S]*?if \(!notesRollUp\(\) \|\| pianoRoll\.isOpen\(\)\) return/.test(entry)
   && /function setNotesFolded\([\s\S]*?const hasRoll = !laneHidesRoll\(selectedLane\);[\s\S]*?const needsBuild = !on && !pianoRoll\.isOpen\(\) && hasRoll;/.test(entry)
-  && /notes: \(\) => h\(\$\('notehead'\)\) \+ rollScopeH\(\) \+ DEV_MIN_ROLL/.test(entry)
-  && /function rollScopeH\(\) \{[\s\S]*?if \(now\) lastRollScopeH = now;[\s\S]*?return lastRollScopeH;/.test(entry),
+  && /notes: \(\) => h\(\$\('notehead'\)\) \+ rollScopeH\(\) \+ DEV_MIN_ROLL/.test(deskLayout)
+  && /function rollScopeH\(\) \{[\s\S]*?if \(now\) lastRollScopeH = now;[\s\S]*?return lastRollScopeH;/.test(deskLayout),
   'no roll is built for a channel that has none, and the panel floor survives its absence');
 const channelStrip = entry.slice(entry.indexOf('function channelStrip'), entry.indexOf('function sendStrip'));
 assert(channelStrip.includes('label: customTrackLabel(key) || preset?.label || lane.label')

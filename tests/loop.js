@@ -373,7 +373,21 @@ assert(run.camX > 0, 'reached a live, scrolling run');
 function plantLoop(ahead = 620) {
   run.loop = null;
   run.loopSpawned = false;
-  run.loopAt = run.camX + ahead;
+  // OPEN LANE, not merely 620px ahead.
+  //
+  // The ring is planted by hand into whatever stage the menus landed on, and
+  // that stage has geometry of its own: a raised road, a tunnel and the holes
+  // cut for its mouth and mid-span. A pad dropped on one of those is swept the
+  // frame it appears — correctly, by clearRouteHazards — and the test then
+  // fails with "no pad" for a reason that has nothing to do with loops. Walk
+  // the spot forward until it is clear of every route on the stage.
+  let at = run.camX + ahead;
+  for (let i = 0; i < 40; i++) {
+    const clash = run.routes.find((r) => at > r.x - 260 && at < r.x + r.w + 260);
+    if (!clash) break;
+    at = clash.x + clash.w + 300;
+  }
+  run.loopAt = at;
   let pad = null;
   for (let i = 0; i < 900 && !pad; i++) {
     run.player.iframes = 99;

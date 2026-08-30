@@ -29,13 +29,16 @@ import { installDom } from './dom-stub.js';
 const dom = installDom();
 
 const { RunState } = await import('../src/game/run.js');
-const { SPIKE_SURFACE_Y } = await import('../src/game/run.js');
+const { fillSurfaceY } = await import('../src/game/run.js');
+const { riseHeight } = await import('../src/game/terrain.js');
 const { save } = await import('../src/engine/save.js');
 const { Input } = await import('../src/engine/input.js');
 const { DemoBot } = await import('../src/game/bot.js');
 const { airtimeFor, PLAYER_X } = await import('../src/game/player.js');
 const { crossingLayout, CROSSING_HOP, CROSSING_TREAD, CROSSING_RISE, CROSSING_BOOST_CLEAR } = await import('../src/game/routes.js');
 const { makeObstacle } = await import('../src/game/entities.js');
+const { hasPitFill } = await import('../src/game/pitFill.js');
+const { GROUND_Y } = await import('../src/game/run.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { STAGES } = await import('../src/data/stages.js');
 
@@ -104,15 +107,41 @@ assert(CROSSING_HOP < airtimeFor(shortest) * shortest.speedMult,
   `the hop is clearable by the shortest (${shortest.id})`);
 
 // ---- the layout -------------------------------------------------------------
-const layout = crossingLayout(1000, 4, 240);
-assert(layout.stones.length === 3, `four jumps means three stones (${layout.stones.length})`);
-assert(Math.abs(layout.w - (4 * layout.hop + 3 * layout.tread)) < 0.001,
+const layout = crossingLayout(1000, 5, 240);
+assert(layout.stones.length === 4, `five jumps means four stones (${layout.stones.length})`);
+assert(Math.abs(layout.w - (5 * layout.hop + 4 * layout.tread)) < 0.001,
   'the break is exactly its hops and treads end to end');
 assert(Math.abs(layout.stones[0].x - (layout.x + layout.hop)) < 0.001,
   'the first stone is one hop past the near lip');
-const lastEnd = layout.stones[2].x + layout.stones[2].w;
+const lastEnd = layout.stones[3].x + layout.stones[3].w;
 assert(Math.abs((layout.x + layout.w) - (lastEnd + layout.hop)) < 0.001,
   'and the far lip is one hop past the last stone');
+
+// ---- WHERE A FATAL HOLE MAY STAND, on every stage in the game -----------------
+//
+// Not only the crossings. A pit kills and a death goes back to the last
+// checkpoint, so what a hole really costs is the stretch you replay to reach it
+// again — and that is a property of the STAGE DATA, not of the hazard. Twelve of
+// them were authored past ten seconds of replay and the worst charged
+// twenty-six, which is the complaint that produced this rule.
+//
+// It lives in this suite because the crossing is what made the cost impossible
+// to ignore, and because the arithmetic is the same for both: `at` minus the
+// checkpoint behind it, times the stage's own duration.
+const CHECKPOINTS = [0, 1 / 3, 2 / 3];   // 0 is the restart, which is a checkpoint too
+const REPLAY_MAX = 10;                   // seconds of play. One honest run-up.
+const REPLAY_MIN = 1.5;                  // and a beat to read the lane after a restore
+for (const stage of STAGES) {
+  for (const p of stage.pits || []) {
+    const prev = CHECKPOINTS.filter((c) => c <= p.at).pop();
+    const cost = (p.at - prev) * stage.durationSec;
+    const what = p.jumps ? 'crossing' : 'pit';
+    assert(cost <= REPLAY_MAX,
+      `${stage.id}: the ${what} at ${p.at} costs ${cost.toFixed(1)}s of replay, not more than ${REPLAY_MAX}`);
+    assert(cost >= REPLAY_MIN,
+      `${stage.id}: and lands ${cost.toFixed(1)}s after the checkpoint, not on top of it`);
+  }
+}
 
 // ---- stages that carry one ---------------------------------------------------
 const authored = STAGES.filter((s) => (s.pits || []).some((p) => p.jumps));
@@ -121,10 +150,10 @@ for (const stage of authored) {
   for (const p of stage.pits.filter((x) => x.jumps)) {
     assert(!p.w, `${stage.id}: a crossing derives its width rather than authoring one`);
     assert(p.jumps >= 3, `${stage.id}: a crossing is a sequence, not a hop (${p.jumps} jumps)`);
-    // Past the last checkpoint (2/3) and clear of the finishing straight, so a
-    // death hands back a short replay rather than the stage before it.
-    assert(p.at > 2 / 3 && p.at < 0.85,
-      `${stage.id}: the crossing sits just past a checkpoint (at ${p.at})`);
+    // The replay budget above covers where it stands; what is left is the one
+    // thing a crossing asks that an ordinary hole does not — it is several
+    // seconds wide, so it may not be laid against the tape.
+    assert(p.at < 0.85, `${stage.id}: clear of the finishing straight (at ${p.at})`);
   }
 }
 
@@ -133,17 +162,17 @@ save.load();
 save.newSlot(0, 0);
 
 const CROSS_AT = 0.70;
-const stageWith = (crossing) => ({
+const stageWith = (crossing, opts = {}) => ({
   id: 'crossing-test', cabinet: 'rhythm', index: 2,
   mission: { type: 'reach', desc: 'TEST' },
   challenge: { type: 'coins', n: 9999, desc: 'TEST' },
   durationSec: 90, applianceAt: 0.2, applianceHigh: false,
-  pits: crossing ? [{ at: CROSS_AT, jumps: 4 }] : null,
+  pits: crossing ? [{ at: CROSS_AT, jumps: 5, fill: opts.fill }] : null,
 });
 
 function newRun(heroId, opts = {}) {
   const run = new RunState({
-    stage: stageWith(true),
+    stage: stageWith(true, opts),
     team: [heroId],
     save,
     seed: 4242,
@@ -158,7 +187,7 @@ function newRun(heroId, opts = {}) {
 const probe = newRun('lorenzo');
 const stones = probe.routes.filter((r) => r.crossing);
 assert(probe.crossings.length === 1, `the run resolves the stage's crossing (${probe.crossings.length})`);
-assert(stones.length === 3, `and lays all three stones as routes (${stones.length})`);
+assert(stones.length === 4, `and lays every stone as a route (${stones.length})`);
 assert(stones.every((r) => r.kind === 'island'), 'the stones are ordinary islands, not a new kind of floor');
 assert(stones.every((r) => Math.abs(r.entry - CROSSING_RISE) < 0.001),
   `each stands the same small height above the lane (${CROSSING_RISE}px)`);
@@ -233,7 +262,7 @@ for (const hero of cast) {
   bot.releaseAll();
   Input.endFrame();
   assert(!run.dead && run.pitFails === 0,
-    `${hero.id} crosses four jumps of spikes (${run.pitFails} falls, ${(ticks / 60).toFixed(1)}s)`);
+    `${hero.id} crosses five jumps of spikes (${run.pitFails} falls, ${(ticks / 60).toFixed(1)}s)`);
 }
 
 // ---- the hole outlives its own near edge ---------------------------------------
@@ -278,14 +307,18 @@ for (const hero of cast) {
   run.player.grounded = true;
   run.update(TICK);
   assert(run.dead && !!run.pitDeath, 'standing in the break between stones is a pit death');
-  assert(run.pitDeath && run.pitDeath.spikes, 'and it is a spike death, not a sinking one');
+  assert(run.pitDeath && run.pitDeath.hard, 'and it is a hard landing, not a sinking one');
   // Fall him onto the teeth: he stops on the tips rather than passing through
   // them, and then he stays there.
   for (let i = 0; i < 120 && !(run.pitDeath && run.pitDeath.in); i++) run.update(TICK);
   assert(run.pitDeath && run.pitDeath.in, 'he reaches the bed');
   const restedAt = run.player.y;
-  assert(Math.abs(restedAt - SPIKE_SURFACE_Y) < 0.001,
-    `and stops on the tips the art draws (${restedAt.toFixed(1)} = ${SPIKE_SURFACE_Y})`);
+  // The teeth lie at a fixed depth below the FLAT groundline, and the road over
+  // a crossing is raised — so where he comes to rest is that depth plus the
+  // hill. Altitude is relative to the local floor, which is the raised one.
+  const want = fillSurfaceY('spikes') - riseHeight(run.playerWorldX());
+  assert(Math.abs(restedAt - want) < 0.001,
+    `and stops on the tips the art draws (${restedAt.toFixed(1)} = ${want.toFixed(1)})`);
   for (let i = 0; i < 60; i++) run.update(TICK);
   assert(Math.abs(run.player.y - restedAt) < 0.001,
     'teeth do not swallow him: no sink after the impact');
@@ -293,6 +326,67 @@ for (const hero of cast) {
   // most of a screen.
   assert(run.pitDeath.carry <= 40,
     `the death carries him a fall's distance, not half the crossing (${run.pitDeath.carry.toFixed(0)}px)`);
+}
+
+// ---- and a crossing never eats a road ------------------------------------------
+// The overlap guard in buildRoutes drops whatever a cabinet declares near a
+// crossing, silently, because two floors at once is not a thing the mechanism
+// can express. That is the right resolution and the wrong THING to happen: a
+// stage that quietly loses its staircase to a set piece has traded content for
+// content. Every stage in the game, built for real, against what its cabinet
+// declares.
+{
+  const { CABINET_BY_ID } = await import('../src/data/cabinets.js');
+  for (const stage of STAGES.filter((st) => (st.pits || []).some((p) => p.jumps))) {
+    const cab = CABINET_BY_ID[stage.cabinet];
+    const declared = (cab.islands || []).reduce((n, d) => n + Math.max(1, d.steps ?? 1), 0)
+      + (cab.forks || []).length + (cab.tunnels || []).length;
+    if (!declared) continue;
+    const run = new RunState({ stage, team: ['lorenzo'], save, seed: 1, difficulty: 1, onEnd: () => {} });
+    run.enter();
+    const built = run.routes.filter((r) => !r.crossing).length;
+    assert(built === declared,
+      `${stage.id}: the crossing leaves every road the cabinet declares (${built}/${declared})`);
+  }
+}
+
+// ---- the road climbs over it ---------------------------------------------------
+// Only the top half of any hole is ever on screen, so a crossing cut into the
+// flat lane is a groove. The rise is what makes it a pit — and it has to be in
+// the ground line every part of the game reads, not just in the drawing.
+{
+  const run = newRun('lorenzo');
+  const c = run.crossings[0];
+  const lip = riseHeight(c.x);
+  const mid = riseHeight(c.x + c.w / 2);
+  const away = riseHeight(c.x - 4000);
+  assert(lip > 10 && mid > 10, `the road stands up over the crossing (${lip.toFixed(0)}px)`);
+  assert(away === 0, 'and is back to the cabinet\'s own ground well away from it');
+  // Eased, not stepped: a wall at the lip is a thing you run into.
+  const ramp = riseHeight(c.x - 60);
+  assert(ramp > 0 && ramp < lip, `it ramps up rather than stepping (${ramp.toFixed(1)} -> ${lip.toFixed(0)})`);
+  // The stones ride up with it, or they would hang at the old lane height with
+  // the road climbing past them.
+  const stone = run.routes.find((r) => r.crossing);
+  assert(stone.topY < GROUND_Y - CROSSING_RISE + 1,
+    'and the stones sit on the raised line, not the flat one');
+}
+
+// ---- the works -----------------------------------------------------------------
+// The second hard fill. Same mechanism, different tone and a different surface:
+// a hero comes to rest on top of the wheels, which are set deeper than the teeth
+// because a gear is a body and not a point.
+{
+  const run = newRun('lorenzo', { fill: 'gears', startAt: CROSS_AT - 0.04 });
+  const plan2 = run.pitPlan.find((pp) => pp.crossing);
+  assert(plan2.fill === 'gears', 'a stage can name the works instead of the teeth');
+  run.camX = plan2.x - 700;
+  run.spawnScriptedPits();
+  const gapOb = run.obstacles.find((ob) => ob.live && ob.crossing);
+  assert(gapOb && gapOb.fill === 'gears', 'and the hole carries it');
+  assert(fillSurfaceY('gears') < fillSurfaceY('spikes'),
+    `the wheels stop him lower than the teeth do (${fillSurfaceY('gears')} vs ${fillSurfaceY('spikes')})`);
+  assert(hasPitFill('gears') && hasPitFill('spikes'), 'both hard fills are registered painters');
 }
 
 dom.reset?.();
