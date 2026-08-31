@@ -187,7 +187,13 @@ export const CABINETS = [
       // ground, which is neither a platform nor a lane — the bottom step is a
       // stride, and the reward is two steps up.
       { at: 0.07, dwell: 1.8, steps: 2, rise: 29, step: 33, topPrize: 'capShield' },
-      { at: 0.45, dwell: 4.0, steps: 4, rise: 29, step: 33, topPrize: 'capMagnet' },
+      // 0.46 rather than 0.45, and the tenth of a stage is the crossing's:
+      // plumber-2 cuts one at 0.36, a crossing owns a clear lane either side of
+      // itself, and the longer hop the stones are spaced at now put the far
+      // guard six pixels inside this staircase's mouth — which drops all four
+      // steps rather than shaving them. Ninety pixels of lane is what keeps
+      // both set pieces on the same stage.
+      { at: 0.46, dwell: 4.0, steps: 4, rise: 29, step: 33, topPrize: 'capMagnet' },
     ],
     // Converging forks: a road that leaves the lane, runs somewhere else for a
     // while, and eases back down to meet it. `prize` rides the high road and
@@ -439,8 +445,8 @@ export const CABINETS = [
       // a barrel slot below tier 2 so the rolling read arrives before stage 3.
       P(1, [{ t: 'campfire', dx: 0 }, coinArc(70)]),
       P(1, [{ t: 'barrel', dx: 0 }, coinArc(90)]),
-      // The boom barrier — roadwork on a racing stage, and the road's first
-      // ground-anchored duck (see OBSTACLES.boomBarrier).
+      // The razor hurdle — roadwork on a racing stage, low enough to invite a
+      // quick hop rather than another crate-sized jump (see OBSTACLES.boomBarrier).
       P(1, [{ t: 'boomBarrier', dx: 0 }]),
       P(2, [{ t: 'boomBarrier', dx: 0 }, { t: 'trafficCone', dx: 110 }]),
     ],
@@ -475,8 +481,8 @@ export const CABINETS = [
       // convention Plumber opened the spike plate with.
       P(0, [{ t: 'popSpikes', dx: 0 }]),
       P(1, [{ t: 'shooterDrone', dx: 0 }]),
-      // The security gate: a cabinet about the air finally asks for the duck
-      // at ground level (see OBSTACLES.boomBarrier).
+      // The security hurdle gives the cabinet a short ground-level hop between
+      // its airborne reads (see OBSTACLES.boomBarrier).
       P(1, [{ t: 'boomBarrier', dx: 0 }, coinLine(40)]),
       // Spread from Plumber/Speed: a glowing blade and a burning drum belong
       // under this sky as much as any lane's.
@@ -610,6 +616,13 @@ export const CABINETS = [
     mechanic: 'beat', // obstacles quantized to the beat; on-beat bonus
     sky: ['#202018', '#383828'], ground: '#484838', groundDark: '#303024',
     far: '#404030', hills: '#383828',
+    // TEETH. This cabinet's beat lane cuts its own holes on the grid
+    // (songs/rhythm.js), so a hole here is not an occasional set piece, it is
+    // half of what the stage is made of — and the one fill in the set that
+    // reads as lethal at a glance, standing still, from the lane, is the spike
+    // plate. The LCD pack draws its own row in ink on top (see lcdPack.ground);
+    // this is what the hole is filled with anywhere else the pack cycles to.
+    pitFill: 'spikes',
     music: RHYTHM.bank,
     beatCharts: RHYTHM.beatCharts,
     patterns: [
@@ -712,8 +725,8 @@ export const CABINETS = [
       // clock honest without the spawner needing to know about it.
       P(1, [{ t: 'printer', dx: 0 }, coinLine(50)]),
       P(2, [{ t: 'printer', dx: 0 }, { t: 'printer', dx: 130 }]),
-      // The parking barrier — the office finally guards its own car park, and
-      // Act III gets the ground-anchored duck (see OBSTACLES.boomBarrier).
+      // The parking hurdle — the office finally guards its own car park, and
+      // Act III gets the short jump (see OBSTACLES.boomBarrier).
       P(1, [{ t: 'boomBarrier', dx: 0 }]),
       P(2, [{ t: 'boomBarrier', dx: 0 }, { t: 'chair', dx: 130 }]),
       // The peel in the cafeteria (see PEEL_ONCE for the cap and the group):

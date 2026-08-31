@@ -95,6 +95,26 @@ assert(t.every((v) => v === false), 'overtime holds no plugs');
   assert(!threw, `the HUD draws in every run state without a clock (${threw || 'no throw'})`);
 }
 
+// Every banked checkpoint stays on the top timeline as a subtle notch contained
+// entirely within the line. Reaching the second must not replace the first.
+{
+  const real = globalThis.document.createElement('canvas').getContext('2d');
+  const fills = [];
+  const ctx = new Proxy(real, {
+    get(t, k) {
+      if (k === 'fillRect') return (...a) => { fills.push({ style: t.fillStyle, args: a }); return t.fillRect(...a); };
+      const v = t[k];
+      return typeof v === 'function' ? v.bind(t) : v;
+    },
+    set(t, k, v) { t[k] = v; return true; },
+  });
+  drawHud(ctx, mkRun(undefined, { distance: 75, checkpointMarkers: [25, 50], snapshot: { camX: 50 } }));
+  const markers = fills.filter((f) => f.style === 'rgba(16,20,28,0.55)');
+  assert(markers.length === 2 && markers[0].args.join() === '120,0,1,3'
+    && markers[1].args.join() === '240,0,1,3',
+  `the timeline retains two one-pixel checkpoint notches inside its 3px line (${markers.map((m) => m.args).join(' / ') || 'missing'})`);
+}
+
 // The frame is a third-of-a-pixel hairline, so colour alone cannot carry
 // banked-vs-live in the stage select row: the icon brightness has to differ
 // too, or an on-track plug looks exactly like one you already own. drawProp

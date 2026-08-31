@@ -118,5 +118,77 @@ assert(framingFor(DOUBLE, RISE).zoom === DESKTOP,
   'on desktop even a double jump from a slab leaves the zoom alone');
 setRestingZoom(TABLET);
 
+// ---- stepping off a sky road ------------------------------------------------
+//
+// The fall the camera used to lose. A hero who walks off the 168px sky road is
+// falling at 30px/s on the frame he leaves and reaches 520 half a second later;
+// the anchor's ease, written for a floor he is STANDING on, took the whole
+// 168px at 1650px/s and had the lane framed and waiting while he was still
+// thirty pixels above the top edge of the picture.
+//
+// This drives the same four lines updateCamera runs — the anchor's target, its
+// ease, fallLimit and the framing — so what it measures is the policy rather
+// than a copy of it.
+const { fallLead, fallLimit, easeFloor, easePan, screenYFor } = await import('../src/engine/camera.js');
+const SKY_ROAD = 168;         // cabinets.js: the sky fork's peak
+const TERMINAL_VY = -520, GRAVITY = 900, CAM_FOOTROOM = 6, DT = 1 / 60;
+
+// One fall, from a fully re-pinned anchor on the road down to the lane, with
+// `limited` choosing between the ease alone and the ease under fallLimit.
+function fall(zoom, limited) {
+  setRestingZoom(zoom);
+  let camFloorY = GROUND_Y - SKY_ROAD, camPan = 0, camZoom = zoom;
+  let y = SKY_ROAD, vy = 0, prevFeet = GROUND_Y - SKY_ROAD;
+  const frames = [];
+  for (let i = 0; i < 240; i++) {
+    vy = Math.max(TERMINAL_VY, vy - GRAVITY * DT);
+    y = Math.max(0, y + vy * DT);
+    const feetY = GROUND_Y - y, airborne = y > 0;
+    const falling = limited && airborne && GROUND_Y > camFloorY + 0.5;
+    const target = falling ? Math.min(GROUND_Y, feetY + fallLead(camZoom)) : GROUND_Y;
+    const eased = easeFloor(camFloorY, target, DT);
+    const next = falling && eased > camFloorY
+      ? Math.min(eased, fallLimit(camFloorY, feetY - prevFeet, camZoom, DT)) : eased;
+    const camV = (next - camFloorY) / DT;
+    camFloorY = Math.max(next, Math.abs(next - GROUND_Y) > 0.5 ? feetY - CAM_FOOTROOM : -Infinity);
+    prevFeet = feetY;
+    const want = framingFor(y, camFloorY - GROUND_Y);
+    camPan = easePan(camPan, want.pan, DT);
+    const feet = screenYFor(feetY, camZoom, camPan, camFloorY);
+    frames.push({ head: feet - HERO_DRAW_H * camZoom, feet, camV, heroV: -vy });
+    if (!airborne && Math.abs(camFloorY - GROUND_Y) < 0.5 && camPan < 0.5) break;
+  }
+  return frames;
+}
+
+for (const z of [DESKTOP, TABLET, PHONE]) {
+  const before = fall(z, false), after = fall(z, true);
+  // The bug, stated as the test that would have caught it.
+  assert(Math.min(...before.map((f) => f.head)) < 0,
+    `at ${z} the unlimited ease loses him off the top (head ${Math.min(...before.map((f) => f.head)).toFixed(0)})`);
+  // What the fall has to promise: he is IN the frame, all of him, all the way
+  // down. Head above the top edge, feet above the bottom one.
+  const head = Math.min(...after.map((f) => f.head));
+  const feet = Math.max(...after.map((f) => f.feet));
+  assert(head > 0 && feet < H,
+    `at ${z} he stays whole in the frame the entire fall (head ${head.toFixed(0)}, feet ${feet.toFixed(0)})`);
+  // And the second half of the promise: the camera is travelling WITH him, not
+  // ahead of him. Whatever it is doing, it is doing it at his own speed plus a
+  // small allowance — never the 1600px/s the old ease reached over a hero who
+  // had barely started moving.
+  const over = Math.max(...after.map((f) => f.camV - f.heroV));
+  assert(over < 340,
+    `at ${z} the anchor never outruns him by more than the catch-up (${over.toFixed(0)}px/s)`);
+  const wasOver = Math.max(...before.map((f) => f.camV - f.heroV));
+  assert(wasOver > 1000, `where it used to outrun him by ${wasOver.toFixed(0)}px/s`);
+  // He is not merely on screen but somewhere worth being: the ground he is
+  // dropping onto has to be in shot for most of the drop, which is what the
+  // lead buys over simply gluing him to the groundline.
+  const air = after.filter((f) => f.feet < H);
+  const seen = Math.max(...air.map((f) => (H - f.feet) / z));
+  assert(seen > 40, `at ${z} he can see ${seen.toFixed(0)}px of world below his feet on the way down`);
+}
+setRestingZoom(TABLET);
+
 console.log(failed ? 'CAMERA FRAMING: FAILED' : 'CAMERA FRAMING: PASSED');
 process.exit(failed ? 1 : 0);

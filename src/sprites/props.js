@@ -621,46 +621,87 @@ export const PROP_PAINTERS = {
     hzSparks(ctx, w * 0.72, slotY, Math.min(w, h) * 0.16, f, 8, 4, 3);
   },
 
-  // The boom barrier — Act I's ground-anchored duck (see OBSTACLES.boomBarrier).
-  // Authored FULL HEIGHT: the `overhang` branch in drawWorldEntity hands this
-  // painter the whole structure's box, post to beacon, and only the arm band
-  // (y 0.14h–0.41h of this drawing) is the hitbox. The post stands at the
-  // RIGHT edge — the arm reaches back over the lane toward the approaching
-  // hero, and the draw branch parks its contact ellipse under that edge.
-  // The 8-frame cycle is the beacon lamp breathing; the arm never moves —
-  // a rising gate would be a timing puzzle `action: 'duck'` cannot declare.
+  // The razor hurdle — a short ground-standing jump (registered under the legacy
+  // `boomBarrier` id; see OBSTACLES.boomBarrier).
+  // The whole drawing is the hitbox now: matching grey uprights, feet and rail
+  // form one low piece of ground furniture. Teeth point UP so the action reads
+  // as jump before the player has to infer anything from its height.
+  // The 8-frame cycle is warning light/electrical activity; the blade never
+  // moves — a rising gate would be a timing puzzle `action: 'duck'` cannot
+  // declare. Its teeth stop at the old arm's painted lower edge, preserving
+  // the forgiving visual clearance above the crouched hero.
   boomBarrier(ctx, w, h, frame = 0) {
+    const f = ((frame % 8) + 8) % 8;
     const p = hzPhase(frame, 8);
-    const armTop = h * 0.14, armBot = h * 0.41;
-    const armH = armBot - armTop;
-    // Post: ground to arm, with a small foot so it stands rather than floats.
-    hzBox(ctx, w * 0.7, h * 0.9, w * 0.3, h * 0.1, h * 0.02, '#333b46', HZ_INK, Math.max(0.2, w * 0.03));
-    hzBox(ctx, w * 0.78, armTop + armH * 0.3, w * 0.15, h - armTop - armH * 0.3, w * 0.02, '#454f5c', HZ_INK, Math.max(0.2, w * 0.03));
-    hzLine(ctx, '#5d6774', Math.max(0.2, w * 0.03), (c) => {
-      c.moveTo(w * 0.815, armBot + h * 0.06); c.lineTo(w * 0.815, h * 0.88);
+    const railTop = h * 0.31, railBot = h * 0.49;
+    const railH = railBot - railTop;
+    // Twin posts: same width, same feet, same grey value. They sit behind the
+    // rail so the upward teeth remain the first read, not two switches.
+    const postW = w * 0.13;
+    const postTop = railTop + railH * 0.3;
+    const postH = h - postTop;
+    const leftPostX = w * 0.04, rightPostX = w * 0.83;
+    for (const [px, footX] of [[leftPostX, w * 0.005], [rightPostX, w * 0.745]]) {
+      hzBox(ctx, footX, h * 0.9, w * 0.25, h * 0.1, h * 0.02,
+        '#333b46', HZ_INK, Math.max(0.2, w * 0.03));
+      hzBox(ctx, px, postTop, postW, postH, w * 0.02,
+        '#454f5c', HZ_INK, Math.max(0.2, w * 0.03));
+      hzLine(ctx, '#687482', Math.max(0.16, w * 0.018), (c) => {
+        c.moveTo(px + postW * 0.32, railBot + h * 0.055);
+        c.lineTo(px + postW * 0.32, h * 0.88);
+      });
+    }
+    // A dark structural rail with a continuous row of steel teeth on TOP. The
+    // old downward teeth said duck even after the frame became a hurdle; this
+    // silhouette says jump and keeps the opening beneath visually irrelevant.
+    const drawH = railH;
+    const bladeStart = w * 0.1;
+    const bladeEnd = w * 0.9;
+    const bladeW = bladeEnd - bladeStart;
+    const toothBase = railTop;
+    const toothTip = h * 0.035;
+    hzBox(ctx, bladeStart, railTop, bladeW, drawH, drawH * 0.12,
+      '#414b57', HZ_INK, Math.max(0.25, w * 0.035));
+    // A narrow warning inset keeps the roadwork ancestry without turning the
+    // whole object back into a harmless parking stripe.
+    hzBox(ctx, bladeStart + w * 0.035, railTop + drawH * 0.28, bladeW - w * 0.07, drawH * 0.22,
+      drawH * 0.04, '#c83b32', '#6d201e', Math.max(0.1, w * 0.012));
+    for (let i = 0; i < 5; i++) {
+      const x0 = bladeStart + bladeW * i / 5;
+      const x1 = bladeStart + bladeW * (i + 1) / 5;
+      hzPath(ctx, i % 2 ? '#aeb9c5' : '#d5dde5', '#232a34', Math.max(0.18, w * 0.022), (c) => {
+        c.moveTo(x0, toothBase);
+        c.lineTo((x0 + x1) * 0.5, toothTip);
+        c.lineTo(x1, toothBase);
+        c.closePath();
+      });
+    }
+    // Hot seam and a travelling spit of current: activity without a moving
+    // collision shape or an implied safe window.
+    hzLine(ctx, '#ff8a3d', Math.max(0.16, w * 0.018), (c) => {
+      c.moveTo(bladeStart + w * 0.02, toothBase);
+      c.lineTo(bladeEnd - w * 0.02, toothBase);
     });
-    // Arm: the striped band IS the danger read, so it carries its own heavy
-    // ink contour (this prop self-outlines — no shared rim). Drawn in the TOP
-    // three quarters of the hitbox band, leaving the bottom quarter as air —
-    // the same direction of slack artLift buys a flyer: the hero's crouched
-    // ART is taller than his crouched box, and a stripe flush on the box's
-    // underside made a clean duck read as a graze.
-    const drawH = armH * 0.75;
-    hzStripe(ctx, 0, armTop, w * 0.9, drawH, 0);
-    hzPath(ctx, null, HZ_INK, Math.max(0.25, w * 0.035), (c) => {
-      hzRR(c, 0, armTop, w * 0.9, drawH, drawH * 0.3);
+    const sparkX = bladeStart + bladeW * (0.5 + Math.sin(p) * 0.34);
+    hzGlow(ctx, sparkX, toothBase, w * 0.08, h * 0.035, '#ff9a42', 0.14 + 0.1 * Math.cos(p * 2));
+    hzSparks(ctx, sparkX, toothBase, Math.min(w, h) * 0.08, f, 8, 3, 2);
+    // Boxed hinge and post-mounted beacon. Keeping the lamp off the free tip
+    // removes the button/switch read; it is now plainly a warning attached to
+    // the machine holding the blade.
+    for (const hx of [leftPostX + postW * 0.5, rightPostX + postW * 0.5]) {
+      hzBox(ctx, hx - w * 0.065, railTop - h * 0.01, w * 0.13, drawH * 1.05,
+        w * 0.02, '#252c36', HZ_INK, Math.max(0.2, w * 0.028));
+      hzDot(ctx, hx, railTop + drawH * 0.52, w * 0.018,
+        '#a8b1bc', '#11151b', Math.max(0.1, w * 0.012));
+    }
+    const bx = rightPostX + postW * 0.5, by = railTop - h * 0.13;
+    const heat = 0.55 + 0.45 * Math.sin(p);
+    hzGlow(ctx, bx, by, w * 0.11, h * 0.07, '#ff4b35', 0.16 + 0.2 * heat);
+    hzBox(ctx, bx - w * 0.045, by - h * 0.035, w * 0.09, h * 0.07,
+      w * 0.018, heat > 0.45 ? '#ff5a3c' : '#842a24', HZ_INK, Math.max(0.16, w * 0.02));
+    hzLine(ctx, '#ffd9b0', Math.max(0.12, w * 0.014), (c) => {
+      c.moveTo(bx - w * 0.018, by - h * 0.012); c.lineTo(bx + w * 0.018, by - h * 0.012);
     });
-    // Pivot hub where arm meets post.
-    hzDot(ctx, w * 0.845, armTop + armH * 0.5, w * 0.07, '#2b323c', HZ_INK, Math.max(0.2, w * 0.03));
-    // Beacon on the free tip — a ROTATING lamp, the way roadwork beacons turn:
-    // the gleam orbits the dome through the 8 frames, so every frame is its own
-    // pose and the loop point is the orbit's own period. The +3px of art over
-    // the box in the draw branch exists for this cap.
-    const bx = w * 0.14, by = armTop - h * 0.05;
-    const heat = 0.5 + 0.5 * Math.sin(p);
-    hzGlow(ctx, bx, by, w * 0.16, h * 0.09, '#ff5a3c', 0.18 + 0.22 * heat);
-    hzDot(ctx, bx, by, w * 0.06, heat > 0.4 ? '#ff5a3c' : '#8a2f22', HZ_INK, Math.max(0.2, w * 0.03));
-    hzDot(ctx, bx + Math.cos(p) * w * 0.028, by + Math.sin(p) * h * 0.014, w * 0.018, '#ffd9b0');
   },
 
   // The green cactus from the bake-off's THORNS row, as an occasional skin on
@@ -956,10 +997,64 @@ export const PROP_PAINTERS = {
     stroke(ctx, '#e04848', Math.max(0.6, w * 0.14), (c) => { c.moveTo(w * 0.5, h * 0.6); c.lineTo(w * 0.76, h * 0.16); });
     plain(ctx, '#f6d33c', (c) => c.arc(w * 0.76, h * 0.16, w * 0.14, 0, Math.PI * 2));
   },
+  // THE BEAT BAR, and it is a STACK OF CHEVRONS because the answer to it is a
+  // jump.
+  //
+  // It used to be a pink lozenge — a shape that says "an obstacle is here" and
+  // nothing about what to do with it. Every other hazard in the game can afford
+  // that, because the instinct it wants is the one the player already has. This
+  // one is the beat cabinet's signature prop and it stands in a lane that now
+  // also cuts holes, so the two things a rhythm stage asks for are both "jump"
+  // and only one of them looks like it.
+  //
+  // Chevrons rather than one arrow. A single arrowhead on a shaft is the
+  // obvious drawing and at 8 world px wide it is a knob on a stick; three
+  // strokes with nothing between them have no shaft to be mistaken for
+  // anything, and repetition is what turns a direction into an instruction —
+  // the same reason a fire exit paints three and not one.
+  //
+  // IT LAUNCHES ON THE BEAT. `beatSync` pumps the box height with the song (see
+  // RunState.update) and the prop is bottom-anchored at the road, so the top of
+  // the box is what moves. The chevrons are spread across whatever height the
+  // box currently has, which means the whole stack rises AND opens out on the
+  // beat — three marks travelling up, rather than one shape breathing.
+  //
+  // The top one is lit. An even stack reads as a texture; one bright mark at
+  // the head of it gives the eye somewhere to travel to, and the direction of
+  // travel is the whole message.
   beatBar(ctx, w, h) {
-    const u = Math.max(w, h);
-    shape(ctx, '#e04898', u, (c) => rr(c, 0, 0, w, h, Math.min(w, h) * 0.3));
-    plain(ctx, '#f890c8', (c) => rr(c, w * 0.14, h * 0.08, w * 0.72, h * 0.22, h * 0.1));
+    const n = 3;
+    // Thickness measured VERTICALLY, and the chevron is the band between two
+    // parallel Vs offset by it. Drawn as one filled polygon rather than as a
+    // thick stroke under a thinner one: two round-capped strokes of different
+    // widths do not make an even border, they make a halo that bulges at the
+    // point and thins along the arms, which is what the first pass of this
+    // looked like. A filled band takes the shared contour (shape/ol) the same
+    // way every other prop in this file does, at the same weight.
+    const rise = w * 0.46;
+    const band = Math.max(1.2, w * 0.26);
+    // The stack spans the box EXACTLY: the top chevron's point is at y 0 and the
+    // bottom one's trailing edge is at y h. So `beatSync` growing the box
+    // spreads the three apart and lifts the point, and the lowest mark never
+    // creeps below the road it is standing on.
+    const step = (h - (rise + band)) / (n - 1);
+    const x0 = w * 0.06, x1 = w / 2, x2 = w * 0.94;
+    const chev = (i, fill) => {
+      const tip = i * step;
+      shape(ctx, fill, Math.max(w, h), (c) => {
+        c.moveTo(x0, tip + rise);
+        c.lineTo(x1, tip);
+        c.lineTo(x2, tip + rise);
+        c.lineTo(x2, tip + rise + band);
+        c.lineTo(x1, tip + band);
+        c.lineTo(x0, tip + rise + band);
+        c.closePath();
+      });
+    };
+    // Bottom up, so each mark's contour is overlaid by the one above it rather
+    // than printed across it — the stack reads as three things in front of each
+    // other instead of three outlines crossing.
+    for (let i = n - 1; i >= 0; i--) chev(i, i === 0 ? '#f890c8' : '#e04898');
   },
   barrel(ctx, w, h) {
     const u = Math.max(w, h);
@@ -3470,7 +3565,7 @@ const PROP_FPS = {
   // the table: below ~20 the eight tooth-steps read as a wobble rather than a
   // spin, which is the same failure the rotors had at 11.
   popSpikes: 9, campfire: 14, fireBarrel: 14, brazier: 12, floorSaw: 22,
-  // The barrier's cycle is only its beacon breathing — spike-plate slow.
+  // The razor hurdle's cycle is only its beacon/current breathing — spike-plate slow.
   boomBarrier: 10,
   drone: 24, shooterDrone: 24, droneEye: 12,
   // Bake-off candidates. The ramps run fast: a chevron chase reads as speed
@@ -3662,8 +3757,7 @@ const SELF_OUTLINED_PROPS = new Set([
   // and a pulsing light outer edge around the silhouette, which is what buys
   // the separation the red cactus gets for free from being red.
   'popSpikes', 'campfire', 'fireBarrel', 'brazier', 'floorSaw',
-  // The barrier's stripe band carries its own heavy ink contour, and the
-  // overhang draw branch bypasses the shared rim path anyway.
+  // The razor hurdle's rail and teeth carry their own heavy ink contour.
   'boomBarrier',
   'crate', 'pipe', 'zombieWalk', 'icicle',
   'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair', 'trafficCone',

@@ -127,43 +127,39 @@ for (const id of HAZARDS) {
   assert(early, `${id} appears at tier 1 or below somewhere, so a first run meets it`);
 }
 
-// --- the boom barrier ------------------------------------------------------
-// Act I's ground-anchored duck. Not one of the five standing hazards — its box
-// FLIES (fixed alt, no ground flag) even though its art stands on a post — so
-// it takes their contract with two clauses swapped: no propTall (the overhang
-// draw branch hands the painter the whole structure), and `action: 'duck'`.
+// --- the razor hurdle (legacy id boomBarrier) ------------------------------
+// A short, fixed ground hazard: the whole two-post drawing is its collision
+// box and the teeth point up, so art, geometry and `action: 'jump'` agree.
 {
   const bar = OBSTACLES.boomBarrier;
-  const drone = OBSTACLES.drone;
   assert(!!bar, 'boomBarrier is a registered obstacle');
-  assert(bar.action === 'duck', 'the barrier is cleared by ducking');
-  assert(!bar.ground, 'the barrier\'s box is NOT a ground def — a ground-standing duckable '
-    + 'would falsify the "roll always clears duckables" shortcut in RunState.collide');
-  assert(bar.alt === drone.alt,
-    `the arm's underside sits exactly at the drone's (${bar.alt}) — one duck read, two hazards`);
-  assert(bar.overhang === true, 'the barrier declares the overhang draw branch');
-  assert(bar.armored === true, 'pellets spark off the arm the way they do a drone');
-  assert(bar.breakable === false, 'nothing removes a barrier: the duck is the only answer');
+  assert(bar.action === 'jump', 'the hurdle is cleared by jumping');
+  assert(bar.ground === true && !bar.alt && !bar.overhang,
+    'the whole hurdle is a ground-standing collision box');
+  assert(bar.h === 9, 'the hurdle is substantially lower than crates and barrels');
+  assert(bar.h < worstJumpApex(), 'the lowest hero can clear the hurdle comfortably');
+  assert(bar.splitFeet === true, 'the hurdle keeps separate ground contacts instead of a false bottom rail');
+  assert(bar.armored === true, 'pellets spark off the rail');
+  assert(bar.breakable === false, 'nothing removes a hurdle: the jump is the only answer');
   assert(!bar.punt && !bar.slip && !bar.roll && !bar.falls && !bar.shoots && !bar.bob,
-    'the barrier is a structure: it does not move, shoot, slip or bob');
+    'the hurdle is a structure: it does not move, shoot, slip or bob');
   assert(!DEBRIS.boomBarrier, 'no debris for a thing that never breaks');
   assert(hasProp('boomBarrier'), 'the barrier has a vector painter');
   assert(propDetailScale('boomBarrier') === 2, 'authored at double internal detail');
   assert(propHazardRim('boomBarrier') === false,
-    'the barrier outlines itself — the overhang branch bypasses the shared rim anyway');
+    'the razor hurdle outlines its rail and teeth');
   assert(propTall('boomBarrier') === 1,
-    'no propTall: the overhang branch already hands the painter the full structure height');
+    'the hurdle art stays registered to its full collision height');
   const n = propFrames('boomBarrier');
   assert(n > 1, `the beacon breathes (${n} frames)`);
-  const artH = bar.alt + bar.h + 3; // the height the overhang branch draws at
-  const a = framePixels('boomBarrier', bar.w + 4, artH, 0);
-  const b = framePixels('boomBarrier', bar.w + 4, artH, n);
+  const a = framePixels('boomBarrier', bar.w, bar.h, 0);
+  const b = framePixels('boomBarrier', bar.w, bar.h, n);
   let diff = 0;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
   assert(diff === 0, `the barrier's ring closes: frame 0 and frame ${n} are identical`);
   assert(carries('speed', 'boomBarrier') && carries('neon', 'boomBarrier')
     && carries('plumber', 'boomBarrier'),
-    'all three Act I cabinets deal the barrier — the duck stops being drone-only');
+    'all three Act I cabinets deal the hurdle — the short jump recurs across themes');
   assert(carries('frost', 'boomBarrier') && carries('rhythm', 'boomBarrier')
     && carries('cardboard', 'boomBarrier') && carries('office', 'boomBarrier'),
     'and the barrier travels on — ski gate, crossing gate, toll gate, car park');

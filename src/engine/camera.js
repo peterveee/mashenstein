@@ -165,9 +165,51 @@ export const BG_FOLLOW = 0.42;
 // slow. A fall is the opposite: a hero who steps off a 200px road is travelling
 // at terminal velocity within half a second, and an anchor that eases down
 // politely leaves him below the bottom edge of the frame while he does it.
+//
+// That fast branch is only ever honest about where the anchor has to END UP.
+// How fast it may GET there is fallLimit's business, and off a sky road the
+// difference is the whole picture: 168px of anchor at k=14 moves 1650px/s on a
+// hero who is at that moment falling at 30, so the lane arrives while he is
+// still up where the road was — off the top of the frame.
 export function easeFloor(current, target, dt) {
   const k = target < current ? 4.5 : 14;
   return current + (target - current) * (1 - Math.exp(-k * dt));
+}
+
+// ---- falling off a road -----------------------------------------------------
+//
+// Where a FALLING hero sits in the frame, as a fraction of its height. The
+// groundline's own 232/270 is where he sits while he is standing on something,
+// and it is the wrong place to hold him while he drops: it leaves 19 world px
+// under his feet, so the thing he is falling onto only appears in the last
+// tenth of a second. At 0.45 he keeps the upper half of the frame and the lane
+// below him is visible for the whole descent.
+export const FALL_LEAD_AT = 0.45;
+
+// The world distance the anchor leads a falling hero's feet by to put him
+// there. Divided by the zoom because the fraction above is a FRAME position:
+// the same 0.45 on a phone and on a monitor, whatever the world costs.
+export function fallLead(z) { return (GROUND_Y - H * FALL_LEAD_AT) / z; }
+
+// How much faster than the hero himself the anchor may travel to take up that
+// lead, in SCREEN px per second. This is the number the whole fall hangs on.
+//
+// The anchor cannot reframe a falling hero without moving faster than he
+// falls — that is what reframing IS — so the question is never whether it
+// outruns him but by how much, and the answer has to be small enough to read
+// as the camera settling rather than as the world being yanked. 300px/s is
+// about a ninth of the frame per second: over the third of a second it takes
+// to spend the lead it is barely visible, and it is two hundred times less
+// than the 1650px/s an unlimited ease reaches on the frame the hero steps off.
+const FALL_CATCHUP = 300;
+
+// The furthest down the anchor may move this frame: however far the hero fell,
+// plus that allowance. `drop` is his feet's own world descent since the last
+// frame — pass it and the anchor is measured against the hero rather than
+// against the clock, so a fall at terminal velocity and a fall that has barely
+// started are both framed the same way.
+export function fallLimit(current, drop, z, dt) {
+  return current + Math.max(0, drop) + (FALL_CATCHUP / z) * dt;
 }
 
 // The framing a hero `y` px above the ground needs: how far to crane, and what

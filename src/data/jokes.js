@@ -6,16 +6,21 @@ export const FAIL_MESSAGES = [
   'DEFEATED BY GEOMETRY',
   'TOO HEROIC FOR CURRENT RAM',
   'GRAVITY REMAINS UNDEFEATED',
-  'A BARREL HAS WON THE ARGUMENT',
   'UNPLUGGED FOR SCHEDULED MAINTENANCE',
   'THE FLOOR FILED A COMPLAINT',
   'RUNNING WAS THE EASY PART',
   'THE ARCADE REGRETS THIS OUTCOME',
 ];
 
-// Falling in a hole gets its own pool. The general list is written for "you
-// were hit by something" — a barrel winning an argument is not what happened
-// when the floor simply stopped — and a fatal pit is the death a player sees
+// Source-specific lines only appear when that source actually caused the hit.
+// Keep these out of FAIL_MESSAGES: a generic death cannot claim a particular
+// object won an argument when the player may have hit something else entirely.
+export const HAZARD_FAIL_MESSAGES = {
+  barrel: ['A BARREL HAS WON THE ARGUMENT'],
+  fireBarrel: ['A BARREL HAS WON THE ARGUMENT'],
+};
+
+// Falling in a hole gets its own pool. A fatal pit is the death a player sees
 // most often on the stages that have them, so it is the one that most needs
 // more than one line to say.
 //

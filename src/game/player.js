@@ -208,6 +208,13 @@ export class Player {
     this.fallFace = false;
     this.slideT = 0;      // ice landing slide (visual/control feel)
     this.landedT = 0;     // landing squash timer (visual only)
+    // Seconds since this hero's death face started, or null while alive. The
+    // face is a three-beat animation (toons.js DEATH_FACE_TIMING) and the run
+    // is the only thing that knows when the beat begins, which is NOT always
+    // the killing frame: a pit death starts it on ARRIVAL, so the fall keeps
+    // its startled face all the way down and the spirals land with the crunch.
+    // Visual only, and null-not-zero because zero is a valid first frame.
+    this.deathT = null;
     // The incoming hero's arrival, set by whoever ran them through a portal.
     // Visual only, and deliberately NOT cleared by setHero: setHero is the
     // thing that starts it. See drawHeroSprite.

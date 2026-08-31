@@ -3,7 +3,7 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { RunState } = await import('../src/game/run.js');
+const { RunState, FINISH_CELEBRATION_POSE } = await import('../src/game/run.js');
 const { Player } = await import('../src/game/player.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { HERO_SPRITES } = await import('../src/sprites/heroes.js');
@@ -90,6 +90,8 @@ assert(HEROES.every((h) => TOON_SPECS[h.id]),
 assert(ACTIVE_CELEBRATION_STYLE === 'reworked', 'results-screen celebrations default to the approved rework');
 assert(ACTIVE_LOCOMOTION_STYLE === 'enhanced', 'jump and duck default to the improved motion');
 assert(ACTIVE_LIMB_STYLE === 'snap', 'the run and jump default to the ported limb spec');
+assert(FINISH_CELEBRATION_POSE.kind === 'celebrate' && FINISH_CELEBRATION_POSE.headTurn === 0,
+  'the flag-pole celebration clears the inherited run face angle');
 
 // The limb styles are ONE painter shared by seven heroes plus a pose-level
 // override, so the failure mode is not "the run looks wrong" — it is one hero,

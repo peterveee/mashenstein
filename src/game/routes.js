@@ -106,7 +106,14 @@ export const ROUTE_CLEAR = 2.2;
  * instead (CROSSING_BOOST_CLEAR). tests/spike-crossing.js is all of this, hero
  * by hero, and it is the file to run before either number is touched.
  */
-export const CROSSING_HOP = 0.30;
+// The hop was 0.30 and the crossing read as a rhythm rather than a set of
+// jumps: at three-fifths of a tread the stones were closer together than they
+// were wide, and the sequence could be run at one cadence without ever aiming.
+// 0.38 is two thirds of the tread — a gap plainly wider than the last one, a
+// hole a whole hop and a half longer end to end, and still two thirds of even
+// Grumpos' 0.57s arc, which leaves the shortest jumper in the cast eleven
+// frames of stone to take off from.
+export const CROSSING_HOP = 0.38;
 export const CROSSING_TREAD = 0.52;
 /**
  * How much lane a crossing owns in FRONT of its near lip, in seconds.

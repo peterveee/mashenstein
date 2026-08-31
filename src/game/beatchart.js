@@ -3,14 +3,74 @@
 // the same placement and validation code can run in deterministic tests.
 import { makeObstacle, makePickup, OBSTACLES } from './entities.js';
 import { HEROES } from '../data/heroes.js';
+import { worstAirtime } from './spawner.js';
 import { BASE_JUMP_V, GRAVITY, HEAVY_GRAVITY_MULT, PLAYER_W } from './player.js';
 
 const REQUIRED_ACTIONS = new Set(['jump', 'duck', 'ability']);
-const ACTION_TYPES = { jump: 'beatBar', duck: 'drone', ability: null };
+const ACTION_TYPES = { jump: 'beatBar', duck: 'drone', ability: null, pit: 'gap' };
 const COIN_ALT = 10;
 const ACTION_MARGIN = 2;
+// How wide the judge's on-beat window is, in beats either side of the line.
+// It lives here rather than in the judge because the chart has to be authored
+// against it: a hole the player can fall into WHILE being scored on beat is a
+// chart that disagrees with its own scoreboard. See pitWindowBeats.
+export const ON_BEAT_WINDOW = 0.18;
+// A CHART PIT is a hole in the loop, and its width is in BEATS of lane travel
+// rather than pixels — the same argument crossingLayout makes in game/routes.js
+// for sizing stones in seconds. The chart is a musical object; a fixed pixel
+// width would be a different fraction of a jump at every speed this cabinet is
+// ever run at, and the whole point of a beat lane is that the answer does not
+// change. Half a beat at RHYTHM BANKRUPTCY's 124bpm and base speed comes out at
+// 56px, which is the game's ordinary gap — that is the number this was chosen
+// to land on, not a coincidence.
+export const PIT_BEATS = 0.5;
+// A COIN RUN'S SUBDIVISION. Four to the beat is sixteenths, which is the fastest
+// figure this song's own parts play and the fastest a running hero can take a
+// row of pickups without the cue turning into a buzz — the coin sting climbs a
+// step per coin off the combo (see RunState.collect), so a run of four is a
+// four-note fill in the song's own time rather than one sound repeated.
+export const COIN_DIV = 4;
+// THE FILLS THIS CABINET PLAYS, rarest last. A coin slot is a quarter by
+// default — one coin on the line, which is most of them — and `run`/`div` turn
+// it into a figure. The 32nd is eight coins fourteen world px apart at this
+// cabinet's tempo and speed, which lands on COIN_GAP, the pitch every other
+// coin run in the game is laid at; the shared number is what keeps a fill
+// reading as coins rather than as a bar of pink.
+export const COIN_FILLS = Object.freeze({
+  eighth: { run: 2, div: 2 },
+  sixteenth: { run: 4, div: 4 },
+  thirtysecond: { run: 8, div: 8 },
+});
+// HOW MUCH ROAD A COIN RUN LEAVES IN FRONT OF A HOLE, in seconds of travel.
+//
+// It is `pitClearance`'s own window (spawner.js: the default 0.25s reaction
+// times 2.4), converted to seconds so it can be checked on a chart that has a
+// tempo but no speed. The rule it enforces is the one spawnScriptedPits argues
+// at length and that a single coin on the beat grid could never break: the lips
+// of a hole are the two places the player does not choose anything, so a row of
+// pickups running up to one is a lure toward a fatal hazard. A coin ON the beat
+// is always more than a beat clear of the nearest lip; a run of four is three
+// quarters of a beat longer, which is enough to reach.
+export const COIN_RUN_PIT_CLEAR_SEC = 0.25 * 2.4;
+// EMPTY LANE AFTER A RESYNC, in beats, and it is the one number the spawner and
+// the judge must agree on: the spawner lays nothing inside it and the judge
+// scores nothing inside it. Two beats is a beat to hear the clock and a beat to
+// move — enough for a bar you jump, and not enough for a hole. A stage cut with
+// holes gets four, because a checkpoint restore drops the player back into the
+// lane already running and stages.js's own rule for where a fatal hole may
+// stand is that it lands at least a second and a half after the restore, never
+// on top of it. Four beats at 124bpm is 1.9s.
+export const LANE_RUNWAY_BEATS = 2;
+export const PIT_LANE_RUNWAY_BEATS = 4;
 const REQUIRED_GAP_BEATS = Object.freeze({
   jumpJump: 2, jumpDuck: 2, duckJump: 1, duckDuck: 1,
+  // A HOLE IS A JUMP THAT CANNOT BE SHORTENED, so it takes the jump's spacing on
+  // both sides. The one asymmetry is the pair either side of a landing: coming
+  // OUT of a hole the hero is still in the air a good part of the next beat, so
+  // a duck one beat later is an input he has no feet on the ground to make
+  // (pitDuck: 2) — while ducking and then jumping a beat later is the same
+  // ground-to-air move duckJump already allows.
+  jumpPit: 2, pitJump: 2, pitPit: 2, pitDuck: 2, duckPit: 1,
 });
 
 function finiteNumber(n) { return typeof n === 'number' && Number.isFinite(n); }
@@ -35,6 +95,46 @@ export function snapToBeatGrid(worldX, originX, pxPerBeat) {
   return originX + Math.round((worldX - originX) / pxPerBeat) * pxPerBeat;
 }
 
+/**
+ * A chart pit's geometry at a given lane speed.
+ *
+ * `w` is the hole. `approach` is how far past the input position its near lip
+ * stands, and it is HALF THE SLACK rather than a clearance the way every other
+ * action's approach is: the hero takes off at the action point and the least
+ * airborne hero in the cast (worstAirtime — B-33P's arc under Grumpos' gravity,
+ * which is nobody) travels `travel` before his feet are back down, so centring
+ * the break in that flight hands the player the same margin for jumping early
+ * as for jumping late. That symmetry is the whole reason a hole can sit on a
+ * beat grid at all: the grid is a line, and a hazard whose only fair takeoff is
+ * on one side of it is not on the beat, it is just before it.
+ */
+export function pitLayout(speed, bpm, beats = PIT_BEATS) {
+  const pxPerBeat = speed * 60 / (bpm || 120);
+  const w = pxPerBeat * beats;
+  const travel = worstAirtime() * speed;
+  return { beats, w, approach: Math.max(PLAYER_W, (travel - w) / 2) };
+}
+
+/**
+ * Half the takeoff slack a pit of this width leaves, in BEATS.
+ *
+ * Speed cancels — both the flight and the hole scale with it — so this is a
+ * property of the chart and its tempo alone, which is what makes it something
+ * the validator can check. THE CONTRACT: it must be at least ON_BEAT_WINDOW, or
+ * the cabinet can score a jump as on-beat and drop the player in the hole it
+ * was scored against.
+ */
+export function pitWindowBeats(beats = PIT_BEATS, bpm = 120) {
+  const beatSec = 60 / (bpm || 120);
+  return (worstAirtime() - beats * beatSec) / (2 * beatSec);
+}
+
+/** How much empty lane this chart is given after a start or a resync, in beats. */
+export function laneRunwayBeats(chart) {
+  return chart?.events?.some((e) => e.action === 'pit')
+    ? PIT_LANE_RUNWAY_BEATS : LANE_RUNWAY_BEATS;
+}
+
 /** Validate an authored chart and return a sorted, frozen copy. */
 export function validateBeatChart(chart, physics = {}) {
   if (!chart || !Number.isInteger(chart.loopBeats) || chart.loopBeats <= 0) {
@@ -51,11 +151,56 @@ export function validateBeatChart(chart, physics = {}) {
     }
     if (seen.has(raw.slot)) throw new Error(`duplicate beat chart slot: ${raw.slot}`);
     seen.add(raw.slot);
-    if (!['jump', 'duck', 'ability', 'coin'].includes(raw.action)) {
+    if (!['jump', 'duck', 'pit', 'ability', 'coin'].includes(raw.action)) {
       throw new Error(`unknown beat chart action: ${raw.action}`);
+    }
+    if (raw.action !== 'coin' && raw.every != null) {
+      // The judge reads the chart and the spawner reads the chart, and they
+      // agree because every slot means the same thing on every pass. A skipped
+      // JUMP would break that agreement — the lane would lay nothing and the
+      // scoreboard would still demand it — so the cadence is a coin's alone.
+      throw new Error(`only a coin fill may skip loops (slot ${raw.slot} is a ${raw.action})`);
     }
     if (raw.action === 'ability') {
       if (raw.type != null) throw new Error('ability beat events cannot name an obstacle type');
+    } else if (raw.action === 'coin') {
+      // A coin slot may be a RUN: `run: 4` lays four coins across the beat at
+      // `div` to the beat instead of one on the line. It has to stay inside its
+      // own beat — the grid is what keeps every coin clear of the lips either
+      // side of it, and a run that reached into the next slot would be laying
+      // pickups through whatever that slot is.
+      const n = raw.run ?? 1;
+      const div = raw.div ?? COIN_DIV;
+      if (!Number.isInteger(n) || n < 1) throw new Error(`coin run must be a positive integer: ${raw.run}`);
+      if (!Number.isInteger(div) || div < 1) throw new Error(`coin subdivision must be a positive integer: ${raw.div}`);
+      if ((n - 1) / div >= 1) throw new Error(`coin run at slot ${raw.slot} overruns its own beat (${n} at 1/${div})`);
+      // HOW OFTEN THE FIGURE PLAYS, in loop passes. The chart is fixed and
+      // repeats, so without this every fill fires every time round — which is
+      // fine for the common ones and wrong for a 32nd, whose whole character is
+      // being rare. Counted off the loop pass rather than drawn from the RNG:
+      // this cabinet's note says it never relies on a random pattern draw, and
+      // a figure that arrives on a schedule can be learned.
+      const every = raw.every ?? 1;
+      if (!Number.isInteger(every) || every < 1) {
+        throw new Error(`coin fill cadence must be a positive integer of loops: ${raw.every}`);
+      }
+      if (every > 1 && n === 1) throw new Error(`a single coin has no cadence to skip (slot ${raw.slot})`);
+    } else if (raw.action === 'pit') {
+      if (raw.type != null && raw.type !== 'gap') throw new Error('a pit beat event is a gap and nothing else');
+      const beats = raw.beats ?? PIT_BEATS;
+      if (!(typeof beats === 'number' && Number.isFinite(beats) && beats > 0)) {
+        throw new Error(`pit width must be a positive number of beats: ${raw.beats}`);
+      }
+      // Only checkable once the tempo is known, which is why BeatSpawner hands
+      // its bank's bpm down here. A bare validateBeatChart(chart) still checks
+      // shape and spacing; it just cannot check the window.
+      if (physics.bpm) {
+        const window = pitWindowBeats(beats, physics.bpm);
+        if (window < ON_BEAT_WINDOW) {
+          throw new Error(`pit at slot ${raw.slot} is wider than the on-beat window `
+            + `(${window.toFixed(3)} < ${ON_BEAT_WINDOW} beats of slack)`);
+        }
+      }
     } else if (REQUIRED_ACTIONS.has(raw.action)) {
       const type = raw.type || ACTION_TYPES[raw.action];
       if (!OBSTACLES[type] || OBSTACLES[type].action !== raw.action) {
@@ -68,9 +213,34 @@ export function validateBeatChart(chart, physics = {}) {
     if (!bySlot[slot]) throw new Error(`missing beat chart slot: ${slot}`);
   }
 
+  // A COIN RUN MAY NOT REACH A HOLE. Only checkable with a tempo, like the pit
+  // window above, and for the same reason: the geometry is in seconds and the
+  // chart is in beats. Both ends are speed-independent — the run's length, the
+  // pit's approach and the clearance all scale with the lane — so one check
+  // covers every speed the cabinet is ever run at.
+  if (physics.bpm) {
+    const beatSec = 60 / physics.bpm;
+    const clearBeats = COIN_RUN_PIT_CLEAR_SEC / beatSec;
+    const runs = bySlot.filter((e) => e.action === 'coin' && (e.run ?? 1) > 1);
+    const pits = bySlot.filter((e) => e.action === 'pit');
+    for (const r of runs) {
+      const tail = r.slot + ((r.run ?? 1) - 1) / (r.div ?? COIN_DIV);
+      for (const p of pits) {
+        // Where the near lip stands, in beats past the pit's own slot.
+        const lip = p.slot + pitWindowBeats(p.beats ?? PIT_BEATS, physics.bpm);
+        const gap = ((lip - tail) % chart.loopBeats + chart.loopBeats) % chart.loopBeats;
+        if (gap < clearBeats) {
+          throw new Error(`coin run at slot ${r.slot} runs up to the hole at slot ${p.slot} `
+            + `(${gap.toFixed(2)} beats of road, needs ${clearBeats.toFixed(2)})`);
+        }
+      }
+    }
+  }
+
   // Spacing is a collision-feasibility rule for physical jump/duck hazards.
   // Ability events are timing markers and impose no obstacle gap of their own.
-  const actionSlots = bySlot.filter((e) => e.action === 'jump' || e.action === 'duck').map((e) => e.slot);
+  const actionSlots = bySlot.filter((e) => e.action === 'jump' || e.action === 'duck'
+    || e.action === 'pit').map((e) => e.slot);
   const minGap = { ...REQUIRED_GAP_BEATS, ...(physics.minGapBeats || {}) };
   for (let i = 0; i < actionSlots.length; i++) {
     const a = bySlot[actionSlots[i]];
@@ -127,8 +297,9 @@ export function actionApproachPx(action, type, speed) {
 export class BeatSpawner {
   constructor({ chart, bank, react = 0.25, pitPlan = [], beatNow, playerWorldX,
     lookaheadBeats = 7, onPitAlign = null } = {}) {
-    this.chart = validateBeatChart(chart);
+    this.chart = validateBeatChart(chart, { bpm: bank?.bpm });
     this.bank = bank || null;
+    this.runwayBeats = laneRunwayBeats(this.chart);
     this.react = react;
     this.pitPlan = pitPlan;
     this.beatNow = beatNow || (() => null);
@@ -166,7 +337,7 @@ export class BeatSpawner {
       this.nextX = worldX;
       return false;
     }
-    this.cursorBeat = Math.ceil(unwrapped + 2);
+    this.cursorBeat = Math.ceil(unwrapped + this.runwayBeats);
     this.nextX = worldX;
     this.eventInstances = [];
     for (const pit of this.pitPlan || []) {
@@ -213,10 +384,13 @@ export class BeatSpawner {
       // starts use that same grid, then own a fixed two-beat action cadence.
       let actionBeat = Math.round(beat + (target - playerX) / pxPerBeat);
       const candidates = [];
-      const minBeat = Math.ceil(beat + 2);
+      const minBeat = Math.ceil(beat + this.runwayBeats);
       for (let n = Math.floor(actionBeat) - this.chart.loopBeats; n <= Math.ceil(actionBeat) + this.chart.loopBeats; n++) {
         const e = this.chart.events[((n % this.chart.loopBeats) + this.chart.loopBeats) % this.chart.loopBeats];
-        if (e?.action === 'jump' && n >= minBeat) candidates.push(n);
+        // A pit slot is a jump slot as far as a set piece is concerned: both ask
+        // for the same input, so a crossing may land on either and the one it
+        // lands on gets suppressed under it by _isSuppressed.
+        if ((e?.action === 'jump' || e?.action === 'pit') && n >= minBeat) candidates.push(n);
       }
       if (candidates.length) actionBeat = candidates.reduce((a, n) =>
         Math.abs(n - actionBeat) < Math.abs(a - actionBeat) ? n : a, candidates[0]);
@@ -287,23 +461,74 @@ export class BeatSpawner {
         continue;
       }
       const type = event.type || ACTION_TYPES[event.action];
-      const approach = this._approachPx(event.action, type, speed);
+      const pit = event.action === 'pit'
+        ? pitLayout(speed, this.bank?.bpm, event.beats) : null;
+      const approach = pit ? pit.approach : this._approachPx(event.action, type, speed);
       const x = actionX + approach;
-      const width = event.action === 'coin' ? 8 : (OBSTACLES[type]?.w || 8);
+      // Widest the slot can ever be, cadence ignored: the finish wall is an
+      // all-or-nothing boundary and must not admit a figure on the strength of
+      // this pass being a quiet one.
+      const coinRunW = event.action === 'coin'
+        ? ((event.run ?? 1) - 1) * (pxPerBeat / (event.div ?? COIN_DIV)) + 8 : 0;
+      const width = pit ? pit.w : (event.action === 'coin' ? coinRunW : (OBSTACLES[type]?.w || 8));
       if (x + width > stopX) {
         this.nextX = stopX;
         return;
       }
       if (!this._isSuppressed(actionX, event)) {
-        if (event.action === 'coin') {
-          const coin = makePickup('coin', actionX, COIN_ALT);
-          coin.chartEventId = id;
-          coin.chartAction = 'coin';
-          coin.chartSlot = event.slot;
-          coin.actionBeat = this.cursorBeat;
-          coin.actionX = actionX;
-          coin.formationId = id;
-          pickups.push(coin);
+        if (pit) {
+          // A HOLE THE LOOP CUTS, once every time round, on the grid.
+          //
+          // No coin sweep here, and that is arithmetic rather than an omission:
+          // the chart's resolution is one beat, the break is centred in a flight
+          // shorter than a beat, and the spacing table keeps every other action
+          // two beats away — so the nearest slot a coin can occupy is already
+          // clear of both lips. A coin on a lip is a lure toward a hole
+          // (spawnScriptedPits argues it at length); one on the far side is the
+          // landing paying you, which is the good version of the same beat.
+          const hole = makeObstacle('gap', x, {});
+          hole.w = pit.w;
+          // No `fill`. A chart pit is an ordinary hole and wears the cabinet's
+          // own material, the way every hole the Spawner lays does; naming one
+          // here would route it through the set-piece pass instead (see
+          // drawPitFills' ownOnly split) for no reason but that a chart cut it.
+          hole.chartEventId = id;
+          // 'jump', not 'pit'. The judge and the beat ribbon speak in INPUTS —
+          // a hole and a bar ask the player for the same thing, and a ribbon
+          // that drew them differently would be teaching a distinction the
+          // controls do not have.
+          hole.chartAction = 'jump';
+          hole.chartSlot = event.slot;
+          hole.actionBeat = this.cursorBeat;
+          hole.actionX = actionX;
+          obstacles.push(hole);
+          this.lastActionX = actionX;
+          this.lastActionKind = 'jump';
+        } else if (event.action === 'coin') {
+          // One coin on the line, or a RUN of them across it at `div` to the
+          // beat. Spaced off pxPerBeat rather than off COIN_GAP: these are notes
+          // before they are pickups, and a fixed pixel gap would be a different
+          // rhythm at every speed the cabinet runs at.
+          // The loop pass this beat falls in. Anchored to the heard clock's own
+          // zero, so a resync re-phases the cadence rather than preserving it —
+          // which is the right trade: the alternative is carrying a counter
+          // across a lane rebuild that has just thrown away everything else.
+          const pass = Math.floor(this.cursorBeat / this.chart.loopBeats);
+          const n = (event.every ?? 1) > 1 && pass % event.every !== 0 ? 1 : (event.run ?? 1);
+          const step = pxPerBeat / (event.div ?? COIN_DIV);
+          for (let i = 0; i < n; i++) {
+            const coin = makePickup('coin', actionX + i * step, COIN_ALT);
+            coin.chartEventId = n > 1 ? `${id}:${i}` : id;
+            coin.chartAction = 'coin';
+            coin.chartSlot = event.slot;
+            coin.actionBeat = this.cursorBeat;
+            coin.actionX = actionX + i * step;
+            // ONE formation for the whole run, so a hole's sweep takes it whole
+            // — half a run left hanging beside a lip is the fragment problem
+            // sweepCoinsAroundHole exists to prevent.
+            coin.formationId = id;
+            pickups.push(coin);
+          }
         } else {
           const ob = makeObstacle(type, x);
           ob.chartEventId = id;

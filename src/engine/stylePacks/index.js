@@ -1939,6 +1939,12 @@ function vhsPack(settings) {
 // post() does with blend modes (no per-pixel readback, so it stays cheap).
 const LCD_PANEL = '#96a479';   // backlit pea-green
 const LCD_INK = '#242a1a';     // switched-on segment
+// The backlight as it reaches the lane — bg() paints the band below the
+// groundline in it, so a hole clearing its own mouth has to put back exactly
+// this and not an olive of its own. It used to be '#8d9b70', which is darker
+// than the panel and therefore read as a lit strip: the break was the one place
+// on the road that looked switched ON.
+const LCD_PANEL_LIT = '#d2dcc2';
 function lcdPack(settings) {
   const reduced = settings && settings.reducedFlashing;
   return {
@@ -1992,15 +1998,58 @@ function lcdPack(settings) {
       const step = Math.round(camX / PITCH) * PITCH;
       ctx.fillStyle = 'rgba(36,42,26,0.5)';
       for (let x = -(step % PITCH); x < W; x += PITCH) ctx.fillRect(Math.round(x), GROUND_Y + 7, 8, 3);
+      // ---- THE HOLE, AND IT IS DRAWN RATHER THAN LEFT OUT ------------------
+      //
+      // Every other pack says "hole" by removing ground and letting the scenery
+      // show through the break. A segment panel cannot: its ground is a LINE
+      // and its background is the backlight, so a break in the line is a
+      // slightly emptier patch of the same pale green — which is what the beat
+      // lane's holes looked like on this cabinet, and they are fatal.
+      //
+      // So the panel states the hazard the only way a two-tone display can, by
+      // SWITCHING SEGMENTS ON. This pack's own rule for its printed art is that
+      // it must never mass up enough to be mistaken for a lit segment, "i.e.
+      // for something that can kill you" — teeth in ink are that sentence read
+      // forwards. It is the lane's own spike vocabulary (popSpikes, and the
+      // `spikes` pit fill), drawn in the panel's alphabet instead of in steel:
+      // the painter in game/pitFill.js works in pale greys with a hairline of
+      // ink round each tooth, and post() burns pale greys back toward the
+      // backlight, so the one fill in the set that reads as lethal at a glance
+      // reads here as nothing at all.
+      const MOUTH = 16;        // how far down the break is cleared of lane furniture
+      const TOOTH_PITCH = 9;   // the same pitch the steel row uses
+      const TOOTH_BASE = 15;   // the floor of the trap, above the fold at 19
+      const TOOTH_TIP = 4;     // tips clear of the lip, so they stand IN the hole
       for (const ob of obstacles || []) {
-        if (ob.live && ob.def && ob.def.isGap) {
-          const x = Math.round(ob.x - camX);
-          ctx.fillStyle = '#8d9b70';
-          ctx.fillRect(x, GROUND_Y, ob.w, 5);
-          ctx.fillStyle = LCD_INK;
-          ctx.fillRect(x, GROUND_Y, 2, 16);
-          ctx.fillRect(x + ob.w - 2, GROUND_Y, 2, 16);
+        if (!ob.live || !ob.def || !ob.def.isGap || ob.tunnel) continue;
+        const x = Math.round(ob.x - camX);
+        const w = Math.round(ob.w);
+        if (x + w < -4 || x > W + 4) continue;
+        // Unlit mouth: the lane's surface line and its dashes both stop at the
+        // lip. They used to run straight across the break, which is the one
+        // thing that can never happen — a road drawn over a hole is a road.
+        ctx.fillStyle = LCD_PANEL_LIT;
+        ctx.fillRect(x, GROUND_Y, w, MOUTH);
+        // The cut edges, full depth. A wall that stops after sixteen pixels is
+        // a notch; one that runs off the bottom of the frame is a shaft.
+        ctx.fillStyle = LCD_INK;
+        ctx.fillRect(x, GROUND_Y, 2, H - GROUND_Y);
+        ctx.fillRect(x + w - 2, GROUND_Y, 2, H - GROUND_Y);
+        // And the teeth. Quantized to WORLD x rather than to screen x so the
+        // row stands still in the hole as the panel steps past it.
+        const n = Math.max(2, Math.round((w - 4) / TOOTH_PITCH));
+        const stepW = (w - 4) / n;
+        ctx.fillRect(x + 2, GROUND_Y + TOOTH_BASE, w - 4, 2);
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const cx = x + 2 + stepW * (i + 0.5);
+          const half = Math.max(1.5, stepW * 0.42);
+          ctx.moveTo(cx - half, GROUND_Y + TOOTH_BASE);
+          ctx.lineTo(cx, GROUND_Y + TOOTH_TIP);
+          ctx.lineTo(cx + half, GROUND_Y + TOOTH_BASE);
+          ctx.closePath();
         }
+        ctx.fill();
       }
     },
     post(ctx, t) {

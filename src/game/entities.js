@@ -85,7 +85,7 @@ export const OBSTACLES = {
   switch:     { w: 8, h: 8,   sprite: 'battery', alt: 46, breakable: true, action: 'none', isSwitch: true, bob: true },
   tombstone:  { w: 11, h: 8,  sprite: 'tombstone', ground: true, breakable: true, action: 'jump' },
   zombie:     { w: 10, h: 14, sprite: 'zombieWalk', ground: true, breakable: true, action: 'jump', vx: -14, shamble: true },
-  beatBar:    { w: 8, h: 10,  sprite: null, ground: true, breakable: false, action: 'jump', beatSync: true },
+  beatBar:    { w: 8, h: 14,  sprite: null, ground: true, breakable: false, action: 'jump', beatSync: true },
   cardboardMonster: { w: 12, h: 9, sprite: 'cardboardMonster', ground: true, breakable: true, action: 'jump' },
   chair:      { w: 12, h: 10, sprite: 'chair', ground: true, breakable: true, action: 'jump', vx: -34, roll: true },
   printer:    { w: 12, h: 7,  sprite: 'printer', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true },
@@ -182,17 +182,12 @@ export const OBSTACLES = {
   brazier:    { w: 12, h: 14, sprite: 'brazier', ground: true, breakable: true, action: 'jump' },
   // The floor blade. Not breakable and not puntable for the obvious reason.
   floorSaw:   { w: 15, h: 8,  sprite: 'floorSaw', ground: true, breakable: false, action: 'jump', bedded: true },
-  // The boom barrier: Act I's ground-anchored duck. A striped arm across the
-  // lane at exactly the drone's underside (alt 13), so the duck that clears one
-  // clears the other — one read, two hazards. Fixed `alt` rather than
-  // `ground: true`, because a ground-standing duckable would falsify the
-  // "roll always clears duckables" shortcut in RunState.collide (the trap the
-  // trafficCone note warns about). Only the arm is the box; the post it hangs
-  // from is art, drawn ground-anchored through the `overhang` branch in
-  // drawWorldEntity, and cannot hit you. `armored` so pellets spark off it the
-  // way they do a drone; `breakable: false` because the duck must stay the only
-  // answer.
-  boomBarrier: { w: 16, h: 6, sprite: 'boomBarrier', alt: 13, armored: true, breakable: false, action: 'duck', overhang: true },
+  // The razor hurdle (legacy id `boomBarrier`): a short, ground-standing jump.
+  // Its full two-post silhouette is now the box — no harmless art-only legs and
+  // no airborne duck strip. Nine pixels keeps it decisively below crates and
+  // barrels while still requiring a real hop. `armored` so pellets spark off
+  // the rail; `breakable: false` because jumping is the only answer.
+  boomBarrier: { w: 16, h: 9, sprite: 'boomBarrier', ground: true, armored: true, breakable: false, action: 'jump', splitFeet: true },
 
   // --- the animal hazards (art: sprites/animals.js) -------------------------
   // The only ground hazards that CLOSE on the hero rather than waiting for him.

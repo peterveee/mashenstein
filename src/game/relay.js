@@ -39,9 +39,9 @@ export class Relay {
     this.used.add(this.current);
     // A hero handed in from outside never came out of the bag, so the bag is
     // still empty here — fill it now (minus that hero) so the first hand-off
-    // can follow roster order like every other one.
+    // is drawn from the same shuffled bag as every other one.
     if (!this.bag.length) this.refill();
-    this.next = this.drawHero(this.current); // every portal previews this hero
+    this.next = this.drawHero(); // every portal previews this hero
     this.schedule = schedule;
     this.spawned = 0;
     this.elapsed = 0;
@@ -68,20 +68,11 @@ export class Relay {
     }
   }
 
-  drawHero(after = null) {
-    // Most of the time, prefer the canonical successor of `after`, so the team
-    // tends to rotate in roster order rather than lurching around at random —
-    // a run reads as passing down a line. (This bias originally existed to
-    // surface pair-keyed hand-off banter; the exit lines that replaced it are
-    // keyed by the departing hero alone and no longer need it. Kept for the
-    // rotation feel, which is now its whole job.)
-    if (after && this.rng && this.rng.float() < 0.65) {
-      const idx = HEROES.findIndex((h) => h.id === after);
-      const succ = HEROES[(idx + 1) % HEROES.length].id;
-      const at = this.bag.indexOf(succ);
-      if (at >= 0) { this.bag.splice(at, 1); this.used.add(succ); return succ; }
-      // successor already used this bag: fall through to the shuffle
-    }
+  drawHero() {
+    // The bag was shuffled when it was filled, so every unused hero is equally
+    // likely. Do not bias toward roster neighbours: because Lorenzo, Gnash and
+    // Fernwick are adjacent in HEROES, that made early relay teams repeat that
+    // exact sequence far too often.
     if (!this.bag.length) this.refill();
     const id = this.bag.pop();
     this.used.add(id);
@@ -104,7 +95,7 @@ export class Relay {
   switchHero() {
     const from = this.current;
     this.current = this.next;
-    this.next = this.drawHero(this.current);
+    this.next = this.drawHero();
     this.stats.tags++; // legacy stat, kept for old saves, never displayed
     this.lastTagLine = TAG_LINES[this.current];
     this.lastTagLineT = 1.6;

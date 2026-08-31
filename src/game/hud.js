@@ -24,6 +24,21 @@ import { Audio } from '../engine/audio.js';
 // The one chrome. Passed to every drawPanel call in the HUD.
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 
+// THE BEAT RIBBON'S BAND, and it is exported because it is not only the
+// ribbon's business: the strip runs the full width of the frame in the same
+// band a speech card is anchored in, so anything that prints there has to be
+// told to stand clear. The ribbon used to be drawn straight through Lorenzo's
+// lines on a rhythm stage.
+const RIBBON_Y = 44, RIBBON_H = 9;
+// The pulse marker overhangs the strip by two units at each end (see the gold
+// bar below), so the band is taller than the plate it is painted on.
+export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + 2;
+// Where a speech card's first ROW goes when the beat lane is up. drawSpeech
+// hangs its plate four units above the row it is handed, so clearing the ribbon
+// means clearing it by four more than it looks — plus three of air, or the card
+// and the strip read as one stacked instrument.
+export const BEAT_SPEECH_Y = BEAT_RIBBON_BOTTOM + 4 + 3;
+
 function drawBeatRibbon(ctx, run) {
   if (!run.beatLock || run.paused || run.dead || run.finishing || run.introRunning
     || run.introFreeze > 0 || run.zoneCard || run.rhythmSyncPending) return;
@@ -32,7 +47,7 @@ function drawBeatRibbon(ctx, run) {
   const bpm = run.cabinet.music?.bpm || 120;
   const pxBeat = run.speed * 60 / bpm;
   const playerX = run.playerWorldX();
-  const y = 44, h = 9, center = W / 2, beatPx = 26;
+  const y = RIBBON_Y, h = RIBBON_H, center = W / 2, beatPx = 26;
   ctx.save();
   ctx.globalAlpha = 0.92;
   ctx.fillStyle = '#10141c';
@@ -475,6 +490,17 @@ export function drawHud(ctx, run) {
     ctx.fillRect(0, 0, W, 3);
     ctx.fillStyle = mix('#48e0c8', '#f6d33c', k);
     ctx.fillRect(0, 0, W * frac, 3);
+    // Keep every banked checkpoint visible, not just the latest death snapshot.
+    // These are deliberately only one quiet pixel wide and live entirely
+    // inside the bar: a history of reference notches, not a second row of HUD.
+    if (Number.isFinite(run.totalDist)) {
+      ctx.fillStyle = 'rgba(16,20,28,0.55)';
+      for (const marker of run.checkpointMarkers || []) {
+        if (!Number.isFinite(marker)) continue;
+        const checkpointFrac = Math.max(0, Math.min(1, marker / run.totalDist));
+        ctx.fillRect(Math.round(W * checkpointFrac), 0, 1, 3);
+      }
+    }
     // Once the fill is gold the gold tick would vanish into it, so the tick
     // rides the other way, to white — it stays the brightest thing on the line.
     ctx.fillStyle = mix('#f6d33c', '#ffffff', k);

@@ -12,7 +12,8 @@
 
 import { Audio } from '../src/engine/audio.js';
 import {
-  EFFECT_BY_ID, paramRange, visibleParams, SYNC_DIVISIONS, RATE_DIVISIONS, syncSeconds,
+  EFFECT_BY_ID, paramRange, visibleParams, SYNC_DIVISIONS, RATE_DIVISIONS,
+  AUTOPANNER_RATE_DIVISIONS, syncSeconds,
   effectPresetNames, resolveEffectPreset, resolveEffectSnapshot, matchEffectPreset,
   PEQ_BANDS, peqResponse,
 } from '../src/engine/effects.js';

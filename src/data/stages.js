@@ -106,7 +106,7 @@ export const STAGES = [
   // it costs a second and a half of replay rather than a third of the stage.
   //
   // FOUR jumps and not five, and the number is the cabinet's rather than a
-  // taste: plumber is a busy stage — a staircase at 0.45, a fork at 0.58, the
+  // taste: plumber is a busy stage — a staircase at 0.46, a fork at 0.58, the
   // tunnel in front of it — and a crossing owns a clear lane either side of
   // itself. Five jumps here reached far enough to swallow the four-step
   // staircase whole (see buildRoutes' overlap guard), which trades a set piece
@@ -221,11 +221,19 @@ export const STAGES = [
   S('rhythm', 2,
     { type: 'reach', desc: 'SURVIVE THE CHORUS. THE BAND IS IN DEBT.' },
     { type: 'onbeat', n: 14, desc: '14 ON-BEAT ACTIONS' },
-    { pits: [{ at: 0.37, w: 56 }, { at: 0.70, jumps: 5 }] }),
+    // ONLY THE CROSSING. The 0.37 hole that used to stand here was authored when
+    // the beat lane cut none of its own; the chart now lays two pairs of holes
+    // every sixteen beats (songs/rhythm.js), so a single scripted pit at a fixed
+    // fraction is one more of a thing the stage is already full of. What it
+    // cannot lay is a break too wide to jump, and that is what is left here.
+    { pits: [{ at: 0.70, jumps: 5 }] }),
+  // No scripted pits: this stage's chart spends a whole bar of every loop on
+  // holes — four of them, one every other beat — and two more at fixed
+  // fractions would be indistinguishable from the eight the loop already cut by
+  // the time the player reached them.
   S('rhythm', 3,
     { type: 'chase', n: 2, desc: 'CHASE THE COPTER. IT IS SOMEHOW ON BEAT.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
-    { pits: [{ at: 0.37, w: 60 }, { at: 0.75, w: 64 }] }),
+    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
   // ACT III -------------------------------------------------------------------
   S('cardboard', 1,
     { type: 'reach', desc: 'CROSS THE KINGDOM BEFORE IT FINISHES COLLAPSING.' },

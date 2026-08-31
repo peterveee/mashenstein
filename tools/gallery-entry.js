@@ -37,6 +37,7 @@ import {
   TOON_SPECS, drawToon, drawToonFace, toonEffectEllipse, setInk, setRim,
   setContour, setInkScale, setInkDensity,
   ACTIVE_CELEBRATION_STYLE,
+  DEATH_FACE_TIMING, DEATH_EYE_STYLES,
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
   b33pTitleShotPose,
 } from '../src/sprites/toons.js';
@@ -110,6 +111,7 @@ const HIDDEN_GALLERY_SECTIONS = new Set([
   'boost-fx-bakeoff',
   'finish-cling',
   'spring-pad-bakeoff',
+  'death-eyes-bakeoff',
 ]);
 // SCREEN SCALE: screen px per logical frame px. The game is never presented at
 // 1:1 — renderer.js fits the 480x270 frame to the viewport at
@@ -568,6 +570,91 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     tile(grid, id, 'face', 32, 32, (ctx) => drawToonFace(ctx, id, 0, 0, 32, 32));
   }
 }
+
+// ------------------------------------------------------------ death face
+// WHAT A DEAD HERO'S FACE DOES. A run ends on a held portrait — the world
+// stops and the last silhouette is frozen for the whole hold (tests/death-pose.js
+// pins the BODY: upright, unsquashed, at scale 1) — and the face on that
+// portrait is still the living one. Half a second of a determined runner's brow
+// on somebody who has just been killed by a filing cabinet.
+//
+// The proposal is three beats, not a swap: the eyes SHUT, the lids GO, and the
+// marks land on a bare face. The empty beat in the middle is the whole trick —
+// it makes the X a replacement for the eye rather than a scribble over one.
+//
+// Driven through the real painters: pose.deathFace is seconds since the beat
+// began, expressionFor turns it into the phase, and every rig's own eye painter
+// handles it in its own dialect (b33p's LED panels narrow to a slit and go out;
+// Mochi's solid eyes squeeze onto her heavier lid line; Chompo's lashes fade).
+//
+// WHEN the beat begins is the run's to say, and it is not always the killing
+// frame: a hit starts it there, but a pit death starts it on ARRIVAL, so the
+// drop keeps its startled fall face the whole way down and the spirals land
+// with the crunch. See Player.deathT and tests/death-pose.js.
+{
+  const T = DEATH_FACE_TIMING;
+  const ids = Object.keys(TOON_SPECS);
+  // A loop with a LIVING beat in front of it: the transition is most of what
+  // there is to judge, and a tile that opens on a corpse never shows it.
+  const LOOP = 2.4, ALIVE = 0.6;
+  const clock = (t) => {
+    const s = (t % LOOP) - ALIVE;
+    return s < 0 ? null : s;
+  };
+  const facePose = (t, style) => {
+    const s = clock(t);
+    return s == null ? null : { deathFace: s, deathStyle: style };
+  };
+
+  const grid = section('death-face', 'Death face — the eyes go out',
+    'The proposed death portrait, drawn by the shipped painters through a new pose.deathFace seam. '
+    + `Beats: lids down by ${T.SHUT}s, held closed and gone by ${T.BLANK}s, marks stamped in and settled `
+    + `by ${T.POP}s — the whole animation inside the 0.5s hit hold, so even the shortest death shows all `
+    + 'of it. Brows come off with the eyes, and the mouth falls OPEN on the same beat — never a curve, '
+    + 'because a line that dips in the middle is the shape of a smile and nobody smiles through this. '
+    + 'Lorenzo, who otherwise has no mouth at all behind the mustache, is given one under it; B-33P is the '
+    + 'one exemption, since his mouth is a speaker grille and a speaker goes dark rather than gasps. '
+    + 'The mark that lands is the SPIRAL, picked off a bake-off on the strength of the beat — it is still '
+    + 'winding as it arrives, where an X is finished the moment it is there. A hit starts the beat on the '
+    + 'killing frame; a pit death starts it on arrival at the material, so the fall keeps its own face.');
+
+  // ---- the beats, frozen, one hero -------------------------------------
+  const BEATS = [
+    [0, 'the killing frame'],
+    [0.04, 'lids coming down'],
+    [T.SHUT, 'shut'],
+    [0.13, 'held closed'],
+    [T.BLANK, 'gone — a bare face'],
+    [0.215, 'the mark lands'],
+    [0.24, 'overshoot'],
+    [T.POP, 'settled'],
+    [0.5, 'held — end of a hit hold'],
+  ];
+  for (const [s, what] of BEATS) {
+    tile(grid, 'lorenzo', `${s.toFixed(2)}s · ${what}`, 76, 76, (ctx) => {
+      drawToonFace(ctx, 'lorenzo', 0, 0, 76, 76, { pose: { deathFace: s } });
+    });
+  }
+
+  // ---- every face on the cast, animated --------------------------------
+  for (const id of ids) {
+    tile(grid, id, 'death face · looping', 76, 76, (ctx, t) => {
+      drawToonFace(ctx, id, 0, 0, 76, 76, { pose: facePose(t) });
+    }, { animated: true });
+  }
+
+  // ---- and the hold as the run would actually show it -------------------
+  // The body is the one tests/death-pose.js pins: upright, at rest, frozen —
+  // so the pose clock stays at 0 and only the face has a time in it.
+  const HH = 60, TW = HH * 0.9, TH = HH * 1.3;
+  for (const id of ids) {
+    tile(grid, id, 'the hold · body frozen, face dying', TW, TH, (ctx, t) => {
+      const s = clock(t);
+      drawToon(ctx, id, pose('run', 0, s == null ? {} : { deathFace: s }), TW / 2, TH - HH * 0.05, HH);
+    }, { animated: true });
+  }
+}
+
 
 // ------------------------------------------------------------- zoom levels
 // Every magnification the game actually puts a hero through, one hero, one
@@ -1594,7 +1681,8 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     'The shipped column is now the production results-screen treatment. It contains clearer raised '
     + 'arms for Lorenzo and Gary; character-specific turns, '
     + 'presentation, salute, bites, glove work and clapping for the rest of the cast; synchronized '
-    + 'hop details for Mochi; and Grumpos\'s three-beat flex study. '
+    + 'hop details for Mochi; Grumpos\'s three-beat flex study; and Clara\'s arms-out '
+    + 'two-step, which replaces a fist pump that vanished entirely behind her head. '
     + 'The small row uses the results screen\'s real 18u minimum and 32u maximum hero heights.');
   const IDS = [
     ['lorenzo', 'wider fists · outward elbows'],
@@ -1607,6 +1695,7 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
     ['raymn', 'floating-glove high-five · raised-fist finish'],
     ['dolores', 'restrained clap · formal bow'],
     ['grumpos', 'overhead · horizontal biceps · front flex'],
+    ['clara', 'arms out wide, clear of the head · two-step dance'],
   ];
   const proposed = (t) => pose('celebrate', t, { menu: true, celebrateStyle: ACTIVE_CELEBRATION_STYLE });
   const current = (t) => pose('celebrate', t, { menu: true, celebrateStyle: 'legacy' });
@@ -4336,6 +4425,37 @@ function frameStrip(grid, name, label, note, w, h, cell) {
         ctx.fillText('REST', PX + PW + 8, GY + REST + 1.5);
         ctx.fillText(`DEEP ${DS}x`, DX, dy - 4);
       }, { animated: true, hires: 6, wide: true, world: true });
+  }
+}
+
+// ------------------------------------------- death eyes — mark bake-off
+// Which mark. All three ride the same three beats and the same seam; only the
+// thing that lands at the end differs. A is the default in the code.
+{
+  const LOOP = 2.4, ALIVE = 0.6;
+  const clock = (t) => {
+    const s = (t % LOOP) - ALIVE;
+    return s < 0 ? null : s;
+  };
+  const CAST = ['lorenzo', 'gnash', 'b33p', 'mochi', 'chompo'];
+  const grid = section('death-eyes-bakeoff', 'Death eyes — mark bake-off (C SPIRAL ships)',
+    'SETTLED — C ships. The spiral won on the BEAT rather than on the still: an X arrives as a finished '
+    + 'stamp, while the spiral is a mark still winding as it lands. '
+    + DEATH_EYE_STYLES.map((v) => `${v.name}: ${v.note}`).join(' · ')
+    + '. Top rows are the settled mark held still, at the size and weight it lands at, so the shapes can '
+    + 'be read against each other; the bottom row of each is the whole beat, looping. Every rig draws the '
+    + 'mark in its own space — B-33P stamps his in LED white, Chompo\'s land in her spec-space face at her '
+    + 'own two eye sizes.');
+  for (const v of DEATH_EYE_STYLES) {
+    for (const id of CAST) {
+      tile(grid, `${v.name} · ${id}`, 'settled', 76, 76, (ctx) => {
+        drawToonFace(ctx, id, 0, 0, 76, 76, { pose: { deathFace: 0.5, deathStyle: v.id } });
+      });
+    }
+    tile(grid, `${v.name} · lorenzo`, 'the beat, looping', 76, 76, (ctx, t) => {
+      const s = clock(t);
+      drawToonFace(ctx, 'lorenzo', 0, 0, 76, 76, { pose: s == null ? null : { deathFace: s, deathStyle: v.id } });
+    }, { animated: true });
   }
 }
 

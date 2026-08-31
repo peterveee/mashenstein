@@ -434,10 +434,22 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // ellipse would sit as a grey smear in front of a plate that is supposed to
   // be set into the road.
   if (e.kind === 'obstacle' && e.def.ground && !e.def.isBoost && !e.def.isLoop && !e.def.bedded) {
-    ctx.fillStyle = 'rgba(8,6,12,0.28)';
-    ctx.beginPath(); ctx.ellipse(x + e.w / 2, GROUND_Y - 1, Math.max(4, e.w * 0.55), 2, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = 'rgba(224,72,72,0.32)';
-    ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
+    if (e.def.splitFeet) {
+      // An open hurdle has two contacts, not a plinth. A full-width shadow and
+      // red road mark join its uprights into a false bottom rail.
+      ctx.fillStyle = 'rgba(8,6,12,0.28)';
+      for (const px of [x + 2, x + e.w - 2]) {
+        ctx.beginPath(); ctx.ellipse(px, GROUND_Y - 1, 3, 2, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(224,72,72,0.32)';
+      ctx.fillRect(x, GROUND_Y - 1, 4, 1);
+      ctx.fillRect(x + e.w - 4, GROUND_Y - 1, 4, 1);
+    } else {
+      ctx.fillStyle = 'rgba(8,6,12,0.28)';
+      ctx.beginPath(); ctx.ellipse(x + e.w / 2, GROUND_Y - 1, Math.max(4, e.w * 0.55), 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(224,72,72,0.32)';
+      ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
+    }
   } else if (e.kind === 'obstacle' && e.def.bedded) {
     ctx.fillStyle = 'rgba(224,72,72,0.32)';
     ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
@@ -449,27 +461,6 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   if (e.def && e.def.paper) {
     const py = y + Math.round(Math.sin(t * 8 + e.bobPhase) * 3);
     drawProp(ctx, 'paperwork', x - 1, py - 1, 10, 8);
-    return;
-  }
-  // Overhangs (boom barrier): the box is only the arm, but the STRUCTURE is
-  // ground-anchored — post, arm and beacon are authored as one drawing whose
-  // top band is the hitbox. Drawn here rather than through the generic path
-  // because that path bottom-anchors art at the box and could never paint the
-  // post between the arm and the road. Opting out of the shared rim/inflation
-  // means the painter carries its own contour (see SELF_OUTLINED_PROPS).
-  if (e.def && e.def.overhang) {
-    const ah = e.alt + e.h + 3; // +3: beacon cap over the arm, art only
-    const frames = propFrames(e.type);
-    const of = frames > 1 && !settings.reducedMotion
-      ? Math.floor(t * propFps(e.type) + e.bobPhase * 4) % frames
-      : 0;
-    // Its own contact marks: the generic ellipse only fires for ground defs,
-    // and the flyer anchor bar reads wrong under a thing with a post.
-    ctx.fillStyle = 'rgba(8,6,12,0.28)';
-    ctx.beginPath(); ctx.ellipse(x + e.w - 3, GROUND_Y - 1, 5, 2, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = 'rgba(224,72,72,0.32)';
-    ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
-    drawProp(ctx, e.type, x - 2, GROUND_Y - ah, e.w + 4, ah, of);
     return;
   }
   // Coins spin like coins and some of them twinkle: the width oscillates as
@@ -576,7 +567,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     ctx.drawImage(propName ? propSprite(propName, sw, shT, frame) : (natural ? spr : src), ox, oy, w0, h0);
     ctx.imageSmoothingEnabled = prevSmooth;
   };
-  if (danger) {
+  if (danger && !e.def.splitFeet) {
     // anchors flyers to the lane and marks where falling hazards land
     ctx.fillStyle = 'rgba(8,8,16,0.4)';
     ctx.fillRect(x, GROUND_Y - 2, e.w, 2);

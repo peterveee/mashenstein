@@ -306,21 +306,31 @@ function clearIntro(run) {
     'a hero only says goodbye once per run');
 }
 
-// --- Relay bias: scripted links surface often, not once-in-seven -----------
+// --- Relay hand-offs are shuffled, not biased toward roster order ----------
 {
   const { Relay } = await import('../src/game/relay.js');
   const { Rng } = await import('../src/engine/rng.js');
   const { HEROES } = await import('../src/data/heroes.js');
   const succOf = Object.fromEntries(HEROES.map((h, i) => [h.id, HEROES[(i + 1) % HEROES.length].id]));
-  const relay = new Relay(new Rng(777), { tags: 0 });
-  let scripted = 0;
-  const N = 300;
-  for (let i = 0; i < N; i++) {
-    const r = relay.switchHero();
-    if (succOf[r.from] === r.to) scripted++;
+  let successors = 0, handoffs = 0, lorenzoGnashFernwick = 0;
+  const N = 512;
+  for (let seed = 1; seed <= N; seed++) {
+    for (const start of HEROES) {
+      const relay = new Relay(new Rng(seed), { tags: 0 }, null, start.id);
+      const first = relay.switchHero();
+      if (succOf[first.from] === first.to) successors++;
+      handoffs++;
+    }
+    const early = new Relay(new Rng(seed), { tags: 0 }, null, 'lorenzo');
+    const second = early.switchHero().to;
+    const third = early.switchHero().to;
+    if (second === 'gnash' && third === 'fernwick') lorenzoGnashFernwick++;
   }
-  assert(scripted / N > 0.3, `biased draw lands authored hand-offs often (${scripted}/${N})`);
-  assert(scripted / N < 0.95, `bag still shuffles — hand-offs are not every swap (${scripted}/${N})`);
+  const successorRate = successors / handoffs;
+  assert(successorRate > 0.11 && successorRate < 0.18,
+    `roster successors occur at the expected one-in-seven rate (${successors}/${handoffs})`);
+  assert(lorenzoGnashFernwick / N < 0.06,
+    `Lorenzo to Gnash to Fernwick is uncommon (${lorenzoGnashFernwick}/${N})`);
 }
 
 // --- Nobody appears twice in a level --------------------------------------

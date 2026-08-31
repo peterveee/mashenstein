@@ -1,7 +1,7 @@
 // The Run state: one campaign stage (or OVERTIME). Composes player, relay,
 // spawner, missions, powerups, style packs, HUD.
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, paintChrome } from '../engine/renderer.js';
-import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, anchorShift, BG_FOLLOW, setRestingZoom } from '../engine/camera.js';
+import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
 import { Input } from '../engine/input.js';
 import {
@@ -18,7 +18,7 @@ import { PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './pun
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
-import { BeatSpawner } from './beatchart.js';
+import { BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats } from './beatchart.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 // The pacing constants and the stage-layout resolver. They live in layout.js
 // so the level editor forecasts a stage with the same arithmetic the run
@@ -35,9 +35,9 @@ import { HERO_SPRITES } from '../sprites/heroes.js';
 import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
-import { FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
+import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock, drawPitFills } from '../engine/stylePacks/index.js';
-import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY } from './hud.js';
+import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY, BEAT_SPEECH_Y } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
@@ -973,6 +973,13 @@ const CELEBRATE_DIP = {
   chompo: 0.043, gary: 0.067, dolores: 0.043, raymn: 0.024, grumpos: 0.058,
   kiko: 0.043,
 };
+// The controller underneath the frozen finish frame still derives a RUN pose,
+// including its slight directional head turn. The celebration is front-on, so
+// its snapshot must own the face angle as explicitly as it owns lean/squash.
+export const FINISH_CELEBRATION_POSE = Object.freeze({
+  kind: 'celebrate', grounded: true, vy: 0, squash: 0, lean: 0, headTurn: 0,
+  ducking: false, duckAmount: 0, roll: false, float: false, stomp: false, cling: 0,
+});
 // Seconds the payoff takes to run. It was 0.18 when the whole event was a lever
 // swinging through its arc. The marker's payoff is now a five-beat CHAIN — push,
 // a spark crawling the cable to the box, lamps, current up the pole, flag — and
@@ -1470,14 +1477,47 @@ export class RunState {
       : (this.route && this.route.sky ? MAX_ISLAND_RISE : camAnchorFree());
     const k = Math.max(0, Math.min(1, (Math.abs(roadRise) - band) / band));
     const anchorLift = roadRise * (k * k * (3 - 2 * k));
-    this.camFloorY = easeFloor(this.camFloorY, GROUND_Y - anchorLift, dt);
+    // ---- and the way back down ---------------------------------------------
+    //
+    // Stepping off a sky road is the one move where the anchor's target is a
+    // long way from the hero and he is on his way to it under his own power,
+    // and easing straight at it loses him. The ease is written for a floor the
+    // hero is standing on, so it takes the whole 168px at k=14 — 1650px/s on
+    // the frame he leaves, against the 30px/s he is falling at — and the lane
+    // is framed and waiting while he is still up where the road was, a good
+    // thirty pixels above the top edge of the picture.
+    //
+    // So while he is FALLING CLEAR of the anchor — airborne, with the floor
+    // beneath him below the line the frame is pinned to — the anchor stops
+    // aiming at that floor and aims at HIM: fallLead below his feet, which is
+    // the upper half of the frame with the ground he is dropping onto in
+    // sight. And it may only travel there at his own speed plus fallLimit's
+    // small allowance, so the reframing is something the camera does WITH the
+    // fall rather than ahead of it. Both are gated on the fall, so a hero
+    // jumping about ON the road — floor and anchor together — is framed by the
+    // crane exactly as he always was.
+    const feetY = floor - this.player.y;
+    // No previous frame to measure against — the first frame of a run, and the
+    // frame after a checkpoint or a rewind puts him somewhere else entirely —
+    // so the fall allows itself nothing but fallLimit's own allowance rather
+    // than reading a teleport as a mile of falling.
+    const drop = Number.isFinite(this.camFeetY) ? feetY - this.camFeetY : 0;
+    const falling = !this.player.grounded && floor > this.camFloorY + 0.5;
+    const anchorTo = falling
+      ? Math.min(GROUND_Y - anchorLift, feetY + fallLead(this.camZoom))
+      : GROUND_Y - anchorLift;
+    const eased = easeFloor(this.camFloorY, anchorTo, dt);
+    this.camFloorY = falling && eased > this.camFloorY
+      ? Math.min(eased, fallLimit(this.camFloorY, drop, this.camZoom, dt))
+      : eased;
+    this.camFeetY = feetY;
     // The ease is deliberately behind the hero on the way up, and that lag is
     // the only thing that could put him under the bottom edge on the way down.
     // Guarded on the anchor being off the groundline so rolling terrain — which
     // dips the hero below GROUND_Y and has always been framed by the crane —
     // never reaches this at all.
     if (Math.abs(this.camFloorY - GROUND_Y) > 0.5) {
-      this.camFloorY = Math.max(this.camFloorY, floor - this.player.y - CAM_FOOTROOM);
+      this.camFloorY = Math.max(this.camFloorY, feetY - CAM_FOOTROOM);
     }
     // Rolling terrain owes headroom, and a road owes MORE of it: the hero is
     // already `rise` up before they jump at all. Measured against the anchor
@@ -1603,6 +1643,10 @@ export class RunState {
     // Which world line the frame pins to screen GROUND_Y. The groundline, until
     // a road carries the hero out of the crane's reach — see updateCamera.
     this.camFloorY = GROUND_Y;
+    // Where his feet were last frame, which is how updateCamera measures a fall
+    // against the hero rather than against the clock. Null until he has been
+    // somewhere for a frame; see the `drop` it feeds.
+    this.camFeetY = null;
     this.speedBoost = 0;
     // The loop-de-loop ride, while one is happening. See game/loop.js: for its
     // length the run drives the hero's position instead of the physics doing it.
@@ -1948,9 +1992,27 @@ export class RunState {
       && Number.isFinite(this.totalDist)) ? LOOP.at * this.totalDist : null;
     this.loopSpawned = false;
 
-    // Checkpoints at 1/3 and 2/3 (none on UNPLUGGED).
+  // Checkpoints use the layout's authored positions (normally 1/3 and 2/3,
+  // none on UNPLUGGED) — and FIVE of them on a
+    // beat stage, because the beat lane cuts holes.
+    //
+    // The rule stages.js states for a scripted pit is that what a hole costs is
+    // not the hole, it is the stretch you replay to reach it again, and ten
+    // seconds is one honest run-up. A scripted pit obeys that by being placed;
+    // a chart pit cannot, because it repeats — the loop puts one wherever the
+    // song is, including two thirds of the way between the two restore points,
+    // which on a 90s stage is a thirty-second errand. So the beat cabinet pays
+    // for its holes in checkpoints instead: sixths cap the replay at fifteen
+    // seconds anywhere in the stage, which is the closest a repeating hazard
+    // gets to the budget a placed one is held to.
+    const restorePoints = this.beatLock ? [1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6]
+      : (this.layout?.checkpoints || []);
     this.checkpoints = (this.oneHit || this.overtime) ? []
-      : (this.layout?.checkpoints || []).map((f) => f * this.totalDist);
+      : restorePoints.map((f) => f * this.totalDist);
+    // Every checkpoint crossed during this attempt, retained independently of
+    // the one latest death snapshot. The HUD keeps the whole trail visible;
+    // dying at checkpoint two must not make checkpoint one disappear.
+    this.checkpointMarkers = [];
     this.checkpointHit = [];
     this.snapshot = null;
 
@@ -4299,7 +4361,11 @@ export class RunState {
         // 0.04s, which is five notes where the cue wants one. The whistle is
         // fired once, above.
       }
-      if (ob.def.beatSync) ob.h = 10 + Math.round(4 * Math.abs(Math.sin(beat * Math.PI)));
+      // Off the DEF's height, not off a literal: the resting height is the
+      // hitbox the chart's approach was computed against (actionApproachPx),
+      // and a 10 hardcoded here silently unpinned the two the moment the prop
+      // grew.
+      if (ob.def.beatSync) ob.h = ob.def.h + Math.round(4 * Math.abs(Math.sin(beat * Math.PI)));
       if (ob.def.shoots) {
         ob.shootT -= dt;
         // Bounded by the VIEW, not the logical frame: a shooter that opens fire
@@ -4683,7 +4749,14 @@ export class RunState {
   clearOfHazards(x, w, alt, h, maxX) {
     const PAD = 30;         // landing room either side, in world units
     const BAND = 4;         // slack above a hazard's crown before it stops mattering
-    const inBand = (ob) => alt < ob.alt + ob.h + BAND && alt + h > ob.alt - BAND;
+    // A HOLE IS IN EVERY BAND. Height is what makes a cactus stop mattering to a
+    // cord strung above it — the jump that clears the one collects the other —
+    // but a gap is not a thing you jump OVER on the way to the prize, it is the
+    // ground the prize is standing on not being there. A toaster hanging at alt
+    // 44 over a break is a lure toward a fatal hazard at any altitude, and the
+    // beat lane now cuts breaks all the way down a stage.
+    const inBand = (ob) => ob.def.isGap
+      || (alt < ob.alt + ob.h + BAND && alt + h > ob.alt - BAND);
     const threat = (ob) => ob.live && !ob.def.isBoost && !ob.def.isTarget && !ob.def.isSwitch;
     // Several passes: clearing one hazard can walk the piece into the next.
     for (let pass = 0; pass < 8; pass++) {
@@ -4829,7 +4902,12 @@ export class RunState {
     if (crossing) return null;
     const slot = ((beat % chart.loopBeats) + chart.loopBeats) % chart.loopBeats;
     const event = chart.events[slot];
-    return event ? { id: `judge:${beat}:${slot}`, beat, action: event.action } : null;
+    if (!event) return null;
+    // A pit and a bar are one input. The chart distinguishes them because they
+    // are laid differently; the scoreboard must not, or clearing a hole on the
+    // beat would break the combo the bar beside it builds.
+    const action = event.action === 'pit' ? 'jump' : event.action;
+    return { id: `judge:${beat}:${slot}`, beat, action };
   }
 
   checkRhythmDrift() {
@@ -4874,10 +4952,14 @@ export class RunState {
     // The spawner deliberately gives the player two complete beats of empty
     // runway after startup/resync. Do not judge chart events inside that
     // runway as missed before their first physical entity can exist.
-    if (this.beatJudgeCursor == null) this.beatJudgeCursor = Math.ceil(beat + 2 - 0.18);
     const chart = this.spawner?.chart;
     if (!chart) return;
-    const through = Math.floor(beat - 0.18);
+    // The same runway the spawner leaves empty, read off the same chart, so the
+    // judge never scores a beat the lane was not allowed to lay anything on.
+    if (this.beatJudgeCursor == null) {
+      this.beatJudgeCursor = Math.ceil(beat + laneRunwayBeats(chart) - ON_BEAT_WINDOW);
+    }
+    const through = Math.floor(beat - ON_BEAT_WINDOW);
     while (this.beatJudgeCursor <= through) {
       const n = this.beatJudgeCursor++;
       const event = this.rhythmRequiredAt(n, chart);
@@ -4895,7 +4977,7 @@ export class RunState {
     const chart = this.spawner?.chart;
     if (!Number.isFinite(beat) || !chart) return false;
     const n = Math.round(beat);
-    if (Math.abs(beat - n) > 0.18) { this.beatCombo = 0; return false; }
+    if (Math.abs(beat - n) > ON_BEAT_WINDOW) { this.beatCombo = 0; return false; }
     const event = this.rhythmRequiredAt(n, chart);
     if (!event || event.action !== action || this.beatJudgeConsumed.has(event.id)) {
       this.beatCombo = 0;
@@ -5993,6 +6075,7 @@ export class RunState {
     if (this.loop) return;
     if (this.distance >= this.checkpoints[0]) {
       this.checkpoints.shift();
+      this.checkpointMarkers.push(this.camX);
       Audio.sfx('checkpoint');
       const restored = this.modIds.includes('osha') ? 2 : 1;
       this.battery = Math.min(this.maxBattery(), this.battery + restored);
@@ -6090,6 +6173,7 @@ export class RunState {
     // on the base ground while the run still believes he is on a slab.
     this.route = s.route >= 0 ? this.routes[s.route] : null;
     this.camFloorY = s.camFloorY ?? GROUND_Y;
+    this.camFeetY = null;
     this.player.abilityCooldowns = { ...(s.abilityCooldowns || {}) };
     this.player.relayCharge = !!s.relayCharge;
     if (s.playerMotion) {
@@ -6402,7 +6486,11 @@ export class RunState {
     s.usedHeroes = copySetInto(this.usedHeroes, s.usedHeroes);
     s.exitSpoken = copySetInto(this.exitSpoken, s.exitSpoken);
     s.checkpointHit = copyArrayInto(this.checkpointHit, s.checkpointHit);
-    s.snapshot = null; // death checkpoint not carried across rewind
+    // The pooled tape slot never owns the death checkpoint. A checkpoint is
+    // banked progress, while rewind only restores the last few seconds of live
+    // play; copying the checkpoint into every record would be both wasteful and
+    // semantically wrong.
+    s.snapshot = null;
     return s;
   }
 
@@ -6413,6 +6501,7 @@ export class RunState {
     // Camera & run
     this.camX = s.camX; this.camZoom = s.camZoom; this.camPan = s.camPan;
     this.camFloorY = s.camFloorY ?? GROUND_Y;
+    this.camFeetY = null;
     this.distance = s.distance; this.tRun = s.tRun; this.score = s.score; this.coins = s.coins;
     this.battery = s.battery; this.damageTaken = s.damageTaken; this.speedBoost = s.speedBoost;
     this.coinCombo = s.coinCombo; this.coinComboT = s.coinComboT;
@@ -6548,7 +6637,11 @@ export class RunState {
     this.usedHeroes = new Set(s.usedHeroes);
     this.exitSpoken = new Set(s.exitSpoken);
     this.checkpointHit = s.checkpointHit.slice();
-    this.snapshot = null;
+    // Leave `snapshot` alone. Crossing a checkpoint shifts it out of the
+    // pending list permanently, so clearing the banked death snapshot here
+    // made any later manual/capsule rewind silently turn the next death into a
+    // restart from the beginning. Rewind changes the live moment, not which
+    // checkpoints this attempt has earned.
 
     // Clear transient visuals.
     this.floaties = [];
@@ -7207,7 +7300,7 @@ export class RunState {
       // Zeroed rather than decremented so the HUD is not showing cells in hand
       // through the death. The restore hands the checkpoint's battery back.
       this.battery = 0;
-      this.die(msg, false);
+      this.die(msg, false, src);
       return;
     }
     // UNPEELABLE deflects hits; gravity remains undefeated (pits still hurt).
@@ -7264,7 +7357,7 @@ export class RunState {
     // the one that follows them across the screen.
     burst(this.playerWorldX() + 6, GROUND_Y - this.player.y - 8, 16, 90, 0.6, '#e04848', 2, 140, () => this.fxRng.float());
     if (this.battery <= 0) {
-      this.die(msg);
+      this.die(msg, true, src);
     } else {
       // The normal 1.4s of mercy would ghost the hero straight through the next
       // several obstacles. Crash test drops to the same-frame debounce so every
@@ -7377,15 +7470,21 @@ export class RunState {
    * own cue and the sting together at the moment he arrives. Sounding it at the
    * lip announced the death a second before the thing that caused it.
    */
-  die(msg, cue = true) {
+  die(msg, cue = true, src = null) {
     // A pit death is the one death with a journey in front of it, so it settles
     // on arrival instead (updatePitSink) — but the stale landing squash has to
     // go NOW, or he falls down the shaft flattened by a landing he already made.
     if (this.pitDeath) this.player.landedT = 0;
     else this.settleDeathPose();
+    // THE FACE. A hit is over in one frame, so the eyes start closing on that
+    // frame. A hole is not: he goes over the edge wearing the startled fall
+    // face, and that face is the whole point of the beat - shutting his eyes at
+    // the lip would throw away the drop. The pit starts its clock on ARRIVAL
+    // instead, in updatePitSink, so the spirals land with the crunch.
+    this.player.deathT = this.pitDeath ? null : 0;
     this.dead = true;
     this.deadT = 0;
-    this.failMsg = msg || this.fxRng.pick(FAIL_MESSAGES);
+    this.failMsg = msg || this.fxRng.pick(HAZARD_FAIL_MESSAGES[src] || FAIL_MESSAGES);
     if (cue) Audio.sfx('die');
     this.save.slot.stats.deaths++;
     const dh = this.save.slot.stats.deathsByHero;
@@ -7414,7 +7513,12 @@ export class RunState {
     // renderer the same settled, upright snapshot every other death gets — see
     // settleDeathPose — so a stale squash or air stretch cannot survive into
     // the pit hold.
-    const settlePose = () => this.settleDeathPose();
+    // Arrival settles the body AND starts the face: both are the same beat, the
+    // one where the journey stops being a fall and becomes a death.
+    const settlePose = () => {
+      this.settleDeathPose();
+      if (p.deathT == null) p.deathT = 0;
+    };
     // Held every frame: the face is derived from this in poseFromPlayer, and
     // updateFallFace — which normally sets it — does not run while dead.
     p.fallFace = true;
@@ -7497,6 +7601,9 @@ export class RunState {
 
   updateDead(dt) {
     this.deadT += dt;
+    // The face's own clock, which is not this.deadT: a pit death spends the
+    // first second of its hold falling, with the face still alive.
+    if (this.player.deathT != null) this.player.deathT += dt;
     if (this.pitDeath) {
       this.updatePitSink(dt);
     } else {
@@ -7950,7 +8057,17 @@ export class RunState {
     }
     };
     if (!this.style.actorsAbovePost) drawActors();
-    if (!this.finishing && this.portal) this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, renderT, z, true, this.save.settings));
+    // THE PORTAL IS CAST TOO. It is the relay's doorway — the one thing on
+    // screen you are meant to run INTO — and its whole read is the colour: a
+    // lit ring with the next hero's own palette burning inside it. Under lcd's
+    // post() that came out as two tones of pea green, which is the treatment
+    // this pack reserves for silkscreened backplate art. Same rule as the hero,
+    // the hazards and the finish pole.
+    const drawPortalRing = () => {
+      if (this.finishing || !this.portal) return;
+      this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, renderT, z, true, this.save.settings));
+    };
+    if (!this.style.actorsAbovePost) drawPortalRing();
     if (!this.finishing && this.copter) this.drawAtGround(ctx, this.copter.x, () => drawCopter(ctx, this.copter, cam, renderT, true));
     if (this.escapeWall != null) {
       const x = this.escapeWall - cam;
@@ -7965,7 +8082,15 @@ export class RunState {
     // camera is what stops moving when the finish run arms, so deriving its
     // screen x from the camera covers the approach and the run alike — and the
     // tape stays put across the frame the two swap over.
-    if (!this.overtime && Number.isFinite(this.totalDist)) {
+    //
+    // IT IS CAST, NOT SCENERY, and on a converting style that is the whole
+    // difference. The pole is the thing the run is FOR — the checkers, the
+    // breaker's dial, the flag — and drawn under lcd's post() all of it came
+    // out in the panel's two tones, which is the treatment reserved for the
+    // printed backplate. Same argument the hero and the hazards win on: what
+    // the player is tracking stays in colour against a monochrome background.
+    const drawFinish = () => {
+      if (this.overtime || !Number.isFinite(this.totalDist)) return;
       const fx = this.finishWorldX() - cam;
       if (fx - PLAYER_X < 560) {
         this.drawFinishMarker(ctx, fx, this.groundYAt(this.finishWorldX()), z, this.markerT || renderT);
@@ -7974,24 +8099,8 @@ export class RunState {
       // band for about two seconds, warning about a pole that arrives labelled
       // moments later — the HUD progress bar warms to gold across that same
       // stretch instead.
-    }
-
-    // A soft reticle communicates which nearby obstacle the contextual power
-    // will affect without adding another HUD instruction.
-    if (!this.finishing && this.player.abilityCd <= 0 && this.relay.current === 'lorenzo') {
-      const target = this.powerTarget();
-      if (target) {
-        const tx = target.x - cam + target.w / 2;
-        // Against the target's OWN floor. On the lane these are the same
-        // number, and underground they are a hundred pixels apart — the reticle
-        // was ringing a patch of empty lane above a crate the hero was standing
-        // next to in a tunnel.
-        const ty = Math.round(this.entityGroundY(target) - target.alt - target.h / 2);
-        const pulse = this.save.settings.reducedMotion ? 4 : 4 + Math.sin(renderT * 7);
-        ctx.strokeStyle = 'rgba(246,211,60,0.65)';
-        ctx.beginPath(); ctx.arc(tx, ty, Math.max(target.w, target.h) * 0.65 + pulse, 0, Math.PI * 2); ctx.stroke();
-      }
-    }
+    };
+    if (!this.style.actorsAbovePost) drawFinish();
 
     // Player. During the opening run-in this is off the left edge, so the hero
     // draws his way in from beyond the frame (and stays out of sight behind an
@@ -8047,8 +8156,7 @@ export class RunState {
         // celebration clears it — the pose is a snapshot and the sim is not
         // running to decay what the last live frame left behind.
         pose: celebrating
-          ? { kind: 'celebrate', grounded: true, vy: 0, squash: 0, lean: 0,
-            ducking: false, duckAmount: 0, roll: false, float: false, stomp: false, cling: 0 }
+          ? FINISH_CELEBRATION_POSE
           : (this.loop && !this.loop.pending)
             ? { kind: 'run', grounded: true, vy: 0, squash: 0, lean: -this.loop.theta,
               ducking: false, duckAmount: 0, roll: false, float: false, stomp: false, cling: 0 }
@@ -8082,6 +8190,12 @@ export class RunState {
       ctx.save();
       applyWorld(ctx, z, pan, floorY);
       drawActors();
+      // In the order the pre-post path draws them, so nothing changes but which
+      // side of the conversion they land on. The hero goes last on both: he
+      // climbs the finish pole and slides down it, and he steps through the
+      // portal rather than behind it.
+      drawPortalRing();
+      drawFinish();
       drawHero();
       ctx.restore();
     }
@@ -8165,7 +8279,16 @@ export class RunState {
           avoid: heroRect,
         });
       }
-      if (this.speech) drawSpeech(d, this.speech, { avoid: heroRect });
+      // UNDER THE RIBBON ON A BEAT STAGE. The card's default anchor puts its
+      // plate in exactly the band the beat lane occupies, so on this cabinet
+      // the two were printed on top of each other — and the ribbon wins, being
+      // drawn after. The card moves rather than the strip: the strip is an
+      // instrument the player is reading continuously and its position is the
+      // one thing that must not move, where a line of banter is up for four
+      // seconds and does not care where it stands.
+      if (this.speech) {
+        drawSpeech(d, this.speech, { avoid: heroRect, ...(this.beatLock ? { y: BEAT_SPEECH_Y } : {}) });
+      }
       drawHud(d, this);
       this.drawAbilityName(d);
       if (this.introFreeze > 0 && this.introText) {

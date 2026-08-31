@@ -117,6 +117,124 @@ The full field, in order of elimination:
   one strand escaping in front of each ear, everything else obeying the
   plait. The plait itself was right from the first cut and never changed.
 
+- **The shoulders** (2026-08-31): the singlet lost. Two narrow straps over a
+  scooped armhole is a garment the sprite cannot hold — the torso is 0.3u
+  across, so the strap came out at a pixel or two and the skin either side of
+  it won, leaving a pale wedge on each shoulder that changed shape with the
+  arm and read as a bite out of her top on every airborne frame. The top now
+  covers the shoulder whole and the ARMHOLE IS THE ARM: her arms are bare
+  skin rooted at the shoulder, so the shirt's edge meets them exactly where a
+  real armhole would. A shallow wide-strap cut was tried in the same pass and
+  rejected — identical at lane size, but it chipped the shirt's shoulder on
+  the run and the celebrate. The V throat is the only cut left in the top.
+
+  The front-on `shoulderCap` then had to go too, and this is the part worth
+  remembering: with the shoulder covered there is no seam left for it to bury,
+  only one for it to break. It is a disc straddling the shirt/skin boundary,
+  so whatever colour it takes it prints the wrong half onto the other side —
+  in skin, a bare lobe rising out of the shirt over her shoulder (what Peter
+  caught); in olive, a green bite out of the top of her arm. Drawing it under
+  the arm instead of over it does not help, because the bite is the cap
+  showing where the arm is NOT. The limb's own round root closes the shoulder
+  at exactly the right gauge and reads as the armhole's edge. The cap is
+  skipped for `spec.tank` front-on only; TURNED still gets it, where it is
+  stroked and IS the shoulder's contour.
+
+  Last in the sequence, the corner itself: `shoulderSoft: 0.75`, up from the
+  taper path's default 0.5. With no sleeve to break it, the shirt's own edge
+  IS her shoulder, and the shipped corner came out square — "a box with a head
+  on it". 0.62 barely reads, 0.88 starts losing the shoulder line, and by 1.0
+  the flat top is gone entirely and the torso is a bell that reads as hunched.
+  It is a per-spec dial, not a change to the shared path: Kiko and Grumpos are
+  on the same taper and keep 0.5, verified by pixel-diffing both against HEAD
+  across idle/run/jump/duck (1 byte of 13.9M, delta 1 — rasteriser noise).
+  Settled at **0.75**, after a look at 0.62 in place.
+
+- **The V drifts right in a run** (2026-08-31): the neckline is cut on the
+  torso's true centre, which is right at rest and looks hung off-square in
+  motion — not because the V moves but because the shirt around it does. The
+  depth rig roots the near arm wide and swings it across her chest, so most of
+  the shirt's left half is behind an arm for most of the cycle, and a V on the
+  true centre sits near the left edge of what is left to read. The run fakes
+  it: **+0.015u** toward the side still showing. Standing is untouched — the
+  whole shirt is visible there and the true centre is the right one. It was
+  first tuned to 0.02u; retuned once the head nudge below came out, because
+  half of what the V was chasing turned out to be the HEAD being off-centre
+  rather than the shirt.
+
+- **She was undressed on the ground** (2026-08-31): the crouch and the reclined
+  poses had no V, no midriff, no belt and no holster — everything that makes
+  her waist read was gated off. Two separate causes. The standing rig gates
+  `tank`, `crop` and `gearBelt` behind `!duck`, which cost her the lot in a
+  crouch; all three flags are hers alone, so ungating them touches nobody else.
+  And `duckTorsoCapsule`, which the slide, dive and tuck share, claimed in its
+  own comment to dress the capsule "the way the STANDING rig dresses it" but
+  only ever implemented shirt, trousers and Lorenzo's suspenders — the belt was
+  inside the `spec.straps` branch, so every other hero who wears one lost it the
+  moment they went to ground. The capsule now paints the same band stack the
+  standing torso does (shirt, midriff from the cropped hem, trousers from the
+  belt) with the V read along its axis and the belt on the colour seam.
+
+  `thighHolster` came out of `drawHumanoid` to module scope as
+  `thighHolsterAt`, taking the KNEE as a point rather than solving for it, so
+  the standing rig (which has run the IK) and the reclined poses (which have
+  not) can share it. The reclined ones pass a smaller `t`: 0.74 of a folded
+  thigh parks the pouch on the kneecap and it reads as a knee pad.
+
+  Two retunes after the first pass, both from Peter: the belt was sized off
+  `rHip` and stopped short of the sides, because it does not sit at the hip end
+  — it sits a quarter of the way up a capsule that widens from rHip to rSh, so
+  the body under it is wider than the number it was measured against. It runs
+  full width now and is CLIPPED to the capsule, which is the truer read anyway:
+  a belt on a body lying down wraps out of sight rather than stopping. And the
+  V is drawn deliberately BIGGER than the standing cut (0.26w x 0.42L against
+  0.16w x 0.3L) — the capsule is a foreshortened trunk, so a neckline at its
+  true proportion reads across the shape's short axis and comes out a hint;
+  and the chest is the only part of her these poses show at any size, so the V
+  carries the whole "tank top" read alone and has to be legible doing it. It
+  survives to the 44px lane. And it is cut under her CHIN, not down the trunk's
+  centre line: `axisOffset` projects wherever the pose put its head onto the
+  capsule's own cross-axis and the collar slides to meet it, so changing where
+  the head goes moves the collar with it. Only halfway, though
+  (`V_FOLLOWS_FACE`) — the head is a long way off the axis in these poses, and
+  following it the whole way puts the collar out on her flank with the cut
+  running down toward the belt.
+
+  Not done: the TUCK is a curled ball with nowhere for a waistline to sit, and
+  the belt's pouch is not quoted onto the capsule — the buckle is the mark that
+  carries at lane size.
+
+- **The cast-wide head lead** (2026-08-31, found while chasing the V): every
+  humanoid's head was drawn at `0.01 * u + torsoCx`, unconditional, in every
+  pose, with nothing anywhere saying why — and it turned out to be doing two
+  different jobs. It was zeroed cast-wide first, and Peter caught the loss
+  immediately: "by centering the head in motion the face looks slightly off."
+  He was right. STANDING it was simply an error — every face in the cast sat a
+  little right of the body under it (Lorenzo's moustache, Gnash's nose, Clara's
+  neckline, all off their own centre line at rest, under a pixel in a lane,
+  which is how it survived and why it is plain at portrait scale). MOVING it
+  was real work: the whole cast is drawn facing +x, and a head carried a touch
+  ahead of the shoulders is what looking where you are going looks like;
+  centred, a runner's face reads planted and the perspective goes flat.
+  Shipped as `stand ? 0 : 0.01 * u` — the same number it always was, given only
+  to the poses that travel. The yaw term beside it is untouched, being a real
+  three-quarter offset. Worth remembering as a method note: a constant nobody
+  documented was still carrying an intention, and the cheap test (zero it, look
+  at every hero at three sizes) found the half that was wrong but needed a
+  human eye to find the half that was right.
+
+  Per-hero impact of the zeroing measured at 64/96/200px idle: confined to the
+  head and everything pinned to it (caps, spikes, antenna, buns, beard all
+  travel with it), 9k-24k pixels per hero, nothing detached.
+
+- **The cameo had no arms** (2026-08-31): `transitionCameoAction('clara')` is
+  a STANDING pose, and standing puts both arms behind the body — right for arms
+  at rest, wrong for a draw. Both pistols floated clear of a silhouette they
+  were not attached to. Fixed by setting `armsReachFront` in the pistol/aim
+  branch, exactly as Kiko's ki-press does two branches above and for the same
+  reason. It is the ordinary depth split, not both arms forward: the far arm
+  stays behind the torso, the near one comes over it.
+
 All the painter pieces stay live in toons.js: the pulled cut, both swept
 fringes, the numeric tendril counts, `drawPistol` + thigh/hip holsters with
 `holsterDrawn` gating, and the braid. Her spec is `TOON_SPECS.clara`

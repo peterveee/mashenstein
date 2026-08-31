@@ -27,7 +27,7 @@ import { installDom } from './dom-stub.js';
 const dom = installDom();
 
 const { RunState } = await import('../src/game/run.js');
-const { poseFromPlayer } = await import('../src/sprites/toons.js');
+const { poseFromPlayer, DEATH_FACE_TIMING } = await import('../src/sprites/toons.js');
 const { save } = await import('../src/engine/save.js');
 const { PLAYER_X } = await import('../src/game/player.js');
 
@@ -197,6 +197,64 @@ function worstPoseThroughHold(run, frames = 40) {
   assert(atRest(landed), `and the hold that follows is upright and unsquashed (${describe(landed)})`);
   const bad = worstPoseThroughHold(run, 60);
   assert(!bad, `for as long as it lasts (${bad ? describe(bad) : 'at rest'})`);
+}
+
+// ---- and the face on it ---------------------------------------------------------
+// The body is settled by the pose; the FACE is a three-beat animation on a clock
+// of its own (toons.js DEATH_FACE_TIMING: the eyes shut, the lids go, the spirals
+// land on a bare face). What this pins is WHEN that clock starts, which is the
+// one thing about it the run owns and the only place it can be got wrong.
+{
+  // A hit is over in one frame, so the face starts on that frame.
+  const run = newRun();
+  for (let i = 0; i < 30; i++) run.update(TICK);
+  run.battery = 1;
+  run.takeHit('TEST');
+  assert(poseFromPlayer(run.player, 0).deathFace === 0,
+    'a hit starts the death face on the killing frame');
+  // Sampled BEFORE each update and only while dead: the frame that ends the hold
+  // restarts the stage, and a fresh Player is alive again with no clock on it.
+  let saw = 0;
+  for (let i = 0; i < 60 && run.dead; i++) {
+    const v = poseFromPlayer(run.player, 0).deathFace;
+    if (v != null) saw = Math.max(saw, v);
+    run.update(TICK);
+  }
+  assert(saw >= DEATH_FACE_TIMING.POP,
+    `and the whole animation plays out inside the 0.5s hold (reached ${saw.toFixed(3)}s)`);
+}
+
+{
+  // A HOLE IS NOT A HIT. He goes over the edge wearing the startled fall face,
+  // and that face is the whole point of the drop — so the death face may not
+  // start at the lip. It starts when he reaches the material, with the crunch.
+  const run = newRun({ stage: pitStage, startAt: 0.66 });
+  for (let i = 0; i < 60 * 20 && !run.obstacles.some((ob) => ob.live && ob.crossing); i++) run.update(TICK);
+  const cross = run.crossings[0];
+  run.camX = cross.x + cross.w - cross.hop * 0.5 - PLAYER_X;
+  run.route = null;
+  run.player.y = 0; run.player.vy = 0; run.player.grounded = true; run.player.jumps = 1;
+  run.update(TICK);
+  assert(run.dead && !!run.pitDeath, 'missing the stones is a pit death');
+  assert(poseFromPlayer(run.player, 0).deathFace == null,
+    'the face is still alive at the lip');
+  let aliveThroughFall = true;
+  for (let i = 0; i < 300 && !run.pitDeath.in; i++) {
+    run.update(TICK);
+    if (!run.pitDeath.in && poseFromPlayer(run.player, 0).deathFace != null) aliveThroughFall = false;
+  }
+  assert(run.pitDeath.in, 'he reaches the bed');
+  assert(aliveThroughFall, 'and keeps his own face for the whole way down');
+  assert(poseFromPlayer(run.player, 0).deathFace === 0,
+    'the death face starts on arrival, not on the way');
+  let saw = 0;
+  for (let i = 0; i < 90 && run.dead; i++) {
+    const v = poseFromPlayer(run.player, 0).deathFace;
+    if (v != null) saw = Math.max(saw, v);
+    run.update(TICK);
+  }
+  assert(saw >= DEATH_FACE_TIMING.POP,
+    `and finishes well inside what is left of the pit hold (reached ${saw.toFixed(3)}s)`);
 }
 
 dom.reset?.();

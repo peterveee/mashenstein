@@ -144,6 +144,20 @@ run.collide();
 assert(run.battery === cellsBeforeFinishHit - 1,
   'hazards can still damage the player while the finish camera is locked');
 
+// A source-specific failure line must describe the thing that actually landed.
+// In particular, the barrel joke must not leak out of the generic pool onto a
+// zombie, cactus, or any other ordinary hit.
+const wrongSourceDeath = makeRun(); wrongSourceDeath.enter();
+wrongSourceDeath.battery = 1;
+wrongSourceDeath.takeHit(null, false, 'zombie');
+assert(wrongSourceDeath.failMsg !== 'A BARREL HAS WON THE ARGUMENT',
+  'a non-barrel death never claims a barrel won the argument');
+const barrelDeath = makeRun(); barrelDeath.enter();
+barrelDeath.battery = 1;
+barrelDeath.takeHit(null, false, 'barrel');
+assert(barrelDeath.failMsg === 'A BARREL HAS WON THE ARGUMENT',
+  'the barrel joke remains available for an actual barrel hit');
+
 // The final stretch keeps its hazards, so it has to be losable as well as
 // survivable. Dying there used to hand every remaining frame to updateFinish,
 // which bails on `dead` before the tape check: deadT never advanced, nothing
@@ -689,10 +703,31 @@ assert(pitCells > 1 && run.dead && run.battery === 0,
 // it. The snapshot is the only thing standing between a fatal pit and a restart
 // from the top, so it is worth an assertion of its own.
 run = makeRun(); run.enter();
-run.distance = run.checkpoints[0] + 1;
+run.camX = run.checkpoints[0] + 1;
+run.distance = run.camX;
+run.pickups = [];
+run.player.grounded = false;
+run.player.y = 24;
 run.checkCheckpoints();
 const pitSnap = run.snapshot;
-assert(pitSnap, 'crossing a checkpoint takes a snapshot to fall back to');
+assert(pitSnap,
+  'crossing a checkpoint banks it by world position, without touching a point or standing on the ground');
+const firstCheckpointMarker = run.checkpointMarkers[0];
+run.camX = run.checkpoints[0] + 1;
+run.distance = run.camX;
+run.checkCheckpoints();
+const activePitSnap = run.snapshot;
+assert(run.checkpointMarkers.length === 2 && run.checkpointMarkers[0] === firstCheckpointMarker,
+  'reaching checkpoint two keeps checkpoint one in the visible checkpoint history');
+// Rewind is live-history playback, not a way to un-bank a checkpoint. The
+// pending checkpoint was shifted out when it was crossed, so erasing this
+// snapshot would make the next death restart the stage with no way to earn the
+// same checkpoint again.
+const rewindRec = run.rewindFrames.slotForWrite();
+run.writeRewindSnapshot(rewindRec);
+run.restoreRewindSnapshot(rewindRec);
+assert(run.snapshot === activePitSnap,
+  'rewinding after a checkpoint preserves the banked death restore');
 run.player.grounded = true; run.player.y = 0; run.player.iframes = 0;
 run.powerups.shieldStack = 0;
 run.obstacles = [makeObstacle('gap', run.camX + PLAYER_X - 10)];
@@ -706,8 +741,10 @@ let pitFrames = 0;
 for (; pitFrames < 240 && run.dead; pitFrames++) run.update(1 / 60);
 assert(pitFrames / 60 > 2,
   `the death holds long enough to watch (${(pitFrames / 60).toFixed(2)}s)`);
-assert(!run.dead && Math.abs(run.camX - pitSnap.camX) < 8 && run.battery === pitSnap.battery,
-  `a pit death restores the last checkpoint (camX ${run.camX}/${pitSnap.camX}, cells ${run.battery})`);
+assert(!run.dead && Math.abs(run.camX - activePitSnap.camX) < 8 && run.battery === activePitSnap.battery,
+  `a pit death restores the last checkpoint (camX ${run.camX}/${activePitSnap.camX}, cells ${run.battery})`);
+assert(run.checkpointMarkers.length === 2 && run.checkpointMarkers[0] === firstCheckpointMarker,
+  'dying after checkpoint two leaves both checkpoint timeline markers visible');
 
 // ...and what happens during that beat: he goes over the edge with the fall
 // face on, stops at the material rather than falling through the world, and
