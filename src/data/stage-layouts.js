@@ -56,25 +56,26 @@ export const STAGE_LAYOUTS = {
     pits: [{ at: 0.38, w: 60 }, { at: 0.665, jumps: 5 }],
     rewindAt: null,
   },
-  "neon-1": {
+  "rhythm-1": {
     durationSec: 60,
     speedMult: 1,
-    appliance: { at: 0.65, high: false },
+    appliance: { at: 0.39, high: false },
     pits: null,
     rewindAt: null,
   },
-  "neon-2": {
+  "rhythm-2": {
     durationSec: 60,
     speedMult: 1,
-    appliance: { at: 0.75, high: true },
-    pits: null,
+    appliance: { at: 0.668, high: true },
+    pits: [{ at: 0.37, w: 56 }, { at: 0.703, jumps: 6 }],
     rewindAt: null,
+    checkpoints: [0.333333, 0.653],
   },
-  "neon-3": {
+  "rhythm-3": {
     durationSec: 60,
     speedMult: 1,
     appliance: { at: 0.55, high: false },
-    pits: [{ at: 0.37, w: 56 }, { at: 0.7, w: 60 }],
+    pits: [{ at: 0.37, w: 60 }, { at: 0.75, w: 64 }],
     rewindAt: null,
   },
   "frost-1": {
@@ -119,26 +120,25 @@ export const STAGE_LAYOUTS = {
     pits: null,
     rewindAt: null,
   },
-  "rhythm-1": {
+  "neon-1": {
     durationSec: 90,
     speedMult: 1,
-    appliance: { at: 0.39, high: false },
+    appliance: { at: 0.65, high: false },
     pits: null,
     rewindAt: null,
   },
-  "rhythm-2": {
+  "neon-2": {
     durationSec: 90,
     speedMult: 1,
-    appliance: { at: 0.668, high: true },
-    pits: [{ at: 0.37, w: 56 }, { at: 0.703, jumps: 6 }],
+    appliance: { at: 0.75, high: true },
+    pits: null,
     rewindAt: null,
-    checkpoints: [0.333333, 0.653],
   },
-  "rhythm-3": {
+  "neon-3": {
     durationSec: 90,
     speedMult: 1,
     appliance: { at: 0.55, high: false },
-    pits: [{ at: 0.37, w: 60 }, { at: 0.75, w: 64 }],
+    pits: [{ at: 0.37, w: 56 }, { at: 0.7, w: 60 }],
     rewindAt: null,
   },
   "cardboard-1": {

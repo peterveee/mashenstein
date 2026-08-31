@@ -453,49 +453,56 @@ export const CABINETS = [
     taunt: 'I INVENTED SPEED. IN 1987. NO ONE THANKED ME.',
   },
   {
-    id: 'neon', name: 'NEON BLASTERS', act: 1, style: 'neon',
-    genre: 'SHMUP', unlockPlugs: 5, speedBonus: 0.3,
-    mechanic: 'pellets',
-    sky: ['#0a0a2a', '#1a1048'], ground: '#282858', groundDark: '#181838',
-    far: '#302868', hills: '#282050',
-    music: NEON.bank,
+    id: 'rhythm', name: 'RHYTHM BANKRUPTCY', act: 1, style: 'lcd',
+    genre: 'RHYTHM', unlockPlugs: 5, speedBonus: 0.3,
+    mechanic: 'beat', // obstacles quantized to the beat; on-beat bonus
+    // Ground pair in the LCD pack's own colours — panel-lit body under an ink
+    // surface line — because the terrain painter draws rhythm-1's rolling
+    // mid-section with these, on top of the pack's panel-lit road, and the
+    // olive drab it used to carry read as mud on the screen.
+    sky: ['#202018', '#383828'], ground: '#26355d', groundDark: '#dce49a',
+    far: '#404030', hills: '#383828',
+    // TEETH. This cabinet's beat lane cuts its own holes on the grid
+    // (songs/rhythm.js), so a hole here is not an occasional set piece, it is
+    // half of what the stage is made of — and the one fill in the set that
+    // reads as lethal at a glance, standing still, from the lane, is the spike
+    // plate. The LCD pack draws its own row in ink on top (see lcdPack.ground);
+    // this is what the hole is filled with anywhere else the pack cycles to.
+    pitFill: 'spikes',
+    music: RHYTHM.bank,
+    // The desk's mix for this song, alongside the bank: run.js reads its
+    // voiceParams at enter() to pre-expand TNGR-2 wavetables — the bank alone
+    // does not know which synth voices the song ends up on.
+    songMix: RHYTHM.mix,
+    beatCharts: RHYTHM.beatCharts,
     patterns: [
-      // Tier-0 BASE stays filtered out — no cactus-and-crate opener here; the
-      // cabinet's identity is the air. But identity is not a two-pattern bag:
-      // neon-1 used to hold ONLY the lone drone and the lone target, and the
-      // anti-repeat nudge in pickPattern turned its whole sixty seconds into a
-      // strict drone/target alternation. The tier-0 rows below are the fix —
-      // flyer-majority, one ground read, seven ways to open.
-      ...BASE_PATTERNS.filter((p) => p.tier > 0),
-      ...ANIMALS.neon,
-      P(0, [{ t: 'drone', dx: 0 }]),
-      P(0, [{ t: 'target', dx: 0 }, coinArc(40)]),
-      P(0, [{ t: 'buzzbird', dx: 0 }]),
-      P(0, [{ t: 'drone', dx: 0 }, coinLine(60)]),
-      // Two targets far enough apart to be two shots, not one composite — this
-      // pair used to sit at tier 1 with dx 30, which was one decision wearing
-      // two sprites. Demoted respaced: it feeds neon-1's 5-target mission.
-      P(0, [{ t: 'target', dx: 0 }, { t: 'target', dx: 110 }]),
-      P(0, [{ t: 'target', dx: 0 }, coinStair(30)]),
-      // The one tier-0 ground read, taught solo on clear ground — the same
-      // convention Plumber opened the spike plate with.
-      P(0, [{ t: 'popSpikes', dx: 0 }]),
-      P(1, [{ t: 'shooterDrone', dx: 0 }]),
-      // The security hurdle gives the cabinet a short ground-level hop between
-      // its airborne reads (see OBSTACLES.boomBarrier).
-      P(1, [{ t: 'boomBarrier', dx: 0 }, coinLine(40)]),
-      // Spread from Plumber/Speed: a glowing blade and a burning drum belong
-      // under this sky as much as any lane's.
+      // Full BASE. This bank used to filter `tier < 2`, which quietly made
+      // Rhythm the only cabinet in the game that never dealt a barrel and left
+      // its stage-2→3 escalation at exactly three patterns. No comment ever
+      // defended the filter, and a rolling barrel is the most beat-readable
+      // hazard the shared set owns.
+      ...BASE_PATTERNS,
+      // The signature, taught at stage 1: rhythm-1 runs at tierMax 0, so the
+      // beat prop has to live at tier 0 or the cabinet's own mechanic never
+      // deals on its opening stage. Tier 0 solo first, then in company.
+      P(0, [{ t: 'beatBar', dx: 0 }]),
+      P(0, [{ t: 'beatBar', dx: 0 }, coinArc(60)]),
+      P(1, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 72 }]),
+      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 90 }]),
+      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'drone', dx: 100 }]),
+      P(2, [{ t: 'cactus', dx: 0 }, { t: 'beatBar', dx: 80 }, coinArc(140)]),
+      // Three pops in a row is the cabinet's thesis stated as a lane: the bars
+      // rise quantized to the song, so this reads as a drum fill you jump.
+      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 80 }, { t: 'beatBar', dx: 160 }]),
+      // Spread from Act I: the saw spins on its own clock against the bars'
+      // beat, the spikes are the off-beat floor read, and the crossing gate is
+      // this cabinet's first duck that is not the shared drone row.
       P(1, [{ t: 'floorSaw', dx: 0 }]),
-      P(1, [{ t: 'fireBarrel', dx: 0 }, coinArc(70)]),
-      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'drone', dx: 110 }]),
-      // Was a cactus behind the shooter — the one desert prop in the bag's own
-      // rows. The drum fire keeps the ground threat and drops the sagebrush.
-      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'fireBarrel', dx: 130 }]),
-      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'boomBarrier', dx: 120 }]),
-      P(2, [{ t: 'gap', dx: 0, w: 56 }]),
+      P(1, [{ t: 'boomBarrier', dx: 0 }]),
+      P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'beatBar', dx: 70 }]),
+      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'boomBarrier', dx: 110 }]),
     ],
-    taunt: 'THOSE LASERS COST ME A FORTUNE. DODGE THEM RESPECTFULLY.',
+    taunt: 'I OWN THE RIGHTS TO RHYTHM. YOU OWE ME ROYALTIES PER JUMP.',
   },
   {
     id: 'frost', name: 'FROST FORTRESS', act: 2, style: 'watercolor',
@@ -611,56 +618,49 @@ export const CABINETS = [
     taunt: 'THE DARKNESS IS A COST-SAVING MEASURE. THE SPOOKINESS IS FREE.',
   },
   {
-    id: 'rhythm', name: 'RHYTHM BANKRUPTCY', act: 2, style: 'lcd',
-    genre: 'RHYTHM', unlockPlugs: 20, speedBonus: 0.45,
-    mechanic: 'beat', // obstacles quantized to the beat; on-beat bonus
-    // Ground pair in the LCD pack's own colours — panel-lit body under an ink
-    // surface line — because the terrain painter draws rhythm-1's rolling
-    // mid-section with these, on top of the pack's panel-lit road, and the
-    // olive drab it used to carry read as mud on the screen.
-    sky: ['#202018', '#383828'], ground: '#26355d', groundDark: '#dce49a',
-    far: '#404030', hills: '#383828',
-    // TEETH. This cabinet's beat lane cuts its own holes on the grid
-    // (songs/rhythm.js), so a hole here is not an occasional set piece, it is
-    // half of what the stage is made of — and the one fill in the set that
-    // reads as lethal at a glance, standing still, from the lane, is the spike
-    // plate. The LCD pack draws its own row in ink on top (see lcdPack.ground);
-    // this is what the hole is filled with anywhere else the pack cycles to.
-    pitFill: 'spikes',
-    music: RHYTHM.bank,
-    // The desk's mix for this song, alongside the bank: run.js reads its
-    // voiceParams at enter() to pre-expand TNGR-2 wavetables — the bank alone
-    // does not know which synth voices the song ends up on.
-    songMix: RHYTHM.mix,
-    beatCharts: RHYTHM.beatCharts,
+    id: 'neon', name: 'NEON BLASTERS', act: 2, style: 'neon',
+    genre: 'SHMUP', unlockPlugs: 20, speedBonus: 0.45,
+    mechanic: 'pellets',
+    sky: ['#0a0a2a', '#1a1048'], ground: '#282858', groundDark: '#181838',
+    far: '#302868', hills: '#282050',
+    music: NEON.bank,
     patterns: [
-      // Full BASE. This bank used to filter `tier < 2`, which quietly made
-      // Rhythm the only cabinet in the game that never dealt a barrel and left
-      // its stage-2→3 escalation at exactly three patterns. No comment ever
-      // defended the filter, and a rolling barrel is the most beat-readable
-      // hazard the shared set owns.
-      ...BASE_PATTERNS,
-      // The signature, taught at stage 1: rhythm-1 runs at tierMax 1, and the
-      // beat prop used to be one tier-1 pattern in a bag of thirteen — 69% of
-      // which was cactus-or-crate. Tier 0 solo first, then in company.
-      P(0, [{ t: 'beatBar', dx: 0 }]),
-      P(0, [{ t: 'beatBar', dx: 0 }, coinArc(60)]),
-      P(1, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 72 }]),
-      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 90 }]),
-      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'drone', dx: 100 }]),
-      P(2, [{ t: 'cactus', dx: 0 }, { t: 'beatBar', dx: 80 }, coinArc(140)]),
-      // Three pops in a row is the cabinet's thesis stated as a lane: the bars
-      // rise quantized to the song, so this reads as a drum fill you jump.
-      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'beatBar', dx: 80 }, { t: 'beatBar', dx: 160 }]),
-      // Spread from Act I: the saw spins on its own clock against the bars'
-      // beat, the spikes are the off-beat floor read, and the crossing gate is
-      // this cabinet's first duck that is not the shared drone row.
+      // Tier-0 BASE stays filtered out — no cactus-and-crate opener here; the
+      // cabinet's identity is the air. But identity is not a two-pattern bag:
+      // neon-1 used to hold ONLY the lone drone and the lone target, and the
+      // anti-repeat nudge in pickPattern turned its whole lap into a strict
+      // drone/target alternation. The tier-0 rows below are the fix —
+      // flyer-majority, one ground read, seven ways to open.
+      ...BASE_PATTERNS.filter((p) => p.tier > 0),
+      ...ANIMALS.neon,
+      P(0, [{ t: 'drone', dx: 0 }]),
+      P(0, [{ t: 'target', dx: 0 }, coinArc(40)]),
+      P(0, [{ t: 'buzzbird', dx: 0 }]),
+      P(0, [{ t: 'drone', dx: 0 }, coinLine(60)]),
+      // Two targets far enough apart to be two shots, not one composite — this
+      // pair used to sit at tier 1 with dx 30, which was one decision wearing
+      // two sprites. Demoted respaced: it feeds neon-1's 5-target mission.
+      P(0, [{ t: 'target', dx: 0 }, { t: 'target', dx: 110 }]),
+      P(0, [{ t: 'target', dx: 0 }, coinStair(30)]),
+      // The one tier-0 ground read, taught solo on clear ground — the same
+      // convention Plumber opened the spike plate with.
+      P(0, [{ t: 'popSpikes', dx: 0 }]),
+      P(1, [{ t: 'shooterDrone', dx: 0 }]),
+      // The security hurdle gives the cabinet a short ground-level hop between
+      // its airborne reads (see OBSTACLES.boomBarrier).
+      P(1, [{ t: 'boomBarrier', dx: 0 }, coinLine(40)]),
+      // Spread from Plumber/Speed: a glowing blade and a burning drum belong
+      // under this sky as much as any lane's.
       P(1, [{ t: 'floorSaw', dx: 0 }]),
-      P(1, [{ t: 'boomBarrier', dx: 0 }]),
-      P(2, [{ t: 'popSpikes', dx: 0 }, { t: 'beatBar', dx: 70 }]),
-      P(2, [{ t: 'beatBar', dx: 0 }, { t: 'boomBarrier', dx: 110 }]),
+      P(1, [{ t: 'fireBarrel', dx: 0 }, coinArc(70)]),
+      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'drone', dx: 110 }]),
+      // Was a cactus behind the shooter — the one desert prop in the bag's own
+      // rows. The drum fire keeps the ground threat and drops the sagebrush.
+      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'fireBarrel', dx: 130 }]),
+      P(2, [{ t: 'shooterDrone', dx: 0 }, { t: 'boomBarrier', dx: 120 }]),
+      P(2, [{ t: 'gap', dx: 0, w: 56 }]),
     ],
-    taunt: 'I OWN THE RIGHTS TO RHYTHM. YOU OWE ME ROYALTIES PER JUMP.',
+    taunt: 'THOSE LASERS COST ME A FORTUNE. DODGE THEM RESPECTFULLY.',
   },
   {
     id: 'cardboard', name: 'CARDBOARD KINGDOM', act: 3, style: 'cardboard',

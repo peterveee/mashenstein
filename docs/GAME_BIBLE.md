@@ -119,12 +119,12 @@ Unplayed heroes loiter in the concourse, wandering and hopping. Press DOWN to ta
 
 | Act | Cabinet | Style | Genre | Stages | Boss |
 |---|---|---|---|---|---|
-| I | PLUMBER PANIC | pixel | Platformer | 3 | Clown-Copter (end of Act I) |
+| I | PLUMBER PANIC | pixel | Platformer | 3 | Dust Devil 9000 (end of Act I) |
 | I | SPEED ZONE | faux-3D | Racing | 3 | — |
-| I | NEON BLASTERS | neon vector | SHMUP | 3 | — |
-| II | FROST FORTRESS | watercolor | Ice Adventure | 3 | Dust Devil 9000 (end of Act II) |
+| I | RHYTHM BANKRUPTCY | LCD handheld | Rhythm | 3 | — |
+| II | FROST FORTRESS | watercolor | Ice Adventure | 3 | Clown-Copter (end of Act II) |
 | II | CRYPT SHIFT | VHS | Horror | 3 | — |
-| II | RHYTHM BANKRUPTCY | LCD handheld | Rhythm | 3 | — |
+| II | NEON BLASTERS | neon vector | SHMUP | 3 | — |
 | III | CARDBOARD KINGDOM | cardboard | Fake-o-rama | 3 | Eggshell & The Power Strip (end of Act III) |
 | III | CORPORATE KOMBAT | doodle | Office Action | 3 | — |
 | III | THE SURGE | mashup | Everything | 3 | — |
@@ -268,10 +268,10 @@ Choosing UNPLUGGED prompts: "ARE YOU SURE? (WE ARE NOT.) ENTER: YES / ESC: WISDO
 |---|---|
 | 0 | PLUMBER PANIC |
 | 2 | SPEED ZONE |
-| 5 | NEON BLASTERS |
+| 5 | RHYTHM BANKRUPTCY |
 | 12 | FROST FORTRESS (Act II) |
 | 16 | CRYPT SHIFT |
-| 20 | RHYTHM BANKRUPTCY |
+| 20 | NEON BLASTERS |
 | 25 | THE BACK ROOM appears |
 | 28 | CARDBOARD KINGDOM (Act III) |
 | 34 | CORPORATE KOMBAT |

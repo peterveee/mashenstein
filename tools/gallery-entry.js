@@ -3308,7 +3308,7 @@ function laneStrip(ctx, w, h, groundY) {
   // Cabinet skies rotate through the families so no candidate is only ever
   // judged against one backdrop — a pale thorn silhouette that survives the
   // crypt can still disappear on frost.
-  const cabOrder = ['plumber', 'speed', 'neon', 'frost', 'crypt', 'rhythm', 'cardboard', 'office', 'surge', 'speed'];
+  const cabOrder = ['plumber', 'speed', 'rhythm', 'frost', 'crypt', 'neon', 'cardboard', 'office', 'surge', 'speed'];
   const cabById = Object.fromEntries(CABINETS.map((cab) => [cab.id, cab]));
 
   for (let fi = 0; fi < HAZARD_FAMILIES.length; fi++) {

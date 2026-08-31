@@ -73,7 +73,7 @@ The chassis owns, written once:
 
 ## Per-boss fights
 
-### Neon — CLOWN-COPTER (Act I, 6 HP): deflection duel with swoop windows
+### Neon — CLOWN-COPTER (Act II, 6 HP): deflection duel with swoop windows
 - Redirect damage stays (break a `fromBoss` drop = 1 dmg) — keeps Act I generous.
 - Phase 1: strafe + **falling drops** (`alt≈70, falls:true, telegraph:0.7` — the icicle
   mechanism, `run.js:3903` — plus a drawn landing-shadow ring); one `enemyShot` laser
@@ -90,7 +90,7 @@ The chassis owns, written once:
   simultaneously a jump-read hazard and the window; telegraphed by skid dust + klaxon
   0.6s before it drops. Attacking it cancels the skid.
 
-### Rhythm — DUST DEVIL 9000 (Act II, 8 HP): the beat fight; finish the abandoned mechanic
+### Rhythm — DUST DEVIL 9000 (Act I, 8 HP): the beat fight; finish the abandoned mechanic
 - Suction all fight (grounded-only camX creep); **jumping on-beat** (takeoff within
   ±0.12 of a beat edge) grants 0.7s immunity + pushback + `'ON BEAT'` floatie. The
   nozzle drawn ahead is an ordinary hazard box (1 cell + pushout, never instakill).

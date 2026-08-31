@@ -51,7 +51,7 @@ const room = new TrophyRoomState({ save, flow });
 room.enter();
 assert(Input.context === 'workshop', 'the workshop installs its own movement-and-attack input context');
 assert(room.camX() === 0, 'the trophy room opens at the overall-status end of the gallery');
-assert(room.defeatedBosses().map((b) => b.id).join(',') === 'neon,rhythm',
+assert(room.defeatedBosses().map((b) => b.id).join(',') === 'rhythm,neon',
   'the boss case reflects defeated bosses');
 const levelRecords = room.levelRecords();
 const allLevelRecords = levelRecords.flatMap((group) => group.levels);

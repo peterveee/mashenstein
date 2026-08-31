@@ -2707,8 +2707,8 @@ function drawTrophyPanel(ctx, x, y, w, h, radius = 5, fill = '#100e16', border =
 }
 
 const TROPHY_BOSSES = [
-  { id: 'neon', label: 'COPTER', relic: 'copter' },
   { id: 'rhythm', label: 'DEEP CLEAN', relic: 'dustdevil' },
+  { id: 'neon', label: 'COPTER', relic: 'copter' },
   { id: 'surge', label: 'FINAL STRIP', relic: 'powerstrip' },
 ];
 

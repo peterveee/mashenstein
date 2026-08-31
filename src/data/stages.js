@@ -4,8 +4,8 @@
 // so memory and guides work; connective obstacle runs are seeded per attempt.
 
 const CAB_DURATION = {
-  plumber: 60, speed: 60, neon: 60,
-  frost: 90, crypt: 90, rhythm: 90,
+  plumber: 60, speed: 60, rhythm: 60,
+  frost: 90, crypt: 90, neon: 90,
   cardboard: 120, office: 120, surge: 120,
 };
 
@@ -160,20 +160,38 @@ export const STAGES = [
     { type: 'reach', desc: 'FINISH THE LAP. GNASH HAS OPINIONS ABOUT YOUR PACE.' },
     { type: 'boosts', n: 5, desc: 'HIT 5 BOOST PADS' },
     { pits: [{ at: 0.38, w: 60 }, { at: 0.70, jumps: 5 }] }),
-  S('neon', 1,
-    { type: 'targets', n: 5, targetType: 'target', desc: 'DESTROY 5 TARGETS. THEY ARE VERY DESTROYABLE.' },
-    { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },
-    { introBy: 'b33p', intro: 'I FEEL AT HOME HERE. I AM ALSO STILL LOW ON CYAN.' }),
-  S('neon', 2,
-    { type: 'cords', n: 4, desc: 'RECOVER 4 EXTENSION CORD PIECES. THE CORD WAS SHREDDED. RUDELY.' },
+  S('rhythm', 1,
+    { type: 'reach', desc: 'RUN TO THE BEAT. OR NEAR THE BEAT. THE BEAT IS FLEXIBLE.' },
+    { type: 'onbeat', n: 10, desc: '10 ON-BEAT ACTIONS' },
+    { intro: 'THIS CABINET OWES MONEY TO EVERY OTHER CABINET.' }),
+  // THE ACT I CROSSING. Four jumps over a spiked break on three stones, at 0.70
+  // — just past the second checkpoint (2/3), which is the whole of why it is
+  // there rather than in the middle: a set piece that can take several attempts
+  // to read has to hand back a short replay, or the cost of learning it is the
+  // stage before it.
+  //
+  // The third crossing in the game and the last of Act I, after plumber-2 and
+  // speed-3: those two teach the shape on ordinary ground, and a beat cabinet
+  // is the honest home for the version where the jumps are timed. Neither of
+  // the Act II cabinets could hold it — crypt runs its levels in a light radius
+  // (a fatal hole you cannot see coming is a wall) and frost is ice, where a
+  // landing you do not choose the end of is not a landing.
+  S('rhythm', 2,
+    { type: 'reach', desc: 'SURVIVE THE CHORUS. THE BAND IS IN DEBT.' },
+    { type: 'onbeat', n: 14, desc: '14 ON-BEAT ACTIONS' },
+    // ONLY THE CROSSING. The 0.37 hole that used to stand here was authored when
+    // the beat lane cut none of its own; the chart now lays two pairs of holes
+    // every sixteen beats (songs/rhythm.js), so a single scripted pit at a fixed
+    // fraction is one more of a thing the stage is already full of. What it
+    // cannot lay is a break too wide to jump, and that is what is left here.
+    { pits: [{ at: 0.70, jumps: 5 }] }),
+  // No scripted pits: this stage's chart spends a whole bar of every loop on
+  // holes — four of them, one every other beat — and two more at fixed
+  // fractions would be indistinguishable from the eight the loop already cut by
+  // the time the player reached them.
+  S('rhythm', 3,
+    { type: 'chase', n: 2, desc: 'CHASE THE COPTER. IT IS SOMEHOW ON BEAT.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
-  // Neon has no routes and no loop, so the only geometry these two dodge is the
-  // finishing straight — 0.70 is well clear of it. Both sit a couple of seconds
-  // past a checkpoint, which is where the replay budget wants them.
-  S('neon', 3,
-    { type: 'reach', desc: 'REACH THE END. SOMETHING ANGRY AND AIRBORNE AWAITS.' },
-    { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
-    { pits: [{ at: 0.37, w: 56 }, { at: 0.70, w: 60 }] }),
   // ACT II --------------------------------------------------------------------
   S('frost', 1,
     { type: 'reach', desc: 'CROSS THE ICE. THE ICE IS NOT YOUR FRIEND. IT TOLD US.' },
@@ -204,36 +222,20 @@ export const STAGES = [
   S('crypt', 3,
     { type: 'blackout', desc: 'SURVIVE A LONGER BLACKOUT. THE BUDGET GOT WORSE.' },
     { type: 'coins', n: 30, desc: 'COLLECT 30 COINS' }),
-  S('rhythm', 1,
-    { type: 'reach', desc: 'RUN TO THE BEAT. OR NEAR THE BEAT. THE BEAT IS FLEXIBLE.' },
-    { type: 'onbeat', n: 10, desc: '10 ON-BEAT ACTIONS' },
-    { intro: 'THIS CABINET OWES MONEY TO EVERY OTHER CABINET.' }),
-  // THE FIRST CROSSING. Four jumps over a spiked break on three stones, at 0.70
-  // — just past the second checkpoint (2/3), which is the whole of why it is
-  // there rather than in the middle: a set piece that can take several attempts
-  // to read has to hand back a short replay, or the cost of learning it is the
-  // stage before it.
-  //
-  // Rhythm and not one of the Act II stages either side of it: crypt runs its
-  // levels in a light radius (a fatal hole you cannot see coming is a wall) and
-  // frost is ice, where a landing you do not choose the end of is not a landing.
-  // A beat cabinet is the honest home for a sequence of four timed jumps.
-  S('rhythm', 2,
-    { type: 'reach', desc: 'SURVIVE THE CHORUS. THE BAND IS IN DEBT.' },
-    { type: 'onbeat', n: 14, desc: '14 ON-BEAT ACTIONS' },
-    // ONLY THE CROSSING. The 0.37 hole that used to stand here was authored when
-    // the beat lane cut none of its own; the chart now lays two pairs of holes
-    // every sixteen beats (songs/rhythm.js), so a single scripted pit at a fixed
-    // fraction is one more of a thing the stage is already full of. What it
-    // cannot lay is a break too wide to jump, and that is what is left here.
-    { pits: [{ at: 0.70, jumps: 5 }] }),
-  // No scripted pits: this stage's chart spends a whole bar of every loop on
-  // holes — four of them, one every other beat — and two more at fixed
-  // fractions would be indistinguishable from the eight the loop already cut by
-  // the time the player reached them.
-  S('rhythm', 3,
-    { type: 'chase', n: 2, desc: 'CHASE THE COPTER. IT IS SOMEHOW ON BEAT.' },
+  S('neon', 1,
+    { type: 'targets', n: 5, targetType: 'target', desc: 'DESTROY 5 TARGETS. THEY ARE VERY DESTROYABLE.' },
+    { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },
+    { introBy: 'b33p', intro: 'I FEEL AT HOME HERE. I AM ALSO STILL LOW ON CYAN.' }),
+  S('neon', 2,
+    { type: 'cords', n: 4, desc: 'RECOVER 4 EXTENSION CORD PIECES. THE CORD WAS SHREDDED. RUDELY.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
+  // Neon has no routes and no loop, so the only geometry these two dodge is the
+  // finishing straight — 0.70 is well clear of it. Both sit a couple of seconds
+  // past a checkpoint, which is where the replay budget wants them.
+  S('neon', 3,
+    { type: 'reach', desc: 'REACH THE END. SOMETHING ANGRY AND AIRBORNE AWAITS.' },
+    { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
+    { pits: [{ at: 0.37, w: 56 }, { at: 0.70, w: 60 }] }),
   // ACT III -------------------------------------------------------------------
   S('cardboard', 1,
     { type: 'reach', desc: 'CROSS THE KINGDOM BEFORE IT FINISHES COLLAPSING.' },
@@ -289,6 +291,6 @@ export function stagesForCabinet(cabId) { return STAGES.filter((s) => s.cabinet 
 
 // Plug thresholds (from the spec).
 export const UNLOCKS = {
-  speed: 2, neon: 5, frost: 12, crypt: 16, rhythm: 20,
+  speed: 2, rhythm: 5, frost: 12, crypt: 16, neon: 20,
   cardboard: 28, office: 34, surge: 40, finale: 45,
 };
