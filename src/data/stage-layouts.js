@@ -3,35 +3,36 @@
 // Per-stage LAYOUT: pacing, pinned events, sections. This file is the level
 // editor's output and the run's source of truth for everything about a stage
 // that is not its identity — durations, speeds, checkpoints, scripted pits,
-// the appliance, the rewind capsule, route overrides, and the sectioned
-// curation of the random bag. Missions, challenges and dialog stay
+// the appliance, the rewind capsule, the loop-de-loop, route overrides, and the
+// sectioned curation of the random bag. Missions, challenges and dialog stay
 // hand-authored in src/data/stages.js.
 //
 // durationSec / speedMult / appliance / pits / rewindAt appear on every stage:
 // this file owns them outright (they were migrated OUT of stages.js). The
-// optional fields — checkpoints, finishDog, routes, sections — appear only
-// where somebody decided something; absence means the default, and the
+// optional fields — checkpoints, finishDog, loopAt, routes, sections — appear
+// only where somebody decided something; absence means the default, and the
 // resolver (src/game/layout.js) says what that is.
 export const STAGE_LAYOUTS = {
   "plumber-1": {
     durationSec: 60,
     speedMult: 0.9,
-    appliance: { at: 0.65, high: false },
+    appliance: { at: 0.702, high: false },
     pits: null,
     rewindAt: null,
   },
   "plumber-2": {
     durationSec: 60,
     speedMult: 0.95,
-    appliance: { at: 0.75, high: true },
-    pits: [{ at: 0.36, jumps: 4 }],
-    rewindAt: 0.15,
+    appliance: { at: 0.799, high: true },
+    pits: [{ at: 0.242, jumps: 4 }],
+    rewindAt: 0.132,
+    checkpoints: [0.21, 0.77],
   },
   "plumber-3": {
     durationSec: 60,
     speedMult: 1,
     appliance: { at: 0.55, high: false },
-    pits: [{ at: 0.12, w: 52 }, { at: 0.45, w: 58 }, { at: 0.78, w: 64 }],
+    pits: [{ at: 0.119, w: 52 }, { at: 0.139, w: 56 }, { at: 0.16, w: 56 }, { at: 0.45, w: 58 }, { at: 0.78, w: 64 }],
     rewindAt: null,
   },
   "speed-1": {
@@ -44,15 +45,15 @@ export const STAGE_LAYOUTS = {
   "speed-2": {
     durationSec: 60,
     speedMult: 1,
-    appliance: { at: 0.75, high: true },
-    pits: [{ at: 0.14, w: 52 }, { at: 0.72, w: 56 }],
+    appliance: { at: 0.752, high: true },
+    pits: [{ at: 0.14, w: 52 }, { at: 0.715, w: 56 }, { at: 0.736, w: 56 }],
     rewindAt: null,
   },
   "speed-3": {
     durationSec: 60,
     speedMult: 1,
-    appliance: { at: 0.55, high: false },
-    pits: [{ at: 0.38, w: 60 }, { at: 0.7, jumps: 5 }],
+    appliance: { at: 0.607, high: false },
+    pits: [{ at: 0.38, w: 60 }, { at: 0.665, jumps: 5 }],
     rewindAt: null,
   },
   "neon-1": {
@@ -121,16 +122,17 @@ export const STAGE_LAYOUTS = {
   "rhythm-1": {
     durationSec: 90,
     speedMult: 1,
-    appliance: { at: 0.65, high: false },
+    appliance: { at: 0.39, high: false },
     pits: null,
     rewindAt: null,
   },
   "rhythm-2": {
     durationSec: 90,
     speedMult: 1,
-    appliance: { at: 0.75, high: true },
-    pits: [{ at: 0.37, w: 56 }, { at: 0.7, jumps: 5 }],
+    appliance: { at: 0.668, high: true },
+    pits: [{ at: 0.37, w: 56 }, { at: 0.703, jumps: 6 }],
     rewindAt: null,
+    checkpoints: [0.333333, 0.653],
   },
   "rhythm-3": {
     durationSec: 90,

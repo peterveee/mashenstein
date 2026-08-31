@@ -77,7 +77,11 @@
   .kv dd { margin: 0; color: var(--ink); }
   .mission { color: var(--dim); font-size: 11px; margin-top: 6px; }
 
-  canvas.lane { display: block; width: 100%; border-radius: 3px; background: #100e15; }
+  /* touch-action: a drag along a lane is an edit, never a scroll. */
+  canvas.lane { display: block; width: 100%; border-radius: 3px; background: #100e15;
+    touch-action: none; cursor: default; }
+  canvas.preview { display: block; width: 100%; border-radius: 3px; background: #0c0a11; }
+  .btn.on { border-color: var(--hot); color: var(--hot); }
   .lanewrap { margin-bottom: 8px; }
   .lanelabel { font-size: 10px; color: var(--dimmer); letter-spacing: .1em; margin-bottom: 3px; display: flex; justify-content: space-between; }
 

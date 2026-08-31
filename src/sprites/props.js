@@ -985,11 +985,43 @@ export const PROP_PAINTERS = {
     ctx.restore();
     outlinedShape('#82531f', (c) => c.ellipse(w * 0.5, h * 0.81, w * 0.078, h * 0.065, -0.32, 0, Math.PI * 2));
   },
-  pipe(ctx, w, h) {
+  // The surface pipe is sealed: only a real tunnel mouth gets to imply a way
+  // down. These fixed guide rails keep the full hazard silhouette visible while
+  // the cap settles inside them, so its art never lies about the collision box.
+  pipe(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
-    fineShape(ctx, '#2ea8a0', u, (c) => rr(c, w * 0.14, h * 0.22, w * 0.72, h * 0.8, w * 0.08)); // shaft
-    fineShape(ctx, '#3ac0b6', u, (c) => rr(c, 0, 0, w, h * 0.26, w * 0.08));                     // lip
-    stroke(ctx, 'rgba(255,255,255,0.35)', Math.max(0.5, w * 0.1), (c) => { c.moveTo(w * 0.3, h * 0.34); c.lineTo(w * 0.3, h * 0.92); });
+    const phase = hzPhase(frame, 8);
+    const lift = Math.sin(phase) * h * 0.11;
+    const pressure = 0.5 + 0.5 * Math.cos(phase);
+    const capY = h * 0.18 - lift;
+    const collarY = h * 0.76;
+    const ramY = capY + h * 0.13;
+
+    fineShape(ctx, '#174e58', u, (c) => rr(c, w * 0.1, h * 0.08, w * 0.21, h * 0.7, w * 0.07));
+    fineShape(ctx, '#174e58', u, (c) => rr(c, w * 0.69, h * 0.08, w * 0.21, h * 0.7, w * 0.07));
+    fineShape(ctx, '#258b7f', u, (c) => rr(c, w * 0.27, ramY, w * 0.46, collarY - ramY + h * 0.06, w * 0.06));
+    fineShape(ctx, '#40cbb7', u, (c) => rr(c, w * 0.06, capY, w * 0.88, h * 0.19, w * 0.06));
+    fineShape(ctx, '#70ecda', u, (c) => rr(c, w * 0.14, capY + h * 0.035, w * 0.72, h * 0.065, w * 0.03));
+    stroke(ctx, 'rgba(255,255,255,0.42)', Math.max(0.35, w * 0.045), (c) => {
+      c.moveTo(w * 0.22, capY + h * 0.07);
+      c.lineTo(w * 0.78, capY + h * 0.07);
+    });
+
+    fineShape(ctx, '#155963', u, (c) => rr(c, w * 0.04, collarY, w * 0.92, h * 0.2, w * 0.05));
+    fineShape(ctx, '#a83945', u, (c) => rr(c, w * 0.12, collarY + h * 0.045, w * 0.76, h * 0.07, w * 0.02));
+    for (let i = 0; i < 3; i++) {
+      const x = w * (0.2 + i * 0.22);
+      plain(ctx, '#f6d33c', (c) => {
+        c.moveTo(x - w * 0.035, collarY + h * 0.11);
+        c.lineTo(x + w * 0.025, collarY + h * 0.045);
+        c.lineTo(x + w * 0.075, collarY + h * 0.045);
+        c.lineTo(x + w * 0.015, collarY + h * 0.11);
+        c.closePath();
+      });
+    }
+    for (const x of [w * 0.18, w * 0.82]) fineShape(ctx, '#d9f2ea', u,
+      (c) => c.arc(x, collarY + h * 0.145, w * 0.042, 0, Math.PI * 2));
+    fineShape(ctx, '#f6d33c', u, (c) => rr(c, w * 0.16, h * (0.42 - pressure * 0.07), w * 0.09, h * 0.075, w * 0.025));
   },
   switch(ctx, w, h) {
     const u = Math.max(w, h);
@@ -3531,7 +3563,7 @@ export const PROP_FRAMES = {
   // frame boundary. The green cactus takes the red one's six, because it is a
   // skin of it and the two sway together in a row.
   popSpikes: 8, campfire: 8, fireBarrel: 8, brazier: 8, floorSaw: 8,
-  boomBarrier: 8,
+  boomBarrier: 8, pipe: 8,
   cactusGreen: 6,
   drone: 6, shooterDrone: 6, droneEye: DRONE_EYE_FRAMES,
   // Bake-off candidates. Eight frames for the ramps and flags — one chevron
@@ -3566,7 +3598,7 @@ const PROP_FPS = {
   // spin, which is the same failure the rotors had at 11.
   popSpikes: 9, campfire: 14, fireBarrel: 14, brazier: 12, floorSaw: 22,
   // The razor hurdle's cycle is only its beacon/current breathing — spike-plate slow.
-  boomBarrier: 10,
+  boomBarrier: 10, pipe: 4,
   drone: 24, shooterDrone: 24, droneEye: 12,
   // Bake-off candidates. The ramps run fast: a chevron chase reads as speed
   // only when it outruns the lane scroll. Cloth is the opposite — a flag

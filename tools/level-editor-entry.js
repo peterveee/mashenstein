@@ -19,21 +19,27 @@ import { OBSTACLES, PICKUPS } from '../src/game/entities.js';
 import { POWER_DEFS } from '../src/game/powerups.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, pitClearance } from '../src/game/spawner.js';
 import { buildRoutes, crossingLayout } from '../src/game/routes.js';
+import { terrainGroundY } from '../src/game/terrain.js';
 import { LOOP } from '../src/game/loop.js';
+import { PLAYER_X } from '../src/game/player.js';
+import { GROUND_Y } from '../src/engine/camera.js';
 import { Rng } from '../src/engine/rng.js';
 import {
   resolveLayout, patternKey, sectionAt, stageBaseSpeed, totalDistFor, speedAtFrac,
   DEFAULT_DRIP, DEFAULT_POWER_WEIGHTS, FINISH_CLEAR,
 } from '../src/game/layout.js';
+import { GRAB_PX, grabAt, dropAt } from './lib/timeline-drag.js';
+import { buildScene, paintMap } from './lib/stage-preview.js';
 
 // Where PLAY sends the browser — the game's own dev server, substituted at
 // bundle time by tools/level-editor.js.
 const GAME_URL = typeof __GAME_URL__ === 'string' ? __GAME_URL__ : 'http://localhost:8001';
 
-// The ground line the run draws roads against. Imported as a number rather
-// than from engine/camera.js because that module reaches for the DOM, and this
-// page only needs it to shape a schematic ribbon.
-const GROUND_Y = 232;
+// The ground line the run draws roads against, from the module that owns it.
+// It was hand-copied here as 232 on the grounds that camera.js "reaches for the
+// DOM" — it does not: every DOM touch in renderer.js underneath it is guarded on
+// `typeof document` and none of it runs at import. The copy had already gone
+// stale (the line is 224 now), which is the argument against copies.
 
 // ---------------------------------------------------------------- state ----
 
@@ -49,6 +55,7 @@ const state = {
   dirty: false,
   message: null,      // {kind:'warn'|'err', lines:[]}
   openCabs: new Set([STAGES[0].cabinet]),
+  previewScale: 0.5,  // px per world px on the map — see THE LEVEL, below
 };
 
 const stage = () => STAGE_BY_ID[state.stageId];
@@ -90,20 +97,43 @@ function model() {
 
   let routes = [];
   let routeError = null;
+  const roadSrc = L.routes ? { ...cab, ...L.routes } : cab;
   try {
-    routes = buildRoutes(L.routes ? { ...cab, ...L.routes } : cab, {
+    routes = buildRoutes(roadSrc, {
       totalDist,
       speed: base,
-      groundYAt: () => GROUND_Y,
+      // The run's own groundYAt (RunState.groundYAt): a slab's flat top is
+      // fixed from the ground under its middle, and on the five profiled
+      // cabinets that ground rolls ±16px. A flat line here put every island
+      // that far off the hill it stands on — invisible while the lanes drew
+      // ribbons, plain as day now the map paints the thing.
+      groundYAt: (wx) => terrainGroundY(cab, wx, GROUND_Y),
       crossings,
     });
   } catch (err) {
     routeError = err.message;
   }
+  // Each ribbon, tagged with the line of data it came from. buildRoutes hands
+  // back the authored entry itself; what the timeline needs is WHERE that entry
+  // lives, because an index survives the deep copy a fork makes and an object
+  // reference does not. A staircase's steps share one entry, so the span a drag
+  // has to keep inside the stage is the whole climb's, not one tread's.
+  const ARRAY_OF = { island: 'islands', fork: 'forks', tunnel: 'tunnels' };
+  for (const r of routes) {
+    const arr = ARRAY_OF[r.kind];
+    const i = r.authored ? (roadSrc[arr] || []).indexOf(r.authored) : -1;
+    r.srcKind = i >= 0 ? arr : null;      // null: a crossing's stones, which the pit owns
+    r.srcIndex = i;
+    r.srcAt = i >= 0 ? roadSrc[arr][i].at : null;
+  }
+  for (const r of routes) {
+    if (r.srcKind == null) continue;
+    const far = Math.max(...routes.filter((q) => q.srcKind === r.srcKind && q.srcIndex === r.srcIndex)
+      .map((q) => q.x + q.w));
+    r.srcSpan = (far - r.srcAt * totalDist) / totalDist;
+  }
 
-  const loopAt = (cab.mechanic === 'boost') ? LOOP.at : null;
-
-  return { st, cab, L, base, totalDist, speedAt, pits, routes, routeError, loopAt };
+  return { st, cab, L, base, totalDist, speedAt, pits, routes, routeError, loopAt: L.loopAt };
 }
 
 // ------------------------------------------------------------- forecast ----
@@ -243,6 +273,19 @@ function warnings(m) {
   // The two pinned rewards, against the same wall.
   const wall = m.totalDist - FINISH_CLEAR;
   if (m.L.appliance.at * m.totalDist > wall) out.push('the appliance is inside the finishing straight');
+  // run.js gives up on the ring rather than laying it over the tape, and this is
+  // that same arithmetic — the ring's far edge against finishWorldX() — rather
+  // than a rounder rule of the editor's own invention.
+  if (m.loopAt != null && m.loopAt * m.totalDist + LOOP.r + 120 > m.totalDist + PLAYER_X) {
+    out.push(`the loop at ${at(m.loopAt)} runs past the tape and would not be placed`);
+  }
+  // 0.55 is between the restore points for a reason (see run.js): a death that
+  // puts the hero back inside the ring puts him back inside the ride's run-up.
+  for (const cp of (m.loopAt == null ? [] : m.L.checkpoints)) {
+    if (Math.abs(cp - m.loopAt) * m.totalDist < LOOP.r + 120) {
+      out.push(`the checkpoint at ${at(cp)} lands on the loop at ${at(m.loopAt)} — a restore would drop the hero into the ring`);
+    }
+  }
   if (m.L.rewindAt != null && m.L.rewindAt * m.totalDist > wall) out.push('the rewind capsule is inside the finishing straight');
 
   // Sections: a bag emptied by its own exclusions leaves bare ground.
@@ -273,18 +316,21 @@ function warnings(m) {
 // across half a dozen rows, and pixel agreement between them is the whole
 // point of looking at it.
 const LANES = [
-  { id: 'sections', label: 'SECTIONS — the curated bag', h: 34 },
+  { id: 'sections', label: 'SECTIONS — the curated bag, drag a boundary', h: 34 },
   { id: 'setpieces', label: 'SET PIECES — pinned, drag to move', h: 44 },
-  { id: 'routes', label: 'ROADS — islands, forks, tunnels', h: 40 },
-  { id: 'checkpoints', label: 'CHECKPOINTS', h: 24 },
+  { id: 'routes', label: 'ROADS — islands, forks, tunnels; drag to move', h: 40 },
+  { id: 'checkpoints', label: 'CHECKPOINTS — drag to move', h: 24 },
   { id: 'forecast', label: 'FORECAST — this seed. Sequence exact, positions approximate', h: 46 },
   { id: 'rewards', label: 'REWARDS — capsules and cells this seed drips', h: 30 },
 ];
 
 const PAD = 8;
 function xOf(canvas, frac) { return PAD + frac * (canvas.width / dpr() - PAD * 2); }
+// Measured off the element's own box rather than its backing store: a canvas
+// that has been rebuilt by a render but not yet re-fitted still reports the
+// width CSS gives it, and a drag reading the stale backing store would jump.
 function fracOf(canvas, px) {
-  const w = canvas.width / dpr() - PAD * 2;
+  const w = canvas.getBoundingClientRect().width - PAD * 2;
   return Math.max(0, Math.min(1, (px - PAD) / w));
 }
 const dpr = () => Math.min(2, window.devicePixelRatio || 1);
@@ -375,10 +421,10 @@ function drawLane(id, c, m, fc) {
     pin(m.L.appliance.at, css('--hot'), m.L.appliance.high ? 'TOASTER^' : 'TOASTER',
       state.sel?.kind === 'appliance');
     if (m.L.rewindAt != null) pin(m.L.rewindAt, css('--reward'), 'REWIND', state.sel?.kind === 'rewind');
-    if (m.loopAt != null) pin(m.loopAt, css('--setpiece'), 'LOOP', false);
+    if (m.loopAt != null) pin(m.loopAt, css('--setpiece'), 'LOOP', state.sel?.kind === 'loop');
     if (m.L.finishDogChance > 0) {
       const pct = Math.round(m.L.finishDogChance * 100);
-      pin(0.97, css('--hazard'), pct >= 100 ? 'DOG' : `DOG ${pct}%`, false);
+      pin(0.97, css('--hazard'), pct >= 100 ? 'DOG' : `DOG ${pct}%`, state.sel?.kind === 'dog');
     }
     return;
   }
@@ -396,8 +442,15 @@ function drawLane(id, c, m, fc) {
       const ht = Math.max(6, Math.min(14, (r.rise || 14) / 3 + 6));
       ctx.fillStyle = down ? '#2a4a58' : (r.sky ? '#3c5f70' : css('--route'));
       ctx.globalAlpha = down ? 1 : 0.55;
-      ctx.fillRect(x0, down ? top : h / 2 - ht - 2, Math.max(2, x1 - x0), ht);
+      const ry = down ? top : h / 2 - ht - 2;
+      ctx.fillRect(x0, ry, Math.max(2, x1 - x0), ht);
       ctx.globalAlpha = 1;
+      // Every ribbon of a selected road, so a staircase lights up as the one
+      // thing it is.
+      if (state.sel?.kind === 'road' && r.srcKind === state.sel.roadKind && r.srcIndex === state.sel.i) {
+        ctx.strokeStyle = css('--hot'); ctx.lineWidth = 2;
+        ctx.strokeRect(x0 - 1, ry - 1, Math.max(4, x1 - x0) + 2, ht + 2);
+      }
       // Labelled only where the label FITS INSIDE its own ribbon. Two roads a
       // few percent apart otherwise write over each other, and an overlapping
       // pair of words is worse than an unlabelled block whose shape already
@@ -483,8 +536,13 @@ const el = (tag, attrs = {}, ...kids) => {
 
 const app = document.getElementById('app');
 
+// The model the last render drew, kept so hovering a lane can ask what is
+// under the cursor without rebuilding routes and forecasts for a mouse move.
+let lastModel = null;
+
 function render() {
   const m = model();
+  lastModel = m;
   const fc = forecast(m, state.seed);
   const warns = warnings(m);
   app.replaceChildren(
@@ -500,6 +558,7 @@ function render() {
       const c = document.getElementById(`lane-${lane.id}`);
       if (c) drawLane(lane.id, c, m, fc);
     }
+    paintPreview(m, fc);
   });
 }
 
@@ -588,7 +647,8 @@ function center(m, fc, warns) {
               : null),
       el('canvas', {
         class: 'lane', id: `lane-${lane.id}`,
-        onclick: (e) => onLaneClick(lane.id, e, m),
+        onpointerdown: (e) => onLaneDown(lane.id, e, m),
+        onpointermove: (e) => onLaneHover(lane.id, e),
       })));
   }
 
@@ -597,7 +657,128 @@ function center(m, fc, warns) {
       el('h2', {}, 'WORTH A LOOK'),
       warns.map((w) => el('div', { class: 'msg warn' }, w))));
   }
+  // BELOW the lanes, and not above them. A whole stage at a scale anybody can
+  // read is several hundred pixels tall — on the longest levels, over a
+  // thousand — and a picture that pushes the thing you are editing off the
+  // bottom of the screen has taken the page over.
+  wrap.append(previewCard(m));
   return wrap;
+}
+
+// ---------------------------------------------------------------- the map ----
+
+// THE LEVEL, drawn rather than diagrammed.
+//
+// The lanes above say where everything is; this says what it looks like, in the
+// cabinet's own art, through the run's own painters (tools/lib/stage-preview.js).
+// It wraps: the scale is fixed and the stage runs onto as many rows as it needs,
+// because a whole stage squeezed into one strip puts a crate at under two pixels
+// on the shortest level in the game and under one on the longest, and a picture
+// nobody can read is not worth the paint.
+const SCALES = [[1, '1:1'], [0.5, '1:2'], [0.25, '1:4']];
+
+// ONE canvas, made once and moved between renders rather than rebuilt with
+// them. render() replaces the whole tree, and a fresh canvas every time would
+// mean either a second full-size copy to blit from or a repaint on every
+// keystroke — at 1:1 on the longest stage that copy is tens of megabytes.
+// replaceChildren MOVES a node it is handed, and a moved canvas keeps its
+// pixels, so the picture survives a render that did not repaint it.
+const previewCanvas = document.createElement('canvas');
+previewCanvas.className = 'preview';
+previewCanvas.id = 'preview';
+
+function previewCard(m) {
+  const head = el('div', { class: 'lanelabel' },
+    el('span', {}, `THE LEVEL — the cabinet’s own art, whole${preview.stale ? ' · catching up' : ''}`),
+    el('span', {},
+      ...SCALES.map(([v, label]) => el('button', {
+        class: `btn ghost${state.previewScale === v ? ' on' : ''}`,
+        style: 'padding:1px 8px;font-size:10px;margin-left:4px',
+        onclick: () => { state.previewScale = v; render(); },
+      }, label))));
+  return el('div', { class: 'lanewrap' }, head, previewCanvas,
+    el('div', { class: 'hint', id: 'preview-note' }, previewNote()));
+}
+
+// What the picture is, and what it is only nearly. Both omissions are the run's
+// own: a hazard can push a pinned reward past the spot the run starts looking
+// at, and the sweeps a road makes around itself belong to RunState rather than
+// to the layout, so this page does not restate them.
+function previewNote() {
+  if (!preview.height) return 'nothing painted yet.';
+  const label = (SCALES.find(([v]) => v === state.previewScale) || [, '?'])[1];
+  const deal = isBeatCharted(stage())
+    ? 'the stage itself — a beat-charted lane is dealt by its chart, not by the bag, so nothing '
+      + 'stands on this one that the layout did not pin'
+    : 'this seed’s deal, where the run would place it — the toaster and the capsule can still be '
+      + 'pushed later by a hazard, and the sweeps a road makes around itself are not drawn';
+  return `${preview.rows.length} rows at ${label}, painted in ${preview.ms}ms · ${deal}.`;
+}
+
+// Painted into an offscreen canvas and blitted, so a render that changed
+// nothing about the stage costs one drawImage. Nothing is repainted while a
+// drag is in flight: render() runs once a frame during one, and a whole stage
+// is 19 to 70 painter passes plus every entity on it — the one thing that would
+// make the lanes stutter. The picture catches up when the hand lets go.
+const preview = { sig: null, rows: [], rowH: 0, height: 0, ms: 0, stale: false };
+
+// NOTHING IS REPAINTED WHILE A HAND IS DOWN. A drag on a lane re-renders once a
+// frame, and so does every slider in the inspector — and a whole stage is up to
+// seventy-five painter passes plus every entity on it. The picture holds still
+// and catches up when the hand lets go, which is the one thing that keeps the
+// timeline itself smooth.
+let pointerHeld = false;
+window.addEventListener('pointerdown', () => { pointerHeld = true; });
+window.addEventListener('pointerup', () => {
+  pointerHeld = false;
+  if (preview.stale) render();
+});
+
+function paintPreview(m, fc) {
+  const host = previewCanvas;
+  if (!host.isConnected) return;
+  const width = Math.round(host.getBoundingClientRect().width);
+  // Measured before layout: a map painted to a guessed width is a wrong map,
+  // and the next render brings a real one.
+  if (width < 100) return;
+  const scale = state.previewScale;
+  const sig = `${state.stageId}|${state.seed}|${scale}|${width}|${dpr()}|${JSON.stringify(entry())}`;
+  if (sig === preview.sig) return;
+  if (pointerHeld) { preview.stale = true; return; }
+
+  const t0 = performance.now();
+  try {
+    const out = paintMap(host, buildScene(m, fc), { scale, width, dpr: dpr() });
+    Object.assign(preview, { sig, rows: out.rows, rowH: out.rowH, height: out.height });
+    preview.ms = Math.round(performance.now() - t0);
+    preview.stale = false;
+  } catch (err) {
+    // No signature is recorded, so the next render tries again rather than
+    // leaving a blank card that never repairs itself.
+    preview.height = 0;
+    host.style.height = '0px';
+    preview.stale = false;
+    state.message = { kind: 'err', lines: [`the map could not be painted: ${err.message}`] };
+    return;
+  }
+  const ctx = host.getContext('2d');
+
+  // The card was built before the paint, so its line is one paint behind until
+  // it is refreshed here.
+  const note = document.getElementById('preview-note');
+  if (note) note.textContent = previewNote();
+
+  // Which stretch each row is, so a row can be found again on the lanes.
+  const r = host.width / width;
+  ctx.setTransform(r, 0, 0, r, 0, 0);
+  ctx.font = '9px ui-monospace, monospace';
+  for (const row of preview.rows) {
+    const pct = `${Math.round((row.fromX / m.totalDist) * 100)}%`;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, row.top, 30, 12);
+    ctx.fillStyle = row.error ? css('--hazard') : '#cfc8dc';
+    ctx.fillText(row.error ? 'ERR' : pct, 4, row.top + 9);
+  }
 }
 
 // -------------------------------------------------------------- inspector ----
@@ -611,7 +792,9 @@ function rightRail(m, fc) {
   if (sel?.kind === 'section') return sectionInspector(box, rail, m, sel.i);
   if (sel?.kind === 'pit') return pitInspector(box, rail, m, sel.i);
   if (sel?.kind === 'checkpoint') return checkpointInspector(box, rail, m, sel.i);
-  if (sel?.kind === 'appliance' || sel?.kind === 'rewind') return pinInspector(box, rail, m, sel.kind);
+  if (sel?.kind === 'appliance' || sel?.kind === 'rewind' || sel?.kind === 'loop') return pinInspector(box, rail, m, sel.kind);
+  if (sel?.kind === 'road') return roadInspector(box, rail, m, sel);
+  if (sel?.kind === 'dog') return dogInspector(box, rail, m);
 
   // Nothing selected: the stage itself.
   box.append(el('h2', {}, 'STAGE'),
@@ -638,18 +821,17 @@ function rightRail(m, fc) {
       class: 'btn ghost', style: 'margin-top:6px',
       onclick: () => {
         if (m.L.routes) { delete entry().routes; } else {
-          entry().routes = {
-            islands: JSON.parse(JSON.stringify(m.cab.islands || [])),
-            forks: JSON.parse(JSON.stringify(m.cab.forks || [])),
-            tunnels: JSON.parse(JSON.stringify(m.cab.tunnels || [])),
-          };
+          entry().routes = cabinetRoads(m.cab);
         }
         markDirty(); render();
       },
     }, m.L.routes ? 'BACK TO INHERITED' : 'FORK FROM CABINET'),
     el('div', { class: 'hint' },
-      'Click anything on the timeline to edit it. Sections curate the random bag; '
-      + 'set pieces are placed exactly. The dice still deal inside a section.'));
+      'Click anything on the timeline to edit it, and drag it to move it: pits and '
+      + 'crossings, the toaster, the rewind capsule, the loop, the checkpoints, the '
+      + 'roads, and either a section’s boundary or its whole body. Only the dog does '
+      + 'not move — it guards the tape. Sections curate the random bag; set pieces are '
+      + 'placed exactly. The dice still deal inside a section.'));
   return rail;
 }
 
@@ -726,6 +908,21 @@ function pinInspector(box, rail, m, kind) {
           onchange: (e) => { entry().appliance.high = e.target.checked; markDirty(); render(); },
         }), 'up high (needs a jump)'),
       el('div', { class: 'hint' }, 'One per stage, in a fixed spot so memory and guides work.'));
+  } else if (kind === 'loop') {
+    // Only the boost cabinets have a ring, so this panel is only ever reached
+    // on one of them — and a stage that has taken its loop away still gets the
+    // offer to put it back, exactly as the rewind capsule does.
+    box.append(el('h2', {}, 'LOOP-DE-LOOP'),
+      m.L.loopAt == null
+        ? el('button', {
+          class: 'btn', onclick: () => { entry().loopAt = LOOP.at; markDirty(); render(); },
+        }, 'PLACE ONE')
+        : pctRow('at', m.L.loopAt, (v) => { entry().loopAt = v; markDirty(); },
+          () => { entry().loopAt = null; state.sel = null; markDirty(); render(); }),
+      el('div', { class: 'hint' },
+        `The one ring of the run, ${Math.round(LOOP.r * 2)}px tall and ridden in a lap. `
+        + 'It sits between the checkpoints by default so a death never drops the hero on '
+        + 'top of it, and the finishing straight is swept clear of it.'));
   } else {
     box.append(el('h2', {}, 'REWIND CAPSULE'),
       entry().rewindAt == null
@@ -736,6 +933,60 @@ function pinInspector(box, rail, m, kind) {
           () => { entry().rewindAt = null; state.sel = null; markDirty(); render(); }),
       el('div', { class: 'hint' }, 'The banked one-shot, guaranteed on this stage. The drip can still deal one anywhere.'));
   }
+  return rail;
+}
+
+const ROAD_LABEL = { islands: 'ISLAND', forks: 'FORK', tunnels: 'TUNNEL' };
+
+function roadInspector(box, rail, m, sel) {
+  // Read from the cabinet until the stage forks; written only through the fork,
+  // so nothing here can edit a road the other stages on the machine share.
+  const src = m.L.routes || m.cab;
+  const r = (src[sel.roadKind] || [])[sel.i];
+  if (!r) { state.sel = null; return rail; }
+  const write = (f) => { f(forkRoads(m)[sel.roadKind][sel.i]); markDirty(); };
+  const ribbons = m.routes.filter((q) => q.srcKind === sel.roadKind && q.srcIndex === sel.i);
+
+  box.append(el('h2', {}, ROAD_LABEL[sel.roadKind] || 'ROAD'),
+    pctRow('at', r.at, (v) => write((d) => { d.at = v; }),
+      () => { forkRoads(m)[sel.roadKind].splice(sel.i, 1); state.sel = null; markDirty(); render(); }),
+    // Seconds, not pixels: a road's span is authored in lane time so the same
+    // road is the same road on a stage that runs half again as fast.
+    numRow('dwell (s)', r.dwell ?? 0.7, 0.1, 12, 0.1, (v) => write((d) => { d.dwell = round(v, 2); })),
+    ...(r.steps > 1 ? [numRow('steps', r.steps, 1, 6, 1, (v) => write((d) => { d.steps = Math.round(v); }))] : []),
+    el('div', { class: 'hint' },
+      `${ribbons.length > 1 ? `${ribbons.length} steps, ` : ''}`
+      + `${Math.round((ribbons.reduce((a, q) => Math.max(a, q.x + q.w), 0) - r.at * m.totalDist))}px of road `
+      + `starting at ${Math.round(r.at * m.totalDist)}px.`),
+    el('div', { class: 'hint' }, m.L.routes
+      ? 'This stage owns its roads; the cabinet’s no longer reach it.'
+      : `Inherited from ${m.cab.id}. Moving one forks them all onto this stage first — `
+        + 'the cabinet keeps what it had, and the STAGE panel can hand them back.'));
+  return rail;
+}
+
+// The dog is the one pin on the timeline that is not a place: the run puts it
+// on the tape, and what a stage decides is whether it is there at all. So this
+// panel is the same chance control the STAGE panel carries, reachable by
+// clicking the thing it is about.
+function dogInspector(box, rail, m) {
+  box.append(el('h2', {}, 'FINISH DOG'),
+    el('div', { class: 'row' },
+      el('span', { class: 'lbl' }, 'chance'),
+      el('input', {
+        type: 'range', min: 0, max: 100, step: 5,
+        value: Math.round(m.L.finishDogChance * 100),
+        oninput: (e) => {
+          const v = parseInt(e.target.value, 10) / 100;
+          entry().finishDog = v === 0 ? false : v;
+          if (v === 0) state.sel = null;
+          markDirty(); render();
+        },
+      }),
+      el('span', {}, `${Math.round(m.L.finishDogChance * 100)}%`)),
+    el('div', { class: 'hint' },
+      'Guarding the tape, at the tape — where it stands is the run’s to say, so this '
+      + 'is the one pin on the timeline that does not drag.'));
   return rail;
 }
 
@@ -870,13 +1121,52 @@ function sectionInspector(box, rail, m, i) {
 
 // Clicking a lane selects whatever is under the pointer. Hit tests are done in
 // timeline fractions rather than pixels so they hold at any window width.
-function onLaneClick(id, e, m) {
+// ------------------------------------------------------------- gestures ----
+
+// A position on a lane is a place, and saying where a thing goes is a gesture
+// rather than a number typed twice. Press picks the thing up and selects it;
+// the move writes the fraction and redraws; the release tidies the array. The
+// inspector's slider still exists for the pixel the hand cannot hit.
+let drag = null;   // {laneId, handle, moved}
+
+const grabTol = (c) => GRAB_PX / Math.max(1, c.getBoundingClientRect().width - PAD * 2);
+const fracIn = (c, clientX) => fracOf(c, clientX - c.getBoundingClientRect().left);
+
+function onLaneDown(id, e, m) {
+  if (e.button !== 0) return;
   const c = e.currentTarget;
-  const rect = c.getBoundingClientRect();
-  const f = fracOf(c, e.clientX - rect.left);
+  const f = fracIn(c, e.clientX);
+  const handle = grabAt(id, m, f, grabTol(c));
+  select(id, f, m, handle);
+  if (handle) {
+    drag = { laneId: id, handle, moved: false };
+    // Listened for on the window, not the canvas: a render replaces the very
+    // element the gesture started on, so the pointer is followed globally and
+    // the lane is found again by id on each move.
+    window.addEventListener('pointermove', onDragMove);
+    window.addEventListener('pointerup', onDragEnd, { once: true });
+    document.body.style.cursor = 'grabbing';
+    e.preventDefault();
+  }
+  state.message = null;
+  render();
+}
+
+// Selection follows the grab where there was one, so what you picked up is
+// what the inspector is talking about.
+function select(id, f, m, handle) {
   const near = (a, b, tol = 0.02) => Math.abs(a - b) < tol;
 
-  if (id === 'sections' && m.L.sections) {
+  if (handle?.kind === 'boundary' || handle?.kind === 'span') {
+    // Both section gestures put the SECTION in the inspector: the boundary
+    // being dragged is the left section's end, so its "ends at" reading is the
+    // number the hand is moving, live, rather than a neighbour's.
+    state.sel = { kind: 'section', i: handle.i };
+  } else if (handle?.kind === 'road') {
+    state.sel = { kind: 'road', roadKind: handle.roadKind, i: handle.i };
+  } else if (handle) {
+    state.sel = { kind: handle.kind, i: handle.i };
+  } else if (id === 'sections' && m.L.sections) {
     const i = m.L.sections.findIndex((s) => f >= s.from && f < s.to);
     state.sel = i >= 0 ? { kind: 'section', i } : null;
   } else if (id === 'setpieces') {
@@ -884,6 +1174,8 @@ function onLaneClick(id, e, m) {
     if (pit) state.sel = { kind: 'pit', i: pit.i };
     else if (near(f, m.L.appliance.at)) state.sel = { kind: 'appliance' };
     else if (m.L.rewindAt != null && near(f, m.L.rewindAt)) state.sel = { kind: 'rewind' };
+    else if (m.loopAt != null && near(f, m.loopAt)) state.sel = { kind: 'loop' };
+    else if (m.L.finishDogChance > 0 && near(f, 0.97)) state.sel = { kind: 'dog' };
     else state.sel = { kind: 'rewind' };            // the empty slot offers itself
   } else if (id === 'checkpoints') {
     const i = m.L.checkpoints.findIndex((cp) => near(f, cp, 0.03));
@@ -891,8 +1183,121 @@ function onLaneClick(id, e, m) {
   } else {
     state.sel = null;
   }
-  state.message = null;
+}
+
+// Moves arrive faster than the page can be rebuilt, so the last one wins and
+// the work happens once a frame.
+let pending = null;
+function onDragMove(e) {
+  if (!drag) return;
+  e.preventDefault();
+  const had = pending;
+  pending = e.clientX;
+  if (had == null) requestAnimationFrame(applyDrag);
+}
+
+function applyDrag() {
+  const x = pending;
+  pending = null;
+  if (!drag || x == null) return;
+  const c = document.getElementById(`lane-${drag.laneId}`);
+  if (!c) return;
+  const m = model();
+  const to = dropAt(drag.handle, m, fracIn(c, x));
+  if (moveTo(drag.handle, m, to)) { drag.moved = true; markDirty(); render(); }
+}
+
+// The one place a gesture writes: into the working copy, by the same keys the
+// inspectors edit. Returns whether anything actually moved, so a press that
+// never travelled leaves the stage undirtied.
+function moveTo(handle, m, to) {
+  const e = entry();
+  if (handle.kind === 'appliance') {
+    if (e.appliance.at === to) return false;
+    e.appliance.at = to;
+  } else if (handle.kind === 'rewind') {
+    if (e.rewindAt === to) return false;
+    e.rewindAt = to;
+  } else if (handle.kind === 'loop') {
+    // Absent until moved: a stage that never touched its ring keeps inheriting
+    // LOOP.at, and the writer leaves the key out again if it is dragged back.
+    if (e.loopAt === to) return false;
+    e.loopAt = to;
+  } else if (handle.kind === 'pit') {
+    const p = e.pits?.[handle.i];
+    if (!p || p.at === to) return false;
+    p.at = to;
+  } else if (handle.kind === 'checkpoint') {
+    // Materialised on the first drag, exactly as the inspector materialises it:
+    // a stage keeps inheriting the default until somebody moves one.
+    if (!e.checkpoints) e.checkpoints = [...m.L.checkpoints];
+    if (e.checkpoints[handle.i] === to) return false;
+    e.checkpoints[handle.i] = to;
+  } else if (handle.kind === 'boundary') {
+    const s = e.sections?.[handle.i];
+    if (!s || s.to === to) return false;
+    s.to = to;
+  } else if (handle.kind === 'span') {
+    // Sliding a stretch is moving both of its edges by the same amount, which
+    // is two boundaries and one gesture.
+    const secs = e.sections;
+    const end = round(Math.min(1, to + handle.w));
+    if (!secs?.[handle.i - 1] || !secs[handle.i]) return false;
+    if (secs[handle.i - 1].to === to && secs[handle.i].to === end) return false;
+    secs[handle.i - 1].to = to;
+    secs[handle.i].to = end;
+  } else if (handle.kind === 'road') {
+    const r = forkRoads(m)[handle.roadKind]?.[handle.i];
+    if (!r || r.at === to) return false;
+    r.at = to;
+  } else {
+    return false;
+  }
+  return true;
+}
+
+// Dragging a road forks it. A stage that has not forked is showing the
+// CABINET's roads, and moving one of those would edit every stage on the
+// machine — invisibly, since the cabinet is not this file's to write. So the
+// first drag copies them in, exactly as the STAGE panel's button does, and the
+// indices survive because a deep copy keeps its order.
+function forkRoads(m) {
+  const e = entry();
+  if (!e.routes) e.routes = cabinetRoads(m.cab);
+  return e.routes;
+}
+
+const cabinetRoads = (cab) => JSON.parse(JSON.stringify({
+  islands: cab.islands || [], forks: cab.forks || [], tunnels: cab.tunnels || [],
+}));
+
+function onDragEnd() {
+  window.removeEventListener('pointermove', onDragMove);
+  document.body.style.cursor = '';
+  pending = null;
+  const d = drag;
+  drag = null;
+  if (!d) return;
+  // A pit that was dragged past its neighbour is out of order in the file even
+  // though the lane looks right. Sorted on release rather than mid-gesture, and
+  // the selection is followed by identity so it stays on the pit in hand.
+  if (d.moved && d.handle.kind === 'pit' && entry().pits) {
+    const pits = entry().pits;
+    const held = pits[d.handle.i];
+    pits.sort((a, b) => a.at - b.at);
+    state.sel = { kind: 'pit', i: pits.indexOf(held) };
+  }
   render();
+}
+
+// The cursor is the only advertisement a canvas can make that something on it
+// can be picked up.
+function onLaneHover(id, e) {
+  if (drag) return;
+  const c = e.currentTarget;
+  if (!lastModel) return;
+  const grab = grabAt(id, lastModel, fracIn(c, e.clientX), grabTol(c));
+  c.style.cursor = grab ? 'grab' : 'default';
 }
 
 function addSection() {

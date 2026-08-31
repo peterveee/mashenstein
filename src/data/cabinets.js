@@ -614,7 +614,11 @@ export const CABINETS = [
     id: 'rhythm', name: 'RHYTHM BANKRUPTCY', act: 2, style: 'lcd',
     genre: 'RHYTHM', unlockPlugs: 20, speedBonus: 0.45,
     mechanic: 'beat', // obstacles quantized to the beat; on-beat bonus
-    sky: ['#202018', '#383828'], ground: '#484838', groundDark: '#303024',
+    // Ground pair in the LCD pack's own colours — panel-lit body under an ink
+    // surface line — because the terrain painter draws rhythm-1's rolling
+    // mid-section with these, on top of the pack's panel-lit road, and the
+    // olive drab it used to carry read as mud on the screen.
+    sky: ['#202018', '#383828'], ground: '#26355d', groundDark: '#dce49a',
     far: '#404030', hills: '#383828',
     // TEETH. This cabinet's beat lane cuts its own holes on the grid
     // (songs/rhythm.js), so a hole here is not an occasional set piece, it is
@@ -624,6 +628,10 @@ export const CABINETS = [
     // this is what the hole is filled with anywhere else the pack cycles to.
     pitFill: 'spikes',
     music: RHYTHM.bank,
+    // The desk's mix for this song, alongside the bank: run.js reads its
+    // voiceParams at enter() to pre-expand TNGR-2 wavetables — the bank alone
+    // does not know which synth voices the song ends up on.
+    songMix: RHYTHM.mix,
     beatCharts: RHYTHM.beatCharts,
     patterns: [
       // Full BASE. This bank used to filter `tier < 2`, which quietly made

@@ -25,11 +25,21 @@ import { Audio } from '../engine/audio.js';
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 
 // THE BEAT RIBBON'S BAND, and it is exported because it is not only the
-// ribbon's business: the strip runs the full width of the frame in the same
-// band a speech card is anchored in, so anything that prints there has to be
-// told to stand clear. The ribbon used to be drawn straight through Lorenzo's
-// lines on a rhythm stage.
-const RIBBON_Y = 44, RIBBON_H = 9;
+// ribbon's business: the strip shares the band a speech card is anchored in,
+// so anything that prints there has to be told to stand clear. The ribbon used
+// to be drawn straight through Lorenzo's lines on a rhythm stage.
+//
+// It rides IN LINE with the objective panels' BONUS row now rather than on a
+// full-width bar below them: markers never live more than four beats (104px)
+// from the centre line, so a frame-wide strip was mostly empty plastic, and
+// giving that band back is what let the land rise. Half the frame wide,
+// centred, and it FADES OUT at both ends instead of stopping — a marker
+// materialises out of the right-hand fade as its beat approaches.
+const RIBBON_Y = 27, RIBBON_H = 9, RIBBON_BEAT_PX = 26;
+// Half the strip's span, and how much of each end is fade. 120 keeps the whole
+// strip clear of the CLARA pill on the left and the GOAL/BONUS panels on the
+// right; 40 puts full ink under everything within three beats of the line.
+const RIBBON_HALF_W = 120, RIBBON_FADE = 40;
 // The pulse marker overhangs the strip by two units at each end (see the gold
 // bar below), so the band is taller than the plate it is painted on.
 export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + 2;
@@ -39,61 +49,107 @@ export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + 2;
 // and the strip read as one stacked instrument.
 export const BEAT_SPEECH_Y = BEAT_RIBBON_BOTTOM + 4 + 3;
 
+// Keep the ribbon in musical coordinates all the way to the canvas. Returning
+// a fractional logical pixel is intentional: the overlay canvas has enough
+// backing resolution to render that smoothly, while Math.round here becomes a
+// conspicuous multi-screen-pixel hop after the game is scaled up.
+export function beatRibbonOffset(actionBeat, currentBeat, beatPx = RIBBON_BEAT_PX) {
+  if (!Number.isFinite(actionBeat) || !Number.isFinite(currentBeat)) return null;
+  return (actionBeat - currentBeat) * beatPx;
+}
+
+// A coin marker is a clock tick, not the pickup object's obituary. Tight fills
+// overlap the hero's pickup box, so several physical coins can be collected in
+// one simulation frame; deriving the ribbon from `pickup.live` made the rest of
+// that little run blink out together at the centre line. Keep its authored
+// timing copy until each subdivision reaches the line, then retire it exactly
+// there. Mandatory actions retain their one-beat missed-event trail.
+export function beatRibbonMarkerOffset(action, actionBeat, currentBeat,
+  consumed = false, beatPx = RIBBON_BEAT_PX) {
+  const dx = beatRibbonOffset(actionBeat, currentBeat, beatPx);
+  if (dx == null || dx > beatPx * 4) return null;
+  if (action === 'coin') return dx >= 0 ? dx : null;
+  if (consumed || dx < -beatPx) return null;
+  return dx;
+}
+
 function drawBeatRibbon(ctx, run) {
   if (!run.beatLock || run.paused || run.dead || run.finishing || run.introRunning
     || run.introFreeze > 0 || run.zoneCard || run.rhythmSyncPending) return;
   const beat = run.rhythmBeatNow?.();
   if (!Number.isFinite(beat)) return;
-  const bpm = run.cabinet.music?.bpm || 120;
-  const pxBeat = run.speed * 60 / bpm;
-  const playerX = run.playerWorldX();
-  const y = RIBBON_Y, h = RIBBON_H, center = W / 2, beatPx = 26;
+  // BeatSpawner owns the unwrap epoch used by every actionBeat it emits. Add
+  // that same epoch to the heard clock so markers remain exact across the song
+  // loop instead of falling back to world-space reconstruction.
+  const currentBeat = beat + (run.spawner?.beatEpoch || 0);
+  const beatPhase = ((currentBeat % 1) + 1) % 1;
+  const y = RIBBON_Y, h = RIBBON_H, center = W / 2, beatPx = RIBBON_BEAT_PX;
+  // How much ink an element at `dx` from the centre line gets: full inside the
+  // body of the strip, ramping to nothing across the last RIBBON_FADE px. Every
+  // tick and marker takes it, so nothing ever pops against a strip that fades.
+  const edgeFade = (dx) => Math.max(0, Math.min(1, (RIBBON_HALF_W - Math.abs(dx)) / RIBBON_FADE));
   ctx.save();
-  ctx.globalAlpha = 0.92;
-  ctx.fillStyle = '#10141c';
-  ctx.fillRect(0, y, W, h);
+  const back = ctx.createLinearGradient(center - RIBBON_HALF_W, 0, center + RIBBON_HALF_W, 0);
+  const fadeStop = RIBBON_FADE / (2 * RIBBON_HALF_W);
+  back.addColorStop(0, 'rgba(16,20,28,0)');
+  back.addColorStop(fadeStop, 'rgba(16,20,28,0.92)');
+  back.addColorStop(1 - fadeStop, 'rgba(16,20,28,0.92)');
+  back.addColorStop(1, 'rgba(16,20,28,0)');
+  ctx.fillStyle = back;
+  ctx.fillRect(center - RIBBON_HALF_W, y, RIBBON_HALF_W * 2, h);
   ctx.strokeStyle = 'rgba(72,224,200,0.18)';
   ctx.lineWidth = 1;
-  for (let i = -8; i <= 8; i++) {
-    const x = Math.round(center + i * beatPx - ((beat % 1) * beatPx));
+  for (let i = -5; i <= 5; i++) {
+    const dx = i * beatPx - beatPhase * beatPx;
+    const a = edgeFade(dx);
+    if (a <= 0) continue;
+    const x = center + dx;
+    ctx.globalAlpha = 0.92 * a;
     ctx.beginPath(); ctx.moveTo(x + 0.5, y + 2); ctx.lineTo(x + 0.5, y + h - 2); ctx.stroke();
   }
+  ctx.globalAlpha = 0.92;
   const pulse = Audio.musicAnalysis?.()?.beatPulse || 0;
   ctx.fillStyle = `rgba(246,211,60,${0.35 + pulse * 0.5})`;
   ctx.fillRect(center - 1, y - 2, 3, h + 4);
   const markers = [];
   const markerKeys = new Set();
-  const addMarker = (action, actionX) => {
-    const key = `${action}:${Math.round(actionX)}`;
+  const addMarker = (action, actionBeat) => {
+    const key = `${action}:${Math.round(actionBeat * 1000)}`;
     if (markerKeys.has(key)) return;
     markerKeys.add(key);
-    markers.push({ action, actionX });
+    markers.push({ action, actionBeat });
   };
   const entities = [...(run.obstacles || []), ...(run.pickups || [])];
   for (const e of entities) {
-    if (!e.live || !e.chartAction || !Number.isFinite(e.actionX)) continue;
+    if (!e.live || !e.chartAction || !Number.isFinite(e.actionBeat)) continue;
     const slot = Number.isFinite(e.chartSlot) ? e.chartSlot : null;
     const judgeId = slot == null ? null : `judge:${Math.round(e.actionBeat)}:${slot}`;
     const setEvent = run.rhythmSetEvents?.find((s) => s.beat === e.actionBeat);
     if ((judgeId && run.beatJudgeConsumed?.has(judgeId))
       || (setEvent && run.beatJudgeConsumed?.has(setEvent.id))) continue;
-    addMarker(e.chartAction, e.actionX);
+    addMarker(e.chartAction, e.actionBeat);
   }
   for (const e of run.spawner?.eventInstances || []) {
-    if (!e.live || e.chartAction !== 'ability' || !Number.isFinite(e.actionX)) continue;
-    if (e.chartEventId && run.beatJudgeConsumed?.has(`judge:${Math.round(e.actionBeat)}:${e.chartSlot}`)) continue;
-    addMarker('ability', e.actionX);
+    if (!e.live || (e.chartAction !== 'ability' && e.chartAction !== 'coin')
+      || !Number.isFinite(e.actionBeat)) continue;
+    if (e.chartAction === 'ability' && e.chartEventId
+      && run.beatJudgeConsumed?.has(`judge:${Math.round(e.actionBeat)}:${e.chartSlot}`)) continue;
+    addMarker(e.chartAction, e.actionBeat);
   }
   // Crossing actions are chart-owned even though their physical landing is a
   // route stone rather than a normal obstacle entity.
   for (const e of run.rhythmSetEvents || []) {
     if (e.pit?.passed || run.beatJudgeConsumed?.has(e.id)) continue;
-    addMarker(e.action, playerX + (e.beat - beat) * pxBeat);
+    addMarker(e.action, e.beat);
   }
   for (const marker of markers) {
-    const dx = (marker.actionX - playerX) / pxBeat * beatPx;
-    if (dx < -beatPx || dx > beatPx * 4) continue;
-    const x = Math.round(center + dx);
+    const dx = beatRibbonMarkerOffset(marker.action, marker.actionBeat, currentBeat,
+      false, beatPx);
+    if (dx == null) continue;
+    const a = edgeFade(dx);
+    if (a <= 0) continue;
+    ctx.globalAlpha = 0.92 * a;
+    const x = center + dx;
     ctx.fillStyle = marker.action === 'jump' ? '#f6d33c'
       : marker.action === 'duck' ? '#72d8f0'
         : marker.action === 'ability' ? '#f890b8' : '#c8e0ff';

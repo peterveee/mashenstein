@@ -426,6 +426,13 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
       // coin run, which is why this is written the long way round.
       prize: d.prize === null ? null : (d.prize || 'coins'),
       lowPrize: d.lowPrize || null,
+      // WHO ASKED FOR THIS ROAD: the authored entry — in cabinets.js, or in a
+      // stage's own routes override — that this ribbon was built from. The run
+      // never reads it; the level editor does, because a road drawn on a
+      // timeline has to be able to say which line of data would have to change
+      // for it to move. A staircase's steps all point at the one island that
+      // spawned them, so dragging any step moves the climb.
+      authored: d.authored ?? d,
     };
   };
   // "Routes never overlap" is load-bearing — routeAt returns the FIRST match
@@ -470,6 +477,8 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
     const startOf = (k) => runs.slice(0, k).reduce((a, b) => a + b, 0);
     return Array.from({ length: n }, (_, k) => ({
       ...d,
+      // Each step is a derived copy; this is the island somebody actually wrote.
+      authored: d,
       at: d.at + (startOf(k) * speed) / totalDist,
       // A share of the tread is the GAP you jump across, so the climb is two
       // problems at once — up and along — rather than a lift with landings.
@@ -508,6 +517,9 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
     // reads it to leave the crossing's own hole alone (clearRouteHazards) and
     // the demo bot reads it to know it is mid-sequence rather than mid-lane.
     r.crossing = c;
+    // And nobody authored it: the pit owns where these are, so there is no line
+    // of road data to send an editor back to.
+    r.authored = null;
     return r;
   }));
   const guard = ROUTE_CLEAR * speed;

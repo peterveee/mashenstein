@@ -36,7 +36,7 @@ export const OBSTACLES = {
   target:     { w: 12, h: 11,  sprite: 'capStar', alt: 40, breakable: true, action: 'none', isTarget: true, bob: true },
   icicle:     { w: 8, h: 8,   sprite: 'icicle', alt: 70, falls: true, action: 'jump', telegraph: 0.7 },
   qcrate:     { w: 12, h: 11, sprite: 'crate', alt: 40, breakable: true, action: 'none', bonusCoins: 3, isTarget: true, qbox: true, prizeChance: 0.25 },
-  pipe:       { w: 14, h: 18, sprite: 'crate', ground: true, breakable: false, action: 'jump', tall: true },
+  pipe:       { w: 14, h: 18, artH: 24, sprite: 'crate', ground: true, breakable: false, action: 'jump', tall: true },
   gap:        { w: 56, h: 20, sprite: null, ground: true, isGap: true, action: 'jump' },
   // A HINT, not an obstacle. Placed by the run rather than by a cabinet's
   // pattern list (see RunState.signPits): it appears in front of a pit only

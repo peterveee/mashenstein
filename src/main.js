@@ -477,11 +477,18 @@ function boot() {
   let titleProfileRequested = false;
   let gameplayProfileRequested = false;
   let benchDiag = null;
+  let sessionMute = false;
   if (typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search);
     const diag = consumeBenchDiag();
     if (p.has('fps') || p.get('start') === 'fps' || diag.fps) save.settings.showFps = true;
-    if (p.has('mute')) save.settings.muted = true;
+    // Silence for THIS BOOT, never the player's setting. This used to write
+    // `save.settings.muted`, which persists — so a single verification run with
+    // `?mute` in the address bar left the game muted for good, and toggling it
+    // back only lasted until the next load with the flag still there. The switch
+    // is applied to the audio output instead; Audio.silent ORs it with the saved
+    // setting, so `?mute` can add silence but can never clear a real mute.
+    if (p.has('mute')) sessionMute = true;
     benchRequested = p.has('bench') || !!diag.bench;
     titleProfileRequested = p.has('titleProfile') || !!diag.titleProfile;
     gameplayProfileRequested = p.has('gameplayProfile') || !!diag.gameplayProfile;
@@ -565,6 +572,7 @@ function boot() {
     allowPortrait: allowPortraitNow(),
   }).paused);
   Audio.ensure();
+  Audio.setSessionMute(sessionMute);
   Audio.setMuted(save.settings.muted);
   // Touch only, and only once. A phone browser's toolbars eat a third of a
   // landscape screen, so the first tap asks for them back; iPad and Android

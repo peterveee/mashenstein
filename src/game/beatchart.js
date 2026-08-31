@@ -52,14 +52,21 @@ export const COIN_FILLS = Object.freeze({
 // is always more than a beat clear of the nearest lip; a run of four is three
 // quarters of a beat longer, which is enough to reach.
 export const COIN_RUN_PIT_CLEAR_SEC = 0.25 * 2.4;
-// EMPTY LANE AFTER A RESYNC, in beats, and it is the one number the spawner and
-// the judge must agree on: the spawner lays nothing inside it and the judge
-// scores nothing inside it. Two beats is a beat to hear the clock and a beat to
-// move — enough for a bar you jump, and not enough for a hole. A stage cut with
-// holes gets four, because a checkpoint restore drops the player back into the
-// lane already running and stages.js's own rule for where a fatal hole may
-// stand is that it lands at least a second and a half after the restore, never
-// on top of it. Four beats at 124bpm is 1.9s.
+// ACTION-FREE LANE AFTER A RESYNC, in beats, and it is the one number the
+// spawner and the judge must agree on: the spawner lays nothing that ASKS AN
+// INPUT inside it and the judge scores nothing inside it. Two beats is a beat
+// to hear the clock and a beat to move — enough for a bar you jump, and not
+// enough for a hole. A stage cut with holes gets four, because a checkpoint
+// restore drops the player back into the lane already running and stages.js's
+// own rule for where a fatal hole may stand is that it lands at least a second
+// and a half after the restore, never on top of it. Four beats at 124bpm is
+// 1.9s.
+//
+// The runway is action-free, not EMPTY. Four beats of bare road after every
+// checkpoint restore read as the lane being broken — the coins are the part of
+// the chart that asks nothing of the player, so they are laid straight through
+// it (from one beat out, a breath rather than a wall) and the restore opens
+// onto a lane that is already playing its song.
 export const LANE_RUNWAY_BEATS = 2;
 export const PIT_LANE_RUNWAY_BEATS = 4;
 const REQUIRED_GAP_BEATS = Object.freeze({
@@ -310,6 +317,7 @@ export class BeatSpawner {
     this.lastActionKind = 'none';
     this.lastWasPunt = 0;
     this.cursorBeat = null;
+    this.actionFreeUntilBeat = null;
     this.lastRawBeat = null;
     this.beatEpoch = 0;
     this._approachCache = new Map();
@@ -334,10 +342,14 @@ export class BeatSpawner {
     const unwrapped = this._unwrappedBeat(beat);
     if (!finiteNumber(unwrapped)) {
       this.cursorBeat = null;
+      this.actionFreeUntilBeat = null;
       this.nextX = worldX;
       return false;
     }
-    this.cursorBeat = Math.ceil(unwrapped + this.runwayBeats);
+    // Coins from one beat out; actions only past the runway. See the
+    // LANE_RUNWAY_BEATS note: the runway is action-free, not empty.
+    this.cursorBeat = Math.ceil(unwrapped) + 1;
+    this.actionFreeUntilBeat = unwrapped + this.runwayBeats;
     this.nextX = worldX;
     this.eventInstances = [];
     for (const pit of this.pitPlan || []) {
@@ -438,11 +450,24 @@ export class BeatSpawner {
     while (this.cursorBeat <= horizon) {
       const slot = ((this.cursorBeat % this.chart.loopBeats) + this.chart.loopBeats) % this.chart.loopBeats;
       const event = this.chart.events[slot];
+      // THE RUNWAY IS ACTION-FREE, NOT EMPTY. A slot that asks an input is
+      // skipped outright inside it — skipped, never deferred, so the judge's
+      // matching silence (advanceBeatJudging primes past the same runway)
+      // stays honest. A coin slot falls through and is laid: it asks nothing,
+      // and it is what makes a checkpoint restore open onto a lane that is
+      // already playing rather than onto four beats of bare road.
+      if (this.actionFreeUntilBeat != null && this.cursorBeat < this.actionFreeUntilBeat
+        && event.action !== 'coin') {
+        this.cursorBeat++;
+        continue;
+      }
       const actionX = playerX + (this.cursorBeat - beat) * pxPerBeat;
       const id = beatEventId(this.cursorBeat, event);
       // Ability events are timing markers for future charts, not physical
       // hazards. They still advance the monotonic cursor and are exposed in
-      // `eventInstances` for a HUD/authoring surface to render.
+      // `eventInstances` for a HUD/authoring surface to render. Coin fills are
+      // also mirrored there below: pickup collection is gameplay state, while
+      // the ribbon must keep each subdivision alive until its own clock tick.
       if (event.action === 'ability') {
         if (actionX + 8 > stopX) {
           this.nextX = stopX;
@@ -521,13 +546,27 @@ export class BeatSpawner {
             coin.chartEventId = n > 1 ? `${id}:${i}` : id;
             coin.chartAction = 'coin';
             coin.chartSlot = event.slot;
-            coin.actionBeat = this.cursorBeat;
+            // Preserve the subdivision as musical time as well as world
+            // distance. The beat ribbon reads this field directly; stamping
+            // every coin with the run's first beat made a regular fill look
+            // bunched and uneven even though the pickups themselves were laid
+            // at the right spacing.
+            coin.actionBeat = this.cursorBeat + i / (event.div ?? COIN_DIV);
             coin.actionX = actionX + i * step;
             // ONE formation for the whole run, so a hole's sweep takes it whole
             // — half a run left hanging beside a lip is the fragment problem
             // sweepCoinsAroundHole exists to prevent.
             coin.formationId = id;
             pickups.push(coin);
+            this.eventInstances.push({
+              live: true,
+              chartEventId: coin.chartEventId,
+              chartAction: 'coin',
+              chartSlot: event.slot,
+              actionBeat: coin.actionBeat,
+              actionX: coin.actionX,
+              formationId: id,
+            });
           }
         } else {
           const ob = makeObstacle(type, x);

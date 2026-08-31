@@ -72,3 +72,4 @@ Do not edit by hand.
 | 2026-08-27 | `8df6c9b` | [2026-08-27-8df6c9b.html](2026-08-27-8df6c9b.html) | fix: adjust PIT_SINK_RATE and PIT_DEATH_HOLD for smoother fall mechanics; enhance startled face expression during unplanned falls |
 | 2026-08-30 | `8189ee2` | [2026-08-30-8189ee2.html](2026-08-30-8189ee2.html) | test: verify that all jukebox songs start at step zero |
 | 2026-08-31 | `887131e` | [2026-08-31-887131e.html](2026-08-31-887131e.html) | test: add death pose tests to verify upright figure on death hold |
+| 2026-08-30 | `f3ebb18` | [2026-08-30-f3ebb18.html](2026-08-30-f3ebb18.html) | Layout parity: fingerprint generation, not the hero's frame |

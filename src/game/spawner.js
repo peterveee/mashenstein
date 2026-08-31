@@ -106,10 +106,16 @@ export function worstJumpApex() {
  * leaves its far end hanging in the air with nothing to say why it stopped.
  */
 export function sweepCoinsAroundHole(pickups, hx, hw, clear, view = null) {
+  // Procedural formations predate the beat lane and use `formation`; authored
+  // chart fills use `formationId` because their ID also has to survive a lane
+  // rebuild. They are the same lifecycle unit here: never cut either kind in
+  // half just because the two spawners name the field differently.
+  const formationOf = (p) => p.formationId ?? p.formation;
   const doomed = new Set();
   for (const p of pickups) {
-    if (!p.live || p.following || p.formation == null || !p.def.coin) continue;
-    if (p.x + p.w > hx - clear && p.x < hx + hw + clear) doomed.add(p.formation);
+    const formation = formationOf(p);
+    if (!p.live || p.following || formation == null || !p.def.coin) continue;
+    if (p.x + p.w > hx - clear && p.x < hx + hw + clear) doomed.add(formation);
   }
   if (!doomed.size) return;
   // NOTHING VANISHES IN PLAIN VIEW. A tunnel's mouths are cut into a lane that
@@ -129,11 +135,15 @@ export function sweepCoinsAroundHole(pickups, hx, hw, clear, view = null) {
   // formations — they are the road saying where it goes.
   if (view) {
     for (const p of pickups) {
-      if (p.formation != null && doomed.has(p.formation)
+      const formation = formationOf(p);
+      if (formation != null && doomed.has(formation)
         && p.x + p.w > view.x && p.x < view.x + view.w) return;
     }
   }
-  for (const p of pickups) if (p.formation != null && doomed.has(p.formation)) p.live = false;
+  for (const p of pickups) {
+    const formation = formationOf(p);
+    if (formation != null && doomed.has(formation)) p.live = false;
+  }
 }
 
 function clearOfHoles(x0, w, holes, clear) {

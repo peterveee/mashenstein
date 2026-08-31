@@ -27,7 +27,16 @@
       "Bash(node tools/fairness-sim.js)",
       "Bash(curl -s -o /dev/null -w \"dev server %{http_code}\\\\n\" http://localhost:8001/)",
       "Bash(node work/local/crossing/respawn.mjs plumber-2 plumber 30)",
-      "Bash(node tests/effect-presets.js)"
+      "Bash(node tests/effect-presets.js)",
+      "Bash(node work/local/render-rhythm-trance.js work/tracks/rhythm-euro.wav)",
+      "Bash(node work/local/rhythm-level-check.js lead2 crash sweeps ohats)",
+      "Bash(perl -pi -e 's/this\\\\.muted \\\\? 0 : this\\\\.levels\\\\.master/this.silent ? 0 : this.levels.master/g' src/engine/audio.js)",
+      "Bash(node tests/layout-parity.js)",
+      "Bash(python3 gen_euro.py)",
+      "Bash(node work/local/render-rhythm-chord-options.js)",
+      "Bash(node -e \"import\\('./src/game/run.js'\\).then\\(\\(\\)=>console.log\\('run.js loads'\\)\\).catch\\(e=>{console.log\\('ERR', e.message\\)}\\)\")",
+      "Bash(node -e \"import\\('./src/game/terrain.js'\\).then\\(\\(\\)=>console.log\\('terrain.js loads'\\)\\).catch\\(e=>console.log\\('ERR',e.message\\)\\)\")",
+      "Bash(awk 'NR>=2650 && NR<=2760 && /ground\\\\\\(ctx|strokeRect\\\\\\(5|function lcdPack|LCD_PANEL_LIT|^    ground|^    post/ {print NR\": \"$0}' /Users/Peter/mashenstein/src/engine/stylePacks/index.js)"
     ]
   }
 }

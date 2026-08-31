@@ -40,11 +40,12 @@ import { getStylePack, sunShock, drawPitFills } from '../engine/stylePacks/index
 import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY, BEAT_SPEECH_Y } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
-import { drawRocketFist, drawThrownAxe } from '../sprites/toons.js';
+import { drawRocketFist, drawThrownAxe, drawToon, toonFaceSprite } from '../sprites/toons.js';
+import { tngr2Family } from '../engine/tngr2/tables.js';
 import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF } from './draw.js';
-import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY } from './terrain.js';
+import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, STAGE_WAVES, setStageWave } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
@@ -133,22 +134,6 @@ const SPRING_LEAD = 12;
 // Lane kept clear either side of an opening, so nothing can crowd a hero into
 // one he did not choose.
 const OPENING_CLEAR = 26;
-// Rise above which a road is drawn as cloud rather than as dirt, and the band
-// over which it changes its mind. Below the first number it is a slab of ground
-// held up in the air; above the second it is weather.
-//
-// No route asks for this any more — cloud is off everywhere, because the puffs
-// beat the silhouette the hero reads the road's edges and gaps from (see
-// `cloud` in terrain.js). The band is kept, and kept at these numbers, so
-// turning it back on for one fork is a data key rather than a re-derivation.
-//
-// Set above a sky road's own ENTRY height on purpose. The lip is where the
-// spring puts you down and it wants to be honest ground under your feet — a
-// landing platform half dissolved into fog reads as neither one thing nor the
-// other. The changeover belongs to the climb, which is the stretch that is
-// about leaving the ground in the first place.
-const CLOUD_FROM = 108;
-const CLOUD_TO = 168;
 // How much lower than the floor he left the hero has to be, in px, before he
 // wears the face of someone who did not plan this.
 //
@@ -176,18 +161,18 @@ const FALL_FACE_DEPTH = 6;
 const TOE_CATCH = 10;
 
 // ------------------------------------------------------------- pit deaths
-// Where the material lies: PIT_FLOOR (game/pitFill.js) against the 38 world px
-// of apron below the groundline. The surface a fill is painted on and the
-// altitude a falling hero stops at rather than passing through — one number, or
-// he sinks into thin air a body-length above the tar.
+// Where the material lies: PIT_FLOOR (game/pitFill.js) against the H - GROUND_Y
+// world px of apron below the groundline. The surface a fill is painted on and
+// the altitude a falling hero stops at rather than passing through — one
+// number, or he sinks into thin air a body-length above the tar.
 //
 // It is high in the shaft on purpose. The camera magnifies the world band, so
-// only the top 19 world px of the apron are on screen at rest; a material at
+// only the top half of the apron is on screen at rest; a material at
 // the true bottom of the hole is something the player never sees.
 //
 // A cabinet that names no fill has nothing to land in, and the same beat plays
 // with the hero falling straight past — which is what an open break should do.
-export const PIT_SURFACE_Y = -Math.round(PIT_FLOOR * 38);
+export const PIT_SURFACE_Y = -Math.round(PIT_FLOOR * (H - GROUND_Y));
 // A little under a fifth of the speed he arrived at. Slow enough to linger as
 // a visible sinking rather than reading as a second fall.
 const PIT_SINK_RATE = 12;
@@ -200,6 +185,22 @@ const PIT_SINK_RATE = 12;
 // height the art reaches and the altitude the body stops at are one number, or
 // he is impaled on air.
 export function fillSurfaceY(id) { return -Math.round(fillSurface(id).at * 38); }
+// Rise above which a road is drawn as cloud rather than as dirt, and the band
+// over which it changes its mind. Below the first number it is a slab of ground
+// held up in the air; above the second it is weather.
+//
+// No route asks for this any more — cloud is off everywhere, because the puffs
+// beat the silhouette the hero reads the road's edges and gaps from (see
+// `cloud` in terrain.js). The band is kept, and kept at these numbers, so
+// turning it back on for one fork is a data key rather than a re-derivation.
+//
+// Set above a sky road's own ENTRY height on purpose. The lip is where the
+// spring puts you down and it wants to be honest ground under your feet — a
+// landing platform half dissolved into fog reads as neither one thing nor the
+// other. The changeover belongs to the climb, which is the stretch that is
+// about leaving the ground in the first place.
+const CLOUD_FROM = 108;
+const CLOUD_TO = 168;
 // HOW FAR THE ROAD CLIMBS OVER A CROSSING, and how long it takes to get there.
 //
 // 16px is the same height a cabinet's own hills reach (PROFILES in
@@ -292,13 +293,58 @@ const REWIND_SPEED = 1;
 const REWIND_DISABLED = typeof window !== 'undefined'
   && typeof URLSearchParams !== 'undefined'
   && new URLSearchParams(window.location.search).has('norewind');
-const BEAT_BANNED_POWERS = new Set(['capSpeed', 'capLowGrav', 'capRewind']);
+// capMagnet is banned alongside the timing powers: a magnet hoovers a fill in
+// one lump instead of four sixteenths, which unpicks the whole point of coins
+// that are notes. capUnpeel goes with it — UNPEELABLE is the actual
+// invincibility capsule, and its alternate mix on a stage whose lane IS the
+// music pulls the ground out from under it. Keep capStar banned too: it is the
+// legacy score-star capsule and may still arrive through authored/stale data.
+const BEAT_BANNED_POWERS = new Set([
+  'capSpeed', 'capLowGrav', 'capRewind', 'capMagnet', 'capUnpeel', 'capStar',
+]);
+
+// Bake the lazy art a hero pays for on first draw — the face sprite at every
+// size the HUD, the portal and the speech card ask for, and one full figure
+// paint (which builds the rig's cached gradients and paths) — into a scratch
+// canvas nobody sees. Called when a portal spawns, so the tag frame seconds
+// later draws a warm hero.
+const warmScratch = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+function warmHeroArt(heroId) {
+  if (!warmScratch) return;
+  warmScratch.width = 64; warmScratch.height = 64;
+  const c = warmScratch.getContext('2d');
+  if (!c) return;
+  toonFaceSprite(heroId, 12, 9);
+  toonFaceSprite(heroId, 20, 15);
+  toonFaceSprite(heroId, 24, 18);
+  drawToon(c, heroId, { kind: 'run', phase: 0, time: 0, grounded: true }, 32, 60, 48);
+}
 // The song never stops when a beat-stage attempt dies.  Give a retry one
 // second of stillness after the death animation so the expected bank and its
 // live beat clock can be confirmed before the chart is rebuilt.  This is a
 // wall-clock guard only; the music continues and the lane is ultimately
 // anchored to the beat that was actually heard.
 const RHYTHM_DEATH_SYNC_SEC = 1;
+// The retry hold is intentionally invisible to control, but a hero held in the
+// restored pose for that whole second reads like a stuck game. Let the hero
+// appear only for the final few frames, just before the lane is released.
+const RHYTHM_RESPAWN_HERO_LEAD_SEC = 0.12;
+// HOW LONG A BEAT-LANE MISALIGNMENT MUST STAND BEFORE IT IS BELIEVED, in fixed
+// 60Hz steps, and why it cannot be zero: a stalled frame (a GC pause, the
+// checkpoint's own snapshot-and-sfx work) hands the loop one long callback in
+// which the heard clock has jumped the whole gap while the first catch-up step
+// has moved the world a single tick. That step reads as a huge mismatch and the
+// remaining steps of the same callback pay it straight back — so a one-step
+// judgment latched a full lane rebuild (coins and bars blinking out in plain
+// view) on every hitch. Only a discontinuity that SURVIVES the catch-up — time
+// genuinely dropped by the loop's 8-step cap, a tab switch, an audio device
+// swap — is drift, and a fifth of a second is long enough to have paid back any
+// honest stall.
+const BEAT_DRIFT_CONFIRM_STEPS = 12;
+// The debt's slow leak (~3s half-life at 60Hz). The audio clock and the
+// fixed-step sim are two different oscillators, and their honest skew is a few
+// px a minute — without the leak it would sum to a lane rebuild mid-song.
+const BEAT_DRIFT_LEAK = 0.9962;
 // Cooldown after release: rewind continues decelerating for this many seconds
 // so the animation winds down in step with the tape-stop audio (~1.0s).
 const REWIND_COOLDOWN = 0.55;
@@ -1087,7 +1133,8 @@ export class RunState {
     this.beatDriftEpoch = 0;
     this.beatDriftLastBeat = null;
     this.beatDriftLastX = null;
-    this.beatDriftLatched = false;
+    this.beatDriftDebt = 0;
+    this.beatDriftOverSteps = 0;
     this.beatBankReady = false;
     this.rhythmSyncT = 0;
     this.rhythmSyncPending = false;
@@ -1804,6 +1851,40 @@ export class RunState {
     this.totalDist = this.overtime ? Infinity
       : duration * this.baseSpeed() * (this.beatLock ? 1 : 1.05);
 
+    // A parting flourish on the beat lane: sixteen 32nd-note coins running up
+    // to the finish, so the last thing a rhythm stage plays is its fastest
+    // figure. Spaced at an eighth of a beat of lane travel and ending just
+    // outside FINISH_CLEAR, whose keep-clear rule they must not cross.
+    if (this.beatLock && Number.isFinite(this.totalDist)) {
+      const pxPerBeat = this.baseSpeed() * 60 / (this.cabinet.music?.bpm || 120);
+      const last = this.finishWorldX() - FINISH_CLEAR - 12;
+      for (let i = 0; i < 16; i++) {
+        this.pickups.push(makePickup('coin', last - (15 - i) * pxPerBeat / 8, 10));
+      }
+    }
+
+    // Pre-expand every TNGR-2 wavetable family this stage's song touches.
+    // Measured (CDP profile): a family expands in ~240ms ON THE MAIN THREAD,
+    // and it used to happen lazily at the first NOTE of the voice — mid-run,
+    // where it presented as "the game hitches on hero swaps" because the pad
+    // that uses it happens to enter near a portal. Behind the stage
+    // transition, nobody sees it; the expansion is cached per process.
+    for (const v of Object.values(this.cabinet.songMix?.voiceParams || {})) {
+      for (const osc of [v.tngr2?.oscA, v.tngr2?.oscB]) {
+        if (osc?.table) { try { tngr2Family(osc.table); } catch { /* unknown id: the synth will complain, not the lane */ } }
+      }
+    }
+
+    // A stage-scoped rolling window (terrain.js STAGE_WAVES), resolved from
+    // fractions to world px now that the stage's length is known. Set on
+    // EVERY enter, null included — the same rule setGroundRises keeps.
+    const waveSpec = !this.overtime && !this.bossCab && Number.isFinite(this.totalDist)
+      ? STAGE_WAVES[this.stage?.id] : null;
+    setStageWave(waveSpec ? {
+      amp: waveSpec.amp, period: waveSpec.period, phase: waveSpec.phase || 0,
+      from: this.totalDist * waveSpec.from, to: this.totalDist * waveSpec.to,
+    } : null);
+
     // ?startAt=N — skip to N% through the stage (dev builds only).
     // Must run before the spawner is created so it pre-fills the right region.
     if (this.devStartPercent > 0 && Number.isFinite(this.totalDist)) {
@@ -1984,12 +2065,16 @@ export class RunState {
     // this large that turned up two or three times at random would stop being an
     // event, and a lap the player has to be lucky to see is not worth building.
     //
-    // 0.55 of the way in, which is deliberately between the checkpoints at 1/3
-    // and 2/3: far enough that the stage has taught its own vocabulary first,
-    // and clear of both restore points so a death never drops the player back on
-    // top of the ring.
-    this.loopAt = (this.cabinet.mechanic === 'boost' && !this.bossCab && !this.overtime
-      && Number.isFinite(this.totalDist)) ? LOOP.at * this.totalDist : null;
+    // 0.55 of the way in by default, which is deliberately between the
+    // checkpoints at 1/3 and 2/3: far enough that the stage has taught its own
+    // vocabulary first, and clear of both restore points so a death never drops
+    // the player back on top of the ring. WHERE is the layout's to say now (the
+    // level editor drags it, layout.js resolves it against LOOP.at); WHETHER a
+    // cabinet has one at all is still the resolver's, and a boss run has no
+    // stage layout to ask.
+    const loopFrac = this.layout?.loopAt;
+    this.loopAt = (loopFrac != null && !this.bossCab && !this.overtime
+      && Number.isFinite(this.totalDist)) ? loopFrac * this.totalDist : null;
     this.loopSpawned = false;
 
   // Checkpoints use the layout's authored positions (normally 1/3 and 2/3,
@@ -2085,7 +2170,8 @@ export class RunState {
     this.beatDriftEpoch = 0;
     this.beatDriftLastBeat = null;
     this.beatDriftLastX = null;
-    this.beatDriftLatched = false;
+    this.beatDriftDebt = 0;
+    this.beatDriftOverSteps = 0;
     this.beatBankReady = false;
     this.rhythmSyncT = rhythmRetry ? RHYTHM_DEATH_SYNC_SEC : 0;
     this.rhythmSyncPending = rhythmRetry;
@@ -2110,9 +2196,8 @@ export class RunState {
     this.resetRenderInterpolation();
     // Breaker-box bonus: applied exactly once per run (enter() re-runs on retry).
     const bannedStartingPower = this.beatLock &&
-      (this.startingPowerup === 'capSpeed' || this.startingPowerup === 'capLowGrav'
-        || this.startingPowerup === 'capRewind' || this.startingPowerup === 'speed'
-        || this.startingPowerup === 'lowGrav' || this.startingPowerup === 'rewind');
+      (BEAT_BANNED_POWERS.has(this.startingPowerup)
+        || ['speed', 'lowGrav', 'rewind', 'magnet', 'unpeel', 'star'].includes(this.startingPowerup));
     if (bannedStartingPower) this.startingPowerup = null;
     if (this.startingPowerup) {
       const id = this.startingPowerup;
@@ -2324,10 +2409,17 @@ export class RunState {
       this.beatJudgeLastRaw = beat;
       this.beatJudgeEpoch = 0;
       this.beatJudgeCursor = null;
+      // The epoch above restarts the unwrapped beat numbering from the raw
+      // clock, so ids minted against the OLD numbering describe beats that are
+      // about to come round again. A stale "already judged" against a fresh
+      // beat hid its ribbon marker and refused its combo credit.
+      this.beatJudgeConsumed.clear();
       this.beatDriftLastRaw = beat;
       this.beatDriftEpoch = 0;
       this.beatDriftLastBeat = beat;
       this.beatDriftLastX = this.playerWorldX();
+      this.beatDriftDebt = 0;
+      this.beatDriftOverSteps = 0;
     }
     return beat;
   }
@@ -2363,6 +2455,14 @@ export class RunState {
     const capped = Math.min(this.overtime ? 2.4 : SPEED_RAMP_CAP, ramp);
     return this.baseSpeed() * hero.speedMult * capped * (1 + this.speedBoost) * this.powerups.speedMultiplier() *
       (this.player.dashT > 0 ? 1.8 : this.player.rollT > 0 ? 1.25 : this.player.stumbleT > 0 ? 0.72 : 1);
+  }
+
+  // Presentation-only gate for beat-stage death recovery. The audio clock and
+  // lane remain held for the full settling window; this only keeps the stale
+  // restored pose off screen until control is nearly back.
+  rhythmHeroVisible() {
+    return !this.rhythmSyncPending
+      || (this.rhythmSyncT > 0 && this.rhythmSyncT <= RHYTHM_RESPAWN_HERO_LEAD_SEC);
   }
 
   // ------------------------------------------------------------------ update
@@ -3992,8 +4092,25 @@ export class RunState {
       if (ob.route) continue;                       // another floor, not the portal's lane
       const start = ob.def.action !== 'none' ? approachStart : colStart;
       const end = ob.def.action !== 'none' ? portalEnd : colEnd;
-      if (ob.x < end && ob.x + ob.w > start) ob.live = false;
+      if (ob.x < end && ob.x + ob.w > start) {
+        ob.live = false;
+        // A BEAT LANE'S BAR IS ALSO A PROMISE. The judge demands the input the
+        // chart wrote whether or not the entity survived, and the ribbon draws
+        // its arrow only while the entity lives — so a bar the portal swept
+        // left a beat with no bar, no arrow, and a combo break nobody could
+        // have prevented. Consume the beat the way a scored one is consumed:
+        // the judge skips it, and the ribbon honestly shows nothing where
+        // nothing stands.
+        if (ob.chartAction && Number.isFinite(ob.actionBeat)) {
+          this.beatJudgeConsumed.add(`judge:${Math.round(ob.actionBeat)}:${ob.chartSlot}`);
+        }
+      }
     }
+    // Coins go BY FORMATION, never by position — the same rule
+    // sweepCoinsAroundHole states. The column is narrower than a fill, so a
+    // positional cut took two coins out of the middle of an eight-note run and
+    // left both ends hanging with nothing to say why the figure broke.
+    const doomedFormations = new Set();
     for (const p of this.pickups) {
       if (!p.live || inView(p) || p.x >= colEnd || p.x + p.w <= colStart) continue;
       // A road's prizes are ordinary pickups carrying a big `alt` rather than a
@@ -4005,7 +4122,24 @@ export class RunState {
       if (p.type === 'appliance') {
         p.x = colEnd;
         if (p._baseX != null) p._baseX = p.x;
-      } else p.live = false;
+      } else {
+        p.live = false;
+        const formation = p.formationId ?? p.formation;
+        if (formation != null) doomedFormations.add(formation);
+      }
+    }
+    if (doomedFormations.size) {
+      for (const p of this.pickups) {
+        const formation = p.formationId ?? p.formation;
+        if (p.live && !inView(p) && formation != null && doomedFormations.has(formation)) {
+          p.live = false;
+        }
+      }
+      // And the ribbon's timing copies go with them, or the strip keeps
+      // ticking coins the lane no longer holds for the rest of their approach.
+      for (const e of this.spawner?.eventInstances || []) {
+        if (e.live && e.formationId != null && doomedFormations.has(e.formationId)) e.live = false;
+      }
     }
   }
 
@@ -4022,9 +4156,26 @@ export class RunState {
       else if (this.portal.wilt != null) this.portal.wilt += dt;
     } else if (this.relay.portalDue()) {
       const hero = this.relay.next;
-      this.portal = { x: this.camX + W + 40, hero };
+      let px = this.camX + W + 40;
+      // On the beat lane the portal parks ON the grid: the tag and its sfx
+      // fire as the hero crosses it, so a crossing that lands on a whole
+      // heard beat puts the sound in the song instead of near it. Beat
+      // stages run at a fixed speed, so the arithmetic holds to the tape.
+      const beat = this.beatLock ? this.rhythmBeatNow() : null;
+      if (Number.isFinite(beat)) {
+        const pxPerBeat = this.speed * 60 / (this.cabinet.music?.bpm || 120);
+        const playerX = this.playerWorldX();
+        px = playerX + (Math.ceil(beat + (px - playerX) / pxPerBeat) - beat) * pxPerBeat;
+      }
+      this.portal = { x: px, hero };
       this.clearPortalLane(this.portal.x);
       this.relay.portalSpawned();
+      // Pre-warm the incoming hero's lazy art (face bakes at every size the
+      // HUD and speech card use, plus one full off-screen figure draw) NOW,
+      // in the quiet seconds before the tag. Measured: doSwitch itself is
+      // sub-millisecond, but the first frame that draws a cold hero has
+      // stalled for a whole beat on cache builds.
+      warmHeroArt(hero);
       // Names the TAG, because this is the moment the word gets taught: the
       // mastery track pays out on 'EVERY PERFECT TAG' and the intro opens on a
       // relay, and until this line said it the player met the term first in a
@@ -4383,6 +4534,11 @@ export class RunState {
     // twice, then settles on the ground ahead so you run through it.
     for (const p of this.pickups) {
       if (!p.live) continue;
+      // The beat ban, enforced at the LANE rather than at any one spawner:
+      // whatever path produced a banned capsule on a rhythm stage — the drip,
+      // a prize toss, a stair, a stale pool — it dies here before it is ever
+      // drawn. "None of those in these levels" means none.
+      if (this.beatLock && BEAT_BANNED_POWERS.has(p.type)) { p.live = false; continue; }
       if (p.def.shamble) p.gait = (p.gait || p.bobPhase) + dt * 5;
       if (p.def.appliance && !p.toss && p._baseAlt != null) {
         const wt = this.tRun;
@@ -4823,11 +4979,18 @@ export class RunState {
     this.beatJudgeLastRaw = beat;
     this.beatJudgeEpoch = 0;
     this.beatJudgeCursor = null;
+    // The judge's numbering just restarted from the raw clock, so unwrapped
+    // beat numbers the run has already been through are about to repeat. Ids
+    // consumed against the old numbering would collide with the fresh beats —
+    // hiding their ribbon arrows and denying their combo credit for whole
+    // loops after every resync.
+    this.beatJudgeConsumed.clear();
     this.beatDriftLastRaw = beat;
     this.beatDriftEpoch = 0;
     this.beatDriftLastBeat = beat;
     this.beatDriftLastX = px;
-    this.beatDriftLatched = false;
+    this.beatDriftDebt = 0;
+    this.beatDriftOverSteps = 0;
     return true;
   }
 
@@ -4836,8 +4999,16 @@ export class RunState {
     for (const ob of this.obstacles) {
       if (ob.chartAction && ob.x >= px - 20) ob.live = false;
     }
+    // NOTHING VANISHES IN PLAIN VIEW — the same rule sweepCoinsAroundHole
+    // states, applied to a lane rebuild. A coin asks nothing of the judge, so a
+    // spared one a few px off the new grid is still an honest pickup, while a
+    // run of them blinking out mid-screen was the whole complaint. Obstacles
+    // are not spared: a bar the judge will no longer credit is a trap, and the
+    // rebuild lays its replacement on the true grid. New events start a full
+    // runway past the view, so a kept coin is never doubled by its relay.
+    const keepTo = this.camX + W / this.camZoom;
     for (const p of this.pickups) {
-      if (p.chartAction && p.x >= px - 20) p.live = false;
+      if (p.chartAction && p.x >= px - 20 && p.x > keepTo) p.live = false;
     }
     for (const pit of this.pitPlan || []) {
       if (!pit.passed) {
@@ -4918,7 +5089,8 @@ export class RunState {
       this.beatDriftLastRaw = null;
       this.beatDriftLastBeat = null;
       this.beatDriftLastX = null;
-      this.beatDriftLatched = false;
+      this.beatDriftDebt = 0;
+      this.beatDriftOverSteps = 0;
       return;
     }
     const loop = this.spawner?.chart?.loopBeats || 8;
@@ -4931,13 +5103,22 @@ export class RunState {
       const expected = deltaBeat * pxPerBeat;
       const actual = x - this.beatDriftLastX;
       const tolerance = this.speed / 60 + 0.5; // one rendered frame of travel
-      if (Math.abs(actual - expected) > tolerance) {
-        if (!this.beatDriftLatched) {
-          this.beatDriftLatched = true;
-          this.resetRhythmLane();
-        }
-      } else if (this.beatDriftLatched && Math.abs(actual - expected) <= tolerance * 1.5) {
-        this.beatDriftLatched = false;
+      // A LONG FRAME IS NOT DRIFT. The fixed-step loop repays a stall with
+      // several catch-up steps inside the same callback, all reading one frozen
+      // audio clock: the first step sees the whole gap as mismatch and the rest
+      // pay it back before the next paint. So the mismatch is summed into a
+      // debt rather than judged one step at a time, and only a debt that
+      // STANDS for BEAT_DRIFT_CONFIRM_STEPS — time genuinely dropped by the
+      // loop's 8-step cap, a tab switch, an audio device swap — rebuilds the
+      // lane. Judging single steps here latched a rebuild (coins and bars
+      // blinking out in plain view) on every stalled frame.
+      this.beatDriftDebt = (this.beatDriftDebt + actual - expected) * BEAT_DRIFT_LEAK;
+      if (Math.abs(this.beatDriftDebt) > tolerance) this.beatDriftOverSteps++;
+      else this.beatDriftOverSteps = 0;
+      if (this.beatDriftOverSteps >= BEAT_DRIFT_CONFIRM_STEPS) {
+        // resetRhythmLane re-anchors every beatDrift field, debt included.
+        this.resetRhythmLane();
+        return;
       }
     }
     this.beatDriftLastRaw = raw;
@@ -5979,8 +6160,14 @@ export class RunState {
         if (!ob.live || ob.route || ob.tunnel) continue;
         if (ob.x + ob.w > plan.x - clear && ob.x < plan.x + plan.w + clear) ob.live = false;
       }
+      // A direct stage launch or audio re-anchor can materialise the piece
+      // later than the normal 760px lookahead. Treat chart `formationId`s just
+      // like procedural formations and never erase one the player can already
+      // see. Off screen, the complete run is removed rather than amputated.
+      const view = { x: this.camX, w: W / this.camZoom };
+      sweepCoinsAroundHole(this.pickups, plan.x, plan.w, clear, view);
       this.pickups = this.pickups.filter((pk) => !pk.live || pk.following
-        || pk.x + 6 < plan.x - clear || pk.x > plan.x + plan.w + clear);
+        || pk.def.coin || pk.x + 6 < plan.x - clear || pk.x > plan.x + plan.w + clear);
       plan.spawned = true;
       plan.done = true;
       const hole = makeObstacle('gap', plan.x, {});
@@ -7057,11 +7244,19 @@ export class RunState {
       break;
     }
     // Pickups.
+    //
+    // Judged against the STANDING-height box even mid-slide. The hitbox
+    // shrinks when he ducks because what may HURT him is judged meanly — but a
+    // sliding hero has not really gone anywhere, he has folded, and a coin row
+    // at head height is still his. Docking a fill for ducking punished the
+    // very input the lane just asked for, on every cabinet that mixes coins
+    // with ducks.
+    const reachBox = { x: pbox.x, y: pbox.y + pbox.h - PLAYER_H, w: pbox.w, h: PLAYER_H };
     for (const p of this.pickups) {
       if (!p.live) continue;
       if (p.def.resident && p.following) { p.x = playerX - 16; continue; }
       const box = { x: p.x, y: this.groundYAt(p.x) - p.alt - p.h, w: p.w, h: p.h };
-      if (!overlaps(ridePbox || pbox, box)) continue;
+      if (!overlaps(ridePbox || reachBox, box)) continue;
       p.live = false;
       this.onPickup(p);
     }
@@ -7070,8 +7265,8 @@ export class RunState {
   onPickup(p) {
     // Rhythm stages cannot acquire timing-changing power-ups, even from a
     // developer-injected or stale pooled pickup.
-    if (this.beatLock && (p.type === 'capRewind' || p.type === 'capSpeed' || p.type === 'capLowGrav'
-      || p.def?.power === 'rewind' || p.def?.power === 'speed' || p.def?.power === 'lowgrav')) {
+    if (this.beatLock && (BEAT_BANNED_POWERS.has(p.type)
+      || ['rewind', 'speed', 'lowgrav', 'magnet', 'unpeel', 'star'].includes(p.def?.power))) {
       return;
     }
     const hero = HERO_BY_ID[this.relay.current];
@@ -7819,7 +8014,18 @@ export class RunState {
       ctx.fillRect(0, 0, W, H);
     }
     ctx.translate(0, bgShift);
-    this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist);
+    // Optional renderer context, deliberately smaller than the run. The LCD
+    // city may know which authored panel this is and where the heard musical
+    // beat is; it may not see chart events, player actions, or obstacle state.
+    // An invalid clock selects the pack's stable idle frame while the lane is
+    // waiting to re-anchor.
+    const backgroundScene = this.beatLock && this.stage
+      ? {
+        stageIndex: this.stage.index,
+        beat: this.rhythmSyncPending ? null : this.rhythmBeatNow(),
+      }
+      : null;
+    this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist, backgroundScene);
     ctx.restore();
 
     // ---- world band. Everything from here to post() draws through the camera,
@@ -7873,8 +8079,9 @@ export class RunState {
     }
 
     // Entities. On a converting style (lcd) the whole cast is held back past
-    // post() with the hero, so enemies and pickups stay in colour against the
-    // monochrome panel — they are the things you have to read at a glance.
+    // post() with the hero, so enemies and pickups keep their full colour
+    // against the limited GBC scenery palette — they are the things you have
+    // to read at a glance.
     const drawActors = () => {
     const finishX = this.overtime ? Infinity : this.finishWorldX();
     // Visible world band for THIS frame, taken from the interpolated camera and
@@ -8060,9 +8267,9 @@ export class RunState {
     // THE PORTAL IS CAST TOO. It is the relay's doorway — the one thing on
     // screen you are meant to run INTO — and its whole read is the colour: a
     // lit ring with the next hero's own palette burning inside it. Under lcd's
-    // post() that came out as two tones of pea green, which is the treatment
-    // this pack reserves for silkscreened backplate art. Same rule as the hero,
-    // the hazards and the finish pole.
+    // post() that came out as part of the screen's limited scenery palette,
+    // which this pack reserves for backplate art. Same rule as the hero, the
+    // hazards and the finish pole.
     const drawPortalRing = () => {
       if (this.finishing || !this.portal) return;
       this.drawAtGround(ctx, this.portal.x, () => drawPortal(ctx, this.portal, cam, renderT, z, true, this.save.settings));
@@ -8086,9 +8293,9 @@ export class RunState {
     // IT IS CAST, NOT SCENERY, and on a converting style that is the whole
     // difference. The pole is the thing the run is FOR — the checkers, the
     // breaker's dial, the flag — and drawn under lcd's post() all of it came
-    // out in the panel's two tones, which is the treatment reserved for the
-    // printed backplate. Same argument the hero and the hazards win on: what
-    // the player is tracking stays in colour against a monochrome background.
+    // out in the screen's limited scenery palette, which is the treatment
+    // reserved for the backplate. Same argument the hero and the hazards win
+    // on: what the player is tracking keeps its full production colour.
     const drawFinish = () => {
       if (this.overtime || !Number.isFinite(this.totalDist)) return;
       const fx = this.finishWorldX() - cam;
@@ -8136,7 +8343,7 @@ export class RunState {
     // resets finishing through the checkpoint restore, which is the one path
     // where the question becomes real again and the orb should return.
     const orbAlpha = this.finishing ? Math.max(0, 1 - this.finishT / 0.6) : 1;
-    const drawHero = () => drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, this.mission.type === 'fuse',
+    const drawHero = () => this.rhythmHeroVisible() && drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, this.mission.type === 'fuse',
       { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan, floorY, specialOrbAlpha: orbAlpha,
         // Every field the LAST live frame left behind has to be cleared, not
         // just the kind. He arrives here mid-landing — squash from hitting the
@@ -8173,8 +8380,8 @@ export class RunState {
 
     // A style whose post() *converts* the frame rather than tinting it (lcd)
     // takes the cast after the pass, so hero, enemies and pickups stay in
-    // colour against a monochrome background — on a two-tone panel an unlit
-    // hazard is indistinguishable from printed backplate art. Normal
+    // colour against a limited-palette background — a hazard treated like
+    // screen scenery is indistinguishable from printed backplate art. Normal
     // frames queue the hero to the overlay layer and are unaffected either way;
     // The hero itself always queues to the full-resolution overlay; that queue
     // recreates the mirror and camera transforms and is ordered before the HUD,

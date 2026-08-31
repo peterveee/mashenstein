@@ -717,7 +717,13 @@ class AudioSys {
     // not sounded yet, and the audio times of the ones that have. Also per song.
     this._percPending = [];
     this._percHeard = [];
+    // The player's own setting, saved and restored. `sessionMuted` is the other
+    // kind of silence: a diagnostic switch that belongs to THIS BOOT and must
+    // never reach the save. `?mute` used to write `save.settings.muted`, so one
+    // verification run left the game muted for good — the setting said the player
+    // had asked for silence, and nothing remembered that a URL had.
     this.muted = false;
+    this.sessionMuted = false;
     this.levels = { master: 1, music: 0.7, sfx: 0.9 };
     this.cueGain = 1;
     this.noiseBuf = null;
@@ -928,7 +934,7 @@ class AudioSys {
       if (resumed && typeof resumed.catch === 'function') resumed.catch(() => {});
     }
     this.master = this.ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : this.levels.master;
+    this.master.gain.value = this.silent ? 0 : this.levels.master;
     this.master.connect(this.ctx.destination);
     this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = this.levels.sfx; this.sfxGain.connect(this.master);
     this.portalSend = null; this.portalVerb = null;   // belong to the old ctx
@@ -2103,9 +2109,32 @@ class AudioSys {
     else this._stopCapture();
   }
 
+  /** Silent right now, for either reason — the saved setting or this boot's switch. */
+  get silent() { return this.muted || this.sessionMuted; }
+
   setMuted(m) {
     this.muted = m;
-    if (this.master) this.master.gain.setTargetAtTime(m ? 0 : this.levels.master, this.ctx.currentTime, 0.02);
+    this._applyMute();
+  }
+
+  /**
+   * Mute for this boot only, without touching the player's setting.
+   *
+   * What `?mute` wants: a verification run makes no sound, and the game the
+   * player comes back to is however they left it. The saved setting is still
+   * underneath and still wins when it says mute — this can only add silence,
+   * never remove it, so unmuting from the menu during a `?mute` session leaves
+   * the session switch in place rather than silently discarding it.
+   */
+  setSessionMute(m) {
+    this.sessionMuted = !!m;
+    this._applyMute();
+  }
+
+  _applyMute() {
+    if (!this.master) return;
+    this.master.gain.setTargetAtTime(this.silent ? 0 : this.levels.master,
+      this.ctx.currentTime, 0.02);
   }
 
   /**
@@ -2158,12 +2187,12 @@ class AudioSys {
       node.gain.cancelScheduledValues(t);
       node.gain.setValueAtTime(value, t);
     };
-    restore(this.master, this.muted ? 0 : this.levels.master);
+    restore(this.master, this.silent ? 0 : this.levels.master);
     restore(this.musicGain, this.levels.music);
     restore(this.sfxGain, this.levels.sfx);
     restore(this.musicBus, this.rewindMode ? 0.0001 : (this.starMode ? 0.32 : 1));
     restore(this.starBus, this.starMode ? 1.5 : 0);
-    if (this._rewindOut) restore(this._rewindOut, this.muted ? 0 : this.levels.master);
+    if (this._rewindOut) restore(this._rewindOut, this.silent ? 0 : this.levels.master);
   }
 
   setVolumes(volumes = {}) {
@@ -2172,10 +2201,10 @@ class AudioSys {
     }
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this.master.gain.setTargetAtTime(this.muted ? 0 : this.levels.master, t, 0.02);
+    this.master.gain.setTargetAtTime(this.silent ? 0 : this.levels.master, t, 0.02);
     this.musicGain.gain.setTargetAtTime(this.levels.music, t, 0.02);
     this.sfxGain.gain.setTargetAtTime(this.levels.sfx, t, 0.02);
-    if (this._rewindOut) this._rewindOut.gain.setTargetAtTime(this.muted ? 0 : this.levels.master, t, 0.02);
+    if (this._rewindOut) this._rewindOut.gain.setTargetAtTime(this.silent ? 0 : this.levels.master, t, 0.02);
   }
 
   // Synthesise the weapon cues into buffers, once, at init. A few ms of math at

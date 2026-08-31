@@ -55,6 +55,8 @@ import { MIN3 } from './min3.js';
 import * as MONSTER_MEGAMIX_ALT from './monster-megamix-alt.js';
 import * as NEW_THE_FOOD_COURT from './new-the-food-court.js';
 import * as PLUMBER_PANIC_ALT from './plumber-panic-alt.js';
+import * as RHYTHM_BANKRUPTCY_COPY_2 from './rhythm-bankruptcy-copy-2.js';
+import * as RHYTHM_BANKRUPTCY_COPY from './rhythm-bankruptcy-copy.js';
 import * as ROSSINI_BARBER_OF_SEVILLE_OVERTURE from './rossini-barber-of-seville-overture.js';
 import * as S_N_C_SPECIAL_STAGE from './s-n-c-special-stage.js';
 import * as SHOP_80BPM from './shop-80bpm.js';
@@ -123,6 +125,8 @@ export const IMPORTED_BY_ID = {
   "monster-megamix-alt": { bank: MONSTER_MEGAMIX_ALT.bank, title: MONSTER_MEGAMIX_ALT.title, group: "alternate", writable: true, alternateOf: "megamix" },
   "new-the-food-court": { bank: NEW_THE_FOOD_COURT.bank, title: NEW_THE_FOOD_COURT.title, group: "alternate", writable: true, alternateOf: "hub" },
   "plumber-panic-alt": { bank: PLUMBER_PANIC_ALT.bank, title: PLUMBER_PANIC_ALT.title, group: "alternate", writable: true, alternateOf: "plumber" },
+  "rhythm-bankruptcy-copy-2": { bank: RHYTHM_BANKRUPTCY_COPY_2.bank, title: RHYTHM_BANKRUPTCY_COPY_2.title, group: "copy", writable: true },
+  "rhythm-bankruptcy-copy": { bank: RHYTHM_BANKRUPTCY_COPY.bank, title: RHYTHM_BANKRUPTCY_COPY.title, group: "copy", writable: true },
   "rossini-barber-of-seville-overture": { bank: ROSSINI_BARBER_OF_SEVILLE_OVERTURE.bank, title: ROSSINI_BARBER_OF_SEVILLE_OVERTURE.title, group: "imported", writable: true },
   "s-n-c-special-stage": { bank: S_N_C_SPECIAL_STAGE.bank, title: S_N_C_SPECIAL_STAGE.title, group: "copy", writable: true },
   "shop-80bpm": { bank: SHOP_80BPM.bank, title: SHOP_80BPM.title, group: "imported", writable: true },

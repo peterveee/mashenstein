@@ -25,7 +25,7 @@ const POWER_GLOW = {
 // of reading as a stray one loose on the field.
 const HEAL_GLOW = 'rgba(96,232,104,0.45)';
 import { drawBoostFx } from './boostFx.js';
-import { GROUND_Y } from './run.js';
+import { GROUND_Y } from '../engine/camera.js';
 import { PLAYER_X, SLIP_T } from './player.js';
 
 export const HERO_DRAW_W = 18;
@@ -604,7 +604,8 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     // every pipe in the game exactly its own height underground. Only its cap
     // was ever above the floor, which is why it read as a stub rather than as
     // a pipe, and why it looked "sunk" the moment tunnels started spawning them.
-    if (propName) draw1(x, Math.round(GROUND_Y - 18), 'bottom', true, bw, 18);
+    const artH = e.def.artH || 18;
+    if (propName) draw1(x, Math.round(GROUND_Y - artH), 'bottom', true, bw, artH);
     else { draw1(x, Math.round(GROUND_Y - 11), 'bottom', true); draw1(x, Math.round(GROUND_Y - 18), 'bottom', true); }
   } else if (e.def.falls && !e.fell) {
     // telegraph: hang from "ceiling" with a warning shimmer

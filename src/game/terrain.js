@@ -12,6 +12,24 @@ const PROFILES = {
   office:    { amp: 9, period: 620, phase: 310 },
 };
 
+// ---------------------------------------------------------- per-stage waves
+// PROFILES above rolls a whole CABINET; this rolls one STAGE of one, and only
+// a windowed stretch of it — `from`/`to` are fractions of the stage's length,
+// so a lane can run flat, breathe gently through its middle, and settle flat
+// again for the finish. run.js resolves the fractions against the stage's
+// real distance at enter() and hands the result to setStageWave — on EVERY
+// enter, null included, the same contract setGroundRises keeps: a stage with
+// no wave must not inherit the last one's.
+export const STAGE_WAVES = {
+  'rhythm-1': { amp: 12, period: 620, phase: 0, from: 0.22, to: 0.8 },
+};
+// How much lane the window spends easing in and out, in world px. Gentle by
+// construction: the wave arrives over most of a screen, not at a step.
+export const STAGE_WAVE_RAMP = 180;
+let STAGE_WAVE = null;
+export function setStageWave(wave) { STAGE_WAVE = wave || null; }
+export function stageWave() { return STAGE_WAVE; }
+
 // ------------------------------------------------------- crossing road rises
 /**
  * EXTRA GROUND, laid over whatever a cabinet's own profile does.
@@ -62,15 +80,28 @@ export function riseHeight(worldX) {
 
 export function terrainHeight(cabinet, worldX) {
   const p = cabinet && PROFILES[cabinet.id];
-  const rise = riseHeight(worldX);
-  if (!p) return rise;
-  const wave = (Math.sin(((worldX + p.phase) / p.period) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
-  const rounded = wave * wave * (3 - 2 * wave);
-  const intro = Math.min(1, Math.max(0, worldX / 280));
-  return p.amp * rounded * intro + rise;
+  let h = riseHeight(worldX);
+  if (p) {
+    const wave = (Math.sin(((worldX + p.phase) / p.period) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+    const rounded = wave * wave * (3 - 2 * wave);
+    const intro = Math.min(1, Math.max(0, worldX / 280));
+    h += p.amp * rounded * intro;
+  }
+  const sw = STAGE_WAVE;
+  if (sw) {
+    // The window is the whole trick: smoothstepped shut at both ends, so the
+    // lane is genuinely flat outside it and the roll fades in over the ramp.
+    const win = smoothstep((worldX - sw.from) / STAGE_WAVE_RAMP)
+      * smoothstep((sw.to - worldX) / STAGE_WAVE_RAMP);
+    if (win > 0) {
+      const wave = (Math.sin(((worldX + (sw.phase || 0)) / sw.period) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+      h += sw.amp * (wave * wave * (3 - 2 * wave)) * win;
+    }
+  }
+  return h;
 }
 
-export function terrainGroundY(cabinet, worldX, baseY = 232) {
+export function terrainGroundY(cabinet, worldX, baseY = 224) {
   return baseY - terrainHeight(cabinet, worldX);
 }
 
@@ -504,7 +535,7 @@ const GROUND_STONE_STRIDE = 52;
 // The world y the lane runs along. terrain.js is handed `baseY` per call and the
 // engine's GROUND_Y is the same number; kept local so this module does not
 // import the camera to draw dirt.
-const GROUND_BASE = 232;
+const GROUND_BASE = 224;
 const SUBSOIL_DEPTH = 210;
 // How far apart a buried skeleton may be. Very wide on purpose: it is a thing
 // you notice on the second run through a stage, and one every few hundred pixels
@@ -1440,13 +1471,17 @@ function drawEntrance(ctx, camX, cabinet, r, groundAt, floorAt, underAt) {
   }
 }
 
-export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 232, viewW = W, overhangs = []) {
+export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 224, viewW = W, overhangs = []) {
   // A cabinet with no hills draws nothing — UNLESS a crossing has raised the
   // road somewhere in view, which is ground that exists and has to be painted
   // by somebody. `flat` is that case, and it is why the runs are clipped to the
   // rises below: on a lane the packs already draw, this painter's own surface
   // line and body across the whole frame would be a second lane drawn over the
   // first one.
+  // A STAGE WAVE is deliberately NOT this painter's to draw: it only exists on
+  // flat cabinets, whose packs own their whole road (the LCD pack walks its
+  // surface off terrainGroundY itself). Painting it here as well doubled the
+  // surface line inside the window — two gauges of the same road, misaligned.
   const profiled = !!PROFILES[cabinet && cabinet.id];
   const rises = groundRises();
   if (!profiled && !rises.length) return;

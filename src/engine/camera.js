@@ -18,7 +18,7 @@ import { W, H } from './renderer.js';
 
 // The world y the hero runs along. Owned here rather than in run.js because the
 // camera is defined against it; run.js re-exports it for its own importers.
-export const GROUND_Y = 232;
+export const GROUND_Y = 224;
 
 // Resting magnification. The hero is drawn a fixed PLAYER_X world px right of
 // camX, so where they sit in the frame falls out of this number: 56 / (480 / 2)

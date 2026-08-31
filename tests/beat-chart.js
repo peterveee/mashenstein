@@ -11,8 +11,9 @@ const {
   pitLayout, pitWindowBeats, laneRunwayBeats, PIT_BEATS, ON_BEAT_WINDOW,
   LANE_RUNWAY_BEATS, PIT_LANE_RUNWAY_BEATS, COIN_DIV,
 } = await import('../src/game/beatchart.js');
-const { worstAirtime } = await import('../src/game/spawner.js');
+const { worstAirtime, sweepCoinsAroundHole } = await import('../src/game/spawner.js');
 const { randomPowerPickup } = await import('../src/game/powerups.js');
+const { beatRibbonOffset, beatRibbonMarkerOffset } = await import('../src/game/hud.js');
 const { RunState } = await import('../src/game/run.js');
 const { STAGES } = await import('../src/data/stages.js');
 const { save } = await import('../src/engine/save.js');
@@ -108,8 +109,8 @@ for (const [id, chart] of Object.entries(beatCharts)) {
 }
 assert(allFills.some((e) => e.div === 2) && allFills.some((e) => e.div === 4)
   && allFills.some((e) => e.div === 8), 'the cabinet plays eighths, sixteenths and 32nds');
-assert(allFills.filter((e) => e.div === 8).every((e) => (e.every ?? 1) >= 8),
-  'and a 32nd is genuinely rare — no more than once every eight loops');
+assert(allFills.filter((e) => e.div === 8).every((e) => (e.every ?? 1) >= 4),
+  'and a 32nd stays the rarest figure — no more than once every four loops');
 let cadenceThrew = false;
 try {
   validateBeatChart({ loopBeats: 2, events: [
@@ -160,9 +161,12 @@ const spawner = new BeatSpawner({
   playerWorldX: (x) => x + 56, lookaheadBeats: 7,
 });
 spawner.fill(0, speed, obstacles, pickups, () => 50);
-const firstBeat = Math.min(...[...obstacles, ...pickups].map((e) => e.actionBeat));
-assert(firstBeat === PIT_LANE_RUNWAY_BEATS,
-  'nothing at all is laid inside the runway a hole-cutting chart is given');
+const firstAction = Math.min(...obstacles.map((o) => o.actionBeat));
+const firstCoin = Math.min(...pickups.map((p) => p.actionBeat));
+assert(firstAction >= PIT_LANE_RUNWAY_BEATS,
+  'no input-asking event is laid inside the runway a hole-cutting chart is given');
+assert(firstCoin === 1,
+  'but the runway is not bare — its coin slots are laid from one beat out');
 const firstBar = obstacles.find((o) => o.chartSlot === 6);
 assert(firstBar && firstBar.actionBeat === 6, 'the first mandatory event is the chart\'s own next one');
 assert(Math.abs(firstBar.x - (firstBar.actionX
@@ -194,16 +198,55 @@ assert(Math.abs(firstHole.w - pitLayout(speed, bpm).w) < 1e-9
   assert(lipped.length === 0, 'no coin is laid over a chart pit or on either lip');
   // A fill reaches the lane as four coins a sixteenth apart, sharing one
   // formation so a sweep can only ever take the whole figure.
-  const fill = pickups.filter((pk) => pk.chartSlot === 5 && pk.actionBeat === 5)
+  const fillId = beatEventId(5, beatCharts[1].events[5]);
+  const fill = pickups.filter((pk) => pk.formationId === fillId)
     .sort((a, b) => a.x - b.x);
   assert(fill.length === 4, `the slot-5 fill lays four coins (got ${fill.length})`);
   assert(fill.every((pk, i) => i === 0
     || Math.abs((pk.x - fill[i - 1].x) - pxPerBeat / COIN_DIV) < 1e-6),
     'and lays them exactly a sixteenth of a beat apart');
+  assert(fill.every((pk, i) => i === 0
+    || Math.abs((pk.actionBeat - fill[i - 1].actionBeat) - 1 / COIN_DIV) < 1e-9),
+    'and exposes those same even subdivisions to the beat ribbon');
+  const ribbonXs = fill.map((pk) => beatRibbonOffset(pk.actionBeat, 4.5));
+  assert(ribbonXs.every((x, i) => i === 0 || Math.abs((x - ribbonXs[i - 1]) - 26 / COIN_DIV) < 1e-9),
+    'the ribbon keeps a coin fill evenly spaced in musical coordinates');
+  assert(Math.abs(beatRibbonOffset(5, 4.51) - beatRibbonOffset(5, 4.5) + 0.26) < 1e-9,
+    'the ribbon advances by fractional pixels instead of whole-pixel steps');
+  const fillTiming = spawner.eventInstances.filter((e) => e.formationId === fillId)
+    .sort((a, b) => a.actionBeat - b.actionBeat);
+  assert(fillTiming.length === fill.length
+    && fillTiming.every((e, i) => e.actionBeat === fill[i].actionBeat),
+  'the ribbon owns a timing copy of every coin subdivision');
+  // Collection is allowed to take several overlapping pickups in one physics
+  // frame. It must not take their later clock ticks with them: immediately
+  // after the first sixteenth, only the ticks whose own time has passed retire.
+  for (const pk of fill) pk.live = false;
+  const afterFirstTick = fillTiming.map((e) =>
+    beatRibbonMarkerOffset('coin', e.actionBeat, fill[0].actionBeat + 0.07));
+  assert(afterFirstTick.filter((x) => x != null).length === fill.length - 1,
+    `a collected fill retires subdivision-by-subdivision instead of vanishing as a bunch `
+    + `(got ${afterFirstTick.filter((x) => x != null).length}/${fill.length})`);
+  assert(beatRibbonMarkerOffset('jump', 5, 5.1, false) != null
+    && beatRibbonMarkerOffset('jump', 5, 5.1, true) == null,
+  'mandatory markers keep their missed trail but still retire when judged');
+  // A late-authored set piece sees the same formation identifier the chart
+  // does. It preserves the whole run in view, and removes the whole run when
+  // it can still do so invisibly.
+  const visibleFill = fill.map((pk) => ({ ...pk, live: true }));
+  sweepCoinsAroundHole(visibleFill, fill[1].x, 2, 0,
+    { x: fill[0].x - 1, w: fill.at(-1).x - fill[0].x + 10 });
+  assert(visibleFill.every((pk) => pk.live),
+    'a late set piece cannot erase a visible chart fill');
+  const hiddenFill = fill.map((pk) => ({ ...pk, live: true }));
+  sweepCoinsAroundHole(hiddenFill, fill[1].x, 2, 0, { x: 0, w: 10 });
+  assert(hiddenFill.every((pk) => !pk.live),
+    'an off-screen set piece removes a chart fill whole');
   // ...and on an odd pass the same slot is one coin on the line. `every: 2`.
   const quiet = pickups.filter((pk) => pk.chartSlot === 5 && pk.actionBeat === 21);
   assert(quiet.length === 1, `the slot-5 fill rests on the odd pass (got ${quiet.length})`);
-  const rare = pickups.filter((pk) => pk.chartSlot === 15 && pk.actionBeat === 15);
+  const rareId = beatEventId(15, beatCharts[1].events[15]);
+  const rare = pickups.filter((pk) => pk.formationId === rareId);
   assert(rare.length === 8, `the 32nd fill lays eight coins on its pass (got ${rare.length})`);
   assert(pickups.filter((pk) => pk.chartSlot === 15 && pk.actionBeat === 31).length === 1,
     'and nothing but a quarter on the seven passes between');
@@ -223,7 +266,9 @@ const blocked = new BeatSpawner({ chart: beatCharts[1], bank: { bpm }, beatNow: 
   playerWorldX: (x) => x + 56, lookaheadBeats: 7 });
 const blockedObs = [], blockedPickups = [];
 blocked.fill(0, speed, blockedObs, blockedPickups, () => 50, 300);
-assert(blockedObs.length === 0 && blockedPickups.length === 0,
+// The runway's own coins may stand short of the wall; nothing may straddle it,
+// and no slot is admitted in part.
+assert(blockedObs.length === 0 && blockedPickups.every((p) => p.x + 8 <= 300),
   'finish wall treats the next chart event as an all-or-nothing boundary');
 
 const crossingPit = { x: 4000, w: 200, crossing: { jumps: 5, stones: [] }, done: false };
@@ -258,12 +303,111 @@ Audio.songBeat = oldSongBeat;
   retryRun.enter();
   assert(retryRun.rhythmSyncPending && retryRun.rhythmSyncT === 1,
     'a beat-stage death retry enters the audio settling hold');
+  assert(!retryRun.rhythmHeroVisible(),
+    'the restored hero stays hidden during the rhythm settling hold');
+  retryRun.rhythmSyncT = 0.12;
+  assert(retryRun.rhythmHeroVisible(),
+    'the restored hero appears in the final split-second before control returns');
+  retryRun.rhythmSyncT = 1;
   for (let i = 0; i < 30; i++) retryRun.update(1 / 60);
   assert(retryRun.rhythmSyncPending && retryRun.distance === 0,
     'the retry hold keeps the world still while the song continues');
   for (let i = 0; i < 40; i++) retryRun.update(1 / 60);
   assert(!retryRun.rhythmSyncPending && retryRun.distance > 0,
     'the retry resumes only after an atomic beat re-anchor');
+  Audio.songBeat = oldSongBeat;
+  Audio.sourceBank = oldSourceBank;
+}
+
+// A STALLED FRAME IS NOT DRIFT. The fixed-step loop repays a long callback with
+// catch-up steps against a frozen audio clock, so the drift check must sum the
+// mismatch across them rather than judge the first step alone — judging one
+// step latched a full lane rebuild (visible coins and bars blinking out, then a
+// four-beat empty runway) on every GC pause and every checkpoint's own
+// snapshot-and-sfx work. And when a REAL discontinuity does resync the lane,
+// the re-anchored beat numbering repeats numbers the judge has already
+// consumed, so the stale ids must go with it — they were hiding the ribbon's
+// jump arrows and refusing combo credit for whole loops after every resync.
+{
+  save.load(); save.newSlot(0, 0);
+  const oldSourceBank = Audio.sourceBank;
+  const stage = STAGES.find((s) => s.id === 'rhythm-2');
+  const run = new RunState({ stage, save, seed: 19, skipRunIn: true, devInvuln: true, onEnd: () => {} });
+  run.enter();
+  Audio.sourceBank = run.cabinet.music;
+  const loopBeats = run.spawner.chart.loopBeats;
+  let songTime = 0;
+  Audio.songBeat = () => ((songTime * 124 / 60) % loopBeats);
+  let resyncs = 0;
+  const origReset = run.resetRhythmLane.bind(run);
+  run.resetRhythmLane = (...a) => { resyncs++; return origReset(...a); };
+  const TICK = 1 / 60;
+  // The audio clock advances by the callback's wall gap; the sim then catches
+  // up in fixed steps inside that same callback, exactly as engine/loop.js runs.
+  const frameOf = (gapSec, steps) => {
+    songTime += gapSec;
+    for (let i = 0; i < steps; i++) run.update(TICK);
+  };
+  for (let i = 0; i < 1500; i++) frameOf(TICK, 1); // ~25s: the loop wraps, epochs grow
+  const tracked = run.pickups.filter((p) => p.live && p.chartAction === 'coin'
+    && p.x > run.playerWorldX() + 120);
+  frameOf(0.1, 6);  // a 100ms stall, fully repaid in-callback
+  frameOf(0.05, 3); // a 50ms stall
+  assert(resyncs === 0, 'stalled frames with catch-up never rebuild the beat lane');
+  assert(tracked.length > 0 && tracked.every((p) => p.live),
+    `every chart coin ahead of the hero survives a stalled frame (${tracked.length} tracked)`);
+  // Genuinely dropped time — the loop's 8-step cap leaves the world behind the
+  // song for good — must still be confirmed and resynced, exactly once.
+  frameOf(0.5, 8);
+  for (let i = 0; i < 30; i++) frameOf(TICK, 1);
+  assert(resyncs === 1, `dropped time is confirmed and resynced once (${resyncs})`);
+  for (let i = 0; i < 400; i++) frameOf(TICK, 1); // relay the lane past the runway
+  const heard = run.rhythmBeatForJudging();
+  const upcoming = run.obstacles.filter((ob) => ob.live && ob.chartAction
+    && Number.isFinite(ob.actionBeat) && ob.actionBeat > heard);
+  assert(upcoming.length > 0, 'the lane is relaid past the resync runway');
+  assert(upcoming.every((ob) => !run.beatJudgeConsumed.has(`judge:${Math.round(ob.actionBeat)}:${ob.chartSlot}`)),
+    'no upcoming ribbon arrow is hidden by a consumed id from before the resync');
+  run.beatCombo = 5;
+  for (let i = 0; i < 300; i++) frameOf(TICK, 1);
+  assert(run.beatCombo === 0, 'missed beats after a resync still reset the combo');
+
+  // A PORTAL ON A BEAT LANE. The sweep deletes what shares the portal's pixels,
+  // and on a beat lane two of those deletions used to lie: a swept BAR left the
+  // judge demanding a jump with no bar and no arrow (an unavoidable combo
+  // break), and the narrow column bit two coins out of the middle of a fill.
+  // The sweep now consumes the swept bar's beat and takes coin runs whole,
+  // ribbon ticks included.
+  {
+    const view = () => run.camX + 480 / run.camZoom;
+    const bar = run.obstacles.find((ob) => ob.live && ob.chartAction
+      && ob.def.action !== 'none' && ob.x > view() + 60);
+    assert(!!bar, 'a live chart bar stands off-view for the portal to sweep');
+    if (bar) {
+      run.clearPortalLane(bar.x + 20);
+      assert(!bar.live, 'the portal sweeps the bar that shares its approach');
+      assert(run.beatJudgeConsumed.has(`judge:${Math.round(bar.actionBeat)}:${bar.chartSlot}`),
+        'and consumes its beat so the judge never demands the bar it deleted');
+    }
+    // A multi-coin fill is laid on its slot's cadence, so walk forward until
+    // one stands off-view.
+    let fillCoin = null;
+    for (let i = 0; i < 1200 && !fillCoin; i++) {
+      frameOf(TICK, 1);
+      fillCoin = run.pickups.find((p) => p.live && p.chartAction === 'coin'
+        && p.x > view() + 60
+        && run.pickups.filter((q) => q.live && q.formationId === p.formationId).length > 1);
+    }
+    assert(!!fillCoin, 'a live off-view coin fill stands for the portal to sweep');
+    if (fillCoin) {
+      const members = run.pickups.filter((q) => q.formationId === fillCoin.formationId);
+      run.clearPortalLane(fillCoin.x);
+      assert(members.every((q) => !q.live),
+        `the portal takes the whole fill, never a bite out of it (${members.length} coins)`);
+      assert(run.spawner.eventInstances.every((e) => e.formationId !== fillCoin.formationId || !e.live),
+        'and retires the fill\'s ribbon ticks with it');
+    }
+  }
   Audio.songBeat = oldSongBeat;
   Audio.sourceBank = oldSourceBank;
 }
@@ -280,9 +424,24 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
 let reads = 0;
 const fakeRng = { float: () => { reads++; return 0.45; }, pick: (xs) => { reads++; return xs[0]; } };
 const banned = randomPowerPickup(fakeRng, null, { allowRewind: false,
-  banned: new Set(['capSpeed', 'capLowGrav', 'capRewind']) });
+  banned: new Set(['capSpeed', 'capLowGrav', 'capRewind', 'capUnpeel']) });
 assert(banned === 'capShield' || banned === 'capMagnet', 'banned power bands map deterministically to safe powers');
 assert(reads === 1, 'pickup banning preserves the single normal RNG read');
+let invincibilityBandReads = 0;
+const invincibilityBand = randomPowerPickup({ float: () => { invincibilityBandReads++; return 0.12; } }, null,
+  { allowRewind: false, banned: new Set(['capUnpeel']) });
+assert(invincibilityBand === 'capShield' || invincibilityBand === 'capMagnet',
+  'the UNPEELABLE invincibility band maps to a safe power on rhythm stages');
+assert(invincibilityBandReads === 1, 'invincibility banning does not add an RNG read');
+const rhythmBannedDrops = new Set([
+  'capSpeed', 'capLowGrav', 'capRewind', 'capMagnet', 'capUnpeel', 'capStar',
+]);
+const rhythmDrops = Array.from({ length: 1000 }, (_, i) => randomPowerPickup({
+  float: () => (i + 0.5) / 1000,
+  pick: (xs) => xs[i % xs.length],
+}, null, { allowRewind: false, banned: rhythmBannedDrops }));
+assert(rhythmDrops.every((type) => !rhythmBannedDrops.has(type)),
+  'every random-power roll is free of invincibility and all other rhythm-banned capsules');
 let rewindBandReads = 0;
 const rewindBand = randomPowerPickup({ float: () => { rewindBandReads++; return 0.2; } }, null,
   { allowRewind: true, banned: new Set(['capRewind']) });

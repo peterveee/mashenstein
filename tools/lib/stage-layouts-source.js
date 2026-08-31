@@ -15,12 +15,13 @@
 // legacy field a behaviour change, which is exactly the trap the migration is
 // walking the repo out of.
 //
-// OPTIONAL fields — checkpoints, finishDog, sections, routes — follow the
-// mix-source.js rule: a value equal to its GLOBAL default is left out, and
+// OPTIONAL fields — checkpoints, finishDog, sections, routes, loopAt — follow
+// the mix-source.js rule: a value equal to its GLOBAL default is left out, and
 // what is left is what somebody meant.
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, readdirSync, unlinkSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_CHECKPOINTS, FINISH_DOG_CHANCE, patternKey } from '../../src/game/layout.js';
+import { LOOP } from '../../src/game/loop.js';
 
 const REL = 'src/data/stage-layouts.js';
 const HISTORY_DIR = 'work/level-history';
@@ -105,6 +106,12 @@ export function layoutEntrySource(entry, cabinetId, indent = '  ') {
     const v = entry.finishDog === false ? 0 : entry.finishDog;
     if (!near(v, dogDefault)) body += `${i2}finishDog: ${v === 0 ? 'false' : fmtNum(v)},\n`;
   }
+  // The loop-de-loop, only where a stage moved or removed it. Compared against
+  // LOOP.at rather than against a per-cabinet answer: the cabinets without a
+  // loop have no loopAt to write in the first place.
+  if (entry.loopAt !== undefined && (entry.loopAt === null || !near(entry.loopAt, LOOP.at))) {
+    body += `${i2}loopAt: ${entry.loopAt == null ? 'null' : fmtNum(entry.loopAt)},\n`;
+  }
   if (entry.routes) {
     const kinds = ['islands', 'forks', 'tunnels'].filter((k) => entry.routes[k]?.length);
     const empty = ['islands', 'forks', 'tunnels'].every((k) => !entry.routes[k]?.length);
@@ -132,14 +139,14 @@ export function renderStageLayouts(layouts) {
 // Per-stage LAYOUT: pacing, pinned events, sections. This file is the level
 // editor's output and the run's source of truth for everything about a stage
 // that is not its identity — durations, speeds, checkpoints, scripted pits,
-// the appliance, the rewind capsule, route overrides, and the sectioned
-// curation of the random bag. Missions, challenges and dialog stay
+// the appliance, the rewind capsule, the loop-de-loop, route overrides, and the
+// sectioned curation of the random bag. Missions, challenges and dialog stay
 // hand-authored in src/data/stages.js.
 //
 // durationSec / speedMult / appliance / pits / rewindAt appear on every stage:
 // this file owns them outright (they were migrated OUT of stages.js). The
-// optional fields — checkpoints, finishDog, routes, sections — appear only
-// where somebody decided something; absence means the default, and the
+// optional fields — checkpoints, finishDog, loopAt, routes, sections — appear
+// only where somebody decided something; absence means the default, and the
 // resolver (src/game/layout.js) says what that is.
 export const STAGE_LAYOUTS = {
 ${body}};
@@ -215,6 +222,12 @@ export function validateLayouts(layouts, reg) {
     if (!(entry.speedMult > 0 && entry.speedMult <= 3)) errors.push(`${at}: speedMult ${entry.speedMult} is out of range (0, 3]`);
     if (!entry.appliance || !isFrac(entry.appliance.at)) errors.push(`${at}: appliance.at must be a fraction of the stage`);
     if (entry.rewindAt != null && !isFrac(entry.rewindAt)) errors.push(`${at}: rewindAt must be a fraction or null`);
+    if (entry.loopAt !== undefined) {
+      if (entry.loopAt != null && !isFrac(entry.loopAt)) errors.push(`${at}: loopAt must be a fraction or null`);
+      // Not fatal: the field is harmless where nothing reads it, but somebody
+      // wrote a placement for a ring this cabinet does not have.
+      else if (cab && cab.mechanic !== 'boost') warnings.push(`${at}: loopAt is set, but ${stage.cabinet} has no loop-de-loop to place`);
+    }
     for (const p of entry.pits || []) {
       if (!isFrac(p.at)) errors.push(`${at}: pit at ${p.at} is not a fraction of the stage`);
       if (p.jumps != null) {

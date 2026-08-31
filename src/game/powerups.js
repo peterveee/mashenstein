@@ -73,11 +73,19 @@ function rollWeightedPickup(rng, weights, { allowRewind = true, banned = null } 
 
 function rollPowerPickup(rng, { allowRewind = true, banned = null } = {}) {
   const roll = rng.float();
+  // The banned-band substitute. Deterministic off the roll already in hand
+  // (no additional RNG read), and it respects the ban itself: rhythm bans
+  // capMagnet too — a magnet hoovers a coin fill in one lump — and a
+  // substitution that half the time handed one out was the ban leaking.
+  const staple = (r) => {
+    const pickTwo = (Math.floor(r * 1000) & 1) ? 'capShield' : 'capMagnet';
+    return banned?.has(pickTwo) ? 'capShield' : pickTwo;
+  };
   // The relay charge is deliberately the rarest thing in the table. Capsules
   // drip every 12-18s, so 8% works out to roughly one charge every three or
   // four stages: rare enough to feel like a find rather than a rotation.
   if (roll < 0.08) return 'capRelay';
-  if (roll < 0.18) return 'capUnpeel';
+  if (roll < 0.18) return banned?.has('capUnpeel') ? staple(roll) : 'capUnpeel';
   // Rewind takes a band of its OWN, out of the staple tail, rather than
   // splitting unpeel's. Two things fall out of that and both are the point:
   // the relay charge stays the rarest drop in the game (it is a free power,
@@ -86,19 +94,20 @@ function rollPowerPickup(rng, { allowRewind = true, banned = null } = {}) {
   // one you are pleased to see, not a staple you expect.
   if (roll < 0.28) {
     if (allowRewind && !banned?.has('capRewind')) return 'capRewind';
-    // Beat stages ban the whole timing-changing band, including rewind. Keep
-    // the replacement deterministic and consume no additional RNG read.
-    if (banned?.has('capRewind')) return (Math.floor(roll * 1000) & 1) ? 'capShield' : 'capMagnet';
-    return 'capUnpeel';
+    if (banned?.has('capRewind')) return staple(roll);
+    return banned?.has('capUnpeel') ? staple(roll) : 'capUnpeel';
   }
   if (roll < 0.58) {
     const type = ['capAirJump', 'capSpeed', 'capLowGrav'][Math.floor((roll - 0.28) / 0.10)];
-    if (banned?.has(type)) return (Math.floor(roll * 1000) & 1) ? 'capShield' : 'capMagnet';
+    if (banned?.has(type)) return staple(roll);
     return type;
   }
   // The staples pay for rewind's band: 42% between them, still comfortably the
   // most common thing in the table and still each far commoner than unpeel.
-  return rng.pick(['capShield', 'capMagnet']);
+  // Same shape under a ban: the pick still consumes its one read, then a
+  // banned staple falls back to the other.
+  const picked = rng.pick(['capShield', 'capMagnet']);
+  return banned?.has(picked) ? 'capShield' : picked;
 }
 
 export class Powerups {

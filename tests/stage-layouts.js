@@ -15,6 +15,7 @@ import { STAGE_BY_ID, STAGES } from '../src/data/stages.js';
 import { CABINET_BY_ID } from '../src/data/cabinets.js';
 import { OBSTACLES, PICKUPS } from '../src/game/entities.js';
 import { resolveLayout, patternKey, sectionAt } from '../src/game/layout.js';
+import { LOOP } from '../src/game/loop.js';
 import { Spawner } from '../src/game/spawner.js';
 import { Rng } from '../src/engine/rng.js';
 import { validateLayouts } from '../tools/lib/stage-layouts-source.js';
@@ -64,6 +65,17 @@ for (const s of STAGES) {
   ok(dog('plumber-1') === 1, 'plumber-1 is always guarded — the stage that teaches the dog');
   ok(dog('plumber-2') > 0 && dog('plumber-2') < 1, 'later plumber stages roll for it');
   ok(dog('neon-1') === 0, 'cabinets other than plumber are unguarded by default');
+}
+
+// The loop-de-loop's placement, which the layout file took over from a bare
+// constant so the editor could drag it. Three answers, same shape as the dog's.
+{
+  const loop = (id, entry) => resolveLayout(STAGE_BY_ID[id], CABINET_BY_ID[STAGE_BY_ID[id].cabinet], entry).loopAt;
+  const speed = { ...STAGE_LAYOUTS['speed-1'] };
+  ok(loop('speed-1') === LOOP.at, 'a boost stage that says nothing gets the ring at LOOP.at');
+  ok(loop('speed-1', { ...speed, loopAt: 0.3 }) === 0.3, 'and a stage that moved it gets it where it put it');
+  ok(loop('speed-1', { ...speed, loopAt: null }) === null, 'null is an authored "no ring on this stage"');
+  ok(loop('plumber-1') === null, 'cabinets without the boost mechanic have no ring to place');
 }
 
 // ---- the section machinery, exercised ---------------------------------------

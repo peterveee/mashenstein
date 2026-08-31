@@ -3323,7 +3323,7 @@ const GUIDE_PAGES = [
       { s: 'cactus', name: 'THORN CACTUS', desc: 'RED AND PRICKLY. JUMP IT. BREAKABLE.' },
       { s: 'snowman', name: 'HOSTILE SNOWMAN', desc: 'COLD, CROSS, AND BREAKABLE. JUMP IT.' },
       { s: 'crate', name: 'CRATE', desc: 'WOOD. SOMETIMES STACKED. JUMP OR SMASH IT.' },
-      { s: '_pipe', name: 'PIPE', desc: 'TALL AND SMUG. JUMP IT.' },
+      { s: '_pipe', name: 'HYDRAULIC BOLLARD', desc: 'SEALED. UNBREAKABLE. JUMP IT.' },
       { s: 'barrel', name: 'BARREL', desc: 'ROLLS AT YOU. JUMP IT.' },
       { s: 'chair', name: 'OFFICE CHAIR', desc: 'ALSO ROLLS AT YOU. FASTER. JUMP IT.' },
       { s: '_gap', name: 'PIT', desc: 'A HOLE WHERE FLOOR SHOULD BE. JUMP IT.' },

@@ -1104,10 +1104,46 @@ function propNominalSize(name) {
     // A few obstacles so ground renderers that cut gaps have something to chew on.
     const obstacles = [makeObstacle('crate', 180), makeObstacle('barrel', 300)];
     tile(grid, cab.name, `${cab.id} · style: ${cab.style} · act ${cab.act}`, W, H, (ctx, t) => {
-      if (style.bg) style.bg(ctx, t, t * 60, cab, 1000);
+      const scene = cab.id === 'rhythm'
+        ? { stageIndex: 1, beat: t * (cab.music?.bpm || 120) / 60 }
+        : null;
+      if (style.bg) style.bg(ctx, t, t * 60, cab, 1000, scene);
       if (style.ground) style.ground(ctx, t * 60, cab, obstacles);
       if (style.post) style.post(ctx, t);
     }, { animated: true });
+  }
+}
+
+// -------------------------------------- 7b.1 Game Boy Color city
+// The background matrix above gives Rhythm one moving production tile. This is
+// the authoring sheet: every distinct panel, at the four musical states that
+// change its argument, held still beside its neighbours so a visual decision
+// does not depend on catching the right frame of a loop.
+{
+  const cab = CABINETS.find((c) => c.id === 'rhythm');
+  const states = [
+    ['idle', null],
+    ['downbeat', 0],
+    ['backbeat', 1],
+    ['phrase change', 16],
+  ];
+  const names = ['CLOCK-IN CITY', 'CHORUS DISTRICT', 'OVERDRAFT SKYLINE'];
+  const grid = section('lcd-city-backgrounds', 'RHYTHM BANKRUPTCY — Game Boy Color city',
+    'Three authored screen-fixed colour scenes: reflective mint and cream, dark blue-green linework, '
+    + 'and crude blue, plum, ochre and coral spot colours. Windows, roof cells, aerials, the clock, the drifting '
+    + 'clouds, the rooftop pixel billboards, the transmitter\'s signal rings and stage 1\'s DONKEY KONG girder '
+    + 'tower all step on the heard musical beat; the lane '
+    + 'never scrolls the skyline, previews a chart action, or enters the calm strip beside it. Each tile keeps an '
+    + 'open pit so the gear train and the sky-tinted shaft stay on the sheet.');
+  for (let stageIndex = 1; stageIndex <= 3; stageIndex++) {
+    for (const [label, beat] of states) {
+      const style = getStylePack('lcd', {});
+      tile(grid, names[stageIndex - 1], `stage ${stageIndex} · ${label}`, W, H, (ctx) => {
+        style.bg(ctx, 0, 0, cab, 1000, { stageIndex, beat });
+        style.ground(ctx, 0, cab, [{ live: true, x: 92, w: 56, def: { isGap: true } }]);
+        style.post(ctx, 0);
+      }, { animated: false });
+    }
   }
 }
 

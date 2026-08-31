@@ -17,6 +17,7 @@
 // nobody has touched must resolve to bit-for-bit today's behaviour — that is
 // what tests/layout-parity.js holds this module to.
 import { STAGE_LAYOUTS } from '../data/stage-layouts.js';
+import { LOOP } from './loop.js';
 
 // ---- pacing constants (moved from run.js; the tunables manifest points here) --
 // The lane's cruising speed before any bonus, ramp or hero multiplier.
@@ -203,6 +204,12 @@ export function resolveLayout(stage, cabinet, entry = undefined) {
     // cabinet's. Omitted = the cabinet's arrays keep flowing, so a hand edit
     // to cabinets.js still reaches every un-forked stage.
     routes: l.routes ?? null,
+    // The loop-de-loop, resolved the way the two other pinned rewards are: a
+    // number places it, `null` is an authored "no ring on this stage", and
+    // absence takes the cabinet's own answer. Only the boost cabinets have one
+    // to place, and where they do it stands at LOOP.at unless a stage moved it
+    // — which is why loop.js still owns that number and this only spends it.
+    loopAt: cabinet?.mechanic === 'boost' ? (l.loopAt !== undefined ? l.loopAt : LOOP.at) : null,
     sections: normalizeSections(l.sections),
   };
 }

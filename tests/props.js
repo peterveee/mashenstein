@@ -33,6 +33,11 @@ assert(propFrames('appliance') === 96, 'the flying toaster combines a four-secon
 assert(propFps('appliance') === 24, 'the flying toaster cycles smoothly at 24fps');
 assert(propFrames('qcrate') === 36 && propFps('qcrate') === 12,
   'the !-box pendulum and occasional glint use a slow three-second loop');
+assert(propFrames('pipe') === 8 && propFps('pipe') === 4,
+  'hydraulic bollards cycle through eight slow piston poses');
+assert(OBSTACLES.pipe && OBSTACLES.pipe.ground && OBSTACLES.pipe.w === 14 && OBSTACLES.pipe.h === 18 && OBSTACLES.pipe.artH === 24
+  && OBSTACLES.pipe.tall && !OBSTACLES.pipe.breakable && OBSTACLES.pipe.action === 'jump',
+  'hydraulic bollards keep the fixed unbreakable jump-obstacle contract');
 assert(propDetailScale('qcrate') === 2,
   'the !-box authors its outline, punctuation and glint at double detail');
 assert(PICKUPS.cord.w === 14 && PICKUPS.cord.h === 9 && PICKUPS.cord.sprite === 'cord',

@@ -1880,7 +1880,14 @@ export class HubState {
     }
     if (this.talk && (this.talk.t -= dt) <= 0) this.talk = null;
     if (Input.pressed('back')) this.flow.toTitle();
-    if (Input.pressed('mute')) { this.save.settings.muted = !this.save.settings.muted; Audio.setMuted(this.save.settings.muted); }
+    // Persisted, like the identical toggle in run.js. Without the save the hub was
+    // the one screen where M only lasted the session: it unmuted, sounded unmuted,
+    // and came back silent on the next load with nothing to show for it.
+    if (Input.pressed('mute')) {
+      this.save.settings.muted = !this.save.settings.muted;
+      Audio.setMuted(this.save.settings.muted);
+      this.save.persist();
+    }
     Input.endFrame();
   }
 
