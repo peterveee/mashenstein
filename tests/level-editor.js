@@ -368,7 +368,11 @@ function modelFor(id, over = undefined) {
     'an ordinary pit is filled with what the cabinet fills holes with');
 
   const cross = buildScene(modelFor('plumber-2'), null);
-  ok(cross.gaps.some((g) => g.fill === 'spikes'), 'and a crossing brings its own teeth');
+  // Its OWN teeth, whatever they are — plumber-2 authors gears — never the
+  // cabinet's pit fill.
+  const crossGap = cross.gaps.find((g) => g.crossing);
+  ok(!!crossGap && crossGap.fill === 'gears' && crossGap.fill !== m.cab.pitFill,
+    'and a crossing brings its own teeth');
 
   const app = scene.entities.find((e) => e.type === 'appliance');
   const wantX = Math.min(m.L.appliance.at * m.totalDist + W, m.totalDist - 160 - app.w);

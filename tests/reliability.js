@@ -776,34 +776,40 @@ const sunkFrom = run.player.y;
 for (let i = 0; i < 20; i++) run.update(1 / 60);
 assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunkFrom})`);
 
-// SCRIPTED PITS. Plumber 3 guarantees three of them at fixed fractions, which
+// SCRIPTED PITS. Plumber 3 guarantees a plan of them at fixed fractions, which
 // a pattern list cannot do — the spawner shuffles patterns, so a gap added
-// there turns up wherever the dice fall and might not turn up at all.
+// there turns up wherever the dice fall and might not turn up at all. The plan
+// is the LAYOUT's — the level editor owns the pits now — so it is read the way
+// the run reads it, through the resolver.
 {
   const { STAGES } = await import('../src/data/stages.js');
+  const { CABINET_BY_ID } = await import('../src/data/cabinets.js');
+  const { resolveLayout } = await import('../src/game/layout.js');
   const plumber3 = STAGES.find((st) => st.id === 'plumber-3');
-  assert(plumber3 && plumber3.pits && plumber3.pits.length === 3,
-    'plumber 3 carries a three-pit plan');
-  assert(plumber3.pits[0].at < 0.2, 'the first one lands early, while the run is still being learned');
+  const pits = resolveLayout(plumber3, CABINET_BY_ID[plumber3.cabinet]).pits;
+  assert(pits && pits.length >= 3, 'plumber 3 carries a multi-pit plan');
+  assert(pits[0].at < 0.2, 'the first one lands early, while the run is still being learned');
   const pitRun = new RunState({ stage: plumber3, save, seed: 7, difficulty: 1, skipRunIn: true, onEnd: () => {} });
   pitRun.enter();
-  assert(pitRun.pitPlan.length === 3, 'the plan resolves to world positions on enter');
-  // Walk the camera up to the first one and let the lazy placer run.
+  assert(pitRun.pitPlan.length === pits.length, 'the plan resolves to world positions on enter');
+  // Walk the camera up to the first one and let the lazy placer run. The
+  // opening cluster sits closer together than the placer's horizon, so more
+  // than one may go down — the first must be among them, exactly where asked.
   const first = pitRun.pitPlan[0];
   pitRun.camX = first.x - 400;
   pitRun.distance = pitRun.camX;
   pitRun.spawnScriptedPits();
   const planted = pitRun.obstacles.filter((o) => o.live && o.def.isGap);
-  assert(planted.length === 1 && Math.abs(planted[0].x - first.x) < 1,
+  assert(planted.length >= 1 && Math.abs(planted[0].x - first.x) < 1,
     `the first pit is planted where the stage asked for it (${planted.length})`);
-  assert(planted[0].w === plumber3.pits[0].w, 'at the width the stage asked for');
+  assert(planted[0].w === pits[0].w, 'at the width the stage asked for');
   // Its approach and its landing are swept: a hole the spawner never budgeted
   // for has to clear its own run-up or it is a death nobody could avoid.
   const crowd = pitRun.obstacles.filter((o) => o.live && !o.def.isGap
     && o.x + o.w > first.x - 100 && o.x < first.x + first.w + 100);
   assert(crowd.length === 0, `the pit clears its own approach and landing (${crowd.length} left)`);
   pitRun.spawnScriptedPits();
-  assert(pitRun.obstacles.filter((o) => o.live && o.def.isGap).length === 1,
+  assert(pitRun.obstacles.filter((o) => o.live && o.def.isGap).length === planted.length,
     'and it is planted once, however often the placer runs');
   // ...and it is planted far enough out that its own hint still fits off
   // screen. A scripted pit that appears 520px away can never be signed: the
@@ -826,7 +832,7 @@ assert(run.player.y < sunkFrom, `and keeps going under (${run.player.y} < ${sunk
   // The plan rides the checkpoint snapshot, or a death in the last pit comes
   // back to a stage that no longer has one.
   const snap = pitRun.makeSnapshot();
-  assert(snap.pitsDone && snap.pitsDone.length === 3, 'the snapshot records which pits are down');
+  assert(snap.pitsDone && snap.pitsDone.length === pits.length, 'the snapshot records which pits are down');
 }
 
 // NO COIN OVER A HOLE, AND NONE ON EITHER LIP.

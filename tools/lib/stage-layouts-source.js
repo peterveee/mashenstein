@@ -41,9 +41,13 @@ const sameFracs = (a, b) => Array.isArray(a) && Array.isArray(b)
 // ---- per-piece formatters ---------------------------------------------------
 
 function pitSource(p) {
+  // `fill` and `replaces` are authored on the pit and mean nothing to the
+  // editor's gestures — carried through verbatim so a drag does not eat them.
+  const extra = (p.fill ? `, fill: '${p.fill}'` : '')
+    + (p.replaces ? `, replaces: '${p.replaces}'` : '');
   return p.jumps
-    ? `{ at: ${fmtNum(p.at)}, jumps: ${p.jumps} }`
-    : `{ at: ${fmtNum(p.at)}, w: ${fmtNum(p.w)} }`;
+    ? `{ at: ${fmtNum(p.at)}, jumps: ${p.jumps}${extra} }`
+    : `{ at: ${fmtNum(p.at)}, w: ${fmtNum(p.w)}${extra} }`;
 }
 
 // A route's authored shape is cabinets.js's vocabulary — pass numbers and

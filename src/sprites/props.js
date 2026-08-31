@@ -682,8 +682,12 @@ export const PROP_PAINTERS = {
       c.moveTo(bladeStart + w * 0.02, toothBase);
       c.lineTo(bladeEnd - w * 0.02, toothBase);
     });
+    // The spit rides sin(p) and its glow bobs on cos(p): one sinusoid alone
+    // retraces itself over the back half of the loop, so frame 4 would land
+    // exactly on frame 0 and the 8-frame cycle would only ever show 7 poses.
     const sparkX = bladeStart + bladeW * (0.5 + Math.sin(p) * 0.34);
-    hzGlow(ctx, sparkX, toothBase, w * 0.08, h * 0.035, '#ff9a42', 0.14 + 0.1 * Math.cos(p * 2));
+    hzGlow(ctx, sparkX, toothBase - h * 0.01 * (1 + Math.cos(p)), w * 0.08, h * 0.035,
+      '#ff9a42', 0.14 + 0.1 * Math.cos(p * 2));
     hzSparks(ctx, sparkX, toothBase, Math.min(w, h) * 0.08, f, 8, 3, 2);
     // Boxed hinge and post-mounted beacon. Keeping the lamp off the free tip
     // removes the button/switch read; it is now plainly a warning attached to

@@ -367,9 +367,17 @@ for (const hero of cast) {
     if (!declared) continue;
     const run = new RunState({ stage, team: ['lorenzo'], save, seed: 1, difficulty: 1, onEnd: () => {} });
     run.enter();
+    // A stage may TRADE a road for its crossing on purpose — plumber-2's
+    // extended pit stands where the tunnel was, and says so with
+    // `replaces: 'tunnel'` on the pit. An authored trade lowers the expected
+    // count; an accidental one still fails. The equality cuts both ways: a
+    // pit that claims the tunnel but no longer covers it leaves the tunnel
+    // standing, over-counts, and fails until the stale claim is removed.
+    const traded = (run.layout?.pits || []).filter((p) => p.replaces === 'tunnel').length;
     const built = run.routes.filter((r) => !r.crossing).length;
-    assert(built === declared,
-      `${stage.id}: the crossing leaves every road the cabinet declares (${built}/${declared})`);
+    assert(built === declared - traded,
+      `${stage.id}: the crossing leaves every road the cabinet declares (${built}/${declared}`
+      + (traded ? `, ${traded} traded away by authored pits)` : ')'));
   }
 }
 

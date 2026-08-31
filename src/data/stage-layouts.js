@@ -24,7 +24,7 @@ export const STAGE_LAYOUTS = {
     durationSec: 60,
     speedMult: 0.95,
     appliance: { at: 0.799, high: true },
-    pits: [{ at: 0.242, jumps: 4 }],
+    pits: [{ at: 0.242, jumps: 4, fill: 'gears', replaces: 'tunnel' }],
     rewindAt: 0.132,
     checkpoints: [0.21, 0.77],
   },
