@@ -347,7 +347,7 @@ export function drawBeatRibbon(ctx, run) {
     // a colour they were already taught by the object itself.
     ctx.fillStyle = marker.action === 'jump' ? '#f6d33c'
       : marker.action === 'duck' ? (marker.prop === 'barrel' ? '#d4a35e' : '#72d8f0')
-        : marker.action === 'ability' ? '#f890b8' : '#c8e0ff';
+        : marker.action === 'ability' ? '#f890b8' : '#ffffff';
     // EVERY GLYPH CENTRES ON THE BAND'S MIDLINE. The jump and duck arrows used
     // to sit two units high and two units low of it, so the pair were not
     // merely reflections about one line and the strip said DOWN twice. That
@@ -370,7 +370,14 @@ export function drawBeatRibbon(ctx, run) {
       // sit between, centred on x (the old 3u box hung half a unit right of the
       // marker it was reporting), and deliberately NOT swelling: the pulse is
       // how the strip says "do something here", and a coin asks for nothing.
-      ctx.fillRect(x - 1 * u, mid - 1 * u, 2 * u, 2 * u);
+      //
+      // A DOT, NOT A BOX. A square at this size read as a chip of the same
+      // family as the arrows — a small solid with corners, one more piece of
+      // signage. A white dot reads as the coin itself, and it is the one glyph
+      // on the strip that is not a direction, so it should not share their
+      // straight edges. Radius holds the square's visual weight (a 2u box is
+      // 4u² of ink; r = 1.15u is the disc that matches it).
+      ctx.beginPath(); ctx.arc(x, mid, 1.15 * u, 0, Math.PI * 2); ctx.fill();
     }
   }
   ctx.restore();
