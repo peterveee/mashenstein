@@ -916,6 +916,52 @@ export const PROP_PAINTERS = {
         c.arc(w * x, h * y, w * 0.025, 0, Math.PI * 2);
     });
   },
+  // THE CARD BOX. A crate's box and a crate's silhouette on purpose — it stands
+  // where a crate stands and it is the same 12x11 — so everything that says
+  // SHOOT rather than JUMP has to be carried by the paint.
+  //
+  // Three marks do it. The card is paler and greyer than the crate's warm pine
+  // (a crate is timber; this is board), the cross-braces are gone in favour of
+  // ONE tape seam down the middle, and the face carries a target ring in
+  // #f890b8 — the exact pink the beat ribbon draws its ability glyph in (see
+  // drawBeatRibbon in game/hud.js). That shared colour is the whole lesson: the
+  // circle on the strip and the circle on the box are one instruction, and the
+  // player learns the pairing the first time they meet it.
+  //
+  // A ring rather than a bullseye. At twelve world px a filled disc is a dot
+  // and a three-band bullseye is mud; an open ring with a cross-hair tick at
+  // each side reads as "aim here" at the size the lane actually draws it.
+  cardBox(ctx, w, h) {
+    const u = Math.max(w, h);
+    const fineShape = (fill, pathFn) => {
+      ctx.beginPath(); pathFn(ctx);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = 'rgba(48,32,16,0.26)';
+      ctx.lineWidth = Math.max(0.12, u * 0.01);
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+    };
+    // Board, not timber: a cool card brown with a paler face inset.
+    fineShape('#8a6a3a', (c) => rr(c, w * 0.04, h * 0.05, w * 0.92, h * 0.9, w * 0.14));
+    plain(ctx, '#c8a068', (c) => rr(c, w * 0.09, h * 0.1, w * 0.82, h * 0.8, w * 0.11));
+    // The flap line across the top and the one tape seam down from it. Packing
+    // tape is lighter than the card and slightly translucent, so it is a pale
+    // wash rather than a drawn line.
+    stroke(ctx, 'rgba(90,62,30,0.42)', Math.max(0.3, w * 0.026), (c) => {
+      c.moveTo(w * 0.12, h * 0.3); c.lineTo(w * 0.88, h * 0.3);
+    });
+    plain(ctx, 'rgba(246,232,200,0.5)', (c) => rr(c, w * 0.43, h * 0.1, w * 0.14, h * 0.8, w * 0.03));
+    // The target. Ring first, then four short ticks at the compass points —
+    // the ticks are what stop the ring reading as a printed logo.
+    stroke(ctx, '#f890b8', Math.max(0.55, w * 0.075), (c) => {
+      c.arc(w * 0.5, h * 0.56, w * 0.2, 0, Math.PI * 2);
+    });
+    stroke(ctx, '#e04898', Math.max(0.4, w * 0.05), (c) => {
+      c.moveTo(w * 0.5, h * 0.24); c.lineTo(w * 0.5, h * 0.33);
+      c.moveTo(w * 0.5, h * 0.79); c.lineTo(w * 0.5, h * 0.88);
+      c.moveTo(w * 0.14, h * 0.56); c.lineTo(w * 0.24, h * 0.56);
+      c.moveTo(w * 0.76, h * 0.56); c.lineTo(w * 0.86, h * 0.56);
+    });
+  },
   qcrate(ctx, w, h, frame = 0) {
     const u = Math.max(w, h);
     const outlinedShape = (fill, pathFn, strokeStyle = 'rgba(58,38,8,0.22)',

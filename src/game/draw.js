@@ -447,8 +447,15 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     } else {
       ctx.fillStyle = 'rgba(8,6,12,0.28)';
       ctx.beginPath(); ctx.ellipse(x + e.w / 2, GROUND_Y - 1, Math.max(4, e.w * 0.55), 2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(224,72,72,0.32)';
-      ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
+      // The red road mark says AVOID, and the card box is the one ground prop
+      // in the lane that is neither a hazard nor optional scenery — it is a
+      // thing to shoot. It keeps its contact shadow (it is standing on the
+      // road) and gives up the warning, the same bargain the targets and pads
+      // strike further down in `danger`.
+      if (!e.def.beatShoot) {
+        ctx.fillStyle = 'rgba(224,72,72,0.32)';
+        ctx.fillRect(x, GROUND_Y - 1, e.w, 1);
+      }
     }
   } else if (e.kind === 'obstacle' && e.def.bedded) {
     ctx.fillStyle = 'rgba(224,72,72,0.32)';
@@ -504,7 +511,7 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // never unfair — ringed by a dark inner outline plus a pulsing light outer
   // one so they pop against both light and dark terrain. Things you WANT
   // (targets/pads/switches) stay clean.
-  const danger = e.kind === 'obstacle' && !e.def.isTarget && !e.def.isBoost && !e.def.isLoop && !e.def.isSwitch;
+  const danger = e.kind === 'obstacle' && !e.def.isTarget && !e.def.isBoost && !e.def.isLoop && !e.def.isSwitch && !e.def.beatShoot;
   const bw = propName ? e.def.w : spr.width;
   const bh = propName ? e.def.h : spr.height;
   const src = propName ? null : (danger ? (scaled2x(sprName) || spr) : spr);
@@ -567,8 +574,14 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     ctx.drawImage(propName ? propSprite(propName, sw, shT, frame) : (natural ? spr : src), ox, oy, w0, h0);
     ctx.imageSmoothingEnabled = prevSmooth;
   };
-  if (danger && !e.def.splitFeet) {
+  if (danger && !e.def.splitFeet && !e.columnRung) {
     // anchors flyers to the lane and marks where falling hazards land
+    //
+    // ONE MARK PER COLUMN. A drone column is three entities sharing an X
+    // (makeDroneColumn), and this bar is drawn per entity — three coats of the
+    // same translucent smear stacked into a near-black bar under it, which read
+    // as a hazard of its own. Rung 0 draws for the whole stack; a lone drone
+    // has no `columnRung` at all and is unaffected.
     ctx.fillStyle = 'rgba(8,8,16,0.4)';
     ctx.fillRect(x, GROUND_Y - 2, e.w, 2);
   }
@@ -658,6 +671,50 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   // keeps the fill and drops the throw.
   if (e.def.isBoost && !settings.reducedMotion) drawBoostReaction(ctx, e, x, t, propName);
   if (e.def.isLoop) drawLoopRing(ctx, e, x, t, settings);
+  // A CARD BOX THAT HAS TAKEN ITS ROUND. Between the hit and the beat it is
+  // owed to there is up to about a beat of waiting (see BOX_BURST_BEATS), and a
+  // box that just stood there through it would read as a shot that missed. The
+  // strobe is what says "this is going to go" — and it ACCELERATES, from about
+  // six flashes a second to twenty, so the fuse has a direction and the burst
+  // is the end of something rather than a surprise.
+  //
+  // Reduced motion holds a steady glow instead: the message is the box being
+  // lit, and that survives without the flicker.
+  if (e.def.beatShoot && e.burstBeat != null) {
+    const ft = e.fuseT || 0;
+    const cx = x + e.w / 2;
+    const cy = y + e.h / 2;
+    const gr = 8 + ft * 4;
+    ctx.imageSmoothingEnabled = true;
+    ctx.globalAlpha = 0.34;
+    ctx.drawImage(glowSprite('rgba(248,144,184,0.75)', 9), cx - gr, cy - gr, gr * 2, gr * 2);
+    ctx.globalAlpha = 1;
+    ctx.imageSmoothingEnabled = false;
+    // A RIM, NOT A WASH. Filling the box with light was the first version of
+    // this and it erased the thing it was meant to be drawing attention to —
+    // the card went pale and the target ring went with it, so a lit box was a
+    // pink blob where a moment earlier there had been an object. The outline
+    // strobes and the face keeps a thin lift, which reads as the box being
+    // CHARGED rather than as the box being replaced.
+    const lit = settings.reducedMotion || Math.floor(ft * (6 + ft * 14)) % 2 === 0;
+    if (lit) {
+      // AROUND THE ART, NOT AROUND THE BOX. Every hazard draws 4/3 bigger than
+      // its hitbox (see draw1), so a rim on e.w/e.h is a rectangle INSIDE the
+      // picture, cutting the box's own flaps in half. These are draw1's numbers.
+      const w0 = Math.round(e.def.w * 4 / 3);
+      const h0 = Math.round(e.def.h * 4 / 3);
+      const ox = x - Math.floor((w0 - e.def.w) / 2);
+      const oy = y - (h0 - e.def.h);
+      ctx.globalAlpha = settings.reducedMotion ? 0.1 : 0.16;
+      ctx.fillStyle = '#fff0f6';
+      ctx.fillRect(ox, oy, w0, h0);
+      ctx.globalAlpha = settings.reducedMotion ? 0.5 : 0.85;
+      ctx.strokeStyle = '#fff0f6';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ox - 0.5, oy - 0.5, w0 + 1, h0 + 1);
+      ctx.globalAlpha = 1;
+    }
+  }
   if (style && style.decorate) style.decorate(ctx, e, x, y);
 }
 

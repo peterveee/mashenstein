@@ -331,6 +331,11 @@ const suites = [
   // launching the hero back out of it.
   'tests/unpressed-launches.js',
   'tests/loop.js',
+  // The other cue that plays against the song rather than over it: the coin,
+  // snapped to the key by the same ladder the loop's climb and the boost pad's
+  // telegraph use. Directly after the loop suite because they share that ladder
+  // and their claims are the same claim from two heights.
+  'tests/coin-key.js',
   'tests/rewind-pooling.js',
   'tests/art-warmup.js',
   'tests/title-sign.js',

@@ -28,7 +28,33 @@ export const OBSTACLES = {
   barrel:     { w: 13, h: 13, sprite: 'barrel', ground: true, breakable: true, action: 'jump', vx: -40, roll: true, punt: 'heavy', puntLabel: 'BARREL' },
   // Two bodies, one drone: the rotor workhorse and the watching eye. See `skin`
   // in makeObstacle — it is a look, not a variant hazard.
-  drone:      { w: 12, h: 7,  sprite: 'drone', alt: 13, armored: true, action: 'duck', bob: true, airDrift: { amp: 4, speed: 0.72 }, skins: ['drone', 'droneEye'] },
+  //
+  // `artLift` IS THE SLIDE'S HEADROOM, and it is the only lever there is. 13 is
+  // not a taste decision — a standing hero's box is 14 tall, so a drone one
+  // pixel higher stops touching him and stops being an obstacle at all, which
+  // is the same thing the spawner refuses to let a pattern do. Meanwhile the
+  // shipped duck is the POWER SLIDE (toons.js drawDuckSlide), whose whole
+  // thesis is a head left upright and camera-facing, and it draws 19 to 21 tall
+  // depending on the build. The drone's own ink starts 2px above its box, at
+  // 15 — so the head was inside the drone by 4 to 6 pixels on every duck in the
+  // game. The box cannot move, so the ART does: 6 lifts the ink to 21 and gets
+  // the shorter sliders out from under it entirely.
+  //
+  // SIX AND NOT EIGHT because the top of a column is the other end of the same
+  // rope. Eight would clear every head, and would also put the top rung's ink
+  // at 61 against the 57 apex that is supposed to clear the whole column — so
+  // the one jump this is all designed around would pass through the drone it
+  // just beat. Six leaves that jump 2px of overlap at the very top rung, which
+  // reads as the near miss it is, and spends the rest on the duck that happens
+  // every single time. A standing hero draws 26 to 31 tall against ink at 21,
+  // so failing to duck still visibly runs into the thing that hits you — which
+  // is the test artLift's own note in game/draw.js sets for itself.
+  //
+  // ONE of these is a duck a hero may decline: the box tops out at alt+h = 20
+  // and the shortest jump in the cast clears 46. A beat cabinet's duck slot can
+  // stack three of them into a ceiling nobody's worst jump reaches — see
+  // DRONE_COLUMN_ALTS below for the altitudes and the arithmetic behind them.
+  drone:      { w: 12, h: 7,  sprite: 'drone', alt: 13, artLift: 6, armored: true, action: 'duck', bob: true, airDrift: { amp: 4, speed: 0.72 }, skins: ['drone', 'droneEye'] },
   // Buzzbirds use the shared gentle vertical hover, plus a modest world-space
   // approach toward the player. There is no independent side-to-side wobble.
   buzzbird:   { w: 12, h: 7,  sprite: 'buzzbird', alt: 34, armored: false, action: 'none', bob: true, airVx: -28 },
@@ -86,6 +112,30 @@ export const OBSTACLES = {
   tombstone:  { w: 11, h: 8,  sprite: 'tombstone', ground: true, breakable: true, action: 'jump' },
   zombie:     { w: 10, h: 14, sprite: 'zombieWalk', ground: true, breakable: true, action: 'jump', vx: -14, shamble: true },
   beatBar:    { w: 8, h: 14,  sprite: null, ground: true, breakable: false, action: 'jump', beatSync: true },
+  // THE CARD BOX — the beat cabinet's one prop you answer with the ability
+  // button instead of with your feet, and the only entity in the game whose
+  // destruction is QUANTIZED (see BOX_BURST_BEATS in game/beatchart.js).
+  //
+  // `beatShoot` is what marks it as a chart ability slot's physical half: the
+  // BeatSpawner lays it BOX_LEAD_BEATS down the road from the beat the chart
+  // asks the shot on, and a projectile that reaches it does not break it — it
+  // lights the fuse, and the box goes on the beat. Shot on the one, gone on the
+  // three, at every tempo and for every weapon in the cast, because the fuse is
+  // measured in beats rather than in the flight time of whichever gun fired.
+  //
+  // `action: 'none'` AND `pushover: true`, and both halves matter. Half the
+  // roster cannot shoot at all — the lane simply lays no box for them (see
+  // heroShoots) — but a relay swap can land a non-shooter in front of one
+  // already standing in the road, and the answer to that has to be that it
+  // costs nothing. It is a cardboard box: you run through it, it comes apart,
+  // you keep going. The same contract the JUMP sign has carried since it was
+  // added, for the same reason — the lane put it there uninvited.
+  //
+  // 12x11, the crate's box exactly. It stands where a crate stands and it is
+  // the same size as a crate, so the ONLY thing separating "jump this" from
+  // "shoot this" is the paint (see the cardBox painter: pink target ring, in
+  // the beat lane's own colour and the ribbon's own ability glyph).
+  cardBox:    { w: 12, h: 11, sprite: 'crate', ground: true, breakable: true, action: 'none', beatShoot: true, pushover: true },
   cardboardMonster: { w: 12, h: 9, sprite: 'cardboardMonster', ground: true, breakable: true, action: 'jump' },
   chair:      { w: 12, h: 10, sprite: 'chair', ground: true, breakable: true, action: 'jump', vx: -34, roll: true },
   printer:    { w: 12, h: 7,  sprite: 'printer', ground: true, breakable: true, action: 'jump', shoots: true, isTarget: true },
@@ -255,6 +305,9 @@ export const DEBRIS = {
   // The red board, its post, and the pale panel the dog's head sits on.
   dogSign:     { colors: ['#d83828', '#7a5230', '#f6e4c8'], size: 2.6, mat: 'wood' },
   cardboardMonster: { colors: ['#c8a068', '#8a6a3a', '#fff'], size: 3, mat: 'soft' },
+  // Card and packing tape, plus the pink of the target ring — the box comes
+  // apart into the three things it is painted out of.
+  cardBox:     { colors: ['#c8a068', '#8a6a3a', '#f890b8'], size: 2.8, mat: 'soft' },
   chair:       { colors: ['#4a5a6c', '#3a4a5a', '#2a3542'], size: 2.8, mat: 'wood' },
   printer:     { colors: ['#b0b0c0', '#fff', '#48e0c8'], size: 2.6, mat: 'metal' },
   zombie:      { colors: ['#9ec89e', '#5a6a8a', '#4a6a4a'], size: 2.4, count: 12, mat: 'soft' },
@@ -327,10 +380,83 @@ export function makeObstacle(type, worldX, opts = {}) {
     // position exactly as bobPhase is, so it is stable per instance and
     // identical on a replay rather than rolled from a live RNG.
     skin: def.skins ? def.skins[Math.abs(Math.round(worldX * 0.13)) % def.skins.length] : null,
+    // How far the ART rides above the box, if the type asks for any. Copied onto
+    // the instance rather than read off the def at paint time because it is a
+    // per-entity number in draw.js — a set piece may want to lift one body
+    // without lifting the type.
+    artLift: def.artLift || 0,
     // Initialized by the first update so a newly spawned flyer does not jump
     // sideways when its drift clock is first evaluated.
     driftOriginX: def.airDrift ? null : undefined,
   };
+}
+
+// THE DRONE COLUMN'S RUNGS — the altitude of each body's underside, bottom
+// first. A beat cabinet's duck slot may lay this instead of a lone drone (see
+// `column` in game/beatchart.js), and it exists because a lone drone was never
+// really a duck at all: its box tops out at 20, the shortest jump in the cast
+// reaches 46, and so every hero in the game could answer a duck beat with the
+// jump button and the slot asked nothing of anybody.
+//
+// WHERE THE TOP OF THE COLUMN LANDS IS THE WHOLE POINT, and it has to be 50.
+// Apex, as feet-height above the ground, is v^2/2g off BASE_JUMP_V and the
+// hero's jumpMult: 46 for B-33P (jumpMult 0.9) and 46 again for Grumpos (1.0,
+// but `heavy`, so his gravity is 1.25x), 57 for a plain 1.0, and up to 75 for
+// Clara. Fifty is the one clear gap in that table — 4px over the two lowest
+// jumps and 7px under the next one — so the two heaviest heroes must go under
+// it and everyone else still has the choice. A rung lower tops out at 46,
+// level with B-33P's apex; a rung higher tops out at 54, level with
+// Fernwick's. Both are a coin-flip on a pixel rather than a decision, and that
+// is why the gap between bodies is 8 rather than 6 or 10. Kiko's second jump
+// clears anything, and is supposed to.
+//
+// The hero is only over the 12px column for about a tenth of a second at this
+// cabinet's speed, which costs roughly 1px off the apex — so the apex really
+// is the clearance and the table above can be read straight off.
+//
+// AND THE GAPS ARE NOT DOORS. An airborne hero is 14 tall, always: jumpPressed
+// clears `ducking`, and the airborne branch blends duckAmount back to zero, so
+// Down in mid-air is a slide-slam that falls faster without shrinking the box
+// (game/player.js). Nothing in the cast can be threaded through 8px of air.
+// The gaps are here to buy the height with three bodies instead of five, and
+// the art closes most of them anyway: a drone draws 12.6px tall and
+// bottom-anchored (7 x 4/3 x PROP_VISUAL_SCALE), so at a 15px pitch the column
+// shows a 2.4px seam and reads as one machine rather than as three with room
+// between them.
+export const DRONE_COLUMN_ALTS = Object.freeze([13, 28, 43]);
+
+/**
+ * A stack of drones at one world X — three boxes rather than one tall one, so
+ * the hitboxes stay honest through the gaps instead of claiming the air.
+ *
+ * The shared X is doing real work. `bobPhase`, the drift clock and `skin` are
+ * all derived from it, so the column bobs and drifts as one rigid thing and
+ * wears a single body instead of turning into a mixed patrol stacked on top of
+ * itself.
+ *
+ * The bottom rung keeps the def's own altitude, and must: that is the duck
+ * contract the spawner refuses to let a pattern move (see the altitude note in
+ * game/spawner.js), the underside has to sit where a slide clears it and a
+ * stand does not, and it is the only rung a running hero ever meets. The two
+ * above it exist for the jumper alone.
+ *
+ * TWO RUNGS IS NOT A GATE AND IS NOT MEANT TO BE. A pair tops out at 35 and the
+ * worst jump in the cast reaches 46, so it is a column that can still be
+ * declined — which is the right shape for the first one a player meets, where
+ * being wrong should cost a beat rather than the run. Only the full three
+ * reaches 50 and takes the jump away.
+ */
+export function makeDroneColumn(worldX, rungs = DRONE_COLUMN_ALTS.length) {
+  return DRONE_COLUMN_ALTS.slice(0, rungs).map((alt, i) => {
+    const ob = makeObstacle('drone', worldX);
+    ob.alt = alt;
+    // Which rung this is, and the only thing anything downstream asks about it:
+    // the lane shadow under a flyer is drawn per entity, and three of them at
+    // one X stacked three coats of the same smear into a black bar. Rung 0
+    // marks the lane for the whole column.
+    ob.columnRung = i;
+    return ob;
+  });
 }
 
 export function makePickup(type, worldX, alt) {

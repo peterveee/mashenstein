@@ -153,3 +153,31 @@ export const HEROES = [
 ];
 
 export const HERO_BY_ID = Object.fromEntries(HEROES.map((h) => [h.id, h]));
+
+// WHO CAN ANSWER A THING AT A DISTANCE.
+//
+// Four of the eight, and the beat cabinet's shootable card box (see
+// OBSTACLES.cardBox) is laid for those four and nobody else — a prop whose only
+// answer is a weapon half the cast does not carry is not a rhythm figure, it is
+// a hero check, so the lane simply does not deal one to a hero who cannot play
+// it (BeatSpawner.canShoot).
+//
+// By ABILITY TYPE rather than by id, which is the same rule the three shooters
+// already follow for shotSpeed/shotSize: 'shoot' is Clara's pistols, B-33P's
+// lemon and Kiko's warning shot, and 'axe' is Grumpos' — a thrown weapon that
+// comes back, but one that reaches.
+//
+// THE ROCKET FIST IS NOT IN HERE, and it is a range decision rather than a
+// taste one. A thrown weapon parks where it stopped mattering (see
+// updateProjectiles) — the axe at 0.55s of flight, the fist at 0.42 — which at
+// RHYTHM BANKRUPTCY's 208px/s puts the axe 235px down the road against a box
+// standing at 230, and the fist 176px, fifty-four short. Ray M'N's fist would
+// visibly stop in mid-air in front of a box it had just opened, and a weapon
+// that lies about what it hit is worse than a hero who is handed a different
+// beat to play.
+export const RANGED_ABILITY_TYPES = new Set(['shoot', 'axe']);
+
+/** Can this hero destroy something in front of them without touching it? */
+export function heroShoots(id) {
+  return RANGED_ABILITY_TYPES.has(HERO_BY_ID[id]?.ability?.type);
+}

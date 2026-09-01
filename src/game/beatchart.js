@@ -1,7 +1,7 @@
 // Beat-locked gameplay data and spawner.  This module deliberately knows
 // nothing about Audio or the DOM: RunState supplies the heard-beat callback so
 // the same placement and validation code can run in deterministic tests.
-import { makeObstacle, makePickup, OBSTACLES } from './entities.js';
+import { makeObstacle, makeDroneColumn, makePickup, OBSTACLES } from './entities.js';
 import { HEROES } from '../data/heroes.js';
 import { worstAirtime } from './spawner.js';
 import { BASE_JUMP_V, GRAVITY, HEAVY_GRAVITY_MULT, PLAYER_W } from './player.js';
@@ -20,10 +20,21 @@ export const ON_BEAT_WINDOW = 0.18;
 // for sizing stones in seconds. The chart is a musical object; a fixed pixel
 // width would be a different fraction of a jump at every speed this cabinet is
 // ever run at, and the whole point of a beat lane is that the answer does not
-// change. Half a beat at RHYTHM BANKRUPTCY's 124bpm and base speed comes out at
-// 56px, which is the game's ordinary gap — that is the number this was chosen
-// to land on, not a coincidence.
-export const PIT_BEATS = 0.5;
+// change. Five eighths at RHYTHM BANKRUPTCY's 124bpm and base speed comes out
+// at 70px — a shade over the 68 its scripted holes are authored at, so every
+// break on the cabinet reads as one size whether the chart cut it or a stage
+// did. It was half a beat and 56px, the game's ordinary gap, until the works at
+// the bottom of the shaft made the case for a wider one: the LCD pack fills its
+// holes with a meshed gear train (stylePacks lcdPack.ground), and at 56 the
+// hole only has room for two wheels standing well apart. A hole this cabinet
+// cuts is a window onto machinery, and the machinery needs the width to read.
+//
+// THE CEILING IS THE JUDGE, not taste. pitWindowBeats falls as the hole grows,
+// and the moment it drops under ON_BEAT_WINDOW the cabinet can score a jump as
+// on-beat and still drop the player down the hole it scored against. That is at
+// about 0.69 beats; five eighths leaves 0.217 against the judge's 0.18, and the
+// validator throws rather than shipping a chart that crosses it.
+export const PIT_BEATS = 0.625;
 // A COIN RUN'S SUBDIVISION. Four to the beat is sixteenths, which is the fastest
 // figure this song's own parts play and the fastest a running hero can take a
 // row of pickups without the cue turning into a buzz — the coin sting climbs a
@@ -52,6 +63,30 @@ export const COIN_FILLS = Object.freeze({
 // is always more than a beat clear of the nearest lip; a run of four is three
 // quarters of a beat longer, which is enough to reach.
 export const COIN_RUN_PIT_CLEAR_SEC = 0.25 * 2.4;
+// THE CARD BOX, in beats — the two numbers that make a shot and its explosion
+// both land on the grid, for every weapon in the cast and at any tempo.
+//
+// The problem they solve: a beat cabinet can put a shootable prop in the lane
+// easily enough, but the ROUNDS ARE NOT THE SAME SPEED. Kiko's warning shot
+// under REASONABLE FORCE closes at 354px/s against Clara's SERIALIZED slug at
+// 657 — near enough double — so a box placed at "one beat of flight" is a
+// different box for every hero who walks up to it, and there is no distance at
+// which they all arrive on the same beat line.
+//
+// So the flight is not what is timed. The box takes the hit, LIGHTS, and goes
+// off on a beat the chart already knew about: BOX_BURST_BEATS after the beat
+// the shot was asked on. The whole spread of arrival times (0.85 to 1.57 beats
+// at this cabinet's tempo and speed, plus up to ON_BEAT_WINDOW of late press)
+// fits inside two beats with room over, so the fuse is always a real wait and
+// never a debt the box has to pay before the round has got there.
+//
+// BOX_LEAD_BEATS is then forced: the box has to be further down the road than
+// the player will have travelled when it goes off, or it detonates behind him.
+// 2.4 against a 2-beat fuse leaves 0.4 of a beat — about 45px here — so the
+// burst lands just in front of the hero's face, which is the picture the
+// mechanic wants anyway.
+export const BOX_LEAD_BEATS = 2.4;
+export const BOX_BURST_BEATS = 2;
 // ACTION-FREE LANE AFTER A RESYNC, in beats, and it is the one number the
 // spawner and the judge must agree on: the spawner lays nothing that ASKS AN
 // INPUT inside it and the judge scores nothing inside it. Two beats is a beat
@@ -161,15 +196,37 @@ export function validateBeatChart(chart, physics = {}) {
     if (!['jump', 'duck', 'pit', 'ability', 'coin'].includes(raw.action)) {
       throw new Error(`unknown beat chart action: ${raw.action}`);
     }
-    if (raw.action !== 'coin' && raw.every != null) {
+    if (raw.action !== 'coin' && raw.action !== 'ability' && raw.every != null) {
       // The judge reads the chart and the spawner reads the chart, and they
       // agree because every slot means the same thing on every pass. A skipped
       // JUMP would break that agreement — the lane would lay nothing and the
       // scoreboard would still demand it — so the cadence is a coin's alone.
-      throw new Error(`only a coin fill may skip loops (slot ${raw.slot} is a ${raw.action})`);
+      //
+      // AND AN ABILITY'S. A card box is the one action slot whose demand is
+      // already conditional — half the roster cannot shoot, so the scoreboard
+      // was taught to ask the LANE what it laid rather than to read the chart
+      // (see RunState.rhythmRequiredAt) — and once the judge defers to the
+      // lane, a slot the lane skipped is a slot nobody is owed. That is what
+      // makes `every` safe here and nowhere else, and it is what keeps the box
+      // occasional: at 16 beats a loop, `every: 2` is one every fifteen
+      // seconds, which is a spice rather than a mechanic to survive.
+      throw new Error(`only a coin fill or a card box may skip loops (slot ${raw.slot} is a ${raw.action})`);
     }
     if (raw.action === 'ability') {
-      if (raw.type != null) throw new Error('ability beat events cannot name an obstacle type');
+      // A BARE ability slot is still what it always was: a timing marker with
+      // nothing standing in the road (ACTION_TYPES.ability is null). Naming a
+      // type turns it into a card box, and the only types it may name are the
+      // ones built to be shot on a grid.
+      if (raw.type != null && !OBSTACLES[raw.type]?.beatShoot) {
+        throw new Error(`an ability beat event may only name a shootable box: ${raw.type}`);
+      }
+      if (raw.type == null && raw.every != null) {
+        throw new Error(`a bare ability marker has no box to skip (slot ${raw.slot})`);
+      }
+      const every = raw.every ?? 1;
+      if (!Number.isInteger(every) || every < 1) {
+        throw new Error(`card box cadence must be a positive integer of loops: ${raw.every}`);
+      }
     } else if (raw.action === 'coin') {
       // A coin slot may be a RUN: `run: 4` lays four coins across the beat at
       // `div` to the beat instead of one on the line. It has to stay inside its
@@ -213,6 +270,26 @@ export function validateBeatChart(chart, physics = {}) {
       if (!OBSTACLES[type] || OBSTACLES[type].action !== raw.action) {
         throw new Error(`invalid obstacle for ${raw.action}: ${type}`);
       }
+      // A COLUMN IS THE DRONE'S AND THE DUCK'S ALONE. The drone is the only
+      // type with a ladder of altitudes measured against the cast's jumps
+      // (DRONE_COLUMN_ALTS), and stacking a JUMP hazard is not this feature at
+      // all — it is a wall, which is a different decision and not one a chart
+      // may build by accident.
+      //
+      // And it is a RUNG COUNT rather than a height, because the ladder lives
+      // in one place. A chart naming its own altitudes would be authoring them
+      // against a jump table it cannot see. Two or three: one rung is a lone
+      // drone and has its own spelling (no `column` at all), and a fourth would
+      // be inventing a rung nobody measured.
+      if (raw.column != null) {
+        if (raw.action !== 'duck' || type !== 'drone') {
+          throw new Error(`only a drone duck slot may be a column `
+            + `(slot ${raw.slot} is a ${raw.action} of ${type})`);
+        }
+        if (raw.column !== 2 && raw.column !== 3) {
+          throw new Error(`a duck column is two or three rungs, not ${raw.column} (slot ${raw.slot})`);
+        }
+      }
     }
     bySlot[raw.slot] = Object.freeze({ ...raw, type: raw.type || ACTION_TYPES[raw.action] });
   }
@@ -225,6 +302,21 @@ export function validateBeatChart(chart, physics = {}) {
   // chart is in beats. Both ends are speed-independent — the run's length, the
   // pit's approach and the clearance all scale with the lane — so one check
   // covers every speed the cabinet is ever run at.
+  // A CARD BOX MAY NOT STAND IN A HOLE. The box is laid BOX_LEAD_BEATS down the
+  // road, which puts its body four tenths of a beat past the grid line
+  // BOX_BURST_BEATS after its own slot — and a chart pit on that line spans
+  // roughly two to seven tenths past it, so the two would occupy the same
+  // stretch of road. A hole wins that argument (it is the floor), and the box
+  // would be a prop hanging over a void with a shot fired at it. Checkable
+  // without a tempo, because both numbers are in beats.
+  const abilitySlots = bySlot.filter((e) => e.action === 'ability' && e.type);
+  for (const a of abilitySlots) {
+    const landing = bySlot[(a.slot + BOX_BURST_BEATS) % chart.loopBeats];
+    if (landing?.action === 'pit') {
+      throw new Error(`card box at slot ${a.slot} bursts over the hole at slot ${landing.slot}`);
+    }
+  }
+
   if (physics.bpm) {
     const beatSec = 60 / physics.bpm;
     const clearBeats = COIN_RUN_PIT_CLEAR_SEC / beatSec;
@@ -303,11 +395,18 @@ export function actionApproachPx(action, type, speed) {
 
 export class BeatSpawner {
   constructor({ chart, bank, react = 0.25, pitPlan = [], beatNow, playerWorldX,
-    lookaheadBeats = 7, onPitAlign = null } = {}) {
+    lookaheadBeats = 7, onPitAlign = null, canShoot = () => true } = {}) {
     this.chart = validateBeatChart(chart, { bpm: bank?.bpm });
     this.bank = bank || null;
     this.runwayBeats = laneRunwayBeats(this.chart);
     this.react = react;
+    // WHETHER THE HERO IN THE LANE RIGHT NOW OWNS A WEAPON. Asked per box, at
+    // the moment the box would be laid, because a relay swap changes the answer
+    // mid-stage — and a card box in front of Lorenzo is a beat he is being
+    // scored against with no way to answer it. The judge reads the same
+    // decision back off `eventInstances` rather than off the chart, so a beat
+    // this returns false for is a beat nobody is owed (RunState.rhythmRequiredAt).
+    this.canShoot = canShoot;
     this.pitPlan = pitPlan;
     this.beatNow = beatNow || (() => null);
     this.playerWorldX = playerWorldX || ((worldX) => worldX + 56);
@@ -469,11 +568,41 @@ export class BeatSpawner {
       // also mirrored there below: pickup collection is gameplay state, while
       // the ribbon must keep each subdivision alive until its own clock tick.
       if (event.action === 'ability') {
-        if (actionX + 8 > stopX) {
+        // A bare marker still occupies nothing. A typed one lays its card box
+        // BOX_LEAD_BEATS down the road — far enough that the burst two beats
+        // later lands in front of the hero rather than on him.
+        const boxType = event.type || null;
+        const boxDef = boxType ? OBSTACLES[boxType] : null;
+        const lead = boxType ? BOX_LEAD_BEATS * pxPerBeat : 0;
+        const boxW = boxDef?.w || 8;
+        if (actionX + lead + boxW > stopX) {
           this.nextX = stopX;
           return;
         }
-        if (!this._isSuppressed(actionX, event)) {
+        // The loop pass, off the heard clock's own zero, exactly as a coin
+        // fill's cadence is counted — see the `every` note in validateBeatChart
+        // for why a card box is allowed one at all.
+        const pass = Math.floor(this.cursorBeat / this.chart.loopBeats);
+        const skipped = (event.every ?? 1) > 1 && pass % event.every !== 0;
+        // BOTH ENDS ARE CHECKED against the set pieces: the beat the shot is
+        // asked on and the road the box would stand on are two different places
+        // on this cabinet, and a crossing owns the whole stretch between them.
+        const clear = !this._isSuppressed(actionX, event)
+          && !this._isSuppressed(actionX + lead, event);
+        const armed = !skipped && clear && (!boxType || this.canShoot());
+        if (armed) {
+          if (boxType) {
+            const box = makeObstacle(boxType, actionX + lead);
+            box.chartEventId = id;
+            box.chartAction = 'ability';
+            box.chartSlot = event.slot;
+            // The beat the SHOT is asked on, not the beat the box stands on:
+            // it is what the judge scores, what the ribbon draws the pink
+            // circle against, and what the fuse counts from.
+            box.actionBeat = this.cursorBeat;
+            box.actionX = actionX;
+            obstacles.push(box);
+          }
           this.eventInstances.push({
             live: true, chartEventId: id, chartAction: 'ability', chartSlot: event.slot,
             actionBeat: this.cursorBeat, actionX,
@@ -481,7 +610,7 @@ export class BeatSpawner {
         }
         this.lastActionX = actionX;
         this.lastActionKind = event.action;
-        this.nextX = Math.max(this.nextX, actionX);
+        this.nextX = Math.max(this.nextX, actionX + (armed ? lead + boxW : 0));
         this.cursorBeat++;
         continue;
       }
@@ -569,13 +698,32 @@ export class BeatSpawner {
             });
           }
         } else {
-          const ob = makeObstacle(type, x);
-          ob.chartEventId = id;
-          ob.chartAction = event.action;
-          ob.chartSlot = event.slot;
-          ob.actionBeat = this.cursorBeat;
-          ob.actionX = actionX;
-          obstacles.push(ob);
+          // A DUCK SLOT MAY BE A COLUMN, two rungs or three. One drone tops
+          // out at 20 and every hero in the cast jumps 46 or better, so the
+          // lone-drone version of this beat was a slide the player was free to
+          // decline. Three rungs reach 50, which is over the two lowest jumps
+          // in the game; two reach 35, which is a stack that still reads as one
+          // and can still be jumped. See DRONE_COLUMN_ALTS in game/entities.js
+          // for why 50 and not 46 or 54.
+          //
+          // EVERY RUNG CARRIES THE SAME CHART STAMP, and nothing downstream
+          // minds: a duck is judged off the chart rather than off the lane
+          // (RunState.rhythmRequiredAt), the ribbon dedupes its markers by
+          // action and beat (hud.js drawBeatRibbon), and the portal sweep's
+          // consumed-beat key goes into a Set. So the column stays ONE event
+          // everywhere it is read, and only collision sees three boxes.
+          //
+          // The column is no wider than a lone drone either — same X, same 12px
+          // box — so `width` above and `nextX` below are already right for it.
+          const column = event.column ? makeDroneColumn(x, event.column) : [makeObstacle(type, x)];
+          for (const ob of column) {
+            ob.chartEventId = id;
+            ob.chartAction = event.action;
+            ob.chartSlot = event.slot;
+            ob.actionBeat = this.cursorBeat;
+            ob.actionX = actionX;
+            obstacles.push(ob);
+          }
           this.lastActionX = actionX;
           this.lastActionKind = event.action;
         }

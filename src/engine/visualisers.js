@@ -6,6 +6,7 @@ import { screen } from './renderer.js';
 import { TITLE_FONT, onGameFontsChanged, drawText, textWidth } from './sprites.js';
 import { drawToon } from '../sprites/toons.js';
 import { drawApplianceFinish, drawProp, hasProp, propFrames, propFps } from '../sprites/props.js';
+import { drawLCDPanel, lcdScreenFinish } from './stylePacks/index.js';
 
 export const VISUALISER_NAMES = [
   'NEON CATHEDRAL',
@@ -30,9 +31,14 @@ export const VISUALISER_NAMES = [
   'GLASS BLOB EQUALIZER',
   'HALF-PIPE HORIZON',
   'ASTRAL TRAVEL',
+  // RHYTHM BANKRUPTCY's own backdrop, playing to whatever the jukebox is
+  // playing. It is a scene, so it goes in the pack proper — ahead of the DJ,
+  // which deals from everything above it.
+  'CLOCK-IN CITY',
   // Not a scene of its own: a DJ that plays the rest of the pack, one 16-bar
-  // phrase each, and mixes between them on the downbeat. Kept last so every
-  // index above stays where it was.
+  // phrase each, and mixes between them on the downbeat. LAST, always: it
+  // deals the presets above it, so a preset added after it would be a scene
+  // the mixer could never reach.
   'VJ MEGAMIX',
 ];
 
@@ -5862,7 +5868,7 @@ const MEGAMIX_ROSTER = VISUALISER_NAMES.map((_, index) => index).filter((index) 
  * then it must not deal these presets to anything, or the pack draws nothing.
  * tools/build-visualiser.js does both halves.
  */
-export const SPRITE_VISUALISERS = ['ARCADE ART GALLERY', 'TOASTER SKY PARADE'];
+export const SPRITE_VISUALISERS = ['ARCADE ART GALLERY', 'TOASTER SKY PARADE', 'CLOCK-IN CITY'];
 
 // Which presets the pack will DEAL. Not which it can build: createVisualiser
 // stays a plain lookup, because the game's dev menu addresses presets by index
@@ -5887,7 +5893,11 @@ export function isVisualiserExcluded(index) {
 // Presets whose frame is expensive enough that painting two of them at once is a
 // real risk on a phone. With one of these on either deck the mixer sticks to the
 // transitions that only ever paint ONE record per frame.
-const MEGAMIX_HEAVY = new Set(['ACID JULIA DIVE', 'ASTRAL TRAVEL']
+// CLOCK-IN CITY joins them for a different reason from the other two: it is not
+// per-pixel, it is simply a whole city — eight facades, their window grids, the
+// rooftop furniture and a soft-light composite over the lot, around 1500 draw
+// calls a frame. Cheap enough to play; not cheap enough to play twice.
+const MEGAMIX_HEAVY = new Set(['ACID JULIA DIVE', 'ASTRAL TRAVEL', 'CLOCK-IN CITY']
   .map((name) => VISUALISER_NAMES.indexOf(name))
   .filter((index) => index >= 0));
 
@@ -6107,9 +6117,63 @@ export function createHalfPipeLab(seed, track, tune) {
   return new HalfPipeHorizon(seed >>> 0, track, tune);
 }
 
+// ---------------------------------------------------------------- CLOCK-IN CITY
+//
+// RHYTHM BANKRUPTCY's own backdrop, playing to whatever the jukebox is playing.
+//
+// It draws the SAME city the cabinet does, from the same data, through the
+// pack's exported drawLCDPanel — not a copy. A second implementation would
+// have drifted from the real one the first time a billboard moved, and the
+// whole appeal of this preset is that it is the actual place.
+//
+// What the preset supplies is the CLOCK. In a run the city is handed the heard
+// musical beat and how far through the stage the player is; here the beat comes
+// from the analysis (or the track's bpm) and "progress" is invented — the
+// preset walks its own four phases so the light still shifts across a run, and
+// changes CITY every sixteen bars so a long track tours all three panels.
+//
+// The panel is 480x270 in screen space, exactly the frame every other preset
+// paints, so no scaling is involved.
+class ClockInCity extends BaseVisualiser {
+  constructor(seed, track) {
+    super(seed, track);
+    this.name = VISUALISER_NAMES.indexOf('CLOCK-IN CITY') >= 0
+      ? 'CLOCK-IN CITY' : this.name;
+    // Which of the three cities we open on, and which way the tour runs. Seeded
+    // rather than fixed so two shuffles of the same track are not the same show.
+    this.firstCity = 1 + Math.floor(this.rng.next() * 3);
+  }
+
+  update(dt, analysis = {}) {
+    super.update(dt, analysis);
+    // Sixteen bars a city — the same phrase length the megamix holds a deck
+    // for, and long enough that the tower's runner completes several climbs.
+    const phrase = Math.floor(this.beat / 64);
+    this.stageIndex = 1 + lcdCycle(this.firstCity - 1 + phrase, 3);
+    // The run's `progress` is a distance; here it is the walk through the
+    // current city's own sixteen bars, so each panel gets a full day.
+    this.cityProgress = Math.max(0, Math.min(0.999, (this.beat / 64) % 1));
+    this.heard = analysis;
+  }
+
+  draw(ctx) {
+    drawLCDPanel(ctx, {
+      stageIndex: this.stageIndex,
+      beat: this.beat,
+      progress: this.cityProgress,
+      audio: this.heard,
+    });
+    // The screen treatment the cabinet finishes on. Under the jukebox's own
+    // fade this rides frameAlpha like every other preset's final pass.
+    lcdScreenFinish(ctx, this.t);
+  }
+}
+// A positive modulo, local to this preset — visualisers.js has no lcdMod.
+function lcdCycle(n, d) { return ((n % d) + d) % d; }
+
 export function createVisualiser(name, seed, track) {
   const index = typeof name === 'number' ? name : VISUALISER_NAMES.indexOf(name);
-  const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm, EmeraldCodeRain, AcidJuliaDive, HyperVectorTunnel, NebulaRibbonDrift, GlassBlobEqualizer, HalfPipeHorizon, AstralTravel, VjMegamix];
+  const constructors = [NeonCathedral, LiquidChrome, LaserGrid, MonsterReactor, ElectricKaleidoscope, DeepSpaceWormhole, PrismaticStorm, SingularityBloom, HolographicOcean, DataRainAscension, FractalFlame, OscilloscopeOverdrive, ArcadeArtGallery, ToasterSkyParade, ChromaBubblestorm, EmeraldCodeRain, AcidJuliaDive, HyperVectorTunnel, NebulaRibbonDrift, GlassBlobEqualizer, HalfPipeHorizon, AstralTravel, ClockInCity, VjMegamix];
   const Ctor = constructors[Math.max(0, index) % constructors.length];
   return new Ctor(seed >>> 0, track);
 }

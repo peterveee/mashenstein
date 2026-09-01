@@ -10,13 +10,17 @@ const {
   BeatSpawner, validateBeatChart, actionApproachPx, beatEventId,
   pitLayout, pitWindowBeats, laneRunwayBeats, PIT_BEATS, ON_BEAT_WINDOW,
   LANE_RUNWAY_BEATS, PIT_LANE_RUNWAY_BEATS, COIN_DIV,
+  BOX_LEAD_BEATS, BOX_BURST_BEATS,
 } = await import('../src/game/beatchart.js');
 const { worstAirtime, sweepCoinsAroundHole } = await import('../src/game/spawner.js');
 const { randomPowerPickup } = await import('../src/game/powerups.js');
-const { beatRibbonOffset, beatRibbonMarkerOffset } = await import('../src/game/hud.js');
+const { beatRibbonOffset, beatRibbonMarkerOffset, RIBBON_BEAT_PX } = await import('../src/game/hud.js');
 const { RunState } = await import('../src/game/run.js');
 const { STAGES } = await import('../src/data/stages.js');
 const { save } = await import('../src/engine/save.js');
+const { HEROES, heroShoots } = await import('../src/data/heroes.js');
+const { OBSTACLES, DRONE_COLUMN_ALTS, makeDroneColumn } = await import('../src/game/entities.js');
+const { BASE_JUMP_V, GRAVITY, HEAVY_GRAVITY_MULT, PLAYER_H } = await import('../src/game/player.js');
 
 const speed = 232, bpm = 124, pxPerBeat = speed * 60 / bpm;
 let failed = false;
@@ -26,9 +30,9 @@ function assert(cond, msg) {
 }
 
 const expected = {
-  1: 'jump,coin,jump,coin,coin,coin,jump,coin,coin,coin,pit,coin,pit,coin,coin,coin',
-  2: 'coin,duck,jump,coin,pit,coin,pit,coin,coin,duck,jump,coin,pit,coin,pit,coin',
-  3: 'jump,coin,duck,duck,jump,coin,duck,coin,pit,coin,pit,coin,pit,coin,pit,coin',
+  1: 'jump,coin,jump,coin,coin,coin,jump,ability,coin,coin,pit,coin,pit,coin,coin,coin',
+  2: 'coin,duck,jump,ability,pit,coin,pit,coin,coin,duck,jump,coin,pit,coin,pit,coin',
+  3: 'jump,coin,duck,duck,jump,coin,duck,ability,pit,coin,pit,coin,pit,coin,pit,coin',
 };
 for (const [id, chart] of Object.entries(beatCharts)) {
   const valid = validateBeatChart(chart, { bpm });
@@ -118,6 +122,97 @@ try {
   ] }, { bpm });
 } catch { cadenceThrew = true; }
 assert(cadenceThrew, 'only a coin fill may skip loops — a skipped jump would desync the judge');
+
+// ---- THE CARD BOX ----------------------------------------------------------
+// The shootable prop, and the only entity in the game whose destruction is
+// quantized. Everything here is arithmetic on the two constants, so it holds at
+// any tempo and for every weapon in the cast.
+{
+  const boxes = [];
+  for (const [id, chart] of Object.entries(beatCharts)) {
+    const own = chart.events.filter((e) => e.action === 'ability' && e.type === 'cardBox');
+    boxes.push(...own);
+    assert(own.length === 1, `rhythm-${id} deals exactly one card box a loop (${own.length})`);
+    // OCCASIONAL, and that is a design claim rather than a taste: a box every
+    // loop would make the ability button part of the stage's baseline.
+    assert(own.every((e) => (e.every ?? 1) >= 2),
+      `rhythm-${id} keeps the box to at most every other loop`);
+    // The burst lands BOX_BURST_BEATS on, and a hole on that line would put the
+    // box in the void — the validator refuses it, and no authored chart tries.
+    assert(own.every((e) =>
+      chart.events[(e.slot + BOX_BURST_BEATS) % chart.loopBeats].action !== 'pit'),
+    `rhythm-${id} opens its box over road, not over a hole`);
+  }
+  assert(boxes.length === 3, 'every stage in the cabinet deals the box');
+
+  // THE FUSE IS LONG ENOUGH FOR THE SLOWEST GUN AND SHORT ENOUGH TO STAY A
+  // FUSE. Flight time in beats is LEAD * speed / (speed + shot), which is why
+  // the spread exists at all: the rounds are not the same speed. Checked
+  // against both ends of the cast, at both ends of the speed range the cabinet
+  // is ever run at, with a late press on top.
+  const shots = [
+    ['kiko + REASONABLE FORCE', 170 * 0.72],
+    ['kiko', 170],
+    ['grumpos (axe)', 220],
+    ['b33p', 260],
+    ['clara', 340],
+    ['clara + SERIALIZED', 340 * 1.25],
+  ];
+  for (const sp of [208, 232]) {
+    for (const [who, shot] of shots) {
+      const flight = BOX_LEAD_BEATS * sp / (sp + shot);
+      assert(flight + ON_BEAT_WINDOW < BOX_BURST_BEATS,
+        `${who}'s round reaches the box before it opens at ${sp}px/s `
+        + `(${flight.toFixed(2)} + ${ON_BEAT_WINDOW} < ${BOX_BURST_BEATS})`);
+    }
+  }
+  // WHO IS DEALT ONE AT ALL. Four heroes, and the boundary is a range decision:
+  // a thrown weapon parks after a fixed FLIGHT TIME, and the rocket fist's
+  // 0.42s does not cover the box's lead at this cabinet's speed. See
+  // RANGED_ABILITY_TYPES.
+  for (const [id, can] of [['b33p', true], ['clara', true], ['kiko', true], ['grumpos', true],
+    ['raymn', false], ['lorenzo', false], ['gnash', false], ['fernwick', false]]) {
+    assert(heroShoots(id) === can,
+      `${id} is ${can ? '' : 'not '}dealt a card box`);
+  }
+  // The cabinet's own lane speed: BASE_SPEED 160 times RHYTHM BANKRUPTCY's 1.3.
+  // A thrown weapon parks after a fixed flight TIME, so its reach in pixels is
+  // (lane + throw) times that time, against a box standing BOX_LEAD_BEATS out.
+  {
+    const sp = 208;
+    const lead = BOX_LEAD_BEATS * (sp * 60 / bpm) - 12;   // muzzle sits 12px ahead of the hero
+    assert((sp + 220) * 0.55 >= lead,
+      `the axe reaches the box it is thrown at (${((sp + 220) * 0.55).toFixed(0)} >= ${lead.toFixed(0)}px)`);
+    assert((sp + 210) * 0.42 < lead,
+      `and the rocket fist would stop ${(lead - (sp + 210) * 0.42).toFixed(0)}px short, which is why it is excluded`);
+  }
+  // And the box is still IN FRONT of the hero when it goes, or the explosion
+  // happens behind him.
+  assert(BOX_LEAD_BEATS > BOX_BURST_BEATS,
+    `the box stands ${(BOX_LEAD_BEATS - BOX_BURST_BEATS).toFixed(1)} of a beat past the hero when it opens`);
+}
+let boxTypeThrew = false;
+try {
+  validateBeatChart({ loopBeats: 2, events: [
+    { slot: 0, action: 'ability', type: 'crate' }, { slot: 1, action: 'coin' },
+  ] }, { bpm });
+} catch { boxTypeThrew = true; }
+assert(boxTypeThrew, 'an ability slot may only name a prop built to be shot on a grid');
+let bareCadenceThrew = false;
+try {
+  validateBeatChart({ loopBeats: 2, events: [
+    { slot: 0, action: 'ability', every: 2 }, { slot: 1, action: 'coin' },
+  ] }, { bpm });
+} catch { bareCadenceThrew = true; }
+assert(bareCadenceThrew, 'a bare ability marker has no box to skip');
+let boxOverPitThrew = false;
+try {
+  validateBeatChart({ loopBeats: 4, events: [
+    { slot: 0, action: 'ability', type: 'cardBox' }, { slot: 1, action: 'coin' },
+    { slot: 2, action: 'pit' }, { slot: 3, action: 'coin' },
+  ] }, { bpm });
+} catch { boxOverPitThrew = true; }
+assert(boxOverPitThrew, 'the validator refuses a box that would open over a hole');
 let lureThrew = false;
 try {
   // A four-coin fill on the beat before a hole: the tail stands well inside the
@@ -209,9 +304,13 @@ assert(Math.abs(firstHole.w - pitLayout(speed, bpm).w) < 1e-9
     || Math.abs((pk.actionBeat - fill[i - 1].actionBeat) - 1 / COIN_DIV) < 1e-9),
     'and exposes those same even subdivisions to the beat ribbon');
   const ribbonXs = fill.map((pk) => beatRibbonOffset(pk.actionBeat, 4.5));
-  assert(ribbonXs.every((x, i) => i === 0 || Math.abs((x - ribbonXs[i - 1]) - 26 / COIN_DIV) < 1e-9),
-    'the ribbon keeps a coin fill evenly spaced in musical coordinates');
-  assert(Math.abs(beatRibbonOffset(5, 4.51) - beatRibbonOffset(5, 4.5) + 0.26) < 1e-9,
+  assert(ribbonXs.every((x, i) => i === 0
+    || Math.abs((x - ribbonXs[i - 1]) - RIBBON_BEAT_PX / COIN_DIV) < 1e-9),
+  'the ribbon keeps a coin fill evenly spaced in musical coordinates');
+  // A hundredth of a beat is a fraction of a pixel at any scale the strip is
+  // ever drawn at, so this stays a sub-pixel step whatever RIBBON_SCALE says.
+  const step = beatRibbonOffset(5, 4.51) - beatRibbonOffset(5, 4.5);
+  assert(Math.abs(step + RIBBON_BEAT_PX / 100) < 1e-9 && Math.abs(step) < 1,
     'the ribbon advances by fractional pixels instead of whole-pixel steps');
   const fillTiming = spawner.eventInstances.filter((e) => e.formationId === fillId)
     .sort((a, b) => a.actionBeat - b.actionBeat);
@@ -271,6 +370,45 @@ blocked.fill(0, speed, blockedObs, blockedPickups, () => 50, 300);
 assert(blockedObs.length === 0 && blockedPickups.every((p) => p.x + 8 <= 300),
   'finish wall treats the next chart event as an all-or-nothing boundary');
 
+// ---- THE LANE LAYS A BOX ONLY FOR A HERO WHO CAN ANSWER IT -----------------
+// Both halves of the contract, on the same chart and the same clock: the box
+// stands BOX_LEAD_BEATS down the road stamped with the beat the SHOT is asked
+// on, and a lane running for a hero with no weapon lays neither the box nor the
+// instance the judge reads its demand off (RunState.rhythmRequiredAt).
+{
+  const armedObs = [], armedPickups = [];
+  const armed = new BeatSpawner({
+    chart: beatCharts[1], bank: { bpm }, beatNow: () => 0,
+    playerWorldX: (x) => x + 56, lookaheadBeats: 10, canShoot: () => true,
+  });
+  armed.fill(0, speed, armedObs, armedPickups, () => 50);
+  const box = armedObs.find((o) => o.type === 'cardBox');
+  assert(box && box.chartAction === 'ability' && box.chartSlot === 7,
+    'a shooter gets the card box its chart slot promises');
+  assert(box && box.actionBeat === 7,
+    'and it carries the beat the SHOT is asked on, not the beat it stands on');
+  assert(box && Math.abs(box.x - (box.actionX + BOX_LEAD_BEATS * pxPerBeat)) < 1e-6,
+    `the box stands ${BOX_LEAD_BEATS} beats past the input, so its burst lands ahead of the hero`);
+  assert(armed.eventInstances.some((e) => e.chartAction === 'ability' && e.actionBeat === 7),
+    'and the lane records the slot it laid, which is what the judge scores against');
+
+  const bareObs = [], barePickups = [];
+  const bare = new BeatSpawner({
+    chart: beatCharts[1], bank: { bpm }, beatNow: () => 0,
+    playerWorldX: (x) => x + 56, lookaheadBeats: 10, canShoot: () => false,
+  });
+  bare.fill(0, speed, bareObs, barePickups, () => 50);
+  assert(!bareObs.some((o) => o.type === 'cardBox'),
+    'a hero with no weapon is never handed a box to shoot');
+  assert(!bare.eventInstances.some((e) => e.chartAction === 'ability'),
+    'and is owed nothing for the beat, so the combo survives a slot they cannot play');
+  // Everything else about the loop is untouched — the box is an addition to the
+  // lane, not a fork in it.
+  assert(bareObs.filter((o) => o.type === 'beatBar').length
+    === armedObs.filter((o) => o.type === 'beatBar').length,
+  'and the rest of the chart is identical either way');
+}
+
 const crossingPit = { x: 4000, w: 200, crossing: { jumps: 5, stones: [] }, done: false };
 let crossingBeat = 0;
 const crossingSpawner = new BeatSpawner({ chart: beatCharts[2], bank: { bpm }, beatNow: () => crossingBeat,
@@ -315,6 +453,80 @@ Audio.songBeat = oldSongBeat;
   for (let i = 0; i < 40; i++) retryRun.update(1 / 60);
   assert(!retryRun.rhythmSyncPending && retryRun.distance > 0,
     'the retry resumes only after an atomic beat re-anchor');
+  Audio.songBeat = oldSongBeat;
+  Audio.sourceBank = oldSourceBank;
+}
+
+// ---- THE CARD BOX, PLAYED --------------------------------------------------
+// The two guarantees the mechanic actually makes, exercised on a real run: a
+// slot played on the beat opens its box on the beat, whichever of the four
+// weapons is in the lane; and a hero who owns none of them is never asked.
+{
+  const oldSourceBank = Audio.sourceBank;
+  const oldSongBeat = Audio.songBeat;
+  const stage = STAGES.find((s) => s.id === 'rhythm-1');
+  const loopBeats = beatCharts[1].loopBeats;
+
+  for (const [hero, mod] of [['b33p', null], ['clara', 'serial'], ['kiko', 'force'], ['grumpos', null]]) {
+    save.load(); save.newSlot(0, 0);
+    const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
+    run.enter();
+    if (mod) run.modIds.push(mod);
+    Audio.sourceBank = run.cabinet.music;
+    let songTime = 0;
+    Audio.songBeat = () => ((songTime * bpm / 60) % loopBeats);
+    run.relay.current = hero;
+    let box = null, fired = false, litAt = null, burstAt = null;
+    for (let i = 0; i < 60 * 40; i++) {
+      songTime += 1 / 60;
+      run.update(1 / 60);
+      const b = run.rhythmBeatForJudging();
+      if (!box) box = run.obstacles.find((o) => o.type === 'cardBox' && o.live) || null;
+      if (!fired && box && Math.abs(b - box.actionBeat) < 0.01) {
+        run.player.abilityCd = 0;
+        if (run.useAbility() && run.checkOnBeat('ability')) run.lightChartBoxOnBeat();
+        fired = true;
+      }
+      if (box && litAt == null && box.burstBeat != null) litAt = b;
+      if (box && !box.live && burstAt == null) { burstAt = b; break; }
+    }
+    const who = mod ? `${hero} + ${mod.toUpperCase()}` : hero;
+    assert(box && fired, `${who} is dealt a card box and can play its slot`);
+    // ARMED BY THE PRESS, not by the arrival: the fastest and slowest weapons in
+    // the cast light the box on the same beat as each other.
+    assert(litAt != null && Math.abs(litAt - box.actionBeat) < 0.06,
+      `${who} lights the box on the beat they pressed (${litAt?.toFixed(2)} vs ${box.actionBeat})`);
+    assert(box.burstBeat === box.actionBeat + BOX_BURST_BEATS,
+      `${who}'s box is owed beat ${box.actionBeat + BOX_BURST_BEATS}`);
+    assert(burstAt != null && Math.abs(burstAt - box.burstBeat) < 0.06,
+      `${who}'s box opens on that beat and not a frame's drift off it (${burstAt?.toFixed(2)})`);
+    assert(run.beatCombo === 1, `${who} is paid the on-beat credit for it`);
+  }
+
+  // And the other half of the contract: a hero with no ranged answer meets no
+  // box, and the beat they cannot play does not cost them the combo they built.
+  for (const hero of ['lorenzo', 'raymn']) {
+    save.load(); save.newSlot(0, 0);
+    const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
+    run.enter();
+    Audio.sourceBank = run.cabinet.music;
+    let songTime = 0;
+    Audio.songBeat = () => ((songTime * bpm / 60) % loopBeats);
+    run.relay.current = hero;
+    let sawBox = false, broke = false;
+    for (let i = 0; i < 60 * 12; i++) {
+      songTime += 1 / 60;
+      run.update(1 / 60);
+      const b = run.rhythmBeatForJudging();
+      if (run.obstacles.some((o) => o.type === 'cardBox' && o.live)) sawBox = true;
+      // Held across the box's own beat only; every other slot on this chart is
+      // a jump this harness never makes.
+      if (b > 6.5 && b < 7.9) { if (run.beatCombo < 5) broke = true; } else run.beatCombo = 5;
+      if (b > 9) break;
+    }
+    assert(!sawBox, `${hero} is never handed a box they cannot open`);
+    assert(!broke, `and keeps their combo through the slot the chart wrote for someone else`);
+  }
   Audio.songBeat = oldSongBeat;
   Audio.sourceBank = oldSourceBank;
 }
@@ -420,6 +632,132 @@ assert(typeof offBeat === 'function' && (offBeat(), Audio.beatListeners.length =
   'onBeat returns an unsubscribe that detaches the listener');
 assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length === beforeBeatListeners,
   'onBeat ignores a non-function and still returns a no-op unsubscribe');
+
+// ---- THE DUCK COLUMN --------------------------------------------------------
+// A lone drone was never a duck. Its box tops out at 20 and the shortest jump
+// in the cast reaches 46, so a duck slot could be answered with the jump button
+// by every hero in the game. A column of three reaches 50 and takes that away
+// from the two heaviest. These assertions are the arithmetic that number rests
+// on, checked against the real cast rather than restated as a constant.
+{
+  // Feet-height at the top of a full jump, per hero. `heavy` is a GRAVITY
+  // multiplier rather than a jump one, which is why jumpHeightFor (which does
+  // not know about it) cannot be used here: Grumpos jumps at mult 1.0 and still
+  // only reaches 46.
+  const apex = (hero) => (BASE_JUMP_V * hero.jumpMult) ** 2
+    / (2 * GRAVITY * (hero.heavy ? HEAVY_GRAVITY_MULT : 1));
+  const drone = OBSTACLES.drone;
+  const top = DRONE_COLUMN_ALTS[DRONE_COLUMN_ALTS.length - 1] + drone.h;
+  const heroes = Object.values(HEROES);
+  const denied = heroes.filter((h) => apex(h) < top);
+  const cleared = heroes.filter((h) => apex(h) >= top);
+  assert(top === 50, `the column tops out at 50 (got ${top})`);
+  assert(denied.length === 2 && denied.every((h) => h.id === 'b33p' || h.id === 'grumpos'),
+    `exactly B-33P and Grumpos cannot jump the column (got ${denied.map((h) => h.id).join()})`);
+  // MARGIN, not a coincidence. A ceiling level with somebody's apex is a
+  // coin-flip on a pixel rather than a decision, so the column has to stand
+  // clear of the table in BOTH directions — see the rung note in entities.js
+  // for why that leaves 50 and nothing else.
+  assert(denied.every((h) => top - apex(h) >= 3),
+    'and it stands clear of their apex rather than level with it');
+  assert(cleared.every((h) => apex(h) - top >= 3),
+    'while everyone who clears it clears it by a real margin');
+
+  // THE GAPS ARE NOT DOORS. An airborne hero is PLAYER_H tall — jumpPressed
+  // clears `ducking` and mid-air Down is a slide-slam, so the box never shrinks
+  // in the air — and every gap here is smaller than that. Nothing can be
+  // threaded between the rungs, which is what makes the height honest.
+  const gaps = DRONE_COLUMN_ALTS.slice(1)
+    .map((alt, i) => alt - (DRONE_COLUMN_ALTS[i] + drone.h));
+  assert(gaps.every((g) => g > 0), 'the rungs are spaced rather than touching');
+  assert(gaps.every((g) => g < PLAYER_H),
+    `no rung gap is a hole an airborne hero fits through (${gaps.join()} < ${PLAYER_H})`);
+  // The bottom rung IS the duck contract: it has to sit where a slide clears it
+  // and a stand does not, which is the drone's own authored altitude and not a
+  // number this ladder gets to choose.
+  assert(DRONE_COLUMN_ALTS[0] === drone.alt,
+    'the bottom rung keeps the drone\'s own altitude');
+
+  const column = makeDroneColumn(400);
+  assert(column.length === DRONE_COLUMN_ALTS.length
+    && column.every((ob, i) => ob.alt === DRONE_COLUMN_ALTS[i]),
+    'makeDroneColumn stacks one body per rung');
+  // TWO RUNGS IS THE FORGIVING ONE, and the arithmetic says so rather than the
+  // comment: a pair stops short of every apex in the cast, so it reads as a
+  // stack without taking the jump away. That is what makes it the teach.
+  const pair = makeDroneColumn(400, 2);
+  const pairTop = DRONE_COLUMN_ALTS[1] + drone.h;
+  assert(pair.length === 2 && pair[0].alt === DRONE_COLUMN_ALTS[0],
+    'a two-rung column is the bottom of the same ladder');
+  assert(heroes.every((h) => apex(h) > pairTop),
+    `and every hero in the cast can still jump it (top ${pairTop})`);
+  assert(column.every((ob) => ob.x === 400 && ob.w === drone.w && ob.def.action === 'duck'),
+    'every rung shares the column\'s X and asks for the same input');
+  assert(column.every((ob) => ob.bobPhase === column[0].bobPhase && ob.skin === column[0].skin),
+    'and shares its bob phase and body, so the stack moves as one machine');
+  assert(column.filter((ob) => !ob.columnRung).length === 1,
+    'exactly one rung marks the lane, so the shadow is not painted three times');
+}
+{
+  // The lane end of it: a `column: true` slot arrives as three boxes carrying
+  // ONE event, which is what lets the judge, the ribbon and the portal sweep go
+  // on treating a duck beat as a single thing.
+  let beat = 0;
+  const obs = [], picks = [];
+  const columnSpawner = new BeatSpawner({
+    chart: beatCharts[3], bank: { bpm }, beatNow: () => beat,
+    playerWorldX: (x) => x + 56, lookaheadBeats: 7,
+  });
+  for (let i = 0; i <= 40; i++) {
+    beat = i;
+    columnSpawner.fill(beat * pxPerBeat, speed, obs, picks, () => 50);
+  }
+  const ducks = obs.filter((o) => o.chartAction === 'duck');
+  assert(ducks.length > 0 && ducks.every((o) => o.type === 'drone'),
+    'the finale lays drones on its duck beats');
+  const byEvent = new Map();
+  for (const o of ducks) byEvent.set(o.chartEventId, [...(byEvent.get(o.chartEventId) || []), o]);
+  assert([...byEvent.values()].every((g) => g.length === DRONE_COLUMN_ALTS.length),
+    'every duck slot on the finale reaches the lane as a full column');
+  assert([...byEvent.values()].every((g) => g.every((o) =>
+    o.x === g[0].x && o.actionBeat === g[0].actionBeat && o.chartSlot === g[0].chartSlot)),
+    'and its rungs share one X, one beat and one slot');
+  assert([...byEvent.values()].every((g) =>
+    g.map((o) => o.alt).sort((a, b) => a - b).join() === DRONE_COLUMN_ALTS.join()),
+    'stacked at the authored altitudes');
+
+  // Stage 2 teaches with a LONE drone before it asks with a column. The escape
+  // hatch on the first one the player ever meets is the point of it.
+  const teach = beatCharts[2].events.filter((e) => e.action === 'duck');
+  assert(teach.length === 2 && teach[0].column === 2 && teach[1].column === 3,
+    'stage 2 teaches with two rungs and answers with three');
+  assert(beatCharts[3].events.filter((e) => e.action === 'duck').every((e) => e.column === 3),
+    'and the finale asks for the slide on every duck beat it has');
+  // NO LONE DRONES ON THE CABINET. One drone is a duck beat that can be
+  // answered with the jump button, which is the whole thing this replaced.
+  for (const [id, chart] of Object.entries(beatCharts)) {
+    assert(chart.events.filter((e) => e.action === 'duck').every((e) => e.column >= 2),
+      `rhythm-${id} lays no lone drone on a duck beat`);
+  }
+}
+{
+  // A column is the duck's and the drone's alone.
+  const refuses = (events, why) => {
+    let threw = false;
+    try { validateBeatChart({ loopBeats: events.length, events }); } catch { threw = true; }
+    assert(threw, why);
+  };
+  refuses([{ slot: 0, action: 'jump', type: 'beatBar', column: 3 }, { slot: 1, action: 'coin' }],
+    'the validator refuses a column on a jump slot');
+  refuses([{ slot: 0, action: 'duck', type: 'drone', column: 4 }, { slot: 1, action: 'coin' }],
+    'and refuses a rung nobody measured a jump against');
+  refuses([{ slot: 0, action: 'duck', type: 'drone', column: true }, { slot: 1, action: 'coin' }],
+    'and refuses a column that will not say how tall it is');
+  const ok = validateBeatChart({ loopBeats: 2, events: [
+    { slot: 0, action: 'duck', type: 'drone', column: 3 }, { slot: 1, action: 'coin' },
+  ] });
+  assert(ok.events[0].column === 3, 'but carries an honest one through to the lane');
+}
 
 let reads = 0;
 const fakeRng = { float: () => { reads++; return 0.45; }, pick: (xs) => { reads++; return xs[0]; } };

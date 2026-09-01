@@ -3,8 +3,13 @@
 // Appliance spots are FIXED per stage (fraction of stage distance + height),
 // so memory and guides work; connective obstacle runs are seeded per attempt.
 
+// Grouped by act. Rhythm is the one cabinet that does not take its act's
+// length: its stages are charted against the song (songs/rhythm.js lays holes
+// and bars on the grid for the whole run), so a 60-second lap would cut the
+// chart short. It closes Act I long, which also gives the act's boss stage a
+// step up in scale rather than a step sideways.
 const CAB_DURATION = {
-  plumber: 60, speed: 60, rhythm: 60,
+  plumber: 60, speed: 60, rhythm: 90,
   frost: 90, crypt: 90, neon: 90,
   cardboard: 120, office: 120, surge: 120,
 };

@@ -16,8 +16,9 @@ import { toonFaceSprite } from '../sprites/toons.js';
 import { drawProp } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
-import { specialMoveColor } from './draw.js';
+import { specialMoveColor, HERO_CENTER_OFF } from './draw.js';
 import { Input, TOUCH_JUMP_FRAC } from '../engine/input.js';
+import { PLAYER_X } from './player.js';
 import { formatCoins } from './progress.js';
 import { Audio } from '../engine/audio.js';
 
@@ -30,19 +31,92 @@ const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 // to be drawn straight through Lorenzo's lines on a rhythm stage.
 //
 // It rides IN LINE with the objective panels' BONUS row now rather than on a
-// full-width bar below them: markers never live more than four beats (104px)
-// from the centre line, so a frame-wide strip was mostly empty plastic, and
-// giving that band back is what let the land rise. Half the frame wide,
-// centred, and it FADES OUT at both ends instead of stopping — a marker
-// materialises out of the right-hand fade as its beat approaches.
-const RIBBON_Y = 27, RIBBON_H = 9, RIBBON_BEAT_PX = 26;
-// Half the strip's span, and how much of each end is fade. 120 keeps the whole
-// strip clear of the CLARA pill on the left and the GOAL/BONUS panels on the
-// right; 40 puts full ink under everything within three beats of the line.
-const RIBBON_HALF_W = 120, RIBBON_FADE = 40;
+// full-width bar below them: a frame-wide strip was mostly empty plastic, and
+// giving that band back is what let the land rise. It FADES OUT at both ends
+// instead of stopping — a marker materialises out of the right-hand fade as
+// its beat approaches.
+//
+// THE PLAYHEAD STANDS OVER THE HERO, not at the centre of the frame. Centred,
+// it was 184px to his right: the player has to watch the hero, so reading the
+// beat cost a glance up AND across, and the two things that must be timed
+// together sat at opposite ends of one look. Anchored to PLAYER_X the strip is
+// a ceiling directly above him and the future runs off to the right — the same
+// direction the world arrives from, so the strip and the ground now agree.
+//
+// EVERY DIMENSION ON THE STRIP IS RIBBON_SCALE TIMES A UNIT, and the unit is
+// the size the strip was drawn at when it lived centre-frame. That is not
+// tidiness for its own sake: the glyphs are the whole readout, and at 1x a coin
+// tick is a 3px square. The screen fits its 480-wide backbuffer to a phone by
+// height, so a landscape iPhone renders about 1.4 CSS px per logical px — that
+// square lands at 4 CSS px, under a thumb, on the one device where the player
+// is closest to the panel and least able to squint at it. Scale is the only
+// honest fix; nudging one glyph up leaves the rest of the strip behind it.
+//
+// Scaling the BEAT SPACING with the glyphs and not just the glyphs is what
+// keeps a coin fill legible: fills subdivide to COIN_DIV per beat, so the gap
+// between two sixteenths is beatPx/4 and the tick has to stay small against it.
+// Grow one without the other and a fill closes into a bar.
+const RIBBON_SCALE = 2;
+const RIBBON_Y = 27, RIBBON_H = Math.round(9 * RIBBON_SCALE);
+export const RIBBON_BEAT_PX = Math.round(26 * RIBBON_SCALE);
+// Where the playhead stands, in the OVERLAY's unscaled 480x270 space — which is
+// not PLAYER_X, because the world is drawn through the camera's zoom and the
+// overlay is not. The hero's own draw does `heroScreenX() * z` (see
+// run.heroScreenRect), so on a stage sitting at 2.08x he lands at 129 and a
+// playhead pinned to 56 would miss him by half the strip. Same arithmetic here,
+// off the centre of his 12px slot rather than its left edge.
+//
+// PLAYER_X and not run.heroScreenX(): that one moves for the intro run, the
+// finish and a pit death, and a playhead that slides out from under the hero as
+// he crosses the line is worse than one that never claimed to follow him.
+//
+// A mirrored run reverses the whole frame, so it reverses this too: the future
+// has to run off toward the side the world is arriving from, or the strip and
+// the ground disagree about which way time points.
+function ribbonAnchor(run) {
+  const cx = (PLAYER_X + HERO_CENTER_OFF) * (run.camZoom || 1);
+  return run.mirror ? W - cx : cx;
+}
+// The window in beats behind and ahead, and the fade at each end. The strip is
+// asymmetric because the player's attention is: everything to be acted on is
+// ahead, and the beat behind is not slack but the missed marker's one-beat
+// trail (see beatRibbonMarkerOffset) — without it a marker annihilates against
+// a wall instead of travelling THROUGH the line. A marker crosses in at zero ink at
+// the far edge of its own lookahead; see RIBBON_FADE_BACK for why it does not
+// leave the same way.
+//
+// THE AHEAD FIGURE IS SET BY THE FRAME, not by the clock, and the frame's last
+// word is the BONUS panel. At the normal zoom the playhead stands at 99 and
+// that panel's left edge is around 341, so 4.5 beats runs the plate out to 333
+// and stops it a hair short of the furniture. It went to 6.5 first, which put
+// the midpoint at 242 of 480 — centred to the pixel, and wrong, because the
+// last 96px of it were behind the BONUS panel and what you actually saw was a
+// strip that petered out under a sign. Ending where the sky ends beats being
+// symmetrical about a middle nobody can see.
+//
+// So the plate is NOT centred in the frame, and cannot be: its zero is pinned
+// over a hero who stands a fifth of the way across. The lopsidedness is the
+// point — everything to be acted on is ahead, and the beat behind is not slack
+// but the missed marker's trail (see beatRibbonMarkerOffset). 4.5 beats is
+// ~2.2s of warning at 124bpm, against the ~1.6s of runway the ground itself
+// shows once the speed ramp is at its cap.
+const RIBBON_BACK_BEATS = 1, RIBBON_AHEAD_BEATS = 4.5;
+// The fades are NOT the same width, because the two ends are not the same
+// length. A one-beat fade on a one-beat back end is a plate whose left half
+// never reaches full ink at all: it ramps from nothing to solid exactly at the
+// playhead, so the eye never finds the left edge and reads the strip as
+// starting somewhere around the hero — while the right end carries 286px of
+// solid ink before its own fade begins. Geometrically centred, perceptually
+// shoved into the right of the frame. A short fade back and a long one forward
+// puts the visible mass where the plate actually is.
+const RIBBON_FADE_BACK = Math.round(0.35 * RIBBON_BEAT_PX);
+const RIBBON_FADE_AHEAD = RIBBON_BEAT_PX;
+const RIBBON_PLATE = 'rgba(16,20,28,0.55)';
+const RIBBON_BACK_W = RIBBON_BACK_BEATS * RIBBON_BEAT_PX;
+const RIBBON_AHEAD_W = RIBBON_AHEAD_BEATS * RIBBON_BEAT_PX;
 // The pulse marker overhangs the strip by two units at each end (see the gold
 // bar below), so the band is taller than the plate it is painted on.
-export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + 2;
+export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + 2 * RIBBON_SCALE;
 // Where a speech card's first ROW goes when the beat lane is up. drawSpeech
 // hangs its plate four units above the row it is handed, so clearing the ribbon
 // means clearing it by four more than it looks — plus three of air, or the card
@@ -67,13 +141,13 @@ export function beatRibbonOffset(actionBeat, currentBeat, beatPx = RIBBON_BEAT_P
 export function beatRibbonMarkerOffset(action, actionBeat, currentBeat,
   consumed = false, beatPx = RIBBON_BEAT_PX) {
   const dx = beatRibbonOffset(actionBeat, currentBeat, beatPx);
-  if (dx == null || dx > beatPx * 4) return null;
+  if (dx == null || dx > beatPx * RIBBON_AHEAD_BEATS) return null;
   if (action === 'coin') return dx >= 0 ? dx : null;
   if (consumed || dx < -beatPx) return null;
   return dx;
 }
 
-function drawBeatRibbon(ctx, run) {
+export function drawBeatRibbon(ctx, run) {
   if (!run.beatLock || run.paused || run.dead || run.finishing || run.introRunning
     || run.introFreeze > 0 || run.zoneCard || run.rhythmSyncPending) return;
   const beat = run.rhythmBeatNow?.();
@@ -83,34 +157,50 @@ function drawBeatRibbon(ctx, run) {
   // loop instead of falling back to world-space reconstruction.
   const currentBeat = beat + (run.spawner?.beatEpoch || 0);
   const beatPhase = ((currentBeat % 1) + 1) % 1;
-  const y = RIBBON_Y, h = RIBBON_H, center = W / 2, beatPx = RIBBON_BEAT_PX;
-  // How much ink an element at `dx` from the centre line gets: full inside the
-  // body of the strip, ramping to nothing across the last RIBBON_FADE px. Every
-  // tick and marker takes it, so nothing ever pops against a strip that fades.
-  const edgeFade = (dx) => Math.max(0, Math.min(1, (RIBBON_HALF_W - Math.abs(dx)) / RIBBON_FADE));
+  const y = RIBBON_Y, h = RIBBON_H, beatPx = RIBBON_BEAT_PX;
+  const anchor = ribbonAnchor(run), dir = run.mirror ? -1 : 1, u = RIBBON_SCALE;
+  // The band's midline and the arrows' half-height, named once: every glyph
+  // hangs off these two rather than off the plate's top edge.
+  const mid = y + h / 2, ARROW_H = 2.5 * u;
+  // How much ink an element at `dx` from the playhead gets: full inside the
+  // body of the strip, ramping to nothing across the last RIBBON_FADE px of
+  // whichever end it is approaching. Every tick and marker takes it, so nothing
+  // ever pops against a strip that fades.
+  const edgeFade = (dx) => Math.max(0, Math.min(1, dx >= 0
+    ? (RIBBON_AHEAD_W - dx) / RIBBON_FADE_AHEAD
+    : (RIBBON_BACK_W + dx) / RIBBON_FADE_BACK));
   ctx.save();
-  const back = ctx.createLinearGradient(center - RIBBON_HALF_W, 0, center + RIBBON_HALF_W, 0);
-  const fadeStop = RIBBON_FADE / (2 * RIBBON_HALF_W);
+  // Built along the strip's own axis — back end to front end — so a mirrored
+  // run gets the gradient reversed for free rather than a second copy of it.
+  const tail = anchor - dir * RIBBON_BACK_W, head = anchor + dir * RIBBON_AHEAD_W;
+  const span = RIBBON_BACK_W + RIBBON_AHEAD_W;
+  const back = ctx.createLinearGradient(tail, 0, head, 0);
+  const fadeStop = RIBBON_FADE_BACK / span, fadeStopAhead = RIBBON_FADE_AHEAD / span;
+  // Translucent, not a black bar. At full strength a strip this long stopped
+  // being chrome and became a hole in the sky — the widest, heaviest object in
+  // the frame, sitting over the prettiest part of the stage. It only has to
+  // hold the markers legible, and the markers are gold, cyan, pink and near
+  // white against it, so it can give most of the scene back and still do that.
   back.addColorStop(0, 'rgba(16,20,28,0)');
-  back.addColorStop(fadeStop, 'rgba(16,20,28,0.92)');
-  back.addColorStop(1 - fadeStop, 'rgba(16,20,28,0.92)');
+  back.addColorStop(fadeStop, RIBBON_PLATE);
+  back.addColorStop(1 - fadeStopAhead, RIBBON_PLATE);
   back.addColorStop(1, 'rgba(16,20,28,0)');
   ctx.fillStyle = back;
-  ctx.fillRect(center - RIBBON_HALF_W, y, RIBBON_HALF_W * 2, h);
-  ctx.strokeStyle = 'rgba(72,224,200,0.18)';
-  ctx.lineWidth = 1;
-  for (let i = -5; i <= 5; i++) {
+  ctx.fillRect(Math.min(tail, head), y, span, h);
+  ctx.strokeStyle = 'rgba(72,224,200,0.26)';
+  ctx.lineWidth = Math.max(1, Math.round(RIBBON_SCALE));
+  for (let i = -RIBBON_BACK_BEATS; i <= RIBBON_AHEAD_BEATS; i++) {
     const dx = i * beatPx - beatPhase * beatPx;
     const a = edgeFade(dx);
     if (a <= 0) continue;
-    const x = center + dx;
+    const x = anchor + dir * dx;
     ctx.globalAlpha = 0.92 * a;
-    ctx.beginPath(); ctx.moveTo(x + 0.5, y + 2); ctx.lineTo(x + 0.5, y + h - 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + 0.5, y + 2 * u); ctx.lineTo(x + 0.5, y + h - 2 * u); ctx.stroke();
   }
   ctx.globalAlpha = 0.92;
   const pulse = Audio.musicAnalysis?.()?.beatPulse || 0;
   ctx.fillStyle = `rgba(246,211,60,${0.35 + pulse * 0.5})`;
-  ctx.fillRect(center - 1, y - 2, 3, h + 4);
+  ctx.fillRect(anchor - 1.5 * u, y - 2 * u, 3 * u, h + 4 * u);
   const markers = [];
   const markerKeys = new Set();
   const addMarker = (action, actionBeat) => {
@@ -149,19 +239,27 @@ function drawBeatRibbon(ctx, run) {
     const a = edgeFade(dx);
     if (a <= 0) continue;
     ctx.globalAlpha = 0.92 * a;
-    const x = center + dx;
+    const x = anchor + dir * dx;
     ctx.fillStyle = marker.action === 'jump' ? '#f6d33c'
       : marker.action === 'duck' ? '#72d8f0'
         : marker.action === 'ability' ? '#f890b8' : '#c8e0ff';
+    // EVERY GLYPH CENTRES ON THE BAND'S MIDLINE. The jump and duck arrows used
+    // to sit two units high and two units low of it, so the pair were not
+    // merely reflections about one line and the strip said DOWN twice. That
+    // reading cost more than it bought once the arrows were drawn at scale: two
+    // big triangles at different heights read as a strip that cannot keep its
+    // own baseline, and the direction they point is already unmissable. Which
+    // way it points is what the player reads at a glance; the colour (cyan
+    // against the jump's gold) is what confirms it.
     if (marker.action === 'jump') {
-      ctx.beginPath(); ctx.moveTo(x, y + 1); ctx.lineTo(x - 3, y + 6); ctx.lineTo(x + 3, y + 6); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x, mid - ARROW_H); ctx.lineTo(x - 3 * u, mid + ARROW_H); ctx.lineTo(x + 3 * u, mid + ARROW_H); ctx.closePath(); ctx.fill();
     } else if (marker.action === 'duck') {
-      ctx.fillRect(x - 3, y + 4, 7, 2);
-      ctx.fillRect(x + 2, y + 2, 2, 4);
+      ctx.beginPath(); ctx.moveTo(x, mid + ARROW_H); ctx.lineTo(x - 3 * u, mid - ARROW_H); ctx.lineTo(x + 3 * u, mid - ARROW_H); ctx.closePath(); ctx.fill();
     } else if (marker.action === 'ability') {
-      ctx.beginPath(); ctx.arc(x, y + 4, 3, 0, Math.PI * 2); ctx.strokeStyle = '#f890b8'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, mid, 3 * u, 0, Math.PI * 2);
+      ctx.strokeStyle = '#f890b8'; ctx.lineWidth = Math.max(1, Math.round(u)); ctx.stroke();
     } else {
-      ctx.fillRect(x - 1, y + 3, 3, 3);
+      ctx.fillRect(x - 1 * u, mid - 1.5 * u, 3 * u, 3 * u);
     }
   }
   ctx.restore();
@@ -282,6 +380,18 @@ const smoothstep = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 // while its shorter neighbours looked correctly inset. 5 gives the row air
 // without shrinking the pill around its 12px coin.
 const PILL_X = 8, PILL_Y = 5, PILL_H = 18, PILL_CY = PILL_Y + PILL_H / 2;
+
+// Where the left column of readouts under the status pill starts — the one-hit
+// warning, the goal toasts, the finish plate, in that stacking order. It is a
+// function and not a constant because the beat ribbon now rides in that band:
+// with the playhead over the hero the strip reaches from x 30 to x 186, which
+// is exactly where those panels were printing. Keyed on beatLock rather than on
+// whether the ribbon is currently drawn, so the column has ONE height for the
+// whole stage instead of hopping 15px every time a zone card or a pause hides
+// the strip out from under it.
+function leftColumnTop(run) {
+  return run?.beatLock ? BEAT_RIBBON_BOTTOM + 3 : PILL_Y + PILL_H + 3;
+}
 const CELL_W = 10, CELL_H = 6.8, CELL_GAP = 2;
 const COIN_D = 12, PILL_PAD = 6, PILL_SPLIT = 5;
 
@@ -335,7 +445,7 @@ export function drawStatusPill(ctx, run) {
   // the run's rules, not a popup, and it outlives every floatie on screen.
   if (run.oneHit) {
     const WARN = 'ONE HIT. GOOD LUCK.';
-    const wp = 5, wh = 13, wy = PILL_Y + PILL_H + 3;
+    const wp = 5, wh = 13, wy = leftColumnTop(run);
     drawPanel(ctx, PILL_X, wy, wp * 2 + textWidth(WARN, 0.85, 'bold'), wh, 4, undefined,
       { border: 'rgba(224,72,72,0.4)', shadow: true });
     rawDrawText(ctx, WARN, PILL_X + wp, textY(wy + wh / 2, 0.85), '#e04848', 0.85, 'bold');
@@ -379,7 +489,7 @@ function drawCoinBonus(ctx, run) {
   const x = PILL_X;
   // Under the one-hit warning when that row is present; otherwise the first
   // thing below the pill.
-  const y = PILL_Y + PILL_H + 3 + (run.oneHit ? 16 : 0);
+  const y = leftColumnTop(run) + (run.oneHit ? 16 : 0);
   ctx.save();
   ctx.globalAlpha = b.alpha;
   // Rides a couple of pixels up into place rather than blinking on.
@@ -417,7 +527,7 @@ function drawGoalToast(ctx, run) {
   const w = PAD * 2 + TICK + GAP + textWidth(g.text, 1, 'bold');
   // Clears the one-hit warning when that row is present — the two stack rather
   // than land on each other.
-  const top = PILL_Y + PILL_H + 3 + (run.oneHit ? 16 : 0);
+  const top = leftColumnTop(run) + (run.oneHit ? 16 : 0);
   const x = Math.round(PILL_X - (1 - e) * 4), y = top;
   ctx.save();
   ctx.globalAlpha = e;

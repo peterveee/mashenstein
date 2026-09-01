@@ -469,6 +469,14 @@ export const CABINETS = [
     // plate. The LCD pack draws its own row in ink on top (see lcdPack.ground);
     // this is what the hole is filled with anywhere else the pack cycles to.
     pitFill: 'spikes',
+    // AND A SLAB HERE IS NOT MADE OF GROUND. Every island in the game is drawn
+    // as a torn-out piece of earth — soil, a bitten underside, stones set into
+    // the cut face — which is the right picture on a cabinet with dirt in it.
+    // This one is flat ink on a panel, and a lump of soil hanging over its road
+    // was the only object on screen pretending to be photographed. A crossing's
+    // stepping stones are girders bolted across the opening instead (see
+    // drawGirderRun in game/terrain.js).
+    slabLook: 'girder',
     music: RHYTHM.bank,
     // The desk's mix for this song, alongside the bank: run.js reads its
     // voiceParams at enter() to pre-expand TNGR-2 wavetables — the bank alone

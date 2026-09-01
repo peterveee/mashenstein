@@ -1106,7 +1106,14 @@ const heavyAudition = createVisualiser(MEGAMIX_INDEX, 0x0badf00d, { bpm: 120 });
 setMegamixAudition(false);
 let heavyBeat = 0;
 const heavyMoves = [];
-for (let frame = 0; frame < 60 * 200; frame++) {
+// Long enough to see one preset come round SEVERAL times. An audition holds
+// each record for sixteen bars — half a minute at this tempo — so a walk only
+// a few records long samples any given preset once and can only ever report
+// whichever single move that pass happened to deal. The claim below is about
+// the spread of moves a heavy preset gets, so the walk has to be long enough
+// to have a spread at all. (It got shorter than the pack the day the pack grew
+// a preset, which is exactly how this was found.)
+for (let frame = 0; frame < 60 * 900; frame++) {
   heavyBeat += (1 / 60) * 2;
   heavyAudition.update(1 / 60, { ...analysis, beat: heavyBeat });
   if (heavyAudition.plan && VISUALISER_NAMES[heavyAudition.plan.index] === heavyName) {

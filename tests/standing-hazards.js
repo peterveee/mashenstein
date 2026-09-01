@@ -195,6 +195,38 @@ for (const id of HAZARDS) {
   }
 }
 
+// --- the duck flyer's altitude, and the art that rides above it -------------
+// 13 is not a taste decision and must not be edited into one. A standing hero's
+// box is PLAYER_H tall, so a duck flyer one pixel higher stops overlapping him
+// and stops being an obstacle — which is the same rule Spawner.fill refuses to
+// let a pattern break, stated here against the DEF rather than against a cell.
+//
+// `artLift` is the pressure valve that exists because of it: the shipped duck
+// is the power slide, whose head draws far taller than its 7px box, and the
+// only way to get the drone off it is to raise the drawing. What has to stay
+// true is that the lift never carries the art clear of a STANDING hero, or a
+// hero who failed to duck takes a hit from something drawn above him.
+{
+  const { PLAYER_H, DUCK_H } = await import('../src/game/player.js');
+  // Measured off the real painter (work/local/slide-height.mjs, 2026-09): the
+  // tallest standing toon puts 26px of ink over its 14px box, and that is the
+  // figure a lifted drone still has to visibly touch.
+  const STANDING_ART_H = 26;
+  for (const [name, def] of Object.entries(OBSTACLES)) {
+    if (def.action !== 'duck' || def.ground) continue;
+    assert(def.alt < PLAYER_H,
+      `'${name}' at alt ${def.alt} still catches a standing hero (< ${PLAYER_H})`);
+    assert(def.alt >= DUCK_H,
+      `'${name}' at alt ${def.alt} leaves room for the ${DUCK_H}px duck box under it`);
+    const lift = def.artLift || 0;
+    assert(def.alt + lift < STANDING_ART_H,
+      `'${name}' draws its underside at ${def.alt + lift}, still inside a standing `
+      + `hero's ${STANDING_ART_H}px of ink`);
+    const ob = makeObstacle(name, 0);
+    assert(ob.artLift === lift, `'${name}' carries its lift onto the instance`);
+  }
+}
+
 // --- the green cactus ------------------------------------------------------
 // A SKIN, not a variant hazard: same box, same debris, same jump. What is
 // pinned here is that it stays a skin and stays occasional.

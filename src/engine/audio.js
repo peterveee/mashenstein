@@ -449,6 +449,17 @@ export const BARK_SHAPES = {
     bright: 0.6, growl: 0, plosive: 1 },
 };
 
+// The window the coin cue's key-snapping ladder is built over (see case 'coin').
+// It has to hold every pitch the cue is ever asked for, because a ladder that
+// stops short does not detune the top of a run — it CLAMPS it, and a coin run
+// that flattens out at the end is a worse fault than one slightly out of key.
+// The two callers that push it hardest: the combo ladder, capped at 12 coins
+// (1.06^12, so the upper ping reaches 2654 Hz), and the flip tally's 10-coin
+// payout at 1 + 0.05n. The low end is the menus' random spread, which starts at
+// 0.9. Both ends carry a little margin past that.
+const COIN_LO_HZ = 840;
+const COIN_HI_HZ = 3000;
+
 const SFX_TRIM = {
   blockBreak: 0.58, coinSpray: 0.7, hit: 0.74,
   // Levelled against 'hit', its opposite number — and deliberately WELL above
@@ -713,6 +724,8 @@ class AudioSys {
     };
     // Rolling loudness reference for `dynamics`, reset per song by setBank().
     this._analysisPeak = 0;
+    // The audio-clock stamp of the last full readout — see musicAnalysis.
+    this._analysisAt = null;
     // Percussion hits scheduleStep() has queued into the lookahead but that have
     // not sounded yet, and the audio times of the ones that have. Also per song.
     this._percPending = [];
@@ -3492,7 +3505,14 @@ class AudioSys {
       case 'jump': this.jumpTone(0, 1, 0.055); break;
       case 'jump2': this.jumpTone(0, 1.5, 0.045); break; // double jump: same shape, a fifth up
       case 'land': this.noise(0.06, 0.15, 'lowpass', 400); break;
-      case 'coin': this.osc('square', 988 * pitch, 988 * pitch, 0.06, 0.12); this.osc('square', 1319 * pitch, 1319 * pitch, 0.07, 0.12, 0.06); break;
+      // Two square pings a fourth apart, in the key of whatever is playing —
+      // see coinNotes for why the numbers are not written down here.
+      case 'coin': {
+        const [lo, hi] = this.coinNotes(pitch);
+        this.osc('square', lo, lo, 0.06, 0.12);
+        this.osc('square', hi, hi, 0.07, 0.12, 0.06);
+        break;
+      }
       // A cash-register cha-CHING. What sells it is the CONTRAST between the
       // two halves — make them the same and it just reads as a two-note
       // doorbell. So:
@@ -6995,9 +7015,17 @@ class AudioSys {
     if (!key) return null;
     const memo = this._songLadderMemo;
     if (memo && memo.key === key && memo.lo === lo && memo.hi === hi) return memo.notes;
+    // Fold the root to the octave AT OR BELOW `lo`, not the one at or above it.
+    // The rungs are built up from the root and only those inside the window are
+    // kept, so a root folded up to just under 2*lo leaves the bottom of the
+    // window with no rungs in it at all — and a caller snapping to the nearest
+    // note does not merely lose those, it CLAMPS everything down there onto the
+    // first rung it can find. Measured on the coin: a twelve-coin run that
+    // should span an octave came out spanning a minor third in the worst
+    // section, because its first eight rungs were the same note.
     let root = key.root;
-    while (root < lo) root *= 2;
-    while (root / 2 >= lo) root /= 2;
+    while (root * 2 <= lo) root *= 2;
+    while (root > lo) root /= 2;
     const notes = [];
     for (let i = 0; i < 64; i++) {
       const semis = key.classes[i % key.classes.length] + 12 * Math.floor(i / key.classes.length);
@@ -7008,6 +7036,67 @@ class AudioSys {
     if (!notes.length) return null;
     this._songLadderMemo = { key, lo, hi, notes };
     return notes;
+  }
+
+  /**
+   * `freq` moved to the nearest note of the song, within a ladder spanning
+   * `lo`..`hi`. Nearest by RATIO, not by hertz — an octave up is twice as far
+   * in hertz as an octave down and exactly as far to the ear.
+   *
+   * Null when there is no song to be in key with, so callers keep their own
+   * fallback and a cue with the music off sounds like it always did.
+   */
+  songSnap(freq, lo, hi) {
+    const ladder = this.songLadder(lo, hi);
+    if (!ladder) return null;
+    let best = ladder[0];
+    for (const f of ladder) {
+      if (Math.abs(Math.log2(f / freq)) < Math.abs(Math.log2(best / freq))) best = f;
+    }
+    return best;
+  }
+
+  /**
+   * THE COIN'S TWO NOTES, IN THE KEY OF WHATEVER IS PLAYING.
+   *
+   * Two square pings a fourth apart — B5 and E6 written down, but neither
+   * number is the point. The point is a bright two-note blip, and on a rhythm
+   * cabinet a fixed pair fights the track: the combo ladder walks up in
+   * SEMITONES, so a run of eight coins passes through every pitch class in the
+   * song's key and several that are not in it, and the ones that are not are
+   * the ones you hear. (The loop-ring climb already dodges this by staying
+   * below the coins — see loopClimbNotes in run.js. Snapping is the other half
+   * of that argument.)
+   *
+   * So both notes land on the song's own ladder: the lower one snapped
+   * straight, the upper one snapped from the fourth ABOVE THE SNAPPED lower
+   * rather than from its own nominal frequency, which is what keeps the
+   * interval a consequence of the gesture instead of two notes drifting apart
+   * independently. `pitch` still does its work — it decides which rung, and the
+   * combo run now climbs the scale instead of the chromatic.
+   *
+   * No song, no ladder, no change: the menus with the music off, a bank that
+   * failed to load, and every cabinet playing nothing get the cue as it was.
+   *
+   * Split out of the cue so it can be checked without an AudioContext — the
+   * claim worth pinning is which NOTES come out, and sfx() cannot be called at
+   * all without a live graph.
+   */
+  coinNotes(pitch = 1) {
+    let lo = 988 * pitch;
+    let hi = 1319 * pitch;
+    const snapped = this.songSnap(lo, COIN_LO_HZ, COIN_HI_HZ);
+    if (snapped) {
+      lo = snapped;
+      // Guard, not arithmetic: a section whose melodic lanes only ever sound
+      // two pitch classes a semitone apart has a ladder with no rung near a
+      // fourth up, and snapping to the nearest one would squash the blip into a
+      // minor second. Degenerate enough that keeping the gesture beats keeping
+      // the second note in key.
+      const top = this.songSnap(lo * (1319 / 988), COIN_LO_HZ, COIN_HI_HZ);
+      hi = top && top >= lo * 1.15 ? top : lo * (1319 / 988);
+    }
+    return [lo, hi];
   }
 
   // Beat phase for rhythm cabinet: 0..1 within the current beat.
@@ -7090,6 +7179,21 @@ class AudioSys {
   // notes the sequencer actually scheduled.
   musicAnalysis() {
     const out = this._analysis;
+    // ONE READOUT PER FRAME, however many callers ask for it.
+    //
+    // Everything below is a STEP, not a query: the band smoothers advance, the
+    // peak reference decays, and _readPercussion DRAINS the pending-hit queue.
+    // Called twice in a frame it smooths at double rate and hands the second
+    // caller a drum envelope half as long as the first — which is exactly what
+    // happened the day the beat ribbon and the LCD city both wanted it. Memoised
+    // against the audio clock so any number of callers share one honest read.
+    //
+    // currentTime advances a quantum at a time (~2.7ms), so two calls either
+    // side of a boundary both step. That is at most one extra step and it is
+    // the same one the frame would have taken anyway.
+    const now = this.ctx ? this.ctx.currentTime : null;
+    if (now != null && now === this._analysisAt) return out;
+    this._analysisAt = now;
     if (this.songAnalyser && this._analysisSpectrum && this._analysisWaveform) {
       this.songAnalyser.getByteFrequencyData(this._analysisSpectrum);
       this.songAnalyser.getByteTimeDomainData(this._analysisWaveform);

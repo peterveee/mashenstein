@@ -23,7 +23,7 @@ import { framingIsChosen } from './run.js';
 const GUIDE_ICON_SIZES = {
   cactus: [13, 19], snowman: [13, 19], crate: [12, 11], barrel: [13, 13], chair: [12, 10],
   tombstone: [11, 8], zombieWalk: [10, 14], resident: [10, 12], drone: [13, 8], buzzbird: [13, 8],
-  icicle: [8, 10], cardboardMonster: [12, 9], printer: [12, 8], capStar: [9, 9],
+  icicle: [8, 10], cardboardMonster: [12, 9], cardBox: [12, 11], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
   capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], capRewind: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7],
   eggshell: [24, 20], target: [9, 9],
@@ -3378,6 +3378,7 @@ const GUIDE_PAGES = [
     rows: [
       { s: '_qcrate', name: '!-CRATE', desc: 'FLOATS. TOUCH TO BREAK. DROPS COINS.' },
       { s: 'target', name: 'TARGET', desc: 'FLOATING TARGET. TOUCH TO DESTROY.' },
+      { s: 'cardBox', name: 'CARD BOX', desc: 'RHYTHM STAGES. SHOOT ON THE BEAT; IT OPENS ON THE NEXT ONE.' },
       { s: 'printer', name: 'PRINTER', desc: 'SHOOTS PAPER. RAM IT TO BREAK IT.' },
       { s: 'battery', name: 'FROZEN SWITCH', desc: 'TOUCH TO EXTEND A BRIDGE OVER THE NEXT PIT.' },
       { s: 'boostPad', name: 'BOOST PAD', desc: 'RUN OVER IT. GO UNREASONABLY FAST.' },

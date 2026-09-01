@@ -391,7 +391,11 @@ for (const hero of cast) {
   const lip = riseHeight(c.x);
   const mid = riseHeight(c.x + c.w / 2);
   const away = riseHeight(c.x - 4000);
-  assert(lip > 10 && mid > 10, `the road stands up over the crossing (${lip.toFixed(0)}px)`);
+  // The number this guards is that the rise is REAL and the whole span has it,
+  // not what it is set to — CROSSING_ROAD_RISE is a look and moves with taste
+  // (16 read as a hill in front of the hole and came down to 10). Half a
+  // hero-height is the floor: below that the break is a groove again.
+  assert(lip > 6 && mid > 6, `the road stands up over the crossing (${lip.toFixed(0)}px)`);
   assert(away === 0, 'and is back to the cabinet\'s own ground well away from it');
   // Eased, not stepped: a wall at the lip is a thing you run into.
   const ramp = riseHeight(c.x - 60);

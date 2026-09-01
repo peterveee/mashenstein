@@ -426,6 +426,13 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null
   for (const [a, b] of runs) {
     if (b - a < 1) continue;
     const y = (x) => topAt(camX + x, r);
+    // A CABINET MAY NOT BE MADE OF GROUND. Everything below this line draws a
+    // slab as a torn-out piece of earth — soil, a scalloped underside, stones
+    // set into the cut face — and that is the right picture on eight cabinets
+    // and the wrong one on the ninth: the LCD city is drawn in flat ink on a
+    // panel, and a lump of dirt hanging over its road is the one object in the
+    // frame pretending to be photographed. There it is a girder instead.
+    if (cabinet && cabinet.slabLook === 'girder') { drawGirderRun(ctx, cabinet, camX, r, y, a, b); continue; }
     // A hole punched through the middle of a slab gets the same two tapered
     // edges its outer ends get — both are just the ends of a solid run.
     const body = island
@@ -516,6 +523,76 @@ function drawSlab(ctx, camX, cabinet, r, topAt, from, to, asCloud, bodyAt = null
     ctx.stroke();
     ctx.lineWidth = 1;
   }
+}
+
+/**
+ * A slab as a GIRDER: a thin block hanging in the air rather than a piece of
+ * ground that was torn out of somewhere.
+ *
+ * Two flanges in ink with a braced web between them, in the cabinet's own pair
+ * — the same ink line the road's surface is drawn with on top, the same panel
+ * body underneath. Thin on purpose: a stepping stone in this city is a thing
+ * somebody bolted across the opening, and what says that is the SECTION. At
+ * eight pixels it reads as steel; at the earth slab's twelve, with a bitten
+ * underside, it read as a lump of soil floating over a printed street.
+ *
+ * The bays are divided out of the SLAB, not stepped off a world grid and not
+ * off the drawn run. Off the run they would slide every time the camera clipped
+ * an end off screen; off a world grid the last one lands wherever it lands and
+ * every girder ends in a pale stub of unbraced web. A whole number of equal
+ * bays between the slab's own ends is stable as the camera passes and reaches
+ * both ends exactly, which is what a fabricated thing looks like. `y` follows
+ * the slab's own profile, so a road that climbs carries its section up with it
+ * exactly as the earth one does.
+ */
+const GIRDER_H = 8;
+const GIRDER_FLANGE = 2;
+const GIRDER_BAY = 10;
+function drawGirderRun(ctx, cabinet, camX, r, y, a, b) {
+  const ink = cabinet.ground;
+  const lit = cabinet.groundDark;
+  const band = (top, depth) => {
+    ctx.beginPath();
+    ctx.moveTo(a, y(a) + top);
+    for (let x = a; x <= b; x += 2) ctx.lineTo(x, y(x) + top);
+    ctx.lineTo(b, y(b) + top);
+    ctx.lineTo(b, y(b) + top + depth);
+    for (let x = b; x >= a; x -= 2) ctx.lineTo(x, y(x) + top + depth);
+    ctx.lineTo(a, y(a) + top + depth);
+    ctx.closePath();
+  };
+  band(0, GIRDER_H);
+  ctx.fillStyle = lit;
+  ctx.fill();
+  ctx.fillStyle = ink;
+  band(0, GIRDER_FLANGE);
+  ctx.fill();
+  band(GIRDER_H - GIRDER_FLANGE, GIRDER_FLANGE);
+  ctx.fill();
+  // The web, braced. Half-pixel offsets so a 1px diagonal lands as a line
+  // rather than as two grey ones.
+  const top = GIRDER_FLANGE + 0.5;
+  const bot = GIRDER_H - GIRDER_FLANGE - 0.5;
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const bays = Math.max(1, Math.round(r.w / GIRDER_BAY));
+  const step = r.w / bays;
+  for (let k = 0; k < bays; k++) {
+    const x0 = r.x + k * step - camX;
+    const x1 = x0 + step;
+    if (x1 <= a || x0 >= b) continue;
+    ctx.moveTo(x0, y(x0) + top);
+    ctx.lineTo(x1, y(x1) + bot);
+    ctx.moveTo(x0, y(x0) + bot);
+    ctx.lineTo(x1, y(x1) + top);
+  }
+  ctx.stroke();
+  // End plates, so the block has ends rather than trailing off into its own
+  // lattice — the one mark that says this is an object and not a cut.
+  ctx.fillStyle = ink;
+  ctx.fillRect(a, y(a), 1, GIRDER_H);
+  ctx.fillRect(b - 1, y(b), 1, GIRDER_H);
 }
 
 // How far apart stone SLOTS sit, in world px, before most of them are skipped.
@@ -1471,7 +1548,8 @@ function drawEntrance(ctx, camX, cabinet, r, groundAt, floorAt, underAt) {
   }
 }
 
-export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 224, viewW = W, overhangs = []) {
+export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 224, viewW = W, overhangs = [],
+  packOwnsSurface = false) {
   // A cabinet with no hills draws nothing — UNLESS a crossing has raised the
   // road somewhere in view, which is ground that exists and has to be painted
   // by somebody. `flat` is that case, and it is why the runs are clipped to the
@@ -1482,9 +1560,19 @@ export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 224, viewW = 
   // flat cabinets, whose packs own their whole road (the LCD pack walks its
   // surface off terrainGroundY itself). Painting it here as well doubled the
   // surface line inside the window — two gauges of the same road, misaligned.
+  //
+  // A ROAD RISE IS THE SAME CASE, and it was left in this painter's hands by
+  // oversight rather than by argument. `packOwnsSurface` is a pack saying it
+  // walks terrainGroundY itself, and on one of those the rise is already drawn:
+  // this pass then laid a second road over the first, whose 2px stroke sat a
+  // pixel off the pack's own 3px surface line (a visible step where the clipped
+  // run began) and whose body repainted the apron over the road's dash texture
+  // (dashes that stopped following the lane at exactly the point it climbed).
+  // Nothing is lost by declining — the pack has the whole profile, hills
+  // included, which is why the flag is only ever true on a flat cabinet's pack.
   const profiled = !!PROFILES[cabinet && cabinet.id];
   const rises = groundRises();
-  if (!profiled && !rises.length) return;
+  if (!profiled && (packOwnsSurface || !rises.length)) return;
   // Overscan one step so the line's last segment still leaves the frame rather
   // than stopping visibly short of it.
   const right = Math.min(W, Math.ceil(viewW) + 2);

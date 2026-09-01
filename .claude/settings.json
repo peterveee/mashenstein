@@ -36,7 +36,17 @@
       "Bash(node work/local/render-rhythm-chord-options.js)",
       "Bash(node -e \"import\\('./src/game/run.js'\\).then\\(\\(\\)=>console.log\\('run.js loads'\\)\\).catch\\(e=>{console.log\\('ERR', e.message\\)}\\)\")",
       "Bash(node -e \"import\\('./src/game/terrain.js'\\).then\\(\\(\\)=>console.log\\('terrain.js loads'\\)\\).catch\\(e=>console.log\\('ERR',e.message\\)\\)\")",
-      "Bash(awk 'NR>=2650 && NR<=2760 && /ground\\\\\\(ctx|strokeRect\\\\\\(5|function lcdPack|LCD_PANEL_LIT|^    ground|^    post/ {print NR\": \"$0}' /Users/Peter/mashenstein/src/engine/stylePacks/index.js)"
+      "Bash(awk 'NR>=2650 && NR<=2760 && /ground\\\\\\(ctx|strokeRect\\\\\\(5|function lcdPack|LCD_PANEL_LIT|^    ground|^    post/ {print NR\": \"$0}' /Users/Peter/mashenstein/src/engine/stylePacks/index.js)",
+      "Bash(node tests/lcd-background.js)",
+      "Bash(node --input-type=module -e \"import\\('./src/game/run.js'\\).then\\(\\(\\)=>console.log\\('run.js loads'\\)\\).catch\\(e=>console.log\\('ERR', e.message\\)\\)\")",
+      "Bash(git -C /Users/Peter/mashenstein status --porcelain)",
+      "Bash(git -C /Users/Peter/mashenstein diff --stat)",
+      "Bash(git -C /Users/Peter/mashenstein diff src/engine/stylePacks/index.js)",
+      "Bash(sed -i '' 's/const beats = \\\\[0, 4, 8, 11, 13, 15\\\\];/const beats = [0, 4, 8, 11, 13, 15];/' work/local/_lcd-dk-entry.js)",
+      "Bash(node work/local/_lcd-dk-shot.mjs)",
+      "Bash(python3 -c ' *)",
+      "Bash(git -C /Users/Peter/mashenstein diff src/game/run.js src/data/stages.js src/data/stage-layouts.js)",
+      "Bash(node /Users/Peter/mashenstein/tests/lcd-background.js)"
     ]
   }
 }

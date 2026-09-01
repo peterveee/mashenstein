@@ -1133,7 +1133,14 @@ function propNominalSize(name) {
     + 'and crude blue, plum, ochre and coral spot colours. Windows, roof cells, aerials, the clock, the drifting '
     + 'clouds, the rooftop pixel billboards, the transmitter\'s signal rings and stage 1\'s DONKEY KONG girder '
     + 'tower all step on the heard musical beat; the lane '
-    + 'never scrolls the skyline, previews a chart action, or enters the calm strip beside it. Each tile keeps an '
+    + 'never scrolls the skyline, previews a chart action, or enters the calm strip beside it. The panel now also '
+    + 'HEARS the song: each facade is a VU meter on one band of the spectrum, billboards wash pale on a drum hit, '
+    + 'the plume breathes with the level, the transmitter carries further on treble, and the light warms a '
+    + 'little across four phases of a run — with stage 2 growing a working city (searchlight, viaduct '
+    + 'train, window washer, and the helicopter that repossesses a billboard) as it goes. With no analyser the '
+    + 'whole reactive layer stands down and the authored panel plays exactly as it always did. The sky analyser '
+    + 'belongs to the JUKEBOX alone (CLOCK-IN CITY, which draws this very panel): clipped behind the skyline it '
+    + 'read as banding rather than a meter in a run, so a stage keeps its sky clear. Each tile keeps an '
     + 'open pit so the gear train and the sky-tinted shaft stay on the sheet.');
   for (let stageIndex = 1; stageIndex <= 3; stageIndex++) {
     for (const [label, beat] of states) {
