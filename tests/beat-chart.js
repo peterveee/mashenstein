@@ -10,7 +10,7 @@ const {
   BeatSpawner, validateBeatChart, actionApproachPx, beatEventId,
   pitLayout, pitWindowBeats, laneRunwayBeats, PIT_BEATS, ON_BEAT_WINDOW,
   LANE_RUNWAY_BEATS, PIT_LANE_RUNWAY_BEATS, COIN_DIV,
-  BOX_LEAD_BEATS, BOX_BURST_BEATS,
+  BOX_LEAD_BEATS, BOX_BURST_BEATS, puntLeadSec, puntLeadRange,
 } = await import('../src/game/beatchart.js');
 const { worstAirtime, sweepCoinsAroundHole } = await import('../src/game/spawner.js');
 const { randomPowerPickup } = await import('../src/game/powerups.js');
@@ -20,7 +20,8 @@ const { STAGES } = await import('../src/data/stages.js');
 const { save } = await import('../src/engine/save.js');
 const { HEROES, heroShoots } = await import('../src/data/heroes.js');
 const { OBSTACLES, DRONE_COLUMN_ALTS, makeDroneColumn } = await import('../src/game/entities.js');
-const { BASE_JUMP_V, GRAVITY, HEAVY_GRAVITY_MULT, PLAYER_H } = await import('../src/game/player.js');
+const { BASE_JUMP_V, GRAVITY, HEAVY_GRAVITY_MULT, PLAYER_H, DUCK_IN_T } = await import('../src/game/player.js');
+const { PUNT, puntPower } = await import('../src/game/punt.js');
 
 const speed = 232, bpm = 124, pxPerBeat = speed * 60 / bpm;
 let failed = false;
@@ -712,34 +713,179 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
     beat = i;
     columnSpawner.fill(beat * pxPerBeat, speed, obs, picks, () => 50);
   }
+  // THE FINALE'S DUCK BEATS ARE TWO OBJECTS, one button. A drone hangs still
+  // and is slid under; a barrel rolls at you and is slid INTO. Both are duck
+  // slots and everything downstream — judge, ribbon, spacing — treats them as
+  // one kind, which is the whole reason the barrel is a flag on the def rather
+  // than a new action.
   const ducks = obs.filter((o) => o.chartAction === 'duck');
-  assert(ducks.length > 0 && ducks.every((o) => o.type === 'drone'),
-    'the finale lays drones on its duck beats');
+  assert(ducks.length > 0 && ducks.every((o) => o.type === 'drone' || o.type === 'barrel'),
+    'the finale lays drones and barrels on its duck beats');
+  assert(ducks.some((o) => o.type === 'drone') && ducks.some((o) => o.type === 'barrel'),
+    'and lays some of each');
   const byEvent = new Map();
-  for (const o of ducks) byEvent.set(o.chartEventId, [...(byEvent.get(o.chartEventId) || []), o]);
+  for (const o of ducks.filter((d) => d.type === 'drone')) {
+    byEvent.set(o.chartEventId, [...(byEvent.get(o.chartEventId) || []), o]);
+  }
   assert([...byEvent.values()].every((g) => g.length === DRONE_COLUMN_ALTS.length),
-    'every duck slot on the finale reaches the lane as a full column');
+    'every DRONE slot on the finale reaches the lane as a full column');
   assert([...byEvent.values()].every((g) => g.every((o) =>
     o.x === g[0].x && o.actionBeat === g[0].actionBeat && o.chartSlot === g[0].chartSlot)),
     'and its rungs share one X, one beat and one slot');
   assert([...byEvent.values()].every((g) =>
     g.map((o) => o.alt).sort((a, b) => a - b).join() === DRONE_COLUMN_ALTS.join()),
     'stacked at the authored altitudes');
+  // A barrel is ONE body per slot — there is no such thing as a stack of them.
+  const barrelsByEvent = new Map();
+  for (const o of ducks.filter((d) => d.type === 'barrel')) {
+    barrelsByEvent.set(o.chartEventId, (barrelsByEvent.get(o.chartEventId) || 0) + 1);
+  }
+  assert([...barrelsByEvent.values()].every((n) => n === 1),
+    'and a barrel slot lays exactly one barrel');
 
-  // Stage 2 teaches with a LONE drone before it asks with a column. The escape
-  // hatch on the first one the player ever meets is the point of it.
+  // Stage 2 teaches the duck with a BARREL before it asks with a column. The
+  // escape hatch on the first one the player ever meets is the point of it: a
+  // barrel is 13 tall and can be hopped, so answering it with the jump button
+  // costs the beat and not the run. The three-rung column a bar later is the
+  // one that cannot be jumped at all.
   const teach = beatCharts[2].events.filter((e) => e.action === 'duck');
-  assert(teach.length === 2 && teach[0].column === 2 && teach[1].column === 3,
-    'stage 2 teaches with two rungs and answers with three');
-  assert(beatCharts[3].events.filter((e) => e.action === 'duck').every((e) => e.column === 3),
+  assert(teach.length === 2 && teach[0].type === 'barrel' && teach[1].column === 3,
+    'stage 2 teaches with a barrel and answers with three rungs');
+  assert(beatCharts[3].events.filter((e) => e.action === 'duck')
+    .every((e) => e.column === 3 || e.type === 'barrel'),
     'and the finale asks for the slide on every duck beat it has');
   // NO LONE DRONES ON THE CABINET. One drone is a duck beat that can be
-  // answered with the jump button, which is the whole thing this replaced.
+  // answered with the jump button for free, which is the whole thing this
+  // replaced — and a barrel is not that: the jump clears it and still loses the
+  // beat, because the chart asked for the boot.
   for (const [id, chart] of Object.entries(beatCharts)) {
-    assert(chart.events.filter((e) => e.action === 'duck').every((e) => e.column >= 2),
+    assert(chart.events.filter((e) => e.action === 'duck' && e.type === 'drone')
+      .every((e) => e.column >= 2),
       `rhythm-${id} lays no lone drone on a duck beat`);
   }
 }
+// ---- THE PUNT SLOT ----------------------------------------------------------
+//
+// A barrel is the only hazard on this cabinet that is MOVING when it is
+// answered, and everything below is the arithmetic that makes that land on a
+// grid. Three separate things have to be true at the instant of contact and
+// they are owned by three different files, so this is where they are pinned
+// together.
+{
+  const barrel = OBSTACLES.barrel;
+  assert(barrel.beatPunt === true && barrel.action === 'jump',
+    'a barrel answers to a duck on the grid and a jump off it');
+
+  // 1. THE WINDOW EXISTS, and it is derived rather than declared. The floor is
+  // the slide blend reaching the 0.6 the collision test wants; the ceiling is
+  // the punt window shutting; and the judge's slop eats into BOTH ends, because
+  // the lead has to work for the earliest legal press and the latest one alike.
+  const slop = ON_BEAT_WINDOW * 60 / bpm;
+  const { lo, hi } = puntLeadRange(bpm);
+  assert(Math.abs(lo - (DUCK_IN_T * 0.6 + slop)) < 1e-9,
+    `the contact cannot come before the slide is down (${lo.toFixed(3)}s)`);
+  assert(Math.abs(hi - (PUNT.windowT - slop)) < 1e-9,
+    `nor after the punt window shuts (${hi.toFixed(3)}s)`);
+  assert(lo < hi, `and at ${bpm}bpm there is room between them (${(hi - lo).toFixed(3)}s)`);
+  assert(Math.abs(puntLeadSec(bpm) - (lo + hi) / 2) < 1e-9,
+    'the authored lead is the middle of it, wrong by the same margin either way');
+
+  // 2. IT HOLDS ACROSS THE WHOLE ON-BEAT RANGE. Walk every press the judge
+  // would accept — a full window early to a full window late — and check that
+  // the boot is both DOWN and still in its window when the barrel arrives.
+  // This is the claim the mechanic actually rests on: an on-beat press punts.
+  const lead = puntLeadSec(bpm);
+  let punts = 0, presses = 0;
+  for (let off = -slop; off <= slop + 1e-9; off += slop / 12) {
+    presses++;
+    const heldAtContact = lead - off;
+    const duckAmount = Math.min(1, Math.max(0, heldAtContact) / DUCK_IN_T);
+    if (duckAmount > 0.6 && puntPower(heldAtContact) > 0) punts++;
+  }
+  assert(punts === presses,
+    `every press the judge calls on-beat also punts (${punts}/${presses})`);
+
+  // 3. AND A LATE ONE DOES NOT. The window is a skill, not a formality: a press
+  // far enough past the line that the judge has already refused it must miss
+  // the punt too, or the two systems disagree about what "on the beat" bought.
+  const late = lead - PUNT.windowT - 0.01;
+  assert(puntPower(lead - late) === 0 || late < 0,
+    'and a press outside the punt window does not');
+
+  // 4. THE VALIDATOR REFUSES A TEMPO THAT CLOSES THE WINDOW. Same guard the pit
+  // already carries: a cabinet that can score a beat it has made unplayable is
+  // a cabinet arguing with itself. ON_BEAT_WINDOW is in BEATS, so a slow enough
+  // song widens the slop in seconds until it eats the whole range.
+  const puntChart = [{ slot: 0, action: 'duck', type: 'barrel' }, { slot: 1, action: 'coin' }];
+  const tooSlow = Math.floor(ON_BEAT_WINDOW * 60 / ((PUNT.windowT - DUCK_IN_T * 0.6) / 2));
+  assert(puntLeadRange(tooSlow).lo >= puntLeadRange(tooSlow).hi,
+    `${tooSlow}bpm leaves no contact window at all`);
+  let threw = false;
+  try { validateBeatChart({ loopBeats: 2, events: puntChart }, { bpm: tooSlow }); } catch { threw = true; }
+  assert(threw, 'and the validator refuses a punt slot at that tempo');
+  assert(!!validateBeatChart({ loopBeats: 2, events: puntChart }, { bpm }),
+    'while this cabinet\'s own tempo carries it through');
+
+  // A BARREL IS A DUCK SLOT'S PROP AND NOTHING ELSE'S, even though its own def
+  // says `action: 'jump'`. On a jump slot it would pass the def check and then
+  // be laid with the static approach — the lead that assumes the hazard waits
+  // where it is put — so it would arrive early and the beat would be
+  // unplayable for a reason nothing in the chart could show.
+  let jumpThrew = false;
+  try {
+    validateBeatChart({ loopBeats: 2, events: [
+      { slot: 0, action: 'jump', type: 'barrel' }, { slot: 1, action: 'coin' },
+    ] }, { bpm });
+  } catch { jumpThrew = true; }
+  assert(jumpThrew, 'the validator refuses a barrel on a jump slot');
+  let droneThrew = false;
+  try {
+    validateBeatChart({ loopBeats: 2, events: [
+      { slot: 0, action: 'jump', type: 'drone' }, { slot: 1, action: 'coin' },
+    ] }, { bpm });
+  } catch { droneThrew = true; }
+  assert(droneThrew, 'and still refuses a drone on one, as it always has');
+
+  // 5. THE APPROACH IS MEASURED AGAINST A CLOSING TARGET. Both bodies spend the
+  // gap, so it is opened at the sum of their speeds; measured at the run speed
+  // alone the contact lands early by the ratio between them.
+  const approach = actionApproachPx('duck', 'barrel', speed, bpm);
+  assert(Math.abs(approach - (speed + Math.abs(barrel.vx)) * lead) < 1e-6,
+    'the barrel stands a closing-speed lead down the road');
+  assert(approach > actionApproachPx('duck', 'drone', speed, bpm),
+    'which is further out than a drone, because a drone waits and a barrel does not');
+
+  // 6. AND THE DRIFT CORRECTION PUTS IT THERE ON ITS OWN BEAT. The lane lays
+  // events up to the lookahead early and the barrel rolls the whole time, so
+  // it goes down that much further along. Checked for every lead the lookahead
+  // can produce: whatever beat it was laid on, it must arrive at the same
+  // contact position.
+  const beatSec = 60 / bpm;
+  const contacts = new Set();
+  for (let ahead = 1; ahead <= 7; ahead++) {
+    let beat = 0;
+    const obs = [], picks = [];
+    const sp = new BeatSpawner({
+      chart: { loopBeats: 4, events: [
+        { slot: 0, action: 'duck', type: 'barrel' }, { slot: 1, action: 'coin' },
+        { slot: 2, action: 'coin' }, { slot: 3, action: 'coin' },
+      ] },
+      bank: { bpm }, beatNow: () => beat, playerWorldX: (x) => x + 56,
+      lookaheadBeats: ahead,
+    });
+    for (let i = 0; i <= 12; i++) { beat = i; sp.fill(beat * pxPerBeat, speed, obs, picks, () => 50); }
+    const laid = obs.filter((o) => o.type === 'barrel' && o.actionBeat === 8)[0];
+    if (!laid) continue;
+    // Roll it forward the way updateEntities does, to the beat it is answered on.
+    const flight = (laid.actionBeat - Math.ceil(laid.actionBeat - ahead)) * beatSec;
+    contacts.add(Math.round((laid.x + barrel.vx * flight) * 10) / 10);
+  }
+  assert(contacts.size === 1,
+    `a barrel arrives at one contact point however early it was laid (${[...contacts].join(', ')})`);
+  assert(Math.abs([...contacts][0] - (8 * pxPerBeat + 56 + approach)) < 1.5,
+    'and that point is the beat line plus its approach');
+}
+
 {
   // A column is the duck's and the drone's alone.
   const refuses = (events, why) => {

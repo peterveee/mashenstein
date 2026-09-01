@@ -183,13 +183,20 @@ export const beatCharts = {
     events: [
       // The holes on 4, 6, 12 and 14 own every bar end on this stage, so both
       // fills go where a bar OPENS instead — a flourish rather than a pickup.
-      // TWO RUNGS, NOT ONE, on the first duck the player ever meets. A lone
-      // drone is a beat that can be answered with the jump button, so it never
-      // actually taught the slide; a pair reads as the stack it is and still
-      // tops out at 35, under every jump in the cast — so being wrong here
-      // costs the beat rather than the run.
+      // A BARREL IS THE FIRST DUCK THE PLAYER EVER MEETS, and it holds the slot
+      // for the same reason the two-rung drone column used to: this is where
+      // being wrong has to cost the beat rather than the run. A barrel is 13
+      // tall and every hero in the cast can hop it, so a player who answers
+      // with the jump button clears it and loses only the combo — which is
+      // exactly the bargain the column was chosen for, in an object that says
+      // what it wants without being explained. It rolls AT him, so it is the
+      // one hazard on this cabinet you can watch arrive, and the boot sends it
+      // back the way it came (see OBSTACLES.barrel and the punt window in
+      // beatchart.js). The drone slide is still taught — slot 9 below is the
+      // full three-rung column, and it is now the one that cannot be jumped at
+      // all, which is a cleaner split than two columns a bar apart.
       { slot: 0, action: 'coin', ...eighth },
-      { slot: 1, action: 'duck', type: 'drone', column: 2 },
+      { slot: 1, action: 'duck', type: 'barrel' },
       { slot: 2, action: 'jump', type: 'beatBar' },
       // Duck, bar, SHOOT, hole — and the round sails over the hole on its way to
       // a box that opens on 5, between the two of them.  A shot flies at ankle
@@ -199,10 +206,11 @@ export const beatCharts = {
       { slot: 3, action: 'ability', type: 'cardBox', every: 3 },
       { slot: 4, action: 'pit' }, { slot: 5, action: 'coin' },
       { slot: 6, action: 'pit' }, { slot: 7, action: 'coin' },
-      // AND THE SECOND STRIDE SPENDS IT. Slot 1 above is two rungs and can be
-      // jumped; this one is the full three, stacked to 50 and over the worst
-      // jump in the cast — so the same figure comes back a bar later actually
-      // asking for the slide it just taught.
+      // AND THE SECOND STRIDE SPENDS IT. Slot 1 above is a barrel and can be
+      // jumped; this one is the full three rungs, stacked to 50 and over the
+      // worst jump in the cast — so the same INPUT comes back a bar later with
+      // the jump-button escape taken off it. Two objects, one button, and the
+      // second one is the one that means it.
       { slot: 8, action: 'coin', ...sixteenth, every: 2 },
       { slot: 9, action: 'duck', type: 'drone', column: 3 },
       { slot: 10, action: 'jump', type: 'beatBar' }, { slot: 11, action: 'coin' },
@@ -211,24 +219,32 @@ export const beatCharts = {
     ],
   },
   3: {
-    // The finale states both halves plainly: a bar of ducking under the drones,
-    // then a whole bar of holes — four of them, one every other beat, which is
-    // the fastest a jump may be asked for twice.  Nothing new is introduced
-    // here; the stage is the two things this cabinet taught, at length.
+    // The finale states both halves plainly: a bar of ducking — a drone column
+    // and two of the barrels stage 2 opened with, alternating around a bar you
+    // jump — then a whole bar of holes, four of them, one every other beat,
+    // which is the fastest a jump may be asked for twice.  Nothing new is
+    // introduced here; the stage is the three things this cabinet taught, at
+    // length.
     loopBeats: 16,
     events: [
       { slot: 0, action: 'jump', type: 'beatBar' },
       { slot: 1, action: 'coin', ...eighth },
-      // ALL THREE ARE COLUMNS. Nothing new is introduced on the finale, and
-      // this is not new: it is the stage-2 figure with the jump-button escape
-      // taken off it. B-33P and Grumpos cannot clear a column at all and
-      // nobody else should want to (see DRONE_COLUMN_ALTS), so the bar of
-      // ducking is finally a bar of ducking.
+      // THE BAR OF DUCKING, AND IT IS TWO OBJECTS. Nothing new is introduced on
+      // the finale and neither of these is: the column is the stage-2 figure
+      // with the jump-button escape taken off it, and the barrel is the thing
+      // stage 2 opened with. What IS new is having to read which is which at
+      // speed — a drone hangs still and a barrel comes at you, so the bar asks
+      // one button three times and never lets the eye go to sleep on it.
+      //
+      // The order is deliberate: the column first, because it is the one that
+      // cannot be jumped and so is the one worth being ready for, then a
+      // barrel, then the bar you jump on 4, then the second barrel. Alternating
+      // the two duck reads around a jump is the whole figure.
       { slot: 2, action: 'duck', type: 'drone', column: 3 },
-      { slot: 3, action: 'duck', type: 'drone', column: 3 },
+      { slot: 3, action: 'duck', type: 'barrel' },
       { slot: 4, action: 'jump', type: 'beatBar' },
       { slot: 5, action: 'coin', ...sixteenth, every: 2 },
-      { slot: 6, action: 'duck', type: 'drone', column: 3 },
+      { slot: 6, action: 'duck', type: 'barrel' },
       // The finale's one card box, and it is the tightest the cabinet asks for:
       // duck on 6, shoot on 7, hole on 8, and the box opens on 9 between the
       // first two holes of the bar.  It is also the cheapest thing on the stage

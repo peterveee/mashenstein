@@ -36,7 +36,8 @@ import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
-import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt } from '../engine/stylePacks/index.js';
+import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_BEATS }
+  from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY, BEAT_SPEECH_Y } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
@@ -678,6 +679,16 @@ const FINALE_PUNT = { ...PUNT, drag: 0, bounceVx: 1, restVy: 0 };
 // brings it back, so it only has to be gone — but it has to be gone OFF SCREEN,
 // which is the whole reason for a margin rather than a test against the edge.
 const PUNT_EXIT_MARGIN = 96;
+// HOW A BARREL ARRIVES OUT OF THE BACKDROP, in art alone — see
+// updateBarrelArrivals. The rise is the height of the chute's own street cell
+// above the road (the panel's bottom cell sits at GROUND_Y - 28), so the barrel
+// leaves the chute at exactly the height the chute delivered it to. The shrink
+// is the depth cue and nothing more: the backdrop is drawn at 1:1 and the lane
+// through the camera's zoom, so a barrel back there is already the smaller of
+// the two, and 0.38 is what closes the gap without the growth reading as the
+// prop swelling in the player's face.
+const BARREL_ARRIVE_RISE = 28;
+const BARREL_ARRIVE_SHRINK = 0.38;
 // SPEED_RAMP_K and SPEED_RAMP_CAP live in layout.js with the rest of the
 // pacing arithmetic — the run accelerates on a square root, so the early
 // seconds gain quickly and the late ones barely move. Overtime's steeper
@@ -1140,6 +1151,7 @@ export class RunState {
     // the board puts up every eighth beat of a clean streak.
     this.rhythmForm = RHYTHM_FORM_START;
     this.cityAccidentBeat = null;
+    this.barrelChuteCue = null;
     this.rhythmCheer = 0;
     this.beatJudgeConsumed = new Set();
     this.beatJudgeLastRaw = null;
@@ -2186,6 +2198,7 @@ export class RunState {
     this.beatCombo = 0;
     this.rhythmForm = RHYTHM_FORM_START;
     this.cityAccidentBeat = null;
+    this.barrelChuteCue = null;
     this.rhythmCheer = 0;
     this.beatJudgeConsumed.clear();
     this.beatJudgeLastRaw = null;
@@ -2922,6 +2935,7 @@ export class RunState {
     this.score += 10 * (sp / BASE_SPEED) * sMult * dt;
     this.advanceBeatJudging();
     this.advanceCityAccident();
+    this.barrelChuteCue = this.updateBarrelArrivals(this.rhythmBeatNow());
     // The thumbs-up is on a wall clock, not a beat count: it has to outlast the
     // beat that earned it or the board flickers a thumb for a sixteenth.
     if (this.rhythmCheer > 0) this.rhythmCheer = Math.max(0, this.rhythmCheer - dt);
@@ -5318,6 +5332,64 @@ export class RunState {
     // beat would break the combo the bar beside it builds.
     const action = event.action === 'pit' ? 'jump' : event.action;
     return { id: `judge:${beat}:${slot}`, beat, action };
+  }
+
+  /**
+   * THE BARREL IN THE ROAD IS THE ONE HE JUST DROPPED.
+   *
+   * Two numbers make that true, and this method owns both.
+   *
+   * The FIRST is the cue the panel gets: the beat at which the next lane barrel
+   * is level with the foot of the gorilla's chute. The panel counts its four
+   * cells backward from it, so the barrel lands at the bottom of the chute at
+   * the moment a real one crosses that spot in the lane — and on the bars where
+   * nothing is coming, nothing falls. That silence is half the effect: a chute
+   * running on its own clock is what made the roof and the road read as two
+   * unrelated toys.
+   *
+   * The SECOND is the arrival itself: `artRise` and `artScale`, walked from the
+   * chute's own street level and roughly its own size down into the lane's over
+   * the beats between. ART ONLY — the box never leaves the road, exactly as the
+   * shambler's lurch never leaves its x — and both numbers are back to zero and
+   * one a full beat before the boot is due, so nothing is ever judged, kicked or
+   * collided against a barrel that is being drawn somewhere it is not.
+   *
+   * The screen geometry is asked of the pack rather than written down here
+   * (lcdChuteScreenX), so moving the gorilla along the skyline moves both ends
+   * of this at once.
+   */
+  updateBarrelArrivals(beat) {
+    const chuteX = this.beatLock && this.styleName === 'lcd'
+      ? lcdChuteScreenX(this.stage?.index) : null;
+    if (chuteX == null || !Number.isFinite(beat)) return null;
+    const bpm = this.cabinet.music?.bpm || 120;
+    const z = this.camZoom || 1;
+    // The chute's x is a SCREEN number and the lane is a world one, and the
+    // world is drawn through a zoom — so the chute's own distance in front of
+    // the hero shrinks as the camera pushes in. Solved per frame rather than
+    // once, because the zoom eases.
+    const chuteAhead = chuteX / z - (PLAYER_X + PLAYER_W);
+    let cue = null;
+    for (const ob of this.obstacles) {
+      if (!ob.live || ob.type !== 'barrel' || !Number.isFinite(ob.actionBeat)) continue;
+      // How long before the boot the barrel passes the chute. Closing speed,
+      // not run speed: the barrel spends the gap too (see beatchart.js).
+      const lead = chuteAhead / (this.speed + Math.abs(ob.def.vx || 0)) * bpm / 60;
+      const atChute = ob.actionBeat - lead;
+      // The arrival runs from the chute to a beat short of the boot, so the
+      // last of it is an ordinary barrel rolling on an ordinary road.
+      const k = Math.max(0, Math.min(1,
+        (ob.actionBeat - 1 - beat) / Math.max(0.001, ob.actionBeat - 1 - atChute)));
+      ob.artRise = k * BARREL_ARRIVE_RISE;
+      ob.artScale = 1 - k * BARREL_ARRIVE_SHRINK;
+      // The panel can only draw a drop it has the whole of, so only a barrel
+      // whose delivery beat is still ahead of the chute's own four cells is
+      // worth naming — and the soonest one wins, since two cannot come down
+      // one chute.
+      if (atChute >= beat - 0.5 && atChute <= beat + LCD_CHUTE_BEATS + 0.5
+        && (cue == null || atChute < cue)) cue = atChute;
+    }
+    return cue;
   }
 
   // THE SKYLINE'S ONE SOUND. Once every sixteen bars the plane crossing the
@@ -8346,6 +8418,10 @@ export class RunState {
         audio: Audio.musicAnalysis?.() || null,
         form: this.rhythmForm,
         cheer: this.rhythmCheer > 0,
+        // The beat a real barrel reaches the foot of the gorilla's chute, so
+        // the one he drops and the one in the road are the same barrel. See
+        // updateBarrelArrivals; null on every stage without a chute.
+        barrelBeat: this.barrelChuteCue,
       }
       : null;
     this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist, backgroundScene);

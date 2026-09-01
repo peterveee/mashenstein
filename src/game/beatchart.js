@@ -171,6 +171,55 @@ export function pitWindowBeats(beats = PIT_BEATS, bpm = 120) {
   return (worstAirtime() - beats * beatSec) / (2 * beatSec);
 }
 
+// ---- THE PUNT SLOT'S CONTACT WINDOW ---------------------------------------
+//
+// A barrel does not wait to be answered — it rolls at the hero at `def.vx`
+// while he runs at it — so a chart slot that asks for the boot has to say WHEN
+// the two meet, not just where the barrel stands. Three gates have to be open
+// at that instant, all measured from the frame the player presses duck:
+//
+//   the slide has to be DOWN      contact is only a kick above duckAmount 0.6,
+//                                 and the blend takes DUCK_IN_T to reach 1 —
+//                                 so 0.6 * 0.14 = 0.084s at the earliest.
+//   the punt window has to be OPEN puntPower falls to nothing at PUNT.windowT,
+//                                 0.35s — so 0.35s at the latest.
+//   the press itself is LOOSE     the judge takes anything inside ON_BEAT_WINDOW
+//                                 either side of the line, which at 124bpm is
+//                                 0.087s of slop in both directions.
+//
+// The last one is what makes this arithmetic rather than a guess: the lead has
+// to work for the EARLIEST legal press and the LATEST one, so the window it may
+// sit in is [0.084 + slop, 0.35 - slop] — and the slop is in beats while the
+// other two are in seconds, so the window narrows as the tempo does. Hence a
+// function of bpm rather than a constant, and hence the validator's refusal
+// below when a tempo closes it entirely: exactly the shape of the pit's
+// ON_BEAT_WINDOW guard, and for the same reason. A cabinet that can score a
+// beat it has made unplayable is a cabinet arguing with itself.
+//
+// Duplicated from player.js rather than imported: this module's whole contract
+// is that it knows nothing it cannot compute (see the header), and reaching
+// into the Player for a blend constant would put a DOM-free chart validator
+// downstream of the hero's animation. The test pins the two together.
+const PUNT_SLIDE_DOWN_T = 0.14 * 0.6;
+const PUNT_WINDOW_T = 0.35;
+export function puntLeadRange(bpm = 120) {
+  const slop = ON_BEAT_WINDOW * 60 / (bpm || 120);
+  return { lo: PUNT_SLIDE_DOWN_T + slop, hi: PUNT_WINDOW_T - slop };
+}
+/**
+ * How long after the beat line the boot meets the barrel, in seconds.
+ *
+ * The middle of the range above, which is the only defensible pick: the two
+ * ends are a slide that has not landed yet and a window that has already shut,
+ * and being wrong by the same margin in either direction is what "on the beat"
+ * means. At 124bpm it comes out at 0.217s — a shade under half a beat, so the
+ * barrel meets the boot on the "and", which is also where it reads best.
+ */
+export function puntLeadSec(bpm = 120) {
+  const { lo, hi } = puntLeadRange(bpm);
+  return (lo + hi) / 2;
+}
+
 /** How much empty lane this chart is given after a start or a resync, in beats. */
 export function laneRunwayBeats(chart) {
   return chart?.events?.some((e) => e.action === 'pit')
@@ -267,8 +316,36 @@ export function validateBeatChart(chart, physics = {}) {
       }
     } else if (REQUIRED_ACTIONS.has(raw.action)) {
       const type = raw.type || ACTION_TYPES[raw.action];
-      if (!OBSTACLES[type] || OBSTACLES[type].action !== raw.action) {
+      const def = OBSTACLES[type];
+      // A DUCK SLOT HAS TWO ANSWERS TO "what is standing there". The drone is
+      // the one it was born with — a thing you slide UNDER — and `beatPunt`
+      // marks the other: a thing you slide INTO, whose def answers to a jump
+      // everywhere off this grid (see OBSTACLES.barrel). The slot is a duck
+      // either way, which is the whole reason this is a flag and not a new
+      // action: the judge scores it, the ribbon draws it and the spacing table
+      // spaces it exactly as it always has.
+      const puntable = raw.action === 'duck' && def?.beatPunt;
+      if (!def || (def.action !== raw.action && !puntable)) {
         throw new Error(`invalid obstacle for ${raw.action}: ${type}`);
+      }
+      // AND A MOVING PROP MAY ONLY STAND ON THE SLOT THAT KNOWS IT MOVES.
+      // `beatPunt` on a jump slot would validate on the def's own action and
+      // then be laid with the STATIC approach — the lead that assumes the
+      // hazard waits where it is put — so the barrel would arrive early by the
+      // ratio of its speed to the hero's and the beat would be unplayable for
+      // a reason nothing in the chart could show. The trap is worth a rule.
+      if (def.beatPunt && raw.action !== 'duck') {
+        throw new Error(`${type} moves, so it may only stand on a duck slot `
+          + `(slot ${raw.slot} is a ${raw.action})`);
+      }
+      // And it has to be reachable at this tempo — see puntLeadRange. Only
+      // checkable once the bpm is known, like the pit's own window above.
+      if (puntable && physics.bpm) {
+        const { lo, hi } = puntLeadRange(physics.bpm);
+        if (lo >= hi) {
+          throw new Error(`punt slot ${raw.slot} has no contact window at ${physics.bpm}bpm `
+            + `(${lo.toFixed(3)}s earliest, ${hi.toFixed(3)}s latest)`);
+        }
       }
       // A COLUMN IS THE DRONE'S AND THE DUCK'S ALONE. The drone is the only
       // type with a ladder of altitudes measured against the cast's jumps
@@ -382,8 +459,21 @@ function worstClearTime(height) {
 
 // Distance between the ideal input position and the leading edge of the
 // physical hazard.  It is cached by BeatSpawner per speed/type.
-export function actionApproachPx(action, type, speed) {
+//
+// `bpm` is optional and only a PUNT slot reads it: the lead it wants is in
+// beats-of-slop as much as in seconds, so the tempo is part of the answer. Every
+// other action's approach is a pure function of the hero's physics and the road.
+export function actionApproachPx(action, type, speed, bpm = null) {
   if (!finiteNumber(speed) || speed <= 0 || action === 'coin' || action === 'ability') return 0;
+  const punt = action === 'duck' && OBSTACLES[type]?.beatPunt;
+  if (punt) {
+    // AGAINST A CLOSING TARGET. The gap the boot has to eat is opened at the
+    // hero's speed PLUS the barrel's own, because both of them are spending it
+    // — measure this at the run speed alone and the contact lands early by the
+    // ratio between the two, which at 208 and 40 is a fifth of the lead.
+    const closing = speed + Math.abs(OBSTACLES[type]?.vx || 0);
+    return closing * puntLeadSec(bpm || 120);
+  }
   // Ducking is resolved from the same input edge as collision.  A one-frame
   // lead keeps the drone's contact on the following update without moving it
   // a full hitbox ahead of the judged beat.
@@ -485,7 +575,9 @@ export class BeatSpawner {
 
   _approachPx(action, type, speed) {
     const k = `${action}:${type}:${speed}`;
-    if (!this._approachCache.has(k)) this._approachCache.set(k, actionApproachPx(action, type, speed));
+    if (!this._approachCache.has(k)) {
+      this._approachCache.set(k, actionApproachPx(action, type, speed, this.bank?.bpm));
+    }
     return this._approachCache.get(k);
   }
 
@@ -663,13 +755,34 @@ export class BeatSpawner {
         ? pitLayout(speed, this.bank?.bpm, event.beats) : null;
       const approach = pit ? pit.approach : this._approachPx(event.action, type, speed);
       const x = actionX + approach;
+      // A HAZARD THAT MOVES IS LAID WHERE IT WILL HAVE MOVED FROM.
+      //
+      // `x` is where the thing has to BE on its own beat. Everything the chart
+      // has ever laid stands still, so for those two the same number. A barrel
+      // spends the whole flight closing on the hero at def.vx, and the flight
+      // is however many beats early the lookahead ran — up to seven, which at
+      // this cabinet's tempo is 135px, or a beat and a third of road. Laid at
+      // `x` it would simply arrive early and the slot would be unplayable.
+      //
+      // The correction is exact rather than approximate, and that is the point
+      // of doing it here: at lay time the spawner knows precisely how many
+      // beats early it is, the drift is a constant, and nothing between now and
+      // then can change either. So the barrel goes down that far further along
+      // and the roll carries it to `x` on the beat it is answered on. No
+      // per-frame chasing, no correction that can disagree with the judge.
+      const drift = Math.abs(OBSTACLES[type]?.vx || 0)
+        * (this.cursorBeat - beat) * 60 / (this.bank?.bpm || 120);
+      const spawnX = x + drift;
       // Widest the slot can ever be, cadence ignored: the finish wall is an
       // all-or-nothing boundary and must not admit a figure on the strength of
       // this pass being a quiet one.
       const coinRunW = event.action === 'coin'
         ? ((event.run ?? 1) - 1) * (pxPerBeat / (event.div ?? COIN_DIV)) + 8 : 0;
       const width = pit ? pit.w : (event.action === 'coin' ? coinRunW : (OBSTACLES[type]?.w || 8));
-      if (x + width > stopX) {
+      // Against the SPAWN position, not the contact one: the finish wall is a
+      // rule about where the lane may put a thing, and a barrel is put down the
+      // road of where it ends up. Identical for everything that stands still.
+      if (spawnX + width > stopX) {
         this.nextX = stopX;
         return;
       }
@@ -759,7 +872,7 @@ export class BeatSpawner {
           //
           // The column is no wider than a lone drone either — same X, same 12px
           // box — so `width` above and `nextX` below are already right for it.
-          const column = event.column ? makeDroneColumn(x, event.column) : [makeObstacle(type, x)];
+          const column = event.column ? makeDroneColumn(x, event.column) : [makeObstacle(type, spawnX)];
           for (const ob of column) {
             ob.chartEventId = id;
             ob.chartAction = event.action;
@@ -772,7 +885,7 @@ export class BeatSpawner {
           this.lastActionKind = event.action;
         }
       }
-      this.nextX = Math.max(this.nextX, x + width);
+      this.nextX = Math.max(this.nextX, spawnX + width);
       this.cursorBeat++;
     }
   }

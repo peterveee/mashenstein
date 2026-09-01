@@ -5,7 +5,8 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { getStylePack, drawLCDPanel } = await import('../src/engine/stylePacks/index.js');
+const { getStylePack, drawLCDPanel, lcdChuteScreenX, LCD_CHUTE_BEATS }
+  = await import('../src/engine/stylePacks/index.js');
 const { CABINETS } = await import('../src/data/cabinets.js');
 const { BEAT_RIBBON_BOTTOM } = await import('../src/game/hud.js');
 
@@ -471,6 +472,60 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
     + `(${ticks(hit) - ticks(hit - 4)} and ${ticks(hit + 1) - ticks(hit - 3)} extra cells)`);
   assert(!openMouth(hit - 1) && !openMouth(hit + 2) && ticks(hit + 2) === ticks(hit - 2),
     'and he wears his authored face on the beats either side of it');
+}
+
+// ---- THE BARREL THE LANE ASKED FOR ------------------------------------------
+//
+// On the finale a barrel in the road is one the gorilla just dropped, and the
+// only way the two can be the same object is for the chute to deliver when the
+// lane says so. `barrelBeat` is the one number that carries it — the beat a real
+// barrel reaches the foot of the chute — and everything below is the contract
+// around it: counted backward, silent when nothing is coming, and never drawing
+// the bottom cell the road is about to fill.
+{
+  // A lit mini-barrel on the chute is a filled ellipse at the drop's own x;
+  // the ghosts are stroke-only, so the fill is what says "this one is real".
+  const CHUTE_X = 408;
+  const lit = (extra, beat) => background(3, beat, {}, 0, 0, extra)
+    .filter((op) => op[0] === 'ellipse' && op[1] === CHUTE_X && op[3] === 8 && op[4] === 7)
+    .length;
+  // The ghosts are drawn every frame whatever happens — the chute's whole path
+  // is always there — so a live cell is one more than that. The baseline is
+  // taken with a delivery far enough away that none of the four is lit.
+  const idle = lit({ barrelBeat: 999 }, 0);
+  assert(idle === LCD_CHUTE_BEATS + 1,
+    `the chute ghosts its whole path whatever is happening (${idle} cells)`);
+  assert(lcdChuteScreenX(3) === CHUTE_X,
+    `the chute stands where the gorilla's building puts it (${lcdChuteScreenX(3)})`);
+  assert(lcdChuteScreenX(1) === null && lcdChuteScreenX(2) === null,
+    'and only the finale has one');
+
+  // COUNTED BACKWARD FROM THE DELIVERY. Three beats out the top cell is live,
+  // two out the next — and on the delivery beat itself the chute draws nothing,
+  // because the lane barrel is standing there.
+  const due = 12;
+  const steps = [];
+  for (let d = LCD_CHUTE_BEATS; d >= 0; d--) steps.push(lit({ barrelBeat: due }, due - d));
+  assert(steps.slice(0, LCD_CHUTE_BEATS).every((n) => n === idle + 1),
+    `the chute walks a live cell down for the beats before a delivery (${steps.join(',')})`);
+  assert(steps[LCD_CHUTE_BEATS] === idle,
+    'and hands the last cell to the road rather than drawing a second barrel on it');
+
+  // SILENT WHEN NOTHING IS COMING. A chute running on its own clock through the
+  // bars where no barrel is due is exactly what made the roof and the road read
+  // as two unrelated toys.
+  assert(lit({ barrelBeat: due }, due + 3) === idle && lit({ barrelBeat: due }, due - 9) === idle,
+    'and nothing falls outside its own four beats');
+
+  // AND WITHOUT A LANE TO ASK — the hub, the gallery, reduced motion, this
+  // suite — it runs the authored four-beat cycle it always has.
+  const authored = [0, 1, 2, 3].map((b) => lit(null, b));
+  assert(authored.every((n) => n === idle + 1),
+    `with no lane the chute drops on every beat of the bar (${authored.join(',')})`);
+  assert(background(3, 5, { reducedMotion: true }, 0, 0, { barrelBeat: 5 })
+    .filter((op) => op[0] === 'ellipse' && op[1] === CHUTE_X && op[3] === 8 && op[4] === 7)
+    .length === idle + 1,
+    'and a frozen panel is not driven by the lane either');
 }
 
 // ---- the share price is the run's ----------------------------------------

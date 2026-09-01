@@ -636,7 +636,17 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
     ctx.restore();
   } else if (e.roll || (e.def.roll)) {
     ctx.save();
-    ctx.translate(x + e.w / 2, y + e.h / 2);
+    // ARRIVING OUT OF THE BACKDROP. On RHYTHM BANKRUPTCY's finale a lane barrel
+    // is one the gorilla just dropped down his chute, so for the couple of beats
+    // between the foot of that chute and the road it is drawn coming forward —
+    // lifted to the chute's own street level and scaled toward it. ART ONLY, as
+    // the shambler's lurch above is: the box never leaves the road, and both
+    // numbers are home a whole beat before anything can touch it (run.js
+    // updateBarrelArrivals). Absent on every other barrel in the game, which is
+    // what the fallbacks are for.
+    const scale = e.artScale || 1;
+    ctx.translate(x + e.w / 2, y + e.h / 2 - (e.artRise || 0));
+    if (scale !== 1) ctx.scale(scale, scale);
     // A barrel has been rolling since the level loaded, so it takes its angle
     // from the world clock and every barrel on screen spins in step — which is
     // fine, because they all started the same way.

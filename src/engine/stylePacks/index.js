@@ -2070,13 +2070,29 @@ const LCD_CITY_SCENES = [
   {
     // EIGHT structures with even air between them, like stage 1. The
     // gorilla's deco is capped at 124 so his raised barrel stays under the
-    // beat ribbon's band, and his thrown barrels now fall down a ghosted
-    // chute beside his building — one cell per heard beat, street level on
-    // beat four (barrelDrop below).
+    // beat ribbon's band, and his thrown barrels fall down a ghosted chute
+    // beside his building (barrelDrop below).
+    //
+    // HE STANDS ON SIX NOW, NOT FOUR, and the swap is the lane's doing rather
+    // than the skyline's. The barrels he drops are real hazards on this stage:
+    // one comes down the chute, reaches the street and then comes FORWARD out
+    // of the backdrop into the road, and the road it has to cross to get there
+    // is the whole of the effect. From building 4 the chute stood at screen
+    // 292, which is barely two beats of travel from the hero and gave the
+    // barrel no room to arrive from anywhere — it simply appeared beside him.
+    // Building 6 puts the chute at 408, a dozen pixels from where a lane
+    // barrel first crosses into frame, so the thing that lands at the foot of
+    // the chute and the thing that rolls at you are in the same place at the
+    // same moment and read as one object.
+    //
+    // Only the height and the style move; the x/w grid and its even air are
+    // untouched. Four takes six's relay-126 (its mast still tops out at 79,
+    // the number the plane's lane is measured against) and six takes the
+    // gorilla's capped deco.
     buildings: [
       [19, 34, 58, 'ducts'], [72, 42, 108, 'relay'], [133, 34, 44, 'workshop'],
-      [186, 46, 118, 'industrial'], [251, 32, 124, 'deco'], [302, 44, 62, 'ducts'],
-      [365, 34, 126, 'relay'], [418, 42, 68, 'industrial'],
+      [186, 46, 118, 'industrial'], [251, 32, 126, 'relay'], [302, 44, 62, 'ducts'],
+      [365, 34, 124, 'deco'], [418, 42, 68, 'industrial'],
     ],
     clouds: [[18, 46], [264, 52], [398, 40]],
     // The high lane: every mast on this skyline tops out at y 79 (building 6's,
@@ -2084,7 +2100,7 @@ const LCD_CITY_SCENES = [
     // between them and levels off before it reaches the gorilla — who is drawn
     // after it and eclipses it as it passes. See drawLCDCity.
     plane: { from: 66, to: 54, level: 200, tow: ['HIGH SCORE', 'ONE MORE GO', 'PRESS START'] },
-    rooftopGorilla: 4,
+    rooftopGorilla: 6,
     barrelDrop: true,
   },
 ];
@@ -2158,6 +2174,7 @@ function lcdSceneFrame(scene, reducedMotion) {
     live,
     step: lcdMod(beat, 16),
     beat4: lcdMod(beat, 4),
+    beatAbs: beat,
     bar: Math.floor(beat / 4),
     phrase: Math.floor(beat / 16),
     phase: Math.min(LCD_PHASES - 1, Math.floor(p * LCD_PHASES)),
@@ -2187,6 +2204,24 @@ function lcdSceneFrame(scene, reducedMotion) {
     form: reducedMotion || !Number.isFinite(scene?.form) ? null
       : Math.max(0, Math.min(1, scene.form)),
     cheer: !reducedMotion && !!scene?.cheer,
+    // WHEN THE NEXT BARREL REACHES THE FOOT OF THE CHUTE, as an absolute beat,
+    // or null. The second crack in "no gameplay reaches this painter" and it is
+    // narrower than the first: not a position, not an event, one beat number
+    // that says a thing the player can already see coming is coming.
+    //
+    // It exists because stage 3's barrels are no longer scenery. A barrel in
+    // the lane IS one of the ones the gorilla drops, and the only way the two
+    // can be the same object is for the chute to deliver when the lane says so
+    // rather than on a clock of its own. Without it the chute ran every bar
+    // whether or not a barrel was coming, which is precisely what made the
+    // thing on the roof and the thing in the road read as unrelated.
+    //
+    // Null under reduced motion, in the hub, in the gallery and in the tests,
+    // exactly like `form` — and there the chute falls back to the authored
+    // four-beat cycle it has always run, which is not a degradation, it is the
+    // panel as a picture rather than as a lane.
+    barrelBeat: reducedMotion || !Number.isFinite(scene?.barrelBeat) ? null
+      : scene.barrelBeat,
   };
 }
 
@@ -2512,73 +2547,81 @@ function lcdCloud(ctx, x, y, pose, color) {
 
 // ---- the chase ----------------------------------------------------------
 //
-// A maze-game attract screen on a rooftop: three ghosts running, and the round
-// one behind them eating his way along the corridor. It steps ONE CELL PER
-// HEARD BEAT and chomps on the same beat, which is the only clock anything on
-// this panel keeps — so the chase is quarter notes, and a player watching the
-// board is watching the tempo.
+// A maze-game attract screen on a rooftop: three ghosts running, a few pellets
+// left in the corridor behind them, and the round one coming up on those.
+// Everything steps ONE CELL PER HEARD BEAT and he chomps on the same beat,
+// which is the only clock anything on this panel keeps — so the chase is
+// quarter notes, and a player watching the board is watching the tempo.
 //
 // Built as a STRIP that the board is a window onto, rather than as a list of
-// authored frames. Four sprites at a six-cell pitch is twenty-four cells and
-// the board is thirteen wide, so frames would be thirty-two near-identical
-// pictures; a strip says the same thing once and the window does the walking.
-// Thirty-two cells is eight bars, so the chase leaves at one edge and comes
-// round at the other on a bar line rather than mid-phrase.
+// authored frames: the cast is forty cells long against a thirteen-cell board,
+// so frames would be forty near-identical pictures. A strip says it once and
+// the window does the walking. Forty cells is ten bars, so the chase comes
+// round on a bar line rather than mid-phrase.
+//
+// THE GAP IS THE PICTURE. Four sprites at an even pitch is a queue, not a
+// chase — what says one thing is after another is the DISTANCE between them,
+// and what says he is gaining is the row of pellets lying in it. The ghosts run
+// nose to tail; ten cells of corridor and three dots separate the last of them
+// from him.
 const LCD_CHASE_W = 13;
-const LCD_CHASE_LEN = 32;
-const LCD_CHASE_PITCH = 6;
-// A ghost, five by five, with its eyes and its skirt punched out of the body —
-// on a dark board an unlit cell IS the hole, so the eyes cost nothing.
+const LCD_CHASE_H = 7;
+const LCD_CHASE_LEN = 40;
+// Where each of them stands on the strip, in cells. Left to right is the order
+// they are seen in, and they all travel left, so the ones in front are the ones
+// being chased.
+const LCD_CHASE_CAST = [
+  { at: 0, ghost: 'A' }, { at: 7, ghost: 'B' }, { at: 14, ghost: 'C' },
+  { at: 30, ghost: null },
+];
+const LCD_CHASE_PELLETS = [21, 24, 27];
+// A ghost: domed head, scalloped skirt, and eyes with WHITES and pupils rather
+// than holes punched in the body. The holes were the cheap version and they
+// read as a mask — an eye is a light thing with a dark thing in it, and the
+// pupils sit to the left of their whites because that is the way he is running.
 const lcdGhostCells = (k, pose) => [
-  '.XXX.',
-  'XXXXX',
-  'X.X.X',
-  'XXXXX',
-  pose ? 'X.X.X' : '.X.X.',
+  '..XX..',
+  '.XXXX.',
+  'XXXXXX',
+  'WWXWWX',
+  'pWXpWX',
+  'XXXXXX',
+  pose ? 'X.XX.X' : '.XX.XX',
 ].map((row) => row.replaceAll('X', k));
-// ...and the round one, facing the way he is travelling, chomping on the beat.
-const lcdPacCells = (pose) => (pose ? [
-  '.PPP.',
-  'PPPPP',
-  'PPPPP',
-  'PPPPP',
-  '.PPP.',
-] : [
-  '.PPP.',
-  'PPPPP',
-  '..PPP',
-  'PPPPP',
-  '.PPP.',
-]);
+// ...and the round one, facing the way he is travelling, chomping on the beat,
+// WITH AN EYE. Without it he is a pie chart.
+const lcdPacCells = (pose) => [
+  '..PPP.',
+  '.PPePP',
+  pose ? 'PPPPPP' : '.PPPPP',
+  pose ? 'PPPPPP' : '..PPPP',
+  pose ? 'PPPPPP' : '.PPPPP',
+  '.PPPPP',
+  '..PPP.',
+];
 function lcdChaseStrip(pose) {
-  const rows = ['', '', '', '', '', '', '', ''];
-  const cast = [lcdGhostCells('A', pose), lcdGhostCells('B', pose), lcdGhostCells('C', pose),
-    lcdPacCells(pose)];
-  // Row 0 is air over their heads, rows 1..5 the cast, row 6 air, row 7 the
-  // corridor's pellets — which do NOT scroll with the strip, because the dots
-  // are the place and the chase is what is moving through it.
-  for (let c = 0; c < LCD_CHASE_LEN; c++) {
-    const who = Math.floor(c / LCD_CHASE_PITCH);
-    const col = c % LCD_CHASE_PITCH;
-    const sprite = who < cast.length && col < 5 ? cast[who] : null;
-    rows[0] += '.';
-    for (let r = 0; r < 5; r++) rows[r + 1] += sprite ? sprite[r][col] : '.';
-    rows[6] += '.';
-    rows[7] += '.';
+  const cells = [];
+  for (let r = 0; r < LCD_CHASE_H; r++) cells.push(new Array(LCD_CHASE_LEN).fill('.'));
+  for (const m of LCD_CHASE_CAST) {
+    const art = m.ghost ? lcdGhostCells(m.ghost, pose) : lcdPacCells(pose);
+    for (let r = 0; r < LCD_CHASE_H; r++) {
+      for (let c = 0; c < art[r].length; c++) {
+        if (art[r][c] !== '.') cells[r][(m.at + c) % LCD_CHASE_LEN] = art[r][c];
+      }
+    }
   }
-  return rows;
+  // On the corridor's centreline, which is where a maze game puts its dots and
+  // is the row his mouth is open on.
+  for (const at of LCD_CHASE_PELLETS) cells[3][at % LCD_CHASE_LEN] = 'd';
+  return cells.map((row) => row.join(''));
 }
 const LCD_CHASE_STRIPS = [lcdChaseStrip(0), lcdChaseStrip(1)];
 function lcdChaseGrid(frame) {
   const strip = LCD_CHASE_STRIPS[frame.beat4 % 2];
   const off = lcdMod(frame.bar * 4 + frame.beat4, LCD_CHASE_LEN);
-  return strip.map((row, r) => {
+  return strip.map((row) => {
     let out = '';
-    for (let c = 0; c < LCD_CHASE_W; c++) {
-      // The pellet row is fixed to the BOARD, not to the strip: every other
-      // cell, lit, the corridor they are all running down.
-      out += r === 7 ? (c % 2 === 0 ? 'd' : '.') : row[(off + c) % LCD_CHASE_LEN];
-    }
+    for (let c = 0; c < LCD_CHASE_W; c++) out += row[(off + c) % LCD_CHASE_LEN];
     return out;
   });
 }
@@ -2654,7 +2697,10 @@ const LCD_BILLBOARD_ART = {
   // picture is generated (see lcdChaseGrid); `frames` is here to size the
   // board and to be what a caller with no clock draws.
   chase: {
-    ink: { A: '#b9cf79', B: LCD_WINDOW_ON, C: '#d4a35e', P: '#f6d33c', d: LCD_WINDOW_OFF },
+    ink: {
+      A: '#b9cf79', B: LCD_WINDOW_ON, C: '#d4a35e', P: '#f6d33c',
+      W: '#e1d68c', p: LCD_PRINT, e: LCD_PRINT, d: '#e1d68c',
+    },
     grid: lcdChaseGrid,
     frames: [lcdChaseGrid({ bar: 0, beat4: 0 })],
   },
@@ -3174,6 +3220,29 @@ function lcdBurstPhase(art, frame) {
 // the plane and the barrel meet on. Given a stage and an absolute beat, is
 // this the beat the barrel goes? The run asks once per beat and fires the cue;
 // nothing about the drawing depends on the answer.
+/**
+ * Where the barrel chute stands on the panel, in screen px, or null on a stage
+ * that has no chute.
+ *
+ * The run needs it to work out WHEN a lane barrel is at the foot of the chute,
+ * and it is derived from the same building the painter uses rather than written
+ * down twice — move the gorilla and both ends move together, which is the whole
+ * reason this is a function and not a constant in run.js.
+ */
+export function lcdChuteScreenX(stageIndex) {
+  const art = LCD_CITY_SCENES[Math.max(1, Math.min(3, Math.trunc(stageIndex) || 1))];
+  if (!art?.barrelDrop || !Number.isInteger(art.rooftopGorilla)) return null;
+  const [gx, gw] = art.buildings[art.rooftopGorilla];
+  return gx + gw + 9;
+}
+
+// How many cells the barrel chute has, and so how many beats early the lane has
+// to name a barrel for the drop to be drawn whole. Four cells is a bar, and the
+// delivery — top cell to street — is the three steps between them.
+const LCD_CHUTE_CELLS = 4;
+/** How many heard beats the chute takes to deliver, top cell to street. */
+export const LCD_CHUTE_BEATS = LCD_CHUTE_CELLS - 1;
+
 export function lcdBarrelStrikeAt(stageIndex, beat) {
   if (!Number.isFinite(beat)) return false;
   const art = LCD_CITY_SCENES[Math.max(1, Math.min(3, Math.trunc(stageIndex) || 1))];
@@ -4112,7 +4181,29 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
       const dropX = gx + gw + 9;
       const chute = [roof - 4, roof + 30, roof + 64, roof + 98];
       for (const cy of chute) gbcGorillaBarrel(ctx, dropX, cy, true);
-      gbcGorillaBarrel(ctx, dropX, chute[frame.beat4]);
+      // WHICH CELL IS LIT, and it is the one place on this panel where the lane
+      // gets a say. In a run, `barrelBeat` is the beat a real barrel reaches the
+      // foot of this chute (see lcdSceneFrame), so the drop is counted BACKWARD
+      // from it — cell three on that beat, two the beat before, and so on — and
+      // nothing falls at all on the bars where nothing is coming. That is the
+      // whole of the effect: the barrel that lands here is the barrel that then
+      // rolls at you, so the chute has to be silent when the road is.
+      //
+      // Everywhere else — hub, gallery, reduced motion, the tests — there is no
+      // lane to ask, and it runs the authored four-beat cycle it always has.
+      const laneDriven = frame.barrelBeat != null;
+      const cue = laneDriven
+        ? LCD_CHUTE_CELLS - 1 - Math.round(frame.barrelBeat - frame.beatAbs)
+        : frame.beat4;
+      // AND THE LAST CELL IS THE LANE'S. When a real barrel is coming, it is
+      // standing at the foot of this chute on the delivery beat — so drawing
+      // the bottom cell as well puts two barrels in one place and the handoff
+      // reads as a doubling instead of a hand-off. The chute delivers to the
+      // cell above and the road takes it from there, which is exactly what the
+      // picture is meant to say. With no lane to ask, all four cells are the
+      // chute's own and it runs the authored cycle.
+      const last = laneDriven ? LCD_CHUTE_CELLS - 1 : LCD_CHUTE_CELLS;
+      if (cue >= 0 && cue < last) gbcGorillaBarrel(ctx, dropX, chute[cue]);
     }
     lcdRooftopGorilla(ctx, art.buildings[art.rooftopGorilla], frame);
   }
