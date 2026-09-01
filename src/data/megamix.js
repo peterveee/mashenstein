@@ -2,7 +2,7 @@
 // the same A-minor/C-major neighbourhood, then DJ-mixed over one 120 BPM house
 // rhythm section. No WAV asset is loaded or shipped.
 import { seq, chordSeq } from '../engine/notes.js';
-import { CABINET_BY_ID, HUB_THEME, TITLE_THEME, FINALE_THEME } from './cabinets.js';
+import { CABINETS, CABINET_BY_ID, HUB_THEME, TITLE_THEME, FINALE_THEME } from './cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from './shop-themes.js';
 import { SONGS } from './songs/index.js';
 
@@ -23,12 +23,30 @@ export const MEGAMIX_LEAD_GAIN = 0.064;
 // cabinet progression is reshuffled.
 const MEGAMIX_CABINET_ORDER = ['plumber', 'speed', 'neon', 'frost', 'crypt', 'rhythm', 'cardboard', 'office', 'surge'];
 
-export const MEGAMIX_SOURCE_TRACKS = [
+// The three themes that open a listing and the one that closes it. Only the
+// cabinet block between them is ordered differently by the mix and the jukebox.
+const OPENING_TRACKS = [
   { name: 'EMPTY ARCADE (TITLE THEME)', bank: TITLE_THEME },
   { name: 'THE FOOD COURT (HUB THEME)', bank: HUB_THEME },
   { name: 'CHECKOUT PROMENADE (SHOPPING)', bank: COUNTER_DANCE_MIX_THEME },
-  ...MEGAMIX_CABINET_ORDER.map((id) => CABINET_BY_ID[id]).map((cabinet) => ({ name: `${cabinet.name} (${cabinet.genre})`, bank: cabinet.music })),
-  { name: 'ONE MORE SWITCH (FINALE THEME)', bank: FINALE_THEME },
+];
+const CLOSING_TRACK = { name: 'ONE MORE SWITCH (FINALE THEME)', bank: FINALE_THEME };
+const cabinetTracks = (ids) => ids
+  .map((id) => CABINET_BY_ID[id])
+  .map((cabinet) => ({ name: `${cabinet.name} (${cabinet.genre})`, bank: cabinet.music }));
+
+export const MEGAMIX_SOURCE_TRACKS = [
+  ...OPENING_TRACKS,
+  ...cabinetTracks(MEGAMIX_CABINET_ORDER),
+  CLOSING_TRACK,
+];
+
+// The jukebox is a catalogue, not a mix: it walks the cabinets in the order you
+// meet them along the food court wall, so row N is the Nth machine you pass.
+export const JUKEBOX_TRACKS = [
+  ...OPENING_TRACKS,
+  ...cabinetTracks(CABINETS.map((cabinet) => cabinet.id)),
+  CLOSING_TRACK,
 ];
 
 // Hand-authored DJ key moves. Themes already living around A minor/C major

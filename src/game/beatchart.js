@@ -85,6 +85,25 @@ export const COIN_RUN_PIT_CLEAR_SEC = 0.25 * 2.4;
 // 2.4 against a 2-beat fuse leaves 0.4 of a beat — about 45px here — so the
 // burst lands just in front of the hero's face, which is the picture the
 // mechanic wants anyway.
+// HOW MUCH OF A CROSSING'S TWO-BEAT STRIDE IS AIR, on a beat cabinet.
+//
+// The other crossings in the game hand the player a WINDOW: routes.js sizes hop
+// and tread in seconds (CROSSING_HOP / CROSSING_TREAD) against the shortest and
+// longest arcs in the cast, and every hero has a stretch of stone he may take
+// off from. Here he has a POINT — the beat — and the beat is `approach` px
+// before the stone's far edge whatever his legs are like. So the same ratio is
+// the wrong ratio: with a window you size the stone to the arc, and with a fixed
+// take-off you have to size it to the SPREAD of arcs, which is wider.
+//
+// It was 0.45, borrowed from nothing, and at this cabinet's tempo that put the
+// shortest arc in the cast (Grumpos, 0.57s) down a pixel SHORT of the far lip —
+// he could not cross at all — while everyone else landed in the first quarter of
+// the stone, which is the hop reading as taken too early because it very nearly
+// was. At 0.32 the cast lands between a fifth and three fifths of the way along,
+// the gap is still a third of a second of open air with teeth in it, and the
+// press still comes four fifths of the way down the stone. tests/spike-crossing.js
+// walks the whole cast over it.
+export const CROSSING_BEAT_HOP = 0.32;
 export const BOX_LEAD_BEATS = 2.4;
 export const BOX_BURST_BEATS = 2;
 // ACTION-FREE LANE AFTER A RESYNC, in beats, and it is the one number the
@@ -104,8 +123,28 @@ export const BOX_BURST_BEATS = 2;
 // onto a lane that is already playing its song.
 export const LANE_RUNWAY_BEATS = 2;
 export const PIT_LANE_RUNWAY_BEATS = 4;
+// A PUNT IS NOT A DUCK, FOR SPACING. It takes the same button and the judge and
+// the ribbon are right to treat it as one, but the BODY does something else
+// entirely: a drone is slid under and left behind, while a kick plants the hero
+// mid-slide with a boot out (SLIDE_KICK_T) and a barrel leaving it. One beat is
+// not enough road to be standing again, so a jump on the next line is asked of
+// a hero who is still on the floor — which is what "the kicks are a little close
+// to an immediate jump" is.
+//
+// AND COMING INTO ONE IS WORSE, for a reason the table could not see at all: a
+// punt needs a FRESH press. puntPower reads duckHoldT from the start of the
+// slide, so a player still holding the duck they took the drone with has a
+// hold time past the window before the barrel is even there, and the kick
+// simply cannot fire. Duck-then-punt one beat apart is not tight, it is
+// impossible, and two beats is the least that leaves room to let go and press
+// again.
+//
+// So `punt` is its own kind in the pairs below, derived from the def rather
+// than from the chart's own word for the slot (see puntKind).
 const REQUIRED_GAP_BEATS = Object.freeze({
   jumpJump: 2, jumpDuck: 2, duckJump: 1, duckDuck: 1,
+  puntJump: 2, puntDuck: 2, puntPit: 2, puntPunt: 4,
+  jumpPunt: 2, duckPunt: 2, pitPunt: 2,
   // A HOLE IS A JUMP THAT CANNOT BE SHORTENED, so it takes the jump's spacing on
   // both sides. The one asymmetry is the pair either side of a landing: coming
   // OUT of a hole the hero is still in the air a good part of the next beat, so
@@ -116,6 +155,13 @@ const REQUIRED_GAP_BEATS = Object.freeze({
 });
 
 function finiteNumber(n) { return typeof n === 'number' && Number.isFinite(n); }
+
+// What a slot costs the BODY, which is what the spacing table is about. Every
+// action is its own word for it except the duck, which covers two things the
+// hero does with quite different recoveries — see REQUIRED_GAP_BEATS.
+function puntKind(event) {
+  return event.action === 'duck' && OBSTACLES[event.type]?.beatPunt ? 'punt' : event.action;
+}
 
 /** Return a monotonically increasing beat number across a looping clock. */
 export function unwrapBeat(raw, state = {}) {
@@ -200,24 +246,45 @@ export function pitWindowBeats(beats = PIT_BEATS, bpm = 120) {
 // is that it knows nothing it cannot compute (see the header), and reaching
 // into the Player for a blend constant would put a DOM-free chart validator
 // downstream of the hero's animation. The test pins the two together.
-const PUNT_SLIDE_DOWN_T = 0.14 * 0.6;
+// A beat barrel is kicked on the INPUT rather than on the crouch blend (see the
+// `sliding` note in run.js), so the slide costs nothing here any more — it is
+// down on the frame the button goes down. What is left is the judge's own slop
+// at both ends: the contact has to be late enough that the LATEST legal press
+// has started its slide, and early enough that the EARLIEST one is still inside
+// the punt window.
 const PUNT_WINDOW_T = 0.35;
 export function puntLeadRange(bpm = 120) {
   const slop = ON_BEAT_WINDOW * 60 / (bpm || 120);
-  return { lo: PUNT_SLIDE_DOWN_T + slop, hi: PUNT_WINDOW_T - slop };
+  return { lo: slop, hi: PUNT_WINDOW_T - slop };
 }
+// HOW FAR DOWN ITS OWN RANGE THE CONTACT SITS. Not the middle, and the reason
+// is that the two ends are not the same kind of wrong. Late is cheap — the
+// window is 350ms and the far end of it costs nothing but a slightly relaxed
+// input. EARLY is where the mechanic lives: every millisecond of lead is time
+// between the beat the player plays and the hit they hear, and a kick whose
+// impact lands half a beat behind the press does not read as being on the beat
+// at all, whatever the scoreboard says. So it sits a quarter of the way up,
+// which at 124bpm puts the boot 0.13s — about a quarter of a beat — after the
+// line: close enough that playing it on the one lands the hit on the one, and
+// far enough that the latest legal press has actually happened before the
+// barrel gets there.
+//
+// 0.1, not 0. Zero puts the contact exactly ON the floor, which means a press
+// at the very back of the on-beat window connects on the frame it is made —
+// true in the engine, because the press is registered before collision
+// resolves, but with no margin at all and resting on an ordering nothing else
+// promises to keep. A tenth of the way up is one frame of real slack for a
+// hundredth of a beat of feel, which is the right side of that trade.
+const PUNT_LEAD_BIAS = 0.1;
 /**
  * How long after the beat line the boot meets the barrel, in seconds.
  *
- * The middle of the range above, which is the only defensible pick: the two
- * ends are a slide that has not landed yet and a window that has already shut,
- * and being wrong by the same margin in either direction is what "on the beat"
- * means. At 124bpm it comes out at 0.217s — a shade under half a beat, so the
- * barrel meets the boot on the "and", which is also where it reads best.
+ * The floor is the judge's own slop and the ceiling is the punt window minus
+ * it; PUNT_LEAD_BIAS picks where in between. See puntLeadRange.
  */
 export function puntLeadSec(bpm = 120) {
   const { lo, hi } = puntLeadRange(bpm);
-  return (lo + hi) / 2;
+  return lo + (hi - lo) * PUNT_LEAD_BIAS;
 }
 
 /** How much empty lane this chart is given after a start or a resync, in beats. */
@@ -245,7 +312,8 @@ export function validateBeatChart(chart, physics = {}) {
     if (!['jump', 'duck', 'pit', 'ability', 'coin'].includes(raw.action)) {
       throw new Error(`unknown beat chart action: ${raw.action}`);
     }
-    if (raw.action !== 'coin' && raw.action !== 'ability' && raw.every != null) {
+    const isPuntSlot = raw.action === 'duck' && OBSTACLES[raw.type]?.beatPunt;
+    if (raw.action !== 'coin' && raw.action !== 'ability' && !isPuntSlot && raw.every != null) {
       // The judge reads the chart and the spawner reads the chart, and they
       // agree because every slot means the same thing on every pass. A skipped
       // JUMP would break that agreement — the lane would lay nothing and the
@@ -259,7 +327,16 @@ export function validateBeatChart(chart, physics = {}) {
       // makes `every` safe here and nowhere else, and it is what keeps the box
       // occasional: at 16 beats a loop, `every: 2` is one every fifteen
       // seconds, which is a spice rather than a mechanic to survive.
-      throw new Error(`only a coin fill or a card box may skip loops (slot ${raw.slot} is a ${raw.action})`);
+      //
+      // AND A BARREL, for exactly the same two reasons. It is the other slot
+      // whose demand is conditional — the stage that TEACHES the kick wants a
+      // handful of them across ninety seconds, not one every seven — and the
+      // judge already knows how to ask the lane what it laid rather than the
+      // chart. A slot the lane skipped is a slot nobody is owed, whether it was
+      // skipped for a hero who cannot shoot or for a bar that does not want a
+      // barrel in it.
+      throw new Error(`only a coin fill, a card box or a barrel may skip loops `
+        + `(slot ${raw.slot} is a ${raw.action})`);
     }
     if (raw.action === 'ability') {
       // A BARE ability slot is still what it always was: a timing marker with
@@ -338,6 +415,12 @@ export function validateBeatChart(chart, physics = {}) {
         throw new Error(`${type} moves, so it may only stand on a duck slot `
           + `(slot ${raw.slot} is a ${raw.action})`);
       }
+      if (puntable) {
+        const every = raw.every ?? 1;
+        if (!Number.isInteger(every) || every < 1) {
+          throw new Error(`barrel cadence must be a positive integer of loops: ${raw.every}`);
+        }
+      }
       // And it has to be reachable at this tempo — see puntLeadRange. Only
       // checkable once the bpm is known, like the pit's own window above.
       if (puntable && physics.bpm) {
@@ -368,7 +451,15 @@ export function validateBeatChart(chart, physics = {}) {
         }
       }
     }
-    bySlot[raw.slot] = Object.freeze({ ...raw, type: raw.type || ACTION_TYPES[raw.action] });
+    // `punt` is stamped here rather than re-derived downstream, because the
+    // judge has to know a duck slot is a barrel one without reaching into the
+    // obstacle table from run.js to find out (see RunState.rhythmRequiredAt).
+    const slotType = raw.type || ACTION_TYPES[raw.action];
+    bySlot[raw.slot] = Object.freeze({
+      ...raw,
+      type: slotType,
+      ...(raw.action === 'duck' && OBSTACLES[slotType]?.beatPunt ? { punt: true } : {}),
+    });
   }
   for (let slot = 0; slot < chart.loopBeats; slot++) {
     if (!bySlot[slot]) throw new Error(`missing beat chart slot: ${slot}`);
@@ -423,10 +514,11 @@ export function validateBeatChart(chart, physics = {}) {
     const nextSlot = actionSlots[(i + 1) % actionSlots.length];
     const b = bySlot[nextSlot];
     const gap = (nextSlot - a.slot + chart.loopBeats) % chart.loopBeats || chart.loopBeats;
-    const required = minGap[`${a.action}${b.action[0].toUpperCase()}${b.action.slice(1)}`]
-      ?? minGap[`${a.action}${b.action}`]
+    const [ka, kb] = [puntKind(a), puntKind(b)];
+    const required = minGap[`${ka}${kb[0].toUpperCase()}${kb.slice(1)}`]
+      ?? minGap[`${ka}${kb}`]
       ?? 1;
-    if (gap < required) throw new Error(`infeasible ${a.action}->${b.action} seam/gap (${gap} < ${required})`);
+    if (gap < required) throw new Error(`infeasible ${ka}->${kb} seam/gap (${gap} < ${required})`);
   }
   return Object.freeze({ loopBeats: chart.loopBeats, events: Object.freeze(bySlot) });
 }
@@ -472,7 +564,14 @@ export function actionApproachPx(action, type, speed, bpm = null) {
     // — measure this at the run speed alone and the contact lands early by the
     // ratio between the two, which at 208 and 40 is a fifth of the lead.
     const closing = speed + Math.abs(OBSTACLES[type]?.vx || 0);
-    return closing * puntLeadSec(bpm || 120);
+    // PLUS THE HERO'S OWN WIDTH, exactly as the jump branch below adds it. The
+    // gap that has to close is from his FRONT to the barrel's left edge, and
+    // `actionX` is where his back foot is — so measuring the lead from there
+    // spends a body length of it before the two boxes are anywhere near each
+    // other, and the boot lands early by PLAYER_W / closing. That is 0.04s
+    // here: two frames, and enough to read as the barrel arriving ahead of the
+    // beat rather than on it.
+    return closing * puntLeadSec(bpm || 120) + PLAYER_W;
   }
   // Ducking is resolved from the same input edge as collision.  A one-frame
   // lead keeps the drone's contact on the following update without moving it
@@ -617,8 +716,8 @@ export class BeatSpawner {
       if (pit.crossing) {
         pit.actionBeats = Array.from({ length: pit.crossing.jumps }, (_, i) => actionBeat + i * 2);
         const spacing = 2 * pxPerBeat;
-        const hop = spacing * 0.45;
-        const tread = spacing * 0.55;
+        const hop = spacing * CROSSING_BEAT_HOP;
+        const tread = spacing - hop;
         pit.crossing.x = pit.x;
         pit.crossing.hop = hop;
         pit.crossing.tread = tread;
@@ -786,7 +885,16 @@ export class BeatSpawner {
         this.nextX = stopX;
         return;
       }
-      if (!this._isSuppressed(actionX, event)) {
+      // BOTH ENDS, FOR ANYTHING THAT MOVES — the same check the card box makes,
+      // for the same reason. A drone stands on the beat line and one test
+      // covers it. A barrel is answered a lead's worth of road further on, and
+      // stage 2's crossing is close enough to a barrel slot that one laid clear
+      // of the stones still rolled onto them: the set piece owns that whole
+      // phrase, the judge scores nothing inside it, and a hazard the player
+      // meets mid-stone is one the chart never meant to ask for.
+      const suppressed = this._isSuppressed(actionX, event)
+        || (event.punt && this._isSuppressed(x, event));
+      if (!suppressed) {
         if (pit) {
           // A HOLE THE LOOP CUTS, once every time round, on the grid.
           //
@@ -853,6 +961,31 @@ export class BeatSpawner {
               actionX: coin.actionX,
               formationId: id,
             });
+          }
+        } else if (event.punt) {
+          // A BARREL SLOT, AND IT MAY BE A QUIET PASS. The loop pass is counted
+          // off the heard clock's own zero, exactly as a coin fill's cadence
+          // and a card box's are — so a resync re-phases it rather than
+          // carrying a counter across a lane rebuild that has thrown away
+          // everything else. The judge reads what was LAID back off
+          // `eventInstances` (RunState.rhythmRequiredAt), which is what makes
+          // a skipped pass a beat nobody is owed rather than a beat the
+          // scoreboard demands and the lane never furnished.
+          const pass = Math.floor(this.cursorBeat / this.chart.loopBeats);
+          if ((event.every ?? 1) === 1 || pass % event.every === 0) {
+            const ob = makeObstacle(type, spawnX);
+            ob.chartEventId = id;
+            ob.chartAction = event.action;
+            ob.chartSlot = event.slot;
+            ob.actionBeat = this.cursorBeat;
+            ob.actionX = actionX;
+            obstacles.push(ob);
+            this.eventInstances.push({
+              live: true, chartEventId: id, chartAction: 'duck', chartSlot: event.slot,
+              actionBeat: this.cursorBeat, actionX,
+            });
+            this.lastActionX = actionX;
+            this.lastActionKind = event.action;
           }
         } else {
           // A DUCK SLOT MAY BE A COLUMN, two rungs or three. One drone tops

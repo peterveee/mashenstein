@@ -126,22 +126,35 @@ export const bank = {
 // line, and because the coin sting climbs a step per coin off the running
 // combo, taking one plays the figure in the song's own time.
 //
-// QUARTERS ARE THE GROUND, and the shorter the note the rarer it is: most coin
-// slots are one coin on the line, the eighths play every loop, the sixteenths
-// every other one, and a 32nd is an `every: 4` event — eight coins in three
-// quarters of a beat, a handful of times a stage.  `every` counts loop passes
-// rather than drawing from the RNG, so a fill arrives on a schedule and can be
-// learned, which is the same argument the charts themselves are built on.
+// PAIRS ARE THE GROUND, not quarters.  This read the other way round for a long
+// time — most slots one coin on the line, the fills rationed by `every` — and
+// what that produced was a lane of lone pickups with a burst in it now and
+// then: a coin on its own is not a figure, it is a tick, and a stage made of
+// ticks pays about as much attention as it asks for.  So the floor is a PAIR
+// (`...eighth`), and the only single coins left in these three charts are the
+// ones physics insists on, below.
 //
-// A FILL IS FOLLOWED BY A REST, and that is what makes it four notes rather
-// than five.  The slot after a fill may not be a coin: the last sixteenth is a
-// quarter-beat from the next slot line, so a coin standing there is the fifth
-// note of an even run and the figure stops being the burst it was authored as.
-// That is most of what decides where these can go, along with the rule they may
-// not break at all — never in front of a hole.  The validator refuses that one
-// outright (COIN_RUN_PIT_CLEAR_SEC), because a row of pickups running up to a
-// lip is a lure toward the one hazard here that kills, and between the two
-// there is exactly one legal slot in some bars and none in others.
+// AND A RUN INTO AN ACTION IS A COUNT-IN.  A slot whose next line is a jump or
+// a duck takes the `...sixteenth` — four coins closing on the beat you have to
+// answer, which is the oldest way a rhythm game has of telling you where the
+// one is, and it plays as a fill rather than as a warning.  Slots that lead to
+// another coin stay a pair; the 32nd is the flourish and arrives on a schedule
+// (`every` counts loop passes rather than drawing from the RNG, so it can be
+// learned — the same argument the charts themselves are built on).
+//
+// FILLS MAY ABUT.  The old rule was that the slot after a fill may not be a
+// coin — the last sixteenth sits a quarter-beat from the next line, so a coin
+// there is the fifth note of an even run.  Which is true, and is the point: two
+// pairs back to back is a bar of eighths, and a bar of eighths is a phrase.  A
+// burst that must be followed by silence is a burst you can only ever deal one
+// of.
+//
+// WHAT THEY MAY NOT DO, ever, is stand in front of a hole.  The validator
+// refuses that outright (COIN_RUN_PIT_CLEAR_SEC), because a row of pickups
+// running up to a lip is a lure toward the one hazard here that kills — and it
+// is the whole of why single coins still exist in these charts.  Every slot on
+// the beat before a pit is one coin on the line and can be nothing else: a pair
+// puts its second coin half a beat later, which is inside the clearance.
 export const beatCharts = {
   1: {
     // TEACH IT IN THAT ORDER: three bars on the beat, a bar of nothing, then the
@@ -150,11 +163,11 @@ export const beatCharts = {
     loopBeats: 16,
     events: [
       { slot: 0, action: 'jump', type: 'beatBar' },
-      { slot: 1, action: 'coin', ...eighth },
-      { slot: 2, action: 'jump', type: 'beatBar' }, { slot: 3, action: 'coin' },
+      { slot: 1, action: 'coin', ...sixteenth },
+      { slot: 2, action: 'jump', type: 'beatBar' }, { slot: 3, action: 'coin', ...eighth },
       // In the empty bar, where the ear has room for one, and answered by the
       // bar you jump on the beat after it.
-      { slot: 4, action: 'coin' }, { slot: 5, action: 'coin', ...sixteenth, every: 2 },
+      { slot: 4, action: 'coin', ...eighth }, { slot: 5, action: 'coin', ...sixteenth },
       { slot: 6, action: 'jump', type: 'beatBar' },
       // THE CARD BOX IS TAUGHT HERE, in the calmest slot the cabinet owns: a
       // bar you jump on 6, then two empty beats, then the stage's first hole on
@@ -167,11 +180,11 @@ export const beatCharts = {
       // and half the cast never sees one at all, since the lane only lays a box
       // for a hero who can answer it (BeatSpawner.canShoot).
       { slot: 7, action: 'ability', type: 'cardBox', every: 3 },
-      { slot: 8, action: 'coin' }, { slot: 9, action: 'coin' },
+      { slot: 8, action: 'coin', ...eighth }, { slot: 9, action: 'coin' },
       { slot: 10, action: 'pit' }, { slot: 11, action: 'coin' },
-      { slot: 12, action: 'pit' }, { slot: 13, action: 'coin' },
-      { slot: 14, action: 'coin' },
-      { slot: 15, action: 'coin', ...thirtysecond, every: 4 },
+      { slot: 12, action: 'pit' }, { slot: 13, action: 'coin', ...eighth },
+      { slot: 14, action: 'coin', ...eighth },
+      { slot: 15, action: 'coin', ...thirtysecond, every: 3 },
     ],
   },
   2: {
@@ -183,20 +196,37 @@ export const beatCharts = {
     events: [
       // The holes on 4, 6, 12 and 14 own every bar end on this stage, so both
       // fills go where a bar OPENS instead — a flourish rather than a pickup.
-      // A BARREL IS THE FIRST DUCK THE PLAYER EVER MEETS, and it holds the slot
-      // for the same reason the two-rung drone column used to: this is where
-      // being wrong has to cost the beat rather than the run. A barrel is 13
-      // tall and every hero in the cast can hop it, so a player who answers
-      // with the jump button clears it and loses only the combo — which is
-      // exactly the bargain the column was chosen for, in an object that says
-      // what it wants without being explained. It rolls AT him, so it is the
-      // one hazard on this cabinet you can watch arrive, and the boot sends it
-      // back the way it came (see OBSTACLES.barrel and the punt window in
-      // beatchart.js). The drone slide is still taught — slot 9 below is the
-      // full three-rung column, and it is now the one that cannot be jumped at
-      // all, which is a cleaner split than two columns a bar apart.
-      { slot: 0, action: 'coin', ...eighth },
-      { slot: 1, action: 'duck', type: 'barrel' },
+      // A BARREL OPENS THE LOOP, AND ONLY EVERY THIRD TIME ROUND. This is the
+      // stage that teaches the kick, and teaching is all it does here: `every:
+      // 3` deals three of them across the stage. One a loop was eleven, seven
+      // seconds apart, and read as the mechanic rather than as an introduction
+      // to it — the player needs enough to learn the timing and few enough that
+      // each one is still an event, and this cabinet is not a barrel cabinet.
+      //
+      // Three rather than the four the cadence suggests: the pass that lands on
+      // beat 0 falls in the lane's action-free runway and the one near the end
+      // lands on the crossing, which owns its whole phrase. Both are dropped by
+      // the lane rather than by the chart, and the judge is told (it asks the
+      // lane what it laid, not the chart — RunState.rhythmRequiredAt), so a
+      // dropped one is a beat nobody is scored against.
+      //
+      // It holds slot 0 for the same reason the two-rung drone column used to
+      // hold slot 1: this is where being wrong has to cost the beat rather
+      // than the run. A barrel is 13 tall and every hero in the cast can hop
+      // it, so a player who answers with the jump button clears it and loses
+      // only the combo. It rolls AT him, so it is the one hazard on this
+      // cabinet you can watch arrive, and the boot sends it back the way it
+      // came (OBSTACLES.barrel, and the punt window in beatchart.js). The
+      // drone slide is still taught — slot 9 is the full three-rung column,
+      // now the only duck here that cannot be jumped at all.
+      //
+      // Slot 0 rather than 1 because of the spacing table, not taste: a kick
+      // wants two beats before the jump on 2 (see REQUIRED_GAP_BEATS), and the
+      // hole on 14 wants two before the kick. Nought is the only line in this
+      // bar with both. The eighth fill it displaced moves to 1, where the rest
+      // after a fill is a jump rather than another coin.
+      { slot: 0, action: 'duck', type: 'barrel', every: 3 },
+      { slot: 1, action: 'coin', ...sixteenth },
       { slot: 2, action: 'jump', type: 'beatBar' },
       // Duck, bar, SHOOT, hole — and the round sails over the hole on its way to
       // a box that opens on 5, between the two of them.  A shot flies at ankle
@@ -205,46 +235,56 @@ export const beatCharts = {
       // across the gap, jump the gap, and land as the box goes.
       { slot: 3, action: 'ability', type: 'cardBox', every: 3 },
       { slot: 4, action: 'pit' }, { slot: 5, action: 'coin' },
-      { slot: 6, action: 'pit' }, { slot: 7, action: 'coin' },
-      // AND THE SECOND STRIDE SPENDS IT. Slot 1 above is a barrel and can be
+      { slot: 6, action: 'pit' }, { slot: 7, action: 'coin', ...eighth },
+      // AND THE SECOND STRIDE SPENDS IT. Slot 0 above is a barrel and can be
       // jumped; this one is the full three rungs, stacked to 50 and over the
-      // worst jump in the cast — so the same INPUT comes back a bar later with
-      // the jump-button escape taken off it. Two objects, one button, and the
-      // second one is the one that means it.
-      { slot: 8, action: 'coin', ...sixteenth, every: 2 },
+      // worst jump in the cast — so the same INPUT comes back half a loop later
+      // with the jump-button escape taken off it. Two objects, one button, and
+      // the second one is the one that means it.
+      { slot: 8, action: 'coin', ...sixteenth },
       { slot: 9, action: 'duck', type: 'drone', column: 3 },
       { slot: 10, action: 'jump', type: 'beatBar' }, { slot: 11, action: 'coin' },
       { slot: 12, action: 'pit' }, { slot: 13, action: 'coin' },
-      { slot: 14, action: 'pit' }, { slot: 15, action: 'coin' },
+      { slot: 14, action: 'pit' }, { slot: 15, action: 'coin', ...eighth },
     ],
   },
   3: {
-    // The finale states both halves plainly: a bar of ducking — a drone column
-    // and two of the barrels stage 2 opened with, alternating around a bar you
-    // jump — then a whole bar of holes, four of them, one every other beat,
-    // which is the fastest a jump may be asked for twice.  Nothing new is
-    // introduced here; the stage is the three things this cabinet taught, at
-    // length.
+    // The finale states both halves plainly: a bar of ducking — two drone
+    // columns with one of stage 2's barrels between them, two beats apart
+    // because a kick needs a fresh press — then a whole bar of holes, four of
+    // them, one every other beat, which is the fastest a jump may be asked for
+    // twice.  Nothing new is introduced here; the stage is the three things
+    // this cabinet taught, at length, and the barrel that came every third loop
+    // there comes every second one here.
     loopBeats: 16,
     events: [
       { slot: 0, action: 'jump', type: 'beatBar' },
-      { slot: 1, action: 'coin', ...eighth },
+      { slot: 1, action: 'coin', ...sixteenth },
       // THE BAR OF DUCKING, AND IT IS TWO OBJECTS. Nothing new is introduced on
       // the finale and neither of these is: the column is the stage-2 figure
       // with the jump-button escape taken off it, and the barrel is the thing
       // stage 2 opened with. What IS new is having to read which is which at
-      // speed — a drone hangs still and a barrel comes at you, so the bar asks
-      // one button three times and never lets the eye go to sleep on it.
+      // speed — a drone hangs still and a barrel comes at you. The barrel comes
+      // twice as often here as on the stage that taught it and no oftener than
+      // that: `every: 2` is one about every fifteen seconds, six across the
+      // stage. Every loop was eleven of them, which made the finale read as the
+      // barrel stage rather than as the stage where the barrel is one of three
+      // things being asked at once.
       //
-      // The order is deliberate: the column first, because it is the one that
-      // cannot be jumped and so is the one worth being ready for, then a
-      // barrel, then the bar you jump on 4, then the second barrel. Alternating
-      // the two duck reads around a jump is the whole figure.
+      // TWO BEATS BETWEEN THEM, and the table insists on it (REQUIRED_GAP_BEATS
+      // duckPunt / puntDuck). This bar was drone-barrel-jump on 2-3-4 and it
+      // could not be played: the kick needs a FRESH duck press and a player
+      // still holding the one that took the drone has a hold time past the punt
+      // window before the barrel arrives. Drone on 2, barrel on 4, column on 6
+      // is the same figure with room to let go of the button between its
+      // halves, and what it cost is the bar that used to stand on 4 — the loop
+      // keeps the one on 0 and spends the rest of its jumps on the four holes,
+      // which is what this stage was always about.
       { slot: 2, action: 'duck', type: 'drone', column: 3 },
-      { slot: 3, action: 'duck', type: 'barrel' },
-      { slot: 4, action: 'jump', type: 'beatBar' },
-      { slot: 5, action: 'coin', ...sixteenth, every: 2 },
-      { slot: 6, action: 'duck', type: 'barrel' },
+      { slot: 3, action: 'coin', ...eighth },
+      { slot: 4, action: 'duck', type: 'barrel', every: 2 },
+      { slot: 5, action: 'coin', ...eighth },
+      { slot: 6, action: 'duck', type: 'drone', column: 3 },
       // The finale's one card box, and it is the tightest the cabinet asks for:
       // duck on 6, shoot on 7, hole on 8, and the box opens on 9 between the
       // first two holes of the bar.  It is also the cheapest thing on the stage
@@ -256,7 +296,7 @@ export const beatCharts = {
       { slot: 10, action: 'pit' }, { slot: 11, action: 'coin' },
       { slot: 12, action: 'pit' }, { slot: 13, action: 'coin' },
       { slot: 14, action: 'pit' },
-      { slot: 15, action: 'coin', ...thirtysecond, every: 4 },
+      { slot: 15, action: 'coin', ...thirtysecond, every: 2 },
     ],
   },
 };
@@ -267,11 +307,11 @@ export const beatCharts = {
 export const mix = {
   master: -1,
   masterEffects: [{ id: "mbCompN", params: { lowFrequency: 180, highFrequency: 1800, "low.threshold": -26, "low.ratio": 4, "low.attack": 0.06, "low.release": 0.22, "low.knee": 8, "mid.threshold": -22, "mid.ratio": 3.5, "mid.attack": 0.018, "mid.release": 0.08, "mid.knee": 12, "high.threshold": -26, "high.ratio": 2.5, "high.attack": 0.01, "high.release": 0.06, "high.knee": 10 } }],
-  layers: [{ key: "bass3", from: "bass", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead2", independent: true }, { key: "lead8", from: "lead3", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "tom2", from: "tom", independent: true }, { key: "rim2", from: "rim", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead9", from: "lead", independent: true }, { key: "lead10", from: "lead", independent: true }],
-  order: ["kick","snare","clap","hats","ohats","crash","rim2","tom2","bass","bass3","lead10","lead","lead2","lead3","lead8","lead4","lead5","lead6","lead7","lead9","sweeps"],
-  labels: {"lead":"Square Tone","bass":"BASSSawtooth","bass3":"BASS TRI"},
-  voice: {"kickVoice":"kickMegamix","snareVoice":"gameBoySnare","clapVoice":"bigRoomClap","hatsVoice":"hatEngine","bassVoice":"simpleSawtooth","lead2Voice":"addDrawbarPerc","ohatsVoice":"ohatEngine","crashVoice":"crashEngine","lead3Voice":"fmKeys","leadVoice":"toneSquare","bass3Voice":"simpleSawtooth","lead4Voice":"bestPwmStrings","lead5Voice":"toyPiano","lead6Voice":"monoBright","tom2Voice":"cb808Unclamped","rim2Voice":"clvRosewood","lead7Voice":"tngrBlueCathedral","lead8Voice":"fmKeys","lead9Voice":"tpTreeTrunk","lead10Voice":"squareTone2"},
-  voiceParams: {"bassVoice":{"label":"Simple Sawtooth","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Sawtooth through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"pwm"},"envelope":{"attack":0.001,"decay":0.02,"sustain":0.64,"release":0.018},"filter":{"type":"lowpass","Q":2.6,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.895,"sustain":0.4,"release":0.25,"baseFrequency":325,"octaves":3}},"starter":false,"mode":"mono","kind":"tone","level":0.09837990430505203,"peak":0.8508517455504696,"songOrigin":"library","songSourceId":"bassVoice"},"bass2Voice":{"label":"Simple Sawtooth","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Sawtooth through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0.043,"sustain":0.88,"release":0.005},"filter":{"type":"lowpass","Q":0.1,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":930,"octaves":0.6}},"starter":false,"mode":"mono","kind":"tone","level":0.11415044023969972,"peak":0.75553464308426,"songOrigin":"library","songSourceId":"bass2Voice"},"lead2Voice":{"label":"Drawbar + Percussion","category":"Organ","homeLane":"organChords","synth":"WNDR-9","dur":7.2,"note":"Bright registration with a third-harmonic pip on the key attack, kept dry so repeated off-beat stabs stay crisp.","additive":{"bars":[0.13,0.21,0.87,0.78,0.48,0.3,0,0.16,0.23],"attack":0.016,"decay":7.2,"perc":{"ratio":4,"gain":0.72,"attack":0.002,"decay":0.078},"stretch":0,"damp":0.3,"type":"triangle"},"starter":false,"chorus":{"mix":0.16},"humanize":{"pitch":0.0011559128538236596},"drive":0,"kind":"tone","level":0.25300510329855075,"peak":1.0584188721238628,"songOrigin":"library","songSourceId":"lead2Voice"},"hatsVoice":{"label":"= Engine Hat","category":"Hats","homeLane":"hats","dur":0.5,"note":"The game’s own closed hat, exactly: noise above 5.2 kHz, gone in fifty milliseconds. The tick under two thirds of the soundtrack.","noise":{"type":"highpass","freq":5200,"Q":1,"decay":0.0932,"gain":1},"id":"hatEngine","kind":"drum","factory":true,"level":0.02664,"peak":0.8382},"ohatsVoice":{"label":"= Engine Open Hat","category":"Hats","homeLane":"ohats","dur":2,"note":"The game’s own open hat: the same noise a thousand hertz lower, left to sizzle for a fifth of a second.","noise":{"type":"highpass","freq":4200,"Q":1,"decay":0.513,"gain":1.41,"hold":0.011,"color":"blue"},"starter":false,"kind":"drum","level":0.10717629044962945,"peak":1.4846358331639646,"songOrigin":"library","songSourceId":"ohatsVoice"},"crashVoice":{"label":"= Engine Crash","category":"Crash","homeLane":"crash","dur":5,"note":"The game’s own crash: bright on the transient and darkening as it falls, a lowpass closing from 9 kHz to 1.1 over the whole hit. Long enough that it plays off the 2.5-second buffer rather than looping the short one.","noise":{"type":"lowpass","freq":7405,"to":1100,"sweep":1.25,"Q":0.7,"attack":0.005,"decay":1.5743,"gain":1},"tone":{"type":"highpass","freq":1200,"Q":1},"starter":false,"kind":"drum","level":0.06859811349559872,"peak":0.8072301179173565,"songOrigin":"library","songSourceId":"crashVoice"},"lead3Voice":{"label":"FM Keys","category":"Keys","synth":"RMND-2","dur":2.6,"note":"Struck keys, percussive enough to keep a stab from smearing into the next bar.","options":{"harmonicity":4,"modulationIndex":23.1,"oscillator":{"type":"triangle"},"modulation":{"type":"triangle"},"envelope":{"attack":0.006,"decay":2.804,"sustain":0.15,"release":0.8},"modulationEnvelope":{"attack":0.002,"decay":0.142,"sustain":0.1,"release":0.205}},"starter":false,"vibrato":{"depth":0.03},"kind":"tone","level":0.02600204458123549,"peak":0.21778041797154252,"songOrigin":"library","songSourceId":"lead3Voice"},"leadVoice":{"label":"Square Tone","category":"Lead","synth":"KNDO-5","dur":1,"note":"A direct single-oscillator square-wave replacement for the engine voice.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0,"sustain":1,"release":0.01,"attackCurve":"exponential"}},"fixedLength":0.144,"waveform":"square","attack":0.001,"release":0.39,"trim":0.4,"vibrato":{"depth":0.04,"rate":10.9,"delay":0.015},"mono":false,"portamento":0,"starter":false,"chorus":{"mix":0},"filter":{"type":"lowpass","slope":-12,"freq":5170,"to":4000,"Q":2.85,"sweep":0.12,"env":{"attack":0.008},"track":0.53},"drive":0.52,"drivePlace":"pre","kind":"tone","level":0.06648570369696345,"peak":1.0680523013388217,"songOrigin":"library","songSourceId":"leadVoice"},"kickVoice":{"label":"= Megamix Kick","category":"Kick","homeLane":"kick","dur":1,"note":"The hardest front of the three and the shortest tail — it has to cut through every other cabinet playing at once.","osc":{"type":"sine","from":165,"to":48,"sweep":0.05,"attack":0.006,"decay":0.198,"curve":"exp","gain":1.09},"knock":0.48,"noise":{"type":"highpass","freq":1900,"Q":1,"decay":0.0198,"gain":0.78,"color":"blue"},"trim":-1.15,"starter":false,"kind":"drum","level":0.034087021435833295,"peak":0.8841664834934272,"songOrigin":"library","songSourceId":"kickVoice"},"bass3Voice":{"label":"Simple Sawtooth","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Sawtooth through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"triangle"},"envelope":{"attack":0.001,"decay":0.016,"sustain":0.62,"release":0.149},"filter":{"type":"lowpass","Q":4.25,"rolloff":-12},"filterEnvelope":{"attack":0.001,"decay":0.528,"sustain":0.4,"release":0.25,"baseFrequency":400,"octaves":4.8}},"starter":false,"mode":"mono","trim":0.7,"transpose":-12,"kind":"tone","level":0.04103923950132841,"peak":0.5144104421308311,"songOrigin":"library","songSourceId":"bassVoice"},"lead4Voice":{"label":"BEST PWM Strings","category":"Orch","synth":"MRDR-3","dur":8,"note":"The string machine. Two pulses whose widths drift at 0.28 and 0.37 Hz — rates chosen not to line up — over a clean saw sub. The shimmer is the two widths passing through each other, which is why they must never share a rate.","layer":{"osc1":{"type":"pulse","width":0.5,"ratio":1,"gain":0.5,"attack":0.136667,"decay":2,"sustain":0.85,"release":1.2,"attackCurve":"lin","unison":2,"spread":9,"stereo":0.85,"pwm":{"type":"sine","rate":0.28,"depth":0.62,"delay":0}},"osc2":{"type":"pulse","width":0.46,"ratio":1,"detune":-7,"gain":0.42,"attack":0.164,"decay":2.2,"sustain":0.82,"release":1.3,"attackCurve":"lin","unison":2,"spread":13,"stereo":0.7,"pwm":{"type":"sine","rate":0.37,"depth":0.58,"delay":0}},"osc3":{"type":"sawtooth","ratio":0.5,"gain":0.2,"attack":0.123,"decay":2.4,"sustain":0.9,"release":1.2,"attackCurve":"lin"}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":3050,"Q":0.55,"track":0.3,"env":{"octaves":1.4,"attack":0.8,"decay":2.4,"sustain":0.6,"release":1}},"vca":{"attack":0.150333,"decay":2.4,"sustain":0.9,"release":1.5,"attackCurve":"lin"}},"vibrato":{"depth":0.07,"rate":4.2,"delay":1.4,"spread":0},"starter":false,"chorus":{"mix":0.09,"width":0.73},"kind":"tone","level":0.1265866416198358,"peak":0.670031805693217,"songOrigin":"library","songSourceId":"lead4Voice"},"lead6Voice":{"label":"Bright Mono","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.004,"decay":0.15,"sustain":0.6,"release":0.2},"filter":{"type":"lowpass","Q":2,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":600,"octaves":3.2}},"starter":false,"transpose":-12,"kind":"tone","level":0.07051105064254232,"peak":0.8377062429278156,"songOrigin":"library","songSourceId":"lead6Voice"},"snareVoice":{"label":"Game Boy Snare","category":"Snare","dur":0.5,"note":"Pink-noise crack with a square body dropping 2.3k to 80 — the handheld backbeat, chokeable against the other arcade drums.","osc":{"type":"square","from":2345,"to":80,"sweep":0.37,"decay":0.37,"gain":1.02},"noise":{"type":"bandpass","freq":3710,"Q":2.85,"decay":0.905,"gain":1.98,"color":"pink"},"trim":1.9,"monoGroup":"1","starter":false,"id":"gameBoySnare","kind":"drum","user":true,"level":0.086707,"peak":1.1273},"clapVoice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"drum","user":true,"level":0.018317,"peak":0.354},"lead5Voice":{"label":"Toy Piano","category":"Bells","synth":"RMND-2","dur":2,"note":"Inharmonic and small, with a knock in the attack. Cardboard Kingdom material.","options":{"harmonicity":4.02,"modulationIndex":6,"oscillator":{"type":"triangle"},"modulation":{"type":"square"},"envelope":{"attack":0.001,"decay":0.5,"sustain":0.02,"release":0.5},"modulationEnvelope":{"attack":0.001,"decay":0.1,"sustain":0,"release":0.1}},"id":"toyPiano","kind":"tone","factory":true,"level":0.013277,"peak":0.2149},"tom2Voice":{"label":"Cowbell · 808 Unclamped","category":"Perc","homeLane":"tom","dur":2,"note":"The actual TR-808 topology — 540 and 800 Hz squares through a 1.3 kHz bandpass at Q4 — with the 200 ms hardware gate taken off. Same front as the factory bell, three and a half times the ring, with a controlled resonant tail.","metal":{"wave":"square","freq":540,"ratios":[1,1.481481],"count":2,"spread":1,"filter":"bandpass","hp":1300,"Q":4,"slope":-12,"attack":0,"decay":0.88,"sag":0.34,"sagAt":0.03,"gain":1,"resonator":{"feedback":0.95,"drive":1.35,"leak":0.0004}},"drive":0.1,"id":"cb808Unclamped","kind":"drum","factory":true,"level":0.031196,"peak":0.5527},"rim2Voice":{"label":"Clave · Rosewood","category":"Perc","homeLane":"rim","dur":0.5,"note":"A lower, rounder pair of sticks: the body drops to 1.85 kHz for the wood and a narrow resonator at 2.5 kHz puts the snap back on top of it. Warmer than the 808 and closer to the thing being hit.","osc":{"type":"triangle","from":1900,"to":1790,"sweep":0.016,"curve":"exp","attack":0.0006,"decay":0.075,"gain":0.9},"ring":{"freq":2500,"Q":70,"hit":0.001,"decay":0.045,"gain":0.6},"tone":{"type":"lowpass","freq":5200,"Q":0.7},"id":"clvRosewood","kind":"drum","factory":true,"level":0.018292,"peak":0.6126},"lead7Voice":{"label":"Blue Cathedral","category":"Pad","synth":"TNGR-2","dur":8,"note":"A long organ-shift and octave-cascade pad with a dignified release.","tngr2":{"oscA":{"table":"vowelAEIOU","position":0.12,"envAmount":0.5,"level":0.74,"unison":2,"spread":8,"stereo":0.26},"oscB":{"table":"choirBreath","position":0.18,"envAmount":0.41,"level":0.22,"unison":1,"spread":11,"interval":-12},"amp":{"attack":0.023,"decay":3.612,"sustain":1,"release":0.023},"positionEnv":{"attack":1.8,"decay":3.8,"sustain":0.5},"filter":{"type":"lowpass","cutoff":2490,"resonance":1.68},"filterEnv":{"amount":0.7,"attack":1,"decay":3.353,"sustain":0.54},"master":{"gain":0.52},"lfo1":{"rate":0.01}},"starter":false,"vibrato":{"depth":0.01,"delay":0.007},"mode":"legato","portamento":0.117,"kind":"tone","level":0.043193,"peak":0.1636,"songOrigin":"library","songSourceId":"lead7Voice"},"lead8Voice":{"label":"FM Keys","category":"Keys","synth":"RMND-2","dur":2.6,"note":"Struck keys, percussive enough to keep a stab from smearing into the next bar.","options":{"harmonicity":4,"modulationIndex":23.1,"oscillator":{"type":"triangle"},"modulation":{"type":"triangle"},"envelope":{"attack":0.006,"decay":2.804,"sustain":0.15,"release":0.8},"modulationEnvelope":{"attack":0.002,"decay":0.142,"sustain":0.1,"release":0.205}},"starter":false,"vibrato":{"depth":0.03},"kind":"tone","level":0.02600204458123549,"peak":0.21778041797154252,"songOrigin":"library","songSourceId":"lead3Voice"},"lead9Voice":{"label":"Tree Trunk","category":"Pluck","synth":"CRLS-1","dur":1,"note":"A short sine knock with a little sustain behind it. Hollow and wooden.","origin":"Tonejs/Presets Synth/TreeTrunk","options":{"oscillator":{"type":"sine"},"envelope":{"attack":0.001,"decay":0.1,"sustain":0.1,"release":1.2}},"starter":false,"transpose":12,"kind":"tone","level":0.03150432399257167,"peak":0.6941501817472355,"songOrigin":"library","songSourceId":"lead9Voice"},"lead10Voice":{"label":"Square Tone","category":"Lead","synth":"KNDO-5","dur":1,"note":"A direct single-oscillator square-wave replacement for the engine voice.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0,"sustain":1,"release":0.01,"attackCurve":"exponential"}},"fixedLength":0.132,"waveform":"triangle","attack":0.001,"release":0.008,"trim":0,"vibrato":{"depth":0,"rate":10.9},"mono":false,"portamento":0,"starter":false,"transpose":12,"kind":"tone","level":0.03795465416337589,"peak":0.659832166934868,"songOrigin":"library","songSourceId":"lead10Voice"}},
+  layers: [{ key: "bass3", from: "bass", independent: true }, { key: "lead2", from: "lead", independent: true }, { key: "lead3", from: "lead2", independent: true }, { key: "lead8", from: "lead3", independent: true }, { key: "lead4", from: "lead", independent: true }, { key: "lead5", from: "lead", independent: true }, { key: "lead6", from: "lead", independent: true }, { key: "tom2", from: "tom", independent: true }, { key: "rim2", from: "rim", independent: true }, { key: "lead7", from: "lead", independent: true }, { key: "lead9", from: "lead", independent: true }, { key: "lead10", from: "lead", independent: true }, { key: "lead11", from: "lead", independent: true }],
+  order: ["kick","snare","clap","hats","ohats","crash","rim2","tom2","bass","bass3","lead10","lead","lead11","lead2","lead3","lead8","lead4","lead5","lead6","lead7","lead9","sweeps"],
+  labels: {"lead":"LEAD Square Tone","bass":"BASSSawtooth","bass3":"BASS TRI"},
+  voice: {"kickVoice":"kickMegamix","snareVoice":"gameBoySnare","hatsVoice":"hatEngine","bassVoice":"simpleSawtooth","lead2Voice":"addDrawbarPerc","ohatsVoice":"ohatEngine","crashVoice":"crashEngine","lead3Voice":"fmKeys","leadVoice":"toneSquare","bass3Voice":"simpleSawtooth","lead4Voice":"bestPwmStrings","lead5Voice":"toyPiano","lead6Voice":"monoBright","tom2Voice":"cb808Unclamped","rim2Voice":"clvRosewood","lead7Voice":"tngrBlueCathedral","lead8Voice":"fmKeys","lead9Voice":"tpTreeTrunk","lead10Voice":"squareTone2","lead11Voice":"amHollow"},
+  voiceParams: {"bassVoice":{"label":"Simple Sawtooth","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Sawtooth through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"pwm"},"envelope":{"attack":0.001,"decay":0.02,"sustain":0.64,"release":0.018},"filter":{"type":"lowpass","Q":2.6,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.895,"sustain":0.4,"release":0.25,"baseFrequency":325,"octaves":3}},"starter":false,"mode":"mono","kind":"tone","level":0.09837990430505203,"peak":0.8508517455504696,"songOrigin":"library","songSourceId":"bassVoice"},"bass2Voice":{"label":"Simple Sawtooth","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Sawtooth through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0.043,"sustain":0.88,"release":0.005},"filter":{"type":"lowpass","Q":0.1,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":930,"octaves":0.6}},"starter":false,"mode":"mono","kind":"tone","level":0.11415044023969972,"peak":0.75553464308426,"songOrigin":"library","songSourceId":"bass2Voice"},"lead2Voice":{"label":"Drawbar + Percussion","category":"Organ","homeLane":"organChords","synth":"WNDR-9","dur":7.2,"note":"Bright registration with a third-harmonic pip on the key attack, kept dry so repeated off-beat stabs stay crisp.","additive":{"bars":[0.13,0.21,0.87,0.78,0.48,0.3,0,0.16,0.23],"attack":0.016,"decay":7.2,"perc":{"ratio":4,"gain":0.72,"attack":0.002,"decay":0.078},"stretch":0,"damp":0.3,"type":"triangle"},"starter":false,"chorus":{"mix":0.16},"humanize":{"pitch":0.0011559128538236596},"drive":0,"kind":"tone","level":0.25300510329855075,"peak":1.0584188721238628,"songOrigin":"library","songSourceId":"lead2Voice"},"hatsVoice":{"label":"= Engine Hat","category":"Hats","homeLane":"hats","dur":0.5,"note":"The game’s own closed hat, exactly: noise above 5.2 kHz, gone in fifty milliseconds. The tick under two thirds of the soundtrack.","noise":{"type":"highpass","freq":5200,"Q":1,"decay":0.0932,"gain":1},"id":"hatEngine","kind":"drum","factory":true,"level":0.02664,"peak":0.8382},"ohatsVoice":{"label":"= Engine Open Hat","category":"Hats","homeLane":"ohats","dur":2,"note":"The game’s own open hat: the same noise a thousand hertz lower, left to sizzle for a fifth of a second.","noise":{"type":"highpass","freq":4200,"Q":1,"decay":0.513,"gain":1.41,"hold":0.011,"color":"blue"},"starter":false,"kind":"drum","level":0.10717629044962945,"peak":1.4846358331639646,"songOrigin":"library","songSourceId":"ohatsVoice"},"crashVoice":{"label":"= Engine Crash","category":"Crash","homeLane":"crash","dur":5,"note":"The game’s own crash: bright on the transient and darkening as it falls, a lowpass closing from 9 kHz to 1.1 over the whole hit. Long enough that it plays off the 2.5-second buffer rather than looping the short one.","noise":{"type":"lowpass","freq":7405,"to":1100,"sweep":1.25,"Q":0.7,"attack":0.005,"decay":1.5743,"gain":1},"tone":{"type":"highpass","freq":1200,"Q":1},"starter":false,"kind":"drum","level":0.06859811349559872,"peak":0.8072301179173565,"songOrigin":"library","songSourceId":"crashVoice"},"lead3Voice":{"label":"FM Keys","category":"Keys","synth":"RMND-2","dur":2.6,"note":"Struck keys, percussive enough to keep a stab from smearing into the next bar.","options":{"harmonicity":4,"modulationIndex":23.1,"oscillator":{"type":"triangle"},"modulation":{"type":"triangle"},"envelope":{"attack":0.006,"decay":2.804,"sustain":0.15,"release":0.8},"modulationEnvelope":{"attack":0.002,"decay":0.142,"sustain":0.1,"release":0.205}},"starter":false,"vibrato":{"depth":0.03},"kind":"tone","level":0.02600204458123549,"peak":0.21778041797154252,"songOrigin":"library","songSourceId":"lead3Voice"},"leadVoice":{"label":"Square Tone","category":"Lead","synth":"KNDO-5","dur":1,"note":"A direct single-oscillator square-wave replacement for the engine voice.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0,"sustain":1,"release":0.01,"attackCurve":"exponential"}},"fixedLength":0.144,"waveform":"square","attack":0.001,"release":0.39,"trim":0.4,"vibrato":{"depth":0.04,"rate":10.9,"delay":0.015},"mono":false,"portamento":0,"starter":false,"chorus":{"mix":0},"filter":{"type":"lowpass","slope":-12,"freq":5170,"to":4000,"Q":2.85,"sweep":0.12,"env":{"attack":0.008},"track":0.53},"drive":0.52,"drivePlace":"pre","kind":"tone","level":0.06648570369696345,"peak":1.0680523013388217,"songOrigin":"library","songSourceId":"leadVoice"},"kickVoice":{"label":"= Megamix Kick","category":"Kick","homeLane":"kick","dur":1,"note":"The hardest front of the three and the shortest tail — it has to cut through every other cabinet playing at once.","osc":{"type":"sine","from":165,"to":48,"sweep":0.05,"attack":0.006,"decay":0.198,"curve":"exp","gain":1.09},"knock":0.48,"noise":{"type":"highpass","freq":1900,"Q":1,"decay":0.0198,"gain":0.78,"color":"blue"},"trim":-1.15,"starter":false,"kind":"drum","level":0.034087021435833295,"peak":0.8841664834934272,"songOrigin":"library","songSourceId":"kickVoice"},"bass3Voice":{"label":"Simple Sawtooth","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Sawtooth through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"triangle"},"envelope":{"attack":0.001,"decay":0.016,"sustain":0.62,"release":0.149},"filter":{"type":"lowpass","Q":4.25,"rolloff":-12},"filterEnvelope":{"attack":0.001,"decay":0.528,"sustain":0.4,"release":0.25,"baseFrequency":400,"octaves":4.8}},"starter":false,"mode":"mono","trim":0.7,"transpose":-12,"kind":"tone","level":0.04103923950132841,"peak":0.5144104421308311,"songOrigin":"library","songSourceId":"bassVoice"},"lead4Voice":{"label":"BEST PWM Strings","category":"Orch","synth":"MRDR-3","dur":8,"note":"The string machine. Two pulses whose widths drift at 0.28 and 0.37 Hz — rates chosen not to line up — over a clean saw sub. The shimmer is the two widths passing through each other, which is why they must never share a rate.","layer":{"osc1":{"type":"pulse","width":0.5,"ratio":1,"gain":0.5,"attack":0.136667,"decay":2,"sustain":0.85,"release":1.2,"attackCurve":"lin","unison":2,"spread":9,"stereo":0.85,"pwm":{"type":"sine","rate":0.28,"depth":0.62,"delay":0}},"osc2":{"type":"pulse","width":0.46,"ratio":1,"detune":-7,"gain":0.42,"attack":0.164,"decay":2.2,"sustain":0.82,"release":1.3,"attackCurve":"lin","unison":2,"spread":13,"stereo":0.7,"pwm":{"type":"sine","rate":0.37,"depth":0.58,"delay":0}},"osc3":{"type":"sawtooth","ratio":0.5,"gain":0.2,"attack":0.123,"decay":2.4,"sustain":0.9,"release":1.2,"attackCurve":"lin"}},"global":{"filter":{"type":"lowpass","slope":-12,"freq":3050,"Q":0.55,"track":0.3,"env":{"octaves":1.4,"attack":0.8,"decay":2.4,"sustain":0.6,"release":1}},"vca":{"attack":0.150333,"decay":2.4,"sustain":0.9,"release":1.5,"attackCurve":"lin"}},"vibrato":{"depth":0.07,"rate":4.2,"delay":1.4,"spread":0},"starter":false,"chorus":{"mix":0.09,"width":0.73},"kind":"tone","level":0.1265866416198358,"peak":0.670031805693217,"songOrigin":"library","songSourceId":"lead4Voice"},"lead6Voice":{"label":"Bright Mono","category":"Lead","synth":"CRLS-1","dur":1.2,"note":"Square through an opening filter: the arcade lead with an envelope the raw oscillator cannot give it.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.004,"decay":0.15,"sustain":0.6,"release":0.2},"filter":{"type":"lowpass","Q":2,"rolloff":-12},"filterEnvelope":{"attack":0.002,"decay":0.12,"sustain":0.4,"release":0.25,"baseFrequency":600,"octaves":3.2}},"starter":false,"transpose":-12,"kind":"tone","level":0.07051105064254232,"peak":0.8377062429278156,"songOrigin":"library","songSourceId":"lead6Voice"},"snareVoice":{"label":"Game Boy Snare","category":"Snare","dur":0.5,"note":"Pink-noise crack with a square body dropping 2.3k to 80 — the handheld backbeat, chokeable against the other arcade drums.","osc":{"type":"square","from":2345,"to":80,"sweep":0.37,"decay":0.37,"gain":1.02},"noise":{"type":"bandpass","freq":3710,"Q":2.85,"decay":0.905,"gain":1.98,"color":"pink"},"trim":1.9,"monoGroup":"1","starter":false,"id":"gameBoySnare","kind":"drum","user":true,"level":0.086707,"peak":1.1273},"clapVoice":{"label":"Big Room Clap","category":"Clap","dur":1,"note":"Five bursts spread wider with a long tail on the last — a hall, not a booth. Wants space in the arrangement.","noise":{"type":"bandpass","freq":1500,"Q":0.9,"decay":0.355,"gain":0.88},"taps":[0,0.014,0.028,0.048],"tapFalloff":0.82,"tapDetune":0.94,"tapTone":0.97,"starter":false,"trim":3,"id":"bigRoomClap","kind":"drum","user":true,"level":0.018317,"peak":0.354},"lead5Voice":{"label":"Toy Piano","category":"Bells","synth":"RMND-2","dur":2,"note":"Inharmonic and small, with a knock in the attack. Cardboard Kingdom material.","options":{"harmonicity":4.02,"modulationIndex":6,"oscillator":{"type":"triangle"},"modulation":{"type":"square"},"envelope":{"attack":0.001,"decay":0.5,"sustain":0.02,"release":0.5},"modulationEnvelope":{"attack":0.001,"decay":0.1,"sustain":0,"release":0.1}},"id":"toyPiano","kind":"tone","factory":true,"level":0.013277,"peak":0.2149},"tom2Voice":{"label":"Cowbell · 808 Unclamped","category":"Perc","homeLane":"tom","dur":2,"note":"The actual TR-808 topology — 540 and 800 Hz squares through a 1.3 kHz bandpass at Q4 — with the 200 ms hardware gate taken off. Same front as the factory bell, three and a half times the ring, with a controlled resonant tail.","metal":{"wave":"square","freq":540,"ratios":[1,1.481481],"count":2,"spread":1,"filter":"bandpass","hp":1300,"Q":4,"slope":-12,"attack":0,"decay":0.88,"sag":0.34,"sagAt":0.03,"gain":1,"resonator":{"feedback":0.95,"drive":1.35,"leak":0.0004}},"drive":0.1,"id":"cb808Unclamped","kind":"drum","factory":true,"level":0.031196,"peak":0.5527},"rim2Voice":{"label":"Clave · Rosewood","category":"Perc","homeLane":"rim","dur":0.5,"note":"A lower, rounder pair of sticks: the body drops to 1.85 kHz for the wood and a narrow resonator at 2.5 kHz puts the snap back on top of it. Warmer than the 808 and closer to the thing being hit.","osc":{"type":"triangle","from":1900,"to":1790,"sweep":0.016,"curve":"exp","attack":0.0006,"decay":0.075,"gain":0.9},"ring":{"freq":2500,"Q":70,"hit":0.001,"decay":0.045,"gain":0.6},"tone":{"type":"lowpass","freq":5200,"Q":0.7},"id":"clvRosewood","kind":"drum","factory":true,"level":0.018292,"peak":0.6126},"lead7Voice":{"label":"Blue Cathedral","category":"Pad","synth":"TNGR-2","dur":8,"note":"A long organ-shift and octave-cascade pad with a dignified release.","tngr2":{"oscA":{"table":"vowelAEIOU","position":0.12,"envAmount":0.5,"level":0.74,"unison":2,"spread":8,"stereo":0.26},"oscB":{"table":"choirBreath","position":0.18,"envAmount":0.41,"level":0.22,"unison":1,"spread":11,"interval":-12},"amp":{"attack":0.023,"decay":3.612,"sustain":1,"release":0.023},"positionEnv":{"attack":1.8,"decay":3.8,"sustain":0.5},"filter":{"type":"lowpass","cutoff":2490,"resonance":1.68},"filterEnv":{"amount":0.7,"attack":1,"decay":3.353,"sustain":0.54},"master":{"gain":0.52},"lfo1":{"rate":0.01}},"starter":false,"vibrato":{"depth":0.01,"delay":0.007},"mode":"legato","portamento":0.117,"kind":"tone","level":0.043193,"peak":0.1636,"songOrigin":"library","songSourceId":"lead7Voice"},"lead8Voice":{"label":"FM Keys","category":"Keys","synth":"RMND-2","dur":2.6,"note":"Struck keys, percussive enough to keep a stab from smearing into the next bar.","options":{"harmonicity":4,"modulationIndex":23.1,"oscillator":{"type":"triangle"},"modulation":{"type":"triangle"},"envelope":{"attack":0.006,"decay":2.804,"sustain":0.15,"release":0.8},"modulationEnvelope":{"attack":0.002,"decay":0.142,"sustain":0.1,"release":0.205}},"starter":false,"vibrato":{"depth":0.03},"kind":"tone","level":0.02600204458123549,"peak":0.21778041797154252,"songOrigin":"library","songSourceId":"lead3Voice"},"lead9Voice":{"label":"Tree Trunk","category":"Pluck","synth":"CRLS-1","dur":1,"note":"A short sine knock with a little sustain behind it. Hollow and wooden.","origin":"Tonejs/Presets Synth/TreeTrunk","options":{"oscillator":{"type":"sine"},"envelope":{"attack":0.001,"decay":0.1,"sustain":0.1,"release":1.2}},"starter":false,"transpose":12,"kind":"tone","level":0.03150432399257167,"peak":0.6941501817472355,"songOrigin":"library","songSourceId":"lead9Voice"},"lead10Voice":{"label":"Square Tone","category":"Lead","synth":"KNDO-5","dur":1,"note":"A direct single-oscillator square-wave replacement for the engine voice.","options":{"oscillator":{"type":"square"},"envelope":{"attack":0.001,"decay":0,"sustain":1,"release":0.01,"attackCurve":"exponential"}},"fixedLength":0.132,"waveform":"triangle","attack":0.001,"release":0.008,"trim":0,"vibrato":{"depth":0,"rate":10.9},"mono":false,"portamento":0,"starter":false,"transpose":12,"kind":"tone","level":0.03795465416337589,"peak":0.659832166934868,"songOrigin":"library","songSourceId":"lead10Voice"},"lead11Voice":{"label":"AM Hollow","category":"Lead","synth":"RMND-2","dur":1.2,"note":"Ring-modulated and slightly out of tune with itself. Reads as a voice rather than a synth.","options":{"harmonicity":1,"oscillator":{"type":"triangle"},"modulation":{"type":"pwm"},"envelope":{"attack":0.001,"decay":0.514,"sustain":0.31,"release":1.164},"modulationEnvelope":{"attack":0.004,"decay":2.563,"sustain":0.7,"release":0.3}},"starter":false,"bypassed":{"options.modulationIndex":10},"kind":"tone","level":0.00607079265574354,"peak":0.13228452199413662,"songOrigin":"library","songSourceId":"lead11Voice"}},
   lanes: {
     lead: { gain: -4.7, send: { delay: 0.033, reverb: 0.446 }, eq: { high: 2.9 }, effects: [{ id: "compressor", params: { inputGain: 0, threshold: -24, ratio: 5, attack: 0.008, release: 0.12, outputGain: 0 } }, { id: "chorus2", params: { width: 0.38, tone: 9296.517 } }, { id: "autopanner", params: { rateDivision: 32, depth: 0.54 } }] },
     bass: { gain: -3.84 },
@@ -279,13 +319,12 @@ export const mix = {
     snare: { gain: 3.6, send: { reverb: 0.024 }, eq: { high: 5.7 } },
     hats: { gain: 3.2, pan: -0.401, send: { reverb: 0.225 } },
     ohats: { gain: 6, pan: -0.403, send: { reverb: 0.3 }, eq: { high: 1.1 } },
-    clap: { pan: 0.201, send: { reverb: 0.577 } },
     kick: { gain: 2.544, send: { reverb: 0.034 }, eq: { low: 1.5 }, effects: [{ id: "compressor", params: { inputGain: 0, threshold: -24, ratio: 5, attack: 0.008, release: 0.12, outputGain: 0 } }] },
     crash: { gain: 0.624, pan: 0.657, send: { delay: 0.489, reverb: 0.5 } },
     sweeps: { send: { delay: 0.24, reverb: 0.4 } },
     lead3: { gain: -5.5, pan: -0.255, eq: { low: -12.6, mid: -4.8, high: 3.4 }, effects: [{ id: "pingpong", params: { division: 0.25 } }, { id: "rhythmgate", params: { attack: 0.001, decay: 0.06, gateLength: 0.54 } }], noteFx: {"strum":{"enabled":false,"direction":"up","gapMs":18},"arp":{"enabled":true,"direction":"diverge","rate":1,"octaves":3,"limit":0,"rangeLimit":false,"rangeLo":48,"rangeHi":72,"repeat":true,"gate":80,"retrigger":"chord","latch":false}} },
     bass3: { gain: -4.72, eq: { low: -4.4 } },
-    lead4: { gain: -4.2, effects: [{ id: "doubler" }] },
+    lead4: { gain: -2.08, effects: [{ id: "doubler" }] },
     lead5: { gain: -4.48, eq: { high: 4.7 }, effects: [{ id: "pingpong", params: { feedback: 0.39, division: 1 } }], noteFx: {"strum":{"enabled":false,"direction":"up","gapMs":18},"arp":{"enabled":true,"direction":"up","rate":0.5,"octaves":4,"limit":0,"rangeLimit":false,"rangeLo":48,"rangeHi":72,"repeat":false,"gate":80,"retrigger":"chord","latch":false}} },
     lead6: { gain: 1.6, send: { delay: 0.197, reverb: 0.187 }, eq: { low: -4 }, effects: [{ id: "autopanner", params: { rateDivision: 2 } }] },
     tom2: { gain: -7, pan: 0.382, send: { reverb: 0.119 }, eq: { high: 1.9 } },
@@ -293,6 +332,7 @@ export const mix = {
     lead7: { gain: 1.8, send: { delay: 0.726, reverb: 0.473 }, eq: { high: 3.9 } },
     lead8: { gain: 2.496, pan: -0.303, eq: { low: -12.6, mid: -4.8, high: 3.4 }, effects: [{ id: "pingpong", params: { division: 0.25 } }, { id: "rhythmgate", params: { attack: 0.001, decay: 0.06, gateLength: 0.54 } }, { id: "autopanner" }], noteFx: {"strum":{"enabled":false,"direction":"up","gapMs":18},"arp":{"enabled":true,"direction":"diverge","rate":1,"octaves":3,"limit":0,"rangeLimit":false,"rangeLo":48,"rangeHi":72,"repeat":true,"gate":80,"retrigger":"chord","latch":false}} },
     lead9: { pan: -0.621, send: { delay: 0.201 }, eq: { low: -4.4, high: 8.2 } },
+    lead11: { gain: -5.84, send: { reverb: 0.05 } },
   },
 };
 
@@ -480,16 +520,22 @@ export const arrangement = {
       from: 1,
     },
     {
-      s: 34,
+      s: 63,
       bars: 1,
+      pan: {
+        lead11: -55,
+      },
     },
     {
-      s: 0,
+      s: 64,
       bars: 1,
       from: 1,
+      pan: {
+        lead11: 40,
+      },
     },
     {
-      s: 35,
+      s: 65,
       bars: 1,
       transpose: {
         bass: 2,
@@ -498,6 +544,10 @@ export const arrangement = {
         lead3: 2,
         bass3: 2,
         lead8: 2,
+        lead11: 2,
+      },
+      pan: {
+        lead11: -55,
       },
     },
     {
@@ -511,6 +561,10 @@ export const arrangement = {
         lead3: 2,
         bass3: 2,
         lead8: 2,
+        lead11: 2,
+      },
+      pan: {
+        lead11: 40,
       },
     },
     {
@@ -681,7 +735,7 @@ export const arrangement = {
       },
     },
     {
-      s: 34,
+      s: 63,
       bars: 1,
       transpose: {
         bass: 2,
@@ -694,10 +748,11 @@ export const arrangement = {
         lead5: 2,
         lead6: 2,
         lead7: 2,
+        lead11: 2,
       },
     },
     {
-      s: 0,
+      s: 64,
       bars: 1,
       from: 1,
       transpose: {
@@ -711,10 +766,11 @@ export const arrangement = {
         lead5: 2,
         lead6: 2,
         lead7: 2,
+        lead11: 2,
       },
     },
     {
-      s: 35,
+      s: 65,
       bars: 1,
       transpose: {
         bass: 4,
@@ -727,6 +783,7 @@ export const arrangement = {
         lead5: 4,
         lead6: 4,
         lead7: 4,
+        lead11: 4,
       },
     },
     {
@@ -744,6 +801,7 @@ export const arrangement = {
         lead5: 4,
         lead6: 4,
         lead7: 4,
+        lead11: 4,
       },
     },
     {
@@ -816,6 +874,7 @@ export const arrangement = {
       },
       gain: {
         lead5: -5,
+        lead11: 5.5,
       },
     },
     {
@@ -828,13 +887,15 @@ export const arrangement = {
         lead2: 4,
         lead3: 4,
         lead8: 4,
-        lead4: 4,
         lead5: 4,
         lead6: 4,
         lead7: 4,
+        lead9: 4,
       },
       gain: {
         lead5: -5,
+        lead11: 5.5,
+        lead4: -9,
       },
     },
     {
@@ -1042,7 +1103,57 @@ export const arrangement = {
       },
     },
     {
-      s: 56,
+      s: 67,
+      bars: 1,
+      transpose: {
+        bass: 4,
+        bass3: 4,
+        lead: 4,
+        lead2: 4,
+        lead3: 4,
+        lead8: 4,
+        lead4: 4,
+        lead5: 4,
+        lead6: 4,
+        lead7: 4,
+      },
+    },
+    {
+      s: 69,
+      bars: 1,
+      from: 1,
+      transpose: {
+        bass: 4,
+        bass3: 4,
+        lead: 4,
+        lead2: 4,
+        lead3: 4,
+        lead8: 4,
+        lead4: 4,
+        lead5: 4,
+        lead6: 4,
+        lead7: 4,
+      },
+    },
+    {
+      s: 68,
+      bars: 1,
+      from: 1,
+      transpose: {
+        bass: 4,
+        bass3: 4,
+        lead: 4,
+        lead2: 4,
+        lead3: 4,
+        lead8: 4,
+        lead4: 4,
+        lead5: 4,
+        lead6: 4,
+        lead7: 4,
+      },
+    },
+    {
+      s: 66,
       bars: 1,
       transpose: {
         bass: 4,
@@ -1061,55 +1172,6 @@ export const arrangement = {
       s: 57,
       bars: 1,
       from: 1,
-      transpose: {
-        bass: 4,
-        bass3: 4,
-        lead: 4,
-        lead2: 4,
-        lead3: 4,
-        lead8: 4,
-        lead4: 4,
-        lead5: 4,
-        lead6: 4,
-        lead7: 4,
-      },
-    },
-    {
-      s: 56,
-      bars: 1,
-      transpose: {
-        bass: 4,
-        bass3: 4,
-        lead: 4,
-        lead2: 4,
-        lead3: 4,
-        lead8: 4,
-        lead4: 4,
-        lead5: 4,
-        lead6: 4,
-        lead7: 4,
-      },
-    },
-    {
-      s: 57,
-      bars: 1,
-      from: 1,
-      transpose: {
-        bass: 4,
-        bass3: 4,
-        lead: 4,
-        lead2: 4,
-        lead3: 4,
-        lead8: 4,
-        lead4: 4,
-        lead5: 4,
-        lead6: 4,
-        lead7: 4,
-      },
-    },
-    {
-      s: 58,
-      bars: 1,
       transpose: {
         bass: 4,
         bass3: 4,
@@ -1143,7 +1205,23 @@ export const arrangement = {
       s: 59,
       bars: 1,
       from: 1,
-      off: ["clap","hats","ohats","snare"],
+      off: ["hats","ohats","snare"],
+      inlineFx: {
+        clap: [
+          {
+            id: "reverb",
+            params: {
+              decay: 4,
+              preDelay: 0.009916216226115456,
+              low: 0,
+              mid: 0,
+              high: 3,
+              width: 2,
+              wet: 0.49,
+            },
+          },
+        ],
+      },
       transpose: {
         bass: 4,
         bass3: 4,
@@ -1155,6 +1233,9 @@ export const arrangement = {
         lead5: 4,
         lead6: 4,
         lead7: 4,
+      },
+      gain: {
+        clap: 8,
       },
     },
   ],
@@ -1322,6 +1403,7 @@ export const arrangement = {
       lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass3: seq('C2 . C3 . C2 . C3 . A2 . A3 . A2 . A3 . | . . . . . . . . . . . . . . . .'),
       clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 . D5 . E5 . A4 . . . E5 G5 A5 B5'),
@@ -1383,8 +1465,8 @@ export const arrangement = {
       bass3: seq('F2 . F3 . F2 . F3 . F2 . F3 . F2 . F3 . | . . . . . . . . . . . . . . . .'),
       lead4: chordSeq('F3maj7 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead4Len: [[15.822443,15.822443,15.822443,15.822443],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
@@ -1400,6 +1482,7 @@ export const arrangement = {
       bass3: seq('F2 . F3 . F2 . F3 . G2 . G3 . G2 . G3 . | . . . . . . . . . . . . . . . .'),
       lead4: [[174.61411571650194,220,261.6255653005986,329.6275569128699],null,null,null,null,null,null,null,[195.99771799087463,246.94165062806206,293.6647679174075],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4Len: [8,null,null,null,null,null,null,null,[23.769886,23.751953,8],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       lead2: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
@@ -1482,7 +1565,7 @@ export const arrangement = {
       lead2: chordSeq('. . . . . . . . . . . . . . . . | F3maj7 . . . . . . . G3 . . . . . . .'),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1,1.563388,1.563388,null,1,1.563388,null,1.563388,1,1.563388,1,1.563388,null,1],
-      kick: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 . C1 . C1 . C1 .').map((v) => !!v),
+      kick: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 . . . C1 . C1 .').map((v) => !!v),
       clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . C1 . C1 . C1 . C1 .').map((v) => !!v),
       bass3: seq('. . . . . . . . . . . . . . . . | F2 . F3 . F2 . F3 . G2 . G3 . G2 . G3 .'),
       lead: seq('. . . . . . . . . . . . . . . . | C5 . E5 G5 C5 . E5 G5 . A4 G#5 C5 C6 E5 . E6'),
@@ -1599,11 +1682,16 @@ export const arrangement = {
       bass: seq('. . . . . . . . . . . . . . . . | D2 . D3 . D2 . D3 . G2 . G3 . G2 . G3 .'),
       lead2: chordSeq('. . . . . . . . . . . . . . . . | D3min7 . . . . . . . G3 . . . . . . .'),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
-      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,1.563388,1.563388,null,1.563388,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null],
       lead3: chordSeq('. . . . . . . . . . . . . . . . | D3min7 . . . . . . . G3 . . . . . . .'),
       lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       bass3: seq('. . . . . . . . . . . . . . . . | D2 . D3 . D2 . D3 . G2 . G3 . G2 . G3 .'),
       sweeps: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . . E5 . . .'),
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,1.563388,null,null,2.272727,null,3.269058,null,null,3.378433,null,null,null],
+      lead11: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . . E5 . . .'),
+      lead11Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,1.563388,null,null,2.272727,null,3.269058,null,null,3.378433,null,null,null],
+      snare: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . C1 C1').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . C1 C1').map((v) => !!v),
     },
     {
       lead: seq('A5 . E5 . D5 . E5 . A4 . . . A5 . G5 . | . . . . . . . . . . . . . . . .'),
@@ -1613,7 +1701,7 @@ export const arrangement = {
       lead3: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass3: seq('C2 . C3 . C2 . C3 . A2 . A3 . A2 . A3 . | . . . . . . . . . . . . . . . .'),
-      kick: seq('C1 . . . C1 . . . C1 . C1 . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       lead4: [[523.2511306011972,783.9908719634985],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4Len: [[31,15.45206],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
@@ -1686,20 +1774,24 @@ export const arrangement = {
       lead2: chordSeq('. . . . . . . . . . . . . . . . | C4maj7 . . . . . . . C4maj7 . . . . . . .'),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       sweeps: seq('. . . . . . . . . . . . . . . . | C1 . . . . . . . . . . . . . . .').map((v) => !!v),
-      hats: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 . C1 . C1 C1 C1 C1').map((v) => !!v),
-      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,1.563388,1.563388,null,1.563388,1.563388,null,1.563388,1.563388,1.563388,1.563388,1.563388,1.563388,1.563388],
+      hats: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 . C1 . C1 . C1 .').map((v) => !!v),
       lead3: chordSeq('. . . . . . . . . . . . . . . . | C4maj7 . . . . . . . C4maj7 . . . . . . .'),
       lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       bass3: seq('. . . . . . . . . . . . . . . . | C2 . C3 . C2 . C3 . C2 . C3 . C2 . C3 .'),
       lead6: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . G4 A4 B4 C5 D5 E5 G5'),
       lead6Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,1.563388,1.563388,1.563388,1.563388,1.563388,1.563388],
-      snare: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 C1 C1 C1').map((v) => !!v),
+      snare: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . C1 . C1 . C1 .').map((v) => !!v),
       lead7: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[2093.004522404789],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead7Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[16.939453],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead5: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . A5'),
       lead5Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1],
       lead9: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . G4 A4 B4 C5 D5 E5 G5'),
       lead9Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,1.563388,1.563388,1.563388,1.563388,1.563388,1.563388],
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,1.563388,1.563388,null,1.563388,1.563388,null,1.563388,1.563388,1.563388,1.563388,1.563388,1.563388,1.563388],
+      lead11: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[987.7666025122483,1975.533205024496],[1046.5022612023945,2093.004522404789]],
+      lead11Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[1,1],[1,1]],
+      crash: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . C1 .').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . C1 . C1 . C1 .').map((v) => !!v),
     },
     {
       lead: seq('A5 . E5 . D5 . A5 . . . . . A5 . G5 . | . . . . . . . . . . . . . . . .'),
@@ -1716,6 +1808,12 @@ export const arrangement = {
       lead5Len: [1,null,1,1,null,null,1,1,null,1,1,null,1,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass: seq('C2 . C3 . C2 . C3 C3 A2 . A3 A3 A2 . A3 A3 | . . . . . . . . . . . . . . . .'),
       bassLen: [null,null,null,null,null,null,null,1,null,null,null,1,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead11: [[1108.7305239074883,2217.4610478149766],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead11Len: [[1,1],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead4: [[554.3652619537442,1108.7305239074883],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead4Len: [[10,10],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead9: seq('A5 . E5 . D5 . A5 . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead9Len: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
     {
       lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 . D5 . A5 . . . . . A5 . G5 .'),
@@ -1757,6 +1855,7 @@ export const arrangement = {
       clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bass: seq('C2 . C3 C3 C2 . C3 C3 A2 . A3 A3 A2 . A3 A3 | . . . . . . . . . . . . . . . .'),
       bassLen: [null,null,null,1,null,null,null,1,null,null,null,1,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       bass: seq('C2 . C3 C3 C2 . C3 C3 A2 . A3 A3 A2 . A3 A3 | . . . . . . . . . . . . . . . .'),
@@ -1770,6 +1869,7 @@ export const arrangement = {
       kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bassLen: [null,null,null,1,null,null,null,1,null,null,null,1,null,null,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      crash: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
     {
       bass: seq('. . . . . . . . . . . . . . . . | D2 . D3 D3 D2 . D3 D3 G2 . G3 G3 G2 . G3 G3'),
@@ -1819,7 +1919,7 @@ export const arrangement = {
       lead3: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass3: seq('C2 . C3 . C2 . C3 . A2 . A3 . A2 . A3 . | . . . . . . . . . . . . . . . .'),
-      kick: seq('C1 . . . C1 . . . C1 . C1 . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       lead4: [[523.2511306011972,783.9908719634985],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4Len: [[31,15.45206],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
@@ -1877,9 +1977,9 @@ export const arrangement = {
       lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass3: seq('F2 . F3 . F2 . F3 . F2 . F3 . F2 . F3 . | . . . . . . . . . . . . . . . .'),
       lead4: chordSeq('F3maj7 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
-      lead4Len: [[15.822443,15.822443,15.822443,15.822443],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
-      clap: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
-      snare: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      lead4Len: [[31.753729,31.753729,31.753729,31.753729],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       bassLen: [null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
@@ -1927,7 +2027,7 @@ export const arrangement = {
       lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[164.81377845643496,261.6255653005986],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[15.912642,15.794567],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       snare: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . C1 C1').map((v) => !!v),
-      clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . C1 C1').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . . . . .').map((v) => !!v),
       kick: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 C1 C1 C1 C1 C1 C1 C1').map((v) => !!v),
       bassLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1],
     },
@@ -1959,12 +2059,117 @@ export const arrangement = {
       bass: seq('. . . . . . . . . . . . . . . . | D2 . D3 . D2 . D3 . G2 . G3 G3 G2 . G3 G3'),
       lead2: chordSeq('. . . . . . . . . . . . . . . . | D3min7 . . . . . . . G3 . . . . . . .'),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
-      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,1.563388,1.563388,null,1.563388,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null],
       lead3: chordSeq('. . . . . . . . . . . . . . . . | D3min7 . . . . . . . G3 . . . . . . .'),
       lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       bass3: seq('. . . . . . . . . . . . . . . . | D2 . D3 . D2 . D3 . G2 . G3 . G2 . G3 .'),
       sweeps: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
       bassLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,null,null,1],
+      lead: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . . E5 . . .'),
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,1.563388,null,null,2.272727,null,3.269058,null,null,3.378433,null,null,null],
+      lead11: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . . E5 . . .'),
+      lead11Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,1.563388,null,null,2.272727,null,3.269058,null,null,3.378433,null,null,null],
+    },
+    {
+      lead2: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass3: seq('C2 . C3 . C2 . C3 . A2 . A3 . A2 . A3 . | . . . . . . . . . . . . . . . .'),
+      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      lead: seq('C5 . . . G5 . . G4 . A4 . E5 . . . . | . . . . . . . . . . . . . . . .'),
+      leadLen: [1.563388,null,null,null,2.082623,null,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead11: seq('C5 . . . G5 . . G4 . A4 . E5 . . . . | . . . . . . . . . . . . . . . .'),
+      lead11Len: [1.563388,null,null,null,2.082623,null,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    },
+    {
+      lead2: chordSeq('. . . . . . . . . . . . . . . . | F3maj7 . . . . . . . G3 . . . . . . .'),
+      lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      lead3: chordSeq('. . . . . . . . . . . . . . . . | F3maj7 . . . . . . . G3 . . . . . . .'),
+      lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      bass3: seq('. . . . . . . . . . . . . . . . | F2 . F3 . F2 . F3 . G2 . G3 . G2 . G3 .'),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      kick: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
+      bass: seq('. . . . . . . . . . . . . . . . | F2 . F3 . F2 . F3 . G2 . G3 G3 G2 . G3 G3'),
+      bassLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,null,null,1],
+      lead: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . E5 . E5 . .'),
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,2.082623,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null],
+      lead11: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . E5 . E5 . .'),
+      lead11Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,2.082623,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null],
+    },
+    {
+      bass: seq('C2 . C3 . C2 . C3 . A2 . A3 . A2 . A3 . | . . . . . . . . . . . . . . . .'),
+      lead2: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass3: seq('C2 . C3 . C2 . C3 . A2 . A3 . A2 . A3 . | . . . . . . . . . . . . . . . .'),
+      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      lead: seq('C5 . . . G5 . . G4 . A4 . . E5 . . . | . . . . . . . . . . . . . . . .'),
+      leadLen: [1.563388,null,null,null,1.563388,null,null,1.563388,null,1.563388,null,null,3.8129729999999995,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead11: seq('C5 . . . G5 . . G4 . A4 . . E5 . . . | . . . . . . . . . . . . . . . .'),
+      lead11Len: [1.563388,null,null,null,1.563388,null,null,1.563388,null,1.563388,null,null,3.8129729999999995,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    },
+    {
+      bass: seq('F2 F2 F3 F3 F2 F2 F3 F3 F2 F2 F3 F3 F2 F2 F3 F3 | . . . . . . . . . . . . . . . .'),
+      lead: seq('A5 . E5 . D5 . A5 . . . . . A5 . G5 . | . . . . . . . . . . . . . . . .'),
+      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead2: chordSeq('F3maj7 . . . . . . . F3maj7 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: chordSeq('F3maj7 . . . . . . . F3maj7 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass3: seq('F2 . F3 . F2 . F3 . F2 . F3 . F2 . F3 . | . . . . . . . . . . . . . . . .'),
+      lead4: chordSeq('F3maj7 . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead4Len: [[15.822443,15.822443,15.822443,15.822443],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      clap: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bassLen: [null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    },
+    {
+      bass: seq('F2 F2 F3 F3 F2 F2 F3 F3 F2 F2 F3 F3 F2 F2 F3 F3 | . . . . . . . . . . . . . . . .'),
+      lead: seq('A5 . E5 . D5 . A5 . . . . . A5 . G5 . | . . . . . . . . . . . . . . . .'),
+      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead2: chordSeq('F3maj7 . . . . . . . F3maj7 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: chordSeq('F3maj7 . . . . . . . F3maj7 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass3: seq('F2 . F3 . F2 . F3 . F2 . F3 . F2 . F3 . | . . . . . . . . . . . . . . . .'),
+      clap: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      snare: seq('. . . . C1 . . . . . . . C1 . C1 . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      bassLen: [null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    },
+    {
+      bass: seq('. . . . . . . . . . . . . . . . | G2 G2 G3 G3 G2 G2 G3 G3 G2 G2 G3 G3 G2 G2 G3 G3'),
+      lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 . D5 . A5 . . . . . A5 . G5 .'),
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,1.563388,null,1.563388,null],
+      lead2: chordSeq('. . . . . . . . . . . . . . . . | G3 . . . . . . . G3 . . . . . . .'),
+      lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      lead3: chordSeq('. . . . . . . . . . . . . . . . | G3 . . . . . . . G3 . . . . . . .'),
+      lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      bass3: seq('. . . . . . . . . . . . . . . . | G2 . G3 . G2 . G3 . G2 . G3 . G2 . G3 .'),
+      kick: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 C1 C1 .').map((v) => !!v),
+      bassLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1],
+      snare: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 C1 C1 .').map((v) => !!v),
+    },
+    {
+      bass: seq('. . . . . . . . . . . . . . . . | G2 G2 G3 G3 G2 G2 G3 G3 G2 G2 G3 G3 G2 G2 G3 G3'),
+      lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 . D5 . A5 . . . . . A5 . G5 .'),
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,1.563388,null,1.563388,null],
+      lead2: chordSeq('. . . . . . . . . . . . . . . . | G3 . . . . . . . G3 . . . . . . .'),
+      lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      lead3: chordSeq('. . . . . . . . . . . . . . . . | G3 . . . . . . . G3 . . . . . . .'),
+      lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      bass3: seq('. . . . . . . . . . . . . . . . | G2 . G3 . G2 . G3 . G2 . G3 . G2 . G3 .'),
+      lead4: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[195.99771799087463,246.94165062806206,293.6647679174076],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead4Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,[31.853516,31.853516,31.853516],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      kick: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      bassLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1],
     },
   ],
   choke: {

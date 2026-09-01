@@ -48,7 +48,7 @@ import { cabinetPalette, drawCabinetShell, drawCabinetScreen, drawScreenSweep } 
 import { BRIEFINGS, BRIEFING_PROMPTS } from '../data/briefings.js';
 import { CABINETS, HUB_THEME, TITLE_THEME, FINALE_THEME } from '../data/cabinets.js';
 import { COUNTER_DANCE_MIX_THEME } from '../data/shop-themes.js';
-import { MEGAMIX_SOURCE_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
+import { JUKEBOX_TRACKS, MEGAMIX_THEME } from '../data/megamix.js';
 // The jukebox lists a tempo per song, and the desk can now save one onto a song's
 // arrangement — see bpmOf.
 import { bpmOf } from '../data/arrangements.js';
@@ -3524,7 +3524,7 @@ export class FieldGuideState {
 
 // SOUND TEST: the classic arcade jukebox. Every cabinet track + the hub theme.
 export const JUKEBOX = [
-  ...MEGAMIX_SOURCE_TRACKS,
+  ...JUKEBOX_TRACKS,
   { name: 'MASHENSTEIN: THE MONSTER MIX', bank: MEGAMIX_THEME },
 ];
 // The tempo a row reports is the one the song PLAYS at: the arrangement's when the

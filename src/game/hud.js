@@ -57,7 +57,13 @@ const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 // between two sixteenths is beatPx/4 and the tick has to stay small against it.
 // Grow one without the other and a fill closes into a bar.
 const RIBBON_SCALE = 2;
-const RIBBON_Y = 27, RIBBON_H = Math.round(9 * RIBBON_SCALE);
+// Thinner than it was — seven units, not nine — and its top edge drops by the
+// two it lost off the bottom, so the MIDLINE every glyph hangs off (see `mid`
+// in drawBeatRibbon) stays exactly where it was. The plate was never doing any
+// work with that ink: the arrows reach 2.5 units either side of the midline at
+// the top of their swell, so the extra unit at each end was plastic sitting
+// over the sky.
+const RIBBON_Y = 29, RIBBON_H = Math.round(7 * RIBBON_SCALE);
 export const RIBBON_BEAT_PX = Math.round(26 * RIBBON_SCALE);
 // Where the playhead stands, in the OVERLAY's unscaled 480x270 space — which is
 // not PLAYER_X, because the world is drawn through the camera's zoom and the
@@ -77,38 +83,59 @@ function ribbonAnchor(run) {
   const cx = (PLAYER_X + HERO_CENTER_OFF) * (run.camZoom || 1);
   return run.mirror ? W - cx : cx;
 }
-// The window in beats behind and ahead, and the fade at each end. The strip is
-// asymmetric because the player's attention is: everything to be acted on is
-// ahead, and the beat behind is not slack but the missed marker's one-beat
-// trail (see beatRibbonMarkerOffset) — without it a marker annihilates against
-// a wall instead of travelling THROUGH the line. A marker crosses in at zero ink at
-// the far edge of its own lookahead; see RIBBON_FADE_BACK for why it does not
-// leave the same way.
+// The plate's live geometry in screen px, measured along its own axis: how much
+// of it lies behind the playhead and how much ahead. `near` is the playhead's
+// distance from the edge the past runs off toward, and it is the same number
+// mirrored or not — ribbonAnchor has already flipped the frame — so everything
+// below is written once and works both ways round.
+function ribbonSpan(run) {
+  const anchor = ribbonAnchor(run);
+  const near = run.mirror ? W - anchor : anchor;
+  const minBack = RIBBON_MIN_BACK_BEATS * RIBBON_BEAT_PX;
+  const margin = Math.min(RIBBON_MARGIN, Math.max(0, near - minBack));
+  return { anchor, backW: near - margin, aheadW: W - margin - near };
+}
+// THE PLATE IS LAID OUT FROM THE FRAME, NOT FROM THE BEAT COUNT. It ends the
+// same distance from the right edge of the screen as it begins from the left —
+// exactly the same, on every stage — and the window in beats is whatever fits
+// between. It used to be the other way round: a fixed 1 beat behind and 4.5
+// ahead, hung off a playhead whose x is `62 * camZoom`, so the air at the two
+// ends came out however the stage's zoom happened to leave it (71px and 123px
+// on a 2.0x stage) and moved whenever the zoom did. A strip that is not square
+// with its own frame reads as one that has slipped, and no pair of beat figures
+// fixes that for every zoom at once.
 //
-// THE AHEAD FIGURE IS SET BY THE FRAME, not by the clock, and the frame's last
-// word is the BONUS panel. At the normal zoom the playhead stands at 99 and
-// that panel's left edge is around 341, so 4.5 beats runs the plate out to 333
-// and stops it a hair short of the furniture. It went to 6.5 first, which put
-// the midpoint at 242 of 480 — centred to the pixel, and wrong, because the
-// last 96px of it were behind the BONUS panel and what you actually saw was a
-// strip that petered out under a sign. Ending where the sky ends beats being
-// symmetrical about a middle nobody can see.
-//
-// So the plate is NOT centred in the frame, and cannot be: its zero is pinned
-// over a hero who stands a fifth of the way across. The lopsidedness is the
-// point — everything to be acted on is ahead, and the beat behind is not slack
-// but the missed marker's trail (see beatRibbonMarkerOffset). 4.5 beats is
-// ~2.2s of warning at 124bpm, against the ~1.6s of runway the ground itself
-// shows once the speed ramp is at its cap.
-const RIBBON_BACK_BEATS = 1, RIBBON_AHEAD_BEATS = 4.5;
+// So RIBBON_MARGIN is the air, and it is the only figure here with an opinion.
+// 88 brings the near end in from the 71 it was sitting at, and takes the far
+// end out to 392 — clear of the folded BONUS panel, whose left edge lands
+// around 417. The panel only reaches further left while it is still holding its
+// full sentence, and that shrinks away on its own (see BONUS_FOLD).
+const RIBBON_MARGIN = 88;
+// The playhead still stands over the hero, so what the margin costs is the BACK
+// end: the plate begins at the margin now rather than a fixed beat behind him,
+// which on a 2.0x stage leaves about two thirds of a beat. That end is not
+// slack — it is the missed marker's trail (see beatRibbonMarkerOffset), without
+// which a marker annihilates against a wall instead of travelling THROUGH the
+// line — so it gets a floor rather than being allowed to close up entirely. A
+// hero far enough left to hit that floor takes it out of the margin at BOTH
+// ends, because equal air is the thing being kept.
+const RIBBON_MIN_BACK_BEATS = 0.5;
+// The lookahead the exported marker helper culls at when nobody hands it the
+// live one. It is the figure the plate used to be built from, and still about
+// what a normal stage works out to (~5 beats, ~2.4s of warning at 124bpm,
+// against the ~1.6s of runway the ground itself shows once the speed ramp is at
+// its cap). A marker crosses in at zero ink at the far edge of its own
+// lookahead; see RIBBON_FADE_BACK for why it does not leave the same way.
+const RIBBON_AHEAD_BEATS = 4.5;
 // The fades are NOT the same width, because the two ends are not the same
-// length. A one-beat fade on a one-beat back end is a plate whose left half
-// never reaches full ink at all: it ramps from nothing to solid exactly at the
-// playhead, so the eye never finds the left edge and reads the strip as
-// starting somewhere around the hero — while the right end carries 286px of
-// solid ink before its own fade begins. Geometrically centred, perceptually
-// shoved into the right of the frame. A short fade back and a long one forward
-// puts the visible mass where the plate actually is.
+// length. A one-beat fade on a back end shorter than a beat is a plate whose
+// left half never reaches full ink at all: it ramps from nothing to solid
+// exactly at the playhead, so the eye never finds the left edge and reads the
+// strip as starting somewhere around the hero — while the right end carries
+// most of 300px of solid ink before its own fade begins. A short fade back and
+// a long one forward puts the visible mass where the plate actually is. Each is
+// clamped to the end it fades, so a squeezed back end dims rather than dividing
+// by a length it does not have.
 const RIBBON_FADE_BACK = Math.round(0.35 * RIBBON_BEAT_PX);
 const RIBBON_FADE_AHEAD = RIBBON_BEAT_PX;
 const RIBBON_PLATE = 'rgba(16,20,28,0.55)';
@@ -117,11 +144,10 @@ const RIBBON_PLATE = 'rgba(16,20,28,0.55)';
 // lane at the top of the swell; it is also about the least that still reads as
 // a pulse rather than as a jitter at the size these are drawn.
 const RIBBON_PULSE = 0.25;
-const RIBBON_BACK_W = RIBBON_BACK_BEATS * RIBBON_BEAT_PX;
-const RIBBON_AHEAD_W = RIBBON_AHEAD_BEATS * RIBBON_BEAT_PX;
-// The pulse marker overhangs the strip by two units at each end (see the gold
-// bar below), so the band is taller than the plate it is painted on.
-export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + 2 * RIBBON_SCALE;
+// The playhead's tabs stand off the plate at each end rather than crossing it
+// (see the gold bar below), so the band is taller than the plate it brackets.
+const RIBBON_TAB = 3 * RIBBON_SCALE;
+export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + RIBBON_TAB;
 // Where a speech card's first ROW goes when the beat lane is up. drawSpeech
 // hangs its plate four units above the row it is handed, so clearing the ribbon
 // means clearing it by four more than it looks — plus three of air, or the card
@@ -144,9 +170,9 @@ export function beatRibbonOffset(actionBeat, currentBeat, beatPx = RIBBON_BEAT_P
 // timing copy until each subdivision reaches the line, then retire it exactly
 // there. Mandatory actions retain their one-beat missed-event trail.
 export function beatRibbonMarkerOffset(action, actionBeat, currentBeat,
-  consumed = false, beatPx = RIBBON_BEAT_PX) {
+  consumed = false, beatPx = RIBBON_BEAT_PX, aheadPx = RIBBON_AHEAD_BEATS * beatPx) {
   const dx = beatRibbonOffset(actionBeat, currentBeat, beatPx);
-  if (dx == null || dx > beatPx * RIBBON_AHEAD_BEATS) return null;
+  if (dx == null || dx > aheadPx) return null;
   if (action === 'coin') return dx >= 0 ? dx : null;
   if (consumed || dx < -beatPx) return null;
   return dx;
@@ -163,7 +189,8 @@ export function drawBeatRibbon(ctx, run) {
   const currentBeat = beat + (run.spawner?.beatEpoch || 0);
   const beatPhase = ((currentBeat % 1) + 1) % 1;
   const y = RIBBON_Y, h = RIBBON_H, beatPx = RIBBON_BEAT_PX;
-  const anchor = ribbonAnchor(run), dir = run.mirror ? -1 : 1, u = RIBBON_SCALE;
+  const { anchor, backW, aheadW } = ribbonSpan(run);
+  const dir = run.mirror ? -1 : 1, u = RIBBON_SCALE;
   // The band's midline and the arrows' half-height, named once: every glyph
   // hangs off these two rather than off the plate's top edge.
   const mid = y + h / 2, ARROW_H = 2.5 * u;
@@ -181,16 +208,18 @@ export function drawBeatRibbon(ctx, run) {
   // body of the strip, ramping to nothing across the last RIBBON_FADE px of
   // whichever end it is approaching. Every tick and marker takes it, so nothing
   // ever pops against a strip that fades.
+  const fadeBack = Math.max(1, Math.min(RIBBON_FADE_BACK, backW));
+  const fadeAhead = Math.max(1, Math.min(RIBBON_FADE_AHEAD, aheadW));
   const edgeFade = (dx) => Math.max(0, Math.min(1, dx >= 0
-    ? (RIBBON_AHEAD_W - dx) / RIBBON_FADE_AHEAD
-    : (RIBBON_BACK_W + dx) / RIBBON_FADE_BACK));
+    ? (aheadW - dx) / fadeAhead
+    : (backW + dx) / fadeBack));
   ctx.save();
   // Built along the strip's own axis — back end to front end — so a mirrored
   // run gets the gradient reversed for free rather than a second copy of it.
-  const tail = anchor - dir * RIBBON_BACK_W, head = anchor + dir * RIBBON_AHEAD_W;
-  const span = RIBBON_BACK_W + RIBBON_AHEAD_W;
+  const tail = anchor - dir * backW, head = anchor + dir * aheadW;
+  const span = backW + aheadW;
   const back = ctx.createLinearGradient(tail, 0, head, 0);
-  const fadeStop = RIBBON_FADE_BACK / span, fadeStopAhead = RIBBON_FADE_AHEAD / span;
+  const fadeStop = fadeBack / span, fadeStopAhead = fadeAhead / span;
   // Translucent, not a black bar. At full strength a strip this long stopped
   // being chrome and became a hole in the sky — the widest, heaviest object in
   // the frame, sitting over the prettiest part of the stage. It only has to
@@ -202,27 +231,44 @@ export function drawBeatRibbon(ctx, run) {
   back.addColorStop(1, 'rgba(16,20,28,0)');
   ctx.fillStyle = back;
   ctx.fillRect(Math.min(tail, head), y, span, h);
-  ctx.strokeStyle = 'rgba(72,224,200,0.26)';
-  ctx.lineWidth = Math.max(1, Math.round(RIBBON_SCALE));
-  for (let i = -RIBBON_BACK_BEATS; i <= RIBBON_AHEAD_BEATS; i++) {
+  // FILLED, NOT STROKED, and centred on the beat. A 2px stroke laid on `x + 0.5`
+  // covers x-0.5 to x+1.5 — the half-pixel convention for ODD line widths, and
+  // half a pixel of drift for this one — so every tick sat that much right of
+  // the glyph standing on the same beat. At RIBBON_SCALE and a canvas scaled up
+  // again for the screen that is a visible sliver of teal poking out from behind
+  // an arrow. A rect centred on x cannot drift: the mark and the thing it marks
+  // share one number.
+  ctx.fillStyle = 'rgba(72,224,200,0.26)';
+  const tickW = Math.max(1, Math.round(RIBBON_SCALE));
+  for (let i = -Math.ceil(backW / beatPx); i <= Math.ceil(aheadW / beatPx); i++) {
     const dx = i * beatPx - beatPhase * beatPx;
     const a = edgeFade(dx);
     if (a <= 0) continue;
     const x = anchor + dir * dx;
     ctx.globalAlpha = 0.92 * a;
-    ctx.beginPath(); ctx.moveTo(x + 0.5, y + 2 * u); ctx.lineTo(x + 0.5, y + h - 2 * u); ctx.stroke();
+    ctx.fillRect(x - tickW / 2, y + 2 * u, tickW, h - 4 * u);
   }
   ctx.globalAlpha = 0.92;
   const pulse = Audio.musicAnalysis?.()?.beatPulse || 0;
-  ctx.fillStyle = `rgba(246,211,60,${0.35 + pulse * 0.5})`;
-  ctx.fillRect(anchor - 1.5 * u, y - 2 * u, 3 * u, h + 4 * u);
+  // Brighter at rest than the crossing bar was. That one could afford to sit at
+  // a third of its ink because it was 22px of gold against a dark plate; two
+  // 6px tabs standing on the sky have to hold the eye on their own.
+  ctx.fillStyle = `rgba(246,211,60,${0.55 + pulse * 0.45})`;
+  // THE PLAYHEAD BRACKETS THE PLATE, it does not run through it. As one bar
+  // across the full height it stood over every marker that reached the line —
+  // the one moment a marker is being judged was the one moment it was half
+  // hidden behind gold — and the two brightest things on the strip were fighting
+  // for the same pixels. Two tabs, one clear above and one clear below, say the
+  // same column just as plainly, and the gap between them is the marker's.
+  ctx.fillRect(anchor - 1.5 * u, y - RIBBON_TAB, 3 * u, RIBBON_TAB);
+  ctx.fillRect(anchor - 1.5 * u, y + h, 3 * u, RIBBON_TAB);
   const markers = [];
   const markerKeys = new Set();
-  const addMarker = (action, actionBeat) => {
+  const addMarker = (action, actionBeat, prop = null) => {
     const key = `${action}:${Math.round(actionBeat * 1000)}`;
     if (markerKeys.has(key)) return;
     markerKeys.add(key);
-    markers.push({ action, actionBeat });
+    markers.push({ action, actionBeat, prop });
   };
   const entities = [...(run.obstacles || []), ...(run.pickups || [])];
   for (const e of entities) {
@@ -232,7 +278,7 @@ export function drawBeatRibbon(ctx, run) {
     const setEvent = run.rhythmSetEvents?.find((s) => s.beat === e.actionBeat);
     if ((judgeId && run.beatJudgeConsumed?.has(judgeId))
       || (setEvent && run.beatJudgeConsumed?.has(setEvent.id))) continue;
-    addMarker(e.chartAction, e.actionBeat);
+    addMarker(e.chartAction, e.actionBeat, e.type);
   }
   for (const e of run.spawner?.eventInstances || []) {
     if (!e.live || (e.chartAction !== 'ability' && e.chartAction !== 'coin')
@@ -249,14 +295,30 @@ export function drawBeatRibbon(ctx, run) {
   }
   for (const marker of markers) {
     const dx = beatRibbonMarkerOffset(marker.action, marker.actionBeat, currentBeat,
-      false, beatPx);
+      false, beatPx, aheadW);
     if (dx == null) continue;
     const a = edgeFade(dx);
     if (a <= 0) continue;
     ctx.globalAlpha = 0.92 * a;
     const x = anchor + dir * dx;
+    // SHAPE IS THE INPUT. COLOUR IS THE OBJECT.
+    //
+    // The arrows' law is that they say what the CONTROLS say — a hole and a bar
+    // are one up-arrow because they are one button, and drawing them differently
+    // would teach a distinction the pad does not have. That law is about SHAPE,
+    // and it is untouched here: a barrel beat is a down-arrow like every other
+    // duck beat, because it is the same button.
+    //
+    // What it does not settle is which THING is arriving, and on the finale
+    // that stopped being cosmetic: a drone hangs still overhead and a barrel
+    // comes at you along the floor, and they want opposite halves of the same
+    // second even though they take the same press. So the barrel's arrow wears
+    // the barrel's own wood rather than the drone's cyan — the colour the
+    // player has been looking at coming down the gorilla's chute. The player
+    // reads the direction off the shape as always, and now reads WHICH ONE off
+    // a colour they were already taught by the object itself.
     ctx.fillStyle = marker.action === 'jump' ? '#f6d33c'
-      : marker.action === 'duck' ? '#72d8f0'
+      : marker.action === 'duck' ? (marker.prop === 'barrel' ? '#d4a35e' : '#72d8f0')
         : marker.action === 'ability' ? '#f890b8' : '#c8e0ff';
     // EVERY GLYPH CENTRES ON THE BAND'S MIDLINE. The jump and duck arrows used
     // to sit two units high and two units low of it, so the pair were not
@@ -936,7 +998,18 @@ export function drawHud(ctx, run) {
   };
   // The BONUS panel's fold clock. Held open while bonusT is running, eased shut
   // over its last half-second.
-  const fold = 1 - smoothstep(Math.min(1, Math.max(0, run.bonusT ?? 0) / BONUS_FOLD));
+  //
+  // ON A BEAT STAGE IT NEVER OPENS AT ALL. The panel and the beat ribbon share
+  // one band, and the ribbon is now laid out from the frame (see RIBBON_MARGIN)
+  // — it reaches to x 407, while the panel holding its full sentence comes back
+  // past 250. For the first ten seconds of every rhythm stage the far third of
+  // the strip was printing UNDER the challenge line: the markers with the most
+  // warning in them, hidden behind a sentence the briefing screen already said.
+  // Between a sentence you get one read of and the readout you play the stage
+  // off, the readout wins. The count still stands in the corner, and completing
+  // the challenge still says itself in words — that is a goalToast, not this.
+  const fold = run.beatLock ? 1
+    : 1 - smoothstep(Math.min(1, Math.max(0, run.bonusT ?? 0) / BONUS_FOLD));
   // The BONUS line — and only that one — leaves before the marker arrives. It is
   // a statement of what is still being ASKED, and by the time the flagpole is on
   // screen there is nothing left to ask: the challenge is already whatever it
@@ -967,9 +1040,15 @@ export function drawHud(ctx, run) {
       objective('BONUS', done ? '#74c947' : 'rgba(255,255,255,0.5)',
         [`${fitRight(c.desc, textWidth(` ${tail}`, 0.85))} `, tail],
         done ? '#74c947' : 'rgba(255,255,255,0.72)', OBJ_Y2, 0.85, fold, bonusAlpha);
-    } else if (run.challenge) {
+    } else if (run.challenge && !run.beatLock) {
       // Folded, this one keeps the verdict rather than the description: a missed
       // challenge is a tombstone, and the words that matter are the last three.
+      //
+      // AND ON A BEAT STAGE IT DOES NOT GET A STONE AT ALL. Folded is not small
+      // here — NOT THIS TIME is a hundred pixels of tail, further left than the
+      // ribbon's far end — so the panel that has nothing left to say would spend
+      // the rest of the run standing on the markers that still do. It is already
+      // lost, the results card says so, and the toast said so when it happened.
       objective('BONUS', 'rgba(255,255,255,0.3)',
         [`${fitRight(run.challenge.desc, textWidth(' - NOT THIS TIME', 0.85))} - `, 'NOT THIS TIME'],
         'rgba(255,255,255,0.35)', OBJ_Y2, 0.85, fold, bonusAlpha);

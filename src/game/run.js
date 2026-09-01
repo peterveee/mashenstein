@@ -2968,6 +2968,7 @@ export class RunState {
       // Down inert just like every other movement control on the ring.
       if (!this.loop) this.player.slidePressed();
       if (this.beatLock) this.checkOnBeat('duck');
+      this.cueBarrelKick();
     }
     if (Input.pressed('ability') && !this.loop) {
       const used = this.useAbility();
@@ -4218,6 +4219,54 @@ export class RunState {
   // could roll into the column long after the sweep first ran — which is what
   // made the pop-out something the player was looking straight at rather than
   // something settled off screen.
+  /**
+   * WHICH BEAT A PORTAL MAY STAND ON, and it is not any of them.
+   *
+   * Parking on the grid is what puts the tag's sound in the song rather than
+   * near it — but the grid is also where the chart's hazards live, and a portal
+   * on a beat the chart has spoken for is a doorway standing in the same stride
+   * as the thing you were told to jump. You cannot take both: the tag is a line
+   * you run through at ground level and the bar is a thing you leave the ground
+   * for, and asking for them on one beat is asking the player to choose which
+   * of two promises the game breaks. clearPortalLane sweeps what it can reach,
+   * but sweeping the hazard is not a fix either — it deletes an action the
+   * ribbon has already drawn coming.
+   *
+   * So the portal moves instead. It steps forward to the next beat the chart
+   * spends on COINS, which is the only kind of slot with nothing to answer, and
+   * skips the whole of a crossing's phrase with two beats' grace either side —
+   * a set piece owns its bars outright.
+   *
+   * Preferring, where there is one, a beat whose FOLLOWING slot is also quiet:
+   * the tag costs a moment of attention and it should not be spent one stride
+   * in front of a jump. On the finale, where every other beat is a hazard, no
+   * such beat exists, and one clear beat is the honest best — the nearest
+   * action then stands a beat away, which is more road than the sweep's own
+   * window and more than a reaction.
+   */
+  portalParkBeat(wanted) {
+    const chart = this.spawner?.chart;
+    if (!chart?.loopBeats) return wanted;
+    const slotAt = (n) => chart.events[((n % chart.loopBeats) + chart.loopBeats) % chart.loopBeats];
+    const quiet = (n) => slotAt(n)?.action === 'coin';
+    // A crossing owns its phrase and the beats either side of it: the stones
+    // are laid on a two-beat cadence the chart itself is suppressed under.
+    const inSetPiece = (n) => (this.pitPlan || []).some((p) => !p.passed && p.crossing
+      && p.actionBeats?.length && n >= p.actionBeats[0] - 2 && n <= p.actionBeats.at(-1) + 2);
+    // The two-beat window is a PREFERENCE and is hunted for a bar at most. Given
+    // the whole loop to search, stage 2 finds its one such window and every
+    // portal in the level parks on the same beat of it — up to fifteen beats
+    // late, which on an eighteen-second cadence is most of a tag's worth of
+    // drift for a nicety.
+    for (let n = wanted; n < wanted + 4; n++) {
+      if (quiet(n) && quiet(n + 1) && !inSetPiece(n)) return n;
+    }
+    for (let n = wanted; n < wanted + chart.loopBeats * 2; n++) {
+      if (quiet(n) && !inSetPiece(n)) return n;
+    }
+    return wanted;
+  }
+
   clearPortalLane(portalX) {
     const approachStart = portalX - 48;
     const portalEnd = portalX + 12;
@@ -4311,7 +4360,8 @@ export class RunState {
       if (Number.isFinite(beat)) {
         const pxPerBeat = this.speed * 60 / (this.cabinet.music?.bpm || 120);
         const playerX = this.playerWorldX();
-        px = playerX + (Math.ceil(beat + (px - playerX) / pxPerBeat) - beat) * pxPerBeat;
+        const wanted = Math.ceil(beat + (px - playerX) / pxPerBeat);
+        px = playerX + (this.portalParkBeat(wanted) - beat) * pxPerBeat;
       }
       this.portal = { x: px, hero };
       this.clearPortalLane(this.portal.x);
@@ -5327,11 +5377,62 @@ export class RunState {
         (e) => e.chartAction === 'ability' && e.actionBeat === beat);
       if (!laid) return null;
     }
+    // AND A BARREL SLOT IS OWED ONLY IF THE LANE ROLLED ONE, for the same
+    // reason and by the same means. The stage that teaches the kick deals a
+    // handful of barrels across ninety seconds rather than one every seven
+    // (see `every` in songs/rhythm.js), and a quiet pass has to be a beat
+    // nobody is scored against — not a duck the scoreboard demands of an empty
+    // road. Asked of the LANE, not the chart, because the lane is what decided.
+    if (event.punt) {
+      const laid = this.spawner?.eventInstances?.some(
+        (e) => e.chartAction === 'duck' && e.actionBeat === beat);
+      if (!laid) return null;
+    }
     // A pit and a bar are one input. The chart distinguishes them because they
     // are laid differently; the scoreboard must not, or clearing a hole on the
     // beat would break the combo the bar beside it builds.
     const action = event.action === 'pit' ? 'jump' : event.action;
     return { id: `judge:${beat}:${slot}`, beat, action };
+  }
+
+  /**
+   * THE KICK IS HEARD ON THE PRESS, NOT ON THE COLLISION.
+   *
+   * A rhythm cabinet is judged by ear, and the thing the ear is waiting for is
+   * the boot connecting. The boot cannot connect on the beat: the barrel has to
+   * stand far enough down the road that the LATEST press the judge still calls
+   * on-beat has happened before it arrives, which is the judge's own window in
+   * seconds and nothing can argue it below that (see puntLeadRange). At this
+   * tempo that is 87ms of daylight between playing the beat and hearing the
+   * hit — small, real, and exactly the "tiny beat late" it feels like.
+   *
+   * So the cue is moved to the moment the player actually plays: the press. By
+   * then the outcome is already decided — a fresh press with a barrel inside
+   * the punt window's reach WILL punt it, because the barrel is closing and
+   * nothing between here and there can stop it — so this is not a guess about
+   * the future, it is the same event announced at its own start rather than at
+   * its end. The physics still resolve where they resolve, a frame or two on;
+   * 87ms is inside the window where the ear and the eye bind a sound to a
+   * picture anyway, so what the player gets is one event, on the beat.
+   *
+   * Only a BEAT barrel. A cone in an ordinary lane has no beat to be late for
+   * and keeps its cue at the contact, where it belongs.
+   */
+  cueBarrelKick() {
+    if (!this.beatLock || this.player.duckSpent || !this.player.grounded) return;
+    const front = this.playerWorldX() + PLAYER_W;
+    for (const ob of this.obstacles) {
+      if (!ob.live || ob.punted || ob.puntCued || !ob.def.beatPunt || ob.hurtPlayer) continue;
+      // How far ahead it may be and still be certain: the road the two of them
+      // close between now and the far edge of the punt window. Beyond that the
+      // press would have gone stale before contact and there would be nothing
+      // to announce.
+      const reach = (this.speed + Math.abs(ob.def.vx || 0)) * PUNT.windowT;
+      if (ob.x < front || ob.x > front + reach) continue;
+      ob.puntCued = true;
+      Audio.sfx('punt', { heavy: ob.def.punt === 'heavy', pitch: 0.95 });
+      return;
+    }
   }
 
   /**
@@ -5386,7 +5487,11 @@ export class RunState {
       // whose delivery beat is still ahead of the chute's own four cells is
       // worth naming — and the soonest one wins, since two cannot come down
       // one chute.
-      if (atChute >= beat - 0.5 && atChute <= beat + LCD_CHUTE_BEATS + 0.5
+      // A beat wider at the far end than the chute itself needs, so the
+      // gorilla's held barrel can light up before the drop starts rather than
+      // with it — the warning wants a run-up, and the panel simply draws no
+      // cell for a cue that is still out of range.
+      if (atChute >= beat - 0.5 && atChute <= beat + LCD_CHUTE_BEATS + 1.5
         && (cue == null || atChute < cue)) cue = atChute;
     }
     return cue;
@@ -6540,7 +6645,46 @@ export class RunState {
       // The plan owns the hole, so a resync can find it and leave it standing.
       hole.setPiece = plan;
       this.obstacles.push(hole);
+      if (plan.crossing) this.markCrossingStones(plan);
       this.refreshRhythmSetEvents();
+    }
+  }
+
+  /**
+   * ONE COIN PER STONE, standing on the beat the stone is jumped from.
+   *
+   * routes.js lays a crossing's stones with `prize: null` and argues for it: a
+   * coin ON a stepping stone is a coin standing in the one place the player has
+   * no attention to spare. That is right about a RUN of them — a row of pickups
+   * along the stone is a second thing to read while the first one is the only
+   * thing that matters. It is wrong about ONE, because a single coin is not a
+   * prize here, it is a MARK: it stands exactly where the beat asks for the
+   * press, so the player's eye has a place to aim at instead of a bare slab and
+   * a count. On a cabinet whose whole difficulty is when rather than where, that
+   * is the cheapest assist there is.
+   *
+   * Laid here rather than by spawnRoutePrizes because the take-off point is not
+   * a property of the stone — it is `approach` short of the stone's far edge,
+   * and only the aligned pit knows what approach came out at this speed.
+   *
+   * After the sweeps, not before: spawnScriptedPits clears the lane around a set
+   * piece, and a mark laid ahead of that would be swept off the stone it marks.
+   */
+  markCrossingStones(plan) {
+    const c = plan.crossing;
+    if (!c?.stones?.length || !Number.isFinite(plan.actionX)) return;
+    // Where the beat stands relative to the lip it is asked at — the same
+    // distance for every hop in the piece, because the piece is laid on it.
+    const approach = plan.x - plan.actionX;
+    for (const stone of c.stones) {
+      // No route, no mark. `routeGroundY(x, null)` is the LANE, and a coin at
+      // lane height inside a crossing is a coin hanging in the hole — the exact
+      // lure the pit sweeps exist to prevent.
+      const route = this.routes.find((r) => r.crossing === c && r.x === stone.x);
+      if (!route) continue;
+      const x = stone.x + stone.w - approach;
+      const alt = this.groundYAt(x) - this.routeGroundY(x, route) + COIN_FLOOR;
+      this.pickups.push(makePickup('coin', x, alt));
     }
   }
 
@@ -7458,7 +7602,24 @@ export class RunState {
       // taken a bar off him. `hurtPlayer` is set at the takeHit below, so the
       // exception is scoped to THAT entity: every other crate and cone in the
       // flashing second still kicks exactly as it did.
-      const sliding = this.player.grounded && this.player.duckAmount > 0.6;
+      // KICKED ON THE INPUT, NOT ON THE BLEND — but only a beat barrel is.
+      //
+      // 0.6 of the crouch blend is DUCK_IN_T * 0.6 = 84ms of animation the
+      // player has already committed to, and for a crate that is right: the
+      // plow is a body check and a half-crouched hero has no business landing
+      // one. On a beat lane it is a tax. The barrel has to arrive far enough
+      // past the line for the LATEST legal press to have blended that far,
+      // which pushed the boot most of half a beat behind the beat it was
+      // scored on — you play on the one and the hit lands on the and.
+      //
+      // A punt is not a body check. It has its own timing gate already
+      // (puntPower, read off the press) and its own animation (slideKickT,
+      // started here), so what the crouch blend adds is a second, blunter
+      // window layered on the sharp one. Reading the input state instead makes
+      // the contact honest about what the player did, and buys back the whole
+      // 84ms — which is what closes the gap between the press and the hit.
+      const sliding = this.player.grounded
+        && (this.player.duckAmount > 0.6 || (ob.def.beatPunt && this.player.ducking));
       const slideKick = sliding && !ob.hurtPlayer
         && ((ob.type === 'crate' || ob.type === 'qcrate')
         || (ob.def.punt && puntPower(this.player.duckHoldT) > 0));
@@ -7584,7 +7745,17 @@ export class RunState {
           // boot, and a barrel throwing orange plastic reads as a cone that
           // happens to be barrel-shaped. Both come off the tables the game
           // already keeps, so a new puntable prop inherits them by existing.
-          Audio.sfx('launch', { pitch: heavy ? 0.88 : 1.15 });
+          // 'punt', not 'launch'. The old cue asked playLaunch for a buffer
+          // keyed on a hero this call site never had, so it looked up
+          // `undefined`, missed all three fallbacks and returned — every kick
+          // in the game was silent. The replacement is percussive on purpose
+          // (see the cue): on a beat lane the contact is the musical event.
+          //
+          // Unless it has already been announced. On a beat lane the cue is
+          // fired at the PRESS instead (cueBarrelKick), because the hit is what
+          // the player is playing to and the contact is 87ms behind the beat by
+          // construction. Firing it here as well would be the same kick twice.
+          if (!ob.puntCued) Audio.sfx('punt', { heavy, pitch: heavy ? 0.95 : 1.1 });
           if (!this.save.settings.reducedMotion) {
             const scuff = (DEBRIS[ob.type] && DEBRIS[ob.type].colors[0]) || '#e86020';
             burst(ob.x + ob.w / 2, this.entityGroundY(ob) - ob.h * 0.3,

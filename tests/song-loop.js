@@ -23,7 +23,9 @@ import { fileURLToPath } from 'url';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { loopSteps, arrangementIssues } from '../src/data/arrangements.js';
-import { draftOf, entryOf, setSongLoop, deleteBars, setTempo } from '../tools/lib/arrangement-edit.js';
+import {
+  draftOf, entryOf, setSongLoop, deleteBars, insertSilence, duplicateBars, setTempo,
+} from '../tools/lib/arrangement-edit.js';
 import { bankSource } from '../tools/lib/song-source.js';
 
 const require = createRequire(import.meta.url);
@@ -118,8 +120,49 @@ const LOOP = { startBar: 5, fromBar: 8, toBar: 12 };
 {
   const edited = deleteBars(draftOf(BANK, { order: BANK.order, loop: LOOP }), 0, 0);
   const back = entryOf(BANK, edited);
-  assert(eq(back.loop, LOOP), 'and a bar delete — the edit that would otherwise eat it');
+  assert(eq(back.loop, { startBar: 4, fromBar: 7, toBar: 11 }),
+    'and a bar delete — the edit that would otherwise eat it — with the markers a bar earlier');
 }
+
+// ---- the markers follow their bars -------------------------------------------------
+//
+// A loop is written in bar NUMBERS, so an edit that inserts or removes bars moves the
+// music out from under it. Two ways that showed, and both of them on real songs:
+// deleting bar 1 of a song looping 8-12 left the loop a phrase late, and on the three
+// songs whose loop ends on their LAST bar — rhythm, hub, speed — any delete at all left
+// the loop pointing past the end. `arrangementIssues` refuses that, the desk undoes what
+// it refuses, and so Delete Bars did nothing at all on those songs.
+
+const loopAfter = (edit, loop = LOOP) =>
+  entryOf(BANK, edit(draftOf(BANK, { order: BANK.order, loop })))?.loop ?? null;
+
+assert(eq(loopAfter((d) => deleteBars(d, 0, 1)), { startBar: 3, fromBar: 6, toBar: 10 }),
+  'bars taken from ahead of a loop pull all three markers back by as many');
+assert(eq(loopAfter((d) => deleteBars(d, 8, 9)), { startBar: 5, fromBar: 8, toBar: 10 }),
+  'bars taken from inside it shorten it and leave its start where it was');
+assert(eq(loopAfter((d) => deleteBars(d, 11, 11), { fromBar: 5, toBar: 12 }),
+  { fromBar: 5, toBar: 11 }),
+'a loop that ends on the last bar follows the song when that bar goes — the edit that used to be refused');
+assert(arrangementIssues(BANK, entryOf(BANK,
+  deleteBars(draftOf(BANK, { order: BANK.order, loop: { fromBar: 5, toBar: 12 } }), 11, 11))).length === 0,
+'and the entry it writes is one the desk will accept');
+assert(eq(loopAfter((d) => deleteBars(d, 9, 11)), { startBar: 5, fromBar: 8, toBar: 9 }),
+  'a delete that eats the end of a loop and the end of the song brings it back to the last bar left');
+assert(eq(loopAfter((d) => deleteBars(d, 6, 11)), { startBar: 5 }),
+  'and one that eats the whole of it takes the loop, keeping only where the song starts');
+
+assert(eq(loopAfter((d) => insertSilence(d, 8, 2)), { startBar: 5, fromBar: 8, toBar: 14 }),
+  'silence inserted inside a loop lengthens it — those bars are part of the repeat now');
+assert(eq(loopAfter((d) => insertSilence(d, 2, 2)), { startBar: 7, fromBar: 10, toBar: 14 }),
+  'silence inserted ahead of it pushes all three markers later, so the loop keeps its music');
+assert(eq(loopAfter((d) => insertSilence(d, 12, 2), { fromBar: 5, toBar: 12 }),
+  { fromBar: 5, toBar: 12 }),
+'silence appended after the last bar of a loop stays outside it');
+assert(eq(loopAfter((d) => insertSilence(d, 0, 2), { fromBar: 1, toBar: 12 }),
+  { fromBar: 3, toBar: 14 }),
+'silence at the very top of a song with no start bar does not become a start bar skipping it');
+assert(eq(loopAfter((d) => duplicateBars(d, 8, 9)), { startBar: 5, fromBar: 8, toBar: 14 }),
+  'and a repeat inside a loop grows it by the bars it added');
 {
   // The seven cabinets that are a bare two-bar loop have no order of their own, so
   // `entryOf` has nothing to write but this. Without the loop counting on its own, the

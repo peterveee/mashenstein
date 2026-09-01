@@ -421,9 +421,14 @@ export function buildRoutes(cabinet, { totalDist, speed, groundYAt, crossings = 
       // asks for one; where it goes is arithmetic, not authoring.
       spring: !!d.spring,
       // `null` is a real answer and not a missing one — a crossing's stones pay
-      // nothing, because a coin on a stone is a coin standing in the one place
-      // the player has no attention to spare. `||` collapsed that back to a
-      // coin run, which is why this is written the long way round.
+      // nothing, because a coin RUN on a stone is a row of pickups standing in
+      // the one place the player has no attention to spare. `||` collapsed that
+      // back to a coin run, which is why this is written the long way round.
+      //
+      // A single coin is a different object and the beat cabinet lays one: not a
+      // prize but a MARK, standing exactly where the beat asks for the press.
+      // See RunState.markCrossingStones — it goes on after the sweeps, and it
+      // needs a number this file does not have.
       prize: d.prize === null ? null : (d.prize || 'coins'),
       lowPrize: d.lowPrize || null,
       // WHO ASKED FOR THIS ROAD: the authored entry — in cabinets.js, or in a

@@ -587,6 +587,52 @@ export function setSongLoop(draft, loop) {
 }
 
 /**
+ * Carry the song's loop markers across an edit that inserts or removes bars.
+ *
+ * The markers are bar NUMBERS, so every structural edit moves the music out from
+ * under them. Deleting bar 1 of a song looping bars 8-12 left the loop on what is now
+ * bars 9-13, a phrase late; and on a song whose loop ends on its LAST bar — `rhythm`,
+ * `hub`, `speed` — any delete at all left the loop hanging past the end, which
+ * `arrangementIssues` refuses outright. The desk undid the refused edit, so Delete
+ * Bars and Cut did nothing on those three songs, anywhere in the song, with only a
+ * toast to say why. Insert Silence had the quieter half of it: the bars went in and
+ * the loop still ended where it had, so the song's tail fell outside it and playback
+ * — Game Loop is on by default — ran exactly as before.
+ *
+ * So a marker follows its bar. Bars arriving at or before it push it later, bars
+ * leaving before it pull it earlier, and a marker whose own bar has gone lands on
+ * whichever bar took its place. `at` is where the edit happens (0-based), `added` how
+ * many bars arrive there and `removed` how many leave.
+ *
+ * The result goes back out through `setSongLoop`, which is what puts the three numbers
+ * in the order they depend on each other and inside the new bar count.
+ */
+function shiftLoop(draft, at, { added = 0, removed = 0 } = {}) {
+  const loop = draft.loop;
+  if (!loop || (!added && !removed)) return draft;
+  const end = at + removed;                       // one past the last bar removed
+  const move = (bar) => {
+    const i = bar - 1;
+    if (i < at) return bar;                       // ahead of the edit: untouched
+    if (i < end) return at + 1;                   // its own bar is gone
+    return bar + added - removed;
+  };
+  const { fromBar = null, toBar = null } = loop;
+  // A delete that takes the WHOLE looped section takes the loop with it. Clamping
+  // would leave a one-bar loop sitting on whatever followed, which is not a loop
+  // anybody asked for — where the song starts is still a real answer, so that stays.
+  const eaten = removed && fromBar != null && fromBar - 1 >= at && toBar - 1 < end;
+  return setSongLoop(draft, {
+    // Only a start bar somebody SET moves. The default 1 is the absence of a decision,
+    // and shifting it would make silence inserted at the top of a song a start marker
+    // skipping past the very bars that were just put there.
+    startBar: loop.startBar == null ? 1 : move(loop.startBar),
+    fromBar: eaten || fromBar == null ? null : move(fromBar),
+    toBar: eaten || toBar == null ? null : move(toBar),
+  });
+}
+
+/**
  * Bars back into order entries, folding what can be folded.
  *
  * Two bars of the same section, in their natural order, with the same mute mask
@@ -962,7 +1008,7 @@ export function pasteBars(bank, draft, at, clip, times = 1) {
     }));
   }
   out.plan.splice(index, 0, ...pasted);
-  return out;
+  return shiftLoop(out, index, { added: pasted.length });
 }
 
 /** Insert bars of silence, retaining the section identity but muting every lane. */
@@ -977,7 +1023,7 @@ export function insertSilence(draft, at, count, keys = LANE_KEYS) {
     delete: [...keys].sort(),
   }));
   out.plan.splice(index, 0, ...bars);
-  return out;
+  return shiftLoop(out, index, { added: bars.length });
 }
 
 /**
@@ -1103,7 +1149,7 @@ export function deleteBars(draft, from, to) {
   if (b - a + 1 >= draft.plan.length) return { ...copy(draft), refused: 'a song needs at least one bar' };
   const out = copy(draft);
   out.plan.splice(a, b - a + 1);
-  return out;
+  return shiftLoop(out, a, { removed: b - a + 1 });
 }
 
 /** The build-up workhorse: the range again, immediately after itself. */
@@ -1114,7 +1160,7 @@ export function duplicateBars(draft, from, to, times = 1) {
   const repeats = [];
   for (let t = 0; t < times; t++) repeats.push(...clone(block));
   out.plan.splice(b + 1, 0, ...repeats);
-  return out;
+  return shiftLoop(out, b + 1, { added: repeats.length });
 }
 
 /**
@@ -1149,7 +1195,7 @@ export function buildUp(draft, from, to, passes = 4, lanes = BUILD_ORDER) {
     }
   }
   out.plan.splice(a, width, ...built);
-  return out;
+  return shiftLoop(out, a, { added: built.length, removed: width });
 }
 
 /** A breakdown is a build-up read backwards: the full kit first, thinning out. */

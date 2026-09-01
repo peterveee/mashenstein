@@ -43,6 +43,7 @@ const { Input } = await import('../src/engine/input.js');
 const { DemoBot } = await import('../src/game/bot.js');
 const { airtimeFor, PLAYER_X, PLAYER_SPRITE_W } = await import('../src/game/player.js');
 const { crossingLayout, CROSSING_HOP, CROSSING_TREAD, CROSSING_RISE, CROSSING_BOOST_CLEAR } = await import('../src/game/routes.js');
+const { CROSSING_BEAT_HOP, actionApproachPx } = await import('../src/game/beatchart.js');
 const { makeObstacle } = await import('../src/game/entities.js');
 const { hasPitFill } = await import('../src/game/pitFill.js');
 const { GROUND_Y } = await import('../src/game/run.js');
@@ -112,6 +113,41 @@ assert(airtimeFor(longest) * longest.speedMult <= CROSSING_HOP + 2 * CROSSING_TR
   `the tread catches the longest arc in the cast (${longest.id})`);
 assert(CROSSING_HOP < airtimeFor(shortest) * shortest.speedMult,
   `the hop is clearable by the shortest (${shortest.id})`);
+
+// ---- THE SAME CROSSING ON A BEAT CABINET -------------------------------------
+//
+// Rhythm's crossing is not laid by crossingLayout's seconds at all. The beat
+// spawner re-lays it on the grid (_alignPits): a two-beat stride per stone, of
+// which CROSSING_BEAT_HOP is air, and the take-off is not a window the player
+// picks — it is the BEAT, which stands `approach` short of the stone's far edge
+// for every hero alike.
+//
+// So the window arithmetic above does not cover this, and for a long time
+// nothing did: the split was 0.45 and at 124bpm it put the shortest arc in the
+// cast a pixel SHORT of the far lip. Grumpos could not cross his own stage. The
+// claim here is the one the window makes for everyone else, restated for a
+// fixed take-off: every hero lands ON the stone, and not on its lip.
+{
+  const bpm = 124;
+  const base = 160 * 1.3;                       // BASE_SPEED x rhythm's bonus
+  const pxPerBeat = base * 60 / bpm;
+  const hop = 2 * pxPerBeat * CROSSING_BEAT_HOP;
+  const tread = 2 * pxPerBeat - hop;
+  // A landing this close to either lip is a hero who only just made it — the
+  // read that produced this suite in the first place.
+  const LIP = 0.12;
+  for (const hero of cast) {
+    const speed = base * (hero.speedMult || 1);
+    const approach = actionApproachPx('jump', 'gap', speed, bpm);
+    const at = (airtimeFor(hero) * speed - approach - hop) / tread;
+    assert(at > LIP && at < 1 - LIP,
+      `${hero.id} lands on the stone rather than on a lip of it (${(at * 100).toFixed(0)}% along)`);
+  }
+  // ...and the press still comes late on the stone, which is what says the
+  // stone is a place you run along rather than a spot you bounce off.
+  assert((tread - actionApproachPx('jump', 'gap', base, bpm)) / tread > 0.6,
+    'and the beat asks for the press in the far part of the stone');
+}
 
 // ---- the layout -------------------------------------------------------------
 const layout = crossingLayout(1000, 5, 240);

@@ -502,6 +502,15 @@ const SFX_TRIM = {
   // crack still reads as an impact, and 6.6dB under it on RMS so the body of
   // the sound stays behind the song and the lane's own cues.
   barrelBurst: 0.55,
+  // ONE TRIM FOR BOTH PROPS, and the 3dB between them is the cue's own doing
+  // rather than a second number: the barrel's layers are longer and lower and
+  // measure -7.1 dBFS peak untrimmed against the cone's -10.1. 0.45 lands them
+  // at -14.0 and -17.0 — the barrel a shade over 'crunch', which is the plow
+  // this replaces at the same kind of moment, and the cone level with it. That
+  // ordering is the point: a barrel is the heavier thing and has to sound like
+  // it, and letting the trim equalise them would have thrown away the only part
+  // of the difference the player hears from across the lane.
+  punt: 0.45,
   // Six noise layers plus the crash buffer sum far hotter than the two-layer
   // 'crunch' it replaces at the plow: untrimmed it peaked -6.7 dBFS, which is
   // over 'boom' and 3.5dB over 'blockBreak', and a break cue has no business
@@ -3706,6 +3715,37 @@ class AudioSys {
         break;
       }
       case 'boom': this.explosion(); break;
+      // THE BOOT CONNECTING. A punt had no sound at all until this: the call
+      // site asked for 'launch' without naming a hero, and playLaunch keys its
+      // buffer off exactly that — so it looked up `undefined`, missed all three
+      // of its fallbacks and returned silently. Every cone and barrel kicked in
+      // this game has been mute.
+      //
+      // PERCUSSIVE, because on a beat lane the contact IS the musical event and
+      // wants to sit in the kit rather than beside it. Four layers, in the order
+      // the ear assembles them:
+      //
+      //   the BOOT      a 20ms bright transient. This is the part that lands on
+      //                 the beat, and it is the whole difference between a drum
+      //                 hit and a whoosh.
+      //   the BODY      what was struck: a fast pitch drop, low and wooden for a
+      //                 barrel, thinner and higher for a cone.
+      //   the MATERIAL  a short band of noise in that material's own register —
+      //                 stave rattle against plastic scuff — so the two props
+      //                 are told apart by what they are made of rather than by
+      //                 being the same sound transposed.
+      //   the HOLLOW    a barrel is EMPTY, so it rings a little after the knock.
+      //                 One quiet partial and no more: any longer and the hit
+      //                 stops being a hit.
+      case 'punt': {
+        const heavy = !!opt.heavy;
+        this.noise(0.02, heavy ? 0.3 : 0.24, 'highpass', heavy ? 2600 : 3400);
+        this.osc('triangle', (heavy ? 230 : 420) * pitch, (heavy ? 62 : 150) * pitch,
+          heavy ? 0.13 : 0.08, heavy ? 0.26 : 0.16);
+        this.noise(heavy ? 0.11 : 0.07, heavy ? 0.16 : 0.12, 'bandpass', heavy ? 620 : 1500);
+        if (heavy) this.osc('sine', 196 * pitch, 186 * pitch, 0.16, 0.07, 0.012);
+        break;
+      }
       // The plane and the barrel, once every sixteen bars — the LCD city's one
       // scheduled accident (stylePacks lcdBarrelStrikeAt fires it). SCENERY, so
       // it is built to be heard and then get out of the way: a bright crack, a

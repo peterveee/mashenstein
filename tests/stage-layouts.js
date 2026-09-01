@@ -72,7 +72,14 @@ for (const s of STAGES) {
 {
   const loop = (id, entry) => resolveLayout(STAGE_BY_ID[id], CABINET_BY_ID[STAGE_BY_ID[id].cabinet], entry).loopAt;
   const speed = { ...STAGE_LAYOUTS['speed-1'] };
-  ok(loop('speed-1') === LOOP.at, 'a boost stage that says nothing gets the ring at LOOP.at');
+  // Built by hand rather than read off a shipped stage. The claim is about the
+  // RESOLVER's fallback — what a layout that omits `loopAt` gets — and reading
+  // it off speed-1 made it a claim about speed-1 as well, which broke the day
+  // somebody dragged that ring nine thousandths down the lane in the editor.
+  // Where a shipped stage puts its own ring is the author's business, and this
+  // is not the test that has an opinion about it.
+  const { loopAt: _authored, ...unsaid } = speed;
+  ok(loop('speed-1', unsaid) === LOOP.at, 'a boost stage that says nothing gets the ring at LOOP.at');
   ok(loop('speed-1', { ...speed, loopAt: 0.3 }) === 0.3, 'and a stage that moved it gets it where it put it');
   ok(loop('speed-1', { ...speed, loopAt: null }) === null, 'null is an authored "no ring on this stage"');
   ok(loop('plumber-1') === null, 'cabinets without the boost mechanic have no ring to place');

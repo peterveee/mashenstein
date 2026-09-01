@@ -2559,22 +2559,24 @@ function lcdCloud(ctx, x, y, pose, color) {
 // the window does the walking. Forty cells is ten bars, so the chase comes
 // round on a bar line rather than mid-phrase.
 //
-// THE GAP IS THE PICTURE. Four sprites at an even pitch is a queue, not a
+// THE GAPS ARE THE PICTURE. Four sprites at an even pitch is a queue, not a
 // chase — what says one thing is after another is the DISTANCE between them,
 // and what says he is gaining is the row of pellets lying in it. The ghosts run
-// nose to tail; ten cells of corridor and three dots separate the last of them
-// from him.
+// nose to tail; eleven cells of corridor and three dots separate the last of
+// them from him, and the SAME again separates him from the pack coming round.
+// Without that second gap the strip's wrap put him nose to tail with the ghost
+// he is chasing, which is the one arrangement that says he has caught them.
 const LCD_CHASE_W = 13;
 const LCD_CHASE_H = 7;
-const LCD_CHASE_LEN = 40;
+const LCD_CHASE_LEN = 48;
 // Where each of them stands on the strip, in cells. Left to right is the order
 // they are seen in, and they all travel left, so the ones in front are the ones
 // being chased.
 const LCD_CHASE_CAST = [
   { at: 0, ghost: 'A' }, { at: 7, ghost: 'B' }, { at: 14, ghost: 'C' },
-  { at: 30, ghost: null },
+  { at: 31, ghost: null },
 ];
-const LCD_CHASE_PELLETS = [21, 24, 27];
+const LCD_CHASE_PELLETS = [22, 25, 28];
 // A ghost: domed head, scalloped skirt, and eyes with WHITES and pupils rather
 // than holes punched in the body. The holes were the cheap version and they
 // read as a mask — an eye is a light thing with a dark thing in it, and the
@@ -2590,14 +2592,20 @@ const lcdGhostCells = (k, pose) => [
 ].map((row) => row.replaceAll('X', k));
 // ...and the round one, facing the way he is travelling, chomping on the beat,
 // WITH AN EYE. Without it he is a pie chart.
+//
+// SEVEN BY SEVEN, because he is a circle and a circle needs a square to stand
+// in. At six wide against seven tall the closed pose was an egg on its end —
+// the one sprite in the game whose whole identity is that it is round, drawn
+// out of round. The mouth is a wedge cut from the leading edge to the middle,
+// so it opens where he is going.
 const lcdPacCells = (pose) => [
-  '..PPP.',
-  '.PPePP',
-  pose ? 'PPPPPP' : '.PPPPP',
-  pose ? 'PPPPPP' : '..PPPP',
-  pose ? 'PPPPPP' : '.PPPPP',
-  '.PPPPP',
-  '..PPP.',
+  '..PPP..',
+  '.PPPePP',
+  pose ? 'PPPPPPP' : '..PPPPP',
+  pose ? 'PPPPPPP' : '...PPPP',
+  pose ? 'PPPPPPP' : '..PPPPP',
+  '.PPPPP.',
+  '..PPP..',
 ];
 function lcdChaseStrip(pose) {
   const cells = [];
@@ -3613,10 +3621,23 @@ function gbcGorillaLimb(ctx, points, color, width, highlight = null) {
 // horizontal hoop curves — read as a basketball from three buildings away;
 // a rolling barrel's hoops stand upright near its ends, and its planks run
 // the way it rolls.
-function gbcGorillaBarrel(ctx, x, y, ghost = false) {
+// `live` is the one Kong is dropping into the LANE — see the chute in
+// drawLCDCity. He handles a barrel on every beat of his cycle and most of them
+// are theatre, so the one that is about to become a hazard has to be findable
+// at a glance: it wears the panel's own lit colour on its hoops and a gold pip,
+// which is the same vocabulary every other live cell on this screen uses (a
+// window that is on, the clock's cardinal hand, the share price's last cell).
+// Not a new idiom, just this panel's existing one pointed at the right barrel.
+function gbcGorillaBarrel(ctx, x, y, ghost = false, live = false) {
   gbcEllipse(ctx, x, y, 8, 7, ghost ? LCD_MOTION_GHOST : '#d4a35e',
     ghost ? LCD_MOTION_GHOST : LCD_PRINT, 1);
   if (ghost) return;
+  if (live) {
+    ctx.strokeStyle = LCD_WINDOW_ON;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(x, y, 9, 8, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 1;
+  }
   ctx.strokeStyle = LCD_PRINT;
   ctx.lineWidth = 1.25;
   ctx.beginPath(); ctx.ellipse(x - 4, y, 1.8, 5.8, 0, 0, Math.PI * 2); ctx.stroke();
@@ -3765,7 +3786,15 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // The wreck stays where the barrel WAS — over his head, poses[0] — for both
   // beats of it. Drawing it at `pose.barrel` would walk the explosion down his
   // arm on the second beat, following a barrel that no longer exists.
-  if (burst < 0) gbcGorillaBarrel(ctx, pose.barrel[0], pose.barrel[1]);
+  // The barrel in his HANDS is lit on the bar he is about to send a real one
+  // down the chute, so the warning starts before the drop does rather than
+  // landing with it. `barrelBeat` is only ever set while one is genuinely due
+  // (run.js updateBarrelArrivals), so he cannot cry wolf with it.
+  if (burst < 0) {
+    const due = frame.barrelBeat != null ? frame.barrelBeat - frame.beatAbs : null;
+    gbcGorillaBarrel(ctx, pose.barrel[0], pose.barrel[1], false,
+      due != null && due >= 0 && due <= LCD_CHUTE_BEATS + 1);
+  }
   else lcdBarrelBurst(ctx, poses[LCD_BARREL_UP_BEAT].barrel[0],
     poses[LCD_BARREL_UP_BEAT].barrel[1], burst, reducedFlashing);
   ctx.lineWidth = 1;
@@ -4203,7 +4232,12 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
       // picture is meant to say. With no lane to ask, all four cells are the
       // chute's own and it runs the authored cycle.
       const last = laneDriven ? LCD_CHUTE_CELLS - 1 : LCD_CHUTE_CELLS;
-      if (cue >= 0 && cue < last) gbcGorillaBarrel(ctx, dropX, chute[cue]);
+      // Lit when it is a real one. The chute already only runs for a barrel the
+      // lane is about to be handed, but the player has no way to know that from
+      // one bar — a gorilla dropping barrels is what a gorilla does. The lit
+      // rim is the promise made explicit: this is the one that is coming for
+      // you, and it is the same wood the ribbon's arrow is now drawn in.
+      if (cue >= 0 && cue < last) gbcGorillaBarrel(ctx, dropX, chute[cue], false, laneDriven);
     }
     lcdRooftopGorilla(ctx, art.buildings[art.rooftopGorilla], frame);
   }

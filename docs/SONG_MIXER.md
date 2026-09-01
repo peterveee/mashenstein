@@ -796,6 +796,12 @@ Right-click the **timeline** for whole-song structure:
 | Delete Bars | removes the bars and moves everything after them earlier. The final bar is protected |
 | Transpose | the only adjustment here — see below |
 
+Anything that changes the bar count carries the song's own start-and-loop markers with
+it: bars inserted ahead of the loop push it later, bars taken from under it pull it
+earlier, and a loop that ends on the song's last bar goes on ending on the last bar. So
+the loop keeps its MUSIC rather than its bar numbers — and Delete Bars is possible at
+all on a song whose loop reaches the end, which it was not while the markers stayed put.
+
 Right-click an **arrangement lane** for that track only:
 
 | Item | Does |

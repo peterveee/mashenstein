@@ -34,7 +34,7 @@ assert(sound.trackCounter(0) === '1.' && sound.trackCounter(13) === '14.',
 assert(JUKEBOX.length === 14 && JUKEBOX[2].bank === COUNTER_DANCE_MIX_THEME,
   'jukebox includes the approved procedural Counter Dance Mix without a WAV asset');
 assert(JUKEBOX.map((track) => track.bank.musicTrim).join(',')
-  === '3.33,1.05,2.22,0.93,0.87,0.93,1.74,1.6,1.05,1.18,0.93,0.7,0.95,2.24',
+  === '3.33,1.05,2.22,0.93,0.87,1.05,1.74,1.6,0.93,1.18,0.93,0.7,0.95,2.24',
   'every jukebox track carries its measured playback loudness trim');
 assert(JUKEBOX.at(-1).name === 'MASHENSTEIN: THE MONSTER MIX'
   && JUKEBOX.at(-1).bank === MEGAMIX_THEME,
