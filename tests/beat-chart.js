@@ -387,17 +387,22 @@ assert(Math.abs(firstHole.w - pitLayout(speed, bpm).w) < 1e-9
     && fillTiming.every((e, i) => e.actionBeat === fill[i].actionBeat),
   'the ribbon owns a timing copy of every coin subdivision');
   // Collection is allowed to take several overlapping pickups in one physics
-  // frame. It must not take their later clock ticks with them: immediately
-  // after the first sixteenth, only the ticks whose own time has passed retire.
+  // frame. It must not take their clock ticks with them at all: the marker's
+  // life is geometric, so a collected fill goes on crossing the line and then
+  // leaves off the back end one subdivision at a time.
   for (const pk of fill) pk.live = false;
   const afterFirstTick = fillTiming.map((e) =>
-    beatRibbonMarkerOffset('coin', e.actionBeat, fill[0].actionBeat + 0.07));
-  assert(afterFirstTick.filter((x) => x != null).length === fill.length - 1,
-    `a collected fill retires subdivision-by-subdivision instead of vanishing as a bunch `
+    beatRibbonMarkerOffset(e.actionBeat, fill[0].actionBeat + 0.07));
+  assert(afterFirstTick.every((x) => x != null),
+    `a collected fill keeps every subdivision until it has crossed the line `
     + `(got ${afterFirstTick.filter((x) => x != null).length}/${fill.length})`);
-  assert(beatRibbonMarkerOffset('jump', 5, 5.1, false) != null
-    && beatRibbonMarkerOffset('jump', 5, 5.1, true) == null,
-  'mandatory markers keep their missed trail but still retire when judged');
+  const aBeatOn = fillTiming.map((e) =>
+    beatRibbonMarkerOffset(e.actionBeat, fill[0].actionBeat + 1.07));
+  assert(aBeatOn.filter((x) => x != null).length === fill.length - 1,
+    `and then retires them subdivision-by-subdivision instead of vanishing as a bunch `
+    + `(got ${aBeatOn.filter((x) => x != null).length}/${fill.length})`);
+  assert(beatRibbonMarkerOffset(5, 5.1) != null && beatRibbonMarkerOffset(5, 6.1) == null,
+  'every marker travels through the line and leaves on the far side, whatever became of it');
   // A late-authored set piece sees the same formation identifier the chart
   // does. It preserves the whole run in view, and removes the whole run when
   // it can still do so invisibly.

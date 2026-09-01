@@ -74,3 +74,4 @@ Do not edit by hand.
 | 2026-08-31 | `887131e` | [2026-08-31-887131e.html](2026-08-31-887131e.html) | test: add death pose tests to verify upright figure on death hold |
 | 2026-08-30 | `f3ebb18` | [2026-08-30-f3ebb18.html](2026-08-30-f3ebb18.html) | Layout parity: fingerprint generation, not the hero's frame |
 | 2026-09-01 | `05f64d4` | [2026-09-01-05f64d4.html](2026-09-01-05f64d4.html) | Revise boss level design: update boss names and mechanics, adjust stage layouts, and modify trophy tracking for rhythm and neon cabinets |
+| 2026-09-01 | `7e5ce78` | [2026-09-01-7e5ce78.html](2026-09-01-7e5ce78.html) | Refactor tests and arrangement editing logic |

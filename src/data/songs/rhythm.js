@@ -323,9 +323,9 @@ export const mix = {
     crash: { gain: 0.624, pan: 0.657, send: { delay: 0.489, reverb: 0.5 } },
     sweeps: { send: { delay: 0.24, reverb: 0.4 } },
     lead3: { gain: -5.5, pan: -0.255, eq: { low: -12.6, mid: -4.8, high: 3.4 }, effects: [{ id: "pingpong", params: { division: 0.25 } }, { id: "rhythmgate", params: { attack: 0.001, decay: 0.06, gateLength: 0.54 } }], noteFx: {"strum":{"enabled":false,"direction":"up","gapMs":18},"arp":{"enabled":true,"direction":"diverge","rate":1,"octaves":3,"limit":0,"rangeLimit":false,"rangeLo":48,"rangeHi":72,"repeat":true,"gate":80,"retrigger":"chord","latch":false}} },
-    bass3: { gain: -4.72, eq: { low: -4.4 } },
-    lead4: { gain: -2.08, effects: [{ id: "doubler" }] },
-    lead5: { gain: -4.48, eq: { high: 4.7 }, effects: [{ id: "pingpong", params: { feedback: 0.39, division: 1 } }], noteFx: {"strum":{"enabled":false,"direction":"up","gapMs":18},"arp":{"enabled":true,"direction":"up","rate":0.5,"octaves":4,"limit":0,"rangeLimit":false,"rangeLo":48,"rangeHi":72,"repeat":false,"gate":80,"retrigger":"chord","latch":false}} },
+    bass3: { gain: -4.72, eq: { low: -4.6 } },
+    lead4: { gain: -6.2, effects: [{ id: "doubler" }] },
+    lead5: { gain: -6.72, eq: { high: 4.7 }, effects: [{ id: "pingpong", params: { feedback: 0.39, division: 1 } }], noteFx: {"strum":{"enabled":false,"direction":"up","gapMs":18},"arp":{"enabled":true,"direction":"up","rate":0.5,"octaves":4,"limit":0,"rangeLimit":false,"rangeLo":48,"rangeHi":72,"repeat":false,"gate":80,"retrigger":"chord","latch":false}} },
     lead6: { gain: 1.6, send: { delay: 0.197, reverb: 0.187 }, eq: { low: -4 }, effects: [{ id: "autopanner", params: { rateDivision: 2 } }] },
     tom2: { gain: -7, pan: 0.382, send: { reverb: 0.119 }, eq: { high: 1.9 } },
     rim2: { gain: -8.3, pan: 0.646, send: { reverb: 0.202 }, eq: { high: 2.3 } },
@@ -364,6 +364,22 @@ export const arrangement = {
       s: 24,
       bars: 1,
       off: ["bass","bass3","lead"],
+      inlineFx: {
+        lead2: [
+          {
+            id: "doubler",
+            params: {
+              delayMs: 11,
+              frequency: 0.91,
+              depth: 0.4,
+              width: 0.8,
+              dryPan: -1,
+              wetPan: 1,
+              wet: 0.5,
+            },
+          },
+        ],
+      },
       gain: {
         lead2: 4,
       },
@@ -373,6 +389,22 @@ export const arrangement = {
       bars: 1,
       from: 1,
       off: ["bass","bass3","lead"],
+      inlineFx: {
+        lead2: [
+          {
+            id: "doubler",
+            params: {
+              delayMs: 11,
+              frequency: 0.91,
+              depth: 0.4,
+              width: 0.8,
+              dryPan: -1,
+              wetPan: 1,
+              wet: 0.5,
+            },
+          },
+        ],
+      },
       gain: {
         lead2: 4,
       },
@@ -381,6 +413,22 @@ export const arrangement = {
       s: 28,
       bars: 1,
       off: ["bass","bass3","lead"],
+      inlineFx: {
+        lead2: [
+          {
+            id: "doubler",
+            params: {
+              delayMs: 11,
+              frequency: 0.91,
+              depth: 0.4,
+              width: 0.8,
+              dryPan: -1,
+              wetPan: 1,
+              wet: 0.5,
+            },
+          },
+        ],
+      },
       gain: {
         lead2: 4,
       },
@@ -390,6 +438,22 @@ export const arrangement = {
       bars: 1,
       from: 1,
       off: ["bass","bass3","lead"],
+      inlineFx: {
+        lead2: [
+          {
+            id: "doubler",
+            params: {
+              delayMs: 11,
+              frequency: 0.91,
+              depth: 0.4,
+              width: 0.8,
+              dryPan: -1,
+              wetPan: 1,
+              wet: 0.5,
+            },
+          },
+        ],
+      },
       gain: {
         lead2: 4,
       },
@@ -579,13 +643,27 @@ export const arrangement = {
       off: ["lead7"],
     },
     {
-      s: 4,
+      s: 70,
       bars: 1,
     },
     {
       s: 10,
       bars: 1,
       from: 1,
+      inlineFx: {
+        lead7: [
+          {
+            id: "vibrato",
+            params: {
+              rateSync: 0,
+              rateDivision: 1,
+              frequency: 5,
+              depth: 0.1,
+              wet: 1,
+            },
+          },
+        ],
+      },
       gain: {
         lead5: -7.5,
       },
@@ -2170,6 +2248,20 @@ export const arrangement = {
       kick: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
       clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
       bassLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,1,null,1,null,1,null,1,null,1,null,1,null,1],
+    },
+    {
+      bass: seq('F2 . F3 . F2 . F3 . G2 . G3 . G2 . G3 . | . . . . . . . . . . . . . . . .'),
+      lead: seq('C5 . E5 G5 C5 . E5 G5 . A4 . C5 . E5 . . | . . . . . . . . . . . . . . . .'),
+      lead2: chordSeq('F3maj7 . . . . . . . G3 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      sweeps: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      hats: seq('C1 . . . C1 . . . C1 . . . C1 C1 . C1 | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      leadLen: [1.563388,null,1.563388,1.563388,1.563388,null,1.563388,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: chordSeq('F3maj7 . . . . . . . G3 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass3: seq('F2 . F3 . F2 . F3 . G2 . G3 . G2 . G3 . | . . . . . . . . . . . . . . . .'),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
     },
   ],
   choke: {

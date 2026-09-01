@@ -93,7 +93,13 @@ for (const [stage, short, tall] of [[1, 66, 110], [2, 58, 138], [3, 48, 126]]) {
     .map((op) => GROUND_Y - (op[3] - 0.5));
   assert(heights.some((h) => h <= short) && heights.some((h) => h >= tall),
     `stage ${stage} mixes genuinely short buildings with tall towers`);
-  assert(stageOps.filter((op) => op[0] === 'strokeRect').length >= 14
+  // Stroked OUTLINES, of either kind. This used to count strokeRect alone,
+  // which quietly meant "outlined boxes" rather than "linework": redrawing the
+  // water tower as a capped drum on splayed legs traded one box for six
+  // stroked paths — strictly more line on the roof — and dropped stage 1 under
+  // the floor. A piece of facade art is no less fine for not being a rectangle.
+  const outlines = stageOps.filter((op) => op[0] === 'strokeRect' || op[0] === 'stroke').length;
+  assert(outlines >= 14
     && stageOps.filter((op) => op[0] === 'fillRect' && (op[4] === 1 || op[5] === 1)).length >= 45,
   `stage ${stage} uses fine cornices, mullions, facade fittings and rooftop linework`);
   assert(new Set(stageOps.filter((op) => op[0] === 'fillRect' && String(op[1]).startsWith('rgba('))

@@ -2100,6 +2100,16 @@ const LCD_CITY_SCENES = [
     // between them and levels off before it reaches the gorilla — who is drawn
     // after it and eclipses it as it passes. See drawLCDCity.
     plane: { from: 66, to: 54, level: 200, tow: ['HIGH SCORE', 'ONE MORE GO', 'PRESS START'] },
+    // THE SHARE PRICE FOLLOWS THE PLAYER INTO THE LAST STAGE. Stages 1 and 2
+    // both hang the chart on their second building, over the roof the hero at
+    // screen x 56 is actually under, and stage 3 was the one panel that lost
+    // it — so the board that answers to the run went dark exactly where the
+    // run gets hard, and the cheer thumb had nowhere to appear. Same berth as
+    // the other two: building 1, roof 116, so the board's top lands at 84.
+    // The crossing is at its belly 68 over this column and the beat ribbon's
+    // band ends at 49, so it slots under both with room either side, and the
+    // building's own relay mast and lamp cap step aside for it (see crowned).
+    billboards: [[1, 'chart']],
     rooftopGorilla: 6,
     barrelDrop: true,
   },
@@ -2423,13 +2433,21 @@ function lcdStrokePath(ctx, points, close = false) {
   ctx.stroke();
 }
 
-function gbcBuildingLineArt(ctx, building, isGorilla) {
+function gbcBuildingLineArt(ctx, building, crowned) {
   const [x, w, h, style] = building;
   const top = GROUND_Y - h;
   const detailBottom = GROUND_Y - 27;
   const cx = Math.round(x + w / 2);
 
   ctx.strokeStyle = LCD_PRINT;
+  // `crowned` MEANS THE ROOF IS SPOKEN FOR — by the gorilla, a billboard or the
+  // transmitter — and every style that draws a rooftop crown has to honour it.
+  // Half of them did not: storefront, clockworks, relay, speaker and music-hall
+  // painted their crown box
+  // unconditionally, which is invisible until something stands on that roof and
+  // then shows as a parapet cage in the gap between a billboard's legs. Nothing
+  // stage 1's share price and its burger have stood on storefront roofs all
+  // along with the shop's own parapet cage showing between their legs.
   // The facade continues to the bottom of the display. The road apron masks
   // this lower portion everywhere except a pit, where it becomes the actual
   // background seen through the opening.
@@ -2442,23 +2460,25 @@ function gbcBuildingLineArt(ctx, building, isGorilla) {
   ctx.fillRect(x + w - 4, top + 7, 1, Math.max(1, detailBottom - top - 7));
 
   if (style === 'storefront') {
-    ctx.strokeRect(x + 5.5, top - 5.5, w - 11, 5);
-    ctx.fillRect(x + 8, top - 3, w - 16, 1);
+    if (!crowned) {
+      ctx.strokeRect(x + 5.5, top - 5.5, w - 11, 5);
+      ctx.fillRect(x + 8, top - 3, w - 16, 1);
+    }
     ctx.fillRect(x + 5, top + 8, w - 10, 2);
     for (let sx = x + 7; sx < x + w - 6; sx += 6) ctx.fillRect(sx, top + 10, 3, 2);
   } else if (style === 'clockworks') {
-    ctx.fillRect(x + 5, top - 3, 7, 3); ctx.fillRect(x + w - 12, top - 3, 7, 3);
+    if (!crowned) { ctx.fillRect(x + 5, top - 3, 7, 3); ctx.fillRect(x + w - 12, top - 3, 7, 3); }
     ctx.fillRect(cx - 1, top + 7, 2, Math.max(4, detailBottom - top - 9));
     for (let y = top + 18; y < detailBottom; y += 20) ctx.fillRect(x + 5, y, w - 10, 1);
   } else if (style === 'workshop') {
-    if (!isGorilla) {
+    if (!crowned) {
       lcdStrokePath(ctx, [[x + 1, top], [x + 8, top - 6], [x + 15, top],
         [x + 22, top - 6], [x + w - 1, top]]);
     }
     ctx.fillRect(x + 5, top + 7, w - 10, 1);
     ctx.strokeRect(x + 6.5, top + 13.5, Math.max(8, w - 13), 8);
   } else if (style === 'deco') {
-    if (!isGorilla) {
+    if (!crowned) {
       ctx.strokeRect(cx - 9.5, top - 5.5, 19, 5);
       ctx.strokeRect(cx - 5.5, top - 10.5, 11, 5);
       ctx.fillRect(cx - 1, top - 14, 2, 4);
@@ -2474,12 +2494,31 @@ function gbcBuildingLineArt(ctx, building, isGorilla) {
       lcdStrokePath(ctx, [[side + 1, y], [side + 7, y + 8], [side + 1, y + 16]]);
     }
   } else if (style === 'water-tower') {
-    if (!isGorilla) {
-      ctx.fillRect(cx - 8, top - 11, 16, 1);
-      ctx.strokeRect(cx - 7.5, top - 10.5, 15, 7);
-      ctx.fillRect(cx - 6, top - 8, 12, 1);
-      ctx.fillRect(cx - 6, top - 3, 1, 3); ctx.fillRect(cx + 5, top - 3, 1, 3);
-      lcdStrokePath(ctx, [[cx - 5, top], [cx + 5, top - 3], [cx + 5, top]]);
+    if (!crowned) {
+      // A TANK ON LEGS, and it has to say so from the lane. The old crown was
+      // a 15x7 outlined box on two stubs with a diagonal across it, which at
+      // this size is not a water tower, it is a road sign with a slash through
+      // it — the one rooftop on this skyline nobody could name. What reads as
+      // a water tower is the silhouette, and it is three things: a CONICAL CAP
+      // with a finial, a DRUM that tapers toward its base, and FOUR SPLAYED
+      // LEGS with bracing between them. Drawn tall enough to be those three
+      // things separately rather than one small box.
+      const ty = top - 17;             // where the drum meets the cap
+      const tb = top - 8;              // where the drum meets the legs
+      lcdStrokePath(ctx, [[cx - 8, ty], [cx, ty - 4], [cx + 8, ty]]);
+      ctx.fillRect(cx, ty - 6, 1, 3);
+      lcdStrokePath(ctx, [[cx - 8, ty], [cx - 7, tb], [cx + 7, tb], [cx + 8, ty]]);
+      // One hoop around the staves. Soft, so it bands the drum without
+      // cutting the silhouette in half the way the old inner line did.
+      ctx.fillRect(cx - 7, ty + 4, 14, 1);
+      // The legs: an outer pair splaying past the drum's width and an inner
+      // pair dropping nearly straight, cross-braced at the halfway point.
+      lcdStrokePath(ctx, [[cx - 6, tb], [cx - 8, top]]);
+      lcdStrokePath(ctx, [[cx + 6, tb], [cx + 8, top]]);
+      lcdStrokePath(ctx, [[cx - 2, tb], [cx - 3, top]]);
+      lcdStrokePath(ctx, [[cx + 2, tb], [cx + 3, top]]);
+      ctx.fillRect(cx - 7, tb + 5, 5, 1);
+      ctx.fillRect(cx + 3, tb + 5, 5, 1);
     }
     for (let y = top + 16; y < detailBottom; y += 20) ctx.fillRect(x + 6, y, w - 12, 1);
   } else if (style === 'office') {
@@ -2487,26 +2526,28 @@ function gbcBuildingLineArt(ctx, building, isGorilla) {
     ctx.fillRect(x + w - 8, top + 7, 2, Math.max(4, detailBottom - top - 8));
     for (let y = top + 18; y < detailBottom; y += 20) ctx.fillRect(x + 5, y, w - 10, 1);
   } else if (style === 'speaker') {
-    ctx.strokeRect(cx - 9.5, top - 5.5, 19, 5);
+    if (!crowned) ctx.strokeRect(cx - 9.5, top - 5.5, 19, 5);
     for (const [cy, r] of [[top + 15, 5], [top + 29, 7]]) {
       if (cy + r >= detailBottom) continue;
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, r - 3), 0, Math.PI * 2); ctx.stroke();
     }
   } else if (style === 'music-hall') {
-    ctx.strokeRect(cx - 11.5, top - 5.5, 23, 5);
-    ctx.fillRect(cx - 8, top - 3, 16, 1);
+    if (!crowned) {
+      ctx.strokeRect(cx - 11.5, top - 5.5, 23, 5);
+      ctx.fillRect(cx - 8, top - 3, 16, 1);
+    }
     ctx.strokeRect(x + 6.5, top + 8.5, w - 13, 9);
     ctx.fillRect(x + 9, top + 12, w - 18, 1);
   } else if (style === 'spire') {
-    if (!isGorilla) {
+    if (!crowned) {
       lcdStrokePath(ctx, [[cx - 10, top], [cx - 6, top - 6], [cx - 3, top - 6],
         [cx, top - 15], [cx + 3, top - 6], [cx + 6, top - 6], [cx + 10, top]]);
       ctx.fillRect(cx, top - 21, 1, 7);
     }
     ctx.fillRect(cx - 1, top + 4, 2, Math.max(4, detailBottom - top - 6));
   } else if (style === 'ducts') {
-    if (!isGorilla) {
+    if (!crowned) {
       ctx.strokeRect(x + 6.5, top - 6.5, 7, 6);
       ctx.fillRect(x + 8, top - 10, 3, 4);
       lcdStrokePath(ctx, [[x + w - 15, top], [x + w - 15, top - 8],
@@ -2514,11 +2555,13 @@ function gbcBuildingLineArt(ctx, building, isGorilla) {
     }
     ctx.fillRect(x + 6, top + 8, w - 12, 1);
   } else if (style === 'relay') {
-    ctx.strokeRect(cx - 9.5, top - 4.5, 19, 4);
-    ctx.fillRect(cx - 6, top - 2, 12, 1);
+    if (!crowned) {
+      ctx.strokeRect(cx - 9.5, top - 4.5, 19, 4);
+      ctx.fillRect(cx - 6, top - 2, 12, 1);
+    }
     for (let y = top + 17; y < detailBottom; y += 18) ctx.fillRect(x + 5, y, w - 10, 1);
   } else if (style === 'industrial') {
-    if (!isGorilla) {
+    if (!crowned) {
       ctx.strokeRect(x + 5.5, top - 5.5, 8, 5);
       ctx.strokeRect(x + w - 13.5, top - 8.5, 8, 8);
       ctx.fillRect(x + w - 11, top - 12, 3, 4);
@@ -2843,11 +2886,22 @@ function lcdBillboard(ctx, building, artName, frame, reducedFlashing) {
 // beat. Reduced motion (beat 0 forever) leaves a composed still column.
 // The puffs are PIXEL blobs on the same 2px grid the billboards use — soft
 // ellipses floated like production smoke against a coarse-pixel skyline.
+// THE PLUME, bottom cell first. It has to LEAVE THE CHIMNEY: the first draft
+// hung its lowest puff nineteen pixels above the stack's mouth, so the column
+// read as two grey blobs unrelated to the roof they were over — smoke has to
+// touch the thing it is coming out of. So the first cell sits on the cap, and
+// from there the column swells, leans downwind (the same leftward wind the
+// clouds ride) and comes apart at the top. Seven cells rather than four, and
+// wider ones: this is the only continuously moving thing on that roof and it
+// was drawn like an afterthought.
 const LCD_PUFFS = [
   ['XX', 'XX'],
-  ['.XX.', 'XXXX', '.XX.'],
-  ['.XXX.', 'XXXXX', 'XX.XX'],
-  ['XX.XX', '.XXX.'],
+  ['.XX.', 'XXXX', 'XXXX', '.XX.'],
+  ['.XXX.', 'XXXXX', 'XXXXX', '.XXX.'],
+  ['.XXXX.', 'XXXXXX', 'XXXXXX', 'XXXXXX', '.XXXX.'],
+  ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', 'XX.XXXX', '.XXXX..'],
+  ['.XXX.XX.', 'XX.XXXXX', 'XXXXX.XX', '.XX.XXX.', '..XX....'],
+  ['XX..XX.X.', '.XXX..XXX', 'XX..XXX..', '.X...XX..'],
 ];
 function lcdSmokestack(ctx, building, dx, frame) {
   const [x, , h] = building;
@@ -2856,17 +2910,24 @@ function lcdSmokestack(ctx, building, dx, frame) {
   ctx.fillStyle = LCD_PRINT;
   ctx.fillRect(sx, roof - 9, 5, 9);
   ctx.fillRect(sx - 1, roof - 11, 7, 3);
-  const cells = [[1, -19], [-1, -26], [-5, -34], [-10, -41]];
+  // Offsets from the stack's MOUTH, not from some point in the sky above it.
+  // The lean grows with height, so the column bends downwind rather than
+  // sliding sideways as a whole, and the top cell still stops short of the
+  // plane's cruising lane.
+  const cells = [[0, -4], [-1, -10], [-3, -17], [-6, -24], [-9, -31], [-13, -37], [-18, -43]];
   // The column breathes with the mix: a quiet bar is two puffs, a loud one
   // carries the whole plume. Quantised to whole puffs, like everything here.
   const heard = frame.audio ? frame.audio.level : null;
   const puffs = heard == null ? cells.length
-    : Math.max(2, Math.min(cells.length, 2 + Math.round(heard * 2.6)));
+    : Math.max(2, Math.min(cells.length, 2 + Math.round(heard * (cells.length - 2))));
   for (let i = 0; i < puffs; i++) {
-    if (i === cells.length - 1 && heard == null && frame.beat4 % 2 === 1) continue;
+    // The crown of the plume only holds together every other beat — the two
+    // topmost cells, now that there are seven, or the shimmer reads as one
+    // blob blinking rather than as smoke coming apart.
+    if (i >= cells.length - 2 && heard == null && (frame.beat4 + i) % 2 === 1) continue;
     const [px, py] = cells[i];
     const wob = (frame.beat4 + i) % 2 === 0 ? 0 : 2;
-    ctx.fillStyle = `rgba(53,83,101,${(0.4 - i * 0.08).toFixed(2)})`;
+    ctx.fillStyle = `rgba(53,83,101,${(0.44 - i * 0.05).toFixed(2)})`;
     const grid = LCD_PUFFS[i];
     for (let r = 0; r < grid.length; r++) {
       for (let c = 0; c < grid[r].length; c++) {
@@ -4126,10 +4187,18 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     ctx.fillRect(x + 1, top + 1, w - 1, H - top - 1);
     gbcBuildingLineArt(ctx, building, crowned);
     lcdWindowGrid(ctx, building, i, frame);
-    if (frame.stageIndex === 2) lcdEqualizer(ctx, building, i, frame);
+    // AND `crowned` GOVERNS THE ROOFTOP KIT TOO, not just the crown. Each
+    // stage hangs its own hardware off every roof — stage 2's equalizer bank,
+    // stage 3's antenna and lamp cap — and all of it is drawn from the roof
+    // UPWARD into exactly the airspace a billboard's legs and board occupy.
+    // A board covers most of a 37px bank, so what was left was the bank's
+    // frame poking out over the top edge and its bottom row of cells lit in
+    // the 8px gap between the legs: a sign with scaffolding behind it. The
+    // roof carries one thing.
+    if (frame.stageIndex === 2 && !crowned) lcdEqualizer(ctx, building, i, frame);
     if (frame.stageIndex === 3) {
-      if (!isGorilla) lcdAntenna(ctx, building, i, frame);
-      if (!isGorilla) {
+      if (!crowned) lcdAntenna(ctx, building, i, frame);
+      if (!crowned) {
         const capY = GROUND_Y - h - 5;
         ctx.fillStyle = LCD_WINDOW_OFF;
         ctx.fillRect(x + 5, capY, Math.max(5, w - 10), 3);

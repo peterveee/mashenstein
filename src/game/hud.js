@@ -163,18 +163,27 @@ export function beatRibbonOffset(actionBeat, currentBeat, beatPx = RIBBON_BEAT_P
   return (actionBeat - currentBeat) * beatPx;
 }
 
-// A coin marker is a clock tick, not the pickup object's obituary. Tight fills
-// overlap the hero's pickup box, so several physical coins can be collected in
-// one simulation frame; deriving the ribbon from `pickup.live` made the rest of
-// that little run blink out together at the centre line. Keep its authored
-// timing copy until each subdivision reaches the line, then retire it exactly
-// there. Mandatory actions retain their one-beat missed-event trail.
-export function beatRibbonMarkerOffset(action, actionBeat, currentBeat,
-  consumed = false, beatPx = RIBBON_BEAT_PX, aheadPx = RIBBON_AHEAD_BEATS * beatPx) {
+// A MARKER RETIRES BY GEOMETRY, NOT BY ITS OBJECT'S FATE. It comes in at the far
+// edge of the lookahead, travels THROUGH the line, and leaves off the back end —
+// and that is the whole rule. Nothing about the thing it stands for shortens it:
+// not a coin already collected, not an arrow already judged, not a hole already
+// crossed. The strip is the chart being played, not a list of what is left.
+//
+// It used to retire on the object instead — coins at the line the moment their
+// tick was due, mandatory arrows the moment the judge consumed them — and the
+// on-beat window is what made that unwatchable: the window opens BEFORE the
+// beat, so a player who is playing it right has the arrow judged and dropped
+// while it is still short of the playhead. Every clean hit put out its own
+// marker a few pixels early, which reads as the strip dropping frames rather
+// than as a run going well, and the one place the eye is is the line.
+//
+// `backPx` is the trail: a beat's worth by default, or on the strip itself the
+// plate's own back end, so the marker's last few pixels of ink are spent
+// crossing rather than sitting on the tabs.
+export function beatRibbonMarkerOffset(actionBeat, currentBeat, beatPx = RIBBON_BEAT_PX,
+  aheadPx = RIBBON_AHEAD_BEATS * beatPx, backPx = beatPx) {
   const dx = beatRibbonOffset(actionBeat, currentBeat, beatPx);
-  if (dx == null || dx > aheadPx) return null;
-  if (action === 'coin') return dx >= 0 ? dx : null;
-  if (consumed || dx < -beatPx) return null;
+  if (dx == null || dx > aheadPx || dx < -backPx) return null;
   return dx;
 }
 
@@ -238,6 +247,12 @@ export function drawBeatRibbon(ctx, run) {
   // again for the screen that is a visible sliver of teal poking out from behind
   // an arrow. A rect centred on x cannot drift: the mark and the thing it marks
   // share one number.
+  //
+  // FULL HEIGHT OF THE PLATE, edge to edge. Inset two units top and bottom, the
+  // beats read as a row of floating dashes — a texture inside the strip rather
+  // than the strip's own ruling — and every glyph standing on one was taller
+  // than the mark it stood on. A line that touches both edges is the bar the
+  // plate is divided by, and the arrows sit ON it rather than beside it.
   ctx.fillStyle = 'rgba(72,224,200,0.26)';
   const tickW = Math.max(1, Math.round(RIBBON_SCALE));
   for (let i = -Math.ceil(backW / beatPx); i <= Math.ceil(aheadW / beatPx); i++) {
@@ -246,7 +261,7 @@ export function drawBeatRibbon(ctx, run) {
     if (a <= 0) continue;
     const x = anchor + dir * dx;
     ctx.globalAlpha = 0.92 * a;
-    ctx.fillRect(x - tickW / 2, y + 2 * u, tickW, h - 4 * u);
+    ctx.fillRect(x - tickW / 2, y, tickW, h);
   }
   ctx.globalAlpha = 0.92;
   const pulse = Audio.musicAnalysis?.()?.beatPulse || 0;
@@ -262,41 +277,54 @@ export function drawBeatRibbon(ctx, run) {
   // same column just as plainly, and the gap between them is the marker's.
   ctx.fillRect(anchor - 1.5 * u, y - RIBBON_TAB, 3 * u, RIBBON_TAB);
   ctx.fillRect(anchor - 1.5 * u, y + h, 3 * u, RIBBON_TAB);
-  const markers = [];
-  const markerKeys = new Set();
+  // WHAT REACHED THE STRIP STAYS ON IT UNTIL IT HAS CROSSED. The lists below
+  // only ever ADD: once a beat has a marker, that marker's life is the geometry
+  // in beatRibbonMarkerOffset and nothing else. Read straight off the live
+  // entities each frame — the way it was — a marker died with its object, which
+  // on a stage the player is reading correctly means dying EARLY: judged inside
+  // the on-beat window, collected a frame before the tick, burst, passed. The
+  // strip emptied just short of the one column the eye is on.
+  //
+  // Keyed by action and beat to the millisecond, which is the same key the old
+  // per-frame dedupe used: one marker per authored event, whichever of the three
+  // lists below happens to see it first.
+  // Tied to the spawner that authored the beats in it, because a retry builds a
+  // new one and restarts the chart clock: without that check the previous
+  // attempt's markers would be sitting on the strip at beats the new run has not
+  // reached yet.
+  let trail = run.ribbonTrail;
+  if (!trail || trail.spawner !== run.spawner) {
+    trail = new Map();
+    trail.spawner = run.spawner;
+    run.ribbonTrail = trail;
+  }
   const addMarker = (action, actionBeat, prop = null) => {
+    if (!Number.isFinite(actionBeat)) return;
     const key = `${action}:${Math.round(actionBeat * 1000)}`;
-    if (markerKeys.has(key)) return;
-    markerKeys.add(key);
-    markers.push({ action, actionBeat, prop });
+    if (!trail.has(key)) trail.set(key, { action, actionBeat, prop });
   };
   const entities = [...(run.obstacles || []), ...(run.pickups || [])];
   for (const e of entities) {
-    if (!e.live || !e.chartAction || !Number.isFinite(e.actionBeat)) continue;
-    const slot = Number.isFinite(e.chartSlot) ? e.chartSlot : null;
-    const judgeId = slot == null ? null : `judge:${Math.round(e.actionBeat)}:${slot}`;
-    const setEvent = run.rhythmSetEvents?.find((s) => s.beat === e.actionBeat);
-    if ((judgeId && run.beatJudgeConsumed?.has(judgeId))
-      || (setEvent && run.beatJudgeConsumed?.has(setEvent.id))) continue;
+    if (!e.live || !e.chartAction) continue;
     addMarker(e.chartAction, e.actionBeat, e.type);
   }
   for (const e of run.spawner?.eventInstances || []) {
-    if (!e.live || (e.chartAction !== 'ability' && e.chartAction !== 'coin')
-      || !Number.isFinite(e.actionBeat)) continue;
-    if (e.chartAction === 'ability' && e.chartEventId
-      && run.beatJudgeConsumed?.has(`judge:${Math.round(e.actionBeat)}:${e.chartSlot}`)) continue;
+    if (!e.live || (e.chartAction !== 'ability' && e.chartAction !== 'coin')) continue;
     addMarker(e.chartAction, e.actionBeat);
   }
   // Crossing actions are chart-owned even though their physical landing is a
   // route stone rather than a normal obstacle entity.
-  for (const e of run.rhythmSetEvents || []) {
-    if (e.pit?.passed || run.beatJudgeConsumed?.has(e.id)) continue;
-    addMarker(e.action, e.beat);
-  }
-  for (const marker of markers) {
-    const dx = beatRibbonMarkerOffset(marker.action, marker.actionBeat, currentBeat,
-      false, beatPx, aheadW);
-    if (dx == null) continue;
+  for (const e of run.rhythmSetEvents || []) addMarker(e.action, e.beat);
+  for (const [key, marker] of trail) {
+    const dx = beatRibbonMarkerOffset(marker.actionBeat, currentBeat, beatPx, aheadW, backW);
+    // Off the back end for good, or stranded in the far future by a clock that
+    // jumped (a retry, a rewind, the song looping): drop it. Anything still
+    // being played is put back by the lists above on the very next frame.
+    if (dx == null) {
+      if (!Number.isFinite(marker.actionBeat) || marker.actionBeat - currentBeat < 0
+        || marker.actionBeat - currentBeat > 16) trail.delete(key);
+      continue;
+    }
     const a = edgeFade(dx);
     if (a <= 0) continue;
     ctx.globalAlpha = 0.92 * a;
