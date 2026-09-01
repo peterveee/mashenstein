@@ -16,6 +16,9 @@
 import { W, H, bakeSS } from '../renderer.js';
 import { GROUND_Y, ZOOM, PAN_MAX } from '../camera.js';
 import { glowSprite } from '../../sprites/props.js';
+// The 5x7 pixel font's raw rows. The LCD panel lays its own cells, so it takes
+// the letterforms and not the blitter — see lcdSkyBanner.
+import { pixelGlyph } from '../sprites.js';
 // What lies at the bottom of a hole, when the cabinet names one. A pack draws a
 // gap by not drawing; the fill is the other half of that bargain.
 import { drawPitFill } from '../../game/pitFill.js';
@@ -1956,25 +1959,43 @@ const LCD_CITY_SCENES = [
   {
     // Reading order, left to right: the clock tower opens the scene, three
     // buildings walk up to the invader billboard, THEN the DONKEY KONG tower,
-    // and the skyline continues past it. At 118 tall the gorilla's head tops
-    // out at y 64 and the barrel he raises at 51, both under the beat ribbon's
-    // band (bottom y 49), so the tower may stand mid-frame without crossing
-    // the strip. The plane threads the gap between the two — see `plane`.
+    // and the skyline continues past it.
+    //
+    // 110 TALL, AND THAT IS THE CEILING — the crash sets it, not taste.
+    // Everything above this roof is one rigid stack: his skull tops out at
+    // roof-42, the barrel rests on his raised hands at roof-43 and reaches
+    // roof-57, and the plane's lane is pinned under the beat ribbon's band
+    // (bottom y 49), which on the 2px grid puts its belly at y 62 and nowhere
+    // else. So the contact depth is just 119 - roof: every pixel of tower
+    // drives the plane further down the barrel and closer to his scalp, and
+    // there is no slack anywhere in the stack to trade back — the barrel
+    // already sits one pixel above his crown. At 118 the barrel's top was ON
+    // the ribbon line, the plane went through its middle and its belly passed
+    // two pixels off his hair, which read as landing on the gorilla. At 110:
+    // barrel top 57, plane belly 62, so it clips the top third of the barrel
+    // and clears his head by ten. Two more pixels of building and the contact
+    // is at the barrel's waist again. He still tops the skyline either way; it
+    // is the roof that moved, not him.
     // EIGHT structures, evenly spaced (~12px of air between neighbours and at
     // both edges), and the DONKEY KONG tower is the fifth: clock, chart,
     // transmitter, invader, TOWER, smoking water-tower, burger, cassette.
     buildings: [
-      [12, 42, 96, 'clockworks'], [66, 36, 54, 'storefront'], [114, 48, 116, 'deco'],
-      [174, 38, 70, 'fire-escape'],
-      [324, 46, 104, 'water-tower'], [382, 36, 48, 'storefront'], [431, 34, 62, 'workshop'],
+      [12, 42, 104, 'clockworks'], [66, 36, 74, 'storefront'], [114, 48, 116, 'deco'],
+      [174, 38, 88, 'fire-escape'],
+      [324, 46, 104, 'water-tower'], [382, 36, 66, 'storefront'], [431, 34, 80, 'workshop'],
     ],
     clouds: [[28, 52], [184, 42], [346, 58]],
-    clock: [36, 108, 13],
+    // The dial STANDS ON the clockworks roof (its feet and brace are drawn
+    // under it), so this y moves with that building's height, not apart from
+    // it — roof 120, case bottom 116. 8px is the whole of the room there is:
+    // the plane enters low over this end of the skyline and its belly steps
+    // through y 78-82 across x 12..49, and the dial's top edge is y 87.
+    clock: [36, 100, 13],
     // The DONKEY KONG tower: open girder floors zigzagging down its whole
     // face, the big rooftop gorilla on top and a little runner two floors
     // below him. [x, w, h]. The gorilla lives HERE now, so this scene sets no
     // rooftopGorilla of its own.
-    gameWatch: [224, 88, 118],
+    gameWatch: [224, 88, 110],
     // Beat-stepped rooftop furniture: pixel billboards on the buildings at
     // these indices, a transmitter mast whose signal rings walk outward a
     // step per beat, chimneys whose puff columns live on the beat, and a
@@ -1989,11 +2010,32 @@ const LCD_CITY_SCENES = [
     billboards: [[1, 'chart'], [3, 'invader'], [5, 'burger'], [6, 'cassette']],
     transmitter: 2,
     smokestacks: [[4, 6]],
-    // In low at 78 over the short left-hand buildings, level at 51 by the
-    // tower's centre line (224 + 88/2), which puts its belly a pixel over the
-    // gorilla's head — his skull tops out at y 64 and the ribbon's band ends
-    // at 49, so 51 is the middle of the only gap there is.
-    plane: { from: 78, to: 51, level: 268 },
+    // In low at 78 over the left-hand roofs — which now clear the clock case
+    // by 5px and the near billboards by a good 40 — level at 51 by the
+    // tower's centre line (224 + 88/2). Snapped to the 2px grid that is y 50,
+    // so the belly runs at 62: through the top third of the raised barrel
+    // (top 57) and ten clear of the gorilla's skull (top 72).
+    // ...AND IT ALWAYS TOWS SOMETHING. A banner plane with a blank banner is
+    // the one prop on this skyline that is drawn and says nothing — it used to
+    // trail a single unlettered pixel, which reads as a flag nobody finished.
+    //
+    // `tow` is the rotation, one line per crossing, so the sky is a different
+    // sentence every sixteen bars rather than the same advert on a timer. Short
+    // and long on purpose: a two-letter banner and an eleven-letter one are
+    // different SHAPES at a distance, which is what stops the rotation reading
+    // as one prop with the text swapped.
+    //
+    // `banner` is the one pass that carries something else — the KEY CHANGE
+    // announcement, in front of the modulation at bar 61 (the +4 the whole band
+    // takes in rhythm.js's arrangement and keeps to the end of the form). One
+    // authored bar, because that arrangement moves its transpose eight times
+    // and only this one is the modulation — the rest are two-bar lifts.
+    // tests/lcd-background.js checks the bar names a real one.
+    plane: {
+      from: 78, to: 51, level: 268,
+      tow: ['INSERT COIN', 'GG', '♥♥♥'],
+      banner: { text: 'KEY CHANGE', bar: 61 },
+    },
   },
   {
     // EIGHT structures with even air, like the other two scenes.
@@ -2009,13 +2051,21 @@ const LCD_CITY_SCENES = [
     // behind the skyline, a window washer who is having a day, and the
     // repossession helicopter that arrives in the second half and leaves with
     // whatever it can lift.
+    // A banner plane here too, in the one lane this skyline leaves: under the
+    // billboards and the viaduct, over the tallest roof (building 3, top y 76).
+    // It enters low at the left end, where the roofs are short, and settles at
+    // 62 by the middle — twelve pixels of aircraft with room either side of it.
+    plane: { from: 70, to: 62, level: 240, tow: ['FREE PLAY', '8BIT4EVA', 'NO REFUNDS', 'PLAYER 2?'] },
     searchlight: [2, 24],
     train: { y: 62, cars: 4, fromPhase: 1 },
     washer: [5, 20],
     chopper: { fromPhase: 2, takes: 0 },
     // Same swap as stage 1, for the same reason: the chart near the hero,
     // the cassette out at the edge.
-    billboards: [[1, 'chart'], [7, 'cassette']],
+    // The far roof runs the maze game's attract screen — see lcdChaseGrid. It
+    // took the cassette's berth: a cassette is a still life, and this end of
+    // the skyline is the one that had nothing moving on it.
+    billboards: [[1, 'chart'], [7, 'chase']],
   },
   {
     // EIGHT structures with even air between them, like stage 1. The
@@ -2029,6 +2079,11 @@ const LCD_CITY_SCENES = [
       [365, 34, 126, 'relay'], [418, 42, 68, 'industrial'],
     ],
     clouds: [[18, 46], [264, 52], [398, 40]],
+    // The high lane: every mast on this skyline tops out at y 79 (building 6's,
+    // the tallest) and the beat ribbon's band ends at 49, so the crossing sits
+    // between them and levels off before it reaches the gorilla — who is drawn
+    // after it and eclipses it as it passes. See drawLCDCity.
+    plane: { from: 66, to: 54, level: 200, tow: ['HIGH SCORE', 'ONE MORE GO', 'PRESS START'] },
     rooftopGorilla: 4,
     barrelDrop: true,
   },
@@ -2213,10 +2268,18 @@ function lcdSkyFloor(stageIndex) {
 // other ways that ARE legible (windows, the rooftop banks, billboards on the
 // drum, the plume, the transmitter's reach), so the sky is better left alone.
 //
-// The jukebox is the opposite case: the sky IS the show there, nobody is
-// reading a lane through it, and the bars get their bright TIPS — a hanging
-// analyser rather than a wall of ghost ink. So the preset asks for them and a
-// run does not.
+// The jukebox is the opposite case: the sky IS the show there and nobody is
+// reading a lane through it, so the preset asks for the bars and a run does
+// not.
+//
+// NO TIPS. Each bar used to wear a bright coral cell on its top block, on the
+// argument that it was what turned a column of ghost ink into a reading. On a
+// meter that is CLIPPED BY A SKYLINE it does the opposite: a bar's visible top
+// is wherever the roof in front of it happens to end, not where the band
+// actually peaked, so sixteen bright cells were sixteen confident readings of
+// the buildings rather than of the song. Left as plain columns the layer says
+// what it honestly knows — how much is lit — and stays the quiet thing behind
+// the city that it is.
 function lcdSkylineEq(ctx, frame) {
   const rows = Math.floor((GROUND_Y - LCD_EQ_TOP) / LCD_EQ_CELL);
   const barW = Math.floor(W / LCD_EQ_BARS);
@@ -2232,18 +2295,11 @@ function lcdSkylineEq(ctx, frame) {
     for (const [sx, ex, top] of spans) {
       if (x + barW - 2 > sx && x < ex && top < floorY) floorY = top;
     }
-    let tip = null;
     ctx.fillStyle = 'rgba(53,83,101,0.10)';
     for (let i = 0; i < n; i++) {
       const y = GROUND_Y - 2 - i * LCD_EQ_CELL;
       if (y + 2 > floorY) continue;
       ctx.fillRect(x, y, barW - 2, 2);
-      tip = y;
-    }
-    // The bright top cell: what turns a column of ghost ink into a reading.
-    if (tip != null) {
-      ctx.fillStyle = LCD_WINDOW_ON;
-      ctx.fillRect(x, tip, barW - 2, 2);
     }
   }
 }
@@ -2454,6 +2510,79 @@ function lcdCloud(ctx, x, y, pose, color) {
   for (const cell of wisps) ctx.fillRect(...cell);
 }
 
+// ---- the chase ----------------------------------------------------------
+//
+// A maze-game attract screen on a rooftop: three ghosts running, and the round
+// one behind them eating his way along the corridor. It steps ONE CELL PER
+// HEARD BEAT and chomps on the same beat, which is the only clock anything on
+// this panel keeps — so the chase is quarter notes, and a player watching the
+// board is watching the tempo.
+//
+// Built as a STRIP that the board is a window onto, rather than as a list of
+// authored frames. Four sprites at a six-cell pitch is twenty-four cells and
+// the board is thirteen wide, so frames would be thirty-two near-identical
+// pictures; a strip says the same thing once and the window does the walking.
+// Thirty-two cells is eight bars, so the chase leaves at one edge and comes
+// round at the other on a bar line rather than mid-phrase.
+const LCD_CHASE_W = 13;
+const LCD_CHASE_LEN = 32;
+const LCD_CHASE_PITCH = 6;
+// A ghost, five by five, with its eyes and its skirt punched out of the body —
+// on a dark board an unlit cell IS the hole, so the eyes cost nothing.
+const lcdGhostCells = (k, pose) => [
+  '.XXX.',
+  'XXXXX',
+  'X.X.X',
+  'XXXXX',
+  pose ? 'X.X.X' : '.X.X.',
+].map((row) => row.replaceAll('X', k));
+// ...and the round one, facing the way he is travelling, chomping on the beat.
+const lcdPacCells = (pose) => (pose ? [
+  '.PPP.',
+  'PPPPP',
+  'PPPPP',
+  'PPPPP',
+  '.PPP.',
+] : [
+  '.PPP.',
+  'PPPPP',
+  '..PPP',
+  'PPPPP',
+  '.PPP.',
+]);
+function lcdChaseStrip(pose) {
+  const rows = ['', '', '', '', '', '', '', ''];
+  const cast = [lcdGhostCells('A', pose), lcdGhostCells('B', pose), lcdGhostCells('C', pose),
+    lcdPacCells(pose)];
+  // Row 0 is air over their heads, rows 1..5 the cast, row 6 air, row 7 the
+  // corridor's pellets — which do NOT scroll with the strip, because the dots
+  // are the place and the chase is what is moving through it.
+  for (let c = 0; c < LCD_CHASE_LEN; c++) {
+    const who = Math.floor(c / LCD_CHASE_PITCH);
+    const col = c % LCD_CHASE_PITCH;
+    const sprite = who < cast.length && col < 5 ? cast[who] : null;
+    rows[0] += '.';
+    for (let r = 0; r < 5; r++) rows[r + 1] += sprite ? sprite[r][col] : '.';
+    rows[6] += '.';
+    rows[7] += '.';
+  }
+  return rows;
+}
+const LCD_CHASE_STRIPS = [lcdChaseStrip(0), lcdChaseStrip(1)];
+function lcdChaseGrid(frame) {
+  const strip = LCD_CHASE_STRIPS[frame.beat4 % 2];
+  const off = lcdMod(frame.bar * 4 + frame.beat4, LCD_CHASE_LEN);
+  return strip.map((row, r) => {
+    let out = '';
+    for (let c = 0; c < LCD_CHASE_W; c++) {
+      // The pellet row is fixed to the BOARD, not to the strip: every other
+      // cell, lit, the corridor they are all running down.
+      out += r === 7 ? (c % 2 === 0 ? 'd' : '.') : row[(off + c) % LCD_CHASE_LEN];
+    }
+    return out;
+  });
+}
+
 // ---- rooftop billboards -------------------------------------------------
 //
 // Big framed panels on legs, with COARSE PIXEL images — 2px cells lit against
@@ -2521,6 +2650,14 @@ const LCD_BILLBOARD_ART = {
   // chamfered base. The first draft's two big square reels on an empty shell
   // read as a robot's eyes; the label band and the tape line are what say
   // CASSETTE at this resolution.
+  // Three ghosts and the round one behind them, walking a cell a beat. The
+  // picture is generated (see lcdChaseGrid); `frames` is here to size the
+  // board and to be what a caller with no clock draws.
+  chase: {
+    ink: { A: '#b9cf79', B: LCD_WINDOW_ON, C: '#d4a35e', P: '#f6d33c', d: LCD_WINDOW_OFF },
+    grid: lcdChaseGrid,
+    frames: [lcdChaseGrid({ bar: 0, beat4: 0 })],
+  },
   cassette: {
     ink: { S: '#b9cf79', L: '#e1d68c', K: LCD_WINDOW_ON, O: LCD_PRINT, T: '#8a5a35' },
     frames: [[
@@ -2747,10 +2884,204 @@ function lcdPlaneAt(cyc, altitude) {
     : 2 * Math.round(planeClimb(altitude, x) / 2);
   return { x, y };
 }
-function lcdPlane(ctx, frame, altitude = LCD_PLANE_Y) {
-  const pos = lcdPlaneAt(lcdMod(frame.bar * 4 + frame.beat4, 64), altitude);
+// ---- the banner pass ------------------------------------------------------
+//
+// A plane over a city tows an advert, and this one tows the only announcement
+// a rhythm cabinet could make: the song is about to change key. The bar it
+// changes on is AUTHORED, in the scene's own `plane.banner`, and it has to be:
+// this arrangement moves its transpose eight times in seventy-six bars, most of
+// them two-bar colour shifts, and which of those is THE modulation is a
+// musical judgement rather than a fact the data states. tests/lcd-background.js
+// keeps the authored bar standing on a transpose the song really makes.
+//
+// The pass is aimed so the rig is DEAD CENTRE on the downbeat it announces —
+// the words at their most readable on the bar they are about it. It flew a full
+// crossing earlier at first, clearing the frame as the key landed, and that was
+// the wrong instinct: an announcement that has left before the thing happens is
+// a thing nobody read. `lcdBannerStart` solves the step from the rig's own
+// length, so a shorter line still lands mid-screen on the beat.
+const LCD_PLANE_CYCLE = 64;
+// One panel pixel per glyph cell, not two. Every other mark on this panel is a
+// 2px cell, and at that size ten letters would be a hundred and twenty pixels
+// of banner on a four-hundred-and-eighty pixel sky — a quarter of the display,
+// and taller than the aircraft towing it. The plane's own tail tick is already
+// 1px, so the fine grid is not new here; it is what letters need.
+const LCD_BANNER_PAD = 1;
+const LCD_BANNER_GAP = 6;     // tow line, plane tail to banner
+// A BANNER MAY CARRY A PICTURE INSTEAD OF A LETTER, and one does. The font's
+// own heart is a battery cell — a small solid blob at five wide — and what was
+// asked for is the OTHER heart, the seven-by-seven container off an adventure
+// game's status bar, which is a different shape and is red rather than ink.
+// Keyed by the character that stands for it in a tow line, so the data stays a
+// plain string and the rotation stays a list of them.
+const LCD_BANNER_ART = {
+  '♥': {
+    ink: LCD_WINDOW_ON,
+    cells: [
+      '.XX.XX.',
+      'XXXXXXX',
+      'XXXXXXX',
+      'XXXXXXX',
+      '.XXXXX.',
+      '..XXX..',
+      '...X...',
+    ],
+  },
+};
+const LCD_BANNER_TRACK = 1;
+function lcdBannerMark(ch) {
+  const art = LCD_BANNER_ART[ch];
+  if (art) return { rows: art.cells, w: art.cells[0].length, ink: art.ink, on: 'X' };
+  const rows = ch === ' ' ? null : pixelGlyph(ch);
+  return { rows, w: 5, ink: LCD_PRINT, on: '1' };
+}
+function lcdBannerBox(text) {
+  let w = LCD_BANNER_PAD * 2 + 2;
+  for (const ch of text) w += lcdBannerMark(ch).w + LCD_BANNER_TRACK;
+  return { w: w - LCD_BANNER_TRACK, h: 7 + LCD_BANNER_PAD * 2 + 2 };
+}
+function lcdSkyBanner(ctx, rightX, midY, text) {
+  const { w, h } = lcdBannerBox(text);
+  const x = Math.round(rightX - w);
+  const y = Math.round(midY - h / 2);
+  ctx.fillStyle = LCD_PANEL_LIT;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = LCD_PRINT;
+  ctx.fillRect(x, y, w, 1);
+  ctx.fillRect(x, y + h - 1, w, 1);
+  ctx.fillRect(x, y, 1, h);
+  ctx.fillRect(x + w - 1, y, 1, h);
+  let cx = x + 1 + LCD_BANNER_PAD;
+  const cy = y + 1 + LCD_BANNER_PAD;
+  for (const ch of text) {
+    const mark = lcdBannerMark(ch);
+    if (mark.rows) {
+      ctx.fillStyle = mark.ink;
+      for (let r = 0; r < mark.rows.length; r++) {
+        for (let c = 0; c < mark.w; c++) {
+          if (mark.rows[r][c] === mark.on) ctx.fillRect(cx + c, cy + r, 1, 1);
+        }
+      }
+    }
+    cx += mark.w + LCD_BANNER_TRACK;
+  }
+}
+
+// WHERE THE ANNOUNCEMENT'S PASS STARTS, so the rig is mid-screen on the beat it
+// announces. Solved from the geometry rather than set by hand: the rig runs from
+// the banner's left edge to the plane's nose, and the step of the crossing that
+// puts the middle of THAT on the middle of the display depends on how long the
+// words are. A shorter banner is a shorter rig and starts a beat later.
+function lcdBannerStart(keyBeat, text) {
+  const rigLeft = -LCD_BANNER_GAP - lcdBannerBox(text).w;
+  const centreOff = (rigLeft + LCD_PLANE_W) / 2;
+  const cyc = Math.round((W / 2 - centreOff - LCD_PLANE_X0) / LCD_PLANE_STEP);
+  return keyBeat - Math.max(0, Math.min(LCD_PLANE_BEATS - 1, cyc));
+}
+
+// Whether an ordinary crossing takes off at all.
+//
+// ONE crossing gives way to the announcement, not two, and the difference is a
+// dead line in the rotation. Grounding everything that overlaps the banner pass
+// grounds the crossing before it AND the one after — and this song's form loops
+// bars 21 to 76, which is three and a half crossings long, so with two of them
+// grounded the sky only ever had room for two of the three lines and the third
+// was never once flown.
+//
+// So what gives way is the crossing that would still be MID-SKY when the
+// announcement opens. One starting after it is a plane entering at the left
+// while the banner leaves at the right, which is a busy sky rather than a
+// broken one — the thing that cannot happen is two rigs crossing each other.
+const LCD_PLANE_SHARE_CLEAR = 30;
+function lcdFreePassFlies(pass, start) {
+  if (start == null) return true;
+  const from = pass * LCD_PLANE_CYCLE;
+  if (from < start) return from + LCD_PLANE_BEATS <= start;
+  return from >= start + LCD_PLANE_SHARE_CLEAR;
+}
+
+/**
+ * Which line THIS crossing tows.
+ *
+ * Counted in crossings FLOWN, not in slots of the clock, and that distinction is
+ * the whole of this function. Off the raw pass number the grounded crossing
+ * still consumes a line — with three lines and the third pass grounded, the
+ * fourth comes back round to the first and the third line is never once in the
+ * sky. Counting what actually flew hands every line its turn.
+ *
+ * The first crossing of the song flies CLEAN, which is why the count is offset
+ * by one: a panel whose every plane tows a sign has no plane in it, only signs.
+ * That opener establishes what the thing is — tail wagging, nothing behind it —
+ * and every crossing after it is the same aircraft having been sold advertising.
+ * The song's own loop starts at bar 21, so pass zero happens once and never
+ * again.
+ */
+function lcdTowLine(towList, passNo, start) {
+  if (!towList || !towList.length || passNo <= 0) return null;
+  let flown = 0;
+  for (let p = 0; p < passNo; p++) if (lcdFreePassFlies(p, start)) flown++;
+  return flown > 0 ? towList[lcdMod(flown - 1, towList.length)] : null;
+}
+
+/**
+ * WHICH PASS THE PLANE IS ON, or null while the sky is its own.
+ *
+ * One answer for the draw and for the barrel it is going to hit, because the
+ * gag is authored against the step of the crossing and the two may not disagree
+ * about which step that is.
+ *
+ * Ordinarily the crossing free-runs every sixteen bars. When the scene names a
+ * banner bar, one pass is nailed to it instead — and the free-running one is
+ * suppressed anywhere it would still be in the air when the announcement is
+ * due, because a plane that vanished mid-sky to let another one in is two
+ * planes, and this panel only ever has one of anything.
+ */
+function lcdPlaneCyc(art, frame) {
+  const beat = frame.bar * 4 + frame.beat4;
+  const plane = art && art.plane;
+  const banner = plane && plane.banner;
+  const cyc = lcdMod(beat, LCD_PLANE_CYCLE);
+  // Which line this crossing is carrying. Off the pass NUMBER, not off the beat
+  // inside it, or the banner would change words halfway across the sky.
+  //
+  // THE FIRST CROSSING OF THE SONG FLIES CLEAN, and that is the whole reason
+  // the plain aircraft is still worth drawing. A panel whose every plane tows a
+  // sign has no plane in it, only signs — the first pass establishes what the
+  // thing IS, tail wagging and nothing behind it, and every one after it is
+  // that same aircraft having been sold advertising. The song's own loop starts
+  // at bar 21, so pass zero happens once, at the top, and never again.
+  const towList = plane && plane.tow
+    ? (Array.isArray(plane.tow) ? plane.tow : [plane.tow]) : null;
+  const passNo = Math.floor(beat / LCD_PLANE_CYCLE);
+  // Authored bars are 1-based, the way the desk counts them; the panel's beat
+  // clock starts at zero.
+  const keyBeat = banner && Number.isFinite(banner.bar) ? (banner.bar - 1) * 4 : null;
+  const start = keyBeat == null ? null : lcdBannerStart(keyBeat, banner.text);
+  if (start != null) {
+    if (beat >= start && beat < start + LCD_PLANE_BEATS) {
+      return { cyc: beat - start, banner: banner.text };
+    }
+    if (cyc >= LCD_PLANE_BEATS) return null;
+    if (!lcdFreePassFlies(passNo, start)) return null;
+  } else if (cyc >= LCD_PLANE_BEATS) return null;
+  return { cyc, banner: lcdTowLine(towList, passNo, start) };
+}
+
+function lcdPlane(ctx, art, frame, altitude = LCD_PLANE_Y) {
+  const pass = lcdPlaneCyc(art, frame);
+  if (!pass) return;
+  const pos = lcdPlaneAt(pass.cyc, altitude);
   if (!pos) return;
   const { x, y } = pos;
+  // The banner first, so the tow line runs under the tail rather than over it.
+  if (pass.banner) {
+    // A towed banner sags and lifts; one pixel on the off beats is the whole of
+    // it, and it is the same tick the tail already wags on.
+    const sag = frame.beat4 % 2 === 0 ? 0 : 1;
+    ctx.fillStyle = LCD_PRINT;
+    ctx.fillRect(x - LCD_BANNER_GAP, y + 6, LCD_BANNER_GAP, 1);
+    lcdSkyBanner(ctx, x - LCD_BANNER_GAP, y + 6 + sag, pass.banner);
+  }
   for (let r = 0; r < LCD_PLANE.length; r++) {
     for (let c = 0; c < LCD_PLANE[r].length; c++) {
       const cell = LCD_PLANE[r][c];
@@ -2761,6 +3092,9 @@ function lcdPlane(ctx, frame, altitude = LCD_PLANE_Y) {
   }
   ctx.fillStyle = LCD_WINDOW_ON;
   ctx.fillRect(x + 2, y, 2, 2);
+  // The tail's own wag, and only when there is no banner: with one on the tow
+  // line this reads as a second, blank flag flying off the nose.
+  if (pass.banner) return;
   ctx.fillStyle = LCD_PRINT_SOFT;
   if (frame.beat4 % 2 === 0) ctx.fillRect(x + 22, y + 3, 1, 8);
   else ctx.fillRect(x + 22, y + 5, 1, 4);
@@ -2817,14 +3151,52 @@ function lcdBarrelStrike(art) {
 function lcdBurstPhase(art, frame) {
   const strike = lcdBarrelStrike(art);
   if (strike < 0) return -1;
-  const phase = lcdMod(frame.bar * 4 + frame.beat4, 64) - strike;
+  // Off the pass the plane is ACTUALLY on. The gag is solved in steps of the
+  // crossing, and a banner pass is a crossing like any other — read against the
+  // free-running clock instead, the barrel would burst on a beat with nothing
+  // in the sky to burst it.
+  const pass = lcdPlaneCyc(art, frame);
+  if (!pass) return -1;
+  const phase = pass.cyc - strike;
   return phase === 0 || phase === 1 ? phase : -1;
+}
+
+// AND THE THROW THAT NEVER HAPPENS. `lcdBurstPhase` covers the two beats of
+// wreckage over the gorilla's head; this covers the twelve after it. The barrel
+// the plane destroyed is the one he was about to send down the tower, so it is
+// missing from the girder chain for the whole descent it would have made —
+// cell index 0 on the beat of the strike, 1 on the next, and so on. Returns the
+// cell the chain is short of, or -1. Without this he is empty-handed on the
+// roof while the barrel he is not holding rolls down the face underneath him.
+// THE ONE THING THE CITY TELLS THE RUN. Everything else here flows the other
+// way — the panel is told the beat and paints itself — but the crash is a
+// sound as well as a picture, and only this file knows which beat of the loop
+// the plane and the barrel meet on. Given a stage and an absolute beat, is
+// this the beat the barrel goes? The run asks once per beat and fires the cue;
+// nothing about the drawing depends on the answer.
+export function lcdBarrelStrikeAt(stageIndex, beat) {
+  if (!Number.isFinite(beat)) return false;
+  const art = LCD_CITY_SCENES[Math.max(1, Math.min(3, Math.trunc(stageIndex) || 1))];
+  if (!art) return false;
+  const strike = lcdBarrelStrike(art);
+  return strike >= 0 && lcdMod(Math.floor(beat), 64) === strike;
+}
+
+function lcdVanishedBarrelCell(art, frame) {
+  const strike = lcdBarrelStrike(art);
+  if (strike < 0) return -1;
+  const since = lcdMod(frame.bar * 4 + frame.beat4 - strike, 64);
+  return since < 12 ? since : -1;
 }
 
 function lcdBarrelBurst(ctx, bx, by, phase, reducedFlashing) {
   const x = Math.round(bx), y = Math.round(by);
+  // The staves go out in PRINT_SOFT, not the motion ghost. A ghost cell on this
+  // panel means "a position this thing also occupies" — the off frames of a
+  // cycle — and the wreck is not that: it is the one beat of debris, receding
+  // but real, and at ghost alpha it was not there at all.
   ctx.fillStyle = phase === 0
-    ? (reducedFlashing ? LCD_PRINT : LCD_WINDOW_ON) : LCD_MOTION_GHOST;
+    ? (reducedFlashing ? LCD_PRINT : LCD_WINDOW_ON) : LCD_PRINT_SOFT;
   for (const [cx, cy] of phase === 0 ? LCD_BURST_STAR : LCD_BURST_DEBRIS) {
     ctx.fillRect(x + cx * 2 - 1, y + cy * 2 - 1, 2, 2);
   }
@@ -3189,6 +3561,17 @@ function gbcGorillaBarrel(ctx, x, y, ghost = false) {
   ctx.fillRect(x - 1, y - 5, 2, 2);
 }
 
+// The cells his shock radiates. OUTSIDE the head AND outside the arms, which
+// is the whole difficulty: on the beat this fires his arms are up over his
+// head, so a tick at any comfortable radius lands on a forearm and reads as
+// nothing. These sit past the elbow (x 18 from centre, 7 wide) at head height,
+// and stay BELOW the wreck, which is already occupying the cells above him. In
+// print, not the soft ink: they have the sky behind them and nothing else.
+const LCD_STARTLE_MARKS = [
+  [-13, -4], [-14, -1], [-13, 2], [-12, 5],
+  [13, -4], [14, -1], [13, 2], [12, 5],
+];
+
 // `burst` is the phase from lcdBurstPhase, or -1: on those two beats the barrel
 // he is holding is not there to be drawn, because the plane just removed it.
 function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = false) {
@@ -3259,16 +3642,40 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   gbcEllipse(ctx, cx, roof - 31, 12, 11, LCD_PRINT);
   gbcEllipse(ctx, cx, roof - 29, 8.5, 7, '#e1d68c');
   gbcEllipse(ctx, cx, roof - 25, 7, 4.5, '#d4a35e');
-  gbcEllipse(ctx, cx - 3.5, roof - 31, 2.4, 2.8, '#f3edb1');
-  gbcEllipse(ctx, cx + 3.5, roof - 31, 2.4, 2.8, '#f3edb1');
+  // WHAT HIS FACE DOES WHEN THE PLANE TAKES THE BARREL. Five reads of this were
+  // drawn and compared; the one that won says it AROUND the head rather than on
+  // it. His face barely moves — whites a shade wider, brows up one, the smile
+  // shrunk to a small O — and the PANEL does the shouting: shock ticks
+  // radiating off him on the 2px grid the billboards use, plus a sweat bead at
+  // the temple. That is this toy's own idiom, and it beat the louder faces
+  // (bulging eyes, a dropped jaw, vanished pupils) for the same reason it
+  // exists: those four beats of a gorilla mugging on the skyline are four
+  // beats the player is not reading the lane. He is back to the authored face
+  // on the third beat, because the toy does not sulk.
+  const startled = burst >= 0;
+  const eyeR = startled ? 2.7 : 2.4, eyeH = startled ? 3.1 : 2.8;
+  gbcEllipse(ctx, cx - 3.5, roof - 31, eyeR, eyeH, '#f3edb1');
+  gbcEllipse(ctx, cx + 3.5, roof - 31, eyeR, eyeH, '#f3edb1');
   gbcEllipse(ctx, cx - 3, roof - 30.5, 1.1, 1.4, LCD_PRINT);
   gbcEllipse(ctx, cx + 3, roof - 30.5, 1.1, 1.4, LCD_PRINT);
   ctx.strokeStyle = LCD_PRINT; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(cx - 7, roof - 35); ctx.quadraticCurveTo(cx - 3, roof - 37, cx, roof - 34); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx, roof - 34); ctx.quadraticCurveTo(cx + 3, roof - 37, cx + 7, roof - 35); ctx.stroke();
+  const browY = startled ? roof - 36 : roof - 35;
+  ctx.beginPath(); ctx.moveTo(cx - 7, browY); ctx.quadraticCurveTo(cx - 3, browY - 2, cx, browY + 1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, browY + 1); ctx.quadraticCurveTo(cx + 3, browY - 2, cx + 7, browY); ctx.stroke();
   gbcEllipse(ctx, cx - 2.5, roof - 26, 1, 0.8, LCD_PRINT);
   gbcEllipse(ctx, cx + 2.5, roof - 26, 1, 0.8, LCD_PRINT);
-  ctx.beginPath(); ctx.moveTo(cx - 4, roof - 23.5); ctx.quadraticCurveTo(cx, roof - 21.5, cx + 4, roof - 23.5); ctx.stroke();
+  if (startled) {
+    gbcEllipse(ctx, cx, roof - 23, 2, 2.4, LCD_PRINT);
+    ctx.fillStyle = LCD_PRINT;
+    for (const [mx, my] of LCD_STARTLE_MARKS) {
+      ctx.fillRect(cx + mx * 2, roof - 31 + my * 2, 2, 2);
+    }
+    ctx.fillStyle = '#b9cf79';
+    ctx.fillRect(cx + 12, roof - 36, 2, 2);
+    ctx.fillRect(cx + 12, roof - 33, 2, 3);
+  } else {
+    ctx.beginPath(); ctx.moveTo(cx - 4, roof - 23.5); ctx.quadraticCurveTo(cx, roof - 21.5, cx + 4, roof - 23.5); ctx.stroke();
+  }
 
   // Chest plane, collar shadow and sparse fur strokes.
   gbcEllipse(ctx, cx, roof - 11, 7, 8, '#b9cf79');
@@ -3420,8 +3827,9 @@ function lcdRunnerFigure(ctx, rx, footY, mode) {
 
 // `burst` rides through to the gorilla on his roof — see lcdBurstPhase. The
 // tower is the only thing between the scene, which knows where the plane is,
-// and the gorilla, who is holding what it hits.
-function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false) {
+// and the gorilla, who is holding what it hits. `vanished` is the girder cell
+// that hit takes out of the chain — see lcdVanishedBarrelCell.
+function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, vanished = -1) {
   const [x, w, h] = spec;
   const top = GROUND_Y - h;
   const span = w - 10;
@@ -3505,6 +3913,10 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false) {
     lcdMiniBarrel(ctx, x + 44, Math.round(floorY(3, x + 44) - 5), true);
   }
   for (let p = frame.beat4; p < cells.length; p += 4) {
+    // The exploded throw leaves a gap in the chain rather than a ghost: a
+    // ghost cell means "a position this thing also occupies", and this barrel
+    // does not exist to occupy one.
+    if (p === vanished) continue;
     lcdMiniBarrel(ctx, cells[p][0], cells[p][1]);
   }
 
@@ -3650,23 +4062,8 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     lcdCloud(ctx, x, y, lcdMod(frame.bar + frame.phrase + i, 2), palette.cloud);
   }
   if (art.gameWatch) {
-    lcdGameWatch(ctx, art.gameWatch, frame, lcdBurstPhase(art, frame), reducedFlashing);
-  }
-  if (Number.isInteger(art.rooftopGorilla)) {
-    // The barrel chute: four authored cells falling down the side of the
-    // gorilla's building, ghosted like every off cell on this panel, with
-    // the live one stepping a cell per heard beat — thrown at the roof on
-    // the downbeat, at the street on beat four. Drawn BEFORE the gorilla so
-    // his own held barrel stays the scene's front-most one.
-    if (art.barrelDrop) {
-      const [gx, gw, gh] = art.buildings[art.rooftopGorilla];
-      const roof = GROUND_Y - gh;
-      const dropX = gx + gw + 9;
-      const chute = [roof - 4, roof + 30, roof + 64, roof + 98];
-      for (const cy of chute) gbcGorillaBarrel(ctx, dropX, cy, true);
-      gbcGorillaBarrel(ctx, dropX, chute[frame.beat4]);
-    }
-    lcdRooftopGorilla(ctx, art.buildings[art.rooftopGorilla], frame);
+    lcdGameWatch(ctx, art.gameWatch, frame, lcdBurstPhase(art, frame), reducedFlashing,
+      lcdVanishedBarrelCell(art, frame));
   }
   // The chopper's take: while it is crossing, the billboard it came for is
   // gone from its roof. Derived from the frame rather than stored, so a
@@ -3690,7 +4087,35 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   for (const [bi, dx] of art.smokestacks || []) {
     lcdSmokestack(ctx, art.buildings[bi], dx, frame);
   }
-  if (art.plane) lcdPlane(ctx, frame, art.plane);
+  if (art.plane) lcdPlane(ctx, art, frame, art.plane);
+  // THE GORILLA IS IN FRONT OF THE SKY, and that is what buys stage 3 a plane
+  // at all. He stands on a roof at y 100 and his raised barrel reaches the beat
+  // ribbon's band, so there is no altitude over that column a plane could take:
+  // every lane that clears the antennae goes straight through him. Drawn after
+  // the crossing he simply eclipses it — the aircraft goes behind the ape and
+  // comes out the other side, which is what a panel with two opaque layers does
+  // and what stage 1 could not do (its gorilla is inside the tower, drawn long
+  // before this, which is why THAT plane has to hit the barrel instead).
+  //
+  // Nothing else moves: scene 3 declares no billboard, mast, chimney or
+  // chopper, so this block has only the plane and the clock to be reordered
+  // against, and the two scenes that own those furnishings own no gorilla.
+  if (Number.isInteger(art.rooftopGorilla)) {
+    // The barrel chute: four authored cells falling down the side of the
+    // gorilla's building, ghosted like every off cell on this panel, with
+    // the live one stepping a cell per heard beat — thrown at the roof on
+    // the downbeat, at the street on beat four. Drawn BEFORE the gorilla so
+    // his own held barrel stays the scene's front-most one.
+    if (art.barrelDrop) {
+      const [gx, gw, gh] = art.buildings[art.rooftopGorilla];
+      const roof = GROUND_Y - gh;
+      const dropX = gx + gw + 9;
+      const chute = [roof - 4, roof + 30, roof + 64, roof + 98];
+      for (const cy of chute) gbcGorillaBarrel(ctx, dropX, cy, true);
+      gbcGorillaBarrel(ctx, dropX, chute[frame.beat4]);
+    }
+    lcdRooftopGorilla(ctx, art.buildings[art.rooftopGorilla], frame);
+  }
   if (art.clock) lcdClock(ctx, art.clock, frame.beat4);
 }
 

@@ -79,7 +79,12 @@ const H = 270;
 const idle = [1, 2, 3].map((stage) => fingerprint(background(stage, null)));
 assert(new Set(idle).size === 3, 'all three stages have distinct fixed skyline silhouettes');
 
-for (const [stage, short, tall] of [[1, 48, 110], [2, 58, 138], [3, 48, 126]]) {
+// Stage 1's floor moved UP: its billboard roofs and the clock case were sitting
+// so low that the signs read as street furniture, so the four short buildings
+// were raised (54->74, 70->88, 48->66, 62->80, clock 96->104). The range is
+// still what this checks — 66 against 116 is the same skyline argument the old
+// 48 made — and the other two stages are untouched.
+for (const [stage, short, tall] of [[1, 66, 110], [2, 58, 138], [3, 48, 126]]) {
   const stageOps = background(stage, null);
   const heights = stageOps
     .filter((op) => op[0] === 'strokeRect' && op[1] === PRINT)
@@ -292,9 +297,13 @@ for (const stage of [1, 2, 3]) {
     .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(53,83,101,0.10)');
   assert(bars.length > 0 && bars.every((op) => op[3] >= 40 && op[3] < GROUND_Y),
     'the jukebox panel hangs its analyser between the ribbon band and the lane');
+  // NO BRIGHT TIP on a bar. The meter is clipped by the skyline, so a bar's
+  // visible top cell is where a roof ends and not where the band peaked —
+  // lighting it made sixteen confident readings of the buildings. The columns
+  // carry the layer on their own now, and nothing coral is allowed in the sky.
   const tips = panel({ audio: heard(0.9) })
     .filter((op) => op[0] === 'fillRect' && op[1] === ACTIVE && op[5] === 2 && op[4] > 20);
-  assert(tips.length > 0, 'and every bar wears a bright tip, so it reads as a meter');
+  assert(tips.length === 0, `and wears no bright tip, which would read the roofline (${tips.length})`);
   assert(panel({ audio: heard(0.9) }, { skyMeter: false })
     .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(53,83,101,0.10)').length === 0,
   'a caller may still ask for the panel without it');
@@ -387,6 +396,83 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
     + `(${overHead} beats above him, ${throughHead} inside)`);
 }
 
+// ---- and takes the barrel with it -----------------------------------------
+//
+// The plane cannot miss the barrel, so it destroys it. What makes that a gag
+// rather than a glitch is that it is the SAME BEAT every cycle: both bodies
+// step off authored numbers, so the meeting is solved once and lands on a
+// downbeat, which is the only kind of moment this panel stages anything on.
+// The checks are about that regularity — once per crossing, on the one, barrel
+// gone for two beats, and a fresh one in his hands after.
+{
+  // Four ghosts and, on a normal beat, the live one over the top of them.
+  const barrels = (beat) => background(1, beat)
+    .filter((op) => op[0] === 'ellipse' && op[3] === 8 && op[4] === 7).length;
+  // The one cell of the burst nothing else on the panel paints: the gold fleck
+  // the barrel wore, thrown clear of its own wreck.
+  const struck = (beat) => background(1, beat)
+    .some((op) => op[0] === 'fillRect' && op[1] === '#f6d33c' && op[3] < 90);
+
+  const hits = [];
+  for (let beat = 0; beat < 44; beat++) if (struck(beat)) hits.push(beat);
+  assert(hits.length === 1, `the plane takes the barrel out once per crossing (${hits.length} times)`);
+  const hit = hits[0];
+  assert(hit % 4 === 0, `and does it on a downbeat (landed on beat ${hit % 4} of the bar)`);
+  // Compared against the same pose a bar earlier and a bar later, so this is
+  // "one barrel fewer than this pose normally holds" and not a raw count that
+  // moves whenever the gorilla is redrawn.
+  assert(barrels(hit) === barrels(hit - 4) - 1,
+    `the barrel is gone on the beat it is struck (${barrels(hit)} vs ${barrels(hit - 4)})`);
+  assert(barrels(hit + 1) === barrels(hit - 3) - 1,
+    `and still gone on the beat after (${barrels(hit + 1)} vs ${barrels(hit - 3)})`);
+  assert(barrels(hit + 2) === barrels(hit - 2),
+    `and he is holding one again the beat after that (${barrels(hit + 2)} vs ${barrels(hit - 2)})`);
+
+  // AND THE THROW HE NEVER MAKES. The barrel the plane took was the one about
+  // to go down the tower, so the girder chain is one cell short for the whole
+  // twelve-beat descent that throw would have made — and full again on the
+  // thirteenth, when the barrel he picked up two beats after the wreck arrives
+  // on schedule. Without this he stands empty-handed on the roof while the
+  // barrel he is not holding rolls down the face underneath him.
+  //
+  // Counted off the plank seam only a LIT mini-barrel paints (the ghosts are
+  // stroke-only), and each beat compared against the same beat of the bar four
+  // bars earlier — the chain repeats every four beats, so that is the same
+  // picture with nothing destroyed.
+  const towerBarrels = (beat) => background(1, beat)
+    .filter((op) => op[0] === 'fillRect' && op[1] === '#8a5a35'
+      && op[4] === 7 && op[5] === 1).length;
+  let shortBeats = 0;
+  for (let d = 0; d < 12; d++) {
+    if (towerBarrels(hit + d) === towerBarrels(hit + d - 16) - 1) shortBeats++;
+  }
+  assert(shortBeats === 12,
+    `the destroyed barrel never rides the tower (${shortBeats} of 12 beats one cell short)`);
+  assert(towerBarrels(hit + 12) === towerBarrels(hit - 4),
+    `and the chain is full again on the thirteenth `
+    + `(${towerBarrels(hit + 12)} vs ${towerBarrels(hit - 4)})`);
+
+  // HIS FACE, for the same two beats the wreck is up. The read that won the
+  // bake-off keeps the face nearly still and says it AROUND the head instead:
+  // the smile shrinks to a small O, eight shock ticks radiate off him on the
+  // 2px grid, and a sweat bead appears at his temple. Checked on the O and on
+  // the ticks — the ticks are the whole thesis of that read, and a face that
+  // quietened without them would pass an O-only check while saying nothing —
+  // and checked to STOP as well as start: the toy does not sulk.
+  const openMouth = (beat) => background(1, beat)
+    .some((op) => op[0] === 'ellipse' && op[3] === 2 && op[4] === 2.4);
+  const ticks = (beat) => background(1, beat)
+    .filter((op) => op[0] === 'fillRect' && op[1] === PRINT
+      && op[4] === 2 && op[5] === 2).length;
+  assert(openMouth(hit) && openMouth(hit + 1),
+    'the gorilla is startled for both beats of the wreck');
+  assert(ticks(hit) === ticks(hit - 4) + 8 && ticks(hit + 1) === ticks(hit - 3) + 8,
+    `and the panel radiates his shock for both of them `
+    + `(${ticks(hit) - ticks(hit - 4)} and ${ticks(hit + 1) - ticks(hit - 3)} extra cells)`);
+  assert(!openMouth(hit - 1) && !openMouth(hit + 2) && ticks(hit + 2) === ticks(hit - 2),
+    'and he wears his authored face on the beats either side of it');
+}
+
 // ---- the share price is the run's ----------------------------------------
 //
 // The one gameplay fact this city sees. A rising run tilts the rooftop trace
@@ -396,10 +482,10 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
 {
   // The chart board sits on stage 1's SECOND building — the roof the hero
   // runs under — clear above that roof, so a box around the board catches the
-  // sign and none of the facade's windows. Building 1 is [66, 36, 54]: centre
-  // 84, roof 170, an 11x8 sign on a 30x24 panel whose cells start at 73, 142.
+  // sign and none of the facade's windows. Building 1 is [66, 36, 74]: centre
+  // 84, roof 150, an 11x8 sign on a 30x24 panel whose cells start at 73, 122.
   const inBoard = (op) => op[0] === 'fillRect' && op[4] === 2 && op[5] === 2
-    && op[2] >= 73 && op[2] < 96 && op[3] >= 142 && op[3] < 159;
+    && op[2] >= 73 && op[2] < 96 && op[3] >= 122 && op[3] < 139;
   const traceRows = (extra, settings = {}) => background(1, 4, settings, 0, 0, extra)
     .filter((op) => inBoard(op) && (op[1] === ACTIVE || op[1] === '#f6d33c')).map((op) => op[3]);
   const mid = (rows) => rows.reduce((a, b) => a + b, 0) / Math.max(1, rows.length);
@@ -424,6 +510,94 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
     'and the chart itself comes down while it is up');
   assert(thumbCells({ form: 0.9, cheer: true }, { reducedMotion: true }) === 0,
     'a frozen panel is never cheered at');
+}
+
+// ---- the KEY CHANGE banner ------------------------------------------------
+//
+// Stage 1's plane tows an announcement in front of the song's modulation. Two
+// separate claims, and they fail for different reasons:
+//
+//   the BAR — the scene authors bar 61 because which of this arrangement's
+//             eight transpose moves is THE key change is a musical judgement,
+//             not a fact the data states. Authored is not the same as free: it
+//             still has to stand on a transpose the song actually makes, or the
+//             sky is announcing nothing.
+//   the PASS — the rig arrives, crosses, and is GONE on the downbeat it names.
+//             A banner still in the air when the new key lands is a banner that
+//             was too late, and the whole gag is that it was early.
+{
+  const { arrangement } = await import('../src/data/songs/rhythm.js');
+  const BANNER_BAR = 61;
+  let bar = 1;
+  let prev = 0;
+  const changes = [];
+  for (const e of arrangement.order) {
+    const t = e.transpose ? (e.transpose.lead ?? 0) : 0;
+    if (t !== prev) { changes.push(bar); prev = t; }
+    bar += e.bars ?? 2;
+  }
+  assert(changes.includes(BANNER_BAR),
+    `the announced bar is a key change the song really makes (bar ${BANNER_BAR} of ${changes.join(', ')})`);
+
+  // The banner is the one wide lit slab in the sky: eleven pixels tall, tens of
+  // pixels long, well above every roof on this skyline.
+  const bannerAt = (beat) => background(1, beat)
+    .filter((op) => op[0] === 'fillRect' && op[1] === PANEL_LIT
+      && op[5] === 11 && op[4] > 40 && op[3] < 100).length;
+  const keyBeat = (BANNER_BAR - 1) * 4;
+  let flown = 0;
+  for (let beat = keyBeat - 44; beat < keyBeat + 24; beat++) if (bannerAt(beat)) flown++;
+  assert(flown > 20, `it crosses the sky through the bars around it (${flown} beats of banner)`);
+  // AND IT IS MID-SCREEN ON THE DOWNBEAT IT ANNOUNCES. An announcement that has
+  // already left when the thing happens is one nobody read, so the pass is aimed
+  // rather than merely timed: the rig — banner, tow line and aircraft — has its
+  // middle on the middle of the display on the beat the key changes.
+  const slab = background(1, keyBeat).find((op) => op[0] === 'fillRect' && op[1] === PANEL_LIT
+    && op[5] === 11 && op[4] > 40 && op[3] < 100);
+  assert(slab, 'the banner is in the sky on the downbeat it announces');
+  const rigMid = slab ? (slab[2] + (slab[4] + 6 + 22) / 2) : -1;
+  assert(Math.abs(rigMid - 240) <= 8,
+    `and centred on it (rig middle at x ${Math.round(rigMid)} of a 480 display)`);
+
+  // ...AND IT IS NEVER BLANK. Every crossing tows something — the cabinet's own
+  // advert on an ordinary pass — so what has to be checked is that the two are
+  // different words rather than one banner flown twice. The letter cells are
+  // the 1x1 print marks in the sky, normalised off their own top-left corner:
+  // the same text at a different x fingerprints the same, a different text does
+  // not, and neither depends on where in the crossing the plane happens to be.
+  const lettering = (beat) => {
+    const cells = background(1, beat)
+      // Ink for letters, lit red for the heart container — a banner may carry a
+      // picture as readily as a word, and both are single cells in the sky.
+      .filter((op) => op[0] === 'fillRect' && (op[1] === PRINT || op[1] === ACTIVE)
+        && op[4] === 1 && op[5] === 1 && op[3] < 95)
+      .map((op) => [op[2], op[3]]);
+    if (!cells.length) return '';
+    const x0 = Math.min(...cells.map((c) => c[0]));
+    const y0 = Math.min(...cells.map((c) => c[1]));
+    return fingerprint(cells.map(([x, y]) => [x - x0, y - y0]).sort());
+  };
+  // The same step of different crossings: the crossing is 44 beats of a 64-beat
+  // cycle, so a beat is only comparable with one at the same step of it.
+  const line = (pass) => lettering(pass * 64 + 20);
+  assert(line(0) === '', 'the first crossing of the song tows nothing');
+  // Crossings 1, 2 and 4 — the third is the one the announcement grounds, and
+  // the rotation steps over it rather than spending a line on it. That is the
+  // claim, and it is the one the song's own loop makes load-bearing: bars 21 to
+  // 76 is three and a half crossings, so a rotation that spent a line on a
+  // grounded pass would never fly its third in a whole lap.
+  const rota = [1, 2, 4].map(line);
+  assert(rota.every((l) => l.length > 2), 'and every crossing after it tows a line');
+  assert(new Set(rota).size === rota.length,
+    'a different one each crossing, the grounded one stepped over rather than paid for');
+  // Before the announcement opens, where a grounded crossing would be eight
+  // beats into its own run — nothing takes off.
+  assert(bannerAt(keyBeat - 40) === 0, 'a crossing that runs into the announcement never takes off');
+  assert(line(5) === rota[0], 'the rotation comes round rather than running out');
+  assert(lettering(85) === rota[0] && lettering(94) === rota[0],
+    'a line holds for the whole of its own crossing');
+  assert(!rota.includes(lettering(keyBeat - 20)) && lettering(keyBeat - 20).length > 2,
+    'and the announcement pass tows something the rotation never says');
 }
 
 if (failed) process.exit(1);

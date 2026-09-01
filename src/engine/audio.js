@@ -495,6 +495,13 @@ const SFX_TRIM = {
   contact: ATTACK_MASTER_TRIM, launch: 0.92 * ATTACK_MASTER_TRIM,
   shield: 0.78, star: 0.72, win: 0.76, power: 0.84, rewindPickup: 0.78,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
+  // SCENERY, and levelled as scenery. Untrimmed the crack peaked -11.3 dBFS —
+  // hotter than 'crunch', a cue the player causes — which is the wrong way
+  // round for something that happens on the skyline whatever the player does.
+  // 0.55 lands it at -16.5 peak / -38.9 RMS: the same peak as 'crunch' so the
+  // crack still reads as an impact, and 6.6dB under it on RMS so the body of
+  // the sound stays behind the song and the lane's own cues.
+  barrelBurst: 0.55,
   // Six noise layers plus the crash buffer sum far hotter than the two-layer
   // 'crunch' it replaces at the plow: untrimmed it peaked -6.7 dBFS, which is
   // over 'boom' and 3.5dB over 'blockBreak', and a break cue has no business
@@ -3699,6 +3706,24 @@ class AudioSys {
         break;
       }
       case 'boom': this.explosion(); break;
+      // The plane and the barrel, once every sixteen bars — the LCD city's one
+      // scheduled accident (stylePacks lcdBarrelStrikeAt fires it). SCENERY, so
+      // it is built to be heard and then get out of the way: a bright crack, a
+      // hollow wooden body under it, and four scattered clicks that are the
+      // stave cells arriving as sound. Handheld-scale on purpose — a full
+      // 'boom' out of the skyline reads as something the PLAYER did, and on a
+      // beat stage the one thing a background must never do is claim a beat.
+      case 'barrelBurst': {
+        this.noise(0.05, 0.16, 'highpass', 2600);
+        this.noise(0.14, 0.13, 'bandpass', 620);
+        this.osc('square', 320 * pitch, 70 * pitch, 0.16, 0.075);
+        this.osc('sine', 150 * pitch, 44 * pitch, 0.22, 0.1);
+        for (let i = 0; i < 4; i++) {
+          this.osc('square', (900 - i * 130) * pitch, (620 - i * 110) * pitch,
+            0.03, 0.035, 0.09 + i * 0.045);
+        }
+        break;
+      }
       // ---- Fireworks. Three burst shapes so a long results screen never
       // repeats the same crack twice in a row; the caller also detunes each.
       // The mortar going up: air, not tone. Rising sine underneath it only to

@@ -25,7 +25,16 @@ export const OBSTACLES = {
   // coming at you is now leaving, which is what kicking a heavy rolling object
   // actually does. `punt` does not change what the spawner budgets: the barrel
   // is still `action: 'jump'`, and the slide is still the ALTERNATIVE.
-  barrel:     { w: 13, h: 13, sprite: 'barrel', ground: true, breakable: true, action: 'jump', vx: -40, roll: true, punt: 'heavy', puntLabel: 'BARREL' },
+  //
+  // EXCEPT ON A BEAT LANE, which is what `beatPunt` is for. It is the same flag
+  // `beatShoot` is on cardBox below — the mark that says a def may stand as the
+  // physical half of a chart slot — and it says this one answers to a DUCK
+  // there while staying `action: 'jump'` everywhere else. Both readings are
+  // true of the object and neither is a compromise: off the grid a rolling
+  // barrel is a thing you hop and the kick is a flourish, and on the grid the
+  // kick is the beat, because a hazard that is closing on you is the one read
+  // this cabinet has never asked for. See beatchart.js.
+  barrel:     { w: 13, h: 13, sprite: 'barrel', ground: true, breakable: true, action: 'jump', beatPunt: true, vx: -40, roll: true, punt: 'heavy', puntLabel: 'BARREL' },
   // Two bodies, one drone: the rotor workhorse and the watching eye. See `skin`
   // in makeObstacle — it is a look, not a variant hazard.
   //

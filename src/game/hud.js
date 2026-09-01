@@ -112,6 +112,11 @@ const RIBBON_BACK_BEATS = 1, RIBBON_AHEAD_BEATS = 4.5;
 const RIBBON_FADE_BACK = Math.round(0.35 * RIBBON_BEAT_PX);
 const RIBBON_FADE_AHEAD = RIBBON_BEAT_PX;
 const RIBBON_PLATE = 'rgba(16,20,28,0.55)';
+// How far an action glyph swells on the downbeat, as a fraction of its size.
+// A quarter is the most it can take before the arrows start clipping their own
+// lane at the top of the swell; it is also about the least that still reads as
+// a pulse rather than as a jitter at the size these are drawn.
+const RIBBON_PULSE = 0.25;
 const RIBBON_BACK_W = RIBBON_BACK_BEATS * RIBBON_BEAT_PX;
 const RIBBON_AHEAD_W = RIBBON_AHEAD_BEATS * RIBBON_BEAT_PX;
 // The pulse marker overhangs the strip by two units at each end (see the gold
@@ -162,6 +167,16 @@ export function drawBeatRibbon(ctx, run) {
   // The band's midline and the arrows' half-height, named once: every glyph
   // hangs off these two rather than off the plate's top edge.
   const mid = y + h / 2, ARROW_H = 2.5 * u;
+  // Every action glyph breathes on the pulse. The swell comes off beatPhase —
+  // the same unwrapped chart clock the markers TRAVEL on — and not off the
+  // analyser's beatPulse like the playhead below: the analyser answers "is the
+  // music loud right now", which is a hair late and drifts with the mix, and a
+  // strip whose markers swell out of step with the marks they are sliding
+  // toward reads as broken rather than as musical. Cubed so the beat lands as
+  // an accent and decays away rather than pumping the whole bar, and applied
+  // as a SIZE, not an alpha: the arrows already fade at the ends of the plate
+  // (edgeFade), and two things fighting over one channel muddies both.
+  const glyphSwell = 1 + RIBBON_PULSE * (1 - beatPhase) ** 3;
   // How much ink an element at `dx` from the playhead gets: full inside the
   // body of the strip, ramping to nothing across the last RIBBON_FADE px of
   // whichever end it is approaching. Every tick and marker takes it, so nothing
@@ -252,14 +267,20 @@ export function drawBeatRibbon(ctx, run) {
     // way it points is what the player reads at a glance; the colour (cyan
     // against the jump's gold) is what confirms it.
     if (marker.action === 'jump') {
-      ctx.beginPath(); ctx.moveTo(x, mid - ARROW_H); ctx.lineTo(x - 3 * u, mid + ARROW_H); ctx.lineTo(x + 3 * u, mid + ARROW_H); ctx.closePath(); ctx.fill();
+      const aw = 3 * u * glyphSwell, ah = ARROW_H * glyphSwell;
+      ctx.beginPath(); ctx.moveTo(x, mid - ah); ctx.lineTo(x - aw, mid + ah); ctx.lineTo(x + aw, mid + ah); ctx.closePath(); ctx.fill();
     } else if (marker.action === 'duck') {
-      ctx.beginPath(); ctx.moveTo(x, mid + ARROW_H); ctx.lineTo(x - 3 * u, mid - ARROW_H); ctx.lineTo(x + 3 * u, mid - ARROW_H); ctx.closePath(); ctx.fill();
+      const aw = 3 * u * glyphSwell, ah = ARROW_H * glyphSwell;
+      ctx.beginPath(); ctx.moveTo(x, mid + ah); ctx.lineTo(x - aw, mid - ah); ctx.lineTo(x + aw, mid - ah); ctx.closePath(); ctx.fill();
     } else if (marker.action === 'ability') {
-      ctx.beginPath(); ctx.arc(x, mid, 3 * u, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.arc(x, mid, 3 * u * glyphSwell, 0, Math.PI * 2);
       ctx.strokeStyle = '#f890b8'; ctx.lineWidth = Math.max(1, Math.round(u)); ctx.stroke();
     } else {
-      ctx.fillRect(x - 1 * u, mid - 1.5 * u, 3 * u, 3 * u);
+      // Coins are clock ticks, not calls to act — smaller than the arrows they
+      // sit between, centred on x (the old 3u box hung half a unit right of the
+      // marker it was reporting), and deliberately NOT swelling: the pulse is
+      // how the strip says "do something here", and a coin asks for nothing.
+      ctx.fillRect(x - 1 * u, mid - 1 * u, 2 * u, 2 * u);
     }
   }
   ctx.restore();

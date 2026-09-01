@@ -148,6 +148,19 @@ const GLYPHS = {
 
 const fontCache = new Map();
 
+/**
+ * One glyph of the 5x7 font as its raw rows, for painters that lay their own
+ * cells rather than blitting a canvas.
+ *
+ * The LCD panel is the customer: every mark on it is a rectangle on a fixed
+ * grid, and a blitted glyph would be the one piece of type on that screen that
+ * was drawn some other way. Returns null for anything the font does not carry.
+ */
+export function pixelGlyph(ch) {
+  const def = GLYPHS[ch] || GLYPHS[String(ch).toUpperCase()];
+  return def ? def.split(' ') : null;
+}
+
 function glyphCanvas(ch, color) {
   const key = ch + '|' + color;
   if (fontCache.has(key)) return fontCache.get(key);

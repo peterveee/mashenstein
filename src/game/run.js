@@ -36,7 +36,7 @@ import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
-import { getStylePack, sunShock, drawPitFills } from '../engine/stylePacks/index.js';
+import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt } from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY, BEAT_SPEECH_Y } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
@@ -1139,12 +1139,16 @@ export class RunState {
     // a style pack honest. `rhythmCheer` is the seconds left on the thumbs-up
     // the board puts up every eighth beat of a clean streak.
     this.rhythmForm = RHYTHM_FORM_START;
+    this.cityAccidentBeat = null;
     this.rhythmCheer = 0;
     this.beatJudgeConsumed = new Set();
     this.beatJudgeLastRaw = null;
     this.beatJudgeEpoch = 0;
     this.beatJudgeCursor = null;
     this.rhythmSetEvents = [];
+    // Holes a lane rebuild kept because the player could see them; they are
+    // re-read onto the new anchor the moment it exists (rebeatSparedHoles).
+    this.rhythmSparedHoles = null;
     this.beatDriftLastRaw = null;
     this.beatDriftEpoch = 0;
     this.beatDriftLastBeat = null;
@@ -2181,12 +2185,16 @@ export class RunState {
     this.rewindFx = new TapeRewindEffect();
     this.beatCombo = 0;
     this.rhythmForm = RHYTHM_FORM_START;
+    this.cityAccidentBeat = null;
     this.rhythmCheer = 0;
     this.beatJudgeConsumed.clear();
     this.beatJudgeLastRaw = null;
     this.beatJudgeEpoch = 0;
     this.beatJudgeCursor = null;
     this.rhythmSetEvents = [];
+    // Holes a lane rebuild kept because the player could see them; they are
+    // re-read onto the new anchor the moment it exists (rebeatSparedHoles).
+    this.rhythmSparedHoles = null;
     this.beatDriftLastRaw = null;
     this.beatDriftEpoch = 0;
     this.beatDriftLastBeat = null;
@@ -2435,6 +2443,7 @@ export class RunState {
       // about to come round again. A stale "already judged" against a fresh
       // beat hid its ribbon marker and refused its combo credit.
       this.beatJudgeConsumed.clear();
+      this.rebeatSparedHoles(beat);
       this.beatDriftLastRaw = beat;
       this.beatDriftEpoch = 0;
       this.beatDriftLastBeat = beat;
@@ -2912,6 +2921,7 @@ export class RunState {
     const sMult = hero.scoreMult * this.powerups.scoreMult() * (this.modIds.includes('crayon') ? 0.95 : 1);
     this.score += 10 * (sp / BASE_SPEED) * sMult * dt;
     this.advanceBeatJudging();
+    this.advanceCityAccident();
     // The thumbs-up is on a wall clock, not a beat count: it has to outlast the
     // beat that earned it or the board flickers a thumb for a sixteenth.
     if (this.rhythmCheer > 0) this.rhythmCheer = Math.max(0, this.rhythmCheer - dt);
@@ -5127,6 +5137,7 @@ export class RunState {
     // hiding their ribbon arrows and denying their combo credit for whole
     // loops after every resync.
     this.beatJudgeConsumed.clear();
+    this.rebeatSparedHoles(beat);
     this.beatDriftLastRaw = beat;
     this.beatDriftEpoch = 0;
     this.beatDriftLastBeat = beat;
@@ -5138,23 +5149,40 @@ export class RunState {
 
   invalidateRhythmLane() {
     const px = this.playerWorldX();
-    for (const ob of this.obstacles) {
-      if (ob.chartAction && ob.x >= px - 20) ob.live = false;
-    }
     // NOTHING VANISHES IN PLAIN VIEW — the same rule sweepCoinsAroundHole
     // states, applied to a lane rebuild. A coin asks nothing of the judge, so a
     // spared one a few px off the new grid is still an honest pickup, while a
-    // run of them blinking out mid-screen was the whole complaint. Obstacles
-    // are not spared: a bar the judge will no longer credit is a trap, and the
-    // rebuild lays its replacement on the true grid. New events start a full
-    // runway past the view, so a kept coin is never doubled by its relay.
+    // run of them blinking out mid-screen was the whole complaint. New events
+    // start a full runway past the view, so a kept coin is never doubled by its
+    // relay.
     const keepTo = this.camX + W / this.camZoom;
+    // A HOLE IS GEOMETRY, NOT A PROMISE.
+    //
+    // A bar is not spared: the judge will no longer credit it, and a bar that
+    // scores nothing is a trap, so the rebuild lays its replacement on the true
+    // grid. A hole cannot be handled that way. The floor either has a break in
+    // it or it does not, the player has already committed a run-up to the one
+    // he can see, and deleting it mid-approach — which is what pausing beside a
+    // pit used to do — is the lane lying about the ground. So every hole the
+    // player can see stays exactly where it was cut, and only its BEAT is
+    // re-read off it below (rebeatSparedHoles; a set piece does the same
+    // through its plan, in BeatSpawner._rebeatPit). Holes past the view have
+    // never been read by anyone and rebuild like everything else.
+    const spared = [];
+    for (const ob of this.obstacles) {
+      if (!ob.chartAction || ob.x < px - 20) continue;
+      if (ob.setPiece || (ob.def?.isGap && ob.x <= keepTo)) { spared.push(ob); continue; }
+      ob.live = false;
+    }
+    this.rhythmSparedHoles = spared;
     for (const p of this.pickups) {
       if (p.chartAction && p.x >= px - 20 && p.x > keepTo) p.live = false;
     }
     for (const pit of this.pitPlan || []) {
-      if (!pit.passed) {
-        pit.spawned = false;
+      // Only the pieces still waiting to be cut are re-armed. A spawned one is
+      // standing in the lane above — clearing its flags would cut a second hole
+      // beside the first.
+      if (!pit.passed && !pit.spawned) {
         pit.done = false;
       }
     }
@@ -5172,7 +5200,19 @@ export class RunState {
   // slabs to the exact same positions instead of shifting live entities in
   // place.  The callback runs once per alignment, not every frame.
   syncRhythmSetPieceGeometry(pit) {
-    if (!pit?.crossing) return;
+    if (!pit) return;
+    // A piece that is already cut keeps the beat fields on its own obstacle in
+    // step with the plan's. The portal sweep consumes a swept entity's beat by
+    // these two numbers, and a stale pair there would forgive the wrong beat.
+    for (const ob of this.obstacles) {
+      if (!ob.live || ob.setPiece !== pit) continue;
+      ob.actionBeat = pit.actionBeat;
+      ob.chartSlot = Number.isFinite(pit.actionBeat)
+        ? ((Math.round(pit.actionBeat) % (this.spawner.chart?.loopBeats || 8))
+          + (this.spawner.chart?.loopBeats || 8)) % (this.spawner.chart?.loopBeats || 8)
+        : null;
+    }
+    if (!pit.crossing) { this.refreshRhythmSetEvents(); return; }
     const c = pit.crossing;
     const routes = this.routes || [];
     const stones = c.stones || [];
@@ -5188,6 +5228,45 @@ export class RunState {
       x: x.x, w: x.w, h: CROSSING_ROAD_RISE, ramp: CROSSING_RISE_RAMP * this.baseSpeed(),
     })));
     this.refreshRhythmSetEvents();
+  }
+
+  /**
+   * THE HOLE STAYS PUT AND THE BEAT COMES TO IT.
+   *
+   * The mirror of the spawner's own alignment, for the holes invalidateRhythmLane
+   * spared. There the beat grid decides where a hole is cut; here the hole is
+   * already cut and on screen, so it is the fixed point and its beat is read
+   * back off its take-off mark under the NEW anchor. The number is only ever
+   * used to judge and to draw the ribbon's arrow, so rounding to the nearest
+   * beat is the honest answer — the hole itself has not moved a pixel.
+   *
+   * A re-read beat may land on a slot the chart does not want a jump on, and
+   * the scoreboard reads the CHART. Rather than let a hole stand on a beat that
+   * demands a duck, that beat is consumed: the jump over it scores nothing, and
+   * — the part that matters — it cannot break a combo the player did nothing
+   * wrong to lose. A set piece keeps its credit, because its beats are its own
+   * (rhythmSetEvents) rather than the chart's.
+   */
+  rebeatSparedHoles(beat) {
+    const holes = this.rhythmSparedHoles;
+    this.rhythmSparedHoles = null;
+    if (!holes?.length || !Number.isFinite(beat)) return;
+    const chart = this.spawner?.chart;
+    const loop = chart?.loopBeats || 8;
+    const pxPerBeat = this.speed * 60 / (this.cabinet.music?.bpm || 120);
+    if (!(pxPerBeat > 0)) return;
+    const px = this.playerWorldX();
+    for (const ob of holes) {
+      // A set piece is re-read from its plan, with its stones, and keeps the
+      // beats it owns.
+      if (!ob.live || ob.setPiece || !Number.isFinite(ob.actionX)) continue;
+      const n = Math.round(beat + (ob.actionX - px) / pxPerBeat);
+      const slot = ((n % loop) + loop) % loop;
+      ob.actionBeat = n;
+      ob.chartSlot = slot;
+      const action = chart?.events?.[slot]?.action;
+      if (action !== 'jump' && action !== 'pit') this.beatJudgeConsumed.add(`judge:${n}:${slot}`);
+    }
   }
 
   refreshRhythmSetEvents() {
@@ -5239,6 +5318,27 @@ export class RunState {
     // beat would break the combo the bar beside it builds.
     const action = event.action === 'pit' ? 'jump' : event.action;
     return { id: `judge:${beat}:${slot}`, beat, action };
+  }
+
+  // THE SKYLINE'S ONE SOUND. Once every sixteen bars the plane crossing the
+  // LCD city flies into the barrel the gorilla holds over his head, and the
+  // panel draws the wreck. The painter cannot make a noise and this file
+  // cannot know the beat the two bodies meet on, so the run asks stylePacks
+  // once per heard beat and fires the cue — the only traffic that ever goes
+  // from the city back to the run.
+  //
+  // Silent under reduced motion for the same reason the panel is frozen
+  // there: a still picture must not be narrated by a bang. Silent on every
+  // other style pack too — nothing else has a plane in it.
+  advanceCityAccident() {
+    if (!this.beatLock || this.styleName !== 'lcd'
+      || this.save.settings.reducedMotion) return;
+    const beat = this.rhythmBeatNow();
+    if (!Number.isFinite(beat)) { this.cityAccidentBeat = null; return; }
+    const heard = Math.floor(beat);
+    if (heard === this.cityAccidentBeat) return;
+    this.cityAccidentBeat = heard;
+    if (lcdBarrelStrikeAt(this.stage?.index, heard)) Audio.sfx('barrelBurst');
   }
 
   checkRhythmDrift() {
@@ -6365,6 +6465,8 @@ export class RunState {
         ? ((Math.round(plan.actionBeat) % (this.spawner.chart?.loopBeats || 8))
           + (this.spawner.chart?.loopBeats || 8)) % (this.spawner.chart?.loopBeats || 8)
         : null;
+      // The plan owns the hole, so a resync can find it and leave it standing.
+      hole.setPiece = plan;
       this.obstacles.push(hole);
       this.refreshRhythmSetEvents();
     }

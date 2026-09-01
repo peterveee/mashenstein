@@ -759,6 +759,109 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
   assert(ok.events[0].column === 3, 'but carries an honest one through to the lane');
 }
 
+// A PAUSE BESIDE A PIT LEAVES THE PIT THERE.
+//
+// The song plays on while the pause menu is up, so resuming re-anchors the lane
+// — and the rebuild used to delete every chart entity in front of the hero, the
+// hole he was three strides into a run-up for included. It came back, four
+// beats and a 760px lookahead later, somewhere else. A hole is geometry: it
+// stays where it was cut, keeps its width, and only its beat is re-read.
+{
+  save.load(); save.newSlot(0, 0);
+  const oldSourceBank = Audio.sourceBank;
+  const oldSongBeat = Audio.songBeat;
+  const stage = STAGES.find((s) => s.id === 'rhythm-3');
+  const run = new RunState({ stage, save, seed: 31, skipRunIn: true, devInvuln: true, onEnd: () => {} });
+  run.enter();
+  Audio.sourceBank = run.cabinet.music;
+  const loopBeats = run.spawner.chart.loopBeats;
+  let songTime = 0;
+  Audio.songBeat = () => ((songTime * run.cabinet.music.bpm / 60) % loopBeats);
+  const TICK = 1 / 60;
+  const view = () => run.camX + 480 / run.camZoom;
+  const inView = () => run.obstacles.filter((ob) => ob.live && ob.def.isGap && !ob.tunnel
+    && ob.x > run.playerWorldX() - 20 && ob.x <= view());
+  // Run on until one of the chart's own holes is actually on screen — that is
+  // the moment the complaint is about.
+  let holes = [];
+  for (let i = 0; i < 3000 && !holes.length; i++) {
+    songTime += TICK; run.update(TICK); holes = inView();
+  }
+  assert(holes.length > 0, `the lane has cut holes the hero can see (${holes.length})`);
+  const before = holes.map((ob) => ({ ob, x: ob.x, w: ob.w }));
+  // The pause itself: the world holds still and the song runs on, which is
+  // exactly the discontinuity resuming has to answer.
+  songTime += 3.2;
+  run.resetRhythmLane();
+  assert(before.every((h) => h.ob.live), 'every hole in view survives the resume');
+  assert(before.every((h) => h.ob.x === h.x && h.ob.w === h.w),
+    'and stands where it was cut, the same width');
+  const heard = run.rhythmBeatForJudging();
+  assert(before.every((h) => Number.isFinite(h.ob.actionBeat)
+    && Math.abs(h.ob.actionBeat - (heard + (h.ob.actionX - run.playerWorldX())
+      / (run.speed * 60 / run.cabinet.music.bpm))) <= 0.5),
+    'each one carries the beat its take-off mark now falls on');
+  // Nothing the player must answer for is left demanding an input at a beat the
+  // re-read put on a slot the chart wants something else on.
+  const chart = run.spawner.chart;
+  assert(before.every((h) => {
+    const wants = chart.events[h.ob.chartSlot]?.action;
+    return wants === 'jump' || wants === 'pit'
+      || run.beatJudgeConsumed.has(`judge:${h.ob.actionBeat}:${h.ob.chartSlot}`);
+  }), 'and never stands on a beat the chart demands a different input on');
+  // The combo the hero built is not taken away by the resume itself.
+  run.beatCombo = 4;
+  for (let i = 0; i < 24; i++) { songTime += TICK; run.update(TICK); }
+  assert(run.beatCombo === 4, 'and the resume alone breaks no combo in the beats after it');
+  Audio.songBeat = oldSongBeat;
+  Audio.sourceBank = oldSourceBank;
+}
+
+// A CROSSING SURVIVES THE SAME PAUSE, stones and all: it is the widest piece of
+// geometry on any lane and the one a player is most committed to when the menu
+// goes up.
+{
+  save.load(); save.newSlot(0, 0);
+  const oldSourceBank = Audio.sourceBank;
+  const oldSongBeat = Audio.songBeat;
+  const stage = STAGES.find((s) => s.id === 'rhythm-2');
+  const run = new RunState({ stage, save, seed: 5, skipRunIn: true, devInvuln: true, onEnd: () => {} });
+  run.enter();
+  Audio.sourceBank = run.cabinet.music;
+  const loopBeats = run.spawner.chart.loopBeats;
+  let songTime = 0;
+  Audio.songBeat = () => ((songTime * run.cabinet.music.bpm / 60) % loopBeats);
+  const TICK = 1 / 60;
+  const plan = run.pitPlan.find((pp) => pp.crossing);
+  assert(!!plan, 'rhythm-2 carries the act I crossing');
+  // Walk the camera up to the piece rather than playing the whole stage.
+  for (let i = 0; i < 400 && !plan.spawned; i++) {
+    if (plan._beatAligned && run.camX + 900 < plan.x) {
+      const step = Math.min(400, plan.x - 900 - run.camX);
+      run.camX += step;
+      run.player.x = (run.player.x ?? 0) + step;
+    }
+    songTime += TICK;
+    run.update(TICK);
+  }
+  assert(plan.spawned, 'the crossing is cut when the camera reaches it');
+  const hole = run.obstacles.find((ob) => ob.live && ob.setPiece === plan);
+  assert(!!hole, 'and stands in the lane as one break');
+  const x = hole?.x, w = hole?.w;
+  const stones = (plan.crossing.stones || []).map((st) => st.x);
+  songTime += 2.7;
+  run.resetRhythmLane();
+  assert(!!hole && hole.live && hole.x === x && hole.w === w,
+    'the resume leaves the break exactly where it was');
+  assert(plan.spawned && !plan.passed, 'and does not re-arm the piece into a second one');
+  assert((plan.crossing.stones || []).every((st, i) => st.x === stones[i]),
+    'and every stone stays under the jump it was placed for');
+  assert(run.obstacles.filter((ob) => ob.live && ob.setPiece === plan).length === 1,
+    'exactly one break, not two');
+  Audio.songBeat = oldSongBeat;
+  Audio.sourceBank = oldSourceBank;
+}
+
 let reads = 0;
 const fakeRng = { float: () => { reads++; return 0.45; }, pick: (xs) => { reads++; return xs[0]; } };
 const banned = randomPowerPickup(fakeRng, null, { allowRewind: false,

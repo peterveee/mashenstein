@@ -453,6 +453,16 @@ export class BeatSpawner {
     this.eventInstances = [];
     for (const pit of this.pitPlan || []) {
       if (pit.passed) continue;
+      // A HOLE THAT HAS BEEN CUT IS GEOMETRY, NOT A PENDING EVENT.
+      //
+      // An unspawned piece is still only a plan, so a resync is free to send it
+      // back to its authored position and re-snap it onto the new grid. One the
+      // lane has already cut is a break in the floor the player is reading and
+      // has committed a run-up to — moving it is the resync deleting the thing
+      // that is being jumped, which is how a pause near a pit used to make the
+      // pit disappear. It keeps its position and its width; only its BEAT is
+      // re-derived, from where it now stands (see _rebeatPit).
+      if (pit.spawned) { pit._rebeat = true; continue; }
       if (pit._authoredX == null) pit._authoredX = pit.x;
       pit.x = pit._authoredX;
       pit._beatAligned = false;
@@ -486,6 +496,7 @@ export class BeatSpawner {
     // its local placement while making the required jump musical.
     const origin = playerX - beat * pxPerBeat;
     for (const pit of this.pitPlan) {
+      if (pit._rebeat) this._rebeatPit(pit, origin, pxPerBeat);
       if (pit.passed || pit._beatAligned || !finiteNumber(pit.x)) continue;
       if (pit._authoredX == null) pit._authoredX = pit.x;
       const speed = speedFromPx(pxPerBeat, this.bank?.bpm || 120);
@@ -530,6 +541,39 @@ export class BeatSpawner {
       pit.clearancePx = speed * (pit.crossing ? Math.max(this.react, 0.82 * 1.15) : this.react);
       this.onPitAlign?.(pit);
     }
+  }
+
+  /**
+   * THE PIECE STAYS PUT AND THE BEAT COMES TO IT.
+   *
+   * The mirror of _alignPits, for a set piece the lane has already cut. There
+   * the authored position is the fixed point and the beat grid picks where the
+   * hole lands; here the hole is the fixed point — it is on screen — and the
+   * beat is read back off it. The resync re-anchored the lane to the heard
+   * clock, so the piece's old beat number describes a mapping that no longer
+   * holds; rounding to the nearest beat under the NEW mapping is the honest
+   * answer, and the worst it can be out by is half a beat the player's own
+   * run-up already committed to.
+   */
+  _rebeatPit(pit, origin, pxPerBeat) {
+    pit._rebeat = false;
+    if (!finiteNumber(pit.actionX) || !finiteNumber(pxPerBeat) || pxPerBeat <= 0) return;
+    const speed = speedFromPx(pxPerBeat, this.bank?.bpm || 120);
+    // The take-off point is where it was — the piece has not moved — so only
+    // the beat under it is re-read.
+    const actionBeat = Math.round((pit.actionX - origin) / pxPerBeat);
+    pit.actionBeat = actionBeat;
+    pit.clearancePx = speed * (pit.crossing ? Math.max(this.react, 0.82 * 1.15) : this.react);
+    // Only a crossing owns beats of its own; an ordinary hole is judged by the
+    // chart slot it stands on, so giving it an actionBeats list here would mint
+    // a second event for one jump. The stone cadence is 2 beats and the stone
+    // spacing is 2 * pxPerBeat, so the stones that are already on screen still
+    // line up with the re-derived beats without being moved.
+    if (pit.crossing) {
+      pit.actionBeats = Array.from({ length: pit.crossing.jumps }, (_, i) => actionBeat + i * 2);
+      pit.crossing.actionBeats = pit.actionBeats.slice();
+    }
+    this.onPitAlign?.(pit);
   }
 
   /** Same positional surface as Spawner.fill, with an injected beat clock. */
