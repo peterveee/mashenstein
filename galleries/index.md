@@ -76,3 +76,4 @@ Do not edit by hand.
 | 2026-09-01 | `05f64d4` | [2026-09-01-05f64d4.html](2026-09-01-05f64d4.html) | Revise boss level design: update boss names and mechanics, adjust stage layouts, and modify trophy tracking for rhythm and neon cabinets |
 | 2026-09-01 | `7e5ce78` | [2026-09-01-7e5ce78.html](2026-09-01-7e5ce78.html) | Refactor tests and arrangement editing logic |
 | 2026-09-01 | `48b9241` | [2026-09-01-48b9241.html](2026-09-01-48b9241.html) | fix: update beat ribbon marker color and change box to dot for clarity |
+| 2026-09-02 | `4ab5228` | [2026-09-02-4ab5228.html](2026-09-02-4ab5228.html) | Refactor MIDI and arrangement handling in mixer tools |

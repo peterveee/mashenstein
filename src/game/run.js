@@ -37,7 +37,7 @@ import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
-import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_BEATS, LCD_ACTION_GLYPH }
+import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_BEATS }
   from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY, BEAT_SPEECH_Y } from './hud.js';
 import { goalsDone } from './plugs.js';
@@ -126,6 +126,17 @@ const CAM_FOOTROOM = 6;
 // How far past the right edge a self-moving obstacle wakes up. Enough that it is
 // already rolling when it comes into shot rather than starting dead.
 const WAKE_MARGIN = 48;
+// THE OMEN. Once in a while — one stage attempt in eight — the backdrop's
+// plane tows SURRENDER DOROTHY instead of its usual line. Rolled once per
+// stage off the run's own seed, on a stream nothing else draws from, so a
+// daily seed sees the same sky and no gameplay draw moves because of it. The
+// number is the beat the omen's clock starts; the first crossing to take off
+// after it carries the words (LCD pack, lcdPlaneCyc), so it lands somewhere
+// in the first half of a ninety-second stage. Only a backdrop that authors an
+// `omen` flies it — today that is rhythm-3 alone (LCD_CITY_SCENES[3]);
+// everywhere else the roll is a number nobody reads.
+const SKY_OMEN_CHANCE = 1 / 8;
+const SKY_OMEN_BEAT = [16, 48];
 // A spring launches to the road's entry height plus this. Clearance rather than
 // exactness: the hero has to be DESCENDING to be caught by a road (see
 // updateRoute), so the arc must peak above it rather than at it.
@@ -339,6 +350,32 @@ function warmHeroArt(heroId) {
 // live beat clock can be confirmed before the chart is rebuilt.  This is a
 // wall-clock guard only; the music continues and the lane is ultimately
 // anchored to the beat that was actually heard.
+// HOW LONG EACH VERB HOLDS THE SIGN, in beats. Two bars each, and the floor
+// under it is two beats: a sign the player has to catch inside a single beat is
+// one they will miss while they are looking at the lane, which is where they
+// are supposed to be looking. Three verbs at this length is six bars of the
+// opening, and the price has its board back well before the second phrase.
+// WHEN THE ROLL STARTS, in beats after the stage opens — and it is not zero.
+// The city walks on over the first eleven beats and the sign's own roof is the
+// second structure to arrive, so a roll that began at the downbeat spent its
+// first bar on a board that was still climbing into place or not drawn at all.
+// Four is the beat that facade lands on (structure 1 of the assembly, three
+// beats to settle), so the sign goes up the moment it has something to stand on
+// and the rest of the skyline finishes behind it.
+const RHYTHM_SIGN_FROM = 4;
+// ONE BAR EACH. Four beats is long enough to read a mark and a word off a sign
+// that is flashing at you, and short enough that three of them are three bars
+// rather than six — the whole roll is over inside the first phrase.
+const RHYTHM_SIGN_BEATS = 4;
+const RHYTHM_SIGN_BEATS_MIN = 2;
+// THE ORDER IS TAUGHT, NOT DERIVED, and this is the one place the panel does
+// not simply report the chart. The charts introduce their whole vocabulary in
+// the first sixteen-beat loop — rhythm-3 happens to ask for a jump before a
+// duck — so "the order they are first asked for" is an accident of authoring
+// rather than a teaching order. Slide is the hardest of the three and the one
+// the cabinet adds LAST across its stages, so it leads; the power comes after
+// the two movements. A stage that never asks for one of them never shows it.
+const RHYTHM_SIGN_ORDER = ['duck', 'jump', 'ability'];
 const RHYTHM_DEATH_SYNC_SEC = 1;
 // The retry hold is intentionally invisible to control, but a hero held in the
 // restored pose for that whole second reads like a stuck game. Let the hero
@@ -1176,6 +1213,23 @@ export class RunState {
     this.rhythmForm = RHYTHM_FORM_START;
     this.cityAccidentBeat = null;
     this.barrelChuteCue = null;
+    // THE SKYLINE'S WALK-ON CLOCK: beats since the world started moving, or
+    // null before it has. Constructor, not enter(), for the same reason
+    // `introDone` is: the city is assembled once per stage, and a death
+    // restart arrives at one that is already standing. It counts the run's own
+    // opening rather than the song's beat — the song is already playing under
+    // the act banner and comes round again on every loop, so a skyline hung on
+    // it walked on behind the card and walked off again mid-run.
+    this.cityIntroBeat = null;
+    this.cityIntroRaw = null;
+    // The run's own beat clock — the opening's counter, but one that is never
+    // told to stand still: `cityIntroBeat` goes to Infinity on a retry so the
+    // city arrives built, and the omen needs the number underneath that.
+    this.skyBeat = null;
+    // Beat the omen takes off on, null for the runs that never roll it, and
+    // undefined until the first enter() has a seed to roll with. Rolled once:
+    // a retry keeps the sky it had rather than re-rolling a second chance.
+    this.skyOmenBeat = undefined;
     this.rhythmCheer = 0;
     this.beatJudgeConsumed = new Set();
     this.beatJudgeLastRaw = null;
@@ -1713,6 +1767,13 @@ export class RunState {
     // death-restart.  The first stage entry already has its opening card/run-in
     // as a synchronization budget; retries need an explicit audio-clock hold.
     const rhythmRetry = this.beatLock && this.introDone;
+    // A RETRY ARRIVES AT A CITY THAT IS ALREADY BUILT. The walk-on is the first
+    // thing the stage does and it does it once; a player who died inside the
+    // opening bars would otherwise watch the last few structures land again on
+    // the way back in. Infinity rather than a number past the assembly: the
+    // panel's contract is that a non-finite opening beat means STANDING, so
+    // this says the thing rather than out-counting it.
+    if (this.introDone && this.cityIntroBeat != null) this.cityIntroBeat = Infinity;
     Input.setContext('run');
     const o = this.o;
     // THE STAGE'S LAYOUT, resolved once and read by everything below: how long
@@ -1727,6 +1788,11 @@ export class RunState {
     this.rng = new Rng(this.seed);
     this.fxRng = this.rng.stream('fx');
     this.speechRng = this.rng.stream('speech');
+    if (this.skyOmenBeat === undefined) {
+      const omen = this.rng.stream('sky-omen');
+      this.skyOmenBeat = omen.chance(SKY_OMEN_CHANCE)
+        ? omen.int(SKY_OMEN_BEAT[0], SKY_OMEN_BEAT[1]) : null;
+    }
     this.save = o.save;
     const slot = this.save.slot;
     this.bench = slot.bench;
@@ -2251,11 +2317,11 @@ export class RunState {
     this.laneCallLastBeat = null;
     this.rhythmSyncT = rhythmRetry ? RHYTHM_DEATH_SYNC_SEC : 0;
     this.rhythmSyncPending = rhythmRetry;
-    // The opening legend needs nothing armed and nothing reset. It rides the
-    // plane's pass zero, which is the first crossing of the SONG, and a retry
-    // re-anchors to a clock hundreds of beats past it — so the one case a flag
-    // would have existed to cover is already covered by the thing being tied to
-    // the music instead of to the attempt. See rhythmLegend.
+    // The opening roll, solved once per stage on first use. It needs nothing
+    // reset: the slots are counted off the SONG's beat, and a retry re-anchors
+    // to a clock hundreds of beats past all of them. See rhythmVerbCue.
+    this.rhythmSignRoll = null;
+    this.rhythmSignPhase = null;
     this.narrateT = this.corrupted.includes('narration') || this.unplugged ? 6 : 0;
     // The keyboard legend is a teaching aid, so it only runs while there is
     // something to teach: the campaign's opening stage, or a run with no stage
@@ -2507,52 +2573,73 @@ export class RunState {
   }
 
   /**
-   * The opening legend: the shapes the ribbon and the road will draw, beside
-   * the words for them, as one tow line for the plane's first crossing — or
-   * null when there is nothing to say.
+   * The verb the rooftop sign should be shouting on this beat, or null.
    *
-   * WHAT IT TEACHES IS THE KEY, NOT THE ASKS. Three surfaces on this stage draw
-   * the same three marks and none of them says what they mean: the beat ribbon
-   * names every action four and a half beats out, the road repeats it under the
-   * hero's feet, and both are built on the law that the direction is read off
-   * the SHAPE and the colour only confirms which object is arriving
-   * (beatground.js). That law is cheap to learn and nothing states it. One
-   * crossing states it, once, and then the sky is a sky again.
+   * A ROLL AT THE TOP OF THE STAGE: the verbs this chart will ask THIS hero
+   * for, in teaching order (RHYTHM_SIGN_ORDER), two bars each. rhythm-1 shows
+   * JUMP then ATTACK, and rhythm-2 and rhythm-3 both put SLIDE in front of
+   * them — which is the point of the order being taught rather than read off
+   * the chart, since rhythm-3 happens to ask for a jump two beats before its
+   * first duck.
    *
-   * DERIVED, NEVER AUTHORED, because a fixed legend would be wrong on every
-   * stage of this cabinet. rhythm-1's chart contains no duck at all, and its
-   * one ability slot is a card box that BeatSpawner.canShoot lays only for a
-   * hero who can answer it — so half the cast is never asked for a power on it.
-   * A mark for a verb the next ninety seconds never requires is the player
-   * spending the opening bars waiting for something that is not coming. What
-   * this returns grows with the cabinet instead: rhythm-1 tows JUMP and, for a
-   * shooter, their power; rhythm-2 is where the duck is first asked for and
-   * where the sky first names it.
+   * WHAT IT TEACHES IS THE KEY. Three surfaces on this cabinet draw the same
+   * marks and none of them says what they mean: the beat ribbon names every
+   * action four and a half beats out, the road repeats it under the hero's
+   * feet, and both read the direction off the SHAPE (beatground.js). This says
+   * the shape and the word together, once, and gives the board back.
+   *
+   * DERIVED FROM THE CHART, because a fixed list would be wrong on every stage
+   * of this cabinet: rhythm-1 contains no duck at all, so it rolls two signs
+   * and the other two roll three. What it is NOT keyed on is the hero — see the
+   * note on the power below.
    */
-  rhythmLegend() {
+  rhythmVerbCue(beat) {
     const chart = this.cabinet?.beatCharts?.[this.stage?.index];
-    if (!Array.isArray(chart?.events)) return null;
-    const hero = HERO_BY_ID[this.relay.current];
-    // The game's own words, from the same table the play hints and the touch
-    // buttons read (hud.js): SPACE is JUMP, DOWN is SLIDE, and the third is
-    // whatever the hero in the lane calls their power. There is no fixed name
-    // for it, which is why it cannot be a constant here.
-    const LABEL = { jump: 'JUMP', duck: 'SLIDE', ability: hero?.ability?.label || 'USE' };
-    const asked = new Set(chart.events.map((e) => e.action));
-    const parts = [];
-    const ink = {};
-    for (const action of ['jump', 'duck', 'ability']) {
-      if (!asked.has(action)) continue;
-      if (action === 'ability' && !heroShoots(this.relay.current)) continue;
-      const glyph = LCD_ACTION_GLYPH[action];
-      if (!glyph) continue;
-      parts.push(glyph + String(LABEL[action]).toUpperCase());
-      // The action's own colour, off the list the ribbon and the road already
-      // share. Keyed by the glyph so the pack can paint a picture cell without
-      // knowing what a jump is.
-      ink[glyph] = ACTION_INK[action];
+    if (!Array.isArray(chart?.events) || !Number.isFinite(beat)) return null;
+    const hold = Math.max(RHYTHM_SIGN_BEATS_MIN, RHYTHM_SIGN_BEATS);
+    // EVERY CHANGE LANDS ON A BAR LINE — the first sign, each swap, and the
+    // frame the price gets its board back.
+    //
+    // The opening clock starts on the frame the world begins moving, which is
+    // wherever in the bar the act banner happened to let go, so counting slots
+    // straight off it put every one of those changes in the middle of a bar. A
+    // sign that arrives on beat three of a bar reads as a thing that went wrong.
+    // So the phase of the music at opening-beat zero is latched once and the
+    // roll is pushed forward to the next bar line after RHYTHM_SIGN_FROM.
+    if (this.rhythmSignPhase == null) {
+      const song = this.rhythmBeatNow();
+      if (!Number.isFinite(song)) return null;
+      this.rhythmSignPhase = ((song % 4) + 4) % 4;
     }
-    return parts.length ? { text: parts.join(' '), ink } : null;
+    const from = RHYTHM_SIGN_FROM
+      + ((-(RHYTHM_SIGN_FROM + this.rhythmSignPhase) % 4) + 4) % 4;
+    if (beat < from) return null;
+    const slot = Math.floor((beat - from) / hold);
+    if (slot >= RHYTHM_SIGN_ORDER.length) return null;
+    if (!this.rhythmSignRoll) {
+      const roll = [];
+      for (const action of RHYTHM_SIGN_ORDER) {
+        const asks = chart.events.filter((e) => e.action === action);
+        if (!asks.length) continue;
+        // EVERY HERO IS SHOWN THE POWER BUTTON, shooter or not.
+        //
+        // This was gated on heroShoots at first, because the chart's ability
+        // slot is a card box and BeatSpawner.canShoot lays one only for a hero
+        // who can break it at range — so half the cast would be told about a
+        // thing that never arrives. Two reasons it is ungated now, and the
+        // second is the load-bearing one: the sign is a key to the CONTROLS
+        // rather than a forecast of this chart, and a ranged attack is on its
+        // way to every hero. Keying a legend to a gap the cast is closing would
+        // be building in an exception with a shelf life.
+        const barrel = asks.some((e) => e.type === 'barrel');
+        const other = asks.some((e) => e.type !== 'barrel');
+        const ink = action !== 'duck' ? [ACTION_INK[action]]
+          : [barrel ? ACTION_INK.barrel : null, other ? ACTION_INK.duck : null].filter(Boolean);
+        if (ink.length) roll.push({ action, ink });
+      }
+      this.rhythmSignRoll = roll;
+    }
+    return this.rhythmSignRoll[slot] || null;
   }
 
   /**
@@ -3024,7 +3111,9 @@ export class RunState {
     this.advanceBeatJudging();
     this.announceLaneEntries();
     this.advanceCityAccident();
-    this.barrelChuteCue = this.updateBarrelArrivals(this.rhythmBeatNow());
+    const rhythmBeat = this.rhythmBeatNow();
+    this.advanceCityIntro(rhythmBeat);
+    this.barrelChuteCue = this.updateBarrelArrivals(rhythmBeat);
     // The thumbs-up is on a wall clock, not a beat count: it has to outlast the
     // beat that earned it or the board flickers a thumb for a sixteenth.
     if (this.rhythmCheer > 0) this.rhythmCheer = Math.max(0, this.rhythmCheer - dt);
@@ -3375,6 +3464,11 @@ export class RunState {
   // hero and what he fires stay alive. The level goes live (update falls through
   // past the introRunning gate) the instant he reaches the anchor.
   updateIntroRun(dt) {
+    // THE CITY WALKS ON WITH HIM. The world is parked but it is on screen and
+    // the song is playing, so the entrance is the earliest honest place for the
+    // skyline to start assembling — earlier than this is behind the act banner,
+    // where the player cannot see it happen.
+    this.advanceCityIntro(this.rhythmBeatNow());
     // Speed ramps with how far across the apron he is: slow off the edge, full
     // by the start line, curved by INTRO_RUN_EXP so the wind-up reads as an
     // exponential surge rather than an even glide. The run cycle is fed the same
@@ -5548,6 +5642,43 @@ export class RunState {
    * (lcdChuteScreenX), so moving the gorilla along the skyline moves both ends
    * of this at once.
    */
+  /**
+   * Advance the opening's own clock — the one the skyline walks on to.
+   *
+   * WHY NOT THE SONG'S BEAT. It was, and it was wrong twice over. The song is
+   * already running under the act banner and the run-in, so by the time the
+   * player first sees the panel half the city had walked on behind the card;
+   * and `Audio.songBeat()` is a position INSIDE the loop, so every time the
+   * song came round the count fell back through zero and the skyline dismantled
+   * itself and rebuilt in the middle of a run — which is what a death restart
+   * looked like too, since it drops the player back onto a wrapped clock.
+   *
+   * So the run counts the opening itself: zero on the first frame the world is
+   * actually moving (this runs after the freeze, the zone card and the pause
+   * have all returned early), and monotonic from there. Deltas only, so a loop
+   * wrap or a lane re-anchor — both of which hand back a smaller number than
+   * last frame — adds nothing rather than rewinding it. It is never reset by
+   * `enter()`, so the second and later attempts at a stage find a count long
+   * past the assembly and a city that is simply standing.
+   */
+  advanceCityIntro(raw) {
+    if (!this.beatLock || this.rhythmSyncPending || !Number.isFinite(raw)) return;
+    if (this.cityIntroBeat == null) {
+      this.cityIntroBeat = 0;
+      this.skyBeat = 0;
+      this.cityIntroRaw = raw;
+      return;
+    }
+    const d = raw - this.cityIntroRaw;
+    this.cityIntroRaw = raw;
+    // Forward only, and never by more than a beat at a time: anything larger is
+    // a clock that jumped, not a frame that took a bar.
+    if (d > 0 && d < 1) {
+      this.cityIntroBeat += d;
+      this.skyBeat += d;
+    }
+  }
+
   updateBarrelArrivals(beat) {
     const chuteX = this.beatLock && this.styleName === 'lcd'
       ? lcdChuteScreenX(this.stage?.index) : null;
@@ -5604,12 +5735,7 @@ export class RunState {
     const heard = Math.floor(beat);
     if (heard === this.cityAccidentBeat) return;
     this.cityAccidentBeat = heard;
-    // With the intro, so a crossing towing the legend fires no burst — the same
-    // pass the panel is drawing as having flown clean over him. See
-    // lcdBarrelStrikeAt.
-    if (lcdBarrelStrikeAt(this.stage?.index, heard, { legend: this.rhythmLegend() })) {
-      Audio.sfx('barrelBurst');
-    }
+    if (lcdBarrelStrikeAt(this.stage?.index, heard)) Audio.sfx('barrelBurst');
   }
 
   checkRhythmDrift() {
@@ -5717,12 +5843,18 @@ export class RunState {
     this.beatCombo++;
     this.score += 20 + 5 * Math.min(this.beatCombo, 8);
     this.rhythmForm = Math.min(1, this.rhythmForm + RHYTHM_FORM_RISE);
-    // Every eighth clean beat the rooftop chart puts up a thumb for a couple of
-    // seconds. It rides the streak the ON BEAT text already counts, so the two
-    // never disagree about how the run is going.
+    // Every eighth clean beat the rooftop board gilds its own count for a
+    // couple of seconds. It celebrates the number it is already showing rather
+    // than becoming a different sign, which is what retired a whole bake-off of
+    // thumbs, stars and meters: the readout and the reward are one object.
     if (this.beatCombo % RHYTHM_CHEER_EVERY === 0) this.rhythmCheer = RHYTHM_CHEER_T;
     if (this.challenge?.type === 'onbeat') this.challenge.count++;
-    if (this.beatCombo % 4 === 0) this.floatText(`ON BEAT x${this.beatCombo}`, '#f6d33c');
+    // NO FLOATIE. The count used to rise off the hero's head every fourth clean
+    // beat as well as living on the rooftop board, which is the same fact in
+    // two places — and the floating copy was the worse of the two: it arrived,
+    // moved, and left, so a player who glanced away missed it and a player who
+    // watched it was looking away from the lane. The board holds the number
+    // continuously instead, on the roof they already run under.
     return true;
   }
 
@@ -7028,6 +7160,15 @@ export class RunState {
     this.resetRenderInterpolation();
     if (this.beatLock) {
       this.resetRhythmLane();
+      // THE STREAK DOES NOT SURVIVE DYING. A full retry clears it through
+      // enter(), but this path is the other one — a checkpoint restore re-anchors
+      // the lane in place without re-entering the stage — and without this the
+      // rooftop board went on counting a run of clean beats through the death
+      // that ended it. Nothing else clears it here either: the judge only breaks
+      // a streak on a chart beat that went by unanswered, and the beats a death
+      // eats are held rather than judged.
+      this.beatCombo = 0;
+      this.rhythmCheer = 0;
       // The song remains continuous through a checkpoint restore too.  Hold
       // the restored world for the same settling window used by a full retry;
       // the final reset below is based on the current heard beat, not the
@@ -8720,18 +8861,35 @@ export class RunState {
         progress: Number.isFinite(this.totalDist) && this.totalDist > 0
           ? Math.max(0, Math.min(1, this.distance / this.totalDist)) : 0,
         audio: Audio.musicAnalysis?.() || null,
-        form: this.rhythmForm,
         cheer: this.rhythmCheer > 0,
+        // The on-beat streak the rooftop board counts, and the cheer that gilds
+        // it every eighth. A `form` scalar used to ride here too, for a
+        // share-price trace that has been retired along with the fiction.
+        streak: this.beatCombo,
         // The beat a real barrel reaches the foot of the gorilla's chute, so
         // the one he drops and the one in the road are the same barrel. See
         // updateBarrelArrivals; null on every stage without a chute.
         barrelBeat: this.barrelChuteCue,
-        // The opening: the city walking on, and the line the plane's first
-        // crossing tows over it. Handed over on every frame of a rhythm stage —
-        // the panel decides when either of them is happening, off the song's own
-        // beat, and both are over long before the second phrase. See
-        // rhythmLegend and lcdArrival.
-        intro: { legend: this.rhythmLegend() },
+        // A live run and HOW FAR INTO ITS OPENING it is, in beats — what lets
+        // the city walk on at the top of the stage. The run counts that itself
+        // (advanceCityIntro) rather than handing over the song's beat: the song
+        // is already playing under the act banner and it comes round again on
+        // every loop, so a skyline counted off it assembled behind the card and
+        // then dismantled itself mid-run. Null until the world starts moving,
+        // and monotonic well past the assembly afterwards, which is what makes
+        // a death restart find a city already standing. See lcdArrival.
+        intro: { beat: this.cityIntroBeat },
+        // Beats since the omen took off, on the same monotonic clock — or null
+        // for the seven runs in eight that never rolled one. See SKY_OMEN_CHANCE.
+        omen: this.skyOmenBeat == null || this.skyBeat == null
+          ? null : this.skyBeat - this.skyOmenBeat,
+        // And the verb the rooftop sign is shouting, or null. THE SAME CLOCK
+        // the assembly above runs on, and for the same reason: read off the
+        // song's beat the roll started wherever in the loop the stage happened
+        // to open, restarted every time the music came round, and ran at the
+        // mercy of a lane re-anchor — which is why the messages went past in a
+        // blink instead of holding their two bars each.
+        verbCue: this.rhythmVerbCue(this.cityIntroBeat),
         // How far the lane can climb over the foot of the city on THIS stage.
         // The panel uses it to decide how low a window may light: the road is
         // drawn over the city, so a lit window inside that band is swallowed as

@@ -43,7 +43,6 @@ import {
 } from '../src/sprites/toons.js';
 import {
   getStylePack, LCD_GORILLA_EXPRESSIONS, LCD_GORILLA_BROW_STYLES, lcdGorillaHeadPos,
-  LCD_RUNNER_STYLES,
 } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
 import { UNLOCKS } from '../src/data/stages.js';
@@ -5544,54 +5543,6 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     }
     panelTile(grid, 'the loop, running', 'eight bars, the plumber and all', 1, 268, 106, 92, 98,
       (t) => ({ beat: Math.floor(t * 2) }), { hires: 3, animated: true, wide: true });
-  }
-}
-
-// ------------------------------------ the tower plumber — bake-off
-// The little man on the DONKEY KONG tower, eight pixels across and sixteen
-// tall, on a building on the far side of the street. Same rules as the gorilla
-// sheets above: every tile is the REAL panel — drawLCDCity paints all 480x270
-// and the tile is a window onto it — and the scene's dev-only `runnerStyle` is
-// the only thing that changes between them, so a candidate is judged in the
-// palette, at the size and against the girders it ships on.
-{
-  const cab = CABINETS.find((c) => c.id === 'rhythm');
-  const style = getStylePack('lcd', {});
-  const STAGE = 1;
-  const panelTile = (grid, name, sub, cx, cy, tw, th, at, opts = {}) => {
-    tile(grid, name, sub, tw, th, (ctx, t) => {
-      ctx.save();
-      ctx.translate(Math.round(tw / 2 - cx), Math.round(th / 2 - cy));
-      style.bg(ctx, 0, 0, cab, 1000, { stageIndex: STAGE, ...at(t) });
-      ctx.restore();
-    }, opts);
-  };
-  // The five drawings he owns, and the beat of the journey each one lands on
-  // (see lcdGameWatch): two walk cells, the split over a barrel, a ladder cell
-  // and the beat the barrel gets him. `cx, cy` is where he stands on that beat.
-  const POSES = [
-    { beat: 0, name: 'walk A', cx: 240, cy: 208 },
-    { beat: 1, name: 'walk B', cx: 254, cy: 208 },
-    { beat: 2, name: 'the jump', cx: 268, cy: 196 },
-    { beat: 4, name: 'the ladder', cx: 283, cy: 195 },
-    { beat: 14, name: 'the hit', cx: 268, cy: 143 },
-  ];
-
-  const grid = section('plumber-bakeoff', 'The tower plumber — bake-off',
-    'Four separate answers to "he is 8x16 on a tower across the street — what is the SMALLEST edit that makes '
-    + 'him read as a plumber rather than as a man-shaped smudge on some girders?", plus the composite and the '
-    + 'figure as it ships. None of them is a redesign: every candidate is two or three pixels, they compose, '
-    + 'and SHIPPED is in the running order as the control. Each row is his five drawings at 6x — the two walk '
-    + 'cells, the split over a barrel, a ladder cell and the beat the barrel gets him — and then the whole '
-    + 'tower running at panel scale, which is the size the decision is actually made at.'
-    + LCD_RUNNER_STYLES.map((r) => ` · ${r.name}: ${r.note}`).join(''));
-  for (const r of LCD_RUNNER_STYLES) {
-    for (const pose of POSES) {
-      panelTile(grid, `${r.name} · ${pose.name}`, 'the cell · 6x', pose.cx, pose.cy, 34, 30,
-        () => ({ beat: pose.beat, runnerStyle: r.id }), { hires: 6 });
-    }
-    panelTile(grid, r.name, 'the tower · the loop, running', 268, 190, 96, 110,
-      (t) => ({ beat: Math.floor(t * 2), runnerStyle: r.id }), { hires: 3, animated: true, wide: true });
   }
 }
 

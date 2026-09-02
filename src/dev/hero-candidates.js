@@ -1215,8 +1215,16 @@ export const RUSTY_EXPRESSIVE_CANDIDATES = [
 // before it detaches from the eye it belongs to and reads as a mark on the
 // forehead instead.
 
-const RUSTY_T1 = {
+// THE FACE AS IT STANDS (2 Sep 2026): T1's expressive brows on the settled
+// snout and mouth, ink brow off. Exported so the motion sheets and the
+// eventual TOON_SPECS hand-off read one definition rather than re-deriving it.
+export const RUSTY_T1 = {
   ...RUSTY_R16, brow: 'none', faceSeed: 0.7,
+  // Arms flung wide on the big beat. An unregistered id used to fall through
+  // to 'hop' — fists overhead, tight together — with no seam to ask for
+  // anything else; `celebrate` on the spec is that seam. The body still bounds
+  // (spread keeps hop's motion), only the arms change.
+  celebrate: 'spread',
 };
 
 const OPEN_TILTS = [-0.3, 0, 0.3];

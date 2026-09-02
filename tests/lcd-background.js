@@ -6,7 +6,7 @@ import { installDom } from './dom-stub.js';
 installDom();
 
 const { getStylePack, drawLCDPanel, lcdChuteScreenX, LCD_CHUTE_BEATS, LCD_DEFAULT_ROAD_RISE,
-  LCD_ROAD_INK, lcdBarrelStrikeAt } = await import('../src/engine/stylePacks/index.js');
+  LCD_ROAD_INK } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS } = await import('../src/data/cabinets.js');
 const { BEAT_RIBBON_BOTTOM } = await import('../src/game/hud.js');
 
@@ -70,10 +70,15 @@ function ground(obstacles, camX = 0, settings = {}) {
 }
 const fingerprint = (ops) => JSON.stringify(ops);
 const ACTIVE = 'rgba(211,91,67,0.82)';
-const WINDOW_OFF = 'rgba(53,83,101,0.24)';
-const PRINT = 'rgba(38,53,93,0.72)';
+// A lit window cell is the coral at full strength (LCD_WINDOW_LIT); an unlit
+// one is the uniform ghost (LCD_WINDOW_GHOST). ACTIVE is the rest of the
+// panel's lit ink — billboards, lamps, the beacon.
+const LIT = '#d35b43';
+const WINDOW_OFF = 'rgba(60,63,69,0.14)';
+const PRINT = 'rgba(60,63,69,0.72)';
+const PRINT_SOFT = 'rgba(80,85,92,0.48)';
 const PANEL_LIT = '#dce49a';
-const INK = '#26355d';
+const INK = '#3c3f45';
 // Imported, never mirrored: the panel is authored against the camera's own
 // groundline and a copy here would keep passing after that line moved.
 const { GROUND_Y } = await import('../src/engine/camera.js');
@@ -90,7 +95,7 @@ assert(new Set(idle).size === 3, 'all three stages have distinct fixed skyline s
 for (const [stage, short, tall] of [[1, 74, 118], [2, 66, 146], [3, 56, 134]]) {
   const stageOps = background(stage, null);
   const heights = stageOps
-    .filter((op) => op[0] === 'strokeRect' && op[1] === PRINT)
+    .filter((op) => op[0] === 'strokeRect' && op[1] === INK)
     .filter((op) => Math.abs(op[3] + op[5] - (H + 0.5)) < 0.001)
     .map((op) => GROUND_Y - (op[3] - 0.5));
   assert(heights.some((h) => h <= short) && heights.some((h) => h >= tall),
@@ -107,11 +112,12 @@ for (const [stage, short, tall] of [[1, 74, 118], [2, 66, 146], [3, 56, 134]]) {
   assert(new Set(stageOps.filter((op) => op[0] === 'fillRect' && String(op[1]).startsWith('rgba('))
     .map((op) => op[1])).size >= 7,
   `stage ${stage} retains a small multi-colour GBC scenery palette`);
+  // A window is the fill inside a 3x2-cell box on the 3px lattice: 8x5.
   assert(stageOps.filter((op) => op[0] === 'fillRect' && op[1] === WINDOW_OFF
-    && op[4] === 7 && op[5] === 6).length >= 12,
-  `stage ${stage} windows read as chunky 7x6 colour blocks`);
+    && op[4] === 8 && op[5] === 5).length >= 12,
+  `stage ${stage} windows read as chunky 8x5 colour blocks`);
   assert(stageOps.some((op) => op[0] === 'fillRect' && op[1] === WINDOW_OFF
-    && op[3] >= GROUND_Y && op[4] === 7 && op[5] === 6),
+    && op[3] >= GROUND_Y && op[4] === 8 && op[5] === 5),
   `stage ${stage} facade and windows continue below the road into pit depth`);
 }
 
@@ -126,7 +132,7 @@ assert(apronCols.some((op) => op[2] < 100) && apronCols.some((op) => op[2] >= 15
 assert(!pitOps.some((op) => op[1] === PANEL_LIT && op[3] === GROUND_Y
   && op[5] === H - GROUND_Y && rectOverlapsPit(op)),
 'the pit mouth is never repainted with a flat panel colour');
-assert(!pitOps.some((op) => op[1] === 'rgba(38,53,93,0.14)'
+assert(!pitOps.some((op) => op[1] === 'rgba(60,63,69,0.14)'
   && op[3] === GROUND_Y + LCD_ROAD_INK + 2 && rectOverlapsPit(op)),
 'road dashes stop at the pit lips instead of crossing the background window');
 assert(pitOps.some((op) => op[0] === 'fillRect' && op[1] === INK
@@ -210,17 +216,17 @@ for (const stage of [1, 3]) {
 // 22 — and a literal there passes for the wrong reason the moment either moves.
 const LIT_FLOOR = GROUND_Y - (LCD_DEFAULT_ROAD_RISE + 6);
 for (const stage of [1, 2, 3]) {
-  const activeRects = background(stage, 7).filter((op) => op[0] === 'fillRect' && op[1] === ACTIVE);
+  const activeRects = background(stage, 7).filter((op) => op[0] === 'fillRect' && op[1] === LIT);
   assert(activeRects.length > 0 && activeRects.every((op) => op[3] <= LIT_FLOOR),
     `stage ${stage} active ghost segments stay clear of the lane`);
 }
 
-// The sky drifts on the heard beat and parks under reduced motion. Cloud wisps
-// are the one thing painted in the palette's cloud colour, so their x
-// positions are a clean probe of the drift.
+// The sky drifts on the heard beat and parks under reduced motion. A cloud is
+// the one stroked path in the cloud band of the sky (y 40..72 on stage 1), so
+// the x of every lineTo up there is a clean probe of the drift.
 const cloudWispXs = (ops) => ops
-  .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(54,102,123,0.64)')
-  .map((op) => op[2]);
+  .filter((op) => op[0] === 'lineTo' && op[2] >= 40 && op[2] < 72)
+  .map((op) => op[1]);
 assert(cloudWispXs(background(1, 0)).length > 0
   && fingerprint(cloudWispXs(background(1, 0))) !== fingerprint(cloudWispXs(background(1, 8))),
 'clouds drift across the sky in quantized whole-pixel steps on the heard beat');
@@ -231,16 +237,28 @@ assert(fingerprint(cloudWispXs(background(1, 8, { reducedMotion: true })))
 // Stage 1's DONKEY KONG tower: an eight-cell ghosted barrel path across two
 // girder floors with two lit cells walking it, the big rooftop gorilla
 // painter on its roof, and a runner whose face plate lifts 11px on the jump
-// beat. Mini barrels are the only 4.5x4 ellipses in the scene; the runner's
-// face is the only fillRect in the muzzle colour.
+// beat. A mini barrel is the only EIGHT-SIDED path in the scene — it stopped
+// being an ellipse when the round amber cell turned out to read as a
+// basketball at a building's remove, and the flat top and bottom is the whole
+// of the fix — so it is counted here by its silhouette, which is also the only
+// thing a ghosted cell draws. The runner's face is the only fillRect in the
+// muzzle colour.
 // Beat 1, not beat 0, for the bottom-girder pose: the loop's first beat has him
 // on the ladder BELOW that girder, coming up out of the street, and a climbing
 // figure is drawn from behind with no face at all.
 const gwBeat = [1, 13, 15, 2].map((b) => background(1, b));
-const miniBarrels = (ops) => ops.filter((op) => op[0] === 'ellipse' && op[3] === 4.5 && op[4] === 4);
+const miniBarrels = (ops) => ops.map((op, i) => [op, i])
+  .filter(([op, i]) => op[0] === 'moveTo'
+    && ops.slice(i + 1, i + 8).every((next) => next[0] === 'lineTo')
+    && ops[i + 8]?.[0] === 'closePath')
+  .map(([op]) => op);
 assert(miniBarrels(gwBeat[0]).length >= 10,
 'stage 1 carries the tower with its full ghosted barrel path');
-const faceY = (ops) => ops.find((op) => op[0] === 'fillRect' && op[1] === '#f2c9a0')?.[3];
+// His FACE PLATE, specifically: the 6x4 skin block. He grew hands in the same
+// colour when the bake-off settled him, and a 1x1 hand is drawn before the
+// face, so the old "first fillRect in the muzzle colour" now finds a knuckle.
+const faceY = (ops) => ops.find((op) => op[0] === 'fillRect' && op[1] === '#f2c9a0'
+  && op[4] === 6 && op[5] === 4)?.[3];
 assert(faceY(gwBeat[0]) - faceY(gwBeat[1]) > 40,
 'the tower runner climbs from the bottom girder to the top across the loop');
 assert(faceY(gwBeat[2]) == null,
@@ -294,7 +312,7 @@ for (const stage of [1, 2, 3]) {
   // the plane and the clouds live in — so a stage draws none of it. The
   // preset, where the sky is the whole show, gets it with bright tips.
   const gameBars = background(stage, 4, {}, 0, 0, { audio: heard(0.9) })
-    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(53,83,101,0.10)');
+    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(80,85,92,0.10)');
   assert(gameBars.length === 0, `stage ${stage} keeps the lane's sky clear of the analyser`);
 }
 
@@ -304,10 +322,16 @@ for (const stage of [1, 2, 3]) {
   assert(new Set(phases).size === 4, 'the stage passes through four distinct panels as it runs');
   assert(phases[0] === fingerprint(background(2, 4)),
     'and a scene with no progress is the panel the stage opens on');
-  // The chopper takes a billboard with it, so a late panel is missing one.
-  const boardCells = (ops) => ops.filter((op) => op[0] === 'fillRect' && op[1] === '#f6d33c').length;
-  assert(boardCells(background(2, 4, {}, 0, 0, { progress: 0 })) > 0,
-    'stage 2 opens with its billboards up');
+  // Its roofline carries two signs: the counting board on the roof the hero runs
+  // under, and the maze-game attract screen out at the far edge. Counted as the
+  // BOARDS themselves — the wide dark panels above the roofline — rather than by
+  // any one sign's ink, which is what this used to do: it looked for the gold
+  // cell on the share price's trace, and that price has been retired in favour
+  // of the on-beat count (lcdComboBoard).
+  const boards = (ops) => ops.filter((op) => op[0] === 'fillRect' && op[1] === PRINT
+    && op[4] >= 28 && op[5] >= 20).length;
+  assert(boards(background(2, 4, {}, 0, 0, { progress: 0 })) === 2,
+    'stage 2 opens with both its signs up');
 }
 
 // ---- stage 2's working city ----------------------------------------------
@@ -331,7 +355,7 @@ for (const stage of [1, 2, 3]) {
   // full-width soft bar; it stands in the opening phase, before any service
   // has run, and it is still standing on the beats between services.
   const girder = (beat, progress) => background(2, beat, {}, 0, 0, { progress })
-    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(53,83,101,0.48)'
+    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(80,85,92,0.48)'
       && op[2] === 0 && op[4] === 480);
   assert(girder(12, 0).length === 1 && girder(12, 0.3).length === 1,
     'the viaduct stands from the opening phase, with or without a train on it');
@@ -361,16 +385,16 @@ for (const stage of [1, 2, 3]) {
   // And the meters themselves are still on those roofs.
   const meterCells = background(2, 4, {}, 0, 0, { progress: 0.3 })
     .filter(([kind, fill, , , fw, fh]) => kind === 'fillRect' && fw === 3 && fh === 3
-      && (fill === 'rgba(211,91,67,0.82)' || fill === 'rgba(53,83,101,0.24)'));
+      && (fill === 'rgba(211,91,67,0.82)' || fill === 'rgba(80,85,92,0.24)'));
   assert(meterCells.length >= 6 * 6 * 2, `the equalizer banks still stand (${meterCells.length} cells)`);
 
   // The piers stand in the gaps, never up through a billboard's own legs.
   const piers = background(2, 12, {}, 0, 0, { progress: 0.3 })
-    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(53,83,101,0.48)'
+    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(80,85,92,0.48)'
       && op[4] === 2 && op[5] === 10);
-  // Billboards sit on buildings 1 (x 74 w 36) and 7 (x 430 w 36).
-  assert(piers.length > 0 && piers.every(([, , px]) => (px + 2 <= 72 || px >= 112)
-    && (px + 2 <= 428 || px >= 468)),
+  // Billboards sit on buildings 1 (x 71 w 51) and 7 (x 422 w 36).
+  assert(piers.length > 0 && piers.every(([, , px]) => (px + 2 <= 69 || px >= 124)
+    && (px + 2 <= 420 || px >= 460)),
     'no viaduct pier comes up over a billboard roof');
 }
 
@@ -384,7 +408,7 @@ for (const stage of [1, 2, 3]) {
     return ops;
   };
   const bars = panel({ audio: heard(0.9) })
-    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(53,83,101,0.10)');
+    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(80,85,92,0.10)');
   assert(bars.length > 0 && bars.every((op) => op[3] >= 40 && op[3] < GROUND_Y),
     'the jukebox panel hangs its analyser between the ribbon band and the lane');
   // NO BRIGHT TIP on a bar. The meter is clipped by the skyline, so a bar's
@@ -395,7 +419,7 @@ for (const stage of [1, 2, 3]) {
     .filter((op) => op[0] === 'fillRect' && op[1] === ACTIVE && op[5] === 2 && op[4] > 20);
   assert(tips.length === 0, `and wears no bright tip, which would read the roofline (${tips.length})`);
   assert(panel({ audio: heard(0.9) }, { skyMeter: false })
-    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(53,83,101,0.10)').length === 0,
+    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(80,85,92,0.10)').length === 0,
   'a caller may still ask for the panel without it');
 }
 
@@ -412,7 +436,9 @@ assert(normalPost.some((op) => op[0] === 'fillRect' && String(op[1]).startsWith(
   && !reducedPost.some((op) => op[0] === 'fillRect' && String(op[1]).startsWith('rgba(255,244,180,')),
 'reduced flashing removes the full-panel reflective shimmer');
 
-const stage3CapYs = new Set([161, 111, 175, 101, 157, 93, 151]);
+// GROUND_Y - h - 5 for each uncrowned stage-3 roof (heights 65, 53, 125, 134,
+// 71, 77 — the billboard's and the gorilla's roofs carry no cap).
+const stage3CapYs = new Set([162, 174, 102, 93, 156, 150]);
 const roofLamps = (settings) => background(3, 1, settings).filter((op) => op[0] === 'fillRect'
   && op[1] === ACTIVE && op[4] === 2 && op[5] === 2 && stage3CapYs.has(op[3]));
 assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length === 0,
@@ -437,10 +463,17 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // Body geometry, from LCD_PLANE: 11 cells across and 6 down on a 2px grid,
   // with the lit windows on row 3 starting at column 3.
   const PLANE_W = 22, PLANE_H = 12, WIN_DX = 6, WIN_DY = 6;
-  const plane = (beat) => {
+  // ABOVE THE ROOFLINE ONLY. The plane's cabin windows are 2px lit cells on a
+  // 4px pitch, and so — since the counting board started printing its digits at
+  // 2px in the same lit cream — are parts of a 4 or an 8 on the roof the hero
+  // runs under. The two are nowhere near each other on the panel, so the cheap
+  // separation is the right one: nothing below the tallest roof is a plane.
+  const SKYLINE_TOP = 100;
+  const plane = (beat, scene = null) => {
     const rows = new Map();
-    for (const op of background(1, beat)) {
+    for (const op of background(1, beat, {}, 0, 0, scene)) {
       if (op[0] !== 'fillRect' || op[1] !== PANEL_LIT || op[4] !== 2 || op[5] !== 2) continue;
+      if (op[3] >= SKYLINE_TOP) continue;
       const xs = rows.get(op[3]) || [];
       xs.push(op[2]);
       rows.set(op[3], xs);
@@ -528,10 +561,14 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
 {
   const PLANE_W = 22, PLANE_H = 12, WIN_DX = 6, WIN_DY = 6;
   const ops = (beat) => background(3, beat);
+  // Sky only — see the note on the stage 1 locator: the counting board prints
+  // its digits at 2px in the same lit cream the plane's windows use.
+  const SKYLINE_TOP = 100;
   const plane = (beat) => {
     const rows = new Map();
     for (const op of ops(beat)) {
       if (op[0] !== 'fillRect' || op[1] !== PANEL_LIT || op[4] !== 2 || op[5] !== 2) continue;
+      if (op[3] >= SKYLINE_TOP) continue;
       const xs = rows.get(op[3]) || [];
       xs.push(op[2]);
       rows.set(op[3], xs);
@@ -634,9 +671,12 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // stroke-only), and each beat compared against the same beat of the bar four
   // bars earlier — the chain repeats every four beats, so that is the same
   // picture with nothing destroyed.
+  // Counted off the 2x1 highlight, which is the one mark a lit cell paints
+  // that nothing else on the panel does — the seams are a wash the big barrel
+  // shares, and the ghosts are stroke-only.
   const towerBarrels = (beat) => background(1, beat)
-    .filter((op) => op[0] === 'fillRect' && op[1] === '#8a5a35'
-      && op[4] === 7 && op[5] === 1).length;
+    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(226,166,88,0.62)'
+      && op[4] === 2 && op[5] === 1).length;
   let shortBeats = 0;
   for (let d = 0; d < 12; d++) {
     if (towerBarrels(hit + d) === towerBarrels(hit + d - 16) - 1) shortBeats++;
@@ -679,7 +719,9 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
 {
   // A lit mini-barrel on the chute is a filled ellipse at the drop's own x;
   // the ghosts are stroke-only, so the fill is what says "this one is real".
-  const CHUTE_X = 408;
+  // The gorilla's building is [365, 36, 119]; the chute hangs 8 past its wall,
+  // centred in the 15px gap to the next facade.
+  const CHUTE_X = 409;
   const lit = (extra, beat) => background(3, beat, {}, 0, 0, extra)
     .filter((op) => op[0] === 'ellipse' && op[1] === CHUTE_X && op[3] === 8 && op[4] === 7)
     .length;
@@ -722,46 +764,63 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
     'and a frozen panel is not driven by the lane either');
 }
 
-// ---- the share price is the run's ----------------------------------------
+// ---- the board that counts ------------------------------------------------
 //
-// The one gameplay fact this city sees. A rising run tilts the rooftop trace
-// up, a ruined one tilts it down, and a long clean streak replaces the board
-// with a thumb. Everything OUTSIDE a run — the hub, the gallery, this suite,
-// reduced motion — has to keep drawing the authored flat trace.
+// The one gameplay fact this city sees. The board on the roof the hero runs
+// under shows the ON BEAT STREAK — the count with the word under it — and gilds
+// the number every eighth clean beat. It drew a share price until this pass;
+// that trace tilted with a hidden 0..1 scalar nobody could read as "how you are
+// doing", and the run was already counting something they could.
 {
-  // The chart board sits on stage 1's SECOND building — the roof the hero
-  // runs under — clear above that roof, so a box around the board catches the
-  // sign and none of the facade's windows. Building 1 is [66, 36, 68]: centre
-  // 84, roof 156, an 11x8 sign on a 30x24 panel whose cells start at 73, 128.
-  // That height is solved against the clock tower rather than chosen — the
-  // dial has to finish above this board's top edge — so this window moves
-  // whenever the tower does.
-  const inBoard = (op) => op[0] === 'fillRect' && op[4] === 2 && op[5] === 2
-    && op[2] >= 73 && op[2] < 96 && op[3] >= 128 && op[3] < 145;
-  const traceRows = (extra, settings = {}) => background(1, 4, settings, 0, 0, extra)
-    .filter((op) => inBoard(op) && (op[1] === ACTIVE || op[1] === '#f6d33c')).map((op) => op[3]);
-  const mid = (rows) => rows.reduce((a, b) => a + b, 0) / Math.max(1, rows.length);
-  const great = traceRows({ form: 1 });
-  const ruined = traceRows({ form: 0 });
-  const neutral = traceRows({ form: 0.5 });
-  assert(great.length > 0 && ruined.length > 0, 'the share price billboard draws a trace either way');
-  assert(mid(great) < mid(neutral) && mid(neutral) < mid(ruined),
-    'a good run walks the rooftop trace up the board and a bad one walks it down');
-  assert(fingerprint(traceRows({})) === fingerprint(neutral),
-    'and a caller with no form of its own gets the authored mid-board trace');
-  assert(fingerprint(background(1, 4, { reducedMotion: true }, 0, 0, { form: 1 }))
-    === fingerprint(background(1, 4, { reducedMotion: true }, 0, 0, { form: 0 })),
-    'reduced motion draws the same panel whatever the run is doing');
+  // Its face: everything drawn inside the board on rhythm-1's second roof.
+  // Building 1 is [66, 36, 76] — centre 84, roof 156 — and the board is the
+  // fixed rectangle the verb sign sizes (LCD_BOARD_W/H, 39x28), so it runs from
+  // 64, 120. This window moves whenever those metrics or that facade do.
+  const inBoard = (op, w) => op[0] === 'fillRect' && op[4] === w && op[5] === w
+    && op[2] >= 64 && op[2] < 104 && op[3] >= 118 && op[3] < 150;
+  const face = (extra, settings = {}) => background(1, 4, settings, 0, 0, extra);
+  const digits = (extra, settings = {}) => face(extra, settings)
+    .filter((op) => inBoard(op, 2) && op[1] === PANEL_LIT).length;
+  const word = (extra, settings = {}) => face(extra, settings)
+    .filter((op) => inBoard(op, 1) && op[1] === PANEL_LIT).length;
+  const gold = (extra, settings = {}) => face(extra, settings)
+    .filter((op) => inBoard(op, 2) && op[1] === '#f6d33c').length;
 
-  // The streak reward: the board drops the market and puts up a thumb.
-  const thumbCells = (extra, settings = {}) => background(1, 4, settings, 0, 0, extra)
-    .filter((op) => inBoard(op) && op[1] === '#b9cf79').length;
-  assert(thumbCells({ form: 0.9 }) === 0 && thumbCells({ form: 0.9, cheer: true }) > 40,
-    'a clean streak puts a pixel thumb on the board in place of the chart');
-  assert(traceRows({ form: 0.9, cheer: true }).length === 0,
-    'and the chart itself comes down while it is up');
-  assert(thumbCells({ form: 0.9, cheer: true }, { reducedMotion: true }) === 0,
+  assert(digits({ streak: 8 }) > 0 && word({ streak: 8 }) > 0,
+    'the board prints the streak with its word under it');
+  // A ZERO IS LIT LIKE ANY OTHER COUNT. It was ghosted first, so the first clean
+  // beat would be a light coming on, and that lost to legibility: at 2px on a
+  // board read from the lane an unlit digit is unreadable rather than quiet.
+  assert(digits({ streak: 0 }) > 0 && word({ streak: 0 }) > 0,
+    'a board with no streak still reads');
+  assert(face({ streak: 0 }).filter((op) => (inBoard(op, 2) || inBoard(op, 1))
+    && op[1] === PRINT_SOFT).length === 0, 'and nothing on it is ghosted');
+  // THE NUMBER IS THE STREAK, not a fixed picture: more digits is more ink, and
+  // the word underneath never changes with it.
+  const d1 = digits({ streak: 8 }), d2 = digits({ streak: 128 });
+  assert(d2 > d1, `and the number really is the count (8 -> ${d1} cells, 128 -> ${d2})`);
+  assert(word({ streak: 8 }) === word({ streak: 128 }),
+    'while the word under it stays put');
+  // ONE SIZE AT EVERY COUNT. A counter that shrank at a hundred would shrink on
+  // the run where it matters most, so the digits are drawn at the size three of
+  // them need and stay there.
+  const rowsOf = (n) => new Set(face({ streak: n })
+    .filter((op) => inBoard(op, 2) && op[1] === PANEL_LIT).map((op) => op[3])).size;
+  assert(rowsOf(8) === rowsOf(128), 'and it is the same size whatever the count');
+  // THE CHEER IS THE NUMBER GOING GOLD, and only the number: gilding the label
+  // too would flash the whole board when what is being celebrated is the count.
+  assert(gold({ streak: 8 }) === 0 && gold({ streak: 8, cheer: true }) > 0,
+    'a clean streak gilds the count');
+  assert(digits({ streak: 8, cheer: true }) === 0,
+    'the whole number, not part of it');
+  assert(word({ streak: 8, cheer: true }) === word({ streak: 8 }),
+    'and the word stays cream through it');
+  // A frozen panel is never cheered at, and is never told the count either.
+  assert(gold({ streak: 8, cheer: true }, { reducedMotion: true }) === 0,
     'a frozen panel is never cheered at');
+  assert(fingerprint(face({ streak: 8 }, { reducedMotion: true }))
+    === fingerprint(face({ streak: 128 }, { reducedMotion: true })),
+    'reduced motion draws the same panel whatever the run is doing');
 }
 
 // ---- the KEY CHANGE banner ------------------------------------------------
@@ -851,43 +910,145 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   assert(!rota.includes(lettering(keyBeat - 20)) && lettering(keyBeat - 20).length > 2,
     'and the announcement pass tows something the rotation never says');
 
-  // ---- the opening legend, and the barrel it must not fly into ------------
-  //
-  // The clean first crossing carries the run's legend when there is one, and
-  // that crossing is ALSO the one that flies into the gorilla's raised barrel
-  // on this scene — it connects on beat 20. Those two facts together are the
-  // whole reason lcdPassStrike exists: the one pass the player is being asked
-  // to read must not be the one detonating a barrel over their head. The lift
-  // is not cosmetic either; the miss lane is ten pixels higher, so the plane
-  // that tows instructions is flying the lane of a plane that was never going
-  // to hit anything.
-  const LEGEND = { text: '\u25b2JUMP \u25cbSHOOT',
-    ink: { '\u25b2': '#3fbf5a', '\u25cb': '#f890b8' } };
-  const towing = (beat) => background(1, beat, {}, 0, 0, { intro: { legend: LEGEND } });
-  assert(lcdBarrelStrikeAt(1, 20), 'the clean opening crossing flies into the barrel');
-  assert(!lcdBarrelStrikeAt(1, 20, { legend: LEGEND }),
-    'and a crossing towing the legend never does');
-  assert(lcdBarrelStrikeAt(1, 240, { legend: LEGEND }) && lcdBarrelStrikeAt(1, 276, { legend: LEGEND }),
-    'the gag still runs on the later crossings the legend is nowhere near');
-  // Ten pixels of it, measured off the aircraft itself rather than asserted: the
-  // plane is the one 22x12 print silhouette in the sky.
-  const planeY = (ops) => {
-    const body = ops.filter((op) => op[0] === 'fillRect' && op[1] === PRINT
-      && op[5] > 1 && op[5] <= 12 && op[3] < 110).map((op) => op[3]);
-    return body.length ? Math.min(...body) : null;
-  };
-  const clean = planeY(background(1, 20));
-  const lifted = planeY(towing(20));
-  assert(clean != null && lifted != null && clean - lifted === 10,
-    `and it flies the miss lane while it does (${clean} -> ${lifted})`);
-  // The legend is the one banner that is not only letters: two of its marks are
-  // the ribbon's own shapes, drawn in the ribbon's own colours, which is the
-  // entire point of towing it rather than printing the words alone.
-  const glyphInk = new Set(towing(20).filter((op) => op[0] === 'fillRect'
-    && op[4] === 1 && op[5] === 1 && op[3] < 95).map((op) => op[1]));
-  assert(glyphInk.has('#3fbf5a') && glyphInk.has('#f890b8'),
-    'the legend draws its verb marks in the actions\' own colours');
-  assert(lettering(20) === '', 'and an opening crossing with no legend still tows nothing');
+}
+
+// ---- the omen -------------------------------------------------------------
+//
+// Stage 3's plane rotates three lines, and a run that never rolled the omen
+// sees exactly those. When the run DID roll one it hands the panel a clock —
+// beats since it started — and the first crossing to take off after that tows
+// SURRENDER DOROTHY instead of its turn's line: once, on the crossing's own
+// lane, off the right edge rather than vanishing mid-sky (the rig is the
+// longest thing that has ever flown on this cabinet), and without costing the
+// rotation a turn.
+{
+  const slabAt = (beat, omen, settings = {}) => background(3, beat, settings, 0, 0,
+    omen == null ? null : { omen })
+    .find((op) => op[0] === 'fillRect' && op[1] === PANEL_LIT
+      && op[5] === 11 && op[4] > 40 && op[3] < 100);
+  // Crossing 1 takes off at beat 65 (cycle 64, dodge 1). The omen's clock at a
+  // song beat is (beat - 65) + its step at take-off.
+  const TAKEOFF = 65;
+  const omenAt = (beat, atTakeoff) => beat - TAKEOFF + atTakeoff;
+  const usual = slabAt(TAKEOFF + 20, null);
+  assert(usual && usual[4] < 90, `without a roll the crossing tows its usual line (${usual && usual[4]}px)`);
+  const omen = slabAt(TAKEOFF + 20, omenAt(TAKEOFF + 20, 10));
+  assert(omen && omen[4] > 90,
+    `with one, the first crossing after the clock starts tows a longer line than any in the rotation (${omen && omen[4]}px)`);
+  assert(omen && omen[3] === usual[3], 'on the same lane the crossing always flies');
+  const early = slabAt(TAKEOFF + 20, omenAt(TAKEOFF + 20, -5));
+  assert(early && early[4] < 90, 'a crossing already mid-sky when the clock starts keeps its words');
+  const late = slabAt(TAKEOFF + 64 + 2 + 20, omenAt(TAKEOFF + 64 + 2 + 20, 10 + 64));
+  assert(late && late[4] < 90, 'and the crossing after the omen is an ordinary one — it flies once');
+  const flown = [];
+  for (let beat = TAKEOFF; beat < TAKEOFF + 64; beat++) {
+    if (slabAt(beat, omenAt(beat, 10))) flown.push(beat);
+  }
+  const last = slabAt(flown[flown.length - 1], omenAt(flown[flown.length - 1], 10));
+  assert(flown.length > 44 && last[2] + 14 >= 480,
+    `the pass runs until the rig has left the right edge (${flown.length} beats, last seen at x ${last[2]})`);
+  assert(flown.every((beat, i) => i === 0 || beat === flown[i - 1] + 1),
+    'and is in the sky on every beat between');
+  // The rotation is not consumed: the crossing after the omen tows the line it
+  // would have towed anyway.
+  const nextUsual = slabAt(TAKEOFF + 64 + 2 + 20, null);
+  assert(nextUsual && nextUsual[4] === late[4],
+    'the crossing after it tows the line it would have towed without the omen');
+  assert(!background(2, 40, {}, 0, 0, { omen: 10 }).find((op) => op[0] === 'fillRect'
+    && op[1] === PANEL_LIT && op[5] === 11 && op[4] > 40 && op[3] < 100),
+    'a panel with no plane flies nothing, roll or no roll');
+  const frozen = slabAt(TAKEOFF + 20, omenAt(TAKEOFF + 20, 10), { reducedMotion: true });
+  assert(!frozen || frozen[4] < 90, 'a frozen panel never shows it');
+}
+
+// ---- the sign that shouts a verb ------------------------------------------
+//
+// The share price stands down and its board shouts one verb: the ribbon's own
+// mark in the ACTION's colour, with the word for it underneath. The board is
+// SQUARE and the width of its facade whatever is on it, because the price and
+// the sign trade it back and forth mid-stage and a board that changed shape as
+// they did would read as two signs being swapped rather than one changing its
+// mind.
+{
+  const sign = (action, ink, beat, settings = {}, stage = 2) =>
+    background(stage, beat, settings, 0, 0, { intro: true, verbCue: { action, ink } });
+  // The mark is a filled path (the triangles) or a stroked one (the ring), so
+  // the fill/stroke ops carrying the action's colour are what prove it drew.
+  const marks = (ops, ink) => ops.filter((op) => (op[0] === 'fill' || op[0] === 'stroke')
+    && op[1] === ink).length;
+  // The word is fine 1px print in the panel's lit cream — the only cells on the
+  // whole panel drawn that way.
+  const letters = (ops) => ops.filter((op) => op[0] === 'fillRect' && op[1] === PANEL_LIT
+    && op[4] === 1 && op[5] === 1).length;
+  // The board itself: the one big panel of print on this roofline, at the size
+  // the sign fixes it to.
+  const board = (ops) => ops.filter((op) => op[0] === 'fillRect' && op[1] === PRINT
+    && op[4] > 20 && op[5] > 20).map((op) => `${op[2]},${op[3]},${op[4]}x${op[5]}`);
+  // The price fills its board at 3px cells — the one sign on the skyline that
+  // does not draw at 2, because it is the one whose board is not its own size.
+  const price = (extra, beat = 0, stage = 2) => background(stage, beat, {}, 0, 0, extra)
+    .filter((op) => op[0] === 'fillRect' && op[1] === PANEL_LIT && op[4] === 2 && op[5] === 2
+      && op[3] > 100).length;
+
+  assert(marks(sign('duck', ['#72d8f0'], 0), '#72d8f0') > 0,
+    "the sign draws its mark in the action's own colour");
+  // Colour is passed, never kept: a mark asked for in a colour the pack has
+  // never heard of comes out in it, which is why the action list lives with the
+  // ribbon and the road instead of here.
+  assert(marks(sign('jump', ['#ff00ff'], 0), '#ff00ff') > 0,
+    'and in whatever colour it is handed, so the pack keeps no copy of the list');
+  // A SLIDE CAN ANSWER TWO OBJECTS AND SHOWS TWO MARKS. Shape is the button,
+  // colour is the thing arriving: a barrel along the floor in wood, a drone
+  // overhead in cyan, and a stage that stages both says both.
+  const two = sign('duck', ['#d4a35e', '#72d8f0'], 0);
+  assert(marks(two, '#d4a35e') === 1 && marks(two, '#72d8f0') === 1,
+    'a slide that answers two objects shows a mark for each');
+  assert(marks(sign('jump', ['#3fbf5a'], 0), '#3fbf5a') === 1, 'and a jump shows one');
+  // The word underneath, a different length per verb — the check that it is the
+  // label being printed and not a fixed decoration.
+  const j = letters(sign('jump', ['#3fbf5a'], 0));
+  const d = letters(sign('duck', ['#72d8f0'], 0));
+  const a = letters(sign('ability', ['#f890b8'], 0));
+  assert(j > 0 && d > j && a > d,
+    `the word is printed under it (JUMP ${j} < SLIDE ${d} < ATTACK ${a} cells)`);
+  // THE MARKS ARE THE RIBBON'S TRIANGLES, not arrows with stems: up and down
+  // are the same three points reflected.
+  const corners = (action) => sign(action, ['#3fbf5a'], 0)
+    .filter((op) => op[0] === 'lineTo').length;
+  assert(corners('jump') === corners('duck'), 'up and down are the same triangle reflected');
+  // ONE BOARD, WHATEVER IS ON IT — same origin, same square, on every stage.
+  for (const stage of [1, 2, 3]) {
+    const quietBoard = board(background(stage, 0, {}, 0, 0, { streak: 12, verbCue: null }));
+    const loudBoard = board(sign('ability', ['#f890b8'], 0, {}, stage));
+    assert(quietBoard.length > 0 && String(quietBoard) === String(loudBoard),
+      `stage ${stage}: the board is the same rectangle whether it counts or shouts (${quietBoard})`);
+  }
+  // IT TAKES THE BOARD AND GIVES IT BACK. The ordinary face is the on-beat count
+  // in 2px lit cream; while a verb is being shouted there is none of it left,
+  // and the moment the shout ends it is back exactly as it was.
+  const quiet = price({ streak: 12 });
+  assert(quiet > 0, 'the board counts the streak when nothing is being shouted');
+  assert(price({ streak: 12, verbCue: { action: 'duck', ink: ['#72d8f0'] } }) === 0,
+    'and gives its whole face over while the sign is up');
+  assert(price({ streak: 12, verbCue: null }) === quiet, 'and takes it back afterwards');
+  // ONE DARK BEAT A BAR, not a strobe — and reduced flashing keeps the message
+  // and drops the blink, the fallback every other sign on this panel takes.
+  // THREE QUARTERS ON, A QUARTER OFF, EVERY BEAT. Sampled inside a beat rather
+  // than across bars: this is the one thing on the panel that happens at a
+  // finer grain than the beat grid.
+  for (const phase of [0, 0.3, 0.74]) {
+    assert(marks(sign('duck', ['#72d8f0'], 3 + phase), '#72d8f0') > 0,
+      `lit ${Math.round(phase * 100)}% of the way through a beat`);
+  }
+  for (const phase of [0.75, 0.99]) {
+    assert(marks(sign('duck', ['#72d8f0'], 3 + phase), '#72d8f0') === 0
+      && letters(sign('duck', ['#72d8f0'], 3 + phase)) === 0,
+      `dark ${Math.round(phase * 100)}% of the way through a beat`);
+  }
+  assert(marks(sign('duck', ['#72d8f0'], 3.9, { reducedFlashing: true }), '#72d8f0') > 0,
+    'reduced flashing keeps the message and drops the flash');
+  assert(marks(sign('duck', ['#72d8f0'], 0, { reducedMotion: true }), '#72d8f0') === 0,
+    'a frozen panel is never shouted at');
 }
 
 // ---- how low a window may light -------------------------------------------

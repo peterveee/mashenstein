@@ -460,7 +460,7 @@ export const CABINETS = [
     // surface line — because the terrain painter draws rhythm-1's rolling
     // mid-section with these, on top of the pack's panel-lit road, and the
     // olive drab it used to carry read as mud on the screen.
-    sky: ['#202018', '#383828'], ground: '#26355d', groundDark: '#dce49a',
+    sky: ['#202018', '#383828'], ground: '#3c3f45', groundDark: '#dce49a',
     far: '#404030', hills: '#383828',
     // TEETH. This cabinet's beat lane cuts its own holes on the grid
     // (songs/rhythm.js), so a hole here is not an occasional set piece, it is

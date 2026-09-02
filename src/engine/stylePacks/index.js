@@ -2033,7 +2033,12 @@ function vhsPack(settings) {
 export const LCD_ROAD_INK = 1;
 
 const LCD_PANEL = '#a8c66c';
-const LCD_INK = '#26355d';
+// GRAPHITE, not navy: a near-black neutral, which is what a Game & Watch's
+// segments are on its grey-green screen. Chosen 2 Sep 2026 from a sheet of
+// five (work/local/_lcd-ink-sheet.mjs); every other ink on the panel — wall
+// lines, ghost cells, furniture print, the lattice — is this family at an
+// alpha, so the panel is one ink and the coral.
+const LCD_INK = '#3c3f45';
 // The screen colour as it reaches the lane. A hole clearing its own mouth has
 // to restore this exact value or the break reads as a lit strip.
 const LCD_PANEL_LIT = '#dce49a';
@@ -2053,6 +2058,28 @@ const LCD_PANEL_LIT = '#dce49a';
 // of the road's dirt doing nothing with them, which is the entire reason the
 // groundline moved at all. Move GROUND_Y again and these move with it, or the
 // skyline slides down the panel and takes every authored contact above it.
+// ON THE GRAPH PAPER. The screen lattice (see post()) rules a line every
+// three pixels, at every coordinate that is 2 mod 3, and since 2 Sep 2026 the
+// buildings are drawn ON it: a wall stands on a rule (x ≡ 2 mod 3), a roof
+// lies on a rule (h ≡ 2 mod 3, because GROUND_Y is 232), a width is a whole
+// number of cells, and a facade's width is set by how many windows it has —
+// LCD_FACADE_W[cols] — so every two-window building is one width and every
+// three-window building another. Windows and wall lines follow from the same
+// rule: see lcdWindowCells and lcdLeanDetail. Roof furniture is centred on
+// the facade and not held to the grid; Peter asked for the BUILDINGS.
+//
+// AND EQUIDISTANT. Within a stage every gap between neighbours is the same
+// whole number of cells — 12 on stage 1 (its eight structures, the tower
+// among them, are the widest set), 15 on stages 2 and 3 — with what
+// is left over split between the two screen edges. A gap is a multiple of 3
+// and so is every width, so walking left to right from a wall on a rule keeps
+// every wall on a rule.
+const LCD_U = 3;                                   // one graph-paper cell
+const LCD_FACADE_W = { 2: 36, 3: 51 };             // 5N + 2 cells: 2u margin, 3u window, 2u gutter
+const LCD_COL_PITCH = 15;                          // window + gutter, 5 cells
+const LCD_ROW_PITCH = 12;                          // window + gutter, 4 cells
+const LCD_CELL_W = 8;                              // the fill inside a 3-cell box
+const LCD_CELL_H = 5;                              // the fill inside a 2-cell box
 const LCD_CITY_SCENES = [
   null,
   {
@@ -2089,9 +2116,16 @@ const LCD_CITY_SCENES = [
     // plain banded facade with no crown of its own, so the stack is the only
     // thing standing up there and the plume plainly belongs to it.
     buildings: [
-      [12, 42, 148, 'clockworks'], [66, 36, 76, 'storefront'], [114, 48, 124, 'deco'],
-      [174, 38, 96, 'fire-escape'],
-      [324, 46, 112, 'office'], [382, 36, 74, 'storefront'], [431, 34, 88, 'workshop'],
+      // Sits 17 in on the left and 10 on the right rather than centred: the
+      // tower's barrel has to stay at screen x 268, where the plane's authored
+      // crossing meets it on exactly one phase of four (lcdBarrelStrike). At
+      // 221 a second phase struck too and the gag stopped being occasional.
+      // THE COMBO BOARD'S BUILDING IS THREE WINDOWS WIDE on every stage — it
+      // carries the one sign the player reads — and the deco beside it gave up
+      // the width so the row's total, and every gap, stayed the same.
+      [17, 36, 149, 'clockworks'], [65, 51, 77, 'storefront'], [128, 36, 125, 'deco'],
+      [176, 36, 95, 'fire-escape'],
+      [323, 51, 113, 'office'], [386, 36, 74, 'storefront'], [434, 36, 89, 'workshop'],
     ],
     clouds: [[28, 52], [184, 42], [346, 58]],
     // THE CLOCK IS THE BUILDING. [building index, dial radius] — the dial is
@@ -2119,7 +2153,7 @@ const LCD_CITY_SCENES = [
     // face, the big rooftop gorilla on top and a little runner two floors
     // below him. [x, w, h]. The gorilla lives HERE now, so this scene sets no
     // rooftopGorilla of its own.
-    gameWatch: [224, 88, 114],
+    gameWatch: [224, 87, 113],
     // Beat-stepped rooftop furniture: pixel billboards on the buildings at
     // these indices, a transmitter mast whose signal rings walk outward a
     // step per beat, chimneys whose puff columns live on the beat, and a
@@ -2181,9 +2215,17 @@ const LCD_CITY_SCENES = [
   {
     // EIGHT structures with even air, like the other two scenes.
     buildings: [
-      [16, 42, 64, 'speaker'], [74, 36, 136, 'deco'], [126, 48, 80, 'music-hall'],
-      [190, 38, 156, 'spire'], [244, 52, 58, 'speaker'], [312, 40, 146, 'deco'],
-      [368, 46, 74, 'music-hall'], [430, 36, 150, 'spire'],
+      // THE CHART'S ROOF IS NOT A LANDMARK. This facade stood 136 — second only
+      // to the spire beside it — which put the one board the player actually
+      // reads up under the beat ribbon's band and a long way from the lane the
+      // run is happening in. It answers to the run, so it belongs down where the
+      // run is: 90 sits it a little above its left-hand neighbour and lands the
+      // board on much the same screen line as rhythm-1's and rhythm-3's.
+      // The combo board's building is three wide; the music hall beside it is
+      // two, so the row's total and its gaps are unchanged.
+      [20, 36, 65, 'speaker'], [71, 51, 89, 'deco'], [137, 36, 80, 'music-hall'],
+      [188, 36, 155, 'spire'], [239, 51, 59, 'speaker'], [305, 36, 146, 'deco'],
+      [356, 51, 74, 'music-hall'], [422, 36, 149, 'spire'],
     ],
     clouds: [[22, 54], [236, 44], [396, 62]],
     // Stage 2 was the one panel with no sky or rooftop life at all — windows,
@@ -2207,7 +2249,9 @@ const LCD_CITY_SCENES = [
     // six, so the rail visibly goes behind the tallest tower and the two
     // billboards keep their air. `fromPhase` gates the SERVICE only; the
     // viaduct itself is baked in with the facades and stands from beat one.
-    train: { y: 66, cars: 4, fromPhase: 1 },
+    // 65 now, not 66: the deck's top line sits on lattice rule 77 and the
+    // cars ride it, so the lane is one up. See lcdViaduct.
+    train: { y: 65, cars: 4, fromPhase: 1 },
     washer: [5, 20],
     chopper: { fromPhase: 2, takes: 0 },
     // Same swap as stage 1, for the same reason: the chart near the hero,
@@ -2240,9 +2284,18 @@ const LCD_CITY_SCENES = [
     // the number the plane's lane is measured against) and six takes the
     // gorilla's capped deco.
     buildings: [
-      [19, 34, 66, 'ducts'], [72, 42, 116, 'relay'], [133, 34, 52, 'workshop'],
-      [186, 46, 126, 'industrial'], [251, 32, 134, 'relay'], [302, 44, 70, 'ducts'],
-      [365, 34, 118, 'deco'], [418, 42, 76, 'industrial'],
+      // Down from 116 for the reason rhythm-2's came down from 136: the board
+      // that reports the run reads best near the lane, and all three stages now
+      // carry it at about the same height.
+      // FOUR THREE-WIDE FACADES — the combo board's, the two tall ones and the
+      // closer — with the gaps closed to 15 to fit them, so the board's
+      // building starts at 65 and the sign's centre lands near 90: a little
+      // LEFT of the hero, who stands at screen x 112-160. The opener stays two
+      // wide on purpose; widening it pushed the sign right, under him. Edges
+      // 14 and 13.
+      [14, 36, 65, 'ducts'], [65, 51, 86, 'relay'], [131, 36, 53, 'workshop'],
+      [182, 51, 125, 'industrial'], [248, 51, 134, 'relay'], [314, 36, 71, 'ducts'],
+      [365, 36, 119, 'deco'], [416, 51, 77, 'industrial'],
     ],
     clouds: [[18, 46], [264, 52], [398, 40]],
     // THE HIGH LANE, AND ON THIS PANEL IT CLEARS HIM. Stage 1 owns the gag
@@ -2270,6 +2323,14 @@ const LCD_CITY_SCENES = [
     // of the bar they share a column. He is fourteen shorter and still the
     // tallest thing on this skyline by seven.
     plane: { from: 66, to: 42, level: 200, tow: ['HIGH SCORE', 'ONE MORE GO', 'PRESS START'] },
+    // ...AND ONCE IN A WHILE IT TOWS SOMETHING ELSE. The witch's threat off the
+    // Emerald City's sky, on the crossing this panel already flies — RARELY,
+    // which is what makes it a gag rather than a fourth line in the rotation.
+    // The run rolls it (RunState.skyOmenBeat) and hands the panel a clock;
+    // the first crossing to take off after that clock starts tows this instead
+    // of its turn's line, and the rotation is not consumed by it. Without a
+    // roll the panel draws what it always drew. See lcdPlaneCyc.
+    omen: { text: 'SURRENDER DOROTHY' },
     // THE SHARE PRICE FOLLOWS THE PLAYER INTO THE LAST STAGE. Stages 1 and 2
     // both hang the chart on their second building, over the roof the hero at
     // screen x 56 is actually under, and stage 3 was the one panel that lost
@@ -2286,23 +2347,14 @@ const LCD_CITY_SCENES = [
   },
 ];
 
+// Each stage's sky pair, which LCD_SKY_PHASES phase 0 opens on. The tinted
+// building planes and cloud inks that used to live here are gone with the
+// OLED treatment: every wall is LCD_FACADE_WASH and every cloud is LCD_INK.
 const LCD_GBC_PALETTES = [
   null,
-  {
-    sky: ['#e7e7a3', '#a8cf8a'],
-    buildings: ['rgba(70,121,137,0.24)', 'rgba(211,139,66,0.22)', 'rgba(104,94,142,0.18)'],
-    cloud: 'rgba(54,102,123,0.64)',
-  },
-  {
-    sky: ['#e7dfa2', '#91c2a8'],
-    buildings: ['rgba(79,111,153,0.24)', 'rgba(136,89,139,0.22)', 'rgba(218,117,76,0.18)'],
-    cloud: 'rgba(83,83,139,0.62)',
-  },
-  {
-    sky: ['#dad98d', '#88ae91'],
-    buildings: ['rgba(64,102,123,0.28)', 'rgba(117,78,119,0.24)', 'rgba(186,102,66,0.20)'],
-    cloud: 'rgba(45,81,112,0.66)',
-  },
+  { sky: ['#e7e7a3', '#a8cf8a'] },
+  { sky: ['#e7dfa2', '#91c2a8'] },
+  { sky: ['#dad98d', '#88ae91'] },
 ];
 
 // THE LIGHT SHIFTS A LITTLE. One authored sky pair per phase per stage, and
@@ -2331,12 +2383,45 @@ const LCD_EQ_LEVELS = [2, 4, 3, 6, 4, 5, 2, 4, 6, 3, 5, 4, 2, 5, 3, 6];
 // on this screen eases.
 const LCD_CLOUD_DRIFT = [2, 1, 3];
 const LCD_CLOUD_BOB = [0, 1, 0, -1];
-const LCD_WINDOW_OFF = 'rgba(53,83,101,0.24)';
-const LCD_MOTION_GHOST = 'rgba(53,83,101,0.12)';
+const LCD_WINDOW_OFF = 'rgba(80,85,92,0.24)';
+const LCD_MOTION_GHOST = 'rgba(80,85,92,0.12)';
 const LCD_WINDOW_ON = 'rgba(211,91,67,0.82)';
-const LCD_PRINT = 'rgba(38,53,93,0.72)';
-const LCD_PRINT_SOFT = 'rgba(53,83,101,0.48)';
+const LCD_PRINT = 'rgba(60,63,69,0.72)';
+const LCD_PRINT_SOFT = 'rgba(80,85,92,0.48)';
 const lcdMod = (n, d) => ((n % d) + d) % d;
+
+// ---- the OLED screen ------------------------------------------------------
+//
+// THE PANEL AS SHIPPED, settled 2 Sep 2026 after a six-round bake-off (gallery
+// section `lcd-finish-bakeoff`, now retired). The brief was "nostalgic but
+// slick", and the answer was to think of the toy as an OLED Game & Watch: the
+// authored city is untouched — the same structures, windows, crowns and roof
+// furniture on the same pixels — and the TREATMENT is what a modern panel
+// would give it.
+//
+//  - NO COLOUR PLANES. A facade is one faint wash so it separates from the
+//    sky; the tinted translucent planes that muddied against each other are
+//    gone.
+//  - ONE INK, ONE WEIGHT. The outline and every crown are LCD_INK at 1px; the
+//    lines on the wall are the same ink at one softer alpha, one pixel wide,
+//    laid in the window gutters (see lcdLeanDetail).
+//  - A SEGMENT THAT IS OFF IS A GHOST. Unlit windows are one uniform cell at
+//    one alpha, no glass glint.
+//  - A SEGMENT THAT IS ON GLOWS. Lit windows are the coral at full strength
+//    with three rings of falloff (LCD_GLOW) — an OLED emits, it is not printed.
+//  - THE GRID STAYS, FAINTER. The cell lattice at half the old strength, both
+//    directions, as an OLED's subpixel gaps; and no soft-light wash, because
+//    the light is coming from the panel.
+const LCD_FACADE_WASH = 'rgba(60,63,69,0.07)';
+const LCD_WALL_LINE = 'rgba(60,63,69,0.55)';
+// An unlit window cell — and stage 3's roof plates, which are the same kind
+// of off segment. Fainter and in the outline's own blue rather than
+// LCD_WINDOW_OFF, which the rest of the panel's ghost cells keep.
+const LCD_WINDOW_GHOST = 'rgba(60,63,69,0.14)';
+const LCD_WINDOW_LIT = '#d35b43';
+// Outermost ring first: each [pad, colour] is a rectangle `pad` px proud of
+// the cell, so the three make a soft falloff.
+const LCD_GLOW = [[3, 'rgba(211,91,67,0.07)'], [2, 'rgba(211,91,67,0.16)'], [1, 'rgba(211,91,67,0.38)']];
 
 // HOW MANY PHASES A STAGE PASSES THROUGH. The panel changes over a run — the
 // sky gets later, more windows come on, actors arrive — but it STEPS between
@@ -2364,6 +2449,12 @@ function lcdSceneFrame(scene, reducedMotion) {
     stageIndex,
     live,
     step: lcdMod(beat, 16),
+    // WHERE IN THE BEAT WE ARE, 0 to 1. Everything else on this panel steps on
+    // whole beats and wants nothing finer; the verb sign flashes three-quarters
+    // on and a quarter off, which is a thing that happens INSIDE a beat and is
+    // the only reason this is here. Zero on a frozen panel, so a sign under
+    // reduced motion simply stands lit.
+    beatPhase: live && Number.isFinite(scene.beat) ? scene.beat - Math.floor(scene.beat) : 0,
     beat4: lcdMod(beat, 4),
     beatAbs: beat,
     bar: Math.floor(beat / 4),
@@ -2385,15 +2476,21 @@ function lcdSceneFrame(scene, reducedMotion) {
     spectrum: heard,
     audio: heard ? scene.audio : null,
     // HOW THE RUN IS GOING, and the one crack in "no gameplay reaches this
-    // painter". It is deliberately narrow: a single 0..1 scalar the run keeps
-    // (RunState.rhythmForm) and a boolean for the streak reward — no chart
-    // events, no obstacles, no player position. The share-price billboard
-    // spends both; nothing else on the panel reads them. Null and false under
-    // reduced motion for the same reason `audio` is: a frozen panel must not
-    // be animated behind the player's back, and the authored flat trace is
-    // exactly what every non-run caller has always drawn.
-    form: reducedMotion || !Number.isFinite(scene?.form) ? null
-      : Math.max(0, Math.min(1, scene.form)),
+    // painter". It is deliberately narrow: the count of clean beats in a row
+    // (RunState.beatCombo) and a boolean that goes true for a couple of seconds
+    // every eighth of them — no chart events, no obstacles, no player position.
+    // The counting board on the roof the hero runs under spends both; nothing
+    // else on the panel reads them.
+    //
+    // A 0..1 `form` scalar used to ride here too, for a share-price trace that
+    // tilted with it. Both are gone: the fiction was one joke resting on the
+    // cabinet's name, and a tilting squiggle on a rooftop is not a thing a
+    // player reads as "how you are doing" — the count is.
+    //
+    // Zero and false under reduced motion for the same reason `audio` is null
+    // there: a frozen panel must not be animated behind the player's back.
+    streak: reducedMotion || !Number.isFinite(scene?.streak) ? 0
+      : Math.max(0, Math.trunc(scene.streak)),
     cheer: !reducedMotion && !!scene?.cheer,
     // WHEN THE NEXT BARREL REACHES THE FOOT OF THE CHUTE, as an absolute beat,
     // or null. The second crack in "no gameplay reaches this painter" and it is
@@ -2418,36 +2515,52 @@ function lcdSceneFrame(scene, reducedMotion) {
     // judged on the real panel by the real painter rather than in a copy of
     // him. It never overrides the startle; see lcdRooftopGorilla.
     gorillaExpr: typeof scene?.gorillaExpr === 'string' ? scene.gorillaExpr : null,
+    // WHICH SCREEN TREATMENT. DEV ONLY, on the same terms as gorillaExpr: no
+    // run sets it, the gallery's bake-off does. See LCD_FINISH_CANDIDATES.
+    finishStyle: typeof scene?.finishStyle === 'string' ? scene.finishStyle : null,
     // And which BROW treatment, same deal: null means the one the panel ships.
     gorillaBrow: typeof scene?.gorillaBrow === 'string' ? scene.gorillaBrow : null,
-    // WHICH PLUMBER the tower's little man is drawn as, or null for the one it
-    // ships. DEV ONLY, same deal as the two above: see LCD_RUNNER_STYLES and
-    // the gallery's `plumber-bakeoff`.
-    runnerStyle: typeof scene?.runnerStyle === 'string' ? scene.runnerStyle : null,
-    // THE OPENING, or null — and null is the normal state of this panel.
+    // IS THIS A RUN OPENING, and HOW FAR INTO IT — the pair that gates the
+    // city's arrival, see lcdArrival.
     //
-    // The third and last crack in "no gameplay reaches this painter", and the
-    // narrowest of them: a line of text and the colours its picture cells are
-    // drawn in. No events, no positions, and NO TIMING — the city assembles
-    // against the beat this frame already carries and the legend rides the
-    // plane's own pass zero, so the run says WHAT is announced and the panel
-    // keeps deciding when.
+    // THE TIMING IS THE RUN'S, NOT THE SONG'S. It was the song's beat, which
+    // this frame already has, and that was wrong in both directions: the song
+    // is already playing under the act banner and the run-in, so half the
+    // skyline walked on before the player ever saw the panel; and the heard
+    // beat is a position INSIDE the loop, so every time the song came round the
+    // count fell back through zero and the city dismantled itself and rebuilt
+    // in the middle of a run. The run counts its own opening instead
+    // (RunState.advanceCityIntro) and hands the number over here — monotonic,
+    // anchored to the frame the world starts moving, and never reset by a
+    // death, so a retry arrives long past the assembly.
     //
-    // The LINE is passed rather than authored because only the run knows it.
-    // rhythm-1's chart contains no duck at all and its card box is laid only
-    // for a hero who can answer it (BeatSpawner.canShoot), so a fixed
-    // three-verb legend would spend most of its banner naming things that
-    // stage never asks of that hero. See RunState.rhythmLegend.
+    // Absent under reduced motion, in the hub, in the gallery and in the tests,
+    // where the city is simply standing when the panel opens — the authored
+    // picture, and what every caller outside a run has always drawn.
+    intro: !reducedMotion && !!scene?.intro,
+    introBeat: reducedMotion || !Number.isFinite(scene?.intro?.beat) ? null
+      : Math.floor(scene.intro.beat),
+    // HOW MANY BEATS SINCE THE OMEN TOOK OFF, or null when this run never rolled
+    // one — negative while it is still on the ground. The run's own monotonic
+    // clock, for the reason the opening's is: the song's beat comes round every
+    // loop, and a threat that flew past on every lap would be an advert. Only a
+    // scene that authors `omen` reads it; see lcdPlaneCyc.
+    omenStep: !reducedMotion && Number.isFinite(scene?.omen) ? Math.floor(scene.omen) : null,
+    // WHICH VERB THE SIGN IS SHOUTING, or null — `{ action, ink }`.
     //
-    // Null under reduced motion, in the hub, in the gallery and in the tests,
-    // exactly like `form` and `barrelBeat` — and there the city is simply
-    // standing when the panel opens and the opening crossing flies clean, which
-    // is the authored picture every caller outside a run has always drawn.
-    intro: reducedMotion || !scene?.intro ? null : {
-      legend: scene.intro.legend?.text
-        ? { text: String(scene.intro.legend.text), ink: scene.intro.legend.ink || null }
-        : null,
-    },
+    // The fourth and last crack in "no gameplay reaches this painter": one verb
+    // name and one colour, and no position, no event and no timing. The run
+    // decides WHEN a verb is worth shouting about; the panel decides what a
+    // shout looks like. Everything outside a run passes none and the share
+    // price keeps its board.
+    verbCue: reducedMotion || !scene?.verbCue?.action ? null
+      : {
+        action: String(scene.verbCue.action),
+        // One colour or several: a slide answers a barrel and a drone on the
+        // stages that stage both, and it shows a mark for each.
+        ink: Array.isArray(scene.verbCue.ink) ? scene.verbCue.ink.slice(0, 3)
+          : [scene.verbCue.ink || LCD_WINDOW_ON],
+      },
     // The highest the lane can climb on this stage — see lcdLightFloor. A run
     // knows it exactly; every other caller draws no road and keeps rhythm-1's.
     maxRoadRise: Number.isFinite(scene?.maxRoadRise)
@@ -2560,7 +2673,7 @@ function lcdSkylineEq(ctx, frame) {
     for (const [sx, ex, top] of spans) {
       if (x + barW - 2 > sx && x < ex && top < floorY) floorY = top;
     }
-    ctx.fillStyle = 'rgba(53,83,101,0.10)';
+    ctx.fillStyle = 'rgba(80,85,92,0.10)';
     for (let i = 0; i < n; i++) {
       const y = GROUND_Y - 2 - i * LCD_EQ_CELL;
       if (y + 2 > floorY) continue;
@@ -2641,23 +2754,28 @@ const lcdBayHits = (bay, x, y, w, h) => !!bay
 function lcdWindowCells(building, bay = null) {
   const hit = lcdCellCache.get(building);
   if (hit) return hit;
-  const [x, w, h, style] = building;
+  const [x, w, h] = building;
   const top = GROUND_Y - h;
-  const cols = Math.max(2, Math.floor((w - 12) / (style === 'deco' ? 12 : 11)));
-  const activeRows = Math.max(2, Math.floor((h - 22) / 11));
-  const rows = Math.max(activeRows, Math.floor((H - top - 8) / 11));
+  // Columns follow from the width, which was set from the columns: see
+  // LCD_FACADE_W. A window is the fill inside a 3x2-cell box whose rules are
+  // x + 6 + 15·col and top + 6 + 12·row, so the box's edges are grid lines
+  // and the fill sits one pixel inside them.
+  const cols = Math.max(2, Math.round((w - 2 * LCD_U) / LCD_COL_PITCH));
+  // Rows the beat may light: those whose box clears the quiet 27px above the
+  // lane. The rest run on down past the road for a pit to show.
+  const activeRows = Math.max(2, Math.floor((h - 27 - 2 * LCD_U) / LCD_ROW_PITCH));
+  const rows = Math.max(activeRows, Math.floor((H - top - 2 * LCD_U - 1) / LCD_ROW_PITCH));
   const cells = [];
   for (let row = 0; row < rows; row++) {
-    const y = top + 10 + row * 11;
-    if (y + 6 > H) continue;
+    const y = top + 2 * LCD_U + 1 + row * LCD_ROW_PITCH;
+    if (y + LCD_CELL_H > H) continue;
     for (let col = 0; col < cols; col++) {
-      const cx = x + 7 + col * ((w - 14) / Math.max(1, cols - 1));
-      const cellX = Math.round(cx - 3);
+      const cellX = x + 2 * LCD_U + 1 + col * LCD_COL_PITCH;
       // The clock stage has no windows in it. Dropped at BUILD time rather than
       // masked at draw time, so the lit half cannot light a cell the dial is
       // standing on — and so the baked layer and the live one agree by
       // construction instead of by both remembering to check.
-      if (lcdBayHits(bay, cellX, y, 7, 6)) continue;
+      if (lcdBayHits(bay, cellX, y, LCD_CELL_W, LCD_CELL_H)) continue;
       cells.push({ row, col, x: cellX, y });
     }
   }
@@ -2670,17 +2788,13 @@ function lcdWindowCells(building, bay = null) {
 // same on every frame whatever the beat is doing. It goes into the baked city
 // layer; see bakedCity.
 //
-// Big, solid colour tiles: closer to a GBC game's readable window blocks
-// than the old fine H-shaped LCD segments. A tiny highlight gives each tile
-// glass without cutting its silhouette into panes.
+// Big, solid tiles: closer to a GBC game's readable window blocks than the
+// old fine H-shaped LCD segments.
 function lcdWindowGridBase(ctx, building, bay) {
   const { cells } = lcdWindowCells(building, bay);
-  ctx.fillStyle = LCD_WINDOW_OFF;
-  for (const cell of cells) ctx.fillRect(cell.x, cell.y, 7, 6);
-  ctx.fillStyle = 'rgba(220,225,151,0.34)';
-  for (const cell of cells) {
-    ctx.fillRect(cell.x + 1, cell.y + 1, 5, 2);
-  }
+  // One uniform ghost cell, no glint: a segment that is off.
+  ctx.fillStyle = LCD_WINDOW_GHOST;
+  for (const cell of cells) ctx.fillRect(cell.x, cell.y, LCD_CELL_W, LCD_CELL_H);
 }
 
 // THE LIT HALF, and the only part of the grid a beat can move.
@@ -2730,13 +2844,16 @@ function lcdWindowGridLit(ctx, building, index, frame, bay) {
     active.push(...cells.filter((cell) => lightable(cell) && cell.col === col
       && cell.row >= activeRows - floor));
   }
-  ctx.fillStyle = LCD_WINDOW_ON;
-  for (const cell of active) {
-    ctx.fillRect(cell.x, cell.y, 7, 6);
-    ctx.fillStyle = LCD_PRINT;
-    ctx.fillRect(cell.x + 1, cell.y + 4, 5, 1);
-    ctx.fillStyle = LCD_WINDOW_ON;
+  // AN EMISSIVE CELL: the glow's rings first, outermost in, then the cell
+  // itself at full strength with nothing printed on it.
+  for (const [pad, colour] of LCD_GLOW) {
+    ctx.fillStyle = colour;
+    for (const cell of active) {
+      ctx.fillRect(cell.x - pad, cell.y - pad, LCD_CELL_W + pad * 2, LCD_CELL_H + pad * 2);
+    }
   }
+  ctx.fillStyle = LCD_WINDOW_LIT;
+  for (const cell of active) ctx.fillRect(cell.x, cell.y, LCD_CELL_W, LCD_CELL_H);
 }
 
 function lcdStrokePath(ctx, points, close = false) {
@@ -2753,7 +2870,7 @@ function gbcBuildingLineArt(ctx, building, crowned, bay = null) {
   const detailBottom = GROUND_Y - 27;
   const cx = Math.round(x + w / 2);
 
-  ctx.strokeStyle = LCD_PRINT;
+  ctx.strokeStyle = LCD_INK;
   // `crowned` MEANS THE ROOF IS SPOKEN FOR — by the gorilla, a billboard or the
   // transmitter — and every style that draws a rooftop crown has to honour it.
   // Half of them did not: storefront, clockworks, relay, speaker and music-hall
@@ -2766,60 +2883,33 @@ function gbcBuildingLineArt(ctx, building, crowned, bay = null) {
   // this lower portion everywhere except a pit, where it becomes the actual
   // background seen through the opening.
   ctx.strokeRect(x + 0.5, top + 0.5, w, H - top);
-  // Cornice, sill and corner masonry give the facades a designed scale. The
-  // lower 27px remain quiet so this never becomes false lane furniture.
-  ctx.fillStyle = LCD_PRINT_SOFT;
-  // A clock stage takes the whole storey, cornice and corner masonry included:
-  // the facade begins under the dial's sill. Everything here is measured from
-  // `courseTop` rather than the roof so the pilasters cannot start above it.
-  const courseTop = bay ? bay.bottom : top + 7;
-  if (!bay) ctx.fillRect(x + 2, top + 4, w - 4, 1);
-  ctx.fillRect(x + 3, courseTop, 1, Math.max(1, detailBottom - courseTop));
-  ctx.fillRect(x + w - 4, courseTop, 1, Math.max(1, detailBottom - courseTop));
+  // The lines on the wall: one pixel wide, in the window gutters, one
+  // signature element per style — see lcdLeanDetail. The lower 27px remain
+  // quiet so this never becomes false lane furniture. Everything below this
+  // line is the CROWN each style wears above its roof.
+  ctx.fillStyle = LCD_WALL_LINE;
+  lcdLeanDetail(ctx, building, bay, detailBottom);
 
   if (style === 'storefront') {
     if (!crowned) {
       ctx.strokeRect(x + 5.5, top - 5.5, w - 11, 5);
       ctx.fillRect(x + 8, top - 3, w - 16, 1);
     }
-    ctx.fillRect(x + 5, top + 8, w - 10, 2);
-    for (let sx = x + 7; sx < x + w - 6; sx += 6) ctx.fillRect(sx, top + 10, 3, 2);
   } else if (style === 'clockworks') {
     if (!crowned) { ctx.fillRect(x + 5, top - 3, 7, 3); ctx.fillRect(x + w - 12, top - 3, 7, 3); }
-    // THE SHAFT STOPS AT THE CLOCK STAGE and picks up again under its sill.
-    // The spine and the banded courses run the whole height of this facade,
-    // which is fine on a plain tower and is a cage drawn across a dial the
-    // moment one is set into it — the same thing the rooftop kit was doing
-    // behind the billboards. What the wall carries here is the clock.
-    const spineTop = bay ? bay.bottom : top + 7;
-    ctx.fillRect(cx - 1, spineTop, 2, Math.max(4, detailBottom - spineTop - 2));
-    for (let y = top + 18; y < detailBottom; y += 20) {
-      if (lcdBayHits(bay, x + 5, y, w - 10, 1)) continue;
-      ctx.fillRect(x + 5, y, w - 10, 1);
-    }
   } else if (style === 'workshop') {
     if (!crowned) {
       lcdStrokePath(ctx, [[x + 1, top], [x + 8, top - 6], [x + 15, top],
         [x + 22, top - 6], [x + w - 1, top]]);
     }
-    ctx.fillRect(x + 5, top + 7, w - 10, 1);
-    ctx.strokeRect(x + 6.5, top + 13.5, Math.max(8, w - 13), 8);
   } else if (style === 'deco') {
     if (!crowned) {
       ctx.strokeRect(cx - 9.5, top - 5.5, 19, 5);
       ctx.strokeRect(cx - 5.5, top - 10.5, 11, 5);
       ctx.fillRect(cx - 1, top - 14, 2, 4);
     }
-    ctx.fillRect(cx - 1, top + 4, 2, Math.max(5, detailBottom - top - 4));
-    ctx.fillRect(x + 7, top + 6, 1, Math.max(4, detailBottom - top - 8));
-    ctx.fillRect(x + w - 8, top + 6, 1, Math.max(4, detailBottom - top - 8));
   } else if (style === 'fire-escape') {
-    const side = x + w - 12;
-    for (let y = top + 15; y < detailBottom - 3; y += 20) {
-      ctx.fillRect(side, y, 9, 1);
-      ctx.fillRect(side, y - 4, 1, 5); ctx.fillRect(side + 8, y - 4, 1, 5);
-      lcdStrokePath(ctx, [[side + 1, y], [side + 7, y + 8], [side + 1, y + 16]]);
-    }
+    // No crown; the rail and landings are the wall's (lcdLeanDetail).
   } else if (style === 'water-tower') {
     if (!crowned) {
       // A TANK ON LEGS, and it has to say so from the lane. The old crown was
@@ -2847,32 +2937,20 @@ function gbcBuildingLineArt(ctx, building, crowned, bay = null) {
       ctx.fillRect(cx - 7, tb + 5, 5, 1);
       ctx.fillRect(cx + 3, tb + 5, 5, 1);
     }
-    for (let y = top + 16; y < detailBottom; y += 20) ctx.fillRect(x + 6, y, w - 12, 1);
   } else if (style === 'office') {
-    ctx.fillRect(x + 6, top + 7, 2, Math.max(4, detailBottom - top - 8));
-    ctx.fillRect(x + w - 8, top + 7, 2, Math.max(4, detailBottom - top - 8));
-    for (let y = top + 18; y < detailBottom; y += 20) ctx.fillRect(x + 5, y, w - 10, 1);
   } else if (style === 'speaker') {
     if (!crowned) ctx.strokeRect(cx - 9.5, top - 5.5, 19, 5);
-    for (const [cy, r] of [[top + 15, 5], [top + 29, 7]]) {
-      if (cy + r >= detailBottom) continue;
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, r - 3), 0, Math.PI * 2); ctx.stroke();
-    }
   } else if (style === 'music-hall') {
     if (!crowned) {
       ctx.strokeRect(cx - 11.5, top - 5.5, 23, 5);
       ctx.fillRect(cx - 8, top - 3, 16, 1);
     }
-    ctx.strokeRect(x + 6.5, top + 8.5, w - 13, 9);
-    ctx.fillRect(x + 9, top + 12, w - 18, 1);
   } else if (style === 'spire') {
     if (!crowned) {
       lcdStrokePath(ctx, [[cx - 10, top], [cx - 6, top - 6], [cx - 3, top - 6],
         [cx, top - 15], [cx + 3, top - 6], [cx + 6, top - 6], [cx + 10, top]]);
       ctx.fillRect(cx, top - 21, 1, 7);
     }
-    ctx.fillRect(cx - 1, top + 4, 2, Math.max(4, detailBottom - top - 6));
   } else if (style === 'ducts') {
     if (!crowned) {
       ctx.strokeRect(x + 6.5, top - 6.5, 7, 6);
@@ -2880,39 +2958,133 @@ function gbcBuildingLineArt(ctx, building, crowned, bay = null) {
       lcdStrokePath(ctx, [[x + w - 15, top], [x + w - 15, top - 8],
         [x + w - 7, top - 8], [x + w - 7, top]]);
     }
-    ctx.fillRect(x + 6, top + 8, w - 12, 1);
   } else if (style === 'relay') {
     if (!crowned) {
       ctx.strokeRect(cx - 9.5, top - 4.5, 19, 4);
       ctx.fillRect(cx - 6, top - 2, 12, 1);
     }
-    for (let y = top + 17; y < detailBottom; y += 18) ctx.fillRect(x + 5, y, w - 10, 1);
   } else if (style === 'industrial') {
     if (!crowned) {
       ctx.strokeRect(x + 5.5, top - 5.5, 8, 5);
       ctx.strokeRect(x + w - 13.5, top - 8.5, 8, 8);
       ctx.fillRect(x + w - 11, top - 12, 3, 4);
     }
-    lcdStrokePath(ctx, [[x + 5, top + 9], [x + w - 5, top + 18],
-      [x + 5, top + 27], [x + w - 5, top + 36]]);
   }
 }
 
-function lcdCloud(ctx, x, y, pose, color) {
+// THE WALL'S LINES, and why they belong to the window grid. Peter's diagnosis
+// of the old panel's roughness, looking at a 4x crop: the detail lines were a
+// mix of one and two pixels wide and none of them agreed with the windows — a
+// spine two wide beside cells seven wide, courses on a twenty-pixel pitch over
+// rows on an eleven-pixel pitch, corner pilasters one pixel off the first
+// column. So:
+//
+// EVERY LINE IS ONE PIXEL AND LIES ON A RULE OF THE GRAPH PAPER — the middle
+// rule of the two-cell gutter between window columns, the middle rule of the
+// gutter between rows, the rule half-way between the roof and the first row —
+// so nothing crosses a cell and every line is parallel to, and evenly spaced
+// from, the cells beside it. And there are FEWER of them: a cornice on every
+// wall, then ONE signature element per style. The crowns above the roof are
+// untouched; they are the silhouette.
+//
+// Everything is derived from lcdWindowCells so the lines cannot drift from
+// the grid they are aligned to. The stroke and fill styles are the caller's.
+function lcdLeanDetail(ctx, building, bay, detailBottom) {
+  const [x, w, h, style] = building;
+  const top = GROUND_Y - h;
+  const { cells, cols } = lcdWindowCells(building, bay);
+  // Wall to wall, inside the outline.
+  const left = x + 1;
+  const right = x + w;
+  const span = right - left;
+  // Column gutters: the middle rule between neighbouring cells of one row.
+  // Solved from row 0's cells when the bay leaves it standing, else from the
+  // first row it does.
+  const rowOf = (r) => cells.filter((c) => c.row === r).sort((a, b) => a.col - b.col);
+  let ref = [];
+  for (let r = 0; ref.length < cols && r < 40; r++) ref = rowOf(r);
+  const gutters = [];
+  for (let i = 1; i < ref.length; i++) {
+    gutters.push(Math.floor((ref[i - 1].x + LCD_CELL_W + ref[i].x) / 2));
+  }
+  // Row gutters: the rule between two window rows' boxes.
+  const rowGutter = (r) => top + 2 * LCD_U + (r + 1) * LCD_ROW_PITCH - LCD_U;
+  const rows = Math.floor((detailBottom - (top + 2 * LCD_U)) / LCD_ROW_PITCH);
+  // One-pixel lines, skipping anything the clock bay owns.
+  const hline = (y) => { if (!lcdBayHits(bay, left, y, span, 1)) ctx.fillRect(left, y, span, 1); };
+  const vline = (gx, y0, y1) => {
+    if (y1 <= y0) return;
+    if (lcdBayHits(bay, gx, y0, 1, y1 - y0)) {
+      // Pick up under the bay's sill, exactly as the shipped spine does.
+      if (bay && bay.bottom < y1) ctx.fillRect(gx, bay.bottom, 1, y1 - bay.bottom);
+      return;
+    }
+    ctx.fillRect(gx, y0, 1, y1 - y0);
+  };
+  const wallTop = top + 2 * LCD_U;
+  // The cornice, on the rule half-way between the roof and the first row.
+  // Not on a clock tower: the dial owns that storey.
+  if (!bay) hline(top + LCD_U);
+  switch (style) {
+    case 'clockworks':
+    case 'spire':
+      // A spine down the centre gutter. On an even column count the centre
+      // IS a gutter; on an odd one it would be a cell, so the two gutters
+      // either side of it carry the line instead.
+      if (gutters.length % 2 === 1) vline(gutters[(gutters.length - 1) / 2], wallTop, detailBottom);
+      else for (const g of gutters) vline(g, wallTop, detailBottom);
+      if (style === 'clockworks') for (let r = 2; r < rows; r += 3) hline(rowGutter(r));
+      break;
+    case 'deco':
+      // Fluting: a line in every gutter.
+      for (const g of gutters) vline(g, wallTop, detailBottom);
+      break;
+    case 'office':
+    case 'relay':
+    case 'water-tower':
+      // Banded: a course every second row.
+      for (let r = 1; r < rows; r += 2) hline(rowGutter(r));
+      break;
+    case 'fire-escape': {
+      // A rail down the last gutter, landings from it to the wall at each
+      // row gutter.
+      const rail = gutters[gutters.length - 1];
+      if (rail == null) break;
+      vline(rail, wallTop, detailBottom);
+      for (let r = 0; r < rows; r++) {
+        const y = rowGutter(r);
+        if (!lcdBayHits(bay, rail, y, right - rail, 1)) ctx.fillRect(rail, y, right - rail, 1);
+      }
+      break;
+    }
+    case 'music-hall':
+      // The marquee: a one-pixel frame on the rules around the first row of
+      // windows — the margins' middle rules for its sides, the cornice rule
+      // and the first course rule for its top and bottom.
+      ctx.strokeRect(x + LCD_U + 0.5, top + LCD_U + 0.5, w - 2 * LCD_U, LCD_ROW_PITCH);
+      break;
+    case 'speaker':
+      // The cones are the building; they stay.
+      for (const [cy, r] of [[top + 15, 5], [top + 29, 7]]) {
+        if (cy + r >= detailBottom) continue;
+        ctx.beginPath(); ctx.arc(Math.round(x + w / 2), cy, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(Math.round(x + w / 2), cy, Math.max(1, r - 3), 0, Math.PI * 2); ctx.stroke();
+      }
+      break;
+    default:
+      // storefront, workshop, ducts, industrial: the fascia — one course
+      // under the first row.
+      if (rows > 1) hline(rowGutter(0));
+  }
+}
+
+function lcdCloud(ctx, x, y, pose) {
   const a = [[0, 8], [3, 4], [8, 4], [11, 0], [19, 0], [23, 5], [29, 5], [34, 9], [31, 12], [3, 12]];
   const b = [[2, 7], [5, 3], [11, 3], [14, 0], [21, 1], [24, 5], [31, 5], [36, 9], [33, 12], [5, 12]];
-  ctx.strokeStyle = LCD_WINDOW_OFF;
-  lcdStrokePath(ctx, a.map(([px, py]) => [x + px, y + py]), true);
-  lcdStrokePath(ctx, b.map(([px, py]) => [x + px, y + py]), true);
-  ctx.strokeStyle = color;
+  // The live pose in ink, and no ghost of the other one under it: a cloud
+  // rather than a diagram of where a cloud could be.
+  ctx.strokeStyle = LCD_INK;
   lcdStrokePath(ctx, (pose ? b : a).map(([px, py]) => [x + px, y + py]), true);
-  const wisps = pose
-    ? [[x + 10, y + 7, 8, 1], [x + 21, y + 9, 9, 1], [x + 16, y + 4, 4, 1]]
-    : [[x + 7, y + 8, 9, 1], [x + 19, y + 6, 8, 1], [x + 13, y + 3, 5, 1]];
-  ctx.fillStyle = LCD_WINDOW_OFF;
-  ctx.fillRect(x + 5, y + 7, 25, 3);
-  ctx.fillStyle = color;
-  for (const cell of wisps) ctx.fillRect(...cell);
 }
 
 // ---- the chase ----------------------------------------------------------
@@ -3048,24 +3220,6 @@ const LCD_BILLBOARD_ART = {
       '..BBBBBBB..',
     ]],
   },
-  // RHYTHM BANKRUPTCY's own joke: the share price, going where the cabinet's
-  // name says it goes. It is the one sign on this skyline that is NOT purely
-  // authored — the trace tilts with how the run is going (see lcdChartGrid),
-  // and a long enough clean streak replaces the whole board with a thumb.
-  chart: {
-    ink: { X: LCD_WINDOW_ON, '!': '#f6d33c', g: LCD_WINDOW_OFF, O: LCD_PRINT, T: '#b9cf79' },
-    grid: (frame) => (frame.cheer ? LCD_THUMBS_UP : lcdChartGrid(frame.form)),
-    frames: [[
-      'X..........',
-      '.XX........',
-      '...X..X...!',
-      '....XX.X..!',
-      '........X.!',
-      '.........X.',
-      '..........!',
-      '...........',
-    ]],
-  },
   // A cassette for the rhythm cabinet: solid shell, cream label with a red
   // stripe, round-ish reel hubs joined by the tape through the window, and a
   // chamfered base. The first draft's two big square reels on an empty shell
@@ -3116,50 +3270,277 @@ const LCD_BILLBOARD_ART = {
 // along the bottom — so the eye has something for the trace to be high or low
 // against. The slope is clamped to a cell per column for the same reason: a
 // two-cell step is a wall, and a wall is a blob again.
-const LCD_CHART_WOBBLE = [0, 0.7, -0.5, 0.6, -0.4, 0.7, -0.6, 0.4, -0.5, 0];
-const LCD_CHART_COLS = 10;   // plotted columns; column 0 of the board is the axis
-const LCD_CHART_FLOOR = 6;   // lowest plotted row; row 7 is the baseline
-function lcdChartGrid(form) {
-  const f = Number.isFinite(form) ? Math.max(0, Math.min(1, form)) : 0.5;
-  const rows = [];
-  for (let r = 0; r < 8; r++) rows.push('...........'.split(''));
-  // The rulings first, so a trace cell always wins the square it shares.
-  for (let c = 0; c < 11; c++) rows[7][c] = 'g';
-  for (let r = 0; r < 8; r++) rows[r][0] = 'g';
-  // Row 0 is the TOP of the board, so a good run has to walk the trace UP the
-  // array. Mid-board is 3; a perfect form reaches row 0, a ruined one row 6.
-  const end = 3 - (f - 0.5) * 6;
-  // The wobble fades toward the right so the last cells say the score rather
-  // than the noise.
-  const at = (c) => {
-    const t = c / (LCD_CHART_COLS - 1);
-    return Math.max(0, Math.min(LCD_CHART_FLOOR,
-      Math.round(3 + (end - 3) * t + LCD_CHART_WOBBLE[c] * (1 - t * 0.35))));
-  };
-  let prev = at(0);
-  for (let c = 0; c < LCD_CHART_COLS; c++) {
-    // Where the run is NOW gets the gold, which is the only cell on this sign
-    // anybody reads in the half second it is on screen.
-    const r = Math.max(prev - 1, Math.min(prev + 1, at(c)));
-    rows[r][c + 1] = c === LCD_CHART_COLS - 1 ? '!' : 'X';
-    prev = r;
-  }
-  return rows.map((r) => r.join(''));
-}
 
 // The reward for a clean run of beats: the board drops the market and puts up
 // a thumb. Solid like the invader — outlines vanish at this cell size — with
 // two dark creases doing the work of curled fingers.
-const LCD_THUMBS_UP = [
-  '..TT.......',
-  '..TT.......',
-  '..TTT......',
-  '.TTTTTTTTT.',
-  'TTTTOOOOOTT',
-  'TTTTTTTTTTT',
-  'TTTTOOOOOTT',
-  '.TTTTTTTTT.',
-];
+// ---- the board that counts -------------------------------------------------
+//
+// THE BOARD ON THE ROOF THE HERO RUNS UNDER REPORTS THE RUN, and what it reports
+// is the ON BEAT STREAK: the count, with the word under it.
+//
+// It drew a SHARE PRICE for most of its life — a trace that tilted with a hidden
+// scalar — and that lost on two counts. The fiction was one joke resting on the
+// cabinet's name and nothing else in the game; and the trace was decoration
+// wearing information's clothes, because a tilting squiggle on a rooftop is not
+// a thing a player reads as "how you are doing". The run was already counting
+// something they could: clean beats in a row (RunState.beatCombo).
+//
+// THE WORD IS NOT DECORATION. A naked 47 on a rooftop could be a score, a lap, a
+// level or a countdown; COMBO under it is what makes it a streak. And it puts
+// this board on the same stack as the verb sign beside it — a big mark on top,
+// its word underneath — so the roof reads as one sign changing its mind rather
+// than two signs sharing a post.
+//
+// IT FILLS THE FACE EXACTLY. Fourteen pixels of digits, three of gap and seven
+// of word is the twenty-four this board has, which is why there is no trace
+// under it and no room for one: the graph did not lose a bake-off so much as
+// run out of board.
+const LCD_COMBO_WORD = 'COMBO';
+// 2px cells, and the same size at every count. 3px digits are fifteen wide, so
+// two fit this board and three do not — and sizing to fit would shrink the
+// number the moment a run passed ninety-nine, which is the run where it matters
+// most. A counter that changes size as it climbs is a counter nobody trusts.
+const LCD_COMBO_SCALE = 2;
+
+/** Print a run of glyphs at `scale` px per cell, left edge at x, top at y. */
+function lcdPrintNumber(ctx, text, x, y, scale) {
+  let cx = x;
+  for (const ch of text) {
+    const glyph = pixelGlyph(ch);
+    if (glyph) {
+      for (let r = 0; r < glyph.length; r++) {
+        for (let c = 0; c < 5; c++) {
+          if (glyph[r][c] === '1') ctx.fillRect(cx + c * scale, y + r * scale, scale, scale);
+        }
+      }
+    }
+    cx += (5 + 1) * scale;
+  }
+}
+function lcdNumberW(text, scale) {
+  return text.length * (5 + 1) * scale - scale;
+}
+
+/**
+ * The board, counting.
+ *
+ * Paints its own hardware (lcdBoardFrame) so it is identical to the verb sign
+ * that takes this roof over during the opening bars — same legs, same rim, same
+ * size, whichever is up.
+ *
+ * THE CHEER IS THE NUMBER GOING GOLD. Every eighth clean beat the run raises
+ * `cheer` for a couple of seconds; the board does not become a different sign
+ * for it, it gilds the fact it is already showing. That is what retired a whole
+ * bake-off of thumbs, stars and meters — the celebration and the readout turned
+ * out to be the same object. The WORD stays cream throughout: it is a label,
+ * not a reading, and gilding it too would flash the whole board when what is
+ * being celebrated is the number.
+ */
+function lcdComboBoard(ctx, building, frame) {
+  const { cx, top } = lcdBoardFrame(ctx, building, LCD_BOARD_W, LCD_BOARD_H);
+  const streak = Math.max(0, Math.trunc(frame.streak || 0));
+  const n = String(streak);
+  const stack = 7 * LCD_COMBO_SCALE + LCD_SIGN_GAP + 7;
+  const y = top + Math.round((LCD_BOARD_H - stack) / 2);
+  // A ZERO IS LIT LIKE ANY OTHER COUNT. It was ghosted first — drawn in the ink
+  // every other off cell on this panel uses, so the first clean beat would be a
+  // light coming on — and that lost on the only ground that matters here: at
+  // 2px on a board seen from the lane, an unlit digit is not a quiet digit, it
+  // is an unreadable one. This board is the one place on the skyline the player
+  // is meant to READ rather than glance at, and legibility outranks the cue.
+  ctx.fillStyle = frame.cheer ? '#f6d33c' : LCD_PANEL_LIT;
+  lcdPrintNumber(ctx, n, cx - Math.round(lcdNumberW(n, LCD_COMBO_SCALE) / 2), y, LCD_COMBO_SCALE);
+  ctx.fillStyle = LCD_PANEL_LIT;
+  lcdPrintNumber(ctx, LCD_COMBO_WORD,
+    cx - Math.round(lcdNumberW(LCD_COMBO_WORD, 1) / 2), y + 7 * LCD_COMBO_SCALE + LCD_SIGN_GAP, 1);
+}
+
+// ---- the sign that shouts a verb ------------------------------------------
+//
+// THE SHARE PRICE IS THE BOARD THAT ANSWERS TO THE RUN, so it is the board that
+// says a verb is about to be needed. It already gives its whole face over to a
+// streak reward on a clean run (lcdStreakBoard), so a sign that stops being a chart
+// for a few bars is not a new idea here — it is the one board on this skyline
+// that was always allowed to. And it is on the right roof: the price sits
+// second from the left BECAUSE the hero runs at screen x 56, which makes it the
+// sign the player is already under.
+//
+// IT IS ITS OWN PAINTER RATHER THAN ANOTHER GRID, and the words are why. Every
+// other board on this skyline is an 11x8 image of 2px cells — twenty-two pixels
+// across — and the smallest lettering this panel owns needs thirty-five to say
+// ATTACK. So this sign is drawn at two resolutions: the MARK in coarse strokes
+// like everything else here, and the WORD in the fine 1px letters the plane's
+// banner is written in. That is not an inconsistency, it is the distinction the
+// panel already makes — pictures are coarse, print is fine.
+//
+// THE MARK IS THE RIBBON'S TRIANGLE, not an arrow. A plain triangle up for
+// jump, plain triangles down for slide, a ring for the power: the exact shapes
+// the beat ribbon draws (hud.js) and the road repeats under the hero's feet
+// (beatground.js). A stemmed arrow was drawn here first and it was wrong for a
+// reason that outranks how it looked — it was a FOURTH shape for a thing the
+// player is about to meet twice more in a different one.
+//
+// SLIDE CAN CARRY TWO OF THEM, and that is the ribbon's law again rather than a
+// flourish. Shape says which button; COLOUR says which object is arriving. Two
+// different things are slid under on this cabinet — a barrel coming along the
+// floor in the wood the player watched come down the gorilla's chute, and a
+// drone hanging still overhead in cyan — and the strip already draws that
+// distinction (hud.js, `marker.prop === 'barrel'`). A stage that asks for both
+// shows both, in the order the run hands them over.
+const LCD_SIGN_WORD = { jump: 'JUMP', duck: 'SLIDE', ability: 'ATTACK' };
+const LCD_SIGN_TRACK = 1;    // between letters, as the banner sets it
+// RIM TO CONTENTS. Three, not one — the sign used to run its longest word from
+// rim to rim, which reads as a board that could not hold what was put on it. A
+// border is what makes a sign look like a sign rather than a crop.
+//
+// It is the one number here that cannot be paid for by scaling: the letters are
+// already at 1px, which is the panel's floor, so the six characters of ATTACK
+// are thirty-five pixels wide whatever else changes. The border therefore has
+// to come out of the BOARD, which grows four pixels — and the marks come down a
+// pixel each so the contents do not grow with it and eat the room back.
+const LCD_SIGN_PAD = 3;      // rim to contents
+const LCD_SIGN_GAP = 3;      // mark to word
+// The mark's half-width and half-height, and the ring's radius. A square board
+// has height to spend that the old letterbox did not, so these are bigger than
+// the 11x8 boards' own art and read from the lane rather than from the gallery.
+const LCD_SIGN_MARK_W = 6, LCD_SIGN_MARK_H = 6, LCD_SIGN_RING_R = 5;
+const LCD_SIGN_MARK_GAP = 4; // between two marks, when a verb carries two
+
+function lcdSignWordW(word) {
+  return word.length * (5 + LCD_SIGN_TRACK) - LCD_SIGN_TRACK;
+}
+
+/**
+ * How big the board on this roof is — a RECTANGLE, sized to the sign.
+ *
+ * ONE SIZE, WHATEVER IS ON IT. The price and the verb sign trade this board
+ * back and forth mid-stage, and a board that changed shape as they did would
+ * read as two different signs being swapped rather than one sign changing its
+ * mind. So the size is a property of the ROOF, solved here and used by both.
+ *
+ * IT IS SOLVED FROM THE SIGN, not chosen and not taken from the facade. The
+ * width is the widest label this cabinet has to print — ATTACK, thirty-five
+ * pixels of 1px lettering — and the height is a mark, a gap and a line of text.
+ * A square board was tried first, at the facade's own width, and it failed at
+ * both ends: it was a pixel too narrow for the word on the two thirty-six wide
+ * roofs that carry it, and once made wide enough it left the share price a
+ * small squiggle adrift in a lot of empty panel. A rectangle that the sign
+ * exactly fills is what both things wanted.
+ */
+const LCD_BOARD_W = Math.max(...Object.values(LCD_SIGN_WORD).map(lcdSignWordW))
+  + (LCD_SIGN_PAD + 1) * 2;
+// AND THE HEIGHT IS THE TALLER OF THE TWO THINGS THAT STAND ON IT. The verb
+// sign stacks a mark, a gap and a word; the counting board stacks two-pixel
+// digits, a gap and a word, and those digits are a pixel taller than the mark.
+// Sized to the sign alone, the count ran four clear pixels above and two below —
+// a stack pushed against the bottom rim, which is exactly the crop the border
+// was added to stop. Both stacks are CENTRED in the result, so each gets the
+// same air top and bottom whatever it is showing.
+const LCD_BOARD_H = Math.max(7 * 2, LCD_SIGN_MARK_H * 2)
+  + LCD_SIGN_GAP + 7 + (LCD_SIGN_PAD + 1) * 2;
+
+/** The hardware every board on this roof stands on: legs, brace, panel, rim. */
+function lcdBoardFrame(ctx, building, pw, ph) {
+  const [x, w, h] = building;
+  const cx = Math.round(x + w / 2);
+  const roof = GROUND_Y - h;
+  const left = cx - Math.round(pw / 2), top = roof - 8 - ph;
+  ctx.fillStyle = LCD_PRINT;
+  // ONE PIXEL A LEG, like every line on the wall, with the brace run leg to
+  // leg so the three pieces are one frame and not a table.
+  ctx.fillRect(cx - 8, roof - 8, 1, 8);
+  ctx.fillRect(cx + 7, roof - 8, 1, 8);
+  ctx.fillRect(cx - 8, roof - 4, 16, 1);
+  ctx.fillRect(left, top, pw, ph);
+  ctx.strokeStyle = 'rgba(220,228,154,0.45)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left + 1.5, top + 1.5, pw - 3, ph - 3);
+  return { cx, left, top };
+}
+
+/** One of the ribbon's marks, centred on (mx, my), in one action colour. */
+function lcdSignMark(ctx, action, mx, my, ink) {
+  ctx.fillStyle = ink;
+  ctx.strokeStyle = ink;
+  if (action === 'ability') {
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(mx, my, LCD_SIGN_RING_R, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    return;
+  }
+  const up = action !== 'duck';
+  ctx.beginPath();
+  ctx.moveTo(mx, my + (up ? -LCD_SIGN_MARK_H : LCD_SIGN_MARK_H));
+  ctx.lineTo(mx - LCD_SIGN_MARK_W, my + (up ? LCD_SIGN_MARK_H : -LCD_SIGN_MARK_H));
+  ctx.lineTo(mx + LCD_SIGN_MARK_W, my + (up ? LCD_SIGN_MARK_H : -LCD_SIGN_MARK_H));
+  ctx.closePath();
+  ctx.fill();
+}
+
+/**
+ * The rooftop sign, shouting one verb: the mark (or marks) over the word.
+ *
+ * IT FLASHES ON EVERY BEAT — three quarters lit, the last quarter dark.
+ *
+ * That is a shorter, harder pulse than anything else on this panel does, and it
+ * is deliberate: the rest of the city STEPS on the beat, which says "there is a
+ * tempo here", and this sign BLINKS on it, which is what a sign does when it
+ * wants to be read now. It is also the reason the duty cycle is three-quarters
+ * rather than a half — a lamp that is dark as often as it is lit reads as
+ * broken, and the message has to survive being looked at during the off part.
+ *
+ * The phase is the MUSIC's, not the opening clock's: the sign is lit against
+ * the same beat the player is hearing and jumping on. Under reduced flashing it
+ * stands lit — the sign carries something the player needs, so the fallback is
+ * the message without the strobe, never no message — and under reduced motion
+ * `beatPhase` is zero, which is the same thing.
+ */
+const LCD_SIGN_DUTY = 0.75;
+function lcdVerbSign(ctx, building, cue, frame, reducedFlashing) {
+  const word = LCD_SIGN_WORD[cue.action];
+  if (!word) return;
+  const inks = Array.isArray(cue.ink) ? cue.ink : [cue.ink];
+  if (!inks.length) return;
+  const { cx, left, top } = lcdBoardFrame(ctx, building, LCD_BOARD_W, LCD_BOARD_H);
+  if (!reducedFlashing && frame.beatPhase >= LCD_SIGN_DUTY) return;
+
+  // The block of marks and the word under them, centred in the board.
+  const markW = LCD_SIGN_MARK_W * 2;
+  const span = inks.length * markW + (inks.length - 1) * LCD_SIGN_MARK_GAP;
+  // Off the mark's HEIGHT, not its width. The two are equal today, so this was
+  // right by luck; a taller triangle than it is wide would have hung the whole
+  // stack off centre and nothing would have said why.
+  const blockH = LCD_SIGN_MARK_H * 2 + LCD_SIGN_GAP + 7;
+  const my = top + Math.round((LCD_BOARD_H - blockH) / 2) + LCD_SIGN_MARK_H;
+  let mx = cx - Math.round(span / 2) + LCD_SIGN_MARK_W;
+  for (const ink of inks) {
+    lcdSignMark(ctx, cue.action, mx, my, ink);
+    mx += markW + LCD_SIGN_MARK_GAP;
+  }
+
+  // The word, in the panel's own lit cream rather than an action's colour. On
+  // this cabinet colour means WHICH OBJECT is arriving and shape means what to
+  // do about it; a word is neither, and printing SLIDE in the barrel's wood
+  // would claim the letters carry a reading of their own — which is exactly the
+  // reading the two marks above it are there to make.
+  let lx = cx - Math.round(lcdSignWordW(word) / 2);
+  const ly = my + LCD_SIGN_MARK_H + LCD_SIGN_GAP;
+  ctx.fillStyle = LCD_PANEL_LIT;
+  for (const ch of word) {
+    const rows = pixelGlyph(ch);
+    if (rows) {
+      for (let r = 0; r < rows.length; r++) {
+        for (let c = 0; c < 5; c++) {
+          if (rows[r][c] === '1') ctx.fillRect(lx + c, ly + r, 1, 1);
+        }
+      }
+    }
+    lx += 5 + LCD_SIGN_TRACK;
+  }
+}
 
 function lcdBillboard(ctx, building, artName, frame, reducedFlashing) {
   const art = LCD_BILLBOARD_ART[artName];
@@ -3176,14 +3557,37 @@ function lcdBillboard(ctx, building, artName, frame, reducedFlashing) {
   // chart does, because what it says is the run's own business.
   const live = art.grid ? art.grid(frame) : null;
   const rows = (live || art.frames[0]).length, cols = (live || art.frames[0])[0].length;
-  const pw = cols * 2 + 8, ph = rows * 2 + 8;
+  // THE PRICE'S BOARD IS THE VERB SIGN'S BOARD, and the price fills it.
+  //
+  // This is the one sign on the skyline that trades its face with something
+  // else mid-stage, so its size is fixed (LCD_BOARD_W/H) whatever is currently
+  // on it — a board that changed shape as they swapped would read as two signs
+  // rather than one changing its mind. But a fixed board is wider than the 11x8
+  // picture drawn at the 2px cells every other sign here uses, and the trace
+  // adrift in a field of empty panel looked like a fault. So THIS board's cells
+  // are scaled to fit it: the largest whole pixel that still lands eleven cells
+  // across and eight down, which is the same coarse-picture idea one size up
+  // rather than a second way of drawing a sign.
+  //
+  // Every other board on the skyline still takes its size from its own picture
+  // and draws at 2, because nothing ever replaces those.
+  // Every board left on this skyline takes its size from its own picture. The
+  // one that did not — the counting roof — is not drawn through here any more:
+  // it and the verb sign paint themselves at a shared fixed size, because they
+  // trade one board between them. See lcdComboBoard.
+  const fixed = false;
+  const pw = fixed ? LCD_BOARD_W : cols * 2 + 8;
+  const ph = fixed ? LCD_BOARD_H : rows * 2 + 8;
   const left = cx - Math.round(pw / 2), top = roof - 8 - ph;
-  // Legs with a cross-brace, then the board: dark panel, thin lit inner rim.
+  // THE SAME STAND AS EVERY OTHER BOARD — one pixel a leg, brace leg to leg
+  // in the same ink, exactly what lcdBoardFrame draws. This painter kept its
+  // own copy with two-pixel legs and a soft brace, and the two stands read as
+  // two designs side by side on one skyline. Then the board: dark panel, thin
+  // lit inner rim.
   ctx.fillStyle = LCD_PRINT;
-  ctx.fillRect(cx - 9, roof - 8, 2, 8);
-  ctx.fillRect(cx + 7, roof - 8, 2, 8);
-  ctx.fillStyle = LCD_PRINT_SOFT;
-  ctx.fillRect(cx - 7, roof - 4, 14, 1);
+  ctx.fillRect(cx - 8, roof - 8, 1, 8);
+  ctx.fillRect(cx + 7, roof - 8, 1, 8);
+  ctx.fillRect(cx - 8, roof - 4, 16, 1);
   ctx.fillStyle = strike ? 'rgba(120,140,110,0.85)' : LCD_PRINT;
   ctx.fillRect(left, top, pw, ph);
   ctx.strokeStyle = 'rgba(220,228,154,0.45)';
@@ -3193,13 +3597,20 @@ function lcdBillboard(ctx, building, artName, frame, reducedFlashing) {
   // a one-frame sign simply stands lit.
   const step = Math.floor((frame.bar * 4 + frame.beat4) / (art.rate || 1));
   const grid = live || art.frames[lcdMod(step, art.frames.length)];
-  const ox = left + 4, oy = top + 4;
+  // The cell, and how far in the picture starts. A fixed board fills itself;
+  // every other sign keeps the 2px cell and the 4px margin it was drawn for.
+  const cell = fixed
+    ? Math.max(2, Math.min(Math.floor((pw - (LCD_SIGN_PAD + 1) * 2) / cols),
+      Math.floor((ph - (LCD_SIGN_PAD + 1) * 2) / rows)))
+    : 2;
+  const ox = left + Math.round((pw - cols * cell) / 2);
+  const oy = top + Math.round((ph - rows * cell) / 2);
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const inkColor = art.ink[grid[r][c]];
       if (!inkColor) continue;
       ctx.fillStyle = inkColor;
-      ctx.fillRect(ox + c * 2, oy + r * 2, 2, 2);
+      ctx.fillRect(ox + c * cell, oy + r * cell, cell, cell);
     }
   }
 }
@@ -3272,7 +3683,7 @@ const LCD_WISPS = [['XX', 'OO', 'XX'], ['X.X', '.XX', 'X..']];
 function lcdSmokestack(ctx, building, dx, frame) {
   const [x, bw, h] = building;
   const roof = GROUND_Y - h;
-  const sx = Math.round(x + dx);
+  let sx = Math.round(x + dx);
   // THE PLANT OWNS THE WHOLE ROOF. The bank used to stand in the middle third
   // of a 46px roof in one-pixel line, three slim tubes with air either side,
   // and at desktop magnification that is a set of railings — the roof read as
@@ -3281,43 +3692,38 @@ function lcdSmokestack(ctx, building, dx, frame) {
   // spread across it rather than huddled at its centre.
   const shedTop = roof - 6;
   const shedL = x + 2, shedR = x + bw - 2;
-  ctx.fillStyle = LCD_PRINT;
-  ctx.fillRect(shedL, shedTop, shedR - shedL, 2);
-  ctx.fillRect(shedL, shedTop + 2, 2, roof - shedTop - 2);
-  ctx.fillRect(shedR - 2, shedTop + 2, 2, roof - shedTop - 2);
-  ctx.fillStyle = LCD_PRINT_SOFT;
-  ctx.fillRect(shedL + 5, shedTop + 3, 4, 1);
-  ctx.fillRect(shedR - 9, shedTop + 3, 4, 1);
-  // TWO PIXELS, NOT ONE, AND WIDE SHAFTS. The one-pixel rule was borrowed from
-  // the facades, and it was the wrong loan: a facade is a big shape whose line
-  // only has to bound it, while a stack IS its line — take the outline down to
-  // a hairline and there is no chimney left, just two threads and a tick. At
-  // 9/7/6 wide with 2px walls each shaft has real mass, the panel still shows
-  // through the middle so it stays linework rather than a slab, and the bank
-  // now carries the same visual weight as the billboards beside it.
-  //
-  // The lip overhangs by ONE pixel, not two: a wide cap on a nine-pixel shaft
-  // is a mushroom, and three mushrooms on a roof is a garden. `top` is the lip,
-  // so the height step between the three is what the eye is given — 20, 16, 12
-  // — and each shaft steps out a pixel a side at its shoulder into a footing,
-  // which is what a chimney does where it meets the house.
-  const stack = (lx, top, w) => {
-    const jog = shedTop - Math.max(3, Math.round((shedTop - top) * 0.28));
+  // MINIMAL RECTANGLES. The boiler house is a one-pixel box the width of the
+  // roof, and each stack is a one-pixel hollow rectangle standing on it — no
+  // cap lip, no footing jog, no rim bands. THREE THE SAME WIDTH, EVENLY
+  // SPACED: six wide, six apart, six in from each end of a forty-two-pixel
+  // shed, so stack and gap are the one measure. The middle one is the working
+  // stack and the tallest; the pair beside it are level with each other. All
+  // of it is filled with the wall's own wash, then outlined, so the plant is
+  // masonry of the same house rather than ink furniture stood on it. The
+  // plume does the rest.
+  const SW = 6;
+  const gap = Math.round((shedR - shedL - SW * 3) / 4);
+  const at = (k) => shedL + gap + k * (SW + gap);
+  const stubX = at(0);
+  const stubTop = roof - 14;
+  sx = at(1);
+  const box = (lx, top, w) => {
+    ctx.fillStyle = LCD_FACADE_WASH;
+    ctx.fillRect(lx, top, w, shedTop - top);
     ctx.fillStyle = LCD_PRINT;
-    ctx.fillRect(lx - 1, top, w + 2, 2);                      // the cap
-    ctx.fillRect(lx, top + 2, 2, jog - top - 2);              // upper walls
-    ctx.fillRect(lx + w - 2, top + 2, 2, jog - top - 2);
-    ctx.fillRect(lx - 1, jog, 3, shedTop - jog);              // the footing
-    ctx.fillRect(lx + w - 2, jog, 3, shedTop - jog);
-    ctx.fillStyle = LCD_PRINT_SOFT;
-    ctx.fillRect(lx + 2, top + 4, w - 4, 1);                  // rim band
-    if (top + 9 < jog) ctx.fillRect(lx + 2, top + 9, w - 4, 1);
+    ctx.fillRect(lx, top, w, 1);
+    ctx.fillRect(lx, top, 1, shedTop - top);
+    ctx.fillRect(lx + w - 1, top, 1, shedTop - top);
   };
-  const stubTop = roof - 12;
-  const stubX = sx - 14;
-  stack(stubX, stubTop, 6);          // the idling stub, left
-  stack(sx + 13, roof - 16, 7);      // its taller twin, right
-  stack(sx, roof - 20, 9);           // the working stack
+  ctx.fillStyle = LCD_FACADE_WASH;
+  ctx.fillRect(shedL, shedTop, shedR - shedL, roof - shedTop);
+  ctx.fillStyle = LCD_PRINT;
+  ctx.fillRect(shedL, shedTop, shedR - shedL, 1);
+  ctx.fillRect(shedL, shedTop, 1, roof - shedTop);
+  ctx.fillRect(shedR - 1, shedTop, 1, roof - shedTop);
+  box(at(0), roof - 14, SW);
+  box(at(1), roof - 20, SW);
+  box(at(2), roof - 14, SW);
   // Offsets from the ROOF, so raising the stack raises nothing else: the first
   // puff clears the working lip by a pixel and the rest are spaced off the
   // building. The lean grows with height, so the column bends downwind rather
@@ -3365,7 +3771,7 @@ function lcdSmokestack(ctx, building, dx, frame) {
 // blue-grey and still stack correctly where they overlap.
 function lcdPuffGrid(ctx, grid, x, y, alpha) {
   for (const [mark, weight] of [['X', 1], ['O', 1.55]]) {
-    ctx.fillStyle = `rgba(53,83,101,${Math.min(0.75, alpha * weight).toFixed(2)})`;
+    ctx.fillStyle = `rgba(80,85,92,${Math.min(0.75, alpha * weight).toFixed(2)})`;
     for (let r = 0; r < grid.length; r++) {
       for (let c = 0; c < grid[r].length; c++) {
         if (grid[r][c] === mark) ctx.fillRect(x + c * 2, y + r * 2, 2, 2);
@@ -3432,8 +3838,8 @@ const LCD_PLANE_W = 22, LCD_PLANE_H = 12;
 // Where the plane is on a given step of its crossing, or null once it has gone.
 // The one place the flight path is solved, so the barrel's fate and the plane's
 // own draw cannot disagree about where it was.
-function lcdPlaneAt(cyc, altitude) {
-  if (cyc >= LCD_PLANE_BEATS) return null;
+function lcdPlaneAt(cyc, altitude, beats = LCD_PLANE_BEATS) {
+  if (cyc >= beats) return null;
   const x = LCD_PLANE_X0 + cyc * LCD_PLANE_STEP;
   const y = typeof altitude === 'number' ? altitude
     : 2 * Math.round(planeClimb(altitude, x) / 2);
@@ -3469,62 +3875,7 @@ const LCD_BANNER_GAP = 6;     // tow line, plane tail to banner
 // game's status bar, which is a different shape and is red rather than ink.
 // Keyed by the character that stands for it in a tow line, so the data stays a
 // plain string and the rotation stays a list of them.
-// THE THREE VERBS, as the same shapes the ribbon and the road already draw.
-//
-// A up-arrow to jump, a down-arrow to duck, a ring for the hero's power — and
-// they are here rather than composed from the letters because the whole point
-// of the legend is the SHAPE beside the WORD. The player is going to meet these
-// three marks on the beat ribbon four and a half beats before every ask and
-// again on the road under their feet, both built on the law that the direction
-// is read off the shape and the colour only confirms which object is arriving
-// (beatground.js). Nothing on this cabinet ever states that law. One crossing
-// does, once, and then the sky is a sky again.
-//
-// SEVEN CELLS, like the heart and unlike the letters' five: these are pictures,
-// and a triangle drawn five wide next to a five-wide K is a letterform. The
-// extra two are what make the eye take it as a sign rather than a glyph.
-//
-// Their INK comes from the run, not from here — see lcdBannerMark. The ribbon
-// and the road read one list of action colours and this is the third surface
-// on it; a fourth copy of those four values in the engine is how they start
-// disagreeing about what colour a jump is.
 const LCD_BANNER_ART = {
-  '▲': {
-    ink: LCD_PRINT,
-    cells: [
-      '...X...',
-      '..XXX..',
-      '..XXX..',
-      '.XXXXX.',
-      '.XXXXX.',
-      'XXXXXXX',
-      'XXXXXXX',
-    ],
-  },
-  '▼': {
-    ink: LCD_PRINT,
-    cells: [
-      'XXXXXXX',
-      'XXXXXXX',
-      '.XXXXX.',
-      '.XXXXX.',
-      '..XXX..',
-      '..XXX..',
-      '...X...',
-    ],
-  },
-  '○': {
-    ink: LCD_PRINT,
-    cells: [
-      '..XXX..',
-      '.X...X.',
-      'X.....X',
-      'X.....X',
-      'X.....X',
-      '.X...X.',
-      '..XXX..',
-    ],
-  },
   '♥': {
     ink: LCD_WINDOW_ON,
     cells: [
@@ -3539,23 +3890,9 @@ const LCD_BANNER_ART = {
   },
 };
 const LCD_BANNER_TRACK = 1;
-/**
- * Which character stands for which verb in a tow line.
- *
- * Exported so the run can compose the legend without hardcoding the marks, and
- * so the SHAPES stay the panel's business while WHICH VERBS and WHAT THEY ARE
- * CALLED stay the game's. Neither side can drift: a verb with no entry here
- * cannot be announced, and an entry with no cells cannot be drawn.
- */
-export const LCD_ACTION_GLYPH = { jump: '▲', duck: '▼', ability: '○' };
-// `ink` is the run's own action-colour map, keyed by the same character the tow
-// line carries, or null. It overrides a PICTURE cell's authored colour and
-// never a letter's: the words on a banner are printed matter and print on this
-// panel is one colour, but the three verb marks have to agree with the two
-// surfaces that will draw them again.
-function lcdBannerMark(ch, ink = null) {
+function lcdBannerMark(ch) {
   const art = LCD_BANNER_ART[ch];
-  if (art) return { rows: art.cells, w: art.cells[0].length, ink: ink?.[ch] || art.ink, on: 'X' };
+  if (art) return { rows: art.cells, w: art.cells[0].length, ink: art.ink, on: 'X' };
   const rows = ch === ' ' ? null : pixelGlyph(ch);
   return { rows, w: 5, ink: LCD_PRINT, on: '1' };
 }
@@ -3564,7 +3901,7 @@ function lcdBannerBox(text) {
   for (const ch of text) w += lcdBannerMark(ch).w + LCD_BANNER_TRACK;
   return { w: w - LCD_BANNER_TRACK, h: 7 + LCD_BANNER_PAD * 2 + 2 };
 }
-function lcdSkyBanner(ctx, rightX, midY, text, ink = null) {
+function lcdSkyBanner(ctx, rightX, midY, text) {
   const { w, h } = lcdBannerBox(text);
   const x = Math.round(rightX - w);
   const y = Math.round(midY - h / 2);
@@ -3578,7 +3915,7 @@ function lcdSkyBanner(ctx, rightX, midY, text, ink = null) {
   let cx = x + 1 + LCD_BANNER_PAD;
   const cy = y + 1 + LCD_BANNER_PAD;
   for (const ch of text) {
-    const mark = lcdBannerMark(ch, ink);
+    const mark = lcdBannerMark(ch);
     if (mark.rows) {
       ctx.fillStyle = mark.ink;
       for (let r = 0; r < mark.rows.length; r++) {
@@ -3700,31 +4037,8 @@ const LCD_PLANE_MISS_LIFT = 10;
 // it has to know this happened.
 const lcdLiftedLane = new WeakMap();
 
-/**
- * The step of this crossing on which the plane meets the barrel, or -1.
- *
- * A PASS TOWING INSTRUCTIONS NEVER STRIKES, and that is the only thing this
- * adds over lcdBarrelStrike. rhythm-1's opening crossing is the one that flies
- * into the gorilla's raised barrel — it connects on beat 20 of the song, which
- * is the middle of the legend's own sky time. Left alone, the one crossing the
- * player is being asked to READ is also the one that detonates a barrel over
- * their head, throws a star and twelve beats of missing chain, and puts the
- * words inside the wreck. The gag is good and it is not what the top of the
- * stage is for; it still runs twice later in the song, at 240 and 276.
- *
- * Returning -1 does the whole job rather than half of it, because everything
- * about the strike hangs off this one number: lcdPassAltitude lifts a
- * non-striking pass into the miss lane (ten pixels of clear air over his skull
- * instead of eight), lcdBurstPhase draws no wreck, lcdVanishedBarrelCell leaves
- * the girder chain whole, and lcdBarrelStrikeAt fires no cue. So the legend
- * crossing does not merely fail to destroy the barrel — it flies the lane of a
- * plane that was never going to.
- */
-function lcdPassStrike(art, pass) {
-  return pass.legend ? -1 : lcdBarrelStrike(art, pass.phase);
-}
 function lcdPassAltitude(art, pass, altitude) {
-  if (!art.gameWatch || lcdPassStrike(art, pass) >= 0) return altitude;
+  if (!art.gameWatch || lcdBarrelStrike(art, pass.phase) >= 0) return altitude;
   if (typeof altitude === 'number') return altitude - LCD_PLANE_MISS_LIFT;
   let lifted = lcdLiftedLane.get(altitude);
   if (!lifted) {
@@ -3777,51 +4091,68 @@ function lcdPlaneCyc(art, frame) {
     // centre on the downbeat they are about, and a beat of delay is the one
     // thing that would take them off it. Its phase is wherever that aim put it.
     if (beat >= start && beat < start + LCD_PLANE_BEATS) {
-      return { cyc: beat - start, banner: banner.text, phase: lcdMod(start, 4) };
+      return { cyc: beat - start, banner: banner.text, phase: lcdMod(start, 4), beats: LCD_PLANE_BEATS };
     }
-    if (cyc >= LCD_PLANE_BEATS) return null;
     if (!lcdFreePassFlies(passNo, start)) return null;
-  } else if (cyc >= LCD_PLANE_BEATS) return null;
+  }
   // A free crossing takes off late by its turn in the dodge rotation. The
   // rotation is indexed by crossings FLOWN, the same count the tow lines use,
   // so a line and the dodge it flies with travel together — and a grounded
   // crossing consumes neither.
   const flown = lcdFlownBefore(passNo, start);
   const dodge = LCD_PLANE_DODGE[lcdMod(flown, LCD_PLANE_DODGE.length)];
-  if (cyc < dodge || cyc - dodge >= LCD_PLANE_BEATS) return null;
-  // AND THE CLEAN CROSSING IS THE ONE THAT CARRIES THE LEGEND, on the stages
-  // and runs that have one to carry.
-  //
-  // Pass zero was kept empty so the panel would have a plane in it and not only
-  // signs — it happens once, at the top, and never again. That is exactly the
-  // shape of the thing a legend is: said once, at the top, and never again. So
-  // the establishing pass is not spent, it is given a job, and the fifteen
-  // crossings after it still do the establishing work by rotation.
-  //
-  // `legend` rides on the pass rather than being inferred from the text,
-  // because everything downstream that has to treat this crossing differently
-  // is asking a question about the PASS — see lcdPassStrike.
-  const legend = passNo === 0 ? frame.intro?.legend : null;
+  if (cyc < dodge) return null;
+  // THE OMEN, if the run rolled one, rides the first crossing to take off
+  // after its clock started: the omen's step at THIS crossing's take-off is
+  // inside one cycle, so exactly one crossing qualifies — not the one already
+  // mid-sky when the clock started (it would change words in the air), and not
+  // the one after (the cycle has passed). It replaces the turn's line rather
+  // than taking a turn, so the rotation comes round exactly as it would have.
+  // Its rig is longer than any line the rotation tows, so its pass runs to the
+  // length that gets the whole rig off the right edge — see lcdRigBeats.
+  const omen = art.omen && frame.omenStep != null
+    && frame.omenStep - (cyc - dodge) >= 0 && frame.omenStep - (cyc - dodge) < LCD_PLANE_CYCLE
+    ? art.omen.text : null;
+  const beats = omen ? lcdRigBeats(omen) : LCD_PLANE_BEATS;
+  if (cyc - dodge >= beats) return null;
   // The cycle is a multiple of four, so the crossing's phase in the bar IS its
   // dodge.
-  if (legend) return { cyc: cyc - dodge, banner: legend.text, ink: legend.ink, legend: true, phase: lcdMod(dodge, 4) };
-  return { cyc: cyc - dodge, banner: lcdTowLine(towList, passNo, start), phase: lcdMod(dodge, 4) };
+  return {
+    cyc: cyc - dodge,
+    banner: omen || lcdTowLine(towList, passNo, start),
+    phase: lcdMod(dodge, 4),
+    beats,
+  };
 }
 
 function lcdPlane(ctx, art, frame, altitude = LCD_PLANE_Y) {
   const pass = lcdPlaneCyc(art, frame);
   if (!pass) return;
-  const pos = lcdPlaneAt(pass.cyc, lcdPassAltitude(art, pass, altitude));
+  const pos = lcdPlaneAt(pass.cyc, lcdPassAltitude(art, pass, altitude), pass.beats);
   if (!pos) return;
-  const { x, y } = pos;
+  lcdPlaneRig(ctx, frame, pos, pass.banner);
+}
+
+// HOW LONG A PASS TOWING THIS LINE IS, in beats: the crossing runs until the
+// whole rig — aircraft, tow line and banner — has left the right edge. The
+// rotation's lines all fit inside LCD_PLANE_BEATS; the omen's does not, and a
+// rig that vanished with its tail still on screen would be the one thing on
+// this panel that disappears rather than leaves.
+function lcdRigBeats(text) {
+  const rigW = LCD_PLANE_W + LCD_BANNER_GAP + lcdBannerBox(text).w;
+  return Math.ceil((W + rigW - LCD_PLANE_X0) / LCD_PLANE_STEP) + 1;
+}
+
+// The aircraft and whatever it tows, at a solved position.
+function lcdPlaneRig(ctx, frame, { x, y }, banner) {
   // The banner first, so the tow line runs under the tail rather than over it.
-  if (pass.banner) {
+  if (banner) {
     // A towed banner sags and lifts; one pixel on the off beats is the whole of
     // it, and it is the same tick the tail already wags on.
     const sag = frame.beat4 % 2 === 0 ? 0 : 1;
     ctx.fillStyle = LCD_PRINT;
     ctx.fillRect(x - LCD_BANNER_GAP, y + 6, LCD_BANNER_GAP, 1);
-    lcdSkyBanner(ctx, x - LCD_BANNER_GAP, y + 6 + sag, pass.banner, pass.ink);
+    lcdSkyBanner(ctx, x - LCD_BANNER_GAP, y + 6 + sag, banner);
   }
   for (let r = 0; r < LCD_PLANE.length; r++) {
     for (let c = 0; c < LCD_PLANE[r].length; c++) {
@@ -3835,7 +4166,7 @@ function lcdPlane(ctx, art, frame, altitude = LCD_PLANE_Y) {
   ctx.fillRect(x + 2, y, 2, 2);
   // The tail's own wag, and only when there is no banner: with one on the tow
   // line this reads as a second, blank flag flying off the nose.
-  if (pass.banner) return;
+  if (banner) return;
   ctx.fillStyle = LCD_PRINT_SOFT;
   if (frame.beat4 % 2 === 0) ctx.fillRect(x + 22, y + 3, 1, 8);
   else ctx.fillRect(x + 22, y + 5, 1, 4);
@@ -3905,7 +4236,7 @@ function lcdBurstPhase(art, frame) {
   // in the sky to burst it.
   const pass = lcdPlaneCyc(art, frame);
   if (!pass) return -1;
-  const strike = lcdPassStrike(art, pass);
+  const strike = lcdBarrelStrike(art, pass.phase);
   if (strike < 0) return -1;
   const phase = pass.cyc - strike;
   return phase === 0 || phase === 1 ? phase : -1;
@@ -3937,7 +4268,9 @@ export function lcdChuteScreenX(stageIndex) {
   const art = LCD_CITY_SCENES[Math.max(1, Math.min(3, Math.trunc(stageIndex) || 1))];
   if (!art?.barrelDrop || !Number.isInteger(art.rooftopGorilla)) return null;
   const [gx, gw] = art.buildings[art.rooftopGorilla];
-  return gx + gw + 9;
+  // Centred in the 15px gap to the next facade: the barrel is 16 wide, so it
+  // kisses both walls, and anywhere else it would sit on one of them.
+  return gx + gw + 8;
 }
 
 /**
@@ -3963,27 +4296,17 @@ const LCD_CHUTE_CELLS = 4;
 /** How many heard beats the chute takes to deliver, top cell to street. */
 export const LCD_CHUTE_BEATS = LCD_CHUTE_CELLS - 1;
 
-/**
- * Does the plane meet the barrel on this beat?
- *
- * `intro` is the run's scene intro, or null — the same object the panel is
- * drawing with. It has to be handed over rather than assumed, because the
- * opening crossing is precisely the one that strikes on rhythm-1 and it is also
- * the one that tows the legend: the cue and the picture have to agree about
- * whether that plane connected, and a caller that only knew the beat would fire
- * a barrel burst over a sky with no wreck in it.
- */
-export function lcdBarrelStrikeAt(stageIndex, beat, intro = null) {
+export function lcdBarrelStrikeAt(stageIndex, beat) {
   if (!Number.isFinite(beat)) return false;
   const art = LCD_CITY_SCENES[Math.max(1, Math.min(3, Math.trunc(stageIndex) || 1))];
   if (!art) return false;
   // Asked of the same crossing the picture is drawing, so the cue cannot fire
-  // on a pass where nothing was destroyed. lcdPlaneCyc reads only these three
+  // on a pass where nothing was destroyed. lcdPlaneCyc reads only these two
   // fields of a frame.
   const b = Math.floor(beat);
-  const pass = lcdPlaneCyc(art, { bar: Math.floor(b / 4), beat4: lcdMod(b, 4), intro });
+  const pass = lcdPlaneCyc(art, { bar: Math.floor(b / 4), beat4: lcdMod(b, 4) });
   if (!pass) return false;
-  const strike = lcdPassStrike(art, pass);
+  const strike = lcdBarrelStrike(art, pass.phase);
   return strike >= 0 && pass.cyc === strike;
 }
 
@@ -3993,7 +4316,7 @@ function lcdVanishedBarrelCell(art, frame) {
   // the chain, and the twelve beats are the twelve after THIS plane's strike.
   const pass = lcdPlaneCyc(art, frame);
   if (!pass) return -1;
-  const strike = lcdPassStrike(art, pass);
+  const strike = lcdBarrelStrike(art, pass.phase);
   if (strike < 0) return -1;
   const since = pass.cyc - strike;
   return since >= 0 && since < 12 ? since : -1;
@@ -4058,9 +4381,9 @@ function lcdSearchlight(ctx, building, dx, frame, reducedFlashing) {
 //
 // THE RAIL AND THE TRAIN ARE TWO DIFFERENT THINGS, and they used to be one
 // function that drew both or neither. The viaduct is masonry: it stands from
-// the first frame of the stage whether or not anything is running on it, so it
-// is baked in with the facades (lcdViaduct). Only the cars answer to the beat,
-// and they are an EVENT — see the lap below.
+// the first frame of the stage whether or not anything is running on it
+// (lcdViaduct, drawn whole in front of the skyline). Only the cars answer to
+// the beat, and they are an EVENT — see the lap below.
 const LCD_TRAIN_CAR = 26;
 // A crossing takes twenty-two beats; the lap is forty-eight. The old lap was
 // exactly the crossing, so there was a train on the panel about ninety percent
@@ -4070,35 +4393,36 @@ const LCD_TRAIN_CAR = 26;
 // arriving is something you can notice arriving.
 const LCD_TRAIN_LAP = 48;
 
-// The viaduct: a girder with piers, printed soft so it reads as distance.
-// Static, so it lives in the baked city layer, painted before the facades —
-// every building in front of it then occludes it for free.
+// The viaduct, in the panel's own hand: ONE INK, ONE PIXEL, ON THE RULES.
 //
-// THE PIERS STAND IN THE GAPS, not on the roofs. A pier is a leg of the far
-// structure; drawn over a near roof it stopped being far away — over a
-// billboard it came up between the sign's own legs and read as a third one,
-// and over a tower whose roof is inside the pier's span it read as one more
-// piece of rooftop kit. Both cases are skipped; what is left falls in open
-// sky above the short roofs, which is where a distant viaduct's legs belong.
-const LCD_PIER_DROP = 10;
-function lcdPierClear(art, px) {
-  const foot = art.train.y + 14 + LCD_PIER_DROP;
-  for (let i = 0; i < art.buildings.length; i++) {
-    const [x, w, h] = art.buildings[i];
-    if (px + 2 <= x - 2 || px >= x + w + 2) continue;
-    if (lcdCrowned(art, i)) return false;
-    const roof = GROUND_Y - h;
-    if (roof <= foot) return false;
+// It was a 2px soft-grey bar with 2px stubs hanging ten pixels under it — the
+// one piece of furniture still drawn the old way after the OLED pass. The deck
+// is now a hollow rectangle, two 1px ink lines on lattice rules (77 and 80,
+// with the cars riding the top one), across the whole panel as one piece. The
+// piers are 1px ink columns, one centred in every gap between buildings and
+// one in each edge gap, and they run from the deck TO THE GROUND. A pier that
+// stopped in the air was the thing Peter's rule is about ("how are the
+// girders suspended?"): these bear on the street, like the buildings either
+// side of them, and because they stand only in the gaps they never come up
+// through a billboard's legs or a rooftop bank.
+const LCD_DECK_H = 4;
+function lcdPierXs(art) {
+  const edges = [0, ...art.buildings.flatMap(([x, w]) => [x, x + w]), W];
+  const xs = [];
+  for (let i = 0; i < edges.length; i += 2) {
+    const mid = Math.floor((edges[i] + edges[i + 1]) / 2);
+    // Down to the nearest lattice rule (x ≡ 2 mod 3), like a wall edge.
+    xs.push(mid - lcdMod(mid - 2, 3));
   }
-  return true;
+  return xs;
 }
 function lcdViaduct(ctx, art) {
-  const y = art.train.y;
-  ctx.fillStyle = LCD_PRINT_SOFT;
-  ctx.fillRect(0, y + 12, W, 2);
-  for (let px = 8; px < W; px += 34) {
-    if (lcdPierClear(art, px)) ctx.fillRect(px, y + 14, 2, LCD_PIER_DROP);
-  }
+  const top = art.train.y + 12;
+  ctx.fillStyle = LCD_INK;
+  ctx.fillRect(0, top, W, 1);
+  ctx.fillRect(0, top + LCD_DECK_H - 1, W, 1);
+  const foot = top + LCD_DECK_H;
+  for (const px of lcdPierXs(art)) ctx.fillRect(px, foot, 1, GROUND_Y - foot);
 }
 
 function lcdTrain(ctx, spec, frame) {
@@ -4147,7 +4471,11 @@ function lcdWasher(ctx, building, dx, frame) {
     ctx.fillRect(cx - 8, y, 9, 2);
     ctx.fillRect(cx + 1, y + 5, 8, 2);
     ctx.fillStyle = '#22608c';
-    ctx.fillRect(cx - 6, y + 2, 3, 6);
+    ctx.fillRect(cx - 6, y + 2, 3, 4);
+    // Legs here too, dangling rather than standing — he is holding on, not
+    // working — but the body still has to end somewhere the eye can find.
+    ctx.fillRect(cx - 6, y + 6, 1, 2);
+    ctx.fillRect(cx - 4, y + 6, 1, 2);
     ctx.fillStyle = '#f2c9a0';
     ctx.fillRect(cx - 6, y - 2, 3, 3);
     return;
@@ -4155,9 +4483,19 @@ function lcdWasher(ctx, building, dx, frame) {
   ctx.fillRect(cx - 8, y, 17, 2);
   ctx.fillRect(cx - 8, y - 3, 1, 3);
   ctx.fillRect(cx + 8, y - 3, 1, 3);
-  // The man: overalls, a face, and an arm that changes sides on the beat.
+  // The man: overalls, a face, LEGS, and an arm that changes sides on the beat.
+  //
+  // The legs are not detail, they are what stops him reading as a torso bolted
+  // to the rail. His body used to run all the way down to the cradle, and with
+  // a 17px bar under a 4px block the eye took the bar for a pair of legs
+  // planted wide — the figure was the wrong shape and the cradle stopped being
+  // a cradle. Two pixels of daylight between his feet is the whole fix: the
+  // gap says where the body ends, and the bar goes back to being something he
+  // stands ON. Same overall height as before, so nothing else on the mast moves.
   ctx.fillStyle = '#22608c';
-  ctx.fillRect(cx - 2, y - 6, 4, 6);
+  ctx.fillRect(cx - 2, y - 6, 4, 4);
+  ctx.fillRect(cx - 2, y - 2, 1, 2);
+  ctx.fillRect(cx + 1, y - 2, 1, 2);
   ctx.fillStyle = '#f2c9a0';
   ctx.fillRect(cx - 2, y - 10, 4, 4);
   ctx.fillStyle = LCD_PRINT;
@@ -4232,13 +4570,18 @@ function lcdTransmitter(ctx, building, frame, reducedFlashing) {
   const roof = GROUND_Y - h;
   const top = roof - 24;
   ctx.fillStyle = LCD_PRINT_SOFT;
-  for (const [lx, ly, lw, lh] of [
-    [cx - 4, roof - 6, 9, 1], [cx - 3, roof - 13, 7, 1], [cx - 2, roof - 19, 5, 1],
-  ]) ctx.fillRect(lx, ly, lw, lh);
-  ctx.strokeStyle = LCD_PRINT_SOFT;
-  ctx.lineWidth = 1;
-  lcdStrokePath(ctx, [[cx - 5, roof], [cx - 1, top]]);
-  lcdStrokePath(ctx, [[cx + 5, roof], [cx + 1, top]]);
+  // A PIXEL MAST. Stroked legs were the one diagonal on a panel of squared
+  // cells — a vector triangle among pixel things. Circles are the panel's
+  // agreed exception (the dial, the speaker cones); a lattice mast is not. So
+  // each leg is four one-pixel columns stepping in a pixel every six rows, and
+  // the crossbars sit on the steps at exactly the legs' width there.
+  for (let k = 0; k < 4; k++) {
+    const y1 = roof - 6 * k;
+    const y0 = Math.max(top, roof - 6 * (k + 1));
+    ctx.fillRect(cx - 5 + k, y0, 1, y1 - y0);
+    ctx.fillRect(cx + 4 - k, y0, 1, y1 - y0);
+    if (k > 0) ctx.fillRect(cx - 5 + k, y1, 10 - 2 * k, 1);
+  }
   ctx.fillStyle = LCD_PRINT;
   ctx.fillRect(cx - 1, top - 3, 2, 4);
   // The beacon, lit on the downbeat.
@@ -4256,7 +4599,7 @@ function lcdTransmitter(ctx, building, frame, reducedFlashing) {
     const carried = i > frame.beat4 && i <= frame.beat4 + reach;
     ctx.fillStyle = i === frame.beat4
       ? (reducedFlashing ? LCD_PRINT_SOFT : LCD_WINDOW_ON)
-      : carried ? 'rgba(53,83,101,0.3)' : LCD_MOTION_GHOST;
+      : carried ? 'rgba(80,85,92,0.3)' : LCD_MOTION_GHOST;
     const ox = cx - grid[0].length;
     const oy = cy - [9, 15, 21, 27][i];
     for (let r = 0; r < grid.length; r++) {
@@ -4419,7 +4762,8 @@ function gbcGorillaLimb(ctx, points, color, width, highlight = null) {
 // horizontal plank seams. The old version — round, orange, with two
 // horizontal hoop curves — read as a basketball from three buildings away;
 // a rolling barrel's hoops stand upright near its ends, and its planks run
-// the way it rolls.
+// the way it rolls. The ORANGE was the other half of it and went later, when
+// the girder cells were settled: see LCD_BARREL_BODY below.
 // `live` is the one Kong is dropping into the LANE — see the chute in
 // drawLCDCity. He handles a barrel on every beat of his cycle and most of them
 // are theatre, so the one that is about to become a hazard has to be findable
@@ -4427,8 +4771,27 @@ function gbcGorillaLimb(ctx, points, color, width, highlight = null) {
 // which is the same vocabulary every other live cell on this screen uses (a
 // window that is on, the clock's cardinal hand, the share price's last cell).
 // Not a new idiom, just this panel's existing one pointed at the right barrel.
+// ONE WOOD FOR EVERY BARREL ON THE PANEL. The amber this used to be was the
+// other half of the basketball: dark wood with near-ink hoops is a barrel
+// before you have read a single mark on it. The girder cells (lcdMiniBarrel)
+// take the same three colours, because the thing Kong holds IS the thing that
+// rolls down the tower and the thing that arrives in the lane, and one picture
+// may not hold two different barrels.
+//
+// AND THE LINEWORK IS FINE, not chunky. Everything on a barrel except its
+// silhouette is grain: at nine pixels across, a seam in solid near-ink and a
+// full-weight hoop stroke put more ink on the thing than the outline holding
+// it together, and it stops reading as wood and starts reading as a logo. So
+// the seams are a WASH the body still shows through, the hoops are drawn
+// three-quarter weight, and the middle band — the one that made it a
+// basketball in the first place — is gone from the small cell entirely.
+const LCD_BARREL_BODY = '#a9743a';
+const LCD_BARREL_SEAM = 'rgba(95,61,31,0.6)';
+const LCD_BARREL_HI = 'rgba(226,166,88,0.62)';
+const LCD_BARREL_HOOP = 0.75;
+
 function gbcGorillaBarrel(ctx, x, y, ghost = false, live = false) {
-  gbcEllipse(ctx, x, y, 8, 7, ghost ? LCD_MOTION_GHOST : '#d4a35e',
+  gbcEllipse(ctx, x, y, 8, 7, ghost ? LCD_MOTION_GHOST : LCD_BARREL_BODY,
     ghost ? LCD_MOTION_GHOST : LCD_PRINT, 1);
   if (ghost) return;
   if (live) {
@@ -4438,15 +4801,15 @@ function gbcGorillaBarrel(ctx, x, y, ghost = false, live = false) {
     ctx.lineWidth = 1;
   }
   ctx.strokeStyle = LCD_PRINT;
-  ctx.lineWidth = 1.25;
+  ctx.lineWidth = LCD_BARREL_HOOP;
   ctx.beginPath(); ctx.ellipse(x - 4, y, 1.8, 5.8, 0, 0, Math.PI * 2); ctx.stroke();
   ctx.beginPath(); ctx.ellipse(x + 4, y, 1.8, 5.8, 0, 0, Math.PI * 2); ctx.stroke();
   ctx.lineWidth = 1;
-  ctx.fillStyle = '#8a5a35';
+  ctx.fillStyle = LCD_BARREL_SEAM;
   ctx.fillRect(x - 6, y - 3, 12, 1);
   ctx.fillRect(x - 7, y, 14, 1);
   ctx.fillRect(x - 6, y + 3, 12, 1);
-  ctx.fillStyle = 'rgba(239,180,83,0.75)';
+  ctx.fillStyle = LCD_BARREL_HI;
   ctx.fillRect(x - 1, y - 5, 2, 2);
 }
 
@@ -4740,20 +5103,32 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
     {
       arms: [
         [[cx - 12, roof - 18], [cx - 18, roof - 10], [cx - 18, roof - 4]],
-        [[cx + 12, roof - 19], [cx + 18, roof - 29], [cx + 12, roof - 36]],
-      ], hands: [[cx - 18, roof - 4], [cx + 12, roof - 36]], barrel: [cx + 20, roof - 36],
+        [[cx + 12, roof - 19], [cx + 19, roof - 31], [cx + 13, roof - 37]],
+      ], hands: [[cx - 18, roof - 4], [cx + 13, roof - 37]], barrel: [cx + 21, roof - 38],
     },
+    {
+      arms: [
+        [[cx - 12, roof - 19], [cx - 18, roof - 13], [cx - 18, roof - 6]],
+        [[cx + 12, roof - 19], [cx + 21, roof - 27], [cx + 19, roof - 20]],
+      ], hands: [[cx - 18, roof - 6], [cx + 19, roof - 20]], barrel: [cx + 24, roof - 20],
+    },
+    // BEAT FOUR IS THE EMPTY HAND, and it is the only beat of the four that
+    // says he is THROWING rather than juggling. The hand height falls all the
+    // way down the bar — 43 over the roof, 37, 20, 5 — so the four cells are
+    // one swing, and the last of them is the release: his fist is at the mouth
+    // of the chute with nothing in it, and the chute's top cell lights on the
+    // very next beat with the barrel he just let go. Drawing a barrel here as
+    // well gave him a fourth one on the beat he is supposed to be empty, and
+    // the swing read as a juggle that never let anything go.
+    //
+    // POSE 0 KEEPS ITS BARREL WHATEVER ELSE MOVES: LCD_BARREL_UP_BEAT names
+    // it, the plane's crossing is authored to meet it, and the wreck is drawn
+    // at its position for both beats after a strike.
     {
       arms: [
         [[cx - 12, roof - 18], [cx - 18, roof - 10], [cx - 18, roof - 4]],
-        [[cx + 12, roof - 18], [cx + 18, roof - 10], [cx + 14, roof - 7]],
-      ], hands: [[cx - 18, roof - 4], [cx + 14, roof - 7]], barrel: [cx + 22, roof - 7],
-    },
-    {
-      arms: [
-        [[cx - 12, roof - 19], [cx - 18, roof - 13], [cx - 18, roof - 7]],
-        [[cx + 12, roof - 20], [cx + 18, roof - 26], [cx + 10, roof - 31]],
-      ], hands: [[cx - 18, roof - 7], [cx + 10, roof - 31]], barrel: [cx + 18, roof - 31],
+        [[cx + 12, roof - 18], [cx + 18, roof - 11], [cx + 14, roof - 5]],
+      ], hands: [[cx - 18, roof - 4], [cx + 14, roof - 5]], barrel: null,
     },
   ];
 
@@ -4762,7 +5137,7 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // not a pile of rectangular segments.
   for (const ghost of poses) {
     for (const arm of ghost.arms) gbcGorillaLimb(ctx, arm, LCD_MOTION_GHOST, 5);
-    gbcGorillaBarrel(ctx, ghost.barrel[0], ghost.barrel[1], true);
+    if (ghost.barrel) gbcGorillaBarrel(ctx, ghost.barrel[0], ghost.barrel[1], true);
   }
   const pose = poses[frame.beat4];
   for (const arm of pose.arms) {
@@ -4834,13 +5209,14 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // down the chute, so the warning starts before the drop does rather than
   // landing with it. `barrelBeat` is only ever set while one is genuinely due
   // (run.js updateBarrelArrivals), so he cannot cry wolf with it.
-  if (burst < 0) {
+  if (burst >= 0) {
+    lcdBarrelBurst(ctx, poses[LCD_BARREL_UP_BEAT].barrel[0],
+      poses[LCD_BARREL_UP_BEAT].barrel[1], burst, reducedFlashing);
+  } else if (pose.barrel) {
     const due = frame.barrelBeat != null ? frame.barrelBeat - frame.beatAbs : null;
     gbcGorillaBarrel(ctx, pose.barrel[0], pose.barrel[1], false,
       due != null && due >= 0 && due <= LCD_CHUTE_BEATS + 1);
   }
-  else lcdBarrelBurst(ctx, poses[LCD_BARREL_UP_BEAT].barrel[0],
-    poses[LCD_BARREL_UP_BEAT].barrel[1], burst, reducedFlashing);
   ctx.lineWidth = 1;
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
@@ -4860,63 +5236,67 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
 // throw lands top-left on the downbeat and the runner clears the last cell on
 // beat four.
 
-function lcdMiniBarrel(ctx, bx, by, ghost = false) {
-  if (ghost) {
-    gbcEllipse(ctx, bx, by, 4.5, 4, null, LCD_MOTION_GHOST, 1);
-    return;
-  }
-  gbcEllipse(ctx, bx, by, 4.5, 4, '#d4a35e', LCD_PRINT, 1);
-  ctx.strokeStyle = LCD_PRINT;
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.ellipse(bx - 2, by, 1, 3.4, 0, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.ellipse(bx + 2, by, 1, 3.4, 0, 0, Math.PI * 2); ctx.stroke();
-  ctx.fillStyle = '#8a5a35';
-  ctx.fillRect(Math.round(bx) - 3, by, 7, 1);
-  ctx.fillStyle = 'rgba(239,180,83,0.75)';
-  ctx.fillRect(Math.round(bx) - 1, by - 3, 2, 1);
+// ---- AND THE TWELVE THINGS ROLLING DOWN IT --------------------------------
+//
+// THE BASKETBALL PROBLEM, second half. The barrel Kong holds was fixed for it
+// once already (see gbcGorillaBarrel): round, amber, with horizontal hoop
+// curves reads as a basketball from three buildings away, and the fix was the
+// real thing's own geometry. The twelve cells on the girders never got that
+// pass, and at 9x6 they were the worse offender of the two — one dark band
+// across a round orange body is a basketball and very little else.
+//
+// The bake-off that settled it ran two axes against each other and the finding
+// was that THE SILHOUETTE IS DOING IT. Better marks on the ellipse — hoops
+// pushed out to the ends, three plank seams running the way it rolls, which is
+// the big barrel's own recipe — buy a better-decorated ball: at panel scale it
+// still reads round. A darker wood on the ellipse changes almost nothing, so
+// "it is the orange" was not the answer either. What works is taking the
+// CIRCLE away: an octagon with a flat top and bottom stops being a ball on the
+// first glance, and nothing else on this tower is round to argue with it.
+//
+// So the cell is all three at once — flat top and bottom, hoops at the ends,
+// planks along it, in wood. The ghost cells carry the same octagon, because an
+// off cell says "a barrel is also here" with the silhouette and nothing else,
+// and a round ghost under a cask body gives the whole thing away.
+// The body: 9 across, 7 tall, corners clipped a pixel and a half. A path so
+// the fill and the ink outline are the same shape and the ghost can borrow it.
+function lcdCaskPath(ctx, bx, by) {
+  ctx.beginPath();
+  ctx.moveTo(bx - 4.5, by - 1.5);
+  ctx.lineTo(bx - 3, by - 3.5);
+  ctx.lineTo(bx + 3, by - 3.5);
+  ctx.lineTo(bx + 4.5, by - 1.5);
+  ctx.lineTo(bx + 4.5, by + 1.5);
+  ctx.lineTo(bx + 3, by + 3.5);
+  ctx.lineTo(bx - 3, by + 3.5);
+  ctx.lineTo(bx - 4.5, by + 1.5);
+  ctx.closePath();
 }
 
-// ---- THE PLUMBER, AND THE FOUR THINGS THAT MIGHT MAKE HIM READ BETTER ------
-//
-// He is eight pixels across and sixteen tall, on a tower on the far side of a
-// street, and every one of the candidates below is a two-or-three-pixel change.
-// That is on purpose: this is not a redesign, it is the question "what is the
-// smallest edit that makes him read as a PLUMBER rather than as a man-shaped
-// smudge climbing some girders?" — so each flag is one answer, they compose,
-// and SHIPPED is in the list as the control.
-//
-// Flags reach the painter only through the dev-only `runnerStyle` on the
-// scene, exactly the way the gorilla's face bake-off works. A run, the hub,
-// the jukebox and every test pass null and get the figure that has always been
-// drawn, pixel for pixel.
-//
-//   bib     the two loose strap ticks joined into an overall bib, buttons on it
-//   boots   brown feet under the legs, a skin pixel at the end of each arm
-//   cap     a row more crown and a pixel more brim
-//   stride  two walk cells instead of a step and a stand, arm swinging with them
-const LCD_RUNNER_PLAIN = { bib: false, boots: false, cap: false, stride: false };
-
-/** The bake-off's running order, with what each candidate is FOR. */
-export const LCD_RUNNER_STYLES = [
-  { id: 'shipped', name: 'SHIPPED', style: {},
-    note: 'the figure as drawn today — the control. Nothing about it changes.' },
-  { id: 'bib', name: 'BIB', style: { bib: true },
-    note: 'the two strap pixels joined into an overall bib with gold buttons: the teal becomes sleeves either side of it, which is the whole plumber read in two pixels.' },
-  { id: 'boots', name: 'BOOTS & HANDS', style: { boots: true },
-    note: 'a brown boot row under each leg, poking a pixel past the toe, and a skin pixel where each arm ends — the jump already has both and the other fifteen cells do not.' },
-  { id: 'cap', name: 'CAP', style: { cap: true },
-    note: 'three rows of crown instead of two and a brim a pixel longer. The cap is what says which way he is walking at a tower’s remove; today it is the same height as the brim.' },
-  { id: 'stride', name: 'STRIDE', style: { stride: true },
-    note: 'the walk gets a second leg cell instead of standing to attention every other beat, and the arm swings against it. Same silhouette, opposite phase.' },
-  { id: 'full', name: 'THE LOT', style: { bib: true, boots: true, cap: true, stride: true },
-    note: 'all four at once — the composite, and the one to beat SHIPPED if any of this is worth doing.' },
-];
-
-const LCD_RUNNER_BY_ID = new Map(LCD_RUNNER_STYLES.map(
-  (s) => [s.id, { ...LCD_RUNNER_PLAIN, ...s.style }]));
-/** null for the shipped figure; a flag set for a bake-off candidate. */
-function lcdRunnerStyle(id) {
-  return (id && LCD_RUNNER_BY_ID.get(id)) || null;
+function lcdMiniBarrel(ctx, bx, by, ghost = false) {
+  lcdCaskPath(ctx, bx, by);
+  if (ghost) {
+    ctx.strokeStyle = LCD_MOTION_GHOST;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    return;
+  }
+  ctx.fillStyle = LCD_BARREL_BODY; ctx.fill();
+  ctx.strokeStyle = LCD_PRINT; ctx.lineWidth = LCD_BARREL_HOOP; ctx.stroke();
+  // The hoops stand upright near the ends, the way they do on a barrel that is
+  // rolling toward you.
+  ctx.beginPath(); ctx.ellipse(bx - 2.8, by, 1, 3.4, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(bx + 2.8, by, 1, 3.4, 0, 0, Math.PI * 2); ctx.stroke();
+  // TWO staves, and no band across the middle: the big barrel has fourteen
+  // rows to spend three seams over and this cell has six, so the third one
+  // was not grain, it was a stripe — and a stripe across a body this small is
+  // the exact mark that made it a ball.
+  const bxr = Math.round(bx);
+  ctx.fillStyle = LCD_BARREL_SEAM;
+  ctx.fillRect(bxr - 2, by - 2, 5, 1);
+  ctx.fillRect(bxr - 2, by + 2, 5, 1);
+  ctx.fillStyle = LCD_BARREL_HI;
+  ctx.fillRect(bxr - 1, by - 3, 2, 1);
 }
 
 // The runner. Deliberately BLOCKY — rectangles, not curves — because he is a
@@ -4927,9 +5307,28 @@ function lcdRunnerStyle(id) {
 //   { kind: 'climb', arms }       — on a ladder from behind, arms alternating
 //   { kind: 'hit' }               — clipped by a barrel: arms up, cap popped
 //   { kind: 'jump', dir }         — the split, over a barrel
-// `style` is the bake-off seam above: null draws him exactly as he ships.
-function lcdRunnerFigure(ctx, rx, footY, mode, style = null) {
-  const st = style || LCD_RUNNER_PLAIN;
+//
+// FOUR THINGS CAME OUT OF THE BAKE-OFF THAT SETTLED HIM, and every one of them
+// is two or three pixels — he is eight across and seventeen tall, on a tower on
+// the far side of a street, so there was never a redesign available:
+//
+//   THE BIB. The two loose strap ticks are joined into an overall bib with a
+//     gold button at each top corner, and the teal survives as a sleeve either
+//     side of it. That is the whole difference between a man in a teal shirt
+//     and a man in overalls, and it costs two pixels of gold.
+//   BOOTS AND HANDS. A brown boot row under each leg, poking a pixel past the
+//     toe, and a skin pixel where each arm ends. The jump had both already —
+//     its toes are the whole of what says it is a split — and the other
+//     fifteen cells were the ones going without.
+//   THE CAP. Three rows of crown instead of two, and a brim a pixel longer.
+//     The cap is what says which way he is walking at a tower's remove, and at
+//     two rows it was the same height as its own brim.
+//   THE STRIDE. Two walk cells rather than a step and a stand: the shipped pair
+//     spent one frame of every two with the feet together and square, so half
+//     the walk was a man standing still being carried along the girder. The
+//     arm swings against the legs, forward and up on one cell, back and low on
+//     the other.
+function lcdRunnerFigure(ctx, rx, footY, mode) {
   let y = footY;
   // Mirror helper for the few side-specific cells when he faces left.
   const dir = mode.dir || 1;
@@ -4948,7 +5347,7 @@ function lcdRunnerFigure(ctx, rx, footY, mode, style = null) {
     ctx.fillStyle = '#22608c';
     ctx.fillRect(rx - 3, y - 4, 3, 4);
     ctx.fillRect(rx + 1, y - 4, 3, 4);
-    if (st.boots) { boot(rx - 3, 3); boot(rx + 1, 3); }
+    boot(rx - 3, 3); boot(rx + 1, 3);
     ctx.fillRect(rx - 3, y - 7, 8, 3);
     ctx.fillStyle = '#2ea8a0';
     ctx.fillRect(rx - 3, y - 10, 8, 3);
@@ -4957,22 +5356,17 @@ function lcdRunnerFigure(ctx, rx, footY, mode, style = null) {
     const dnX = mode.arms ? rx + 4 : rx - 5;
     ctx.fillRect(upX, y - 13, 2, 4);
     ctx.fillRect(dnX, y - 9, 2, 4);
-    if (st.bib) {
-      // From behind the bib is a back panel between the straps — the same two
-      // pixels the front pose spends, seen the other way round.
-      ctx.fillStyle = '#22608c';
-      ctx.fillRect(rx - 2, y - 9, 6, 2);
-    }
-    if (st.boots) {
-      // The reaching hand is at the top of its arm, the resting one at the
-      // bottom of its.
-      hand(upX + (mode.arms ? 0 : 1), y - 13);
-      hand(dnX + (mode.arms ? 1 : 0), y - 6);
-    }
+    // From behind the bib is a back panel between the straps — the same two
+    // pixels the front pose spends, seen the other way round.
+    ctx.fillStyle = '#22608c';
+    ctx.fillRect(rx - 2, y - 9, 6, 2);
+    // The reaching hand is at the top of its arm, the resting one at the
+    // bottom of its.
+    hand(upX + (mode.arms ? 0 : 1), y - 13);
+    hand(dnX + (mode.arms ? 1 : 0), y - 6);
     // The back of his head is all cap.
     ctx.fillStyle = '#7b4bd0';
-    if (st.cap) ctx.fillRect(rx - 3, y - 16, 7, 6);
-    else ctx.fillRect(rx - 3, y - 15, 7, 5);
+    ctx.fillRect(rx - 3, y - 16, 7, 6);
     return;
   }
   const hit = mode.kind === 'hit';
@@ -5001,35 +5395,25 @@ function lcdRunnerFigure(ctx, rx, footY, mode, style = null) {
     ctx.fillRect(rx - 3 - SPLIT, y - 9, 2, 2);
     ctx.fillRect(rx + 3 + SPLIT, y - 9, 2, 2);
     ctx.fillStyle = '#22608c';
-  } else if (mode.kind === 'run' && st.stride) {
-    // TWO WALK CELLS, not a step and a stand. The shipped pair spends one of
-    // its two frames with the feet together and square, so half the walk is a
-    // man standing still being carried along the girder; this is the same
-    // silhouette in the opposite phase, so the legs alternate the whole way.
-    if (mode.stride) {
-      // The cell as authored: back foot planted, leading foot out in front and
-      // a row off the steel.
-      ctx.fillRect(rx + M(-4, 3), y - 4, 3, 4);
-      ctx.fillRect(rx + M(1, 4), y - 3, 4, 3);
-      if (st.boots) { boot(rx + M(-4, 3), 3); boot(rx + M(1, 4), 4); }
-    } else {
-      // And the other half of the step, which is where the shipped pair stands
-      // to attention instead: the FRONT foot has landed and the back one is
-      // trailing with the heel up. It stays welded to the hips — a lifted leg
-      // that also leaves a row of daylight under the overalls is a detached
-      // blue box at this size, not a leg.
-      ctx.fillRect(rx + M(1, 3), y - 4, 3, 4);
-      ctx.fillRect(rx + M(-5, 4), y - 4, 4, 3);
-      if (st.boots) { boot(rx + M(1, 3), 3); boot(rx + M(-5, 4), 4, y - 2); }
-    }
   } else if (mode.kind === 'run' && mode.stride) {
+    // The cell as authored: back foot planted, leading foot out in front and a
+    // row off the steel.
     ctx.fillRect(rx + M(-4, 3), y - 4, 3, 4);
     ctx.fillRect(rx + M(1, 4), y - 3, 4, 3);
-    if (st.boots) { boot(rx + M(-4, 3), 3); boot(rx + M(1, 4), 4); }
+    boot(rx + M(-4, 3), 3); boot(rx + M(1, 4), 4);
+  } else if (mode.kind === 'run') {
+    // And the other half of the step, which is where he used to stand to
+    // attention instead: the FRONT foot has landed and the back one is
+    // trailing with the heel up. It stays welded to the hips — a lifted leg
+    // that also leaves a row of daylight under the overalls is a detached blue
+    // box at this size, not a leg.
+    ctx.fillRect(rx + M(1, 3), y - 4, 3, 4);
+    ctx.fillRect(rx + M(-5, 4), y - 4, 4, 3);
+    boot(rx + M(1, 3), 3); boot(rx + M(-5, 4), 4, y - 2);
   } else {
     ctx.fillRect(rx - 3, y - 4, 3, 4);
     ctx.fillRect(rx + 1, y - 4, 3, 4);
-    if (st.boots) { boot(rx - 3, 3); boot(rx + 1, 3); }
+    boot(rx - 3, 3); boot(rx + 1, 3);
   }
   ctx.fillRect(rx - 3, y - 7, 8, 3);
   ctx.fillStyle = '#2ea8a0';
@@ -5037,32 +5421,25 @@ function lcdRunnerFigure(ctx, rx, footY, mode, style = null) {
   if (hit) {
     ctx.fillRect(rx - 5, y - 13, 2, 4);
     ctx.fillRect(rx + 4, y - 13, 2, 4);
-    if (st.boots) { hand(rx - 5, y - 13); hand(rx + 5, y - 13); }
-  } else if (st.stride && mode.kind === 'run') {
+    hand(rx - 5, y - 13); hand(rx + 5, y - 13);
+  } else if (mode.kind === 'run') {
     // The arm swings against the legs: forward and up on the striding cell,
     // back and low on the other one.
     const ax = rx + M(mode.stride ? 4 : -5, 2);
     const ay = mode.stride ? y - 11 : y - 9;
     ctx.fillRect(ax, ay, 2, 3);
-    if (st.boots) hand(dir === 1 ? ax + 1 : ax, mode.stride ? ay : ay + 2);
+    hand(dir === 1 ? ax + 1 : ax, mode.stride ? ay : ay + 2);
   } else {
     const ax = rx + M(3, 2);
     ctx.fillRect(ax, y - 10, 2, 3);
-    if (st.boots) hand(dir === 1 ? ax + 1 : ax, y - 8);
+    hand(dir === 1 ? ax + 1 : ax, y - 8);
   }
+  // The bib, and the buttons on it.
   ctx.fillStyle = '#22608c';
-  if (st.bib) {
-    // The two loose strap ticks joined into an actual bib, with the buttons on
-    // it. The teal survives as a sleeve either side, which is the difference
-    // between a man in a teal shirt and a man in overalls.
-    ctx.fillRect(rx - 1, y - 9, 4, 2);
-    ctx.fillStyle = '#f6d33c';
-    ctx.fillRect(rx - 1, y - 9, 1, 1);
-    ctx.fillRect(rx + 2, y - 9, 1, 1);
-  } else {
-    ctx.fillRect(rx - 1, y - 9, 1, 2);
-    ctx.fillRect(rx + 2, y - 9, 1, 2);
-  }
+  ctx.fillRect(rx - 1, y - 9, 4, 2);
+  ctx.fillStyle = '#f6d33c';
+  ctx.fillRect(rx - 1, y - 9, 1, 1);
+  ctx.fillRect(rx + 2, y - 9, 1, 1);
   ctx.fillStyle = '#f2c9a0';
   ctx.fillRect(rx - 2, y - 14, 6, 4);
   ctx.fillStyle = '#5a3212';
@@ -5071,9 +5448,9 @@ function lcdRunnerFigure(ctx, rx, footY, mode, style = null) {
   ctx.fillRect(rx + M(1, 1), y - 13, 1, 1);
   ctx.fillStyle = '#7b4bd0';
   const capLift = hit ? 3 : 0;
-  const capTop = y - (st.cap ? 17 : 16) - capLift;
-  ctx.fillRect(rx - 3, capTop, 7, st.cap ? 3 : 2);
-  if (!hit) ctx.fillRect(rx + M(3, st.cap ? 4 : 3), y - 15, st.cap ? 4 : 3, 1);
+  const capTop = y - 17 - capLift;
+  ctx.fillRect(rx - 3, capTop, 7, 3);
+  if (!hit) ctx.fillRect(rx + M(3, 4), y - 15, 4, 1);
   ctx.fillStyle = '#f6d33c';
   ctx.fillRect(rx - 1, capTop, 1, 1);
   if (hit) {
@@ -5100,11 +5477,10 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   ctx.strokeStyle = LCD_PRINT;
   ctx.lineWidth = 1;
   ctx.strokeRect(x + 0.5, top + 0.5, w, H - top);
+  // No cornice, no corner masonry, no rivets: girders and ladders ARE the
+  // tower, and an inner box drawn around them read as a stage with a frame.
   ctx.fillStyle = LCD_PRINT_SOFT;
-  ctx.fillRect(x + 2, top + 4, w - 4, 1);
   const detailBottom = GROUND_Y - 27;
-  ctx.fillRect(x + 3, top + 7, 1, Math.max(1, detailBottom - top - 7));
-  ctx.fillRect(x + w - 4, top + 7, 1, Math.max(1, detailBottom - top - 7));
 
   // GIRDER FLOORS zigzagging down the WHOLE face, each tipped 4px the other
   // way — the Game & Watch playfield worn as architecture. They run past the
@@ -5123,36 +5499,40 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
     const t = (cx - x - 5) / span;
     return floors[i] + 4 * (i % 2 === 0 ? 1 - t : t);
   };
-  ctx.strokeStyle = LCD_PRINT;
-  ctx.lineWidth = 2;
-  for (let i = 0; i < floors.length; i++) {
-    lcdStrokePath(ctx, [[x + 5, floorY(i, x + 5)], [x + w - 5, floorY(i, x + w - 5)]]);
-  }
-  ctx.lineWidth = 1;
-  // Rivet ticks under each girder, and a ladder between each pair of floors,
-  // swapping sides as they descend.
+  // LADDERS FIRST, GIRDERS OVER THEM. A ladder's rails run a pixel INTO the
+  // steel at both ends and the girder is painted on top, so the joint is
+  // clean by construction — no gap, no soft rail showing over the ink —
+  // whatever fraction of a pixel the sloped girder's edge falls on there.
+  // One ladder between each pair of floors, swapping sides as they descend.
   ctx.fillStyle = LCD_PRINT_SOFT;
-  for (let i = 0; i < floors.length; i++) {
-    for (let px = x + 9; px < x + w - 7; px += 9) ctx.fillRect(px, Math.round(floorY(i, px)) + 1, 1, 3);
-  }
-  for (let i = 0; i + 1 < floors.length; i++) {
-    const lx = i % 2 === 0 ? x + 26 : x + 56;
-    const t = Math.round(floorY(i, lx)) + 2;
-    const b = Math.round(floorY(i + 1, lx)) - 1;
+  const ladder = (lx, t, b) => {
     ctx.fillRect(lx, t, 1, b - t);
     ctx.fillRect(lx + 6, t, 1, b - t);
-    for (let ry = t + 3; ry < b - 1; ry += 4) ctx.fillRect(lx + 1, ry, 5, 1);
+    for (let ry = t + 3; ry < b - 2; ry += 4) ctx.fillRect(lx + 1, ry, 5, 1);
+  };
+  for (let i = 0; i + 1 < floors.length; i++) {
+    const lx = i % 2 === 0 ? x + 26 : x + 56;
+    ladder(lx, Math.round(floorY(i, lx)), Math.round(floorY(i + 1, lx)) + 1);
   }
   // And one ladder from the top girder to the ROOF itself — past the spot
   // where the barrel always gets him, so the way up visibly exists and he
   // visibly never takes it. That is the whole tragedy of the toy.
-  {
-    const t = top + 2;
-    const b = Math.round(floorY(0, x + 73)) - 1;
-    ctx.fillRect(x + 70, t, 1, b - t);
-    ctx.fillRect(x + 76, t, 1, b - t);
-    for (let ry = t + 3; ry < b - 1; ry += 4) ctx.fillRect(x + 71, ry, 5, 1);
+  ladder(x + 70, top + 1, Math.round(floorY(0, x + 73)) + 1);
+  // THE GIRDERS, bolted at the HIGH end and open at the low one, like the
+  // arcade's: each runs from the wall it rises toward and stops a barrel's
+  // width short of the other, which is the gap the barrel drops through to
+  // the floor below. Even floors rise to the right, odd to the left (see
+  // floorY), so the wall alternates. The runner and the barrels read floorY
+  // as they always did.
+  const GIRDER_GAP = 12;
+  ctx.strokeStyle = LCD_PRINT;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < floors.length; i++) {
+    const x0 = i % 2 === 0 ? x + 1 + GIRDER_GAP : x + 1;
+    const x1 = i % 2 === 0 ? x + w - 1 : x + w - 1 - GIRDER_GAP;
+    lcdStrokePath(ctx, [[x0, floorY(i, x0)], [x1, floorY(i, x1)]]);
   }
+  ctx.lineWidth = 1;
 
   // The barrel's twelve authored cells snake down the top three floors —
   // right, then left past the runner, then right again — so a throw rides the
@@ -5274,7 +5654,7 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   ];
   // EIGHT bars of journey against a four-bar `step`, so this counts its own.
   const leg = journey[lcdMod(frame.bar * 4 + frame.beat4, journey.length)];
-  if (leg) lcdRunnerFigure(ctx, leg.rx, Math.round(leg.fy), leg.m, lcdRunnerStyle(frame.runnerStyle));
+  if (leg) lcdRunnerFigure(ctx, leg.rx, Math.round(leg.fy), leg.m);
 
   // And the thrower himself: the SAME big gorilla painter the other scenes
   // put on a rooftop, standing on this one. His authored poses land the
@@ -5302,13 +5682,73 @@ export function drawLCDPanel(ctx, scene, settings = {}) {
 }
 
 /** The screen treatment on its own: the soft-light wash and the cell lattice. */
+// ---- a stage's own screen treatment ---------------------------------------
+//
+// EVERY STAGE OF THIS CABINET IS THE SAME SCREEN. They differ in palette — each
+// has its own sky ramp and facade colours — and in what stands on the roofs,
+// but the glass itself is one thing: an OLED Game & Watch, settled by
+// `lcd-finish-bakeoff` in September. The question this seam opens is whether
+// the FINALE should be a different screen rather than the same screen at dusk.
+//
+// It is a post pass and nothing else, which is the point. A stage that repainted
+// its city in another palette would be a second pack pretending to be one; a
+// stage that puts a different LIGHT through the same glass is the handheld being
+// played somewhere else. Every painter above stays exactly as it is.
+//
+// DEV-ONLY SEAM: `finishStyle` on the scene, like `gorillaExpr`. No run
+// sets it.
+export const LCD_FINISH_CANDIDATES = [
+  { id: 'shipped', name: 'SHIPPED', note: 'the OLED panel all three stages wear. The control.' },
+  { id: 'night', name: 'NIGHT', note: 'the same handheld after dark: the glass goes deep blue and the lit cells are the only light in the room. The finale is the stage the gorilla is on and the one the run ends in, and a screen that has switched its backlight on says that without a word of dialogue.' },
+  { id: 'amber', name: 'AMBER', note: 'one phosphor instead of a palette — the whole city through an amber monochrome, the way a different handheld of the same decade looked. Loses the spot colours the ribbon and the road depend on, which is the thing to judge it on.' },
+  { id: 'mono', name: 'MONO', note: 'the colour drained and the ink pushed, so the finale is the starkest screen of the three without changing its hue. The cheapest of the four and the one least likely to fight the cast drawn over it.' },
+];
+
+/**
+ * One stage's screen treatment, laid over the finished panel.
+ *
+ * Runs after the cell lattice so it colours the grid too — a tint that left the
+ * subpixel gaps in the old hue would read as a filter held in front of the
+ * screen rather than as the screen itself.
+ */
+function lcdStageFinish(ctx, style) {
+  if (!style || style === 'shipped') return;
+  if (style === 'night') {
+    // Multiply for the dark, then a small screen pass so the lit cells keep
+    // their own light: an unlit LCD at night is black, a BACKLIT one is dark
+    // with the segments glowing through, and only the second is a handheld
+    // somebody is still playing.
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = 'rgba(58,70,124,0.82)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = 'rgba(40,52,96,0.5)';
+    ctx.fillRect(0, 0, W, H);
+  } else if (style === 'amber') {
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = '#ffb347';
+    ctx.fillRect(0, 0, W, H);
+  } else if (style === 'mono') {
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.fillStyle = '#8c8c8c';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = 'rgba(198,205,186,1)';
+    ctx.fillRect(0, 0, W, H);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
 export function lcdScreenFinish(ctx, t = 0, reducedFlashing = false) {
   ctx.globalCompositeOperation = 'soft-light';
   ctx.fillStyle = 'rgba(168,198,108,0.22)';
   ctx.fillRect(0, 0, W, H);
   ctx.globalCompositeOperation = 'source-over';
   bakedFill(ctx, 'gbcCells', 3, 3, (c) => {
-    c.fillStyle = 'rgba(30,43,72,0.11)';
+    c.fillStyle = 'rgba(50,53,58,0.11)';
     c.fillRect(2, 0, 1, 3);
     c.fillRect(0, 2, 3, 1);
   });
@@ -5338,21 +5778,15 @@ function lcdCrowned(art, i) {
 // between the two.
 function paintLCDStaticCity(ctx, stageIndex) {
   const art = LCD_CITY_SCENES[stageIndex];
-  const palette = LCD_GBC_PALETTES[stageIndex];
   ctx.lineWidth = 1;
-  // The rail first, so every facade paints over it. It is masonry and it never
-  // moves, so it is here rather than in the live pass: a viaduct that appeared
-  // with its first service was the panel saying the city built the line in the
-  // second phase of the song.
-  if (art.train) lcdViaduct(ctx, art);
   const clockBay = lcdClockBay(art);
   for (let i = 0; i < art.buildings.length; i++) {
     const building = art.buildings[i];
     const [x, w, h] = building;
     const crowned = lcdCrowned(art, i);
-    // Broad, low-contrast colour planes are the GBC contribution. Fine dark
-    // linework sits over them, so added colour never weakens the silhouette.
-    ctx.fillStyle = palette.buildings[i % palette.buildings.length];
+    // One faint wash, the same on every wall: enough to stand the facade off
+    // the sky, and no more. The ink does the drawing.
+    ctx.fillStyle = LCD_FACADE_WASH;
     const top = GROUND_Y - h;
     ctx.fillRect(x + 1, top + 1, w - 1, H - top - 1);
     // A STAGE THAT HANGS KIT ON EVERY PLAIN ROOF LEAVES NO PLAIN ROOF. Stage 2
@@ -5372,10 +5806,16 @@ function paintLCDStaticCity(ctx, stageIndex) {
     // and those stay live below.
     if (bay) lcdClockCase(ctx, bay);
     if (stageIndex === 3 && !crowned) {
-      ctx.fillStyle = LCD_WINDOW_OFF;
+      ctx.fillStyle = LCD_WINDOW_GHOST;
       ctx.fillRect(x + 5, GROUND_Y - h - 5, Math.max(5, w - 10), 3);
     }
   }
+  // THE RAIL IS NOT HERE. It was — masonry that never moves belongs in the
+  // bake — but the bake is blitted one building-wide slice at a time while the
+  // city walks on, and a rail inside those slices arrived in eight pieces,
+  // each riding its own building down. It is drawn in drawLCDCity instead,
+  // whole, straight after this layer: the same picture once the skyline is
+  // standing, and one unbroken girder from the first beat.
 }
 
 // ---- the opening bars -----------------------------------------------------
@@ -5432,17 +5872,21 @@ function lcdStructures(art) {
  */
 function lcdArrival(art, frame) {
   // NO INTRO MEANS A CITY THAT IS SIMPLY THERE — the hub, the gallery, reduced
-  // motion and every test. And the beat is the SONG's, not a window the run
-  // opened: a stage restarted from a death re-anchors to a clock that is four
-  // hundred beats in, so a retry walks past this on its own and needs no flag
-  // to be told the city has already been built once.
+  // motion and every test.
   if (!frame.intro) return null;
+  // THE OPENING'S OWN CLOCK, not the song's — see the note on `introBeat`. A
+  // run that has not started moving yet has none, and a city that has not been
+  // told the opening has begun is a city already standing: the assembly is the
+  // first thing the player sees the stage do, so it may not have happened
+  // behind the act banner.
+  const t = frame.introBeat;
+  if (t == null) return null;
   const order = lcdStructures(art);
   const last = (order.length - 1) * LCD_ARRIVE_STEP + LCD_ARRIVE.length - 1;
-  if (frame.beatAbs > last) return null;
+  if (t > last) return null;
   const at = new Map();
   for (let k = 0; k < order.length; k++) {
-    const step = frame.beatAbs - k * LCD_ARRIVE_STEP;
+    const step = t - k * LCD_ARRIVE_STEP;
     if (step < 0) continue;
     const s = order[k];
     at.set(s.kind === 'gameWatch' ? 'gameWatch' : `b${s.i}`,
@@ -5480,8 +5924,6 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     const a = arrive.get(key);
     return a ? a.dy : null;
   };
-  // The cars only — the rail they run on is already in the baked layer below.
-  if (art.train && frame.phase >= (art.train.fromPhase ?? 0)) lcdTrain(ctx, art.train, frame);
   // The facades, their line art and every unlit window, in one blit — or, while
   // the city is arriving, one column window per structure at its own offset.
   bakedCity(ctx, `${frame.stageIndex}|${frame.phase}`,
@@ -5490,6 +5932,16 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
       ? [...arrive.entries()].filter(([k]) => k !== 'gameWatch')
         .map(([, a]) => ({ x: a.x - 1, w: a.w + 3, dy: a.dy }))
       : null);
+  // THE RAIL, IN FRONT OF THE SKYLINE, AS ONE PIECE, FROM BEAT ONE. It ran
+  // behind the facades once, and a line seen only in the gaps between eight
+  // buildings is eight short lines: it read as chopped, not as far. In front
+  // it is one girder across the whole panel, which is what a monorail through
+  // a city looks like from the street. And it is drawn HERE, live, rather
+  // than baked with the masonry it belongs to: the bake above is blitted a
+  // building at a time while the city walks on, and a rail inside those
+  // slices arrived in pieces, each riding its own building down. A viaduct
+  // is the one thing on this skyline that is there before the buildings are.
+  if (art.train) lcdViaduct(ctx, art);
   ctx.lineWidth = 1;
   const clockBay = lcdClockBay(art);
   for (let i = 0; i < art.buildings.length; i++) {
@@ -5528,6 +5980,9 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     }
     if (rise) ctx.restore();
   }
+  // The cars, on the rail the baked layer just laid in front of the facades:
+  // in front of the skyline like the girder it runs on.
+  if (art.train && frame.phase >= (art.train.fromPhase ?? 0)) lcdTrain(ctx, art.train, frame);
   // The sky was the one part of the panel that never moved. Each cloud now
   // drifts leftward in whole-pixel steps on the heard beat — a different pace
   // per cloud so the layer has depth — wrapping off one edge of the display
@@ -5540,7 +5995,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     const [cx0, cy0] = art.clouds[i];
     const x = lcdMod(cx0 + 36 - beatAbs * LCD_CLOUD_DRIFT[i % LCD_CLOUD_DRIFT.length], span) - 36;
     const y = cy0 + LCD_CLOUD_BOB[lcdMod(frame.bar + i, LCD_CLOUD_BOB.length)];
-    lcdCloud(ctx, x, y, lcdMod(frame.bar + frame.phrase + i, 2), palette.cloud);
+    lcdCloud(ctx, x, y, lcdMod(frame.bar + frame.phrase + i, 2));
   }
   const towerRise = riseOf('gameWatch');
   if (art.gameWatch && towerRise !== null) {
@@ -5572,7 +6027,22 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   };
   for (const [bi, artName] of art.billboards || []) {
     if (bi === lifted) continue;
-    onRoof(bi, () => lcdBillboard(ctx, art.buildings[bi], artName, frame, reducedFlashing));
+    // THE PRICE STANDS DOWN WHILE THE SIGN IS SHOUTING. Same roof, same legs,
+    // same rim — the board is showing something else for a few bars, which is
+    // the one thing this particular sign has always been allowed to do.
+    onRoof(bi, () => {
+      // THE COUNTING ROOF HAS TWO STATES and no third. The verb it needs
+      // shouted wins the board over the opening bars; the streak count has it
+      // the rest of the run. There is no share price any more and no separate
+      // celebration — see lcdComboBoard.
+      if (artName !== 'chart') {
+        lcdBillboard(ctx, art.buildings[bi], artName, frame, reducedFlashing);
+      } else if (frame.verbCue) {
+        lcdVerbSign(ctx, art.buildings[bi], frame.verbCue, frame, reducedFlashing);
+      } else {
+        lcdComboBoard(ctx, art.buildings[bi], frame);
+      }
+    });
   }
   if (art.searchlight) {
     onRoof(art.searchlight[0], () => lcdSearchlight(ctx, art.buildings[art.searchlight[0]],
@@ -5618,7 +6088,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     if (art.barrelDrop) {
       const [gx, gw, gh] = art.buildings[art.rooftopGorilla];
       const roof = GROUND_Y - gh;
-      const dropX = gx + gw + 9;
+      const dropX = gx + gw + 8;
       const chute = [roof - 4, roof + 30, roof + 64, roof + 98];
       for (const cy of chute) gbcGorillaBarrel(ctx, dropX, cy, true);
       // WHICH CELL IS LIT, and it is the one place on this panel where the lane
@@ -5670,6 +6140,12 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
 function lcdPack(settings) {
   const reduced = settings && settings.reducedFlashing;
   const reducedMotion = settings && settings.reducedMotion;
+  // WHAT bg() LAST DREW, so post() can finish it. The two are one frame of one
+  // panel, but post is handed neither the scene nor the stage — it is the
+  // screen treatment, and until now the screen was the same on every stage.
+  // Stashed rather than threaded because the alternative is a new argument on
+  // every pack's post() for a thing only this one has.
+  let finishStyle = null;
   return {
     name: 'lcd',
     // The screen treatment belongs to the scenery. The cast — hero, hazards,
@@ -5700,6 +6176,7 @@ function lcdPack(settings) {
       // a run. The city is alive, but the glass still does not travel. It
       // changes by switching cells between fixed authored poses on heard
       // musical beats; neither camX nor gameplay chart data enters the painter.
+      finishStyle = scene && typeof scene.finishStyle === 'string' ? scene.finishStyle : null;
       drawLCDCity(ctx, scene, reducedMotion, reduced);
       // No hardware frame around the screen any more: the bezel cost more
       // than it said (it doubled against facades, and its restore pass caused
@@ -5772,7 +6249,7 @@ function lcdPack(settings) {
       // whole-pixel round here becomes a conspicuous multi-screen-pixel hop
       // as the lane rolls — the same lesson the beat ribbon's offset learned.
       const PITCH = 16, DASH_DROP = LCD_ROAD_INK + 2;
-      ctx.fillStyle = 'rgba(38,53,93,0.14)';
+      ctx.fillStyle = 'rgba(60,63,69,0.14)';
       for (let x = -((camX * 0.5) % PITCH); x < right; x += PITCH) {
         if (inCut(x, x + 8)) continue;
         ctx.fillRect(x, terrainGroundY(cab, camX + x + 4) + DASH_DROP, 8, 3);
@@ -5847,17 +6324,16 @@ function lcdPack(settings) {
       // hardware is restored in post(), which draws in screen space.
     },
     post(ctx, t) {
-      // A light reflective wash ties the tiny spot palette together without
-      // erasing it. The old saturation/color-burn conversion made every scene
-      // pea green; a remembered GBC screen should keep crude colour families.
-      ctx.globalCompositeOperation = 'soft-light';
-      ctx.fillStyle = 'rgba(168,198,108,0.22)';
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalCompositeOperation = 'source-over';
-      // Fine colour-screen pixel lattice. It is texture rather than the
-      // drawing grid: contours and facial detail remain sub-cell vector art.
-      bakedFill(ctx, 'gbcCells', 3, 3, (c) => {
-        c.fillStyle = 'rgba(30,43,72,0.11)';
+      // NO WASH. The soft-light pass that tied the old spot palette together
+      // muddied it as much as it tied it; an OLED's light comes from the
+      // panel, and the glow on the lit cells is the whole of that idea.
+      // The pixel lattice at half its old strength, both directions, so it
+      // is still a grid of cells and not a set of scanlines: an OLED's
+      // subpixel gaps rather than a reflective screen's printed mask. It is
+      // texture rather than the drawing grid: contours and facial detail
+      // remain sub-cell vector art.
+      bakedFill(ctx, 'gbcCellsFaint', 3, 3, (c) => {
+        c.fillStyle = 'rgba(50,53,58,0.055)';
         c.fillRect(2, 0, 1, 3);
         c.fillRect(0, 2, 3, 1);
       });
@@ -5866,6 +6342,8 @@ function lcdPack(settings) {
         ctx.fillStyle = `rgba(255,244,180,${0.008 + Math.sin(t * 6.3) * 0.008})`;
         ctx.fillRect(0, 0, W, H);
       }
+      // And the stage's own light through the glass, if it has asked for one.
+      lcdStageFinish(ctx, finishStyle);
     },
     // No decorate. The old segment-ghost outline — a faint square trailing
     // every entity — read as a rendering bug beside the toaster and the

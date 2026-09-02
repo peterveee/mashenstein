@@ -1515,7 +1515,10 @@ export const CLING_POLE_X = 7 / 24;
 // everyone already knows the hero by.
 const STAND_FOOT_X = 0.105;
 
-function celebrateMotion(id, t, reworked = false) {
+// `moveOverride` lets a SPEC name its move. Until now the move came only from
+// the id tables, which is fine for the cast and useless for a candidate — an
+// unregistered id fell through to 'hop' with no way to ask for anything else.
+function celebrateMotion(id, t, reworked = false, moveOverride = null) {
   const seed = FACE_SEED[id] || 0;
   // Grumpos's three-pose routine needs room for two equal hero holds. Every
   // other celebration retains the shared 2.6s cadence.
@@ -1580,7 +1583,7 @@ function celebrateMotion(id, t, reworked = false) {
   const proposedMove = reworked ? {
     gnash: 'stepturn', fernwick: 'present', b33p: 'salute', clara: 'twostep',
   }[id] : null;
-  const move = proposedMove || CELEBRATE_MOVE[id] || 'hop';
+  const move = moveOverride || proposedMove || CELEBRATE_MOVE[id] || 'hop';
   m.move = move; m.q = q;
   if (move === 'spin') {
     m.lift = Math.sin(q * Math.PI) * 0.17;
@@ -1818,7 +1821,7 @@ function expressionFor(id, pose = {}, spec = null) {
   // Celebrating faces ride the routine: at the top of a bounce the grin opens
   // into a full cheer, and between beats the eyes squeeze shut, delighted.
   const reworkedCelebration = joy && usesReworkedCelebration(pose);
-  const cm = joy ? celebrateMotion(id, t, reworkedCelebration) : null;
+  const cm = joy ? celebrateMotion(id, t, reworkedCelebration, spec?.celebrate) : null;
   // Clinging cheers throughout. Squeezed-shut ^ ^ eyes are the between-beats
   // half of the celebration, and a hero who slides the whole pole with his eyes
   // closed reads as asleep on it; `cheer` is the open-eyed, open-mouthed half,
@@ -2859,6 +2862,8 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   const ex = expressionFor(id, pose, spec);
   // Set by the animal face block; the mouth is clamped against it below.
   let animalNoseBottom = null;
+  // How far the jaw dropped this frame, published for the same reason.
+  let animalJaw = 0;
   const animal = ANIMAL_HEADS[spec.head];
   if (animal) {
     // The ruff goes down FIRST so the ears overlap it: fur tucks under an ear,
@@ -4328,6 +4333,7 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
         : ex.surprise ? 0.6
           : 0;
     const jaw = jawAmt * 0.07 * R;
+    animalJaw = jaw;
     outlined(ctx, p.s, hair(0.6, ow * 0.7), (c) =>
       c.ellipse(faceCx, mTopY + R * mry * mScale * 0.62 + jaw,
         R * mrx * mScale, R * mry * mScale + jaw, 0, 0, Math.PI * 2));
@@ -4571,12 +4577,152 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     if (animalNoseBottom != null) {
       const reachUp = ex.surprise || ex.death ? 0.045 : ex.calling ? 0.017 : 0;
       if (reachUp) mouthY = Math.max(mouthY, animalNoseBottom + (reachUp + 0.012) * u);
+      // THE GRIN RIDES THE JAW DOWN. A deep smile lengthens the snout (see the
+      // jaw drop above), and a mouth that stays on its old line ends up sitting
+      // high in a muzzle that has grown beneath it. It follows by a FRACTION of
+      // the drop rather than all of it: the whole snout lengthens, but the
+      // mouth sits nearer the top of it than the bottom, so travelling the full
+      // distance would push it out of the face it belongs to.
+      //
+      // Joy only. Surprise gets the same jaw drop but its mouth is already
+      // held down by the clamp above, and moving it again would undo a read
+      // that is settled.
+      if (ex.joy || ex.cheer) mouthY += animalJaw * 0.45;
     }
     drawMouth(ctx, spec, p, u, hx + 0.01 * u, mouthY, ow, ex);
   }
   if (faceDy) ctx.restore();
   if (faceDepth > 0.001) ctx.restore();
   if (outlineDepth > 0.001) ctx.restore();
+}
+
+// ----------------------------------------------------------- tail
+// ONE tail painter, called from every pose that has a hip. It lived inline in
+// drawHumanoid, which is why the power slide had no tail: the slide is its own
+// painter and returns before drawHumanoid ever reaches the "back accessories"
+// block — so Gnash slid tailless from the day the slide shipped, and Rusty
+// inherited the gap (the gallery's own TODO named it). Lifting the block out
+// means the slide draws the same tail the run does, off the same clock.
+//
+// `torsoHalf` and `hipY` are the caller's hip frame; `run` picks the wag rate.
+function drawTail(ctx, spec, p, pose, u, ow, lod, torsoHalf, hipY, run) {
+  if (spec.tail) {
+    // `tail: true` is Gnash's tapered blade and stays byte-for-byte what it
+    // was; the string kinds are the bake-off's. Widening the flag rather than
+    // adding a second one keeps ONE tail seam — a hero has a tail or does not,
+    // and which tail is a property of that tail.
+    const tailKind = spec.tail === true ? 'taper' : spec.tail;
+    const wag = Math.sin((pose.time || 0) * (run ? 8 : 2.6)) * 0.045 * u;
+    const baseX = -torsoHalf * 0.65, baseY = hipY - 0.02 * u;
+    // THE TAIL FLING. `toss: 'tail'` makes the tail the throwing limb, so it
+    // has to leave its idle sweep and come over the body — on the same 0.3s
+    // clock and the same wind/whip/settle beats the arms use, or the two
+    // halves of one gesture drift apart. `fling` runs -1 (cocked back and up)
+    // through 0 to +1 (thrown forward past the hip); every tail shape below
+    // reads it, so a fling is not a fourth tail kind.
+    let fling = 0;
+    if (spec.toss === 'tail' && pose.menuAction === 'aim') {
+      const tq = pose.actionTime == null
+        ? 0.62
+        : Math.max(0, Math.min(1, Number(pose.actionTime) / 0.3));
+      const te = (v) => v * v * (3 - 2 * v);
+      fling = tq < 0.34 ? -te(tq / 0.34)
+        : tq < 0.56 ? -1 + 2 * te((tq - 0.34) / 0.22)
+          : 1 - 0.45 * te((tq - 0.56) / 0.44);
+    }
+    if (tailKind === 'taper') {
+      const tipX = -0.4 * u, tipY = hipY - 0.28 * u + wag;
+      outlined(ctx, p.h, ow, (c) => {
+        c.moveTo(baseX, baseY - 0.065 * u);
+        c.quadraticCurveTo(-0.39 * u, hipY + 0.02 * u + wag * 0.35, tipX, tipY);
+        c.quadraticCurveTo(-0.32 * u, hipY - 0.15 * u + wag * 0.4, baseX, baseY + 0.065 * u);
+        c.closePath();
+      });
+      // A small cream tip helps the tapered tail read separately from the body.
+      outlined(ctx, p.s, hair(0.5, ow * 0.65), (c) => {
+        c.moveTo(tipX, tipY);
+        c.lineTo(tipX + 0.075 * u, tipY + 0.09 * u);
+        c.lineTo(tipX + 0.095 * u, tipY + 0.025 * u);
+        c.closePath();
+      });
+    } else if (tailKind === 'stub') {
+      // A hare's puff: a disc at the hip, no sweep, riding the wag so it is not
+      // the one dead thing on a running figure.
+      outlined(ctx, p.s, ow, (c) =>
+        c.ellipse(baseX - 0.105 * u, baseY - 0.01 * u + wag * 0.5,
+          0.085 * u, 0.075 * u, 0, 0, Math.PI * 2));
+    } else {
+      // BUSHY (red panda) and BRUSH (fox): a plume carried up and back rather
+      // than a blade slung down. Both are the same path with different girth,
+      // because the thing being judged between them is volume.
+      //
+      // Built as a named path fn so the rings below can clip to the exact
+      // silhouette. The centre curve is stated separately and the outline is
+      // walked out from it, which is what lets the rings sit square across the
+      // tail instead of square to the screen.
+      const bushy = tailKind === 'bushy';
+      const w0 = (bushy ? 0.085 : 0.062) * u;      // girth at the root
+      const w1 = (bushy ? 0.115 : 0.078) * u;      // girth at the belly
+      // CARRIED BACK, not up. The first cut ran the tip to hipY - 0.44u, a 47
+      // degree climb, and at that angle a thick plume rooted near the waist
+      // reads as a RAISED ARM — the eye takes the nearest limb-shaped mass off
+      // a shoulder as a limb. The control point sits BELOW the hip so the tail
+      // drops out of the body first and lifts only at the end, which is both
+      // the real carry and the shape that cannot be mistaken for an arm.
+      // Rest positions, then the fling carries the tip forward and up. The
+      // control point travels further than the tip does, which is what makes
+      // the sweep read as a whip cracking over rather than a rigid arm
+      // rotating about the hip.
+      const tipX = -(bushy ? 0.54 : 0.5) * u + fling * 1.05 * u;
+      const tipY = hipY - (bushy ? 0.2 : 0.15) * u + wag - Math.max(0, fling) * 0.52 * u;
+      const ctlX = -(bushy ? 0.3 : 0.28) * u + fling * 0.7 * u;
+      const ctlY = hipY + 0.1 * u + wag * 0.3 - fling * 0.44 * u;
+      const path = (c) => {
+        c.moveTo(baseX, baseY - w0);
+        c.quadraticCurveTo(ctlX, ctlY - w1, tipX, tipY);
+        // Round the tip rather than pointing it — a plume ends in a mass.
+        c.quadraticCurveTo(tipX - w1 * 0.9, tipY + w1 * 0.9, tipX + w1 * 0.35, tipY + w1 * 1.15);
+        c.quadraticCurveTo(ctlX, ctlY + w1, baseX, baseY + w0);
+        c.closePath();
+      };
+      outlined(ctx, p.h, ow, path);
+      // RINGS. The one mark that makes a red panda unmistakable at 24u, and on
+      // a run it doubles as a motion trail for free. Clipped to the tail and
+      // stroked ACROSS the centre curve's normal, so they stay square to the
+      // tail through the whole wag.
+      if (bushy && !lod) {
+        ctx.save();
+        ctx.beginPath(); path(ctx); ctx.clip();
+        ctx.strokeStyle = p.furDark || p.p || p.h;
+        ctx.lineWidth = w1 * 0.62;
+        ctx.lineCap = 'butt';
+        // Quadratic point and tangent at s, off the centre curve (base -> ctl -> tip).
+        for (const s of [0.34, 0.58, 0.82]) {
+          const mx = (1 - s) * (1 - s) * baseX + 2 * (1 - s) * s * ctlX + s * s * tipX;
+          const my = (1 - s) * (1 - s) * baseY + 2 * (1 - s) * s * ctlY + s * s * tipY;
+          const dx = 2 * ((1 - s) * (ctlX - baseX) + s * (tipX - ctlX));
+          const dy = 2 * ((1 - s) * (ctlY - baseY) + s * (tipY - ctlY));
+          const d = Math.hypot(dx, dy) || 1e-6;
+          const nx = -dy / d, ny = dx / d;
+          ctx.beginPath();
+          ctx.moveTo(mx - nx * w1 * 1.4, my - ny * w1 * 1.4);
+          ctx.lineTo(mx + nx * w1 * 1.4, my + ny * w1 * 1.4);
+          ctx.stroke();
+        }
+        ctx.restore();
+        // The clip painted over the inner half of the contour, so it goes back
+        // on top. Cheaper than masking the bands off the edge by hand.
+        ctx.strokeStyle = OUTLINE; ctx.lineWidth = ow;
+        ctx.beginPath(); path(ctx); ctx.stroke();
+      }
+      // A pale tip on both, which is what separates a plume from the body when
+      // the tail swings across the torso mid-stride. Kept well under the tail's
+      // own girth: sized to match it, the tip stopped reading as the END of the
+      // tail and started reading as a ball on the end of one.
+      outlined(ctx, p.s, hair(0.5, ow * 0.65), (c) =>
+        c.ellipse(tipX + w1 * 0.16, tipY + w1 * 0.5, w1 * 0.54, w1 * 0.48, 0, 0, Math.PI * 2));
+    }
+  }
 }
 
 // ---------------------------------------------------------------- rigs
@@ -4612,7 +4758,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   })();
   const cling = clingSettle(pose), clingStyle = CLING[id] || CLING_DEFAULT;
   const cm = pose.kind === 'celebrate'
-    ? celebrateMotion(id, pose.time || 0, usesReworkedCelebration(pose))
+    ? celebrateMotion(id, pose.time || 0, usesReworkedCelebration(pose), spec.celebrate)
     : null;
   const turnLimit = Math.PI * 5 / 12;
   // Gallery Gnash turns his actual rig through a modest three-quarter pose;
@@ -5400,6 +5546,20 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const meetY = armY + armL * (0.34 - 0.03 * (pump / (0.05 * u)));
       handF = [shoulderCx + 0.055 * u, meetY]; elbF = sideF;
       handB = [shoulderCx - 0.02 * u, meetY + 0.012 * u]; elbB = sideB;
+    } else if (spec.celebrate === 'spread') {
+      // Gated on the SPEC, not on cm.move: during the signature half of the
+      // cycle celebrateMotion has not chosen a move yet (cm.move is null until
+      // the big beat), so a cm.move test here never fired and the pump ran
+      // anyway — the exact case this branch exists to replace.
+      // SPREAD OWNS THE WHOLE CYCLE, not just the big beat. The generic
+      // signature below is a double fist pump — hands up beside the ears —
+      // and it runs for the first half of every celebration before the move
+      // takes over, which left a hero who asked for wide arms with wide arms
+      // less than half the time. Same spoke as the big-beat branch, alternating
+      // on the shared pump so the pair rocks rather than freezes.
+      const swing = pump / (0.05 * u);
+      handF = armSpoke(shF, sideF, 24 + swing * 8); elbF = -sideF;
+      handB = armSpoke(shB, sideB, 24 - swing * 8); elbB = -sideB;
     } else {
       // double fist pump, alternating (lorenzo mid-hop, b33p's free arm)
       handF = [shF + sideF * 0.15 * u, armY - armL * 0.9 + pump]; elbF = sideF;
@@ -5487,6 +5647,19 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       const sweep = Math.sin(cm.q * Math.PI);
       const low = reach(shF, armY, [shF + sideF * 0.34 * u, armY + armL * 0.22]);
       handF = [handF[0] + (low[0] - handF[0]) * sweep, handF[1] + (low[1] - handF[1]) * sweep];
+    } else if (cm.move === 'spread') {
+      // ARMS FLUNG WIDE — the star. Both at full reach on armSpoke, about 50
+      // degrees above the shoulder line, which is high enough to read as
+      // triumph and low enough that neither hand crosses the head (the fault
+      // that sank Clara's overhead hop). They pump on the hop's own bounce so
+      // the reach breathes with the body instead of freezing while it bounds.
+      // Elbows bent OUTWARD, as twostep's are, so nothing folds across the face.
+      // 22-36 degrees, not 50-64: armSpoke measures from the shoulder LINE,
+      // so 50 was already most of the way to overhead and the pair read as
+      // "up", not "out". Wide lives just above horizontal.
+      const bounce = Math.abs(Math.sin(cm.q * Math.PI * 2));
+      handF = armSpoke(shF, sideF, 22 + bounce * 14); elbF = -sideF;
+      handB = armSpoke(shB, sideB, 22 + bounce * 14); elbB = -sideB;
     } else if (cm.move === 'twostep') {
       // The arms ride the sway: one goes up and out as the other drops, then
       // they swap on the return step. Both stay outboard at full reach for the
@@ -6325,123 +6498,7 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   };
 
   // back accessories
-  if (spec.tail) {
-    // `tail: true` is Gnash's tapered blade and stays byte-for-byte what it
-    // was; the string kinds are the bake-off's. Widening the flag rather than
-    // adding a second one keeps ONE tail seam — a hero has a tail or does not,
-    // and which tail is a property of that tail.
-    const tailKind = spec.tail === true ? 'taper' : spec.tail;
-    const wag = Math.sin((pose.time || 0) * (run ? 8 : 2.6)) * 0.045 * u;
-    const baseX = -torsoHalf * 0.65, baseY = hipY - 0.02 * u;
-    // THE TAIL FLING. `toss: 'tail'` makes the tail the throwing limb, so it
-    // has to leave its idle sweep and come over the body — on the same 0.3s
-    // clock and the same wind/whip/settle beats the arms use, or the two
-    // halves of one gesture drift apart. `fling` runs -1 (cocked back and up)
-    // through 0 to +1 (thrown forward past the hip); every tail shape below
-    // reads it, so a fling is not a fourth tail kind.
-    let fling = 0;
-    if (spec.toss === 'tail' && pose.menuAction === 'aim') {
-      const tq = pose.actionTime == null
-        ? 0.62
-        : Math.max(0, Math.min(1, Number(pose.actionTime) / 0.3));
-      const te = (v) => v * v * (3 - 2 * v);
-      fling = tq < 0.34 ? -te(tq / 0.34)
-        : tq < 0.56 ? -1 + 2 * te((tq - 0.34) / 0.22)
-          : 1 - 0.45 * te((tq - 0.56) / 0.44);
-    }
-    if (tailKind === 'taper') {
-      const tipX = -0.4 * u, tipY = hipY - 0.28 * u + wag;
-      outlined(ctx, p.h, ow, (c) => {
-        c.moveTo(baseX, baseY - 0.065 * u);
-        c.quadraticCurveTo(-0.39 * u, hipY + 0.02 * u + wag * 0.35, tipX, tipY);
-        c.quadraticCurveTo(-0.32 * u, hipY - 0.15 * u + wag * 0.4, baseX, baseY + 0.065 * u);
-        c.closePath();
-      });
-      // A small cream tip helps the tapered tail read separately from the body.
-      outlined(ctx, p.s, hair(0.5, ow * 0.65), (c) => {
-        c.moveTo(tipX, tipY);
-        c.lineTo(tipX + 0.075 * u, tipY + 0.09 * u);
-        c.lineTo(tipX + 0.095 * u, tipY + 0.025 * u);
-        c.closePath();
-      });
-    } else if (tailKind === 'stub') {
-      // A hare's puff: a disc at the hip, no sweep, riding the wag so it is not
-      // the one dead thing on a running figure.
-      outlined(ctx, p.s, ow, (c) =>
-        c.ellipse(baseX - 0.105 * u, baseY - 0.01 * u + wag * 0.5,
-          0.085 * u, 0.075 * u, 0, 0, Math.PI * 2));
-    } else {
-      // BUSHY (red panda) and BRUSH (fox): a plume carried up and back rather
-      // than a blade slung down. Both are the same path with different girth,
-      // because the thing being judged between them is volume.
-      //
-      // Built as a named path fn so the rings below can clip to the exact
-      // silhouette. The centre curve is stated separately and the outline is
-      // walked out from it, which is what lets the rings sit square across the
-      // tail instead of square to the screen.
-      const bushy = tailKind === 'bushy';
-      const w0 = (bushy ? 0.085 : 0.062) * u;      // girth at the root
-      const w1 = (bushy ? 0.115 : 0.078) * u;      // girth at the belly
-      // CARRIED BACK, not up. The first cut ran the tip to hipY - 0.44u, a 47
-      // degree climb, and at that angle a thick plume rooted near the waist
-      // reads as a RAISED ARM — the eye takes the nearest limb-shaped mass off
-      // a shoulder as a limb. The control point sits BELOW the hip so the tail
-      // drops out of the body first and lifts only at the end, which is both
-      // the real carry and the shape that cannot be mistaken for an arm.
-      // Rest positions, then the fling carries the tip forward and up. The
-      // control point travels further than the tip does, which is what makes
-      // the sweep read as a whip cracking over rather than a rigid arm
-      // rotating about the hip.
-      const tipX = -(bushy ? 0.54 : 0.5) * u + fling * 1.05 * u;
-      const tipY = hipY - (bushy ? 0.2 : 0.15) * u + wag - Math.max(0, fling) * 0.52 * u;
-      const ctlX = -(bushy ? 0.3 : 0.28) * u + fling * 0.7 * u;
-      const ctlY = hipY + 0.1 * u + wag * 0.3 - fling * 0.44 * u;
-      const path = (c) => {
-        c.moveTo(baseX, baseY - w0);
-        c.quadraticCurveTo(ctlX, ctlY - w1, tipX, tipY);
-        // Round the tip rather than pointing it — a plume ends in a mass.
-        c.quadraticCurveTo(tipX - w1 * 0.9, tipY + w1 * 0.9, tipX + w1 * 0.35, tipY + w1 * 1.15);
-        c.quadraticCurveTo(ctlX, ctlY + w1, baseX, baseY + w0);
-        c.closePath();
-      };
-      outlined(ctx, p.h, ow, path);
-      // RINGS. The one mark that makes a red panda unmistakable at 24u, and on
-      // a run it doubles as a motion trail for free. Clipped to the tail and
-      // stroked ACROSS the centre curve's normal, so they stay square to the
-      // tail through the whole wag.
-      if (bushy && !lod) {
-        ctx.save();
-        ctx.beginPath(); path(ctx); ctx.clip();
-        ctx.strokeStyle = p.furDark || p.p || p.h;
-        ctx.lineWidth = w1 * 0.62;
-        ctx.lineCap = 'butt';
-        // Quadratic point and tangent at s, off the centre curve (base -> ctl -> tip).
-        for (const s of [0.34, 0.58, 0.82]) {
-          const mx = (1 - s) * (1 - s) * baseX + 2 * (1 - s) * s * ctlX + s * s * tipX;
-          const my = (1 - s) * (1 - s) * baseY + 2 * (1 - s) * s * ctlY + s * s * tipY;
-          const dx = 2 * ((1 - s) * (ctlX - baseX) + s * (tipX - ctlX));
-          const dy = 2 * ((1 - s) * (ctlY - baseY) + s * (tipY - ctlY));
-          const d = Math.hypot(dx, dy) || 1e-6;
-          const nx = -dy / d, ny = dx / d;
-          ctx.beginPath();
-          ctx.moveTo(mx - nx * w1 * 1.4, my - ny * w1 * 1.4);
-          ctx.lineTo(mx + nx * w1 * 1.4, my + ny * w1 * 1.4);
-          ctx.stroke();
-        }
-        ctx.restore();
-        // The clip painted over the inner half of the contour, so it goes back
-        // on top. Cheaper than masking the bands off the edge by hand.
-        ctx.strokeStyle = OUTLINE; ctx.lineWidth = ow;
-        ctx.beginPath(); path(ctx); ctx.stroke();
-      }
-      // A pale tip on both, which is what separates a plume from the body when
-      // the tail swings across the torso mid-stride. Kept well under the tail's
-      // own girth: sized to match it, the tip stopped reading as the END of the
-      // tail and started reading as a ball on the end of one.
-      outlined(ctx, p.s, hair(0.5, ow * 0.65), (c) =>
-        c.ellipse(tipX + w1 * 0.16, tipY + w1 * 0.5, w1 * 0.54, w1 * 0.48, 0, 0, Math.PI * 2));
-    }
-  }
+  drawTail(ctx, spec, p, pose, u, ow, lod, torsoHalf, hipY, run);
   // Grumpos wears plain leather shoes cut from the same hide as his panels —
   // just the foot shape in that color, with no cuff or strap work above it, so
   // the bare leg above reads as long as it is.
@@ -8665,6 +8722,17 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   // line — so the whole slide scales up instead of folding him to size.
   if (heavy) ctx.scale(1.08, 1.08);
   const hipX = -0.02 * u, hipY = -0.15 * u;
+  // THE TAIL, and it goes down FIRST. The slide returns out of drawHumanoid
+  // before the back-accessories block, so until now a tailed hero slid
+  // without one. Drawn here, inside the recline transform so it tips back
+  // with the hip, and before the far arm so every limb and the torso paint
+  // over its root. torsoW is the slide's own chest width, already the 0.88
+  // recline factor of the standing one; halved, it is the same torsoHalf the
+  // standing tail roots off. `run` is false: a held slide wags at idle rate.
+  ctx.save();
+  ctx.translate(hipX, 0);
+  drawTail(ctx, spec, p, pose, u, ow, lod, torsoW / 2, hipY, false);
+  ctx.restore();
   // The heavy torso is genuinely LONGER, not only wider (torsoTop -0.768u vs
   // -0.56u standing): the shoulder rides farther up the recline, and the head
   // follows it, or he slides as a bearded ball with no chest. 1.18, not the
@@ -10289,7 +10357,7 @@ export function drawToon(ctx, heroId, pose = {}, cx, feetY, h, opts = {}) {
   // The victory routine drives the whole rig — hop, sway, turn and squash —
   // so humanoid, blob, disc and ray all dance off the same clock.
   const cm = pose.kind === 'celebrate'
-    ? celebrateMotion(heroId, pose.time || 0, usesReworkedCelebration(pose))
+    ? celebrateMotion(heroId, pose.time || 0, usesReworkedCelebration(pose), spec.celebrate)
     : null;
   if (cm) ctx.translate(cm.x * u, -cm.lift * u);
   if (pose.facing === -1) ctx.scale(-1, 1);
