@@ -18,7 +18,32 @@ import { W, H } from './renderer.js';
 
 // The world y the hero runs along. Owned here rather than in run.js because the
 // camera is defined against it; run.js re-exports it for its own importers.
-export const GROUND_Y = 224;
+//
+// IT CAME DOWN 224 -> 232, and what it spends is the APRON — the H - GROUND_Y
+// band of dirt under the line, which is the only thing that was ever down
+// there. The camera pins the groundline to this screen y at every zoom, so
+// every pixel it comes down is a pixel of BACKDROP handed to every cabinet;
+// the lcd city was being cropped at the knees. Three things bound the number,
+// and between them they leave exactly one:
+//
+//   - The bottom-left HUD group. hud.js puts the power-up timer shelf's plate
+//     top at SHELF_CY - 7 (y 237) with the ability nameplate under it, and a
+//     road drawn up behind those is a road with the readouts sitting on it.
+//   - MULTIPLES OF EIGHT ONLY. camYFor solves GROUND_Y / z for the frame's top
+//     world y and the pull-back tier is 1.6, so anything else puts the whole
+//     world on a quarter pixel and every 1px line in the game lands between two
+//     of them. tests/routes.js is the guard. That leaves 232 or 240, and 240 is
+//     drawn up behind the shelf.
+//   - Every lcd scene height rises by the same 8, in the same change. A roof is
+//     `GROUND_Y - h` and that panel pins a whole stack to its roofs, so moving
+//     the line without the table slides the skyline down and breaks every
+//     authored contact above it — see the note on LCD_CITY_SCENES.
+//
+// work/local/groundy-sweep.png is the 224/230/236/242 sweep it came out of.
+// What it costs: a pit shows about four fewer world px of depth below the lane
+// at the resting zoom, and craneFor() subtracts this, so PAN_MAX drops eight —
+// off a budget only the tallest triple jump in the game ever reaches.
+export const GROUND_Y = 232;
 
 // Resting magnification. The hero is drawn a fixed PLAYER_X world px right of
 // camX, so where they sit in the frame falls out of this number: 56 / (480 / 2)

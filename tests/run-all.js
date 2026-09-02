@@ -23,6 +23,8 @@ const suites = [
   'tests/hero-kits.js',
   'tests/mid-air-slide-kick.js',
   'tests/beat-chart.js',
+  'tests/beat-ground.js',
+  'tests/lane-calls.js',
   'tests/lcd-background.js',
   'tests/reliability.js',
   'tests/flyer-motion.js',
@@ -317,6 +319,12 @@ const suites = [
   // overshot, and therefore a claim about every hero's arc rather than about
   // the geometry alone.
   'tests/spike-crossing.js',
+  // And the demo bot against every hole in the game, not only the set piece:
+  // the watch modes are the DemoBot playing a real stage, and a pit is the one
+  // mistake that ends the level rather than costing it a moment. Carries the
+  // beat cabinet's stronger claim too — there the chart marks every press, so
+  // the bot is held to taking no damage at all.
+  'tests/bot-pits.js',
   // How a run ENDS, as a picture. Beside the crossing suite because the pit is
   // the death with the most to show and the one whose journey these poses have
   // to leave intact: everything else settles the figure the instant it dies.

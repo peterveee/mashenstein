@@ -20601,8 +20601,15 @@ $('auditionwav').onclick = async () => {
 // no audio, no engine, no disk — so there was never a reason for it to be over there.
 $('midi').onclick = () => {
   const id = trackId;
-  const bank = resolveTrack(id)?.bank;
-  if (!bank) { toast('That song has no bank to export'); return; }
+  if (!resolveTrack(id)?.bank) { toast('That song has no bank to export'); return; }
+  // `viewBank()`, not the composition bank — the song AS THE DESK PLAYS IT: layer
+  // lanes materialised, deleted tracks gone, and the arrangement's sections and order
+  // applied. The composition bank is a two-bar loop of whatever lanes the file's
+  // literal happens to hold, so a song whose whole form lives in its arrangement —
+  // rhythm is eighty bars of seventy-one layer sections — exported as one block of
+  // half its parts. bpm and swing were already read off the live arrangement; the
+  // notes were not.
+  const bank = viewBank();
   const name = `${track.slug || id}.mid`;
   try {
     const midi = midiBuffer(bank, {

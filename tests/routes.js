@@ -130,7 +130,10 @@ for (let i = 0; i < 400 && run.camX <= 0; i++) frames(1);
 assert(run.camX > 0, 'reached a live, scrolling run');
 assert(run.routes.length > 0, `the stage carries raised routes (${run.routes.length})`);
 const bestApexEarly = cast.reduce((a, h) => Math.max(a, apexOf(h)), 0);
-const GROUND_Y_CHK = 224;   // the world line the camera pins to at rest
+// The world line the camera pins to at rest. Imported rather than mirrored —
+// this file checks arithmetic ABOUT that line, so a stale copy of it would
+// check the arithmetic of a frame that no longer exists.
+const { GROUND_Y: GROUND_Y_CHK } = await import('../src/engine/camera.js');
 
 // The reachability rule is about the MOUTH, and only about mouths the hero has
 // to reach under his own power. A sprung road is entered by catapult and a

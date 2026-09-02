@@ -12,7 +12,7 @@ import { writeFileSync } from 'fs';
 import { midiBuffer, MIDI_UNSUPPORTED_LANES } from './lib/render-midi-bank.js';
 import { activeLanes } from '../src/engine/lanes.js';
 import { resolveOrExit } from './lib/tracks.js';
-import { bpmOf, swingOf, SWING_STRAIGHT } from '../src/data/arrangements.js';
+import { applyArrangement, bpmOf, swingOf, SWING_STRAIGHT } from '../src/data/arrangements.js';
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const GM = process.argv.includes('--gm-channels');
@@ -21,16 +21,22 @@ const [trackId = 'hub', repeatArg = '1', outArg = null] = args;
 const REPEAT = Math.max(1, parseInt(repeatArg, 10) || 1);
 const track = resolveOrExit(trackId);
 const OUT = outArg || `work/midi/${track.slug}.mid`;
+// THE ARRANGED BANK, not the composed one. A song whose form lives in its
+// arrangement — every layer section and the whole order — is a two-bar loop of
+// whatever lanes the bank literal happens to hold until this is applied, which is
+// what the game plays through and what render-bank-browser renders. Without it the
+// export is one block of half the parts.
+const bank = applyArrangement(track.bank, track.id);
 
 const { buffer, trackNames, tracks, ppq, blocks, seconds, trimmed, deadPitches } =
-  midiBuffer(track.bank, {
+  midiBuffer(bank, {
     repeat: REPEAT, title: track.title, gmChannels: GM, patches: PATCHES,
-    bpm: bpmOf(track.bank, track.id),
-    swing: swingOf(track.bank, track.id),
+    bpm: bpmOf(bank, track.id),
+    swing: swingOf(bank, track.id),
   });
 writeFileSync(OUT, buffer);
-const swing = swingOf(track.bank, track.id);
-console.log(`${OUT} — ${trackNames.length} instrument tracks, ${blocks} blocks (${seconds.toFixed(1)}s at ${bpmOf(track.bank, track.id)}bpm`
+const swing = swingOf(bank, track.id);
+console.log(`${OUT} — ${trackNames.length} instrument tracks, ${blocks} blocks (${seconds.toFixed(1)}s at ${bpmOf(bank, track.id)}bpm`
   + `${swing > SWING_STRAIGHT ? `, ${Math.round(swing)}% swing` : ''})`);
 // Where each part actually plays. A lane that does not come in until section 3 is
 // silent over the first bars BY DESIGN, and looks like a broken export otherwise.
@@ -48,7 +54,7 @@ console.log(GM
 if (trimmed) console.log(`  ${trimmed} notes shortened to clear a same-pitch retrigger`);
 if (deadPitches) console.log(`  ${deadPitches} unparseable 0 Hz pitches dropped — the bank plays these silent too (see chordSeq)`);
 
-const dropped = activeLanes(track.bank, REPEAT)
+const dropped = activeLanes(bank, REPEAT)
   .map((l) => l.key)
   .filter((k) => MIDI_UNSUPPORTED_LANES.includes(k));
 if (dropped.length) console.log(`  note: ${dropped.join(', ')} has no MIDI equivalent (unpitched noise) and is not in this file`);

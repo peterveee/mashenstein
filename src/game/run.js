@@ -19,6 +19,7 @@ import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } f
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
 import { BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats, BOX_BURST_BEATS } from './beatchart.js';
+import { drawBeatGround, ACTION_INK } from './beatground.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 // The pacing constants and the stage-layout resolver. They live in layout.js
 // so the level editor forecasts a stage with the same arithmetic the run
@@ -36,17 +37,18 @@ import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
-import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_BEATS }
+import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_BEATS, LCD_ACTION_GLYPH }
   from '../engine/stylePacks/index.js';
 import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY, BEAT_SPEECH_Y } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe, drawToon, toonFaceSprite } from '../sprites/toons.js';
 import { tngr2Family } from '../engine/tngr2/tables.js';
+import { laneEntryBeats } from '../engine/lanes.js';
 import { propFps } from '../sprites/props.js';
 import { drawFinishMarkerArt, plungerStandY, PLUNGER_REST, PLUNGER_CX } from './finishMarker.js';
 import { drawHeroSprite, drawWorldEntity, drawPortal, drawCopter, TAG_FLASH_TIME, HERO_DRAW_H, HERO_CENTER_OFF } from './draw.js';
-import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, STAGE_WAVES, setStageWave } from './terrain.js';
+import { drawTerrain, drawRoutes, drawSubsoil, tunnelOverhangs, setGroundRises, riseHeight, ISLAND_THICKNESS, terrainGroundY, maxTerrainHeight, STAGE_WAVES, setStageWave } from './terrain.js';
 import { routeRise, roadAt, roadUnderFeet, buildRoutes, tunnelOpenings, crossingLayout, CROSSING_BOOST_CLEAR, MAX_ISLAND_RISE } from './routes.js';
 import { TapeRewindEffect } from './rewindFx.js';
 import { updateProfileMark, updateProfileAdd } from '../engine/update-profile.js';
@@ -209,14 +211,24 @@ const CLOUD_TO = 168;
 // over costs no new vocabulary. What that missed is where the two are SEEN:
 // a hill is a shape the whole frame is full of, and this is a swell in an
 // otherwise dead-flat lane, read against the one straight line on screen. At
-// 16 it was a hill in front of a hole; at 10 it is still most of the depth it
-// was buying — the apron shows about nineteen world px below the lane before
-// the frame runs out — and it has stopped announcing itself as terrain.
+// 16 it was a hill in front of a hole, and it has stopped announcing itself as
+// terrain at 10.
+//
+// AND IT IS 7 NOW, because of what the lane climbs OVER. The camera pins the
+// groundline to screen y GROUND_Y, so every pixel the road rises is a pixel of
+// backdrop taken off the top of the lane — on the lcd cabinet, whose city is
+// drawn in screen space behind the road, that is the whole reason the skyline
+// looked cropped. The rise is still buying most of the depth it bought at 10
+// (the apron shows about nineteen world px below the lane before the frame runs
+// out, and only the top of a hole was ever on screen anyway), and it is buying
+// it out of a budget the background was paying for. 7 and not less: half a
+// hero-height is the floor under which a break stops reading as a pit and goes
+// back to being a groove, and tests/spike-crossing.js holds that line.
 //
 // The ramp is nearly a second of lane either side. Long enough that nobody
 // notices climbing it, and long enough to be a TELL: the ground tilting up is
 // the oldest "something is coming" a side-scroller has.
-const CROSSING_ROAD_RISE = 10;
+const CROSSING_ROAD_RISE = 7;
 const CROSSING_RISE_RAMP = 0.9;
 // The furthest a death may carry him forward, whatever the hole's width.
 //
@@ -491,6 +503,18 @@ export function floatBaseY() {
   return Math.max(FLOAT_BASE_MIN,
     Math.min(FLOAT_BASE_MAX, Math.round(GROUND_Y - FLOAT_AIR_TOP * ZOOM - 8)));
 }
+// WHICH PARTS ARE WORTH ANNOUNCING, and what they say when they arrive. One entry,
+// on purpose: the bass is the part a player already feels land, so a card naming it
+// reads as the game agreeing rather than as the game narrating. Every lane in the
+// engine could have a line here and the strip would be a ticker.
+//
+// `gapBeats` is how long the lane has to have been out for its return to count as an
+// arrival. A bar is the shortest silence that reads as absence rather than as
+// phrasing — a bass resting for a beat and a half is still playing.
+const LANE_CALLS = {
+  bass: { text: 'BASS!', color: '#f6d33c', gapBeats: 4 },
+};
+
 /**
  * How the popup stack's duck moves — see floatieShift and the call in updateRun.
  *
@@ -1168,6 +1192,11 @@ export class RunState {
     this.beatDriftDebt = 0;
     this.beatDriftOverSteps = 0;
     this.beatBankReady = false;
+    // The song announcing itself — see announceLaneEntries. Held per BANK, because
+    // the answer is a property of the song rather than of the run.
+    this.laneCallBank = null;
+    this.laneCallBeats = null;
+    this.laneCallLastBeat = null;
     this.rhythmSyncT = 0;
     this.rhythmSyncPending = false;
     this.prevCamX = 0;
@@ -2215,8 +2244,18 @@ export class RunState {
     this.beatDriftDebt = 0;
     this.beatDriftOverSteps = 0;
     this.beatBankReady = false;
+    // The song announcing itself — see announceLaneEntries. Held per BANK, because
+    // the answer is a property of the song rather than of the run.
+    this.laneCallBank = null;
+    this.laneCallBeats = null;
+    this.laneCallLastBeat = null;
     this.rhythmSyncT = rhythmRetry ? RHYTHM_DEATH_SYNC_SEC : 0;
     this.rhythmSyncPending = rhythmRetry;
+    // The opening legend needs nothing armed and nothing reset. It rides the
+    // plane's pass zero, which is the first crossing of the SONG, and a retry
+    // re-anchors to a clock hundreds of beats past it — so the one case a flag
+    // would have existed to cover is already covered by the thing being tied to
+    // the music instead of to the attempt. See rhythmLegend.
     this.narrateT = this.corrupted.includes('narration') || this.unplugged ? 6 : 0;
     // The keyboard legend is a teaching aid, so it only runs while there is
     // something to teach: the campaign's opening stage, or a run with no stage
@@ -2465,6 +2504,55 @@ export class RunState {
       this.beatDriftOverSteps = 0;
     }
     return beat;
+  }
+
+  /**
+   * The opening legend: the shapes the ribbon and the road will draw, beside
+   * the words for them, as one tow line for the plane's first crossing — or
+   * null when there is nothing to say.
+   *
+   * WHAT IT TEACHES IS THE KEY, NOT THE ASKS. Three surfaces on this stage draw
+   * the same three marks and none of them says what they mean: the beat ribbon
+   * names every action four and a half beats out, the road repeats it under the
+   * hero's feet, and both are built on the law that the direction is read off
+   * the SHAPE and the colour only confirms which object is arriving
+   * (beatground.js). That law is cheap to learn and nothing states it. One
+   * crossing states it, once, and then the sky is a sky again.
+   *
+   * DERIVED, NEVER AUTHORED, because a fixed legend would be wrong on every
+   * stage of this cabinet. rhythm-1's chart contains no duck at all, and its
+   * one ability slot is a card box that BeatSpawner.canShoot lays only for a
+   * hero who can answer it — so half the cast is never asked for a power on it.
+   * A mark for a verb the next ninety seconds never requires is the player
+   * spending the opening bars waiting for something that is not coming. What
+   * this returns grows with the cabinet instead: rhythm-1 tows JUMP and, for a
+   * shooter, their power; rhythm-2 is where the duck is first asked for and
+   * where the sky first names it.
+   */
+  rhythmLegend() {
+    const chart = this.cabinet?.beatCharts?.[this.stage?.index];
+    if (!Array.isArray(chart?.events)) return null;
+    const hero = HERO_BY_ID[this.relay.current];
+    // The game's own words, from the same table the play hints and the touch
+    // buttons read (hud.js): SPACE is JUMP, DOWN is SLIDE, and the third is
+    // whatever the hero in the lane calls their power. There is no fixed name
+    // for it, which is why it cannot be a constant here.
+    const LABEL = { jump: 'JUMP', duck: 'SLIDE', ability: hero?.ability?.label || 'USE' };
+    const asked = new Set(chart.events.map((e) => e.action));
+    const parts = [];
+    const ink = {};
+    for (const action of ['jump', 'duck', 'ability']) {
+      if (!asked.has(action)) continue;
+      if (action === 'ability' && !heroShoots(this.relay.current)) continue;
+      const glyph = LCD_ACTION_GLYPH[action];
+      if (!glyph) continue;
+      parts.push(glyph + String(LABEL[action]).toUpperCase());
+      // The action's own colour, off the list the ribbon and the road already
+      // share. Keyed by the glyph so the pack can paint a picture cell without
+      // knowing what a jump is.
+      ink[glyph] = ACTION_INK[action];
+    }
+    return parts.length ? { text: parts.join(' '), ink } : null;
   }
 
   /**
@@ -2934,6 +3022,7 @@ export class RunState {
     const sMult = hero.scoreMult * this.powerups.scoreMult() * (this.modIds.includes('crayon') ? 0.95 : 1);
     this.score += 10 * (sp / BASE_SPEED) * sMult * dt;
     this.advanceBeatJudging();
+    this.announceLaneEntries();
     this.advanceCityAccident();
     this.barrelChuteCue = this.updateBarrelArrivals(this.rhythmBeatNow());
     // The thumbs-up is on a wall clock, not a beat count: it has to outlast the
@@ -5515,7 +5604,12 @@ export class RunState {
     const heard = Math.floor(beat);
     if (heard === this.cityAccidentBeat) return;
     this.cityAccidentBeat = heard;
-    if (lcdBarrelStrikeAt(this.stage?.index, heard)) Audio.sfx('barrelBurst');
+    // With the intro, so a crossing towing the legend fires no burst — the same
+    // pass the panel is drawing as having flown clean over him. See
+    // lcdBarrelStrikeAt.
+    if (lcdBarrelStrikeAt(this.stage?.index, heard, { legend: this.rhythmLegend() })) {
+      Audio.sfx('barrelBurst');
+    }
   }
 
   checkRhythmDrift() {
@@ -8423,6 +8517,43 @@ export class RunState {
   // that card prints while the hero is standing AT the breaker, so at the
   // normal height it lands squarely on the pole's own signage — two plates,
   // same pixels. Everything else keeps the shared row.
+  /**
+   * THE SONG ANNOUNCING ITSELF. When a part arrives after not being there, say so —
+   * on the note it lands on, not a bar either side of it.
+   *
+   * The moment is read out of the SONG rather than heard off the analyser. A band
+   * meter can tell you there is more low end than there was a moment ago; it cannot
+   * tell you the bass came in, and it certainly cannot tell you on the sixteenth it
+   * happened. The arrangement already knows both, so `laneEntryBeats` asks it once
+   * per bank and this walks a list of numbers.
+   *
+   * Fired by CROSSING, forward, one frame's worth at a time: a jump backwards is the
+   * song's own loop coming round and a jump forwards is a seek or a hitch, and
+   * neither is a part arriving. That also means an entry at beat 0 never fires, which
+   * is right — a bass that plays from the downbeat starts when the song does, and the
+   * song starting is not news.
+   */
+  announceLaneEntries() {
+    const bank = Audio.bank;
+    if (!bank) { this.laneCallBank = null; this.laneCallLastBeat = null; return; }
+    if (bank !== this.laneCallBank) {
+      this.laneCallBank = bank;
+      this.laneCallBeats = Object.fromEntries(Object.entries(LANE_CALLS)
+        .map(([key, call]) => [key, laneEntryBeats(bank, key, { gapBeats: call.gapBeats })]));
+      this.laneCallLastBeat = null;
+    }
+    const beat = Audio.songBeat();
+    if (!Number.isFinite(beat)) { this.laneCallLastBeat = null; return; }
+    const previous = this.laneCallLastBeat;
+    this.laneCallLastBeat = beat;
+    if (previous == null || beat <= previous || beat - previous > 1) return;
+    for (const [key, call] of Object.entries(LANE_CALLS)) {
+      for (const at of this.laneCallBeats[key] || []) {
+        if (at > previous && at <= beat) this.floatText(call.text, call.color);
+      }
+    }
+  }
+
   floatText(text, color, { solid = false, base = floatBaseY() } = {}) {
     // Comic asides need longer than impact words such as PEW or DEFLECTED.
     const readingTime = Math.min(3.2, 1.6 + Math.max(0, text.length - 18) * 0.035);
@@ -8580,10 +8711,12 @@ export class RunState {
     // `progress` is what lets the panel change over ninety seconds rather than
     // repeating one picture; the pack quantises it into a handful of phases,
     // because nothing on this screen eases.
+    const sceneBeat = this.beatLock && this.stage && !this.rhythmSyncPending
+      ? this.rhythmBeatNow() : null;
     const backgroundScene = this.beatLock && this.stage
       ? {
         stageIndex: this.stage.index,
-        beat: this.rhythmSyncPending ? null : this.rhythmBeatNow(),
+        beat: sceneBeat,
         progress: Number.isFinite(this.totalDist) && this.totalDist > 0
           ? Math.max(0, Math.min(1, this.distance / this.totalDist)) : 0,
         audio: Audio.musicAnalysis?.() || null,
@@ -8593,6 +8726,19 @@ export class RunState {
         // the one he drops and the one in the road are the same barrel. See
         // updateBarrelArrivals; null on every stage without a chute.
         barrelBeat: this.barrelChuteCue,
+        // The opening: the city walking on, and the line the plane's first
+        // crossing tows over it. Handed over on every frame of a rhythm stage —
+        // the panel decides when either of them is happening, off the song's own
+        // beat, and both are over long before the second phrase. See
+        // rhythmLegend and lcdArrival.
+        intro: { legend: this.rhythmLegend() },
+        // How far the lane can climb over the foot of the city on THIS stage.
+        // The panel uses it to decide how low a window may light: the road is
+        // drawn over the city, so a lit window inside that band is swallowed as
+        // the lane rolls. rhythm-1 carries a stage wave and loses the most;
+        // rhythm-2 and rhythm-3 have only the crossings' rise and can light
+        // twelve pixels lower — which is the band nearest the lane.
+        maxRoadRise: maxTerrainHeight(this.cabinet),
       }
       : null;
     this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist, backgroundScene);
@@ -8619,7 +8765,12 @@ export class RunState {
     // chamber floor stands on are one band rather than two drawn to match.
     const hillDepth = this.routes.reduce(
       (d, r) => (r.kind === 'tunnel' ? Math.max(d, r.rise) : d), 0);
-    this.style.ground(ctx, cam, this.cabinet, this.obstacles, laneCuts, this.tRun);
+    // W / z is the world this frame actually shows — the same quantity cullRight
+    // is built from below, and derived here for the same reason: z drifts
+    // between the resting tier and the 1.3 pull-back, so nothing precomputed
+    // stays true. A pack that walks its own ground in columns needs it or it
+    // paints past the right edge; the ones that do not simply ignore it.
+    this.style.ground(ctx, cam, this.cabinet, this.obstacles, laneCuts, this.tRun, W / z);
     // A HOLE THAT NAMES ITS OWN MATERIAL IS FILLED WHATEVER THE PACK IS.
     //
     // Six packs paint the cabinet's fill on their way past; the other three draw
@@ -8657,6 +8808,21 @@ export class RunState {
       drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.routeGroundY(wx, r), W / z,
         { groundAt: (wx) => this.groundYAt(wx), cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO,
           bottomY: bottomWorldY, hillDepth });
+    }
+
+    // THE CHART'S ASKS, PAINTED ON THE ROAD. After the routes so they lie on
+    // whatever surface the lane actually has, before the actors so everything
+    // standing on the road covers them — which is the whole difference between
+    // a marking and an overlay. Beat stages only: anywhere else the speed ramps
+    // and there is no chart, so there is nothing honest to paint.
+    if (this.beatLock && !this.rhythmSyncPending) {
+      drawBeatGround(ctx, this, cam, W / z, {
+        // The same read backgroundScene already made this frame, not a second
+        // one: rhythmBeatNow() re-anchors the lane on a bank handoff.
+        beat: backgroundScene?.beat,
+        settings: renderSettings,
+        laneCuts,
+      });
     }
 
     // Entities. On a converting style (lcd) the whole cast is held back past

@@ -64,6 +64,11 @@ export const LANES = [
 
 export const LANE_KEYS = LANES.map((l) => l.key);
 
+// Four to the bar, sixteen steps to the bar — the one place that arithmetic is
+// written down, so a caller converting a bar index into the clock `songBeat()`
+// reports is not doing it from memory.
+export const BEATS_PER_BAR = 4;
+
 /**
  * ---- per-note lengths --------------------------------------------------------
  *
@@ -576,7 +581,11 @@ export function songBars(bank, repeat = 1) {
       const sec = resolveSection(bank, bar.sec % bank.sections.length);
       if (sec) b = { ...bank, ...sec };
     }
-    return { b, half: bar.half, off: bar.off || null, delete: bar.delete || null };
+    // `bar` is the plan entry itself, so a caller that also wants the per-bar maps —
+    // transpose, offset, gain, pan — has them without walking the order a second time
+    // and re-deriving which entry produced which bar. Handed back rather than applied,
+    // for the same reason the mute mask is.
+    return { b, half: bar.half, off: bar.off || null, delete: bar.delete || null, bar };
   });
 }
 
@@ -680,6 +689,46 @@ export function laneActivity(bank, repeat = 1, cellsPerBar = 4) {
     });
     return { ...lane, density, steps, cellsPerBar };
   });
+}
+
+/**
+ * Where a lane ENTERS, in beats from the top of the bank.
+ *
+ * Not "which bars does it play in" — that is `laneActivity`, which the desk shades a
+ * grid with. This is the shorter list the game wants: the moments a part arrives
+ * after not being there, so something on screen can announce the drop on the note it
+ * lands on rather than a bar either side of it.
+ *
+ * An entry is a sounding step with at least `gapBeats` of silence in that lane behind
+ * it, and the song's first note of the lane always counts — a bass that plays from
+ * the downbeat still starts somewhere. The mute mask is honoured, because a bar the
+ * arrangement silences is a bar the lane is not in, and the read goes through
+ * `sequenceValue` so a lane written on a coarser grid than the song's clock is read
+ * at its stride.
+ *
+ * Beats, not steps or bars: sixteen steps to the bar and four beats to it, which is
+ * the unit `AudioSys.songBeat()` reports and therefore the one a caller can compare
+ * a heard clock against without converting anything.
+ */
+export function laneEntryBeats(bank, key, { repeat = 1, gapBeats = 4 } = {}) {
+  if (!bank || !key) return [];
+  const entries = [];
+  let previous = null;
+  songBars(bank, repeat).forEach((bar, bi) => {
+    if (!Array.isArray(bar.b[key])) return;
+    if (bar.off?.includes(key) || bar.delete?.includes(key)) return;
+    const resolution = resolutionOf(bar.b);
+    for (let s = 0; s < resolution; s++) {
+      const v = sequenceValue(bar.b, key, bar.half * resolution + s, resolution);
+      const sounds = v === true || (typeof v === 'number' && v > 0)
+        || (Array.isArray(v) && v.some((tone) => tone > 0));
+      if (!sounds) continue;
+      const beat = bi * BEATS_PER_BAR + (s / resolution) * BEATS_PER_BAR;
+      if (previous == null || beat - previous >= gapBeats) entries.push(beat);
+      previous = beat;
+    }
+  });
+  return entries;
 }
 
 // Lanes whose voices are dry unless the bank opts them in. The melodic and fx

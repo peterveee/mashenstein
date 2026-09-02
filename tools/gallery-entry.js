@@ -41,7 +41,10 @@ import {
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
   b33pTitleShotPose,
 } from '../src/sprites/toons.js';
-import { getStylePack } from '../src/engine/stylePacks/index.js';
+import {
+  getStylePack, LCD_GORILLA_EXPRESSIONS, LCD_GORILLA_BROW_STYLES, lcdGorillaHeadPos,
+  LCD_RUNNER_STYLES,
+} from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
 import { UNLOCKS } from '../src/data/stages.js';
 import { POWER_DEFS } from '../src/game/powerups.js';
@@ -56,6 +59,7 @@ import {
   FINISH_MARKER_BY_ID, plungerStandY, PLUNGER_CX,
 } from '../src/game/finishMarker.js';
 import { PLAYER_X } from '../src/game/player.js';
+import { drawBambooShoot } from '../src/engine/sprites.js';
 // Roads are built by the SAME function the run builds them with, off the SAME
 // cabinet data, and drawn through the SAME painters. Anything less and this
 // page becomes a second implementation of the art it is supposed to be the
@@ -78,6 +82,15 @@ import { PIT_CANDIDATES, drawPitCandidate } from '../src/dev/pit-candidates.js';
 import {
   SPRING_PAD_CANDIDATES, drawSpringPadCandidate,
 } from '../src/dev/spring-pad-candidates.js';
+import {
+  ANIMAL_HERO_CANDIDATES, PANDA_BUILD_CANDIDATES, PANDA_FACE_CANDIDATES,
+  PANDA_EAR_CANDIDATES, PANDA_HEAD_CANDIDATES, PANDA_EARSIZE_CANDIDATES,
+  PANDA_EARSEAT_CANDIDATES, PANDA_EARGRID_CANDIDATES, PANDA_EARWIDTH_CANDIDATES,
+  PANDA_SETTLED, RUSTY_BROW_CANDIDATES, RUSTY_SHOT_CANDIDATES,
+  RUSTY_BROWSHAPE_CANDIDATES, RUSTY_TOSS_CANDIDATES, RUSTY_OPENBROW_CANDIDATES,
+  RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES,
+  RUSTY_EXPRESSIVE_CANDIDATES,
+} from '../src/dev/hero-candidates.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -112,6 +125,71 @@ const HIDDEN_GALLERY_SECTIONS = new Set([
   'finish-cling',
   'spring-pad-bakeoff',
   'death-eyes-bakeoff',
+  // Rounds 1-2 of the animal-hero bake-off, SETTLED 2 Sep 2026: species went
+  // to the red panda (the fennec lost off-canvas — Sonic 2 ships a fox
+  // sidekick, so a fox in this slot is more on the nose than the hedgehog it
+  // replaces), build went to MID, the shipped cast proportion. The open round
+  // is the face — see 'panda-face-bakeoff' below.
+  'animal-hero-bakeoff',
+  'animal-hero-build',
+  // Round 3, SETTLED 2 Sep 2026: the anime-eye question. Verdict from Peter,
+  // with reference art: the giant pika eyes DO NOT fit — the house
+  // white-and-pupil eye stays. What the reference taught instead became round
+  // 4: pointed ears, and the nose and mouth packed close on a small snout.
+  'panda-face-bakeoff',
+  // Round 4, SETTLED 2 Sep 2026: G2 won — pointed ears ship, the button snout
+  // and the cub drop do not. What stayed open became round 5: the cheek
+  // scallop still read as Gnash's quills, so the fluff moved into the head
+  // shape itself ('panda-head-bakeoff' below).
+  'panda-ear-bakeoff',
+  // Round 5, SETTLED 2 Sep 2026: H5 won — the wide-cheek skull PLUS the
+  // falling jaw tufts. The sideways scallop is retired for good: any fan
+  // projecting sideways off a round skull reads as Gnash's quills, whatever
+  // its lobes. Round 6 ('panda-earsize-bakeoff') dials the pointed ears up.
+  'panda-head-bakeoff',
+  // Round 6, SUPERSEDED 2 Sep 2026: the sizes were all judged on an ear that
+  // was seated wrong — the hand-placed outer base corner sat at 1.06R,
+  // outboard of the skull, so nothing cropped it and the pair read as stuck on
+  // and standing straight up. Round 7 rebuilds the ear off the skull and
+  // varies where it roots; size returns as a free dial afterwards.
+  'panda-earsize-bakeoff',
+  // Round 7, NARROWED 2 Sep 2026: J2 (0.62) and J3 (0.75) both liked, answer
+  // somewhere between — and the ask came back for larger ears too. Round 8
+  // crosses the two dials ('panda-eargrid-bakeoff').
+  'panda-earseat-bakeoff',
+  // Round 8, SUPERSEDED 2 Sep 2026: it moved the ear's size, but the ask that
+  // came back was WIDER AT THE BASE and not longer — which the dial could not
+  // express, since earSize drove width and length together. They are split now
+  // ('panda-earwidth-bakeoff'); the angle steer from round 8 (~0.68) carries
+  // forward.
+  'panda-eargrid-bakeoff',
+  // Round 9, SETTLED 2 Sep 2026: L4 — broad base, shortened length. The LOOK is
+  // settled and the name is RUSTY, FOCUS-TESTED. Two rounds remain open: his
+  // ranged move ('rusty-shot-bakeoff') and his brow marks
+  // ('rusty-brow-bakeoff').
+  'panda-earwidth-bakeoff',
+  // Round 11, SETTLED 2 Sep 2026: N3 — the reference's construction, a dark
+  // patch around each eye with white spots read against it. Round 12 flattens
+  // those spots ('rusty-browshape-bakeoff'): at 0.17 x 0.15R they were 1.13:1,
+  // which is a dot rather than a brow.
+  'rusty-brow-bakeoff',
+  // Round 10, SUPERSEDED 2 Sep 2026: the shots were right but the HERO did not
+  // move — 'aim' only ever produced a gesture for a hero carrying a prop
+  // (pistol, cannon, kiblast), and Rusty has none, so he had no throw at all.
+  // He does now; round 13 ('rusty-toss-bakeoff') picks which.
+  'rusty-shot-bakeoff',
+  // Round 12, SETTLED 2 Sep 2026: O2 — squash 0.70, about 1.6:1. Rounds 14 and
+  // 15 tilt that mark and size the snout.
+  'rusty-browshape-bakeoff',
+  // Round 15, SETTLED 2 Sep 2026: muzzle 0.90. Round 16 raises the mouth on it
+  // ('rusty-mouth-bakeoff') — the rig default lands the mouth below the middle
+  // of the snout, which is the droop.
+  'rusty-snout-bakeoff',
+  // Round 16, SETTLED 2 Sep 2026: mouthLift 0.028u, which lands the mouth on
+  // the snout's own centre line. Round 14's brow ANGLE is superseded by round
+  // 17, which makes the tilt an expression rather than a fixed pose.
+  'rusty-mouth-bakeoff',
+  'rusty-browangle-bakeoff',
 ]);
 // SCREEN SCALE: screen px per logical frame px. The game is never presented at
 // 1:1 — renderer.js fits the 480x270 frame to the viewport at
@@ -197,6 +275,18 @@ function navSeparator(label) {
 // already in frame pixels and must NOT set this.
 function tile(grid, name, sub, w, h, draw,
   { animated = false, wide = false, hires = true, pixel = false, world = false } = {}) {
+  // A RETIRED SECTION COSTS NOTHING. section() returns a DETACHED grid for
+  // anything in HIDDEN_GALLERY_SECTIONS, but everything below still ran: the
+  // canvas was created, its backing store allocated (a hires:6 tile is millions
+  // of pixels), and the entry pushed into `tiles` with `visible: true`. Nothing
+  // ever cleared that flag, because the IntersectionObserver only fires for
+  // elements in the document — so every tile of every retired section animated
+  // on every frame, forever, painting into a canvas nobody could see.
+  //
+  // With 37 sections retired and several carrying animated hires:5 lane tiles,
+  // that was most of the gallery's frame budget going to invisible work, and it
+  // is why the page took so long to settle.
+  if (!grid.isConnected) return null;
   const card = document.createElement('div');
   card.className = 'card' + (wide ? ' wide' : '');
   card.dataset.search = (name + ' ' + (sub || '')).toLowerCase();
@@ -1452,6 +1542,867 @@ function propNominalSize(name) {
 // audit a still-open art question rather than document a shipped asset.
 // ==================================================================
 navSeparator('lab / bake-offs');
+
+// ------------------------------------------- animal hero, replacing Gnash
+// CAST CANDIDATES, not cast. Nothing below is registered in TOON_SPECS,
+// HERO_SPRITES or HEROES — the specs and palettes live in
+// src/dev/hero-candidates.js and reach the SHIPPED painter through drawToon's
+// spec/pal seam, so a look nobody has picked cannot leak into the roster every
+// production section above enumerates. Pick one and it moves the other way:
+// into TOON_SPECS, into HERO_SPRITES (palette only), into HEROES — and these
+// two sections come out.
+{
+  const opts = (c) => ({ spec: c.spec, pal: c.pal });
+  const RH = 62, RCOL = 82, RFEET = 92;
+  // The speedster's ability is `dash`, whose pose is a held lean rather than a
+  // 0.3s flourish, so unlike the raider section this needs no fake cooldown —
+  // powerupExtra gives the same thing a run gives it, every frame.
+  const candPose = (kind, t) => (kind === 'power'
+    ? pose('run', t, powerupExtra('dash', 0))
+    : pose(kind, t, kind === 'duck' ? { duckStyle: 'slide' } : {}));
+
+  // A row of candidates in one tile at one instant, per pose. One tile per
+  // candidate instead would make the comparison a memory test.
+  const poseTiles = (grid, cands, poses) => {
+    for (const [kind, note] of poses) {
+      tile(grid, `animal — ${kind}`, note, RCOL * cands.length, RH * 1.62, (ctx, t) => {
+        cands.forEach((c, i) => {
+          drawToon(ctx, c.id, candPose(kind, t), RCOL * (i + 0.5), RFEET, RH, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name, RCOL * (i + 0.5), RH * 1.55);
+        });
+      }, { animated: true, wide: true, hires: 4 });
+    }
+  };
+
+  // The size he is actually PLAYED at. Everything else is a study; this is the
+  // tile that decides it — a look that only survives magnified has already been
+  // shipped wrongly once here (see the ink bake-off's note, and todolist.md).
+  const laneTile = (grid, cands, name) => {
+    const LW = 24 + cands.length * 62 + 40, LH = 62, LGY = 46;
+    tile(grid, name, `Real ${HERO_DRAW_H}px hero through the run's own camera. Idle and running, side by side.`,
+      LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
+        ctx.scale(WORLD_Z, WORLD_Z);
+        laneStrip(ctx, LW, LH, LGY);
+        cands.forEach((c, i) => {
+          const x = 24 + i * 62;
+          drawToon(ctx, c.id, candPose('idle', t), x, LGY, HERO_DRAW_H, opts(c));
+          drawToon(ctx, c.id, candPose('run', t), x + 26, LGY, HERO_DRAW_H, opts(c));
+        });
+      }, { animated: true, wide: true, world: true, hires: 5 });
+  };
+
+  {
+    const grid = section('animal-hero-bakeoff', 'New hero — an animal for the speedster slot',
+      'GALLERY ONLY. Gnash is the one hero in the cast who is a costume clone rather than a parody — '
+      + 'GNASH THE NEEDLEMOUSE is Sonic\'s own working title, and under it sit cobalt fur, red hi-tops, '
+      + 'a smirk and a crown of quills. Everyone else stands a whole abstraction away from their source. '
+      + 'So the slot gets an animal, and the brief is a RED PANDA played for the adorableness the real '
+      + 'animal has. '
+      + '<br><br>Two things make this a LOOK bake-off and not a rig one. <b>Gnash is already an animal</b>: '
+      + 'his spec is <code>{ head:\'jackal\', tail:true, ... }</code> and the shipped painter already draws '
+      + 'ears, a front-facing muzzle, a fur-filled skull and a wagging tail on the same two-bone humanoid '
+      + 'rig Lorenzo runs on. Every cut here is that rig, untouched; what was added beside it is one table '
+      + '(<code>ANIMAL_HEADS</code> in sprites/toons.js) and two tail kinds. And <b>his art already '
+      + 'contradicts his name</b> — the spec says jackal, the ears say jackal, the name says mouse — so '
+      + 're-speccing the head settles an inconsistency rather than opening one. '
+      + '<br><br>The row spans the cute-to-fast axis on purpose rather than offering four cute options. '
+      + '<b>A</b> is the brief. <b>B</b> has the strongest silhouette at hero size, because ears are the '
+      + 'only feature big enough to read on their own when the whole face is two pixels. <b>C</b> is the '
+      + 'only animal here whose anatomy IS the speed read. <b>D is expected to lose</b> and is in the row '
+      + 'anyway: a stoat\'s charm is a long low body, which is precisely what a biped rig cannot be, so '
+      + 'what it measures is the CEILING on "darting" — a number worth having before anyone argues A is too '
+      + 'round. That is how the raider row was run: B\'s value rule and D\'s twin pistols both shipped out '
+      + 'of cuts that lost. '
+      + '<br><br><b>Palette.</b> Gnash owns saturated blue on this roster — B-33P\'s hull was held off blue '
+      + 'for him. Every cut vacates it, so the "beside the cast" tile is checking two things: that nothing '
+      + 'new collides, and that the freed blue is not now a hole. '
+      + '<br><br>What every cut keeps, because this is one proposal in four species and not four characters: '
+      + 'the eyes, the mouth, the gloves, the ink, and the build.');
+
+    poseTiles(grid, ANIMAL_HERO_CANDIDATES, [
+      ['idle', 'Standing. Check this one first — it is the hub, the stage select and every menu.'],
+      ['run', 'The pose he is in for 95% of a stage. The plume swings on the stride clock, and on A the rings double as a motion trail — which is how a round body keeps a speed cue it would otherwise need spines for.'],
+      ['power', 'SPIN DASH, or whatever replaces it: poseFromPlayer\'s own dash lean, held the way a run holds it.'],
+      ['jump', 'Airborne. Watch the ears against the raised knee, and the tail against the trailing leg.'],
+      ['duck', 'The power slide. NOTE a pre-existing gap, not a fault of these cuts: hero gear is not in the slide pose yet — Gnash\'s tail is named in that TODO — so a plume goes missing here on every candidate.'],
+    ]);
+
+    // The HUD cell: the smallest thing a design has to survive, and a cut that
+    // only works at full height is not a cut.
+    tile(grid, 'animal — face crops', 'drawToonFace(), the size the HUD and the portal crop actually use.',
+      RCOL * ANIMAL_HERO_CANDIDATES.length, 54, (ctx) => {
+        ANIMAL_HERO_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name, RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    // The question no amount of studying him alone can answer: does he belong to
+    // this cast? GNASH IS IN THIS ROW ON PURPOSE — he is the before, and the
+    // whole section is the after.
+    const CAST_ROW = ['lorenzo', 'gnash', 'fernwick', 'grumpos'];
+    tile(grid, 'animal — beside the cast',
+      'Four shipped heroes and every candidate, same size and pose. Gnash is in the row as the BEFORE. '
+      + 'Watch for a cut that reads as a different game, and for the hole his blue leaves behind.',
+      RCOL * (CAST_ROW.length + ANIMAL_HERO_CANDIDATES.length), RH * 1.62, (ctx, t) => {
+        const row = [
+          ...CAST_ROW.map((id) => [id, null, id]),
+          ...ANIMAL_HERO_CANDIDATES.map((c) => [c.id, c, c.name]),
+        ];
+        row.forEach(([id, cand, label], i) => {
+          drawToon(ctx, id, pose('idle', t), RCOL * (i + 0.5), RFEET, RH, cand ? opts(cand) : {});
+          ctx.fillStyle = cand ? '#c8b98a' : '#7a7a8e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(label, RCOL * (i + 0.5), RH * 1.55);
+        });
+      }, { animated: true, wide: true, hires: 4 });
+
+    laneTile(grid, ANIMAL_HERO_CANDIDATES, 'animal — in the lane, at size');
+  }
+
+  {
+    const grid = section('animal-hero-build', 'New hero — how cute is the red panda',
+      'GALLERY ONLY, and the second half of the question above. One species, one palette, one costume; '
+      + 'only the build dials move. Cuteness comes from a big head on short limbs and speed reads from '
+      + 'length and lean, so these two genuinely fight and this is where that gets priced. '
+      + '<br><br>The dials are the rig\'s own — <code>headScale</code>, <code>tall</code>, '
+      + '<code>legLength</code>, <code>stout</code>/<code>slim</code>, <code>taper</code> — and '
+      + 'deliberately NOT <code>figureScaleX</code>/<code>figureScaleY</code>, which drawToon marks '
+      + 'gallery-only and no production spec sets: a winner tuned on those would not transfer into '
+      + 'TOON_SPECS, which would make this a study of something unshippable. '
+      + '<br><br><b>MID is the shipped cast proportion</b> — the same build Gnash and Lorenzo have, with '
+      + 'nothing touched but the species. It has to be in the row, or the other two are being judged '
+      + 'against nothing and whichever wins comes out looking like it wandered in from another game the '
+      + 'moment it stands next to Lorenzo. CHIBI is the reference photographs; the risk there is not that '
+      + 'it is ugly, it is that he stops reading as the FAST one while still carrying a 1.15 speed '
+      + 'multiplier and an invincible dash. LEAN reads quickest and is the safest fit beside Grumpos, but '
+      + 'it spends the exact quality that motivated replacing Gnash — if it wins, the answer was probably '
+      + 'a different animal rather than a thinner one.');
+
+    poseTiles(grid, PANDA_BUILD_CANDIDATES, [
+      ['idle', 'Standing, where proportion is most legible.'],
+      ['run', 'In motion, where it matters. A chibi build has less leg to swing, so the gait reads slower even at the same speed.'],
+      ['duck', 'The slide, which is the pose the build changes most.'],
+    ]);
+    laneTile(grid, PANDA_BUILD_CANDIDATES, 'panda builds — in the lane, at size');
+  }
+
+  // ROUND 3 — the face. Species and build settled (red panda, cast
+  // proportion; the two sections above are retired into
+  // HIDDEN_GALLERY_SECTIONS as the record). Only the head moves now.
+  {
+    const grid = section('panda-face-bakeoff', 'New hero — the red panda\'s face, five cuts',
+      'GALLERY ONLY, round 3. The red panda won the species row (the fennec was runner-up on silhouette '
+      + 'and lost off-canvas: Sonic 2 ships a fox sidekick, so a fox in the speedster slot is MORE on '
+      + 'the nose than the hedgehog it replaces) and MID won the build row. Five faces on that winning '
+      + 'body — nothing below the neck differs. '
+      + '<br><br>The axis is HOW the cuteness is made, because the painter owns two recipes and they do '
+      + 'not mix by default. The <b>house eye</b> (white + pupil) is expressive and browed. '
+      + '<b>Mochi\'s eye</b> (<code>eyeStyle: \'pika\'</code> — the solid dark oval with a glint) is '
+      + 'the anime recipe: bigger, wider-set, browless; it is a FLAG to her painter rather than a copy, '
+      + 'so her blink and her ^ ^ delight come along free. What it spends is expression range — no '
+      + 'brows means no glare, no focus, no cocky, and on a solid eye the glint is the entire gaze. '
+      + '<b>Baby schema</b> is the other recipe — features clustered LOW on a big forehead '
+      + '(<code>eyeLift</code> down, <code>muzzleScale</code> in), the reason infants of every species '
+      + 'read cute — and it works with either eye. '
+      + '<br><br><b>F1</b> is the control. <b>F2</b> and <b>F3</b> take one recipe each. <b>F4</b> goes '
+      + 'the other way entirely — the rust tear-tracks a real red panda wears down its white cheeks, '
+      + 'betting that specificity is cuter than roundness. <b>F5 stacks every lever and is expected to '
+      + 'overshoot</b> — it is the far edge, the job the stoat did in round 1. '
+      + '<br><br>Judge on the FACE CROPS and the lane tile before the study rows: a face is the smallest '
+      + 'thing a hero design has to survive.');
+
+    poseTiles(grid, PANDA_FACE_CANDIDATES, [
+      ['idle', 'Standing. The hub, the stage select and every menu.'],
+      ['run', 'The stride, with whatever brows the cut still owns doing the focus face — or not owning: watch what F2 and F5 lose here.'],
+      ['power', 'The dash lean.'],
+      ['duck', 'The slide, nose-down: the pose where a dropped face (F3, F5) is nearest the floor.'],
+    ]);
+
+    tile(grid, 'panda faces — face crops', 'drawToonFace(), the size the HUD and the portal crop actually use. This tile outranks every study row above it.',
+      RCOL * PANDA_FACE_CANDIDATES.length, 54, (ctx) => {
+        PANDA_FACE_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name, RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    // Faces change the read at distance more than bodies do, so the lane tile
+    // earns its place in a face round twice over.
+    laneTile(grid, PANDA_FACE_CANDIDATES, 'panda faces — in the lane, at size');
+  }
+  // ROUND 4 — pointed ears and the button snout, from Peter's reference art.
+  // Round 3's verdict: house eyes stay, anime eyes out (that section is
+  // retired above). A LADDER rather than a field, Clara A -> A2 -> A3 style:
+  // each cut adds one change to the one before, so the winning rung says
+  // exactly which changes earned their place.
+  {
+    const grid = section('panda-ear-bakeoff', 'New hero — pointed ears and the button snout',
+      'GALLERY ONLY, round 4, from reference art. The reference\'s two reads: a real red panda\'s '
+      + 'ears are POINTED — wide-based triangles full of white fluff, not discs — and its nose and '
+      + 'mouth pack close together low on a small snout. Both arrive here on the house eye, because '
+      + 'round 3 settled that question: the giant anime eyes do not fit this cast. '
+      + '<br><br>A ladder, not a field. <b>G1</b> is the round-1 winner unchanged. <b>G2</b> changes '
+      + 'only the ears (<code>earShape: \'point\'</code> — the table default stays round until this '
+      + 'settles). <b>G3</b> adds the compact lower face: muzzle in a fifth, nose tucked a third of '
+      + 'the way down into it (<code>noseTuck</code> — the muzzle stays put, the nose moves), mouth '
+      + 'raised under the nose. <b>G4</b> adds the baby-schema drop from round 3 on top. Whichever '
+      + 'rung wins, every rung below it ships and every rung above it does not.');
+
+    poseTiles(grid, PANDA_EAR_CANDIDATES, [
+      ['idle', 'Standing. The ear silhouette is the first read.'],
+      ['run', 'The stride. Pointed ears change the head\'s leading edge in motion.'],
+      ['power', 'The dash lean.'],
+      ['duck', 'The slide — the ears are most of what shows above the body here.'],
+    ]);
+
+    tile(grid, 'panda ears — face crops', 'drawToonFace(), the HUD cell. This tile outranks the study rows.',
+      RCOL * PANDA_EAR_CANDIDATES.length, 54, (ctx) => {
+        PANDA_EAR_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name, RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, PANDA_EAR_CANDIDATES, 'panda ears — in the lane, at size');
+  }
+
+  // ROUND 5 — the head shape. G2 took round 4 (pointed ears, standard snout),
+  // but its cheek scallop still reads as Gnash's quills. The diagnosis this
+  // round tests: it is not the lobes' roundness — ANY sideways fan off a round
+  // skull reads as quills — so the fluff moves into the head itself.
+  {
+    const grid = section('panda-head-bakeoff', 'New hero — the red panda\'s head shape, five cuts',
+      'GALLERY ONLY, round 5. G2 won round 4 — pointed ears on the house eye — but its sideways cheek '
+      + 'scallop still reads as Gnash\'s quill fan, and softening the lobes never fixed it. The bet '
+      + 'this round tests: the problem is the CONSTRUCTION, not the lobes — any fan projecting '
+      + 'sideways off a round skull reads as quills. '
+      + '<br><br><b>H1</b> is G2 unchanged, carrying the problem. <b>H2</b> deletes the ruff — the '
+      + 'floor: if it wins, the fluff was never earning its pixels. <b>H3</b> is the head-shape '
+      + 'answer: <code>headShape: \'cheeks\'</code> swaps the circular skull for a round crown that '
+      + 'flares at the cheekbones and tucks to a soft chin (Grumpos\'s blockHead precedent) — a bulge '
+      + 'in the head\'s own outline reads as a fluffy face where the same area as separate lobes '
+      + 'reads as quills. <b>H4</b> keeps the round skull but turns the fur DOWN: jaw tufts falling '
+      + 'past the chin — Gnash\'s quills sweep up and back, so fur that falls reads as anything but '
+      + 'him. <b>H5</b> stacks H3 and H4, the fluffiest legal construction — watch it at 24px, where '
+      + 'two soft ideas can merge into one blob.');
+
+    poseTiles(grid, PANDA_HEAD_CANDIDATES, [
+      ['idle', 'Standing. The head outline is the whole question this round.'],
+      ['run', 'The stride — the pose where H1\'s scallop does its Gnash impression.'],
+      ['duck', 'The slide: the head leads and the cheek line is the silhouette\'s front edge.'],
+    ]);
+
+    tile(grid, 'panda heads — face crops', 'drawToonFace(), the HUD cell. This tile outranks the study rows.',
+      RCOL * PANDA_HEAD_CANDIDATES.length, 54, (ctx) => {
+        PANDA_HEAD_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name, RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, PANDA_HEAD_CANDIDATES, 'panda heads — in the lane, at size');
+  }
+
+  // ROUND 6 — ear size. H5 took round 5 (wide-cheek skull + jaw tufts) and
+  // the ask is the pointed ears a touch bigger. A short ladder around
+  // "slightly larger"; the dial (`earSize`, scaling the triangle about its
+  // base midpoint so the ear grows up-and-out while staying rooted) is
+  // continuous, so the shipping value need not be a rung.
+  {
+    const grid = section('panda-earsize-bakeoff', 'New hero — the red panda\'s ear size',
+      'GALLERY ONLY, round 6, on H5 (wide cheeks + jaw tufts, pointed ears, house eyes). One number '
+      + 'moves: <code>earSize</code>, which scales the pointed-ear triangle about its BASE midpoint — '
+      + 'a bigger ear grows up-and-out while staying rooted on the same patch of skull; scaled about '
+      + 'its centroid instead, the base slid off the head. Same spec key as the shared human ear\'s '
+      + 'dial, on purpose. '
+      + '<br><br><b>I1</b> is H5 unchanged. <b>I2 (1.12)</b> is "slightly larger" taken literally. '
+      + '<b>I3 (1.25)</b> lets the ears compete with the tail for second-biggest shape — which round '
+      + '1\'s fennec argued is exactly what carries a silhouette at hero size. <b>I4 (1.40)</b> is '
+      + 'the far edge, and its risk is drift: a red panda with fennec ears is a fox again, and the '
+      + 'fox lost round 1 off-canvas (Sonic 2 ships one).');
+
+    poseTiles(grid, PANDA_EARSIZE_CANDIDATES, [
+      ['idle', 'Standing. Judge the ear-to-head balance here.'],
+      ['run', 'The stride — bigger ears move the head\'s leading edge.'],
+      ['duck', 'The slide, where the ears are most of what shows above the body.'],
+    ]);
+
+    tile(grid, 'panda ear sizes — face crops', 'drawToonFace(), the HUD cell.',
+      RCOL * PANDA_EARSIZE_CANDIDATES.length, 54, (ctx) => {
+        PANDA_EARSIZE_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name, RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, PANDA_EARSIZE_CANDIDATES, 'panda ear sizes — in the lane, at size');
+  }
+
+  // ROUND 7 — ear seating. Round 6's sizes all shared one fault: the ears
+  // stood straight up and did not look attached. Both symptoms were the same
+  // bug, and it is fixed in the painter rather than dialled around here.
+  {
+    const grid = section('panda-earseat-bakeoff', 'New hero — how the ears sit',
+      'GALLERY ONLY, round 7. Round 6 was judged on a broken ear and is retired: its three corners '
+      + 'were placed BY HAND, which put the outer base corner at 1.06R — <b>outboard of the skull</b>, '
+      + 'so nothing cropped it and the ear sat ON the head instead of growing out of it '
+      + '(<code>earSize</code> made it worse, pushing that corner to 1.17R at 1.40). The same hand '
+      + 'placement left the ear\'s outer edge running x 1.0 to 0.94 — dead vertical, which is the '
+      + '"straight up" read. '
+      + '<br><br>The ear is now built FROM the skull: its base midpoint sits on a circle of radius '
+      + '0.8R with the corners along that circle\'s own tangent, landing both at 0.89-0.93R — inside '
+      + 'the head at every size, so the fill always crops the base — and the tip points RADIALLY '
+      + 'outward from the root plus a small lean, so it cannot read as vertical. '
+      + '<br><br>What varies here is only <code>earAngle</code>: where on the crown the ear roots, in '
+      + 'radians off vertical. Held at <code>earSize: 1.25</code> throughout — size is a continuous '
+      + 'dial and comes back once the seating is settled, so do not judge scale in this row.');
+
+    poseTiles(grid, PANDA_EARSEAT_CANDIDATES, [
+      ['idle', 'Standing. The seating question, straight on.'],
+      ['run', 'The stride. Watch the tips against the tail.'],
+      ['duck', 'The slide, where the ears are most of the silhouette above the body.'],
+    ]);
+
+    tile(grid, 'panda ear seating — face crops', 'drawToonFace(), the HUD cell — where ear-to-eye distance shows up.',
+      RCOL * PANDA_EARSEAT_CANDIDATES.length, 54, (ctx) => {
+        PANDA_EARSEAT_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name, RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, PANDA_EARSEAT_CANDIDATES, 'panda ear seating — in the lane, at size');
+  }
+
+  // ROUND 8 — angle x size. Round 7 put the answer between J2 and J3, and the
+  // ask came back for larger ears at the same time. Two variables, so a GRID:
+  // settling one at a fixed value of the other would assume they do not
+  // interact, and they do — a bigger ear rooted at the same angle reaches
+  // further outboard, so wide roots need less size to splay.
+  {
+    const ANGLES = [0.62, 0.66, 0.7, 0.75];
+    const SIZES = [1.25, 1.35, 1.45];
+    const at = (size, angle) => PANDA_EARGRID_CANDIDATES.find(
+      (c) => c.spec.earSize === size && c.spec.earAngle === angle);
+
+    const grid = section('panda-eargrid-bakeoff', 'New hero — ear angle x ear size',
+      'GALLERY ONLY, round 8. J2 (0.62 rad) and J3 (0.75) both read well in round 7, so the four '
+      + 'angles here span that gap; the three sizes start at round 7\'s held 1.25 and go up. '
+      + '<br><br>A grid rather than two more ladders, because the dials INTERACT: a bigger ear rooted '
+      + 'at the same angle reaches further outboard on its own, so the wide roots need less size to '
+      + 'splay and the narrow roots can carry more. Settling angle at one size and then size at one '
+      + 'angle would assume otherwise and could walk straight past the best pair. '
+      + '<br><br>Read it as a grid — <b>columns are angle, rows are size</b>. Each tile carries the '
+      + 'figure and its HUD crop together, since ear seating shows up hardest in the crop. Both dials '
+      + 'are continuous: the winner is a POINT TO STEER BY, and any pair between rungs can ship.');
+
+    for (const size of SIZES) {
+      tile(grid, `ear size ${size.toFixed(2)}`,
+        `Angle across the row: ${ANGLES.map((a) => a.toFixed(2)).join(' / ')} rad `
+        + `(${ANGLES.map((a) => (a * 180 / Math.PI).toFixed(0)).join(' / ')} deg).`,
+        RCOL * ANGLES.length, RH * 1.62, (ctx, t) => {
+          ANGLES.forEach((angle, i) => {
+            const c = at(size, angle);
+            drawToon(ctx, c.id, pose('idle', t), RCOL * (i + 0.5), RFEET, RH, opts(c));
+            ctx.fillStyle = '#8a8a9e';
+            ctx.font = '6px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(c.name.split(' — ')[0], RCOL * (i + 0.5), RH * 1.55);
+          });
+        }, { animated: true, wide: true, hires: 4 });
+    }
+
+    tile(grid, 'ear grid — face crops', 'drawToonFace(), every cut. Columns are angle, rows are size — the tile that decides it.',
+      RCOL * ANGLES.length, 56 * SIZES.length, (ctx) => {
+        SIZES.forEach((size, row) => {
+          ANGLES.forEach((angle, i) => {
+            const c = at(size, angle);
+            drawToonFace(ctx, c.id, RCOL * i + 14, 56 * row + 2, 44, 44, opts(c));
+            ctx.fillStyle = '#8a8a9e';
+            ctx.font = '6px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(c.name.split(' — ')[0], RCOL * (i + 0.5), 56 * row + 52);
+          });
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, PANDA_EARGRID_CANDIDATES, 'ear grid — in the lane, at size');
+  }
+
+  // ROUND 9 — ear WIDTH, split from length. Round 8 could only offer "bigger";
+  // the ask was broader at the base, which is a different animal entirely.
+  {
+    const grid = section('panda-earwidth-bakeoff', 'New hero — a wider ear base',
+      'GALLERY ONLY, round 9. Round 8 is retired: it could only make the ear <i>bigger</i>, because '
+      + '<code>earSize</code> drove the base half-width and the length together. They are split now, '
+      + 'and the distinction turns out to be the species line itself — <b>a red panda\'s ear is '
+      + 'broad-based and short; a fox\'s is narrow-based and long.</b> Round 1 lost the fox on a '
+      + 'naming problem (Sonic 2 ships one); this is where the panda stops being able to drift back '
+      + 'into being one. '
+      + '<br><br>The painter had to change to allow it. A wider base cannot simply be wider: the base '
+      + 'corners sit at sqrt(rootR^2 + halfW^2), and past 0.6 halfW that escapes R and the ear '
+      + 'detaches all over again — the round-7 bug. So the ear now <b>roots deeper as it widens</b>, '
+      + 'with rootR solved to hold the corners on a 0.95R circle whatever the width. A broad ear '
+      + 'sitting lower on the head is also what the reference shows, so the constraint and the '
+      + 'drawing want the same thing. '
+      + '<br><br>Angle held at 0.68 (between round 7\'s J2 and J3) and length at 1.35, so only the '
+      + 'base moves. <b>L4 is the exception and the one to look at hardest</b>: wide AND shortened, '
+      + 'the read furthest from a fox — width doing the work with the length no longer competing.');
+
+    poseTiles(grid, PANDA_EARWIDTH_CANDIDATES, [
+      ['idle', 'Standing. Watch the gap between the pair across the crown — a wide BASE eats it faster than a wide angle does.'],
+      ['run', 'The stride.'],
+      ['duck', 'The slide, where the ears are most of the silhouette above the body.'],
+    ]);
+
+    tile(grid, 'panda ear widths — face crops', 'drawToonFace(), the HUD cell — where base width reads hardest.',
+      RCOL * PANDA_EARWIDTH_CANDIDATES.length, 54, (ctx) => {
+        PANDA_EARWIDTH_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name, RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, PANDA_EARWIDTH_CANDIDATES, 'panda ear widths — in the lane, at size');
+  }
+
+  // ROUND 11 — the brow marks. The look is otherwise settled; this is the last
+  // open question on the face.
+  {
+    const grid = section('rusty-brow-bakeoff', 'RUSTY — the brow marks',
+      'GALLERY ONLY, round 11, from reference art. The complaint: his brows are not distinct marks, '
+      + 'they are part of one white patch AROUND the eyes — and the geometry was doing exactly that. '
+      + 'The brow teardrop sat at -0.30R and the cheek patch at +0.26R with a 0.30R radius, so the two '
+      + 'TOUCHED just under the eye and merged into a single white field with an eye floating in it. '
+      + 'Restyling the brow alone could never fix that; the cheek had to move. The marks are three '
+      + 'independent dials now (<code>browMark</code>, <code>cheekPatch</code>, <code>eyePatch</code>) '
+      + 'and this row moves them together. '
+      + '<br><br>The reference\'s construction inverts ours and is worth naming: there the <b>DARK is '
+      + 'the mask</b> — a dark patch around each eye — and the small white spots read against that '
+      + 'dark rather than against rust fur. That is <b>N3</b>, and it is the only cut where the brow '
+      + 'has real contrast behind it. <b>N4</b>\'s bars are the most eyebrow-like and the riskiest: '
+      + 'the rig\'s own ink brows draw on top of them whenever he is annoyed or focused, so he can '
+      + 'end up with two sets. <b>N5</b> is the floor — if it wins, the cheek patch was doing nothing.');
+
+    poseTiles(grid, RUSTY_BROW_CANDIDATES, [
+      ['idle', 'Standing. Look for fur showing BETWEEN brow and cheek — that gap is the whole fix.'],
+      ['run', 'The focus face, where the rig draws its own ink brows over whatever mark is there. N4 is the cut to watch.'],
+      ['duck', 'The slide.'],
+    ]);
+
+    tile(grid, 'rusty brows — face crops', 'drawToonFace(), the HUD cell. A brow mark that does not survive here is not a brow mark.',
+      RCOL * RUSTY_BROW_CANDIDATES.length, 54, (ctx) => {
+        RUSTY_BROW_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name.split(' — ')[0], RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, RUSTY_BROW_CANDIDATES, 'rusty brows — in the lane, at size');
+  }
+
+  // ROUND 10 — the ranged move. An ANIMATION question, so the tiles run the
+  // shot live rather than posing it.
+  {
+    const grid = section('rusty-shot-bakeoff', 'RUSTY — the ranged move, three cuts',
+      'GALLERY ONLY, round 10. The projectile names itself — red pandas eat bamboo, and his ability '
+      + 'type in data/heroes.js is literally <code>\'shoot\'</code>, so BAMBOO SHOOT is the joke and '
+      + 'the implementation at once. The painter is real (<code>drawBambooShoot</code>, beside '
+      + 'drawPellet): a CAPSULE rather than a disc, so the one long shape reads as his against the two '
+      + 'round shots already in the lane; one dark NODE band, floored at a pixel because it is the last '
+      + 'mark to survive shrinking and the only one that says bamboo; and TUMBLE, because a shot '
+      + 'holding one angle reads as fired from a barrel, which is B-33P\'s story not his. '
+      + '<br><br>The cuts differ in COST as much as in feel. <b>M1</b> is a row in HEROES and nothing '
+      + 'else — run.js already reads shotSpeed/shotSize/shotBurst off the hero. <b>M2</b> couples shot '
+      + 'speed to his running speed, so the ranged move IS the speedster fantasy instead of sitting '
+      + 'beside it; a small run.js change plus a test. <b>M3</b> overlaps Clara\'s twin-pistol burst '
+      + 'and needs a pose that does not exist — a tail-spin launch. These tiles draw M3 on the shipped '
+      + 'AIM pose, so judge its SHOT and treat the gesture as unbuilt. '
+      + '<br><br>Marked in every lane: the beat cabinet\'s card box at +230, the prop this ability '
+      + 'exists to answer. One consequence to weigh — ranged is 4 of 8 today and the box is dealt only '
+      + 'to those four, because a prop half the cast cannot answer is a hero check rather than a '
+      + 'rhythm figure. Rusty makes five; if ranged becomes standard for everyone, that gate stops '
+      + 'meaning anything.');
+
+    const SHOT_PERIOD = 1.6;
+    const shotOpts = { spec: PANDA_SETTLED.spec, pal: PANDA_SETTLED.pal };
+    for (const c of RUSTY_SHOT_CANDIDATES) {
+      const LW = 300, LH = 62, LGY = 46;
+      tile(grid, `rusty — ${c.name}`, c.note, LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
+        ctx.scale(WORLD_Z, WORLD_Z);
+        laneStrip(ctx, LW, LH, LGY);
+        // The card box, at the distance the cabinet actually stands one.
+        ctx.fillStyle = 'rgba(246,211,60,0.5)';
+        ctx.fillRect(24 + 230, LGY - 18, 1, 18);
+        const local = t % SHOT_PERIOD;
+        drawToon(ctx, c.id, pose('run', t, powerupExtra('shoot', Math.min(0.3, local))),
+          24, LGY, HERO_DRAW_H, shotOpts);
+        // Live flight on the same clock, so what is judged is the animation.
+        const tracks = c.key === 'fan' ? [-1, 0, 1] : c.key === 'momentum' ? [0, 0] : [0];
+        tracks.forEach((k, i) => {
+          const scale = c.key === 'momentum' ? (i === 0 ? 0.62 : 1.5) : 1;
+          const x = 24 + 8 + local * c.shot.speed * scale * 0.35;
+          if (x > LW - 6) return;
+          const y = LGY - 16 + (c.key === 'fan' ? k * local * 9 : 0);
+          ctx.globalAlpha = c.key === 'momentum' && i === 0 ? 0.45 : 1;
+          drawBambooShoot(ctx, x, y, { size: c.shot.size, spin: local * 14 });
+          ctx.globalAlpha = 1;
+        });
+      }, { animated: true, wide: true, world: true, hires: 5 });
+    }
+  }
+
+  // ROUND 12 — the brow SHAPE. N3's construction won; its spots read as dots.
+  {
+    const grid = section('rusty-browshape-bakeoff', 'RUSTY — flattening the brow spots',
+      'GALLERY ONLY, round 12, on N3 (dark eye patch, white spots on it). The construction is settled '
+      + 'and only the mark\'s ASPECT moves. At 0.17 x 0.15R the spot was 1.13:1 — a circle, and it '
+      + 'read as one. <b>A brow is wider than it is tall</b>, so <code>browSquash</code> multiplies '
+      + 'the ry while the rx grows as it flattens, which stops squashing from also shrinking the mark '
+      + 'into invisibility. '
+      + '<br><br><b>O2</b> is about 1.6:1 — the first rung where the mark has a long axis at all, '
+      + 'which is the whole of what makes a shape read as a brow. <b>O3</b> is 2.2:1, a rounded '
+      + 'lozenge: horizontal but still soft at the ends. <b>O4</b> is 3:1 and is the far edge — judge '
+      + 'it on the HUD crop, because at 44px a mark that thin sits close to the ink brows the rig '
+      + 'draws over it, and two horizontal lines above one eye is this round\'s failure mode. '
+      + '<b>O5</b> tilts the pair down toward the nose, which turns a MARKING into an EXPRESSION — '
+      + 'worth seeing once, but a permanently sceptical face fights every pose he is in.');
+
+    poseTiles(grid, RUSTY_BROWSHAPE_CANDIDATES, [
+      ['idle', 'Standing.'],
+      ['run', 'The focus face — where the rig draws its own ink brows over the mark. O4 is the cut to watch.'],
+    ]);
+
+    tile(grid, 'rusty brow shapes — face crops', 'drawToonFace(), the HUD cell. This tile decides it.',
+      RCOL * RUSTY_BROWSHAPE_CANDIDATES.length, 54, (ctx) => {
+        RUSTY_BROWSHAPE_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name.split(' — ')[0], RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, RUSTY_BROWSHAPE_CANDIDATES, 'rusty brow shapes — in the lane, at size');
+  }
+
+  // ROUND 13 — the LAUNCH. Rusty had no throw; he does now.
+  {
+    const grid = section('rusty-toss-bakeoff', 'RUSTY — the launch gesture, three cuts',
+      'GALLERY ONLY, round 13. The shot round showed the projectile leaving and the hero standing '
+      + 'still, and that was not a rendering slip: <code>menuAction: \'aim\'</code> only ever '
+      + 'produced a gesture for a hero carrying a PROP — Clara\'s pistol, B-33P\'s gun-arm, Kiko\'s '
+      + 'orb. Rusty has none of those flags, so <b>he had no throw at all</b>. He does now '
+      + '(<code>spec.toss</code>, on the same 0.3s budget every other ability pose uses). '
+      + '<br><br>A throw is three beats and none can be dropped: the WIND-UP makes the arm\'s travel '
+      + 'legible (a hand that starts forward has nowhere to accelerate from), the WHIP is two frames '
+      + 'and is the only part anyone consciously sees, and the FOLLOW-THROUGH stops the arm looking '
+      + 'like it hit a wall. Release is at the end of the whip — the same instant in all three, and '
+      + 'where run.js should spawn the projectile. '
+      + '<br><br>Two amplitude lessons are baked into these, both learned the hard way here: a '
+      + 'gesture has to CLEAR THE SILHOUETTE to exist (the first cut moved the hand about a torso '
+      + 'half-width and read as a twitch), and a pitch must cock HIGH rather than back — behind the '
+      + 'shoulder is where a real pitcher\'s hand goes and it is invisible at hero size, because the '
+      + 'torso occludes it. <b>P3 is the one that reads best</b>, and for a structural reason: the '
+      + 'tail is outside the body outline at every instant of the gesture, so nothing it does is ever '
+      + 'hidden.');
+
+    // The CLOCK is the one thing that differs from a real run, and for the
+    // reason the raider section documents: a tile whose entire question is
+    // whether a gesture reads must not spend most of its time NOT playing it.
+    // At 1.5s the 0.3s throw ran and then froze on the follow-through for 1.2s
+    // — four fifths of every cycle static, which is indistinguishable from a
+    // hero who does not animate at all. 0.7s gives the throw, a short beat to
+    // register it landed, and then it goes again.
+    const TOSS_PERIOD = 0.7;
+    for (const c of RUSTY_TOSS_CANDIDATES) {
+      tile(grid, `rusty — ${c.name}`, c.note, RCOL * 2.4, RH * 1.62, (ctx, t) => {
+        const local = Math.min(0.3, t % TOSS_PERIOD);
+        drawToon(ctx, c.id, pose('run', t, { menuAction: 'aim', actionTime: local }),
+          RCOL * 1.1, RFEET, RH, opts(c));
+      }, { animated: true, wide: true, hires: 4 });
+    }
+
+    // The gesture at the size it is played, which is where a throw either
+    // reads or does not.
+    {
+      const LW = 24 + RUSTY_TOSS_CANDIDATES.length * 62 + 40, LH = 62, LGY = 46;
+      tile(grid, 'rusty throws — in the lane, at size',
+        `Real ${HERO_DRAW_H}px hero on the ability's own clock. Everything above is a study.`,
+        LW * WORLD_Z, LH * WORLD_Z, (ctx, t) => {
+          ctx.scale(WORLD_Z, WORLD_Z);
+          laneStrip(ctx, LW, LH, LGY);
+          const local = Math.min(0.3, t % TOSS_PERIOD);
+          RUSTY_TOSS_CANDIDATES.forEach((c, i) => {
+            const x = 30 + i * 62;
+            drawToon(ctx, c.id, pose('run', t, { menuAction: 'aim', actionTime: local }),
+              x, LGY, HERO_DRAW_H, opts(c));
+            if (local >= 0.168) {
+              drawBambooShoot(ctx, x + 9 + (local - 0.168) * 110, LGY - 11,
+                { size: 0.8, spin: local * 20 });
+            }
+          });
+        }, { animated: true, wide: true, world: true, hires: 5 });
+    }
+  }
+
+  // ROUND 14 — brow ANGLE, on O2 (squash 0.70).
+  {
+    const grid = section('rusty-browangle-bakeoff', 'RUSTY — the brow angle',
+      'GALLERY ONLY, round 14. O2 won round 12 — squash 0.70, about 1.6:1 — and is held here; only '
+      + '<code>browTilt</code> moves, rotating each mark by side * tilt so the pair stays mirrored. '
+      + '<br><br>Which way it leans is the whole read, and the two directions are opposite '
+      + 'characters: inner end UP is a plea (hopeful, anxious), inner end DOWN is a furrow '
+      + '(determined, cross). The real question is not which mood is nicest but whether he should '
+      + 'have one at all — <b>a level brow is a MARKING and reads as anatomy; a tilted one is an '
+      + 'EXPRESSION and reads as a mood he is permanently stuck in</b>, playing under every pose and '
+      + 'under every real ink brow the rig draws on top. '
+      + '<br><br><b>Q3</b> is the most characterful — arguably his whole bit, a mascot who needs you '
+      + 'to like him — and the most likely to wear thin. <b>Q5</b> is here as a limit and should '
+      + 'probably lose on principle: permanently cross is Gnash\'s register, and giving that away was '
+      + 'half the point of replacing him.');
+
+    poseTiles(grid, RUSTY_BROWANGLE_CANDIDATES, [
+      ['idle', 'Standing — the neutral face, where a permanent mood is most obvious.'],
+      ['run', 'The focus face, where the rig draws its own ink brows over the mark. Q4 and Q5 slope the same way as those and can merge into one thick brow.'],
+    ]);
+
+    tile(grid, 'rusty brow angles — face crops', 'drawToonFace(), the HUD cell. This tile decides it.',
+      RCOL * RUSTY_BROWANGLE_CANDIDATES.length, 54, (ctx) => {
+        RUSTY_BROWANGLE_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name.split(' — ')[0], RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, RUSTY_BROWANGLE_CANDIDATES, 'rusty brow angles — in the lane, at size');
+  }
+
+  // ROUND 15 — snout size.
+  {
+    const grid = section('rusty-snout-bakeoff', 'RUSTY — the snout, five sizes',
+      'GALLERY ONLY, round 15. <code>muzzleScale</code> grows or shrinks the snout about its TOP '
+      + 'edge, where the nose sits, so the nose stays anchored on it rather than floating — that '
+      + 'anchoring is why the dial exists instead of a plain radius. The nose scales with the muzzle, '
+      + 'so a button snout gets a button nose. Brows held level at O2 throughout. '
+      + '<br><br>What is actually being traded: the muzzle is the pale mass in the middle of the '
+      + 'face, so its size sets how much CREAM there is against the rust and how far the eyes sit '
+      + 'from the nose. <b>Smaller reads younger</b> — the baby schema arriving through a different '
+      + 'door than round 3 used — <b>larger reads more like the animal and less like a mascot</b>. '
+      + '<br><br>Two failure modes to watch, one at each end: shrunk far enough the muzzle retreats '
+      + 'INSIDE the white cheek patches and leaves the nose sitting on a field of them; grown far '
+      + 'enough it reaches the jaw tufts and the whole lower face becomes one undifferentiated pale '
+      + 'shape.');
+
+    poseTiles(grid, RUSTY_SNOUT_CANDIDATES, [
+      ['idle', 'Standing.'],
+      ['run', 'In motion.'],
+    ]);
+
+    tile(grid, 'rusty snouts — face crops', 'drawToonFace(), the HUD cell — where the cream-to-rust balance reads hardest.',
+      RCOL * RUSTY_SNOUT_CANDIDATES.length, 54, (ctx) => {
+        RUSTY_SNOUT_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name.split(' — ')[0], RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, RUSTY_SNOUT_CANDIDATES, 'rusty snouts — in the lane, at size');
+  }
+
+  // ROUND 16 — mouth height, on the settled 0.90 snout.
+  {
+    const grid = section('rusty-mouth-bakeoff', 'RUSTY — raising the mouth',
+      'GALLERY ONLY, round 16. Snout settled at 0.90; only <code>mouthLift</code> moves. That is the '
+      + 'rig\'s own per-face dial, in u, subtracted from the mouth\'s skull-ratio position — Kiko '
+      + 'carries 0.014 for exactly this reason, because a short lower face is what makes a chibi read '
+      + 'young. Nothing new was needed for this round; the only reason it looked wrong is that Rusty '
+      + 'had never set it. '
+      + '<br><br>The numbers, so the rungs mean something: at muzzle 0.90 the snout spans about 0.06R '
+      + 'to 0.78R below the head centre, putting its own centre at ~0.42R — and the mouth\'s default '
+      + 'lands at ~0.52R, <b>below the middle of the snout it sits on</b>. That gap is the droop. A '
+      + 'lift of 0.028u is about 0.13R and puts the mouth on the snout\'s centre line, which is where '
+      + 'a muzzle\'s mouth belongs. '
+      + '<br><br>Past that the lower face gets short and the read goes young — worth having, but watch '
+      + 'the closing gap to the nose on S4 and S5, where the two marks start to crowd.');
+
+    poseTiles(grid, RUSTY_MOUTH_CANDIDATES, [
+      ['idle', 'Standing — the closed smile, where the height reads plainest.'],
+      ['celebrate', 'The open whoop: the mouth is at its largest here, so a lift that looks fine closed can crowd the nose open.'],
+    ]);
+
+    tile(grid, 'rusty mouth heights — face crops', 'drawToonFace(), the HUD cell. This tile decides it.',
+      RCOL * RUSTY_MOUTH_CANDIDATES.length, 54, (ctx) => {
+        RUSTY_MOUTH_CANDIDATES.forEach((c, i) => {
+          drawToonFace(ctx, c.id, RCOL * i + 14, 2, 44, 44, opts(c));
+          ctx.fillStyle = '#8a8a9e';
+          ctx.font = '6px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name.split(' — ')[0], RCOL * (i + 0.5), 50);
+        });
+      }, { animated: false, wide: true, hires: 6 });
+
+    laneTile(grid, RUSTY_MOUTH_CANDIDATES, 'rusty mouth heights — in the lane, at size');
+  }
+
+  // ROUND 17 — the brow marks become his eyebrows, and the nose gets centred.
+  {
+    const grid = section('rusty-expressive-bakeoff', 'RUSTY — brows that carry the expression',
+      'GALLERY ONLY, round 17. Two fixes and one new idea, on the settled face (muzzle 0.90, mouth '
+      + '+0.028u). '
+      + '<br><br><b>The nose was off centre, and it was a bug.</b> drawEyes and drawMouth are both '
+      + 'called at <code>hx + 0.01 * u</code> — the rig carries the whole face a hair ahead of the '
+      + 'skull so a runner reads as looking where he is going — but the animal marks were built on '
+      + 'plain <code>hx</code>, putting the muzzle, nose and mask about 0.048R LEFT of the eyes and '
+      + 'mouth they belong to. Everything on the face now shares one centre line; the skull, ears and '
+      + 'ruff stay on hx, because they are the head rather than the face. '
+      + '<br><br><b>The brow marks are now his eyebrows.</b> Every other hero gets a hairline ink '
+      + 'stroke painted over the brow when a mood fires — but on a face already carrying two white '
+      + 'marks in exactly that place, a third horizontal line is one brow too many. The marks take '
+      + 'the expression themselves and <code>brow: \'none\'</code> stops the ink pair being drawn. '
+      + '<br><br>On direction, since that was the question: <b>inner ends UP is the cuddly read</b> — '
+      + 'open, appealing, faintly worried — and inner ends DOWN is the furrow. Neutral reads as '
+      + 'anatomy rather than mood. So neutral-to-up is his resting range and the furrow is reserved '
+      + 'for moods that earn it: annoyed +0.34, focus +0.18, surprise -0.30, joy -0.22, otherwise '
+      + 'level. The marks also rise on the open moods and drop on the furrow, because a brow that '
+      + 'only rotates in place reads as a dial rather than a face. '
+      + '<br><br><b>T1 against T2 is the question</b> — expressive against frozen level, both without '
+      + 'the ink brow. If T1 does not beat T2 clearly ACROSS the poses, the system is costing '
+      + 'complexity for nothing. <b>T3</b> is what he had, and the run and duck tiles are where you '
+      + 'can see two horizontal lines stacked above each eye.');
+
+    poseTiles(grid, RUSTY_EXPRESSIVE_CANDIDATES, [
+      ['idle', 'Level — no mood fires here, so the marks are pure marking.'],
+      ['run', 'FOCUS: a light furrow, +0.18. T3 stacks the ink brow on top of the same mark.'],
+      ['duck', 'Also focus, and the pose where T3\'s doubling is worst.'],
+    ]);
+
+    // THE MOOD MATRIX, and it replaces the neutral face-crop row this section
+    // used to carry. That row could not answer its own question: a face crop
+    // draws a NEUTRAL pose, and at neutral all three cuts are identical BY
+    // DESIGN — no mood fires, so there is no tilt and no ink brow to draw.
+    // Three identical heads is the correct output of that tile and a useless
+    // one here. The difference exists only DURING a mood, so the tile has to
+    // force one.
+    //
+    // Trigger fields are taken from expressionFor rather than guessed:
+    // `pose.annoyed` is a 0..1 RAMP and not a flag, joy comes from faceJoy,
+    // surprise from faceSurprised, focus from kind 'run'/'duck'.
+    {
+      const MOODS = [
+        ['neutral', {}],
+        ['focus', { kind: 'run' }],
+        ['annoyed', { annoyed: 1 }],
+        ['surprise', { faceSurprised: true }],
+        ['joy', { faceJoy: true }],
+        // The full whoop, where the jaw drop is at its deepest and the snout
+        // is longest — and where the mouth had the most room to go wrong.
+        ['cheer', { faceJoy: true, kind: 'celebrate' }],
+      ];
+      const FW = 52;
+      tile(grid, 'rusty brows — the mood matrix',
+        'drawToonFace() with each mood FORCED. Rows are the three cuts, columns the moods. The '
+        + 'neutral column is identical in all three and should be — that is the point: these differ '
+        + 'only while a mood is running. Two mouth fixes also live here: the gasp no longer climbs '
+        + 'into the nose (the mouth line is clamped clear of it, by exactly the overlap and only on '
+        + 'the frames that would collide), and a deep grin now LENGTHENS the snout downward, because '
+        + 'a smile that wide is a jaw opening.',
+        FW * MOODS.length + 40, 56 * RUSTY_EXPRESSIVE_CANDIDATES.length + 12, (ctx) => {
+          MOODS.forEach(([label], col) => {
+            ctx.fillStyle = '#8a8a9e';
+            ctx.font = '6px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, 40 + FW * (col + 0.5), 8);
+          });
+          RUSTY_EXPRESSIVE_CANDIDATES.forEach((c, row) => {
+            const top = 12 + 56 * row;
+            ctx.fillStyle = '#8a8a9e';
+            ctx.font = '6px ui-monospace, monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText(c.name.split(' — ')[0], 2, top + 28);
+            MOODS.forEach(([, extra], col) => {
+              drawToonFace(ctx, c.id, 40 + FW * col + 4, top, 44, 44,
+                { ...opts(c), pose: { kind: 'idle', time: 1.4, facing: 1, ...extra } });
+            });
+          });
+        }, { animated: false, wide: true, hires: 6 });
+    }
+
+    laneTile(grid, RUSTY_EXPRESSIVE_CANDIDATES, 'rusty expressive brows — in the lane, at size');
+  }
+
+  // ROUND 18 — the open-mood brow: how high, and which way.
+  {
+    const TILTS = [-0.3, 0, 0.3];
+    const RISES = [0.06, 0.16];
+    const at = (r, t) => RUSTY_OPENBROW_CANDIDATES.find(
+      (c) => c.spec.browOpenRise === r && c.spec.browOpenTilt === t);
+    const grid = section('rusty-openbrow-bakeoff', 'RUSTY — the open-mood brow',
+      'GALLERY ONLY, round 18, on T1. Only the SURPRISE and JOY brow moves; the furrow moods are '
+      + 'held. Two dials, so a grid: a steeply angled brow already reads as raised at its high end, '
+      + 'so it needs less lift than a level one to say the same thing. '
+      + '<br><br><b>The sign, established by rendering it rather than by reading the rotation</b> — '
+      + 'canvas y points down, which is where the intuition fails, and it was got backwards once '
+      + 'already. <code>tilt NEGATIVE</code> lifts the OUTER ends and drops the inner ones toward the '
+      + 'nose: the STERN direction, determined and intense. <code>tilt POSITIVE</code> lifts the '
+      + 'INNER ends: the SOFT direction, surprised and open. '
+      + '<br><br>That matters more than the label, because <b>T1 currently ships NEGATIVE on surprise '
+      + 'and joy</b> — the open moods are wearing the stern brow. If the cuddly read is what those '
+      + 'moods want, the sign has to flip. '
+      + '<br><br>Rise is in R: 0.06 is what T1 ships, 0.16 is about as far as the mark can travel '
+      + 'before it detaches from the eye it belongs to and reads as a spot on the forehead. Level at '
+      + 'a high rise is its own answer — a brow lifted straight up is still a legible "oh", so the '
+      + 'two dials are not redundant.');
+
+    for (const mood of [['surprise', { faceSurprised: true }], ['joy', { faceJoy: true, kind: 'celebrate' }]]) {
+      tile(grid, `open brow — ${mood[0]}`,
+        'Columns: tilt -0.30 (outer up, stern) / 0 (level) / +0.30 (inner up, soft). Rows: rise 0.06 then 0.16.',
+        56 * TILTS.length + 8, 60 * RISES.length + 8, (ctx) => {
+          RISES.forEach((r, row) => TILTS.forEach((t, col) => {
+            const c = at(r, t);
+            drawToonFace(ctx, c.id, 56 * col + 4, 60 * row + 4, 48, 48,
+              { spec: c.spec, pal: c.pal, pose: { kind: 'idle', time: 1.4, facing: 1, ...mood[1] } });
+          }));
+        }, { animated: false, wide: true, hires: 6 });
+    }
+  }
+}
 
 // ------------------------------------------- special-move follower proposal
 // A universal companion gauge is more truthful than a weapon/projectile: every
@@ -4499,6 +5450,148 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       const s = clock(t);
       drawToonFace(ctx, 'lorenzo', 0, 0, 76, 76, { pose: s == null ? null : { deathFace: s, deathStyle: v.id } });
     }, { animated: true });
+  }
+}
+
+// ------------------------------------ the rooftop gorilla — face bake-off
+// He wore one face for his whole life — a smile — plus the startle the plane's
+// crash buys him for two beats. This is the two questions that followed:
+// WHICH FACES he should own, and WHAT A BROW SHOULD WEIGH, which turned out to
+// be the bigger of the two. Every tile is the REAL panel: drawLCDCity paints
+// the whole Game Boy screen and the tile crops his head out of it, so a
+// candidate is judged in the palette, at the size and against the skyline it
+// ships in. The scene's dev-only `gorillaExpr` / `gorillaBrow` are the only
+// things that change between tiles.
+{
+  const cab = CABINETS.find((c) => c.id === 'rhythm');
+  const style = getStylePack('lcd', {});
+  // `cx, cy` is the point of the SCREEN put in the middle of the tile: the
+  // panel always paints all 480x270 and the tile is a window onto it, which is
+  // what keeps this page honest about size.
+  const panelTile = (grid, name, sub, stage, cx, cy, tw, th, at, opts = {}) => {
+    tile(grid, name, sub, tw, th, (ctx, t) => {
+      ctx.save();
+      ctx.translate(Math.round(tw / 2 - cx), Math.round(th / 2 - cy));
+      style.bg(ctx, 0, 0, cab, 1000, { stageIndex: stage, ...at(t) });
+      ctx.restore();
+    }, opts);
+  };
+  const FINALE = 3; // the finale's plain rooftop: no plane, so no startle to fight
+  const head = lcdGorillaHeadPos(FINALE);
+  const nameOf = (id) => LCD_GORILLA_EXPRESSIONS.find((e) => e.id === id).name;
+
+  {
+    const grid = section('gorilla-face-bakeoff', 'Rooftop gorilla — face bake-off',
+      'Seven reads plus the two he already has. SMILE is the control; STARTLED is the crash face, shown here '
+      + 'on demand rather than waiting for the plane. Each is a spec over the same head — brow shape, eye '
+      + 'shape, mouth, and which way the pupils sit — so nothing new appears on a 22px face at a building\'s '
+      + 'remove. Head at 5x, then the whole figure at panel scale, which is the size the decision is actually '
+      + 'made at. Beat 2 for the head (arms down, nothing crossing the face), beat 0 for the figure (barrel '
+      + 'overhead, the pose he is known by).'
+      + LCD_GORILLA_EXPRESSIONS.map((e) => ` · ${e.name}: ${e.note}`).join(''));
+    for (const e of LCD_GORILLA_EXPRESSIONS) {
+      panelTile(grid, e.name, 'the head · 5x', FINALE, head.x, head.y + 2, 46, 42,
+        () => ({ beat: 2, gorillaExpr: e.id }), { hires: 5 });
+      panelTile(grid, e.name, 'on the roof · panel scale', FINALE, head.x, head.y + 2, 92, 78,
+        () => ({ beat: 0, gorillaExpr: e.id }), { hires: 3 });
+    }
+  }
+
+  // ---- and the brows, which is where the first sheet's real finding was
+  {
+    const FACES = ['smile', 'neutral', 'sad', 'sly', 'startled'];
+    const grid = section('gorilla-brow-bakeoff', 'Rooftop gorilla — brow bake-off (SHORT ships)',
+      'SETTLED — SHORT ships. The shape of a brow is the expression; its WEIGHT is a separate question and the answer applies to all '
+      + 'of them at once, the startle included. Rows are treatments, columns are the faces that use a '
+      + 'different brow shape. The finding the first sheet handed over: at the authored height the brow is '
+      + 'drawn on his SKULL — dark ink on the dark plane — so it reads as a lump on the forehead rather than '
+      + 'as a brow, and it is the treatments that come DOWN onto the pale face plane (which is only 13px '
+      + 'across up there) that survive being looked at from a lane away. Each row is repeated at panel scale, '
+      + 'because at 5x every one of them reads and at 3x most of them do not.'
+      + LCD_GORILLA_BROW_STYLES.map((b) => ` · ${b.name}: ${b.note}`).join(''));
+    for (const b of LCD_GORILLA_BROW_STYLES) {
+      for (const f of FACES) {
+        panelTile(grid, `${b.name} · ${nameOf(f)}`, 'the head · 5x', FINALE, head.x, head.y + 1, 42, 34,
+          () => ({ beat: 2, gorillaExpr: f, gorillaBrow: b.id }), { hires: 5 });
+      }
+      panelTile(grid, b.name, 'panel scale · the loop, running', FINALE, head.x, head.y + 6, 96, 84,
+        (t) => ({ beat: Math.floor(t * 2), gorillaBrow: b.id }), { hires: 3, animated: true });
+    }
+  }
+
+  // ---- what the rotation actually plays, on the tower that has a plumber
+  {
+    const grid = section('gorilla-mood-loop', 'Rooftop gorilla — the rotation, beat by beat',
+      'SHIPPED. He changes at most once a BAR, never once a beat: a face that moves every beat is a face the '
+      + 'eye keeps going back to, and those are beats spent off the lane. The smile is his resting face; one '
+      + 'bar of one borrowed expression comes round per 16-beat loop, cycling through six loops, so no '
+      + 'variation lands twice running — and two of those six are loops he just smiles through. SAD is kept OUT '
+      + 'of that rotation on purpose: it is the only face here that is about something, and a face that also '
+      + 'turns up on a timer stops being about anything. The exception is the PLUMBER, and that one is not a clock: the beats '
+      + 'the little man is up on the gorilla\'s own girder carry the face he wears on them. His face FALLS while '
+      + 'the man is close and SMIRKING on the beat the barrel gets him — then straight back to the smile, '
+      + 'because the toy does not gloat any longer than it sulks. The plumber\'s climb is EIGHT bars now, not '
+      + 'four: the first loop ends the way it always did, and in the second he bails onto the ladder and drops '
+      + 'below the girder while the barrel sweeps through the cell he was standing in — so the hit is an event '
+      + 'again rather than a tick. All 32 beats are below, the whole tower in frame, so a face can be checked '
+      + 'against the man it is about.');
+    for (let step = 0; step < 32; step++) {
+      const sub = step === 14 ? 'the smirk · he knew'
+        : step === 30 ? 'the bail · he lives'
+          : step >= 12 && step <= 13 ? 'close' : step >= 28 && step <= 29 ? 'close' : '';
+      panelTile(grid, `beat ${step}`, sub, 1, 268, 106, 92, 98,
+        () => ({ beat: step }), { hires: 3 });
+    }
+    panelTile(grid, 'the loop, running', 'eight bars, the plumber and all', 1, 268, 106, 92, 98,
+      (t) => ({ beat: Math.floor(t * 2) }), { hires: 3, animated: true, wide: true });
+  }
+}
+
+// ------------------------------------ the tower plumber — bake-off
+// The little man on the DONKEY KONG tower, eight pixels across and sixteen
+// tall, on a building on the far side of the street. Same rules as the gorilla
+// sheets above: every tile is the REAL panel — drawLCDCity paints all 480x270
+// and the tile is a window onto it — and the scene's dev-only `runnerStyle` is
+// the only thing that changes between them, so a candidate is judged in the
+// palette, at the size and against the girders it ships on.
+{
+  const cab = CABINETS.find((c) => c.id === 'rhythm');
+  const style = getStylePack('lcd', {});
+  const STAGE = 1;
+  const panelTile = (grid, name, sub, cx, cy, tw, th, at, opts = {}) => {
+    tile(grid, name, sub, tw, th, (ctx, t) => {
+      ctx.save();
+      ctx.translate(Math.round(tw / 2 - cx), Math.round(th / 2 - cy));
+      style.bg(ctx, 0, 0, cab, 1000, { stageIndex: STAGE, ...at(t) });
+      ctx.restore();
+    }, opts);
+  };
+  // The five drawings he owns, and the beat of the journey each one lands on
+  // (see lcdGameWatch): two walk cells, the split over a barrel, a ladder cell
+  // and the beat the barrel gets him. `cx, cy` is where he stands on that beat.
+  const POSES = [
+    { beat: 0, name: 'walk A', cx: 240, cy: 208 },
+    { beat: 1, name: 'walk B', cx: 254, cy: 208 },
+    { beat: 2, name: 'the jump', cx: 268, cy: 196 },
+    { beat: 4, name: 'the ladder', cx: 283, cy: 195 },
+    { beat: 14, name: 'the hit', cx: 268, cy: 143 },
+  ];
+
+  const grid = section('plumber-bakeoff', 'The tower plumber — bake-off',
+    'Four separate answers to "he is 8x16 on a tower across the street — what is the SMALLEST edit that makes '
+    + 'him read as a plumber rather than as a man-shaped smudge on some girders?", plus the composite and the '
+    + 'figure as it ships. None of them is a redesign: every candidate is two or three pixels, they compose, '
+    + 'and SHIPPED is in the running order as the control. Each row is his five drawings at 6x — the two walk '
+    + 'cells, the split over a barrel, a ladder cell and the beat the barrel gets him — and then the whole '
+    + 'tower running at panel scale, which is the size the decision is actually made at.'
+    + LCD_RUNNER_STYLES.map((r) => ` · ${r.name}: ${r.note}`).join(''));
+  for (const r of LCD_RUNNER_STYLES) {
+    for (const pose of POSES) {
+      panelTile(grid, `${r.name} · ${pose.name}`, 'the cell · 6x', pose.cx, pose.cy, 34, 30,
+        () => ({ beat: pose.beat, runnerStyle: r.id }), { hires: 6 });
+    }
+    panelTile(grid, r.name, 'the tower · the loop, running', 268, 190, 96, 110,
+      (t) => ({ beat: Math.floor(t * 2), runnerStyle: r.id }), { hires: 3, animated: true, wide: true });
   }
 }
 

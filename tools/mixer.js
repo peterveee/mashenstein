@@ -28,7 +28,7 @@ import { MIXER_BRAND } from './mixer-brand.js';
 import { resolveTrack, listTracks, registerTrack, unregisterTrack } from './lib/tracks.js';
 import { isDefaultMasterChain, EFFECT_BY_ID, paramRange } from '../src/engine/effects.js';
 import { renderArrangementsFile } from './lib/arrangements-source.js';
-import { bpmOf, arrangementIssues } from '../src/data/arrangements.js';
+import { applyArrangement, bpmOf, swingOf, arrangementIssues } from '../src/data/arrangements.js';
 import { writeSongFile, writableSongPath, snapshotSongFile, notesImport } from './lib/song-file.js';
 // Both applied on the way to disk, not while editing, and in this order.
 //
@@ -1594,13 +1594,20 @@ const server = createServer(async (req, res) => {
       // — Logic externalizes multi-channel files), and ?gm=1 is the full per-channel
       // GM layout for hardware. See render-midi-bank.js.
       const gm = q.get('gm') === '1';
-      const midi = midiBuffer(track.bank, {
+      // The arrangement's own sections and order, off the files as they stand — the
+      // song as it is PLAYED. Without it the walk sees the composition bank alone,
+      // which for a song that builds its form entirely in layer sections is two bars
+      // of a fraction of its lanes.
+      const arrangements = await readCurrentArrangements();
+      const bank = applyArrangement(track.bank, track.id, arrangements);
+      const midi = midiBuffer(bank, {
         repeat, title: track.title, gmChannels: gm, patches: gm || q.get('patches') === '1',
         // The tempo the song is PLAYED at: the desk saves a retuned tempo onto the
         // song's arrangement. Read off the files as they stand rather than the table
         // this process started with, for the same reason the mix is — a server left
         // running all day has the morning's version of everything it imported once.
-        bpm: bpmOf(track.bank, track.id, await readCurrentArrangements()),
+        bpm: bpmOf(bank, track.id, arrangements),
+        swing: swingOf(bank, track.id, arrangements),
       });
       console.log(`midi: ${track.slug}.mid — ${midi.trackNames.length} instrument tracks`);
       res.writeHead(200, {

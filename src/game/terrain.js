@@ -20,8 +20,17 @@ const PROFILES = {
 // real distance at enter() and hands the result to setStageWave — on EVERY
 // enter, null included, the same contract setGroundRises keeps: a stage with
 // no wave must not inherit the last one's.
+// rhythm-1's amp came down 12 -> 8 -> 4, and it is the SKYLINE that took it:
+// this cabinet draws its city in SCREEN space behind the road, and the camera
+// pins the groundline to screen y GROUND_Y, so every px the lane stands above
+// GROUND_Y is a px of city subtracted off the bottom of the picture. The
+// crossings' own rise is at its floor (7, below which a break stops reading as
+// a pit — see CROSSING_ROAD_RISE in game/run.js), so this is where the last of
+// it comes from. 4 is a third of what it was: the lane still breathes through
+// the middle of the stage rather than running dead flat, and it no longer costs
+// the backdrop a hero's height to do it.
 export const STAGE_WAVES = {
-  'rhythm-1': { amp: 12, period: 620, phase: 0, from: 0.22, to: 0.8 },
+  'rhythm-1': { amp: 4, period: 620, phase: 0, from: 0.22, to: 0.8 },
 };
 // How much lane the window spends easing in and out, in world px. Gentle by
 // construction: the wave arrives over most of a screen, not at a step.
@@ -101,8 +110,24 @@ export function terrainHeight(cabinet, worldX) {
   return h;
 }
 
-export function terrainGroundY(cabinet, worldX, baseY = 224) {
+export function terrainGroundY(cabinet, worldX, baseY = GROUND_BASE) {
   return baseY - terrainHeight(cabinet, worldX);
+}
+
+/**
+ * The highest the lane can climb anywhere on this stage — the ceiling of
+ * terrainHeight above, taken from the same three sources it sums, so the two
+ * cannot drift apart. Each term is at its own maximum; they can coincide.
+ *
+ * A painter that draws the city BEHIND the road needs this: the lane rises over
+ * the bottom of the scenery, so anything drawn into that band is swallowed as
+ * the lane rolls past it. See lcdLightFloor in the style packs.
+ */
+export function maxTerrainHeight(cabinet) {
+  let rises = 0;
+  for (const r of RISES) if (r.h > rises) rises = r.h;
+  const p = cabinet && PROFILES[cabinet.id];
+  return rises + (p ? p.amp : 0) + (STAGE_WAVE ? STAGE_WAVE.amp : 0);
 }
 
 // `viewW` is the world width actually on screen this frame. It runs inside the
@@ -611,8 +636,11 @@ const GROUND_STONE_STRIDE = 52;
 // it, and anything below the visible edge is simply skipped.
 // The world y the lane runs along. terrain.js is handed `baseY` per call and the
 // engine's GROUND_Y is the same number; kept local so this module does not
-// import the camera to draw dirt.
-const GROUND_BASE = 224;
+// import the camera to draw dirt. It is ALSO the default for every entry point
+// here that takes a baseY, so the mirror is one number rather than three — and
+// it has to move with camera.js's GROUND_Y or the dirt and the camera disagree
+// about where the world's floor is.
+const GROUND_BASE = 232;
 const SUBSOIL_DEPTH = 210;
 // How far apart a buried skeleton may be. Very wide on purpose: it is a thing
 // you notice on the second run through a stage, and one every few hundred pixels
@@ -1548,7 +1576,7 @@ function drawEntrance(ctx, camX, cabinet, r, groundAt, floorAt, underAt) {
   }
 }
 
-export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = 224, viewW = W, overhangs = [],
+export function drawTerrain(ctx, camX, cabinet, obstacles, baseY = GROUND_BASE, viewW = W, overhangs = [],
   packOwnsSurface = false) {
   // A cabinet with no hills draws nothing — UNLESS a crossing has raised the
   // road somewhere in view, which is ground that exists and has to be painted

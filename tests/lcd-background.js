@@ -5,8 +5,8 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { getStylePack, drawLCDPanel, lcdChuteScreenX, LCD_CHUTE_BEATS }
-  = await import('../src/engine/stylePacks/index.js');
+const { getStylePack, drawLCDPanel, lcdChuteScreenX, LCD_CHUTE_BEATS, LCD_DEFAULT_ROAD_RISE,
+  LCD_ROAD_INK, lcdBarrelStrikeAt } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS } = await import('../src/data/cabinets.js');
 const { BEAT_RIBBON_BOTTOM } = await import('../src/game/hud.js');
 
@@ -74,7 +74,9 @@ const WINDOW_OFF = 'rgba(53,83,101,0.24)';
 const PRINT = 'rgba(38,53,93,0.72)';
 const PANEL_LIT = '#dce49a';
 const INK = '#26355d';
-const GROUND_Y = 224;
+// Imported, never mirrored: the panel is authored against the camera's own
+// groundline and a copy here would keep passing after that line moved.
+const { GROUND_Y } = await import('../src/engine/camera.js');
 const H = 270;
 
 const idle = [1, 2, 3].map((stage) => fingerprint(background(stage, null)));
@@ -85,7 +87,7 @@ assert(new Set(idle).size === 3, 'all three stages have distinct fixed skyline s
 // were raised (54->74, 70->88, 48->66, 62->80, clock 96->104). The range is
 // still what this checks — 66 against 116 is the same skyline argument the old
 // 48 made — and the other two stages are untouched.
-for (const [stage, short, tall] of [[1, 66, 110], [2, 58, 138], [3, 48, 126]]) {
+for (const [stage, short, tall] of [[1, 74, 118], [2, 66, 146], [3, 56, 134]]) {
   const stageOps = background(stage, null);
   const heights = stageOps
     .filter((op) => op[0] === 'strokeRect' && op[1] === PRINT)
@@ -125,13 +127,21 @@ assert(!pitOps.some((op) => op[1] === PANEL_LIT && op[3] === GROUND_Y
   && op[5] === H - GROUND_Y && rectOverlapsPit(op)),
 'the pit mouth is never repainted with a flat panel colour');
 assert(!pitOps.some((op) => op[1] === 'rgba(38,53,93,0.14)'
-  && op[3] === GROUND_Y + 7 && rectOverlapsPit(op)),
+  && op[3] === GROUND_Y + LCD_ROAD_INK + 2 && rectOverlapsPit(op)),
 'road dashes stop at the pit lips instead of crossing the background window');
 assert(pitOps.some((op) => op[0] === 'fillRect' && op[1] === INK
-  && op[2] === 100 && op[3] === GROUND_Y && op[4] === 3 && op[5] === H - GROUND_Y)
+  && op[2] === 100 && op[3] === GROUND_Y && op[4] === LCD_ROAD_INK && op[5] === H - GROUND_Y)
   && pitOps.some((op) => op[0] === 'fillRect' && op[1] === INK
-    && op[2] === 153 && op[3] === GROUND_Y && op[4] === 3 && op[5] === H - GROUND_Y),
+    && op[2] === 156 - LCD_ROAD_INK && op[3] === GROUND_Y && op[4] === LCD_ROAD_INK
+    && op[5] === H - GROUND_Y),
 'full-depth side walls, one road-line gauge thick, frame the pit');
+// ONE gauge, all the way round the corner: the wall, the lip that mitres into
+// it, and the surface line they both belong to are the same thickness. A wall
+// heavier than the road it is cut into is two gauges of steel at a joint, which
+// is the one place the mismatch is unmissable.
+assert(pitOps.some((op) => op[0] === 'fillRect' && op[1] === INK
+  && op[3] === GROUND_Y && op[4] === LCD_ROAD_INK * 2 && op[5] === LCD_ROAD_INK),
+'the mitred lip is the same gauge as the wall and the road line');
 // Wheel centres, in the order they were drawn: lcdGear translates to each one
 // before laying the body arc, so the translate that precedes a 6.5 body is the
 // wheel's position in the hole.
@@ -147,10 +157,11 @@ assert(pitOps.some((op) => op[0] === 'fill' && op[1] === INK) && gearCentres.len
 // The train runs THROUGH the shaft, it does not jam into it. The old packing
 // divided the width by a wheel count, which stretched the row wall to wall and
 // buried a tooth tip in the ink at every authored width — no hole could be
-// widened clear of it. Both walls are 3px thick, so the daylight is measured
-// from their inner faces.
+// widened clear of it. Both walls are LCD_ROAD_INK thick, so the daylight is
+// measured from their inner faces.
 const GEAR_R = 9;
-assert(gearCentres.every((cx) => cx - GEAR_R > 103 && cx + GEAR_R < 153),
+assert(gearCentres.every((cx) => cx - GEAR_R > 100 + LCD_ROAD_INK
+  && cx + GEAR_R < 156 - LCD_ROAD_INK),
 'every cogwheel clears both pit walls instead of being flush against them');
 // Meshing is the pitch, and the pitch alone: neighbours a hair under two radii
 // apart, the same in every hole whatever its width.
@@ -179,7 +190,12 @@ for (const stage of [1, 3]) {
   const activeBarrel = (ops) => ops.filter((op) => op[0] === 'ellipse' && op[3] === 8 && op[4] === 7).at(-1);
   assert(activeBarrel(beat0)?.[2] !== activeBarrel(beat2)?.[2],
     `stage ${stage} rooftop gorilla lifts and sets down its barrel on the four-beat cycle`);
-  assert(activeBarrel(beat0)?.[2] <= (stage === 1 ? 70 : 52),
+  // High on the panel, and each stage's ceiling is its own building's. Stage 3's
+  // is 64 rather than 52 because its tower came down fourteen to let the plane
+  // cross over the raised barrel instead of behind it — see that scene's
+  // `plane`, and the crossing check further down that enforces the clearance
+  // this number pays for.
+  assert(activeBarrel(beat0)?.[2] <= (stage === 1 ? 70 : 64),
   `stage ${stage} downbeat pose holds the barrel overhead on its tallest building`);
   const ellipses = beat0.filter((op) => op[0] === 'ellipse').length;
   const curves = beat0.filter((op) => op[0] === 'quadraticCurveTo').length;
@@ -187,9 +203,15 @@ for (const stage of [1, 3]) {
   `stage ${stage} gorilla uses curved anatomy, layered facial planes and articulated hands (${ellipses} ellipses, ${curves} curves)`);
 }
 
+// The bound is lcdLightFloor's own definition, not a copy of what it happened
+// to evaluate to: a caller outside a run lights no lower than
+// GROUND_Y - (the pack's default rise + a window). It was written 204 — the
+// value that arithmetic had when the groundline was at 224 and the lane climbed
+// 22 — and a literal there passes for the wrong reason the moment either moves.
+const LIT_FLOOR = GROUND_Y - (LCD_DEFAULT_ROAD_RISE + 6);
 for (const stage of [1, 2, 3]) {
   const activeRects = background(stage, 7).filter((op) => op[0] === 'fillRect' && op[1] === ACTIVE);
-  assert(activeRects.length > 0 && activeRects.every((op) => op[3] <= 204),
+  assert(activeRects.length > 0 && activeRects.every((op) => op[3] <= LIT_FLOOR),
     `stage ${stage} active ghost segments stay clear of the lane`);
 }
 
@@ -211,7 +233,10 @@ assert(fingerprint(cloudWispXs(background(1, 8, { reducedMotion: true })))
 // painter on its roof, and a runner whose face plate lifts 11px on the jump
 // beat. Mini barrels are the only 4.5x4 ellipses in the scene; the runner's
 // face is the only fillRect in the muzzle colour.
-const gwBeat = [0, 13, 15, 1].map((b) => background(1, b));
+// Beat 1, not beat 0, for the bottom-girder pose: the loop's first beat has him
+// on the ladder BELOW that girder, coming up out of the street, and a climbing
+// figure is drawn from behind with no face at all.
+const gwBeat = [1, 13, 15, 2].map((b) => background(1, b));
 const miniBarrels = (ops) => ops.filter((op) => op[0] === 'ellipse' && op[3] === 4.5 && op[4] === 4);
 assert(miniBarrels(gwBeat[0]).length >= 10,
 'stage 1 carries the tower with its full ghosted barrel path');
@@ -220,6 +245,18 @@ assert(faceY(gwBeat[0]) - faceY(gwBeat[1]) > 40,
 'the tower runner climbs from the bottom girder to the top across the loop');
 assert(faceY(gwBeat[2]) == null,
 'and after the barrel clips him, the last beat finds the cell empty');
+// AND EVERY RUN OF THE TOWER STARTS ON THE LADDER. He used to be simply there
+// on the bottom girder on the downbeat, which reads as a figure being redrawn
+// rather than as the same man having walked back round. His cap is the 7px
+// purple block, in both the climbing pose and the running one.
+const capY = (ops) => ops.find((op) => op[0] === 'fillRect' && op[1] === '#7b4bd0'
+  && op[4] === 7)?.[3];
+for (const start of [0, 16]) {
+  assert(capY(background(1, start)) > capY(background(1, start + 1)) + 6,
+    `the runner starts his loop climbing out of the street rather than standing `
+    + `on the bottom girder (beat ${start} cap at y ${capY(background(1, start))}, `
+    + `beat ${start + 1} at ${capY(background(1, start + 1))})`);
+}
 assert(fingerprint(miniBarrels(gwBeat[0])) !== fingerprint(miniBarrels(gwBeat[3])),
 'the lit barrel cells advance along the path each beat');
 assert(!miniBarrels(background(2, 0)).length,
@@ -283,12 +320,58 @@ for (const stage of [1, 2, 3]) {
     'and it steps to a new angle on every heard beat');
   const train = (beat, progress) => background(2, beat, {}, 0, 0, { progress })
     .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(70,121,137,0.5)');
-  // Probed mid-crossing: the service runs a 24-beat lap and is genuinely off
-  // the right-hand edge for the first few beats of it.
+  // Probed mid-crossing: the service runs a 48-beat lap over a 22-beat
+  // crossing, and is genuinely off the right-hand edge for the first few beats
+  // of it.
   assert(train(12, 0).length === 0 && train(12, 0.3).length > 0,
     'the train joins the city in the second phase rather than opening with it');
   assert(fingerprint(train(12, 0.3)) !== fingerprint(train(13, 0.3)),
     'and it crosses a car-length per heard beat');
+  // THE RAIL IS MASONRY AND THE TRAIN IS TRAFFIC. The viaduct's girder is a
+  // full-width soft bar; it stands in the opening phase, before any service
+  // has run, and it is still standing on the beats between services.
+  const girder = (beat, progress) => background(2, beat, {}, 0, 0, { progress })
+    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(53,83,101,0.48)'
+      && op[2] === 0 && op[4] === 480);
+  assert(girder(12, 0).length === 1 && girder(12, 0.3).length === 1,
+    'the viaduct stands from the opening phase, with or without a train on it');
+  assert(train(34, 0.3).length === 0 && girder(34, 0.3).length === 1,
+    'and the rail is still there on the beats the service is not');
+  // THE ROOF CARRIES ONE THING. Stage 2 hangs an equalizer bank on every
+  // building a billboard is not already standing on, and every crown this
+  // skyline draws is centred and short enough to land inside the bank's
+  // cabinet — so the bank and the building's own parapet, stack, box or spire
+  // pediment were being drawn on top of each other. Every one of those crowns
+  // is a stroked box seated 5.5 above the roofline, or a fillRect finial
+  // standing on it; none of them may appear on this panel.
+  // Paired to their OWN building — every roof here is 5.5 above some other
+  // building's facade line, so an unpaired scan matches three of them.
+  const stage2Buildings = [[16, 42, 56], [74, 36, 128], [126, 48, 72], [190, 38, 148],
+    [244, 52, 50], [312, 40, 138], [368, 46, 66], [430, 36, 142]];
+  const stage2Ops = background(2, 4, {}, 0, 0, { progress: 0.3 });
+  const onRoof = (pred) => stage2Buildings.filter(([bx, bw, bh]) => stage2Ops.some(
+    ([kind, , ox, oy, ow, oh]) => ox > bx && ox < bx + bw && pred(kind, oy, ow, oh, GROUND_Y - bh)));
+  const crowns = onRoof((kind, oy, ow, oh, roof) => kind === 'strokeRect'
+    && oy === roof - 5.5 && oh === 5);
+  assert(crowns.length === 0,
+    `no stage 2 building draws its own crown under the meter (${crowns.length} found)`);
+  const finials = onRoof((kind, oy, ow, oh, roof) => kind === 'fillRect'
+    && ((ow === 1 && oh === 7) || (ow === 2 && oh === 4)) && oy >= roof - 24 && oy < roof);
+  assert(finials.length === 0, `nor its finial mast (${finials.length} found)`);
+  // And the meters themselves are still on those roofs.
+  const meterCells = background(2, 4, {}, 0, 0, { progress: 0.3 })
+    .filter(([kind, fill, , , fw, fh]) => kind === 'fillRect' && fw === 3 && fh === 3
+      && (fill === 'rgba(211,91,67,0.82)' || fill === 'rgba(53,83,101,0.24)'));
+  assert(meterCells.length >= 6 * 6 * 2, `the equalizer banks still stand (${meterCells.length} cells)`);
+
+  // The piers stand in the gaps, never up through a billboard's own legs.
+  const piers = background(2, 12, {}, 0, 0, { progress: 0.3 })
+    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(53,83,101,0.48)'
+      && op[4] === 2 && op[5] === 10);
+  // Billboards sit on buildings 1 (x 74 w 36) and 7 (x 430 w 36).
+  assert(piers.length > 0 && piers.every(([, , px]) => (px + 2 <= 72 || px >= 112)
+    && (px + 2 <= 428 || px >= 468)),
+    'no viaduct pier comes up over a billboard roof');
 }
 
 // ---- the jukebox panel ----------------------------------------------------
@@ -401,6 +484,111 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   assert(overHead > 0 && throughHead === 0,
     `and passes over the gorilla's head rather than through it `
     + `(${overHead} beats above him, ${throughHead} inside)`);
+
+  // AND THE CROSSING THAT MISSES CLEARS HIM BY MORE. The strike is the plane
+  // inside the barrel, so that pass flies the lane the gap allows — but a pass
+  // with nothing to take flew the same one, and eight pixels over the skull
+  // reads as a near miss rather than as a miss. The thinner ribbon's pixels go
+  // there. Crossing 0 strikes; crossing 1 (a beat late, sixty-four beats on)
+  // is one of the two that do not.
+  const overGorilla = (base) => {
+    let clear = 999, ceil = 999;
+    for (let c = 0; c < 44; c++) {
+      const p = plane(base + c);
+      if (!p) continue;
+      ceil = Math.min(ceil, p.y);
+      if (p.x + PLANE_W > headL && p.x < headR) clear = Math.min(clear, headTop - (p.y + PLANE_H));
+    }
+    return { clear, ceil };
+  };
+  const hit = overGorilla(0), missed = overGorilla(64);
+  assert(missed.clear > hit.clear,
+    `the crossing that misses flies over him with room to spare `
+    + `(${missed.clear}px clear against the striking pass's ${hit.clear})`);
+  assert(missed.ceil >= BEAT_RIBBON_BOTTOM,
+    `and buys that height from the sky rather than from the beat ribbon `
+    + `(tops out at y ${missed.ceil}, band ends ${BEAT_RIBBON_BOTTOM})`);
+}
+
+// ---- and on stage 3 it simply misses him -----------------------------------
+//
+// Stage 1's crossing has a barrel to take, so its lane is allowed to end inside
+// the gorilla. Stage 3's has nothing to take, and for a long time it flew the
+// same low lane anyway: the aircraft went behind his skull for four beats,
+// vanished whole for one, and came back out through his raised arm. He is drawn
+// after the plane and he is opaque, so nothing about that was a glitch — it was
+// simply a picture of a collision with a tidy edge.
+//
+// So this panel's crossing has to clear him OUTRIGHT, and there are two things
+// to clear: the skull, and the barrel he raises above it once a bar. The second
+// one is why his building came down as well as the lane going up — the sky above
+// the lane runs out at BEAT_RIBBON_BOTTOM, so the barrel could only be missed by
+// lowering it. Both are checked against the ops rather than the scene's numbers,
+// so raising him again fails here rather than in the panel.
+{
+  const PLANE_W = 22, PLANE_H = 12, WIN_DX = 6, WIN_DY = 6;
+  const ops = (beat) => background(3, beat);
+  const plane = (beat) => {
+    const rows = new Map();
+    for (const op of ops(beat)) {
+      if (op[0] !== 'fillRect' || op[1] !== PANEL_LIT || op[4] !== 2 || op[5] !== 2) continue;
+      const xs = rows.get(op[3]) || [];
+      xs.push(op[2]);
+      rows.set(op[3], xs);
+    }
+    for (const [y, xs] of rows) {
+      if (xs.length < 3) continue;
+      xs.sort((a, b) => a - b);
+      if (xs[1] - xs[0] !== 4 || xs[2] - xs[1] !== 4) continue;
+      return { x: xs[0] - WIN_DX, y: y - WIN_DY };
+    }
+    return null;
+  };
+  // The towed banner is the rig's real underside — its plate is the one 11px
+  // tall lit fill on the panel — and it is what the raised barrel was poking
+  // through, two letters at a time, long after the aircraft itself was clear.
+  const banner = (beat) => ops(beat).find((op) => op[0] === 'fillRect'
+    && op[1] === PANEL_LIT && op[5] === 11);
+
+  const head = ops(0).find((op) => op[0] === 'ellipse' && op[3] === 12 && op[4] === 11);
+  assert(!!head, 'stage 3 puts a gorilla on the skyline too');
+  const headTop = head[2] - head[4], headL = head[1] - head[3], headR = head[1] + head[3];
+  // The barrel he holds up rides the same rig as the head, 19 above its centre
+  // with a 7px half-height, so it is derived rather than measured: move him and
+  // the number this test enforces moves with him.
+  const barrelTop = head[2] - 19 - 7, barrelL = head[1] - 8, barrelR = head[1] + 8;
+
+  let flown = 0, ceiling = 999, overHead = 0, clear = 999, overBarrel = 0, barrelGap = 999;
+  // Four crossings, so every entry of the dodge rotation flies the lane at least
+  // once and every tow line in the rotation gets towed past him.
+  for (let beat = 0; beat < 256; beat++) {
+    const p = plane(beat);
+    if (!p) continue;
+    flown++;
+    ceiling = Math.min(ceiling, p.y);
+    if (p.x + PLANE_W > headL && p.x < headR) {
+      overHead++;
+      clear = Math.min(clear, headTop - (p.y + PLANE_H));
+    }
+    // Only the beat he actually has it up, and only when the rig is over it.
+    if (beat % 4 !== 0) continue;
+    const box = banner(beat);
+    const rigL = box ? box[2] : p.x, rigR = p.x + PLANE_W;
+    const rigBottom = Math.max(p.y + PLANE_H, box ? box[3] + box[5] : 0);
+    if (rigR > barrelL && rigL < barrelR) {
+      overBarrel++;
+      barrelGap = Math.min(barrelGap, barrelTop - rigBottom);
+    }
+  }
+  assert(flown > 80, `stage 3 flies its own plane across the sky (${flown} beats of it)`);
+  assert(ceiling >= BEAT_RIBBON_BOTTOM,
+    `and never rises into the beat ribbon's band (tops out at y ${ceiling}, band ends ${BEAT_RIBBON_BOTTOM})`);
+  assert(overHead > 0 && clear >= PLANE_H,
+    `and passes over the gorilla with a plane's worth of daylight, not behind him `
+    + `(${overHead} beats over him, ${clear}px clear)`);
+  assert(overBarrel > 0 && barrelGap > 0,
+    `and the rig it tows clears the barrel he raises into that lane `
+    + `(${overBarrel} raised beats under the rig, closest ${barrelGap}px)`);
 }
 
 // ---- and takes the barrel with it -----------------------------------------
@@ -543,10 +731,13 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
 {
   // The chart board sits on stage 1's SECOND building — the roof the hero
   // runs under — clear above that roof, so a box around the board catches the
-  // sign and none of the facade's windows. Building 1 is [66, 36, 74]: centre
-  // 84, roof 150, an 11x8 sign on a 30x24 panel whose cells start at 73, 122.
+  // sign and none of the facade's windows. Building 1 is [66, 36, 68]: centre
+  // 84, roof 156, an 11x8 sign on a 30x24 panel whose cells start at 73, 128.
+  // That height is solved against the clock tower rather than chosen — the
+  // dial has to finish above this board's top edge — so this window moves
+  // whenever the tower does.
   const inBoard = (op) => op[0] === 'fillRect' && op[4] === 2 && op[5] === 2
-    && op[2] >= 73 && op[2] < 96 && op[3] >= 122 && op[3] < 139;
+    && op[2] >= 73 && op[2] < 96 && op[3] >= 128 && op[3] < 145;
   const traceRows = (extra, settings = {}) => background(1, 4, settings, 0, 0, extra)
     .filter((op) => inBoard(op) && (op[1] === ACTIVE || op[1] === '#f6d33c')).map((op) => op[3]);
   const mid = (rows) => rows.reduce((a, b) => a + b, 0) / Math.max(1, rows.length);
@@ -659,6 +850,92 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
     'a line holds for the whole of its own crossing');
   assert(!rota.includes(lettering(keyBeat - 20)) && lettering(keyBeat - 20).length > 2,
     'and the announcement pass tows something the rotation never says');
+
+  // ---- the opening legend, and the barrel it must not fly into ------------
+  //
+  // The clean first crossing carries the run's legend when there is one, and
+  // that crossing is ALSO the one that flies into the gorilla's raised barrel
+  // on this scene — it connects on beat 20. Those two facts together are the
+  // whole reason lcdPassStrike exists: the one pass the player is being asked
+  // to read must not be the one detonating a barrel over their head. The lift
+  // is not cosmetic either; the miss lane is ten pixels higher, so the plane
+  // that tows instructions is flying the lane of a plane that was never going
+  // to hit anything.
+  const LEGEND = { text: '\u25b2JUMP \u25cbSHOOT',
+    ink: { '\u25b2': '#3fbf5a', '\u25cb': '#f890b8' } };
+  const towing = (beat) => background(1, beat, {}, 0, 0, { intro: { legend: LEGEND } });
+  assert(lcdBarrelStrikeAt(1, 20), 'the clean opening crossing flies into the barrel');
+  assert(!lcdBarrelStrikeAt(1, 20, { legend: LEGEND }),
+    'and a crossing towing the legend never does');
+  assert(lcdBarrelStrikeAt(1, 240, { legend: LEGEND }) && lcdBarrelStrikeAt(1, 276, { legend: LEGEND }),
+    'the gag still runs on the later crossings the legend is nowhere near');
+  // Ten pixels of it, measured off the aircraft itself rather than asserted: the
+  // plane is the one 22x12 print silhouette in the sky.
+  const planeY = (ops) => {
+    const body = ops.filter((op) => op[0] === 'fillRect' && op[1] === PRINT
+      && op[5] > 1 && op[5] <= 12 && op[3] < 110).map((op) => op[3]);
+    return body.length ? Math.min(...body) : null;
+  };
+  const clean = planeY(background(1, 20));
+  const lifted = planeY(towing(20));
+  assert(clean != null && lifted != null && clean - lifted === 10,
+    `and it flies the miss lane while it does (${clean} -> ${lifted})`);
+  // The legend is the one banner that is not only letters: two of its marks are
+  // the ribbon's own shapes, drawn in the ribbon's own colours, which is the
+  // entire point of towing it rather than printing the words alone.
+  const glyphInk = new Set(towing(20).filter((op) => op[0] === 'fillRect'
+    && op[4] === 1 && op[5] === 1 && op[3] < 95).map((op) => op[1]));
+  assert(glyphInk.has('#3fbf5a') && glyphInk.has('#f890b8'),
+    'the legend draws its verb marks in the actions\' own colours');
+  assert(lettering(20) === '', 'and an opening crossing with no legend still tows nothing');
+}
+
+// ---- how low a window may light -------------------------------------------
+//
+// The panel draws the city behind a road that RISES over its feet, so a lit
+// window inside the band the lane can climb through is swallowed as the lane
+// rolls past it. The pack's floor is derived from that reach rather than
+// hardcoded, and the pack carries its own default for callers that draw no road
+// at all — a number that has to keep matching the terrain it was taken from.
+// This is the guard against those two drifting apart.
+{
+  const { STAGE_WAVES: WAVES, setStageWave: setWave, setGroundRises: setRises, maxTerrainHeight }
+    = await import('../src/game/terrain.js');
+  const rhythm = CABINETS.find((c) => c.id === 'rhythm');
+  const CROSSING_ROAD_RISE = 7;    // run.js, mirrored here on purpose
+
+  // rhythm-1: the crossings' rise AND the stage wave, which can coincide.
+  setRises([{ x: 0, w: 100, h: CROSSING_ROAD_RISE, ramp: 40 }]);
+  const w1 = WAVES['rhythm-1'];
+  setWave({ amp: w1.amp, period: w1.period, phase: 0, from: 0, to: 1000 });
+  const one = maxTerrainHeight(rhythm);
+  assert(one === CROSSING_ROAD_RISE + w1.amp,
+    `rhythm-1's lane climbs the crossing rise plus its stage wave (got ${one})`);
+
+  // The pack's no-road default must be the worst of the three stages, or a
+  // caller outside a run would light a window the lane could climb over.
+  assert(LCD_DEFAULT_ROAD_RISE === one,
+    `the pack's default road rise matches rhythm-1's real maximum (got ${LCD_DEFAULT_ROAD_RISE}, terrain says ${one})`);
+
+  // rhythm-2 and rhythm-3 declare no wave, so their lane climbs less and their
+  // city may light twelve pixels lower — the band closest to the lane.
+  setWave(null);
+  const rest = maxTerrainHeight(rhythm);
+  assert(rest === CROSSING_ROAD_RISE,
+    `a stage with no wave only climbs its crossings (got ${rest})`);
+  assert(one - rest === w1.amp,
+    `which is ${w1.amp}px more city than rhythm-1 can light (got ${one - rest})`);
+
+  // THE INVARIANT THE WHOLE DERIVATION IS FOR: the lowest lit window's bottom
+  // edge and the road's highest reach are the same line. One pixel either way is
+  // a window the lane clips as it rolls, or a row of city given away for nothing.
+  const WINDOW_H = 6;
+  for (const rise of [0, 10, 22]) {
+    const lowestLitBottom = (GROUND_Y - (rise + WINDOW_H)) + WINDOW_H;
+    assert(lowestLitBottom === GROUND_Y - rise,
+      `at a ${rise}px rise the lowest lit window ends exactly where the road begins`);
+  }
+  setRises([]);
 }
 
 if (failed) process.exit(1);

@@ -4,10 +4,11 @@
 // note number on the way out. Timbre can't survive the trip: each lane gets the
 // GM program that comes closest to its oscillator, and percussion goes to ch10.
 import {
-  songBlocks, stepLen, toneLen, perNoteLengthLane, effectiveToneLength,
+  songBars, stepLen, toneLen, perNoteLengthLane, effectiveToneLength, LANE_KEYS,
+  sequenceValue,
 } from '../../src/engine/lanes.js';
 import { SWING_STRAIGHT, resolutionOf, LEGACY_RESOLUTION } from '../../src/data/arrangements.js';
-import { baseLane, isLayer } from '../../src/data/voices.js';
+import { baseLane, isLayer, PERCUSSION_LANES } from '../../src/data/voices.js';
 
 const PPQ = 96;          // ticks per quarter note
 const TPS = PPQ / 4;     // ticks per 16th step — the sequencer's grid
@@ -53,10 +54,16 @@ const RUN_TRACKS = [
 // GM percussion key map. `sweeps` has no MIDI equivalent — it is a filtered
 // noise swell with no pitch and no transient — so it is dropped, and the CLI
 // reports that rather than pretending the export is complete.
+// `tom` is here because a lane the engine plays and this map does not name is a part
+// that leaves the export without a word — rhythm's tom2 was nine hits of nothing.
+// GM 45 is Low Tom, the middle of the six the map offers, which is the honest answer
+// for a lane whose pitch is a bank setting (`tomNote`) rather than a kit position.
 const DRUMS = {
-  kick: 36, snare: 38, rim: 37, clap: 39, hats: 42, ohats: 46, crash: 49,
+  kick: 36, snare: 38, rim: 37, clap: 39, hats: 42, ohats: 46, crash: 49, tom: 45,
 };
-const DRUM_VEL = { kick: 110, snare: 96, rim: 84, clap: 92, hats: 80, ohats: 80, crash: 104 };
+const DRUM_VEL = {
+  kick: 110, snare: 96, rim: 84, clap: 92, hats: 80, ohats: 80, crash: 104, tom: 96,
+};
 export const MIDI_UNSUPPORTED_LANES = ['sweeps'];
 
 // ---- MIDI file primitives ---------------------------------------------------
@@ -138,6 +145,57 @@ function toEvents(notes) {
   return { ev, trimmed };
 }
 
+// ---- the per-bar edits, exactly as the sequencer applies them ------------------
+//
+// A bar of the plan may silence lanes (`off`, `delete`), transpose them, and nudge
+// them off the grid (`offset`). These are the notes the song PLAYS, so a MIDI file
+// that skips them is a file of a different song: rhythm mutes lanes in 25 of its 80
+// bars and transposes in 36 of them, and exported flat it was neither in the right
+// key nor the right arrangement.
+//
+// Everything here mirrors the scheduler (see the bar block in `scheduleStep`,
+// audio.js) rather than reimplementing it: same `barValue` fallback, same recursive
+// `shift` over chords and layer values, and the same rule that a NUMBER means every
+// pitched lane while an object names its own.
+const barValue = (map, key, fallback = 0) =>
+  typeof map === 'number' ? map : (Number.isFinite(map?.[key]) ? map[key] : fallback);
+const shift = (value, semitones) => (Array.isArray(value)
+  ? value.map((v) => shift(v, semitones))
+  : typeof value === 'number' && value > 0 ? value * 2 ** (semitones / 12) : value);
+
+/**
+ * One bar's partial bank with its arrangement edits made true.
+ *
+ * `off` and `delete` null the lane rather than emptying it, which is what makes the
+ * walk below skip the bar entirely — the same `b[key] = null` the sequencer does.
+ * Transpose only ever touches LANE arrays: a number means "everything pitched", and
+ * mapping it over every array in the bank would multiply the `*Len` arrays too and
+ * shorten every note in a bar transposed down (audio.js says the same, at length).
+ */
+function barBank(b, bar) {
+  let out = b;
+  const silenced = [...(bar?.off || []), ...(bar?.delete || [])];
+  if (silenced.length) {
+    out = { ...out };
+    for (const key of silenced) out[key] = null;
+  }
+  const transposeKeys = new Set([
+    ...Object.keys(typeof bar?.transpose === 'object' ? bar.transpose || {} : {}),
+    ...(typeof bar?.transpose === 'number'
+      ? [...LANE_KEYS, ...(out.__layers || []).map((L) => L.key)]
+        .filter((k) => !PERCUSSION_LANES.includes(baseLane(k)))
+      : []),
+  ]);
+  if (transposeKeys.size) {
+    out = { ...out };
+    for (const key of transposeKeys) {
+      const semitones = barValue(bar.transpose, key);
+      if (semitones && Array.isArray(out[key])) out[key] = out[key].map((v) => shift(v, semitones));
+    }
+  }
+  return out;
+}
+
 /**
  * Build a type-1 MIDI file for a bank.
  *
@@ -158,7 +216,7 @@ function toEvents(notes) {
  * @param {boolean} [opts.gmChannels=false]  the full GM layout — every lane on its
  *   own MIDI channel with its program, for a hardware module or GM player that
  *   plays all parts through one synth. Do not feed this to Logic (see above).
- * @returns {{buffer, trackNames, tracks, blocks, seconds, trimmed, deadPitches}}
+ * @returns {{buffer, trackNames, tracks, blocks, bars, seconds, trimmed, deadPitches}}
  */
 export function midiBuffer(bank, {
   repeat = 1, title = 'MASHENSTEIN', gmChannels = false, patches = gmChannels,
@@ -173,7 +231,16 @@ export function midiBuffer(bank, {
   // straight unless the shift is applied here too.
   swing = bank.swing ?? SWING_STRAIGHT,
 } = {}) {
-  const blocks = songBlocks(bank, repeat);
+  // BARS, not blocks. `songBlocks` pairs the bar plan up two at a time and keeps the
+  // FIRST of each pair, which is only the song when every order entry is a whole
+  // two-bar section. A song built a bar at a time — rhythm is eighty `{bars: 1}`
+  // entries — lost every second bar to that pairing and then had the surviving
+  // section written out at full length, so the half nobody asked for came out as a
+  // blank bar between every bar of music. It also threw the mute mask away, which is
+  // a per-bar answer that cannot survive being asked a two-bar question.
+  const bars = songBars(bank, repeat).map(({ b, half, off, delete: del, bar }) => ({
+    b: barBank(b, { ...bar, off, delete: del }), half, bar,
+  }));
 
   // ---- layers get tracks of their own ---------------------------------------
   //
@@ -186,8 +253,8 @@ export function midiBuffer(bank, {
   // hands over the raw bank and the notes are the honest record either way. The name
   // is the base track's plus the ordinal — `Lead 2` — which is exactly what
   // tools/lib/midi-import.js reads back onto `lead2`.
-  const layerKeys = [...new Set(blocks.flatMap((b) => Object.keys(b)))]
-    .filter((k) => isLayer(k) && Array.isArray(blocks.find((b) => b[k])?.[k]))
+  const layerKeys = [...new Set(bars.flatMap(({ b }) => Object.keys(b)))]
+    .filter((k) => isLayer(k) && bars.some(({ b }) => Array.isArray(b[k])))
     .sort();
   // Channels 0–8 and 10–13 are spoken for below, 9 is the kit. Two are left, and a
   // layer past them shares the channel of the lane it copies: with `gmChannels` off —
@@ -228,7 +295,10 @@ export function midiBuffer(bank, {
   // song has 64-slot blocks, so the walk stopped at the halfway point AND spread the
   // first bar's slots over two bars' worth of ticks.
   const resolution = resolutionOf(bank);
-  const slotsPerBlock = resolution * 2;
+  // A lane array is two bars, so a BAR is `resolution` slots of it and `half` says
+  // which half this bar reads — `bar.half * resolution + s`, the two numbers
+  // `scheduleStep` computes for itself.
+  const slotsPerBar = resolution;
   const ticksPerSlot = (TPS * LEGACY_RESOLUTION) / resolution;
   // Swing, at any grid, by the same rule the engine uses (`AudioSys._swingOffset`): the
   // offset is a statement about a PAIR of sixteenths, so a slot that is not a whole or
@@ -241,7 +311,13 @@ export function midiBuffer(bank, {
     const phase = ((halves % 4) + 4) % 4;
     return phase === 2 ? swingTicks : phase % 2 ? Math.round(swingTicks / 2) : 0;
   };
-  const tickAt = (bi, s) => (bi * slotsPerBlock + s) * ticksPerSlot + swingAt(s);
+  // `s` is the bar-local slot, so the swing phase is the same number it was over a
+  // two-bar block: a bar is 16 sixteenths and the pair pattern repeats every 2.
+  // A bar's `offset` nudges a lane off the grid in 1/32 notes, which is the unit the
+  // desk's control uses and what the scheduler multiplies by `spb / 2`.
+  const tickAt = (bi, s, offsetTicks = 0) =>
+    (bi * slotsPerBar + s) * ticksPerSlot + swingAt(s) + offsetTicks;
+  const offsetAt = (bar, key) => Math.round(barValue(bar?.offset, key) * (TPS / 2));
   const tracks = [];
   const trackNames = [];
   // What went into each track, so the CLI can say where a part actually starts. A
@@ -276,21 +352,30 @@ export function midiBuffer(bank, {
 
   for (const L of laneTracks) {
     const notes = [];
-    blocks.forEach((b, bi) => {
+    bars.forEach(({ b, half, bar }, bi) => {
       const lane = b[L.lane];
       if (!lane) return;
-      for (let s = 0; s < slotsPerBlock; s++) {
-        const v = lane[s];
+      const nudge = offsetAt(bar, L.lane);
+      for (let s = 0; s < slotsPerBar; s++) {
+        // The slot in the SECTION, which is what the lane array and every length
+        // array beside it are indexed by; `s` alone addresses the bar.
+        const slot = half * resolution + s;
+        // Through `sequenceValue`, never `lane[slot]`. A lane written on a coarser
+        // grid than the song's clock occupies every Nth slot of it — a 32-slot lane on
+        // a `resolution: 32` song is read at stride 2 — so indexing the array raw
+        // reads past the end of it for every bar of the second half, which is a whole
+        // song's worth of silence on the speed cabinet.
+        const v = sequenceValue(b, L.lane, slot, resolution);
         if (!v) continue;
-        const tick = tickAt(bi, s);
+        const tick = tickAt(bi, s, nudge);
         // What the roll drew on this step, if anything: the note-off follows the
         // rectangle rather than the lane, and a chord's tones can differ.
-        const len = stepLen(b, L.lane, s, resolution);
+        const len = stepLen(b, L.lane, slot, resolution);
         // chord lanes hold an array of simultaneous pitches; melodic lanes a scalar
         (Array.isArray(v) ? v : [v]).forEach((hz, i) => {
           if (!(hz > 0)) { deadPitches++; return; }
           const length = perNoteLengthLane(L.lane)
-            ? effectiveToneLength(b, L.lane, s, i, resolution)
+            ? effectiveToneLength(b, L.lane, slot, i, resolution)
             : toneLen(len, L.dur(b), i);
           note(notes, ch(L.ch), midiNote(hz), tick, length * TPS, L.vel);
         });
@@ -306,16 +391,21 @@ export function midiBuffer(bank, {
 
   for (const R of runTracks) {
     const notes = [];
-    blocks.forEach((b, bi) => {
+    bars.forEach(({ b, half, bar }, bi) => {
       const lane = b[R.lane];
       if (!lane) return;
-      for (let s = 0; s < 32; s++) {
-        if (!(lane[s] > 0)) { if (lane[s]) deadPitches++; continue; }
-        const target = midiNote(lane[s]);
+      const nudge = offsetAt(bar, R.lane);
+      // `slotsPerBar`, not a hard 32: a song on a finer grid used to have its runs
+      // read off the wrong slots as well as the wrong bars.
+      for (let s = 0; s < slotsPerBar; s++) {
+        const slot = half * resolution + s;
+        const at = sequenceValue(b, R.lane, slot, resolution);
+        if (!(at > 0)) { if (at) deadPitches++; continue; }
+        const target = midiNote(at);
         const dt = (R.span(b) * TPS) / GLISS_STEPS.length;
         GLISS_STEPS.forEach((semi, k) => {
           const vel = Math.round(R.vel * (0.6 + 0.4 * ((k + 1) / GLISS_STEPS.length))); // cresc. into the target
-          note(notes, ch(R.ch), target + semi, tickAt(bi, s) + Math.round(k * dt), dt * 1.7, vel);
+          note(notes, ch(R.ch), target + semi, tickAt(bi, s, nudge) + Math.round(k * dt), dt * 1.7, vel);
         });
       }
     });
@@ -332,11 +422,12 @@ export function midiBuffer(bank, {
   // channel 10 (0-based 9), which is what makes a GM device play them as a kit.
   for (const [lane, keyNum] of drumTracks) {
     const notes = [];
-    blocks.forEach((b, bi) => {
+    bars.forEach(({ b, half, bar }, bi) => {
       if (!b[lane]) return;
-      for (let s = 0; s < slotsPerBlock; s++) {
-        if (!b[lane][s]) continue;
-        note(notes, 9, keyNum, tickAt(bi, s), TPS * 0.5, DRUM_VEL[baseLane(lane)] ?? 90);
+      const nudge = offsetAt(bar, lane);
+      for (let s = 0; s < slotsPerBar; s++) {
+        if (!sequenceValue(b, lane, half * resolution + s, resolution)) continue;
+        note(notes, 9, keyNum, tickAt(bi, s, nudge), TPS * 0.5, DRUM_VEL[baseLane(lane)] ?? 90);
       }
     });
     if (!notes.length) continue;
@@ -354,8 +445,11 @@ export function midiBuffer(bank, {
     trackNames,
     tracks: written,
     ppq: PPQ,
-    blocks: blocks.length,
-    seconds: (blocks.length * 32 * (60 / bpm)) / 4,
+    // Still counted in two-bar blocks, because that is the unit every caller prints
+    // and a song is not obliged to have an even number of bars.
+    blocks: bars.length / 2,
+    bars: bars.length,
+    seconds: (bars.length * 16 * (60 / bpm)) / 4,
     trimmed,
     deadPitches,
   };

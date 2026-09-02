@@ -1888,6 +1888,13 @@ function expressionFor(id, pose = {}, spec = null) {
   // clinging (the pole ride keeps its own joyful face below).
   const jf = (pose.kind === 'jump' && !pose.stomp && !clinging) ? (pose.jumpFace | 0) : -1;
   return {
+    // `brow` opts a face out of the shipped ink hairlines, and it has to come
+    // from the SPEC to be usable: drawEyes gates on ex.brow, but the only thing
+    // that ever set it was Lorenzo's cap variant, so a spec asking for
+    // `brow: 'none'` was silently ignored and the ink pair drew anyway. That is
+    // wrong for any hero who carries his own brow marks — Rusty's white spots
+    // ARE his eyebrows, and the ink stroke landed on top of them.
+    brow: spec?.brow,
     // A blink through the call or the glare would eat it, so those win.
     blink: !active && !calling && !annoyed && blinkPhase < (pose.menu ? 0.2 : 0.13),
     calling,
@@ -2316,6 +2323,134 @@ function bluntSpike(c, ax, ay, tx, ty, bx, by, round = 0.18) {
   c.closePath();
 }
 
+// ------------------------------------------------------- animal head kinds
+// GALLERY CANDIDATES. Nothing in TOON_SPECS names these yet — they exist for
+// the hero bake-off in src/dev/hero-candidates.js, which is looking for an
+// animal to take the speedster slot. `jackal` (Gnash, shipped) is deliberately
+// NOT in this table: he keeps his own hand-tuned branches below so the bake-off
+// can show him unchanged beside the proposals.
+//
+// One table and one painter rather than four branches. An ear here is an
+// ellipse leaned outboard off the crown with a lighter inner ellipse, and that
+// one construction covers a red panda's round ear, a fennec's oversized fan and
+// a hare's long blade by moving three numbers — which is the point: a species
+// bake-off can only answer "which animal" if the answer is not also
+// contaminated by "which ear painter".
+//
+// The ears are drawn deliberately LARGER than life, the lesson BREEDS in
+// sprites/animals.js paid for (see its `head()`): at 16px a correctly
+// proportioned ear is one pixel and the pair stops reading as a pair at all.
+//
+//   earOut/earUp  ear centre, in R, from the head centre — outboard and up
+//   earRx/earRy   ear radii in R. earRy >> earRx is a blade, equal is a disc
+//   earLean       outboard rotation in radians, so the pair splays off the crown
+//   inner         inner-ear ellipse as a fraction of the outer
+//   muzzle        [rx, ry, dy] of the snout ellipse, in R
+//   ruff          cheek fur: 'scallop' (panda), 'wisp' (fox), null (none)
+//   mask          face marking: 'panda' (white brow spots + cheek patches),
+//                 'bandit' (dark band across the eyes), null
+const ANIMAL_HEADS = {
+  // Round, wide-set, and big. The ear and the ruff are the whole silhouette —
+  // there is no crown spike, which is the most Sonic-specific thing on Gnash.
+  redpanda: {
+    earOut: 0.80, earUp: 0.60, earRx: 0.46, earRy: 0.42, earLean: 0.30,
+    inner: 0.52, muzzle: [0.60, 0.40, 0.44], ruff: 'scallop', mask: 'panda',
+  },
+  // The ears ARE the character: oversized enough to carry the whole read at
+  // hero size, which is the one thing a small face cannot do.
+  fennec: {
+    earOut: 0.70, earUp: 1.00, earRx: 0.40, earRy: 0.84, earLean: 0.42,
+    inner: 0.58, muzzle: [0.52, 0.34, 0.46], ruff: 'wisp', mask: null,
+  },
+  // Long upright blades, barely splayed. The only species in the row whose
+  // anatomy is itself the speed read.
+  hare: {
+    earOut: 0.40, earUp: 1.16, earRx: 0.20, earRy: 0.90, earLean: 0.14,
+    inner: 0.50, muzzle: [0.52, 0.38, 0.44], ruff: null, mask: null,
+  },
+  // Small and close to the skull, with the dark bandit band. The fast-end
+  // control: a stoat's charm is a long low body this rig cannot do, so what
+  // this cut measures is the ceiling, not a winner.
+  stoat: {
+    earOut: 0.76, earUp: 0.44, earRx: 0.32, earRy: 0.30, earLean: 0.24,
+    inner: 0.46, muzzle: [0.56, 0.34, 0.44], ruff: null, mask: 'bandit',
+  },
+};
+
+// An ellipse leaned outboard, with its lighter inner. Drawn BEHIND the skull in
+// drawHead's first pass, exactly where the jackal's ears go, so the skull's own
+// fill crops the base and the ear reads as growing out of the head rather than
+// stuck on it.
+function animalEar(ctx, p, ow, hx, hy, R, side, A, shape, size = 1, angle, width = 1) {
+  if (shape === 'point') {
+    // The pointed ear: a wide-based soft triangle with the lighter inner
+    // filling most of it, the way a real red panda's white ear-fluff does.
+    //
+    // ROOTED ON THE SKULL, not beside it. The first cut placed the three
+    // corners by hand and put the outer base corner at 1.06R — OUTBOARD of the
+    // head — so nothing cropped it and the ear read as stuck on rather than
+    // grown out; `earSize` then scaled that corner further out and made it
+    // worse. Now the base is built FROM the skull: its midpoint sits on a
+    // circle of radius `rootR` and its corners run along that circle's own
+    // tangent, which puts both at sqrt(rootR^2 + halfW^2) — comfortably inside
+    // R at every size, so the head fill always crops the base.
+    //
+    // ANGLED OUT for free. The ear points RADIALLY outward from where it
+    // roots, plus a small extra lean: a triangle whose axis is the skull's own
+    // normal cannot read as "straight up", which is what the hand-placed
+    // corners did (their outer edge ran x 1.0 -> 0.94, dead vertical).
+    //
+    // `earAngle` is where on the crown it roots, in radians from vertical.
+    // The half-width grows as sqrt(size) rather than with it, so a big ear
+    // gets taller without its base swallowing the whole side of the head.
+    // `width` widens the BASE without lengthening the ear — the two were one
+    // dial (`size` drove both) and a red panda's ear is broad-based and
+    // stubby, where a fox's is narrow-based and long. That distinction is the
+    // whole difference between the two species at this scale, so it gets its
+    // own control.
+    //
+    // A wide base cannot simply be wider: the corners sit at
+    // sqrt(rootR^2 + halfW^2), and past 0.6 halfW that escapes R and the ear
+    // detaches again exactly the way the hand-placed version did. So the ear
+    // ROOTS DEEPER as it widens — rootR is solved to hold the corners on a
+    // 0.95R circle, always inside the skull. A broad ear sitting lower on the
+    // head is also what the reference shows, so the constraint and the drawing
+    // want the same thing.
+    const a = angle ?? 0.62;              // root bearing, radians off vertical
+    const lean = 0.14;                    // extra outward lean of the tip
+    const halfW = 0.4 * Math.sqrt(size) * width;
+    const rootR = Math.min(0.8, Math.sqrt(Math.max(0.04, 0.9025 - halfW * halfW)));
+    const len = 0.82 * size;
+    const px = (br, d) => hx + side * R * br * Math.sin(d);
+    const py = (br, d) => hy - R * br * Math.cos(d);
+    const bcx = px(rootR, a), bcy = py(rootR, a);           // base midpoint, ON the skull
+    const tanx = side * R * halfW * Math.cos(a), tany = R * halfW * Math.sin(a);
+    const bx1 = bcx - tanx, by1 = bcy - tany;               // inner base corner
+    const bx2 = bcx + tanx, by2 = bcy + tany;               // outer base corner
+    const tx = bcx + side * R * len * Math.sin(a + lean);   // tip
+    const ty = bcy - R * len * Math.cos(a + lean);
+    outlined(ctx, p.h, ow, (c) => bluntSpike(c, bx1, by1, tx, ty, bx2, by2, 0.3));
+    // Inner: the same triangle shrunk toward its own centroid, so the rim of
+    // coat colour stays an even width up both edges.
+    const gx = (bx1 + bx2 + tx) / 3, gy = (by1 + by2 + ty) / 3, k = 0.58;
+    outlined(ctx, p.ear || p.s, hair(0.5, ow * 0.6), (c) => bluntSpike(c,
+      gx + (bx1 - gx) * k, gy + (by1 - gy) * k,
+      gx + (tx - gx) * k, gy + (ty - gy) * k,
+      gx + (bx2 - gx) * k, gy + (by2 - gy) * k, 0.3));
+    return;
+  }
+  const cx = hx + side * R * A.earOut, cy = hy - R * A.earUp;
+  const rot = side * A.earLean;
+  outlined(ctx, p.h, ow, (c) =>
+    c.ellipse(cx, cy, R * A.earRx * size, R * A.earRy * size, rot, 0, Math.PI * 2));
+  // The inner sits low in the ear — the outer third nearest the crown is the
+  // part the skull and the ruff crop, so an inner centred in the ellipse spends
+  // half its area somewhere nothing can see it.
+  outlined(ctx, p.ear || p.s, hair(0.5, ow * 0.6), (c) =>
+    c.ellipse(cx, cy + R * A.earRy * size * 0.16, R * A.earRx * A.inner * size,
+      R * A.earRy * A.inner * size, rot, 0, Math.PI * 2));
+}
+
 // ------------------------------------------------------------ Lorenzo's cap
 // The shipped cap used to be a semicircle closed by a FLAT chord at -0.12R,
 // while his eyes top out at -0.38R and the focus brows run -0.45R..-0.29R. So
@@ -2718,6 +2853,86 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       c.lineTo(hx - R * 0.66, hy + R * 0.52);
       c.closePath();
     });
+  }
+  // The bake-off species. Ears first and the cheek ruff under them, both behind
+  // the skull — the ruff has to be cropped by the head or it reads as a collar.
+  const ex = expressionFor(id, pose, spec);
+  // Set by the animal face block; the mouth is clamped against it below.
+  let animalNoseBottom = null;
+  const animal = ANIMAL_HEADS[spec.head];
+  if (animal) {
+    // The ruff goes down FIRST so the ears overlap it: fur tucks under an ear,
+    // never over it. Swept DOWN and OUT, which is the single biggest lever
+    // between "adorable" and "attitude" — the same fan swept up and back is
+    // Gnash's quills.
+    // `spec.ruff` overrides the table for the cheek-treatment round: 'none'
+    // deletes the side fur, 'tuft' swaps the sideways scallop for a pair of
+    // short DOWN-swept tufts at the jaw. Down matters: the sideways fan is
+    // what kept reading as Gnash's quills however round its lobes got.
+    const ruffKind = spec.ruff !== undefined ? spec.ruff : animal.ruff;
+    if (ruffKind && ruffKind !== 'none' && !lod) {
+      const ruffCol = p.furDark || p.p || p.h;
+      for (const side of [-1, 1]) {
+        if (ruffKind === 'tuft') {
+          // Two soft tufts per side, rooted at the jaw and falling down-and-out
+          // past the chin line — neck fluff, not a quill fan. Reach follows the
+          // scallop's lesson: everything inboard of the skull silhouette is
+          // painted over, and the wide-cheek head shape pushes that line to
+          // ~1.24R at exactly this height, so the tips run well past it.
+          for (const [rootX, rootY, tipX, tipY, w] of [
+            [0.5, 0.5, 1.42, 0.92, 0.44],
+            [0.3, 0.68, 1.0, 1.24, 0.38],
+          ]) {
+            outlined(ctx, p.h, ow, (c) => bluntSpike(c,
+              hx + side * R * rootX, hy + R * (rootY - w * 0.5),
+              hx + side * R * tipX, hy + R * tipY,
+              hx + side * R * rootX, hy + R * (rootY + w * 0.5), 0.6));
+          }
+        } else if (ruffKind === 'scallop') {
+          // Three lobes down the cheek, each a blunt spike rooted on the skull
+          // and falling outward. Widest in the middle, so the outline is a
+          // scallop rather than a fringe.
+          //
+          // Two numbers matter here and both were wrong first time.
+          //
+          // REACH: the ruff is drawn BEHIND the skull, so everything inboard of
+          // 1.0R is painted over by the head's own fill and the only ruff
+          // anyone sees is what projects PAST the silhouette. Rooted at 0.66R
+          // with tips at 1.2-1.44R that left three nubs at the jaw; the tips
+          // run to 1.7R now, so there is an actual crescent of fur out there.
+          //
+          // ROUNDNESS: at 0.42 they read as three SPIKES, which is the Gnash
+          // silhouette this cut exists to get away from. But 0.8 eats the lobe
+          // — the straight run collapses to a fifth of its length and the shape
+          // shrinks back to a nub whatever its reach. 0.55 is the setting that
+          // is fur rather than quills and still arrives somewhere.
+          for (const [rootY, outX, tipY, w] of [
+            [-0.24, 1.52, 0.02, 0.46],
+            [0.14, 1.70, 0.44, 0.52],
+            [0.52, 1.44, 0.88, 0.42],
+          ]) {
+            outlined(ctx, p.h, ow, (c) => bluntSpike(c,
+              hx + side * R * 0.6, hy + R * (rootY - w * 0.5),
+              hx + side * R * outX, hy + R * tipY,
+              hx + side * R * 0.6, hy + R * (rootY + w * 0.5), 0.55));
+          }
+          // A darker note tucked at the jaw so the ruff has a shadow side and
+          // does not read as one flat paddle of fur.
+          outlined(ctx, ruffCol, hair(0.5, ow * 0.6), (c) => bluntSpike(c,
+            hx + side * R * 0.7, hy + R * 0.44,
+            hx + side * R * 1.36, hy + R * 0.74,
+            hx + side * R * 0.72, hy + R * 0.82, 0.5));
+        } else {
+          // The fox's lighter wisp: one swept tuft per cheek, no lobes. Same
+          // reach lesson as the scallop above — it has to clear 1.0R to exist.
+          outlined(ctx, p.h, ow, (c) => bluntSpike(c,
+            hx + side * R * 0.64, hy - R * 0.04,
+            hx + side * R * 1.46, hy + R * 0.42,
+            hx + side * R * 0.62, hy + R * 0.54, 0.5));
+        }
+      }
+    }
+    for (const side of [-1, 1]) animalEar(ctx, p, ow, hx, hy, R, side, animal, spec.earShape || animal.earShape, spec.earSize ?? 1, spec.earAngle, spec.earWidth ?? 1);
   }
   if (spec.head === 'floppy') {
     // A single long pointed tail streams behind from the back of the bandana,
@@ -3269,7 +3484,30 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   if (id === 'grumpos') {
     outlined(ctx, p.s, ow, blockHead);
   } else {
-    outlined(ctx, spec.head === 'dome' || spec.head === 'jackal' ? p.h : p.s, ow, (c) => c.arc(hx, hy, R, 0, Math.PI * 2));
+    // A furred head fills with the coat colour, not with skin. Miss this and an
+    // animal comes out wearing a human face inside its own ears.
+    const furred = spec.head === 'dome' || spec.head === 'jackal' || !!ANIMAL_HEADS[spec.head];
+    if (ANIMAL_HEADS[spec.head] && spec.headShape === 'cheeks') {
+      // The wide-cheek skull, from the head-shape round: fluff built INTO the
+      // head instead of stuck onto it. A round crown that flares at the
+      // cheekbones — widest well below the eye line — then tucks to a soft
+      // chin. The point of baking it into the silhouette is that a bulge in
+      // the head's own outline reads as a fluffy face, where the same area
+      // added as separate lobes reads as quills — which is the Gnash problem
+      // this shape exists to solve. Same named-path precedent as Grumpos's
+      // blockHead above.
+      outlined(ctx, p.h, ow, (c) => {
+        c.moveTo(hx - R, hy);                                                     // left temple
+        c.arc(hx, hy, R, Math.PI, 0);                                             // round crown
+        c.quadraticCurveTo(hx + R * 1.24, hy + R * 0.52, hx + R * 0.6, hy + R * 0.88); // cheek flare
+        c.quadraticCurveTo(hx + R * 0.3, hy + R * 1.06, hx, hy + R * 1.04);       // soft chin
+        c.quadraticCurveTo(hx - R * 0.3, hy + R * 1.06, hx - R * 0.6, hy + R * 0.88);
+        c.quadraticCurveTo(hx - R * 1.24, hy + R * 0.52, hx - R, hy);
+        c.closePath();
+      });
+    } else {
+      outlined(ctx, furred ? p.h : p.s, ow, (c) => c.arc(hx, hy, R, 0, Math.PI * 2));
+    }
   }
   // hats / hair ON the head
   if (spec.head === 'cap') {
@@ -3807,6 +4045,296 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     outlined(ctx, p.s, hair(0.6, ow * 0.7), (c) => c.ellipse(hx + R * 0.08, hy + R * 0.4, R * 0.7, R * 0.46, 0, 0, Math.PI * 2));
     dot(ctx, hx + R * 0.08, hy + R * 0.16, R * 0.17, p.e);
   }
+  // The bake-off species' snout and face markings. Centred rather than offset:
+  // the jackal's muzzle sits at +0.08R because his whole face is nudged that
+  // way, and a candidate row is easier to read down when every nose is on the
+  // same vertical.
+  if (animal) {
+    // Face dials, for the face bake-off. The whole animal mask — markings,
+    // muzzle, nose, the lot — rides `eyeLift` exactly the way the eyes and
+    // mouth do (see eyeY below), so dropping the features onto a bigger
+    // forehead moves them as ONE face and not as parts sliding past each
+    // other. `muzzleScale` shrinks the snout about its own top edge (where the
+    // nose sits) rather than its centre, so a smaller muzzle stays under the
+    // nose instead of leaving it floating.
+    // The expression is read HERE rather than at the face block below, because
+    // an animal's brow marks ARE his eyebrows (see browTilt) and they are drawn
+    // under the eyes, which is above where `ex` used to be built. Hoisting it
+    // is safe: nothing between the two points touches pose or spec.
+    // THE FACE CENTRE LINE. drawEyes and drawMouth are both called at
+    // `hx + 0.01 * u`, not at hx — the rig carries the whole face a hair ahead
+    // of the skull so a runner reads as looking where he is going. The animal
+    // marks were built on plain hx, which put the muzzle, the nose and the mask
+    // about 0.048R to the LEFT of the eyes and mouth they belong to; at hero
+    // size that is a couple of pixels of off-centre nose, and it is exactly the
+    // kind of error that is invisible in isolation and obvious once seen.
+    //
+    // The SKULL, the ears and the ruff stay on hx, because they are the head
+    // rather than the face — the same split the rig already makes.
+    const faceCx = hx + 0.01 * u;
+    const fdy = -(spec.eyeLift || 0) * u;
+    const mScale = spec.muzzleScale || 1;
+    const [mrx, mry, mdy] = animal.muzzle;
+    // The snout is anchored by its TOP edge, where the nose sits by default.
+    // `noseTuck` (0..1) slides the nose down INTO the muzzle toward its
+    // centre — the reference-art read, where nose and mouth pack together low
+    // on a small snout — while the muzzle itself stays put; the nose also
+    // scales with the muzzle so a button snout gets a button nose.
+    const mTopY = hy + fdy + R * (mdy - mry * 0.62);
+    const noseY = mTopY + (spec.noseTuck || 0) * R * mry * mScale;
+    // Published for the mouth below, which has to stay clear of it.
+    animalNoseBottom = noseY + R * 0.13 * mScale;
+    // The mask goes UNDER the muzzle and the eyes both, so the snout crops it
+    // and the eyes sit on it — the layering Grumpos' war paint below documents.
+    // Painted the other way round, a brow spot reads as a second eyebrow and a
+    // cheek patch reads as a bald spot.
+    if (animal.mask === 'panda' && !lod) {
+      const markCol = p.mask || p.w || '#fff';
+      // The face marks are three independent pieces, because the reference art
+      // separates them and the first cut did not: a wide cheek patch sitting
+      // right under the eye MERGES with the brow spot above it, and the pair
+      // reads as one white field with an eye floating in it rather than as a
+      // brow and a cheek. Splitting them is the whole point of these dials.
+      //   browMark   'teardrop' (as cut) | 'spot' | 'bar' | 'arc' | 'none'
+      //   cheekPatch 'wide' (as cut) | 'low' (dropped clear of the eye) | 'none'
+      //   eyePatch   a dark ring around the eye, under everything — the
+      //              reference's construction, where the DARK is the mask and
+      //              the white marks read against it instead of against fur.
+      const browMark = spec.browMark || 'teardrop';
+      const cheekPatch = spec.cheekPatch || 'wide';
+      // Worked out ONCE, above the loop, because the eye patch is drawn first
+      // and has to size itself against where the brow will end up. Computed
+      // inside the brow branch (where it started) these are in the temporal
+      // dead zone for the patch, which is a crash rather than a wrong picture.
+      //
+      // The OPEN moods (surprise, joy and their variants) share one pair of
+      // dials, because they are the same gesture at two strengths and tuning
+      // them apart is how a face ends up with two unrelated happy expressions.
+      // `browOpenTilt` and `browOpenRise` override both; the furrow moods keep
+      // their own numbers.
+      const openMood = ex.surprise || ex.browRaise || ex.joy || ex.cheer;
+      const openTilt = spec.browOpenTilt;
+      const browMood = spec.browExpressive === false ? 0
+        : ex.annoyed || ex.hmph || ex.mood === 'gruff' ? 0.34
+          : ex.focus ? 0.18
+            : ex.surprise || ex.browRaise ? (openTilt == null ? 0 : openTilt)
+              : ex.joy || ex.cheer ? (openTilt == null ? 0 : openTilt * 0.73)
+                : 0;
+      // The mark RISES on the open moods and drops on the furrow, so the pair
+      // is not merely rotating in place — a brow that only spins reads as a
+      // dial rather than a face. The rise is also what carries an open mood
+      // when the tilt is ZERO: a level brow lifted straight up is still a
+      // legible "oh", so the two dials are not redundant.
+      // 0.16R, not 0.06R. The first value was about 3% of the head — a raise
+      // nobody could see, and invisible for a second reason once the eye patch
+      // started growing to contain the brow: the mask rises with the mark, so
+      // the brow keeps its position WITHIN the patch and the only cue left is
+      // its distance from the eye, which 0.06R barely changes. 0.16R opens that
+      // gap enough to read. The open moods are LEVEL by default (see the tilt
+      // above): the answer to "in or out" turned out to be neither — they just
+      // go up.
+      // BIG. 0.06R was invisible and 0.16R was polite; an open mood on a face
+      // this simple has three marks to work with and the brow is the only one
+      // free to travel, so it travels. 0.34R puts the pair up near the crown —
+      // roughly two thirds of the way from the resting line to the top of the
+      // skull — which is cartoon shorthand rather than anatomy, and reads
+      // instantly at 24px, which anatomy would not.
+      //
+      // It stays legible because the dark patch grows to follow it (below), so
+      // the brow never strands itself on bare fur however far it goes.
+      const openRise = spec.browOpenRise == null ? 0.42 : spec.browOpenRise;
+      // SIGN: browDy is added INSIDE an already-negated term further down —
+      // `hy - R * (0.52 + browDy)` — so a POSITIVE browDy moves the mark UP and
+      // a negative one moves it toward the eye. It was written the other way
+      // round, which meant every "rise" was a drop and the furrow's "drop" was
+      // a lift; at 0.06R that was small enough to pass as no effect at all,
+      // which is how it survived being looked at several times.
+      const browDy = spec.browExpressive === false ? 0
+        : openMood ? openRise
+          : browMood > 0 ? -0.05
+            : 0;
+      for (const side of [-1, 1]) {
+        // Dark eye patch FIRST: it is the ground the white marks sit on, so
+        // anything drawn before it is buried and anything after reads against it.
+        if (spec.eyePatch) {
+          // THE PATCH HOLDS THE EYES AND NOTHING ELSE. It was briefly grown
+          // upward to swallow the brow marks; that is the wrong read — the
+          // brows belong ABOVE the mask, on the fur, where the reference art
+          // puts them. A mask that reaches up to meet them turns three marks
+          // into one blob and throws away the contrast the white spots get from
+          // sitting on rust.
+          //
+          // So it is a fixed ellipse around the eye, and it stays put however
+          // far the brow travels. The brow's own rise is what carries the
+          // expression; the gap between the two is what makes the rise visible.
+          outlined(ctx, p.furDark || p.p || p.h, hair(0.5, ow * 0.5), (c) =>
+            c.ellipse(faceCx + side * R * 0.4, hy + fdy - R * 0.04, R * 0.44, R * 0.42,
+              side * 0.2, 0, Math.PI * 2));
+        }
+        // Cheek patch. 'low' drops it clear of the eye and pulls it inboard so
+        // it stops ringing the socket; 'wide' is the original.
+        if (cheekPatch === 'wide') {
+          outlined(ctx, markCol, hair(0.5, ow * 0.55), (c) =>
+            c.ellipse(faceCx + side * R * 0.62, hy + fdy + R * 0.26, R * 0.34, R * 0.30,
+              side * 0.3, 0, Math.PI * 2));
+        } else if (cheekPatch === 'low') {
+          outlined(ctx, markCol, hair(0.5, ow * 0.55), (c) =>
+            c.ellipse(faceCx + side * R * 0.66, hy + fdy + R * 0.46, R * 0.30, R * 0.24,
+              side * 0.34, 0, Math.PI * 2));
+        }
+        // Brow mark, ON TOP and clearly its own shape.
+        if (browMark === 'teardrop') {
+          outlined(ctx, markCol, hair(0.5, ow * 0.55), (c) =>
+            c.ellipse(faceCx + side * R * 0.42, hy + fdy - R * 0.30, R * 0.26, R * 0.20,
+              side * -0.45, 0, Math.PI * 2));
+        } else if (browMark === 'spot') {
+          // The reference's mark: a small round dot, high and well clear of the
+          // eye. Small is the point — it only reads as a BROW while there is
+          // fur visible between it and the socket.
+          // A brow is WIDER THAN TALL. At 0.17 x 0.15R this was 1.13:1 — a dot,
+          // and it read as one. `browSquash` multiplies the ry, and the rx
+          // grows as it flattens so squashing does not also shrink the mark
+          // into invisibility. `browTilt` drops the inner end toward the nose,
+          // which turns a marking into an expression — off by default, because
+          // a permanently sceptical face fights every pose he is in.
+          const bq = spec.browSquash ?? 1;
+          const bw = 0.17 * (1 + (1 - bq) * 0.55);
+          // THESE MARKS ARE HIS EYEBROWS. Every other hero gets a hairline ink
+          // stroke painted over the brow when the mood calls for one; on a face
+          // that already carries two white marks in exactly that place, a third
+          // horizontal line is one brow too many. So the marks themselves take
+          // the expression — they tilt, and `brow: 'none'` in his spec stops
+          // drawEyes from drawing the ink pair at all.
+          //
+          // Direction is the whole vocabulary, and it is not symmetric in
+          // feeling: inner ends UP (a negative tilt here) is the soft read —
+          // open, appealing, a little worried — and inner ends DOWN is the
+          // furrow. Cuddly lives on the up side, so neutral-to-up is his
+          // resting range and down is reserved for the moods that earn it.
+          // The OPEN moods (surprise, joy and their variants) share one pair of
+          // dials, because they are the same gesture at two strengths and
+          // tuning them apart is how a face ends up with two unrelated happy
+          // expressions. `browOpenTilt` and `browOpenRise` override both; the
+          // furrow moods keep their own numbers.
+          const tilt = (spec.browTilt || 0) + browMood;
+          // The mark also RISES on the open moods and drops on the furrow, so
+          // the pair is not merely rotating in place — a brow that only spins
+          // reads as a dial rather than a face. Note the rise is what carries
+          // an open mood when the tilt is ZERO: a level brow lifted straight up
+          // is still a legible "oh", so the two dials are not redundant.
+          // A BROW CANNOT GO STRAIGHT UP FOREVER. Held at x = 0.4R the skull's
+          // own curve caps the rise at 0.226R — past that the mark's top edge
+          // is outside the head and it paints over the outline into the
+          // background. The first big-rise cut sat at 0.34R and was doing
+          // exactly that.
+          //
+          // So a rising brow moves INWARD as well as up, riding the crown
+          // rather than climbing off the side of it. That is also what a big
+          // cartoon surprise looks like — the pair converges as it lifts — so
+          // the constraint and the drawing want the same thing again.
+          //
+          // Then a hard clamp, because the pull-in alone still cannot satisfy
+          // every rise anyone might dial: the mark's centre is pushed back onto
+          // a circle sized so its TOP edge lands just inside the skull. Beyond
+          // that the request is simply unachievable, and the clamp puts it as
+          // high as the head allows instead of letting it escape.
+          const ryR = 0.15 * bq;
+          // 0.6, not 1.15. The clamp below already pulls the pair inward as it
+          // pushes them onto the skull's curve, so a strong explicit pull-in
+          // stacks on top of it and the two marks MEET: at 1.15 they overlapped
+          // by 0.037R and read as one bar across the forehead. 0.6 leaves a
+          // 0.110R gap at full rise and lets the clamp do most of the work.
+          let bxR = 0.4 * (1 - Math.max(0, browDy) * 0.6);
+          let byR = -(0.52 + browDy);
+          const maxR = 0.94 - ryR;
+          const dR = Math.hypot(bxR, byR);
+          if (dR > maxR) { const k = maxR / dR; bxR *= k; byR *= k; }
+          outlined(ctx, markCol, hair(0.5, ow * 0.5), (c) =>
+            c.ellipse(faceCx + side * R * bxR, hy + fdy + R * byR, R * bw, R * ryR,
+              side * tilt, 0, Math.PI * 2));
+        } else if (browMark === 'bar') {
+          // A short angled bar — the most eyebrow-like, and the only mark here
+          // that can carry an expression by its slope.
+          outlined(ctx, markCol, hair(0.5, ow * 0.5), (c) => bluntSpike(c,
+            faceCx + side * R * 0.16, hy + fdy - R * 0.46,
+            faceCx + side * R * 0.68, hy + fdy - R * 0.6,
+            faceCx + side * R * 0.2, hy + fdy - R * 0.62, 0.5));
+        } else if (browMark === 'arc') {
+          // A crescent following the top of the socket: the eye's own rim
+          // marked out, rather than a separate object above it.
+          ctx.strokeStyle = markCol;
+          ctx.lineWidth = hair(0.8, ow * 1.3);
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.arc(faceCx + side * R * 0.4, hy + fdy - R * 0.06, R * 0.46,
+            Math.PI * 1.18, Math.PI * 1.86);
+          ctx.stroke();
+        }
+        // Tear tracks: the real animal's rust streak from the inner eye down
+        // across the white cheek — the marking everyone forgets red pandas
+        // have. Drawn on the patch and under the eyes, angled off vertical so
+        // the pair follows the muzzle's sides rather than hanging like bars.
+        if (spec.tearTracks) {
+          ctx.strokeStyle = p.furDark || p.h;
+          ctx.lineWidth = hair(0.6, ow * 1.1);
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(faceCx + side * R * 0.3, hy + fdy - R * 0.02);
+          ctx.quadraticCurveTo(faceCx + side * R * 0.44, hy + fdy + R * 0.3,
+            faceCx + side * R * 0.4, hy + fdy + R * 0.52);
+          ctx.stroke();
+        }
+        // Blush: Mochi's pink cheek dot, outboard of the muzzle where the
+        // patch meets the ruff.
+        if (spec.blush) {
+          dot(ctx, faceCx + side * R * 0.66, hy + fdy + R * 0.34, R * 0.13,
+            p.cheek || '#f2a2b0');
+        }
+      }
+    }
+    if (animal.mask === 'bandit' && !lod) {
+      // One band straight across both eyes, in the coat's dark. It has to clear
+      // the muzzle top or it merges with the snout into a single dark blob.
+      outlined(ctx, p.furDark || p.p || p.e, hair(0.5, ow * 0.55), (c) =>
+        c.ellipse(faceCx, hy + fdy - R * 0.12, R * 0.86, R * 0.26, 0, 0, Math.PI * 2));
+    }
+    // THE JAW DROPS ON A DEEP SMILE. A grin this wide is a jaw opening, and a
+    // jaw opening lengthens the snout DOWNWARD — the nose does not travel with
+    // it, because the nose sits on the upper snout which is fixed to the skull.
+    //
+    // So the muzzle grows rather than moves: the same amount is added to both
+    // the ellipse's centre and its ry, which leaves the TOP edge exactly where
+    // it was (top = centre - ry, and the two additions cancel) while the bottom
+    // drops by twice nothing — by the amount itself. Shifting the whole ellipse
+    // instead would carry the nose off the snout or leave it floating above it.
+    //
+    // Scaled by joyAmt where there is one, so the snout lengthens WITH the grin
+    // opening rather than snapping to full length on the first frame of it —
+    // the same lerp the mouth's own D-grin uses.
+    // SURPRISE DROPS THE JAW TOO. A gasp is an open mouth exactly as a grin is,
+    // so it gets the same lengthening — it just does not go as far as a full
+    // whoop. Leaving it out was an omission rather than a decision: the mouth
+    // opened and the snout stayed the length of a closed one.
+    //
+    // Note this does NOT replace the clamp above. The snout grows DOWNWARD
+    // while the gasp's ellipse grows UPWARD off the mouth line, so a longer
+    // snout gives the mouth somewhere to sit but never stops it climbing into
+    // the nose. The two fixes solve opposite ends of the same mouth.
+    //
+    // 0.07R rather than the 0.10R first tried: at a tenth of the head radius
+    // the snout stretched past "jaw open" and into a different animal.
+    const jawAmt = ex.cheer ? (ex.joyAmt == null ? 1 : ex.joyAmt)
+      : ex.joy ? 0.5
+        : ex.surprise ? 0.6
+          : 0;
+    const jaw = jawAmt * 0.07 * R;
+    outlined(ctx, p.s, hair(0.6, ow * 0.7), (c) =>
+      c.ellipse(faceCx, mTopY + R * mry * mScale * 0.62 + jaw,
+        R * mrx * mScale, R * mry * mScale + jaw, 0, 0, Math.PI * 2));
+    // A rounded animal nose, wider than tall.
+    outlined(ctx, p.e, hair(0.5, ow * 0.5), (c) =>
+      c.ellipse(faceCx, noseY, R * 0.17 * mScale, R * 0.13 * mScale, 0, 0, Math.PI * 2));
+  }
   if (id === 'grumpos') {
     // Thick war paint, bent like a '>' with the notch at the nose: down from
     // the crown to a vertex just under the brow, then back out to die in the
@@ -3853,7 +4381,6 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   }
 
   // face
-  const ex = expressionFor(id, pose, spec);
   const faceEx = headTurn ? { ...ex, turn: headTurn } : ex;
   // Cap variants that reshape Lorenzo's brow line also move the face mask under
   // it and choose how the brows are drawn. Everyone else is untouched.
@@ -3880,7 +4407,15 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   // the whole mask (brows ride the same line), so eyes and mouth can be set
   // against each other rather than each against the skull.
   const eyeY = hy - (id === 'fernwick' ? -0.018 : 0.015) * u - (spec.eyeLift || 0) * u;
-  drawEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, faceEx);
+  // `eyeStyle: 'pika'` swaps the white-and-pupil eye for Mochi's — the solid
+  // dark oval with a glint, the biggest and most anime eye the cast owns. A
+  // FLAG to her painter rather than a copy of it, so there is exactly one
+  // saucer eye in the file and her death/blink/joy dialects come along free.
+  // Note what also comes along: pikaEyes draws no brows (Mochi has none, and
+  // per Fernwick a bare brow reads sweet), and its sep is wider than the
+  // standard eye's, which on a masked face is most of the "plush toy" read.
+  if (spec.eyeStyle === 'pika') pikaEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, faceEx);
+  else drawEyes(ctx, p, u, hx + 0.01 * u, eyeY, lod, faceEx);
   if (faceEx.brow === 'bushy' && !lod) bushyBrows(ctx, p, u, hx + 0.01 * u, eyeY, ex, ow);
   if (spec.nose) outlined(ctx, p.n, hair(0.6, ow * 0.7), (c) => c.arc(hx + 0.02 * u, hy + 0.055 * u, 0.055 * u, 0, Math.PI * 2));
   if (spec.mustache && !lod && ex.joy) {
@@ -4020,7 +4555,23 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
   // her reference has — the distance from eyes to mouth is what makes a chibi
   // look young, and hers was a rig default rather than a decision.
   if (!spec.beard && !spec.mustache && !lod) {
-    const mouthY = hy + 0.11 * u * (spec.headScale || 1) - (spec.mouthLift || 0) * u;
+    let mouthY = hy + 0.11 * u * (spec.headScale || 1) - (spec.mouthLift || 0) * u;
+    // A LIFT TUNED ON A CLOSED MOUTH IS WRONG FOR AN OPEN ONE. Most mouths sit
+    // on the mouth line or hang below it, but the gasp is an ellipse centred ON
+    // it — 0.045u of mouth ABOVE the line — and the dying mouth is the same
+    // shape. Raise the line far enough to seat a smile nicely under a snout and
+    // those two climb into the nose.
+    //
+    // Solved rather than dialled: the mouth's own upward reach is known per
+    // expression, so the line is pushed down only as far as it takes to keep
+    // the top edge clear of the nose. A closed mouth asks for nothing and keeps
+    // its full lift; only the frames that would actually collide move, and they
+    // move by exactly the overlap. Animal heads only — no shipped hero has a
+    // muzzle for a mouth to collide with.
+    if (animalNoseBottom != null) {
+      const reachUp = ex.surprise || ex.death ? 0.045 : ex.calling ? 0.017 : 0;
+      if (reachUp) mouthY = Math.max(mouthY, animalNoseBottom + (reachUp + 0.012) * u);
+    }
     drawMouth(ctx, spec, p, u, hx + 0.01 * u, mouthY, ow, ex);
   }
   if (faceDy) ctx.restore();
@@ -5203,6 +5754,89 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
     // at two depths. Running, this is already what happens and the flag is
     // ignored — only `stand` consults it.
     armsReachFront = true;
+  } else if (spec.toss && pose.menuAction === 'aim') {
+    // RUSTY'S THROW. Every other shooter on the roster carries a PROP that
+    // does the work — Clara's pistol, B-33P's gun-arm, Kiko's orb — so `aim`
+    // only ever produced a gesture for a hero with one of those flags, and a
+    // hero without them stood in a plain run pose while a projectile appeared
+    // beside him. He throws a thing with his hand, so the whole beat has to be
+    // in the BODY.
+    //
+    // Same 0.3s budget useAbility() gives every other ability pose, and the
+    // same `actionTime == null` convention the ki-press documents: no clock
+    // means "show me the move", so an unclocked caller (the title parade, the
+    // transition cameo) gets the READ frame rather than frame zero of a
+    // wind-up.
+    const q = pose.actionTime == null
+      ? 0.62
+      : Math.max(0, Math.min(1, Number(pose.actionTime) / 0.3));
+    const ease = (v) => v * v * (3 - 2 * v);
+    // A throw is three beats and it is worth naming why none can be dropped:
+    // the WIND-UP is what makes the arm's travel legible (a hand that starts
+    // forward has nowhere to accelerate from), the WHIP is two frames and is
+    // the only part anyone consciously sees, and the FOLLOW-THROUGH is what
+    // stops the arm looking like it hit a wall. The release is at the end of
+    // the whip, which is where the projectile should be spawned.
+    const wind = q < 0.34 ? ease(q / 0.34) : 1;
+    const whip = q < 0.34 ? 0 : q < 0.56 ? ease((q - 0.34) / 0.22) : 1;
+    const settle = q < 0.56 ? 0 : ease((q - 0.56) / 0.44);
+    const lerp2 = (a, b, v) => [a[0] + (b[0] - a[0]) * v, a[1] + (b[1] - a[1]) * v];
+    if (spec.toss === 'flick') {
+      // UNDERARM FLICK. Almost no wind-up — the throw of a character whose
+      // whole identity is being early. The hand starts low and behind and
+      // comes through on a flat, fast arc at hip height.
+      // Amplitudes are deliberately LARGE. The first cut ran the hand from
+      // -0.10u to +0.28u, which is about a torso half-width of travel, and at
+      // hero size that is a hand twitching against a body — the throw did not
+      // read at all. A gesture has to clear the silhouette to exist.
+      const back = [shB - 0.22 * u, armY + armL * 0.88];
+      const out = [shF + 0.44 * u, armY + armL * 0.14];
+      const rest = [shF + 0.2 * u, armY + armL * 0.52];
+      const mid = lerp2(back, out, whip);
+      handF = lerp2(mid, rest, settle * 0.55);
+      elbF = -1;
+      // The off arm swings BACK as the throwing arm comes through — a body
+      // that throws counter-rotates, and without it the pose reads as one arm
+      // moving on a mannequin.
+      handB = [shB - (0.06 + 0.22 * whip) * u, armY + armL * (0.5 + 0.2 * whip)];
+      elbB = sideB;
+    } else if (spec.toss === 'tail') {
+      // TAIL FLING. The arms brace low and out of the way; the TAIL carries
+      // the gesture (driven in drawHumanoid's tail block off the same clock).
+      // Both hands stay clear of the silhouette's forward edge so nothing
+      // competes with the tail coming over.
+      handF = [shF + (0.12 + 0.16 * whip) * u, armY + armL * (0.66 - 0.24 * whip)];
+      handB = [shB - (0.08 + 0.12 * whip) * u, armY + armL * 0.7];
+      elbF = -1; elbB = sideB;
+    } else {
+      // OVERARM. The pitch: hand back past the ear, whip forward over the
+      // shoulder, follow through down and across. Elbow held UP through the
+      // wind-up — dropped, the arm cocks behind the hip instead and reads as a
+      // bowl rather than a throw.
+      // Same amplitude lesson as the flick: these ran shB-0.15u to shF+0.30u
+      // and the hand never cleared the torso, so the pitch read as a shrug.
+      // Cocked HIGH, barely back. Behind the shoulder is where a real pitcher's
+      // hand goes and it is invisible here — the torso occludes it, so the
+      // whole wind-up played as a hero standing still. Above the shoulder line
+      // the hand clears the silhouette next to the head, which is the only
+      // place a small figure can hold something and be seen doing it.
+      const cocked = [shB - 0.06 * u, armY - 0.56 * u];
+      const released = [shF + 0.46 * u, armY - 0.12 * u];
+      const through = [shF + 0.3 * u, armY + armL * 0.6];
+      const start = [shF + 0.04 * u, armY + armL * 0.34];
+      handF = whip > 0
+        ? lerp2(lerp2(cocked, released, whip), through, settle * 0.7)
+        : lerp2(start, cocked, wind);
+      // Elbow above the shoulder is the chicken wing everywhere else in this
+      // file; here it is the pose, but only while the arm is still cocked.
+      elbF = whip > 0.5 ? -1 : 1;
+      handB = [shB + (0.06 + 0.2 * whip) * u, armY + armL * (0.44 - 0.24 * whip)];
+      elbB = sideB;
+    }
+    // One arm in front, one behind — the same call the pistol and the ki-press
+    // make, and for the same reason: a standing pose paints BOTH arms behind
+    // the torso, which would hide the entire throw.
+    armsReachFront = true;
   } else if (pose.headless || pose.stomp) {
     handF = reach(shF, armY, [shF + sideF * 0.16 * u, armY - armL * 0.5]); elbF = sideF;
     handB = reach(shB, armY, [shB + sideB * 0.16 * u, armY - armL * 0.5]); elbB = sideB;
@@ -5692,22 +6326,121 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
 
   // back accessories
   if (spec.tail) {
+    // `tail: true` is Gnash's tapered blade and stays byte-for-byte what it
+    // was; the string kinds are the bake-off's. Widening the flag rather than
+    // adding a second one keeps ONE tail seam — a hero has a tail or does not,
+    // and which tail is a property of that tail.
+    const tailKind = spec.tail === true ? 'taper' : spec.tail;
     const wag = Math.sin((pose.time || 0) * (run ? 8 : 2.6)) * 0.045 * u;
     const baseX = -torsoHalf * 0.65, baseY = hipY - 0.02 * u;
-    const tipX = -0.4 * u, tipY = hipY - 0.28 * u + wag;
-    outlined(ctx, p.h, ow, (c) => {
-      c.moveTo(baseX, baseY - 0.065 * u);
-      c.quadraticCurveTo(-0.39 * u, hipY + 0.02 * u + wag * 0.35, tipX, tipY);
-      c.quadraticCurveTo(-0.32 * u, hipY - 0.15 * u + wag * 0.4, baseX, baseY + 0.065 * u);
-      c.closePath();
-    });
-    // A small cream tip helps the tapered tail read separately from the body.
-    outlined(ctx, p.s, hair(0.5, ow * 0.65), (c) => {
-      c.moveTo(tipX, tipY);
-      c.lineTo(tipX + 0.075 * u, tipY + 0.09 * u);
-      c.lineTo(tipX + 0.095 * u, tipY + 0.025 * u);
-      c.closePath();
-    });
+    // THE TAIL FLING. `toss: 'tail'` makes the tail the throwing limb, so it
+    // has to leave its idle sweep and come over the body — on the same 0.3s
+    // clock and the same wind/whip/settle beats the arms use, or the two
+    // halves of one gesture drift apart. `fling` runs -1 (cocked back and up)
+    // through 0 to +1 (thrown forward past the hip); every tail shape below
+    // reads it, so a fling is not a fourth tail kind.
+    let fling = 0;
+    if (spec.toss === 'tail' && pose.menuAction === 'aim') {
+      const tq = pose.actionTime == null
+        ? 0.62
+        : Math.max(0, Math.min(1, Number(pose.actionTime) / 0.3));
+      const te = (v) => v * v * (3 - 2 * v);
+      fling = tq < 0.34 ? -te(tq / 0.34)
+        : tq < 0.56 ? -1 + 2 * te((tq - 0.34) / 0.22)
+          : 1 - 0.45 * te((tq - 0.56) / 0.44);
+    }
+    if (tailKind === 'taper') {
+      const tipX = -0.4 * u, tipY = hipY - 0.28 * u + wag;
+      outlined(ctx, p.h, ow, (c) => {
+        c.moveTo(baseX, baseY - 0.065 * u);
+        c.quadraticCurveTo(-0.39 * u, hipY + 0.02 * u + wag * 0.35, tipX, tipY);
+        c.quadraticCurveTo(-0.32 * u, hipY - 0.15 * u + wag * 0.4, baseX, baseY + 0.065 * u);
+        c.closePath();
+      });
+      // A small cream tip helps the tapered tail read separately from the body.
+      outlined(ctx, p.s, hair(0.5, ow * 0.65), (c) => {
+        c.moveTo(tipX, tipY);
+        c.lineTo(tipX + 0.075 * u, tipY + 0.09 * u);
+        c.lineTo(tipX + 0.095 * u, tipY + 0.025 * u);
+        c.closePath();
+      });
+    } else if (tailKind === 'stub') {
+      // A hare's puff: a disc at the hip, no sweep, riding the wag so it is not
+      // the one dead thing on a running figure.
+      outlined(ctx, p.s, ow, (c) =>
+        c.ellipse(baseX - 0.105 * u, baseY - 0.01 * u + wag * 0.5,
+          0.085 * u, 0.075 * u, 0, 0, Math.PI * 2));
+    } else {
+      // BUSHY (red panda) and BRUSH (fox): a plume carried up and back rather
+      // than a blade slung down. Both are the same path with different girth,
+      // because the thing being judged between them is volume.
+      //
+      // Built as a named path fn so the rings below can clip to the exact
+      // silhouette. The centre curve is stated separately and the outline is
+      // walked out from it, which is what lets the rings sit square across the
+      // tail instead of square to the screen.
+      const bushy = tailKind === 'bushy';
+      const w0 = (bushy ? 0.085 : 0.062) * u;      // girth at the root
+      const w1 = (bushy ? 0.115 : 0.078) * u;      // girth at the belly
+      // CARRIED BACK, not up. The first cut ran the tip to hipY - 0.44u, a 47
+      // degree climb, and at that angle a thick plume rooted near the waist
+      // reads as a RAISED ARM — the eye takes the nearest limb-shaped mass off
+      // a shoulder as a limb. The control point sits BELOW the hip so the tail
+      // drops out of the body first and lifts only at the end, which is both
+      // the real carry and the shape that cannot be mistaken for an arm.
+      // Rest positions, then the fling carries the tip forward and up. The
+      // control point travels further than the tip does, which is what makes
+      // the sweep read as a whip cracking over rather than a rigid arm
+      // rotating about the hip.
+      const tipX = -(bushy ? 0.54 : 0.5) * u + fling * 1.05 * u;
+      const tipY = hipY - (bushy ? 0.2 : 0.15) * u + wag - Math.max(0, fling) * 0.52 * u;
+      const ctlX = -(bushy ? 0.3 : 0.28) * u + fling * 0.7 * u;
+      const ctlY = hipY + 0.1 * u + wag * 0.3 - fling * 0.44 * u;
+      const path = (c) => {
+        c.moveTo(baseX, baseY - w0);
+        c.quadraticCurveTo(ctlX, ctlY - w1, tipX, tipY);
+        // Round the tip rather than pointing it — a plume ends in a mass.
+        c.quadraticCurveTo(tipX - w1 * 0.9, tipY + w1 * 0.9, tipX + w1 * 0.35, tipY + w1 * 1.15);
+        c.quadraticCurveTo(ctlX, ctlY + w1, baseX, baseY + w0);
+        c.closePath();
+      };
+      outlined(ctx, p.h, ow, path);
+      // RINGS. The one mark that makes a red panda unmistakable at 24u, and on
+      // a run it doubles as a motion trail for free. Clipped to the tail and
+      // stroked ACROSS the centre curve's normal, so they stay square to the
+      // tail through the whole wag.
+      if (bushy && !lod) {
+        ctx.save();
+        ctx.beginPath(); path(ctx); ctx.clip();
+        ctx.strokeStyle = p.furDark || p.p || p.h;
+        ctx.lineWidth = w1 * 0.62;
+        ctx.lineCap = 'butt';
+        // Quadratic point and tangent at s, off the centre curve (base -> ctl -> tip).
+        for (const s of [0.34, 0.58, 0.82]) {
+          const mx = (1 - s) * (1 - s) * baseX + 2 * (1 - s) * s * ctlX + s * s * tipX;
+          const my = (1 - s) * (1 - s) * baseY + 2 * (1 - s) * s * ctlY + s * s * tipY;
+          const dx = 2 * ((1 - s) * (ctlX - baseX) + s * (tipX - ctlX));
+          const dy = 2 * ((1 - s) * (ctlY - baseY) + s * (tipY - ctlY));
+          const d = Math.hypot(dx, dy) || 1e-6;
+          const nx = -dy / d, ny = dx / d;
+          ctx.beginPath();
+          ctx.moveTo(mx - nx * w1 * 1.4, my - ny * w1 * 1.4);
+          ctx.lineTo(mx + nx * w1 * 1.4, my + ny * w1 * 1.4);
+          ctx.stroke();
+        }
+        ctx.restore();
+        // The clip painted over the inner half of the contour, so it goes back
+        // on top. Cheaper than masking the bands off the edge by hand.
+        ctx.strokeStyle = OUTLINE; ctx.lineWidth = ow;
+        ctx.beginPath(); path(ctx); ctx.stroke();
+      }
+      // A pale tip on both, which is what separates a plume from the body when
+      // the tail swings across the torso mid-stride. Kept well under the tail's
+      // own girth: sized to match it, the tip stopped reading as the END of the
+      // tail and started reading as a ball on the end of one.
+      outlined(ctx, p.s, hair(0.5, ow * 0.65), (c) =>
+        c.ellipse(tipX + w1 * 0.16, tipY + w1 * 0.5, w1 * 0.54, w1 * 0.48, 0, 0, Math.PI * 2));
+    }
   }
   // Grumpos wears plain leather shoes cut from the same hide as his panels —
   // just the foot shape in that color, with no cuff or strap work above it, so

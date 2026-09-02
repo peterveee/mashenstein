@@ -20,7 +20,7 @@ import { wavBuffer, rmsOf, dbfs } from './lib/wav.js';
 import { activeLanes } from '../src/engine/lanes.js';
 import { midiBuffer, MIDI_UNSUPPORTED_LANES } from './lib/render-midi-bank.js';
 import { resolveOrExit } from './lib/tracks.js';
-import { bpmOf } from '../src/data/arrangements.js';
+import { applyArrangement, bpmOf, swingOf } from '../src/data/arrangements.js';
 
 const argv = process.argv.filter((a) => !a.startsWith('--'));
 // The song's own start bar and loop, like render-track.js — so a folder of stems is a
@@ -31,6 +31,12 @@ const [, , trackId = 'shop', repeatArg = '1', outArg = null] = argv;
 const REPEAT = Math.max(1, parseInt(repeatArg, 10) || 1);
 const track = resolveOrExit(trackId);
 const DIR = outArg || `work/stems/${track.slug}`;
+// Lane list and MIDI come off the ARRANGED bank, the same form the renderer plays:
+// a song that introduces its parts in layer sections has none of them in the bank
+// literal, so the composed bank would silently drop those stems and export two bars.
+// The renderer still gets `track.bank` — it applies the arrangement itself, and the
+// mix is looked up by bank identity, which a clone would lose.
+const arranged = applyArrangement(track.bank, track.id);
 mkdirSync(DIR, { recursive: true });
 
 // One Chromium for the whole folder: a launch costs about a second and a twelve
@@ -44,7 +50,7 @@ const mix = await renderer.render(track.bank, { repeat: REPEAT, trackId: track.i
 const mixName = '00-full-mix.wav';
 writeFileSync(join(DIR, mixName), wavBuffer([mix.outL, mix.outR], norm));
 
-const lanes = activeLanes(track.bank, REPEAT);
+const lanes = activeLanes(arranged, REPEAT);
 const rows = [[mixName, dbfs(mix.peak * norm), dbfs(rmsOf(mix.outL, norm))]];
 
 const sum = new Float32Array(mix.outL.length);
@@ -68,14 +74,16 @@ for (let n = 0; n < sum.length; n++) {
 }
 const residualDb = energy > 0 ? 10 * Math.log10(residual / energy) : -Infinity;
 
-const midi = midiBuffer(track.bank, { repeat: REPEAT, title: track.title, bpm: bpmOf(track.bank, track.id) });
+const midi = midiBuffer(arranged, {
+  repeat: REPEAT, title: track.title, bpm: bpmOf(arranged, track.id), swing: swingOf(arranged, track.id),
+});
 const midiName = `${track.slug}.mid`;
 writeFileSync(join(DIR, midiName), midi.buffer);
 
 const droppedFromMidi = lanes.map((l) => l.key).filter((k) => MIDI_UNSUPPORTED_LANES.includes(k));
 
 const w = rows.reduce((m, r) => Math.max(m, r[0].length), 0);
-console.log(`${DIR} — ${lanes.length} stems + full mix, ${mix.seconds.toFixed(1)}s, ${REPEAT}x form (${mix.blocks * 2} bars at ${bpmOf(track.bank, track.id)}bpm)`);
+console.log(`${DIR} — ${lanes.length} stems + full mix, ${mix.seconds.toFixed(1)}s, ${REPEAT}x form (${mix.blocks * 2} bars at ${bpmOf(arranged, track.id)}bpm)`);
 for (const [file, peak, rms] of rows) console.log(`  ${file.padEnd(w)}  peak ${peak.padStart(10)}   rms ${rms}`);
 console.log(`  ${midiName.padEnd(w)}  ${midi.trackNames.length} instrument tracks`);
 console.log(`  stems sum to the mix at ${residualDb.toFixed(0)} dB residual (float rounding only)`);

@@ -705,3 +705,47 @@ export function drawPellet(ctx, cx, cy, opts = {}) {
 // Kept so the title screen's B-33P shot keeps reading as itself at the call
 // site. Same painter, his defaults.
 export function drawB33pPellet(ctx, cx, cy) { drawPellet(ctx, cx, cy); }
+
+// Rusty's bamboo shoot — the speedster's ranged answer, and a pun that lands on
+// the code: his ability type IS 'shoot'.
+//
+// A projectile at this scale is about six pixels, so it gets exactly three
+// ideas and no more, chosen because they survive that:
+//   - a CAPSULE, not a disc. Every other shot on the roster is round (B-33P's
+//     lemon, Kiko's orb), so the one long shape reads as his across the lane
+//     even before the colour does.
+//   - a NODE band across the middle. One dark line is the whole difference
+//     between "green capsule" and "bamboo", and it is the last thing to survive
+//     as the shot gets smaller — so it is drawn at a minimum width rather than
+//     scaled away.
+//   - TUMBLE. Thrown bamboo spins end over end; a shot that holds one angle
+//     reads as fired from a barrel, which is B-33P's story rather than his.
+export function drawBambooShoot(ctx, cx, cy, opts = {}) {
+  const s = opts.size || 1;
+  const len = 4.6 * s, wid = 1.9 * s;
+  ctx.save();
+  ctx.translate(Math.round(cx), Math.round(cy));
+  ctx.rotate(opts.spin || 0);
+  // Body: a capsule, drawn as a wide round-capped stroke so the ends are
+  // hemispheres without a path for them.
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = opts.fill || '#9cc44e';
+  ctx.lineWidth = wid * 2;
+  ctx.beginPath();
+  ctx.moveTo(-len, 0); ctx.lineTo(len, 0);
+  ctx.stroke();
+  // The lit edge along the top, inset so it stays inside the body.
+  ctx.strokeStyle = opts.hi || '#d6ec9a';
+  ctx.lineWidth = Math.max(0.7, wid * 0.55);
+  ctx.beginPath();
+  ctx.moveTo(-len * 0.6, -wid * 0.55); ctx.lineTo(len * 0.62, -wid * 0.55);
+  ctx.stroke();
+  // The node. Floored at 1px: scaled with the shot it vanishes first, and it is
+  // the only mark that says bamboo.
+  ctx.strokeStyle = opts.node || '#5d8028';
+  ctx.lineWidth = Math.max(1, 0.9 * s);
+  ctx.beginPath();
+  ctx.moveTo(0, -wid); ctx.lineTo(0, wid);
+  ctx.stroke();
+  ctx.restore();
+}

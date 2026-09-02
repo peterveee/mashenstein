@@ -13,10 +13,13 @@
 // tests/null-test.js's job, and what they contain is tests/note-duration.js's.
 import { readFileSync } from 'node:fs';
 import { wavBuffer } from '../tools/lib/wav.js';
-import { midiBuffer } from '../tools/lib/render-midi-bank.js';
+import { midiBuffer, MIDI_UNSUPPORTED_LANES } from '../tools/lib/render-midi-bank.js';
 import { resolveTrack } from '../tools/lib/tracks.js';
-import { barPlan } from '../src/engine/lanes.js';
-import { applyArrangement, loopOf, loopSteps } from '../src/data/arrangements.js';
+import { barPlan, songBars, sequenceValue, LANE_KEYS } from '../src/engine/lanes.js';
+import { baseLane, isLayer } from '../src/data/voices.js';
+import {
+  applyArrangement, loopOf, loopSteps, resolutionOf, ARRANGEMENTS,
+} from '../src/data/arrangements.js';
 import {
   draftOf, entryOf, silenceBars, setLanesOff, duplicateBars, deleteBars, insertSilence,
 } from '../tools/lib/arrangement-edit.js';
@@ -137,6 +140,11 @@ assert(/import \{ midiBuffer \} from '\.\/lib\/render-midi-bank\.js'/.test(entry
   'Export MIDI builds the file in this browser');
 assert(!/fetch\(`?\/midi/.test(entry) && !/renderJob\(\$\('renderwav'\)/.test(entry),
   'neither one asks a server for the bytes any more');
+// From `viewBank()`, which is the song AS PLAYED. The composition bank is a two-bar
+// loop of the lanes the file's literal holds, so a song that builds its form in layer
+// sections used to export one block of a fraction of its parts.
+assert(/\$\('midi'\)\.onclick[\s\S]{0,900}?const bank = viewBank\(\);/.test(entry),
+  'and Export MIDI walks the arranged bank, not the composition bank');
 // STATIC_BUILD, not STATIC: `?static=1` makes a local desk WEAR the deployed desk's
 // shape, and a tab doing that still has a server behind it. Addressing the frame off
 // the shape would send it after a sibling file the local server does not serve, and
@@ -310,6 +318,90 @@ assert(wv.getUint16(22, true) === 2 && wv.getUint32(24, true) === 44100 && wv.ge
 assert(wv.getUint32(40, true) === 1000 * 2 * 2 && wav.length === 44 + 1000 * 2 * 2,
   'the data chunk length matches the samples written');
 assert(wv.getUint32(4, true) === wav.length - 8, 'and the RIFF size counts everything after it');
+
+// The arranged bank, as every export route now builds it: rhythm's form is eighty
+// bars of layer sections and its bank literal is a two-bar loop of seven lanes, so
+// this is the song that catches an export walking the composition bank instead.
+const composed = midiBuffer(resolveTrack('rhythm').bank, { title: 'test', patches: true });
+const arranged = midiBuffer(
+  applyArrangement(resolveTrack('rhythm').bank, 'rhythm'), { title: 'test', patches: true });
+assert(composed.blocks === 1 && composed.trackNames.length === 7,
+  'the composition bank alone is one block of seven parts');
+assert(arranged.blocks > 30 && arranged.trackNames.length > 15,
+  `and the arrangement is what makes it a song (${arranged.blocks} blocks, ${arranged.trackNames.length} tracks)`);
+
+// ---- the walk is BAR by bar, and a bar's edits are part of the song -----------
+//
+// `songBlocks` keeps the first of every pair of bars, which is the song only when
+// every order entry is a whole two-bar section. rhythm is eighty one-bar entries and
+// speed twenty-four, so the export dropped half of each and wrote the surviving
+// section at full length — a blank bar between every bar of music — and threw the
+// per-bar mute mask away on the way past.
+//
+// The oracle is the sequencer's own formula, spelled out here rather than borrowed:
+// slot `bar.half * resolution + s`, off/delete nulled, read through `sequenceValue`
+// so a lane written on a coarser grid than the song's clock is read at its stride.
+// If this and the walk ever disagree, the file is not the song.
+const laneKeyOfTrack = (name) => {
+  const [, base, ordinal = ''] = name.replace(/^Drums: /, '').match(/^(.+?)(?: (\d+))?$/);
+  const named = {
+    Bass: 'bass', Lead: 'lead', 'Lead Harmony': 'leadHarm', Chords: 'chords',
+    Organ: 'organChords', Twinkle: 'twinkle', 'Electro FX': 'electroFx',
+    'Gliss FX': 'gliss', 'Organ Swoop': 'organSwoop', Vox: 'vox', Shout: 'shout',
+    'Key Gliss': 'keyGliss', 'Organ Gliss': 'organGliss',
+  }[base] || base;
+  return named + ordinal;
+};
+// A gliss lane writes the whole run — eight scale steps into the target — for one value.
+const NOTES_PER_VALUE = { keyGliss: 8, organGliss: 8 };
+for (const id of ['rhythm', 'speed']) {
+  const bank = applyArrangement(resolveTrack(id).bank, id);
+  const resolution = resolutionOf(bank);
+  const expected = new Map();
+  for (const { b, half, off, delete: del } of songBars(bank, 1)) {
+    const silenced = new Set([...(off || []), ...(del || [])]);
+    // Every key the bars hold, not `activeLanes`: a layer lane that exists only inside
+    // an arrangement's sections is not in `__layers`, and it is exactly the kind of
+    // part this export used to lose.
+    for (const key of Object.keys(b)) {
+      if (!LANE_KEYS.includes(key) && !isLayer(key)) continue;
+      if (silenced.has(key) || !Array.isArray(b[key])) continue;
+      for (let s = 0; s < resolution; s++) {
+        const v = sequenceValue(b, key, half * resolution + s, resolution);
+        if (!v) continue;
+        const tones = (Array.isArray(v) ? v : [v]).filter((hz) => hz === true || hz > 0).length;
+        if (!tones) continue;
+        expected.set(key, (expected.get(key) || 0)
+          + tones * (NOTES_PER_VALUE[baseLane(key)] || 1));
+      }
+    }
+  }
+  const walked = midiBuffer(bank, { title: 'test' });
+  assert(walked.bars === barPlan(bank, 1).length,
+    `${id} exports every bar of its form (${walked.bars})`);
+  const got = new Map(walked.tracks.map((t) => [laneKeyOfTrack(t.name), t.notes]));
+  // `sweeps` is unpitched noise and is dropped from MIDI by design.
+  for (const lane of MIDI_UNSUPPORTED_LANES) expected.delete(lane);
+  const wrong = [...expected].filter(([key, n]) => got.get(key) !== n)
+    .map(([key, n]) => `${key} ${got.get(key) ?? 'missing'}≠${n}`);
+  assert(!wrong.length && got.size === expected.size,
+    `and every note the sequencer plays in ${id}, once each `
+    + `(${expected.size} lanes, ${[...expected.values()].reduce((a, b2) => a + b2, 0)} notes`
+    + `${wrong.length ? ` — ${wrong.join(', ')}` : ''})`);
+}
+
+// A per-bar transpose belongs to the notes, so it has to reach the file: same notes,
+// in the same places, at different pitches. speed drops its bass an octave all through.
+const speedBank = applyArrangement(resolveTrack('speed').bank, 'speed');
+const flatArr = ARRANGEMENTS.speed;
+const untransposed = applyArrangement(resolveTrack('speed').bank, 'speed', {
+  speed: { ...flatArr, order: flatArr.order.map((e) => (typeof e === 'number' ? e : { ...e, transpose: undefined })) },
+});
+const withT = midiBuffer(speedBank, { title: 'test' });
+const noT = midiBuffer(untransposed, { title: 'test' });
+assert(JSON.stringify(withT.tracks.map((t) => t.notes)) === JSON.stringify(noT.tracks.map((t) => t.notes))
+  && Buffer.compare(Buffer.from(withT.buffer), Buffer.from(noT.buffer)) !== 0,
+  'and a bar transpose moves the pitches without moving a note');
 
 const midi = midiBuffer(resolveTrack('hub').bank, { title: 'test', patches: true, bpm: 90 });
 assert(midi.buffer instanceof Uint8Array, 'midiBuffer returns a Uint8Array too');

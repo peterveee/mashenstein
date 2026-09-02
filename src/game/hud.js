@@ -18,6 +18,7 @@ import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
 import { specialMoveColor, HERO_CENTER_OFF } from './draw.js';
 import { Input, TOUCH_JUMP_FRAC } from '../engine/input.js';
+import { ACTION_INK, GLYPH_OUTLINE } from './beatground.js';
 import { PLAYER_X } from './player.js';
 import { formatCoins } from './progress.js';
 import { Audio } from '../engine/audio.js';
@@ -57,13 +58,24 @@ const PANEL = { border: UI_PANEL_BORDER, shadow: true };
 // between two sixteenths is beatPx/4 and the tick has to stay small against it.
 // Grow one without the other and a fill closes into a bar.
 const RIBBON_SCALE = 2;
-// Thinner than it was — seven units, not nine — and its top edge drops by the
-// two it lost off the bottom, so the MIDLINE every glyph hangs off (see `mid`
-// in drawBeatRibbon) stays exactly where it was. The plate was never doing any
-// work with that ink: the arrows reach 2.5 units either side of the midline at
-// the top of their swell, so the extra unit at each end was plastic sitting
-// over the sky.
-const RIBBON_Y = 29, RIBBON_H = Math.round(7 * RIBBON_SCALE);
+// Thinner than it was — nine units, then seven, now SIX. Each of those trims
+// moved the top edge by half of what the plate lost, so the MIDLINE every glyph
+// hangs off (see `mid` in drawBeatRibbon) stayed put while the plate closed in
+// around it. The plate was never doing any work with that ink.
+//
+// The strip then moved UP as a whole, midline and all, which is a different
+// edit and the reason RIBBON_Y is no longer 36 minus half the height. What
+// stops it is the status pills: they run to PILL_Y + PILL_H = 23, and the
+// plate's border tab stands RIBBON_TAB above RIBBON_Y, so 25 is where the two
+// meet. At 27 there are two pixels of sky between them.
+//
+// Six is the floor, and it is arithmetic rather than taste. An arrow is
+// ARROW_H = 2u either side of the midline, the beat swells it by RIBBON_PULSE
+// to 2.5u, and GLYPH_EDGE adds half a unit of border: 3u of glyph above and
+// below the midline at the loudest moment, so a 6u plate is exactly filled.
+// Anything thinner clips the arrows on the beat — which is the one frame
+// nobody is looking at when they judge this at rest.
+const RIBBON_Y = 27, RIBBON_H = Math.round(6 * RIBBON_SCALE);
 export const RIBBON_BEAT_PX = Math.round(26 * RIBBON_SCALE);
 // Where the playhead stands, in the OVERLAY's unscaled 480x270 space — which is
 // not PLAYER_X, because the world is drawn through the camera's zoom and the
@@ -144,9 +156,17 @@ const RIBBON_PLATE = 'rgba(16,20,28,0.55)';
 // lane at the top of the swell; it is also about the least that still reads as
 // a pulse rather than as a jitter at the size these are drawn.
 const RIBBON_PULSE = 0.25;
-// The playhead's tabs stand off the plate at each end rather than crossing it
-// (see the gold bar below), so the band is taller than the plate it brackets.
-const RIBBON_TAB = 3 * RIBBON_SCALE;
+// How far the playhead stands proud of the plate at each end. FLAT PIXELS, not
+// units: this one number is not a glyph and does not scale with them. At three
+// units it was 6px of overhang at each end plus its casing — a red post as tall
+// again as the strip, and the biggest thing on the panel by a distance.
+//
+// One, not two. With its casing that is still 2px clear of a 12px plate at each
+// end — the tab reads as a tab, and the eye finds the line by its colour rather
+// than by its height. At two the column ran half as tall again as the band it
+// marks, which on a pale LCD sky was the first thing you saw and the last thing
+// you needed to see.
+const RIBBON_TAB = 1;
 export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + RIBBON_TAB;
 // Where a speech card's first ROW goes when the beat lane is up. drawSpeech
 // hangs its plate four units above the row it is handed, so clearing the ribbon
@@ -187,6 +207,29 @@ export function beatRibbonMarkerOffset(actionBeat, currentBeat, beatPx = RIBBON_
   return dx;
 }
 
+// The plate's gradient, cached on the four numbers that define it. Building a
+// gradient per frame is surprisingly costly at device resolution — the same
+// finding that put gradCache in the style packs and cached the HUD's gold tick —
+// and this one's inputs do not move: the strip's anchor and its two half-widths
+// are fixed, so every frame of a run rebuilt an identical object. A mirrored run
+// swaps tail and head, which is a different key and therefore a second entry
+// rather than a wrong gradient.
+const ribbonGradCache = new Map();
+function ribbonPlateGrad(ctx, tail, head, fadeStop, fadeStopAhead) {
+  const key = `${tail}|${head}|${fadeStop}|${fadeStopAhead}`;
+  let g = ribbonGradCache.get(key);
+  if (!g) {
+    g = ctx.createLinearGradient(tail, 0, head, 0);
+    // Translucent, not a black bar — see the note at the fill below.
+    g.addColorStop(0, 'rgba(16,20,28,0)');
+    g.addColorStop(fadeStop, RIBBON_PLATE);
+    g.addColorStop(1 - fadeStopAhead, RIBBON_PLATE);
+    g.addColorStop(1, 'rgba(16,20,28,0)');
+    ribbonGradCache.set(key, g);
+  }
+  return g;
+}
+
 export function drawBeatRibbon(ctx, run) {
   if (!run.beatLock || run.paused || run.dead || run.finishing || run.introRunning
     || run.introFreeze > 0 || run.zoneCard || run.rhythmSyncPending) return;
@@ -202,7 +245,20 @@ export function drawBeatRibbon(ctx, run) {
   const dir = run.mirror ? -1 : 1, u = RIBBON_SCALE;
   // The band's midline and the arrows' half-height, named once: every glyph
   // hangs off these two rather than off the plate's top edge.
-  const mid = y + h / 2, ARROW_H = 2.5 * u;
+  // THE ARROW HAS TO FIT ITS PLATE AT FULL SWELL, NOT AT REST. The old 2.5u
+  // half-height came to 5u of arrow — which the 1.25x beat swell pushed to
+  // 6.25u, and the border then pushed past the plate. So at rest it looked
+  // right and on every beat it grew out through the top and bottom edges.
+  // Sized off the peak now: 2u swells to 2.5u, plus half a unit of border, is
+  // 3u either side of the midline — which is exactly the 6u plate. See
+  // RIBBON_H: the two numbers are one decision and have to move together.
+  const mid = y + h / 2, ARROW_H = 2 * u, ARROW_W = 2.5 * u;
+  // The ring is a diameter where the arrows are a half-height, so it needs its
+  // own number to clear the same edges.
+  const RING_R = 2 * u;
+  // Finer than the fill it defines. At this size a heavier line stops reading
+  // as an edge and starts reading as a second, darker shape.
+  const GLYPH_EDGE = Math.max(1, u * 0.5);
   // Every action glyph breathes on the pulse. The swell comes off beatPhase —
   // the same unwrapped chart clock the markers TRAVEL on — and not off the
   // analyser's beatPulse like the playhead below: the analyser answers "is the
@@ -227,17 +283,13 @@ export function drawBeatRibbon(ctx, run) {
   // run gets the gradient reversed for free rather than a second copy of it.
   const tail = anchor - dir * backW, head = anchor + dir * aheadW;
   const span = backW + aheadW;
-  const back = ctx.createLinearGradient(tail, 0, head, 0);
   const fadeStop = fadeBack / span, fadeStopAhead = fadeAhead / span;
+  const back = ribbonPlateGrad(ctx, tail, head, fadeStop, fadeStopAhead);
   // Translucent, not a black bar. At full strength a strip this long stopped
   // being chrome and became a hole in the sky — the widest, heaviest object in
   // the frame, sitting over the prettiest part of the stage. It only has to
-  // hold the markers legible, and the markers are gold, cyan, pink and near
+  // hold the markers legible, and the markers are green, cyan, pink and near
   // white against it, so it can give most of the scene back and still do that.
-  back.addColorStop(0, 'rgba(16,20,28,0)');
-  back.addColorStop(fadeStop, RIBBON_PLATE);
-  back.addColorStop(1 - fadeStopAhead, RIBBON_PLATE);
-  back.addColorStop(1, 'rgba(16,20,28,0)');
   ctx.fillStyle = back;
   ctx.fillRect(Math.min(tail, head), y, span, h);
   // FILLED, NOT STROKED, and centred on the beat. A 2px stroke laid on `x + 0.5`
@@ -265,18 +317,6 @@ export function drawBeatRibbon(ctx, run) {
   }
   ctx.globalAlpha = 0.92;
   const pulse = Audio.musicAnalysis?.()?.beatPulse || 0;
-  // Brighter at rest than the crossing bar was. That one could afford to sit at
-  // a third of its ink because it was 22px of gold against a dark plate; two
-  // 6px tabs standing on the sky have to hold the eye on their own.
-  ctx.fillStyle = `rgba(246,211,60,${0.55 + pulse * 0.45})`;
-  // THE PLAYHEAD BRACKETS THE PLATE, it does not run through it. As one bar
-  // across the full height it stood over every marker that reached the line —
-  // the one moment a marker is being judged was the one moment it was half
-  // hidden behind gold — and the two brightest things on the strip were fighting
-  // for the same pixels. Two tabs, one clear above and one clear below, say the
-  // same column just as plainly, and the gap between them is the marker's.
-  ctx.fillRect(anchor - 1.5 * u, y - RIBBON_TAB, 3 * u, RIBBON_TAB);
-  ctx.fillRect(anchor - 1.5 * u, y + h, 3 * u, RIBBON_TAB);
   // WHAT REACHED THE STRIP STAYS ON IT UNTIL IT HAS CROSSED. The lists below
   // only ever ADD: once a beat has a marker, that marker's life is the geometry
   // in beatRibbonMarkerOffset and nothing else. Read straight off the live
@@ -345,26 +385,41 @@ export function drawBeatRibbon(ctx, run) {
     // player has been looking at coming down the gorilla's chute. The player
     // reads the direction off the shape as always, and now reads WHICH ONE off
     // a colour they were already taught by the object itself.
-    ctx.fillStyle = marker.action === 'jump' ? '#f6d33c'
-      : marker.action === 'duck' ? (marker.prop === 'barrel' ? '#d4a35e' : '#72d8f0')
-        : marker.action === 'ability' ? '#f890b8' : '#ffffff';
+    // Off the shared table (beatground.js), not off four literals of its own:
+    // the strip and the road draw the same events, and the moment each keeps
+    // its own copy of the barrel's wood they are one edit from disagreeing.
+    ctx.fillStyle = ACTION_INK[marker.prop === 'barrel' ? 'barrel' : marker.action] || '#ffffff';
     // EVERY GLYPH CENTRES ON THE BAND'S MIDLINE. The jump and duck arrows used
     // to sit two units high and two units low of it, so the pair were not
     // merely reflections about one line and the strip said DOWN twice. That
     // reading cost more than it bought once the arrows were drawn at scale: two
     // big triangles at different heights read as a strip that cannot keep its
     // own baseline, and the direction they point is already unmissable. Which
-    // way it points is what the player reads at a glance; the colour (cyan
-    // against the jump's gold) is what confirms it.
+    // way it points is what the player reads at a glance; the colour (the
+    // duck's cyan against the jump's green) is what confirms it.
+    // AND EVERY ARROW IS BORDERED, on the same terms as the ones painted on the
+    // road: a dark edge with rounded joins, stroked before the fill so it reads
+    // as a rim the colour sits inside rather than a line eating half the shape.
+    // On this dark plate the border is quiet — it is not here to raise contrast,
+    // it is here so a strip arrow and a road arrow are visibly the same object
+    // seen in two places. lineWidth is set on every branch because it persists
+    // across calls and the ring below used to be the only thing that set it.
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = GLYPH_OUTLINE;
     if (marker.action === 'jump') {
-      const aw = 3 * u * glyphSwell, ah = ARROW_H * glyphSwell;
-      ctx.beginPath(); ctx.moveTo(x, mid - ah); ctx.lineTo(x - aw, mid + ah); ctx.lineTo(x + aw, mid + ah); ctx.closePath(); ctx.fill();
+      const aw = ARROW_W * glyphSwell, ah = ARROW_H * glyphSwell;
+      ctx.lineWidth = GLYPH_EDGE;
+      ctx.beginPath(); ctx.moveTo(x, mid - ah); ctx.lineTo(x - aw, mid + ah); ctx.lineTo(x + aw, mid + ah); ctx.closePath(); ctx.stroke(); ctx.fill();
     } else if (marker.action === 'duck') {
-      const aw = 3 * u * glyphSwell, ah = ARROW_H * glyphSwell;
-      ctx.beginPath(); ctx.moveTo(x, mid + ah); ctx.lineTo(x - aw, mid - ah); ctx.lineTo(x + aw, mid - ah); ctx.closePath(); ctx.fill();
+      const aw = ARROW_W * glyphSwell, ah = ARROW_H * glyphSwell;
+      ctx.lineWidth = GLYPH_EDGE;
+      ctx.beginPath(); ctx.moveTo(x, mid + ah); ctx.lineTo(x - aw, mid - ah); ctx.lineTo(x + aw, mid - ah); ctx.closePath(); ctx.stroke(); ctx.fill();
     } else if (marker.action === 'ability') {
-      ctx.beginPath(); ctx.arc(x, mid, 3 * u * glyphSwell, 0, Math.PI * 2);
-      ctx.strokeStyle = '#f890b8'; ctx.lineWidth = Math.max(1, Math.round(u)); ctx.stroke();
+      // The ring is a stroke already, so its border goes UNDER it as a slightly
+      // heavier line of the same circle rather than around a fill.
+      ctx.beginPath(); ctx.arc(x, mid, RING_R * glyphSwell, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(1, Math.round(u)) + GLYPH_EDGE; ctx.stroke();
+      ctx.strokeStyle = ACTION_INK.ability; ctx.lineWidth = Math.max(1, Math.round(u)); ctx.stroke();
     } else {
       // Coins are clock ticks, not calls to act — smaller than the arrows they
       // sit between, centred on x (the old 3u box hung half a unit right of the
@@ -380,7 +435,46 @@ export function drawBeatRibbon(ctx, run) {
       ctx.beginPath(); ctx.arc(x, mid, 1.15 * u, 0, Math.PI * 2); ctx.fill();
     }
   }
+  drawRibbonPlayhead(ctx, anchor, y, h, pulse);
   ctx.restore();
+}
+
+// THE PLAYHEAD IS ONE COLUMN, DRAWN LAST. It used to be two gold tabs, one
+// above the plate and one below, deliberately leaving the band itself clear so
+// a marker being judged was never half hidden. On a dark stage that read as one
+// line; on the LCD packs' pale yellow sky it did not read at all — gold on
+// light yellow is no contrast, and the plate cutting the column in two made the
+// pair look like a mark that had slipped BEHIND the strip rather than the one
+// thing on it that says HERE, NOW.
+//
+// So: one continuous column, in front of every glyph, in a colour that is not
+// competing with anything else on the strip (the markers are green, cyan, pink
+// and white) and cannot vanish into any sky a stage paints — vermilion inside a
+// dark casing, so it holds against pale yellow the way it holds against night.
+//
+// The old note's concern is still honoured, by alpha rather than by a gap: over
+// the band the column drops to a wash, so the marker under the line stays
+// readable through it, and only the two tabs are solid.
+const PLAYHEAD_INK = '255,82,48';
+// Flat pixels again, for the same reason as RIBBON_TAB: 3 units of core inside
+// 2 units of casing drew a 10px slab over the hero. A 3px core in a 1px casing
+// is a line — still the boldest single mark on the strip, because nothing else
+// runs the full height of it.
+const PLAYHEAD_W = 3, PLAYHEAD_EDGE = 1;
+function drawRibbonPlayhead(ctx, anchor, y, h, pulse) {
+  const w = PLAYHEAD_W, x = Math.round(anchor - w / 2);
+  const top = y - RIBBON_TAB, bot = y + h + RIBBON_TAB;
+  ctx.globalAlpha = 1;
+  // The casing is what makes it legible on a light stage; on the plate it is
+  // the plate's own colour and simply disappears.
+  ctx.fillStyle = 'rgba(16,20,28,0.6)';
+  ctx.fillRect(x - PLAYHEAD_EDGE, top - PLAYHEAD_EDGE,
+    w + PLAYHEAD_EDGE * 2, (bot - top) + PLAYHEAD_EDGE * 2);
+  ctx.fillStyle = `rgba(${PLAYHEAD_INK},${0.72 + pulse * 0.28})`;
+  ctx.fillRect(x, top, w, RIBBON_TAB);
+  ctx.fillRect(x, y + h, w, RIBBON_TAB);
+  ctx.fillStyle = `rgba(${PLAYHEAD_INK},${0.3 + pulse * 0.2})`;
+  ctx.fillRect(x, y, w, h);
 }
 
 // The touch power-up shelf's midline (see drawHud below) — exported so run.js

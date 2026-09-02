@@ -3,7 +3,33 @@
 // press/release, and never touches Input.activity — so attract mode can tell
 // the bot from a human.
 import { Input } from '../engine/input.js';
-import { PLAYER_X, airtimeFor } from './player.js';
+import { PLAYER_X, PLAYER_W, PLAYER_SPRITE_W, BASE_JUMP_V } from './player.js';
+
+// A HOLE IS THE ONE MISTAKE THE BOT MAY NOT MAKE.
+//
+// Everything else in the lane costs a hit and the demo carries on; a pit is
+// fatal, and a fatal mistake in a watch mode ends the level in the middle,
+// which is the one thing the mode exists to avoid. So the two numbers below
+// are margins on the only two ways into a hole — coming down short of the far
+// lip, and taking off from thin air past the near one — and every jump the bot
+// takes anywhere is checked against them.
+const LAND_MARGIN = 10;   // px of solid road the landing must have past the far lip
+const LIP_MARGIN = 4;     // px of road the take-off must still have under it
+// How long a slide is held once the chart has asked for one. Long enough for a
+// drone to pass and for a barrel to meet the boot, short enough that the button
+// is up again before the next beat — a punt needs a FRESH press (see the punt
+// note in beatchart.js), so a slide held into one simply cannot fire.
+const CHART_DUCK_HOLD = 0.28;
+// WHERE THE HERO ACTUALLY IS, relative to the number the bot measures with.
+//
+// `px` is the hero's back — the world x his sprite is drawn from — and neither
+// of the two things that hurt him is judged there. A hole opens under his
+// hitbox's CENTRE (run.js's isGap branch) and a drone is met by its FRONT, so a
+// bot that aims a hole with `px` is aiming six pixels short of where he falls
+// and answers a flyer a whole body length after it has already hit him. Both
+// offsets come off the same 12px sprite with a 2px inset either side.
+const HIT_MID = (PLAYER_SPRITE_W - PLAYER_W) / 2 + PLAYER_W / 2;    // 6
+const HIT_FRONT = (PLAYER_SPRITE_W - PLAYER_W) / 2 + PLAYER_W;      // 10
 
 export class DemoBot {
   constructor(run) {
@@ -16,6 +42,122 @@ export class DemoBot {
     this.wasAir = false;
     this.abilityT = 1.5;
     this.abHeld = false;
+    // Counts down while a chart-asked slide is held. See CHART_DUCK_HOLD.
+    this.chartDuckT = 0;
+    // WHICH MARK THE LAST SLIDE AND THE LAST SHOT ANSWERED.
+    //
+    // A cue does not stop being due once it has been played — `actionX` is a
+    // place on the road and the hero stays past it — so without a memory the
+    // slide simply re-arms itself the frame after it lets go, and the second
+    // press lands wherever the first one's hold ran out. That is a beat broken
+    // for nothing, half a beat after a beat that was kept. Cues are answered in
+    // the order the road meets them, so remembering the last one is enough.
+    this.duckCueKey = null;
+    this.abilityCueKey = null;
+  }
+
+  /**
+   * HOW MUCH ROAD A JUMP FROM HERE COVERS, in world px.
+   *
+   * `airtimeFor` is the hero's arc in still air. This is the arc the lane is
+   * actually running under right now, and the difference is what a power-up
+   * does: lowgrav stretches the flight by half again, and a `nojump` corruption
+   * cuts the launch to 0.6. Both move where he comes down by more than the
+   * width of a hole, so a bot that aims with the hero's paper airtime aims into
+   * the hole on exactly the runs where the lane is strangest.
+   */
+  arcSpan() {
+    const run = this.run;
+    const p = run.player;
+    const hero = p.hero;
+    if (!hero) return 0.55 * run.speed;
+    const g = p.gravity * (run.powerups?.gravityMultiplier?.() ?? 1);
+    const v = BASE_JUMP_V * (p.jumpScale || 1) * hero.jumpMult;
+    return g > 0 ? (2 * v / g) * run.speed : 0.55 * run.speed;
+  }
+
+  /**
+   * The holes on THIS hero's road that are not behind him yet, nearest first.
+   *
+   * A crossing is left out because it is not a hole you jump, it is a sequence
+   * of stones you land on — the crossJump arithmetic below owns it. A tunnel
+   * mouth is left out because falling into one is the way through (see the
+   * isGap branch in run.js's collide). A hole belonging to another route is
+   * somebody else's problem, but a LANE hole is always this hero's: he comes
+   * back down to the lane off every island in the game.
+   */
+  holesAhead(px) {
+    const out = [];
+    for (const ob of this.run.obstacles) {
+      if (!ob.live || !ob.def.isGap || ob.tunnel || ob.crossing) continue;
+      if (ob.route && ob.route !== this.run.route) continue;
+      // Both lips carried in the bot's own coordinate — the `px` at which his
+      // centre crosses them — so nothing downstream has to remember the offset.
+      const near = ob.x - HIT_MID;
+      const far = ob.x + ob.w - HIT_MID;
+      if (far < px) continue;
+      out.push({ ob, near, far });
+    }
+    return out.sort((a, b) => a.near - b.near);
+  }
+
+  /** Would a landing at `x` be on road? */
+  landsWell(x, holes) {
+    for (const h of holes) {
+      if (x > h.near - LIP_MARGIN && x < h.far + LAND_MARGIN) return false;
+    }
+    return true;
+  }
+
+  /**
+   * WHERE TO LEAVE THE GROUND FOR A HOLE.
+   *
+   * The take-off window is bounded both ways — too early comes down short of
+   * the far lip, too late has no ground left to push off — so there is a span
+   * of road that works and the bot aims at the middle of it, the point furthest
+   * from both ways of dying. On a beat cabinet the chart has already MARKED the
+   * take-off (`actionX`, the beat the hole is cut against), so that mark is the
+   * aim instead: playing the hole anywhere else is playing it off the beat, and
+   * the whole point of the cabinet is that the beat is the answer. It is still
+   * clamped into the window — a mark the hero in the lane cannot reach is a
+   * mark the bot may not take literally.
+   */
+  pitAim(hole, span) {
+    const from = hole.far + LAND_MARGIN - span;
+    // A frame of travel short of the lip: the press is answered on the NEXT
+    // update, and a take-off ordered from the last solid pixel is ordered from
+    // a hero who is already over the hole by the time the jump happens.
+    const to = hole.near - LIP_MARGIN - this.run.speed / 60;
+    if (from > to) return to;   // wider than his arc: jump at the lip and hope
+    const marked = this.run.beatLock && Number.isFinite(hole.ob.actionX)
+      ? hole.ob.actionX : (from + to) / 2;
+    return Math.min(to, Math.max(from, marked));
+  }
+
+  /**
+   * THE NEXT THING THE CHART ASKS FOR, on a beat cabinet.
+   *
+   * A rhythm stage is not a lane to be read — it is a score, and every piece the
+   * spawner lays carries the beat it is answered on and the world x that beat
+   * falls at (`actionX`, see beatchart.js). So the bot on these stages does not
+   * react at all: it plays the marks. That is what makes it perfect here rather
+   * than merely good, and it is also what makes it score — a press at `actionX`
+   * is a press on the line the judge is measuring against.
+   */
+  chartCue(px) {
+    const run = this.run;
+    if (!run.beatLock) return null;
+    const late = run.speed * 0.25;
+    let best = null;
+    for (const ob of run.obstacles) {
+      if (!ob.live || !Number.isFinite(ob.actionX)) continue;
+      const act = ob.chartAction;
+      if (act !== 'jump' && act !== 'duck' && act !== 'ability') continue;
+      if (ob.x + ob.w < px - 8) continue;        // answered, or gone by
+      if (ob.actionX < px - late) continue;      // the beat is missed; let it go
+      if (!best || ob.actionX < best.actionX) best = ob;
+    }
+    return best;
   }
 
   update(dt) {
@@ -24,10 +166,22 @@ export class DemoBot {
     const px = run.camX + PLAYER_X;
     const sp = run.speed;
 
-    // nearest action-required obstacle ahead
+    // How far this jump would carry him, and every hole it could carry him into.
+    const span = this.arcSpan();
+    const holes = this.holesAhead(px);
+    // The hole he can still take off FOR — one whose near lip is in front of
+    // him. Past that lip there is nothing left to push off and the arithmetic
+    // has nothing to say.
+    const hole = holes.find((h) => px <= h.near - LIP_MARGIN) || null;
+
+    // nearest action-required obstacle ahead. NOT the holes: a hole is the one
+    // hazard whose answer is a place rather than a reaction (pitAim), and the
+    // reaction window would fire at a third of a second out whatever the hole's
+    // width and whatever this hero's arc — which is how a bot that clears every
+    // crate in the game still runs into the second break on the plumber's road.
     let nearest = null;
     for (const ob of run.obstacles) {
-      if (!ob.live || ob.def.action === 'none') continue;
+      if (!ob.live || ob.def.action === 'none' || ob.def.isGap) continue;
       if (ob.x + ob.w < px - 8) continue;
       if (!nearest || ob.x < nearest.x) nearest = ob;
     }
@@ -71,8 +225,6 @@ export class DemoBot {
     const crossing = stone ? stone.crossing : (ahead ? ahead.crossing : null);
     let crossJump = false;
     if (crossing && run.player.grounded) {
-      const hero = run.player.hero;
-      const span = (hero ? airtimeFor(hero) : 0.55) * sp;
       // The edge he leaves from: the far end of the stone he is on, or the near
       // lip of the break he is running at.
       const edge = stone ? stone.x + stone.w : crossing.x;
@@ -114,9 +266,55 @@ export class DemoBot {
         || edgeOut < span * 0.06;
     }
 
-    // jump: speed-scaled reaction window, held through the arc
+    // WHAT THE CHART ASKS FOR, on a beat cabinet. Read before the lane rules
+    // below because on these stages it REPLACES them: the marks are the level.
+    const cue = this.chartCue(px);
+    // A press is ordered from where the hitbox will be, not from where the
+    // sprite starts: a duck answered at `actionX` on the nose is answered a
+    // body length after the drone has already met his face. The lead is well
+    // inside the judge's on-beat window, so it is still the beat being played.
+    //
+    // ...OR THE THING IS SIMPLY HERE, whatever the mark says. A drone wanders
+    // (`airDrift`, ±4px) and a duck's approach is a single frame of road, so
+    // the mark and the hitbox can disagree by more than the lead — a slide
+    // ordered on the mark alone met the drone that had drifted back toward him.
+    // The mark is what the bot plays; this is what keeps it honest.
+    //
+    // A hole is not answered here at all even though it wears a jump mark: the
+    // mark is only one of the two things its take-off has to satisfy, and
+    // pitAim is where both are reconciled.
+    const cueDue = !!cue && !cue.def.isGap
+      && (px >= cue.actionX - HIT_FRONT
+        || px + HIT_FRONT + (cue.def.airDrift?.amp || 0) + sp / 60 >= cue.x);
+
+    // THE HOLE, WHICH IS NOT A REACTION. Its take-off point is a place on the
+    // road (pitAim), so the press is "have I reached it" rather than "is it
+    // close" — and once reached it stays true, so a bot that was in the air
+    // through its own window presses on the frame it lands.
+    const pitJump = !!hole && px >= this.pitAim(hole, span);
+
+    // The ordinary lane hazard: jump when it is a third of a second out. On a
+    // beat cabinet the mark says when instead.
+    const laneJump = run.beatLock
+      ? !!(cueDue && cue.chartAction === 'jump')
+      : !!(nearest && nearest.def.action === 'jump'
+        && (nearest.x - px) < sp * 0.3 && (nearest.x - px) > -8);
+
+    // AND THE JUMPS NOBODY ASKED FOR — a coin up in the air, the mission's
+    // copter. These are the ones that used to kill the demo: the copter on
+    // RHYTHM 3 rides straight over a hole, so a bot that hops for it takes off
+    // a third of a second early and comes down in the break it was about to
+    // clear. Optional means optional: taken only when the landing is road, and
+    // on a beat cabinet only when he will be standing again before the next
+    // mark — an airborne hero cannot answer a beat.
+    const optional = !!(grab || chaseJump) && this.landsWell(px + span, holes)
+      && (!run.beatLock || !cue || px + span < cue.actionX - 8);
+
+    // jump: held through the arc. A jump that would land in a hole is refused
+    // whatever asked for it — a hit costs the demo a moment and a fall costs it
+    // the rest of the level.
     const wantJump = crossing ? crossJump
-      : ((nearest && nearest.def.action === 'jump' && (nearest.x - px) < sp * 0.3 && (nearest.x - px) > -8) || grab || chaseJump);
+      : (pitJump || (laneJump && this.landsWell(px + span, holes)) || optional);
     if (!run.player.grounded) {
       // keep holding — releasing early cuts the jump short (VARIABLE_JUMP_CUT)
       this.wasAir = true;
@@ -146,7 +344,24 @@ export class DemoBot {
     }
 
     // duck under low flyers (and stomp with stomp-heroes in boss fights)
-    const duckWanted = nearest && nearest.def.action === 'duck' && (nearest.x - px) < sp * 0.4 && run.player.grounded;
+    //
+    // On a beat cabinet the slide is a MARK like every other press, and it is
+    // held for a fixed stretch rather than for as long as the flyer is in
+    // front of him: a barrel slot is answered with the same button and needs
+    // the button back up before the next beat, because a punt only fires off a
+    // fresh press (see the punt note in beatchart.js).
+    if (run.beatLock) {
+      const key = cue ? `${cue.chartAction}:${Math.round(cue.actionX)}` : null;
+      if (cueDue && cue.chartAction === 'duck' && this.chartDuckT <= 0
+        && !this.duckHold && key !== this.duckCueKey) {
+        this.chartDuckT = CHART_DUCK_HOLD;
+        this.duckCueKey = key;
+      }
+      this.chartDuckT = Math.max(0, this.chartDuckT - dt);
+    }
+    const duckWanted = run.beatLock
+      ? this.chartDuckT > 0
+      : nearest && nearest.def.action === 'duck' && (nearest.x - px) < sp * 0.4 && run.player.grounded;
     const stompWanted = run.bossCab && run.player.hero && run.player.hero.stomp && !run.player.grounded && run.player.vy < 60;
     if (duckWanted || stompWanted) {
       if (!this.duckHold) { Input.press('duck'); this.duckHold = true; }
@@ -164,7 +379,26 @@ export class DemoBot {
     // approach it eats the whole takeoff window and the run ends in the teeth
     // with the button held down. Nothing on a crossing is worth shooting at
     // anyway: the sweep has cleared the lane either side of it.
-    if (hero && hero.ability && !crossing && this.abilityT <= 0 && run.player.abilityCd <= 0) {
+    //
+    // NOR ANYWHERE NEAR A HOLE, for a reason the crossing guard above only
+    // half covers. Lorenzo's ability is a SLAM — it sets vy to -180 and drops
+    // him out of whatever arc he was in (see the stomp branch in run.js) — so
+    // fired mid-flight over a break it turns a jump that was clearing the hole
+    // into a fall straight down it. That is exactly how the demo used to die on
+    // the plumber's second stage. On a beat cabinet the chart says when to
+    // shoot, so nothing here has an opinion at all.
+    const pitNear = holes.some((h) => h.near - px < span * 1.2 && h.far > px - 20);
+    if (run.beatLock) {
+      const key = cue ? `${cue.chartAction}:${Math.round(cue.actionX)}` : null;
+      if (cueDue && cue.chartAction === 'ability' && key !== this.abilityCueKey
+        && this.abilityT <= 0 && run.player.abilityCd <= 0) {
+        Input.press('ability');
+        this.abHeld = true;
+        this.abilityT = 0.2;
+        this.abilityCueKey = key;
+      }
+    } else if (hero && hero.ability && !crossing && !pitNear
+      && this.abilityT <= 0 && run.player.abilityCd <= 0) {
       const threat = run.bossCab || run.obstacles.some((ob) =>
         ob.live && (ob.def.shoots || ob.def.isTarget || (ob.def.breakable && ob.def.ground)) &&
         ob.x - px > 20 && ob.x - px < 180);
@@ -177,6 +411,7 @@ export class DemoBot {
   }
 
   releaseAll() {
+    this.chartDuckT = 0;
     if (this.jumpHold) { Input.release('jump'); this.jumpHold = false; }
     if (this.duckHold) { Input.release('duck'); this.duckHold = false; }
     if (this.abHeld) { Input.release('ability'); this.abHeld = false; }
