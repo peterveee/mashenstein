@@ -2224,14 +2224,14 @@ const LCD_CITY_SCENES = [
     buildings: [
       // THE RAIL IS THE CEILING. Peter (2026-09-03): "raise the monorail a bit
       // more and lower any other buildings so they don't extend past it". The
-      // girder rules y 65 and the cars ride 53-65; nothing on this skyline —
-      // facade, board or meter — reaches above it, except the STATION (index
-      // 3, the spire), whose roof IS the rail: 167 tall so its roof is the
-      // girder's rule. It is THREE windows wide (51) so the three-car service
-      // fits its platform, and the speaker after it went to two (36, at 254)
-      // so the row's total and every gap are unchanged — Peter: "keep things
-      // in the same positions". (It tapered out into a 108px deck for an
-      // afternoon; Peter did not love the taper.) The far spire came down from 149 to
+      // girder rules y 65 and the cars ride 53-65, and nothing on this
+      // skyline — facade, board or meter — reaches above it. The tall spire
+      // (index 3) tops out at 155, so its roof is twelve clear of the girder
+      // and the rail passes over it rather than landing tangent to it; its
+      // roof is BARE for the same reason, since a 37px meter bank on it would
+      // stand above the rail. It was 51 wide and 167 tall for an afternoon,
+      // when the service stopped on it and needed a platform; both are back to
+      // the numbers this row was authored with. The far spire came down from 149 to
       // 134 so its chase board's top (roof - 8 - 22 = 68) sits under the
       // girder; the washer's deco (5) keeps its 146 because its roof is bare
       // now (bareRoofs) and 86 is under the rail on its own.
@@ -2240,57 +2240,62 @@ const LCD_CITY_SCENES = [
       // twenty-three clear of the rail, so the board and the service never
       // share a line. The opener beside it came up to 89 with it; both were
       // the two stubs at this end of the skyline and the pair now stand as a
-      // step up into the station rather than as a gap in front of it.
+      // step up into the spire rather than as a gap in front of it.
       // The combo board's building is three wide; the music hall beside it is
       // two, so the row's total and its gaps are unchanged.
       [20, 36, 89, 'speaker'], [71, 51, 104, 'deco'], [137, 36, 80, 'music-hall'],
-      [188, 51, 167, 'spire'], [254, 36, 59, 'speaker'], [305, 36, 146, 'deco'],
+      [188, 36, 155, 'spire'], [239, 51, 59, 'speaker'], [305, 36, 146, 'deco'],
       [356, 51, 74, 'music-hall'], [422, 36, 134, 'spire'],
     ],
-    // UNDER THE RAIL, BEHIND THE SKYLINE. With the girder the highest thing on
-    // the panel, the strip above the cars (39-52) is the station clock's, and
-    // Peter allowed the clouds below the rail: they drift in the band between
-    // the girder (65) and the washer's roof (86), the only band no facade
-    // reaches into except the station's — and a facade is a translucent wash,
-    // so lcdCloudLayer clips them out of that one silhouette rather than let
-    // an ink cloud show through its wall. The far spire's board (68-98) is a
-    // solid print and hides them on its own.
-    clouds: [[22, 67], [236, 70], [396, 69]],
+    // IN THE TOP CORNERS, ABOVE THE RAIL — Peter: "keep clouds in top right and
+    // top left above monorail line". The strip between the beat ribbon's band
+    // (25-38, x 120-360) and the cars (53-65) is fourteen rows, and a cloud
+    // with its bob is fifteen; so they sit at 38, one row clear of the cars
+    // on the bar they bob up, and stay OUT of the ribbon's columns. They do
+    // not cross the panel any more: each SWAYS within its corner, `cloudSway`
+    // pixels out and back at its own pace, see lcdCloudLayer. They spent an
+    // hour under the rail instead, behind the skyline, and showed straight
+    // through the walls — a facade is a 7% wash.
+    clouds: [[8, 38], [378, 38], [434, 38]],
+    cloudSway: 24,
     // Stage 2 was the one panel with no sky or rooftop life at all — windows,
     // equalizers and clouds and nothing else. It gets the working city: a
-    // searchlight sweeping off the music hall, a commuter train on a viaduct
-    // behind the skyline, a window washer who is having a day, and the
-    // repossession helicopter that arrives in the second half and leaves with
-    // whatever it can lift.
-    // NO PLANE ON THIS PANEL. It used to tow a line through y 62-74, which is
-    // the same band the viaduct's service runs in and the band both billboards
+    // searchlight sweeping off the music hall, a commuter service on a monorail
+    // over the skyline, and a window washer who is having a day.
+    //
+    // NO REPOSSESSION HELICOPTER, and it was here for months. It crossed on a
+    // cable and the billboard it passed over left with it, which is the joke
+    // the cabinet is named for — except the joke never played: it named a roof
+    // with no sign on it, so it took nothing, and it was drawn already loaded,
+    // so there was no before and no after. Both were fixed, Peter watched the
+    // repaired version, and cut it anyway: "the helicopter gag is weak". A gag
+    // that needs a paragraph to explain why it is a gag is not one. What
+    // carries this panel is the working city, not a punchline crossing it.
+    //
+    // NO PLANE EITHER. It used to tow a line through y 62-74, which is
+    // the same band the service runs in and the band both billboards
     // hang their boards over — three things crossing one lane, and the sky read
     // as traffic rather than as a city. Stage 2 is the panel with the most
-    // going on at roof height already: a searchlight, a train, a washer and the
-    // chopper. The crossing belongs to stages 1 and 3, which have the air for
+    // going on at roof height already: a searchlight, a train and a washer.
+    // The crossing belongs to stages 1 and 3, which have the air for
     // it; here the train IS the thing that crosses.
     searchlight: [2, 24],
     // THE LANE: the girder on rule 65 (y + 12), the cars on 53-65 above every
-    // other roof, the station's roof at the girder's own height. THREE cars,
-    // not four: the service is sized to the platform it stops at. It ran at 77
-    // once, behind the tallest tower; see the buildings note above for why it
-    // rose. `fromPhase` gates the SERVICE only; the viaduct is drawn live from
-    // beat one (lcdViaduct).
-    train: { y: 53, cars: 3, fromPhase: 1 },
-    // THE STATION: the three-wide spire tower the service stops at, with a
-    // canopy on its roof, a clock and platform lamps — see lcdStationKit. Its
-    // roof carries no meter.
-    station: 3,
+    // other roof. FOUR cars, a hundred pixels of train on a 480 panel. It
+    // dropped to three for an hour while the service still stopped at a
+    // platform and had to fit one; nothing stops now, so it is back to the
+    // length it was authored with. It ran at 77 once, behind
+    // the tallest tower; see the buildings note above for why it rose. The
+    // service runs from the first phase (it waited for the second; Peter:
+    // "don't wait so long for the first monorail") — from the beat the skyline
+    // has landed. The viaduct is drawn live from beat one (lcdViaduct).
+    train: { y: 53, cars: 4, fromPhase: 0 },
     washer: [5, 20],
-    // Nor does the washer's (Peter: "remove led from roof of window washer
-    // building"). The roof carries one thing, and his is the man on the cradle.
-    bareRoofs: [5],
-    // THE CHOPPER FLIES UNDER THE RAIL. Above it there is no room: the beat
-    // ribbon's band ends at 38 and the cars start at 53, and a chopper with a
-    // sign on a cable is thirty-eight tall. So it crosses at rooftop height —
-    // body at 70, the load hanging in front of the towers it is raiding —
-    // which is where a repossession helicopter belongs. See lcdChopper.
-    chopper: { fromPhase: 2, takes: 0 },
+    // ROOFS THAT CARRY NO METER. The washer's, because the roof carries one
+    // thing and his is the man on the cradle (Peter: "remove led from roof of
+    // window washer building"); and the tall spire's, because a bank on it
+    // would be the one thing on this panel standing above the rail.
+    bareRoofs: [3, 5],
     // Same swap as stage 1, for the same reason: the chart near the hero,
     // the cassette out at the edge.
     // The far roof runs the maze game's attract screen — see lcdChaseGrid. It
@@ -2444,7 +2449,7 @@ const LCD_GBC_PALETTES = [
 // the distance the old ones did, so the last phase is a warmer afternoon
 // rather than a sunset. The rest of "the stage gets later" is unchanged and
 // does the real work — window rows lighting floor by floor, the transmitter
-// tipping, stage 2's train and its repossession chopper arriving on phase.
+// tipping, and stage 2's searchlight and washer working through it.
 const LCD_SKY_PHASES = [
   null,
   [['#e7e7a3', '#a8cf8a'], ['#e6e29e', '#a4cc86'], ['#e3dc97', '#9fc685'], ['#ded090', '#96bd84']],
@@ -2631,6 +2636,9 @@ function lcdSceneFrame(scene, reducedMotion) {
     // LCD_BARREL_CELL_STYLES and LCD_BARREL_SHAPE_STYLES. Null ships.
     barrelCell: typeof scene?.barrelCell === 'string' ? scene.barrelCell : null,
     barrelShape: typeof scene?.barrelShape === 'string' ? scene.barrelShape : null,
+    // Whether the runner wears a RIM, and in which ink — see
+    // LCD_RUNNER_OUTLINE_STYLES. Null ships.
+    runnerOutline: typeof scene?.runnerOutline === 'string' ? scene.runnerOutline : null,
     // IS THIS A RUN OPENING, and HOW FAR INTO IT — the pair that gates the
     // city's arrival, see lcdArrival.
     //
@@ -3207,24 +3215,22 @@ function lcdCloudLayer(ctx, art, frame) {
   // motion (beat 0 forever) gets a parked sky.
   const beatAbs = frame.bar * 4 + frame.beat4;
   const span = W + 72;
-  // Behind the station, not through it: the walls are a 7% wash, so a cloud
-  // drawn under one shows through. Its box is cut out of the sky the clouds
-  // may paint on. See the stage 2 `clouds` note.
-  const station = art.station != null ? art.buildings[art.station] : null;
-  if (station) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, W, H);
-    ctx.rect(station[0], GROUND_Y - station[2], station[1] + 1, H);
-    ctx.clip('evenodd');
-  }
   for (let i = 0; i < art.clouds.length; i++) {
     const [cx0, cy0] = art.clouds[i];
-    const x = lcdMod(cx0 + 36 - beatAbs * LCD_CLOUD_DRIFT[i % LCD_CLOUD_DRIFT.length], span) - 36;
+    const pace = LCD_CLOUD_DRIFT[i % LCD_CLOUD_DRIFT.length];
+    // A scene with `cloudSway` keeps its clouds where they are authored: each
+    // one drifts that far leftward at its own pace and comes back, a whole
+    // pixel a step, rather than crossing the panel. See stage 2's `clouds`.
+    let x;
+    if (art.cloudSway) {
+      const p = lcdMod(beatAbs * pace, art.cloudSway * 2);
+      x = cx0 - (p < art.cloudSway ? p : art.cloudSway * 2 - p);
+    } else {
+      x = lcdMod(cx0 + 36 - beatAbs * pace, span) - 36;
+    }
     const y = cy0 + LCD_CLOUD_BOB[lcdMod(frame.bar + i, LCD_CLOUD_BOB.length)];
     lcdCloud(ctx, x, y, lcdMod(frame.bar + frame.phrase + i, 2));
   }
-  if (station) ctx.restore();
 }
 
 // ---- the chase ----------------------------------------------------------
@@ -4600,13 +4606,53 @@ function lcdSearchlight(ctx, building, dx, frame, reducedFlashing) {
 // (lcdViaduct, drawn whole in front of the skyline). Only the cars answer to
 // the beat, and they are an EVENT — see the lap below.
 const LCD_TRAIN_CAR = 26;
-// A crossing takes twenty-two beats; the lap is forty-eight. The old lap was
-// exactly the crossing, so there was a train on the panel about ninety percent
-// of a run and four cars sat permanently across the billboards and the rooftop
-// meters — the viaduct read as a smear rather than as a line something
-// occasionally runs along. Half the bars go back to the skyline, and a train
-// arriving is something you can notice arriving.
-const LCD_TRAIN_LAP = 48;
+// THE TIMETABLE, and it is the whole of it: a crossing right to left, a wait,
+// a crossing left to right, a wait. Six bars each way at a car-length a beat,
+// two bars of empty rail between, so the service comes round every sixteen —
+// four phrases, which is a length the ear already has.
+//
+// Half the bars go back to the skyline on purpose. The first version ran a lap
+// exactly as long as one crossing, so there was a train on the panel about
+// ninety percent of a run and the cars sat permanently across the billboards
+// and the rooftop meters: the rail read as a smear rather than as a line
+// something occasionally runs along. A train ARRIVING is something you can
+// notice arriving, and it can only arrive if it has been away.
+//
+// IT COMES BACK THE OTHER WAY. It used to leave one edge and reappear at the
+// same one, which is not a service, it is a loop of tape — a city has trains
+// going both ways and the return is what says the one you watched leave went
+// somewhere. Peter: "make it go right to left and then left to right after a
+// wait... simplify".
+const LCD_TRAIN_WAIT = 8;                                    // two bars of empty rail
+
+/**
+ * How long a crossing takes, in beats — DERIVED, never authored.
+ *
+ * The train moves a car-length a beat, so the number of beats it needs to get
+ * from wholly off one edge to wholly off the other follows from how long the
+ * train is. That was a hand-written 24 for exactly one afternoon, and the
+ * afternoon it stopped being true was the one the train went from three cars
+ * to four: the fourth car was still eight pixels on the panel when the
+ * crossing's last beat culled it, so the service blinked out mid-screen. The
+ * mirror of that bug puts a train ON the panel mid-screen, which is what Peter
+ * asked never to see. Neither can happen if the beat count is solved from the
+ * geometry, whatever the car count later becomes.
+ *
+ * Rounded up to whole bars, because the wait either side of it is counted in
+ * bars and the lap wants to come round on one. Any slack is spent off-panel.
+ */
+function lcdTrainCross(cars) {
+  const trainW = cars * LCD_TRAIN_CAR - 4;
+  const beats = Math.ceil((W + trainW) / LCD_TRAIN_CAR) + 1;
+  return Math.ceil(beats / 4) * 4;
+}
+/** The timetable for one service: its crossing, its leg and its whole lap. */
+function lcdTrainLegs(spec) {
+  const cars = spec.cars ?? 4;
+  const cross = lcdTrainCross(cars);
+  const leg = cross + LCD_TRAIN_WAIT;
+  return { cars, cross, leg, lap: leg * 2 };
+}
 
 // The viaduct, in the panel's own hand: ONE INK, ONE PIXEL, ONE LINE.
 //
@@ -4627,82 +4673,83 @@ function lcdViaduct(ctx, art) {
 //
 // SETTLED 2026-09-03 off a three-round bake-off (gallery section
 // `monorail-bakeoff`, retired). The old service was four teal boxes sliding
-// past once a lap, and Peter called it bland. What ships is the three cuts he
-// took, stacked: a STATION STOP (the service pulls in at the spire tower,
-// dwells two bars with the doors open and the headlamp off, then lights up
-// and leaves), LAMPS + SPARKS (a fading headlamp beam that flickers on the
-// offbeat, a red tail lamp on the backbeat, a collector spark at the rail on
-// the downbeat) and PASSENGERS (seated silhouettes, and one standing walker
-// working toward the back a window a beat). The stop's building is three
-// windows wide so the three-car service fits it, and wears the furniture that
-// says it is a stop (lcdStationKit). Losers, deleted rather
-// than hidden: INK CARS (facade-hand cars), SUSPENDED (a hanging monorail
-// that swayed), TWO-WAY SERVICE (a meet mid-panel, which overlapped into a
-// blob for two beats).
+// past once a lap, and Peter called it bland. What ships is two of the cuts he
+// took — LAMPS + SPARKS (a fading headlamp beam that flickers on the offbeat,
+// a red tail lamp on the backbeat, a collector spark at the rail on the
+// downbeat) and PASSENGERS (seated silhouettes, and one standing walker
+// working toward the back a window a beat) — on a service that crosses, waits,
+// and comes back the other way.
+//
+// THE STOP IS GONE, and it was most of this file for an afternoon: the train
+// pulled in at a named tower, dwelled two bars with its doors open, and stood
+// on a platform slab cantilevered off that roof, under a canopy with a station
+// clock and a lamp. Every piece of it worked and every piece of it came out —
+// Peter: "lose the slab and don't stop the monorail at all... simplify". What
+// is left says the same thing with nothing added to the skyline: a service
+// that goes somewhere and comes back is a working city, and the buildings
+// under it are just buildings.
+//
+// Losers, deleted rather than hidden: INK CARS (facade-hand cars), SUSPENDED
+// (a hanging monorail that swayed), TWO-WAY SERVICE (both directions at once,
+// which overlapped into a blob mid-panel — this is that idea done in series
+// instead, which is the version that reads).
 const LCD_TRAIN_BODY = 'rgba(70,121,137,0.5)';
 const LCD_TRAIN_GLASS = 'rgba(220,228,154,0.7)';
-// The timetable. The stop is a PLACE, not a beat: the nose halts centred on
-// the station's facade, and since the platform is not a whole number of
-// car-lengths from the edge, the last step in is a short one — the train
-// creeps the final few pixels to the mark, which is what pulling in looks
-// like. Then it stands for the dwell, and leaves at a car-length a beat.
-const LCD_TRAIN_DWELL = 8;
-function lcdTrainSpan(spec) { return W + (spec.cars ?? 4) * LCD_TRAIN_CAR + 40; }
-function lcdTrainStopX(spec, station) {
-  const [x, w] = station;
-  return Math.round(x + w / 2) - Math.round(((spec.cars ?? 4) * LCD_TRAIN_CAR - 4) / 2);
-}
-/** The beat the nose reaches the mark: the first whole step at or past it. */
-function lcdTrainStopBeat(spec, station) {
-  return Math.ceil((lcdTrainSpan(spec) - lcdTrainStopX(spec, station)) / LCD_TRAIN_CAR);
-}
-/** Whether the service is standing at the platform on beat `k` of the lap. */
-function lcdTrainDwelling(spec, station, k) {
-  const stop = lcdTrainStopBeat(spec, station);
-  return k > stop && k < stop + LCD_TRAIN_DWELL;
+
+/**
+ * Which way the service is running this beat and where its left-hand car
+ * stands, or NULL on the beats the rail is empty — which is a quarter of them.
+ *
+ * `dir` is -1 outbound (right to left, the way it has always run) and +1 on
+ * the return. Both legs start wholly off their own edge and end wholly off the
+ * far one, so neither pops into or out of existence on the panel.
+ */
+function lcdTrainRun(spec, frame) {
+  const { cross, leg, lap } = lcdTrainLegs(spec);
+  const k = lcdMod(frame.beatAbs, lap);
+  const step = lcdMod(k, leg);
+  if (step >= cross) return null;
+  // THE TWO ENDS OF A CROSSING, both wholly off the panel by construction: the
+  // near end level with the right edge, the far end far enough past the left
+  // one that the last car has cleared it (see lcdTrainCross). The return walks
+  // the very same positions in reverse, so it cannot begin anywhere the
+  // outbound leg could not end — no leg starts mid-panel, either way round.
+  const from = W;
+  const to = from - (cross - 1) * LCD_TRAIN_CAR;
+  const dir = k < leg ? -1 : 1;
+  const x0 = dir < 0 ? from - step * LCD_TRAIN_CAR : to + step * LCD_TRAIN_CAR;
+  return { dir, x0, step };
 }
 
-// Where the nose stands on beat `k` of the lap. Stepped off the LAP rather
-// than off the span, which is what turns a continuous belt of carriages into a
-// service with a timetable: past the crossing the head keeps walking left,
-// every car culls, and the rail is empty until the lap comes round.
-function lcdTrainHead(spec, k, station) {
-  const span = lcdTrainSpan(spec);
-  if (!station) return span - k * LCD_TRAIN_CAR;
-  const stopX = lcdTrainStopX(spec, station);
-  const stop = lcdTrainStopBeat(spec, station);
-  if (k <= stop) return Math.max(stopX, span - k * LCD_TRAIN_CAR);
-  if (k < stop + LCD_TRAIN_DWELL) return stopX;
-  return stopX - (k - stop - LCD_TRAIN_DWELL + 1) * LCD_TRAIN_CAR;
-}
-
-function lcdTrain(ctx, spec, frame, station) {
+function lcdTrain(ctx, spec, frame) {
+  const run = lcdTrainRun(spec, frame);
+  if (!run) return;
+  const { dir, x0 } = run;
   const { y, cars = 4 } = spec;
-  const k = lcdMod(frame.beatAbs, LCD_TRAIN_LAP);
-  const x0 = lcdTrainHead(spec, k, station);
-  const dwelling = !!station && lcdTrainDwelling(spec, station, k);
-  // The walker: one standing passenger, a window a beat toward the back.
-  const walker = lcdMod(k, cars * 4);
+  const body = LCD_TRAIN_CAR - 4;
+  // The walker: one standing passenger, a window a beat toward the BACK of the
+  // train — which is the right-hand end going left and the left-hand end
+  // coming back, so he walks against the way the panel is moving either way.
+  const slots = cars * 4;
+  const walked = lcdMod(frame.beatAbs, slots);
+  const walker = dir < 0 ? walked : slots - 1 - walked;
   for (let c = 0; c < cars; c++) {
     const cx = Math.round(x0 + c * LCD_TRAIN_CAR);
     if (cx > W + 4 || cx + LCD_TRAIN_CAR < -4) continue;
-    const lead = c === 0;
-    const last = c === cars - 1;
+    // The lead car is whichever end is in front, so the lamps swap with the
+    // direction rather than the train running backwards on the way home.
+    const lead = dir < 0 ? c === 0 : c === cars - 1;
+    const last = dir < 0 ? c === cars - 1 : c === 0;
+    const nose = dir < 0 ? cx - 2 : cx + body;
+    const tail = dir < 0 ? cx + body : cx - 2;
     ctx.fillStyle = LCD_TRAIN_BODY;
-    ctx.fillRect(cx, y, LCD_TRAIN_CAR - 4, 12);
+    ctx.fillRect(cx, y, body, 12);
     ctx.fillStyle = LCD_PRINT;
-    ctx.fillRect(cx, y + 11, LCD_TRAIN_CAR - 4, 2);
-    // Four lit windows a car. At the platform the two middle ones are the
-    // door leaves: while the doors stand open they are gone and the doorway
-    // is lit instead.
+    ctx.fillRect(cx, y + 11, body, 2);
     ctx.fillStyle = LCD_TRAIN_GLASS;
-    for (let wdw = 0; wdw < 4; wdw++) {
-      if (dwelling && (wdw === 1 || wdw === 2)) continue;
-      ctx.fillRect(cx + 3 + wdw * 5, y + 3, 3, 4);
-    }
-    if (dwelling) ctx.fillRect(cx + 8, y + 2, 8, 8);
+    for (let wdw = 0; wdw < 4; wdw++) ctx.fillRect(cx + 3 + wdw * 5, y + 3, 3, 4);
     // The passengers: seated heads low in the glass in a fixed pattern, and
-    // the walker standing taller. They keep their seats through the stop.
+    // the walker standing taller.
     ctx.fillStyle = LCD_PRINT;
     for (let wdw = 0; wdw < 4; wdw++) {
       const g = c * 4 + wdw;
@@ -4710,29 +4757,29 @@ function lcdTrain(ctx, spec, frame, station) {
       if (g === walker) ctx.fillRect(wx, y + 3, 2, 3);
       else if ((g * 7) % 3 === 0) ctx.fillRect(wx, y + 5, 2, 2);
     }
-    if (lead && !dwelling) {
-      // The headlamp, and its beam: three cells fading along the lane, a cell
-      // shorter on the offbeat so it flickers the way a lamp on a moving thing
-      // does. Off at the platform — the train lights up to leave.
+    if (lead) {
+      // The headlamp, and its beam: three cells fading along the lane ahead, a
+      // cell shorter on the offbeat so it flickers the way a lamp on a moving
+      // thing does.
       ctx.fillStyle = LCD_WINDOW_ON;
-      ctx.fillRect(cx - 2, y + 5, 2, 3);
+      ctx.fillRect(nose, y + 5, 2, 3);
       const cells = frame.beat4 % 2 ? 2 : 3;
       const fade = ['rgba(211,91,67,0.5)', 'rgba(211,91,67,0.28)', 'rgba(211,91,67,0.14)'];
       for (let i = 0; i < cells; i++) {
         ctx.fillStyle = fade[i];
-        ctx.fillRect(cx - 4 - i * 2, y + 5, 2, 3);
+        ctx.fillRect(nose + dir * (2 + i * 2), y + 5, 2, 3);
       }
       // The collector spark, at the rail under the lead bogie, on the downbeat:
       // the train is drawing power from the beam.
       if (frame.beat4 === 0) {
         ctx.fillStyle = 'rgba(232,238,176,0.95)';
-        ctx.fillRect(cx + 2, y + 11, 2, 2);
+        ctx.fillRect(dir < 0 ? cx + 2 : cx + body - 4, y + 11, 2, 2);
       }
     }
     // And a red tail lamp on the last car, blinking on the backbeat.
     if (last && frame.beat4 % 2 === 1) {
       ctx.fillStyle = LCD_WINDOW_ON;
-      ctx.fillRect(cx + LCD_TRAIN_CAR - 4, y + 5, 2, 3);
+      ctx.fillRect(tail, y + 5, 2, 3);
     }
   }
 }
@@ -4813,54 +4860,6 @@ function lcdWasher(ctx, building, dx, frame) {
   ctx.fillStyle = LCD_PRINT;
   const arm = frame.beat4 % 2 === 0 ? cx + 2 : cx - 5;
   ctx.fillRect(arm, y - 9, 3, 2);
-}
-
-// ---- the repossession helicopter ----------------------------------------
-//
-// The joke the cabinet is named for. A chopper crosses the sky on a cable,
-// and the billboard it passes over LEAVES WITH IT: `art.billboards` is
-// filtered against the chopper's take, so the sign that was on that roof is
-// simply gone for the rest of the run. It arrives in the second half —
-// nobody repossesses anything in the first twenty seconds.
-const LCD_CHOPPER = [
-  '..X.......',
-  'XXXXXXXX..',
-  '..XXXXXXX.',
-  '.XXXXX....',
-  '...X......',
-];
-function lcdChopperX(frame) {
-  // Same movement arithmetic the plane uses: a cell per beat across a cycle
-  // wider than the display, so it is off-screen most of the time.
-  const cyc = lcdMod(frame.bar * 4 + frame.beat4, 40);
-  return cyc >= 30 ? null : W + 20 - cyc * 18;
-}
-function lcdChopper(ctx, frame, taken) {
-  const x = lcdChopperX(frame);
-  if (x == null) return;
-  // Under the girder (rule 65): the rotor at 67, the body from 70, the load
-  // hanging to 108 across the roofs.
-  const y = 70;
-  for (let r = 0; r < LCD_CHOPPER.length; r++) {
-    for (let c = 0; c < LCD_CHOPPER[r].length; c++) {
-      if (LCD_CHOPPER[r][c] === '.') continue;
-      ctx.fillStyle = LCD_PRINT;
-      ctx.fillRect(x + c * 2, y + r * 2, 2, 2);
-    }
-  }
-  // Rotor: a two-cell blur alternating on the beat, and a tail rotor.
-  ctx.fillStyle = LCD_PRINT_SOFT;
-  ctx.fillRect(x + (frame.beat4 % 2 ? 0 : 4), y - 3, 14, 1);
-  ctx.fillRect(x + 16, y + 1, 1, 5);
-  // The cable, and whatever is on the end of it.
-  ctx.fillStyle = LCD_PRINT_SOFT;
-  ctx.fillRect(x + 5, y + 10, 1, 16);
-  if (taken) {
-    ctx.fillStyle = LCD_PRINT;
-    ctx.fillRect(x - 4, y + 26, 20, 12);
-    ctx.fillStyle = 'rgba(220,228,154,0.45)';
-    ctx.fillRect(x - 2, y + 28, 16, 8);
-  }
 }
 
 // ---- the transmitter mast -----------------------------------------------
@@ -6747,7 +6746,77 @@ function lcdMiniBarrel(ctx, bx, by, ghost = false, size = null, shape = null, sp
 //     the walk was a man standing still being carried along the girder. The
 //     arm swings against the legs, forward and up on one cell, back and low on
 //     the other.
-function lcdRunnerFigure(ctx, rx, footY, mode) {
+//
+// THE OUTLINE, 3 Sep 2026. He is the only thing on the tower with no ink at
+// all: the gorilla is outlined, the barrel he dodges has a print rim, the
+// girders and ladders are ink, and eight by seventeen pixels of flat teal and
+// blue on the ochre wash sat on the panel like a sticker rather than a
+// segment. The rim is a DILATED SILHOUETTE, never a stroke per rectangle —
+// he is a stack of fillRects and stroking each puts lines through his waist
+// and neck. Every cell is recorded once as an expanded rect into ONE path
+// and filled once, so a translucent ink does not double where they overlap;
+// then the colours go on top. `e` is in pack pixels: the pack draws at ZOOM 2,
+// so 0.5 is one device pixel — "very fine" — and 1 is the weight the barrel
+// bake-off showed turns a body this small into a dark disc.
+//
+// SETTLED 3 Sep 2026: PRINT ½ SHIPS. The sweep ran the alpha of that one
+// device pixel from 48% to 100% — Peter's eye landed on 70, and 70 is the
+// panel's own print (72%) to within anything a pixel can show, so he wears
+// LCD_PRINT itself rather than a second ink two points off it: one ink on
+// the panel, and the rim follows if the print is ever retuned. SOFT (48%)
+// was liked first and lost to being barely there on the ochre; INK and 90
+// turn the cap into a dark block; the whole-pixel guardrail did what the
+// barrel bake-off said it would.
+//
+// `style` is the dev seam the bake-off rode — see LCD_RUNNER_OUTLINE_STYLES;
+// null is the rim the panel ships.
+const LCD_RUNNER_OUTLINE = 'print';
+const LCD_RUNNER_OUTLINES = {
+  none: null,
+  print: [0.5, LCD_PRINT],
+  print60: [0.5, 'rgba(60,63,69,0.6)'],
+  print70: [0.5, 'rgba(60,63,69,0.7)'],
+  print80: [0.5, 'rgba(60,63,69,0.8)'],
+  print90: [0.5, 'rgba(60,63,69,0.9)'],
+  ink: [0.5, LCD_INK],
+  soft: [0.5, LCD_PRINT_SOFT],
+  soft34: [0.75, LCD_PRINT_SOFT],
+  heavy: [1, LCD_PRINT],
+};
+export const LCD_RUNNER_OUTLINE_STYLES = [
+  { id: 'none', name: 'NONE', note: 'flat fills, no rim — how he was until 3 Sep 2026.' },
+  { id: 'print', name: 'PRINT ½', note: 'SHIPS — one device pixel of the panel print (72% graphite).' },
+  { id: 'print60', name: 'PRINT 60 ½', note: 'the same pixel at 60% — a notch softer than the print, a notch firmer than SOFT.' },
+  { id: 'print70', name: 'PRINT 70 ½', note: 'the same pixel at 70%, a hair under the print.' },
+  { id: 'print80', name: 'PRINT 80 ½', note: 'the same pixel at 80%.' },
+  { id: 'print90', name: 'PRINT 90 ½', note: 'the same pixel at 90% — a step short of the full ink.' },
+  { id: 'ink', name: 'INK ½', note: 'one device pixel of the full outline ink, as the gorilla and girders wear.' },
+  { id: 'soft', name: 'SOFT ½', note: 'one device pixel of the soft print (48%) — barely there.' },
+  { id: 'soft34', name: 'SOFT ¾', note: 'the soft print at three quarters of a pack pixel: a device pixel and a half, so the second pixel comes out at half strength.' },
+  { id: 'heavy', name: 'PRINT 1', note: 'guardrail: a whole pack pixel of print, the weight that made the barrel a disc.' },
+];
+// Where he was last drawn, in panel coordinates — read by the gallery so a
+// close-up can find him without knowing the journey. Dev only.
+export const lcdRunnerProbe = { rx: 0, fy: 0, mode: null, barrels: [] };
+function lcdRunnerFigure(ctx, rx, footY, mode, style = null) {
+  const rim = LCD_RUNNER_OUTLINES[style] || LCD_RUNNER_OUTLINES[LCD_RUNNER_OUTLINE];
+  if (rim) {
+    const [e, ink] = rim;
+    ctx.beginPath();
+    const recorder = {
+      set fillStyle(v) {},
+      fillRect: (x, y, w, h) => ctx.rect(x - e, y - e, w + 2 * e, h + 2 * e),
+    };
+    lcdRunnerCells(recorder, rx, footY, mode, true);
+    ctx.fillStyle = ink;
+    ctx.fill();
+  }
+  lcdRunnerCells(ctx, rx, footY, mode, false);
+}
+// `silhouette` is the outline pass: the same cells, minus the things that are
+// not him — the hit's sparks are flying off his body, and a spark with a dark
+// rim is a dark speck.
+function lcdRunnerCells(ctx, rx, footY, mode, silhouette) {
   let y = footY;
   // Mirror helper for the few side-specific cells when he faces left.
   const dir = mode.dir || 1;
@@ -6872,7 +6941,7 @@ function lcdRunnerFigure(ctx, rx, footY, mode) {
   if (!hit) ctx.fillRect(rx + M(3, 4), y - 15, 4, 1);
   ctx.fillStyle = '#f6d33c';
   ctx.fillRect(rx - 1, capTop, 1, 1);
-  if (hit) {
+  if (hit && !silhouette) {
     // Two gold sparks where his composure was.
     ctx.fillRect(rx - 5, y - 17, 2, 2);
     ctx.fillRect(rx + 5, y - 16, 2, 2);
@@ -7101,11 +7170,13 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   for (const [bx, by, spin] of live) {
     lcdMiniBarrel(ctx, bx, by, true, frame.barrelCell, frame.barrelShape, spin);
   }
+  lcdRunnerProbe.barrels = [];
   for (let p = frame.beat4; p < 16; p += 4) {
     // The exploded throw leaves a gap in the chain rather than a ghost: a
     // ghost cell means "a position this thing also occupies", and this barrel
     // does not exist to occupy one.
     if (p === vanished) continue;
+    lcdRunnerProbe.barrels.push([cells[p][0], cells[p][1]]);
     lcdMiniBarrel(ctx, cells[p][0], cells[p][1], false, frame.barrelCell, frame.barrelShape, cells[p][2]);
   }
 
@@ -7171,13 +7242,31 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
     // its cell is x+50 — which is beat four of the bar now, not beat three.
     at(1, x + 48, { kind: 'jump', dir: -1 }),
     at(1, x + 38, { kind: 'run', stride: 0, dir: -1 }),
-    at(1, x + 30, { kind: 'run', stride: 1, dir: -1 }),
+    // x+32, not x+30: the barrel coming the other way along this floor is at
+    // x+18 on this beat, and at x+30 his back foot touched its rim. Two pixels
+    // of daylight, and the next beat he is on the ladder as it rolls through.
+    at(1, x + 32, { kind: 'run', stride: 1, dir: -1 }),
     onLadder(ladA, 0, 1, 0.38, 0),
-    onLadder(ladA, 0, 1, 0.8, 1),
+    // HE WAITS ON THE LADDER. The top girder's barrel is at x+22 on this beat,
+    // which is directly over this ladder's head, and at eight tenths up his
+    // cap and shoulder were inside it. The arcade move is the only move: hold
+    // a rung below the steel until it has gone past. 0.41 is the highest rung
+    // that keeps two pixels between his cap and the barrel's underside; the
+    // next beat he is up and through behind it. A rung on from beat 10, other
+    // arm — he creeps, he does not climb.
+    onLadder(ladA, 0, 1, 0.41, 1),
     // Out onto the gorilla's own girder, with a barrel already sweeping down
     // it from the right — which is the whole of why his face falls up here.
     at(0, x + 32, { kind: 'run', stride: 0, dir: 1 }, 'sad'),
-    at(0, x + 44, { kind: 'run', stride: 1, dir: 1 }, 'sad'),
+    // x+40, not x+44: this is the beat before the hit, with the barrel that
+    // gets him at x+54 and rolling at him, and at x+44 his forward hand was
+    // already two pixels inside it — the collision a beat early. Two pixels
+    // of daylight here, and the next beat the barrel is at x+38 and on him.
+    //
+    // EVERY OTHER BEAT KEEPS TWO PIXELS between him and any solid barrel —
+    // tests/lcd-background.js walks all 32 and fails on less. The hit is the
+    // one overlap, and it is the point.
+    at(0, x + 40, { kind: 'run', stride: 1, dir: 1 }, 'sad'),
     // The one he doesn't clear: the live cell rolls through x+38 right as he
     // arrives beside it. He knew — see the smirk.
     { rx: x + 44, fy: floorY(0, x + 44), m: { kind: 'hit' }, mood: 'sly' },
@@ -7194,9 +7283,9 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
     at(1, x + 56, { kind: 'run', stride: 0, dir: -1 }),
     at(1, x + 48, { kind: 'jump', dir: -1 }),
     at(1, x + 38, { kind: 'run', stride: 1, dir: -1 }),
-    at(1, x + 30, { kind: 'run', stride: 0, dir: -1 }),
+    at(1, x + 32, { kind: 'run', stride: 0, dir: -1 }),
     onLadder(ladA, 0, 1, 0.38, 1),
-    onLadder(ladA, 0, 1, 0.8, 0),
+    onLadder(ladA, 0, 1, 0.41, 0),
     at(0, x + 32, { kind: 'run', stride: 1, dir: 1 }, 'sad'),
     at(0, x + 40, { kind: 'run', stride: 0, dir: 1 }, 'sad'),
     // THE BACK-OFF, and it is a back-off DOWN. Backing along the girder buys
@@ -7205,14 +7294,21 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
     // is no cell on it to retreat to. The ladder he came up is the only way
     // off the steel: he bails onto it and drops below the girder line while
     // the barrel rolls through the cell he was standing in.
-    onLadder(ladA, 0, 1, 0.6, 0, 'sad'),
+    // 0.45, not 0.6: at six tenths his reaching hand was in the corner of the
+    // barrel he is bailing from. Now he hangs two pixels under it.
+    onLadder(ladA, 0, 1, 0.45, 0, 'sad'),
     // Past him and rolling away to the left. He climbs back out, looking after
     // it, and the next downbeat starts him at the bottom of the tower.
-    at(0, x + 34, { kind: 'run', stride: 0, dir: -1 }, 'neutral'),
+    // x+36, not x+34: the barrel that missed him is at x+22 on this beat and
+    // at x+34 his heel was on its rim. Two pixels, and he is looking after it.
+    at(0, x + 36, { kind: 'run', stride: 0, dir: -1 }, 'neutral'),
   ];
   // EIGHT bars of journey against a four-bar `step`, so this counts its own.
   const leg = journey[lcdMod(frame.bar * 4 + frame.beat4, journey.length)];
-  if (leg) lcdRunnerFigure(ctx, leg.rx, Math.round(leg.fy), leg.m);
+  if (leg) {
+    lcdRunnerProbe.rx = leg.rx; lcdRunnerProbe.fy = Math.round(leg.fy); lcdRunnerProbe.mode = leg.m;
+    lcdRunnerFigure(ctx, leg.rx, Math.round(leg.fy), leg.m, frame.runnerOutline);
+  }
 
   // And the thrower himself: the SAME big gorilla painter the other scenes
   // put on a rooftop, standing on this one. His authored poses land the
@@ -7277,52 +7373,8 @@ export function lcdScreenFinish(ctx, t = 0, reducedFlashing = false) {
 const LCD_STAGE_ROOF_KIT = new Set([2]);
 function lcdCrowned(art, i) {
   return i === art.rooftopGorilla || i === art.transmitter
-    || i === art.station
     || (art.bareRoofs || []).includes(i)
     || (art.billboards || []).some(([bi]) => bi === i);
-}
-
-// THE STATION'S FURNITURE — what says this roof is a stop and not a roof
-// the service happens to cross. Live, not baked: the lamps answer the
-// timetable and the clock the beat. Drawn through the building's own arrival
-// (onRoof), so it rises with the facade in the opening bars rather than
-// standing in the air waiting for it — Peter: "attached to the building, not
-// the monorail line". The canopy is one 1px line on the rule two above the
-// cars, on two 1px posts standing on the roof's corners; the train pulls in
-// under it. On top, a 4px dial (circles are the panel's agreed exception) on a
-// stem, its minute hand stepping an eighth of a turn a beat. Under it, a lamp
-// a window column, lit only while the service stands at the platform.
-const LCD_STATION_CANOPY = 15;  // px above the roof: rule 50 over a 65 roof
-function lcdStationKit(ctx, art, frame, reducedFlashing) {
-  if (art.station == null) return;
-  const [x, w, h] = art.buildings[art.station];
-  const roof = GROUND_Y - h;
-  const y = roof - LCD_STATION_CANOPY;
-  const cx = Math.round(x + w / 2);
-  ctx.fillStyle = LCD_INK;
-  ctx.fillRect(x, y, w + 1, 1);
-  ctx.fillRect(x, y, 1, LCD_STATION_CANOPY);
-  ctx.fillRect(x + w, y, 1, LCD_STATION_CANOPY);
-  // The dial: the hour hand stands at clock-in, the minute hand goes round
-  // once a phrase.
-  const r = 4;
-  const cy = y - r - 2;
-  ctx.fillRect(cx, y - 2, 1, 2);
-  ctx.strokeStyle = LCD_INK;
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.arc(cx + 0.5, cy + 0.5, r, 0, Math.PI * 2); ctx.stroke();
-  ctx.fillStyle = LCD_INK;
-  ctx.fillRect(cx, cy, 1, 1);
-  ctx.fillRect(cx + 1, cy, 2, 1);
-  const a = (lcdMod(frame.beatAbs, 8) / 8) * Math.PI * 2 - Math.PI / 2;
-  ctx.fillRect(cx + Math.round(Math.cos(a) * 2), cy + Math.round(Math.sin(a) * 2), 1, 1);
-  ctx.fillRect(cx + Math.round(Math.cos(a) * 3), cy + Math.round(Math.sin(a) * 3), 1, 1);
-  // The platform lamps, on the window pitch under the shelter. Reduced
-  // flashing keeps them in their printed state.
-  const on = !reducedFlashing && art.train
-    && lcdTrainDwelling(art.train, art.buildings[art.station], lcdMod(frame.beatAbs, LCD_TRAIN_LAP));
-  ctx.fillStyle = on ? LCD_WINDOW_ON : LCD_WINDOW_OFF;
-  for (let lx = x + 2 * LCD_U + 1 + 3; lx < x + w; lx += LCD_COL_PITCH) ctx.fillRect(lx, y + 1, 2, 1);
 }
 
 // EVERYTHING ON THIS PANEL A BEAT CANNOT MOVE. Painted once into the baked city
@@ -7540,8 +7592,17 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   }
   // The cars, on the rail the baked layer just laid in front of the facades:
   // in front of the skyline like the girder it runs on.
+  // FROM THE FIRST PHASE AND FROM THE FIRST BEAT. It waited for the second
+  // phase once (Peter: "don't wait so long for the first monorail"), and then
+  // it waited for the skyline's walk-on to finish, which was worse: the walk-on
+  // ends on whatever beat it ends on, and the service is somewhere in the
+  // middle of its lap by then, so a train SNAPPED INTO EXISTENCE mid-panel on
+  // the beat the city finished assembling. That is the one thing on this rail
+  // Peter asked never to see. The viaduct is already the one piece of this
+  // skyline that stands before the buildings do; a service running on it while
+  // they walk on is the same claim, and it is the claim that has no seam in it.
   if (art.train && frame.phase >= (art.train.fromPhase ?? 0)) {
-    lcdTrain(ctx, art.train, frame, art.station != null ? art.buildings[art.station] : null);
+    lcdTrain(ctx, art.train, frame);
   }
   // Stages 1 and 3 keep their authored mid-scene cloud depth. Rhythm 2 is the
   // exception above: its monorail and other sky traffic must cover every wisp.
@@ -7554,12 +7615,6 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
       lcdVanishedBarrelCell(art, frame), lcdPlanePoint(art, frame, art.plane));
     if (towerRise) ctx.restore();
   }
-  // The chopper's take: while it is crossing, the billboard it came for is
-  // gone from its roof. Derived from the frame rather than stored, so a
-  // restarted run rebuilds exactly the same city.
-  const chopper = art.chopper;
-  const repossessing = chopper && frame.phase >= (chopper.fromPhase ?? 2);
-  const lifted = repossessing && lcdChopperX(frame) != null ? chopper.takes : -1;
   // EVERY ROOF FURNISHING BELONGS TO A ROOF, so each one is drawn through its
   // own building's arrival: absent while that building is, and riding its
   // offset while it climbs. A billboard standing at its authored height over a
@@ -7574,13 +7629,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     paint();
     if (rise) ctx.restore();
   };
-  if (art.station != null) onRoof(art.station, () => lcdStationKit(ctx, art, frame, reducedFlashing));
-  // THE CHOPPER CROSSES BEHIND THE SIGNS. Under the rail its load hangs at
-  // sign height, and the sign it would otherwise cover for three beats a lap
-  // is the counting board the player reads — so the boards are in front of it.
-  if (repossessing) lcdChopper(ctx, frame, true);
   for (const [bi, artName] of art.billboards || []) {
-    if (bi === lifted) continue;
     // THE PRICE STANDS DOWN WHILE THE SIGN IS SHOUTING. Same roof, same legs,
     // same rim — the board is showing something else for a few bars, which is
     // the one thing this particular sign has always been allowed to do.
@@ -7622,8 +7671,8 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   // and what stage 1 could not do (its gorilla is inside the tower, drawn long
   // before this, which is why THAT plane has to hit the barrel instead).
   //
-  // Nothing else moves: scene 3 declares no billboard, mast, chimney or
-  // chopper, so this block has only the plane and the clock to be reordered
+  // Nothing else moves: scene 3 declares no billboard, mast or chimney, so
+  // this block has only the plane and the clock to be reordered
   // against, and the two scenes that own those furnishings own no gorilla.
   const gorillaRise = Number.isInteger(art.rooftopGorilla)
     ? riseOf(`b${art.rooftopGorilla}`) : null;

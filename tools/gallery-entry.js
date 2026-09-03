@@ -1392,7 +1392,7 @@ function propNominalSize(name) {
     + 'the plume breathes with the level, the transmitter carries further on treble, and the light warms a '
     + 'little across four phases of a run — with stage 2 growing a working city (searchlight, a monorail '
     + 'above the whole skyline that stops at the station tower\'s deck, '
-    + 'window washer, and the helicopter that repossesses a billboard) as it goes. With no analyser the '
+    + 'and window washer) as it goes. With no analyser the '
     + 'whole reactive layer stands down and the authored panel plays exactly as it always did. The sky analyser '
     + 'belongs to the JUKEBOX alone (CLOCK-IN CITY, which draws this very panel): clipped behind the skyline it '
     + 'read as banding rather than a meter in a run, so a stage keeps its sky clear. Each tile keeps an '
@@ -5752,6 +5752,12 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     panelTile(grid, 'the loop, running', 'eight bars, the plumber and all', 1, 268, 106, 92, 98,
       (t) => ({ beat: Math.floor(t * 2) }), { hires: 3, animated: true, wide: true });
   }
+
+  // ---- the plumber's rim — SETTLED 3 Sep 2026, section retired
+  // PRINT ½ ships: one device pixel of LCD_PRINT as a dilated silhouette. The
+  // alpha sweep (48 → 100 at ½, plus SOFT ¾ and a whole-pixel guardrail) stays
+  // in LCD_RUNNER_OUTLINE_STYLES and rides scene.runnerOutline; lcdRunnerProbe
+  // is the position hook the close-up tiles used to find him on any beat.
 
 
 }

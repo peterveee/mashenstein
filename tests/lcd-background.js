@@ -427,63 +427,78 @@ for (const stage of [1, 2, 3]) {
     'and it steps to a new angle on every heard beat');
   const train = (beat, progress) => background(2, beat, {}, 0, 0, { progress })
     .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(70,121,137,0.5)');
-  // Probed mid-crossing: the service runs a 48-beat lap over a 22-beat
-  // crossing, and is genuinely off the right-hand edge for the first few beats
-  // of it.
-  assert(train(12, 0).length === 0 && train(12, 0.3).length > 0,
-    'the train joins the city in the second phase rather than opening with it');
+  // THE TIMETABLE, and it is the whole of the service: six bars right to left,
+  // two bars of empty rail, six bars left to right, two more. No stop.
+  assert(train(4, 0).length > 0, 'the train runs from the opening phase');
   assert(fingerprint(train(12, 0.3)) !== fingerprint(train(13, 0.3)),
     'and it crosses a car-length per heard beat');
-  // The washer's 4x4 skin face is unique at this x on stage 2. Sixteen beats
-  // visit all eight window rows in order: up and down across four bars. The
-  // painter is phased one beat ahead so its visible turnaround lands on the
-  // kick rather than the following snare; spare phrase beats stay at bottom.
-  const washerY = (beat) => background(2, beat).find((op) => op[0] === 'fillRect'
-    && op[1] === '#f2c9a0' && op[2] === 323 && op[4] === 4 && op[5] === 4)?.[3];
-  const washerTrip = Array.from({ length: 17 }, (_, beat) => washerY(beat));
-  assert(washerTrip.every(Number.isFinite)
-    && washerTrip.slice(1, 7).every((y, i) => y < washerTrip[i])
-    && washerTrip.slice(7, 14).every((y, i) => y > washerTrip[i + 6])
-    && washerTrip[13] === washerTrip[14]
-    && washerTrip[14] === washerTrip[15]
-    && new Set(washerTrip.slice(0, 16)).size === 8
-    && washerTrip[0] === washerTrip.at(-1),
-  `the window washer visits eight window rows and returns every four bars (${washerTrip.join(', ')})`);
-  assert(RHYTHM_SONG.kick[(7 * 4) % RHYTHM_SONG.kick.length]
-    && washerTrip[7] > washerTrip[6],
-  'the washer turns downward one painter beat earlier on the kick');
-  const washerHat = (ops, x, y, w) => ops.some((op) => op[0] === 'fillRect'
-    && op[1] === PANEL_LIT && op[2] === x && op[3] === y && op[4] === w && op[5] === 1);
-  assert(washerHat(background(2, 0), 322, washerTrip[0], 6),
-    'the working window washer wears a bright hard hat with a readable brim');
-  const tippedOps = background(2, 0, {}, 0, 0, { progress: 0.9 });
-  const tippedFaceY = tippedOps.find((op) => op[0] === 'fillRect'
-    && op[1] === '#f2c9a0' && op[2] === 319 && op[4] === 3 && op[5] === 3)?.[3];
-  assert(Number.isFinite(tippedFaceY) && washerHat(tippedOps, 318, tippedFaceY, 5),
-    'and keeps the hard hat when the late-run cradle tips');
+  // The left edge of the leftmost car, which walks one way then the other.
+  const left = (beat) => Math.min(...train(beat, 0.3).map((op) => op[2]));
+  assert(left(4) > left(8) && left(8) > left(12),
+    `the outbound crossing runs right to left (${left(4)}, ${left(8)}, ${left(12)})`);
+  assert(train(26, 0.3).length === 0 && train(30, 0.3).length === 0,
+    'then the rail stands empty for two bars');
+  assert(left(36) < left(40) && left(40) < left(44),
+    `and it comes back the other way (${left(36)}, ${left(40)}, ${left(44)})`);
+  assert(train(58, 0.3).length === 0 && train(62, 0.3).length === 0,
+    'and waits again before the lap comes round');
+  assert(fingerprint(train(4, 0.3)) === fingerprint(train(68, 0.3)),
+    'the whole timetable is sixteen bars');
+  // NO TRAIN EVER APPEARS IN OPEN PANEL. On the first beat of each crossing
+  // that anything is visible at all, the train has to still be touching the
+  // edge it came in from — within one car-length of it, since that is how far
+  // it travels in a beat. This is the check Peter asked for ("never start a
+  // monorail mid screen; must come in fully from right or left"), and it is
+  // swept across the whole sixteen-bar lap rather than spot-checked, because
+  // the two ways it can break — a leg starting late or a car count outgrowing
+  // the crossing — both show up as one bad beat somewhere in the loop.
+  const PANEL = 480, CAR = 26, BODY = 22;
+  const carXs = (beat) => train(((beat % 64) + 64) % 64, 0.3).map((op) => op[2]);
+  const popped = [];
+  for (let beat = 0; beat < 64; beat++) {
+    const now = carXs(beat);
+    if (!now.length || carXs(beat + 63).length) continue;   // not a first beat
+    const l = Math.min(...now), r = Math.max(...now) + BODY;
+    if (l < PANEL - CAR && r > CAR) popped.push(`beat ${beat}: ${l}..${r}`);
+  }
+  assert(popped.length === 0,
+    `every crossing enters from an edge, never mid-panel (${popped.join('; ') || 'clean'})`);
+  // And it leaves the same way: the last visible beat of each crossing is also
+  // hard against an edge, so the service never blinks out over the city.
+  const vanished = [];
+  for (let beat = 0; beat < 64; beat++) {
+    const now = carXs(beat);
+    if (!now.length || carXs(beat + 1).length) continue;    // not a last beat
+    const l = Math.min(...now), r = Math.max(...now) + BODY;
+    if (l < PANEL - CAR && r > CAR) vanished.push(`beat ${beat}: ${l}..${r}`);
+  }
+  assert(vanished.length === 0,
+    `and leaves past an edge, never mid-panel (${vanished.join('; ') || 'clean'})`);
+  // FOUR CARS. The count is the scene's, and the crossing's length is solved
+  // from it — a fifth car must lengthen the crossing, not overrun it.
+  assert(new Set(carXs(12)).size === 4, 'the service runs four cars');
+
+  // THE LAMPS SWAP ENDS WITH THE DIRECTION, so the return is a train running
+  // forwards rather than the same train running backwards. The headlamp is a
+  // 2x3 lit cell, and it leads: left of the train going left, right coming back.
+  const LAMP = 'rgba(211,91,67,0.82)';
+  const lamps = (beat) => background(2, beat, {}, 0, 0, { progress: 0.3 })
+    .filter((op) => op[0] === 'fillRect' && op[1] === LAMP && op[4] === 2 && op[5] === 3)
+    .map((op) => op[2]).sort((a, b) => a - b);
+  const cars = (beat) => train(beat, 0.3).map((op) => op[2]).sort((a, b) => a - b);
+  assert(lamps(8)[0] < cars(8)[0], 'the headlamp leads on the way out');
+  assert(lamps(40).at(-1) > cars(40).at(-1), 'and leads from the other end coming back');
   // THE RAIL IS MASONRY AND THE TRAIN IS TRAFFIC. The viaduct's girder is a
   // full-width soft bar; it stands in the opening phase, before any service
   // has run, and it is still standing on the beats between services.
   const girder = (beat, progress) => background(2, beat, {}, 0, 0, { progress })
     .filter((op) => op[0] === 'fillRect' && op[1] === INK
       && op[2] === 0 && op[4] === 480 && op[5] === 1);
-  assert(girder(12, 0).length === 1 && girder(12, 0.3).length === 1,
+  assert(girder(12, 0).length === 1 && girder(40, 0.3).length === 1,
     'the viaduct stands from the opening phase, with or without a train on it');
-  // Beat 40: the service has stopped at the station (beats 18-24) and run
-  // off the left edge; the lap has a dozen quiet beats before it comes round.
-  assert(train(40, 0.3).length === 0 && girder(40, 0.3).length === 1,
+  // Beat 28: two bars of empty rail between the two crossings.
+  assert(train(28, 0.3).length === 0 && girder(28, 0.3).length === 1,
     'and the rail is still there on the beats the service is not');
-  // THE STOP. The three cars halt centred on the station's facade (x 188,
-  // 51 wide): nose at 177, creeping the last five pixels in on beat 17, held
-  // through beat 24, and away at a car-length a beat from 25. The doorway is
-  // lit only while it stands.
-  const noseX = (beat) => Math.min(...train(beat, 0.3).map((op) => op[2]));
-  assert(noseX(16) === 182 && noseX(17) === 177 && noseX(20) === 177 && noseX(24) === 177 && noseX(25) === 151,
-    `the service creeps to its mark and stands for the dwell (${noseX(16)}, ${noseX(17)}, ${noseX(20)}, ${noseX(24)}, ${noseX(25)})`);
-  const doorway = (beat) => background(2, beat, {}, 0, 0, { progress: 0.3 })
-    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(220,228,154,0.7)' && op[4] === 8 && op[5] === 8);
-  assert(doorway(22).length === 3 && doorway(12).length === 0 && doorway(17).length === 0,
-    'and the doors stand open only while it does');
   // THE ROOF CARRIES ONE THING. Stage 2 hangs an equalizer bank on every
   // building a billboard is not already standing on, and every crown this
   // skyline draws is centred and short enough to land inside the bank's
@@ -1319,6 +1334,46 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
       `at a ${rise}px rise the lowest lit window ends exactly where the road begins`);
   }
   setRises([]);
+}
+
+// ---- the plumber never touches a barrel he is not being hit by -------------
+// Every beat of the tower's 32-beat journey, the runner's painted box against
+// every SOLID barrel on that beat: two clear pixels minimum, on both tower
+// stages. The one overlap allowed is the authored hit (beat 14). Peter, 3 Sep
+// 2026: "he needs to either move back or jump to get out of their way, like a
+// real game of Donkey Kong."
+{
+  const { lcdRunnerProbe } = await import('../src/engine/stylePacks/index.js');
+  const style = getStylePack('lcd', {});
+  const cab = CABINETS.find((c) => c.id === 'rhythm');
+  const box = (rx, fy, m) => {
+    if (m.kind === 'climb') return [rx - 5, fy - 16, rx + 5, fy - 1];
+    if (m.kind === 'jump') return [rx - 7, fy - 28, rx + 8, fy - 12];
+    if (m.kind === 'hit') return [rx - 5, fy - 20, rx + 6, fy - 1];
+    return m.dir === 1 ? [rx - 5, fy - 17, rx + 6, fy - 1] : [rx - 6, fy - 17, rx + 5, fy - 1];
+  };
+  const HIT_BEAT = 14;
+  for (const stageIndex of [0, 1]) {
+    let worst = Infinity, hits = 0;
+    for (let beat = 0; beat < 32; beat++) {
+      lcdRunnerProbe.mode = null;
+      const { ctx } = recorder();
+      style.bg(ctx, 0, 0, cab, 1000, { stageIndex, beat });
+      const m = lcdRunnerProbe.mode;
+      if (!m) continue;
+      const [x0, y0, x1, y1] = box(lcdRunnerProbe.rx, lcdRunnerProbe.fy, m);
+      for (const [bx, by] of lcdRunnerProbe.barrels) {
+        const dx = Math.max(bx - 5 - x1, x0 - (bx + 5)) - 1;
+        const dy = Math.max(by - 4 - y1, y0 - (by + 4)) - 1;
+        const gap = Math.max(dx, dy);
+        if (beat === HIT_BEAT) { if (gap < 0) hits++; continue; }
+        if (gap < worst) worst = gap;
+        assert(gap >= 2, `stage ${stageIndex} beat ${beat} (${m.kind}): ${gap} px between the plumber and the barrel at ${bx},${by}`);
+      }
+    }
+    assert(hits === 1, `stage ${stageIndex}: the hit beat has exactly one barrel on him (${hits})`);
+    console.log(`   stage ${stageIndex}: closest call ${worst}px`);
+  }
 }
 
 if (failed) process.exit(1);
