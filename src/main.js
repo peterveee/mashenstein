@@ -851,6 +851,9 @@ function boot() {
     },
   });
   window.__mash_booted = true;
+  // The audio engine, for a verification script measuring cue timing against the
+  // song from outside the bundle — the same reason __mash_cur is there.
+  window.__mash_audio = Audio;
 
   // Fire session duration on tab close. sendBeacon guarantees delivery.
   window.addEventListener('beforeunload', () => sendSessionEnd());

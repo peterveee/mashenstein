@@ -8,9 +8,10 @@
 // Unlike releases/, this does NOT run on every push -- only when a commit
 // touches art (see ART_PATHS in .github/workflows/deploy-pages.yml). Snapshots
 // are ~230KB each and the art moves far slower than the code.
-// Usage: node tools/archive-gallery.js   (run after `npm run gallery`)
+// Usage: node tools/archive-gallery.js               (run after `npm run gallery`)
+//        node tools/archive-gallery.js --prune-only  (apply retention, archive nothing)
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,10 +39,16 @@ const PAGES = [
   { built: 'dist/gallery.html', suffix: '' },
   { built: 'dist/gallery-lab.html', suffix: '-lab' },
 ];
-for (const page of PAGES) {
-  if (existsSync(join(root, page.built))) continue;
-  console.error(`no ${page.built} -- run \`npm run gallery\` first`);
-  process.exit(1);
+// --prune-only applies the retention rule below to what is already on disk and
+// rebuilds the index, without needing a build to archive. It is how a policy
+// change is applied to the existing history in one pass.
+const pruneOnly = process.argv.includes('--prune-only');
+if (!pruneOnly) {
+  for (const page of PAGES) {
+    if (existsSync(join(root, page.built))) continue;
+    console.error(`no ${page.built} -- run \`npm run gallery\` first`);
+    process.exit(1);
+  }
 }
 
 mkdirSync(galleries, { recursive: true });
@@ -49,7 +56,7 @@ const sha = git('rev-parse', '--short=7', 'HEAD');
 const date = git('log', '-1', '--format=%ad', '--date=short', 'HEAD');
 const name = `${date}-${sha}.html`;
 const labName = `${date}-${sha}-lab.html`;
-for (const page of PAGES) {
+for (const page of pruneOnly ? [] : PAGES) {
   const html = readFileSync(join(root, page.built), 'utf8');
   // Assert both rewrites: a silent no-op would archive a page whose header
   // links point at dist filenames that do not exist beside it.
@@ -60,6 +67,58 @@ for (const page of PAGES) {
     out = out.split(from).join(to);
   }
   writeFileSync(join(galleries, `${date}-${sha}${page.suffix}.html`), out);
+}
+
+// Retention. A snapshot is archived after every art change and the recent ones
+// run ~4MB a pair, so an unbounded galleries/ grows by that much per iteration.
+// Keep the last snapshot of each ISO week as the periodic backup, plus every
+// snapshot from the last week so an in-flight iteration keeps all of its steps.
+// The index below is rebuilt from disk, so pruning needs no other bookkeeping.
+const KEEP_RECENT_DAYS = 7;
+const DAY = 86400;
+const now = Date.now() / 1000;
+
+// A snapshot is dated by its commit, not its file -- but a rewritten or
+// unreachable commit falls back to mtime rather than sorting to 1970 and
+// getting swept on the next run.
+const snapshotTime = (file, commit) => Number(gitTry('show', '-s', '--format=%ct', commit))
+  || statSync(join(galleries, file)).mtimeMs / 1000;
+
+// ISO week, so a bucket boundary does not drift with the length of the month.
+// It buckets on the snapshot's FILENAME date, not its commit instant: the
+// filename and the index carry the author-local date, so a commit made late on
+// a Sunday evening is filed under Monday. Bucketing on the UTC instant would
+// put it in the previous week and silently sweep the Monday snapshot that the
+// index appears to show as that week's only one. Ordering still uses the true
+// commit time -- bucket by the date on display, pick within it by what is newest.
+function isoWeek(date) {
+  const t = new Date(`${date}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const jan1 = Date.UTC(t.getUTCFullYear(), 0, 1);
+  return `${t.getUTCFullYear()}-W${Math.ceil(((t - jan1) / DAY / 1000 + 1) / 7)}`;
+}
+
+const snapshots = readdirSync(galleries)
+  .filter((f) => f.endsWith('.html') && !f.endsWith('-lab.html'))
+  .map((file) => ({ file, time: snapshotTime(file, file.slice(0, -5).split('-').pop()) }))
+  .sort((a, b) => a.time - b.time);
+
+// Ascending, so the last write into a week's slot is that week's newest.
+const weekly = new Map();
+for (const s of snapshots) weekly.set(isoWeek(s.file.slice(0, 10)), s.file);
+const keep = new Set(weekly.values());
+for (const s of snapshots) if (s.time > now - KEEP_RECENT_DAYS * DAY) keep.add(s.file);
+keep.add(name); // never prune the snapshot this run just wrote
+
+let pruned = 0;
+for (const s of snapshots) {
+  if (keep.has(s.file)) continue;
+  // A snapshot is its pair. Dropping a gallery without its lab page would leave
+  // an orphan whose header link points at a file that is no longer beside it.
+  for (const f of [s.file, s.file.replace(/\.html$/, '-lab.html')]) {
+    if (existsSync(join(galleries, f))) unlinkSync(join(galleries, f));
+  }
+  pruned += 1;
 }
 
 // Rebuild the index from whatever is on disk, so a hand-deleted or
@@ -101,7 +160,9 @@ const md = [
   'from the source it was built at.',
   '',
   'Written by `tools/archive-gallery.js`, on pushes to `main` that touch art.',
-  'Do not edit by hand.',
+  'It keeps the last snapshot of each week plus every snapshot from the last',
+  'seven days, so an iteration in flight keeps all of its steps while older',
+  'history thins to one a week. Do not edit by hand.',
   '',
   '| Date | Commit | Gallery | Lab | Change |',
   '| --- | --- | --- | --- | --- |',
@@ -111,4 +172,5 @@ const md = [
 ].join('\n');
 
 writeFileSync(join(galleries, 'index.md'), md);
-console.log(`galleries/${name} archived (${rows.length} snapshots indexed)`);
+console.log(`${pruneOnly ? 'galleries/ pruned' : `galleries/${name} archived`} (${rows.length} indexed`
+  + `${pruned ? `, ${pruned} pruned` : ''})`);

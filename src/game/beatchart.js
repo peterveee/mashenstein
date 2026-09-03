@@ -4,7 +4,7 @@
 import { makeObstacle, makeDroneColumn, makePickup, OBSTACLES } from './entities.js';
 import { HEROES } from '../data/heroes.js';
 import { worstAirtime } from './spawner.js';
-import { BASE_JUMP_V, GRAVITY, HEAVY_GRAVITY_MULT, PLAYER_W } from './player.js';
+import { jumpV, gravityFor, PLAYER_W } from './player.js';
 import { BASE_SPEED } from './layout.js';
 
 const REQUIRED_ACTIONS = new Set(['jump', 'duck', 'ability']);
@@ -139,6 +139,16 @@ export const BOX_SHOT_MIN_SPEED = 200;
 // it (from one beat out, a breath rather than a wall) and the restore opens
 // onto a lane that is already playing its song.
 export const LANE_RUNWAY_BEATS = 2;
+// THE SONG'S OWN OPENING IS EMPTY. When the song starts inside the level — a
+// dev launch, bot play, anything that did not arrive from a cabinet screen
+// already playing it — the lane is anchored while the clock is still counting
+// down to the downbeat, and "coins from one beat out" then put a coin fill on
+// the very first snare, with the hero's box meeting it before the beat had
+// even landed. Nothing is laid before this beat of the song, so the kick and
+// the snare play over an empty lane and the first coin comes after them; on
+// every chart in the book that is beat 3 or 4. A lane anchored mid-song
+// (a cabinet-screen handover, a retry) is past it already and unaffected.
+export const OPENING_COIN_BEAT = 2;
 export const PIT_LANE_RUNWAY_BEATS = 4;
 // A PUNT IS NOT A DUCK, FOR SPACING. It takes the same button and the judge and
 // the ribbon are right to treat it as one, but the BODY does something else
@@ -455,16 +465,24 @@ export function validateBeatChart(chart, physics = {}) {
       //
       // And it is a RUNG COUNT rather than a height, because the ladder lives
       // in one place. A chart naming its own altitudes would be authoring them
-      // against a jump table it cannot see. Two or three: one rung is a lone
-      // drone and has its own spelling (no `column` at all), and a fourth would
-      // be inventing a rung nobody measured.
+      // against a jump table it cannot see. One rung is a lone drone and has
+      // its own spelling (no `column` at all), and a fifth would be inventing a
+      // rung nobody measured.
+      //
+      // TWO OR FOUR, AND NOT THREE. Three used to be the gate and is now the
+      // one height a chart must not ask for: it tops out at 52 against B-33P's
+      // 51 apex, so it is a wall for exactly one hero by less than a pixel and
+      // a wall for nobody else. Two (36) is declinable by the whole cast with
+      // room to spare and four (68) is a gate for all of it; three is the
+      // coin-flip in between, and the validator refuses it rather than leaving
+      // it lying around for a chart to reach for. See DRONE_COLUMN_ALTS.
       if (raw.column != null) {
         if (raw.action !== 'duck' || type !== 'drone') {
           throw new Error(`only a drone duck slot may be a column `
             + `(slot ${raw.slot} is a ${raw.action} of ${type})`);
         }
-        if (raw.column !== 2 && raw.column !== 3) {
-          throw new Error(`a duck column is two or three rungs, not ${raw.column} (slot ${raw.slot})`);
+        if (raw.column !== 2 && raw.column !== 4) {
+          throw new Error(`a duck column is two rungs or four, not ${raw.column} (slot ${raw.slot})`);
         }
       }
     }
@@ -547,8 +565,8 @@ export function validateBeatChart(chart, physics = {}) {
 }
 
 function clearTimeForHero(hero, height) {
-  const g = hero.heavy ? GRAVITY * HEAVY_GRAVITY_MULT : GRAVITY;
-  const launch = BASE_JUMP_V * hero.jumpMult;
+  const g = gravityFor(hero);
+  const launch = jumpV(hero);
   // The chart must work for a tap, not just a held variable jump.  Integrate
   // the shared trajectory until the feet clear the obstacle plus margin; this
   // mirrors the Player integrator and keeps the placement tied to real physics.
@@ -663,8 +681,9 @@ export class BeatSpawner {
       return false;
     }
     // Coins from one beat out; actions only past the runway. See the
-    // LANE_RUNWAY_BEATS note: the runway is action-free, not empty.
-    this.cursorBeat = Math.ceil(unwrapped) + 1;
+    // LANE_RUNWAY_BEATS note: the runway is action-free, not empty. And never
+    // inside the song's own opening — see OPENING_COIN_BEAT.
+    this.cursorBeat = Math.max(Math.ceil(unwrapped) + 1, OPENING_COIN_BEAT);
     this.actionFreeUntilBeat = unwrapped + this.runwayBeats;
     this.nextX = worldX;
     this.eventInstances = [];
@@ -806,7 +825,16 @@ export class BeatSpawner {
     // A long render/audio jump can leave the old lookahead cursor behind the
     // heard clock. Re-anchor atomically instead of replaying dozens of stale
     // loop instances behind the player.
-    if (this.cursorBeat < beat - 1) this.resetFromBeat(beat, worldX);
+    //
+    // BEHIND MEANS INSIDE THE NEXT BEAT, not a beat past. A fresh lane lays its
+    // first coin one beat out (resetFromBeat), and that is a promise the
+    // cursor has to keep whenever it has fallen back — a cursor standing half
+    // a beat ahead of the clock lays a coin half a beat in front of the hero,
+    // which is a coin taken before the lane has started. The stage entrance
+    // did exactly this: the lane was anchored as the song began, the world
+    // then stood parked through the run-in, and the first live fill put its
+    // opening coins on the hero's feet.
+    if (this.cursorBeat < beat + 1) this.resetFromBeat(beat, worldX);
     this._alignPits(beat, playerX, pxPerBeat);
     const horizon = beat + this.lookaheadBeats;
     while (this.cursorBeat <= horizon) {
@@ -897,9 +925,11 @@ export class BeatSpawner {
       // `x` is where the thing has to BE on its own beat. Everything the chart
       // has ever laid stands still, so for those two the same number. A barrel
       // spends the whole flight closing on the hero at def.vx, and the flight
-      // is however many beats early the lookahead ran — up to seven, which at
-      // this cabinet's tempo is 135px, or a beat and a third of road. Laid at
-      // `x` it would simply arrive early and the slot would be unplayable.
+      // is however many beats early the lookahead ran — seven by default,
+      // eleven on the LCD lane so its gorilla can be handed the barrel in time
+      // (RunState's BeatSpawner) — which at this cabinet's tempo is 135 or
+      // 213px, a beat and a third or two of road. Laid at `x` it would simply
+      // arrive early and the slot would be unplayable.
       //
       // The correction is exact rather than approximate, and that is the point
       // of doing it here: at lay time the spawner knows precisely how many
@@ -1026,13 +1056,13 @@ export class BeatSpawner {
             this.lastActionKind = event.action;
           }
         } else {
-          // A DUCK SLOT MAY BE A COLUMN, two rungs or three. One drone tops
-          // out at 20 and every hero in the cast jumps 46 or better, so the
+          // A DUCK SLOT MAY BE A COLUMN, two rungs or four. One drone tops
+          // out at 20 and every hero in the cast jumps 51 or better, so the
           // lone-drone version of this beat was a slide the player was free to
-          // decline. Three rungs reach 50, which is over the two lowest jumps
-          // in the game; two reach 35, which is a stack that still reads as one
-          // and can still be jumped. See DRONE_COLUMN_ALTS in game/entities.js
-          // for why 50 and not 46 or 54.
+          // decline. Four rungs reach 68, which is over every jump in the game;
+          // two reach 36, a stack that still reads as one and can still be
+          // jumped. See DRONE_COLUMN_ALTS in game/entities.js for why the gate
+          // is 68, why it stopped being 50, and why three rungs are not offered.
           //
           // EVERY RUNG CARRIES THE SAME CHART STAMP, and nothing downstream
           // minds: a duck is judged off the chart rather than off the lane

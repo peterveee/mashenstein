@@ -7,7 +7,7 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { drawHud } = await import('../src/game/hud.js');
+const { drawHud, bonusPanelFold, RHYTHM_BONUS_TIME } = await import('../src/game/hud.js');
 const { STAGES, UNLOCKS } = await import('../src/data/stages.js');
 const { HERO_BY_ID } = await import('../src/data/heroes.js');
 const { goalsDone, ALPHA_BANKED, ALPHA_LIVE, ALPHA_EMPTY } = await import('../src/game/plugs.js');
@@ -94,6 +94,17 @@ assert(t.every((v) => v === false), 'overtime holds no plugs');
   }
   assert(!threw, `the HUD draws in every run state without a clock (${threw || 'no throw'})`);
 }
+
+// Rhythm runs name the challenge once even though that temporarily covers the
+// prompt ribbon. The dedicated opening clock then folds it permanently; a
+// later BONUS_HOLD update belongs to the goal toast and cannot reopen it.
+assert(bonusPanelFold({ beatLock: true, rhythmBonusT: RHYTHM_BONUS_TIME, bonusT: 10 }) === 0,
+  'a rhythm stage opens with the full bonus sentence visible');
+assert(bonusPanelFold({ beatLock: true, rhythmBonusT: 0, bonusT: 3 }) === 1,
+  'after its opening read a rhythm bonus stays folded despite later bonus updates');
+assert(bonusPanelFold({ beatLock: false, bonusT: 10 }) === 0
+  && bonusPanelFold({ beatLock: false, bonusT: 0 }) === 1,
+'ordinary stages retain their existing open-then-fold bonus clock');
 
 // Every banked checkpoint stays on the top timeline as a subtle notch contained
 // entirely within the line. Reaching the second must not replace the first.

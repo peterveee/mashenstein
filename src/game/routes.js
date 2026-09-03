@@ -11,18 +11,23 @@ import { worstJumpApex } from './spawner.js';
 // How high a floating island may sit, in px above the ground under it.
 //
 // Derived rather than chosen: `worstJumpApex()` is ~37px for the pessimistic
-// worst hero (and 45.5 for the real one, Grumpos), and a slab you can only just
-// touch at the very top of a perfect jump is one you miss constantly. 80% of
-// that leaves the margin the landing actually needs.
+// worst hero, and a slab you can only just touch at the very top of a perfect
+// jump is one you miss constantly. 80% of that leaves the margin the landing
+// actually needs.
 // worstJumpApex() assumes a hero who is BOTH the weakest jumper and the heavy
-// one, and no such hero exists — Grumpos is heavy at jumpMult 1 (apex 45) and
-// Chompo is 0.9 at normal gravity (apex 46), so the real floor across the cast
-// is 45 rather than the 37 that pair would give. At 0.8 of the imaginary hero
-// the cap came out at 29, and 29 is the number that made a two-step stack
-// pointless: the first step at 29 and the second at 29 + 27 = 56 put the SECOND
-// one at 56 against a standard hero's 57px apex, so the climb could be skipped
-// in one hop from the lane. 0.9 puts the cap at 33, which still leaves the real
-// worst jumper a quarter of his apex in hand on any single step.
+// one, and no such hero exists. At 0.8 of that imaginary hero the cap came out
+// at 29, and 29 is the number that made a two-step stack pointless: the first
+// step at 29 and the second at 29 + 27 = 56 put the SECOND one at 56 against a
+// standard hero's 57px apex, so the climb could be skipped in one hop from the
+// lane. 0.9 puts the cap at 33, which left the real worst jumper — 45px back
+// then — a quarter of his apex in hand on any single step.
+//
+// THE REAL FLOOR IS 51 NOW, not 45: jumpMult buys height directly and `heavy`
+// is charged to airtime instead of apex (player.js jumpV), so B-33P's x0.90 is
+// the bottom of the cast at 51px and Grumpos climbs to an ordinary 57. The cap
+// is still 33 — the margin it holds in hand grew rather than shrank, and
+// raising it would move every island in the game for a compression that was
+// supposed to only change how high heroes jump.
 export const MAX_ISLAND_RISE = Math.floor(worstJumpApex() * 0.9);
 
 // How wide a tunnel's two kinds of opening are, both in hero-widths.

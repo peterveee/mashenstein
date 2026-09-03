@@ -1,5 +1,6 @@
 // One shared player controller; hero differences are stats + hooks from data.
 // Physics tuned so: base jump height ~57px, airtime ~0.71s at jumpMult 1.
+// `jumpMult` is a HEIGHT multiplier, not a speed one — see jumpV().
 import { HERO_BY_ID } from '../data/heroes.js';
 
 export const GRAVITY = 900;
@@ -104,13 +105,47 @@ export const DUCK_H = 7;
 // has to be over the ledge. See RunState.playerFootprint.
 export const PLAYER_SPRITE_W = 12;
 
+// The gravity actually acting on a hero. One reader for the `heavy` flag, so
+// the four places that used to spell out the conditional cannot drift apart.
+export function gravityFor(hero) {
+  return hero && hero.heavy ? GRAVITY * HEAVY_GRAVITY_MULT : GRAVITY;
+}
+
+/**
+ * THE LAUNCH SPEED THAT DELIVERS THE HEIGHT THE HERO'S CARD PROMISES.
+ *
+ * `jumpMult` is a HEIGHT multiplier. x1.10 means the hero clears 10% more than
+ * the 57px base, and nothing else. The square lives in this one function.
+ *
+ * It used to scale the LAUNCH SPEED, and apex goes as v² — so the ±10% band the
+ * cast select printed was a −19%/+21% band in the air. Top to bottom the cast
+ * spread 46px to 69px, 1.51x, behind numbers claiming 1.22x. Nobody reading the
+ * card could have known; the stat had to be measured to be believed. Inverting
+ * it here makes the readout the thing it always said it was, and pulls the
+ * spread back to 51–63.
+ *
+ * `heavy` is folded in for the same reason. Grumpos' ×1.25 gravity ate a fifth
+ * of his apex while his card still read x1.00, which made him the lowest jumper
+ * in the game via a stat with no number anywhere. Compensating the launch
+ * spends HEAVY on AIRTIME alone: he reaches exactly what every other x1.00 hero
+ * reaches and gets up and back down in 0.64s against their 0.71s. The weight is
+ * still in the hands, it is just no longer in the ceiling.
+ *
+ * NOT applied to AIR_JUMP_SCALE or `jumpScale`. Those two are speed scales on
+ * purpose and stay that way: neither is ever printed as a percentage, and a
+ * second jump that reaches 0.72 of the first is the reach-not-a-second-arc
+ * shape the double was tuned to.
+ */
+export function jumpV(hero) {
+  return BASE_JUMP_V * Math.sqrt(hero.jumpMult * (hero.heavy ? HEAVY_GRAVITY_MULT : 1));
+}
+
 export function jumpHeightFor(hero) {
-  const v = BASE_JUMP_V * hero.jumpMult;
-  return (v * v) / (2 * GRAVITY);
+  const v = jumpV(hero);
+  return (v * v) / (2 * gravityFor(hero));
 }
 export function airtimeFor(hero) {
-  const g = hero.heavy ? GRAVITY * HEAVY_GRAVITY_MULT : GRAVITY;
-  return (2 * BASE_JUMP_V * hero.jumpMult) / g;
+  return (2 * jumpV(hero)) / gravityFor(hero);
 }
 
 export class Player {
@@ -261,7 +296,7 @@ export class Player {
   get abilityCd() { return this.abilityCooldowns[this.heroId] || 0; }
   set abilityCd(value) { this.abilityCooldowns[this.heroId] = Math.max(0, value); }
 
-  get gravity() { return this.hero.heavy ? GRAVITY * HEAVY_GRAVITY_MULT : GRAVITY; }
+  get gravity() { return gravityFor(this.hero); }
   get maxJumps() {
     let m = this.hero.maxJumps;
     if (this.mods.includes('cape')) m += 1;
@@ -404,7 +439,7 @@ export class Player {
     if (this.rollT > 0 || this.stumbleT > 0 || this.slipT > 0 || this.slideSlamming) return false;
     if (this.grounded || this.jumps < this.maxJumps) {
       if (!this.grounded && this.jumps === 0) this.jumps = 1; // walked off a ledge
-      this.vy = BASE_JUMP_V * (this.jumpScale || 1) * this.hero.jumpMult * (this.jumps > 0 ? AIR_JUMP_SCALE : 1);
+      this.vy = jumpV(this.hero) * (this.jumpScale || 1) * (this.jumps > 0 ? AIR_JUMP_SCALE : 1);
       this.launched = false;
       this.clearSlideState();
       this.standT = 0;

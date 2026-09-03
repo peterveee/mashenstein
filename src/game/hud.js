@@ -538,6 +538,11 @@ const HINT_FADE = 1;
 // to a number.
 export const BONUS_TIME = 10;
 export const BONUS_HOLD = 3;
+// Beat stages may cover the ribbon at the opening long enough to name the
+// challenge once. After this clock expires they stay folded: later challenge
+// updates already announce themselves through goal toasts and must not hide
+// incoming rhythm prompts again.
+export const RHYTHM_BONUS_TIME = 3;
 const BONUS_FOLD = 0.55;
 
 // GOAL-panel display labels. The counted missions (targets/cords/chase/rescue/
@@ -580,6 +585,11 @@ function mix(a, b, k) {
 // as a jump cut even when the travel between is the right length.
 const smoothstep = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
+export function bonusPanelFold(run) {
+  const bonusClock = run?.beatLock ? run.rhythmBonusT : run?.bonusT;
+  return 1 - smoothstep(Math.min(1, Math.max(0, bonusClock ?? 0) / BONUS_FOLD));
+}
+
 // The status pill: cells on the left, coins on the right, one panel.
 //
 // Coins are the only value here that changes length as it climbs (0 -> 10 ->
@@ -620,9 +630,30 @@ function statusPillW(run) {
   const cellsW = cells ? cells * CELL_W + (cells - 1) * CELL_GAP : 0;
   // A floor of two digits: a lone '0' left the coin sitting in a pocket of
   // dead panel, and the pill twitched wider the moment it hit 10.
-  const countW = Math.max(textWidth(formatCoins(run.coins), 1, 'bold'), textWidth('00', 1, 'bold'));
+  const countW = Math.max(coinCountW(formatCoins(run.coins)), coinCountW('00'));
   const splitW = cells ? PILL_SPLIT * 2 + 0.5 : 0;
   return PILL_PAD * 2 + cellsW + splitW + COIN_D + 3 + countW;
+}
+
+// The width the count RESERVES, as opposed to the width it inks. Fredoka's
+// digits are proportional — a 1 is a good deal narrower than an 8 — so sizing
+// the pill off the actual string had it breathing in and out by a pixel or two
+// as the last digit ticked over, once there were three of them. Every digit
+// is charged at the widest digit's advance, so the slot only changes size when
+// the count gains a digit (or a comma), which is the one growth the pill is
+// meant to show.
+function coinCountW(count) {
+  let w = 0;
+  for (const ch of count) w += /\d/.test(ch) ? widestDigitW() : textWidth(ch, 1, 'bold');
+  return w;
+}
+// Not memoised here: the webfont lands after first paint and sprites.js clears
+// its own advance cache when it does, so a width held on this side would be the
+// fallback face's for the life of the page. textWidth is a map lookup per glyph.
+function widestDigitW() {
+  let w = 0;
+  for (let d = 0; d <= 9; d++) w = Math.max(w, textWidth(String(d), 1, 'bold'));
+  return w;
 }
 
 export function drawStatusPill(ctx, run) {
@@ -1128,17 +1159,14 @@ export function drawHud(ctx, run) {
   // The BONUS panel's fold clock. Held open while bonusT is running, eased shut
   // over its last half-second.
   //
-  // ON A BEAT STAGE IT NEVER OPENS AT ALL. The panel and the beat ribbon share
-  // one band, and the ribbon is now laid out from the frame (see RIBBON_MARGIN)
-  // — it reaches to x 407, while the panel holding its full sentence comes back
-  // past 250. For the first ten seconds of every rhythm stage the far third of
-  // the strip was printing UNDER the challenge line: the markers with the most
-  // warning in them, hidden behind a sentence the briefing screen already said.
-  // Between a sentence you get one read of and the readout you play the stage
-  // off, the readout wins. The count still stands in the corner, and completing
-  // the challenge still says itself in words — that is a goalToast, not this.
-  const fold = run.beatLock ? 1
-    : 1 - smoothstep(Math.min(1, Math.max(0, run.bonusT ?? 0) / BONUS_FOLD));
+  // ON A BEAT STAGE IT OPENS ONCE, BRIEFLY. The full sentence and the beat
+  // ribbon share one band, but an unexplained `BONUS 0/10` is not a useful
+  // trade for keeping every opening marker visible. Objectives draw after the
+  // ribbon, so the sentence deliberately covers it for RHYTHM_BONUS_TIME, then
+  // folds to the live count before the lane is established. A constructor-held
+  // clock makes this read once per run; BONUS_HOLD updates later in the stage
+  // still use their goal toast and cannot reopen it over incoming prompts.
+  const fold = bonusPanelFold(run);
   // The BONUS line — and only that one — leaves before the marker arrives. It is
   // a statement of what is still being ASKED, and by the time the flagpole is on
   // screen there is nothing left to ask: the challenge is already whatever it
@@ -1165,7 +1193,9 @@ export function drawHud(ctx, run) {
     if (run.challenge && !run.challenge.failed) {
       const c = run.challenge;
       const done = c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n;
-      const tail = done ? 'OK' : c.type === 'noDamage' ? '' : `${Math.min(c.count, c.n)}/${c.n}`;
+      const tail = done ? 'OK' : c.type === 'noDamage' ? ''
+        : c.type === 'combo' ? `BEST ${Math.min(c.count, c.n)}/${c.n}`
+        : `${Math.min(c.count, c.n)}/${c.n}`;
       objective('BONUS', done ? '#74c947' : 'rgba(255,255,255,0.5)',
         [`${fitRight(c.desc, textWidth(` ${tail}`, 0.85))} `, tail],
         done ? '#74c947' : 'rgba(255,255,255,0.72)', OBJ_Y2, 0.85, fold, bonusAlpha);

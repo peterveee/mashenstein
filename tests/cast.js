@@ -202,5 +202,43 @@ st2.exit();
 assert(exited2 === false, 'human input exits the roll call (no interlude flag)');
 assert(Input.down.size === 0 && Input.hit.size === 0, 'exit input consumed — cannot select a save slot');
 
+// 5) THE JUMP STATS ON THE CARD ARE THE PHYSICS, recomputed rather than
+// restated. `skillDesc` advertises CLEARANCE — air left over the tallest thing
+// you jump — rather than apex over the ground, because the first 18px of any
+// jump is spent getting level with the obstacle and buys the player nothing.
+// A percentage on a card that nothing checks is a percentage that goes stale:
+// Clara's line said "15% HIGHER" for a jumpMult of 1.15 and kept saying it
+// after she came down to 1.10. This is the check that would have caught it.
+{
+  const { HERO_BY_ID } = await import('../src/data/heroes.js');
+  const { OBSTACLES } = await import('../src/game/entities.js');
+  const { jumpHeightFor } = await import('../src/game/player.js');
+
+  // The tallest thing in the game a hero clears by jumping OVER it. A pit has
+  // no height to clear and an icicle falls on you from 70 — neither is a bar
+  // the jump is measured against.
+  const TALL = Math.max(...Object.entries(OBSTACLES)
+    .filter(([id, d]) => d.action === 'jump' && !d.falls && id !== 'gap')
+    .map(([, d]) => (d.alt || 0) + d.h));
+  const base = jumpHeightFor({ jumpMult: 1 });
+  const clearancePct = (h) =>
+    Math.round(((jumpHeightFor(h) - TALL) / (base - TALL) - 1) * 100);
+
+  assert(TALL === 18, `the bar the card is measured against is the 18px bollard (got ${TALL})`);
+  for (const id of ['clara', 'lorenzo']) {
+    const hero = HERO_BY_ID[id];
+    const want = `JUMPS ${clearancePct(hero)}% HIGHER`;
+    assert(hero.skillDesc === want,
+      `${id}'s card advertises its real clearance — "${hero.skillDesc}" vs "${want}"`);
+  }
+  // AND NOBODY ELSE CLAIMS A JUMP THEY HAVE NOT GOT. A hero whose jumpMult is
+  // 1.0 or below may not carry a "JUMPS n% HIGHER" line at all, whatever else
+  // their skill happens to be.
+  const liars = Object.values(HERO_BY_ID)
+    .filter((h) => /JUMPS \d+% HIGHER/.test(h.skillDesc || '') && h.jumpMult <= 1);
+  assert(liars.length === 0,
+    `no flat-or-worse jumper advertises a higher jump (${liars.map((h) => h.short).join() || 'none do'})`);
+}
+
 console.log(failed ? 'CAST: FAILED' : 'CAST: PASSED');
 process.exit(failed ? 1 : 0);

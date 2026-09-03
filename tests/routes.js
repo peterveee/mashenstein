@@ -42,16 +42,16 @@ function assert(cond, msg) {
 // ---- the reachability bound, before any of the driving ----------------------
 const { worstJumpApex } = await import('../src/game/spawner.js');
 const { HEROES } = await import('../src/data/heroes.js');
-const { GRAVITY, BASE_JUMP_V } = await import('../src/game/player.js');
+const { jumpHeightFor } = await import('../src/game/player.js');
 
 // Imported rather than recomputed. It was a second copy of the arithmetic in
 // routes.js, and a second copy of a constant is a constant that can disagree
 // with itself — which is exactly what happened the day the factor moved.
 const { MAX_ISLAND_RISE: MAX_RISE } = await import('../src/game/routes.js');
-const apexOf = (h) => {
-  const v = BASE_JUMP_V * h.jumpMult;
-  return (v * v) / (2 * (h.heavy ? GRAVITY * 1.25 : GRAVITY));
-};
+// jumpHeightFor is the one arithmetic: jumpMult buys height directly and
+// `heavy` is spent on airtime, so a copy of the formula here would only be a
+// second thing to keep in step.
+const apexOf = jumpHeightFor;
 const cast = Object.values(HEROES);
 const worst = cast.reduce((a, h) => (apexOf(h) < apexOf(a) ? h : a));
 assert(MAX_RISE > 0, `the rise ceiling is a real height (${MAX_RISE}px)`);

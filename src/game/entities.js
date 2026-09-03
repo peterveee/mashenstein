@@ -49,19 +49,19 @@ export const OBSTACLES = {
   // game. The box cannot move, so the ART does: 6 lifts the ink to 21 and gets
   // the shorter sliders out from under it entirely.
   //
-  // SIX AND NOT EIGHT because the top of a column is the other end of the same
-  // rope. Eight would clear every head, and would also put the top rung's ink
-  // at 61 against the 57 apex that is supposed to clear the whole column — so
-  // the one jump this is all designed around would pass through the drone it
-  // just beat. Six leaves that jump 2px of overlap at the very top rung, which
-  // reads as the near miss it is, and spends the rest on the duck that happens
-  // every single time. A standing hero draws 26 to 31 tall against ink at 21,
+  // SIX AND NOT EIGHT. Half of that argument used to be the top of a column:
+  // eight put the top rung's ink at 61 against the 57 apex that was supposed to
+  // clear the stack, so the one jump the column was designed around passed
+  // through the drone it had just beaten. Nothing clears the column any more
+  // (DRONE_COLUMN_ALTS), so that half is settled by the rung count instead and
+  // six now rests on the duck alone — which is the half that happens every
+  // single time. A standing hero draws 26 to 31 tall against ink at 21,
   // so failing to duck still visibly runs into the thing that hits you — which
   // is the test artLift's own note in game/draw.js sets for itself.
   //
   // ONE of these is a duck a hero may decline: the box tops out at alt+h = 20
-  // and the shortest jump in the cast clears 46. A beat cabinet's duck slot can
-  // stack three of them into a ceiling nobody's worst jump reaches — see
+  // and the shortest jump in the cast clears 51. A beat cabinet's duck slot can
+  // stack four of them into a ceiling no jump in the game reaches — see
   // DRONE_COLUMN_ALTS below for the altitudes and the arithmetic behind them.
   drone:      { w: 12, h: 7,  sprite: 'drone', alt: 13, artLift: 6, armored: true, action: 'duck', bob: true, airDrift: { amp: 4, speed: 0.72 }, skins: ['drone', 'droneEye'] },
   // Buzzbirds use the shared gentle vertical hover, plus a modest world-space
@@ -404,20 +404,39 @@ export function makeObstacle(type, worldX, opts = {}) {
 // first. A beat cabinet's duck slot may lay this instead of a lone drone (see
 // `column` in game/beatchart.js), and it exists because a lone drone was never
 // really a duck at all: its box tops out at 20, the shortest jump in the cast
-// reaches 46, and so every hero in the game could answer a duck beat with the
+// reaches 51, and so every hero in the game could answer a duck beat with the
 // jump button and the slot asked nothing of anybody.
 //
-// WHERE THE TOP OF THE COLUMN LANDS IS THE WHOLE POINT, and it has to be 50.
-// Apex, as feet-height above the ground, is v^2/2g off BASE_JUMP_V and the
-// hero's jumpMult: 46 for B-33P (jumpMult 0.9) and 46 again for Grumpos (1.0,
-// but `heavy`, so his gravity is 1.25x), 57 for a plain 1.0, and up to 75 for
-// Clara. Fifty is the one clear gap in that table — 4px over the two lowest
-// jumps and 7px under the next one — so the two heaviest heroes must go under
-// it and everyone else still has the choice. A rung lower tops out at 46,
-// level with B-33P's apex; a rung higher tops out at 54, level with
-// Fernwick's. Both are a coin-flip on a pixel rather than a decision, and that
-// is why the gap between bodies is 8 rather than 6 or 10. Kiko's second jump
-// clears anything, and is supposed to.
+// WHERE THE TOP OF THE COLUMN LANDS IS THE WHOLE POINT, and it is 65.
+// Apex, as feet-height above the ground, is jumpMult x 57 (player.js jumpV):
+// 51 for B-33P at x0.90, 57 for a plain x1.00 — Grumpos included, now that
+// `heavy` is paid for in airtime rather than height — 59, 60, 61 for Ray M'n,
+// Gnash and Lorenzo, and 63 at Clara's x1.10.
+//
+// THREE RUNGS USED TO BE THE GATE AND CANNOT BE ANY MORE. At a top of 50 it
+// split the cast: B-33P and Grumpos both apexed at 46 and had to duck, everyone
+// else at 57-and-up could take it with the jump button, and 50 sat in an 11px
+// gap with margin on both sides. Compressing the jump band closed that gap.
+// The cast now runs 51 to 63 with no space in it wider than 6px, so any ceiling
+// that splits the roster splits it on two or three pixels — the coin-flip the
+// old note was written to avoid. There is no honest middle left.
+//
+// So the column stops asking, and the middle height goes away with it — a
+// three-rung stack now tops out at 52 against B-33P's 51, a wall for one hero
+// by less than a pixel, so validateBeatChart refuses to let a chart ask for it.
+// A FOURTH rung at a 16px pitch tops out at 68,
+// clear of every jump in the game in the same direction and by 5px at the
+// closest — Clara's 63 — which is the margin the old 50 held against the hero
+// below it. A duck slot is a duck, for the whole cast, and the decision it asks
+// for is timing rather than roster. Kiko's second jump still clears anything,
+// and is still supposed to.
+//
+// SIXTEEN AND NOT FIFTEEN is the price of that margin, and it is paid in the
+// seam. A drone draws 12.6px tall and bottom-anchored (7 x 4/3 x
+// PROP_VISUAL_SCALE), so the pitch that used to show 2.4px of sky between
+// bodies now shows 3.4px. Still a seam rather than a gap, and still one
+// machine; a fourth rung at the old pitch topped out at 65, which is inside
+// 3px of Clara's apex, and this file does not put a decision on 3px.
 //
 // The hero is only over the 12px column for about a tenth of a second at this
 // cabinet's speed, which costs roughly 1px off the apex — so the apex really
@@ -426,16 +445,15 @@ export function makeObstacle(type, worldX, opts = {}) {
 // AND THE GAPS ARE NOT DOORS. An airborne hero is 14 tall, always: jumpPressed
 // clears `ducking`, and the airborne branch blends duckAmount back to zero, so
 // Down in mid-air is a slide-slam that falls faster without shrinking the box
-// (game/player.js). Nothing in the cast can be threaded through 8px of air.
-// The gaps are here to buy the height with three bodies instead of five, and
-// the art closes most of them anyway: a drone draws 12.6px tall and
-// bottom-anchored (7 x 4/3 x PROP_VISUAL_SCALE), so at a 15px pitch the column
-// shows a 2.4px seam and reads as one machine rather than as three with room
-// between them.
-export const DRONE_COLUMN_ALTS = Object.freeze([13, 28, 43]);
+// (game/player.js). Nothing in the cast can be threaded through 9px of air.
+// The gaps are here to buy the height with four bodies instead of nine, and
+// the art closes most of them anyway — see the pitch note above for the 3.4px
+// of sky that is left and why it reads as one machine rather than as four with
+// room between them.
+export const DRONE_COLUMN_ALTS = Object.freeze([13, 29, 45, 61]);
 
 /**
- * A stack of drones at one world X — three boxes rather than one tall one, so
+ * A stack of drones at one world X — four boxes rather than one tall one, so
  * the hitboxes stay honest through the gaps instead of claiming the air.
  *
  * The shared X is doing real work. `bobPhase`, the drift clock and `skin` are
@@ -446,14 +464,16 @@ export const DRONE_COLUMN_ALTS = Object.freeze([13, 28, 43]);
  * The bottom rung keeps the def's own altitude, and must: that is the duck
  * contract the spawner refuses to let a pattern move (see the altitude note in
  * game/spawner.js), the underside has to sit where a slide clears it and a
- * stand does not, and it is the only rung a running hero ever meets. The two
+ * stand does not, and it is the only rung a running hero ever meets. The three
  * above it exist for the jumper alone.
  *
- * TWO RUNGS IS NOT A GATE AND IS NOT MEANT TO BE. A pair tops out at 35 and the
- * worst jump in the cast reaches 46, so it is a column that can still be
+ * TWO RUNGS IS NOT A GATE AND IS NOT MEANT TO BE. A pair tops out at 36 and the
+ * worst jump in the cast reaches 51, so it is a column that can still be
  * declined — which is the right shape for the first one a player meets, where
- * being wrong should cost a beat rather than the run. Only the full three
- * reaches 50 and takes the jump away.
+ * being wrong should cost a beat rather than the run. Only the full four
+ * reaches 68 and takes the jump away. Three is refused upstream
+ * (validateBeatChart): 52 against B-33P's 51 is a wall for one hero by less
+ * than a pixel, which is not a height anybody should be able to author.
  */
 export function makeDroneColumn(worldX, rungs = DRONE_COLUMN_ALTS.length) {
   return DRONE_COLUMN_ALTS.slice(0, rungs).map((alt, i) => {

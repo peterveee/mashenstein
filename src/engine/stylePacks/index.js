@@ -1037,6 +1037,12 @@ function bakedCity(ctx, key, paint, slices = null) {
 // just as often, laughing. Game code pings sunShock() from takeHit.
 let cloudShockT = 0, cloudLaughT = 0, cloudLastT = 0;
 const PAL_S = 1.4; // the pal outsizes every plain cloud so the face reads first
+// Background clouds stay at the light end of the cabinet palette. The three
+// values retain just enough separation for the flock to have depth without a
+// darker puff becoming a second focal point against the sky.
+const PIXEL_CLOUD_LIGHT = '#ffffff';
+const PIXEL_CLOUD_MID = '#eceff5';
+const PIXEL_CLOUD_SHADE = '#dde1ea';
 export function sunShock() {
   if (Math.random() < 0.55) cloudLaughT = 1.7;
   else cloudShockT = 1.4;
@@ -1127,7 +1133,7 @@ function drawCloudPal(ctx, t, reduced) {
   ctx.save();
   ctx.translate(x + jx, y);
   ctx.scale(PAL_S, PAL_S); // the pal is the big one; the flock stays smaller
-  drawCloudBody(ctx, '#f8f8ff');
+  drawCloudBody(ctx, PIXEL_CLOUD_LIGHT);
 
   // idle micro-expressions: every ~8s slot, briefly giggle or doze
   const slot = Math.floor(t / 8);
@@ -1170,7 +1176,7 @@ function drawCloudPal(ctx, t, reduced) {
     if (idle === 'sleepy') { // heavy lid
       ctx.beginPath();
       ctx.ellipse(ex, ey - er * 0.45, er * 0.9, er * 0.45, 0, Math.PI, 0);
-      ctx.fillStyle = '#f8f8ff';
+      ctx.fillStyle = PIXEL_CLOUD_LIGHT;
       ctx.fill();
     }
   }
@@ -1688,14 +1694,14 @@ function pixelPack(settings) {
         // so the flock isn't a stamp sheet. Drawn BEFORE the pal so it always
         // floats in front of its plain cousins.
         for (const [off, cy, s, tint] of [
-          [30, 34, 0.8, '#f8f8ff'],
-          [110, 20, 1.15, '#f8f8ff'],
-          [180, 68, 0.55, '#c9cfda'],
-          [255, 44, 0.95, '#dde1ea'],
-          [305, 26, 0.65, '#f8f8ff'],
-          [390, 78, 1.1, '#f8f8ff'],
-          [430, 58, 0.7, '#dde1ea'],
-          [510, 36, 0.6, '#c9cfda'],
+          [30, 34, 0.8, PIXEL_CLOUD_LIGHT],
+          [110, 20, 1.15, PIXEL_CLOUD_LIGHT],
+          [180, 68, 0.55, PIXEL_CLOUD_SHADE],
+          [255, 44, 0.95, PIXEL_CLOUD_MID],
+          [305, 26, 0.65, PIXEL_CLOUD_LIGHT],
+          [390, 78, 1.1, PIXEL_CLOUD_LIGHT],
+          [430, 58, 0.7, PIXEL_CLOUD_MID],
+          [510, 36, 0.6, PIXEL_CLOUD_SHADE],
         ]) {
           const span = W + 130;
           const cx = ((off - camX * 0.2 * PLX - t * 4) % span + span) % span - 65;
@@ -1707,7 +1713,7 @@ function pixelPack(settings) {
         }
         drawCloudPal(ctx, t, settings && settings.reducedMotion);
       } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillStyle = 'rgba(255,255,255,0.82)';
         for (let i = 0; i < 5; i++) {
           const cx = ((i * 137 - camX * 0.2 * PLX) % (W + 60)) - 30;
           const cy = 30 + (i * 37) % 60;
@@ -2123,7 +2129,7 @@ const LCD_CITY_SCENES = [
       // THE COMBO BOARD'S BUILDING IS THREE WINDOWS WIDE on every stage — it
       // carries the one sign the player reads — and the deco beside it gave up
       // the width so the row's total, and every gap, stayed the same.
-      [17, 36, 149, 'clockworks'], [65, 51, 77, 'storefront'], [128, 36, 125, 'deco'],
+      [17, 36, 149, 'clockworks'], [65, 51, 101, 'storefront'], [128, 36, 125, 'deco'],
       [176, 36, 95, 'fire-escape'],
       [323, 51, 113, 'office'], [386, 36, 74, 'storefront'], [434, 36, 89, 'workshop'],
     ],
@@ -2166,14 +2172,15 @@ const LCD_CITY_SCENES = [
     // ever looked at. The cassette takes the far roof instead: it is authored,
     // it says nothing about the run, and the far edge is where it can say it.
     //
-    // AND THE SHOP UNDER IT SITS BELOW THE CLOCK. The clock tower opens the
-    // scene and the share price answers the run; level with each other they
-    // read as a pair of equal signs rather than a landmark and a readout. The
-    // shop's height is therefore solved against the dial and not chosen: at 68
-    // the board's top edge is y 124 and the dial's bottom is 121, so the clock
-    // finishes three pixels before the billboard starts and the eye takes them
-    // in that order. Raising the tower is what buys the shop its height back —
-    // every pixel of clock is a pixel this roof can have.
+    // AND THE SHOP STANDS UP TO THE CROSSING, not to the clock. It was solved
+    // against the dial for a while — the tower opening the scene, the board
+    // finishing three pixels after it, read in that order — and at 68 that put
+    // the one sign the player reads down among the ground floor windows. The
+    // clock is in another column, so the reading order it was buying was never
+    // really at stake; what IS above this roof is the plane. Over the board's
+    // own span (x 69-112) the crossing is still climbing, and the lowest its
+    // rig gets there is y 78. At 101 the board's top edge is 91 — thirteen
+    // clear of the aircraft — and the sign has climbed out of the windows.
     billboards: [[1, 'chart'], [3, 'invader'], [5, 'burger'], [6, 'cassette']],
     transmitter: 2,
     // dx 20, not 6: with the water tower gone the stack bank owns this roof, so
@@ -2215,19 +2222,40 @@ const LCD_CITY_SCENES = [
   {
     // EIGHT structures with even air, like the other two scenes.
     buildings: [
-      // THE CHART'S ROOF IS NOT A LANDMARK. This facade stood 136 — second only
-      // to the spire beside it — which put the one board the player actually
-      // reads up under the beat ribbon's band and a long way from the lane the
-      // run is happening in. It answers to the run, so it belongs down where the
-      // run is: 90 sits it a little above its left-hand neighbour and lands the
-      // board on much the same screen line as rhythm-1's and rhythm-3's.
+      // THE RAIL IS THE CEILING. Peter (2026-09-03): "raise the monorail a bit
+      // more and lower any other buildings so they don't extend past it". The
+      // girder rules y 65 and the cars ride 53-65; nothing on this skyline —
+      // facade, board or meter — reaches above it, except the STATION (index
+      // 3, the spire), whose roof IS the rail: 167 tall so its roof is the
+      // girder's rule. It is THREE windows wide (51) so the three-car service
+      // fits its platform, and the speaker after it went to two (36, at 254)
+      // so the row's total and every gap are unchanged — Peter: "keep things
+      // in the same positions". (It tapered out into a 108px deck for an
+      // afternoon; Peter did not love the taper.) The far spire came down from 149 to
+      // 134 so its chase board's top (roof - 8 - 22 = 68) sits under the
+      // girder; the washer's deco (5) keeps its 146 because its roof is bare
+      // now (bareRoofs) and 86 is under the rail on its own.
+      // THE CHART'S ROOF IS NOT A LANDMARK. It answers to the run, so it
+      // belongs below the traffic: 104 lands the board's top edge at 88,
+      // twenty-three clear of the rail, so the board and the service never
+      // share a line. The opener beside it came up to 89 with it; both were
+      // the two stubs at this end of the skyline and the pair now stand as a
+      // step up into the station rather than as a gap in front of it.
       // The combo board's building is three wide; the music hall beside it is
       // two, so the row's total and its gaps are unchanged.
-      [20, 36, 65, 'speaker'], [71, 51, 89, 'deco'], [137, 36, 80, 'music-hall'],
-      [188, 36, 155, 'spire'], [239, 51, 59, 'speaker'], [305, 36, 146, 'deco'],
-      [356, 51, 74, 'music-hall'], [422, 36, 149, 'spire'],
+      [20, 36, 89, 'speaker'], [71, 51, 104, 'deco'], [137, 36, 80, 'music-hall'],
+      [188, 51, 167, 'spire'], [254, 36, 59, 'speaker'], [305, 36, 146, 'deco'],
+      [356, 51, 74, 'music-hall'], [422, 36, 134, 'spire'],
     ],
-    clouds: [[22, 54], [236, 44], [396, 62]],
+    // UNDER THE RAIL, BEHIND THE SKYLINE. With the girder the highest thing on
+    // the panel, the strip above the cars (39-52) is the station clock's, and
+    // Peter allowed the clouds below the rail: they drift in the band between
+    // the girder (65) and the washer's roof (86), the only band no facade
+    // reaches into except the station's — and a facade is a translucent wash,
+    // so lcdCloudLayer clips them out of that one silhouette rather than let
+    // an ink cloud show through its wall. The far spire's board (68-98) is a
+    // solid print and hides them on its own.
+    clouds: [[22, 67], [236, 70], [396, 69]],
     // Stage 2 was the one panel with no sky or rooftop life at all — windows,
     // equalizers and clouds and nothing else. It gets the working city: a
     // searchlight sweeping off the music hall, a commuter train on a viaduct
@@ -2242,17 +2270,26 @@ const LCD_CITY_SCENES = [
     // chopper. The crossing belongs to stages 1 and 3, which have the air for
     // it; here the train IS the thing that crosses.
     searchlight: [2, 24],
-    // THE LANE, and the four pixels matter. At 62 the girder landed exactly on
-    // building 3's roof (76) — a horizontal line tangent to a roof edge, which
-    // reads as a mistake — and the cars sat in the plane's own band. At 66 the
-    // girder (78) passes BEHIND building 3 and clears building 5's roof cap by
-    // six, so the rail visibly goes behind the tallest tower and the two
-    // billboards keep their air. `fromPhase` gates the SERVICE only; the
-    // viaduct itself is baked in with the facades and stands from beat one.
-    // 65 now, not 66: the deck's top line sits on lattice rule 77 and the
-    // cars ride it, so the lane is one up. See lcdViaduct.
-    train: { y: 65, cars: 4, fromPhase: 1 },
+    // THE LANE: the girder on rule 65 (y + 12), the cars on 53-65 above every
+    // other roof, the station's roof at the girder's own height. THREE cars,
+    // not four: the service is sized to the platform it stops at. It ran at 77
+    // once, behind the tallest tower; see the buildings note above for why it
+    // rose. `fromPhase` gates the SERVICE only; the viaduct is drawn live from
+    // beat one (lcdViaduct).
+    train: { y: 53, cars: 3, fromPhase: 1 },
+    // THE STATION: the three-wide spire tower the service stops at, with a
+    // canopy on its roof, a clock and platform lamps — see lcdStationKit. Its
+    // roof carries no meter.
+    station: 3,
     washer: [5, 20],
+    // Nor does the washer's (Peter: "remove led from roof of window washer
+    // building"). The roof carries one thing, and his is the man on the cradle.
+    bareRoofs: [5],
+    // THE CHOPPER FLIES UNDER THE RAIL. Above it there is no room: the beat
+    // ribbon's band ends at 38 and the cars start at 53, and a chopper with a
+    // sign on a cable is thirty-eight tall. So it crosses at rooftop height —
+    // body at 70, the load hanging in front of the towers it is raiding —
+    // which is where a repossession helicopter belongs. See lcdChopper.
     chopper: { fromPhase: 2, takes: 0 },
     // Same swap as stage 1, for the same reason: the chart near the hero,
     // the cassette out at the edge.
@@ -2274,7 +2311,7 @@ const LCD_CITY_SCENES = [
     // is the whole of the effect. From building 4 the chute stood at screen
     // 292, which is barely two beats of travel from the hero and gave the
     // barrel no room to arrive from anywhere — it simply appeared beside him.
-    // Building 6 puts the chute at 408, a dozen pixels from where a lane
+    // Building 6 puts the chute at 410, a dozen pixels from where a lane
     // barrel first crosses into frame, so the thing that lands at the foot of
     // the chute and the thing that rolls at you are in the same place at the
     // same moment and read as one object.
@@ -2284,18 +2321,31 @@ const LCD_CITY_SCENES = [
     // the number the plane's lane is measured against) and six takes the
     // gorilla's capped deco.
     buildings: [
-      // Down from 116 for the reason rhythm-2's came down from 136: the board
-      // that reports the run reads best near the lane, and all three stages now
-      // carry it at about the same height.
+      // THE OPENING PAIR STANDS UP: 65 -> 89 and 86 -> 110. They were the two
+      // stubs the panel opened on, and the ceiling over each is its own. The
+      // transmitter's building carries a mast whose outermost signal ring tops
+      // out a fixed 56 above its roof — at 89 that is y 87, and the crossing's
+      // rig bottoms out at 70-72 over these columns, so the broadcast climbs
+      // fifteen clear of the aircraft. The board's building answers to the same
+      // lane: at 110 the board's top edge is 82 against a rig bottom of 64 over
+      // its span, eighteen of air, and the beat ribbon's band ends at 40 well
+      // above that. Only the heights moved; the x/w grid and its even air are
+      // untouched.
       // FOUR THREE-WIDE FACADES — the combo board's, the two tall ones and the
       // closer — with the gaps closed to 15 to fit them, so the board's
-      // building starts at 65 and the sign's centre lands near 90: a little
+      // building starts at 59 and the sign's centre lands near 84: a little
       // LEFT of the hero, who stands at screen x 112-160. The opener stays two
       // wide on purpose; widening it pushed the sign right, under him. Edges
-      // 14 and 13.
-      [14, 36, 65, 'ducts'], [65, 51, 86, 'relay'], [131, 36, 53, 'workshop'],
-      [182, 51, 125, 'industrial'], [248, 51, 134, 'relay'], [314, 36, 71, 'ducts'],
-      [365, 36, 119, 'deco'], [416, 51, 77, 'industrial'],
+      // 8 and 4.
+      // ONE GAP IS DOUBLE THE REST, and it is the chute's. The barrel that
+      // falls beside the gorilla had 15px of air to come down — the barrel is
+      // 16 wide, so it kissed both walls the whole way and the drop read as
+      // scraping past the neighbour. His right-hand gap is 30 (+5 cells), and
+      // the whole row moved 2 cells LEFT to pay for it, so the skyline keeps
+      // its width and only the air around the chute changed.
+      [8, 36, 89, 'ducts'], [59, 51, 110, 'relay'], [125, 36, 53, 'workshop'],
+      [176, 51, 125, 'industrial'], [242, 51, 134, 'relay'], [308, 36, 71, 'ducts'],
+      [359, 36, 119, 'deco'], [425, 51, 77, 'industrial'],
     ],
     clouds: [[18, 46], [264, 52], [398, 40]],
     // THE HIGH LANE, AND ON THIS PANEL IT CLEARS HIM. Stage 1 owns the gag
@@ -2362,8 +2412,8 @@ const LCD_CITY_SCENES = [
     // building), so a boiler house on a TALL roof puts smoke through the
     // aircraft. Building 5's roof is 162, which tops the plume at 107 — well
     // under a crossing whose belly is 66 at its lowest. The transmitter's
-    // beacon stands 31 above its roof, so building 0's roof of 166 tops it at
-    // 135 with the signal rings still clear.
+    // beacon stands 31 above its roof, so building 0 — now roof 143 — tops it
+    // at 112 with the signal rings still clear of the crossing.
     //
     // Building 0 also happens to be where the panel was deadest: the far left,
     // which carried nothing at all below the clouds.
@@ -2373,8 +2423,9 @@ const LCD_CITY_SCENES = [
 ];
 
 // Each stage's sky pair, which LCD_SKY_PHASES phase 0 opens on. The tinted
-// building planes and cloud inks that used to live here are gone with the
-// OLED treatment: every wall is LCD_FACADE_WASH and every cloud is LCD_INK.
+// building planes and stage-specific cloud inks that used to live here are
+// gone with the OLED treatment: every wall is LCD_FACADE_WASH and every cloud
+// uses the shared lighter graphite declared with the rest of the panel inks.
 const LCD_GBC_PALETTES = [
   null,
   { sky: ['#e7e7a3', '#a8cf8a'] },
@@ -2439,6 +2490,7 @@ const lcdMod = (n, d) => ((n % d) + d) % d;
 //    the light is coming from the panel.
 const LCD_FACADE_WASH = 'rgba(60,63,69,0.07)';
 const LCD_WALL_LINE = 'rgba(60,63,69,0.55)';
+const LCD_CLOUD_INK = LCD_WALL_LINE;
 // An unlit window cell — and stage 3's roof plates, which are the same kind
 // of off segment. Fainter and in the outline's own blue rather than
 // LCD_WINDOW_OFF, which the rest of the panel's ghost cells keep.
@@ -2535,11 +2587,23 @@ function lcdSceneFrame(scene, reducedMotion) {
     // panel as a picture rather than as a lane.
     barrelBeat: reducedMotion || !Number.isFinite(scene?.barrelBeat) ? null
       : scene.barrelBeat,
+    // AND THE GRID THE GORILLA'S SWING IS PHASED TO — the snapped delivery
+    // beat of the last real barrel, kept after it has landed so the stream
+    // stays in step for the next one (see lcdSwingPhase). A caller that names a
+    // barrel without a grid gets the barrel's own beat as the grid, which is
+    // what the run would have handed over anyway.
+    barrelGrid: reducedMotion ? null
+      : Number.isFinite(scene?.barrelGrid) ? scene.barrelGrid
+        : Number.isFinite(scene?.barrelBeat) ? scene.barrelBeat : null,
     // WHICH FACE THE GORILLA WEARS, or null for the authored smile. DEV ONLY:
     // no run sets it — the gallery's bake-off does, so the candidates can be
     // judged on the real panel by the real painter rather than in a copy of
     // him. It never overrides the startle; see lcdRooftopGorilla.
     gorillaExpr: typeof scene?.gorillaExpr === 'string' ? scene.gorillaExpr : null,
+    // And how tightly the two nostrils sit on the muzzle. DEV ONLY: the
+    // gallery crosses this with the real expressions before one spacing is
+    // allowed to replace the authored 2.5px half-gap.
+    gorillaNostrils: typeof scene?.gorillaNostrils === 'string' ? scene.gorillaNostrils : null,
     // And which BROW treatment, same deal: null means the one the panel ships.
     gorillaBrow: typeof scene?.gorillaBrow === 'string' ? scene.gorillaBrow : null,
     // And which INK he is drawn in — fur, arm core, face, skin, chest — same
@@ -2552,6 +2616,8 @@ function lcdSceneFrame(scene, reducedMotion) {
     // skull wears. See LCD_GORILLA_PIT_STYLES / LCD_GORILLA_TUFT_STYLES.
     gorillaPit: typeof scene?.gorillaPit === 'string' ? scene.gorillaPit : null,
     gorillaTuft: typeof scene?.gorillaTuft === 'string' ? scene.gorillaTuft : null,
+    // Which SHOCKED mouth he wears — see LCD_GORILLA_SHOCK_STYLES.
+    gorillaShock: typeof scene?.gorillaShock === 'string' ? scene.gorillaShock : null,
     // And how far the EARS stick out — see LCD_GORILLA_EAR_STYLES.
     gorillaEar: typeof scene?.gorillaEar === 'string' ? scene.gorillaEar : null,
     // And which SPIKE spec the crest is cut to — see LCD_GORILLA_SPIKE_STYLES.
@@ -2559,6 +2625,8 @@ function lcdSceneFrame(scene, reducedMotion) {
     // HOW STRONG THE SHOULDER BALL'S INK IS, 1 down to 0.5, or null for the
     // one the panel ships — see LCD_GORILLA_SHOULDER_ALPHAS.
     gorillaShoulder: Number.isFinite(scene?.gorillaShoulder) ? scene.gorillaShoulder : null,
+    // And WHAT SHAPE the ball is — see LCD_GORILLA_SHOULDER_SHAPE_STYLES.
+    gorillaShoulderShape: typeof scene?.gorillaShoulderShape === 'string' ? scene.gorillaShoulderShape : null,
     // The girder cell's size and the barrel's SILHOUETTE — see
     // LCD_BARREL_CELL_STYLES and LCD_BARREL_SHAPE_STYLES. Null ships.
     barrelCell: typeof scene?.barrelCell === 'string' ? scene.barrelCell : null,
@@ -3126,8 +3194,37 @@ function lcdCloud(ctx, x, y, pose) {
   const b = [[2, 7], [5, 3], [11, 3], [14, 0], [21, 1], [24, 5], [31, 5], [36, 9], [33, 12], [5, 12]];
   // The live pose in ink, and no ghost of the other one under it: a cloud
   // rather than a diagram of where a cloud could be.
-  ctx.strokeStyle = LCD_INK;
+  ctx.strokeStyle = LCD_CLOUD_INK;
   lcdStrokePath(ctx, (pose ? b : a).map(([px, py]) => [x + px, y + py]), true);
+}
+
+function lcdCloudLayer(ctx, art, frame) {
+  // The sky was the one part of the panel that never moved. Each cloud now
+  // drifts leftward in whole-pixel steps on the heard beat — a different pace
+  // per cloud so the layer has depth — wrapping off one edge of the display
+  // and back on the other, with a one-pixel bob on the bar. Quantized like
+  // everything else here: the beat advances it, nothing else does, and reduced
+  // motion (beat 0 forever) gets a parked sky.
+  const beatAbs = frame.bar * 4 + frame.beat4;
+  const span = W + 72;
+  // Behind the station, not through it: the walls are a 7% wash, so a cloud
+  // drawn under one shows through. Its box is cut out of the sky the clouds
+  // may paint on. See the stage 2 `clouds` note.
+  const station = art.station != null ? art.buildings[art.station] : null;
+  if (station) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    ctx.rect(station[0], GROUND_Y - station[2], station[1] + 1, H);
+    ctx.clip('evenodd');
+  }
+  for (let i = 0; i < art.clouds.length; i++) {
+    const [cx0, cy0] = art.clouds[i];
+    const x = lcdMod(cx0 + 36 - beatAbs * LCD_CLOUD_DRIFT[i % LCD_CLOUD_DRIFT.length], span) - 36;
+    const y = cy0 + LCD_CLOUD_BOB[lcdMod(frame.bar + i, LCD_CLOUD_BOB.length)];
+    lcdCloud(ctx, x, y, lcdMod(frame.bar + frame.phrase + i, 2));
+  }
+  if (station) ctx.restore();
 }
 
 // ---- the chase ----------------------------------------------------------
@@ -3542,6 +3639,14 @@ function lcdSignMark(ctx, action, mx, my, ink) {
  * `beatPhase` is zero, which is the same thing.
  */
 const LCD_SIGN_DUTY = 0.75;
+// THE REAL BARREL'S RIM FLASHES ON THE SAME DUTY. A steady 2px rim on a 16px
+// barrel at the far end of a skyline is a thing you can miss; a rim that beats
+// with the song is a thing that catches the eye from the road. Same three
+// quarters on, same reason as the sign, and the same fallback: under reduced
+// flashing it stands lit for the whole journey.
+function lcdRimOn(frame, reducedFlashing) {
+  return reducedFlashing || frame.beatPhase < LCD_SIGN_DUTY;
+}
 function lcdVerbSign(ctx, building, cue, frame, reducedFlashing) {
   const word = LCD_SIGN_WORD[cue.action];
   if (!word) return;
@@ -4168,6 +4273,20 @@ function lcdPlaneCyc(art, frame) {
   };
 }
 
+/**
+ * The middle of the aircraft on this beat, in screen px, or null when there is
+ * nothing in the sky. Same three calls lcdPlane makes to draw it — the plane's
+ * position is solved once, here, so a thing that WATCHES the plane cannot
+ * drift from the thing that draws it.
+ */
+function lcdPlanePoint(art, frame, altitude = LCD_PLANE_Y) {
+  if (!art?.plane) return null;
+  const pass = lcdPlaneCyc(art, frame);
+  if (!pass) return null;
+  const pos = lcdPlaneAt(pass.cyc, lcdPassAltitude(art, pass, altitude), pass.beats);
+  return pos ? [pos.x + LCD_PLANE_W / 2, pos.y + LCD_PLANE_H / 2] : null;
+}
+
 function lcdPlane(ctx, art, frame, altitude = LCD_PLANE_Y) {
   const pass = lcdPlaneCyc(art, frame);
   if (!pass) return;
@@ -4229,6 +4348,8 @@ function lcdPlaneRig(ctx, frame, { x, y }, banner) {
 // gag at the same moment of the loop forever, and the player learns to watch
 // for it. Two cells: the strike, then the staves flung out and already ghosting.
 const LCD_BARREL_UP_BEAT = 0, LCD_BARREL_UP_DY = -50;
+// How many poses his swing is cut into — one per beat of the bar.
+const LCD_BARREL_POSES = 4;
 const LCD_BARREL_RX = 8, LCD_BARREL_RY = 7;
 // Offsets in 2px cells from the barrel's centre.
 const LCD_BURST_STAR = [
@@ -4310,10 +4431,21 @@ function lcdBurstPhase(art, frame) {
 export function lcdChuteScreenX(stageIndex) {
   const art = LCD_CITY_SCENES[Math.max(1, Math.min(3, Math.trunc(stageIndex) || 1))];
   if (!art?.barrelDrop || !Number.isInteger(art.rooftopGorilla)) return null;
+  return lcdChuteX(art);
+}
+
+/**
+ * The chute's screen x for an already-resolved scene: centred in whatever gap
+ * the gorilla's building leaves to its right-hand neighbour, so widening that
+ * gap for clearance moves the drop with it rather than leaving it hugging his
+ * wall. On the last building there is no neighbour and the old 15px gap is
+ * assumed.
+ */
+function lcdChuteX(art) {
   const [gx, gw] = art.buildings[art.rooftopGorilla];
-  // Centred in the 15px gap to the next facade: the barrel is 16 wide, so it
-  // kisses both walls, and anywhere else it would sit on one of them.
-  return gx + gw + 8;
+  const next = art.buildings[art.rooftopGorilla + 1];
+  const gap = next ? next[0] - (gx + gw) : 15;
+  return gx + gw + Math.round(gap / 2);
 }
 
 /**
@@ -4335,9 +4467,48 @@ export function lcdGorillaHeadPos(stageIndex) {
 // How many cells the barrel chute has, and so how many beats early the lane has
 // to name a barrel for the drop to be drawn whole. Four cells is a bar, and the
 // delivery — top cell to street — is the three steps between them.
-const LCD_CHUTE_CELLS = 4;
-/** How many heard beats the chute takes to deliver, top cell to street. */
-export const LCD_CHUTE_BEATS = LCD_CHUTE_CELLS - 1;
+export const LCD_CHUTE_CELLS = 4;
+/** How many heard beats the chute takes: one per cell, the last a beat short
+ *  of the road, which the lane's own barrel then rolls onto. */
+export const LCD_CHUTE_BEATS = LCD_CHUTE_CELLS;
+// AND HOW LONG HE HOLDS IT FIRST. His four authored poses are one swing —
+// overhead, out, low, empty — so three of them have a barrel in them and the
+// fourth is the release, which is also the beat the chute's top cell takes it.
+// Three in the hand plus four in the chute is SEVEN drawn positions, and the
+// road is the eighth beat: over his head, down his arm, at his side, then four
+// cells to the street. See lcdRooftopGorilla.
+const LCD_CHUTE_HOLD_BEATS = LCD_BARREL_POSES - 1;
+/** How many beats out a barrel is when it appears over his head — which is
+ *  also the count of drawn positions, since it steps one per beat and the road
+ *  is due 0. Seven positions, eight beats counting the road. */
+export const LCD_CHUTE_LEAD_BEATS = LCD_CHUTE_BEATS + LCD_CHUTE_HOLD_BEATS;
+
+// WHERE IN HIS SWING THE GORILLA IS, 0..3, and the one place the phase of the
+// whole rig — his arms AND the chute — is decided.
+//
+// THE RIG IS ONE STREAM. He raises a barrel on phase 0, brings it down his arm
+// on 1 and 2, and on 3 his hand is empty because the barrel is in the chute's
+// top cell; it takes the other three cells on the next 0, 1, 2 and the road
+// has it on the 3 after that. Every barrel he ever picks up makes that same
+// eight-beat journey through the same seven places, a new one is raised every
+// four, so there is always one in his hands and one in the chute, and the only
+// thing that marks the real one is the lit rim riding it down (see
+// lcdRooftopGorilla and the chute in drawLCDCity).
+//
+// AND THE STREAM IS PHASED TO THE LANE, not the bar. The chart's barrels reach
+// the foot of the chute on whatever beat the road's geometry says — it is a
+// physics number, not a bar line — so if the swing ran on `beat4` the real
+// barrel would have to enter the stream mid-arm, or the road one would land a
+// beat or two off the lit one. Instead the run hands over `barrelGrid`, the
+// snapped delivery beat of the last real barrel, and the swing is counted from
+// it: the raise is seven beats before the road, so phase 0 falls on
+// `grid - 7`, and the barrels the chart lays after it (one slot, one speed)
+// land on the same phase with no re-phase at all. Before the first real one
+// the bar is as good a clock as any.
+function lcdSwingPhase(frame) {
+  if (frame.barrelGrid == null) return frame.beat4;
+  return lcdMod(frame.beatAbs - frame.barrelGrid + LCD_CHUTE_HOLD_BEATS, LCD_BARREL_POSES);
+}
 
 export function lcdBarrelStrikeAt(stageIndex, beat) {
   if (!Number.isFinite(beat)) return false;
@@ -4356,13 +4527,14 @@ export function lcdBarrelStrikeAt(stageIndex, beat) {
 function lcdVanishedBarrelCell(art, frame) {
   // Counted within the crossing that did the destroying, not against a
   // free-running clock: on a pass that missed there is no wreck and no gap in
-  // the chain, and the twelve beats are the twelve after THIS plane's strike.
+  // the chain, and the sixteen beats are the sixteen after THIS plane's
+  // strike — one per cell of the chain the throw would have ridden.
   const pass = lcdPlaneCyc(art, frame);
   if (!pass) return -1;
   const strike = lcdBarrelStrike(art, pass.phase);
   if (strike < 0) return -1;
   const since = pass.cyc - strike;
-  return since >= 0 && since < 12 ? since : -1;
+  return since >= 0 && since < 16 ? since : -1;
 }
 
 function lcdBarrelBurst(ctx, bx, by, phase, reducedFlashing) {
@@ -4451,41 +4623,153 @@ function lcdViaduct(ctx, art) {
   ctx.fillRect(0, art.train.y + 12, W, 1);
 }
 
-function lcdTrain(ctx, spec, frame) {
+// ---- the service ---------------------------------------------------------
+//
+// SETTLED 2026-09-03 off a three-round bake-off (gallery section
+// `monorail-bakeoff`, retired). The old service was four teal boxes sliding
+// past once a lap, and Peter called it bland. What ships is the three cuts he
+// took, stacked: a STATION STOP (the service pulls in at the spire tower,
+// dwells two bars with the doors open and the headlamp off, then lights up
+// and leaves), LAMPS + SPARKS (a fading headlamp beam that flickers on the
+// offbeat, a red tail lamp on the backbeat, a collector spark at the rail on
+// the downbeat) and PASSENGERS (seated silhouettes, and one standing walker
+// working toward the back a window a beat). The stop's building is three
+// windows wide so the three-car service fits it, and wears the furniture that
+// says it is a stop (lcdStationKit). Losers, deleted rather
+// than hidden: INK CARS (facade-hand cars), SUSPENDED (a hanging monorail
+// that swayed), TWO-WAY SERVICE (a meet mid-panel, which overlapped into a
+// blob for two beats).
+const LCD_TRAIN_BODY = 'rgba(70,121,137,0.5)';
+const LCD_TRAIN_GLASS = 'rgba(220,228,154,0.7)';
+// The timetable. The stop is a PLACE, not a beat: the nose halts centred on
+// the station's facade, and since the platform is not a whole number of
+// car-lengths from the edge, the last step in is a short one — the train
+// creeps the final few pixels to the mark, which is what pulling in looks
+// like. Then it stands for the dwell, and leaves at a car-length a beat.
+const LCD_TRAIN_DWELL = 8;
+function lcdTrainSpan(spec) { return W + (spec.cars ?? 4) * LCD_TRAIN_CAR + 40; }
+function lcdTrainStopX(spec, station) {
+  const [x, w] = station;
+  return Math.round(x + w / 2) - Math.round(((spec.cars ?? 4) * LCD_TRAIN_CAR - 4) / 2);
+}
+/** The beat the nose reaches the mark: the first whole step at or past it. */
+function lcdTrainStopBeat(spec, station) {
+  return Math.ceil((lcdTrainSpan(spec) - lcdTrainStopX(spec, station)) / LCD_TRAIN_CAR);
+}
+/** Whether the service is standing at the platform on beat `k` of the lap. */
+function lcdTrainDwelling(spec, station, k) {
+  const stop = lcdTrainStopBeat(spec, station);
+  return k > stop && k < stop + LCD_TRAIN_DWELL;
+}
+
+// Where the nose stands on beat `k` of the lap. Stepped off the LAP rather
+// than off the span, which is what turns a continuous belt of carriages into a
+// service with a timetable: past the crossing the head keeps walking left,
+// every car culls, and the rail is empty until the lap comes round.
+function lcdTrainHead(spec, k, station) {
+  const span = lcdTrainSpan(spec);
+  if (!station) return span - k * LCD_TRAIN_CAR;
+  const stopX = lcdTrainStopX(spec, station);
+  const stop = lcdTrainStopBeat(spec, station);
+  if (k <= stop) return Math.max(stopX, span - k * LCD_TRAIN_CAR);
+  if (k < stop + LCD_TRAIN_DWELL) return stopX;
+  return stopX - (k - stop - LCD_TRAIN_DWELL + 1) * LCD_TRAIN_CAR;
+}
+
+function lcdTrain(ctx, spec, frame, station) {
   const { y, cars = 4 } = spec;
-  const span = W + cars * LCD_TRAIN_CAR + 40;
-  // Stepped off the LAP rather than off the span, which is what turns a
-  // continuous belt of carriages into a service with a timetable: past the
-  // crossing the head keeps walking left, every car culls, and the rail is
-  // empty until the lap comes round.
-  const head = span - lcdMod(frame.beatAbs, LCD_TRAIN_LAP) * LCD_TRAIN_CAR;
+  const k = lcdMod(frame.beatAbs, LCD_TRAIN_LAP);
+  const x0 = lcdTrainHead(spec, k, station);
+  const dwelling = !!station && lcdTrainDwelling(spec, station, k);
+  // The walker: one standing passenger, a window a beat toward the back.
+  const walker = lcdMod(k, cars * 4);
   for (let c = 0; c < cars; c++) {
-    const cx = Math.round(head + c * LCD_TRAIN_CAR);
+    const cx = Math.round(x0 + c * LCD_TRAIN_CAR);
     if (cx > W + 4 || cx + LCD_TRAIN_CAR < -4) continue;
-    ctx.fillStyle = 'rgba(70,121,137,0.5)';
+    const lead = c === 0;
+    const last = c === cars - 1;
+    ctx.fillStyle = LCD_TRAIN_BODY;
     ctx.fillRect(cx, y, LCD_TRAIN_CAR - 4, 12);
     ctx.fillStyle = LCD_PRINT;
     ctx.fillRect(cx, y + 11, LCD_TRAIN_CAR - 4, 2);
-    // Four lit windows a car, and the front car wears a headlamp.
-    ctx.fillStyle = 'rgba(220,228,154,0.7)';
-    for (let wdw = 0; wdw < 4; wdw++) ctx.fillRect(cx + 3 + wdw * 5, y + 3, 3, 4);
-    if (c === 0) { ctx.fillStyle = LCD_WINDOW_ON; ctx.fillRect(cx - 2, y + 5, 2, 3); }
+    // Four lit windows a car. At the platform the two middle ones are the
+    // door leaves: while the doors stand open they are gone and the doorway
+    // is lit instead.
+    ctx.fillStyle = LCD_TRAIN_GLASS;
+    for (let wdw = 0; wdw < 4; wdw++) {
+      if (dwelling && (wdw === 1 || wdw === 2)) continue;
+      ctx.fillRect(cx + 3 + wdw * 5, y + 3, 3, 4);
+    }
+    if (dwelling) ctx.fillRect(cx + 8, y + 2, 8, 8);
+    // The passengers: seated heads low in the glass in a fixed pattern, and
+    // the walker standing taller. They keep their seats through the stop.
+    ctx.fillStyle = LCD_PRINT;
+    for (let wdw = 0; wdw < 4; wdw++) {
+      const g = c * 4 + wdw;
+      const wx = cx + 4 + wdw * 5;
+      if (g === walker) ctx.fillRect(wx, y + 3, 2, 3);
+      else if ((g * 7) % 3 === 0) ctx.fillRect(wx, y + 5, 2, 2);
+    }
+    if (lead && !dwelling) {
+      // The headlamp, and its beam: three cells fading along the lane, a cell
+      // shorter on the offbeat so it flickers the way a lamp on a moving thing
+      // does. Off at the platform — the train lights up to leave.
+      ctx.fillStyle = LCD_WINDOW_ON;
+      ctx.fillRect(cx - 2, y + 5, 2, 3);
+      const cells = frame.beat4 % 2 ? 2 : 3;
+      const fade = ['rgba(211,91,67,0.5)', 'rgba(211,91,67,0.28)', 'rgba(211,91,67,0.14)'];
+      for (let i = 0; i < cells; i++) {
+        ctx.fillStyle = fade[i];
+        ctx.fillRect(cx - 4 - i * 2, y + 5, 2, 3);
+      }
+      // The collector spark, at the rail under the lead bogie, on the downbeat:
+      // the train is drawing power from the beam.
+      if (frame.beat4 === 0) {
+        ctx.fillStyle = 'rgba(232,238,176,0.95)';
+        ctx.fillRect(cx + 2, y + 11, 2, 2);
+      }
+    }
+    // And a red tail lamp on the last car, blinking on the backbeat.
+    if (last && frame.beat4 % 2 === 1) {
+      ctx.fillStyle = LCD_WINDOW_ON;
+      ctx.fillRect(cx + LCD_TRAIN_CAR - 4, y + 5, 2, 3);
+    }
   }
 }
 
 // ---- the window washer --------------------------------------------------
 //
-// A cradle winching up a facade, one authored stop per beat, with the little
-// figure's squeegee arm swapping sides as he works. He gets four stops up the
-// building and then, in the last phase of the run, the cradle tips and he
-// hangs off one end — the city cannot afford the other cable either.
+// A cradle winching up a facade, one window-aligned stop every beat, with the
+// little figure's squeegee arm swapping sides as he works. In the last phase
+// of the run, the cradle tips and he hangs off one end — the city cannot afford
+// the other cable either.
+//
+// EIGHT WINDOWS, SIXTEEN BEATS, FOUR BARS. He climbs one real window row per
+// beat through the first two bars, phased one painter beat ahead so the visible
+// rung change lands with the kick rather than trailing onto the snare. He
+// reaches the bottom on beat 13 and waits there through the phrase boundary;
+// every moving step is the facade's 12px pitch and beat 16 is beat 0 again.
+const LCD_WASHER_RUNGS = [6, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5, 6, 7, 7, 7];
+function lcdWasherHat(ctx, headX, headY, headW) {
+  // A tiny hard hat: two rows of crown and a brim one pixel wider on either
+  // side. PANEL_LIT keeps it distinct from his skin, overalls and the coral
+  // windows without introducing a colour the LCD scene does not already own.
+  ctx.fillStyle = LCD_PANEL_LIT;
+  ctx.fillRect(headX, headY - 2, headW, 2);
+  ctx.fillRect(headX - 1, headY, headW + 2, 1);
+}
 function lcdWasher(ctx, building, dx, frame) {
   const [x, , h] = building;
   const roof = GROUND_Y - h;
   const cx = Math.round(x + dx);
-  const stops = [roof + 96, roof + 74, roof + 52, roof + 30];
-  const stop = lcdMod(Math.floor((frame.bar * 4 + frame.beat4) / 2), stops.length);
-  const y = stops[stop];
+  // lcdWindowCells starts each row at roof + 7 and its cell is 5px tall, so
+  // these cradle heights are exactly the lower edge of its eight window rows.
+  // Start one row below the facade's first window: the hard hat now clears the
+  // roof at the top stop, and the whole eight-position journey ends one window
+  // lower too.
+  const stops = Array.from({ length: 8 }, (_, row) => roof + 12 + (row + 1) * LCD_ROW_PITCH);
+  const step = lcdMod(frame.bar * 4 + frame.beat4, LCD_WASHER_RUNGS.length);
+  const y = stops[LCD_WASHER_RUNGS[step]];
   const tipped = frame.phase >= 3;
   // Two cables from the roof down to the cradle.
   ctx.fillStyle = LCD_PRINT_SOFT;
@@ -4504,6 +4788,7 @@ function lcdWasher(ctx, building, dx, frame) {
     ctx.fillRect(cx - 4, y + 6, 1, 2);
     ctx.fillStyle = '#f2c9a0';
     ctx.fillRect(cx - 6, y - 2, 3, 3);
+    lcdWasherHat(ctx, cx - 6, y - 2, 3);
     return;
   }
   ctx.fillRect(cx - 8, y, 17, 2);
@@ -4524,6 +4809,7 @@ function lcdWasher(ctx, building, dx, frame) {
   ctx.fillRect(cx + 1, y - 2, 1, 2);
   ctx.fillStyle = '#f2c9a0';
   ctx.fillRect(cx - 2, y - 10, 4, 4);
+  lcdWasherHat(ctx, cx - 2, y - 10, 4);
   ctx.fillStyle = LCD_PRINT;
   const arm = frame.beat4 % 2 === 0 ? cx + 2 : cx - 5;
   ctx.fillRect(arm, y - 9, 3, 2);
@@ -4552,7 +4838,9 @@ function lcdChopperX(frame) {
 function lcdChopper(ctx, frame, taken) {
   const x = lcdChopperX(frame);
   if (x == null) return;
-  const y = 30;
+  // Under the girder (rule 65): the rotor at 67, the body from 70, the load
+  // hanging to 108 across the roofs.
+  const y = 70;
   for (let r = 0; r < LCD_CHOPPER.length; r++) {
     for (let c = 0; c < LCD_CHOPPER[r].length; c++) {
       if (LCD_CHOPPER[r][c] === '.') continue;
@@ -4825,7 +5113,49 @@ const LCD_BARREL_BODY = '#a9743a';
 const LCD_BARREL_SEAM = 'rgba(95,61,31,0.6)';
 const LCD_BARREL_HI = 'rgba(226,166,88,0.62)';
 const LCD_BARREL_LID = '#c48b4c';    // the end face, one step up from the wood
+// The stave JOINTS, which are not seams and must not be drawn like them. The
+// lane barrel draws its joints as a quarter-opacity hairline and its shading
+// as a separate, heavier block; this panel had only the heavy one, so the
+// girder cell had to go without joints entirely and read as a plain wooden
+// box. A hairline at 1px is an alpha, not a width.
+const LCD_BARREL_HAIR = 'rgba(95,61,31,0.3)';
+// The girder cell's OUTLINE, lighter than the print the big barrel is drawn
+// with. At sixteen pixels a full-strength rim is the line holding the thing
+// together; at ten it is a third of everything on the barrel, and the wood
+// inside it stops being the subject. It cannot get thinner — one pixel is the
+// floor — so it gets fainter, which is the same thing to the eye.
+// THIN AND DARK, not thin-BY-being-pale. Fading the rim to half strength made
+// it finer and also made it fuzzy: a 1px line at half alpha is a grey smear
+// with no edge, which is the opposite of sharp. The width is what should give
+// way — six tenths of a pixel, at nearly full ink — so the line is smaller AND
+// more definite than the one it replaces. Everything inside the cell follows
+// the same rule.
+const LCD_BARREL_RIM_FINE = 'rgba(60,63,69,0.92)';
+const LCD_BARREL_HAIR_FINE = 'rgba(95,61,31,0.6)';
+const LCD_BARREL_FINE_W = 0.6;
 const LCD_BARREL_HOOP = 0.75;
+
+// HOW FAR A BARREL TURNS BETWEEN ONE CELL AND THE NEXT, in radians. A thrown
+// barrel is the one thing on this panel that has to look like it is ROLLING,
+// and a chain of cells all drawn upright reads as a barrel sliding down the
+// steel on its side. This is not the physical angle — a ten-pixel barrel that
+// travels sixteen pixels has turned most of a full revolution, and a chain
+// drawn honestly would be a random-looking scatter — it is the READABLE one:
+// about thirty degrees a cell, so no two neighbours share an attitude, four
+// cells make a visible quarter-turn, and nothing ever comes back round to
+// upright inside a single girder.
+const LCD_BARREL_ROLL = 0.55;
+
+// The angle of cell `i` of the tower's twelve-cell barrel chain, accumulated
+// from the top with the SIGN of the girder it is on: the chain snakes, so a
+// barrel rolls left along the top floor, right along the next, and unwinds
+// exactly as far as it wound when it turns the corner. Four cells to a floor
+// (i >> 2 is the floor), even floors running left.
+function lcdRollSpin(i) {
+  let a = 0;
+  for (let j = 0; j <= i; j++) a += ((j >> 2) % 2 === 0 ? -1 : 1) * LCD_BARREL_ROLL;
+  return a;
+}
 
 // SHIPPED: the lane barrel's own drawing. The thing the gorilla holds, the
 // thing that comes down the chute and the thing that rolls at you in the lane
@@ -4862,39 +5192,40 @@ const LCD_BARREL_SHAPES = new Set(LCD_BARREL_SHAPE_STYLES.map((b) => b.id));
 function lcdBarrelPath(ctx, x, y, rx, ry, shape) {
   ctx.beginPath();
   if (shape === 'ingame') {
-    // props.js barrel() — SNAPPED, and with a BELLY. Two things had to be
-    // true at once and the first attempt only managed one: it has to sit on
-    // the pixel grid, or a ten-pixel body is a smudge; and it has to bulge,
-    // or it is a crate. A rounded rectangle with a radius large enough to
-    // read as a barrel is just the ellipse again, and one small enough to
-    // stay crisp is a box — so the silhouette is neither. It is a twelve-
-    // sided polygon on three widths: the end rows pulled in two pixels, a
-    // one-pixel shoulder, and the full width across the belly. Every vertex
-    // is a half-pixel off an integer, so a 1px rim lands on the grid, and
-    // there is not a curve in it.
+    // props.js barrel() — snapped, bellied, and LYING ON ITS SIDE.
+    //
+    // The lane barrel is drawn standing up, because it SPINS: draw.js rolls it
+    // as it comes at you, so which way up it was authored never shows. Nothing
+    // on this panel spins. The gorilla lifts it overhead with a hand at each
+    // END — his hands are the barrel's own half-width apart, which is what
+    // makes the grip read — and the girder cells roll along the steel on their
+    // sides. Drawn upright, he was gripping the staves and the cells were
+    // barrels standing on a moving floor. So the panel's barrel is the lane's
+    // barrel turned a quarter: hoops upright near the ends, staves running the
+    // way it rolls, the lid facing the hand that holds it.
+    //
+    // The silhouette stays a snapped polygon on three heights — the ends
+    // pulled in, a shoulder, the full height across the belly — because a
+    // radius large enough to read as a barrel is the ellipse again and one
+    // small enough to stay crisp is a crate. Every vertex is a half-pixel off
+    // an integer, so the 1px rim lands on the grid.
     const RX = Math.round(rx), RY = Math.round(ry);
     const cx = Math.round(x), cy = Math.round(y);
     const L = cx - RX, T = cy - RY, W = RX * 2, H = RY * 2;
-    // How far the ends pull in, and how deep the shoulder is. Two pixels of
-    // taper is the whole bulge: at sixteen across it is a barrel and at ten it
-    // is still a barrel, and three would start eating the girder cell.
-    const END = 2, SH = 1;
-    const r = RY >= 7 ? 2 : 1;              // the shoulder's height
-    const a = RY >= 7 ? 3 : 1;              // half the belly's flat run
-    const xR = (i) => L + W - i - 0.5, xL = (i) => L + i + 0.5;
-    const y0 = T + 0.5, y1 = T + H - 0.5;
-    ctx.moveTo(xL(END), y0);
-    ctx.lineTo(xR(END), y0);
-    ctx.lineTo(xR(SH), y0 + r);
-    ctx.lineTo(xR(0), cy - a);
-    ctx.lineTo(xR(0), cy + a);
-    ctx.lineTo(xR(SH), y1 - r);
-    ctx.lineTo(xR(END), y1);
-    ctx.lineTo(xL(END), y1);
-    ctx.lineTo(xL(SH), y1 - r);
-    ctx.lineTo(xL(0), cy + a);
-    ctx.lineTo(xL(0), cy - a);
-    ctx.lineTo(xL(SH), y0 + r);
+    const END = RY >= 7 ? 2 : 1;     // how far each end pulls in
+    const SH = END - 1;              // the shoulder between end and belly
+    const r = RY >= 7 ? 2 : 0;       // how far along the length the shoulder runs
+    const a = RY >= 7 ? 4 : 3;       // half the belly's flat run
+    const x0 = L + 0.5, x1 = L + W - 0.5;
+    // Breakpoints along the TOP edge, left to right, as [x, rows inset].
+    const top = r
+      ? [[x0, END], [x0 + r, SH], [cx - a, 0], [cx + a, 0], [x1 - r, SH], [x1, END]]
+      : [[x0, END], [cx - a, 0], [cx + a, 0], [x1, END]];
+    ctx.moveTo(top[0][0], T + top[0][1] + 0.5);
+    for (const [px, i] of top) ctx.lineTo(px, T + i + 0.5);
+    for (let k = top.length - 1; k >= 0; k--) {
+      ctx.lineTo(top[k][0], T + H - top[k][1] - 0.5);
+    }
     ctx.closePath();
     return;
   }
@@ -4933,7 +5264,29 @@ function lcdBarrelPath(ctx, x, y, rx, ry, shape) {
 // `ghost` is false, true (a filled ghost, the way the gorilla's spare arms and
 // the chute are drawn) or 'outline' (the silhouette alone, for a chain of off
 // cells where four filled discs in a row would out-weigh the one lit barrel).
-function lcdBarrelAt(ctx, x, y, rx, ry, ghost = false, live = false, shape = null) {
+//
+// `spin` TILTS THE WHOLE BARREL about its own centre, and it is the difference
+// between a barrel that has been THROWN and one that is sliding. Four cells
+// straight down the chute at the same angle is a lift, not a drop; the same
+// four each turned a little further is a thing rolling. Every cell of a chain
+// carries its own angle — ghosts included, because a ghost is a position this
+// barrel also occupies and it occupies it at that attitude — so the tumble is
+// readable in a still frame as well as in motion, which is exactly how a real
+// Game & Watch draws its barrel segments.
+//
+// The tilt is applied as a transform around the SNAPPED centre, so an upright
+// barrel (spin 0, the gorilla's held one) is the same pixel-exact drawing it
+// always was and only a turned one pays for the rotation.
+function lcdBarrelAt(ctx, x, y, rx, ry, ghost = false, live = false, shape = null, spin = 0) {
+  if (spin) {
+    ctx.save();
+    ctx.translate(Math.round(x), Math.round(y));
+    ctx.rotate(spin);
+    ctx.translate(-Math.round(x), -Math.round(y));
+    lcdBarrelAt(ctx, x, y, rx, ry, ghost, live, shape, 0);
+    ctx.restore();
+    return;
+  }
   const form = LCD_BARREL_SHAPES.has(shape) ? shape : LCD_BARREL_SHAPE;
   const k = rx / LCD_BARREL_RX;
   const body = Math.max(0.5, k);            // outline
@@ -4944,11 +5297,13 @@ function lcdBarrelAt(ctx, x, y, rx, ry, ghost = false, live = false, shape = nul
     return;
   }
   ctx.fillStyle = ghost ? LCD_MOTION_GHOST : LCD_BARREL_BODY; ctx.fill();
-  ctx.strokeStyle = ghost ? LCD_MOTION_GHOST : LCD_PRINT;
-  // The snapped shape wants a whole-pixel rim; the curved ones still scale
-  // theirs, because a 1px stroke on a 10px ellipse is the chunk this all
-  // started with.
-  ctx.lineWidth = ghost || form === 'ingame' ? 1 : body;
+  const fineRim = form === 'ingame' && rx < LCD_BARREL_RX;
+  ctx.strokeStyle = ghost ? LCD_MOTION_GHOST
+    : fineRim ? LCD_BARREL_RIM_FINE : LCD_PRINT;
+  // The snapped shape wants a whole-pixel rim at full size and a thinner one
+  // on the girder cell; the curved ones still scale theirs, because a 1px
+  // stroke on a 10px ellipse is the chunk this all started with.
+  ctx.lineWidth = fineRim ? LCD_BARREL_FINE_W : (ghost || form === 'ingame') ? 1 : body;
   ctx.stroke();
   ctx.lineWidth = 1;
   if (ghost) return;
@@ -4970,36 +5325,44 @@ function lcdBarrelAt(ctx, x, y, rx, ry, ghost = false, live = false, shape = nul
   // stave seams and the shaded stave drop out below the gorilla's size and the
   // two hoops, the lit stave and the highlight carry it.
   if (form === 'ingame') {
-    // EVERY MARK IS A FILLRECT ON THE GRID. Strokes at three-quarter weight
-    // and marks at fractional offsets are what made this mushy: a 0.6px line
-    // is not a thin line, it is a grey one. So the hoops are 1px bars, the
-    // staves are 1px columns, and the two shaded staves are 1-2px blocks —
-    // all of them whole pixels at whole coordinates, and all of them inset one
-    // pixel so the print rim stays the outermost thing on the barrel.
+    // EVERY MARK IS A FILLRECT ON THE GRID, and every one of them is the lane
+    // barrel's, turned with the body: its vertical staves are horizontal here
+    // and its horizontal hoops stand upright near the ends. Strokes at
+    // three-quarter weight and marks at fractional offsets are what made this
+    // mushy — a 0.6px line is not a thin line, it is a grey one.
     const RX = Math.round(rx), RY = Math.round(ry);
-    const L = Math.round(x) - RX, T = Math.round(y) - RY, W = RX * 2, H = RY * 2;
+    const cx = Math.round(x), cy = Math.round(y);
+    const L = cx - RX, T = cy - RY, W = RX * 2, H = RY * 2;
     const wide = W >= 16;
-    // The lit stave and, on the big barrel only, the shaded one opposite it.
-    // The staves run the BELLY only. Carried to the rim they poked out of the
-    // tapered ends, which is the one way a stave can stop reading as wood.
-    const sT = T + 2, sH = H - 4;
+    const a = RY >= 7 ? 4 : 3;          // half the belly's flat run
+    // The hoops sit closer in than the belly's edge on the CELL. At ten across
+    // a hoop at the belly edge lands one pixel off the rim, and the two run
+    // together into a two-pixel end that reads as a heavy black cap.
+    const hoopIn = wide ? 4 : 2;
+    // The lit stave along the top and, on the big barrel, the shaded one under
+    // it. Both kept inside the belly's flat run so neither can hang off a
+    // tapered end.
+    const bw = a * 2 + 1;
     ctx.fillStyle = LCD_BARREL_HI;
-    ctx.fillRect(L + 1, sT, wide ? 2 : 1, sH);
+    ctx.fillRect(cx - a, T + 1, bw, wide ? 2 : 1);
     if (wide) {
       ctx.fillStyle = LCD_BARREL_SEAM;
-      ctx.fillRect(L + W - 3, sT, 2, sH);
-      // Stave joints, evenly across the belly. The cell has six pixels between
-      // its hoops and no room for any of them.
-      for (const t of [0.34, 0.5, 0.66]) ctx.fillRect(L + Math.round(W * t), sT, 1, sH);
+      ctx.fillRect(cx - a, T + H - 3, bw, 2);
     }
-    // The two hoops, which are the marks that say barrel at any size. Placed
-    // by props.js's fractions but never closer than two rows to an edge: on
-    // the eight-row cell the lower one landed on row six, a pixel off the
-    // bottom rim, and the two ran together into a thick edge instead of
-    // reading as a hoop.
-    ctx.fillStyle = LCD_PRINT;
-    const hoops = [Math.max(2, Math.round(H * 0.228)), Math.min(H - 3, Math.round(H * 0.739))];
-    for (const hy of hoops) ctx.fillRect(L + 1, T + hy, W - 2, 1);
+    // STAVE JOINTS running the length of the barrel, the way it rolls — and on
+    // the cell too. They are the marks that sell wood rather than a box, and
+    // the reason the cell had none was that the only ink available was the
+    // shading block's; at a third opacity a 1px joint is a hairline and eight
+    // rows have room for two of them.
+    ctx.fillStyle = wide ? LCD_BARREL_HAIR : LCD_BARREL_HAIR_FINE;
+    for (const u of (wide ? [0.36, 0.64] : [0.42, 0.72])) {
+      ctx.fillRect(L + 1, T + Math.round(H * u), W - 2, wide ? 1 : LCD_BARREL_FINE_W);
+    }
+    // THE HOOPS, standing upright at the shoulders — the marks that say barrel
+    // at any size, and the pair his hands close on.
+    ctx.fillStyle = wide ? LCD_PRINT : LCD_BARREL_RIM_FINE;
+    const hw = wide ? 1 : LCD_BARREL_FINE_W + 0.15;
+    for (const hx of [cx - hoopIn, cx + hoopIn]) ctx.fillRect(hx, T + 1, hw, H - 2);
     return;
   }
 
@@ -5060,8 +5423,8 @@ function lcdBarrelAt(ctx, x, y, rx, ry, ghost = false, live = false, shape = nul
   ctx.fillRect(xr - 1, y - Math.round(ry - 2 * k), 2, pip);
 }
 
-function gbcGorillaBarrel(ctx, x, y, ghost = false, live = false, shape = null) {
-  lcdBarrelAt(ctx, x, y, LCD_BARREL_RX, LCD_BARREL_RY, ghost, live, shape);
+function gbcGorillaBarrel(ctx, x, y, ghost = false, live = false, shape = null, spin = 0) {
+  lcdBarrelAt(ctx, x, y, LCD_BARREL_RX, LCD_BARREL_RY, ghost, live, shape, spin);
 }
 
 // The cells his shock radiates. OUTSIDE the head AND outside the arms, which
@@ -5085,10 +5448,9 @@ const LCD_STARTLE_MARKS = [
 //
 //   brow   arch  the authored pair, raised in the middle
 //          flat  two level strokes: nothing is happening
-//          vee   inner ends dropped onto the eyes: the angry brow
 //          cock  one up, one down
 //   eye    open | narrow (lidded) | wide | shut (two curves, no whites)
-//   mouth  smile | line | frown | snarl | hoot | smirk | oh
+//   mouth  smile | line | frown | hoot | smirk | oh
 //   look   which way the pupils sit, -1 left, +1 right (0 = straight at you)
 //
 // `smile` and `startled` are the two the panel has always drawn and are exact:
@@ -5105,21 +5467,120 @@ const LCD_GORILLA_FACES = {
   // sadder — and a gorilla who is a bit put out is cuter company on a skyline
   // for four beats than one who is furious.
   sad: { brow: 'flat', browDy: 0, eye: 'narrow', mouth: 'frown' },
-  snarl: { brow: 'vee', browDy: 0, eye: 'narrow', mouth: 'snarl' },
   effort: { brow: 'arch', browDy: -1, eye: 'shut', mouth: 'hoot' },
   sly: { brow: 'cock', browDy: 1, eye: 'open', mouth: 'smirk', look: 1 },
   startled: { brow: 'arch', browDy: -1, eye: 'wide', mouth: 'oh', shock: true },
 };
+
+// ---- the SHOCKED mouth, which is the one mark on his face with no inside ---
+//
+// Every other mouth he owns is a LINE — the smile, the frown, the smirk, the
+// smirk — drawn on the muzzle and letting the tan through. The
+// shocked one is a solid four-by-five ellipse of print, so at panel scale it
+// is not a mouth that has opened, it is a hole punched in his face, and it
+// sits dark enough to pull the eye off the wide eyes above it, which are the
+// thing actually doing the reading.
+//
+// Six treatments, all at the muzzle's own address so nothing else moves.
+// SETTLED, 3 Sep 2026: BLOB. The five alternatives all put a RIM on the
+// mouth, and at panel scale a rimmed opening on a four-pixel muzzle reads as
+// a little door rather than a face — the solid mark is the one that still
+// reads as a mouth at the size it is actually seen. The losers stay below as
+// the record; nothing but this constant chooses between them.
+const LCD_GORILLA_SHOCK = 'blob';
+const LCD_GORILLA_SHOCKS = {
+  // AND IT SITS OFF THE CHIN. The muzzle is an ellipse centred at roof-25 with
+  // a 4.5 half-height, so its floor is roof-20.5 — and the mouth's own bottom
+  // reached roof-20.6, a tenth of a pixel short of it. Solid ink against the
+  // muzzle's lower rim merges into it, which is why the shape read as a blob
+  // hanging off his jaw rather than a mouth inside his face. The TOP is left
+  // exactly where it was, under the nostrils; the bottom comes up a full pixel,
+  // so there is tan under the mouth at every column. Same trick, same reason,
+  // as the frown below — see the note on it.
+  blob: { fill: true, rx: 2, ry: 1.9, dy: -1 },
+  ring: { rx: 2, ry: 2.4, dy: 0 },
+  gasp: { rx: 2.7, ry: 1.9, dy: 0 },
+  howl: { rx: 1.7, ry: 2.9, dy: 1 },
+  teeth: { rx: 2.1, ry: 2.6, dy: 0, teeth: true },
+  jaw: { rx: 2.2, ry: 2.4, dy: 1, square: true },
+};
+export const LCD_GORILLA_SHOCK_STYLES = [
+  { id: 'blob', name: 'BLOB', note: 'ships today — a solid ellipse of print. The control, and the only mouth on him with no muzzle showing through.' },
+  { id: 'ring', name: 'RING', note: 'the same O drawn as a rim: an open mouth rather than a hole. One change, and the smallest.' },
+  { id: 'gasp', name: 'GASP', note: 'rimmed and wider than tall — a caught breath rather than a shout.' },
+  { id: 'howl', name: 'HOWL', note: 'rimmed, taller than wide and dropped a pixel: the jaw has actually gone down.' },
+  { id: 'teeth', name: 'TEETH', note: 'a rimmed O with the upper lip lit — the cartoon shock mouth, and the most ink of the six.' },
+  { id: 'jaw', name: 'JAW', note: 'not an O at all: a squared-off dropped jaw, flat along the top where the lip is.' },
+];
+
+// `roof - 23` is the muzzle's mouth line, shared with every other mouth.
+function lcdShockMouth(ctx, cx, my, id, lw) {
+  const st = LCD_GORILLA_SHOCKS[id] || LCD_GORILLA_SHOCKS[LCD_GORILLA_SHOCK];
+  const y = my + (st.dy || 0);
+  if (st.fill) { gbcEllipse(ctx, cx, y, st.rx, st.ry, LCD_PRINT); return; }
+  ctx.strokeStyle = LCD_PRINT;
+  ctx.lineWidth = lw;
+  ctx.beginPath();
+  if (st.square) {
+    // A jaw, not a hole: flat where the top lip is and rounded under.
+    ctx.moveTo(cx - st.rx, y - st.ry);
+    ctx.lineTo(cx + st.rx, y - st.ry);
+    ctx.lineTo(cx + st.rx, y + st.ry * 0.4);
+    ctx.quadraticCurveTo(cx, y + st.ry * 1.5, cx - st.rx, y + st.ry * 0.4);
+    ctx.closePath();
+  } else {
+    ctx.ellipse(cx, y, st.rx, st.ry, 0, 0, Math.PI * 2);
+  }
+  ctx.stroke();
+  if (st.teeth) {
+    // The lit upper lip, inside the rim and only where the O is widest.
+    ctx.fillStyle = '#f3edb1';
+    ctx.fillRect(Math.round(cx - st.rx) + 1, Math.round(y - st.ry) + 1, Math.round(st.rx * 2) - 1, 1);
+  }
+}
 
 /** The bake-off's running order, with what each read is FOR. */
 export const LCD_GORILLA_EXPRESSIONS = [
   { id: 'smile', name: 'SMILE', note: 'the authored face — the control. Nothing about it changes.' },
   { id: 'neutral', name: 'NEUTRAL', note: 'brows level, mouth a flat line: a machine between throws.' },
   { id: 'sad', name: 'SAD', note: 'level brows over lidded eyes and a turned-down mouth — put out rather than furious.' },
-  { id: 'snarl', name: 'SNARL', note: 'the one angled brow left on the panel, over an open dark mouth with two teeth in it. Unused.' },
   { id: 'effort', name: 'EFFORT', note: 'eyes squeezed shut, brows up, mouth a small O: the throw grunt.' },
   { id: 'sly', name: 'SLY', note: 'a cocked brow and a lopsided smirk, both pupils looking away.' },
   { id: 'startled', name: 'STARTLED', note: 'the crash face, unchanged: shock ticks, sweat bead, small O.' },
+];
+
+// The eyes sit at +/-3.5px while the shipped nostrils sit at +/-2.5px. That
+// near-vertical echo is the question this sheet isolates: every candidate only
+// changes the nostril centres, in small enough steps to find the optical sweet
+// spot; the last cut deliberately lets the ellipses touch as a guardrail.
+// SETTLED 3 Sep 2026: N7. It breaks the eye-column echo while the 0.9px air
+// between the two ellipses still keeps them distinct at panel scale.
+const LCD_GORILLA_NOSTRIL = 'n7';
+const LCD_GORILLA_NOSTRILS = {
+  n0: 2.5,
+  n1: 2.35,
+  n2: 2.2,
+  n3: 2.05,
+  n4: 1.9,
+  n5: 1.75,
+  n6: 1.6,
+  n7: 1.45,
+  n8: 1.3,
+  n9: 1.15,
+  n10: 1,
+};
+export const LCD_GORILLA_NOSTRIL_STYLES = [
+  { id: 'n0', name: 'N0 · OLD', note: '2.50px from centre; 5.00px centre-to-centre. The former spacing.' },
+  { id: 'n1', name: 'N1', note: '2.35px from centre; the smallest inward move.' },
+  { id: 'n2', name: 'N2', note: '2.20px from centre; 0.60px closer across the pair.' },
+  { id: 'n3', name: 'N3', note: '2.05px from centre; just over one pixel closer across the pair.' },
+  { id: 'n4', name: 'N4', note: '1.90px from centre; clearly breaks the eye-column echo.' },
+  { id: 'n5', name: 'N5', note: '1.75px from centre; compact, with 1.50px of air between the marks.' },
+  { id: 'n6', name: 'N6', note: '1.60px from centre; the tight-end guardrail, still two marks.' },
+  { id: 'n7', name: 'N7 · SHIPS', note: '1.45px from centre; 0.90px of air between the marks. Peter’s pick.' },
+  { id: 'n8', name: 'N8', note: '1.30px from centre; a compact pair with only 0.60px of air.' },
+  { id: 'n9', name: 'N9', note: '1.15px from centre; near-touching, but still separated in the vector.' },
+  { id: 'n10', name: 'N10', note: '1.00px from centre; the ellipses touch — the one-mark guardrail.' },
 ];
 
 // ---- AND THE BROWS, WHICH ARE THE OTHER HALF OF EVERY ONE OF THEM ----------
@@ -5188,7 +5649,6 @@ function lcdGorillaBrow(ctx, cx, y0, side, kind, b) {
   // middle sits, where the outer end sits. Every treatment reads the same three.
   let iy = y, my = y - b.lift, oy = y;
   if (kind === 'flat') { my = y; }
-  else if (kind === 'vee') { iy = y + b.drop; my = y + b.drop / 2 - 0.5; oy = y - 1; }
   else if (kind === 'cock') {
     if (side < 0) { iy = y - 1.5; my = y - b.lift - 1; oy = y - 1; }
     else { iy = y + 1.5; my = y + 1.2; oy = y + 1; }
@@ -5208,10 +5668,7 @@ function lcdGorillaBrow(ctx, cx, y0, side, kind, b) {
   ctx.lineWidth = b.w;
   ctx.beginPath();
   ctx.moveTo(inner, iy);
-  // A vee is a straight slash and everything else is a curve: bending the angry
-  // brow rounds off the one mark that has to stay hard.
-  if (kind === 'vee') ctx.lineTo(outer, oy);
-  else ctx.quadraticCurveTo(mid, my, outer, oy);
+  ctx.quadraticCurveTo(mid, my, outer, oy);
   ctx.stroke();
   ctx.strokeStyle = LCD_PRINT;
   ctx.lineWidth = 1.5;
@@ -5220,7 +5677,39 @@ function lcdGorillaBrow(ctx, cx, y0, side, kind, b) {
 // The face, centred on the head at (cx, roof - 31). Draws in the order it
 // always has — whites, pupils, brows, nostrils, mouth — because the head plane
 // is already down and every one of these sits on top of the one before it.
-function lcdGorillaFace(ctx, cx, roof, exprId, browStyle, thin = false) {
+// WHERE HE IS LOOKING WHEN NOTHING IS HAPPENING. The eyes SNAP, like every
+// other moving thing on this panel — his arms step between four poses, the
+// barrels step between cells, and a pair of pupils that slid between positions
+// would be the one tweened thing on a screen made of segments.
+//
+// So the only dial is how OFTEN, and it was too often. Indexed by the bar, a
+// glance lasted four beats and he was moving his eyes about as fast as he
+// moves his arms, which reads as a nervous animal rather than a watchful one.
+// Two bars a glance, and more than half the table is dead ahead: he mostly
+// stares, looks down at the road where the hero is now and then, and gives the
+// odd glance to each side. Sixteen entries at two bars each is thirty-two bars
+// before the pattern comes round, which is longer than anything else he does.
+const LCD_GAZE_IDLE = [
+  [0, 0], [0, 0], [-1, 0], [0, 0], [0, 1], [0, 0], [0, 0], [1, 0],
+  [0, 0], [0, 1], [0, 0], [0, 0], [-1, 1], [0, 0], [1, 1], [0, 0],
+];
+const LCD_GAZE_BARS = 2;      // how long one idle glance is held
+// A point on the panel turned into a pupil direction, each axis -1..1. The
+// distance is thrown away on purpose: an eye that looks HALF way at a thing
+// reads as an eye pointed at nothing, so anything worth watching gets the
+// full throw and the only question is which way.
+function lcdGazeTo(cx, eyeY, target, frame) {
+  if (!target) {
+    const [dx, dy] = LCD_GAZE_IDLE[lcdMod(Math.floor(frame.bar / LCD_GAZE_BARS), LCD_GAZE_IDLE.length)];
+    return { dx, dy };
+  }
+  const ax = target[0] - cx, ay = target[1] - eyeY;
+  const n = Math.max(1, Math.hypot(ax, ay));
+  const clamp = (v) => Math.max(-1, Math.min(1, v * 1.7));
+  return { dx: clamp(ax / n), dy: clamp(ay / n) };
+}
+
+function lcdGorillaFace(ctx, cx, roof, exprId, browStyle, thin = false, gaze = null, shock = null, nostrilStyle = null) {
   const f = LCD_GORILLA_FACES[exprId] || LCD_GORILLA_FACES.smile;
   const brow = LCD_GORILLA_BROWS[browStyle] || LCD_GORILLA_BROWS[LCD_GORILLA_BROW];
   const eyeY = roof - 31;
@@ -5241,9 +5730,13 @@ function lcdGorillaFace(ctx, cx, roof, exprId, browStyle, thin = false) {
     const eyeH = f.eye === 'wide' ? 3.1 : f.eye === 'narrow' ? 2 : 2.8;
     gbcEllipse(ctx, cx - 3.5, eyeY, eyeR, eyeH, '#f3edb1');
     gbcEllipse(ctx, cx + 3.5, eyeY, eyeR, eyeH, '#f3edb1');
-    const px = (f.look || 0) * 1.4;
-    gbcEllipse(ctx, cx - 3 + px, eyeY + 0.5, 1.1, 1.4, LCD_PRINT);
-    gbcEllipse(ctx, cx + 3 + px, eyeY + 0.5, 1.1, 1.4, LCD_PRINT);
+    // The expression's own sideways look plus wherever he is watching. The
+    // throw is kept inside the white — a pupil on the rim reads as a mistake
+    // rather than a glance — so it is a pixel and a half across and one down.
+    const px = (f.look || 0) * 1.4 + (gaze?.dx || 0) * 1.5;
+    const py = (gaze?.dy || 0) * 1.1;
+    gbcEllipse(ctx, cx - 3 + px, eyeY + 0.5 + py, 1.1, 1.4, LCD_PRINT);
+    gbcEllipse(ctx, cx + 3 + px, eyeY + 0.5 + py, 1.1, 1.4, LCD_PRINT);
     // A lidded eye is a white with its top bitten off, not a smaller white:
     // the lid is where the glare lives.
     if (f.eye === 'narrow') {
@@ -5257,13 +5750,26 @@ function lcdGorillaFace(ctx, cx, roof, exprId, browStyle, thin = false) {
   lcdGorillaBrow(ctx, cx, browY, -1, f.brow, brow);
   lcdGorillaBrow(ctx, cx, browY, 1, f.brow, brow);
   ctx.lineWidth = lw; // the brow painter resets it to its own weight
-  gbcEllipse(ctx, cx - 2.5, roof - 26, 1, 0.8, LCD_PRINT);
-  gbcEllipse(ctx, cx + 2.5, roof - 26, 1, 0.8, LCD_PRINT);
+  // THE NOSTRILS RIDE HIGH ON THE MUZZLE, a pixel up from where they sat. The
+  // muzzle runs roof-29.5 to roof-20.5 and they were at its middle, which left
+  // the whole bottom half to the mouth and crowded whatever the mouth was
+  // doing right under them. Up here they read as the top of the snout and the
+  // mouth gets the room.
+  const nostrilX = LCD_GORILLA_NOSTRILS[nostrilStyle] || LCD_GORILLA_NOSTRILS[LCD_GORILLA_NOSTRIL];
+  gbcEllipse(ctx, cx - nostrilX, roof - 27, 1, 0.8, LCD_PRINT);
+  gbcEllipse(ctx, cx + nostrilX, roof - 27, 1, 0.8, LCD_PRINT);
   const m = f.mouth;
   if (m === 'oh') {
-    gbcEllipse(ctx, cx, roof - 23, 2, 2.4, LCD_PRINT);
+    lcdShockMouth(ctx, cx, roof - 23, shock, lw);
   } else if (m === 'hoot') {
-    gbcEllipse(ctx, cx, roof - 23, 2.6, 3.2, LCD_PRINT);
+    // WIDE, NOT TALL. At 2.6 by 3.2 on the mouth line its bottom reached
+    // roof-19.8 and the muzzle's floor is roof-20.5 — the grunt was hanging a
+    // pixel through his own jaw. There is only 5.7px between the nostrils and
+    // that floor, so the size had to come out of the HEIGHT; it goes back into
+    // the width, where the muzzle is seven across and has room to spare. A
+    // wide flat O is a better shout than a tall one anyway, and it stays the
+    // biggest mouth he owns.
+    gbcEllipse(ctx, cx, roof - 23.6, 3, 2, LCD_PRINT);
   } else if (m === 'line') {
     ctx.beginPath(); ctx.moveTo(cx - 4, roof - 22.8); ctx.lineTo(cx + 4, roof - 22.8); ctx.stroke();
   } else if (m === 'frown') {
@@ -5277,17 +5783,7 @@ function lcdGorillaFace(ctx, cx, roof, exprId, browStyle, thin = false) {
     ctx.beginPath(); ctx.moveTo(cx - 3.5, roof - 22.7); ctx.quadraticCurveTo(cx, roof - 25.9, cx + 3.5, roof - 22.7); ctx.stroke();
   } else if (m === 'smirk') {
     ctx.beginPath(); ctx.moveTo(cx - 4.5, roof - 22.6); ctx.quadraticCurveTo(cx + 0.5, roof - 21.2, cx + 5, roof - 24.6); ctx.stroke();
-  } else if (m === 'snarl') {
-    // An OPEN mouth is a filled plane, not a thicker line — the muzzle is tan
-    // and the hole in it has to be print for the teeth to be anything.
-    ctx.beginPath();
-    ctx.moveTo(cx - 5, roof - 24.5);
-    ctx.quadraticCurveTo(cx, roof - 19.5, cx + 5, roof - 24.5);
-    ctx.closePath();
-    ctx.fillStyle = LCD_PRINT; ctx.fill();
-    ctx.fillStyle = '#f3edb1';
-    ctx.fillRect(cx - 3, roof - 24.5, 2, 1.8); ctx.fillRect(cx + 1, roof - 24.5, 2, 1.8);
-  } else {
+    } else {
     ctx.beginPath(); ctx.moveTo(cx - 4, roof - 23.5); ctx.quadraticCurveTo(cx, roof - 21.5, cx + 4, roof - 23.5); ctx.stroke();
   }
   if (f.shock) {
@@ -5723,6 +6219,48 @@ export const LCD_GORILLA_EAR_STYLES = [
   { id: 'thintight', name: 'THIN RIM + TIGHT', note: 'the 1px outline on the smaller ear: the quietest of them.' },
 ];
 
+// HOW BIG THE SHOULDER BALL IS, AND WHAT SHAPE. The shipped one is 6 wide by 7
+// TALL, so it stands upright and its crown reaches roof-25 — level with the
+// muzzle, which is what makes it crowd the jaw and read as a bicep rather than
+// a shoulder. Everything here is [x from centre, y from roof, rx, ry]; the
+// crown is y - ry, and that number is the one to watch.
+// SETTLED 3 Sep 2026: `wide6` — the shipped ball's own width, 6, but lying
+// down at 5.25 instead of standing at 7. Its crown drops from roof-25 to
+// roof-22.75, which is what takes it off the jaw, and the shape reads across
+// the shoulder as a deltoid rather than up it as a bicep. Narrower than 6 and
+// the arm stops having anything to come out of.
+const LCD_GORILLA_SHOULDER_SHAPE = 'wide6';
+const LCD_GORILLA_SHOULDER_SHAPES = {
+  tall: [11, -18, 6, 7],
+  // The WIDE family: one height, 5.25, and the width stepped down a quarter of
+  // a pixel at a time. 6.75 was the first cut and the ask was for less width at
+  // the same height, so the crown stays at roof-22.75 all the way along and
+  // only the reach across the shoulder changes.
+  wide: [11, -17.5, 6.75, 5.25],
+  wide65: [11, -17.5, 6.5, 5.25],
+  wide625: [11, -17.5, 6.25, 5.25],
+  wide6: [11, -17.5, 6, 5.25],
+  wide575: [11, -17.5, 5.75, 5.25],
+  flat: [11, -17, 7.25, 4.75],
+  // Circles, 6 and under.
+  circle: [11, -18, 6, 6],
+  circle575: [11, -18, 5.75, 5.75],
+  circle55: [11, -18, 5.5, 5.5],
+};
+/** The shoulder shapes, in bake-off order. `tall` is what ships today. */
+export const LCD_GORILLA_SHOULDER_SHAPE_STYLES = [
+  { id: 'tall', name: 'TALL · WAS', note: '6 wide by 7 tall, crown at roof-25 — upright, and level with the muzzle.' },
+  { id: 'wide', name: 'WIDE · 6.75', note: 'the first cut: 6.75 by 5.25, crown at roof-22.75.' },
+  { id: 'wide65', name: 'WIDE · 6.5', note: 'a quarter pixel narrower, same height.' },
+  { id: 'wide625', name: 'WIDE · 6.25', note: 'half a pixel narrower, same height.' },
+  { id: 'wide6', name: 'WIDE · 6.0 · SHIPS', note: 'as wide as the old ball but flatter — the same footprint, lying down, and it reads as a deltoid.' },
+  { id: 'wide575', name: 'WIDE · 5.75', note: 'narrower than the shipped ball and still flat: the least of the wide family.' },
+  { id: 'flat', name: 'FLAT · 7.25', note: '7.25 by 4.75, crown down at roof-21.75: a shoulder line rather than a ball.' },
+  { id: 'circle', name: 'CIRCLE · 6', note: 'a true circle at 6: a pixel off the crown and no taller than it is wide.' },
+  { id: 'circle575', name: 'CIRCLE · 5.75', note: 'the same circle a quarter pixel in.' },
+  { id: 'circle55', name: 'CIRCLE · 5.5', note: 'the narrowest circle before the arm has nothing to come out of.' },
+];
+
 // HOW STRONG THE SHOULDER BALL IS. The body is 0.72 and the ball was the same,
 // so the two stacked and the joint went dark — with the arm under both it was
 // three fills deep and nearly the raw ink. Weakening the ball's ink is the
@@ -5872,7 +6410,14 @@ export const LCD_GORILLA_TUFT_STYLES = [
   { id: 'crest', name: 'CREST', note: 'a low tilted bump on the crown, the quietest of them.' },
 ];
 
-function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = false, mood = null) {
+/**
+ * `lookAt` is a point on the panel he is watching this beat, or null for the
+ * idle wander — see lcdGazeTo. Callers supply it because only they know what
+ * is worth watching: the tower knows where its plumber is, the city knows
+ * where the plane and the chute's live barrel are.
+ */
+function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = false,
+  mood = null, lookAt = null) {
   const [x, w, h] = building;
   const ink = LCD_GORILLA_INKS[frame.gorillaInk] || LCD_GORILLA_INKS[LCD_GORILLA_INK];
   const cx = Math.round(x + w / 2);
@@ -5916,7 +6461,22 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
     },
   ];
 
-  const pose = poses[frame.beat4];
+  // THE SWING IS ONE STREAM WITH THE CHUTE, phased to the lane — see
+  // lcdSwingPhase, which is the whole of the timing. His poses used to be
+  // picked by `beat4` while the chute below him counted backward from the beat
+  // the lane needs a barrel: two clocks with no common phase, so the barrel he
+  // was visibly throwing was almost never the one that then lit in the chute,
+  // and a second lit in his hands while the first was still falling. Now the
+  // phase decides the pose and the chute's cell alike, and the real barrel is
+  // simply the one in the stream that carries the rim: seven beats out it is
+  // over his head, six down his arm, five at his side — and then the chute's.
+  //
+  // Stage 1 has no chute, so it never sees a grid or a due barrel: it runs on
+  // the bar exactly as it always has, which keeps the plane's strike on pose 0
+  // of beat 0.
+  const due = frame.barrelBeat != null ? Math.round(frame.barrelBeat - frame.beatAbs) : null;
+  const cued = due != null && due > LCD_CHUTE_BEATS && due <= LCD_CHUTE_LEAD_BEATS;
+  const pose = poses[lcdSwingPhase(frame)];
   const build = LCD_GORILLA_BUILDS.has(frame.gorillaBuild) ? frame.gorillaBuild : LCD_GORILLA_BUILD;
   const tuft = LCD_GORILLA_TUFTS[frame.gorillaTuft in LCD_GORILLA_TUFTS ? frame.gorillaTuft : LCD_GORILLA_TUFT];
   if (build !== 'ovals') {
@@ -5950,7 +6510,8 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
     // that shade is what separates them. One fill for the lot was tried on
     // 3 Sep 2026 and the arms and head blended into one mass; only the TUFT
     // shares a fill, with the skull, below.
-    const [sx, sy, srx, sry] = pit.shoulder;
+    const [sx, sy, srx, sry] = LCD_GORILLA_SHOULDER_SHAPES[frame.gorillaShoulderShape]
+      || LCD_GORILLA_SHOULDER_SHAPES[LCD_GORILLA_SHOULDER_SHAPE] || pit.shoulder;
     const [[tx, ty], [bx, by]] = pit.torso;
     const bodyInk = ink.body || ink.fur;
     // THE SHOULDER BALL is what makes the armpit black. It is laid down before
@@ -6036,8 +6597,13 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // cannot override the startle: whatever face is being tried, the two beats
   // the wreck is over his head are the wreck's.
   const thinLines = build === 'ovals' && !!(LCD_GORILLA_PITS[frame.gorillaPit] || LCD_GORILLA_PITS[LCD_GORILLA_PIT]).thin;
+  // ON THE BEATS THE PLANE TAKES THE BARREL HE LOOKS AT THE WRECK, whatever
+  // else was worth watching: it is directly over his head and it is his.
+  const watching = burst >= 0 ? [poses[LCD_BARREL_UP_BEAT].barrel[0],
+    poses[LCD_BARREL_UP_BEAT].barrel[1]] : lookAt;
   lcdGorillaFace(ctx, cx, roof, burst >= 0 ? 'startled' : lcdGorillaMood(frame, mood),
-    frame.gorillaBrow, thinLines);
+    frame.gorillaBrow, thinLines, lcdGazeTo(cx, roof - 31, watching, frame), frame.gorillaShock,
+    frame.gorillaNostrils);
 
   if (build === 'ovals') {
     // Chest plane, collar shadow and sparse fur strokes.
@@ -6067,17 +6633,19 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // The wreck stays where the barrel WAS — over his head, poses[0] — for both
   // beats of it. Drawing it at `pose.barrel` would walk the explosion down his
   // arm on the second beat, following a barrel that no longer exists.
-  // The barrel in his HANDS is lit on the bar he is about to send a real one
-  // down the chute, so the warning starts before the drop does rather than
-  // landing with it. `barrelBeat` is only ever set while one is genuinely due
+  // The barrel in his HANDS is lit for the three beats he holds a real one,
+  // and the chute takes the same lit barrel over on the next beat — see the
+  // swing note above. `barrelBeat` is only ever set while one is genuinely due
   // (run.js updateBarrelArrivals), so he cannot cry wolf with it.
   if (burst >= 0) {
     lcdBarrelBurst(ctx, poses[LCD_BARREL_UP_BEAT].barrel[0],
       poses[LCD_BARREL_UP_BEAT].barrel[1], burst, reducedFlashing);
   } else if (pose.barrel) {
-    const due = frame.barrelBeat != null ? frame.barrelBeat - frame.beatAbs : null;
+    // Lit on the three hold beats of a real one and on nothing else. The swing
+    // is phased so those three beats ARE poses 0, 1 and 2 (lcdSwingPhase), so
+    // no test on the pose is needed here. Flashing, see lcdRimOn.
     gbcGorillaBarrel(ctx, pose.barrel[0], pose.barrel[1], false,
-      due != null && due >= 0 && due <= LCD_CHUTE_BEATS + 1, frame.barrelShape);
+      cued && lcdRimOn(frame, reducedFlashing), frame.barrelShape);
   }
   ctx.lineWidth = 1;
   ctx.lineCap = 'butt';
@@ -6145,9 +6713,9 @@ export const LCD_BARREL_CELL_STYLES = [
   { id: 'snug', name: 'SNUG', note: '9x7 — the old cask\'s own box, ellipse and scaled ink.' },
   { id: 'wide', name: 'WIDE', note: '11x9 — a pixel past half; closes the girder gap to a whisker.' },
 ];
-function lcdMiniBarrel(ctx, bx, by, ghost = false, size = null, shape = null) {
+function lcdMiniBarrel(ctx, bx, by, ghost = false, size = null, shape = null, spin = 0) {
   const [rx, ry] = LCD_BARREL_CELLS[size] || LCD_BARREL_CELLS[LCD_BARREL_CELL];
-  lcdBarrelAt(ctx, bx, by, rx, ry, ghost ? 'outline' : false, false, shape);
+  lcdBarrelAt(ctx, bx, by, rx, ry, ghost ? 'outline' : false, false, shape, spin);
 }
 
 // The runner. Deliberately BLOCKY — rectangles, not curves — because he is a
@@ -6315,10 +6883,21 @@ function lcdRunnerFigure(ctx, rx, footY, mode) {
 // tower is the only thing between the scene, which knows where the plane is,
 // and the gorilla, who is holding what it hits. `vanished` is the girder cell
 // that hit takes out of the chain — see lcdVanishedBarrelCell.
-function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, vanished = -1) {
+function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, vanished = -1,
+  planeAt = null) {
   const [x, w, h] = spec;
   const top = GROUND_Y - h;
   const span = w - 10;
+  // THE LADDERS ARE ON THE PANEL'S OWN GRID. Everything else on this screen is
+  // laid out in graph-paper cells (LCD_U) and the ladders were not: seven
+  // pixels wide, at whatever x the tower's own offsets happened to give, so
+  // they cut across the lattice instead of sitting in it. Three cells wide,
+  // snapped to the grid, and the rungs on it too — which also gives the runner
+  // a rail either side of him instead of one under each hand.
+  const LADDER_W = LCD_U * 3;
+  const snapU = (v) => Math.round(v / LCD_U) * LCD_U;
+  const ladA = snapU(x + 26), ladB = snapU(x + 56), ladRoof = snapU(x + 70);
+  const ladMid = (lx) => lx + (LADDER_W - 1) / 2;
   // The facade obeys every rule the other buildings do: a colour plane, a
   // print outline running to the bottom of the display (so a pit in front of
   // it exposes real tower, not a void), a cornice, corner masonry, and a
@@ -6327,7 +6906,33 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   ctx.fillRect(x + 1, top + 1, w - 1, H - top - 1);
   ctx.strokeStyle = LCD_PRINT;
   ctx.lineWidth = 1;
-  ctx.strokeRect(x + 0.5, top + 0.5, w, H - top);
+  // THE ROOF IS OPEN WHERE THE TOP LADDER COMES THROUGH. In the arcade the
+  // climb ends by going UP through the girders, not by stopping under a solid
+  // parapet — and this tower already draws that last ladder from the roof down
+  // to the top floor, past the spot where the barrel always gets him. It ran
+  // into a sealed line, so the way up was drawn and then contradicted one
+  // pixel later. There is nothing above it to reach (no Pauline on this
+  // panel), which is the joke: the opening is right there and he never takes
+  // it. The bottom edge is off the display, as it always was, so only the
+  // left, top and right are drawn.
+  //
+  // THE OPENING IS THE SPACE BETWEEN THE RAILS, not the ladder's whole width.
+  // Cut at the ladder's outer edges the roof stopped a pixel short of the left
+  // rail and restarted half a pixel into the right one, so the climb arrived
+  // at a hole it did not touch on either side — a ladder drawn near the roof
+  // rather than through it. The rails stand in the two columns ladRoof and
+  // ladRoof + LADDER_W - 1, so the roof line now runs across BOTH of them and
+  // stops between: whole-pixel endpoints, one dark pixel directly over each
+  // rail's top, and the seven columns of daylight the man would climb through.
+  const roofGap = [ladRoof + 1, ladRoof + LADDER_W - 1];
+  ctx.beginPath();
+  ctx.moveTo(x + 0.5, H + 0.5);
+  ctx.lineTo(x + 0.5, top + 0.5);
+  ctx.lineTo(roofGap[0], top + 0.5);
+  ctx.moveTo(roofGap[1], top + 0.5);
+  ctx.lineTo(x + w + 0.5, top + 0.5);
+  ctx.lineTo(x + w + 0.5, H + 0.5);
+  ctx.stroke();
   // No cornice, no corner masonry, no rivets: girders and ladders ARE the
   // tower, and an inner box drawn around them read as a stage with a frame.
   ctx.fillStyle = LCD_PRINT_SOFT;
@@ -6358,17 +6963,27 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   ctx.fillStyle = LCD_PRINT_SOFT;
   const ladder = (lx, t, b) => {
     ctx.fillRect(lx, t, 1, b - t);
-    ctx.fillRect(lx + 6, t, 1, b - t);
-    for (let ry = t + 3; ry < b - 2; ry += 4) ctx.fillRect(lx + 1, ry, 5, 1);
+    ctx.fillRect(lx + LADDER_W - 1, t, 1, b - t);
+    // Rungs every two cells, on the grid's own rows rather than a fixed step
+    // from a sloped girder — so every ladder's rungs line up with every other
+    // ladder's, and with the lattice behind them. The series starts at the
+    // FIRST grid row the rails reach rather than a cell into them: on the roof
+    // ladder that puts a rung right under the ceiling, so the climb visibly
+    // meets the opening instead of starting three pixels below it. Under a
+    // girder the same rule lands the first rung just clear of the steel, which
+    // is where it already was.
+    for (let ry = snapU(t + 1); ry < b - 2; ry += LCD_U * 2) {
+      ctx.fillRect(lx + 1, ry, LADDER_W - 2, 1);
+    }
   };
   for (let i = 0; i + 1 < floors.length; i++) {
-    const lx = i % 2 === 0 ? x + 26 : x + 56;
+    const lx = i % 2 === 0 ? ladA : ladB;
     ladder(lx, Math.round(floorY(i, lx)), Math.round(floorY(i + 1, lx)) + 1);
   }
   // And one ladder from the top girder to the ROOF itself — past the spot
   // where the barrel always gets him, so the way up visibly exists and he
   // visibly never takes it. That is the whole tragedy of the toy.
-  ladder(x + 70, top + 1, Math.round(floorY(0, x + 73)) + 1);
+  ladder(ladRoof, top + 1, Math.round(floorY(0, ladMid(ladRoof))) + 1);
   // THE GIRDERS, bolted at the HIGH end and open at the low one, like the
   // arcade's: each runs from the wall it rises toward and stops a barrel's
   // width short of the other, which is the gap the barrel drops through to
@@ -6385,28 +7000,113 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   }
   ctx.lineWidth = 1;
 
-  // The barrel's twelve authored cells snake down the top three floors —
-  // right, then left past the runner, then right again — so a throw rides the
-  // tower ALL the way down. Ghost the whole path, light the three cells the
-  // cycle is on (one per floor, four beats apart). Two ghost-only cells on
-  // the fourth floor carry the path below the road, where only a pit ever
-  // shows them.
-  const cells = [
-    [x + 70, 0], [x + 54, 0], [x + 38, 0], [x + 22, 0],
-    [x + 18, 1], [x + 34, 1], [x + 50, 1], [x + 66, 1],
-    [x + 68, 2], [x + 52, 2], [x + 36, 2], [x + 20, 2],
-  ].map(([cx, floor]) => [cx, Math.round(floorY(floor, cx) - 5)]);
-  for (const [bx, by] of cells) lcdMiniBarrel(ctx, bx, by, true, frame.barrelCell, frame.barrelShape);
+  // The barrel's sixteen authored cells snake down the top three floors —
+  // right, then left past the runner, then right again — plus the four it
+  // occupies between them, so a throw rides the tower ALL the way down without
+  // ever jumping a gap. Ghost the whole path, light the four cells the cycle
+  // is on (one per floor and one in the air, four beats apart). Two ghost-only
+  // cells on the fourth floor carry the path below the road, where only a pit
+  // ever shows them.
+  //
+  // AND EVERY CELL IS TURNED FURTHER THAN THE ONE BEFORE IT. Twelve barrels
+  // down a tower at the same attitude is twelve barrels SLIDING; the roll is
+  // the only thing that says a gorilla threw them. The angle accumulates along
+  // the chain — one step per cell — and its SIGN is the direction of travel on
+  // that girder, so a barrel heading left turns anticlockwise and one heading
+  // right turns clockwise, which is the only way round a rolling thing can
+  // turn. It carries across the turn at the end of a girder too, because the
+  // barrel that drops to the floor below is the same barrel still spinning.
+  // THE FALLS HUG THE WALL, because that is where the girder stops. Even
+  // floors are bolted at the right and open at the left, odd ones the other
+  // way (GIRDER_GAP), so the barrel leaves the steel into the gap between the
+  // girder's open end and the wall — and a barrel falling down the middle of
+  // the room was falling from nowhere.
+  const fallLeft = x + Math.round((1 + GIRDER_GAP) / 2);
+  const fallRight = x + w - Math.round((1 + GIRDER_GAP) / 2);
+  // THE CHAIN IN TRUE PATH ORDER, one cell per beat of the descent: in at the
+  // roof ladder, along the top girder, off its open end, along the next, and
+  // so on. The lit set is the beat and every fourth cell after it, so the four
+  // barrels on screen are ONE barrel four beats apart — which only reads if
+  // the array is the path. Ordered any other way the falls arrive after the
+  // barrel they belong to has already landed and rolled on.
+  //
+  // AND THE SPIN GOES WITH THE TRAVEL. A cell's attitude is the one before it
+  // plus a step, turned the way that girder runs — anticlockwise heading left,
+  // clockwise heading right — carried across each fall, because the barrel
+  // that drops is the same barrel still turning.
+  // AND IT TURNS A HALF-TURN FURTHER THAN IT LOOKS. The readable step is
+  // LCD_BARREL_ROLL, about thirty degrees a cell, and on its own that implies
+  // a barrel twenty-nine pixels across — seven times the real one, which is a
+  // barrel SLIDING down the steel with a slow wobble.
+  //
+  // The honest number cannot be used either, and not for the usual reason. A
+  // ten-by-eight barrel tumbling covers its own perimeter, about thirty-two
+  // pixels, in one revolution, and the cells are sixteen pixels apart — so an
+  // honest cell-to-cell turn is EXACTLY A HALF TURN. The silhouette is
+  // symmetric about both axes, so a half turn is the one angle that looks
+  // identical to no turn at all: drawn honestly the chain reads as a barrel
+  // sliding, which is precisely what the roll exists to prevent.
+  //
+  // So: a half turn PLUS the readable step. The silhouette steps thirty
+  // degrees a cell exactly as before, which is what the eye tracks, and the
+  // barrel underneath it has genuinely turned 212 degrees — thirty off the
+  // truth instead of a hundred and fifty. What that buys is the lit stave and
+  // the hoops going round WITH it, over the top and under the bottom, which is
+  // the thing that actually says rolling rather than rocking.
+  const TOWER_ROLL = Math.PI + LCD_BARREL_ROLL;
+  let spinAcc = 0;
+  const spun = (dir) => (spinAcc += dir * TOWER_ROLL);
+  const onFloor = (cx, floor, dir) =>
+    [cx, Math.round(floorY(floor, cx) - 5), spun(dir)];
+  const FALL = 16;             // half the 32px floor pitch: clear of both girders
+  const fell = (cx, floor, dir) =>
+    [cx, Math.round(floorY(floor, cx) - 5) + FALL, spun(dir)];
+  const path = [
+    // Down the roof ladder, high under the eaves — it was halfway to the top
+    // girder and read as a second barrel already on it. It enters with no
+    // attitude yet: it has only just left his hands.
+    [ladMid(ladRoof), top + 9, 0],
+    onFloor(x + 70, 0, -1), onFloor(x + 54, 0, -1),
+    onFloor(x + 38, 0, -1), onFloor(x + 22, 0, -1),
+    fell(fallLeft, 0, -1),
+    onFloor(x + 18, 1, 1), onFloor(x + 34, 1, 1),
+    onFloor(x + 50, 1, 1), onFloor(x + 66, 1, 1),
+    fell(fallRight, 1, 1),
+    onFloor(x + 68, 2, -1), onFloor(x + 52, 2, -1),
+    onFloor(x + 36, 2, -1), onFloor(x + 20, 2, -1),
+    fell(fallLeft, 2, -1),
+  ];
+  // AND THE PATH IS PHASED AGAINST HIS ARM. He raises the barrel on beat one,
+  // swings it down across two and three, and on beat FOUR his fist is at the
+  // mouth of the tower with nothing in it — that is the release (see the pose
+  // table in lcdRooftopGorilla). So beat four is the beat the barrel has to be
+  // at the TOP of the ladder, not the beat after it, and not, as the unphased
+  // array had it, the beat a barrel reaches the bottom of a girder. Rotating
+  // the path by three puts cell zero on that beat and every cell after it
+  // follows down the tower, high to low, one per beat.
+  //
+  // The top girder's schedule is unchanged by the rotation — it comes out at
+  // x+70, x+54, x+38, x+22 on beats one to four exactly as it always did, so
+  // the hit and the bail the runner is authored around still land on the beats
+  // they were written for. Floors two and three shift, and his jumps move with
+  // them; see the journey below.
+  const THROW_PHASE = 3;
+  const cells = path.map((_, i) => path[(i + path.length - THROW_PHASE) % path.length]);
+  // Two more belong to the fourth floor, which exists only where a pit opens;
+  // everything above it is the authored sixteen-cell cycle.
   if (floors.length > 3) {
-    lcdMiniBarrel(ctx, x + 24, Math.round(floorY(3, x + 24) - 5), true, frame.barrelCell, frame.barrelShape);
-    lcdMiniBarrel(ctx, x + 44, Math.round(floorY(3, x + 44) - 5), true, frame.barrelCell, frame.barrelShape);
+    cells.push(onFloor(x + 24, 3, 1), onFloor(x + 44, 3, 1));
   }
-  for (let p = frame.beat4; p < cells.length; p += 4) {
+  const live = cells;
+  for (const [bx, by, spin] of live) {
+    lcdMiniBarrel(ctx, bx, by, true, frame.barrelCell, frame.barrelShape, spin);
+  }
+  for (let p = frame.beat4; p < 16; p += 4) {
     // The exploded throw leaves a gap in the chain rather than a ghost: a
     // ghost cell means "a position this thing also occupies", and this barrel
     // does not exist to occupy one.
     if (p === vanished) continue;
-    lcdMiniBarrel(ctx, cells[p][0], cells[p][1], false, frame.barrelCell, frame.barrelShape);
+    lcdMiniBarrel(ctx, cells[p][0], cells[p][1], false, frame.barrelCell, frame.barrelShape, cells[p][2]);
   }
 
   // THE RUNNER'S WHOLE CLIMB, one cell per heard beat — and it takes EIGHT
@@ -6426,22 +7126,24 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   //
   // `mood` is what the gorilla wears on that beat — the only thing on this
   // panel he reacts to. See lcdGorillaMood.
-  const ladA = x + 26, ladB = x + 56;
   const climbY = (lx, topF, botF, frac) => {
-    const a = floorY(topF, lx + 3), b2 = floorY(botF, lx + 3);
+    const a = floorY(topF, ladMid(lx)), b2 = floorY(botF, ladMid(lx));
     return b2 - (b2 - a) * frac;
   };
   const at = (floor, rx, m, mood) => ({ rx, fy: floorY(floor, rx), m, mood });
   const onLadder = (lad, topF, botF, frac, arms, mood) => ({
-    rx: lad + 3, fy: climbY(lad, topF, botF, frac), m: { kind: 'climb', arms }, mood,
+    rx: ladMid(lad), fy: climbY(lad, topF, botF, frac), m: { kind: 'climb', arms }, mood,
   });
-  // Coming up from the street: the ladder below the bottom girder, six tenths
-  // of the way out of it, so his head is over the steel and his feet are still
-  // on the rungs. floors[] is solved from the building's height, so a tower
+  // Coming up from the street: the ladder below the bottom girder, a third of
+  // the way out of it. It was six tenths, which put his head level with the
+  // steel — and on the beat he arrives there is now a barrel at x+36 on that
+  // floor, so he surfaced straight into it. A third leaves the barrel passing
+  // over his head, which is the picture anyway. floors[] is solved from the
+  // building's height, so a tower
   // ever too short to have a floor under the road falls back to the standing
   // start this replaced rather than climbing a ladder that isn't there.
   const fromStreet = (arms) => (floors.length > 3
-    ? onLadder(ladA, 2, 3, 0.6, arms)
+    ? onLadder(ladA, 2, 3, 0.35, arms)
     : at(2, x + 16, { kind: 'run', stride: arms, dir: 1 }));
   const journey = [
     // HE COMES UP OUT OF THE STREET, and that is where every run of the tower
@@ -6453,18 +7155,23 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
     // the display, and this is the pair of rails below the bottom floor — so
     // the trip he makes off-panel is the one the panel implies anyway.
     fromStreet(0),
-    at(2, x + 30, { kind: 'run', stride: 1, dir: 1 }),
-    // The floor-two barrel crosses him between these beats — he is airborne
-    // as it passes underneath.
-    at(2, x + 44, { kind: 'jump', dir: 1 }),
-    at(2, x + 58, { kind: 'run', stride: 1, dir: 1 }),
+    at(2, x + 34, { kind: 'run', stride: 1, dir: 1 }),
+    at(2, x + 43, { kind: 'run', stride: 0, dir: 1 }),
+    // THE JUMP MOVED TO BEAT FOUR. This floor's barrel used to be at x+36 on
+    // beat three and is at x+52 on beat four now that the chain is phased to
+    // his throw — so the beat he must be airborne on moved with it, and he
+    // clears it at the far end of the girder instead of the middle. It is
+    // under him exactly: x+52 against x+52.
+    at(2, x + 52, { kind: 'jump', dir: 1 }),
     onLadder(ladB, 1, 2, 0.38, 0),
     onLadder(ladB, 1, 2, 0.8, 1),
-    // The floor-one barrel's live cell IS x+50 on this beat: straight over it.
-    at(1, x + 50, { kind: 'jump', dir: -1 }),
-    at(1, x + 40, { kind: 'run', stride: 1, dir: -1 }),
-    at(1, x + 32, { kind: 'run', stride: 0, dir: -1 }),
-    at(1, x + 27, { kind: 'run', stride: 1, dir: -1 }),
+    at(1, x + 56, { kind: 'run', stride: 1, dir: -1 }),
+    // Head-on, and a beat later than it used to be: this floor runs the other
+    // way to his walk, so he and the barrel close on each other and meet where
+    // its cell is x+50 — which is beat four of the bar now, not beat three.
+    at(1, x + 48, { kind: 'jump', dir: -1 }),
+    at(1, x + 38, { kind: 'run', stride: 0, dir: -1 }),
+    at(1, x + 30, { kind: 'run', stride: 1, dir: -1 }),
     onLadder(ladA, 0, 1, 0.38, 0),
     onLadder(ladA, 0, 1, 0.8, 1),
     // Out onto the gorilla's own girder, with a barrel already sweeping down
@@ -6479,15 +7186,15 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
     // Same climb out of the street, opposite arm — the two loops read as the
     // same man twice rather than as one animation played again.
     fromStreet(1),
-    at(2, x + 30, { kind: 'run', stride: 0, dir: 1 }),
-    at(2, x + 44, { kind: 'jump', dir: 1 }),
-    at(2, x + 58, { kind: 'run', stride: 0, dir: 1 }),
+    at(2, x + 34, { kind: 'run', stride: 0, dir: 1 }),
+    at(2, x + 43, { kind: 'run', stride: 1, dir: 1 }),
+    at(2, x + 52, { kind: 'jump', dir: 1 }),
     onLadder(ladB, 1, 2, 0.38, 1),
     onLadder(ladB, 1, 2, 0.8, 0),
-    at(1, x + 50, { kind: 'jump', dir: -1 }),
-    at(1, x + 40, { kind: 'run', stride: 0, dir: -1 }),
-    at(1, x + 32, { kind: 'run', stride: 1, dir: -1 }),
-    at(1, x + 27, { kind: 'run', stride: 0, dir: -1 }),
+    at(1, x + 56, { kind: 'run', stride: 0, dir: -1 }),
+    at(1, x + 48, { kind: 'jump', dir: -1 }),
+    at(1, x + 38, { kind: 'run', stride: 1, dir: -1 }),
+    at(1, x + 30, { kind: 'run', stride: 0, dir: -1 }),
     onLadder(ladA, 0, 1, 0.38, 1),
     onLadder(ladA, 0, 1, 0.8, 0),
     at(0, x + 32, { kind: 'run', stride: 1, dir: 1 }, 'sad'),
@@ -6510,7 +7217,17 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   // And the thrower himself: the SAME big gorilla painter the other scenes
   // put on a rooftop, standing on this one. His authored poses land the
   // downbeat throw right where the top girder's first cell lights.
-  lcdRooftopGorilla(ctx, [x, w, h], frame, burst, reducedFlashing, leg?.mood || null);
+  // WHAT HE IS WATCHING FROM UP THERE, in order of how much it is his problem.
+  // The little man on his OWN girder outranks everything — that is the one
+  // thing on this panel he is doing something about, and his face already
+  // falls when it happens (leg.mood), so the eyes going with it is the same
+  // sentence finished. Then the aircraft, but only once it is genuinely near:
+  // eyes that track a plane across the whole sky are eyes that never rest.
+  // Otherwise the wander.
+  const onHisGirder = leg && floors.length > 1 && leg.fy < floors[1];
+  const planeNear = planeAt && Math.abs(planeAt[0] - Math.round(x + w / 2)) < 70;
+  const watch = onHisGirder ? [leg.rx, leg.fy] : planeNear ? planeAt : null;
+  lcdRooftopGorilla(ctx, [x, w, h], frame, burst, reducedFlashing, leg?.mood || null, watch);
 }
 
 /**
@@ -6560,7 +7277,52 @@ export function lcdScreenFinish(ctx, t = 0, reducedFlashing = false) {
 const LCD_STAGE_ROOF_KIT = new Set([2]);
 function lcdCrowned(art, i) {
   return i === art.rooftopGorilla || i === art.transmitter
+    || i === art.station
+    || (art.bareRoofs || []).includes(i)
     || (art.billboards || []).some(([bi]) => bi === i);
+}
+
+// THE STATION'S FURNITURE — what says this roof is a stop and not a roof
+// the service happens to cross. Live, not baked: the lamps answer the
+// timetable and the clock the beat. Drawn through the building's own arrival
+// (onRoof), so it rises with the facade in the opening bars rather than
+// standing in the air waiting for it — Peter: "attached to the building, not
+// the monorail line". The canopy is one 1px line on the rule two above the
+// cars, on two 1px posts standing on the roof's corners; the train pulls in
+// under it. On top, a 4px dial (circles are the panel's agreed exception) on a
+// stem, its minute hand stepping an eighth of a turn a beat. Under it, a lamp
+// a window column, lit only while the service stands at the platform.
+const LCD_STATION_CANOPY = 15;  // px above the roof: rule 50 over a 65 roof
+function lcdStationKit(ctx, art, frame, reducedFlashing) {
+  if (art.station == null) return;
+  const [x, w, h] = art.buildings[art.station];
+  const roof = GROUND_Y - h;
+  const y = roof - LCD_STATION_CANOPY;
+  const cx = Math.round(x + w / 2);
+  ctx.fillStyle = LCD_INK;
+  ctx.fillRect(x, y, w + 1, 1);
+  ctx.fillRect(x, y, 1, LCD_STATION_CANOPY);
+  ctx.fillRect(x + w, y, 1, LCD_STATION_CANOPY);
+  // The dial: the hour hand stands at clock-in, the minute hand goes round
+  // once a phrase.
+  const r = 4;
+  const cy = y - r - 2;
+  ctx.fillRect(cx, y - 2, 1, 2);
+  ctx.strokeStyle = LCD_INK;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx + 0.5, cy + 0.5, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = LCD_INK;
+  ctx.fillRect(cx, cy, 1, 1);
+  ctx.fillRect(cx + 1, cy, 2, 1);
+  const a = (lcdMod(frame.beatAbs, 8) / 8) * Math.PI * 2 - Math.PI / 2;
+  ctx.fillRect(cx + Math.round(Math.cos(a) * 2), cy + Math.round(Math.sin(a) * 2), 1, 1);
+  ctx.fillRect(cx + Math.round(Math.cos(a) * 3), cy + Math.round(Math.sin(a) * 3), 1, 1);
+  // The platform lamps, on the window pitch under the shelter. Reduced
+  // flashing keeps them in their printed state.
+  const on = !reducedFlashing && art.train
+    && lcdTrainDwelling(art.train, art.buildings[art.station], lcdMod(frame.beatAbs, LCD_TRAIN_LAP));
+  ctx.fillStyle = on ? LCD_WINDOW_ON : LCD_WINDOW_OFF;
+  for (let lx = x + 2 * LCD_U + 1 + 3; lx < x + w; lx += LCD_COL_PITCH) ctx.fillRect(lx, y + 1, 2, 1);
 }
 
 // EVERYTHING ON THIS PANEL A BEAT CANNOT MOVE. Painted once into the baked city
@@ -6702,6 +7464,11 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   ctx.fillStyle = sky[1];
   ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
   ctx.lineWidth = 1;
+  // RHYTHM 2'S CLOUDS ARE THE BACK OF THE CITY. This stage's elevated rail,
+  // train, searchlight and roof traffic all cross their band, and painting the
+  // clouds after those objects made the wisps cut across them. Put this one
+  // cloud layer straight onto the sky so every object remains in front.
+  if (frame.stageIndex === 2) lcdCloudLayer(ctx, art, frame);
   if (skyMeter) lcdSkylineEq(ctx, frame);
   // WHICH STRUCTURES ARE STILL WALKING ON, or null once the skyline is standing
   // — which is every frame of every stage but the first eleven beats of a run,
@@ -6773,27 +7540,18 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   }
   // The cars, on the rail the baked layer just laid in front of the facades:
   // in front of the skyline like the girder it runs on.
-  if (art.train && frame.phase >= (art.train.fromPhase ?? 0)) lcdTrain(ctx, art.train, frame);
-  // The sky was the one part of the panel that never moved. Each cloud now
-  // drifts leftward in whole-pixel steps on the heard beat — a different pace
-  // per cloud so the layer has depth — wrapping off one edge of the display
-  // and back on the other, with a one-pixel bob on the bar. Quantized like
-  // everything else here: the beat advances it, nothing else does, and reduced
-  // motion (beat 0 forever) gets a parked sky.
-  const beatAbs = frame.bar * 4 + frame.beat4;
-  const span = W + 72;
-  for (let i = 0; i < art.clouds.length; i++) {
-    const [cx0, cy0] = art.clouds[i];
-    const x = lcdMod(cx0 + 36 - beatAbs * LCD_CLOUD_DRIFT[i % LCD_CLOUD_DRIFT.length], span) - 36;
-    const y = cy0 + LCD_CLOUD_BOB[lcdMod(frame.bar + i, LCD_CLOUD_BOB.length)];
-    lcdCloud(ctx, x, y, lcdMod(frame.bar + frame.phrase + i, 2));
+  if (art.train && frame.phase >= (art.train.fromPhase ?? 0)) {
+    lcdTrain(ctx, art.train, frame, art.station != null ? art.buildings[art.station] : null);
   }
+  // Stages 1 and 3 keep their authored mid-scene cloud depth. Rhythm 2 is the
+  // exception above: its monorail and other sky traffic must cover every wisp.
+  if (frame.stageIndex !== 2) lcdCloudLayer(ctx, art, frame);
   const towerRise = riseOf('gameWatch');
   if (art.gameWatch && towerRise !== null) {
     if (towerRise) ctx.save();
     if (towerRise) ctx.translate(0, towerRise);
     lcdGameWatch(ctx, art.gameWatch, frame, lcdBurstPhase(art, frame), reducedFlashing,
-      lcdVanishedBarrelCell(art, frame));
+      lcdVanishedBarrelCell(art, frame), lcdPlanePoint(art, frame, art.plane));
     if (towerRise) ctx.restore();
   }
   // The chopper's take: while it is crossing, the billboard it came for is
@@ -6816,6 +7574,11 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     paint();
     if (rise) ctx.restore();
   };
+  if (art.station != null) onRoof(art.station, () => lcdStationKit(ctx, art, frame, reducedFlashing));
+  // THE CHOPPER CROSSES BEHIND THE SIGNS. Under the rail its load hangs at
+  // sign height, and the sign it would otherwise cover for three beats a lap
+  // is the counting board the player reads — so the boards are in front of it.
+  if (repossessing) lcdChopper(ctx, frame, true);
   for (const [bi, artName] of art.billboards || []) {
     if (bi === lifted) continue;
     // THE PRICE STANDS DOWN WHILE THE SIGN IS SHOUTING. Same roof, same legs,
@@ -6842,7 +7605,6 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
   if (art.washer) {
     onRoof(art.washer[0], () => lcdWasher(ctx, art.buildings[art.washer[0]], art.washer[1], frame));
   }
-  if (repossessing) lcdChopper(ctx, frame, true);
   if (Number.isInteger(art.transmitter)) {
     onRoof(art.transmitter, () => lcdTransmitter(ctx, art.buildings[art.transmitter],
       frame, reducedFlashing));
@@ -6876,42 +7638,56 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     // the live one stepping a cell per heard beat — thrown at the roof on
     // the downbeat, at the street on beat four. Drawn BEFORE the gorilla so
     // his own held barrel stays the scene's front-most one.
+    // WHAT THE FINALE'S GORILLA WATCHES. He has no little man to look down at,
+    // so the variety has to come from the panel's own traffic: the barrel he
+    // just sent down his chute — hardest when it is the LIVE one, wearing the
+    // rim that says this is the one coming for you — and the aircraft when it
+    // is close enough to be worth turning for. Set inside the chute block
+    // because that is where those positions are solved; read at the gorilla,
+    // below, where they are needed.
+    let watch = null;
     if (art.barrelDrop) {
-      const [gx, gw, gh] = art.buildings[art.rooftopGorilla];
+      const [, , gh] = art.buildings[art.rooftopGorilla];
       const roof = GROUND_Y - gh;
-      const dropX = gx + gw + 8;
+      const dropX = lcdChuteX(art);
       const chute = [roof - 4, roof + 30, roof + 64, roof + 98];
-      for (const cy of chute) gbcGorillaBarrel(ctx, dropX, cy, true, false, frame.barrelShape);
-      // WHICH CELL IS LIT, and it is the one place on this panel where the lane
-      // gets a say. In a run, `barrelBeat` is the beat a real barrel reaches the
-      // foot of this chute (see lcdSceneFrame), so the drop is counted BACKWARD
-      // from it — cell three on that beat, two the beat before, and so on — and
-      // nothing falls at all on the bars where nothing is coming. That is the
-      // whole of the effect: the barrel that lands here is the barrel that then
-      // rolls at you, so the chute has to be silent when the road is.
-      //
-      // Everywhere else — hub, gallery, reduced motion, the tests — there is no
-      // lane to ask, and it runs the authored four-beat cycle it always has.
-      const laneDriven = frame.barrelBeat != null;
-      const cue = laneDriven
-        ? LCD_CHUTE_CELLS - 1 - Math.round(frame.barrelBeat - frame.beatAbs)
-        : frame.beat4;
-      // AND THE LAST CELL IS THE LANE'S. When a real barrel is coming, it is
-      // standing at the foot of this chute on the delivery beat — so drawing
-      // the bottom cell as well puts two barrels in one place and the handoff
-      // reads as a doubling instead of a hand-off. The chute delivers to the
-      // cell above and the road takes it from there, which is exactly what the
-      // picture is meant to say. With no lane to ask, all four cells are the
-      // chute's own and it runs the authored cycle.
-      const last = laneDriven ? LCD_CHUTE_CELLS - 1 : LCD_CHUTE_CELLS;
-      // Lit when it is a real one. The chute already only runs for a barrel the
-      // lane is about to be handed, but the player has no way to know that from
-      // one bar — a gorilla dropping barrels is what a gorilla does. The lit
-      // rim is the promise made explicit: this is the one that is coming for
-      // you, and it is the same wood the ribbon's arrow is now drawn in.
-      if (cue >= 0 && cue < last) gbcGorillaBarrel(ctx, dropX, chute[cue], false, laneDriven, frame.barrelShape);
+      // AND EACH CELL IS TURNED FURTHER THAN THE ONE ABOVE IT — see
+      // LCD_BARREL_ROLL. Four barrels in a vertical line at the same attitude
+      // is a barrel being lowered; the same four each turned another thirty
+      // degrees is a barrel that was thrown. It turns clockwise because the
+      // chute is on the RIGHT of his building and he throws it that way.
+      const spinOf = (i) => (i + 1) * LCD_BARREL_ROLL;
+      chute.forEach((cy, i) => gbcGorillaBarrel(ctx, dropX, cy, true, false, frame.barrelShape, spinOf(i)));
+      // WHICH CELL HAS THE BARREL: always exactly one, and it is the swing's
+      // to say (lcdSwingPhase). He lets go on phase 3, so the top cell is
+      // phase 3's and each cell below is the phase after — the same barrel he
+      // raised four beats earlier, still falling, while he raises the next.
+      // The chute never stands empty and never runs on a clock of its own.
+      const cue = lcdMod(lcdSwingPhase(frame) + 1, LCD_CHUTE_CELLS);
+      // WHICH ONE IS LIT is the one place on this panel where the lane gets a
+      // say. In a run, `barrelBeat` is the beat a real barrel reaches the foot
+      // of this chute (see lcdSceneFrame); it is in the chute for the four
+      // beats before that — top cell four out, bottom cell one out — and on the
+      // delivery beat itself the cell that would be lit is the road's. The
+      // gorilla drops barrels because that is what a gorilla does; the rim is
+      // the promise made explicit: this is the one that is coming for you, in
+      // the same wood the ribbon's arrow is drawn in.
+      const due = frame.barrelBeat != null ? Math.round(frame.barrelBeat - frame.beatAbs) : null;
+      const live = due != null && due >= 1 && due <= LCD_CHUTE_BEATS
+        && lcdRimOn(frame, reducedFlashing);
+      gbcGorillaBarrel(ctx, dropX, chute[cue], false, live, frame.barrelShape, spinOf(cue));
+      // He follows the live one all the way down and only glances at the rest:
+      // a head that tracks every barrel he throws is a gorilla admiring his own
+      // work, and the rim exists to mean something.
+      if (live || lcdMod(frame.bar, 3) === 0) watch = [dropX, chute[cue]];
     }
-    lcdRooftopGorilla(ctx, art.buildings[art.rooftopGorilla], frame);
+    if (!watch) {
+      const planeAt = lcdPlanePoint(art, frame, art.plane);
+      const gx = art.buildings[art.rooftopGorilla];
+      if (planeAt && Math.abs(planeAt[0] - (gx[0] + gx[1] / 2)) < 70) watch = planeAt;
+    }
+    lcdRooftopGorilla(ctx, art.buildings[art.rooftopGorilla], frame, -1, reducedFlashing,
+      null, watch);
     if (gorillaRise) ctx.restore();
   }
   // The case is in the baked layer with the rest of the facade; only the hand

@@ -68,7 +68,19 @@ export function coinSpan(cell) {
   }
 }
 
-// Worst-case airtime among heroes: heavy Grumpos (gravity ×1.25).
+// THE DECLARED SHORT-AIRTIME FLOOR — 0.512s, and no longer any hero's arc.
+//
+// It was the weakest jumper's launch (0.9) under the heaviest hero's gravity
+// (×1.25), a pairing no one in the cast was ever both halves of. Since jumpMult
+// became a HEIGHT multiplier and `heavy` stopped costing apex (player.js jumpV)
+// the real cast minimum is Grumpos at 0.636s, and B-33P — the weakest jumper —
+// hangs 0.675s.
+//
+// LEFT WHERE IT IS ON PURPOSE. Every pattern gap in the game is spaced off this
+// number, so raising it 24% to meet the new cast re-spaces the whole spawner in
+// the loosening direction, and that is a difficulty decision rather than a
+// consequence of the jump change. It is a floor, it is still under everybody,
+// and it is still the deliberate understatement tune-strip.js reports.
 export function worstAirtime() { return (2 * BASE_JUMP_V * 0.9) / (GRAVITY * 1.25); }
 
 /**
@@ -76,7 +88,10 @@ export function worstAirtime() { return (2 * BASE_JUMP_V * 0.9) / (GRAVITY * 1.2
  * `worstAirtime`: the lowest jumpMult in the cast (B-33P's 0.9) crossed with
  * the heaviest gravity (Grumpos' ×1.25). No single hero is both, which is the
  * point — a height cleared by this imaginary worst hero is cleared by all of
- * them. Comes out at ~37px against a real cast minimum of 45.5 (Grumpos).
+ * them. Comes out at ~37px. The real cast minimum used to be 45.5 and is 51.2
+ * now that jumpMult buys height directly, so the margin this ceiling holds in
+ * hand grew rather than shrank; like `worstAirtime` it is left alone, because
+ * every hazard height and island rise in the game is measured against it.
  *
  * What it is FOR: anything the player has to land on top of. A slab the one
  * heavy hero cannot reach is not a difficulty spike, it is a bug that only

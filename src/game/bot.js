@@ -3,7 +3,7 @@
 // press/release, and never touches Input.activity — so attract mode can tell
 // the bot from a human.
 import { Input } from '../engine/input.js';
-import { PLAYER_W, PLAYER_SPRITE_W, BASE_JUMP_V } from './player.js';
+import { PLAYER_W, PLAYER_SPRITE_W, jumpV } from './player.js';
 
 // A HOLE IS THE ONE MISTAKE THE BOT MAY NOT MAKE.
 //
@@ -90,7 +90,7 @@ export class DemoBot {
     const hero = p.hero;
     if (!hero) return null;
     const g = p.gravity * (run.powerups?.gravityMultiplier?.() ?? 1);
-    const v = BASE_JUMP_V * (p.jumpScale || 1) * hero.jumpMult;
+    const v = jumpV(hero) * (p.jumpScale || 1);
     if (!(g > 0) || !(v > 0)) return null;
     return { v, g, apex: v / g, airtime: 2 * v / g };
   }

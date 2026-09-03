@@ -248,7 +248,7 @@ export const beatCharts = {
       // count-in it used to be: the loop's one sixteenth is on 1, into the
       // bar, and with 7 now a hole the pairs need this slot to stay the ground.
       { slot: 8, action: 'coin', ...eighth },
-      { slot: 9, action: 'duck', type: 'drone', column: 3 },
+      { slot: 9, action: 'duck', type: 'drone', column: 4 },
       { slot: 10, action: 'jump', type: 'beatBar' }, { slot: 11, action: 'coin' },
       { slot: 12, action: 'pit' }, { slot: 13, action: 'coin' },
       { slot: 14, action: 'pit' }, { slot: 15, action: 'coin', ...eighth },
@@ -294,11 +294,11 @@ export const beatCharts = {
       // halves, and what it cost is the bar that used to stand on 4 — the loop
       // keeps the one on 0 and spends the rest of its jumps on the four holes,
       // which is what this stage was always about.
-      { slot: 2, action: 'duck', type: 'drone', column: 3 },
+      { slot: 2, action: 'duck', type: 'drone', column: 4 },
       { slot: 3, action: 'coin', ...eighth },
       { slot: 4, action: 'duck', type: 'barrel', every: 2 },
       { slot: 5, action: 'coin', ...eighth },
-      { slot: 6, action: 'duck', type: 'drone', column: 3 },
+      { slot: 6, action: 'duck', type: 'drone', column: 4 },
       // The finale's one card box, and it is the tightest the cabinet asks for:
       // duck on 6, shoot on 7, and the box goes on 8 half a beat ahead of the
       // hero, with the first of the four holes a beat behind it on 9.  It is
@@ -606,7 +606,7 @@ export const arrangement = {
       },
     },
     {
-      s: 64,
+      s: 71,
       bars: 1,
       from: 1,
       pan: {
@@ -614,7 +614,7 @@ export const arrangement = {
       },
     },
     {
-      s: 65,
+      s: 72,
       bars: 1,
       transpose: {
         bass: 2,
@@ -1413,7 +1413,7 @@ export const arrangement = {
     {
       bass: seq('. . . . . . . . . . . . . . . . | D2 . D3 . D2 . D3 . G2 . G3 . G2 . G3 .'),
       lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 . D5 . E5 . A4 . . . E5 G5 A5 B5'),
-      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,3.5633879999999998,null,null,null,1,1,1,1],
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,2,null,null,null,1,1,1,1],
       lead2: chordSeq('. . . . . . . . . . . . . . . . | D3min7 . . . . . . . G3 . . . . . . .'),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       lead3: chordSeq('. . . . . . . . . . . . . . . . | D3min7 . . . . . . . G3 . . . . . . .'),
@@ -1426,7 +1426,7 @@ export const arrangement = {
     {
       bass: seq('. . . . . . . . . . . . . . . . | G2 . G3 . G2 . G3 . G2 . G3 G3 G2 . G3 G3'),
       lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 . D5 . A5 . . . . . A5 . G5 .'),
-      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,1.563388,null,1.563388,null],
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,1.563388,null,1.469105,null],
       lead2: chordSeq('. . . . . . . . . . . . . . . . | G3 . . . . . . . G3 . . . . . . .'),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       lead3: chordSeq('. . . . . . . . . . . . . . . . | G3 . . . . . . . G3 . . . . . . .'),
@@ -1489,7 +1489,7 @@ export const arrangement = {
     },
     {
       lead: seq('A5 . E5 . D5 . E5 . A4 . . . A5 . G5 . | . . . . . . . . . . . . . . . .'),
-      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,2.945313,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,2,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead2: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead3: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
@@ -1500,7 +1500,7 @@ export const arrangement = {
     },
     {
       lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 . D5 . E5 . A4 . . . E5 G5 A5 B5'),
-      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,3.5633879999999998,null,null,null,1,1,1,1],
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,2,null,null,null,1,1,1,1],
       lead2: chordSeq('. . . . . . . . . . . . . . . . | F3maj7 . . . . . . . G3 . . . . . . .'),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       lead3: chordSeq('. . . . . . . . . . . . . . . . | F3maj7 . . . . . . . G3 . . . . . . .'),
@@ -1526,8 +1526,8 @@ export const arrangement = {
     },
     {
       bass: seq('C2 . C3 . C2 . C3 . A2 . A3 . A2 . A3 . | . . . . . . . . . . . . . . . .'),
-      lead: seq('A5 . E5 . D5 . E5 . A4 . . . A5 . G5 . | . . . . . . . . . . . . . . . .'),
-      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,2.945313,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead: seq('A5 . E5 . D5 . E5 . A4 . . . A5 . B5 . | . . . . . . . . . . . . . . . .'),
+      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,2,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead2: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead3: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
@@ -1564,8 +1564,8 @@ export const arrangement = {
     },
     {
       bass: seq('F2 . F3 . F2 . F3 . G2 . G3 . G2 . G3 . | . . . . . . . . . . . . . . . .'),
-      lead: seq('A5 . E5 . D5 . A5 . . . . . A5 . G5 . | . . . . . . . . . . . . . . . .'),
-      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead: seq('A5 . E5 . D5 . A5 . . . G5 . A5 . B5 . | . . . . . . . . . . . . . . . .'),
+      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,1.760121,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead2: chordSeq('F3maj7 . . . . . . . G3 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       sweeps: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
@@ -1739,7 +1739,7 @@ export const arrangement = {
     },
     {
       lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 . D5 . E5 . A4 . . . E5 G5 A5 B5'),
-      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,3.5633879999999998,null,null,null,1,1,1,1],
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,2,null,null,null,1,1,1,1],
       lead2: chordSeq('. . . . . . . . . . . . . . . . | F3maj7 . . . . . . . G3 . . . . . . .'),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       lead3: chordSeq('. . . . . . . . . . . . . . . . | F3maj7 . . . . . . . G3 . . . . . . .'),
@@ -1779,8 +1779,8 @@ export const arrangement = {
       lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
       bass3: seq('. . . . . . . . . . . . . . . . | D2 . D3 . D2 . D3 . G2 . G3 . G2 . G3 .'),
       sweeps: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .'),
-      lead: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . . E5 . . .'),
-      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,1.563388,null,null,2.272727,null,3.269058,null,null,3.378433,null,null,null],
+      lead: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . E5 . E5 . .'),
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,1.563388,null,null,2.272727,null,3.269058,null,1.675781,null,1.789595,null,null],
       lead11: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . . E5 . . .'),
       lead11Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,1.563388,null,null,2.272727,null,3.269058,null,null,3.378433,null,null,null],
       snare: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . C1 C1').map((v) => !!v),
@@ -1788,7 +1788,7 @@ export const arrangement = {
     },
     {
       lead: seq('A5 . E5 . D5 . E5 . A4 . . . A5 . G5 . | . . . . . . . . . . . . . . . .'),
-      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,2.945313,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,2,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead2: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead3: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
@@ -2035,7 +2035,7 @@ export const arrangement = {
     },
     {
       bass: seq('C2 . C3 C3 C2 . C3 C3 A2 . A3 A3 A2 . A3 A3 | . . . . . . . . . . . . . . . .'),
-      lead: seq('A5 . E5 . D5 . E5 . A4 . . . A5 . G5 . | . . . . . . . . . . . . . . . .'),
+      lead: seq('A5 . E5 . D5 . E5 . A4 . . . A5 . B5 . | . . . . . . . . . . . . . . . .'),
       leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,2.945313,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead2: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
@@ -2093,8 +2093,8 @@ export const arrangement = {
     },
     {
       bass: seq('F2 F2 F3 F3 F2 F2 F3 F3 G2 G2 G3 G3 G2 G2 G3 G3 | . . . . . . . . . . . . . . . .'),
-      lead: seq('A5 . E5 . D5 . A5 . . . . . A5 . G5 . | . . . . . . . . . . . . . . . .'),
-      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead: seq('A5 . E5 . D5 . A5 . . . G5 . A5 . B5 . | . . . . . . . . . . . . . . . .'),
+      leadLen: [1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,1.793146,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead2: chordSeq('F3maj7 . . . . . . . G3 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       sweeps: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
@@ -2251,7 +2251,7 @@ export const arrangement = {
     },
     {
       bass: seq('. . . . . . . . . . . . . . . . | G2 G2 G3 G3 G2 G2 G3 G3 G2 G2 G3 G3 G2 G2 G3 G3'),
-      lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 . D5 . A5 . . . . . A5 . G5 .'),
+      lead: seq('. . . . . . . . . . . . . . . . | A5 . E5 . D5 . A5 . . . . . A5 . B5 .'),
       leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,1.563388,null,1.563388,null],
       lead2: chordSeq('. . . . . . . . . . . . . . . . | G3 . . . . . . . G3 . . . . . . .'),
       lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
@@ -2266,17 +2266,47 @@ export const arrangement = {
     },
     {
       bass: seq('F2 . F3 . F2 . F3 . G2 . G3 . G2 . G3 . | . . . . . . . . . . . . . . . .'),
-      lead: seq('C5 . E5 G5 C5 . E5 G5 . A4 . C5 . E5 . . | . . . . . . . . . . . . . . . .'),
+      lead: seq('C5 . E5 G5 C5 . E5 G5 . A4 E5 C5 . E5 . . | . . . . . . . . . . . . . . . .'),
       lead2: chordSeq('F3maj7 . . . . . . . G3 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       sweeps: seq('. . . . . . . . . . . . . . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       hats: seq('C1 . . . C1 . . . C1 . . . C1 C1 . C1 | . . . . . . . . . . . . . . . .').map((v) => !!v),
-      leadLen: [1.563388,null,1.563388,1.563388,1.563388,null,1.563388,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      leadLen: [1.563388,null,1.563388,1.563388,1.563388,null,1.563388,1.563388,null,1.790128,1.563388,1.563388,null,1.563388,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       lead3: chordSeq('F3maj7 . . . . . . . G3 . . . . . . . | . . . . . . . . . . . . . . . .'),
       lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
       bass3: seq('F2 . F3 . F2 . F3 . G2 . G3 . G2 . G3 . | . . . . . . . . . . . . . . . .'),
       kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
       clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+    },
+    {
+      lead2: chordSeq('. . . . . . . . . . . . . . . . | F3maj7 . . . . . . . G3 . . . . . . .'),
+      lead2Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      lead3: chordSeq('. . . . . . . . . . . . . . . . | F3maj7 . . . . . . . G3 . . . . . . .'),
+      lead3Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null],
+      bass3: seq('. . . . . . . . . . . . . . . . | F2 . F3 . F2 . F3 . G2 . G3 . G2 . G3 .'),
+      clap: seq('. . . . . . . . . . . . . . . . | . . . . C1 . . . . . . . C1 . . .').map((v) => !!v),
+      kick: seq('. . . . . . . . . . . . . . . . | C1 . . . C1 . . . C1 . . . C1 . . .').map((v) => !!v),
+      bass: seq('. . . . . . . . . . . . . . . . | F2 . F3 . F2 . F3 . G2 . G3 G3 G2 . G3 G3'),
+      bassLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,null,null,1],
+      lead: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . E5 . . . .'),
+      leadLen: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,2.082623,null,null,1.563388,null,1.563388,null,1.563388,null,null,null,null],
+      lead11: seq('. . . . . . . . . . . . . . . . | C5 . . . G5 . . G4 . A4 . E5 . E5 . .'),
+      lead11Len: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1.563388,null,null,null,2.082623,null,null,1.563388,null,1.563388,null,1.563388,null,1.563388,null,null],
+    },
+    {
+      bass: seq('C2 . C3 . C2 . C3 . A2 . A3 . A2 . A3 . | . . . . . . . . . . . . . . . .'),
+      lead2: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead2Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead3: chordSeq('C4maj7 . . . . . . . A3min7 . . . . . . . | . . . . . . . . . . . . . . . .'),
+      lead3Len: [8,null,null,null,null,null,null,null,8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      bass3: seq('C2 . C3 . C2 . C3 . A2 . A3 . A2 . A3 . | . . . . . . . . . . . . . . . .'),
+      snare: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      kick: seq('C1 . . . C1 . . . C1 . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      clap: seq('. . . . C1 . . . . . . . C1 . . . | . . . . . . . . . . . . . . . .').map((v) => !!v),
+      lead: seq('C5 . . . G5 . . G4 . A4 . E5 . E5 . . | . . . . . . . . . . . . . . . .'),
+      leadLen: [1.563388,null,null,null,1.563388,null,null,1.563388,null,1.563388,null,1.759943,null,1.754972,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+      lead11: seq('C5 . . . G5 . . G4 . A4 . . E5 . . . | . . . . . . . . . . . . . . . .'),
+      lead11Len: [1.563388,null,null,null,1.563388,null,null,1.563388,null,1.563388,null,null,3.8129729999999995,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
     },
   ],
   choke: {

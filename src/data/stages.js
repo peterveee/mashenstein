@@ -167,7 +167,7 @@ export const STAGES = [
     { pits: [{ at: 0.38, w: 60 }, { at: 0.70, jumps: 5 }] }),
   S('rhythm', 1,
     { type: 'reach', desc: 'RUN TO THE BEAT. OR NEAR THE BEAT. THE BEAT IS FLEXIBLE.' },
-    { type: 'onbeat', n: 10, desc: '10 ON-BEAT ACTIONS' },
+    { type: 'onbeat', n: 30, desc: '30 ON-BEAT ACTIONS' },
     { intro: 'THIS CABINET OWES MONEY TO EVERY OTHER CABINET.' }),
   // THE ACT I CROSSING. Four jumps over a spiked break on three stones, at 0.70
   // — just past the second checkpoint (2/3), which is the whole of why it is
@@ -183,7 +183,7 @@ export const STAGES = [
   // landing you do not choose the end of is not a landing.
   S('rhythm', 2,
     { type: 'reach', desc: 'SURVIVE THE CHORUS. THE BAND IS IN DEBT.' },
-    { type: 'onbeat', n: 14, desc: '14 ON-BEAT ACTIONS' },
+    { type: 'combo', n: 10, desc: 'GET A 10 COMBO' },
     // ONLY THE CROSSING. The 0.37 hole that used to stand here was authored when
     // the beat lane cut none of its own; the chart now lays two pairs of holes
     // every sixteen beats (songs/rhythm.js), so a single scripted pit at a fixed

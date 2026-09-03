@@ -3,6 +3,7 @@
 import { W, H, shake, updateShake, blit, pushOverlayDraw, setSceneGlow, chrome as chromeGeo, chromeCtx, paintChrome } from '../engine/renderer.js';
 import { GROUND_Y, ZOOM, VIEW_W, applyWorld, screenYFor, camYFor, framingFor, restingHeadroom, easeZoom, easePan, easeFloor, fallLead, fallLimit, anchorShift, BG_FOLLOW, setRestingZoom } from '../engine/camera.js';
 import { readPlatform } from '../engine/platform.js';
+import { TICK } from '../engine/loop.js';
 import { Input } from '../engine/input.js';
 import {
   Audio, PORTAL_RELAY_IN, PORTAL_RELAY_OUT,
@@ -18,7 +19,7 @@ import { PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './pun
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
-import { BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED } from './beatchart.js';
+import { OPENING_COIN_BEAT, BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED } from './beatchart.js';
 import { drawBeatGround, ACTION_INK } from './beatground.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 // The pacing constants and the stage-layout resolver. They live in layout.js
@@ -37,9 +38,9 @@ import { BENCH_UPGRADES } from '../data/progression.js';
 import { CABINET_BY_ID, CABINETS } from '../data/cabinets.js';
 import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
-import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_BEATS }
+import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS }
   from '../engine/stylePacks/index.js';
-import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, TOUCH_SHELF_CY, BEAT_SPEECH_Y } from './hud.js';
+import { drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, TOUCH_SHELF_CY, BEAT_SPEECH_Y } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe, drawToon, toonFaceSprite } from '../sprites/toons.js';
@@ -70,16 +71,6 @@ const FINALE_HOLD = 0.25;
 // moving except the hero celebrating on the plunger and the flag flying over
 // him, which is the picture the whole marker exists to produce.
 const FINALE_TAIL = 1;
-// What a DEMO clip holds instead of all that — attract mode and the dev menu's
-// bot-play recordings. It ends once the landing has been seen: the hero rides
-// the pole down, his feet find the cap, the cap gives under him and clicks, and
-// the clip stops there. Not the payoff chain, the coin tally or the results
-// card, none of which a clip with nobody playing has any use for.
-//
-// It used to end at the SEAT — the frame the hero reached the pole — which cut
-// away before he could land on the thing he had just jumped for, and made the
-// whole ending read as running into a post.
-const DEMO_FINISH_BEAT = 0.55;
 // How long an ACT card holds the world still. It is a reading budget, not a
 // flourish: the cards run 56–76 characters over two lines, and at 2s — with the
 // last 0.3 of that spent fading out — the longest of them was off screen before
@@ -1058,10 +1049,12 @@ function blackoutGradient(ctx, r) {
 // jumped early: player.update keeps running through the dash, so an arc begun
 // before the finish armed carries into the grade.
 //
-// Bands are fractions of the CURRENT hero's own peak, never pixels. Peak runs
-// 46px (B-33P, jumpMult 0.9) through 57px (most of the cast) to 75px (Lorenzo,
-// 1.15), and higher again off Mochi's second jump — a fixed pixel band would
-// hand PERFECT to Lorenzo for free and put it permanently out of B-33P's reach.
+// Bands are fractions of the CURRENT hero's own peak, never pixels. Peak is
+// 57px x the hero's jumpMult — 51px at B-33P's 0.90 up to 63px at Clara's 1.10
+// — and higher again off Kiko's second jump. A fixed pixel band would hand
+// PERFECT to the top of that table for free and put it out of B-33P's reach,
+// and it would have to be re-tuned every time the spread moves; the spread has
+// moved once already, when jumpMult stopped scaling launch speed.
 //
 // `hold` is how long the finish frame is held before the results card. Every one
 // of them now clears FLIP_THROW with about a second and a half to spare: the
@@ -1224,6 +1217,9 @@ export class RunState {
     // the board puts up every eighth beat of a clean streak.
     this.cityAccidentBeat = null;
     this.barrelChuteCue = null;
+    this.barrelChuteOb = null;
+    this.barrelChuteBeat = null;
+    this.barrelChuteGrid = null;
     // THE SKYLINE'S WALK-ON CLOCK: beats since the world started moving, or
     // null before it has. Constructor, not enter(), for the same reason
     // `introDone` is: the city is assembled once per stage, and a death
@@ -1997,7 +1993,9 @@ export class RunState {
       const pxPerBeat = this.baseSpeed() * 60 / (this.cabinet.music?.bpm || 120);
       const last = this.finishWorldX() - FINISH_CLEAR - 12;
       for (let i = 0; i < 16; i++) {
-        this.pickups.push(makePickup('coin', last - (15 - i) * pxPerBeat / 8, 10));
+        const coin = makePickup('coin', last - (15 - i) * pxPerBeat / 8, 10);
+        coin.finishRun = true;   // walked onto the grid by pinFinishCoins
+        this.pickups.push(coin);
       }
     }
 
@@ -2049,6 +2047,23 @@ export class RunState {
         bank: this.cabinet.music,
         chart: rhythmChart,
         react,
+        // ELEVEN BEATS OF LOOKAHEAD ON THE LCD LANE, not the spawner's seven,
+        // and the skyline is why. The gorilla shows a barrel for seven beats
+        // before it reaches the foot of his chute (LCD_CHUTE_LEAD_BEATS), and
+        // the chute stands a lead's worth of road before the boot — 1.6 beats
+        // at the resting zoom, up to about 2.75 at the slowest assist speed —
+        // so a barrel laid only seven beats before its slot is at best five
+        // from the chute when it exists, and the chute never gets to start
+        // from the top. Seven, plus the longest lead rounded up, plus one for
+        // the beat it is adopted on (updateBarrelArrivals). A barrel laid
+        // earlier is laid further down the road and rolls the same distance to
+        // the same beat — the drift correction in BeatSpawner.fill is exact at
+        // any lookahead.
+        // Off the cabinet, not `styleName`: that is assigned further down this
+        // same enter(), after the lane is built, and reading it here was a run
+        // with the spawner's seven and a gorilla who never got his barrel.
+        lookaheadBeats: !this.corrupted.length && this.cabinet.style === 'lcd'
+          ? LCD_CHUTE_LEAD_BEATS + 4 : undefined,
         pitPlan: this.pitPlan,
         beatNow: () => this.rhythmBeatNow(),
         playerWorldX: () => this.playerWorldX(),
@@ -2162,6 +2177,10 @@ export class RunState {
     // Mission setup.
     this.mission = this.stage ? { ...this.stage.mission, count: 0, done: false } : { type: 'endless', desc: 'RUN. FOREVER. THAT IS THE WHOLE DEAL.' };
     this.challenge = this.stage ? { ...this.stage.challenge, count: 0, done: false, failed: false } : null;
+    // Unlike bonusT, this is constructed once and never re-armed by enter() or
+    // challenge updates. Rhythm stages cover their prompt ribbon only for the
+    // opening read, not again after a death or when the bonus state changes.
+    this.rhythmBonusT = this.beatLock && this.challenge ? RHYTHM_BONUS_TIME : 0;
     this.applianceSpawned = false;
     this.applianceGot = false;
     this.finishDogSpawned = false;
@@ -2258,8 +2277,7 @@ export class RunState {
       const stopX = this.laneWallX();
       this.spawner.nextX = Math.max(this.spawner.nextX, this.camX);
       this.spawner.fill(this.camX, startSp, this.obstacles, this.pickups, () => jumpHeightFor(hero), stopX);
-      this.drip.update(0, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(), stopX,
-        !this.rewindUsed && !this.beatLock, this.beatLock ? BEAT_BANNED_POWERS : null);
+      this.dripUpdate(0, stopX);
       for (let i = 0; i < this.checkpoints.length; i++) {
         if (this.distance >= this.checkpoints[i]) this.checkpointHit[i] = true;
       }
@@ -2305,6 +2323,9 @@ export class RunState {
     this.beatCombo = 0;
     this.cityAccidentBeat = null;
     this.barrelChuteCue = null;
+    this.barrelChuteOb = null;
+    this.barrelChuteBeat = null;
+    this.barrelChuteGrid = null;
     this.rhythmCheer = 0;
     this.beatJudgeConsumed.clear();
     this.beatJudgeLastRaw = null;
@@ -3085,6 +3106,7 @@ export class RunState {
     // screen or an ACT banner, both of which return before this line.
     if (this.hintT > 0) this.hintT -= wdt;
     if (this.bonusT > 0) this.bonusT -= wdt;
+    if (this.rhythmBonusT > 0) this.rhythmBonusT -= wdt;
     const hero = HERO_BY_ID[this.relay.current];
 
     // Movement / camera.
@@ -3308,9 +3330,8 @@ export class RunState {
       const spawnAt = updateProfileMark();
       this.spawner.fill(this.camX, sp, this.obstacles, this.pickups, () => jumpHeightFor(hero),
         this.overtime ? Infinity : this.laneWallX());
-      this.drip.update(wdt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(),
-        this.overtime ? Infinity : this.laneWallX(), !this.rewindUsed && !this.beatLock,
-        this.beatLock ? BEAT_BANNED_POWERS : null);
+      this.dripUpdate(wdt, this.overtime ? Infinity : this.laneWallX());
+      this.pinFinishCoins();
       this.spawnScriptedPits();
       this.signPits();
       updateProfileAdd('spawnMs', spawnAt);
@@ -3593,6 +3614,13 @@ export class RunState {
       // The hero is home: hand the held-back opening bubble to the live run so
       // it talks over running, not over an empty stage.
       if (this.introSpeech) { this.speech = this.introSpeech; this.introSpeech = null; }
+      // THE LANE STARTS HERE, not where the song did. The beat clock has been
+      // running through the whole walk-on while the world stood still, so a
+      // lane anchored at the top of the song is a beat or two stale by now and
+      // its opening coins are standing on the hero's feet. Re-lay it from the
+      // real start: the first coin one beat out, the first action past the
+      // runway, exactly as a stage with no run-in gets.
+      if (this.beatLock) this.resetRhythmLane();
     }
   }
 
@@ -3690,11 +3718,20 @@ export class RunState {
       // carrying the stale i-frame clock into the celebration only makes a
       // healthy winner flash in and out.
       this.player.iframes = 0;
-      // A demo clip does NOT stop here. It used to — "attract clips stay
-      // snappy" — and stopping on this frame is stopping the moment the hero
-      // arrives at the pole, before the catch and before the ride down, so
-      // every clip ended on a hero running into a post. It plays the landing
-      // and stops on that instead; see DEMO_FINISH_BEAT.
+      // A DEMO CLIP ENDS THE SAME WAY A PLAYED RUN DOES, and does not stop
+      // here. It used to — "attract clips stay snappy" — but stopping on this
+      // frame is stopping the moment the hero ARRIVES at the pole, before the
+      // catch and before the ride down, so every clip ended on a hero running
+      // into a post and cut mid-gesture.
+      //
+      // So the hold below is not shortened for a demo either. The ending is a
+      // CHAIN — catch, ride, the cap giving under him, the click, the spark
+      // crossing to the box, the lamps, the flag, the coins walking into the
+      // pill — and a clip that stops partway through it stops in the middle of
+      // a sentence. What a played run holds for is exactly what there is to
+      // watch, so attract mode and the bot-play recordings hold for it too;
+      // the only thing they skip is the results card, which is a screen rather
+      // than part of the ending.
       // A beat on the finish frame, then results. Transient chatter would
       // clutter the held frame — clear it. The flip's own card is written
       // after the clear, so it survives into the held frame as the only thing
@@ -3749,9 +3786,8 @@ export class RunState {
       // down — on the hop path that is after the rise, or the sound describes a
       // fall that has not begun.
       Audio.sfx('slideWhistle', { dur: ride, when: hopT });
-      this.finaleT = (this.flipSlide ? this.flipSlide.dur : 0)
-        + (this.demo ? DEMO_FINISH_BEAT
-          : FINALE_HOLD + this.flip.band.hold + FINALE_TAIL);
+      this.finaleT = FINALE_HOLD + this.flip.band.hold + FINALE_TAIL
+        + (this.flipSlide ? this.flipSlide.dur : 0);
     }
     // Post-contact: the hold is running, the lever is swinging. Nothing else
     // to simulate — update()'s finaleT branch owns the frame from here.
@@ -4417,7 +4453,8 @@ export class RunState {
     // explosion rather than a pop. Not the !-box's 'blockBreak': that is a
     // tonal ceramic crack for a hit you go out of your way to land, and here
     // a box goes off at the hero's face every few bars of a song.
-    Audio.sfx('boom');
+    // Already on the clock when the fuse was lit on a beat lane (updateObstacles).
+    if (!ob.boomCued) Audio.sfx('boom');
     shake(1.6, 0.14);
     // Gold over the card-coloured scatter breakObstacle throws, so the burst
     // reads as a payout rather than as one more prop coming apart.
@@ -4699,10 +4736,21 @@ export class RunState {
         // begun inside the last quarter second still slips through, and nothing can see
         // that coming; the fall in the crossing handler is the half that is never wrong.
         const eta = toGo / this.speed;
-        if (eta <= portalCueFlashAt(PORTAL_RELAY_IN)
+        const flashAt = portalCueFlashAt(PORTAL_RELAY_IN);
+        // ON THE BEAT LANE THE CROSSING IS ON THE GRID, so the rise is asked for
+        // one frame plus the output latency earlier than it has to start and
+        // the remainder goes to the clock (Audio.cueTimeInBeats): the flash
+        // then lands on the line, not a frame and a device's latency after it.
+        // Only that much earlier — every millisecond of lead here is a
+        // millisecond less of jump the prediction below can see, and the
+        // argument above is that it already sees too little.
+        const bpm = this.cabinet.music?.bpm;
+        const lead = this.beatLock && bpm > 0 ? Audio.cueLeadSec(TICK) : 0;
+        if (eta <= flashAt + lead
           && this.player.feetAt(eta, this.powerups.gravityMultiplier()) < PORTAL_H) {
           this.portal.cued = true;
-          Audio.sfx('portal', { gain: PORTAL_RELAY_IN_GAIN, shape: PORTAL_RELAY_IN });
+          const inBeats = lead > 0 ? (eta - flashAt) * bpm / 60 : undefined;
+          Audio.sfx('portal', { gain: PORTAL_RELAY_IN_GAIN, shape: PORTAL_RELAY_IN, inBeats });
         }
       }
       const hbox = this.player.box(this.camX, this.playerGroundY());
@@ -5004,6 +5052,16 @@ export class RunState {
       // frame or a long audio stall cannot slide the burst off the grid.
       if (ob.burstBeat != null) {
         ob.fuseT = (ob.fuseT || 0) + dt;
+        // THE BOOM GOES ON THE CLOCK AHEAD OF THE LINE, the visual on the line.
+        // Fired from the crossing below it lands a frame plus the output latency
+        // late (Audio.cueTimeInBeats); placed here, as soon as the line is inside
+        // the lead the output path needs, it is sample-accurate on the song. As
+        // late as it can be, not as early — the round can still pull the fuse in
+        // (lightCardBox) and a cue already on the clock cannot follow it.
+        if (chartBeat != null && !ob.boomCued && chartBeat >= ob.burstBeat - Audio.cueLeadBeats()) {
+          ob.boomCued = true;
+          Audio.sfx('boom', { inBeats: ob.burstBeat - chartBeat });
+        }
         if (chartBeat == null || chartBeat >= ob.burstBeat) { this.burstCardBox(ob); continue; }
       }
       if (ob.def.shoots) {
@@ -5032,7 +5090,9 @@ export class RunState {
       if (p.def.appliance && !p.toss && p._baseAlt != null) {
         const wt = this.tRun;
         p.alt = p._baseAlt + Math.sin(wt * 0.7 + p.bobPhase) * 6 + Math.sin(wt * 1.3 + p.bobPhase + 1.2) * 4;
-        p.x = p._baseX + Math.sin(wt * 0.5 + p.bobPhase + 2.5) * 10;
+        // No sideways drift on the beat lane: the toaster stands on a line
+        // (pinPickupToBeat) and ten px of sway is forty milliseconds of it.
+        p.x = p._baseX + (this.beatLock ? 0 : Math.sin(wt * 0.5 + p.bobPhase + 2.5) * 10);
       }
       if (!p.toss) continue;
       p.x += p.vx * dt;
@@ -5042,7 +5102,11 @@ export class RunState {
         p.alt = 8;
         p.vy = -p.vy * 0.35;
         p.vx *= 0.9;
-        if (p.vy < 40) { p.vy = 0; p.vx = 0; p.toss = false; }
+        if (p.vy < 40) {
+          p.vy = 0; p.vx = 0; p.toss = false;
+          // A capsule that has come to rest is placed like one the drip laid.
+          if (!p.def.coin) this.pinPickupToBeat(p);
+        }
       }
     }
     // Retired on its FAR edge, not its near one.
@@ -5381,6 +5445,12 @@ export class RunState {
     }
     if (this.challenge && this.challenge.type === 'coins') this.challenge.count = this.coins;
     if (this.challenge && this.challenge.type === 'onbeat') { /* counted on input */ }
+    // A combo challenge asks for one uninterrupted on-beat streak. `count`
+    // stores the best streak reached so far, so a later miss breaks the live
+    // combo without taking away a bonus that was already earned this run.
+    if (this.challenge && this.challenge.type === 'combo') {
+      this.challenge.count = Math.max(this.challenge.count || 0, this.beatCombo);
+    }
     this.checkGoalsMet();
   }
 
@@ -5496,6 +5566,108 @@ export class RunState {
     if (this.beatJudgeLastRaw != null && raw < this.beatJudgeLastRaw - loop * 0.5) this.beatJudgeEpoch += loop;
     this.beatJudgeLastRaw = raw;
     return raw + this.beatJudgeEpoch;
+  }
+
+  /**
+   * How far ahead of the heard beat a chart coin's line is, in beats — the lead
+   * to hand Audio.sfx so its ping lands on the beat the chart wrote it on.
+   *
+   * Measured on the CLOCK, not on the lane. The coin's world position is the
+   * same musical fact, but the hero's position is integrated a frame at a time
+   * and only held to the beat within a frame's travel (checkRhythmDrift), so a
+   * lead read off the distance still to go carried that frame of jitter into
+   * the sound: measured, ±25ms on a run of sixteenths. The chart's actionBeat
+   * and the judge's beat share one numbering (lightChartBoxOnBeat equates them
+   * outright), and their difference is exact.
+   *
+   * Undefined off the beat lane, for a coin with no line, or for one more than
+   * a beat out (a coin the magnet dragged in), and the cue then simply plays
+   * now rather than ringing out of a hand that is already empty.
+   */
+  pickupLineInBeats(p) {
+    if (!this.beatLock || !Number.isFinite(p.actionBeat)) return undefined;
+    const beat = this.rhythmBeatForJudging();
+    if (!Number.isFinite(beat)) return undefined;
+    const beats = p.actionBeat - beat;
+    return beats > 0 && beats <= 1 ? beats : undefined;
+  }
+
+  /**
+   * The drip, and on the beat lane everything it lays stood on a beat line.
+   *
+   * A capsule is a pickup with a sting, and a sting off the grid is the one
+   * sound on a rhythm stage not in the song. The drip places by distance, so
+   * each new piece is walked onto the nearest line here (pinPickupToBeat) and
+   * given the actionBeat that puts its sting on the clock (pickupLineInBeats).
+   */
+  dripUpdate(dt, stopX) {
+    const before = this.pickups.length;
+    this.drip.update(dt, this.camX, this.pickups, this.oneHit, this.battery >= this.maxBattery(), stopX,
+      !this.rewindUsed && !this.beatLock, this.beatLock ? BEAT_BANNED_POWERS : null);
+    for (let i = before; i < this.pickups.length; i++) this.pinPickupToBeat(this.pickups[i]);
+  }
+
+  /**
+   * Walk a pickup onto the beat grid: the nearest whole beat whose slot asks for
+   * nothing (a coin or a bare marker — a capsule over a bar or a hole is a lure
+   * toward the hazard) and whose ground is clear (clearOfHazards), looking up to
+   * three beats either way. It keeps its place if no line will have it, and it
+   * comes back with the actionBeat/actionX a chart coin carries, so the sting
+   * goes on the clock the same way.
+   *
+   * Nothing but the beat lane, and nothing that already has a line.
+   */
+  pinPickupToBeat(p) {
+    if (!this.beatLock || !p || Number.isFinite(p.actionBeat)) return false;
+    const beat = this.rhythmBeatForJudging();
+    const chart = this.spawner?.chart;
+    if (!Number.isFinite(beat) || !chart?.events?.length) return false;
+    const pxPerBeat = this.speed * 60 / (this.cabinet.music?.bpm || 120);
+    if (!(pxPerBeat > 0)) return false;
+    const playerX = this.playerWorldX();
+    const loop = chart.loopBeats || chart.events.length;
+    const near = Math.round(beat + (p.x - playerX) / pxPerBeat);
+    for (const k of [0, 1, -1, 2, -2, 3, -3]) {
+      const n = near + k;
+      if (n < beat + 1 || n < OPENING_COIN_BEAT) continue;
+      const slot = chart.events[((n % loop) + loop) % loop];
+      if (slot && slot.action !== 'coin' && slot.action !== 'ability') continue;
+      const x = playerX + (n - beat) * pxPerBeat;
+      if (this.clearOfHazards(x, p.w, p.alt, p.h, x) !== x) continue;
+      p.x = x;
+      if (p._baseX != null) p._baseX = x;
+      p.actionX = x;
+      p.actionBeat = n;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * The parting flourish (see the constructor) is laid off the finish line
+   * before the lane has a grid, so it is walked onto the grid on the first live
+   * fill: the last coin back to the 32nd line at or before where it stood — back,
+   * never forward, so the keep-clear rule it was laid against still holds — and
+   * the run behind it shifted by the same amount, each coin then carrying the
+   * beat it stands on so its ping goes on the clock.
+   */
+  pinFinishCoins() {
+    if (!this.beatLock || this.finishCoinsPinned) return;
+    const coins = this.pickups.filter((p) => p.finishRun);
+    if (!coins.length) { this.finishCoinsPinned = true; return; }
+    const beat = this.rhythmBeatForJudging();
+    const pxPerBeat = this.speed * 60 / (this.cabinet.music?.bpm || 120);
+    if (!Number.isFinite(beat) || !(pxPerBeat > 0)) return;
+    const playerX = this.playerWorldX();
+    const last = coins[coins.length - 1];
+    const lastBeat = Math.floor((beat + (last.x - playerX) / pxPerBeat) * 8) / 8;
+    const shift = playerX + (lastBeat - beat) * pxPerBeat - last.x;
+    coins.forEach((c, i) => {
+      c.x += shift;
+      c.actionX = c.x;
+      c.actionBeat = lastBeat - (coins.length - 1 - i) / 8;
+    });
+    this.finishCoinsPinned = true;
   }
 
   resetRhythmLane() {
@@ -5816,7 +5988,10 @@ export class RunState {
   updateBarrelArrivals(beat) {
     const chuteX = this.beatLock && this.styleName === 'lcd'
       ? lcdChuteScreenX(this.stage?.index) : null;
-    if (chuteX == null || !Number.isFinite(beat)) return null;
+    if (chuteX == null || !Number.isFinite(beat)) {
+      this.barrelChuteOb = null; this.barrelChuteGrid = null; return null;
+    }
+    const heard = Math.floor(beat);
     const bpm = this.cabinet.music?.bpm || 120;
     const z = this.camZoom || 1;
     // The chute's x is a SCREEN number and the lane is a world one, and the
@@ -5824,7 +5999,16 @@ export class RunState {
     // the hero shrinks as the camera pushes in. Solved per frame rather than
     // once, because the zoom eases.
     const chuteAhead = chuteX / z - (PLAYER_X + PLAYER_W);
-    let cue = null;
+    // ONE BARREL AT A TIME, AND ONLY FROM THE TOP. The panel draws seven
+    // positions for a drop — three in his hands, four in the chute — and a
+    // barrel adopted halfway through would start in mid-air, which is exactly
+    // the "random" read this whole thing exists to kill. So the chute LATCHES:
+    // it takes a barrel only on the beat that barrel is a full lead away, and
+    // then keeps it until it delivers, whatever else enters the window behind
+    // it. A barrel that never gets a clean run-up simply is not drawn falling —
+    // a silent chute says nothing false, a half-drop says something wrong.
+    let stillFalling = false;
+    let fresh = null;
     for (const ob of this.obstacles) {
       if (!ob.live || ob.type !== 'barrel' || !Number.isFinite(ob.actionBeat)) continue;
       // How long before the boot the barrel passes the chute. Closing speed,
@@ -5841,14 +6025,29 @@ export class RunState {
       // whose delivery beat is still ahead of the chute's own four cells is
       // worth naming — and the soonest one wins, since two cannot come down
       // one chute.
-      // A beat wider at the far end than the chute itself needs, so the
-      // gorilla's held barrel can light up before the drop starts rather than
-      // with it — the warning wants a run-up, and the panel simply draws no
-      // cell for a cue that is still out of range.
-      if (atChute >= beat - 0.5 && atChute <= beat + LCD_CHUTE_BEATS + 1.5
-        && (cue == null || atChute < cue)) cue = atChute;
+      // THREE BEATS WIDER AT THE FAR END than the chute itself needs, because
+      // the drop starts in his HANDS: he raises the barrel three beats before
+      // he lets go of it and the panel counts his swing back from this same
+      // number (lcdRooftopGorilla). Name it any later and the lit barrel would
+      // appear halfway down his arm.
+      if (ob === this.barrelChuteOb) { stillFalling = true; continue; }
+      // Adopted on the one beat it is a full lead away, and SNAPPED to the beat
+      // grid as it is taken. `atChute` is a live number — it is solved against a
+      // camera zoom that eases — so left raw it would wander a fraction between
+      // frames and the panel, which counts in whole heard beats, could round the
+      // same step to two different cells. Snapped once and held, the countdown
+      // the painter sees is exact integers from his scalp to the road.
+      if (Math.round(atChute) - heard === LCD_CHUTE_LEAD_BEATS
+        && (fresh == null || atChute < fresh[0])) fresh = [atChute, ob];
     }
-    return cue;
+    if (stillFalling && this.barrelChuteBeat > heard) return this.barrelChuteBeat;
+    this.barrelChuteOb = fresh ? fresh[1] : null;
+    this.barrelChuteBeat = fresh ? Math.round(fresh[0]) : null;
+    // The grid OUTLIVES the barrel: it is what the gorilla's swing is phased to
+    // between drops, so the next real one enters his hands on a raise rather
+    // than mid-arm. See lcdSwingPhase.
+    if (fresh) this.barrelChuteGrid = this.barrelChuteBeat;
+    return this.barrelChuteBeat;
   }
 
   // THE SKYLINE'S ONE SOUND. Once every sixteen bars the plane crossing the
@@ -5869,7 +6068,15 @@ export class RunState {
     const heard = Math.floor(beat);
     if (heard === this.cityAccidentBeat) return;
     this.cityAccidentBeat = heard;
-    if (lcdBarrelStrikeAt(this.stage?.index, heard)) Audio.sfx('barrelBurst');
+    // Placed on the clock for the NEXT beat, one beat early, rather than fired
+    // on this one. Fired, the bang lands a frame plus the output latency after
+    // the plane hits — late by a different amount on every device (see
+    // Audio.cueTimeInBeats); placed, it is in the song. A beat of lead is more
+    // than any output path needs, so the clamp there never bites.
+    const next = heard + 1;
+    if (lcdBarrelStrikeAt(this.stage?.index, next)) {
+      Audio.sfx('barrelBurst', { inBeats: next - beat });
+    }
   }
 
   checkRhythmDrift() {
@@ -5974,6 +6181,9 @@ export class RunState {
     this.beatJudgeConsumed.add(event.id);
     this.beatCombo++;
     this.score += 20 + 5 * Math.min(this.beatCombo, 8);
+    if (this.challenge?.type === 'combo') {
+      this.challenge.count = Math.max(this.challenge.count || 0, this.beatCombo);
+    }
     // Every eighth clean beat the rooftop board gilds its own count for a
     // couple of seconds. It celebrates the number it is already showing rather
     // than becoming a different sign, which is what retired a whole bake-off of
@@ -6180,15 +6390,22 @@ export class RunState {
     const pad = this.obstacles.find((o) => o.live && o.def.isLoop);
     if (!pad) return;
     const to = pad.x + pad.w + LOOP.r + 90;
-    const from = pad.x - this.spawner.react * this.speed;
+    // A reaction time of run-up before the pad — AT THE SPEED HE WILL ARRIVE
+    // AT, not the speed he has now. `this.speed` ramps, and sizing the zone in
+    // it made the zone grow while the pad stood there: a cactus laid 50px
+    // before the pad while the ramp was still at 153 was outside a 38px zone,
+    // and by the time the ramp reached 233 and the zone reached 58 it was on
+    // screen, where the sweep (below) takes nothing. So it stood, in the
+    // run-up, every seventh run. The ramp's cap is the one number that does
+    // not move, and the zone it makes is the widest the live speed could ever
+    // have asked for.
+    const from = pad.x - this.spawner.react * this.baseSpeed()
+      * (this.overtime ? 2.4 : SPEED_RAMP_CAP);
     // NOTHING IS RETIRED WHILE IT IS ON SCREEN — the rule clearRouteHazards
     // had to learn, twice. A barrel rolls into this zone long after it was
     // laid, and a continuous sweep that takes it in plain view deletes it
-    // halfway down the lane with the player watching. And `from` is sized in
-    // `this.speed`, which ramps, so the zone reaches further back over time —
-    // far enough to cross the view line and take a crate that was standing
-    // there legibly. Off screen the sweep clears everything it always did;
-    // in view it takes nothing.
+    // halfway down the lane with the player watching. Off screen the sweep
+    // clears everything it always did; in view it takes nothing.
     const viewRight = this.camX + W / this.camZoom;
     for (const ob of this.obstacles) {
       if (!ob.live || !ob.def || ob.def.isLoop || ob.tunnel || ob.route) continue;
@@ -6682,6 +6899,7 @@ export class RunState {
       const p = makePickup('appliance', x, alt);
       p._baseAlt = alt;
       p._baseX = p.x;
+      this.pinPickupToBeat(p);
       this.pickups.push(p);
     }
   }
@@ -8195,13 +8413,20 @@ export class RunState {
       const val = Math.round(50 * pickMult * this.powerups.scoreMult());
       this.score += val;
       this.coins += 1;
-      Audio.sfx('coin', { combo: Math.min(12, this.coinCombo) });
+      // A CHART COIN PINGS ON ITS LINE. Its box meets the hero's ten px before
+      // his lead edge reaches it — 43ms early at this cabinet's speed — and the
+      // ping then leaves the graph an output latency late, so fired here it is
+      // on the beat only by accident and on a different side of it per device.
+      // The chart knows the beat it wrote the coin on; the ping is placed there
+      // (Audio.sfx's inBeats, see pickupLineInBeats).
+      const line = this.pickupLineInBeats(p);
+      Audio.sfx('coin', { combo: Math.min(12, this.coinCombo), inBeats: line });
       spawn(p.x, this.groundYAt(p.x) - p.alt - 8, 0, -40, 0.4, '#f6d33c', 1, 0);
     } else if (p.def.heal) {
       // No floatie: the status pill fills the cell on the same frame and the
       // 'power' sting lands with it. Saying it a third time is noise.
       this.battery = Math.min(this.maxBattery(), this.battery + 1);
-      Audio.sfx('power');
+      Audio.sfx('power', { inBeats: this.pickupLineInBeats(p) });
     } else if (p.def.relayCharge) {
       this.grantRelayCharge();
     } else if (p.def.power) {
@@ -8209,7 +8434,9 @@ export class RunState {
       // the power row; overcharging is rare and the HUD states it only faintly.
       const res = this.powerups.grab(p.def.power);
       this.powerupsCollected++;
-      Audio.sfx(p.def.power === 'rewind' ? 'rewindPickup' : 'power');
+      // On the beat lane the capsule stands on a line (pinPickupToBeat) and the
+      // sting is placed on it, the same way a chart coin's ping is.
+      Audio.sfx(p.def.power === 'rewind' ? 'rewindPickup' : 'power', { inBeats: this.pickupLineInBeats(p) });
       // Rewind is the one capsule that does nothing when you grab it, so the
       // grab has to say what it is FOR — otherwise it reads as a dud until the
       // moment it fires, which is exactly the confusion this line exists to
@@ -8221,7 +8448,7 @@ export class RunState {
       } else if (res.overcharged) this.floatText('OVERCHARGED', '#f6d33c');
     } else if (p.def.appliance) {
       this.applianceGot = true;
-      Audio.sfx('win');
+      Audio.sfx('win', { inBeats: this.pickupLineInBeats(p) });
       this.score += 500;
       this.coins += 20;
       this.floatText('THE HIGHLY NECESSARY GOLDEN APPLIANCE. IT IS A TOASTER.', '#f6d33c');
@@ -9005,6 +9232,7 @@ export class RunState {
         // the one he drops and the one in the road are the same barrel. See
         // updateBarrelArrivals; null on every stage without a chute.
         barrelBeat: this.barrelChuteCue,
+        barrelGrid: this.barrelChuteGrid,
         // A live run and HOW FAR INTO ITS OPENING it is, in beats — what lets
         // the city walk on at the top of the stage. The run counts that itself
         // (advanceCityIntro) rather than handing over the song's beat: the song

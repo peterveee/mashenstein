@@ -9,7 +9,7 @@ const { beatCharts } = await import('../src/data/songs/rhythm.js');
 const {
   BeatSpawner, validateBeatChart, actionApproachPx, beatEventId,
   pitLayout, pitWindowBeats, laneRunwayBeats, PIT_BEATS, ON_BEAT_WINDOW,
-  LANE_RUNWAY_BEATS, PIT_LANE_RUNWAY_BEATS, COIN_DIV,
+  LANE_RUNWAY_BEATS, PIT_LANE_RUNWAY_BEATS, COIN_DIV, OPENING_COIN_BEAT,
   BOX_LEAD_BEATS, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, puntLeadSec, puntLeadRange,
 } = await import('../src/game/beatchart.js');
 const { worstAirtime, sweepCoinsAroundHole } = await import('../src/game/spawner.js');
@@ -20,7 +20,7 @@ const { STAGES } = await import('../src/data/stages.js');
 const { save } = await import('../src/engine/save.js');
 const { HEROES, heroShoots } = await import('../src/data/heroes.js');
 const { OBSTACLES, DRONE_COLUMN_ALTS, makeDroneColumn } = await import('../src/game/entities.js');
-const { BASE_JUMP_V, GRAVITY, HEAVY_GRAVITY_MULT, PLAYER_H, PLAYER_W, DUCK_IN_T }
+const { PLAYER_H, PLAYER_W, DUCK_IN_T, jumpHeightFor }
   = await import('../src/game/player.js');
 const { PUNT, puntPower } = await import('../src/game/punt.js');
 
@@ -349,8 +349,46 @@ const firstAction = Math.min(...obstacles.map((o) => o.actionBeat));
 const firstCoin = Math.min(...pickups.map((p) => p.actionBeat));
 assert(firstAction >= PIT_LANE_RUNWAY_BEATS,
   'no input-asking event is laid inside the runway a hole-cutting chart is given');
-assert(firstCoin === 1,
-  'but the runway is not bare — its coin slots are laid from one beat out');
+assert(firstCoin >= OPENING_COIN_BEAT && firstCoin === 3,
+  'the song\'s opening kick and snare play over an empty lane: the first coin is the first coin slot from beat 2');
+{
+  // Anchored before the downbeat (the song starting inside the level), the same
+  // rule holds against the song, not against the anchor.
+  const obs = [], pks = [];
+  const early = new BeatSpawner({ chart: beatCharts[1], bank: { bpm }, beatNow: () => -1.03,
+    playerWorldX: (x) => x + 56, lookaheadBeats: 7 });
+  early.fill(0, speed, obs, pks, () => 50);
+  assert(Math.min(...pks.map((p) => p.actionBeat)) >= OPENING_COIN_BEAT,
+    'a lane anchored during the count-down lays no coin before the opening beat');
+  // Mid-song the opening is long gone and coins still start one beat out.
+  const obs2 = [], pks2 = [];
+  const mid = new BeatSpawner({ chart: beatCharts[1], bank: { bpm }, beatNow: () => 40.2,
+    playerWorldX: (x) => x + 56, lookaheadBeats: 7 });
+  mid.fill(0, speed, obs2, pks2, () => 50);
+  const firstMid = Math.min(...pks2.map((p) => p.actionBeat));
+  assert(firstMid >= 42 && firstMid < 46,
+    'a lane anchored mid-song lays its first coin slot from one beat out (got ' + firstMid + ')');
+}
+{
+  // A cursor that has fallen inside the next beat re-anchors: the world stood
+  // still through the stage entrance while the clock ran, and the first live
+  // fill must not lay a coin nearer than a beat.
+  let stale = 0;
+  const obs = [], pks = [];
+  const sp = new BeatSpawner({ chart: beatCharts[1], bank: { bpm }, beatNow: () => stale,
+    playerWorldX: (x) => x + 56, lookaheadBeats: 7 });
+  sp.fill(0, speed, obs, pks, () => 50);
+  const cursorAfterFirst = sp.cursorBeat;
+  stale = 6.5;               // cursor 8 still a beat and a half ahead: no reset
+  sp.fill(0, speed, obs, pks, () => 50);
+  assert(sp.cursorBeat >= cursorAfterFirst, 'a cursor still a beat or more ahead of the clock is left alone');
+  stale = 7.3;               // cursor 8 now inside the next beat: re-anchored
+  const before = pks.length;
+  sp.fill(0, speed, obs, pks, () => 50);
+  const laid = pks.slice(before);
+  assert(laid.length > 0 && laid.every((p) => p.actionBeat >= stale + 1),
+    'a cursor inside the next beat re-anchors, so no coin is laid nearer than a beat from the hero');
+}
 const firstBar = obstacles.find((o) => o.chartSlot === 6);
 assert(firstBar && firstBar.actionBeat === 6, 'the first mandatory event is the chart\'s own next one');
 assert(Math.abs(firstBar.x - (firstBar.actionX
@@ -822,33 +860,39 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
 
 // ---- THE DUCK COLUMN --------------------------------------------------------
 // A lone drone was never a duck. Its box tops out at 20 and the shortest jump
-// in the cast reaches 46, so a duck slot could be answered with the jump button
-// by every hero in the game. A column of three reaches 50 and takes that away
-// from the two heaviest. These assertions are the arithmetic that number rests
-// on, checked against the real cast rather than restated as a constant.
+// in the cast reaches 51, so a duck slot could be answered with the jump button
+// by every hero in the game. The full column takes that away from ALL of them —
+// it used to split the cast at 50, and cannot any more, because compressing the
+// jump band left no gap in the table wide enough to hold a decision. These
+// assertions are the arithmetic that number rests on, checked against the real
+// cast rather than restated as a constant.
 {
-  // Feet-height at the top of a full jump, per hero. `heavy` is a GRAVITY
-  // multiplier rather than a jump one, which is why jumpHeightFor (which does
-  // not know about it) cannot be used here: Grumpos jumps at mult 1.0 and still
-  // only reaches 46.
-  const apex = (hero) => (BASE_JUMP_V * hero.jumpMult) ** 2
-    / (2 * GRAVITY * (hero.heavy ? HEAVY_GRAVITY_MULT : 1));
+  // Feet-height at the top of a full jump, per hero. jumpHeightFor is the whole
+  // answer now: jumpMult buys height directly and `heavy` is paid for in
+  // airtime, so there is no second arithmetic for this test to keep in step.
+  const apex = jumpHeightFor;
   const drone = OBSTACLES.drone;
   const top = DRONE_COLUMN_ALTS[DRONE_COLUMN_ALTS.length - 1] + drone.h;
   const heroes = Object.values(HEROES);
   const denied = heroes.filter((h) => apex(h) < top);
-  const cleared = heroes.filter((h) => apex(h) >= top);
-  assert(top === 50, `the column tops out at 50 (got ${top})`);
-  assert(denied.length === 2 && denied.every((h) => h.id === 'b33p' || h.id === 'grumpos'),
-    `exactly B-33P and Grumpos cannot jump the column (got ${denied.map((h) => h.id).join()})`);
+  assert(top === 68, `the column tops out at 68 (got ${top})`);
+  assert(denied.length === heroes.length,
+    `no hero in the cast can jump the column (${heroes.filter((h) => apex(h) >= top)
+      .map((h) => h.id).join() || 'none can'})`);
   // MARGIN, not a coincidence. A ceiling level with somebody's apex is a
-  // coin-flip on a pixel rather than a decision, so the column has to stand
-  // clear of the table in BOTH directions — see the rung note in entities.js
-  // for why that leaves 50 and nothing else.
+  // coin-flip on a pixel rather than a decision, and the tightest gap in the
+  // cast is now 6px — which is why the ceiling stands over the whole table
+  // instead of inside it. See the rung note in entities.js.
   assert(denied.every((h) => top - apex(h) >= 3),
-    'and it stands clear of their apex rather than level with it');
-  assert(cleared.every((h) => apex(h) - top >= 3),
-    'while everyone who clears it clears it by a real margin');
+    'and it stands clear of every apex rather than level with the top one');
+  // AND THE MIDDLE HEIGHT IS WHY THREE RUNGS ARE REFUSED. 52 lands inside a
+  // pixel of B-33P's apex and clear of everyone else's — a wall for one hero by
+  // less than a pixel. This is the arithmetic behind the validator's rule, not
+  // a restatement of it.
+  const threeTop = DRONE_COLUMN_ALTS[2] + drone.h;
+  const split = heroes.filter((h) => Math.abs(apex(h) - threeTop) < 3);
+  assert(split.length === 1 && split[0].id === 'b33p',
+    `three rungs (${threeTop}) sits on B-33P's apex — the coin-flip the validator refuses`);
 
   // THE GAPS ARE NOT DOORS. An airborne hero is PLAYER_H tall — jumpPressed
   // clears `ducking` and mid-air Down is a slide-slam, so the box never shrinks
@@ -870,8 +914,8 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
     && column.every((ob, i) => ob.alt === DRONE_COLUMN_ALTS[i]),
     'makeDroneColumn stacks one body per rung');
   // TWO RUNGS IS THE FORGIVING ONE, and the arithmetic says so rather than the
-  // comment: a pair stops short of every apex in the cast, so it reads as a
-  // stack without taking the jump away. That is what makes it the teach.
+  // comment: a pair stops well short of every apex in the cast, so it reads as
+  // a stack without taking the jump away. That is what makes it the teach.
   const pair = makeDroneColumn(400, 2);
   const pairTop = DRONE_COLUMN_ALTS[1] + drone.h;
   assert(pair.length === 2 && pair[0].alt === DRONE_COLUMN_ALTS[0],
@@ -935,8 +979,8 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
   // costs the beat and not the run. The three-rung column a bar later is the
   // one that cannot be jumped at all.
   const teach = beatCharts[2].events.filter((e) => e.action === 'duck');
-  assert(teach.length === 2 && teach[0].type === 'barrel' && teach[1].column === 3,
-    'stage 2 teaches with a barrel and answers with three rungs');
+  assert(teach.length === 2 && teach[0].type === 'barrel' && teach[1].column === 4,
+    'stage 2 teaches with a barrel and answers with the full column');
   // A HANDFUL, NOT A MECHANIC — on BOTH stages. Every loop was eleven barrels
   // across the finale, which made it read as the barrel stage rather than as
   // the stage where a barrel is one of three things being asked at once. Both
@@ -951,7 +995,7 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
   assert(finaleBarrels.every((e) => e.every < teach[0].every),
     `but a shorter one (${finaleBarrels.map((e) => e.every).join(',')} against ${teach[0].every})`);
   assert(beatCharts[3].events.filter((e) => e.action === 'duck')
-    .every((e) => e.column === 3 || e.type === 'barrel'),
+    .every((e) => e.column === 4 || e.type === 'barrel'),
     'and the finale asks for the slide on every duck beat it has');
   // NO LONE DRONES ON THE CABINET. One drone is a duck beat that can be
   // answered with the jump button for free, which is the whole thing this
@@ -1091,7 +1135,7 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
     return threw;
   };
   const BARREL = { action: 'duck', type: 'barrel' };
-  const DRONE = { action: 'duck', type: 'drone', column: 3 };
+  const DRONE = { action: 'duck', type: 'drone', column: 4 };
   const BAR = { action: 'jump', type: 'beatBar' };
   assert(spacing(BARREL, BAR), 'a jump one beat after a kick is refused');
   assert(spacing(DRONE, BARREL), 'and a kick one beat after a slide is refused');
@@ -1110,7 +1154,7 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
   let dronesSkip = false;
   try {
     validateBeatChart({ loopBeats: 4, events: [
-      { slot: 0, action: 'duck', type: 'drone', column: 3, every: 2 }, { slot: 1, action: 'coin' },
+      { slot: 0, action: 'duck', type: 'drone', column: 4, every: 2 }, { slot: 1, action: 'coin' },
       { slot: 2, action: 'coin' }, { slot: 3, action: 'coin' },
     ] }, { bpm });
   } catch { dronesSkip = true; }
@@ -1198,16 +1242,18 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
     try { validateBeatChart({ loopBeats: events.length, events }); } catch { threw = true; }
     assert(threw, why);
   };
-  refuses([{ slot: 0, action: 'jump', type: 'beatBar', column: 3 }, { slot: 1, action: 'coin' }],
+  refuses([{ slot: 0, action: 'jump', type: 'beatBar', column: 4 }, { slot: 1, action: 'coin' }],
     'the validator refuses a column on a jump slot');
-  refuses([{ slot: 0, action: 'duck', type: 'drone', column: 4 }, { slot: 1, action: 'coin' }],
+  refuses([{ slot: 0, action: 'duck', type: 'drone', column: 5 }, { slot: 1, action: 'coin' }],
     'and refuses a rung nobody measured a jump against');
+  refuses([{ slot: 0, action: 'duck', type: 'drone', column: 3 }, { slot: 1, action: 'coin' }],
+    'and refuses the three-rung coin-flip that used to be the gate');
   refuses([{ slot: 0, action: 'duck', type: 'drone', column: true }, { slot: 1, action: 'coin' }],
     'and refuses a column that will not say how tall it is');
   const ok = validateBeatChart({ loopBeats: 2, events: [
-    { slot: 0, action: 'duck', type: 'drone', column: 3 }, { slot: 1, action: 'coin' },
+    { slot: 0, action: 'duck', type: 'drone', column: 4 }, { slot: 1, action: 'coin' },
   ] });
-  assert(ok.events[0].column === 3, 'but carries an honest one through to the lane');
+  assert(ok.events[0].column === 4, 'but carries an honest one through to the lane');
 }
 
 // A PAUSE BESIDE A PIT LEAVES THE PIT THERE.

@@ -1,4 +1,29 @@
 // The eight heroes: stats + ability hooks consumed by one shared controller.
+//
+// `jumpMult` IS THE HEIGHT, and it is the only stat here that had to be told so
+// twice. It scales apex directly — x1.10 clears 10% more than the 57px base and
+// nothing more subtle than that — because player.js solves the launch speed
+// back out of it (jumpV). It used to BE the launch speed, and apex goes as v²,
+// so every number in this column meant something like double what it said: the
+// x0.90-to-x1.10 band you can read here spanned 46px to 69px in the air, a 1.51x
+// spread wearing a 1.22x label. If a new hero wants a taller jump, the number to
+// move is this one and the height moves with it.
+//
+// `heavy` costs AIRTIME, not height. Grumpos' ×1.25 gravity is compensated in
+// the launch, so his x1.00 reaches the same 57px everyone else's does and he
+// spends 0.64s in the air against their 0.71s. It used to come out of his apex
+// instead, which made him the shortest jumper in the game behind a stat line
+// that said average.
+//
+// THE CARD DOES NOT QUOTE THIS NUMBER, and that is deliberate rather than a
+// drift. `skillDesc` advertises CLEARANCE — the air left over the tallest thing
+// in the game you actually jump, an 18px bollard — so Clara's x1.10 reads
+// "JUMPS 15% HIGHER" and Lorenzo's x1.08 reads 12%. The first 18px of every
+// jump is spent getting level with the obstacle and buys nothing; only what is
+// above it is the stat the player feels, so a 5.7px gain is a bigger share of a
+// smaller and more honest number. tests/cast.js recomputes both strings from
+// OBSTACLES and the shipped physics, so neither can go stale the way the old
+// "JUMPS 15% HIGHER" did when Clara came down from x1.15 to x1.10.
 export const HEROES = [
   {
     id: 'lorenzo', name: 'LORENZO "WRENCHES" BRACCIANO', short: 'LORENZO', showFullName: true,
@@ -8,7 +33,7 @@ export const HEROES = [
     ability: { type: 'stomp', cooldown: 2.5, label: 'STOMP / SMASH', callout: 'STOMP + SMASH' }, stomp: true,
     joke: 'PRODUCES INCREASINGLY INAPPROPRIATE PLUMBING TOOLS.',
     skillLabel: 'HIGH JUMP',
-    skillDesc: 'JUMPS 10% HIGHER',
+    skillDesc: 'JUMPS 12% HIGHER',
     powerDesc: 'STOMPS OR SMASHES GROUND HAZARDS',
     abilityDesc: 'AIR STOMP OR GROUNDED WRENCH SMASH.',
     sidegrades: [
@@ -68,9 +93,12 @@ export const HEROES = [
     // jump did NOT come across (Kiko already carries it, and hosts the
     // tutorial lesson now); the float retired with her.
     //
-    // The cliffhanger jump is Lorenzo's trade taken further — 1.15 against
-    // his 1.10 — and the difference lives in data the same way the three
-    // shooters differ by shotSpeed/shotSize rather than by id checks.
+    // The cliffhanger jump is Lorenzo's trade taken further — x1.10 against
+    // his x1.08 — and the difference lives in data the same way the three
+    // shooters differ by shotSpeed/shotSize rather than by id checks. Both came
+    // down when jumpMult stopped scaling launch speed: the pair used to read
+    // 1.15/1.10 and BUY 75px/69px, which is the overstatement jumpV was
+    // inverted to end.
     id: 'clara', name: 'CLARA VAULT, MALL RAIDER', short: 'CLARA', subtitle: 'MALL RAIDER',
     tagline: 'CHAPTER ONE: SHE ARRIVED.',
     speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.10, maxJumps: 1, canFloat: false,
@@ -101,9 +129,24 @@ export const HEROES = [
     //
     // maxJumps 2 was Mochi's, and only the JUMP came across: canFloat stays
     // false. The second jump is her wall kick; the hover is somebody else's.
+    //
+    // x0.85 IS WHAT THE SECOND JUMP COSTS, and it is the lowest single hop in
+    // the cast on purpose. At x1.00 she reached 98u against Clara's 63 — the
+    // best vertical in the game, in a column where her card asked for nothing —
+    // so the double was pure upside and every hop was free. At x0.85 her first
+    // jump clears 48u, eight under B-33P's, and the pair still stack to 83u:
+    // she keeps the highest ceiling in the cast by 21u and now has to spend
+    // something to reach it. The second jump is a TOOL rather than a bonus,
+    // which is the shape "JUMPS TWICE" was always describing.
+    //
+    // The floor was checked, not guessed. The tallest thing anyone jumps OVER
+    // is the 18px bollard (tests/cast.js), and the spawner's declared worst
+    // case is a deliberately pessimistic 37u apex nobody in the cast is; 48u
+    // clears both with room. Her airtime lands at 0.656s, still above Grumpos'
+    // 0.636s, so the shortest jumper is not also the worst hang time.
     id: 'kiko', name: 'KIKO, JURISDICTION PENDING', short: 'KIKO', subtitle: 'JURISDICTION PENDING',
     tagline: 'NOBODY REPORTED IT. I NOTICED.',
-    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.0, maxJumps: 2, canFloat: false,
+    speedMult: 1.0, scoreMult: 1.0, jumpMult: 0.85, maxJumps: 2, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
     // Slower and fatter than B-33P's lemon, and on twice his cooldown — his
     // recharge is his whole skill, so the two shooters are not the same weapon.

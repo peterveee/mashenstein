@@ -43,7 +43,8 @@ import {
   b33pTitleShotPose,
 } from '../src/sprites/toons.js';
 import {
-  getStylePack, LCD_GORILLA_TONE_STYLES,
+  getStylePack, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS,
+  LCD_GORILLA_NOSTRIL_STYLES,
   lcdGorillaHeadPos,
 } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
@@ -60,8 +61,8 @@ import {
   FINISH_MARKER_BY_ID, plungerStandY, PLUNGER_CX,
 } from '../src/game/finishMarker.js';
 import {
-  PLAYER_X, GRAVITY, BASE_JUMP_V, HEAVY_GRAVITY_MULT, AIR_JUMP_SCALE,
-  VARIABLE_JUMP_CUT,
+  PLAYER_X, AIR_JUMP_SCALE, VARIABLE_JUMP_CUT,
+  jumpV, gravityFor, jumpHeightFor, airtimeFor,
 } from '../src/game/player.js';
 import { drawBambooShoot } from '../src/engine/sprites.js';
 // Roads are built by the SAME function the run builds them with, off the SAME
@@ -138,6 +139,9 @@ const HIDDEN_GALLERY_SECTIONS = new Set([
   'finish-cling',
   'spring-pad-bakeoff',
   'death-eyes-bakeoff',
+  // SETTLED 3 Sep 2026: N7 — close enough to break the eye-column echo, with
+  // 0.9px of air left between the two nostril ellipses at panel scale.
+  'gorilla-nostril-bakeoff',
   // Rounds 1-2 of the animal-hero bake-off, SETTLED 2 Sep 2026: species went
   // to the red panda (the fennec lost off-canvas — Sonic 2 ships a fox
   // sidekick, so a fox in this slot is more on the nose than the hedgehog it
@@ -900,64 +904,58 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 
 // ------------------------------------------------- jump height, measured
 //
-// THE MULTIPLIER IS NOT THE HEIGHT. jumpMult scales LAUNCH VELOCITY
-// (player.js: `this.vy = BASE_JUMP_V * ... * this.hero.jumpMult`), and apex is
-// v^2/2g, so the height goes as its SQUARE: Clara's 1.10 buys 21% more air, not
-// 10%. Every number below is computed from the shipped constants rather than
-// quoted, so this section cannot drift from the physics the way the prose in
-// run.js and entities.js already has.
+// Reads its numbers from player.js's own jumpHeightFor/airtimeFor rather than
+// re-deriving them, which is the only reason this section survived jumpMult
+// changing meaning underneath it: apex is now a straight 56.9 x jumpMult and
+// `heavy` cancels out of height entirely, and nothing here had to know that.
 //
-// Gravity is per-hero, and that is the fact a table of multipliers cannot show:
-// Grumpos is `heavy`, so HEAVY_GRAVITY_MULT sits under him on the way UP as
-// well as down, and at a nominal jumpMult of 1.0 he clears less than B-33P does
-// at 0.90. He is the shortest jumper in the cast and his stat line says he is
-// average.
-//
-// Deliberately NOT drawn through player.js's own jumpHeightFor(): that helper
-// divides by bare GRAVITY and ignores `heavy`, so it reports 57 for Grumpos
-// against a real apex of 46. The three closed forms here are the honest ones.
+// The three rungs are the same arc read at three points. The pair worth putting
+// side by side is the FULL and the SHORT HOP: the variable-jump cut clamps to a
+// CONSTANT speed rather than a share of the hero's own launch, so a jab of the
+// button gives the whole cast very nearly the same hop no matter what they paid
+// for in jumpMult. The stat only separates them once the button is held.
 {
-  const gravityOf = (h) => GRAVITY * (h.heavy ? HEAVY_GRAVITY_MULT : 1);
-  const launchOf = (h) => BASE_JUMP_V * h.jumpMult;
-  const apexOf = (h) => (launchOf(h) ** 2) / (2 * gravityOf(h));
-  // The second jump is spent at the top of the first, so the reaches stack.
-  const doubleApexOf = (h) => apexOf(h) + ((launchOf(h) * AIR_JUMP_SCALE) ** 2) / (2 * gravityOf(h));
+  const apexOf = (h) => jumpHeightFor(h);
+  // AIR_JUMP_SCALE is a SPEED scale and deliberately not folded into jumpMult's
+  // height contract (player.js jumpV), so the second jump adds 0.85^2 of the
+  // first — a reach, not a second arc. Spent at the top, so the two stack.
+  const doubleApexOf = (h) => apexOf(h) * (1 + AIR_JUMP_SCALE ** 2);
   // Speed still on the clock at a given height on the way up — feeds the
-  // painter's air stretch, so a hero mid-rise is drawn stretched exactly as far
-  // as the run would stretch him at that point in the arc.
-  const riseVyAt = (h, y) => Math.sqrt(Math.max(0, launchOf(h) ** 2 - 2 * gravityOf(h) * y));
+  // painter's air stretch, so a hero caught mid-rise is drawn stretched exactly
+  // as far as the run would stretch him at that point in the arc.
+  const riseVyAt = (h, y) => Math.sqrt(Math.max(0, jumpV(h) ** 2 - 2 * gravityFor(h) * y));
   // Variable jump: letting go while still rising above VARIABLE_JUMP_CUT snaps
   // the climb to that speed, so the hop is whatever was banked before release
   // plus the little the clamp still carries.
   const hopOf = (h, hold) => {
-    const v = launchOf(h), g = gravityOf(h);
+    const v = jumpV(h), g = gravityFor(h);
     const tc = Math.min(hold, v / g);       // releasing past the apex changes nothing
     const cut = Math.min(v - g * tc, VARIABLE_JUMP_CUT);
     return (v * tc - 0.5 * g * tc * tc) + (cut * cut) / (2 * g);
   };
 
-  // A human tap, not a one-frame theoretical minimum. The floor matters:
-  // because the clamp is a CONSTANT speed rather than a share of the hero's own
-  // launch, a jab of the button gives every hero the same ~2u hop no matter
-  // what they paid for in jumpMult. The stat only starts to separate them once
-  // the button is held, which is what this rung is here to show.
+  // A human tap, not a one-frame theoretical minimum.
   const TAP = 0.1;
 
   const ROWS = Object.keys(HERO_BY_ID)
     .map((id) => ({ id, hero: HERO_BY_ID[id], apex: apexOf(HERO_BY_ID[id]) }))
     .sort((a, b) => b.apex - a.apex);
 
-  const COL = 40, GY = 106, TW = COL * ROWS.length, TH = 128;
+  // LEFT is the gutter the outboard height labels hang in; without it the
+  // tallest hero's reading ran off the left edge of the tile.
+  const COL = 44, LEFT = 26, GY = 112, TW = LEFT + COL * ROWS.length, TH = 146;
   const KIKO_MAX = doubleApexOf(HERO_BY_ID.kiko);
 
   const grid = section('jump-heights', 'Heroes — jump height, measured',
     'Every hero at the same three points of one jump, sorted tallest first, on a 10u grid. '
-    + 'Heights are computed live from BASE_JUMP_V, GRAVITY, HEAVY_GRAVITY_MULT, AIR_JUMP_SCALE '
-    + 'and VARIABLE_JUMP_CUT, so the picture cannot quote a number the physics has stopped using. '
-    + 'jumpMult scales LAUNCH SPEED and apex goes as its square — Clara\'s x1.10 is 21% more air, '
-    + 'not 10%. Grumpos is the one to look at: at a nominal x1.00 he is the SHORTEST jumper in the '
-    + 'cast, because `heavy` puts 1.25x gravity under him on the way up as well as down. '
-    + 'The dashed rule is each hero\'s own full apex, for the two reduced rungs to be read against.');
+    + 'Heights come from player.js\'s own jumpHeightFor(), so the picture cannot quote a number '
+    + 'the physics has stopped using. jumpMult is a HEIGHT multiplier: apex is a flat '
+    + '56.9u x jumpMult, and `heavy` cancels out of it — Grumpos reaches exactly what every '
+    + 'other x1.00 reaches and pays for the weight in airtime (0.64s against 0.71s) instead. '
+    + 'The dashed rule is each hero\'s own full apex, for the two reduced rungs to be read '
+    + 'against. Note how little the SHORT HOP separates the cast: the variable-jump cut clamps '
+    + 'to a fixed speed, not to a share of the hero\'s launch, so a tapped jump is nearly the '
+    + 'same height for everyone.');
 
   // One reading of the arc. `heightOf` says how high off the ground each hero is
   // caught; `rising` decides whether the painter gets a live vy (mid-climb) or
@@ -970,20 +968,22 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
       for (let y = 10; y <= 100; y += 10) {
         ctx.beginPath(); ctx.moveTo(0, GY - y + 0.25); ctx.lineTo(TW, GY - y + 0.25); ctx.stroke();
       }
-      ctx.fillStyle = '#3a9c48'; ctx.fillRect(0, GY, TW, 3);
-      ctx.fillStyle = '#2a7038'; ctx.fillRect(0, GY + 3, TW, TH - GY - 3);
+      ctx.fillStyle = '#3a9c48'; ctx.fillRect(0, GY, TW, 2);
+      ctx.fillStyle = '#12121c'; ctx.fillRect(0, GY + 2, TW, TH - GY - 2);
 
       if (showKiko) {
         ctx.strokeStyle = 'rgba(120,200,240,.5)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 0.5;
         ctx.beginPath(); ctx.moveTo(0, GY - KIKO_MAX); ctx.lineTo(TW, GY - KIKO_MAX); ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillStyle = 'rgba(150,215,245,.9)';
-        ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
-        ctx.fillText(`KIKO, BOTH JUMPS STACKED — ${KIKO_MAX.toFixed(0)}u`, 2, GY - KIKO_MAX - 2);
+        // Right-aligned over Kiko's own column: at the left end the line runs
+        // under the tallest hero and the label landed on top of Clara.
+        ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'right';
+        ctx.fillText(`KIKO, BOTH JUMPS STACKED — ${KIKO_MAX.toFixed(0)}u`, TW - 3, GY - KIKO_MAX - 2.5);
       }
 
       ROWS.forEach((r, i) => {
-        const cx = i * COL + COL / 2;
+        const cx = LEFT + i * COL + COL / 2;
         const y = heightOf(r);
         // Where a full held jump would have reached, so a reduced rung is read
         // against what was given up rather than in isolation.
@@ -993,29 +993,38 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
           ctx.setLineDash([]);
         }
         // The measure line from the ground to the feet: the height IS the subject.
-        ctx.strokeStyle = 'rgba(255,220,120,.45)'; ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.moveTo(cx - 15.75, GY); ctx.lineTo(cx - 15.75, GY - y); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx - 18, GY - y + 0.25); ctx.lineTo(cx - 13, GY - y + 0.25); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,220,120,.28)'; ctx.lineWidth = 0.5;
+        ctx.setLineDash([1.5, 2]);
+        ctx.beginPath(); ctx.moveTo(cx - 16.75, GY); ctx.lineTo(cx - 16.75, GY - y); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.strokeStyle = 'rgba(255,220,120,.7)';
+        ctx.beginPath(); ctx.moveTo(cx - 19, GY - y + 0.25); ctx.lineTo(cx - 14.5, GY - y + 0.25); ctx.stroke();
 
         drawToon(ctx, r.id, pose('jump', 0, {
           grounded: false, vy: rising ? riseVyAt(r.hero, y) : 0,
         }), cx, GY - y, HERO_DRAW_H);
 
-        ctx.textAlign = 'center';
         ctx.fillStyle = 'rgba(255,220,120,.95)';
         ctx.font = '5px ui-monospace, monospace';
-        ctx.fillText(`${y.toFixed(0)}u`, cx, GY - y - 2);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${y.toFixed(0)}u`, cx - 20, GY - y + 2);
+        ctx.textAlign = 'center';
         ctx.fillStyle = '#e8e8f0';
         ctx.font = '4px ui-monospace, monospace';
         ctx.fillText(r.hero.short, cx, GY + 10);
         ctx.fillStyle = 'rgba(232,232,240,.6)';
-        ctx.fillText(`x${r.hero.jumpMult.toFixed(2)}${r.hero.heavy ? ' HEAVY' : ''}`, cx, GY + 16);
+        ctx.fillText(`x${r.hero.jumpMult.toFixed(2)}`, cx, GY + 16);
+        ctx.fillText(`${airtimeFor(r.hero).toFixed(2)}s${r.hero.heavy ? ' HEAVY' : ''}`, cx, GY + 22);
+        if (r.hero.maxJumps > 1) {
+          ctx.fillStyle = 'rgba(150,215,245,.95)';
+          ctx.fillText(`${r.hero.maxJumps} JUMPS`, cx, GY + 28);
+        }
       });
     }, { animated: false, hires: 6, wide: true, world: true });
   }
 
   jumpTile('Full jump — held to the apex',
-    'vy = BASE_JUMP_V x jumpMult, apex = v&sup2;/2g<br>the top of an uncut, fully held jump',
+    'apex = 56.9u x jumpMult, heavy cancels out<br>the top of an uncut, fully held jump',
     (r) => r.apex, false, false, true);
 
   jumpTile('Half jump — 50% of each hero\'s own apex',
@@ -1024,7 +1033,7 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 
   jumpTile(`Short hop — the variable-jump cut, ${(TAP * 1000).toFixed(0)}ms tap`,
     'released while rising, vy clamped to VARIABLE_JUMP_CUT<br>'
-    + 'the clamp is a fixed speed, so the cast compresses hard here',
+    + 'a fixed clamp, so the cast barely separates here',
     (r) => hopOf(r.hero, TAP), false, true, false);
 }
 
@@ -1381,8 +1390,9 @@ function propNominalSize(name) {
     + 'never scrolls the skyline, previews a chart action, or enters the calm strip beside it. The panel now also '
     + 'HEARS the song: each facade is a VU meter on one band of the spectrum, billboards wash pale on a drum hit, '
     + 'the plume breathes with the level, the transmitter carries further on treble, and the light warms a '
-    + 'little across four phases of a run — with stage 2 growing a working city (searchlight, viaduct '
-    + 'train, window washer, and the helicopter that repossesses a billboard) as it goes. With no analyser the '
+    + 'little across four phases of a run — with stage 2 growing a working city (searchlight, a monorail '
+    + 'above the whole skyline that stops at the station tower\'s deck, '
+    + 'window washer, and the helicopter that repossesses a billboard) as it goes. With no analyser the '
     + 'whole reactive layer stands down and the authored panel plays exactly as it always did. The sky analyser '
     + 'belongs to the JUKEBOX alone (CLOCK-IN CITY, which draws this very panel): clipped behind the skyline it '
     + 'read as banding rather than a meter in a run, so a stage keeps its sky clear. Each tile keeps an '
@@ -1397,6 +1407,42 @@ function propNominalSize(name) {
       }, { animated: false });
     }
   }
+}
+
+// ------------------------------------------- 7b2. the rooftop gorilla's faces
+// PRODUCTION REFERENCE, not a bake-off: these are the faces the panel actually
+// draws, and the page is where you check that a change to one of them did not
+// quietly move another. They share every part — two brows, two eyes, a muzzle,
+// two nostrils — so a pixel moved on the muzzle is a pixel moved on all seven.
+//
+// Each is the REAL panel with only the dev-only `gorillaExpr` changed, cropped
+// to his head, so a face is judged in the palette and at the size it ships at.
+// SMILE is his resting face; the rest come round on the rotation (see
+// lcdGorillaMood) except SAD and STARTLED, which are events — SAD is the
+// plumber on his girder, STARTLED is the plane taking his barrel.
+{
+  const grid = section('gorilla-expressions', 'Rooftop gorilla — every expression',
+    'The seven faces the panel draws, on the real screen with only the expression changed. They are '
+    + 'built from the same parts, so this page is the check that a change to one did not move another: '
+    + 'the muzzle, the nostrils and the eye whites are shared by all seven. Panel scale first — the size '
+    + 'he is actually seen at, from a street away — then the head at 6x. SMILE is his resting face and '
+    + 'the rest come round on a rotation, except SAD and STARTLED, which are events: the little man '
+    + 'reaching his girder, and the plane taking the barrel out of his hands.'
+    + LCD_GORILLA_EXPRESSIONS.map((k) => ` · ${k.name}: ${k.note}`).join(''));
+  const cab = CABINETS.find((c) => c.id === 'rhythm');
+  const style = getStylePack('lcd', {});
+  const STAGE = 3;                  // the plain rooftop: no tower in the crop
+  const head = lcdGorillaHeadPos(STAGE);
+  const faceTile = (name, sub, expr, tw, th, hires) => {
+    tile(grid, name, sub, tw, th, (ctx) => {
+      ctx.save();
+      ctx.translate(Math.round(tw / 2 - head.x), Math.round(th / 2 - (head.y + 2)));
+      style.bg(ctx, 0, 0, cab, 1000, { stageIndex: STAGE, beat: 0, gorillaExpr: expr });
+      ctx.restore();
+    }, { hires });
+  };
+  for (const k of LCD_GORILLA_EXPRESSIONS) faceTile(k.name, 'panel scale', k.id, 44, 42, 3);
+  for (const k of LCD_GORILLA_EXPRESSIONS) faceTile(k.name, 'the head · 6x', k.id, 30, 28, 6);
 }
 
 // ------------------------------------------------------- 7c. raised routes
@@ -5608,6 +5654,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 //   armpit / ears    no change — SHIPS and the current ear; LCD_GORILLA_PIT_STYLES, LCD_GORILLA_EARS
 //   shoulder         0.6, swept 1.0 to 0.5; LCD_GORILLA_SHOULDER_ALPHAS
 //   the crest        LEAN dropped 0.6px, swept on four dials; LCD_GORILLA_SPIKE_STYLES
+//   shoulder shape   WIDE 6.0 — 6 x 5.25, off the jaw; LCD_GORILLA_SHOULDER_SHAPE_STYLES
 {
   const cab = CABINETS.find((c) => c.id === 'rhythm');
   const style = getStylePack('lcd', {});
@@ -5624,6 +5671,36 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   };
   const FINALE = 3; // the finale's plain rooftop: no plane, so no startle to fight
   const head = lcdGorillaHeadPos(FINALE);
+  // ---- how close the nostrils sit, crossed with expressions
+  {
+    const EXPRESSIONS = ['smile', 'sad', 'sly', 'startled'];
+    const grid = section('gorilla-nostril-bakeoff', 'Rooftop gorilla — nostril spacing',
+      'SETTLED 3 SEP 2026: N7 SHIPS. His eye centres sit at ±3.5px and the old nostrils at ±2.5px, which made the '
+      + 'pairs feel vertically aligned even though they are not mathematically identical. Eleven spacings test '
+      + 'where that echo stops; the last one deliberately touches as a one-mark guardrail. Every candidate is drawn '
+      + 'by the real panel painter. The first row is the honest panel-scale smile; then each spacing gets the '
+      + 'same four-expression strip at 6x so a winner cannot be tuned to one mouth or brow. '
+      + '<b>Only nostril x changes:</b> size, height, muzzle, eyes, brows and mouths stay fixed. '
+      + LCD_GORILLA_NOSTRIL_STYLES.map((k) => ` · ${k.name}: ${k.note}`).join(''));
+
+    for (const k of LCD_GORILLA_NOSTRIL_STYLES) {
+      panelTile(grid, k.name, `panel scale · smile · ${k.note}`, FINALE, head.x, head.y + 2, 44, 42,
+        () => ({ beat: 2, gorillaExpr: 'smile', gorillaNostrils: k.id }), { hires: 3 });
+    }
+    for (const k of LCD_GORILLA_NOSTRIL_STYLES) {
+      tile(grid, `${k.name} · expressions`, `${EXPRESSIONS.join(' · ')} · ${k.note}`,
+        34 * EXPRESSIONS.length, 34, (ctx) => {
+          EXPRESSIONS.forEach((expr, i) => {
+            ctx.save();
+            ctx.translate(Math.round(34 * (i + 0.5) - head.x), Math.round(17 - (head.y + 2)));
+            style.bg(ctx, 0, 0, cab, 1000, {
+              stageIndex: FINALE, beat: 2, gorillaExpr: expr, gorillaNostrils: k.id,
+            });
+            ctx.restore();
+          });
+        }, { hires: 6, wide: true });
+    }
+  }
   // ---- how the fur is toned, which is the one open question
   {
     const TOWER = 1;
@@ -5676,7 +5753,17 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       (t) => ({ beat: Math.floor(t * 2) }), { hires: 3, animated: true, wide: true });
   }
 
+
 }
+
+// -------------------------------- the monorail bake-off (SETTLED, retired)
+// Three rounds on 3 Sep 2026: seven cuts of stage 2's viaduct service, then
+// the stop's tower tapered out into a deck, then three station kits. Peter
+// took STATION STOP + LAMPS + SPARKS + PASSENGERS with the full kit (canopy,
+// clock, platform lamps), then un-tapered the tower — a plain three-wide
+// facade and a three-car service instead — and it is now simply how the LCD
+// pack draws the service: see "the service" in src/engine/stylePacks/index.js.
+// The seam and the losers were deleted, not hidden.
 
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.

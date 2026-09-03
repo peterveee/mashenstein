@@ -16,6 +16,7 @@ import {
   LOOP, loopPoint, loopBodyPoint, loopCoinSpots, startLoop, stepLoop, loopSpeed, loopExitVy,
 } from '../src/game/loop.js';
 import { PLAYER_W, PLAYER_H, PLAYER_X, PLAYER_SPRITE_W } from '../src/game/player.js';
+import { SPEED_RAMP_CAP } from '../src/game/layout.js';
 import { PICKUPS, makeObstacle } from '../src/game/entities.js';
 
 let failed = false;
@@ -439,18 +440,24 @@ function runIn(guard = () => false, max = 600) {
 
   // And nothing the lane lays of its own accord survives there either, watched
   // all the way in rather than sampled at one moment.
+  // The run-up is a reaction time at the top of the speed ramp — the run's own
+  // number (clearLoopLane), asked of the run rather than rounded by hand: a
+  // 60 here against a 58 there left a 2px band the test policed and the sweep
+  // did not own, and a cactus stood in it every seventh run.
+  const runUp = run.spawner.react * run.baseSpeed() * SPEED_RAMP_CAP;
   let intruder = null;
   const started = runIn(() => {
     if (!intruder) {
       const cx = pad.x + pad.w / 2;
       intruder = run.obstacles.find((o) => o.live && !o.def.isLoop
         && (o.def.action !== 'none' || o.def.isGap)
-        && o.x + o.w > pad.x - 60 && o.x < cx + LOOP.r + 90) || null;
+        && o.x + o.w > pad.x - runUp && o.x < cx + LOOP.r + 90) || null;
     }
     return run.loop && !run.loop.pending;
   });
   assert(started, 'running over the pad starts the ride');
-  assert(!intruder, `nothing is ever laid in the ring's ground${intruder ? ` (a ${intruder.type} was)` : ''}`);
+  assert(!intruder, `nothing is ever laid in the ring's ground${intruder
+    ? ` (a ${intruder.type} was, at ${Math.round(intruder.x - pad.x)}..${Math.round(intruder.x + intruder.w - pad.x)} from the pad)` : ''}`);
   // The pad paid on contact, and it is still paying: a boost that drains while
   // he is on the rails would have him enter fast and leave at a crawl.
   assert(run.speedBoost > 0, 'the pad has already boosted him by the time the ride starts');

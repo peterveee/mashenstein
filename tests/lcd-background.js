@@ -5,9 +5,11 @@
 import { installDom } from './dom-stub.js';
 installDom();
 
-const { getStylePack, drawLCDPanel, lcdChuteScreenX, LCD_CHUTE_BEATS, LCD_DEFAULT_ROAD_RISE,
+const { getStylePack, drawLCDPanel, lcdChuteScreenX, LCD_CHUTE_CELLS, LCD_CHUTE_BEATS, LCD_CHUTE_LEAD_BEATS,
+  LCD_DEFAULT_ROAD_RISE,
   LCD_ROAD_INK } = await import('../src/engine/stylePacks/index.js');
 const { CABINETS } = await import('../src/data/cabinets.js');
+const { bank: RHYTHM_SONG } = await import('../src/data/songs/rhythm.js');
 const { BEAT_RIBBON_BOTTOM } = await import('../src/game/hud.js');
 
 let failed = false;
@@ -115,6 +117,7 @@ const LIT = '#d35b43';
 const WINDOW_OFF = 'rgba(60,63,69,0.14)';
 const PRINT = 'rgba(60,63,69,0.72)';
 const PRINT_SOFT = 'rgba(80,85,92,0.48)';
+const CLOUD_INK = 'rgba(60,63,69,0.55)';
 const PANEL_LIT = '#dce49a';
 const INK = '#3c3f45';
 // Imported, never mirrored: the panel is authored against the camera's own
@@ -251,6 +254,17 @@ for (const stage of [1, 3]) {
   `stage ${stage} gorilla uses curved anatomy, layered facial planes and articulated hands (${ellipses} ellipses, ${curves} curves)`);
 }
 
+// Peter picked N7 from the nostril-spacing sheet: the production face must be
+// exactly that candidate, not merely another close-looking position, and the
+// old eye-aligned spacing must stay a genuinely different loser.
+const nostrilDefault = fingerprint(background(3, 2, {}, 0, 0, { gorillaExpr: 'smile' }));
+const nostrilN7 = fingerprint(background(3, 2, {}, 0, 0,
+  { gorillaExpr: 'smile', gorillaNostrils: 'n7' }));
+const nostrilOld = fingerprint(background(3, 2, {}, 0, 0,
+  { gorillaExpr: 'smile', gorillaNostrils: 'n0' }));
+assert(nostrilDefault === nostrilN7, 'the rooftop gorilla ships the chosen N7 nostril spacing');
+assert(nostrilDefault !== nostrilOld, 'and no longer wears the old eye-aligned spacing');
+
 // The bound is lcdLightFloor's own definition, not a copy of what it happened
 // to evaluate to: a caller outside a run lights no lower than
 // GROUND_Y - (the pack's default rise + a window). It was written 204 — the
@@ -275,6 +289,38 @@ assert(cloudWispXs(background(1, 0)).length > 0
 assert(fingerprint(cloudWispXs(background(1, 8, { reducedMotion: true })))
   === fingerprint(cloudWispXs(background(1, 0, { reducedMotion: true }))),
 'reduced motion parks the drifting sky');
+
+// Rhythm 2's clouds are background, not traffic. Each cloud is the panel's
+// unique closed ten-point path; all three must finish before the baked skyline
+// begins, which also necessarily puts them behind the later viaduct and train.
+const cloudStrokeIndexes = (ops) => {
+  const out = [];
+  for (let i = 0; i < ops.length - 12; i++) {
+    if (ops[i][0] !== 'beginPath' || ops[i + 1][0] !== 'moveTo') continue;
+    if (!ops.slice(i + 2, i + 11).every((op) => op[0] === 'lineTo')) continue;
+    if (ops[i + 11][0] === 'closePath' && ops[i + 12][0] === 'stroke') out.push(i + 12);
+  }
+  return out;
+};
+for (const stage of [1, 2, 3]) {
+  const ops = background(stage, 12, {}, 0, 0, { progress: 0.3 });
+  const clouds = cloudStrokeIndexes(ops);
+  assert(clouds.length === 3 && clouds.every((i) => ops[i][1] === CLOUD_INK),
+    `stage ${stage} paints every cloud in the shared lighter graphite`);
+}
+{
+  const ops = background(2, 12, {}, 0, 0, { progress: 0.3 });
+  const clouds = cloudStrokeIndexes(ops);
+  // Headless tests paint the bake straight through, so its first facade wash
+  // is the skyline boundary (a browser replaces that work with one drawImage).
+  const skyline = ops.findIndex((op) => op[0] === 'fillRect'
+    && op[1] === 'rgba(60,63,69,0.07)');
+  const rail = ops.findIndex((op) => op[0] === 'fillRect' && op[1] === INK
+    && op[2] === 0 && op[4] === 480 && op[5] === 1);
+  assert(clouds.length === 3 && clouds.every((i) => ops[i][2] === 1)
+    && Math.max(...clouds) < skyline && skyline < rail,
+    `stage 2 paints every cloud behind the skyline, viaduct and monorail (${clouds.join(', ')} < ${skyline} < ${rail})`);
+}
 
 // Stage 1's DONKEY KONG tower: an eight-cell ghosted barrel path across two
 // girder floors with two lit cells walking it, the big rooftop gorilla
@@ -388,6 +434,33 @@ for (const stage of [1, 2, 3]) {
     'the train joins the city in the second phase rather than opening with it');
   assert(fingerprint(train(12, 0.3)) !== fingerprint(train(13, 0.3)),
     'and it crosses a car-length per heard beat');
+  // The washer's 4x4 skin face is unique at this x on stage 2. Sixteen beats
+  // visit all eight window rows in order: up and down across four bars. The
+  // painter is phased one beat ahead so its visible turnaround lands on the
+  // kick rather than the following snare; spare phrase beats stay at bottom.
+  const washerY = (beat) => background(2, beat).find((op) => op[0] === 'fillRect'
+    && op[1] === '#f2c9a0' && op[2] === 323 && op[4] === 4 && op[5] === 4)?.[3];
+  const washerTrip = Array.from({ length: 17 }, (_, beat) => washerY(beat));
+  assert(washerTrip.every(Number.isFinite)
+    && washerTrip.slice(1, 7).every((y, i) => y < washerTrip[i])
+    && washerTrip.slice(7, 14).every((y, i) => y > washerTrip[i + 6])
+    && washerTrip[13] === washerTrip[14]
+    && washerTrip[14] === washerTrip[15]
+    && new Set(washerTrip.slice(0, 16)).size === 8
+    && washerTrip[0] === washerTrip.at(-1),
+  `the window washer visits eight window rows and returns every four bars (${washerTrip.join(', ')})`);
+  assert(RHYTHM_SONG.kick[(7 * 4) % RHYTHM_SONG.kick.length]
+    && washerTrip[7] > washerTrip[6],
+  'the washer turns downward one painter beat earlier on the kick');
+  const washerHat = (ops, x, y, w) => ops.some((op) => op[0] === 'fillRect'
+    && op[1] === PANEL_LIT && op[2] === x && op[3] === y && op[4] === w && op[5] === 1);
+  assert(washerHat(background(2, 0), 322, washerTrip[0], 6),
+    'the working window washer wears a bright hard hat with a readable brim');
+  const tippedOps = background(2, 0, {}, 0, 0, { progress: 0.9 });
+  const tippedFaceY = tippedOps.find((op) => op[0] === 'fillRect'
+    && op[1] === '#f2c9a0' && op[2] === 319 && op[4] === 3 && op[5] === 3)?.[3];
+  assert(Number.isFinite(tippedFaceY) && washerHat(tippedOps, 318, tippedFaceY, 5),
+    'and keeps the hard hat when the late-run cradle tips');
   // THE RAIL IS MASONRY AND THE TRAIN IS TRAFFIC. The viaduct's girder is a
   // full-width soft bar; it stands in the opening phase, before any service
   // has run, and it is still standing on the beats between services.
@@ -396,8 +469,21 @@ for (const stage of [1, 2, 3]) {
       && op[2] === 0 && op[4] === 480 && op[5] === 1);
   assert(girder(12, 0).length === 1 && girder(12, 0.3).length === 1,
     'the viaduct stands from the opening phase, with or without a train on it');
-  assert(train(34, 0.3).length === 0 && girder(34, 0.3).length === 1,
+  // Beat 40: the service has stopped at the station (beats 18-24) and run
+  // off the left edge; the lap has a dozen quiet beats before it comes round.
+  assert(train(40, 0.3).length === 0 && girder(40, 0.3).length === 1,
     'and the rail is still there on the beats the service is not');
+  // THE STOP. The three cars halt centred on the station's facade (x 188,
+  // 51 wide): nose at 177, creeping the last five pixels in on beat 17, held
+  // through beat 24, and away at a car-length a beat from 25. The doorway is
+  // lit only while it stands.
+  const noseX = (beat) => Math.min(...train(beat, 0.3).map((op) => op[2]));
+  assert(noseX(16) === 182 && noseX(17) === 177 && noseX(20) === 177 && noseX(24) === 177 && noseX(25) === 151,
+    `the service creeps to its mark and stands for the dwell (${noseX(16)}, ${noseX(17)}, ${noseX(20)}, ${noseX(24)}, ${noseX(25)})`);
+  const doorway = (beat) => background(2, beat, {}, 0, 0, { progress: 0.3 })
+    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(220,228,154,0.7)' && op[4] === 8 && op[5] === 8);
+  assert(doorway(22).length === 3 && doorway(12).length === 0 && doorway(17).length === 0,
+    'and the doors stand open only while it does');
   // THE ROOF CARRIES ONE THING. Stage 2 hangs an equalizer bank on every
   // building a billboard is not already standing on, and every crown this
   // skyline draws is centred and short enough to land inside the bank's
@@ -423,7 +509,9 @@ for (const stage of [1, 2, 3]) {
   const meterCells = background(2, 4, {}, 0, 0, { progress: 0.3 })
     .filter(([kind, fill, , , fw, fh]) => kind === 'fillRect' && fw === 3 && fh === 3
       && (fill === 'rgba(211,91,67,0.82)' || fill === 'rgba(80,85,92,0.24)'));
-  assert(meterCells.length >= 6 * 6 * 2, `the equalizer banks still stand (${meterCells.length} cells)`);
+  // Four banks now, not six: the station's roof is its deck and the washer's
+  // roof is bare (bareRoofs) — the roof carries one thing.
+  assert(meterCells.length >= 6 * 2 * 4, `the equalizer banks still stand (${meterCells.length} cells)`);
 
   // THE RAIL IS ONE LINE AND NOTHING ELSE. It carried a deck box and piers;
   // a pier that stops in mid-air bears on nothing, and piers carried to the
@@ -508,12 +596,28 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // 2px in the same lit cream — are parts of a 4 or an 8 on the roof the hero
   // runs under. The two are nowhere near each other on the panel, so the cheap
   // separation is the right one: nothing below the tallest roof is a plane.
+  // ...AND THE BOARD IS CUT OUT BY ITS OWN PANEL. SKYLINE_TOP alone hid the
+  // digits while the counting roof stood low; the roof has since climbed, and a
+  // board up in the sky band would be read here as an aircraft parked over the
+  // second building for the whole run. The board says where it is — one 43x32
+  // panel of print — so its cells are excluded wherever it stands. The plane
+  // never enters that box (it flies well above the board's top edge), so this
+  // can only ever remove the sign, not the aircraft.
+  const BOARD_W = 43, BOARD_H = 32;
+  const boardAt = (scene) => {
+    const op = background(1, 0, {}, 0, 0, scene).find((o) => o[0] === 'fillRect'
+      && o[1] === PRINT && o[4] === BOARD_W && o[5] === BOARD_H);
+    return op ? { x: op[2], y: op[3] } : null;
+  };
   const SKYLINE_TOP = 100;
   const plane = (beat, scene = null) => {
     const rows = new Map();
+    const box = boardAt(scene);
+    const onBoard = (x, y) => box && x >= box.x && x < box.x + BOARD_W
+      && y >= box.y && y < box.y + BOARD_H;
     for (const op of background(1, beat, {}, 0, 0, scene)) {
       if (op[0] !== 'fillRect' || op[1] !== PANEL_LIT || op[4] !== 2 || op[5] !== 2) continue;
-      if (op[3] >= SKYLINE_TOP) continue;
+      if (op[3] >= SKYLINE_TOP || onBoard(op[2], op[3])) continue;
       const xs = rows.get(op[3]) || [];
       xs.push(op[2]);
       rows.set(op[3], xs);
@@ -604,11 +708,25 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // Sky only — see the note on the stage 1 locator: the counting board prints
   // its digits at 2px in the same lit cream the plane's windows use.
   const SKYLINE_TOP = 100;
+  // ...AND THE BOARD IS CUT OUT BY ITS OWN PANEL, not by a height. The counting
+  // roof stood low enough that SKYLINE_TOP alone hid its digits; its building
+  // has since grown, and a board that climbs into the sky band would be read
+  // here as an aircraft parked over the second roof for the whole run. The
+  // board announces where it is — one 43x32 panel of print — so the cells
+  // inside it are excluded wherever it stands.
+  const BOARD_W = 43, BOARD_H = 32;
+  const boardBox = (() => {
+    const op = ops(0).find((o) => o[0] === 'fillRect' && o[1] === PRINT
+      && o[4] === BOARD_W && o[5] === BOARD_H);
+    return op ? { x: op[2], y: op[3] } : null;
+  })();
+  const onBoard = (x, y) => boardBox && x >= boardBox.x && x < boardBox.x + BOARD_W
+    && y >= boardBox.y && y < boardBox.y + BOARD_H;
   const plane = (beat) => {
     const rows = new Map();
     for (const op of ops(beat)) {
       if (op[0] !== 'fillRect' || op[1] !== PANEL_LIT || op[4] !== 2 || op[5] !== 2) continue;
-      if (op[3] >= SKYLINE_TOP) continue;
+      if (op[3] >= SKYLINE_TOP || onBoard(op[2], op[3])) continue;
       const xs = rows.get(op[3]) || [];
       xs.push(op[2]);
       rows.set(op[3], xs);
@@ -717,14 +835,14 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   const towerBarrels = (beat) => barrelBodies(background(1, beat))
     .filter((b) => b.rx === 5 && b.fill === '#a9743a').length;
   let shortBeats = 0;
-  for (let d = 0; d < 12; d++) {
+  for (let d = 0; d < 16; d++) {
     if (towerBarrels(hit + d) === towerBarrels(hit + d - 16) - 1) shortBeats++;
   }
-  assert(shortBeats === 12,
-    `the destroyed barrel never rides the tower (${shortBeats} of 12 beats one cell short)`);
-  assert(towerBarrels(hit + 12) === towerBarrels(hit - 4),
-    `and the chain is full again on the thirteenth `
-    + `(${towerBarrels(hit + 12)} vs ${towerBarrels(hit - 4)})`);
+  assert(shortBeats === 16,
+    `the destroyed barrel never rides the tower (${shortBeats} of 16 beats one cell short)`);
+  assert(towerBarrels(hit + 16) === towerBarrels(hit - 4),
+    `and the chain is full again on the seventeenth `
+    + `(${towerBarrels(hit + 16)} vs ${towerBarrels(hit - 4)})`);
 
   // HIS FACE, for the same two beats the wreck is up. The read that won the
   // bake-off keeps the face nearly still and says it AROUND the head instead:
@@ -733,8 +851,12 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // the ticks — the ticks are the whole thesis of that read, and a face that
   // quietened without them would pass an O-only check while saying nothing —
   // and checked to STOP as well as start: the toy does not sulk.
+  // 1.9 tall, not the 2.4 it was: the mouth's bottom reached roof-20.6 and the
+  // muzzle's floor is roof-20.5, so solid ink was merging into the jaw rim and
+  // the shape read as a blob hanging off his chin. It keeps its width and its
+  // top and gives up a pixel at the bottom — see LCD_GORILLA_SHOCKS.
   const openMouth = (beat) => background(1, beat)
-    .some((op) => op[0] === 'ellipse' && op[3] === 2 && op[4] === 2.4);
+    .some((op) => op[0] === 'ellipse' && op[3] === 2 && op[4] === 1.9);
   const ticks = (beat) => background(1, beat)
     .filter((op) => op[0] === 'fillRect' && op[1] === PRINT
       && op[4] === 2 && op[5] === 2).length;
@@ -753,52 +875,107 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
 // only way the two can be the same object is for the chute to deliver when the
 // lane says so. `barrelBeat` is the one number that carries it — the beat a real
 // barrel reaches the foot of the chute — and everything below is the contract
-// around it: counted backward, silent when nothing is coming, and never drawing
-// the bottom cell the road is about to fill.
+// around it: one continuous stream of barrels through seven places, and one lit
+// rim riding the real one down.
 {
-  // A lit mini-barrel on the chute is a filled ellipse at the drop's own x;
-  // the ghosts are stroke-only, so the fill is what says "this one is real".
-  // The gorilla's building is [365, 36, 119]; the chute hangs 8 past its wall,
-  // centred in the 15px gap to the next facade.
-  const CHUTE_X = 409;
-  const lit = (extra, beat) => bigBarrels(background(3, beat, {}, 0, 0, extra))
-    .filter((b) => b.cx === CHUTE_X).length;
-  // The ghosts are drawn every frame whatever happens — the chute's whole path
-  // is always there — so a live cell is one more than that. The baseline is
-  // taken with a delivery far enough away that none of the four is lit.
-  const idle = lit({ barrelBeat: 999 }, 0);
-  assert(idle === LCD_CHUTE_BEATS + 1,
-    `the chute ghosts its whole path whatever is happening (${idle} cells)`);
+  // A barrel on the chute is a body at the drop's own x; the ghosts are
+  // stroke-only and a barrel in the stream is filled.
+  // The gorilla's building is [359, 36, 119]; the chute hangs half a gap past
+  // its wall, and that gap is the doubled one — 30 cells, so the barrel comes
+  // down in clear air rather than kissing both facades.
+  const CHUTE_X = 410;
+  const inChute = (extra, beat) => bigBarrels(background(3, beat, {}, 0, 0, extra))
+    .filter((b) => b.cx === CHUTE_X);
+  // A ghost cell is filled too, in the ghost ink; the barrel in the stream
+  // is filled in the wood.
+  const WOOD = '#a9743a';
+  const solid = (extra, beat) => inChute(extra, beat).filter((b) => b.fill === WOOD).length;
+  assert(inChute({ barrelBeat: 999 }, 0).length === LCD_CHUTE_CELLS + 1,
+    `the chute ghosts its whole path whatever is happening (${inChute({ barrelBeat: 999 }, 0).length} bodies)`);
   assert(lcdChuteScreenX(3) === CHUTE_X,
     `the chute stands where the gorilla's building puts it (${lcdChuteScreenX(3)})`);
   assert(lcdChuteScreenX(1) === null && lcdChuteScreenX(2) === null,
     'and only the finale has one');
 
-  // COUNTED BACKWARD FROM THE DELIVERY. Three beats out the top cell is live,
-  // two out the next — and on the delivery beat itself the chute draws nothing,
-  // because the lane barrel is standing there.
-  const due = 12;
-  const steps = [];
-  for (let d = LCD_CHUTE_BEATS; d >= 0; d--) steps.push(lit({ barrelBeat: due }, due - d));
-  assert(steps.slice(0, LCD_CHUTE_BEATS).every((n) => n === idle + 1),
-    `the chute walks a live cell down for the beats before a delivery (${steps.join(',')})`);
-  assert(steps[LCD_CHUTE_BEATS] === idle,
-    'and hands the last cell to the road rather than drawing a second barrel on it');
+  // ONE STREAM, NEVER EMPTY. Whatever the lane is doing there is exactly one
+  // barrel falling in the chute on every beat — the one he let go of — and it
+  // steps a cell per beat, top to bottom, then the next one takes the top.
+  const cellY = (extra, beat) => inChute(extra, beat).find((b) => b.fill === WOOD)?.cy;
+  for (const extra of [null, { barrelBeat: 999 }, { barrelBeat: 6 }]) {
+    const ys = [0, 1, 2, 3, 4, 5, 6, 7].map((b) => cellY(extra, b));
+    assert(ys.every((y) => Number.isFinite(y)) && [0, 1, 2, 3, 4, 5, 6, 7].every((b) => solid(extra, b) === 1),
+      `one barrel in the chute on every beat (${JSON.stringify(extra)})`);
+    const steps = ys.slice(1).map((y, i) => y - ys[i]);
+    assert(steps.filter((d) => d > 0).length === 5 && steps.filter((d) => d < 0).length === 2,
+      `and it walks down a cell a beat, top to bottom, twice a phrase (${ys.join(',')})`);
+  }
+  assert(solid(null, 5) === 1 && solid({ barrelBeat: 5 }, 5) === 1
+    && bigBarrels(background(3, 5, { reducedMotion: true }, 0, 0, { barrelBeat: 5 }))
+      .filter((b) => b.cx === CHUTE_X && b.fill === WOOD).length === 1,
+    'with no lane, on the delivery beat and on a frozen panel alike');
 
-  // SILENT WHEN NOTHING IS COMING. A chute running on its own clock through the
-  // bars where no barrel is due is exactly what made the roof and the road read
-  // as two unrelated toys.
-  assert(lit({ barrelBeat: due }, due + 3) === idle && lit({ barrelBeat: due }, due - 9) === idle,
-    'and nothing falls outside its own four beats');
+  // ---- ONE LIT BARREL, FROM HIS SCALP TO THE STREET -------------------------
+  //
+  // The lit rim is the panel's whole promise: this is the barrel that is coming
+  // for you. Two of them at once breaks it, and so does a beat with none — the
+  // gorilla's swing used to run on the bar while the chute counted back from the
+  // delivery, so the two lights overlapped and gapped at whatever phase the lane
+  // happened to hand over on.
+  //
+  // A lit barrel is the only one drawn a pixel proud of its body (the rim in
+  // LCD_WINDOW_ON), so counting bodies at the rim's half-extents counts exactly
+  // the lit ones, wherever on the panel they are.
+  const rims = (beat, barrelBeat, barrelGrid = barrelBeat) =>
+    barrelBodies(background(3, beat, {}, 0, 0, { barrelBeat, barrelGrid }))
+      .filter((b) => b.rx === 9 && b.ry === 8);
+  const DUE = 40;
+  const fall = [];
+  for (let d = LCD_CHUTE_LEAD_BEATS; d >= 1; d--) {
+    const hot = rims(DUE - d, DUE);
+    assert(hot.length === 1, `exactly one barrel is lit ${d} beats out (${hot.length})`);
+    fall.push(hot[0].cy);
+  }
+  assert(fall.every((cy, i) => i === 0 || cy > fall[i - 1]),
+    `and the lit one only ever falls, over his head to the street (${fall.join(',')})`);
+  // SEVEN POSITIONS AND THE ROAD IS THE EIGHTH BEAT. Three in his hands, four
+  // in the chute, no position visited twice and none skipped.
+  assert(fall.length === 7 && LCD_CHUTE_LEAD_BEATS === 7,
+    `seven drawn positions, road on the eighth beat (${fall.length})`);
+  assert(new Set(fall).size === fall.length,
+    'each of the seven is its own place on the panel');
+  assert(rims(DUE, DUE).length === 0 && rims(DUE + 2, DUE).length === 0
+    && rims(DUE - LCD_CHUTE_LEAD_BEATS - 1, DUE).length === 0,
+    'and nothing is lit before he raises it or once the lane has taken it');
 
-  // AND WITHOUT A LANE TO ASK — the hub, the gallery, reduced motion, this
-  // suite — it runs the authored four-beat cycle it always has.
-  const authored = [0, 1, 2, 3].map((b) => lit(null, b));
-  assert(authored.every((n) => n === idle + 1),
-    `with no lane the chute drops on every beat of the bar (${authored.join(',')})`);
-  assert(bigBarrels(background(3, 5, { reducedMotion: true }, 0, 0, { barrelBeat: 5 }))
-    .filter((b) => b.cx === CHUTE_X).length === idle + 1,
-    'and a frozen panel is not driven by the lane either');
+  // THE STREAM IS PHASED TO THE LANE, not the bar: whatever beat the road wants
+  // its barrel on, the real one enters his hands on a raise. The grid outlives
+  // the barrel, so the NEXT one — a phrase later, same slot — is a raise too,
+  // and the barrels he throws in between are the same journey unlit.
+  for (const due of [41, 42, 43]) {
+    const hot = [7, 6, 5].map((d) => rims(due - d, due)[0]?.cy);
+    assert(hot.join(',') === fall.slice(0, 3).join(','),
+      `a delivery on beat ${due} still starts over his head (${hot.join(',')})`);
+  }
+  const later = rims(DUE + 32 - 7, DUE + 32, DUE)[0]?.cy;
+  assert(later === fall[0],
+    `and a barrel a phrase later enters the same stream on a raise (${later})`);
+  // With the grid on 40, phase 0 is beat 33, 37, 41...; a delivery the chart
+  // puts on 42 would have to be raised on 35, which is phase 2 — and the rim
+  // says so rather than the swing bending to it.
+  assert(rims(35, 42, DUE)[0]?.cy !== fall[0],
+    'while one off the grid is the run\'s mistake to show, not the swing\'s to hide');
+
+  // AND IT FLASHES ON THE BEAT, three quarters on like the verb sign, so it
+  // catches the eye from the road; under reduced flashing it stands lit.
+  const rimsAt = (phase, settings = {}) =>
+    barrelBodies(background(3, DUE - 6 + phase, settings, 0, 0, { barrelBeat: DUE }))
+      .filter((b) => b.rx === 9 && b.ry === 8).length;
+  assert(rimsAt(0) === 1 && rimsAt(0.5) === 1 && rimsAt(0.74) === 1,
+    'the rim is lit for the first three quarters of every beat of the journey');
+  assert(rimsAt(0.8) === 0 && rimsAt(0.99) === 0,
+    'and off for the last quarter, which is the flash');
+  assert(rimsAt(0.8, { reducedFlashing: true }) === 1,
+    'and simply lit under reduced flashing');
 }
 
 // ---- the board that counts ------------------------------------------------
@@ -810,11 +987,19 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
 // doing", and the run was already counting something they could.
 {
   // Its face: everything drawn inside the board on rhythm-1's second roof.
-  // Building 1 is [66, 36, 76] — centre 84, roof 156 — and the board is the
-  // fixed rectangle the verb sign sizes (LCD_BOARD_W/H, 39x28), so it runs from
-  // 64, 120. This window moves whenever those metrics or that facade do.
+  //
+  // FOUND, NOT AUTHORED. The window used to be four numbers copied off the
+  // facade — which meant every pixel that roof grew broke a test about what the
+  // board SAYS. The board is the one 43x32 panel of print on the skyline, so
+  // this asks the ops where it is and reads whatever is inside it.
+  const BOARD_W = 43, BOARD_H = 32;
+  const panel = background(1, 4, {}, 0, 0, { streak: 8 })
+    .find((op) => op[0] === 'fillRect' && op[1] === PRINT
+      && op[4] === BOARD_W && op[5] === BOARD_H);
+  assert(!!panel, 'the counting roof carries a board to print on');
   const inBoard = (op, w) => op[0] === 'fillRect' && op[4] === w && op[5] === w
-    && op[2] >= 64 && op[2] < 104 && op[3] >= 118 && op[3] < 150;
+    && op[2] >= panel[2] && op[2] < panel[2] + BOARD_W
+    && op[3] >= panel[3] && op[3] < panel[3] + BOARD_H;
   const face = (extra, settings = {}) => background(1, 4, settings, 0, 0, extra);
   const digits = (extra, settings = {}) => face(extra, settings)
     .filter((op) => inBoard(op, 2) && op[1] === PANEL_LIT).length;

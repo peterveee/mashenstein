@@ -460,6 +460,38 @@ export const BARK_SHAPES = {
 const COIN_LO_HZ = 840;
 const COIN_HI_HZ = 3000;
 
+// THE HOUSE ATTACK, in seconds — the ramp every cue in the sheet opens with.
+//
+// EXPONENTIAL, from near-silence to full, which makes it a strike and not a
+// fade: the level is still under a fiftieth of the peak three quarters of the
+// way through, and then arrives all at once. Eight milliseconds is what keeps a
+// square wave from clicking on its first cycle, and the whole sheet is voiced
+// around it.
+const CUE_ATTACK = 0.008;
+// HOW FAR A PLACED CUE IS BROUGHT FORWARD, in seconds, so that what is HEARD
+// lands on the note instead of the silent foot of the ramp above.
+//
+// A cue and a drum starting on the same sample are not together to an ear. Nine
+// tenths of that ramp goes by before the cue reaches half its peak, which is
+// 7.2ms; a drum on the same line is there in about 2ms. Both of those are
+// measured rather than assumed — the SFX bus and the music bus were recorded
+// apart during play and the rise of each read off the audio. What was left was
+// a cue whose schedule was sample-accurate and whose audible edge still sat
+// about five milliseconds behind the kick, and this closes that.
+//
+// It is derived from the ramp rather than typed in, because the two are one
+// fact: change the attack and the lead that compensates for it follows.
+//
+// ONLY CUES PLACED ON THE CLOCK GET IT. A cue fired at a press cannot be
+// brought forward — the press has already happened — which is the same reason
+// those cues cannot be placed at all. See cueTimeInBeats.
+//
+// The explosion is the one cue this under-serves: its own ramp is 12ms, so its
+// audible edge still sits about 4ms behind the note it bursts on. It is a
+// broad, diffuse sound where a few milliseconds do not read, and giving it its
+// own number would mean a table for one entry.
+const CUE_PERCEPTUAL_LEAD = CUE_ATTACK * 0.9 - 0.002;
+
 const SFX_TRIM = {
   blockBreak: 0.58, coinSpray: 0.7, hit: 0.74,
   // Levelled against 'hit', its opposite number — and deliberately WELL above
@@ -755,6 +787,8 @@ class AudioSys {
     this.sessionMuted = false;
     this.levels = { master: 1, music: 0.7, sfx: 0.9 };
     this.cueGain = 1;
+    // Where the cue being built starts on the audio clock, or null for "now" — see cueAt().
+    this.cueStart = null;
     this.noiseBuf = null;
     this.contactBuffers = {};
     this.launchBuffers = {};
@@ -2312,16 +2346,17 @@ class AudioSys {
   // the thing it describes, and this is what lets it.
   osc(type, f0, f1, dur, gain = 0.2, when = 0, dest = null, hold = 0) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime + when;
+    const t = this.cueAt() + when;
     const o = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     o.type = type;
     o.frequency.setValueAtTime(Math.max(1, f0), t);
     if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
-    const sustain = Math.max(0.008, Math.min(0.95, hold) * dur);
+    const atk = CUE_ATTACK;
+    const sustain = Math.max(atk, Math.min(0.95, hold) * dur);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain * this.cueGain, t + 0.008);
-    if (sustain > 0.008) g.gain.setValueAtTime(gain * this.cueGain, t + sustain);
+    g.gain.exponentialRampToValueAtTime(gain * this.cueGain, t + atk);
+    if (sustain > atk) g.gain.setValueAtTime(gain * this.cueGain, t + sustain);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
     o.connect(g); g.connect(dest || this.sfxGain);
@@ -2332,16 +2367,17 @@ class AudioSys {
   // sustained tone has to sustain with it or the tone goes bare halfway through.
   noise(dur, gain = 0.2, filterType = 'lowpass', freq = 800, when = 0, hold = 0) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime + when;
+    const t = this.cueAt() + when;
     const src = this.ctx.createBufferSource();
     src.buffer = this.noiseBuf; src.loop = true;
     const f = this.ctx.createBiquadFilter();
     f.type = filterType; f.frequency.value = freq;
     const g = this.ctx.createGain();
-    const sustain = Math.max(0.008, Math.min(0.95, hold) * dur);
+    const atk = CUE_ATTACK;
+    const sustain = Math.max(atk, Math.min(0.95, hold) * dur);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain * this.cueGain, t + 0.008);
-    if (sustain > 0.008) g.gain.setValueAtTime(gain * this.cueGain, t + sustain);
+    g.gain.exponentialRampToValueAtTime(gain * this.cueGain, t + atk);
+    if (sustain > atk) g.gain.setValueAtTime(gain * this.cueGain, t + sustain);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     g.gain.linearRampToValueAtTime(0, t + dur + 0.02 - 0.005);
     src.connect(f); f.connect(g); g.connect(this.sfxGain);
@@ -2350,7 +2386,7 @@ class AudioSys {
 
   explosion() {
     if (!this.ctx || !this.crashBuf) return;
-    const t = this.ctx.currentTime;
+    const t = this.cueAt();
     const q = this.cueGain;
     // Use the dedicated long noise buffer so the blast has a continuous body,
     // rather than looping the short SFX buffer and sounding like a snare roll.
@@ -2392,7 +2428,7 @@ class AudioSys {
   // a real tail instead of collapsing into a pitched bonk.
   impactCrash(pitch = 1) {
     if (!this.ctx || !this.crashBuf) return;
-    const t = this.ctx.currentTime;
+    const t = this.cueAt();
     const src = this.ctx.createBufferSource(); src.buffer = this.crashBuf;
     const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 95;
     const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass';
@@ -2425,7 +2461,7 @@ class AudioSys {
   // low sine to carry the weight of the leg on a laptop speaker.
   boxKick() {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
+    const t = this.cueAt();
     // The boot. Short and dull: a running leg hitting a slat is a slap, not a
     // click, so the noise sits low and the sine falls away almost at once.
     this.noise(0.05, 0.36, 'lowpass', 300);
@@ -2463,7 +2499,7 @@ class AudioSys {
   playContact(hero, pitch = 1) {
     const buffer = this.contactBuffers[hero];
     if (!buffer) { this.impactCrash(pitch); return; }
-    const t = this.ctx.currentTime;
+    const t = this.cueAt();
     const src = this.ctx.createBufferSource(); src.buffer = buffer;
     src.playbackRate.value = pitch;
     const trim = WEAPON_AUDIO_GAIN.contact[hero] ?? 1;
@@ -2480,7 +2516,7 @@ class AudioSys {
       else if (hero === 'grumpos') this.sfx('axe', { pitch });
       return;
     }
-    const t = this.ctx.currentTime;
+    const t = this.cueAt();
     const src = this.ctx.createBufferSource(); src.buffer = buffer;
     src.playbackRate.value = pitch;
     const trim = WEAPON_AUDIO_GAIN.launch[hero] ?? 1;
@@ -2514,7 +2550,7 @@ class AudioSys {
   // cueGain itself or an SFX_TRIM entry for it would silently do nothing.
   neonBuzz() {
     if (!this.ctx || !this.sfxGain) return;
-    const t = this.ctx.currentTime;
+    const t = this.cueAt();
     const DUR = 0.34;
     const q = this.cueGain * 0.4;   // master level for the whole buzz
 
@@ -2579,7 +2615,7 @@ class AudioSys {
   // inside the title theme's echo and volume rather than behaving like an SFX.
   cometSwoop() {
     if (!this.ctx || !this.musicBus) return;
-    const t = this.ctx.currentTime;
+    const t = this.cueAt();
     const o = this.ctx.createOscillator(); o.type = 'sine';
     o.frequency.setValueAtTime(520, t);
     o.frequency.exponentialRampToValueAtTime(920, t + 0.52);
@@ -2606,7 +2642,7 @@ class AudioSys {
   // top of the glide, which is what made the old one feel flat.
   jumpTone(when = 0, pitch = 1, gain = 0.2) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime + when;
+    const t = this.cueAt() + when;
     const dur = 0.17;
     const o = this.ctx.createOscillator();
     const f = this.ctx.createBiquadFilter();
@@ -2683,7 +2719,7 @@ class AudioSys {
   dogWoof(when, pitch, f0, gain, S) {
     if (!this.ctx) return;
     const ctx = this.ctx;
-    const t = ctx.currentTime + when;
+    const t = this.cueAt() + when;
     const dur = S.dur;
     const tail = dur * 0.55 + 0.05;      // the mouth closing, past the voiced body
     const stop = t + dur + tail;
@@ -2934,7 +2970,7 @@ class AudioSys {
   // pickup, and it's the sustain — not the peak — that made it wearing.
   waka(when = 0, pitch = 1, gain = 0.13, hold = 0.75) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime + when;
+    const t = this.cueAt() + when;
     const dur = 0.12;
     const o = this.ctx.createOscillator();
     const f = this.ctx.createBiquadFilter();
@@ -2986,7 +3022,7 @@ class AudioSys {
   // nothing — the "bloop-bloop" as the sprite folds up and vanishes.
   pacDeath(when = 0) {
     if (!this.ctx) return;
-    const t0 = this.ctx.currentTime + when;
+    const t0 = this.cueAt() + when;
     const wave = this.pulseWave(0.25);
     const q = this.cueGain;
 
@@ -3334,7 +3370,7 @@ class AudioSys {
   //   the tick version needed, done continuously.
   boostFall() {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
+    const t = this.cueAt();
     const q = this.cueGain;
     // [seconds, from, to] segments, run back to back on ONE oscillator pair.
     // The seam carries the previous segment's value, so the pitch is continuous
@@ -3394,7 +3430,7 @@ class AudioSys {
     body = 0,
   } = {}) {
     if (!this.ctx || !this.noiseBuf) return;
-    const t = this.ctx.currentTime;
+    const t = this.cueAt();
     const q = this.cueGain;
 
     // A per-layer tap into the shared room. Each layer gets its OWN send amount
@@ -3542,6 +3578,65 @@ class AudioSys {
     if (thump > 0) this.osc('sine', 95, 42, 0.16, 0.16 * thump, Math.max(0, seam - 0.01), dryWet(0.12));
   }
 
+  /**
+   * Where the cue being built starts on the audio clock. Every builder below reads
+   * this instead of ctx.currentTime, which is what lets sfx() place a whole cue —
+   * however many oscillators and noise bursts it is made of — at a scheduled time.
+   * Null outside a scheduled firing, so a builder called on its own still means now.
+   */
+  cueAt() {
+    return this.cueStart ?? this.ctx.currentTime;
+  }
+
+  /**
+   * The audio-clock time a cue has to START at to be HEARD `beats` beats from the
+   * beat being heard now — the same clock songBeat() reads, so a cue placed with it
+   * lands on the song sample-accurately, on every device, however far the ear is
+   * from the graph.
+   *
+   * THE SUBTRACTION IS THE POINT. A cue fired "now" is rendered at currentTime and
+   * heard an output latency later: a few milliseconds on built-in speakers, tens on
+   * a phone, a fifth of a second on Bluetooth. The music has already paid that —
+   * songBeat() backs the playhead off by it so the picture follows the ear — so a
+   * cue fired when the game NOTICES a heard beat is late by the whole latency plus
+   * the frame it took to notice, and it is late by a different amount on every
+   * machine. Placing the cue on the clock instead of firing it puts it in the same
+   * pipe as the song at the same time, and the latency cancels.
+   *
+   * WHAT LANDS ON THE BEAT IS THE SOUND, not the start of the file. The cue is
+   * brought forward by CUE_PERCEPTUAL_LEAD on top of the latency, so the moment
+   * it becomes audible is the moment the drum on that beat does. Its first
+   * sample therefore sits a few milliseconds BEFORE the note, on purpose.
+   *
+   * A time already past comes back as now: a cue cannot be started in the past, and
+   * a late cue beats a dropped one. Callers that can know a beat is coming should
+   * ask at least cueLeadBeats() ahead so this never has to clamp.
+   */
+  cueTimeInBeats(beats) {
+    const now = this.ctx.currentTime;
+    if (!Number.isFinite(beats)) return now;
+    const secPerBeat = 60 / (this.bpm * this.tempo);
+    const out = this.ctx.outputLatency || this.ctx.baseLatency || 0;
+    return Math.max(now, now - out - CUE_PERCEPTUAL_LEAD + beats * secPerBeat);
+  }
+
+  /**
+   * How far ahead of a beat a cue has to be asked for to land on it, in beats: the
+   * output latency and the perceptual lead, plus a tenth of a second for the game
+   * loop to get round to asking. A quarter of a beat on built-in output, most of
+   * one on Bluetooth.
+   */
+  cueLeadBeats() {
+    return this.cueLeadSec() * (this.bpm * this.tempo) / 60;
+  }
+
+  /** The same lead in seconds; `slack` is how long the caller allows itself to ask. */
+  cueLeadSec(slack = 0.1) {
+    if (!this.ctx) return 0;
+    const out = this.ctx.outputLatency || this.ctx.baseLatency || 0;
+    return out + CUE_PERCEPTUAL_LEAD + slack;
+  }
+
   sfx(name, opt = {}) {
     this.resumeAfterPanic();
     if (!this.ctx) return;
@@ -3550,6 +3645,14 @@ class AudioSys {
     // in the credits and the thing that announces a level starting — which is otherwise
     // a choice between changing it for both or copying it into a second name.
     this.cueGain = (SFX_TRIM[name] ?? 1) * (opt.gain ?? 1);
+    // `opt.inBeats` places the cue on the song instead of firing it now — see
+    // cueTimeInBeats. Cleared afterwards whatever the builder does, so an unscheduled
+    // cue can never inherit a scheduled one's start.
+    this.cueStart = Number.isFinite(opt.inBeats) ? this.cueTimeInBeats(opt.inBeats) : null;
+    try { this.buildCue(name, opt); } finally { this.cueStart = null; }
+  }
+
+  buildCue(name, opt) {
     const combo = opt.combo || 0;
     // opt.pitch is the direct form, for cues that want spread rather than a
     // combo ladder — the fireworks detune every shot so no two bursts twin.

@@ -79,7 +79,8 @@ export const ZOOM_MIN = 1.3;
 // the way down.
 //
 // It is sized off the JUMP now. The highest anyone gets is 185px — Clara's
-// 1.15 jumpMult with two air jumps stacked on top — and holding that at
+// jumpMult with two air jumps stacked on top, as the roster stood when the
+// crane was sized — and holding that at
 // the resting zoom takes (185 + HERO_HEIGHT + HEAD_MARGIN) * ZOOM - GROUND_Y
 // of crane. So the crane covers everything anyone can actually jump and
 // the zoom becomes a backstop ordinary play never reaches.
@@ -96,8 +97,16 @@ const HEAD_MARGIN = 10;
 const HERO_HEIGHT = 24;
 // The highest a hero ever gets: the roster's top jumpMult with two air jumps
 // stacked on it (capsule plus cape). Was 168 — Lorenzo's 1.10 — until Clara's
-// cliffhanger jump took the top slot at 1.15; her stack measures 184.0px.
+// cliffhanger jump took the top slot at 1.15; her stack measured 184.0px.
 // Everything above is arithmetic off this one number.
+//
+// THE ROSTER HAS SINCE COME DOWN AND THIS HAS NOT. Clara sits at 1.10 and
+// jumpMult buys height rather than launch speed (player.js jumpV), so the same
+// stack now measures 153px. Left at 185 deliberately: it is a CEILING, every
+// framing number on this screen is arithmetic off it, and lowering it would
+// re-tune the crane and the zoom backstop to buy back 32px of pan that nothing
+// is asking for. What it costs is slack, which is the right thing for a
+// backstop to have.
 const MAX_HERO_ALT = 185;
 // Enough crane to hold that at a given magnification, and not a pixel of zoom.
 const craneFor = (z) => Math.ceil((MAX_HERO_ALT + HERO_HEIGHT + HEAD_MARGIN) * z - GROUND_Y);

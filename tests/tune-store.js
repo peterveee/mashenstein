@@ -201,28 +201,34 @@ assert(T.tuningAvailable(), 'a plugin-built bundle registers its tunables');
 {
   T.revertTuning();
   const { framingFor, PAN_MAX, GROUND_Y, ZOOM } = await import('../src/engine/camera.js');
-  const { jumpHeightFor, BASE_JUMP_V, GRAVITY, AIR_JUMP_SCALE } = await import('../src/game/player.js');
+  const { jumpHeightFor, jumpV, GRAVITY, AIR_JUMP_SCALE } = await import('../src/game/player.js');
   const { HERO_BY_ID } = await import('../src/data/heroes.js');
 
   // HERO_HEIGHT (24) and HEAD_MARGIN (10) are private to camera.js; derive the
   // limit from framingFor itself rather than restating them here.
   let limit = 0;
   while (framingFor(limit).pan < PAN_MAX && limit < 400) limit += 0.1;
-  // The tallest thing anyone in the cast can do: Clara's 1.15 jumpMult with
-  // two air jumps stacked on it (capsule plus cape) — measured at 184.0px.
+  // The crane's declared ceiling (camera.js MAX_HERO_ALT), not a live cast
+  // measurement. It was Clara's x1.15 stacked with two air jumps at 184.0px;
+  // she is x1.10 now and jumpMult buys height rather than speed, so the same
+  // stack measures 153px. The ceiling is deliberately left high — see the note
+  // on MAX_HERO_ALT — so this asserts the crane still holds it, with slack.
   const TALLEST = 185;
   assert(limit >= TALLEST,
     `the crane holds the tallest jump in the game before the zoom is touched (${limit.toFixed(1)}px vs ${TALLEST}px)`);
 
-  // Kiko carries the double jump now that Mochi has retired — same numbers
-  // (jumpMult 1.0, maxJumps 2), so the 98px budget is unchanged.
+  // Kiko carries the double jump now that Mochi has retired. Her jumpMult came
+  // down to 0.85 — the double is a TOOL she pays for rather than a free bonus
+  // (see heroes.js) — so the budget this pins fell from 98px to 83.3px. The
+  // crane assertions below are the ones that matter and they got LOOSER; this
+  // number is the tripwire that says the jump moved at all.
   const kiko = HERO_BY_ID.kiko;
   assert(kiko.maxJumps === 2, 'kiko is the double-jump hero the budget is measured against');
   const single = jumpHeightFor(kiko);
-  const v2 = BASE_JUMP_V * kiko.jumpMult * AIR_JUMP_SCALE;
+  const v2 = jumpV(kiko) * AIR_JUMP_SCALE;
   const dbl = single + (v2 * v2) / (2 * GRAVITY);
   const f = framingFor(dbl);
-  assert(Math.abs(dbl - 98.0) < 0.2, `an apex-timed double jump peaks at 98px (${dbl.toFixed(1)})`);
+  assert(Math.abs(dbl - 83.3) < 0.2, `an apex-timed double jump peaks at 83.3px (${dbl.toFixed(1)})`);
   assert(f.zoom === ZOOM && f.pan < PAN_MAX,
     `and still fits the crane without touching zoom (pan ${f.pan.toFixed(1)}/${PAN_MAX})`);
   // And with room to spare, which is the point of the new budget: a routine
@@ -232,7 +238,7 @@ assert(T.tuningAvailable(), 'a plugin-built bundle registers its tunables');
 
   T.applyTuning({ BASE_JUMP_V: 336 });
   const single2 = jumpHeightFor(kiko);
-  const v2b = 336 * kiko.jumpMult * AIR_JUMP_SCALE;
+  const v2b = jumpV(kiko) * AIR_JUMP_SCALE;
   const dbl2 = single2 + (v2b * v2b) / (2 * GRAVITY);
   assert(framingFor(dbl2).zoom === ZOOM,
     `raising BASE_JUMP_V 320 -> 336 no longer opens the zoom on a double jump (${dbl2.toFixed(1)}px)`);
