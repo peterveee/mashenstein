@@ -1,6 +1,7 @@
 // Dev asset gallery: renders every drawable in the game into its own canvas by
 // calling the REAL draw functions, so the page can never drift from the source.
-// Built by tools/build-gallery.js into a standalone dist/gallery.html.
+// Built by tools/build-gallery.js into two standalone pages: dist/gallery.html
+// (production reference) and dist/gallery-lab.html (open bake-offs).
 //
 // Everything here is display-only. Nothing in src/ is modified or stubbed —
 // the one accommodation is that entity tiles crop the game's fixed 480x270
@@ -237,23 +238,30 @@ const smoothPreviewScale = (name) => name === 'dustdevil' || name === 'coin' ? 5
 // is what the run does, rather than resizing the art.
 const WORLD_Z = ZOOM;
 
-function section(id, title, note) {
-  const grid = document.createElement('div');
-  grid.className = 'grid';
-  // A DETACHED grid is the retirement mechanism (see tile()): everything below
-  // still runs, but nothing is added to the document and no tile is created.
-  // A section belonging to the other page is retired in exactly that sense.
-  if (HIDDEN_GALLERY_SECTIONS.has(id) || currentGroup !== PAGE) return grid;
+// The section element itself, for the handful of sheets that build their own
+// subhead/grid structure inside it rather than taking the single grid section()
+// hands back. Returns a DETACHED section when this section does not belong on
+// this page — nothing is added to the document and no nav link is made, which
+// is the same retirement mechanism section() uses (see tile(): a grid inside a
+// detached section is not connected, so no tile is ever created).
+function sectionEl(id, title, note) {
   const s = document.createElement('section');
   s.id = id;
   s.innerHTML = `<h2 id="h-${id}">${title}</h2>` + (note ? `<p class="note">${note}</p>` : '');
-  s.appendChild(grid);
+  if (HIDDEN_GALLERY_SECTIONS.has(id) || currentGroup !== PAGE) return s;
   root.appendChild(s);
   const a = document.createElement('a');
   a.href = `#h-${id}`;
   a.dataset.target = id;
   a.textContent = title;
   nav.appendChild(a);
+  return s;
+}
+
+function section(id, title, note) {
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  sectionEl(id, title, note).appendChild(grid);
   return grid;
 }
 
@@ -516,18 +524,10 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
   const ids = Object.keys(TOON_SPECS);
   const secId = 'pose-compare';
   const title = 'Heroes — pose comparison';
-  const s = document.createElement('section');
-  s.id = secId;
-  s.innerHTML = `<h2 id="h-${secId}">${title}</h2>`
-    + `<p class="note">The whole cast doing the same pose, lined up together — an outlier `
+  const s = sectionEl(secId, title,
+    `The whole cast doing the same pose, lined up together — an outlier `
     + 'stands out fast here in a way it does not when every hero only appears next to their '
-    + 'own other poses.</p>';
-  root.appendChild(s);
-  const navLink = document.createElement('a');
-  navLink.href = `#h-${secId}`;
-  navLink.dataset.target = secId;
-  navLink.textContent = title;
-  nav.appendChild(navLink);
+    + 'own other poses.');
 
   const HH = 60;
   const LABELS = {
@@ -3918,19 +3918,11 @@ function drawSpecialMoveFollower(ctx, cx, cy, fill, t, { ready = false, fire = 0
   ];
   const secId = 'facial-expressions';
   const title = 'Facial expressions';
-  const s = document.createElement('section');
-  s.id = secId;
-  s.innerHTML = `<h2 id="h-${secId}">${title}</h2>`
-    + '<p class="note">All four faces the rig can draw, with what each is for. Only Excited and '
+  const s = sectionEl(secId, title,
+    'All four faces the rig can draw, with what each is for. Only Excited and '
     + 'Determined are rolled per hop; Surprised belongs to falling and Startled is not dealt at all. '
     + 'pose.jumpFace is driven directly here to show the ones the run will not give you. Frozen at '
-    + 'the jump\'s first frame (t=0) so blink/cheer timing doesn\'t add noise to the comparison.</p>';
-  root.appendChild(s);
-  const navLink = document.createElement('a');
-  navLink.href = `#h-${secId}`;
-  navLink.dataset.target = secId;
-  navLink.textContent = title;
-  nav.appendChild(navLink);
+    + 'the jump\'s first frame (t=0) so blink/cheer timing doesn\'t add noise to the comparison.');
 
   const HH = 60;
   const th = HH * 1.3;
@@ -4399,23 +4391,15 @@ function laneStrip(ctx, w, h, groundY) {
 {
   const secId = 'hazard-bakeoff';
   const title = 'Stationary hazards — ten-family bake-off';
-  const s = document.createElement('section');
-  s.id = secId;
-  s.innerHTML = `<h2 id="h-${secId}">${title}</h2>`
-    + '<p class="note">OPEN — 30 gallery-only vector studies: ten families of standing hazard, three '
+  const s = sectionEl(secId, title,
+    'OPEN — 30 gallery-only vector studies: ten families of standing hazard, three '
     + 'variations each. Spikes, small fires, a burning barrel, raised fire, blades, electrics, floor '
     + 'pits, thorns, wreckage and traps that close. Left of each card is the LANE read — the candidate '
     + 'at its proposed art envelope, on the floor, beside Lorenzo at his real 24u, over a cabinet sky. '
     + 'Right is the same painter enlarged for silhouette and material. The dashed box is an art '
     + 'envelope, not a decided hitbox. The MOTION word on each label states how much movement the '
     + 'concept needs to work: the brief is mostly-stationary, so <b>still</b> is the strongest claim on '
-    + 'the sheet and the one to be sceptical of. Nothing here is registered in any gameplay registry.</p>';
-  root.appendChild(s);
-  const navLink = document.createElement('a');
-  navLink.href = `#h-${secId}`;
-  navLink.dataset.target = secId;
-  navLink.textContent = title;
-  nav.appendChild(navLink);
+    + 'the sheet and the one to be sceptical of. Nothing here is registered in any gameplay registry.');
 
   const TW = 208, TH = 100, GY = 78;
   const DX = 112, DY = 6, DW = 90, DH = 88; // the detail study's box, in world units
@@ -5622,7 +5606,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 //   construction     REJECTED, all of them — the ovals stay; LCD_GORILLA_BUILD_STYLES
 //   tuft             SPIKES, drawn as part of the skull's own fill; LCD_GORILLA_TUFT_STYLES
 //   armpit / ears    no change — SHIPS and the current ear; LCD_GORILLA_PIT_STYLES, LCD_GORILLA_EARS
-//   shoulder         0.55, swept 1.0 to 0.5; LCD_GORILLA_SHOULDER_ALPHAS
+//   shoulder         0.6, swept 1.0 to 0.5; LCD_GORILLA_SHOULDER_ALPHAS
 //   the crest        LEAN dropped 0.6px, swept on four dials; LCD_GORILLA_SPIKE_STYLES
 {
   const cab = CABINETS.find((c) => c.id === 'rhythm');
@@ -5775,8 +5759,12 @@ collapseAllEl.addEventListener('click', () => {
   collapseAllEl.textContent = collapsing ? 'expand all' : 'collapse all';
 });
 
-document.querySelector('h1 small').textContent =
-  `dev build · click any tile to save a PNG · ${tiles.length} tiles across ${root.querySelectorAll('section').length} sections`;
+// The shell states what this page IS (production reference / open questions);
+// the counts can only be known once every section has run, so they are appended
+// here rather than stamped in at build time.
+const small = document.querySelector('h1 small');
+small.textContent =
+  `${small.textContent} · ${tiles.length} tiles across ${root.querySelectorAll('section').length} sections`;
 
 // ---------------------------------------------------------------- controls
 // A world-unit tile owes its content the run's camera on top of the screen

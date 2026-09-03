@@ -5409,7 +5409,7 @@ const LCD_GORILLA_INKS = {
   litshoulderfaint: { fur: LCD_PRINT, core: null, shoulder: 'rgba(60,63,69,0.2)', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
   // And the faintest ball with the arms brought to the front in their own dark,
   // so the joint has a light side and a dark side rather than one edge.
-  litshoulderdark: { fur: LCD_PRINT, core: null, shoulder: 'rgba(60,63,69,0.55)', limb: '#4f5450', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  litshoulderdark: { fur: LCD_PRINT, core: null, shoulder: 'rgba(60,63,69,0.6)', limb: '#4f5450', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
   // And the same lighter ink with a solid head matched to IT: 0.72 of
   // (84,88,94) over the same skies lands at about (113,119,108).
   lightinksolid: { fur: 'rgba(84,88,94,0.72)', core: null, head: '#71776c', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
@@ -5728,19 +5728,19 @@ export const LCD_GORILLA_EAR_STYLES = [
 // three fills deep and nearly the raw ink. Weakening the ball's ink is the
 // whole dial: same hue, less of it, so the armpit stops piling up and the
 // ball's outer cap reads lighter than the body instead of darker.
-// SETTLED 3 Sep 2026: 0.55. Below the body's 0.72, so the joint stops piling
-// up and the ball's outer cap reads as its own rounded plane — distinct, but
-// still a muscle rather than an edge. 0.5 lost the shape, 0.65 barely lifted.
-const LCD_GORILLA_SHOULDER = 0.55;
-/** The strengths swept, 1.0 down to 0.5. 0.55 ships; 0.72 is the body's own. */
+// SETTLED 3 Sep 2026: 0.6. Below the body's 0.72, so the joint stops piling up
+// and the ball's outer cap reads as its own rounded plane — distinct, but
+// still a muscle rather than an edge. 0.5 lost the shape entirely.
+const LCD_GORILLA_SHOULDER = 0.6;
+/** The strengths swept, 1.0 down to 0.5. 0.6 ships; 0.72 is the body's own. */
 export const LCD_GORILLA_SHOULDER_ALPHAS = [
   { a: 1, name: 'SOLID · 1.0', note: 'the raw ink at full strength: the ball darker than the body, not lighter.' },
   { a: 0.9, name: '0.9', note: 'still heavier than the body.' },
   { a: 0.8, name: '0.8', note: 'a shade heavier than the body.' },
   { a: 0.72, name: '0.72 · WAS', note: 'the body\'s own strength — what it was, and the stack that made the joint black.' },
   { a: 0.65, name: '0.65', note: 'the first step that lifts the joint at all.' },
-  { a: 0.6, name: '0.6', note: 'the cap starts to read as its own plane.' },
-  { a: 0.55, name: '0.55 · SHIPS', note: 'distinct joint, still a rounded muscle rather than a flat edge.' },
+  { a: 0.6, name: '0.6 · SHIPS', note: 'the cap reads as its own plane, and the joint is still a muscle rather than an edge.' },
+  { a: 0.55, name: '0.55', note: 'a shade softer again.' },
   { a: 0.5, name: '0.5', note: 'half the body: the softest of the sweep.' },
 ];
 
