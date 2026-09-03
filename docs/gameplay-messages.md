@@ -187,7 +187,7 @@ override with charged/uncharged variants:
 
 - **Target progress floatie** ([run.js](../src/game/run.js#L3912)): breaking a mission target. Current format is bare "[CURRENT]/[TOTAL]", e.g. "2/6". Teal `#48e0c8`.
 - **Chase progress**: format "CAUGHT [COUNT]/[TOTAL]. IT FILED A COMPLAINT." Gold.
-- **Checkpoint** ([run.js](../src/game/run.js#L6053)): touching a checkpoint restores battery. Format "CHECKPOINT. +[N] CELL[S]. SINCERELY." Green `#8ddd8d`.
+- **Checkpoint** ([run.js](../src/game/run.js#L6053)): touching a checkpoint restores battery. Format "CHECKPOINT. +[N] BATTERY." when a cell actually lands; at full battery nothing is restored and it reads "CHECKPOINT. THE ARCADE REMEMBERS THIS SPOT." Green `#8ddd8d`.
 - **Bridge earned**: completing a challenge that unlocks a gap-crossing bridge. "BRIDGE. YOU EARNED IT." Light blue `#b8e0f8`.
 - **Residents delivered** ([run.js](../src/game/run.js#L6059)): escort-mission progress. Format "RESIDENTS DELIVERED: [CURRENT]/[TOTAL]". Teal.
 - **Escape mission start**: mission description shown when an escape/wave mission begins (from `stages.js`), e.g. "OUTRUN THE UNPLUGGENING ITSELF. THE SOCKET IS CLOSE." / "ESCAPE THE FOLDING WAVE. DO NOT BECOME A FLAP."

@@ -44,6 +44,10 @@ function queuedFor(hero, state) {
   run.paused = state === 'paused';
   run.dead = state === 'dead';
   run.mirror = state === 'mirrored';
+  // Off his floor, the hero's overlay pass is held back and re-queued after the
+  // chatter so a jump prints over the popup cards — the layer COUNT must not
+  // move, only where in the list he lands.
+  run.player.y = state === 'airborne' ? 24 : 0;
   run.draw(bctx);
   const queued = pendingOverlayDrawCount();
   blit();
@@ -55,12 +59,16 @@ for (const hero of HEROES) {
   const paused = queuedFor(hero, 'paused');
   const dead = queuedFor(hero, 'dead');
   const mirrored = queuedFor(hero, 'mirrored');
-  // A live frame queues hero then HUD. Pause/death each add their covering
-  // callback after those two; mirroring changes transforms, not layer count.
-  assert(normal === 2, `${hero.id} normal queues hero + HUD at native density`);
-  assert(paused === 3, `${hero.id} pause cover is queued after hero + HUD`);
-  assert(dead === 3, `${hero.id} death cover is queued after hero + HUD`);
-  assert(mirrored === 2, `${hero.id} mirrored hero remains on the overlay path`);
+  const airborne = queuedFor(hero, 'airborne');
+  // A live frame queues hero, chatter (floaties + speech) and frame (HUD and
+  // its banners). Pause/death each add their covering callback after those
+  // three; mirroring changes transforms, not layer count, and neither does the
+  // jump lift — it reorders the same three.
+  assert(normal === 3, `${hero.id} normal queues hero + chatter + HUD at native density`);
+  assert(paused === 4, `${hero.id} pause cover is queued after hero + HUD`);
+  assert(dead === 4, `${hero.id} death cover is queued after hero + HUD`);
+  assert(mirrored === 3, `${hero.id} mirrored hero remains on the overlay path`);
+  assert(airborne === 3, `${hero.id} jump lift reorders the overlay, it does not add a layer`);
 }
 
 for (const hero of HEROES) {

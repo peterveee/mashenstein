@@ -35,7 +35,13 @@ function recorder() {
     moveTo(...args) { ops.push(['moveTo', ...args]); },
     lineTo(...args) { ops.push(['lineTo', ...args]); },
     quadraticCurveTo(...args) { ops.push(['quadraticCurveTo', ...args]); },
+    arcTo(...args) { ops.push(['arcTo', ...args]); },
     closePath() { ops.push(['closePath']); },
+    rect(...args) { ops.push(['rect', ...args]); },
+    // Recorded, not honoured: nothing here rasterises, so a clip cannot hide
+    // an op. What it CAN do is prove the gorilla's tuft is drawn a second time
+    // over the barrel — see the spikes check further down.
+    clip(...args) { ops.push(['clip', ...args]); },
     stroke() { ops.push(['stroke', style(this.strokeStyle), this.lineWidth]); },
     fill() { ops.push(['fill', style(this.fillStyle)]); },
     drawImage(...args) { ops.push(['drawImage', ...args.slice(1)]); },
@@ -69,6 +75,38 @@ function ground(obstacles, camX = 0, settings = {}) {
   return ops;
 }
 const fingerprint = (ops) => JSON.stringify(ops);
+// EVERY BARREL ON THE PANEL, found by its body. A barrel is no longer an
+// ellipse: it is the chamfered rectangle props.js draws the LANE barrel as —
+// a moveTo, seven lineTo and a closePath, snapped to the pixel grid — because
+// the thing the gorilla holds, the thing on the chute and the thing that rolls
+// at you are one object and now one picture. Centre and half-extents come back
+// off the bounding box, so a probe asks where a barrel is and how big it is
+// without knowing which corner cut it was drawn with.
+const barrelBodies = (ops) => {
+  const out = [];
+  for (let i = 0; i < ops.length; i++) {
+    if (ops[i][0] !== 'moveTo') continue;
+    const pts = [];
+    let j = i + 1;
+    while (ops[j]?.[0] === 'lineTo') pts.push(ops[j++]);
+    if (pts.length < 7 || ops[j]?.[0] !== 'closePath') continue;
+    const xs = [ops[i][1], ...pts.map((p) => p[1])];
+    const ys = [ops[i][2], ...pts.map((p) => p[2])];
+    const x0 = Math.min(...xs), x1 = Math.max(...xs);
+    const y0 = Math.min(...ys), y1 = Math.max(...ys);
+    // What the body does NEXT is what says whether it is really there: a lit
+    // barrel fills in the wood, a ghost cell is stroked and never filled.
+    const after = ops[j + 1];
+    out.push({
+      cx: (x0 + x1) / 2, cy: (y0 + y1) / 2,
+      rx: (x1 - x0 + 1) / 2, ry: (y1 - y0 + 1) / 2,
+      fill: after?.[0] === 'fill' ? after[1] : null,
+    });
+  }
+  return out;
+};
+// The gorilla's, at his authored half-extents; the girder cells at theirs.
+const bigBarrels = (ops) => barrelBodies(ops).filter((b) => b.rx === 8 && b.ry === 7);
 const ACTIVE = 'rgba(211,91,67,0.82)';
 // A lit window cell is the coral at full strength (LCD_WINDOW_LIT); an unlit
 // one is the uniform ghost (LCD_WINDOW_GHOST). ACTIVE is the rest of the
@@ -193,19 +231,23 @@ assert(idleA === idleB, 'an invalid heard beat selects an idle frame independent
 for (const stage of [1, 3]) {
   const beat0 = background(stage, 0);
   const beat2 = background(stage, 2);
-  const activeBarrel = (ops) => ops.filter((op) => op[0] === 'ellipse' && op[3] === 8 && op[4] === 7).at(-1);
-  assert(activeBarrel(beat0)?.[2] !== activeBarrel(beat2)?.[2],
+  const activeBarrel = (ops) => bigBarrels(ops).at(-1);
+  assert(activeBarrel(beat0)?.cy !== activeBarrel(beat2)?.cy,
     `stage ${stage} rooftop gorilla lifts and sets down its barrel on the four-beat cycle`);
   // High on the panel, and each stage's ceiling is its own building's. Stage 3's
   // is 64 rather than 52 because its tower came down fourteen to let the plane
   // cross over the raised barrel instead of behind it — see that scene's
   // `plane`, and the crossing check further down that enforces the clearance
   // this number pays for.
-  assert(activeBarrel(beat0)?.[2] <= (stage === 1 ? 70 : 64),
+  assert(activeBarrel(beat0)?.cy <= (stage === 1 ? 70 : 64),
   `stage ${stage} downbeat pose holds the barrel overhead on its tallest building`);
+  // 22, not the 24 this once wanted: the four barrels in the frame — three
+  // ghost poses and the live one — used to contribute an ellipse each and are
+  // rounded rectangles now. What is left is the ape himself, which is what the
+  // check was ever about.
   const ellipses = beat0.filter((op) => op[0] === 'ellipse').length;
   const curves = beat0.filter((op) => op[0] === 'quadraticCurveTo').length;
-  assert(ellipses >= 24 && curves >= 8,
+  assert(ellipses >= 22 && curves >= 8,
   `stage ${stage} gorilla uses curved anatomy, layered facial planes and articulated hands (${ellipses} ellipses, ${curves} curves)`);
 }
 
@@ -237,21 +279,16 @@ assert(fingerprint(cloudWispXs(background(1, 8, { reducedMotion: true })))
 // Stage 1's DONKEY KONG tower: an eight-cell ghosted barrel path across two
 // girder floors with two lit cells walking it, the big rooftop gorilla
 // painter on its roof, and a runner whose face plate lifts 11px on the jump
-// beat. A mini barrel is the only EIGHT-SIDED path in the scene — it stopped
-// being an ellipse when the round amber cell turned out to read as a
-// basketball at a building's remove, and the flat top and bottom is the whole
-// of the fix — so it is counted here by its silhouette, which is also the only
-// thing a ghosted cell draws. The runner's face is the only fillRect in the
-// muzzle colour.
+// beat. A mini barrel is the gorilla's own barrel at 5x4 half-extents — the
+// one ellipse of that size in the scene (the octagon it briefly was is gone:
+// it was not the barrel he is holding, see lcdMiniBarrel) — so it is counted
+// here by its body, which is also the only thing a ghosted cell draws. The
+// runner's face is the only fillRect in the muzzle colour.
 // Beat 1, not beat 0, for the bottom-girder pose: the loop's first beat has him
 // on the ladder BELOW that girder, coming up out of the street, and a climbing
 // figure is drawn from behind with no face at all.
 const gwBeat = [1, 13, 15, 2].map((b) => background(1, b));
-const miniBarrels = (ops) => ops.map((op, i) => [op, i])
-  .filter(([op, i]) => op[0] === 'moveTo'
-    && ops.slice(i + 1, i + 8).every((next) => next[0] === 'lineTo')
-    && ops[i + 8]?.[0] === 'closePath')
-  .map(([op]) => op);
+const miniBarrels = (ops) => barrelBodies(ops).filter((b) => b.rx === 5 && b.ry === 4);
 assert(miniBarrels(gwBeat[0]).length >= 10,
 'stage 1 carries the tower with its full ghosted barrel path');
 // His FACE PLATE, specifically: the 6x4 skin block. He grew hands in the same
@@ -355,8 +392,8 @@ for (const stage of [1, 2, 3]) {
   // full-width soft bar; it stands in the opening phase, before any service
   // has run, and it is still standing on the beats between services.
   const girder = (beat, progress) => background(2, beat, {}, 0, 0, { progress })
-    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(80,85,92,0.48)'
-      && op[2] === 0 && op[4] === 480);
+    .filter((op) => op[0] === 'fillRect' && op[1] === INK
+      && op[2] === 0 && op[4] === 480 && op[5] === 1);
   assert(girder(12, 0).length === 1 && girder(12, 0.3).length === 1,
     'the viaduct stands from the opening phase, with or without a train on it');
   assert(train(34, 0.3).length === 0 && girder(34, 0.3).length === 1,
@@ -388,14 +425,17 @@ for (const stage of [1, 2, 3]) {
       && (fill === 'rgba(211,91,67,0.82)' || fill === 'rgba(80,85,92,0.24)'));
   assert(meterCells.length >= 6 * 6 * 2, `the equalizer banks still stand (${meterCells.length} cells)`);
 
-  // The piers stand in the gaps, never up through a billboard's own legs.
-  const piers = background(2, 12, {}, 0, 0, { progress: 0.3 })
-    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(80,85,92,0.48)'
-      && op[4] === 2 && op[5] === 10);
-  // Billboards sit on buildings 1 (x 71 w 51) and 7 (x 422 w 36).
-  assert(piers.length > 0 && piers.every(([, , px]) => (px + 2 <= 69 || px >= 124)
-    && (px + 2 <= 420 || px >= 460)),
-    'no viaduct pier comes up over a billboard roof');
+  // THE RAIL IS ONE LINE AND NOTHING ELSE. It carried a deck box and piers;
+  // a pier that stops in mid-air bears on nothing, and piers carried to the
+  // street would cross the whole skyline. One 1px ink line, full width, and
+  // no second mark anywhere under it.
+  const railY = girder(12, 0.3)[0][3];
+  const underRail = background(2, 12, {}, 0, 0, { progress: 0.3 })
+    .filter((op) => op[0] === 'fillRect' && op[1] === INK
+      && op[3] > railY && op[3] < railY + 24 && op[5] > 2 && op[4] <= 2);
+  assert(underRail.length === 0,
+    `nothing hangs off the rail (${underRail.length} marks under it)`);
+  assert(girder(12, 0.3).length === 1, 'and it is a single line, not a deck');
 }
 
 // ---- the jukebox panel ----------------------------------------------------
@@ -638,8 +678,7 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
 // gone for two beats, and a fresh one in his hands after.
 {
   // Four ghosts and, on a normal beat, the live one over the top of them.
-  const barrels = (beat) => background(1, beat)
-    .filter((op) => op[0] === 'ellipse' && op[3] === 8 && op[4] === 7).length;
+  const barrels = (beat) => bigBarrels(background(1, beat)).length;
   // The one cell of the burst nothing else on the panel paints: the gold fleck
   // the barrel wore, thrown clear of its own wreck.
   const struck = (beat) => background(1, beat)
@@ -671,12 +710,12 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // stroke-only), and each beat compared against the same beat of the bar four
   // bars earlier — the chain repeats every four beats, so that is the same
   // picture with nothing destroyed.
-  // Counted off the 2x1 highlight, which is the one mark a lit cell paints
-  // that nothing else on the panel does — the seams are a wash the big barrel
-  // shares, and the ghosts are stroke-only.
-  const towerBarrels = (beat) => background(1, beat)
-    .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(226,166,88,0.62)'
-      && op[4] === 2 && op[5] === 1).length;
+  // Counted as girder-sized bodies that are FILLED in the wood. It used to be
+  // counted off a 2x1 highlight, which stopped existing when the barrel took
+  // the lane barrel's marks; the fill is the better probe anyway, because it
+  // is the thing that separates a cell that is there from a ghost of one.
+  const towerBarrels = (beat) => barrelBodies(background(1, beat))
+    .filter((b) => b.rx === 5 && b.fill === '#a9743a').length;
   let shortBeats = 0;
   for (let d = 0; d < 12; d++) {
     if (towerBarrels(hit + d) === towerBarrels(hit + d - 16) - 1) shortBeats++;
@@ -722,9 +761,8 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   // The gorilla's building is [365, 36, 119]; the chute hangs 8 past its wall,
   // centred in the 15px gap to the next facade.
   const CHUTE_X = 409;
-  const lit = (extra, beat) => background(3, beat, {}, 0, 0, extra)
-    .filter((op) => op[0] === 'ellipse' && op[1] === CHUTE_X && op[3] === 8 && op[4] === 7)
-    .length;
+  const lit = (extra, beat) => bigBarrels(background(3, beat, {}, 0, 0, extra))
+    .filter((b) => b.cx === CHUTE_X).length;
   // The ghosts are drawn every frame whatever happens — the chute's whole path
   // is always there — so a live cell is one more than that. The baseline is
   // taken with a delivery far enough away that none of the four is lit.
@@ -758,9 +796,8 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
   const authored = [0, 1, 2, 3].map((b) => lit(null, b));
   assert(authored.every((n) => n === idle + 1),
     `with no lane the chute drops on every beat of the bar (${authored.join(',')})`);
-  assert(background(3, 5, { reducedMotion: true }, 0, 0, { barrelBeat: 5 })
-    .filter((op) => op[0] === 'ellipse' && op[1] === CHUTE_X && op[3] === 8 && op[4] === 7)
-    .length === idle + 1,
+  assert(bigBarrels(background(3, 5, { reducedMotion: true }, 0, 0, { barrelBeat: 5 }))
+    .filter((b) => b.cx === CHUTE_X).length === idle + 1,
     'and a frozen panel is not driven by the lane either');
 }
 

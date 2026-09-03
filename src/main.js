@@ -665,7 +665,9 @@ function boot() {
       // constructor rather than an instanceof, matching how lifecycle.js reads
       // portraitMode: a static survives the module-identity mismatches that
       // make instanceof quietly fail.
-      const hidesFps = menuState?.constructor?.hidesFps === true;
+      // The dev recorder captures this very canvas, so a diagnostic left up
+      // would be burned into every frame of the file.
+      const hidesFps = menuState?.constructor?.hidesFps === true || Dev.recording;
       const showChromeFps = save.settings.showFps && !visualiserActive && !hidesFps
         && Input.isTouchDevice() && chrome.mode !== 'none';
       if ((save.settings.showFps || auditioning) && !hidesFps) {

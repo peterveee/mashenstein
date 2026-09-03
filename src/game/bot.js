@@ -3,7 +3,7 @@
 // press/release, and never touches Input.activity — so attract mode can tell
 // the bot from a human.
 import { Input } from '../engine/input.js';
-import { PLAYER_X, PLAYER_W, PLAYER_SPRITE_W, BASE_JUMP_V } from './player.js';
+import { PLAYER_W, PLAYER_SPRITE_W, BASE_JUMP_V } from './player.js';
 
 // A HOLE IS THE ONE MISTAKE THE BOT MAY NOT MAKE.
 //
@@ -68,12 +68,62 @@ export class DemoBot {
    */
   arcSpan() {
     const run = this.run;
+    const a = this.arc();
+    return a ? a.airtime * run.speed : 0.55 * run.speed;
+  }
+
+  /**
+   * THE ARC THIS HERO WOULD LEAVE THE GROUND IN, right now, under this lane.
+   *
+   * Launch speed and the gravity actually acting on him, and the two times that
+   * fall out of them: `apex` is how long he takes to reach the top of the jump
+   * and `airtime` is the whole flight. Both callers need the same numbers —
+   * arcSpan turns airtime into road covered, finishJump aims apex at the
+   * plunger — so they are solved once rather than twice.
+   *
+   * Null when there is nothing to solve from: no hero, or a lane that has
+   * somehow taken gravity away. Callers fall back to their own guess.
+   */
+  arc() {
+    const run = this.run;
     const p = run.player;
     const hero = p.hero;
-    if (!hero) return 0.55 * run.speed;
+    if (!hero) return null;
     const g = p.gravity * (run.powerups?.gravityMultiplier?.() ?? 1);
     const v = BASE_JUMP_V * (p.jumpScale || 1) * hero.jumpMult;
-    return g > 0 ? (2 * v / g) * run.speed : 0.55 * run.speed;
+    if (!(g > 0) || !(v > 0)) return null;
+    return { v, g, apex: v / g, airtime: 2 * v / g };
+  }
+
+  /**
+   * THE LAST JUMP OF THE STAGE — the one that puts him ON the plunger.
+   *
+   * The finish is graded on where he is in the air when he reaches the cap, not
+   * on reaching it (resolveFlip in run.js): grounded is a CLUNK worth nothing,
+   * and the bands are fractions of his own peak. So a bot that simply runs at
+   * the marker plays every stage's last beat as the worst grade in the game,
+   * and — the reason this exists — the ending LOOKS like running into a post.
+   *
+   * There is exactly one press to solve for, and it is not a reaction: the cap
+   * is a fixed place, so the answer is "leave the ground one apex before you
+   * get there" and the top of the arc lands on the thing. Every hero clears
+   * PERFECT that way, including the heavy ones — their gravity is 1.25x while
+   * the grade's peak is measured at standard, which puts their own apex at 0.80
+   * of it against the 0.70 the band asks for.
+   *
+   * Pressing a frame or two early is harmless and pressing late is survivable:
+   * he is past the apex by a fraction of a pixel in the first case, and still
+   * two thirds of the way up at 40% of the way through the rise in the second.
+   * Nothing here refuses a jump — the finishing straight past FINISH_CLEAR is
+   * clear road by construction, so there is no hole to land in.
+   */
+  finishJump() {
+    const run = this.run;
+    if (!run.finishing) return false;
+    const dist = run.finishSeatX() - run.playerWorldX();
+    if (dist <= 0 || !(run.speed > 0)) return false;
+    const a = this.arc();
+    return !!a && dist / run.speed <= a.apex;
   }
 
   /**
@@ -163,7 +213,20 @@ export class DemoBot {
   update(dt) {
     const run = this.run;
     if (run.dead || run.paused) { this.releaseAll(); return; }
-    const px = run.camX + PLAYER_X;
+    // The stage is over and the finale hold owns the frame: the hero is on the
+    // pole or on the cap, nothing reads input, and a button left down would be
+    // held into whatever comes next. Let go and stop.
+    if (run.finaleT != null) { this.releaseAll(); return; }
+    // WHERE HE ACTUALLY IS, not where the camera would have him.
+    //
+    // `camX + PLAYER_X` is the same number for the whole of normal play and the
+    // wrong one for both scripted runs: through the finishing straight the world
+    // holds still and the HERO crosses the screen (heroScreenX), so a bot
+    // measuring from the camera watched a frozen picture in which nothing ever
+    // got any closer — it stopped answering the last hazards of every stage and
+    // could not see the marker it was running at. playerWorldX is the number the
+    // run's own collisions use.
+    const px = run.playerWorldX();
     const sp = run.speed;
 
     // How far this jump would carry him, and every hole it could carry him into.
@@ -313,8 +376,11 @@ export class DemoBot {
     // jump: held through the arc. A jump that would land in a hole is refused
     // whatever asked for it — a hit costs the demo a moment and a fall costs it
     // the rest of the level.
-    const wantJump = crossing ? crossJump
-      : (pitJump || (laneJump && this.landsWell(px + span, holes)) || optional);
+    // The last jump of the stage outranks everything: there is nothing left in
+    // the lane to answer, and it is the one press the ending is graded on.
+    const wantJump = this.finishJump() ? true
+      : crossing ? crossJump
+        : (pitJump || (laneJump && this.landsWell(px + span, holes)) || optional);
     if (!run.player.grounded) {
       // keep holding — releasing early cuts the jump short (VARIABLE_JUMP_CUT)
       this.wasAir = true;

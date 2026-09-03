@@ -3,7 +3,7 @@ export const HEROES = [
   {
     id: 'lorenzo', name: 'LORENZO "WRENCHES" BRACCIANO', short: 'LORENZO', showFullName: true,
     tagline: 'STANDARD PLUMBING PROCEDURE.',
-    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.10, maxJumps: 1, canFloat: false,
+    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.08, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
     ability: { type: 'stomp', cooldown: 2.5, label: 'STOMP / SMASH', callout: 'STOMP + SMASH' }, stomp: true,
     joke: 'PRODUCES INCREASINGLY INAPPROPRIATE PLUMBING TOOLS.',
@@ -18,7 +18,7 @@ export const HEROES = [
   {
     id: 'gnash', name: 'GNASH THE NEEDLEMOUSE', short: 'GNASH',
     tagline: 'ALREADY THERE. WAITING.',
-    speedMult: 1.15, scoreMult: 1.0, jumpMult: 1.05, maxJumps: 1, canFloat: false,
+    speedMult: 1.15, scoreMult: 1.0, jumpMult: 1.06, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
     ability: { type: 'dash', cooldown: 3.5, label: 'SPIN DASH', callout: 'SPIN DASH' }, stomp: false,
     joke: 'ARRIVES TOO EARLY AND WAITS FOR REALITY TO CATCH UP.',
@@ -73,7 +73,7 @@ export const HEROES = [
     // shooters differ by shotSpeed/shotSize rather than by id checks.
     id: 'clara', name: 'CLARA VAULT, MALL RAIDER', short: 'CLARA', subtitle: 'MALL RAIDER',
     tagline: 'CHAPTER ONE: SHE ARRIVED.',
-    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.15, maxJumps: 1, canFloat: false,
+    speedMult: 1.0, scoreMult: 1.0, jumpMult: 1.10, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
     // The third shooter, and not the same weapon as either of the others:
     // B-33P is small and fast on a 1.35s recharge, Kiko fat and slow on 3.5s.
@@ -123,7 +123,7 @@ export const HEROES = [
   {
     id: 'raymn', name: "RAY M'N, APPENDAGE-OPTIONAL", short: "RAY M'N",
     tagline: 'LIMBS WERE OUT OF BUDGET.',
-    speedMult: 0.95, scoreMult: 1.0, jumpMult: 1.03, maxJumps: 1, canFloat: false,
+    speedMult: 0.95, scoreMult: 1.0, jumpMult: 1.04, maxJumps: 1, canFloat: false,
     startShield: 0, magnetRadius: 0, variableJump: true,
     ability: { type: 'fist', cooldown: 3, label: 'ROCKET FIST', callout: 'ROCKET FIST' }, stomp: false, assemblyGrace: true,
     joke: 'THE INSURANCE FORM REQUIRES A LIMB COUNT. HE KEEPS WRITING "OPTIONAL."',
@@ -167,15 +167,15 @@ export const HERO_BY_ID = Object.fromEntries(HEROES.map((h) => [h.id, h]));
 // lemon and Kiko's warning shot, and 'axe' is Grumpos' — a thrown weapon that
 // comes back, but one that reaches.
 //
-// THE ROCKET FIST IS NOT IN HERE, and it is a range decision rather than a
-// taste one. A thrown weapon parks where it stopped mattering (see
-// updateProjectiles) — the axe at 0.55s of flight, the fist at 0.42 — which at
-// RHYTHM BANKRUPTCY's 208px/s puts the axe 235px down the road against a box
-// standing at 230, and the fist 176px, fifty-four short. Ray M'N's fist would
-// visibly stop in mid-air in front of a box it had just opened, and a weapon
-// that lies about what it hit is worse than a hero who is handed a different
-// beat to play.
-export const RANGED_ABILITY_TYPES = new Set(['shoot', 'axe']);
+// THE ROCKET FIST IS IN HERE since the box moved to a beat out. It was kept out
+// on range: a thrown weapon parks where it stopped mattering (see
+// updateProjectiles) — the axe at 0.55s of flight, the fist at 0.42 — and
+// against a box standing 2.4 beats down the road (230px at RHYTHM BANKRUPTCY's
+// 208px/s) the fist stopped fifty-four px short, which would have had it
+// visibly hang in mid-air in front of a box it had just opened. The box now
+// stands 1.05 beats out (BOX_LEAD_BEATS, ~94px) and the fist's 176px covers it
+// with room, so Ray M'N is dealt the box like the other four.
+export const RANGED_ABILITY_TYPES = new Set(['shoot', 'axe', 'fist']);
 
 /** Can this hero destroy something in front of them without touching it? */
 export function heroShoots(id) {

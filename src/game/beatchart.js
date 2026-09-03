@@ -5,6 +5,7 @@ import { makeObstacle, makeDroneColumn, makePickup, OBSTACLES } from './entities
 import { HEROES } from '../data/heroes.js';
 import { worstAirtime } from './spawner.js';
 import { BASE_JUMP_V, GRAVITY, HEAVY_GRAVITY_MULT, PLAYER_W } from './player.js';
+import { BASE_SPEED } from './layout.js';
 
 const REQUIRED_ACTIONS = new Set(['jump', 'duck', 'ability']);
 const ACTION_TYPES = { jump: 'beatBar', duck: 'drone', ability: null, pit: 'gap' };
@@ -74,17 +75,32 @@ export const COIN_RUN_PIT_CLEAR_SEC = 0.25 * 2.4;
 // which they all arrive on the same beat line.
 //
 // So the flight is not what is timed. The box takes the hit, LIGHTS, and goes
-// off on a beat the chart already knew about: BOX_BURST_BEATS after the beat
-// the shot was asked on. The whole spread of arrival times (0.85 to 1.57 beats
-// at this cabinet's tempo and speed, plus up to ON_BEAT_WINDOW of late press)
-// fits inside two beats with room over, so the fuse is always a real wait and
-// never a debt the box has to pay before the round has got there.
+// off on the first beat line after the round lands — and never later than
+// BOX_BURST_BEATS after the beat the shot was asked on, which is the ceiling
+// the press arms it with. Every weapon in the cast, pressed on the line, lands
+// inside one beat (0.61 to 0.94 of one at this cabinet's tempo and speed), so
+// every hero opens the box on the line after the shot — with a late press on
+// top, which is what BOX_SHOT_MIN_SPEED is for. Kiko's warning shot is 170px/s
+// (122 under REASONABLE FORCE), and at that speed a press at the late edge of
+// the window landed a hair after the line, on a box that had already gone. So
+// on a beat cabinet no round leaves slower than the floor: at 200px/s the
+// slowest flight is 0.81 of a beat at the fastest lane, and 0.81 plus
+// ON_BEAT_WINDOW is still inside the beat. Kiko's shot on these stages is a
+// touch quicker than it is anywhere else, which reads as her hurrying it,
+// and nothing about it that is hers — the size, the recharge — changes.
 //
-// BOX_LEAD_BEATS is then forced: the box has to be further down the road than
-// the player will have travelled when it goes off, or it detonates behind him.
-// 2.4 against a 2-beat fuse leaves 0.4 of a beat — about 45px here — so the
-// burst lands just in front of the hero's face, which is the picture the
-// mechanic wants anyway.
+// BOX_LEAD_BEATS is then the DISTANCE. 1.5 against a 1-beat fuse leaves half
+// a beat — fifty px here — between the hero and the box when it goes, which is
+// the burst plainly in front of him rather than in his face (at 1.05 he was
+// running into the box as it went). It was 2.4 beats out with a two-beat
+// fuse, and the box read as standing a long way off and going off a long time
+// after the shot; the grid is kept and both numbers are pulled in.
+//
+// AND THE LINE AFTER A BOX MAY NOT BE A HOLE. The box stands half a beat past
+// it, and a chart pit on that line runs from 0.22 of a beat past it to 0.84
+// (pitWindowBeats, PIT_BEATS), so the box would be a prop hanging over a void
+// with a shot fired at it. The validator below refuses that; two of the three
+// charts used to cut their hole there and now cut it a beat later.
 // HOW MUCH OF A CROSSING'S TWO-BEAT STRIDE IS AIR, on a beat cabinet.
 //
 // The other crossings in the game hand the player a WINDOW: routes.js sizes hop
@@ -104,8 +120,9 @@ export const COIN_RUN_PIT_CLEAR_SEC = 0.25 * 2.4;
 // press still comes four fifths of the way down the stone. tests/spike-crossing.js
 // walks the whole cast over it.
 export const CROSSING_BEAT_HOP = 0.32;
-export const BOX_LEAD_BEATS = 2.4;
-export const BOX_BURST_BEATS = 2;
+export const BOX_LEAD_BEATS = 1.5;
+export const BOX_BURST_BEATS = 1;
+export const BOX_SHOT_MIN_SPEED = 200;
 // ACTION-FREE LANE AFTER A RESYNC, in beats, and it is the one number the
 // spawner and the judge must agree on: the spawner lays nothing that ASKS AN
 // INPUT inside it and the judge scores nothing inside it. Two beats is a beat
@@ -470,23 +487,29 @@ export function validateBeatChart(chart, physics = {}) {
   // chart is in beats. Both ends are speed-independent — the run's length, the
   // pit's approach and the clearance all scale with the lane — so one check
   // covers every speed the cabinet is ever run at.
-  // A CARD BOX MAY NOT STAND IN A HOLE. The box is laid BOX_LEAD_BEATS down the
-  // road, which puts its body four tenths of a beat past the grid line
-  // BOX_BURST_BEATS after its own slot — and a chart pit on that line spans
-  // roughly two to seven tenths past it, so the two would occupy the same
-  // stretch of road. A hole wins that argument (it is the floor), and the box
-  // would be a prop hanging over a void with a shot fired at it. Checkable
-  // without a tempo, because both numbers are in beats.
-  const abilitySlots = bySlot.filter((e) => e.action === 'ability' && e.type);
-  for (const a of abilitySlots) {
-    const landing = bySlot[(a.slot + BOX_BURST_BEATS) % chart.loopBeats];
-    if (landing?.action === 'pit') {
-      throw new Error(`card box at slot ${a.slot} bursts over the hole at slot ${landing.slot}`);
-    }
-  }
-
   if (physics.bpm) {
     const beatSec = 60 / physics.bpm;
+    // A CARD BOX MAY NOT STAND IN A HOLE. The box is laid BOX_LEAD_BEATS down
+    // the road, which puts its body BOX_LEAD_BEATS - BOX_BURST_BEATS past the
+    // grid line it goes on — and two charts cut a pit on that very line (fire
+    // across the gap, jump it, land as the box goes). The pit's lip is
+    // pitWindowBeats past the line, so the box's far edge has to be short of
+    // that or it is a prop hanging over a void with a shot fired at it. In
+    // beats, so one check covers every speed the cabinet is run at: the box is
+    // a fixed number of px, so it is WIDEST in beats at the slowest lane the
+    // game has, and that is the width checked. The lane never runs under
+    // BASE_SPEED (run.js scales up from it, never down).
+    const pxPerBeat = (physics.speed || BASE_SPEED) * beatSec;
+    const lip = pitWindowBeats(PIT_BEATS, physics.bpm);
+    for (const a of bySlot.filter((e) => e.action === 'ability' && e.type)) {
+      const landing = bySlot[(a.slot + BOX_BURST_BEATS) % chart.loopBeats];
+      if (landing?.action !== 'pit') continue;
+      const far = BOX_LEAD_BEATS - BOX_BURST_BEATS + OBSTACLES[a.type].w / pxPerBeat;
+      if (far >= lip) {
+        throw new Error(`card box at slot ${a.slot} stands over the hole at slot ${landing.slot} `
+          + `(far edge ${far.toFixed(2)} beats past the line, lip at ${lip.toFixed(2)})`);
+      }
+    }
     const clearBeats = COIN_RUN_PIT_CLEAR_SEC / beatSec;
     const runs = bySlot.filter((e) => e.action === 'coin' && (e.run ?? 1) > 1);
     const pits = bySlot.filter((e) => e.action === 'pit');
@@ -584,7 +607,8 @@ export function actionApproachPx(action, type, speed, bpm = null) {
 
 export class BeatSpawner {
   constructor({ chart, bank, react = 0.25, pitPlan = [], beatNow, playerWorldX,
-    lookaheadBeats = 7, onPitAlign = null, canShoot = () => true } = {}) {
+    lookaheadBeats = 7, onPitAlign = null, canShoot = () => true,
+    openingUntil = () => null } = {}) {
     this.chart = validateBeatChart(chart, { bpm: bank?.bpm });
     this.bank = bank || null;
     this.runwayBeats = laneRunwayBeats(this.chart);
@@ -596,6 +620,10 @@ export class BeatSpawner {
     // decision back off `eventInstances` rather than off the chart, so a beat
     // this returns false for is a beat nobody is owed (RunState.rhythmRequiredAt).
     this.canShoot = canShoot;
+    // The beat before which only bars and coins go down — the stage's opening,
+    // while the rooftop sign is still teaching the other marks. Asked at lay
+    // time, off the run (RunState.rhythmOpeningGate), which also scores by it.
+    this.openingUntil = openingUntil;
     this.pitPlan = pitPlan;
     this.beatNow = beatNow || (() => null);
     this.playerWorldX = playerWorldX || ((worldX) => worldX + 56);
@@ -792,6 +820,16 @@ export class BeatSpawner {
       // already playing rather than onto four beats of bare road.
       if (this.actionFreeUntilBeat != null && this.cursorBeat < this.actionFreeUntilBeat
         && event.action !== 'coin') {
+        this.cursorBeat++;
+        continue;
+      }
+      // THE OPENING IS JUMPS-ONLY, the same way: a duck, a box or a hole asked
+      // before the sign has finished saying what it is gets skipped outright,
+      // and the judge (rhythmRequiredAt) reads the same gate. Bars still go
+      // down — a jump needs no lesson — and so do the coins.
+      const opening = this.openingUntil();
+      if (opening != null && this.cursorBeat < opening
+        && event.action !== 'coin' && event.action !== 'jump') {
         this.cursorBeat++;
         continue;
       }

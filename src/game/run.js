@@ -18,7 +18,7 @@ import { PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './pun
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
-import { BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats, BOX_BURST_BEATS } from './beatchart.js';
+import { BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED } from './beatchart.js';
 import { drawBeatGround, ACTION_INK } from './beatground.js';
 import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
 // The pacing constants and the stage-layout resolver. They live in layout.js
@@ -70,6 +70,16 @@ const FINALE_HOLD = 0.25;
 // moving except the hero celebrating on the plunger and the flag flying over
 // him, which is the picture the whole marker exists to produce.
 const FINALE_TAIL = 1;
+// What a DEMO clip holds instead of all that — attract mode and the dev menu's
+// bot-play recordings. It ends once the landing has been seen: the hero rides
+// the pole down, his feet find the cap, the cap gives under him and clicks, and
+// the clip stops there. Not the payoff chain, the coin tally or the results
+// card, none of which a clip with nobody playing has any use for.
+//
+// It used to end at the SEAT — the frame the hero reached the pole — which cut
+// away before he could land on the thing he had just jumped for, and made the
+// whole ending read as running into a post.
+const DEMO_FINISH_BEAT = 0.55;
 // How long an ACT card holds the world still. It is a reading budget, not a
 // flourish: the cards run 56–76 characters over two lines, and at 2s — with the
 // last 0.3 of that spent fading out — the longest of them was off screen before
@@ -126,7 +136,7 @@ const CAM_FOOTROOM = 6;
 // How far past the right edge a self-moving obstacle wakes up. Enough that it is
 // already rolling when it comes into shot rather than starting dead.
 const WAKE_MARGIN = 48;
-// THE OMEN. Once in a while — one stage attempt in eight — the backdrop's
+// THE OMEN. Once in a while — one stage attempt in three — the backdrop's
 // plane tows SURRENDER DOROTHY instead of its usual line. Rolled once per
 // stage off the run's own seed, on a stream nothing else draws from, so a
 // daily seed sees the same sky and no gameplay draw moves because of it. The
@@ -135,7 +145,7 @@ const WAKE_MARGIN = 48;
 // in the first half of a ninety-second stage. Only a backdrop that authors an
 // `omen` flies it — today that is rhythm-3 alone (LCD_CITY_SCENES[3]);
 // everywhere else the roll is a number nobody reads.
-const SKY_OMEN_CHANCE = 1 / 8;
+const SKY_OMEN_CHANCE = 1 / 3;
 const SKY_OMEN_BEAT = [16, 48];
 // A spring launches to the road's entry height plus this. Clearance rather than
 // exactness: the hero has to be DESCENDING to be caught by a road (see
@@ -362,6 +372,12 @@ function warmHeroArt(heroId) {
 // Four is the beat that facade lands on (structure 1 of the assembly, three
 // beats to settle), so the sign goes up the moment it has something to stand on
 // and the rest of the skyline finishes behind it.
+// How fast a pellet fired from the air comes down onto its target, px/s, and
+// how far ahead it looks for one. Clara's round closes on a box at ~550px/s and
+// a jump apex is ~45px up, so it has a fifth of a second to lose that height —
+// 360 does it with a visible dive rather than a snap. See homePellet.
+const PELLET_HOME_RATE = 360;
+const PELLET_HOME_RANGE = 240;
 const RHYTHM_SIGN_FROM = 4;
 // ONE BAR EACH. Four beats is long enough to read a mark and a word off a sign
 // that is flashing at you, and short enough that three of them are three bars
@@ -606,10 +622,6 @@ const BOOST_FLARE_T = 0.3;
 // purpose: a hit is worth four clean beats, because a market that shrugs off a
 // crash is not a joke about bankruptcy. The rise is small enough that the board
 // takes most of a phrase to climb, which is what makes the climb readable.
-const RHYTHM_FORM_START = 0.5;
-const RHYTHM_FORM_RISE = 0.07;
-const RHYTHM_FORM_MISS = 0.1;
-const RHYTHM_FORM_HIT = 0.32;
 // Beats of clean streak between thumbs-up, and how long one stays on the board.
 const RHYTHM_CHEER_EVERY = 8;
 const RHYTHM_CHEER_T = 2.2;
@@ -1210,7 +1222,6 @@ export class RunState {
     // it — no score, no mission, no physics — which is what keeps handing it to
     // a style pack honest. `rhythmCheer` is the seconds left on the thumbs-up
     // the board puts up every eighth beat of a clean streak.
-    this.rhythmForm = RHYTHM_FORM_START;
     this.cityAccidentBeat = null;
     this.barrelChuteCue = null;
     // THE SKYLINE'S WALK-ON CLOCK: beats since the world started moving, or
@@ -2045,6 +2056,7 @@ export class RunState {
         // Read at the moment each box would be laid, off whoever is in the
         // lane then — never off the hero who started the stage.
         canShoot: () => heroShoots(this.relay.current),
+        openingUntil: () => this.rhythmOpeningGate(),
       });
     } else {
       this.spawner = new Spawner({
@@ -2291,7 +2303,6 @@ export class RunState {
     Audio.setCaptureEnabled(this.beatLock ? false : Input.rewindAvailable());
     this.rewindFx = new TapeRewindEffect();
     this.beatCombo = 0;
-    this.rhythmForm = RHYTHM_FORM_START;
     this.cityAccidentBeat = null;
     this.barrelChuteCue = null;
     this.rhythmCheer = 0;
@@ -2322,6 +2333,9 @@ export class RunState {
     // to a clock hundreds of beats past all of them. See rhythmVerbCue.
     this.rhythmSignRoll = null;
     this.rhythmSignPhase = null;
+    // Undefined until it can be worked out, null once it is known there is no
+    // gate (a retry, a stage with no sign). See rhythmOpeningGate.
+    this.rhythmOpeningUntil = undefined;
     this.narrateT = this.corrupted.includes('narration') || this.unplugged ? 6 : 0;
     // The keyboard legend is a teaching aid, so it only runs while there is
     // something to teach: the campaign's opening stage, or a run with no stage
@@ -2594,8 +2608,20 @@ export class RunState {
    * note on the power below.
    */
   rhythmVerbCue(beat) {
+    const sched = this.rhythmSignSchedule();
+    if (!sched || !Number.isFinite(beat) || beat < sched.from) return null;
+    const slot = Math.floor((beat - sched.from) / sched.hold);
+    return sched.roll[slot] || null;
+  }
+
+  /**
+   * The sign's timetable, in OPENING beats (cityIntroBeat): `from`, the bar
+   * line the first sign goes up on; `hold`, beats per sign; `roll`, the signs
+   * in order. Null before the song has a clock. Solved once per stage.
+   */
+  rhythmSignSchedule() {
     const chart = this.cabinet?.beatCharts?.[this.stage?.index];
-    if (!Array.isArray(chart?.events) || !Number.isFinite(beat)) return null;
+    if (!Array.isArray(chart?.events)) return null;
     const hold = Math.max(RHYTHM_SIGN_BEATS_MIN, RHYTHM_SIGN_BEATS);
     // EVERY CHANGE LANDS ON A BAR LINE — the first sign, each swap, and the
     // frame the price gets its board back.
@@ -2613,13 +2639,13 @@ export class RunState {
     }
     const from = RHYTHM_SIGN_FROM
       + ((-(RHYTHM_SIGN_FROM + this.rhythmSignPhase) % 4) + 4) % 4;
-    if (beat < from) return null;
-    const slot = Math.floor((beat - from) / hold);
-    if (slot >= RHYTHM_SIGN_ORDER.length) return null;
     if (!this.rhythmSignRoll) {
       const roll = [];
       for (const action of RHYTHM_SIGN_ORDER) {
-        const asks = chart.events.filter((e) => e.action === action);
+        // A hole asks for the jump button as surely as a bar does, and the
+        // finale has no bar at all any more — only holes.
+        const asks = chart.events.filter((e) => e.action === action
+          || (action === 'jump' && e.action === 'pit'));
         if (!asks.length) continue;
         // EVERY HERO IS SHOWN THE POWER BUTTON, shooter or not.
         //
@@ -2639,7 +2665,46 @@ export class RunState {
       }
       this.rhythmSignRoll = roll;
     }
-    return this.rhythmSignRoll[slot] || null;
+    return { from, hold, roll: this.rhythmSignRoll };
+  }
+
+  /**
+   * NOTHING BUT JUMPS UNTIL THE SIGN HAS FINISHED. The beat (in the judge's
+   * and the spawner's shared numbering) before which the lane lays only bars
+   * and coins — no duck, no box, no hole — or null when there is no gate.
+   *
+   * The rooftop sign spends the opening bars saying what the three marks
+   * mean, and a lane that asked for a slide or a shot while the word for it
+   * was still going up on the roof was testing the player on the lesson
+   * before it had been given. Jumps are the exception because a jump is the
+   * one thing every runner already knows, and a lane with nothing in it at
+   * all for the first twenty beats reads as broken rather than as patient.
+   * Holes are the same input as a bar but they are fatal, and the sign is
+   * still up: the road is whole until it comes down.
+   *
+   * Read by the spawner when it lays (BeatSpawner.openingUntil) and by the
+   * judge when it scores (rhythmRequiredAt), off the same number, so a beat
+   * the lane was told not to lay is a beat nobody is marked down for.
+   *
+   * Solved once, the first time both clocks exist: the sign's end in opening
+   * beats is converted to the judge's beat by the distance between the two
+   * clocks now, and both advance together from there. A retry arrives with
+   * the sign already down (cityIntroBeat is Infinity) and has no gate; the
+   * hero who died inside the opening was shown the roll once.
+   */
+  rhythmOpeningGate() {
+    if (this.rhythmOpeningUntil !== undefined) return this.rhythmOpeningUntil;
+    if (!this.beatLock) { this.rhythmOpeningUntil = null; return null; }
+    if (this.cityIntroBeat != null && !Number.isFinite(this.cityIntroBeat)) {
+      this.rhythmOpeningUntil = null;
+      return null;
+    }
+    const sched = this.rhythmSignSchedule();
+    const now = this.rhythmBeatForJudging();
+    if (!sched || !Number.isFinite(now)) return null;
+    const end = sched.from + sched.hold * sched.roll.length;
+    this.rhythmOpeningUntil = now + (end - (this.cityIntroBeat ?? 0));
+    return this.rhythmOpeningUntil;
   }
 
   /**
@@ -3347,6 +3412,23 @@ export class RunState {
   // to shorten the victory lap, but it must not make the pole jump back out to
   // a constant the moment the hero starts running at it.
   finishScreenX() { return this.finishWorldX() - this.camX; }
+  // WHERE THE DASH ENDS: the hero's CENTRE standing on the plunger's centre.
+  //
+  // finishPlayerX is the left edge of his 12px slot and his drawing is centred
+  // HERO_CENTER_OFF further on (see drawHeroSprite), so the comparison and the
+  // snap both have to carry that term — matched against the raw edge, he parked
+  // half a slot right of the cap, which is what the celebration looked like it
+  // was standing beside rather than on.
+  //
+  // Two spellings of one place, because two callers measure from different
+  // origins: the dash compares it against finishPlayerX, which is a screen
+  // column, and the demo bot compares it against playerWorldX() so it knows how
+  // much road is left to time its last jump against (see DemoBot.finishJump).
+  // Derived from each other rather than written twice — a bot aiming at a seat
+  // that has drifted from the one the dash stops at is a bot that lands beside
+  // the cap.
+  finishSeatScreenX() { return this.finishScreenX() + PLUNGER_CX - HERO_CENTER_OFF; }
+  finishSeatX() { return this.camX + this.finishSeatScreenX(); }
   // The hero's drawn screen column. Fixed at PLAYER_X through normal play, but
   // the two scripted runs move it: the finish dash carries it right toward the
   // tape, the opening run-in carries it up from off the left edge. Every
@@ -3584,13 +3666,8 @@ export class RunState {
     if (this.dead) return;
     updateParticles(dt);
     updateShake(dt, () => this.fxRng.float());
-    // Where the dash ends: the hero's CENTRE standing on the plunger's centre.
-    // finishPlayerX is the left edge of his 12px slot and his drawing is centred
-    // HERO_CENTER_OFF further on (see drawHeroSprite), so the comparison and the
-    // snap both have to carry that term — matched against the raw edge, he
-    // parked half a slot right of the cap, which is what the celebration looked
-    // like it was standing beside rather than on.
-    const seatX = this.finishScreenX() + PLUNGER_CX - HERO_CENTER_OFF;
+    // Where the dash ends — see finishSeatScreenX.
+    const seatX = this.finishSeatScreenX();
     if (!this.flip && this.finishPlayerX >= seatX) {
       // SNAPPED, not left wherever this frame's step happened to fall. He rides
       // the pole down standing on this cap and then celebrates on it, and both
@@ -3613,7 +3690,11 @@ export class RunState {
       // carrying the stale i-frame clock into the celebration only makes a
       // healthy winner flash in and out.
       this.player.iframes = 0;
-      if (this.demo) { this.endRun(true); return; } // attract clips stay snappy
+      // A demo clip does NOT stop here. It used to — "attract clips stay
+      // snappy" — and stopping on this frame is stopping the moment the hero
+      // arrives at the pole, before the catch and before the ride down, so
+      // every clip ended on a hero running into a post. It plays the landing
+      // and stops on that instead; see DEMO_FINISH_BEAT.
       // A beat on the finish frame, then results. Transient chatter would
       // clutter the held frame — clear it. The flip's own card is written
       // after the clear, so it survives into the held frame as the only thing
@@ -3668,8 +3749,9 @@ export class RunState {
       // down — on the hop path that is after the rise, or the sound describes a
       // fall that has not begun.
       Audio.sfx('slideWhistle', { dur: ride, when: hopT });
-      this.finaleT = FINALE_HOLD + this.flip.band.hold + FINALE_TAIL
-        + (this.flipSlide ? this.flipSlide.dur : 0);
+      this.finaleT = (this.flipSlide ? this.flipSlide.dur : 0)
+        + (this.demo ? DEMO_FINISH_BEAT
+          : FINALE_HOLD + this.flip.band.hold + FINALE_TAIL);
     }
     // Post-contact: the hold is running, the lever is swinging. Nothing else
     // to simulate — update()'s finaleT branch owns the frame from here.
@@ -3877,7 +3959,12 @@ export class RunState {
       // and smallest, goes further in the direction it was built.
       const wide = this.modIds.includes('force');
       const lean = this.modIds.includes('serial');
-      const speedAdd = (hero.shotSpeed != null ? hero.shotSpeed : 260) * (wide ? 0.72 : lean ? 1.25 : 1);
+      // ON A BEAT CABINET THE ROUND HAS A BEAT TO GET THERE, and Kiko's does
+      // not always make it — see BOX_SHOT_MIN_SPEED for the arithmetic. A floor
+      // rather than a per-hero number: it only ever lifts the one shot that is
+      // under it, and REASONABLE FORCE's slower round meets the same floor.
+      const heroShot = (hero.shotSpeed != null ? hero.shotSpeed : 260) * (wide ? 0.72 : lean ? 1.25 : 1);
+      const speedAdd = this.beatLock ? Math.max(heroShot, BOX_SHOT_MIN_SPEED) : heroShot;
       const size = (hero.shotSize || 1) * (wide ? 1.5 : lean ? 0.75 : 1);
       Audio.sfx('launch', { hero: hero.id, pitch: hero.id === 'b33p' ? 1.08 : 0.98 });
       const px = this.playerWorldX() + 12;
@@ -4256,11 +4343,6 @@ export class RunState {
    */
   lightCardBox(ob) {
     if (!ob.def.beatShoot) return false;
-    // Already counting down — armed by the press before the round caught up
-    // (lightChartBoxOnBeat). The weapon is still spent on it, which is what the
-    // caller wants back: an axe that flew THROUGH a box it had already opened
-    // would be the one thing on screen ignoring the box it was thrown at.
-    if (ob.burstBeat != null) return true;
     const beat = this.beatLock ? this.rhythmBeatForJudging() : null;
     if (!Number.isFinite(beat)) {
       // No clock to quantize against (a dev launch before the bank is live).
@@ -4268,17 +4350,23 @@ export class RunState {
       this.burstCardBox(ob);
       return true;
     }
-    const owed = Number.isFinite(ob.actionBeat) ? ob.actionBeat + BOX_BURST_BEATS : -Infinity;
-    // The small bias is one rendered frame: a fuse set to a line the clock is
-    // already standing on would burn for nothing and pop on the same tick.
-    ob.burstBeat = Math.max(owed, Math.ceil(beat + 0.02));
+    // THE FIRST LINE AFTER THE ROUND LANDS. The small bias is one rendered
+    // frame: a fuse set to a line the clock is already standing on would burn
+    // for nothing and pop on the same tick. It used to be the box's own beat
+    // plus BOX_BURST_BEATS for everyone, so the burst was the same beat for
+    // every hero — and it was heard as LATE, a bang with no cause a second
+    // after the shot. Now the round lands and the box goes on the next beat,
+    // which is under half a second at this tempo; the ceiling below is what
+    // keeps the slow throwers honest.
+    const next = Math.ceil(beat + 0.02);
+    // Already counting down — armed by the press before the round caught up
+    // (lightChartBoxOnBeat), which set the ceiling. The round pulls the fuse
+    // IN, never out. The weapon is still spent on it, which is what the caller
+    // wants back: an axe that flew THROUGH a box it had already opened would
+    // be the one thing on screen ignoring the box it was thrown at.
+    if (ob.burstBeat != null) { ob.burstBeat = Math.min(ob.burstBeat, next); return true; }
+    ob.burstBeat = next;
     ob.fuseT = 0;
-    // A FUSE, and it is the cue's literal job — 'fizzUp' is a rising line under a
-    // noise band, which is the sound a thing makes on its way to going off. The
-    // press already played the weapon's own launch and the burst will play
-    // 'blockBreak'; this is the middle of the three, and the only one that says
-    // WAIT.
-    Audio.sfx('fizzUp');
     return true;
   }
 
@@ -4306,7 +4394,13 @@ export class RunState {
     const n = Math.round(beat);
     for (const ob of this.obstacles) {
       if (ob.live && ob.def.beatShoot && ob.burstBeat == null && ob.actionBeat === n) {
-        this.lightCardBox(ob);
+        // THE CEILING, not the fuse. The round pulls the burst in to the first
+        // line after it lands (lightCardBox); this is the beat the box goes on
+        // if it never does — a relay swap mid-flight, a round that parks short
+        // — and it is the number the chart's spacing was laid against: every
+        // weapon in the cast arrives inside it (beatchart.js, BOX_BURST_BEATS).
+        ob.burstBeat = ob.actionBeat + BOX_BURST_BEATS;
+        ob.fuseT = 0;
         return;
       }
     }
@@ -4317,7 +4411,13 @@ export class RunState {
     if (!ob.live) return;
     const cx = ob.x + ob.w / 2;
     const cy = this.entityGroundY(ob) - ob.alt - ob.h / 2;
-    Audio.sfx('blockBreak');
+    // THE BOOM — the title asteroid's blast, the boss's. It is the one
+    // explosion the game already owns: all noise, so it sits in any key the
+    // song is in, and a second and a half of tail, which is what makes it an
+    // explosion rather than a pop. Not the !-box's 'blockBreak': that is a
+    // tonal ceramic crack for a hit you go out of your way to land, and here
+    // a box goes off at the hero's face every few bars of a song.
+    Audio.sfx('boom');
     shake(1.6, 0.14);
     // Gold over the card-coloured scatter breakObstacle throws, so the burst
     // reads as a payout rather than as one more prop coming apart.
@@ -4990,6 +5090,35 @@ export class RunState {
     }
   }
 
+  /**
+   * A ROUND FIRED FROM THE AIR COMES DOWN ONTO WHAT IT WAS FIRED AT.
+   *
+   * A pellet leaves at the hero's own height and used to keep it: fired off
+   * the top of a jump it sailed over the card box it was aimed at, and on a
+   * beat cabinet the beat that asks for the shot can land anywhere in a jump
+   * arc. So it steers — the first thing ahead of it that it can hit becomes
+   * the target, and it closes on that thing's centre at PELLET_HOME_RATE,
+   * which is a dive it can be seen making rather than a snap. A round with
+   * nothing ahead of it flies straight, and one fired from the ground is
+   * already at the height of the things it hits, so the ordinary shot does
+   * not change. The charged spread is left alone: it is a fan, and it pierces
+   * everything anyway.
+   */
+  homePellet(pr, dt) {
+    let target = null;
+    for (const ob of this.obstacles) {
+      if (!ob.live || ob.def.isGap || ob.def.isBoost || ob.def.armored) continue;
+      if (!(ob.def.ground || ob.def.isTarget)) continue;
+      if (pr.hitIds?.has(ob.id)) continue;
+      if (ob.x + ob.w < pr.x || ob.x > pr.x + PELLET_HOME_RANGE) continue;
+      if (!target || ob.x < target.x) target = ob;
+    }
+    if (!target) return;
+    const want = target.alt + target.h / 2;
+    const d = want - pr.alt;
+    pr.alt += Math.sign(d) * Math.min(Math.abs(d), PELLET_HOME_RATE * dt);
+  }
+
   updateProjectiles(dt, sp) {
     for (const pr of this.projectiles) {
       if (!pr.live) continue;
@@ -5025,6 +5154,7 @@ export class RunState {
           }
         }
       } else {
+        if (pr.type === 'pellet' && !pr.pierce) this.homePellet(pr, dt);
         pr.x += pr.vx * dt;
         if (pr.telegraph > 0) pr.telegraph -= dt;
         if (pr.x > this.camX + W + 60 || pr.x < this.camX - 60) pr.live = false;
@@ -5542,6 +5672,10 @@ export class RunState {
     const slot = ((beat % chart.loopBeats) + chart.loopBeats) % chart.loopBeats;
     const event = chart.events[slot];
     if (!event) return null;
+    // NOTHING BUT JUMPS IS OWED WHILE THE SIGN IS UP — the same gate the lane
+    // laid against (rhythmOpeningGate), so a slot it left empty is not a miss.
+    const gate = this.rhythmOpeningGate();
+    if (gate != null && beat < gate && event.action !== 'jump') return null;
     // AN ABILITY SLOT IS OWED ONLY IF THE LANE LAID ITS BOX.
     //
     // Every other action in the chart is unconditional — the bar is there, the
@@ -5808,7 +5942,6 @@ export class RunState {
         // The board watches the CHART, not the keyboard: a beat that went by
         // unanswered moves the price, a stray off-beat press does not. Pressing
         // jump at nothing is not the market's business.
-        this.rhythmForm = Math.max(0, this.rhythmForm - RHYTHM_FORM_MISS);
         this.rhythmCheer = 0;
       }
     }
@@ -5823,7 +5956,6 @@ export class RunState {
    * over a hero who has just been knocked about is the panel lying.
    */
   rhythmSetback() {
-    this.rhythmForm = Math.max(0, this.rhythmForm - RHYTHM_FORM_HIT);
     this.rhythmCheer = 0;
   }
 
@@ -5842,7 +5974,6 @@ export class RunState {
     this.beatJudgeConsumed.add(event.id);
     this.beatCombo++;
     this.score += 20 + 5 * Math.min(this.beatCombo, 8);
-    this.rhythmForm = Math.min(1, this.rhythmForm + RHYTHM_FORM_RISE);
     // Every eighth clean beat the rooftop board gilds its own count for a
     // couple of seconds. It celebrates the number it is already showing rather
     // than becoming a different sign, which is what retired a whole bake-off of
@@ -6992,8 +7123,12 @@ export class RunState {
       this.checkpointMarkers.push(this.camX);
       Audio.sfx('checkpoint');
       const restored = this.modIds.includes('osha') ? 2 : 1;
+      const before = this.battery;
       this.battery = Math.min(this.maxBattery(), this.battery + restored);
-      this.floatText(`CHECKPOINT. +${restored} CELL${restored > 1 ? 'S' : ''}. SINCERELY.`, '#8ddd8d');
+      // Only claim what actually landed. Crossing at full battery restores
+      // nothing, and at 4/4 that is every checkpoint of an undamaged run.
+      const gained = this.battery - before;
+      this.floatText(gained ? `CHECKPOINT. +${gained} BATTERY.` : 'CHECKPOINT. THE ARCADE REMEMBERS THIS SPOT.', '#8ddd8d');
       this.snapshot = this.makeSnapshot();
       // Rescue delivery.
       if (this.mission.type === 'rescue') {
@@ -8880,7 +9015,7 @@ export class RunState {
         // a death restart find a city already standing. See lcdArrival.
         intro: { beat: this.cityIntroBeat },
         // Beats since the omen took off, on the same monotonic clock — or null
-        // for the seven runs in eight that never rolled one. See SKY_OMEN_CHANCE.
+        // for the two runs in three that never rolled one. See SKY_OMEN_CHANCE.
         omen: this.skyOmenBeat == null || this.skyBeat == null
           ? null : this.skyBeat - this.skyOmenBeat,
         // And the verb the rooftop sign is shouting, or null. THE SAME CLOCK
@@ -9248,8 +9383,32 @@ export class RunState {
     // resets finishing through the checkpoint restore, which is the one path
     // where the question becomes real again and the orb should return.
     const orbAlpha = this.finishing ? Math.max(0, 1 - this.finishT / 0.6) : 1;
+    // THE JUMP GOES IN FRONT OF THE CHATTER.
+    //
+    // The popup stack rides the hero's own column and gets out of the way for
+    // TERRAIN but never for a jump (see heroScreenRect) — which is right, cards
+    // that move every few seconds read as the HUD twitching. The cost was that
+    // every jump up into the row went BEHIND the cards, and a jump is the one
+    // moment of a stage the player is actually reading the hero.
+    //
+    // So the hero moves in the QUEUE rather than the cards moving on screen.
+    // The overlay is an ordered list of callbacks, so while he is off his floor
+    // his pass is held back and re-enqueued after the floaties and the speech
+    // plate: he passes over them, and under everything the frame owns — the
+    // HUD, the banners, the pause and fail screens — exactly as before.
+    //
+    // On the ground he is enqueued where he always was, under the whole
+    // overlay. A card that has ducked under a standing hero is not in his way,
+    // and the one case the duck cannot fix — him LIVING up in the row on an
+    // island — is answered by the card's crossing fade, which needs him
+    // underneath to be the thing that reads through.
+    let heroLift = null;
+    const liftHero = this.player.y > 0;
     const drawHero = () => this.rhythmHeroVisible() && drawHeroSprite(ctx, this.player, this.relay.current, heroT, cam, this.mission.type === 'fuse',
       { mirror: this.mirror, screenX: heroScreenX, zoom: z, pan, floorY, specialOrbAlpha: orbAlpha,
+        // Airborne, the sprite hands its overlay pass back instead of queueing
+        // it, and this frame's chatter push below decides where it goes.
+        queueOverlay: liftHero ? (fn) => { heroLift = fn; } : undefined,
         // Every field the LAST live frame left behind has to be cleared, not
         // just the kind. He arrives here mid-landing — squash from hitting the
         // cap, lean from the run, and whatever duck state the slide left — and
@@ -9341,7 +9500,12 @@ export class RunState {
     // above the hero, and excluded from the bloom pass — bright popup text
     // must never glow itself into an unreadable smear. (Headless runs have no
     // overlay; the fallback draws them straight onto the backbuffer.)
-    const drawUi = (d) => {
+    // TWO OVERLAY PASSES, not one, so the hero can be slotted between them.
+    // The first is the CHATTER — the things that speak for the hero and print
+    // over his own column; the second is the FRAME — the HUD, the ability
+    // plate, the act banner and the touch card, which are furniture and always
+    // sit on top of everybody. See the jump lift above.
+    const drawChatter = (d) => {
       // The overlay draws outside the mirror transform, so the anchor flips by
       // hand to stay over the hero. This layer is UNSCALED, so the hero's
       // column here is their screen x — PLAYER_X is a world offset and would
@@ -9401,6 +9565,8 @@ export class RunState {
       if (this.speech) {
         drawSpeech(d, this.speech, { avoid: heroRect, ...(this.beatLock ? { y: BEAT_SPEECH_Y } : {}) });
       }
+    };
+    const drawFrame = (d) => {
       drawHud(d, this);
       this.drawAbilityName(d);
       if (this.introFreeze > 0 && this.introText) {
@@ -9430,7 +9596,12 @@ export class RunState {
         });
       }
     };
-    if (!pushOverlayDraw(drawUi)) drawUi(ctx);
+    if (!pushOverlayDraw(drawChatter)) drawChatter(ctx);
+    // The held-back hero, now that the cards he is jumping through are down.
+    // Dropped rather than drawn if there is no overlay at all (headless): that
+    // is the same nothing drawHeroSprite itself does on that path.
+    if (heroLift) pushOverlayDraw(heroLift);
+    if (!pushOverlayDraw(drawFrame)) drawFrame(ctx);
     this.drawChromeButtons();
 
     // Rewind VHS overlay: wave distortion, tracking bands, chromatic aberration,

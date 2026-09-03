@@ -13,7 +13,7 @@ new tools follow the same rule.
 | Weapon candidate sweeps | `work/weapons/` | no |
 | Audition sweeps (drums, voices, shop themes, …) | `work/auditions/<topic>/` | no |
 | Promo art and teaser clips | `work/social/` | no |
-| Song bounces, stems, visualiser videos | `work/{tracks,stems,video}/` | no |
+| Song bounces, stems, visualiser videos, dev-menu gameplay recordings | `work/{tracks,stems,video}/` | no |
 | MIDI exports of a song bank | `work/midi/` | no |
 | Engine reference renders for the null test | `work/baselines/` | no |
 | Throwaway verification shots, one-off scripts | `work/local/` | no |

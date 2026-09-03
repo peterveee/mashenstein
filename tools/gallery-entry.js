@@ -42,7 +42,8 @@ import {
   b33pTitleShotPose,
 } from '../src/sprites/toons.js';
 import {
-  getStylePack, LCD_GORILLA_EXPRESSIONS, LCD_GORILLA_BROW_STYLES, lcdGorillaHeadPos,
+  getStylePack, LCD_GORILLA_TONE_STYLES,
+  lcdGorillaHeadPos,
 } from '../src/engine/stylePacks/index.js';
 import { CABINETS } from '../src/data/cabinets.js';
 import { UNLOCKS } from '../src/data/stages.js';
@@ -57,7 +58,10 @@ import { BOOST_FX_VARIANTS } from '../src/game/boostFx.js';
 import {
   FINISH_MARKER_BY_ID, plungerStandY, PLUNGER_CX,
 } from '../src/game/finishMarker.js';
-import { PLAYER_X } from '../src/game/player.js';
+import {
+  PLAYER_X, GRAVITY, BASE_JUMP_V, HEAVY_GRAVITY_MULT, AIR_JUMP_SCALE,
+  VARIABLE_JUMP_CUT,
+} from '../src/game/player.js';
 import { drawBambooShoot } from '../src/engine/sprites.js';
 // Roads are built by the SAME function the run builds them with, off the SAME
 // cabinet data, and drawn through the SAME painters. Anything less and this
@@ -98,6 +102,15 @@ buildAllSprites();
 // ---------------------------------------------------------------- framework
 const root = document.getElementById('root');
 const nav = document.getElementById('nav');
+// Which of the two pages this bundle is rendering. ONE bundle builds both:
+// tools/build-gallery.js stamps the mode into the shell's <body>, and every
+// section declares which page it belongs to, so a section can never appear on
+// both or fall off the end of neither. 'main' is the production reference
+// (what the game ships); 'lab' is the bake-offs and audits, which are a
+// different kind of content and were making the one page too long to read.
+const PAGE = document.body.dataset.gallery === 'lab' ? 'lab' : 'main';
+// Flipped once, by beginLab(), at the boundary between the two clusters.
+let currentGroup = 'main';
 const tiles = []; // {el, canvas, ctx, draw, animated, visible}
 // Lab sections that have been retired from the chooser remain in source for
 // reference, but are intentionally omitted from the rendered gallery.
@@ -227,7 +240,10 @@ const WORLD_Z = ZOOM;
 function section(id, title, note) {
   const grid = document.createElement('div');
   grid.className = 'grid';
-  if (HIDDEN_GALLERY_SECTIONS.has(id)) return grid;
+  // A DETACHED grid is the retirement mechanism (see tile()): everything below
+  // still runs, but nothing is added to the document and no tile is created.
+  // A section belonging to the other page is retired in exactly that sense.
+  if (HIDDEN_GALLERY_SECTIONS.has(id) || currentGroup !== PAGE) return grid;
   const s = document.createElement('section');
   s.id = id;
   s.innerHTML = `<h2 id="h-${id}">${title}</h2>` + (note ? `<p class="note">${note}</p>` : '');
@@ -241,14 +257,12 @@ function section(id, title, note) {
   return grid;
 }
 
-// A nav label with no target section — just a visual break before the lab
-// cluster, so "still iterating on this" reads as a different kind of content
-// from the production reference sections above it.
-function navSeparator(label) {
-  const sep = document.createElement('span');
-  sep.className = 'nav-sep';
-  sep.textContent = label;
-  nav.appendChild(sep);
+// The boundary between the two pages. Everything defined after this call is
+// lab content and renders only on gallery-lab.html; everything before it is
+// production reference and renders only on gallery.html. It used to be a nav
+// label separating two clusters on one very long page.
+function beginLab() {
+  currentGroup = 'lab';
 }
 
 // One tile. `draw(ctx, t)` paints into a w-by-h logical canvas. The backing
@@ -304,7 +318,13 @@ function tile(grid, name, sub, w, h, draw,
 
   const ctx = canvas.getContext('2d');
   const entry = {
-    card, canvas, ctx, draw, animated, visible: true,
+    // NOT VISIBLE AND NOT PAINTED UNTIL THE OBSERVER SAYS SO. `visible` used to
+    // start true, which meant every animated tile on the page painted on the
+    // first frames before the observer had corrected it — the same burst the
+    // startup paint was removed to avoid, arriving one frame later. Every tile
+    // that reaches this line is inside a connected grid (see the isConnected
+    // guard above), so the observer is guaranteed to report on it.
+    card, canvas, ctx, draw, animated, visible: false, painted: false,
     w: logicalW, h: logicalH, name, hires, world, renderScale: rs,
   };
   tiles.push(entry);
@@ -344,7 +364,13 @@ function resizeTiles() {
     entry.ctx = entry.canvas.getContext('2d');
     entry.canvas.title = `${entry.name} — ${entry.canvas.width}x${entry.canvas.height} — click to save PNG`;
   }
-  for (const entry of tiles) paint(entry, 0);
+  // RE-ARM, DO NOT REPAINT. Resizing reallocates every backing store, so the
+  // old contents are gone — but repainting all of them here would be the
+  // startup burst this page was just relieved of, on every window resize.
+  // Clearing the flag hands them back to the observer, which paints the ones
+  // actually near the viewport.
+  for (const entry of tiles) entry.painted = false;
+  for (const entry of tiles) if (entry.visible) { entry.painted = true; paint(entry, 0); }
 }
 
 function savePng(canvas, name) {
@@ -870,6 +896,136 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
         { flat: true, groundY: FLOOR, shield: 1, settings: {} });
     }, { animated: true, hires: 3 });
   }
+}
+
+// ------------------------------------------------- jump height, measured
+//
+// THE MULTIPLIER IS NOT THE HEIGHT. jumpMult scales LAUNCH VELOCITY
+// (player.js: `this.vy = BASE_JUMP_V * ... * this.hero.jumpMult`), and apex is
+// v^2/2g, so the height goes as its SQUARE: Clara's 1.10 buys 21% more air, not
+// 10%. Every number below is computed from the shipped constants rather than
+// quoted, so this section cannot drift from the physics the way the prose in
+// run.js and entities.js already has.
+//
+// Gravity is per-hero, and that is the fact a table of multipliers cannot show:
+// Grumpos is `heavy`, so HEAVY_GRAVITY_MULT sits under him on the way UP as
+// well as down, and at a nominal jumpMult of 1.0 he clears less than B-33P does
+// at 0.90. He is the shortest jumper in the cast and his stat line says he is
+// average.
+//
+// Deliberately NOT drawn through player.js's own jumpHeightFor(): that helper
+// divides by bare GRAVITY and ignores `heavy`, so it reports 57 for Grumpos
+// against a real apex of 46. The three closed forms here are the honest ones.
+{
+  const gravityOf = (h) => GRAVITY * (h.heavy ? HEAVY_GRAVITY_MULT : 1);
+  const launchOf = (h) => BASE_JUMP_V * h.jumpMult;
+  const apexOf = (h) => (launchOf(h) ** 2) / (2 * gravityOf(h));
+  // The second jump is spent at the top of the first, so the reaches stack.
+  const doubleApexOf = (h) => apexOf(h) + ((launchOf(h) * AIR_JUMP_SCALE) ** 2) / (2 * gravityOf(h));
+  // Speed still on the clock at a given height on the way up — feeds the
+  // painter's air stretch, so a hero mid-rise is drawn stretched exactly as far
+  // as the run would stretch him at that point in the arc.
+  const riseVyAt = (h, y) => Math.sqrt(Math.max(0, launchOf(h) ** 2 - 2 * gravityOf(h) * y));
+  // Variable jump: letting go while still rising above VARIABLE_JUMP_CUT snaps
+  // the climb to that speed, so the hop is whatever was banked before release
+  // plus the little the clamp still carries.
+  const hopOf = (h, hold) => {
+    const v = launchOf(h), g = gravityOf(h);
+    const tc = Math.min(hold, v / g);       // releasing past the apex changes nothing
+    const cut = Math.min(v - g * tc, VARIABLE_JUMP_CUT);
+    return (v * tc - 0.5 * g * tc * tc) + (cut * cut) / (2 * g);
+  };
+
+  // A human tap, not a one-frame theoretical minimum. The floor matters:
+  // because the clamp is a CONSTANT speed rather than a share of the hero's own
+  // launch, a jab of the button gives every hero the same ~2u hop no matter
+  // what they paid for in jumpMult. The stat only starts to separate them once
+  // the button is held, which is what this rung is here to show.
+  const TAP = 0.1;
+
+  const ROWS = Object.keys(HERO_BY_ID)
+    .map((id) => ({ id, hero: HERO_BY_ID[id], apex: apexOf(HERO_BY_ID[id]) }))
+    .sort((a, b) => b.apex - a.apex);
+
+  const COL = 40, GY = 106, TW = COL * ROWS.length, TH = 128;
+  const KIKO_MAX = doubleApexOf(HERO_BY_ID.kiko);
+
+  const grid = section('jump-heights', 'Heroes — jump height, measured',
+    'Every hero at the same three points of one jump, sorted tallest first, on a 10u grid. '
+    + 'Heights are computed live from BASE_JUMP_V, GRAVITY, HEAVY_GRAVITY_MULT, AIR_JUMP_SCALE '
+    + 'and VARIABLE_JUMP_CUT, so the picture cannot quote a number the physics has stopped using. '
+    + 'jumpMult scales LAUNCH SPEED and apex goes as its square — Clara\'s x1.10 is 21% more air, '
+    + 'not 10%. Grumpos is the one to look at: at a nominal x1.00 he is the SHORTEST jumper in the '
+    + 'cast, because `heavy` puts 1.25x gravity under him on the way up as well as down. '
+    + 'The dashed rule is each hero\'s own full apex, for the two reduced rungs to be read against.');
+
+  // One reading of the arc. `heightOf` says how high off the ground each hero is
+  // caught; `rising` decides whether the painter gets a live vy (mid-climb) or
+  // zero (hanging at a top).
+  function jumpTile(name, sub, heightOf, rising, showGhost, showKiko) {
+    tile(grid, name, sub, TW, TH, (ctx) => {
+      ctx.fillStyle = '#1b1b28'; ctx.fillRect(0, 0, TW, GY);
+      // Every 10u, so a height can be read off the picture and not just the label.
+      ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 0.5;
+      for (let y = 10; y <= 100; y += 10) {
+        ctx.beginPath(); ctx.moveTo(0, GY - y + 0.25); ctx.lineTo(TW, GY - y + 0.25); ctx.stroke();
+      }
+      ctx.fillStyle = '#3a9c48'; ctx.fillRect(0, GY, TW, 3);
+      ctx.fillStyle = '#2a7038'; ctx.fillRect(0, GY + 3, TW, TH - GY - 3);
+
+      if (showKiko) {
+        ctx.strokeStyle = 'rgba(120,200,240,.5)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(0, GY - KIKO_MAX); ctx.lineTo(TW, GY - KIKO_MAX); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(150,215,245,.9)';
+        ctx.font = '4px ui-monospace, monospace'; ctx.textAlign = 'left';
+        ctx.fillText(`KIKO, BOTH JUMPS STACKED — ${KIKO_MAX.toFixed(0)}u`, 2, GY - KIKO_MAX - 2);
+      }
+
+      ROWS.forEach((r, i) => {
+        const cx = i * COL + COL / 2;
+        const y = heightOf(r);
+        // Where a full held jump would have reached, so a reduced rung is read
+        // against what was given up rather than in isolation.
+        if (showGhost) {
+          ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.setLineDash([2, 2]); ctx.lineWidth = 0.5;
+          ctx.beginPath(); ctx.moveTo(cx - 15, GY - r.apex); ctx.lineTo(cx + 15, GY - r.apex); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        // The measure line from the ground to the feet: the height IS the subject.
+        ctx.strokeStyle = 'rgba(255,220,120,.45)'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(cx - 15.75, GY); ctx.lineTo(cx - 15.75, GY - y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx - 18, GY - y + 0.25); ctx.lineTo(cx - 13, GY - y + 0.25); ctx.stroke();
+
+        drawToon(ctx, r.id, pose('jump', 0, {
+          grounded: false, vy: rising ? riseVyAt(r.hero, y) : 0,
+        }), cx, GY - y, HERO_DRAW_H);
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255,220,120,.95)';
+        ctx.font = '5px ui-monospace, monospace';
+        ctx.fillText(`${y.toFixed(0)}u`, cx, GY - y - 2);
+        ctx.fillStyle = '#e8e8f0';
+        ctx.font = '4px ui-monospace, monospace';
+        ctx.fillText(r.hero.short, cx, GY + 10);
+        ctx.fillStyle = 'rgba(232,232,240,.6)';
+        ctx.fillText(`x${r.hero.jumpMult.toFixed(2)}${r.hero.heavy ? ' HEAVY' : ''}`, cx, GY + 16);
+      });
+    }, { animated: false, hires: 6, wide: true, world: true });
+  }
+
+  jumpTile('Full jump — held to the apex',
+    'vy = BASE_JUMP_V x jumpMult, apex = v&sup2;/2g<br>the top of an uncut, fully held jump',
+    (r) => r.apex, false, false, true);
+
+  jumpTile('Half jump — 50% of each hero\'s own apex',
+    'caught mid-climb at half height, real vy<br>a straight halving of the picture above',
+    (r) => r.apex / 2, true, true, false);
+
+  jumpTile(`Short hop — the variable-jump cut, ${(TAP * 1000).toFixed(0)}ms tap`,
+    'released while rising, vy clamped to VARIABLE_JUMP_CUT<br>'
+    + 'the clamp is a fixed speed, so the cast compresses hard here',
+    (r) => hopOf(r.hero, TAP), false, true, false);
 }
 
 // Reuse gameplay dimensions for the magnified source side of prop comparisons.
@@ -1469,7 +1625,7 @@ function propNominalSize(name) {
   for (const [label, text, color] of [
     ['gold — a beat landed · 3.4', 'WRENCH SMASH', '#f6d33c'],
     ['teal — mission progress · 3.0', 'CORD PIECE 3/5', '#48e0c8'],
-    ['green — banked · 3.0', 'CHECKPOINT. +2 CELLS. SINCERELY.', '#8ddd8d'],
+    ['green — banked · 3.0', 'CHECKPOINT. +2 BATTERY.', '#8ddd8d'],
     ['pale blue — defensive · 3.6', 'SHIELD BROKE. IT DID ITS JOB.', '#a8e6ff'],
     ['bone — unpeelable · 4.1', 'UNPEELABLE.', '#e8e8f0'],
     ['pink — Miss Chompo · 3.0', 'DEE-LIGHTFUL. THANK YOU.', '#f7bacc'],
@@ -1536,11 +1692,12 @@ function propNominalSize(name) {
 }
 
 // ==================================================================
-// LAB & BAKE-OFFS — dev-only comparisons kept below the production
-// reference sections above. These render real code paths but decide or
+// LAB & BAKE-OFFS — dev-only comparisons, rendered onto their OWN page
+// (dist/gallery-lab.html). These render real code paths but decide or
 // audit a still-open art question rather than document a shipped asset.
+// Everything below this line is lab; nothing production goes here.
 // ==================================================================
-navSeparator('lab / bake-offs');
+beginLab();
 
 // ------------------------------------------- animal hero, replacing Gnash
 // CAST CANDIDATES, not cast. Nothing below is registered in TOON_SPECS,
@@ -5452,15 +5609,21 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
-// ------------------------------------ the rooftop gorilla — face bake-off
-// He wore one face for his whole life — a smile — plus the startle the plane's
-// crash buys him for two beats. This is the two questions that followed:
-// WHICH FACES he should own, and WHAT A BROW SHOULD WEIGH, which turned out to
-// be the bigger of the two. Every tile is the REAL panel: drawLCDCity paints
-// the whole Game Boy screen and the tile crops his head out of it, so a
-// candidate is judged in the palette, at the size and against the skyline it
-// ships in. The scene's dev-only `gorillaExpr` / `gorillaBrow` are the only
-// things that change between tiles.
+// ------------------------------------ the rooftop gorilla
+// Every tile is the REAL panel: drawLCDCity paints the whole Game Boy screen
+// and the tile crops him out of it, so a candidate is judged in the palette,
+// at the size and against the skyline it ships in. Only the scene's dev-only
+// gorilla* fields change between tiles.
+//
+// SETTLED AND GONE FROM THE PAGE, 3 Sep 2026 — the painter keeps every loser:
+//   face bake-off    the rotation shipped; LCD_GORILLA_EXPRESSIONS holds the set
+//   brow bake-off    SHORT; LCD_GORILLA_BROW_STYLES
+//   ink bake-off     ONE INK, the teal arm core went; LCD_GORILLA_INK_STYLES
+//   construction     REJECTED, all of them — the ovals stay; LCD_GORILLA_BUILD_STYLES
+//   tuft             SPIKES, drawn as part of the skull's own fill; LCD_GORILLA_TUFT_STYLES
+//   armpit / ears    no change — SHIPS and the current ear; LCD_GORILLA_PIT_STYLES, LCD_GORILLA_EARS
+//   shoulder         0.55, swept 1.0 to 0.5; LCD_GORILLA_SHOULDER_ALPHAS
+//   the crest        LEAN dropped 0.6px, swept on four dials; LCD_GORILLA_SPIKE_STYLES
 {
   const cab = CABINETS.find((c) => c.id === 'rhythm');
   const style = getStylePack('lcd', {});
@@ -5477,44 +5640,28 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   };
   const FINALE = 3; // the finale's plain rooftop: no plane, so no startle to fight
   const head = lcdGorillaHeadPos(FINALE);
-  const nameOf = (id) => LCD_GORILLA_EXPRESSIONS.find((e) => e.id === id).name;
-
+  // ---- how the fur is toned, which is the one open question
   {
-    const grid = section('gorilla-face-bakeoff', 'Rooftop gorilla — face bake-off',
-      'Seven reads plus the two he already has. SMILE is the control; STARTLED is the crash face, shown here '
-      + 'on demand rather than waiting for the plane. Each is a spec over the same head — brow shape, eye '
-      + 'shape, mouth, and which way the pupils sit — so nothing new appears on a 22px face at a building\'s '
-      + 'remove. Head at 5x, then the whole figure at panel scale, which is the size the decision is actually '
-      + 'made at. Beat 2 for the head (arms down, nothing crossing the face), beat 0 for the figure (barrel '
-      + 'overhead, the pose he is known by).'
-      + LCD_GORILLA_EXPRESSIONS.map((e) => ` · ${e.name}: ${e.note}`).join(''));
-    for (const e of LCD_GORILLA_EXPRESSIONS) {
-      panelTile(grid, e.name, 'the head · 5x', FINALE, head.x, head.y + 2, 46, 42,
-        () => ({ beat: 2, gorillaExpr: e.id }), { hires: 5 });
-      panelTile(grid, e.name, 'on the roof · panel scale', FINALE, head.x, head.y + 2, 92, 78,
-        () => ({ beat: 0, gorillaExpr: e.id }), { hires: 3 });
-    }
-  }
-
-  // ---- and the brows, which is where the first sheet's real finding was
-  {
-    const FACES = ['smile', 'neutral', 'sad', 'sly', 'startled'];
-    const grid = section('gorilla-brow-bakeoff', 'Rooftop gorilla — brow bake-off (SHORT ships)',
-      'SETTLED — SHORT ships. The shape of a brow is the expression; its WEIGHT is a separate question and the answer applies to all '
-      + 'of them at once, the startle included. Rows are treatments, columns are the faces that use a '
-      + 'different brow shape. The finding the first sheet handed over: at the authored height the brow is '
-      + 'drawn on his SKULL — dark ink on the dark plane — so it reads as a lump on the forehead rather than '
-      + 'as a brow, and it is the treatments that come DOWN onto the pale face plane (which is only 13px '
-      + 'across up there) that survive being looked at from a lane away. Each row is repeated at panel scale, '
-      + 'because at 5x every one of them reads and at 3x most of them do not.'
-      + LCD_GORILLA_BROW_STYLES.map((b) => ` · ${b.name}: ${b.note}`).join(''));
-    for (const b of LCD_GORILLA_BROW_STYLES) {
-      for (const f of FACES) {
-        panelTile(grid, `${b.name} · ${nameOf(f)}`, 'the head · 5x', FINALE, head.x, head.y + 1, 42, 34,
-          () => ({ beat: 2, gorillaExpr: f, gorillaBrow: b.id }), { hires: 5 });
-      }
-      panelTile(grid, b.name, 'panel scale · the loop, running', FINALE, head.x, head.y + 6, 96, 84,
-        (t) => ({ beat: Math.floor(t * 2), gorillaBrow: b.id }), { hires: 3, animated: true });
+    const TOWER = 1;
+    const towerHead = lcdGorillaHeadPos(TOWER);
+    const grid = section('gorilla-tone-bakeoff', 'Rooftop gorilla — fur tone',
+      'The fur is the panel\'s graphite print at 72%, so it is a translucent plane and anything drawn twice '
+      + 'comes out a shade darker. That is now fixed at source — the ears, skull and tuft are ONE path filled '
+      + 'once, which removed a dark crescent under each ear and the darker tuft — and the question left is '
+      + 'whether the ink wants lightening. A SOLID head was drawn at three lightnesses, each matched by '
+      + 'measurement rather than eye, and all three lost: the arms are drawn BEFORE the head, so on the beats '
+      + 'they are up beside it the translucent skull lets them show through as a darker shape, and an opaque '
+      + 'head makes the arm behind it vanish. The doubled translucency IS the separation. So the question is '
+      + 'only how dark the one ink should be. Head at 5x, the figure at panel scale, and the loop running on '
+      + 'the DONKEY KONG tower, which has the busiest background to sit him against.'
+      + LCD_GORILLA_TONE_STYLES.map((k) => ` · ${k.name}: ${k.note}`).join(''));
+    for (const k of LCD_GORILLA_TONE_STYLES) {
+      panelTile(grid, k.name, 'the head · 5x', FINALE, head.x, head.y, 46, 42,
+        () => ({ beat: 2, gorillaInk: k.id }), { hires: 5 });
+      panelTile(grid, k.name, 'the barrel · panel scale', FINALE, head.x, head.y + 2, 92, 78,
+        () => ({ beat: 0, gorillaInk: k.id }), { hires: 3 });
+      panelTile(grid, k.name, 'the tower · the loop, running', TOWER, towerHead.x, towerHead.y + 20, 96, 96,
+        (t) => ({ beat: Math.floor(t * 2), gorillaInk: k.id }), { hires: 3, animated: true });
     }
   }
 
@@ -5544,19 +5691,35 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     panelTile(grid, 'the loop, running', 'eight bars, the plumber and all', 1, 268, 106, 92, 98,
       (t) => ({ beat: Math.floor(t * 2) }), { hires: 3, animated: true, wide: true });
   }
+
 }
 
 // ---------------------------------------------------------------- driver
-// Only visible tiles animate; static tiles paint once. Keeps ~200 canvases cheap.
+// NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.
+//
+// The page used to paint every tile once at startup — a synchronous burst of
+// roughly nine hundred canvases, dozens of them supersampled 5x or 6x, before
+// `load` could fire. Allocation was never the problem; that burst was. It is
+// why the gallery could not be opened headless at all, which cost every art
+// change in this repo a detour through one-off contact sheets.
+//
+// The IntersectionObserver was already here, already tracking visibility and
+// already reaching 200px beyond the viewport — it simply was not trusted with
+// frame zero. It is now: a tile paints the first time it comes into range and
+// animated ones keep painting while they stay there. A human scrolling sees no
+// difference, because the margin paints ahead of them; a headless load pays for
+// one screenful instead of the whole page.
 const io = new IntersectionObserver((entries) => {
   for (const en of entries) {
     const t = tiles.find((x) => x.card === en.target);
-    if (t) t.visible = en.isIntersecting;
+    if (!t) continue;
+    t.visible = en.isIntersecting;
+    // Static tiles never come back through the animation loop, so their one
+    // paint has to happen here or they stay blank forever.
+    if (t.visible && !t.painted) { t.painted = true; paint(t, 0); }
   }
 }, { rootMargin: '200px' });
 for (const t of tiles) io.observe(t.card);
-
-for (const t of tiles) paint(t, 0);
 
 let start = performance.now();
 function frame(now) {

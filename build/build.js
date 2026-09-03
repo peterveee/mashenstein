@@ -7,9 +7,9 @@
 // the deployed current build remains split so a browser-only iPhone never
 // downloads or evaluates the game.
 import esbuild from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, statSync, createWriteStream, unlinkSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execFile } from 'node:child_process';
 import { createServer, request as httpRequest } from 'node:http';
 import { dirname, join } from 'node:path';
 import { hostname, networkInterfaces } from 'node:os';
@@ -330,6 +330,75 @@ function hostAllowed(header) {
   return false;
 }
 
+// ---------------------------------------------------------------- recordings
+// The dev menu's recorder (src/dev/recorder.js) POSTs a MediaRecorder clip here
+// and gets back the path of an MP4 under work/video/. The browser has no way to
+// write into the tree and no ffmpeg, so this is where the container gets
+// finished: an H.264 MP4 from Chrome or Safari is remuxed losslessly (fragmented
+// mp4 with no duration in the header → a plain seekable one), and a WebM is
+// transcoded to x264 with the same settings tools/lib/mp4-pipe.js uses. Dev
+// server only — the published site never has this route.
+const RECORD_ROUTE = '/__dev/record';
+const RECORD_DIR = join(root, 'work', 'video');
+
+function ffmpegArgs(inPath, outPath, ext) {
+  const remux = ext === 'mp4';
+  return [
+    '-y', '-hide_banner', '-loglevel', 'error',
+    '-i', inPath,
+    ...(remux
+      ? ['-c', 'copy']
+      : ['-c:v', 'libx264', '-preset', 'slow', '-tune', 'animation', '-crf', '14',
+        '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k']),
+    '-movflags', '+faststart',
+    outPath,
+  ];
+}
+
+function handleRecordUpload(req, res, url) {
+  if (req.method !== 'POST') {
+    res.writeHead(405, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'POST a recording here' }));
+    return;
+  }
+  const stem = (url.searchParams.get('name') || 'rec').replace(/[^\w.-]+/g, '_').slice(0, 120);
+  const ext = url.searchParams.get('ext') === 'webm' ? 'webm' : 'mp4';
+  mkdirSync(RECORD_DIR, { recursive: true });
+  const rawPath = join(RECORD_DIR, `${stem}.raw.${ext}`);
+  const outPath = join(RECORD_DIR, `${stem}.mp4`);
+  const rel = (p) => p.slice(root.length + 1);
+  const reply = (code, body) => {
+    res.writeHead(code, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(body));
+  };
+  const file = createWriteStream(rawPath);
+  let bytes = 0;
+  req.on('data', (chunk) => { bytes += chunk.length; });
+  req.on('error', (err) => { file.destroy(); reply(500, { error: `upload failed: ${err.message}` }); });
+  file.on('error', (err) => reply(500, { error: `could not write ${rel(rawPath)}: ${err.message}` }));
+  file.on('finish', () => {
+    if (!bytes) {
+      try { unlinkSync(rawPath); } catch { /* nothing to remove */ }
+      reply(400, { error: 'empty recording' });
+      return;
+    }
+    execFile('ffmpeg', ffmpegArgs(rawPath, outPath, ext), { timeout: 10 * 60 * 1000 }, (err, _out, stderr) => {
+      if (err) {
+        // No ffmpeg, or a container it could not read: keep the raw file so the
+        // take is not lost, and say what happened. The menu shows the note.
+        const why = err.code === 'ENOENT' ? 'ffmpeg is not installed' : (stderr || err.message).trim();
+        console.warn(`[record] kept ${rel(rawPath)} — ${why}`);
+        reply(200, { path: rel(rawPath), note: `not converted: ${why}` });
+        return;
+      }
+      try { unlinkSync(rawPath); } catch { /* the mp4 is what matters */ }
+      console.log(`[record] ${rel(outPath)}  (${(bytes / 1e6).toFixed(1)}MB ${ext} in)`);
+      reply(200, { path: rel(outPath) });
+    });
+  });
+  req.pipe(file);
+}
+
 function startProxy(host, port, upstreamPort) {
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
@@ -339,6 +408,10 @@ function startProxy(host, port, upstreamPort) {
           + 'Reach it on localhost, a .local name, or a private LAN address.\n');
         return;
       }
+      // Routes the dev server answers itself, ahead of the esbuild proxy. The
+      // URL is parsed against a fixed base because only the path matters here.
+      const url = new URL(req.url, 'http://dev.local');
+      if (url.pathname === RECORD_ROUTE) { handleRecordUpload(req, res, url); return; }
       const upstream = httpRequest({
         host: '127.0.0.1',
         port: upstreamPort,

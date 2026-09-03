@@ -19,6 +19,7 @@ import { currentState } from '../engine/states.js';
 import { drawText, drawPanel } from '../engine/sprites.js';
 import { propCacheStats } from '../sprites/props.js';
 import { rootMenu, drawMenu, menuLayout } from './menus.js';
+import { Recorder } from './recorder.js';
 import { TuneStrip, drawTuneStrip, tuneHelp } from './tune-strip.js';
 import { loadTuning, revertTuning, resyncRun } from './tune-store.js';
 import { sourceLines, tuningAvailable } from './tunables.js';
@@ -64,6 +65,9 @@ export const Dev = {
   touchUnlock: { count: 0, t: 0 },
   reopenAfterState: null,
   lastRun: null,      // identity of the run we last pushed sync-hooked tunables into
+  // True while recorder.js is taping the canvas; main.js stands the FPS
+  // readout down on it. False forever in a published build (Dev never installs).
+  get recording() { return Recorder.active; },
 
   install(ctx) {
     if (!this.enabled || this.ctx) return;
@@ -131,6 +135,43 @@ export const Dev = {
 
   // ---------------------------------------------------------------- helpers
   say(msg) { this.toast = msg; this.toastT = 2.5; },
+
+  // ---------------------------------------------------------------- recording
+  // See recorder.js. The toast is suppressed for the life of the recording:
+  // Dev.draw paints onto the same back buffer the recorder captures, so a
+  // "RECORDING" toast would be the first 2.5s of every clip. The tab title
+  // carries the ● REC instead, and the path arrives as a toast once saved.
+  startRecording({ name, state = null } = {}) {
+    const why = Recorder.start({
+      name, state,
+      onSaved: ({ path, error, note }) => {
+        this.say(error ? `RECORDING FAILED: ${error}` : `SAVED ${path}`);
+        if (note) console.warn('[rec]', note);
+        if (path) console.log('[rec] saved', path);
+      },
+    });
+    if (why) { this.say(why); return false; }
+    this.toastT = 0;
+    console.log('[rec] recording', Recorder.name, Recorder.mime, Recorder.hasAudio ? 'with audio' : 'NO AUDIO');
+    return true;
+  },
+  stopRecording() {
+    if (!Recorder.active) { this.say('NOT RECORDING'); return Promise.resolve(null); }
+    return Recorder.stop();
+  },
+  toggleRecording() {
+    if (Recorder.active) this.stopRecording();
+    else this.startRecording({ name: this.recordingStem() });
+  },
+  // A file stem naming what was on screen when the recording began.
+  recordingStem() {
+    const cur = typeof window !== 'undefined' ? window.__mash_cur : null;
+    const r = this.run();
+    const what = r && r.stage ? r.stage.id
+      : r && r.bossCab ? `boss-${r.bossCab}`
+        : cur ? cur.constructor.name.replace(/State$/, '').toLowerCase() : 'screen';
+    return `rec-${what}`;
+  },
 
   screenshot() {
     const d = new Date();
@@ -388,6 +429,15 @@ export const Dev = {
       else if (e.code === 'Backslash') { this.paused = !this.paused; this.say(this.paused ? 'PAUSED' : 'RESUMED'); e.preventDefault(); }
       else if (e.code === 'Period' && this.paused) { this.stepOnce = true; e.preventDefault(); }
       else if (e.code === 'Tab' && cur && cur.takeOver) { cur.takeOver(); this.say('YOU HAVE THE CONTROLS'); e.preventDefault(); }
+      // R is unbound in the game (tune mode's R is claimed above, before this),
+      // so it can carry the recorder: start on whatever is on screen, stop and
+      // save on the second press. Swallowed the same way the tune keys are, so
+      // it never counts as Input.activity.
+      else if (e.code === 'KeyR' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        this.toggleRecording();
+        e.preventDefault();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      }
       // N and the forward arrow skip the section the current screen is sitting
       // on. Only training implements it — reviewing a ten-section module by
       // playing all ten of them, every time, is how the last section ends up
@@ -435,6 +485,7 @@ export const Dev = {
   update(dt) {
     if (!this.enabled) return false;
     if (this.toastT > 0) this.toastT -= dt;
+    Recorder.tick(dt);
     // The camera readout reports the peak the run actually reached, so it has
     // to watch every frame rather than model a trajectory it cannot predict.
     if (TuneStrip.on) TuneStrip.observe(this.run());
@@ -470,6 +521,11 @@ export const Dev = {
     // back to drawing directly — same contract states.js uses for the shutter.
     const paint = (d) => {
       if (this.open) { drawMenu(d, this); return; }
+      // Nothing of ours on a recording: the strip would be in every frame of
+      // the file. The tab title says ● REC; the menu still opens if asked for.
+      // The one thing painted is the recorder's own black cover, which is how
+      // a bound take opens and closes on black instead of on the shutter.
+      if (Recorder.active) { Recorder.drawCover(d); return; }
       drawTuneStrip(d, this);
       this.drawStatusStrip(d);
     };

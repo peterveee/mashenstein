@@ -1845,6 +1845,45 @@ class AudioSys {
     }
   }
 
+  /**
+   * A MediaStream carrying exactly what the speakers get — the master bus after
+   * its level, plus the reversed-audio output that bypasses master — for the dev
+   * recorder to mux alongside the canvas. Null before ensure() or when the
+   * context has no master yet. Built lazily and rebuilt if the context has been
+   * replaced since (replaceContext nulls master and makes a new one), because a
+   * destination node belongs to the context that created it.
+   */
+  captureStream() {
+    if (!this.ctx || !this.master || this.offline) return null;
+    if (typeof this.ctx.createMediaStreamDestination !== 'function') return null;
+    if (!this._recDest || this._recDestCtx !== this.ctx) {
+      this._recDest = this.ctx.createMediaStreamDestination();
+      this._recDestCtx = this.ctx;
+      // A gain of its own so the recorder can fade the FILE in and out without
+      // touching what the room hears — see setCaptureLevel.
+      this._recGain = this.ctx.createGain();
+      this._recGain.gain.value = this._recLevel ?? 1;
+      this._recGain.connect(this._recDest);
+      this.master.connect(this._recGain);
+      if (this._rewindOut) this._rewindOut.connect(this._recGain);
+    }
+    return this._recDest.stream;
+  }
+
+  /**
+   * Level of the recording tap only, ramped linearly over `ramp` seconds. The
+   * speakers are unaffected. Remembered, so a tap built later starts there.
+   */
+  setCaptureLevel(level, ramp = 0.05) {
+    this._recLevel = Math.max(0, Math.min(1, Number(level) || 0));
+    if (!this._recGain || !this.ctx) return;
+    const g = this._recGain.gain;
+    const t = this.ctx.currentTime;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(this._recLevel, t + Math.max(0.001, ramp));
+  }
+
   setLifecyclePaused(paused) {
     paused = !!paused;
     if (paused === this.lifecyclePaused) return;

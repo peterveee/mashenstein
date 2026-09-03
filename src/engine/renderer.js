@@ -1136,6 +1136,13 @@ export function saveScreenshot(filename = 'mashenstein.png') {
   return true;
 }
 
+// The canvas the player is looking at, for anything that wants to capture the
+// presented frame as a stream rather than a still (the dev recorder). It is a
+// live lookup, not a cached reference: a WebGL failure swaps the element for a
+// fresh clone (freshCanvasAfterWebglFailure), and a stream taken off the old
+// one would record a canvas nobody can see.
+export function presentCanvas() { return canvas; }
+
 // Map a client (CSS pixel) coordinate to logical 480x270 space, for touch/mouse.
 export function clientToLogical(cx, cy) {
   return {

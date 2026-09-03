@@ -363,7 +363,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     // the camera the caller set up — the hero has to carry it across.
     const z = opts.zoom ?? ZOOM;
     const pan = opts.pan ?? 0;
-    pushOverlayDraw((c) => {
+    const paintOverlay = (c) => {
       c.save();
       // Mirror belongs to the scene, not to the toon. The backbuffer receives
       // this transform in RunState.draw(); the full-resolution overlay has its
@@ -372,7 +372,13 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
       applyWorld(c, z, pan, opts.floorY ?? GROUND_Y);
       paint(c);
       c.restore();
-    });
+    };
+    // WHERE IN THE OVERLAY QUEUE HE LANDS is the caller's business, not the
+    // sprite's. The queue is ordered, so the only way to put the hero over the
+    // popup cards is to enqueue him after they are enqueued — and only the run
+    // knows when that is wanted (see the jump lift in RunState.draw). Default
+    // stays exactly as it was: straight into the queue, under the whole overlay.
+    (opts.queueOverlay || pushOverlayDraw)(paintOverlay);
   }
   if (carryingFuse) drawProp(ctx, 'fuse', cx + 6, feetY - HERO_DRAW_H - 2, 8, 6);
 }
@@ -682,48 +688,31 @@ export function drawWorldEntity(ctx, e, camX, t, style, settings = {}) {
   if (e.def.isBoost && !settings.reducedMotion) drawBoostReaction(ctx, e, x, t, propName);
   if (e.def.isLoop) drawLoopRing(ctx, e, x, t, settings);
   // A CARD BOX THAT HAS TAKEN ITS ROUND. Between the hit and the beat it is
-  // owed to there is up to about a beat of waiting (see BOX_BURST_BEATS), and a
-  // box that just stood there through it would read as a shot that missed. The
-  // strobe is what says "this is going to go" — and it ACCELERATES, from about
-  // six flashes a second to twenty, so the fuse has a direction and the burst
-  // is the end of something rather than a surprise.
+  // owed to there is a fraction of a beat (see BOX_BURST_BEATS), and a box that
+  // just stood there through it would read as a shot that missed. A GLOW, and
+  // nothing else: it swells as the fuse burns, so the wait has a direction and
+  // the burst is the end of something rather than a surprise.
   //
-  // Reduced motion holds a steady glow instead: the message is the box being
-  // lit, and that survives without the flicker.
+  // NO RIM AND NO STROBE. Both were here while the fuse ran up to two beats,
+  // and a near-white outline flashing from six times a second to twenty was
+  // legible over that long. At today's fuse it is two hard white flashes on the
+  // frame before the box goes, which reads as the box glitching rather than as
+  // a fuse burning — and a rectangle of light around a cardboard box was
+  // drawing attention away from the box itself, which was the same complaint
+  // that took the earlier white WASH out of here.
   if (e.def.beatShoot && e.burstBeat != null) {
     const ft = e.fuseT || 0;
     const cx = x + e.w / 2;
     const cy = y + e.h / 2;
     const gr = 8 + ft * 4;
     ctx.imageSmoothingEnabled = true;
-    ctx.globalAlpha = 0.34;
+    // Swelling with the fuse rather than flat, which is the direction the
+    // strobe used to carry. Reduced motion takes the middle of that range and
+    // holds it: the message is the box being lit, and that survives still.
+    ctx.globalAlpha = settings.reducedMotion ? 0.4 : Math.min(0.55, 0.3 + ft * 0.5);
     ctx.drawImage(glowSprite('rgba(248,144,184,0.75)', 9), cx - gr, cy - gr, gr * 2, gr * 2);
     ctx.globalAlpha = 1;
     ctx.imageSmoothingEnabled = false;
-    // A RIM, NOT A WASH. Filling the box with light was the first version of
-    // this and it erased the thing it was meant to be drawing attention to —
-    // the card went pale and the target ring went with it, so a lit box was a
-    // pink blob where a moment earlier there had been an object. The outline
-    // strobes and the face keeps a thin lift, which reads as the box being
-    // CHARGED rather than as the box being replaced.
-    const lit = settings.reducedMotion || Math.floor(ft * (6 + ft * 14)) % 2 === 0;
-    if (lit) {
-      // AROUND THE ART, NOT AROUND THE BOX. Every hazard draws 4/3 bigger than
-      // its hitbox (see draw1), so a rim on e.w/e.h is a rectangle INSIDE the
-      // picture, cutting the box's own flaps in half. These are draw1's numbers.
-      const w0 = Math.round(e.def.w * 4 / 3);
-      const h0 = Math.round(e.def.h * 4 / 3);
-      const ox = x - Math.floor((w0 - e.def.w) / 2);
-      const oy = y - (h0 - e.def.h);
-      ctx.globalAlpha = settings.reducedMotion ? 0.1 : 0.16;
-      ctx.fillStyle = '#fff0f6';
-      ctx.fillRect(ox, oy, w0, h0);
-      ctx.globalAlpha = settings.reducedMotion ? 0.5 : 0.85;
-      ctx.strokeStyle = '#fff0f6';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(ox - 0.5, oy - 0.5, w0 + 1, h0 + 1);
-      ctx.globalAlpha = 1;
-    }
   }
   if (style && style.decorate) style.decorate(ctx, e, x, y);
 }

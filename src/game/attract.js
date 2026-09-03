@@ -13,6 +13,11 @@ import { BossState, BOSSES } from './boss.js';
 import { DemoBot } from './bot.js';
 import { Rng } from '../engine/rng.js';
 
+// How long a quiet (recorded) run holds its last frame before leaving: the
+// recorder's fade to black plus a beat of black, so the file ends clean and
+// the closing shutter never makes it into the picture.
+const QUIET_OUTRO = 0.9;
+
 // Shuffled rotation: all 27 stages + 3 bosses appear before any repeat.
 let rotation = [];
 let clipCounter = 0;
@@ -51,15 +56,17 @@ export class AttractState {
   // opts: { realSettings, onExit(autoAdvance) }
   //
   // Dev builds reuse this shell for the dev menu's watch modes, via:
-  //   { scenario, seed, crash, noBot, devMode, onExit }
+  //   { scenario, seed, crash, noBot, devMode, quiet, onExit }
   // devMode drops the exit-on-input guard and the DEMO banner; crash runs the
   // stage invulnerable with the mission forced; noBot leaves the hero entirely
-  // unpiloted so it plows into everything.
+  // unpiloted so it plows into everything; quiet drops the [DEV] strip too, so
+  // a recording of the run shows only the game.
   constructor(opts) { this.o = opts; }
 
   enter() {
     this.scenario = this.o.scenario || nextScenario();
     this.devMode = !!this.o.devMode;
+    this.quiet = !!this.o.quiet;
     this.crash = !!this.o.crash;
     this.actTok = Input.activity;
     Input.clearAll();
@@ -98,6 +105,10 @@ export class AttractState {
     if (this.run && this.run.exit) this.run.exit();
   }
 
+  // Seconds since the run ended, or 0 while it is still going. The dev
+  // recorder reads this to fade its file to black ahead of the shutter.
+  get recordingOutro() { return this.done ? this.doneT : 0; }
+
   // Dev watch modes hand the run over to the keyboard instead of exiting.
   takeOver() {
     if (this.bot) this.bot.releaseAll();
@@ -115,7 +126,9 @@ export class AttractState {
     }
     if (this.done) {
       this.doneT += dt;
-      if (this.doneT >= 0.1) this.o.onExit(true); // natural end -> 10s interlude
+      // Quiet (recorded) runs hold the last frame long enough for the recorder
+      // to fade it to black before the shutter closes — see recordingOutro.
+      if (this.doneT >= (this.quiet ? QUIET_OUTRO : 0.1)) this.o.onExit(true); // natural end -> 10s interlude
       return;
     }
     if (this.bot) this.bot.update(dt);
@@ -127,6 +140,7 @@ export class AttractState {
     this.run.draw(ctx, renderAlpha);
     // Banner above EVERYTHING, including the hero overlay.
     const name = this.name;
+    if (this.devMode && this.quiet) return;
     if (this.devMode) {
       const mode = this.crash ? 'CRASH TEST' : this.piloted ? 'BOT' : 'MANUAL';
       const tally = this.crash ? `  HITS ${this.run.devHits.length}` : '';

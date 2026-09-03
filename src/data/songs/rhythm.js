@@ -228,20 +228,26 @@ export const beatCharts = {
       { slot: 0, action: 'duck', type: 'barrel', every: 3 },
       { slot: 1, action: 'coin', ...sixteenth },
       { slot: 2, action: 'jump', type: 'beatBar' },
-      // Duck, bar, SHOOT, hole — and the round sails over the hole on its way to
-      // a box that opens on 5, between the two of them.  A shot flies at ankle
-      // height and a chart pit is a hole in the floor rather than an object in
-      // the road, so nothing is in the way of it; the picture is that you fire
-      // across the gap, jump the gap, and land as the box goes.
+      // Duck, bar, SHOOT — and the box goes on 4, half a beat in front of the
+      // hero (BOX_LEAD_BEATS), with the first hole a beat behind it on 5. The
+      // holes used to sit on 4 and 6, with the round fired across the first
+      // gap and the box opening on 5 between them; a box standing 1.5 beats
+      // past its shot stands in a hole cut on the next line (the validator
+      // refuses it), so both holes moved a beat later. Slot 4 is the single
+      // coin physics insists on before a hole, and so is 6 between them.
       { slot: 3, action: 'ability', type: 'cardBox', every: 3 },
-      { slot: 4, action: 'pit' }, { slot: 5, action: 'coin' },
-      { slot: 6, action: 'pit' }, { slot: 7, action: 'coin', ...eighth },
+      { slot: 4, action: 'coin' }, { slot: 5, action: 'pit' },
+      { slot: 6, action: 'coin' }, { slot: 7, action: 'pit' },
       // AND THE SECOND STRIDE SPENDS IT. Slot 0 above is a barrel and can be
       // jumped; this one is the full three rungs, stacked to 50 and over the
       // worst jump in the cast — so the same INPUT comes back half a loop later
       // with the jump-button escape taken off it. Two objects, one button, and
       // the second one is the one that means it.
-      { slot: 8, action: 'coin', ...sixteenth },
+      // Two beats out of the second hole to the column (pitDuck: 2) — the
+      // hero lands from 7 with 8 to get his feet back. A pair rather than the
+      // count-in it used to be: the loop's one sixteenth is on 1, into the
+      // bar, and with 7 now a hole the pairs need this slot to stay the ground.
+      { slot: 8, action: 'coin', ...eighth },
       { slot: 9, action: 'duck', type: 'drone', column: 3 },
       { slot: 10, action: 'jump', type: 'beatBar' }, { slot: 11, action: 'coin' },
       { slot: 12, action: 'pit' }, { slot: 13, action: 'coin' },
@@ -258,7 +264,15 @@ export const beatCharts = {
     // there comes every second one here.
     loopBeats: 16,
     events: [
-      { slot: 0, action: 'jump', type: 'beatBar' },
+      // THE BAR IS GONE FROM THE FINALE, and it is the card box that took it.
+      // The four holes used to run 8-10-12-14 with the box shot on 7 and its
+      // hole on 8; a box standing 1.5 beats past its shot stands in that hole,
+      // so the four holes moved to 9-11-13-15 — and a hole on 15 puts the jump
+      // that stood on 0 one beat after a landing, which is a jump asked twice
+      // in a beat (pitJump: 2). So 0 is the flourish, landed on, and the loop
+      // spends every jump it has on the holes, which is what this stage was
+      // always about. The bar is still taught on the two stages before it.
+      { slot: 0, action: 'coin', ...thirtysecond, every: 2 },
       { slot: 1, action: 'coin', ...sixteenth },
       // THE BAR OF DUCKING, AND IT IS TWO OBJECTS. Nothing new is introduced on
       // the finale and neither of these is: the column is the stage-2 figure
@@ -286,17 +300,18 @@ export const beatCharts = {
       { slot: 5, action: 'coin', ...eighth },
       { slot: 6, action: 'duck', type: 'drone', column: 3 },
       // The finale's one card box, and it is the tightest the cabinet asks for:
-      // duck on 6, shoot on 7, hole on 8, and the box opens on 9 between the
-      // first two holes of the bar.  It is also the cheapest thing on the stage
-      // to decline — a missed box costs the combo and nothing else, and running
-      // through one costs not even that (OBSTACLES.cardBox is `pushover`), so
-      // the difficulty here is opt-in in a way none of the holes are.
+      // duck on 6, shoot on 7, and the box goes on 8 half a beat ahead of the
+      // hero, with the first of the four holes a beat behind it on 9.  It is
+      // also the cheapest thing on the stage to decline — a missed box costs
+      // the combo and nothing else, and running through one costs not even
+      // that (OBSTACLES.cardBox is `pushover`), so the difficulty here is
+      // opt-in in a way none of the holes are. Slot 8 is the single coin
+      // physics insists on before a hole, and so are 10, 12 and 14.
       { slot: 7, action: 'ability', type: 'cardBox', every: 3 },
-      { slot: 8, action: 'pit' }, { slot: 9, action: 'coin' },
-      { slot: 10, action: 'pit' }, { slot: 11, action: 'coin' },
-      { slot: 12, action: 'pit' }, { slot: 13, action: 'coin' },
-      { slot: 14, action: 'pit' },
-      { slot: 15, action: 'coin', ...thirtysecond, every: 2 },
+      { slot: 8, action: 'coin' }, { slot: 9, action: 'pit' },
+      { slot: 10, action: 'coin' }, { slot: 11, action: 'pit' },
+      { slot: 12, action: 'coin' }, { slot: 13, action: 'pit' },
+      { slot: 14, action: 'coin' }, { slot: 15, action: 'pit' },
     ],
   },
 };

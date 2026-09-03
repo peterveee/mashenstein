@@ -2344,6 +2344,31 @@ const LCD_CITY_SCENES = [
     billboards: [[1, 'chart']],
     rooftopGorilla: 6,
     barrelDrop: true,
+    // THE QUIET PANEL GETS A WORKING HALF. Stage 3 was the emptiest of the
+    // three by a wide margin — a measured 7.5% of its pixels ever moved against
+    // 13% for the other two — and nearly all of what did was in the sky: the
+    // clouds, the crossing, and the gorilla away on the right. The whole left
+    // and centre of the skyline stood still for the entire run, which is the
+    // last stage of the cabinet and the one that should be busiest.
+    //
+    // Both pieces are the existing painters on existing hooks, not new art.
+    // This panel already owns the vocabulary — it is a city of clockworks and
+    // relays — and the two it was missing are the two that carry the most
+    // motion on the stages that do have them.
+    //
+    // WHERE THEY CAN STAND IS SET BY THE CROSSING, not by taste. A plume's top
+    // cell sits a fixed 55px above the roof it stands on (see lcdSmokestack,
+    // whose column is authored to top out at y 65 on scene 1's roof-120
+    // building), so a boiler house on a TALL roof puts smoke through the
+    // aircraft. Building 5's roof is 162, which tops the plume at 107 — well
+    // under a crossing whose belly is 66 at its lowest. The transmitter's
+    // beacon stands 31 above its roof, so building 0's roof of 166 tops it at
+    // 135 with the signal rings still clear.
+    //
+    // Building 0 also happens to be where the panel was deadest: the far left,
+    // which carried nothing at all below the clouds.
+    transmitter: 0,
+    smokestacks: [[5, 20]],
   },
 ];
 
@@ -2515,11 +2540,29 @@ function lcdSceneFrame(scene, reducedMotion) {
     // judged on the real panel by the real painter rather than in a copy of
     // him. It never overrides the startle; see lcdRooftopGorilla.
     gorillaExpr: typeof scene?.gorillaExpr === 'string' ? scene.gorillaExpr : null,
-    // WHICH SCREEN TREATMENT. DEV ONLY, on the same terms as gorillaExpr: no
-    // run sets it, the gallery's bake-off does. See LCD_FINISH_CANDIDATES.
-    finishStyle: typeof scene?.finishStyle === 'string' ? scene.finishStyle : null,
     // And which BROW treatment, same deal: null means the one the panel ships.
     gorillaBrow: typeof scene?.gorillaBrow === 'string' ? scene.gorillaBrow : null,
+    // And which INK he is drawn in — fur, arm core, face, skin, chest — same
+    // deal: null means the one the panel ships. See LCD_GORILLA_INKS.
+    gorillaInk: typeof scene?.gorillaInk === 'string' ? scene.gorillaInk : null,
+    // And HOW HE IS BUILT — stacked ovals or a hard-edged segment, see
+    // LCD_GORILLA_BUILD_STYLES. Null means the construction the panel ships.
+    gorillaBuild: typeof scene?.gorillaBuild === 'string' ? scene.gorillaBuild : null,
+    // The two dials on the ovals: how the ARMPIT is defined and what TUFT the
+    // skull wears. See LCD_GORILLA_PIT_STYLES / LCD_GORILLA_TUFT_STYLES.
+    gorillaPit: typeof scene?.gorillaPit === 'string' ? scene.gorillaPit : null,
+    gorillaTuft: typeof scene?.gorillaTuft === 'string' ? scene.gorillaTuft : null,
+    // And how far the EARS stick out — see LCD_GORILLA_EAR_STYLES.
+    gorillaEar: typeof scene?.gorillaEar === 'string' ? scene.gorillaEar : null,
+    // And which SPIKE spec the crest is cut to — see LCD_GORILLA_SPIKE_STYLES.
+    gorillaSpikes: typeof scene?.gorillaSpikes === 'string' ? scene.gorillaSpikes : null,
+    // HOW STRONG THE SHOULDER BALL'S INK IS, 1 down to 0.5, or null for the
+    // one the panel ships — see LCD_GORILLA_SHOULDER_ALPHAS.
+    gorillaShoulder: Number.isFinite(scene?.gorillaShoulder) ? scene.gorillaShoulder : null,
+    // The girder cell's size and the barrel's SILHOUETTE — see
+    // LCD_BARREL_CELL_STYLES and LCD_BARREL_SHAPE_STYLES. Null ships.
+    barrelCell: typeof scene?.barrelCell === 'string' ? scene.barrelCell : null,
+    barrelShape: typeof scene?.barrelShape === 'string' ? scene.barrelShape : null,
     // IS THIS A RUN OPENING, and HOW FAR INTO IT — the pair that gates the
     // city's arrival, see lcdArrival.
     //
@@ -4393,36 +4436,19 @@ const LCD_TRAIN_CAR = 26;
 // arriving is something you can notice arriving.
 const LCD_TRAIN_LAP = 48;
 
-// The viaduct, in the panel's own hand: ONE INK, ONE PIXEL, ON THE RULES.
+// The viaduct, in the panel's own hand: ONE INK, ONE PIXEL, ONE LINE.
 //
 // It was a 2px soft-grey bar with 2px stubs hanging ten pixels under it — the
-// one piece of furniture still drawn the old way after the OLED pass. The deck
-// is now a hollow rectangle, two 1px ink lines on lattice rules (77 and 80,
-// with the cars riding the top one), across the whole panel as one piece. The
-// piers are 1px ink columns, one centred in every gap between buildings and
-// one in each edge gap, and they run from the deck TO THE GROUND. A pier that
-// stopped in the air was the thing Peter's rule is about ("how are the
-// girders suspended?"): these bear on the street, like the buildings either
-// side of them, and because they stand only in the gaps they never come up
-// through a billboard's legs or a rooftop bank.
-const LCD_DECK_H = 4;
-function lcdPierXs(art) {
-  const edges = [0, ...art.buildings.flatMap(([x, w]) => [x, x + w]), W];
-  const xs = [];
-  for (let i = 0; i < edges.length; i += 2) {
-    const mid = Math.floor((edges[i] + edges[i + 1]) / 2);
-    // Down to the nearest lattice rule (x ≡ 2 mod 3), like a wall edge.
-    xs.push(mid - lcdMod(mid - 2, 3));
-  }
-  return xs;
-}
+// last piece of furniture still drawn the old way after the OLED pass. Now it
+// is a single 1px ink line on a lattice rule, across the whole panel, with the
+// cars riding it. No deck box and no piers: a pier that stopped in the air was
+// exactly what Peter's rule is about ("how are the girders suspended?"), and
+// piers carried to the street would have crossed the skyline everywhere. One
+// line reads as an elevated rail seen edge-on, and it is the least this panel
+// can draw and still have a rail on it.
 function lcdViaduct(ctx, art) {
-  const top = art.train.y + 12;
   ctx.fillStyle = LCD_INK;
-  ctx.fillRect(0, top, W, 1);
-  ctx.fillRect(0, top + LCD_DECK_H - 1, W, 1);
-  const foot = top + LCD_DECK_H;
-  for (const px of lcdPierXs(art)) ctx.fillRect(px, foot, 1, GROUND_Y - foot);
+  ctx.fillRect(0, art.train.y + 12, W, 1);
 }
 
 function lcdTrain(ctx, spec, frame) {
@@ -4785,32 +4811,257 @@ function gbcGorillaLimb(ctx, points, color, width, highlight = null) {
 // the seams are a WASH the body still shows through, the hoops are drawn
 // three-quarter weight, and the middle band — the one that made it a
 // basketball in the first place — is gone from the small cell entirely.
+// IS IT A BALL BECAUSE IT HAS NO PERSPECTIVE? The shipped barrel is an
+// ellipse with its two hoops mirrored about the centre and its seams mirrored
+// about both axes — a shape with two axes of symmetry, which is the family a
+// ball belongs to and a barrel does not. A real one is seen from SOMEWHERE:
+// the end pointed at you is a flat lid, the far end falls away, and that one
+// asymmetry is most of what says cylinder rather than sphere.
+//
+// Against that: this is a Game & Watch panel, and segment art is flat on
+// purpose. So it is a bake-off, not an argument — four silhouettes at both
+// sizes on the real tower. See LCD_BARREL_SHAPE_STYLES.
 const LCD_BARREL_BODY = '#a9743a';
 const LCD_BARREL_SEAM = 'rgba(95,61,31,0.6)';
 const LCD_BARREL_HI = 'rgba(226,166,88,0.62)';
+const LCD_BARREL_LID = '#c48b4c';    // the end face, one step up from the wood
 const LCD_BARREL_HOOP = 0.75;
 
-function gbcGorillaBarrel(ctx, x, y, ghost = false, live = false) {
-  gbcEllipse(ctx, x, y, 8, 7, ghost ? LCD_MOTION_GHOST : LCD_BARREL_BODY,
-    ghost ? LCD_MOTION_GHOST : LCD_PRINT, 1);
+// SHIPPED: the lane barrel's own drawing. The thing the gorilla holds, the
+// thing that comes down the chute and the thing that rolls at you in the lane
+// are one object, so they are one picture — and the recipe that already exists
+// is the lane's (props.js barrel), not a second one invented for the panel.
+// It also settles the perspective question by not having any: the lane barrel
+// is deliberately flat and front-on ('no top plane or receding side, the
+// toaster owns the 3D exception') and this now inherits that.
+const LCD_BARREL_SHAPE = 'ingame';
+export const LCD_BARREL_SHAPE_STYLES = [
+  { id: 'round', name: 'ROUND', note: 'what shipped before — an ellipse, both ends curved, hoops mirrored. The ball.' },
+  { id: 'ingame', name: 'INGAME', note: 'SHIPPED — the LANE barrel\'s own recipe, in the panel\'s palette: rounded-rect body, two horizontal hoops, vertical staves, a lit stave and a shaded one. The barrel that comes down the chute IS this one, so it should be one picture.' },
+  { id: 'drum', name: 'DRUM', note: 'flat top and bottom, both ends still curved — the ball gone without giving the panel a viewpoint.' },
+  { id: 'lid', name: 'LID', note: 'perspective: the near end a flat cut on the RIGHT, where the run comes from, with the end face a step lighter and the far end curved away.' },
+];
+const LCD_BARREL_SHAPES = new Set(LCD_BARREL_SHAPE_STYLES.map((b) => b.id));
+
+// The silhouette as a PATH, so the fill, the print outline and the ghost are
+// all the same shape and only this function knows which one it is.
+//
+// The two flat-ended shapes are built the same way and differ in one number:
+// DRUM's near end is a rounded cap like its far one, LID's is a straight
+// vertical cut. Both TAPER their ends — a barrel is widest at its belly, and
+// an end as tall as the middle is a bucket.
+//
+// AND THE NEAR END IS ON THE RIGHT. It was on the left, and that put the
+// barrel's point of view against every other one in the game: the hero runs
+// RIGHT, every hazard travels left toward him (OBSTACLES.barrel, vx -40), and
+// a lid on the left reads as a barrel arriving from the wrong side of the
+// screen. The lane's own barrel is deliberately flat and front-on — see
+// props.js, 'no top plane or receding side, the toaster owns the 3D exception'
+// — so there is no lid there to disagree with; the one thing that does have a
+// receding side, hzBarrel's drum, shades its RIGHT edge. Right it is.
+function lcdBarrelPath(ctx, x, y, rx, ry, shape) {
+  ctx.beginPath();
+  if (shape === 'ingame') {
+    // props.js barrel() — SNAPPED, and with a BELLY. Two things had to be
+    // true at once and the first attempt only managed one: it has to sit on
+    // the pixel grid, or a ten-pixel body is a smudge; and it has to bulge,
+    // or it is a crate. A rounded rectangle with a radius large enough to
+    // read as a barrel is just the ellipse again, and one small enough to
+    // stay crisp is a box — so the silhouette is neither. It is a twelve-
+    // sided polygon on three widths: the end rows pulled in two pixels, a
+    // one-pixel shoulder, and the full width across the belly. Every vertex
+    // is a half-pixel off an integer, so a 1px rim lands on the grid, and
+    // there is not a curve in it.
+    const RX = Math.round(rx), RY = Math.round(ry);
+    const cx = Math.round(x), cy = Math.round(y);
+    const L = cx - RX, T = cy - RY, W = RX * 2, H = RY * 2;
+    // How far the ends pull in, and how deep the shoulder is. Two pixels of
+    // taper is the whole bulge: at sixteen across it is a barrel and at ten it
+    // is still a barrel, and three would start eating the girder cell.
+    const END = 2, SH = 1;
+    const r = RY >= 7 ? 2 : 1;              // the shoulder's height
+    const a = RY >= 7 ? 3 : 1;              // half the belly's flat run
+    const xR = (i) => L + W - i - 0.5, xL = (i) => L + i + 0.5;
+    const y0 = T + 0.5, y1 = T + H - 0.5;
+    ctx.moveTo(xL(END), y0);
+    ctx.lineTo(xR(END), y0);
+    ctx.lineTo(xR(SH), y0 + r);
+    ctx.lineTo(xR(0), cy - a);
+    ctx.lineTo(xR(0), cy + a);
+    ctx.lineTo(xR(SH), y1 - r);
+    ctx.lineTo(xR(END), y1);
+    ctx.lineTo(xL(END), y1);
+    ctx.lineTo(xL(SH), y1 - r);
+    ctx.lineTo(xL(0), cy + a);
+    ctx.lineTo(xL(0), cy - a);
+    ctx.lineTo(xL(SH), y0 + r);
+    ctx.closePath();
+    return;
+  }
+  if (shape !== 'drum' && shape !== 'lid') {
+    ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    return;
+  }
+  const eh = ry * 0.74;             // how tall an end is against the belly
+  const bx = rx * 0.3;              // where the belly stops being flat
+  if (shape === 'lid') {
+    ctx.moveTo(x + rx, y - eh);
+    ctx.lineTo(x + rx, y + eh);
+  } else {
+    ctx.moveTo(x + rx - 0.5, y - eh);
+    ctx.ellipse(x + rx - 0.5, y, rx * 0.3, eh, 0, -Math.PI / 2, Math.PI / 2);
+  }
+  ctx.quadraticCurveTo(x + rx * 0.6, y + ry, x + bx, y + ry);
+  ctx.lineTo(x - bx, y + ry);
+  ctx.quadraticCurveTo(x - rx * 0.75, y + ry, x - rx, y + eh * 0.55);
+  ctx.quadraticCurveTo(x - rx * 1.05, y, x - rx, y - eh * 0.55);
+  ctx.quadraticCurveTo(x - rx * 0.75, y - ry, x - bx, y - ry);
+  ctx.lineTo(x + bx, y - ry);
+  ctx.quadraticCurveTo(x + rx * 0.6, y - ry, x + rx, y - eh);
+  ctx.closePath();
+}
+
+// ONE PAINTER, ANY SIZE. `rx, ry` are the body's half-extents; everything on
+// it — hoop spacing, hoop height, seam length, the pip — is placed in
+// proportion, and the INK IS NOT: a stroke does not get thinner because the
+// thing it is on got smaller, so the line weights are scaled down with the
+// body and floored where a canvas stroke stops being a line. That is what
+// makes the girder cell the gorilla's barrel and not a heavier drawing of a
+// different one: the same silhouette, the same hoops at the same fraction of
+// the body, the same seams as a wash, at half the size.
+//
+// `ghost` is false, true (a filled ghost, the way the gorilla's spare arms and
+// the chute are drawn) or 'outline' (the silhouette alone, for a chain of off
+// cells where four filled discs in a row would out-weigh the one lit barrel).
+function lcdBarrelAt(ctx, x, y, rx, ry, ghost = false, live = false, shape = null) {
+  const form = LCD_BARREL_SHAPES.has(shape) ? shape : LCD_BARREL_SHAPE;
+  const k = rx / LCD_BARREL_RX;
+  const body = Math.max(0.5, k);            // outline
+  const hoop = Math.max(0.45, LCD_BARREL_HOOP * k);
+  lcdBarrelPath(ctx, x, y, rx, ry, form);
+  if (ghost === 'outline') {
+    ctx.strokeStyle = LCD_MOTION_GHOST; ctx.lineWidth = 1; ctx.stroke();
+    return;
+  }
+  ctx.fillStyle = ghost ? LCD_MOTION_GHOST : LCD_BARREL_BODY; ctx.fill();
+  ctx.strokeStyle = ghost ? LCD_MOTION_GHOST : LCD_PRINT;
+  // The snapped shape wants a whole-pixel rim; the curved ones still scale
+  // theirs, because a 1px stroke on a 10px ellipse is the chunk this all
+  // started with.
+  ctx.lineWidth = ghost || form === 'ingame' ? 1 : body;
+  ctx.stroke();
+  ctx.lineWidth = 1;
   if (ghost) return;
   if (live) {
     ctx.strokeStyle = LCD_WINDOW_ON;
     ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(x, y, 9, 8, 0, 0, Math.PI * 2); ctx.stroke();
+    lcdBarrelPath(ctx, x, y, rx + 1, ry + 1, form);
+    ctx.stroke();
     ctx.lineWidth = 1;
   }
+  // THE LANE BARREL'S OWN MARKS, remapped. props.js draws its body inset in
+  // the sprite box and lays every mark against that inset; here the body IS
+  // the box, so each of its fractions is re-based onto the body rather than
+  // copied raw. Two HORIZONTAL hoops and VERTICAL staves — the opposite of the
+  // ellipse's arrangement, and the right one, because the lane barrel is drawn
+  // front-on and spun (draw.js rolls it), never side-on.
+  //
+  // At cell size the full set is nine marks across ten pixels, so the three
+  // stave seams and the shaded stave drop out below the gorilla's size and the
+  // two hoops, the lit stave and the highlight carry it.
+  if (form === 'ingame') {
+    // EVERY MARK IS A FILLRECT ON THE GRID. Strokes at three-quarter weight
+    // and marks at fractional offsets are what made this mushy: a 0.6px line
+    // is not a thin line, it is a grey one. So the hoops are 1px bars, the
+    // staves are 1px columns, and the two shaded staves are 1-2px blocks —
+    // all of them whole pixels at whole coordinates, and all of them inset one
+    // pixel so the print rim stays the outermost thing on the barrel.
+    const RX = Math.round(rx), RY = Math.round(ry);
+    const L = Math.round(x) - RX, T = Math.round(y) - RY, W = RX * 2, H = RY * 2;
+    const wide = W >= 16;
+    // The lit stave and, on the big barrel only, the shaded one opposite it.
+    // The staves run the BELLY only. Carried to the rim they poked out of the
+    // tapered ends, which is the one way a stave can stop reading as wood.
+    const sT = T + 2, sH = H - 4;
+    ctx.fillStyle = LCD_BARREL_HI;
+    ctx.fillRect(L + 1, sT, wide ? 2 : 1, sH);
+    if (wide) {
+      ctx.fillStyle = LCD_BARREL_SEAM;
+      ctx.fillRect(L + W - 3, sT, 2, sH);
+      // Stave joints, evenly across the belly. The cell has six pixels between
+      // its hoops and no room for any of them.
+      for (const t of [0.34, 0.5, 0.66]) ctx.fillRect(L + Math.round(W * t), sT, 1, sH);
+    }
+    // The two hoops, which are the marks that say barrel at any size. Placed
+    // by props.js's fractions but never closer than two rows to an edge: on
+    // the eight-row cell the lower one landed on row six, a pixel off the
+    // bottom rim, and the two ran together into a thick edge instead of
+    // reading as a hoop.
+    ctx.fillStyle = LCD_PRINT;
+    const hoops = [Math.max(2, Math.round(H * 0.228)), Math.min(H - 3, Math.round(H * 0.739))];
+    for (const hy of hoops) ctx.fillRect(L + 1, T + hy, W - 2, 1);
+    return;
+  }
+
+  // THE LID, on the shape that has one: the sliver behind the flat edge, a
+  // step lighter than the wood, with the print line that separates it from the
+  // staves. That line is the only mark on the barrel that says which end is
+  // pointed at you.
+  const lidW = form === 'lid' ? Math.max(1, 2 * k) : 0;
+  if (lidW) {
+    const eh = ry * 0.74;
+    ctx.fillStyle = LCD_BARREL_LID;
+    ctx.beginPath();
+    ctx.rect(x + rx - lidW, y - eh, lidW, eh * 2);
+    ctx.fill();
+    ctx.strokeStyle = LCD_PRINT; ctx.lineWidth = hoop;
+    ctx.beginPath();
+    ctx.moveTo(x + rx - lidW, y - eh); ctx.lineTo(x + rx - lidW, y + eh);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+  // The hoops stand upright half-way out to each end, the way they do on a
+  // barrel rolling toward you. LID has a lid where the near one would be, so
+  // it carries one; TAPER carries two of different heights, which is the whole
+  // of its perspective.
+  const hrx = Math.max(0.9, 1.8 * k), hry = ry * (5.8 / 7);
   ctx.strokeStyle = LCD_PRINT;
-  ctx.lineWidth = LCD_BARREL_HOOP;
-  ctx.beginPath(); ctx.ellipse(x - 4, y, 1.8, 5.8, 0, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.ellipse(x + 4, y, 1.8, 5.8, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.lineWidth = hoop;
+  if (form === 'taper') {
+    ctx.beginPath(); ctx.ellipse(x - rx * 0.46, y, hrx, ry * 0.94, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(x + rx * 0.40, y, hrx * 0.8, ry * 0.66, 0, 0, Math.PI * 2); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.ellipse(x - rx / 2, y, hrx, hry, 0, 0, Math.PI * 2); ctx.stroke();
+    if (!lidW) { ctx.beginPath(); ctx.ellipse(x + rx / 2, y, hrx, hry, 0, 0, Math.PI * 2); ctx.stroke(); }
+  }
   ctx.lineWidth = 1;
+  // Three seams, the outer pair a little shorter, as a wash the wood shows
+  // through. On a small body the middle one is the stripe that made it a
+  // ball, so below the gorilla's size only the outer pair is drawn. On TAPER
+  // they converge toward the far end; on LID they stop at the lid line.
+  const sy = Math.max(1, Math.round(3 * (ry / 7)));
+  const s0 = Math.round(6 * k), s1 = Math.round(7 * k);
+  const xr = Math.round(x);
+  const lidX = Math.round(x + rx - lidW) - 1;
+  const left = (n) => xr - n;
+  const wide = (n) => (lidW ? Math.min(xr + n, lidX) : xr + n) - (xr - n);
   ctx.fillStyle = LCD_BARREL_SEAM;
-  ctx.fillRect(x - 6, y - 3, 12, 1);
-  ctx.fillRect(x - 7, y, 14, 1);
-  ctx.fillRect(x - 6, y + 3, 12, 1);
+  if (form === 'taper') {
+    ctx.fillRect(left(s0), y - sy, wide(s0), 1);
+    if (k >= 1) ctx.fillRect(left(s1), y, wide(s1), 1);
+    ctx.fillRect(left(s0), y + sy, wide(s0), 1);
+  } else {
+    ctx.fillRect(left(s0), y - sy, wide(s0), 1);
+    if (k >= 1) ctx.fillRect(left(s1), y, wide(s1), 1);
+    ctx.fillRect(left(s0), y + sy, wide(s0), 1);
+  }
   ctx.fillStyle = LCD_BARREL_HI;
-  ctx.fillRect(x - 1, y - 5, 2, 2);
+  const pip = k >= 1 ? 2 : 1;
+  ctx.fillRect(xr - 1, y - Math.round(ry - 2 * k), 2, pip);
+}
+
+function gbcGorillaBarrel(ctx, x, y, ghost = false, live = false, shape = null) {
+  lcdBarrelAt(ctx, x, y, LCD_BARREL_RX, LCD_BARREL_RY, ghost, live, shape);
 }
 
 // The cells his shock radiates. OUTSIDE the head AND outside the arms, which
@@ -4969,13 +5220,16 @@ function lcdGorillaBrow(ctx, cx, y0, side, kind, b) {
 // The face, centred on the head at (cx, roof - 31). Draws in the order it
 // always has — whites, pupils, brows, nostrils, mouth — because the head plane
 // is already down and every one of these sits on top of the one before it.
-function lcdGorillaFace(ctx, cx, roof, exprId, browStyle) {
+function lcdGorillaFace(ctx, cx, roof, exprId, browStyle, thin = false) {
   const f = LCD_GORILLA_FACES[exprId] || LCD_GORILLA_FACES.smile;
   const brow = LCD_GORILLA_BROWS[browStyle] || LCD_GORILLA_BROWS[LCD_GORILLA_BROW];
   const eyeY = roof - 31;
+  // The mouth's and the shut eye's weight. The brow keeps its own (SHORT,
+  // settled on its own sheet); `thin` is the gorilla-wide line weight.
+  const lw = thin ? 1.1 : 1.5;
   if (f.eye === 'shut') {
     // No whites at all: two lines that curve the way a squeezed eye does.
-    ctx.strokeStyle = LCD_PRINT; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = LCD_PRINT; ctx.lineWidth = lw;
     for (const side of [-1, 1]) {
       ctx.beginPath();
       ctx.moveTo(cx + side * 6, eyeY + 0.5);
@@ -4998,10 +5252,11 @@ function lcdGorillaFace(ctx, cx, roof, exprId, browStyle) {
       ctx.fillRect(cx + 1, eyeY - 2.4, 5, 1.4);
     }
   }
-  ctx.strokeStyle = LCD_PRINT; ctx.lineWidth = 1.5;
+  ctx.strokeStyle = LCD_PRINT; ctx.lineWidth = lw;
   const browY = roof - 35 + (f.browDy || 0);
   lcdGorillaBrow(ctx, cx, browY, -1, f.brow, brow);
   lcdGorillaBrow(ctx, cx, browY, 1, f.brow, brow);
+  ctx.lineWidth = lw; // the brow painter resets it to its own weight
   gbcEllipse(ctx, cx - 2.5, roof - 26, 1, 0.8, LCD_PRINT);
   gbcEllipse(ctx, cx + 2.5, roof - 26, 1, 0.8, LCD_PRINT);
   const m = f.mouth;
@@ -5089,8 +5344,537 @@ function lcdGorillaMood(frame, hint = null) {
 
 // `burst` is the phase from lcdBurstPhase, or -1: on those two beats the barrel
 // he is holding is not there to be drawn, because the plane just removed it.
+// ---- WHAT COLOUR HE IS ------------------------------------------------------
+//
+// The question that came back on 3 Sep 2026 was "why is Kong blue?", and the
+// answer is the ARM CORE: each active arm is a 7px stroke of the graphite print
+// with a 3px TEAL stroke run down its middle (rgba(70,121,137)), a highlight
+// left over from the Game Boy Color palette this pack started in. On the
+// grey-green panel the graphite composites to an olive grey, so the teal is
+// the most saturated thing on him and the arms are the biggest thing on him —
+// which is why the whole figure reads blue from a lane away.
+//
+// One palette for the whole gorilla, every stage, every pose; the bake-off
+// exists to change LCD_GORILLA_INK and nothing else. SETTLED 3 Sep 2026:
+// ONE INK — the teal core went, and the arms lost nothing without it. A Game
+// & Watch segment is one ink, and now so is he. Five planes:
+//
+//   fur    the body, limbs, skull and ear rims
+//   core   the stroke run down the middle of an active arm, or null for none
+//   face   the pale plane the expression is drawn on
+//   skin   muzzle, inner ears and hands
+//   chest  the plane between the shoulders
+//
+// The face painter keeps its own ink (print pupils, print brows, straw whites)
+// so an expression reads the same on every candidate.
+const LCD_GORILLA_INK = 'oneink';
+
+const LCD_GORILLA_INKS = {
+  ships: { fur: LCD_PRINT, core: 'rgba(70,121,137,0.72)', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // The Game & Watch answer: he is a segment, and a segment is one ink. The arm
+  // core simply goes; the round stroke's own edge is the only modelling.
+  oneink: { fur: LCD_PRINT, core: null, face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // ---- the head as a SOLID plane. `head` overrides the fur for the ears,
+  // skull and tuft only: the body stays translucent, because the shade where
+  // an arm crosses the shoulder is what separates the two and going solid
+  // everywhere flattens him into one mass. The values are MEASURED, not
+  // guessed: the translucent head reads (101,107,93) over stage 1's sky and
+  // (96,102,90) over stage 3's, so #63695c is the tone that reads the same on
+  // both to within about three units.
+  solidhead: { fur: LCD_PRINT, core: null, head: '#63695c', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  solidheadlight: { fur: LCD_PRINT, core: null, head: '#6e7466', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  solidheadlighter: { fur: LCD_PRINT, core: null, head: '#7a8071', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // The whole figure's ink lightened, still translucent, so the overlaps still
+  // separate him. #545e is two steps up from the graphite.
+  lightink: { fur: 'rgba(84,88,94,0.72)', core: null, face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  lighterink: { fur: 'rgba(96,100,106,0.72)', core: null, face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // ---- TWO FLAT TONES, which is how the reference cartoon does it: a lighter
+  // body with darker limbs IN FRONT of it, and no translucency anywhere, so
+  // nothing stacks. `body` is the torso, shoulders, legs and head; `limb` is
+  // the arms, and setting it moves them to the front. The numbers start from
+  // the measured single-fill tone, (96,102,90) over the panel: the body goes
+  // up from it, the arms down.
+  twotone: { fur: LCD_PRINT, core: null, body: '#6e7466', head: '#6e7466', limb: '#4f5450', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  twotonewide: { fur: LCD_PRINT, core: null, body: '#7a8071', head: '#7a8071', limb: '#464b4a', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // Half the gap: the body barely lighter than the tone it has now.
+  twotonesoft: { fur: LCD_PRINT, core: null, body: '#666c60', head: '#666c60', limb: '#575c56', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // The arms alone: body left exactly as it is, translucent, with opaque dark
+  // arms in front of it. The smallest change that gives the arm an edge.
+  darklimbs: { fur: LCD_PRINT, core: null, limb: '#4f5450', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // ---- THE SHOULDER BALL ALONE, at three strengths of the SAME ink. The body
+  // is 0.72; the ball drops to half that and less, so the joint stops piling
+  // up. Nothing else changes.
+  litshoulder: { fur: LCD_PRINT, core: null, shoulder: 'rgba(60,63,69,0.5)', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  litshoulderwide: { fur: LCD_PRINT, core: null, shoulder: 'rgba(60,63,69,0.34)', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  litshoulderfaint: { fur: LCD_PRINT, core: null, shoulder: 'rgba(60,63,69,0.2)', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // And the faintest ball with the arms brought to the front in their own dark,
+  // so the joint has a light side and a dark side rather than one edge.
+  litshoulderdark: { fur: LCD_PRINT, core: null, shoulder: 'rgba(60,63,69,0.55)', limb: '#4f5450', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // And the same lighter ink with a solid head matched to IT: 0.72 of
+  // (84,88,94) over the same skies lands at about (113,119,108).
+  lightinksolid: { fur: 'rgba(84,88,94,0.72)', core: null, head: '#71776c', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // The same, at the ink's full strength: a lit segment is opaque, and every
+  // other figure on the panel is the print at 0.72 BECAUSE it is scenery.
+  solid: { fur: LCD_INK, core: null, face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // The panel's own second ink instead of a third colour: the core in the
+  // coral the windows and the live barrel ring use.
+  coral: { fur: LCD_PRINT, core: LCD_WINDOW_ON, face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // The gorilla everybody knows: brown fur, a lighter brown down the arm, and
+  // the chest in the same tan as the muzzle.
+  brown: { fur: 'rgba(104,66,34,0.9)', core: 'rgba(146,98,54,0.8)', face: '#e1d68c', skin: '#d4a35e', chest: '#d4a35e' },
+  // Brown, but kept in the panel's family: a dark olive-sepia that sits between
+  // the graphite and the barrel's wood rather than importing a hue.
+  sepia: { fur: 'rgba(84,62,42,0.88)', core: 'rgba(122,92,60,0.78)', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+  // The panel's own green pushed dark: fur in the screen's hue, so he is a
+  // shadow ON the screen rather than a thing printed over it.
+  olive: { fur: 'rgba(56,72,34,0.88)', core: 'rgba(96,120,56,0.8)', face: '#e1d68c', skin: '#d4a35e', chest: '#b9cf79' },
+};
+
+// THE SOLID HEAD LOST, 3 Sep 2026, and for a reason worth writing down: the
+// arms are drawn BEFORE the head, so on the beats they are up beside it the
+// translucent skull lets them show through as a darker shape. Make the head
+// opaque and the arm behind it simply vanishes — the thing that separates arm
+// from body here IS the doubled translucency. LCD_GORILLA_INKS keeps the four
+// solid candidates drawable.
+/** How the fur is TONED — the open question, 3 Sep 2026. */
+export const LCD_GORILLA_TONE_STYLES = [
+  { id: 'oneink', name: 'SHIPS', note: 'graphite print at 72% over the panel — the control. One ink, so an arm crossing the body is only a darker patch, and the armpit stacks three deep into a near-black blob.' },
+  { id: 'litshoulderdark', name: 'SOFT SHOULDER + DARK ARMS', note: 'the softened ball with the arms brought to the front in their own dark: the joint gets a light side and a dark side.' },
+  { id: 'twotone', name: 'TWO TONE', note: 'the reference\'s answer — a lighter body and darker arms, both FLAT, with the arms moved in FRONT. Nothing stacks, so the armpit blob is gone and the arm has a real edge.' },
+  { id: 'twotonesoft', name: 'TWO TONE · SOFT', note: 'half the gap between the two tones: as little separation as still reads.' },
+  { id: 'twotonewide', name: 'TWO TONE · WIDE', note: 'twice the gap: the body lighter still and the arms nearly black.' },
+  { id: 'darklimbs', name: 'DARK LIMBS ONLY', note: 'body left exactly as it is, translucent, with flat dark arms in front of it — the smallest change that gives the arm an edge.' },
+];
+
+/** The ink candidates, in bake-off order. `oneink` ships; `ships` is the teal it replaced. */
+export const LCD_GORILLA_INK_STYLES = [
+  { id: 'ships', name: 'TEAL CORE', note: 'graphite print with a teal core down each active arm — what shipped before, and the blue.' },
+  { id: 'oneink', name: 'ONE INK', note: 'the same graphite, no arm core: a Game & Watch segment is one ink. SHIPS.' },
+  { id: 'solid', name: 'SOLID INK', note: 'the ink at full strength: a lit segment is opaque, and only scenery is at 0.72.' },
+  { id: 'coral', name: 'CORAL CORE', note: 'graphite, with the arm core in the panel\'s coral rather than a third colour.' },
+  { id: 'brown', name: 'DK BROWN', note: 'brown fur, lighter brown down the arm, tan chest: the gorilla everybody knows.' },
+  { id: 'sepia', name: 'SEPIA', note: 'brown kept in the panel\'s family — between the graphite and the barrel\'s wood.' },
+  { id: 'olive', name: 'OLIVE', note: 'the screen\'s own green pushed dark: a shadow on the panel, not a print over it.' },
+];
+
+// ---- HOW HE IS BUILT --------------------------------------------------------
+//
+// The ovals are a Game Boy Color leftover too. He was drawn as "proper vector
+// anatomy" — stacked ellipses for shoulders, thighs and feet, a curved torso,
+// round-capped arms — to stay expressive at phone scale in a pack that was then
+// a GBC screen, and the OLED Game & Watch settlement for the backdrops never
+// reached him. A real Game & Watch figure is the opposite of that: a flat,
+// hard-edged, one-ink silhouette, its head, body and each arm pose a separate
+// segment with a hair of screen between them. The girders under him are
+// already drawn that way.
+//
+// So the candidates share ONE PLAN — the same planes at the same addresses,
+// so the face painter lands on every one of them unchanged — and differ only
+// in how the plan is put on the panel:
+//
+//   ovals     the shipped construction, ellipses and curves
+//   hard      the same planes with straight edges and chamfered corners
+//   segments  HARD, but every plane its own segment with a 1px gutter of
+//             screen between them, the way the toy's figures are cut
+//   cells     HARD rasterised onto the 2px grid the billboards use
+//   line      HARD as line art — a light fill and an ink outline, the way the
+//             buildings are drawn
+//
+// Everything below is in ROOF-RELATIVE units: x from the figure's centre, y
+// from the roof line, negative up. The addresses are the ovals' own extents.
+const LCD_GORILLA_BUILD = 'ovals';
+
+// A chamfered box: [x0, y0, x1, y1] with `c` cut off each corner.
+function lcdChamfer(x0, y0, x1, y1, c) {
+  return { poly: [[x0 + c, y0], [x1 - c, y0], [x1, y0 + c], [x1, y1 - c], [x1 - c, y1], [x0 + c, y1], [x0, y1 - c], [x0, y0 + c]] };
+}
+
+// The plan. `fur` is the silhouette; the rest are the planes drawn over it.
+// Arms are not here — they come from the pose — and nor are the hands.
+function lcdGorillaPlan() {
+  return {
+    fur: [
+      // torso with the shoulders built in: the ovals' shoulders reached ±17
+      // at roof-18, the belly ±14 at the roof
+      { poly: [[-13, -25], [13, -25], [17, -21], [17, -10], [14, -2], [-14, -2], [-17, -10], [-17, -21]] },
+      { rect: [-12, -12, -2, -2] }, { rect: [2, -12, 12, -2] },     // thighs
+      { rect: [-17, -4, -1, 2] }, { rect: [1, -4, 17, 2] },         // feet
+      { rect: [-15, -34, -10, -26] }, { rect: [10, -34, 15, -26] }, // ears
+      lcdChamfer(-12, -42, 12, -20, 4),                             // head
+    ],
+    skin: [
+      { rect: [-13, -32, -10, -28] }, { rect: [10, -32, 13, -28] }, // inner ears
+      lcdChamfer(-7, -29.5, 7, -20.5, 2),                           // muzzle
+    ],
+    face: [lcdChamfer(-8.5, -36, 8.5, -22, 2.5)],
+    chest: [lcdChamfer(-7, -19, 7, -3, 2)],
+  };
+}
+
+function lcdPlanPath(ctx, shape, cx, roof) {
+  if (shape.rect) {
+    const [x0, y0, x1, y1] = shape.rect;
+    ctx.rect(cx + x0, roof + y0, x1 - x0, y1 - y0);
+    return;
+  }
+  shape.poly.forEach(([px, py], i) => (i ? ctx.lineTo(cx + px, roof + py) : ctx.moveTo(cx + px, roof + py)));
+  ctx.closePath();
+}
+
+// Point-in-shape, done here rather than with isPointInPath so it is
+// independent of whatever transform the panel is being drawn through — and so
+// the recording context the tests use can run it.
+function lcdPlanInside(shape, x, y) {
+  if (shape.rect) {
+    const [x0, y0, x1, y1] = shape.rect;
+    return x >= x0 && x < x1 && y >= y0 && y < y1;
+  }
+  const p = shape.poly;
+  let inside = false;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+    const [xi, yi] = p[i], [xj, yj] = p[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function lcdSegInside(points, w, x, y) {
+  const r2 = (w / 2) * (w / 2);
+  for (let i = 1; i < points.length; i++) {
+    const [ax, ay] = points[i - 1], [bx, by] = points[i];
+    const dx = bx - ax, dy = by - ay;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
+    const ex = ax + t * dx - x, ey = ay + t * dy - y;
+    if (ex * ex + ey * ey <= r2) return true;
+  }
+  return false;
+}
+
+// Rasterise a predicate onto the 2px grid over the figure's box. The grid is
+// anchored to even screen coordinates like every other cell on the panel.
+function lcdGorillaCells(ctx, cx, roof, color, inside) {
+  ctx.fillStyle = color;
+  const x0 = Math.floor((cx - 28) / 2) * 2, y0 = Math.floor((roof - 48) / 2) * 2;
+  for (let y = y0; y < roof + 4; y += 2) {
+    for (let x = x0; x < cx + 30; x += 2) {
+      if (inside(x + 1, y + 1)) ctx.fillRect(x, y, 2, 2);
+    }
+  }
+}
+
+// Every build but the ovals. Ghosts, arms, planes and hands; the face painter
+// and the barrel are the caller's, as they are for the ovals.
+function lcdGorillaHardBody(ctx, cx, roof, poses, pose, ink, build) {
+  const plan = lcdGorillaPlan();
+  const hands = pose.hands.map(([hx, hy]) => ({ rect: [hx - cx - 3.5, hy - roof - 3, hx - cx + 3.5, hy - roof + 3] }));
+  if (build === 'cells') {
+    const anyOf = (shapes) => (x, y) => shapes.some((sh) => lcdPlanInside(sh, x - cx, y - roof));
+    for (const ghost of poses) {
+      lcdGorillaCells(ctx, cx, roof, LCD_MOTION_GHOST, (x, y) => ghost.arms.some((a) => lcdSegInside(a, 5, x, y)));
+      if (ghost.barrel) gbcGorillaBarrel(ctx, ghost.barrel[0], ghost.barrel[1], true, false, frame.barrelShape);
+    }
+    lcdGorillaCells(ctx, cx, roof, ink.fur, (x, y) => pose.arms.some((a) => lcdSegInside(a, 7, x, y)) || anyOf(plan.fur)(x, y));
+    lcdGorillaCells(ctx, cx, roof, ink.face, anyOf(plan.face));
+    lcdGorillaCells(ctx, cx, roof, ink.skin, anyOf(plan.skin));
+    lcdGorillaCells(ctx, cx, roof, ink.chest, anyOf(plan.chest));
+    lcdGorillaCells(ctx, cx, roof, ink.skin, anyOf(hands));
+    return;
+  }
+  const line = build === 'line';
+  // The gutters are cut in the LIT panel colour, which is what the sky he
+  // stands against is; in the unlit panel they read as a green outline.
+  const gutter = build === 'segments';
+  // The fills. LINE keeps the ink for the outline and lightens the plane.
+  const furFill = line ? 'rgba(60,63,69,0.22)' : ink.fur;
+  const plane = (shapes, fill) => {
+    for (const sh of shapes) {
+      ctx.beginPath();
+      lcdPlanPath(ctx, sh, cx, roof);
+      ctx.fillStyle = fill; ctx.fill();
+      if (line) { ctx.strokeStyle = LCD_INK; ctx.lineWidth = 1; ctx.stroke(); }
+      if (gutter) { ctx.strokeStyle = LCD_PANEL_LIT; ctx.lineWidth = 1; ctx.stroke(); }
+    }
+  };
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'bevel';
+  for (const ghost of poses) {
+    for (const arm of ghost.arms) gbcGorillaLimb(ctx, arm, LCD_MOTION_GHOST, 5);
+    if (ghost.barrel) gbcGorillaBarrel(ctx, ghost.barrel[0], ghost.barrel[1], true, false, frame.barrelShape);
+  }
+  for (const arm of pose.arms) {
+    ctx.lineCap = 'butt'; ctx.lineJoin = 'bevel';
+    if (gutter) gbcGorillaLimb(ctx, arm, LCD_PANEL_LIT, 9);
+    if (line) {
+      gbcGorillaLimb(ctx, arm, LCD_INK, 7);
+      gbcGorillaLimb(ctx, arm, LCD_PANEL_LIT, 5);
+      gbcGorillaLimb(ctx, arm, furFill, 5);
+    } else {
+      gbcGorillaLimb(ctx, arm, ink.fur, 7);
+    }
+  }
+  plane(plan.fur, furFill);
+  plane(plan.face, ink.face);
+  plane(plan.skin, ink.skin);
+  plane(plan.chest, ink.chest);
+  plane(hands, ink.skin);
+  if (!line) {
+    ctx.strokeStyle = ink.fur; ctx.lineWidth = 0.75;
+    for (const [hx, hy] of pose.hands) {
+      for (let finger = -1; finger <= 1; finger++) {
+        ctx.beginPath(); ctx.moveTo(hx + finger * 1.5, hy - 1); ctx.lineTo(hx + finger * 1.5, hy + 1.5); ctx.stroke();
+      }
+    }
+  }
+}
+
+/** The constructions, in bake-off order. `ovals` is what ships today. */
+export const LCD_GORILLA_BUILD_STYLES = [
+  { id: 'ovals', name: 'OVALS', note: 'stacked ellipses and curves, round-capped arms — the control, and the Game Boy Color leftover.' },
+  { id: 'hard', name: 'HARD', note: 'the same planes with straight edges and chamfered corners, butt-capped arms: one flat silhouette.' },
+  { id: 'segments', name: 'SEGMENTS', note: 'HARD, with a 1px gutter of screen between head, body, legs and each arm — cut the way the toy\'s figures are.' },
+  { id: 'cells', name: 'CELLS', note: 'HARD rasterised onto the 2px grid the billboards use; the face painter still draws on top.' },
+  { id: 'line', name: 'LINE ART', note: 'HARD as an ink outline over a light fill, the way the buildings are drawn.' },
+];
+const LCD_GORILLA_BUILDS = new Set(LCD_GORILLA_BUILD_STYLES.map((b) => b.id));
+
+// ---- THE ARMPIT, AND THE TUFT --------------------------------------------
+//
+// What came back on the construction sheet was not "make him a segment" but
+// two things about the ovals: the ARMPIT is indistinct — the shoulder ball,
+// the torso's bulge and the 7px arm are all the same ink and meet in one
+// bell-shaped mass, so the arm never visibly LEAVES the body — and the skull
+// is a perfect circle, which wants a tuft. Two dials, one constant each.
+//
+//   pit    shoulder  where the shoulder ball sits and how big it is [x, y, rx, ry]
+//          torso     the torso's top corner and its bulge control point
+//          crease    a line along the arm's underside from the armpit, in
+//                    the ink, or in the lit panel ('cut') so it is a gap
+//          outline   the active arm drawn with an ink edge under it
+//          arm       the active arm's stroke width; the ghosts are 2 thinner
+//          thin      THINNER LINES OVERALL: the ear rims, the mouth, the fur
+//                    strokes, the finger cuts and the hand's edge, not just
+//                    the arm — asked for as one thing, so it is one flag
+const LCD_GORILLA_PIT = 'ships';
+const LCD_GORILLA_PITS = {
+  ships: { shoulder: [11, -18, 6, 7], torso: [[13, -20], [15, -8]] },
+  // The reference's answer: an ink line where the arm meets the body.
+  crease: { shoulder: [11, -18, 6, 7], torso: [[13, -20], [15, -8]], crease: true },
+  // The whole active arm edged in full-strength ink, so it reads OVER the
+  // body it comes out of rather than merging with it.
+  outline: { shoulder: [11, -18, 6, 7], torso: [[13, -20], [15, -8]], outline: true },
+  // Open the armpit up: a smaller shoulder ball set higher and in, and the
+  // torso pulled in at the top, so a notch of sky shows under a raised arm.
+  hollow: { shoulder: [10, -20, 5.5, 6.5], torso: [[11, -21], [14, -6]] },
+  hollowcrease: { shoulder: [10, -20, 5.5, 6.5], torso: [[11, -21], [14, -6]], crease: true },
+  // The same line, but a GAP rather than a mark: cut in the lit panel colour.
+  cut: { shoulder: [11, -18, 6, 7], torso: [[13, -20], [15, -8]], crease: 'cut' },
+  // THINNER ARMS. At 7px the arm is as wide as the shoulder ball is tall, so
+  // the two are one shape; at 5 it is a limb coming off a body.
+  thin: { shoulder: [11, -18, 6, 7], torso: [[13, -20], [15, -8]], arm: 5, thin: true },
+  thinhollow: { shoulder: [10, -20, 5.5, 6.5], torso: [[11, -21], [14, -6]], arm: 5, thin: true },
+  thinhollowcrease: { shoulder: [10, -20, 5.5, 6.5], torso: [[11, -21], [14, -6]], arm: 5, crease: true, thin: true },
+};
+// The two that survived 3 Sep 2026. CREASE, CUT, OUTLINE and every THIN
+// combination were looked at and rejected — the ink line and the ink edge both
+// put a mark on him nothing else on the panel has, and thinning the lines took
+// weight off a figure that is only 40px tall. LCD_GORILLA_PITS keeps them all
+// drawable; only this list is the sheet.
+/** The armpit treatments, in bake-off order. `ships` is what ships today. */
+export const LCD_GORILLA_PIT_STYLES = [
+  { id: 'ships', name: 'SHIPS', note: 'shoulder ball at ±11 and roof-18, 6x7; the torso\'s top corner at ±13 bulging out to ±15 — the control, and one mass.' },
+  { id: 'hollow', name: 'HOLLOW', note: 'the same parts moved: shoulder ball 1px in, 2px up and half a pixel smaller, and the torso\'s top corner pulled 2px in so its widest point sits lower. A notch of sky opens under a raised arm.' },
+];
+
+// ---- HOW FAR THE EARS STICK OUT ---------------------------------------------
+//
+// They are drawn before the skull, so the skull covers their inner half and
+// what is left is the rim standing out either side. The dial is where the
+// ellipse sits and how big it is: pull it in and the rim gets shorter, because
+// more of it is under the skull. [dx, dy, rx, ry, inner rx, inner ry], all
+// roof-relative; the skull is 12x11 at roof-31.
+// The RIM is the fur ring between the two ellipses — the ear's outline. It is
+// 2px on the shipped ear, which is as heavy as the muzzle line, on a part that
+// is 8px across. Thinning it is the other way to make an ear read as tucked:
+// less black around it rather than less of it sticking out.
+// HEIGHT IS FIXED at roof-30. Sitting the ear lower was tried on 3 Sep 2026
+// and rejected — it read as a jaw, not an ear.
+const LCD_GORILLA_EAR = 'ships';
+const LCD_GORILLA_EARS = {
+  ships: [11, -30, 4, 5, 2, 3],
+  // Same ear, moved 1.5px in: the rim goes from 3px of daylight to 1.5px.
+  tucked: [9.5, -30, 4, 5, 2, 3],
+  // In and smaller, so the outline is shorter AND shallower.
+  tight: [9, -30, 3.5, 4.5, 1.75, 2.75],
+  // THE OUTLINE THINNED, ear where it is: the inner ellipse comes out to
+  // within a pixel of the edge, so the ring is 1px rather than 2.
+  thinrim: [11, -30, 4, 5, 3, 4],
+  // Both: the thin ring on the pulled-in ear.
+  thintucked: [9.5, -30, 4, 5, 3, 4],
+  // The thin ring on the smaller ear, which is the least ear of the five.
+  thintight: [9, -30, 3.5, 4.5, 2.6, 3.6],
+};
+/** The ear positions, in bake-off order. `ships` is what ships today. */
+export const LCD_GORILLA_EAR_STYLES = [
+  { id: 'ships', name: 'SHIPS', note: 'ellipse at ±11, 4x5, a 2px fur ring around a 2x3 inner — the control.' },
+  { id: 'tucked', name: 'TUCKED', note: 'the same ear moved 1.5px in, so half as much of it clears the skull.' },
+  { id: 'tight', name: 'TIGHT', note: 'in 2px and a size down: less ear, same ring.' },
+  { id: 'thinrim', name: 'THIN RIM', note: 'the ear where it is, its outline halved to 1px — less black around it rather than less of it.' },
+  { id: 'thintucked', name: 'THIN RIM + TUCKED', note: 'the 1px outline on the pulled-in ear.' },
+  { id: 'thintight', name: 'THIN RIM + TIGHT', note: 'the 1px outline on the smaller ear: the quietest of them.' },
+];
+
+// HOW STRONG THE SHOULDER BALL IS. The body is 0.72 and the ball was the same,
+// so the two stacked and the joint went dark — with the arm under both it was
+// three fills deep and nearly the raw ink. Weakening the ball's ink is the
+// whole dial: same hue, less of it, so the armpit stops piling up and the
+// ball's outer cap reads lighter than the body instead of darker.
+// SETTLED 3 Sep 2026: 0.55. Below the body's 0.72, so the joint stops piling
+// up and the ball's outer cap reads as its own rounded plane — distinct, but
+// still a muscle rather than an edge. 0.5 lost the shape, 0.65 barely lifted.
+const LCD_GORILLA_SHOULDER = 0.55;
+/** The strengths swept, 1.0 down to 0.5. 0.55 ships; 0.72 is the body's own. */
+export const LCD_GORILLA_SHOULDER_ALPHAS = [
+  { a: 1, name: 'SOLID · 1.0', note: 'the raw ink at full strength: the ball darker than the body, not lighter.' },
+  { a: 0.9, name: '0.9', note: 'still heavier than the body.' },
+  { a: 0.8, name: '0.8', note: 'a shade heavier than the body.' },
+  { a: 0.72, name: '0.72 · WAS', note: 'the body\'s own strength — what it was, and the stack that made the joint black.' },
+  { a: 0.65, name: '0.65', note: 'the first step that lifts the joint at all.' },
+  { a: 0.6, name: '0.6', note: 'the cap starts to read as its own plane.' },
+  { a: 0.55, name: '0.55 · SHIPS', note: 'distinct joint, still a rounded muscle rather than a flat edge.' },
+  { a: 0.5, name: '0.5', note: 'half the body: the softest of the sweep.' },
+];
+
+// THE SPIKES, AS A SPEC. `gap` is how far the left point sits from the middle
+// one (the right is 0.77 of it), `mid` and `out` are the tip heights, `hw` is
+// each base's half-width, `lean` swings the OUTER two points outward from
+// their bases, and `inset` is how far inside the skull every base corner is
+// seated. All roof-relative, all in panel px.
+// SETTLED 3 Sep 2026: LEAN, dropped 0.6px — `leanH6`. The outer two points are
+// swung away from their bases, which gives the crest a direction instead of
+// three parallel teeth, and every tip sits 0.6px below the full height: at the
+// full height the points read as antennae against the barrel, and by a whole
+// pixel down the rake flattens into bumps. The sweep either side of it is kept
+// in the specs below.
+const LCD_GORILLA_SPIKES = 'leanH6';
+const LCD_GORILLA_SPIKE_SPECS = {
+  now: { gap: 3.91, mid: -46.3, out: -45, hw: 3.1, lean: 0, inset: 2.3 },
+  taller: { gap: 3.91, mid: -47.6, out: -46.1, hw: 3.1, lean: 0, inset: 2.3 },
+  tallest: { gap: 3.91, mid: -48.8, out: -47.1, hw: 3.1, lean: 0, inset: 2.3 },
+  shorter: { gap: 3.91, mid: -45.2, out: -44.1, hw: 3.1, lean: 0, inset: 2.3 },
+  wider: { gap: 4.6, mid: -46.3, out: -45, hw: 3.1, lean: 0, inset: 2.3 },
+  widest: { gap: 5.3, mid: -46.3, out: -45, hw: 3.1, lean: 0, inset: 2.3 },
+  tighter: { gap: 3.3, mid: -46.3, out: -45, hw: 3.1, lean: 0, inset: 2.3 },
+  lean: { gap: 3.91, mid: -46.3, out: -45, hw: 3.1, lean: 1.3, inset: 2.3 },
+  // The height sweep on the leaning crest: every tip down together, 0.2px at a
+  // time, from the full height to the short one. The outer points stay 1.3px
+  // below the middle throughout, which is the proportion the crest was cut to.
+  leanH2: { gap: 3.91, mid: -46.1, out: -44.8, hw: 3.1, lean: 1.3, inset: 2.3 },
+  leanH4: { gap: 3.91, mid: -45.9, out: -44.6, hw: 3.1, lean: 1.3, inset: 2.3 },
+  leanH6: { gap: 3.91, mid: -45.7, out: -44.4, hw: 3.1, lean: 1.3, inset: 2.3 },
+  leanH8: { gap: 3.91, mid: -45.5, out: -44.2, hw: 3.1, lean: 1.3, inset: 2.3 },
+  leanH10: { gap: 3.91, mid: -45.3, out: -44, hw: 3.1, lean: 1.3, inset: 2.3 },
+  leanH11: { gap: 3.91, mid: -45.2, out: -43.9, hw: 3.1, lean: 1.3, inset: 2.3 },
+  leanmore: { gap: 3.91, mid: -46.3, out: -45, hw: 3.1, lean: 2.4, inset: 2.3 },
+  tallLean: { gap: 3.91, mid: -47.6, out: -46.1, hw: 3.1, lean: 1.3, inset: 2.3 },
+  wideLean: { gap: 4.6, mid: -46.3, out: -45, hw: 3.1, lean: 1.6, inset: 2.3 },
+  tallWideLean: { gap: 4.6, mid: -47.6, out: -46.1, hw: 3.1, lean: 1.6, inset: 2.3 },
+  fatbase: { gap: 3.91, mid: -46.3, out: -45, hw: 3.9, lean: 0, inset: 2.3 },
+  thinbase: { gap: 3.91, mid: -46.3, out: -45, hw: 2.4, lean: 0, inset: 2.3 },
+  thinTall: { gap: 3.91, mid: -47.6, out: -46.1, hw: 2.4, lean: 0, inset: 2.3 },
+  deep: { gap: 3.91, mid: -46.3, out: -45, hw: 3.1, lean: 0, inset: 3.4 },
+};
+/**
+ * The spike variants, in bake-off order. LEAN ships; the sweep under it is the
+ * open question, and NOW (no lean) is kept as the thing it replaced.
+ */
+export const LCD_GORILLA_SPIKE_STYLES = [
+  { id: 'lean', name: 'LEAN · FULL', note: 'the leaning crest at its full height — the top of the sweep.' },
+  { id: 'leanH2', name: 'LEAN · −0.2', note: 'every tip down a fifth of a pixel.' },
+  { id: 'leanH4', name: 'LEAN · −0.4', note: 'down two fifths.' },
+  { id: 'leanH6', name: 'LEAN · −0.6', note: 'down three fifths — SHIPS.' },
+  { id: 'leanH8', name: 'LEAN · −0.8', note: 'down four fifths.' },
+  { id: 'leanH10', name: 'LEAN · −1.0', note: 'down a full pixel.' },
+  { id: 'leanH11', name: 'LEAN · SHORT', note: 'the bottom of the sweep, level with the SHORTER crest that had no lean.' },
+  { id: 'now', name: 'NO LEAN', note: 'the crest as it was before the lean, at full height — what LEAN replaced.' },
+  { id: 'leanmore', name: 'LEAN · MORE', note: 'twice the fan at full height, for reference on how far the rake can go.' },
+];
+
+// The skull's top is at roof-42. Each tuft adds SUBPATHS to the silhouette
+// path the skull is part of — it does not fill — so it is the same fill as
+// the head: joined to it, the same colour, and no darker where they overlap.
+// Everything is traced clockwise on screen to match ctx.ellipse, which the
+// nonzero rule needs for the union to fill rather than punch holes.
+// SETTLED 3 Sep 2026: SPIKES.
+const LCD_GORILLA_TUFT = 'spikes';
+const LCD_GORILLA_TUFTS = {
+  none: null,
+  swoop(ctx, cx, roof) {
+    ctx.moveTo(cx - 4, roof - 41);
+    ctx.quadraticCurveTo(cx, roof - 49, cx + 8, roof - 46);
+    ctx.quadraticCurveTo(cx + 4, roof - 45, cx + 4, roof - 40.5);
+    ctx.closePath();
+  },
+  spikes(ctx, cx, roof, frame) {
+    // Three points across the crown. Each base corner is given its own y so it
+    // sits INSIDE the skull, whose edge falls away fast out here: at x 7.5 the
+    // ellipse is already down at roof-39.6, so the outer spike's base used to
+    // hang most of a pixel off the head. The outer two are leaned inward and
+    // their outer corners dropped, which seats them on the curve.
+    // [x0, y0, tip x, tip y, x2, y2], roof-relative. The set sits 0.75px lower
+    // than first drawn — half of the 1.5px drop that was tried on 3 Sep 2026
+    // and came back too low. Only the part above the dome is visible, so
+    // lowering the tuft necessarily shortens it: at 1.5 the points had lost a
+    // third of their height, and this is the split.
+    // THREE POINTS ACROSS THE CROWN, generated from a spec rather than typed
+    // out, so height, spread, base width and the outward LEAN of the outer two
+    // are each a number that can be swept — see LCD_GORILLA_SPIKE_STYLES.
+    //
+    // Base corners are not authored at all: each one is placed on the skull's
+    // own curve and pushed `inset` px inside it, so a spike cannot end up
+    // hanging off the head no matter what the spread is. That was a real bug
+    // when the corners were hand-written — the outer one sat 0.9px off the
+    // dome, because the ellipse falls away fast that far out.
+    const sp = LCD_GORILLA_SPIKE_SPECS[frame?.gorillaSpikes] || LCD_GORILLA_SPIKE_SPECS[LCD_GORILLA_SPIKES];
+    // The dome, roof-relative: the skull is 12 x 11 centred at roof-31.
+    const dome = (x) => -31 - 11 * Math.sqrt(Math.max(0, 1 - (x / 12) ** 2));
+    const MID = 0.6; // the middle point is a shade right of centre, as drawn
+    // The right gap is the narrower of the two, which is how the crest was
+    // hand-drawn and what stops it reading as a symmetrical comb.
+    const bases = [MID - sp.gap, MID, MID + sp.gap * 0.77];
+    const tips = [bases[0] - sp.lean, MID, bases[2] + sp.lean];
+    const tipY = [sp.out, sp.mid, sp.out];
+    for (let i = 0; i < 3; i++) {
+      const x0 = bases[i] - sp.hw, x2 = bases[i] + sp.hw;
+      ctx.moveTo(cx + x0, roof + dome(x0) + sp.inset);
+      ctx.lineTo(cx + tips[i], roof + tipY[i]);
+      ctx.lineTo(cx + x2, roof + dome(x2) + sp.inset);
+      ctx.closePath();
+    }
+  },
+  cells(ctx, cx, roof) {
+    // On the 2px grid, anchored to even screen coordinates like every other
+    // cell on the panel: a little stepped flame leaning right.
+    const gx = Math.floor(cx / 2) * 2, gy = Math.floor(roof / 2) * 2;
+    for (const [dx, dy] of [[-2, -42], [0, -42], [0, -44], [2, -44], [2, -46]]) ctx.rect(gx + dx, gy + dy, 2, 2);
+  },
+  crest(ctx, cx, roof) {
+    const rot = -0.3;
+    ctx.moveTo(cx + 2 + 5 * Math.cos(rot), roof - 43 + 5 * Math.sin(rot));
+    ctx.ellipse(cx + 2, roof - 43, 5, 3.5, rot, 0, Math.PI * 2);
+  },
+};
+/** The tufts, in bake-off order. `none` is what ships today. */
+export const LCD_GORILLA_TUFT_STYLES = [
+  { id: 'none', name: 'NONE', note: 'the perfect circle — the control.' },
+  { id: 'swoop', name: 'SWOOP', note: 'one curl licking up and to the right, the reference\'s.' },
+  { id: 'spikes', name: 'SPIKES', note: 'three little points across the crown.' },
+  { id: 'cells', name: 'CELLS', note: 'five 2px squares stepping up to the right — the billboards\' own idiom.' },
+  { id: 'crest', name: 'CREST', note: 'a low tilted bump on the crown, the quietest of them.' },
+];
+
 function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = false, mood = null) {
   const [x, w, h] = building;
+  const ink = LCD_GORILLA_INKS[frame.gorillaInk] || LCD_GORILLA_INKS[LCD_GORILLA_INK];
   const cx = Math.round(x + w / 2);
   const roof = GROUND_Y - h;
   const poses = [
@@ -5132,43 +5916,111 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
     },
   ];
 
-  // The slow GBC panel remembers the other three arm/barrel positions, but
-  // only as a faint contour. The active pose below is proper vector anatomy,
-  // not a pile of rectangular segments.
-  for (const ghost of poses) {
-    for (const arm of ghost.arms) gbcGorillaLimb(ctx, arm, LCD_MOTION_GHOST, 5);
-    if (ghost.barrel) gbcGorillaBarrel(ctx, ghost.barrel[0], ghost.barrel[1], true);
-  }
   const pose = poses[frame.beat4];
-  for (const arm of pose.arms) {
-    gbcGorillaLimb(ctx, arm, LCD_PRINT, 7, 'rgba(70,121,137,0.72)');
+  const build = LCD_GORILLA_BUILDS.has(frame.gorillaBuild) ? frame.gorillaBuild : LCD_GORILLA_BUILD;
+  const tuft = LCD_GORILLA_TUFTS[frame.gorillaTuft in LCD_GORILLA_TUFTS ? frame.gorillaTuft : LCD_GORILLA_TUFT];
+  if (build !== 'ovals') {
+    lcdGorillaHardBody(ctx, cx, roof, poses, pose, ink, build);
+  } else {
+    // The slow GBC panel remembers the other three arm/barrel positions, but
+    // only as a faint contour. The active pose below is proper vector anatomy,
+    // not a pile of rectangular segments.
+    const pit = LCD_GORILLA_PITS[frame.gorillaPit] || LCD_GORILLA_PITS[LCD_GORILLA_PIT];
+    const armW = pit.arm || 7;
+    for (const ghost of poses) {
+      for (const arm of ghost.arms) gbcGorillaLimb(ctx, arm, LCD_MOTION_GHOST, armW - 2);
+      if (ghost.barrel) gbcGorillaBarrel(ctx, ghost.barrel[0], ghost.barrel[1], true, false, frame.barrelShape);
+    }
+    // WHEN THE ARMS ARE A DIFFERENT TONE THEY GO IN FRONT. With one ink the
+    // order is invisible — two fills of the same colour composite the same
+    // either way — so the arms have always been painted first and read as a
+    // darker patch where they cross. Give them a tone of their own and the
+    // order starts to matter, and the arm belongs in front of the chest.
+    if (!ink.limb) {
+      for (const arm of pose.arms) {
+        if (pit.outline) gbcGorillaLimb(ctx, arm, LCD_INK, armW + 2);
+        gbcGorillaLimb(ctx, arm, ink.fur, armW, ink.core);
+      }
+    }
+
+    // Broad shoulders, tapered belly, bent knees and planted feet create a
+    // gorilla silhouette before any facial detail is read. Each is its own
+    // fill ON PURPOSE: the fur is translucent print, so where an arm crosses
+    // the head or a shoulder sits on the torso it goes a shade darker, and
+    // that shade is what separates them. One fill for the lot was tried on
+    // 3 Sep 2026 and the arms and head blended into one mass; only the TUFT
+    // shares a fill, with the skull, below.
+    const [sx, sy, srx, sry] = pit.shoulder;
+    const [[tx, ty], [bx, by]] = pit.torso;
+    const bodyInk = ink.body || ink.fur;
+    // THE SHOULDER BALL is what makes the armpit black. It is laid down before
+    // the torso in the body's own ink, so the two stack a shade darker, and
+    // with the arm under both the joint is three fills deep and nearly the raw
+    // ink. `shoulder` gives the ball a WEAKER ink of its own — same hue, less
+    // alpha — so it contributes less to that stack and its outer cap reads
+    // lighter than the body. It stays where it is in the order: a translucent
+    // ball drawn after the torso would darken the body rather than lighten it.
+    const shoulderA = frame.gorillaShoulder != null ? frame.gorillaShoulder : null;
+    const shoulderInk = ink.shoulder
+      || `rgba(60,63,69,${shoulderA != null ? shoulderA : LCD_GORILLA_SHOULDER})`;
+    gbcEllipse(ctx, cx - sx, roof + sy, srx, sry, shoulderInk);
+    gbcEllipse(ctx, cx + sx, roof + sy, srx, sry, shoulderInk);
+    ctx.beginPath();
+    ctx.moveTo(cx - tx, roof + ty);
+    ctx.quadraticCurveTo(cx - bx, roof + by, cx - 8, roof - 2);
+    ctx.quadraticCurveTo(cx, roof + 1, cx + 8, roof - 2);
+    ctx.quadraticCurveTo(cx + bx, roof + by, cx + tx, roof + ty);
+    ctx.quadraticCurveTo(cx, roof - 25, cx - tx, roof + ty);
+    ctx.closePath(); ctx.fillStyle = bodyInk; ctx.fill();
+    gbcEllipse(ctx, cx - 7, roof - 5, 5, 7, bodyInk);
+    gbcEllipse(ctx, cx + 7, roof - 5, 5, 7, bodyInk);
+    gbcEllipse(ctx, cx - 9, roof - 1, 8, 3, bodyInk);
+    gbcEllipse(ctx, cx + 9, roof - 1, 8, 3, bodyInk);
+    // THE HEAD IS ONE PATH FILLED ONCE — ears, skull and tuft together. The
+    // fur is translucent, so anything filled twice composites at 92% instead
+    // of 72% and comes out a shade darker: that is what put a dark crescent
+    // where each ear went under the skull, and what made the tuft read darker
+    // than the head it grows out of. The TUFT is the exception and is left out
+    // here, because it has to be drawn after the barrel he holds overhead —
+    // The TUFT is in here too, so it is the same one fill as the skull — and
+    // so it goes BEHIND the barrel he holds overhead, which is drawn last. It
+    // was briefly drawn after the barrel instead; the points then sat on top
+    // of the wood, and the barrel is the thing in front up there.
+    const [ex, ey, erx, ery, eirx, eiry] = LCD_GORILLA_EARS[frame.gorillaEar] || LCD_GORILLA_EARS[LCD_GORILLA_EAR];
+    const headInk = ink.head || ink.body || ink.fur;
+    ctx.beginPath();
+    ctx.moveTo(cx - ex + erx, roof + ey);
+    ctx.ellipse(cx - ex, roof + ey, erx, ery, 0, 0, Math.PI * 2);
+    ctx.moveTo(cx + ex + erx, roof + ey);
+    ctx.ellipse(cx + ex, roof + ey, erx, ery, 0, 0, Math.PI * 2);
+    ctx.moveTo(cx + 12, roof - 31);
+    ctx.ellipse(cx, roof - 31, 12, 11, 0, 0, Math.PI * 2);
+    if (tuft) tuft(ctx, cx, roof, frame);
+    ctx.fillStyle = headInk; ctx.fill();
+    if (pit.crease) {
+      // Along the underside of the upper arm, starting where it leaves the
+      // body: the arm's lower edge is half its width off its centre line, on
+      // the side that faces down.
+      ctx.strokeStyle = pit.crease === 'cut' ? LCD_PANEL_LIT : LCD_INK;
+      ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+      for (const [[ax, ay], [ex, ey]] of pose.arms) {
+        const dx = ex - ax, dy = ey - ay, len = Math.hypot(dx, dy) || 1;
+        let nx = -dy / len, ny = dx / len;
+        if (ny < 0) { nx = -nx; ny = -ny; }
+        const px = ax + nx * (armW / 2 - 0.5), py = ay + ny * (armW / 2 - 0.5);
+        ctx.beginPath();
+        ctx.moveTo(px + (dx / len) * 1.5, py + (dy / len) * 1.5);
+        ctx.lineTo(px + (dx / len) * 8, py + (dy / len) * 8);
+        ctx.stroke();
+      }
+    }
+    // Inner ears: a thinner rim when the lines are thin.
+    const earIn = pit.thin ? [eirx + 0.75, eiry + 0.75] : [eirx, eiry];
+    gbcEllipse(ctx, cx - ex, roof + ey, earIn[0], earIn[1], ink.skin);
+    gbcEllipse(ctx, cx + ex, roof + ey, earIn[0], earIn[1], ink.skin);
+    gbcEllipse(ctx, cx, roof - 29, 8.5, 7, ink.face);
+    gbcEllipse(ctx, cx, roof - 25, 7, 4.5, ink.skin);
   }
-
-  // Broad shoulders, tapered belly, bent knees and planted feet create a
-  // gorilla silhouette before any facial detail is read.
-  gbcEllipse(ctx, cx - 11, roof - 18, 6, 7, LCD_PRINT);
-  gbcEllipse(ctx, cx + 11, roof - 18, 6, 7, LCD_PRINT);
-  ctx.beginPath();
-  ctx.moveTo(cx - 13, roof - 20);
-  ctx.quadraticCurveTo(cx - 15, roof - 8, cx - 8, roof - 2);
-  ctx.quadraticCurveTo(cx, roof + 1, cx + 8, roof - 2);
-  ctx.quadraticCurveTo(cx + 15, roof - 8, cx + 13, roof - 20);
-  ctx.quadraticCurveTo(cx, roof - 25, cx - 13, roof - 20);
-  ctx.closePath(); ctx.fillStyle = LCD_PRINT; ctx.fill();
-  gbcEllipse(ctx, cx - 7, roof - 5, 5, 7, LCD_PRINT);
-  gbcEllipse(ctx, cx + 7, roof - 5, 5, 7, LCD_PRINT);
-  gbcEllipse(ctx, cx - 9, roof - 1, 8, 3, LCD_PRINT);
-  gbcEllipse(ctx, cx + 9, roof - 1, 8, 3, LCD_PRINT);
-
-  // Head, ears and a projecting muzzle. Curves and overlapping colour planes
-  // keep him expressive at 1.4x while the GBC palette keeps him in-world.
-  gbcEllipse(ctx, cx - 11, roof - 30, 4, 5, LCD_PRINT);
-  gbcEllipse(ctx, cx + 11, roof - 30, 4, 5, LCD_PRINT);
-  gbcEllipse(ctx, cx - 11, roof - 30, 2, 3, '#d4a35e');
-  gbcEllipse(ctx, cx + 11, roof - 30, 2, 3, '#d4a35e');
-  gbcEllipse(ctx, cx, roof - 31, 12, 11, LCD_PRINT);
-  gbcEllipse(ctx, cx, roof - 29, 8.5, 7, '#e1d68c');
-  gbcEllipse(ctx, cx, roof - 25, 7, 4.5, '#d4a35e');
   // WHAT HIS FACE DOES WHEN THE PLANE TAKES THE BARREL. Five reads of this were
   // drawn and compared; the one that won says it AROUND the head rather than on
   // it. His face barely moves — whites a shade wider, brows up one, the smile
@@ -5183,23 +6035,33 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // THE CRASH ALWAYS WINS. `frame.gorillaExpr` is the bake-off seam and it
   // cannot override the startle: whatever face is being tried, the two beats
   // the wreck is over his head are the wreck's.
+  const thinLines = build === 'ovals' && !!(LCD_GORILLA_PITS[frame.gorillaPit] || LCD_GORILLA_PITS[LCD_GORILLA_PIT]).thin;
   lcdGorillaFace(ctx, cx, roof, burst >= 0 ? 'startled' : lcdGorillaMood(frame, mood),
-    frame.gorillaBrow);
+    frame.gorillaBrow, thinLines);
 
-  // Chest plane, collar shadow and sparse fur strokes.
-  gbcEllipse(ctx, cx, roof - 11, 7, 8, '#b9cf79');
-  ctx.strokeStyle = LCD_PRINT_SOFT; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(cx - 5, roof - 15); ctx.quadraticCurveTo(cx, roof - 12, cx + 5, roof - 15); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx - 5, roof - 11); ctx.quadraticCurveTo(cx, roof - 8, cx + 5, roof - 11); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx - 12, roof - 19); ctx.lineTo(cx - 8, roof - 16); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx + 12, roof - 19); ctx.lineTo(cx + 8, roof - 16); ctx.stroke();
+  if (build === 'ovals') {
+    // Chest plane, collar shadow and sparse fur strokes.
+    const frontPit = LCD_GORILLA_PITS[frame.gorillaPit] || LCD_GORILLA_PITS[LCD_GORILLA_PIT];
+    const thin = !!frontPit.thin;
+    const armWFront = frontPit.arm || 7;
+    gbcEllipse(ctx, cx, roof - 11, 7, 8, ink.chest);
+    ctx.strokeStyle = LCD_PRINT_SOFT; ctx.lineWidth = thin ? 0.75 : 1;
+    ctx.beginPath(); ctx.moveTo(cx - 5, roof - 15); ctx.quadraticCurveTo(cx, roof - 12, cx + 5, roof - 15); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - 5, roof - 11); ctx.quadraticCurveTo(cx, roof - 8, cx + 5, roof - 11); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - 12, roof - 19); ctx.lineTo(cx - 8, roof - 16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + 12, roof - 19); ctx.lineTo(cx + 8, roof - 16); ctx.stroke();
 
-  // Hands sit above the arm strokes, with individual finger cuts visible.
-  for (const [hx, hy] of pose.hands) {
-    gbcEllipse(ctx, hx, hy, 3.5, 3, '#d4a35e', LCD_PRINT, 1);
-    ctx.strokeStyle = LCD_PRINT; ctx.lineWidth = 0.75;
-    for (let finger = -1; finger <= 1; finger++) {
-      ctx.beginPath(); ctx.moveTo(hx + finger * 1.5, hy - 1); ctx.lineTo(hx + finger * 1.5, hy + 1.5); ctx.stroke();
+    // The front arms, if this palette has a limb tone of its own — after the
+    // chest so they cross it, before the hands so a hand still caps its arm.
+    if (ink.limb) for (const arm of pose.arms) gbcGorillaLimb(ctx, arm, ink.limb, armWFront);
+
+    // Hands sit above the arm strokes, with individual finger cuts visible.
+    for (const [hx, hy] of pose.hands) {
+      gbcEllipse(ctx, hx, hy, 3.5, 3, ink.skin, ink.limb || ink.fur, thin ? 0.75 : 1);
+      ctx.strokeStyle = LCD_PRINT; ctx.lineWidth = thin ? 0.5 : 0.75;
+      for (let finger = -1; finger <= 1; finger++) {
+        ctx.beginPath(); ctx.moveTo(hx + finger * 1.5, hy - 1); ctx.lineTo(hx + finger * 1.5, hy + 1.5); ctx.stroke();
+      }
     }
   }
   // The wreck stays where the barrel WAS — over his head, poses[0] — for both
@@ -5215,7 +6077,7 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   } else if (pose.barrel) {
     const due = frame.barrelBeat != null ? frame.barrelBeat - frame.beatAbs : null;
     gbcGorillaBarrel(ctx, pose.barrel[0], pose.barrel[1], false,
-      due != null && due >= 0 && due <= LCD_CHUTE_BEATS + 1);
+      due != null && due >= 0 && due <= LCD_CHUTE_BEATS + 1, frame.barrelShape);
   }
   ctx.lineWidth = 1;
   ctx.lineCap = 'butt';
@@ -5260,43 +6122,32 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
 // and a round ghost under a cask body gives the whole thing away.
 // The body: 9 across, 7 tall, corners clipped a pixel and a half. A path so
 // the fill and the ink outline are the same shape and the ghost can borrow it.
-function lcdCaskPath(ctx, bx, by) {
-  ctx.beginPath();
-  ctx.moveTo(bx - 4.5, by - 1.5);
-  ctx.lineTo(bx - 3, by - 3.5);
-  ctx.lineTo(bx + 3, by - 3.5);
-  ctx.lineTo(bx + 4.5, by - 1.5);
-  ctx.lineTo(bx + 4.5, by + 1.5);
-  ctx.lineTo(bx + 3, by + 3.5);
-  ctx.lineTo(bx - 3, by + 3.5);
-  ctx.lineTo(bx - 4.5, by + 1.5);
-  ctx.closePath();
-}
-
-function lcdMiniBarrel(ctx, bx, by, ghost = false) {
-  lcdCaskPath(ctx, bx, by);
-  if (ghost) {
-    ctx.strokeStyle = LCD_MOTION_GHOST;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    return;
-  }
-  ctx.fillStyle = LCD_BARREL_BODY; ctx.fill();
-  ctx.strokeStyle = LCD_PRINT; ctx.lineWidth = LCD_BARREL_HOOP; ctx.stroke();
-  // The hoops stand upright near the ends, the way they do on a barrel that is
-  // rolling toward you.
-  ctx.beginPath(); ctx.ellipse(bx - 2.8, by, 1, 3.4, 0, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.ellipse(bx + 2.8, by, 1, 3.4, 0, 0, Math.PI * 2); ctx.stroke();
-  // TWO staves, and no band across the middle: the big barrel has fourteen
-  // rows to spend three seams over and this cell has six, so the third one
-  // was not grain, it was a stripe — and a stripe across a body this small is
-  // the exact mark that made it a ball.
-  const bxr = Math.round(bx);
-  ctx.fillStyle = LCD_BARREL_SEAM;
-  ctx.fillRect(bxr - 2, by - 2, 5, 1);
-  ctx.fillRect(bxr - 2, by + 2, 5, 1);
-  ctx.fillStyle = LCD_BARREL_HI;
-  ctx.fillRect(bxr - 1, by - 3, 2, 1);
+// THE CELL IS THE GORILLA'S BARREL AT HALF SIZE, and nothing else. The octagon
+// that replaced the ellipse here beat it on one axis — it stopped being a ball
+// — and lost on the one that matters more: it was not the barrel he is
+// holding thirty pixels above it, and a chain of nine-pixel casks under a
+// sixteen-pixel drum is two props, not one thing rolling. What actually made
+// the ellipse a ball at this size was its INK, not its outline: a full-weight
+// print rim plus two full-weight hoops on a body five pixels of wood wide is a
+// dark disc with an orange glint, at any silhouette. lcdBarrelAt scales the
+// line weights with the body, which is the whole of the fix.
+//
+// `size` is the dev seam the bake-off rides — see LCD_BARREL_CELL_STYLES;
+// null is the cell the panel ships.
+const LCD_BARREL_CELL = 'half';
+const LCD_BARREL_CELLS = {
+  half: [5, 4],
+  snug: [4.5, 3.5],
+  wide: [5.5, 4.5],
+};
+export const LCD_BARREL_CELL_STYLES = [
+  { id: 'half', name: 'HALF', note: '10x8 — the held barrel at 5/8 scale, body 2px up on the old cask.' },
+  { id: 'snug', name: 'SNUG', note: '9x7 — the old cask\'s own box, ellipse and scaled ink.' },
+  { id: 'wide', name: 'WIDE', note: '11x9 — a pixel past half; closes the girder gap to a whisker.' },
+];
+function lcdMiniBarrel(ctx, bx, by, ghost = false, size = null, shape = null) {
+  const [rx, ry] = LCD_BARREL_CELLS[size] || LCD_BARREL_CELLS[LCD_BARREL_CELL];
+  lcdBarrelAt(ctx, bx, by, rx, ry, ghost ? 'outline' : false, false, shape);
 }
 
 // The runner. Deliberately BLOCKY — rectangles, not curves — because he is a
@@ -5545,17 +6396,17 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
     [x + 18, 1], [x + 34, 1], [x + 50, 1], [x + 66, 1],
     [x + 68, 2], [x + 52, 2], [x + 36, 2], [x + 20, 2],
   ].map(([cx, floor]) => [cx, Math.round(floorY(floor, cx) - 5)]);
-  for (const [bx, by] of cells) lcdMiniBarrel(ctx, bx, by, true);
+  for (const [bx, by] of cells) lcdMiniBarrel(ctx, bx, by, true, frame.barrelCell, frame.barrelShape);
   if (floors.length > 3) {
-    lcdMiniBarrel(ctx, x + 24, Math.round(floorY(3, x + 24) - 5), true);
-    lcdMiniBarrel(ctx, x + 44, Math.round(floorY(3, x + 44) - 5), true);
+    lcdMiniBarrel(ctx, x + 24, Math.round(floorY(3, x + 24) - 5), true, frame.barrelCell, frame.barrelShape);
+    lcdMiniBarrel(ctx, x + 44, Math.round(floorY(3, x + 44) - 5), true, frame.barrelCell, frame.barrelShape);
   }
   for (let p = frame.beat4; p < cells.length; p += 4) {
     // The exploded throw leaves a gap in the chain rather than a ghost: a
     // ghost cell means "a position this thing also occupies", and this barrel
     // does not exist to occupy one.
     if (p === vanished) continue;
-    lcdMiniBarrel(ctx, cells[p][0], cells[p][1]);
+    lcdMiniBarrel(ctx, cells[p][0], cells[p][1], false, frame.barrelCell, frame.barrelShape);
   }
 
   // THE RUNNER'S WHOLE CLIMB, one cell per heard beat — and it takes EIGHT
@@ -5682,66 +6533,6 @@ export function drawLCDPanel(ctx, scene, settings = {}) {
 }
 
 /** The screen treatment on its own: the soft-light wash and the cell lattice. */
-// ---- a stage's own screen treatment ---------------------------------------
-//
-// EVERY STAGE OF THIS CABINET IS THE SAME SCREEN. They differ in palette — each
-// has its own sky ramp and facade colours — and in what stands on the roofs,
-// but the glass itself is one thing: an OLED Game & Watch, settled by
-// `lcd-finish-bakeoff` in September. The question this seam opens is whether
-// the FINALE should be a different screen rather than the same screen at dusk.
-//
-// It is a post pass and nothing else, which is the point. A stage that repainted
-// its city in another palette would be a second pack pretending to be one; a
-// stage that puts a different LIGHT through the same glass is the handheld being
-// played somewhere else. Every painter above stays exactly as it is.
-//
-// DEV-ONLY SEAM: `finishStyle` on the scene, like `gorillaExpr`. No run
-// sets it.
-export const LCD_FINISH_CANDIDATES = [
-  { id: 'shipped', name: 'SHIPPED', note: 'the OLED panel all three stages wear. The control.' },
-  { id: 'night', name: 'NIGHT', note: 'the same handheld after dark: the glass goes deep blue and the lit cells are the only light in the room. The finale is the stage the gorilla is on and the one the run ends in, and a screen that has switched its backlight on says that without a word of dialogue.' },
-  { id: 'amber', name: 'AMBER', note: 'one phosphor instead of a palette — the whole city through an amber monochrome, the way a different handheld of the same decade looked. Loses the spot colours the ribbon and the road depend on, which is the thing to judge it on.' },
-  { id: 'mono', name: 'MONO', note: 'the colour drained and the ink pushed, so the finale is the starkest screen of the three without changing its hue. The cheapest of the four and the one least likely to fight the cast drawn over it.' },
-];
-
-/**
- * One stage's screen treatment, laid over the finished panel.
- *
- * Runs after the cell lattice so it colours the grid too — a tint that left the
- * subpixel gaps in the old hue would read as a filter held in front of the
- * screen rather than as the screen itself.
- */
-function lcdStageFinish(ctx, style) {
-  if (!style || style === 'shipped') return;
-  if (style === 'night') {
-    // Multiply for the dark, then a small screen pass so the lit cells keep
-    // their own light: an unlit LCD at night is black, a BACKLIT one is dark
-    // with the segments glowing through, and only the second is a handheld
-    // somebody is still playing.
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = 'rgba(58,70,124,0.82)';
-    ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'screen';
-    ctx.fillStyle = 'rgba(40,52,96,0.5)';
-    ctx.fillRect(0, 0, W, H);
-  } else if (style === 'amber') {
-    ctx.globalCompositeOperation = 'saturation';
-    ctx.fillStyle = '#808080';
-    ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = '#ffb347';
-    ctx.fillRect(0, 0, W, H);
-  } else if (style === 'mono') {
-    ctx.globalCompositeOperation = 'saturation';
-    ctx.fillStyle = '#8c8c8c';
-    ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = 'rgba(198,205,186,1)';
-    ctx.fillRect(0, 0, W, H);
-  }
-  ctx.globalCompositeOperation = 'source-over';
-}
-
 export function lcdScreenFinish(ctx, t = 0, reducedFlashing = false) {
   ctx.globalCompositeOperation = 'soft-light';
   ctx.fillStyle = 'rgba(168,198,108,0.22)';
@@ -6090,7 +6881,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
       const roof = GROUND_Y - gh;
       const dropX = gx + gw + 8;
       const chute = [roof - 4, roof + 30, roof + 64, roof + 98];
-      for (const cy of chute) gbcGorillaBarrel(ctx, dropX, cy, true);
+      for (const cy of chute) gbcGorillaBarrel(ctx, dropX, cy, true, false, frame.barrelShape);
       // WHICH CELL IS LIT, and it is the one place on this panel where the lane
       // gets a say. In a run, `barrelBeat` is the beat a real barrel reaches the
       // foot of this chute (see lcdSceneFrame), so the drop is counted BACKWARD
@@ -6118,7 +6909,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
       // one bar — a gorilla dropping barrels is what a gorilla does. The lit
       // rim is the promise made explicit: this is the one that is coming for
       // you, and it is the same wood the ribbon's arrow is now drawn in.
-      if (cue >= 0 && cue < last) gbcGorillaBarrel(ctx, dropX, chute[cue], false, laneDriven);
+      if (cue >= 0 && cue < last) gbcGorillaBarrel(ctx, dropX, chute[cue], false, laneDriven, frame.barrelShape);
     }
     lcdRooftopGorilla(ctx, art.buildings[art.rooftopGorilla], frame);
     if (gorillaRise) ctx.restore();
@@ -6140,12 +6931,6 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
 function lcdPack(settings) {
   const reduced = settings && settings.reducedFlashing;
   const reducedMotion = settings && settings.reducedMotion;
-  // WHAT bg() LAST DREW, so post() can finish it. The two are one frame of one
-  // panel, but post is handed neither the scene nor the stage — it is the
-  // screen treatment, and until now the screen was the same on every stage.
-  // Stashed rather than threaded because the alternative is a new argument on
-  // every pack's post() for a thing only this one has.
-  let finishStyle = null;
   return {
     name: 'lcd',
     // The screen treatment belongs to the scenery. The cast — hero, hazards,
@@ -6176,7 +6961,6 @@ function lcdPack(settings) {
       // a run. The city is alive, but the glass still does not travel. It
       // changes by switching cells between fixed authored poses on heard
       // musical beats; neither camX nor gameplay chart data enters the painter.
-      finishStyle = scene && typeof scene.finishStyle === 'string' ? scene.finishStyle : null;
       drawLCDCity(ctx, scene, reducedMotion, reduced);
       // No hardware frame around the screen any more: the bezel cost more
       // than it said (it doubled against facades, and its restore pass caused
@@ -6342,8 +7126,6 @@ function lcdPack(settings) {
         ctx.fillStyle = `rgba(255,244,180,${0.008 + Math.sin(t * 6.3) * 0.008})`;
         ctx.fillRect(0, 0, W, H);
       }
-      // And the stage's own light through the glass, if it has asked for one.
-      lcdStageFinish(ctx, finishStyle);
     },
     // No decorate. The old segment-ghost outline — a faint square trailing
     // every entity — read as a rendering bug beside the toaster and the

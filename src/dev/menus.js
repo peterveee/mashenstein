@@ -18,6 +18,7 @@ import { MINIGAMES } from '../game/minigames/index.js';
 import { HEROES } from '../data/heroes.js';
 import { applyResult, totalPlugs, MAX_PLUGS, formatCoins } from '../game/progress.js';
 import { AttractState } from '../game/attract.js';
+import { Recorder, recordingSupported } from './recorder.js';
 import { ResultsState, BriefingState, FieldGuideState, SoundTestState, JUKEBOX, HowToPlayState, DifficultyState, IntroState } from '../game/menus.js';
 import { CastState } from '../game/cast.js';
 import { CreditsState } from '../game/credits.js';
@@ -50,17 +51,27 @@ function fakeResult(stage) {
 }
 
 // ---------------------------------------------------------------- launchers
-function watch(dev, scenario, { crash = false } = {}) {
+// record: tape the whole run to work/video/ — see recorder.js. The [DEV] strip
+// stays off the picture (quiet), the recording is bound to the AttractState so
+// it stops itself however the run ends, and the toast with the path arrives in
+// the hub once ffmpeg has finished.
+function watch(dev, scenario, { crash = false, record = false } = {}) {
   const { Flow } = dev.ctx;
   dev.close();
-  setState(new AttractState({
+  const state = new AttractState({
     scenario,
     seed: dev.seedLock ?? undefined,
     devMode: true,
     crash,
+    quiet: record,
     realSettings: dev.ctx.save.settings,
     onExit: () => Flow.toHub(),
-  }));
+  });
+  setState(state);
+  if (record) {
+    const stem = `${crash ? 'crash' : 'bot'}-${scenario.id}${dev.seedLock != null ? `-seed${dev.seedLock}` : ''}`;
+    dev.startRecording({ name: stem, state });
+  }
 }
 
 function instantClear(dev, stage) {
@@ -118,6 +129,7 @@ function stageActions(dev, stage) {
       { label: 'PLAY', act: () => { dev.close(); dev.ctx.Flow.launchStage(cab, stage, [], dev.seedLock ?? undefined); } },
       { label: 'PLAY AS ▸', submenu: playAsMenu },
       { label: 'BOT-PLAY', act: () => watch(dev, scenario) },
+      { label: 'RECORD BOT-PLAY (mp4)', act: () => watch(dev, scenario, { record: true }) },
       { label: 'CRASH TEST', act: () => watch(dev, scenario, { crash: true }) },
       { label: 'INSTANT-CLEAR', act: () => instantClear(dev, stage) },
       { label: 'INSTANT-FAIL', act: () => instantFail(dev, stage) },
@@ -164,6 +176,7 @@ function bossesMenu(dev) {
           items: [
             { label: 'FIGHT', act: () => { dev.close(); dev.ctx.Flow.startBoss(id, dev.seedLock ?? undefined); } },
             { label: 'BOT-PLAY', act: () => watch(dev, scenario) },
+            { label: 'RECORD BOT-PLAY (mp4)', act: () => watch(dev, scenario, { record: true }) },
             { label: 'CRASH TEST', act: () => watch(dev, scenario, { crash: true }) },
           ],
         }),
@@ -617,6 +630,39 @@ function infoMenu(dev) {
   return { ...build(), rebuild: build };
 }
 
+// Free-running recording of whatever is on screen — a manual run, a menu, the
+// hub. The stage and boss screens have RECORD BOT-PLAY for the hands-off case.
+function recordMenu(dev) {
+  const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+  const build = () => {
+    const items = [];
+    if (!recordingSupported()) {
+      items.push({ label: 'NO MP4/WEBM RECORDER IN THIS BROWSER', act: null });
+      return { title: 'RECORD', items };
+    }
+    if (Recorder.active) {
+      items.push({
+        label: `STOP RECORDING  ${mmss(Recorder.elapsed())}${Recorder.hasAudio ? '' : '  (NO AUDIO)'}`,
+        act: () => { dev.close(); dev.stopRecording(); },
+      });
+    } else if (Recorder.saving) {
+      items.push({ label: 'SAVING… (ffmpeg on the dev server)', act: null });
+    } else {
+      items.push({
+        label: 'START RECORDING THIS SCREEN',
+        act: () => { dev.close(); dev.startRecording({ name: dev.recordingStem() }); },
+      });
+    }
+    items.push({ label: 'R while the menu is closed toggles it too', act: null });
+    items.push({ label: `FORMAT: ${Recorder.mime || 'chosen at start'}`, act: null });
+    items.push({ label: 'LANDS IN: work/video/<name>.mp4', act: null });
+    if (Recorder.lastPath) items.push({ label: `LAST: ${Recorder.lastPath}`, act: null });
+    if (Recorder.lastError) items.push({ label: `ERROR: ${Recorder.lastError}`, act: null });
+    return { title: 'RECORD', items };
+  };
+  return { ...build(), rebuild: build };
+}
+
 export function rootMenu(dev) {
   const build = () => ({
     title: 'DEV MENU',
@@ -651,6 +697,7 @@ export function rootMenu(dev) {
       { label: 'VISUALISERS ▸', submenu: () => visualisersMenu(dev) },
       { label: 'SCENES ▸', submenu: () => scenesMenu(dev) },
       { label: 'SAVE ▸', submenu: () => saveMenu(dev) },
+      { label: Recorder.active ? 'RECORD ▸  ● REC' : 'RECORD ▸', submenu: () => recordMenu(dev) },
       { label: 'RUN ▸', submenu: () => runMenu(dev) },
       { label: 'PHYSICS ▸', submenu: () => tuneMenu(dev, GROUPS[0]) },
       { label: 'GAIT ▸', submenu: () => tuneMenu(dev, GROUPS[1]) },

@@ -117,7 +117,7 @@ export const OBSTACLES = {
   // `action: 'none'` because a loop is not something to be avoided — sailing
   // over the pad costs you the ride and the coins on it, and nothing else.
   loopPad:    { w: 18, h: 4,  sprite: 'boostPad', ground: true, isLoop: true, action: 'none' },
-  switch:     { w: 8, h: 8,   sprite: 'battery', alt: 46, breakable: true, action: 'none', isSwitch: true, bob: true },
+  switch:     { w: 8, h: 8,   sprite: 'switch', alt: 46, breakable: true, action: 'none', isSwitch: true, bob: true },
   tombstone:  { w: 11, h: 8,  sprite: 'tombstone', ground: true, breakable: true, action: 'jump' },
   zombie:     { w: 10, h: 14, sprite: 'zombieWalk', ground: true, breakable: true, action: 'jump', vx: -14, shamble: true },
   beatBar:    { w: 8, h: 14,  sprite: null, ground: true, breakable: false, action: 'jump', beatSync: true },

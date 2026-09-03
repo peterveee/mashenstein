@@ -311,7 +311,19 @@ export const TOON_SPECS = {
   // single read the reference had, and the pair her double-tap shot (see
   // `shotBurst` on the hero row) is drawn from. Her hair is the pulled-tight
   // cut with the hairline swept back and one wisp escaping in front of each
-  // ear — the plait falls to her waist and bounds on the stride clock.
+  // ear — the plait falls to her waist and bounds on the stride clock. She wears
+  // the shared `ears` piece — the third head to opt in after Fernwick and Kiko
+  // rather than a fourth drawing — set slightly in at `earOut: 0.91`. Her cut
+  // is what makes it land: `pulled` brings the hair rim in to a 0.35 flare, so
+  // at ear height the rim stands only ~1.09R proud, and the ear clears it
+  // rather than sitting on it. 0.91 shows a 0.11R crescent against the stock
+  // 0.95's 0.15R — about three quarters of it, which is the difference between
+  // an ear she has and an ear she is wearing. Out at 0.98 and 1.02 the lobe
+  // stands clear of the skull and reads as a stuck-on part; in at Grumpos's
+  // tucked 0.88 it falls back inside the hair rim and reads as a bump. No
+  // `earStud`: the gold is Kiko's piping, and Clara's kit is olive and khaki.
+  // It also settles the wisps — the fringe pair is described as escaping in
+  // front of each ear, and until now there was no ear for them to fall past.
   // `shoulderSoft: 0.75` rounds the shoulder corner off the cast default of
   // 0.5. She is the hero who needs it: her top has no sleeve, so nothing
   // breaks the corner and the shirt's own edge IS the shoulder — at 0.5 that
@@ -320,7 +332,7 @@ export const TOON_SPECS = {
   clara: { rig: 'humanoid', armLift: 0.014, tall: 1.07, head: 'braid', hairCut: 'pulled', fringe: 'swept-wisps', mouth: 'smile', slim: true, taper: 0.78, shoulderSoft: 0.75,
     armDepth: true, hands: true, limbStyle: 'snap', pants: true,
     bareArms: true, tank: true, crop: 0.78, beltDrop: 0.035, gloves: true,
-    gearBelt: true, holster: 'thigh', boots: 0.5, pistol: 'twin' },
+    gearBelt: true, holster: 'thigh', boots: 0.5, pistol: 'twin', ears: true, earOut: 0.91 },
   gary: { rig: 'humanoid', head: 'paperhat', mouth: 'flat', nameTag: true, armDepth: true, hands: true, limbStyle: 'snap' },
   // The serving line's own staff. Stout and short-armed on purpose: she is only
   // ever seen from the deck up, framed by a sneeze guard, so the silhouette that

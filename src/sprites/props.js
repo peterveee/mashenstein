@@ -1147,14 +1147,32 @@ export const PROP_PAINTERS = {
       ctx.lineWidth = Math.max(0.32, u * 0.024);
       ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
     };
-    // A flat, front-on barrel: rounded silhouette, stave rhythm and hoops.
+    // A flat, front-on barrel: BELLIED silhouette, stave rhythm and hoops.
     // No top plane or receding side—the toaster owns the 3D exception.
-    fineShape('#b87838', (c) => rr(c, w * 0.1, h * 0.04, w * 0.8, h * 0.92, w * 0.28));
+    //
+    // The body was a rounded rectangle and read as one: a barrel is not a box
+    // with soft corners, it is widest across its belly and pulled in at both
+    // ends, and that taper is the shape's whole job. Same overall width as the
+    // rounded rect had — the belly still reaches 0.9w — so the hoops, staves
+    // and highlight all sit where they always did, and nothing that measures
+    // this prop moved. The LCD panel's tower barrel is the same silhouette at
+    // sixteen pixels (stylePacks, LCD_BARREL_SHAPE 'ingame'); they are one
+    // object in the world and may not be two drawings.
+    fineShape('#b87838', (c) => {
+      const y0 = h * 0.04, y1 = h * 0.96;
+      const end = w * 0.16, mid = w * 0.04;
+      c.moveTo(end, y0);
+      c.lineTo(w - end, y0);
+      c.quadraticCurveTo(w - mid, h * 0.5, w - end, y1);
+      c.lineTo(end, y1);
+      c.quadraticCurveTo(mid, h * 0.5, end, y0);
+      c.closePath();
+    });
     plain(ctx, 'rgba(216,160,88,0.42)', (c) => rr(c, w * 0.18, h * 0.1, w * 0.13, h * 0.8, w * 0.065));
     plain(ctx, 'rgba(112,60,26,0.22)', (c) => rr(c, w * 0.69, h * 0.1, w * 0.13, h * 0.8, w * 0.065));
     stroke(ctx, '#5e4e46', Math.max(0.65, h * 0.065), (c) => {
       c.moveTo(w * 0.13, h * 0.25); c.lineTo(w * 0.87, h * 0.25);
-      c.moveTo(w * 0.11, h * 0.72); c.lineTo(w * 0.89, h * 0.72);
+      c.moveTo(w * 0.13, h * 0.72); c.lineTo(w * 0.87, h * 0.72);
     });
     stroke(ctx, 'rgba(106,58,24,0.62)', Math.max(0.28, w * 0.025), (c) => {
       c.moveTo(w * 0.36, h * 0.1); c.lineTo(w * 0.36, h * 0.9);
