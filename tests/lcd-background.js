@@ -237,12 +237,12 @@ for (const stage of [1, 3]) {
   const activeBarrel = (ops) => bigBarrels(ops).at(-1);
   assert(activeBarrel(beat0)?.cy !== activeBarrel(beat2)?.cy,
     `stage ${stage} rooftop gorilla lifts and sets down its barrel on the four-beat cycle`);
-  // High on the panel, and each stage's ceiling is its own building's. Stage 3's
-  // is 64 rather than 52 because its tower came down fourteen to let the plane
-  // cross over the raised barrel instead of behind it — see that scene's
-  // `plane`, and the crossing check further down that enforces the clearance
-  // this number pays for.
-  assert(activeBarrel(beat0)?.cy <= (stage === 1 ? 70 : 64),
+  // High on the panel, and each stage's ceiling is its own building's — a
+  // barrel centre is GROUND_Y - h - 50, so these are the two authored heights
+  // stated the other way round. Both came up twelve when the beat ribbon left
+  // the sky and the crossings rose to follow it: the barrel is one end of a
+  // clearance the plane is the other end of, so it had to travel with it.
+  assert(activeBarrel(beat0)?.cy <= (stage === 1 ? 58 : 52),
   `stage ${stage} downbeat pose holds the barrel overhead on its tallest building`);
   // 22, not the 24 this once wanted: the four barrels in the frame — three
   // ghost poses and the live one — used to contribute an ellipse each and are
@@ -278,10 +278,11 @@ for (const stage of [1, 2, 3]) {
 }
 
 // The sky drifts on the heard beat and parks under reduced motion. A cloud is
-// the one stroked path in the cloud band of the sky (y 40..72 on stage 1), so
-// the x of every lineTo up there is a clean probe of the drift.
+// the one stroked path in the cloud band of the sky (y 28..60 on stage 1 — the
+// band moved up twelve with the clouds themselves), so the x of every lineTo up
+// there is a clean probe of the drift.
 const cloudWispXs = (ops) => ops
-  .filter((op) => op[0] === 'lineTo' && op[2] >= 40 && op[2] < 72)
+  .filter((op) => op[0] === 'lineTo' && op[2] >= 28 && op[2] < 60)
   .map((op) => op[1]);
 assert(cloudWispXs(background(1, 0)).length > 0
   && fingerprint(cloudWispXs(background(1, 0))) !== fingerprint(cloudWispXs(background(1, 8))),
@@ -320,6 +321,58 @@ for (const stage of [1, 2, 3]) {
   assert(clouds.length === 3 && clouds.every((i) => ops[i][2] === 1)
     && Math.max(...clouds) < skyline && skyline < rail,
     `stage 2 paints every cloud behind the skyline, viaduct and monorail (${clouds.join(', ')} < ${skyline} < ${rail})`);
+}
+
+// ---- and the whole sky layer stays under the strip -------------------------
+//
+// THE SKY LAYER ROSE TWELVE when the beat ribbon moved to the top of the screen
+// (BEAT_RIBBON_BOTTOM 40 -> 24): the clouds on all three stages, both crossings,
+// and stage 2's monorail with the spire it rules. The crossings already measure
+// themselves against the strip further down; the clouds and the rail had no
+// check at all, and now that they are only two pixels under it they need one.
+//
+// This is a CEILING, and deliberately only that — how far the sky should sit
+// BELOW the strip is a judgement about the picture, not a fact a test can hold.
+// What it pins is the thing that would actually break: a strip that grows, or
+// art that creeps up into it, hiding the panel behind the HUD.
+{
+  const SKY_TOP = BEAT_RIBBON_BOTTOM + 2;
+  for (const stage of [1, 2, 3]) {
+    // Every cloud's topmost row across a whole four-bar bob cycle. The points
+    // are the ten path ops behind the stroke cloudStrokeIndexes finds.
+    let top = 999;
+    for (let beat = 0; beat < 16; beat++) {
+      const ops = background(stage, beat, {}, 0, 0, { progress: 0.3 });
+      for (const j of cloudStrokeIndexes(ops)) {
+        for (let k = j - 11; k <= j - 2; k++) top = Math.min(top, ops[k][2]);
+      }
+    }
+    assert(top >= SKY_TOP,
+      `stage ${stage} keeps every cloud clear of the beat ribbon `
+      + `(top row ${top}, strip ends ${BEAT_RIBBON_BOTTOM})`);
+  }
+  const railOp = background(2, 12, {}, 0, 0, { progress: 0.3 }).find((op) => op[0] === 'fillRect'
+    && op[1] === INK && op[2] === 0 && op[4] === 480 && op[5] === 1);
+  assert(railOp && railOp[3] >= SKY_TOP,
+    `stage 2's monorail runs under the beat ribbon as well `
+    + `(girder y ${railOp && railOp[3]}, strip ends ${BEAT_RIBBON_BOTTOM})`);
+  // AND STAGE 2'S CLOUDS FILL WHAT IS LEFT EXACTLY. They sit in the strip
+  // between the ribbon and the service, which is fifteen rows and a cloud with
+  // its bob is fifteen, so both ends are load-bearing: pinning only the top
+  // would let the whole layer slide down into the cars. The cars ride the
+  // twelve pixels above their own girder, so this is derived from the rail
+  // rather than written down a second time.
+  let cloudFloor = 0;
+  for (let beat = 0; beat < 16; beat++) {
+    const ops = background(2, beat, {}, 0, 0, { progress: 0.3 });
+    for (const j of cloudStrokeIndexes(ops)) {
+      for (let k = j - 11; k <= j - 2; k++) cloudFloor = Math.max(cloudFloor, ops[k][2]);
+    }
+  }
+  const carTop = railOp[3] - 12;
+  assert(cloudFloor < carTop,
+    `and its clouds stay off the service below them `
+    + `(lowest cloud row ${cloudFloor}, cars start ${carTop})`);
 }
 
 // Stage 1's DONKEY KONG tower: an eight-cell ghosted barrel path across two

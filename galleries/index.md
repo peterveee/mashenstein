@@ -34,3 +34,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-03 | `c94052a` | [2026-09-03-c94052a.html](2026-09-03-c94052a.html) | [bake-offs](2026-09-03-c94052a-lab.html) | Refactor gallery archiving to include both production and lab pages |
 | 2026-09-03 | `c94c455` | [2026-09-03-c94c455.html](2026-09-03-c94c455.html) | [bake-offs](2026-09-03-c94c455-lab.html) | Refactor jump height calculations and update related tests |
 | 2026-09-03 | `4174be0` | [2026-09-03-4174be0.html](2026-09-03-4174be0.html) | [bake-offs](2026-09-03-4174be0-lab.html) | Add new gallery entry for September 2026 and refactor related files |
+| 2026-09-04 | `7f614a7` | [2026-09-04-7f614a7.html](2026-09-04-7f614a7.html) | [bake-offs](2026-09-04-7f614a7-lab.html) | Implement audio sync calibration feature with comprehensive tests |

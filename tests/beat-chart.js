@@ -36,7 +36,7 @@ function assert(cond, msg) {
 //
 // The real one does — Audio.songBeat divides by `bpm * tempo` — and a beat
 // stage steps its tempo up at every checkpoint (run.js
-// BEAT_BPM_PER_CHECKPOINT). So beats are ACCUMULATED at whatever the run is
+// stages.js `bpmRamp`). So beats are ACCUMULATED at whatever the run is
 // being played at rather than derived from an elapsed time and one constant: a
 // fixture that does the latter hands the lane a clock the music is not playing,
 // which is precisely the mismatch checkRhythmDrift exists to catch, invented by

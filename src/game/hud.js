@@ -63,6 +63,24 @@ const PILL_X = EDGE, PILL_H = 18;
 const PILL_Y = EDGE + Math.max(0, DISC_R * 2 - PILL_H) / 2;
 const PILL_CY = PILL_Y + PILL_H / 2, PILL_R = 6.5;
 
+// THE OBJECTIVE ROWS, top-right. Module-level because the fold-up bake-off in
+// the gallery places panels on these same two lines, and a row a tile measures
+// for itself is a row that can disagree with the run's.
+//
+// The first is centred on PILL_CY so every top-row panel sits level instead of
+// GOAL riding high; the second hangs below it with a real gap, because the two
+// panels are a hierarchy and not one block.
+export const OBJ_RIGHT = W - EDGE;
+export const OBJ_ROW_Y = PILL_CY - PILL_H / 2;
+export const OBJ_ROW2_Y = OBJ_ROW_Y + PILL_H + 4;
+// The air between two chips sharing the mission's row — the same 5 the tag
+// inside a panel is padded by, so the pair reads as one group with the panel's
+// own rhythm rather than as two things that happen to be near each other.
+const CHIP_GAP = 5;
+// Where the fold-up cut stops sliding and starts rising: two thirds of the
+// clock buys the slide along row 2, the last third the climb onto row 1.
+const FOLDUP_SLIDE = 0.65;
+
 // THE BEAT RIBBON'S BAND, and it is exported because it is not only the
 // ribbon's business: the strip shares the band a speech card is anchored in,
 // so anything that prints there has to be told to stand clear. The ribbon used
@@ -238,18 +256,26 @@ const RIBBON_PULSE = 0.25;
 // marks, which on a pale LCD sky was the first thing you saw and the last thing
 // you needed to see.
 const RIBBON_TAB = 1;
-// The row a speech card's first line sits on when nothing is pushing it down.
-// Named because BEAT_SPEECH_Y floors at it.
-const SPEECH_Y = 46;
 export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + RIBBON_TAB;
-// Where a speech card's first ROW goes when the beat lane is up. drawSpeech
-// hangs its plate four units above the row it is handed, so clearing the ribbon
-// means clearing it by four more than it looks — plus three of air, or the card
-// and the strip read as one stacked instrument.
-// Floored at the row every other speech card uses: this figure exists ONLY to
-// clear the ribbon, so with the ribbon up on the HUD row there is nothing left
-// for it to clear and a beat stage should talk where every other stage talks.
-export const BEAT_SPEECH_Y = Math.max(BEAT_RIBBON_BOTTOM + 4 + 3, SPEECH_Y);
+// The row a speech card's first line sits on when nothing is pushing it down.
+//
+// IT IS THE BEAT STAGE'S ROW NOW, on every stage. This used to be a flat 46 —
+// a row clear of BOTH the HUD's shoulders, because the card is as wide as its
+// longest line and at full width it crosses them — with a separate, higher
+// figure for beat stages that only had to clear the ribbon. The ribbon has
+// since moved to the top of the screen and taken the sky with it, and the old
+// arrangement had the card sitting fifteen pixels lower than anything above it
+// required, in the middle of a panel that had just been given room.
+//
+// drawSpeech hangs its plate four units above the row it is handed, so
+// clearing the strip means clearing it by four more than it looks — plus three
+// of air, or the card and the ribbon read as one stacked instrument.
+//
+// What pays for the lift is WIDTH, not luck: up here the card has to fit
+// between the two shoulders instead of sitting under them, so a run narrows it
+// to the gap they leave. See speechChannel. A caller with no HUD around it —
+// the hub, the gallery — keeps the full width and simply talks higher.
+const SPEECH_Y = BEAT_RIBBON_BOTTOM + 4 + 3;
 
 // Keep the ribbon in musical coordinates all the way to the canvas. Returning
 // a fractional logical pixel is intentional: the overlay canvas has enough
@@ -580,14 +606,18 @@ export const TOUCH_SHELF_CY = BOTTOM_CY - 4;
 //   'chip'   — the SAME line as GOAL, a second chip to its left, from the first
 //              frame. Count only: the sentence never appears in the corner.
 //   'shelf'  — a donut on the bottom-left shelf, at the end of the power-up
-//              row it already reads exactly like — a thing filling up.
-//   'bottom' — its own chip, bottom-right, on the keyboard hints' midline. The
-//              only cut that keeps the fold, because it is the only one with a
-//              sentence's worth of width.
+//              row it already reads exactly like — a thing filling up. The one
+//              cut that is not a panel, so it is placed by the shelf and not by
+//              bonusPlacement below.
+//
+// A fifth, 'bottom' — its own chip in the bottom-right corner — was tried and
+// ruled out on 4 Sep 2026: the mission and the challenge at opposite ends of
+// the screen do not read as one objective, and on touch that corner already
+// belongs to the ability nameplate.
 //
 // Anything but 'row' empties the second top-right line, which is the whole
 // point of the exercise.
-export const BONUS_SLOTS = ['row', 'foldup', 'chip', 'shelf', 'bottom'];
+export const BONUS_SLOTS = ['row', 'foldup', 'chip', 'shelf'];
 const BONUS_SLOT = pickCut('bonus', BONUS_SLOTS, 'row');
 
 // WHICH END OF THE BOTTOM ROW THE ABILITY NAMEPLATE SITS AT — touch only; the
@@ -597,11 +627,12 @@ const BONUS_SLOT = pickCut('bonus', BONUS_SLOTS, 'row');
 // FOR THE USE BUTTON: it sits beside the disc out in the right margin, and
 // run.js registers the words themselves as a second hit box for the same
 // action. 'left' gives that corner up — the plate becomes a readout like the
-// keyboard's, stacked under the power-up shelf — and hands the bottom-right
-// slot to whatever else wants it, which is what BONUS_SLOT 'bottom' wants.
-// So that cut moves it by default rather than making you ask for both.
+// keyboard's, stacked under the power-up shelf, which is the arrangement the
+// keyboard has always had — and hands the bottom-right slot back to the play
+// field. Kept as a cut because it is a standing question about the touch
+// layout, not because anything currently needs the corner.
 export const ABILITY_SIDES = ['right', 'left'];
-export const ABILITY_SIDE = pickCut('ability', ABILITY_SIDES, BONUS_SLOT === 'bottom' ? 'left' : 'right');
+export const ABILITY_SIDE = pickCut('ability', ABILITY_SIDES, 'right');
 
 // A bake-off's live selector. The shipped answer is the constant's default; a
 // dev build can ask for one of the other cuts with ?<name>=<cut> so the
@@ -762,6 +793,133 @@ const smoothstep = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 export function bonusPanelFold(run) {
   const bonusClock = run?.beatLock ? run.rhythmBonusT : run?.bonusT;
   return 1 - smoothstep(Math.min(1, Math.max(0, bonusClock ?? 0) / BONUS_FOLD));
+}
+
+/**
+ * ONE OBJECTIVE PANEL — the painter behind every GOAL and BONUS plate.
+ *
+ * Module-level and exported rather than a closure inside drawHud because the
+ * gallery's fold-up bake-off puts these panels on a tile: a section that draws
+ * "the same" plate with its own code is a section that can show Peter a layout
+ * the run does not have. Returns the LEFT edge it landed on, which is how a
+ * second chip on the same row knows where the first one ended.
+ */
+export function drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold = 0, OBJ_R = OBJ_RIGHT) {
+  const TP = 5, GAP = 5;
+  // The full-scale row is the pill's twin at the other end of the strip, so it
+  // takes the pill's height: two equal bookends with the beat lane between
+  // them, rather than a tall panel on the left and a short one on the right
+  // that merely agree about their midline. The reduced BONUS row underneath
+  // keeps its own smaller height — it is the hierarchy, not the bookend.
+  const h = scale < 1 ? 12 : PILL_H;
+  const cy = y + h / 2;
+  const tw = textWidth(tag, 0.8, 'bold');
+  const lead = TP * 2 + tw + GAP;      // panel's left edge -> first glyph
+  const [head, tail, widest = tail] = Array.isArray(text) ? text : [text, ''];
+  const full = head + tail;
+  // The head is measured as the difference between the joined string and the
+  // tail, not as textWidth(head): textWidth drops the trailing tracking on
+  // whatever it is handed, so measuring the head alone lands it a pixel off
+  // from where the same words sit when the two are drawn as one string.
+  const headW = textWidth(full, scale) - textWidth(tail, scale);
+  const slotW = Math.max(textWidth(tail, scale), textWidth(widest, scale));
+  const wFull = lead + headW + slotW;
+  const wTail = lead + slotW;
+  const w = Math.round(wFull + (wTail - wFull) * fold);
+  const x = OBJ_R - w;
+  drawPanel(ctx, x, y, w, h, 4, undefined, PANEL);
+  rawDrawText(ctx, tag, x + TP, textY(cy, 0.8), tagColor, 0.8, 'bold');
+  const tailX = OBJ_R - TP - textWidth(tail, scale);
+  if (head && fold < 1) {
+    const headX = OBJ_R - TP - slotW - headW;
+    if (fold > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x + lead - GAP, y, OBJ_R - (x + lead - GAP), h);
+      ctx.clip();
+      // The wipe does the work; alpha only joins for the back half, so the
+      // last few glyphs thin out instead of being sheared off mid-stroke.
+      ctx.globalAlpha = Math.min(1, 2 * (1 - fold));
+    }
+    rawDrawText(ctx, head, headX, textY(cy, scale), ink, scale);
+    if (fold > 0) ctx.restore();
+  }
+  if (tail) rawDrawText(ctx, tail, tailX, textY(cy, scale), ink, scale);
+  // THE RIGHT SHOULDER, remembered by the thing that owns it. A speech card
+  // talking up on this row has to clear whichever objective panel reaches
+  // furthest in, and both of them are as wide as their own words — so the edge
+  // is measured here, where it is already known, rather than guessed at by the
+  // card. Reset each frame by drawHud; see speechChannel.
+  objLeft = Math.min(objLeft, x);
+  return x;
+}
+
+// The leftmost edge any objective panel reached this frame, and the frame's own
+// reset. OBJ_RIGHT is "nothing drawn yet", which leaves the channel open.
+let objLeft = OBJ_RIGHT;
+
+/**
+ * WHERE A SPEECH CARD MAY TALK FROM, and how wide it may be to talk there.
+ *
+ * The card is centred on the panel and grows symmetrically off its longest
+ * line, so what limits it is whichever SHOULDER of the HUD reaches nearer the
+ * middle — the status pill and hero icon on the left, the GOAL and BONUS panels
+ * on the right. Neither is a fixed width: the pill grows with the coin count
+ * and the panels grow with the mission's words, so both are measured.
+ *
+ * Symmetric growth is why this returns ONE width rather than two edges: the
+ * card cannot be shoved sideways to use a wider half, so the tighter shoulder
+ * sets it. The 40 is the card's own furniture at scale 1 — portrait, gap and
+ * two pads — which is what stands between the wrap width asked for here and the
+ * plate that ends up on screen.
+ *
+ * Given to drawSpeech as plain `y`/`maxWidth` opts, the two it already takes.
+ */
+export function speechChannel(run) {
+  const left = PILL_X + statusCornerW(run);
+  const half = Math.min(W / 2 - left, objLeft - W / 2);
+  return { y: SPEECH_Y, maxWidth: Math.max(0, Math.round(half * 2) - 40) };
+}
+
+/**
+ * WHERE THE BONUS PANEL SITS AT A GIVEN POINT IN ITS FOLD — the whole of what
+ * BONUS_SLOT decides, in one place both the run and the gallery ask.
+ *
+ * `goalLeft` is the mission panel's left edge (drawObjectivePanel's return), so
+ * the cuts that dock beside it track the mission's own width. Returns the three
+ * numbers a panel needs: its top, how folded its text is, and the edge it hangs
+ * off. A null return means this cut does not draw a panel at all — the donut
+ * cut, which the shelf paints instead.
+ */
+export function bonusPlacement(fold, goalLeft, slot = BONUS_SLOT) {
+  if (slot === 'row') return { y: OBJ_ROW2_Y, fold, right: OBJ_RIGHT };
+  // OBJ_ROW_Y + 1, not OBJ_ROW_Y: the chip is 12 tall against the mission's
+  // PILL_H, so the two share a MIDLINE rather than a top edge. Top-aligned, the
+  // smaller chip rides a pixel high and the row reads as slightly broken.
+  const chipY = OBJ_ROW_Y + (PILL_H - 12) / 2;
+  if (slot === 'chip') return { y: chipY, fold: 1, right: goalLeft - CHIP_GAP };
+  if (slot === 'foldup') {
+    // TWO BEATS OFF ONE CLOCK. While the panel is saying the challenge in words
+    // it IS the shipped second row; then it wipes shut travelling left along
+    // that row, and only once it is a chip does it rise into the slot beside
+    // GOAL. The player sees a line leaving, not two panels swapping places.
+    //
+    // The beats are sequential and not simultaneous because the destination is
+    // BEHIND the mission panel: a chip that rises while it is still sliding
+    // arrives on GOAL's line early and crosses straight through it. Closing on
+    // row 2 keeps every frame of the move in empty sky.
+    //
+    // BONUS_HOLD plays it backwards for free: when the state changes under the
+    // player the chip drops back down and says it in words again.
+    const slide = Math.min(1, fold / FOLDUP_SLIDE);
+    const rise = Math.max(0, (fold - FOLDUP_SLIDE) / (1 - FOLDUP_SLIDE));
+    return {
+      y: OBJ_ROW2_Y + (chipY - OBJ_ROW2_Y) * rise,
+      fold: slide,
+      right: OBJ_RIGHT + (goalLeft - CHIP_GAP - OBJ_RIGHT) * slide,
+    };
+  }
+  return null;
 }
 
 // The status pill: cells on the left, coins on the right, one panel.
@@ -1522,6 +1680,11 @@ function drawRingGauge(ctx, cx, cy, rOuter, rInner, frac, color) {
 }
 
 export function drawHud(ctx, run) {
+  // Forget last frame's right shoulder before anything redraws it. A speech
+  // card asking mid-frame gets the objective panels as they were an instant
+  // ago, which is what a card that lives for seconds wants; what it must not
+  // get is an edge from a mission that has since been completed and shrunk.
+  objLeft = OBJ_RIGHT;
   // The top row's shared midline: the status pill and the hero badge centre on
   // it, so the strip sits level instead of each piece hanging at its own
   // height. (The ability ring used to share it; it lives in the bottom band
@@ -1720,7 +1883,7 @@ export function drawHud(ctx, run) {
   // touch too: the PAUSE button used to share this line and the anchor pulled
   // in 66px to clear it, costing every mission title a third of its width on
   // the screens with the least of it. PAUSE hangs below these panels now.
-  const objRight = W - EDGE;
+  const objRight = OBJ_RIGHT;
   // `text` is either a plain string or a [head, tail, widest] triple, where the
   // tail is the live part that survives a fold and the head is the sentence
   // that does not. `fold` runs 0 (full) to 1 (tail only).
@@ -1753,60 +1916,9 @@ export function drawHud(ctx, run) {
     if (alpha < 1) ctx.restore();
     return x;
   };
-  const drawObjective = (tag, tagColor, text, ink, y, scale, fold = 0, OBJ_R = objRight) => {
-    const TP = 5, GAP = 5;
-    // The full-scale row is the pill's twin at the other end of the strip, so it
-    // takes the pill's height: two equal bookends with the beat lane between
-    // them, rather than a tall panel on the left and a short one on the right
-    // that merely agree about their midline. The reduced BONUS row underneath
-    // keeps its own smaller height — it is the hierarchy, not the bookend.
-    const h = scale < 1 ? 12 : PILL_H;
-    const cy = y + h / 2;
-    const tw = textWidth(tag, 0.8, 'bold');
-    const lead = TP * 2 + tw + GAP;      // panel's left edge -> first glyph
-    const [head, tail, widest = tail] = Array.isArray(text) ? text : [text, ''];
-    const full = head + tail;
-    // The head is measured as the difference between the joined string and the
-    // tail, not as textWidth(head): textWidth drops the trailing tracking on
-    // whatever it is handed, so measuring the head alone lands it a pixel off
-    // from where the same words sit when the two are drawn as one string.
-    const headW = textWidth(full, scale) - textWidth(tail, scale);
-    const slotW = Math.max(textWidth(tail, scale), textWidth(widest, scale));
-    const wFull = lead + headW + slotW;
-    const wTail = lead + slotW;
-    const w = Math.round(wFull + (wTail - wFull) * fold);
-    const x = OBJ_R - w;
-    drawPanel(ctx, x, y, w, h, 4, undefined, PANEL);
-    rawDrawText(ctx, tag, x + TP, textY(cy, 0.8), tagColor, 0.8, 'bold');
-    const tailX = OBJ_R - TP - textWidth(tail, scale);
-    if (head && fold < 1) {
-      const headX = OBJ_R - TP - slotW - headW;
-      if (fold > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(x + lead - GAP, y, OBJ_R - (x + lead - GAP), h);
-        ctx.clip();
-        // The wipe does the work; alpha only joins for the back half, so the
-        // last few glyphs thin out instead of being sheared off mid-stroke.
-        ctx.globalAlpha = Math.min(1, 2 * (1 - fold));
-      }
-      rawDrawText(ctx, head, headX, textY(cy, scale), ink, scale);
-      if (fold > 0) ctx.restore();
-    }
-    if (tail) rawDrawText(ctx, tail, tailX, textY(cy, scale), ink, scale);
-    return x;
-  };
-  // Centred on HERO_CY, the midline the status pill and the beat lane share, so
-  // every top-row panel sits level instead of GOAL riding high. Derived from the
-  // panel's own height rather than typed, so the two can never drift apart.
-  const OBJ_Y = HERO_CY - PILL_H / 2;
-  // The BONUS line hangs below with a real gap, not flush: the two panels are a
-  // hierarchy, not one block, and 4px of sky says so.
-  const OBJ_Y2 = OBJ_Y + PILL_H + 4;
-  // The air between two chips sharing the mission's row — the same 5 the tag
-  // inside a panel is padded by, so the pair reads as one group with the panel's
-  // own rhythm rather than as two things that happen to be near each other.
-  const CHIP_GAP = 5;
+  const drawObjective = (tag, tagColor, text, ink, y, scale, fold = 0, right = objRight) =>
+    drawObjectivePanel(ctx, tag, tagColor, text, ink, y, scale, fold, right);
+  const OBJ_Y = OBJ_ROW_Y, OBJ_Y2 = OBJ_ROW2_Y;
   // The widest string a `count/n` readout can print, for reserving its slot.
   // The count never exceeds n, so it has at most n's digits, and the face is
   // proportional, so "widest" means the fattest digit in every position — not
@@ -1916,42 +2028,12 @@ export function drawHud(ctx, run) {
     }
     if (bonus) {
       const words = [bonus.head, bonus.tail, bonus.widest];
-      if (BONUS_SLOT === 'row') {
-        objective('BONUS', bonus.tagColor, words, bonus.ink, OBJ_Y2, 0.85, fold, bonusAlpha);
-      } else if (BONUS_SLOT === 'chip') {
-        // The mission's own row, hung off ITS left edge rather than off a
-        // number — the GOAL chip's width is the mission's text and changes with
-        // the count. Folded hard, no clock: the sentence is what needs a line of
-        // its own, and giving it one is the thing this cut exists to stop.
-        //
-        // OBJ_Y + 1, not OBJ_Y: this panel is 12 tall against GOAL's 14, so the
-        // two share a MIDLINE rather than a top edge. Top-aligned, the smaller
-        // chip rides a pixel high and the row reads as slightly broken.
-        objective('BONUS', bonus.tagColor, words, bonus.ink, OBJ_Y + 1, 0.85, 1, bonusAlpha, goalLeft - CHIP_GAP);
-      } else if (BONUS_SLOT === 'foldup') {
-        // TWO BEATS OFF ONE CLOCK. While the panel is saying the challenge in
-        // words it IS the shipped second row; then it wipes shut travelling left
-        // along that row, and only once it is a chip does it rise into the slot
-        // beside GOAL. The player sees a line leaving, not two panels swapping.
-        //
-        // The beats are sequential and not simultaneous because the destination
-        // is BEHIND the mission panel: a chip that rises while it is still
-        // sliding arrives on GOAL's line early and crosses straight through it.
-        // Closing on row 2 keeps every frame of the move in empty sky.
-        //
-        // BONUS_HOLD plays it backwards for free: when the state changes under
-        // the player the chip drops back down and says it in words again.
-        const SLIDE = 0.65;
-        const slide = Math.min(1, fold / SLIDE);
-        const rise = Math.max(0, (fold - SLIDE) / (1 - SLIDE));
-        objective('BONUS', bonus.tagColor, words, bonus.ink,
-          OBJ_Y2 + (OBJ_Y + 1 - OBJ_Y2) * rise, 0.85, slide, bonusAlpha,
-          objRight + (goalLeft - CHIP_GAP - objRight) * slide);
-      } else if (BONUS_SLOT === 'bottom') {
-        // The bottom row's right end, level with the keyboard hints and the
-        // nameplate opposite. The only cut with room for the sentence, so it is
-        // the only one that keeps the fold.
-        objective('BONUS', bonus.tagColor, words, bonus.ink, BOTTOM_CY - 6, 0.85, fold, bonusAlpha);
+      // Every panel cut asks bonusPlacement where it goes; only the donut, which
+      // is not a panel, is placed here. The gallery's bake-off asks the same
+      // function, which is what keeps its tiles honest about the real layout.
+      const at = bonusPlacement(fold, goalLeft);
+      if (at) {
+        objective('BONUS', bonus.tagColor, words, bonus.ink, at.y, 0.85, at.fold, bonusAlpha, at.right);
       } else if (BONUS_SLOT === 'shelf' && bonusAlpha > 0) {
         // At the END of the power-up row, in the row's own language: a donut
         // that fills. It is last because the power-ups are transient and this
@@ -2099,6 +2181,9 @@ export function floatieShift(floaties, hero) {
   return Math.max(0, Math.round(hero.y1 + FLOAT_DUCK_GAP - top));
 }
 
+// The highest row a drifting card may reach: clear of the beat ribbon by the
+// same three the speech card takes.
+const FLOAT_CEILING = BEAT_RIBBON_BOTTOM + 3;
 // One slotted card's height — the pitch floatText stacks them at. Only ever
 // used to ask whether the stack and the hero are in the same band.
 const FLOAT_CARD_H = 19;
@@ -2112,6 +2197,14 @@ const FLOAT_CROSS_FADE = 0.3;
 // Speech plates lay out on a taller row than the popup cards do — the bubble is
 // read standing still, the barks are read in motion.
 const SPEECH_ROW = 11;
+// The highest row the popup stack may START from — see floatBaseY, which clamps
+// to it. It lives here, beside the speech card's own row pitch, because the
+// thing it has to stay under IS the speech card: a plate at its tallest (a
+// portrait beside three wrapped lines) bottoms out this far down, and the stack
+// begins a clear gap below that. Both halves were a bare 108 in run.js, which
+// stopped being true the moment the card moved.
+export const FLOAT_BASE_CEILING = SPEECH_Y - 4
+  + Math.max(15 + 6, 4 * SPEECH_ROW + 8) + 16;
 // Air left between the hero and a card that has ducked under him. Enough that
 // the two read as separate things rather than as a card he is wearing.
 const SPEECH_DUCK_GAP = 6;
@@ -2497,7 +2590,13 @@ export function drawFloatie(ctx, f, { heroX, mirror = false, alpha = 1, keepLeft
   let edgeX = mirror ? W - heroX : heroX;
   const short = f.text.length <= 5;
   const lines = wrapText(f.text, short ? W - 32 : W - heroX - 8, 1, 2);
-  const topY = Math.max(38, Math.min(H - 48 - lines.length * LINE_H, Math.round(f.y) + shiftY));
+  // HOW HIGH A CARD MAY DRIFT. It was a flat 38, which was three of air under
+  // a beat ribbon that ended at 40; the strip has moved to the top of the
+  // screen and the number stayed, so the cards were stopping fourteen pixels
+  // short of anything. Off the strip's own export now, so the two cannot drift
+  // apart again. Nothing else is up there in the hero's column — the HUD's
+  // shoulders are out at the edges and a floatie rises from where he stands.
+  const topY = Math.max(FLOAT_CEILING, Math.min(H - 48 - lines.length * LINE_H, Math.round(f.y) + shiftY));
   // Each floatie rides its own HUD panel — the bare text plate washed out over
   // light packs.
   const tw = Math.max(...lines.map((line) => textWidth(line)));

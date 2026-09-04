@@ -41,7 +41,7 @@ import { STAGES } from '../data/stages.js';
 import { FAIL_MESSAGES, HAZARD_FAIL_MESSAGES, PIT_FAIL_MESSAGES, FILL_FAIL_MESSAGES, EGGSHELL_TAUNTS, EGGSHELL_NARRATION, COPTER_DEFLECT_SHORT, TAG_LINES, EXIT_LINES } from '../data/jokes.js';
 import { getStylePack, sunShock, drawPitFills, lcdBarrelStrikeAt, lcdChuteScreenX, LCD_CHUTE_LEAD_BEATS }
   from '../engine/stylePacks/index.js';
-import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, TOUCH_SHELF_CY, BEAT_SPEECH_Y, abilityNameSlot } from './hud.js';
+import { RIBBON_BOTTOM, drawHud, drawSpeech, drawActBanner, drawFloatie, floatieShift, drawFailBanner, drawTouchZoneCard, roundButtonOpts, playButtons, HINT_TIME, BONUS_TIME, BONUS_HOLD, RHYTHM_BONUS_TIME, TOUCH_SHELF_CY, speechChannel, FLOAT_BASE_CEILING, abilityNameSlot } from './hud.js';
 import { goalsDone } from './plugs.js';
 import { stagePlayed, stageAllPlugs } from './progress.js';
 import { drawRocketFist, drawThrownAxe, drawToon, toonFaceSprite } from '../sprites/toons.js';
@@ -405,12 +405,13 @@ const BEAT_DRIFT_CONFIRM_STEPS = 12;
 // fixed-step sim are two different oscillators, and their honest skew is a few
 // px a minute — without the leak it would sum to a lane rebuild mid-song.
 const BEAT_DRIFT_LEAK = 0.9962;
-// THE TEMPO CLIMBS A STEP AT EVERY CHECKPOINT, and only on the beat lane.
+// THE TEMPO CLIMBS A STEP AT EVERY CHECKPOINT, on the stages that ask for it.
 //
-// A beat stage banks five restore points (BEAT_RESTORE_POINTS below), so a step
-// of 1 carries RHYTHM BANKRUPTCY's 124bpm to 129 by the tape: four per cent, a
-// stage that tightens under the player rather than one that changes gear. The
-// step is the whole dial — at 0.5 the same five checkpoints land on 126.5.
+// WHICH stages, and by how much, is authored per stage (stages.js `bpmRamp`) —
+// not decided here. One stage asks today, and the reason it is data rather than
+// a flag on the cabinet is that this is a level-design decision about ONE level:
+// a beat cabinet whose every stage accelerates is a cabinet with a gimmick,
+// while a single stage that does it is that stage's idea.
 //
 // It is applied as a TRANSPORT WARP (Audio.setWarp) rather than by rewriting
 // the bank, because the bank is the song module the jukebox and the mixing desk
@@ -420,10 +421,9 @@ const BEAT_DRIFT_LEAK = 0.9962;
 //
 // THE ONE RULE IT IMPOSES ON THE REST OF THIS FILE: every conversion from beats
 // to road asks laneBpm(), never the bank. checkRhythmDrift compares the heard
-// clock against the lane's own arithmetic every step, and a single step of 1
+// clock against the lane's own arithmetic every step, and a single step of 1bpm
 // against a stale 124 settles at about 8px of debt against its ~4px tolerance —
 // a full lane rebuild several times a second for the rest of the stage.
-const BEAT_BPM_PER_CHECKPOINT = 1;
 // FIVE RESTORE POINTS ON A BEAT STAGE, hoisted out of enter() because the ramp
 // needs to know how tall it gets before the spawner is built. The argument for
 // sixths is at the use site.
@@ -563,12 +563,19 @@ const REWIND_LOCKOUT = 3.0;
 // the top of the tallest air spawn at whatever the frame's current
 // magnification is. FLOAT_AIR_TOP is the high appliance (alt 52 + h 18); at 1.6
 // that puts the row at 112, and at the close zooms the lane is high enough that
-// the clamp, not the lane, decides — 108, as high as the row may go before it
-// starts arguing with the speech bubble.
+// the CLAMP, not the lane, decides.
+//
+// AND THE CLAMP IS THE SPEECH CARD, which is why it is no longer a number
+// written here. It was 108 — as high as the row could go before it argued with
+// a bubble anchored at 46 — and when the beat ribbon moved to the top of the
+// screen the bubble went up fifteen with it while this stayed put, so the stack
+// kept clearing a card that was no longer there. FLOAT_BASE_CEILING is that
+// same rule stated where the card is actually measured (see hud.js), so the two
+// move together from now on.
 const FLOAT_AIR_TOP = 70;   // world px above ground: crown of the highest air spawn
-const FLOAT_BASE_MIN = 108, FLOAT_BASE_MAX = 128;
+const FLOAT_BASE_MAX = 128;
 export function floatBaseY() {
-  return Math.max(FLOAT_BASE_MIN,
+  return Math.max(FLOAT_BASE_CEILING,
     Math.min(FLOAT_BASE_MAX, Math.round(GROUND_Y - FLOAT_AIR_TOP * ZOOM - 8)));
 }
 // WHICH PARTS ARE WORTH ANNOUNCING, and what they say when they arrive. One entry,
@@ -1326,7 +1333,7 @@ export class RunState {
     // re-read onto the new anchor the moment it exists (rebeatSparedHoles).
     this.rhythmSparedHoles = null;
     // Checkpoints banked this stage, which is the ramp's whole state — see
-    // BEAT_BPM_PER_CHECKPOINT. Reset by enter(), never by a restore.
+    // beatBpmStep(). Reset by enter(), never by a restore.
     this.beatBpmSteps = 0;
     this.beatDriftLastRaw = null;
     this.beatDriftEpoch = 0;
@@ -2170,7 +2177,7 @@ export class RunState {
         canShoot: () => heroShoots(this.relay.current),
         openingUntil: () => this.rhythmOpeningGate(),
         // ASKED, NEVER READ. The bank's bpm is what the song was written at;
-        // this is what it is being played at right now (BEAT_BPM_PER_CHECKPOINT).
+        // this is what it is being played at right now (see beatBpmStep).
         bpmNow: () => this.laneBpm(),
         bpmCeiling: this.beatBpmCeiling(),
       });
@@ -2725,17 +2732,28 @@ export class RunState {
   }
 
   /**
+   * HOW MUCH THE TEMPO CLIMBS AT EACH CHECKPOINT, in bpm, for THIS stage.
+   *
+   * Zero for every stage that does not author a `bpmRamp` — which is every
+   * stage but one — and zero off the beat lane whatever a stage says, because
+   * the ramp only means anything where the road is cut from the clock.
+   */
+  beatBpmStep() {
+    return (this.beatLock && this.stage?.bpmRamp) || 0;
+  }
+
+  /**
    * THE TEMPO THE LANE IS RUNNING AT: the bank's, plus a step for every
-   * checkpoint already behind the player (BEAT_BPM_PER_CHECKPOINT).
+   * checkpoint already behind the player (beatBpmStep).
    *
    * Every beats-to-pixels conversion in the run goes through here, which is the
-   * whole of what keeps the ramp from reading as drift. Off the beat lane it is
-   * the bank's own number and nothing about the stage has changed.
+   * whole of what keeps the ramp from reading as drift. On a stage that does not
+   * ramp — and on every stage of every other cabinet — it is the bank's own
+   * number and nothing has changed.
    */
   laneBpm() {
     const base = this.cabinet.music?.bpm || 120;
-    if (!this.beatLock) return base;
-    return base + (this.beatBpmSteps || 0) * BEAT_BPM_PER_CHECKPOINT;
+    return base + (this.beatBpmSteps || 0) * this.beatBpmStep();
   }
 
   /** The same number as a transport multiplier, for Audio.setWarp. */
@@ -2757,8 +2775,8 @@ export class RunState {
    */
   beatBpmCeiling() {
     const base = this.cabinet.music?.bpm || 120;
-    if (!this.beatLock || this.oneHit || this.overtime) return base;
-    return base + BEAT_RESTORE_POINTS.length * BEAT_BPM_PER_CHECKPOINT;
+    if (this.oneHit || this.overtime) return base;
+    return base + BEAT_RESTORE_POINTS.length * this.beatBpmStep();
   }
 
   rhythmBeatNow() {
@@ -7960,7 +7978,7 @@ export class RunState {
         for (const p of carried) { p.live = false; this.mission.count++; }
         if (carried.length) this.floatText(`RESIDENTS DELIVERED: ${this.mission.count}/${this.mission.n}`, '#48e0c8');
       }
-      // AND THE TEMPO TAKES A STEP (BEAT_BPM_PER_CHECKPOINT).
+      // AND THE TEMPO TAKES A STEP, on a stage that asked for one (bpmRamp).
       //
       // Here and nowhere else, and the counter is never wound back: a death
       // restores to the tempo the player had already earned rather than
@@ -7998,7 +8016,7 @@ export class RunState {
       // measured at two full beats by the top of the ramp, which is a hole
       // scored against a jump taken long before it. resnapPits re-derives the
       // pending ones and leaves anything already cut standing.
-      if (this.beatLock && BEAT_BPM_PER_CHECKPOINT) {
+      if (this.beatBpmStep()) {
         this.beatBpmSteps = (this.beatBpmSteps || 0) + 1;
         Audio.setWarp(this.laneTempo(), this.powerups?.isInvincible?.() ? 1.08 : 1);
         this.spawner?.resnapPits?.();
@@ -10466,7 +10484,10 @@ export class RunState {
       // one thing that must not move, where a line of banter is up for four
       // seconds and does not care where it stands.
       if (this.speech) {
-        drawSpeech(d, this.speech, { avoid: heroRect, ...(this.beatLock ? { y: BEAT_SPEECH_Y } : {}) });
+        // The card talks from the band the beat ribbon left behind, narrowed to
+        // whatever gap the HUD's own shoulders leave it — one row on every
+        // stage now, beat-locked or not. See speechChannel.
+        drawSpeech(d, this.speech, { avoid: heroRect, ...speechChannel(this) });
       }
     };
     const drawFrame = (d) => {

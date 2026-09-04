@@ -732,7 +732,7 @@ function boot() {
         const dens = `${r2(rd.density)}X/${r2(rd.native)}X ${rendererBackend()}${flags ? ' ' + flags : ''}`;
         // THE TEMPO THE TRANSPORT IS ACTUALLY PLAYING, warp included — never the
         // number the song was written at. A beat stage steps its bpm up at every
-        // checkpoint (run.js BEAT_BPM_PER_CHECKPOINT) and the ramp is otherwise
+        // checkpoint (stages.js `bpmRamp`) and the ramp is otherwise
         // something you can only hear; this is also the ground truth the lane's
         // own arithmetic has to agree with, so a lane that has drifted reads here
         // as a tempo that is not the one coming out of the speakers.

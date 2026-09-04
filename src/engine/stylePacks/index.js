@@ -2093,7 +2093,7 @@ const LCD_CITY_SCENES = [
     // buildings walk up to the invader billboard, THEN the DONKEY KONG tower,
     // and the skyline continues past it.
     //
-    // 114 TALL, AND THE CRASH STILL SETS IT — but it is no longer a ceiling.
+    // 125 TALL, AND THE CRASH STILL SETS IT — but it is no longer a ceiling.
     // Everything above this roof is one rigid stack: his skull tops out at
     // roof-42, the barrel rests on his raised hands at roof-43 and reaches
     // roof-57. While the plane's lane was pinned hard under the beat ribbon's
@@ -2103,15 +2103,21 @@ const LCD_CITY_SCENES = [
     // pixels off his hair, which read as landing on the gorilla, and 110 (118
     // in today's numbers, after GROUND_Y) was as tall as he could stand.
     //
-    // THE THINNER RIBBON ENDED THAT ARGUMENT, and the stack is now solved the
-    // other way round. The band ends well short of 49 now, so the lane is off
-    // the ceiling and the tower can come DOWN instead: four off the building,
-    // four off the striking crossing with it (plane.to 51 -> 55), and the
-    // contact is the same picture it always was — barrel top 61, plane belly
-    // 68, through the top of the barrel. What those four pixels buy is
-    // daylight for the crossings that MISS, which fly their own lane now and
-    // clear his skull by eighteen instead of eight. See LCD_PLANE_MISS_LIFT.
-    // He still tops the skyline; it is the roof that moved, not him.
+    // THE RIBBON MOVED TO THE TOP OF THE SCREEN, and the stack went up with it
+    // WHOLE. BEAT_RIBBON_BOTTOM was 40 and is 24, so sixteen rows of sky opened
+    // between the strip and this skyline — and the answer was not to redesign
+    // the contact but to TRANSLATE it: the tower up twelve (113 -> 125) and both
+    // ends of the crossing up twelve with it (plane.from 68 -> 56, plane.to
+    // 55 -> 43). A rigid translate is the only edit that cannot change the gag,
+    // because the strike is solved from the difference between the two and the
+    // difference did not move: barrel top 50, striking belly 56, straight
+    // through the top of the barrel exactly as before, and the crossings that
+    // MISS still clear his skull by eighteen (see LCD_PLANE_MISS_LIFT).
+    // What the twelve buys is the SKY: the lane clears the transmitter's
+    // outermost signal ring and the smokestack's plume for the first time, and
+    // the tower stands twelve deeper into a frame that just got taller. The
+    // three buildings this stack has to stay clear of never moved, so every one
+    // of those clearances went UP by twelve and none of them went down.
     // EIGHT structures, evenly spaced (~12px of air between neighbours and at
     // both edges), and the DONKEY KONG tower is the fifth: clock, chart,
     // transmitter, invader, TOWER, the smoke stacks, burger, cassette.
@@ -2133,7 +2139,11 @@ const LCD_CITY_SCENES = [
       [176, 36, 95, 'fire-escape'],
       [323, 51, 113, 'office'], [386, 36, 74, 'storefront'], [434, 36, 89, 'workshop'],
     ],
-    clouds: [[28, 52], [184, 42], [346, 58]],
+    // UP TWELVE WITH THE REST OF THE SKY. They were authored under a ribbon
+    // whose band ended at 40 and they kept those rows after it moved to 24,
+    // which left sixteen empty pixels above them and the wisps sitting down
+    // among the rooftop furniture. Four lattice rules up, same spread.
+    clouds: [[28, 40], [184, 30], [346, 46]],
     // THE CLOCK IS THE BUILDING. [building index, dial radius] — the dial is
     // SET INTO the tower's own facade, in a clock stage with a lintel over it
     // and a sill under it, not stood on the roof on braced feet.
@@ -2150,16 +2160,16 @@ const LCD_CITY_SCENES = [
     // -> 140, with `plane.from` lifted 78 -> 68 to match, which is the one
     // number that was only ever low because something stood on this roof.
     // The binding case is the plane's first two steps, still climbing over this
-    // end of the skyline; at 140 its belly clears the tower's crown blocks by
-    // five and everything downstream of that by more. Nothing else moved — the
-    // lane still levels at 55 and tops out at 56, well under the beat ribbon's
-    // band, and the gorilla still tops the skyline at y 76.
+    // end of the skyline; at 140 its belly cleared the tower's crown blocks by
+    // five, and since the lane went up twelve with the beat ribbon it clears
+    // them by seventeen. The lane levels at 43 and tops out at 44, ten under
+    // the strip, and the gorilla tops the skyline at y 64.
     clock: [0, 16],
     // The DONKEY KONG tower: open girder floors zigzagging down its whole
     // face, the big rooftop gorilla on top and a little runner two floors
     // below him. [x, w, h]. The gorilla lives HERE now, so this scene sets no
     // rooftopGorilla of its own.
-    gameWatch: [224, 87, 113],
+    gameWatch: [224, 87, 125],
     // Beat-stepped rooftop furniture: pixel billboards on the buildings at
     // these indices, a transmitter mast whose signal rings walk outward a
     // step per beat, chimneys whose puff columns live on the beat, and a
@@ -2188,15 +2198,23 @@ const LCD_CITY_SCENES = [
     // than immediately out over the gap beside it. The dx is the TALL stack's
     // left edge; the two short ones are placed either side of it.
     smokestacks: [[4, 20]],
-    // In low at 78 over the left-hand roofs — which now clear the clock case
-    // by 5px and the near billboards by a good 40 — level at 55 by the
-    // tower's centre line (224 + 88/2). Snapped to the 2px grid that is y 56,
-    // so the belly runs at 68: through the top of the raised barrel (top 61)
-    // and eight clear of the gorilla's skull (top 76).
+    // In low over the left-hand roofs, level by the tower's centre line
+    // (224 + 88/2). Snapped to the 2px grid the cruise is y 44, so the belly
+    // runs at 56: through the top of the raised barrel (top 50) and eight
+    // clear of the gorilla's skull (top 64).
     //
-    // THAT IS THE LANE OF THE CROSSING THAT HITS THE BARREL. The two that miss
-    // it fly ten higher — belly 58, eighteen over his skull — and the gorilla
-    // came down four to pay for it. See LCD_PLANE_MISS_LIFT.
+    // BOTH ENDS WENT UP TWELVE WITH THE TOWER, and neither number was chosen
+    // again — 68/55 became 56/43 because the whole pinned stack translated
+    // when the beat ribbon left the sky (see the note on the tower above). The
+    // two things this lane is measured against on the way past are the ones
+    // that did NOT move: the transmitter's outermost signal ring (y 51) and
+    // the smokestack's plume (top 64), and the crossing now passes clear of
+    // both instead of drawing through them.
+    //
+    // THIS IS THE LANE OF THE CROSSING THAT HITS THE BARREL. The two that miss
+    // it fly ten higher — cruise 34, belly 46, eighteen over his skull — and
+    // that still leaves ten of clear sky under the strip. See
+    // LCD_PLANE_MISS_LIFT.
     // ...AND IT ALWAYS TOWS SOMETHING. A banner plane with a blank banner is
     // the one prop on this skyline that is drawn and says nothing — it used to
     // trail a single unlettered pixel, which reads as a flag nobody finished.
@@ -2214,7 +2232,7 @@ const LCD_CITY_SCENES = [
     // and only this one is the modulation — the rest are two-bar lifts.
     // tests/lcd-background.js checks the bar names a real one.
     plane: {
-      from: 68, to: 55, level: 268,
+      from: 56, to: 43, level: 268,
       tow: ['INSERT COIN', 'GG', '♥♥♥'],
       banner: { text: 'KEY CHANGE', bar: 61 },
     },
@@ -2224,39 +2242,59 @@ const LCD_CITY_SCENES = [
     buildings: [
       // THE RAIL IS THE CEILING. Peter (2026-09-03): "raise the monorail a bit
       // more and lower any other buildings so they don't extend past it". The
-      // girder rules y 65 and the cars ride 53-65, and nothing on this
-      // skyline — facade, board or meter — reaches above it. The tall spire
-      // (index 3) tops out at 155, so its roof is twelve clear of the girder
-      // and the rail passes over it rather than landing tangent to it; its
-      // roof is BARE for the same reason, since a 37px meter bank on it would
-      // stand above the rail. It was 51 wide and 167 tall for an afternoon,
-      // when the service stopped on it and needed a platform; both are back to
-      // the numbers this row was authored with. The far spire came down from 149 to
+      // girder rules y 53 and the cars ride 41-53, and nothing on this
+      // skyline — facade, board or meter — reaches above it.
+      //
+      // THE CEILING WENT UP TWELVE when the beat ribbon left the sky
+      // (BEAT_RIBBON_BOTTOM 40 -> 24), and the rail took the tall spire with
+      // it: train.y 53 -> 41 and the spire (index 3) 155 -> 167, so its roof is
+      // still exactly twelve clear of the girder and the rail still passes over
+      // it rather than landing tangent to it. Only those two moved. Every other
+      // roof stayed where it was authored and simply gained twelve pixels of
+      // air under the service, which is the point — a rail with daylight over
+      // the city reads as elevated, and one grazing the rooftops reads as a
+      // line drawn on them.
+      //
+      // The spire's roof is BARE because a 37px meter bank on it would stand
+      // above the rail. It was 51 wide and 167 tall for an afternoon, when the
+      // service stopped on it and needed a platform; the width is back to what
+      // this row was authored with. The far spire came down from 149 to
       // 134 so its chase board's top (roof - 8 - 22 = 68) sits under the
-      // girder; the washer's deco (5) keeps its 146 because its roof is bare
-      // now (bareRoofs) and 86 is under the rail on its own.
+      // girder, and now sits fifteen under it; the washer's deco (5) keeps its
+      // 146 because its roof is bare now (bareRoofs) and 86 was under the rail
+      // on its own even before it rose.
       // THE CHART'S ROOF IS NOT A LANDMARK. It answers to the run, so it
       // belongs below the traffic: 104 lands the board's top edge at 88,
-      // twenty-three clear of the rail, so the board and the service never
+      // thirty-five clear of the rail, so the board and the service never
       // share a line. The opener beside it came up to 89 with it; both were
       // the two stubs at this end of the skyline and the pair now stand as a
       // step up into the spire rather than as a gap in front of it.
       // The combo board's building is three wide; the music hall beside it is
       // two, so the row's total and its gaps are unchanged.
       [20, 36, 89, 'speaker'], [71, 51, 104, 'deco'], [137, 36, 80, 'music-hall'],
-      [188, 36, 155, 'spire'], [239, 51, 59, 'speaker'], [305, 36, 146, 'deco'],
+      [188, 36, 167, 'spire'], [239, 51, 59, 'speaker'], [305, 36, 146, 'deco'],
       [356, 51, 74, 'music-hall'], [422, 36, 134, 'spire'],
     ],
     // IN THE TOP CORNERS, ABOVE THE RAIL — Peter: "keep clouds in top right and
     // top left above monorail line". The strip between the beat ribbon's band
-    // (25-38, x 120-360) and the cars (53-65) is fourteen rows, and a cloud
-    // with its bob is fifteen; so they sit at 38, one row clear of the cars
-    // on the bar they bob up, and stay OUT of the ribbon's columns. They do
-    // not cross the panel any more: each SWAYS within its corner, `cloudSway`
+    // and the cars is fifteen rows, and a cloud with its bob is fifteen; so
+    // they sit at 27, filling it exactly: top row 26, two clear of the strip
+    // above, bottom row 40, one clear of the cars below.
+    //
+    // AND THEY ARE OUT OF THE STRIP ENTIRELY NOW, not merely out of its
+    // columns. Under the old geometry the band was y 25-38 across x 120-360
+    // and these three sat at 38 in the corners, overlapping its ROWS and
+    // dodging it sideways. The ribbon has since moved to the top of the screen
+    // and grown wider (its plate reaches x 73-407 at the desktop zoom), which
+    // would have put the middle cloud under it — so the corner dodge is gone
+    // and the clearance is vertical, which is the kind that does not depend on
+    // a zoom tier.
+    //
+    // They do not cross the panel: each SWAYS within its corner, `cloudSway`
     // pixels out and back at its own pace, see lcdCloudLayer. They spent an
     // hour under the rail instead, behind the skyline, and showed straight
     // through the walls — a facade is a 7% wash.
-    clouds: [[8, 38], [378, 38], [434, 38]],
+    clouds: [[8, 27], [378, 27], [434, 27]],
     cloudSway: 24,
     // Stage 2 was the one panel with no sky or rooftop life at all — windows,
     // equalizers and clouds and nothing else. It gets the working city: a
@@ -2280,16 +2318,17 @@ const LCD_CITY_SCENES = [
     // The crossing belongs to stages 1 and 3, which have the air for
     // it; here the train IS the thing that crosses.
     searchlight: [2, 24],
-    // THE LANE: the girder on rule 65 (y + 12), the cars on 53-65 above every
+    // THE LANE: the girder on rule 53 (y + 12), the cars on 41-53 above every
     // other roof. FOUR cars, a hundred pixels of train on a 480 panel. It
     // dropped to three for an hour while the service still stopped at a
     // platform and had to fit one; nothing stops now, so it is back to the
-    // length it was authored with. It ran at 77 once, behind
-    // the tallest tower; see the buildings note above for why it rose. The
+    // length it was authored with. It ran at 77 once, behind the tallest
+    // tower, then at 65; see the buildings note above for why it rose twice.
+    // The
     // service runs from the first phase (it waited for the second; Peter:
     // "don't wait so long for the first monorail") — from the beat the skyline
     // has landed. The viaduct is drawn live from beat one (lcdViaduct).
-    train: { y: 53, cars: 4, fromPhase: 0 },
+    train: { y: 41, cars: 4, fromPhase: 0 },
     washer: [5, 20],
     // ROOFS THAT CARRY NO METER. The washer's, because the roof carries one
     // thing and his is the man on the cradle (Peter: "remove led from roof of
@@ -2305,7 +2344,7 @@ const LCD_CITY_SCENES = [
   },
   {
     // EIGHT structures with even air between them, like stage 1. The
-    // gorilla's deco is capped at 118 so the crossing clears his raised barrel
+    // gorilla's deco stands at 131 so the crossing clears his raised barrel
     // rather than being eclipsed by it (see `plane` below), and his thrown
     // barrels fall down a ghosted chute beside his building (barrelDrop).
     //
@@ -2324,18 +2363,19 @@ const LCD_CITY_SCENES = [
     // Only the height and the style move; the x/w grid and its even air are
     // untouched. Four takes six's relay-126 (its mast still tops out at 79,
     // the number the plane's lane is measured against) and six takes the
-    // gorilla's capped deco.
+    // gorilla's deco.
     buildings: [
       // THE OPENING PAIR STANDS UP: 65 -> 89 and 86 -> 110. They were the two
       // stubs the panel opened on, and the ceiling over each is its own. The
       // transmitter's building carries a mast whose outermost signal ring tops
       // out a fixed 56 above its roof — at 89 that is y 87, and the crossing's
-      // rig bottoms out at 70-72 over these columns, so the broadcast climbs
-      // fifteen clear of the aircraft. The board's building answers to the same
-      // lane: at 110 the board's top edge is 82 against a rig bottom of 64 over
-      // its span, eighteen of air, and the beat ribbon's band ends at 40 well
-      // above that. Only the heights moved; the x/w grid and its even air are
-      // untouched.
+      // rig bottoms out at 58-60 over these columns, so the broadcast climbs
+      // twenty-seven clear of the aircraft. The board's building answers to the
+      // same lane: at 110 the board's top edge is 82 against a rig bottom of 52
+      // over its span, thirty of air, and the beat ribbon's band ends at 24 well
+      // above that. Both clearances grew by twelve when the crossing rose with
+      // the beat ribbon; neither of these two buildings moved. Only the heights
+      // moved; the x/w grid and its even air are untouched.
       // FOUR THREE-WIDE FACADES — the combo board's, the two tall ones and the
       // closer — with the gaps closed to 15 to fit them, so the board's
       // building starts at 59 and the sign's centre lands near 84: a little
@@ -2350,34 +2390,39 @@ const LCD_CITY_SCENES = [
       // its width and only the air around the chute changed.
       [8, 36, 89, 'ducts'], [59, 51, 110, 'relay'], [125, 36, 53, 'workshop'],
       [176, 51, 125, 'industrial'], [242, 51, 134, 'relay'], [308, 36, 71, 'ducts'],
-      [359, 36, 119, 'deco'], [425, 51, 77, 'industrial'],
+      [359, 36, 131, 'deco'], [425, 51, 77, 'industrial'],
     ],
-    clouds: [[18, 46], [264, 52], [398, 40]],
+    // UP TWELVE WITH THE CROSSING AND THE GORILLA, for the reason given on
+    // the plane below: the ribbon left the sky and the whole sky followed it.
+    clouds: [[18, 34], [264, 40], [398, 28]],
     // THE HIGH LANE, AND ON THIS PANEL IT CLEARS HIM. Stage 1 owns the gag
     // where the plane flies into the barrel; stage 3 has no barrel to take, so
-    // its crossing has to read as a plain miss — and it did not. Levelling at
-    // 54 put the belly at 66 against a skull topping out at 58, so the aircraft
-    // went behind his face for four beats, disappeared whole for one, and came
-    // back out through his raised arm. Drawn-behind is not the same as missed:
-    // he is opaque and he is drawn after the plane, so all the eclipse bought
-    // was a clean edge on a picture of a collision.
+    // its crossing has to read as a plain miss — and for a long time it did
+    // not. The aircraft went behind his face for four beats, disappeared whole
+    // for one, and came back out through his raised arm. Drawn-behind is not
+    // the same as missed: he is opaque and he is drawn after the plane, so all
+    // the eclipse bought was a clean edge on a picture of a collision.
     //
-    // So the lane goes up and the tower comes down, and it takes both. Up:
-    // BEAT_RIBBON_BOTTOM is 40 and the plane is twelve, so 42 is as high as the
-    // sky goes — belly 54, two clear of the strip. Down: the crossing also has
-    // to clear the BARREL, which he raises once a bar to roof-57, and no
-    // altitude under the ribbon missed that at the old height. Six is the
-    // slowest number here: banner bottom 54 (the rig is 11 tall and hangs from
-    // the fuselage), barrel top must sit under it, so roof >= 112 and the
-    // building is 118 rather than 132.
+    // What the lane has to clear is the BARREL he raises once a bar to
+    // roof-57, and the rig's underside is the number that clears it: the towed
+    // banner is 11 tall and hangs from the fuselage, so plane and banner bottom
+    // out together twelve under the aircraft's own y.
     //
-    // What that leaves, with his roof at 114: eighteen pixels over his skull
-    // (72) — the same daylight stage 1's missing crossings fly with — twenty
-    // five over the tallest mast the lane clears (building 4's relay, top 79),
-    // and three between the towed banner and the raised barrel on the one beat
-    // of the bar they share a column. He is fourteen shorter and still the
-    // tallest thing on this skyline by seven.
-    plane: { from: 66, to: 42, level: 200, tow: ['HIGH SCORE', 'ONE MORE GO', 'PRESS START'] },
+    // BOTH ENDS WENT UP TWELVE WHEN THE BEAT RIBBON DID, AND HIS BUILDING WITH
+    // THEM (119 -> 131). The clearance is a DIFFERENCE, and a difference only
+    // survives if everything inside it moves together — so this is one rigid
+    // translate rather than three numbers chosen again, and what it was tuned
+    // for comes out unchanged: eighteen pixels over his skull (top 59), two
+    // between the towed banner (bottom 42) and the raised barrel (top 44) on
+    // the one beat of the bar they share a column.
+    //
+    // What the twelve buys is everything the lane passes on the way. The seven
+    // buildings that did NOT move each gained twelve pixels of daylight under
+    // it — the transmitter's signal rings on building 0 (top 87), the relay
+    // mast on 4 (top 79), the counting board on 1 (top 92) — and the cruise
+    // still stops six short of the strip. He is the tallest thing on this
+    // skyline by twenty.
+    plane: { from: 54, to: 30, level: 200, tow: ['HIGH SCORE', 'ONE MORE GO', 'PRESS START'] },
     // ...AND ONCE IN A WHILE IT TOWS SOMETHING ELSE. The witch's threat off the
     // Emerald City's sky, on the crossing this panel already flies — RARELY,
     // which is what makes it a gag rather than a fourth line in the rotation.
@@ -2392,8 +2437,8 @@ const LCD_CITY_SCENES = [
     // it — so the board that answers to the run went dark exactly where the
     // run gets hard, and the cheer thumb had nowhere to appear. Same berth as
     // the other two: building 1, roof 116, so the board's top lands at 84.
-    // The crossing is still climbing over this column — belly 58 — and the beat
-    // ribbon's band ends at 40, so it slots under one and over the other with
+    // The crossing is still climbing over this column — belly 48 — and the beat
+    // ribbon's band ends at 24, so it slots under one and over the other with
     // room either side, and the building's own relay mast and lamp cap step
     // aside for the board (see crowned).
     billboards: [[1, 'chart']],
@@ -2415,8 +2460,8 @@ const LCD_CITY_SCENES = [
     // cell sits a fixed 55px above the roof it stands on (see lcdSmokestack,
     // whose column is authored to top out at y 65 on scene 1's roof-120
     // building), so a boiler house on a TALL roof puts smoke through the
-    // aircraft. Building 5's roof is 162, which tops the plume at 107 — well
-    // under a crossing whose belly is 66 at its lowest. The transmitter's
+    // aircraft. Building 5's roof is 161, which tops the plume at 106 — well
+    // under a crossing whose belly is 58 at its lowest. The transmitter's
     // beacon stands 31 above its roof, so building 0 — now roof 143 — tops it
     // at 112 with the signal rings still clear of the crossing.
     //
@@ -4501,6 +4546,24 @@ export function lcdGorillaHeadPos(stageIndex) {
 // to name a barrel for the drop to be drawn whole. Four cells is a bar, and the
 // delivery — top cell to street — is the three steps between them.
 export const LCD_CHUTE_CELLS = 4;
+// WHERE THOSE CELLS ARE, and both ends are DERIVED rather than the pitch being
+// authored. The top cell hangs just under the roof he throws from and the
+// bottom one stops a beat short of the road, which the lane's own barrel then
+// rolls onto; the three steps between are whatever that leaves.
+//
+// It was four fixed 34px steps off the roof for a long time, and that is the
+// same class of bug as the monorail's hand-written crossing length: correct at
+// exactly one building height — the one it was written at. When the gorilla's
+// deco went up twelve to keep its clearance under the risen crossing, a fixed
+// pitch left the last barrel hanging thirty-three pixels over the street with
+// no beat left to fall, so the drop simply stopped in the air beside him. At
+// his old height this returns the identical four numbers it always did.
+const LCD_CHUTE_FOOT = 21;
+function lcdChuteCells(roof) {
+  const top = roof - 4, foot = GROUND_Y - LCD_CHUTE_FOOT;
+  const step = (foot - top) / (LCD_CHUTE_CELLS - 1);
+  return Array.from({ length: LCD_CHUTE_CELLS }, (_, i) => Math.round(top + i * step));
+}
 /** How many heard beats the chute takes: one per cell, the last a beat short
  *  of the road, which the lane's own barrel then rolls onto. */
 export const LCD_CHUTE_BEATS = LCD_CHUTE_CELLS;
@@ -7726,7 +7789,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
       const [, , gh] = art.buildings[art.rooftopGorilla];
       const roof = GROUND_Y - gh;
       const dropX = lcdChuteX(art);
-      const chute = [roof - 4, roof + 30, roof + 64, roof + 98];
+      const chute = lcdChuteCells(roof);
       // AND EACH CELL IS TURNED FURTHER THAN THE ONE ABOVE IT — see
       // LCD_BARREL_ROLL. Four barrels in a vertical line at the same attitude
       // is a barrel being lowered; the same four each turned another thirty

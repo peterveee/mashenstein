@@ -58,6 +58,8 @@ import {
 import {
   drawFloatie, drawSpeech, drawActBanner, drawFailBanner,
   drawStatusPill, drawHeroBadge, HERO_CHIP_CUTS, HERO_REVEAL_CUTS,
+  drawObjectivePanel, bonusPlacement, bonusPanelFold, BONUS_SLOTS,
+  OBJ_RIGHT, OBJ_ROW_Y, OBJ_ROW2_Y,
 } from '../src/game/hud.js';
 import { STAGES } from '../src/data/stages.js';
 import { HANDOFF_VARIANTS } from '../src/game/credits-handoff.js';
@@ -1548,8 +1550,8 @@ function propNominalSize(name) {
     + 'HEARS the song: each facade is a VU meter on one band of the spectrum, billboards wash pale on a drum hit, '
     + 'the plume breathes with the level, the transmitter carries further on treble, and the light warms a '
     + 'little across four phases of a run — with stage 2 growing a working city (searchlight, a monorail '
-    + 'above the whole skyline that stops at the station tower\'s deck, '
-    + 'and window washer) as it goes. With no analyser the '
+    + 'above the whole skyline that crosses, waits, and comes back the other way, and a window washer) '
+    + 'as it goes. With no analyser the '
     + 'whole reactive layer stands down and the authored panel plays exactly as it always did. The sky analyser '
     + 'belongs to the JUKEBOX alone (CLOCK-IN CITY, which draws this very panel): clipped behind the skyline it '
     + 'read as banding rather than a meter in a run, so a stage keeps its sky clear. Each tile keeps an '
@@ -6293,6 +6295,165 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   // card here, the page says so instead of quietly showing six of seven.
   const shown = new Set([...CUTS.map(([, , cut]) => cut), ...HERO_REVEAL_CUTS]);
   const missing = [...HERO_CHIP_CUTS, ...HERO_REVEAL_CUTS].filter((cut) => !shown.has(cut));
+  if (missing.length) {
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = `NOT SHOWN — hud.js declares cuts this section has no card for: ${missing.join(', ')}`;
+    s.appendChild(p);
+  }
+}
+
+// Peter, 4 Sep 2026: "what I am TRYING to achieve is to get the 2ndary goal to
+// not be its own line at the top", and then, of the winner: "show me how that
+// might look, the 4 steps".
+//
+// The complaint is not that the BONUS panel exists. It is that it is FURNITURE
+// — a permanent second line up there for something that has one sentence to say
+// and then a two-digit count to keep. So the cut on trial treats that row the
+// way the keyboard legend is treated: teaching that leaves. It says the
+// challenge in words, wipes shut travelling left along its own row, and then
+// rises into a chip beside GOAL, where it stays. Nothing is lost to get there.
+//
+// Every panel here is drawn by hud.js's own drawObjectivePanel() and placed by
+// its own bonusPlacement(), so a tile cannot show a layout the run does not
+// have — picking a winner is setting BONUS_SLOT in hud.js and deleting this
+// section. Only the STRINGS are literal (the run derives them from the stage's
+// mission and challenge); the geometry is all shipped code.
+{
+  const s = sectionEl('bonus-foldup', 'HUD — the BONUS line folds up onto GOAL\'s row',
+    'OPEN — four ways to stop the secondary objective owning a line of its own. The pill is the real '
+    + 'drawStatusPill() and is here for one reason: it is the thing the pair must never reach.');
+  const sub = (text, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = text;
+    s.appendChild(h3);
+    if (note) { const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p); }
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
+  };
+
+  const pack = getStylePack((CABINETS.find((c) => c.id === 'plumber') || CABINETS[0]).style, {});
+  const cab = CABINETS.find((c) => c.id === 'plumber') || CABINETS[0];
+  // A real pack under the chrome: these panels are translucent and the sky comes
+  // through them.
+  const SKY = (ctx, t) => { if (pack.bg) pack.bg(ctx, t, t * 60, cab, 1000); };
+  // The pill only needs the fields it reads; a real Run is not needed to ask a
+  // panel how wide it is.
+  const pillRun = (t) => ({
+    oneHit: false, maxBattery: () => 3, battery: 3, coins: 0,
+    totalDist: Infinity, distance: 0, tRun: t, flipCoins: null,
+    relay: { current: 'lorenzo', next: 'gnash', tagT: null, prev: 'gnash' },
+    player: { abilityCd: 1.1, hero: { ability: { cooldown: 3 } } },
+  });
+
+  // The mission and the challenge, as the coin stage states them. `widest` is
+  // the count's reservation — the panel is sized to the fattest reading it will
+  // ever print, so the left edge does not twitch on every pickup.
+  const GOAL_TEXT = 'REACH END';
+  const BONUS_WORDS = ['COLLECT 20 COINS ', '7/20', '88/20'];
+  const BONUS_INK = 'rgba(255,255,255,0.72)';
+  const BONUS_TAG = 'rgba(255,255,255,0.5)';
+
+  // One frame of the pair, at a given point in the fold, through a given cut.
+  const pair = (ctx, fold, slot) => {
+    const goalLeft = drawObjectivePanel(ctx, 'GOAL', '#74c947', GOAL_TEXT, '#ffffff', OBJ_ROW_Y, 1);
+    const at = bonusPlacement(fold, goalLeft, slot);
+    if (!at) return;
+    drawObjectivePanel(ctx, 'BONUS', BONUS_TAG, BONUS_WORDS, BONUS_INK, at.y, 0.85, at.fold, at.right);
+  };
+
+  // THE CLOCK, as the run runs it. bonusT counts down from BONUS_TIME and the
+  // fold is eased over its last half-second, so the tile drives the shipped
+  // easing rather than a lerp of its own. Compressed here — a tile that waited
+  // the real ten seconds before doing anything is a tile nobody watches.
+  const CYCLE = 6;
+  const foldAt = (t) => bonusPanelFold({ bonusT: Math.max(0, 2 - (t % CYCLE)) });
+
+  const CUTS = [
+    ['REF', 'row', 'Ships today. The sentence folds to a count and the second line stays for the rest of the '
+      + 'run — a permanent row up there for four characters.'],
+    ['FOLD-UP', 'foldup', 'The row is teaching, so it leaves. Same sentence, same fold clock; then it travels '
+      + 'left along row 2 and climbs into the slot beside GOAL. One line from ten seconds in.'],
+    ['CHIP', 'chip', 'Straight to the end state, from the first frame. Tidiest, and the only one that never '
+      + 'says the challenge in words — that would have to move to a toast.'],
+  ];
+
+  {
+    const grid = sub('1. The move, running, at the size it is played',
+      'The frame\'s top 48px, full width, over the plumber sky. Each strip loops the whole clock: the '
+      + 'sentence, the fold, the settled state. Watch row 2 rather than the chip — the question is whether '
+      + 'the line reads as LEAVING or as a panel being yanked sideways.');
+    for (const [name, slot, note] of CUTS) {
+      tile(grid, name, note, W, 48, (ctx, t) => {
+        SKY(ctx, t);
+        drawStatusPill(ctx, pillRun(t), 'disc');
+        pair(ctx, foldAt(t), slot);
+      }, { wide: true, animated: true });
+    }
+  }
+
+  {
+    // The four beats Peter asked for, plus the two frames between them that say
+    // whether the move is one gesture or two.
+    const BEATS = [
+      [2, '1. saying it', 'Row 2, in words, for BONUS_TIME. Identical to what ships.'],
+      [0.42, '2. wiping shut', 'The panel closes THROUGH the sentence and travels left as it does. Still on '
+        + 'row 2 — nothing has risen yet.'],
+      [0.30, '3. still sliding', 'The clip is at the tag\'s trailing edge, so the words are wiped by the same '
+        + 'motion that shortens the plate.'],
+      [0.14, '4. rising', 'Closed, and now climbing the 22px to GOAL\'s line. The rise is the LAST third of '
+        + 'the clock, on purpose: the slot is behind the mission panel, and a chip that rises while it is '
+        + 'still sliding crosses straight through GOAL.'],
+      [0.05, '5. almost home', 'Two pixels short of the row. Nothing else on the strip has moved.'],
+      [0, '6. settled', 'One line, for the rest of the run. This is the frame the whole exercise is for.'],
+    ];
+    const grid = sub('2. The four beats, frame by frame, at 5x',
+      'The right 210px of the strip — the corner the move happens in — held still. Read them left to right: '
+      + 'the sentence closes on its own row FIRST, and only then does the finished chip climb.');
+    const FW = 210, FH = 48;
+    for (const [bonusT, name, note] of BEATS) {
+      tile(grid, name, note, FW, FH, (ctx, t) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, FW, FH);
+        ctx.clip();
+        ctx.translate(-(W - FW), 0);
+        SKY(ctx, t);
+        pair(ctx, bonusPanelFold({ bonusT }), 'foldup');
+        ctx.restore();
+      }, { hires: 5 });
+    }
+  }
+
+  {
+    const grid = sub('3. The widest pair the row can be asked to hold',
+      'A counted mission beside a challenge whose tail is a whole phrase — GOAL TARGETS 4/6 with BONUS BEST '
+      + '8/12. This is the settled state at its longest, and the tile that says whether the one-line answer '
+      + 'survives contact with the rest of the campaign: the pair must not reach the pill.');
+    for (const [name, slot] of [['FOLD-UP — settled', 'foldup'], ['CHIP', 'chip'], ['REF — row', 'row']]) {
+      tile(grid, name, 'Widest mission, widest challenge tail.', W, 48, (ctx, t) => {
+        SKY(ctx, t);
+        drawStatusPill(ctx, pillRun(t), 'disc');
+        const goalLeft = drawObjectivePanel(ctx, 'GOAL', '#74c947', 'TARGETS 4/6', '#ffffff', OBJ_ROW_Y, 1);
+        const at = bonusPlacement(slot === 'row' ? 1 : 1, goalLeft, slot);
+        if (at) {
+          drawObjectivePanel(ctx, 'BONUS', BONUS_TAG,
+            ['CHAIN 12 STOMPS ', 'BEST 8/12', 'BEST 88/12'], BONUS_INK, at.y, 0.85, at.fold, at.right);
+        }
+      }, { wide: true });
+    }
+  }
+
+  // A guardrail rather than a tile: if a PANEL cut is added to hud.js and not
+  // given a card here, the page says so instead of quietly showing three of
+  // four. 'shelf' is excluded by name because it is not a panel at all — it is a
+  // donut at the far end of the bottom-left power-up row, and it belongs to that
+  // section's language rather than to this corner's.
+  const shown = new Set([...CUTS.map(([, slot]) => slot), 'shelf']);
+  const missing = BONUS_SLOTS.filter((slot) => !shown.has(slot));
   if (missing.length) {
     const p = document.createElement('p');
     p.className = 'note';

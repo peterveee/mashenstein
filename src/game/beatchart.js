@@ -636,7 +636,7 @@ export class BeatSpawner {
     lookaheadBeats = 7, onPitAlign = null, canShoot = () => true,
     openingUntil = () => null, bpmNow = null, bpmCeiling = null } = {}) {
     // VALIDATED AT THE FASTEST THE LANE WILL EVER RUN. A cabinet whose tempo
-    // climbs during the stage (run.js BEAT_BPM_PER_CHECKPOINT) narrows both of
+    // climbs during the stage (stages.js `bpmRamp`) narrows both of
     // the windows this validator checks in seconds — the pit's lip and the
     // punt's contact — as it goes, so the chart has to be feasible at the TOP of
     // the ramp rather than at the tempo the stage opens on. A lane with no ramp
@@ -713,7 +713,7 @@ export class BeatSpawner {
    * PUT EVERY PENDING SET PIECE BACK ON THE GRID.
    *
    * A resync is not the only thing that moves the grid under a plan. A cabinet
-   * whose tempo climbs during the stage (run.js BEAT_BPM_PER_CHECKPOINT) changes
+   * whose tempo climbs during the stage (stages.js `bpmRamp`) changes
    * pxPerBeat without touching the clock at all, and a piece aligned at the old
    * tempo keeps an actionBeat that no longer describes the road it stands on —
    * two beats out by the end of a five-step ramp, which is a hole scored against

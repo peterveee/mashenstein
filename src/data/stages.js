@@ -36,6 +36,17 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
   intro: opts.intro || null,
   introBy: opts.introBy || null,   // speaker id for the intro bubble; null = narrator
   speedMult: opts.speedMult ?? 1,  // per-stage speed override (1 = 100% of cabinet speed)
+  // HOW MUCH THIS STAGE'S TEMPO CLIMBS AT EACH CHECKPOINT, in bpm. 0 = it does
+  // not, which is every stage but one.
+  //
+  // Only the beat cabinet can use it — the rest of the cast's stages have no
+  // clock cut into their road, so a tempo change there is just the music going
+  // faster — and run.js ignores it off the beat lane whatever is written here.
+  // It lives on the STAGE rather than on the cabinet on purpose: a beat cabinet
+  // whose every stage accelerates is a cabinet with a gimmick, while one stage
+  // that does it is that stage's own idea, and its two neighbours stay the
+  // fixed-tempo lanes that teach the marks.
+  bpmRamp: opts.bpmRamp ?? 0,
   // WHERE A FATAL HOLE MAY STAND, and it is the one rule every `pits` entry on
   // this page obeys.
   //
@@ -194,9 +205,26 @@ export const STAGES = [
   // holes — four of them, one every other beat — and two more at fixed
   // fractions would be indistinguishable from the eight the loop already cut by
   // the time the player reached them.
+  //
+  // AND THE ONE STAGE THAT SPEEDS UP. A beat stage banks five restore points
+  // (run.js BEAT_RESTORE_POINTS), so a step of 1 carries RHYTHM BANKRUPTCY's
+  // 124bpm to 129 by the tape — four per cent, spread over five moments, which
+  // is a chase that tightens under the player rather than one that changes
+  // gear. It belongs to THIS stage of the three: 3-1 teaches the marks and 3-2
+  // asks for the crossing, and neither can afford a floor that is also moving.
+  // A stage whose mission is to catch something is the one that can.
+  //
+  // The step is the whole dial. At 0.5 the same five checkpoints land on 126.5;
+  // the cost of raising it is that the four holes on beats 9/11/13/15 come two
+  // beats apart in a shortening beat, and the longest arc in the cast (0.746s)
+  // is airborne for 1.60 of those beats at 129 against 1.54 at 124 — so the
+  // ground between two of them, with a late press on one and an early press on
+  // the next, falls from about 48ms to about 13ms. That is the number that runs
+  // out first, at around 132bpm.
   S('rhythm', 3,
     { type: 'chase', n: 3, desc: 'BONK THE COPTER 3 TIMES. IT IS SOMEHOW ON BEAT.' },
-    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
+    { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' },
+    { bpmRamp: 1 }),
   // ACT II --------------------------------------------------------------------
   S('frost', 1,
     { type: 'reach', desc: 'CROSS THE ICE. THE ICE IS NOT YOUR FRIEND. IT TOLD US.' },
