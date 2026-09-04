@@ -53,7 +53,14 @@ const EDGE_BOTTOM = EDGE / 2;
 // here with the pill rather than down with the chip cuts because PILL_Y is
 // derived from it. Its own ceiling is what stops it growing: the world progress
 // line owns the top 3px of the frame, and at EDGE this already leaves 3.
-const DISC_R = 11;
+// 9, not 11: the disc is the pill's twin now, not the tallest thing standing
+// beside it. At 11 it was 22px against the pill's 18, so PILL_Y carried a 2px
+// term to hang the two off one midline and the corner was 4px wider than its
+// own contents needed — 4px that came straight out of the beat ribbon's
+// clearance, since the strip and the pill share this row (see RIBBON_CORNER_GAP).
+// Matched to PILL_H the term falls to zero, both objects span EDGE..EDGE+18,
+// and the whole top row sits 2px higher and 4px shorter.
+const DISC_R = 9;               // PILL_H / 2, written out: PILL_H is declared below
 // The portrait disc uses the same backing as every other HUD panel. It has to
 // survive a small crop over bright or dark stage art while still leaving the
 // hero's face as the focal point, but it is not a separate light-blue plate.
@@ -193,7 +200,24 @@ function ribbonSpan(run) {
   // first frame of a stage honest.
   const far = Number.isFinite(run.hudGoalLeft) ? run.hudGoalLeft : W - margin;
   const ahead = run.mirror ? W - far : far;
-  return { anchor, backW: near - margin, aheadW: Math.max(minBack, ahead - near) };
+  // AND THE NEAR END IS THE STATUS CORNER, on the same terms. This is a length,
+  // not a clip: the plate ENDS at the corner rather than running on behind it,
+  // so the back fade (RIBBON_PLATE_FADE, off backW) is spent where it can be
+  // seen and the strip dissolves toward the pill instead of being cut off flat
+  // against it. Clipping was the first attempt and it drew a hard vertical edge
+  // — the gradient had already reached full ink under the panel.
+  //
+  // Unmirrored only. `near` is measured from the edge the PAST runs off toward,
+  // which on a mirrored run is the right-hand one; the corner stays top-left
+  // either way, so on that run it is the far end that approaches the pill and
+  // the clamp here would be shortening the wrong end of the strip.
+  const backRoom = run.mirror ? Infinity
+    : anchor - (PILL_X + statusCornerW(run) + RIBBON_CORNER_GAP);
+  return {
+    anchor,
+    backW: Math.max(1, Math.min(near - margin, backRoom)),
+    aheadW: Math.max(minBack, ahead - near),
+  };
 }
 // THE PLATE IS LAID OUT FROM THE FRAME, NOT FROM THE BEAT COUNT. It ends the
 // same distance from the right edge of the screen as it begins from the left —
@@ -222,30 +246,23 @@ const RIBBON_MARGIN = 125;
 const RIBBON_MIN_BACK_BEATS = 0.5;
 // AIR BETWEEN THE STRIP AND THE STATUS CORNER.
 //
-// The plate is painted BEFORE the corner (see drawHud), so it runs on under the
-// pill and the pill covers it. That is the right relationship and it is not
-// what you saw: with no gap the strip surfaced from behind the pill hard against
-// its edge, and two panels touching read as one panel that had split rather
-// than as a strip passing behind a readout.
+// The plate is painted BEFORE the corner (see drawHud), so left to itself it
+// runs on under the pill and surfaces hard against its edge — two panels
+// touching, which reads as one panel that has split rather than as a strip
+// beside a readout. This is where the near end stops instead.
 //
-// Where the tail actually lands is not a design figure either. `margin` below
-// can never reach RIBBON_MARGIN — `near` is 62 * camZoom, so it tops out at 136
-// against the 151 that would be needed — which means backW is always exactly
-// RIBBON_MIN_BACK_BEATS and the tail sits wherever `anchor - 26` falls: x 73 at
-// zoom 1.6 (well under the pill), 98 at 2.0, 110 at 2.2. So the seam moved with
-// the zoom, and on the two closer framings it landed within a pixel or two of
-// the pill's edge by accident.
+// Where the tail used to land was not a design figure either. `margin` in
+// ribbonSpan can never reach RIBBON_MARGIN — `near` is (PLAYER_X +
+// HERO_CENTER_OFF) * camZoom, so it tops out around 143 against the 151 that
+// would be needed — which means backW was always exactly RIBBON_MIN_BACK_BEATS
+// and the tail sat wherever `anchor - 26` fell: under the pill at the pulled-
+// back framing, a pixel or two clear at the close ones. The seam moved with the
+// zoom by accident. Measured against the corner it is the same at every zoom.
 //
-// This knocks the strip's own ink out of the corner's column plus this much
-// clear sky, at every zoom, so the seam is a constant instead of a coincidence.
-// It is a CLIP, not a shorter plate: the geometry behind the pill is untouched,
-// so the missed-marker trail still travels its full length and is simply hidden
-// by the panel in front of it. Three pixels, the same air the progress line
-// leaves above the disc.
-//
-// The playhead is drawn OUTSIDE the clip. It stands over the hero, who at zoom
-// 1.6 lands about three pixels past the pill — right on this boundary — and a
-// tab with its left half clipped off is worse than one standing close.
+// Three pixels, the same air the progress line leaves above the disc. It is a
+// LENGTH, not a clip: the plate's own back fade is spent between here and the
+// playhead, so the strip dissolves toward the pill rather than being cut off
+// square against it.
 const RIBBON_CORNER_GAP = 3;
 // The lookahead the exported marker helper culls at when nobody hands it the
 // live one. It is the figure the plate used to be built from, and still about
@@ -264,6 +281,10 @@ const RIBBON_AHEAD_BEATS = 4.5;
 // clamped to the end it fades, so a squeezed back end dims rather than dividing
 // by a length it does not have.
 const RIBBON_FADE_BACK = Math.round(0.35 * RIBBON_BEAT_PX);
+// How sharply that back ramp falls. 1 is the straight line it used to be; 2 is
+// the exponent above, which is the least that puts an arrow's ink under the
+// plate's rather than over it for the whole second half of its exit.
+const RIBBON_FADE_BACK_CURVE = 2;
 const RIBBON_FADE_AHEAD = RIBBON_BEAT_PX;
 // THE PLATE AND THE GLYPHS FADE OVER DIFFERENT DISTANCES, and they always
 // should have. A marker has to materialise gradually or it pops into the lane,
@@ -414,25 +435,22 @@ export function drawBeatRibbon(ctx, run) {
   // ever pops against a strip that fades.
   const fadeBack = Math.max(1, Math.min(RIBBON_FADE_BACK, backW));
   const fadeAhead = Math.max(1, Math.min(RIBBON_FADE_AHEAD, aheadW));
-  const edgeFade = (dx) => Math.max(0, Math.min(1, dx >= 0
-    ? (aheadW - dx) / fadeAhead
-    : (backW + dx) / fadeBack));
+  const edgeFade = (dx) => {
+    if (dx >= 0) return Math.max(0, Math.min(1, (aheadW - dx) / fadeAhead));
+    // THE BACK RAMP IS CURVED, THE FRONT ONE IS NOT, and the reason is what
+    // each end is made of. A marker arriving fades in against the plate, so a
+    // straight line reads as approach. A marker LEAVING is an opaque green or
+    // cyan arrow at 0.92 fading against a plate that is itself only 0.55 at
+    // full strength and thinning to nothing over the same distance — so at the
+    // halfway point a linear ramp leaves the arrow at 46% ink over 15% of
+    // plate, and the glyph outlives the lane it is supposed to be leaving.
+    // Squared, that same point is 21% and the arrow is gone well before the
+    // strip's tail reaches the status pill. It shortens the missed-marker
+    // trail's VISIBLE length without shortening the trail, which still travels
+    // its full geometry (beatRibbonMarkerOffset).
+    return Math.max(0, Math.min(1, (backW + dx) / fadeBack)) ** RIBBON_FADE_BACK_CURVE;
+  };
   ctx.save();
-  // A save of its own, popped before the playhead below: the clip is for the
-  // strip's ink, not for the tab standing on it.
-  ctx.save();
-  // Measured here rather than carried on `run` like hudGoalLeft: the corner is
-  // painted after the strip but its width does not depend on the strip, so it
-  // can be asked for now and be right this frame instead of one frame late.
-  // Capped at the playhead. The gap is air BETWEEN two panels, and a boundary
-  // pushed past the tab would take the plate out from under the one mark that
-  // has to be standing ON it — which at zoom 1.6 (corner ends 97.4, tab spans
-  // 97.9-100.8) is exactly where it lands.
-  const cornerGutter = Math.min(PILL_X + statusCornerW(run) + RIBBON_CORNER_GAP,
-    anchor - PLAYHEAD_W);
-  ctx.beginPath();
-  ctx.rect(cornerGutter, 0, W, H);
-  ctx.clip();
   // Built along the strip's own axis — back end to front end — so a mirrored
   // run gets the gradient reversed for free rather than a second copy of it.
   const tail = anchor - dir * backW, head = anchor + dir * aheadW;
@@ -590,7 +608,6 @@ export function drawBeatRibbon(ctx, run) {
       ctx.beginPath(); ctx.arc(x, mid, 1.15 * u, 0, Math.PI * 2); ctx.fill();
     }
   }
-  ctx.restore();
   drawRibbonPlayhead(ctx, anchor, y, h, pulse);
   ctx.restore();
 }
@@ -1056,7 +1073,10 @@ const METER_R = PILL_R - METER_INSET;
 //   battH  the meter's height; its left inset and corner follow it, so a
 //          shorter meter automatically stays concentric with the panel
 //   floor  reserve two digits for the count, so the pill does not twitch at 10
-export const PILL_TUNE = { split: 'line', gap: 5, pad: PILL_PAD, battH: METER_H, floor: true };
+// SET TO G, gap 5, pad = the battery's own left inset (Peter, 5 Sep 2026): no divider, no
+// two-digit reserve. Left at the dial rather than collapsed by hand — the
+// session that built this seam is the one deleting it.
+export const PILL_TUNE = { split: 'gap', gap: 5, pad: METER_INSET, battH: METER_H, floor: false };
 // The gap the two readouts are separated by, hairline included.
 const splitGap = (cells) => (cells
   ? (PILL_TUNE.split === 'line' ? PILL_SPLIT * 2 + 0.5 : PILL_TUNE.gap)
@@ -1109,6 +1129,30 @@ function coinCountW(count) {
   let w = 0;
   for (const ch of count) w += /\d/.test(ch) ? widestDigitW() : textWidth(ch, 1, 'bold');
   return w;
+}
+// DRAWN THE WAY IT IS MEASURED. coinCountW above charges every digit at the
+// widest digit's advance so the pill only changes width when the count gains
+// one — but Fredoka's digits are proportional and the string was drawn from a
+// fixed left x, so the difference piled up at the RIGHT as trailing dead panel.
+// A '121' reserves 3 x 4.8 and inks about 9.8: nearly 5px of air on top of the
+// pad, which is why a three-digit count looked loose at its end and a '111'
+// looked loosest of all.
+//
+// Right-aligning would only have moved that air to the other side and made the
+// whole number jump every time a digit ticked over. So each digit is drawn
+// CENTRED IN ITS OWN CELL, which is what a scoreboard does: the slot and the
+// ink are now the same width, the margin after the count is exactly
+// PILL_TUNE.pad at every count, and no digit moves when its neighbour changes.
+// Non-digits (the comma) keep their natural advance — the same thing coinCountW
+// charges them.
+function drawTabularCount(ctx, count, x, y, color) {
+  const cell = widestDigitW();
+  for (const ch of count) {
+    const w = textWidth(ch, 1, 'bold');
+    const digit = /\d/.test(ch);
+    rawDrawText(ctx, ch, digit ? x + (cell - w) / 2 : x, y, color, 1, 'bold');
+    x += digit ? cell : w;
+  }
 }
 // Not memoised here: the webfont lands after first paint and sprites.js clears
 // its own advance cache when it does, so a width held on this side would be the
@@ -1600,7 +1644,7 @@ export function drawStatusPill(ctx, run, style = HERO_CHIP, reveal = HERO_REVEAL
   // that is CHANGING is the one that catches the eye — the plate below is the
   // source, this is the destination, and for a second they are the same colour.
   const paying = run.flipCoins && run.flipCoins.left > 0;
-  rawDrawText(ctx, count, x + COIN_D + 3, textY(PILL_CY), paying ? '#f6d33c' : '#ffffff', 1, 'bold');
+  drawTabularCount(ctx, count, x + COIN_D + 3, textY(PILL_CY), paying ? '#f6d33c' : '#ffffff');
   // One-hit runs have no cells to show, so the pill states the terms instead —
   // on its own panel under it, red-edged, where the row of cells would have
   // been. A panel rather than a bare plated line: it is a standing readout of

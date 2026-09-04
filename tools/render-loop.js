@@ -156,7 +156,7 @@ const SCENES = {
   // were drawn to sit on — they are near-black with a pale core, and a pale
   // sweep behind them. Nothing behind him competes now.
   //
-  // 9.00s, which is not an arbitrary round number: the rotor steps 48 times a
+  // 8.00s, which is not an arbitrary round number: the rotor steps 48 times a
   // second through a twelve-frame half-turn, so the seam is only clean where
   // 48 * cycle is a multiple of 12 — i.e. on quarter seconds. --cycle=N off
   // that grid will land the last frame mid-blade.
@@ -165,7 +165,7 @@ const SCENES = {
   // the holds — see EGG_BEATS. Long for a reel, and deliberately: the beats
   // only land if each one is allowed to finish, and a viewer who leaves before
   // the reaction was never going to watch it twice anyway.
-  eggshell: { cycle: 9.0, repeats: 1, zoom: 100, aspect: 0.8 },
+  eggshell: { cycle: 8.0, repeats: 1, zoom: 100, aspect: 0.8 },
 };
 
 const [sceneArg = 'locked', outArg = null] = positional;
@@ -736,10 +736,16 @@ const EGG_BEATS = [
   ['holdL', 0.95],      // ...and wait
   ['lookR', 0.42],      // all the way across — twice the distance, so longer
   ['holdR', 0.95],      // ...and wait
-  ['react', 2.10],      // eyes back to you, and the expression with them
-  ['away', 1.20],       // and off, still wearing it
+  // THE REACTION DOES NOT OUTSTAY IT. This was 2.10s — 0.30 of snap-back and
+  // 1.80 of holding the face — and Peter, 5 Sep: "move off screen sooner once
+  // he gets the final pose." The hold is now 0.85, which is all the reading a
+  // face this size needs; past that he is a man waiting for a laugh. The two
+  // SCAN holds keep their 0.95, because those are the beats where nothing has
+  // happened yet and the waiting IS the content.
+  ['react', 1.15],      // eyes back to you, and the expression with them
+  ['away', 1.10],       // and off, still wearing it
 ];
-const EGG_ACTION = EGG_BEATS.reduce((n, [, d]) => n + d, 0);   // 7.87s
+const EGG_ACTION = EGG_BEATS.reduce((n, [, d]) => n + d, 0);   // 6.82s
 // Empty frame before he arrives, and whatever the cycle has left over after
 // him. Held in SECONDS for the same reason Gary's are: --cycle=N is a dial on
 // how much nothing there is either side of the performance, and it must not

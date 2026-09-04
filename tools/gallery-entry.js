@@ -109,7 +109,7 @@ import {
 } from '../src/dev/eggshell-candidates.js';
 import { EGGSHELL_WORKING, EGGSHELL_WORKING_REF, EGGSHELL_BROW_ANGLES, EGGSHELL_STUBBLE_TONES, EGGSHELL_MOUTHS, EGGSHELL_OUTFITS, EGGSHELL_CAPES } from '../src/dev/eggshell-redesigns.js';
 import { EGGSHELL_TUBS, eggshellTubPart } from '../src/dev/eggshell-tubs.js';
-import { proFaceWith, PRO_STACHE_SIZE } from '../src/sprites/props.js';
+import { proFaceWith, PRO_STACHE_SIZE, proMouthPartWith } from '../src/sprites/props.js';
 import { eggshellApe, eggshellBalloonArt } from '../src/sprites/props.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
@@ -6759,6 +6759,59 @@ function frameStrip(grid, name, label, note, w, h, cell) {
       proFaceWith(ctx, (fr) => APE_W * fr, (fr) => APE_H * fr, 0.3, false, undefined, size);
       ctx.restore();
     }, { hires: 7 });
+  }
+}
+
+// ------------------------------------- the moustache's outline, as a question
+// Peter, 5 Sep 2026: "should we have a thinner or lighter outline on the
+// moustache? Or even none — bake-off." It is a fair thing to ask of this mark
+// in particular: it is the widest on his face, so it carries more contour than
+// anything else, and it sits pale-on-pale where an edge is doing real work.
+// Six treatments, everything else identical, drawn at the size the faces sheet
+// uses so the line is actually visible.
+{
+  const s = sectionEl('eggshell-stache-edge', 'Don K. Eggshell — the moustache, outline bake-off',
+    'OPEN — the same moustache with six edges, everything else identical. Every other mark on him takes the '
+    + 'villain\'s contour at 32%, and this one is the widest on his face, so it carries more of that ink than '
+    + 'anything else — while also sitting pale-on-pale, which is where an edge earns its keep. The first row is '
+    + 'cropped large; the second is the copter at the 36u the run draws, which is where a line this fine either '
+    + 'survives or does not.');
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  s.appendChild(grid);
+  const W2 = 74, H2 = 78, Z2 = 4, BOX2 = 44;
+  const edges = [
+    ['AS SHIPS', 'the villain\'s own contour, 32% at his full hairline', 'ships'],
+    ['LIGHTER', 'same weight, 18% — the shape still parts from the skin', 'light'],
+    ['THINNER', 'same ink, a little over half the weight', 'thin'],
+    ['THIN + LIGHT', 'both, which is nearly no line at lane size', 'thinLight'],
+    ['NO OUTLINE', 'the guardrail: a flat silver shape on a pale face', 'none'],
+    ['SELF EDGE', 'the moustache\'s own colour a few steps down — separation with no contour ink on his face', 'self'],
+  ];
+  for (const [name, note, key] of edges) {
+    tile(grid, name, note, W2, H2, (ctx, t) => {
+      ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, W2, H2);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, W2, H2); ctx.clip();
+      ctx.translate(W2 / 2 - BOX2 * Z2 * 0.5, H2 * 0.52 - BOX2 * Z2 * 0.52);
+      // the shipped copter, with only the moustache's edge swapped
+      eggshellCopterArt(ctx, BOX2 * Z2, BOX2 * Z2, Math.floor(t * 2 * 24) % 12, {
+        parts: { mouth: proMouthPartWith(key) },
+      });
+      ctx.restore();
+    }, { animated: true, hires: 5 });
+  }
+  // And the same six at the size he is actually flown, which is where a line
+  // this fine either survives or does not.
+  for (const [name, , key] of edges) {
+    tile(grid, `${name} — lane`, 'the copter at its real 36u', 44, 44, (ctx, t) => {
+      ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, 44, 44);
+      ctx.save(); ctx.translate(4, 4);
+      eggshellCopterArt(ctx, 36, 36, Math.floor(t * 2 * 24) % 12, {
+        parts: { mouth: proMouthPartWith(key) },
+      });
+      ctx.restore();
+    }, { animated: true, hires: 6 });
   }
 }
 

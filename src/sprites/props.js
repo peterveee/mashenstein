@@ -861,9 +861,34 @@ const PRO_MOOD = { smile: 0.026, flat: 0.002, frown: -0.012, smirk: 0.012, grin:
 // him by, and it must never reach past his face.
 export const PRO_STACHE_SIZE = { span: 0.118, drop: 0.038 };
 const stacheY = (shocked) => (shocked ? 0.44 : 0.458);
-function proStache(c, X, Y, shocked, size = PRO_STACHE_SIZE) {
+// HOW THE MOUSTACHE IS EDGED. It takes the same contour as everything else on
+// him, and that is worth asking about rather than assuming: it is a pale shape
+// sitting on pale skin, so the edge is doing real work holding it off the
+// face — but it is also the widest mark he has, and a full-weight line round
+// it is a lot of ink in the middle of a small face. See the outline bake-off.
+// THINNER, PICKED 5 Sep 2026 off the outline bake-off. Same ink, a little over
+// half the weight: the moustache is the widest mark on his face, so at the full
+// hairline it carried more contour than the specs did and read as the darkest
+// thing up there. Dropping the line rather than the ink keeps the shape parted
+// from the skin — with no outline at all the tips melt into his cheek at lane
+// size, which is what ruled that option out.
+export const PRO_STACHE_EDGE = { ink: PRO_INK, lw: PRO_LW * 0.55 };
+// The alternatives, so a tile and the shipped painter cannot drift: a lighter
+// ink at the same weight, a thinner line at the same ink, both, none at all,
+// and one drawn in the moustache's OWN colour a few steps down — a self edge,
+// which separates the shape from the skin without putting the villain's
+// contour ink anywhere near his face.
+export const PRO_STACHE_EDGES = {
+  ships: { ink: PRO_INK, lw: PRO_LW },
+  light: { ink: 'rgba(26,16,40,0.18)', lw: PRO_LW },
+  thin: { ink: PRO_INK, lw: PRO_LW * 0.55 },
+  thinLight: { ink: 'rgba(26,16,40,0.2)', lw: PRO_LW * 0.55 },
+  none: { ink: null, lw: 0 },
+  self: { ink: '#8f97a8', lw: PRO_LW * 0.7 },
+};
+function proStache(c, X, Y, shocked, size = PRO_STACHE_SIZE, edge = PRO_STACHE_EDGE) {
   egMustache(c, X(0.5), Y(stacheY(shocked)), X(size.span), Y(size.drop),
-    shocked ? -0.5 : 0, PRO_STACHE, PRO_INK, PRO_LW);
+    shocked ? -0.5 : 0, PRO_STACHE, edge.ink, edge.lw);
 }
 // THE MOUTH HANGS OFF THE MOUSTACHE, it does not sit at a height of its own.
 // Pinned to a constant it was first buried in the whiskers and then, once the
@@ -985,14 +1010,23 @@ export function proFaceWithSpec(c, X, Y, lw, shocked, face, spec) {
   proEyesWith(spec)(c, X, Y, lw, shocked, face);
   EGGSHELL_PARTS.mouth(c, X, Y, lw, shocked, face);
 }
-export function proFaceWith(c, X, Y, lw, shocked, face, size) {
+// The mouth slot with one of the edges above, as a part the copter painter can
+// take — so a bake-off tile is the SHIPPED drawing with one value swapped
+// rather than a second copy of his face.
+export const proMouthPartWith = (edgeKey) => proSized((c, X, Y, lw, shocked, face) => {
+  proStubble(c, X, Y);
+  proMouth(c, X, Y, shocked, face);
+  proStache(c, X, Y, shocked, PRO_STACHE_SIZE, PRO_STACHE_EDGES[edgeKey] || PRO_STACHE_EDGE);
+});
+
+export function proFaceWith(c, X, Y, lw, shocked, face, size, edge) {
   EGGSHELL_PARTS.head(c, X, Y, lw, shocked, face);
   EGGSHELL_PARTS.face(c, X, Y, lw, shocked, face);
   EGGSHELL_PARTS.eyes(c, X, Y, lw, shocked, face);
   proSized((cc, XX, YY, llw, sh, fa) => {
     proStubble(cc, XX, YY);
     proMouth(cc, XX, YY, sh, fa, size);
-    proStache(cc, XX, YY, sh, size);
+    proStache(cc, XX, YY, sh, size, edge);
   })(c, X, Y, lw, shocked, face);
 }
 

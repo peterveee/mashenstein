@@ -41,3 +41,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-04 | `aa36e6c` | [2026-09-04-aa36e6c.html](2026-09-04-aa36e6c.html) | [bake-offs](2026-09-04-aa36e6c-lab.html) | Refactor HUD hero disc plate color and enhance girder ring mechanics |
 | 2026-09-04 | `f49f539` | [2026-09-04-f49f539.html](2026-09-04-f49f539.html) | [bake-offs](2026-09-04-f49f539-lab.html) | Refactor face contour handling and improve face crop rendering |
 | 2026-09-04 | `28b127f` | [2026-09-04-28b127f.html](2026-09-04-28b127f.html) | [bake-offs](2026-09-04-28b127f-lab.html) | feat: Add cape redesigns gallery and related assets |
+| 2026-09-05 | `a00af6f` | [2026-09-05-a00af6f.html](2026-09-05-a00af6f.html) | [bake-offs](2026-09-05-a00af6f-lab.html) | feat: Implement eggshell reaction animations and update render-loop functionality |

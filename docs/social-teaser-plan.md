@@ -490,8 +490,9 @@ a sea instead of arriving as a constant drizzle.
 
 ### 7d. Eggshell has a look round — **shipped**
 `node tools/render-loop.js eggshell [--reaction=smirk|gloat|roll|really]` →
-`work/social/loop-eggshell.mp4`, 9.00s, 1080x1350, silent. `--reel` for the 9:16
-cut.
+`work/social/loop-eggshell.mp4`, 8.00s, 1080x1350, silent. `--reel` for the 9:16
+cut — **and the reel is the one to post**: this is a looping silent clip with no
+caption, which is Reels, not the feed.
 
 The villain slides on from the left, checks both ways, has an opinion about it,
 and carries on out the right still wearing it.
@@ -505,9 +506,9 @@ and carries on out the right still wearing it.
 | 2.80–3.75 | **and wait** |
 | 3.75–4.17 | all the way across |
 | 4.17–5.12 | **and wait** |
-| 5.12–7.22 | eyes come back to you *and the expression with them*, then hold |
-| 7.22–8.42 | and off to the right, pose and all |
-| 8.42–9.00 | empty frame |
+| 5.12–6.27 | eyes come back to you *and the expression with them*, then hold |
+| 6.27–7.37 | and off to the right, pose and all |
+| 7.37–8.00 | empty frame |
 
 **The waits are the performance.** The first cut swept his eyes through one
 continuous sine in 1.3s and read as a man scanning a room on his way past —
@@ -516,7 +517,7 @@ down… look left, wait a beat, look right, wait a beat, smirk, wait a beat, ret
 to normal, fly off."* So every move is now followed by a hold, and the holds are
 the longest beats in the clip: a held pose is what gives a viewer time to read a
 face, and the travel between two poses is only how the face got there. The clip
-went from 5.25s to 9.00s and every second of that went into holding still. The
+went from 5.25s to 8.00s and every second of that went into holding still. The
 *travel* between holds is quick — Peter, 5 Sep, "speed up the eye movement a bit":
 at 0.42s and 0.55s the moves were drifting, and a move only has to be long enough
 not to look like a cut. 0.30s across, 0.42s for the sweep that goes twice as far.
@@ -535,6 +536,12 @@ right, and they come back wearing it. The head cock lands on the same 0.30s, so
 face, eyes and body all arrive together. Held in seconds rather than as a
 fraction of the beat, because it is an eye move and has to travel at the speed
 the other two do however long the hold behind it runs.
+
+**And the reaction does not outstay it.** Its hold was 1.80s and is now 0.85 —
+Peter, 5 Sep, *"move off screen sooner once he gets the final pose."* That is all
+the reading a face this size needs; past it he is a man waiting for a laugh. The
+two SCAN holds keep their 0.95s, because those are the beats where nothing has
+happened yet and the waiting is itself the content.
 
 **And he leaves wearing it.** There was a `relax` beat that put his face back to
 neutral before the exit, on the argument that a villain who flies off still
@@ -610,7 +617,7 @@ carry and light enough that the near-black blades still have an edge — flat bl
 loses the blades outright, and anything lighter starts merging his cape into the
 ground. `--grey=#RRGGBB` moves it.
 
-**9.00s is not a round number by accident.** The rotor steps 48 times a second
+**8.00s is not a round number by accident.** The rotor steps 48 times a second
 through a twelve-frame half-turn — `copterFrame`'s own rate with no song setting
 the beat, and this clip is silent — so the seam is only clean where `48 * cycle`
 is a multiple of 12, i.e. on quarter seconds. A `--cycle=N` off that grid lands
