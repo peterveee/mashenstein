@@ -75,8 +75,8 @@ export const ANIM_SPEED_DIVISOR = 40;
 // The runner anchor: a fixed WORLD offset from camX, which the camera then
 // magnifies into a screen position (23.3% of the frame at ZOOM 2). Everything
 // right of it is runway, so this is really a reaction-time dial — the view is
-// VIEW_W wide, so you see (VIEW_W - PLAYER_X) px of it, 184 here, which is
-// 1.15s of warning at the 160px/s base speed.
+// VIEW_W wide, so you see (VIEW_W - PLAYER_X) px of it, 181 here, which is
+// 1.13s of warning at the 160px/s base speed.
 //
 // 56 rather than further left because of what is up there. The crane now
 // carries the hero to the top of the frame on a double jump instead of
@@ -85,12 +85,29 @@ export const ANIM_SPEED_DIVISOR = 40;
 // of drawn width lands at screen x 106..142, clearing it by a pixel; the dial
 // stops where the chrome starts.
 //
+// 59 rather than 56 because the ribbon's PLAYHEAD hangs off this too, and it is
+// a harder tenant than the crane. It stands over the hero (hud.js: the strip's
+// anchor is (PLAYER_X + HERO_CENTER_OFF) * camZoom) on the SAME midline as the
+// status pill, so the tab and the pill are two panels sharing a row — and at
+// the desktop resting zoom of 1.6 the pill's plate ended at 97.4 and the tab
+// spanned 97.9-100.8. They touched. No treatment of the strip fixes that: the
+// plate can be clipped back, the tab cannot, because it is where the hero is.
+//
+// A world pixel buys 1.6 screen px at the widest framing and more at every
+// closer one, so 1.6 is the case that sets the figure: +3 puts the tab at
+// 101.5-104.5, four pixels of clear sky past the pill, and the closer framings
+// get more than they need. What it costs is runway, and this is the whole bill:
+// 3 world px at the ramp cap (160 * 1.6 = 256px/s) is 12ms of the 0.95s the
+// frame shows ahead at that zoom — 1.2%, and inside the 20ms the audio-sync
+// calibration already tolerates. The chart follows on its own: beatchart.js
+// places every event from the LIVE hero x, not from a captured constant.
+//
 // That clearance is a REST measurement. The camera scales x as well as y and
 // welds the left edge to camX, so a pulled-back frame slides the hero toward
 // screen 0 — at ZOOM_MIN they sit at 73 instead of 112, behind the pill. Only
 // the cape/triple heights pull back that far, and they grazed it at the old
 // anchor too; it is the price of the left edge staying welded.
-export const PLAYER_X = 56;      // fixed world offset from camX
+export const PLAYER_X = 59;      // fixed world offset from camX
 export const PLAYER_W = 8;       // hitbox (12px sprite, 2px inset)
 export const PLAYER_H = 14;
 export const DUCK_H = 7;

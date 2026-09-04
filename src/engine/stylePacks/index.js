@@ -1048,7 +1048,7 @@ export function sunShock() {
   else cloudShockT = 1.4;
 }
 
-function drawStaticSun(ctx, t) {
+function drawStaticSun(ctx, t, bgShift = 0) {
   // Animated but dignified: it slowly arcs across the sky like a day passing,
   // its rays rotate and breathe, and its halo pulses. It does not bop.
   const sx = (t * 3.2) % (W + 150);
@@ -1059,7 +1059,10 @@ function drawStaticSun(ctx, t) {
   const y = 58 + 26 * u * u;                          // shallow day-arc
   const breathe = 1 + 0.06 * Math.sin(t * 1.1);
   ctx.save();
-  ctx.translate(x, y);
+  // The Plumber background is drawn in a shifted context so the hills follow
+  // a raised road. The sun belongs to the sky, not that scenery: cancel that
+  // context shift here so a jump cannot carry the sun along with the camera.
+  ctx.translate(x, y - bgShift);
   // halo
   ctx.beginPath();
   ctx.arc(0, 0, 30 * breathe, 0, Math.PI * 2);
@@ -1669,10 +1672,10 @@ function drawButte(ctx, camX, atCam) {
 function pixelPack(settings) {
   return {
     name: 'pixel',
-    bg(ctx, t, camX, cab, totalDist) {
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0) {
       skyGrad(ctx, cab.sky[0], cab.sky[1]);
       if (cab.id === 'plumber') {
-        drawStaticSun(ctx, t);
+        drawStaticSun(ctx, t, bgShift);
       }
       // PLUMBER PANIC's far layer is a snow-capped range; the near green hills
       // stay rounded so the two layers read as distance, not repetition. It gets
@@ -8356,7 +8359,9 @@ function surgePack(settings) {
     // the run's draw for exactly that reason.
     get ownPitFills() { return pick(this._t || 0).ownPitFills === true; },
     get ownSurface() { return pick(this._t || 0).ownSurface === true; },
-    bg(ctx, t, camX, cab, totalDist, scene = null) { pick(t).bg(ctx, t, camX, cab, totalDist, scene); },
+    bg(ctx, t, camX, cab, totalDist, scene = null, bgShift = 0) {
+      pick(t).bg(ctx, t, camX, cab, totalDist, scene, bgShift);
+    },
     ground(ctx, camX, cab, obstacles, overhangs, t = 0, viewW = W) { pick(this._t || 0).ground(ctx, camX, cab, obstacles, overhangs, t, viewW); },
     post(ctx, t) {
       this._t = t;

@@ -27,6 +27,7 @@ const suites = [
   'tests/cue-scheduling.js',
   'tests/beat-ground.js',
   'tests/lane-calls.js',
+  'tests/pixel-background.js',
   'tests/lcd-background.js',
   'tests/reliability.js',
   'tests/flyer-motion.js',

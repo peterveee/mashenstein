@@ -9,6 +9,7 @@
 //   locked  an unplugged cabinet on black, its dead screen crackling with static
 //   gary    black; Gary leans in once, catches your eye, panics, vanishes
 //   coin    INSERT COIN flashes, then a fall of coins comes down over it
+//   eggshell the villain slides in on grey, looks around, and reacts
 //
 // All three are built around one CYCLE and rendered as a whole number of them,
 // and everything that moves is a function of the position within a cycle — so the
@@ -34,6 +35,8 @@
 //   --coins=N     how many coins fall            (coin; default 60)
 //   --seed-from=ID  cabinet whose burst seed to use  (locked; default plumber)
 //   --poster      hang the machine's one-sheet above it (locked; off by default)
+//   --reaction=R  smirk | gloat | roll | really  (eggshell; default smirk)
+//   --grey=#RRGGBB  the flat backdrop            (eggshell; default #2e2e34)
 //   --ss=N        supersample factor            (default 2)
 //   --crf=N       x264 quality, lower is better (default 12)
 //   --no-gpu      rasterize on CPU (fallback; much slower)
@@ -142,6 +145,27 @@ const SCENES = {
   // No cycle here: the coin arc's length is derived from COIN_TIMELINE and the
   // frame it is being drawn into. See sceneCycle below.
   coin: { repeats: 1, zoom: 100, aspect: 0.8, coins: 60 },
+  // ONE PASS, on a flat grey.
+  //
+  // This started on the rhythm cabinet's own panel with its city taken off —
+  // sky, wash and cell lattice — and the lattice was the problem. The rotor is
+  // two thin blades and a pair of translucent sweeps, which is a texture, and a
+  // texture over a texture cancels: the one part of the machine that says it is
+  // FLYING went missing on a background full of fine lines. So the panel is out
+  // and the backdrop is a plain dark grey, which is also the ground the blades
+  // were drawn to sit on — they are near-black with a pale core, and a pale
+  // sweep behind them. Nothing behind him competes now.
+  //
+  // 9.00s, which is not an arbitrary round number: the rotor steps 48 times a
+  // second through a twelve-frame half-turn, so the seam is only clean where
+  // 48 * cycle is a multiple of 12 — i.e. on quarter seconds. --cycle=N off
+  // that grid will land the last frame mid-blade.
+  //
+  // It was 5.25s and it is now nearly twice that, almost all of which went into
+  // the holds — see EGG_BEATS. Long for a reel, and deliberately: the beats
+  // only land if each one is allowed to finish, and a viewer who leaves before
+  // the reaction was never going to watch it twice anyway.
+  eggshell: { cycle: 9.0, repeats: 1, zoom: 100, aspect: 0.8 },
 };
 
 const [sceneArg = 'locked', outArg = null] = positional;
@@ -206,6 +230,20 @@ const POSTER = flags.poster === true || flags.poster === 'true'
   ? true
   : (scene.poster !== false && !flags['no-poster']);
 const SEED_FROM = typeof flags['seed-from'] === 'string' ? flags['seed-from'] : 'plumber';
+// WHAT HE DOES ONCE HE HAS LOOKED. Three drawings the game already carries —
+// see the scene's own note — and the only difference between the three clips.
+const REACTIONS = ['smirk', 'gloat', 'roll', 'really'];
+const REACTION = typeof flags.reaction === 'string' && REACTIONS.includes(flags.reaction)
+  ? flags.reaction : 'smirk';
+if (flags.reaction !== undefined && !REACTIONS.includes(flags.reaction)) {
+  console.error(`unknown reaction "${flags.reaction}" — try one of: ${REACTIONS.join(', ')}`);
+  process.exit(1);
+}
+// The backdrop. Dark enough that the rotor's pale sweeps carry, light enough
+// that its near-black blades still have an edge against it — a flat black loses
+// the blades outright, which is the thing this background exists to show.
+const GREY = typeof flags.grey === 'string' && /^#[0-9a-f]{6}$/i.test(flags.grey)
+  ? flags.grey : '#2e2e34';
 // How many coins fall (coin scene only). Exposed because it is the one dial in
 // these clips whose right value is a judgement about the finished frame rather
 // than something the geometry decides — see the note on the scene default.
@@ -233,7 +271,7 @@ const ENTRY = `
 import { drawToon, setInk } from '../src/sprites/toons.js';
 import { cabinetPalette, deadScreenBurst } from '../src/sprites/arcade.js';
 import { CABINET_BY_ID } from '../src/data/cabinets.js';
-import { PROP_PAINTERS } from '../src/sprites/props.js';
+import { PROP_PAINTERS, eggshellCopterArt } from '../src/sprites/props.js';
 import { Rng } from '../src/engine/rng.js';
 import { drawTextCentered, textWidth } from '../src/engine/sprites.js';
 import {
@@ -612,6 +650,231 @@ function paintCoin(ctx, LW, LH, u, cycle, count) {
   }
 }
 
+// ================================================================ eggshell
+// The villain slides on, checks nobody is watching, has an opinion about it,
+// and carries on.
+//
+// EVERY BEAT IS A CONTROL THE GAME ALREADY DRIVES. drawCopter hands the painter
+// a live face — where he is LOOKING, what he thinks, whether he is blinking,
+// and an independent twitch per brow — because a cached expression next to the
+// cabinet's own blinking gorilla read as a sticker. So the look-around is
+// face.look swept across, and the reaction is face.mood — every one of the
+// three already drawn, and every one already reached by run.js in a real
+// mission. Nothing here is a bespoke drawing; the only inventions are where he
+// is and how he is tilted.
+//
+//   smirk  one brow up and the mouth lifted at THAT SAME CORNER — the whole
+//          right half of the face rising as one gesture, which is the smug
+//          read. (Brow up on one side and mouth on the other is a different
+//          expression: sceptical, not pleased.) He wears it in game passing
+//          the rooftop gorilla, and after a near miss.
+//   gloat  the grin, pulled to one side, teeth showing, same raised brow. In
+//          game it is the pose he holds directly over the hero.
+//   roll   the eyes go up and out to the corners, the brows go up with them,
+//          and the mouth flattens to the faintest downturn — the face of a man
+//          being made to wait. run.js sets it when the player ignores a hover
+//          window: he is not impressed, and that is the joke.
+//   really the smirk's opposite number, and the difference is a CROSS: the
+//          right brow arched half again as far, the LEFT one pulled down, and
+//          the mouth lifted at the far corner. Nothing on his face agrees with
+//          anything else, which is what doubt looks like. Added to props.js
+//          for these clips; nothing in a run reaches it yet.
+//
+// HE PASSES THROUGH rather than peeking and retreating — that is Gary's clip,
+// and it is Gary's joke. This one is a man in a machine going somewhere, and
+// arriving from one edge and leaving by the other is what that looks like.
+//
+// The lean is the tell. His head does not turn — the professor is drawn front
+// on and his only gaze control is the pupils inside the lenses — so the whole
+// copter tips a few degrees the way he is looking. At lane size the pupils
+// carry it alone; at half a frame wide a body that stays rigid while the eyes
+// move reads as a doll with painted eyes.
+//
+// [name, seconds]. THE WAITS ARE THE PERFORMANCE.
+//
+// The first cut swept his eyes through one continuous sine and read as a man
+// scanning a room on his way past — smooth, and over before you had looked at
+// it. Peter, 5 Sep: "slow motion way down... look left, wait a beat, look
+// right, wait a beat, smirk, wait a beat, return to normal, fly off."
+//
+// So every move is now followed by a HOLD, and the holds are the longest beats
+// in the clip. A held pose is what gives the viewer time to read a face; the
+// travel between two poses is just how the face got there, and at this size it
+// only needs to be long enough not to look like a cut. That is why the two
+// hold beats are more than twice their own moves, and why the reaction is the
+// longest thing here.
+//
+// The order is also the joke's grammar: he checks BOTH ways before he allows
+// himself the expression. Reacting mid-scan would be a man who did not need to
+// look.
+//
+// AND HE LEAVES WEARING IT. There was a 'relax' beat here that put his face
+// back to neutral before the exit — the reasoning being that a villain who
+// flies off still pulling the face was performing for you. Peter, 5 Sep: "he
+// should slide off WITH his pose, not revert back to normal." Which is the
+// better read: dropping it made the expression a thing that happened and then
+// stopped, where carrying it out of frame makes it the thing he leaves with.
+// The beat's 0.85s went into the reaction, so the hold is longer, not shorter.
+// THE SECOND LOOK GOES STRAIGHT INTO THE POSE. There was a 'front' beat here
+// that walked his eyes back to centre before the reaction, and it read as a
+// man finishing one thought and starting another. Peter, 5 Sep: "can we
+// transition from the right eye movement to the pose? looks a bit odd to go
+// back to normal." So the return to camera is now the FIRST 0.30s OF THE
+// REACTION rather than a beat before it: the eyes come back and the expression
+// lands as one move, and the head cock that follows it out (see paintEggshell)
+// is timed to the same 0.30 so the whole thing arrives together.
+//
+// The eye moves are also quicker than the first slow cut — Peter, same note,
+// "speed up the eye movement a bit". The HOLDS are what the slow-down bought;
+// the travel between them only has to be long enough not to look like a cut,
+// and at 0.42/0.55 it was drifting.
+const EGG_EYE = 0.30;   // one eye move, and the snap back into the reaction
+const EGG_BEATS = [
+  ['glide', 1.40],      // in from the left, decelerating to a stop
+  ['settle', 0.55],     // hovering, dead front — he has arrived, nothing yet
+  ['lookL', EGG_EYE],   // eyes go left, back the way he came
+  ['holdL', 0.95],      // ...and wait
+  ['lookR', 0.42],      // all the way across — twice the distance, so longer
+  ['holdR', 0.95],      // ...and wait
+  ['react', 2.10],      // eyes back to you, and the expression with them
+  ['away', 1.20],       // and off, still wearing it
+];
+const EGG_ACTION = EGG_BEATS.reduce((n, [, d]) => n + d, 0);   // 7.87s
+// Empty frame before he arrives, and whatever the cycle has left over after
+// him. Held in SECONDS for the same reason Gary's are: --cycle=N is a dial on
+// how much nothing there is either side of the performance, and it must not
+// stretch the performance itself.
+const EGG_LEAD = 0.55;
+// The beat's DURATION comes back with it, because the reaction's snap-back is
+// held in SECONDS, not as a fraction of its beat: it is an eye move and has to
+// travel at the speed the other two do, however long the hold after it runs.
+function eggBeatAt(u) {
+  let from = EGG_LEAD;
+  if (u < from) return { name: 'before', k: 0, dur: 0 };
+  for (const [name, dur] of EGG_BEATS) {
+    if (u < from + dur) return { name, k: (u - from) / dur, dur };
+    from += dur;
+  }
+  return { name: 'after', k: 0, dur: 0 };
+}
+// How much of the frame the machine fills, sized off the WIDTH — the lesson
+// from Gary: key a character to height and a 9:16 reel makes him half again as
+// tall while the frame stays 1080 wide.
+const EGG_BOX = 0.78;
+const EGG_TAU = Math.PI * 2;
+// Rotor frames per second. copterFrame in draw.js runs the twelve-frame strip
+// at turns * frames * 2 with turns = t * 2, i.e. 48 steps a second when no song
+// is setting the beat — which is the case here, because this clip is silent.
+const EGG_ROTOR_FPS = 48;
+
+function paintEggshell(ctx, LW, LH, u, cycle, grey, reaction) {
+  ctx.fillStyle = grey;
+  ctx.fillRect(-LW * 0.2, -LH * 0.2, LW * 1.4, LH * 1.4);
+  const b = eggBeatAt(u);
+  if (b.name === 'before' || b.name === 'after') return;
+
+  const box = LW * EGG_BOX;
+  // Wholly outside the frame at both ends: 0.62 of the box past the edge, so
+  // the rotor's blade sweep is out of shot too and he does not appear to fade
+  // in at the margin.
+  const offL = -box * 0.62, offR = LW + box * 0.62, rest = LW * 0.5;
+
+  let cx = rest;
+  let look = 0;
+  let mood = 'flat';
+  // A cock of the head, held while the expression is on him. It is what stops
+  // the reaction being a face swapped onto a still body: the mood arrives on
+  // one frame, and this is the machine agreeing with it a moment later.
+  let cock = 0;
+  // Every eye move is a smootherstep rather than a linear ramp — it leaves,
+  // travels, and ARRIVES, which is the only thing that makes a hold read as a
+  // hold rather than as the end of a slide.
+  const ease = (k) => k * k * (3 - 2 * k);
+  if (b.name === 'glide') {
+    cx = offL + (rest - offL) * easeOut(b.k);
+    // Looking where he is going on the way in, and centring as he stops — so
+    // the settle starts from a settled gaze rather than a jump.
+    look = 0.5 * (1 - ease(b.k));
+  } else if (b.name === 'settle') {
+    look = 0;
+  } else if (b.name === 'lookL') {
+    look = -ease(b.k);
+  } else if (b.name === 'holdL') {
+    look = -1;
+  } else if (b.name === 'lookR') {
+    look = -1 + 2 * ease(b.k);
+  } else if (b.name === 'holdR') {
+    look = 1;
+  } else if (b.name === 'react') {
+    mood = reaction;
+    // HE COMES BACK TO YOU WEARING IT. The mood is already on by the first
+    // frame of this beat while the eyes are still out at the right, so the
+    // expression and the return to camera are one move rather than two. Held
+    // in seconds so it travels at eye speed. (The roll ignores look outright —
+    // its pupils are driven to the corners by the mood itself — so this only
+    // steers the other three.)
+    look = 1 - ease(Math.min(1, (b.k * b.dur) / EGG_EYE));
+    // Arrives as a small overshoot and settles into a held tilt, on the same
+    // 0.30s, so the head lands with the face.
+    cock = 0.022 + 0.026 * Math.max(0, 1 - (b.k * b.dur) / EGG_EYE);
+  } else if (b.name === 'away') {
+    // OFF WITH THE POSE ON. The mood, the cock of the head and the gaze all
+    // carry straight through the exit — he does not turn to look where he is
+    // going, and he does not put his face back. He leaves still holding it on
+    // you, which is what makes the expression the last thing in the clip
+    // rather than a thing that happened in the middle of it.
+    mood = reaction;
+    cock = 0.022;
+    cx = rest + (offR - rest) * easeIn(b.k);
+  }
+
+  // A whole number of bobs per cycle, so the hover does not step at the seam.
+  // Slower than it was: the hover is the only thing moving through the holds,
+  // and at the old rate it was busier than the performance on top of it.
+  const bobN = Math.max(1, Math.round(cycle * 0.55));
+  const bob = Math.sin((u / cycle) * bobN * EGG_TAU) * box * 0.03;
+  // He leans into the look, and drifts a little with it. More lean than the
+  // first cut carried: the eyes now stop and hold at each end, and a held
+  // glance with no body behind it is where the doll read comes back.
+  const tilt = look * 0.075 + cock;
+  const sway = look * box * 0.03;
+  const frame = Math.floor(u * EGG_ROTOR_FPS) % 12;
+
+  ctx.save();
+  ctx.translate(cx + sway, LH * 0.5 + bob);
+  ctx.rotate(tilt);
+  ctx.translate(-box / 2, -box / 2);
+  eggshellCopterArt(ctx, box, box, frame, {
+    face: {
+      look,
+      mood,
+      // NO BLINKING. There was one mid-hold on each side, on the argument that
+      // a face holding perfectly still for a second reads as a photograph.
+      // Peter, 5 Sep: "is he blinking in between eye movements? don't." He is
+      // right, and the reason is what the holds are FOR: the eyes have stopped
+      // somewhere on purpose, and a blink is the one thing that takes them off
+      // the thing they stopped on. The stillness is the performance, not a gap
+      // in it. The brow twitch below stays — it says he is thinking without
+      // interrupting where he is looking.
+      blink: 0,
+      // AND NO TWITCH EITHER. There was one left-brow twitch closing the
+      // second hold, kept when the blinks went on the argument that it said he
+      // was thinking without moving where he was looking. It did not survive
+      // contact: Peter, 5 Sep, "he is flicking an eyebrow up before the final
+      // pose." Which is exactly what it was — three of the four reactions
+      // raise a brow, so ANY brow moving in the beat before them is a false
+      // start on the thing the clip is building to, whichever brow it is.
+      //
+      // So the holds now hold completely: nothing on his face moves but the
+      // pupils, and they only move when he means to. The hover bob and the
+      // rotor are the whole of the life in the still beats, which is the right
+      // amount — they belong to the machine, not to him.
+      twitch: [0, 0],
+    },
+  });
+  ctx.restore();
+}
+
 // ==================================================================== driver
 window.__init = (cfg) => {
   const { scene, outW, outH, ss, fps, perCycle, logicalW, logicalH, seedFrom } = cfg;
@@ -637,6 +900,7 @@ window.__init = (cfg) => {
     fb.hx.setTransform(fit, 0, 0, fit, offX, offY);
     if (scene === 'locked') paintLocked(fb.hx, logicalW, logicalH, cab, u, cycle, framing);
     else if (scene === 'coin') paintCoin(fb.hx, logicalW, logicalH, u, cycle, cfg.coins);
+    else if (scene === 'eggshell') paintEggshell(fb.hx, logicalW, logicalH, u, cycle, cfg.grey, cfg.reaction);
     else paintGary(fb.hx, logicalW, logicalH, u, cycle, u);
     fb.reduce();
   };
@@ -678,6 +942,7 @@ await page.evaluate((cfg) => window.__init(cfg), {
   groundAt: scene.groundAt ?? null, neighbours: scene.neighbours ?? 1,
   spacing: scene.spacing ?? null, bare: scene.bare === true,
   coins: COINS,
+  grey: GREY, reaction: REACTION,
 });
 
 mkdirSync(dirname(OUT), { recursive: true });

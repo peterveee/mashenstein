@@ -220,6 +220,33 @@ const RIBBON_MARGIN = 125;
 // hero far enough left to hit that floor takes it out of the margin at BOTH
 // ends, because equal air is the thing being kept.
 const RIBBON_MIN_BACK_BEATS = 0.5;
+// AIR BETWEEN THE STRIP AND THE STATUS CORNER.
+//
+// The plate is painted BEFORE the corner (see drawHud), so it runs on under the
+// pill and the pill covers it. That is the right relationship and it is not
+// what you saw: with no gap the strip surfaced from behind the pill hard against
+// its edge, and two panels touching read as one panel that had split rather
+// than as a strip passing behind a readout.
+//
+// Where the tail actually lands is not a design figure either. `margin` below
+// can never reach RIBBON_MARGIN — `near` is 62 * camZoom, so it tops out at 136
+// against the 151 that would be needed — which means backW is always exactly
+// RIBBON_MIN_BACK_BEATS and the tail sits wherever `anchor - 26` falls: x 73 at
+// zoom 1.6 (well under the pill), 98 at 2.0, 110 at 2.2. So the seam moved with
+// the zoom, and on the two closer framings it landed within a pixel or two of
+// the pill's edge by accident.
+//
+// This knocks the strip's own ink out of the corner's column plus this much
+// clear sky, at every zoom, so the seam is a constant instead of a coincidence.
+// It is a CLIP, not a shorter plate: the geometry behind the pill is untouched,
+// so the missed-marker trail still travels its full length and is simply hidden
+// by the panel in front of it. Three pixels, the same air the progress line
+// leaves above the disc.
+//
+// The playhead is drawn OUTSIDE the clip. It stands over the hero, who at zoom
+// 1.6 lands about three pixels past the pill — right on this boundary — and a
+// tab with its left half clipped off is worse than one standing close.
+const RIBBON_CORNER_GAP = 3;
 // The lookahead the exported marker helper culls at when nobody hands it the
 // live one. It is the figure the plate used to be built from, and still about
 // what a normal stage works out to (~5 beats, ~2.4s of warning at 124bpm,
@@ -391,6 +418,21 @@ export function drawBeatRibbon(ctx, run) {
     ? (aheadW - dx) / fadeAhead
     : (backW + dx) / fadeBack));
   ctx.save();
+  // A save of its own, popped before the playhead below: the clip is for the
+  // strip's ink, not for the tab standing on it.
+  ctx.save();
+  // Measured here rather than carried on `run` like hudGoalLeft: the corner is
+  // painted after the strip but its width does not depend on the strip, so it
+  // can be asked for now and be right this frame instead of one frame late.
+  // Capped at the playhead. The gap is air BETWEEN two panels, and a boundary
+  // pushed past the tab would take the plate out from under the one mark that
+  // has to be standing ON it — which at zoom 1.6 (corner ends 97.4, tab spans
+  // 97.9-100.8) is exactly where it lands.
+  const cornerGutter = Math.min(PILL_X + statusCornerW(run) + RIBBON_CORNER_GAP,
+    anchor - PLAYHEAD_W);
+  ctx.beginPath();
+  ctx.rect(cornerGutter, 0, W, H);
+  ctx.clip();
   // Built along the strip's own axis — back end to front end — so a mirrored
   // run gets the gradient reversed for free rather than a second copy of it.
   const tail = anchor - dir * backW, head = anchor + dir * aheadW;
@@ -548,6 +590,7 @@ export function drawBeatRibbon(ctx, run) {
       ctx.beginPath(); ctx.arc(x, mid, 1.15 * u, 0, Math.PI * 2); ctx.fill();
     }
   }
+  ctx.restore();
   drawRibbonPlayhead(ctx, anchor, y, h, pulse);
   ctx.restore();
 }
@@ -1002,6 +1045,23 @@ const COIN_D = 12, METER_H = COIN_D, PILL_PAD = 6, PILL_SPLIT = 3;
 const METER_INSET = (PILL_H - METER_H) / 2;
 const METER_R = PILL_R - METER_INSET;
 
+// ------------------------------------------------ pill spacing, under review
+// OPEN (Peter, 5 Sep 2026): "could we lose the separator between the battery
+// and the coins? or perhaps make the battery smaller? for more clearance? I
+// feel there is more padding on the end for the coins than we actually need."
+// Three dials, read by BOTH statusPillW and drawStatusPill so the width and the
+// paint cannot disagree, and by nothing else. Collapses to whichever set wins.
+//   split  'line' the hairline-and-two-gaps that ships, 'gap' bare air
+//   pad    the air after the count, at the pill's right end
+//   battH  the meter's height; its left inset and corner follow it, so a
+//          shorter meter automatically stays concentric with the panel
+//   floor  reserve two digits for the count, so the pill does not twitch at 10
+export const PILL_TUNE = { split: 'line', gap: 5, pad: PILL_PAD, battH: METER_H, floor: true };
+// The gap the two readouts are separated by, hairline included.
+const splitGap = (cells) => (cells
+  ? (PILL_TUNE.split === 'line' ? PILL_SPLIT * 2 + 0.5 : PILL_TUNE.gap)
+  : 0);
+
 // Exported because the tutorial shows a coin count too, and a second hand-built
 // coin readout would be a second thing to keep in sync with this one. A caller
 // with no cells to show (oneHit false, maxBattery() 0) gets exactly the coin
@@ -1012,15 +1072,15 @@ const METER_R = PILL_R - METER_INSET;
 // point of that plate is that it belongs to this one.
 function statusPillW(run, style = HERO_CHIP) {
   const cells = run.oneHit ? 0 : run.maxBattery();
-  const cellsW = hudBatteryW(cells, METER_H);
+  const cellsW = hudBatteryW(cells, PILL_TUNE.battH);
   // A floor of two digits: a lone '0' left the coin sitting in a pocket of
   // dead panel, and the pill twitched wider the moment it hit 10.
-  const countW = Math.max(coinCountW(formatCoins(run.coins)), coinCountW('00'));
-  const splitW = cells ? PILL_SPLIT * 2 + 0.5 : 0;
+  const inked = coinCountW(formatCoins(run.coins));
+  const countW = PILL_TUNE.floor ? Math.max(inked, coinCountW('00')) : inked;
   // A chip that lives INSIDE the pill replaces the meter's inset with its own
   // lead — it already ends in the gap the cells would have been inset by.
   const lead = heroChipGeom(style, run).lead || meterInset(cells);
-  return lead + cellsW + splitW + COIN_D + 3 + countW + PILL_PAD;
+  return lead + cellsW + splitGap(cells) + COIN_D + 3 + countW + PILL_TUNE.pad;
 }
 
 // THE WHOLE CORNER'S WIDTH — the hero icon's column plus the pill beside it,
@@ -1034,7 +1094,9 @@ function statusCornerW(run) {
 
 // The pill's left inset. Only the meter earns the tighter one; a pill showing
 // the coin alone (one-hit runs, the tutorial) keeps PILL_PAD on both ends.
-function meterInset(cells) { return cells ? METER_INSET : PILL_PAD; }
+function meterInset(cells) {
+  return cells ? (PILL_H - PILL_TUNE.battH) / 2 : PILL_TUNE.pad;
+}
 
 // The width the count RESERVES, as opposed to the width it inks. Fredoka's
 // digits are proportional — a 1 is a good deal narrower than an 8 — so sizing
@@ -1509,9 +1571,9 @@ export function drawStatusPill(ctx, run, style = HERO_CHIP, reveal = HERO_REVEAL
   // arrives and sit 26px in from a corner with nothing in it.
   if (!HERO_BY_ID[run.relay?.current]) { style = null; reveal = null; }
   const cells = run.oneHit ? 0 : run.maxBattery();
-  const cellsW = hudBatteryW(cells, METER_H);
+  const battH = PILL_TUNE.battH;
+  const cellsW = hudBatteryW(cells, battH);
   const count = formatCoins(run.coins);
-  const splitW = cells ? PILL_SPLIT * 2 + 0.5 : 0;
   const pillW = statusPillW(run, style);
   const geom = heroChipGeom(style, run);
   const px = PILL_X + geom.x;
@@ -1523,12 +1585,14 @@ export function drawStatusPill(ctx, run, style = HERO_CHIP, reveal = HERO_REVEAL
 
   let x = px + (geom.lead || meterInset(cells));
   if (cells) {
-    drawHudBattery(ctx, x, PILL_CY - METER_H / 2, cellsW, METER_H,
-      cells, Math.max(0, Math.min(cells, run.battery)), METER_R);
+    drawHudBattery(ctx, x, PILL_CY - battH / 2, cellsW, battH,
+      cells, Math.max(0, Math.min(cells, run.battery)), PILL_R - (PILL_H - battH) / 2);
     x += cellsW;
-    ctx.fillStyle = UI_PANEL_BORDER;
-    ctx.fillRect(x + PILL_SPLIT, PILL_Y + 3.5, 0.5, PILL_H - 7);
-    x += splitW;
+    if (PILL_TUNE.split === 'line') {
+      ctx.fillStyle = UI_PANEL_BORDER;
+      ctx.fillRect(x + PILL_SPLIT, PILL_Y + 3.5, 0.5, PILL_H - 7);
+    }
+    x += splitGap(cells);
   }
   drawProp(ctx, 'hudCoin', x, PILL_CY - COIN_D / 2, COIN_D, COIN_D);
   drawCoinGlitter(ctx, x, PILL_CY - COIN_D / 2, COIN_D, run);

@@ -35,7 +35,7 @@ output lands in gitignored `dist/social/`.
 ```
 node tools/render-social.js [all|posters|styles|cabinets|locked|menuboard] [--flags]
 node tools/render-cabinet-reel.js [trackId] [outPath] [--flags]
-node tools/render-loop.js [locked|gary|coin] [outPath] [--flags]
+node tools/render-loop.js [locked|gary|coin|eggshell] [outPath] [--flags]
 ```
 
 `render-social.js` writes 30 PNGs in about a minute: nine 1080x1350 posters, the
@@ -90,13 +90,15 @@ node tools/render-loop.js coin --reel dist/social/reel-coin.mp4
 node tools/render-cabinet-reel.js megamix --reel dist/social/reel-nine-cabinets.mp4
 ```
 
-`render-loop.js` writes silent clips, all three on black. Each is built around one
+`render-loop.js` writes silent clips — three on black, and the eggshell pass on
+a flat dark grey. Each is built around one
 CYCLE and rendered as a whole number of them, with everything that moves a
 function of the position within a cycle — so the last frame hands off to the first
 and the file repeats without a join. Verified: matching frames across the seam
 measure PSNR 61.5 dB, i.e. identical at source with only x264 quantisation between
 them. Useful flags: `--cycle=N`, `--repeats=N`, `--zoom=N` (logical frame width;
-bigger is further back), `--seed-from=ID`, `--poster`, `--coins=N`, `--size=WxH`.
+bigger is further back), `--seed-from=ID`, `--poster`, `--coins=N`, `--size=WxH`,
+`--reaction=R`, `--grey=#RRGGBB`.
 
 Only `locked` repeats within its own file (two flashes). `gary` and `coin` are
 single arcs of 9.80s and 4.50s that open and close on black — they meet the seam
@@ -485,6 +487,138 @@ Three implementation notes:
 The spawn times are spaced by `sqrt(u)` rather than uniformly. The derivative of
 sqrt shrinks as u grows, so starts bunch toward the end and the fall thickens into
 a sea instead of arriving as a constant drizzle.
+
+### 7d. Eggshell has a look round — **shipped**
+`node tools/render-loop.js eggshell [--reaction=smirk|gloat|roll|really]` →
+`work/social/loop-eggshell.mp4`, 9.00s, 1080x1350, silent. `--reel` for the 9:16
+cut.
+
+The villain slides on from the left, checks both ways, has an opinion about it,
+and carries on out the right still wearing it.
+
+| t | |
+|---|---|
+| 0.00–0.55 | empty frame |
+| 0.55–1.95 | he glides in, decelerating to a stop |
+| 1.95–2.50 | hovering, dead front — arrived, nothing yet |
+| 2.50–2.80 | eyes go left, back the way he came |
+| 2.80–3.75 | **and wait** |
+| 3.75–4.17 | all the way across |
+| 4.17–5.12 | **and wait** |
+| 5.12–7.22 | eyes come back to you *and the expression with them*, then hold |
+| 7.22–8.42 | and off to the right, pose and all |
+| 8.42–9.00 | empty frame |
+
+**The waits are the performance.** The first cut swept his eyes through one
+continuous sine in 1.3s and read as a man scanning a room on his way past —
+smooth, and over before you had looked at it. Peter, 5 Sep: *"slow motion way
+down… look left, wait a beat, look right, wait a beat, smirk, wait a beat, return
+to normal, fly off."* So every move is now followed by a hold, and the holds are
+the longest beats in the clip: a held pose is what gives a viewer time to read a
+face, and the travel between two poses is only how the face got there. The clip
+went from 5.25s to 9.00s and every second of that went into holding still. The
+*travel* between holds is quick — Peter, 5 Sep, "speed up the eye movement a bit":
+at 0.42s and 0.55s the moves were drifting, and a move only has to be long enough
+not to look like a cut. 0.30s across, 0.42s for the sweep that goes twice as far.
+
+The order is the joke's grammar too — he checks **both** ways before he allows
+himself the expression; reacting mid-scan would be a man who did not need to
+look.
+
+**The second look goes straight into the pose.** There was a `front` beat that
+walked his eyes back to centre before the reaction, and it read as a man
+finishing one thought and starting another. Peter, 5 Sep: *"can we transition
+from the right eye movement to the pose? looks a bit odd to go back to normal."*
+So the return to camera is now the first 0.30s **of the reaction** rather than a
+beat before it — the mood is already on while his eyes are still out at the
+right, and they come back wearing it. The head cock lands on the same 0.30s, so
+face, eyes and body all arrive together. Held in seconds rather than as a
+fraction of the beat, because it is an eye move and has to travel at the speed
+the other two do however long the hold behind it runs.
+
+**And he leaves wearing it.** There was a `relax` beat that put his face back to
+neutral before the exit, on the argument that a villain who flies off still
+pulling the face was performing for you. Peter, 5 Sep: *"he should slide off WITH
+his pose, not revert back to normal."* Which is the better read: dropping it made
+the expression a thing that happened and then stopped, where carrying it out of
+frame makes it the thing he leaves with. The mood, the cock of the head and the
+gaze all hold straight through — he does not even turn to look where he is going.
+That beat's 0.85s went into the reaction, so the hold got longer rather than the
+clip shorter.
+
+**Every beat is a control drawCopter already drives.** The professor's face is
+live in game — `look`, `mood`, `blink`, and an independent twitch per brow —
+because a cached expression next to the cabinet's own blinking gorilla read as a
+sticker. The look-around is `face.look` held at ±1 with smootherstep travel
+between, and the reaction is `face.mood`:
+
+- **smirk** — one brow up and the mouth lifted at *that same corner*, the whole
+  right half of the face rising as one gesture. Same-side is the smug read. In
+  game he wears it passing the rooftop gorilla, and after a near miss.
+- **gloat** — the grin pulled to one side, teeth showing, same raised brow. In
+  game it is the pose he holds directly over the hero.
+- **roll** — pupils up and out to the corners of their lenses, brows up with
+  them, mouth flattened to the faintest downturn: the face of a man being made
+  to wait. run.js sets it when the player ignores a hover window.
+- **really** — *"oh really?"*, and the difference from the smirk is a **cross**.
+  The smirk lifts one brow and the mouth corner under it; scepticism is the pair
+  disagreeing. The right brow arches half again as far *and rolls outer-end-up*,
+  the left one drops and rolls the other way, and the mouth lifts at the far
+  corner. Nothing on his face agrees with anything else, which is what doubt
+  looks like. Height alone was not enough on the first pass — two brows lifted
+  straight up at different heights is a man with a wonky face, not a sceptical
+  one; the **arch** is what carries it.
+
+`really` is the one new mark in this whole clip: a `PRO_MOOD` entry and two
+branches in [props.js](../src/sprites/props.js), additive, and nothing in a run
+reaches it yet. Everything else was already drawn.
+
+**He does not blink.** There was one mid-hold on each side, on the argument that
+a face holding perfectly still for a second reads as a photograph. Peter, 5 Sep:
+*"is he blinking in between eye movements? don't."* Right, and the reason is what
+the holds are *for*: the eyes have stopped somewhere on purpose, and a blink is
+the one thing that takes them off the thing they stopped on. The stillness is the
+performance, not a gap in it.
+
+**And no brow twitch.** One survived the blinks, closing the second hold, on the
+argument that it said he was thinking without moving where he was looking — and
+on the *left* brow specifically, since the right one is about to go up on its own
+for three of the four reactions. It did not survive contact: Peter, 5 Sep, *"he
+is flicking an eyebrow up before the final pose."* Which is exactly what it was.
+Any brow moving in the beat before a reaction that raises a brow is a false start
+on the thing the clip is building to, and which brow it is makes no difference.
+
+So the holds hold completely. Nothing on his face moves but the pupils, and they
+only move when he means to; the hover bob and the rotor are the whole of the life
+in the still beats, which is the right amount — they belong to the machine, not
+to him.
+
+**The lean is what sells the scan.** He is drawn front on and his only gaze
+control is the pupils inside the lenses — there is no yaw on this rig. At lane
+size the pupils carry a glance alone; at three quarters of a frame wide, a body
+that stays rigid while the eyes *stop and hold* is where the doll read comes
+back. So the whole copter tips into each look and drifts with it, and cocks a
+little further when the expression lands.
+
+**The backdrop is a flat dark grey, and that is a correction.** It was first the
+rhythm cabinet's own panel with the city taken off it — sky, wash and cell
+lattice — and the lattice was the problem. The rotor is two thin blades and a
+pair of translucent sweeps, which is a *texture*, and a texture over a texture
+cancels: the one part of the machine that says it is flying went missing on a
+background full of fine lines. `#2e2e34` is dark enough that the pale sweeps
+carry and light enough that the near-black blades still have an edge — flat black
+loses the blades outright, and anything lighter starts merging his cape into the
+ground. `--grey=#RRGGBB` moves it.
+
+**9.00s is not a round number by accident.** The rotor steps 48 times a second
+through a twelve-frame half-turn — `copterFrame`'s own rate with no song setting
+the beat, and this clip is silent — so the seam is only clean where `48 * cycle`
+is a multiple of 12, i.e. on quarter seconds. A `--cycle=N` off that grid lands
+the last frame mid-blade. The hover bob is likewise a whole number of cycles per
+clip, and slower than the first cut's: it is the only thing moving through the
+holds, and at the old rate it was busier than the performance on top of it. First
+and last frames are the bare backdrop, identical at source and identical through
+the encode too (PSNR infinite).
 
 ### 8. Launch day only: the ending
 Eggshell warmed by the socket — "SO THIS IS THE WARMTH I NEVER GOT." Hold this

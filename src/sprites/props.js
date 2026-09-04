@@ -734,10 +734,18 @@ function proSpecs(c, X, Y, shocked, face = PRO_FACE, o = PRO_SPEC) {
     // THE PUPILS TRACK. Off the frames' own half-width, so they ride inside
     // the lens and can never leave it however hard he stares.
     const track = Math.max(-1, Math.min(1, face.look)) * hw * 0.34;
+    // THE EYEROLL. The pupils go to the TOP of the lens and a little outward,
+    // which is the whole expression at this size — there is no white to show,
+    // so what sells it is the dot leaving the middle and the brows going with
+    // it. Clamped inside the lens like the tracking is, so it can never look
+    // like a fault in the drawing.
+    const roll = face.mood === 'roll' && !shocked;
+    const rollY = roll ? -hh * 0.42 : 0;
+    const rollX = roll ? sd * hw * 0.2 : 0;
     if (face.blink > 0.5 && !shocked) {
       egLine(c, EG_INK, PRO_LW * 0.9, (k) => { k.moveTo(x - hw * 0.55, cy + Y(0.004)); k.lineTo(x + hw * 0.55, cy + Y(0.004)); });
     } else {
-      egDot(c, EG_INK, x + sd * X(o.eye) + track, cy + Y(0.004), X(shocked ? 0.012 : 0.017));
+      egDot(c, EG_INK, x + sd * X(o.eye) + (roll ? rollX : track), cy + Y(0.004) + rollY, X(shocked ? 0.012 : 0.017));
     }
   }
   egP(c, PRO_RIM, (k) => rr(k, X(0.5) - off - hw - PRO_LW * 0.08, top - PRO_LW * 0.08, (off + hw) * 2 + PRO_LW * 0.16, brow, 0));
@@ -750,9 +758,18 @@ function proBrows(c, X, Y, shocked, face = PRO_FACE, spec = PRO_SPEC) {
   // A brow that never moves is what makes a face a mask. The frown pulls the
   // inner ends down, the smile lifts the whole pair — small numbers, because
   // at this size a brow is four pixels and half of one is an expression.
-  const mood = face.mood === 'frown' ? -1 : (face.mood === 'smile' || face.mood === 'grin') ? 1 : 0;
+  // The brows go up with the eyes — that is half of what makes a roll read as
+  // exasperation rather than a man looking at his own rotor.
+  const mood = face.mood === 'frown' ? -1 : (face.mood === 'smile' || face.mood === 'grin' || face.mood === 'roll') ? 1 : 0;
   // ONE brow rises for a smirk — the right one, the same side the mouth lifts.
   const smirk = face.mood === 'smirk' || face.mood === 'gloat';
+  // OH REALLY is the smirk's opposite number, and the difference is a CROSS.
+  // The smirk lifts one brow and the mouth corner UNDER it, so half the face
+  // rises as one gesture and reads as pleased. Scepticism is the pair
+  // disagreeing: this arches the right brow half again as far as the smirk
+  // does AND pulls the left one down, then lifts the mouth at the OTHER end.
+  // Nothing on his face agrees with anything else, which is the expression.
+  const really = face.mood === 'really';
   // OFF THE FRAMES, NOT OFF A CONSTANT: the brows follow the lenses down, so
   // the settled band of forehead between brow and rim holds at whatever height
   // the frames sit — a brow touching the rim reads as part of the glasses.
@@ -765,6 +782,19 @@ function proBrows(c, X, Y, shocked, face = PRO_FACE, spec = PRO_SPEC) {
     c.scale(sd, 1);
     // the raised brow of a smirk, on the right only
     if (smirk && sd > 0) c.translate(0, -Y(0.026));
+    // ...and oh really moves BOTH, in opposite directions, AND ANGLES THEM.
+    // Height alone was not enough: a brow lifted straight up is a surprised
+    // brow, and two of those at different heights is a man with a wonky face.
+    // What makes one read as sceptical is the ARCH, so the raised brow is
+    // rolled outer-end-up and the low one the other way — they end up not
+    // merely at different heights but pointing at different things.
+    //
+    // The down side stays small: past a unit or so it stops reading as doubt
+    // and starts reading as one brow half way through a frown.
+    else if (really) {
+      c.translate(0, sd > 0 ? -Y(0.050) : Y(0.013));
+      c.rotate(sd > 0 ? -0.17 : 0.10);
+    }
     // AND EACH BROW TWITCHES ON ITS OWN. Peter, 4 Sep: "the eyebrows twitching
     // up and down independently occasionally may also work." Two separate
     // values, so they are never in step — a pair that moves together is a
@@ -818,7 +848,13 @@ function proStubble(c, X, Y) {
 // the mouth and shows teeth, and the smirk needed a harder tilt than a line can
 // hold. GLOAT is the grin pulled to one side — the pose he wears directly over
 // the hero, which is the moment the whole mission is about.
-const PRO_MOOD = { smile: 0.026, flat: 0.002, frown: -0.012, smirk: 0.012, grin: 0.03, gloat: 0.028 };
+// ROLL is the one mood the mouth barely does: an eyeroll lives in the pupils
+// and the brows, and the mouth only has to get out of the way — a flat line
+// with the faintest downturn, the face of a man being made to wait.
+// REALLY is flat, and has to be: the brows are doing something loud and a
+// curve underneath them would be a second opinion. The only thing the mouth
+// says is which corner is up, and that is handled by liftL below.
+const PRO_MOOD = { smile: 0.026, flat: 0.002, frown: -0.012, smirk: 0.012, grin: 0.03, gloat: 0.028, roll: -0.004, really: -0.001 };
 // THE MOUSTACHE, as one pair of numbers. Peter, 4 Sep: "a touch less tall,
 // width the same" — 0.046 was deep enough to sit on the mouth, which was half
 // of why the mouth would not read. Width stays: it is the mark everyone knows
@@ -843,6 +879,7 @@ const mouthY = (shocked, size = PRO_STACHE_SIZE) => stacheY(shocked) + size.drop
 const PRO_MOUTH_INK = 'rgba(26,16,40,0.72)';
 function proMouth(c, X, Y, shocked, face = PRO_FACE, size = PRO_STACHE_SIZE) {
   const my = mouthY(shocked, size);
+  const really = face.mood === 'really';
   if (shocked) { egP(c, EG_INK, (k) => k.ellipse(X(0.5), Y(my + 0.006), X(0.035), Y(0.045), 0, 0, EG_TAU)); return; }
   const curve = PRO_MOOD[face.mood] ?? PRO_MOOD.flat;
   // GRIN and GLOAT are open mouths with teeth: a filled shape under the
@@ -872,8 +909,12 @@ function proMouth(c, X, Y, shocked, face = PRO_FACE, size = PRO_STACHE_SIZE) {
   // The smirk lifts ONE end of the line, and far enough to see: at 0.014 the
   // tilt was inside the line's own weight.
   const lift = face.mood === 'smirk' ? Y(0.026) : 0;
+  // OH REALLY lifts the FAR end instead — the corner away from the arched
+  // brow. Smaller than the smirk's, because it is being read against a brow
+  // that has already moved twice as far: matched, the two marks fight.
+  const liftL = really ? Y(0.020) : 0;
   egLine(c, PRO_MOUTH_INK, PRO_LW * 0.95, (k) => {
-    k.moveTo(X(0.46), Y(my + 0.008));
+    k.moveTo(X(0.46), Y(my + 0.008) - liftL);
     k.quadraticCurveTo(X(0.5), Y(my + 0.008 + curve), X(0.545), Y(my + 0.008) - lift);
   });
 }

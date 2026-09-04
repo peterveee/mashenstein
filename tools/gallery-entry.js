@@ -6632,6 +6632,7 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     ['FROWN', 'over the hero, working', { mood: 'frown' }],
     ['SMIRK', 'passing the gorilla — one brow up, one corner up', { mood: 'smirk', look: 1 }],
     ['GLOAT', 'directly over the hero — the pose the mission is about', { mood: 'gloat', look: 0 }],
+    ['EYEROLL', 'a window you ignored, or a shot that pinged off', { mood: 'roll' }],
     ['GRIN', 'teeth: the biggest thing his face does', { mood: 'grin' }],
     ['LOOKING LEFT', 'the hero is behind him', { mood: 'flat', look: -1 }],
     ['LOOKING RIGHT', 'the hero is ahead', { mood: 'flat', look: 1 }],
@@ -6639,20 +6640,42 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     ['LEFT BROW UP', 'the twitches are independent', { mood: 'flat', twitch: [1, 0] }],
     ['RIGHT BROW UP', 'so the two never land together', { mood: 'flat', twitch: [0, 1] }],
   ];
+  // A CROP OF THE FACE, NOT A PICTURE OF THE MACHINE. Every one of these
+  // differences is two or three pixels of mouth and brow, and shown on the
+  // whole copter at lane size they were invisible without zooming the page
+  // right in — Peter: "do large versions of his face to see the expressions
+  // properly." So the tile draws the copter at four times the size into a
+  // window cropped to his head: same painter, same numbers, nothing
+  // re-implemented, just the part you are being asked about.
+  const HEAD_W = 74, HEAD_H = 78, ZOOM = 4;
+  const bigFace = (ctx, t, o) => {
+    ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, HEAD_W, HEAD_H);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, HEAD_W, HEAD_H); ctx.clip();
+    // His head's CENTRE sits at 0.52 of the copter's box, not 0.42 — the first
+    // cut framed the crop on his brow and cropped the mouth away, which is the
+    // half most of these expressions live in. Centred a little high in the
+    // window so the mane has room above and the moustache and mouth have room
+    // below.
+    ctx.translate(HEAD_W / 2 - BOX * ZOOM * 0.5, HEAD_H * 0.52 - BOX * ZOOM * 0.52);
+    eggshellCopterArt(ctx, BOX * ZOOM, BOX * ZOOM, Math.floor(t * 2 * 24) % 12, o);
+    ctx.restore();
+  };
   for (const [name, note, face] of faces) {
-    tile(grid, name, note, BOX + 8, BOX + 8, (ctx, t) => {
+    tile(grid, name, note, HEAD_W, HEAD_H, (ctx, t) => bigFace(ctx, t, { face }),
+      { animated: true, hires: 5 });
+  }
+  tile(grid, 'BONKED', 'the hair blasts, the mouth opens, the brows jump and arch', HEAD_W, HEAD_H,
+    (ctx, t) => bigFace(ctx, t, { pop: Math.max(0, Math.sin(t * 2)) }), { animated: true, hires: 5 });
+  // And one of the whole machine, so the sheet still says what size any of
+  // this actually is in the lane.
+  tile(grid, 'AT LANE SIZE', 'the copter as the run draws it, 36u — every difference above is two or three pixels of this',
+    BOX + 8, BOX + 8, (ctx, t) => {
       ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, BOX + 8, BOX + 8);
       ctx.save(); ctx.translate(4, 4);
-      eggshellCopterArt(ctx, BOX, BOX, Math.floor(t * 2 * 24) % 12, { face });
+      eggshellCopterArt(ctx, 36, 36, Math.floor(t * 2 * 24) % 12, { face: { mood: 'gloat', look: 0 } });
       ctx.restore();
     }, { animated: true, hires: 6 });
-  }
-  tile(grid, 'BONKED', 'the hair blasts, the mouth opens, the brows jump and arch', BOX + 8, BOX + 8, (ctx, t) => {
-    ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, BOX + 8, BOX + 8);
-    ctx.save(); ctx.translate(4, 4);
-    eggshellCopterArt(ctx, BOX, BOX, Math.floor(t * 2 * 24) % 12, { pop: Math.max(0, Math.sin(t * 2)) });
-    ctx.restore();
-  }, { animated: true, hires: 6 });
   tile(grid, 'THE PORTRAIT', 'eggshellFace — what the speech card shows', BOX + 8, BOX + 8, (ctx) => {
     ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, BOX + 8, BOX + 8);
     drawProp(ctx, 'eggshellFace', 4, 4, BOX, BOX * 0.75);

@@ -58,7 +58,7 @@ import { setPropDrawPhase, maxPropVisualScale } from '../sprites/props.js';
 import { beginStageArtWarmup, stepArtWarmup, artWarmupPending } from './art-warmup.js';
 
 export { GROUND_Y };
-// The hero's screen x at the resting zoom: 23.3% of the frame. The HUD/floatie
+// The hero's screen x at the resting zoom: 24.6% of the frame. The HUD/floatie
 // layer draws UNSCALED above the world, so anything that has to sit over the
 // hero up there anchors here rather than to the world-space PLAYER_X.
 // Stage-clear: a short beat on the finish frame so the tape-cross registers.
@@ -2659,7 +2659,7 @@ export class RunState {
     // boot-time node stays (same predicate as everywhere else in the feature).
     if (this.beatLock || !Input.rewindAvailable()) Audio.setCaptureEnabled(false);
     // setContext already dropped the paused screen's borrowed key mapping.
-    Audio.setDetune(1); Audio.setInvincible(false);
+    this.keepSongTempo(); Audio.setInvincible(false);
     // Nothing here changes the song — the results screen deliberately keeps playing it —
     // but a handover still waiting for its bar line has to be settled. See endStage:
     // quit inside the first two bars and it would otherwise land on the results screen.
@@ -5272,7 +5272,7 @@ export class RunState {
     const spec = COPTER_BONK_CAUSES[cause] || COPTER_BONK_CAUSES.head;
     this.copterBonks++;
     c.hitT = COPTER_HIT_T;
-    c.nearMissT = 0;   // he is not smug about one he took
+    c.nearMissT = 0; c.rollT = 0;   // he is neither smug nor bored about one he took
     c.mode = 'leave'; c.modeT = 0; c.fromDx = null; c.homeT = null;
     Audio.sfx('copterBonk');
     shake(3, 0.2);
@@ -5681,6 +5681,7 @@ export class RunState {
       if (c.hitT > 0) c.hitT = Math.max(0, c.hitT - dt);
       if (c.shieldT > 0) c.shieldT = Math.max(0, c.shieldT - dt);
       if (c.nearMissT > 0) c.nearMissT = Math.max(0, c.nearMissT - dt);
+      if (c.rollT > 0) c.rollT = Math.max(0, c.rollT - dt);
       // And the dial leaks home. Slowly — a clean bar outruns it easily — so a
       // run coasts on what it is doing now rather than on a streak from a
       // minute ago.
@@ -5852,6 +5853,13 @@ export class RunState {
           }
           // A hole can be laid after the window opened. He climbs away rather
           // than hanging over a jump the player owes the level.
+          // HE NOTICES WHEN YOU DO NOT TRY. A window that runs its whole length
+          // with the hero never leaving the ground earns an EYEROLL on the way
+          // out: he came all this way, hung there, and nothing happened. It is
+          // the one reaction that comments on the player rather than on the
+          // hit, and it is why the window closing has a face at all.
+          if (this.player.grounded) c.idleWindow = (c.idleWindow || 0) + dt;
+          else c.idleWindow = 0;
           // A hole can be laid after the window opened. He climbs away rather
           // than hanging over a jump the player owes the level — but only for
           // the road the WINDOW ITSELF still has to cover, plus the landing.
@@ -5866,7 +5874,12 @@ export class RunState {
           // cabinet — and it cancelled every window on a pit-heavy stage before
           // its first frame.
           const abortAhead = 0.45;
-          if (c.modeT >= HOVER_T || !this.laneClearFor(0, abortAhead, sp, true)) { c.mode = 'leave'; c.modeT = 0; }
+          if (c.modeT >= HOVER_T || !this.laneClearFor(0, abortAhead, sp, true)) {
+            // Only a window he actually held counts as ignored: one cut short by
+            // a hole in the road is not the player's fault.
+            if (c.modeT >= HOVER_T && (c.idleWindow || 0) > HOVER_T * 0.8 && !c.nearMissT) c.rollT = 2;
+            c.mode = 'leave'; c.modeT = 0; c.idleWindow = 0;
+          }
           break;
         }
         case 'leave':
@@ -5908,9 +5921,11 @@ export class RunState {
       c.nearKong = Math.abs(dx - kongMid) < 34 && c.mode === 'away';
       if (c.nearKong && c.hitT <= 0) c.mood = 'smirk';
       else if (c.mood === 'smirk') c.mood = 'flat';
-      // THE NEAR-MISS SMIRK OUTRANKS THE POSE, and it is applied here rather
-      // than inside the cases because every one of them sets a mood of its own
-      // and would overwrite it on the next frame.
+      // THE REACTIONS OUTRANK THE POSE, and they are applied here rather than
+      // inside the cases because every one of them sets a mood of its own and
+      // would overwrite them on the next frame. A near miss beats an eyeroll:
+      // being nearly hit is a bigger event than being ignored.
+      if (c.rollT > 0 && c.hitT <= 0) c.mood = 'roll';
       if (c.nearMissT > 0 && c.hitT <= 0) c.mood = 'smirk';
       const crossing = parked || c.mode === 'away' && !c.arrived;
       c.dx = crossing ? dx : Math.min(dx, rightEdge / zoom - COPTER_BOX / 2);
@@ -6209,6 +6224,10 @@ export class RunState {
           // same shot several times.
           if (!(c.shieldT > 0)) this.floatText(this.fxRng.pick(COPTER_DEFLECT_SHORT), '#a8e6ff');
           c.shieldT = COPTER_SHIELD_T;
+          // AND SHOOTING HIM EARNS THE SAME LOOK. The forcefield already says
+          // the round did nothing; the eyeroll says what he thinks of the
+          // attempt, which is the half a floatie cannot carry.
+          if (c.hitT <= 0 && !c.nearMissT) c.rollT = 1.6;
           if (pr.type === 'axe' || pr.type === 'fist') { pr.hover = true; pr.hoverX = pr.x; }
           else if (!pr.pierce) pr.live = false;
         }
@@ -10010,10 +10029,25 @@ export class RunState {
 
   gravityForDeath() { return 600; }
 
+  // DROP THE PITCH, KEEP THE TEMPO. `Audio.setDetune(1)` resets both at once,
+  // which is right for the powerup warps it was written for — the star's whole
+  // tone and the slow-mo drag are effects that must not outlive the run. It is
+  // wrong for the LANE tempo: on a beat cabinet that number is the stage's own
+  // speed, ramped up as checkpoints were banked, and resetting it dropped the
+  // song back to the bank's bpm at the exact moment the player finished —
+  // Peter: "when we leave the level for the celebration don't slow the song
+  // down, keep the current bpm. Same on failure or an early quit."
+  //
+  // So the pitch goes home and the transport stays where the run left it, on
+  // all three ways out.
+  keepSongTempo() {
+    Audio.setWarp(this.beatLock ? this.laneTempo() : 1, 1);
+  }
+
   endRun(success, reason) {
     if (this.finished) return;
     this.finished = true;
-    Audio.setDetune(1);
+    this.keepSongTempo();
     Audio.setRewinding(false);
     this.invActive = false;
     Audio.setInvincible(false);
@@ -10308,7 +10342,7 @@ export class RunState {
         maxRoadRise: maxTerrainHeight(this.cabinet),
       }
       : null;
-    this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist, backgroundScene);
+    this.style.bg(ctx, renderT, cam, this.cabinet, this.totalDist, backgroundScene, bgShift);
     ctx.restore();
 
     // ---- world band. Everything from here to post() draws through the camera,
