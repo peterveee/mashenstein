@@ -526,6 +526,15 @@ const SFX_TRIM = {
   impact: ATTACK_MASTER_TRIM,
   contact: ATTACK_MASTER_TRIM, launch: 0.92 * ATTACK_MASTER_TRIM,
   shield: 0.78, star: 0.72, win: 0.76, copterBonk: 1.0, power: 0.84, rewindPickup: 0.78,
+  // Levelled against `jump`, which fires on the SAME frame — this is the floor
+  // answering the hero, and a floor that answers louder than the hero is a
+  // trampoline. On RMS rather than peak: the cue has a held body where the jump
+  // is a blip, so equal peaks would be a far bigger sound. Untrimmed it measured
+  // -27.2 RMS against the jump's -32.3 — five decibels the wrong way round.
+  // This lands it at -35.3, three under the hero, and six under `copterBonk`
+  // (-29.0), which has to stay the bigger event on this cabinet. Re-measure with
+  // `node tools/render-cues.js girderBoing jump copterBonk`.
+  girderBoing: 0.39,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
   // SCENERY, and levelled as scenery. Untrimmed the crack peaked -11.3 dBFS —
   // hotter than 'crunch', a cue the player causes — which is the wrong way
@@ -2711,6 +2720,76 @@ class AudioSys {
     this.osc('sine', 680, 350, 0.43, 0.11, 0.075, null, 0.01);
   }
 
+  /**
+   * THE BEAM LETTING GO — a boing off a rhythm girder, fired at the push-off
+   * (see RunState.ringGirder, which draws the same event).
+   *
+   * A falling pitch is the whole gesture. A loaded beam releasing loses its
+   * tension as it goes, and the note goes with it; nothing else in the cue can
+   * stand in for that fall, which is why the sweep is the layer everything
+   * else is hung off.
+   *
+   * ONE GESTURE, like the boost miss. No second strike, no re-attack — a beam
+   * is released once and the ear hears one departure. Two would be two jumps.
+   *
+   * AND IT IS STEEL, NOT RUBBER. A clean fall on its own is a springboard, so
+   * the fundamental is joined by two free-bar partials at 2.76 and 5.40 — the
+   * same inharmonic modes the register bell in `cash` is built from, which is
+   * this game's established way of saying metal. They are struck and gone
+   * inside a tenth of a second, because a girder rings at the moment it is let
+   * go of and not after.
+   *
+   * The wobble is what separates a boing from a slide whistle, and it is an
+   * LFO on the frequency rather than anything osc() can express — hence a
+   * method of its own, like copterBonk. It decays to nothing across the fall,
+   * so the note arrives settled instead of still shaking.
+   *
+   * It fires ALONGSIDE `jump`, never instead of it: the jump is the hero and
+   * this is the floor answering him. So it is levelled to sit under that cue —
+   * see SFX_TRIM — and the two separate by direction anyway, the jump rising
+   * where this one falls.
+   */
+  girderBoing() {
+    if (!this.ctx) return;
+    const t = this.cueAt();
+    const q = this.cueGain;
+    const dur = 0.28;
+    const f0 = 460;
+    // The push-off: a boot scuffing steel, gone before the note is.
+    this.noise(0.03, 0.09, 'bandpass', 1000);
+    const o = this.ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(150, t + dur);
+    // LINEAR, and that is not a detail. An exponential depth ramp is three
+    // quarters gone in the first sixtieth of a second — the wobble ended
+    // before the fall had started and what was left was a slide whistle.
+    const lfo = this.ctx.createOscillator();
+    const depth = this.ctx.createGain();
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(24, t);
+    depth.gain.setValueAtTime(70, t);
+    depth.gain.linearRampToValueAtTime(0, t + dur * 0.75);
+    lfo.connect(depth); depth.connect(o.frequency);
+    // HELD, for the same reason. Straight from the attack into an exponential
+    // decay put the whole cue 36dB down by the time the pitch had fallen a
+    // third of its way: a blip with a glide it never got to spend. The plateau
+    // is what lets the gesture be heard as one.
+    const g = this.ctx.createGain();
+    const peak = 0.16 * q;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.006);
+    g.gain.setValueAtTime(peak, t + 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.gain.linearRampToValueAtTime(0, t + dur + 0.02);
+    o.connect(g); g.connect(this.sfxGain);
+    o.start(t); o.stop(t + dur + 0.02);
+    lfo.start(t); lfo.stop(t + dur + 0.02);
+    for (const [ratio, amp] of [[2.76, 0.045], [5.40, 0.025]]) {
+      this.osc('sine', f0 * ratio, f0 * ratio * 0.9, 0.1, amp);
+    }
+  }
+
   // ONE BARK.
   //
   // Three rewrites of this cue read as percussion, then as a synth note, then
@@ -3739,6 +3818,7 @@ class AudioSys {
       case 'jump': this.jumpTone(0, 1, 0.055); break;
       case 'jump2': this.jumpTone(0, 1.5, 0.045); break; // double jump: same shape, a fifth up
       case 'copterBonk': this.copterBonk(); break;
+      case 'girderBoing': this.girderBoing(); break;
       case 'land': this.noise(0.06, 0.15, 'lowpass', 400); break;
       // Two square pings a fourth apart, in the key of whatever is playing —
       // see coinNotes for why the numbers are not written down here.

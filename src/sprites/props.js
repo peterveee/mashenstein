@@ -560,12 +560,270 @@ function egMouth(c, X, Y, lw, shocked) {
   }
 }
 const EG_BUST_ORDER = ['shell', 'body', 'head', 'face', 'hair', 'eyes', 'mouth'];
-export const EGGSHELL_PARTS = Object.freeze({
-  shell: egShell, body: egBody, head: egHead, face: egFace, hair: null, eyes: egEyes, mouth: egMouth,
-  tub: eggshellTub, hands: eggshellHands,
+// ------------------------------------------ Don K. Eggshell, the professor
+// THE SHIPPED VILLAIN, as picked 4 Sep 2026. He was a giant egg, then an ape
+// in a clown-copter tub; he is now a silver-haired professor in that same tub,
+// chosen off a long bake-off in the gallery's lab (the losing bodies, vehicles
+// and faces are kept in src/dev/eggshell-redesigns.js, which is reference and
+// nothing else — this file is the drawing that ships).
+//
+// The rules that came out of that bake-off, so nobody re-derives them:
+//   * fine hero-weight ink, not the villain's old heavy contour
+//   * the hair mingles three greys STRAND BY STRAND — one flat tone is a wig
+//   * everything above the shoulders is scaled and lifted as one, so his face
+//     clears the basket and his head reads at the cast's proportions
+//   * a bonk stands his hair up, opens his mouth and jolts him ONCE; he never
+//     leaves the seat, because he has no lower body and the rotor is close
+const PRO_SKIN = '#eec9a8', PRO_SKIN_DK = '#e0b68e';
+const PRO_INK = 'rgba(26,16,40,0.32)';
+const PRO_SKIN_INK = 'rgba(26,16,40,0.2)';
+const PRO_LW = 0.0105 * EG_APE_W;
+// The greys. Each entry is [lit, shaded]: front locks take the lit tone, the
+// locks behind the skull the shaded one.
+const PRO_TONES = [['#dfe2ea', '#c6cbd9'], ['#cdd3e0', '#b1b9ca'], ['#bcc3d2', '#a0a8bb']];
+const proTone = (i, shaded) => PRO_TONES[i % PRO_TONES.length][shaded ? 1 : 0];
+const PRO_STACHE = '#cdd3e0';
+const PRO_STUBBLE = '#c9ab93';
+const PRO_CHIN = 'rgba(205,211,224,0.62)';
+const PRO_RIM = 'rgba(61,61,72,0.72)';
+const PRO_LENS = '#c8e0f8';
+const PRO_CAPE = '#23232e', PRO_CAPE_IN = '#b8202a', PRO_SHIRT = '#eceef4';
+
+// The skull the locks are rooted in, and how far outside it they grow.
+const PRO_SKULL = { fx: 0.5, fy: 0.37, frx: 0.165, fry: 0.2 };
+const PRO_HAIR_DROP = -0.02, PRO_ROOT_K = 0.86, PRO_RAD = Math.PI / 180;
+// An egg on its end for the head: the widest line sits above centre and the
+// chin lands as a round point rather than a spout.
+function proHeadEgg(k, cx, cy, rx, ry, taper = 0.7, widest = -0.16) {
+  const wy = cy + ry * widest, top = cy - ry, bot = cy + ry, h = 0.56;
+  k.moveTo(cx, top);
+  for (const sd of [1, -1]) {
+    if (sd < 0) {
+      k.bezierCurveTo(cx - rx * taper * 0.9, bot - (bot - wy) * 0.1, cx - rx, wy + (bot - wy) * h * 0.92, cx - rx, wy);
+      k.bezierCurveTo(cx - rx, wy - (wy - top) * h, cx - rx * h, top, cx, top);
+      continue;
+    }
+    k.bezierCurveTo(cx + rx * h, top, cx + rx, wy - (wy - top) * h, cx + rx, wy);
+    k.bezierCurveTo(cx + rx, wy + (bot - wy) * h * 0.92, cx + rx * taper * 0.9, bot - (bot - wy) * 0.1, cx, bot);
+  }
+  k.closePath();
+}
+const PRO_HEAD = (k, X, Y) => proHeadEgg(k, X(0.5), Y(0.375), X(0.168), Y(0.215));
+// ONE LOCK: rooted well inside the skull so it cannot float, growing out
+// through it. [angle, length, spread, curl].
+function proLock(c, X, Y, fill, [deg, len, spread, curl]) {
+  const cx = X(PRO_SKULL.fx), cy = Y(PRO_SKULL.fy + PRO_HAIR_DROP);
+  const rx = X(PRO_SKULL.frx), ry = Y(PRO_SKULL.fry);
+  const px = (d, k = 1) => cx + Math.cos(d * PRO_RAD) * rx * k;
+  const py = (d, k = 1) => cy + Math.sin(d * PRO_RAD) * ry * k;
+  const tip = deg + curl;
+  egP(c, fill, (k) => {
+    k.moveTo(px(deg - spread, PRO_ROOT_K), py(deg - spread, PRO_ROOT_K));
+    k.quadraticCurveTo(px(deg - spread * 0.5, 1 + len * 0.55), py(deg - spread * 0.5, 1 + len * 0.55),
+      px(tip, 1 + len), py(tip, 1 + len));
+    k.quadraticCurveTo(px(deg + spread * 1.15, 1 + len * 0.3), py(deg + spread * 1.15, 1 + len * 0.3),
+      px(deg + spread, PRO_ROOT_K), py(deg + spread, PRO_ROOT_K));
+    k.closePath();
+  }, PRO_INK, PRO_LW);
+}
+// MANE is how he flies; BLAST is how he looks the instant he is hit.
+const PRO_HAIR = {
+  mane: {
+    back: [[-158, 0.85, 15, 14], [-172, 0.7, 13, 18], [166, 0.62, 14, 26], [148, 0.5, 15, 30],
+      [-26, 0.8, 14, -16], [-8, 0.72, 13, -20], [12, 0.6, 14, -26], [32, 0.48, 15, -30]],
+    front: [[-128, 1.05, 19, 22], [-104, 1.18, 18, 20], [-80, 1.0, 17, 16], [-58, 0.82, 17, 10],
+      [-146, 0.62, 14, 26], [-38, 0.56, 14, 8]],
+  },
+  blast: {
+    back: [[-160, 1.05, 15, -4], [-176, 0.78, 13, 6], [164, 0.9, 14, -5], [146, 0.6, 14, 4],
+      [-20, 0.95, 15, 5], [-4, 0.7, 13, -6], [16, 0.98, 14, 4], [34, 0.55, 14, -4]],
+    front: [[-138, 1.12, 17, 6], [-116, 0.85, 15, -7], [-92, 1.25, 16, 4], [-68, 0.92, 15, -6], [-46, 1.15, 17, 5]],
+  },
+};
+const proHairBack = (name, c, X, Y) => PRO_HAIR[name].back.forEach((l, i) => proLock(c, X, Y, proTone(i, true), l));
+const proHairFront = (name, c, X, Y) => PRO_HAIR[name].front.forEach((l, i) => proLock(c, X, Y, proTone(i, false), l));
+function proEars(c, X, Y) {
+  for (const sd of [-1, 1]) {
+    const x = X(0.5 + sd * 0.16), y = Y(0.378);
+    egP(c, PRO_SKIN, (k) => k.ellipse(x, y, X(0.036), Y(0.052), sd * 0.28, 0, EG_TAU), PRO_SKIN_INK, PRO_LW);
+    egLine(c, 'rgba(26,16,40,0.18)', PRO_LW, (k) => k.ellipse(x + sd * X(0.006), y, X(0.016), Y(0.026), sd * 0.28, -1.9, 1.5));
+  }
+}
+function proNose(c, X, Y) {
+  const cx = X(0.5), cy = Y(0.392), rx = X(0.03), ry = Y(0.034);
+  egP(c, PRO_SKIN_DK, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU));
+  egLine(c, PRO_SKIN_INK, PRO_LW, (k) => k.ellipse(cx, cy, rx, ry, 0, 0.12 * Math.PI, 0.88 * Math.PI));
+}
+// Small fine frames: wide and shallow, with a heavy bar across the top. The
+// weight along the top is what makes them read as HIS glasses.
+const PRO_SPEC = { hw: 0.067, bridge: 0.010, eye: -0.004 };
+// HIS FACE IS NOT A STILL. A cached raster gave him one expression for the
+// whole level while the cabinet's own gorilla blinked and scowled beside him,
+// and next to that he read as a sticker. `face` is the state every mark below
+// takes its cue from — where he is LOOKING (-1 to 1, the hero's side), what
+// he thinks (`mood`), and whether his eyes are shut this frame.
+//
+// It is passed down from drawCopter rather than derived here, because only
+// the caller knows where the hero is and what the pass is doing.
+const PRO_FACE = { look: 0, mood: 'flat', blink: 0, twitch: [0, 0] };
+function proSpecs(c, X, Y, shocked, face = PRO_FACE) {
+  const o = PRO_SPEC;
+  const cy = Y(0.328), hh = Y(0.036);
+  const hw = X(o.hw), off = X(o.hw + o.bridge / 2);
+  const brow = PRO_LW * 0.6, top = cy - hh;
+  for (const sd of [-1, 1]) {
+    const x = X(0.5) + sd * off;
+    egLine(c, PRO_RIM, PRO_LW * 0.42, (k) => { k.moveTo(x + sd * hw, top + brow); k.lineTo(X(0.5) + sd * X(0.166), cy - Y(0.006)); });
+    egP(c, PRO_LENS, (k) => rr(k, x - hw, top, hw * 2, hh * 2, X(0.008)), PRO_RIM, PRO_LW * 0.5);
+    // THE PUPILS TRACK. Off the frames' own half-width, so they ride inside
+    // the lens and can never leave it however hard he stares.
+    const track = Math.max(-1, Math.min(1, face.look)) * hw * 0.34;
+    if (face.blink > 0.5 && !shocked) {
+      egLine(c, EG_INK, PRO_LW * 0.9, (k) => { k.moveTo(x - hw * 0.55, cy + Y(0.004)); k.lineTo(x + hw * 0.55, cy + Y(0.004)); });
+    } else {
+      egDot(c, EG_INK, x + sd * X(o.eye) + track, cy + Y(0.004), X(shocked ? 0.012 : 0.017));
+    }
+  }
+  egP(c, PRO_RIM, (k) => rr(k, X(0.5) - off - hw - PRO_LW * 0.08, top - PRO_LW * 0.08, (off + hw) * 2 + PRO_LW * 0.16, brow, X(0.004)));
+}
+// Short level brows, mirrored about the nose, clamped so they can never ride
+// off the crown — they lift and arch when he is hit.
+const PRO_BROW = { w: 0.044, h: 0.024, lift: 0.018 };
+function proBrows(c, X, Y, shocked, face = PRO_FACE) {
+  const b = PRO_BROW;
+  // A brow that never moves is what makes a face a mask. The frown pulls the
+  // inner ends down, the smile lifts the whole pair — small numbers, because
+  // at this size a brow is four pixels and half of one is an expression.
+  const mood = face.mood === 'frown' ? -1 : face.mood === 'smile' ? 1 : 0;
+  // ONE brow rises for a smirk — the right one, the same side the mouth lifts.
+  const smirk = face.mood === 'smirk';
+  const cy = Math.max(Y(0.212), Y(0.328) - Y(0.036) - Y(0.034) - (shocked ? Y(0.03) : 0) - Y(b.lift) - (mood > 0 ? Y(0.012) : 0));
+  const off = X(PRO_SPEC.hw + PRO_SPEC.bridge / 2);
+  const w = X(b.w), h = Y(b.h) * (shocked ? 1.15 : 1);
+  for (const sd of [-1, 1]) {
+    c.save();
+    c.translate(X(0.5) + sd * off, cy);
+    c.scale(sd, 1);
+    // the raised brow of a smirk, on the right only
+    if (smirk && sd > 0) c.translate(0, -Y(0.026));
+    // AND EACH BROW TWITCHES ON ITS OWN. Peter, 4 Sep: "the eyebrows twitching
+    // up and down independently occasionally may also work." Two separate
+    // values, so they are never in step — a pair that moves together is a
+    // single expression, and a pair that does not is a man thinking.
+    const tw = (face.twitch || [0, 0])[sd < 0 ? 0 : 1] || 0;
+    if (tw) c.translate(0, -Y(0.02) * tw);
+    egP(c, PRO_TONES[0][0], (k) => {
+      const drop = mood < 0 ? h * 0.9 : 0;   // the inner end comes down to frown
+      k.moveTo(-w, h * 0.6 + drop);
+      k.quadraticCurveTo(0, -h * 1.1 + drop * 0.35, w, h * 0.4);
+      k.quadraticCurveTo(0, h * 1.4, -w, h * 1.5 + drop);
+      k.closePath();
+    }, PRO_INK, PRO_LW * 0.6);
+    c.restore();
+  }
+}
+const proOnFace = (c, X, Y, fn) => {
+  c.save();
+  c.beginPath(); PRO_HEAD(c, X, Y); c.clip();
+  fn();
+  c.restore();
+};
+// Stubble: one flat warm field clipped to the jaw, with a translucent silver
+// patch under the lip — he is going grey from the chin up.
+function proStubble(c, X, Y) {
+  proOnFace(c, X, Y, () => {
+    egP(c, PRO_STUBBLE, (k) => {
+      k.moveTo(X(0.295), Y(0.425));
+      k.quadraticCurveTo(X(0.5), Y(0.478), X(0.705), Y(0.425));
+      k.lineTo(X(0.705), Y(0.72)); k.lineTo(X(0.295), Y(0.72)); k.closePath();
+    });
+    egP(c, PRO_CHIN, (k) => {
+      const w = 0.075;
+      k.moveTo(X(0.5 - w), Y(0.53));
+      k.quadraticCurveTo(X(0.5), Y(0.575), X(0.5 + w), Y(0.53));
+      k.quadraticCurveTo(X(0.5 + w * 0.87), Y(0.635), X(0.5), Y(0.665));
+      k.quadraticCurveTo(X(0.5 - w * 0.87), Y(0.635), X(0.5 - w), Y(0.53));
+      k.closePath();
+    });
+  });
+}
+// ONE LINE, THREE MOODS. The curve is the only thing that moves: a smile on
+// the way in, flat while he cruises, the slight frown that was picked when he
+// is working. A second mouth drawing per mood would drift from this one.
+// A smirk is not a mood on this scale, it is an ASYMMETRY: one brow up, the
+// mouth lifted at that corner only. Peter, 4 Sep: "how about a raised eyebrow
+// and smirk?" It is the one expression that says he finds this funny, which is
+// the whole character.
+const PRO_MOOD = { smile: 0.016, flat: 0.002, frown: -0.012, smirk: 0.01 };
+function proMouth(c, X, Y, shocked, face = PRO_FACE) {
+  if (shocked) { egP(c, EG_INK, (k) => k.ellipse(X(0.5), Y(0.5), X(0.035), Y(0.045), 0, 0, EG_TAU)); return; }
+  const curve = PRO_MOOD[face.mood] ?? PRO_MOOD.flat;
+  // The smirk lifts ONE end of the line and leaves the other where it was.
+  const lift = face.mood === 'smirk' ? Y(0.014) : 0;
+  egLine(c, PRO_INK, PRO_LW * 1.2, (k) => {
+    k.moveTo(X(0.46), Y(0.508));
+    k.quadraticCurveTo(X(0.5), Y(0.508 + curve), X(0.54), Y(0.508) - lift);
+  });
+}
+// THE SIZE AND SEAT OF HIS HEAD. Everything above the shoulders is scaled and
+// raised as one: the skull was drawn to fill the ape's old box, which put his
+// chin on the basket. The pivot is the neck, so the jaw stays and the size
+// comes off the crown; the rise then buys the face clear air over the rim
+// without pushing the mane into the rotor.
+const PRO_HEAD_SCALE = 0.88, PRO_HEAD_RISE = 0.075, PRO_HEAD_PIVOT = 0.52;
+const proSized = (fn) => (c, X, Y, lw, shocked, face) => {
+  c.save();
+  c.translate(X(0.5), Y(PRO_HEAD_PIVOT - PRO_HEAD_RISE));
+  c.scale(PRO_HEAD_SCALE, PRO_HEAD_SCALE);
+  c.translate(-X(0.5), -Y(PRO_HEAD_PIVOT));
+  fn(c, X, Y, lw, shocked, face);
+  c.restore();
+};
+// The cape: a high collar standing behind the head, red inside. No tie — the
+// cape owns the throat. The shoulders and collar points are what the tub's rim
+// is cut against, so they are NOT scaled with the head.
+function proBody(c, X, Y) {
+  for (const sd of [-1, 1]) egP(c, PRO_CAPE_IN, (k) => {
+    k.moveTo(X(0.5 + sd * 0.08), Y(0.6)); k.quadraticCurveTo(X(0.5 + sd * 0.42), Y(0.5), X(0.5 + sd * 0.36), Y(0.2));
+    k.quadraticCurveTo(X(0.5 + sd * 0.3), Y(0.36), X(0.5 + sd * 0.14), Y(0.42)); k.closePath();
+  }, PRO_INK, PRO_LW);
+  for (const sd of [-1, 1]) egP(c, PRO_CAPE, (k) => {
+    k.moveTo(X(0.5 + sd * 0.16), Y(0.62)); k.quadraticCurveTo(X(0.5 + sd * 0.44), Y(0.52), X(0.5 + sd * 0.4), Y(0.24));
+    k.lineTo(X(0.5 + sd * 0.36), Y(0.2)); k.quadraticCurveTo(X(0.5 + sd * 0.42), Y(0.5), X(0.5 + sd * 0.08), Y(0.6)); k.closePath();
+  }, PRO_INK, PRO_LW);
+  egP(c, PRO_CAPE, (k) => k.ellipse(X(0.5), Y(0.6), X(0.33), Y(0.17), 0, 0, EG_TAU), PRO_INK, PRO_LW);
+  for (const sd of [-1, 1]) egP(c, PRO_SHIRT, (k) => {
+    k.moveTo(X(0.5 + sd * 0.05), Y(0.46)); k.lineTo(X(0.5 + sd * 0.21), Y(0.5)); k.lineTo(X(0.5 + sd * 0.13), Y(0.62)); k.closePath();
+  }, PRO_INK, PRO_LW);
+}
+// His fists, the same colour as his face.
+function proHands(c, X, Y) {
+  for (const sx of [0.24, 0.76]) egDot(c, PRO_SKIN, X(sx), Y(0.625), X(0.055), PRO_SKIN_INK, PRO_LW);
+}
+const proHead = proSized((c, X, Y, lw, shocked) => {
+  const style = shocked ? 'blast' : 'mane';
+  proHairBack(style, c, X, Y);
+  proHairFront(style, c, X, Y);
+  proEars(c, X, Y);
+  egP(c, PRO_SKIN, (k) => PRO_HEAD(k, X, Y), PRO_SKIN_INK, PRO_LW);
 });
-function eggshellBust(c, X, Y, lw, shocked = false, p = EGGSHELL_PARTS) {
-  for (const k of EG_BUST_ORDER) if (p[k]) p[k](c, X, Y, lw, shocked);
+const proFace = proSized((c, X, Y) => proNose(c, X, Y));
+const proEyes = proSized((c, X, Y, lw, shocked, face) => { proSpecs(c, X, Y, shocked, face); proBrows(c, X, Y, shocked, face); });
+const proMouthPart = proSized((c, X, Y, lw, shocked, face) => {
+  proStubble(c, X, Y);
+  proMouth(c, X, Y, shocked, face);
+  egMustache(c, X(0.5), Y(shocked ? 0.44 : 0.458), X(0.118), Y(0.046), shocked ? -0.5 : 0, PRO_STACHE, PRO_INK, PRO_LW);
+});
+
+export const EGGSHELL_PARTS = Object.freeze({
+  // NO SHELL: the green spikes were the ape's armour and the professor has
+  // none. The old ape's parts (egShell/egBody/egHead/egFace/egEyes/egMouth)
+  // are kept below as the drawing he used to be.
+  shell: null, body: proBody, head: proHead, face: proFace, hair: null, eyes: proEyes, mouth: proMouthPart,
+  tub: eggshellTub, hands: proHands,
+});
+function eggshellBust(c, X, Y, lw, shocked = false, p = EGGSHELL_PARTS, face = PRO_FACE) {
+  for (const k of EG_BUST_ORDER) if (p[k]) p[k](c, X, Y, lw, shocked, face);
 }
 // The clown-copter tub he grips the rim of: cream, red stripes, two lamps,
 // two skids, and his hands on the rim.
@@ -588,18 +846,59 @@ function eggshellHands(c, X, Y, lw) {
 // fists rise off it, and he pulls a shocked face. Five units at full pop is
 // about the gap between his chin and the rim — as far as he can go and still
 // read as the same drawing.
-export function eggshellApe(c, ox, oy, pop = 0, parts = null) {
+export function eggshellApe(c, ox, oy, pop = 0, parts = null, face = PRO_FACE) {
   const p = parts ? { ...EGGSHELL_PARTS, ...parts } : EGGSHELL_PARTS;
   const X = (f) => EG_APE_W * f, Y = (f) => EG_APE_H * f, lw = EG_LW;
   c.save(); c.translate(ox, oy);
-  const lift = pop * 5;
-  c.save(); c.translate(0, -lift);
-  eggshellBust(c, X, Y, lw, pop > 0.05, p);
-  c.restore();
+  // HOW FAR HE COMES OUT OF THE SEAT. Five units cleared the rim and showed
+  // the gap under his shoulders — he has no lower body, because he has never
+  // been seen out of the tub (the shoulders are one ellipse and the drawing
+  // stops there). Peter, 4 Sep: "we see his lower body when he is bonked;
+  // perhaps he should not rise so high — his hair can sell the bonk." So the
+  // rise is now half of what it was, which keeps the shoulders behind the rim,
+  // and the hit reads off the face and the hair instead.
+  // HOW FAR HE COMES OUT OF THE SEAT, AND HOW HARD HE SHAKES.
+  //
+  // Five units cleared the rim and showed the gap under his shoulders — he has
+  // no lower body, because he has never been seen out of the tub (the
+  // shoulders are one ellipse and the drawing stops there). Raising him also
+  // put his hair through the rotor, which is worse: the blades are the one
+  // thing on the machine that must never be touched. Peter, 4 Sep: "he should
+  // not rise so high — his hair can sell the bonk", then "if he jumps his hair
+  // hits the propeller, so perhaps a little shake."
+  //
+  // So the rise is nearly gone and a RATTLE does the work: a fast decaying
+  // wobble in x with a tilt on top, both driven by `pop` itself rather than a
+  // clock, so a caller that hands this painter a single value still gets the
+  // whole gesture. He stays in his seat, under his own rotor, and the hit
+  // reads off the shake, the face and the hair standing up.
+  // A JOLT, NOT A WOBBLE. The first cut rocked him back and forth several
+  // times over the whole hit, which reads as a man on a spring; a bonk is one
+  // impact. Peter, 4 Sep: "the shake can be a lot shorter and less symmetric —
+  // it's a jolt, and his hair and eyebrows and mouth sell it."
+  //
+  // So the movement lives only in the opening third of the hit and goes ONE
+  // way — knocked back and tipped, easing out with a single small overshoot
+  // rather than a cycle. After that he is simply sitting there with the face
+  // and the hair still saying what happened, which is the part that carries.
+  const j = Math.max(0, (pop - 0.66) / 0.34);       // 1 at impact, gone a third in
+  const ease = j * (2 - j);                          // out-quad: hardest at the top
+  const lift = ease * 0.9;
+  const shake = ease * 1.9 - j * j * 0.55;           // back, with a slight return
+  const tilt = ease * 0.1;
+  // The bust rocks about a pivot at the rim, so the shake reads as HIM moving
+  // in the tub rather than the whole drawing sliding.
+  const rock = (fn) => {
+    c.save();
+    c.translate(X(0.5) + shake, Y(0.62) - lift);
+    c.rotate(tilt);
+    c.translate(-X(0.5), -Y(0.62));
+    fn();
+    c.restore();
+  };
+  rock(() => eggshellBust(c, X, Y, lw, pop > 0.05, p, face));
   if (p.tub) p.tub(c, X, Y, lw);
-  c.save(); c.translate(0, -lift);
-  if (p.hands) p.hands(c, X, Y, lw);
-  c.restore();
+  rock(() => { if (p.hands) p.hands(c, X, Y, lw); });
   c.restore();
 }
 // His inks and pens, for the redesign file only: a candidate drawn with these
@@ -623,12 +922,14 @@ export const EGGSHELL_ART = Object.freeze({
 // two blades and their trailing arcs say "turning" only while they turn.
 // R 10.5 keeps the span inside the tub's width, sq 0.16 is the tilt toward
 // the camera (edge-on would be a line).
-export const COPTER_ROTOR = { R: 10.5, sq: 0.16, hy: 6, blade: 1, disc: false };
+// hy 3.2, not 6: the professor's mane stands where the ape's flat skull was,
+// and at the old hub height the blades passed through it.
+export const COPTER_ROTOR = { R: 10.5, sq: 0.16, hy: 3.2, blade: 1, disc: false };
 export function eggshellCopterArt(ctx, w, h, frame = 0, o = {}) {
   //   parts  overrides for the ape's parts (EGGSHELL_PARTS); body  a painter
   //          (ctx) drawn in the 28x28 box INSTEAD of the ape and tub; mastTo
   //          where the mast ends, the top of his head unless the body says
-  const { R, sq, hy, blade: bw, disc: withDisc, pop = 0, parts = null, body = null, mastTo = 8 + EG_APE_H * 0.34 } = { ...COPTER_ROTOR, ...o };
+  const { R, sq, hy, blade: bw, disc: withDisc, pop = 0, parts = null, body = null, face = PRO_FACE, mastTo = 10.4 } = { ...COPTER_ROTOR, ...o };
   ctx.save();
   ctx.scale(w / 28, h / 28);
   // sq is the disc's tilt toward the camera. 0.42 read as a disc but ate a
@@ -656,11 +957,38 @@ export function eggshellCopterArt(ctx, w, h, frame = 0, o = {}) {
   disc(Math.PI, EG_TAU);
   for (const b of blades) if (Math.sin(b) < 0) { sweep(b); blade(b); }
   egLine(ctx, '#3a3a48', 0.85, (k) => { k.moveTo(cx, hy); k.lineTo(cx, mastTo); });
-  if (body) body(ctx); else eggshellApe(ctx, 2, 8, pop, parts);
+  if (body) body(ctx); else eggshellApe(ctx, 2, 8, pop, parts, face);
   disc(0, Math.PI);
   for (const b of blades) if (Math.sin(b) >= 0) { sweep(b); blade(b); }
   if (withDisc) egLine(ctx, 'rgba(236,236,246,0.45)', 0.35, (k) => k.ellipse(cx, hy, R, R * sq, 0, 0, EG_TAU));
   egDot(ctx, '#8a8a98', cx, hy, 1, EG_LINE, 0.5);
+  ctx.restore();
+}
+
+// The finale's ride: a striped clown balloon with the tub as its basket.
+// Slower than a walking plumber, which is the forty-year losing streak
+// explained. Twice the copter's height on purpose — it lives in the sky
+// band, and it is the thing you pop. Takes the copter's `parts` and `pop`
+// so the gallery can show a redesign in the Act III sky too.
+export function eggshellBalloonArt(ctx, w, h, o = {}) {
+  const { pop = 0, parts = null } = o;
+  ctx.save();
+  ctx.scale(w / 28, h / 46);
+  const cx = 14, cy = 12.5, rx = 12.5, ry = 13, lw = EG_LW;
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU); ctx.clip();
+  ctx.fillStyle = EG_CREAM; ctx.fillRect(0, 0, 28, 28);
+  for (let i = 0; i < 7; i += 2) { ctx.fillStyle = EG_RED; ctx.fillRect(cx - rx + i * (2 * rx / 7), 0, 2 * rx / 7, 28); }
+  ctx.restore();
+  egLine(ctx, EG_LINE, lw, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU));
+  egP(ctx, '#3a3f4a', (k) => { k.moveTo(11.3, 25); k.lineTo(16.7, 25); k.lineTo(15.7, 27.5); k.lineTo(12.3, 27.5); k.closePath(); }, EG_LINE, lw * 0.6);
+  // three ropes to the rim, drawn first so he covers where they cross him
+  egLine(ctx, '#5a4a3a', 0.4, (k) => {
+    k.moveTo(12.4, 27.5); k.lineTo(2 + EG_APE_W * 0.13, 26 + EG_APE_H * 0.6);
+    k.moveTo(14, 27.5); k.lineTo(14, 26 + EG_APE_H * 0.34);
+    k.moveTo(15.6, 27.5); k.lineTo(2 + EG_APE_W * 0.87, 26 + EG_APE_H * 0.6);
+  });
+  eggshellApe(ctx, 2, 26, pop, parts);
   ctx.restore();
 }
 
@@ -2590,6 +2918,34 @@ export const PROP_PAINTERS = {
     stroke(ctx, '#48e0c8', Math.max(0.7, w * 0.16), (c) => c.ellipse(w / 2, h / 2, w * 0.36, h * 0.42, 0, 0, Math.PI * 2));
     stroke(ctx, '#c8fff0', Math.max(0.5, w * 0.07), (c) => c.ellipse(w * 0.42, h * 0.4, w * 0.16, h * 0.2, -0.4, 0.6, 2.4));
   },
+  // JUST HIS FACE, for the speech card. A taunt is him talking, and a portrait
+  // that includes the tub spends most of a 20x15 slot on a vehicle: the head
+  // ends up a third of the cell and his expression — the thing the line is
+  // being said with — is four pixels of it. Peter, 4 Sep: "in his chat bits
+  // just show face, not entire body/vehicle."
+  //
+  // Same parts as the bust, drawn with the head filling the box: the ape's own
+  // sub-box is scaled up and shifted so the skull lands centre, and the
+  // shoulders, cape and tub are simply not called. One drawing, two crops.
+  eggshellFace(ctx, w, h) {
+    ctx.save();
+    // HIS HAIR IS THE SILHOUETTE. At 2.1x the mane was cut off at the crown and
+    // he read as a bald man in glasses — Peter: "need his hair in the
+    // faceplate." 1.55x fits the locks inside the slot, and the anchor drops to
+    // the brow line so the head sits low enough for the tallest of them.
+    const k = 1.55;
+    ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+    ctx.translate(w / 2, h * 0.58);
+    ctx.scale((w / EG_APE_W) * k, (h / EG_APE_H) * k);
+    ctx.translate(-EG_APE_W * 0.5, -EG_APE_H * 0.375);
+    const X = (fr) => EG_APE_W * fr, Y = (fr) => EG_APE_H * fr, lw = EG_LW;
+    for (const key of ['head', 'face', 'eyes', 'mouth']) {
+      const part = EGGSHELL_PARTS[key];
+      if (part) part(ctx, X, Y, lw, false, PRO_FACE);
+    }
+    ctx.restore();
+  },
+
   // The bust: the portrait every taunt card shows, the intro panel, the relic.
   eggshell(ctx, w, h) {
     ctx.save();
@@ -2604,30 +2960,8 @@ export const PROP_PAINTERS = {
   // The old drawing had no rotor at all; the grey bar over it was a rect
   // drawCopter jittered above the box.
   eggshellCopter(ctx, w, h, frame = 0) { eggshellCopterArt(ctx, w, h, frame); },
-  // The finale's ride: a striped clown balloon with the tub as its basket.
-  // Slower than a walking plumber, which is the forty-year losing streak
-  // explained. Twice the copter's height on purpose — it lives in the sky
-  // band, and it is the thing you pop.
-  eggshellBalloon(ctx, w, h) {
-    ctx.save();
-    ctx.scale(w / 28, h / 46);
-    const cx = 14, cy = 12.5, rx = 12.5, ry = 13, lw = EG_LW;
-    ctx.save();
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU); ctx.clip();
-    ctx.fillStyle = EG_CREAM; ctx.fillRect(0, 0, 28, 28);
-    for (let i = 0; i < 7; i += 2) { ctx.fillStyle = EG_RED; ctx.fillRect(cx - rx + i * (2 * rx / 7), 0, 2 * rx / 7, 28); }
-    ctx.restore();
-    egLine(ctx, EG_LINE, lw, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU));
-    egP(ctx, '#3a3f4a', (k) => { k.moveTo(11.3, 25); k.lineTo(16.7, 25); k.lineTo(15.7, 27.5); k.lineTo(12.3, 27.5); k.closePath(); }, EG_LINE, lw * 0.6);
-    // three ropes to the rim, drawn first so he covers where they cross him
-    egLine(ctx, '#5a4a3a', 0.4, (k) => {
-      k.moveTo(12.4, 27.5); k.lineTo(2 + EG_APE_W * 0.13, 26 + EG_APE_H * 0.6);
-      k.moveTo(14, 27.5); k.lineTo(14, 26 + EG_APE_H * 0.34);
-      k.moveTo(15.6, 27.5); k.lineTo(2 + EG_APE_W * 0.87, 26 + EG_APE_H * 0.6);
-    });
-    eggshellApe(ctx, 2, 26);
-    ctx.restore();
-  },
+  // The finale's ride: the striped balloon, see eggshellBalloonArt above.
+  eggshellBalloon(ctx, w, h) { eggshellBalloonArt(ctx, w, h); },
   dustdevil(ctx, w, h) {
     const u = Math.max(w, h);
     const fineShape = (fill, pathFn) => {
@@ -4033,7 +4367,7 @@ export function propTall(name) { return PROP_TALL[name] || 1; }
 const PROP_DETAIL_SCALE = {
   // The villain's goggles are 1u lenses on a 24u portrait; the copter's blades
   // are 1u lines. Neither survives single detail.
-  eggshell: 2, eggshellCopter: 2, eggshellBalloon: 2,
+  eggshell: 2, eggshellFace: 3, eggshellCopter: 2, eggshellBalloon: 2,
   ...ANIMAL_DETAIL,
   ...finishDogTable(null, 3), // the one detail-3 exception — see FINISH_DOG_ALIASES
   // The sign's head is the finest drawing in the lane per pixel: a silhouette

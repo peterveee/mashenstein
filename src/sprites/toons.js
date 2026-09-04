@@ -198,6 +198,25 @@ export function setContour({ taper = CONTOUR_TAPER } = {}) { CONTOUR.taper = tap
 const contour = (w) => (inkScale > 1 && CONTOUR.taper > 0
   ? w / Math.pow(inkScale, CONTOUR.taper) : w);
 
+// ------------------------------------------------------- face-crop contour
+// A face crop draws the SAME head drawToon does, and it has always taken its
+// contour at twice drawToon's weight and twice its floor (see paintFace). That
+// doubling is aimed at the cells too small to hold a hairline at all — the 9px
+// speech portrait, the 12px badge — and there it is the difference between a
+// head and a smudge. The 22px hero disc is not one of those: at that size the
+// doubled line is a fat edge around the eyes and mouth it is meant to enclose,
+// and the plate stops looking like the face the run draws.
+//
+// So the extra weight is spent where it is needed and faded out where it is
+// not, across the sizes in between rather than at a cliff. `h` is the crop's
+// own box height; the result is a multiple of the body rule, so 1 is exactly
+// what drawToon lays down.
+const faceContourW = (h) => (FACE_CONTOUR.w != null ? FACE_CONTOUR.w
+  : 1 + Math.max(0, Math.min(1, (18 - h) / 9)));
+// The override, for a bake-off that wants to see both ends. null = measure it.
+export const FACE_CONTOUR = { w: null };
+export function setFaceContour(w = null) { FACE_CONTOUR.w = w; }
+
 // The eyebrow hairline. Split out of the inline literal it used to be so the
 // floor is nameable — it is the interesting half.
 //
@@ -510,6 +529,9 @@ const LIGHT_LEN = Math.hypot(LIGHT_X, LIGHT_Y);
 // far out along the key its lit and shadow ends sit. Sized to the standing
 // silhouette so heads land near the lit end and feet near the shadow end.
 const FIELD_CY = -0.5, FIELD_R = 0.72;
+// A head's own offset from that centre, for callers who draw a head and no
+// figure. See paintFace, which is the only one.
+const FIELD_HEAD_DY = 0.26;
 // The shadow tint is OUTLINE's ink: contour and shading stay one colour
 // family, so a shaded form looks lit rather than dirty.
 const SHADOW_INK = '26,16,40';
@@ -587,7 +609,7 @@ const SHADE_MIN = 0.1;
 // and single-threaded, so this is threaded the same way ctx state is. `g`
 // caches the figure's three gradients: they are identical for every shape, so
 // they are built once on first use rather than ~90 times per frame.
-const shade = { on: false, lx: 0, ly: -1, u: 1, lit: 1, g: null };
+const shade = { on: false, lx: 0, ly: -1, u: 1, lit: 1, fx: 0, fy: FIELD_CY, g: null };
 
 // Arm the key for one figure. `xSign` is the net horizontal sign the caller
 // has already pushed onto the context (facing flip, celebrate spin); negating
@@ -595,19 +617,30 @@ const shade = { on: false, lx: 0, ly: -1, u: 1, lit: 1, g: null };
 // brightness where this figure is standing — 1 everywhere that has no opinion,
 // which is every caller except the concourse. Returns the previous state —
 // paintFace nests a whole drawToon inside its own render.
-function armLight(u, xSign, on, lit = 1) {
-  const prev = { on: shade.on, lx: shade.lx, ly: shade.ly, u: shade.u, lit: shade.lit, g: shade.g };
+//
+// `fx`/`fy` are where the ramp is ANCHORED, in the caller's own space. drawToon
+// translates to the feet before it arms, so it takes the default and the field
+// lands on the figure's centre as FIELD_CY says. A face crop has no figure and
+// no such translate — see paintFace, which anchors the field on the head.
+function armLight(u, xSign, on, lit = 1, fx = 0, fy = null) {
+  const prev = {
+    on: shade.on, lx: shade.lx, ly: shade.ly, u: shade.u, lit: shade.lit,
+    fx: shade.fx, fy: shade.fy, g: shade.g,
+  };
   shade.on = !!on;
   shade.u = u;
   shade.lx = (LIGHT_X / LIGHT_LEN) * (xSign < 0 ? -1 : 1);
   shade.ly = LIGHT_Y / LIGHT_LEN;
   shade.lit = Math.max(0, Math.min(1, lit));
+  shade.fx = fx;
+  shade.fy = fy == null ? FIELD_CY * u : fy;
   shade.g = null;
   return prev;
 }
 function disarmLight(prev) {
   shade.on = prev.on; shade.lx = prev.lx; shade.ly = prev.ly;
-  shade.u = prev.u; shade.lit = prev.lit; shade.g = prev.g;
+  shade.u = prev.u; shade.lit = prev.lit;
+  shade.fx = prev.fx; shade.fy = prev.fy; shade.g = prev.g;
 }
 
 // Bounding box of a path function without rasterizing it. The rig's path
@@ -673,7 +706,7 @@ function fieldRamps(ctx) {
   if (!shade.on) return null;
   if (shade.g) return shade.g;
   const u = shade.u;
-  const cx = 0, cy = FIELD_CY * u, r = FIELD_R * u;
+  const cx = shade.fx, cy = shade.fy, r = FIELD_R * u;
   const ax = cx + shade.lx * r, ay = cy + shade.ly * r;   // lit end
   const bx = cx - shade.lx * r, by = cy - shade.ly * r;   // shadow end
   // Room brightness rides the SAME gradients rather than a separate pass over
@@ -10468,23 +10501,41 @@ function paintFace(ctx, heroId, spec, x, y, w, h, light = true, palette = null, 
   ctx.lineCap = 'round';
   // head+hat spans ~0.5u; fit that span to the box height
   const u = (h * 0.92) / 0.5;
-  const ow = hair(0.6, contour(0.032 * (h * 2))) * INK.body;
+  const cw = faceContourW(h);
+  const ow = hair(0.3 * cw, contour(0.016 * cw * (h * 2))) * INK.body;
   // Face crops are supersampled and cached, so the light is worth arming even
   // for a HUD cell — but only once the head is big enough to hold a ramp. The
   // blob/disc branch nests a whole drawToon, which arms its own.
-  const prevLight = armLight(u, 1, light && h >= 24);
+  //
+  // ANCHOR THE FIELD ON THE HEAD. FIELD_CY/FIELD_R describe a whole STANDING
+  // FIGURE — the ramp is 1.44u long and starts half a unit above the feet — and
+  // armLight's default lands it on the origin of whatever space the caller is
+  // in. drawToon has translated to the feet by then, so that is right there and
+  // heads come out near the LIT end. A face crop never translates: the head is
+  // passed to drawHead as a coordinate, so the field was being pinned to the
+  // top-left corner of the crop box and the head landed PAST the shadow end —
+  // every portrait painted under a flat 42% of SHADOW_INK, with no highlight
+  // and no rim, because both ramps are spent by half way. That is what made
+  // the HUD face plates read dim and flat beside the same head in the run.
+  //
+  // FIELD_HEAD_DY is where the figure's centre sits relative to its head in the
+  // rig: headBase is -0.76u over a field centre at -0.5u. One number for the
+  // whole cast rather than the heavy rigs' own -0.978u, because a portrait is a
+  // crop and not a figure — every hero's face should be lit the same way.
+  const hx = x + w / 2, hy = y + h * 0.62;
+  const prevLight = armLight(u, 1, light && h >= 24, 1, hx, hy + FIELD_HEAD_DY * u);
   if (spec.rig === 'humanoid') {
     // `portrait` tells the head it is being cropped to a face cell. Only the
     // long-hair cuts read it, and they need to: faceFit measures the ink and
     // fits it to the box, so a waist-length plait is measured as part of the
     // FACE and the whole head shrinks to make room for it — the same reason no
     // back accessory is drawn here either.
-    drawHead(ctx, heroId, spec, p, u, ow, x + w / 2, y + h * 0.62, false,
+    drawHead(ctx, heroId, spec, p, u, ow, hx, hy, false,
       { portrait: true, portraitFit: forFit, ...(facePose || {}) });
   } else if (spec.rig === 'ray') {
     // ray has a real head on a floating body — crop to the head like a humanoid
     drawRayHead(ctx, heroId, p, { kind: 'idle', time: 0, ...(facePose || {}) }, u, ow,
-      x + w / 2, y + h * 0.62, false, false);
+      hx, hy, false, false);
   } else {
     // blob/disc: the body IS the face — draw the whole toon fitted
     drawToon(ctx, heroId, { kind: 'idle', time: 0, ...(facePose || {}) }, x + w / 2, y + h * 1.18, h * 1.45,
@@ -10527,16 +10578,23 @@ function inkBounds(size, paint) {
 }
 
 // Ink bounds of paintFace, in fractions of its own w-by-h box. Measured once
-// per hero on an oversized scratch canvas (so anything spilling past the box
-// still registers) and cached; falls back to the nominal box if pixels can't
-// be read (headless stubs).
+// per hero and ink treatment on an oversized scratch canvas (so anything
+// spilling past the box still registers) and cached; falls back to the nominal
+// box if pixels can't be read (headless stubs).
 const FACE_FIT = new Map();
 const FIT_R = 64; // nominal box size used for the measurement render
-function faceFit(heroId, spec, light = true, palette = null) {
-  const key = `${heroId}|${light ? 'lit' : 'flat'}`;
+// `cw` is the contour weight the real paint will use — the measurement runs at
+// FIT_R, which is nowhere near the crop's own size, so the size-derived weight
+// has to be carried in rather than re-derived here or the fit measures a
+// thinner outline than the one that lands.
+function faceFit(heroId, spec, light = true, palette = null, cw = 1) {
+  const key = `${heroId}|${light ? 'lit' : 'flat'}|${INK.body}|${INK.face}|${INK.alpha}|${INK.brow}|${INK.browA}|${INK.browL}|${cw}`;
   if (FACE_FIT.has(key)) return FACE_FIT.get(key);
   let fit = { x: 0, y: 0, w: 1, h: 1 }; // nominal framing, if nothing measures
+  const prevCw = FACE_CONTOUR.w;
+  FACE_CONTOUR.w = cw;
   const b = inkBounds(FIT_R * 3, (x) => paintFace(x, heroId, spec, FIT_R, FIT_R, FIT_R, FIT_R, light, palette, true));
+  FACE_CONTOUR.w = prevCw;
   if (b) {
     fit = {
       x: (b.x0 - FIT_R) / FIT_R,
@@ -10695,7 +10753,7 @@ export function drawToonFace(ctx, heroId, x, y, w, h, opts = {}) {
   const spec = opts.spec || TOON_SPECS[heroId];
   if (!spec) return;
   const light = opts.light !== false;
-  const fit = faceFit(heroId, spec, light, opts.pal || null);
+  const fit = faceFit(heroId, spec, light, opts.pal || null, faceContourW(h));
   // paintFace scales everything off h and centers on w/2, so the ink lands at
   // this size and offset regardless of how wide the box is.
   const inkW = fit.w * h, inkH = fit.h * h;

@@ -468,8 +468,26 @@ const HAIR_STYLES = {
       [-48, 0.7, 13, -6]],
   },
 };
-const hairBack = (name) => (c, X, Y, lw) => { for (const l of HAIR_STYLES[name].back) lock(c, X, Y, lw, TONE[1], l); };
-const hairFront = (name) => (c, X, Y, lw) => { for (const l of HAIR_STYLES[name].front) lock(c, X, Y, lw, TONE[0], l); };
+// SALT AND PEPPER, STRAND BY STRAND. Peter, 4 Sep: "silver, white and steel in
+// each strand to really sell the salt and pepper — alternate them." One flat
+// tone across the whole head is a wig; hair that is going grey goes grey in
+// PATCHES, and at this size a patch is a lock. So each lock takes the next of
+// three tones in turn rather than the tile's single tone, and neighbours in
+// these arrays are neighbours on the skull, so the mix reads as mingled rather
+// than as three blocks.
+//
+// The front/back depth cue survives: a back lock takes the SHADED half of the
+// same three pairs, so it is still a step darker than the front lock beside it.
+// The moustache keeps TONE, which is what stops a tile ending up with mingled
+// hair over facial hair from a different family — see the tone bake-off above.
+const SALT_PEPPER = [HAIR_TONE.white, HAIR_TONE.silver, HAIR_TONE.steel];
+const strandTone = (i, shaded) => SALT_PEPPER[i % SALT_PEPPER.length][shaded ? 1 : 0];
+const hairBack = (name) => (c, X, Y, lw) => {
+  HAIR_STYLES[name].back.forEach((l, i) => lock(c, X, Y, lw, strandTone(i, true), l));
+};
+const hairFront = (name) => (c, X, Y, lw) => {
+  HAIR_STYLES[name].front.forEach((l, i) => lock(c, X, Y, lw, strandTone(i, false), l));
+};
 // The head: one flat fill, no face-plate and no fur — the mark that stops him
 // reading as an ape. NOT a circle. Peter, 4 Sep: "vaguely upside-down egg, not
 // too pointy" — so the crown is the wide end and the jaw the narrow one, which
@@ -528,15 +546,25 @@ function paleDome(c, X, Y, lw) {
 // belong to the head slot now. They keep their own order and tones — the back
 // set darker underneath, the front set lighter over it — and only the skull
 // separates them from the face.
-const professorHead = (name) => (c, X, Y, lw) => {
-  hairBack(name)(c, X, Y, lw);
-  hairFront(name)(c, X, Y, lw);
+// HIS HAIR STANDS UP WHEN HE IS HIT. Peter, 4 Sep: "I would like the blast hair
+// as a variant for when he gets hit." The bonk already sets `shocked` on every
+// bust part (props.js eggshellBust), and BLAST is the same lock painter with
+// every strand thrown straight out — so the hit pose is a style swap, not a
+// second drawing, and whichever cut wins keeps its own hair the rest of the
+// time. `hitStyle` lets a tile opt out (a tile whose whole question IS the
+// hair should not turn into another tile when it is bonked).
+const hairStyleFor = (name, shocked, hit = 'blast') => (shocked && hit ? hit : name);
+const professorHead = (name, hit) => (c, X, Y, lw, shocked) => {
+  const style = hairStyleFor(name, shocked, hit);
+  hairBack(style)(c, X, Y, lw);
+  hairFront(style)(c, X, Y, lw);
   ears(c, X, Y);
   paleDome(c, X, Y, lw);
 };
-const apeHairHead = (name) => (c, X, Y, lw) => {
-  hairBack(name)(c, X, Y, lw);
-  hairFront(name)(c, X, Y, lw);
+const apeHairHead = (name, hit) => (c, X, Y, lw, shocked) => {
+  const style = hairStyleFor(name, shocked, hit);
+  hairBack(style)(c, X, Y, lw);
+  hairFront(style)(c, X, Y, lw);
   EGGSHELL_PARTS.head(c, X, Y, lw);
 };
 // Dark rectangular specs where the round goggles were, drawn from Peter's own
@@ -561,16 +589,90 @@ const EYE_GAP = { wide: 0.006, mid: -0.004, close: -0.013 };
 // rim plus a black pupil inside it is one dark mass, and the pupils are the
 // mark that has to win. The pupils keep the full ink.
 const SPEC = { hw: 0.067, bridge: 0.010, eye: EYE_GAP.mid };
-const RIM = '#3d3d48';
-const specsWith = (o = {}) => (c, X, Y, lw, shocked) => drawSpecs(c, X, Y, shocked, { ...SPEC, ...o });
+// LESS DARK. The frames were near-black, which at lane size made a bar across
+// his face heavier than anything else on him. A translucent slate keeps the
+// brow reading as the weight of the drawing without stamping it.
+const RIM = 'rgba(61,61,72,0.72)';
+// EYEBROWS. Peter, 4 Sep: "maybe he needs eyebrows to sell the crazy look a
+// bit?" They are the one mark on this face that can be UNRULY — the hair is
+// already wild, the specs are tidy by construction and the moustache is
+// trimmed — so they carry the temperament. Drawn in the hair's own tones so
+// they belong to the same head, sitting just above the frames' top bar with a
+// gap: a brow touching the rim reads as part of the glasses.
+//
+// `style` is the question: TAME is a short calm arc, BUSHY is a thick tuft
+// with a flick at the outer end, and WILD adds a second flick and lifts the
+// inner end, which is what turns a scientist into a mad one. `shocked` lifts
+// them whichever style is drawn — that is the pose, not the design.
+const BROW_STYLES = {
+  none: null,
+  tame: { w: 0.052, h: 0.012, lift: 0.0, flick: 0, tilt: 0.0 },
+  bushy: { w: 0.06, h: 0.019, lift: 0.004, flick: 0.012, tilt: 0.06 },
+  wild: { w: 0.066, h: 0.023, lift: 0.008, flick: 0.02, tilt: 0.12 },
+};
+function drawBrows(c, X, Y, shocked, name = 'bushy') {
+  const b = name && typeof name === 'object' ? name : BROW_STYLES[name];
+  if (!b) return;
+  // Above the frames' top bar (cy - hh - brow), plus a gap of its own.
+  // The gap above the frames is 0.026 of the box plus the style's own lift.
+  // Peter, 4 Sep: "raise eyebrows a little" — 0.034 puts a clear band of
+  // forehead between brow and rim, which is what stops them reading as part
+  // of the glasses at lane size.
+  // AND THEY JUMP WHEN HE IS HIT — but they stay ON HIM. 0.014 was a nudge
+  // nobody could see and 0.055 threw them off the top of his head; 0.03 is a
+  // clear jump that still lands on forehead. The clamp is the guarantee: the
+  // brow's centre may not rise above BROW_CEILING, so no combination of a
+  // thick style's own lift and the hit can ever float one over the crown.
+  const BROW_CEILING = 0.212;
+  const cy = Math.max(Y(BROW_CEILING),
+    Y(0.328) - Y(0.036) - Y(0.034) - (shocked ? Y(0.03) : 0) - Y(b.lift));
+  const off = X(SPEC.hw + SPEC.bridge / 2);
+  // A TRUE MIRROR. The two brows used to be the SAME path drawn at two
+  // positions, with only the tilt's sign flipped — so the thick end and the
+  // thin end pointed the same way on both sides and the left one read as
+  // turned the wrong way round. Peter, 4 Sep: "the left brow should be turned
+  // the other way, to be a mirror image of the right." Drawing it once in a
+  // local space and reflecting that space is the only way the two can never
+  // disagree: everything below is in OUTWARD coordinates, where +x is away
+  // from the nose on whichever side is being drawn.
+  // Shocked also ARCHES them: an angry tilt that survives a bonk reads as a
+  // man who saw it coming. The tilt goes to nothing and the brow thickens
+  // slightly, so the shape says surprise rather than anger.
+  const w = X(b.w), h = Y(b.h) * (shocked ? 1.15 : 1), tilt = shocked ? 0 : b.tilt * 8;
+  for (const sd of [-1, 1]) {
+    c.save();
+    c.translate(X(0.5) + sd * off, cy);
+    c.scale(sd, 1);
+    P(c, TONE[0], (k) => {
+      // inner end (toward the nose) low, outer end high — that is the angle
+      k.moveTo(-w, h * 0.6 + tilt);
+      k.quadraticCurveTo(0, -h * 1.1, w, h * 0.4 - tilt);
+      // the outer end flicks UP and back, which is the whole unruly read
+      if (b.flick) k.lineTo(w + X(b.flick), -h * (1 + b.flick * 40));
+      k.quadraticCurveTo(0, h * 1.4, -w, h * 1.5 + tilt);
+      k.closePath();
+    }, PRO_INK, PRO_LW * 0.6);
+    c.restore();
+  }
+}
+const specsWith = (o = {}) => (c, X, Y, lw, shocked) => {
+  drawSpecs(c, X, Y, shocked, { ...SPEC, ...o });
+  drawBrows(c, X, Y, shocked, o.brows === undefined ? 'bushy' : o.brows);
+};
 function drawSpecs(c, X, Y, shocked, o) {
-  const cy = Y(0.328), hh = Y(0.038);
+  // FINER. Peter, 4 Sep: "let's go finer with the glasses." Every line here was
+  // set against a heavier drawing; the rim is now half the professor's hairline
+  // rather than three quarters, the arms are thinner again, and the heavy top
+  // bar — the mark that makes these HIS frames — is the one thing that keeps
+  // most of its weight, because dropping that too turns them into wire specs
+  // and the face loses its brow.
+  const cy = Y(0.328), hh = Y(0.036);
   const hw = X(o.hw), off = X(o.hw + o.bridge / 2), gap = o.eye;
-  const brow = PRO_LW * 0.75, top = cy - hh;
+  const brow = PRO_LW * 0.6, top = cy - hh;
   for (const s of [-1, 1]) {
     const x = X(0.5) + s * off;
-    line(c, RIM, PRO_LW * 0.6, (k) => { k.moveTo(x + s * hw, top + brow); k.lineTo(X(0.5) + s * X(0.166), cy - Y(0.006)); });
-    P(c, LENS, (k) => rr(k, x - hw, top, hw * 2, hh * 2, X(0.008)), RIM, PRO_LW * 0.75);
+    line(c, RIM, PRO_LW * 0.42, (k) => { k.moveTo(x + s * hw, top + brow); k.lineTo(X(0.5) + s * X(0.166), cy - Y(0.006)); });
+    P(c, LENS, (k) => rr(k, x - hw, top, hw * 2, hh * 2, X(0.008)), RIM, PRO_LW * 0.5);
     // gap is signed OUTWARD: positive pushes the pupil toward the outer rim,
     // negative pulls it in toward the bridge
     dot(c, INK, x + s * X(gap), cy + Y(0.004), X(shocked ? 0.012 : 0.017));
@@ -579,6 +681,67 @@ function drawSpecs(c, X, Y, shocked, o) {
   // line that makes these HIS frames rather than two rectangles
   P(c, RIM, (k) => rr(k, X(0.5) - off - hw - PRO_LW * 0.08, top - PRO_LW * 0.08, (off + hw) * 2 + PRO_LW * 0.16, brow, X(0.004)));
 }
+// ------------------------------------------------------------- the shirt
+// Peter, 4 Sep: "I would like to see him in a black and white shirt." The
+// professor sits in the tub from the chest up, so a shirt is the band between
+// his chin and the rim — the ape's fur shoulders, restyled. Three cuts, all in
+// the same two inks so the row is about the PATTERN and not the palette:
+// stripes, a collar, and a yoke. Every one keeps the shoulder silhouette the
+// fur had, because that is what the tub's rim is cut against.
+const SHIRT_W = '#eceef4', SHIRT_K = '#23232e';
+// WIDER AND HIGHER than the fur they replace. The ape's shoulders were sized
+// to be half-hidden — fur reads as fur from a sliver — but a PATTERN needs
+// room or the stripes are three pixels of noise beside his chin. This is as
+// far as it can go before the tub stops looking like it contains him.
+const shoulders = (c, X, Y) => (k) => k.ellipse(X(0.5), Y(0.6), X(0.33), Y(0.17), 0, 0, TAU);
+// And his fists get cuffs. A shirt with bare fur hands on the rim reads as a
+// man who has borrowed a shirt; the cuff is what makes the arm belong to it.
+const shirtHands = (dark) => (c, X, Y, lw) => {
+  for (const sx of [0.24, 0.76]) {
+    P(c, dark ? SHIRT_K : SHIRT_W, (k) => k.ellipse(X(sx), Y(0.585), X(0.075), Y(0.06), 0, 0, TAU), PRO_INK, PRO_LW);
+    dot(c, FUR, X(sx), Y(0.625), X(0.055), PRO_INK, PRO_LW);
+  }
+};
+const onShoulders = (c, X, Y, fn) => {
+  c.save();
+  c.beginPath(); shoulders(c, X, Y)(c); c.clip();
+  fn();
+  c.restore();
+};
+// Vertical bands, the width of the copter's own tub stripes so the two read as
+// one costume rather than two patterns arguing.
+function shirtStripes(c, X, Y, lw) {
+  P(c, SHIRT_W, shoulders(c, X, Y), PRO_INK, PRO_LW);
+  onShoulders(c, X, Y, () => {
+    for (const sx of [0.29, 0.43, 0.57, 0.71]) P(c, SHIRT_K, (k) => k.rect(X(sx), Y(0.44), X(0.06), Y(0.4)));
+  });
+  P(c, null, shoulders(c, X, Y), PRO_INK, PRO_LW);
+}
+// White shirt, black collar points and a placket down the middle: the dress
+// shirt read, and the only cut with a vertical line under the chin.
+function shirtCollar(c, X, Y, lw) {
+  P(c, SHIRT_W, shoulders(c, X, Y), PRO_INK, PRO_LW);
+  onShoulders(c, X, Y, () => {
+    P(c, SHIRT_K, (k) => { k.moveTo(X(0.5), Y(0.5)); k.lineTo(X(0.38), Y(0.53)); k.lineTo(X(0.47), Y(0.63)); k.closePath(); });
+    P(c, SHIRT_K, (k) => { k.moveTo(X(0.5), Y(0.5)); k.lineTo(X(0.62), Y(0.53)); k.lineTo(X(0.53), Y(0.63)); k.closePath(); });
+    P(c, SHIRT_K, (k) => k.rect(X(0.485), Y(0.6), X(0.03), Y(0.24)));
+  });
+}
+// Black shirt, white yoke across the shoulders: the boldest silhouette of the
+// three and the one that survives furthest away.
+function shirtYoke(c, X, Y, lw) {
+  P(c, SHIRT_K, shoulders(c, X, Y), PRO_INK, PRO_LW);
+  onShoulders(c, X, Y, () => {
+    P(c, SHIRT_W, (k) => {
+      k.moveTo(X(0.2), Y(0.56));
+      k.quadraticCurveTo(X(0.5), Y(0.44), X(0.8), Y(0.56));
+      k.lineTo(X(0.8), Y(0.62));
+      k.quadraticCurveTo(X(0.5), Y(0.52), X(0.2), Y(0.62));
+      k.closePath();
+    });
+  });
+}
+
 // ------------------------------------------------------- facial hair
 // Peter, 4 Sep: "play around with facial hair." Every option below is the SAME
 // face — same round head with its forehead, same small fine specs — and differs
@@ -587,7 +750,18 @@ function drawSpecs(c, X, Y, shocked, o) {
 // The stubble field is the shared ground most of them sit on: ONE flat tone a
 // little greyer than the skin, clipped to the skull so it takes the jaw's exact
 // silhouette. Flat fills only — dots or hatching for whiskers die at lane size.
-const STUBBLE = '#bb9a82', STUBBLE_DK = '#a5836c';
+// LIGHTER. Peter picked 42 and asked to lighten the stubble: the field was a
+// full tone darker than the skin, which at this size reads as a shadow on the
+// jaw rather than as whiskers. Two steps up puts it just off the skin, so it
+// is a texture you notice second.
+// Peter, 4 Sep: "the warm grey, but a touch darker." The whiter fields read as
+// a painted-on beard at lane size; the warm grey is the one that reads as
+// GROWTH, and this is it with a step of its lightening given back.
+const STUBBLE = '#c9ab93', STUBBLE_DK = '#b08e77';
+// WHITER. Peter, 4 Sep, on the working cut: "can the stubble be whiter" — so
+// the field can be a translucent white over the skin instead of the warm grey,
+// at two strengths: whiskers gone white, not a beard painted on.
+const FIELD_TONE = { whiter: 'rgba(232,235,242,0.55)', white: 'rgba(238,240,246,0.8)' };
 function onFace(c, X, Y, fn) {
   c.save();
   c.beginPath();
@@ -596,34 +770,62 @@ function onFace(c, X, Y, fn) {
   fn();
   c.restore();
 }
-function stubbleField(c, X, Y, chin = true) {
+// THE CHIN PATCH IS ITS OWN QUESTION. Peter, 4 Sep: "experiment a bit more
+// with the stubble — perhaps the thin thing on the chin would be silver or
+// white." So the patch under the lip takes a tone of its own rather than
+// always being a darker version of the field: a GREY patch on a warm field is
+// a man going grey from the chin up, which is the story the hair is already
+// telling, while the dark patch is a man who has not shaved. `light` asks for
+// less stubble and higher, so the jaw shows through.
+// The patch is TRANSLUCENT, not a flat chip: the grey lets the stubble under
+// it through, so it reads as hair going grey in a patch rather than as a
+// sticker on his chin. Peter, on 42: "make the silver patch a bit more
+// translucent."
+const CHIN_TONE = {
+  dark: STUBBLE_DK,
+  silver: 'rgba(205,211,224,0.62)',
+  white: 'rgba(223,226,234,0.62)',
+  steel: 'rgba(188,195,210,0.62)',
+};
+function stubbleField(c, X, Y, chin = true, o = {}) {
+  const chinTone = CHIN_TONE[o.chin] || STUBBLE_DK;
+  const light = o.light ? 0.06 : 0;
   onFace(c, X, Y, () => {
     // The top edge runs UP to the moustache line, not under it: at the old
     // height a band of bare skin sat between the two and the moustache looked
     // stuck on. The upper lip is stubbled like the rest of him, so the
     // moustache sits ON the field and the two read as one growth.
-    P(c, STUBBLE, (k) => {
-      k.moveTo(X(0.295), Y(0.425));
-      k.quadraticCurveTo(X(0.5), Y(0.478), X(0.705), Y(0.425));
+    P(c, FIELD_TONE[o.field] || (o.light ? '#c7a992' : STUBBLE), (k) => {
+      k.moveTo(X(0.295), Y(0.425 + light));
+      k.quadraticCurveTo(X(0.5), Y(0.478 + light), X(0.705), Y(0.425 + light));
       k.lineTo(X(0.705), Y(0.72)); k.lineTo(X(0.295), Y(0.72)); k.closePath();
     });
-    if (chin) P(c, STUBBLE_DK, (k) => {
-      k.moveTo(X(0.425), Y(0.53));
-      k.quadraticCurveTo(X(0.5), Y(0.575), X(0.575), Y(0.53));
-      k.quadraticCurveTo(X(0.565), Y(0.635), X(0.5), Y(0.665));
-      k.quadraticCurveTo(X(0.435), Y(0.635), X(0.425), Y(0.53));
+    if (chin) P(c, chinTone, (k) => {
+      const w = o.narrowChin ? 0.048 : 0.075;
+      k.moveTo(X(0.5 - w), Y(0.53));
+      k.quadraticCurveTo(X(0.5), Y(0.575), X(0.5 + w), Y(0.53));
+      k.quadraticCurveTo(X(0.5 + w * 0.87), Y(0.635), X(0.5), Y(0.665));
+      k.quadraticCurveTo(X(0.5 - w * 0.87), Y(0.635), X(0.5 - w), Y(0.53));
       k.closePath();
     });
   });
 }
 // The mouth: a line when calm, an O when he has been bonked. Every option
 // calls this, so no option owns a second mouth drawing.
-function mouthLine(c, X, Y, lw, shocked, y = 0.508) {
+// `curve` bows the line: +0.015 is the smile it has always had, 0 is flat,
+// negative is a frown. Peter, 4 Sep, on the working cut: "maybe a slight frown".
+function mouthLine(c, X, Y, lw, shocked, y = 0.508, curve = 0.015) {
   if (shocked) gasp(c, X, Y, y - 0.008);
-  else line(c, PRO_INK, PRO_LW * 1.2, (k) => { k.moveTo(X(0.46), Y(y)); k.quadraticCurveTo(X(0.5), Y(y + 0.015), X(0.54), Y(y)); });
+  else line(c, PRO_INK, PRO_LW * 1.2, (k) => { k.moveTo(X(0.46), Y(y)); k.quadraticCurveTo(X(0.5), Y(y + curve), X(0.54), Y(y)); });
 }
+// THE MOUSTACHE IS SILVER, not the tile's tone. Peter picked option 28 "with a
+// more silver moustache": the hair mingles three tones now, so a moustache that
+// followed the tile's lit tone came out as the palest of them and read white
+// against hair that no longer is. One step down is the whole fix, and it also
+// keeps the moustache reading as the same growth as the darker locks.
+const STACHE_TONE = HAIR_TONE.silver[0];
 const stache = (c, X, Y, lw, shocked, span, drop, y = 0.458) =>
-  mustache(c, X(0.5), Y(shocked ? y - 0.018 : y), X(span), Y(drop), shocked ? -0.5 : 0, TONE[0], PRO_INK, PRO_LW);
+  mustache(c, X(0.5), Y(shocked ? y - 0.018 : y), X(span), Y(drop), shocked ? -0.5 : 0, STACHE_TONE, PRO_INK, PRO_LW);
 // 1. Nothing at all: bare skin, and the specs carry the whole face.
 function fhShaven(c, X, Y, lw, shocked) { mouthLine(c, X, Y, lw, shocked, 0.5); }
 // 2. Three days of it and no more — the shared field, no shape on top.
@@ -634,6 +836,13 @@ function fhTrim(c, X, Y, lw, shocked) {
   mouthLine(c, X, Y, lw, shocked);
   stache(c, X, Y, lw, shocked, 0.118, 0.046);
 }
+// Option 28 — the cut Peter picked — with the stubble varied and nothing else
+// touched, so the row below only ever asks about the whiskers.
+const trimWith = (o) => (c, X, Y, lw, shocked) => {
+  stubbleField(c, X, Y, o.chin !== 'none', o);
+  mouthLine(c, X, Y, lw, shocked, 0.508, o.curve === undefined ? 0.015 : o.curve);
+  stache(c, X, Y, lw, shocked, 0.118, 0.046);
+};
 // 4. The shipped walrus, in silver: the villain's own logo shape at full span,
 // the one mark that survives from the drawing everyone knows.
 function fhWalrus(c, X, Y, lw, shocked) {
@@ -714,6 +923,32 @@ function fhBeard(c, X, Y, lw, shocked) {
 // One cut: the professor with a named hair style. Everything except the locks
 // is the same in every row, which is the point of the group.
 const professor = (name, o = {}) => professorParts(name, o);
+// HIS HEAD, SIZED AGAINST THE CAST. Peter, 4 Sep: "reduce his proportions so
+// his head is the same as Lorenzo's, so we can raise him up a little in the
+// copter — his face is too low against the basket." The professor's skull was
+// drawn to fill the ape's old box, which made it markedly bigger than a hero's
+// at the same lane size and left no room to lift him: his chin sat on the rim.
+//
+// One transform does both jobs, applied to everything ABOVE the shoulders —
+// head, hair, ears, nose, specs, brows, moustache and stubble — and to nothing
+// else. The cape's collar, the shoulders and the fists stay where the tub
+// expects them, so the costume still meets the rim exactly as drawn.
+//
+// The pivot is the neck rather than the head's centre: scaling about the neck
+// keeps the jaw where it was and takes the size off the crown, which is the
+// half that had room to give. The rise then buys the face clear air over the
+// basket without pushing the hair into the rotor — the blades are at 3.2 in
+// the copter's box and the mane's tallest lock now tops out short of them.
+const HEAD_SCALE = 0.88, HEAD_RISE = 0.075, HEAD_PIVOT = 0.52;
+const sized = (fn) => (c, X, Y, lw, shocked) => {
+  c.save();
+  c.translate(X(0.5), Y(HEAD_PIVOT - HEAD_RISE));
+  c.scale(HEAD_SCALE, HEAD_SCALE);
+  c.translate(-X(0.5), -Y(HEAD_PIVOT));
+  fn(c, X, Y, lw, shocked);
+  c.restore();
+};
+
 function professorParts(name, o) {
   const t = o.tone || HAIR_TONE.white;
   const p = {
@@ -722,16 +957,179 @@ function professorParts(name, o) {
     // rather than off in one tile, and `keepShell` is the exception a tile has
     // to ask for.
     ...(o.keepShell ? {} : { shell: null }),
-    head: (o.ape ? apeHairHead : professorHead)(name),
+    head: (o.ape ? apeHairHead : professorHead)(name, o.hitStyle === undefined ? 'blast' : o.hitStyle),
     ...(o.ape ? {} : { face: nose }),
+    ...(o.body === undefined ? {} : { body: o.body }),
+    ...(o.hands === undefined ? {} : { hands: o.hands }),
     hair: null,
     eyes: o.eyes || specsWith(),
     mouth: o.mouth || fhTrim,
   };
-  p.head = tinted(t, p.head);
-  p.mouth = tinted(t, p.mouth);
+  p.head = sized(tinted(t, p.head));
+  p.mouth = sized(tinted(t, p.mouth));
+  if (p.face) p.face = sized(p.face);
+  p.eyes = sized(p.eyes);
   return p;
 }
+
+// ---------------------------------------------------------- outfits
+// Peter, 4 Sep, on the working cut: "hate the shirt... give me other outfit
+// options... a tie maybe" and "make hands same colour as face". Same band as
+// the shirts — the shoulders between his chin and the rim — with skin fists
+// in cuffs. His chin sits ON the rim (the head egg's bottom is Y 0.59, the rim
+// Y 0.58), so nothing at the throat is visible unless it is drawn AFTER the
+// tub: the tie rides in the hands slot, its knot on the rim and its blade
+// down the tub's front, and it lifts with him on a bonk. Collars and lapels
+// show beside the jaw, which is the only place a garment can differ.
+const SUIT = '#2a2a36', TWEED = '#8a7355', BURGUNDY = '#7a2434', KNIT = '#8d94a4', COAT = '#f2f2f6', SHIRT_BLUE = '#a8c4e8';
+const TIE = { red: '#c83030', navy: '#24305a', black: '#23232e', green: '#3f7a4a', gold: '#d8a83c' };
+const band = (c, X, Y, fill) => P(c, fill, shoulders(c, X, Y), PRO_INK, PRO_LW);
+// Collar points either side of the neck, the head covering their inner ends.
+const collarPoints = (c, X, Y, fill) => {
+  for (const s of [-1, 1]) P(c, fill, (k) => {
+    k.moveTo(X(0.5 + s * 0.05), Y(0.46)); k.lineTo(X(0.5 + s * 0.21), Y(0.5)); k.lineTo(X(0.5 + s * 0.13), Y(0.62)); k.closePath();
+  }, PRO_INK, PRO_LW);
+};
+// Jacket lapels: a wide V from the shoulder tops, with the shirt in the notch.
+const lapels = (c, X, Y, fill, shirt) => {
+  P(c, shirt, (k) => { k.moveTo(X(0.36), Y(0.46)); k.lineTo(X(0.64), Y(0.46)); k.lineTo(X(0.5), Y(0.66)); k.closePath(); });
+  for (const s of [-1, 1]) P(c, fill, (k) => {
+    k.moveTo(X(0.5 + s * 0.02), Y(0.44)); k.lineTo(X(0.5 + s * 0.24), Y(0.5)); k.lineTo(X(0.5 + s * 0.16), Y(0.7)); k.lineTo(X(0.5 + s * 0.06), Y(0.66)); k.closePath();
+  }, PRO_INK, PRO_LW);
+};
+const skinHands = (cuff = null) => (c, X, Y, lw) => {
+  for (const sx of [0.24, 0.76]) {
+    if (cuff) P(c, cuff, (k) => k.ellipse(X(sx), Y(0.585), X(0.075), Y(0.06), 0, 0, TAU), PRO_INK, PRO_LW);
+    dot(c, SKIN, X(sx), Y(0.625), X(0.055), PRO_SKIN, PRO_LW);
+  }
+};
+const necktie = (fill, spots = null) => (c, X, Y) => {
+  const cx = X(0.5);
+  P(c, fill, (k) => {
+    k.moveTo(cx - X(0.028), Y(0.6)); k.lineTo(cx + X(0.028), Y(0.6));
+    k.lineTo(cx + X(0.04), Y(0.7)); k.lineTo(cx, Y(0.74)); k.lineTo(cx - X(0.04), Y(0.7)); k.closePath();
+  }, PRO_INK, PRO_LW * 0.8);
+  if (spots) for (const [dx, dy] of [[-0.012, 0.64], [0.014, 0.665], [-0.008, 0.7]]) dot(c, spots, cx + X(dx), Y(dy), X(0.007));
+  P(c, fill, (k) => rr(k, cx - X(0.03), Y(0.565), X(0.06), Y(0.04), X(0.008)), PRO_INK, PRO_LW * 0.8);
+};
+const handsAnd = (hands, tie) => (c, X, Y, lw) => { hands(c, X, Y, lw); if (tie) tie(c, X, Y, lw); };
+const OUTFIT = {
+  shirtRed: { body: (c, X, Y) => { band(c, X, Y, COAT); collarPoints(c, X, Y, COAT); }, hands: handsAnd(skinHands(COAT), necktie(TIE.red)) },
+  labcoat: { body: (c, X, Y) => { band(c, X, Y, COAT); lapels(c, X, Y, COAT, SHIRT_BLUE); }, hands: handsAnd(skinHands(COAT), necktie(TIE.navy)) },
+  suit: { body: (c, X, Y) => { band(c, X, Y, SUIT); lapels(c, X, Y, SUIT, COAT); }, hands: handsAnd(skinHands(SUIT), necktie(TIE.red)) },
+  tweed: { body: (c, X, Y) => { band(c, X, Y, TWEED); lapels(c, X, Y, TWEED, COAT); }, hands: handsAnd(skinHands(TWEED), necktie(TIE.green)) },
+  turtleneck: {
+    body: (c, X, Y) => {
+      band(c, X, Y, SUIT);
+      onShoulders(c, X, Y, () => P(c, '#3a3a48', (k) => k.ellipse(X(0.5), Y(0.5), X(0.17), Y(0.07), 0, 0, TAU)));
+    },
+    hands: skinHands(SUIT),
+  },
+  waistcoat: {
+    body: (c, X, Y) => {
+      band(c, X, Y, COAT); collarPoints(c, X, Y, COAT);
+      onShoulders(c, X, Y, () => P(c, BURGUNDY, (k) => {
+        k.moveTo(X(0.24), Y(0.5)); k.lineTo(X(0.36), Y(0.48)); k.lineTo(X(0.5), Y(0.7)); k.lineTo(X(0.64), Y(0.48)); k.lineTo(X(0.76), Y(0.5)); k.lineTo(X(0.8), Y(0.8)); k.lineTo(X(0.2), Y(0.8)); k.closePath();
+      }, PRO_INK, PRO_LW));
+    },
+    hands: handsAnd(skinHands(COAT), necktie(TIE.black)),
+  },
+  sweater: {
+    body: (c, X, Y) => {
+      band(c, X, Y, KNIT); collarPoints(c, X, Y, COAT);
+      onShoulders(c, X, Y, () => line(c, PRO_INK, PRO_LW, (k) => { k.moveTo(X(0.34), Y(0.47)); k.lineTo(X(0.5), Y(0.66)); k.lineTo(X(0.66), Y(0.47)); }));
+    },
+    hands: handsAnd(skinHands(KNIT), necktie(TIE.red, '#f4e6b8')),
+  },
+  cape: {
+    body: (c, X, Y) => {
+      // a high collar standing behind the head, red inside, black out
+      for (const s of [-1, 1]) P(c, '#b8202a', (k) => {
+        k.moveTo(X(0.5 + s * 0.08), Y(0.6)); k.quadraticCurveTo(X(0.5 + s * 0.42), Y(0.5), X(0.5 + s * 0.36), Y(0.2));
+        k.quadraticCurveTo(X(0.5 + s * 0.3), Y(0.36), X(0.5 + s * 0.14), Y(0.42)); k.closePath();
+      }, PRO_INK, PRO_LW);
+      for (const s of [-1, 1]) P(c, SUIT, (k) => {
+        k.moveTo(X(0.5 + s * 0.16), Y(0.62)); k.quadraticCurveTo(X(0.5 + s * 0.44), Y(0.52), X(0.5 + s * 0.4), Y(0.24));
+        k.lineTo(X(0.5 + s * 0.36), Y(0.2)); k.quadraticCurveTo(X(0.5 + s * 0.42), Y(0.5), X(0.5 + s * 0.08), Y(0.6)); k.closePath();
+      }, PRO_INK, PRO_LW);
+      band(c, X, Y, SUIT); collarPoints(c, X, Y, COAT);
+    },
+    // NO TIE. Peter, 4 Sep: "I like the cape, lose the tie." The cape already
+    // owns the throat — a high collar standing behind the head is the loudest
+    // thing on him below the face — and a tie under it is a second focus in
+    // the same three units of drawing. The collar points stay: they are what
+    // stops the shirt reading as bare skin.
+    hands: skinHands(null),
+  },
+};
+
+// ---------------------------------------------------- the working version
+// Peter, 4 Sep 2026, on round K: "52 but with thicker eyebrows... drop all the
+// rest, lets work on this version." 52 is TAME on option 42 with the striped
+// shirt — the silver professor. Then, on the working cut: "with angry angled
+// eyebrows he'd look meaner", "can the stubble be whiter", "hate the shirt...
+// a tie maybe", "make hands same colour as face". So: the tame arc at twice
+// the height and ANGLED — inner end down, outer up, no flick (a flick is what
+// makes it wild rather than angry) — lifted as it tilts so the inner end keeps
+// its gap to the frames; a whiter stubble field; skin fists in cuffs; and,
+// until an outfit is picked, the white shirt with the red tie. Everything
+// else in this file is reference now.
+//
+// (A first reading of "52" as options 5 + 2 — clean shaven in the lab coat
+// with heavy black brows — was wrong and is gone; its parts are above.)
+const pick52 = (brows) => ({
+  parts: professor('mane', { mouth: trimWith({ chin: 'silver' }), body: shirtStripes, hands: shirtHands(true), eyes: specsWith({ brows }) }),
+  mastTo: 10.4, hy: 3.2,
+});
+// SHORTER AND LEVEL. Peter, 4 Sep: "eyebrows are too crazy — not so long, and
+// symmetrical." The tilt was doing the meanness and the LENGTH was doing the
+// madness; dropping the tilt to zero and pulling the width in leaves a heavy
+// straight brow, which reads as stern rather than unhinged. `tilt` stays in
+// the signature because the angle strip still asks the question.
+const BROW_W_SHORT = 0.044;
+const browAt = (h, tilt) => ({
+  ...BROW_STYLES.tame, w: BROW_W_SHORT, h, tilt, flick: 0,
+  lift: (h - BROW_STYLES.tame.h) * 1.5 + tilt * 0.4,
+});
+const cut = ({ brows = browAt(0.024, 0), field = undefined, curve = -0.01, outfit = OUTFIT.cape } = {}) => ({
+  parts: professor('mane', { mouth: trimWith({ chin: 'silver', field, curve }), body: outfit.body, hands: outfit.hands, eyes: specsWith({ brows }) }),
+  mastTo: 10.4, hy: 3.2,
+});
+export const EGGSHELL_MOUTHS = [
+  { id: 'mo-smile', label: 'SMILE (AS IT WAS)', note: 'curve +0.015', ...cut({ curve: 0.015 }) },
+  { id: 'mo-flat', label: 'FLAT', note: 'curve 0', ...cut({ curve: 0 }) },
+  { id: 'mo-slight', label: 'SLIGHT FROWN — PICKED', note: 'curve -0.010 — settled 4 Sep', ...cut({ curve: -0.01 }) },
+  { id: 'mo-frown', label: 'FROWN', note: 'curve -0.020 — the guardrail', ...cut({ curve: -0.02 }) },
+];
+export const EGGSHELL_BROW_ANGLES = [
+  { id: 'ba-06', label: 'MILD', note: 'tilt 0.06 — the outer end a hair up', ...cut({ brows: browAt(0.024, 0.06) }) },
+  { id: 'ba-00', label: 'LEVEL — WORKING', note: 'tilt 0 — symmetrical, and short: stern rather than unhinged', ...cut({ brows: browAt(0.024, 0) }) },
+  { id: 'ba-10', label: 'ANGRY', note: 'tilt 0.10', ...cut({ brows: browAt(0.024, 0.1) }) },
+  { id: 'ba-15', label: 'FURIOUS', note: 'tilt 0.15 — the guardrail; past this the brow leaves the face', ...cut({ brows: browAt(0.024, 0.15) }) },
+];
+export const EGGSHELL_STUBBLE_TONES = [
+  { id: 'sf-warm', label: 'WARM GREY — WORKING', note: 'the warm grey field a touch darker, #c9ab93', ...cut({ field: undefined }) },
+  { id: 'sf-whiter', label: 'WHITER', note: 'translucent white at 55% over the skin', ...cut({ field: 'whiter' }) },
+  { id: 'sf-white', label: 'WHITE', note: 'translucent white at 80% — nearly a painted beard', ...cut({ field: 'white' }) },
+];
+export const EGGSHELL_OUTFITS = [
+  { id: 'of-shirt', label: 'WHITE SHIRT, RED TIE', note: 'Collar points beside the jaw, the red tie down the front. The plain read.', ...cut({ outfit: OUTFIT.shirtRed }) },
+  { id: 'of-labcoat', label: 'LAB COAT, NAVY TIE', note: 'White coat lapels open on a blue shirt. The scientist.', ...cut({ outfit: OUTFIT.labcoat }) },
+  { id: 'of-suit', label: 'DARK SUIT, RED TIE', note: 'Black lapels on a white shirt. The executive villain — a man who files forms.', ...cut({ outfit: OUTFIT.suit }) },
+  { id: 'of-tweed', label: 'TWEED, GREEN TIE', note: 'Brown jacket, white shirt, a knit tie. The professor read.', ...cut({ outfit: OUTFIT.tweed }) },
+  { id: 'of-turtleneck', label: 'BLACK TURTLENECK', note: 'The guardrail: nothing at the throat at all. The Bond-villain read.', ...cut({ outfit: OUTFIT.turtleneck }) },
+  { id: 'of-waistcoat', label: 'WAISTCOAT, BLACK TIE', note: 'Burgundy waistcoat over a white shirt. The most colour on him below the chin.', ...cut({ outfit: OUTFIT.waistcoat }) },
+  { id: 'of-sweater', label: 'V-NECK, DOTTED TIE', note: 'Grey sweater over a white collar, a red tie with cream dots. The nerd read.', ...cut({ outfit: OUTFIT.sweater }) },
+  { id: 'of-cape', label: 'CAPE, RED LINING — WORKING', note: 'A high black collar standing behind the head, red inside, over a white shirt. No tie: the cape owns the throat, and a tie under it is a second focus in the same three units. The only outfit that changes his silhouette.', ...cut({ outfit: OUTFIT.cape }) },
+];
+export const EGGSHELL_WORKING = {
+  id: 'pro-52-work', name: '52, WORKING',
+  note: 'The silver professor: wild mane, small fine specs, short level brows at twice the tame height, the slight frown (picked), '
+    + 'the warm grey stubble with the trim silver moustache and silver chin patch, skin fists, no shell — in the '
+    + 'cape, no tie.',
+  ...cut(),
+};
+export const EGGSHELL_WORKING_REF = { id: 'pro-52', label: '52 AS PICKED', ...pick52('tame') };
 
 // -------------------------------------------------------------- the list
 // `parts` options are the shipped copter with those parts swapped; `paint`
@@ -804,7 +1202,7 @@ export const EGGSHELL_REDESIGNS = [
     note: 'A hovering frying pan on two jets, a fried egg in it, and the yolk is his seat. Wider than anything else here; the handle is the tell at lane size.',
     paint: (c, t) => sunnySide(c, t) },
   // F. the silver professor — the three hair styles that survived
-  { id: 'mane', n: 21, group: 'F', name: 'WILD MANE', box: [28, 28], mastTo: 10.4,
+  { id: 'mane', n: 21, group: 'F', name: 'WILD MANE', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'The reference read: one mass swept up and across the crown with spikes flying off both temples, longest at the sides. Unkempt, but with a direction — combed by wind rather than by nothing.',
     parts: professor('mane') },
   { id: 'blast', n: 22, group: 'F', name: 'BLAST', box: [28, 28], mastTo: 10.2,
@@ -813,57 +1211,105 @@ export const EGGSHELL_REDESIGNS = [
   { id: 'quiff', n: 23, group: 'F', name: 'FORWARD QUIFF', box: [28, 28], mastTo: 10.2,
     note: 'One tall fan pitched forward over the brow, the sides cropped to short spikes. The tidiest of the unkempt, and the only one whose silhouette leans toward the hero he is chasing.',
     parts: professor('quiff') },
-  { id: 'maneape', n: 24, group: 'F', name: 'WILD MANE, APE KEPT', box: [28, 28], mastTo: 10.4,
+  { id: 'maneape', n: 24, group: 'F', name: 'WILD MANE, APE KEPT', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'The mane on the shipped ape: brown head and cream face-plate kept, silver spikes around them. The question the hair cannot answer on its own — does he have to stop being an ape to look younger?',
     parts: professor('mane', { ape: true }) },
-  { id: 'maneshell', n: 25, group: 'F', name: 'WILD MANE, SHELL KEPT', box: [28, 28], mastTo: 10.4,
+  { id: 'maneshell', n: 25, group: 'F', name: 'WILD MANE, SHELL KEPT', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'The only cut that still wears the green spiked shell — kept as the before picture, since every other tile now drops it.',
     parts: professor('mane', { keepShell: true }) },
   // G. facial hair, all on the wild mane
-  { id: 'fh-shaven', n: 26, group: 'G', name: 'CLEAN SHAVEN', box: [28, 28], mastTo: 10.4,
+  { id: 'fh-shaven', n: 26, group: 'G', name: 'CLEAN SHAVEN', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'Nothing at all: bare skin and a mouth line, the specs carrying the whole face. The only cut with no silver below the nose — and the youngest of the row by a distance.',
     parts: professor('mane', { mouth: fhShaven }) },
-  { id: 'fh-stubble', n: 27, group: 'G', name: 'STUBBLE ONLY', box: [28, 28], mastTo: 10.4,
+  { id: 'fh-stubble', n: 27, group: 'G', name: 'STUBBLE ONLY', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'Three days of it and no more: the flat greyer tone over cheeks, jaw and lip with no shape on top. Reads as unshaven rather than bearded, which is a different kind of not-coping.',
     parts: professor('mane', { mouth: fhStubble }) },
-  { id: 'fh-trim', n: 28, group: 'G', name: 'STUBBLE + TRIM MOUSTACHE', box: [28, 28], mastTo: 10.4,
+  { id: 'fh-trim', n: 28, group: 'G', name: 'STUBBLE + TRIM MOUSTACHE', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'The cut that has been standing: stubble with the trim silver moustache over it and a denser patch under the lip. The middle of the row in every sense.',
     parts: professor('mane', { mouth: fhTrim }) },
-  { id: 'fh-walrus', n: 29, group: 'G', name: 'SILVER WALRUS', box: [28, 28], mastTo: 10.4,
+  { id: 'fh-walrus', n: 29, group: 'G', name: 'SILVER WALRUS', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'The shipped villain\'s own moustache at full span, in silver instead of red. The one mark that carries over from the drawing everyone already knows him by — the most Eggshell of the row.',
     parts: professor('mane', { mouth: fhWalrus }) },
-  { id: 'fh-handlebar', n: 30, group: 'G', name: 'WAXED HANDLEBAR', box: [28, 28], mastTo: 10.4,
+  { id: 'fh-handlebar', n: 30, group: 'G', name: 'WAXED HANDLEBAR', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'Thin, swept up past the cheeks and curled at the tips. The most pompous option and the thinnest silver on the sheet — check this one at the phone rung before believing it.',
     parts: professor('mane', { mouth: fhHandlebar }) },
-  { id: 'fh-vandyke', n: 31, group: 'G', name: 'VAN DYKE', box: [28, 28], mastTo: 10.4,
+  { id: 'fh-vandyke', n: 31, group: 'G', name: 'VAN DYKE', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'Moustache and a pointed chin beard with the jaw shaved between. The tidiest villain of the row, which is the joke on a man who disputes jumps in writing.',
     parts: professor('mane', { mouth: fhVanDyke }) },
-  { id: 'fh-goatee', n: 32, group: 'G', name: 'GOATEE', box: [28, 28], mastTo: 10.4,
+  { id: 'fh-goatee', n: 32, group: 'G', name: 'GOATEE', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'The goatee proper: a chin tuft with the upper lip SHAVED. The only cut where nothing sits between the nose and the beard, which makes the specs and the mouth carry the whole expression.',
     parts: professor('mane', { mouth: fhGoatee }) },
-  { id: 'fh-goatee-long', n: 33, group: 'G', name: 'LONG GOATEE', box: [28, 28], mastTo: 10.4,
+  { id: 'fh-goatee-long', n: 33, group: 'G', name: 'LONG GOATEE', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'The same tuft drawn to a point past the jaw, with a thin moustache over it. The only facial hair on the sheet that leaves the head\'s silhouette — a villain\'s goatee, and the one to check against the tub rim.',
     parts: professor('mane', { mouth: fhGoateeLong }) },
-  { id: 'fh-beard', n: 34, group: 'G', name: 'FULL SHORT BEARD', box: [28, 28], mastTo: 10.4,
+  { id: 'fh-beard', n: 34, group: 'G', name: 'FULL SHORT BEARD', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'Grown out: a full silver beard round the jaw with the moustache over it. The widest lower face of the row and the only facial hair that changes his outline.',
     parts: professor('mane', { mouth: fhBeard }) },
   // H. hair tone — one pair of greys, six ways
-  { id: 'tone-white', n: 35, group: 'H', name: 'WHITE (as drawn)', box: [28, 28], mastTo: 10.4,
+  // ---- round K: eyebrows ---------------------------------------------------
+  { id: 'br-none', n: 51, group: 'K', name: 'NO BROWS (AS DRAWN)', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "The face as it has been all along: the frames do the whole job above the nose. The reference for the three below.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver' }), body: shirtStripes, hands: shirtHands(true), eyes: specsWith({ brows: 'none' }) }) },
+  { id: 'br-tame', n: 52, group: 'K', name: 'TAME', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "A short calm arc over each lens. He looks kind, which may be the wrong man entirely.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver' }), body: shirtStripes, hands: shirtHands(true), eyes: specsWith({ brows: 'tame' }) }) },
+  { id: 'br-bushy', n: 53, group: 'K', name: 'BUSHY', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "Thicker, with a flick at the outer end. Unruly enough to match the hair without shouting.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver' }), body: shirtStripes, hands: shirtHands(true), eyes: specsWith({ brows: 'bushy' }) }) },
+  { id: 'br-wild', n: 54, group: 'K', name: 'WILD', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "Thicker again, lifted at the inner end and flicked hard at the outer: the mad-scientist read, and the only one that argues with the trimmed moustache.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver' }), body: shirtStripes, hands: shirtHands(true), eyes: specsWith({ brows: 'wild' }) }) },
+
+  // ---- round J: a black and white shirt on the chosen cut -----------------
+  { id: 'sh-none', n: 47, group: 'J', name: 'FUR (AS DRAWN)', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "Option 42 as it stands: the ape's fur shoulders under the chin. The reference for the three below.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver' }), body: undefined }) },
+  { id: 'sh-stripes', n: 48, group: 'J', name: 'STRIPED SHIRT', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "Vertical black and white bands the width of the tub’s own stripes, so the man and his machine read as one costume.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver' }), body: shirtStripes }) },
+  { id: 'sh-collar', n: 49, group: 'J', name: 'COLLAR + PLACKET', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "A white dress shirt with black collar points and a placket down the middle — the only cut with a vertical line under the chin.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver' }), body: shirtCollar, hands: shirtHands(false) }) },
+  { id: 'sh-yoke', n: 50, group: 'J', name: 'BLACK, WHITE YOKE', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "Black with a white yoke across the shoulders: the boldest silhouette of the three and the one that carries furthest.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver' }), body: shirtYoke, hands: shirtHands(true) }) },
+
+  // ---- round I: the stubble on the chosen cut -----------------------------
+  { id: 'st-dark', n: 41, group: 'I', name: 'AS DRAWN (DARK PATCH)', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "Option 28 exactly as it stands: a warm field with a darker patch under the lip. The reference for the five below.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'dark' }) }) },
+  { id: 'st-silver', n: 42, group: 'I', name: 'SILVER PATCH', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "The patch under the lip in the moustache's own silver. He is going grey from the chin up, which is the story the hair is telling.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver' }) }) },
+  { id: 'st-white', n: 43, group: 'I', name: 'WHITE PATCH', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "The same patch in white — the brightest mark on the lower face, and the one that carries furthest.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'white' }) }) },
+  { id: 'st-thin', n: 44, group: 'I', name: 'THIN SILVER PATCH', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "Narrower by a third, in silver: a soul patch rather than the beginning of a beard.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver', narrowChin: true }) }) },
+  { id: 'st-light', n: 45, group: 'I', name: 'LIGHT FIELD, SILVER PATCH', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "Less stubble and higher, so the jaw shows through, with the silver patch on top. The best-shaved of the six.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'silver', light: true }) }) },
+  { id: 'st-none', n: 46, group: 'I', name: 'FIELD ONLY, NO PATCH', box: [28, 28], mastTo: 10.4, hy: 3.2,
+    note: "The guardrail: the field with nothing under the lip, to say whether the patch is doing any work at all.",
+    parts: professor('mane', { mouth: trimWith({ chin: 'none' }) }) },
+
+  { id: 'tone-white', n: 35, group: 'H', name: 'WHITE (as drawn)', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'The control: #dfe2ea over #c6cbd9, what every other tile on the sheet wears. Brightest, and the furthest from grey.',
     parts: professor('mane', { tone: HAIR_TONE.white }) },
-  { id: 'tone-silver', n: 36, group: 'H', name: 'SILVER', box: [28, 28], mastTo: 10.4,
+  { id: 'tone-silver', n: 36, group: 'H', name: 'SILVER', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: 'One step down: #cdd3e0 over #b1b9ca. Still reads as bright hair against the dark sky band, with the white knocked off it.',
     parts: professor('mane', { tone: HAIR_TONE.silver }) },
-  { id: 'tone-steel', n: 37, group: 'H', name: 'STEEL', box: [28, 28], mastTo: 10.4,
+  { id: 'tone-steel', n: 37, group: 'H', name: 'STEEL', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: '#bcc3d2 over #a0a8bb — properly grey. The tone where the hair stops being the brightest thing on him and the face starts leading.',
     parts: professor('mane', { tone: HAIR_TONE.steel }) },
-  { id: 'tone-pewter', n: 38, group: 'H', name: 'PEWTER', box: [28, 28], mastTo: 10.4,
+  { id: 'tone-pewter', n: 38, group: 'H', name: 'PEWTER', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: '#adb4c3 over #9199ac. Darker again; check this one against the pale rhythm sky, where he is drawn on a light band and not this dark card.',
     parts: professor('mane', { tone: HAIR_TONE.pewter }) },
-  { id: 'tone-warm', n: 39, group: 'H', name: 'WARM GREY', box: [28, 28], mastTo: 10.4,
+  { id: 'tone-warm', n: 39, group: 'H', name: 'WARM GREY', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: '#ccc9c6 over #b0aca8 — the only tone here with the blue taken out. Sits closer to his skin, which makes him read older and less like a lab.',
     parts: professor('mane', { tone: HAIR_TONE.warm }) },
-  { id: 'tone-slate', n: 40, group: 'H', name: 'SLATE', box: [28, 28], mastTo: 10.4,
+  { id: 'tone-slate', n: 40, group: 'H', name: 'SLATE', box: [28, 28], mastTo: 10.4, hy: 3.2,
     note: '#9fa7b7 over #858da0 — the guardrail. This is where grey hair starts reading as a grey HAT, and the contour has nothing left to separate.',
     parts: professor('mane', { tone: HAIR_TONE.slate }) },
 ];
@@ -871,7 +1317,15 @@ export const EGGSHELL_REDESIGNS = [
 // the rotor mast's lower end for the options whose head is taller than the
 // shipped one — undefined leaves eggshellCopterArt's own default in place.
 for (const r of EGGSHELL_REDESIGNS) {
-  if (!r.paint) r.paint = (c, t) => copter(c, t, { parts: r.parts, mastTo: r.mastTo });
+  // `hy` raises the ROTOR. The professor's hair stands where the ape's flat
+  // skull was, so at the shipped hub height the blades passed through it and
+  // the mast looked like it came out of his head. Undefined keeps the shipped
+  // height, so only the tiles that ask for it move.
+  if (!r.paint) {
+    r.paint = (c, t) => copter(c, t, {
+      parts: r.parts, mastTo: r.mastTo, ...(r.hy === undefined ? {} : { hy: r.hy }),
+    });
+  }
 }
 export const EGGSHELL_REDESIGN_GROUPS = [
   ['A', 'The shell', 'The green spiked shell is the armour. Four ways to lose it.'],
@@ -881,6 +1335,9 @@ export const EGGSHELL_REDESIGN_GROUPS = [
   ['E', 'Wildcard', 'One for the laugh.'],
   ['F', 'The silver professor — hair', 'NO SHELL: the green spikes are gone from every cut but 25, which keeps them as the before picture. Three spiky hair styles on one identical head — same round skull, same locks rooted high so the crown shows, same small fine specs, same stubble and moustache — so only the locks differ.'],
   ['G', 'The silver professor — facial hair', 'Nine lower halves on the WILD MANE, everything above the nose identical. The stubble field is the shared ground: one flat greyer tone clipped to the skull, so a beard is a shape on top of it rather than a second drawing.'],
+  ['K', 'The silver professor — eyebrows', 'Peter: "maybe he needs eyebrows to sell the crazy look a bit?" Four brows on option 42 with the striped shirt, everything else identical. They are drawn in the hair’s own tones and sit above the frames with a gap, because a brow touching the rim reads as part of the glasses.'],
+  ['J', 'The silver professor — the shirt', 'Peter, on option 42: "I would like to see him in a black and white shirt." He sits in the tub from the chest up, so the shirt is the band between his chin and the rim — the ape’s fur shoulders, restyled. All three cuts use the same two inks, so the row is about the pattern rather than the palette.'],
+  ['I', 'The silver professor — the stubble', 'Peter picked option 28 (stubble + trim moustache) and asked to push the whiskers further. Six lower halves, everything above the nose identical — what changes is the weight of the field and the tone and width of the patch under the lip. The moustache is silver in all of them.'],
   ['H', 'The silver professor — hair tone', 'Six greys, everything else identical. Each option is a PAIR — the lit tone for the front locks and the moustache, the shaded one for the locks behind the skull — so the hair and the facial hair can never disagree. Judge these against the sky band he actually flies on, not only against this dark card.'],
 ];
 

@@ -1453,9 +1453,10 @@ export class RunState {
    * is a torn-out lump of earth, and earth does not ring.
    */
   ringGirder(r, vy) {
-    if (!r || r.kind !== 'island' || this.cabinet.slabLook !== 'girder') return;
+    if (!r || r.kind !== 'island' || this.cabinet.slabLook !== 'girder') return false;
     const k = Math.max(0.35, Math.min(1.4, Math.abs(vy) / BASE_JUMP_V));
     r.ring = { t: 0, amp: GIRDER_RING_MAX * k };
+    return true;
   }
 
   updateGirderRing(dt) {
@@ -3559,8 +3560,16 @@ export class RunState {
         this.bailLoop();
       }
     } else if (Input.pressed('jump')) {
+      // The floor he is leaving, read BEFORE the press clears `grounded`. A
+      // push-off loads a beam exactly as an arrival does — and it is the one
+      // the ear gets, because it is the one the player chose.
+      const springboard = this.player.grounded ? this.route : null;
       const ok = this.player.jumpPressed(Audio);
       if (ok) this.player.jumpFace = rollJumpFace(this.fxRng, this.player.jumpFace);
+      // Alongside `jump`, never instead of it: that cue is the hero, this is
+      // the girder answering him. ringGirder is the guard for both — a slab of
+      // ground neither moves nor sounds.
+      if (ok && this.ringGirder(springboard, this.player.vy)) Audio.sfx('girderBoing');
       if (ok && this.player.jumps > 1) burst(this.camX + PLAYER_X + 6, GROUND_Y - this.player.y - 8, 6, 40, 0.4, '#ffa8b6', 1, 60, () => this.fxRng.float());
       if (ok && this.beatLock) this.checkOnBeat('jump');
     }
@@ -5656,6 +5665,10 @@ export class RunState {
       let parked = false;
       switch (c.mode) {
         case 'away': {
+          // The mood decays to neutral once he has settled into the roam, so a
+          // smile is something he does rather than something he wears.
+          if (c.mood === 'smile' && c.modeT > 2 * c.bar) c.mood = 'flat';
+          if (c.mood === 'frown' && c.modeT > 3 * c.bar) c.mood = 'flat';
           // His home. He arrives here from off the right edge on the first
           // pass and rejoins it after every bonk. The blend is a time-based
           // ease onto the LIVE meander, not a settle onto a fixed point: he
@@ -5705,7 +5718,12 @@ export class RunState {
           // A full second past the window, not a fraction: the player may still
           // be in the air when it closes, and the landing has to be road too.
           const noPit = this.laneClearFor(ENTER_T, ENTER_T + HOVER_T + 1, sp, true);
-          if (c.modeT >= AHEAD_T && noPit && (clear || patience)) { c.mode = 'enter'; c.modeT = 0; c.homeT = null; }
+          // HE ENJOYS THE APPROACH AND RESENTS THE WORK. The mood rides the
+          // pass: pleased with himself on the way in, frowning once he is over
+          // the hero and has to concentrate, sour for a while after a bonk.
+          if (c.modeT >= AHEAD_T && noPit && (clear || patience)) {
+            c.mode = 'enter'; c.modeT = 0; c.homeT = null; c.mood = 'smile';
+          }
           break;
         }
         case 'enter': {
@@ -5717,7 +5735,7 @@ export class RunState {
           if (!Number.isFinite(c.fromDx)) { c.fromDx = dx; c.fromAlt = c.alt; }
           dx = c.fromDx + (overDx - c.fromDx) * e;
           c.alt = c.fromAlt + (overAlt - c.fromAlt) * e;
-          if (u >= 1) { c.mode = 'hover'; c.modeT = 0; c.fromDx = null; c.evadeT = 0; }
+          if (u >= 1) { c.mode = 'hover'; c.modeT = 0; c.fromDx = null; c.evadeT = 0; c.mood = 'frown'; }
           break;
         }
         case 'hover': {
@@ -5768,6 +5786,8 @@ export class RunState {
           // window. modeT starts negative, which is simply time owed.
           if (c.modeT >= LEAVE_T) {
             c.mode = 'away'; c.fromDx = null; c.homeT = null;
+            // Sour after a hit, otherwise back to his pleased cruise.
+            c.mood = c.hitT > 0 ? 'frown' : 'smile';
             c.modeT = c.hitT > 0 ? -1.5 * c.bar : 0;
           }
           break;
@@ -5780,10 +5800,19 @@ export class RunState {
       // up at the top of his band he stops short of that building, and only
       // down at barrel height may he cross it. The recoil climbs and drifts,
       // so both are clamped here rather than inside each case.
-      const zoom = this.camZoom || ZOOM;
       const rightEdge = c.alt <= GORILLA_DUCK_ALT ? GORILLA_COLUMN[1] + 26 : GORILLA_COLUMN[0] - 4;
       // The arrival flies THROUGH the gorilla's column; only the roam has to
       // keep off it.
+      const zoom = this.camZoom || ZOOM;
+      // HE NOTICES THE GORILLA. On level 3-3 the cabinet's own landmark is a
+      // rooftop ape holding a barrel, and a villain who cruises past it without
+      // a glance is furniture. Near that column he turns to look and smirks —
+      // Peter: "look at Kong when near him and smile" — which also gives the
+      // roam a reason to have gone over there.
+      const kongMid = (GORILLA_COLUMN[0] + GORILLA_COLUMN[1]) / 2 / zoom;
+      c.nearKong = Math.abs(dx - kongMid) < 34 && c.mode === 'away';
+      if (c.nearKong && c.hitT <= 0) c.mood = 'smirk';
+      else if (c.mood === 'smirk') c.mood = 'flat';
       const crossing = parked || c.mode === 'away' && !c.arrived;
       c.dx = crossing ? dx : Math.min(dx, rightEdge / zoom - COPTER_BOX / 2);
       c.x = this.camX + c.dx;

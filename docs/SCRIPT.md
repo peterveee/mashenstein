@@ -261,8 +261,9 @@ Every third switch, the screen clears itself — `RELAY BLAST` — automatically
 > THIS COPTER IS FINE. THE BEEPING IS DECORATIVE.
 > A CHILD COULD DO THIS. A CHILD DID. I FIRED HIM.
 > THE FOURTH HEALTH BAR IS REAL. PROBABLY.
-> I HAVE BEEN LOSING TO PLUMBERS SINCE 1986. THE STATISTICAL PROBABILITY OF YOU WINNING THIS STAGE IS AN INSULT TO MY DOCTORATE.
-> DO YOU KNOW WHAT IT IS LIKE TO SIT IN A CLOWN-COPTER FOR FOUR DECADES? THE ERGONOMICS ARE ATROCIOUS.
+> I HAVE BEEN LOSING TO PLUMBERS SINCE 1986.
+> MY DOCTORATE IS IN STATISTICS. IT HAS NEVER ONCE HELPED.
+> FOUR DECADES IN THIS SEAT. THE ERGONOMICS ARE ATROCIOUS.
 
 *The first taunt of every attempt is the cabinet's own bespoke line (see each cabinet's briefing); the generic pool covers the rest of the run.*
 
@@ -626,6 +627,6 @@ The narrative gaps from the previous draft, and where this draft answers them:
 
 5. **The heroes never talked to each other.** The relay now carries eight authored hand-off exchanges — one per link in the canonical cycle — so the game's central conceit finally produces dialogue.
 
-6. **The 40-year grudge was stated once and never dramatized.** It now anchors the 1-1 briefing (`...LOST TO ENTITIES IN OVERALLS FOR FORTY CONSECUTIVE YEARS. THIS IS NOT A FAIR FIGHT. THIS IS A GRIEVANCE.`), two new taunts (`LOSING TO PLUMBERS SINCE 1986`, the clown-copter ergonomics), and recurring forty-year paperwork throughout the memos — groundwork that beat 6's `SO THIS IS THE WARMTH I NEVER GOT` can finally land on.
+6. **The 40-year grudge was stated once and never dramatized.** It now anchors the 1-1 briefing (`...LOST TO ENTITIES IN OVERALLS FOR FORTY CONSECUTIVE YEARS. THIS IS NOT A FAIR FIGHT. THIS IS A GRIEVANCE.`), three new taunts (`LOSING TO PLUMBERS SINCE 1986`, the statistics doctorate, the clown-copter ergonomics), and recurring forty-year paperwork throughout the memos — groundwork that beat 6's `SO THIS IS THE WARMTH I NEVER GOT` can finally land on.
 
 **Still open:** the finale beats and intro panels are unchanged, so Gary's switch-flip remains a deadpan anticlimax by design; and the briefing memos are the only place the heroes' names appear in Act III outside their own barks.

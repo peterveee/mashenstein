@@ -1095,6 +1095,38 @@ export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMo
   // painter's frames, so there is no separate blur to draw.
   const frame = copterFrame(t, beatPhase, reducedMotion);
   const B = COPTER_BOX;
+  // HIS FACE IS LIVE, so he is drawn from the painter rather than the raster
+  // cache: a cached sprite has one expression per frame index, and the whole
+  // point here is that the expression changes. One small vector sprite a
+  // frame, which is what the bonk already paid for.
+  //
+  // HE WATCHES THE HERO. `look` is which side the hero is on, softened so it
+  // is a glance rather than a lock; the pupils ride inside the lenses.
+  // `mood` comes from the pass (run.js sets it): pleased on the way in,
+  // working while he hunts, sour after he has been hit.
+  // WHERE HE IS LOOKING. Three things can own his eyes, in order: the gorilla
+  // he is passing, the hero he is hunting, and — when neither is close — a
+  // slow idle drift, because eyes that hold one position are the thing that
+  // read as a sticker in the first place.
+  const heroDx = (camX + PLAYER_X + HERO_CENTER_OFF) - copter.x;
+  const idle = Math.sin(t * 0.9) * 0.55 + Math.sin(t * 0.37 + 1.2) * 0.3;
+  const hunting = copter.mode === 'enter' || copter.mode === 'hover' || copter.mode === 'leave';
+  const look = copter.nearKong ? 1                       // the gorilla is always to his right
+    : hunting ? Math.max(-1, Math.min(1, heroDx / 46))   // the hero, while the pass is on
+      : idle;
+  const face = {
+    look,
+    mood: copter.mood || 'flat',
+    // A blink every few seconds, off a clock of his own so it never lands on
+    // the beat with everything else. Two frames of shut eye is enough.
+    blink: reducedMotion ? 0 : (t % 3.4 < 0.11 ? 1 : 0),
+    // A TWITCH EACH, ON THEIR OWN CLOCKS. Periods that share no factor, so the
+    // two never land together; each is a short hop rather than a hold.
+    twitch: reducedMotion ? [0, 0] : [
+      t % 5.3 < 0.22 ? 1 : 0,
+      t % 3.9 < 0.18 ? 1 : 0,
+    ],
+  };
   // THE BONK, 1.1s: a kick upward, then a decaying vibration — a fast rattle
   // in x and y with a tilt, shaken off as it fades. Drawn, not simulated: the
   // flight path is a plain climb, so the rattle can never move where the next
@@ -1120,11 +1152,14 @@ export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMo
     // It is one small sprite for a second.
     ctx.save();
     ctx.translate(-B / 2, -B / 2);
-    eggshellCopterArt(ctx, B, B, frame, { pop });
+    eggshellCopterArt(ctx, B, B, frame, { pop, face });
     ctx.restore();
     ctx.restore();
   } else {
-    drawProp(ctx, 'eggshellCopter', x - B / 2, y + 12 - B, B, B, frame);
+    ctx.save();
+    ctx.translate(x - B / 2, y + 12 - B);
+    eggshellCopterArt(ctx, B, B, frame, { face });
+    ctx.restore();
   }
   // THE FIELD, ONLY WHEN IT IS STRUCK. A permanent bubble would say "you
   // cannot hurt this" for the whole level, which is the opposite of the truth:

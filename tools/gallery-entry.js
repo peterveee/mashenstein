@@ -107,7 +107,8 @@ import {
 import {
   EGGSHELL_CANDIDATES, drawEggshellCandidate, EGGSHELL_TRAVEL, drawEggshellTravel,
 } from '../src/dev/eggshell-candidates.js';
-import { EGGSHELL_REDESIGNS, EGGSHELL_REDESIGN_GROUPS, drawEggshellRedesign } from '../src/dev/eggshell-redesigns.js';
+import { EGGSHELL_WORKING, EGGSHELL_WORKING_REF, EGGSHELL_BROW_ANGLES, EGGSHELL_STUBBLE_TONES, EGGSHELL_MOUTHS, EGGSHELL_OUTFITS } from '../src/dev/eggshell-redesigns.js';
+import { eggshellApe, eggshellBalloonArt } from '../src/sprites/props.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -6069,20 +6070,19 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 }
 
 // ------------------------------------------- the villain, redesigned
-// Peter, 4 Sep 2026: "i like our main eggman villain, but i would like some
-// redesigns... no armour? an egg like vehicle? different facial hair (no
-// facial hair) or different hair styles. go as creative as you want, give me
-// 20 options." Every bust option is the SHIPPED painter with one part swapped
-// through the EGGSHELL_PARTS seam in props.js, so what differs from the copter
-// in the lane is exactly the mark the tile names; the vehicles keep the
-// shipped ape and replace what is around him. src/dev/eggshell-redesigns.js.
+// Peter, 4 Sep 2026, after the rounds in src/dev/eggshell-redesigns.js (the
+// file keeps every option): "52 but with thicker eyebrows... drop all the
+// rest, lets work on this version." Then on that cut: angry brows, whiter
+// stubble, a different outfit with a tie, skin-coloured hands. This section
+// is the working cut and the three open questions on it as short strips.
+// Everything draws through the EGGSHELL_PARTS seam in props.js.
 {
-  const s = sectionEl('eggshell-redesign-bakeoff', 'Don K. Eggshell — redesign bake-off (20 options)',
-    'OPEN — twenty redesigns of the shipped villain in five groups: the shell (his armour), facial hair, hair, egg '
-    + 'vehicles, and one wildcard. Bust options are the shipped copter with ONE part swapped; vehicle options keep the '
-    + 'shipped ape and change what is around him, so the ape is one size in every tile. Each group: the lane at the '
-    + 'copter\'s real 36u beside Lorenzo, then one card each with the painter enlarged. The dashed box is the option\'s '
-    + 'own box; a GROUND option stands on the floor.');
+  const s = sectionEl('eggshell-redesign-bakeoff', 'Don K. Eggshell — the redesign, working version (52)',
+    'WORKING — option 52, the silver professor. Four questions open on it, each a strip on the working face: the brow '
+    + 'ANGLE (all at twice the tame height), how WHITE the stubble is, the MOUTH, and the OUTFIT (ties, not bow ties; '
+    + 'skin fists in cuffs). The pairs at the end are 52 as picked beside the working cut in every painter he appears in. '
+    + 'Lane tiles are the copter\'s real 36u beside Lorenzo. The balloon pair is the shipped Act III painter as it '
+    + 'stands — the mane meets the basket ropes there, which that painter will need a lift for.');
   const sub = (text, note) => {
     const h3 = document.createElement('h3');
     h3.className = 'subhead';
@@ -6094,9 +6094,6 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     s.appendChild(grid);
     return grid;
   };
-  // The copter authors at 28u and the lane draws it at COPTER_BOX 36; every
-  // option's box scales by the same factor so the ape is one size throughout.
-  const K = 36 / 28;
   const mono = (ctx, px, align = 'center') => {
     ctx.fillStyle = 'rgba(255,255,255,.62)';
     ctx.font = `${px}px ui-monospace, monospace`;
@@ -6104,44 +6101,71 @@ function frameStrip(grid, name, label, note, w, h, cell) {
     ctx.textBaseline = 'alphabetic';
   };
   const hover = (t, i) => Math.sin(t * 2.4 + i * 0.9) * 1.5;
-  const at = (r, x0, slot, gy, t, i) => {
-    const w = r.box[0] * K, h = r.box[1] * K;
-    return { w, h, x: x0 + (slot - w) / 2, y: r.ground ? gy - h : gy - 10 - h + hover(t, i) };
-  };
-  for (const [g, title, gnote] of EGGSHELL_REDESIGN_GROUPS) {
-    const opts = EGGSHELL_REDESIGNS.filter((r) => r.group === g);
-    const grid = sub(`${g}. ${title}`, gnote);
-    {
-      const SLOT = 56, LW = 30 + opts.length * SLOT, LH = 72, LGY = 60;
-      tile(grid, `${g} — lane`, opts.map((r) => `${r.n} ${r.name}`).join(' · '), LW, LH, (ctx, t) => {
-        laneStrip(ctx, LW, LH, LGY);
-        drawToon(ctx, 'lorenzo', pose('run', t), 14, LGY, HERO_DRAW_H);
-        opts.forEach((r, i) => {
-          const { w, h, x, y } = at(r, 30 + i * SLOT, SLOT, LGY, t, i);
-          ctx.save(); ctx.translate(x, y); drawEggshellRedesign(ctx, r.id, w, h, t); ctx.restore();
-          mono(ctx, 5); ctx.fillText(String(r.n), x + w / 2, LGY + 11);
-        });
-      }, { animated: true, wide: true, world: true, hires: 5 });
-    }
-    const TW = 200, TH = 96, GY = 82;
-    const DX = 106, DY = 6, DW = 88, DH = 86;
-    for (const r of opts) {
-      const w = r.box[0] * K, h = r.box[1] * K;
-      const ds = Math.min(DW / w, DH / h), dw = w * ds, dh = h * ds;
-      tile(grid, `${r.n} — ${r.name}`, `${r.id} · ${r.box[0]}x${r.box[1]}u${r.ground ? ' · GROUND' : ''}<br>${r.note}`, TW, TH, (ctx, t) => {
+  const frameAt = (t) => Math.floor(t * 2 * 24) % 12;
+  const BOX = 36;
+  const REF = EGGSHELL_WORKING_REF, WRK = EGGSHELL_WORKING;
+  const copterOf = (ctx, v, w, h, t, extra = {}) =>
+    eggshellCopterArt(ctx, w, h, frameAt(t), { parts: v.parts, mastTo: v.mastTo, hy: v.hy, ...extra });
+  {
+    const grid = sub('1. In the lane — 52 as picked, then the working cut', WRK.note);
+    const LW = 150, LH = 76, LGY = 64;
+    tile(grid, 'copter — 52 · WORKING', 'Angry brows, whiter stubble, skin hands, shirt and tie.', LW, LH, (ctx, t) => {
+      laneStrip(ctx, LW, LH, LGY);
+      drawToon(ctx, 'lorenzo', pose('run', t), 14, LGY, HERO_DRAW_H);
+      [REF, WRK].forEach((v, i) => {
+        const x = 34 + i * 56, y = LGY - 10 - BOX + hover(t, i);
+        ctx.save(); ctx.translate(x, y); copterOf(ctx, v, BOX, BOX, t); ctx.restore();
+        mono(ctx, 5); ctx.fillText(i ? 'WORKING' : '52', x + BOX / 2, LGY + 11);
+      });
+    }, { animated: true, wide: true, world: true, hires: 5 });
+  }
+  const strip = (title, note, list) => {
+    const grid = sub(title, note);
+    const TW = 200, TH = 96, GY = 82, DX = 106, DY = 6, DW = 88, DH = 86;
+    const ds = Math.min(DW / BOX, DH / BOX), dw = BOX * ds;
+    for (const v of list) {
+      tile(grid, v.label, `${v.id} · ${v.note}`, TW, TH, (ctx, t) => {
         laneStrip(ctx, TW, TH, GY);
         ctx.fillStyle = '#262c3c'; ctx.fillRect(DX - 6, 0, TW - DX + 6, TH);
         drawToon(ctx, 'lorenzo', pose('run', t), 20, GY, HERO_DRAW_H);
-        const { x: bx, y: by } = at(r, 44, 36, GY, t, 0);
-        ctx.save(); ctx.translate(bx, by); drawEggshellRedesign(ctx, r.id, w, h, t); ctx.restore();
+        const bx = 44, by = GY - 10 - BOX + hover(t, 0);
+        ctx.save(); ctx.translate(bx, by); copterOf(ctx, v, BOX, BOX, t); ctx.restore();
         ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 0.45;
-        ctx.setLineDash([1.5, 1.5]); ctx.strokeRect(bx, by, w, h); ctx.setLineDash([]);
+        ctx.setLineDash([1.5, 1.5]); ctx.strokeRect(bx, by, BOX, BOX); ctx.setLineDash([]);
         mono(ctx, 4, 'left');
         ctx.fillText('LANE', 44, 7);
         ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
-        ctx.save(); ctx.translate(DX + (DW - dw) / 2, DY + (DH - dh) / 2); drawEggshellRedesign(ctx, r.id, dw, dh, t); ctx.restore();
+        ctx.save(); ctx.translate(DX + (DW - dw) / 2, DY + (DH - dw) / 2); copterOf(ctx, v, dw, dw, t); ctx.restore();
       }, { animated: true, wide: true, world: true, hires: 6 });
     }
+  };
+  strip('2. The brow angle — three tilts at twice the tame height', 'Inner end down, outer end up, no flick: angry rather than wild. The brow lifts as it tilts so the inner end keeps its gap to the frames.', EGGSHELL_BROW_ANGLES);
+  strip('3. The stubble — how white', 'The field under the moustache, from the warm grey it was to a translucent white over the skin. The chin patch stays silver in all three.', EGGSHELL_STUBBLE_TONES);
+  strip('4. The mouth — a slight frown', 'The same line under the moustache, bowed the other way. The bonk mouth is unchanged.', EGGSHELL_MOUTHS);
+  strip('5. The outfit — eight, with ties', 'The band between his chin and the rim, plus what the head does not cover: collar points or lapels beside the jaw, cuffs on the rim, the tie over it. His chin sits on the rim, so the tie hangs down the tub\'s front and lifts with him on a bonk.', EGGSHELL_OUTFITS);
+  {
+    const grid = sub('6. Each painter enlarged — 52 beside the working cut');
+    const TW = 200, TH = 96, DW = 88, DH = 86;
+    const pair = (name, note, w, h, draw) => {
+      const ds = Math.min(DW / w, DH / h), dw = w * ds, dh = h * ds;
+      tile(grid, name, `${note} · detail ${ds.toFixed(1)}x`, TW, TH, (ctx, t) => {
+        ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, TW, TH);
+        [REF, WRK].forEach((v, i) => {
+          const x0 = 6 + i * 100;
+          mono(ctx, 4, 'left'); ctx.fillText(i ? 'WORKING' : '52 AS PICKED', x0, 6);
+          ctx.save(); ctx.translate(x0 + (DW - dw) / 2, 8 + (DH - dh) / 2); draw(ctx, v, dw, dh, t); ctx.restore();
+        });
+        ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(100, 0); ctx.lineTo(100, TH); ctx.stroke();
+      }, { animated: true, wide: true, hires: 6 });
+    };
+    pair('copter', 'eggshellCopter · 28x28u', 28, 28, (ctx, v, w, h, t) => copterOf(ctx, v, w, h, t));
+    pair('bust — speech card, intro, relic', 'eggshell · 24x20u, shown in 24x25 so the mane fits', 24, 25, (ctx, v, w, h) => {
+      ctx.save(); ctx.scale(w / 24, h / 25); eggshellApe(ctx, 0, 5, 0, v.parts); ctx.restore();
+    });
+    pair('balloon — Act III', 'eggshellBalloon · 28x46u, as it stands', 28, 46, (ctx, v, w, h) => eggshellBalloonArt(ctx, w, h, { parts: v.parts }));
+    pair('bonked — the shocked face', 'eggshellCopter · pop cycling 0..1', 28, 28, (ctx, v, w, h, t) =>
+      copterOf(ctx, v, w, h, t, { pop: Math.max(0, Math.sin(t * 3)) }));
   }
 }
 

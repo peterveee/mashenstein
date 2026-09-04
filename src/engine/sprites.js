@@ -836,3 +836,152 @@ export function drawBambooShoot(ctx, cx, cy, opts = {}) {
   ctx.stroke();
   ctx.restore();
 }
+
+// Rusty's PINE CONE. Same three-ideas budget as the bamboo above, spent
+// differently because the silhouette is doing more of the work here:
+//   - an OVOID that tapers to a point, fat end trailing. Against a lane of
+//     round shots and one capsule, a teardrop is its own read.
+//   - SCALE NOTCHES. Two dark chevrons, floored at a pixel like the bamboo's
+//     node — they are the only mark that says cone rather than nut, and the
+//     first to vanish if they are allowed to scale away.
+//   - TUMBLE, end over end, which a cone does and a disc does not.
+export function drawPineCone(ctx, cx, cy, opts = {}) {
+  const s = opts.size || 1;
+  const len = 4.4 * s, wid = 2.4 * s;
+  ctx.save();
+  ctx.translate(Math.round(cx), Math.round(cy));
+  ctx.rotate(opts.spin || 0);
+  const body = opts.fill || '#7a5128';
+  const lit = opts.hi || '#caa269';
+  // A SOLID MASS FIRST, then scallops on its edge. Two earlier cuts failed the
+  // opposite ways round: a smooth ovoid with veins painted on read as a leaf,
+  // and free-standing scale crescents read as a comb, because the lane showed
+  // between them. A cone is a solid lump with a bumpy edge, so it is built in
+  // that order — body, then bumps, then two light rows on top.
+  const bodyPath = (c) => {
+    c.moveTo(len, 0);                                            // tip
+    c.quadraticCurveTo(0, -wid, -len * 0.72, -wid * 0.7);
+    c.quadraticCurveTo(-len * 1.04, 0, -len * 0.72, wid * 0.7);  // round base
+    c.quadraticCurveTo(0, wid, len, 0);
+    c.closePath();
+  };
+  ctx.beginPath(); bodyPath(ctx);
+  ctx.fillStyle = body; ctx.fill();
+  // Scale bumps riding both flanks, in the SAME fill so they read as the
+  // silhouette going lumpy rather than as spots stuck on it. Four per side,
+  // shrinking toward the tip with the taper.
+  const ROWS = 4;
+  for (let r = 0; r < ROWS; r++) {
+    const f = r / (ROWS - 1);
+    const x = -len * 0.62 + f * len * 1.24;
+    const h = wid * (1 - f * f * 0.72);
+    const rad = wid * 0.36 * (1 - f * 0.45);
+    for (const sy of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(x, sy * h * 0.72, rad, 0, Math.PI * 2);
+      ctx.fillStyle = body; ctx.fill();
+    }
+  }
+  // Two light rows, chevroned back toward the base — the mark that says the
+  // lump is PLATED. Clipped to the body so they cannot stripe the background,
+  // which is what the comb cut did.
+  ctx.save();
+  ctx.beginPath(); bodyPath(ctx); ctx.clip();
+  ctx.strokeStyle = lit;
+  ctx.lineWidth = Math.max(0.9, wid * 0.3);
+  ctx.lineCap = 'round';
+  for (const f of [0.16, -0.34]) {
+    const x = len * f, h = wid * (1 - Math.abs(f) * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(x - wid * 0.34, -h);
+    ctx.lineTo(x + wid * 0.3, 0);
+    ctx.lineTo(x - wid * 0.34, h);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
+// Rusty's SEED POD — a samara, the winged seed that helicopters down off a
+// maple. The one projectile on the roster whose real-world behaviour IS
+// spinning, so the tumble stops being a stylisation and becomes the point.
+//   - a dark SEED nub at one end, which is the weight and the thing that hits.
+//   - one long WING off it, tapered and slightly swept, so the pair is plainly
+//     lopsided — that asymmetry is what reads as rotation frame to frame,
+//     where a symmetric shape spinning looks like a shape sitting still.
+//   - the wing takes the LIT edge; the seed stays dark, so the two never merge
+//     into one blob at six pixels.
+export function drawSeedPod(ctx, cx, cy, opts = {}) {
+  const s = opts.size || 1;
+  const wing = 5.6 * s, wid = 1.9 * s, seed = 1.5 * s;
+  ctx.save();
+  ctx.translate(Math.round(cx), Math.round(cy));
+  ctx.rotate(opts.spin || 0);
+  // Wing: rooted at the seed, swept and tapering to a rounded tip.
+  ctx.beginPath();
+  ctx.moveTo(-seed * 0.4, -wid * 0.5);
+  ctx.quadraticCurveTo(wing * 0.55, -wid * 1.15, wing, -wid * 0.1);
+  ctx.quadraticCurveTo(wing * 0.5, wid * 0.5, -seed * 0.4, wid * 0.55);
+  ctx.closePath();
+  // Same contrast rule as the cone: the wing is pushed pale and warm so it
+  // separates from both the rust hero and the blue lane, and the seed stays
+  // dark so the pair never merges into one blob at six pixels.
+  ctx.fillStyle = opts.fill || '#e2cf86';
+  ctx.fill();
+  ctx.strokeStyle = opts.hi || '#f6ecc0';
+  ctx.lineWidth = Math.max(0.7, wid * 0.4);
+  ctx.beginPath();
+  ctx.moveTo(seed * 0.2, -wid * 0.5);
+  ctx.quadraticCurveTo(wing * 0.55, -wid * 0.72, wing * 0.86, -wid * 0.16);
+  ctx.stroke();
+  // The seed, drawn last so it sits on top of the wing root.
+  ctx.beginPath();
+  ctx.ellipse(-seed * 0.5, 0, seed, seed * 0.82, 0, 0, Math.PI * 2);
+  ctx.fillStyle = opts.seed || '#4a3416';
+  ctx.fill();
+  ctx.restore();
+}
+
+// Rusty's ACORN. The cone's lesson, applied: at six pixels a projectile is
+// identified by SILHOUETTE and ONE colour break, never by surface texture.
+// Three cone attempts died proving that, so this has no texture at all — a
+// pale nut, a dark cap, and the hard line between them.
+//   - the NUT: a plain ovoid in the palest value on the roster, which is what
+//     separates it from a rust hero on a dark lane.
+//   - the CAP: a dark dome over one end, the whole identity in one shape. It
+//     is also what makes rotation legible, being lopsided.
+//   - a STEM nub, one pixel, dropped below the lod threshold rather than
+//     scaled away.
+export function drawAcorn(ctx, cx, cy, opts = {}) {
+  const s = opts.size || 1;
+  const len = 3.4 * s, wid = 2.5 * s;
+  ctx.save();
+  ctx.translate(Math.round(cx), Math.round(cy));
+  ctx.rotate(opts.spin || 0);
+  // Nut: rounded at the cap end, tapering to a blunt point.
+  ctx.beginPath();
+  ctx.moveTo(len * 1.15, 0);
+  ctx.quadraticCurveTo(len * 0.2, -wid, -len * 0.3, -wid * 0.86);
+  ctx.lineTo(-len * 0.3, wid * 0.86);
+  ctx.quadraticCurveTo(len * 0.2, wid, len * 1.15, 0);
+  ctx.closePath();
+  ctx.fillStyle = opts.fill || '#e0b073';
+  ctx.fill();
+  // Cap: a dome over the blunt end, plus the rim line that reads as its edge.
+  ctx.beginPath();
+  ctx.moveTo(-len * 0.24, -wid * 0.94);
+  ctx.quadraticCurveTo(-len * 1.15, 0, -len * 0.24, wid * 0.94);
+  ctx.closePath();
+  ctx.fillStyle = opts.cap || '#5b3a1c';
+  ctx.fill();
+  if (s > 1.2) {
+    ctx.strokeStyle = opts.cap || '#5b3a1c';
+    ctx.lineWidth = Math.max(1, 0.7 * s);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-len * 0.95, 0);
+    ctx.lineTo(-len * 1.5, 0);
+    ctx.stroke();
+  }
+  ctx.restore();
+}

@@ -47,6 +47,7 @@ const { CROSSING_BEAT_HOP, actionApproachPx } = await import('../src/game/beatch
 const { makeObstacle } = await import('../src/game/entities.js');
 const { hasPitFill } = await import('../src/game/pitFill.js');
 const { GROUND_Y } = await import('../src/game/run.js');
+const { Audio } = await import('../src/engine/audio.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { STAGES } = await import('../src/data/stages.js');
 
@@ -539,8 +540,62 @@ for (const hero of cast) {
   assert(seen.filter((v) => v >= deepest * 0.75).length >= 2,
     'it HOLDS near the bottom rather than blipping through it for one frame');
   assert(Math.min(...seen) < -0.05, 'it comes back up past its own line — a ring, not a sag');
-  assert(seen.slice(18).every((v) => Math.abs(v) < 0.1),
-    'and it is over inside a third of a second, well short of the tread');
+
+  // The envelope, measured from ONE strike rather than out of the playthrough
+  // above: a push-off strikes the beam again (see the boing below), so a hero
+  // who jumps inside the sampling window restarts the very thing being timed.
+  run.ringGirder(stone, 320);
+  const decay = [];
+  for (let i = 0; i < 30; i++) { run.updateGirderRing(TICK); decay.push(run.girderRing(stone)); }
+  assert(decay.slice(18).every((v) => Math.abs(v) < 0.1),
+    'and one strike is over inside a third of a second, well short of the tread');
+}
+
+// ---- the push-off is what you hear ----------------------------------------------
+// He asked for the boing on the way OFF, so the cue hangs on the jump and not on
+// the arrival — and it comes with a strike, because a sound the beam makes while
+// holding perfectly still is a sound coming from nowhere.
+{
+  const run = newRun('lorenzo', { startAt: CROSS_AT - 0.04 });
+  const bot = new DemoBot(run);
+  const realSfx = Audio.sfx;
+  const heard = [];
+  Audio.sfx = (name, opt) => { heard.push(name); realSfx.call(Audio, name, opt); };
+  let stone = null;
+  let onTakeoff = null;
+  for (let i = 0; i < 60 * 30 && onTakeoff === null; i++) {
+    bot.update(TICK);
+    run.update(TICK);
+    if (run.route && run.route.crossing) stone = run.route;
+    // The frame he leaves a girder: he was on one, and now he is in the air.
+    if (stone && !run.player.grounded && run.route !== stone) {
+      onTakeoff = heard.slice();
+    }
+  }
+  bot.releaseAll();
+  Input.endFrame();
+  Audio.sfx = realSfx;
+  assert(!!onTakeoff, 'the hero pushes off a girder');
+  const boings = onTakeoff.filter((n) => n === 'girderBoing').length;
+  const jumps = onTakeoff.filter((n) => n === 'jump' || n === 'jump2').length;
+  assert(boings > 0, `the beam boings as he goes (${boings})`);
+  assert(jumps >= boings, 'alongside the jump cue and never instead of it');
+  assert(onTakeoff.filter((n) => n === 'land').length >= boings,
+    'and the arrival still keeps its own cue');
+}
+
+// ---- the boing is the beam, so it never fires off ordinary ground ---------------
+{
+  const run = newRun('lorenzo');
+  const realSfx = Audio.sfx;
+  let boings = 0;
+  Audio.sfx = (name, opt) => { if (name === 'girderBoing') boings++; realSfx.call(Audio, name, opt); };
+  const bot = new DemoBot(run);
+  for (let i = 0; i < 60 * 20; i++) { bot.update(TICK); run.update(TICK); }
+  bot.releaseAll();
+  Input.endFrame();
+  Audio.sfx = realSfx;
+  assert(boings === 0, `twenty seconds of lane before the crossing, and the floor says nothing (${boings})`);
 }
 
 // ---- and only where the slabs are steel -----------------------------------------

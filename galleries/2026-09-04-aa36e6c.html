@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>MASHENSTEIN — Lab &amp; Bake-offs</title>
+<title>MASHENSTEIN — Asset Gallery</title>
 <style>
   :root { --bg:#0b0b14; --panel:#15151f; --panel2:#1a1a28; --line:#2a2a3a; --ink:#e0e0e8; --dim:#8a8a9e;
           --accent:#f6d33c; --accent-soft:rgba(246,211,60,0.1); }
@@ -91,16 +91,16 @@
   #err { color:#e04848; white-space:pre-wrap; padding:20px; font-size:12px; }
 </style>
 </head>
-<body data-gallery="lab">
+<body data-gallery="main">
 <header>
-  <h1>MASHENSTEIN — LAB &amp; BAKE-OFFS <small>open art questions · click any tile to save a PNG</small></h1>
+  <h1>MASHENSTEIN — ASSET GALLERY <small>production reference · click any tile to save a PNG</small></h1>
   <!-- Two pages, one bundle: the production reference and the lab live in
        separate files so neither has to be scrolled past to reach the other.
        The hrefs are the dist filenames; tools/archive-gallery.js rewrites them
        to the archived pair's names when a snapshot is copied into galleries/. -->
   <div class="pages">
-    <a id="page-main" href="2026-09-04-6a295d3.html">Asset gallery</a>
-    <a id="page-lab" href="2026-09-04-6a295d3-lab.html">Lab &amp; bake-offs</a>
+    <a id="page-main" href="2026-09-04-aa36e6c.html">Asset gallery</a>
+    <a id="page-lab" href="2026-09-04-aa36e6c-lab.html">Lab &amp; bake-offs</a>
   </div>
   <div class="controls">
     <label>screen scale
@@ -71097,6 +71097,8 @@ ${PROCESSOR_WRAPPER2}`;
   var CONTOUR_TAPER = 0.5;
   var CONTOUR = { taper: CONTOUR_TAPER };
   var contour = (w) => inkScale > 1 && CONTOUR.taper > 0 ? w / Math.pow(inkScale, CONTOUR.taper) : w;
+  var faceContourW = (h) => FACE_CONTOUR.w != null ? FACE_CONTOUR.w : 1 + Math.max(0, Math.min(1, (18 - h) / 9));
+  var FACE_CONTOUR = { w: null };
   var browInk = (hex, a, l) => {
     const rgb2 = parseHex(hex);
     if (!rgb2) return hex;
@@ -71341,6 +71343,7 @@ ${PROCESSOR_WRAPPER2}`;
   var LIGHT_LEN = Math.hypot(LIGHT_X, LIGHT_Y);
   var FIELD_CY = -0.5;
   var FIELD_R = 0.72;
+  var FIELD_HEAD_DY = 0.26;
   var SHADOW_INK = "26,16,40";
   var HILITE_INK = "255,246,232";
   var FORM_A = 0.42;
@@ -71359,14 +71362,25 @@ ${PROCESSOR_WRAPPER2}`;
     RIM.inside = inside;
   }
   var SHADE_MIN = 0.1;
-  var shade = { on: false, lx: 0, ly: -1, u: 1, lit: 1, g: null };
-  function armLight(u, xSign, on, lit = 1) {
-    const prev = { on: shade.on, lx: shade.lx, ly: shade.ly, u: shade.u, lit: shade.lit, g: shade.g };
+  var shade = { on: false, lx: 0, ly: -1, u: 1, lit: 1, fx: 0, fy: FIELD_CY, g: null };
+  function armLight(u, xSign, on, lit = 1, fx = 0, fy = null) {
+    const prev = {
+      on: shade.on,
+      lx: shade.lx,
+      ly: shade.ly,
+      u: shade.u,
+      lit: shade.lit,
+      fx: shade.fx,
+      fy: shade.fy,
+      g: shade.g
+    };
     shade.on = !!on;
     shade.u = u;
     shade.lx = LIGHT_X / LIGHT_LEN * (xSign < 0 ? -1 : 1);
     shade.ly = LIGHT_Y / LIGHT_LEN;
     shade.lit = Math.max(0, Math.min(1, lit));
+    shade.fx = fx;
+    shade.fy = fy == null ? FIELD_CY * u : fy;
     shade.g = null;
     return prev;
   }
@@ -71376,6 +71390,8 @@ ${PROCESSOR_WRAPPER2}`;
     shade.ly = prev.ly;
     shade.u = prev.u;
     shade.lit = prev.lit;
+    shade.fx = prev.fx;
+    shade.fy = prev.fy;
     shade.g = prev.g;
   }
   var TAU2 = Math.PI * 2;
@@ -71453,7 +71469,7 @@ ${PROCESSOR_WRAPPER2}`;
     if (!shade.on) return null;
     if (shade.g) return shade.g;
     const u = shade.u;
-    const cx = 0, cy = FIELD_CY * u, r = FIELD_R * u;
+    const cx = shade.fx, cy = shade.fy, r = FIELD_R * u;
     const ax = cx + shade.lx * r, ay = cy + shade.ly * r;
     const bx = cx - shade.lx * r, by = cy - shade.ly * r;
     const key = shade.lit;
@@ -77419,8 +77435,10 @@ ${PROCESSOR_WRAPPER2}`;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     const u = h * 0.92 / 0.5;
-    const ow = hair(0.6, contour(0.032 * (h * 2))) * INK.body;
-    const prevLight = armLight(u, 1, light && h >= 24);
+    const cw = faceContourW(h);
+    const ow = hair(0.3 * cw, contour(0.016 * cw * (h * 2))) * INK.body;
+    const hx = x + w / 2, hy = y + h * 0.62;
+    const prevLight = armLight(u, 1, light && h >= 24, 1, hx, hy + FIELD_HEAD_DY * u);
     if (spec.rig === "humanoid") {
       drawHead(
         ctx,
@@ -77429,8 +77447,8 @@ ${PROCESSOR_WRAPPER2}`;
         p,
         u,
         ow,
-        x + w / 2,
-        y + h * 0.62,
+        hx,
+        hy,
         false,
         { portrait: true, portraitFit: forFit, ...facePose || {} }
       );
@@ -77442,8 +77460,8 @@ ${PROCESSOR_WRAPPER2}`;
         { kind: "idle", time: 0, ...facePose || {} },
         u,
         ow,
-        x + w / 2,
-        y + h * 0.62,
+        hx,
+        hy,
         false,
         false
       );
@@ -77492,11 +77510,14 @@ ${PROCESSOR_WRAPPER2}`;
   }
   var FACE_FIT = /* @__PURE__ */ new Map();
   var FIT_R = 64;
-  function faceFit(heroId, spec, light = true, palette = null) {
-    const key = `${heroId}|${light ? "lit" : "flat"}|${INK.body}|${INK.face}|${INK.alpha}|${INK.brow}|${INK.browA}|${INK.browL}`;
+  function faceFit(heroId, spec, light = true, palette = null, cw = 1) {
+    const key = `${heroId}|${light ? "lit" : "flat"}|${INK.body}|${INK.face}|${INK.alpha}|${INK.brow}|${INK.browA}|${INK.browL}|${cw}`;
     if (FACE_FIT.has(key)) return FACE_FIT.get(key);
     let fit = { x: 0, y: 0, w: 1, h: 1 };
+    const prevCw = FACE_CONTOUR.w;
+    FACE_CONTOUR.w = cw;
     const b = inkBounds(FIT_R * 3, (x) => paintFace(x, heroId, spec, FIT_R, FIT_R, FIT_R, FIT_R, light, palette, true));
+    FACE_CONTOUR.w = prevCw;
     if (b) {
       fit = {
         x: (b.x0 - FIT_R) / FIT_R,
@@ -77612,7 +77633,7 @@ ${PROCESSOR_WRAPPER2}`;
     const spec = opts.spec || TOON_SPECS[heroId];
     if (!spec) return;
     const light = opts.light !== false;
-    const fit = faceFit(heroId, spec, light, opts.pal || null);
+    const fit = faceFit(heroId, spec, light, opts.pal || null, faceContourW(h));
     const inkW = fit.w * h, inkH = fit.h * h;
     const cx = w / 2 + (fit.x + fit.w / 2 - 0.5) * h;
     const cy = (fit.y + fit.h / 2) * h;
@@ -79611,45 +79632,268 @@ ${PROCESSOR_WRAPPER2}`;
       }, ink2, lw);
     }
   }
-  function egShell(c, X, Y, lw) {
-    egSpikesArc(c, EG_GREEN, X(0.5), Y(0.56), X(0.36), Y(0.2), -Math.PI * 0.95, -Math.PI * 0.05, 6, 0.5, EG_GREEN_DK, lw * 0.5);
-    egP(c, EG_GREEN, (k) => k.ellipse(X(0.5), Y(0.56), X(0.36), Y(0.2), 0, 0, EG_TAU), EG_GREEN_DK, lw * 0.6);
+  var EG_BUST_ORDER = ["shell", "body", "head", "face", "hair", "eyes", "mouth"];
+  var PRO_SKIN = "#eec9a8";
+  var PRO_SKIN_DK = "#e0b68e";
+  var PRO_INK = "rgba(26,16,40,0.32)";
+  var PRO_SKIN_INK = "rgba(26,16,40,0.2)";
+  var PRO_LW = 0.0105 * EG_APE_W;
+  var PRO_TONES = [["#dfe2ea", "#c6cbd9"], ["#cdd3e0", "#b1b9ca"], ["#bcc3d2", "#a0a8bb"]];
+  var proTone = (i, shaded) => PRO_TONES[i % PRO_TONES.length][shaded ? 1 : 0];
+  var PRO_STACHE = "#cdd3e0";
+  var PRO_STUBBLE = "#c9ab93";
+  var PRO_CHIN = "rgba(205,211,224,0.62)";
+  var PRO_RIM = "rgba(61,61,72,0.72)";
+  var PRO_LENS = "#c8e0f8";
+  var PRO_CAPE = "#23232e";
+  var PRO_CAPE_IN = "#b8202a";
+  var PRO_SHIRT = "#eceef4";
+  var PRO_SKULL = { fx: 0.5, fy: 0.37, frx: 0.165, fry: 0.2 };
+  var PRO_HAIR_DROP = -0.02;
+  var PRO_ROOT_K = 0.86;
+  var PRO_RAD = Math.PI / 180;
+  function proHeadEgg(k, cx, cy, rx, ry, taper = 0.7, widest = -0.16) {
+    const wy = cy + ry * widest, top = cy - ry, bot = cy + ry, h = 0.56;
+    k.moveTo(cx, top);
+    for (const sd of [1, -1]) {
+      if (sd < 0) {
+        k.bezierCurveTo(cx - rx * taper * 0.9, bot - (bot - wy) * 0.1, cx - rx, wy + (bot - wy) * h * 0.92, cx - rx, wy);
+        k.bezierCurveTo(cx - rx, wy - (wy - top) * h, cx - rx * h, top, cx, top);
+        continue;
+      }
+      k.bezierCurveTo(cx + rx * h, top, cx + rx, wy - (wy - top) * h, cx + rx, wy);
+      k.bezierCurveTo(cx + rx, wy + (bot - wy) * h * 0.92, cx + rx * taper * 0.9, bot - (bot - wy) * 0.1, cx, bot);
+    }
+    k.closePath();
   }
-  function egBody(c, X, Y, lw) {
-    egP(c, EG_FUR, (k) => k.ellipse(X(0.5), Y(0.62), X(0.27), Y(0.15), 0, 0, EG_TAU), EG_LINE, lw);
+  var PRO_HEAD = (k, X, Y) => proHeadEgg(k, X(0.5), Y(0.375), X(0.168), Y(0.215));
+  function proLock(c, X, Y, fill3, [deg, len, spread, curl]) {
+    const cx = X(PRO_SKULL.fx), cy = Y(PRO_SKULL.fy + PRO_HAIR_DROP);
+    const rx = X(PRO_SKULL.frx), ry = Y(PRO_SKULL.fry);
+    const px = (d, k = 1) => cx + Math.cos(d * PRO_RAD) * rx * k;
+    const py = (d, k = 1) => cy + Math.sin(d * PRO_RAD) * ry * k;
+    const tip = deg + curl;
+    egP(c, fill3, (k) => {
+      k.moveTo(px(deg - spread, PRO_ROOT_K), py(deg - spread, PRO_ROOT_K));
+      k.quadraticCurveTo(
+        px(deg - spread * 0.5, 1 + len * 0.55),
+        py(deg - spread * 0.5, 1 + len * 0.55),
+        px(tip, 1 + len),
+        py(tip, 1 + len)
+      );
+      k.quadraticCurveTo(
+        px(deg + spread * 1.15, 1 + len * 0.3),
+        py(deg + spread * 1.15, 1 + len * 0.3),
+        px(deg + spread, PRO_ROOT_K),
+        py(deg + spread, PRO_ROOT_K)
+      );
+      k.closePath();
+    }, PRO_INK, PRO_LW);
   }
-  function egHead(c, X, Y, lw) {
-    egDot(c, EG_FUR, X(0.5), Y(0.36), X(0.165), EG_LINE, lw);
-  }
-  function egFace(c, X, Y) {
-    egP(c, EG_CREAM, (k) => eggPath(k, X(0.5), Y(0.4), X(0.11), Y(0.13)));
-  }
-  function egEyes(c, X, Y, lw, shocked) {
-    if (shocked) egGoggles(c, X(0.5), Y(0.34), X(0.058), X(0.035), [X(0.33), X(0.67)], 0.34);
-    else egGoggles(c, X(0.5), Y(0.35), X(0.045), X(0.04), [X(0.35), X(0.65)]);
-  }
-  function egMouth(c, X, Y, lw, shocked) {
-    if (shocked) {
-      egP(c, EG_INK, (k) => k.ellipse(X(0.5), Y(0.53), X(0.035), Y(0.045), 0, 0, EG_TAU));
-      egMustache(c, X(0.5), Y(0.44), X(0.23), Y(0.075), -0.5);
-    } else {
-      egMustache(c, X(0.5), Y(0.46), X(0.2), Y(0.07));
+  var PRO_HAIR = {
+    mane: {
+      back: [
+        [-158, 0.85, 15, 14],
+        [-172, 0.7, 13, 18],
+        [166, 0.62, 14, 26],
+        [148, 0.5, 15, 30],
+        [-26, 0.8, 14, -16],
+        [-8, 0.72, 13, -20],
+        [12, 0.6, 14, -26],
+        [32, 0.48, 15, -30]
+      ],
+      front: [
+        [-128, 1.05, 19, 22],
+        [-104, 1.18, 18, 20],
+        [-80, 1, 17, 16],
+        [-58, 0.82, 17, 10],
+        [-146, 0.62, 14, 26],
+        [-38, 0.56, 14, 8]
+      ]
+    },
+    blast: {
+      back: [
+        [-160, 1.05, 15, -4],
+        [-176, 0.78, 13, 6],
+        [164, 0.9, 14, -5],
+        [146, 0.6, 14, 4],
+        [-20, 0.95, 15, 5],
+        [-4, 0.7, 13, -6],
+        [16, 0.98, 14, 4],
+        [34, 0.55, 14, -4]
+      ],
+      front: [[-138, 1.12, 17, 6], [-116, 0.85, 15, -7], [-92, 1.25, 16, 4], [-68, 0.92, 15, -6], [-46, 1.15, 17, 5]]
+    }
+  };
+  var proHairBack = (name, c, X, Y) => PRO_HAIR[name].back.forEach((l, i) => proLock(c, X, Y, proTone(i, true), l));
+  var proHairFront = (name, c, X, Y) => PRO_HAIR[name].front.forEach((l, i) => proLock(c, X, Y, proTone(i, false), l));
+  function proEars(c, X, Y) {
+    for (const sd of [-1, 1]) {
+      const x = X(0.5 + sd * 0.16), y = Y(0.378);
+      egP(c, PRO_SKIN, (k) => k.ellipse(x, y, X(0.036), Y(0.052), sd * 0.28, 0, EG_TAU), PRO_SKIN_INK, PRO_LW);
+      egLine(c, "rgba(26,16,40,0.18)", PRO_LW, (k) => k.ellipse(x + sd * X(6e-3), y, X(0.016), Y(0.026), sd * 0.28, -1.9, 1.5));
     }
   }
-  var EG_BUST_ORDER = ["shell", "body", "head", "face", "hair", "eyes", "mouth"];
-  var EGGSHELL_PARTS = Object.freeze({
-    shell: egShell,
-    body: egBody,
-    head: egHead,
-    face: egFace,
-    hair: null,
-    eyes: egEyes,
-    mouth: egMouth,
-    tub: eggshellTub,
-    hands: eggshellHands
+  function proNose(c, X, Y) {
+    const cx = X(0.5), cy = Y(0.392), rx = X(0.03), ry = Y(0.034);
+    egP(c, PRO_SKIN_DK, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU));
+    egLine(c, PRO_SKIN_INK, PRO_LW, (k) => k.ellipse(cx, cy, rx, ry, 0, 0.12 * Math.PI, 0.88 * Math.PI));
+  }
+  var PRO_SPEC = { hw: 0.067, bridge: 0.01, eye: -4e-3 };
+  var PRO_FACE = { look: 0, mood: "flat", blink: 0 };
+  function proSpecs(c, X, Y, shocked, face2 = PRO_FACE) {
+    const o = PRO_SPEC;
+    const cy = Y(0.328), hh = Y(0.036);
+    const hw = X(o.hw), off = X(o.hw + o.bridge / 2);
+    const brow = PRO_LW * 0.6, top = cy - hh;
+    for (const sd of [-1, 1]) {
+      const x = X(0.5) + sd * off;
+      egLine(c, PRO_RIM, PRO_LW * 0.42, (k) => {
+        k.moveTo(x + sd * hw, top + brow);
+        k.lineTo(X(0.5) + sd * X(0.166), cy - Y(6e-3));
+      });
+      egP(c, PRO_LENS, (k) => rr(k, x - hw, top, hw * 2, hh * 2, X(8e-3)), PRO_RIM, PRO_LW * 0.5);
+      const track = Math.max(-1, Math.min(1, face2.look)) * hw * 0.34;
+      if (face2.blink > 0.5 && !shocked) {
+        egLine(c, EG_INK, PRO_LW * 0.9, (k) => {
+          k.moveTo(x - hw * 0.55, cy + Y(4e-3));
+          k.lineTo(x + hw * 0.55, cy + Y(4e-3));
+        });
+      } else {
+        egDot(c, EG_INK, x + sd * X(o.eye) + track, cy + Y(4e-3), X(shocked ? 0.012 : 0.017));
+      }
+    }
+    egP(c, PRO_RIM, (k) => rr(k, X(0.5) - off - hw - PRO_LW * 0.08, top - PRO_LW * 0.08, (off + hw) * 2 + PRO_LW * 0.16, brow, X(4e-3)));
+  }
+  var PRO_BROW = { w: 0.044, h: 0.024, lift: 0.018 };
+  function proBrows(c, X, Y, shocked, face2 = PRO_FACE) {
+    const b = PRO_BROW;
+    const mood = face2.mood === "frown" ? -1 : face2.mood === "smile" ? 1 : 0;
+    const cy = Math.max(Y(0.212), Y(0.328) - Y(0.036) - Y(0.034) - (shocked ? Y(0.03) : 0) - Y(b.lift) - (mood > 0 ? Y(0.012) : 0));
+    const off = X(PRO_SPEC.hw + PRO_SPEC.bridge / 2);
+    const w = X(b.w), h = Y(b.h) * (shocked ? 1.15 : 1);
+    for (const sd of [-1, 1]) {
+      c.save();
+      c.translate(X(0.5) + sd * off, cy);
+      c.scale(sd, 1);
+      egP(c, PRO_TONES[0][0], (k) => {
+        const drop = mood < 0 ? h * 0.9 : 0;
+        k.moveTo(-w, h * 0.6 + drop);
+        k.quadraticCurveTo(0, -h * 1.1 + drop * 0.35, w, h * 0.4);
+        k.quadraticCurveTo(0, h * 1.4, -w, h * 1.5 + drop);
+        k.closePath();
+      }, PRO_INK, PRO_LW * 0.6);
+      c.restore();
+    }
+  }
+  var proOnFace = (c, X, Y, fn) => {
+    c.save();
+    c.beginPath();
+    PRO_HEAD(c, X, Y);
+    c.clip();
+    fn();
+    c.restore();
+  };
+  function proStubble(c, X, Y) {
+    proOnFace(c, X, Y, () => {
+      egP(c, PRO_STUBBLE, (k) => {
+        k.moveTo(X(0.295), Y(0.425));
+        k.quadraticCurveTo(X(0.5), Y(0.478), X(0.705), Y(0.425));
+        k.lineTo(X(0.705), Y(0.72));
+        k.lineTo(X(0.295), Y(0.72));
+        k.closePath();
+      });
+      egP(c, PRO_CHIN, (k) => {
+        const w = 0.075;
+        k.moveTo(X(0.5 - w), Y(0.53));
+        k.quadraticCurveTo(X(0.5), Y(0.575), X(0.5 + w), Y(0.53));
+        k.quadraticCurveTo(X(0.5 + w * 0.87), Y(0.635), X(0.5), Y(0.665));
+        k.quadraticCurveTo(X(0.5 - w * 0.87), Y(0.635), X(0.5 - w), Y(0.53));
+        k.closePath();
+      });
+    });
+  }
+  var PRO_MOOD = { smile: 0.016, flat: 2e-3, frown: -0.012 };
+  function proMouth(c, X, Y, shocked, face2 = PRO_FACE) {
+    if (shocked) {
+      egP(c, EG_INK, (k) => k.ellipse(X(0.5), Y(0.5), X(0.035), Y(0.045), 0, 0, EG_TAU));
+      return;
+    }
+    const curve = PRO_MOOD[face2.mood] ?? PRO_MOOD.flat;
+    egLine(c, PRO_INK, PRO_LW * 1.2, (k) => {
+      k.moveTo(X(0.46), Y(0.508));
+      k.quadraticCurveTo(X(0.5), Y(0.508 + curve), X(0.54), Y(0.508));
+    });
+  }
+  var PRO_HEAD_SCALE = 0.88;
+  var PRO_HEAD_RISE = 0.075;
+  var PRO_HEAD_PIVOT = 0.52;
+  var proSized = (fn) => (c, X, Y, lw, shocked, face2) => {
+    c.save();
+    c.translate(X(0.5), Y(PRO_HEAD_PIVOT - PRO_HEAD_RISE));
+    c.scale(PRO_HEAD_SCALE, PRO_HEAD_SCALE);
+    c.translate(-X(0.5), -Y(PRO_HEAD_PIVOT));
+    fn(c, X, Y, lw, shocked, face2);
+    c.restore();
+  };
+  function proBody(c, X, Y) {
+    for (const sd of [-1, 1]) egP(c, PRO_CAPE_IN, (k) => {
+      k.moveTo(X(0.5 + sd * 0.08), Y(0.6));
+      k.quadraticCurveTo(X(0.5 + sd * 0.42), Y(0.5), X(0.5 + sd * 0.36), Y(0.2));
+      k.quadraticCurveTo(X(0.5 + sd * 0.3), Y(0.36), X(0.5 + sd * 0.14), Y(0.42));
+      k.closePath();
+    }, PRO_INK, PRO_LW);
+    for (const sd of [-1, 1]) egP(c, PRO_CAPE, (k) => {
+      k.moveTo(X(0.5 + sd * 0.16), Y(0.62));
+      k.quadraticCurveTo(X(0.5 + sd * 0.44), Y(0.52), X(0.5 + sd * 0.4), Y(0.24));
+      k.lineTo(X(0.5 + sd * 0.36), Y(0.2));
+      k.quadraticCurveTo(X(0.5 + sd * 0.42), Y(0.5), X(0.5 + sd * 0.08), Y(0.6));
+      k.closePath();
+    }, PRO_INK, PRO_LW);
+    egP(c, PRO_CAPE, (k) => k.ellipse(X(0.5), Y(0.6), X(0.33), Y(0.17), 0, 0, EG_TAU), PRO_INK, PRO_LW);
+    for (const sd of [-1, 1]) egP(c, PRO_SHIRT, (k) => {
+      k.moveTo(X(0.5 + sd * 0.05), Y(0.46));
+      k.lineTo(X(0.5 + sd * 0.21), Y(0.5));
+      k.lineTo(X(0.5 + sd * 0.13), Y(0.62));
+      k.closePath();
+    }, PRO_INK, PRO_LW);
+  }
+  function proHands(c, X, Y) {
+    for (const sx of [0.24, 0.76]) egDot(c, PRO_SKIN, X(sx), Y(0.625), X(0.055), PRO_SKIN_INK, PRO_LW);
+  }
+  var proHead = proSized((c, X, Y, lw, shocked) => {
+    const style = shocked ? "blast" : "mane";
+    proHairBack(style, c, X, Y);
+    proHairFront(style, c, X, Y);
+    proEars(c, X, Y);
+    egP(c, PRO_SKIN, (k) => PRO_HEAD(k, X, Y), PRO_SKIN_INK, PRO_LW);
   });
-  function eggshellBust(c, X, Y, lw, shocked = false, p = EGGSHELL_PARTS) {
-    for (const k of EG_BUST_ORDER) if (p[k]) p[k](c, X, Y, lw, shocked);
+  var proFace = proSized((c, X, Y) => proNose(c, X, Y));
+  var proEyes = proSized((c, X, Y, lw, shocked, face2) => {
+    proSpecs(c, X, Y, shocked, face2);
+    proBrows(c, X, Y, shocked, face2);
+  });
+  var proMouthPart = proSized((c, X, Y, lw, shocked, face2) => {
+    proStubble(c, X, Y);
+    proMouth(c, X, Y, shocked, face2);
+    egMustache(c, X(0.5), Y(shocked ? 0.44 : 0.458), X(0.118), Y(0.046), shocked ? -0.5 : 0, PRO_STACHE, PRO_INK, PRO_LW);
+  });
+  var EGGSHELL_PARTS = Object.freeze({
+    // NO SHELL: the green spikes were the ape's armour and the professor has
+    // none. The old ape's parts (egShell/egBody/egHead/egFace/egEyes/egMouth)
+    // are kept below as the drawing he used to be.
+    shell: null,
+    body: proBody,
+    head: proHead,
+    face: proFace,
+    hair: null,
+    eyes: proEyes,
+    mouth: proMouthPart,
+    tub: eggshellTub,
+    hands: proHands
+  });
+  function eggshellBust(c, X, Y, lw, shocked = false, p = EGGSHELL_PARTS, face2 = PRO_FACE) {
+    for (const k of EG_BUST_ORDER) if (p[k]) p[k](c, X, Y, lw, shocked, face2);
   }
   function eggshellTub(c, X, Y, lw) {
     for (const s of [0.2, 0.64]) egP(c, EG_CREAM, (k) => rr(k, X(s), Y(0.9), X(0.16), Y(0.08), X(0.02)), EG_LINE, lw * 0.7);
@@ -79659,25 +79903,29 @@ ${PROCESSOR_WRAPPER2}`;
     egDot(c, EG_GOLD, X(0.19), Y(0.8), X(0.045), EG_LINE, lw * 0.5);
     egDot(c, EG_GOLD, X(0.81), Y(0.8), X(0.045), EG_LINE, lw * 0.5);
   }
-  function eggshellHands(c, X, Y, lw) {
-    egDot(c, EG_FUR, X(0.24), Y(0.6), X(0.06), EG_LINE, lw);
-    egDot(c, EG_FUR, X(0.76), Y(0.6), X(0.06), EG_LINE, lw);
-  }
-  function eggshellApe(c, ox, oy, pop = 0, parts = null) {
+  function eggshellApe(c, ox, oy, pop = 0, parts = null, face2 = PRO_FACE) {
     const p = parts ? { ...EGGSHELL_PARTS, ...parts } : EGGSHELL_PARTS;
     const X = (f) => EG_APE_W * f, Y = (f) => EG_APE_H * f, lw = EG_LW;
     c.save();
     c.translate(ox, oy);
-    const lift = pop * 5;
-    c.save();
-    c.translate(0, -lift);
-    eggshellBust(c, X, Y, lw, pop > 0.05, p);
-    c.restore();
+    const j = Math.max(0, (pop - 0.66) / 0.34);
+    const ease = j * (2 - j);
+    const lift = ease * 0.9;
+    const shake2 = ease * 1.9 - j * j * 0.55;
+    const tilt = ease * 0.1;
+    const rock = (fn) => {
+      c.save();
+      c.translate(X(0.5) + shake2, Y(0.62) - lift);
+      c.rotate(tilt);
+      c.translate(-X(0.5), -Y(0.62));
+      fn();
+      c.restore();
+    };
+    rock(() => eggshellBust(c, X, Y, lw, pop > 0.05, p, face2));
     if (p.tub) p.tub(c, X, Y, lw);
-    c.save();
-    c.translate(0, -lift);
-    if (p.hands) p.hands(c, X, Y, lw);
-    c.restore();
+    rock(() => {
+      if (p.hands) p.hands(c, X, Y, lw);
+    });
     c.restore();
   }
   var EGGSHELL_ART = Object.freeze({
@@ -79703,9 +79951,9 @@ ${PROCESSOR_WRAPPER2}`;
     spikesArc: egSpikesArc,
     rr
   });
-  var COPTER_ROTOR = { R: 10.5, sq: 0.16, hy: 6, blade: 1, disc: false };
+  var COPTER_ROTOR = { R: 10.5, sq: 0.16, hy: 3.2, blade: 1, disc: false };
   function eggshellCopterArt(ctx, w, h, frame3 = 0, o = {}) {
-    const { R, sq, hy, blade: bw, disc: withDisc, pop = 0, parts = null, body = null, mastTo = 8 + EG_APE_H * 0.34 } = { ...COPTER_ROTOR, ...o };
+    const { R, sq, hy, blade: bw, disc: withDisc, pop = 0, parts = null, body = null, face: face2 = PRO_FACE, mastTo = 10.4 } = { ...COPTER_ROTOR, ...o };
     ctx.save();
     ctx.scale(w / 28, h / 28);
     const cx = 14;
@@ -79738,7 +79986,7 @@ ${PROCESSOR_WRAPPER2}`;
       k.lineTo(cx, mastTo);
     });
     if (body) body(ctx);
-    else eggshellApe(ctx, 2, 8, pop, parts);
+    else eggshellApe(ctx, 2, 8, pop, parts, face2);
     disc(0, Math.PI);
     for (const b of blades) if (Math.sin(b) >= 0) {
       sweep(b);
@@ -81696,6 +81944,31 @@ ${PROCESSOR_WRAPPER2}`;
       stroke(ctx, "#48e0c8", Math.max(0.7, w * 0.16), (c) => c.ellipse(w / 2, h / 2, w * 0.36, h * 0.42, 0, 0, Math.PI * 2));
       stroke(ctx, "#c8fff0", Math.max(0.5, w * 0.07), (c) => c.ellipse(w * 0.42, h * 0.4, w * 0.16, h * 0.2, -0.4, 0.6, 2.4));
     },
+    // JUST HIS FACE, for the speech card. A taunt is him talking, and a portrait
+    // that includes the tub spends most of a 20x15 slot on a vehicle: the head
+    // ends up a third of the cell and his expression — the thing the line is
+    // being said with — is four pixels of it. Peter, 4 Sep: "in his chat bits
+    // just show face, not entire body/vehicle."
+    //
+    // Same parts as the bust, drawn with the head filling the box: the ape's own
+    // sub-box is scaled up and shifted so the skull lands centre, and the
+    // shoulders, cape and tub are simply not called. One drawing, two crops.
+    eggshellFace(ctx, w, h) {
+      ctx.save();
+      const k = 2.1;
+      ctx.beginPath();
+      ctx.rect(0, 0, w, h);
+      ctx.clip();
+      ctx.translate(w / 2, h * 0.52);
+      ctx.scale(w / EG_APE_W * k, h / EG_APE_H * k);
+      ctx.translate(-EG_APE_W * 0.5, -EG_APE_H * 0.375);
+      const X = (fr) => EG_APE_W * fr, Y = (fr) => EG_APE_H * fr, lw = EG_LW;
+      for (const key of ["head", "face", "eyes", "mouth"]) {
+        const part = EGGSHELL_PARTS[key];
+        if (part) part(ctx, X, Y, lw, false, PRO_FACE);
+      }
+      ctx.restore();
+    },
     // The bust: the portrait every taunt card shows, the intro panel, the relic.
     eggshell(ctx, w, h) {
       ctx.save();
@@ -83033,6 +83306,7 @@ ${PROCESSOR_WRAPPER2}`;
     // The villain's goggles are 1u lenses on a 24u portrait; the copter's blades
     // are 1u lines. Neither survives single detail.
     eggshell: 2,
+    eggshellFace: 3,
     eggshellCopter: 2,
     eggshellBalloon: 2,
     ...ANIMAL_DETAIL,
@@ -85299,9 +85573,9 @@ ${PROCESSOR_WRAPPER2}`;
       paint2(ctx);
       return;
     }
-    const sized = cityBake && cityBake.c.width === cv.width && cityBake.c.height === cv.height;
-    if (!sized || cityBake.key !== key) {
-      const made = lcdBakeSurface(cv.width, cv.height, sized ? cityBake.c : null);
+    const sized2 = cityBake && cityBake.c.width === cv.width && cityBake.c.height === cv.height;
+    if (!sized2 || cityBake.key !== key) {
+      const made = lcdBakeSurface(cv.width, cv.height, sized2 ? cityBake.c : null);
       if (!made) {
         cityBake = null;
         paint2(ctx);
@@ -91416,7 +91690,6 @@ ${PROCESSOR_WRAPPER2}`;
   var EDGE_BOTTOM = EDGE / 2;
   var DISC_R = 11;
   var HERO_DISC_PLATE = "rgba(144,170,190,0.98)";
-  var HUD_FACE_INK = Object.freeze({ body: 0.7, face: 0.72 });
   var HERO_DISC_RIM_W = 0.75;
   var PILL_X = EDGE;
   var PILL_H = 18;
@@ -91613,12 +91886,13 @@ ${PROCESSOR_WRAPPER2}`;
         return { x: 0, lead: 0 };
     }
   }
+  var faceCropBox = (w, over) => w + 2 * Math.round(w * (over - 1) / 2);
   function drawChipFace(ctx, id35, x, y, w, h, over = 1, joy = false) {
-    const fw = w * over, fh = h * over;
-    const face2 = hudFaceSprite(
+    const fw = faceCropBox(w, over), fh = faceCropBox(h, over);
+    const face2 = toonFaceSprite(
       id35,
-      Math.round(fw),
-      Math.round(fh),
+      fw,
+      fh,
       joy ? { key: "joy", pose: { faceJoy: true } } : null
     );
     if (!face2) return;
@@ -91626,17 +91900,6 @@ ${PROCESSOR_WRAPPER2}`;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(face2, x - (fw - w) / 2, y - (fh - h) / 2, fw, fh);
     ctx.imageSmoothingEnabled = prev;
-  }
-  function hudFaceSprite(id35, w, h, opts = null) {
-    const previous = { ...INK };
-    setInk({ ...previous, ...HUD_FACE_INK });
-    try {
-      const faceOpts = { ...opts || {} };
-      faceOpts.key = `hud-thin${opts?.key ? `-${opts.key}` : ""}`;
-      return toonFaceSprite(id35, w, h, faceOpts);
-    } finally {
-      setInk(previous);
-    }
   }
   function chipWell(ctx, path5) {
     ctx.save();
@@ -91788,10 +92051,10 @@ ${PROCESSOR_WRAPPER2}`;
     const badgeW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
     const badgeX = Math.round(W / 2 - badgeW / 2);
     drawPanel(ctx, badgeX, cy - BADGE_H / 2, badgeW, BADGE_H, BADGE_R, void 0, PANEL);
-    const face2 = hudFaceSprite(run.relay.current, FACE_W, FACE_H);
+    const face2 = toonFaceSprite(run.relay.current, FACE_W, FACE_H);
     if (face2) {
       ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(face2, badgeX + PAD_L, cy - FACE_H / 2, FACE_W, FACE_H);
+      ctx.drawImage(face2, badgeX + PAD_L, Math.round(cy - FACE_H / 2), FACE_W, FACE_H);
       ctx.imageSmoothingEnabled = false;
     }
     drawText(ctx, name, badgeX + PAD_L + FACE_W + GAP, textY(cy), "#d0f0e8");
@@ -91974,9 +92237,9 @@ ${PROCESSOR_WRAPPER2}`;
     panel(x, y - 4, w, h);
     const faceY = Math.round(y - 4 + (h - FACE_H) / 2);
     if (isEgg) {
-      drawProp(ctx, "eggshell", x + PAD, faceY, FACE_W, FACE_H);
+      drawProp(ctx, "eggshellFace", x + PAD, faceY, FACE_W, FACE_H);
     } else {
-      const face2 = hudFaceSprite(speech.who, FACE_W, FACE_H);
+      const face2 = toonFaceSprite(speech.who, FACE_W, FACE_H);
       if (face2) {
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(face2, x + PAD, faceY, FACE_W, FACE_H);
@@ -101347,9 +101610,9 @@ ${PROCESSOR_WRAPPER2}`;
     }
   };
   var SKIN = "#eec9a8";
-  var PRO_INK = "rgba(26,16,40,0.32)";
-  var PRO_SKIN = "rgba(26,16,40,0.2)";
-  var PRO_LW = 0.0105 * 24;
+  var PRO_INK2 = "rgba(26,16,40,0.32)";
+  var PRO_SKIN2 = "rgba(26,16,40,0.2)";
+  var PRO_LW2 = 0.0105 * 24;
   var SKULL = { fx: 0.5, fy: 0.37, frx: 0.165, fry: 0.2 };
   var HAIR_DROP = -0.02;
   var ROOT_K = 0.86;
@@ -101374,7 +101637,7 @@ ${PROCESSOR_WRAPPER2}`;
         py(deg + spread, ROOT_K)
       );
       k.closePath();
-    }, PRO_INK, PRO_LW);
+    }, PRO_INK2, PRO_LW2);
   }
   var HAIR_STYLES = {
     // The reference: one big mass swept up and across the crown, spikes flying
@@ -101454,18 +101717,18 @@ ${PROCESSOR_WRAPPER2}`;
   function ears(c, X, Y) {
     for (const sd of [-1, 1]) {
       const x = X(0.5 + sd * 0.16), y = Y(0.378);
-      P3(c, SKIN, (k) => k.ellipse(x, y, X(0.036), Y(0.052), sd * 0.28, 0, TAU13), PRO_SKIN, PRO_LW);
-      line8(c, "rgba(26,16,40,0.18)", PRO_LW, (k) => k.ellipse(x + sd * X(6e-3), y, X(0.016), Y(0.026), sd * 0.28, -1.9, 1.5));
+      P3(c, SKIN, (k) => k.ellipse(x, y, X(0.036), Y(0.052), sd * 0.28, 0, TAU13), PRO_SKIN2, PRO_LW2);
+      line8(c, "rgba(26,16,40,0.18)", PRO_LW2, (k) => k.ellipse(x + sd * X(6e-3), y, X(0.016), Y(0.026), sd * 0.28, -1.9, 1.5));
     }
   }
   var SKIN_DK = "#e0b68e";
   function nose(c, X, Y) {
     const cx = X(0.5), cy = Y(0.392), rx = X(0.03), ry = Y(0.034);
     P3(c, SKIN_DK, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, TAU13));
-    line8(c, PRO_SKIN, PRO_LW, (k) => k.ellipse(cx, cy, rx, ry, 0, 0.12 * Math.PI, 0.88 * Math.PI));
+    line8(c, PRO_SKIN2, PRO_LW2, (k) => k.ellipse(cx, cy, rx, ry, 0, 0.12 * Math.PI, 0.88 * Math.PI));
   }
   function paleDome(c, X, Y, lw) {
-    P3(c, SKIN, (k) => HEAD(k, X, Y), PRO_SKIN, PRO_LW);
+    P3(c, SKIN, (k) => HEAD(k, X, Y), PRO_SKIN2, PRO_LW2);
   }
   var hairStyleFor = (name, shocked, hit = "blast") => shocked && hit ? hit : name;
   var professorHead = (name, hit) => (c, X, Y, lw, shocked) => {
@@ -101493,18 +101756,25 @@ ${PROCESSOR_WRAPPER2}`;
   function drawBrows(c, X, Y, shocked, name = "bushy") {
     const b = name && typeof name === "object" ? name : BROW_STYLES[name];
     if (!b) return;
-    const cy = Y(0.328) - Y(0.036) - Y(0.026) - (shocked ? Y(0.014) : 0) - Y(b.lift);
+    const BROW_CEILING = 0.212;
+    const cy = Math.max(
+      Y(BROW_CEILING),
+      Y(0.328) - Y(0.036) - Y(0.034) - (shocked ? Y(0.03) : 0) - Y(b.lift)
+    );
     const off = X(SPEC.hw + SPEC.bridge / 2);
+    const w = X(b.w), h = Y(b.h) * (shocked ? 1.15 : 1), tilt = shocked ? 0 : b.tilt * 8;
     for (const sd of [-1, 1]) {
-      const x = X(0.5) + sd * off;
-      const w = X(b.w), h = Y(b.h), tilt = sd * b.tilt * (shocked ? 1.6 : 1);
+      c.save();
+      c.translate(X(0.5) + sd * off, cy);
+      c.scale(sd, 1);
       P3(c, TONE2[0], (k) => {
-        k.moveTo(x - w, cy + h * 0.6 + tilt * 8);
-        k.quadraticCurveTo(x, cy - h * 1.1, x + w, cy + h * 0.4 - tilt * 8);
-        if (b.flick) k.lineTo(x + sd * (w + X(b.flick)), cy - h * (1 + b.flick * 40));
-        k.quadraticCurveTo(x, cy + h * 1.4, x - w, cy + h * 1.5 + tilt * 8);
+        k.moveTo(-w, h * 0.6 + tilt);
+        k.quadraticCurveTo(0, -h * 1.1, w, h * 0.4 - tilt);
+        if (b.flick) k.lineTo(w + X(b.flick), -h * (1 + b.flick * 40));
+        k.quadraticCurveTo(0, h * 1.4, -w, h * 1.5 + tilt);
         k.closePath();
-      }, PRO_INK, PRO_LW * 0.6);
+      }, PRO_INK2, PRO_LW2 * 0.6);
+      c.restore();
     }
   }
   var specsWith = (o = {}) => (c, X, Y, lw, shocked) => {
@@ -101514,25 +101784,25 @@ ${PROCESSOR_WRAPPER2}`;
   function drawSpecs(c, X, Y, shocked, o) {
     const cy = Y(0.328), hh = Y(0.036);
     const hw = X(o.hw), off = X(o.hw + o.bridge / 2), gap = o.eye;
-    const brow = PRO_LW * 0.6, top = cy - hh;
+    const brow = PRO_LW2 * 0.6, top = cy - hh;
     for (const s of [-1, 1]) {
       const x = X(0.5) + s * off;
-      line8(c, RIM2, PRO_LW * 0.42, (k) => {
+      line8(c, RIM2, PRO_LW2 * 0.42, (k) => {
         k.moveTo(x + s * hw, top + brow);
         k.lineTo(X(0.5) + s * X(0.166), cy - Y(6e-3));
       });
-      P3(c, LENS2, (k) => rr7(k, x - hw, top, hw * 2, hh * 2, X(8e-3)), RIM2, PRO_LW * 0.5);
+      P3(c, LENS2, (k) => rr7(k, x - hw, top, hw * 2, hh * 2, X(8e-3)), RIM2, PRO_LW2 * 0.5);
       dot6(c, INK7, x + s * X(gap), cy + Y(4e-3), X(shocked ? 0.012 : 0.017));
     }
-    P3(c, RIM2, (k) => rr7(k, X(0.5) - off - hw - PRO_LW * 0.08, top - PRO_LW * 0.08, (off + hw) * 2 + PRO_LW * 0.16, brow, X(4e-3)));
+    P3(c, RIM2, (k) => rr7(k, X(0.5) - off - hw - PRO_LW2 * 0.08, top - PRO_LW2 * 0.08, (off + hw) * 2 + PRO_LW2 * 0.16, brow, X(4e-3)));
   }
   var SHIRT_W = "#eceef4";
   var SHIRT_K = "#23232e";
   var shoulders = (c, X, Y) => (k) => k.ellipse(X(0.5), Y(0.6), X(0.33), Y(0.17), 0, 0, TAU13);
   var shirtHands = (dark) => (c, X, Y, lw) => {
     for (const sx of [0.24, 0.76]) {
-      P3(c, dark ? SHIRT_K : SHIRT_W, (k) => k.ellipse(X(sx), Y(0.585), X(0.075), Y(0.06), 0, 0, TAU13), PRO_INK, PRO_LW);
-      dot6(c, FUR2, X(sx), Y(0.625), X(0.055), PRO_INK, PRO_LW);
+      P3(c, dark ? SHIRT_K : SHIRT_W, (k) => k.ellipse(X(sx), Y(0.585), X(0.075), Y(0.06), 0, 0, TAU13), PRO_INK2, PRO_LW2);
+      dot6(c, FUR2, X(sx), Y(0.625), X(0.055), PRO_INK2, PRO_LW2);
     }
   };
   var onShoulders = (c, X, Y, fn) => {
@@ -101544,14 +101814,14 @@ ${PROCESSOR_WRAPPER2}`;
     c.restore();
   };
   function shirtStripes(c, X, Y, lw) {
-    P3(c, SHIRT_W, shoulders(c, X, Y), PRO_INK, PRO_LW);
+    P3(c, SHIRT_W, shoulders(c, X, Y), PRO_INK2, PRO_LW2);
     onShoulders(c, X, Y, () => {
       for (const sx of [0.29, 0.43, 0.57, 0.71]) P3(c, SHIRT_K, (k) => k.rect(X(sx), Y(0.44), X(0.06), Y(0.4)));
     });
-    P3(c, null, shoulders(c, X, Y), PRO_INK, PRO_LW);
+    P3(c, null, shoulders(c, X, Y), PRO_INK2, PRO_LW2);
   }
   function shirtCollar(c, X, Y, lw) {
-    P3(c, SHIRT_W, shoulders(c, X, Y), PRO_INK, PRO_LW);
+    P3(c, SHIRT_W, shoulders(c, X, Y), PRO_INK2, PRO_LW2);
     onShoulders(c, X, Y, () => {
       P3(c, SHIRT_K, (k) => {
         k.moveTo(X(0.5), Y(0.5));
@@ -101569,7 +101839,7 @@ ${PROCESSOR_WRAPPER2}`;
     });
   }
   function shirtYoke(c, X, Y, lw) {
-    P3(c, SHIRT_K, shoulders(c, X, Y), PRO_INK, PRO_LW);
+    P3(c, SHIRT_K, shoulders(c, X, Y), PRO_INK2, PRO_LW2);
     onShoulders(c, X, Y, () => {
       P3(c, SHIRT_W, (k) => {
         k.moveTo(X(0.2), Y(0.56));
@@ -101620,13 +101890,13 @@ ${PROCESSOR_WRAPPER2}`;
   }
   function mouthLine(c, X, Y, lw, shocked, y = 0.508, curve = 0.015) {
     if (shocked) gasp(c, X, Y, y - 8e-3);
-    else line8(c, PRO_INK, PRO_LW * 1.2, (k) => {
+    else line8(c, PRO_INK2, PRO_LW2 * 1.2, (k) => {
       k.moveTo(X(0.46), Y(y));
       k.quadraticCurveTo(X(0.5), Y(y + curve), X(0.54), Y(y));
     });
   }
   var STACHE_TONE = HAIR_TONE.silver[0];
-  var stache = (c, X, Y, lw, shocked, span, drop, y = 0.458) => mustache2(c, X(0.5), Y(shocked ? y - 0.018 : y), X(span), Y(drop), shocked ? -0.5 : 0, STACHE_TONE, PRO_INK, PRO_LW);
+  var stache = (c, X, Y, lw, shocked, span, drop, y = 0.458) => mustache2(c, X(0.5), Y(shocked ? y - 0.018 : y), X(span), Y(drop), shocked ? -0.5 : 0, STACHE_TONE, PRO_INK2, PRO_LW2);
   function fhShaven(c, X, Y, lw, shocked) {
     mouthLine(c, X, Y, lw, shocked, 0.5);
   }
@@ -101653,12 +101923,12 @@ ${PROCESSOR_WRAPPER2}`;
     stubbleField(c, X, Y, false);
     mouthLine(c, X, Y, lw, shocked, 0.5);
     for (const sd of [-1, 1]) {
-      line8(c, TONE2[0], PRO_LW * 1.6, (k) => {
+      line8(c, TONE2[0], PRO_LW2 * 1.6, (k) => {
         k.moveTo(X(0.5), Y(0.462));
         k.quadraticCurveTo(X(0.5) + sd * X(0.065), Y(0.452), X(0.5) + sd * X(0.105), Y(0.418));
         k.quadraticCurveTo(X(0.5) + sd * X(0.132), Y(0.392), X(0.5) + sd * X(0.122), Y(0.368));
       });
-      line8(c, TONE2[0], PRO_LW * 1.15, (k) => k.arc(X(0.5) + sd * X(0.112), Y(0.363), X(0.013), 0, TAU13));
+      line8(c, TONE2[0], PRO_LW2 * 1.15, (k) => k.arc(X(0.5) + sd * X(0.112), Y(0.363), X(0.013), 0, TAU13));
     }
   }
   function fhVanDyke(c, X, Y, lw, shocked) {
@@ -101669,7 +101939,7 @@ ${PROCESSOR_WRAPPER2}`;
       k.quadraticCurveTo(X(0.54), Y(0.615), X(0.5), Y(0.645));
       k.quadraticCurveTo(X(0.46), Y(0.615), X(0.452), Y(0.525));
       k.closePath();
-    }, PRO_INK, PRO_LW);
+    }, PRO_INK2, PRO_LW2);
     mouthLine(c, X, Y, lw, shocked, 0.5);
     stache(c, X, Y, lw, shocked, 0.115, 0.044, 0.455);
   }
@@ -101681,7 +101951,7 @@ ${PROCESSOR_WRAPPER2}`;
       k.quadraticCurveTo(X(0.552), Y(0.625), X(0.5), Y(0.658));
       k.quadraticCurveTo(X(0.448), Y(0.625), X(0.442), Y(0.522));
       k.closePath();
-    }, PRO_INK, PRO_LW);
+    }, PRO_INK2, PRO_LW2);
     mouthLine(c, X, Y, lw, shocked, 0.497);
   }
   function fhGoateeLong(c, X, Y, lw, shocked) {
@@ -101692,7 +101962,7 @@ ${PROCESSOR_WRAPPER2}`;
       k.quadraticCurveTo(X(0.545), Y(0.65), X(0.5), Y(0.76));
       k.quadraticCurveTo(X(0.455), Y(0.65), X(0.445), Y(0.52));
       k.closePath();
-    }, PRO_INK, PRO_LW);
+    }, PRO_INK2, PRO_LW2);
     mouthLine(c, X, Y, lw, shocked, 0.497);
     stache(c, X, Y, lw, shocked, 0.1, 0.038, 0.452);
   }
@@ -101705,11 +101975,22 @@ ${PROCESSOR_WRAPPER2}`;
       k.quadraticCurveTo(X(0.6), Y(0.5), X(0.5), Y(0.5));
       k.quadraticCurveTo(X(0.4), Y(0.5), X(0.325), Y(0.42));
       k.closePath();
-    }, PRO_INK, PRO_LW);
+    }, PRO_INK2, PRO_LW2);
     mouthLine(c, X, Y, lw, shocked, 0.535);
     stache(c, X, Y, lw, shocked, 0.13, 0.05, 0.472);
   }
   var professor = (name, o = {}) => professorParts(name, o);
+  var HEAD_SCALE = 0.88;
+  var HEAD_RISE = 0.075;
+  var HEAD_PIVOT = 0.52;
+  var sized = (fn) => (c, X, Y, lw, shocked) => {
+    c.save();
+    c.translate(X(0.5), Y(HEAD_PIVOT - HEAD_RISE));
+    c.scale(HEAD_SCALE, HEAD_SCALE);
+    c.translate(-X(0.5), -Y(HEAD_PIVOT));
+    fn(c, X, Y, lw, shocked);
+    c.restore();
+  };
   function professorParts(name, o) {
     const t = o.tone || HAIR_TONE.white;
     const p = {
@@ -101726,8 +102007,10 @@ ${PROCESSOR_WRAPPER2}`;
       eyes: o.eyes || specsWith(),
       mouth: o.mouth || fhTrim
     };
-    p.head = tinted2(t, p.head);
-    p.mouth = tinted2(t, p.mouth);
+    p.head = sized(tinted2(t, p.head));
+    p.mouth = sized(tinted2(t, p.mouth));
+    if (p.face) p.face = sized(p.face);
+    p.eyes = sized(p.eyes);
     return p;
   }
   var SUIT = "#2a2a36";
@@ -101737,14 +102020,14 @@ ${PROCESSOR_WRAPPER2}`;
   var COAT = "#f2f2f6";
   var SHIRT_BLUE = "#a8c4e8";
   var TIE = { red: "#c83030", navy: "#24305a", black: "#23232e", green: "#3f7a4a", gold: "#d8a83c" };
-  var band = (c, X, Y, fill3) => P3(c, fill3, shoulders(c, X, Y), PRO_INK, PRO_LW);
+  var band = (c, X, Y, fill3) => P3(c, fill3, shoulders(c, X, Y), PRO_INK2, PRO_LW2);
   var collarPoints = (c, X, Y, fill3) => {
     for (const s of [-1, 1]) P3(c, fill3, (k) => {
       k.moveTo(X(0.5 + s * 0.05), Y(0.46));
       k.lineTo(X(0.5 + s * 0.21), Y(0.5));
       k.lineTo(X(0.5 + s * 0.13), Y(0.62));
       k.closePath();
-    }, PRO_INK, PRO_LW);
+    }, PRO_INK2, PRO_LW2);
   };
   var lapels = (c, X, Y, fill3, shirt) => {
     P3(c, shirt, (k) => {
@@ -101759,12 +102042,12 @@ ${PROCESSOR_WRAPPER2}`;
       k.lineTo(X(0.5 + s * 0.16), Y(0.7));
       k.lineTo(X(0.5 + s * 0.06), Y(0.66));
       k.closePath();
-    }, PRO_INK, PRO_LW);
+    }, PRO_INK2, PRO_LW2);
   };
   var skinHands = (cuff = null) => (c, X, Y, lw) => {
     for (const sx of [0.24, 0.76]) {
-      if (cuff) P3(c, cuff, (k) => k.ellipse(X(sx), Y(0.585), X(0.075), Y(0.06), 0, 0, TAU13), PRO_INK, PRO_LW);
-      dot6(c, SKIN, X(sx), Y(0.625), X(0.055), PRO_SKIN, PRO_LW);
+      if (cuff) P3(c, cuff, (k) => k.ellipse(X(sx), Y(0.585), X(0.075), Y(0.06), 0, 0, TAU13), PRO_INK2, PRO_LW2);
+      dot6(c, SKIN, X(sx), Y(0.625), X(0.055), PRO_SKIN2, PRO_LW2);
     }
   };
   var necktie = (fill3, spots = null) => (c, X, Y) => {
@@ -101776,9 +102059,9 @@ ${PROCESSOR_WRAPPER2}`;
       k.lineTo(cx, Y(0.74));
       k.lineTo(cx - X(0.04), Y(0.7));
       k.closePath();
-    }, PRO_INK, PRO_LW * 0.8);
+    }, PRO_INK2, PRO_LW2 * 0.8);
     if (spots) for (const [dx, dy] of [[-0.012, 0.64], [0.014, 0.665], [-8e-3, 0.7]]) dot6(c, spots, cx + X(dx), Y(dy), X(7e-3));
-    P3(c, fill3, (k) => rr7(k, cx - X(0.03), Y(0.565), X(0.06), Y(0.04), X(8e-3)), PRO_INK, PRO_LW * 0.8);
+    P3(c, fill3, (k) => rr7(k, cx - X(0.03), Y(0.565), X(0.06), Y(0.04), X(8e-3)), PRO_INK2, PRO_LW2 * 0.8);
   };
   var handsAnd = (hands2, tie) => (c, X, Y, lw) => {
     hands2(c, X, Y, lw);
@@ -101821,7 +102104,7 @@ ${PROCESSOR_WRAPPER2}`;
           k.lineTo(X(0.8), Y(0.8));
           k.lineTo(X(0.2), Y(0.8));
           k.closePath();
-        }, PRO_INK, PRO_LW));
+        }, PRO_INK2, PRO_LW2));
       },
       hands: handsAnd(skinHands(COAT), necktie(TIE.black))
     },
@@ -101829,7 +102112,7 @@ ${PROCESSOR_WRAPPER2}`;
       body: (c, X, Y) => {
         band(c, X, Y, KNIT);
         collarPoints(c, X, Y, COAT);
-        onShoulders(c, X, Y, () => line8(c, PRO_INK, PRO_LW, (k) => {
+        onShoulders(c, X, Y, () => line8(c, PRO_INK2, PRO_LW2, (k) => {
           k.moveTo(X(0.34), Y(0.47));
           k.lineTo(X(0.5), Y(0.66));
           k.lineTo(X(0.66), Y(0.47));
@@ -101844,14 +102127,14 @@ ${PROCESSOR_WRAPPER2}`;
           k.quadraticCurveTo(X(0.5 + s * 0.42), Y(0.5), X(0.5 + s * 0.36), Y(0.2));
           k.quadraticCurveTo(X(0.5 + s * 0.3), Y(0.36), X(0.5 + s * 0.14), Y(0.42));
           k.closePath();
-        }, PRO_INK, PRO_LW);
+        }, PRO_INK2, PRO_LW2);
         for (const s of [-1, 1]) P3(c, SUIT, (k) => {
           k.moveTo(X(0.5 + s * 0.16), Y(0.62));
           k.quadraticCurveTo(X(0.5 + s * 0.44), Y(0.52), X(0.5 + s * 0.4), Y(0.24));
           k.lineTo(X(0.5 + s * 0.36), Y(0.2));
           k.quadraticCurveTo(X(0.5 + s * 0.42), Y(0.5), X(0.5 + s * 0.08), Y(0.6));
           k.closePath();
-        }, PRO_INK, PRO_LW);
+        }, PRO_INK2, PRO_LW2);
         band(c, X, Y, SUIT);
         collarPoints(c, X, Y, COAT);
       },

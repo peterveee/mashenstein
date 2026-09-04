@@ -47516,27 +47516,27 @@ void main() {
     return node;
   }
   function makeBellEq(ctx, params) {
-    const band = ctx.createBiquadFilter();
-    band.type = "peaking";
-    band.frequency.value = 1e3;
-    band.gain.value = 0;
-    band.Q.value = 1;
+    const band2 = ctx.createBiquadFilter();
+    band2.type = "peaking";
+    band2.frequency.value = 1e3;
+    band2.gain.value = 0;
+    band2.Q.value = 1;
     const state = { frequency: 1e3, gain: 0, q: 1, ...params };
-    const node = { input: band, output: band, _custom: true };
+    const node = { input: band2, output: band2, _custom: true };
     node.applyState = () => {
       const t = ctx.currentTime;
-      band.frequency.setTargetAtTime(Math.max(20, Math.min(18e3, state.frequency)), t, 0.02);
-      band.gain.setTargetAtTime(state.gain, t, 0.02);
-      band.Q.setTargetAtTime(Math.max(0.1, state.q), t, 0.02);
+      band2.frequency.setTargetAtTime(Math.max(20, Math.min(18e3, state.frequency)), t, 0.02);
+      band2.gain.setTargetAtTime(state.gain, t, 0.02);
+      band2.Q.setTargetAtTime(Math.max(0.1, state.q), t, 0.02);
     };
     node.setState = (patch) => {
       Object.assign(state, patch);
       node.applyState();
     };
-    node.connect = (dest) => dest && dest.input ? band.connect(dest.input) : band.connect(dest);
+    node.connect = (dest) => dest && dest.input ? band2.connect(dest.input) : band2.connect(dest);
     node.disconnect = () => {
       try {
-        band.disconnect();
+        band2.disconnect();
       } catch {
       }
     };
@@ -49407,12 +49407,12 @@ void main() {
       for (const [f, hz] of [[lowLp, fLow], [midHp, fLow], [midLp, fHigh], [highHp, fHigh]]) {
         f.frequency.setTargetAtTime(hz, t, 0.02);
       }
-      for (const [band, node] of [["low", low], ["mid", mid], ["high", high]]) {
-        node.threshold.value = Math.max(-100, Math.min(0, num2(`${band}.threshold`, -24)));
-        node.ratio.value = Math.max(1, Math.min(20, num2(`${band}.ratio`, 3)));
-        node.attack.value = Math.max(0, Math.min(1, num2(`${band}.attack`, 0.02)));
-        node.release.value = Math.max(0, Math.min(1, num2(`${band}.release`, 0.03)));
-        node.knee.value = Math.max(0, Math.min(40, num2(`${band}.knee`, 16)));
+      for (const [band2, node] of [["low", low], ["mid", mid], ["high", high]]) {
+        node.threshold.value = Math.max(-100, Math.min(0, num2(`${band2}.threshold`, -24)));
+        node.ratio.value = Math.max(1, Math.min(20, num2(`${band2}.ratio`, 3)));
+        node.attack.value = Math.max(0, Math.min(1, num2(`${band2}.attack`, 0.02)));
+        node.release.value = Math.max(0, Math.min(1, num2(`${band2}.release`, 0.03)));
+        node.knee.value = Math.max(0, Math.min(40, num2(`${band2}.knee`, 16)));
       }
     };
     apply();
@@ -64256,6 +64256,15 @@ ${PROCESSOR_WRAPPER2}`;
     copterBonk: 1,
     power: 0.84,
     rewindPickup: 0.78,
+    // Levelled against `jump`, which fires on the SAME frame — this is the floor
+    // answering the hero, and a floor that answers louder than the hero is a
+    // trampoline. On RMS rather than peak: the cue has a held body where the jump
+    // is a blip, so equal peaks would be a far bigger sound. Untrimmed it measured
+    // -27.2 RMS against the jump's -32.3 — five decibels the wrong way round.
+    // This lands it at -35.3, three under the hero, and six under `copterBonk`
+    // (-29.0), which has to stay the bigger event on this cabinet. Re-measure with
+    // `node tools/render-cues.js girderBoing jump copterBonk`.
+    girderBoing: 0.39,
     crunch: 0.84,
     chomp: 0.84,
     tag: 0.9,
@@ -65732,18 +65741,18 @@ ${PROCESSOR_WRAPPER2}`;
       this.panicked = true;
       if (!this.ctx) return;
       const t = this.ctx.currentTime;
-      const cut = (node) => {
+      const cut2 = (node) => {
         if (!node?.gain) return;
         node.gain.cancelScheduledValues(t);
         node.gain.setValueAtTime(0, t);
       };
-      cut(this.master);
-      cut(this.musicGain);
-      cut(this.sfxGain);
-      cut(this.musicBus);
-      cut(this.starBus);
-      cut(this.songTrim);
-      cut(this._rewindOut);
+      cut2(this.master);
+      cut2(this.musicGain);
+      cut2(this.sfxGain);
+      cut2(this.musicBus);
+      cut2(this.starBus);
+      cut2(this.songTrim);
+      cut2(this._rewindOut);
       this._cutLaneGates();
       if (this.voices) {
         this.voices.dispose();
@@ -66183,6 +66192,71 @@ ${PROCESSOR_WRAPPER2}`;
       this.osc("square", 205, 1450, 0.19, 0.16, 6e-3, null, 0.07);
       this.osc("triangle", 1450, 690, 0.33, 0.13, 0.015, null, 0.01);
       this.osc("sine", 680, 350, 0.43, 0.11, 0.075, null, 0.01);
+    }
+    /**
+     * THE BEAM LETTING GO — a boing off a rhythm girder, fired at the push-off
+     * (see RunState.ringGirder, which draws the same event).
+     *
+     * A falling pitch is the whole gesture. A loaded beam releasing loses its
+     * tension as it goes, and the note goes with it; nothing else in the cue can
+     * stand in for that fall, which is why the sweep is the layer everything
+     * else is hung off.
+     *
+     * ONE GESTURE, like the boost miss. No second strike, no re-attack — a beam
+     * is released once and the ear hears one departure. Two would be two jumps.
+     *
+     * AND IT IS STEEL, NOT RUBBER. A clean fall on its own is a springboard, so
+     * the fundamental is joined by two free-bar partials at 2.76 and 5.40 — the
+     * same inharmonic modes the register bell in `cash` is built from, which is
+     * this game's established way of saying metal. They are struck and gone
+     * inside a tenth of a second, because a girder rings at the moment it is let
+     * go of and not after.
+     *
+     * The wobble is what separates a boing from a slide whistle, and it is an
+     * LFO on the frequency rather than anything osc() can express — hence a
+     * method of its own, like copterBonk. It decays to nothing across the fall,
+     * so the note arrives settled instead of still shaking.
+     *
+     * It fires ALONGSIDE `jump`, never instead of it: the jump is the hero and
+     * this is the floor answering him. So it is levelled to sit under that cue —
+     * see SFX_TRIM — and the two separate by direction anyway, the jump rising
+     * where this one falls.
+     */
+    girderBoing() {
+      if (!this.ctx) return;
+      const t = this.cueAt();
+      const q = this.cueGain;
+      const dur = 0.28;
+      const f0 = 460;
+      this.noise(0.03, 0.09, "bandpass", 1e3);
+      const o = this.ctx.createOscillator();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(150, t + dur);
+      const lfo = this.ctx.createOscillator();
+      const depth = this.ctx.createGain();
+      lfo.type = "sine";
+      lfo.frequency.setValueAtTime(24, t);
+      depth.gain.setValueAtTime(70, t);
+      depth.gain.linearRampToValueAtTime(0, t + dur * 0.75);
+      lfo.connect(depth);
+      depth.connect(o.frequency);
+      const g = this.ctx.createGain();
+      const peak = 0.16 * q;
+      g.gain.setValueAtTime(1e-4, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + 6e-3);
+      g.gain.setValueAtTime(peak, t + 0.08);
+      g.gain.exponentialRampToValueAtTime(1e-4, t + dur);
+      g.gain.linearRampToValueAtTime(0, t + dur + 0.02);
+      o.connect(g);
+      g.connect(this.sfxGain);
+      o.start(t);
+      o.stop(t + dur + 0.02);
+      lfo.start(t);
+      lfo.stop(t + dur + 0.02);
+      for (const [ratio, amp] of [[2.76, 0.045], [5.4, 0.025]]) {
+        this.osc("sine", f0 * ratio, f0 * ratio * 0.9, 0.1, amp);
+      }
     }
     // ONE BARK.
     //
@@ -67052,6 +67126,9 @@ ${PROCESSOR_WRAPPER2}`;
         case "copterBonk":
           this.copterBonk();
           break;
+        case "girderBoing":
+          this.girderBoing();
+          break;
         case "land":
           this.noise(0.06, 0.15, "lowpass", 400);
           break;
@@ -67648,7 +67725,7 @@ ${PROCESSOR_WRAPPER2}`;
           param.value = 0;
         }
       };
-      const cut = () => {
+      const cut2 = () => {
         for (const gate of gates) {
           try {
             gate.dry.disconnect();
@@ -67664,8 +67741,8 @@ ${PROCESSOR_WRAPPER2}`;
         drop(gate.dry.gain);
         drop(gate.wet.gain);
       }
-      if (typeof this.ctx?.startRendering === "function") cut();
-      else setTimeout(cut, Math.ceil(BENCH_FADE * 1e3) + 5);
+      if (typeof this.ctx?.startRendering === "function") cut2();
+      else setTimeout(cut2, Math.ceil(BENCH_FADE * 1e3) + 5);
     }
     /** Stop the preset-library audition without touching the song or its strips. */
     stopPreview() {
@@ -69288,12 +69365,12 @@ ${PROCESSOR_WRAPPER2}`;
           const src = this.ctx.createBufferSource();
           src.buffer = this.noiseBuf;
           src.loop = true;
-          const band = this.ctx.createBiquadFilter();
-          band.type = "bandpass";
-          band.Q.value = 1.45;
-          band.frequency.setValueAtTime(340, t);
-          band.frequency.exponentialRampToValueAtTime(1350, t + dur * 0.55);
-          band.frequency.exponentialRampToValueAtTime(460, t + dur);
+          const band2 = this.ctx.createBiquadFilter();
+          band2.type = "bandpass";
+          band2.Q.value = 1.45;
+          band2.frequency.setValueAtTime(340, t);
+          band2.frequency.exponentialRampToValueAtTime(1350, t + dur * 0.55);
+          band2.frequency.exponentialRampToValueAtTime(460, t + dur);
           const low = this.ctx.createBiquadFilter();
           low.type = "lowpass";
           low.frequency.value = 1800;
@@ -69304,8 +69381,8 @@ ${PROCESSOR_WRAPPER2}`;
           g.gain.exponentialRampToValueAtTime(gain, t + dur * 0.32);
           g.gain.exponentialRampToValueAtTime(1e-4, t + dur);
           g.gain.linearRampToValueAtTime(0, t + dur + 0.03 - 5e-3);
-          src.connect(band);
-          band.connect(low);
+          src.connect(band2);
+          band2.connect(low);
           low.connect(g);
           if (this.ctx.createStereoPanner) {
             const pan = this.ctx.createStereoPanner();
@@ -73054,9 +73131,9 @@ ${PROCESSOR_WRAPPER2}`;
       const portrait = !!pose2.portrait;
       const wave2 = Math.sin((pose2.time || 0) * (motion2 ? 7 : 2)) * R * (motion2 ? 0.18 : 0.05);
       const dark = p.hairDark || p.hair;
-      const cut = HAIR_CUTS[spec.hairCut] || HAIR_CUTS.long;
-      const HX = (mx) => hx + R * (cut.flare === 1 || Math.abs(mx) <= 1 ? mx : Math.sign(mx) * (1 + (Math.abs(mx) - 1) * cut.flare));
-      const HY = (my) => hy + R * (my <= 0 ? my - (fr.pile || 0) : cut.fall === 1 ? my : my * cut.fall);
+      const cut2 = HAIR_CUTS[spec.hairCut] || HAIR_CUTS.long;
+      const HX = (mx) => hx + R * (cut2.flare === 1 || Math.abs(mx) <= 1 ? mx : Math.sign(mx) * (1 + (Math.abs(mx) - 1) * cut2.flare));
+      const HY = (my) => hy + R * (my <= 0 ? my - (fr.pile || 0) : cut2.fall === 1 ? my : my * cut2.fall);
       outlined(ctx, p.hair, ow, (c) => {
         c.moveTo(HX(-1.2), HY(0.72));
         c.quadraticCurveTo(HX(-1.46), HY(-0.44), HX(-0.46), HY(-1.16));
@@ -75765,12 +75842,12 @@ ${PROCESSOR_WRAPPER2}`;
   }
   function drawRoll(ctx, spec, p, pose2, u, ow) {
     const r = 0.26 * u;
-    const band = p.p === p.b ? p.h : p.p;
+    const band2 = p.p === p.b ? p.h : p.p;
     ctx.save();
     ctx.translate(0, -r - 0.01 * u);
     ctx.rotate((pose2.time || 0) * 14);
     outlined(ctx, p.b, ow, (c) => c.arc(0, 0, r, 0, Math.PI * 2));
-    ctx.strokeStyle = band;
+    ctx.strokeStyle = band2;
     ctx.lineWidth = 0.07 * u;
     ctx.beginPath();
     ctx.moveTo(-r * 0.8, 0);
@@ -76222,11 +76299,11 @@ ${PROCESSOR_WRAPPER2}`;
             const ry = pinY + (lx - beltX) * sn + (ly - pinY) * cs;
             return hipY + rx * sinT + ry * cosT;
           };
-          let cut = 0;
+          let cut2 = 0;
           for (const ly of [yA, yB]) {
-            while (reach(hx + cut, ly) > deck && cut < beltX - hx) cut += 4e-3 * u;
+            while (reach(hx + cut2, ly) > deck && cut2 < beltX - hx) cut2 += 4e-3 * u;
           }
-          const hxc = hx + cut;
+          const hxc = hx + cut2;
           const tip = Math.min(halfH * 0.45, (beltX - hxc) * 0.45);
           ctx.save();
           ctx.translate(beltX, pinY);
@@ -77416,7 +77493,7 @@ ${PROCESSOR_WRAPPER2}`;
   var FACE_FIT = /* @__PURE__ */ new Map();
   var FIT_R = 64;
   function faceFit(heroId, spec, light = true, palette = null) {
-    const key = `${heroId}|${light ? "lit" : "flat"}`;
+    const key = `${heroId}|${light ? "lit" : "flat"}|${INK.body}|${INK.face}|${INK.alpha}|${INK.brow}|${INK.browA}|${INK.browL}`;
     if (FACE_FIT.has(key)) return FACE_FIT.get(key);
     let fit = { x: 0, y: 0, w: 1, h: 1 };
     const b = inkBounds(FIT_R * 3, (x) => paintFace(x, heroId, spec, FIT_R, FIT_R, FIT_R, FIT_R, light, palette, true));
@@ -78291,10 +78368,10 @@ ${PROCESSOR_WRAPPER2}`;
     ctx.imageSmoothingEnabled = true;
     if (plate2 && s.trim()) {
       const w = textWidth(s, scale, style);
-      const padX = 2.2 * scale, padY = 1.2 * scale, band = 9 * scale;
+      const padX = 2.2 * scale, padY = 1.2 * scale, band2 = 9 * scale;
       const inkMid = y + (TEXT_INK_TOP + TEXT_INK_H / 2) * scale;
       ctx.fillStyle = plate2;
-      platePath(ctx, x - padX, inkMid - band / 2 - padY, w + padX * 2, band + padY * 2, 3 * scale);
+      platePath(ctx, x - padX, inkMid - band2 / 2 - padY, w + padX * 2, band2 + padY * 2, 3 * scale);
       ctx.fill();
     }
     const cx = paintGlyphs(ctx, s, x, y, color, scale, style);
@@ -78912,7 +78989,7 @@ ${PROCESSOR_WRAPPER2}`;
     torsoPath(ctx);
     ctx.clip();
     fill(ctx, P4.belly, (c) => {
-      const band = h * 0.085;
+      const band2 = h * 0.085;
       const under = (x) => {
         const t = Math.max(0, Math.min(1, (x - (shX + w * 0.035)) / (hpX - w * 0.075 - (shX + w * 0.035))));
         const mt = 1 - t;
@@ -78927,7 +79004,7 @@ ${PROCESSOR_WRAPPER2}`;
       for (let i = 10; i >= 0; i--) {
         const t = i / 10;
         const x = x0 + (x1 - x0) * t;
-        c.lineTo(x, under(x) - band * (0.35 + 0.65 * (1 - t)));
+        c.lineTo(x, under(x) - band2 * (0.35 + 0.65 * (1 - t)));
       }
       c.closePath();
     });
@@ -79371,13 +79448,13 @@ ${PROCESSOR_WRAPPER2}`;
     ctx.clip();
     ctx.fillStyle = "#f2c53c";
     ctx.fillRect(x, y, w, h);
-    const band = h * 1.1;
-    for (let bx = -h * 2 + phase % (band * 2); bx < w + h * 2; bx += band * 2) {
+    const band2 = h * 1.1;
+    for (let bx = -h * 2 + phase % (band2 * 2); bx < w + h * 2; bx += band2 * 2) {
       hzPath(ctx, "#1d1c26", null, 0, (c) => {
         c.moveTo(x + bx, y + h);
         c.lineTo(x + bx + h, y);
-        c.lineTo(x + bx + h + band, y);
-        c.lineTo(x + bx + band, y + h);
+        c.lineTo(x + bx + h + band2, y);
+        c.lineTo(x + bx + band2, y + h);
         c.closePath();
       });
     }
@@ -79669,6 +79746,41 @@ ${PROCESSOR_WRAPPER2}`;
     }
     if (withDisc) egLine(ctx, "rgba(236,236,246,0.45)", 0.35, (k) => k.ellipse(cx, hy, R, R * sq, 0, 0, EG_TAU));
     egDot(ctx, "#8a8a98", cx, hy, 1, EG_LINE, 0.5);
+    ctx.restore();
+  }
+  function eggshellBalloonArt(ctx, w, h, o = {}) {
+    const { pop = 0, parts = null } = o;
+    ctx.save();
+    ctx.scale(w / 28, h / 46);
+    const cx = 14, cy = 12.5, rx = 12.5, ry = 13, lw = EG_LW;
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU);
+    ctx.clip();
+    ctx.fillStyle = EG_CREAM;
+    ctx.fillRect(0, 0, 28, 28);
+    for (let i = 0; i < 7; i += 2) {
+      ctx.fillStyle = EG_RED;
+      ctx.fillRect(cx - rx + i * (2 * rx / 7), 0, 2 * rx / 7, 28);
+    }
+    ctx.restore();
+    egLine(ctx, EG_LINE, lw, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU));
+    egP(ctx, "#3a3f4a", (k) => {
+      k.moveTo(11.3, 25);
+      k.lineTo(16.7, 25);
+      k.lineTo(15.7, 27.5);
+      k.lineTo(12.3, 27.5);
+      k.closePath();
+    }, EG_LINE, lw * 0.6);
+    egLine(ctx, "#5a4a3a", 0.4, (k) => {
+      k.moveTo(12.4, 27.5);
+      k.lineTo(2 + EG_APE_W * 0.13, 26 + EG_APE_H * 0.6);
+      k.moveTo(14, 27.5);
+      k.lineTo(14, 26 + EG_APE_H * 0.34);
+      k.moveTo(15.6, 27.5);
+      k.lineTo(2 + EG_APE_W * 0.87, 26 + EG_APE_H * 0.6);
+    });
+    eggshellApe(ctx, 2, 26, pop, parts);
     ctx.restore();
   }
   var PROP_PAINTERS = {
@@ -80459,8 +80571,8 @@ ${PROCESSOR_WRAPPER2}`;
     beatBar(ctx, w, h) {
       const n2 = 3;
       const rise = w * 0.46;
-      const band = Math.max(1.2, w * 0.26);
-      const step = (h - (rise + band)) / (n2 - 1);
+      const band2 = Math.max(1.2, w * 0.26);
+      const step = (h - (rise + band2)) / (n2 - 1);
       const x0 = w * 0.06, x1 = w / 2, x2 = w * 0.94;
       const chev = (i, fill3) => {
         const tip = i * step;
@@ -80468,9 +80580,9 @@ ${PROCESSOR_WRAPPER2}`;
           c.moveTo(x0, tip + rise);
           c.lineTo(x1, tip);
           c.lineTo(x2, tip + rise);
-          c.lineTo(x2, tip + rise + band);
-          c.lineTo(x1, tip + band);
-          c.lineTo(x0, tip + rise + band);
+          c.lineTo(x2, tip + rise + band2);
+          c.lineTo(x1, tip + band2);
+          c.lineTo(x0, tip + rise + band2);
           c.closePath();
         });
       };
@@ -80592,11 +80704,11 @@ ${PROCESSOR_WRAPPER2}`;
         c.lineTo(X(-0.99), Y(0.24));
         c.closePath();
       });
-      const cut = "#f6e4c8";
-      plain(ctx, cut, (c) => {
+      const cut2 = "#f6e4c8";
+      plain(ctx, cut2, (c) => {
         c.ellipse(X(-0.34), Y(-0.18), pw * 0.052, ph * 0.048, -0.3, 0, Math.PI * 2);
       });
-      plain(ctx, cut, (c) => {
+      plain(ctx, cut2, (c) => {
         c.moveTo(X(-0.9), Y(0.34));
         c.lineTo(X(-0.78), Y(0.33));
         c.lineTo(X(-0.845), Y(0.5));
@@ -80606,10 +80718,10 @@ ${PROCESSOR_WRAPPER2}`;
         c.lineTo(X(-0.9), Y(0.5));
         c.closePath();
       });
-      plain(ctx, cut, (c) => {
+      plain(ctx, cut2, (c) => {
         c.ellipse(X(-0.9), Y(-0.06), pw * 0.026, ph * 0.026, 0, 0, Math.PI * 2);
       });
-      stroke(ctx, cut, Math.max(0.18, pw * 0.022), (c) => {
+      stroke(ctx, cut2, Math.max(0.18, pw * 0.022), (c) => {
         c.moveTo(X(-0.72), Y(-0.16));
         c.quadraticCurveTo(X(-0.62), Y(-0.05), X(-0.5), Y(-0.02));
       });
@@ -81600,43 +81712,9 @@ ${PROCESSOR_WRAPPER2}`;
     eggshellCopter(ctx, w, h, frame3 = 0) {
       eggshellCopterArt(ctx, w, h, frame3);
     },
-    // The finale's ride: a striped clown balloon with the tub as its basket.
-    // Slower than a walking plumber, which is the forty-year losing streak
-    // explained. Twice the copter's height on purpose — it lives in the sky
-    // band, and it is the thing you pop.
+    // The finale's ride: the striped balloon, see eggshellBalloonArt above.
     eggshellBalloon(ctx, w, h) {
-      ctx.save();
-      ctx.scale(w / 28, h / 46);
-      const cx = 14, cy = 12.5, rx = 12.5, ry = 13, lw = EG_LW;
-      ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU);
-      ctx.clip();
-      ctx.fillStyle = EG_CREAM;
-      ctx.fillRect(0, 0, 28, 28);
-      for (let i = 0; i < 7; i += 2) {
-        ctx.fillStyle = EG_RED;
-        ctx.fillRect(cx - rx + i * (2 * rx / 7), 0, 2 * rx / 7, 28);
-      }
-      ctx.restore();
-      egLine(ctx, EG_LINE, lw, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU));
-      egP(ctx, "#3a3f4a", (k) => {
-        k.moveTo(11.3, 25);
-        k.lineTo(16.7, 25);
-        k.lineTo(15.7, 27.5);
-        k.lineTo(12.3, 27.5);
-        k.closePath();
-      }, EG_LINE, lw * 0.6);
-      egLine(ctx, "#5a4a3a", 0.4, (k) => {
-        k.moveTo(12.4, 27.5);
-        k.lineTo(2 + EG_APE_W * 0.13, 26 + EG_APE_H * 0.6);
-        k.moveTo(14, 27.5);
-        k.lineTo(14, 26 + EG_APE_H * 0.34);
-        k.moveTo(15.6, 27.5);
-        k.lineTo(2 + EG_APE_W * 0.87, 26 + EG_APE_H * 0.6);
-      });
-      eggshellApe(ctx, 2, 26);
-      ctx.restore();
+      eggshellBalloonArt(ctx, w, h);
     },
     dustdevil(ctx, w, h) {
       const u = Math.max(w, h);
@@ -82073,9 +82151,9 @@ ${PROCESSOR_WRAPPER2}`;
     rampChevron(ctx, w, h, frame3 = 0) {
       const u = Math.max(w, h);
       const p = frame3 % 8 / 8;
-      const top = h * 0.46, band = h * 0.9;
+      const top = h * 0.46, band2 = h * 0.9;
       plain(ctx, "rgba(10,8,18,0.45)", (c) => rr(c, 0, top - h * 0.11, w, h * 0.14, h * 0.04));
-      fineShape(ctx, "#171c2b", u, (c) => rr(c, 0, top, w, band, h * 0.07), "rgba(6,6,14,0.65)", 0.018);
+      fineShape(ctx, "#171c2b", u, (c) => rr(c, 0, top, w, band2, h * 0.07), "rgba(6,6,14,0.65)", 0.018);
       plain(ctx, "rgba(120,132,164,0.35)", (c) => rr(c, w * 0.015, top + h * 0.02, w * 0.97, h * 0.09, h * 0.03));
       plain(ctx, "#f6d33c", (c) => rr(c, w * 0.03, top + h * 0.075, w * 0.94, h * 0.04, h * 0.02));
       const dx = w * 0.03, dy = top + h * 0.16, dw = w * 0.94, dh = h - dy;
@@ -84071,7 +84149,7 @@ ${PROCESSOR_WRAPPER2}`;
   function drawGirderRun(ctx, cabinet, camX, r, y, a, b) {
     const ink2 = cabinet.ground;
     const lit = cabinet.groundDark;
-    const band = (top2, depth) => {
+    const band2 = (top2, depth) => {
       ctx.beginPath();
       ctx.moveTo(a, y(a) + top2);
       for (let x = a; x <= b; x += 2) ctx.lineTo(x, y(x) + top2);
@@ -84081,13 +84159,13 @@ ${PROCESSOR_WRAPPER2}`;
       ctx.lineTo(a, y(a) + top2 + depth);
       ctx.closePath();
     };
-    band(0, GIRDER_H);
+    band2(0, GIRDER_H);
     ctx.fillStyle = lit;
     ctx.fill();
     ctx.fillStyle = ink2;
-    band(0, GIRDER_FLANGE);
+    band2(0, GIRDER_FLANGE);
     ctx.fill();
-    band(GIRDER_H - GIRDER_FLANGE, GIRDER_FLANGE);
+    band2(GIRDER_H - GIRDER_FLANGE, GIRDER_FLANGE);
     ctx.fill();
     const top = GIRDER_FLANGE + 0.5;
     const bot = GIRDER_H - GIRDER_FLANGE - 0.5;
@@ -84133,13 +84211,13 @@ ${PROCESSOR_WRAPPER2}`;
         const x = wx - camX + (m - 0.5) * stride * 0.8;
         if (x < fromX || x > toX) continue;
         const top = topAt(x);
-        const band = botAt(x) - top;
-        if (band < 3) continue;
+        const band2 = botAt(x) - top;
+        if (band2 < 3) continue;
         const depth = 0.12 + q * 0.84;
         const grade = 0.28 + p * p * p * 2.2;
-        const rx = Math.min(0.9 + depth * 1.6 * grade + grade, maxR, band * 0.42);
+        const rx = Math.min(0.9 + depth * 1.6 * grade + grade, maxR, band2 * 0.42);
         const ry = rx * (0.58 + n2 * 0.36);
-        const cy = top + ry + depth * (band - ry * 2);
+        const cy = top + ry + depth * (band2 - ry * 2);
         if (cy - ry > clipY) continue;
         const tilt = (q - 0.5) * 1.3;
         ctx.beginPath();
@@ -84284,7 +84362,7 @@ ${PROCESSOR_WRAPPER2}`;
     const soil = soilOf(cabinet);
     const dark = cabinet.groundDark || "#2a7038";
     const STEP = 4;
-    const band = (from, to, offset, colour, height) => {
+    const band2 = (from, to, offset, colour, height) => {
       ctx.beginPath();
       ctx.moveTo(from - camX, surfaceY(from) + offset(from));
       for (let wx = Math.ceil(from / STEP) * STEP; wx < to; wx += STEP) {
@@ -84299,11 +84377,11 @@ ${PROCESSOR_WRAPPER2}`;
     };
     for (const [from, to] of runs) {
       if (to <= from) continue;
-      band(from, to, () => TURF, dark, bottomY);
-      band(from, to, () => TURF + 5, soil, bottomY);
+      band2(from, to, () => TURF, dark, bottomY);
+      band2(from, to, () => TURF + 5, soil, bottomY);
       const seam = seamFrom ? (wx, d) => Math.max(TURF + 6, seamFrom(wx) - surfaceY(wx) + d) : (wx, d) => d;
-      band(from, to, (wx) => seam(wx, SOIL_SEAM_1) + seamWobble(wx), darken(soil, 0.78), bottomY);
-      band(from, to, (wx) => seam(wx, SOIL_SEAM_2) + seamWobble(wx), darken(soil, 0.58), bottomY);
+      band2(from, to, (wx) => seam(wx, SOIL_SEAM_1) + seamWobble(wx), darken(soil, 0.78), bottomY);
+      band2(from, to, (wx) => seam(wx, SOIL_SEAM_2) + seamWobble(wx), darken(soil, 0.58), bottomY);
       drawStones(
         ctx,
         camX,
@@ -84396,7 +84474,7 @@ ${PROCESSOR_WRAPPER2}`;
   function drawFloorSkin(ctx, cabinet, camX, a, b, floorAt, datum) {
     const soil = soilOf(cabinet);
     const STEP = 4;
-    const band = (offTop, offBot, colour) => {
+    const band2 = (offTop, offBot, colour) => {
       ctx.beginPath();
       ctx.moveTo(a - camX, floorAt(a) + offTop);
       for (let wx = a; wx <= b; wx += STEP) ctx.lineTo(wx - camX, floorAt(wx) + offTop);
@@ -84408,8 +84486,8 @@ ${PROCESSOR_WRAPPER2}`;
       ctx.fillStyle = colour;
       ctx.fill();
     };
-    band(TURF, TURF + 5, soil);
-    band(TURF + 5, FLOOR_SKIN, darken(soil, 0.78));
+    band2(TURF, TURF + 5, soil);
+    band2(TURF + 5, FLOOR_SKIN, darken(soil, 0.78));
   }
   function drawTunnel(ctx, camX, cabinet, r, topAt, groundAt, from, to, bottomY, hillDepth = 0) {
     const soil = soilOf(cabinet);
@@ -84695,11 +84773,11 @@ ${PROCESSOR_WRAPPER2}`;
   }
   function drawGapsAwareGround(ctx, camX, cab, obstacles, colTop, colBody, overhangs = [], t = 0) {
     const runs = solidRuns(camX, obstacles);
-    const cut = (overhangs || []).map((sp) => [sp.x - camX, sp.x + sp.w - camX]);
+    const cut2 = (overhangs || []).map((sp) => [sp.x - camX, sp.x + sp.w - camX]);
     for (const [a, b] of runs) {
       if (b <= a) continue;
       let body = [[a, b]];
-      for (const [ca, cb] of cut) {
+      for (const [ca, cb] of cut2) {
         const next = [];
         for (const [p, q] of body) {
           if (ca > p) next.push([p, Math.min(q, ca)]);
@@ -84826,7 +84904,7 @@ ${PROCESSOR_WRAPPER2}`;
       ridgePath();
       x.fillStyle = color;
       x.fill();
-      const band = (col, frac2, h1, a1, h2, a2) => {
+      const band2 = (col, frac2, h1, a1, h2, a2) => {
         const lineY = yBase - amp * frac2;
         x.save();
         ridgePath();
@@ -84843,8 +84921,8 @@ ${PROCESSOR_WRAPPER2}`;
         x.fill();
         x.restore();
       };
-      if (rock) band(rock, 0.46, 2, 3.5, 5, 2);
-      if (snow) band(snow, 0.62, 3, 2.5, 5, 1.5);
+      if (rock) band2(rock, 0.46, 2, 3.5, 5, 2);
+      if (snow) band2(snow, 0.62, 3, 2.5, 5, 1.5);
       if (trees) {
         const n2 = Math.max(2, Math.round(period / 38));
         for (let i = 0; i < n2; i++) {
@@ -85040,8 +85118,8 @@ ${PROCESSOR_WRAPPER2}`;
     if (!reduced) {
       const u = t * 0.15 % 1;
       const hy = V_RIM_Y + (V_LAVA_BOT - V_RIM_Y) * u;
-      const band = 13;
-      const hg = ctx.createLinearGradient(0, hy - band, 0, hy + band);
+      const band2 = 13;
+      const hg = ctx.createLinearGradient(0, hy - band2, 0, hy + band2);
       const a = 0.3 * Math.sin(Math.PI * u);
       hg.addColorStop(0, "rgba(255,198,96,0)");
       hg.addColorStop(0.5, `rgba(255,198,96,${a})`);
@@ -85050,7 +85128,7 @@ ${PROCESSOR_WRAPPER2}`;
       ctx.clip(volcBake.cone);
       ctx.clip(volcBake.cap);
       ctx.fillStyle = hg;
-      ctx.fillRect(CXB - V_HALF_BASE, hy - band, V_HALF_BASE * 2, band * 2);
+      ctx.fillRect(CXB - V_HALF_BASE, hy - band2, V_HALF_BASE * 2, band2 * 2);
       ctx.restore();
     }
     const over = volcBake.over;
@@ -86503,10 +86581,10 @@ ${PROCESSOR_WRAPPER2}`;
     for (let i = 0; i < 16; i++) if (spec[i]) return spec;
     return null;
   }
-  function lcdBandLevel(spec, band, bands, steps) {
+  function lcdBandLevel(spec, band2, bands, steps) {
     if (!spec) return null;
-    const lo = Math.floor((band / bands) ** 1.7 * 96);
-    const hi = Math.max(lo + 1, Math.floor(((band + 1) / bands) ** 1.7 * 96));
+    const lo = Math.floor((band2 / bands) ** 1.7 * 96);
+    const hi = Math.max(lo + 1, Math.floor(((band2 + 1) / bands) ** 1.7 * 96));
     let sum = 0;
     for (let i = lo; i < hi && i < spec.length; i++) sum += spec[i];
     const avg = sum / Math.max(1, hi - lo) / 255;
@@ -87750,8 +87828,8 @@ ${PROCESSOR_WRAPPER2}`;
     ctx.strokeRect(left - 2.5, top - 37.5, bankW + 5, 37);
     for (let col = 0; col < cols; col++) {
       const cx = left + col * 5;
-      const band = index * cols + col;
-      const heard = lcdBandLevel(frame3.spectrum, band, 24, max);
+      const band2 = index * cols + col;
+      const heard = lcdBandLevel(frame3.spectrum, band2, 24, max);
       const level = heard != null ? heard : LCD_EQ_LEVELS[lcdMod(frame3.step + index * 2 + col * 5, LCD_EQ_LEVELS.length)];
       ctx.fillStyle = LCD_WINDOW_OFF;
       for (let n2 = 0; n2 < max; n2++) ctx.fillRect(cx, top - 5 - n2 * 5, 3, 3);
@@ -89426,13 +89504,13 @@ ${PROCESSOR_WRAPPER2}`;
           if (x + w < -4 || x > right + 4) continue;
           pits.push({ x, w, wx: ob.x });
         }
-        const cuts = pits.map(({ x, w }) => ({ from: Math.max(0, x), to: Math.min(right, x + w) })).filter((cut) => cut.to > cut.from).sort((a, b) => a.from - b.from).reduce((merged, cut) => {
+        const cuts = pits.map(({ x, w }) => ({ from: Math.max(0, x), to: Math.min(right, x + w) })).filter((cut2) => cut2.to > cut2.from).sort((a, b) => a.from - b.from).reduce((merged, cut2) => {
           const last = merged[merged.length - 1];
-          if (last && cut.from <= last.to) last.to = Math.max(last.to, cut.to);
-          else merged.push({ ...cut });
+          if (last && cut2.from <= last.to) last.to = Math.max(last.to, cut2.to);
+          else merged.push({ ...cut2 });
           return merged;
         }, []);
-        const inCut = (a, b) => cuts.some((cut) => b > cut.from && a < cut.to);
+        const inCut = (a, b) => cuts.some((cut2) => b > cut2.from && a < cut2.to);
         const STEP = 2;
         for (let wx = Math.floor(camX / STEP) * STEP; wx < camX + right + STEP; wx += STEP) {
           const sx = wx - camX;
@@ -91194,7 +91272,7 @@ ${PROCESSOR_WRAPPER2}`;
     const gap = 0.34;
     const a0 = Math.PI / 2 + gap;
     const a1 = Math.PI / 2 - gap + Math.PI * 2;
-    const band = (rad, width, color) => {
+    const band2 = (rad, width, color) => {
       ctx.strokeStyle = color;
       ctx.lineWidth = width;
       ctx.beginPath();
@@ -91227,10 +91305,10 @@ ${PROCESSOR_WRAPPER2}`;
     foot(-1);
     foot(1);
     ctx.lineCap = "round";
-    band(mid, T + 2, "#6a4420");
-    band(mid, T, "#a06830");
-    band(inner + 1.5, 2, "#c88848");
-    band(inner + 0.5, 1, "#f6d33c");
+    band2(mid, T + 2, "#6a4420");
+    band2(mid, T, "#a06830");
+    band2(inner + 1.5, 2, "#c88848");
+    band2(inner + 0.5, 1, "#f6d33c");
     const n2 = 12;
     const chase = settings.reducedMotion ? 0 : t * (0.9 + 2.6 * arm2);
     ctx.fillStyle = "#fff6d0";
@@ -91338,6 +91416,8 @@ ${PROCESSOR_WRAPPER2}`;
   var EDGE_BOTTOM = EDGE / 2;
   var DISC_R = 11;
   var HERO_DISC_PLATE = "rgba(144,170,190,0.98)";
+  var HUD_FACE_INK = Object.freeze({ body: 0.7, face: 0.72 });
+  var HERO_DISC_RIM_W = 0.75;
   var PILL_X = EDGE;
   var PILL_H = 18;
   var PILL_Y = EDGE + Math.max(0, DISC_R * 2 - PILL_H) / 2;
@@ -91535,7 +91615,7 @@ ${PROCESSOR_WRAPPER2}`;
   }
   function drawChipFace(ctx, id35, x, y, w, h, over = 1, joy = false) {
     const fw = w * over, fh = h * over;
-    const face2 = toonFaceSprite(
+    const face2 = hudFaceSprite(
       id35,
       Math.round(fw),
       Math.round(fh),
@@ -91546,6 +91626,17 @@ ${PROCESSOR_WRAPPER2}`;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(face2, x - (fw - w) / 2, y - (fh - h) / 2, fw, fh);
     ctx.imageSmoothingEnabled = prev;
+  }
+  function hudFaceSprite(id35, w, h, opts = null) {
+    const previous = { ...INK };
+    setInk({ ...previous, ...HUD_FACE_INK });
+    try {
+      const faceOpts = { ...opts || {} };
+      faceOpts.key = `hud-thin${opts?.key ? `-${opts.key}` : ""}`;
+      return toonFaceSprite(id35, w, h, faceOpts);
+    } finally {
+      setInk(previous);
+    }
   }
   function chipWell(ctx, path5) {
     ctx.save();
@@ -91584,7 +91675,7 @@ ${PROCESSOR_WRAPPER2}`;
     }
     ctx.restore();
     ctx.strokeStyle = rim;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = HERO_DISC_RIM_W;
     ctx.beginPath();
     ctx.ellipse(cx, cy, Math.max(0.35, w - 0.5), R - 0.5, 0, 0, Math.PI * 2);
     ctx.stroke();
@@ -91697,7 +91788,7 @@ ${PROCESSOR_WRAPPER2}`;
     const badgeW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
     const badgeX = Math.round(W / 2 - badgeW / 2);
     drawPanel(ctx, badgeX, cy - BADGE_H / 2, badgeW, BADGE_H, BADGE_R, void 0, PANEL);
-    const face2 = toonFaceSprite(run.relay.current, FACE_W, FACE_H);
+    const face2 = hudFaceSprite(run.relay.current, FACE_W, FACE_H);
     if (face2) {
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(face2, badgeX + PAD_L, cy - FACE_H / 2, FACE_W, FACE_H);
@@ -91885,7 +91976,7 @@ ${PROCESSOR_WRAPPER2}`;
     if (isEgg) {
       drawProp(ctx, "eggshell", x + PAD, faceY, FACE_W, FACE_H);
     } else {
-      const face2 = toonFaceSprite(speech.who, FACE_W, FACE_H);
+      const face2 = hudFaceSprite(speech.who, FACE_W, FACE_H);
       if (face2) {
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(face2, x + PAD, faceY, FACE_W, FACE_H);
@@ -97281,13 +97372,13 @@ ${PROCESSOR_WRAPPER2}`;
     c.fillStyle = "#f2c53c";
     c.fillRect(x, y, w, h);
     c.fillStyle = "#1d1c26";
-    const band = h * 1.1;
-    for (let bx = -h * 2 + phase % (band * 2); bx < w + h * 2; bx += band * 2) {
+    const band2 = h * 1.1;
+    for (let bx = -h * 2 + phase % (band2 * 2); bx < w + h * 2; bx += band2 * 2) {
       path2(c, "#1d1c26", null, 0, (p) => {
         p.moveTo(x + bx, y + h);
         p.lineTo(x + bx + h, y);
-        p.lineTo(x + bx + h + band, y);
-        p.lineTo(x + bx + band, y + h);
+        p.lineTo(x + bx + h + band2, y);
+        p.lineTo(x + bx + band2, y + h);
         p.closePath();
       });
     }
@@ -101337,11 +101428,13 @@ ${PROCESSOR_WRAPPER2}`;
       ]
     }
   };
+  var SALT_PEPPER = [HAIR_TONE.white, HAIR_TONE.silver, HAIR_TONE.steel];
+  var strandTone = (i, shaded) => SALT_PEPPER[i % SALT_PEPPER.length][shaded ? 1 : 0];
   var hairBack = (name) => (c, X, Y, lw) => {
-    for (const l of HAIR_STYLES[name].back) lock(c, X, Y, lw, TONE2[1], l);
+    HAIR_STYLES[name].back.forEach((l, i) => lock(c, X, Y, lw, strandTone(i, true), l));
   };
   var hairFront = (name) => (c, X, Y, lw) => {
-    for (const l of HAIR_STYLES[name].front) lock(c, X, Y, lw, TONE2[0], l);
+    HAIR_STYLES[name].front.forEach((l, i) => lock(c, X, Y, lw, strandTone(i, false), l));
   };
   function headEgg(k, cx, cy, rx, ry, taper = 0.7, widest = -0.16) {
     const wy = cy + ry * widest, top = cy - ry, bot = cy + ry, h = 0.56;
@@ -101374,38 +101467,122 @@ ${PROCESSOR_WRAPPER2}`;
   function paleDome(c, X, Y, lw) {
     P3(c, SKIN, (k) => HEAD(k, X, Y), PRO_SKIN, PRO_LW);
   }
-  var professorHead = (name) => (c, X, Y, lw) => {
-    hairBack(name)(c, X, Y, lw);
-    hairFront(name)(c, X, Y, lw);
+  var hairStyleFor = (name, shocked, hit = "blast") => shocked && hit ? hit : name;
+  var professorHead = (name, hit) => (c, X, Y, lw, shocked) => {
+    const style = hairStyleFor(name, shocked, hit);
+    hairBack(style)(c, X, Y, lw);
+    hairFront(style)(c, X, Y, lw);
     ears(c, X, Y);
     paleDome(c, X, Y, lw);
   };
-  var apeHairHead = (name) => (c, X, Y, lw) => {
-    hairBack(name)(c, X, Y, lw);
-    hairFront(name)(c, X, Y, lw);
+  var apeHairHead = (name, hit) => (c, X, Y, lw, shocked) => {
+    const style = hairStyleFor(name, shocked, hit);
+    hairBack(style)(c, X, Y, lw);
+    hairFront(style)(c, X, Y, lw);
     EGGSHELL_PARTS.head(c, X, Y, lw);
   };
   var EYE_GAP = { wide: 6e-3, mid: -4e-3, close: -0.013 };
   var SPEC = { hw: 0.067, bridge: 0.01, eye: EYE_GAP.mid };
-  var RIM2 = "#3d3d48";
-  var specsWith = (o = {}) => (c, X, Y, lw, shocked) => drawSpecs(c, X, Y, shocked, { ...SPEC, ...o });
+  var RIM2 = "rgba(61,61,72,0.72)";
+  var BROW_STYLES = {
+    none: null,
+    tame: { w: 0.052, h: 0.012, lift: 0, flick: 0, tilt: 0 },
+    bushy: { w: 0.06, h: 0.019, lift: 4e-3, flick: 0.012, tilt: 0.06 },
+    wild: { w: 0.066, h: 0.023, lift: 8e-3, flick: 0.02, tilt: 0.12 }
+  };
+  function drawBrows(c, X, Y, shocked, name = "bushy") {
+    const b = name && typeof name === "object" ? name : BROW_STYLES[name];
+    if (!b) return;
+    const cy = Y(0.328) - Y(0.036) - Y(0.026) - (shocked ? Y(0.014) : 0) - Y(b.lift);
+    const off = X(SPEC.hw + SPEC.bridge / 2);
+    for (const sd of [-1, 1]) {
+      const x = X(0.5) + sd * off;
+      const w = X(b.w), h = Y(b.h), tilt = sd * b.tilt * (shocked ? 1.6 : 1);
+      P3(c, TONE2[0], (k) => {
+        k.moveTo(x - w, cy + h * 0.6 + tilt * 8);
+        k.quadraticCurveTo(x, cy - h * 1.1, x + w, cy + h * 0.4 - tilt * 8);
+        if (b.flick) k.lineTo(x + sd * (w + X(b.flick)), cy - h * (1 + b.flick * 40));
+        k.quadraticCurveTo(x, cy + h * 1.4, x - w, cy + h * 1.5 + tilt * 8);
+        k.closePath();
+      }, PRO_INK, PRO_LW * 0.6);
+    }
+  }
+  var specsWith = (o = {}) => (c, X, Y, lw, shocked) => {
+    drawSpecs(c, X, Y, shocked, { ...SPEC, ...o });
+    drawBrows(c, X, Y, shocked, o.brows === void 0 ? "bushy" : o.brows);
+  };
   function drawSpecs(c, X, Y, shocked, o) {
-    const cy = Y(0.328), hh = Y(0.038);
+    const cy = Y(0.328), hh = Y(0.036);
     const hw = X(o.hw), off = X(o.hw + o.bridge / 2), gap = o.eye;
-    const brow = PRO_LW * 0.75, top = cy - hh;
+    const brow = PRO_LW * 0.6, top = cy - hh;
     for (const s of [-1, 1]) {
       const x = X(0.5) + s * off;
-      line8(c, RIM2, PRO_LW * 0.6, (k) => {
+      line8(c, RIM2, PRO_LW * 0.42, (k) => {
         k.moveTo(x + s * hw, top + brow);
         k.lineTo(X(0.5) + s * X(0.166), cy - Y(6e-3));
       });
-      P3(c, LENS2, (k) => rr7(k, x - hw, top, hw * 2, hh * 2, X(8e-3)), RIM2, PRO_LW * 0.75);
+      P3(c, LENS2, (k) => rr7(k, x - hw, top, hw * 2, hh * 2, X(8e-3)), RIM2, PRO_LW * 0.5);
       dot6(c, INK7, x + s * X(gap), cy + Y(4e-3), X(shocked ? 0.012 : 0.017));
     }
     P3(c, RIM2, (k) => rr7(k, X(0.5) - off - hw - PRO_LW * 0.08, top - PRO_LW * 0.08, (off + hw) * 2 + PRO_LW * 0.16, brow, X(4e-3)));
   }
-  var STUBBLE = "#bb9a82";
-  var STUBBLE_DK = "#a5836c";
+  var SHIRT_W = "#eceef4";
+  var SHIRT_K = "#23232e";
+  var shoulders = (c, X, Y) => (k) => k.ellipse(X(0.5), Y(0.6), X(0.33), Y(0.17), 0, 0, TAU13);
+  var shirtHands = (dark) => (c, X, Y, lw) => {
+    for (const sx of [0.24, 0.76]) {
+      P3(c, dark ? SHIRT_K : SHIRT_W, (k) => k.ellipse(X(sx), Y(0.585), X(0.075), Y(0.06), 0, 0, TAU13), PRO_INK, PRO_LW);
+      dot6(c, FUR2, X(sx), Y(0.625), X(0.055), PRO_INK, PRO_LW);
+    }
+  };
+  var onShoulders = (c, X, Y, fn) => {
+    c.save();
+    c.beginPath();
+    shoulders(c, X, Y)(c);
+    c.clip();
+    fn();
+    c.restore();
+  };
+  function shirtStripes(c, X, Y, lw) {
+    P3(c, SHIRT_W, shoulders(c, X, Y), PRO_INK, PRO_LW);
+    onShoulders(c, X, Y, () => {
+      for (const sx of [0.29, 0.43, 0.57, 0.71]) P3(c, SHIRT_K, (k) => k.rect(X(sx), Y(0.44), X(0.06), Y(0.4)));
+    });
+    P3(c, null, shoulders(c, X, Y), PRO_INK, PRO_LW);
+  }
+  function shirtCollar(c, X, Y, lw) {
+    P3(c, SHIRT_W, shoulders(c, X, Y), PRO_INK, PRO_LW);
+    onShoulders(c, X, Y, () => {
+      P3(c, SHIRT_K, (k) => {
+        k.moveTo(X(0.5), Y(0.5));
+        k.lineTo(X(0.38), Y(0.53));
+        k.lineTo(X(0.47), Y(0.63));
+        k.closePath();
+      });
+      P3(c, SHIRT_K, (k) => {
+        k.moveTo(X(0.5), Y(0.5));
+        k.lineTo(X(0.62), Y(0.53));
+        k.lineTo(X(0.53), Y(0.63));
+        k.closePath();
+      });
+      P3(c, SHIRT_K, (k) => k.rect(X(0.485), Y(0.6), X(0.03), Y(0.24)));
+    });
+  }
+  function shirtYoke(c, X, Y, lw) {
+    P3(c, SHIRT_K, shoulders(c, X, Y), PRO_INK, PRO_LW);
+    onShoulders(c, X, Y, () => {
+      P3(c, SHIRT_W, (k) => {
+        k.moveTo(X(0.2), Y(0.56));
+        k.quadraticCurveTo(X(0.5), Y(0.44), X(0.8), Y(0.56));
+        k.lineTo(X(0.8), Y(0.62));
+        k.quadraticCurveTo(X(0.5), Y(0.52), X(0.2), Y(0.62));
+        k.closePath();
+      });
+    });
+  }
+  var STUBBLE = "#c9ab93";
+  var STUBBLE_DK = "#b08e77";
+  var FIELD_TONE = { whiter: "rgba(232,235,242,0.55)", white: "rgba(238,240,246,0.8)" };
   function onFace(c, X, Y, fn) {
     c.save();
     c.beginPath();
@@ -101414,32 +101591,42 @@ ${PROCESSOR_WRAPPER2}`;
     fn();
     c.restore();
   }
-  function stubbleField(c, X, Y, chin = true) {
+  var CHIN_TONE = {
+    dark: STUBBLE_DK,
+    silver: "rgba(205,211,224,0.62)",
+    white: "rgba(223,226,234,0.62)",
+    steel: "rgba(188,195,210,0.62)"
+  };
+  function stubbleField(c, X, Y, chin = true, o = {}) {
+    const chinTone = CHIN_TONE[o.chin] || STUBBLE_DK;
+    const light = o.light ? 0.06 : 0;
     onFace(c, X, Y, () => {
-      P3(c, STUBBLE, (k) => {
-        k.moveTo(X(0.295), Y(0.425));
-        k.quadraticCurveTo(X(0.5), Y(0.478), X(0.705), Y(0.425));
+      P3(c, FIELD_TONE[o.field] || (o.light ? "#c7a992" : STUBBLE), (k) => {
+        k.moveTo(X(0.295), Y(0.425 + light));
+        k.quadraticCurveTo(X(0.5), Y(0.478 + light), X(0.705), Y(0.425 + light));
         k.lineTo(X(0.705), Y(0.72));
         k.lineTo(X(0.295), Y(0.72));
         k.closePath();
       });
-      if (chin) P3(c, STUBBLE_DK, (k) => {
-        k.moveTo(X(0.425), Y(0.53));
-        k.quadraticCurveTo(X(0.5), Y(0.575), X(0.575), Y(0.53));
-        k.quadraticCurveTo(X(0.565), Y(0.635), X(0.5), Y(0.665));
-        k.quadraticCurveTo(X(0.435), Y(0.635), X(0.425), Y(0.53));
+      if (chin) P3(c, chinTone, (k) => {
+        const w = o.narrowChin ? 0.048 : 0.075;
+        k.moveTo(X(0.5 - w), Y(0.53));
+        k.quadraticCurveTo(X(0.5), Y(0.575), X(0.5 + w), Y(0.53));
+        k.quadraticCurveTo(X(0.5 + w * 0.87), Y(0.635), X(0.5), Y(0.665));
+        k.quadraticCurveTo(X(0.5 - w * 0.87), Y(0.635), X(0.5 - w), Y(0.53));
         k.closePath();
       });
     });
   }
-  function mouthLine(c, X, Y, lw, shocked, y = 0.508) {
+  function mouthLine(c, X, Y, lw, shocked, y = 0.508, curve = 0.015) {
     if (shocked) gasp(c, X, Y, y - 8e-3);
     else line8(c, PRO_INK, PRO_LW * 1.2, (k) => {
       k.moveTo(X(0.46), Y(y));
-      k.quadraticCurveTo(X(0.5), Y(y + 0.015), X(0.54), Y(y));
+      k.quadraticCurveTo(X(0.5), Y(y + curve), X(0.54), Y(y));
     });
   }
-  var stache = (c, X, Y, lw, shocked, span, drop, y = 0.458) => mustache2(c, X(0.5), Y(shocked ? y - 0.018 : y), X(span), Y(drop), shocked ? -0.5 : 0, TONE2[0], PRO_INK, PRO_LW);
+  var STACHE_TONE = HAIR_TONE.silver[0];
+  var stache = (c, X, Y, lw, shocked, span, drop, y = 0.458) => mustache2(c, X(0.5), Y(shocked ? y - 0.018 : y), X(span), Y(drop), shocked ? -0.5 : 0, STACHE_TONE, PRO_INK, PRO_LW);
   function fhShaven(c, X, Y, lw, shocked) {
     mouthLine(c, X, Y, lw, shocked, 0.5);
   }
@@ -101452,6 +101639,11 @@ ${PROCESSOR_WRAPPER2}`;
     mouthLine(c, X, Y, lw, shocked);
     stache(c, X, Y, lw, shocked, 0.118, 0.046);
   }
+  var trimWith = (o) => (c, X, Y, lw, shocked) => {
+    stubbleField(c, X, Y, o.chin !== "none", o);
+    mouthLine(c, X, Y, lw, shocked, 0.508, o.curve === void 0 ? 0.015 : o.curve);
+    stache(c, X, Y, lw, shocked, 0.118, 0.046);
+  };
   function fhWalrus(c, X, Y, lw, shocked) {
     stubbleField(c, X, Y, false);
     mouthLine(c, X, Y, lw, shocked, 0.53);
@@ -101526,8 +101718,10 @@ ${PROCESSOR_WRAPPER2}`;
       // rather than off in one tile, and `keepShell` is the exception a tile has
       // to ask for.
       ...o.keepShell ? {} : { shell: null },
-      head: (o.ape ? apeHairHead : professorHead)(name),
+      head: (o.ape ? apeHairHead : professorHead)(name, o.hitStyle === void 0 ? "blast" : o.hitStyle),
       ...o.ape ? {} : { face: nose },
+      ...o.body === void 0 ? {} : { body: o.body },
+      ...o.hands === void 0 ? {} : { hands: o.hands },
       hair: null,
       eyes: o.eyes || specsWith(),
       mouth: o.mouth || fhTrim
@@ -101536,6 +101730,192 @@ ${PROCESSOR_WRAPPER2}`;
     p.mouth = tinted2(t, p.mouth);
     return p;
   }
+  var SUIT = "#2a2a36";
+  var TWEED = "#8a7355";
+  var BURGUNDY = "#7a2434";
+  var KNIT = "#8d94a4";
+  var COAT = "#f2f2f6";
+  var SHIRT_BLUE = "#a8c4e8";
+  var TIE = { red: "#c83030", navy: "#24305a", black: "#23232e", green: "#3f7a4a", gold: "#d8a83c" };
+  var band = (c, X, Y, fill3) => P3(c, fill3, shoulders(c, X, Y), PRO_INK, PRO_LW);
+  var collarPoints = (c, X, Y, fill3) => {
+    for (const s of [-1, 1]) P3(c, fill3, (k) => {
+      k.moveTo(X(0.5 + s * 0.05), Y(0.46));
+      k.lineTo(X(0.5 + s * 0.21), Y(0.5));
+      k.lineTo(X(0.5 + s * 0.13), Y(0.62));
+      k.closePath();
+    }, PRO_INK, PRO_LW);
+  };
+  var lapels = (c, X, Y, fill3, shirt) => {
+    P3(c, shirt, (k) => {
+      k.moveTo(X(0.36), Y(0.46));
+      k.lineTo(X(0.64), Y(0.46));
+      k.lineTo(X(0.5), Y(0.66));
+      k.closePath();
+    });
+    for (const s of [-1, 1]) P3(c, fill3, (k) => {
+      k.moveTo(X(0.5 + s * 0.02), Y(0.44));
+      k.lineTo(X(0.5 + s * 0.24), Y(0.5));
+      k.lineTo(X(0.5 + s * 0.16), Y(0.7));
+      k.lineTo(X(0.5 + s * 0.06), Y(0.66));
+      k.closePath();
+    }, PRO_INK, PRO_LW);
+  };
+  var skinHands = (cuff = null) => (c, X, Y, lw) => {
+    for (const sx of [0.24, 0.76]) {
+      if (cuff) P3(c, cuff, (k) => k.ellipse(X(sx), Y(0.585), X(0.075), Y(0.06), 0, 0, TAU13), PRO_INK, PRO_LW);
+      dot6(c, SKIN, X(sx), Y(0.625), X(0.055), PRO_SKIN, PRO_LW);
+    }
+  };
+  var necktie = (fill3, spots = null) => (c, X, Y) => {
+    const cx = X(0.5);
+    P3(c, fill3, (k) => {
+      k.moveTo(cx - X(0.028), Y(0.6));
+      k.lineTo(cx + X(0.028), Y(0.6));
+      k.lineTo(cx + X(0.04), Y(0.7));
+      k.lineTo(cx, Y(0.74));
+      k.lineTo(cx - X(0.04), Y(0.7));
+      k.closePath();
+    }, PRO_INK, PRO_LW * 0.8);
+    if (spots) for (const [dx, dy] of [[-0.012, 0.64], [0.014, 0.665], [-8e-3, 0.7]]) dot6(c, spots, cx + X(dx), Y(dy), X(7e-3));
+    P3(c, fill3, (k) => rr7(k, cx - X(0.03), Y(0.565), X(0.06), Y(0.04), X(8e-3)), PRO_INK, PRO_LW * 0.8);
+  };
+  var handsAnd = (hands2, tie) => (c, X, Y, lw) => {
+    hands2(c, X, Y, lw);
+    if (tie) tie(c, X, Y, lw);
+  };
+  var OUTFIT = {
+    shirtRed: { body: (c, X, Y) => {
+      band(c, X, Y, COAT);
+      collarPoints(c, X, Y, COAT);
+    }, hands: handsAnd(skinHands(COAT), necktie(TIE.red)) },
+    labcoat: { body: (c, X, Y) => {
+      band(c, X, Y, COAT);
+      lapels(c, X, Y, COAT, SHIRT_BLUE);
+    }, hands: handsAnd(skinHands(COAT), necktie(TIE.navy)) },
+    suit: { body: (c, X, Y) => {
+      band(c, X, Y, SUIT);
+      lapels(c, X, Y, SUIT, COAT);
+    }, hands: handsAnd(skinHands(SUIT), necktie(TIE.red)) },
+    tweed: { body: (c, X, Y) => {
+      band(c, X, Y, TWEED);
+      lapels(c, X, Y, TWEED, COAT);
+    }, hands: handsAnd(skinHands(TWEED), necktie(TIE.green)) },
+    turtleneck: {
+      body: (c, X, Y) => {
+        band(c, X, Y, SUIT);
+        onShoulders(c, X, Y, () => P3(c, "#3a3a48", (k) => k.ellipse(X(0.5), Y(0.5), X(0.17), Y(0.07), 0, 0, TAU13)));
+      },
+      hands: skinHands(SUIT)
+    },
+    waistcoat: {
+      body: (c, X, Y) => {
+        band(c, X, Y, COAT);
+        collarPoints(c, X, Y, COAT);
+        onShoulders(c, X, Y, () => P3(c, BURGUNDY, (k) => {
+          k.moveTo(X(0.24), Y(0.5));
+          k.lineTo(X(0.36), Y(0.48));
+          k.lineTo(X(0.5), Y(0.7));
+          k.lineTo(X(0.64), Y(0.48));
+          k.lineTo(X(0.76), Y(0.5));
+          k.lineTo(X(0.8), Y(0.8));
+          k.lineTo(X(0.2), Y(0.8));
+          k.closePath();
+        }, PRO_INK, PRO_LW));
+      },
+      hands: handsAnd(skinHands(COAT), necktie(TIE.black))
+    },
+    sweater: {
+      body: (c, X, Y) => {
+        band(c, X, Y, KNIT);
+        collarPoints(c, X, Y, COAT);
+        onShoulders(c, X, Y, () => line8(c, PRO_INK, PRO_LW, (k) => {
+          k.moveTo(X(0.34), Y(0.47));
+          k.lineTo(X(0.5), Y(0.66));
+          k.lineTo(X(0.66), Y(0.47));
+        }));
+      },
+      hands: handsAnd(skinHands(KNIT), necktie(TIE.red, "#f4e6b8"))
+    },
+    cape: {
+      body: (c, X, Y) => {
+        for (const s of [-1, 1]) P3(c, "#b8202a", (k) => {
+          k.moveTo(X(0.5 + s * 0.08), Y(0.6));
+          k.quadraticCurveTo(X(0.5 + s * 0.42), Y(0.5), X(0.5 + s * 0.36), Y(0.2));
+          k.quadraticCurveTo(X(0.5 + s * 0.3), Y(0.36), X(0.5 + s * 0.14), Y(0.42));
+          k.closePath();
+        }, PRO_INK, PRO_LW);
+        for (const s of [-1, 1]) P3(c, SUIT, (k) => {
+          k.moveTo(X(0.5 + s * 0.16), Y(0.62));
+          k.quadraticCurveTo(X(0.5 + s * 0.44), Y(0.52), X(0.5 + s * 0.4), Y(0.24));
+          k.lineTo(X(0.5 + s * 0.36), Y(0.2));
+          k.quadraticCurveTo(X(0.5 + s * 0.42), Y(0.5), X(0.5 + s * 0.08), Y(0.6));
+          k.closePath();
+        }, PRO_INK, PRO_LW);
+        band(c, X, Y, SUIT);
+        collarPoints(c, X, Y, COAT);
+      },
+      // NO TIE. Peter, 4 Sep: "I like the cape, lose the tie." The cape already
+      // owns the throat — a high collar standing behind the head is the loudest
+      // thing on him below the face — and a tie under it is a second focus in
+      // the same three units of drawing. The collar points stay: they are what
+      // stops the shirt reading as bare skin.
+      hands: skinHands(null)
+    }
+  };
+  var pick52 = (brows) => ({
+    parts: professor("mane", { mouth: trimWith({ chin: "silver" }), body: shirtStripes, hands: shirtHands(true), eyes: specsWith({ brows }) }),
+    mastTo: 10.4,
+    hy: 3.2
+  });
+  var BROW_W_SHORT = 0.044;
+  var browAt = (h, tilt) => ({
+    ...BROW_STYLES.tame,
+    w: BROW_W_SHORT,
+    h,
+    tilt,
+    flick: 0,
+    lift: (h - BROW_STYLES.tame.h) * 1.5 + tilt * 0.4
+  });
+  var cut = ({ brows = browAt(0.024, 0), field = void 0, curve = -0.01, outfit = OUTFIT.cape } = {}) => ({
+    parts: professor("mane", { mouth: trimWith({ chin: "silver", field, curve }), body: outfit.body, hands: outfit.hands, eyes: specsWith({ brows }) }),
+    mastTo: 10.4,
+    hy: 3.2
+  });
+  var EGGSHELL_MOUTHS = [
+    { id: "mo-smile", label: "SMILE (AS IT WAS)", note: "curve +0.015", ...cut({ curve: 0.015 }) },
+    { id: "mo-flat", label: "FLAT", note: "curve 0", ...cut({ curve: 0 }) },
+    { id: "mo-slight", label: "SLIGHT FROWN \u2014 PICKED", note: "curve -0.010 \u2014 settled 4 Sep", ...cut({ curve: -0.01 }) },
+    { id: "mo-frown", label: "FROWN", note: "curve -0.020 \u2014 the guardrail", ...cut({ curve: -0.02 }) }
+  ];
+  var EGGSHELL_BROW_ANGLES = [
+    { id: "ba-06", label: "MILD", note: "tilt 0.06 \u2014 the outer end a hair up", ...cut({ brows: browAt(0.024, 0.06) }) },
+    { id: "ba-00", label: "LEVEL \u2014 WORKING", note: "tilt 0 \u2014 symmetrical, and short: stern rather than unhinged", ...cut({ brows: browAt(0.024, 0) }) },
+    { id: "ba-10", label: "ANGRY", note: "tilt 0.10", ...cut({ brows: browAt(0.024, 0.1) }) },
+    { id: "ba-15", label: "FURIOUS", note: "tilt 0.15 \u2014 the guardrail; past this the brow leaves the face", ...cut({ brows: browAt(0.024, 0.15) }) }
+  ];
+  var EGGSHELL_STUBBLE_TONES = [
+    { id: "sf-warm", label: "WARM GREY \u2014 WORKING", note: "the warm grey field a touch darker, #c9ab93", ...cut({ field: void 0 }) },
+    { id: "sf-whiter", label: "WHITER", note: "translucent white at 55% over the skin", ...cut({ field: "whiter" }) },
+    { id: "sf-white", label: "WHITE", note: "translucent white at 80% \u2014 nearly a painted beard", ...cut({ field: "white" }) }
+  ];
+  var EGGSHELL_OUTFITS = [
+    { id: "of-shirt", label: "WHITE SHIRT, RED TIE", note: "Collar points beside the jaw, the red tie down the front. The plain read.", ...cut({ outfit: OUTFIT.shirtRed }) },
+    { id: "of-labcoat", label: "LAB COAT, NAVY TIE", note: "White coat lapels open on a blue shirt. The scientist.", ...cut({ outfit: OUTFIT.labcoat }) },
+    { id: "of-suit", label: "DARK SUIT, RED TIE", note: "Black lapels on a white shirt. The executive villain \u2014 a man who files forms.", ...cut({ outfit: OUTFIT.suit }) },
+    { id: "of-tweed", label: "TWEED, GREEN TIE", note: "Brown jacket, white shirt, a knit tie. The professor read.", ...cut({ outfit: OUTFIT.tweed }) },
+    { id: "of-turtleneck", label: "BLACK TURTLENECK", note: "The guardrail: nothing at the throat at all. The Bond-villain read.", ...cut({ outfit: OUTFIT.turtleneck }) },
+    { id: "of-waistcoat", label: "WAISTCOAT, BLACK TIE", note: "Burgundy waistcoat over a white shirt. The most colour on him below the chin.", ...cut({ outfit: OUTFIT.waistcoat }) },
+    { id: "of-sweater", label: "V-NECK, DOTTED TIE", note: "Grey sweater over a white collar, a red tie with cream dots. The nerd read.", ...cut({ outfit: OUTFIT.sweater }) },
+    { id: "of-cape", label: "CAPE, RED LINING \u2014 WORKING", note: "A high black collar standing behind the head, red inside, over a white shirt. No tie: the cape owns the throat, and a tie under it is a second focus in the same three units. The only outfit that changes his silhouette.", ...cut({ outfit: OUTFIT.cape }) }
+  ];
+  var EGGSHELL_WORKING = {
+    id: "pro-52-work",
+    name: "52, WORKING",
+    note: "The silver professor: wild mane, small fine specs, short level brows at twice the tame height, the slight frown (picked), the warm grey stubble with the trim silver moustache and silver chin patch, skin fists, no shell \u2014 in the cape, no tie.",
+    ...cut()
+  };
+  var EGGSHELL_WORKING_REF = { id: "pro-52", label: "52 AS PICKED", ...pick52("tame") };
   var EGGSHELL_REDESIGNS = [
     // A. the shell
     {
@@ -101731,6 +102111,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "WILD MANE",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "The reference read: one mass swept up and across the crown with spikes flying off both temples, longest at the sides. Unkempt, but with a direction \u2014 combed by wind rather than by nothing.",
       parts: professor("mane")
     },
@@ -101761,6 +102142,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "WILD MANE, APE KEPT",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "The mane on the shipped ape: brown head and cream face-plate kept, silver spikes around them. The question the hair cannot answer on its own \u2014 does he have to stop being an ape to look younger?",
       parts: professor("mane", { ape: true })
     },
@@ -101771,6 +102153,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "WILD MANE, SHELL KEPT",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "The only cut that still wears the green spiked shell \u2014 kept as the before picture, since every other tile now drops it.",
       parts: professor("mane", { keepShell: true })
     },
@@ -101782,6 +102165,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "CLEAN SHAVEN",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "Nothing at all: bare skin and a mouth line, the specs carrying the whole face. The only cut with no silver below the nose \u2014 and the youngest of the row by a distance.",
       parts: professor("mane", { mouth: fhShaven })
     },
@@ -101792,6 +102176,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "STUBBLE ONLY",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "Three days of it and no more: the flat greyer tone over cheeks, jaw and lip with no shape on top. Reads as unshaven rather than bearded, which is a different kind of not-coping.",
       parts: professor("mane", { mouth: fhStubble })
     },
@@ -101802,6 +102187,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "STUBBLE + TRIM MOUSTACHE",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "The cut that has been standing: stubble with the trim silver moustache over it and a denser patch under the lip. The middle of the row in every sense.",
       parts: professor("mane", { mouth: fhTrim })
     },
@@ -101812,6 +102198,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "SILVER WALRUS",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "The shipped villain's own moustache at full span, in silver instead of red. The one mark that carries over from the drawing everyone already knows him by \u2014 the most Eggshell of the row.",
       parts: professor("mane", { mouth: fhWalrus })
     },
@@ -101822,6 +102209,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "WAXED HANDLEBAR",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "Thin, swept up past the cheeks and curled at the tips. The most pompous option and the thinnest silver on the sheet \u2014 check this one at the phone rung before believing it.",
       parts: professor("mane", { mouth: fhHandlebar })
     },
@@ -101832,6 +102220,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "VAN DYKE",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "Moustache and a pointed chin beard with the jaw shaved between. The tidiest villain of the row, which is the joke on a man who disputes jumps in writing.",
       parts: professor("mane", { mouth: fhVanDyke })
     },
@@ -101842,6 +102231,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "GOATEE",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "The goatee proper: a chin tuft with the upper lip SHAVED. The only cut where nothing sits between the nose and the beard, which makes the specs and the mouth carry the whole expression.",
       parts: professor("mane", { mouth: fhGoatee })
     },
@@ -101852,6 +102242,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "LONG GOATEE",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "The same tuft drawn to a point past the jaw, with a thin moustache over it. The only facial hair on the sheet that leaves the head's silhouette \u2014 a villain's goatee, and the one to check against the tub rim.",
       parts: professor("mane", { mouth: fhGoateeLong })
     },
@@ -101862,10 +102253,168 @@ ${PROCESSOR_WRAPPER2}`;
       name: "FULL SHORT BEARD",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "Grown out: a full silver beard round the jaw with the moustache over it. The widest lower face of the row and the only facial hair that changes his outline.",
       parts: professor("mane", { mouth: fhBeard })
     },
     // H. hair tone — one pair of greys, six ways
+    // ---- round K: eyebrows ---------------------------------------------------
+    {
+      id: "br-none",
+      n: 51,
+      group: "K",
+      name: "NO BROWS (AS DRAWN)",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "The face as it has been all along: the frames do the whole job above the nose. The reference for the three below.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver" }), body: shirtStripes, hands: shirtHands(true), eyes: specsWith({ brows: "none" }) })
+    },
+    {
+      id: "br-tame",
+      n: 52,
+      group: "K",
+      name: "TAME",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "A short calm arc over each lens. He looks kind, which may be the wrong man entirely.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver" }), body: shirtStripes, hands: shirtHands(true), eyes: specsWith({ brows: "tame" }) })
+    },
+    {
+      id: "br-bushy",
+      n: 53,
+      group: "K",
+      name: "BUSHY",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "Thicker, with a flick at the outer end. Unruly enough to match the hair without shouting.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver" }), body: shirtStripes, hands: shirtHands(true), eyes: specsWith({ brows: "bushy" }) })
+    },
+    {
+      id: "br-wild",
+      n: 54,
+      group: "K",
+      name: "WILD",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "Thicker again, lifted at the inner end and flicked hard at the outer: the mad-scientist read, and the only one that argues with the trimmed moustache.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver" }), body: shirtStripes, hands: shirtHands(true), eyes: specsWith({ brows: "wild" }) })
+    },
+    // ---- round J: a black and white shirt on the chosen cut -----------------
+    {
+      id: "sh-none",
+      n: 47,
+      group: "J",
+      name: "FUR (AS DRAWN)",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "Option 42 as it stands: the ape's fur shoulders under the chin. The reference for the three below.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver" }), body: void 0 })
+    },
+    {
+      id: "sh-stripes",
+      n: 48,
+      group: "J",
+      name: "STRIPED SHIRT",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "Vertical black and white bands the width of the tub\u2019s own stripes, so the man and his machine read as one costume.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver" }), body: shirtStripes })
+    },
+    {
+      id: "sh-collar",
+      n: 49,
+      group: "J",
+      name: "COLLAR + PLACKET",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "A white dress shirt with black collar points and a placket down the middle \u2014 the only cut with a vertical line under the chin.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver" }), body: shirtCollar, hands: shirtHands(false) })
+    },
+    {
+      id: "sh-yoke",
+      n: 50,
+      group: "J",
+      name: "BLACK, WHITE YOKE",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "Black with a white yoke across the shoulders: the boldest silhouette of the three and the one that carries furthest.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver" }), body: shirtYoke, hands: shirtHands(true) })
+    },
+    // ---- round I: the stubble on the chosen cut -----------------------------
+    {
+      id: "st-dark",
+      n: 41,
+      group: "I",
+      name: "AS DRAWN (DARK PATCH)",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "Option 28 exactly as it stands: a warm field with a darker patch under the lip. The reference for the five below.",
+      parts: professor("mane", { mouth: trimWith({ chin: "dark" }) })
+    },
+    {
+      id: "st-silver",
+      n: 42,
+      group: "I",
+      name: "SILVER PATCH",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "The patch under the lip in the moustache's own silver. He is going grey from the chin up, which is the story the hair is telling.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver" }) })
+    },
+    {
+      id: "st-white",
+      n: 43,
+      group: "I",
+      name: "WHITE PATCH",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "The same patch in white \u2014 the brightest mark on the lower face, and the one that carries furthest.",
+      parts: professor("mane", { mouth: trimWith({ chin: "white" }) })
+    },
+    {
+      id: "st-thin",
+      n: 44,
+      group: "I",
+      name: "THIN SILVER PATCH",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "Narrower by a third, in silver: a soul patch rather than the beginning of a beard.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver", narrowChin: true }) })
+    },
+    {
+      id: "st-light",
+      n: 45,
+      group: "I",
+      name: "LIGHT FIELD, SILVER PATCH",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "Less stubble and higher, so the jaw shows through, with the silver patch on top. The best-shaved of the six.",
+      parts: professor("mane", { mouth: trimWith({ chin: "silver", light: true }) })
+    },
+    {
+      id: "st-none",
+      n: 46,
+      group: "I",
+      name: "FIELD ONLY, NO PATCH",
+      box: [28, 28],
+      mastTo: 10.4,
+      hy: 3.2,
+      note: "The guardrail: the field with nothing under the lip, to say whether the patch is doing any work at all.",
+      parts: professor("mane", { mouth: trimWith({ chin: "none" }) })
+    },
     {
       id: "tone-white",
       n: 35,
@@ -101873,6 +102422,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "WHITE (as drawn)",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "The control: #dfe2ea over #c6cbd9, what every other tile on the sheet wears. Brightest, and the furthest from grey.",
       parts: professor("mane", { tone: HAIR_TONE.white })
     },
@@ -101883,6 +102433,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "SILVER",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "One step down: #cdd3e0 over #b1b9ca. Still reads as bright hair against the dark sky band, with the white knocked off it.",
       parts: professor("mane", { tone: HAIR_TONE.silver })
     },
@@ -101893,6 +102444,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "STEEL",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "#bcc3d2 over #a0a8bb \u2014 properly grey. The tone where the hair stops being the brightest thing on him and the face starts leading.",
       parts: professor("mane", { tone: HAIR_TONE.steel })
     },
@@ -101903,6 +102455,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "PEWTER",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "#adb4c3 over #9199ac. Darker again; check this one against the pale rhythm sky, where he is drawn on a light band and not this dark card.",
       parts: professor("mane", { tone: HAIR_TONE.pewter })
     },
@@ -101913,6 +102466,7 @@ ${PROCESSOR_WRAPPER2}`;
       name: "WARM GREY",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "#ccc9c6 over #b0aca8 \u2014 the only tone here with the blue taken out. Sits closer to his skin, which makes him read older and less like a lab.",
       parts: professor("mane", { tone: HAIR_TONE.warm })
     },
@@ -101923,34 +102477,21 @@ ${PROCESSOR_WRAPPER2}`;
       name: "SLATE",
       box: [28, 28],
       mastTo: 10.4,
+      hy: 3.2,
       note: "#9fa7b7 over #858da0 \u2014 the guardrail. This is where grey hair starts reading as a grey HAT, and the contour has nothing left to separate.",
       parts: professor("mane", { tone: HAIR_TONE.slate })
     }
   ];
   for (const r of EGGSHELL_REDESIGNS) {
-    if (!r.paint) r.paint = (c, t) => copter(c, t, { parts: r.parts, mastTo: r.mastTo });
+    if (!r.paint) {
+      r.paint = (c, t) => copter(c, t, {
+        parts: r.parts,
+        mastTo: r.mastTo,
+        ...r.hy === void 0 ? {} : { hy: r.hy }
+      });
+    }
   }
-  var EGGSHELL_REDESIGN_GROUPS = [
-    ["A", "The shell", "The green spiked shell is the armour. Four ways to lose it."],
-    ["B", "Facial hair", "Five mouths, the shell and tub kept. One is no facial hair at all."],
-    ["C", "Hair", "Four heads, the mustache and shell kept."],
-    ["D", "Egg vehicles", "Six rides that ARE an egg, the shipped ape in every one. One walks."],
-    ["E", "Wildcard", "One for the laugh."],
-    ["F", "The silver professor \u2014 hair", "NO SHELL: the green spikes are gone from every cut but 25, which keeps them as the before picture. Three spiky hair styles on one identical head \u2014 same round skull, same locks rooted high so the crown shows, same small fine specs, same stubble and moustache \u2014 so only the locks differ."],
-    ["G", "The silver professor \u2014 facial hair", "Nine lower halves on the WILD MANE, everything above the nose identical. The stubble field is the shared ground: one flat greyer tone clipped to the skull, so a beard is a shape on top of it rather than a second drawing."],
-    ["H", "The silver professor \u2014 hair tone", "Six greys, everything else identical. Each option is a PAIR \u2014 the lit tone for the front locks and the moustache, the shaded one for the locks behind the skull \u2014 so the hair and the facial hair can never disagree. Judge these against the sky band he actually flies on, not only against this dark card."]
-  ];
   var BY_ID2 = Object.fromEntries(EGGSHELL_REDESIGNS.map((r) => [r.id, r]));
-  function drawEggshellRedesign(ctx, id35, w, h, t = 0) {
-    const r = BY_ID2[id35];
-    if (!r) throw new Error(`unknown eggshell redesign: ${id35}`);
-    ctx.save();
-    ctx.scale(w / r.box[0], h / r.box[1]);
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    r.paint(ctx, t);
-    ctx.restore();
-  }
 
   // tools/gallery-entry.js
   var GROUND_Y2 = 232;
@@ -102766,8 +103307,8 @@ ${PROCESSOR_WRAPPER2}`;
     const hopOf = (h, hold) => {
       const v = jumpV(h), g = gravityFor(h);
       const tc = Math.min(hold, v / g);
-      const cut = Math.min(v - g * tc, VARIABLE_JUMP_CUT);
-      return v * tc - 0.5 * g * tc * tc + cut * cut / (2 * g);
+      const cut2 = Math.min(v - g * tc, VARIABLE_JUMP_CUT);
+      return v * tc - 0.5 * g * tc * tc + cut2 * cut2 / (2 * g);
     };
     const TAP = 0.1;
     const ROWS = Object.keys(HERO_BY_ID).map((id35) => ({ id: id35, hero: HERO_BY_ID[id35], apex: apexOf(HERO_BY_ID[id35]) })).sort((a, b) => b.apex - a.apex);
@@ -106932,8 +107473,8 @@ ${PROCESSOR_WRAPPER2}`;
   {
     const s = sectionEl(
       "eggshell-redesign-bakeoff",
-      "Don K. Eggshell \u2014 redesign bake-off (20 options)",
-      "OPEN \u2014 twenty redesigns of the shipped villain in five groups: the shell (his armour), facial hair, hair, egg vehicles, and one wildcard. Bust options are the shipped copter with ONE part swapped; vehicle options keep the shipped ape and change what is around him, so the ape is one size in every tile. Each group: the lane at the copter's real 36u beside Lorenzo, then one card each with the painter enlarged. The dashed box is the option's own box; a GROUND option stands on the floor."
+      "Don K. Eggshell \u2014 the redesign, working version (52)",
+      "WORKING \u2014 option 52, the silver professor. Four questions open on it, each a strip on the working face: the brow ANGLE (all at twice the tame height), how WHITE the stubble is, the MOUTH, and the OUTFIT (ties, not bow ties; skin fists in cuffs). The pairs at the end are 52 as picked beside the working cut in every painter he appears in. Lane tiles are the copter's real 36u beside Lorenzo. The balloon pair is the shipped Act III painter as it stands \u2014 the mane meets the basket ropes there, which that painter will need a lift for."
     );
     const sub = (text, note) => {
       const h3 = document.createElement("h3");
@@ -106951,7 +107492,6 @@ ${PROCESSOR_WRAPPER2}`;
       s.appendChild(grid);
       return grid;
     };
-    const K = 36 / 28;
     const mono = (ctx, px, align = "center") => {
       ctx.fillStyle = "rgba(255,255,255,.62)";
       ctx.font = `${px}px ui-monospace, monospace`;
@@ -106959,58 +107499,95 @@ ${PROCESSOR_WRAPPER2}`;
       ctx.textBaseline = "alphabetic";
     };
     const hover = (t, i) => Math.sin(t * 2.4 + i * 0.9) * 1.5;
-    const at = (r, x0, slot, gy, t, i) => {
-      const w = r.box[0] * K, h = r.box[1] * K;
-      return { w, h, x: x0 + (slot - w) / 2, y: r.ground ? gy - h : gy - 10 - h + hover(t, i) };
-    };
-    for (const [g, title35, gnote] of EGGSHELL_REDESIGN_GROUPS) {
-      const opts = EGGSHELL_REDESIGNS.filter((r) => r.group === g);
-      const grid = sub(`${g}. ${title35}`, gnote);
-      {
-        const SLOT = 56, LW2 = 30 + opts.length * SLOT, LH = 72, LGY = 60;
-        tile(grid, `${g} \u2014 lane`, opts.map((r) => `${r.n} ${r.name}`).join(" \xB7 "), LW2, LH, (ctx, t) => {
-          laneStrip(ctx, LW2, LH, LGY);
-          drawToon(ctx, "lorenzo", pose("run", t), 14, LGY, HERO_DRAW_H);
-          opts.forEach((r, i) => {
-            const { w, h, x, y } = at(r, 30 + i * SLOT, SLOT, LGY, t, i);
-            ctx.save();
-            ctx.translate(x, y);
-            drawEggshellRedesign(ctx, r.id, w, h, t);
-            ctx.restore();
-            mono(ctx, 5);
-            ctx.fillText(String(r.n), x + w / 2, LGY + 11);
-          });
-        }, { animated: true, wide: true, world: true, hires: 5 });
-      }
-      const TW = 200, TH = 96, GY = 82;
-      const DX = 106, DY = 6, DW = 88, DH = 86;
-      for (const r of opts) {
-        const w = r.box[0] * K, h = r.box[1] * K;
-        const ds = Math.min(DW / w, DH / h), dw = w * ds, dh = h * ds;
-        tile(grid, `${r.n} \u2014 ${r.name}`, `${r.id} \xB7 ${r.box[0]}x${r.box[1]}u${r.ground ? " \xB7 GROUND" : ""}<br>${r.note}`, TW, TH, (ctx, t) => {
+    const frameAt3 = (t) => Math.floor(t * 2 * 24) % 12;
+    const BOX = 36;
+    const REF = EGGSHELL_WORKING_REF, WRK = EGGSHELL_WORKING;
+    const copterOf = (ctx, v, w, h, t, extra = {}) => eggshellCopterArt(ctx, w, h, frameAt3(t), { parts: v.parts, mastTo: v.mastTo, hy: v.hy, ...extra });
+    {
+      const grid = sub("1. In the lane \u2014 52 as picked, then the working cut", WRK.note);
+      const LW2 = 150, LH = 76, LGY = 64;
+      tile(grid, "copter \u2014 52 \xB7 WORKING", "Angry brows, whiter stubble, skin hands, shirt and tie.", LW2, LH, (ctx, t) => {
+        laneStrip(ctx, LW2, LH, LGY);
+        drawToon(ctx, "lorenzo", pose("run", t), 14, LGY, HERO_DRAW_H);
+        [REF, WRK].forEach((v, i) => {
+          const x = 34 + i * 56, y = LGY - 10 - BOX + hover(t, i);
+          ctx.save();
+          ctx.translate(x, y);
+          copterOf(ctx, v, BOX, BOX, t);
+          ctx.restore();
+          mono(ctx, 5);
+          ctx.fillText(i ? "WORKING" : "52", x + BOX / 2, LGY + 11);
+        });
+      }, { animated: true, wide: true, world: true, hires: 5 });
+    }
+    const strip = (title35, note, list) => {
+      const grid = sub(title35, note);
+      const TW = 200, TH = 96, GY = 82, DX = 106, DY = 6, DW = 88, DH = 86;
+      const ds = Math.min(DW / BOX, DH / BOX), dw = BOX * ds;
+      for (const v of list) {
+        tile(grid, v.label, `${v.id} \xB7 ${v.note}`, TW, TH, (ctx, t) => {
           laneStrip(ctx, TW, TH, GY);
           ctx.fillStyle = "#262c3c";
           ctx.fillRect(DX - 6, 0, TW - DX + 6, TH);
           drawToon(ctx, "lorenzo", pose("run", t), 20, GY, HERO_DRAW_H);
-          const { x: bx, y: by } = at(r, 44, 36, GY, t, 0);
+          const bx = 44, by = GY - 10 - BOX + hover(t, 0);
           ctx.save();
           ctx.translate(bx, by);
-          drawEggshellRedesign(ctx, r.id, w, h, t);
+          copterOf(ctx, v, BOX, BOX, t);
           ctx.restore();
           ctx.strokeStyle = "rgba(255,255,255,.3)";
           ctx.lineWidth = 0.45;
           ctx.setLineDash([1.5, 1.5]);
-          ctx.strokeRect(bx, by, w, h);
+          ctx.strokeRect(bx, by, BOX, BOX);
           ctx.setLineDash([]);
           mono(ctx, 4, "left");
           ctx.fillText("LANE", 44, 7);
           ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
           ctx.save();
-          ctx.translate(DX + (DW - dw) / 2, DY + (DH - dh) / 2);
-          drawEggshellRedesign(ctx, r.id, dw, dh, t);
+          ctx.translate(DX + (DW - dw) / 2, DY + (DH - dw) / 2);
+          copterOf(ctx, v, dw, dw, t);
           ctx.restore();
         }, { animated: true, wide: true, world: true, hires: 6 });
       }
+    };
+    strip("2. The brow angle \u2014 three tilts at twice the tame height", "Inner end down, outer end up, no flick: angry rather than wild. The brow lifts as it tilts so the inner end keeps its gap to the frames.", EGGSHELL_BROW_ANGLES);
+    strip("3. The stubble \u2014 how white", "The field under the moustache, from the warm grey it was to a translucent white over the skin. The chin patch stays silver in all three.", EGGSHELL_STUBBLE_TONES);
+    strip("4. The mouth \u2014 a slight frown", "The same line under the moustache, bowed the other way. The bonk mouth is unchanged.", EGGSHELL_MOUTHS);
+    strip("5. The outfit \u2014 eight, with ties", "The band between his chin and the rim, plus what the head does not cover: collar points or lapels beside the jaw, cuffs on the rim, the tie over it. His chin sits on the rim, so the tie hangs down the tub's front and lifts with him on a bonk.", EGGSHELL_OUTFITS);
+    {
+      const grid = sub("6. Each painter enlarged \u2014 52 beside the working cut");
+      const TW = 200, TH = 96, DW = 88, DH = 86;
+      const pair2 = (name, note, w, h, draw) => {
+        const ds = Math.min(DW / w, DH / h), dw = w * ds, dh = h * ds;
+        tile(grid, name, `${note} \xB7 detail ${ds.toFixed(1)}x`, TW, TH, (ctx, t) => {
+          ctx.fillStyle = "#262c3c";
+          ctx.fillRect(0, 0, TW, TH);
+          [REF, WRK].forEach((v, i) => {
+            const x0 = 6 + i * 100;
+            mono(ctx, 4, "left");
+            ctx.fillText(i ? "WORKING" : "52 AS PICKED", x0, 6);
+            ctx.save();
+            ctx.translate(x0 + (DW - dw) / 2, 8 + (DH - dh) / 2);
+            draw(ctx, v, dw, dh, t);
+            ctx.restore();
+          });
+          ctx.strokeStyle = "rgba(255,255,255,.15)";
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(100, 0);
+          ctx.lineTo(100, TH);
+          ctx.stroke();
+        }, { animated: true, wide: true, hires: 6 });
+      };
+      pair2("copter", "eggshellCopter \xB7 28x28u", 28, 28, (ctx, v, w, h, t) => copterOf(ctx, v, w, h, t));
+      pair2("bust \u2014 speech card, intro, relic", "eggshell \xB7 24x20u, shown in 24x25 so the mane fits", 24, 25, (ctx, v, w, h) => {
+        ctx.save();
+        ctx.scale(w / 24, h / 25);
+        eggshellApe(ctx, 0, 5, 0, v.parts);
+        ctx.restore();
+      });
+      pair2("balloon \u2014 Act III", "eggshellBalloon \xB7 28x46u, as it stands", 28, 46, (ctx, v, w, h) => eggshellBalloonArt(ctx, w, h, { parts: v.parts }));
+      pair2("bonked \u2014 the shocked face", "eggshellCopter \xB7 pop cycling 0..1", 28, 28, (ctx, v, w, h, t) => copterOf(ctx, v, w, h, t, { pop: Math.max(0, Math.sin(t * 3)) }));
     }
   }
   {
@@ -107134,8 +107711,8 @@ ${PROCESSOR_WRAPPER2}`;
           drawHeroBadge(ctx, chipRun(t));
         }
       );
-      for (const [id35, name, cut, note] of CUTS) {
-        strip(`${id35} \u2014 ${name}`, note, (ctx, t) => drawStatusPill(ctx, chipRun(t), cut));
+      for (const [id35, name, cut2, note] of CUTS) {
+        strip(`${id35} \u2014 ${name}`, note, (ctx, t) => drawStatusPill(ctx, chipRun(t), cut2));
       }
     }
     {
@@ -107162,8 +107739,8 @@ ${PROCESSOR_WRAPPER2}`;
         "The pill alone; the badge it is paired with is 240px off to the right.",
         (ctx, t) => drawStatusPill(ctx, chipRun(t), null)
       );
-      for (const [id35, name, cut, note] of CUTS) {
-        corner(`${id35} \u2014 ${name}`, note, (ctx, t) => drawStatusPill(ctx, chipRun(t), cut));
+      for (const [id35, name, cut2, note] of CUTS) {
+        corner(`${id35} \u2014 ${name}`, note, (ctx, t) => drawStatusPill(ctx, chipRun(t), cut2));
       }
     }
     {
@@ -107173,10 +107750,10 @@ ${PROCESSOR_WRAPPER2}`;
       );
       const HW = 150, HH = 26;
       for (const hero of Object.keys(HERO_BY_ID)) {
-        for (const cut of ["named", "relay"]) {
+        for (const cut2 of ["named", "relay"]) {
           tile(
             grid,
-            `${HERO_BY_ID[hero].short} \u2014 ${cut.toUpperCase()}`,
+            `${HERO_BY_ID[hero].short} \u2014 ${cut2.toUpperCase()}`,
             "",
             HW,
             HH,
@@ -107187,7 +107764,7 @@ ${PROCESSOR_WRAPPER2}`;
               ctx.clip();
               ctx.translate(0, -2);
               SKY(ctx, t);
-              drawStatusPill(ctx, chipRun(t, hero, hero === "gnash" ? "lorenzo" : "gnash"), cut);
+              drawStatusPill(ctx, chipRun(t, hero, hero === "gnash" ? "lorenzo" : "gnash"), cut2);
               ctx.restore();
             },
             { hires: 5 }
@@ -107279,8 +107856,8 @@ ${PROCESSOR_WRAPPER2}`;
         }, { hires: 6 });
       }
     }
-    const shown = /* @__PURE__ */ new Set([...CUTS.map(([, , cut]) => cut), ...HERO_REVEAL_CUTS]);
-    const missing = [...HERO_CHIP_CUTS, ...HERO_REVEAL_CUTS].filter((cut) => !shown.has(cut));
+    const shown = /* @__PURE__ */ new Set([...CUTS.map(([, , cut2]) => cut2), ...HERO_REVEAL_CUTS]);
+    const missing = [...HERO_CHIP_CUTS, ...HERO_REVEAL_CUTS].filter((cut2) => !shown.has(cut2));
     if (missing.length) {
       const p = document.createElement("p");
       p.className = "note";

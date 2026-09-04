@@ -58,6 +58,13 @@ const DISC_R = 11;
 // pill's low-contrast backing. It has to survive a small crop over bright or
 // dark stage art while still leaving the hero's face as the focal point.
 export const HERO_DISC_PLATE = 'rgba(144,170,190,0.98)';
+// NO HUD-ONLY INK. The plates draw the lines the run draws — the portrait is
+// the same hero, and a corner that inks him differently reads as a different
+// drawing of him. The thinning that used to live here was aimed at a face that
+// looked like a dark sticker, and that face was a half-pixel resample (see
+// drawChipFace) under a light field anchored off the head (see paintFace);
+// with both fixed there is nothing left for it to correct.
+export const HERO_DISC_RIM_W = 0.75;
 // EVERYTHING IN THE TOP ROW IS PLACED OFF PILL_CY (the objective panels take
 // HERO_CY, which is this), so this is the one line that moves the strip. The
 // pill is 4px shorter than the disc beside it and shares its midline, so its own
@@ -1163,9 +1170,23 @@ function heroChipGeom(style, run) {
 // the edges off, the way the badge's 12x9 box already did by being wide.
 // EVERY CALLER MUST BE INSIDE A CLIP — the face is a cached raster, so the
 // overhang really does spill without one.
+// The baked size for a face drawn `over` times bigger than its window: the
+// overhang rounded to an EVEN number of pixels, so half of it is a whole one.
+export const faceCropBox = (w, over) => w + 2 * Math.round(w * (over - 1) / 2);
 function drawChipFace(ctx, id, x, y, w, h, over = 1, joy = false) {
-  const fw = w * over, fh = h * over;
-  const face = toonFaceSprite(id, Math.round(fw), Math.round(fh),
+  // THE OVERSIZE IS ROUNDED TO AN EVEN NUMBER OF PIXELS, and the sprite is
+  // blitted at exactly the size it was baked.
+  //
+  // It used to be neither. `over` 1.15 on the 22px hero disc asked for a
+  // 25.3px face, baked the raster at 25 and then drew those 25 pixels into a
+  // 25.3px box at x - 1.65 — a bilinear resample of the whole portrait, off
+  // grid on both axes, every frame. That is what made the face plates read
+  // soft and dim: the eye whites averaged into their pupils, the brows and the
+  // mouth went to grey, and no amount of ink or light was going to survive it.
+  // An even overhang keeps (fw - w) / 2 whole, so a face centred on a whole
+  // pixel lands on one.
+  const fw = faceCropBox(w, over), fh = faceCropBox(h, over);
+  const face = toonFaceSprite(id, fw, fh,
     joy ? { key: 'joy', pose: { faceJoy: true } } : null);
   if (!face) return;
   const prev = ctx.imageSmoothingEnabled;
@@ -1244,7 +1265,7 @@ function drawHeroDisc(ctx, id, cx, cy, R, rim = UI_PANEL_BORDER, sx = 1, smile =
   // bottom of the hairline would stay 1px while its sides thinned to nothing,
   // and the coin would lose its outline exactly when it is hardest to read.
   ctx.strokeStyle = rim;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = HERO_DISC_RIM_W;
   ctx.beginPath();
   ctx.ellipse(cx, cy, Math.max(0.35, w - 0.5), R - 0.5, 0, 0, Math.PI * 2);
   ctx.stroke();
@@ -1383,7 +1404,9 @@ export function drawHeroBadge(ctx, run, cy = PILL_CY) {
   const face = toonFaceSprite(run.relay.current, FACE_W, FACE_H);
   if (face) {
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(face, badgeX + PAD_L, cy - FACE_H / 2, FACE_W, FACE_H);
+    // Whole pixels: FACE_H is odd and cy is a midline, so the unrounded y put
+    // the badge portrait on a half pixel and resampled it. See drawChipFace.
+    ctx.drawImage(face, badgeX + PAD_L, Math.round(cy - FACE_H / 2), FACE_W, FACE_H);
     ctx.imageSmoothingEnabled = false;
   }
   // Raw text: the badge is already the backing, so it must not carry a plate
@@ -2357,7 +2380,9 @@ export function drawSpeech(ctx, speech, opts = {}) {
   const faceY = Math.round(y - 4 + (h - FACE_H) / 2);
   // Eggshell has no toon rig — his prop painter plays the portrait.
   if (isEgg) {
-    drawProp(ctx, 'eggshell', x + PAD, faceY, FACE_W, FACE_H);
+    // His FACE, not his machine: the card is him talking, and the tub would
+    // take two thirds of the slot (see eggshellFace).
+    drawProp(ctx, 'eggshellFace', x + PAD, faceY, FACE_W, FACE_H);
   } else {
     const face = toonFaceSprite(speech.who, FACE_W, FACE_H);
     if (face) {
