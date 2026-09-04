@@ -1246,6 +1246,17 @@ function slideTime(dist) {
   return (Math.sqrt(SLIDE_V0 * SLIDE_V0 + 2 * SLIDE_ACCEL * Math.max(0, dist)) - SLIDE_V0) / SLIDE_ACCEL;
 }
 
+// How a girder answers a landing — see girderFlex. Peak dip at the foot, in px,
+// off a full-height landing: the beam's own section is 8, so this is a quarter
+// of its depth, plainly a flex and not a hinge, and still a fifth of the hero's
+// height at a zoom of 1.6 or better. The period is one whole twang — down by a
+// quarter of it, back through flat at a half, a shrinking rebound above the
+// line, done — kept short of the 0.52s tread on purpose, so the beam settles
+// under him before he leaves it.
+const GIRDER_SAG_MAX = 2.2;
+const GIRDER_SAG_PERIOD = 0.26;
+const GIRDER_SAG_DECAY = 0.13;   // the envelope's time constant
+
 export class RunState {
   // opts: {stage, team, seed, save, progress, overtime, corrupted:[], startingPowerup, onEnd(result)}
   constructor(opts) {
@@ -1382,6 +1393,93 @@ export class RunState {
 
   /** See routes.js — the profile itself is geometry and lives with the rest. */
   routeRise(worldX, f) { return routeRise(worldX, f); }
+
+  /**
+   * THE GIRDER FLEX, and why it lives on the render side of the seam.
+   *
+   * A stepping stone on the LCD city is not a piece of ground, it is a beam
+   * somebody bolted across the opening (see drawGirderRun), and steel eight
+   * pixels deep takes a landing by giving. So it dips, and springs back.
+   *
+   * It dips in the DRAWING and nowhere else. `player.y` is altitude above the
+   * floor rather than a world coordinate, which is the whole reason a second
+   * road needed no second collision system — and it is exactly what makes a
+   * floor that really moved under a grounded hero a disaster: drop the top two
+   * pixels and he is two pixels in the air, falling, to land again on the way
+   * back up. A second `land` cue, a second dust burst, a second landing squash,
+   * several times per twang. The physics floor stays flat.
+   *
+   * What keeps his feet ON the beam is that the hero is drawn against the same
+   * function the beam is (renderGroundY), sampled at his own x. Contact is not
+   * maintained by a second offset agreeing with the first; there is one offset.
+   *
+   * And it is scoped to the cabinet that draws girders. An island anywhere else
+   * is a torn-out lump of earth, and earth does not twang.
+   */
+  girderFlex(r, vy) {
+    if (!r || r.kind !== 'island' || this.cabinet.slabLook !== 'girder') return;
+    const k = Math.max(0.35, Math.min(1.4, Math.abs(vy) / BASE_JUMP_V));
+    r.sag = { t: 0, amp: GIRDER_SAG_MAX * k, p: this.girderFootU(r) };
+  }
+
+  /**
+   * Where along the span the load is, 0..1, held off the bolted ends.
+   *
+   * The clamp is not a fudge for a divide: it is the end plates. A tent pinned
+   * at the very column the hero stands on would put a full-depth dip one pixel
+   * from a bolt, so the peak is kept a tenth of the span in and a hero who
+   * catches the lip by his toe gets almost no give — which is what landing on
+   * the bolted end of a beam actually feels like.
+   */
+  girderFootU(r) {
+    const u = (this.playerWorldX() - r.x) / r.w;
+    return Math.max(0.1, Math.min(0.9, u));
+  }
+
+  updateGirderFlex(dt) {
+    for (const r of this.routes) {
+      const s = r.sag;
+      if (!s) continue;
+      s.t += dt;
+      if (s.t > GIRDER_SAG_DECAY * 6) { r.sag = null; continue; }
+      // THE DIP BELONGS TO THE LOAD, AND THE LOAD IS WALKING. The hero is
+      // pinned to PLAYER_X and the beam scrolls past under him, so a twang that
+      // lasts a third of a second is a hero who has crossed half a span by the
+      // time it dies. Peaked where he landed, the dip would slide out from
+      // under his feet and he would ride a rising beam; following the feet, the
+      // hollow travels with him the way a plank's does. Frozen the moment he
+      // leaves, because the beam then keeps ringing where it was last loaded.
+      if (this.route === r && this.player.grounded) s.p = this.girderFootU(r);
+    }
+  }
+
+  /**
+   * The beam's surface at a world column, relative to its flat self.
+   *
+   * A tent from the two bolted ends to the load, smoothed — the load's own
+   * influence line, which is why it needs no width of its own: the span sets
+   * the reach, and the shape reaches both ends exactly however near one the
+   * hero is standing.
+   */
+  girderSag(worldX, route) {
+    const s = route && route.sag;
+    if (!s) return 0;
+    const u = (worldX - route.x) / route.w;
+    if (u <= 0 || u >= 1) return 0;
+    const tent = u <= s.p ? u / s.p : (1 - u) / (1 - s.p);
+    const shape = tent * tent * (3 - 2 * tent);
+    return s.amp * shape
+      * Math.sin(Math.PI * 2 * s.t / GIRDER_SAG_PERIOD)
+      * Math.exp(-s.t / GIRDER_SAG_DECAY);
+  }
+
+  /**
+   * The floor as DRAWN. Every render seam that asks where a road's surface is
+   * goes through here; the sim keeps asking routeGroundY, which is flat.
+   */
+  renderGroundY(worldX, route) {
+    return this.routeGroundY(worldX, route) + this.girderSag(worldX, route);
+  }
 
   /**
    * How far the hero falls when a road runs out under him.
@@ -1621,6 +1719,7 @@ export class RunState {
     const toeCatch = !crossed && prevToeX < is.x && feetY > top && feetY - top <= TOE_CATCH;
     if (!crossed && !toeCatch) return false;            // did not cross downward
     this.route = is;
+    this.girderFlex(is, this.player.vy);
     this.player.y = 0;
     this.player.vy = 0;
     this.player.jumps = 0;
@@ -2330,7 +2429,16 @@ export class RunState {
       // he flew off and the mission could not be completed.
       this.copterBonks = 0;
       this.copterPressure = COPTER_PRESSURE_START;
-      this.copter = { x: this.camX + VIEW_W + 40, alt: 78, cooldown: 0, mode: 'away', modeT: 0, bar, hitT: 0, fromDx: null };
+      // ARRIVING, NOT PRESENT. We are catching up to him: he waits two bars
+      // off the right edge while the cabinet's skyline finishes building
+      // itself, then flies in. Parked there he is not drawn at all, so the
+      // level opens on the lane and he joins it — the alternative reads as a
+      // villain who was always in the room.
+      this.copter = {
+        x: this.camX + VIEW_W + 40, alt: 78, cooldown: 0,
+        mode: 'away', modeT: 0, bar, hitT: 0, fromDx: null,
+        enterAt: 2 * bar,
+      };
     }
     this.rewindCapSpawned = false;
     // Irreversible within this attempt. Rewind snapshots deliberately do not
@@ -3475,6 +3583,7 @@ export class RunState {
       gravityScale: this.beatLock ? 1 : this.powerups.gravityMultiplier(),
     });
     const tookIsland = (!riding && this.routes.length) ? this.updateRoute(prevFeetY, prevToeX) : false;
+    if (this.routes.length) this.updateGirderFlex(wdt);
     // AN AIRBORNE HERO FALLS IN WORLD SPACE, even where the floor is a slope.
     //
     // `player.y` is altitude above the LOCAL floor, and while he is standing on
@@ -5531,6 +5640,10 @@ export class RunState {
           ? Math.max(COPTER_PRESSURE_START, p - step) : Math.min(COPTER_PRESSURE_START, p + step);
       }
       let dx = Number.isFinite(c.dx) ? c.dx : c.x - this.camX;
+      // True only while he waits off the right edge for his cue: out there the
+      // gorilla's column is not a consideration and the clamp below must not
+      // drag him back into frame.
+      let parked = false;
       switch (c.mode) {
         case 'away': {
           // His home. He arrives here from off the right edge on the first
@@ -5538,8 +5651,20 @@ export class RunState {
           // ease onto the LIVE meander, not a settle onto a fixed point: he
           // used to slide to wherever the patrol happened to be and sit there
           // for a moment, which read as snapping to a stop after a hit.
+          // Held off the edge until his cue. modeT still runs, so the first
+          // window is timed from the start of the level rather than from his
+          // arrival — he is late, not slow.
+          if (this.tRun < (c.enterAt || 0)) {
+            dx = VIEW_W + 40;
+            c.alt = aheadAlt;
+            parked = true;
+            break;
+          }
           if (!Number.isFinite(c.homeT)) { c.homeT = 0; c.homeDx = dx; c.homeAlt = c.alt; }
-          c.homeT = Math.min(1, c.homeT + dt / 1.5);
+          // The first arrival is a flight across the frame, so it is given
+          // longer than the hop home after a bonk.
+          c.homeT = Math.min(1, c.homeT + dt / (c.arrived ? 1.5 : 2.4));
+          if (c.homeT >= 1) c.arrived = true;
           const e = c.homeT * c.homeT * (3 - 2 * c.homeT); // smoothstep
           dx = c.homeDx + (aheadDx - c.homeDx) * e;
           c.alt = c.homeAlt + (aheadAlt - c.homeAlt) * e;
@@ -5632,7 +5757,7 @@ export class RunState {
       // so both are clamped here rather than inside each case.
       const zoom = this.camZoom || ZOOM;
       const rightEdge = c.alt <= GORILLA_DUCK_ALT ? GORILLA_COLUMN[1] + 26 : GORILLA_COLUMN[0] - 4;
-      c.dx = Math.min(dx, rightEdge / zoom - COPTER_BOX / 2);
+      c.dx = parked ? dx : Math.min(dx, rightEdge / zoom - COPTER_BOX / 2);
       c.x = this.camX + c.dx;
       c.alt = Math.min(c.alt, ceiling);
       c.cooldown = c.mode === 'hover' ? 0 : 1;
@@ -10001,7 +10126,7 @@ export class RunState {
         && r.x - cam < W / z + 8 && r.x + r.w - cam > -8)) {
         drawSubsoil(ctx, this.cabinet, W / z, bottomWorldY, cam, laneCuts, hillDepth);
       }
-      drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.routeGroundY(wx, r), W / z,
+      drawRoutes(ctx, cam, this.cabinet, this.routes, (wx, r) => this.renderGroundY(wx, r), W / z,
         { groundAt: (wx) => this.groundYAt(wx), cloudFrom: CLOUD_FROM, cloudTo: CLOUD_TO,
           bottomY: bottomWorldY, hillDepth });
     }
@@ -10352,13 +10477,13 @@ export class RunState {
             ? { kind: 'run', grounded: true, vy: 0, squash: 0, lean: -this.loop.theta,
               ducking: false, duckAmount: 0, roll: false, float: false, stomp: false, cling: 0 }
             : undefined,
-      groundY: this.routeGroundY(cam + heroScreenX, this.route),
+      groundY: this.renderGroundY(cam + heroScreenX, this.route),
         // How the terrain rises or falls either side of the hero, so a floor
         // effect can lie IN the floor instead of on a level line through it.
         // On a slab this comes out flat, which is correct — the island is a
         // level platform, whatever the hills below it are doing.
-        groundDelta: (dx) => this.routeGroundY(cam + heroScreenX + dx, this.route)
-          - this.routeGroundY(cam + heroScreenX, this.route),
+        groundDelta: (dx) => this.renderGroundY(cam + heroScreenX + dx, this.route)
+          - this.renderGroundY(cam + heroScreenX, this.route),
         shield: this.powerups.shieldStack, settings: this.save.settings,
         invincible: this.powerups.active.unpeel ? this.powerups.active.unpeel.t : 0 });
 
@@ -10487,7 +10612,16 @@ export class RunState {
         // The card talks from the band the beat ribbon left behind, narrowed to
         // whatever gap the HUD's own shoulders leave it — one row on every
         // stage now, beat-locked or not. See speechChannel.
-        drawSpeech(d, this.speech, { avoid: heroRect, ...speechChannel(this) });
+        //
+        // MEASURED ONCE, WHEN IT STARTS TALKING, and kept for the life of the
+        // line. Both shoulders move while a card is up — the pill grows on a
+        // coin and the BONUS panel folds from a sentence to a chip at ten
+        // seconds — and a card that re-measured every frame would re-wrap its
+        // own words mid-sentence as the gap around it opened. A printed card
+        // does not reflow; it was set at the width the page had when it went
+        // to press.
+        if (!this.speech.chan) this.speech.chan = speechChannel(this);
+        drawSpeech(d, this.speech, { avoid: heroRect, ...this.speech.chan });
       }
     };
     const drawFrame = (d) => {

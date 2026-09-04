@@ -522,23 +522,47 @@ function egSpikesArc(c, fill, cx, cy, rx, ry, a0, a1, n, len, ink, lw) {
 }
 // The ape from the shoulders up: green spiked shell behind, fur, cream
 // face-plate, goggles, mustache. X/Y are pure scales of his 24x20 box.
-function eggshellBust(c, X, Y, lw, shocked = false) {
+//
+// EACH MARK IS A PART ON A SEAM. A part is (c, X, Y, lw, shocked) drawing one
+// thing; the bust runs them in order. A bake-off swaps ONE part and keeps the
+// rest (src/dev/eggshell-redesigns.js), so a candidate differs from the
+// shipped villain in exactly the mark it is testing, the way drawToon's
+// spec/pal seam carries hero candidates. Production never passes parts.
+function egShell(c, X, Y, lw) {
   egSpikesArc(c, EG_GREEN, X(0.5), Y(0.56), X(0.36), Y(0.2), -Math.PI * 0.95, -Math.PI * 0.05, 6, 0.5, EG_GREEN_DK, lw * 0.5);
   egP(c, EG_GREEN, (k) => k.ellipse(X(0.5), Y(0.56), X(0.36), Y(0.2), 0, 0, EG_TAU), EG_GREEN_DK, lw * 0.6);
+}
+function egBody(c, X, Y, lw) {
   egP(c, EG_FUR, (k) => k.ellipse(X(0.5), Y(0.62), X(0.27), Y(0.15), 0, 0, EG_TAU), EG_LINE, lw);
+}
+function egHead(c, X, Y, lw) {
   egDot(c, EG_FUR, X(0.5), Y(0.36), X(0.165), EG_LINE, lw);
+}
+function egFace(c, X, Y) {
   egP(c, EG_CREAM, (k) => eggPath(k, X(0.5), Y(0.4), X(0.11), Y(0.13)));
-  // SHOCKED: the lenses go wide with the pupils small inside them, the
-  // mustache flies up and out, and a small open mouth appears under it. The
-  // same marks as the calm face, moved — a second face drawing would drift.
+}
+// SHOCKED: the lenses go wide with the pupils small inside them, the
+// mustache flies up and out, and a small open mouth appears under it. The
+// same marks as the calm face, moved — a second face drawing would drift.
+function egEyes(c, X, Y, lw, shocked) {
+  if (shocked) egGoggles(c, X(0.5), Y(0.34), X(0.058), X(0.035), [X(0.33), X(0.67)], 0.34);
+  else egGoggles(c, X(0.5), Y(0.35), X(0.045), X(0.04), [X(0.35), X(0.65)]);
+}
+function egMouth(c, X, Y, lw, shocked) {
   if (shocked) {
-    egGoggles(c, X(0.5), Y(0.34), X(0.058), X(0.035), [X(0.33), X(0.67)], 0.34);
     egP(c, EG_INK, (k) => k.ellipse(X(0.5), Y(0.53), X(0.035), Y(0.045), 0, 0, EG_TAU));
     egMustache(c, X(0.5), Y(0.44), X(0.23), Y(0.075), -0.5);
   } else {
-    egGoggles(c, X(0.5), Y(0.35), X(0.045), X(0.04), [X(0.35), X(0.65)]);
     egMustache(c, X(0.5), Y(0.46), X(0.2), Y(0.07));
   }
+}
+const EG_BUST_ORDER = ['shell', 'body', 'head', 'face', 'hair', 'eyes', 'mouth'];
+export const EGGSHELL_PARTS = Object.freeze({
+  shell: egShell, body: egBody, head: egHead, face: egFace, hair: null, eyes: egEyes, mouth: egMouth,
+  tub: eggshellTub, hands: eggshellHands,
+});
+function eggshellBust(c, X, Y, lw, shocked = false, p = EGGSHELL_PARTS) {
+  for (const k of EG_BUST_ORDER) if (p[k]) p[k](c, X, Y, lw, shocked);
 }
 // The clown-copter tub he grips the rim of: cream, red stripes, two lamps,
 // two skids, and his hands on the rim.
@@ -561,19 +585,28 @@ function eggshellHands(c, X, Y, lw) {
 // fists rise off it, and he pulls a shocked face. Five units at full pop is
 // about the gap between his chin and the rim — as far as he can go and still
 // read as the same drawing.
-function eggshellApe(c, ox, oy, pop = 0) {
+export function eggshellApe(c, ox, oy, pop = 0, parts = null) {
+  const p = parts ? { ...EGGSHELL_PARTS, ...parts } : EGGSHELL_PARTS;
   const X = (f) => EG_APE_W * f, Y = (f) => EG_APE_H * f, lw = EG_LW;
   c.save(); c.translate(ox, oy);
   const lift = pop * 5;
   c.save(); c.translate(0, -lift);
-  eggshellBust(c, X, Y, lw, pop > 0.05);
+  eggshellBust(c, X, Y, lw, pop > 0.05, p);
   c.restore();
-  eggshellTub(c, X, Y, lw);
+  if (p.tub) p.tub(c, X, Y, lw);
   c.save(); c.translate(0, -lift);
-  eggshellHands(c, X, Y, lw);
+  if (p.hands) p.hands(c, X, Y, lw);
   c.restore();
   c.restore();
 }
+// His inks and pens, for the redesign file only: a candidate drawn with these
+// sits beside the shipped ape at the same weight, so what differs is the
+// design and never the line.
+export const EGGSHELL_ART = Object.freeze({
+  INK: EG_INK, CREAM: EG_CREAM, RED: EG_RED, FUR: EG_FUR, GOLD: EG_GOLD, LENS: EG_LENS,
+  GREEN: EG_GREEN, GREEN_DK: EG_GREEN_DK, LINE: EG_LINE, LW: EG_LW, W: EG_APE_W, H: EG_APE_H, TAU: EG_TAU,
+  P: egP, line: egLine, dot: egDot, egg: eggPath, mustache: egMustache, goggles: egGoggles, spikesArc: egSpikesArc, rr,
+});
 
 // The copter drawing, with the rotor's geometry as options so the gallery
 // can bake off shapes against the shipped one (COPTER_ROTOR is what ships).
@@ -589,7 +622,10 @@ function eggshellApe(c, ox, oy, pop = 0) {
 // the camera (edge-on would be a line).
 export const COPTER_ROTOR = { R: 10.5, sq: 0.16, hy: 6, blade: 1, disc: false };
 export function eggshellCopterArt(ctx, w, h, frame = 0, o = {}) {
-  const { R, sq, hy, blade: bw, disc: withDisc, pop = 0 } = { ...COPTER_ROTOR, ...o };
+  //   parts  overrides for the ape's parts (EGGSHELL_PARTS); body  a painter
+  //          (ctx) drawn in the 28x28 box INSTEAD of the ape and tub; mastTo
+  //          where the mast ends, the top of his head unless the body says
+  const { R, sq, hy, blade: bw, disc: withDisc, pop = 0, parts = null, body = null, mastTo = 8 + EG_APE_H * 0.34 } = { ...COPTER_ROTOR, ...o };
   ctx.save();
   ctx.scale(w / 28, h / 28);
   // sq is the disc's tilt toward the camera. 0.42 read as a disc but ate a
@@ -616,8 +652,8 @@ export function eggshellCopterArt(ctx, w, h, frame = 0, o = {}) {
   // the near half over the top of his head
   disc(Math.PI, EG_TAU);
   for (const b of blades) if (Math.sin(b) < 0) { sweep(b); blade(b); }
-  egLine(ctx, '#3a3a48', 0.85, (k) => { k.moveTo(cx, hy); k.lineTo(cx, 8 + EG_APE_H * 0.34); });
-  eggshellApe(ctx, 2, 8, pop);
+  egLine(ctx, '#3a3a48', 0.85, (k) => { k.moveTo(cx, hy); k.lineTo(cx, mastTo); });
+  if (body) body(ctx); else eggshellApe(ctx, 2, 8, pop, parts);
   disc(0, Math.PI);
   for (const b of blades) if (Math.sin(b) >= 0) { sweep(b); blade(b); }
   if (withDisc) egLine(ctx, 'rgba(236,236,246,0.45)', 0.35, (k) => k.ellipse(cx, hy, R, R * sq, 0, 0, EG_TAU));

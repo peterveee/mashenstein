@@ -938,18 +938,33 @@ export function bonusPlacement(fold, goalLeft, slot = BONUS_SLOT) {
 // whether the ribbon is currently drawn, so the column has ONE height for the
 // whole stage instead of hopping 15px every time a zone card or a pause hides
 // the strip out from under it.
-// The hand-off name plate prints in this column's first row, and the ONE HIT
-// warning that lives there is a standing readout for the whole run — so the
-// column clears the plate for the whole stage rather than hopping down and back
-// twice a hand-off. Same rule as the beat ribbon above: one height per stage,
-// never a moving one. Costs the column HERO_CHIP_ROW of headroom on every run
-// that can hand off; the alternative is the run's most permanent panel and its
-// most temporary one taking turns on one line.
+// THE COLUMN DOES NOT RESERVE A ROW FOR THE HAND-OFF NAME. It used to: the
+// 'under' plate prints in this column's first row, so the column started below
+// it for the whole stage rather than hopping down and back twice a hand-off.
+// That bought a plate that is up for two seconds a hand-off a permanent 16px of
+// sky, and it showed — the goal toast and the ONE HIT warning hung well clear of
+// the corner they belong to, reading as free-floating panels rather than as
+// things under the pill.
+//
+// So the priority is inverted instead: the column sits directly under the corner
+// and the NAME yields to it (see drawHeroReveal). Same rule as the beat ribbon
+// above — one height per stage, never a moving one — just measured off the
+// permanent furniture rather than off the temporary plate.
 function leftColumnTop(run) {
   const base = run?.beatLock ? BEAT_RIBBON_BOTTOM + 3 : PILL_Y + PILL_H + 3;
-  return HERO_REVEAL === 'under'
-    ? heroNameTop(run) + REVEAL_H + 3
-    : Math.max(base, heroIconBottom() + 3);
+  return Math.max(base, heroIconBottom() + 3);
+}
+
+// Whether the column's first row is spoken for this frame — the one thing the
+// 'under' name plate has to check before it prints, now that the column no
+// longer stands off to make room for it. The ONE HIT warning is a standing
+// readout for the whole run, so on those runs the name simply never shows; the
+// toast and the finish plate are passing, so it shows on the hand-offs that do
+// not collide with one.
+function leftColumnBusy(run) {
+  return !!(run?.oneHit
+    || (run?.goalToasts && run.goalToasts[0])
+    || (run?.flipCoins && run.flipCoins.left > 0));
 }
 
 // The bottom of the hero's icon — the lowest thing the corner always has.
@@ -1083,9 +1098,9 @@ const DISC_GAP = 2, DISC_LIFT_GAP = 7;
 // game's tempos is about this hold.
 const REVEAL_IN = 0.22, REVEAL_HOLD = 1.7, REVEAL_OUT = 0.3;
 const REVEAL_END = REVEAL_IN + REVEAL_HOLD + REVEAL_OUT;
-// The name plate's height. Module-level because leftColumnTop is measured off
-// it — the column that has to clear the plate and the plate itself must be
-// quoting one number.
+// The name plate's height. One row, matched to the panels it shares the corner
+// with rather than to the pill above it — it is a caption on the icon, not a
+// second status readout.
 const REVEAL_H = 14;
 
 // THE HAND-OFF COIN FLIP. The disc turns about its vertical axis and lands on
@@ -1403,11 +1418,12 @@ function drawHeroReveal(ctx, run, style, px, pillW, mode) {
     // UNDER THE ICON. The name and the face it belongs to are then one object in
     // one corner, which is the tidiest reading of the three — and it is the only
     // one that cannot reach the middle of the screen however long a name gets.
-    // Its cost is paid once, at the top of leftColumnTop: the column below —
-    // goal toasts, the ONE HIT warning, the finish plate — starts under this row
-    // for the whole stage rather than being shoved down and back twice a
-    // hand-off. Measured off the same function, so the plate and the panels
-    // under it can never disagree about where this row is.
+    // It is the borrower on this row, not the owner: the column below — goal
+    // toasts, the ONE HIT warning, the finish plate — is permanent furniture and
+    // sits tight under the corner, so the plate stands down whenever one of them
+    // is up rather than the column standing off all stage for a two-second
+    // gesture. A hand-off that lands on a toast just does not print its name.
+    if (leftColumnBusy(run)) return;
     const top = heroNameTop(run, style);
     // Left-aligned under the icon rather than centred on it: a plate that
     // centres moves its own left edge as the name changes width, and this column

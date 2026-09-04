@@ -2298,7 +2298,7 @@ const LCD_CITY_SCENES = [
     cloudSway: 24,
     // Stage 2 was the one panel with no sky or rooftop life at all — windows,
     // equalizers and clouds and nothing else. It gets the working city: a
-    // searchlight sweeping off the music hall, a commuter service on a monorail
+    // searchlight sweeping off each music hall, a commuter service on a monorail
     // over the skyline, and a window washer who is having a day.
     //
     // NO REPOSSESSION HELICOPTER, and it was here for months. It crossed on a
@@ -2314,10 +2314,18 @@ const LCD_CITY_SCENES = [
     // the same band the service runs in and the band both billboards
     // hang their boards over — three things crossing one lane, and the sky read
     // as traffic rather than as a city. Stage 2 is the panel with the most
-    // going on at roof height already: a searchlight, a train and a washer.
+    // going on at roof height already: two searchlights, a train and a washer.
     // The crossing belongs to stages 1 and 3, which have the air for
     // it; here the train IS the thing that crosses.
-    searchlight: [2, 24],
+    // ONE LAMP ON EACH MUSIC HALL. The second is Peter's ("could we have 2
+    // spotlights? and with a bit more reach"), and building 6 is the only free
+    // roof that is not standing in a canyon: 0 and 4 have a tower over them on
+    // both sides, and every other roof already carries a board, the washer or
+    // a meter bank it could not share. Each lamp stands at the end of its roof
+    // that its own equalizer bank is not on — 2's at 161, 6's at 401 — and
+    // sweeps toward the middle of the panel, so the two beams cross over the
+    // low roof at 239 rather than over the towers at either end.
+    searchlights: [[2, 24], [6, 45]],
     // THE LANE: the girder on rule 53 (y + 12), the cars on 41-53 above every
     // other roof. FOUR cars, a hundred pixels of train on a 480 panel. It
     // dropped to three for an hour while the service still stopped at a
@@ -2494,7 +2502,7 @@ const LCD_GBC_PALETTES = [
 // the distance the old ones did, so the last phase is a warmer afternoon
 // rather than a sunset. The rest of "the stage gets later" is unchanged and
 // does the real work — window rows lighting floor by floor, the transmitter
-// tipping, and stage 2's searchlight and washer working through it.
+// tipping, and stage 2's searchlights and washer working through it.
 const LCD_SKY_PHASES = [
   null,
   [['#e7e7a3', '#a8cf8a'], ['#e6e29e', '#a4cc86'], ['#e3dc97', '#9fc685'], ['#ded090', '#96bd84']],
@@ -4658,7 +4666,26 @@ function lcdBarrelBurst(ctx, bx, by, phase, reducedFlashing) {
 // 2px cells stepping outward from the lens, ghosted at the angles it is not
 // on, exactly like the transmitter's rings.
 const LCD_BEAM_ANGLES = [-1.22, -1.05, -0.88, -0.71, -0.54, -0.71, -0.88, -1.05];
-function lcdSearchlight(ctx, building, dx, frame, reducedFlashing) {
+// HOW FAR THE BEAM THROWS, and the one number that says so: the falloff is
+// solved from it, so the far cell lands at the same faint value whatever the
+// reach becomes. It was 86 against a hand-written fade, which put the tip about
+// as far as the next roof — a lamp lighting its neighbour rather than the sky.
+const LCD_BEAM_REACH = 132;
+/**
+ * @param n which lamp on the panel this is, in the order the scene lists them.
+ *   Two lamps drawn from one painter have to be kept from reading as one
+ *   mechanism drawn twice, and both things that do it are DERIVED here rather
+ *   than authored per lamp:
+ *
+ *   - each leans toward the MIDDLE of the panel, because that is where the sky
+ *     is. The skyline's tall towers stand at its ends; a lamp raking outward
+ *     spends its new reach on a facade, and the pair now open inward and cross
+ *     over the low roof in the centre.
+ *   - each starts half a sweep on from the one before, so when one is standing
+ *     up the other is out flat. Lockstep is what a premiere looks like; this
+ *     panel is a working city.
+ */
+function lcdSearchlight(ctx, building, dx, n, frame, reducedFlashing) {
   const [x, , h] = building;
   const roof = GROUND_Y - h;
   const sx = Math.round(x + dx);
@@ -4668,16 +4695,19 @@ function lcdSearchlight(ctx, building, dx, frame, reducedFlashing) {
   ctx.fillRect(sx - 1, roof - 8, 2, 3);
   ctx.fillStyle = !reducedFlashing && frame.beat4 === 0 ? LCD_WINDOW_ON : LCD_WINDOW_OFF;
   ctx.fillRect(sx - 2, roof - 10, 4, 3);
-  const a = LCD_BEAM_ANGLES[lcdMod(frame.bar * 4 + frame.beat4, LCD_BEAM_ANGLES.length)];
-  const ca = Math.cos(a), sa = Math.sin(a);
+  const step = frame.bar * 4 + frame.beat4 + n * (LCD_BEAM_ANGLES.length / 2);
+  const a = LCD_BEAM_ANGLES[lcdMod(step, LCD_BEAM_ANGLES.length)];
+  const ca = Math.cos(a) * (sx < W / 2 ? 1 : -1), sa = Math.sin(a);
   // Cells marching up the beam, widening as they go: near cells are bright,
   // far ones fade into the sky the way a real beam loses itself.
-  for (let d = 6; d < 86; d += 4) {
+  for (let d = 6; d < LCD_BEAM_REACH; d += 4) {
     const bx = sx + ca * d;
     const by = roof - 9 + sa * d;
-    if (by < 10) break;
+    // The sky has a ceiling: the beat ribbon hangs across everything above 24,
+    // which is why the clouds sit at 27. A beam stops under it too.
+    if (by < 26) break;
     const spread = Math.max(3, Math.round(d / 9)) * 2;
-    ctx.fillStyle = `rgba(232,238,176,${(0.62 - d * 0.0058).toFixed(3)})`;
+    ctx.fillStyle = `rgba(232,238,176,${(0.62 - 0.5 * (d / LCD_BEAM_REACH)).toFixed(3)})`;
     ctx.fillRect(Math.round(bx - spread / 2), Math.round(by), spread, 4);
   }
 }
@@ -7104,8 +7134,28 @@ function lcdGameWatch(ctx, spec, frame, burst = -1, reducedFlashing = false, van
   // opening in front of the tower exposes girders, not blank wall. The girder
   // y at a given x is shared with the barrel cells and the runner, so
   // everything stands ON the steel rather than near it.
+  //
+  // THE STACK STARTS ONE FULL PITCH BELOW THE ROOF, and the roof ladder is
+  // therefore the same length as every other ladder on the tower. It began 28
+  // down instead — four short — and that four is what put a girder on the road.
+  //
+  // A tower 113 tall (top 119) laid four floors at 147/179/211/243 with the
+  // last one under the apron, which is the shape this face is drawn for: three
+  // storeys of steel and a fourth the road hides, there only so a pit exposes
+  // girders rather than blank wall. When the tower grew twelve with the beat
+  // ribbon's sky, the same 28 put five floors at 135/167/199/231/263 — and 231
+  // is one pixel above GROUND_Y, so the fourth girder surfaced through the road
+  // as a sliver at its high end. Peter caught it, not a test.
+  //
+  // At one pitch the four floors land at 139/171/203/235: the same three
+  // storeys and the same hidden fourth, three clear under the road. Both
+  // numbers were arbitrary; this one at least says something — every climb on
+  // this tower is one floor — and tests/lcd-background.js now asserts no steel
+  // breaks the road surface, so the next height change fails loudly instead of
+  // growing another sliver.
+  const FLOOR_PITCH = 32;
   const floors = [];
-  for (let fy = top + 28; fy < H - 6; fy += 32) floors.push(fy);
+  for (let fy = top + FLOOR_PITCH; fy < H - 6; fy += FLOOR_PITCH) floors.push(fy);
   // Slope parity is set by the RUNNER's route: he travels right on even
   // floors and left on odd ones, and every girder RISES the way he walks —
   // uphill all the way, like the arcade. The barrels roll the other way,
@@ -7737,10 +7787,9 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
       }
     });
   }
-  if (art.searchlight) {
-    onRoof(art.searchlight[0], () => lcdSearchlight(ctx, art.buildings[art.searchlight[0]],
-      art.searchlight[1], frame, reducedFlashing));
-  }
+  (art.searchlights || []).forEach(([bi, dx], n) => {
+    onRoof(bi, () => lcdSearchlight(ctx, art.buildings[bi], dx, n, frame, reducedFlashing));
+  });
   if (art.washer) {
     onRoof(art.washer[0], () => lcdWasher(ctx, art.buildings[art.washer[0]], art.washer[1], frame));
   }

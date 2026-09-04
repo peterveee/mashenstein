@@ -107,6 +107,7 @@ import {
 import {
   EGGSHELL_CANDIDATES, drawEggshellCandidate, EGGSHELL_TRAVEL, drawEggshellTravel,
 } from '../src/dev/eggshell-candidates.js';
+import { EGGSHELL_REDESIGNS, EGGSHELL_REDESIGN_GROUPS, drawEggshellRedesign } from '../src/dev/eggshell-redesigns.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -1811,7 +1812,11 @@ function propNominalSize(name) {
   // The game's own geometry: PLAYER_X through the resting zoom is the column
   // every card hangs off, and FLOAT_BASE_Y is where the stack starts.
   const HERO_X = 92;          // PLAYER_X * resting zoom, as run.js computes it
-  const CARD_Y = 128;         // FLOAT_BASE_Y
+  // The LOW end of the stack's row (run.js FLOAT_BASE_MAX). A card's actual row
+  // moves with the zoom and with the speech card above it, and this sheet is
+  // about the ink rather than the placement — so it frames the one end that
+  // cannot be clamped away, and drawFloatie's own ceiling never applies here.
+  const CARD_Y = 128;
   const TILE_W = 300, TILE_H = 34;
 
   // Not `wide`. A floatie card is 300x34 — a full-width row per tile turned a
@@ -6058,6 +6063,83 @@ function frameStrip(grid, name, label, note, w, h, cell) {
         ctx.fillText('LANE', 44, 7);
         ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
         ctx.save(); ctx.translate(DX + (DW - dw) / 2, DY + (DH - dw) / 2); eggshellCopterArt(ctx, dw, dw, frameAt(t), v.o); ctx.restore();
+      }, { animated: true, wide: true, world: true, hires: 6 });
+    }
+  }
+}
+
+// ------------------------------------------- the villain, redesigned
+// Peter, 4 Sep 2026: "i like our main eggman villain, but i would like some
+// redesigns... no armour? an egg like vehicle? different facial hair (no
+// facial hair) or different hair styles. go as creative as you want, give me
+// 20 options." Every bust option is the SHIPPED painter with one part swapped
+// through the EGGSHELL_PARTS seam in props.js, so what differs from the copter
+// in the lane is exactly the mark the tile names; the vehicles keep the
+// shipped ape and replace what is around him. src/dev/eggshell-redesigns.js.
+{
+  const s = sectionEl('eggshell-redesign-bakeoff', 'Don K. Eggshell — redesign bake-off (20 options)',
+    'OPEN — twenty redesigns of the shipped villain in five groups: the shell (his armour), facial hair, hair, egg '
+    + 'vehicles, and one wildcard. Bust options are the shipped copter with ONE part swapped; vehicle options keep the '
+    + 'shipped ape and change what is around him, so the ape is one size in every tile. Each group: the lane at the '
+    + 'copter\'s real 36u beside Lorenzo, then one card each with the painter enlarged. The dashed box is the option\'s '
+    + 'own box; a GROUND option stands on the floor.');
+  const sub = (text, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = text;
+    s.appendChild(h3);
+    if (note) { const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p); }
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
+  };
+  // The copter authors at 28u and the lane draws it at COPTER_BOX 36; every
+  // option's box scales by the same factor so the ape is one size throughout.
+  const K = 36 / 28;
+  const mono = (ctx, px, align = 'center') => {
+    ctx.fillStyle = 'rgba(255,255,255,.62)';
+    ctx.font = `${px}px ui-monospace, monospace`;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'alphabetic';
+  };
+  const hover = (t, i) => Math.sin(t * 2.4 + i * 0.9) * 1.5;
+  const at = (r, x0, slot, gy, t, i) => {
+    const w = r.box[0] * K, h = r.box[1] * K;
+    return { w, h, x: x0 + (slot - w) / 2, y: r.ground ? gy - h : gy - 10 - h + hover(t, i) };
+  };
+  for (const [g, title, gnote] of EGGSHELL_REDESIGN_GROUPS) {
+    const opts = EGGSHELL_REDESIGNS.filter((r) => r.group === g);
+    const grid = sub(`${g}. ${title}`, gnote);
+    {
+      const SLOT = 56, LW = 30 + opts.length * SLOT, LH = 72, LGY = 60;
+      tile(grid, `${g} — lane`, opts.map((r) => `${r.n} ${r.name}`).join(' · '), LW, LH, (ctx, t) => {
+        laneStrip(ctx, LW, LH, LGY);
+        drawToon(ctx, 'lorenzo', pose('run', t), 14, LGY, HERO_DRAW_H);
+        opts.forEach((r, i) => {
+          const { w, h, x, y } = at(r, 30 + i * SLOT, SLOT, LGY, t, i);
+          ctx.save(); ctx.translate(x, y); drawEggshellRedesign(ctx, r.id, w, h, t); ctx.restore();
+          mono(ctx, 5); ctx.fillText(String(r.n), x + w / 2, LGY + 11);
+        });
+      }, { animated: true, wide: true, world: true, hires: 5 });
+    }
+    const TW = 200, TH = 96, GY = 82;
+    const DX = 106, DY = 6, DW = 88, DH = 86;
+    for (const r of opts) {
+      const w = r.box[0] * K, h = r.box[1] * K;
+      const ds = Math.min(DW / w, DH / h), dw = w * ds, dh = h * ds;
+      tile(grid, `${r.n} — ${r.name}`, `${r.id} · ${r.box[0]}x${r.box[1]}u${r.ground ? ' · GROUND' : ''}<br>${r.note}`, TW, TH, (ctx, t) => {
+        laneStrip(ctx, TW, TH, GY);
+        ctx.fillStyle = '#262c3c'; ctx.fillRect(DX - 6, 0, TW - DX + 6, TH);
+        drawToon(ctx, 'lorenzo', pose('run', t), 20, GY, HERO_DRAW_H);
+        const { x: bx, y: by } = at(r, 44, 36, GY, t, 0);
+        ctx.save(); ctx.translate(bx, by); drawEggshellRedesign(ctx, r.id, w, h, t); ctx.restore();
+        ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 0.45;
+        ctx.setLineDash([1.5, 1.5]); ctx.strokeRect(bx, by, w, h); ctx.setLineDash([]);
+        mono(ctx, 4, 'left');
+        ctx.fillText('LANE', 44, 7);
+        ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
+        ctx.save(); ctx.translate(DX + (DW - dw) / 2, DY + (DH - dh) / 2); drawEggshellRedesign(ctx, r.id, dw, dh, t); ctx.restore();
       }, { animated: true, wide: true, world: true, hires: 6 });
     }
   }

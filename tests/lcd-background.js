@@ -323,6 +323,44 @@ for (const stage of [1, 2, 3]) {
     `stage 2 paints every cloud behind the skyline, viaduct and monorail (${clouds.join(', ')} < ${skyline} < ${rail})`);
 }
 
+// ---- and no girder surfaces through the road -------------------------------
+//
+// The DONKEY KONG tower's girder floors run past the lane band and off the
+// bottom of the display: three storeys of steel above the road and a fourth
+// under it, there only so a pit in front of the tower exposes girders rather
+// than blank wall. That fourth floor is placed by a PITCH from the roof, so it
+// only stays hidden while the tower is a height the pitch happens to suit —
+// and when the tower grew twelve with the freed sky it stopped being one. The
+// girder landed a pixel above GROUND_Y and its high end surfaced through the
+// road as a sliver, which Peter saw and nothing here did.
+//
+// A girder is the panel's only 2px stroke, so the ops name it exactly.
+{
+  const steel = background(1, 0).filter((op) => op[0] === 'stroke'
+    && op[1] === PRINT && op[2] === 2);
+  assert(steel.length >= 3, `the tower stands its girder floors up (${steel.length})`);
+  // Each stroke is preceded by beginPath/moveTo/lineTo — the two ends of one
+  // girder, one of which is 4px higher than the other because the steel is
+  // tipped. The HIGHEST end is what would break the surface first.
+  const ends = [];
+  for (let i = 0; i < background(1, 0).length; i++) {
+    const ops = background(1, 0);
+    if (ops[i][0] !== 'stroke' || ops[i][1] !== PRINT || ops[i][2] !== 2) continue;
+    for (const op of [ops[i - 1], ops[i - 2]]) {
+      if (op && (op[0] === 'lineTo' || op[0] === 'moveTo')) ends.push(op[2]);
+    }
+  }
+  // Under the road, or a clear floor above it — never within the stroke's own
+  // width of the surface, which is the sliver.
+  const near = ends.filter((y) => y > GROUND_Y - 8 && y < GROUND_Y + 2);
+  assert(ends.length > 0 && near.length === 0,
+    `and none of them breaks the road surface (${near.length} girder ends in `
+    + `y ${GROUND_Y - 8}..${GROUND_Y + 2}, of ${ends.length})`);
+  // The hidden fourth floor is still down there for a pit to expose.
+  assert(ends.some((y) => y >= GROUND_Y + 2),
+    'while one floor still runs under the apron, for a pit to open onto');
+}
+
 // ---- and the whole sky layer stays under the strip -------------------------
 //
 // THE SKY LAYER ROSE TWELVE when the beat ribbon moved to the top of the screen
