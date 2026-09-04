@@ -723,6 +723,12 @@ const COPTER_PRESSURE_DRIFT = 0.012;
 // under the roof line and may cross it.
 const GORILLA_COLUMN = [359, 395];
 const GORILLA_DUCK_ALT = 55;
+// He arrives UNDER the gorilla and climbs once he is past its building: a
+// villain who slides in beneath the cabinet's own landmark and only then takes
+// his height reads as coming from somewhere, where crossing at cruising height
+// read as being switched on. Low enough to pass under the gorilla's feet at
+// this cabinet's framing, high enough to clear the skyline he is flying over.
+const COPTER_ARRIVE_ALT = 34;
 
 const JUGGLE_ARPEGGIO = [0, 4, 7, 9, 12, 16, 19];
 // How many rungs the loop-de-loop's climb has. Twelve, for a lap of about a
@@ -1246,26 +1252,37 @@ function slideTime(dist) {
   return (Math.sqrt(SLIDE_V0 * SLIDE_V0 + 2 * SLIDE_ACCEL * Math.max(0, dist)) - SLIDE_V0) / SLIDE_ACCEL;
 }
 
-// How a girder answers a landing — see girderFlex. Peak dip at the foot, in px,
-// off a full-height landing: the beam's own section is 8, so this is a quarter
-// of its depth, plainly a flex and not a hinge, and still a fifth of the hero's
-// height at a zoom of 1.6 or better. The period is one whole twang — down by a
-// quarter of it, back through flat at a half, a shrinking rebound above the
-// line, done — kept short of the 0.52s tread on purpose, so the beam settles
-// under him before he leaves it.
-const GIRDER_SAG_MAX = 2.2;
-const GIRDER_SAG_PERIOD = 0.26;
-const GIRDER_SAG_DECAY = 0.13;   // the envelope's time constant
-const GIRDER_SAG_W = Math.PI * 2 / GIRDER_SAG_PERIOD;
-// What the decaying sine actually reaches, so GIRDER_SAG_MAX above is the dip
-// IN PIXELS rather than the amplitude of a curve that never gets there. A ring
-// that dies this fast is a third of the way down by its own first quarter turn,
-// and a number that means two thirds of itself is the kind of quiet multiplier
-// that makes a tuning pass guesswork. Solved rather than measured: the peak of
+// How a girder answers a landing — see ringGirder. It is STEEL, so it does not
+// give: it stays the rigid thing it is and RINGS, and the whole span rings at
+// once.
+//
+// THE PERIOD IS THE READABILITY, NOT THE AMPLITUDE. This began at a pixel over
+// 0.09s, which is a truer frequency for a beam this short and was very nearly
+// invisible — not because a pixel is small (at zoom 1.6 on a canvas fitted to a
+// laptop it is a five-pixel move on the glass, and an eighth of the beam's own
+// section) but because the peak lived on ONE frame. The eye is being shown 60
+// samples a second of a thing that is also scrolling; a single-frame excursion
+// is a blip. At 0.16s the beam holds near its peak for three frames, rebounds
+// visibly, wobbles once more and is done in a fifth of a second — still a
+// fraction of the 0.52s tread, so he lands, the beam shivers, the beam is a
+// beam again before he leaves it.
+//
+// The travel is a fifth of the eight-pixel section at a full-height landing,
+// which reads as vibration against the three girders holding still beside it
+// and never as a step down.
+const GIRDER_RING_MAX = 1.8;
+const GIRDER_RING_PERIOD = 0.16;
+const GIRDER_RING_DECAY = 0.09;  // the envelope's time constant
+const GIRDER_RING_W = Math.PI * 2 / GIRDER_RING_PERIOD;
+// What the decaying sine actually reaches, so GIRDER_RING_MAX above is the
+// travel IN PIXELS rather than the amplitude of a curve that never gets there.
+// A ring that dies this fast is well down by its own first quarter turn, and a
+// number that means two thirds of itself is the kind of quiet multiplier that
+// makes a tuning pass guesswork. Solved rather than measured: the peak of
 // sin(wt)e^(-t/T) is where tan(wt) = wT.
-const GIRDER_SAG_NORM = (() => {
-  const t = Math.atan(GIRDER_SAG_W * GIRDER_SAG_DECAY) / GIRDER_SAG_W;
-  return Math.sin(GIRDER_SAG_W * t) * Math.exp(-t / GIRDER_SAG_DECAY);
+const GIRDER_RING_NORM = (() => {
+  const t = Math.atan(GIRDER_RING_W * GIRDER_RING_DECAY) / GIRDER_RING_W;
+  return Math.sin(GIRDER_RING_W * t) * Math.exp(-t / GIRDER_RING_DECAY);
 })();
 
 export class RunState {
@@ -1406,82 +1423,62 @@ export class RunState {
   routeRise(worldX, f) { return routeRise(worldX, f); }
 
   /**
-   * THE GIRDER FLEX, and why it lives on the render side of the seam.
+   * THE GIRDER RING, and why it lives on the render side of the seam.
    *
    * A stepping stone on the LCD city is not a piece of ground, it is a beam
-   * somebody bolted across the opening (see drawGirderRun), and steel eight
-   * pixels deep takes a landing by giving. So it dips, and springs back.
+   * somebody bolted across the opening (see drawGirderRun). Land on one and it
+   * answers — but it answers the way steel answers. It does not sag under him
+   * and carry him back up; it stays rigid and shivers, hard and briefly, and
+   * then it is a beam again. Anything deep enough to watch descend would be a
+   * plank.
    *
-   * It dips in the DRAWING and nowhere else. `player.y` is altitude above the
-   * floor rather than a world coordinate, which is the whole reason a second
-   * road needed no second collision system — and it is exactly what makes a
-   * floor that really moved under a grounded hero a disaster: drop the top two
-   * pixels and he is two pixels in the air, falling, to land again on the way
+   * So the WHOLE SPAN moves together. There is no bend in it, no hollow that
+   * travels along it after his feet, nothing here that needs to know where on
+   * the beam the load landed: a rigid object has one position, and this is it.
+   *
+   * And it moves in the DRAWING and nowhere else. `player.y` is altitude above
+   * the floor rather than a world coordinate, which is the whole reason a
+   * second road needed no second collision system — and it is exactly what
+   * makes a floor that really moved under a grounded hero a disaster: drop the
+   * top a pixel and he is a pixel in the air, falling, to land again on the way
    * back up. A second `land` cue, a second dust burst, a second landing squash,
-   * several times per twang. The physics floor stays flat.
+   * several times over, at a frequency picked to be fast. The physics floor
+   * stays flat.
    *
    * What keeps his feet ON the beam is that the hero is drawn against the same
-   * function the beam is (renderGroundY), sampled at his own x. Contact is not
-   * maintained by a second offset agreeing with the first; there is one offset.
+   * function the beam is (renderGroundY). Contact is not maintained by a second
+   * offset agreeing with the first; there is one offset.
    *
    * And it is scoped to the cabinet that draws girders. An island anywhere else
-   * is a torn-out lump of earth, and earth does not twang.
+   * is a torn-out lump of earth, and earth does not ring.
    */
-  girderFlex(r, vy) {
+  ringGirder(r, vy) {
     if (!r || r.kind !== 'island' || this.cabinet.slabLook !== 'girder') return;
     const k = Math.max(0.35, Math.min(1.4, Math.abs(vy) / BASE_JUMP_V));
-    r.sag = { t: 0, amp: GIRDER_SAG_MAX * k, p: this.girderFootU(r) };
+    r.ring = { t: 0, amp: GIRDER_RING_MAX * k };
   }
 
-  /**
-   * Where along the span the load is, 0..1, held off the bolted ends.
-   *
-   * The clamp is not a fudge for a divide: it is the end plates. A tent pinned
-   * at the very column the hero stands on would put a full-depth dip one pixel
-   * from a bolt, so the peak is kept a tenth of the span in and a hero who
-   * catches the lip by his toe gets almost no give — which is what landing on
-   * the bolted end of a beam actually feels like.
-   */
-  girderFootU(r) {
-    const u = (this.playerWorldX() - r.x) / r.w;
-    return Math.max(0.1, Math.min(0.9, u));
-  }
-
-  updateGirderFlex(dt) {
+  updateGirderRing(dt) {
     for (const r of this.routes) {
-      const s = r.sag;
-      if (!s) continue;
-      s.t += dt;
-      if (s.t > GIRDER_SAG_DECAY * 6) { r.sag = null; continue; }
-      // THE DIP BELONGS TO THE LOAD, AND THE LOAD IS WALKING. The hero is
-      // pinned to PLAYER_X and the beam scrolls past under him, so a twang that
-      // lasts a third of a second is a hero who has crossed half a span by the
-      // time it dies. Peaked where he landed, the dip would slide out from
-      // under his feet and he would ride a rising beam; following the feet, the
-      // hollow travels with him the way a plank's does. Frozen the moment he
-      // leaves, because the beam then keeps ringing where it was last loaded.
-      if (this.route === r && this.player.grounded) s.p = this.girderFootU(r);
+      if (!r.ring) continue;
+      r.ring.t += dt;
+      if (r.ring.t > GIRDER_RING_DECAY * 6) r.ring = null;
     }
   }
 
   /**
-   * The beam's surface at a world column, relative to its flat self.
+   * How far the beam is off its own line right now.
    *
-   * A tent from the two bolted ends to the load, smoothed — the load's own
-   * influence line, which is why it needs no width of its own: the span sets
-   * the reach, and the shape reaches both ends exactly however near one the
-   * hero is standing.
+   * Struck INTO motion rather than displaced and released: the sine starts at
+   * zero, so the frame he touches down the beam is still flush and the shiver
+   * grows out of the impact instead of teleporting away from it. Downward
+   * first, because that is the direction he arrived from.
    */
-  girderSag(worldX, route) {
-    const s = route && route.sag;
+  girderRing(route) {
+    const s = route && route.ring;
     if (!s) return 0;
-    const u = (worldX - route.x) / route.w;
-    if (u <= 0 || u >= 1) return 0;
-    const tent = u <= s.p ? u / s.p : (1 - u) / (1 - s.p);
-    const shape = tent * tent * (3 - 2 * tent);
-    return s.amp * shape
-      * Math.sin(GIRDER_SAG_W * s.t) * Math.exp(-s.t / GIRDER_SAG_DECAY)
-      / GIRDER_SAG_NORM;
+    return s.amp * Math.sin(GIRDER_RING_W * s.t) * Math.exp(-s.t / GIRDER_RING_DECAY)
+      / GIRDER_RING_NORM;
   }
 
   /**
@@ -1489,7 +1486,7 @@ export class RunState {
    * goes through here; the sim keeps asking routeGroundY, which is flat.
    */
   renderGroundY(worldX, route) {
-    return this.routeGroundY(worldX, route) + this.girderSag(worldX, route);
+    return this.routeGroundY(worldX, route) + this.girderRing(route);
   }
 
   /**
@@ -1730,7 +1727,7 @@ export class RunState {
     const toeCatch = !crossed && prevToeX < is.x && feetY > top && feetY - top <= TOE_CATCH;
     if (!crossed && !toeCatch) return false;            // did not cross downward
     this.route = is;
-    this.girderFlex(is, this.player.vy);
+    this.ringGirder(is, this.player.vy);
     this.player.y = 0;
     this.player.vy = 0;
     this.player.jumps = 0;
@@ -3594,7 +3591,7 @@ export class RunState {
       gravityScale: this.beatLock ? 1 : this.powerups.gravityMultiplier(),
     });
     const tookIsland = (!riding && this.routes.length) ? this.updateRoute(prevFeetY, prevToeX) : false;
-    if (this.routes.length) this.updateGirderFlex(wdt);
+    if (this.routes.length) this.updateGirderRing(wdt);
     // AN AIRBORNE HERO FALLS IN WORLD SPACE, even where the floor is a slope.
     //
     // `player.y` is altitude above the LOCAL floor, and while he is standing on
@@ -5669,7 +5666,7 @@ export class RunState {
           // arrival — he is late, not slow.
           if (this.tRun < (c.enterAt || 0)) {
             dx = VIEW_W + 40;
-            c.alt = aheadAlt;
+            c.alt = COPTER_ARRIVE_ALT;
             parked = true;
             break;
           }
@@ -5677,10 +5674,25 @@ export class RunState {
           // The first arrival is a flight across the frame, so it is given
           // longer than the hop home after a bonk.
           c.homeT = Math.min(1, c.homeT + dt / (c.arrived ? 1.5 : 2.4));
-          if (c.homeT >= 1) c.arrived = true;
           const e = c.homeT * c.homeT * (3 - 2 * c.homeT); // smoothstep
           dx = c.homeDx + (aheadDx - c.homeDx) * e;
-          c.alt = c.homeAlt + (aheadAlt - c.homeAlt) * e;
+          if (c.arrived) {
+            c.alt = c.homeAlt + (aheadAlt - c.homeAlt) * e;
+          } else {
+            // THE CLIMB IS GATED ON THE BUILDING, not on the clock: he holds
+            // his low approach until his whole drawing is past the gorilla's
+            // column, then rises into the roam. Tying it to time instead would
+            // put the climb in a different place on every cabinet, since the
+            // flight is the width of the frame and the frame is a zoom away.
+            const zoomNow = this.camZoom || ZOOM;
+            const pastGorilla = dx + COPTER_BOX / 2 < GORILLA_COLUMN[0] / zoomNow;
+            c.alt = pastGorilla
+              ? c.alt + (aheadAlt - c.alt) * Math.min(1, dt * 1.1)
+              : COPTER_ARRIVE_ALT;
+            // Arrived once he is up as well as in — otherwise the roam's own
+            // clamp would take over mid-climb and snap the last of it.
+            if (c.homeT >= 1 && Math.abs(c.alt - aheadAlt) < 2) c.arrived = true;
+          }
           // Wait out the gap, then take the first stretch of clear road that
           // covers the window. PATIENCE is the escape hatch: a dense stage
           // (rhythm cuts holes every other beat) can go a long time without

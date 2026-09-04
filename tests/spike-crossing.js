@@ -489,6 +489,74 @@ for (const hero of cast) {
   assert(hasPitFill('gears') && hasPitFill('spikes'), 'both hard fills are registered painters');
 }
 
+// ---- the girder rings ----------------------------------------------------------
+// A stone on this cabinet is drawn as a beam bolted across the opening, and
+// steel answers a landing by shivering. Three claims, and the first is the one
+// worth the test: the shiver is DRAWN. If it ever reached routeGroundY the hero
+// would be lifted off a floor he is standing on and land again on the way back,
+// several times per ring — so the sim's floor is checked flat, frame by frame,
+// while the drawn one moves.
+{
+  const run = newRun('lorenzo', { startAt: CROSS_AT - 0.04 });
+  const bot = new DemoBot(run);
+  let stone = null;
+  for (let i = 0; i < 60 * 30 && !stone; i++) {
+    bot.update(TICK);
+    run.update(TICK);
+    if (run.route && run.route.crossing) stone = run.route;
+  }
+  assert(!!stone, 'the hero lands on a girder');
+  assert(!!stone.ring, 'and landing on it strikes the beam');
+
+  const flat = run.routeGroundY(stone.x + stone.w / 2, stone);
+  const seen = [];
+  let simMoved = false;
+  let bent = false;
+  for (let i = 0; i < 30; i++) {
+    const mid = run.renderGroundY(stone.x + stone.w / 2, stone) - flat;
+    const near = run.renderGroundY(stone.x + 1, stone) - flat;
+    const far = run.renderGroundY(stone.x + stone.w - 1, stone) - flat;
+    if (Math.abs(run.routeGroundY(stone.x + stone.w / 2, stone) - flat) > 1e-9) simMoved = true;
+    if (Math.abs(near - mid) > 1e-9 || Math.abs(far - mid) > 1e-9) bent = true;
+    seen.push(mid);
+    bot.update(TICK);
+    run.update(TICK);
+  }
+  bot.releaseAll();
+  Input.endFrame();
+  assert(!simMoved, 'the floor the sim stands him on never moves');
+  // RIGID. The whole beam holds one position: no bend, no hollow following his
+  // feet, the bolted ends travelling exactly as far as the middle.
+  assert(!bent, 'the whole span moves together, ends and middle alike');
+
+  const deepest = Math.max(...seen);
+  assert(seen[0] >= -1e-9 && deepest > 0.3,
+    `it goes DOWN first, and far enough to see (${deepest.toFixed(2)}px)`);
+  // Against the beam's own 8px section. A fifth of it reads as vibration; half
+  // would be a plank giving way, and the fastest arrival in the game (a stomp,
+  // scaled by landing speed) still has to stay the near side of that.
+  assert(deepest < 3, `and never far enough to read as a step down (${deepest.toFixed(2)}px)`);
+  assert(seen.filter((v) => v >= deepest * 0.75).length >= 2,
+    'it HOLDS near the bottom rather than blipping through it for one frame');
+  assert(Math.min(...seen) < -0.05, 'it comes back up past its own line — a ring, not a sag');
+  assert(seen.slice(18).every((v) => Math.abs(v) < 0.1),
+    'and it is over inside a third of a second, well short of the tread');
+}
+
+// ---- and only where the slabs are steel -----------------------------------------
+// Every other island in the game is a torn-out lump of earth. Earth does not ring.
+{
+  const { CABINETS } = await import('../src/data/cabinets.js');
+  const steel = CABINETS.filter((c) => c.slabLook === 'girder');
+  assert(steel.length > 0 && steel.every((c) => c.style === 'lcd'),
+    `the girder look belongs to the LCD cabinet alone (${steel.length})`);
+  const run = newRun('lorenzo');
+  const stone = run.routes.find((r) => r.crossing);
+  run.cabinet = { ...run.cabinet, slabLook: 'earth' };
+  run.ringGirder(stone, 320);
+  assert(!stone.ring, 'a slab of ground takes a landing without a sound from the floor');
+}
+
 dom.reset?.();
 console.log(failed ? 'SPIKE-CROSSING: FAILED' : 'SPIKE-CROSSING: PASSED');
 process.exit(failed ? 1 : 0);

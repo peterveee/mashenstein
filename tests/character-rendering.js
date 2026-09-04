@@ -96,7 +96,7 @@ assert(toonIds.every((id) => HERO_SPRITES[id] && HERO_SPRITES[id].pal),
   'every toon in the roster has a palette to draw with');
 assert(HEROES.every((h) => TOON_SPECS[h.id]),
   'every playable hero has a toon rig');
-assert(HERO_DISC_PLATE === 'rgba(108,132,152,0.96)',
+assert(HERO_DISC_PLATE === 'rgba(144,170,190,0.98)',
   'HUD hero faceplate keeps the lifted slate plate');
 assert(ACTIVE_CELEBRATION_STYLE === 'reworked', 'results-screen celebrations default to the approved rework');
 assert(ACTIVE_LOCOMOTION_STYLE === 'enhanced', 'jump and duck default to the improved motion');

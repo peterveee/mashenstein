@@ -483,16 +483,19 @@ function eggPath(c, cx, cy, rx, ry, eq = 0.18) {
   c.ellipse(cx, cy + ey, rx, ry + ey, 0, Math.PI, EG_TAU);
 }
 // The logo: two lobes, thick at the philtrum, sweeping out to a tip that
-// curls up. BRICK BONK's wall is this shape.
-function egMustache(c, cx, cy, span, drop, lift = 0) {
+// curls up. BRICK BONK's wall is this shape. `fill`/`ink` exist so a bake-off
+// can ask what the shape looks like in another colour without redrawing it —
+// red on brown fur needs no contour, but a pale mustache on a pale face is
+// invisible without one. Production passes neither; red, uncontoured, ships.
+function egMustache(c, cx, cy, span, drop, lift = 0, fill = EG_RED, ink = null, lw = 0) {
   for (const s of [-1, 1]) {
-    egP(c, EG_RED, (k) => {
+    egP(c, fill, (k) => {
       k.moveTo(cx, cy - drop * 0.3);
       k.quadraticCurveTo(cx + s * span * 0.45, cy - drop * 0.95, cx + s * span, cy - drop * 0.35 + lift * drop * 1.5);
       k.quadraticCurveTo(cx + s * span * 0.82, cy + drop * 0.3 + lift * drop * 1.2, cx + s * span * 0.42, cy + drop * 0.6);
       k.quadraticCurveTo(cx + s * span * 0.16, cy + drop * 0.8, cx, cy + drop * 0.55);
       k.closePath();
-    });
+    }, ink, lw);
   }
 }
 // Tiny science goggles on a strap round the head.

@@ -57,7 +57,7 @@ const DISC_R = 11;
 // The portrait disc is its own lit face plate, not another copy of the status
 // pill's low-contrast backing. It has to survive a small crop over bright or
 // dark stage art while still leaving the hero's face as the focal point.
-export const HERO_DISC_PLATE = 'rgba(108,132,152,0.96)';
+export const HERO_DISC_PLATE = 'rgba(144,170,190,0.98)';
 // EVERYTHING IN THE TOP ROW IS PLACED OFF PILL_CY (the objective panels take
 // HERO_CY, which is this), so this is the one line that moves the strip. The
 // pill is 4px shorter than the disc beside it and shares its midline, so its own
