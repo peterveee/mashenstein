@@ -652,9 +652,24 @@ export class DemoBot {
     // spends the rest of the level jumping at a moving target and taking the
     // hits that go with it — on cardboard-3 that cost it so much ground the
     // stage stopped reaching its own ending. The bot plays the mission.
+    // AND IT HAS TO LEAD HIM. He sways across the window and dodges the moment
+    // the hero leaves the ground, so jumping when he is already centred means
+    // arriving where he was — the demo stopped reaching three bonks. The fix is
+    // the one a player learns: commit early, at where he is GOING.
+    //
+    // Measured on the GAP between them, not on his world x: his position
+    // advances with the camera, so his raw velocity is mostly the scroll and
+    // leading on it threw the jump fifty units downrange.
+    const chaseGap = copter ? copter.x - px - 6 : 0;
+    const gapVx = copter && Number.isFinite(this.copterLastGap)
+      ? (chaseGap - this.copterLastGap) / Math.max(dt, 1 / 240) : 0;
+    this.copterLastGap = copter ? chaseGap : null;
+    // A quarter of a second is about what his head takes to reach the tub.
     const chaseJump = copter && copter.mode === 'hover'
       && run.copterBonks < (run.mission.n || 0)
-      && Math.abs(copter.x - px - 6) < 10;
+      // The window is 14, not 12: on the SPEED cabinet everything closes faster
+      // and a tighter acceptance left the demo one bonk short of the mission.
+      && Math.abs(chaseGap + gapVx * 0.26) < 14;
 
     // A STEPPING-STONE CROSSING, which the lane's own rule cannot play.
     //

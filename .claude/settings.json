@@ -55,10 +55,28 @@
       "Bash(node tests/bot-pits.js)",
       "Bash(grep -rn \"stageLabel\\\\|\\\\`3-\\\\|act, \\\\|number\" src/data/stages.js)",
       "Bash(node work/local/_hero-chip-shot.mjs)",
-      "Bash(grep -n \"updateDead\\(dt\\)\" src/game/run.js; sed -n '/^  updateDead\\(dt\\)/,/^  [a-zA-Z]*\\(/p' src/game/run.js | head -80)"
+      "Bash(grep -n \"updateDead\\(dt\\)\" src/game/run.js; sed -n '/^  updateDead\\(dt\\)/,/^  [a-zA-Z]*\\(/p' src/game/run.js | head -80)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(curl -s -o /dev/null -w \"8001: %{http_code}\\\\n\" --max-time 3 http://localhost:8001/)",
+      "Bash(node verify-clouds.mjs)"
     ],
     "additionalDirectories": [
       "/Users/Peter/mashenstein/src/game"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR:-/Users/Peter/mashenstein}/.claude/hooks/git-guard.sh\"",
+            "statusMessage": "Checking shared-tree git guard"
+          }
+        ]
+      }
     ]
   }
 }

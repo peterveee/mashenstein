@@ -5,6 +5,10 @@
 // Colors come from HERO_SPRITES palettes so pixel and toon stay in sync.
 import { HERO_SPRITES } from './heroes.js';
 import { bakeSS, screen, W, H } from '../engine/renderer.js';
+// The thrown cane's painter, reused for the one he carries: same object, so it
+// gets the same marks and the same proportions rather than a second set that
+// drifts. sprites.js does not import this file, so the direction is safe.
+import { drawBambooShoot } from '../engine/sprites.js';
 
 const OUTLINE_A = 0.32, SKIN_OUTLINE_A = 0.2;
 let OUTLINE = `rgba(26,16,40,${OUTLINE_A})`;
@@ -873,6 +877,38 @@ function drawWrench(ctx, x, y, angle, u, ow) {
 // size a hero is actually seen the guard is the only thing that says "pistol"
 // rather than "block", which is why it survives the detail cut and the sight
 // does not.
+// The carried BAMBOO STICK. Rusty's ranged move is thrown and caught rather
+// than fired, so unlike a pistol the prop is not a holstered thing that appears
+// for the shot — it is in his hand every frame he is not mid-throw, which is
+// what answers "where does the ammunition come from": there is one stick and
+// he owns it.
+//
+// ONE painter for the cane wherever it is: this calls the projectile painter
+// rather than redrawing it, so the cut ends, the bore, the node bands and the
+// proportions are shared by construction. Written by hand it had drifted to
+// 7.4:1 against the thrown version's 2.4:1 — the same prop reading as two
+// different objects depending on whether it was in the air.
+function drawHeldStick(ctx, x, y, angle, u, ow) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  // Scaled off `u` (which is the hero's height) so it holds at any render size.
+  // u/26 was a quarterstaff and u/30 still read heavy; u/36 is the cane. The
+  // projectile must be drawn at the SAME h/36 when the ability is wired, or
+  // held and thrown drift apart again.
+  //
+  // GRIPPED NEAR THE BASE, not the middle: centred on the fist the glove sat
+  // over the centre node and covered the very marks that identify the thing.
+  // The offset is in the cane's OWN axis (applied after the rotate), so it
+  // slides along the stick however the hand is angled. 0.58 rather than 0.72,
+  // because at 0.72 the butt end sat closer to the grip than the glove's own
+  // radius and the fist swallowed it — this leaves a stub showing above the
+  // hand, so it reads as GRIPPED rather than balanced on the knuckles.
+  const size = u / 36;
+  drawBambooShoot(ctx, 5.8 * size * 0.58, 0, { size });
+  ctx.restore();
+}
+
 function drawPistol(ctx, x, y, angle, u, ow, p, back = 0) {
   const steel = recede(p.gunmetal || '#4c5360', back);
   const grip = recede(p.gunGrip || p.w || '#6b4324', back);
@@ -5462,6 +5498,29 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
   // goes down behind the torso, the near one over it), so each has to be able
   // to arm its own prop where its own limb lands.
   let pistolAngle = null, pistolAngleB = null;
+  // THE HAND IS EMPTY WHILE THE STICK IS IN THE AIR, and `actionTime` cannot
+  // tell us that: the throw gesture is 0.3s but the flight is well over a
+  // second, so keying off it alone re-armed the hand mid-flight and he held the
+  // weapon while watching it fly. `pose.axeThrown` is the authority — the flag
+  // run.js already maintains for the returning weapon, true for exactly as long
+  // as the thing is out there. Gated on the STICK, not on `toss`: the settled
+  // face never inherited that flag, so naming it here made the test dead code.
+  const stickQ = pose.menuAction === 'aim' && pose.actionTime != null
+    ? Math.max(0, Math.min(1, Number(pose.actionTime) / 0.3)) : 0;
+  const stickThrown = spec.stick && (pose.axeThrown || (spec.toss && stickQ > 0.56));
+  // CARRIED DOWN AT HIS SIDE, like a relay baton, and swung UP to the throw
+  // line as the arm comes through. Down is not a style choice: a STANDING pose
+  // draws the front arm BEHIND the torso, so anything angled up or across from
+  // that hand is inside the body. Measured over a sweep of rest angles on the
+  // idle pose, visible cane pixels ran 23 at -0.35 and 54 at -0.85 against ~200
+  // pointing down — a green sliver at the hip versus a stick you can see him
+  // carrying.
+  //
+  // CELEBRATION RAISES IT. The spread arms go up and out, and a cane still at
+  // the carry angle points at the floor off an arm reaching for the ceiling —
+  // the prop contradicting the pose. Held aloft it continues the arm's line.
+  const stickCarry = spec.stickRest == null ? 1.05 : spec.stickRest;
+  const stickAngle = pose.kind === 'celebrate' ? -0.95 : stickCarry - stickQ * 1.5;
   // Where the ki ball sits and how far into its throw it is, as [x, y, grow, q],
   // or null when she is not throwing one.
   let kiBlast = null;
@@ -6971,6 +7030,9 @@ function drawHumanoid(ctx, id, spec, p, pose, u, ow, lod) {
       // glove covers the top of the grip and reads as holding it; the flash is
       // the last mark on the figure because it is light, not an object.
       if (pistolAngle != null) drawPistol(ctx, handF[0], handF[1], pistolAngle, u, ow, p);
+      // The carried stick, under the glove for the same reason the gun is: the
+      // hand has to close over it or it reads as floating alongside.
+      if (spec.stick && !stickThrown) drawHeldStick(ctx, handF[0], handF[1], stickAngle, u, ow);
       handDeco(handF[0], handF[1]);
       if (pistolAngle != null && !lod) {
         const shotT = Math.max(0, Math.min(0.3, Number(pose.actionTime) || 0));
@@ -9205,6 +9267,12 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   // drawn dead last, after the head, which is how a sleeve ends up painted
   // across a face.
   slidePuff(tx2, ty2, 0.05 * u, -0.08 * u, -0.06 * u);
+  // The carried stick. The slide is its own painter and never reaches
+  // drawHumanoid's arm props, which is the same gap that left this pose
+  // tailless. Angled along the recline so it lies with the trailing arm, and
+  // drawn BEFORE slideHand so the glove closes over it exactly as it does
+  // standing.
+  if (spec.stick) drawHeldStick(ctx, tx2, ty2, -0.35, u, ow);
   slideHand(ctx, id, spec, p, u, ow, armW, tx2, ty2, lod);
   // head up and back, riding the shoulder wherever the build put it. Drawn at
   // ABSOLUTE figure coordinates, untilted: the light field's gradients
@@ -10537,8 +10605,11 @@ function paintFace(ctx, heroId, spec, x, y, w, h, light = true, palette = null, 
     drawRayHead(ctx, heroId, p, { kind: 'idle', time: 0, ...(facePose || {}) }, u, ow,
       hx, hy, false, false);
   } else {
-    // blob/disc: the body IS the face — draw the whole toon fitted
-    drawToon(ctx, heroId, { kind: 'idle', time: 0, ...(facePose || {}) }, x + w / 2, y + h * 1.18, h * 1.45,
+    // blob/disc/pika: the body IS the face — draw the whole toon fitted.
+    // FACE_BODY_FEET/FACE_BODY_H are named beside faceHeadAnchor, which has to
+    // undo this placement to say where the face lands.
+    drawToon(ctx, heroId, { kind: 'idle', time: 0, ...(facePose || {}) },
+      x + w / 2, y + h * FACE_BODY_FEET, h * FACE_BODY_H,
       palette ? { spec, pal: palette } : {});
   }
   disarmLight(prevLight);
@@ -10745,7 +10816,85 @@ export function toonEffectEllipse(heroId) {
 // Head-and-face render fitted to a w-by-h box (HUD cells, portal crops).
 // Every hero is scaled and centered so its whole silhouette lands inside the
 // box with a hair of breathing room — no clipped hats, ears, or chins.
-const FACE_PAD = 0.04; // fraction of the box left empty on each side
+// ---------------------------------------------------------- the crop's dials
+// HOW FAR THE FIT MAY RESCALE A HEAD, and how much air it leaves around it.
+//
+// The fit normalizes the whole SILHOUETTE into the box — hair, hat, ears and
+// all. That is right for a lone portrait and wrong for a ROW of them: a hero
+// with spiked hair or side buns has his skull shrunk to make room for them,
+// while a bald one is inflated until his head fills the cell, and a HUD strip
+// of faces ends up with no consistent scale in it at all. The heads are the
+// subject; the hair is not.
+//
+// So the rescale is CLAMPED. Inside the range every hero is fitted exactly as
+// before; at the ends a large silhouette stops shrinking its head and a small
+// one stops inflating it, and whatever falls outside the box is cropped —
+// which is what a face crop is for, and what the callers' own clips already
+// do. `s` is measured against paintFace's own sizing, so 1 is "no rescale".
+//
+// `pad` is the air. A face crop is fitted to a SQUARE and most of them are
+// shown through a CIRCLE — the HUD disc, the portal — so ink fitted flush to
+// the box corners lands flush against the rim. The pad is what buys the head
+// its clearance there; it is not a margin anybody sees on a square cell.
+// The range is narrow on purpose: at 22px what the eye reads is HEAD SIZE, and
+// a row of portraits where one skull is a third bigger than the next reads as a
+// mistake before it reads as a bald man. Nearly every hero is clamped rather
+// than fitted, so the fit's remaining job is the small cells and the wide
+// (20x15) crops, where the box is not square and the head has room to breathe.
+const CROP_MIN = 0.88, CROP_MAX = 0.94, CROP_PAD = 0.14;
+export const FACE_CROP = { min: CROP_MIN, max: CROP_MAX, pad: CROP_PAD };
+export function setFaceCrop({ min = CROP_MIN, max = CROP_MAX, pad = CROP_PAD } = {}) {
+  FACE_CROP.min = min; FACE_CROP.max = max; FACE_CROP.pad = pad;
+}
+// --------------------------------------------------------- where the face sits
+// THE CROP IS CENTRED ON THE HEAD, NOT ON THE SILHOUETTE. The fit above
+// measures every pixel a hero paints — cap brim, plait, ears, hat — and used to
+// put the middle of THAT box in the middle of the cell, which centres a
+// bounding box rather than a face. Anything hanging off one side dragged the
+// face the other way: Lorenzo's cap brim reaches left, so his nose sat right of
+// the disc's centre and low in it, and every hero with a tall hat or a fringe
+// rode low. In a ROW of round badges that reads as sloppy registration, because
+// the circle is the one thing every cell shares.
+//
+// The head does not have to be measured. paintFace draws it at a KNOWN place —
+// the box's centre line, 0.62 of the way down, with a skull radius fixed by the
+// rig — so the anchor is arithmetic, not a second fit. The silhouette is still
+// what sets the SCALE; it just no longer gets a vote on the centre.
+// (Peter, 4 Sep 2026, off a four-way bake-off: skull centre, features centre,
+// and features centre with one head size for the whole cast. The skull won —
+// the features line sat the face visibly low, and one head size undid Raymn's
+// smaller skull and Kiko's headScale, magnifying both.)
+//
+// Mochi and Chompo have no skull — they are a body with a face on it, drawn by
+// a whole nested toon — so their anchor is that body's face line instead. Same
+// rule, read off a different painter: the silhouette never gets the vote.
+//
+// Where paintFace stands a whole-body rig: feet this far down the box, drawn
+// this many box-heights tall. Named because faceHeadAnchor has to undo it.
+const FACE_BODY_FEET = 1.18, FACE_BODY_H = 1.45;
+// WHERE THE FACE IS, in units of box height measured down from the top of the
+// box. Horizontally there is nothing to say — paintFace draws every rig on
+// x + w / 2, which is the whole point: the centre line is already right, and
+// only the silhouette's vote was moving faces off it.
+//
+// Every number here is read off the painter that uses it rather than dialled by
+// eye, so a hero who moves his own head moves this with him.
+export function faceHeadAnchor(spec) {
+  if (!spec) return null;
+  // Humanoid and ray heads are drawn AS heads, at paintFace's own head line.
+  if (spec.rig === 'humanoid' || spec.rig === 'ray') return 0.62;
+  // The rest are a body with a face on it, drawn by a whole nested drawToon —
+  // so their anchor is that body's face line, converted out of drawToon's
+  // feet-anchored space. Mochi's face rides 8% of the body height above a
+  // centre that sits at -0.4u plus an idle bob, under a 0.9 rig scale taken
+  // about her feet (drawPika); the blob rig is the same shape of answer without
+  // the scale. Chompo IS the disc and the disc is the face, so hers is the
+  // body's own centre (drawDisc).
+  if (spec.rig === 'pika') return FACE_BODY_FEET - 0.9 * (0.406 + 0.35 * 0.08) * FACE_BODY_H;
+  if (spec.rig === 'blob') return FACE_BODY_FEET - (0.4 + 0.34 * 0.15) * FACE_BODY_H;
+  if (spec.rig === 'disc') return FACE_BODY_FEET - 0.44 * FACE_BODY_H;
+  return null;
+}
 export function drawToonFace(ctx, heroId, x, y, w, h, opts = {}) {
   // Same candidate seam as drawToon's: a proposal can be cropped to a HUD cell
   // without being on the roster. The fit cache is keyed by heroId, and a
@@ -10757,9 +10906,23 @@ export function drawToonFace(ctx, heroId, x, y, w, h, opts = {}) {
   // paintFace scales everything off h and centers on w/2, so the ink lands at
   // this size and offset regardless of how wide the box is.
   const inkW = fit.w * h, inkH = fit.h * h;
-  const cx = w / 2 + (fit.x + fit.w / 2 - 0.5) * h;
-  const cy = (fit.y + fit.h / 2) * h;
-  const s = Math.min((1 - FACE_PAD * 2) * w / inkW, (1 - FACE_PAD * 2) * h / inkH);
+  const air = 1 - FACE_CROP.pad * 2;
+  // The silhouette's own answer, which is the shipped one and the fallback for
+  // every rig with no skull to anchor on.
+  let cx = w / 2 + (fit.x + fit.w / 2 - 0.5) * h;
+  let cy = (fit.y + fit.h / 2) * h;
+  let s = Math.max(FACE_CROP.min,
+    Math.min(FACE_CROP.max, air * w / inkW, air * h / inkH));
+  // ...and the head's, which overrides it wherever there is a head. The
+  // horizontal anchor is the box's own centre line — paintFace draws every head
+  // on it — so this is what takes the cap brim, the ponytail and the axe handle
+  // out of the centring. The SCALE above is left alone: the silhouette still
+  // says how big the crop is, it just no longer says where it points.
+  const anchor = faceHeadAnchor(spec);
+  if (anchor != null) {
+    cx = w / 2;
+    cy = anchor * h;
+  }
   ctx.save();
   // Anything the fit deliberately did not measure (see paintFace's `forFit`)
   // now hangs past the box, so the box is also the crop. Every caller already

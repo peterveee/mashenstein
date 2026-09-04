@@ -528,11 +528,37 @@ function ears(c, X, Y) {
 // a closed outline round the whole shape reads as a stuck-on ball, because a
 // real nose has no top edge — it comes out of the brow.
 const SKIN_DK = '#e0b68e';
-function nose(c, X, Y) {
-  const cx = X(0.5), cy = Y(0.392), rx = X(0.03), ry = Y(0.034);
-  P(c, SKIN_DK, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, TAU));
-  line(c, PRO_SKIN, PRO_LW, (k) => k.ellipse(cx, cy, rx, ry, 0, 0.12 * Math.PI, 0.88 * Math.PI));
+// OBLONG, TO STAND IN THE SPACE THE LENSES OPENED. Peter, 4 Sep, on the 12%
+// nose-side taper: "could the nose be more oblong to position it in the new
+// space?" The taper opens a wedge between the two lens bottoms — at the
+// frames' lower edge the gap between them is about 0.042 of the box wide, and
+// it widens downward — so a nose narrow enough to come UP through that gap
+// reads as a nose sitting between the lenses rather than a bulb parked under
+// them. Height is nearly free above and not at all below: the moustache caps
+// the bottom at ~0.41, so a longer nose has to grow UPWARD, which is what `cy`
+// is for in every cut below.
+//
+//   rx / ry  the bulb's half width and half height
+//   cy       its centre; lower numbers push the extra length up into the bridge
+//   pinch    narrows the TOP only (1 is a plain ellipse), so the shape can be
+//            a wedge — slim where it passes between the lenses, broad at the
+//            base where the nostrils would be
+// SETTLED 4 Sep, and SHIPPED: the OBLONG. It was baked off against a narrower
+// one threaded up through the bridge gap, a pinched wedge, a lifted cut and a
+// long one; the plain oblong won — the frames read as resting ON it.
+const NOSE_SHAPE = { rx: 0.025, ry: 0.04, cy: 0.388 };
+// The contour is the LOWER edge only — a closed outline round the whole shape
+// reads as a stuck-on ball, because a real nose has no top edge, it comes out
+// of the brow. `pinch` touches only the two top control points, so the bottom
+// half is still exactly the ellipse this arc draws.
+function noseWith(s = NOSE_SHAPE) {
+  return (c, X, Y) => {
+    const cx = X(0.5), cy = Y(s.cy), rx = X(s.rx), ry = Y(s.ry);
+    P(c, SKIN_DK, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, TAU));
+    line(c, PRO_SKIN, PRO_LW, (k) => k.ellipse(cx, cy, rx, ry, 0, 0.12 * Math.PI, 0.88 * Math.PI));
+  };
 }
+const nose = noseWith();
 function paleDome(c, X, Y, lw) {
   P(c, SKIN, (k) => HEAD(k, X, Y), PRO_SKIN, PRO_LW);
 }
@@ -588,7 +614,64 @@ const EYE_GAP = { wide: 0.006, mid: -0.004, close: -0.013 };
 // RIM is DARK GREY, not the villain's near-black ink: at this size a black
 // rim plus a black pupil inside it is one dark mass, and the pupils are the
 // mark that has to win. The pupils keep the full ink.
-const SPEC = { hw: 0.067, bridge: 0.010, eye: EYE_GAP.mid };
+// LENS SHAPE. Peter, 4 Sep: "redesign the glasses so that they taper in on the
+// edges and on the nose — sort of trapezoidy but rounded on the bottom edges,
+// top corners remain sharp."
+//
+// A lens is drawn from its TOP EDGE, which is the one line that may not move:
+// the heavy brow bar runs flat across both lenses and the bridge, so the top
+// keeps its full width and its square corners in every cut. Everything under
+// it is the question — how far each side leans in by the bottom, how round the
+// two bottom corners are, and whether the bottom edge between them is straight
+// or bowed.
+//
+// The path is drawn in OUTWARD coordinates (+x is away from the nose, whichever
+// lens is being drawn) and that space is reflected for the left one, so the two
+// lenses can never disagree the way the first pair of brows did.
+//   out / inn  the lean of the outer and nose-side edges, as a fraction of the
+//              lens WIDTH — how much narrower the bottom is than the top
+//   r          bottom corner radius, as a fraction of the lens HEIGHT
+function lensPath(k, hw, hh, o) {
+  const W = hw * 2, H = hh * 2, top = -hh, bot = hh;
+  const bo = hw - o.out * W, bi = -hw + o.inn * W;   // the two bottom corners
+  const R = Math.max(0, Math.min(o.r * H, (bo - bi) / 2, H * 0.5));
+  // R along p -> q measured from p: where a rounded corner leaves each edge
+  const trim = (px, py, qx, qy) => {
+    const dx = qx - px, dy = qy - py, L = Math.hypot(dx, dy) || 1;
+    return [px + (dx / L) * R, py + (dy / L) * R];
+  };
+  const [ax, ay] = trim(bo, bot, hw, top);          // down the outer edge
+  const [bx, by] = trim(bo, bot, 0, bot);           // and onto the bottom
+  const [cx2, cy2] = trim(bi, bot, 0, bot);
+  const [dx2, dy2] = trim(bi, bot, -hw, top);
+  k.moveTo(-hw, top);
+  k.lineTo(hw, top);                                // the top edge, both corners sharp
+  k.lineTo(ax, ay);
+  k.quadraticCurveTo(bo, bot, bx, by);
+  k.lineTo(cx2, cy2);
+  k.quadraticCurveTo(bi, bot, dx2, dy2);
+  k.closePath();
+}
+// WHICH WAY THE LEAN GOES: SETTLED 4 Sep, and SHIPPED (props.js PRO_SPEC).
+// The first sheet tapered the OUTER edge hardest, which is how sunglasses are
+// shaped; Peter: "gentle taper on the outside and slightly more on the inside
+// edges." That is the opposite hand, and it is the right one for this face —
+// leaning the NOSE-side edge in opens a wedge of skin either side of the
+// bridge, so the nose comes out from behind the frames instead of being boxed
+// in by them, while the outer edge stays nearly straight and the pair keeps
+// its width. 9, 15 and 19% went up beside it and 12% won.
+const LENS_SHAPE = { out: 0.07, inn: 0.12, r: 0.3 };
+// HOW FAR DOWN THE FACE: SETTLED 4 Sep at one unit, and SHIPPED. Peter, after
+// the taper and the oblong nose: "glasses may be able to come down a bit now
+// that there is space for them." `y` is the lenses' centre line and the BROWS
+// are hung off it, so the gap between brow and rim — 0.034, the band of
+// forehead that stops a brow reading as part of the frames — holds at whatever
+// height the frames sit — unless a cut PINS them with `browY`, which is what
+// the shipped pair does: the last unit down is the rim coming to meet the nose,
+// and carrying the brows with it would only have raised the hairline again.
+// Two units of follow was tried first: every unit the frames drop that way is a
+// unit the hairline gains, and at two he reads as all forehead.
+const SPEC = { hw: 0.067, bridge: 0.010, eye: EYE_GAP.mid, lens: LENS_SHAPE, y: 0.346, browY: 0.338 };
 // LESS DARK. The frames were near-black, which at lane size made a bar across
 // his face heavier than anything else on him. A translucent slate keeps the
 // brow reading as the weight of the drawing without stamping it.
@@ -610,7 +693,7 @@ const BROW_STYLES = {
   bushy: { w: 0.06, h: 0.019, lift: 0.004, flick: 0.012, tilt: 0.06 },
   wild: { w: 0.066, h: 0.023, lift: 0.008, flick: 0.02, tilt: 0.12 },
 };
-function drawBrows(c, X, Y, shocked, name = 'bushy') {
+function drawBrows(c, X, Y, shocked, name = 'bushy', specY = 0.328) {
   const b = name && typeof name === 'object' ? name : BROW_STYLES[name];
   if (!b) return;
   // Above the frames' top bar (cy - hh - brow), plus a gap of its own.
@@ -625,7 +708,7 @@ function drawBrows(c, X, Y, shocked, name = 'bushy') {
   // thick style's own lift and the hit can ever float one over the crown.
   const BROW_CEILING = 0.212;
   const cy = Math.max(Y(BROW_CEILING),
-    Y(0.328) - Y(0.036) - Y(0.034) - (shocked ? Y(0.03) : 0) - Y(b.lift));
+    Y(specY) - Y(0.036) - Y(0.034) - (shocked ? Y(0.03) : 0) - Y(b.lift));
   const off = X(SPEC.hw + SPEC.bridge / 2);
   // A TRUE MIRROR. The two brows used to be the SAME path drawn at two
   // positions, with only the tilt's sign flipped — so the thick end and the
@@ -656,8 +739,9 @@ function drawBrows(c, X, Y, shocked, name = 'bushy') {
   }
 }
 const specsWith = (o = {}) => (c, X, Y, lw, shocked) => {
-  drawSpecs(c, X, Y, shocked, { ...SPEC, ...o });
-  drawBrows(c, X, Y, shocked, o.brows === undefined ? 'bushy' : o.brows);
+  const s = { ...SPEC, ...o };
+  drawSpecs(c, X, Y, shocked, s);
+  drawBrows(c, X, Y, shocked, o.brows === undefined ? 'bushy' : o.brows, s.browY === undefined ? s.y : s.browY);
 };
 function drawSpecs(c, X, Y, shocked, o) {
   // FINER. Peter, 4 Sep: "let's go finer with the glasses." Every line here was
@@ -666,20 +750,28 @@ function drawSpecs(c, X, Y, shocked, o) {
   // bar — the mark that makes these HIS frames — is the one thing that keeps
   // most of its weight, because dropping that too turns them into wire specs
   // and the face loses its brow.
-  const cy = Y(0.328), hh = Y(0.036);
+  const cy = Y(o.y === undefined ? SPEC.y : o.y), hh = Y(0.036);
   const hw = X(o.hw), off = X(o.hw + o.bridge / 2), gap = o.eye;
   const brow = PRO_LW * 0.6, top = cy - hh;
+  const shape = o.lens || LENS_SHAPE;
   for (const s of [-1, 1]) {
     const x = X(0.5) + s * off;
     line(c, RIM, PRO_LW * 0.42, (k) => { k.moveTo(x + s * hw, top + brow); k.lineTo(X(0.5) + s * X(0.166), cy - Y(0.006)); });
-    P(c, LENS, (k) => rr(k, x - hw, top, hw * 2, hh * 2, X(0.008)), RIM, PRO_LW * 0.5);
+    // Drawn once in OUTWARD space and reflected, so the taper on the nose side
+    // is the nose side on both lenses. `round` reproduces the rounded rectangle
+    // these were before the shape became a question.
+    c.save();
+    c.translate(x, cy);
+    c.scale(s, 1);
+    P(c, LENS, (k) => lensPath(k, hw, hh, shape), RIM, PRO_LW * 0.5);
+    c.restore();
     // gap is signed OUTWARD: positive pushes the pupil toward the outer rim,
     // negative pulls it in toward the bridge
     dot(c, INK, x + s * X(gap), cy + Y(0.004), X(shocked ? 0.012 : 0.017));
   }
   // the heavy top: one bar across both lenses and the bridge between them, the
   // line that makes these HIS frames rather than two rectangles
-  P(c, RIM, (k) => rr(k, X(0.5) - off - hw - PRO_LW * 0.08, top - PRO_LW * 0.08, (off + hw) * 2 + PRO_LW * 0.16, brow, X(0.004)));
+  P(c, RIM, (k) => rr(k, X(0.5) - off - hw - PRO_LW * 0.08, top - PRO_LW * 0.08, (off + hw) * 2 + PRO_LW * 0.16, brow, 0));
 }
 // ------------------------------------------------------------- the shirt
 // Peter, 4 Sep: "I would like to see him in a black and white shirt." The
@@ -958,7 +1050,7 @@ function professorParts(name, o) {
     // to ask for.
     ...(o.keepShell ? {} : { shell: null }),
     head: (o.ape ? apeHairHead : professorHead)(name, o.hitStyle === undefined ? 'blast' : o.hitStyle),
-    ...(o.ape ? {} : { face: nose }),
+    ...(o.ape ? {} : { face: o.nose ? noseWith(o.nose) : nose }),
     ...(o.body === undefined ? {} : { body: o.body }),
     ...(o.hands === undefined ? {} : { hands: o.hands }),
     hair: null,
@@ -1013,6 +1105,122 @@ const necktie = (fill, spots = null) => (c, X, Y) => {
   P(c, fill, (k) => rr(k, cx - X(0.03), Y(0.565), X(0.06), Y(0.04), X(0.008)), PRO_INK, PRO_LW * 0.8);
 };
 const handsAnd = (hands, tie) => (c, X, Y, lw) => { hands(c, X, Y, lw); if (tie) tie(c, X, Y, lw); };
+// The cape is a separate question from the professor underneath it. Every
+// option below keeps the same shoulder band, shirt points and skin hands, so
+// the eye is judging the collar's silhouette and lining rather than a whole
+// new outfit.
+function capeHigh(c, X, Y, lw, o = {}) {
+  const outer = o.outer || SUIT, lining = o.lining || BURGUNDY;
+  for (const s of [-1, 1]) P(c, lining, (k) => {
+    k.moveTo(X(0.5 + s * 0.08), Y(0.6));
+    k.quadraticCurveTo(X(0.5 + s * 0.42), Y(0.5), X(0.5 + s * 0.36), Y(0.2));
+    k.quadraticCurveTo(X(0.5 + s * 0.3), Y(0.36), X(0.5 + s * 0.14), Y(0.42)); k.closePath();
+  }, PRO_INK, PRO_LW);
+  for (const s of [-1, 1]) P(c, outer, (k) => {
+    k.moveTo(X(0.5 + s * 0.16), Y(0.62));
+    k.quadraticCurveTo(X(0.5 + s * 0.44), Y(0.52), X(0.5 + s * 0.4), Y(0.24));
+    k.lineTo(X(0.5 + s * 0.36), Y(0.2));
+    k.quadraticCurveTo(X(0.5 + s * 0.42), Y(0.5), X(0.5 + s * 0.08), Y(0.6)); k.closePath();
+  }, PRO_INK, PRO_LW);
+  band(c, X, Y, outer);
+  collarPoints(c, X, Y, COAT);
+  if (o.clasp) dot(c, GOLD, X(0.5), Y(0.575), X(0.032), PRO_INK, PRO_LW * 0.65);
+}
+// A broader, lower sweep: more fabric around the shoulders, with the red lining
+// visible as a deliberate inner crescent instead of two narrow flashes.
+function capeWide(c, X, Y, lw) {
+  for (const s of [-1, 1]) P(c, BURGUNDY, (k) => {
+    k.moveTo(X(0.5 + s * 0.06), Y(0.6));
+    k.quadraticCurveTo(X(0.5 + s * 0.48), Y(0.55), X(0.5 + s * 0.43), Y(0.31));
+    k.quadraticCurveTo(X(0.5 + s * 0.31), Y(0.35), X(0.5 + s * 0.12), Y(0.44)); k.closePath();
+  }, PRO_INK, PRO_LW);
+  for (const s of [-1, 1]) P(c, SUIT, (k) => {
+    k.moveTo(X(0.5 + s * 0.12), Y(0.63));
+    k.quadraticCurveTo(X(0.5 + s * 0.5), Y(0.57), X(0.5 + s * 0.47), Y(0.34));
+    k.lineTo(X(0.5 + s * 0.4), Y(0.3));
+    k.quadraticCurveTo(X(0.5 + s * 0.47), Y(0.54), X(0.5 + s * 0.06), Y(0.6)); k.closePath();
+  }, PRO_INK, PRO_LW);
+  band(c, X, Y, SUIT); collarPoints(c, X, Y, COAT);
+}
+// A compact mantle: the collar stops short of the crown and the scalloped hem
+// makes the cape read as a garment round his shoulders, not a second head.
+function capeMantle(c, X, Y, lw) {
+  P(c, SUIT, (k) => {
+    k.moveTo(X(0.13), Y(0.6));
+    k.quadraticCurveTo(X(0.18), Y(0.4), X(0.32), Y(0.36));
+    k.quadraticCurveTo(X(0.42), Y(0.44), X(0.5), Y(0.48));
+    k.quadraticCurveTo(X(0.58), Y(0.44), X(0.68), Y(0.36));
+    k.quadraticCurveTo(X(0.82), Y(0.4), X(0.87), Y(0.6));
+    k.lineTo(X(0.76), Y(0.64)); k.lineTo(X(0.68), Y(0.56));
+    k.lineTo(X(0.58), Y(0.63)); k.lineTo(X(0.5), Y(0.56));
+    k.lineTo(X(0.42), Y(0.63)); k.lineTo(X(0.32), Y(0.56));
+    k.lineTo(X(0.24), Y(0.64)); k.closePath();
+  }, PRO_INK, PRO_LW);
+  P(c, BURGUNDY, (k) => {
+    k.moveTo(X(0.2), Y(0.53)); k.quadraticCurveTo(X(0.3), Y(0.4), X(0.4), Y(0.45));
+    k.quadraticCurveTo(X(0.5), Y(0.51), X(0.6), Y(0.45));
+    k.quadraticCurveTo(X(0.7), Y(0.4), X(0.8), Y(0.53));
+    k.lineTo(X(0.76), Y(0.57)); k.quadraticCurveTo(X(0.5), Y(0.48), X(0.24), Y(0.57)); k.closePath();
+  });
+  band(c, X, Y, SUIT); collarPoints(c, X, Y, COAT);
+}
+// A graphic, angular version: the two split points are the cape's identity,
+// while the red inner faces keep it from merging into the silver hair.
+function capeSplit(c, X, Y, lw) {
+  for (const s of [-1, 1]) P(c, BURGUNDY, (k) => {
+    k.moveTo(X(0.5 + s * 0.08), Y(0.6));
+    k.lineTo(X(0.5 + s * 0.39), Y(0.52));
+    k.lineTo(X(0.5 + s * 0.33), Y(0.12));
+    k.lineTo(X(0.5 + s * 0.22), Y(0.34));
+    k.lineTo(X(0.5 + s * 0.14), Y(0.42)); k.closePath();
+  }, PRO_INK, PRO_LW);
+  for (const s of [-1, 1]) P(c, SUIT, (k) => {
+    k.moveTo(X(0.5 + s * 0.15), Y(0.62));
+    k.lineTo(X(0.5 + s * 0.47), Y(0.54));
+    k.lineTo(X(0.5 + s * 0.4), Y(0.08));
+    k.lineTo(X(0.5 + s * 0.3), Y(0.27));
+    k.lineTo(X(0.5 + s * 0.4), Y(0.5));
+    k.lineTo(X(0.5 + s * 0.08), Y(0.6)); k.closePath();
+  }, PRO_INK, PRO_LW);
+  band(c, X, Y, SUIT); collarPoints(c, X, Y, COAT);
+}
+// A Dracula-inspired silhouette: raised wing shoulders, a visible burgundy
+// inner face, and long split tails that fall around the tub. It borrows the
+// cape's shape language from the reference without changing Eggshell's face,
+// hands, shirt, or 2D construction.
+function capeDracula(c, X, Y, lw) {
+  for (const s of [-1, 1]) P(c, SUIT, (k) => {
+    k.moveTo(X(0.5 + s * 0.12), Y(0.64));
+    k.lineTo(X(0.5 + s * 0.49), Y(0.58));
+    k.lineTo(X(0.5 + s * 0.43), Y(0.3));
+    k.lineTo(X(0.5 + s * 0.29), Y(0.16));
+    k.lineTo(X(0.5 + s * 0.18), Y(0.36));
+    k.closePath();
+  }, PRO_INK, PRO_LW);
+  for (const s of [-1, 1]) P(c, BURGUNDY, (k) => {
+    k.moveTo(X(0.5 + s * 0.14), Y(0.6));
+    k.lineTo(X(0.5 + s * 0.47), Y(0.53));
+    k.lineTo(X(0.5 + s * 0.4), Y(0.33));
+    k.lineTo(X(0.5 + s * 0.28), Y(0.23));
+    k.lineTo(X(0.5 + s * 0.2), Y(0.4));
+    k.closePath();
+  }, PRO_INK, PRO_LW * 0.8);
+  for (const s of [-1, 1]) P(c, SUIT, (k) => {
+    k.moveTo(X(0.5 + s * 0.22), Y(0.46));
+    k.quadraticCurveTo(X(0.5 + s * 0.46), Y(0.62), X(0.5 + s * 0.49), Y(0.98));
+    k.lineTo(X(0.5 + s * 0.22), Y(0.94));
+    k.quadraticCurveTo(X(0.5 + s * 0.34), Y(0.76), X(0.5 + s * 0.3), Y(0.5));
+    k.closePath();
+  }, PRO_INK, PRO_LW);
+  for (const s of [-1, 1]) P(c, BURGUNDY, (k) => {
+    k.moveTo(X(0.5 + s * 0.24), Y(0.49));
+    k.quadraticCurveTo(X(0.5 + s * 0.4), Y(0.65), X(0.5 + s * 0.43), Y(0.92));
+    k.lineTo(X(0.5 + s * 0.27), Y(0.89));
+    k.quadraticCurveTo(X(0.5 + s * 0.35), Y(0.72), X(0.5 + s * 0.31), Y(0.52));
+    k.closePath();
+  }, PRO_INK, PRO_LW * 0.8);
+  band(c, X, Y, SUIT); collarPoints(c, X, Y, COAT);
+}
 const OUTFIT = {
   shirtRed: { body: (c, X, Y) => { band(c, X, Y, COAT); collarPoints(c, X, Y, COAT); }, hands: handsAnd(skinHands(COAT), necktie(TIE.red)) },
   labcoat: { body: (c, X, Y) => { band(c, X, Y, COAT); lapels(c, X, Y, COAT, SHIRT_BLUE); }, hands: handsAnd(skinHands(COAT), necktie(TIE.navy)) },
@@ -1042,18 +1250,7 @@ const OUTFIT = {
     hands: handsAnd(skinHands(KNIT), necktie(TIE.red, '#f4e6b8')),
   },
   cape: {
-    body: (c, X, Y) => {
-      // a high collar standing behind the head, red inside, black out
-      for (const s of [-1, 1]) P(c, '#b8202a', (k) => {
-        k.moveTo(X(0.5 + s * 0.08), Y(0.6)); k.quadraticCurveTo(X(0.5 + s * 0.42), Y(0.5), X(0.5 + s * 0.36), Y(0.2));
-        k.quadraticCurveTo(X(0.5 + s * 0.3), Y(0.36), X(0.5 + s * 0.14), Y(0.42)); k.closePath();
-      }, PRO_INK, PRO_LW);
-      for (const s of [-1, 1]) P(c, SUIT, (k) => {
-        k.moveTo(X(0.5 + s * 0.16), Y(0.62)); k.quadraticCurveTo(X(0.5 + s * 0.44), Y(0.52), X(0.5 + s * 0.4), Y(0.24));
-        k.lineTo(X(0.5 + s * 0.36), Y(0.2)); k.quadraticCurveTo(X(0.5 + s * 0.42), Y(0.5), X(0.5 + s * 0.08), Y(0.6)); k.closePath();
-      }, PRO_INK, PRO_LW);
-      band(c, X, Y, SUIT); collarPoints(c, X, Y, COAT);
-    },
+    body: (c, X, Y, lw) => capeHigh(c, X, Y, lw),
     // NO TIE. Peter, 4 Sep: "I like the cape, lose the tie." The cape already
     // owns the throat — a high collar standing behind the head is the loudest
     // thing on him below the face — and a tie under it is a second focus in
@@ -1091,6 +1288,12 @@ const browAt = (h, tilt) => ({
   ...BROW_STYLES.tame, w: BROW_W_SHORT, h, tilt, flick: 0,
   lift: (h - BROW_STYLES.tame.h) * 1.5 + tilt * 0.4,
 });
+// THE FRAMES CAME DOWN A UNIT. Peter, 4 Sep, after the taper and the oblong
+// nose: "glasses may be able to come down a bit now that there is space for
+// them." One unit is the whole of it — the lenses now rest ON the nose instead
+// of floating above it, and the brows come with them so the settled gap holds.
+// Two units was tried and read as a man with a very tall forehead, because
+// every unit the frames drop is a unit the hairline gains.
 const cut = ({ brows = browAt(0.024, 0), field = undefined, curve = -0.01, outfit = OUTFIT.cape } = {}) => ({
   parts: professor('mane', { mouth: trimWith({ chin: 'silver', field, curve }), body: outfit.body, hands: outfit.hands, eyes: specsWith({ brows }) }),
   mastTo: 10.4, hy: 3.2,
@@ -1122,11 +1325,24 @@ export const EGGSHELL_OUTFITS = [
   { id: 'of-sweater', label: 'V-NECK, DOTTED TIE', note: 'Grey sweater over a white collar, a red tie with cream dots. The nerd read.', ...cut({ outfit: OUTFIT.sweater }) },
   { id: 'of-cape', label: 'CAPE, RED LINING — WORKING', note: 'A high black collar standing behind the head, red inside, over a white shirt. No tie: the cape owns the throat, and a tie under it is a second focus in the same three units. The only outfit that changes his silhouette.', ...cut({ outfit: OUTFIT.cape }) },
 ];
+const capeOption = (id, label, note, body) => ({
+  id, label, note, ...cut({ outfit: { body, hands: skinHands(null) } }),
+});
+export const EGGSHELL_CAPES = [
+  capeOption('cp-working', 'HIGH COLLAR — WORKING', 'The current cut: tall black collar, red lining and white shirt points. The control.', OUTFIT.cape.body),
+  capeOption('cp-wide', 'WIDE SWEEP', 'A fuller, lower shoulder sweep. More fabric in the silhouette, with the red lining reading as a broad inner crescent.', capeWide),
+  capeOption('cp-mantle', 'SHORT MANTLE', 'A compact cape that stays around the shoulders. The scalloped hem is the read instead of a pair of tall ears.', capeMantle),
+  capeOption('cp-split', 'SPLIT TAILS', 'Two sharp points rise behind the head and split the top silhouette. The most graphic, theatrical cut.', capeSplit),
+  capeOption('cp-dracula', 'DRACULA WING', 'Reference-inspired: raised wing shoulders, burgundy inner faces and long split tails around the tub. The most theatrical silhouette in the row.', capeDracula),
+  capeOption('cp-inverted', 'BURGUNDY OUTER', 'The working shape with the colours reversed: burgundy outside, charcoal lining. A colour-led alternative, not a new costume.', (c, X, Y, lw) => capeHigh(c, X, Y, lw, { outer: BURGUNDY, lining: SUIT })),
+  capeOption('cp-clasp', 'HIGH COLLAR + CLASP', 'The working shape with one small gold clasp at the throat. A detail test for whether the cape needs a fastening to feel attached.', (c, X, Y, lw) => capeHigh(c, X, Y, lw, { clasp: true })),
+];
 export const EGGSHELL_WORKING = {
   id: 'pro-52-work', name: '52, WORKING',
-  note: 'The silver professor: wild mane, small fine specs, short level brows at twice the tame height, the slight frown (picked), '
-    + 'the warm grey stubble with the trim silver moustache and silver chin patch, skin fists, no shell — in the '
-    + 'cape, no tie.',
+  note: 'The silver professor: wild mane, small fine specs — tapered lenses, gentle 7% outside and 12% on the nose, '
+    + 'square on top and rounded under, dropped a unit onto an oblong nose — short level brows at twice the tame height, '
+    + 'the slight frown (picked), the warm grey stubble with the trim silver moustache and silver chin patch, skin fists, '
+    + 'no shell — in the cape, no tie.',
   ...cut(),
 };
 export const EGGSHELL_WORKING_REF = { id: 'pro-52', label: '52 AS PICKED', ...pick52('tame') };

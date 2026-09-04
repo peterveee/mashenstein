@@ -107,7 +107,9 @@ import {
 import {
   EGGSHELL_CANDIDATES, drawEggshellCandidate, EGGSHELL_TRAVEL, drawEggshellTravel,
 } from '../src/dev/eggshell-candidates.js';
-import { EGGSHELL_WORKING, EGGSHELL_WORKING_REF, EGGSHELL_BROW_ANGLES, EGGSHELL_STUBBLE_TONES, EGGSHELL_MOUTHS, EGGSHELL_OUTFITS } from '../src/dev/eggshell-redesigns.js';
+import { EGGSHELL_WORKING, EGGSHELL_WORKING_REF, EGGSHELL_BROW_ANGLES, EGGSHELL_STUBBLE_TONES, EGGSHELL_MOUTHS, EGGSHELL_OUTFITS, EGGSHELL_CAPES } from '../src/dev/eggshell-redesigns.js';
+import { EGGSHELL_TUBS, eggshellTubPart } from '../src/dev/eggshell-tubs.js';
+import { proFaceWith, PRO_STACHE_SIZE } from '../src/sprites/props.js';
 import { eggshellApe, eggshellBalloonArt } from '../src/sprites/props.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
@@ -1909,6 +1911,45 @@ function propNominalSize(name) {
 // Everything below this line is lab; nothing production goes here.
 // ==================================================================
 beginLab();
+
+// Keep the open cape question at the front of the lab page. The larger Eggshell
+// redesign section below contains the face/outfit history, but this is the row
+// Peter came here to judge and it should not be buried after every other lab.
+{
+  const s = sectionEl('eggshell-cape-bakeoff', 'Don K. Eggshell — cape redesigns',
+    'OPEN — seven cape-only variations on the silver professor. The face, hair, hands, shirt and tub stay on the working cut; only the cape changes. Judge the lane tile first, then the enlarged detail.');
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  s.appendChild(grid);
+  const BOX = 36, TW = 200, TH = 96, GY = 82, DX = 106, DY = 6, DW = 88, DH = 86;
+  const ds = Math.min(DW / BOX, DH / BOX), dw = BOX * ds;
+  const frameAt = (t) => Math.floor(t * 2 * 24) % 12;
+  const mono = (ctx, px, align = 'center') => {
+    ctx.fillStyle = 'rgba(255,255,255,.62)';
+    ctx.font = `${px}px ui-monospace, monospace`;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'alphabetic';
+  };
+  for (const v of EGGSHELL_CAPES) {
+    tile(grid, v.label, `${v.id} · ${v.note}`, TW, TH, (ctx, t) => {
+      laneStrip(ctx, TW, TH, GY);
+      ctx.fillStyle = '#262c3c'; ctx.fillRect(DX - 6, 0, TW - DX + 6, TH);
+      drawToon(ctx, 'lorenzo', pose('run', t), 20, GY, HERO_DRAW_H);
+      const bx = 44, by = GY - 10 - BOX + Math.sin(t * 2.4) * 1.5;
+      ctx.save(); ctx.translate(bx, by);
+      eggshellCopterArt(ctx, BOX, BOX, frameAt(t), { parts: v.parts, mastTo: v.mastTo, hy: v.hy });
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 0.45;
+      ctx.setLineDash([1.5, 1.5]); ctx.strokeRect(bx, by, BOX, BOX); ctx.setLineDash([]);
+      mono(ctx, 4, 'left');
+      ctx.fillText('LANE', 44, 7);
+      ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
+      ctx.save(); ctx.translate(DX + (DW - dw) / 2, DY + (DH - dw) / 2);
+      eggshellCopterArt(ctx, dw, dw, frameAt(t), { parts: v.parts, mastTo: v.mastTo, hy: v.hy });
+      ctx.restore();
+    }, { animated: true, wide: true, world: true, hires: 6 });
+  }
+}
 
 // ------------------------------------------- animal hero, replacing Gnash
 // CAST CANDIDATES, not cast. Nothing below is registered in TOON_SPECS,
@@ -6079,8 +6120,8 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 {
   const s = sectionEl('eggshell-redesign-bakeoff', 'Don K. Eggshell — the redesign, working version (52)',
     'WORKING — option 52, the silver professor. Four questions open on it, each a strip on the working face: the brow '
-    + 'ANGLE (all at twice the tame height), how WHITE the stubble is, the MOUTH, and the OUTFIT (ties, not bow ties; '
-    + 'skin fists in cuffs). The pairs at the end are 52 as picked beside the working cut in every painter he appears in. '
+    + 'ANGLE (all at twice the tame height), how WHITE the stubble is, the MOUTH, the OUTFIT (ties, not bow ties; '
+    + 'skin fists in cuffs). The cape has its own clearly labelled section at the top of this lab. The pairs at the end are 52 as picked beside the working cut in every painter he appears in. '
     + 'Lane tiles are the copter\'s real 36u beside Lorenzo. The balloon pair is the shipped Act III painter as it '
     + 'stands — the mane meets the basket ropes there, which that painter will need a lift for.');
   const sub = (text, note) => {
@@ -6568,6 +6609,136 @@ function frameStrip(grid, name, label, note, w, h, cell) {
   }
 }
 
+// ------------------------------------------- the villain's face, every state
+// He is drawn from the painter every frame now rather than from the raster
+// cache, which is what lets his face change at all — so this sheet is the
+// list of what it can say. Everything here calls the SHIPPED painter through
+// its `face` seam, the same one drawCopter fills in from the run, so a tile
+// cannot show an expression the game does not have.
+{
+  const s = sectionEl('eggshell-faces', 'Don K. Eggshell — every expression',
+    'REFERENCE. The moods, the eyes and the tics, on the shipped copter painter. MOOD is one line and a brow: '
+    + 'pleased on the way in, flat on the cruise, the frown while he is working, and the smirk — one brow up and '
+    + 'the mouth lifted on that side only — when he passes the rooftop gorilla. LOOK moves the pupils inside the '
+    + 'lenses: the hero while a pass is on, the gorilla when he is beside it, a slow drift otherwise. The BONK is '
+    + 'its own state and overrides all of it.');
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  s.appendChild(grid);
+  const BOX = 44;
+  const faces = [
+    ['FLAT', 'the cruise', { mood: 'flat' }],
+    ['SMILE', 'coming in for a pass', { mood: 'smile' }],
+    ['FROWN', 'over the hero, working', { mood: 'frown' }],
+    ['SMIRK', 'passing the gorilla — one brow up, one corner up', { mood: 'smirk', look: 1 }],
+    ['GLOAT', 'directly over the hero — the pose the mission is about', { mood: 'gloat', look: 0 }],
+    ['GRIN', 'teeth: the biggest thing his face does', { mood: 'grin' }],
+    ['LOOKING LEFT', 'the hero is behind him', { mood: 'flat', look: -1 }],
+    ['LOOKING RIGHT', 'the hero is ahead', { mood: 'flat', look: 1 }],
+    ['BLINK', 'every few seconds, off its own clock', { mood: 'flat', blink: 1 }],
+    ['LEFT BROW UP', 'the twitches are independent', { mood: 'flat', twitch: [1, 0] }],
+    ['RIGHT BROW UP', 'so the two never land together', { mood: 'flat', twitch: [0, 1] }],
+  ];
+  for (const [name, note, face] of faces) {
+    tile(grid, name, note, BOX + 8, BOX + 8, (ctx, t) => {
+      ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, BOX + 8, BOX + 8);
+      ctx.save(); ctx.translate(4, 4);
+      eggshellCopterArt(ctx, BOX, BOX, Math.floor(t * 2 * 24) % 12, { face });
+      ctx.restore();
+    }, { animated: true, hires: 6 });
+  }
+  tile(grid, 'BONKED', 'the hair blasts, the mouth opens, the brows jump and arch', BOX + 8, BOX + 8, (ctx, t) => {
+    ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, BOX + 8, BOX + 8);
+    ctx.save(); ctx.translate(4, 4);
+    eggshellCopterArt(ctx, BOX, BOX, Math.floor(t * 2 * 24) % 12, { pop: Math.max(0, Math.sin(t * 2)) });
+    ctx.restore();
+  }, { animated: true, hires: 6 });
+  tile(grid, 'THE PORTRAIT', 'eggshellFace — what the speech card shows', BOX + 8, BOX + 8, (ctx) => {
+    ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, BOX + 8, BOX + 8);
+    drawProp(ctx, 'eggshellFace', 4, 4, BOX, BOX * 0.75);
+  }, { hires: 6 });
+}
+
+// --------------------------------------------- the copter's tub, as a shape
+// Peter, 4 Sep 2026: "maybe his vehicle is more shaped like half an egg? Give
+// me a bake-off with a few options / colours." Every tile is the SHIPPED
+// copter with only its tub swapped (the painter's `parts.tub` seam), so the
+// professor, his cape, his fists and the rotor are the real drawing in all of
+// them and the hull is the only thing being judged.
+{
+  const s = sectionEl('eggshell-tub-bakeoff', 'Clown-copter — the tub, half-egg bake-off',
+    'OPEN — the hull he flies is a rounded rectangle, drawn back when he was an ape and kept through every '
+    + 'redesign since. Seven half-egg hulls against it: the shape on its own, the same shape in four palettes, a '
+    + 'cracked rim, and the whole thing on an egg cup. Every option keeps the shipped footprint — rim, floor and '
+    + 'skid line — so his fists still rest where they rest today. Left is the lane at his real 36u beside Lorenzo; '
+    + 'right is the same painter enlarged.');
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  s.appendChild(grid);
+  const BOX = 36, TW = 200, TH = 96, GY = 82, DX = 106, DW = 88, DH = 86;
+  const ds = Math.min(DW / BOX, DH / BOX), dw = BOX * ds;
+  for (const t of EGGSHELL_TUBS) {
+    const parts = { tub: eggshellTubPart(t.id) };
+    tile(grid, t.name, `${t.id} · ${t.pal}<br>${t.note}`, TW, TH, (ctx, time) => {
+      laneStrip(ctx, TW, TH, GY);
+      ctx.fillStyle = '#262c3c'; ctx.fillRect(DX - 6, 0, TW - DX + 6, TH);
+      drawToon(ctx, 'lorenzo', pose('run', time), 20, GY, HERO_DRAW_H);
+      const frame = Math.floor(time * 2 * 24) % 12;
+      ctx.save(); ctx.translate(44, GY - 10 - BOX + Math.sin(time * 2.4) * 1.5);
+      eggshellCopterArt(ctx, BOX, BOX, frame, { parts });
+      ctx.restore();
+      ctx.save(); ctx.translate(DX + (DW - dw) / 2, 6);
+      eggshellCopterArt(ctx, dw, dw, frame, { parts });
+      ctx.restore();
+    }, { animated: true, wide: true, world: true, hires: 6 });
+  }
+}
+
+// ------------------------------------------- the moustache, as a measurement
+// Peter, 4 Sep 2026: "how about if the moustache was a touch less tall (width
+// the same)... give me a bake-off of the face with a few slight variations in
+// moustache size — from very small to less than a walrus, and never past the
+// face." So the sheet moves TWO numbers and nothing else: the span either side
+// of the philtrum and the depth of the lobes. Every tile is the shipped face
+// through proFaceWith, so the stubble, the mouth under it and the specs above
+// are the real drawing.
+{
+  const s = sectionEl('eggshell-stache-bakeoff', 'Don K. Eggshell — the moustache, size bake-off',
+    'OPEN — the mark everyone knows him by, at nine sizes. WIDTH is the span either side of centre and DEPTH is '
+    + 'how far the lobes hang; the shipped pair is 0.118 by 0.038 of his box, which is the width he has always had '
+    + 'and a depth just taken off it so the mouth can read underneath. The guardrails are at both ends: 0.155 is '
+    + 'where it reaches the edge of his face, and anything past that is a walrus.');
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  s.appendChild(grid);
+  const BOX = 46;
+  const sizes = [
+    ['PENCIL', { span: 0.075, drop: 0.024 }, 'the smallest that still reads as a moustache'],
+    ['SMALL', { span: 0.09, drop: 0.03 }, 'narrow and shallow'],
+    ['SMALL, DEEPER', { span: 0.09, drop: 0.042 }, 'the same width with the old depth'],
+    ['SHIPPED', { ...PRO_STACHE_SIZE }, 'the width he has always had, a touch less tall'],
+    ['SHIPPED, DEEPER', { span: 0.118, drop: 0.046 }, 'the depth as it was before today'],
+    ['WIDE', { span: 0.135, drop: 0.038 }, 'wider, same depth'],
+    ['WIDE, DEEPER', { span: 0.135, drop: 0.05 }, 'wider and heavier'],
+    ['FULL', { span: 0.155, drop: 0.044 }, 'the guardrail: level with the edge of his face'],
+    ['FULL, DEEP', { span: 0.155, drop: 0.058 }, 'the other guardrail — this is where a walrus starts'],
+  ];
+  for (const [name, size, note] of sizes) {
+    tile(grid, name, `${size.span} x ${size.drop}<br>${note}`, BOX, BOX * 0.82, (ctx) => {
+      ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, BOX, BOX * 0.82);
+      // the face alone, filling the tile: the ape box scaled up and centred on
+      // the head the way the speech-card portrait does it
+      const APE_W = 24, APE_H = 20, k = 1.75;
+      ctx.save();
+      ctx.translate(BOX / 2, BOX * 0.82 * 0.6);
+      ctx.scale((BOX / APE_W) * k, (BOX * 0.82 / APE_H) * k);
+      ctx.translate(-APE_W * 0.5, -APE_H * 0.375);
+      proFaceWith(ctx, (fr) => APE_W * fr, (fr) => APE_H * fr, 0.3, false, undefined, size);
+      ctx.restore();
+    }, { hires: 7 });
+  }
+}
+
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.
 //
@@ -6606,6 +6777,14 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// Sections are attached programmatically, so a deep link can be resolved before
+// its target exists in the document. Re-apply the hash after the first layout
+// pass so links copied from the lab navigation open on the intended bakeoff.
+if (location.hash) requestAnimationFrame(() => {
+  const target = document.getElementById(location.hash.slice(1));
+  if (target) target.scrollIntoView({ block: 'start' });
+});
 
 // Poke at tiles from the devtools console: __gallery.tiles[0].stack, repaint(), etc.
 // drawToon/TOON_SPECS ride along for silhouette measuring: every tile crops at

@@ -2242,7 +2242,7 @@ const LCD_CITY_SCENES = [
     buildings: [
       // THE RAIL IS THE CEILING. Peter (2026-09-03): "raise the monorail a bit
       // more and lower any other buildings so they don't extend past it". The
-      // girder rules y 53 and the cars ride 41-53, and nothing on this
+      // girder rules y 55 and the cars ride 43-55, and nothing on this
       // skyline — facade, board or meter — reaches above it.
       //
       // THE CEILING WENT UP TWELVE when the beat ribbon left the sky
@@ -2254,6 +2254,11 @@ const LCD_CITY_SCENES = [
       // air under the service, which is the point — a rail with daylight over
       // the city reads as elevated, and one grazing the rooftops reads as a
       // line drawn on them.
+      //
+      // AND DOWN TWO AGAIN when the ribbon itself thickened (RIBBON_H 12 -> 15,
+      // BEAT_RIBBON_BOTTOM 24 -> 25.5): train.y 41 -> 43, the girder with it,
+      // preserving the one-clear gap the corner clouds need under it. Nothing
+      // else moved — the ceiling only gained air, which is always safe.
       //
       // The spire's roof is BARE because a 37px meter bank on it would stand
       // above the rail. It was 51 wide and 167 tall for an afternoon, when the
@@ -2278,8 +2283,15 @@ const LCD_CITY_SCENES = [
     // IN THE TOP CORNERS, ABOVE THE RAIL — Peter: "keep clouds in top right and
     // top left above monorail line". The strip between the beat ribbon's band
     // and the cars is fifteen rows, and a cloud with its bob is fifteen; so
-    // they sit at 27, filling it exactly: top row 26, two clear of the strip
-    // above, bottom row 40, one clear of the cars below.
+    // they sit at 29, filling it exactly: top row 28, two clear of the strip
+    // above, bottom row 42, one clear of the cars below.
+    //
+    // MOVED DOWN TWO WITH THE RIBBON'S OWN GROWTH: BEAT_RIBBON_BOTTOM went
+    // 24 -> 25.5 when the girder-ring pass thickened the strip (RIBBON_H 12 ->
+    // 15), and these clouds kept authoring against the old figure — the
+    // regression tests caught it (top row 26 against a strip now ending 25.5,
+    // not the two-clear this comment always claimed). The girder and the cars
+    // moved the same two, in lockstep, so the one-clear gap below survives.
     //
     // AND THEY ARE OUT OF THE STRIP ENTIRELY NOW, not merely out of its
     // columns. Under the old geometry the band was y 25-38 across x 120-360
@@ -2294,7 +2306,7 @@ const LCD_CITY_SCENES = [
     // pixels out and back at its own pace, see lcdCloudLayer. They spent an
     // hour under the rail instead, behind the skyline, and showed straight
     // through the walls — a facade is a 7% wash.
-    clouds: [[8, 27], [378, 27], [434, 27]],
+    clouds: [[8, 29], [378, 29], [434, 29]],
     cloudSway: 24,
     // Stage 2 was the one panel with no sky or rooftop life at all — windows,
     // equalizers and clouds and nothing else. It gets the working city: a
@@ -2339,7 +2351,7 @@ const LCD_CITY_SCENES = [
     // service runs from the first phase (it waited for the second; Peter:
     // "don't wait so long for the first monorail") — from the beat the skyline
     // has landed. The viaduct is drawn live from beat one (lcdViaduct).
-    train: { y: 41, cars: 4, fromPhase: 0 },
+    train: { y: 43, cars: 4, fromPhase: 0 },
     washer: [5, 20],
     // ROOFS THAT CARRY NO METER. The washer's, because the roof carries one
     // thing and his is the man on the cradle (Peter: "remove led from roof of
@@ -2351,7 +2363,9 @@ const LCD_CITY_SCENES = [
     // The far roof runs the maze game's attract screen — see lcdChaseGrid. It
     // took the cassette's berth: a cassette is a still life, and this end of
     // the skyline is the one that had nothing moving on it.
-    billboards: [[1, 'chart'], [7, 'chase']],
+    // One building fewer, so the two boards move down an index each: the chart
+    // still hangs on the second facade and the chase board on the gorilla's.
+    billboards: [[1, 'chart'], [6, 'chase']],
   },
   {
     // EIGHT structures with even air between them, like stage 1. The
@@ -2399,13 +2413,45 @@ const LCD_CITY_SCENES = [
       // scraping past the neighbour. His right-hand gap is 30 (+5 cells), and
       // the whole row moved 2 cells LEFT to pay for it, so the skyline keeps
       // its width and only the air around the chute changed.
-      [8, 36, 89, 'ducts'], [59, 51, 110, 'relay'], [125, 36, 53, 'workshop'],
-      [176, 51, 125, 'industrial'], [242, 51, 134, 'relay'], [308, 36, 71, 'ducts'],
-      [359, 36, 131, 'deco'], [425, 51, 77, 'industrial'],
+      // THE WHOLE ROW SITS ONE GAP LEFT of where it was drawn. With the gorilla
+      // moved to the end, his chute had only the sliver between his wall and the
+      // frame edge to fall through and the barrel came down flush against his
+      // brickwork; before the move it had clear air either side. Shifting every
+      // building by one 15-cell gap gives that back without touching the
+      // spacing between them — the skyline is the same skyline, one step over,
+      // and the leftmost facade runs off the edge as a city should.
+      // SEVEN BUILDINGS, NOT EIGHT, AND THEY BREATHE. Shifting the row left to
+      // give the chute its air ran the first facade off the panel; rather than
+      // live with a cut-off building, the shortest one (the 53-high workshop,
+      // third along) comes out and the rest re-space across the whole width.
+      // Gaps go from 15 to 21, which is the room the panel has once a building
+      // is gone — and the skyline reads better for it, since the workshop was
+      // the one facade with nothing on its roof.
+      //
+      // The gorilla's building does not move: his chute is centred on it, so
+      // everything else spaces up to him.
+      [8, 36, 89, 'ducts'], [65, 51, 110, 'relay'], [137, 51, 125, 'industrial'],
+      // The fifth is the SHORT one now. Losing the workshop took the panel's
+      // only genuinely low roof with it, and a skyline whose facades are all
+      // within sixty px of each other reads as one wall — the backdrop test
+      // holds stage 3 to a roof at or under 56 and a tower at or over 134, and
+      // it is right to. Fifty-two on this one restores the range without
+      // putting a building back.
+      [209, 51, 134, 'relay'], [281, 36, 52, 'ducts'],
+      // THE GORILLA STANDS ON THE LAST BUILDING. He was second from the right,
+      // which put him in the middle of the villain's roam — the copter had to
+      // dip under him on every pass — and left the finish flag to cross his
+      // face at the end of the stage. Last, he is out of both: the roam does
+      // not reach that far and the flag arrives beyond him. The two entries
+      // simply trade places, so the skyline's grid is unchanged.
+      [338, 51, 77, 'industrial'], [410, 36, 131, 'deco'],
     ],
     // UP TWELVE WITH THE CROSSING AND THE GORILLA, for the reason given on
     // the plane below: the ribbon left the sky and the whole sky followed it.
-    clouds: [[18, 34], [264, 40], [398, 28]],
+    // The third cloud got one more pixel down when the ribbon itself thickened
+    // (BEAT_RIBBON_BOTTOM 24 -> 25.5) — it was the only one of the three that
+    // strip growth actually reached; the other two already cleared it.
+    clouds: [[18, 34], [264, 40], [398, 29]],
     // THE HIGH LANE, AND ON THIS PANEL IT CLEARS HIM. Stage 1 owns the gag
     // where the plane flies into the barrel; stage 3 has no barrel to take, so
     // its crossing has to read as a plain miss — and for a long time it did
@@ -2453,6 +2499,9 @@ const LCD_CITY_SCENES = [
     // room either side, and the building's own relay mast and lamp cap step
     // aside for the board (see crowned).
     billboards: [[1, 'chart']],
+    // ...which makes him the last one. The chute reads its x off this index,
+    // and with no building to its right it falls in the air between his wall
+    // and the frame edge — see lcdChuteX, which already has that case.
     rooftopGorilla: 6,
     barrelDrop: true,
     // THE QUIET PANEL GETS A WORKING HALF. Stage 3 was the emptiest of the
@@ -4533,7 +4582,12 @@ export function lcdChuteScreenX(stageIndex) {
 function lcdChuteX(art) {
   const [gx, gw] = art.buildings[art.rooftopGorilla];
   const next = art.buildings[art.rooftopGorilla + 1];
-  const gap = next ? next[0] - (gx + gw) : 15;
+  // With a neighbour the chute splits the gap between the two facades. With
+  // NONE — the gorilla is the last building now — it splits the air between
+  // his wall and the edge of the panel instead. The old fallback was a flat
+  // 15, which parked the barrel eight px off his brickwork however much room
+  // there actually was.
+  const gap = next ? next[0] - (gx + gw) : Math.max(0, W - (gx + gw));
   return gx + gw + Math.round(gap / 2);
 }
 

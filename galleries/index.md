@@ -39,3 +39,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-04 | `6ecac0b` | [2026-09-04-6ecac0b.html](2026-09-04-6ecac0b.html) | [bake-offs](2026-09-04-6ecac0b-lab.html) | Add new Eggshell redesigns and associated HTML files |
 | 2026-09-04 | `6a295d3` | [2026-09-04-6a295d3.html](2026-09-04-6a295d3.html) | [bake-offs](2026-09-04-6a295d3-lab.html) | Add bonk sound effect candidates and rendering tool |
 | 2026-09-04 | `aa36e6c` | [2026-09-04-aa36e6c.html](2026-09-04-aa36e6c.html) | [bake-offs](2026-09-04-aa36e6c-lab.html) | Refactor HUD hero disc plate color and enhance girder ring mechanics |
+| 2026-09-04 | `f49f539` | [2026-09-04-f49f539.html](2026-09-04-f49f539.html) | [bake-offs](2026-09-04-f49f539-lab.html) | Refactor face contour handling and improve face crop rendering |

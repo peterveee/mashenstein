@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MASHENSTEIN — Eggshell Cape Redesigns</title>
+<style>
+  :root { --bg:#0b0b14; --panel:#15151f; --line:#2a2a3a; --ink:#e0e0e8; --dim:#8a8a9e; --accent:#f6d33c; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font:13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { padding:22px; }
+  h1 { margin:0 0 5px; color:var(--accent); font-size:16px; letter-spacing:.08em; text-transform:uppercase; }
+  .intro { color:var(--dim); margin:0 0 18px; max-width:900px; }
+  .grid { display:flex; flex-wrap:wrap; gap:12px; }
+  .card { width:200px; padding:8px; background:var(--panel); border:1px solid var(--line); border-radius:6px; }
+  .card h2 { margin:0 0 4px; color:var(--ink); font-size:11px; letter-spacing:.08em; }
+  .card p { min-height:46px; margin:0 0 7px; color:var(--dim); font-size:10px; }
+  .card canvas { display:block; width:200px; height:96px; background:#20283c; image-rendering:auto; cursor:pointer; }
+  .back { display:inline-block; margin:0 0 18px; color:var(--dim); }
+  .back:hover { color:var(--accent); }
+</style>
+</head>
+<body>
+<a class="back" href="gallery-lab.html">← back to Lab &amp; Bake-offs</a>
+<h1>Don K. Eggshell — cape redesigns</h1>
+<p class="intro">Seven cape-only variations on the silver professor. The face, hair, hands, shirt and tub stay on the working cut; only the cape changes. Each card shows the real 36u lane sample beside a 2.4x detail. Click a card to save its PNG.</p>
+<main id="root" class="grid"></main>
+<div id="err"></div>
+<script>
+window.addEventListener('error', function (e) {
+  document.getElementById('err').textContent = 'Cape gallery failed to boot:\n\n' + (e.error && e.error.stack || e.message);
+});
+</script>
+<script>/*__BUNDLE__*/</script>
+</body>
+</html>

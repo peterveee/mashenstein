@@ -1015,10 +1015,11 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
 {
   // A barrel on the chute is a body at the drop's own x; the ghosts are
   // stroke-only and a barrel in the stream is filled.
-  // The gorilla's building is [359, 36, 119]; the chute hangs half a gap past
-  // its wall, and that gap is the doubled one — 30 cells, so the barrel comes
-  // down in clear air rather than kissing both facades.
-  const CHUTE_X = 410;
+  // The gorilla stands on the LAST building, [425, 36, 131]; with nothing to
+  // its right the chute splits the air between his wall and the frame edge,
+  // seventeen px clear on each side. He was moved there so the villain's roam and the finish
+  // flag both stop short of him.
+  const CHUTE_X = 463;
   const inChute = (extra, beat) => bigBarrels(background(3, beat, {}, 0, 0, extra))
     .filter((b) => b.cx === CHUTE_X);
   // A ghost cell is filled too, in the ghost ink; the barrel in the stream

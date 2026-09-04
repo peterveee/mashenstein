@@ -1225,6 +1225,11 @@ export const RUSTY_T1 = {
   // anything else; `celebrate` on the spec is that seam. The body still bounds
   // (spread keeps hop's motion), only the arms change.
   celebrate: 'spread',
+  // He CARRIES his weapon. The ranged move is thrown and caught (the axe's
+  // cycle), so the stick is in his near hand in every pose but the throw
+  // itself — which is what answers where an endless supply comes from: there
+  // is no supply, there is one stick.
+  stick: true,
 };
 
 const OPEN_TILTS = [-0.3, 0, 0.3];

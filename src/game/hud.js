@@ -54,10 +54,10 @@ const EDGE_BOTTOM = EDGE / 2;
 // derived from it. Its own ceiling is what stops it growing: the world progress
 // line owns the top 3px of the frame, and at EDGE this already leaves 3.
 const DISC_R = 11;
-// The portrait disc is its own lit face plate, not another copy of the status
-// pill's low-contrast backing. It has to survive a small crop over bright or
-// dark stage art while still leaving the hero's face as the focal point.
-export const HERO_DISC_PLATE = 'rgba(144,170,190,0.98)';
+// The portrait disc uses the same backing as every other HUD panel. It has to
+// survive a small crop over bright or dark stage art while still leaving the
+// hero's face as the focal point, but it is not a separate light-blue plate.
+export const HERO_DISC_PLATE = UI_PANEL;
 // NO HUD-ONLY INK. The plates draw the lines the run draws — the portrait is
 // the same hero, and a corner that inks him differently reads as a different
 // drawing of him. The thinning that used to live here was aimed at a face that
@@ -1251,14 +1251,18 @@ function drawHeroDisc(ctx, id, cx, cy, R, rim = UI_PANEL_BORDER, sx = 1, smile =
   ctx.translate(cx, cy);
   ctx.scale(Math.max(0.001, sx), 1);
   ctx.translate(-cx, -cy);
-  // A 22px window is nearly twice the chip's, so it needs proportionally less
-  // crop to hold a head — at CHIP_CROP the disc comes out all muzzle.
-  drawChipFace(ctx, id, cx - R, cy - R, R * 2, R * 2, 1.15);
+  // NO OVERSIZE. The 22px window is nearly twice the chip's, so it never needed
+  // CHIP_CROP's bite to hold a head — but the 1.15 it used instead still drew
+  // the face bigger than the disc and let the rim take the difference, and on
+  // the heroes with the largest silhouettes that put hair, ears and hats flush
+  // against the ring. The head is the subject here and the plate is its
+  // setting: fit it to the window and let FACE_CROP's air do the framing.
+  drawChipFace(ctx, id, cx - R, cy - R, R * 2, R * 2);
   if (smile > 0) {
     // Over the resting face rather than instead of it, so the fade is a
     // dissolve between the two crops and not a mouth appearing out of nothing.
     ctx.globalAlpha = smile;
-    drawChipFace(ctx, id, cx - R, cy - R, R * 2, R * 2, 1.15, true);
+    drawChipFace(ctx, id, cx - R, cy - R, R * 2, R * 2, 1, true);
   }
   ctx.restore();
   // The rim is stroked OUTSIDE that transform: scaled with it, the top and

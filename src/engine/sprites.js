@@ -809,31 +809,40 @@ export function drawB33pPellet(ctx, cx, cy) { drawPellet(ctx, cx, cy); }
 //     reads as fired from a barrel, which is B-33P's story rather than his.
 export function drawBambooShoot(ctx, cx, cy, opts = {}) {
   const s = opts.size || 1;
-  const len = 4.6 * s, wid = 1.9 * s;
+  // ~7.3:1. Slim and long: a cane, not a dowel and not a needle. The caller
+  // scales the whole thing (drawHeldStick uses h/36, and the projectile must
+  // use the same), so held and thrown are one object at one size.
+  const len = 5.8 * s, wid = 0.8 * s;
   ctx.save();
   ctx.translate(Math.round(cx), Math.round(cy));
   ctx.rotate(opts.spin || 0);
-  // Body: a capsule, drawn as a wide round-capped stroke so the ends are
-  // hemispheres without a path for them.
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = opts.fill || '#9cc44e';
-  ctx.lineWidth = wid * 2;
-  ctx.beginPath();
-  ctx.moveTo(-len, 0); ctx.lineTo(len, 0);
-  ctx.stroke();
+  // FLAT ENDS. Drawn first as a round-capped stroke, this was a pill — bamboo
+  // is CUT, and a cut cane ends square with a hollow bore showing. So the body
+  // is a rectangle and each end carries a dark cut face: that pair of marks is
+  // the difference between a green capsule and a length of bamboo, and it
+  // survives at six pixels where a wall thickness would not.
+  ctx.fillStyle = opts.fill || '#9cc44e';
+  ctx.fillRect(-len, -wid, len * 2, wid * 2);
+  // The cut faces, one at each end so the read holds through the tumble.
+  ctx.fillStyle = opts.bore || '#4e6c22';
+  const bore = Math.max(0.8, wid * 0.42);
+  ctx.fillRect(len - bore, -wid, bore, wid * 2);
+  ctx.fillRect(-len, -wid, bore, wid * 2);
   // The lit edge along the top, inset so it stays inside the body.
-  ctx.strokeStyle = opts.hi || '#d6ec9a';
-  ctx.lineWidth = Math.max(0.7, wid * 0.55);
-  ctx.beginPath();
-  ctx.moveTo(-len * 0.6, -wid * 0.55); ctx.lineTo(len * 0.62, -wid * 0.55);
-  ctx.stroke();
-  // The node. Floored at 1px: scaled with the shot it vanishes first, and it is
-  // the only mark that says bamboo.
+  ctx.fillStyle = opts.hi || '#d6ec9a';
+  ctx.fillRect(-len + bore, -wid, (len - bore) * 2, Math.max(0.7, wid * 0.5));
+  // TWO nodes, at the thirds, making three segments. A single node split the
+  // cane in half and read as a stubby two-part thing; two give the run of
+  // repeating joints that actually says bamboo. Floored at 1px each: scaled
+  // with the shot they vanish first, and with the cut ends they are the only
+  // other marks that identify it.
   ctx.strokeStyle = opts.node || '#5d8028';
   ctx.lineWidth = Math.max(1, 0.9 * s);
-  ctx.beginPath();
-  ctx.moveTo(0, -wid); ctx.lineTo(0, wid);
-  ctx.stroke();
+  for (const f of [-1 / 3, 1 / 3]) {
+    ctx.beginPath();
+    ctx.moveTo(len * f, -wid); ctx.lineTo(len * f, wid);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 

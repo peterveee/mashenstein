@@ -65,3 +65,18 @@ for (const page of PAGES) {
   writeFileSync(join(root, 'dist', page.file), html);
   console.log(`dist/${page.file} written (${(html.length / 1024).toFixed(0)} KB)`);
 }
+
+const capeResult = await esbuild.build({
+  entryPoints: [join(root, 'tools/eggshell-cape-gallery-entry.js')],
+  bundle: true,
+  format: 'iife',
+  target: ['es2020'],
+  minify: false,
+  write: false,
+  logLevel: 'info',
+});
+const capeShell = readFileSync(join(root, 'tools/eggshell-cape-gallery-shell.html'), 'utf8');
+const capeJs = capeResult.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+if (!capeShell.includes('/*__BUNDLE__*/')) throw new Error('cape gallery shell is missing the bundle placeholder');
+writeFileSync(join(root, 'dist', 'eggshell-cape-bakeoff.html'), capeShell.replace('/*__BUNDLE__*/', capeJs));
+console.log('dist/eggshell-cape-bakeoff.html written');

@@ -8,11 +8,12 @@ const { Player } = await import('../src/game/player.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { HERO_SPRITES } = await import('../src/sprites/heroes.js');
 const { HERO_DISC_PLATE, HERO_DISC_RIM_W, faceCropBox } = await import('../src/game/hud.js');
+const { UI_PANEL } = await import('../src/engine/sprites.js');
 const {
   TOON_SPECS, toonEffectEllipse, poseFromPlayer, RUN_HEAD_TURN, drawToon,
   ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE, ACTIVE_LIMB_STYLE,
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
-  B33P_TITLE_WINDUP_T, b33pTitleShotPose, FACE_CONTOUR,
+  B33P_TITLE_WINDUP_T, b33pTitleShotPose, FACE_CONTOUR, FACE_CROP,
 } = await import('../src/sprites/toons.js');
 const { initRenderer, blit, bctx, pendingOverlayDrawCount } = await import('../src/engine/renderer.js');
 const { save } = await import('../src/engine/save.js');
@@ -96,21 +97,29 @@ assert(toonIds.every((id) => HERO_SPRITES[id] && HERO_SPRITES[id].pal),
   'every toon in the roster has a palette to draw with');
 assert(HEROES.every((h) => TOON_SPECS[h.id]),
   'every playable hero has a toon rig');
-assert(HERO_DISC_PLATE === 'rgba(144,170,190,0.98)',
-  'HUD hero faceplate keeps the lifted slate plate');
+assert(HERO_DISC_PLATE === UI_PANEL,
+  'HUD hero faceplate uses the shared panel backing');
 assert(HERO_DISC_RIM_W === 0.75, 'HUD hero portrait rim stays a thin hairline');
 // THE PORTRAIT LANDS ON WHOLE PIXELS. A face is a cached raster blitted 1:1;
 // an odd overhang puts it on a half pixel, and a bilinear resample of a 22px
 // head averages the eye whites into their pupils and the brows into the skin.
 // That is what "the plates look dim" was. The rule is the even overhang, so
 // pin it at every crop the HUD actually asks for rather than the constant.
-for (const [w, over] of [[22, 1.15], [12, 1.3], [16, 1.12], [12, 1], [9, 1]]) {
+for (const [w, over] of [[22, 1], [12, 1.3], [16, 1.12], [12, 1], [9, 1]]) {
   const box = faceCropBox(w, over);
   assert((box - w) % 2 === 0 && box >= w,
     `a ${w}px face crop at ${over}x bakes to an even overhang (${box})`);
 }
 assert(FACE_CONTOUR.w === null,
   'no bake-off override is left armed on the face-crop contour');
+// THE HEADS ARE SIBLINGS. The fit normalizes a whole silhouette, so without a
+// clamp a spiked or bunned hero gets a small skull and a bald one a large;
+// what the eye reads across a row of 22px portraits is head size. A range this
+// narrow is the contract, not a tuning detail.
+assert(FACE_CROP.max / FACE_CROP.min <= 1.1,
+  `the face crop keeps every head within a tenth of the same size (${FACE_CROP.min}-${FACE_CROP.max})`);
+assert(FACE_CROP.max <= 1 && FACE_CROP.pad > 0.1,
+  'the face crop leaves the head clear of a circular rim');
 assert(ACTIVE_CELEBRATION_STYLE === 'reworked', 'results-screen celebrations default to the approved rework');
 assert(ACTIVE_LOCOMOTION_STYLE === 'enhanced', 'jump and duck default to the improved motion');
 assert(ACTIVE_LIMB_STYLE === 'snap', 'the run and jump default to the ported limb spec');

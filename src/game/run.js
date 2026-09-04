@@ -721,7 +721,24 @@ const COPTER_PRESSURE_DRIFT = 0.012;
 // in stylePacks puts it at x 359, 36 wide. The villain is cast and the gorilla
 // is the cabinet's art; neither may sit on the other. Below this altitude he is
 // under the roof line and may cross it.
-const GORILLA_COLUMN = [359, 395];
+// HIS BODY, not the airspace around it. The column was widened to 344..402 to
+// take in his arms and the barrel, and the dip that reads off it then fired
+// whenever the copter came NEAR him — so the villain spent the level sinking
+// beside a gorilla he was never going to cover. Peter: "he can be NEXT to Kong
+// once past him — he is supposed to look at him. Just if he's drifting OVER
+// him, go down a little." These are the facade's own edges.
+// His facade, now the LAST building on the panel (see the scene data): moving
+// him there was the real fix for the overlap, because the roam does not reach
+// that far. The dip below stays as a backstop for the odd pass that does.
+const GORILLA_COLUMN = [410, 446];
+// WHAT THE VILLAIN HAS TO STAY UNDER, in frame px. Not the gorilla's ROOF
+// (119, the third number in his building's own scene entry): dipping under
+// that put the copter down among the windows and made every punted barrel a
+// certain hit. It is his FACE AND CHEST — the part of him that must never be
+// covered — which sits about thirty px above his feet. Passing just under his
+// chin is enough to read as going around him. Peter: "only dip A little to
+// avoid covering Kong's face and upper body."
+const GORILLA_CHIN_Y = 86;
 const GORILLA_DUCK_ALT = 55;
 // He arrives UNDER the gorilla and climbs once he is past its building: a
 // villain who slides in beneath the cabinet's own landmark and only then takes
@@ -5255,6 +5272,7 @@ export class RunState {
     const spec = COPTER_BONK_CAUSES[cause] || COPTER_BONK_CAUSES.head;
     this.copterBonks++;
     c.hitT = COPTER_HIT_T;
+    c.nearMissT = 0;   // he is not smug about one he took
     c.mode = 'leave'; c.modeT = 0; c.fromDx = null; c.homeT = null;
     Audio.sfx('copterBonk');
     shake(3, 0.2);
@@ -5578,12 +5596,27 @@ export class RunState {
       // home — on screen, out in front, above jump height, taunting — and the
       // window is a swing back over the hero for about a bar, taken only when
       // the road under it is clear.
-      const ENTER_T = 0.9, LEAVE_T = 1.0;
+      const ENTER_T = 1.5, LEAVE_T = 1.3;
       // Shorter windows, further apart, and he is SHY AFTER A HIT: the extra
       // bars are added when he goes home from a bonk (see 'leave'). Ten bonks
       // in a level was the symptom — the mission asks for three, and the rest
       // are meant to be a bonus you work for, not the natural rate.
-      const HOVER_T = 0.45 * c.bar, AHEAD_T = 5.5 * c.bar;
+      // HIS FIRST PASS COMES EARLY, and then he gets shy. Five and a half bars
+      // between windows is the difficulty everyone wanted, but paid from the
+      // start of the level it bought only three windows in a stage — and a run
+      // that ended a little early got two, which is short of a mission asking
+      // for three. He opens with a pass at two and a half bars instead, so the
+      // player is shown the move while there is still level left to practise it
+      // on, and the long wait applies from the second pass onward.
+      // 1.5 bars to the first pass, not 2.5: the wait now starts when he has
+      // ARRIVED rather than when the level did, so the old number was being paid
+      // twice and a short stage came up one window short of its own mission.
+      // FOUR AND A HALF BARS BETWEEN PASSES. 5.5 was chosen against the beat
+      // cabinet, where a bar is 1.9s; on a cabinet with no song a bar is two
+      // flat, and the same count plus the approach and the patience fallback
+      // stretched a cycle past twenty seconds — long enough that a short stage
+      // could not offer three windows, and the mission asks for three.
+      const HOVER_T = 0.45 * c.bar, AHEAD_T = (c.passes ? 4.5 : 1.5) * c.bar;
       // A SWAY, NOT A PATROL. This was ±26, and the tub is only about 12 to
       // either side of his centre, so for most of the hover he was drifting
       // out of reach and the bonk looked broken — Peter: "he moves left of the
@@ -5647,6 +5680,7 @@ export class RunState {
       c.modeT = (c.modeT || 0) + dt;
       if (c.hitT > 0) c.hitT = Math.max(0, c.hitT - dt);
       if (c.shieldT > 0) c.shieldT = Math.max(0, c.shieldT - dt);
+      if (c.nearMissT > 0) c.nearMissT = Math.max(0, c.nearMissT - dt);
       // And the dial leaks home. Slowly — a clean bar outruns it easily — so a
       // run coasts on what it is doing now rather than on a streak from a
       // minute ago.
@@ -5663,6 +5697,15 @@ export class RunState {
       // slam the first frame of the arrival to the near side of that building,
       // which is why he SNAPPED into the frame at Kong instead of flying in.
       let parked = false;
+      // WHAT THE FRAME KNOWS BEFORE ANYTHING IS CLAMPED: the live zoom, and
+      // whether this cabinet even has a gorilla to keep clear of. The column
+      // and the roof are facts about level 3-3's backdrop, and the chase also
+      // runs on speed-2 and cardboard-3 where those numbers point at empty sky.
+      // Asked of the pack rather than hardcoded, so moving the gorilla along the
+      // skyline moves this with it.
+      const zoom = this.camZoom || ZOOM;
+      const hasGorilla = this.beatLock && this.styleName === 'lcd'
+        && lcdChuteScreenX(this.stage?.index) != null;
       switch (c.mode) {
         case 'away': {
           // The mood decays to neutral once he has settled into the roam, so a
@@ -5679,14 +5722,25 @@ export class RunState {
           // arrival — he is late, not slow.
           if (this.tRun < (c.enterAt || 0)) {
             dx = VIEW_W + 40;
-            c.alt = COPTER_ARRIVE_ALT;
+            c.alt = hasGorilla ? COPTER_ARRIVE_ALT : aheadAlt;
             parked = true;
             break;
           }
           if (!Number.isFinite(c.homeT)) { c.homeT = 0; c.homeDx = dx; c.homeAlt = c.alt; }
           // The first arrival is a flight across the frame, so it is given
           // longer than the hop home after a bonk.
-          c.homeT = Math.min(1, c.homeT + dt / (c.arrived ? 1.5 : 2.4));
+          // THE ARRIVAL IS A LONG, SLOW FLIGHT. 2.4s across the whole frame is a
+          // dart — Peter: "he is moving FAR too quickly when appearing... I just
+          // want him to enter low and slow and rise up." 4.6s is a cruise at
+          // about the speed the hero runs, which is what makes it read as him
+          // arriving rather than being switched on. The hop home after a bonk
+          // keeps its own quicker time: that one is a retreat.
+          // THE LONG LOW ENTRANCE IS FOR THE CABINET THAT HAS A LANDMARK. On
+          // 3-3 he slips in under the gorilla and climbs, which is worth four
+          // and a half seconds of level. Elsewhere there is nothing to fly
+          // under, and spending that time on an empty sky just delays his
+          // first pass — the demo lost a bonk a run to it on speed-2.
+          c.homeT = Math.min(1, c.homeT + dt / (c.arrived ? 1.5 : hasGorilla ? 4.6 : 2.2));
           const e = c.homeT * c.homeT * (3 - 2 * c.homeT); // smoothstep
           dx = c.homeDx + (aheadDx - c.homeDx) * e;
           if (c.arrived) {
@@ -5697,10 +5751,10 @@ export class RunState {
             // column, then rises into the roam. Tying it to time instead would
             // put the climb in a different place on every cabinet, since the
             // flight is the width of the frame and the frame is a zoom away.
-            const zoomNow = this.camZoom || ZOOM;
-            const pastGorilla = dx + COPTER_BOX / 2 < GORILLA_COLUMN[0] / zoomNow;
+            const pastGorilla = !hasGorilla
+              || dx + COPTER_BOX / 2 < GORILLA_COLUMN[0] / zoom;
             c.alt = pastGorilla
-              ? c.alt + (aheadAlt - c.alt) * Math.min(1, dt * 1.1)
+              ? c.alt + (aheadAlt - c.alt) * Math.min(1, dt * 0.55)
               : COPTER_ARRIVE_ALT;
             // Arrived once he is up as well as in — otherwise the roam's own
             // clamp would take over mid-climb and snap the last of it.
@@ -5713,7 +5767,12 @@ export class RunState {
           // so after two more bars he comes anyway.
           // Patience buys a window over hurdles and fliers, never over a hole:
           // `noPit` is checked on both paths.
-          const patience = c.modeT >= AHEAD_T + 2 * c.bar;
+          // ONE BAR OF PATIENCE, NOT TWO. On a dense stage the road is rarely
+          // clear for a whole window, so the fallback is what actually times his
+          // passes there — and at two bars it stretched the cycle past twenty
+          // seconds, which is one window fewer than a short stage needs to offer
+          // its own mission.
+          const patience = c.modeT >= AHEAD_T + c.bar;
           const clear = this.laneClearFor(ENTER_T, ENTER_T + HOVER_T + 0.2, sp);
           // A full second past the window, not a fraction: the player may still
           // be in the air when it closes, and the landing has to be road too.
@@ -5721,8 +5780,13 @@ export class RunState {
           // HE ENJOYS THE APPROACH AND RESENTS THE WORK. The mood rides the
           // pass: pleased with himself on the way in, frowning once he is over
           // the hero and has to concentrate, sour for a while after a bonk.
-          if (c.modeT >= AHEAD_T && noPit && (clear || patience)) {
+          // AND NEVER BEFORE HE HAS ARRIVED. The early first pass was starting
+          // mid-flight — he was still crossing the frame on his slow entrance
+          // when the window pulled him to the hero, which threw the entrance
+          // away entirely.
+          if (c.arrived && c.modeT >= AHEAD_T && noPit && (clear || patience)) {
             c.mode = 'enter'; c.modeT = 0; c.homeT = null; c.mood = 'smile';
+            c.passes = (c.passes || 0) + 1;
           }
           break;
         }
@@ -5735,11 +5799,28 @@ export class RunState {
           if (!Number.isFinite(c.fromDx)) { c.fromDx = dx; c.fromAlt = c.alt; }
           dx = c.fromDx + (overDx - c.fromDx) * e;
           c.alt = c.fromAlt + (overAlt - c.fromAlt) * e;
-          if (u >= 1) { c.mode = 'hover'; c.modeT = 0; c.fromDx = null; c.evadeT = 0; c.mood = 'frown'; }
+          if (u >= 1) { c.mode = 'hover'; c.modeT = 0; c.fromDx = null; c.evadeT = 0; }
           break;
         }
         case 'hover': {
           dx = overDx; c.alt = overAlt;
+          // THE POSE OVER THE HERO. This is the moment the mission is about — he
+          // is directly above you, in reach, daring you to jump — and he was
+          // wearing the same working frown he wears on the cruise. He GLOATS:
+          // the open toothy mouth pulled to one side with a brow up, the loudest
+          // face he has. The instant his dodge starts he goes back to work.
+          c.mood = c.evadeT ? 'frown' : 'gloat';
+          // A NEAR MISS IS THE BEST MOMENT HE GETS. If the hero's head comes up
+          // close enough to have been a bonk and does not connect — the dodge
+          // beat him, or the jump was short — he smirks at him on the way out,
+          // and holds it long enough to be seen after the player has landed.
+          // Measured off the same two boxes the bonk uses, grown a little: a
+          // miss is "that nearly worked", not "you were somewhere below me".
+          if (!this.player.grounded && !c.nearMissT) {
+            const head = this.playerHeadBox(), hull = this.copterUnderside();
+            const near = { x: hull.x - 7, y: hull.y - 7, w: hull.w + 14, h: hull.h + 14 };
+            if (overlaps(head, near) && !overlaps(head, hull)) c.nearMissT = 2.2;
+          }
           // HE DODGES. A window used to allow as many jumps as fitted inside
           // it, so the only question was whether the player pressed jump at
           // all — ten bonks a level, on a mission that asks for three. Now the
@@ -5771,7 +5852,21 @@ export class RunState {
           }
           // A hole can be laid after the window opened. He climbs away rather
           // than hanging over a jump the player owes the level.
-          if (c.modeT >= HOVER_T || !this.laneClearFor(0, 1, sp, true)) { c.mode = 'leave'; c.modeT = 0; }
+          // A hole can be laid after the window opened. He climbs away rather
+          // than hanging over a jump the player owes the level — but only for
+          // the road the WINDOW ITSELF still has to cover, plus the landing.
+          // A flat second was distance, not time: on the speed cabinet that is
+          // three hundred units of road, so a pit-heavy stage always had one
+          // somewhere inside it and the window was cancelled on its first frame
+          // — the demo there never saw a hover at all.
+          // 0.45s is the landing of a jump started NOW, which is the only road
+          // this check is responsible for: whether the window may OPEN over a
+          // hole was already settled at entry (noPit). A longer horizon is
+          // distance, not time — a second is three hundred units on the speed
+          // cabinet — and it cancelled every window on a pit-heavy stage before
+          // its first frame.
+          const abortAhead = 0.45;
+          if (c.modeT >= HOVER_T || !this.laneClearFor(0, abortAhead, sp, true)) { c.mode = 'leave'; c.modeT = 0; }
           break;
         }
         case 'leave':
@@ -5800,10 +5895,10 @@ export class RunState {
       // up at the top of his band he stops short of that building, and only
       // down at barrel height may he cross it. The recoil climbs and drifts,
       // so both are clamped here rather than inside each case.
-      const rightEdge = c.alt <= GORILLA_DUCK_ALT ? GORILLA_COLUMN[1] + 26 : GORILLA_COLUMN[0] - 4;
+      const rightEdge = !hasGorilla || c.alt <= GORILLA_DUCK_ALT
+        ? GORILLA_COLUMN[1] + 26 : GORILLA_COLUMN[0] - 4;
       // The arrival flies THROUGH the gorilla's column; only the roam has to
       // keep off it.
-      const zoom = this.camZoom || ZOOM;
       // HE NOTICES THE GORILLA. On level 3-3 the cabinet's own landmark is a
       // rooftop ape holding a barrel, and a villain who cruises past it without
       // a glance is furniture. Near that column he turns to look and smirks —
@@ -5813,10 +5908,104 @@ export class RunState {
       c.nearKong = Math.abs(dx - kongMid) < 34 && c.mode === 'away';
       if (c.nearKong && c.hitT <= 0) c.mood = 'smirk';
       else if (c.mood === 'smirk') c.mood = 'flat';
+      // THE NEAR-MISS SMIRK OUTRANKS THE POSE, and it is applied here rather
+      // than inside the cases because every one of them sets a mood of its own
+      // and would overwrite it on the next frame.
+      if (c.nearMissT > 0 && c.hitT <= 0) c.mood = 'smirk';
       const crossing = parked || c.mode === 'away' && !c.arrived;
       c.dx = crossing ? dx : Math.min(dx, rightEdge / zoom - COPTER_BOX / 2);
       c.x = this.camX + c.dx;
       c.alt = Math.min(c.alt, ceiling);
+      // AND HE DIPS UNDER THE GORILLA RATHER THAN CROSSING HIS FACE. Holding
+      // him off that column with an x limit only works while something is
+      // driving him left; on the arrival, on a recoil, or parked he still
+      // drifted across the cabinet's own landmark. Height is the honest fix:
+      // whenever his art would overlap that airspace at all, his ceiling drops
+      // below the roof he is standing on, so he passes UNDER him and climbs
+      // back out the other side. He never covers him, in any mode, and the dip
+      // reads as a flourish rather than a wall.
+      // AND IT IS FLOWN, NOT SNAPPED. The first cut clamped his altitude the
+      // frame his art edge crossed the column and released it the frame it
+      // left, so he fell out of the sky beside the gorilla and jumped back up
+      // afterwards. Two things fix that. The dip RAMPS over an approach margin,
+      // so he is already sinking before he arrives and still climbing after he
+      // leaves; and the result is rate limited, so however sharply the target
+      // moves — a recoil, a mode change, a camera zoom easing under him — the
+      // drawing can only travel so fast. Descending is allowed to be brisker
+      // than climbing: a dive reads as intent, a fast climb reads as a glitch.
+      const artL = (c.dx - COPTER_BOX / 2) * zoom;
+      const artR = (c.dx + COPTER_BOX / 2) * zoom;
+      // A SHORT LEAD-IN, not a wide approach. 46 started the dip most of a body
+      // width before he arrived, which is what put him low beside the gorilla
+      // rather than over him. 14 is enough that the sink still reads as flown.
+      // A LONG APPROACH. The dip is now gentle enough that it needs most of a
+      // second to happen in, so it starts a good body-width out and is still
+      // easing as he leaves.
+      const RAMP = 64;
+      const nearness = !hasGorilla ? 0 : Math.max(0, Math.min(1,
+        Math.min(artR - (GORILLA_COLUMN[0] - RAMP), (GORILLA_COLUMN[1] + RAMP) - artL) / RAMP));
+      if (nearness > 0) {
+        // A LEAN, NOT A CLAMP. Taking him all the way under the chin is a big
+        // move to make in the time he takes to cross a facade, and the size of
+        // it is what read as a drop. He goes most of the way — enough that the
+        // gorilla's face is clear on any pass that is not a hurry — and the
+        // rest is allowed to fail: a moment of overlap costs nothing, and the
+        // sudden movement that would have prevented it costs the whole read.
+        const DIP_SHARE = 0.7;
+        const underAlt = (GROUND_Y - GORILLA_CHIN_Y) / zoom - 40 - 2;
+        const eased = nearness * nearness * (3 - 2 * nearness) * DIP_SHARE; // smoothstep
+        if (c.alt > underAlt) c.alt += (underAlt - c.alt) * eased;
+        if (Number.isFinite(c.rideAlt) && c.rideAlt > underAlt) c.rideAlt += (underAlt - c.rideAlt) * eased;
+      }
+      // SLOW ENOUGH THAT NOTHING SNAPS. 62 and 40 units a second still let a
+      // mode change or an easing zoom throw him across the sky in half a
+      // second. Peter: "his movement should never be that jerky unless hit."
+      // The bonk's own rattle is drawn, not flown, so it is unaffected by this
+      // — which is exactly the split we want: the only sharp thing he does is
+      // the thing that is supposed to be sharp.
+      // AND THE SAME LIMIT ON X. The altitude was rate limited and his column
+      // was not, so a window opening still slid him across the frame in under a
+      // second — Peter: "he rapidly moves over to the hero." 130 units a second
+      // is a shade quicker than the hero runs, which reads as him closing in
+      // rather than being teleported.
+      //
+      // EXCEPT WHEN HE IS DODGING OR HIT. Those two ARE meant to be sharp, and
+      // rate limiting them would take the snap out of the only two moves that
+      // want it.
+      // A HIGHER CAP, NOT AN EXEMPTION. Dodges and bonks were skipping the
+      // limiter entirely, which meant the frame they ended reset his drawn
+      // position to wherever the flight path had got to — one silent jump per
+      // window, and the largest movement in the whole level. They keep their
+      // snap by being allowed a much faster rate instead, so the drawing is
+      // always continuous however sharply the target moves.
+      const SIDE_RATE = 130, SIDE_SNAP = 900;
+      const sharp = !!c.evadeT || c.hitT > 0;
+      if (Number.isFinite(c.drawnDx)) {
+        const stepX = c.dx - c.drawnDx;
+        const capX = (sharp ? SIDE_SNAP : SIDE_RATE) / zoom * dt;
+        c.drawnDx += Math.max(-capX, Math.min(capX, stepX));
+      } else {
+        c.drawnDx = c.dx;
+      }
+      c.dx = c.drawnDx;
+      c.x = this.camX + c.dx;
+      const DOWN_RATE = 22, UP_RATE = 18;
+      if (Number.isFinite(c.drawnAlt)) {
+        const step = c.alt - c.drawnAlt;
+        // ONE RATE FOR EVERYTHING HE FLIES. The gorilla dip had a dive rate of
+        // its own so it could always finish before he crossed the facade, and
+        // that sudden drop is the erratic movement it was meant to prevent.
+        // Peter: "I don't want sudden dips — I can live with Kong being
+        // partially obscured, better that than him dropping too dramatically."
+        // So the dip gets no exception: it sinks at the same speed as every
+        // other thing he does, and if he is still coming down as he crosses,
+        // he clips the top of the gorilla for a moment.
+        const cap = (sharp ? 400 : step < 0 ? DOWN_RATE : UP_RATE) * dt;
+        c.drawnAlt += Math.max(-cap, Math.min(cap, step));
+      } else {
+        c.drawnAlt = c.alt;
+      }
+      c.alt = c.drawnAlt;
       c.cooldown = c.mode === 'hover' ? 0 : 1;
       c.inRange = this.mission.type === 'chase' && c.mode === 'hover';
       // THE BONK. Head rising into the underside of the tub, roughly under it.
@@ -8152,7 +8341,7 @@ export class RunState {
       // Only claim what actually landed. Crossing at full battery restores
       // nothing, and at 4/4 that is every checkpoint of an undamaged run.
       const gained = this.battery - before;
-      this.floatText(gained ? `CHECKPOINT. +${gained} BATTERY.` : 'CHECKPOINT. THE ARCADE REMEMBERS THIS SPOT.', '#8ddd8d');
+      this.floatText(gained ? `CHECKPOINT. +${gained} BATTERY.` : 'CHECKPOINT. DULY NOTED.', '#8ddd8d');
       this.snapshot = this.makeSnapshot();
       // Rescue delivery.
       if (this.mission.type === 'rescue') {

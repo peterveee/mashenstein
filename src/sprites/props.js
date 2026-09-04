@@ -451,7 +451,7 @@ const finishDogTable = (src, override) => Object.fromEntries(
 // portrait and the vehicles cannot drift apart.
 const EG_INK = '#1a1028', EG_CREAM = '#e8e0c8', EG_RED = '#c83030', EG_FUR = '#7a4c2e';
 const EG_GOLD = '#f6d33c', EG_LENS = '#c8e0f8', EG_GREEN = '#48c848', EG_GREEN_DK = '#2c7d33';
-const EG_TAU = Math.PI * 2;
+export const EG_TAU = Math.PI * 2;
 const EG_APE_W = 24, EG_APE_H = 20;
 // FINE INK, WEIGHTED LIKE THE HERO'S. The props' shared OUTLINE is a 1u line
 // at 34% — on a busy pale backdrop that is a blur, and Peter asked for "fine
@@ -460,9 +460,9 @@ const EG_APE_W = 24, EG_APE_H = 20;
 // So: 0.3u, a hair heavier than the hero's, at 55% — a touch darker than his
 // because the copter sits on the pale sky band, not the floor. It is the
 // contour that separates him from the scenery, not a rim or a glow.
-const EG_LINE = 'rgba(26,16,40,0.55)';
-const EG_LW = 0.0125 * EG_APE_W;
-function egP(c, fill, fn, ink = null, lw = 0) {
+export const EG_LINE = 'rgba(26,16,40,0.55)';
+export const EG_LW = 0.0125 * EG_APE_W;
+export function egP(c, fill, fn, ink = null, lw = 0) {
   c.beginPath();
   fn(c);
   if (fill) { c.fillStyle = fill; c.fill(); }
@@ -472,8 +472,8 @@ function egP(c, fill, fn, ink = null, lw = 0) {
     c.stroke();
   }
 }
-function egLine(c, ink, lw, fn) { egP(c, null, fn, ink, lw); }
-function egDot(c, fill, x, y, r, ink = null, lw = 0) { egP(c, fill, (k) => k.arc(x, y, r, 0, EG_TAU), ink, lw); }
+export function egLine(c, ink, lw, fn) { egP(c, null, fn, ink, lw); }
+export function egDot(c, fill, x, y, r, ink = null, lw = 0) { egP(c, fill, (k) => k.arc(x, y, r, 0, EG_TAU), ink, lw); }
 // An egg: one width, two heights. The equator sits eq*ry below the centre so
 // the dome above is taller than the bowl below — the difference between an
 // egg and an ellipse.
@@ -649,14 +649,67 @@ function proEars(c, X, Y) {
     egLine(c, 'rgba(26,16,40,0.18)', PRO_LW, (k) => k.ellipse(x + sd * X(0.006), y, X(0.016), Y(0.026), sd * 0.28, -1.9, 1.5));
   }
 }
+// OBLONG, AND HIGHER. Peter, 4 Sep, once the lenses were tapered: "could the
+// nose be more oblong to position it in the new space?" The taper opens a wedge
+// between the two lens bottoms, and a rounder, wider bulb sat under it rather
+// than in it. Narrower and taller by the same amount, lifted so the extra
+// length goes UP toward the bridge — it cannot go down, the moustache caps it.
 function proNose(c, X, Y) {
-  const cx = X(0.5), cy = Y(0.392), rx = X(0.03), ry = Y(0.034);
+  const cx = X(0.5), cy = Y(0.388), rx = X(0.025), ry = Y(0.04);
   egP(c, PRO_SKIN_DK, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU));
   egLine(c, PRO_SKIN_INK, PRO_LW, (k) => k.ellipse(cx, cy, rx, ry, 0, 0.12 * Math.PI, 0.88 * Math.PI));
 }
 // Small fine frames: wide and shallow, with a heavy bar across the top. The
 // weight along the top is what makes them read as HIS glasses.
-const PRO_SPEC = { hw: 0.067, bridge: 0.010, eye: -0.004 };
+//
+// TAPERED, AND A UNIT LOWER. Peter, 4 Sep: "taper in on the edges and on the
+// nose — sort of trapezoidy but rounded on the bottom edges, top corners
+// remain sharp", then "gentle taper on the outside and slightly more on the
+// inside edges", then "glasses may be able to come down a bit now that there
+// is space for them."
+//
+// So the TOP EDGE is the line that never moves — full width, square corners,
+// with the heavy bar lying flat across both lenses and the bridge — and the
+// sides lean in beneath it: gently on the outside, half again as much on the
+// nose. Leaning the nose side hardest opens a wedge of skin either side of the
+// bridge, which is what lets the nose come out from behind the frames instead
+// of being boxed in by them. `y` then drops the whole pair one unit onto it.
+//   out / inn  the lean of the outer and nose-side edges, as a fraction of the
+//              lens WIDTH; r  the bottom corner radius as a fraction of its
+//              HEIGHT; y  the lenses' centre line.
+// AND THEN DOWN AGAIN, ONTO THE NOSE. Peter, 4 Sep, on the height bake-off:
+// ".008 and eyebrows pinned work well — the glasses touch the nose now." So
+// the frames sit where the rim MEETS the bulb, which is the whole point of a
+// pair of glasses and the thing no height above this could say.
+//
+// `browY` pins the brows at a height of their own; left out, they hang off `y`
+// and travel with the frames. They are pinned here on purpose: this last unit
+// is the frames coming down to the nose, not the whole eye region sliding, and
+// carrying the brows with it would only have raised the hairline again.
+export const PRO_SPEC = { hw: 0.067, bridge: 0.010, eye: -0.004, y: 0.346, browY: 0.338, lens: { out: 0.07, inn: 0.12, r: 0.3 } };
+// One lens, drawn in OUTWARD coordinates (+x away from the nose) so the caller
+// can reflect the space for the left one and the two can never disagree.
+function proLensPath(k, hw, hh, o) {
+  const W = hw * 2, H = hh * 2, top = -hh, bot = hh;
+  const bo = hw - o.out * W, bi = -hw + o.inn * W;      // the two bottom corners
+  const R = Math.max(0, Math.min(o.r * H, (bo - bi) / 2, H * 0.5));
+  // R along p -> q from p: where a rounded corner leaves each edge
+  const trim = (px, py, qx, qy) => {
+    const dx = qx - px, dy = qy - py, L = Math.hypot(dx, dy) || 1;
+    return [px + (dx / L) * R, py + (dy / L) * R];
+  };
+  const [ax, ay] = trim(bo, bot, hw, top);
+  const [bx, by] = trim(bo, bot, 0, bot);
+  const [cx, cy] = trim(bi, bot, 0, bot);
+  const [dx, dy] = trim(bi, bot, -hw, top);
+  k.moveTo(-hw, top);
+  k.lineTo(hw, top);                                    // the top, both corners sharp
+  k.lineTo(ax, ay);
+  k.quadraticCurveTo(bo, bot, bx, by);
+  k.lineTo(cx, cy);
+  k.quadraticCurveTo(bi, bot, dx, dy);
+  k.closePath();
+}
 // HIS FACE IS NOT A STILL. A cached raster gave him one expression for the
 // whole level while the cabinet's own gorilla blinked and scowled beside him,
 // and next to that he read as a sticker. `face` is the state every mark below
@@ -666,15 +719,18 @@ const PRO_SPEC = { hw: 0.067, bridge: 0.010, eye: -0.004 };
 // It is passed down from drawCopter rather than derived here, because only
 // the caller knows where the hero is and what the pass is doing.
 const PRO_FACE = { look: 0, mood: 'flat', blink: 0, twitch: [0, 0] };
-function proSpecs(c, X, Y, shocked, face = PRO_FACE) {
-  const o = PRO_SPEC;
-  const cy = Y(0.328), hh = Y(0.036);
+function proSpecs(c, X, Y, shocked, face = PRO_FACE, o = PRO_SPEC) {
+  const cy = Y(o.y), hh = Y(0.036);
   const hw = X(o.hw), off = X(o.hw + o.bridge / 2);
   const brow = PRO_LW * 0.6, top = cy - hh;
   for (const sd of [-1, 1]) {
     const x = X(0.5) + sd * off;
     egLine(c, PRO_RIM, PRO_LW * 0.42, (k) => { k.moveTo(x + sd * hw, top + brow); k.lineTo(X(0.5) + sd * X(0.166), cy - Y(0.006)); });
-    egP(c, PRO_LENS, (k) => rr(k, x - hw, top, hw * 2, hh * 2, X(0.008)), PRO_RIM, PRO_LW * 0.5);
+    c.save();
+    c.translate(x, cy);
+    c.scale(sd, 1);
+    egP(c, PRO_LENS, (k) => proLensPath(k, hw, hh, o.lens), PRO_RIM, PRO_LW * 0.5);
+    c.restore();
     // THE PUPILS TRACK. Off the frames' own half-width, so they ride inside
     // the lens and can never leave it however hard he stares.
     const track = Math.max(-1, Math.min(1, face.look)) * hw * 0.34;
@@ -684,21 +740,24 @@ function proSpecs(c, X, Y, shocked, face = PRO_FACE) {
       egDot(c, EG_INK, x + sd * X(o.eye) + track, cy + Y(0.004), X(shocked ? 0.012 : 0.017));
     }
   }
-  egP(c, PRO_RIM, (k) => rr(k, X(0.5) - off - hw - PRO_LW * 0.08, top - PRO_LW * 0.08, (off + hw) * 2 + PRO_LW * 0.16, brow, X(0.004)));
+  egP(c, PRO_RIM, (k) => rr(k, X(0.5) - off - hw - PRO_LW * 0.08, top - PRO_LW * 0.08, (off + hw) * 2 + PRO_LW * 0.16, brow, 0));
 }
 // Short level brows, mirrored about the nose, clamped so they can never ride
 // off the crown — they lift and arch when he is hit.
 const PRO_BROW = { w: 0.044, h: 0.024, lift: 0.018 };
-function proBrows(c, X, Y, shocked, face = PRO_FACE) {
+function proBrows(c, X, Y, shocked, face = PRO_FACE, spec = PRO_SPEC) {
   const b = PRO_BROW;
   // A brow that never moves is what makes a face a mask. The frown pulls the
   // inner ends down, the smile lifts the whole pair — small numbers, because
   // at this size a brow is four pixels and half of one is an expression.
-  const mood = face.mood === 'frown' ? -1 : face.mood === 'smile' ? 1 : 0;
+  const mood = face.mood === 'frown' ? -1 : (face.mood === 'smile' || face.mood === 'grin') ? 1 : 0;
   // ONE brow rises for a smirk — the right one, the same side the mouth lifts.
-  const smirk = face.mood === 'smirk';
-  const cy = Math.max(Y(0.212), Y(0.328) - Y(0.036) - Y(0.034) - (shocked ? Y(0.03) : 0) - Y(b.lift) - (mood > 0 ? Y(0.012) : 0));
-  const off = X(PRO_SPEC.hw + PRO_SPEC.bridge / 2);
+  const smirk = face.mood === 'smirk' || face.mood === 'gloat';
+  // OFF THE FRAMES, NOT OFF A CONSTANT: the brows follow the lenses down, so
+  // the settled band of forehead between brow and rim holds at whatever height
+  // the frames sit — a brow touching the rim reads as part of the glasses.
+  const cy = Math.max(Y(0.212), Y(spec.browY === undefined ? spec.y : spec.browY) - Y(0.036) - Y(0.034) - (shocked ? Y(0.03) : 0) - Y(b.lift) - (mood > 0 ? Y(0.012) : 0));
+  const off = X(spec.hw + spec.bridge / 2);
   const w = X(b.w), h = Y(b.h) * (shocked ? 1.15 : 1);
   for (const sd of [-1, 1]) {
     c.save();
@@ -754,15 +813,68 @@ function proStubble(c, X, Y) {
 // mouth lifted at that corner only. Peter, 4 Sep: "how about a raised eyebrow
 // and smirk?" It is the one expression that says he finds this funny, which is
 // the whole character.
-const PRO_MOOD = { smile: 0.016, flat: 0.002, frown: -0.012, smirk: 0.01 };
-function proMouth(c, X, Y, shocked, face = PRO_FACE) {
-  if (shocked) { egP(c, EG_INK, (k) => k.ellipse(X(0.5), Y(0.5), X(0.035), Y(0.045), 0, 0, EG_TAU)); return; }
+// A LINE IS NOT ENOUGH FOR EVERY MOOD. The curve alone carries flat, frown and
+// the pleased half-smile, but the two loudest states need a shape: a GRIN opens
+// the mouth and shows teeth, and the smirk needed a harder tilt than a line can
+// hold. GLOAT is the grin pulled to one side — the pose he wears directly over
+// the hero, which is the moment the whole mission is about.
+const PRO_MOOD = { smile: 0.026, flat: 0.002, frown: -0.012, smirk: 0.012, grin: 0.03, gloat: 0.028 };
+// THE MOUSTACHE, as one pair of numbers. Peter, 4 Sep: "a touch less tall,
+// width the same" — 0.046 was deep enough to sit on the mouth, which was half
+// of why the mouth would not read. Width stays: it is the mark everyone knows
+// him by, and it must never reach past his face.
+export const PRO_STACHE_SIZE = { span: 0.118, drop: 0.038 };
+const stacheY = (shocked) => (shocked ? 0.44 : 0.458);
+function proStache(c, X, Y, shocked, size = PRO_STACHE_SIZE) {
+  egMustache(c, X(0.5), Y(stacheY(shocked)), X(size.span), Y(size.drop),
+    shocked ? -0.5 : 0, PRO_STACHE, PRO_INK, PRO_LW);
+}
+// THE MOUTH HANGS OFF THE MOUSTACHE, it does not sit at a height of its own.
+// Pinned to a constant it was first buried in the whiskers and then, once the
+// moustache was made shallower, stranded halfway down his chin. Derived, it
+// clears the lobes by the same sliver whatever size the moustache is, and it
+// rides UP when a bonk lifts them, which is the movement the pose needs.
+const mouthY = (shocked, size = PRO_STACHE_SIZE) => stacheY(shocked) + size.drop * 0.85 + 0.014;
+// THE MOUTH GETS ITS OWN INK. Every other mark on him uses the 32% contour,
+// which is right for a jawline and wrong for the one feature that has to read
+// THROUGH the stubble sitting on top of it. Dark, and THIN: at 1.5x the
+// hairline it was heavier than the specs, which is the wrong thing to be the
+// darkest mark on a face. The ink does the reading, not the weight.
+const PRO_MOUTH_INK = 'rgba(26,16,40,0.72)';
+function proMouth(c, X, Y, shocked, face = PRO_FACE, size = PRO_STACHE_SIZE) {
+  const my = mouthY(shocked, size);
+  if (shocked) { egP(c, EG_INK, (k) => k.ellipse(X(0.5), Y(my + 0.006), X(0.035), Y(0.045), 0, 0, EG_TAU)); return; }
   const curve = PRO_MOOD[face.mood] ?? PRO_MOOD.flat;
-  // The smirk lifts ONE end of the line and leaves the other where it was.
-  const lift = face.mood === 'smirk' ? Y(0.014) : 0;
-  egLine(c, PRO_INK, PRO_LW * 1.2, (k) => {
-    k.moveTo(X(0.46), Y(0.508));
-    k.quadraticCurveTo(X(0.5), Y(0.508 + curve), X(0.54), Y(0.508) - lift);
+  // GRIN and GLOAT are open mouths with teeth: a filled shape under the
+  // moustache with a pale bar across the top. Small — the whole mouth is about
+  // three pixels in the lane — so the teeth are one band rather than separate
+  // marks, which is the only version that survives the size.
+  if (face.mood === 'grin' || face.mood === 'gloat') {
+    const gloat = face.mood === 'gloat';
+    const w = X(gloat ? 0.052 : 0.062), h = Y(gloat ? 0.03 : 0.034);
+    const cxm = X(0.5) + (gloat ? X(0.016) : 0);
+    egP(c, EG_INK, (k) => {
+      k.moveTo(cxm - w, Y(my));
+      k.quadraticCurveTo(X(0.5), Y(my) - (gloat ? h * 0.25 : 0), cxm + w, Y(my) - (gloat ? h * 0.5 : 0));
+      k.quadraticCurveTo(cxm + w * 0.6, Y(my) + h, cxm, Y(my) + h);
+      k.quadraticCurveTo(cxm - w * 0.6, Y(my) + h, cxm - w, Y(my));
+      k.closePath();
+    });
+    egP(c, '#f2f4f8', (k) => {
+      k.moveTo(cxm - w * 0.86, Y(my + 0.002));
+      k.quadraticCurveTo(X(0.5), Y(my + 0.002) - (gloat ? h * 0.2 : 0), cxm + w * 0.86, Y(my + 0.002) - (gloat ? h * 0.42 : 0));
+      k.lineTo(cxm + w * 0.8, Y(my + 0.002) + h * 0.34 - (gloat ? h * 0.42 : 0));
+      k.quadraticCurveTo(X(0.5), Y(my + 0.002) + h * 0.34 - (gloat ? h * 0.2 : 0), cxm - w * 0.8, Y(my + 0.002) + h * 0.34);
+      k.closePath();
+    });
+    return;
+  }
+  // The smirk lifts ONE end of the line, and far enough to see: at 0.014 the
+  // tilt was inside the line's own weight.
+  const lift = face.mood === 'smirk' ? Y(0.026) : 0;
+  egLine(c, PRO_MOUTH_INK, PRO_LW * 0.95, (k) => {
+    k.moveTo(X(0.46), Y(my + 0.008));
+    k.quadraticCurveTo(X(0.5), Y(my + 0.008 + curve), X(0.545), Y(my + 0.008) - lift);
   });
 }
 // THE SIZE AND SEAT OF HIS HEAD. Everything above the shoulders is scaled and
@@ -808,12 +920,40 @@ const proHead = proSized((c, X, Y, lw, shocked) => {
   egP(c, PRO_SKIN, (k) => PRO_HEAD(k, X, Y), PRO_SKIN_INK, PRO_LW);
 });
 const proFace = proSized((c, X, Y) => proNose(c, X, Y));
-const proEyes = proSized((c, X, Y, lw, shocked, face) => { proSpecs(c, X, Y, shocked, face); proBrows(c, X, Y, shocked, face); });
+// The eyes as a part, at any frame geometry — the seam the height bake-off
+// rides, the way proFaceWith rides the moustache's.
+export const proEyesWith = (spec = PRO_SPEC) => proSized((c, X, Y, lw, shocked, face) => {
+  proSpecs(c, X, Y, shocked, face, spec);
+  proBrows(c, X, Y, shocked, face, spec);
+});
+const proEyes = proEyesWith();
 const proMouthPart = proSized((c, X, Y, lw, shocked, face) => {
   proStubble(c, X, Y);
   proMouth(c, X, Y, shocked, face);
-  egMustache(c, X(0.5), Y(shocked ? 0.44 : 0.458), X(0.118), Y(0.046), shocked ? -0.5 : 0, PRO_STACHE, PRO_INK, PRO_LW);
+  proStache(c, X, Y, shocked);
 });
+
+// The face alone at a given moustache size, for the size bake-off: the shipped
+// parts with only that one measurement swapped, so a tile cannot differ from
+// the game in anything else.
+// The same, for the frames: the shipped face with only the spec geometry
+// swapped, so a tile cannot differ from the game in anything else.
+export function proFaceWithSpec(c, X, Y, lw, shocked, face, spec) {
+  EGGSHELL_PARTS.head(c, X, Y, lw, shocked, face);
+  EGGSHELL_PARTS.face(c, X, Y, lw, shocked, face);
+  proEyesWith(spec)(c, X, Y, lw, shocked, face);
+  EGGSHELL_PARTS.mouth(c, X, Y, lw, shocked, face);
+}
+export function proFaceWith(c, X, Y, lw, shocked, face, size) {
+  EGGSHELL_PARTS.head(c, X, Y, lw, shocked, face);
+  EGGSHELL_PARTS.face(c, X, Y, lw, shocked, face);
+  EGGSHELL_PARTS.eyes(c, X, Y, lw, shocked, face);
+  proSized((cc, XX, YY, llw, sh, fa) => {
+    proStubble(cc, XX, YY);
+    proMouth(cc, XX, YY, sh, fa, size);
+    proStache(cc, XX, YY, sh, size);
+  })(c, X, Y, lw, shocked, face);
+}
 
 export const EGGSHELL_PARTS = Object.freeze({
   // NO SHELL: the green spikes were the ape's armour and the professor has
@@ -827,13 +967,39 @@ function eggshellBust(c, X, Y, lw, shocked = false, p = EGGSHELL_PARTS, face = P
 }
 // The clown-copter tub he grips the rim of: cream, red stripes, two lamps,
 // two skids, and his hands on the rim.
+// The tub, pending the hull bake-off. Three changes on 4 Sep, all Peter's:
+//
+//   NO FEET. The two skids under it were a bucket's legs, and this thing never
+//   lands — it hovers in the lane and hangs from a balloon in the finale. They
+//   also cut the silhouette's bottom edge into three lumps at lane size.
+//
+//   THE STRIPES RUN OUT TO THE EDGE, clipped to the hull's own rounded
+//   rectangle so they take its corners: a circus stripe is painted ON a hull,
+//   not floated on it. They stop short of 0.30 and 0.70 so they clear the
+//   lamps, which need cream under them.
+//
+//   THE LAMPS GLOW. Two flat gold dots read as rivets; a halo behind and a
+//   white core inside says lit, and they are the only warm light on him.
 function eggshellTub(c, X, Y, lw) {
-  for (const s of [0.2, 0.64]) egP(c, EG_CREAM, (k) => rr(k, X(s), Y(0.9), X(0.16), Y(0.08), X(0.02)), EG_LINE, lw * 0.7);
-  egP(c, '#f0f0f8', (k) => rr(k, X(0.12), Y(0.6), X(0.76), Y(0.34), X(0.07)), EG_LINE, lw);
-  for (const s of [0.24, 0.46, 0.68]) egP(c, EG_RED, (k) => rr(k, X(s), Y(0.66), X(0.08), Y(0.24), X(0.01)));
+  const hull = (k) => rr(k, X(0.12), Y(0.6), X(0.76), Y(0.34), X(0.07));
+  egP(c, '#f0f0f8', hull, EG_LINE, lw);
+  c.save();
+  c.beginPath(); hull(c); c.clip();
+  // The stripes close up a little with them, so the gap between the lamp and
+  // the first stripe stays the one it was.
+  for (const sx of [0.335, 0.455, 0.575]) egP(c, EG_RED, (k) => k.rect(X(sx), Y(0.58), X(0.09), Y(0.4)));
+  c.restore();
   egP(c, '#d0d0dc', (k) => rr(k, X(0.1), Y(0.58), X(0.8), Y(0.08), X(0.03)), EG_LINE, lw * 0.7);
-  egDot(c, EG_GOLD, X(0.19), Y(0.8), X(0.045), EG_LINE, lw * 0.5);
-  egDot(c, EG_GOLD, X(0.81), Y(0.8), X(0.045), EG_LINE, lw * 0.5);
+  // INBOARD. At 0.19 and 0.81 the lamps sat against the hull's rounded corners
+  // with their glow spilling off the edge, so each one read as half a lamp.
+  // 0.235 and 0.765 puts a clear margin of cream outside them, which is what a
+  // light needs to look mounted on something rather than cut out of it.
+  for (const sx of [0.235, 0.765]) {
+    egDot(c, 'rgba(246,211,60,0.28)', X(sx), Y(0.8), X(0.085));
+    egDot(c, 'rgba(246,211,60,0.5)', X(sx), Y(0.8), X(0.062));
+    egDot(c, EG_GOLD, X(sx), Y(0.8), X(0.045), EG_LINE, lw * 0.5);
+    egDot(c, '#fff6c8', X(sx) - X(0.012), Y(0.8) - Y(0.012), X(0.016));
+  }
 }
 // His fists. Part of the ape, not the tub, so a bonk lifts them with him —
 // hands still gripping a rim he is no longer sitting in is the joke.
@@ -2929,13 +3095,15 @@ export const PROP_PAINTERS = {
   // shoulders, cape and tub are simply not called. One drawing, two crops.
   eggshellFace(ctx, w, h) {
     ctx.save();
-    // HIS HAIR IS THE SILHOUETTE. At 2.1x the mane was cut off at the crown and
-    // he read as a bald man in glasses — Peter: "need his hair in the
-    // faceplate." 1.55x fits the locks inside the slot, and the anchor drops to
-    // the brow line so the head sits low enough for the tallest of them.
-    const k = 1.55;
+    // HIS HAIR IS THE SILHOUETTE, and the slot is WIDER THAN IT IS TALL (20x15
+    // on the speech card), so height is what runs out — the mane reaches nearly
+    // as far above his skull as the skull is deep. 2.1x cut it off at the crown
+    // and 1.55x still clipped the tallest locks; 1.32x fits the whole silhouette
+    // with the anchor dropped to two thirds, which spends the spare room on the
+    // hair rather than on his chin.
+    const k = 1.32;
     ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
-    ctx.translate(w / 2, h * 0.58);
+    ctx.translate(w / 2, h * 0.66);
     ctx.scale((w / EG_APE_W) * k, (h / EG_APE_H) * k);
     ctx.translate(-EG_APE_W * 0.5, -EG_APE_H * 0.375);
     const X = (fr) => EG_APE_W * fr, Y = (fr) => EG_APE_H * fr, lw = EG_LW;
