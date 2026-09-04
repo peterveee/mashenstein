@@ -166,6 +166,43 @@ export function tngr2Family(id) {
   return family;
 }
 
+/**
+ * Expand families AHEAD of the moment they are needed, one per idle slice.
+ *
+ * A family costs about 240ms of main thread to expand — thirty frames — and it used
+ * to be paid at the first NOTE of the voice that wanted it, which is mid-bar with the
+ * sequencer's queue draining underneath. Moving it into the stage's enter() hid it
+ * behind the shutter, but enter() is already the heaviest task of a stage and a song
+ * with two families put half a second of expansion inside it.
+ *
+ * So it moves earlier again, to the moment a cabinet is SELECTED, and spreads: one
+ * family per idle callback, so each expansion lands in a gap the browser has told us
+ * about rather than in the middle of a frame. By the time START is pressed and the
+ * shutter closes, the tables are built and enter()'s own loop is a cache hit.
+ *
+ * `tngr2Family` stays synchronous and memoised, and remains the fallback for a dev
+ * ?stage= URL that never passed through a cabinet at all: a late arrival still works,
+ * it just pays the old price.
+ *
+ * Resolves when every id asked for is built. Unknown ids are dropped here rather than
+ * thrown: this is a warm-up, and a warm-up that can fail the screen that starts it is
+ * worse than one that quietly warms nothing.
+ */
+export function warmTngr2Families(ids = [], { idle = true } = {}) {
+  const wanted = [...new Set(ids)].filter((id) => id && !built.has(id));
+  if (!wanted.length) return Promise.resolve([]);
+  const slice = idle && typeof requestIdleCallback === 'function'
+    ? (fn) => requestIdleCallback(fn)
+    : (fn) => setTimeout(fn, 0);
+  return Promise.all(wanted.map((id) => new Promise((resolve) => {
+    slice(() => {
+      // Through tngr2Family, not buildFamily: another caller may have expanded this
+      // one between the schedule and the slice, and the memo is the whole point.
+      try { resolve(tngr2Family(id)); } catch { resolve(null); }
+    });
+  })));
+}
+
 /** Drop the expanded tables — a diagnostics/teardown hook, not a control. */
 export function clearTngr2Families() { built.clear(); }
 

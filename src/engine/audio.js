@@ -899,11 +899,18 @@ class AudioSys {
     // down, and it survives a rack rebuild the same way the switch above does.
     this.mrdrQuality = MRDR_QUALITY.FULL;
     // Skip building notes for lanes the mix has silenced — muted, or losing a
-    // channel solo. OFF by default and never set by the game: a cabinet treatment
-    // may ramp a lane the mix keeps muted back up at an audio time, and a skipped
-    // note cannot be un-skipped. The desk opts in (see setSilentLaneSkip): there a
-    // mute is a mix state and a solo is the person listening, both readable per
-    // step, and the notes a muted lane would have built reach no output at all.
+    // channel solo. OFF by default, and off for every screen that is not a run: a
+    // cabinet treatment may ramp a lane the mix keeps muted back up at an audio time,
+    // and a skipped note cannot be un-skipped. The desk opts in (see
+    // setSilentLaneSkip): there a mute is a mix state and a solo is the person
+    // listening, both readable per step, and the notes a muted lane would have built
+    // reach no output at all.
+    //
+    // The game opts in too, from ONE place — run.js, once a stage's handover has been
+    // scheduled and never before it, and off again at exit(). A level mix is fixed for
+    // the length of the run, so after the boundary there is no treatment left to ramp
+    // and a lane the level mix mutes (rhythm mutes `lead4`, an MRDR-3 pad layered off
+    // the lead, so it has the lead's notes to build) is honest work for no output.
     this.silentLaneSkip = false;
     this._revTimer = null;   // interval for reverse-chunk scheduling
     this._revSources = [];   // active reversed BufferSources
@@ -976,9 +983,16 @@ class AudioSys {
       // works in another app, where the whole process is demoted and the audio thread
       // is handed a fraction of the machine it needs.
       //
-      // So the caller says. The game keeps the default and nothing about it changes;
-      // the desk asks for `playback` and trades key-to-sound latency it can afford for
-      // an output that survives a busy moment — see setLatencyHint.
+      // So the caller says. Desktop and tablets keep the default and nothing about
+      // them changes; the desk asks for `playback` and trades key-to-sound latency it
+      // can afford for an output that survives a busy moment — see setLatencyHint.
+      //
+      // PHONES ARE THE EXCEPTION on the game side, and for the desk's reason rather
+      // than its own: a phone running the rhythm cabinet is a twenty-lane section on
+      // a machine with a fraction of the core, where a three-millisecond buffer turns
+      // one late DSP callback into a crackle. src/engine/phone-audio.js asks for 50ms
+      // there and nowhere else, and the beat judge follows the granted latency by
+      // itself (heardLatencySec), so scoring is unaffected by what is granted.
       const opts = {};
       if (this.latencyHint) opts.latencyHint = this.latencyHint;
       if (this.sampleRateHint) opts.sampleRate = this.sampleRateHint;
@@ -998,6 +1012,14 @@ class AudioSys {
       }
       if (this.sampleRateHint && this.ctx.sampleRate !== this.sampleRateHint) {
         console.warn(`[audio] asked for ${this.sampleRateHint}Hz, got ${this.ctx.sampleRate}Hz`);
+      }
+      // What the buffer request actually bought, said out loud next to the refusal
+      // warning above. A latencyHint is a request with no return value and no error
+      // when it is quietly rounded, so `baseLatency` is the only evidence there is —
+      // and on a phone it is the number the on-screen `L48ms` field is confirming.
+      if (this.latencyHint) {
+        console.info(`[audio] latency hint ${this.latencyHint} → baseLatency `
+          + `${Math.round((this.ctx.baseLatency || 0) * 1000)}ms at ${this.ctx.sampleRate}Hz`);
       }
     }
     // Some engines create a suspended context even when autoplay is allowed,
@@ -2006,6 +2028,16 @@ class AudioSys {
    * occurrence — up to the lookahead for a short note, the remainder of a pad that
    * had already started. That is the freeze-style trade a desk makes on purpose:
    * the playing mix must never break up to keep a silenced lane warm.
+   *
+   * A silenced LAYER is taken off the layer list as well as emptied, so the generic
+   * layer loop never asks about it at all — which adds one more thing un-muting does
+   * not get back: its arpeggiator state stopped advancing while it was silent, so it
+   * resumes on whatever degree the run is at rather than in phase. Same bargain as the
+   * missing note, and the reason the sweep nulls rather than merely turns down.
+   *
+   * The run opts in on the same terms, but only AFTER its handover has landed — see
+   * run.js. Until then a cabinet treatment still has a mute to ramp away, which is
+   * exactly the note this trade cannot give back.
    */
   setSilentLaneSkip(on) {
     this.silentLaneSkip = !!on;
@@ -5577,6 +5609,14 @@ class AudioSys {
       const s = Math.round(slot * resolution / 16) + bar.half * resolution;
       for (const lane of laneList(b)) {
         const key = lane.key;
+        // A lane the mix has silenced gets no pool, on exactly the terms scheduleStep
+        // uses to give it no notes — same flag, same predicate. Building one here would
+        // be the worse half of the bargain: the pool is a live Tone graph that then sits
+        // in the mixer processing silence for the rest of the run, which is the cost the
+        // skip exists to remove. Gated on the flag rather than on `laneSilent` alone so
+        // this stays inert everywhere the skip is off; a run arms it only once its
+        // handover has landed, by which point the level's mutes are the final word.
+        if (this.silentLaneSkip && this.mixer?.laneSilent(key)) continue;
         const voice = voiceOf(b, key);
         if (!voice || voice.kind === 'engine') continue;
         const value = sequenceValue(b, key, s, resolution);
@@ -6296,11 +6336,33 @@ class AudioSys {
       if (this.silentLaneSkip && this.mixer && !this._previewing) {
         work.preambleSilentSweeps++;
         const silent = [];
+        let silentLayers = false;
         for (const key of LANE_KEYS) if (b[key] && this.mixer.laneSilent(key)) silent.push(key);
-        for (const L of b.__layers || []) if (b[L.key] && this.mixer.laneSilent(L.key)) silent.push(L.key);
+        for (const L of b.__layers || []) {
+          if (b[L.key] && this.mixer.laneSilent(L.key)) { silent.push(L.key); silentLayers = true; }
+        }
         if (silent.length) {
           b = { ...b };
           for (const k of silent) b[k] = null;
+          // AND TAKE A SILENCED LAYER OFF THE LIST, not just its notes.
+          //
+          // Nulling the data is enough for the canonical lanes: each has a hand-written
+          // body that tests its own step and falls straight through. The layers do not —
+          // they share one generic loop that asks `at(key)` for every layer on the list,
+          // and `at` is not free on a lane with nothing in it: it still resolves the
+          // lane's Note FX config and still calls sequenceValue. Measured on rhythm, one
+          // muted layer left on the list cost 512 lane reads and 512 note plans across
+          // 1024 passes — half a lookup per pass, for a lane whose output is a zeroed
+          // fader. Muting was cheaper than deleting a lane by exactly nothing.
+          //
+          // The cost of taking it off is the one the flag already charges: a layer that
+          // is not visited is a layer whose arpeggiator state stops advancing, so
+          // un-muting one mid-arpeggio resumes on a different degree rather than in
+          // phase. That is the same bargain as the missing note — a silenced lane is not
+          // kept warm — and it is why the run only arms this once its mix is final.
+          if (silentLayers) {
+            b.__layers = (b.__layers || []).filter((L) => !silent.includes(L.key));
+          }
         }
       }
       // Where this lane's voices land. `lane()` is called at the top of each lane

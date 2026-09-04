@@ -743,5 +743,42 @@ const startBack = (await freshImport(startPath)).variants;
 assert(stable(startBack) === stable(startOnly),
   'a treatment that names a way in and no loop round-trips as exactly that');
 
+// ---- what the stage's realtime pre-warm can actually build --------------------
+//
+// run.js calls Audio.prepareRealtimeVoices() behind the shutter so a POOLED Tone voice
+// builds its graph there instead of at its first note, inside the scheduler's lookahead.
+// That only helps the lanes it covers, and it covers exactly the pooled families:
+// VoiceRack.prepareRealtimeVoice early-outs on drums, TNGR-2, MRDR-3, KNDO-5 and WNDR-9,
+// which build per note or are native Web Audio and have no pool to fill.
+//
+// So the number worth pinning is which of rhythm — the heaviest mix in the game, and the
+// one that crackles on a phone — the warm-up reaches. If a re-voicing moves a lane onto a
+// per-note family, the pre-warm silently stops covering it and the hole comes back at the
+// handover bar line; this says so.
+{
+  const { mix: rhythmMix } = await import('../src/data/songs/rhythm.js');
+  const { VOICES } = await import('../src/data/voices.js');
+  const { synthFamily, KNDO5, WNDR9 } = await import('../src/engine/voices.js');
+  // The engine's early-out list, restated: prepareRealtimeVoice is a method on a rack
+  // that needs a live AudioContext, so the predicate is mirrored rather than called.
+  const pooled = (id) => {
+    const v = VOICES[id];
+    if (!v || v.kind === 'drum' || v.synth === 'TNGR-2' || v.synth === 'MRDR-3') return false;
+    return synthFamily(v.synth) !== KNDO5 && synthFamily(v.synth) !== WNDR9;
+  };
+  const lanes = Object.entries(rhythmMix.voice || {});
+  const warm = lanes.filter(([, id]) => pooled(id));
+  assert(warm.length >= 8,
+    `rhythm's pre-warm covers ${warm.length} of its ${lanes.length} voiced lanes`);
+  assert(new Set(warm.map(([, id]) => id)).size >= 6,
+    'and at least six distinct pooled presets, so the walk is building pools not one pool');
+  // The excluded families are excluded for a reason, and naming them here is what makes
+  // a future "why is lead7 still late" answerable: TNGR-2's cost is its wavetables (see
+  // warmTngr2Families) and MRDR-3/KNDO-5/WNDR-9 build per note by design.
+  assert(!pooled('tngrBlueCathedral') && !pooled('bestPwmStrings') && !pooled('toneSquare')
+    && !pooled('kickMegamix'),
+    'TNGR-2, MRDR-3, KNDO-5 and the drums are not pre-warmed here — they have no pool');
+}
+
 console.log(failed ? '\nMIX: FAILED' : '\nMIX: PASSED');
 process.exit(failed ? 1 : 0);

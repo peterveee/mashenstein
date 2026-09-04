@@ -46,6 +46,7 @@ import { TutorialState } from './game/tutorial.js';
 import { initUpdates } from './engine/updates.js';
 import { LifecycleController, lifecyclePolicy, portraitNow, portraitAllowedFor } from './engine/lifecycle.js';
 import { readPlatform } from './engine/platform.js';
+import { applyPhoneAudioProfile } from './engine/phone-audio.js';
 import { sendTelemetry, sendSessionEnd, sendRunResult } from './engine/telemetry.js';
 import { startBench, benchFrame, drawBench } from './engine/bench.js';
 import { consumeBenchDiag, releaseBenchRenderer, readDiag } from './engine/diag.js';
@@ -497,6 +498,82 @@ const Flow = {
   },
 };
 
+// THE AUDIO HEALTH PROBE, and why it is three numbers rather than one.
+//
+// On an installed iPhone there is no console, no profiler and no desk: the FPS
+// readout is the only instrument that reaches the device, so the audio has to
+// report itself through the same corner of the screen. Sampled once a second
+// because that is the shortest window a ratio of two clocks is steady over.
+//
+// The fields separate the two failures that both present as "the music breaks up",
+// and that no single number can tell apart (see phone-audio.js):
+//
+//   C0.98  the audio clock against the wall clock over the last second. Below ~0.9
+//          the AUDIO thread is not finishing its work — the DSP is over budget for
+//          the buffer it was given, heard as crackle. It is a DEADLINE, not a load:
+//          it reads 1.00 on an empty song and on a nearly-full one alike, so it may
+//          only ever say "behind", never "how busy". Never coloured, never a gauge.
+//   M-23/2 the sequencer's minimum queue margin in ms, and how many passes ran with
+//          nothing left. Negative margin with the clock at 1.00 is the OTHER failure:
+//          the MAIN thread starved the transport and notes landed in the past, heard
+//          as holes. Positive and quiet means the frame is feeding it fine.
+//   L48ms  what the output buffer actually came out at, next to the rate. The phone
+//          profile ASKS for 50ms; this is the only place that says what was granted.
+const audioProbe = { at: 0, ctxAt: 0, ratio: 0, margin: null, late: 0 };
+let audioTxt = '';
+// The same fields split for the chrome box, whose rows are short on purpose so the
+// lettering can grow in a phone's narrow side pillar rather than shrinking to fit.
+let audioRows = [];
+function sampleAudioHealth() {
+  const ctx = Audio.ctx;
+  if (!ctx) { audioTxt = ''; audioRows = []; audioProbe.at = 0; return; }
+  const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+  if (!audioProbe.at) { audioProbe.at = now; audioProbe.ctxAt = ctx.currentTime; return; }
+  const wall = now - audioProbe.at;
+  if (wall < 1) return;
+  audioProbe.ratio = (ctx.currentTime - audioProbe.ctxAt) / wall;
+  audioProbe.at = now;
+  audioProbe.ctxAt = ctx.currentTime;
+  // takeSchedulerHealth RESETS as it reads, so this sample is the last second's
+  // worst case rather than a running floor — which is what makes a hole that has
+  // stopped happening disappear from the readout instead of staying up all run.
+  const h = Audio.takeSchedulerHealth();
+  audioProbe.margin = Number.isFinite(h.marginMin) ? Math.round(h.marginMin * 1000) : null;
+  audioProbe.late = h.late;
+  const lat = Math.round((ctx.outputLatency || ctx.baseLatency || 0) * 1000);
+  const rate = Math.round(ctx.sampleRate / 100) / 10;
+  const marginTxt = audioProbe.margin == null ? 'M-' : `M${audioProbe.margin}/${audioProbe.late}`;
+  // NO WORKLET HERE, and therefore no TNGR-2 and no MRDR-3 AW — those two synths are
+  // their AudioWorklet and have no second synthesis path, so their lanes play nothing
+  // at all. AudioWorklet needs a SECURE context, which the LAN dev URL
+  // (http://MBP14.local:8001) is not: `ctx.audioWorklet` is simply undefined there.
+  //
+  // The engine already says so on the console, once, loudly (VoiceRack.warmTngr2Lane) —
+  // and a phone has no console, which is exactly how "the pad is missing on mobile"
+  // becomes a performance mystery instead of a one-line answer. Shown only when it is
+  // true, like the drops row: on the shipped https build this field never appears.
+  const noWorklet = !ctx.audioWorklet;
+  audioRows = [`C${audioProbe.ratio.toFixed(2)} ${marginTxt}`, `L${lat}ms ${rate}k`];
+  if (noWorklet) audioRows.push('NO WORKLET');
+  audioTxt = `C${audioProbe.ratio.toFixed(2)} ${marginTxt} L${lat}ms ${rate}k`
+    + (noWorklet ? ' NOWORKLET' : '');
+}
+
+// The same numbers for the beacon, so a phone reports without anyone holding it.
+// Empty before the context exists — telemetry drops the fields rather than sending
+// zeroes that would read as a measured silence.
+function audioTelemetry() {
+  const ctx = Audio.ctx;
+  if (!ctx) return {};
+  return {
+    audioClock: Math.round(audioProbe.ratio * 100) / 100,
+    audioMarginMs: audioProbe.margin,
+    audioLate: audioProbe.late,
+    audioLatencyMs: Math.round((ctx.outputLatency || ctx.baseLatency || 0) * 1000),
+    audioRate: ctx.sampleRate,
+  };
+}
+
 function boot() {
   // URL parameters to force settings on initial load.
   //   ?fps  or  ?start=fps   → show FPS counter
@@ -556,7 +633,7 @@ function boot() {
       }
       // Fire telemetry once the render density settles — the most important
       // number: it tells us whether this device actually kept up.
-      sendTelemetry({ density: rendererDiagnostics().density, backend });
+      sendTelemetry({ density: rendererDiagnostics().density, backend, ...audioTelemetry() });
     },
   });
   releaseBenchRenderer(benchDiag);
@@ -571,6 +648,11 @@ function boot() {
   // boot-time fixture; no pad has been polled yet, so this is exactly the
   // coarse-pointer test it has always been.
   Audio.setCaptureEnabled(Input.rewindAvailable());
+  // A phone gets a bigger output buffer and a wider scheduler window; everything
+  // else keeps the browser's default. Here rather than anywhere later because
+  // latencyHint is an AudioContext constructor argument — see phone-audio.js, and
+  // note that this line and the one above it are both "before ensure()" fixtures.
+  applyPhoneAudioProfile(Audio, platform);
   // Prime Web Audio before the title state is installed. Browsers/builds that
   // permit autoplay now begin the menu theme immediately; stricter browsers
   // leave the context suspended and the first gesture resumes this same
@@ -678,6 +760,17 @@ function boot() {
       updateState(dt * Dev.timeScale);
     },
     draw: (renderAlpha) => {
+      // TOP THE SEQUENCER UP FROM THE FRAME, before anything is drawn.
+      //
+      // The transport is otherwise fed by a 25ms setInterval, and a timer is exactly
+      // the thing a busy main thread delays: the frame that just ran up to eight
+      // catch-up update() steps (loop.js) is the frame most likely to have eaten the
+      // slot the queue needed. schedule() is idempotent and costs one compare plus an
+      // empty while loop when the queue is already full, and early-outs entirely with
+      // no bank — so a menu pays nothing and a stage pays for the pass it needed.
+      // All platforms: there is no phone-only reason for it and one path is easier to
+      // keep correct than two.
+      Audio.schedule();
       beginRenderFrame();
       let drawFpsReadout = null;
       const menuState = currentState();
@@ -741,6 +834,10 @@ function boot() {
         // short readout — the same rule the hitch fields follow.
         const playingBpm = Audio.bank ? (Audio.bpm || 0) * (Audio.tempo || 1) : 0;
         const bpmTxt = playingBpm > 0 ? `${r2(playingBpm)}BPM` : '';
+        // The audio's own half of the diagnostic. Sampled here rather than on a timer
+        // of its own so it lives and dies with the readout that shows it, and so the
+        // window it measures is the window the player was watching.
+        sampleAudioHealth();
         // Dropped vsyncs, which the averaged FPS cannot show: a run that hitches
         // three times a second still reads a flat 60. "!3/34" is three drops in
         // the last second, worst frame 34ms. Shown only when there is something
@@ -766,7 +863,7 @@ function boot() {
           // geometry. The 480x270 game-space painter below cannot be reused
           // here: its coordinates land inside the area #game covers, where the
           // readout is faithfully painted every frame and never once seen.
-          setChromeOverlay(`fps|${fps}|${hitchNow}|${hitchSum}|${dens}|${bpmTxt}|${chrome.mode}|${Math.round(chrome.vw)}`, (ctx) => {
+          setChromeOverlay(`fps|${fps}|${hitchNow}|${hitchSum}|${dens}|${bpmTxt}|${audioTxt}|${chrome.mode}|${Math.round(chrome.vw)}`, (ctx) => {
             // A landscape phone's side pillar is narrow but tall. Short,
             // single-stat rows let the lettering grow instead of shrinking one
             // long density/backend string to fit. A top/bottom band has width
@@ -787,6 +884,13 @@ function boot() {
             // not about the frame, so it reads as a footnote rather than as
             // another number competing with the FPS.
             if (bpmTxt) lines.push(bpmTxt);
+            // And under it, the audio. Below the tempo because it is a diagnostic
+            // about the machine rather than about the song, and it is the last thing
+            // added so a device with no context yet keeps the box it has always had.
+            // Two short rows in the pillar, one wide row in a band.
+            if (audioRows.length) {
+              lines.push(...(side ? audioRows : [audioRows.join('  ')]));
+            }
             if (drops) lines.splice(1, 0, drops);
             const pad = 8;
             const widest = Math.max(...lines.map((l) => textWidth(l, 1, 'ui')));
@@ -819,7 +923,7 @@ function boot() {
           });
         } else if (!visualiserTitlesVisible) {
           const label = `FPS ${fps}${hitchNow ? ' ' + hitchNow : ''}${hitchSum ? ' D' + hitchSum : ''} ${dens}`
-            + (bpmTxt ? ` ${bpmTxt}` : '');
+            + (bpmTxt ? ` ${bpmTxt}` : '') + (audioTxt ? ` ${audioTxt}` : '');
           // Keep the diagnostic above the visualiser surface. Once its titles
           // are gone, use their bottom-centre berth in both orientations.
           drawFpsReadout = (ctx) => {

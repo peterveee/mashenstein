@@ -4140,6 +4140,16 @@ const USER_TONE = {
     },
     vibrato: { depth: 0.22, rate: 4.2, delay: 1.4 },
     starter: false },
+  simpleStrings: { label: 'Simple Strings', category: 'Lead', synth: 'CRLS-1', dur: 1.2,
+    note: 'Cheap stringlike sound',
+    options: {
+      oscillator: { type: 'fatsawtooth', spread: 19, count: 2 },
+      envelope: { attack: 0.006, decay: 0.15, sustain: 0.88, release: 0.367 },
+      filter: { type: 'lowpass', Q: 1.6, rolloff: -12 },
+      filterEnvelope: { attack: 0.007, decay: 0.12, sustain: 0.4, release: 0.25, baseFrequency: 3170, octaves: 1.2 },
+    },
+    starter: false,
+    vibrato: { depth: 0.03 } },
 };
 const USER_DRUM = {
   vl1Pi2: { label: 'VL-1 Pi 2', category: 'Blip', homeLane: 'rim', dur: 0.5,
@@ -4363,7 +4373,8 @@ const LEVELS = {
   stKickDeep: 0.054285, stKickTight: 0.058672, stKickThud: 0.026188,
   stKickDirty: 0.032487, stKickClick: 0.055838, stTaiko: 0.049216,
   stZap: 0.056003, stHatTick: 0.016717, stHatSizzle: 0.056353,
-  stMetalHatClosed: 0.01638, stCowbell: 0.028111, stTriangleDing: 0.028111
+  stMetalHatClosed: 0.01638, stCowbell: 0.028111, stTriangleDing: 0.028111,
+  simpleStrings: 0.0321
 };
 
 // Measured peaks, the same renders. No longer what a preset is levelled by: what it is
@@ -4492,7 +4503,8 @@ const PEAKS = {
   stFmBell: 0.2199, stAmHollow: 0.1073, stKickPunch: 0.7, stKickDeep: 0.7,
   stKickTight: 0.7, stKickThud: 0.6899, stKickDirty: 0.6934, stKickClick: 0.7,
   stTaiko: 0.7, stZap: 0.7, stHatTick: 0.6253, stHatSizzle: 1.0138,
-  stMetalHatClosed: 0.7687, stCowbell: 0.5426, stTriangleDing: 0.5426
+  stMetalHatClosed: 0.7687, stCowbell: 0.5426, stTriangleDing: 0.5426,
+  simpleStrings: 0.3617
 };
 
 /**

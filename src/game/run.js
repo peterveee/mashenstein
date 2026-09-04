@@ -16,7 +16,7 @@ import { clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { burst, shardBurst, spawnShard, updateParticles, drawParticles, clearParticles, spawn } from '../engine/particles.js';
 import { drawText, drawTextCentered, textWidth, drawPanel, drawMenuRow, textYForMid, UI_PANEL_BORDER, drawRoundButton, drawKeyLegend, keyLegendWidth, drawPellet } from '../engine/sprites.js';
 import { Player, PLAYER_X, PLAYER_W, PLAYER_H, PLAYER_SPRITE_W, GRAVITY, BASE_JUMP_V, TERMINAL_VY, ANIM_SPEED_DIVISOR, SLIDE_KICK_T, STAND_AFTER_PLOW_T, SLIP_T, jumpHeightFor } from './player.js';
-import { PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
+import { PUNT, HEAVY_PUNT, puntPower, puntTuneFor, startPunt, stepPunt, juggle } from './punt.js';
 import { LOOP, loopCoinSpots, loopBodyPoint, startLoop, stepLoop, loopExitVy } from './loop.js';
 import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
@@ -717,6 +717,54 @@ const COPTER_PRESSURE_MISS = 0.17;
 const COPTER_PRESSURE_HIT = 0.14;
 const COPTER_PRESSURE_COIN = 0.02;
 const COPTER_PRESSURE_DRIFT = 0.012;
+// THE HIGHEST HE MAY FLY AND STILL BE HIT BY A PUNTED BARREL, in world alt.
+//
+// Derived from the arc rather than picked, because it is the whole fairness of
+// the shot: HEAVY_PUNT throws the barrel to vy^2/2g, its crown is its own
+// height above that, and the tub's floor sits COPTER_HULL.floor above `alt`.
+// Above this number the best kick in the game passes under him.
+const BARREL_REACH_ALT = HEAVY_PUNT.launchVy ** 2 / (2 * HEAVY_PUNT.gravity)
+  + OBSTACLES.barrel.h - COPTER_HULL.floor;
+// HIS ROAM, AS A WORLD BAND — the two ends of the height the pressure dial
+// moves him between (see nudgeCopter), quoted as slack against the barrel's
+// reach so the shot means the same thing on every cabinet.
+//
+// It used to be quoted off copterCeilingAlt, and that is a SCREEN fact: the
+// ribbon sits at a fixed frame y, so the sky under it is worth 85 world units
+// at the 1.6 framing and 59 at 2.0. The band therefore ran 50..81 on a desktop
+// at NORMAL and 50..55 at ZOOM IN, and since a punted barrel only reaches alt
+// 61, the same perfect kick connected almost always at one framing and
+// essentially never at the other. Measured over the demo bot punting every
+// barrel on speed-2: 0 of 9 at NORMAL against 4 of 7 at CLOSE.
+//
+// So the band is world units now and the ceiling is only ever a clamp (it still
+// is, at the end of the copter's update). The top is the highest the CLOSEST
+// desktop framing can hold under the ribbon, which makes the roam identical at
+// NORMAL, at ZOOM IN and on a tablet; a phone's sky is genuinely smaller than
+// this and still clamps, which only ever makes him easier to hit.
+//
+// What the dial buys is now the SLOP on the shot rather than whether it exists:
+// down at the bottom the barrel's crown is 11 units inside the tub and a kick
+// lands from a third of a second of the arc, up at the top it is 6 and the
+// window halves. He still rides high and dips; the dip is just no longer the
+// difference between a level you can finish and one you cannot.
+const COPTER_ROAM_LOW = BARREL_REACH_ALT - 11;
+const COPTER_ROAM_HIGH = BARREL_REACH_ALT - 6;
+// AND THE TOP OF EVERY LIFT HE TAKES — the bonk's recoil and the dodge — in the
+// same world units and for the same reason. Both used to run until the ceiling
+// stopped them, so the recoil carried him to 85 at NORMAL and 59 at ZOOM IN:
+// after a bonk he spent several more seconds of level sinking back through the
+// barrel's arc on one framing than on the other, and the dodge lifted him 11
+// units on one and 2 on the other. The rattle a hit reads by is DRAWN
+// (drawCopter's hitT), so the altitude only ever has to lift him clear.
+const COPTER_LIFT_TOP = COPTER_ROAM_HIGH + 4;
+// AND HOW FAR AHEAD HE CRUISES, in world units from the camera. Same argument
+// as the band: the barrel's flight is world physics, so the distance it has to
+// cover to reach him cannot be a share of a frame that changes with the zoom.
+// These are the old VIEW_W * 0.58 ± 0.26 numbers evaluated at the closest
+// desktop framing, which is the frame that actually has to hold him.
+const COPTER_ROAM_NEAR = 240 * (0.58 - 0.26);
+const COPTER_ROAM_FAR = 240 * (0.58 + 0.26);
 // The rooftop gorilla's building on level 3-3, in frame px — its own scene data
 // in stylePacks puts it at x 359, 36 wide. The villain is cast and the gorilla
 // is the cabinet's art; neither may sit on the other. Below this altitude he is
@@ -2553,6 +2601,45 @@ export class RunState {
       variants: musicSong?.variants,
     });
     if (this.beatLock) Audio.setWarp(this.laneTempo(), 1);
+    // BUILD THE VOICES THIS STAGE IS ABOUT TO NEED, here, behind the shutter.
+    //
+    // A pooled Tone voice builds its graph at its FIRST NOTE, inside the lookahead —
+    // which is fine for a lane the cabinet screen was already playing (its pool is
+    // warm) and is the whole problem for the lanes the screen's treatment MUTED.
+    // Those are usually the tune, they all arrive together on the handover bar line,
+    // and building half a dozen synth graphs in one scheduler pass is a hole in the
+    // bar they were meant to enter on.
+    //
+    // From Audio.step, not from zero: on the handover path the transport is mid-song
+    // and the window that matters starts at the playhead. 256 steps is sixteen bars
+    // of sixteenths, far enough ahead to cover a lane whose first onset is a few bars
+    // after the boundary. Synchronous and short — the desk does the same walk in the
+    // same task as setBank.
+    //
+    // After setWarp: prefill below queues real note times, and those times are
+    // computed from the tempo, so the warp has to be in place before anything is put
+    // in the queue at it.
+    Audio.prepareRealtimeVoices?.({ startStep: Audio.step, windowSteps: 256 });
+    // And queue further ahead than the lookahead, once. enter() runs at the shutter's
+    // covered midpoint and is the heaviest single task of a stage — layout, spawner,
+    // art warm-up, the TNGR-2 expansion — with the rest of it still to come below this
+    // line. The notes queued are the notes that were coming anyway, at the same times;
+    // the window narrows by itself as the clock catches up. No-op offline and with no
+    // context, so the headless suites do not see it at all.
+    Audio.prefill?.(1.2);
+    // SKIP SYNTHESIS FOR LANES THE MIX HAS SILENCED — but not yet if a handover is
+    // still pending. rhythm ships `lead4` muted: an MRDR-3 string pad layered off the
+    // lead, so it carries the lead's notes and every pass builds a three-oscillator
+    // voice for them into a zeroed fader. On the heaviest mix in the game that is
+    // honest work for no output.
+    //
+    // The one hazard is the cabinet handover: a treatment plays the song with the tune
+    // muted and ramps it back in at a bar line, and a skipped note cannot be
+    // un-skipped. So the skip stays OFF until the boundary is scheduled — see the
+    // arming tick in update(), and setSilentLaneSkip in the engine for the trade.
+    this.silentSkipArmed = false;
+    Audio.setSilentLaneSkip(false);
+    if (!MusicDirector.pending) this.armSilentLaneSkip();
     // No opening cue here — it fires at the PRESS instead. See levelOpenCue in main.js:
     // enter() runs at the shutter's covered midpoint, which is already a third of a
     // second after the button that caused it, and by the time the swoosh peaked from
@@ -2653,8 +2740,20 @@ export class RunState {
     clearParticles();
   }
 
+  /** Turn the silent-lane skip on for this run and remember that it is on. */
+  armSilentLaneSkip() {
+    Audio.setSilentLaneSkip(true);
+    this.silentSkipArmed = true;
+  }
+
   exit() {
     setSceneGlow(false); Input.setContext('default'); Input.setButtons([]); Input.setChromeButtons([]);
+    // The skip belongs to the RUN and to nothing else. The results screen keeps the
+    // song playing, the cabinet screens and the jukebox play treatments that mute and
+    // un-mute lanes on purpose, and the desk sets this flag itself — so every path out
+    // of here hands back the byte-identical behaviour it had before the run started.
+    Audio.setSilentLaneSkip(false);
+    this.silentSkipArmed = false;
     // Leaving mid-armed-window must not strand the capture node; desktop's
     // boot-time node stays (same predicate as everywhere else in the feature).
     if (this.beatLock || !Input.rewindAvailable()) Audio.setCaptureEnabled(false);
@@ -3120,6 +3219,13 @@ export class RunState {
 
   // ------------------------------------------------------------------ update
   update(dt) {
+    // The handover's bar line has been SCHEDULED (MusicDirector._fire cleared its
+    // pending), which is at least a lookahead before anyone hears it — and the ramp's
+    // mute states are committed at the boundary's audio time by scheduleEffects, which
+    // runs ahead of the silent sweep in the same scheduleStep. So every note whose
+    // onset falls at or after the boundary is built normally, and the skip can come on
+    // from here without eating the arrival of the tune.
+    if (!this.silentSkipArmed && !MusicDirector.pending) this.armSilentLaneSkip();
     if (this.finished) { Input.endFrame(); return; }
     this.captureRenderInterpolation();
     // The marker's own clock, advanced on EVERY path including the finale hold.
@@ -5130,6 +5236,12 @@ export class RunState {
   }
 
   doSwitch() {
+    // The other known main-thread stall in a run: a hero swap rebuilds the player's
+    // sprite work and fires two cues in the same task, and it is the moment the "the
+    // game hitches on hero swaps" reports were always about. Queue past it first —
+    // the same move enter() makes above, at a shorter window because this one is
+    // measured in tens of milliseconds rather than hundreds.
+    Audio.prefill?.(0.6);
     const px = this.camX + PLAYER_X;
     const result = this.relay.switchHero();
     this.player.setHero(result.to);
@@ -5645,32 +5757,56 @@ export class RunState {
       // copter that was plainly right there did nothing, and read as broken.
       // The near end now stops a clear stride ahead of the hero: when he is
       // above your head, he is there to be hit.
-      const aheadDx = VIEW_W * 0.58
-        + Math.sin(this.tRun * 0.33) * VIEW_W * 0.14
-        + Math.sin(this.tRun * 0.71 + 1.3) * VIEW_W * 0.08
-        + Math.sin(this.tRun * 1.27 + 0.4) * VIEW_W * 0.04;
-      // HE RIDES HIGH, AND DIPS. The band is hung off the ceiling rather than
-      // written as a number, because the ceiling moves with the cabinet's zoom.
-      // What matters is where he sits INSIDE it: a punted barrel tops out
-      // around 65, so a copter parked mid-band is inside the arc almost all the
-      // time and the kick lands itself. The raised cosine is biased toward the
-      // top — the exponent below 1 stretches the time spent high — so he flies
-      // clear of the barrel's ceiling most of the way and drops into reach only
-      // in the troughs. That dip is the shot.
-      // HIS HEIGHT IS THE SCOREBOARD. See nudgeCopter: the pressure is built by
-      // clean beats and coin streaks and spent by misses and hits, and 26 units
-      // of it is the difference between flying clear of a punted barrel (which
-      // tops out near 65) and hanging inside its arc. The eased follow is what
-      // makes that readable — he sinks and rises over about a second rather
-      // than snapping between two heights on every mark.
-      // The two ends are a HEIGHT each, not an offset and a depth: the ceiling
-      // moves with the cabinet's zoom, and subtracting a fixed 26 from a low
-      // one put him down among the obstacles. The bottom is pinned to what the
-      // shot needs — a punted barrel reaches a hull floor at 65 — and the top
-      // is as high as the ribbon allows. On a cabinet with no sky between them
-      // the range simply collapses, which is honest.
-      const lowAlt = Math.min(ceiling - 2, 50);
-      const highAlt = ceiling - 4;
+      // WHAT THE FRAME KNOWS BEFORE ANYTHING IS CLAMPED: the live zoom, and
+      // whether this cabinet even has a gorilla to keep clear of. The column
+      // and the roof are facts about level 3-3's backdrop, and the chase also
+      // runs on speed-2 and cardboard-3 where those numbers point at empty sky.
+      // Asked of the pack rather than hardcoded, so moving the gorilla along the
+      // skyline moves this with it.
+      const zoom = this.camZoom || ZOOM;
+      const hasGorilla = this.beatLock && this.styleName === 'lcd'
+        && lcdChuteScreenX(this.stage?.index) != null;
+      // Three components of unrelated periods, normalised to -1..1 so the two
+      // ends below are the two ends: the path never visibly repeats, and the
+      // far end is only reached when they line up.
+      const wander = (Math.sin(this.tRun * 0.33) * 0.14
+        + Math.sin(this.tRun * 0.71 + 1.3) * 0.08
+        + Math.sin(this.tRun * 1.27 + 0.4) * 0.04) / 0.26;
+      // AND IT IS A WORLD DISTANCE, not a share of the frame. The roam used to
+      // be quoted as VIEW_W * 0.58 ± fractions, and VIEW_W is a zoom away: at
+      // NORMAL he cruised 115 world units ahead of the hero and at ZOOM IN only
+      // 80, so a punted barrel — which flies at 1.7x the run whatever the
+      // camera is doing — met him at a different point of its arc on each
+      // framing. That was worth 22% of kicks against 63% on cardboard-3, on
+      // top of the altitude gap above.
+      //
+      // The numbers ARE the old ones, taken at the closest desktop framing: it
+      // is the frame that has to hold him, so the narrower one sets the range
+      // and the wider one now shows more sky beside him rather than moving him.
+      const kongMid = (GORILLA_COLUMN[0] + GORILLA_COLUMN[1]) / 2 / zoom;
+      // Except at the far end, on a cabinet with a landmark. The gorilla sits
+      // at a SCREEN x (it is painted on the backdrop), so reaching him is the
+      // one part of the roam that has to move with the zoom — and it is the
+      // half of the path furthest from the hero, where no kick is aimed.
+      const roamFar = hasGorilla
+        ? Math.max(COPTER_ROAM_FAR, kongMid + 8) : COPTER_ROAM_FAR;
+      const roamMid = (COPTER_ROAM_NEAR + COPTER_ROAM_FAR) / 2;
+      const aheadDx = roamMid + wander * (wander >= 0
+        ? roamFar - roamMid : roamMid - COPTER_ROAM_NEAR);
+      // HE RIDES HIGH, AND DIPS. HIS HEIGHT IS THE SCOREBOARD: see nudgeCopter,
+      // where clean beats and coin streaks press him down and a missed mark or
+      // a hit sends him back up. The eased follow is what makes that readable —
+      // he sinks and rises over about a second rather than snapping between two
+      // heights on every mark.
+      //
+      // The two ends are WORLD heights (COPTER_ROAM_LOW/HIGH, both quoted as
+      // slack against BARREL_REACH_ALT), not a slice of whatever sky the
+      // cabinet has. Hanging them off the ceiling made the dial mean something
+      // different at every framing — see those constants — and the fix is that
+      // the ceiling now only ever pulls the band DOWN, which among the framings
+      // that ship is a phone and nothing else.
+      const highAlt = Math.min(COPTER_ROAM_HIGH, ceiling - 4);
+      const lowAlt = Math.min(COPTER_ROAM_LOW, highAlt);
       const want = highAlt - (highAlt - lowAlt) * (this.copterPressure ?? COPTER_PRESSURE_START);
       c.rideAlt = Number.isFinite(c.rideAlt) ? c.rideAlt + (want - c.rideAlt) * Math.min(1, dt * 1.6) : want;
       // A shallow ride on top of it, so a held height is never a parked sprite.
@@ -5698,15 +5834,6 @@ export class RunState {
       // slam the first frame of the arrival to the near side of that building,
       // which is why he SNAPPED into the frame at Kong instead of flying in.
       let parked = false;
-      // WHAT THE FRAME KNOWS BEFORE ANYTHING IS CLAMPED: the live zoom, and
-      // whether this cabinet even has a gorilla to keep clear of. The column
-      // and the roof are facts about level 3-3's backdrop, and the chase also
-      // runs on speed-2 and cardboard-3 where those numbers point at empty sky.
-      // Asked of the pack rather than hardcoded, so moving the gorilla along the
-      // skyline moves this with it.
-      const zoom = this.camZoom || ZOOM;
-      const hasGorilla = this.beatLock && this.styleName === 'lcd'
-        && lcdChuteScreenX(this.stage?.index) != null;
       switch (c.mode) {
         case 'away': {
           // The mood decays to neutral once he has settled into the roam, so a
@@ -5846,7 +5973,7 @@ export class RunState {
             const u = Math.max(0, Math.min(1, (c.evadeT - EVADE_WAIT) / EVADE_T));
             const e = 1 - (1 - u) * (1 - u);
             dx += c.evadeDir * 36 * e;
-            c.alt = overAlt + 11 * e;
+            c.alt = Math.min(COPTER_LIFT_TOP, overAlt + 11 * e);
             // ONE ATTEMPT PER WINDOW. The dodge ends it, so a miss costs the
             // whole pass and the next one is bars away.
             if (c.evadeT >= EVADE_WAIT + EVADE_T + EVADE_HOLD) { c.mode = 'leave'; c.modeT = 0; }
@@ -5889,7 +6016,7 @@ export class RunState {
           // hitT); this is just the arc, and it stops short of the right edge
           // so the recoil can never carry him out of the frame.
           dx = Math.min(aheadDx + 22, dx + 150 * dt);
-          c.alt += 70 * dt;
+          c.alt = Math.min(COPTER_LIFT_TOP, c.alt + 70 * dt);
           // Home, and shy: a bonk buys the player a longer wait for the next
           // window. modeT starts negative, which is simply time owed.
           if (c.modeT >= LEAVE_T) {
@@ -5917,8 +6044,10 @@ export class RunState {
       // a glance is furniture. Near that column he turns to look and smirks —
       // Peter: "look at Kong when near him and smile" — which also gives the
       // roam a reason to have gone over there.
-      const kongMid = (GORILLA_COLUMN[0] + GORILLA_COLUMN[1]) / 2 / zoom;
-      c.nearKong = Math.abs(dx - kongMid) < 34 && c.mode === 'away';
+      // hasGorilla, because there is nothing to look at otherwise: the column is
+      // level 3-3's backdrop, and on speed-2 and cardboard-3 he was smirking at
+      // empty sky whenever the roam happened to cross that world x.
+      c.nearKong = hasGorilla && Math.abs(dx - kongMid) < 34 && c.mode === 'away';
       if (c.nearKong && c.hitT <= 0) c.mood = 'smirk';
       else if (c.mood === 'smirk') c.mood = 'flat';
       // THE REACTIONS OUTRANK THE POSE, and they are applied here rather than
@@ -10639,9 +10768,11 @@ export class RunState {
         x: mix(Number.isFinite(c.prevX) ? c.prevX : c.x, c.x),
         alt: mix(Number.isFinite(c.prevAlt) ? c.prevAlt : c.alt, c.alt),
       };
+      // THE ROTOR AND THE HEADLAMPS BOTH RUN ON THE SONG, on every chase and
+      // therefore at whatever tempo this cabinet is playing at. Reduced
+      // flashing turns the blink off and leaves the lamps steadily lit.
       const songBeat = Audio.songBeat();
-      const beatPhase = Number.isFinite(songBeat) ? ((songBeat % 1) + 1) % 1 : null;
-      this.drawAtGround(ctx, copterView.x, () => drawCopter(ctx, copterView, cam, renderT, true, this.save.settings.reducedMotion, beatPhase));
+      this.drawAtGround(ctx, copterView.x, () => drawCopter(ctx, copterView, cam, renderT, true, this.save.settings.reducedMotion, songBeat, this.save.settings.reducedFlashing));
     };
     if (!this.style.actorsAbovePost) drawCopterActor();
     if (this.escapeWall != null) {

@@ -1076,6 +1076,14 @@ export const COPTER_SHIELD_T = 0.3;
 // playing — the chase mission's own line is "IT IS SOMEHOW ON BEAT". With no
 // song clock it turns twice a second, which is the same thing at 120 BPM.
 // `beatPhase` is 0..1 inside the current beat, or null when there is no song.
+//
+// AND IT TURNS AT AN EVEN RATE. A version of this whipped through the downbeat
+// and eased off before the next, on the argument that a constant rate has no
+// phase for the eye to read. It landed the same whole turn per beat and it
+// looked wrong — Peter, 5 Sep: "not loving the new rotor look, make it like it
+// was before, as long as it is kinda in sync that's all I want." A rotor is a
+// machine at speed, and a machine that surges is a machine with a fault. Being
+// locked to the beat is enough; it does not have to perform being locked to it.
 export function copterFrame(t, beatPhase, reducedMotion = false) {
   if (reducedMotion) return 0;
   const frames = propFrames('eggshellCopter');
@@ -1083,7 +1091,79 @@ export function copterFrame(t, beatPhase, reducedMotion = false) {
   return Math.floor(turns * frames * 2) % frames;
 }
 
-export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMotion = false, beatPhase = null) {
+// THE HEADLAMPS BLINK ON THE BEAT — a double flash every two bars, not a
+// metronome: something that fired on all four beats would be a warning light,
+// and the joke is a machine that is casually, inexplicably in time. `beat` is
+// the song's absolute fractional beat (Audio.songBeat()), so the pattern is
+// counted from the top of the bank, every copter on screen agrees, and the
+// blink is at whatever tempo THAT level's song is running — including the one
+// stage whose bpm ramps under the player (stages.js rhythm-3).
+//
+// Each blink is instant on and decays over half a beat, which is how a filament
+// behaves and reads at lane size where a symmetric fade does not. The return is
+// a flash ON TOP of the steady glow (props.js eggshellTub) — the lamps never go
+// dark, they only get brighter.
+const COPTER_LAMP_CYCLE = 8;          // two bars of 4/4
+const COPTER_LAMP_AT = [0, 1];        // blink, blink, then six beats of nothing
+const COPTER_LAMP_DECAY = 0.5;        // beats
+export function copterLamp(beat) {
+  if (!Number.isFinite(beat)) return 0;
+  const p = ((beat % COPTER_LAMP_CYCLE) + COPTER_LAMP_CYCLE) % COPTER_LAMP_CYCLE;
+  let v = 0;
+  for (const at of COPTER_LAMP_AT) {
+    const d = p - at;
+    if (d >= 0 && d < COPTER_LAMP_DECAY) v = Math.max(v, (1 - d / COPTER_LAMP_DECAY) ** 1.6);
+  }
+  return v;
+}
+
+// WHAT THE LAMPS ARE DOING RIGHT NOW: strength and colour, in one place,
+// because the three things that can drive them are exclusive and the order
+// they win in is the whole design.
+//
+// THE FORCEFIELD IS RED and it OUTRANKS THE BEAT. A shot turned away is the
+// one moment the machine answers the player, it lasts a third of a second, and
+// a lamp still politely keeping time through it would say nothing happened.
+// Red against the deflect's cyan rings also stops the two readings blurring
+// into one glow: the rings are the field, the lamps are him reacting to it.
+//
+// A BONK PUTS THEM OUT. He has just been hit from below, so the filament comes
+// off its supply: it arcs white and drops to a grey bead, a fast square flicker
+// (not a fade — a lamp with a bad connection is on or it is off) under an
+// envelope that dies with the recoil, so the last third of the hit is already
+// back to normal running.
+//
+// Otherwise they blink on the song, ice blue. `beat` is Audio.songBeat().
+const COPTER_LAMP_FLICKER = 5.5;   // stutters per second while he is knocked
+export function copterLamps(copter, beat, reducedFlashing = false) {
+  // Steady, and the colour still tells the story: reduced flashing takes away
+  // the blinking, not the state — a player who has asked for no flashing still
+  // has to be able to see that a shot was turned away.
+  if (copter.shieldT > 0) {
+    const a = Math.min(1, copter.shieldT / COPTER_SHIELD_T);
+    return { lamp: reducedFlashing ? 1 : a, ink: 'field' };
+  }
+  if (copter.hitT > 0) {
+    const hit = Math.min(1, copter.hitT / COPTER_HIT_T);      // 1 at impact, 0 at the end
+    if (reducedFlashing) return { lamp: 0.7, ink: 'dead' };
+    const age = (1 - hit) * COPTER_HIT_T;                      // seconds since contact
+    const on = (age * COPTER_LAMP_FLICKER) % 1 < 0.5;
+    return { lamp: (on ? 1 : 0.1) * (0.35 + 0.65 * hit), ink: 'dead' };
+  }
+  return { lamp: reducedFlashing ? 0 : copterLamp(beat), ink: 'run' };
+}
+
+// `beat` is Audio.songBeat() — the absolute fractional beat, or null with no
+// song. The rotor only needs its position inside the beat; the headlamps need
+// to know WHICH beat, so they can blink on two of every eight.
+//
+// The headlamps blink on that beat in EVERY level. It was gated to the rhythm
+// stage for a day, on the argument that "IT IS SOMEHOW ON BEAT" was that
+// stage's joke; Peter, 5 Sep: "flash the headlamps in every level to the
+// relevant song bpm." Every level has a song, so every copter blinks in its
+// own tempo — and copterLamps above hands the bonk and the forcefield the
+// lamps when they want them.
+export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMotion = false, beat = null, reducedFlashing = false) {
   // Rounding follows the smoothMotion rule on BOTH axes. y used to round
   // unconditionally, and his bob is ~34u/s, so at desktop scale he climbed
   // in 6px steps every other frame.
@@ -1093,7 +1173,9 @@ export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMo
   // The tub keeps the floor the old 24x20 box had (y + 12); the rotor takes
   // the headroom the old blur line used to float in. The rotor turns in the
   // painter's frames, so there is no separate blur to draw.
+  const beatPhase = Number.isFinite(beat) ? ((beat % 1) + 1) % 1 : null;
   const frame = copterFrame(t, beatPhase, reducedMotion);
+  const { lamp, ink: lampInk } = copterLamps(copter, beat, reducedFlashing);
   const B = COPTER_BOX;
   // HIS FACE IS LIVE, so he is drawn from the painter rather than the raster
   // cache: a cached sprite has one expression per frame index, and the whole
@@ -1152,13 +1234,13 @@ export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMo
     // It is one small sprite for a second.
     ctx.save();
     ctx.translate(-B / 2, -B / 2);
-    eggshellCopterArt(ctx, B, B, frame, { pop, face });
+    eggshellCopterArt(ctx, B, B, frame, { pop, face, lamp, lampInk });
     ctx.restore();
     ctx.restore();
   } else {
     ctx.save();
     ctx.translate(x - B / 2, y + 12 - B);
-    eggshellCopterArt(ctx, B, B, frame, { face });
+    eggshellCopterArt(ctx, B, B, frame, { face, lamp, lampInk });
     ctx.restore();
   }
   // THE FIELD, ONLY WHEN IT IS STRUCK. A permanent bubble would say "you

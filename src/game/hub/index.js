@@ -27,6 +27,7 @@ import { BENCH_UPGRADES, BENCH_FOOD_COURT_SURCHARGES, MODS, MOD_BY_ID, REWARDS, 
 import { HUB_LINES, PAWN_LINES } from '../../data/jokes.js';
 import { totalPlugs, MAX_PLUGS, cabinetUnlocked, bossAvailable, finaleUnlocked, actForSlot, formatCoins, formatPlaytime, clumsiestHero, stageUnlocked, prevStage, cabinetMusicState } from '../progress.js';
 import { MusicDirector } from '../../engine/music-director.js';
+import { warmTngr2Families } from '../../engine/tngr2/tables.js';
 import { drawPlugRow, PLUG_ROW_W } from '../plugs.js';
 import { drawSpeech } from '../hud.js';
 import { MINIGAMES, MINIGAME_NAMES } from '../minigames/index.js';
@@ -530,6 +531,17 @@ const NPC_ROAM = 155, NPC_MIN_X = 70;
 // right place for the only standing spot to be — see freeFloor's sliver floor,
 // which is held below it on purpose.
 const NPC_LOITER_PAD = 16;
+// The room the player is given at whatever station he is stood at, and the
+// hysteresis on it. Not a footprint like NPC_LOITER_PAD — a footprint is the
+// wrong shape for the problem these solve; see updateNpcs for the two bands.
+//
+// PAD is the slack on top of the player's own distance to the station, so the
+// station stays the nearest thing to him by a margin the crowd cannot shuffle
+// away in a frame. HYST widens the band for whoever is already being moved, so
+// a hero walked to the edge does not step straight back over the line and get
+// walked out again — without it the push and the roam fight at 42 against 10
+// units a second and the loser twitches.
+const NPC_FOCUS_PAD = 8, NPC_CLEAR_HYST = 6;
 // The walk-up ranges that decide who you are addressing. ATTEND is only used by
 // the pinned counter staff, who hold position rather than tidying while a
 // customer is at the counter — for them it cannot pile anybody up, because they
@@ -2012,12 +2024,11 @@ export class HubState {
   }
 
   updateNpcs(dt) {
-    // Counters and actual door stations are access points, unlike cabinets
-    // that the crowd may casually cross in front of. When the player is at one,
-    // the wandering cast actively clears its full footprint.
-    const access = this.stations().find((s) =>
-      DOOR_PALETTES[s.type]
-      && Math.abs(this.px - s.x) < STATION_R);
+    // The station the player is stood AT, found by the same nearest-wins reading
+    // update() uses to decide what confirm acts on — so the crowd makes way for
+    // the machine the button would actually open rather than for whichever one
+    // the station list happened to put first.
+    const access = nearestTo(this.stations(), this.px, STATION_R);
     // Same reading of "walking" the player's own toon draws its run cycle from
     // (see draw()), so the staff pick him up on the step he takes rather than on
     // a frame's worth of displacement — which a wall clamp or the last inch of a
@@ -2088,25 +2099,55 @@ export class HubState {
         continue;
       }
 
-      // When the player steps up to a service counter or a door, wandering cast
-      // members actively make way. canLoiter() already stopped them CHOOSING
-      // these areas as resting places, but they could still cross one slowly
-      // and steal station focus while doing so. Walk them to the nearest edge
-      // of its full clearance band and temporarily remove them from tap/talk
-      // targeting. Counter staff are handled above and never move.
-      const accessClear = access ? this.loiterClear(access) : 0;
-      if (access && Math.abs(n.x - access.x) < accessClear) {
+      // When the player steps up to a station, wandering cast members actively
+      // make way. canLoiter() already stopped them CHOOSING these areas as
+      // resting places, but they could still cross one slowly and steal station
+      // focus while doing so. Walk them out and temporarily remove them from
+      // tap/talk targeting. Counter staff are handled above and never move.
+      //
+      // TWO BANDS, because two different things are being protected:
+      //
+      //  - Doors and counters are access points, and nobody may stand in the
+      //    mouth of one. That is a question about the furniture, so it clears
+      //    the station's whole footprint (loiterClear) — unchanged.
+      //  - Cabinets are the ones the crowd may casually cross in front of, and
+      //    that stays true right up until somebody is stood at one. Focus is
+      //    nearest-wins, so a hero who drifts closer to the player than the
+      //    machine he walked over to takes the confirm with him: the chips
+      //    appear, Enter swaps, and playing the cabinet you chose costs you a
+      //    swap into somebody else and back. Clearing a cabinet's footprint is
+      //    the wrong answer to that — cabinets sit 88 apart, so 40-wide bands
+      //    would spill into their neighbours and empty the whole bank. The band
+      //    the focus rule actually needs is centred on the PLAYER, not the
+      //    machine, and only as wide as his own distance to it, so it shrinks to
+      //    a shoulder's width the moment he is stood squarely on the thing.
+      //
+      // The floor is NPC_STAND_OFF, the width two toons stand at without
+      // touching: at a machine you keep at least the room you would get in a
+      // conversation, which is also what stops a passer-by drawn straight
+      // through the hero who is trying to read the marquee.
+      const hyst = n.clearingStation ? NPC_CLEAR_HYST : 0;
+      const doorClear = access && DOOR_PALETTES[access.type] ? this.loiterClear(access) + hyst : 0;
+      const focusClear = access
+        ? Math.max(NPC_STAND_OFF, Math.abs(this.px - access.x) + NPC_FOCUS_PAD) + hyst
+        : 0;
+      // Never the hero the player pointed AT, though. A tap outranks the station
+      // behind them (see npcWins), so shoving them clear would turn walking over
+      // to somebody stood by a cabinet into a chase they always win.
+      const pointedAt = this.walkToNpc === n.id
+        || (this.addressTap && this.addressing === n.id);
+      const left = access ? Math.min(this.px - focusClear, access.x - doorClear) : 0;
+      const right = access ? Math.max(this.px + focusClear, access.x + doorClear) : 0;
+      if (access && !pointedAt && n.x > left && n.x < right) {
         n.clearingStation = true;
         n.attending = false;
         n.state = 'walk';
         n.timer = Math.max(n.timer, 0.6);
-        const left = access.x - accessClear;
-        const right = access.x + accessClear;
         const dir = left < NPC_MIN_X ? 1
           : right > this.npcFarX() ? -1
-            : Math.sign(n.x - access.x) || (n.cycles % 2 ? -1 : 1);
+            : Math.sign(n.x - (left + right) / 2) || (n.cycles % 2 ? -1 : 1);
         n.facing = dir;
-        n.x += dir * Math.min(accessClear - Math.abs(n.x - access.x), 42 * dt);
+        n.x += dir * Math.min(dir > 0 ? right - n.x : n.x - left, 42 * dt);
         if (this.addressing === n.id) {
           this.addressing = null;
           this.addressTap = false;
@@ -3420,6 +3461,16 @@ export class StageSelectState {
       arrangementOverride: musicSong?.arrangement,
       variants: musicSong?.variants,
     });
+    // Start expanding this cabinet's TNGR-2 wavetables NOW, spread over idle slices.
+    // A family is ~240ms of main thread and the stage's enter() used to pay for all of
+    // them in one task behind the shutter; by the time anyone has read this list and
+    // pressed START they are built, and enter()'s loop becomes a cache hit. See
+    // warmTngr2Families — a stage reached without passing through here still works.
+    const tngr2Ids = [];
+    for (const v of Object.values(this.cab.songMix?.voiceParams || {})) {
+      for (const osc of [v.tngr2?.oscA, v.tngr2?.oscB]) if (osc?.table) tngr2Ids.push(osc.table);
+    }
+    warmTngr2Families(tngr2Ids);
     this.corrupt = null;
     const opts = this.options();
     this.rowH = Math.max(ROW_MIN, Math.min(ROW_MAX, (LIST_BOTTOM - LIST_TOP) / opts.length));

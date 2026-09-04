@@ -614,6 +614,49 @@ for (const door of returnedHub.stations().filter((s) =>
 assert(returnedHub.npcs().filter((n) => n.pinned)
   .every((n) => !n.clearingStation && Math.abs(n.x - n.home) <= n.roam + 0.01),
   'Gary and Dolores stay behind their counters while other NPCs make way');
+
+// A cabinet is not a doorway — the crowd may cross in front of one all day — but
+// the moment the player is stood AT one, nobody may be nearer to him than the
+// machine is. Focus is nearest-wins, so a hero who is closer takes the confirm,
+// and choosing a cabinet then costs a swap into somebody else and back out. The
+// check is run from an off-centre stance on both sides, because standing dead on
+// the machine is the one place the old code could not get wrong.
+const cabinets = returnedHub.stations().filter((s) => s.type === 'cabinet');
+assert(cabinets.length > 0, 'the concourse has cabinets to stand at');
+for (const cab of [cabinets[0], cabinets[cabinets.length - 1]]) {
+  for (const stance of [0, -18, 18]) {
+    for (const side of [-1, 1]) {
+      returnedHub.px = cab.x + stance;
+      obstruction.x = returnedHub.px + side * 10;
+      obstruction.state = 'idle';
+      obstruction.clearingStation = false;
+      returnedHub.addressing = obstruction.id;
+      returnedHub.addressTap = false;
+      returnedHub.walkToNpc = null;
+      returnedHub.focusNpc = obstruction;
+      returnedHub.updateNpcs(0.1);
+      assert(obstruction.clearingStation && returnedHub.focusNpc === null,
+        `a hero blocking a cabinet at stance ${stance} side ${side} yields the focus`);
+      for (let i = 0; i < 30; i++) returnedHub.updateNpcs(0.1);
+      assert(Math.abs(obstruction.x - returnedHub.px) > Math.abs(cab.x - returnedHub.px),
+        `the cabinet stays nearer than the crowd at stance ${stance} side ${side}`);
+    }
+  }
+}
+// ...but a hero the player deliberately walked over to is not shooed off, or
+// tapping somebody stood by a machine would be a chase you never win.
+const byCabinet = cabinets[0];
+returnedHub.px = byCabinet.x + 12;
+obstruction.x = returnedHub.px + 8;
+obstruction.state = 'idle';
+obstruction.clearingStation = false;
+returnedHub.addressing = obstruction.id;
+returnedHub.addressTap = true;
+returnedHub.updateNpcs(0.1);
+assert(!obstruction.clearingStation && returnedHub.addressing === obstruction.id,
+  'a hero you tapped keeps their spot beside a cabinet');
+returnedHub.addressTap = false;
+returnedHub.addressing = null;
 returnedHub.exit();
 
 let foodCourtWalkExits = 0;

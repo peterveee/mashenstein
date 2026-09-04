@@ -5,8 +5,8 @@ import { W, H, shake } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { drawText, drawTextCentered, getSprite, UI_PLATE } from '../engine/sprites.js';
-import { drawProp, propFps, propFrames } from '../sprites/props.js';
-import { COPTER_BOX, copterFrame } from './draw.js';
+import { drawProp, propFps, propFrames, eggshellCopterArt } from '../sprites/props.js';
+import { COPTER_BOX, copterFrame, copterLamp } from './draw.js';
 import { VIEW_W, applyWorld } from '../engine/camera.js';
 import { RunState, GROUND_Y } from './run.js';
 import { makeObstacle } from './entities.js';
@@ -209,7 +209,21 @@ export class BossState extends RunState {
         : Math.floor(this.tRun * propFps(this.boss.sprite)) % propFrames(this.boss.sprite);
     ctx.save();
     applyWorld(ctx, this.camZoom, this.camPan);
-    drawProp(ctx, this.boss.sprite, x - bossW / 2, y, bossW, bossH, frame);
+    // THE SAME MACHINE BLINKS THE SAME WAY HERE. His headlamps flash on the
+    // beat wherever he flies (draw.js copterLamp), and the boss is him parked
+    // in front of you for a whole song — the one place a steady lamp would be
+    // noticed. `lamp` is continuous, so it cannot come out of the raster cache
+    // (a canvas per value); he is drawn straight from the painter instead,
+    // which is what the chase already does for a face that changes.
+    if (this.boss.sprite === 'eggshellCopter') {
+      const lamp = this.save.settings.reducedFlashing ? 0 : copterLamp(songBeat);
+      ctx.save();
+      ctx.translate(x - bossW / 2, y);
+      eggshellCopterArt(ctx, bossW, bossH, frame, { lamp });
+      ctx.restore();
+    } else {
+      drawProp(ctx, this.boss.sprite, x - bossW / 2, y, bossW, bossH, frame);
+    }
     ctx.restore();
 
     // Health bars: 1 real + N fake labeled PRESENTATION ERROR.

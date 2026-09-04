@@ -8,6 +8,10 @@ const suites = [
   'tests/migration.js',
   'tests/difficulty-identity.js',
   'tests/run-complete.js',
+  // What the run is allowed to tell the audio engine to stop synthesizing, and when.
+  // Beside the full-run integration because it is the same headless RunState, and its
+  // subject is a boundary: the skip must not eat the tune arriving at the bar line.
+  'tests/silent-lane-skip.js',
   // The golden ledger: real headless runs held spawn-for-spawn to the recording
   // in tests/fixtures/layout-baseline.json, so the stage-layout system stays a
   // provable no-op for every stage nobody has edited.
@@ -329,6 +333,12 @@ const suites = [
   // beat cabinet's stronger claim too — there the chart marks every press, so
   // the bot is held to taking no damage at all.
   'tests/bot-pits.js',
+  // And the villain the demo is bonking, held to the same claim across the two
+  // desktop framings: his roam is a WORLD band and a WORLD distance ahead, so a
+  // punted barrel — world physics — meets him the same way however the camera
+  // is set. It was quoted off the ribbon and off VIEW_W, which made the same
+  // perfect kick land 6% of the time at NORMAL and 55% at ZOOM IN.
+  'tests/copter-fairness.js',
   // How a run ENDS, as a picture. Beside the crossing suite because the pit is
   // the death with the most to show and the one whose journey these poses have
   // to leave intact: everything else settles the figure the instant it dies.
@@ -361,6 +371,10 @@ const suites = [
   'tests/dev-menu.js',
   'tests/cast.js',
   'tests/mobile-lifecycle.js',
+  // The audio half of the same platform question: which devices get a bigger output
+  // buffer and a wider scheduler window, and that the game asks for them before it
+  // builds the context — after ensure() the request is a no-op that looks like a fix.
+  'tests/phone-audio.js',
   'tests/gate.js',
   'tests/gate-dev.js',
   'tests/gate-allowed.js',

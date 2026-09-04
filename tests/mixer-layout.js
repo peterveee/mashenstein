@@ -1356,9 +1356,11 @@ assert(/syncLoopAnchor\(\);\s*\n\s*syncPendingSeek\(\);\s*\n\s*syncPendingPlayba
 assert(/const mixerViewVisible = lowerView === 'mixer';[\s\S]*?for \(const mt of meters\) \{[\s\S]*?if \(!mixerViewVisible && mt\.key !== '__master-toolbar'\) continue;/.test(entry)
   && /for \(const \[key, readout\] of arrangementMeters\)[\s\S]*?updateArrangementMeter\(readout, lin, now, dt\)/.test(entry),
   'the hidden Mixer stops rendering its rack meters while the toolbar master VU and arrangement VUs remain live');
-// And it asks the browser for room to be late in, which the game must not inherit: a
-// small buffer is right for a jump sound and wrong for a desk that plays through a
-// twenty-lane section with another app in front of it.
+// And it asks the browser for room to be late in, which the game must not inherit
+// WHOLESALE: a small buffer is right for a jump sound and wrong for a desk that plays
+// through a twenty-lane section with another app in front of it. main.js still names
+// neither lever itself — the one exception, a phone, goes through
+// src/engine/phone-audio.js, which tests/phone-audio.js pins on its own.
 assert(/setLatencyHint\(hint\)/.test(audio)
   && /setSequencerLookahead\(seconds\)/.test(audio)
   && /if \(this\.latencyHint\) opts\.latencyHint = this\.latencyHint;/.test(audio)
@@ -1417,7 +1419,49 @@ assert(/setSilentLaneSkip\(on\)/.test(audio)
   && /this\.silentLaneSkip && this\.mixer && !this\._previewing/.test(audio)
   && /Audio\.setSilentLaneSkip\(true\)/.test(entry)
   && !/setSilentLaneSkip/.test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
-  'the desk skips synthesis for lanes the mix has silenced; the game never does');
+  'the desk skips synthesis for lanes the mix has silenced; main.js never does');
+// The game's own opt-in lives in the RUN and nowhere else, which is what keeps the
+// assertion above true: a level mix is fixed for the length of the run, so once the
+// cabinet's handover has been scheduled there is no treatment left to ramp a muted
+// lane back up. Off at enter with a boundary still pending, on from the tick after it
+// lands, off again at exit — tests/silent-lane-skip.js drives all three for real.
+const runSrc = readFileSync(new URL('../src/game/run.js', import.meta.url), 'utf8');
+assert(/this\.silentSkipArmed = false;\s*\n\s*Audio\.setSilentLaneSkip\(false\);\s*\n\s*if \(!MusicDirector\.pending\) this\.armSilentLaneSkip\(\);/.test(runSrc)
+  && /if \(!this\.silentSkipArmed && !MusicDirector\.pending\) this\.armSilentLaneSkip\(\);/.test(runSrc)
+  && /armSilentLaneSkip\(\) \{\s*\n\s*Audio\.setSilentLaneSkip\(true\);/.test(runSrc)
+  && /exit\(\) \{[\s\S]*?Audio\.setSilentLaneSkip\(false\);/.test(runSrc),
+  'the run arms the skip only once its handover is scheduled, and disarms it on the way out');
+// The two heavy, KNOWN main-thread stalls inside a run queue past themselves first —
+// the stage entry (layout, spawner, art warm-up, the TNGR-2 expansion) and the hero
+// swap at a portal. Same move the desk makes before a heavy build, at the window each
+// stall is actually worth. And the pooled voices a level's muted-until-handover lanes
+// need are built behind the shutter rather than discovered inside a scheduler pass.
+assert(/MusicDirector\.enterStage\(/.test(runSrc)
+  && runSrc.indexOf('Audio.prepareRealtimeVoices?.(') > runSrc.indexOf('MusicDirector.enterStage(')
+  && /Audio\.prepareRealtimeVoices\?\.\(\{ startStep: Audio\.step, windowSteps: 256 \}\)/.test(runSrc)
+  && runSrc.indexOf('Audio.prefill?.(1.2)') > runSrc.indexOf('Audio.prepareRealtimeVoices?.(')
+  && /doSwitch\(\) \{[\s\S]{0,600}?Audio\.prefill\?\.\(0\.6\)/.test(runSrc),
+  'stage entry pre-warms its voice pools and prefills the queue, and so does the hero swap');
+// And the frame feeds the sequencer itself. The 25ms timer stays, but a timer is
+// exactly what a busy main thread delays, and the frame that just ran eight catch-up
+// steps is the one most likely to have eaten the slot the queue needed.
+assert(/draw: \(renderAlpha\) => \{[\s\S]{0,900}?Audio\.schedule\(\);[\s\S]{0,40}?beginRenderFrame\(\);/
+  .test(readFileSync(new URL('../src/main.js', import.meta.url), 'utf8')),
+  'the game tops the sequencer queue up from its own frame, before it draws anything');
+// A silenced LAYER comes off the layer list, not merely out of the bank. The canonical
+// lanes each have a hand-written body that falls through on a null step; the layers
+// share one generic loop that asks `at(key)` per layer, and `at` still resolves Note FX
+// and still reads the sequence for a lane with nothing in it. Measured on rhythm: one
+// muted layer left on the list cost 512 lane reads and 512 note plans per 1024 passes,
+// which made muting exactly as expensive as not muting.
+assert(/silentLayers = true/.test(audio)
+  && /b\.__layers = \(b\.__layers \|\| \[\]\)\.filter\(\(L\) => !silent\.includes\(L\.key\)\)/.test(audio),
+  'a silenced layer is taken off the layer list, so the generic loop never visits it');
+// And the pre-warm asks the same question before it builds a pool: warming a silenced
+// lane would leave a live Tone graph in the mixer processing silence for the whole run,
+// which is the cost the skip exists to remove.
+assert(/prepareRealtimeVoices\(\{[\s\S]*?for \(const lane of laneList\(b\)\) \{[\s\S]{0,900}?if \(this\.silentLaneSkip && this\.mixer\?\.laneSilent\(key\)\) continue;/.test(audio),
+  'and the realtime pre-warm skips a silenced lane on the same flag and the same predicate');
 assert(/laneSilent\(key\)/.test(readFileSync(new URL('../src/engine/mixer.js', import.meta.url), 'utf8'))
   && /soloed\.size > 0 && !soloed\.has\(key\)/.test(readFileSync(new URL('../src/engine/mixer.js', import.meta.url), 'utf8')),
   'a lane is silent to the skip when muted or losing a channel solo — never for an aux solo');

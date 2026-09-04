@@ -1053,9 +1053,40 @@ function eggshellBust(c, X, Y, lw, shocked = false, p = EGGSHELL_PARTS, face = P
 //   not floated on it. They stop short of 0.30 and 0.70 so they clear the
 //   lamps, which need cream under them.
 //
-//   THE LAMPS GLOW. Two flat gold dots read as rivets; a halo behind and a
-//   white core inside says lit, and they are the only warm light on him.
-function eggshellTub(c, X, Y, lw) {
+//   THE LAMPS GLOW. Two flat dots read as rivets; a halo behind and a white
+//   core inside says lit.
+//
+// `lamp` (0..1) is a FLASH ON TOP of that steady glow, not a switch: the
+// rhythm chase blinks them on the beat (draw.js copterLamp), and a lamp that
+// went dark between blinks would take away the only warm light he has.
+//
+// AND THEY CHANGE COLOUR WITH THE MACHINE'S STATE (`ink`), three ways:
+//
+//   run    ICE BLUE, and NOT GOLD. They were gold for a day, which is the ink
+//          this game already spends on money — the coin's halo is
+//          rgba(246,211,60,0.4) and the star's aura is the same RGB, so two
+//          gold dots blooming a warm halo with a white core, on a thing
+//          hovering in the lane, was a pickup drawn on the villain. Peter,
+//          5 Sep: "is the gold a bit confusing with all the coins we have?"
+//          It was. A driving lamp is the one warm-light exception a vehicle
+//          gets to trade away: ice blue reads as a headlamp, cannot be
+//          collected, and holds against the cream hull where white would not.
+//   field  RED for the forcefield. The lamps are the only part of him that can
+//          answer a shot without adding furniture, and red against the
+//          deflect's cyan rings says "turned away" from across the lane.
+//   dead   COLOURLESS for a bonk. A filament knocked off its supply does not
+//          change hue, it loses one — it arcs white and drops to a grey bead,
+//          which against the lit blue is unmistakably a light going out.
+//
+// The whole lamp is one ink each way: halo, body, glow and core are the same
+// colour at four strengths, so a state change reads as the light changing
+// colour rather than as a differently-built lamp.
+const EG_LAMP_INKS = Object.freeze({
+  run: { halo: '200,232,255', glow: '120,190,255', body: '#8ec8ff', hot: '#e0f2ff', core: '#f4fbff' },
+  field: { halo: '255,150,120', glow: '240,74,60', body: '#f04a3c', hot: '#ff9c84', core: '#ffdccc' },
+  dead: { halo: '220,226,240', glow: '150,158,180', body: '#b8bdcc', hot: '#ffffff', core: '#eef0f8' },
+});
+function eggshellTub(c, X, Y, lw, lamp = 0, ink = 'run') {
   const hull = (k) => rr(k, X(0.12), Y(0.6), X(0.76), Y(0.34), X(0.07));
   egP(c, '#f0f0f8', hull, EG_LINE, lw);
   c.save();
@@ -1069,11 +1100,20 @@ function eggshellTub(c, X, Y, lw) {
   // with their glow spilling off the edge, so each one read as half a lamp.
   // 0.235 and 0.765 puts a clear margin of cream outside them, which is what a
   // light needs to look mounted on something rather than cut out of it.
+  //
+  // The flash grows the halo and opens the white core out to fill the lens; at
+  // full it is a lamp seen head-on rather than a second colour, so nothing on
+  // the machine changes hue when it fires.
+  const f = Math.max(0, Math.min(1, lamp));
+  // A name, or an ink of the same shape — the bake-off page hands its
+  // candidates straight in rather than adding losers to the shipped table.
+  const I = (ink && typeof ink === 'object') ? ink : (EG_LAMP_INKS[ink] || EG_LAMP_INKS.run);
   for (const sx of [0.235, 0.765]) {
-    egDot(c, 'rgba(246,211,60,0.28)', X(sx), Y(0.8), X(0.085));
-    egDot(c, 'rgba(246,211,60,0.5)', X(sx), Y(0.8), X(0.062));
-    egDot(c, EG_GOLD, X(sx), Y(0.8), X(0.045), EG_LINE, lw * 0.5);
-    egDot(c, '#fff6c8', X(sx) - X(0.012), Y(0.8) - Y(0.012), X(0.016));
+    if (f > 0) egDot(c, `rgba(${I.halo},${0.3 * f})`, X(sx), Y(0.8), X(0.085 + 0.075 * f));
+    egDot(c, `rgba(${I.glow},${0.28 + 0.42 * f})`, X(sx), Y(0.8), X(0.085 + 0.03 * f));
+    egDot(c, `rgba(${I.glow},${0.5 + 0.5 * f})`, X(sx), Y(0.8), X(0.062 + 0.02 * f));
+    egDot(c, f > 0.5 ? I.hot : I.body, X(sx), Y(0.8), X(0.045), EG_LINE, lw * 0.5);
+    egDot(c, I.core, X(sx) - X(0.012 * (1 - f)), Y(0.8) - Y(0.012 * (1 - f)), X(0.016 + 0.022 * f));
   }
 }
 // His fists. Part of the ape, not the tub, so a bonk lifts them with him —
@@ -1087,7 +1127,7 @@ function eggshellHands(c, X, Y, lw) {
 // fists rise off it, and he pulls a shocked face. Five units at full pop is
 // about the gap between his chin and the rim — as far as he can go and still
 // read as the same drawing.
-export function eggshellApe(c, ox, oy, pop = 0, parts = null, face = PRO_FACE) {
+export function eggshellApe(c, ox, oy, pop = 0, parts = null, face = PRO_FACE, lamp = 0, lampInk = 'run') {
   const p = parts ? { ...EGGSHELL_PARTS, ...parts } : EGGSHELL_PARTS;
   const X = (f) => EG_APE_W * f, Y = (f) => EG_APE_H * f, lw = EG_LW;
   c.save(); c.translate(ox, oy);
@@ -1138,7 +1178,7 @@ export function eggshellApe(c, ox, oy, pop = 0, parts = null, face = PRO_FACE) {
     c.restore();
   };
   rock(() => eggshellBust(c, X, Y, lw, pop > 0.05, p, face));
-  if (p.tub) p.tub(c, X, Y, lw);
+  if (p.tub) p.tub(c, X, Y, lw, lamp, lampInk);
   rock(() => { if (p.hands) p.hands(c, X, Y, lw); });
   c.restore();
 }
@@ -1170,7 +1210,10 @@ export function eggshellCopterArt(ctx, w, h, frame = 0, o = {}) {
   //   parts  overrides for the ape's parts (EGGSHELL_PARTS); body  a painter
   //          (ctx) drawn in the 28x28 box INSTEAD of the ape and tub; mastTo
   //          where the mast ends, the top of his head unless the body says
-  const { R, sq, hy, blade: bw, disc: withDisc, pop = 0, parts = null, body = null, face = PRO_FACE, mastTo = 10.4 } = { ...COPTER_ROTOR, ...o };
+  //   lamp   0..1 flash on the tub's two headlamps, lampInk which colour they
+  //          burn (running, forcefield, bonked) — both
+  //          come from draw.js copterLamps ('run', 'field', 'dead')
+  const { R, sq, hy, blade: bw, disc: withDisc, pop = 0, parts = null, body = null, face = PRO_FACE, mastTo = 10.4, lamp = 0, lampInk = 'run' } = { ...COPTER_ROTOR, ...o };
   ctx.save();
   ctx.scale(w / 28, h / 28);
   // sq is the disc's tilt toward the camera. 0.42 read as a disc but ate a
@@ -1198,7 +1241,7 @@ export function eggshellCopterArt(ctx, w, h, frame = 0, o = {}) {
   disc(Math.PI, EG_TAU);
   for (const b of blades) if (Math.sin(b) < 0) { sweep(b); blade(b); }
   egLine(ctx, '#3a3a48', 0.85, (k) => { k.moveTo(cx, hy); k.lineTo(cx, mastTo); });
-  if (body) body(ctx); else eggshellApe(ctx, 2, 8, pop, parts, face);
+  if (body) body(ctx); else eggshellApe(ctx, 2, 8, pop, parts, face, lamp, lampInk);
   disc(0, Math.PI);
   for (const b of blades) if (Math.sin(b) >= 0) { sweep(b); blade(b); }
   if (withDisc) egLine(ctx, 'rgba(236,236,246,0.45)', 0.35, (k) => k.ellipse(cx, hy, R, R * sq, 0, 0, EG_TAU));

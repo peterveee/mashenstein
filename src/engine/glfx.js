@@ -401,7 +401,18 @@ export const glfx = {
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.skyTarget.fb);
       gl.viewport(0, 0, this.skyTarget.w, this.skyTarget.h);
       this.draw(this.pFinal, loc.final, (g) => {
-        bind(0, this.texBack);
+        // SKY ONLY. The final pass adds this target back as `sky * (1 - a)`,
+        // which is correct arithmetic only while the target holds nothing but
+        // the procedural sky. Binding the backbuffer here instead of the blank
+        // baked the whole composited frame — title, cards, HUD — into the
+        // texture, and every pixel the frame did not cover opaquely then had a
+        // second copy of the screen added underneath it. That reads as nothing
+        // at all while the two agree pixel for pixel, and as a full doubled
+        // frame the moment they do not: a density change (browser zoom, an
+        // adaptive rung) resizes the drawing buffer, and until the sky target
+        // catches up its half-resolution copy is composited at the wrong scale
+        // — a ghost UI offset from the live one, which is what it looked like.
+        bind(0, this.texOvBlank);
         bind(1, this.bloomA.tex);
         bind(2, this.texOvBlank);
         bind(3, this.texOvBlank);

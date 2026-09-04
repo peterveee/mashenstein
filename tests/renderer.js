@@ -14,7 +14,11 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   const calls = {
     deletedFramebuffers: 0, deletedTextures: 0, framebuffers: 0,
     viewports: [], textureAllocations: 0, textureUpdates: 0, draws: 0,
+    // Ordered bind/draw log, so a test can ask what a specific pass was
+    // sampling rather than only how many passes ran.
+    events: [],
   };
+  let unit = 0;
   const noop = () => {};
   const gl = new Proxy({
     VERTEX_SHADER: 1, FRAGMENT_SHADER: 2,
@@ -23,7 +27,7 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
     TEXTURE_2D: 7, TEXTURE_WRAP_S: 8, TEXTURE_WRAP_T: 9,
     CLAMP_TO_EDGE: 10, TEXTURE_MIN_FILTER: 11, TEXTURE_MAG_FILTER: 12,
     LINEAR: 13, RGBA: 14, UNSIGNED_BYTE: 15,
-    COLOR_ATTACHMENT0: 16, FRAMEBUFFER: 17,
+    COLOR_ATTACHMENT0: 16, FRAMEBUFFER: 17, TEXTURE0: 33984,
     drawingBufferWidth: drawingBuffer[0],
     drawingBufferHeight: drawingBuffer[1],
     createShader: () => ({ id: ++id }),
@@ -39,7 +43,9 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
     viewport: (...args) => { calls.viewports.push(args); },
     texImage2D: () => { calls.textureAllocations++; },
     texSubImage2D: () => { calls.textureUpdates++; },
-    drawArrays: () => { calls.draws++; },
+    activeTexture: (u) => { unit = u - 33984; },
+    bindTexture: (target, tex) => { calls.events.push({ kind: 'bind', unit, tex }); },
+    drawArrays: () => { calls.draws++; calls.events.push({ kind: 'draw' }); },
   }, {
     get(target, key) { return key in target ? target[key] : noop; },
   });
@@ -87,11 +93,24 @@ function webglStub({ compile = true, drawingBuffer = [1470, 827] } = {}) {
   glfx.sky = 1; glfx.skyValid = false; glfx.time = 0;
   const skyFbosBefore = good.calls.framebuffers;
   const drawsBeforeSky = good.calls.draws;
+  const eventsBeforeSky = good.calls.events.length;
   glfx.render({ width: 1600, height: 900 }, { width: 1600, height: 900 }, 0, 0);
   assert(good.calls.framebuffers === skyFbosBefore + 1,
     'title sky allocates one lazy half-resolution target on first use');
   assert(good.calls.draws - drawsBeforeSky === 5,
     'title sky adds one half-resolution sky pass to bloom and final composite');
+  // The final composite adds the sky target back as `sky * (1 - alpha)`, which
+  // is only correct while that target holds the sky ALONE. Sampling the
+  // backbuffer in the sky pass bakes the whole frame into it, and every pixel
+  // the frame does not cover opaquely then gets a second copy of the screen
+  // added underneath — invisible while the two agree, a doubled UI the moment
+  // a density change puts them at different scales.
+  const skyEvents = good.calls.events.slice(eventsBeforeSky);
+  const skyPassEnd = skyEvents.findIndex((e) => e.kind === 'draw');
+  let skySource = null;
+  for (const e of skyEvents.slice(0, skyPassEnd)) if (e.kind === 'bind' && e.unit === 0) skySource = e.tex;
+  assert(skySource === glfx.texOvBlank,
+    'the sky pass samples the blank stand-in, never the backbuffer, so the sky target holds sky only');
   glfx.sky = 0; glfx.skyValid = false;
   glfx.glow = 0;
   const drawsBeforeNoGlow = good.calls.draws;
