@@ -2483,9 +2483,12 @@ const lcdMod = (n, d) => ((n % d) + d) % d;
 //  - NO COLOUR PLANES. A facade is one faint wash so it separates from the
 //    sky; the tinted translucent planes that muddied against each other are
 //    gone.
-//  - ONE INK, ONE WEIGHT. The outline and every crown are LCD_INK at 1px; the
-//    lines on the wall are the same ink at one softer alpha, one pixel wide,
-//    laid in the window gutters (see lcdLeanDetail).
+//  - ONE INK, ONE WEIGHT. The facade outline is LCD_INK at 1px; the lines on
+//    the wall, and every rooftop crown above them, are the same ink at one
+//    softer alpha, one pixel wide, laid in the window gutters (see
+//    lcdLeanDetail) and on the parapet (see gbcBuildingLineArt). The silhouette
+//    is the dark; anything STANDING on a roof is the light, so a crown and the
+//    aerial next to it are the same weight of object.
 //  - A SEGMENT THAT IS OFF IS A GHOST. Unlit windows are one uniform cell at
 //    one alpha, no glass glint.
 //  - A SEGMENT THAT IS ON GLOWS. Lit windows are the coral at full strength
@@ -3009,6 +3012,23 @@ function gbcBuildingLineArt(ctx, building, crowned, bay = null) {
   ctx.fillStyle = LCD_WALL_LINE;
   lcdLeanDetail(ctx, building, bay, detailBottom);
 
+  // THE ROOF FURNITURE IS ONE SHADE, AND IT IS THE LIGHTER ONE. A crown used to
+  // be stroked in LCD_INK while everything else standing on a roof printed at a
+  // softer alpha — the transmitter mast and the aerials at LCD_PRINT_SOFT, and
+  // the crowns' OWN caps, finials and nubs at LCD_WALL_LINE, because the fill
+  // style was never reset after the wall lines. So a single crown could be a
+  // black box with a grey lump on it, and a roof carrying both a crown and an
+  // aerial read as two unrelated families of object on one parapet. Peter, on
+  // stage 3's industrial roof: "some objects on top of buildings are darker
+  // than others; keep all objects on top the lighter shade."
+  //
+  // The crowns take the wall line's ink, which is the one they were already
+  // half drawn in, so every crown is now one tone and that tone is the aerial's
+  // neighbourhood. The FACADE keeps LCD_INK: the silhouette against the sky is
+  // still the darkest thing on the panel, and the crown sits on it instead of
+  // competing with it.
+  ctx.strokeStyle = LCD_WALL_LINE;
+
   if (style === 'storefront') {
     if (!crowned) {
       ctx.strokeRect(x + 5.5, top - 5.5, w - 11, 5);
@@ -3155,7 +3175,14 @@ function lcdLeanDetail(ctx, building, bay, detailBottom) {
       if (style === 'clockworks') for (let r = 2; r < rows; r += 3) hline(rowGutter(r));
       break;
     case 'deco':
-      // Fluting: a line in every gutter.
+    case 'industrial':
+      // Fluting: a line in every gutter. INDUSTRIAL FLUTES TOO, and on this
+      // cabinet that is not a duplicate signature: deco is only ever authored
+      // two windows wide and industrial only ever three, so the same painter
+      // draws one centre spine on the one and a pair of piers on the other.
+      // Industrial used to take the default fascia — a single course under the
+      // top row and nothing below it — which on a 125-tall wall read as one
+      // stray horizontal near the crown. Piers give the tall wall its height.
       for (const g of gutters) vline(g, wallTop, detailBottom);
       break;
     case 'office':
@@ -3191,7 +3218,7 @@ function lcdLeanDetail(ctx, building, bay, detailBottom) {
       }
       break;
     default:
-      // storefront, workshop, ducts, industrial: the fascia — one course
+      // storefront, workshop, ducts: the fascia — one course
       // under the first row.
       if (rows > 1) hline(rowGutter(0));
   }

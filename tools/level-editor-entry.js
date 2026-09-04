@@ -219,14 +219,10 @@ function bagTypes(cab) {
 // The capsules, from PICKUPS' own flags — a new capsule appears in the weight
 // editor the day it is registered.
 const capsuleTypes = () => Object.entries(PICKUPS)
-  .filter(([, def]) => def.power || def.relayCharge)
+  .filter(([, def]) => def.power)
   .map(([id]) => id);
 
-const capsuleLabel = (id) => {
-  const def = PICKUPS[id];
-  if (def?.relayCharge) return 'RELAY CHARGE';
-  return POWER_DEFS[def?.power]?.name || id;
-};
+const capsuleLabel = (id) => POWER_DEFS[PICKUPS[id]?.power]?.name || id;
 
 // ------------------------------------------------------------ validation ----
 
@@ -512,7 +508,6 @@ function drawLane(id, c, m, fc) {
       if (p.def.coin) continue;              // coins are the lane's texture, not an event
       const x = X(p.x / m.totalDist);
       const col = p.def.heal ? css('--reward')
-        : p.def.relayCharge ? css('--check')
         : POWER_DEFS[p.def.power]?.color || css('--dim');
       ctx.fillStyle = col;
       ctx.beginPath(); ctx.arc(x, h / 2, 4, 0, Math.PI * 2); ctx.fill();

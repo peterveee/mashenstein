@@ -38,6 +38,7 @@ import { STAGE_BY_ID } from './data/stages.js';
 import { HERO_BY_ID } from './data/heroes.js';
 import { TitleState, DifficultyState, IntroState, BriefingState, ResultsState, FinaleState, SettingsState, HowToPlayState, FieldGuideState, SoundTestState, JUKEBOX } from './game/menus.js';
 import { HubState, TrophyRoomState, StageSelectState, BenchState, ShopState, ArcadeState, heroIdFor } from './game/hub/index.js';
+import { CalibrateState } from './game/calibrate.js';
 import { applyResult } from './game/progress.js';
 import { CastState } from './game/cast.js';
 import { AttractState } from './game/attract.js';
@@ -79,8 +80,8 @@ const nextAttract = () => ATTRACT_CYCLE[attractStep % ATTRACT_CYCLE.length];
 //   ?goto=soundtest&audition                   — audition every megamix move
 //
 // Recognised goto values:
-//   title  tutorial  hub  howto  fieldguide  settings  cast  attract
-//   intro  finale  soundtest  stage  boss  overtime
+//   title  tutorial  hub  howto  fieldguide  settings  calibrate  cast
+//   attract  intro  finale  soundtest  stage  boss  overtime
 function routeDevUrl(goto, p) {
   // So Flow.toTitle() is skipped. The last line of boot() guards on this flag.
   window.__mash_routed = true;
@@ -170,7 +171,12 @@ function routeDevUrl(goto, p) {
       setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toTitle() }));
       break;
     case 'settings':
-      setState(new SettingsState({ save, onDone: () => { setShakeScale(save.settings.screenShake); Flow.toTitle(); } }));
+      setState(new SettingsState({ save,
+        onDone: () => { setShakeScale(save.settings.screenShake); Flow.toTitle(); },
+        onCalibrate: () => Flow.toCalibrate(() => routeDevUrl('settings', p)) }));
+      break;
+    case 'calibrate':
+      Flow.toCalibrate(() => Flow.toTitle());
       break;
     case 'cast':
       setState(new CastState({ realSettings: save.settings, slot: save.slot, onExit: () => Flow.toTitle() }));
@@ -293,7 +299,7 @@ const Flow = {
         Flow.toHub();
       }
     },
-    onSettings: () => setState(new SettingsState({ save, onDone: () => { setShakeScale(save.settings.screenShake); Flow.toExtras('settings'); } })),
+    onSettings: () => Flow.toSettings(),
     onHowTo: () => setState(new HowToPlayState({ onDone: () => Flow.toExtras('howto') })),
     onTutorial: () => Flow.toTutorial(true),
     onGuide: () => setState(new FieldGuideState({ settings: save.settings, onDone: () => Flow.toExtras('guide') })),
@@ -336,9 +342,37 @@ const Flow = {
     else Flow.startStage(cab, stage, this.pendingCorrupted = corrupted || []);
   },
 
+  toSettings() {
+    setState(new SettingsState({ save,
+      onDone: () => { setShakeScale(save.settings.screenShake); Flow.toExtras('settings'); },
+      onCalibrate: () => Flow.toCalibrate(() => Flow.toSettings()) }));
+  },
+
+  toCalibrate(onDone) {
+    setState(new CalibrateState({ save, onDone }));
+  },
+
   startStage(cab, stage, corrupted) {
     // The Briefing Manifest: every stage opens on its establishment screen.
-    setState(new BriefingState({ cab, stage, onDone: () => Flow.launchStage(cab, stage, corrupted) }));
+    //
+    // WHERE THE GAME ASKS ABOUT LATENCY. Rhythm is the only cabinet that puts
+    // obstacles on the beat and scores presses against it, so it is the only
+    // place a wireless output's unreported delay costs a life rather than being
+    // invisible — and it is therefore the place the correction has to be one
+    // press away. EVERY rhythm briefing carries the offer, not just the first:
+    // headphones change between sessions, a reading taken on the laptop speaker
+    // is wrong on the bus, and sending a player to SETTINGS to fix a stage they
+    // are standing in front of is a detour. PLAY stays preselected, so the
+    // permanent offer costs a player who does not want it nothing.
+    //
+    // `audioSyncAsked` no longer gates the offer; it decides how the row reads.
+    // Before a first calibration it names itself; afterwards it shows the number
+    // in force, so the briefing doubles as the readout.
+    const ask = cab.id === 'rhythm';
+    const markAsked = () => { save.settings.audioSyncAsked = true; save.persist(); };
+    setState(new BriefingState({ cab, stage, askCalibrate: ask, settings: save.settings,
+      onDone: () => { if (ask) markAsked(); Flow.launchStage(cab, stage, corrupted); },
+      onCalibrate: () => { markAsked(); Flow.toCalibrate(() => Flow.startStage(cab, stage, corrupted)); } }));
   },
 
   // seedOverride: dev-menu seed lock. Runs are deterministic given a seed
@@ -574,6 +608,7 @@ function boot() {
   Audio.ensure();
   Audio.setSessionMute(sessionMute);
   Audio.setMuted(save.settings.muted);
+  Audio.setSyncOffset(save.settings.audioSyncMs);
   // Touch only, and only once. A phone browser's toolbars eat a third of a
   // landscape screen, so the first tap asks for them back; iPad and Android
   // Chrome grant it, iPhone Safari has no Fullscreen API and rejects, which is
@@ -598,6 +633,7 @@ function boot() {
     Audio.ensure();
     Audio.setVolumes(save.settings.volumes);
     Audio.setMuted(save.settings.muted);
+    Audio.setSyncOffset(save.settings.audioSyncMs);
     // Must run inside the gesture's own call stack to count as user-activated,
     // which it does: Input fires this synchronously from its pointerdown
     // handler, after usingTouch is set from the event's pointerType.
@@ -694,6 +730,17 @@ function boot() {
         // and something else entirely if it is 2D, and the two are
         // indistinguishable without it.
         const dens = `${r2(rd.density)}X/${r2(rd.native)}X ${rendererBackend()}${flags ? ' ' + flags : ''}`;
+        // THE TEMPO THE TRANSPORT IS ACTUALLY PLAYING, warp included — never the
+        // number the song was written at. A beat stage steps its bpm up at every
+        // checkpoint (run.js BEAT_BPM_PER_CHECKPOINT) and the ramp is otherwise
+        // something you can only hear; this is also the ground truth the lane's
+        // own arithmetic has to agree with, so a lane that has drifted reads here
+        // as a tempo that is not the one coming out of the speakers.
+        //
+        // Blank when there is no song, so a menu with the music off keeps the
+        // short readout — the same rule the hitch fields follow.
+        const playingBpm = Audio.bank ? (Audio.bpm || 0) * (Audio.tempo || 1) : 0;
+        const bpmTxt = playingBpm > 0 ? `${r2(playingBpm)}BPM` : '';
         // Dropped vsyncs, which the averaged FPS cannot show: a run that hitches
         // three times a second still reads a flat 60. "!3/34" is three drops in
         // the last second, worst frame 34ms. Shown only when there is something
@@ -719,7 +766,7 @@ function boot() {
           // geometry. The 480x270 game-space painter below cannot be reused
           // here: its coordinates land inside the area #game covers, where the
           // readout is faithfully painted every frame and never once seen.
-          setChromeOverlay(`fps|${fps}|${hitchNow}|${hitchSum}|${dens}|${chrome.mode}|${Math.round(chrome.vw)}`, (ctx) => {
+          setChromeOverlay(`fps|${fps}|${hitchNow}|${hitchSum}|${dens}|${bpmTxt}|${chrome.mode}|${Math.round(chrome.vw)}`, (ctx) => {
             // A landscape phone's side pillar is narrow but tall. Short,
             // single-stat rows let the lettering grow instead of shrinking one
             // long density/backend string to fit. A top/bottom band has width
@@ -736,6 +783,10 @@ function boot() {
             const lines = side
               ? [`FPS ${fps}`, `D ${density}`, `N ${native}`, backend, state]
               : [`FPS ${fps}  ${backend} ${state}`, `D ${density}  N ${native}`];
+            // Last, and only when a song is on: it is the one row here that is
+            // not about the frame, so it reads as a footnote rather than as
+            // another number competing with the FPS.
+            if (bpmTxt) lines.push(bpmTxt);
             if (drops) lines.splice(1, 0, drops);
             const pad = 8;
             const widest = Math.max(...lines.map((l) => textWidth(l, 1, 'ui')));
@@ -761,12 +812,14 @@ function boot() {
               const ink = i === 0 ? '#f4f1fa'
                 : lines[i] === drops ? '#f6b45c'
                   : lines[i] === backend ? '#8ef0c0'
-                    : '#b9c9e3';
+                    : lines[i] === bpmTxt ? '#c9a6f0'
+                      : '#b9c9e3';
               drawText(ctx, lines[i], pad, top + i * lineH, ink, s, 'ui');
             }
           });
         } else if (!visualiserTitlesVisible) {
-          const label = `FPS ${fps}${hitchNow ? ' ' + hitchNow : ''}${hitchSum ? ' D' + hitchSum : ''} ${dens}`;
+          const label = `FPS ${fps}${hitchNow ? ' ' + hitchNow : ''}${hitchSum ? ' D' + hitchSum : ''} ${dens}`
+            + (bpmTxt ? ` ${bpmTxt}` : '');
           // Keep the diagnostic above the visualiser surface. Once its titles
           // are gone, use their bottom-centre berth in both orientations.
           drawFpsReadout = (ctx) => {

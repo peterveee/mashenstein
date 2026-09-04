@@ -81,17 +81,17 @@ function rollPowerPickup(rng, { allowRewind = true, banned = null } = {}) {
     const pickTwo = (Math.floor(r * 1000) & 1) ? 'capShield' : 'capMagnet';
     return banned?.has(pickTwo) ? 'capShield' : pickTwo;
   };
-  // The relay charge is deliberately the rarest thing in the table. Capsules
-  // drip every 12-18s, so 8% works out to roughly one charge every three or
-  // four stages: rare enough to feel like a find rather than a rotation.
-  if (roll < 0.08) return 'capRelay';
+  // The bottom 8% used to be the relay charge, the rarest thing in the table.
+  // It is gone, and its band goes to the staples rather than to unpeel: every
+  // band below keeps the share it was tuned to, and a roll that once dealt a
+  // free power now deals the commonest thing in the game. Off the roll in
+  // hand, so the drip stream reads exactly as it did.
+  if (roll < 0.08) return staple(roll);
   if (roll < 0.18) return banned?.has('capUnpeel') ? staple(roll) : 'capUnpeel';
   // Rewind takes a band of its OWN, out of the staple tail, rather than
-  // splitting unpeel's. Two things fall out of that and both are the point:
-  // the relay charge stays the rarest drop in the game (it is a free power,
-  // and nothing should be scarcer), and unpeel keeps the 10% it was tuned to.
-  // 10% here matches unpeel because rewind is the same KIND of find — a rare
-  // one you are pleased to see, not a staple you expect.
+  // splitting unpeel's, so unpeel keeps the 10% it was tuned to. 10% here
+  // matches unpeel because rewind is the same KIND of find — a rare one you
+  // are pleased to see, not a staple you expect.
   if (roll < 0.28) {
     if (allowRewind && !banned?.has('capRewind')) return 'capRewind';
     if (banned?.has('capRewind')) return staple(roll);
@@ -102,8 +102,9 @@ function rollPowerPickup(rng, { allowRewind = true, banned = null } = {}) {
     if (banned?.has(type)) return staple(roll);
     return type;
   }
-  // The staples pay for rewind's band: 42% between them, still comfortably the
-  // most common thing in the table and still each far commoner than unpeel.
+  // The staples pay for rewind's band and pocket the old relay band: 50%
+  // between them, still comfortably the most common thing in the table and
+  // still each far commoner than unpeel.
   // Same shape under a ban: the pick still consumes its one read, then a
   // banned staple falls back to the other.
   const picked = rng.pick(['capShield', 'capMagnet']);

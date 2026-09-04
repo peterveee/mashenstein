@@ -46,7 +46,19 @@
       "Bash(node work/local/_lcd-dk-shot.mjs)",
       "Bash(python3 -c ' *)",
       "Bash(git -C /Users/Peter/mashenstein diff src/game/run.js src/data/stages.js src/data/stage-layouts.js)",
-      "Bash(node /Users/Peter/mashenstein/tests/lcd-background.js)"
+      "Bash(node /Users/Peter/mashenstein/tests/lcd-background.js)",
+      "Bash(node /private/tmp/claude-502/-Users-Peter-mashenstein/177e8409-1b73-4994-8131-e9c7db3a4586/scratchpad/bpmcheck.mjs)",
+      "Bash(sed -i '' \"s#'./src/#'/Users/Peter/mashenstein/src/#g\" /private/tmp/claude-502/-Users-Peter-mashenstein/177e8409-1b73-4994-8131-e9c7db3a4586/scratchpad/bpmcheck.mjs)",
+      "Bash(sed -i '' \"s/import { RHYTHM }/import * as RHYTHM/\" bpmcheck.mjs)",
+      "Bash(node bpmcheck.mjs)",
+      "Bash(node --input-type=module -e \"import\\('./src/game/hud.js'\\).then\\(\\(\\)=>console.log\\('ok'\\)\\).catch\\(e=>console.log\\('ERR',e.message\\)\\)\")",
+      "Bash(node tests/bot-pits.js)",
+      "Bash(grep -rn \"stageLabel\\\\|\\\\`3-\\\\|act, \\\\|number\" src/data/stages.js)",
+      "Bash(node work/local/_hero-chip-shot.mjs)",
+      "Bash(grep -n \"updateDead\\(dt\\)\" src/game/run.js; sed -n '/^  updateDead\\(dt\\)/,/^  [a-zA-Z]*\\(/p' src/game/run.js | head -80)"
+    ],
+    "additionalDirectories": [
+      "/Users/Peter/mashenstein/src/game"
     ]
   }
 }

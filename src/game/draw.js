@@ -7,6 +7,7 @@ import { WORLD_SPRITES } from '../sprites/world.js';
 import { drawToon, poseFromPlayer, toonFaceSprite, toonEffectEllipse } from '../sprites/toons.js';
 import { LOOP } from './loop.js';
 import {
+  eggshellCopterArt,
   hasProp, propSprite, propTinted, propRimPair, propFrames, propFps, propTall,
   propVisualScale, propHazardRim, propBoxCentred, glowSprite, sparkSprite, drawProp,
   BATTERY_FOCUS,
@@ -107,8 +108,8 @@ const SPECIAL_FOLLOWER_CROWN = {
   kiko: 1.06,
 };
 
-function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownMax, charged, reducedMotion, alpha = 1) {
-  const ready = charged || cooldown <= 0;
+function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownMax, reducedMotion, alpha = 1) {
+  const ready = cooldown <= 0;
   const fill = ready ? 1 : Math.max(0, Math.min(1, 1 - cooldown / cooldownMax));
   const r = h * 0.09;
   const x = cx - h * 0.72;
@@ -124,7 +125,7 @@ function drawSpecialMoveFollower(c, heroId, cx, feetY, h, t, cooldown, cooldownM
   c.globalAlpha = alpha;
   if (ready && !reducedMotion) {
     const pulse = 1 + 0.11 * (0.5 + 0.5 * Math.sin(t * 5.5));
-    c.globalAlpha = (charged ? 0.5 : 0.3) * alpha;
+    c.globalAlpha = 0.3 * alpha;
     c.strokeStyle = energy;
     c.lineWidth = Math.max(0.75, h * 0.055);
     c.beginPath();
@@ -307,7 +308,7 @@ export function drawHeroSprite(ctx, player, heroId, t, camX, carryingFuse, opts 
     const orbAlpha = opts.specialOrbAlpha == null ? 1 : Math.max(0, Math.min(1, opts.specialOrbAlpha));
     if (opts.specialOrb !== false && orbAlpha > 0) {
       drawSpecialMoveFollower(c, heroId, cx, feetY, HERO_DRAW_H, t, player.abilityCd,
-        cooldownMax, player.relayCharge, reducedMotion, orbAlpha);
+        cooldownMax, reducedMotion, orbAlpha);
     }
     // ...and the hero themself burns brighter, in time with the aura pulse.
     if (starLeft > 0) {
@@ -1053,17 +1054,101 @@ function drawPortalFace(ctx, portal, x, top, zoom, alpha) {
   ctx.restore();
 }
 
-export function drawCopter(ctx, copter, camX, t, smoothMotion = false) {
+// The copter's box in world units. 36 is 1.5x the hero's height: he is the
+// boss, and at the old 24 the tub's stripes were two units wide. boss.js's
+// BOSS_ART quotes this so the Act I boss and the chase copter are one size.
+export const COPTER_BOX = 36;
+
+// The machine's INK inside that box, which is what everything collides with.
+// Read off the painting rather than guessed: eggshellCopterArt authors in a 28u
+// box scaled to COPTER_BOX, the tub's rim spans twelve units either side of
+// centre, and the rotor's ink stops short of the box top. The rest is blade
+// sweep and sky, and a head that passes under a blade tip has missed.
+export const COPTER_HULL = { w: 24, h: 30, floor: 4 };
+// How long the bonk's recoil runs, and — because the same field is the lockout
+// — how long nothing else may count as a hit.
+export const COPTER_HIT_T = 1.1;
+// How long the forcefield stays visible after it turns a shot away.
+export const COPTER_SHIELD_T = 0.3;
+
+// Which rotor frame to show. The strip is HALF a turn (the blade pair repeats
+// every half turn), and the rotor makes ONE FULL TURN PER BEAT when a song is
+// playing — the chase mission's own line is "IT IS SOMEHOW ON BEAT". With no
+// song clock it turns twice a second, which is the same thing at 120 BPM.
+// `beatPhase` is 0..1 inside the current beat, or null when there is no song.
+export function copterFrame(t, beatPhase, reducedMotion = false) {
+  if (reducedMotion) return 0;
+  const frames = propFrames('eggshellCopter');
+  const turns = Number.isFinite(beatPhase) ? beatPhase : t * 2;
+  return Math.floor(turns * frames * 2) % frames;
+}
+
+export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMotion = false, beatPhase = null) {
+  // Rounding follows the smoothMotion rule on BOTH axes. y used to round
+  // unconditionally, and his bob is ~34u/s, so at desktop scale he climbed
+  // in 6px steps every other frame.
   const x = smoothMotion ? copter.x - camX : Math.round(copter.x - camX);
-  const y = Math.round(GROUND_Y - copter.alt - 16);
-  drawProp(ctx, 'eggshell', x - 12, y - 8, 24, 20);
-  // rotor blur
-  ctx.fillStyle = 'rgba(200,200,216,0.6)';
-  ctx.fillRect(x - 10 + Math.round(Math.sin(t * 40) * 3), y - 10, 20, 1);
+  const rawY = GROUND_Y - copter.alt - 16;
+  const y = smoothMotion ? rawY : Math.round(rawY);
+  // The tub keeps the floor the old 24x20 box had (y + 12); the rotor takes
+  // the headroom the old blur line used to float in. The rotor turns in the
+  // painter's frames, so there is no separate blur to draw.
+  const frame = copterFrame(t, beatPhase, reducedMotion);
+  const B = COPTER_BOX;
+  // THE BONK, 1.1s: a kick upward, then a decaying vibration — a fast rattle
+  // in x and y with a tilt, shaken off as it fades. Drawn, not simulated: the
+  // flight path is a plain climb, so the rattle can never move where the next
+  // bonk lands.
+  const hit = copter.hitT > 0 ? Math.min(1, copter.hitT / COPTER_HIT_T) : 0;
+  if (hit > 0) {
+    const age = 1 - hit;                        // 0 at the moment of contact
+    const kick = Math.sin(Math.PI * Math.min(1, age * 1.6)) * 13;
+    const buzz = hit * hit;                     // the rattle dies faster than the arc
+    const jx = Math.sin(age * 78) * 2.4 * buzz;
+    const jy = Math.sin(age * 103 + 1.1) * 1.7 * buzz;
+    const rot = Math.sin(age * 41) * 0.3 * buzz;
+    // KNOCKED OUT OF HIS SEAT: he leaves the tub for a moment and comes down
+    // into it, shocked, while the whole machine rattles. The pop is a quick
+    // rise and a settle, shorter than the rattle, so he is seated again before
+    // the shaking stops.
+    const pop = Math.max(0, Math.sin(Math.PI * Math.min(1, age * 2.2)) * (1 - age * 0.35));
+    ctx.save();
+    ctx.translate(x + jx, y + 12 - B / 2 - kick + jy);
+    ctx.rotate(rot);
+    // Drawn straight from the painter rather than the raster cache: `pop` is
+    // continuous, and a cache key per value would be a new canvas every frame.
+    // It is one small sprite for a second.
+    ctx.save();
+    ctx.translate(-B / 2, -B / 2);
+    eggshellCopterArt(ctx, B, B, frame, { pop });
+    ctx.restore();
+    ctx.restore();
+  } else {
+    drawProp(ctx, 'eggshellCopter', x - B / 2, y + 12 - B, B, B, frame);
+  }
+  // THE FIELD, ONLY WHEN IT IS STRUCK. A permanent bubble would say "you
+  // cannot hurt this" for the whole level, which is the opposite of the truth:
+  // a head bonks him and a barrel goes straight through. So it is an answer,
+  // not a state — two rings on the hull, brightest on the frame of the hit and
+  // gone in a third of a second. Cyan because that is already the game's ink
+  // for a deflect. Drawn, not simulated, like the rattle above.
+  if (copter.shieldT > 0) {
+    const a = Math.min(1, copter.shieldT / COPTER_SHIELD_T);
+    const cy = y + 12 - COPTER_HULL.h / 2;
+    ctx.save();
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 2; i++) {
+      ctx.strokeStyle = `rgba(168,230,255,${(a * (0.55 - i * 0.22)).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.ellipse(x, cy, COPTER_HULL.w * 0.62 + i * 3, COPTER_HULL.h * 0.58 + i * 3, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   // chase mission: flash the catch window while the copter swoops in
   if (copter.inRange && Math.floor(t * 6) % 2 === 0) {
     ctx.fillStyle = '#f6d33c';
-    ctx.fillRect(x - 1, y - 18, 3, 5);
-    ctx.fillRect(x - 1, y - 12, 3, 2);
+    ctx.fillRect(x - 1, y + 4 - B, 3, 5);
+    ctx.fillRect(x - 1, y + 10 - B, 3, 2);
   }
 }

@@ -67,6 +67,44 @@ assert(Math.abs(Audio.cueLeadBeats() - (0.2 + LEAD + 0.1) * 2) < 1e-9,
   'the lead a caller must give is latency plus the perceptual lead plus a tenth, in beats');
 assert(Audio.cueAt() === 10 && Audio.cueStart === null, 'outside a firing cueAt() is the live clock');
 
+// AUDIO SYNC. The player's offset stacks on what the browser reports, and every
+// "when is this heard" answer has to move by the same amount or the lane, the
+// judge and the cues stop agreeing about where the music is.
+assert(Audio.reportedLatencySec() === 0.2 && Audio.heardLatencySec() === 0.2,
+  'with no offset set, the heard latency is exactly what the device reports');
+Audio.setSyncOffset(50);
+assert(Audio.reportedLatencySec() === 0.2 && Math.abs(Audio.heardLatencySec() - 0.25) < 1e-9,
+  'a +50ms offset is added to the reported latency, and leaves the reported figure alone');
+assert(Math.abs(Audio.cueTimeInBeats(1) - (10.5 - 0.25 - LEAD)) < 1e-9,
+  'a cue is brought forward by the offset too, so it still lands on its note');
+assert(Math.abs(Audio.cueLeadBeats() - (0.25 + LEAD + 0.1) * 2) < 1e-9,
+  'and the lead a caller must give grows with it');
+Audio.setSyncOffset(-100);
+assert(Math.abs(Audio.heardLatencySec() - 0.1) < 1e-9, 'a negative offset leans the other way');
+Audio.setSyncOffset(NaN);
+assert(Audio.heardLatencySec() === 0.2, 'a nonsense offset is no offset, not a broken clock');
+Audio.setSyncOffset(0);
+
+// The metronome, which the calibration screen schedules its clicks with. It
+// hands back the exact times it used: a tap test that recomputed them from a
+// bpm would be measuring its own arithmetic as much as the audio.
+starts.length = 0;
+const metro = Audio.metronome(4, 20, 120);
+assert(metro.times.length === 4 && starts.length === 4,
+  'the metronome schedules every click it was asked for');
+assert(metro.times.every((t, i) => Math.abs(t - (20 + i * 0.5)) < 1e-9),
+  'the times it reports are the times it used');
+assert(metro.times.every((t, i) => Math.abs(t - starts[i]) < 1e-9),
+  'and the oscillators start on exactly those times');
+Audio.cueGain = 7;   // stale from some earlier sfx(); must not reach the clicks
+assert(Audio.metronome(2, 30, 120).times.length === 2, 'a second run replaces the first');
+Audio.cueGain = 1;
+assert(Audio.metronome(0, 30, 120).times.length === 0
+  && Audio.metronome(4, NaN, 120).times.length === 0,
+  'a nonsense request schedules nothing rather than throwing');
+Audio.metronome(4, 40, 120).cancel();
+assert(Audio._countInSources.length === 0, 'cancelling drops every scheduled click');
+
 // Every cue on the sheet, placed a beat ahead: nothing may start before SCHED and
 // something must start exactly there.
 const here = dirname(fileURLToPath(import.meta.url));

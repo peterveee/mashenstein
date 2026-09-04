@@ -5,7 +5,8 @@ import { W, H, shake } from '../engine/renderer.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { drawText, drawTextCentered, getSprite, UI_PLATE } from '../engine/sprites.js';
-import { drawProp } from '../sprites/props.js';
+import { drawProp, propFps, propFrames } from '../sprites/props.js';
+import { COPTER_BOX, copterFrame } from './draw.js';
 import { VIEW_W, applyWorld } from '../engine/camera.js';
 import { RunState, GROUND_Y } from './run.js';
 import { makeObstacle } from './entities.js';
@@ -17,10 +18,15 @@ import { BOSS_HIT_SHORT, BOSS_DEFLECT_SHORT } from '../data/jokes.js';
 // of text over the boss you are trying to read.
 const BOSS_LONG_CHANCE = 0.1;
 
+// World-unit boxes the three boss painters are authored in (props.js).
+// The copter is COPTER_BOX square (draw.js); the balloon keeps the ape the
+// same size as in the copter, so its 28x46 authoring box scales by the same factor.
+const BOSS_ART = { eggshellCopter: [COPTER_BOX, COPTER_BOX], eggshellBalloon: [36, 59], dustdevil: [35, 38] };
+
 export const BOSSES = {
   neon: {
     name: 'THE UNDERINSURED CLOWN-COPTER',
-    hp: 6, sprite: 'eggshell',
+    hp: 6, sprite: 'eggshellCopter',
     drops: ['barrel', 'crate', 'cactus'],
     dropEvery: [2.6, 2.0, 1.5],
     jokeAt: 0.5,
@@ -41,13 +47,13 @@ export const BOSSES = {
   },
   surge: {
     name: 'EGGSHELL & THE ABSOLUTELY FINAL POWER STRIP',
-    hp: 12, sprite: 'eggshell',
+    hp: 12, sprite: 'eggshellBalloon',
     drops: ['barrel', 'crate', 'drone', 'cardboardMonster', 'chair'],
     dropEvery: [2.0, 1.6, 1.2],
     jokeAt: 0.6,
     jokeText: 'THE CRAYON IQ CERTIFICATE DEPLOYS AS A SHIELD. IT ABSORBS NOTHING.',
     joke2At: 0.25,
-    joke2Text: 'HIS SHELL IS STUCK IN THE COPTER DOOR. HE INSISTS THIS IS PHASE FIVE.',
+    joke2Text: 'HIS SHELL HAS PUNCTURED HIS OWN BALLOON. HE INSISTS THIS IS PHASE FIVE.',
     fakeBars: 4, fakeBarsReal: false,
     switches: true,
     intro: 'THE STRIP HAS ONE MORE SWITCH THAN PHYSICALLY POSSIBLE. DO NOT COUNT THEM.',
@@ -190,18 +196,20 @@ export class BossState extends RunState {
     // Boss sprite + health bars. super.draw() has already closed its world band,
     // so the boss — a thing IN the world — reopens one; the bars below are HUD.
     const x = Math.round(this.bossX - this.camX);
-    const big = this.boss.sprite === 'dustdevil';
-    // Dust Devil is an industrial upright, not a hero-sized square prop. At
-    // 38px high it stands a little over 1.5x the 24px in-run cast, while the
-    // narrower portrait box preserves the vacuum silhouette from its painter.
-    const bossW = big ? 35 : 24;
-    const bossH = big ? 38 : 20;
+    // Each boss is drawn at its painter's own box, floor at bossAlt. The
+    // copter's rotor and the balloon both live above the 24x20 the old egg
+    // used; Dust Devil is an industrial upright a little over 1.5x the cast.
+    const [bossW, bossH] = BOSS_ART[this.boss.sprite];
     const y = Math.round(GROUND_Y - this.bossAlt - bossH);
+    const songBeat = Audio.songBeat();
+    const beatPhase = Number.isFinite(songBeat) ? ((songBeat % 1) + 1) % 1 : null;
+    const frame = this.boss.sprite === 'eggshellCopter'
+      ? copterFrame(this.tRun, beatPhase, this.save.settings.reducedMotion)
+      : this.save.settings.reducedMotion ? 0
+        : Math.floor(this.tRun * propFps(this.boss.sprite)) % propFrames(this.boss.sprite);
     ctx.save();
     applyWorld(ctx, this.camZoom, this.camPan);
-    drawProp(ctx, this.boss.sprite, x - bossW / 2, y, bossW, bossH);
-    ctx.fillStyle = 'rgba(200,200,216,0.6)';
-    ctx.fillRect(x - 8 + Math.round(Math.sin(this.tRun * 40) * 3), y - 4, 24, 1);
+    drawProp(ctx, this.boss.sprite, x - bossW / 2, y, bossW, bossH, frame);
     ctx.restore();
 
     // Health bars: 1 real + N fake labeled PRESENTATION ERROR.

@@ -231,7 +231,7 @@ shortRun.update(1 / 60);
 assert(shortResult?.failDetail === 'CORDS 3/4', 'mission failure reports the exact objective shortfall');
 
 // Objective replacements are capped to the last drawable spot before the
-// breaker — which is FINISH_CLEAR back from it, the same wall the pattern lane
+// finish line — which is FINISH_CLEAR back from it, the same wall the pattern lane
 // and the drip stop at, not a token gap that leaves a cord standing on the
 // plunger — and suppressed once that spot is no longer ahead of the viewport.
 // The camera is parked so the cap, not the screen edge, is the binding limit —
@@ -520,7 +520,7 @@ for (let i = 0; i < 60; i++) returnedHub.update(1 / 60);
 assert(returnedHub.jumpY === 0 && returnedHub.jumpVy === 0,
   'the food-court jump lands cleanly');
 chrome.mode = 'side';
-chrome.jump = { x: 35, y: 220, r: 32, zone: { x: 0, y: 0, w: 70, h: 270 } };
+chrome.walkLeft = { x: 35, y: 220, r: 32, zone: { x: 0, y: 0, w: 70, h: 270 } };
 chrome.ability = { x: 925, y: 220, r: 32, zone: { x: 890, y: 60, w: 70, h: 210 } };
 Input.usingTouch = false;
 returnedHub.setChromeWalkButtons();
@@ -1033,16 +1033,19 @@ const spannerTarget = makeObstacle('crate', run.camX + PLAYER_X + 20);
 run.obstacles = [spannerTarget];
 run.useAbility();
 assert(!spannerTarget.live, 'Lorenzo spanner still breaks its direct target');
+// Fernwick's roll contact is its own cue family. The base roll only bumps
+// what it meets, so the BASH mastery is what makes the contact a break here.
 run.relay.current = 'fernwick';
 run.player.setHero('fernwick');
 run.player.grounded = true;
 run.player.abilityCd = 0;
-run.player.relayCharge = true;
+run.modIds.push('bash');
 const shieldTarget = makeObstacle('cactus', run.camX + PLAYER_X);
 run.obstacles = [shieldTarget];
 run.useAbility();
 run.collide();
-assert(!shieldTarget.live, 'Fernwick shield contact still breaks its charged target');
+run.modIds.splice(run.modIds.indexOf('bash'), 1);
+assert(!shieldTarget.live, 'Fernwick bash roll still breaks the hazard it meets');
 // Miss Chomp's contact bite, and only while she is SELECTABLE. She has left
 // the playable roster — she is still a toon, the way Gary and Dolores are, but
 // HERO_BY_ID no longer has a row for her, so useAbility() reads `ability` off

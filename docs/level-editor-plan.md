@@ -65,8 +65,7 @@ gaps larger than the floor, never smaller.
 
 **The registry is already data-driven.** `src/game/entities.js` is one flat table
 of `OBSTACLES` (40) and `PICKUPS` (14) keyed by type string, with behaviour
-dispatched off flags (`isGap`, `isSpring`, `shoots`, `falls`, `power`,
-`relayCharge`…). There is no enum and no factory switch. That is what makes
+dispatched off flags (`isGap`, `isSpring`, `shoots`, `falls`, `power`…). There is no enum and no factory switch. That is what makes
 auto-discovery cheap: the editor imports the registry and reads the flags.
 
 **There is precedent for a tool that writes game source.** The Song Mixer
@@ -236,7 +235,7 @@ The editor bundles against live `src/` per request, so a new entry in
 refresh with no editor change. Categories are derived from flags, never listed:
 gaps `isGap`, springs `isSpring`, pads `isBoost`/`isLoop`, shooters `shoots`,
 fallers `falls`, flyers `!ground`, movers `vx < 0`, animals `animal`, capsules
-`power || relayCharge`, coins `coin`. The editor computes the union of `cell.t`
+`power`, coins `coin`. The editor computes the union of `cell.t`
 across the cabinet's bank so types the run places itself — signs, spring pads,
 the finish dog — render greyed in a "placed by the run" group, and an exclusion
 checklist never claims to affect something it cannot.

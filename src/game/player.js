@@ -212,15 +212,12 @@ export class Player {
     this.slipT = 0;
     this.rollBashed = false;
     this.rollDeflectUsed = false;
-    this.rollPlows = false;
     this.deflectFlashT = 0;
     this.powerPoseT = 0;
     this.powerType = null;
     this.spannerFlurryT = 0; // Lorenzo: repeated wrench swings while active
     this.spannerFlurryHitIds = null; // obstacles already hit this flurry
     this.spannerFlurryCd = 0; // deferred cooldown, applied when flurry ends
-    this.relayCharge = false; // banked supercharged ability ('charge' relay mode)
-    this.chargeFlashT = 0;
     this.fistThrown = false;
     this.axeThrown = false;
     this.headless = 0;    // Gary
@@ -273,7 +270,6 @@ export class Player {
     this.slipT = 0;
     this.rollBashed = false;
     this.rollDeflectUsed = false;
-    this.rollPlows = false;
     this.deflectFlashT = 0;
     this.powerPoseT = 0;
     this.powerType = null;
@@ -289,8 +285,6 @@ export class Player {
     this.standT = 0;
     this.duckHoldT = 0;
     this.duckSpent = false;
-    // relayCharge deliberately survives: an unspent charge follows the player
-    // to the next hero rather than evaporating at the portal.
   }
 
   get abilityCd() { return this.abilityCooldowns[this.heroId] || 0; }
@@ -464,14 +458,11 @@ export class Player {
     this.tickSlideKick(dt);
     if (this.rollT > 0) {
       this.rollT -= dt;
-      // A charged roll ends clean: no ringing ears.
-      if (this.rollT <= 0 && this.mods.includes('bash') && !this.rollPlows) this.stumbleT = 0.3;
-      if (this.rollT <= 0) this.rollPlows = false;
+      if (this.rollT <= 0 && this.mods.includes('bash')) this.stumbleT = 0.3;
     }
     if (this.compressT > 0) this.compressT -= dt;
     if (this.stumbleT > 0) this.stumbleT -= dt;
     if (this.slipT > 0) this.slipT -= dt;
-    if (this.chargeFlashT > 0) this.chargeFlashT -= dt;
     if (this.deflectFlashT > 0) this.deflectFlashT -= dt;
     if (this.tagFlashT > 0) this.tagFlashT -= dt;
     if (this.powerPoseT > 0) this.powerPoseT -= dt;

@@ -194,7 +194,15 @@ function puntKind(event) {
 export function unwrapBeat(raw, state = {}) {
   if (!finiteNumber(raw)) return null;
   const loop = Math.max(1, Number(state.loopBeats) || 1);
-  if (state.lastRawBeat != null && raw < state.lastRawBeat - loop * 0.5) state.epoch = (state.epoch || 0) + loop;
+  if (state.lastRawBeat != null && raw < state.lastRawBeat - loop * 0.5) {
+    // The audio transport may repeat a much longer region than the gameplay
+    // chart. RHYTHM BANKRUPTCY, for example, repeats beats 80..320 while its
+    // action phrase is 16 beats. Crossing that seam therefore skips FIFTEEN
+    // chart cycles at once; adding only one sends the supposedly monotonic
+    // clock 224 beats backwards and leaves the lane's cursor stranded.
+    const crossed = Math.max(1, Math.round((state.lastRawBeat - raw) / loop));
+    state.epoch = (state.epoch || 0) + crossed * loop;
+  }
   state.lastRawBeat = raw;
   return raw + (state.epoch || 0);
 }
@@ -626,9 +634,19 @@ export function actionApproachPx(action, type, speed, bpm = null) {
 export class BeatSpawner {
   constructor({ chart, bank, react = 0.25, pitPlan = [], beatNow, playerWorldX,
     lookaheadBeats = 7, onPitAlign = null, canShoot = () => true,
-    openingUntil = () => null } = {}) {
-    this.chart = validateBeatChart(chart, { bpm: bank?.bpm });
+    openingUntil = () => null, bpmNow = null, bpmCeiling = null } = {}) {
+    // VALIDATED AT THE FASTEST THE LANE WILL EVER RUN. A cabinet whose tempo
+    // climbs during the stage (run.js BEAT_BPM_PER_CHECKPOINT) narrows both of
+    // the windows this validator checks in seconds — the pit's lip and the
+    // punt's contact — as it goes, so the chart has to be feasible at the TOP of
+    // the ramp rather than at the tempo the stage opens on. A lane with no ramp
+    // passes its own bpm and the two numbers are the same.
+    this.chart = validateBeatChart(chart, { bpm: bpmCeiling || bank?.bpm });
     this.bank = bank || null;
+    // WHAT TEMPO THE LANE IS BEING PLAYED AT, asked per use rather than read
+    // once: the bank's number is what the song was written at and never moves,
+    // while the run may be pushing it up a step at every checkpoint.
+    this.bpmNow = bpmNow || (() => this.bank?.bpm || 120);
     this.runwayBeats = laneRunwayBeats(this.chart);
     this.react = react;
     // WHETHER THE HERO IN THE LANE RIGHT NOW OWNS A WEAPON. Asked per box, at
@@ -687,17 +705,33 @@ export class BeatSpawner {
     this.actionFreeUntilBeat = unwrapped + this.runwayBeats;
     this.nextX = worldX;
     this.eventInstances = [];
+    this.resnapPits();
+    return true;
+  }
+
+  /**
+   * PUT EVERY PENDING SET PIECE BACK ON THE GRID.
+   *
+   * A resync is not the only thing that moves the grid under a plan. A cabinet
+   * whose tempo climbs during the stage (run.js BEAT_BPM_PER_CHECKPOINT) changes
+   * pxPerBeat without touching the clock at all, and a piece aligned at the old
+   * tempo keeps an actionBeat that no longer describes the road it stands on —
+   * two beats out by the end of a five-step ramp, which is a hole scored against
+   * a jump taken well before it. Both callers want the same two rules:
+   *
+   * A HOLE THAT HAS BEEN CUT IS GEOMETRY, NOT A PENDING EVENT.
+   *
+   * An unspawned piece is still only a plan, so it is free to go back to its
+   * authored position and re-snap onto the new grid. One the lane has already
+   * cut is a break in the floor the player is reading and has committed a run-up
+   * to — moving it is deleting the thing that is being jumped, which is how a
+   * pause near a pit used to make the pit disappear. It keeps its position and
+   * its width; only its BEAT is re-derived, from where it now stands
+   * (see _rebeatPit, on the next fill).
+   */
+  resnapPits() {
     for (const pit of this.pitPlan || []) {
       if (pit.passed) continue;
-      // A HOLE THAT HAS BEEN CUT IS GEOMETRY, NOT A PENDING EVENT.
-      //
-      // An unspawned piece is still only a plan, so a resync is free to send it
-      // back to its authored position and re-snap it onto the new grid. One the
-      // lane has already cut is a break in the floor the player is reading and
-      // has committed a run-up to — moving it is the resync deleting the thing
-      // that is being jumped, which is how a pause near a pit used to make the
-      // pit disappear. It keeps its position and its width; only its BEAT is
-      // re-derived, from where it now stands (see _rebeatPit).
       if (pit.spawned) { pit._rebeat = true; continue; }
       if (pit._authoredX == null) pit._authoredX = pit.x;
       pit.x = pit._authoredX;
@@ -705,7 +739,6 @@ export class BeatSpawner {
       pit.spawned = false;
       pit.done = false;
     }
-    return true;
   }
 
   _isSuppressed(actionX, event) {
@@ -720,9 +753,12 @@ export class BeatSpawner {
   }
 
   _approachPx(action, type, speed) {
-    const k = `${action}:${type}:${speed}`;
+    // The bpm is in the key because a PUNT's approach is a function of it
+    // (puntLeadSec) — a lane whose tempo has moved would otherwise boot the
+    // barrel at the distance the previous tempo asked for.
+    const k = `${action}:${type}:${speed}:${this.bpmNow()}`;
     if (!this._approachCache.has(k)) {
-      this._approachCache.set(k, actionApproachPx(action, type, speed, this.bank?.bpm));
+      this._approachCache.set(k, actionApproachPx(action, type, speed, this.bpmNow()));
     }
     return this._approachCache.get(k);
   }
@@ -737,7 +773,7 @@ export class BeatSpawner {
       if (pit._rebeat) this._rebeatPit(pit, origin, pxPerBeat);
       if (pit.passed || pit._beatAligned || !finiteNumber(pit.x)) continue;
       if (pit._authoredX == null) pit._authoredX = pit.x;
-      const speed = speedFromPx(pxPerBeat, this.bank?.bpm || 120);
+      const speed = speedFromPx(pxPerBeat, this.bpmNow());
       const approach = actionApproachPx('jump', pit.crossing ? 'gap' : 'gap', speed);
       const target = pit._authoredX - approach;
       // Ordinary pits snap to the nearest authored jump event.  Crossing
@@ -796,7 +832,7 @@ export class BeatSpawner {
   _rebeatPit(pit, origin, pxPerBeat) {
     pit._rebeat = false;
     if (!finiteNumber(pit.actionX) || !finiteNumber(pxPerBeat) || pxPerBeat <= 0) return;
-    const speed = speedFromPx(pxPerBeat, this.bank?.bpm || 120);
+    const speed = speedFromPx(pxPerBeat, this.bpmNow());
     // The take-off point is where it was — the piece has not moved — so only
     // the beat under it is re-read.
     const actionBeat = Math.round((pit.actionX - origin) / pxPerBeat);
@@ -819,7 +855,7 @@ export class BeatSpawner {
     const raw = this.beatNow();
     const beat = this._unwrappedBeat(raw);
     if (!finiteNumber(beat)) return;
-    const pxPerBeat = speed * 60 / ((this.bank?.bpm || 120));
+    const pxPerBeat = speed * 60 / this.bpmNow();
     const playerX = this.playerWorldX(worldX);
     if (this.cursorBeat == null) this.resetFromBeat(beat, worldX);
     // A long render/audio jump can leave the old lookahead cursor behind the
@@ -917,7 +953,7 @@ export class BeatSpawner {
       }
       const type = event.type || ACTION_TYPES[event.action];
       const pit = event.action === 'pit'
-        ? pitLayout(speed, this.bank?.bpm, event.beats) : null;
+        ? pitLayout(speed, this.bpmNow(), event.beats) : null;
       const approach = pit ? pit.approach : this._approachPx(event.action, type, speed);
       const x = actionX + approach;
       // A HAZARD THAT MOVES IS LAID WHERE IT WILL HAVE MOVED FROM.
@@ -938,7 +974,7 @@ export class BeatSpawner {
       // and the roll carries it to `x` on the beat it is answered on. No
       // per-frame chasing, no correction that can disagree with the judge.
       const drift = Math.abs(OBSTACLES[type]?.vx || 0)
-        * (this.cursorBeat - beat) * 60 / (this.bank?.bpm || 120);
+        * (this.cursorBeat - beat) * 60 / this.bpmNow();
       const spawnX = x + drift;
       // Widest the slot can ever be, cadence ignored: the finish wall is an
       // all-or-nothing boundary and must not admit a figure on the strength of

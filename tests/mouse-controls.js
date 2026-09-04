@@ -186,5 +186,31 @@ dom.fire('canvas:pointerdown', workshopRight);
 assert(Input.pressed('ability'), 'right mouse press attacks in the Trophy Workshop');
 dom.fire('canvas:pointerup', workshopRight);
 
+// Press timestamps, for the audio calibration only. A tap rounded to the frame
+// it was noticed in throws away up to 16ms of the very thing being measured.
+Input.setContext('menu');
+Input.endFrame();
+const stamped = { ...pointer(0, 40), timeStamp: dom.now() - 5 };
+dom.fire('canvas:pointerdown', stamped);
+assert(Input.pressTime('pointer') === stamped.timeStamp,
+  'a press carries the originating event\'s own timestamp, not the frame it landed in');
+dom.fire('canvas:pointerup', stamped);
+Input.endFrame();
+assert(Input.pressTime('pointer') === undefined, 'and the stamp expires with the frame');
+
+dom.fire('canvas:pointerdown', { ...pointer(0, 41) });
+assert(Math.abs(Input.pressTime('pointer') - dom.now()) < 1e-9,
+  'an event with no usable timestamp falls back to the clock');
+dom.fire('canvas:pointerup', pointer(0, 41));
+Input.endFrame();
+
+// A WebKit build old enough to stamp epoch milliseconds must not be believed:
+// the number is on the wrong timebase and would read as a tap days late.
+dom.fire('canvas:pointerdown', { ...pointer(0, 42), timeStamp: Date.now() });
+assert(Math.abs(Input.pressTime('pointer') - dom.now()) < 1e-9,
+  'an absurd timestamp is discarded for the frame clock');
+dom.fire('canvas:pointerup', pointer(0, 42));
+Input.endFrame();
+
 console.log(failed ? 'MOUSE CONTROLS: FAILED' : 'MOUSE CONTROLS: PASSED');
 process.exit(failed ? 1 : 0);

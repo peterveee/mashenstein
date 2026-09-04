@@ -11,6 +11,7 @@ const {
   pitLayout, pitWindowBeats, laneRunwayBeats, PIT_BEATS, ON_BEAT_WINDOW,
   LANE_RUNWAY_BEATS, PIT_LANE_RUNWAY_BEATS, COIN_DIV, OPENING_COIN_BEAT,
   BOX_LEAD_BEATS, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, puntLeadSec, puntLeadRange,
+  unwrapBeat,
 } = await import('../src/game/beatchart.js');
 const { worstAirtime, sweepCoinsAroundHole } = await import('../src/game/spawner.js');
 const { randomPowerPickup } = await import('../src/game/powerups.js');
@@ -29,6 +30,21 @@ let failed = false;
 function assert(cond, msg) {
   if (!cond) { console.error('FAIL:', msg); failed = true; }
   else console.log('ok:', msg);
+}
+
+// A FIXTURE TRANSPORT THAT FOLLOWS THE LANE'S TEMPO.
+//
+// The real one does — Audio.songBeat divides by `bpm * tempo` — and a beat
+// stage steps its tempo up at every checkpoint (run.js
+// BEAT_BPM_PER_CHECKPOINT). So beats are ACCUMULATED at whatever the run is
+// being played at rather than derived from an elapsed time and one constant: a
+// fixture that does the latter hands the lane a clock the music is not playing,
+// which is precisely the mismatch checkRhythmDrift exists to catch, invented by
+// the harness. Returns the advance function; installing the stub is its job.
+function installBeatClock(run, loopBeats, startBeat = 0) {
+  let beats = startBeat;
+  Audio.songBeat = () => (beats % loopBeats);
+  return (dt) => { beats += dt * run.laneBpm() / 60; };
 }
 
 const expected = {
@@ -338,6 +354,17 @@ const abilityChart = validateBeatChart({ loopBeats: 2, events: [
 ] });
 assert(abilityChart.events[0].action === 'ability', 'future ability events remain valid timing markers');
 
+// The song's own repeat is much longer than the action phrase. One transport
+// wrap crosses fifteen 16-beat chart passes; the unwrapped clock must bridge
+// all fifteen rather than falling 224 beats backwards.
+{
+  const state = { loopBeats: beatCharts[1].loopBeats };
+  const before = unwrapBeat(319.9, state);
+  const after = unwrapBeat(80.1, state);
+  assert(before === 319.9 && Math.abs(after - 320.1) < 1e-9,
+    `the real 80..320 song wrap stays monotonic (${before} -> ${after})`);
+}
+
 let heard = 0;
 const obstacles = [], pickups = [];
 const spawner = new BeatSpawner({
@@ -602,13 +629,12 @@ Audio.songBeat = oldSongBeat;
     const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
     run.enter();
     Audio.sourceBank = run.cabinet.music;
-    let songTime = 0;
-    Audio.songBeat = () => ((songTime * bpm / 60) % run.spawner.chart.loopBeats);
+    const advance = installBeatClock(run, run.spawner.chart.loopBeats);
     run.relay.current = 'clara';
     const laid = new Map();
     let firstBeat = null;
     for (let i = 0; i < 60 * 30; i++) {
-      songTime += 1 / 60;
+      advance(1 / 60);
       run.update(1 / 60);
       if (firstBeat == null) firstBeat = run.rhythmBeatForJudging();
       for (const ob of run.obstacles) {
@@ -647,8 +673,7 @@ Audio.songBeat = oldSongBeat;
     run.rhythmOpeningUntil = null;
     if (!homing) run.homePellet = () => {};
     Audio.sourceBank = run.cabinet.music;
-    let songTime = 0;
-    Audio.songBeat = () => ((songTime * bpm / 60) % run.spawner.chart.loopBeats);
+    const advance = installBeatClock(run, run.spawner.chart.loopBeats);
     run.relay.current = 'clara';
     let box = null, fired = false, hit = false;
     const impact = run.projectileImpact.bind(run);
@@ -657,7 +682,7 @@ Audio.songBeat = oldSongBeat;
       return impact(pr, x, y);
     };
     for (let i = 0; i < 60 * 20 && !(fired && !box.live); i++) {
-      songTime += 1 / 60;
+      advance(1 / 60);
       run.update(1 / 60);
       const b = run.rhythmBeatForJudging();
       if (!box) box = run.obstacles.find((o) => o.type === 'cardBox' && o.live) || null;
@@ -693,12 +718,11 @@ Audio.songBeat = oldSongBeat;
     run.enter();
     if (mod) run.modIds.push(mod);
     Audio.sourceBank = run.cabinet.music;
-    let songTime = 0;
-    Audio.songBeat = () => ((songTime * bpm / 60) % loopBeats);
+    const advance = installBeatClock(run, loopBeats);
     run.relay.current = hero;
     let box = null, fired = false, litAt = null, burstAt = null;
     for (let i = 0; i < 60 * 40; i++) {
-      songTime += 1 / 60;
+      advance(1 / 60);
       run.update(1 / 60);
       const b = run.rhythmBeatForJudging();
       if (!box) box = run.obstacles.find((o) => o.type === 'cardBox' && o.live) || null;
@@ -735,12 +759,11 @@ Audio.songBeat = oldSongBeat;
     const run = new RunState({ stage, save, seed: 7, skipRunIn: true, devInvuln: true, onEnd: () => {} });
     run.enter();
     Audio.sourceBank = run.cabinet.music;
-    let songTime = 0;
-    Audio.songBeat = () => ((songTime * bpm / 60) % loopBeats);
+    const advance = installBeatClock(run, loopBeats);
     run.relay.current = hero;
     let sawBox = false, broke = false;
     for (let i = 0; i < 60 * 12; i++) {
-      songTime += 1 / 60;
+      advance(1 / 60);
       run.update(1 / 60);
       const b = run.rhythmBeatForJudging();
       if (run.obstacles.some((o) => o.type === 'cardBox' && o.live)) sawBox = true;
@@ -773,8 +796,17 @@ Audio.songBeat = oldSongBeat;
   run.enter();
   Audio.sourceBank = run.cabinet.music;
   const loopBeats = run.spawner.chart.loopBeats;
-  let songTime = 0;
-  Audio.songBeat = () => ((songTime * 124 / 60) % loopBeats);
+  // The real arrangement loops beats 80..320, not at the chart's 16-beat
+  // phrase. Start just before that seam so this exercises the production wrap.
+  const songLoopStart = 80, songLoopEnd = 320;
+  // Counted in BEATS at the lane's own tempo, for the reason installBeatClock
+  // states; this one maps onto the song's loop rather than the chart's phrase,
+  // so it keeps its own stub.
+  let songBeats = 318;
+  Audio.songBeat = () => {
+    const span = songLoopEnd - songLoopStart;
+    return songLoopStart + ((songBeats - songLoopStart) % span + span) % span;
+  };
   let resyncs = 0;
   const origReset = run.resetRhythmLane.bind(run);
   run.resetRhythmLane = (...a) => { resyncs++; return origReset(...a); };
@@ -782,10 +814,10 @@ Audio.songBeat = oldSongBeat;
   // The audio clock advances by the callback's wall gap; the sim then catches
   // up in fixed steps inside that same callback, exactly as engine/loop.js runs.
   const frameOf = (gapSec, steps) => {
-    songTime += gapSec;
+    songBeats += gapSec * run.laneBpm() / 60;
     for (let i = 0; i < steps; i++) run.update(TICK);
   };
-  for (let i = 0; i < 1500; i++) frameOf(TICK, 1); // ~25s: the loop wraps, epochs grow
+  for (let i = 0; i < 1500; i++) frameOf(TICK, 1); // ~25s: the real song loop wraps
   const tracked = run.pickups.filter((p) => p.live && p.chartAction === 'coin'
     && p.x > run.playerWorldX() + 120);
   frameOf(0.1, 6);  // a 100ms stall, fully repaid in-callback
@@ -1272,8 +1304,7 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
   run.enter();
   Audio.sourceBank = run.cabinet.music;
   const loopBeats = run.spawner.chart.loopBeats;
-  let songTime = 0;
-  Audio.songBeat = () => ((songTime * run.cabinet.music.bpm / 60) % loopBeats);
+  const advance = installBeatClock(run, loopBeats);
   const TICK = 1 / 60;
   const view = () => run.camX + 480 / run.camZoom;
   const inView = () => run.obstacles.filter((ob) => ob.live && ob.def.isGap && !ob.tunnel
@@ -1282,13 +1313,13 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
   // the moment the complaint is about.
   let holes = [];
   for (let i = 0; i < 3000 && !holes.length; i++) {
-    songTime += TICK; run.update(TICK); holes = inView();
+    advance(TICK); run.update(TICK); holes = inView();
   }
   assert(holes.length > 0, `the lane has cut holes the hero can see (${holes.length})`);
   const before = holes.map((ob) => ({ ob, x: ob.x, w: ob.w }));
   // The pause itself: the world holds still and the song runs on, which is
   // exactly the discontinuity resuming has to answer.
-  songTime += 3.2;
+  advance(3.2);
   run.resetRhythmLane();
   assert(before.every((h) => h.ob.live), 'every hole in view survives the resume');
   assert(before.every((h) => h.ob.x === h.x && h.ob.w === h.w),
@@ -1308,7 +1339,7 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
   }), 'and never stands on a beat the chart demands a different input on');
   // The combo the hero built is not taken away by the resume itself.
   run.beatCombo = 4;
-  for (let i = 0; i < 24; i++) { songTime += TICK; run.update(TICK); }
+  for (let i = 0; i < 24; i++) { advance(TICK); run.update(TICK); }
   assert(run.beatCombo === 4, 'and the resume alone breaks no combo in the beats after it');
   Audio.songBeat = oldSongBeat;
   Audio.sourceBank = oldSourceBank;
@@ -1326,8 +1357,7 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
   run.enter();
   Audio.sourceBank = run.cabinet.music;
   const loopBeats = run.spawner.chart.loopBeats;
-  let songTime = 0;
-  Audio.songBeat = () => ((songTime * run.cabinet.music.bpm / 60) % loopBeats);
+  const advance = installBeatClock(run, loopBeats);
   const TICK = 1 / 60;
   const plan = run.pitPlan.find((pp) => pp.crossing);
   assert(!!plan, 'rhythm-2 carries the act I crossing');
@@ -1338,7 +1368,7 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
       run.camX += step;
       run.player.x = (run.player.x ?? 0) + step;
     }
-    songTime += TICK;
+    advance(TICK);
     run.update(TICK);
   }
   assert(plan.spawned, 'the crossing is cut when the camera reaches it');
@@ -1346,7 +1376,7 @@ assert(typeof Audio.onBeat(null) === 'function' && Audio.beatListeners.length ==
   assert(!!hole, 'and stands in the lane as one break');
   const x = hole?.x, w = hole?.w;
   const stones = (plan.crossing.stones || []).map((st) => st.x);
-  songTime += 2.7;
+  advance(2.7);
   run.resetRhythmLane();
   assert(!!hole && hole.live && hole.x === x && hole.w === w,
     'the resume leaves the break exactly where it was');

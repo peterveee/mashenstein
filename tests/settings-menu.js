@@ -95,6 +95,32 @@ touchUp();
 assert(returned === 1 && persisted === 1,
   'one touch on BACK saves and exits');
 
+// AUDIO SYNC: the row a wireless player needs, and the only settings row whose
+// CONFIRM opens another screen rather than cycling a value — a touchscreen has
+// no left and right, and a phone is exactly the device that needs the tap test.
+const { Audio } = await import('../src/engine/audio.js');
+const syncRow = () => settings.options().find((o) => /^AUDIO SYNC/.test(o.label));
+assert(!!syncRow(), 'settings offers an AUDIO SYNC row');
+assert(/AUDIO SYNC: 0 MS/.test(syncRow().label), 'which starts at no correction');
+syncRow().adjust(1);
+syncRow().adjust(1);
+assert(save.settings.audioSyncMs === 20 && /\+20 MS/.test(syncRow().label),
+  'right nudges it up in tens and signs the number');
+assert(Math.abs(Audio.syncOffsetSec - 0.02) < 1e-9,
+  'and the audio clock hears about it immediately, not on the way out of the menu');
+for (let i = 0; i < 60; i++) syncRow().adjust(1);
+assert(save.settings.audioSyncMs === 500, 'it clamps at the top rather than running away');
+for (let i = 0; i < 200; i++) syncRow().adjust(-1);
+assert(save.settings.audioSyncMs === -100, 'and at the bottom');
+syncRow().adjust(10);
+assert(save.settings.audioSyncMs === 0, 'back to nothing');
+
+let calibrated = 0;
+const withCal = new SettingsState({ save, onDone() {}, onCalibrate: () => { calibrated++; } });
+withCal.enter();
+withCal.options().find((o) => /^AUDIO SYNC/.test(o.label)).act();
+assert(calibrated === 1, 'confirming the row opens the calibration screen');
+
 Input.clearAll();
 console.log(failed ? 'SETTINGS MENU: FAILED' : 'SETTINGS MENU: PASSED');
 process.exit(failed ? 1 : 0);

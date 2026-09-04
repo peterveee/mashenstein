@@ -12,11 +12,22 @@
 // (beatchart.js) — so on those three stages the bot has no excuse for reading
 // the lane at all. It plays the marks, and it takes no damage doing it, for
 // every hero in the relay bag.
+//
+// The third is about the run the watch modes ACTUALLY play, which is not the
+// one above: `demo: true` ends the level on the first death rather than
+// recovering at a checkpoint (see updateDead), and a demo's clock is the song's
+// rather than the sim's, so the phase between the chart and everything driven
+// by wall time is different on every launch. Played that way, at several
+// phases: no holes anywhere, and on the three chase stages the VILLAIN never
+// costs the demo the level. A bonk stops the rise dead (the clonk in run.js's
+// bonk branch), which is a flight ending half a stride early — the bot solves
+// for that flight rather than the one on paper, and the level it is meant to be
+// showing off runs to the end.
 import { installDom } from './dom-stub.js';
 installDom();
 
 const { RunState } = await import('../src/game/run.js');
-const { save } = await import('../src/engine/save.js');
+const { save, defaultSlot, defaultSettings } = await import('../src/engine/save.js');
 const { Input } = await import('../src/engine/input.js');
 const { DemoBot } = await import('../src/game/bot.js');
 const { STAGES } = await import('../src/data/stages.js');
@@ -109,6 +120,109 @@ for (const stage of STAGES.filter((s) => CABINET_BY_ID[s.cabinet].mechanic === '
     assert(r.hits === 0,
       `${stage.id}: ${hero.id} plays the marks clean (${r.hits} hits, ${r.pits} falls)`);
   }
+}
+
+// ---- the run a watch mode actually plays -------------------------------------
+//
+// A throwaway save, exactly as AttractState builds one: the demo's progress,
+// coins and deaths go nowhere, and its hero bag is the default rather than
+// whatever this machine has unlocked.
+function demoSave() {
+  const slot = defaultSlot();
+  slot.tutor = { firstPortal: 1, firstSwitch: 1, firstAbility: 1 };
+  const settings = defaultSettings();
+  return { data: { version: 2, settings, slots: [slot] }, slot, settings, persist() {} };
+}
+
+/**
+ * One demo run at a given phase between the song's clock and the run's own.
+ *
+ * The phase is the whole point of the parameter. A demo's beat comes from the
+ * music, and the music does not restart with the level — so the chart and
+ * everything the copter does off `tRun` line up differently every time the
+ * attract loop comes round. Sweeping it is the only way a fixed seed sees more
+ * than one of the runs a player will actually watch.
+ */
+function playDemo(stage, seed, phase) {
+  const cab = CABINET_BY_ID[stage.cabinet];
+  const beat = cab.mechanic === 'beat';
+  let t = 0;
+  Audio.sourceBank = beat ? cab.music : null;
+  if (beat) Audio.songBeat = () => ((t + phase) * rhythmBank.bpm) / 60;
+  let result = null;
+  const run = new RunState({
+    stage, save: demoSave(), seed, difficulty: 1, demo: true, onEnd: (r) => { result = r; },
+  });
+  run.enter();
+  const bot = new DemoBot(run);
+  const tally = { pits: 0, bonks: 0, bonkCost: 0, died: false };
+  const takeHit = run.takeHit.bind(run);
+  // A hit taken in a flight the villain interrupted is the bug this is here
+  // for: the bonk shortens the arc, and the arc was clearing something.
+  let bonkedInFlight = false;
+  run.takeHit = (msg, isPit, src, pit) => {
+    if (pit) tally.pits++;
+    if (bonkedInFlight) tally.bonkCost++;
+    return takeHit(msg, isPit, src, pit);
+  };
+  let ticks = 0;
+  let wasGrounded = true;
+  let bonks = 0;
+  while (!result && ticks < MAX_TICKS) {
+    ticks++;
+    t += TICK;
+    bot.update(TICK);
+    run.update(TICK);
+    if (run.copterBonks > bonks) { bonks = run.copterBonks; bonkedInFlight = true; }
+    if (!wasGrounded && run.player.grounded) bonkedInFlight = false;
+    wasGrounded = run.player.grounded;
+  }
+  bot.releaseAll();
+  Input.endFrame();
+  tally.bonks = bonks;
+  tally.died = run.dead;
+  tally.finished = !!result;
+  return tally;
+}
+
+const PHASES = [0, 0.37, 1.31];
+let demoPits = 0;
+let demoStuck = 0;
+let demoDeaths = [];
+for (const stage of STAGES) {
+  for (let i = 0; i < PHASES.length; i++) {
+    const r = playDemo(stage, (0x1234 + i * 7919) >>> 0, PHASES[i]);
+    demoPits += r.pits;
+    if (r.died) demoDeaths.push(stage.id);
+    if (!r.finished) demoStuck++;
+  }
+}
+const RUNS = STAGES.length * PHASES.length;
+assert(demoPits === 0, `a demo run never goes down a hole either (${demoPits} falls across ${RUNS} runs)`);
+// THE WHOLE POINT OF A WATCH MODE. A demo ends on its first death — there is no
+// checkpoint recovery in one (see updateDead) — so a death two thirds of the way
+// through is an attract clip that never shows the level it picked.
+assert(demoDeaths.length === 0,
+  `and a demo run never dies at all (${demoDeaths.length} of ${RUNS}${demoDeaths.length ? `: ${[...new Set(demoDeaths)].join(', ')}` : ''})`);
+assert(demoStuck === 0, `and every demo run reaches an ending (${demoStuck} hit the sim's cap)`);
+
+// ---- the villain does not cost the demo the level ----------------------------
+const CHASE = STAGES.filter((s) => s.mission.type === 'chase');
+assert(CHASE.length === 3, `all three chase stages are in play (${CHASE.map((s) => s.id).join(', ')})`);
+for (const stage of CHASE) {
+  let bonks = 0;
+  let deaths = 0;
+  let cost = 0;
+  for (let i = 0; i < 6; i++) {
+    const r = playDemo(stage, (0x1234 + i * 7919) >>> 0, (i * 0.37) % 4);
+    bonks += r.bonks;
+    cost += r.bonkCost;
+    if (r.died) deaths++;
+  }
+  // The mission is three bonks; six runs that never reached it would mean the
+  // bot had simply stopped jumping at him, which is not the fix.
+  assert(bonks >= 18, `${stage.id}: the demo still bonks the villain (${bonks} across 6 runs)`);
+  assert(deaths === 0, `${stage.id}: and the chase never ends the demo (${deaths} deaths, ${cost} hits inside a bonked flight)`);
 }
 
 console.log(failed ? 'BOT PITS: FAILED' : 'BOT PITS: PASSED');

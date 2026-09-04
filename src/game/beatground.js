@@ -209,7 +209,11 @@ export function drawBeatGround(ctx, run, cam, viewW, opts = {}) {
   const { beat, settings = null, laneCuts = null } = opts;
   if (!finite(beat) || !finite(cam) || !finite(viewW) || viewW <= 0) return;
   const speed = run.speed;
-  const bpm = run.spawner?.bank?.bpm || 0;
+  // THE LIVE TEMPO, not the one the song was written at: a beat stage steps its
+  // bpm up at every checkpoint (run.js BEAT_BPM_PER_CHECKPOINT), and marks
+  // spaced off the written number would slide against the music from the first
+  // one. The fallback is for the test harnesses that build a lane by hand.
+  const bpm = run.laneBpm?.() || run.spawner?.bank?.bpm || 0;
   if (!finite(speed) || speed <= 0 || !bpm) return;
   // Derived from the LIVE speed rather than from a constant, which is what
   // makes ASSIST SPEED free: it scales baseSpeed, so it scales the marks with

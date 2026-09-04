@@ -5,6 +5,24 @@ const KEY = 'mashenstein.v2';
 const V1KEY = 'superMashBros.v1';
 const RENDER_DENSITY_VERSION = 2;
 
+// AUDIO SYNC: how much LATER than the browser claims the sound actually reaches
+// the ear, in milliseconds. Positive is later. Bluetooth is the reason it
+// exists: Android Chrome and Windows report the mixer buffer but not the radio,
+// so a couple of hundred milliseconds goes unaccounted and the rhythm lane runs
+// ahead of the music. The range is one-sided on purpose — a device can hide
+// latency from us, it cannot invent negative latency — but a little below zero
+// stays available for a player who wants to lean the other way.
+export const AUDIO_SYNC_MIN = -100;
+export const AUDIO_SYNC_MAX = 500;
+export const AUDIO_SYNC_STEP = 10;
+
+export function clampAudioSyncMs(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  const stepped = Math.round(n / AUDIO_SYNC_STEP) * AUDIO_SYNC_STEP;
+  return Math.max(AUDIO_SYNC_MIN, Math.min(AUDIO_SYNC_MAX, stepped));
+}
+
 export function defaultSettings() {
   return {
     volumes: { master: 1, music: 0.7, sfx: 0.9 },
@@ -26,6 +44,14 @@ export function defaultSettings() {
     // numeric density, 'native' (proved at the display ceiling), or 0 (auto).
     renderDensityByBackend: { webgl: 0, '2d': 0 },
     renderDensityVersion: RENDER_DENSITY_VERSION,
+    // Per INSTALL, not per slot: latency belongs to the headphones, not to the
+    // save file. `audioSyncAsked` records that the offer has been made once, so
+    // the rhythm briefing asks a player exactly one time whichever way they
+    // answer. `audioSyncReportedMs` is what the browser claimed at the moment
+    // of calibration — kept so a later change of route can be noticed.
+    audioSyncMs: 0,
+    audioSyncAsked: false,
+    audioSyncReportedMs: null,
   };
 }
 
@@ -82,6 +108,12 @@ function normalizeSettings(settings) {
   // hitbox size, which never lined up with art drawn 4/3 bigger. Anyone who had
   // it on is still carrying the flag; drop it so it cannot be read back.
   delete next.highContrast;
+  // A hand-edited or half-written offset must not reach the audio clock: every
+  // read of it is inside a beat calculation, and NaN there stops the lane dead.
+  next.audioSyncMs = clampAudioSyncMs(next.audioSyncMs);
+  next.audioSyncAsked = !!next.audioSyncAsked;
+  next.audioSyncReportedMs = Number.isFinite(next.audioSyncReportedMs)
+    ? Math.round(next.audioSyncReportedMs) : null;
   return { settings: next, densityHistoryMigrated: oldVersion < RENDER_DENSITY_VERSION };
 }
 

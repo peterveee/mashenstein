@@ -22,6 +22,7 @@ const suites = [
   'tests/tutorial.js',
   'tests/hero-kits.js',
   'tests/mid-air-slide-kick.js',
+  'tests/barrel-arrival.js',
   'tests/beat-chart.js',
   'tests/cue-scheduling.js',
   'tests/beat-ground.js',
@@ -31,6 +32,7 @@ const suites = [
   'tests/flyer-motion.js',
   'tests/mouse-controls.js',
   'tests/settings-menu.js',
+  'tests/calibrate.js',
   'tests/sound-test-menu.js',
   'tests/visualisers.js',
   // The other end of the same pack: the presets driven by an imported file instead

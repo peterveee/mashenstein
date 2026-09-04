@@ -352,7 +352,7 @@ assert(gallery.artifacts.length >= 40 && gallery.heroes.length === 8
   && !gallery.artifacts.some((p) => p.asset === 'zombieWalk')
   && gallery.artifacts.some((p) => p.asset === 'drone')
   && gallery.artifacts.some((p) => p.sparkle)
-  && ['capStar', 'capSpeed', 'capAirJump', 'capLowGrav', 'capUnpeel', 'capRelay']
+  && ['capStar', 'capSpeed', 'capAirJump', 'capLowGrav', 'capUnpeel']
     .every((asset) => gallery.artifacts.filter((p) => p.asset === asset).length >= 3),
   'arcade art gallery showcases 66 half-size falling coins that flip edge-on, the main cast, and multiple versions of every power-up');
 assert(gallery.galleryStars.length >= 200 && gallery.galleryWorlds.length >= 5

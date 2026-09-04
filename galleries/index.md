@@ -22,7 +22,6 @@ history thins to one a week. Do not edit by hand.
 | 2026-08-05 | `fd28b2e` | [2026-08-05-fd28b2e.html](2026-08-05-fd28b2e.html) | -- | Add mixer voice editor enhancements and tutorial script |
 | 2026-08-16 | `c680f60` | [2026-08-16-c680f60.html](2026-08-16-c680f60.html) | -- | Archive published build 414ae37 |
 | 2026-08-20 | `4db943a` | [2026-08-20-4db943a.html](2026-08-20-4db943a.html) | -- | Refactor TNGR-2 Chorus Handling and Improve Note FX Logic |
-| 2026-08-27 | `8df6c9b` | [2026-08-27-8df6c9b.html](2026-08-27-8df6c9b.html) | -- | fix: adjust PIT_SINK_RATE and PIT_DEATH_HOLD for smoother fall mechanics; enhance startled face expression during unplanned falls |
 | 2026-08-30 | `8189ee2` | [2026-08-30-8189ee2.html](2026-08-30-8189ee2.html) | -- | test: verify that all jukebox songs start at step zero |
 | 2026-08-31 | `887131e` | [2026-08-31-887131e.html](2026-08-31-887131e.html) | -- | test: add death pose tests to verify upright figure on death hold |
 | 2026-08-30 | `f3ebb18` | [2026-08-30-f3ebb18.html](2026-08-30-f3ebb18.html) | -- | Layout parity: fingerprint generation, not the hero's frame |
@@ -34,3 +33,4 @@ history thins to one a week. Do not edit by hand.
 | 2026-09-03 | `6a2d8ea` | [2026-09-03-6a2d8ea.html](2026-09-03-6a2d8ea.html) | [bake-offs](2026-09-03-6a2d8ea-lab.html) | Refactor gallery entry and shell for improved organization and functionality |
 | 2026-09-03 | `c94052a` | [2026-09-03-c94052a.html](2026-09-03-c94052a.html) | [bake-offs](2026-09-03-c94052a-lab.html) | Refactor gallery archiving to include both production and lab pages |
 | 2026-09-03 | `c94c455` | [2026-09-03-c94c455.html](2026-09-03-c94c455.html) | [bake-offs](2026-09-03-c94c455-lab.html) | Refactor jump height calculations and update related tests |
+| 2026-09-03 | `4174be0` | [2026-09-03-4174be0.html](2026-09-03-4174be0.html) | [bake-offs](2026-09-03-4174be0-lab.html) | Add new gallery entry for September 2026 and refactor related files |

@@ -43,6 +43,26 @@ dom.store['mashenstein.v2'] = JSON.stringify(partial);
   'backend-specific render densities default to auto for existing saves');
   assert(s.data.settings.renderDensityVersion === 2,
     'render-density history is stamped with the current migration version');
+  assert(s.data.settings.audioSyncMs === 0 && s.data.settings.audioSyncAsked === false
+    && s.data.settings.audioSyncReportedMs === null,
+  'audio sync starts uncalibrated and unasked, so the rhythm briefing still offers it');
+}
+
+// Case 3b: the audio offset is clamped and stepped on the way in. Every read of
+// it happens inside a beat calculation, where a NaN stops the rhythm lane dead.
+{
+  const { clampAudioSyncMs } = await import('../src/engine/save.js');
+  assert(clampAudioSyncMs(900) === 500 && clampAudioSyncMs(-250) === -100,
+    'an out-of-range offset is clamped rather than trusted');
+  assert(clampAudioSyncMs(123) === 120, 'and rounded to the step the settings row moves by');
+  assert(clampAudioSyncMs('abc') === 0 && clampAudioSyncMs(undefined) === 0,
+    'a nonsense offset reads as none');
+  dom.store['mashenstein.v2'] = JSON.stringify({
+    version: 2, settings: { audioSyncMs: 9000, audioSyncReportedMs: 'x' }, slots: [null, null, null],
+  });
+  const s = new Save().load();
+  assert(s.data.settings.audioSyncMs === 500 && s.data.settings.audioSyncReportedMs === null,
+    'a hand-edited save cannot put a bad number on the audio clock');
 }
 
 // Case 4: the old scalar density is deliberately discarded because it does not

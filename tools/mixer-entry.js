@@ -10519,7 +10519,23 @@ function applyArrangementEdit(next, what, {
   // `bank.sections` to number the layer, so handing it the arranged bank writes an
   // index past the end of the list the file will actually have.
   const entry = entryOf(editBank(), next);
-  const issues = arrangementIssues(track.bank, entry, deskLanes(editBank(), 1).map((l) => l.key));
+  // WHICH LANES EXIST, asked of both banks. `editBank()` is the song as WRITTEN, and
+  // `activeLanes` only walks the bars its own order visits — so a track whose hits all
+  // live in a section the composition's order never reaches is not in that list, while
+  // the desk has been drawing a strip for it all along off `viewBank()`. Three songs are
+  // in that position today, and every one of the tracks is percussion: the rhythm
+  // cabinet's crash and riser, the frost clap and open hat, the megamix cowbell.
+  // Validating against the narrower of the two refused EVERY bar edit those tracks could
+  // be given — a gain, a mute, a transpose, a timing nudge — and the `undo()` below then
+  // put the old value back, which at the desk reads as a control that will not stick.
+  // The union is the honest question: a lane is real if either the composition or the
+  // arrangement plays it. `entryOf` above still takes the written bank, for the section
+  // arithmetic `editBank` explains.
+  const laneKeys = [...new Set([
+    ...deskLanes(editBank(), 1).map((l) => l.key),
+    ...deskLanes(viewBank(), 1).map((l) => l.key),
+  ])];
+  const issues = arrangementIssues(track.bank, entry, laneKeys);
   if (issues.length) {
     // Refused rather than written: an unplayable arrangement is silence with a
     // playhead running through it, and the desk should say so while there is still

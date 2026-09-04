@@ -5,7 +5,7 @@ import { titleProfileOptions } from '../engine/title-profile.js';
 import { Input } from '../engine/input.js';
 import { Audio } from '../engine/audio.js';
 import { VISUALISER_NAMES, clamp, createVisualiser, pickVisualiser, smooth } from '../engine/visualisers.js';
-import { defaultSettings } from '../engine/save.js';
+import { defaultSettings, clampAudioSyncMs, AUDIO_SYNC_STEP } from '../engine/save.js';
 import { formatBuildTime } from '../engine/build-time.js';
 import { drawText, drawTextCentered, textWidth, getSprite, wrapText, platePath, drawMenuRow, textYForMid, TEXT_INK_H, TEXT_INK_TOP, drawB33pPellet } from '../engine/sprites.js';
 import {
@@ -25,8 +25,8 @@ const GUIDE_ICON_SIZES = {
   tombstone: [11, 8], zombieWalk: [10, 14], resident: [10, 12], drone: [13, 8], buzzbird: [13, 8],
   icicle: [8, 10], cardboardMonster: [12, 9], cardBox: [12, 11], printer: [12, 8], capStar: [9, 9],
   battery: [8, 9], boostPad: [14, 5], coin: [8, 8], capShield: [9, 9],
-  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRelay: [9, 9], capRewind: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7],
-  eggshell: [24, 20], target: [9, 9],
+  capMagnet: [9, 9], capAirJump: [9, 9], capSpeed: [9, 9], capLowGrav: [9, 9], capUnpeel: [9, 9], capRewind: [9, 9], appliance: [17, 14], cord: [13, 8], fuse: [9, 7],
+  eggshell: [24, 20], eggshellCopter: [28, 28], target: [9, 9], beatBar: [8, 14],
   // Standing hazards. Each is its def box times PROP_TALL, rounded — the guide
   // has to show the art the lane shows, and for these the art is mostly the
   // part that is not the hitbox.
@@ -1103,7 +1103,7 @@ function drawRetainedMarquee(ctx, alpha) {
       x.beginPath(); x.moveTo(sx, seamTop); x.lineTo(sx + 8, seamBot); x.stroke();
       x.beginPath(); x.moveTo(sx + 8, seamTop); x.lineTo(sx, seamBot); x.stroke();
     }
-    drawTextCentered(x, 'THE UNPLUGGENING', W / 2, TITLE_SUBTITLE_Y, '#5fd6c8', 1, 'subtitle');
+    drawTextCentered(x, 'THE UNPLUGGENING', W / 2, TITLE_SUBTITLE_Y, '#8fb0f5', 1, 'subtitle');
     titleMarqueeCache.key = `${ss}`;
   }
   ctx.save();
@@ -2638,16 +2638,44 @@ function briefingLayout(pieces, scale) {
 }
 
 export class BriefingState {
-  constructor({ cab, stage, onDone }) { this.cab = cab; this.stage = stage; this.onDone = onDone; }
+  constructor({ cab, stage, onDone, askCalibrate = false, onCalibrate = null, settings = null }) {
+    this.cab = cab;
+    this.stage = stage;
+    this.onDone = onDone;
+    // The AUDIO SYNC offer, on every rhythm briefing. It hangs here rather than
+    // at NEW GAME because a latency question asked before the player has heard
+    // a note is a question about nothing, and it repeats because headphones do:
+    // a number measured on the laptop speaker is the wrong number on the bus,
+    // and the screen in front of the stage is where that is worth noticing.
+    this.askCalibrate = !!askCalibrate && !!onCalibrate;
+    this.onCalibrate = onCalibrate;
+    this.settings = settings;
+  }
+  /**
+   * Before a first calibration the row names itself; afterwards it shows the
+   * number in force. A player who has already set one is not looking for the
+   * word CALIBRATE, they are checking whether the figure is still right.
+   */
+  calibrateLabel() {
+    const s = this.settings;
+    if (!s || !s.audioSyncAsked) return 'CALIBRATE AUDIO SYNC (WIRELESS HEADPHONES)';
+    const ms = clampAudioSyncMs(s.audioSyncMs);
+    return `AUDIO SYNC: ${ms > 0 ? '+' : ''}${ms} MS — RECALIBRATE`;
+  }
   enter() {
     this.reveal = 0;
     this.t = 0;
+    // PLAY preselected: a player who taps straight through — which is most of
+    // them, on a card they have learned skips — must get the stage, not a
+    // calibration screen they did not ask for.
+    this.idx = 1;
     Input.setMenuButtons();
     this.pieces = [
       { head: null, text: `MISSION: ${this.stage.mission.desc}` },
       ...(BRIEFINGS[this.stage.id] || []),
     ];
-    const band = BRIEF_BOTTOM - BRIEF_TOP;
+    // The offer takes a row out of the memo's band rather than overlapping it.
+    const band = (BRIEF_BOTTOM - BRIEF_TOP) - (this.askCalibrate ? 20 : 0);
     const steps = BRIEF_SCALES.map((s) => briefingLayout(this.pieces, s));
     this.layout = steps.find((l) => l.height <= band) || steps[steps.length - 1];
     // Centred in the band: a two-line mission pinned to the top of a black
@@ -2657,7 +2685,28 @@ export class BriefingState {
   update(dt) {
     this.t += dt;
     this.reveal += dt;
-    if (Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer')) {
+    const acting = Input.pressed('confirm') || Input.pressed('jump') || Input.pressed('pointer');
+    if (this.askCalibrate && this.landed()) {
+      if (Input.pressed('up') || Input.pressed('down')
+        || Input.pressed('left') || Input.pressed('right')) {
+        this.idx = this.idx ? 0 : 1;
+        Audio.sfx('ui');
+      }
+      if (Input.pressed('pointer')) {
+        // Two tap zones over the two rows; a tap anywhere else selects nothing
+        // rather than committing, because one of these choices leaves the stage.
+        const y = Input.pointer.y;
+        if (y >= H - 44 && y < H - 26) this.idx = 0;
+        else if (y >= H - 26) this.idx = 1;
+        else { Input.endFrame(); return; }
+      }
+      if (acting) { Audio.sfx('uiConfirm'); this.pick(); Input.endFrame(); return; }
+      // BACK is the way past a question, and the way past this one is to play.
+      if (Input.pressed('back')) { Audio.sfx('uiConfirm'); this.onDone(); }
+      Input.endFrame();
+      return;
+    }
+    if (acting) {
       // Still two inputs — land the memo, then proceed — but the memo lands in
       // well under a second, so the first one is a courtesy rather than a gate.
       if (!this.landed()) { this.reveal = CASCADE_ALL; Audio.sfx('ui'); }
@@ -2666,6 +2715,7 @@ export class BriefingState {
     if (Input.pressed('back')) { Audio.sfx('uiConfirm'); this.onDone(); }
     Input.endFrame();
   }
+  pick() { if (this.idx === 0) this.onCalibrate(); else this.onDone(); }
   landed() { return cascadeDone(this.reveal, this.layout.lines.length); }
   draw(ctx) {
     ctx.fillStyle = '#000';
@@ -2684,12 +2734,29 @@ export class BriefingState {
     });
     ctx.restore();
     const done = this.landed();
+    // The confirm line rides a size up on touch: it is the one thing on the
+    // screen a thumb has to act on, not just read.
+    const promptS = Input.isTouchDevice() ? 1.25 : 1;
+    const playLine = `[${confirmVerb()}]: ${BRIEFING_PROMPTS[this.cab.id] || 'PROCEED'}`;
+    if (this.askCalibrate && done) {
+      // Only the selected row blinks. Two blinking rows read as one flashing
+      // screen, and neither of them reads as the thing about to happen.
+      const blink = Math.floor(this.t * 2) % 2 === 0;
+      const dim = '#5a5a68';
+      const rows = [
+        [0, this.calibrateLabel(), textYForMid(H - 35, promptS)],
+        [1, playLine, textYForMid(H - 16, promptS)],
+      ];
+      for (const [i, text, y] of rows) {
+        const on = this.idx === i;
+        if (on && !blink) continue;
+        drawTextCentered(ctx, `${on ? '> ' : '  '}${text}`, W / 2, y, on ? '#c8c8d8' : dim, promptS);
+      }
+      return;
+    }
     if (!done || Math.floor(this.t * 2) % 2 === 0) {
-      // The confirm line rides a size up on touch: it is the one thing on the
-      // screen a thumb has to act on, not just read.
-      const promptS = Input.isTouchDevice() ? 1.25 : 1;
-      drawTextCentered(ctx, `[${confirmVerb()}]: ${BRIEFING_PROMPTS[this.cab.id] || 'PROCEED'}`,
-        W / 2, textYForMid(H - 16, promptS), done ? '#c8c8d8' : '#5a5a68', promptS);
+      drawTextCentered(ctx, playLine, W / 2, textYForMid(H - 16, promptS),
+        done ? '#c8c8d8' : '#5a5a68', promptS);
     }
   }
 }
@@ -3368,7 +3435,7 @@ const GUIDE_PAGES = [
       { s: '_shot', name: 'ENEMY SHOT', desc: 'RED MEANS DODGE. YELLOW MEANS ABOUT TO FIRE.' },
       { s: 'buzzbird', name: 'BUZZBIRD', desc: 'MID-AIR MENACE. DO NOT JUMP INTO IT.' },
       { s: 'icicle', name: 'ICICLE', desc: 'FALLS WHEN YOU GET CLOSE. WATCH ITS SHADOW.' },
-      { s: '_beatBar', name: 'BEAT BAR', desc: 'POPS UP ON THE BEAT. JUMP ON TIME.' },
+      { s: 'beatBar', name: 'BEAT ARROWS', desc: 'UP MEANS JUMP. DO IT ON THE BEAT.' },
       { s: '_paper', name: 'PAPERWORK', desc: 'FLIES LOW. SLIDE. DO NOT SIGN IT.' },
       { s: 'cardboardMonster', name: 'BOX MONSTER', desc: 'CARDBOARD. STILL COUNTS. JUMP IT.' },
     ],
@@ -3383,7 +3450,7 @@ const GUIDE_PAGES = [
       { s: 'switch', name: 'FROZEN SWITCH', desc: 'TOUCH TO EXTEND A BRIDGE OVER THE NEXT PIT.' },
       { s: 'boostPad', name: 'BOOST PAD', desc: 'RUN OVER IT. GO UNREASONABLY FAST.' },
       { s: '_portal', name: 'HERO PORTAL', desc: 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.' },
-      { s: 'eggshell', name: 'CLOWN-COPTER', desc: 'CATCH IT WHEN IT SWOOPS LOW. CHASE MISSIONS.' },
+      { s: 'eggshellCopter', name: 'CLOWN-COPTER', desc: 'FLIES AHEAD. WHEN IT DROPS IN, JUMP AND BONK IT. HIT MISSIONS.' },
     ],
   },
   // All eight capsules live on one page. They come from the same drip table and
@@ -3394,12 +3461,11 @@ const GUIDE_PAGES = [
     rows: [
       { s: 'capShield', name: 'SHIELD', desc: 'ABSORBS ONE HIT. POLITELY.' },
       { s: 'capMagnet', name: 'MAGNET', desc: 'PULLS NEARBY COINS TO YOU.' },
-      { s: 'capStar', name: 'STAR', desc: 'SCORE MULTIPLIER. YES, IT LOOKS LIKE A TARGET.' },
+      { s: 'capStar', name: 'STAR', desc: 'SCORE MULTIPLIER. IT IS A STAR. THE TARGET IS THE RED ONE.' },
       { s: 'capAirJump', name: 'AIR JUMP', desc: 'ONE EXTRA AIR-JUMP. STACKS WITH KIKO AND THE CAPE.' },
       { s: 'capSpeed', name: 'SPEED BURST', desc: 'RUNS FASTER. THE SCENERY OBJECTS.' },
       { s: 'capLowGrav', name: 'LOW GRAVITY', desc: 'YOUR JUMPS GET BIGGER. PHYSICS FILES A COMPLAINT.' },
       { s: 'capUnpeel', name: 'UNPEELABLE', desc: 'RARE. HITS BOUNCE OFF. PITS STILL DO NOT CARE.' },
-      { s: 'capRelay', name: 'RELAY BATON', desc: 'VERY RARE. BANKS ONE SUPERCHARGED POWER. SPEND IT WELL.' },
       { s: 'capRewind', name: 'REWIND', desc: 'RARE. YOUR NEXT MISTAKE UNDOES ITSELF. EVEN A PIT.' },
     ],
   },
@@ -3447,12 +3513,6 @@ export class FieldGuideState {
       const t0 = top(8);
       ctx.fillStyle = '#101018'; ctx.fillRect(cx - 10, t0 + 2, 20, 6);
       ctx.fillStyle = '#30303f'; ctx.fillRect(cx - 12, t0, 3, 8); ctx.fillRect(cx + 9, t0, 3, 8);
-      return;
-    }
-    if (key === '_beatBar') {
-      const t0 = top(10);
-      ctx.fillStyle = '#e04898'; ctx.fillRect(cx - 4, t0, 8, 10);
-      ctx.fillStyle = '#f890c8'; ctx.fillRect(cx - 4, t0, 8, 2);
       return;
     }
     if (key === '_paper') {
@@ -4166,7 +4226,6 @@ export class HowToPlayState {
     line('POWER SLIDE', touch ? 'SWIPE DOWN AND HOLD. KICKS CONES AND BARRELS.' : 'S / DOWN. HOLD IT. KICKS CONES AND BARRELS.');
     line('HERO POWER', touch ? 'THE PWR BUTTON, OR SWIPE RIGHT.' : 'RIGHT / D. X / SHIFT TOO.');
     line('PORTALS', 'RUN THROUGH TO TAG IN THE PREVIEWED HERO.', '#48e0c8');
-    line('RELAY BATON', 'VERY RARE CAPSULE. BANKS ONE SUPERCHARGED POWER.', '#48e0c8');
     // No control row of its own, deliberately: there is nothing to press.
     line('REWIND', touch ? 'RARE CAPSULE. YOUR NEXT MISTAKE UNDOES ITSELF.'
       : 'RARE CAPSULE. YOUR NEXT MISTAKE UNDOES ITSELF. (HOLD LEFT / A TO SCRUB ANY TIME.)', '#48e0c8');
@@ -4193,9 +4252,10 @@ const SETTINGS_BACK_TOP = 216;
 const SETTINGS_BACK_H = 25;
 
 export class SettingsState {
-  constructor({ save, onDone }) {
+  constructor({ save, onDone, onCalibrate = null }) {
     this.save = save;
     this.onDone = onDone;
+    this.onCalibrate = onCalibrate;
     this.listY = SETTINGS_TOP;
     this.rowH = SETTINGS_ROW;
     this.visibleRows = SETTINGS_VISIBLE_ROWS;
@@ -4226,6 +4286,26 @@ export class SettingsState {
       adjust,
     };
   }
+  /**
+   * AUDIO SYNC, in milliseconds, signed.
+   *
+   * Left and right nudge it by ten; CONFIRM opens the tap test, which is the only
+   * way in on a touchscreen — a phone has no left and right, and a phone is
+   * exactly the device that needs this row.
+   */
+  audioSyncOption() {
+    const s = this.save.settings;
+    const adjust = (dir) => {
+      s.audioSyncMs = clampAudioSyncMs(s.audioSyncMs + dir * AUDIO_SYNC_STEP);
+      Audio.setSyncOffset(s.audioSyncMs);
+    };
+    const ms = clampAudioSyncMs(s.audioSyncMs);
+    return {
+      label: `AUDIO SYNC: ${ms > 0 ? '+' : ''}${ms} MS`,
+      act: () => { if (this.onCalibrate) this.onCalibrate(); else adjust(1); },
+      adjust,
+    };
+  }
   options() {
     const s = this.save.settings;
     return [
@@ -4236,6 +4316,7 @@ export class SettingsState {
         : []),
       this.volumeOption('music', 'MUSIC VOLUME'),
       this.volumeOption('sfx', 'SFX VOLUME'),
+      this.audioSyncOption(),
       { label: `REDUCED MOTION: ${s.reducedMotion ? 'ON' : 'OFF'}`, act: () => { s.reducedMotion = !s.reducedMotion; } },
       { label: `REDUCED FLASHING: ${s.reducedFlashing ? 'ON' : 'OFF'}`, act: () => { s.reducedFlashing = !s.reducedFlashing; } },
       { label: `SCREEN SHAKE: ${Math.round(s.screenShake * 100)}%`, act: () => { s.screenShake = s.screenShake >= 1 ? 0 : s.screenShake + 0.5; } },
@@ -4276,6 +4357,11 @@ export class SettingsState {
     setFancyFx(this.save.settings.fancyFx);
     Audio.setVolumes(this.save.settings.volumes);
     Audio.setMuted(this.save.settings.muted);
+    // Zeroes AUDIO SYNC along with everything else. That is the right answer for a
+    // reset — a measurement made on someone else's headphones is worse than none —
+    // and it also clears `audioSyncAsked`, so the rhythm briefing offers the tap
+    // test once more.
+    Audio.setSyncOffset(this.save.settings.audioSyncMs);
     this.confirming = false;
   }
   update(dt) {

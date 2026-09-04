@@ -2982,6 +2982,14 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
     // edge where it meets the cheek, which the skull's own fill hides here.
     const motion = pose.kind === 'run' || pose.kind === 'jump';
     const tucked = pose.kind === 'duck';
+    // THE SLIDE IS NOT THE CROUCH, and long hair is where the two part
+    // company. A crouch folds the hero up and lifts the head; a slide lays
+    // her out with her head barely half a unit off the deck and her back
+    // along it. The tuck below was measured for the crouch — worn into the
+    // slide it cropped the plait to a stub beside her jaw, which is the one
+    // thing this cut cannot afford: the length past her outline IS the
+    // silhouette. Only the braid reads this; the other cuts keep the tuck.
+    const sliding = tucked && pose.duckStyle === 'slide';
     // Cropped to a face cell the hanging hair is cut to just past the jaw: long
     // enough to break the head's outline and say which cut this is, short
     // enough that the crop is still a face. See paintFace.
@@ -3087,10 +3095,18 @@ function drawHead(ctx, id, spec, p, u, ow, hx, hy, lod, pose = {}) {
       // against her, far enough that it never disappears into the arm. Out at
       // 1.34R it was a separate object hanging in the air next to the hero.
       const bound = motion ? wave * 2.1 : wave;
-      const tipX = hx - R * (portrait ? 1.32 : motion ? 1.3 : tucked ? 1.42 : 1.05);
-      const tipY = hy + R * (portrait ? 1.34 : motion ? 3.0 : tucked ? 1.08 : 2.62) + bound;
-      const ctlX = hx - R * (portrait ? 1.22 : motion ? 1.3 : tucked ? 1.16 : 1.02);
-      const ctlY = hy + R * (portrait ? 0.62 : motion ? 1.5 : tucked ? 0.5 : 1.4) + bound * 0.4;
+      // SLIDING IT KEEPS ITS LENGTH AND SPENDS IT BACKWARD. The head is
+      // canted -0.28 rad and rides at 0.50u, so 2.24R below its centre IS
+      // the deck: the tip is placed to land just short of it and the rest of
+      // the rope goes out behind her, sagging onto the floor she is sliding
+      // on. Total run is ~2.9R, the same length the run stretches it to —
+      // she has not lost half her hair on the way down, which is exactly
+      // what the crouch tuck read as. Numbers are pre-rotation, because the
+      // whole head turns under them.
+      const tipX = hx - R * (portrait ? 1.32 : motion ? 1.3 : sliding ? 2.46 : tucked ? 1.42 : 1.05);
+      const tipY = hy + R * (portrait ? 1.34 : motion ? 3.0 : sliding ? 1.53 : tucked ? 1.08 : 2.62) + bound;
+      const ctlX = hx - R * (portrait ? 1.22 : motion ? 1.3 : sliding ? 1.5 : tucked ? 1.16 : 1.02);
+      const ctlY = hy + R * (portrait ? 0.62 : motion ? 1.5 : sliding ? 1.55 : tucked ? 0.5 : 1.4) + bound * 0.4;
       const at = sampler(hx - R * 0.92, hy + R * 0.3, ctlX, ctlY, tipX, tipY);
       // Half-width down the plait. Thin — a plait is a rope of three thin
       // strands, and the first cut's girth was most of why the shape read the
@@ -8710,7 +8726,10 @@ function drawDuckSlide(ctx, id, spec, p, pose, u, ow, lod) {
   // No pose.roll in the head's pose: the effort expression it forces owns the
   // mouth slot, and it cost B-33P his grille and Gnash his smirk. The duck
   // kind alone keeps the focused eyes.
-  const headPose = { kind: 'duck', time: t };
+  // The head is in a SLIDE, not a crouch, and it has to say so: drawHead's
+  // long-hair block poses off the pose it is handed, and a bare 'duck' asked
+  // it for the crouch's shoulder tuck. See the braid's own note there.
+  const headPose = { kind: 'duck', duckStyle: 'slide', time: t };
   ctx.save();
   ctx.translate(0, jig);
   // Arrival: instead of the generic height blend, the slide TIPS BACK onto
@@ -10728,8 +10747,13 @@ function cached(key, w, h, paint) {
   toonCache.set(key, c);
   return c;
 }
-export function toonFaceSprite(heroId, w, h) {
-  return cached(`${heroId}|face|${w}x${h}`, w, h, (x) => drawToonFace(x, heroId, 0, 0, w, h));
+// `opts` is drawToonFace's own options object, plus a `key` that names the
+// variant for the cache. Without the key a second expression would come back as
+// whichever of the two was baked first — the cache is keyed on the crop, and the
+// crop does not know what face is inside it.
+export function toonFaceSprite(heroId, w, h, opts = null) {
+  const key = `${heroId}|face|${w}x${h}${opts?.key ? `|${opts.key}` : ''}`;
+  return cached(key, w, h, (x) => drawToonFace(x, heroId, 0, 0, w, h, opts || {}));
 }
 export function toonStandSprite(heroId, w, h) {
   return cached(`${heroId}|stand|${w}x${h}`, w, h, (x) => drawToon(x, heroId, { kind: 'idle', time: 0, grounded: true }, w / 2, h - 0.5, h * 0.96));

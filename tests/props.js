@@ -53,7 +53,7 @@ assert(propDetailScale('dustdevil') === 2,
 const refinedProps = [
   'cactus', 'cactusBig', 'crate', 'qcrate', 'pipe', 'switch', 'zombieWalk', 'icicle',
   'buzzbird', 'drone', 'shooterDrone', 'printer', 'chair', 'battery',
-  'capShield', 'capMagnet', 'capStar', 'capAirJump', 'capSpeed', 'capLowGrav', 'capUnpeel', 'capRelay',
+  'capShield', 'capMagnet', 'capStar', 'capAirJump', 'capSpeed', 'capLowGrav', 'capUnpeel',
 ];
 assert(refinedProps.every((name) => propDetailScale(name) === 2),
   'small reviewed props rasterize at double internal detail');

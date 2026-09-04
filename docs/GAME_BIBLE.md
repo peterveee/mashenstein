@@ -70,7 +70,8 @@ All eight are available in every normal stage. Portals switch between them autom
 A giant egg-shaped ape with a mustache, tiny science goggles, and a spiky shell. Pompous, disputes damage via bureaucratic paperwork. Lost to heroes for 40 straight fiscal years. Never appears as a fair fight; appears as a grievance.
 
 - Taunt pool rotates every 55–75 seconds during runs, plus each cabinet has one bespoke taunt.
-- Appears as the Act I boss (Clown-Copter) and Act III final boss (Eggshell & The Absolutely Final Power Strip).
+- Chase missions: he hovers OVER the hero and is bonked from underneath, three times a stage.
+- Appears as the Act I boss (Clown-Copter — a bust in a striped tub under a three-quarter rotor) and Act III final boss (Eggshell & The Absolutely Final Power Strip, arriving by striped clown balloon; the balloon is the weak point).
 - In the ending: "SO THIS IS THE WARMTH I NEVER GOT" — the game's one stab at pathos for him.
 
 ### 2.3 NPCs

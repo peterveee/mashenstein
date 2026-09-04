@@ -86,7 +86,7 @@ const S = (cab, idx, mission, challenge, opts = {}) => ({
 export const STAGES = [
   // ACT I ---------------------------------------------------------------------
   S('plumber', 1,
-    { type: 'reach', desc: 'REACH THE BREAKER. FLIP IT. SAVE EVERYTHING.' },
+    { type: 'reach', desc: 'REACH THE FINISH LINE. HIT IT. SAVE EVERYTHING.' },
     { type: 'coins', n: 20, desc: 'COLLECT 20 COINS' },
     { act: 'ACT I. THE ARCADE GOES DARK. THE EMERGENCY LIGHTING IS ALSO UNPLUGGED.',
       introBy: 'lorenzo', intro: 'THESE PIPES KNOW ME. WE HAVE HISTORY. MOST OF IT IS LEGAL.',
@@ -149,7 +149,7 @@ export const STAGES = [
   // laid inside its guard lane — and 0.14 rather than the 0.25 this used to be,
   // which charged fifteen seconds of replay for a hole in the opening third.
   S('speed', 2,
-    { type: 'chase', n: 2, desc: 'CATCH THE CLOWN-COPTER 2 TIMES. IT IS UNDERINSURED.' },
+    { type: 'chase', n: 3, desc: 'BONK THE CLOWN-COPTER FROM BELOW, 3 TIMES. IT IS UNDERINSURED.' },
     { type: 'coins', n: 25, desc: 'COLLECT 25 COINS' },
     { pits: [{ at: 0.14, w: 52 }, { at: 0.72, w: 56 }] }),
   // THE THIRD CROSSING, and the one the cabinet's own furniture argues for: a
@@ -195,7 +195,7 @@ export const STAGES = [
   // fractions would be indistinguishable from the eight the loop already cut by
   // the time the player reached them.
   S('rhythm', 3,
-    { type: 'chase', n: 2, desc: 'CHASE THE COPTER. IT IS SOMEHOW ON BEAT.' },
+    { type: 'chase', n: 3, desc: 'BONK THE COPTER 3 TIMES. IT IS SOMEHOW ON BEAT.' },
     { type: 'noDamage', n: 1, desc: 'TAKE NO DAMAGE' }),
   // ACT II --------------------------------------------------------------------
   S('frost', 1,
@@ -256,7 +256,7 @@ export const STAGES = [
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
     { pits: [{ at: 0.37, w: 56 }, { at: 0.70, w: 60 }] }),
   S('cardboard', 3,
-    { type: 'chase', n: 3, desc: 'CATCH THE COPTER. IT IS HELD UP BY A VISIBLE HAND.' },
+    { type: 'chase', n: 3, desc: 'BONK THE COPTER 3 TIMES. IT IS HELD UP BY A VISIBLE HAND.' },
     { type: 'coins', n: 35, desc: 'COLLECT 35 COINS' },
     { pits: [{ at: 0.06, w: 60 }, { at: 0.40, w: 64 }, { at: 0.72, w: 68 }] }),
   S('office', 1,

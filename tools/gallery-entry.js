@@ -25,6 +25,7 @@ import { HERO_BY_ID } from '../src/data/heroes.js';
 import {
   PROP_PAINTERS, drawProp, propFrames, propFps, propTall, glowSprite, sparkSprite, PORTAL_SPRITE,
   PORTAL_SPENT_SPRITE, PORTAL_WILT_SPRITE, PORTAL_SPEND_TIME, PORTAL_WILT_TIME,
+  eggshellCopterArt,
 } from '../src/sprites/props.js';
 import { WORLD_SPRITES } from '../src/sprites/world.js';
 import {
@@ -41,6 +42,7 @@ import {
   DEATH_FACE_TIMING, DEATH_EYE_STYLES,
   TITLE_PARADE_ACTIONS, titleParadeAction, transitionCameoAction,
   b33pTitleShotPose,
+  poseFromPlayer,
 } from '../src/sprites/toons.js';
 import {
   getStylePack, LCD_GORILLA_TONE_STYLES, LCD_GORILLA_EXPRESSIONS,
@@ -53,7 +55,10 @@ import { POWER_DEFS } from '../src/game/powerups.js';
 import {
   drawPlugRow, PLUG_ICONS, PLUG_NAMES, PLUG_ROW_W, PLUG_FRAME_COLORS,
 } from '../src/game/plugs.js';
-import { drawFloatie, drawSpeech, drawActBanner, drawFailBanner } from '../src/game/hud.js';
+import {
+  drawFloatie, drawSpeech, drawActBanner, drawFailBanner,
+  drawStatusPill, drawHeroBadge, HERO_CHIP_CUTS, HERO_REVEAL_CUTS,
+} from '../src/game/hud.js';
 import { STAGES } from '../src/data/stages.js';
 import { HANDOFF_VARIANTS } from '../src/game/credits-handoff.js';
 import { BOOST_FX_VARIANTS } from '../src/game/boostFx.js';
@@ -63,6 +68,7 @@ import {
 import {
   PLAYER_X, AIR_JUMP_SCALE, VARIABLE_JUMP_CUT,
   jumpV, gravityFor, jumpHeightFor, airtimeFor,
+  Player, SLIDE_KICK_T, STAND_AFTER_PLOW_T,
 } from '../src/game/player.js';
 import { drawBambooShoot } from '../src/engine/sprites.js';
 // Roads are built by the SAME function the run builds them with, off the SAME
@@ -96,6 +102,9 @@ import {
   RUSTY_BROWANGLE_CANDIDATES, RUSTY_SNOUT_CANDIDATES, RUSTY_MOUTH_CANDIDATES,
   RUSTY_EXPRESSIVE_CANDIDATES,
 } from '../src/dev/hero-candidates.js';
+import {
+  EGGSHELL_CANDIDATES, drawEggshellCandidate, EGGSHELL_TRAVEL, drawEggshellTravel,
+} from '../src/dev/eggshell-candidates.js';
 
 const GROUND_Y = 232; // mirrors stylePacks/index.js + run.js
 
@@ -482,6 +491,151 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
     // Selected small vector props render denser still, for silhouette work.
     hires: SMOOTH_PREVIEW_PROPS.has(e.type) ? smoothPreviewScale(e.type) : true,
   });
+}
+
+// ------------------------------------------------------------ 1. the cast line-up
+// THE WHOLE ROSTER IN ONE PICTURE, ONCE PER POSE. Every hero section below is a
+// grid of separate canvases, which is the right shape for studying one
+// character and the wrong shape for the question this answers: what does the
+// cast look like TOGETHER. One wide strip per pose, each on a single clock and
+// a single feet line, so a hero who stands too tall, sits too heavy, or whose
+// cycle steps out of time with everyone else's is obvious at a glance. Same
+// drawToon() call the run makes; click any strip to save it as a PNG.
+//
+// CHOMPO AND MOCHI ARE OUT OF THESE STRIPS, at Peter's request. They keep every
+// tile they had in the sections below — this is the line-up, not the cast list.
+{
+  const LINEUP_OMIT = new Set(['chompo', 'mochi']);
+  const ids = Object.keys(TOON_SPECS).filter((id) => !LINEUP_OMIT.has(id));
+  const grid = section('cast-lineup', 'The cast — one line-up per pose',
+    `${ids.length} heroes shoulder to shoulder on a shared feet line, drawn by the game's own `
+    + `drawToon() on a single clock (chompo and mochi are held out of the line-up). The per-hero `
+    + 'rows further down draw at the same 60px height, so a hero picked out of a strip compares '
+    + 'like for like with their own tiles.');
+  const HH = 60;   // matches the per-hero rows below, so the two compare like for like
+  const COL = 74;  // clears grumpos's axe and b33p's cannon at that height
+  const GAP = 18;  // feet line to the bottom edge, where the name sits
+  // Each strip is only as tall as its pose needs. Standing clears grumpos's
+  // axe, which rides ~1.25*HH above his feet; the celebration hops and spins up
+  // to ~0.26*HH higher again; a held duck never leaves the floor.
+  const HEIGHTS = { idle: 96, run: 96, jump: 96, duck: 72, celebrate: 112 };
+  // Drawn through the SAME per-hero pose helpers the production sections use,
+  // so the line-up cannot show a duck or a celebration the game does not serve.
+  const extraFor = (kind, hid) => kind === 'celebrate' ? { menu: true }
+    : kind === 'duck' ? duckExtra(hid) : {};
+  const lineup = (kind, label, note) => {
+    const TH = HEIGHTS[kind], FEET = TH - GAP;
+    tile(grid, label, note, COL * ids.length, TH, (ctx, t) => {
+      ids.forEach((hid, i) => {
+        drawToon(ctx, hid, pose(kind, t, extraFor(kind, hid)), COL * (i + 0.5), FEET, HH);
+        ctx.fillStyle = '#8a8a9e';
+        ctx.font = '7px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(hid, COL * (i + 0.5), TH - 4);
+      });
+    }, { animated: true, wide: true, hires: 4 });
+  };
+  const N = ids.length;
+  lineup('idle', 'all idle', `${N} heroes · standing, one clock, one feet line`);
+  lineup('run', 'all run', `${N} heroes · the run cycle, every hero on the same phase`);
+  lineup('jump', 'all jump', `${N} heroes · the airborne pose, rising`);
+  lineup('duck', 'all slide', `${N} heroes · the shipped power slide; gary and dolores are cast-roll `
+    + 'flavour with no roster entry, so poseFromPlayer keeps them in the crouch');
+  lineup('celebrate', 'all celebrate', `${N} heroes · the results-screen routine — signature bounce, then the big move`);
+
+  // ---- AND THE TWO THAT ARE ACTUALLY ANIMATIONS.
+  //
+  // The five strips above are one pose apiece on a loop, which is the right
+  // shape for comparing a silhouette and the wrong shape for a MOVE. A jump
+  // is an arc — crouch, launch, the tuck coming off the ground, the hang, the
+  // fall, the squash on landing — and a slide is a blend into a plant, a
+  // contact kick and a recovery. Neither survives being frozen on one frame.
+  //
+  // So these two do not pose the hero at all: they step the GAME'S OWN
+  // controller (src/game/player.js) with a scripted input and read the
+  // picture out of poseFromPlayer(), the same pair a real run uses. Every
+  // height, every timing and every blend below is the game's, and a strip
+  // here cannot show an arc the physics does not produce.
+  const STEP = 1 / 60;
+  const PX_PER_U = HH / HERO_DRAW_H; // the strip's own magnification, applied to travel too
+  // Gary and Dolores are cast-roll flavour with no roster entry, so there is
+  // no jump card to read off. They get the BASE one — the flat 56.9u apex and
+  // a single jump — rather than being dropped out of a strip whose whole
+  // subject is the line-up standing together.
+  const STAND_IN_HERO = { jumpMult: 1, maxJumps: 1, canFloat: false, variableJump: true };
+  // Baked to a table once, not simulated per frame: the loop then reads the
+  // same frame every time it comes round, so a tile that scrolls out of view
+  // and back cannot return out of step with its neighbours.
+  function bake(id, seconds, script) {
+    const player = new Player(id);
+    if (!player.hero) player.hero = STAND_IN_HERO;
+    const held = { jump: false, duck: false };
+    const input = { held: (k) => !!held[k] };
+    const frames = [];
+    for (let i = 0; i * STEP < seconds; i++) {
+      const t = i * STEP;
+      script(player, t, held, i);
+      // No world: Player's own no-world fallback is the run's stride rate,
+      // and gravityScale and ice both default to ordinary ground.
+      player.update(STEP, input, undefined);
+      frames.push({ y: player.y, pose: poseFromPlayer(player, t) });
+    }
+    return frames;
+  }
+  const animStrip = (id, name, sub, seconds, script, th, floor) => {
+    const takes = ids.map((hid) => bake(hid, seconds, script));
+    const FEET = th - GAP;
+    tile(grid, name, sub, COL * ids.length, th, (ctx, t) => {
+      const n = takes[0].length;
+      const f = Math.min(n - 1, Math.floor(((t % seconds) / seconds) * n));
+      if (floor) {
+        // The line they leave and come back to. Without it the whole row
+        // simply drifts up and down and the arc has nothing to be an arc over.
+        ctx.fillStyle = 'rgba(120,140,160,.22)';
+        ctx.fillRect(0, FEET + 0.5, COL * ids.length, 0.5);
+      }
+      ids.forEach((hid, i) => {
+        const frame = takes[i][f];
+        drawToon(ctx, hid, frame.pose, COL * (i + 0.5), FEET - frame.y * PX_PER_U, HH);
+        ctx.fillStyle = '#8a8a9e';
+        ctx.font = '7px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(hid, COL * (i + 0.5), th - 4);
+      });
+    }, { animated: true, wide: true, hires: 4 });
+  };
+
+  // ONE HELD JUMP EACH, on their own cards. Jump is held the whole way, so
+  // nobody gets the variable-jump cut and every arc is a full one. They leave
+  // the floor together and DO NOT come back together: airtime runs 0.64s
+  // (Grumpos, who pays for HEAVY there rather than in height) to 0.75s
+  // (Clara), and the strip is the only place that spread is visible as motion
+  // rather than as a number. Kiko's second jump is deliberately not spent —
+  // one hop each is the comparison; the stacked apex belongs to the measured
+  // jump-height section further down.
+  animStrip('jump', 'all jump — the arc', `${N} heroes · one held jump, real gravity, real airtime — landing squash and all`,
+    1.4, (player, t, held, i) => {
+      held.jump = true;
+      if (i === Math.round(0.2 / STEP)) player.jumpPressed(null);
+    }, 258, true);
+
+  // THE SLIDE, END TO END, and the whole point is what happens either side of
+  // the plant. Down goes on at 0.30s and the blend takes DUCK_IN_T to plant
+  // him; at 0.80s he plows a crate, which in the run sets exactly the two
+  // fields set here — the leg's own kick timer and the short forced stand that
+  // gets him up off a box he has already dealt with. Those two run on
+  // DIFFERENT clocks on purpose (see Player.tickSlideKick), so he is back on
+  // his feet while the leg is still finishing its swing. Frozen on one frame
+  // that reads as a bug; running, it is the follow-through.
+  animStrip('slide', 'all slide — entry, plant, kick, recovery',
+    `${N} heroes · duck held at 0.30s, crate plowed at 0.80s · gary and dolores have no roster entry, so poseFromPlayer keeps them in the crouch`,
+    1.7, (player, t, held, i) => {
+      held.duck = t >= 0.3 && t < 1.15;
+      if (i === Math.round(0.8 / STEP)) {
+        player.slideKickT = SLIDE_KICK_T;
+        player.standT = STAND_AFTER_PLOW_T;
+      }
+    }, 96, false);
 }
 
 // ---------------------------------------------------------------- 2. heroes
@@ -1047,6 +1201,9 @@ function entityTile(grid, label, sub, e, style, pad = 12) {
 // they can double as plug-row icons, and the portals match the 12x40 column
 // drawPortal already passes.
 const BAKEOFF_SIZES = {
+  // The villain's three painters are not entities; these are the boxes their
+  // call sites draw them at (hud.js card, draw.js copter, boss.js surge).
+  eggshell: { w: 24, h: 20 }, eggshellCopter: { w: 36, h: 36 }, eggshellBalloon: { w: 36, h: 59 },
   rampChevron: { w: 14, h: 4 }, rampWedge: { w: 14, h: 4 },
   rampTurbine: { w: 14, h: 4 }, rampGate: { w: 14, h: 4 },
   flagWave: { w: 16, h: 16 }, flagPennant: { w: 16, h: 16 },
@@ -5770,6 +5927,379 @@ function frameStrip(grid, name, label, note, w, h, cell) {
 // facade and a three-car service instead — and it is now simply how the LCD
 // pack draws the service: see "the service" in src/engine/stylePacks/index.js.
 // The seam and the losers were deleted, not hidden.
+
+// ------------------------------ the villains who did not win, kept for reuse
+// Both Eggshell bake-offs are settled — C, the ape in the clown-copter tub,
+// with T1's rotor and T6's balloon — and the winners live in sprites/props.js.
+// These sheets are the LOSERS, restored at Peter's request: "may want to use
+// them elsewhere for variety, or as minions of the main villain". Nothing here
+// is registered anywhere, so none of it can reach a run; promoting one means
+// copying its painter into props.js and giving it a def.
+{
+  const s = sectionEl('eggshell-alternates', 'Villains — the bodies that did not win',
+    'REFERENCE, not an open question. Twelve villain bodies from the 3 Sep bake-off. C shipped; the other '
+    + 'eleven are here as candidates for other jobs — a minion, a cabinet\'s local boss, a rival. Each keeps the '
+    + 'bible\'s canon (egg-shaped ape, red mustache, tiny goggles, spiky shell) and changes what the egg IS.');
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  s.appendChild(grid);
+  const BW = 24, BH = 20;
+  for (const c of EGGSHELL_CANDIDATES) {
+    const TW = 132, TH = 92, DW = 108, DH = 72;
+    const ds = Math.min(DW / BW, DH / BH), dw = BW * ds, dh = BH * ds;
+    tile(grid, `${c.letter} — ${c.name}`, `${c.id}<br>${c.note}`, TW, TH, (ctx, t) => {
+      ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, TW, TH);
+      ctx.save(); ctx.translate((TW - dw) / 2, 10 + (DH - dh) / 2);
+      drawEggshellCandidate(ctx, c.id, dw, dh, t);
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255,255,255,.5)';
+      ctx.font = '5px ui-monospace, monospace'; ctx.textAlign = 'center';
+      ctx.fillText(`${BW}x${BH}u`, TW / 2, TH - 4);
+    }, { animated: true, hires: 5 });
+  }
+}
+{
+  const s = sectionEl('eggshell-vehicles', 'Villains — the vehicles that did not win',
+    'REFERENCE. Ten ways the villain could travel, from the 4 Sep round. T1 ships as the copter and T6 as the '
+    + 'Act III balloon; the other eight are vehicles looking for a driver. Each carries its own box, drawn dashed, '
+    + 'because a balloon and a monowheel are not a copter\'s shape.');
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  s.appendChild(grid);
+  for (const o of EGGSHELL_TRAVEL) {
+    const [bw, bh] = o.box;
+    const TW = 132, TH = 108, DW = 108, DH = 88;
+    const ds = Math.min(DW / bw, DH / bh), dw = bw * ds, dh = bh * ds;
+    tile(grid, `${o.letter} — ${o.name}`, `${o.id} · ${bw}x${bh}u${o.ground ? ' · GROUND' : ''}<br>${o.note}`, TW, TH, (ctx, t) => {
+      ctx.fillStyle = '#262c3c'; ctx.fillRect(0, 0, TW, TH);
+      ctx.save(); ctx.translate((TW - dw) / 2, 8 + (DH - dh) / 2);
+      drawEggshellTravel(ctx, o.id, dw, dh, t);
+      ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 0.5;
+      ctx.setLineDash([2, 2]); ctx.strokeRect(0, 0, dw, dh); ctx.setLineDash([]);
+      ctx.restore();
+    }, { animated: true, hires: 5 });
+  }
+}
+
+// ------------------------------------------- the copter's rotor, sized
+// Peter, 4 Sep 2026: "the propeller can be even shallower — a bake-off at
+// different sizes (shallow, less wide, etc)". Every tile calls the SHIPPED
+// painter through its options seam (eggshellCopterArt / COPTER_ROTOR), so the
+// winner is a change to one constant and this section comes out.
+{
+  const s = sectionEl('copter-rotor-bakeoff', 'Clown-copter — rotor shape bake-off (I ships)',
+    'OPEN — eleven rotor geometries on the shipped copter. R is the disc radius in the 28u authoring box '
+    + '(13 spans nearly all of it); sq is the disc\'s tilt toward the camera (1 a circle, 0 edge-on). I SHIPS as of '
+    + '4 Sep 2026; A is what it replaced. Row 1 is the lane at the copter\'s real 36u beside Lorenzo, rotor turning; the cards add a 2.4x '
+    + 'detail. The dashed box is the copter\'s box.');
+  const sub = (text, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = text;
+    s.appendChild(h3);
+    if (note) { const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p); }
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
+  };
+  const V = [
+    { id: 'A', name: 'WAS', o: { R: 13, sq: 0.24, disc: true }, note: 'R 13 · sq 0.24 with the disc — what shipped before option I won.' },
+    { id: 'B', name: 'SHALLOWER', o: { sq: 0.16 }, note: 'R 13 · sq 0.16 — same span, two-thirds the tilt.' },
+    { id: 'C', name: 'SHALLOW', o: { sq: 0.10 }, note: 'R 13 · sq 0.10 — nearly a line with a hint of disc.' },
+    { id: 'D', name: 'NARROWER', o: { R: 10.5 }, note: 'R 10.5 · sq 0.24 — the disc inside the tub\'s width.' },
+    { id: 'E', name: 'NARROWER, SHALLOWER', o: { R: 10.5, sq: 0.16 }, note: 'R 10.5 · sq 0.16.' },
+    { id: 'F', name: 'NARROWER, SHALLOW', o: { R: 10.5, sq: 0.10 }, note: 'R 10.5 · sq 0.10.' },
+    { id: 'G', name: 'SMALL', o: { R: 8, sq: 0.16 }, note: 'R 8 · sq 0.16 — a rotor the width of his head.' },
+    { id: 'H', name: 'SMALL, SHALLOW', o: { R: 8, sq: 0.10 }, note: 'R 8 · sq 0.10.' },
+    { id: 'I', name: 'NO DISC (SHIPS)', o: {}, note: 'R 10.5 · sq 0.16, blades and sweeps only — no translucent disc, so nothing behind him is tinted. PICKED 4 Sep 2026, so this tile draws the shipped painter with no overrides.' },
+    { id: 'J', name: 'THIN BLADES', o: { R: 10.5, sq: 0.16, blade: 0.6 }, note: 'R 10.5 · sq 0.16, blade weight 0.6 — closer to the ink weight on him.' },
+    { id: 'K', name: 'EDGE-ON', o: { R: 13, sq: 0.06 }, note: 'R 13 · sq 0.06 — the guardrail: this is what "a line" looks like.' },
+  ];
+  const BOX = 36;
+  const frameAt = (t) => Math.floor(t * 2 * 24) % 12; // two turns a second, like the no-song fallback
+  const mono = (ctx, px, align = 'center') => {
+    ctx.fillStyle = 'rgba(255,255,255,.62)';
+    ctx.font = `${px}px ui-monospace, monospace`;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'alphabetic';
+  };
+  const hover = (t, i) => Math.sin(t * 2.4 + i * 0.9) * 1.5;
+  {
+    const grid = sub('1. In the lane — the copter\'s 36u, Lorenzo for scale');
+    const LW = 30 + V.length * 44, LH = 70, LGY = 58;
+    tile(grid, 'all eleven — lane', 'I ships. Rotors turn two times a second here.', LW, LH, (ctx, t) => {
+      laneStrip(ctx, LW, LH, LGY);
+      drawToon(ctx, 'lorenzo', pose('run', t), 14, LGY, HERO_DRAW_H);
+      V.forEach((v, i) => {
+        const x = 30 + i * 44, y = LGY - 10 - BOX + hover(t, i);
+        ctx.save(); ctx.translate(x, y); eggshellCopterArt(ctx, BOX, BOX, frameAt(t), v.o); ctx.restore();
+        mono(ctx, 5); ctx.fillText(v.id, x + BOX / 2, LGY + 11);
+      });
+    }, { animated: true, wide: true, world: true, hires: 5 });
+  }
+  {
+    const grid = sub('2. One card each — lane and the painter enlarged');
+    const TW = 200, TH = 96, GY = 82;
+    const DX = 106, DY = 6, DW = 88, DH = 86;
+    const ds = Math.min(DW / BOX, DH / BOX), dw = BOX * ds;
+    for (const v of V) {
+      tile(grid, `${v.id} — ${v.name}`, v.note, TW, TH, (ctx, t) => {
+        laneStrip(ctx, TW, TH, GY);
+        ctx.fillStyle = '#262c3c'; ctx.fillRect(DX - 6, 0, TW - DX + 6, TH);
+        drawToon(ctx, 'lorenzo', pose('run', t), 20, GY, HERO_DRAW_H);
+        const bx = 44, by = GY - 10 - BOX + hover(t, 0);
+        ctx.save(); ctx.translate(bx, by); eggshellCopterArt(ctx, BOX, BOX, frameAt(t), v.o); ctx.restore();
+        ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 0.45;
+        ctx.setLineDash([1.5, 1.5]); ctx.strokeRect(bx, by, BOX, BOX); ctx.setLineDash([]);
+        mono(ctx, 4, 'left');
+        ctx.fillText('LANE', 44, 7);
+        ctx.fillText(`DETAIL ${ds.toFixed(1)}x`, DX, 5);
+        ctx.save(); ctx.translate(DX + (DW - dw) / 2, DY + (DH - dw) / 2); eggshellCopterArt(ctx, dw, dw, frameAt(t), v.o); ctx.restore();
+      }, { animated: true, wide: true, world: true, hires: 6 });
+    }
+  }
+}
+
+// ------------------------------------------- the hero in the left HUD corner
+// Peter, 4 Sep 2026: "we can do away with the name badge in the middle and
+// incorporate the icon for the hero in the left hud — give me a few different
+// styles, bake-off".
+//
+// The badge is a whole second panel parked in the middle of the sky to carry one
+// word. Every cut below folds the face into the status pill instead and is drawn
+// by the SHIPPED painter through hud.js's `style` seam — drawStatusPill(ctx, run,
+// cut) — so picking a winner is setting HERO_CHIP in hud.js and deleting this
+// section, not porting anything.
+//
+// REF is what ships today, drawn by the same two functions the run calls.
+{
+  const s = sectionEl('hero-chip-bakeoff', 'HUD — the hero in the left corner, bake-off',
+    'OPEN — seven ways to fold the relay\'s current hero into the status pill, against the centre name '
+    + 'badge that ships today. Every tile calls drawStatusPill() and drawHeroBadge() from hud.js at the '
+    + 'run\'s real coordinates; only the left corner and the centre are drawn, so the top progress line '
+    + 'and the right-hand GOAL panels are absent rather than reimplemented. Three cells and no coins, '
+    + 'which is the state in Peter\'s screenshot.');
+  const sub = (text, note) => {
+    const h3 = document.createElement('h3');
+    h3.className = 'subhead';
+    h3.textContent = text;
+    s.appendChild(h3);
+    if (note) { const p = document.createElement('p'); p.className = 'note'; p.textContent = note; s.appendChild(p); }
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    s.appendChild(grid);
+    return grid;
+  };
+
+  // The run state the pill reads, and nothing else: a real Run is not needed to
+  // ask a panel how wide it is. abilityCd is mid-recharge on purpose — the RING
+  // cut is only interesting when its rim is part way round.
+  const chipRun = (t, hero = 'gnash', next = 'lorenzo', tagT = null, prev = 'lorenzo') => ({
+    oneHit: false, maxBattery: () => 3, battery: 3, coins: 0,
+    totalDist: Infinity, distance: 0, tRun: t, flipCoins: null,
+    // tagT is seconds since this hero took the baton — the REVEAL cut's only
+    // input, and the one field a real Run would have to start keeping.
+    relay: { current: hero, next, tagT, prev },
+    player: { abilityCd: 1.1, hero: { ability: { cooldown: 3 } } },
+  });
+
+  const CUTS = [
+    ['A', 'CHIP', 'chip',
+      'The face in a window nested in the meter\'s own corner, closed with the hairline the cells close with. '
+      + 'The quiet cut: the pill grows 20px and nothing else on the row moves.'],
+    ['B', 'PORTHOLE', 'porthole',
+      'No inset at all — the face fills the pill\'s left cap and the panel\'s own corner is the crop. The most '
+      + 'graphic cut: the hero is part of the chrome rather than a passenger in it.'],
+    ['C', 'MEDALLION', 'medallion',
+      'A 22px disc overlapping the pill\'s left end, taller than the pill, so it breaks the top and bottom '
+      + 'lines. The corner gets one focal point instead of a longer grey lozenge; the pill steps 18px right.'],
+    ['D', 'CARD', 'card',
+      'Two panels, one row: a portrait plate, a gap, then the readout. The conservative cut — nothing '
+      + 'overlaps, nothing is clipped by anything, and the face gets the pill\'s full 18px of height.'],
+    ['E', 'DISC', 'disc',
+      'The same 22px circle standing CLEAR of the pill, which steps 26px right. Nothing overlaps and '
+      + 'nothing is clipped: the corner reads as a portrait beside a gauge rather than a longer gauge '
+      + 'with a face in one end. No charge ring — the special stays readable beside the hero.'],
+    ['E2', 'DISC, LIFTED', 'disclift',
+      'E with a brighter hairline and 3px more air. Same idea, pushed: the question is how far the disc '
+      + 'has to be lifted off the readout before it stops reading as a third compartment of it.'],
+    ['F', 'RELAY', 'relay',
+      'Current hero at full size, relay.next tucked beside it at 45%. Says who is COMING as well as who '
+      + 'you are — which the badge never did, and which the portal only says once.'],
+    ['G', 'NAMED', 'named',
+      'The chip plus the name at 0.75 scale. The badge\'s entire content, in the corner, at about a third '
+      + 'of its footprint. The only cut whose pill width changes with the hero — see the last strip.'],
+  ];
+
+  // A real pack under the chrome. A HUD judged over flat grey is a HUD you have
+  // not judged: the panel is translucent and the sky comes through it.
+  const packOf = (id) => {
+    const cab = CABINETS.find((c) => c.id === id) || CABINETS[0];
+    const pack = getStylePack(cab.style, {});
+    return (ctx, t) => { if (pack.bg) pack.bg(ctx, t, t * 60, cab, 1000); };
+  };
+  const SKY = packOf('plumber');       // the blue sky in the screenshot
+  const DARK = packOf('crypt');        // the other extreme
+  const BUSY = packOf('rhythm');       // flat LCD, where a hairline can vanish
+
+  {
+    const grid = sub('1. The strip, at the size it is played',
+      'The frame\'s top 46px, full width, over the plumber sky. REF first: the pill AND the badge in the '
+      + 'middle. Every cut after it has no badge at all.');
+    const strip = (name, note, draw) =>
+      tile(grid, name, note, W, 46, (ctx, t) => { SKY(ctx, t); draw(ctx, t); },
+        { wide: true });
+    strip('REF — centre badge (ships today)',
+      'drawStatusPill() with no chip, plus drawHeroBadge() at x = W/2. Two panels for one hero.',
+      (ctx, t) => { drawStatusPill(ctx, chipRun(t), null); drawHeroBadge(ctx, chipRun(t)); });
+    for (const [id, name, cut, note] of CUTS) {
+      strip(`${id} — ${name}`, note, (ctx, t) => drawStatusPill(ctx, chipRun(t), cut));
+    }
+  }
+
+  {
+    const grid = sub('2. The corner, magnified, over three backdrops',
+      'The same 120px of corner at 8x, over the plumber sky, the crypt dark and the rhythm LCD — the three '
+      + 'surfaces a translucent panel has to hold a face against. This is the tile that decides it: a chip '
+      + 'that loses its silhouette on one of these bands is not a chip.');
+    const CW = 120, BH = 26;
+    const BANDS = [['SKY', SKY], ['DARK', DARK], ['LCD', BUSY]];
+    const corner = (name, note, draw) =>
+      tile(grid, name, note, CW, BH * BANDS.length, (ctx, t) => {
+        BANDS.forEach(([, bg], i) => {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, i * BH, CW, BH);
+          ctx.clip();
+          // The pack paints the whole 480x270 frame; the band is a window onto
+          // its top-left, so each one is translated to put y=0 at the band's top.
+          ctx.translate(0, i * BH - 2);
+          bg(ctx, t);
+          draw(ctx, t);
+          ctx.restore();
+        });
+      }, { hires: 8 });
+    corner('REF — centre badge', 'The pill alone; the badge it is paired with is 240px off to the right.',
+      (ctx, t) => drawStatusPill(ctx, chipRun(t), null));
+    for (const [id, name, cut, note] of CUTS) {
+      corner(`${id} — ${name}`, note, (ctx, t) => drawStatusPill(ctx, chipRun(t), cut));
+    }
+  }
+
+  {
+    const grid = sub('3. Every hero through the two cuts that carry a name',
+      'NAMED is the only cut whose pill width answers to the hero, and RELAY is the only one that draws a '
+      + 'second face. The whole roster through both, at 5x: RAY M\'N is the widest name and B-33P the '
+      + 'hardest crop.');
+    const HW = 150, HH = 26;
+    for (const hero of Object.keys(HERO_BY_ID)) {
+      for (const cut of ['named', 'relay']) {
+        tile(grid, `${HERO_BY_ID[hero].short} — ${cut.toUpperCase()}`, '',
+          HW, HH, (ctx, t) => {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, HW, HH);
+            ctx.clip();
+            ctx.translate(0, -2);
+            SKY(ctx, t);
+            drawStatusPill(ctx, chipRun(t, hero, hero === 'gnash' ? 'lorenzo' : 'gnash'), cut);
+            ctx.restore();
+          }, { hires: 5 });
+      }
+    }
+  }
+
+  {
+    const grid = sub('4. The name on the hand-off — three gestures, none of which move the readout',
+      'Peter: "would it be bad for the hud to expand on hero change to show their full name, then contract '
+      + '— I think that might be bad to make the health and coins move like that". It would be, so none of '
+      + 'these do it. The pill NEVER changes width and the cells and coin never move by a pixel — check the '
+      + 'coin\'s x across any filmstrip. The name rides a SECOND plate instead, and the only question left '
+      + 'is where it comes from. All three are drawn over cut E (DISC), hold 1.7s, and read relay.tagT — '
+      + 'seconds since the baton changed hands, the one field a real Run would have to start keeping.');
+    const GESTURES = [
+      ['UNDER', 'under',
+        'Slides down from behind the icon and sits under it, left-aligned to the same column edge as '
+        + 'everything else down that side. Tidiest: the name and the face it belongs to are one object in '
+        + 'one corner, and it is the only gesture that cannot reach the middle of the screen however long '
+        + 'a name gets. Its cost is that the goal toasts and the one-hit warning start on that line.'],
+      ['SLIDE', 'slide',
+        'Travels in from the right and docks in its own gap beside the pill, well clear of the coin count, '
+        + 'then leaves the same way. The whole name is legible the whole time because it never emerges '
+        + 'edge-first.'],
+      ['DRAWER', 'drawer',
+        'Extends out from behind the pill\'s rounded end with an end cap of its own, wiping the name into '
+        + 'view left to right. The glyphs never move; only the plate front does.'],
+    ];
+    // An animated tile shows the motion; the filmstrip is what you can hold two
+    // frames of side by side and check the coin's x against.
+    for (const [name, mode, note] of GESTURES) {
+      tile(grid, `${name} — running`, note, W, 52, (ctx, t) => {
+        SKY(ctx, t);
+        drawStatusPill(ctx, chipRun(t, 'gnash', 'lorenzo', (t * 0.9) % 3.4), 'disc', mode);
+      }, { wide: true, animated: true });
+    }
+    const SHOTS = [[0.06, 'arriving'], [0.14, 'arriving'], [0.22, 'landed'],
+      [1.2, 'held'], [2.02, 'leaving'], [2.16, 'leaving']];
+    const FW = 160, FH = 44;
+    for (const [name, mode] of GESTURES) {
+      for (const [at, phase] of SHOTS) {
+        tile(grid, `${name} · ${at.toFixed(2)}s`, phase, FW, FH, (ctx, t) => {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, FW, FH);
+          ctx.clip();
+          ctx.translate(0, -1);
+          SKY(ctx, t);
+          drawStatusPill(ctx, chipRun(t, 'grumpos', 'lorenzo', at), 'disc', mode);
+          ctx.restore();
+        }, { hires: 5 });
+      }
+    }
+  }
+
+  {
+    const grid = sub('5. The hand-off coin flip',
+      'Peter: "I would like the disk with the hero to rotate in 3d (like a spinning coin) a few times and '
+      + 'the new hero revealed". Two and a half turns over 0.85s, easing out the way a spun coin slows into '
+      + 'its landing. The OUTGOING hero is the coin\'s front and the incoming one its back, so the last '
+      + 'half-turn is the reveal rather than a cut hidden inside the spin — which is why the half-turn count '
+      + 'is odd. Edge-on the disc is a sliver of panel with no face in it, so it catches a light down its '
+      + 'edge to read as thin rather than as a dropped frame. He lands SMILING and settles back to his resting face 1.2s later, faded rather than cut. LORENZO hands over to GNASH here; the name '
+      + 'plate waits for the coin to land before it starts.');
+    tile(grid, 'the flip — running', 'On a loop at the size it is played, with the name reveal behind it.',
+      W, 52, (ctx, t) => {
+        SKY(ctx, t);
+        drawStatusPill(ctx, chipRun(t, 'gnash', 'fernwick', (t * 0.85) % 4, 'lorenzo'), 'disc', 'under');
+      }, { wide: true, animated: true });
+    const FLIP_SHOTS = [0, 0.14, 0.32, 0.55, 0.70, 0.85, 1.30, 1.90, 2.05, 2.30];
+    const FW = 92, FH = 46;
+    for (const at of FLIP_SHOTS) {
+      tile(grid, `${at.toFixed(2)}s`, at < 0.85 ? 'turning' : at < 1.85 ? 'landed, smiling' : at < 2.05 ? 'settling' : 'at rest', FW, FH, (ctx, t) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, FW, FH);
+        ctx.clip();
+        ctx.translate(0, -1);
+        SKY(ctx, t);
+        drawStatusPill(ctx, chipRun(t, 'gnash', 'fernwick', at, 'lorenzo'), 'disc', 'under');
+        ctx.restore();
+      }, { hires: 6 });
+    }
+  }
+
+  // A guardrail rather than a tile: if a cut is added to hud.js and not given a
+  // card here, the page says so instead of quietly showing six of seven.
+  const shown = new Set([...CUTS.map(([, , cut]) => cut), ...HERO_REVEAL_CUTS]);
+  const missing = [...HERO_CHIP_CUTS, ...HERO_REVEAL_CUTS].filter((cut) => !shown.has(cut));
+  if (missing.length) {
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = `NOT SHOWN — hud.js declares cuts this section has no card for: ${missing.join(', ')}`;
+    s.appendChild(p);
+  }
+}
 
 // ---------------------------------------------------------------- driver
 // NOTHING PAINTS UNTIL IT IS NEARLY ON SCREEN, first frame included.

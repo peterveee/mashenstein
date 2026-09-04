@@ -149,31 +149,25 @@ const counts = {};
 const drip = new DripSpawner(new Rng(4242), bench);
 const drops = [];
 for (let i = 0; i < 60000; i++) drip.update(1, i * 240, drops, false); // 1s steps: ~4000 capsules
-// The relay charge banks an ability instead of running a timer, so it has no
-// `power` — count it by its own flag or it vanishes from the denominator and
-// every other share reads high.
 for (const d of drops) {
-  const key = d.def.power || (d.def.relayCharge ? 'relayCharge' : null);
+  const key = d.def.power;
   if (key) counts[key] = (counts[key] || 0) + 1;
 }
 const total = Object.values(counts).reduce((a, b) => a + b, 0);
 const unpeelShare = (counts.unpeel || 0) / total;
-const relayShare = (counts.relayCharge || 0) / total;
 const staples = ['shield', 'magnet'].map((k) => (counts[k] || 0) / total);
 assert(!counts.slowmo, 'SLOW-MO never drips');
 const traits = ['airjump', 'speed', 'lowgrav'].map((k) => (counts[k] || 0) / total);
 assert(unpeelShare > 0.05 && unpeelShare < 0.2, `unpeel drops sometimes (${(unpeelShare * 100).toFixed(1)}% of ${total})`);
-assert(PICKUPS.capRelay && PICKUPS.capRelay.relayCharge === true, 'capRelay pickup banks a relay charge');
-assert(hasProp('capRelay'), 'capRelay has capsule art');
-// The rarest thing in the table, and rarer than unpeel: it is a free power.
-assert(relayShare > 0.04 && relayShare < unpeelShare, `relay charge is the rarest drop (${(relayShare * 100).toFixed(1)}%)`);
+// The relay baton is gone: no pickup, no art, and nothing in the drip that
+// banks a free power. Its old 8% band went to the staples.
+assert(!PICKUPS.capRelay && !hasProp('capRelay'), 'the relay baton has left the game');
 const rewindShare = (counts.rewind || 0) / total;
 assert(PICKUPS.capRewind && PICKUPS.capRewind.power === 'rewind', 'capRewind pickup grants rewind');
 assert(hasProp('capRewind'), 'capRewind has capsule art');
 // Dealt on every device (desktop banks it beside the free hold-Left scrub),
 // and priced like unpeel: the same kind of find, not a staple.
 assert(rewindShare > 0.05 && rewindShare < 0.2, `rewind drops sometimes (${(rewindShare * 100).toFixed(1)}%)`);
-assert(relayShare < rewindShare, 'the relay charge stays rarer than rewind');
 assert(staples.every((s) => s > unpeelShare && s > rewindShare), `every staple is more common than the two rare finds (${staples.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
 assert(traits.every((s) => s > 0.07 && s < 0.13), `each borrowed trait gets its 10% share (${traits.map((s) => (s * 100).toFixed(1)).join('/')}%)`);
 assert(Math.abs(traits.reduce((a, b) => a + b, 0) - 0.30) < 0.04, 'borrowed traits occupy 30% of capsule drops');
@@ -227,18 +221,24 @@ for (let i = 0; i < 400; i++) gapRun.drip.update(0.5, gapRun.camX + i * 60, gapR
 // Sorted by where each capsule comes to rest: a tossed prize keeps travelling
 // after it leaves the box, so its spawn x is not where the player meets it.
 const capsules = gapRun.pickups
-  .filter((pk) => pk.def.power || pk.def.relayCharge)
+  .filter((pk) => pk.def.power)
   .map((pk) => ({ type: pk.type, x: pk.toss ? pk.x + pk.vx * 0.85 : pk.x }))
   .sort((a, b) => a.x - b.x);
-let tightest = Infinity, dupeAdjacent = false;
-for (let i = 1; i < capsules.length; i++) {
-  tightest = Math.min(tightest, capsules[i].x - capsules[i - 1].x);
-  if (capsules[i].type === capsules[i - 1].type) dupeAdjacent = true;
-}
+let tightest = Infinity;
+for (let i = 1; i < capsules.length; i++) tightest = Math.min(tightest, capsules[i].x - capsules[i - 1].x);
 assert(capsules.length > 3, `the spacing sim actually produced capsules (${capsules.length})`);
 assert(tightest >= POWER_MIN_GAP,
   `no two capsules land within a screen (closest pair ${Math.round(tightest)}px, floor ${POWER_MIN_GAP})`);
-assert(!dupeAdjacent, 'consecutive capsules are never the same type');
+// Back-to-back repeats are rerolled ONCE (randomPowerPickup), so they happen
+// at p² rather than never — the overcharge path needs them to. Judged on the
+// long drip sample, not this handful: with no reroll a table this shape would
+// repeat itself about 17% of the time, with the reroll about 4%.
+const capsuleRun = drops.filter((d) => d.def.power);
+let repeats = 0;
+for (let i = 1; i < capsuleRun.length; i++) if (capsuleRun[i].type === capsuleRun[i - 1].type) repeats++;
+const repeatRate = repeats / (capsuleRun.length - 1);
+assert(repeatRate > 0 && repeatRate < 0.08,
+  `back-to-back repeats are rare but possible (${(repeatRate * 100).toFixed(1)}% of ${capsuleRun.length})`);
 // A vetoed prize still pays out: the box gives coins instead of nothing.
 assert(gapRun.pickups.some((pk) => pk.type === 'coin'), 'a !-box denied its prize still drops coins');
 

@@ -111,6 +111,26 @@ The chassis owns, written once:
   line: `DAMAGE WINDOW: WHEN THE BAG OPENS`.
 
 ### Surge — EGGSHELL & THE POWER STRIP (Act III, 12 HP): terrain & switches; escape-wall finale
+**Vehicle: the clown balloon** (decided 4 Sep 2026, painter `eggshellBalloon` in
+props.js, 28x46 — already the surge boss's sprite). The copter stays Act I. The
+balloon is the fight's **visible weak point**, replacing the switch as the thing
+that stuns him; the switch island stays, because it is what puts every hero at
+balloon height:
+
+- **Reach.** The balloon rides above normal jump height. The raised island brings
+  all eight kits level with it — identical window access, shooters merely sooner.
+- **Pop.** Contact or a projectile in the balloon's box during a window bursts it;
+  the tub thuds to the floor and he files a form. That is the stun window (3s, up
+  to 3 hits), with a cause the player can see coming.
+- **Recovery is the telegraph.** He patches the balloon with the form and
+  re-inflates — long enough to read, so the window's end is visible, not a timer.
+- **HP in the art.** Segment 1 full balloon, segment 2 patched, segment 3 mostly
+  forms and tape. `fakeBars` stays as the gag; the real state is on him.
+- **Finale.** THE UNPLUGGENING with the balloon gone: last 2 HP, tub on the
+  ground, pushed by the escape wall.
+- **Art to cut:** a pop strip, a sag state, two patched variants — all off the
+  same `eggshellApe` sub-box so the ape never changes.
+
 Finish the abandoned `switches` mechanic. Three segments of 4 HP, each
 **remix volley → switch circuit → stun window**:
 1. **Remix volley** — samples the campaign: a falling-junk volley (neon callback), a

@@ -30,15 +30,18 @@ import { mixEntrySource } from '../tools/lib/mix-source.js';
 // the source does not play in. Both halves are asserted below, against the same bank.
 import {
   draftOf, entryOf, setLanesOff, writeBarNotes, writeBarNotesShared,
-  copyLaneArrangement, duplicateLaneContent, removeLanes,
+  copyLaneArrangement, duplicateLaneContent, removeLanes, gainBars,
 } from '../tools/lib/arrangement-edit.js';
-import { applyArrangement, resolveSection, arrangementIssues } from '../src/data/arrangements.js';
+import { applyArrangement, resolveSection, arrangementIssues, ARRANGEMENTS } from '../src/data/arrangements.js';
 import * as smwNewest from '../src/data/imported/smw-all-instruments-newest.js';
 
 const renderMixFile = (mix) => `export const MIX = {\n${Object.entries(mix)
   .map(([id, e]) => [id, mixEntrySource(e, '  ')]).filter(([, x]) => x)
   .map(([id, x]) => `  ${JSON.stringify(id)}: ${x},\n`).join('')}};\n`;
-import { resolveTrack } from '../src/data/tracks.js';
+import { resolveTrack, listTracks } from '../src/data/tracks.js';
+// The shipped mixes, for the catalogue-wide check at the foot of this file: a song's
+// strips are its bank AND its mix, so asking which ones the desk draws needs both.
+import { MIX } from '../src/data/mix.js';
 
 let failed = false;
 function assert(cond, msg) {
@@ -537,6 +540,52 @@ assert(extraRt.layers[0].independent === true && !extraRt.layers[0].label,
 const shapeOnly = await roundTrip({ off: ['crash'] });
 assert(shapeOnly && JSON.stringify(shapeOnly.off) === JSON.stringify(['crash']),
   'a song whose only decision is a deleted track is still written out');
+
+// ---- every strip the desk draws can be given a bar edit ---------------------
+//
+// `applyArrangementEdit` validates what it is about to write against a list of the
+// lanes this song has, and REFUSES the whole edit when the arrangement names one that
+// is not in it — then undoes it, which is right for a genuinely bogus lane and a trap
+// for a real one. The list used to come from `editBank()` alone: the song as WRITTEN,
+// whose `activeLanes` only walks the bars the composition's own order visits. A track
+// whose hits all live in a section that order never reaches is therefore absent from
+// it, while the desk has been drawing a strip for that track all along, off the
+// arranged `viewBank()`.
+//
+// Three songs shipped in exactly that state, and every one of the tracks is percussion
+// — RHYTHM BANKRUPTCY's crash and riser, FROST's clap and open hat, the megamix
+// cowbell. On those tracks every bar edit was refused and rolled straight back: set a
+// bar's gain, apply, reopen the panel, and the value is zero again. It read at the desk
+// as a control that does not work on drums.
+//
+// So the invariant, asserted over the whole catalogue rather than the three songs that
+// happen to break it today: a lane the desk shows is a lane the validator accepts. The
+// union below is what applyArrangementEdit now asks — a lane is real if EITHER the
+// composition or the arrangement plays it.
+for (const listed of listTracks()) {
+  const source = resolveTrack(listed.id);
+  if (!source?.bank) continue;
+  const mix = MIX[listed.id] || null;
+  const arrangement = ARRANGEMENTS[listed.id] || null;
+  const written = deskBank(source.bank, mix);             // editBank()
+  const arranged = deskBank(applyArrangement(source.bank, listed.id), mix); // viewBank()
+  const shown = deskLanes(arranged, 1).map((l) => l.key);
+  const laneKeys = [...new Set([
+    ...deskLanes(written, 1).map((l) => l.key),
+    ...shown,
+  ])];
+  const draft = draftOf(written, arrangement);
+  if (!draft.plan.length) continue;
+  // Against what the song ALREADY reports, not against zero. One shipped arrangement
+  // silences lanes its song no longer has, so it fails validation untouched — a real
+  // trap of its own, and not this one. What is asserted here is that the edit itself
+  // introduces nothing: the lane it names has to be a lane.
+  const before = arrangementIssues(source.bank, entryOf(written, draft), laneKeys).length;
+  const refused = shown.filter((key) => arrangementIssues(
+    source.bank, entryOf(written, gainBars(draft, 0, 0, [key], -6)), laneKeys).length > before);
+  assert(!refused.length,
+    `${listed.id}: every strip takes a bar edit${refused.length ? ` — refused ${refused.join(', ')}` : ''}`);
+}
 
 console.log(failed ? '\nLAYERS: FAILED' : '\nLAYERS: PASSED');
 process.exit(failed ? 1 : 0);

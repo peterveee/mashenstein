@@ -78,9 +78,10 @@ export function stroke(ctx, col, w, pathFn) {
   ctx.stroke();
 }
 
-// The lightning bolt, in the 28x18 cell grid both battery drawings are laid out
-// on, so the HUD cell and the world pickup are the same mark and can only ever
-// be fixed together.
+// The lightning bolt, in the 28x18 cell grid the battery pickup is laid out on.
+// The grid outlives the HUD cell it was shared with — the health meter is a
+// segmented shell now and carries no bolt — because the pickup's proportions,
+// and BATTERY_FOCUS below, are still read off it.
 //
 // Placed by CENTROID, not by bounding box. A bolt is a diagonal with its mass in
 // the broad upper-left arm and a thin tail trailing below-right, so a placement
@@ -94,7 +95,7 @@ const boltPath = (c, X, Y) => {
   c.closePath();
 };
 
-// Where the world battery's art sits inside its painter box. The HUD art spans
+// Where the world battery's art sits inside its painter box. The art spans
 // X 1.5..26.5 and Y 2.5..15.5 of the cell grid — 25 units by 13 — so the pickup
 // takes the box's full width and lets that aspect decide its height, centred.
 // Shared with BATTERY_FOCUS below so the drawing and anything aiming at the
@@ -117,25 +118,95 @@ export const BATTERY_FOCUS = (() => {
   return { x: X(12), y: Y(9) };
 })();
 
-// One HUD battery cell, laid out on a 28x18 grid and scaled into the box:
-// rounded body, terminal nub on the right, lightning bolt through the middle.
-// A spent cell keeps the full silhouette in outline rather than vanishing, so
-// the row's length always states the maximum and the fill states what is left.
-function hudCell(ctx, w, h, charged) {
-  const X = (n) => (w * n) / 28, Y = (n) => (h * n) / 18;
-  const body = (c) => rr(c, X(1.5), Y(2.5), X(21), Y(13), X(3.5));
-  const nub = (c) => rr(c, X(23), Y(6), X(3.5), Y(6), X(1.5));
-  const bolt = (c) => boltPath(c, X, Y);
-  if (charged) {
-    plain(ctx, '#74c947', body);
-    stroke(ctx, '#4d9433', X(1.5), body);
-    plain(ctx, '#74c947', nub);
-    plain(ctx, '#fff', bolt);
-  } else {
-    stroke(ctx, 'rgba(255,255,255,0.3)', X(1.5), body);
-    plain(ctx, 'rgba(255,255,255,0.18)', nub);
-    plain(ctx, 'rgba(255,255,255,0.18)', bolt);
+// --- the HUD health meter ---------------------------------------------------
+// ONE battery lying on its side with a segment per hit left, replacing the row
+// of four separate cells this used to be. Four batteries in a row said "four
+// batteries"; one battery with four bars says "one hero, this much left", which
+// is the thing the meter is actually measuring. The shell is always the full
+// length, so the row still states the maximum while the segments state what is
+// left — the job the outlined spent cell used to do.
+//
+// Every dimension is a fraction of the HEIGHT, so the meter is one drawing at
+// whatever size the HUD asks for and hudBatteryW() is the width that layout
+// falls out to. The pill sizes itself off that same function: the drawing and
+// the layout cannot disagree about how wide this is.
+const BATT = {
+  ink: 0.11,   // shell stroke
+  pad: 0.06,   // shell interior to segment
+  seg: 0.36,   // one segment's width
+  gap: 0.12,   // between segments
+  nub: 0.19,   // terminal, hung off the right edge — same way round as the pickup
+  nubH: 0.42,
+};
+// The shell sits a touch brighter than UI_PANEL_BORDER: it is a readout inside
+// the panel, not another edge of it.
+const BATT_SHELL = 'rgba(255,255,255,0.34)';
+// Four warmth steps down to empty: green, then a limier green at three, amber
+// at two, red at one. Three is still green because three hits left is not yet
+// trouble — but it is the last comfortable number, so it warms rather than
+// staying the colour of full.
+//
+// Keyed on hits REMAINING rather than on a fraction of the maximum, because
+// with the storebrand cell fitted two left has to look exactly as bad as two
+// left does without it — a ratio would paint the same danger green on the
+// longer meter.
+const BATT_INKS = ['#e04848', '#f0a726', '#b4d43c', '#74c947'];
+const BATT_INK = (left) => BATT_INKS[Math.min(BATT_INKS.length, Math.max(1, left)) - 1];
+
+export function hudBatteryW(segs, h) {
+  if (segs <= 0) return 0;
+  const inner = segs * BATT.seg * h + (segs - 1) * BATT.gap * h;
+  return inner + 2 * (BATT.ink + BATT.pad) * h + BATT.nub * h;
+}
+
+function hudBatteryArt(ctx, w, h, segs, filled, outerR) {
+  const ink = BATT.ink * h, pad = BATT.pad * h, half = ink / 2;
+  const bodyW = w - BATT.nub * h;
+  // A stroke is centred on its path, so the shell is inset by half its width or
+  // the outer half of the ink hangs off the sprite and the raster clips it —
+  // and for the same reason the path's corner is half a stroke tighter than the
+  // one asked for, because the corner that has to nest is the one the eye sees
+  // on the OUTSIDE of the ink.
+  stroke(ctx, BATT_SHELL, ink, (c) =>
+    rr(c, half, half, bodyW - ink, h - ink, Math.max(0, outerR - half)));
+  // The terminal butts against the shell's outer edge and rounds only its OUTER
+  // corners, which is the one shape that gets both halves of this right. The
+  // ink is translucent, so any overlap composites twice and prints a bright
+  // lump where the nub crosses the shell — and a fully rounded nub set flush
+  // instead leaves two notches where its left corners curve away from a flat
+  // edge. Square on the left, round on the right: no overlap, no notch.
+  const nubH = BATT.nubH * h, nubW = BATT.nub * h;
+  const nubY = (h - nubH) / 2, nubR = Math.min(nubH * 0.35, nubW);
+  plain(ctx, BATT_SHELL, (c) => {
+    c.moveTo(bodyW, nubY);
+    c.arcTo(bodyW + nubW, nubY, bodyW + nubW, nubY + nubH, nubR);
+    c.arcTo(bodyW + nubW, nubY + nubH, bodyW, nubY + nubH, nubR);
+    c.lineTo(bodyW, nubY + nubH);
+    c.closePath();
+  });
+  const segW = BATT.seg * h, gap = BATT.gap * h;
+  const segH = h - 2 * (ink + pad), col = BATT_INK(filled);
+  for (let i = 0; i < filled; i++) {
+    plain(ctx, col, (c) =>
+      rr(c, ink + pad + i * (segW + gap), ink + pad, segW, segH, segH * 0.2));
   }
+}
+
+// Not a PROP_PAINTERS entry: the sprite cache is keyed by name and frame, and
+// this drawing takes three numbers. It caches on all of them, which is at most
+// a canvas per (length, charge) pair — a dozen for the two lengths a run has.
+//
+// `outerR` is the corner the shell shows, passed in rather than picked here:
+// the meter sits inside a rounded panel, and the only radius that nests in that
+// panel's curve is the panel's own less the gap around the meter. The caller is
+// the one holding both of those numbers.
+export function drawHudBattery(ctx, x, y, w, h, segs, filled, outerR) {
+  const spr = rasterize(`hudBattery|${w}x${h}|${segs}/${filled}|r${outerR}`, w, h,
+    (c, cw, ch) => hudBatteryArt(c, cw, ch, segs, filled, outerR));
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(spr, x, y, w, h);
+  ctx.imageSmoothingEnabled = prev;
 }
 
 // Cold metal for the CHALLENGE trophy, lit from the upper left — the same
@@ -363,6 +434,196 @@ const FINISH_DOG_ALIASES = {
 };
 const finishDogTable = (src, override) => Object.fromEntries(
   Object.entries(FINISH_DOG_ALIASES).map(([alias, base]) => [alias, override ?? src[base]]));
+
+// ------------------------------------------------- Don K. Eggshell, PhD
+// The villain, in the heroes' flat-toon language rather than the pixel grid
+// world.js still carries: an ape in a clown-copter tub. Won a twelve-way body
+// bake-off and a ten-way vehicle bake-off on 3 Sep 2026 — the approved looks
+// are in docs/shots/eggshell/. Three painters share ONE ape:
+//   eggshell         the bust in the tub, 24x20 — speech card, intro, relic
+//   eggshellCopter   the bust under a three-quarter rotor, 28x28, four frames
+//                    — drawCopter (chase missions) and the Act I boss
+//   eggshellBalloon  the bust under a striped balloon, 28x46 — the Act III
+//                    boss. The balloon is that fight's weak point: see the
+//                    surge section of docs/BOSS_REDESIGN_PLAN.md.
+// Every mark is a fraction of the ape's own 24x20 box; the copter and the
+// balloon translate to a sub-box and call the same two functions, so the
+// portrait and the vehicles cannot drift apart.
+const EG_INK = '#1a1028', EG_CREAM = '#e8e0c8', EG_RED = '#c83030', EG_FUR = '#7a4c2e';
+const EG_GOLD = '#f6d33c', EG_LENS = '#c8e0f8', EG_GREEN = '#48c848', EG_GREEN_DK = '#2c7d33';
+const EG_TAU = Math.PI * 2;
+const EG_APE_W = 24, EG_APE_H = 20;
+// FINE INK, WEIGHTED LIKE THE HERO'S. The props' shared OUTLINE is a 1u line
+// at 34% — on a busy pale backdrop that is a blur, and Peter asked for "fine
+// lines, not thick blurry ones". Half a unit of opaque ink then read "too
+// thick and dark vs hero": the toons draw their contour as a hairline at 32%.
+// So: 0.3u, a hair heavier than the hero's, at 55% — a touch darker than his
+// because the copter sits on the pale sky band, not the floor. It is the
+// contour that separates him from the scenery, not a rim or a glow.
+const EG_LINE = 'rgba(26,16,40,0.55)';
+const EG_LW = 0.0125 * EG_APE_W;
+function egP(c, fill, fn, ink = null, lw = 0) {
+  c.beginPath();
+  fn(c);
+  if (fill) { c.fillStyle = fill; c.fill(); }
+  if (ink && lw > 0) {
+    c.strokeStyle = ink; c.lineWidth = lw;
+    c.lineJoin = 'round'; c.lineCap = 'round';
+    c.stroke();
+  }
+}
+function egLine(c, ink, lw, fn) { egP(c, null, fn, ink, lw); }
+function egDot(c, fill, x, y, r, ink = null, lw = 0) { egP(c, fill, (k) => k.arc(x, y, r, 0, EG_TAU), ink, lw); }
+// An egg: one width, two heights. The equator sits eq*ry below the centre so
+// the dome above is taller than the bowl below — the difference between an
+// egg and an ellipse.
+function eggPath(c, cx, cy, rx, ry, eq = 0.18) {
+  const ey = ry * eq;
+  c.ellipse(cx, cy + ey, rx, ry - ey, 0, 0, Math.PI);
+  c.ellipse(cx, cy + ey, rx, ry + ey, 0, Math.PI, EG_TAU);
+}
+// The logo: two lobes, thick at the philtrum, sweeping out to a tip that
+// curls up. BRICK BONK's wall is this shape.
+function egMustache(c, cx, cy, span, drop, lift = 0) {
+  for (const s of [-1, 1]) {
+    egP(c, EG_RED, (k) => {
+      k.moveTo(cx, cy - drop * 0.3);
+      k.quadraticCurveTo(cx + s * span * 0.45, cy - drop * 0.95, cx + s * span, cy - drop * 0.35 + lift * drop * 1.5);
+      k.quadraticCurveTo(cx + s * span * 0.82, cy + drop * 0.3 + lift * drop * 1.2, cx + s * span * 0.42, cy + drop * 0.6);
+      k.quadraticCurveTo(cx + s * span * 0.16, cy + drop * 0.8, cx, cy + drop * 0.55);
+      k.closePath();
+    });
+  }
+}
+// Tiny science goggles on a strap round the head.
+function egGoggles(c, cx, cy, r, gap, strap, pupilScale = 1) {
+  const L = cx - gap / 2 - r, R = cx + gap / 2 + r;
+  egLine(c, EG_INK, r * 0.6, (k) => { k.moveTo(strap[0], cy + r * 0.1); k.lineTo(strap[1], cy + r * 0.1); });
+  egLine(c, EG_INK, r * 0.5, (k) => { k.moveTo(L, cy); k.lineTo(R, cy); });
+  for (const x of [L, R]) {
+    egDot(c, EG_INK, x, cy, r);
+    egDot(c, EG_LENS, x, cy, r * 0.7);
+    egDot(c, EG_INK, x + (x < cx ? r * 0.12 : -r * 0.12), cy + r * 0.12, r * 0.3 * pupilScale);
+    egDot(c, 'rgba(255,255,255,0.85)', x - r * 0.28, cy - r * 0.3, r * 0.17);
+  }
+}
+// Spikes standing off an ellipse arc, tips outward.
+function egSpikesArc(c, fill, cx, cy, rx, ry, a0, a1, n, len, ink, lw) {
+  for (let i = 0; i < n; i++) {
+    const a = a0 + (a1 - a0) * (i + 0.5) / n;
+    const da = (a1 - a0) / n * 0.42;
+    egP(c, fill, (k) => {
+      k.moveTo(cx + Math.cos(a - da) * rx, cy + Math.sin(a - da) * ry);
+      k.lineTo(cx + Math.cos(a) * rx * (1 + len), cy + Math.sin(a) * ry * (1 + len));
+      k.lineTo(cx + Math.cos(a + da) * rx, cy + Math.sin(a + da) * ry);
+      k.closePath();
+    }, ink, lw);
+  }
+}
+// The ape from the shoulders up: green spiked shell behind, fur, cream
+// face-plate, goggles, mustache. X/Y are pure scales of his 24x20 box.
+function eggshellBust(c, X, Y, lw, shocked = false) {
+  egSpikesArc(c, EG_GREEN, X(0.5), Y(0.56), X(0.36), Y(0.2), -Math.PI * 0.95, -Math.PI * 0.05, 6, 0.5, EG_GREEN_DK, lw * 0.5);
+  egP(c, EG_GREEN, (k) => k.ellipse(X(0.5), Y(0.56), X(0.36), Y(0.2), 0, 0, EG_TAU), EG_GREEN_DK, lw * 0.6);
+  egP(c, EG_FUR, (k) => k.ellipse(X(0.5), Y(0.62), X(0.27), Y(0.15), 0, 0, EG_TAU), EG_LINE, lw);
+  egDot(c, EG_FUR, X(0.5), Y(0.36), X(0.165), EG_LINE, lw);
+  egP(c, EG_CREAM, (k) => eggPath(k, X(0.5), Y(0.4), X(0.11), Y(0.13)));
+  // SHOCKED: the lenses go wide with the pupils small inside them, the
+  // mustache flies up and out, and a small open mouth appears under it. The
+  // same marks as the calm face, moved — a second face drawing would drift.
+  if (shocked) {
+    egGoggles(c, X(0.5), Y(0.34), X(0.058), X(0.035), [X(0.33), X(0.67)], 0.34);
+    egP(c, EG_INK, (k) => k.ellipse(X(0.5), Y(0.53), X(0.035), Y(0.045), 0, 0, EG_TAU));
+    egMustache(c, X(0.5), Y(0.44), X(0.23), Y(0.075), -0.5);
+  } else {
+    egGoggles(c, X(0.5), Y(0.35), X(0.045), X(0.04), [X(0.35), X(0.65)]);
+    egMustache(c, X(0.5), Y(0.46), X(0.2), Y(0.07));
+  }
+}
+// The clown-copter tub he grips the rim of: cream, red stripes, two lamps,
+// two skids, and his hands on the rim.
+function eggshellTub(c, X, Y, lw) {
+  for (const s of [0.2, 0.64]) egP(c, EG_CREAM, (k) => rr(k, X(s), Y(0.9), X(0.16), Y(0.08), X(0.02)), EG_LINE, lw * 0.7);
+  egP(c, '#f0f0f8', (k) => rr(k, X(0.12), Y(0.6), X(0.76), Y(0.34), X(0.07)), EG_LINE, lw);
+  for (const s of [0.24, 0.46, 0.68]) egP(c, EG_RED, (k) => rr(k, X(s), Y(0.66), X(0.08), Y(0.24), X(0.01)));
+  egP(c, '#d0d0dc', (k) => rr(k, X(0.1), Y(0.58), X(0.8), Y(0.08), X(0.03)), EG_LINE, lw * 0.7);
+  egDot(c, EG_GOLD, X(0.19), Y(0.8), X(0.045), EG_LINE, lw * 0.5);
+  egDot(c, EG_GOLD, X(0.81), Y(0.8), X(0.045), EG_LINE, lw * 0.5);
+}
+// His fists. Part of the ape, not the tub, so a bonk lifts them with him —
+// hands still gripping a rim he is no longer sitting in is the joke.
+function eggshellHands(c, X, Y, lw) {
+  egDot(c, EG_FUR, X(0.24), Y(0.6), X(0.06), EG_LINE, lw);
+  egDot(c, EG_FUR, X(0.76), Y(0.6), X(0.06), EG_LINE, lw);
+}
+// The whole ape-in-tub at a sub-box origin inside a larger painter's box.
+// `pop` (0..1) knocks him UP OUT OF HIS SEAT: the tub stays put, he and his
+// fists rise off it, and he pulls a shocked face. Five units at full pop is
+// about the gap between his chin and the rim — as far as he can go and still
+// read as the same drawing.
+function eggshellApe(c, ox, oy, pop = 0) {
+  const X = (f) => EG_APE_W * f, Y = (f) => EG_APE_H * f, lw = EG_LW;
+  c.save(); c.translate(ox, oy);
+  const lift = pop * 5;
+  c.save(); c.translate(0, -lift);
+  eggshellBust(c, X, Y, lw, pop > 0.05);
+  c.restore();
+  eggshellTub(c, X, Y, lw);
+  c.save(); c.translate(0, -lift);
+  eggshellHands(c, X, Y, lw);
+  c.restore();
+  c.restore();
+}
+
+// The copter drawing, with the rotor's geometry as options so the gallery
+// can bake off shapes against the shipped one (COPTER_ROTOR is what ships).
+//   R    disc radius in the 28u box (13 spans nearly the box)
+//   sq   the disc's tilt toward the camera: 1 is a circle, 0 is edge-on
+//   hy   hub height in the box
+//   blade  blade stroke weight; disc  draw the translucent disc at all
+// SHIPS: bake-off option I (4 Sep 2026). Blades and their sweeps, NO disc —
+// Peter: "it gives the illusion without being a permanent disc on screen".
+// The translucent ellipse tinted everything behind it and never went away;
+// two blades and their trailing arcs say "turning" only while they turn.
+// R 10.5 keeps the span inside the tub's width, sq 0.16 is the tilt toward
+// the camera (edge-on would be a line).
+export const COPTER_ROTOR = { R: 10.5, sq: 0.16, hy: 6, blade: 1, disc: false };
+export function eggshellCopterArt(ctx, w, h, frame = 0, o = {}) {
+  const { R, sq, hy, blade: bw, disc: withDisc, pop = 0 } = { ...COPTER_ROTOR, ...o };
+  ctx.save();
+  ctx.scale(w / 28, h / 28);
+  // sq is the disc's tilt toward the camera. 0.42 read as a disc but ate a
+  // third of the box; 0.24 is still a disc (edge-on is a line) and gives the
+  // room back to the ape. Peter: "flatten the propeller a bit".
+  const cx = 14;
+  const a = (frame % 12) * (Math.PI / 12);
+  const blades = [a, a + Math.PI];
+  const disc = (from, to) => { if (withDisc) egP(ctx, 'rgba(200,200,216,0.22)', (k) => k.ellipse(cx, hy, R, R * sq, 0, from, to)); };
+  // THE TRAILS ARE THE MOTION. With the disc gone (option I) these arcs are
+  // the only thing saying the rotor turns, and at the 36u the lane draws him
+  // the first cut was too faint to notice — longer, wider and more opaque, and
+  // a second fainter arc further back, so the blur reads at lane size and not
+  // only in a gallery close-up.
+  const sweep = (b) => {
+    egLine(ctx, 'rgba(206,212,228,0.5)', 2.1 * bw, (k) => k.ellipse(cx, hy, R * 0.82, R * sq * 0.82, 0, b - 1.5, b));
+    egLine(ctx, 'rgba(206,212,228,0.22)', 1.5 * bw, (k) => k.ellipse(cx, hy, R * 0.82, R * sq * 0.82, 0, b - 2.5, b - 1.4));
+  };
+  const blade = (b) => {
+    egLine(ctx, '#3a3a48', 1.0 * bw, (k) => { k.moveTo(cx + Math.cos(b) * R * 0.1, hy + Math.sin(b) * R * sq * 0.1); k.lineTo(cx + Math.cos(b) * R, hy + Math.sin(b) * R * sq); });
+    egLine(ctx, '#9a9aa8', 0.38 * bw, (k) => { k.moveTo(cx + Math.cos(b) * R * 0.2, hy + Math.sin(b) * R * sq * 0.2); k.lineTo(cx + Math.cos(b) * R * 0.92, hy + Math.sin(b) * R * sq * 0.92); });
+  };
+  // far half of the disc and whichever blade is on it, the mast, him, then
+  // the near half over the top of his head
+  disc(Math.PI, EG_TAU);
+  for (const b of blades) if (Math.sin(b) < 0) { sweep(b); blade(b); }
+  egLine(ctx, '#3a3a48', 0.85, (k) => { k.moveTo(cx, hy); k.lineTo(cx, 8 + EG_APE_H * 0.34); });
+  eggshellApe(ctx, 2, 8, pop);
+  disc(0, Math.PI);
+  for (const b of blades) if (Math.sin(b) >= 0) { sweep(b); blade(b); }
+  if (withDisc) egLine(ctx, 'rgba(236,236,246,0.45)', 0.35, (k) => k.ellipse(cx, hy, R, R * sq, 0, 0, EG_TAU));
+  egDot(ctx, '#8a8a98', cx, hy, 1, EG_LINE, 0.5);
+  ctx.restore();
+}
 
 export const PROP_PAINTERS = {
   ...ANIMAL_PAINTERS,
@@ -1896,10 +2157,10 @@ export const PROP_PAINTERS = {
     plain(ctx, 'rgba(255,251,204,0.9)', (c) => c.ellipse(w * 0.35, h * 0.29, w * 0.075, h * 0.095, -0.45, 0, Math.PI * 2));
   },
   // Laid out landscape with the terminal on the RIGHT, the same way round as
-  // the HUD's `cellFull`: a pickup that points one way and the meter it feeds
+  // the HUD's health meter: a pickup that points one way and the meter it feeds
   // pointing the other made the player read them as two different objects.
   //
-  // Drawn on hudCell's own 28x18 grid rather than on eyeballed fractions of the
+  // Drawn on the 28x18 cell grid rather than on eyeballed fractions of the
   // box, so the two are the same battery at two sizes. That matters because the
   // pickup's def box is SQUARE (8x8): fitting the art to that box turns a
   // battery into a lozenge, and the family resemblance goes with it. Instead the
@@ -1915,17 +2176,10 @@ export const PROP_PAINTERS = {
     plain(ctx, '#eaffea', (c) => boltPath(c, X, Y));
   },
   // --- HUD-only art -----------------------------------------------------
-  // The status-pill battery cells. These are NOT the `battery` pickup above:
-  // that one is a chunky upright cell drawn to read as a thing lying in the
-  // world, and four of them in a row at HUD size turn into a picket fence. The
-  // HUD wants a lozenge — wide, low, with the bolt reading at 11 units across —
-  // so it gets its own art in the panel's colour language.
+  // The health meter is not in this table: it takes a segment count and a
+  // charge, which a name-keyed painter has nowhere to put. See drawHudBattery.
   //
-  // Full and empty are separate painters rather than one with a flag because
-  // the sprite cache is keyed by name; a flag would collide on one entry.
-  cellFull(ctx, w, h) { hudCell(ctx, w, h, true); },
-  cellEmpty(ctx, w, h) { hudCell(ctx, w, h, false); },
-  // The coin beside them. The world `coin` is a flat disc with an embossed
+  // The coin beside it. The world `coin` is a flat disc with an embossed
   // rim, which at 12 units in a dark panel reads as a washer; this one is a
   // lit sphere — gradient plus a warm rim — so it holds its shape and stays
   // legibly gold against the slate fill.
@@ -1995,15 +2249,6 @@ export const PROP_PAINTERS = {
       c.ellipse(w * 0.38, h * 0.46, w * 0.07, h * 0.06, 0, 0, Math.PI * 2);
       c.ellipse(w * 0.62, h * 0.62, w * 0.06, h * 0.05, 0, 0, Math.PI * 2);
     });
-  },
-  capRelay(ctx, w, h) {
-    // A relay baton, lit. Pink body rather than gold so it cannot be mistaken
-    // for the score star at 8px; the gold spark at the tip is the tell that it
-    // is a charge and not just another capsule.
-    const u = Math.max(w, h);
-    fineShape(ctx, '#f890b8', u, (c) => rr(c, w * 0.24, h * 0.12, w * 0.52, h * 0.62, w * 0.26));
-    plain(ctx, '#ffd8e8', (c) => rr(c, w * 0.36, h * 0.24, w * 0.16, h * 0.34, w * 0.08));
-    plain(ctx, '#f6d33c', (c) => star(c, w * 0.5, h * 0.78, w * 0.3, w * 0.12, 4));
   },
   capRewind(ctx, w, h) {
     // The ◀◀ scrub glyph, dark on a solid mint disc. Dark-on-light rather
@@ -2306,28 +2551,43 @@ export const PROP_PAINTERS = {
     stroke(ctx, '#48e0c8', Math.max(0.7, w * 0.16), (c) => c.ellipse(w / 2, h / 2, w * 0.36, h * 0.42, 0, 0, Math.PI * 2));
     stroke(ctx, '#c8fff0', Math.max(0.5, w * 0.07), (c) => c.ellipse(w * 0.42, h * 0.4, w * 0.16, h * 0.2, -0.4, 0.6, 2.4));
   },
+  // The bust: the portrait every taunt card shows, the intro panel, the relic.
   eggshell(ctx, w, h) {
-    const u = Math.max(w, h);
-    // Don K. Eggshell: giant egg ape, red mustache, goggles, spiky shell
-    shape(ctx, '#e8e0c8', u, (c) => c.ellipse(w * 0.5, h * 0.56, w * 0.34, h * 0.42, 0, 0, Math.PI * 2));
-    shape(ctx, '#8a6a4a', u, (c) => { // shell back with spikes
-      c.moveTo(w * 0.2, h * 0.7);
-      for (let i = 0; i < 4; i++) {
-        const x = w * (0.16 + i * 0.1);
-        c.lineTo(x + w * 0.05, h * (0.34 - (i % 2) * 0.06));
-        c.lineTo(x + w * 0.1, h * 0.62);
-      }
-      c.closePath();
+    ctx.save();
+    ctx.scale(w / EG_APE_W, h / EG_APE_H);
+    eggshellApe(ctx, 0, 0);
+    ctx.restore();
+  },
+  // The clown-copter: the bust under a two-blade rotor seen three-quarter,
+  // so the disc reads as a disc and the near blade crosses in front of his
+  // head every turn. Twelve frames cover half a revolution — the blade pair is
+  // symmetric under a half turn — at 24fps, which is one turn a second.
+  // The old drawing had no rotor at all; the grey bar over it was a rect
+  // drawCopter jittered above the box.
+  eggshellCopter(ctx, w, h, frame = 0) { eggshellCopterArt(ctx, w, h, frame); },
+  // The finale's ride: a striped clown balloon with the tub as its basket.
+  // Slower than a walking plumber, which is the forty-year losing streak
+  // explained. Twice the copter's height on purpose — it lives in the sky
+  // band, and it is the thing you pop.
+  eggshellBalloon(ctx, w, h) {
+    ctx.save();
+    ctx.scale(w / 28, h / 46);
+    const cx = 14, cy = 12.5, rx = 12.5, ry = 13, lw = EG_LW;
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU); ctx.clip();
+    ctx.fillStyle = EG_CREAM; ctx.fillRect(0, 0, 28, 28);
+    for (let i = 0; i < 7; i += 2) { ctx.fillStyle = EG_RED; ctx.fillRect(cx - rx + i * (2 * rx / 7), 0, 2 * rx / 7, 28); }
+    ctx.restore();
+    egLine(ctx, EG_LINE, lw, (k) => k.ellipse(cx, cy, rx, ry, 0, 0, EG_TAU));
+    egP(ctx, '#3a3f4a', (k) => { k.moveTo(11.3, 25); k.lineTo(16.7, 25); k.lineTo(15.7, 27.5); k.lineTo(12.3, 27.5); k.closePath(); }, EG_LINE, lw * 0.6);
+    // three ropes to the rim, drawn first so he covers where they cross him
+    egLine(ctx, '#5a4a3a', 0.4, (k) => {
+      k.moveTo(12.4, 27.5); k.lineTo(2 + EG_APE_W * 0.13, 26 + EG_APE_H * 0.6);
+      k.moveTo(14, 27.5); k.lineTo(14, 26 + EG_APE_H * 0.34);
+      k.moveTo(15.6, 27.5); k.lineTo(2 + EG_APE_W * 0.87, 26 + EG_APE_H * 0.6);
     });
-    plain(ctx, '#f2c9a0', (c) => c.ellipse(w * 0.56, h * 0.5, w * 0.2, h * 0.2, 0, 0, Math.PI * 2)); // face
-    plain(ctx, '#c8e0f8', (c) => { c.ellipse(w * 0.5, h * 0.44, w * 0.07, h * 0.07, 0, 0, Math.PI * 2); c.ellipse(w * 0.64, h * 0.44, w * 0.07, h * 0.07, 0, 0, Math.PI * 2); });
-    plain(ctx, '#1a1028', (c) => { c.arc(w * 0.5, h * 0.44, w * 0.03, 0, Math.PI * 2); c.arc(w * 0.64, h * 0.44, w * 0.03, 0, Math.PI * 2); });
-    plain(ctx, '#c83030', (c) => { // magnificent mustache
-      c.moveTo(w * 0.42, h * 0.58);
-      c.quadraticCurveTo(w * 0.57, h * 0.5, w * 0.74, h * 0.58);
-      c.quadraticCurveTo(w * 0.58, h * 0.68, w * 0.42, h * 0.58);
-      c.closePath();
-    });
+    eggshellApe(ctx, 2, 26);
+    ctx.restore();
   },
   dustdevil(ctx, w, h) {
     const u = Math.max(w, h);
@@ -2517,8 +2777,8 @@ export const PROP_PAINTERS = {
   },
 
   // PLUG_ICONS[2], the TOASTER plug. HUD-only art, and deliberately NOT the
-  // `appliance` world prop above — the same split as hudCoin/coin and
-  // cellFull/battery, for the same reason.
+  // `appliance` world prop above — the same split as hudCoin/coin and the
+  // health meter/battery, for the same reason.
   //
   // The world appliance cannot serve as this icon. It reserves the top fifth
   // of its box for the toast launch and bottom-anchors the body in what is
@@ -3621,6 +3881,10 @@ export function hasProp(name) { return !!PROP_PAINTERS[name]; }
 // an animated prop costs one canvas per frame per size and still draws with a
 // single drawImage — no per-frame vector work in the hot loop.
 export const PROP_FRAMES = {
+  // Half a rotor turn — the blade pair repeats every half turn — in twelve
+  // 15-degree steps. Four 45-degree steps strobed: the disc is a third of the
+  // hero's height and every frame was a different drawing.
+  eggshellCopter: 12,
   ...ANIMAL_FRAMES,
   ...finishDogTable(ANIMAL_FRAMES),
   cactus: 6, cactusBig: 6, snowman: 6, snowmanBig: 6, qcrate: 36, appliance: 96,
@@ -3657,6 +3921,9 @@ export const PROP_FRAMES = {
 // so sixteen frames at 12fps is one unhurried 1.3s scan with the rotor's five
 // turns folded inside it.
 const PROP_FPS = {
+  // The copter's rotor is normally driven off the song's beat (draw.js
+  // copterFrame); this is the rate the strip runs at when no song is playing.
+  eggshellCopter: 24,
   ...ANIMAL_FPS,
   ...finishDogTable(ANIMAL_FPS),
   qcrate: 12, appliance: 24, buzzbird: 16,
@@ -3725,6 +3992,9 @@ export function propTall(name) { return PROP_TALL[name] || 1; }
 // Their painters receive at least a 2x box before supersampling; the world draw
 // size and gameplay hitbox do not change.
 const PROP_DETAIL_SCALE = {
+  // The villain's goggles are 1u lenses on a 24u portrait; the copter's blades
+  // are 1u lines. Neither survives single detail.
+  eggshell: 2, eggshellCopter: 2, eggshellBalloon: 2,
   ...ANIMAL_DETAIL,
   ...finishDogTable(null, 3), // the one detail-3 exception — see FINISH_DOG_ALIASES
   // The sign's head is the finest drawing in the lane per pixel: a silhouette
@@ -3751,7 +4021,7 @@ const PROP_DETAIL_SCALE = {
   bananaPeel: 3,
   coin: 2, battery: 2,
   capShield: 2, capMagnet: 2, capStar: 2, capAirJump: 2,
-  capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRelay: 2, capRewind: 2,
+  capSpeed: 2, capLowGrav: 2, capUnpeel: 2, capRewind: 2,
   appliance: 2, cord: 2, resident: 2, dustdevil: 2,
   // Plug-row icons. These ship at 5-10px, which is the range this table exists
   // for: the painter gets a 2x box before supersampling, so a rim band, a

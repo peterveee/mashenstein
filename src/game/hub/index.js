@@ -708,15 +708,28 @@ function cabinetScene(cab) {
     // The cabinet's own hazards, pulled from its own pattern bank, so each
     // screen shows the game that cabinet actually plays. Sky and ground alone
     // came out as two flat bands — an attract screen needs something in it.
+    //
+    // WHICH bank, though, depends on which spawner the cabinet's stages
+    // actually run. A beat-locked cabinet never consults `patterns`: RunState
+    // builds a BeatSpawner off `beatCharts` for rhythm-1/2/3 and the pattern
+    // bank only comes back for that cabinet's overtime and boss runs (see
+    // `beatLock` in run.js). Reading the bank here put a thorn cactus on the
+    // screen of the one stage in the game whose lane lays nothing but bars,
+    // barrels and drones — the screen was advertising a level that does not
+    // exist. Chart first wherever there is one.
+    const types = [];
+    for (const chart of Object.values(cab.beatCharts || {})) {
+      for (const ev of chart.events || []) if (ev.type) types.push(ev.type);
+    }
+    if (!types.length) {
+      for (const pat of cab.patterns || []) for (const cell of pat.cells) types.push(cell.t);
+    }
     const obstacles = [];
     const seen = new Set();
-    for (const pat of cab.patterns || []) {
-      for (const cell of pat.cells) {
-        if (seen.has(cell.t) || !OBSTACLES[cell.t]) continue;
-        seen.add(cell.t);
-        obstacles.push(makeObstacle(cell.t, 90 + obstacles.length * 120));
-        if (obstacles.length >= 4) break;
-      }
+    for (const t of types) {
+      if (seen.has(t) || !OBSTACLES[t]) continue;
+      seen.add(t);
+      obstacles.push(makeObstacle(t, 90 + obstacles.length * 120));
       if (obstacles.length >= 4) break;
     }
     if (pack.bg) pack.bg(x, 0, 0, cab, 1000);
@@ -1512,7 +1525,10 @@ export class HubState {
     // the discs there only turns otherwise quiet canvas into duplicate chrome.
     if (!Input.usingTouch || chromeGeo.mode === 'none') { Input.setChromeButtons([]); return; }
     Input.setChromeButtons([
-      { id: 'hubLeft', ...chromeGeo.jump, action: 'left' },
+      // walkLeft, not jump: the play pair stacks in the margin now and the
+      // jump slot rides half a pair above the bottom, which would leave these
+      // two walk arrows at different heights facing each other.
+      { id: 'hubLeft', ...chromeGeo.walkLeft, action: 'left' },
       { id: 'hubRight', ...chromeGeo.ability, action: 'right' },
     ]);
   }
@@ -2975,11 +2991,8 @@ export class TrophyRoomState {
       return;
     }
     if (relic === 'copter') {
-      drawProp(ctx, 'eggshell', x - 14, y + 5, 28, 24);
-      ctx.strokeStyle = '#8a8a98'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(x, y + 7); ctx.lineTo(x, y + 1); ctx.stroke();
-      ctx.fillStyle = '#b8c8d8';
-      ctx.fillRect(x - 19, y, 38, 2); ctx.fillRect(x - 1, y - 5, 2, 12);
+      // The copter painter carries its own rotor; the relic is frame 0, parked.
+      drawProp(ctx, 'eggshellCopter', x - 14, y - 2, 28, 28);
       ctx.fillStyle = '#6b526f'; ctx.fillRect(x - 17, y + 26, 34, 5);
       return;
     }

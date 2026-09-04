@@ -22,7 +22,7 @@ import { drawProp } from '../sprites/props.js';
 // `appliance` world prop it stands for. The world prop reserves the top fifth
 // of its box for the toast launch and animates over 96 frames; drawn here at
 // 8x8 with no frame argument it was a squashed toaster stuck on frame 0 with a
-// slice sticking out of it. Same split as hudCoin/coin and cellFull/battery.
+// slice sticking out of it. Same split as hudCoin/coin and health meter/battery.
 export const PLUG_ICONS = ['plugOrder', 'plugTrophy', 'plugToaster'];
 export const PLUG_NAMES = ['MISSION', 'CHALLENGE', 'TOASTER'];
 

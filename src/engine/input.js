@@ -60,6 +60,12 @@ class InputSys {
     this.down = new Set();      // currently held actions
     this.activity = 0;          // raw HUMAN input counter (bots never bump it)
     this.hit = new Set();       // pressed this frame
+    // action -> the event's own timestamp for the press made this frame. Only
+    // the audio calibration reads it: everything else in the game acts on a
+    // press once per frame, where a stamp finer than the frame means nothing.
+    // Measuring latency is the exception, because rounding the tap to the frame
+    // it landed in throws away up to 16ms of the thing being measured.
+    this.pressedAt = new Map();
     this.up = new Set();        // released this frame
     this.pointer = { x: 0, y: 0, down: false };
     this.buttons = [];          // virtual on-screen buttons: {id, x, y, w, h, action}
@@ -93,7 +99,7 @@ class InputSys {
       }
       this.activity++;
       const act = this.actionForKey(e.code);
-      if (act) { this.press(act); e.preventDefault(); }
+      if (act) { this.press(act, e.timeStamp); e.preventDefault(); }
       this.onAnyGesture && this.onAnyGesture();
     });
     window.addEventListener('keyup', (e) => {
@@ -110,7 +116,7 @@ class InputSys {
       this.onAnyGesture && this.onAnyGesture();
       const p = clientToLogical(e.clientX, e.clientY);
       this.pointer = { x: p.x, y: p.y, down: true };
-      this.press('pointer');
+      this.press('pointer', e.timeStamp);
       // Middle mouse is the run's Down control: duck on the ground and the
       // same downward kick/stomp the keyboard gets in the air. Give it
       // priority over canvas/chrome button hit-testing so it remains a stable
@@ -135,7 +141,7 @@ class InputSys {
       if (btn || chromeBtn) {
         const action = btn ? btn.action : chromeBtn.action;
         this.touches.set(e.pointerId, { x0: p.x, y0: p.y, t0: performance.now(), action, isButton: true });
-        this.press(action);
+        this.press(action, e.timeStamp);
       } else {
         let action = null;
         // Tap-to-jump is a RUN-gameplay convenience only. Every other context
@@ -154,7 +160,12 @@ class InputSys {
         const liveRun = this.context === 'run' && !this.menuKeys;
         const liveWorkshop = this.context === 'workshop';
         const primaryCanvas = this.usingTouch || (e.pointerType === 'mouse' && e.button === 0);
-        if (liveRun && primaryCanvas) action = p.x < W * TOUCH_JUMP_FRAC ? 'jump' : 'ability';
+        // Inside a guard halo the zone's default is suppressed (see guardAt).
+        // The touch still becomes a gesture, so a finger that lands beside the
+        // slide half and then pulls down slides anyway — the halo removes a
+        // wrong press, it does not remove the swipe.
+        const guarded = liveRun && primaryCanvas && this.guardAt(p.x, p.y);
+        if (liveRun && primaryCanvas) action = guarded ? null : (p.x < W * TOUCH_JUMP_FRAC ? 'jump' : 'ability');
         else if ((liveRun || liveWorkshop) && e.pointerType === 'mouse' && e.button === 2) action = 'ability';
         // A tap started anywhere on the playable canvas can become the
         // established down/right swipe — both zones, not just the jump side.
@@ -164,10 +175,11 @@ class InputSys {
         // is exactly where a one-handed player's thumb lives, could not duck at
         // all. Ducking is a defensive move and has to be available under
         // whichever thumb is already down.
-        const gesture = liveRun && this.usingTouch && !!action;
+        const gesture = liveRun && this.usingTouch && (!!action || guarded);
         this.touches.set(e.pointerId, {
           x0: p.x, y0: p.y, t0: performance.now(), action,
           x: p.x, y: p.y,
+          guarded,
           // Held rather than fired (see resolveTouches). A finger landing is
           // the same event for a tap and for the start of a swipe, so on the
           // playable canvas the action waits until the gesture has said which
@@ -177,7 +189,7 @@ class InputSys {
           allowSwipe: gesture,
           downT: 0,   // last moment this finger was measurably travelling down
         });
-        if (action && !gesture) this.press(action);
+        if (action && !gesture) this.press(action, e.timeStamp);
       }
       e.preventDefault();
     });
@@ -262,7 +274,11 @@ class InputSys {
           return;
         }
         if (t.action) this.release(t.action);
-        else if (this.usingTouch) this.release('jump');
+        // A touch with no action normally still releases 'jump', because on the
+        // playable glass an actionless touch WAS a jump that never resolved.
+        // A guarded one was deliberately given no action, so releasing jump
+        // here would cut a jump a DIFFERENT finger is holding on the pill.
+        else if (this.usingTouch && !t.guarded) this.release('jump');
         if (t.menuSwipeBack) this.release('back');
         this.touches.delete(e.pointerId);
       }
@@ -407,13 +423,34 @@ class InputSys {
     return null;
   }
 
+  // The halo around a control that must NOT fall through to the tap-to-jump
+  // convenience below. buttonAt answers "did this land ON a button"; this
+  // answers "did it land close enough that the zone's default would be the
+  // wrong guess". A guarded tap fires nothing at all.
+  //
+  // Only the play pill's DOWN half sets `guard` (hud.js playButtons), and that
+  // asymmetry is deliberate. Jump is the safe default everywhere else on the
+  // glass: a near-miss that jumps did roughly what the thumb was asking for.
+  // A near-miss that jumps INSTEAD OF SLIDING puts the player over the top of
+  // the obstacle they were ducking under, which is the same failure the swipe
+  // arbitration in pointermove was written to remove — do not reintroduce it
+  // through a button.
+  guardAt(x, y) {
+    for (const b of this.buttons) {
+      if (!b.guard) continue;
+      if (x >= b.x - b.guard && x <= b.x + b.w + b.guard
+        && y >= b.y - b.guard && y <= b.y + b.h + b.guard) return true;
+    }
+    return false;
+  }
+
   setButtons(list) { this.buttons = list || []; }
 
   // Chrome buttons live in raw viewport CSS px (renderer.js's `chrome`
   // geometry), not the logical 480x270 space `buttonAt` tests — hence the
   // separate list. Hit-tests the button's `zone` (the whole stretch of margin
   // around its disc), not the disc itself: #chrome only ever shows in the
-  // margin and only ever holds these three buttons, so the entire visible
+  // margin and only ever holds the run's handful of controls, so the visible
   // canvas can safely count as "near enough" rather than requiring a precise
   // tap on the drawn circle.
   chromeButtonAt(cx, cy) {
@@ -462,19 +499,35 @@ class InputSys {
     this.padPrev = new Set();
   }
 
-  press(a) {
+  /**
+   * `at` is the ORIGINATING EVENT's timestamp, on the performance.now() timebase —
+   * DOM event timestamps share it. Handlers pass e.timeStamp so a tap can be
+   * measured against the audio clock without the frame it was noticed in getting
+   * in the way. Anything absurd (a WebKit build old enough to stamp epoch
+   * milliseconds) is discarded for the time this frame started.
+   */
+  press(a, at) {
     if (this.suspended) return;
     // A fresh press of an action owns it outright: any release still owed to a
     // tap that has already lifted is dropped, not applied over the top.
     if (this.holds.length) this.holds = this.holds.filter((h) => h.action !== a);
-    if (!this.down.has(a)) { this.down.add(a); this.hit.add(a); }
+    if (!this.down.has(a)) {
+      this.down.add(a);
+      this.hit.add(a);
+      const now = performance.now();
+      this.pressedAt.set(a, Number.isFinite(at) && Math.abs(at - now) < 60000 ? at : now);
+    }
   }
+
+  /** When the press reported by pressed(a) this frame actually happened, or undefined. */
+  pressTime(a) { return this.hit.has(a) ? this.pressedAt.get(a) : undefined; }
 
   // Drop every held/pending input (attract mode consumes the exit press so it
   // can never navigate a menu).
   clearAll() {
     this.down.clear();
     this.hit.clear();
+    this.pressedAt.clear();
     if (this.up) this.up.clear();
     this.touches.clear();
     this.holds = [];
@@ -576,11 +629,13 @@ class InputSys {
       if (age < TAP_HOLD_MS) continue;
       if (t.downT && now - t.downT < TAP_STILL_MS && age < TAP_MAX_MS) continue;
       t.pending = false;
-      if (t.action) this.press(t.action);
+      // Stamped with when the FINGER LANDED, not with the moment the swipe
+      // arbitration finished waiting on it — those are up to TAP_HOLD_MS apart.
+      if (t.action) this.press(t.action, t.t0);
     }
   }
 
-  endFrame() { this.hit.clear(); this.up.clear(); this.swipeLeft = false; }
+  endFrame() { this.hit.clear(); this.up.clear(); this.pressedAt.clear(); this.swipeLeft = false; }
 }
 
 export const Input = new InputSys();

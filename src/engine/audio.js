@@ -789,6 +789,9 @@ class AudioSys {
     this.cueGain = 1;
     // Where the cue being built starts on the audio clock, or null for "now" — see cueAt().
     this.cueStart = null;
+    // The player's AUDIO SYNC offset in SECONDS — see heardLatencySec(). It lives on
+    // the system rather than on the context so a context rebuild cannot lose it.
+    this.syncOffsetSec = 0;
     this.noiseBuf = null;
     this.contactBuffers = {};
     this.launchBuffers = {};
@@ -1238,30 +1241,51 @@ class AudioSys {
     }
   }
 
-  _scheduleCountIn(beats, startTime, bpm) {
+  /**
+   * A run of square-wave clicks at absolute audio times, and the times themselves.
+   *
+   * The count-in before a song was the first caller and is still the everyday one;
+   * the audio calibration is the second, and it is the reason this returns the
+   * schedule. A tap test has to know EXACTLY when each click was placed — not
+   * recompute it from a bpm and hope the two arithmetics agree — because the whole
+   * measurement is the difference between that time and a finger.
+   *
+   * `gain` is explicit rather than read off this.cueGain, which is left over from
+   * whichever sfx() fired last and has nothing to do with a metronome.
+   */
+  metronome(count, startTime, bpm, { gain = 1 } = {}) {
     this._clearCountIn();
-    if (!this.ctx || !this.sfxGain || !Number.isInteger(beats) || beats <= 0
-      || !Number.isFinite(startTime) || !Number.isFinite(bpm) || bpm <= 0) return;
+    const times = [];
+    if (!this.ctx || !this.sfxGain || !Number.isInteger(count) || count <= 0
+      || !Number.isFinite(startTime) || !Number.isFinite(bpm) || bpm <= 0) {
+      return { cancel: () => this._clearCountIn(), times };
+    }
     const beatSeconds = 60 / bpm;
-    for (let index = 0; index < beats; index++) {
+    for (let index = 0; index < count; index++) {
       const when = startTime + index * beatSeconds;
+      times.push(when);
       // One accented click, then the rest identical: "ONE two three four". The old
       // shape also lifted the LAST beat, which read as a pickup into nothing — the
       // count must land on the downbeat, not point at itself.
       const accent = index === 0;
       const oscillator = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+      const gainNode = this.ctx.createGain();
       oscillator.type = 'square';
       oscillator.frequency.setValueAtTime(accent ? 1180 : 860, when);
-      gain.gain.setValueAtTime(0.0001, when);
-      gain.gain.exponentialRampToValueAtTime((accent ? 0.13 : 0.085) * this.cueGain, when + 0.004);
-      gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.075);
-      gain.gain.linearRampToValueAtTime(0, when + 0.095);
-      oscillator.connect(gain); gain.connect(this.sfxGain);
+      gainNode.gain.setValueAtTime(0.0001, when);
+      gainNode.gain.exponentialRampToValueAtTime((accent ? 0.13 : 0.085) * gain, when + 0.004);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, when + 0.075);
+      gainNode.gain.linearRampToValueAtTime(0, when + 0.095);
+      oscillator.connect(gainNode); gainNode.connect(this.sfxGain);
       oscillator.start(when);
       oscillator.stop(when + 0.1);
       this._countInSources.push(oscillator);
     }
+    return { cancel: () => this._clearCountIn(), times };
+  }
+
+  _scheduleCountIn(beats, startTime, bpm) {
+    this.metronome(beats, startTime, bpm);
   }
 
   /** Map an output transport step to the source step currently being heard. */
@@ -3589,6 +3613,38 @@ class AudioSys {
   }
 
   /**
+   * THE PLAYER'S AUDIO SYNC OFFSET, in milliseconds, positive meaning the sound
+   * reaches the ear LATER than the browser admits to.
+   *
+   * It exists because the browser's own figure is a guess on most hardware. A
+   * wired output reports its buffer honestly and needs nothing; a Bluetooth
+   * output on Android or Windows reports the mixer buffer and says nothing at
+   * all about the codec, the radio and the sink, which between them are worth a
+   * fifth of a second. The rhythm lane is placed on the clock this feeds, so an
+   * unreported fifth of a second is the difference between jumping the bar and
+   * running into it.
+   */
+  setSyncOffset(ms) {
+    this.syncOffsetSec = (Number.isFinite(ms) ? ms : 0) / 1000;
+  }
+
+  /** What the browser claims, with no player correction — what CALIBRATE measures against. */
+  reportedLatencySec() {
+    if (!this.ctx) return 0;
+    return this.ctx.outputLatency || this.ctx.baseLatency || 0;
+  }
+
+  /**
+   * How far behind the render clock the EAR is: what the browser reports plus what
+   * the player told us it forgot. Every "what is being heard right now" answer in
+   * this file goes through here, so the picture, the lane, the judge and the
+   * scheduled cues can never disagree about where the music is.
+   */
+  heardLatencySec() {
+    return this.reportedLatencySec() + this.syncOffsetSec;
+  }
+
+  /**
    * The audio-clock time a cue has to START at to be HEARD `beats` beats from the
    * beat being heard now — the same clock songBeat() reads, so a cue placed with it
    * lands on the song sample-accurately, on every device, however far the ear is
@@ -3616,7 +3672,7 @@ class AudioSys {
     const now = this.ctx.currentTime;
     if (!Number.isFinite(beats)) return now;
     const secPerBeat = 60 / (this.bpm * this.tempo);
-    const out = this.ctx.outputLatency || this.ctx.baseLatency || 0;
+    const out = this.heardLatencySec();
     return Math.max(now, now - out - CUE_PERCEPTUAL_LEAD + beats * secPerBeat);
   }
 
@@ -3633,7 +3689,7 @@ class AudioSys {
   /** The same lead in seconds; `slack` is how long the caller allows itself to ask. */
   cueLeadSec(slack = 0.1) {
     if (!this.ctx) return 0;
-    const out = this.ctx.outputLatency || this.ctx.baseLatency || 0;
+    const out = this.heardLatencySec();
     return out + CUE_PERCEPTUAL_LEAD + slack;
   }
 
@@ -7119,7 +7175,7 @@ class AudioSys {
     // On built-in output that is a few milliseconds; on Bluetooth it is a fifth of a
     // second, and a playhead that ignores it runs visibly ahead of the music. Offline
     // renders report neither latency, so they are unaffected.
-    const out = this.ctx.outputLatency || this.ctx.baseLatency || 0;
+    const out = this.heardLatencySec();
     const ahead = (this.nextTime - (this.ctx.currentTime - out)) / spb;
     let heardStep = this.step - ahead;
     // The scheduler wraps `step` at the selected loop boundary, but the transport
@@ -7353,7 +7409,12 @@ class AudioSys {
       out.hit = 0;
       return;
     }
-    const now = this.ctx.currentTime;
+    // ON THE EAR'S CLOCK, like songBeat(). `_percPending` holds SCHEDULED drum
+    // times, so draining against the raw render clock fires the flare one whole
+    // output latency before the drum is audible — on Bluetooth a fifth of a
+    // second ahead of a playhead that is already latency-corrected, which reads
+    // as a visualiser running ahead of its own music.
+    const now = this.ctx.currentTime - this.heardLatencySec();
     // Whether the drain below moved anything is the onset: those are precisely
     // the hits whose scheduled time passed during this frame.
     const before = this._percHeard.length;

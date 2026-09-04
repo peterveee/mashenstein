@@ -1327,7 +1327,7 @@ class ArcadeArtGallery extends BaseVisualiser {
     );
     // Three differently sized copies of every pickup keep the reel focused on
     // the game's actual power-up language instead of a single repeated icon.
-    for (const asset of ['capStar', 'capShield', 'capMagnet', 'capSpeed', 'capAirJump', 'capLowGrav', 'capUnpeel', 'capRelay']) {
+    for (const asset of ['capStar', 'capShield', 'capMagnet', 'capSpeed', 'capAirJump', 'capLowGrav', 'capUnpeel']) {
       for (let version = 0; version < 3; version++) {
         const size = 19 + version * 2;
         props.push([asset, size, size, version === 0]);

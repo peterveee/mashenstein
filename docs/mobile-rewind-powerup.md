@@ -146,7 +146,7 @@ and that early return is load-bearing: without it, a capsule expiring would rese
 
 ### `src/game/entities.js` + `src/sprites/props.js`
 - `PICKUPS.capRewind = { w: 8, h: 8, sprite: 'capRewind', power: 'rewind' }`.
-- A `capRewind` painter beside `capUnpeel`/`capRelay` (`props.js:889`) — a ◀◀
+- A `capRewind` painter beside `capUnpeel` (`props.js:889`) — a ◀◀
   double-triangle over a tape reel reads unambiguously in silhouette at 8px regardless
   of the colour choice. Add `capRewind: 2` to `PROP_DETAIL_SCALE` (`props.js:2601`).
 - `art-warmup.js:81` already enumerates `PICKUPS`, so warm-up picks it up for free.
@@ -253,7 +253,7 @@ Rewind holds a **10% band of its own, taken from the staple tail** — it does *
 unpeel's band, which is what the touch-only design did:
 
 ```js
-if (roll < 0.08) return 'capRelay';    // 8%  — still the rarest thing in the game
+if (roll < 0.08) return staple(roll);  // 8%  — the relay baton's old band, now a staple
 if (roll < 0.18) return 'capUnpeel';   // 10% — unchanged, as tuned
 if (roll < 0.28) return 'capRewind';   // 10% — its own band
 if (roll < 0.58) return [...traits];   // 30% — unchanged

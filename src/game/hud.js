@@ -6,14 +6,14 @@
 // (a coin on a soft text plate, a row of pickup sprites, a tray of framed plug
 // squares) stacked down the left, and the corner read as clutter rather than as
 // one instrument. One chrome, and the eye can learn it once.
-import { W, H } from '../engine/renderer.js';
+import { W, H, chrome as chromeGeo } from '../engine/renderer.js';
 import {
   drawText as rawDrawText, drawTextCentered as rawDrawTextCentered,
-  textWidth, wrapText, drawPanel, drawRoundButton, textYForMid, UI_PANEL_BORDER,
-  keyLegendWidth, drawKeyLegend,
+  textWidth, wrapText, drawPanel, drawRoundButton, drawActionPill, textYForMid, UI_PANEL_BORDER,
+  keyLegendWidth, drawKeyLegend, platePath, UI_PANEL, UI_PLATE,
 } from '../engine/sprites.js';
 import { toonFaceSprite } from '../sprites/toons.js';
-import { drawProp } from '../sprites/props.js';
+import { drawProp, drawHudBattery, hudBatteryW } from '../sprites/props.js';
 import { HERO_BY_ID } from '../data/heroes.js';
 import { POWER_DEFS } from './powerups.js';
 import { specialMoveColor, HERO_CENTER_OFF } from './draw.js';
@@ -25,6 +25,43 @@ import { Audio } from '../engine/audio.js';
 
 // The one chrome. Passed to every drawPanel call in the HUD.
 const PANEL = { border: UI_PANEL_BORDER, shadow: true };
+
+// ---------------------------------------------------------------- layout
+// The frame's anchors. Everything else in this file is measured off these,
+// including the beat ribbon below, so they come first.
+// THE FRAME MARGIN. ONE NUMBER FOR EVERY EDGE — nothing on the HUD paints
+// closer than this to the side of the screen, on any side. It used to be three
+// numbers that had each drifted for their own local reason (8 at the sides, 7 at
+// the top once the hero disc arrived, 4 at the bottom), which is invisible one
+// corner at a time and unmistakable once you look at the frame as a whole.
+//
+// It is a FLOOR, not a rule that every panel touches: a short panel centred on
+// its row's midline sits deeper than this, and should.
+const EDGE = 6;
+// THE BOTTOM EDGE TAKES HALF. The other three margins hold panels off a screen
+// edge the eye reads as the end of the picture; the bottom one holds them off
+// the ground the hero is running on, and every pixel it takes is play field
+// rather than frame. So the readouts down there sit tighter — a deliberate
+// asymmetry, stated once, not three numbers that drifted apart again.
+const EDGE_BOTTOM = EDGE / 2;
+// The one thing it does NOT govern is the touch buttons below, which are
+// placed by what a thumb can reach, nor the world progress line, which is
+// deliberately flush with the top edge because it is a bar and not a panel.
+
+// The free-standing portrait disc, and the tallest thing in the top row — so it
+// is the disc, not the pill, that the row's inset is measured on. It lives up
+// here with the pill rather than down with the chip cuts because PILL_Y is
+// derived from it. Its own ceiling is what stops it growing: the world progress
+// line owns the top 3px of the frame, and at EDGE this already leaves 3.
+const DISC_R = 11;
+// EVERYTHING IN THE TOP ROW IS PLACED OFF PILL_CY (the objective panels take
+// HERO_CY, which is this), so this is the one line that moves the strip. The
+// pill is 4px shorter than the disc beside it and shares its midline, so its own
+// top inset comes out at EDGE + 2 — which is the floor doing its job, not a
+// second margin.
+const PILL_X = EDGE, PILL_H = 18;
+const PILL_Y = EDGE + Math.max(0, DISC_R * 2 - PILL_H) / 2;
+const PILL_CY = PILL_Y + PILL_H / 2, PILL_R = 6.5;
 
 // THE BEAT RIBBON'S BAND, and it is exported because it is not only the
 // ribbon's business: the strip shares the band a speech card is anchored in,
@@ -63,11 +100,17 @@ const RIBBON_SCALE = 2;
 // hangs off (see `mid` in drawBeatRibbon) stayed put while the plate closed in
 // around it. The plate was never doing any work with that ink.
 //
-// The strip then moved UP as a whole, midline and all, which is a different
-// edit and the reason RIBBON_Y is no longer 36 minus half the height. What
-// stops it is the status pills: they run to PILL_Y + PILL_H = 23, and the
-// plate's border tab stands RIBBON_TAB above RIBBON_Y, so 25 is where the two
-// meet. At 27 there are two pixels of sky between them.
+// The strip then moved UP as a whole, midline and all — and then all the way up
+// ONTO THE TOP ROW, so it shares one midline with the status pill on its left
+// and the GOAL panel on its right instead of hanging in a band of its own under
+// them. Set from PILL_CY rather than typed, because the row's height is the
+// pill's business and this is a passenger on it.
+//
+// WHAT THIS COSTS, stated here because it is not visible from this line: the
+// strip's own left edge is no longer free. Its back end has to clear the status
+// corner, and the playhead stands over the hero — who on a rhythm stage (camZoom
+// 1.6) lands at x~99, about three pixels right of where the pill ends. See
+// RIBBON_MARGIN for what gives.
 //
 // Six is the floor, and it is arithmetic rather than taste. An arrow is
 // ARROW_H = 2u either side of the midline, the beat swells it by RIBBON_PULSE
@@ -75,7 +118,11 @@ const RIBBON_SCALE = 2;
 // below the midline at the loudest moment, so a 6u plate is exactly filled.
 // Anything thinner clips the arrows on the beat — which is the one frame
 // nobody is looking at when they judge this at rest.
-const RIBBON_Y = 27, RIBBON_H = Math.round(6 * RIBBON_SCALE);
+const RIBBON_H = Math.round(6 * RIBBON_SCALE);
+const RIBBON_Y = PILL_CY - RIBBON_H / 2;
+// The bottom edge of the rhythm ribbon, in frame px. Exported because the
+// world has to keep out from under it: the chase copter flies below this line.
+export const RIBBON_BOTTOM = RIBBON_Y + RIBBON_H;
 export const RIBBON_BEAT_PX = Math.round(26 * RIBBON_SCALE);
 // Where the playhead stands, in the OVERLAY's unscaled 480x270 space — which is
 // not PLAYER_X, because the world is drawn through the camera's zoom and the
@@ -105,7 +152,21 @@ function ribbonSpan(run) {
   const near = run.mirror ? W - anchor : anchor;
   const minBack = RIBBON_MIN_BACK_BEATS * RIBBON_BEAT_PX;
   const margin = Math.min(RIBBON_MARGIN, Math.max(0, near - minBack));
-  return { anchor, backW: near - margin, aheadW: W - margin - near };
+  // THE FAR END IS THE GOAL PANEL, not a mirror of the near one. Now that the
+  // strip rides on the HUD row it is the lane BETWEEN two panels, and the thing
+  // it should stop at is the panel — not a distance that happens to match it on
+  // one stage and slides under it on the next. The near end keeps the margin,
+  // because the thing IT has to answer to is the playhead's trail, not the pill.
+  //
+  // run.hudGoalLeft is last frame's measurement: drawHud paints the strip before
+  // the objective panels so they cover its end rather than the other way round,
+  // so the width can only be known one frame late. It changes when the mission's
+  // count gains a digit and at no other time, which is a pixel, once, on a frame
+  // where a number was already changing. Falling back to the margin keeps the
+  // first frame of a stage honest.
+  const far = Number.isFinite(run.hudGoalLeft) ? run.hudGoalLeft : W - margin;
+  const ahead = run.mirror ? W - far : far;
+  return { anchor, backW: near - margin, aheadW: Math.max(minBack, ahead - near) };
 }
 // THE PLATE IS LAID OUT FROM THE FRAME, NOT FROM THE BEAT COUNT. It ends the
 // same distance from the right edge of the screen as it begins from the left —
@@ -122,7 +183,7 @@ function ribbonSpan(run) {
 // end out to 392 — clear of the folded BONUS panel, whose left edge lands
 // around 417. The panel only reaches further left while it is still holding its
 // full sentence, and that shrinks away on its own (see BONUS_FOLD).
-const RIBBON_MARGIN = 88;
+const RIBBON_MARGIN = 125;
 // The playhead still stands over the hero, so what the margin costs is the BACK
 // end: the plate begins at the margin now rather than a fixed beat behind him,
 // which on a 2.0x stage leaves about two thirds of a beat. That end is not
@@ -150,6 +211,16 @@ const RIBBON_AHEAD_BEATS = 4.5;
 // by a length it does not have.
 const RIBBON_FADE_BACK = Math.round(0.35 * RIBBON_BEAT_PX);
 const RIBBON_FADE_AHEAD = RIBBON_BEAT_PX;
+// THE PLATE AND THE GLYPHS FADE OVER DIFFERENT DISTANCES, and they always
+// should have. A marker has to materialise gradually or it pops into the lane,
+// which is why the glyph fade ahead is a whole beat. The PLATE's job is the
+// opposite: it IS the lane, running from one HUD panel to the other, and one
+// that has dissolved fifty pixels before the panel it runs up to reads as a
+// strip that stopped short rather than as a strip that reaches. So the plate
+// closes over the same short distance at both ends and the markers keep their
+// long fade INSIDE it — which also means a marker now fades in against lane
+// rather than against sky, and reads as arriving instead of appearing.
+const RIBBON_PLATE_FADE = RIBBON_FADE_BACK;
 const RIBBON_PLATE = 'rgba(16,20,28,0.55)';
 // How far an action glyph swells on the downbeat, as a fraction of its size.
 // A quarter is the most it can take before the arrows start clipping their own
@@ -167,12 +238,18 @@ const RIBBON_PULSE = 0.25;
 // marks, which on a pale LCD sky was the first thing you saw and the last thing
 // you needed to see.
 const RIBBON_TAB = 1;
+// The row a speech card's first line sits on when nothing is pushing it down.
+// Named because BEAT_SPEECH_Y floors at it.
+const SPEECH_Y = 46;
 export const BEAT_RIBBON_BOTTOM = RIBBON_Y + RIBBON_H + RIBBON_TAB;
 // Where a speech card's first ROW goes when the beat lane is up. drawSpeech
 // hangs its plate four units above the row it is handed, so clearing the ribbon
 // means clearing it by four more than it looks — plus three of air, or the card
 // and the strip read as one stacked instrument.
-export const BEAT_SPEECH_Y = BEAT_RIBBON_BOTTOM + 4 + 3;
+// Floored at the row every other speech card uses: this figure exists ONLY to
+// clear the ribbon, so with the ribbon up on the HUD row there is nothing left
+// for it to clear and a beat stage should talk where every other stage talks.
+export const BEAT_SPEECH_Y = Math.max(BEAT_RIBBON_BOTTOM + 4 + 3, SPEECH_Y);
 
 // Keep the ribbon in musical coordinates all the way to the canvas. Returning
 // a fractional logical pixel is intentional: the overlay canvas has enough
@@ -283,8 +360,9 @@ export function drawBeatRibbon(ctx, run) {
   // run gets the gradient reversed for free rather than a second copy of it.
   const tail = anchor - dir * backW, head = anchor + dir * aheadW;
   const span = backW + aheadW;
-  const fadeStop = fadeBack / span, fadeStopAhead = fadeAhead / span;
-  const back = ribbonPlateGrad(ctx, tail, head, fadeStop, fadeStopAhead);
+  const plateBack = Math.max(1, Math.min(RIBBON_PLATE_FADE, backW));
+  const plateAhead = Math.max(1, Math.min(RIBBON_PLATE_FADE, aheadW));
+  const back = ribbonPlateGrad(ctx, tail, head, plateBack / span, plateAhead / span);
   // Translucent, not a black bar. At full strength a strip this long stopped
   // being chrome and became a hole in the sky — the widest, heaviest object in
   // the frame, sitting over the prettiest part of the stage. It only has to
@@ -477,10 +555,78 @@ function drawRibbonPlayhead(ctx, anchor, y, h, pulse) {
   ctx.fillRect(x, y, w, h);
 }
 
+
 // The touch power-up shelf's midline (see drawHud below) — exported so run.js
 // can line the chrome ability-name label up against it exactly, not just land
 // close by.
-export const TOUCH_SHELF_CY = H - 11 - 4;
+// THE BOTTOM ROW'S MIDLINE. The tallest panel down there is 14 (the ability
+// nameplate), so its midline sits EDGE + half of that up from the bottom edge,
+// and every other bottom-edge readout centres on it — which is what keeps the
+// nameplate and the keyboard hints level across the screen instead of each
+// hanging at its own height.
+const BOTTOM_ROW_H = 14;
+const BOTTOM_CY = H - EDGE_BOTTOM - BOTTOM_ROW_H / 2;
+export const TOUCH_SHELF_CY = BOTTOM_CY - 4;
+
+// ---------------------------------------------------------------- bake-off
+// WHERE THE SECONDARY OBJECTIVE LIVES. The BONUS readout is the one row of the
+// HUD whose home is still open, so it is a named cut rather than a coordinate:
+//
+//   'row'    — shipped: its own line under GOAL, top-right. Two rows up there.
+//   'foldup' — 'row' for as long as it is SAYING something, then it folds to a
+//              count and climbs onto GOAL's line. The second row becomes
+//              teaching that leaves, like the keyboard legend, instead of
+//              furniture — and nothing is lost to get there.
+//   'chip'   — the SAME line as GOAL, a second chip to its left, from the first
+//              frame. Count only: the sentence never appears in the corner.
+//   'shelf'  — a donut on the bottom-left shelf, at the end of the power-up
+//              row it already reads exactly like — a thing filling up.
+//   'bottom' — its own chip, bottom-right, on the keyboard hints' midline. The
+//              only cut that keeps the fold, because it is the only one with a
+//              sentence's worth of width.
+//
+// Anything but 'row' empties the second top-right line, which is the whole
+// point of the exercise.
+export const BONUS_SLOTS = ['row', 'foldup', 'chip', 'shelf', 'bottom'];
+const BONUS_SLOT = pickCut('bonus', BONUS_SLOTS, 'row');
+
+// WHICH END OF THE BOTTOM ROW THE ABILITY NAMEPLATE SITS AT — touch only; the
+// keyboard's has always been bottom-left with the gauges.
+//
+// 'right' is shipped, and its reason is that on touch the nameplate is a LABEL
+// FOR THE USE BUTTON: it sits beside the disc out in the right margin, and
+// run.js registers the words themselves as a second hit box for the same
+// action. 'left' gives that corner up — the plate becomes a readout like the
+// keyboard's, stacked under the power-up shelf — and hands the bottom-right
+// slot to whatever else wants it, which is what BONUS_SLOT 'bottom' wants.
+// So that cut moves it by default rather than making you ask for both.
+export const ABILITY_SIDES = ['right', 'left'];
+export const ABILITY_SIDE = pickCut('ability', ABILITY_SIDES, BONUS_SLOT === 'bottom' ? 'left' : 'right');
+
+// A bake-off's live selector. The shipped answer is the constant's default; a
+// dev build can ask for one of the other cuts with ?<name>=<cut> so the
+// variants can be shot against each other without a rebuild between each.
+function pickCut(param, options, fallback) {
+  if (typeof window === 'undefined' || typeof URLSearchParams === 'undefined') return fallback;
+  const q = new URLSearchParams(window.location.search).get(param);
+  return options.includes(q) ? q : fallback;
+}
+
+/**
+ * Where the ability nameplate is drawn this frame, which decides whether the
+ * bottom-left shelf has a plate under it to clear.
+ *
+ * Both painters ask, because there are two of them: hud.js draws the left-hand
+ * plate on the game canvas and run.js draws the right-hand one beside USE, and
+ * a slot two files disagree about is a slot that gets drawn twice.
+ */
+export function abilityNameSlot(run) {
+  if (!Input.usingTouch) return 'left';
+  // In-canvas fallback: the USE disc is on the glass with its own word on it,
+  // and there is no margin to hang a plate in either way.
+  if (chromeGeo.mode !== 'side') return 'none';
+  return ABILITY_SIDE;
+}
 
 // Touch control geometry. 44 logical px across: the screen fits its 480-wide
 // backbuffer to a phone by height, so a landscape iPhone renders roughly 1.4
@@ -508,9 +654,32 @@ const PAUSE_BTN_Y = 43;
 // of what it is handed, and two screens now ask for these — a run and the
 // tutorial. Both are playable surfaces with the same three controls, so they
 // share the geometry rather than each keeping a copy that drifts.
+// The stacked play pill's box: the same left inset and the same BOTTOM edge the
+// lone JUMP disc had, twice as tall, so the home-indicator clearance
+// TOUCH_PLAY_Y bought is untouched and all the growth goes upward into sky.
+//
+// Jump's own centre does move up by half a disc, and that is the real price
+// here: a thumb with muscle memory for the old corner now lands on the slide
+// half. It is paid on purpose, because the only other way to fit a down arrow
+// under an up arrow is to put the down arrow on top — a control that lies about
+// which way it sends you. The pill is a visible change, not a silent one, and
+// the tap-to-jump glass absorbs the rest.
+export const PLAY_PILL = { x: 12, y: TOUCH_PLAY_Y - TOUCH_D, w: TOUCH_D, h: TOUCH_D * 2 };
+
 export function playButtons() {
   return [
-    { id: 'jump', x: 12, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'jump', label: 'JUMP', round: true },
+    // The pill's halves hit-test as RECTANGLES, not discs. They have to abut:
+    // two circles inscribed in these boxes would leave the corners between them
+    // dead, and dead pixels in the middle of this control are the one thing it
+    // exists to remove.
+    //
+    // `guard` is the halo input.js refuses to fire its tap-to-jump fallback
+    // inside. Only the down half carries one, and the asymmetry is the whole
+    // fix: a tap that misses high and jumps is what the player wanted anyway,
+    // while a tap that misses low and jumps is the failure the swipe
+    // arbitration was already written to prevent.
+    { id: 'jump', x: PLAY_PILL.x, y: PLAY_PILL.y, w: TOUCH_D, h: TOUCH_D, action: 'jump', pill: 'up' },
+    { id: 'duck', x: PLAY_PILL.x, y: PLAY_PILL.y + TOUCH_D, w: TOUCH_D, h: TOUCH_D, action: 'duck', pill: 'down', guard: 14 },
     { id: 'ability', x: W - 56, y: TOUCH_PLAY_Y, w: TOUCH_D, h: TOUCH_D, action: 'ability', label: 'USE', round: true },
     { id: 'pause', x: W - 56, y: PAUSE_BTN_Y, w: TOUCH_D, h: TOUCH_D, action: 'escape', icon: 'pause', round: true },
   ];
@@ -551,6 +720,11 @@ const BONUS_FOLD = 0.55;
 // bare "REACH"/"FUSE"/"BLACKOUT"/"ESCAPE" reads as an incomplete instruction —
 // spell out what "done" is instead.
 const GOAL_LABELS = {
+  // Not CHASE, and no longer HIT: the mission is a BONK, the hero's own head
+  // into the underside of the tub, and this panel is where that is taught. A
+  // barrel put through him counts as one too, but the bonk is the thing the
+  // player is being asked to do and the word the stage descriptions use.
+  chase: 'BONK',
   reach: 'REACH END',
   fuse: 'CARRY FUSE',
   blackout: 'SURVIVE',
@@ -597,11 +771,6 @@ export function bonusPanelFold(run) {
 // left and every gain would shove the cells sideways — the one readout you
 // check by shape, in motion, at a glance, would never be in the same place
 // twice.
-// The pill is the tallest panel in the top row, so its inset is the one the
-// whole strip is judged by: at y=3 it read as flush against the screen edge
-// while its shorter neighbours looked correctly inset. 5 gives the row air
-// without shrinking the pill around its 12px coin.
-const PILL_X = 8, PILL_Y = 5, PILL_H = 18, PILL_CY = PILL_Y + PILL_H / 2;
 
 // Where the left column of readouts under the status pill starts — the one-hit
 // warning, the goal toasts, the finish plate, in that stacking order. It is a
@@ -611,11 +780,45 @@ const PILL_X = 8, PILL_Y = 5, PILL_H = 18, PILL_CY = PILL_Y + PILL_H / 2;
 // whether the ribbon is currently drawn, so the column has ONE height for the
 // whole stage instead of hopping 15px every time a zone card or a pause hides
 // the strip out from under it.
+// The hand-off name plate prints in this column's first row, and the ONE HIT
+// warning that lives there is a standing readout for the whole run — so the
+// column clears the plate for the whole stage rather than hopping down and back
+// twice a hand-off. Same rule as the beat ribbon above: one height per stage,
+// never a moving one. Costs the column HERO_CHIP_ROW of headroom on every run
+// that can hand off; the alternative is the run's most permanent panel and its
+// most temporary one taking turns on one line.
 function leftColumnTop(run) {
-  return run?.beatLock ? BEAT_RIBBON_BOTTOM + 3 : PILL_Y + PILL_H + 3;
+  const base = run?.beatLock ? BEAT_RIBBON_BOTTOM + 3 : PILL_Y + PILL_H + 3;
+  return HERO_REVEAL === 'under'
+    ? heroNameTop(run) + REVEAL_H + 3
+    : Math.max(base, heroIconBottom() + 3);
 }
-const CELL_W = 10, CELL_H = 6.8, CELL_GAP = 2;
-const COIN_D = 12, PILL_PAD = 6, PILL_SPLIT = 5;
+
+// The bottom of the hero's icon — the lowest thing the corner always has.
+function heroIconBottom(style = HERO_CHIP) {
+  return style === 'disc' || style === 'disclift' || style === 'medallion'
+    ? PILL_CY + DISC_R : PILL_Y + PILL_H;
+}
+
+// The hand-off name plate's row: directly under the icon, except on a beat
+// stage, where the ribbon owns that band and the name waits below it. Read by
+// the plate AND by the column beneath it, so the two cannot disagree — and
+// stated in this order (name from the icon, column from the name) rather than
+// the reverse, which would be circular.
+function heroNameTop(run, style = HERO_CHIP) {
+  return Math.max(heroIconBottom(style) + 2, run?.beatLock ? BEAT_RIBBON_BOTTOM + 3 : 0);
+}
+// The meter is drawn at the coin's height so the two readouts in the pill sit
+// on one line rather than reading as a big thing beside a small one.
+const COIN_D = 12, METER_H = COIN_D, PILL_PAD = 6, PILL_SPLIT = 3;
+// The meter is the one thing in the pill with a rounded outline of its own, so
+// it does not take the pill's PILL_PAD: it takes the SAME gap on the left that
+// centring already gives it above and below, and its shell corner is the pill's
+// corner less that gap. Those two together are what makes the two curves
+// concentric — at PILL_PAD the left gap was twice the top gap and the shell's
+// corner sat inside the panel's looking like a near-miss rather than a nest.
+const METER_INSET = (PILL_H - METER_H) / 2;
+const METER_R = PILL_R - METER_INSET;
 
 // Exported because the tutorial shows a coin count too, and a second hand-built
 // coin readout would be a second thing to keep in sync with this one. A caller
@@ -625,15 +828,31 @@ const COIN_D = 12, PILL_PAD = 6, PILL_SPLIT = 5;
 // plate below it is sized to match: two stacked panels of different widths read
 // as two unrelated readouts that happen to be near each other, and the whole
 // point of that plate is that it belongs to this one.
-function statusPillW(run) {
+function statusPillW(run, style = HERO_CHIP) {
   const cells = run.oneHit ? 0 : run.maxBattery();
-  const cellsW = cells ? cells * CELL_W + (cells - 1) * CELL_GAP : 0;
+  const cellsW = hudBatteryW(cells, METER_H);
   // A floor of two digits: a lone '0' left the coin sitting in a pocket of
   // dead panel, and the pill twitched wider the moment it hit 10.
   const countW = Math.max(coinCountW(formatCoins(run.coins)), coinCountW('00'));
   const splitW = cells ? PILL_SPLIT * 2 + 0.5 : 0;
-  return PILL_PAD * 2 + cellsW + splitW + COIN_D + 3 + countW;
+  // A chip that lives INSIDE the pill replaces the meter's inset with its own
+  // lead — it already ends in the gap the cells would have been inset by.
+  const lead = heroChipGeom(style, run).lead || meterInset(cells);
+  return lead + cellsW + splitW + COIN_D + 3 + countW + PILL_PAD;
 }
+
+// THE WHOLE CORNER'S WIDTH — the hero icon's column plus the pill beside it,
+// PILL_X to the pill's right edge. The panels stacked under it are sized off
+// this rather than off the pill alone: with the icon standing clear, the pill no
+// longer starts at the column's left edge, and a plate matched to the pill would
+// hang off to one side of the block it belongs to.
+function statusCornerW(run) {
+  return heroChipGeom(HERO_BY_ID[run.relay?.current] ? HERO_CHIP : null, run).x + statusPillW(run);
+}
+
+// The pill's left inset. Only the meter earns the tighter one; a pill showing
+// the coin alone (one-hit runs, the tutorial) keeps PILL_PAD on both ends.
+function meterInset(cells) { return cells ? METER_INSET : PILL_PAD; }
 
 // The width the count RESERVES, as opposed to the width it inks. Fredoka's
 // digits are proportional — a 1 is a good deal narrower than an 8 — so sizing
@@ -651,26 +870,459 @@ function coinCountW(count) {
 // its own advance cache when it does, so a width held on this side would be the
 // fallback face's for the life of the page. textWidth is a map lookup per glyph.
 function widestDigitW() {
-  let w = 0;
-  for (let d = 0; d <= 9; d++) w = Math.max(w, textWidth(String(d), 1, 'bold'));
-  return w;
+  return textWidth(widestDigit('bold'), 1, 'bold');
+}
+// The fattest digit itself, for anything that reserves a slot by building the
+// widest STRING a counter can print and measuring that at its own scale — the
+// objective panels' `88/30`. Same non-memoisation, for the same reason.
+function widestDigit(style = 'ui') {
+  let best = '0', bw = -1;
+  for (let d = 0; d <= 9; d++) {
+    const w = textWidth(String(d), 1, style);
+    if (w > bw) { bw = w; best = String(d); }
+  }
+  return best;
 }
 
-export function drawStatusPill(ctx, run) {
+// ---------------------------------------------------------------- hero chip
+// WHO YOU ARE, IN THE CORNER INSTEAD OF THE SKY. The relay's current hero named
+// itself on a badge centred at the top of the frame — a whole second panel,
+// parked in the middle of the play field, carrying one word the left-hand
+// readout could have carried in a fraction of the space. These are the cuts for
+// folding the face into the status pill instead.
+//
+// HERO_CHIP is the live pick and null keeps the centre badge, so the question is
+// decided by changing one line. Every cut goes through drawHeroChip and declares
+// its geometry in ONE place (heroChipGeom), because the pill's width, the finish
+// plate that matches that width, and the chip's own paint all have to agree — a
+// cut that measured itself twice would be a cut that fits in one of them.
+export const HERO_CHIP_CUTS = ['chip', 'porthole', 'medallion', 'disc', 'disclift', 'card',
+  'relay', 'named'];
+// PICKED 4 Sep 2026: the hero is a circle standing clear of the pill, and his
+// name slides in under it on the hand-off. The losing cuts stay until the
+// gallery section comes out with them.
+const HERO_CHIP = 'disc';
+
+// THE NAME IS A SEPARATE QUESTION FROM THE FACE. Every chip above can carry the
+// hand-off name gesture or not, so it is a second dial rather than a cut of its
+// own — otherwise every shape would need a with-name twin. null is no gesture.
+export const HERO_REVEAL_CUTS = ['under', 'slide', 'drawer'];
+const HERO_REVEAL = 'under';
+
+// The face box inside the pill: the meter's height, so the chip, the cells and
+// the coin are three things on one line rather than three sizes in a row.
+const CHIP_D = METER_H;
+// How far the face oversizes a square window before the clip takes the edges
+// off. 1 is drawToonFace's own fit, which centres a whole head with padding and
+// reads as a sticker; this crops in to the head the way the badge's wide box did.
+const CHIP_CROP = 1.3;
+// The chip closes with the same hairline-and-two-gaps the cells close with.
+const CHIP_DIV = PILL_SPLIT * 2 + 0.5;
+// The gap between a clear disc and the pill. The lifted cut takes more of it,
+// because separation is half of what makes it read as its own object.
+const DISC_GAP = 2, DISC_LIFT_GAP = 7;
+// The name reveal's shape, in seconds: in, hold, out. "A beat or two" at the
+// game's tempos is about this hold.
+const REVEAL_IN = 0.22, REVEAL_HOLD = 1.7, REVEAL_OUT = 0.3;
+const REVEAL_END = REVEAL_IN + REVEAL_HOLD + REVEAL_OUT;
+// The name plate's height. Module-level because leftColumnTop is measured off
+// it — the column that has to clear the plate and the plate itself must be
+// quoting one number.
+const REVEAL_H = 14;
+
+// THE HAND-OFF COIN FLIP. The disc turns about its vertical axis and lands on
+// the incoming hero: the outgoing face is the coin's front, the new one its
+// back, so the LAST HALF-TURN IS THE REVEAL rather than a cut hidden inside the
+// spin. Half-turns must be ODD for that — an even count lands back on the face
+// it started from — and the count being odd is also why nothing has to be
+// mirrored at rest: the back face is drawn from |cos| rather than cos.
+// Two and a half spins, and the length is set by the SLOWEST readable half-turn
+// rather than by feel: at 0.62s the ease put the first half-turn inside four
+// frames, which strobes instead of turning. At 0.85 the opening half-turn takes
+// about seven frames and the landing one seventeen.
+const FLIP_HALF_TURNS = 5;
+const FLIP_T = 0.85;
+// The ease. 2.2 bunched most of the spin into the first tenth of a second;
+// 1.5 keeps the early turns readable and still lands soft.
+const FLIP_EASE = 1.5;
+// The name waits for the coin. Announcing a hero while his face is still a blur
+// is two reveals of the same fact fighting each other, so the plate starts as
+// the coin lands and the corner tells it once.
+const REVEAL_DELAY = FLIP_T;
+// THE HERO IS PLEASED TO BE HERE. He lands out of the flip smiling and settles
+// back to his own resting face a beat later — the only expression change the
+// corner ever makes, so it reads as a greeting rather than as a face that
+// animates. Held, then faded rather than cut: at 22px a mouth swapping between
+// two shapes on one frame pops, and the fade is two draws of an already-cached
+// crop, so it costs nothing.
+const SMILE_HOLD = 1.2, SMILE_FADE = 0.35;
+// A cut is either INSIDE the pill (`lead`: the width it takes at the pill's left
+// end, divider included, replacing the meter's inset) or BESIDE it (`x`: how far
+// the pill's own left edge steps right to make room). Never both.
+function heroChipGeom(style, run) {
+  switch (style) {
+    case 'chip':     return { x: 0, lead: METER_INSET + CHIP_D + CHIP_DIV };
+    case 'relay':    return { x: 0, lead: METER_INSET + CHIP_D + 10 + CHIP_DIV };
+    case 'porthole': return { x: 0, lead: 16 + CHIP_DIV };
+    case 'named':    return {
+      x: 0,
+      lead: METER_INSET + CHIP_D + 4
+        + textWidth(HERO_BY_ID[run.relay?.current]?.short || '', 0.75, 'bold') + CHIP_DIV,
+    };
+    case 'medallion': return { x: 18, lead: 0 };
+    case 'card':      return { x: 22, lead: 0 };
+    // Clear of the pill: nothing is drawn over anything, so the hero reads as a
+    // separate object beside the readout rather than a bite out of its corner.
+    case 'disc':      return { x: DISC_R * 2 + DISC_GAP, lead: 0 };
+    case 'disclift':  return { x: DISC_R * 2 + DISC_LIFT_GAP, lead: 0 };
+    default:          return { x: 0, lead: 0 };
+  }
+}
+
+// The face, smoothed. toonFaceSprite caches on the exact box, so the box is
+// whole pixels — a chip measured to a half would mint a new raster per frame.
+// `over` is how much bigger than its window the face is drawn. drawToonFace
+// fits a whole head inside the box it is given, padding included — which in a
+// square 12px well leaves the head a sticker in the middle of a hole. The chip
+// wants a CROP, not a portrait: oversize the face and let the window's clip take
+// the edges off, the way the badge's 12x9 box already did by being wide.
+// EVERY CALLER MUST BE INSIDE A CLIP — the face is a cached raster, so the
+// overhang really does spill without one.
+function drawChipFace(ctx, id, x, y, w, h, over = 1, joy = false) {
+  const fw = w * over, fh = h * over;
+  const face = toonFaceSprite(id, Math.round(fw), Math.round(fh),
+    joy ? { key: 'joy', pose: { faceJoy: true } } : null);
+  if (!face) return;
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(face, x - (fw - w) / 2, y - (fh - h) / 2, fw, fh);
+  ctx.imageSmoothingEnabled = prev;
+}
+
+// A recessed well behind a face: the chip is a WINDOW cut into the panel, not a
+// sticker laid on it, and against a bright sky the panel alone is not dark
+// enough to hold a pale muzzle.
+function chipWell(ctx, path) {
+  ctx.save();
+  path();
+  ctx.fillStyle = UI_PLATE;
+  ctx.fill();
+  ctx.clip();
+}
+
+// How much of the landing smile is showing, 0 at rest. Starts when the coin
+// lands, so the two never run at once — a face turning edge-on cannot be seen
+// to smile, and spending the expression during the spin would waste it.
+function heroSmile(run) {
+  const t = run.relay?.tagT - FLIP_T;
+  if (!Number.isFinite(t) || t < 0 || t >= SMILE_HOLD) return 0;
+  return Math.max(0, Math.min(1, (SMILE_HOLD - t) / SMILE_FADE));
+}
+
+// Where the coin is in its turn, or null when it is at rest. `sx` is the disc's
+// horizontal squash (1 face-on, 0 edge-on) and `face` says which of the two
+// heroes is pointing at the player.
+function heroFlip(run) {
+  const age = run.relay?.tagT;
+  if (!Number.isFinite(age) || age < 0 || age >= FLIP_T) return null;
+  // Eases out: a coin spun by hand slows into its landing rather than stopping.
+  const k = 1 - Math.pow(1 - age / FLIP_T, FLIP_EASE);
+  const c = Math.cos(k * FLIP_HALF_TURNS * Math.PI);
+  return { sx: Math.abs(c), face: c >= 0 ? 'prev' : 'current' };
+}
+
+// One portrait disc, drawn once and reused by every circular cut. `rim` is the
+// hairline: the panel's own by default, brighter for the LIFTED cut, where the
+// point is that the hero is NOT a third compartment of the readout.
+//
+// NO GAUGE ON THIS RIM. The special's charge is read beside the hero, in
+// peripheral vision, while you are watching a hazard — a copy of it up here
+// would be a second place to look for a number you already have, and would only
+// earn its keep if it REPLACED the orb, which it should not.
+function drawHeroDisc(ctx, id, cx, cy, R, rim = UI_PANEL_BORDER, sx = 1, smile = 0) {
+  // A floor rather than zero: at exactly edge-on there is no ellipse to fill or
+  // clip to, and a degenerate path takes the face with it.
+  const w = Math.max(0.35, R * sx);
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, w, R, 0, 0, Math.PI * 2);
+  ctx.fillStyle = UI_PANEL;
+  ctx.fill();
+  ctx.clip();
+  // The face is squashed by the SAME factor the disc is, about the same centre,
+  // so the portrait turns with the coin instead of sitting still inside a
+  // narrowing window.
+  ctx.translate(cx, cy);
+  ctx.scale(Math.max(0.001, sx), 1);
+  ctx.translate(-cx, -cy);
+  // A 22px window is nearly twice the chip's, so it needs proportionally less
+  // crop to hold a head — at CHIP_CROP the disc comes out all muzzle.
+  drawChipFace(ctx, id, cx - R, cy - R, R * 2, R * 2, 1.15);
+  if (smile > 0) {
+    // Over the resting face rather than instead of it, so the fade is a
+    // dissolve between the two crops and not a mouth appearing out of nothing.
+    ctx.globalAlpha = smile;
+    drawChipFace(ctx, id, cx - R, cy - R, R * 2, R * 2, 1.15, true);
+  }
+  ctx.restore();
+  // The rim is stroked OUTSIDE that transform: scaled with it, the top and
+  // bottom of the hairline would stay 1px while its sides thinned to nothing,
+  // and the coin would lose its outline exactly when it is hardest to read.
+  ctx.strokeStyle = rim;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, Math.max(0.35, w - 0.5), R - 0.5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // Edge-on, the coin is a sliver of panel with no face in it, which reads as a
+  // glitch rather than as a turn. A light catch down the edge is what says the
+  // thing is thin, not gone.
+  if (sx < 0.16) {
+    ctx.save();
+    ctx.globalAlpha = (1 - sx / 0.16) * 0.5;
+    ctx.fillStyle = '#d0f0e8';
+    ctx.fillRect(cx - 0.5, cy - R + 1.5, 1, R * 2 - 3);
+    ctx.restore();
+  }
+}
+
+// Draws the chip and returns nothing: the pill has already been sized off
+// heroChipGeom, so nothing here may move anything. `px` is the pill's left edge
+// and `pillW` its width — the beside-the-pill cuts overlap that silhouette on
+// purpose, so they need both.
+function drawHeroChip(ctx, run, style, px, pillW) {
+  const id = run.relay?.current;
+  if (!id || !HERO_BY_ID[id]) return;
+  const divider = (dx) => {
+    ctx.fillStyle = UI_PANEL_BORDER;
+    ctx.fillRect(dx, PILL_Y + 3.5, 0.5, PILL_H - 7);
+  };
+
+  if (style === 'disc' || style === 'disclift') {
+    // The hero as his own object, clear of the readout. Nothing overlaps and
+    // nothing is clipped by anything else, so the corner reads as a portrait
+    // BESIDE a gauge rather than a longer gauge with a face in one end.
+    const flip = heroFlip(run);
+    const shown = flip && flip.face === 'prev' && HERO_BY_ID[run.relay.prev]
+      ? run.relay.prev : id;
+    drawHeroDisc(ctx, shown, PILL_X + DISC_R, PILL_CY, DISC_R,
+      style === 'disclift' ? 'rgba(255,255,255,0.30)' : UI_PANEL_BORDER,
+      flip ? flip.sx : 1, heroSmile(run));
+    return;
+  }
+
+  if (style === 'chip' || style === 'named' || style === 'relay') {
+    // Inside the pill, nested in the meter's corner: same inset, same radius
+    // rule, so the chip's curve and the battery shell's curve are siblings.
+    const bx = px + METER_INSET, by = PILL_CY - CHIP_D / 2;
+    chipWell(ctx, () => platePath(ctx, bx, by, CHIP_D, CHIP_D, METER_R));
+    drawChipFace(ctx, id, bx, by, CHIP_D, CHIP_D, CHIP_CROP);
+    ctx.restore();
+    let end = bx + CHIP_D;
+    if (style === 'named') {
+      // The name survives, at a third of the badge's footprint and on the side
+      // of the screen you already look at. It is the pill's only variable-width
+      // element, so the pill breathes a pixel or two as the baton changes hands.
+      const label = HERO_BY_ID[id].short;
+      rawDrawText(ctx, label, end + 4, textY(PILL_CY, 0.75), '#d0f0e8', 0.75, 'bold');
+      end += 4 + textWidth(label, 0.75, 'bold');
+    }
+    if (style === 'relay') {
+      // WHO IS COMING. The portal already previews relay.next; this says it
+      // between portals, dimmed, so the upcoming face is never a surprise.
+      const R = 8, ry = PILL_CY - R / 2;
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      chipWell(ctx, () => platePath(ctx, end + 2, ry, R, R, 2));
+      drawChipFace(ctx, run.relay.next || id, end + 2, ry, R, R, CHIP_CROP);
+      ctx.restore();
+      ctx.restore();
+      end += 2 + R;
+    }
+    divider(end + PILL_SPLIT);
+    return;
+  }
+
+  if (style === 'porthole') {
+    // No inset at all: the face fills the pill's left cap edge to edge and the
+    // panel's own corner is the crop. The most graphic cut — the hero is part
+    // of the chrome rather than a passenger in it.
+    const w = 16;
+    ctx.save();
+    platePath(ctx, px, PILL_Y, pillW, PILL_H, PILL_R);
+    ctx.clip();
+    ctx.beginPath();
+    ctx.rect(px, PILL_Y, w, PILL_H);
+    ctx.clip();
+    ctx.fillStyle = UI_PLATE;
+    ctx.fillRect(px, PILL_Y, w, PILL_H);
+    drawChipFace(ctx, id, px, PILL_Y, w, PILL_H, 1.12);
+    ctx.restore();
+    divider(px + w + PILL_SPLIT);
+    return;
+  }
+
+  if (style === 'medallion') {
+    // The same disc, but OVERLAPPING the pill's left cap: it breaks the top and
+    // bottom lines, so the corner reads as one object with a face on the end.
+    // The contrast case for DISC — touching versus clear is the whole question.
+    const flip = heroFlip(run);
+    const shown = flip && flip.face === 'prev' && HERO_BY_ID[run.relay.prev]
+      ? run.relay.prev : id;
+    drawHeroDisc(ctx, shown, PILL_X + DISC_R, PILL_CY, DISC_R, UI_PANEL_BORDER,
+      flip ? flip.sx : 1, heroSmile(run));
+    return;
+  }
+
+  if (style === 'card') {
+    // Two panels, one row: a portrait plate and a readout beside it. The most
+    // conservative cut — nothing overlaps, nothing is clipped by anything.
+    const w = 18, inset = 1.5;
+    drawPanel(ctx, PILL_X, PILL_Y, w, PILL_H, PILL_R, undefined, PANEL);
+    chipWell(ctx, () => platePath(ctx, PILL_X + inset, PILL_Y + inset,
+      w - inset * 2, PILL_H - inset * 2, PILL_R - inset));
+    drawChipFace(ctx, id, PILL_X + inset, PILL_Y + inset, w - inset * 2, PILL_H - inset * 2, CHIP_CROP);
+    ctx.restore();
+    return;
+  }
+
+}
+
+// THE CENTRE BADGE — the thing the chip above is here to replace. A rounded
+// badge: face on the left, name inside beside it. Same panel and light text as
+// the speech bubble below it, so the two read as one family. Sized to the name
+// and centred on screen, so it grows symmetrically instead of drifting as hero
+// names change width. Face and text are both placed off `cy`, unrounded, so
+// they share one midline with the status pill across the row.
+//
+// Exported so the bake-off can stand it next to the cuts; if a chip wins, this
+// goes with the gallery section.
+export function drawHeroBadge(ctx, run, cy = PILL_CY) {
+  const BADGE_H = 14;
+  const BADGE_R = 3; // matches the corner radius drawText uses for its plates
+  const FACE_W = 12, FACE_H = 9;
+  const PAD_L = 4, GAP = 4, PAD_R = 7;
+  const name = HERO_BY_ID[run.relay.current].short;
+  const badgeW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
+  const badgeX = Math.round(W / 2 - badgeW / 2);
+  drawPanel(ctx, badgeX, cy - BADGE_H / 2, badgeW, BADGE_H, BADGE_R, undefined, PANEL);
+  const face = toonFaceSprite(run.relay.current, FACE_W, FACE_H);
+  if (face) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(face, badgeX + PAD_L, cy - FACE_H / 2, FACE_W, FACE_H);
+    ctx.imageSmoothingEnabled = false;
+  }
+  // Raw text: the badge is already the backing, so it must not carry a plate
+  // of its own.
+  rawDrawText(ctx, name, badgeX + PAD_L + FACE_W + GAP, textY(cy), '#d0f0e8');
+}
+
+// THE NAME, WITHOUT MOVING ANYTHING. Peter's worry about a pill that grows to
+// spell the hero out and shrinks again is the right one: the cells and the coin
+// are the two things you steer by, and a readout that slides them sideways twice
+// per hand-off is a readout you have to re-find mid-hazard.
+//
+// So nothing about the pill changes. The name rides on a SECOND plate that slides
+// out from BEHIND the pill's right edge, holds, and retracts — drawn before the
+// pill, so the pill's own panel is the door it comes out of. The pill's contents
+// never move by a pixel; only empty sky is used.
+//
+// `run.relay.tagT` is seconds since this hero took the baton. Wiring it is one
+// line in Relay.switchHero() if this cut wins; absent, nothing is drawn.
+function drawHeroReveal(ctx, run, style, px, pillW, mode) {
+  const age = run.relay?.tagT - REVEAL_DELAY;
+  if (!Number.isFinite(age) || age < 0 || age >= REVEAL_END) return;
+  // In, hold, out — as one 0..1 extension, so the plate has one position and its
+  // alpha is read off the same number rather than kept in step with it.
+  const k = age < REVEAL_IN ? age / REVEAL_IN
+    : age < REVEAL_IN + REVEAL_HOLD ? 1
+      : 1 - (age - REVEAL_IN - REVEAL_HOLD) / REVEAL_OUT;
+  const e = k < 1 ? 1 - Math.pow(1 - k, 3) : 1;   // ease out, so it lands rather than stops
+  const name = HERO_BY_ID[run.relay.current].short;
+  const PAD = 7, H = REVEAL_H;
+  const w = PAD * 2 + textWidth(name, 1, 'bold');
+
+  if (mode === 'under') {
+    // UNDER THE ICON. The name and the face it belongs to are then one object in
+    // one corner, which is the tidiest reading of the three — and it is the only
+    // one that cannot reach the middle of the screen however long a name gets.
+    // Its cost is paid once, at the top of leftColumnTop: the column below —
+    // goal toasts, the ONE HIT warning, the finish plate — starts under this row
+    // for the whole stage rather than being shoved down and back twice a
+    // hand-off. Measured off the same function, so the plate and the panels
+    // under it can never disagree about where this row is.
+    const top = heroNameTop(run, style);
+    // Left-aligned under the icon rather than centred on it: a plate that
+    // centres moves its own left edge as the name changes width, and this column
+    // has a hard left edge that everything else in it already respects.
+    const x = PILL_X;
+    ctx.save();
+    // Clipped to everything BELOW the icon, so the plate slides out from behind
+    // it rather than fading in on top of the sky.
+    ctx.beginPath();
+    ctx.rect(x - 2, top, w + 4, H + 6);
+    ctx.clip();
+    ctx.globalAlpha = e;
+    drawPanel(ctx, x, top - H * (1 - e), w, H, 4, undefined, PANEL);
+    rawDrawText(ctx, name, x + PAD, textY(top - H * (1 - e) + H / 2), '#d0f0e8', 1, 'bold');
+    ctx.restore();
+    return;
+  }
+
+  if (mode === 'slide') {
+    // A separate plate that ARRIVES: it travels in from the right and docks in
+    // its own gap beside the pill, well clear of the coin count, then leaves the
+    // same way. The whole name is legible the entire time because it never
+    // emerges edge-first.
+    const GAP = 6, TRAVEL = 16;
+    const x = px + pillW + GAP + TRAVEL * (1 - e);
+    ctx.save();
+    ctx.globalAlpha = e;
+    drawPanel(ctx, x, PILL_CY - H / 2, w, H, 4, undefined, PANEL);
+    rawDrawText(ctx, name, x + PAD, textY(PILL_CY), '#d0f0e8', 1, 'bold');
+    ctx.restore();
+    return;
+  }
+
+  // DRAWER — the plate EXTENDS and the glyphs do not move. It is drawn at the
+  // width it has reached, with its own rounded end cap so the leading edge is a
+  // drawer front and not a cut, and the name is clipped to it: revealed left to
+  // right as the front passes over it. Tucked behind the pill's rounded end, so
+  // the pill is the door it comes out of.
+  const x = px + pillW - PILL_R;
+  const outW = w * e;
+  if (outW < 1) return;
+  drawPanel(ctx, x, PILL_CY - H / 2, outW, H, Math.min(PILL_R, outW / 2), undefined, PANEL);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, PILL_Y, Math.max(0, outW - 2), H);
+  ctx.clip();
+  rawDrawText(ctx, name, x + PILL_R + PAD - 2, textY(PILL_CY), '#d0f0e8', 1, 'bold');
+  ctx.restore();
+}
+
+export function drawStatusPill(ctx, run, style = HERO_CHIP, reveal = HERO_REVEAL) {
+  // NO HERO, NO CHIP. The tutorial draws the coin half of this pill with no
+  // relay at all; without this the pill would step aside for an icon that never
+  // arrives and sit 26px in from a corner with nothing in it.
+  if (!HERO_BY_ID[run.relay?.current]) { style = null; reveal = null; }
   const cells = run.oneHit ? 0 : run.maxBattery();
-  const cellsW = cells ? cells * CELL_W + (cells - 1) * CELL_GAP : 0;
+  const cellsW = hudBatteryW(cells, METER_H);
   const count = formatCoins(run.coins);
   const splitW = cells ? PILL_SPLIT * 2 + 0.5 : 0;
-  const pillW = statusPillW(run);
-  drawPanel(ctx, PILL_X, PILL_Y, pillW, PILL_H, 6.5, undefined, PANEL);
+  const pillW = statusPillW(run, style);
+  const geom = heroChipGeom(style, run);
+  const px = PILL_X + geom.x;
+  // Before the pill and the icon, so both are the door the name comes out from
+  // behind. The SLIDE cut never overlaps either, so the order is free for it.
+  if (reveal) drawHeroReveal(ctx, run, style, px, pillW, reveal);
+  drawPanel(ctx, px, PILL_Y, pillW, PILL_H, PILL_R, undefined, PANEL);
+  if (style) drawHeroChip(ctx, run, style, px, pillW);
 
-  let x = PILL_X + PILL_PAD;
-  for (let i = 0; i < cells; i++) {
-    drawProp(ctx, i < run.battery ? 'cellFull' : 'cellEmpty', x, PILL_CY - CELL_H / 2, CELL_W, CELL_H);
-    x += CELL_W + CELL_GAP;
-  }
+  let x = px + (geom.lead || meterInset(cells));
   if (cells) {
-    x -= CELL_GAP;
+    drawHudBattery(ctx, x, PILL_CY - METER_H / 2, cellsW, METER_H,
+      cells, Math.max(0, Math.min(cells, run.battery)), METER_R);
+    x += cellsW;
     ctx.fillStyle = UI_PANEL_BORDER;
     ctx.fillRect(x + PILL_SPLIT, PILL_Y + 3.5, 0.5, PILL_H - 7);
     x += splitW;
@@ -723,11 +1375,12 @@ function drawCoinBonus(ctx, run) {
   // Sized off the widest reading each line will ever show, so the plate does not
   // shrink under its own count as the coins leave it.
   const coinRow = labelW + GAP * 2 + D + GAP + textWidth(`${b.total}`, 1, 'bold');
-  // Flush with the pill above, never narrower — the two panels share a left AND
-  // a right edge, so they read as one block of run state rather than as a card
-  // that happened to land under the HUD. Content still sets the floor: a grade
-  // wider than the pill grows the plate instead of being clipped by it.
-  const w = Math.max(statusPillW(run), PAD * 2 + Math.max(textWidth(head, 0.85, 'bold'), coinRow));
+  // Flush with the corner above, never narrower — the plate and the readout
+  // share a left AND a right edge, so they read as one block of run state rather
+  // than as a card that happened to land under the HUD. That edge is the ICON's
+  // now, not the pill's (see statusCornerW). Content still sets the floor: a
+  // grade wider than the corner grows the plate instead of being clipped by it.
+  const w = Math.max(statusCornerW(run), PAD * 2 + Math.max(textWidth(head, 0.85, 'bold'), coinRow));
   const h = ROW * 2 + 5;
   const x = PILL_X;
   // Under the one-hit warning when that row is present; otherwise the first
@@ -875,14 +1528,14 @@ export function drawHud(ctx, run) {
   // now — see the gauge row below.) Taken from the pill rather than restated,
   // so moving the row's inset moves all of it.
   const HERO_CY = PILL_CY;
-  // Slim world progress line across the top: teal fills toward the right edge,
+  // Slim world progress line across the top: cornflower fills toward the right edge,
   // the yellow tick is you. Reaching the end is the goal, so the end needs no
   // icon of its own — the finish line is drawn in-world as you approach it.
   //
   // The bar also calls the approach now. A blinking FINISH AHEAD used to sit
   // centre-screen for about two seconds, in the same band as the dialog
-  // bubbles, announcing a breaker pole that scrolls on and labels itself
-  // moments later. Instead the fill warms teal -> gold over that last stretch
+  // bubbles, announcing a finish pole that scrolls on and labels itself
+  // moments later. Instead the fill warms cornflower -> gold over that last stretch
   // and finishes turning exactly as the pole appears: the same warning, in
   // peripheral vision, over nobody's words.
   if (!run.overtime && run.stage) {
@@ -897,7 +1550,7 @@ export function drawHud(ctx, run) {
       : 0;
     ctx.fillStyle = '#10141c';
     ctx.fillRect(0, 0, W, 3);
-    ctx.fillStyle = mix('#48e0c8', '#f6d33c', k);
+    ctx.fillStyle = mix('#6495ed', '#f6d33c', k);
     ctx.fillRect(0, 0, W * frac, 3);
     // Keep every banked checkpoint visible, not just the latest death snapshot.
     // These are deliberately only one quiet pixel wide and live entirely
@@ -948,11 +1601,11 @@ export function drawHud(ctx, run) {
   // instead of two edges a few pixels apart. GAUGE_X is a donut *centre*, so it
   // sits one radius in from that line.
   const GAUGE_X = PILL_X + SHELF_R;
-  // Shares the keyboard hint line's midline (hy = H - 17, 12 tall) so the two
-  // bottom-edge readouts sit level across the screen instead of each hanging at
-  // its own height — and it puts the ability panel directly opposite the hint
-  // that names the same button.
-  const GAUGE_CY = H - 11;
+  // BOTTOM_CY: the midline the keyboard hints share, so the two bottom-edge
+  // readouts sit level across the screen instead of each hanging at its own
+  // height — and it puts the ability panel directly opposite the hint that names
+  // the same button.
+  const GAUGE_CY = BOTTOM_CY;
   // Each timer entry: a donut, a name panel hung off its right at the same
   // midline. Returns the panel's right edge, so a row of them can be laid end
   // to end. `show` false measures without drawing, which is how a blinking
@@ -979,9 +1632,12 @@ export function drawHud(ctx, run) {
     return lx + lw;
   };
 
-  if (!Input.usingTouch) {
-    // Touch play names the special directly on its USE button. Desktop keeps a
-    // quiet nameplate here; its cooldown lives beside the hero in world space.
+  // The nameplate. Touch play normally names the special on its USE button out
+  // in the margin (run.js drawAbilityName) and this slot stays empty; the
+  // keyboard, and the 'left' ability cut, keep a quiet plate here instead. Its
+  // cooldown lives beside the hero in world space either way.
+  const nameplateHere = abilityNameSlot(run) === 'left';
+  if (nameplateHere) {
     const hero = HERO_BY_ID[run.relay.current];
     const label = hero.ability.label;
     const LP = LABEL_PAD, LH = 14;
@@ -1009,15 +1665,15 @@ export function drawHud(ctx, run) {
   // Width is affordable because the row is short in practice: simulating the
   // drip spawner against the real durations, one timer runs about half the
   // time, two is a few percent, and three never came up in 400 stage-length
-  // runs. Capsules arrive every 12-18s against 8-20s effects, ~8% of the table
-  // is the relay charge and ~17% is SHIELD (which is orb rings, not an entry),
+  // runs. Capsules arrive every 12-18s against 8-20s effects, a quarter of the
+  // table is SHIELD (which is orb rings, not an entry),
   // and grabbing a duplicate refreshes its timer rather than adding one. A
   // brief third is possible off a breaker bonus or a !-crate; past that the row
   // would reach the hints, which the sim says does not happen.
-  // On touch the ability ring below is skipped entirely (see !Input.usingTouch
-  // below) — so the shelf only needs clearance from a ring that's not there,
-  // and can sit closer to the bottom edge instead of leaving that band empty.
-  const SHELF_CY = Input.usingTouch ? TOUCH_SHELF_CY : GAUGE_CY - 15;
+  // With no nameplate under it (touch, ability named on its USE button) the
+  // shelf only needs clearance from a plate that is not there, and sits closer
+  // to the bottom edge instead of leaving that band empty.
+  const SHELF_CY = nameplateHere ? GAUGE_CY - 15 : TOUCH_SHELF_CY;
   // Only the in-canvas fallback JUMP button (run.js setButtons, chrome.mode
   // 'none') actually reaches into this corner at x 56 — chrome mode moves
   // JUMP out into the margin, so the row no longer needs to duck it there.
@@ -1041,33 +1697,11 @@ export function drawHud(ctx, run) {
     px = right + 11;   // panel edge, a gap, then the next donut's radius
   }
 
-  // Relay: current hero. The ability ring is the only charge readout — it goes
-  // gold when a charge is banked — so there are no pips here.
-  // A rounded badge: face on the left, name inside beside it. Same panel and
-  // light text as the speech bubble below it, so the two read as one family.
-  // Sized to the name and centred on screen, so it grows symmetrically instead
-  // of drifting as hero names change width. Face and text are both placed off
-  // HERO_CY, unrounded, so they share one midline.
-  // Centred on the ability ring and the status pill beside it, so the whole top
-  // row shares one midline instead of the badge hanging below it.
-  const BADGE_H = 14;
-  const BADGE_R = 3; // matches the corner radius drawText uses for its plates
-  const FACE_W = 12, FACE_H = 9;
-  const PAD_L = 4, GAP = 4, PAD_R = 7;
-  const name = HERO_BY_ID[run.relay.current].short;
-  const badgeW = PAD_L + FACE_W + GAP + textWidth(name) + PAD_R;
-  const badgeX = Math.round(W / 2 - badgeW / 2);
-  const badgeY = HERO_CY - BADGE_H / 2;
-  drawPanel(ctx, badgeX, badgeY, badgeW, BADGE_H, BADGE_R, undefined, PANEL);
-  const face = toonFaceSprite(run.relay.current, FACE_W, FACE_H);
-  if (face) {
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(face, badgeX + PAD_L, HERO_CY - FACE_H / 2, FACE_W, FACE_H);
-    ctx.imageSmoothingEnabled = false;
-  }
-  // Raw text: the badge is already the backing, so it must not carry a plate
-  // of its own.
-  rawDrawText(ctx, name, badgeX + PAD_L + FACE_W + GAP, textY(HERO_CY), '#d0f0e8');
+  // Relay: current hero. The ability ring is the only readiness readout, so
+  // there are no pips here. Skipped entirely once a hero chip is picked — the
+  // status pill is then saying the same thing in the corner, and two of them
+  // would be the clutter the chip exists to remove.
+  if (!HERO_CHIP) drawHeroBadge(ctx, run, HERO_CY);
 
   // What you are here to do, top-right. Two panels, deliberately unequal: the
   // mission is the run's win condition and the challenge is an optional extra,
@@ -1086,10 +1720,17 @@ export function drawHud(ctx, run) {
   // touch too: the PAUSE button used to share this line and the anchor pulled
   // in 66px to clear it, costing every mission title a third of its width on
   // the screens with the least of it. PAUSE hangs below these panels now.
-  const OBJ_R = W - 8;
-  // `text` is either a plain string or a [head, tail] pair, where the tail is
-  // the live part that survives a fold and the head is the sentence that does
-  // not. `fold` runs 0 (full) to 1 (tail only).
+  const objRight = W - EDGE;
+  // `text` is either a plain string or a [head, tail, widest] triple, where the
+  // tail is the live part that survives a fold and the head is the sentence
+  // that does not. `fold` runs 0 (full) to 1 (tail only).
+  //
+  // `widest` is the tail's RESERVATION: the widest string that tail will ever
+  // print, and the slot is sized to it rather than to what is printed now. A
+  // counter walks through every width from `1/30` to `29/30` on a proportional
+  // face, and without the reserve the panel's left edge twitched on every
+  // pickup — the one thing a readout you glance at mid-jump must not do. The
+  // count sits right-aligned in its slot, so the `/30` never moves either.
   //
   // Both halves are laid out from the right edge, which is what makes the fold
   // cheap to read: the tail's glyphs are already where they will end up, so the
@@ -1100,33 +1741,46 @@ export function drawHud(ctx, run) {
   // `alpha` is the whole-panel fade. Only the BONUS line ever uses it — see
   // bonusAlpha below — and it wraps rather than being threaded through the
   // layout so the fold, the clip and the two-part text keep working untouched.
-  const objective = (tag, tagColor, text, ink, y, scale, fold = 0, alpha = 1) => {
-    if (alpha <= 0) return;
+  //
+  // `right` is the edge the panel hangs off, and both wrappers RETURN the left
+  // edge they landed on: a second chip on the same row (BONUS_SLOT 'chip') has
+  // to start where the first one ended, and measuring the mission string twice
+  // in two places is how the two would drift apart.
+  const objective = (tag, tagColor, text, ink, y, scale, fold = 0, alpha = 1, right = objRight) => {
+    if (alpha <= 0) return right;
     if (alpha < 1) { ctx.save(); ctx.globalAlpha *= alpha; }
-    drawObjective(tag, tagColor, text, ink, y, scale, fold);
+    const x = drawObjective(tag, tagColor, text, ink, y, scale, fold, right);
     if (alpha < 1) ctx.restore();
+    return x;
   };
-  const drawObjective = (tag, tagColor, text, ink, y, scale, fold = 0) => {
+  const drawObjective = (tag, tagColor, text, ink, y, scale, fold = 0, OBJ_R = objRight) => {
     const TP = 5, GAP = 5;
-    const h = scale < 1 ? 12 : 14;
+    // The full-scale row is the pill's twin at the other end of the strip, so it
+    // takes the pill's height: two equal bookends with the beat lane between
+    // them, rather than a tall panel on the left and a short one on the right
+    // that merely agree about their midline. The reduced BONUS row underneath
+    // keeps its own smaller height — it is the hierarchy, not the bookend.
+    const h = scale < 1 ? 12 : PILL_H;
     const cy = y + h / 2;
     const tw = textWidth(tag, 0.8, 'bold');
     const lead = TP * 2 + tw + GAP;      // panel's left edge -> first glyph
-    const [head, tail] = Array.isArray(text) ? text : [text, ''];
+    const [head, tail, widest = tail] = Array.isArray(text) ? text : [text, ''];
     const full = head + tail;
-    const wFull = lead + textWidth(full, scale);
-    const wTail = lead + textWidth(tail, scale);
+    // The head is measured as the difference between the joined string and the
+    // tail, not as textWidth(head): textWidth drops the trailing tracking on
+    // whatever it is handed, so measuring the head alone lands it a pixel off
+    // from where the same words sit when the two are drawn as one string.
+    const headW = textWidth(full, scale) - textWidth(tail, scale);
+    const slotW = Math.max(textWidth(tail, scale), textWidth(widest, scale));
+    const wFull = lead + headW + slotW;
+    const wTail = lead + slotW;
     const w = Math.round(wFull + (wTail - wFull) * fold);
     const x = OBJ_R - w;
     drawPanel(ctx, x, y, w, h, 4, undefined, PANEL);
     rawDrawText(ctx, tag, x + TP, textY(cy, 0.8), tagColor, 0.8, 'bold');
     const tailX = OBJ_R - TP - textWidth(tail, scale);
     if (head && fold < 1) {
-      // Measured as the difference between the joined string and the tail, not
-      // as textWidth(head): textWidth drops the trailing tracking on whatever it
-      // is handed, so measuring the head alone lands it a pixel off from where
-      // the same words sit when the two are drawn as one string.
-      const headX = tailX - (textWidth(full, scale) - textWidth(tail, scale));
+      const headX = OBJ_R - TP - slotW - headW;
       if (fold > 0) {
         ctx.save();
         ctx.beginPath();
@@ -1140,13 +1794,24 @@ export function drawHud(ctx, run) {
       if (fold > 0) ctx.restore();
     }
     if (tail) rawDrawText(ctx, tail, tailX, textY(cy, scale), ink, scale);
+    return x;
   };
-  // Centred on HERO_CY, the midline the status pill and the hero badge already
-  // share, so all three top-row panels sit level instead of GOAL riding high.
-  const OBJ_Y = HERO_CY - 7;   // 14-tall panel
+  // Centred on HERO_CY, the midline the status pill and the beat lane share, so
+  // every top-row panel sits level instead of GOAL riding high. Derived from the
+  // panel's own height rather than typed, so the two can never drift apart.
+  const OBJ_Y = HERO_CY - PILL_H / 2;
   // The BONUS line hangs below with a real gap, not flush: the two panels are a
   // hierarchy, not one block, and 4px of sky says so.
-  const OBJ_Y2 = OBJ_Y + 18;
+  const OBJ_Y2 = OBJ_Y + PILL_H + 4;
+  // The air between two chips sharing the mission's row — the same 5 the tag
+  // inside a panel is padded by, so the pair reads as one group with the panel's
+  // own rhythm rather than as two things that happen to be near each other.
+  const CHIP_GAP = 5;
+  // The widest string a `count/n` readout can print, for reserving its slot.
+  // The count never exceeds n, so it has at most n's digits, and the face is
+  // proportional, so "widest" means the fattest digit in every position — not
+  // simply n over n, which on this face is narrower than, say, 88/30.
+  const countSlot = (n, prefix = '') => `${prefix}${widestDigit().repeat(String(n).length)}/${n}`;
   // Long challenge descriptions have to fit beside the badge, not through it.
   // `reserve` is width already spoken for by a tail the truncation must not eat
   // into — the count is the one part of that line worth keeping whole.
@@ -1185,20 +1850,51 @@ export function drawHud(ctx, run) {
   const bonusAlpha = run.finishing ? 0 : 1 - smoothstep(Math.min(1, Math.max(0, (560 - remain) / 200)));
   if (!run.overtime && run.stage) {
     const m = run.mission;
-    let prog = '';
-    if (m.n) prog = ` ${m.count ?? 0}/${m.n}`;
-    if (m.type === 'chase' && run.copter) prog = ` ${run.copter.caught}/${m.n}`;
-    if (m.type === 'combo') prog = ` BEST ${run.relay.bestCombo}/${m.n}`;
-    objective('GOAL', '#74c947', fitRight(`${GOAL_LABELS[m.type] ?? m.type.toUpperCase()}${prog}`), '#ffffff', OBJ_Y, 1);
+    const label = GOAL_LABELS[m.type] ?? m.type.toUpperCase();
+    let prog = '', slot = '';
+    if (m.n) { prog = `${m.count ?? 0}/${m.n}`; slot = countSlot(m.n); }
+    // Through the run's own counter, not a field beside it: the win check
+    // reads missionCount(), and a HUD that reads anything else can disagree
+    // with it. It did — the chase tally lived on the copter, which is removed
+    // when he leaves, so the goal fell back to 0/3 and stayed there.
+    if (m.type === 'chase') prog = `${run.missionCount()}/${m.n}`;
+    if (m.type === 'combo') { prog = `BEST ${run.relay.bestCombo}/${m.n}`; slot = countSlot(m.n, 'BEST '); }
+    // The count rides in a reserved slot (see drawObjective) so the panel holds
+    // its width from 0/n to n/n; the label is truncated against that reserve,
+    // not against whatever the count happens to measure this frame.
+    const goalText = prog ? [`${fitRight(label, textWidth(` ${slot}`))} `, prog, slot] : fitRight(label);
+    const goalLeft = objective('GOAL', '#74c947', goalText, '#ffffff', OBJ_Y, 1);
+    run.hudGoalLeft = goalLeft;
+
+    // WHAT THE BONUS SAYS, settled before WHERE it goes. The two used to be one
+    // expression, which is why the readout could only ever live in the one slot
+    // the call site named — BONUS_SLOT answers the second question only.
+    //
+    // `frac` and `color` are the donut cut's half of it and mean nothing to the
+    // others; a challenge with no count (noDamage) has no progress to draw, so
+    // it reads as full for as long as it is still alive.
+    let bonus = null;
     if (run.challenge && !run.challenge.failed) {
       const c = run.challenge;
       const done = c.type === 'noDamage' ? run.damageTaken === 0 : c.count >= c.n;
       const tail = done ? 'OK' : c.type === 'noDamage' ? ''
         : c.type === 'combo' ? `BEST ${Math.min(c.count, c.n)}/${c.n}`
         : `${Math.min(c.count, c.n)}/${c.n}`;
-      objective('BONUS', done ? '#74c947' : 'rgba(255,255,255,0.5)',
-        [`${fitRight(c.desc, textWidth(` ${tail}`, 0.85))} `, tail],
-        done ? '#74c947' : 'rgba(255,255,255,0.72)', OBJ_Y2, 0.85, fold, bonusAlpha);
+      // The slot the count is reserved in. OK is its own width on purpose:
+      // completing is a one-time event with a colour change, and the panel
+      // settling to a shorter word is part of that event, not the twitch the
+      // reserve exists to stop.
+      const widest = done || c.type === 'noDamage' ? tail
+        : c.type === 'combo' ? countSlot(c.n, 'BEST ') : countSlot(c.n);
+      bonus = {
+        tagColor: done ? '#74c947' : 'rgba(255,255,255,0.5)',
+        ink: done ? '#74c947' : 'rgba(255,255,255,0.72)',
+        head: `${fitRight(c.desc, textWidth(` ${widest}`, 0.85))} `,
+        tail,
+        widest,
+        frac: c.n ? Math.min(1, (c.count || 0) / c.n) : 1,
+        color: done ? '#74c947' : '#f6c945',
+      };
     } else if (run.challenge && !run.beatLock) {
       // Folded, this one keeps the verdict rather than the description: a missed
       // challenge is a tombstone, and the words that matter are the last three.
@@ -1208,12 +1904,67 @@ export function drawHud(ctx, run) {
       // ribbon's far end — so the panel that has nothing left to say would spend
       // the rest of the run standing on the markers that still do. It is already
       // lost, the results card says so, and the toast said so when it happened.
-      objective('BONUS', 'rgba(255,255,255,0.3)',
-        [`${fitRight(run.challenge.desc, textWidth(' - NOT THIS TIME', 0.85))} - `, 'NOT THIS TIME'],
-        'rgba(255,255,255,0.35)', OBJ_Y2, 0.85, fold, bonusAlpha);
+      bonus = {
+        tagColor: 'rgba(255,255,255,0.3)',
+        ink: 'rgba(255,255,255,0.35)',
+        head: `${fitRight(run.challenge.desc, textWidth(' - NOT THIS TIME', 0.85))} - `,
+        tail: 'NOT THIS TIME',
+        widest: 'NOT THIS TIME',
+        frac: 0,
+        color: 'rgba(255,255,255,0.3)',
+      };
+    }
+    if (bonus) {
+      const words = [bonus.head, bonus.tail, bonus.widest];
+      if (BONUS_SLOT === 'row') {
+        objective('BONUS', bonus.tagColor, words, bonus.ink, OBJ_Y2, 0.85, fold, bonusAlpha);
+      } else if (BONUS_SLOT === 'chip') {
+        // The mission's own row, hung off ITS left edge rather than off a
+        // number — the GOAL chip's width is the mission's text and changes with
+        // the count. Folded hard, no clock: the sentence is what needs a line of
+        // its own, and giving it one is the thing this cut exists to stop.
+        //
+        // OBJ_Y + 1, not OBJ_Y: this panel is 12 tall against GOAL's 14, so the
+        // two share a MIDLINE rather than a top edge. Top-aligned, the smaller
+        // chip rides a pixel high and the row reads as slightly broken.
+        objective('BONUS', bonus.tagColor, words, bonus.ink, OBJ_Y + 1, 0.85, 1, bonusAlpha, goalLeft - CHIP_GAP);
+      } else if (BONUS_SLOT === 'foldup') {
+        // TWO BEATS OFF ONE CLOCK. While the panel is saying the challenge in
+        // words it IS the shipped second row; then it wipes shut travelling left
+        // along that row, and only once it is a chip does it rise into the slot
+        // beside GOAL. The player sees a line leaving, not two panels swapping.
+        //
+        // The beats are sequential and not simultaneous because the destination
+        // is BEHIND the mission panel: a chip that rises while it is still
+        // sliding arrives on GOAL's line early and crosses straight through it.
+        // Closing on row 2 keeps every frame of the move in empty sky.
+        //
+        // BONUS_HOLD plays it backwards for free: when the state changes under
+        // the player the chip drops back down and says it in words again.
+        const SLIDE = 0.65;
+        const slide = Math.min(1, fold / SLIDE);
+        const rise = Math.max(0, (fold - SLIDE) / (1 - SLIDE));
+        objective('BONUS', bonus.tagColor, words, bonus.ink,
+          OBJ_Y2 + (OBJ_Y + 1 - OBJ_Y2) * rise, 0.85, slide, bonusAlpha,
+          objRight + (goalLeft - CHIP_GAP - objRight) * slide);
+      } else if (BONUS_SLOT === 'bottom') {
+        // The bottom row's right end, level with the keyboard hints and the
+        // nameplate opposite. The only cut with room for the sentence, so it is
+        // the only one that keeps the fold.
+        objective('BONUS', bonus.tagColor, words, bonus.ink, BOTTOM_CY - 6, 0.85, fold, bonusAlpha);
+      } else if (BONUS_SLOT === 'shelf' && bonusAlpha > 0) {
+        // At the END of the power-up row, in the row's own language: a donut
+        // that fills. It is last because the power-ups are transient and this
+        // is not — a timer expiring must not shuffle the standing readout.
+        ctx.save();
+        ctx.globalAlpha *= bonusAlpha;
+        gauge(px, SHELF_CY, SHELF_R, 2.7, bonus.frac, bonus.color,
+          bonus.tail ? `BONUS ${bonus.tail}` : 'BONUS', bonus.ink, 0.8);
+        ctx.restore();
+      }
     }
   } else {
-    objective('GOAL', '#b888f0', 'OVERTIME', '#ffffff', OBJ_Y, 1);
+    run.hudGoalLeft = objective('GOAL', '#b888f0', 'OVERTIME', '#ffffff', OBJ_Y, 1);
   }
 
   // Keyboard controls hint; the power status lives in the top-right gauge.
@@ -1229,7 +1980,7 @@ export function drawHud(ctx, run) {
     const hints = [['SPC', 'JUMP'], ['DN', 'SLIDE'], ['RT/D', hero.ability.label], ['LT/A', 'REWIND'], ['P', 'PAUSE']];
     const S = 0.85, HP = 6, HH = 12;
     const inner = keyLegendWidth(hints, S);
-    const hx = W - 8 - (inner + HP * 2), hy = H - 17;
+    const hx = W - EDGE - (inner + HP * 2), hy = BOTTOM_CY - HH / 2;
     ctx.save();
     ctx.globalAlpha = Math.min(1, run.hintT / HINT_FADE);
     drawPanel(ctx, hx, hy, inner + HP * 2, HH, 4, undefined, PANEL);
@@ -1241,27 +1992,57 @@ export function drawHud(ctx, run) {
   // (drawRoundButton) — the whole point of the set is that they are the same
   // object in three places, and three call sites drawing "the same" disc is how
   // that stops being true. Only USE carries state, and only it deviates: a
-  // recharge level, and gold when a relay charge is banked.
+  // recharge level.
   //
   // Non-round buttons here are the paused screen's menu plates, which the pause
   // overlay draws itself (run.js drawPaused) — over the dim, not under it.
+  drawPlayPill(ctx);
   for (const b of Input.buttons) {
     if (!b.round) continue;
     drawRoundButton(ctx, b, roundButtonOpts(run, b));
   }
 }
 
+/**
+ * The in-canvas play pill, painted from whichever halves are registered.
+ *
+ * Exported and called by every playable surface rather than inlined into one,
+ * for the same reason drawRoundButton is: a run and the tutorial both put this
+ * control on screen, and two call sites drawing "the same" pill is how they
+ * stop being the same pill. The tutorial's own button loop shipped without it
+ * for exactly one build, and the result was a slide control the training level
+ * did not have.
+ *
+ * Once, not per button — it is ONE control, and a painter called twice is how a
+ * seam becomes a gap. The box is the union of the live halves, so a caller that
+ * offers only one gets a single-height plate with one centred glyph rather than
+ * a double-height plate with a hole in it.
+ */
+export function drawPlayPill(ctx) {
+  const up = Input.buttons.find((b) => b.pill === 'up');
+  const down = Input.buttons.find((b) => b.pill === 'down');
+  if (!up && !down) return;
+  const box = up && down ? PLAY_PILL : (up || down);
+  drawActionPill(ctx, { x: box.x, y: box.y, w: box.w, h: box.h }, {
+    up: !!up,
+    down: !!down,
+    // Straight off the ribbon's table. The strip teaches the glyph and the
+    // button wears it, which only stays true while there is one table.
+    upInk: ACTION_INK.jump,
+    downInk: ACTION_INK.duck,
+    outline: GLYPH_OUTLINE,
+  });
+}
+
 // Shared between the in-canvas button loop above and run.js's chrome-canvas
 // buttons (same discs, drawn to a different context when there's room to put
-// them outside the game rect instead). A banked charge overrides the
-// cooldown: the button reads gold and full, because it is usable right now.
+// them outside the game rect instead).
 export function roundButtonOpts(run, b) {
   if (b.id !== 'ability') return { frac: null, fill: 'rgba(11,11,20,0.1)', ink: 'rgba(72,224,200,0.48)' };
-  const charged = run.player.relayCharge;
-  const cd = charged ? 0 : run.player.abilityCd;
+  const cd = run.player.abilityCd;
   const maxCd = HERO_BY_ID[run.relay.current].ability.cooldown;
   const frac = cd > 0 ? Math.max(0, Math.min(1, 1 - cd / maxCd)) : 1;
-  const energy = specialMoveColor(frac, charged || cd <= 0);
+  const energy = specialMoveColor(frac, cd <= 0);
   return {
     // Full reads as "ready" — not empty. It drains to 0 the instant you fire
     // it, then rises back to full as the cooldown counts down, and STAYS full
@@ -1362,7 +2143,7 @@ function placeSpeechCard(baseY, cardX, cardW, cardH, avoid) {
   if (top + cardH <= avoid.y0 || top >= avoid.y1) return baseY;
   // The lowest the plate's top may sit. On touch the power-up shelf owns the
   // bottom of the frame and the card may not reach into it.
-  const topLimit = (Input.usingTouch ? TOUCH_SHELF_CY - 6 : H - 8) - cardH;
+  const topLimit = (Input.usingTouch ? TOUCH_SHELF_CY - 6 : H - EDGE_BOTTOM - 5) - cardH;
   const ducked = avoid.y1 + SPEECH_DUCK_GAP;
   return ducked <= topLimit ? ducked + 4 : baseY;
 }
@@ -1418,7 +2199,7 @@ export function drawSpeech(ctx, speech, opts = {}) {
   const panel = (px, py, pw, ph) => (plate
     ? drawPanel(ctx, px, py, pw, ph, 4, plate, plateOpts)
     : drawPanel(ctx, px, py, pw, ph, 3));
-  const baseY = opts.y ?? 46;
+  const baseY = opts.y ?? SPEECH_Y;
   const s = opts.scale ?? 1;
   // A null who is the game itself talking (tutorials, station notes): a plain
   // centered plate, no portrait.
@@ -1615,12 +2396,14 @@ export function drawTouchZoneCard(ctx, { alpha = 1, scrim = 0, hint = null } = {
   // the USE disc.
   rawDrawTextCentered(ctx, `LEFT ${pct}%`, lx, 172, 'rgba(215,255,246,0.72)', 1.2, 'bold');
   rawDrawTextCentered(ctx, `RIGHT ${100 - pct}%`, rx, 172, 'rgba(255,233,160,0.72)', 1.2, 'bold');
-  // One line rather than one per column, because that is the fact — the duck
-  // swipe is read from whichever zone the thumb is already in, which is what
-  // ANYWHERE is doing in the sentence. On the jump column's axis with the rest
-  // of the full-width copy, and low enough to sit in the clear lane between the
-  // two discs.
-  rawDrawTextCentered(ctx, 'SWIPE DOWN ANYWHERE TO SLIDE', lx, 196, 'rgba(255,255,255,0.85)', 1.35, 'bold');
+  // One line rather than one per column, because the swipe is still read from
+  // whichever zone the thumb is already in. The BUTTON is named first now that
+  // there is one: the down arrow is the reliable path and the swipe is the
+  // one-handed fallback, and this row sits close enough to the pill to be read
+  // as pointing at it. Kept short on purpose — the pill's right edge is at 56
+  // and this line is centred on the jump column's axis at 168, so a string much
+  // past this length runs into the control it is describing.
+  rawDrawTextCentered(ctx, 'SLIDE: DOWN ARROW OR SWIPE', lx, 196, 'rgba(255,255,255,0.85)', 1.35, 'bold');
   // Below the discs' midline, where nothing else on this card sits — a call to
   // action wants its own air, and at this size it no longer fits on the ACT
   // card's skip line.

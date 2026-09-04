@@ -211,7 +211,7 @@ export function validateLayouts(layouts, reg) {
   const warnings = [];
   const seen = new Set();
   const capsuleIds = new Set(Object.entries(reg.PICKUPS)
-    .filter(([, def]) => def.power || def.relayCharge).map(([id]) => id));
+    .filter(([, def]) => def.power).map(([id]) => id));
 
   for (const entry of layouts) {
     const at = `${entry.id}`;

@@ -883,8 +883,8 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
   // it, not just its drawn disc — so a tap anywhere in that stretch of the
   // (otherwise dead) margin counts, the same generosity a thumb gets from a
   // button that fills its own corner of a phone. Zones tile the full margin
-  // between the three controls with no gaps, since #chrome never shows
-  // anywhere else.
+  // between the controls with no gaps, since #chrome never shows anywhere
+  // else — four of them now that the play pair is a stacked JUMP over DUCK.
   // PAUSE shares a column/bar with ABILITY (JUMP still gets an entire one to
   // itself) — this used to be the whole margin layout, got pulled back to
   // in-canvas when a tap aimed at PWR near the shared boundary was landing on
@@ -914,7 +914,29 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
     // reach for least — so ABILITY keeps the remaining three quarters rather
     // than splitting it down the middle.
     const pauseZoneH = winH / 4;
-    chrome.jump    = { x: jumpX, y: yBottom, r, zone: { x: 0,                              y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: winH } };
+    // THE PLAY PAIR STACKS, and it is the in-canvas pill's law out here: up
+    // above down, touching, with DUCK inheriting the bottom slot the lone JUMP
+    // disc used to hold. The bottom edge is the one that must not move, since
+    // it is the one yBottomPad and CHROME_PLAY_LIFT clear the home indicator
+    // with, so the pair grows upward — which is what yBottom's `yTopPad + r*3`
+    // floor is now buying: jump's top edge lands exactly on yTopPad.
+    //
+    // The seam splits the left column's zone rather than leaving the discs to
+    // be hit precisely. Chrome zones tile their whole margin with no gaps, so
+    // in this mode the halo input.js needs in-canvas is unnecessary: every tap
+    // in the left column is already one of the two, and the boundary between
+    // them is the line between the drawn discs.
+    const pillSeam = yBottom - r;
+    chrome.duck    = { x: jumpX, y: yBottom,         r, zone: { x: 0,                              y: pillSeam,   w: ox + CHROME_GAME_EDGE_BUF, h: winH - pillSeam } };
+    chrome.jump    = { x: jumpX, y: yBottom - r * 2, r, zone: { x: 0,                              y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: pillSeam } };
+    // The bottom-left slot under its own name, owning the WHOLE left column.
+    // Screens that want one control there rather than the play pair take this:
+    // the food court's walk-left, which has to sit level with the walk-right
+    // facing it from the opposite margin. It used to spread chrome.jump for
+    // exactly that, and stacking the pair moved that slot half a pair upward.
+    // A name of its own is what stops the next such screen inheriting the play
+    // pill's layout by accident.
+    chrome.walkLeft = { x: jumpX, y: yBottom,        r, zone: { x: 0,                              y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: winH } };
     chrome.ability = { x: rightX, y: yBottom, r, zone: { x: winW - ox - CHROME_GAME_EDGE_BUF, y: pauseZoneH, w: ox + CHROME_GAME_EDGE_BUF, h: winH - pauseZoneH } };
     chrome.pause   = { x: rightX, y: yTop,    r, zone: { x: winW - ox - CHROME_GAME_EDGE_BUF, y: 0,          w: ox + CHROME_GAME_EDGE_BUF, h: pauseZoneH } };
   } else if (chrome.mode === 'topbottom') {
@@ -935,9 +957,21 @@ function resizeChrome(winW, winH, ox, oy, dpr) {
     const bottomY = Math.min((winH - oy) + r + CHROME_GAME_GAP, winH - r - bottomPad);
     const topY = Math.max(oy - r - CHROME_GAME_GAP, r + topPad);
     const xPad = Math.max(CHROME_EDGE_PAD, 0);
-    const jumpX = Math.min(winW / 2 - r - 2, Math.max(r + xPad, safe.left + r + SAFE_BUF));
+    // THE ONE PLACE THE PAIR CANNOT STACK. This margin is a horizontal bar and
+    // oy runs as low as CHROME_MIN_MARGIN (72), which does not hold two discs
+    // of CHROME_R_MIN end to end — and a disc may only be DRAWN in the margin,
+    // since #chrome cannot paint over #game. So here the pair sits side by
+    // side and the triangles carry the whole reading on their own. Shape is
+    // still the input; position simply has nothing to add in a bar.
+    //
+    // jumpX is clamped for FOUR radii now, not two, so the pair stays inside
+    // the bar's left half and never slides under ABILITY.
+    const jumpX = Math.min(winW / 2 - r * 3 - 4, Math.max(r + xPad, safe.left + r + SAFE_BUF));
+    const duckX = jumpX + r * 2;
     const rightX = Math.max(winW / 2 + r + 2, Math.min(winW - r - xPad, winW - safe.right - r - SAFE_BUF));
-    chrome.jump    = { x: jumpX,  y: bottomY, r, zone: { x: 0,        y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2, h: oy + CHROME_GAME_EDGE_BUF } };
+    chrome.jump    = { x: jumpX,  y: bottomY, r, zone: { x: 0,           y: winH - oy - CHROME_GAME_EDGE_BUF, w: duckX - r, h: oy + CHROME_GAME_EDGE_BUF } };
+    chrome.duck    = { x: duckX,  y: bottomY, r, zone: { x: duckX - r,   y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2 - (duckX - r), h: oy + CHROME_GAME_EDGE_BUF } };
+    chrome.walkLeft = { x: jumpX, y: bottomY, r, zone: { x: 0,           y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2, h: oy + CHROME_GAME_EDGE_BUF } };
     chrome.ability = { x: rightX, y: bottomY, r, zone: { x: winW / 2, y: winH - oy - CHROME_GAME_EDGE_BUF, w: winW / 2, h: oy + CHROME_GAME_EDGE_BUF } };
     chrome.pause   = { x: rightX, y: topY,    r, zone: { x: 0,        y: 0,                                w: winW,     h: oy + CHROME_GAME_EDGE_BUF } };
   }

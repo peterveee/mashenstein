@@ -21,9 +21,10 @@
 //   armed          the finish dash is running and the flip has not happened yet
 //   reducedMotion  freeze anything that only decorates
 //
-// The flip bracket, the BREAKER/JUMP! signage and the results card are NOT here.
-// They are gameplay UI drawn unscaled by run.js over whichever marker ships, and
-// every candidate has to leave room for them in the same places.
+// The results card is NOT here. It is gameplay UI drawn unscaled by run.js over
+// whichever marker ships, and every candidate has to leave room for it in the
+// same place. A flip bracket and a BREAKER/JUMP! signage plate used to sit there
+// too; both were cut, and drawFinishMarker in run.js keeps the reasons.
 
 import { drawProp, propFrames, propFps } from '../sprites/props.js';
 import { CLING_POLE_X } from '../sprites/toons.js';
@@ -637,7 +638,7 @@ function mastSwitch(ctx, fx, gy, { thrown, live }) {
 // because the power is out — that is the whole premise — so the flag hangs dead
 // on its pole: drained of colour, limp, not moving. It is the same information
 // ("this is the end") with none of the false promise, because a dead flag is
-// obviously waiting for something. Throw the breaker and it unfurls, takes its
+// obviously waiting for something. Throw the switch and it unfurls, takes its
 // colour back and flies. Cause, then effect, on one object: you did not cross
 // the flag, you switched it on.
 //

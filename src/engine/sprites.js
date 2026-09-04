@@ -610,7 +610,27 @@ export function drawRoundButton(ctx, b, opts = {}) {
     ctx.lineWidth = opts.ringWidth || 1.5;
     ctx.stroke();
   }
-  if (b.icon === 'pause') {
+  if (b.icon === 'up' || b.icon === 'down') {
+    // The ribbon's arrow at disc scale: the same 2.5:2 proportion and the same
+    // stroke-then-fill rim drawActionPill uses, so the control out in the
+    // margin and the in-canvas pill read as one object seen in two places
+    // rather than two families that happen to both point somewhere.
+    const dir = b.icon === 'up' ? 1 : -1;
+    const aw = r * 0.5, ah = r * 0.4;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(1, r * 0.1);
+    ctx.strokeStyle = opts.outline || 'rgba(18,24,46,0.9)';
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - dir * ah);
+    ctx.lineTo(cx - aw, cy + dir * ah);
+    ctx.lineTo(cx + aw, cy + dir * ah);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fill();
+    ctx.restore();
+  } else if (b.icon === 'pause') {
     // The one control with a symbol every player already knows. A glyph also
     // survives a translation and a smaller button; the word PAUSE does neither.
     const bw = Math.max(2, r * 0.19), bh = r * 0.82, gap = r * 0.22;
@@ -626,6 +646,73 @@ export function drawRoundButton(ctx, b, opts = {}) {
     const s = opts.labelScale || BUTTON_LABEL_S;
     drawTextCentered(ctx, b.label, cx, textYForMid(cy, s), ink, s, opts.labelStyle || 'ui');
   }
+}
+
+// The play pair as ONE control: an up triangle over a down triangle in a single
+// pill. Over-or-under is one decision on one axis, so it gets one target. Two
+// separated discs would leave a gap between the halves, and a gap in a control
+// this size is a miss — which on the down half means asking to go under and
+// going over instead, into the thing you were ducking.
+//
+// SHAPE IS THE INPUT, and here the POSITION agrees with it: up is the top half,
+// down is the bottom half. That is why the pill is stacked and never
+// side-by-side. A left/right pair asks the player to translate a vertical
+// choice into a horizontal one, which is a translation to learn for no gain.
+//
+// The glyphs are the RIBBON'S glyphs. The beat strip already teaches an up
+// arrow for jump and a down arrow for duck, so the button that answers it wears
+// the same shape in the same ink, built the same way — round joins, the dark
+// edge stroked BEFORE the fill so it reads as a rim the colour sits inside
+// rather than a line eating half the shape. The inks arrive as opts and are
+// never literals here: they live in game/beatground.js (which the engine must
+// not import), and a second copy of those hexes is the precise drift that
+// file's own comment warns about.
+//
+// `box` is the union of the LIVE halves, so a pill with one half taught (the
+// tutorial before it has shown the slide) is one half tall and centres its
+// single glyph, rather than a double-height plate with a hole in it.
+export function drawActionPill(ctx, box, opts = {}) {
+  const { x, y, w, h } = box;
+  const up = opts.up !== false, down = opts.down !== false;
+  ctx.save();
+  platePath(ctx, x, y, w, h, Math.min(w / 2, 10));
+  ctx.fillStyle = opts.fill || 'rgba(11,11,20,0.1)';
+  ctx.fill();
+  ctx.restore();
+  // The seam only draws when both halves are live: it is the line that says
+  // "two presses here", and under a single-half pill it would be an edge
+  // between something and nothing.
+  //
+  // Heavier than the plate it sits on, because at one pixel over scrolling
+  // scenery anything lighter is not a quiet line, it is an absent one — the
+  // first pass at 0.22 vanished completely against grass.
+  if (up && down) {
+    ctx.fillStyle = opts.seam || 'rgba(11,11,20,0.4)';
+    ctx.fillRect(x + 5, Math.round(y + h / 2) - 0.5, w - 10, 1);
+  }
+  // The ribbon's own 2.5:2 arrow, at this button's scale.
+  const aw = opts.arrowW || w * 0.25, ah = opts.arrowH || w * 0.2;
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = opts.edge || Math.max(1, w * 0.05);
+  ctx.strokeStyle = opts.outline || 'rgba(18,24,46,0.9)';
+  const cx = x + w / 2;
+  // dir +1 puts the apex up, -1 puts it down. One path for both so the pair are
+  // exact reflections about their own midlines and the strip cannot say DOWN
+  // twice, the same mistake hud.js's ribbon comment records.
+  const tri = (my, dir, ink) => {
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.moveTo(cx, my - dir * ah);
+    ctx.lineTo(cx - aw, my + dir * ah);
+    ctx.lineTo(cx + aw, my + dir * ah);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fill();
+  };
+  if (up) tri(down ? y + h / 4 : y + h / 2, 1, opts.upInk || '#3fbf5a');
+  if (down) tri(up ? y + h * 0.75 : y + h / 2, -1, opts.downInk || '#72d8f0');
+  ctx.restore();
 }
 
 // B33P's projectile is shared by the in-game and title-screen renderers.

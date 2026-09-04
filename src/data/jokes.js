@@ -189,6 +189,17 @@ export const BOSS_DEFLECT_SHORT = [
   'THAT ALSO COUNTED.',
 ];
 
+// The chase copter's forcefield, in the same register as the boss deflects
+// above and in his own idiom, which is paperwork. One of them teaches the rule
+// the mission wants: the shot is not the answer, the head is.
+export const COPTER_DEFLECT_SHORT = [
+  'DISPUTED.',
+  'CLAIM DENIED.',
+  'THE FIELD IS INSURED.',
+  'RETURNED TO SENDER.',
+  'NOT A VALID BONK.',
+];
+
 // Food-court hero chatter (drawn via drawSpeech, one line per visit, cycling
 // in order). Beyond the file-level deadpan rule, each pool follows:
 //   - One running bit per hero, set by docs/CAST.md's summary of them. Every new

@@ -165,13 +165,13 @@ override with charged/uncharged variants:
 
 ## 6. Mission / goal messages
 
-- **Goal met** ([run.js](../src/game/run.js#L4767)): a counted primary objective completes. "GOAL MET. GO FLIP THE BREAKER." Displayed ~2.4s in the goal toast panel. Reach, fuse, blackout, and escape missions instead complete at the breaker/end sequence.
+- **Goal met** ([run.js](../src/game/run.js#L4767)): a counted primary objective completes. "GOAL MET. GET TO THE FINISH LINE." Displayed ~2.4s in the goal toast panel. Reach, fuse, blackout, and escape missions instead complete at the finish/end sequence.
 - **Bonus/challenge complete** ([run.js](../src/game/run.js#L4760)): optional challenge finished. Format "BONUS: [CHALLENGE DESCRIPTION]", e.g.:
   - "BONUS: COLLECT 20 COINS"
   - "BONUS: TAKE NO DAMAGE"
   - "BONUS: BREAK 6 !-CRATES. THE ! MEANS HIT IT."
   - "BONUS: HIT 4 BOOST PADS"
-  - "BONUS: CATCH THE CLOWN-COPTER 2 TIMES. IT IS UNDERINSURED."
+  - "BONUS: BONK THE CLOWN-COPTER FROM BELOW, 3 TIMES. IT IS UNDERINSURED."
   - "BONUS: DESTROY 5 TARGETS. THEY ARE VERY DESTROYABLE."
   - "BONUS: RECOVER 4 EXTENSION CORD PIECES. THE CORD WAS SHREDDED. RUDELY."
   - "BONUS: RUN TO THE BEAT. OR NEAR THE BEAT. THE BEAT IS FLEXIBLE."

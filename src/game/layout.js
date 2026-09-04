@@ -59,9 +59,9 @@ export const DEFAULT_DRIP = { capsule: [12, 18], battery: [20, 30] };
 // stage. A section that declares weights routes through weightedPowerPickup
 // instead; a section that does not never touches this object.
 export const DEFAULT_POWER_WEIGHTS = {
-  capRelay: 8, capUnpeel: 10, capRewind: 10,
+  capUnpeel: 10, capRewind: 10,
   capAirJump: 10, capSpeed: 10, capLowGrav: 10,
-  capShield: 21, capMagnet: 21,
+  capShield: 25, capMagnet: 25,
 };
 
 // ---- pacing arithmetic ------------------------------------------------------

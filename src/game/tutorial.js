@@ -51,9 +51,11 @@ import { drawHeroSprite, drawWorldEntity, drawPortal, TAG_FLASH_TIME } from './d
 import { drawToon } from '../sprites/toons.js';
 import { makeObstacle, makePickup, entityBox, overlaps, DEBRIS, DEBRIS_DEFAULT } from './entities.js';
 import { HERO_BY_ID } from '../data/heroes.js';
+// The play pill's inks, from the one table the beat ribbon also reads.
+import { ACTION_INK, GLYPH_OUTLINE } from './beatground.js';
 import {
   drawSpeech, drawFloatie, drawStatusPill, roundButtonOpts, playButtons,
-  drawTouchZoneCard,
+  drawTouchZoneCard, drawPlayPill,
 } from './hud.js';
 
 // ------------------------------------------------------------------ constants
@@ -470,7 +472,7 @@ const STEPS = [
     label: 'POWER SLIDE',
     legend: [['SPC', 'JUMP'], ['DN', 'SLIDE']],
     brief: (touch) => (touch
-      ? 'POWER SLIDE. SWIPE DOWN AND HOLD, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING.'
+      ? 'POWER SLIDE. HOLD THE DOWN ARROW, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING.'
       : 'POWER SLIDE. HOLD DOWN OR S, JUST BEFORE THE CONE. KICK IT. IT IS NOT LOAD-BEARING.'),
     // A late slide coasts in and eats the cone — the knock says INCOMPLETE and
     // this line says why: the kick is spent from the front of the slide.
@@ -878,7 +880,13 @@ export class TutorialState {
     if (this.useChrome) {
       Input.setButtons([]);
       Input.setChromeButtons([
+        // Both halves of the play pill, from the first section. The tutorial
+        // gates exactly one control — the cannon, which only one hero has —
+        // and jump/slide have never been gated behind the sections that teach
+        // them: a control that appears partway through is one the player has
+        // already looked for and failed to find.
         { id: 'jump', ...chromeGeo.jump, action: 'jump' },
+        { id: 'duck', ...chromeGeo.duck, action: 'duck' },
         ...(hasPower ? [{ id: 'ability', ...chromeGeo.ability, action: 'ability' }] : []),
         { id: 'pause', ...chromeGeo.pause, action: 'escape' },
       ]);
@@ -916,15 +924,18 @@ export class TutorialState {
     }
     paintChrome(sig, (ctx) => {
       for (const b of buttons) {
-        const art = b.id === 'jump' ? { label: 'JUMP' }
+        const art = b.id === 'jump' ? { icon: 'up' }
+          : b.id === 'duck' ? { icon: 'down' }
           : b.id === 'ability' ? { label: 'USE' } : { icon: 'pause' };
         const box = { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2, id: b.id, round: true, ...art };
         const base = roundButtonOpts(shim, box);
+        const pillInk = b.id === 'jump' ? ACTION_INK.jump : b.id === 'duck' ? ACTION_INK.duck : null;
         drawRoundButton(ctx, box, {
           ...base,
           fill: b.id === 'ability' ? base.fill : 'rgba(255,255,255,0.06)',
-          ink: b.id === 'ability' ? base.ink : 'rgba(255,255,255,0.42)',
+          ink: b.id === 'ability' ? base.ink : (pillInk || 'rgba(255,255,255,0.42)'),
           ring: b.id === 'ability' ? base.ink : 'rgba(255,255,255,0.22)',
+          outline: GLYPH_OUTLINE,
           ringWidth: 1,
           labelScale: 1.45,
           labelStyle: 'ui',
@@ -2428,6 +2439,7 @@ export class TutorialState {
     // and the USE meter reads the real cooldown because roundButtonOpts only
     // ever asks for the player and who they are.
     const shim = { player: this.player, relay: { current: this.player.heroId } };
+    drawPlayPill(ctx);
     for (const b of Input.buttons) {
       if (b.round) drawRoundButton(ctx, b, roundButtonOpts(shim, b));
     }

@@ -100,7 +100,7 @@ for (const stageId of PLAY) {
       }
     };
     // playerWorldX, not camX + PLAYER_X: during the finish run the hero
-    // detaches from his anchor and sprints ahead of the camera to the breaker,
+    // detaches from his anchor and sprints ahead of the camera to the marker,
     // collecting coins the whole way — contact events follow HIM.
     const excusedOb = (was) => {
       const ob = was.ref;

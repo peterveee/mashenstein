@@ -21,7 +21,7 @@ Hero-to-hero interaction: Grumpos' hub line about throwing Lorenzo ("he called i
 
 ## The Villain
 
-**Don K. Eggshell, PhD** — "A GRIEVANCE INTENSIFIES." A giant egg-shaped ape with a mustache, tiny goggles, and a spiky shell. Pompous, disputes damage via bureaucratic paperwork ("I HAVE FILED A FORM DISPUTING THAT LAST JUMP"). His 40-year losing streak anchors the stage-1 briefing and two taunts ("I HAVE BEEN LOSING TO PLUMBERS SINCE 1986..."). Boss fights: the Clown-Copter (Act I) and Eggshell & The Absolutely Final Power Strip (Act III final boss). In the ending he's finally warmed by the wall socket's electricity: "SO THIS IS THE WARMTH I NEVER GOT" — the game's one stab at pathos for him.
+**Don K. Eggshell, PhD** — "A GRIEVANCE INTENSIFIES." A giant egg-shaped ape with a mustache, tiny goggles, and a spiky shell. Pompous, disputes damage via bureaucratic paperwork ("I HAVE FILED A FORM DISPUTING THAT LAST JUMP"). His 40-year losing streak anchors the stage-1 briefing and two taunts ("I HAVE BEEN LOSING TO PLUMBERS SINCE 1986..."). Boss fights: the Clown-Copter (Act I) and Eggshell & The Absolutely Final Power Strip (Act III final boss, where he arrives by striped clown balloon — the balloon is the weak point). Art: three painters in [src/sprites/props.js](../src/sprites/props.js) sharing one ape (`eggshell` bust, `eggshellCopter`, `eggshellBalloon`); spec shots in [docs/shots/eggshell/](shots/eggshell/). In the ending he's finally warmed by the wall socket's electricity: "SO THIS IS THE WARMTH I NEVER GOT" — the game's one stab at pathos for him.
 
 ## NPCs
 

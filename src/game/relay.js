@@ -49,6 +49,22 @@ export class Relay {
     this.portalEvery = 18;
     this.lastTagLine = null;
     this.lastTagLineT = 0;
+    // Seconds since this hero took the baton, counted up and never reset to
+    // anything but zero. The HUD's name reveal is the only reader: it plays for
+    // the first couple of seconds of a hero's turn and then this just keeps
+    // climbing, which is why it is an AGE and not a countdown — a timer would
+    // need someone to stop it, and nothing else here cares when it lands.
+    //
+    // Infinity, not 0: the hero you START a stage as did not arrive through a
+    // portal, and announcing him over the act card would be the centre badge
+    // back by another route. Infinity is also stable under `+= dt`, so "never
+    // tagged" needs no second flag to stay true. The HUD's reveal reads this as
+    // "not a finite age" and draws nothing.
+    this.tagT = Infinity;
+    // Who just handed over. The HUD's hand-off coin flip shows this face on the
+    // way round and lands on `current`, so the last half-turn IS the reveal —
+    // which only works if the corner can still name the hero it is replacing.
+    this.prev = null;
   }
 
   // The bag only ever holds heroes who have not appeared yet, which is what
@@ -82,6 +98,7 @@ export class Relay {
   update(dt) {
     this.elapsed += dt;
     this.portalTimer -= dt;
+    this.tagT += dt;
     if (this.lastTagLineT > 0) this.lastTagLineT -= dt;
   }
 
@@ -99,6 +116,8 @@ export class Relay {
     this.stats.tags++; // legacy stat, kept for old saves, never displayed
     this.lastTagLine = TAG_LINES[this.current];
     this.lastTagLineT = 1.6;
+    this.prev = from;
+    this.tagT = 0;   // the HUD's coin flip and name reveal start from here
     return { from, to: this.current };
   }
 }

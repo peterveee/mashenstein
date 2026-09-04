@@ -1383,6 +1383,14 @@ Audio.bpm = 120; Audio.tempo = 1; Audio.nextTime = 10 + loopSpb * 2;
 Audio.bank = liveSong; Audio.step = 0; Audio.setLoop(0, 16);
 assert(Math.abs(Audio.songBeat() - 3.5) < 1e-9,
   'a one-bar loop wraps its tracker within that bar, not at the end of bar 2');
+// AUDIO SYNC moves the playhead the same way an unreported output latency would:
+// what is being HEARD right now is further back in the song than what has been
+// rendered. A wireless player's lane has to sit where their ears are.
+Audio.setSyncOffset(100);
+assert(Math.abs(Audio.songBeat() - 3.3) < 1e-9,
+  'the player latency offset walks the heard playhead back, exactly as the reported one does');
+Audio.setSyncOffset(0);
+assert(Math.abs(Audio.songBeat() - 3.5) < 1e-9, 'and clearing it puts the playhead back');
 // A locator loop can be armed while Play from start is still in the intro. The clock
 // must not present the loop's end before the scheduler has reached locator A.
 Audio.step = 0; Audio.setLoop(32, 64); Audio.step = 0;
