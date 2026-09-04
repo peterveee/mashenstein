@@ -385,6 +385,16 @@ function render(name) {
     tone(out, 0.105, 0.11, 'sine', 659, 988, 0.08);
   } else if (name === 'power') {
     [523, 659, 784, 1047].forEach((f, i) => tone(out, i * 0.07, 0.09, 'triangle', f, f, 0.15));
+  } else if (name === 'copterBonk') {
+    // Mirror of AudioSys.copterBonk(): blunt contact, a crisp high edge, then
+    // the upward cartoon glide and its descending spring tail. This is the
+    // production candidate selected from audio/bonk-candidates/#3.
+    noiseBurst(out, 0, 0.026, 0.16, 'lowpass', 1100);
+    tone(out, 0, 0.13, 'sine', 105, 62, 0.23, 0.02);
+    noiseBurst(out, 0, 0.018, 0.10, 'highpass', 4200);
+    tone(out, 0.006, 0.19, 'square', 205, 1450, 0.16, 0.07);
+    tone(out, 0.015, 0.33, 'triangle', 1450, 690, 0.13, 0.01);
+    tone(out, 0.075, 0.43, 'sine', 680, 350, 0.11, 0.01);
   } else if (name === 'waka') {
     const dur = 0.12;
     tone(out, 0, dur, 'square', 1000, 940, 0.13, 0.75, (sample, t) => {
@@ -411,7 +421,7 @@ function render(name) {
 }
 
 mkdirSync(outDir, { recursive: true });
-for (const name of ['cash', 'power', 'rewindPickup', 'coin', 'waka', 'pacDeath', 'portal', 'boost', 'boostApproach', 'boostMiss', 'slideWhistle', 'clickHard']) {
+for (const name of ['cash', 'power', 'copterBonk', 'rewindPickup', 'coin', 'waka', 'pacDeath', 'portal', 'boost', 'boostApproach', 'boostMiss', 'slideWhistle', 'clickHard']) {
   const path = join(outDir, `${name}.wav`);
   writeFileSync(path, render(name));
   console.log(path);

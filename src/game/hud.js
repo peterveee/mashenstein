@@ -54,6 +54,10 @@ const EDGE_BOTTOM = EDGE / 2;
 // derived from it. Its own ceiling is what stops it growing: the world progress
 // line owns the top 3px of the frame, and at EDGE this already leaves 3.
 const DISC_R = 11;
+// The portrait disc is its own lit face plate, not another copy of the status
+// pill's low-contrast backing. It has to survive a small crop over bright or
+// dark stage art while still leaving the hero's face as the focal point.
+export const HERO_DISC_PLATE = 'rgba(108,132,152,0.96)';
 // EVERYTHING IN THE TOP ROW IS PLACED OFF PILL_CY (the objective panels take
 // HERO_CY, which is this), so this is the one line that moves the strip. The
 // pill is 4px shorter than the disc beside it and shares its midline, so its own
@@ -113,9 +117,9 @@ const FOLDUP_SLIDE = 0.65;
 // between two sixteenths is beatPx/4 and the tick has to stay small against it.
 // Grow one without the other and a fill closes into a bar.
 const RIBBON_SCALE = 2;
-// Thinner than it was — nine units, then seven, now SIX. Each of those trims
-// moved the top edge by half of what the plate lost, so the MIDLINE every glyph
-// hangs off (see `mid` in drawBeatRibbon) stayed put while the plate closed in
+// THINNER THAN THE HUD, but not so thin that it feels like a hairline: fifteen
+// pixels against the pill's eighteen. The midline every glyph hangs off (see
+// `mid` in drawBeatRibbon) stays put while the plate gets a little more room
 // around it. The plate was never doing any work with that ink.
 //
 // The strip then moved UP as a whole, midline and all — and then all the way up
@@ -130,13 +134,11 @@ const RIBBON_SCALE = 2;
 // 1.6) lands at x~99, about three pixels right of where the pill ends. See
 // RIBBON_MARGIN for what gives.
 //
-// Six is the floor, and it is arithmetic rather than taste. An arrow is
-// ARROW_H = 2u either side of the midline, the beat swells it by RIBBON_PULSE
-// to 2.5u, and GLYPH_EDGE adds half a unit of border: 3u of glyph above and
-// below the midline at the loudest moment, so a 6u plate is exactly filled.
-// Anything thinner clips the arrows on the beat — which is the one frame
-// nobody is looking at when they judge this at rest.
-const RIBBON_H = Math.round(6 * RIBBON_SCALE);
+// The glyphs still use the same peak-safe 6u envelope: an arrow is ARROW_H = 2u
+// either side of the midline, the beat swells it by RIBBON_PULSE to 2.5u, and
+// GLYPH_EDGE adds half a unit of border. The extra height is breathing room for
+// the lane itself, not a second scale jump for the action shapes.
+const RIBBON_H = Math.round(7.5 * RIBBON_SCALE);
 const RIBBON_Y = PILL_CY - RIBBON_H / 2;
 // The bottom edge of the rhythm ribbon, in frame px. Exported because the
 // world has to keep out from under it: the chase copter flies below this line.
@@ -1219,7 +1221,7 @@ function drawHeroDisc(ctx, id, cx, cy, R, rim = UI_PANEL_BORDER, sx = 1, smile =
   ctx.save();
   ctx.beginPath();
   ctx.ellipse(cx, cy, w, R, 0, 0, Math.PI * 2);
-  ctx.fillStyle = UI_PANEL;
+  ctx.fillStyle = HERO_DISC_PLATE;
   ctx.fill();
   ctx.clip();
   // The face is squashed by the SAME factor the disc is, about the same centre,

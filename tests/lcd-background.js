@@ -516,6 +516,35 @@ for (const stage of [1, 2, 3]) {
     'the searchlight sweeps stage 2 and nowhere else');
   assert(fingerprint(beam(2, 0)) !== fingerprint(beam(2, 1)),
     'and it steps to a new angle on every heard beat');
+  // TWO LAMPS, split apart by the falloff: every beam cell is dimmer than the
+  // one before it, so a cell BRIGHTER than its predecessor is the next lamp's
+  // first. Beam cells are the 4-tall ones — the panel paints one other thing
+  // in this ink and it is 2 tall.
+  const beamRuns = (beat) => {
+    const runs = [];
+    for (const op of beam(2, beat).filter((o) => o[5] === 4)) {
+      const a = Number(String(op[1]).match(/,([\d.]+)\)$/)[1]);
+      if (!runs.length || a > runs.at(-1).at(-1).a) runs.push([]);
+      runs.at(-1).push({ x: op[2], y: op[3], a });
+    }
+    return runs;
+  };
+  for (let b = 0; b < 8; b++) assert(beamRuns(b).length === 2, `two lamps work the panel on beat ${b}`);
+  // Each leans toward the MIDDLE, which is where the sky is: the tall towers
+  // stand at the ends of this skyline, and a lamp raking outward spends its
+  // whole throw on a facade.
+  for (let b = 0; b < 8; b++) {
+    const [left, right] = beamRuns(b);
+    assert(left.at(-1).x > left[0].x && right.at(-1).x < right[0].x,
+      `and the pair open inward on beat ${b}`);
+  }
+  // AND THEY THROW PAST THE NEXT ROOF. The old beam died at 86 from the lens,
+  // about the width of a building; a lamp whose light stops at its neighbour is
+  // a lamp lighting its neighbour. Measured on the flattest angle of the sweep,
+  // where the throw is spent horizontally and nothing clips it.
+  const flattest = Math.max(...[0, 1, 2, 3, 4, 5, 6, 7].map((b) => Math.max(
+    ...beamRuns(b).map((run) => Math.abs(run.at(-1).x - run[0].x)))));
+  assert(flattest > 100, `the beam throws well past the roof next door (${flattest})`);
   const train = (beat, progress) => background(2, beat, {}, 0, 0, { progress })
     .filter((op) => op[0] === 'fillRect' && op[1] === 'rgba(70,121,137,0.5)');
   // THE TIMETABLE, and it is the whole of the service: six bars right to left,

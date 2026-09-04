@@ -7,6 +7,7 @@ const { RunState, FINISH_CELEBRATION_POSE } = await import('../src/game/run.js')
 const { Player } = await import('../src/game/player.js');
 const { HEROES } = await import('../src/data/heroes.js');
 const { HERO_SPRITES } = await import('../src/sprites/heroes.js');
+const { HERO_DISC_PLATE } = await import('../src/game/hud.js');
 const {
   TOON_SPECS, toonEffectEllipse, poseFromPlayer, RUN_HEAD_TURN, drawToon,
   ACTIVE_CELEBRATION_STYLE, ACTIVE_LOCOMOTION_STYLE, ACTIVE_LIMB_STYLE,
@@ -95,6 +96,8 @@ assert(toonIds.every((id) => HERO_SPRITES[id] && HERO_SPRITES[id].pal),
   'every toon in the roster has a palette to draw with');
 assert(HEROES.every((h) => TOON_SPECS[h.id]),
   'every playable hero has a toon rig');
+assert(HERO_DISC_PLATE === 'rgba(108,132,152,0.96)',
+  'HUD hero faceplate keeps the lifted slate plate');
 assert(ACTIVE_CELEBRATION_STYLE === 'reworked', 'results-screen celebrations default to the approved rework');
 assert(ACTIVE_LOCOMOTION_STYLE === 'enhanced', 'jump and duck default to the improved motion');
 assert(ACTIVE_LIMB_STYLE === 'snap', 'the run and jump default to the ported limb spec');

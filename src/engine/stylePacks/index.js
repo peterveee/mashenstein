@@ -2320,12 +2320,15 @@ const LCD_CITY_SCENES = [
     // ONE LAMP ON EACH MUSIC HALL. The second is Peter's ("could we have 2
     // spotlights? and with a bit more reach"), and building 6 is the only free
     // roof that is not standing in a canyon: 0 and 4 have a tower over them on
-    // both sides, and every other roof already carries a board, the washer or
-    // a meter bank it could not share. Each lamp stands at the end of its roof
-    // that its own equalizer bank is not on — 2's at 161, 6's at 401 — and
-    // sweeps toward the middle of the panel, so the two beams cross over the
-    // low roof at 239 rather than over the towers at either end.
-    searchlights: [[2, 24], [6, 45]],
+    // both sides, and every other roof already carries a board or the washer.
+    //
+    // EACH LAMP STANDS BETWEEN ITS OWN METER AND THE MIDDLE OF THE PANEL — 2's
+    // at 161 with its bank at 148-161, 6's at 365 with its bank at 372-393 —
+    // because the beam leans inward (see lcdSearchlight) and a beam leaning
+    // over its own equalizer washes the one thing on that roof that is a
+    // READING. Mounted at the outboard end instead, 6's lamp raked straight up
+    // its bank at full strength and pinked out three rows of cells.
+    searchlights: [[2, 24], [6, 9]],
     // THE LANE: the girder on rule 53 (y + 12), the cars on 41-53 above every
     // other roof. FOUR cars, a hundred pixels of train on a 480 panel. It
     // dropped to three for an hour while the service still stopped at a

@@ -525,7 +525,7 @@ const SFX_TRIM = {
   // path so the two ways into the same cue cannot disagree.
   impact: ATTACK_MASTER_TRIM,
   contact: ATTACK_MASTER_TRIM, launch: 0.92 * ATTACK_MASTER_TRIM,
-  shield: 0.78, star: 0.72, win: 0.76, power: 0.84, rewindPickup: 0.78,
+  shield: 0.78, star: 0.72, win: 0.76, copterBonk: 1.0, power: 0.84, rewindPickup: 0.78,
   crunch: 0.84, chomp: 0.84, tag: 0.9, perfect: 0.88,
   // SCENERY, and levelled as scenery. Untrimmed the crack peaked -11.3 dBFS —
   // hotter than 'crunch', a cue the player causes — which is the wrong way
@@ -2691,6 +2691,26 @@ class AudioSys {
     o.start(t); o.stop(t + dur + 0.05);
   }
 
+  // The chase-copter bonk: a short comic impact followed by the upward elastic
+  // squeak chosen from audio/bonk-candidates/03_cartoon_boink.wav. It is its own
+  // cue rather than `power`, because a successful villain hit is a physical
+  // contact and must not sound like a capsule pickup or menu confirmation.
+  // The standalone render uses the same layer order and envelopes; the live
+  // version uses the engine's shared noise buffer and SFX routing.
+  copterBonk() {
+    if (!this.ctx) return;
+    // The first layer is the low, blunt "bonk"; the short high transient keeps
+    // the contact legible over Rhythm Cabinet's busy track.
+    this.noise(0.026, 0.16, 'lowpass', 1100);
+    this.osc('sine', 105, 62, 0.13, 0.23, 0, null, 0.02);
+    this.noise(0.018, 0.10, 'highpass', 4200);
+    // The upward square glide is the cartoon voice. The descending triangle
+    // and sine tail keep it springy instead of ending like a coin ping.
+    this.osc('square', 205, 1450, 0.19, 0.16, 0.006, null, 0.07);
+    this.osc('triangle', 1450, 690, 0.33, 0.13, 0.015, null, 0.01);
+    this.osc('sine', 680, 350, 0.43, 0.11, 0.075, null, 0.01);
+  }
+
   // ONE BARK.
   //
   // Three rewrites of this cue read as percussion, then as a synth note, then
@@ -3718,6 +3738,7 @@ class AudioSys {
       // amplitude) and it fires more often than any other cue in the game.
       case 'jump': this.jumpTone(0, 1, 0.055); break;
       case 'jump2': this.jumpTone(0, 1.5, 0.045); break; // double jump: same shape, a fifth up
+      case 'copterBonk': this.copterBonk(); break;
       case 'land': this.noise(0.06, 0.15, 'lowpass', 400); break;
       // Two square pings a fourth apart, in the key of whatever is playing —
       // see coinNotes for why the numbers are not written down here.

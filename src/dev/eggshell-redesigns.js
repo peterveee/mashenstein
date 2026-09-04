@@ -22,7 +22,7 @@ const {
   P, line, dot, egg, mustache, goggles, spikesArc, rr, TAU,
   INK, CREAM, RED, FUR, GOLD, LINE, LW, GREEN, GREEN_DK,
 } = A;
-const WHITE = '#f0f0f6', DARK_HAIR = '#2a1810', STEEL = '#3a3f4a', STEEL_LT = '#c8ced8';
+const WHITE = '#f0f0f6', DARK_HAIR = '#1a1410', STEEL = '#3a3f4a', STEEL_LT = '#c8ced8';
 // the no-song fallback: two turns a second, twelve frames a half-turn
 const FRAME = (t) => Math.floor(t * 2 * 24) % 12;
 const copter = (c, t, o) => eggshellCopterArt(c, 28, 28, FRAME(t), o);
@@ -82,10 +82,10 @@ function smirk(c, X, Y, lw, shocked) {
 function labCoat(c, X, Y, lw) {
   P(c, WHITE, (k) => k.ellipse(X(0.5), Y(0.63), X(0.3), Y(0.16), 0, 0, TAU), LINE, lw);
   for (const s of [-1, 1]) P(c, WHITE, (k) => {
-    k.moveTo(X(0.5) + s * X(0.09), Y(0.6));
-    k.lineTo(X(0.5) + s * X(0.3), Y(0.5));
-    k.lineTo(X(0.5) + s * X(0.36), Y(0.33));
-    k.lineTo(X(0.5) + s * X(0.2), Y(0.44));
+    k.moveTo(X(0.5) + s * X(0.1), Y(0.6));
+    k.lineTo(X(0.5) + s * X(0.27), Y(0.52));
+    k.lineTo(X(0.5) + s * X(0.31), Y(0.38));
+    k.lineTo(X(0.5) + s * X(0.2), Y(0.47));
     k.closePath();
   }, LINE, lw);
 }
@@ -153,16 +153,17 @@ function dali(c, X, Y, lw, shocked) {
       k.quadraticCurveTo(X(0.5) + s * X(0.1), Y(0.44), X(0.5) + s * X(0.16), Y(0.38));
       k.quadraticCurveTo(X(0.5) + s * X(0.2), Y(0.34), X(0.5) + s * X(0.2), Y(0.29));
     });
-    line(c, RED, lw * 1.6, (k) => k.arc(X(0.5) + s * X(0.185), Y(0.28), X(0.02), s > 0 ? -Math.PI * 0.2 : Math.PI * 1.2, s > 0 ? Math.PI * 1.3 : -Math.PI * 0.3, s < 0));
+    line(c, RED, lw * 1.5, (k) => k.arc(X(0.5) + s * X(0.183), Y(0.275), X(0.017), s > 0 ? Math.PI * 0.5 : Math.PI * 0.5, s > 0 ? Math.PI * 2.2 : -Math.PI * 1.2, s < 0));
   }
   if (shocked) gasp(c, X, Y, 0.51);
 }
 
 // -------------------------------------------------------------- C. hair
-// The face-plate grown over the crown: a pale dome, fur left at the sides.
-function baldDome(c, X, Y) {
-  P(c, CREAM, (k) => egg(k, X(0.5), Y(0.385), X(0.133), Y(0.18), 0));
-  dot(c, 'rgba(255,255,255,0.55)', X(0.46), Y(0.24), X(0.025));
+// The whole head is the pale dome; fur survives only as a tuft over each ear.
+function baldHead(c, X, Y, lw) {
+  for (const s of [-1, 1]) dot(c, FUR, X(0.5) + s * X(0.15), Y(0.42), X(0.055), LINE, lw);
+  P(c, CREAM, (k) => egg(k, X(0.5), Y(0.37), X(0.165), Y(0.2), 0.1), LINE, lw);
+  dot(c, 'rgba(255,255,255,0.6)', X(0.455), Y(0.235), X(0.028));
 }
 function combover(c, X, Y, lw) {
   for (const [y0, y1, y2] of [[0.3, 0.19, 0.24], [0.33, 0.215, 0.27], [0.36, 0.24, 0.3]]) {
@@ -171,24 +172,27 @@ function combover(c, X, Y, lw) {
 }
 function quiff(c, X, Y, lw) {
   P(c, DARK_HAIR, (k) => {
-    k.moveTo(X(0.36), Y(0.3));
-    k.quadraticCurveTo(X(0.24), Y(0.12), X(0.38), Y(0.03));
-    k.quadraticCurveTo(X(0.52), Y(-0.02), X(0.64), Y(0.1));
-    k.quadraticCurveTo(X(0.7), Y(0.18), X(0.62), Y(0.26));
-    k.quadraticCurveTo(X(0.5), Y(0.17), X(0.36), Y(0.3));
+    k.moveTo(X(0.35), Y(0.3));
+    k.quadraticCurveTo(X(0.22), Y(0.22), X(0.24), Y(0.08));
+    k.quadraticCurveTo(X(0.26), Y(-0.03), X(0.42), Y(0.0));
+    k.quadraticCurveTo(X(0.56), Y(0.02), X(0.66), Y(0.14));
+    k.quadraticCurveTo(X(0.7), Y(0.2), X(0.65), Y(0.27));
+    k.quadraticCurveTo(X(0.5), Y(0.15), X(0.35), Y(0.3));
     k.closePath();
   }, LINE, lw);
-  line(c, '#6a4a38', lw * 1.4, (k) => { k.moveTo(X(0.33), Y(0.17)); k.quadraticCurveTo(X(0.36), Y(0.08), X(0.46), Y(0.06)); });
+  line(c, '#6a5a58', lw * 1.5, (k) => { k.moveTo(X(0.27), Y(0.16)); k.quadraticCurveTo(X(0.3), Y(0.06), X(0.42), Y(0.04)); });
 }
 function tufts(c, X, Y, lw) {
   const cx = X(0.5), cy = Y(0.36), r = X(0.165);
   for (const s of [-1, 1]) for (const [a, len] of [[-1.0, 0.6], [-0.65, 0.75], [-0.3, 0.6]]) {
     const ang = s > 0 ? a : Math.PI - a, da = 0.16;
     const tip = ang - s * 0.22;
+    const tx = cx + Math.cos(tip) * r * (1 + len), ty = cy + Math.sin(tip) * r * (1 + len);
+    const mx = cx + Math.cos(ang - s * 0.05) * r * (1 + len * 0.5), my = cy + Math.sin(ang - s * 0.05) * r * (1 + len * 0.5);
     P(c, '#eeeef4', (k) => {
       k.moveTo(cx + Math.cos(ang - da) * r, cy + Math.sin(ang - da) * r);
-      k.lineTo(cx + Math.cos(tip) * r * (1 + len), cy + Math.sin(tip) * r * (1 + len));
-      k.lineTo(cx + Math.cos(ang + da) * r, cy + Math.sin(ang + da) * r);
+      k.quadraticCurveTo(mx + s * 0.4, my - 0.5, tx, ty);
+      k.quadraticCurveTo(mx - s * 0.3, my + 0.5, cx + Math.cos(ang + da) * r, cy + Math.sin(ang + da) * r);
       k.closePath();
     }, LINE, lw * 0.7);
   }
@@ -297,13 +301,15 @@ function zeppelin(c, t) {
   P(c, STEEL, (k) => k.ellipse(24, 9.7, 8, 1.6, 0, 0, TAU));
   eggshellApe(c, 12, -2, 0, { tub: null });
   // the prop: tipped three-quarter so it reads as a prop and not a line
-  const hx = 10.5, sqz = 0.35, a = t * 5 * TAU;
-  line(c, 'rgba(206,212,228,0.4)', 1.4, (k) => k.ellipse(hx, cy, 5 * sqz, 5, 0, a - 1.2, a));
+  const hx = 9.5, sqz = 0.42, a = t * 5 * TAU, R = 6.5;
+  P(c, STEEL, (k) => rr(k, hx - 0.5, cy - 1.6, 3, 3.2, 0.8), LINE, lw * 0.6);
+  line(c, 'rgba(206,212,228,0.5)', 1.8, (k) => k.ellipse(hx, cy, R * 0.85 * sqz, R * 0.85, 0, a - 1.3, a));
   for (let i = 0; i < 3; i++) {
     const b = a + i * TAU / 3;
-    line(c, STEEL, 1.1, (k) => { k.moveTo(hx, cy); k.lineTo(hx + Math.cos(b) * 5.5 * sqz, cy + Math.sin(b) * 5.5); });
+    line(c, '#2a2a34', 1.3, (k) => { k.moveTo(hx, cy); k.lineTo(hx + Math.cos(b) * R * sqz, cy + Math.sin(b) * R); });
+    line(c, '#9a9aa8', 0.45, (k) => { k.moveTo(hx + Math.cos(b) * R * 0.2 * sqz, cy + Math.sin(b) * R * 0.2); k.lineTo(hx + Math.cos(b) * R * 0.9 * sqz, cy + Math.sin(b) * R * 0.9); });
   }
-  dot(c, '#8a8a98', hx, cy, 1, LINE, 0.5);
+  dot(c, '#8a8a98', hx, cy, 1.1, LINE, 0.5);
 }
 // The Robotnik move: the hull wears his face. Goggles and mustache painted on
 // a hover-egg, and him in a hatch on the crown, so the ship has two faces
@@ -374,7 +380,7 @@ export const EGGSHELL_REDESIGNS = [
   // C. hair
   { id: 'combover', n: 10, group: 'C', name: 'BALD, COMB-OVER', box: [28, 28],
     note: 'The face-plate grown over the crown into a pale dome with three dark strands combed across it; fur only at the sides. The head reads pale instead of brown.',
-    parts: { face: baldDome, hair: combover } },
+    parts: { head: baldHead, face: null, hair: combover } },
   { id: 'pompadour', n: 11, group: 'C', name: 'POMPADOUR', box: [28, 28],
     note: 'A dark quiff swept up and forward off the crown, with a shine. The tallest silhouette of the bust options; the mast disappears into it.',
     parts: { hair: quiff } },

@@ -1256,6 +1256,17 @@ function slideTime(dist) {
 const GIRDER_SAG_MAX = 2.2;
 const GIRDER_SAG_PERIOD = 0.26;
 const GIRDER_SAG_DECAY = 0.13;   // the envelope's time constant
+const GIRDER_SAG_W = Math.PI * 2 / GIRDER_SAG_PERIOD;
+// What the decaying sine actually reaches, so GIRDER_SAG_MAX above is the dip
+// IN PIXELS rather than the amplitude of a curve that never gets there. A ring
+// that dies this fast is a third of the way down by its own first quarter turn,
+// and a number that means two thirds of itself is the kind of quiet multiplier
+// that makes a tuning pass guesswork. Solved rather than measured: the peak of
+// sin(wt)e^(-t/T) is where tan(wt) = wT.
+const GIRDER_SAG_NORM = (() => {
+  const t = Math.atan(GIRDER_SAG_W * GIRDER_SAG_DECAY) / GIRDER_SAG_W;
+  return Math.sin(GIRDER_SAG_W * t) * Math.exp(-t / GIRDER_SAG_DECAY);
+})();
 
 export class RunState {
   // opts: {stage, team, seed, save, progress, overtime, corrupted:[], startingPowerup, onEnd(result)}
@@ -1469,8 +1480,8 @@ export class RunState {
     const tent = u <= s.p ? u / s.p : (1 - u) / (1 - s.p);
     const shape = tent * tent * (3 - 2 * tent);
     return s.amp * shape
-      * Math.sin(Math.PI * 2 * s.t / GIRDER_SAG_PERIOD)
-      * Math.exp(-s.t / GIRDER_SAG_DECAY);
+      * Math.sin(GIRDER_SAG_W * s.t) * Math.exp(-s.t / GIRDER_SAG_DECAY)
+      / GIRDER_SAG_NORM;
   }
 
   /**
@@ -5239,7 +5250,7 @@ export class RunState {
     this.copterBonks++;
     c.hitT = COPTER_HIT_T;
     c.mode = 'leave'; c.modeT = 0; c.fromDx = null; c.homeT = null;
-    Audio.sfx('power');
+    Audio.sfx('copterBonk');
     shake(3, 0.2);
     const goal = this.mission.n || 0;
     const past = this.copterBonks > goal;
@@ -5640,9 +5651,11 @@ export class RunState {
           ? Math.max(COPTER_PRESSURE_START, p - step) : Math.min(COPTER_PRESSURE_START, p + step);
       }
       let dx = Number.isFinite(c.dx) ? c.dx : c.x - this.camX;
-      // True only while he waits off the right edge for his cue: out there the
-      // gorilla's column is not a consideration and the clamp below must not
-      // drag him back into frame.
+      // True while he waits off the right edge for his cue, and true again for
+      // the flight in from it. Out there the gorilla's column is not a
+      // consideration, and the clamp below must not touch either: it used to
+      // slam the first frame of the arrival to the near side of that building,
+      // which is why he SNAPPED into the frame at Kong instead of flying in.
       let parked = false;
       switch (c.mode) {
         case 'away': {
@@ -5757,7 +5770,10 @@ export class RunState {
       // so both are clamped here rather than inside each case.
       const zoom = this.camZoom || ZOOM;
       const rightEdge = c.alt <= GORILLA_DUCK_ALT ? GORILLA_COLUMN[1] + 26 : GORILLA_COLUMN[0] - 4;
-      c.dx = parked ? dx : Math.min(dx, rightEdge / zoom - COPTER_BOX / 2);
+      // The arrival flies THROUGH the gorilla's column; only the roam has to
+      // keep off it.
+      const crossing = parked || c.mode === 'away' && !c.arrived;
+      c.dx = crossing ? dx : Math.min(dx, rightEdge / zoom - COPTER_BOX / 2);
       c.x = this.camX + c.dx;
       c.alt = Math.min(c.alt, ceiling);
       c.cooldown = c.mode === 'hover' ? 0 : 1;
