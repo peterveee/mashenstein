@@ -211,13 +211,20 @@ function ribbonSpan(run) {
   // which on a mirrored run is the right-hand one; the corner stays top-left
   // either way, so on that run it is the far end that approaches the pill and
   // the clamp here would be shortening the wrong end of the strip.
-  const backRoom = run.mirror ? Infinity
+  //
+  // AND IT IS THE WHOLE NEAR END, not a ceiling on it. Capped at `near - margin`
+  // as well, the tail sat a flat RIBBON_MIN_BACK_BEATS behind the playhead
+  // whenever there was more room than that — which at the ZOOM IN framing put
+  // the anchor at 130 with the corner ending near 94, so ten pixels of bare sky
+  // opened up between the pill and the start of the fade and the strip read as
+  // floating rather than as the lane between two panels. The far end has always
+  // run all the way up to the GOAL panel; this end now runs all the way back to
+  // the status corner, at every zoom, and the plate's fade is spent against the
+  // pill where it can be seen. The 0.5-beat figure stays as what the FAR end is
+  // floored at, which is the one place it was ever doing work.
+  const backRoom = run.mirror ? near - margin
     : anchor - (PILL_X + statusCornerW(run) + RIBBON_CORNER_GAP);
-  return {
-    anchor,
-    backW: Math.max(1, Math.min(near - margin, backRoom)),
-    aheadW: Math.max(minBack, ahead - near),
-  };
+  return { anchor, backW: Math.max(1, backRoom), aheadW: Math.max(minBack, ahead - near) };
 }
 // THE PLATE IS LAID OUT FROM THE FRAME, NOT FROM THE BEAT COUNT. It ends the
 // same distance from the right edge of the screen as it begins from the left —
@@ -455,9 +462,16 @@ export function drawBeatRibbon(ctx, run) {
   // run gets the gradient reversed for free rather than a second copy of it.
   const tail = anchor - dir * backW, head = anchor + dir * aheadW;
   const span = backW + aheadW;
-  const plateBack = Math.max(1, Math.min(RIBBON_PLATE_FADE, backW));
-  const plateAhead = Math.max(1, Math.min(RIBBON_PLATE_FADE, aheadW));
-  const back = ribbonPlateGrad(ctx, tail, head, plateBack / span, plateAhead / span);
+  // ONE FADE LENGTH, USED AT BOTH ENDS. Each end used to clamp RIBBON_PLATE_FADE
+  // to its OWN length, which sounds symmetrical and is not: the near end is
+  // twenty-odd pixels long so its ramp came out clamped short and dense, while
+  // the far end had two hundred and got the full eighteen. Same nominal number,
+  // and the strip still read as arriving at the status pill and giving up before
+  // the GOAL panel — the ramp is the whole near end but only the last fourteenth
+  // of the far one, so the eye reads it as an edge on one side and a dissolve on
+  // the other. Taking the shorter of the two makes them the same ramp in fact.
+  const plateFade = Math.max(1, Math.min(RIBBON_PLATE_FADE, backW, aheadW));
+  const back = ribbonPlateGrad(ctx, tail, head, plateFade / span, plateFade / span);
   // Translucent, not a black bar. At full strength a strip this long stopped
   // being chrome and became a hole in the sky — the widest, heaviest object in
   // the frame, sitting over the prettiest part of the stage. It only has to
@@ -1076,7 +1090,7 @@ const METER_R = PILL_R - METER_INSET;
 // SET TO G, gap 5, pad = the battery's own left inset (Peter, 5 Sep 2026): no divider, no
 // two-digit reserve. Left at the dial rather than collapsed by hand — the
 // session that built this seam is the one deleting it.
-export const PILL_TUNE = { split: 'gap', gap: 5, pad: METER_INSET, battH: METER_H, floor: false };
+export const PILL_TUNE = { split: 'gap', gap: 5, pad: 4, battH: METER_H, floor: false };
 // The gap the two readouts are separated by, hairline included.
 const splitGap = (cells) => (cells
   ? (PILL_TUNE.split === 'line' ? PILL_SPLIT * 2 + 0.5 : PILL_TUNE.gap)

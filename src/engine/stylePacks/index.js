@@ -2668,6 +2668,10 @@ function lcdSceneFrame(scene, reducedMotion) {
     // tests take, and the same one reduced motion takes by choice.
     spectrum: heard,
     audio: heard ? scene.audio : null,
+    // THE STAGE IS OVER, or still in its live run. Rhythm 3 uses this one
+    // presentation bit to hand the rooftop gorilla from his barrel loop to a
+    // friendly wave; it is not gameplay state and no other scene reads it.
+    finish: !!scene?.finish,
     // HOW THE RUN IS GOING, and the one crack in "no gameplay reaches this
     // painter". It is deliberately narrow: the count of clean beats in a row
     // (RunState.beatCombo) and a boolean that goes true for a couple of seconds
@@ -6640,6 +6644,28 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
     },
   ];
 
+  // THE PLAYER MADE IT. On 3-3 the thrower stops being a hazard and gets to
+  // acknowledge the runner: one arm stays planted while the other waves from
+  // two stepped hand positions. There is deliberately no barrel on either
+  // pose, and the normal throw ghosts are replaced by the two wave positions.
+  // It is still beat-stepped, so the greeting belongs to this panel's idiom
+  // and reduced motion settles on the first friendly frame.
+  const finale = frame.stageIndex === 3 && frame.finish;
+  const wavePoses = [
+    {
+      arms: [
+        [[cx - 12, roof - 19], [cx - 20, roof - 29], [cx - 17, roof - 41]],
+        [[cx + 12, roof - 19], [cx + 19, roof - 11], [cx + 14, roof - 5]],
+      ], hands: [[cx - 17, roof - 41], [cx + 14, roof - 5]], barrel: null,
+    },
+    {
+      arms: [
+        [[cx - 12, roof - 19], [cx - 18, roof - 26], [cx - 11, roof - 38]],
+        [[cx + 12, roof - 19], [cx + 19, roof - 11], [cx + 14, roof - 5]],
+      ], hands: [[cx - 11, roof - 38], [cx + 14, roof - 5]], barrel: null,
+    },
+  ];
+
   // THE SWING IS ONE STREAM WITH THE CHUTE, phased to the lane — see
   // lcdSwingPhase, which is the whole of the timing. His poses used to be
   // picked by `beat4` while the chute below him counted backward from the beat
@@ -6655,18 +6681,20 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // of beat 0.
   const due = frame.barrelBeat != null ? Math.round(frame.barrelBeat - frame.beatAbs) : null;
   const cued = due != null && due > LCD_CHUTE_BEATS && due <= LCD_CHUTE_LEAD_BEATS;
-  const pose = poses[lcdSwingPhase(frame)];
+  const pose = finale ? wavePoses[lcdMod(frame.beatAbs, wavePoses.length)]
+    : poses[lcdSwingPhase(frame)];
+  const poseSet = finale ? wavePoses : poses;
   const build = LCD_GORILLA_BUILDS.has(frame.gorillaBuild) ? frame.gorillaBuild : LCD_GORILLA_BUILD;
   const tuft = LCD_GORILLA_TUFTS[frame.gorillaTuft in LCD_GORILLA_TUFTS ? frame.gorillaTuft : LCD_GORILLA_TUFT];
   if (build !== 'ovals') {
-    lcdGorillaHardBody(ctx, cx, roof, poses, pose, ink, build);
+    lcdGorillaHardBody(ctx, cx, roof, poseSet, pose, ink, build);
   } else {
     // The slow GBC panel remembers the other three arm/barrel positions, but
     // only as a faint contour. The active pose below is proper vector anatomy,
     // not a pile of rectangular segments.
     const pit = LCD_GORILLA_PITS[frame.gorillaPit] || LCD_GORILLA_PITS[LCD_GORILLA_PIT];
     const armW = pit.arm || 7;
-    for (const ghost of poses) {
+    for (const ghost of poseSet) {
       for (const arm of ghost.arms) gbcGorillaLimb(ctx, arm, LCD_MOTION_GHOST, armW - 2);
       if (ghost.barrel) gbcGorillaBarrel(ctx, ghost.barrel[0], ghost.barrel[1], true, false, frame.barrelShape);
     }
@@ -6780,7 +6808,7 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // else was worth watching: it is directly over his head and it is his.
   const watching = burst >= 0 ? [poses[LCD_BARREL_UP_BEAT].barrel[0],
     poses[LCD_BARREL_UP_BEAT].barrel[1]] : lookAt;
-  lcdGorillaFace(ctx, cx, roof, burst >= 0 ? 'startled' : lcdGorillaMood(frame, mood),
+  lcdGorillaFace(ctx, cx, roof, finale ? 'smile' : burst >= 0 ? 'startled' : lcdGorillaMood(frame, mood),
     frame.gorillaBrow, thinLines, lcdGazeTo(cx, roof - 31, watching, frame), frame.gorillaShock,
     frame.gorillaNostrils);
 
@@ -6816,10 +6844,10 @@ function lcdRooftopGorilla(ctx, building, frame, burst = -1, reducedFlashing = f
   // and the chute takes the same lit barrel over on the next beat — see the
   // swing note above. `barrelBeat` is only ever set while one is genuinely due
   // (run.js updateBarrelArrivals), so he cannot cry wolf with it.
-  if (burst >= 0) {
+  if (!finale && burst >= 0) {
     lcdBarrelBurst(ctx, poses[LCD_BARREL_UP_BEAT].barrel[0],
       poses[LCD_BARREL_UP_BEAT].barrel[1], burst, reducedFlashing);
-  } else if (pose.barrel) {
+  } else if (!finale && pose.barrel) {
     // Lit on the three hold beats of a real one and on nothing else. The swing
     // is phased so those three beats ARE poses 0, 1 and 2 (lcdSwingPhase), so
     // no test on the pose is needed here. Flashing, see lcdRimOn.
@@ -7894,7 +7922,7 @@ function drawLCDCity(ctx, scene, reducedMotion, reducedFlashing, skyMeter = fals
     // because that is where those positions are solved; read at the gorilla,
     // below, where they are needed.
     let watch = null;
-    if (art.barrelDrop) {
+    if (art.barrelDrop && !frame.finish) {
       const [, , gh] = art.buildings[art.rooftopGorilla];
       const roof = GROUND_Y - gh;
       const dropX = lcdChuteX(art);

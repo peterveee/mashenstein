@@ -4024,7 +4024,7 @@ export class RunState {
     // The copter is not content past the tape: he is the villain, and he
     // LEAVES — off the right edge, climbing, the way he arrived. Nulling him
     // here made him blink out the frame the finish armed.
-    if (this.copter) { this.copter.flyOff = true; this.copter.inRange = false; this.copter.hitT = 0; }
+    if (this.copter) { this.copter.flyOff = true; this.copter.hitT = 0; }
     this.floaties = [];
     this.floatDuck = 0;
   }
@@ -6022,7 +6022,6 @@ export class RunState {
       }
       c.alt = c.drawnAlt;
       c.cooldown = c.mode === 'hover' ? 0 : 1;
-      c.inRange = this.mission.type === 'chase' && c.mode === 'hover';
       // THE BONK. Head rising into the underside of the tub, roughly under it.
       // The tub floor is 4u above alt (drawCopter); the head is the drawn head,
       // not the 14u hitbox, because it is the picture that has to touch.
@@ -10303,6 +10302,10 @@ export class RunState {
         progress: Number.isFinite(this.totalDist) && this.totalDist > 0
           ? Math.max(0, Math.min(1, this.distance / this.totalDist)) : 0,
         audio: Audio.musicAnalysis?.() || null,
+        // The finish dash is the handoff from gameplay to the results pose.
+        // Rhythm 3's rooftop gorilla uses it to stop throwing and wave at the
+        // player; other LCD scenes ignore it.
+        finish: this.finishing,
         cheer: this.rhythmCheer > 0,
         // The on-beat streak the rooftop board counts, and the cheer that gilds
         // it every eighth. A `form` scalar used to ride here too, for a

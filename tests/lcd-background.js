@@ -1114,6 +1114,32 @@ assert(roofLamps({}).length > 0 && roofLamps({ reducedFlashing: true }).length =
     'and simply lit under reduced flashing');
 }
 
+// ---- KONG WAVES AT THE FINISH ----------------------------------------------
+// 3-3's rooftop villain gets a friendly last beat: no held barrel, no chute
+// stream, a stepped wave and the authored smile. The finish bit is scoped to
+// stage 3, so the earlier Kong scene keeps its gameplay animation unchanged.
+{
+  const finish0 = background(3, 0, {}, 0, 0, { finish: true });
+  const finish1 = background(3, 1, {}, 0, 0, { finish: true });
+  const ellipseAt = (ops, x, y, rx, ry) => ops.some((op) => op[0] === 'ellipse'
+    && op[1] === x && op[2] === y && op[3] === rx && op[4] === ry);
+  const smile = (ops) => ops.some((op, i) => op[0] === 'moveTo'
+    && op[1] === 424 && op[2] === 77.5
+    && ops[i + 1]?.[0] === 'quadraticCurveTo'
+    && ops[i + 1][1] === 428 && ops[i + 1][2] === 79.5
+    && ops[i + 1][3] === 432 && ops[i + 1][4] === 77.5);
+  assert(bigBarrels(finish0).length === 0 && bigBarrels(finish1).length === 0,
+    '3-3 Kong stops throwing and clears the chute at the finish');
+  assert(ellipseAt(finish0, 411, 60, 3.5, 3)
+    && ellipseAt(finish1, 417, 63, 3.5, 3),
+  '3-3 Kong waves with two stepped hand positions');
+  assert(smile(finish0) && smile(finish1),
+    '3-3 Kong holds his smile while waving');
+  assert(fingerprint(background(1, 0, {}, 0, 0, { finish: true }))
+    === fingerprint(background(1, 0)),
+  'the finish wave is scoped to 3-3');
+}
+
 // ---- the board that counts ------------------------------------------------
 //
 // The one gameplay fact this city sees. The board on the roof the hero runs

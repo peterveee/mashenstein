@@ -1180,10 +1180,4 @@ export function drawCopter(ctx, copter, camX, t, smoothMotion = false, reducedMo
     }
     ctx.restore();
   }
-  // chase mission: flash the catch window while the copter swoops in
-  if (copter.inRange && Math.floor(t * 6) % 2 === 0) {
-    ctx.fillStyle = '#f6d33c';
-    ctx.fillRect(x - 1, y + 4 - B, 3, 5);
-    ctx.fillRect(x - 1, y + 10 - B, 3, 2);
-  }
 }
