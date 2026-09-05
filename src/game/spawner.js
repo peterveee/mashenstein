@@ -476,7 +476,7 @@ export const POWER_MIN_GAP = 480;   // one screen of world px
 const DRIP_W = PICKUPS.battery.w;
 
 export class DripSpawner {
-  constructor(rng, benchLevels, { sections = null, totalDist = null } = {}) {
+  constructor(rng, benchLevels, { sections = null, totalDist = null, weights = null } = {}) {
     this.rng = rng;
     this.bench = benchLevels;
     // Same null contract as the Spawner's above. DEFAULT_DRIP holds the
@@ -485,6 +485,10 @@ export class DripSpawner {
     // rather than two literals that can drift apart.
     this.sections = sections && totalDist ? sections : null;
     this.totalDist = totalDist;
+    // The cabinet's own capsule table (cabinets.js capsuleWeights), dealt from
+    // wherever no section names weights of its own. null keeps the shipped
+    // ladder, which is what every cabinet but the beat one has.
+    this.weights = weights;
     this.capsuleTimer = this.rearm('capsule', 0);
     this.batteryTimer = this.rearm('battery', 0);
     this.lastPowerX = -1e9;   // finite so it survives a snapshot round-trip
@@ -533,10 +537,11 @@ export class DripSpawner {
         this.capsuleTimer = 0.5;
       } else {
         this.capsuleTimer = this.rearm('capsule', x);
-        // A section that names its own capsule weights deals from those; one
-        // that does not goes through the shipped ladder untouched. The two are
-        // kept apart deliberately — see weightedPowerPickup in powerups.js.
-        const weights = this.sectionFor(x)?.drip?.weights;
+        // A section that names its own capsule weights deals from those, then
+        // the cabinet's table; one with neither goes through the shipped ladder
+        // untouched. The two paths are kept apart deliberately — see
+        // weightedPowerPickup in powerups.js.
+        const weights = this.sectionFor(x)?.drip?.weights || this.weights;
         const type = weights
           ? weightedPowerPickup(this.rng, weights, this.lastPowerType, { allowRewind, banned })
           : randomPowerPickup(this.rng, this.lastPowerType, { allowRewind, banned });

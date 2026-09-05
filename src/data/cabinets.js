@@ -456,6 +456,14 @@ export const CABINETS = [
     id: 'rhythm', name: 'RHYTHM BANKRUPTCY', act: 1, style: 'lcd',
     genre: 'RHYTHM', unlockPlugs: 5, speedBonus: 0.3,
     mechanic: 'beat', // obstacles quantized to the beat; on-beat bonus
+    // What a capsule on this lane can be. The beat ban (run.js) strikes every
+    // timing power from the shipped ladder, and the ladder's substitute for a
+    // struck band is SHIELD — so under the ban nine capsules in ten were
+    // shields and AIR JUMP, the one power that leaves the clock alone, was a
+    // fluke nobody could count on. One in three is an offer: a second jump
+    // recovers a late beat, or takes a hole-then-bar pair as one gesture.
+    // Every capsule source on the stage (the drip, a !-crate) deals from this.
+    capsuleWeights: { capShield: 2, capAirJump: 1 },
     // Ground pair in the LCD pack's own colours — panel-lit body under an ink
     // surface line — because the terrain painter draws rhythm-1's rolling
     // mid-section with these, on top of the pack's panel-lit road, and the

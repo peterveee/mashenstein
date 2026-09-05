@@ -23,7 +23,7 @@ import { Relay, portalSchedule } from './relay.js';
 import { Spawner, DripSpawner, REACT_FLOOR, REACT_FLOOR_MAX, worstAirtime, worstJumpApex, COIN_GAP, COIN_FLOOR, pitClearance, sweepCoinsAroundHole } from './spawner.js';
 import { OPENING_COIN_BEAT, BeatSpawner, ON_BEAT_WINDOW, laneRunwayBeats, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, unwrapBeat } from './beatchart.js';
 import { drawBeatGround, ACTION_INK, GLYPH_OUTLINE } from './beatground.js';
-import { Powerups, POWER_DEFS, randomPowerPickup } from './powerups.js';
+import { Powerups, POWER_DEFS, randomPowerPickup, weightedPowerPickup } from './powerups.js';
 // The pacing constants and the stage-layout resolver. They live in layout.js
 // so the level editor forecasts a stage with the same arithmetic the run
 // drives it with — one copy, or the two drift and the editor lies.
@@ -2414,6 +2414,7 @@ export class RunState {
     this.drip = new DripSpawner(this.rng.stream('drip'), this.bench, {
       sections: this.layout?.sections || null,
       totalDist: this.totalDist,
+      weights: this.cabinet?.capsuleWeights || null,
     });
 
     // ---- raised routes: islands and forks ----------------------------------
@@ -4670,8 +4671,11 @@ export class RunState {
   // quiet: a screen-clear can pop several boxes on one frame, and one 'power'
   // sting per box stacks into noise.
   tossPrize(x, alt, quiet) {
-    const type = randomPowerPickup(this.fxRng, this.drip.lastPowerType,
-      { allowRewind: !this.rewindUsed && !this.beatLock, banned: this.beatLock ? BEAT_BANNED_POWERS : null });
+    const opts = { allowRewind: !this.rewindUsed && !this.beatLock, banned: this.beatLock ? BEAT_BANNED_POWERS : null };
+    const weights = this.cabinet?.capsuleWeights;
+    const type = weights
+      ? weightedPowerPickup(this.fxRng, weights, this.drip.lastPowerType, opts)
+      : randomPowerPickup(this.fxRng, this.drip.lastPowerType, opts);
     const p = makePickup(type, x, alt);
     p.toss = true;
     p.vx = this.speed * 1.45;

@@ -13,8 +13,10 @@ const {
   BOX_LEAD_BEATS, BOX_BURST_BEATS, BOX_SHOT_MIN_SPEED, puntLeadSec, puntLeadRange,
   unwrapBeat,
 } = await import('../src/game/beatchart.js');
-const { worstAirtime, sweepCoinsAroundHole } = await import('../src/game/spawner.js');
-const { randomPowerPickup } = await import('../src/game/powerups.js');
+const { worstAirtime, sweepCoinsAroundHole, DripSpawner } = await import('../src/game/spawner.js');
+const { randomPowerPickup, weightedPowerPickup } = await import('../src/game/powerups.js');
+const { CABINET_BY_ID } = await import('../src/data/cabinets.js');
+const { Rng } = await import('../src/engine/rng.js');
 const { beatRibbonOffset, beatRibbonMarkerOffset, RIBBON_BEAT_PX } = await import('../src/game/hud.js');
 const { RunState } = await import('../src/game/run.js');
 const { W } = await import('../src/engine/renderer.js');
@@ -1457,6 +1459,49 @@ const rewindBand = randomPowerPickup({ float: () => { rewindBandReads++; return 
   { allowRewind: true, banned: new Set(['capRewind']) });
 assert(rewindBand === 'capShield' || rewindBand === 'capMagnet', 'the banned rewind band maps to a safe power');
 assert(rewindBandReads === 1, 'rewind-band mapping does not add an RNG read');
+
+// ---- AIR JUMP IS AN OFFER ON THE BEAT LANE, NOT A FLUKE ---------------------
+//
+// Under the ban the shipped ladder collapses to ~90% shield. The rhythm cabinet
+// names its own table instead, and both capsule sources on the stage — the drip
+// and a !-crate toss — deal from it, so a third of what drops is AIR JUMP.
+{
+  const cab = CABINET_BY_ID.rhythm;
+  assert(cab.capsuleWeights && cab.capsuleWeights.capAirJump > 0,
+    'the rhythm cabinet declares its own capsule table with AIR JUMP in it');
+  assert(Object.keys(cab.capsuleWeights).every((t) => !rhythmBannedDrops.has(t)),
+    'and nothing in that table is a rhythm-banned capsule');
+  const N = 3000;
+  const dealt = Array.from({ length: N }, (_, i) => weightedPowerPickup(
+    { float: () => (i + 0.5) / N }, cab.capsuleWeights, null,
+    { allowRewind: false, banned: rhythmBannedDrops }));
+  const share = dealt.filter((t) => t === 'capAirJump').length / N;
+  assert(Math.abs(share - 1 / 3) < 0.01, `a third of rhythm capsules are AIR JUMP (got ${share.toFixed(3)})`);
+  assert(dealt.every((t) => t === 'capAirJump' || t === 'capShield'), 'and the rest are shields');
+
+  // The drip itself deals from the cabinet table when no section speaks.
+  const drip = new DripSpawner(new Rng(77), {}, { weights: cab.capsuleWeights });
+  const drops = [];
+  for (let i = 0; i < 400; i++) {
+    drip.capsuleTimer = 0; drip.lastPowerX = -1e9;
+    drip.update(0, i * 1000, drops, true, true, Infinity, false, rhythmBannedDrops);
+  }
+  const caps = drops.filter((p) => p.type.startsWith('cap'));
+  assert(caps.length === 400, 'every forced drip tick laid a capsule');
+  const air = caps.filter((p) => p.type === 'capAirJump').length / caps.length;
+  assert(air > 0.25 && air < 0.42, `the drip's AIR JUMP share is about a third (got ${air.toFixed(3)})`);
+  assert(caps.every((p) => p.type === 'capAirJump' || p.type === 'capShield'), 'and it deals nothing else');
+
+  // A real rhythm run wires the table through: its drip carries the cabinet's
+  // weights, a plumber run's does not.
+  save.load(); save.newSlot(0, 0);
+  const rhythmRun = new RunState({ stage: STAGES.find((s) => s.id === 'rhythm-1'), save, seed: 5, skipRunIn: true, onEnd: () => {} });
+  rhythmRun.enter();
+  assert(rhythmRun.drip.weights === cab.capsuleWeights, 'a rhythm run drips from the cabinet table');
+  const plumberRun = new RunState({ stage: STAGES.find((s) => s.id === 'plumber-1'), save, seed: 5, skipRunIn: true, onEnd: () => {} });
+  plumberRun.enter();
+  assert(plumberRun.drip.weights === null, 'and a plumber run keeps the shipped ladder');
+}
 
 // ---- THE RAMP OUTLIVES THE RUN, NOT THE SONG ------------------------------
 //

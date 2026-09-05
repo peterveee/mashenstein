@@ -59,7 +59,9 @@
       "Skill(update-config)",
       "Skill(update-config:*)",
       "Bash(curl -s -o /dev/null -w \"8001: %{http_code}\\\\n\" --max-time 3 http://localhost:8001/)",
-      "Bash(node verify-clouds.mjs)"
+      "Bash(node verify-clouds.mjs)",
+      "Bash(git fsck *)",
+      "Bash(node tests/beat-chart.js)"
     ],
     "additionalDirectories": [
       "/Users/Peter/mashenstein/src/game"
