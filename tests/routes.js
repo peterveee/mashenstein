@@ -206,6 +206,13 @@ function standAt(worldX) {
   run.player.y = 0;
   run.player.vy = 0;
   run.player.grounded = true;
+  // Hitstop is cleared here because it is the one piece of run state that makes
+  // the next frame a NO-OP: update() returns early while it burns down, so the
+  // world does not move and the ground under the hero is never sampled. It is
+  // set to 0.08s (about five frames) by any hit, and the assertions above this
+  // one do drive the hero into things. Placing him somewhere is meant to be a
+  // clean start, so the frame after a placement has to be a frame that runs.
+  run.hitstop = 0;
 }
 
 // Approach from before the leading edge so the hero arrives mid-jump.
@@ -574,26 +581,19 @@ const overGap = run.pickups.filter((p) => p.live && p.alt > 40
 assert(overGap.length === 0, `nothing hangs over a break (${overGap.length})`);
 // And falling through one takes the hero off the road rather than carrying him
 // across it on nothing.
-// Re-pinned each tick rather than set once. The run's seed comes from
-// `Date.now()`, so how fast the world is moving under him — and therefore where
-// one frame leaves him — is different every time this file runs.
-//
-// The retry walks him EARLIER into the break rather than dropping him on the same
-// spot three times. The seed is fixed for the whole file, so the same position at
-// the same speed is the same frame and the same answer: a fast world carried him
-// out through the far edge before the ground was sampled, and repeating it just
-// carried him out again. Starting nearer the leading edge leaves more break in
-// front of him, which is the thing that has to outlast one frame's travel.
-let leftAtBreak = false;
-for (const into of [0.35, 0.15, 0.05]) {
-  if (leftAtBreak) break;
-  standAt(sky.gaps[0].x + sky.gaps[0].w * into);
-  run.route = sky;
-  run.player.y = 0;
-  run.player.grounded = true;
-  frames(1);
-  leftAtBreak = run.route === null;
-}
+// One frame, one position. This used to walk him three times at 0.35, 0.15 and
+// 0.05 into the break, on the theory that a fast world was carrying him out
+// through the far edge before the ground was sampled. It was not: the world
+// moves about 2.5px in a frame and the break is about 43px wide, so he never
+// came close to the far edge. What actually happened is that the frame did no
+// work at all — a leftover hitstop from an earlier assertion returned out of
+// update() before anything moved — and the retries only ever helped by burning
+// hitstop frames. standAt() clears it now, so a single frame is enough.
+standAt(sky.gaps[0].x + sky.gaps[0].w * 0.35);
+run.route = sky;
+run.player.y = 0;
+run.player.grounded = true;
+frames(1);
 assert(run.route === null, 'running into a break takes the hero off the road');
 assert(!run.player.grounded, 'and drops him');
 // But JUMPING one does not. A hero in the air over a gap has not left the road,
